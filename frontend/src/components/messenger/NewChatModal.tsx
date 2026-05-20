@@ -1,4 +1,4 @@
-import React, { useState } from "react"
+import React, { useEffect, useId, useState } from "react"
 import { m, AnimatePresence } from "framer-motion"
 import { useTranslation } from "react-i18next"
 import { Search, X } from "lucide-react"
@@ -10,6 +10,7 @@ import { AVATAR_PLACEHOLDER_URL } from "@/constants/placeholders"
 import { TextField } from "@/components/ui"
 // PERF-20-05 (audit 2026-03-24): Debounce search to prevent API spam.
 import { useDebounced } from "@/hooks/useDebounced"
+import useFocusTrap from "@/hooks/useFocusTrap"
 
 interface NewChatModalProps {
   open: boolean
@@ -23,8 +24,31 @@ const MIN_SEARCH_LENGTH = 1
 export const NewChatModal: React.FC<NewChatModalProps> = ({ open, onClose, onSelect }) => {
   const { t } = useTranslation(["messenger", "common"])
   const [search, setSearch] = useState("")
+  const titleId = useId()
   // PERF-20-05: Debounce to prevent API call on every keystroke.
   const debouncedSearch = useDebounced(search, "default") // PERF-23-04: messenger search uses default preset (300ms)
+
+  // Wave 175 SW3 — focus trap + Escape handler.
+  // initialFocus: false lets the TextField's auto-focus (line ~95) win without
+  // focus-trap competing for the same target on mount.
+  const containerRef = useFocusTrap<HTMLDivElement>({
+    active: open,
+    onDeactivate: onClose,
+    initialFocus: false,
+    returnFocus: true,
+  })
+
+  useEffect(() => {
+    if (!open) return
+    const handler = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault()
+        onClose()
+      }
+    }
+    document.addEventListener("keydown", handler)
+    return () => document.removeEventListener("keydown", handler)
+  }, [open, onClose])
 
   const { data: users = [], isLoading } = useQuery({
     queryKey: ["users", debouncedSearch],
@@ -46,6 +70,7 @@ export const NewChatModal: React.FC<NewChatModalProps> = ({ open, onClose, onSel
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           className="fixed inset-0 flex items-center justify-center z-modal p-4"
+          role="presentation"
         >
           <div
             className="absolute inset-0 bg-black/(--opacity-strong) backdrop-blur-md cursor-default"
@@ -53,6 +78,10 @@ export const NewChatModal: React.FC<NewChatModalProps> = ({ open, onClose, onSel
             aria-hidden="true"
           />
           <m.div
+            ref={containerRef}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby={titleId}
             initial={{ scale: 0.95, opacity: 0, y: 20 }}
             animate={{ scale: 1, opacity: 1, y: 0 }}
             exit={{ scale: 0.95, opacity: 0, y: 20 }}
@@ -60,14 +89,19 @@ export const NewChatModal: React.FC<NewChatModalProps> = ({ open, onClose, onSel
             onClick={(event) => event.stopPropagation()}
           >
             <div className="p-6 pb-4 flex items-center justify-between border-b border-(--glass-border)/(--opacity-subtle) bg-(--bg-surface)/(--opacity-medium)">
-              <h3 className="text-xl font-black tracking-tight text-text-primary sf-pro">
+              <h3
+                id={titleId}
+                className="text-xl font-black tracking-tight text-text-primary sf-pro"
+              >
                 {t("messenger:newChat", "New Chat")}
               </h3>
               <button
+                type="button"
                 onClick={onClose}
-                className="p-2 rounded-xl hover:bg-(--bg-surface-hover)/(--opacity-medium) text-(--text-secondary) transition-colors"
+                aria-label={t("common:buttons.close")}
+                className="p-2 rounded-xl hover:bg-(--bg-surface-hover)/(--opacity-medium) text-(--text-secondary) transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-(--bg-surface)"
               >
-                <X className="w-5 h-5" />
+                <X className="w-5 h-5" aria-hidden="true" />
               </button>
             </div>
 
@@ -107,10 +141,11 @@ export const NewChatModal: React.FC<NewChatModalProps> = ({ open, onClose, onSel
                   {users.map((user) => (
                     <m.button
                       key={user.id}
+                      type="button"
                       whileHover={{ x: 4, backgroundColor: "var(--bg-surface-hover)" }}
                       whileTap={{ scale: 0.98 }}
                       onClick={() => onSelect(String(user.id))}
-                      className="w-full flex items-center gap-4 p-3.5 rounded-2xl transition-all text-left group"
+                      className="w-full flex items-center gap-4 p-3.5 rounded-2xl transition-all text-left group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-(--bg-surface)"
                     >
                       <div className="relative shrink-0">
                         <SmartImage

@@ -4,7 +4,9 @@ import { User } from "@/types/User"
 
 import { AnimatePresence, m } from "framer-motion"
 import { X } from "lucide-react"
+import { useEffect, useId } from "react"
 import { useTranslation } from "react-i18next"
+import useFocusTrap from "@/hooks/useFocusTrap"
 
 interface ProfileModalProps {
   user: User | null
@@ -15,36 +17,65 @@ interface ProfileModalProps {
 
 export function ProfileModal({ user, loading, error, onClose }: ProfileModalProps) {
   const { t } = useTranslation(["messenger", "common"])
+  const titleId = useId()
+  const isOpen = Boolean(user || loading || error)
 
-  // Fixed early return logic for AnimatePresence
-  // if (!user && !loading && !error) return null
+  // Wave 175 SW3 — focus trap activates whenever modal is open (any of
+  // user/loading/error truthy). returnFocus restores focus to the element
+  // that opened the modal (chat header avatar, typically).
+  const containerRef = useFocusTrap<HTMLDivElement>({
+    active: isOpen,
+    onDeactivate: onClose,
+    returnFocus: true,
+  })
+
+  useEffect(() => {
+    if (!isOpen) return
+    const handler = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault()
+        onClose()
+      }
+    }
+    document.addEventListener("keydown", handler)
+    return () => document.removeEventListener("keydown", handler)
+  }, [isOpen, onClose])
 
   return (
     <AnimatePresence>
-      {(user || loading || error) && (
+      {isOpen && (
         <m.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           className="fixed inset-0 z-overlay flex items-center justify-center bg-overlay/(--opacity-strong) p-4 backdrop-blur-md"
+          role="presentation"
+          onClick={onClose}
         >
           <m.div
+            ref={containerRef}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby={titleId}
             initial={{ opacity: 0, scale: 0.9, y: 20 }}
             animate={{ scale: 1, opacity: 1, y: 0 }}
             exit={{ scale: 0.9, opacity: 0, y: 20 }}
             className="z-modal w-full max-w-[32rem] overflow-hidden rounded-2xl border border-white/(--opacity-subtle) bg-(--bg-surface) shadow-2xl dark:bg-page"
+            onClick={(event) => event.stopPropagation()}
           >
             <div className="flex items-center justify-between border-b border-msg-border p-6 pb-4">
-              <h3 className="sf-pro text-xl font-bold tracking-tight">
+              <h3 id={titleId} className="sf-pro text-xl font-bold tracking-tight">
                 {user?.full_name || t("messenger:profile", "Profile")}
               </h3>
               <m.button
+                type="button"
                 whileHover={{ rotate: 90, scale: 1.1 }}
                 whileTap={{ scale: 0.9 }}
                 onClick={onClose}
-                className="rounded-full p-2 transition-colors hover:bg-surface-hover"
+                aria-label={t("common:buttons.close")}
+                className="rounded-full p-2 transition-colors hover:bg-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-(--bg-surface)"
               >
-                <X className="h-5 w-5" />
+                <X className="h-5 w-5" aria-hidden="true" />
               </m.button>
             </div>
 
