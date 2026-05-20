@@ -238,4 +238,52 @@ Per W171 Lesson #1: maintenance mode means waves fire on real triggers. If no sp
 
 W173 demonstrates the structural pattern W171 Lesson #1 predicted: project-done framing was correctly rejected; maintenance mode allowed real bug to surface via user manual testing; Q0=B activated with appropriate ceremony (Phase 1 + Phase 3 + ~3 LoC fix + empirical verification + audit + N+3 rotation + memory files). 33rd consecutive wave with brainstorming + W141 discipline preserves the long-running invariant chain.
 
-**Wave 173 fully closed** post-SW3. No polish-vN expected unless «безупречно?» probe surfaces genuinely NEW gaps not addressed by SW1+SW2+SW3.
+**Wave 173 fully closed** post-SW3 — BUT polish-v1 fired post-close per W164-W172 polish-vN convention. See § below.
+
+---
+
+## Polish-v1 (post-SW3) — `/ws/chat` Caddy rewrite + ws-hub REDIS_PASSWORD env
+
+**Trigger**: User reported new errors post-W173 SW2 deployment — `WebSocket connection to 'ws://localhost/ws/chat?ticket=<hex>' failed` × 4 retries with different tickets (visible: tickets WERE being issued by Fix B; downstream WS upgrade broken). W138 Lesson #2 stacking phenomenon — fixing /ws/ticket unmasked deeper ws-hub problems.
+
+**Investigation findings** (Phase 1 direct Read; no Agent spawned):
+
+1. ws-hub Go service serves WS upgrade at plain `/ws` per `services/ws-hub/main.go:133 http.Handle("/ws", ...)`. Go's net/http `Handle("/ws", ...)` matches ONLY exact path `/ws`, NOT `/ws/chat` (would require `Handle("/ws/", ...)` trailing slash for prefix).
+2. ws-hub `handlers.go:102` explicitly documents canonical URL as `wss://host/ws?ticket=<ott>`.
+3. ws-hub startup logs showed `Redis connection failed... NOAUTH Authentication required` + `Initial JWKS fetch failed... dial tcp: lookup backend on 127.0.0.11:53: no such host`. Container running with degraded "L2 Cache disabled" mode.
+4. ws-hub reads `REDIS_URL` + `REDIS_PASSWORD` env vars per `services/ws-hub/pkg/config/config.go:120-121` (defaults: addr `redis:6379`, password `""`). `docker-compose.full.yml` ws-hub service env DID NOT set `REDIS_PASSWORD` → ws-hub used empty password → Redis rejected auth.
+
+**Fixes** (1 commit, ~3 LoC):
+
+- **Fix A** `infrastructure/Caddyfile`: insert `handle /ws/chat* { rewrite * /ws; reverse_proxy ws-hub:8081 }` BEFORE general `/ws/*` rule. Transforms `/ws/chat?ticket=X` → `/ws?ticket=X` before proxying.
+- **Fix B** `docker-compose.full.yml` ws-hub service env: add `REDIS_URL: "redis:6379"` (explicit) + `REDIS_PASSWORD: ${REDIS_PASSWORD}`.
+
+**Empirical verification** (post Caddy hot-reload + ws-hub recreate):
+
+| Test | Pre-polish-v1 | Post-polish-v1 |
+|------|---------------|----------------|
+| `POST /ws/chat?ticket=test via Caddy :80` | **404 Not Found** (HTML, ws-hub no /ws/chat route) | **401 Unauthorized** (endpoint reached, auth firing; matches direct ws-hub `:8083/ws?ticket=test`) |
+| ws-hub Redis startup log | `Redis connection failed, continuing without L2 cache, err: NOAUTH Authentication required` | `Redis connected (L2 Cache enabled), addr: redis:6379` |
+| ws-hub JWKS startup log | `Initial JWKS fetch failed... no such host` | `JWKS cache initialised, url: http://backend:8000/.well-known/jwks.json` (DNS race self-healed on recreate) |
+| `POST /ws/ticket via Caddy` (W173 SW1 Fix B regression check) | 403 | 403 ✅ preserved |
+| `/healthz + /login` (regression check) | 200 + 200/21,732b | 200 + 200/21,732b ✅ preserved |
+| Docker stack health | 5/5 healthy | 5/5 healthy post-ws-hub-recreate ✅ |
+
+**Commit**: `8c04d0be7` `fix(wave173-polish-v1): /ws/chat Caddy rewrite + ws-hub REDIS_PASSWORD env` (2 files +34/-1).
+
+**W141 anti-pattern compliance**:
+
+- **#1 STRICT 1-iter cap**: **27th vindication** (single polish-v1 commit, same-mechanism sub-fix per W138 Lesson #1 — both closures address "ws-hub infra config gaps from W131-era multi-service split"; NOT mechanism pivot).
+- **#3 Phase 3 verification**: **50th vindication** (direct Read of ws-hub config.go + handlers.go + main.go confirmed Redis env vars + /ws canonical path pre-commit; no Agent claims to reject).
+- **#4 No premature "Closes" attribution**: **24th vindication** (commit uses concrete empirical pre→post evidence — 404 → 401 + NOAUTH → Redis connected).
+- **#15 ARCHIVED W159 SW4**: preserved 34th wave (polish-v1 commit fired W156 SW4 husky pre-commit chain cleanly).
+
+**W138 Lesson #2 stacking phenomenon REINFORCED**: W173 SW1 Fix B closed surface-level /ws/ticket 404 → unmasked downstream /ws/chat 404 AND Redis NOAUTH (BOTH dormant ≥17 waves due to /messenger Phase 5 punt hiding chat WS flow from regression tests). Polish-v1 closes the cascade empirically; no further /ws-chain failures expected.
+
+**Polish-v2 (this addendum)**: documentation propagation only — CLAUDE.md ## Gotchas extended with 2 NEW entries (polish-v1 Caddy rewrite + ws-hub REDIS_PASSWORD env) + AUDIT_WAVE173.md polish-v1 section.
+
+**§Honesty trajectory post-polish-v1**: 0-3 OPEN → 0-3 OPEN (count unchanged; polish-v1 closes 2 NEW polish-discovered gaps but they were sub-aspects of W173 SW1 scope — NOT independent §Honesty caveats; W173 §Honesty #1 "no automated regression test" UNCHANGED, now applies to polish-v1 fixes too).
+
+**Bundle invariant**: polish-v1 modifies 2 NON-CLIENT-BUNDLE files (Caddy config + compose env). Same structural argument as SW1 — W134-W171 ≥35-wave LOCAL-MACHINE BYTE-IDENTICAL invariant chain CONTINUES through W173 polish-v1 → **≥36-wave invariant by structural argument** (no client-side code change).
+
+**Wave 173 fully closed** post-polish-v1+v2. No polish-v3 recursion terminator expected unless «безупречно?» probe surfaces genuinely NEW gaps post-polish-v2.
