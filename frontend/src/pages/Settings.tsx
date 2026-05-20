@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useEffect } from "react"
+import { useState, useCallback, useRef, useEffect, useId } from "react"
 import { useSearch, useNavigate } from "@tanstack/react-router"
 import { useTranslation } from "react-i18next"
 import { Settings as SettingsIcon } from "lucide-react"
@@ -30,6 +30,12 @@ export default function Settings() {
   const search = useSearch({ strict: false }) as { tab?: number; spotify?: string }
   const navigate = useNavigate()
   const tab = search.tab ?? 0
+  // Wave 175 SW6 — stable panel id passed to Tabs + tabpanel wrapper so
+  // each Tab gets aria-controls={panelId} and the tabpanel has matching
+  // id + aria-labelledby={tabId of active tab} per ARIA APG.
+  const panelBaseId = useId()
+  const settingsPanelId = `${panelBaseId}-tabpanel`
+  const activeTabId = `${settingsPanelId}-tab-${tab}`
 
   // Shared Snackbar State
   const [snackbar, setSnackbar] = useState<{
@@ -141,6 +147,8 @@ export default function Settings() {
               onChange={(_, value) => setTab(value)}
               variant="scrollable"
               scrollButtons="auto"
+              panelId={settingsPanelId}
+              ariaLabel={t("settings:tabs.ariaLabel")}
               className="border-b border-(--border-subtle)"
             >
               <Tab label={t("settings:tabs.general")} />
@@ -150,7 +158,17 @@ export default function Settings() {
             </Tabs>
           </div>
 
-          <div data-fade className="animate-fade-in delay-(--motion-delay-long)">
+          {/* Wave 175 SW6 — single stable tabpanel (W116 polish events tabs
+              pattern). aria-labelledby points at the currently-active tab
+              button id; aria-controls on every Tab points at this section. */}
+          <section
+            id={settingsPanelId}
+            role="tabpanel"
+            aria-labelledby={activeTabId}
+            tabIndex={0}
+            data-fade
+            className="animate-fade-in delay-(--motion-delay-long) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-(--bg-page)"
+          >
             {tab === 0 && <SettingsGeneral setSnackbar={setSnackbar} />}
             {tab === 1 && <SettingsProfile setSnackbar={setSnackbar} />}
             {tab === 2 && (
@@ -161,7 +179,7 @@ export default function Settings() {
               />
             )}
             {tab === 3 && <SettingsIntegrations setSnackbar={setSnackbar} />}
-          </div>
+          </section>
 
           {/* StepUp Dialog */}
           <StepUpDialog

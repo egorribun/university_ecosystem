@@ -3,6 +3,7 @@
     "title": "Settings"
   },
   "tabs": {
+    "ariaLabel": "Settings sections",
     "general": "General",
     "account": "Account",
     "security": "Security",
