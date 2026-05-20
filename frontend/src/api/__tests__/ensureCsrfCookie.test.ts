@@ -106,8 +106,14 @@ describe("W174 SW2 — ensureCsrfCookie production behavior", () => {
   })
 
   it("dedupes concurrent calls via singleton Promise (1 fetch for N parallel calls)", async () => {
-    // Use a deferred Promise so we can verify dedup BEFORE resolution
-    let resolveFetch: ((value: Response) => void) | null = null
+    // Use a deferred Promise so we can verify dedup BEFORE resolution.
+    // Explicit type cast on the outer binding works around TS control-flow
+    // narrowing limitation (TS narrows to null because assignment is
+    // inside the Promise executor callback).
+    type ResolveFn = (value: Response) => void
+    let resolveFetch: ResolveFn = () => {
+      throw new Error("resolveFetch not initialized")
+    }
     const deferredFetch = new Promise<Response>((resolve) => {
       resolveFetch = resolve
     })
@@ -126,7 +132,7 @@ describe("W174 SW2 — ensureCsrfCookie production behavior", () => {
     expect(fetchSpy).toHaveBeenCalledTimes(1)
 
     // Resolve the deferred fetch + wait for all
-    resolveFetch?.(new Response(null))
+    resolveFetch(new Response(null))
     await Promise.all(promises)
 
     expect(fetchSpy).toHaveBeenCalledTimes(1)
