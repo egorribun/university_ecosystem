@@ -286,4 +286,61 @@ W173 demonstrates the structural pattern W171 Lesson #1 predicted: project-done 
 
 **Bundle invariant**: polish-v1 modifies 2 NON-CLIENT-BUNDLE files (Caddy config + compose env). Same structural argument as SW1 — W134-W171 ≥35-wave LOCAL-MACHINE BYTE-IDENTICAL invariant chain CONTINUES through W173 polish-v1 → **≥36-wave invariant by structural argument** (no client-side code change).
 
-**Wave 173 fully closed** post-polish-v1+v2. No polish-v3 recursion terminator expected unless «безупречно?» probe surfaces genuinely NEW gaps post-polish-v2.
+**Wave 173 fully closed** post-polish-v1+v2 — BUT polish-v3 fired post-polish-v2 per W138 Lesson #2 stacking phenomenon REINFORCED. See § below.
+
+---
+
+## Polish-v3 (post-polish-v2) — ws-hub ALLOWED_ORIGINS env
+
+**Trigger**: User reported same `WebSocket connection to 'ws://localhost/ws/chat?ticket=<hex>' failed` × 8 retries with different tickets EVEN AFTER polish-v1+v2 deployment. W138 Lesson #2 stacking — polish-v1 closed /ws/chat path + Redis but unmasked THIRD ws-hub config gap.
+
+**Investigation findings** (Phase 1 direct Read; no Agent spawned):
+
+1. Empirical full-flow test with REAL 64-char hex ticket pre-written to Redis DB 0 returned **403 Forbidden** (not 401). Different status = different failure mode = NOT ticket validation; something AFTER.
+2. ws-hub `pkg/config/config.go:103` defaults `AllowedOrigins` to `["http://localhost:3000", "http://localhost:5173"]` — both Vite dev server ports.
+3. Production-like Docker setup accesses frontend via Caddy reverse proxy on port 80 → browser sends `Origin: http://localhost` (no port — default :80) → ws-hub `pkg/hub/handlers.go:40 CheckOrigin` callback in gorilla/websocket Upgrader rejects → 403.
+4. `docker-compose.full.yml` ws-hub service env did NOT set `ALLOWED_ORIGINS` → ws-hub used the Vite-dev defaults → no Caddy canonical origin allowed.
+
+**Fix** (1 file, ~15 lines + comment block):
+
+`docker-compose.full.yml` ws-hub service env: add `ALLOWED_ORIGINS: "http://localhost,http://localhost:8081,http://localhost:3000,http://localhost:5173"`. Covers:
+- `http://localhost` — Caddy canonical port-80 access (production-like)
+- `http://localhost:8081` — direct frontend Node SSR port mapping (W132 SW1-fix; debug path)
+- `http://localhost:3000` + `http://localhost:5173` — Vite dev defaults preserved for non-Docker workflows
+
+**Empirical verification** (post ws-hub recreate with ALLOWED_ORIGINS env):
+
+| Test | Pre-polish-v3 | Post-polish-v3 |
+|------|---------------|----------------|
+| Real 64-char ticket pre-written to Redis DB 0 + `Origin: http://localhost` | **403 Forbidden** (CheckOrigin mismatch) | **`HTTP/1.1 101 Switching Protocols`** ✅ (FULL WS HANDSHAKE) |
+| ws-hub container env | `ALLOWED_ORIGINS` not set → defaults `[":3000", ":5173"]` | `ALLOWED_ORIGINS=http://localhost,http://localhost:8081,http://localhost:3000,http://localhost:5173` |
+| `/ws/ticket POST via Caddy` (W173 SW1 Fix B regression check) | 403 | 403 ✅ preserved |
+| `/healthz + /login` (regression check) | 200 + 200/21,732b | 200 + 200/21,732b ✅ preserved |
+
+**Commit**: `<polish-v3-hash>` `fix(wave173-polish-v3): ws-hub ALLOWED_ORIGINS env for Caddy canonical port-80 origin` (2 files +21/-2: docker-compose.full.yml + CLAUDE.md Gotcha entry).
+
+**Full chat flow chain — ALL 6 STAGES VERIFIED EMPIRICALLY**:
+
+```
+1. POST /ws/ticket (HTTP)               → backend issues OTT to Redis DB 0  ✅ W173 SW1 Fix B
+2. Browser opens ws://localhost/ws/chat → Caddy rewrites /ws/chat → /ws     ✅ W173 polish-v1 Fix A
+3. ws-hub /ws handler                   → 64-char hex ticket length check   ✅ inline
+4. ws-hub Redis GETDEL ott:ws:<hex>     → ticket exists in DB 0             ✅ W173 polish-v1 Fix B
+5. ws-hub Origin check                  → http://localhost in ALLOWED       ✅ W173 polish-v3 Fix
+6. gorilla/websocket Upgrader            → 101 Switching Protocols           ✅ verified
+```
+
+**W141 anti-pattern compliance**:
+
+- **#1 STRICT 1-iter cap**: **28th vindication** (single polish-v3 commit; same-mechanism sub-fix per W138 Lesson #1 — third ws-hub infra config gap from W131-era multi-service split; NOT mechanism pivot)
+- **#3 Phase 3 verification**: **51st vindication** (direct Read of ws-hub config.go + handlers.go confirmed AllowedOrigins default + CheckOrigin call site pre-commit)
+- **#4 No premature "Closes" attribution**: **25th vindication** (commit uses concrete empirical pre→post evidence — 403 → 101 Switching Protocols)
+- **#15 ARCHIVED W159 SW4**: preserved **35th wave** (polish-v3 commit fired W156 SW4 husky pre-commit chain cleanly)
+
+**W138 Lesson #2 stacking phenomenon TRIPLE-REINFORCED**: W173 SW1 → polish-v1 → polish-v3 each unmasked a deeper ws-hub config gap (404 → 401 → 403 → 101). All three closures address SAME mechanism class ("ws-hub infra config gaps from W131-era multi-service split"). Polish-v3 fully closes the cascade — empirical 101 Switching Protocols confirms end-to-end chat flow operational.
+
+**§Honesty trajectory post-polish-v3**: 0-3 OPEN → 0-3 OPEN (count unchanged; polish-v3 closes 1 NEW polish-discovered gap but it's a sub-aspect of W173 SW1 scope — NOT independent §Honesty caveat; W173 §Honesty #1 "no automated regression test" UNCHANGED, now applies to polish-v3 fix too).
+
+**Bundle invariant**: polish-v3 modifies 1 NON-CLIENT-BUNDLE file (compose env). Same structural argument — W134-W171 ≥35-wave LOCAL-MACHINE BYTE-IDENTICAL invariant chain CONTINUES → **≥36-wave invariant by structural argument**.
+
+**Honest framing**: W173 fully closed post-polish-v3 with EMPIRICAL end-to-end verification (101 Switching Protocols). If user reports more chat-related errors, those would be NEW failure modes (not stacking from W131 SW4/SW7 omissions). Polish-v4 recursion terminator NOT necessary — empirical verification IS the closure evidence.

@@ -456,6 +456,21 @@ services:
       # gaps from W131-era multi-service split).
       REDIS_URL: "redis:6379"
       REDIS_PASSWORD: ${REDIS_PASSWORD}
+      # Wave 173 polish-v3: ws-hub default ALLOWED_ORIGINS per
+      # `services/ws-hub/pkg/config/config.go:103` = ["http://localhost:3000",
+      # "http://localhost:5173"] (Vite dev server ports). Production-like
+      # Docker setup accesses frontend via `http://localhost` (port 80, via
+      # Caddy reverse proxy) — browser sends `Origin: http://localhost` (no
+      # port). gorilla/websocket Upgrader CheckOrigin (handlers.go:40)
+      # rejected mismatch → 403 Forbidden on WS upgrade. Closes the THIRD
+      # ws-hub infra config gap from W131-era multi-service split arc.
+      # Same-mechanism polish-v3 sub-fix per W138 Lesson #1. Includes all
+      # common dev access patterns: `http://localhost` (Caddy port 80
+      # canonical), `http://localhost:8081` (direct frontend Node SSR port
+      # mapping per W132 SW1-fix), plus the legacy Vite dev defaults
+      # `http://localhost:3000` (Vite dev) + `http://localhost:5173` (Vite
+      # preview default) for parity with non-Docker dev workflows.
+      ALLOWED_ORIGINS: "http://localhost,http://localhost:8081,http://localhost:3000,http://localhost:5173"
       # MOD-01 (audit 2026-03-15 Wave 7): Standard OTel env vars — SDK reads
       # these automatically so no hardcoded endpoint in telemetry.go code.
       # OTEL_EXPORTER_OTLP_INSECURE=true is correct for local dev (tempo has
