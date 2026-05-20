@@ -10,15 +10,35 @@ import { server } from "@/tests/mocks/server"
 import { testUser } from "@/tests/mocks/handlers"
 import i18n from "../../i18n/config"
 import { createTestQueryClient, renderWithRouter } from "@/tests/helpers/renderWithRouter"
+import { useAuthStore } from "@/stores/useAuthStore"
 
 const tAuth = (key: string, options?: Record<string, unknown>) => i18n.t(`auth:${key}`, options)
 const matchText = (text: string) => (content: string) => content.startsWith(text)
 
 const clients: QueryClient[] = []
 
-const renderLogin = () => {
+interface RenderLoginOptions {
+  /**
+   * Wave 177 SW2 — opt-out of the default `/users/me → 401` msw override.
+   * Default behavior (skipMeOverride: false): block /users/me so the
+   * W177 SW1 reactive useEffect in Login.tsx (subscribes to
+   * useAuthStore.user → navigate to /dashboard) doesn't fire mid-test.
+   * Login UI tests don't care about authed state — they verify form
+   * behavior. Set skipMeOverride: true for the dedicated W174 §Honesty
+   * #3 regression test that exercises the redirect explicitly.
+   */
+  skipMeOverride?: boolean
+}
+
+const renderLogin = (options: RenderLoginOptions = {}) => {
   const client = createTestQueryClient()
   clients.push(client)
+  if (!options.skipMeOverride) {
+    // Wave 177 SW2 — block /users/me so Login.tsx W177 SW1 useEffect
+    // doesn't fire during form-behavior tests. See handlers.ts:373 for
+    // the default mock that returns testUser.
+    server.use(http.get("*/users/me", () => HttpResponse.json(null, { status: 401 })))
+  }
   return renderWithRouter({
     ui: Login,
     path: "/login",
@@ -37,6 +57,17 @@ describe("Login page", () => {
   afterEach(() => {
     localStorage.clear()
     clients.splice(0).forEach((client) => client.clear())
+    // Wave 177 SW2 — reset useAuthStore between tests. Pre-W177 this was
+    // silent because Login.tsx didn't react to user state; W177 SW1
+    // useEffect makes prior-test user-state pollution observable
+    // (redirect-to-/dashboard fires immediately on mount). Match the
+    // initial state from useAuthStore.ts:22-26 (loading:true optimistic).
+    useAuthStore.setState({
+      user: null,
+      loading: true,
+      pendingMfa: null,
+      authOperation: false,
+    })
   })
 
   it("blocks submission for invalid email", async () => {
@@ -96,6 +127,22 @@ describe("Login page", () => {
     await waitFor(() => expect(screen.getByText("Welcome!")).toBeInTheDocument())
     expect(captured).toEqual([{ username: "user@example.com", password: "secret123" }])
   }, 15000)
+
+  it("redirects authed user away from /login (W174 §Honesty #3, W177 SW1)", async () => {
+    // Wave 177 SW1+SW2 regression test. With skipMeOverride:true, renderLogin
+    // does NOT add the /users/me → 401 override → default msw (handlers.ts:373)
+    // returns testUser → AuthProvider's useProfileSync populates useAuthStore
+    // → Login.tsx W177 SW1 useEffect observes user transition null→testUser
+    // → fires navigate({to:"/dashboard", replace:true}) → extraRoutes' /dashboard
+    // → "Welcome!" rendered. Regression-guards W174 SW1 (route guards read
+    // live Zustand) AND W177 SW1 (Login.tsx reactive useEffect) from future
+    // reverts.
+    await renderLogin({ skipMeOverride: true })
+
+    await waitFor(() => expect(screen.getByText("Welcome!")).toBeInTheDocument(), {
+      timeout: 5_000,
+    })
+  })
 
   it("returns server errors to the user", async () => {
     server.use(
@@ -160,17 +207,15 @@ describe("Login page", () => {
   })
 
   it("transitions to MFA verification when additional challenges are required", async () => {
-    server.use(
-      http.get("*/users/me", () =>
-        HttpResponse.json({
-          ...testUser,
-          email: "mfa@example.com",
-          mfa_required: true,
-          mfa_default_method: "totp",
-        })
-      )
-    )
-
+    // Wave 177 SW2 — removed vestigial `/users/me → mfa-user` override.
+    // The MFA UI trigger is the POST /auth/login 202 response (handlers.ts:655-664
+    // matches mfa@example.com + Password123 → returns PendingMfaResponse → useAuthApi
+    // calls updatePendingMfa → useMfaFlow.loginChallenge becomes truthy → MfaChallengeView
+    // renders). The previous /users/me override pre-populated useAuthStore.user, which
+    // post-W177 SW1 would trigger Login.tsx's reactive useEffect → premature redirect
+    // before the user could submit credentials. With the override removed, /users/me
+    // resolves to 401 via renderLogin's default helper override → user stays null →
+    // useEffect doesn't fire → MFA flow proceeds normally via POST /auth/login.
     const user = userEvent.setup()
     await renderLogin()
 
@@ -205,17 +250,8 @@ describe("Login page", () => {
   }, 15000)
 
   it("displays errors for invalid OTP attempts and allows retry", async () => {
-    server.use(
-      http.get("*/users/me", () =>
-        HttpResponse.json({
-          ...testUser,
-          email: "mfa@example.com",
-          mfa_required: true,
-          mfa_default_method: "totp",
-        })
-      )
-    )
-
+    // Wave 177 SW2 — same rationale as the previous MFA test: removed vestigial
+    // `/users/me → mfa-user` override. MFA flow triggers via POST /auth/login 202.
     const user = userEvent.setup()
     await renderLogin()
 
