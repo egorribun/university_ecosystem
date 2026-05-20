@@ -117,8 +117,9 @@ export const MessageInput: React.FC<MessageInputProps> = ({ onSend }) => {
                 </div>
               )}
               <button
+                type="button"
                 onClick={() => removeFile(index)}
-                className="absolute -top-1.5 -right-1.5 bg-(--error-text) text-white rounded-full p-1 shadow-lg hover:bg-(--error-text)/(--opacity-hover) transition-colors"
+                className="absolute -top-1.5 -right-1.5 bg-(--error-text) text-[var(--text-inverse)] rounded-full p-1 shadow-lg hover:bg-(--error-text)/(--opacity-hover) transition-colors"
                 aria-label={t("messenger:aria.removeAttachment")}
               >
                 <X size={12} strokeWidth={3} />
@@ -219,7 +220,7 @@ export const MessageInput: React.FC<MessageInputProps> = ({ onSend }) => {
           className={cn(
             "p-2.5 rounded-xl transition-all duration-base",
             text.trim() || selectedFiles.length > 0
-              ? "bg-(--brand-main) text-white shadow-lg shadow-(--brand-main)/(--opacity-soft)"
+              ? "bg-(--brand-main) text-[var(--text-inverse)] shadow-lg shadow-(--brand-main)/(--opacity-soft)"
               : "bg-(--bg-surface-hover)/(--opacity-subtle) text-(--text-secondary) opacity-soft cursor-not-allowed"
           )}
         >

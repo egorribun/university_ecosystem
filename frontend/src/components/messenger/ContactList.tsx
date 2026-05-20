@@ -39,7 +39,7 @@ export function ContactList({ contacts, selectedId, onSelect }: ContactListProps
           className={cn(
             "msg-contact-item flex items-center gap-3 p-3 mb-1 rounded-2xl cursor-pointer transition-all duration-base",
             selectedId === contact.id
-              ? "active bg-(--brand-main) text-white"
+              ? "active bg-(--brand-main) text-[var(--text-inverse)]"
               : "hover:bg-(--bg-surface-hover)/(--opacity-subtle)"
           )}
         >
@@ -59,7 +59,7 @@ export function ContactList({ contacts, selectedId, onSelect }: ContactListProps
               <h3
                 className={cn(
                   "font-bold text-base truncate sf-pro",
-                  selectedId === contact.id ? "text-white" : "text-text-primary"
+                  selectedId === contact.id ? "text-[var(--text-inverse)]" : "text-text-primary"
                 )}
               >
                 {contact.name}
@@ -68,7 +68,7 @@ export function ContactList({ contacts, selectedId, onSelect }: ContactListProps
                 className={cn(
                   "text-xs shrink-0 ml-2 font-medium uppercase tracking-tight",
                   selectedId === contact.id
-                    ? "text-white/(--opacity-strong)"
+                    ? "text-[var(--text-inverse)]/(--opacity-strong)"
                     : "text-(--text-secondary) opacity-medium"
                 )}
               >
@@ -80,7 +80,7 @@ export function ContactList({ contacts, selectedId, onSelect }: ContactListProps
                 className={cn(
                   "text-sm truncate flex-1 leading-tight",
                   selectedId === contact.id
-                    ? "text-white/(--opacity-hover)"
+                    ? "text-[var(--text-inverse)]/(--opacity-hover)"
                     : "text-(--text-secondary)"
                 )}
               >
@@ -90,7 +90,7 @@ export function ContactList({ contacts, selectedId, onSelect }: ContactListProps
                 <m.span
                   initial={{ scale: 0 }}
                   animate={{ scale: 1 }}
-                  className="msg-unread-badge min-w-5 h-5 px-1 bg-(--error-text) text-white rounded-full text-label-xs font-black flex items-center justify-center shadow-lg shadow-(--error-text)/(--opacity-dim)"
+                  className="msg-unread-badge min-w-5 h-5 px-1 bg-(--error-text) text-[var(--text-inverse)] rounded-full text-label-xs font-black flex items-center justify-center shadow-lg shadow-(--error-text)/(--opacity-dim)"
                 >
                   {contact.unread > 99 ? "99+" : contact.unread}
                 </m.span>
