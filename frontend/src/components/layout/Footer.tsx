@@ -1,18 +1,20 @@
-import { Link, useRouterState } from "@tanstack/react-router"
+import { Link } from "@tanstack/react-router"
 import { Send, Mail } from "lucide-react"
 import guuLogo from "@/assets/guu_logo.png"
 import SmartImage from "@/components/media/SmartImage"
 import { useTranslation } from "react-i18next"
 import { Button } from "@/components/ui"
 
+// Wave 176 SW1 — `isAuthPage` early-return removed. Footer rendering is
+// already gated by `MainLayout` via `useRouteType()` (`hideFooter` covers
+// /map + /schedule + /messenger; `isCompactPage` covers /login + /register +
+// /forgot-password + /reset-password). Maintaining a second list inside
+// Footer.tsx duplicated logic + drifted from the source of truth (e.g., the
+// old list omitted /reset-password). Footer.tsx is now a "trust the parent"
+// component — it always renders when mounted.
 export default function Footer() {
   const { t } = useTranslation(["navigation"])
   const currentYear = new Date().getFullYear()
-  const pathname = useRouterState({ select: (s) => s.location.pathname })
-  const isAuthPage = ["/login", "/register", "/forgot-password", "/messenger"].some((p) =>
-    pathname.startsWith(p)
-  )
-  if (isAuthPage) return null
 
   return (
     <footer
