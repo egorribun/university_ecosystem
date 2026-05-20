@@ -1,5 +1,5 @@
 import { useAuth } from "@/contexts/AuthContext"
-import { useEffect, useState, useRef, useCallback } from "react"
+import { useEffect, useId, useState, useRef, useCallback } from "react"
 import { useNavigate } from "@tanstack/react-router"
 import api from "@/api/client"
 import type { User } from "@/types/User"
@@ -61,6 +61,13 @@ export default function Profile() {
   const [qrOpen, setQrOpen] = useState(false)
   const [detailsOpen, setDetailsOpen] = useState(true)
   const [achievementOpen, setAchievementOpen] = useState<AchievementItem | null>(null)
+  // Wave 175 SW5 — stable IDs for Dialog aria-labelledby/aria-describedby
+  // wiring (shared Dialog now accepts ariaLabelledBy + ariaDescribedBy props;
+  // DialogTitle + DialogContent accept matching id prop).
+  const qrTitleId = useId()
+  const qrDescId = useId()
+  const achievementTitleId = useId()
+  const achievementDescId = useId()
   const emailButtonRef = useRef<HTMLButtonElement | null>(null)
   const telegramButtonRef = useRef<HTMLButtonElement | null>(null)
   const spotifyConnected = Boolean(user?.spotify_connected || user?.spotify_is_connected)
@@ -320,11 +327,27 @@ export default function Profile() {
       </PageFadeIn>
 
       {/* QR Code Dialog */}
-      <Dialog open={qrOpen} onClose={() => setQrOpen(false)} maxWidth="xs" fullWidth>
-        <DialogTitle className="text-center">{t("profile:dialog.qr.title")}</DialogTitle>
-        <DialogContent className="flex flex-col items-center justify-center gap-3 min-h-(--h-dialog-min)">
+      <Dialog
+        open={qrOpen}
+        onClose={() => setQrOpen(false)}
+        maxWidth="xs"
+        fullWidth
+        ariaLabelledBy={qrTitleId}
+        ariaDescribedBy={qrDescId}
+      >
+        <DialogTitle id={qrTitleId} className="text-center">
+          {t("profile:dialog.qr.title")}
+        </DialogTitle>
+        <DialogContent
+          id={qrDescId}
+          className="flex flex-col items-center justify-center gap-3 min-h-(--h-dialog-min)"
+        >
           <div className="w-full md:w-80 lg:w-96 flex flex-col border-r border-msg-border h-full relative z-deep bg-msg-sidebar">
-            <QRCodeSVG value={vCardData} size={300} level="H" includeMargin />
+            {/* Wave 175 SW5 — QR is decorative (vCard meaning conveyed by
+                dialog title "Share contact" + hint below); aria-hidden
+                prevents screen readers from announcing "graphic" with no
+                useful content (per W120 polish-v2 svg-img-alt gotcha). */}
+            <QRCodeSVG value={vCardData} size={300} level="H" includeMargin aria-hidden="true" />
           </div>
           <p className="text-xs text-(--text-secondary) text-center mt-2 opacity-hover">
             {t("profile:dialog.qr.hint")}
@@ -343,9 +366,11 @@ export default function Profile() {
         onClose={() => setAchievementOpen(null)}
         maxWidth="xs"
         fullWidth
+        ariaLabelledBy={achievementTitleId}
+        ariaDescribedBy={achievementDescId}
       >
-        <DialogTitle>{achievementOpen?.name}</DialogTitle>
-        <DialogContent className="grid gap-4 py-4">
+        <DialogTitle id={achievementTitleId}>{achievementOpen?.name}</DialogTitle>
+        <DialogContent id={achievementDescId} className="grid gap-4 py-4">
           {achievementOpen?.issuer && (
             <div className="flex flex-col gap-0.5">
               <span className="text-label-xs font-bold uppercase tracking-wider text-brand opacity-strong">
