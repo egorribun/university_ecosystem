@@ -161,7 +161,18 @@ COPY --from=prod-deps --chown=node:node /app/node_modules ./node_modules
 # server-prod.mjs Node wrapper (W131 SW1) — imports dist/server/server.js
 # default export, adapts Web Standards Request <-> Node IncomingMessage,
 # binds http.createServer on PORT/HOST.
+#
+# Wave 175 polish-followup: contentTypes.mjs is server-prod.mjs's sibling
+# module (W175 SW8 extracted CONTENT_TYPES map for side-effect-free import
+# in regression tests at frontend/src/__tests__/serverProdContentTypes.test.ts).
+# server-prod.mjs does `import { CONTENT_TYPES } from "./contentTypes.mjs"`.
+# Without copying both files, Node ESM resolver throws ERR_MODULE_NOT_FOUND
+# at runtime startup → frontend container crashes → Caddy "no upstreams
+# available" 503 cascade (caught via user Docker rebuild test).
+# The `.d.mts` TypeScript declarations are NOT copied — runtime-only Node
+# doesn't need them.
 COPY --chown=node:node frontend/scripts/server-prod.mjs ./scripts/server-prod.mjs
+COPY --chown=node:node frontend/scripts/contentTypes.mjs ./scripts/contentTypes.mjs
 
 # Build artifacts:
 #   dist/client/_shell.html + dist/client/index.html (mirror) + dist/client/assets/
