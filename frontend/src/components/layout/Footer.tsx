@@ -1,9 +1,13 @@
 import { Link } from "@tanstack/react-router"
 import { Send, Mail } from "lucide-react"
+import { useReducedMotion } from "framer-motion"
 import guuLogo from "@/assets/guu_logo.png"
 import SmartImage from "@/components/media/SmartImage"
 import { useTranslation } from "react-i18next"
 import { Button } from "@/components/ui"
+import useMediaQuery from "@/hooks/useMediaQuery"
+import { breakpoints } from "@/theme/tokens"
+import FooterBackdrop from "@/components/layout/FooterBackdrop"
 
 // Wave 176 SW1 — `isAuthPage` early-return removed. Footer rendering is
 // already gated by `MainLayout` via `useRouteType()` (`hideFooter` covers
@@ -12,15 +16,22 @@ import { Button } from "@/components/ui"
 // Footer.tsx duplicated logic + drifted from the source of truth (e.g., the
 // old list omitted /reset-password). Footer.tsx is now a "trust the parent"
 // component — it always renders when mounted.
+//
+// Wave 176 SW2 — `FooterBackdrop` decorative orb layer + `useReducedMotion` +
+// `useMediaQuery` hooks added. Pattern mirrors EventsFeature/EventsBackdrop
+// (Wave 118 SW3 CLS-118-03 pixel-sizing lesson preserved).
 export default function Footer() {
   const { t } = useTranslation(["navigation"])
   const currentYear = new Date().getFullYear()
+  const prefersReducedMotion = useReducedMotion() ?? false
+  const isNarrow = useMediaQuery(`(max-width: ${breakpoints.content})`)
 
   return (
     <footer
       className="bg-footer relative overflow-hidden border-t border-border-subtle/(--opacity-medium) min-h-(--h-skeleton-row)"
       role="contentinfo"
     >
+      <FooterBackdrop isNarrow={isNarrow} prefersReducedMotion={prefersReducedMotion} />
       <div className="relative z-surface mx-auto max-w-(--layout-max-wide) px-fluid-x py-(--space-8) md:py-10">
         <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-5 lg:gap-8">
           <div className="flex min-w-0 flex-col gap-3 lg:col-span-2">
