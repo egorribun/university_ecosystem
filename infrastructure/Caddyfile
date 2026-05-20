@@ -60,7 +60,26 @@
         reverse_proxy gateway:8080
     }
 
-    # WebSocket Hub (Go) — WS upgrade endpoint itself
+    # Wave 173 polish-v1 — frontend `useChatWebSocket.ts:202` constructs WS URL
+    # as `/ws/chat?ticket=<hex>` but ws-hub Go service serves WS upgrade at
+    # plain `/ws` (`services/ws-hub/main.go:133 http.Handle("/ws", ...)`). Go's
+    # net/http `Handle("/ws", ...)` matches ONLY the exact path `/ws`, NOT
+    # `/ws/chat` (which would require `Handle("/ws/", ...)` trailing slash).
+    # Rewrite `/ws/chat` → `/ws` before proxying so frontend code + ws-hub Go
+    # both stay unchanged. Pre-W173 polish-v1: WS upgrade requests for
+    # `/ws/chat?ticket=<hex>` returned 404 from ws-hub (path mismatch). This
+    # was the W173 SW1 «безупречно?» finding — surface-level /ws/ticket fix
+    # closed HTTP ticket issuance but didn't restore full chat flow because
+    # the downstream WS upgrade was ALSO broken by W131 SW4 endpoint-class
+    # omission (same root cause class as /ws/ticket fix).
+    handle /ws/chat* {
+        rewrite * /ws
+        reverse_proxy ws-hub:8081
+    }
+
+    # WebSocket Hub (Go) — WS upgrade endpoint itself (catch-all for any
+    # future /ws/<other-path> routes; ws-hub will return 404 unless it
+    # explicitly handles those paths, but we route there for visibility).
     handle /ws/* {
         reverse_proxy ws-hub:8081
     }
