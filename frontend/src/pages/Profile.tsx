@@ -18,6 +18,7 @@ import {
 } from "@/components/settings"
 import { m } from "framer-motion"
 import { breakpoints } from "@/theme/tokens"
+import useMediaQuery from "@/hooks/useMediaQuery"
 
 import { useNowPlaying } from "@/hooks/useNowPlaying"
 import { useTranslation } from "react-i18next"
@@ -47,18 +48,15 @@ export default function Profile() {
   const [snackbar, setSnackbar] = useState<SnackbarState | null>(null)
   const [avatarVersion, setAvatarVersion] = useState(Date.now())
   const [coverVersion, setCoverVersion] = useState(Date.now())
-  const reduceMotion =
-    typeof window !== "undefined" &&
-    typeof window.matchMedia === "function" &&
-    window.matchMedia("(prefers-reduced-motion: reduce)").matches
-  const isWideScreen =
-    typeof window !== "undefined" &&
-    typeof window.matchMedia === "function" &&
-    window.matchMedia(`(min-width: ${breakpoints.wide})`).matches
-  const isMobile =
-    typeof window !== "undefined" &&
-    typeof window.matchMedia === "function" &&
-    window.matchMedia(`(max-width: ${breakpoints.mobile})`).matches
+  // Wave 175 SW4 — 3× top-level synchronous matchMedia calls (pre-W175 inline
+  // typeof-window guards) replaced with useMediaQuery hook. Benefits:
+  // (a) reactive — re-renders on viewport change / system preference change
+  //   (previously fixed at first render);
+  // (b) consistent SSR-safety (hook handles typeof window guard internally);
+  // (c) eliminates 3× repeated typeof-window/matchMedia boilerplate.
+  const reduceMotion = useMediaQuery("(prefers-reduced-motion: reduce)")
+  const isWideScreen = useMediaQuery(`(min-width: ${breakpoints.wide})`)
+  const isMobile = useMediaQuery(`(max-width: ${breakpoints.mobile})`)
   const { t } = useTranslation(["profile", "common"])
   const [qrOpen, setQrOpen] = useState(false)
   const [detailsOpen, setDetailsOpen] = useState(true)
