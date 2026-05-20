@@ -52,26 +52,24 @@ export const Narrow: Story = {
   },
 }
 
-export const ReducedMotion: Story = {
-  parameters: {
-    backgrounds: { default: "dark" },
+/**
+ * ActiveDot story — demonstrates the W176 SW4 active-route indicator.
+ * Synthetically injects `data-status="active"` on the /news link via the
+ * `play` function (Storybook interactions API). Real TanStack Router auto-
+ * applies this attribute when the current pathname matches; this story
+ * visualises the CSS without needing a real Router context to navigate.
+ *
+ * Storybook can't truly flip OS `prefers-reduced-motion` so a dedicated
+ * ReducedMotion story would be no-op. Real reduced-motion behaviour is
+ * exercised via `tests/e2e/a11y-public.spec.ts` `emulateMedia({
+ * reducedMotion: 'reduce' })` (Wave 114 SW2b) + the `motion-reduce:`
+ * Tailwind variants on the footer container itself.
+ */
+export const ActiveDot: Story = {
+  play: async ({ canvasElement }) => {
+    const newsLink = canvasElement.querySelector('a.footer-link-premium[href="/news"]')
+    if (newsLink) newsLink.setAttribute("data-status", "active")
+    const profileLink = canvasElement.querySelector('a.footer-link-premium[href="/profile"]')
+    if (profileLink) profileLink.setAttribute("data-status", "active")
   },
-  decorators: [
-    (Story) => (
-      <div
-        className="dark"
-        style={
-          {
-            // Simulate prefers-reduced-motion via CSS — Storybook can't
-            // actually flip the OS media query, but this decorator visually
-            // demonstrates a "snapped" state. Real reduced-motion behavior
-            // is exercised via `tests/e2e/a11y-public.spec.ts`
-            // `emulateMedia({ reducedMotion: 'reduce' })` (Wave 114 SW2b).
-          } as React.CSSProperties
-        }
-      >
-        <Story />
-      </div>
-    ),
-  ],
 }

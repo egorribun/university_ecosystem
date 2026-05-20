@@ -180,7 +180,7 @@ Per W175 maintenance-mode default + W176 footer-polish-complete:
 
 - `memory/wave176_backlog.md` — close-status + 7-item W177+ candidates table
 - `memory/wave177_opening_prompt.md` — handoff with Q0 framework
-- `MEMORY.md` — row addition (post-compaction at SW6; current 21,140 b / ~3,260 b headroom)
+- `MEMORY.md` — row addition + within-iter polish-pass W175 verbose row compaction (current **22,841 b / 1,559 b headroom** under 24,400 b ceiling; plan-time forecast ~21,500 b was undershoot — W176 verbose row + W175 compaction both grew bigger than projected; honest framing per `feedback_perfectionism.md`)
 
 ---
 
