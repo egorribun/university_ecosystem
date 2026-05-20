@@ -34,10 +34,12 @@ import FooterBackdrop from "@/components/layout/FooterBackdrop"
 //     plain `<a className="footer-social-btn">` — glass-on-glass had poor
 //     contrast on the dark footer surface.
 //
-// Wave 176 SW4 — `activeProps={{ "data-active": "true" }}` on each <Link>
-// for active-route accent dot (Linear/Stripe minimalist aesthetic).
-// (See SW4 commit — CSS hunk for `&[data-active="true"]::before` lives in
-// `tailwind.css` `@utility footer-link-premium`.)
+// Wave 176 SW4 — `activeOptions={{ exact: false }}` on each <Link> turns
+// on prefix-match active-state (e.g. /news/article-123 → /news link shows
+// active dot). TanStack Router auto-applies `data-status="active"` to
+// matching links — no `activeProps` needed. CSS for the accent dot lives
+// in `tailwind.css` `@utility footer-link-premium` (`&[data-status="active"]`).
+const ACTIVE_OPTIONS = { exact: false } as const
 export default function Footer() {
   const { t } = useTranslation(["navigation"])
   const currentYear = new Date().getFullYear()
@@ -106,19 +108,19 @@ export default function Footer() {
             <h3 className="mb-1.5 text-sm font-extrabold tracking-widest text-[var(--text-on-footer)] uppercase opacity-heavy">
               {t("navigation:footer.navigationTitle")}
             </h3>
-            <Link to="/dashboard" className="footer-link-premium">
+            <Link to="/dashboard" className="footer-link-premium" activeOptions={ACTIVE_OPTIONS}>
               {t("navigation:menu.dashboard")}
             </Link>
-            <Link to="/news" className="footer-link-premium">
+            <Link to="/news" className="footer-link-premium" activeOptions={ACTIVE_OPTIONS}>
               {t("navigation:menu.news")}
             </Link>
-            <Link to="/schedule" className="footer-link-premium">
+            <Link to="/schedule" className="footer-link-premium" activeOptions={ACTIVE_OPTIONS}>
               {t("navigation:menu.schedule")}
             </Link>
-            <Link to="/events" className="footer-link-premium">
+            <Link to="/events" className="footer-link-premium" activeOptions={ACTIVE_OPTIONS}>
               {t("navigation:menu.events")}
             </Link>
-            <Link to="/map" className="footer-link-premium">
+            <Link to="/map" className="footer-link-premium" activeOptions={ACTIVE_OPTIONS}>
               {t("navigation:menu.map")}
             </Link>
           </div>
@@ -127,10 +129,10 @@ export default function Footer() {
             <h3 className="mb-1.5 text-sm font-extrabold tracking-widest text-[var(--text-on-footer)] uppercase opacity-heavy">
               {t("navigation:footer.profileTitle")}
             </h3>
-            <Link to="/profile" className="footer-link-premium">
+            <Link to="/profile" className="footer-link-premium" activeOptions={ACTIVE_OPTIONS}>
               {t("navigation:footer.myProfile")}
             </Link>
-            <Link to="/settings" className="footer-link-premium">
+            <Link to="/settings" className="footer-link-premium" activeOptions={ACTIVE_OPTIONS}>
               {t("navigation:menu.settings")}
             </Link>
           </div>

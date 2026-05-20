@@ -827,9 +827,9 @@
      (double-ring 2px bg-page + 4px primary-main) per W121 SW5 — needed
      because solid brand color alone has insufficient contrast on
      blue-gradient footer surface.
-     Wave 176 SW4 — active-route accent dot via &[data-active="true"]
-     selector. TanStack Router's `activeProps` sets `data-active="true"`
-     on the matching <Link>. */
+     Wave 176 SW4 — active-route accent dot via &[data-status="active"]
+     selector. TanStack Router auto-applies `data-status="active"` to the
+     matching <Link> (no `activeProps` needed — built-in API). */
   display: inline-flex;
   align-items: center;
   min-height: 2.75rem;
@@ -858,11 +858,12 @@
   /* Wave 176 SW4 — active-route indicator (4px white dot left of text).
      Mirrors Linear/Stripe minimalist footer aesthetic. Zero Lucide icon
      bundle delta. `flex-shrink: 0` prevents the dot from collapsing under
-     translate-x hover. */
-  &[data-active="true"] {
+     translate-x hover. Uses TanStack Router's built-in `data-status`
+     attribute (auto-applied on the active <Link> — no `activeProps`). */
+  &[data-status="active"] {
     opacity: 1;
   }
-  &[data-active="true"]::before {
+  &[data-status="active"]::before {
     content: "";
     display: inline-block;
     width: 0.25rem;
