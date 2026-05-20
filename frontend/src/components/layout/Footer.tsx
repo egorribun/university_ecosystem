@@ -36,11 +36,11 @@ export default function Footer() {
                   className="h-12 w-12"
                 />
               </div>
-              <h2 className="text-xl font-extrabold tracking-tight text-white">
+              <h2 className="text-xl font-extrabold tracking-tight text-[var(--text-on-footer)]">
                 {t("navigation:brandName")}
               </h2>
             </div>
-            <p className="max-w-(--w-label-xl) text-white opacity-hover">
+            <p className="max-w-(--w-label-xl) text-[var(--text-on-footer)] opacity-hover">
               {t("navigation:brandDescription")}
             </p>
             <div className="mt-4 flex gap-3">
@@ -72,7 +72,7 @@ export default function Footer() {
           </div>
 
           <div className="flex flex-col gap-1.5">
-            <h3 className="mb-1.5 text-sm font-extrabold tracking-widest text-white uppercase opacity-heavy">
+            <h3 className="mb-1.5 text-sm font-extrabold tracking-widest text-[var(--text-on-footer)] uppercase opacity-heavy">
               {t("navigation:footer.navigationTitle")}
             </h3>
             <Link to="/dashboard" className="footer-link-premium">
@@ -93,7 +93,7 @@ export default function Footer() {
           </div>
 
           <div className="flex flex-col gap-1.5">
-            <h3 className="mb-1.5 text-sm font-extrabold tracking-widest text-white uppercase opacity-heavy">
+            <h3 className="mb-1.5 text-sm font-extrabold tracking-widest text-[var(--text-on-footer)] uppercase opacity-heavy">
               {t("navigation:footer.profileTitle")}
             </h3>
             <Link to="/profile" className="footer-link-premium">
@@ -106,10 +106,12 @@ export default function Footer() {
         </div>
 
         <div className="mt-12 flex flex-wrap items-center justify-between gap-3 border-t border-border-subtle/(--opacity-medium) pt-8">
-          <p className="text-sm font-medium text-white opacity-medium">
+          <p className="text-sm font-medium text-[var(--text-on-footer)] opacity-medium">
             {t("navigation:footer.copyright", { year: currentYear })}
           </p>
-          <p className="text-xs text-white opacity-dim">{t("navigation:footer.careNote")}</p>
+          <p className="text-xs text-[var(--text-on-footer)] opacity-dim">
+            {t("navigation:footer.careNote")}
+          </p>
         </div>
       </div>
     </footer>

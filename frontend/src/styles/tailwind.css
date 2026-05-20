@@ -820,18 +820,43 @@
 }
 
 @utility footer-link-premium {
-  display: inline-block;
-  color: var(--color-white);
+  /* Wave 175 SW1 — inline-flex + min-h 44px for WCAG 2.5.8 touch target
+     (was inline-block + ~20px hit area). --text-on-footer = constant
+     white in BOTH themes (footer is always-dark). Motion tokens
+     replace hardcoded "0.2s ease". Focus ring via --focus-ring-isolated
+     (double-ring 2px bg-page + 4px primary-main) per W121 SW5 — needed
+     because solid brand color alone has insufficient contrast on
+     blue-gradient footer surface. */
+  display: inline-flex;
+  align-items: center;
+  min-height: 2.75rem;
+  border-radius: var(--radius-xs);
+  color: var(--text-on-footer);
   text-decoration: none;
   opacity: var(--opacity-heavy);
-  padding: 0.25rem 0;
+  padding: 0.25rem 0.25rem;
   font-size: var(--font-size-sm);
   font-weight: 500;
-  transition: all 0.2s ease;
+  transition:
+    opacity var(--motion-duration-fast) var(--ease-premium),
+    transform var(--motion-duration-fast) var(--ease-premium);
 
   &:hover {
     opacity: 1;
     transform: translateX(0.1875rem);
+  }
+
+  &:focus-visible {
+    outline: none;
+    opacity: 1;
+    box-shadow: var(--focus-ring-isolated);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    transition: none;
+    &:hover {
+      transform: none;
+    }
   }
 }
 
