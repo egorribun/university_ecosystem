@@ -142,6 +142,51 @@ try {
   // BroadcastChannel not available (SSR, old browsers, Web Workers).
 }
 
+// Wave 174 SW2 — CSRF cookie auto-acquisition.
+//
+// Axios's built-in XSRF mechanism (xsrfCookieName + xsrfHeaderName above)
+// reads the `csrf_token` cookie and sets `X-CSRF-Token` header on outgoing
+// requests. If the cookie is MISSING (first-time visitor OR cookie expired
+// per the backend's 30-min Max-Age) axios sends NO header, and the
+// CSRFMiddleware (`app/core/csrf.py` + `middleware/setup.py:47-60`) rejects
+// the request with 403 "Несоответствие CSRF-токена". Pre-W174 SW2 the
+// frontend had no proactive CSRF acquisition — real users only succeeded
+// because they had a `csrf_token` cookie persisted from a prior session.
+// After 30+ min idle the cookie expires and login would fail with 403.
+//
+// Backend exposes GET `/api/v1/auth/csrf-cookie` which idempotently sets
+// the cookie (no body, just `Set-Cookie: csrf_token=...; Max-Age=1800;`).
+// This helper fetches that endpoint at most ONCE per page session — the
+// singleton Promise dedupes concurrent unsafe requests so the helper
+// makes one network call even when many POSTs fire simultaneously.
+let _csrfBootstrapPromise: Promise<void> | null = null
+const ensureCsrfCookie = (): Promise<void> => {
+  // SSR guard — server has no document.cookie, and outgoing axios on the
+  // Node runtime gets the Cookie header via W133 SW1 globalThis.__ssrCookieGetter__
+  // (the SSR caller already has the cookie chain from the incoming request).
+  if (typeof document === "undefined") return Promise.resolve()
+  // Test env skip — vitest sets `import.meta.env.MODE === "test"` and tests
+  // mount AuthContext.Provider with real auth (mocked). Hitting the CSRF
+  // endpoint in tests would trip MSW unhandled-request warnings + risk
+  // cross-test singleton pollution. Vite literal-substitutes `MODE` at
+  // build time, so this branch tree-shakes from prod (verifiable via
+  // `grep -l "MODE === \"test\"" dist/client/assets/*.js` returning empty).
+  if (import.meta.env.MODE === "test") return Promise.resolve()
+  if (document.cookie.includes("csrf_token=")) return Promise.resolve()
+  if (_csrfBootstrapPromise) return _csrfBootstrapPromise
+  _csrfBootstrapPromise = fetch("/api/v1/auth/csrf-cookie", {
+    method: "GET",
+    credentials: "include",
+    headers: { "X-Requested-With": "XMLHttpRequest" },
+  })
+    .then(() => undefined)
+    .catch(() => undefined) // best-effort — backend will still 403 if cookie fails to set
+    .finally(() => {
+      _csrfBootstrapPromise = null
+    })
+  return _csrfBootstrapPromise
+}
+
 api.interceptors.request.use(async (config) => {
   const candidate = config as ApiRequestConfig
 
@@ -168,6 +213,14 @@ api.interceptors.request.use(async (config) => {
     if (idempotencyKey) {
       _inflightIdempotencyKeys.add(idempotencyKey)
       _dedupeChannel?.postMessage({ key: idempotencyKey, action: "add" })
+    }
+
+    // Wave 174 SW2 — ensure CSRF cookie BEFORE unsafe-method request goes
+    // out. Skip the /auth/csrf-cookie endpoint itself to avoid recursion
+    // (it's a GET anyway, so this branch wouldn't fire — guard is defensive).
+    const urlForCsrf = config.url ?? ""
+    if (!urlForCsrf.includes("/auth/csrf-cookie")) {
+      await ensureCsrfCookie()
     }
   }
 
