@@ -160,7 +160,10 @@ try {
 // singleton Promise dedupes concurrent unsafe requests so the helper
 // makes one network call even when many POSTs fire simultaneously.
 let _csrfBootstrapPromise: Promise<void> | null = null
-const ensureCsrfCookie = (): Promise<void> => {
+// Wave 175 SW9 — exported for regression tests in
+// frontend/src/api/__tests__/ensureCsrfCookie.test.ts. The interceptor
+// uses this function directly (no API surface change for callers).
+export const ensureCsrfCookie = (): Promise<void> => {
   // SSR guard — server has no document.cookie, and outgoing axios on the
   // Node runtime gets the Cookie header via W133 SW1 globalThis.__ssrCookieGetter__
   // (the SSR caller already has the cookie chain from the incoming request).
