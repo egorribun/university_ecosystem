@@ -90,22 +90,6 @@
       "purpose": "maskable any"
     }
   ],
-  "screenshots": [
-    {
-      "src": "/screenshots/schedule-wide.png",
-      "sizes": "1280x720",
-      "type": "image/png",
-      "form_factor": "wide",
-      "label": "Schedule view on desktop"
-    },
-    {
-      "src": "/screenshots/schedule-narrow.png",
-      "sizes": "750x1334",
-      "type": "image/png",
-      "form_factor": "narrow",
-      "label": "Schedule view on mobile"
-    }
-  ],
   "protocol_handlers": [
     {
       "protocol": "web+guu",
