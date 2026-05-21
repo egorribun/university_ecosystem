@@ -1,10 +1,10 @@
-import { ChatArea, MessengerSidebar, NewChatModal } from "@/components/messenger"
+import { ChatArea, MessengerBackdrop, MessengerSidebar, NewChatModal } from "@/components/messenger"
 import { ProfileModal } from "@/components/messenger/ProfileModal"
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog"
 import { useMessengerController } from "@/hooks/features/useMessengerController"
 import useMediaQuery from "@/hooks/useMediaQuery"
 import { breakpoints } from "@/theme/tokens"
-import { AnimatePresence } from "framer-motion"
+import { AnimatePresence, useReducedMotion } from "framer-motion"
 import { useTranslation } from "react-i18next"
 
 /**
@@ -59,6 +59,9 @@ export default function MessengerFeature() {
   } = useMessengerController()
 
   const isMobile = useMediaQuery(`(max-width: ${breakpoints.mobile})`)
+  const isNarrow = useMediaQuery(`(max-width: ${breakpoints.content})`)
+  const reducedMotionPref = useReducedMotion()
+  const prefersReducedMotion = reducedMotionPref ?? false
 
   // Mobile view logic
   const showList = !isMobile || !selectedChatId
@@ -74,6 +77,8 @@ export default function MessengerFeature() {
           : 0,
       }}
     >
+      <MessengerBackdrop isNarrow={isNarrow} prefersReducedMotion={prefersReducedMotion} />
+
       <AnimatePresence mode="wait">
         {/* Sidebar */}
         {showList && (
