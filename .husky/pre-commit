@@ -7,6 +7,45 @@
 # W156 SW4 added missing shebang — Windows Git "cannot spawn .husky/pre-commit"
 # without it (pre-W156 file lacked shebang since original `4b51e2169` commit,
 # matching the same chain of broken-but-silent hooks documented above).
+
+# W179 SW6 — enforce W170 SW4 helper scripts (closes W170 §Honesty #1).
+# Raw `docker compose -f docker-compose.full.yml ...` invocations in committed
+# code/script files are bug-prone — W169 (z) #1 documented the cwd-drift
+# silent-failure class where `cd frontend && docker compose -f ...` looks for
+# the compose file relative to the drifted cwd, fails silently with exit 0.
+# scripts/dc.sh + scripts/dc.ps1 (W170 SW4) resolve via `git rev-parse
+# --show-toplevel` regardless of caller cwd. This gate scans staged files
+# for the raw pattern + rejects commits that introduce new occurrences.
+#
+# Exemptions: documentation files (*.md), helper scripts themselves, memory
+# files, audit docs — these legitimately reference the pattern as historical
+# context, wrap it, or document its problems.
+STAGED=$(git diff --cached --name-only --diff-filter=ACMR)
+OFFENDERS=""
+for FILE in $STAGED; do
+  case "$FILE" in
+    scripts/dc.sh|scripts/dc.ps1) continue ;;
+    *.md) continue ;;
+    docs/*|memory/*) continue ;;
+    .husky/pre-commit) continue ;;
+  esac
+  if [ -f "$FILE" ] && grep -q "docker compose -f docker-compose.full.yml" "$FILE" 2>/dev/null; then
+    OFFENDERS="${OFFENDERS}  - ${FILE}\n"
+  fi
+done
+if [ -n "$OFFENDERS" ]; then
+  printf "ERROR: Raw 'docker compose -f docker-compose.full.yml' found in staged file(s):\n" >&2
+  printf "%b" "$OFFENDERS" >&2
+  printf "\nUse helper wrappers (W170 SW4 + W179 SW6):\n" >&2
+  echo "  bash scripts/dc.sh <args>     # POSIX/Git Bash" >&2
+  echo "  pwsh scripts/dc.ps1 <args>    # PowerShell" >&2
+  echo "" >&2
+  echo "Both resolve via 'git rev-parse --show-toplevel' regardless of cwd." >&2
+  echo "Bypass (NOT recommended; emergencies only):" >&2
+  echo "  git commit --no-verify -m '...'" >&2
+  exit 1
+fi
+
 npm --prefix frontend run lint-staged
 if command -v pre-commit >/dev/null 2>&1; then
   pre-commit run --hook-stage pre-commit
