@@ -93,34 +93,54 @@ const createAppRouter = () => {
     // server tree (Loading fallback) → React error #418 hydration mismatch →
     // blank screen on /login in real Chrome since W150-polish-followup-v2.
     //
-    // The fix is SSR-aware via `import.meta.env.SSR` (Vite literal: `true`
+    // The fix WAS SSR-aware via `import.meta.env.SSR` (Vite literal: `true`
     // in server bundle, `false` in client bundle — DCE eliminates the unused
-    // branch entirely). Server bundle returns `null` → Suspense emits only
-    // marker comments → main.tsx takes createRoot path. Client bundle keeps
+    // branch entirely). Server bundle returned `null` → Suspense emits only
+    // marker comments → main.tsx takes createRoot path. Client bundle kept
     // the visible Loading… UX for in-flight route transitions.
+    //
+    // W180 polish-v2 (2026-05-21) — REMOVED the SSR-null guard. Post-W156 SW3
+    // `hydrateRoot(document)` adoption, `main.tsx hasRealSsrContent` detection
+    // (which was the original target of W152 SW2 fix) NO LONGER EXISTS — that
+    // logic was stripped in W156 SW3 commit `8faf5f4cb`. The SSR-null guard
+    // became LEGACY dead-code that ACTIVELY HARMED hydration on `ssr: 'data-only'`
+    // routes (/messenger + /map + /activity per W127 SW6 pattern): server emits
+    // null fallback inside `<ClientOnly>` Suspense boundary, client emits the
+    // visible Loading div → React #418 element-type mismatch on every page load.
+    // Wave 180 polish-v1 surfaced this CLASS-WIDE finding via wave137-authed-smoke
+    // filter regex fix (3 of 9 SSR routes affected, all `ssr: 'data-only'`).
+    // Polish-v2 root-cause via NODE_ENV=development build captured the EXACT
+    // unminified React error message + component stack pinpointing this exact
+    // defaultPendingComponent fallback as the mismatch source.
+    //
+    // Fix: return the same visible Loading div on BOTH server + client. Suspense
+    // fallback DOM matches → no hydration mismatch. Full SSR routes (which don't
+    // suspend at SSR time because loaders pre-fetch via ensureQueryData) never
+    // emit this fallback so behavior unchanged for those. `ssr: 'data-only'`
+    // routes (which DO suspend at SSR time because route component is client-only
+    // via TanStack Start `<ClientOnly>`) now emit consistent fallback → 0 React
+    // #418 expected on /messenger + /map + /activity post-fix.
     defaultPendingMs: 0,
     defaultPendingComponent: () =>
-      import.meta.env.SSR
-        ? null
-        : createElement(
-            "div",
-            {
-              style: {
-                minHeight: "100dvh",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                background: "var(--bg-page, var(--initial-bg, #060b14))",
-                color: "var(--text-primary, #f8fafc)",
-                fontFamily: "system-ui, -apple-system, sans-serif",
-                fontSize: "0.9rem",
-                opacity: 0.7,
-              },
-              role: "status",
-              "aria-live": "polite",
-            },
-            createElement("span", null, "Loading…")
-          ),
+      createElement(
+        "div",
+        {
+          style: {
+            minHeight: "100dvh",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            background: "var(--bg-page, var(--initial-bg, #060b14))",
+            color: "var(--text-primary, #f8fafc)",
+            fontFamily: "system-ui, -apple-system, sans-serif",
+            fontSize: "0.9rem",
+            opacity: 0.7,
+          },
+          role: "status",
+          "aria-live": "polite",
+        },
+        createElement("span", null, "Loading…")
+      ),
     // Wave 125 Phase 2 — `defaultSsr: false` is part of TanStack
     // Router's separate `RouterConfig` (`createRouterConfig`), NOT of
     // `RouterConstructorOptions` (omitted via Omit). For SPA mode the

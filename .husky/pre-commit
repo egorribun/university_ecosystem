@@ -25,6 +25,14 @@ OFFENDERS=""
 for FILE in $STAGED; do
   case "$FILE" in
     scripts/dc.sh|scripts/dc.ps1) continue ;;
+    # W180 polish-v2 — docker-compose.full.yml IS the file the pattern points to;
+    # it legitimately contains the pattern in its Usage header comment (line 2)
+    # + various W170 SW4 / W179 SW6 historical comment blocks. Hook should NOT
+    # block edits to the compose file itself (which would force --no-verify for
+    # every legitimate compose edit + violate W141 anti-pattern #15 hook
+    # discipline). Helper-script enforcement applies to OTHER files invoking
+    # the pattern, NOT the compose file itself.
+    docker-compose.full.yml) continue ;;
     *.md) continue ;;
     docs/*|memory/*) continue ;;
     .husky/pre-commit) continue ;;

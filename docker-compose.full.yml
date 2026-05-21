@@ -149,6 +149,15 @@ services:
         # STRICT 1-iter cap, SW3 was a NO-OP (no mismatch to fix). SW4 reverts
         # to "" + rebuilds for production-minified verification in SW5. Flag
         # defaults OFF in long-lived branches.
+        # W180 polish-v2 (2026-05-21) — diagnostic build captured FULL unminified
+        # React #418 error on data-only routes; root cause identified as W152 SW2
+        # `import.meta.env.SSR ? null : <div>` legacy guard in router.ts
+        # defaultPendingComponent (post-W156 SW3 hydrateRoot(document) the
+        # hasRealSsrContent detection target no longer exists; guard became
+        # active harm on data-only routes' Suspense fallback DOM divergence).
+        # Fix applied in router.ts:102 + re-verified via wave137-authed-smoke:
+        # ALL 9 SSR routes now show 0 hydration errors under diagnostic build.
+        # Flag flipped back to "" + rebuilt for production-minified verification.
         FRONTEND_BUILD_UNMINIFIED: ""
         # W156 SW1 Tier 1 #1 — opt-in development React for /login wedge
         # diagnosis (W155 NAMED React #418 + getParentHydrationBoundary
@@ -171,6 +180,10 @@ services:
         # internally). Conclusion: W168 SW2 finding NOT reproducible with
         # diagnostic build → bundle-mode-dependent OR transient timing fluke.
         # SW4 reverts to "" + rebuilds production-minified for SW5 verify.
+        #
+        # W180 polish-v2 (2026-05-21) — diagnostic React dev mode captured the
+        # exact element-type mismatch component stack pointing to defaultPendingComponent.
+        # Fix applied in router.ts:102; diagnostic flag reverted to "" for PROD verification.
         FRONTEND_REACT_DEV_MODE: ""
     ports:
       - "8081:3000"
