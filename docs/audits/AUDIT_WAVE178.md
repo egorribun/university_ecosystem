@@ -335,7 +335,7 @@ CI - Matrix Expansion run `26211125590` for SW2 commit `0959665de`:
 - **1 in_progress**: Frontend Tests / Lighthouse Audit (~23-25 min per W160 SW2 calibration; CI Matrix overall ~26 min at polish-v1 commit time).
 - **7 of 8 top-level workflows SUCCESS** (Dependency Review + DB Performance Gate + Generate OpenAPI Spec + Go Lint & SBOM + Contract Validation + Chromatic + Auto-merge dependabot skipped expected; CI - Matrix Expansion in_progress with Lighthouse Audit as final gate).
 
-**Polish-v2 will capture final Lighthouse Audit + Matrix Expansion outcomes.**
+**Polish-v2 captured final CI outcome below**: Matrix Expansion run `26212297489` completed SUCCESS at ~08:09 UTC (~29 min total runtime including Lighthouse Audit at ~28 min — slightly above W160 SW2 documented calibration ~23-25 min but well under workflow timeout). **39 of 39 jobs SUCCESS + 0 failures**. Performance Gate (last in_progress) completed cleanly. **W178 fully closed at empirical CI level**.
 
 ### NEW W178 latent finding — pre-existing prettier drift NOT W178 regression
 
@@ -369,6 +369,50 @@ Build × 3 EMPIRICALLY VERIFIED (was Build × 1 + structural argument) + vitest 
 2. ⏸ Polish-v1 commit itself fires W156 SW4 pre-commit chain — verify clean
 
 **1 NEW W179+ candidate surfaced**: `.prettierignore` update for cargo target + wasm-pack pkg dirs (~5-10 min; pre-existing drift, NOT W178 regression).
+
+---
+
+## Polish-v2 final empirical CI verification (post «безупречно?» continuation, 2026-05-21)
+
+User invoked polish-v2 action via scheduled wakeup after polish-v1 completed.
+
+### CI Matrix Expansion run `26212297489` COMPLETED SUCCESS
+
+Final state captured at ~08:09 UTC (~29 min total runtime):
+
+- **Status**: completed
+- **Conclusion**: SUCCESS
+- **Jobs**: 39 of 39 SUCCESS + 0 failures (Post-fix Formatting Bot Push skipped expected per W178 SW2 audit)
+- **Lighthouse Audit**: completed SUCCESS at ~07:40 + ~28 min = ~08:08 UTC (slight overshoot vs W160 SW2 documented calibration ~23-25 min; well under workflow timeout)
+- **Performance Gate**: completed SUCCESS (the last in_progress job before Matrix-level completion)
+
+Combined with the 7 top-level workflows already SUCCESS at polish-v1 commit time (Dependency Review + DB Performance Gate + Generate OpenAPI Spec + Go Lint & SBOM + Contract Validation + Chromatic + Auto-merge dependabot skipped expected), this delivers **W178 fully closed at empirical CI level**.
+
+### Framing propagation completed
+
+The "Build × 1 + structural argument" framing in CLAUDE.md row + wave178_backlog.md + wave179_opening_prompt.md + MEMORY.md was updated to **"Build × 3 BYTE-IDENTICAL EMPIRICALLY VERIFIED in polish-v1"**. wave179_opening_prompt.md already had the framing post-polish-v1 (updated in-session). polish-v2 commit also explicitly captures the CI Matrix Expansion SUCCESS as load-bearing evidence.
+
+### W178 closure attribution (W141 anti-pattern #4 final vindication)
+
+All 3 W178 commits (`381f85578` SW1 + `0959665de` SW2 + `1f3622236` polish-v1) plus this polish-v2 audit-only commit fired W156 SW4 husky pre-commit chain cleanly. NO `--no-verify` bypasses. **W141 anti-pattern #15 (ARCHIVED W159 SW4) preserved 43rd consecutive wave**.
+
+Closure attribution sequence honored W141 anti-pattern #4 "no premature 'Closes' attribution":
+1. SW1 commit subject "close W177 §Honesty #2" but body explicitly noted empirical verification through real Docker chain BEFORE attributing closure
+2. SW2 audit attributed closure ONLY after 5 of 5 visual smoke scenarios + 1108 vitest cases passed
+3. Polish-v1 audit section added empirical Build × 3 + vitest × 6 + Storybook verification
+4. **Polish-v2 (this section) adds the final CI Matrix Expansion SUCCESS verification** — closure is now empirically complete at every layer (unit → integration → visual → bundle reproducibility → CI Matrix)
+
+### W178 final state declaration
+
+**§Honesty trajectory**: 0-9 OPEN post-W178 (unchanged from polish-v1 — closures are documented honestly; 2 within-wave (z) discoveries shipped as fix + test-infra workaround). 1 NEW W179+ candidate (`.prettierignore` housekeeping for cargo + wasm-pack pkg dirs).
+
+**Bundle**: Build × 3 BYTE-IDENTICAL EMPIRICALLY VERIFIED — main JS `index-DZRgbi7a.js` 179,692 b sha `1d9d4d86...575eae` × 3 from clean state.
+
+**Tests**: 1108p / 12s / 0f × 6 sessions ≅ 0 flake band (durations 29.37-31.50s, ±1.1s).
+
+**CI**: 7 main-workflow SUCCESS + Matrix Expansion 39 sub-jobs SUCCESS + 0 failures.
+
+**Production deploy is unambiguously ready post-W178 polish-v2**. Primary user pain status: NONE user-facing-wedge class across W156-W178.
 
 ---
 
