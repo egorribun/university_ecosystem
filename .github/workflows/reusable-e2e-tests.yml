@@ -202,6 +202,25 @@ jobs:
             --project=chromium \
             --reporter=html
 
+      # Wave 179 SW9: extend URL_STATE_E2E auto-managed mode to the new
+      # login-flow regression spec. Closes W174 §Honesty #4-playwright by
+      # adding chromium-only e2e for 3 W177 SW1 + W178 SW1 + W179 SW4
+      # redirect scenarios (authed /login → /dashboard, authed
+      # /forgot-password → /dashboard via PublicLayout useEffect, and
+      # state.from preservation /login?redirect=/events → /events).
+      # Reuses the same VITE_LHCI=true preview on port 4175 from the
+      # URL_STATE_E2E webServer config in playwright.config.ts.
+      - name: Run wave179 login-flow e2e (cross-env auto-managed)
+        if: inputs.browser == 'chromium'
+        working-directory: frontend
+        env:
+          URL_STATE_E2E: "true"
+          VITE_BACKEND_ORIGIN: http://127.0.0.1:8000
+        run: |
+          npx playwright test wave179-login-flow.spec.ts \
+            --project=chromium \
+            --reporter=html
+
       - name: Terminate backend
         if: always()
         run: |

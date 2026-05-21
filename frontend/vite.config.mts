@@ -334,7 +334,13 @@ export default defineConfig(({ mode }) => {
       // verified W178 SW1 build attempt: "**/__tests__/**" → `new RegExp`
       // throws "Nothing to repeat" because `**` isn't valid regex). A bare
       // path substring matches paths containing `/__tests__/`.
-      router: { quoteStyle: "double", routeFileIgnorePattern: "__tests__" },
+      // Wave 179 SW8 — extend pattern to also ignore `guards.ts` pure-function
+      // module at src/routes/guards.ts (W174 §Honesty #4-routeGuards closure).
+      // Like __tests__/, this file doesn't export a Route — it's the extracted
+      // beforeLoad helpers for _auth.tsx / _public.tsx / _admin.tsx. Pattern
+      // is REGEX (per W178 SW1 (z) #1) — alternation matches either folder
+      // segment "__tests__" OR file basename "guards".
+      router: { quoteStyle: "double", routeFileIgnorePattern: "__tests__|guards" },
       client: { entry: "main.tsx" },
       server: { entry: "server.ts" },
     }),
