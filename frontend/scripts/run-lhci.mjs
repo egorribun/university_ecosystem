@@ -226,6 +226,16 @@ async function createConfig() {
       // monitoring check) to allow more upstream-response time. State stays
       // "tracked-upstream". No code change needed; Linux CI gate stays
       // `categories:performance` warn@0.40 advisory per W162 SW1 acceptance.
+      //
+      // W180 SW1 — monitoring tick at W180 open (2026-05-21). WebFetch re-
+      // verified at session start: state OPEN, still NO triage, NO maintainer
+      // comments, NO reactions, NO labels since 2026-05-18 filing. 3 calendar
+      // days elapsed since last check; well within W180-W184 expected window
+      // per W179 SW3 calibration. Push next monitoring window to W181-W185
+      // (sliding 1-week cadence per W170 SW3 calibration framework — re-check
+      // 1-2 calendar weeks from this tick). State stays "tracked-upstream".
+      // See memory/wave180_lighthouse_upstream_check.md for full snapshot +
+      // pre-flight evidence captured at W180 Phase 1 Explore Agent 1.
       chromeFlags:
         "--no-sandbox --disable-dev-shm-usage --allow-insecure-localhost --ignore-certificate-errors --test-type --disable-gpu --headless=new",
       throttlingMethod: "devtools",
