@@ -217,6 +217,15 @@ async function createConfig() {
       // from "permanent platform limitation accepted" (W162 SW1) to
       // "tracked-upstream" — see also memory/wave166_lighthouse_upstream_issue.md
       // for the full draft + anticipated maintainer-response timeline.
+      //
+      // W179 SW3 — quarterly monitoring tick. Issue state verified OPEN with
+      // NO maintainer activity since 2026-05-18 filing (WebFetch 2026-05-21).
+      // Per W170 SW3 calibration: 1-2 calendar weeks from filing → due
+      // W177-W181 window per opening prompt. Empirical state: no triage, no
+      // comments, no reactions. Calibration window pushed to W180-W184 (next
+      // monitoring check) to allow more upstream-response time. State stays
+      // "tracked-upstream". No code change needed; Linux CI gate stays
+      // `categories:performance` warn@0.40 advisory per W162 SW1 acceptance.
       chromeFlags:
         "--no-sandbox --disable-dev-shm-usage --allow-insecure-localhost --ignore-certificate-errors --test-type --disable-gpu --headless=new",
       throttlingMethod: "devtools",
