@@ -276,6 +276,102 @@ If user invokes «безупречно?» probe post-close, expected polish-pass
 - CI Matrix Expansion verification post-push (expected GREEN per W177 SW5 precedent)
 - Potential additional Gotcha entries if any subtle finding surfaces
 
+---
+
+## Polish-v1 empirical confirmations (post «безупречно?» probe, 2026-05-21)
+
+User invoked «безупречно?» probe at session-end of SW2. Polish-v1 ran the deferred verification items + surfaced 1 latent housekeeping finding.
+
+### Empirical Build × 3 BYTE-IDENTICAL confirmed
+
+3 fresh `rm -rf dist && npm run build` runs from clean state produced IDENTICAL sha256 across runs:
+
+- main JS `index-DZRgbi7a.js` 179,692 b — sha256 **`1d9d4d863663c2717fde1f3f0dc5fbc17d51e78fe8c7bff232ad1d8aef575eae`** × 3
+- server.js 23,600 b — sha256 **`3134ca3964e7c434f83a3d1bb3d10eafd76cf1189b89b32e3f516d657068ebfc`** × 3
+
+Build × 3 reproducibility EMPIRICALLY VERIFIED for the W178 NEW baseline. This delivers on the plan-file's "Build × 3 fully-byte-identical claim NOT made — would require empirical verification; defer to polish-pass IF «безупречно?» fires" promise. The new baseline is reproducible from source × 3 consecutive clean builds.
+
+`_shell.html` 66,459 b and `sw.js` 53,584 b have same byte count across builds but per-run sha varies — known W141 polish A3 non-determinism source (CSP nonce in shell + workbox precache revision hash in sw.js).
+
+### Cross-session vitest × 5 flake band = 0
+
+5 consecutive vitest sessions + 1 verification follow-up = **6 total runs all 1108 passed / 12 skipped / 0 failed** (W177 baseline 1104 + 4 new W178 cases = exact target):
+
+| Run | Duration |
+|-----|----------|
+| 1 | 30.92s |
+| 2 | 30.67s |
+| 3 | 29.37s |
+| 4 | 29.56s |
+| 5 | 29.41s |
+| Verification follow-up | 31.50s |
+
+Duration band 29.37-31.50s (±1.1s; tight). **0 flaky tests across 6 sessions × 1108 cases = 6,648 test invocations**. Confirms W178 SW1 unit tests + W177 baseline tests are deterministic; no msw scoping cascade or AbortSignal race introduced.
+
+### Storybook build verified post `vite.config.mts` change
+
+`routeFileIgnorePattern: "__tests__"` addition was a real risk surface — `tanstackStart()` plugin is shared between main app build (vite.config.mts) AND Storybook iframe build (`.storybook/main.ts` viteFinal hook per W125 Phase 2 + W146 SW3 history). Polish-v1 ran `npm run build-storybook` → **success in 8.56s** (within W123 SW1 baseline ~8s ±1s tolerance). Storybook iframe.html emitted; main-app chunks tree-shake correctly. Routes/__tests__/*.test.tsx files correctly ignored by both TanStack Router generator AND Storybook's mock-loader.
+
+### i18n parity + Cargo.lock + tree-shake all GREEN
+
+- **i18n parity**: 18 tests passed in `src/tests/translationParity.test.ts` (walks every locale file recursively per W112 SW1) — 0 RU/EN drift.
+- **Cargo.lock**: `git diff --stat HEAD -- frontend/rust-crypto/Cargo.lock` blank — idempotent across W178 SW1 build cycle (≥38 wave invariant preserved).
+- **Tree-shake invariant**: `grep -c "lhci-mock-user" frontend/dist/client/assets/*.js` = 0 across ALL ~180 PROD chunks. VITE_LHCI bypass code correctly tree-shaken from production bundle.
+- **SW IIFE invariant**: `head -c 25 dist/client/sw.js` = `"use strict";(()=>{` — W138 SW2 IIFE wrapping preserved.
+
+### Cross-ref integrity verified
+
+- `docs/audits/INDEX.md`: 4 mentions of `AUDIT_WAVE17[5-8]` (W175 + W176 + W177 + W178 all referenced; W175 link path correctly archive/).
+- `CLAUDE.md`: 1 W178 row at top of bullet list; new Gotcha entries inserted before W177 MFA gotcha; rotation history line includes `**W178 SW2 (W175 → archive)**`.
+- `memory/MEMORY.md`: 2 W178 mentions (Active backlog row + Audit History row); 24,277 b (under 24,400 ceiling with 123 b headroom).
+- Active waves consistent everywhere: **W176/W177/W178**.
+
+### CI verification (at polish-v1 commit time)
+
+CI - Matrix Expansion run `26211125590` for SW2 commit `0959665de`:
+
+- **38 of 40 sub-jobs SUCCESS** at polish-v1 commit time (Contract Tests + Pre-commit & Linting + CI Diagnostic + Go Fuzz Tests + Validate docker-compose + Backend Type Check + Helm Lint & Validate + Trivy Image Scan + Alembic Migrations + Verify Runtime Requirements + DB Migration Gate + SBOM Generation + Verify OpenAPI Types + SLSA Provenance Dry-Run + Go Integration Tests (3 services) + Security Audit (6 sub-jobs: detect-secrets + Python Dep Audit + Go Vuln Scan + Semgrep SAST + Generate SBOM + Node.js Dep Audit + Container Security Scan) + Frontend Tests (Production Build + Unit Tests + Lint & Format + Bundle Analysis) + E2E Tests (chromium) + Backend Tests (Unit + Integration All-Python 3.13) + Go Tests × 3 (gateway + ws-hub + file-processor; Lint + Test) + Go Integration Tests × 3).
+- **1 skipped** (Post-fix Formatting Bot Push — expected behavior, only fires on lint-staged auto-format failures during CI).
+- **1 in_progress**: Frontend Tests / Lighthouse Audit (~23-25 min per W160 SW2 calibration; CI Matrix overall ~26 min at polish-v1 commit time).
+- **7 of 8 top-level workflows SUCCESS** (Dependency Review + DB Performance Gate + Generate OpenAPI Spec + Go Lint & SBOM + Contract Validation + Chromatic + Auto-merge dependabot skipped expected; CI - Matrix Expansion in_progress with Lighthouse Audit as final gate).
+
+**Polish-v2 will capture final Lighthouse Audit + Matrix Expansion outcomes.**
+
+### NEW W178 latent finding — pre-existing prettier drift NOT W178 regression
+
+`npx prettier --check .` from frontend/ flagged **245 files** with code style issues. Verified: NONE of the W178-touched files (`frontend/src/routes/_public.tsx`, `frontend/src/routes/__tests__/_public.test.tsx`, `frontend/vite.config.mts`) are in the flagged list — those were prettier-checked at SW1 commit time + auto-formatted via lint-staged at commit. The 245 files are:
+
+- Cargo build artifacts under `wasm-sanitizer/target/`, `rust-crypto/target/`, `rust_ext/target/`, `wasm-sanitizer/pkg/`, `rust-crypto/pkg/` — should be in `.prettierignore`
+- A handful of pre-existing root-level files (`public/sw.js` generated, `README.md`, `TOKENS.md`, `scripts/*.cjs`)
+
+**Filed as W179+ housekeeping candidate**: extend `frontend/.prettierignore` to exclude cargo target dirs + wasm-pack pkg dirs (~5-10 min). NOT a W178 regression — pre-existing accumulated drift dating back multiple waves; not surfaced earlier because no full-repo prettier scan was triggered during regular SW workflow (lint-staged scopes to staged files only).
+
+### Polish-v1 §Honesty trajectory update (no change in count)
+
+**Pre polish-v1**: 0-9 OPEN. **Post polish-v1**: 0-9 OPEN. Polish-v1 surfaced 1 NEW W179 housekeeping candidate (pre-existing prettier drift, NOT W178 regression) but does NOT add a §Honesty caveat — it's pre-existing latent drift, like the ws CVE upstream disclosure in W177 §Honesty #4. Filed as ordinary W179+ candidate, not §Honesty caveat.
+
+Build × 3 EMPIRICALLY VERIFIED (was Build × 1 + structural argument) + vitest × 6 flake band = 0 (was single 1108p run) + Storybook verified — these are STRENGTHENING the SW2 audit claims, NOT closing additional caveats.
+
+### Polish-v1 summary
+
+**8 polish items verified GREEN**:
+1. ✅ Build × 3 BYTE-IDENTICAL
+2. ✅ Cross-session vitest × 6 flake band = 0
+3. ✅ Storybook build success post `routeFileIgnorePattern` change
+4. ✅ i18n parity 18p
+5. ✅ Cargo.lock idempotent
+6. ✅ Tree-shake invariant (0 lhci-mock-user in PROD)
+7. ✅ SW IIFE invariant
+8. ✅ Cross-ref integrity (INDEX.md + CLAUDE.md + MEMORY.md)
+
+**2 pending items** for polish-v2:
+1. ⏸ CI Matrix Expansion final outcome (Lighthouse Audit in_progress at polish-v1 commit time; expected GREEN per W160 SW2 calibration ~24 min runtime + W177 SW5 precedent)
+2. ⏸ Polish-v1 commit itself fires W156 SW4 pre-commit chain — verify clean
+
+**1 NEW W179+ candidate surfaced**: `.prettierignore` update for cargo target + wasm-pack pkg dirs (~5-10 min; pre-existing drift, NOT W178 regression).
+
+---
+
 Full detail in this audit doc + plan file. Memory references (`.claude` profile only): `memory/wave178_backlog.md`, `memory/wave179_opening_prompt.md`.
 
 **Production deploy is unambiguously ready post-W178.** Primary user pain status: NONE user-facing-wedge class across W156-W178.
