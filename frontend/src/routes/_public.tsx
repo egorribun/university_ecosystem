@@ -1,13 +1,8 @@
 import { useEffect, useRef } from "react"
-import {
-  createFileRoute,
-  Outlet,
-  redirect,
-  useNavigate,
-  useRouterState,
-} from "@tanstack/react-router"
+import { createFileRoute, Outlet, useNavigate, useRouterState } from "@tanstack/react-router"
 import { useAuthStore } from "@/stores/useAuthStore"
 import { resolveRedirectPath } from "@/utils/redirect"
+import { evaluatePublicGuard } from "./guards"
 
 /**
  * Wave 178 SW1 — Approach 1 extension closing W177 §Honesty #2.
@@ -88,12 +83,8 @@ export const Route = createFileRoute("/_public")({
   // PublicLayout component above adds the reactive useEffect that catches
   // post-mount user transitions across all 5 child routes via a single
   // mechanism (closes W177 §Honesty #2).
-  beforeLoad: () => {
-    const { user, loading } = useAuthStore.getState()
-    if (loading) return
-    if (user) {
-      throw redirect({ to: "/dashboard" })
-    }
-  },
+  // Wave 179 SW8 — beforeLoad extracted to pure `evaluatePublicGuard`
+  // (closes W174 §Honesty #4-routeGuards). Behavior preserved exactly.
+  beforeLoad: () => evaluatePublicGuard(useAuthStore.getState()),
   component: PublicLayout,
 })

@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react"
-import { createFileRoute, Outlet, redirect } from "@tanstack/react-router"
+import { createFileRoute, Outlet } from "@tanstack/react-router"
 import { useReducedMotion } from "framer-motion"
 import { breakpoints } from "@/theme/tokens"
 import useMediaQuery from "@/hooks/useMediaQuery"
 import { AdminBackdrop } from "@/features/admin/components/AdminBackdrop"
 import { useAuthStore } from "@/stores/useAuthStore"
+import { evaluateAdminGuard } from "./guards"
 
 // Wave 150 SW1 — `.admin-theme` scope wrapper + AdminBackdrop on all
 // /admin routes (mirrors W84 ActivityFeature pattern). Indigo/slate palette
@@ -68,15 +69,9 @@ export const Route = createFileRoute("/_admin")({
   // Wave 174 SW1 — read live Zustand state via useAuthStore.getState()
   // instead of stale `context.auth.*`. See _auth.tsx for full rationale
   // (W152 Phase 1.7 removed the App.tsx reactive context bridge).
-  beforeLoad: () => {
-    const { user, loading } = useAuthStore.getState()
-    if (loading) return
-    if (!user) {
-      throw redirect({ to: "/login" })
-    }
-    if (user.role !== "admin") {
-      throw redirect({ to: "/dashboard" })
-    }
-  },
+  // Wave 179 SW8 — beforeLoad extracted to pure `evaluateAdminGuard`
+  // (closes W174 §Honesty #4-routeGuards). Behavior preserved exactly:
+  // unauth → /login, non-admin → /dashboard, admin → proceed.
+  beforeLoad: () => evaluateAdminGuard(useAuthStore.getState()),
   component: AdminLayout,
 })
