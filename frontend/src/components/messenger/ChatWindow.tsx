@@ -95,7 +95,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ messages }) => {
                   className={cn(
                     "max-w-4/5 md:max-w-3/4 px-4 py-2.5 text-base relative",
                     message.isMe
-                      ? "msg-bubble-sent text-white rounded-2xl rounded-br-sm md:rounded-br-2xl md:rounded-bl-sm"
+                      ? "msg-bubble-sent text-[var(--text-inverse)] rounded-2xl rounded-br-sm md:rounded-br-2xl md:rounded-bl-sm"
                       : "msg-bubble-received text-text-primary rounded-2xl rounded-bl-sm shadow-sm"
                   )}
                 >
