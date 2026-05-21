@@ -244,6 +244,13 @@ root/frontend/blob-report/
 **/.lighthouseci/
 **/vitest-report.xml
 
+# W179 polish-v1 — root-level .screenshots/ (chrome-devtools-mcp + Playwright
+# visual smoke artifacts). frontend/.gitignore covers frontend/.screenshots/
+# (W113 SW6) but root-level captures from `take_screenshot` / wave-specific
+# scripts that write to CWD-relative paths landed in repo-root .screenshots/
+# (W176 visual smoke surfaced the gap; W179 polish closes it).
+.screenshots/
+
 # Go coverage and temp files
 coverage.out
 coverage_report

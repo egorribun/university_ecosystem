@@ -85,7 +85,13 @@ Per `feedback_perfectionism.md`, this wave SHOULD be probed for gaps. Honest fra
 
 6. **Docker stack visual verification skipped for SW4/SW5 code changes** — Docker frontend container would need rebuild (`bash scripts/dc.sh up -d --build frontend`) to pick up new bundle. Plan §SW10 said "via `bash scripts/dc.sh up -d --build frontend`"; deferred to polish pass if curl /login byte count needed empirically. Local vitest 1118p + 3/3 e2e + Build × 3 reproducibility provides sufficient verification for the wave-close.
 
-7. **/login SSR HTML bytes not measured post-W179 baseline** (#9 in plan verification section). Same root cause as #6 — would require Docker rebuild. Static curl against local vite preview (port 4173 from `npx vite preview` OR port 4175 from URL_STATE_E2E) would give the number; the 3 SW9 e2e tests' `/login` navigation succeeded with HTTP 200 across all 3 scenarios so SSR is functioning.
+7. **/login SSR HTML bytes not measured post-W179 baseline at SW10 commit time** (#9 in plan verification section). Same root cause as #6. **CLOSED in W179 polish-v1**: rebuilt frontend Docker container via `bash scripts/dc.sh up -d --build frontend` (W170 SW4 helper); empirical curl through real Caddy → Node SSR → backend chain returned:
+   - /healthz 200 ✓
+   - /login **21,633 b** (W178 21,539 b → **+94 b**)
+   - /forgot-password **16,119 b** (W178 16,025 b → +94 b)
+   - /register **22,287 b** (W178 22,193 b → +94 b)
+
+   Consistent **+94 b across all 3 public routes** confirms W179 SW4 PublicLayout useEffect compiles to SSR bundle (`useRouterState({select: s.location.search})` + `resolveRedirectPath` + ref-guard). Small but real W179 SW4 weight on SSR HTML stream — within tolerance, expected.
 
 8. **No new W179 (z) discoveries to file as Gotchas** — within-iter SAME-mechanism sub-fixes don't qualify as (z) class. Phase 3 Review caught 3 pre-existing class issues (Agent 1 wrong path, Agent 3 wrong claims, pre-flight cwd drift) — these are W141 anti-pattern #3 vindications, not NEW Gotchas.
 
