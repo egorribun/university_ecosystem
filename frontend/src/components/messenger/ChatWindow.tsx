@@ -1,5 +1,5 @@
 import React, { useRef, useEffect } from "react"
-import { m } from "framer-motion" // Removed AnimatePresence, LayoutGroup as they are not used
+import { m, useReducedMotion } from "framer-motion" // Removed AnimatePresence, LayoutGroup as they are not used
 import { File, Check, CheckCheck } from "lucide-react"
 import { useVirtualizer } from "@tanstack/react-virtual"
 import { useTranslation } from "react-i18next"
@@ -16,6 +16,10 @@ interface ChatWindowProps {
 // PERF-27-02: Removed React.memo() — React Compiler "infer" mode handles memoization
 export const ChatWindow: React.FC<ChatWindowProps> = ({ messages }) => {
   const { t } = useTranslation()
+  // Wave 181 SW3 — useReducedMotion guard. Without this, virtualized message
+  // bubbles fade+scale in on every scroll-into-view event, which becomes
+  // disorienting motion for reduced-motion users.
+  const prefersReducedMotion = useReducedMotion() ?? false
   const containerRef = useRef<HTMLDivElement>(null)
 
   const virtualizer = useVirtualizer({
@@ -72,9 +76,13 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ messages }) => {
               }}
             >
               <m.div
-                initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                initial={prefersReducedMotion ? false : { opacity: 0, y: 10, scale: 0.95 }}
                 animate={{ opacity: 1, y: 0, scale: 1 }}
-                transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
+                transition={
+                  prefersReducedMotion
+                    ? { duration: 0 }
+                    : { duration: 0.3, ease: [0.22, 1, 0.36, 1] }
+                }
                 className={cn(
                   "flex items-end gap-2 md:gap-3 py-1 w-full md:flex-row group",
                   message.isMe
@@ -156,10 +164,16 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ messages }) => {
                     </span>
                     {message.isMe && (
                       <span className="flex items-center opacity-hover">
+                        {/* Wave 181 SW3 — text-white → text-[var(--text-inverse)]
+                            (theme-aware; same W175 SW2 pattern. text-inverse is
+                            white in light, slate-950 in dark. On the violet
+                            sent-bubble bg, white in light = 9.9:1 contrast,
+                            slate-950 in dark = 9.9:1 contrast on violet-500.
+                            Both pass WCAG AA 4.5:1 with comfortable margin.) */}
                         {message.status === "read" ? (
-                          <CheckCheck className="w-3 h-3 text-white" />
+                          <CheckCheck className="w-3 h-3 text-[var(--text-inverse)]" />
                         ) : (
-                          <Check className="w-3 h-3 text-white opacity-medium" />
+                          <Check className="w-3 h-3 text-[var(--text-inverse)] opacity-medium" />
                         )}
                       </span>
                     )}

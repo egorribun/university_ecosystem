@@ -1,5 +1,5 @@
 import React, { useRef, useState } from "react"
-import { m, AnimatePresence } from "framer-motion"
+import { m, AnimatePresence, useReducedMotion } from "framer-motion"
 import { useTranslation } from "react-i18next"
 import { X, FileText, Image as ImageIcon, File, Paperclip, Send } from "lucide-react"
 import { cn } from "@/utils/cn"
@@ -16,6 +16,13 @@ export const MessageInput: React.FC<MessageInputProps> = ({ onSend }) => {
   const [selectedFiles, setSelectedFiles] = useState<File[]>([])
   const [svgRejected, setSvgRejected] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  // Wave 181 SW3 — useReducedMotion guard for attach + send button micro-interactions.
+  const prefersReducedMotion = useReducedMotion() ?? false
+  const attachHoverAnim = prefersReducedMotion ? undefined : { scale: 1.1 }
+  const attachTapAnim = prefersReducedMotion ? undefined : { scale: 0.9 }
+  const sendCanFire = text.trim().length > 0 || selectedFiles.length > 0
+  const sendHoverAnim = prefersReducedMotion || !sendCanFire ? undefined : { scale: 1.08 }
+  const sendTapAnim = prefersReducedMotion || !sendCanFire ? undefined : { scale: 0.92 }
 
   const handleSend = () => {
     if (text.trim() || selectedFiles.length > 0) {
@@ -119,7 +126,7 @@ export const MessageInput: React.FC<MessageInputProps> = ({ onSend }) => {
               <button
                 type="button"
                 onClick={() => removeFile(index)}
-                className="absolute -top-1.5 -right-1.5 bg-(--error-text) text-[var(--text-inverse)] rounded-full p-1 shadow-lg hover:bg-(--error-text)/(--opacity-hover) transition-colors"
+                className="absolute -top-1.5 -right-1.5 min-h-[24px] min-w-[24px] bg-(--error-text) text-[var(--text-inverse)] rounded-full p-1 shadow-lg hover:bg-(--error-text)/(--opacity-hover) transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-violet-500) focus-visible:ring-offset-2 focus-visible:ring-offset-(--bg-surface)"
                 aria-label={t("messenger:aria.removeAttachment")}
               >
                 <X size={12} strokeWidth={3} />
@@ -132,11 +139,13 @@ export const MessageInput: React.FC<MessageInputProps> = ({ onSend }) => {
         <div className="relative">
           <m.button
             id="chat-attach-btn"
-            whileHover={{ scale: 1.1 }}
-            whileTap={{ scale: 0.9 }}
+            type="button"
+            whileHover={attachHoverAnim}
+            whileTap={attachTapAnim}
             onClick={() => setShowAttachMenu(!showAttachMenu)}
             className={cn(
-              "p-2.5 rounded-xl transition-colors hover:bg-(--bg-surface-hover)/(--opacity-soft)",
+              "min-h-[44px] min-w-[44px] p-2.5 rounded-xl transition-colors hover:bg-(--bg-surface-hover)/(--opacity-soft)",
+              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-violet-500) focus-visible:ring-offset-2 focus-visible:ring-offset-(--bg-surface)",
               showAttachMenu
                 ? "text-(--brand-main) bg-(--brand-main)/(--opacity-subtle)"
                 : "text-(--text-secondary)"
@@ -213,14 +222,17 @@ export const MessageInput: React.FC<MessageInputProps> = ({ onSend }) => {
         />
         <m.button
           id="chat-send-btn"
-          whileHover={text.trim() || selectedFiles.length > 0 ? { scale: 1.1 } : {}}
-          whileTap={text.trim() || selectedFiles.length > 0 ? { scale: 0.9 } : {}}
+          type="button"
+          whileHover={sendHoverAnim}
+          whileTap={sendTapAnim}
           onClick={handleSend}
-          disabled={!text.trim() && selectedFiles.length === 0}
+          disabled={!sendCanFire}
+          aria-label={t("messenger:typeMessage")}
           className={cn(
-            "p-2.5 rounded-xl transition-all duration-base",
-            text.trim() || selectedFiles.length > 0
-              ? "bg-(--brand-main) text-[var(--text-inverse)] shadow-lg shadow-(--brand-main)/(--opacity-soft)"
+            "min-h-[44px] min-w-[44px] p-2.5 rounded-xl transition-all duration-base",
+            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-violet-500) focus-visible:ring-offset-2 focus-visible:ring-offset-(--bg-surface)",
+            sendCanFire
+              ? "messenger-send-btn"
               : "bg-(--bg-surface-hover)/(--opacity-subtle) text-(--text-secondary) opacity-soft cursor-not-allowed"
           )}
         >
