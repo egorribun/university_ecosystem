@@ -13,3 +13,11 @@ root
 # This rule structurally closes the drift — prettier no longer checks the
 # file. Cosmetic-only file consumed by TanStack Router runtime + tsc.
 src/routeTree.gen.ts
+
+# W179 SW1 — silence cargo target dirs + wasm-pack pkg dirs flagged by W178
+# polish-v1 (z): `npx prettier --check .` from frontend/ flagged 245 pre-existing
+# files. All in rust-crypto + wasm-sanitizer build outputs (cargo target/ +
+# wasm-pack pkg/). lint-staged scopes to staged files in normal workflow so
+# these never block commits, but standalone `prettier --check .` runs do.
+**/target/**
+**/pkg/**
