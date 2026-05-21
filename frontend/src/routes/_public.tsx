@@ -1,6 +1,13 @@
-import { useEffect } from "react"
-import { createFileRoute, Outlet, redirect, useNavigate } from "@tanstack/react-router"
+import { useEffect, useRef } from "react"
+import {
+  createFileRoute,
+  Outlet,
+  redirect,
+  useNavigate,
+  useRouterState,
+} from "@tanstack/react-router"
 import { useAuthStore } from "@/stores/useAuthStore"
+import { resolveRedirectPath } from "@/utils/redirect"
 
 /**
  * Wave 178 SW1 — Approach 1 extension closing W177 §Honesty #2.
@@ -38,11 +45,26 @@ import { useAuthStore } from "@/stores/useAuthStore"
 export function PublicLayout() {
   const user = useAuthStore((s) => s.user)
   const navigate = useNavigate()
+  // Wave 179 SW4 — honor search.redirect param across all 5 /_public routes.
+  // Pre-W179: hardcoded /dashboard ignored writer at _auth.tsx:47 → user
+  // intended destination (e.g., /events) was lost on re-auth. Closes W177
+  // §Honesty #3 race at the LAYOUT level (parallel to Login.tsx useEffect).
+  // resolveRedirectPath defaults to /dashboard for missing/malformed/cross-
+  // origin redirect param.
+  //
+  // Wave 179 SW4 ref-guard: prevent re-fire after initial redirect (same
+  // pattern as Login.tsx). navigate({to: target}) clears location.search →
+  // useEffect re-fires with undefined → falls back to /dashboard, overriding
+  // the original /events navigation. ref blocks subsequent fires.
+  const search = useRouterState({ select: (s) => s.location.search })
+  const redirectedRef = useRef(false)
   useEffect(() => {
-    if (user) {
-      navigate({ to: "/dashboard", replace: true })
+    if (user && !redirectedRef.current) {
+      redirectedRef.current = true
+      const target = resolveRedirectPath((search as { redirect?: unknown } | null)?.redirect)
+      navigate({ to: target, replace: true })
     }
-  }, [user, navigate])
+  }, [user, navigate, search])
   return <Outlet />
 }
 

@@ -28,6 +28,21 @@ interface RenderLoginOptions {
    * #3 regression test that exercises the redirect explicitly.
    */
   skipMeOverride?: boolean
+  /**
+   * Wave 179 SW4 — override initialPath (default "/login") to inject
+   * search.redirect query param for race-regression test of W177 §Honesty #3.
+   * E.g., "/login?redirect=http%3A%2F%2Flocalhost%2Fevents" exercises the
+   * canonical TanStack `search.redirect` path through useLoginFlow +
+   * Login.tsx useEffect + _public.tsx useEffect.
+   */
+  initialPath?: string
+  /**
+   * Wave 179 SW4 — override extraRoutes (default just /dashboard) to add
+   * routes the redirect target may navigate to (e.g., /events). When
+   * navigate({ to: "/events" }) fires, the test asserts on rendered content
+   * from this extra route.
+   */
+  extraRoutes?: Array<{ path: string; Component: React.ComponentType }>
 }
 
 const renderLogin = (options: RenderLoginOptions = {}) => {
@@ -42,8 +57,10 @@ const renderLogin = (options: RenderLoginOptions = {}) => {
   return renderWithRouter({
     ui: Login,
     path: "/login",
-    initialPath: "/login",
-    extraRoutes: [{ path: "/dashboard", Component: () => <div>Welcome!</div> }],
+    initialPath: options.initialPath ?? "/login",
+    extraRoutes: options.extraRoutes ?? [
+      { path: "/dashboard", Component: () => <div>Welcome!</div> },
+    ],
     queryClient: client,
   })
 }
@@ -142,6 +159,44 @@ describe("Login page", () => {
     await waitFor(() => expect(screen.getByText("Welcome!")).toBeInTheDocument(), {
       timeout: 5_000,
     })
+  })
+
+  it("honors search.redirect param across authed-user redirect (W177 §Honesty #3, W179 SW4)", async () => {
+    // Wave 179 SW4 race regression test. Closes W177 §Honesty #3: unauth user
+    // deep-links to /events → _auth.tsx:47 beforeLoad throws redirect to
+    // /login?redirect=http://localhost/events → user auths → Login.tsx W177
+    // SW1 useEffect observes user transition null→testUser. Pre-W179 the
+    // useEffect hardcoded /dashboard target, ignoring search.redirect →
+    // user lands on /dashboard not /events (intended destination lost).
+    // W179 SW4 fix: useEffect reads `useRouterState({select: s.location.search})`
+    // + calls resolveRedirectPath → returns "/events" pathname → navigate
+    // target is /events → "Events page" rendered (NOT "Welcome!" from /dashboard).
+    //
+    // skipMeOverride:true → useProfileSync populates testUser → useEffect fires
+    // initialPath sets search.redirect explicitly
+    // extraRoutes adds /events to the in-memory router (so navigation can resolve)
+    // Test uses RELATIVE path "/events" (vs production writer's absolute URL
+    // `location.href`). Helper accepts both forms — relative-path branch
+    // returns the input verbatim, absolute-URL branch extracts pathname via
+    // URL constructor + same-origin check. Test runs the relative branch to
+    // keep the assertion environment-agnostic re: jsdom window.location.origin
+    // (which equals "http://localhost" in default jsdom and matches the
+    // helper's same-origin check — but the relative branch sidesteps that
+    // dependency entirely for test isolation).
+    await renderLogin({
+      skipMeOverride: true,
+      initialPath: "/login?redirect=/events",
+      extraRoutes: [
+        { path: "/dashboard", Component: () => <div>Welcome!</div> },
+        { path: "/events", Component: () => <div>Events page</div> },
+      ],
+    })
+
+    await waitFor(() => expect(screen.getByText("Events page")).toBeInTheDocument(), {
+      timeout: 5_000,
+    })
+    // Negative assertion: /dashboard should NOT render (would happen pre-W179 SW4)
+    expect(screen.queryByText("Welcome!")).not.toBeInTheDocument()
   })
 
   it("returns server errors to the user", async () => {
