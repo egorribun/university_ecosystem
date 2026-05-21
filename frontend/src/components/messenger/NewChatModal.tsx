@@ -1,5 +1,5 @@
 import React, { useEffect, useId, useState } from "react"
-import { m, AnimatePresence } from "framer-motion"
+import { m, AnimatePresence, useReducedMotion } from "framer-motion"
 import { useTranslation } from "react-i18next"
 import { Search, X } from "lucide-react"
 import { useQuery } from "@tanstack/react-query"
@@ -27,6 +27,11 @@ export const NewChatModal: React.FC<NewChatModalProps> = ({ open, onClose, onSel
   const titleId = useId()
   // PERF-20-05: Debounce to prevent API call on every keystroke.
   const debouncedSearch = useDebounced(search, "default") // PERF-23-04: messenger search uses default preset (300ms)
+  // Wave 181 SW5 — explicit useReducedMotion guards on DRAMATIC animations
+  // (dialog entrance scale:0.95+y:20 and per-row whileHover x:4). Subtle
+  // scale-on-hover/tap motions are handled globally by AppProviders
+  // MotionConfig reducedMotion="user" (W124 SW1 + W127 SW1).
+  const prefersReducedMotion = useReducedMotion() ?? false
 
   // Wave 175 SW3 — focus trap + Escape handler.
   // initialFocus: false lets the TextField's auto-focus (line ~95) win without
@@ -82,10 +87,11 @@ export const NewChatModal: React.FC<NewChatModalProps> = ({ open, onClose, onSel
             role="dialog"
             aria-modal="true"
             aria-labelledby={titleId}
-            initial={{ scale: 0.95, opacity: 0, y: 20 }}
+            initial={prefersReducedMotion ? false : { scale: 0.95, opacity: 0, y: 20 }}
             animate={{ scale: 1, opacity: 1, y: 0 }}
-            exit={{ scale: 0.95, opacity: 0, y: 20 }}
-            className="bg-(--bg-surface)/(--opacity-heavy) backdrop-blur-2xl rounded-3xl shadow-premium w-full max-w-[28rem] overflow-hidden border border-(--glass-border) ring-1 ring-white/(--opacity-subtle)"
+            exit={prefersReducedMotion ? { opacity: 0 } : { scale: 0.95, opacity: 0, y: 20 }}
+            transition={prefersReducedMotion ? { duration: 0 } : undefined}
+            className="messenger-card-matte w-full max-w-[28rem] backdrop-blur-2xl"
             onClick={(event) => event.stopPropagation()}
           >
             <div className="p-6 pb-4 flex items-center justify-between border-b border-(--glass-border)/(--opacity-subtle) bg-(--bg-surface)/(--opacity-medium)">
@@ -99,7 +105,7 @@ export const NewChatModal: React.FC<NewChatModalProps> = ({ open, onClose, onSel
                 type="button"
                 onClick={onClose}
                 aria-label={t("common:buttons.close")}
-                className="p-2 rounded-xl hover:bg-(--bg-surface-hover)/(--opacity-medium) text-(--text-secondary) transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-(--bg-surface)"
+                className="min-h-[44px] min-w-[44px] p-2 rounded-xl flex items-center justify-center hover:bg-(--bg-surface-hover)/(--opacity-medium) text-(--text-secondary) transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-violet-500) focus-visible:ring-offset-2 focus-visible:ring-offset-(--bg-surface)"
               >
                 <X className="w-5 h-5" aria-hidden="true" />
               </button>
@@ -142,10 +148,14 @@ export const NewChatModal: React.FC<NewChatModalProps> = ({ open, onClose, onSel
                     <m.button
                       key={user.id}
                       type="button"
-                      whileHover={{ x: 4, backgroundColor: "var(--bg-surface-hover)" }}
-                      whileTap={{ scale: 0.98 }}
+                      whileHover={
+                        prefersReducedMotion
+                          ? undefined
+                          : { x: 4, backgroundColor: "var(--bg-surface-hover)" }
+                      }
+                      whileTap={prefersReducedMotion ? undefined : { scale: 0.98 }}
                       onClick={() => onSelect(String(user.id))}
-                      className="w-full flex items-center gap-4 p-3.5 rounded-2xl transition-all text-left group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-(--bg-surface)"
+                      className="w-full min-h-[60px] flex items-center gap-4 p-3.5 rounded-2xl transition-all text-left group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-violet-500) focus-visible:ring-offset-2 focus-visible:ring-offset-(--bg-surface)"
                     >
                       <div className="relative shrink-0">
                         <SmartImage

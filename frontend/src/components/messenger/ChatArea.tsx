@@ -76,10 +76,14 @@ export function ChatArea({
   return (
     <m.div
       key="chat-area"
-      initial={isMobile ? { x: 300, opacity: 0 } : undefined}
+      initial={isMobile && !prefersReducedMotion ? { x: 300, opacity: 0 } : undefined}
       animate={{ x: 0, opacity: 1 }}
-      exit={isMobile ? { x: 300, opacity: 0 } : undefined}
-      transition={{ duration: motionTokens.durationMedium, ease: [0.22, 1, 0.36, 1] }}
+      exit={isMobile && !prefersReducedMotion ? { x: 300, opacity: 0 } : undefined}
+      transition={
+        prefersReducedMotion
+          ? { duration: 0 }
+          : { duration: motionTokens.durationMedium, ease: [0.22, 1, 0.36, 1] }
+      }
       className="relative z-base flex h-full flex-1 flex-col overflow-hidden bg-msg-chat"
     >
       {selectedChatId && activeChat ? (
@@ -88,9 +92,9 @@ export function ChatArea({
             {!showSearchInChat ? (
               <m.div
                 key="header-normal"
-                initial={{ y: -20, opacity: 0 }}
+                initial={prefersReducedMotion ? false : { y: -20, opacity: 0 }}
                 animate={{ y: 0, opacity: 1 }}
-                exit={{ y: -20, opacity: 0 }}
+                exit={prefersReducedMotion ? { opacity: 0 } : { y: -20, opacity: 0 }}
                 className="z-deep flex h-(--navbar-h-base) shrink-0 items-center justify-between px-(--spacing-4)"
               >
                 <div className="flex items-center gap-3">
@@ -176,9 +180,15 @@ export function ChatArea({
                     <AnimatePresence>
                       {showChatMenu && (
                         <m.div
-                          initial={{ opacity: 0, scale: 0.9, y: 10, x: 5 }}
+                          initial={
+                            prefersReducedMotion ? false : { opacity: 0, scale: 0.9, y: 10, x: 5 }
+                          }
                           animate={{ opacity: 1, scale: 1, y: 0, x: 0 }}
-                          exit={{ opacity: 0, scale: 0.9, y: 10 }}
+                          exit={
+                            prefersReducedMotion
+                              ? { opacity: 0 }
+                              : { opacity: 0, scale: 0.9, y: 10 }
+                          }
                           className="card-glass z-navbar absolute right-0 top-full mt-2 min-w-sidebar overflow-hidden rounded-md py-2"
                         >
                           {[
@@ -220,9 +230,9 @@ export function ChatArea({
             ) : (
               <m.div
                 key="header-search"
-                initial={{ y: -20, opacity: 0 }}
+                initial={prefersReducedMotion ? false : { y: -20, opacity: 0 }}
                 animate={{ y: 0, opacity: 1 }}
-                exit={{ y: -20, opacity: 0 }}
+                exit={prefersReducedMotion ? { opacity: 0 } : { y: -20, opacity: 0 }}
                 className="header-glass z-deep flex h-(--navbar-h-base) shrink-0 items-center border-b border-glass-border bg-surface/(--opacity-medium) px-(--spacing-4) backdrop-blur-xl"
               >
                 <m.button

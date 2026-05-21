@@ -47,14 +47,14 @@ export function TypingIndicator({ users, prefersReducedMotion = false }: TypingI
   if (users.length === 0) return null
 
   // Compose label: single → name; multiple → count.
+  // i18n keys live in en/ru messenger.json (added W181 SW4). translationParity
+  // test guards key existence; no defaultValue: fallback needed (avoids the
+  // anti-pattern that masks missing-key bugs from the parity walker).
   const firstUser = users[0]
   const label =
     users.length === 1 && firstUser
-      ? t("messenger:typing", { name: firstUser.userName, defaultValue: "{{name}} is typing..." })
-      : t("messenger:typingMultiple", {
-          count: users.length,
-          defaultValue: "{{count}} people are typing...",
-        })
+      ? t("messenger:typing", { name: firstUser.userName })
+      : t("messenger:typingMultiple", { count: users.length })
 
   return (
     <div className="px-4 py-1 shrink-0" aria-live="polite" role="status">
@@ -62,7 +62,7 @@ export function TypingIndicator({ users, prefersReducedMotion = false }: TypingI
         <div className="messenger-typing" aria-label={label}>
           {prefersReducedMotion ? (
             <span className="text-xs font-medium text-(--text-secondary)">
-              {t("messenger:isTyping", { defaultValue: "Typing" })}
+              {t("messenger:isTyping")}
             </span>
           ) : (
             <>
