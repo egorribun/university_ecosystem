@@ -12,6 +12,10 @@ import {
   type ChatsListResponse,
   type MessagesListResponse,
 } from "@/api/chat"
+// Wave 180 SW3 — extracted queryOptions factories close W134 §Honesty #10
+// (W161 SW2 concern #1: query gate inconsistency). See api/hooks/messenger.ts
+// header docblock for the full rationale.
+import { chatsQueryOptions, chatQueryOptions, messagesQueryOptions } from "@/api/hooks/messenger"
 import client from "@/api/client"
 import type { User } from "@/types/User"
 import type { Message as UiMessage } from "@/components/messenger"
@@ -65,25 +69,32 @@ export const useMessengerController = () => {
 
   // --- Queries ---
 
+  // Wave 180 SW3 — chat list useQuery spreads chatsQueryOptions() factory +
+  // adds `enabled: !!user` gate. Closes W161 SW2 concern #1 (query gate
+  // inconsistency): pre-W180 this fired without the `enabled: isAuth` gate
+  // that MessengerContext.tsx:66-70 already had. Cache identity preserved
+  // via chatsQueryKey = ["chats"] (unchanged tuple shape).
   const { data: chatsData, isLoading: chatsLoading } = useQuery({
-    queryKey: ["chats"],
-    queryFn: () => chatApi.getChats(),
+    ...chatsQueryOptions(),
+    enabled: !!user,
   })
   const chats = useMemo(() => chatsData?.items ?? [], [chatsData?.items])
 
+  // Wave 180 SW3 — single-chat fallback useQuery (fires when chat is NOT in
+  // the cached list yet, e.g. direct URL navigation). Spreads chatQueryOptions
+  // factory + preserves pre-W180 `enabled` gate (chatId present AND not already
+  // in list) + `retry: false` override (chat-not-found should surface quickly
+  // without exponential backoff, matching pre-W180 line 78 behaviour).
   const { data: singleChatData } = useQuery({
-    queryKey: ["chats", chatId],
-    queryFn: () => (chatId ? chatApi.getChat(chatId) : Promise.reject("No chatId")),
+    ...chatQueryOptions(chatId),
     enabled: !!chatId && !chats.some((c) => c.id === chatId),
     retry: false,
   })
 
+  // Wave 180 SW3 — messages useQuery spreads messagesQueryOptions factory.
+  // Pre-W180 `enabled: !!selectedChatId` gate preserved (no other changes).
   const { data: messagesData, isLoading: messagesLoading } = useQuery({
-    queryKey: ["messages", selectedChatId],
-    queryFn: () =>
-      selectedChatId
-        ? chatApi.getMessages(selectedChatId)
-        : Promise.resolve({ items: [], has_more: false, next_cursor: null }),
+    ...messagesQueryOptions(selectedChatId),
     enabled: !!selectedChatId,
   })
   const messages = useMemo(() => messagesData?.items ?? [], [messagesData?.items])

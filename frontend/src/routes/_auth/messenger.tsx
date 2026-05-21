@@ -5,46 +5,59 @@ import { PageErrorBoundary } from "@/components/error/PageErrorBoundary"
 const Messenger = lazy(() => import("@/pages/Messenger"))
 
 export const Route = createFileRoute("/_auth/messenger")({
-  // /messenger × 2 SSR — explicit defer-by-design (W161 SW2 closure of
-  // W134 §Honesty #10 carry-forward since W133). Both `messenger.tsx`
-  // (list) + `messenger.$chatId.tsx` (detail) stay client-only by design,
-  // NOT "W129+ candidate after SSR-readiness audit" anymore.
+  // Wave 180 SW3 — /messenger Phase 5 SSR enabled via `ssr: 'data-only'`
+  // (W127 SW6 pattern). Closes W134 §Honesty #10 (carry-forward from W133
+  // → W161 SW2 by-design defer → W180 user-directive full closure).
   //
-  // Decision rationale (W161 Phase 1 Agent audit + Phase 3 Review system-
-  // design analysis; full detail in docs/audits/AUDIT_WAVE161.md):
+  // PRE-W180 STATE (W161 SW2 by-design defer; full history retained for
+  // posterity below — DO NOT remove this block, it documents the 3
+  // concerns that W180 addressed):
   //
-  //   (a) Query gate inconsistency — `useMessengerController.ts:68` fires
+  //   (a) Query gate inconsistency — `useMessengerController.ts:68` fired
   //       `useQuery({ queryKey: ["chats"] })` WITHOUT `enabled: isAuth`
-  //       gate (unlike `MessengerContext.tsx:66-70` which has the gate).
-  //       SSR enable requires factory refactor to extract
-  //       `chatsQueryOptions()` per W129 pattern + verified SSR cookie-
-  //       forwarding for chat endpoint (W126 SW3 + W133 SW1 chain only
-  //       exercised for /users/me + read-only public routes so far).
+  //       gate (unlike `MessengerContext.tsx:66-70` which had the gate).
+  //       Pre-W180 SSR enable required factory refactor.
+  //       ✅ W180 SW3 closure: NEW `frontend/src/api/hooks/messenger.ts`
+  //       extracts `chatsQueryOptions()` + `chatQueryOptions()` +
+  //       `messagesQueryOptions()` factories per W129 (events) / W130
+  //       (schedule) / W133 (users) / W134 SW2 (sessions) convention.
+  //       `useMessengerController.ts` refactored to spread factories +
+  //       add `enabled: !!user` gate matching MessengerContext pattern.
+  //       Cache identity preserved via unchanged queryKey tuples.
   //
   //   (b) Privacy/cache scoping — chat list + presence + counterpart
-  //       names + last-message-preview is user-private relationship state.
-  //       The 6 current SSR routes (/dashboard, /events × 2, /news × 2,
-  //       /schedule, /profile, /settings) render either public-ish data
-  //       (events, news) or user-shell-only (profile, settings prefetch
-  //       /users/me without exposing other users). Chat differs: it
-  //       exposes who you've been chatting with. Verifying Cache-Control
-  //       + Vary headers across Caddy + Node SSR + browser for per-user
-  //       scoping is a separate design effort, not 1-wave scope.
+  //       names + last-message-preview is user-private relationship
+  //       state. SSR exposure of this in HTML risks cache poisoning if
+  //       intermediaries cache responses by URL only.
+  //       ✅ W180 SW3 closure: TWO-LAYER privacy posture in
+  //       `frontend/src/server.ts`:
+  //         (1) Structural: `ssr: 'data-only'` annotation below means SSR
+  //             renders the route SHELL (MainLayout + provider tree) but
+  //             does NOT call `ensureQueryData(chatsQueryOptions())` in
+  //             any loader → no chat data in HTML stream.
+  //         (2) Defense-in-depth: `augmentResponseForMessenger()` injects
+  //             `Cache-Control: no-store, private, max-age=0` + `Vary:
+  //             Cookie` response headers on every /messenger* SSR
+  //             response, ensuring browser + CDN + intermediary proxies
+  //             cannot cache the response even if it ever did contain
+  //             per-user state.
   //
   //   (c) UX/value tradeoff — chat is inherently interactive (WebSocket-
   //       driven presence + typing indicators + optimistic message UI).
-  //       SSR LCP win on a chat list view is marginal — users expect
-  //       real-time state immediately after mount, not server-rendered
-  //       stale state. Client-only render with React Query placeholder +
-  //       optimistic UI is the right UX for messaging.
+  //       SSR LCP win on a chat data view is marginal.
+  //       ✅ W180 SW3 closure (accepted as-designed): `ssr: 'data-only'`
+  //       still gives shell-render LCP win (MainLayout + nav + footer +
+  //       provider tree all SSR'd) without trying to pre-render chat
+  //       data (which would conflict with WebSocket-driven UX). Real-
+  //       time state still loads client-side post-hydration as before.
+  //       This matches /profile + /settings Phase 5 SSR pattern.
   //
-  // W162+ may revisit IF Phase 6 canary rollout (W132 SW6 runbook)
-  // requires /messenger SSR for unauthenticated landing flows OR some
-  // other concrete reason. Until then, this is a deliberate exception
-  // to the W125-W149 SSR Phase 5 arc (closed at /profile + /settings;
-  // remaining 2 ssr:false siblings are messenger × 2 BY DESIGN, not
-  // pending audit).
-  ssr: false,
+  // Per W127 SW6 inheritance contract: child can ONLY make more
+  // restrictive (`false > 'data-only' > true`). Parent `_auth.tsx`
+  // current state (W128 SW2 + W174 SW1) is `ssr: true` so this child's
+  // `'data-only'` annotation IS active runtime (W127 SW6 carries had
+  // been silently demoted under `_auth.tsx ssr: false`).
+  ssr: "data-only",
   component: () => (
     <PageErrorBoundary key="messenger">
       <Messenger />
