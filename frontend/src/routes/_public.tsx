@@ -1,5 +1,50 @@
-import { createFileRoute, Outlet, redirect } from "@tanstack/react-router"
+import { useEffect } from "react"
+import { createFileRoute, Outlet, redirect, useNavigate } from "@tanstack/react-router"
 import { useAuthStore } from "@/stores/useAuthStore"
+
+/**
+ * Wave 178 SW1 — Approach 1 extension closing W177 §Honesty #2.
+ *
+ * Adds reactive layout-level watcher in _public.tsx covering ALL routes
+ * under /_public (/login, /forgot-password, /register, /reset-password,
+ * /reset-password/$token) via a single mechanism, parallel to W177 SW1's
+ * Login.tsx-specific useEffect.
+ *
+ * Defense-in-depth design: Login.tsx's W177 SW1 useEffect REMAINS unchanged.
+ * React 19 child-effect-before-parent-effect ordering means both fire when
+ * the user transition null→set occurs; both navigate({ to: "/dashboard",
+ * replace: true }); the second call is a no-op once the route already
+ * changed. Removing Login.tsx's would orphan the W177 §Honesty #3
+ * regression test and break Login.test.tsx — W178 is purely additive.
+ *
+ * The beforeLoad guard below (W174 SW1) runs only ONCE on initial route
+ * mount; this useEffect catches subsequent user transitions that
+ * beforeLoad cannot see — e.g. authed user opens /forgot-password via
+ * bookmark → AuthProvider's useProfileSync settles /users/me → setUser
+ * populates useAuthStore → this effect observes the transition →
+ * redirect to /dashboard with replace:true (no /forgot-password etc.
+ * in back-button history for authed users).
+ *
+ * Hardcoded /dashboard target matches W177 SW1's choice. Preserving
+ * state.from / search.redirect is a DIFFERENT mechanism (W177 §Honesty
+ * #3 / Q0 option C) explicitly out of W178 scope.
+ *
+ * Exported as a named function (not inline arrow) so the dedicated unit
+ * test at routes/__tests__/_public.test.tsx can mount it under a custom
+ * route tree. The standard `renderWithRouter` helper builds a FLAT route
+ * tree (per its docstring caveat at lines 50-54) and does NOT exercise
+ * layout components.
+ */
+export function PublicLayout() {
+  const user = useAuthStore((s) => s.user)
+  const navigate = useNavigate()
+  useEffect(() => {
+    if (user) {
+      navigate({ to: "/dashboard", replace: true })
+    }
+  }, [user, navigate])
+  return <Outlet />
+}
 
 export const Route = createFileRoute("/_public")({
   // Wave 154 SW1 — removed `ssr: false` workaround (W150 polish-followup commit
@@ -16,6 +61,11 @@ export const Route = createFileRoute("/_public")({
   // Wave 174 SW1 — read live Zustand state via useAuthStore.getState()
   // instead of stale `context.auth.*`. See _auth.tsx for full rationale
   // (W152 Phase 1.7 removed the App.tsx reactive context bridge).
+  //
+  // Wave 178 SW1 — beforeLoad still runs ONCE on initial route mount; the
+  // PublicLayout component above adds the reactive useEffect that catches
+  // post-mount user transitions across all 5 child routes via a single
+  // mechanism (closes W177 §Honesty #2).
   beforeLoad: () => {
     const { user, loading } = useAuthStore.getState()
     if (loading) return
@@ -23,5 +73,5 @@ export const Route = createFileRoute("/_public")({
       throw redirect({ to: "/dashboard" })
     }
   },
-  component: () => <Outlet />,
+  component: PublicLayout,
 })

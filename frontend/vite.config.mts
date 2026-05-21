@@ -324,7 +324,17 @@ export default defineConfig(({ mode }) => {
     // convention for the auto-generated `routeTree.gen.ts`.
     tanstackStart({
       spa: { enabled: true },
-      router: { quoteStyle: "double" },
+      // Wave 178 SW1 — `routeFileIgnorePattern: "__tests__"` so
+      // `src/routes/__tests__/*.test.tsx` (W178 added the first one,
+      // _public.test.tsx) doesn't trigger the TanStack Router generator's
+      // "does not export a Route" warning on every build. Tests live
+      // co-located with routes for clarity; the prefix-with-"-" workaround
+      // (default `routeFileIgnorePrefix: "-"`) would clash with vitest's
+      // `*.test.tsx` glob. The pattern is a REGEX (NOT a glob — empirically
+      // verified W178 SW1 build attempt: "**/__tests__/**" → `new RegExp`
+      // throws "Nothing to repeat" because `**` isn't valid regex). A bare
+      // path substring matches paths containing `/__tests__/`.
+      router: { quoteStyle: "double", routeFileIgnorePattern: "__tests__" },
       client: { entry: "main.tsx" },
       server: { entry: "server.ts" },
     }),
