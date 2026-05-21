@@ -2,7 +2,7 @@ import SmartImage from "@/components/media/SmartImage"
 import { AVATAR_PLACEHOLDER_URL } from "@/constants/placeholders"
 import { User } from "@/types/User"
 
-import { AnimatePresence, m } from "framer-motion"
+import { AnimatePresence, m, useReducedMotion } from "framer-motion"
 import { X } from "lucide-react"
 import { useEffect, useId } from "react"
 import { useTranslation } from "react-i18next"
@@ -19,6 +19,11 @@ export function ProfileModal({ user, loading, error, onClose }: ProfileModalProp
   const { t } = useTranslation(["messenger", "common"])
   const titleId = useId()
   const isOpen = Boolean(user || loading || error)
+  // Wave 181 SW4 — useReducedMotion guards on dialog entrance + close button
+  // rotate. Framer rotation is the most disorienting interaction for users
+  // with vestibular sensitivities; explicit gate ensures the X button just
+  // scales rather than rotating under reduced motion preference.
+  const prefersReducedMotion = useReducedMotion() ?? false
 
   // Wave 175 SW3 — focus trap activates whenever modal is open (any of
   // user/loading/error truthy). returnFocus restores focus to the element
@@ -57,10 +62,11 @@ export function ProfileModal({ user, loading, error, onClose }: ProfileModalProp
             role="dialog"
             aria-modal="true"
             aria-labelledby={titleId}
-            initial={{ opacity: 0, scale: 0.9, y: 20 }}
+            initial={prefersReducedMotion ? false : { opacity: 0, scale: 0.92, y: 20 }}
             animate={{ scale: 1, opacity: 1, y: 0 }}
-            exit={{ scale: 0.9, opacity: 0, y: 20 }}
-            className="z-modal w-full max-w-[32rem] overflow-hidden rounded-2xl border border-white/(--opacity-subtle) bg-(--bg-surface) shadow-2xl dark:bg-page"
+            exit={prefersReducedMotion ? { opacity: 0 } : { scale: 0.92, opacity: 0, y: 20 }}
+            transition={prefersReducedMotion ? { duration: 0 } : undefined}
+            className="messenger-card-matte z-modal w-full max-w-[32rem]"
             onClick={(event) => event.stopPropagation()}
           >
             <div className="flex items-center justify-between border-b border-msg-border p-6 pb-4">
@@ -69,11 +75,11 @@ export function ProfileModal({ user, loading, error, onClose }: ProfileModalProp
               </h3>
               <m.button
                 type="button"
-                whileHover={{ rotate: 90, scale: 1.1 }}
-                whileTap={{ scale: 0.9 }}
+                whileHover={prefersReducedMotion ? undefined : { rotate: 90, scale: 1.08 }}
+                whileTap={prefersReducedMotion ? undefined : { scale: 0.92 }}
                 onClick={onClose}
                 aria-label={t("common:buttons.close")}
-                className="rounded-full p-2 transition-colors hover:bg-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-(--bg-surface)"
+                className="min-h-[44px] min-w-[44px] rounded-full p-2 flex items-center justify-center transition-colors hover:bg-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-violet-500) focus-visible:ring-offset-2 focus-visible:ring-offset-(--bg-surface)"
               >
                 <X className="h-5 w-5" aria-hidden="true" />
               </m.button>
@@ -103,7 +109,9 @@ export function ProfileModal({ user, loading, error, onClose }: ProfileModalProp
                         srcRaw={user.avatar_url || AVATAR_PLACEHOLDER_URL}
                         fallback={AVATAR_PLACEHOLDER_URL}
                         alt={user.full_name ?? ""}
-                        className="size-24 rounded-md border-4 border-(--bg-surface) object-cover shadow-xl"
+                        className={`size-24 rounded-2xl border-4 border-(--bg-surface) object-cover shadow-xl ${
+                          user.is_active ? "messenger-avatar-ring" : ""
+                        }`}
                       />
                       {user.is_active && (
                         <span className="msg-online-indicator absolute -bottom-1 -right-1 size-6 border-4 border-(--bg-surface)"></span>
@@ -118,19 +126,23 @@ export function ProfileModal({ user, loading, error, onClose }: ProfileModalProp
                       <p className="mb-1 text-xs font-bold uppercase tracking-widest text-(--text-secondary)/(--opacity-strong)">
                         {t("messenger:status", "Status")}
                       </p>
-                      <p className="flex items-center gap-1.5 text-sm font-bold">
-                        {user.is_active ? (
-                          <>
-                            <span className="h-2 w-2 rounded-full bg-(--success-text)"></span>
-                            {t("common:active", "Active")}
-                          </>
-                        ) : (
-                          <>
-                            <span className="h-2 w-2 rounded-full bg-(--text-tertiary)"></span>
-                            {t("common:inactive", "Inactive")}
-                          </>
-                        )}
-                      </p>
+                      <span
+                        className="messenger-status-badge"
+                        data-status={user.is_active ? "online" : "offline"}
+                      >
+                        <span
+                          className="h-2 w-2 rounded-full"
+                          style={{
+                            background: user.is_active
+                              ? "var(--messenger-status-online-text)"
+                              : "var(--messenger-status-offline-text)",
+                          }}
+                          aria-hidden="true"
+                        />
+                        {user.is_active
+                          ? t("common:active", "Active")
+                          : t("common:inactive", "Inactive")}
+                      </span>
                     </div>
                     {user.avatar_url && (
                       <a

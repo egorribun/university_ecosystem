@@ -1,9 +1,10 @@
 import SmartImage from "@/components/media/SmartImage"
-import { ChatWindow, MessageInput } from "@/components/messenger"
+import { ChatWindow, MessageInput, TypingIndicator } from "@/components/messenger"
 import { AVATAR_PLACEHOLDER_URL } from "@/constants/placeholders"
+import { useMessenger } from "@/contexts/MessengerContext"
 import { useMessengerController } from "@/hooks/features/useMessengerController"
 import { motion as motionTokens } from "@/theme/tokens"
-import { AnimatePresence, m } from "framer-motion"
+import { AnimatePresence, m, useReducedMotion } from "framer-motion"
 import {
   ChevronLeft,
   MessageCircleOff,
@@ -58,6 +59,13 @@ export function ChatArea({
   const { t } = useTranslation(["messenger", "common"])
   const navigate = useNavigate()
   const searchInputRef = useRef<HTMLInputElement>(null)
+  // Wave 181 SW4 — TypingIndicator wired to existing WebSocket presence channel
+  // via useMessenger().getTypingUsersForChat (MessengerContext). No backend
+  // changes needed; typing events flow through ws-hub presence subscription
+  // already (W134+ infra).
+  const { getTypingUsersForChat } = useMessenger()
+  const typingUsers = selectedChatId ? getTypingUsersForChat(selectedChatId) : []
+  const prefersReducedMotion = useReducedMotion() ?? false
 
   useEffect(() => {
     if (showSearchInChat && searchInputRef.current) {
@@ -244,30 +252,38 @@ export function ChatArea({
           </AnimatePresence>
 
           <ChatWindow messages={messages} />
+          <TypingIndicator users={typingUsers} prefersReducedMotion={prefersReducedMotion} />
           <MessageInput onSend={handleSendMessage} />
         </>
       ) : (
-        <div className="bg-(--bg-surface-hover)/(--opacity-soft) flex flex-1 flex-col items-center justify-center p-8 text-center">
+        <div className="messenger-empty-mesh flex flex-1 flex-col items-center justify-center p-8 text-center">
           <m.div
-            initial={{ scale: 0.8, opacity: 0 }}
+            initial={prefersReducedMotion ? false : { scale: 0.8, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
-            whileHover={{ rotate: 5, scale: 1.1 }}
-            className="mb-(--space-8) flex size-32 items-center justify-center rounded-2xl shadow-premium"
+            whileHover={prefersReducedMotion ? undefined : { rotate: 5, scale: 1.06 }}
+            transition={prefersReducedMotion ? { duration: 0 } : undefined}
+            className="messenger-card-matte mb-(--space-8) flex size-32 items-center justify-center"
             style={{
-              background: "linear-gradient(135deg, var(--msg-sidebar-hover), var(--msg-header-bg))",
-              border: "1px solid var(--msg-header-border)",
+              background: "var(--messenger-card-bg)",
             }}
           >
             <MessageSquare
-              className="size-16 text-msg-active"
+              className="size-16 text-(--color-violet-500)"
               style={{ opacity: "var(--opacity-strong)" }}
-              strokeWidth={1}
+              strokeWidth={1.5}
+              aria-hidden="true"
             />
           </m.div>
-          <h3 className="sf-pro text-xl font-bold text-(--text-primary)">
+          <h3
+            className="sf-pro font-bold text-(--text-primary)"
+            style={{ fontSize: "var(--fs-messenger-hero)" }}
+          >
             {t("messenger:selectChat", "Choose a conversation")}
           </h3>
-          <p className="mt-2 max-w-xs text-(--text-secondary)">
+          <p
+            className="mt-3 max-w-md text-(--text-secondary)"
+            style={{ fontSize: "var(--fs-messenger-subtitle)" }}
+          >
             {t("messenger:selectChatDesc", "Connect with anyone across the university ecosystem.")}
           </p>
         </div>
