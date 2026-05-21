@@ -1,0 +1,592 @@
+/* ═══════════════════════════════════════════════════════
+   @PROPERTY — smooth dark↔light transitions for animated vars
+   (Mirror of activity.css W84 + schedule.css W64 pattern)
+   ═══════════════════════════════════════════════════════ */
+@property --messenger-orb-1 {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: transparent;
+}
+@property --messenger-orb-2 {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: transparent;
+}
+@property --messenger-orb-3 {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: transparent;
+}
+@property --messenger-card-glow {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: transparent;
+}
+
+@layer base {
+  /* ═══════════════════════════════════════════════════════
+     MESSENGER PAGE TOKENS
+     Scoped under .messenger-theme — mirrors activity.css structure.
+     Violet/pink palette — premium direct messaging (Telegram/Discord/IG-DM coded).
+     Distinct from Dashboard (blue), News (sky), Events (amber), Activity (emerald),
+     Map (teal), Footer (blue gradient), Admin (indigo-primary slate).
+     Primary: violet-500 + Accent: pink-400 + Cool counterpoint: indigo-400.
+     ═══════════════════════════════════════════════════════ */
+  .messenger-theme {
+    /* ── Typography ─────────────────────────────────── */
+    --fs-messenger-hero: clamp(1.875rem, 3.2vw, 2.75rem);
+    --fs-messenger-subtitle: clamp(0.9375rem, 1vw, 1.125rem);
+    --fs-messenger-contact-name: clamp(0.9375rem, 1.2vw, 1.05rem);
+    --fs-messenger-bubble: clamp(0.9375rem, 1vw, 1rem);
+    --fs-messenger-meta: clamp(0.6875rem, 0.75vw, 0.75rem);
+
+    /* ── Orbs (violet/pink/indigo palette) ──────────── */
+    --messenger-hero-orb: color-mix(in srgb, var(--color-violet-400) 10%, transparent);
+    --messenger-hero-highlight: color-mix(in srgb, var(--color-pink-400) 7%, transparent);
+    --messenger-orb-1: color-mix(in srgb, var(--color-violet-400) 10%, transparent);
+    --messenger-orb-2: color-mix(in srgb, var(--color-pink-400) 8%, transparent);
+    --messenger-orb-3: color-mix(in srgb, var(--color-indigo-400) 6%, transparent);
+
+    /* ── Gradients & Flares ────────────────────────── */
+    --grad-messenger-conic: conic-gradient(
+      from 200deg at 50% 50%,
+      var(--messenger-orb-1),
+      var(--messenger-orb-2),
+      transparent 85%
+    );
+    --messenger-accent-line: linear-gradient(
+      to right,
+      transparent 10%,
+      var(--color-violet-400) 40%,
+      var(--color-pink-400) 70%,
+      transparent 90%
+    );
+
+    /* ── Matte card system ────────────────────────── */
+    --messenger-card-bg: color-mix(in srgb, var(--bg-surface) 96%, var(--color-indigo-50) 4%);
+    --messenger-card-shadow:
+      0 1px 2px color-mix(in srgb, black 5%, transparent),
+      0 4px 12px color-mix(in srgb, black 4%, transparent),
+      inset 0 1px 0 color-mix(in srgb, white 60%, transparent);
+    --messenger-card-shadow-hover:
+      0 2px 4px color-mix(in srgb, black 6%, transparent),
+      0 8px 24px color-mix(in srgb, black 5%, transparent),
+      inset 0 1px 0 color-mix(in srgb, white 70%, transparent);
+    --messenger-card-glow: color-mix(in srgb, var(--color-violet-400) 18%, transparent);
+
+    /* ── Active chat accent ───────────────────────── */
+    --messenger-active-accent: var(--color-violet-500);
+    --messenger-active-bg: color-mix(in srgb, var(--color-violet-400) 8%, var(--bg-surface));
+    --messenger-active-bg-strong: color-mix(
+      in srgb,
+      var(--color-violet-500) 14%,
+      var(--bg-surface)
+    );
+
+    /* ── Sent bubble (own messages) ───────────────── */
+    --messenger-bubble-sent-bg: linear-gradient(
+      135deg,
+      var(--color-violet-500) 0%,
+      var(--color-violet-400) 100%
+    );
+    --messenger-bubble-sent-shadow:
+      0 1px 2px color-mix(in srgb, var(--color-violet-500) 25%, transparent),
+      0 4px 12px color-mix(in srgb, var(--color-violet-500) 15%, transparent),
+      inset 0 1px 0 color-mix(in srgb, white 18%, transparent);
+
+    /* ── Received bubble (incoming) ───────────────── */
+    --messenger-bubble-received-bg: color-mix(
+      in srgb,
+      var(--bg-surface) 96%,
+      var(--color-violet-300) 4%
+    );
+    --messenger-bubble-received-shadow:
+      0 1px 2px color-mix(in srgb, black 6%, transparent),
+      0 2px 8px color-mix(in srgb, black 3%, transparent),
+      inset 0 1px 0 color-mix(in srgb, white 50%, transparent);
+
+    /* ── Typing indicator ─────────────────────────── */
+    --messenger-typing-bg: var(--messenger-bubble-received-bg);
+    --messenger-typing-dot-color: color-mix(
+      in srgb,
+      var(--color-violet-500) 60%,
+      var(--text-secondary)
+    );
+
+    /* ── Online indicator (semantic, not theme-tinted) ─ */
+    --messenger-online-color: var(--color-emerald-500);
+    --messenger-online-pulse: color-mix(in srgb, var(--color-emerald-500) 35%, transparent);
+
+    /* ── Send button ──────────────────────────────── */
+    --messenger-send-bg: linear-gradient(
+      135deg,
+      var(--color-violet-500) 0%,
+      var(--color-violet-400) 50%,
+      var(--color-pink-400) 100%
+    );
+    --messenger-send-shadow:
+      0 2px 6px color-mix(in srgb, var(--color-violet-500) 30%, transparent),
+      0 4px 14px color-mix(in srgb, var(--color-pink-400) 18%, transparent),
+      inset 0 1px 0 color-mix(in srgb, white 22%, transparent);
+    --messenger-send-shadow-hover:
+      0 3px 8px color-mix(in srgb, var(--color-violet-500) 38%, transparent),
+      0 6px 20px color-mix(in srgb, var(--color-pink-400) 25%, transparent),
+      inset 0 1px 0 color-mix(in srgb, white 28%, transparent);
+
+    /* ── Status badge (online/away/offline tints) ──── */
+    --messenger-status-online-bg: color-mix(
+      in srgb,
+      var(--color-emerald-400) 18%,
+      var(--bg-surface)
+    );
+    --messenger-status-online-text: var(--color-emerald-500);
+    --messenger-status-away-bg: color-mix(in srgb, var(--color-amber-400) 18%, var(--bg-surface));
+    --messenger-status-away-text: var(--color-amber-500);
+    --messenger-status-offline-bg: color-mix(
+      in srgb,
+      var(--color-slate-400) 16%,
+      var(--bg-surface)
+    );
+    --messenger-status-offline-text: var(--color-slate-500);
+
+    /* ── Skeleton placeholders ────────────────────── */
+    --messenger-skeleton-bg: color-mix(
+      in srgb,
+      var(--color-violet-300) 12%,
+      var(--color-slate-200) 88%
+    );
+
+    /* ── Featured mesh (empty state hero) ─────────── */
+    --messenger-featured-mesh:
+      radial-gradient(
+        ellipse at 30% 40%,
+        color-mix(in srgb, var(--color-violet-400) 8%, transparent) 0%,
+        transparent 60%
+      ),
+      radial-gradient(
+        ellipse at 70% 60%,
+        color-mix(in srgb, var(--color-pink-400) 6%, transparent) 0%,
+        transparent 50%
+      );
+
+    /* ── Avatar ring (for active/profile views) ───── */
+    --messenger-avatar-ring: color-mix(in srgb, var(--color-violet-400) 35%, transparent);
+  }
+
+  /* ── Dark Theme Overrides ──────────────────────── */
+  .dark .messenger-theme {
+    --messenger-hero-orb: color-mix(in srgb, var(--color-violet-400) 16%, transparent);
+    --messenger-hero-highlight: color-mix(in srgb, var(--color-pink-400) 11%, transparent);
+    --messenger-orb-1: color-mix(in srgb, var(--color-violet-400) 16%, transparent);
+    --messenger-orb-2: color-mix(in srgb, var(--color-pink-400) 12%, transparent);
+    --messenger-orb-3: color-mix(in srgb, var(--color-indigo-400) 10%, transparent);
+
+    --messenger-card-bg: color-mix(in srgb, var(--bg-surface) 95%, var(--color-indigo-950) 5%);
+    --messenger-card-shadow:
+      0 1px 2px color-mix(in srgb, black 20%, transparent),
+      0 4px 12px color-mix(in srgb, black 15%, transparent),
+      inset 0 1px 0 color-mix(in srgb, white 4%, transparent);
+    --messenger-card-shadow-hover:
+      0 2px 4px color-mix(in srgb, black 25%, transparent),
+      0 8px 24px color-mix(in srgb, black 20%, transparent),
+      inset 0 1px 0 color-mix(in srgb, white 5%, transparent);
+    --messenger-card-glow: color-mix(in srgb, var(--color-violet-400) 25%, transparent);
+
+    --messenger-accent-line: linear-gradient(
+      to right,
+      transparent 10%,
+      var(--color-violet-300) 40%,
+      var(--color-pink-400) 70%,
+      transparent 90%
+    );
+
+    --messenger-active-bg: color-mix(in srgb, var(--color-violet-500) 18%, var(--bg-surface));
+    --messenger-active-bg-strong: color-mix(
+      in srgb,
+      var(--color-violet-500) 28%,
+      var(--bg-surface)
+    );
+
+    --messenger-bubble-sent-shadow:
+      0 1px 2px color-mix(in srgb, var(--color-violet-500) 35%, transparent),
+      0 4px 14px color-mix(in srgb, var(--color-violet-500) 25%, transparent),
+      inset 0 1px 0 color-mix(in srgb, white 8%, transparent);
+
+    --messenger-bubble-received-bg: color-mix(
+      in srgb,
+      var(--bg-surface) 90%,
+      var(--color-violet-500) 10%
+    );
+    --messenger-bubble-received-shadow:
+      0 1px 2px color-mix(in srgb, black 25%, transparent),
+      0 2px 8px color-mix(in srgb, black 15%, transparent),
+      inset 0 1px 0 color-mix(in srgb, white 3%, transparent);
+
+    --messenger-typing-dot-color: color-mix(
+      in srgb,
+      var(--color-violet-300) 70%,
+      var(--text-secondary)
+    );
+
+    --messenger-online-color: var(--color-emerald-400);
+    --messenger-online-pulse: color-mix(in srgb, var(--color-emerald-400) 28%, transparent);
+
+    --messenger-status-online-bg: color-mix(
+      in srgb,
+      var(--color-emerald-400) 22%,
+      var(--bg-surface)
+    );
+    --messenger-status-online-text: var(--color-emerald-400);
+    --messenger-status-away-bg: color-mix(in srgb, var(--color-amber-400) 22%, var(--bg-surface));
+    --messenger-status-away-text: var(--color-amber-400);
+    --messenger-status-offline-bg: color-mix(
+      in srgb,
+      var(--color-slate-600) 30%,
+      var(--bg-surface)
+    );
+    --messenger-status-offline-text: var(--color-slate-400);
+
+    --messenger-skeleton-bg: color-mix(
+      in srgb,
+      var(--color-violet-500) 14%,
+      var(--color-slate-700) 86%
+    );
+
+    --messenger-featured-mesh:
+      radial-gradient(
+        ellipse at 30% 40%,
+        color-mix(in srgb, var(--color-violet-400) 14%, transparent) 0%,
+        transparent 60%
+      ),
+      radial-gradient(
+        ellipse at 70% 60%,
+        color-mix(in srgb, var(--color-pink-400) 11%, transparent) 0%,
+        transparent 50%
+      );
+
+    --messenger-avatar-ring: color-mix(in srgb, var(--color-violet-400) 45%, transparent);
+  }
+}
+
+/* ═══════════════════════════════════════════════════════
+   MATTE CARD
+   Shadow-based depth — no borders, no backdrop-blur.
+   Mirrors activity-card-matte structure with violet/pink accent.
+   ═══════════════════════════════════════════════════════ */
+
+.messenger-card-matte {
+  background: var(--messenger-card-bg);
+  box-shadow: var(--messenger-card-shadow);
+  border-radius: var(--radius-lg, 1rem);
+  overflow: clip;
+  position: relative;
+  transition:
+    transform var(--motion-duration-fast, 0.2s) var(--ease-premium, ease-out),
+    box-shadow var(--motion-duration-fast, 0.2s) var(--ease-premium, ease-out);
+}
+
+.messenger-card-matte::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 3px;
+  background: var(--messenger-accent-line);
+  opacity: 0.6;
+}
+
+.messenger-card-matte:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--messenger-card-shadow-hover);
+}
+
+.messenger-card-matte:active {
+  transform: translateY(0);
+}
+
+/* ═══════════════════════════════════════════════════════
+   ACTIVE CHAT CHIP — left accent stripe via ::before
+   For ContactList active row indicator.
+   ═══════════════════════════════════════════════════════ */
+
+.messenger-active-chip {
+  position: relative;
+  background: var(--messenger-active-bg);
+}
+
+.messenger-active-chip::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 8px;
+  bottom: 8px;
+  width: 4px;
+  background: var(--messenger-active-accent);
+  border-radius: 0 var(--radius-xs, 0.5rem) var(--radius-xs, 0.5rem) 0;
+}
+
+/* ═══════════════════════════════════════════════════════
+   SEND BUTTON — gradient violet→pink premium accent
+   ═══════════════════════════════════════════════════════ */
+
+.messenger-send-btn {
+  background: var(--messenger-send-bg);
+  box-shadow: var(--messenger-send-shadow);
+  border-radius: var(--radius-md, 1rem);
+  border: none;
+  color: var(--color-white);
+  transition:
+    transform var(--motion-duration-fast, 0.2s) var(--ease-premium, ease-out),
+    box-shadow var(--motion-duration-fast, 0.2s) var(--ease-premium, ease-out);
+}
+
+.messenger-send-btn:hover:not(:disabled) {
+  transform: translateY(-1px) scale(1.03);
+  box-shadow: var(--messenger-send-shadow-hover);
+}
+
+.messenger-send-btn:active:not(:disabled) {
+  transform: translateY(0) scale(0.98);
+}
+
+.messenger-send-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ═══════════════════════════════════════════════════════
+   STATUS BADGE — online/away/offline tints
+   ═══════════════════════════════════════════════════════ */
+
+.messenger-status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1, 0.25rem);
+  padding: var(--space-1, 0.25rem) var(--space-25, 0.625rem);
+  border-radius: 9999px;
+  font-size: var(--fs-xs, 0.75rem);
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.messenger-status-badge[data-status="online"] {
+  background: var(--messenger-status-online-bg);
+  color: var(--messenger-status-online-text);
+}
+
+.messenger-status-badge[data-status="away"] {
+  background: var(--messenger-status-away-bg);
+  color: var(--messenger-status-away-text);
+}
+
+.messenger-status-badge[data-status="offline"] {
+  background: var(--messenger-status-offline-bg);
+  color: var(--messenger-status-offline-text);
+}
+
+/* ═══════════════════════════════════════════════════════
+   TYPING INDICATOR — 3-dot pulsing
+   ═══════════════════════════════════════════════════════ */
+
+.messenger-typing {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1, 0.25rem);
+  padding: var(--space-2, 0.5rem) var(--space-3, 0.75rem);
+  background: var(--messenger-typing-bg);
+  box-shadow: var(--messenger-bubble-received-shadow);
+  border-radius: var(--radius-lg, 1.5rem);
+  border-bottom-left-radius: var(--radius-xs, 0.5rem);
+}
+
+.messenger-typing-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--messenger-typing-dot-color);
+  animation: messenger-typing-pulse var(--motion-duration-typing, 1.4s) ease-in-out infinite;
+}
+
+.messenger-typing-dot:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.messenger-typing-dot:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
+@keyframes messenger-typing-pulse {
+  0%,
+  60%,
+  100% {
+    opacity: 0.4;
+    transform: scale(0.85);
+  }
+  30% {
+    opacity: 1;
+    transform: scale(1.1);
+  }
+}
+
+/* ═══════════════════════════════════════════════════════
+   ONLINE PULSE — emerald dot for online presence
+   ═══════════════════════════════════════════════════════ */
+
+.messenger-online-pulse {
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--messenger-online-color);
+  box-shadow: 0 0 0 2px var(--bg-surface);
+}
+
+.messenger-online-pulse::after {
+  content: "";
+  position: absolute;
+  inset: -2px;
+  border-radius: 50%;
+  background: var(--messenger-online-pulse);
+  animation: messenger-online-pulse var(--motion-duration-pulse, 1.8s) ease-out infinite;
+}
+
+@keyframes messenger-online-pulse {
+  0% {
+    transform: scale(1);
+    opacity: 0.7;
+  }
+  100% {
+    transform: scale(2);
+    opacity: 0;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════
+   AVATAR RING — subtle violet glow for active/profile views
+   ═══════════════════════════════════════════════════════ */
+
+.messenger-avatar-ring {
+  box-shadow: 0 0 0 3px var(--messenger-avatar-ring);
+  transition: box-shadow var(--motion-duration-default, 0.35s) var(--ease-premium, ease-out);
+}
+
+/* ═══════════════════════════════════════════════════════
+   STAGGER ANIMATION (CSS-only — no Framer Motion)
+   Mirrors activity-stagger-item pattern with violet timing.
+   ═══════════════════════════════════════════════════════ */
+
+.messenger-stagger-item {
+  animation: messenger-contact-enter 0.4s var(--ease-premium, ease-out) both;
+  animation-delay: min(calc(var(--stagger-index, 0) * 60ms), 360ms);
+}
+
+@keyframes messenger-contact-enter {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+
+/* ═══════════════════════════════════════════════════════
+   @STARTING-STYLE (progressive enhancement, Tailwind v4 native)
+   ═══════════════════════════════════════════════════════ */
+
+@starting-style {
+  .messenger-stagger-item {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+
+/* ═══════════════════════════════════════════════════════
+   EMPTY STATE — featured mesh background
+   ═══════════════════════════════════════════════════════ */
+
+.messenger-empty-mesh {
+  background-image: var(--messenger-featured-mesh);
+  background-repeat: no-repeat;
+  background-size: cover;
+}
+
+/* ═══════════════════════════════════════════════════════
+   SKELETON SHIMMER
+   ═══════════════════════════════════════════════════════ */
+
+.messenger-skeleton {
+  background: var(--messenger-skeleton-bg);
+  background-image: linear-gradient(
+    90deg,
+    transparent 0%,
+    color-mix(in srgb, white 18%, transparent) 50%,
+    transparent 100%
+  );
+  background-size: 200% 100%;
+  animation: messenger-skeleton-shimmer var(--motion-duration-shimmer, 1.6s) ease-in-out infinite;
+  border-radius: var(--radius-sm, 0.75rem);
+}
+
+.dark .messenger-skeleton {
+  background-image: linear-gradient(
+    90deg,
+    transparent 0%,
+    color-mix(in srgb, white 6%, transparent) 50%,
+    transparent 100%
+  );
+}
+
+@keyframes messenger-skeleton-shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════
+   REDUCED MOTION
+   ═══════════════════════════════════════════════════════ */
+
+@media (prefers-reduced-motion: reduce) {
+  .messenger-card-matte:hover,
+  .messenger-send-btn:hover {
+    transform: none;
+  }
+  .messenger-stagger-item {
+    animation-duration: 0.01s;
+    animation-delay: 0s;
+  }
+  .messenger-typing-dot {
+    animation: none;
+    opacity: 0.8;
+  }
+  .messenger-online-pulse::after {
+    animation: none;
+    opacity: 0;
+  }
+  .messenger-skeleton {
+    animation: none;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════
+   PRINT (parity with activity/schedule/events/news)
+   Chat is rarely printed but include for parity + accessibility.
+   ═══════════════════════════════════════════════════════ */
+
+@media print {
+  .messenger-theme.messenger-theme {
+    background: white;
+    color: black;
+  }
+  .messenger-theme.messenger-theme [aria-hidden="true"]:not([role="img"]) {
+    display: none;
+  }
+  .messenger-card-matte.messenger-card-matte {
+    box-shadow: 0 0 0 1px var(--color-slate-200);
+    break-inside: avoid;
+  }
+  .messenger-send-btn.messenger-send-btn,
+  .messenger-typing.messenger-typing {
+    display: none;
+  }
+}

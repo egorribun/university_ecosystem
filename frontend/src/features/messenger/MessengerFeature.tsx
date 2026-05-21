@@ -67,7 +67,7 @@ export default function MessengerFeature() {
 
   return (
     <div
-      className="flex h-full overflow-hidden bg-msg-chat font-sans text-text-primary"
+      className="messenger-theme relative flex h-full overflow-hidden bg-msg-chat font-sans text-text-primary"
       style={{
         paddingBottom: isBottomNavVisible
           ? "calc(var(--bn-h, 4rem) + env(safe-area-inset-bottom, 0px) + var(--space-2))"
