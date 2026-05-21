@@ -67,6 +67,13 @@ const SSR_ROUTES = [
   "/settings",
   "/map",
   "/activity",
+  // Wave 180 SW3 — /messenger Phase 5 SSR enabled via `ssr: 'data-only'`
+  // (closes W134 §H#10; W161 SW2 by-design reversed). Includes Cache-Control:
+  // no-store, private, max-age=0 + Vary: Cookie privacy posture via
+  // augmentResponseForMessenger in server.ts. Detail route messenger.$chatId
+  // not in this list (would need seeded chatId; list view is sufficient for
+  // hydration-error smoke).
+  "/messenger",
 ]
 
 function safeFilename(routePath) {
@@ -327,9 +334,20 @@ async function smokeRoute(page, routePath, outDir) {
   )
 
   const errors = consoleMessages.filter((m) => m.type === "error" || m.type === "pageerror")
+  // Wave 180 polish-v1 — extends filter to catch minified React #418-#427
+  // family (W167 SW1 pattern applied to wave137; closes W166 (z) #2 class
+  // bug present here too — pre-fix filter only matched "hydrat" / "Hydration"
+  // / "did not match" substrings but NOT the minified "Minified React error
+  // #418" text emitted by production bundles). Without this regex, wave137
+  // returned `hydr_err=0` for routes that ACTUALLY had React #418 firing
+  // (verified W180 polish-v1 sidecar inspection: /messenger + /map +
+  // /activity all had React #418 in consoleMessages but were filtered out).
   const hydrationErrors = consoleMessages.filter(
     (m) =>
-      m.text.includes("hydrat") || m.text.includes("Hydration") || m.text.includes("did not match")
+      m.text.includes("hydrat") ||
+      m.text.includes("Hydration") ||
+      m.text.includes("did not match") ||
+      /Minified React error #(418|419|420|421|422|423|424|425|426|427)/.test(m.text)
   )
 
   // Detect "redirected to /login" pattern
