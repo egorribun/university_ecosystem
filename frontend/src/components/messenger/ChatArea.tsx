@@ -284,15 +284,29 @@ export function ChatArea({
               aria-hidden="true"
             />
           </m.div>
+          {/* W181 SW6 polish: title + subtitle use explicit inline width so
+              the flex-col items-center parent doesn't shrink them to content.
+              Tailwind `w-full max-w-2xl` should work but empirically resolved
+              to 48px in v4 Rolldown — likely a `flex` short-utility + width
+              utility precedence quirk. Inline style sidesteps the utility
+              resolution entirely. */}
           <h3
             className="sf-pro font-bold text-(--text-primary)"
-            style={{ fontSize: "var(--fs-messenger-hero)" }}
+            style={{
+              fontSize: "var(--fs-messenger-hero)",
+              maxWidth: "42rem",
+              width: "100%",
+            }}
           >
             {t("messenger:selectChat", "Choose a conversation")}
           </h3>
           <p
-            className="mt-3 max-w-md text-(--text-secondary)"
-            style={{ fontSize: "var(--fs-messenger-subtitle)" }}
+            className="mt-3 text-(--text-secondary)"
+            style={{
+              fontSize: "var(--fs-messenger-subtitle)",
+              maxWidth: "32rem",
+              width: "100%",
+            }}
           >
             {t("messenger:selectChatDesc", "Connect with anyone across the university ecosystem.")}
           </p>

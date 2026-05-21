@@ -175,13 +175,22 @@
 
   /* ── Dark Theme Overrides ──────────────────────── */
   .dark .messenger-theme {
-    --messenger-hero-orb: color-mix(in srgb, var(--color-violet-400) 16%, transparent);
-    --messenger-hero-highlight: color-mix(in srgb, var(--color-pink-400) 11%, transparent);
-    --messenger-orb-1: color-mix(in srgb, var(--color-violet-400) 16%, transparent);
-    --messenger-orb-2: color-mix(in srgb, var(--color-pink-400) 12%, transparent);
-    --messenger-orb-3: color-mix(in srgb, var(--color-indigo-400) 10%, transparent);
+    /* W181 SW6 polish: orb opacities bumped from light-mode ratio.
+       bg-msg-chat in dark = var(--color-slate-950) ≈ #020617 (near-black),
+       so orbs need ~2× the light-mode opacity to register at all against
+       that surface. Empirical chrome-devtools-mcp screenshot showed
+       12-16% orbs were invisible. Bumped to 22/18/15%. */
+    --messenger-hero-orb: color-mix(in srgb, var(--color-violet-400) 22%, transparent);
+    --messenger-hero-highlight: color-mix(in srgb, var(--color-pink-400) 16%, transparent);
+    --messenger-orb-1: color-mix(in srgb, var(--color-violet-400) 22%, transparent);
+    --messenger-orb-2: color-mix(in srgb, var(--color-pink-400) 18%, transparent);
+    --messenger-orb-3: color-mix(in srgb, var(--color-indigo-400) 15%, transparent);
 
-    --messenger-card-bg: color-mix(in srgb, var(--bg-surface) 95%, var(--color-indigo-950) 5%);
+    /* W181 SW6 polish: matte card bg was indistinguishable from bg-msg-chat
+       in dark mode (both near-black). Bumped from 5% indigo-950 mix to 12%
+       violet-500 mix → matte card now reads as elevated surface above
+       the near-black chat area. */
+    --messenger-card-bg: color-mix(in srgb, var(--bg-surface) 88%, var(--color-violet-500) 12%);
     --messenger-card-shadow:
       0 1px 2px color-mix(in srgb, black 20%, transparent),
       0 4px 12px color-mix(in srgb, black 15%, transparent),
