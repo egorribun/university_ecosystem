@@ -159,9 +159,33 @@ export function ContactList({
             style={{ "--stagger-index": Math.min(index, 6) } as React.CSSProperties}
             onClick={() => onSelect(contact.id)}
             onKeyDown={(event) => {
+              // Wave 183 SW4 — added Arrow Up/Down + Home/End keyboard nav
+              // (WCAG 2.1.1 Keyboard + ARIA APG navigation widget pattern).
+              // Pre-W183 only Enter/Space worked; users had to Tab through
+              // contacts to navigate. No wrap-around (matches Slack/Discord
+              // UX where Home/End jump to extremes deliberately).
               if (event.key === "Enter" || event.key === " ") {
                 event.preventDefault()
                 onSelect(contact.id)
+                return
+              }
+              if (
+                event.key === "ArrowDown" ||
+                event.key === "ArrowUp" ||
+                event.key === "Home" ||
+                event.key === "End"
+              ) {
+                event.preventDefault()
+                let targetIndex = index
+                if (event.key === "ArrowDown")
+                  targetIndex = Math.min(index + 1, contacts.length - 1)
+                else if (event.key === "ArrowUp") targetIndex = Math.max(index - 1, 0)
+                else if (event.key === "Home") targetIndex = 0
+                else if (event.key === "End") targetIndex = contacts.length - 1
+                const target = contacts[targetIndex]
+                if (target) {
+                  document.getElementById(`messenger-contact-${target.id}`)?.focus()
+                }
               }
             }}
             whileHover={hoverAnim}

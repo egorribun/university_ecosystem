@@ -133,13 +133,21 @@ export const MessageInput: React.FC<MessageInputProps> = ({ onSend }) => {
                   <FileText size={32} />
                 </div>
               )}
+              {/* Wave 183 SW4 — bumped touch target 24×24px → 32×32px visual
+                  with 44×44px hit area via `::after { inset: -6px }` (matches
+                  W111 CQ-111-04 pattern for visually-small interactive
+                  controls). WCAG 2.5.8 Target Size (Enhanced) requires ≥44px
+                  for AAA OR ≥24px for AA + sufficient spacing — 32px visual
+                  with 44px effective hit area satisfies both. The before
+                  bumped also moves the X icon slightly inward (size 12 →
+                  14) for better visual proportion. */}
               <button
                 type="button"
                 onClick={() => removeFile(id)}
-                className="absolute -top-1.5 -right-1.5 min-h-[24px] min-w-[24px] bg-(--error-text) text-[var(--text-inverse)] rounded-full p-1 shadow-lg hover:bg-(--error-text)/(--opacity-hover) transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-violet-500) focus-visible:ring-offset-2 focus-visible:ring-offset-(--bg-surface)"
+                className="absolute -top-1.5 -right-1.5 size-8 bg-(--error-text) text-[var(--text-inverse)] rounded-full flex items-center justify-center shadow-lg hover:bg-(--error-text)/(--opacity-hover) transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-violet-500) focus-visible:ring-offset-2 focus-visible:ring-offset-(--bg-surface) after:absolute after:inset-[-6px] after:content-['']"
                 aria-label={t("messenger:aria.removeAttachment")}
               >
-                <X size={12} strokeWidth={3} />
+                <X size={14} strokeWidth={3} aria-hidden="true" />
               </button>
             </div>
           ))}
@@ -221,12 +229,18 @@ export const MessageInput: React.FC<MessageInputProps> = ({ onSend }) => {
 
           <input ref={fileInputRef} type="file" className="hidden" onChange={handleFileSelect} />
         </div>
+        {/* Wave 183 SW4 — added explicit aria-label. Placeholder alone is
+            insufficient for screen-reader announcement (A11Y-114-04 pattern;
+            placeholder text disappears on focus + many SR engines treat it
+            as supplementary not primary label). Matches W116 SW3 pattern
+            for all textareas in messenger. */}
         <textarea
           id="chat-message-input"
           value={text}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={handleKeyDown}
           placeholder={t("messenger:typeMessage")}
+          aria-label={t("messenger:typeMessage")}
           className="flex-1 bg-transparent border-none focus:ring-0 outline-none resize-none max-h-48 py-2 md:py-2.5 px-1 text-base text-text-primary placeholder:text-(--text-secondary) placeholder:opacity-medium"
           rows={1}
         />

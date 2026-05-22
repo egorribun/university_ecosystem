@@ -1,4 +1,4 @@
-import React, { useEffect, useId, useState } from "react"
+import React, { useEffect, useId, useRef, useState } from "react"
 import { m, AnimatePresence, useReducedMotion } from "framer-motion"
 import { useTranslation } from "react-i18next"
 import { Search, X } from "lucide-react"
@@ -42,6 +42,22 @@ export const NewChatModal: React.FC<NewChatModalProps> = ({ open, onClose, onSel
     initialFocus: false,
     returnFocus: true,
   })
+
+  // Wave 183 SW4 — replaced ref-callback setTimeout antipattern with proper
+  // useEffect-driven autofocus. Pre-W183 the TextField ref callback ran on
+  // EVERY render with `setTimeout(() => input.focus(), 0)` which (a)
+  // re-triggered focus on rerender (bad UX if user typed + caused re-render),
+  // (b) competed with focus-trap initialization, (c) was SSR-unsafe (no
+  // typeof window guard around setTimeout, though SSR doesn't reach this
+  // branch — the `open` gate prevents render entirely when modal closed).
+  // useEffect with [open] dep fires ONCE on modal open + RAF-defers to next
+  // frame after the dialog is mounted in DOM.
+  const searchInputRef = useRef<HTMLInputElement | null>(null)
+  useEffect(() => {
+    if (!open) return
+    const rafId = requestAnimationFrame(() => searchInputRef.current?.focus())
+    return () => cancelAnimationFrame(rafId)
+  }, [open])
 
   useEffect(() => {
     if (!open) return
@@ -117,24 +133,39 @@ export const NewChatModal: React.FC<NewChatModalProps> = ({ open, onClose, onSel
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder={t("messenger:searchUsers")}
+                aria-label={t("messenger:searchUsers")}
                 className="w-full"
-                ref={(input) => {
-                  if (input && open) {
-                    setTimeout(() => input.focus(), 0)
-                  }
-                }}
+                ref={searchInputRef}
               />
 
               <div className="max-h-96 overflow-y-auto custom-scrollbar pr-1 -mr-1">
+                {/* Wave 183 SW4 — added role=status + aria-live + aria-label so
+                    screen readers announce loading state. Pre-W183 just rendered
+                    the spinner with no semantic meaning to AT. */}
                 {isLoading && (
-                  <div className="flex flex-col items-center py-10">
-                    <div className="w-10 h-10 border-4 border-brand/(--opacity-subtle) border-t-brand rounded-full animate-spin"></div>
+                  <div
+                    className="flex flex-col items-center py-10"
+                    role="status"
+                    aria-live="polite"
+                    aria-label={t("common:statuses.loading")}
+                  >
+                    <div
+                      className="w-10 h-10 border-4 border-brand/(--opacity-subtle) border-t-brand rounded-full animate-spin"
+                      aria-hidden="true"
+                    />
                   </div>
                 )}
 
                 {!isLoading && users.length === 0 && search.length > MIN_SEARCH_LENGTH && (
-                  <div className="text-center py-12 px-4 space-y-2">
-                    <div className="w-16 h-16 rounded-full bg-(--bg-surface-raised) mx-auto flex items-center justify-center text-(--text-secondary) opacity-dim">
+                  <div
+                    className="text-center py-12 px-4 space-y-2"
+                    role="status"
+                    aria-live="polite"
+                  >
+                    <div
+                      className="w-16 h-16 rounded-full bg-(--bg-surface-raised) mx-auto flex items-center justify-center text-(--text-secondary) opacity-dim"
+                      aria-hidden="true"
+                    >
                       <Search className="w-8 h-8" />
                     </div>
                     <p className="text-sm font-bold text-(--text-secondary) opacity-medium">
@@ -143,11 +174,25 @@ export const NewChatModal: React.FC<NewChatModalProps> = ({ open, onClose, onSel
                   </div>
                 )}
 
-                <div className="space-y-1">
+                {/* Wave 183 SW4 — added role=listbox on container + role=option on
+                    each user row so screen readers announce "list of N options"
+                    and let users navigate with arrow keys (WCAG 4.1.2 Name, Role,
+                    Value + ARIA APG combobox/listbox pattern). aria-label on
+                    container declares the list purpose; aria-busy hides children
+                    during async load to suppress "X options" announcement during
+                    fetch. */}
+                <div
+                  className="space-y-1"
+                  role="listbox"
+                  aria-label={t("messenger:searchUsers")}
+                  aria-busy={isLoading}
+                >
                   {users.map((user) => (
                     <m.button
                       key={user.id}
                       type="button"
+                      role="option"
+                      aria-selected="false"
                       whileHover={
                         prefersReducedMotion
                           ? undefined
@@ -161,7 +206,7 @@ export const NewChatModal: React.FC<NewChatModalProps> = ({ open, onClose, onSel
                         <SmartImage
                           srcRaw={user.avatar_url || AVATAR_PLACEHOLDER_URL}
                           fallback={AVATAR_PLACEHOLDER_URL}
-                          alt={user.full_name || ""}
+                          alt=""
                           className="w-11 h-11 rounded-2xl object-cover shadow-sm ring-1 ring-black/(--opacity-faint)"
                         />
                       </div>

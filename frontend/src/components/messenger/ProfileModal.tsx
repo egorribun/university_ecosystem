@@ -66,20 +66,34 @@ export function ProfileModal({ user, loading, error, onClose }: ProfileModalProp
             animate={{ scale: 1, opacity: 1, y: 0 }}
             exit={prefersReducedMotion ? { opacity: 0 } : { scale: 0.92, opacity: 0, y: 20 }}
             transition={prefersReducedMotion ? { duration: 0 } : undefined}
-            className="messenger-card-matte z-modal w-full max-w-[32rem]"
+            className="messenger-card-matte z-modal w-full max-w-[32rem] sm:max-w-[28rem] md:max-w-[32rem]"
             onClick={(event) => event.stopPropagation()}
           >
-            <div className="flex items-center justify-between border-b border-msg-border p-6 pb-4">
+            {/* Wave 183 SW4 — border-msg-border (undefined token) →
+                border-(--glass-border)/(--opacity-subtle) (verified existing
+                token in semantics.css). Pre-W183 the bare `border-msg-border`
+                class produced NO border (CSS variable `--msg-border` doesn't
+                exist), making the header→body separator invisible. */}
+            <div className="flex items-center justify-between border-b border-(--glass-border)/(--opacity-subtle) p-6 pb-4">
               <h3 id={titleId} className="sf-pro text-xl font-bold tracking-tight">
                 {user?.full_name || t("messenger:profile")}
               </h3>
+              {/* Wave 183 SW4 — removed `rotate: 90` from whileHover.
+                  Rotation animations on icon buttons are disorienting for
+                  users with vestibular sensitivities (WCAG 2.3.3 Level AAA
+                  + axe-core accessibility heuristics). useReducedMotion guard
+                  already prevented the rotation under OS preference, but the
+                  rotation still fired for default-preference users. Scale
+                  alone provides sufficient affordance. Also fixed invalid
+                  Tailwind class `hover:bg-surface-hover` →
+                  `hover:bg-(--bg-surface-hover)/(--opacity-medium)`. */}
               <m.button
                 type="button"
-                whileHover={prefersReducedMotion ? undefined : { rotate: 90, scale: 1.08 }}
+                whileHover={prefersReducedMotion ? undefined : { scale: 1.08 }}
                 whileTap={prefersReducedMotion ? undefined : { scale: 0.92 }}
                 onClick={onClose}
                 aria-label={t("common:buttons.close")}
-                className="min-h-[44px] min-w-[44px] rounded-full p-2 flex items-center justify-center transition-colors hover:bg-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-violet-500) focus-visible:ring-offset-2 focus-visible:ring-offset-(--bg-surface)"
+                className="min-h-[44px] min-w-[44px] rounded-full p-2 flex items-center justify-center transition-colors hover:bg-(--bg-surface-hover)/(--opacity-medium) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-violet-500) focus-visible:ring-offset-2 focus-visible:ring-offset-(--bg-surface)"
               >
                 <X className="h-5 w-5" aria-hidden="true" />
               </m.button>
