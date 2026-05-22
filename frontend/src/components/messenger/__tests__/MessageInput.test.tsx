@@ -21,8 +21,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
  *  - Send button disabled when no text + no files.
  */
 
-const createObjectURLSpy = vi.fn<[Blob | MediaSource], string>()
-const revokeObjectURLSpy = vi.fn<[string], void>()
+const createObjectURLSpy = vi.fn<(obj: Blob | MediaSource) => string>()
+const revokeObjectURLSpy = vi.fn<(url: string) => void>()
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({

@@ -47,8 +47,8 @@ const mocks = vi.hoisted(() => ({
   apiClient: {
     get: vi.fn(),
   },
-  createObjectURL: vi.fn<[Blob | MediaSource], string>(),
-  revokeObjectURL: vi.fn<[string], void>(),
+  createObjectURL: vi.fn<(obj: Blob | MediaSource) => string>(),
+  revokeObjectURL: vi.fn<(url: string) => void>(),
 }))
 
 vi.mock("@/api/chat", () => ({
