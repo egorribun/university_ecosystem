@@ -226,10 +226,11 @@ export function ChatArea({
                             <button
                               id={`chat-action-${item.id}`}
                               key={item.id}
+                              type="button"
                               onClick={item.action}
-                              className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-text-primary transition-colors hover:bg-bg-surface-hover"
+                              className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-text-primary transition-colors hover:bg-(--bg-surface-hover)/(--opacity-medium) focus-visible:outline-none focus-visible:bg-(--bg-surface-hover)/(--opacity-medium) focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-(--color-violet-500)"
                             >
-                              <item.icon className={`h-5 w-5 ${item.color}`} />
+                              <item.icon className={`h-5 w-5 ${item.color}`} aria-hidden="true" />
                               <span className="text-sm font-medium">{item.label}</span>
                             </button>
                           ))}
@@ -248,14 +249,16 @@ export function ChatArea({
                 className="header-glass z-deep flex h-(--navbar-h-base) shrink-0 items-center border-b border-glass-border bg-surface/(--opacity-medium) px-(--spacing-4) backdrop-blur-xl"
               >
                 <m.button
-                  whileTap={{ scale: 0.9 }}
+                  type="button"
+                  whileTap={prefersReducedMotion ? undefined : { scale: 0.9 }}
                   onClick={() => {
                     setShowSearchInChat(false)
                     setSearchQuery("")
                   }}
-                  className="mr-3 rounded-full p-1.5 transition-colors hover:bg-bg-surface-hover"
+                  className="mr-3 flex min-h-[44px] min-w-[44px] items-center justify-center rounded-full transition-colors hover:bg-(--bg-surface-hover)/(--opacity-medium) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-violet-500)"
+                  aria-label={t("common:buttons.close")}
                 >
-                  <X className="h-6 w-6" strokeWidth={2} />
+                  <X className="h-6 w-6" strokeWidth={2} aria-hidden="true" />
                 </m.button>
                 <input
                   id="chat-search-input"
@@ -267,7 +270,8 @@ export function ChatArea({
                   autoCorrect="off"
                   spellCheck="false"
                   placeholder={t("messenger:searchMessages")}
-                  className="text-md flex-1 rounded-md border-none bg-black/(--opacity-subtle) px-4 py-2.5 outline-none transition-all focus:ring-2 focus:ring-brand-main/(--opacity-medium) dark:bg-white/(--opacity-subtle)"
+                  aria-label={t("messenger:searchMessages")}
+                  className="matte-input text-md flex-1 rounded-md border-none px-4 py-2.5 outline-none transition-all focus-visible:ring-2 focus-visible:ring-(--color-violet-500)/(--opacity-medium)"
                 />
               </m.div>
             )}
@@ -278,19 +282,41 @@ export function ChatArea({
           <MessageInput onSend={handleSendMessage} />
         </>
       ) : (
-        <div className="messenger-empty-mesh flex flex-1 flex-col items-center justify-center p-8 text-center">
+        <div
+          className="messenger-empty-mesh relative flex flex-1 flex-col items-center justify-center overflow-hidden px-8 pt-12 pb-16 text-center"
+          role="status"
+          aria-label={t("messenger:selectChat")}
+        >
+          {/* Wave 183 SW2 — decorative ambient orb behind icon. Uses the
+              same --messenger-orb-1 token as MessengerBackdrop (violet
+              tint at 10%/22% in light/dark) but at a smaller scale (~520px)
+              and tighter blur to add visual weight under the icon without
+              competing with MessengerBackdrop's full-viewport orbs. Pure
+              CSS, pointer-events:none, aria-hidden. */}
+          <div
+            aria-hidden="true"
+            className="pointer-events-none absolute left-1/2 top-1/2 -z-1 size-[520px] -translate-x-1/2 -translate-y-[55%] rounded-full"
+            style={{
+              background: "radial-gradient(circle, var(--messenger-orb-1) 0%, transparent 65%)",
+              filter: "blur(50px)",
+            }}
+          />
           <m.div
-            initial={prefersReducedMotion ? false : { scale: 0.8, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
-            whileHover={prefersReducedMotion ? undefined : { rotate: 5, scale: 1.06 }}
-            transition={prefersReducedMotion ? { duration: 0 } : undefined}
-            className="messenger-card-matte mb-(--space-8) flex size-32 items-center justify-center"
+            initial={prefersReducedMotion ? false : { scale: 0.85, opacity: 0, y: 8 }}
+            animate={{ scale: 1, opacity: 1, y: 0 }}
+            whileHover={prefersReducedMotion ? undefined : { rotate: 3, scale: 1.05 }}
+            transition={
+              prefersReducedMotion
+                ? { duration: 0 }
+                : { duration: 0.6, ease: [0.22, 1, 0.36, 1] as const }
+            }
+            className="messenger-card-matte relative mb-7 flex size-40 items-center justify-center"
             style={{
               background: "var(--messenger-card-bg)",
             }}
           >
             <MessageSquare
-              className="size-16 text-(--color-violet-500)"
+              className="size-20 text-(--color-violet-500)"
               style={{ opacity: "var(--opacity-strong)" }}
               strokeWidth={1.5}
               aria-hidden="true"
@@ -301,27 +327,21 @@ export function ChatArea({
               `flex flex-col items-center` parent, the cross-axis is
               horizontal. `align-items: center` (the default behavior of
               `items-center`) makes children shrink to intrinsic content
-              width unless they explicitly opt out via `align-self`. The
-              `w-full` Tailwind utility produces `width: 100%`, but a child
-              with `align-self: auto` (inheriting `items-center`) doesn't
-              "fill" the cross-axis — `width: 100%` resolves against the
-              already-shrunk intrinsic content box, hence the empirical
-              48px. Fix: `self-stretch` overrides to `align-self: stretch`
-              so the child fills the cross-axis; `max-w-2xl` caps render
-              width at 42rem; `mx-auto` (margin-inline: auto) centers the
-              capped element within the parent's allocated cross-axis space.
-              Cross-page audit (W182 SW3) examined 4 candidates
-              (EventsEmptyState, LoadingState, ProfileModal, NewChatModal):
-              none reproduce the same `w-full + max-w-N` child pattern, so
-              the bug is specific to this empty-state structure. */}
+              width unless they explicitly opt out via `align-self`. Fix:
+              `self-stretch` overrides to `align-self: stretch` so the
+              child fills the cross-axis; `max-w-2xl` caps render width at
+              42rem; `mx-auto` centers the capped element within the parent.
+              Cross-page audit (W182 SW3) examined 4 candidates: none
+              reproduce the same `w-full + max-w-N` child pattern, so the
+              bug is specific to this empty-state structure. */}
           <h3
-            className="sf-pro self-stretch text-center font-bold text-(--text-primary) max-w-[42rem] mx-auto"
+            className="sf-pro mx-auto max-w-[42rem] self-stretch text-center font-bold text-(--text-primary)"
             style={{ fontSize: "var(--fs-messenger-hero)" }}
           >
             {t("messenger:selectChat")}
           </h3>
           <p
-            className="mt-3 self-stretch text-center text-(--text-secondary) max-w-[32rem] mx-auto"
+            className="mx-auto mt-3 max-w-[32rem] self-stretch text-center text-(--text-secondary)"
             style={{ fontSize: "var(--fs-messenger-subtitle)" }}
           >
             {t("messenger:selectChatDesc")}
