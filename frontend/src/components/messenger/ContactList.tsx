@@ -1,4 +1,5 @@
 import { m, useReducedMotion } from "framer-motion"
+import { useTranslation } from "react-i18next"
 import { cn } from "@/utils/cn"
 import SmartImage from "@/components/media/SmartImage"
 import { AVATAR_PLACEHOLDER_URL } from "@/constants/placeholders"
@@ -33,6 +34,7 @@ interface ContactListProps {
 // - focus-visible ring on keyboard nav (WCAG 2.4.7).
 // - aria-current="true" on selected row for screen-reader awareness.
 export function ContactList({ contacts, selectedId, onSelect }: ContactListProps) {
+  const { t } = useTranslation(["messenger"])
   const prefersReducedMotion = useReducedMotion() ?? false
   const hoverAnim = prefersReducedMotion ? undefined : { x: 4 }
   const tapAnim = prefersReducedMotion ? undefined : { scale: 0.98 }
@@ -99,7 +101,7 @@ export function ContactList({ contacts, selectedId, onSelect }: ContactListProps
                     animate={{ scale: 1 }}
                     transition={prefersReducedMotion ? { duration: 0 } : undefined}
                     className="messenger-unread-badge min-w-5 h-5 px-1 rounded-full text-label-xs flex items-center justify-center"
-                    aria-label={`${contact.unread} unread`}
+                    aria-label={t("messenger:aria.unread", { count: contact.unread })}
                   >
                     {contact.unread > 99 ? "99+" : contact.unread}
                   </m.span>

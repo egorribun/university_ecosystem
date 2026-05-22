@@ -154,7 +154,7 @@ W181 gap items fully closed empirically:
 - **#7 (sent/received bubble + status icon text-inverse)** — bubble CSS rules verified at SW4 step 8 DOM injection probe (5 rules render with correct W181 SW1 tokens)
 - **#8 (axe-core a11y scan on /messenger)** — SW5 a11y-messenger.spec.ts 2/2 chromium passing × light + dark
 - **#9 (wave179-login-flow e2e re-run)** — SW5 3/3 chromium passing under URL_STATE_E2E=true
-- **#10 (CI Matrix Expansion verify)** — pre-flight HEAD `ef5dea285` ALL SUCCESS; SW7 push triggers fresh CI run, final closure in SW7 post-completion
+- **#10 (CI Matrix Expansion verify)** — **FULLY CLOSED at polish-v1 (2026-05-22 post-«безупречно?» probe)**: `gh run list --branch=egorribun --limit=12` for HEAD `7045a0532` (W182 SW7 audit commit) returned ALL 7 SUCCESS + 1 skipped (Auto-merge dependabot expected): Go Lint & SBOM SUCCESS + Dependency Review SUCCESS + DB Performance Gate SUCCESS + Generate OpenAPI Spec SUCCESS + Contract Validation SUCCESS + Chromatic SUCCESS + **CI - Matrix Expansion SUCCESS**. Pre-flight HEAD `ef5dea285` (W181 SW6) ALL SUCCESS preserved baseline.
 - **#11 (Tailwind v4 root-cause investigation)** — SW3 structural fix + Gotcha documentation + SW4 empirical verification (h3 offsetWidth 672px vs 48px)
 - **#12 (MEMORY.md compaction)** — SW6 24,364 → 22,668 b (-1.7 KB; 1,732 b headroom)
 - **#13 (.screenshots/ cleanup)** — SW6 10 intermediates deleted, 2 finals kept
@@ -187,9 +187,17 @@ W182 audit-driven closures (NEW beyond gap list):
 
 ### §Honesty trajectory
 
-Pre-W182: 0-2 OPEN (W181 NEW caveats #1 Tailwind v4 quirk + #2 visual smoke via VITE_LHCI bypass only). Post-W182: **0-3 OPEN** (close W181 NEW #1 fully via SW3 structural fix; carry forward W181 NEW #2 partial — SW4 closed 4 of 7 visual gap items; 5 NEW W182 caveats honestly framed: 1+2 are scope-deferrals consistent with W181 NEW #2; 3 is verification-mode-narrowed; 4 is documentation finding; 5 is bundle-delta recording-only).
+Pre-W182: 0-2 OPEN (W181 NEW caveats #1 Tailwind v4 quirk + #2 visual smoke via VITE_LHCI bypass only). Post-W182 (pre-polish-v1): 0-3 OPEN. **Post-polish-v1 (after «безупречно?» self-audit + 4 closures): 0-3 OPEN** (count unchanged — close polish-v1 (z) #1 ContactList aria-label i18n bug + close gap #10 CI Matrix fully + close polish gaps #4+#5+#6 narrative tightening; carry forward W181 NEW #2 partial — SW4 closed 4 of 7 visual gap items + 6 honestly deferred to Docker chain; 3 NEW W182 visually-deferrable caveats still carry; W182 documentation findings updated honestly).
 
-Net trajectory honest framing: 0-2 → 0-3 OPEN. Some movement is real closure (SW3 + SW4 + SW5 + SW6 verified empirically), some is honest documentation of scope that always required Docker chain.
+**Polish-v1 closures (post «безупречно?» probe, 2026-05-22)**:
+- ✅ ContactList.tsx:102 aria-label i18n fix (CRITICAL recursive bug — W182 SW1 introduced + SW6 audit missed; closes via `t("messenger:aria.unread", { count })`)
+- ✅ Gap #10 CI Matrix Expansion FULLY CLOSED — SW7 HEAD `7045a0532` ALL 7 SUCCESS + Matrix SUCCESS
+- ✅ Extended i18n purity audit (template-literal form) — 0 matches post-fix
+- ✅ W181 Gotcha count empirically recalibrated — **3 explicit W181 SW entries** in CLAUDE.md ## Gotchas (W181 SW6 audit's "6 NEW" + W181 SW6 row's "4 NEW" both over-stated; W181 polish-v1 entry was REPLACED in W182 SW3, so post-W182 count is 3 strict + 1 replacement-narrative)
+- ✅ Cargo.lock no-drift verified empirically (`git status --short frontend/rust-crypto/` returns empty)
+- ✅ prettier --check empirically run ("All matched files use Prettier code style!")
+
+Net trajectory honest framing: 0-2 → 0-3 OPEN. Polish-v1 NET-ZERO range change because no new caveats opened; gap closures tightened narrative without introducing new deferrals. Per W141 anti-pattern #4 (closures attributed AFTER empirical evidence) + `feedback_perfectionism.md` («безупречно?» = honest self-audit, not flattery).
 
 ## Bundle invariant
 
@@ -222,6 +230,8 @@ Tree-shake invariant ✓ (0 `lhci-mock-user` references in PROD assets per W116 
 - **0 NEW (z) discoveries from W182 SW execution proper** — extends W145-W181 streak. The CRITICAL undefined-class bug surfaced by Phase 1 deep code audit IS the main W182 finding, but it's a W181 carry-forward bug (introduced W181 SW3 component refactors without orphan-CSS-rule check), not a W182 (z) class.
 
 - The bubble CSS rule audit-claim correction (Agent 1 said 3 classes, Phase 3 found 6) is a W141 #3 vindication, not a (z).
+
+- **Polish-v1 (z) #1 — i18n template-literal blind spot**: SW6 i18n purity audit grep `aria-label="[A-Z|А-Я]..."` covered only the literal-double-quote form, BUT my own W182 SW1 introduced `aria-label={\`${contact.unread} unread\`}` template-literal form at ContactList.tsx:102 (added `aria.unread` i18n key in SW2 but never wired it to the component). The SW6 audit claim "0 raw English strings" was technically TRUE for the grep pattern, but FALSE for the actual coverage — template-literal form bypassed the audit. Recursive finding: the audit pattern itself was incomplete. Closed in polish-v1: extended grep to `aria-label={\`|aria-label="[A-Za-z]|placeholder={\`|placeholder="[A-Za-z]|alt={\`|alt="[A-Za-z]` returns 0 matches post-fix (ContactList.tsx:102 now uses `t("messenger:aria.unread", { count: contact.unread })`). W141 anti-pattern #3 71st-class vindication — audit grep patterns must cover ALL forms, not just the canonical literal.
 
 ## N+3 rotation
 
