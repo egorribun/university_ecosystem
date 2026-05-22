@@ -1,10 +1,12 @@
 import { ChatArea, MessengerBackdrop, MessengerSidebar, NewChatModal } from "@/components/messenger"
 import { ProfileModal } from "@/components/messenger/ProfileModal"
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog"
+import { useMessenger } from "@/contexts/MessengerContext"
 import { useMessengerController } from "@/hooks/features/useMessengerController"
 import useMediaQuery from "@/hooks/useMediaQuery"
 import { breakpoints } from "@/theme/tokens"
-import { AnimatePresence, useReducedMotion } from "framer-motion"
+import { AnimatePresence, m, useReducedMotion } from "framer-motion"
+import { WifiOff } from "lucide-react"
 import { useTranslation } from "react-i18next"
 
 /**
@@ -58,6 +60,13 @@ export default function MessengerFeature() {
     handleDeleteChat,
   } = useMessengerController()
 
+  // Wave 183 SW6 — surface WS connection status. useMessenger().isConnected
+  // flips false when ws-hub disconnects (e.g., backend down, network blip,
+  // or W183 SW3 MAX_RECONNECT_ATTEMPTS cap reached). Banner gives user
+  // visual feedback that messages may be delayed; ARIA live region
+  // announces status change to screen-reader users.
+  const { isConnected } = useMessenger()
+
   const isMobile = useMediaQuery(`(max-width: ${breakpoints.mobile})`)
   const isNarrow = useMediaQuery(`(max-width: ${breakpoints.content})`)
   const reducedMotionPref = useReducedMotion()
@@ -78,6 +87,41 @@ export default function MessengerFeature() {
       }}
     >
       <MessengerBackdrop isNarrow={isNarrow} prefersReducedMotion={prefersReducedMotion} />
+
+      {/* Wave 183 SW6 — WS disconnection banner. Mounted absolute at top
+          of messenger viewport (above both sidebar + chat area) so it's
+          visible regardless of mobile/desktop layout. AnimatePresence +
+          slide-down entrance, useReducedMotion guard. role="status" +
+          aria-live="polite" + aria-label so SR users hear status change
+          on disconnect/reconnect without interrupting in-progress reading.
+          z-overlay so it's above messenger content but below modals. */}
+      <AnimatePresence>
+        {!isConnected && (
+          <m.div
+            key="ws-disconnect-banner"
+            role="status"
+            aria-live="polite"
+            aria-label={t("messenger:aria.connectionStatus")}
+            initial={prefersReducedMotion ? false : { y: -40, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            exit={prefersReducedMotion ? { opacity: 0 } : { y: -40, opacity: 0 }}
+            transition={
+              prefersReducedMotion
+                ? { duration: 0 }
+                : { duration: 0.3, ease: [0.22, 1, 0.36, 1] as const }
+            }
+            className="absolute left-1/2 top-3 z-overlay flex max-w-[28rem] -translate-x-1/2 items-center gap-3 rounded-full bg-(--warning-bg)/(--opacity-heavy) px-4 py-2 text-(--warning-text) shadow-xl backdrop-blur-md"
+          >
+            <WifiOff className="size-4 shrink-0" strokeWidth={2.5} aria-hidden="true" />
+            <div className="flex flex-col leading-tight">
+              <span className="text-sm font-semibold">{t("messenger:connectionStatus.lost")}</span>
+              <span className="text-xs opacity-medium">
+                {t("messenger:connectionStatus.reconnecting")}
+              </span>
+            </div>
+          </m.div>
+        )}
+      </AnimatePresence>
 
       <AnimatePresence mode="wait">
         {/* Sidebar */}

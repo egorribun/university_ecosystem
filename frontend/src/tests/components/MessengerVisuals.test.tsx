@@ -60,9 +60,23 @@ describe("Messenger Visual Overhaul", () => {
   })
 
   it("ChatWindow should have virtualizer and relative positioning", () => {
+    // Wave 183 SW5 — ChatWindow now renders a no-messages empty state when
+    // messages.length === 0 (instead of an empty virtualizer container).
+    // Pass at least one message to exercise the virtualizer branch this
+    // test asserts on.
+    const mockMessage = {
+      id: "1",
+      senderId: "user-1",
+      senderName: "John",
+      senderAvatar: "",
+      text: "Hello",
+      timestamp: "12:00",
+      isMe: false,
+      status: "sent" as const,
+    }
     const { container } = render(
       <QueryClientProvider client={queryClient}>
-        <ChatWindow messages={[]} />
+        <ChatWindow messages={[mockMessage]} />
       </QueryClientProvider>
     )
 
@@ -72,5 +86,21 @@ describe("Messenger Visual Overhaul", () => {
     const chatArea = container.querySelector(".messenger-chat-area")
     expect(chatArea).toBeTruthy()
     expect(chatArea?.className).toContain("overflow-y-auto")
+  })
+
+  it("ChatWindow should render no-messages empty state when messages array is empty", () => {
+    // Wave 183 SW5 — verify empty state renders with role=log + aria-live
+    // + the noMessages.title key from messenger.json.
+    const { container } = render(
+      <QueryClientProvider client={queryClient}>
+        <ChatWindow messages={[]} />
+      </QueryClientProvider>
+    )
+
+    const chatArea = container.querySelector(".messenger-chat-area")
+    expect(chatArea).toBeTruthy()
+    expect(chatArea?.getAttribute("role")).toBe("log")
+    expect(chatArea?.getAttribute("aria-live")).toBe("polite")
+    expect(chatArea?.textContent).toContain("messenger:noMessages.title")
   })
 })

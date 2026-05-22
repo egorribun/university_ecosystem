@@ -210,17 +210,36 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ messages }) => {
                       {message.timestamp}
                     </span>
                     {message.isMe && (
-                      <span className="flex items-center opacity-hover">
+                      <span
+                        className="flex items-center opacity-hover"
+                        role="img"
+                        aria-label={
+                          message.status === "read"
+                            ? t("messenger:aria.messageRead")
+                            : t("messenger:aria.messageSent")
+                        }
+                      >
                         {/* Wave 181 SW3 — text-white → text-[var(--text-inverse)]
                             (theme-aware; same W175 SW2 pattern. text-inverse is
                             white in light, slate-950 in dark. On the violet
                             sent-bubble bg, white in light = 9.9:1 contrast,
                             slate-950 in dark = 9.9:1 contrast on violet-500.
-                            Both pass WCAG AA 4.5:1 with comfortable margin.) */}
+                            Both pass WCAG AA 4.5:1 with comfortable margin.)
+                            Wave 183 SW6 — added role=img + aria-label on
+                            wrapper span so screen readers announce "Sent" /
+                            "Read by recipient" instead of skipping the icon
+                            entirely (previous aria-hidden default on lucide
+                            icons meant SR users had no message-status feedback). */}
                         {message.status === "read" ? (
-                          <CheckCheck className="w-3 h-3 text-[var(--text-inverse)]" />
+                          <CheckCheck
+                            className="w-3 h-3 text-[var(--text-inverse)]"
+                            aria-hidden="true"
+                          />
                         ) : (
-                          <Check className="w-3 h-3 text-[var(--text-inverse)] opacity-medium" />
+                          <Check
+                            className="w-3 h-3 text-[var(--text-inverse)] opacity-medium"
+                            aria-hidden="true"
+                          />
                         )}
                       </span>
                     )}

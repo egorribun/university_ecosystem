@@ -44,11 +44,19 @@
     "title": "Say hi 👋",
     "description": "This conversation is empty. Send the first message to break the ice!"
   },
+  "connectionStatus": {
+    "reconnecting": "Reconnecting…",
+    "lost": "Connection lost",
+    "lostHint": "Messages may not be delivered until the connection is restored."
+  },
   "aria": {
     "messageList": "Chat messages",
     "removeAttachment": "Remove attachment",
     "attachments": "Attachments",
     "sendMessage": "Send message",
-    "unread": "{{count}} unread"
+    "unread": "{{count}} unread",
+    "messageSent": "Sent",
+    "messageRead": "Read by recipient",
+    "connectionStatus": "Connection status"
   }
 }
