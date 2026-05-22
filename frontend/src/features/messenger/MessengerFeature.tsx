@@ -86,7 +86,11 @@ export default function MessengerFeature() {
           : 0,
       }}
     >
-      <MessengerBackdrop isNarrow={isNarrow} prefersReducedMotion={prefersReducedMotion} />
+      <MessengerBackdrop
+        isNarrow={isNarrow}
+        isMobile={isMobile}
+        prefersReducedMotion={prefersReducedMotion}
+      />
 
       {/* Wave 183 SW6 — WS disconnection banner. Mounted absolute at top
           of messenger viewport (above both sidebar + chat area) so it's

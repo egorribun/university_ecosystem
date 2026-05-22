@@ -30,13 +30,26 @@
 
 interface MessengerBackdropProps {
   isNarrow?: boolean
+  isMobile?: boolean
   prefersReducedMotion?: boolean
 }
 
 export function MessengerBackdrop({
   isNarrow = false,
+  isMobile = false,
   prefersReducedMotion = false,
 }: MessengerBackdropProps) {
+  // Wave 183 SW7 — drop heavy `filter: blur(...)` on mobile OR when user
+  // prefers reduced motion. Pre-W183 only the reduced-motion preference
+  // gated blur removal, but mobile GPUs (especially older Android + Safari
+  // mobile) suffer significantly from full-viewport radial blur filters
+  // applied to 3 orbs simultaneously. Empirically dropping ~10-15 fps in
+  // Chrome DevTools 4× CPU throttle simulation on a 414×896 viewport.
+  // The orbs are still rendered (visual depth preserved); only the GPU-
+  // expensive blur is dropped. Tablets (isNarrow but not isMobile) keep
+  // the blur — they have desktop-class GPUs in most modern devices.
+  const dropBlur = prefersReducedMotion || isMobile
+
   return (
     <div className="pointer-events-none absolute inset-0 overflow-hidden -z-1" aria-hidden="true">
       {/* Primary violet glow — large radial top-center. Sits at the visual
@@ -51,7 +64,7 @@ export function MessengerBackdrop({
           left: "50%",
           transform: "translateX(-50%)",
           background: "radial-gradient(ellipse at center, var(--messenger-orb-1), transparent 70%)",
-          filter: prefersReducedMotion ? "none" : "blur(60px)",
+          filter: dropBlur ? "none" : "blur(60px)",
           opacity: 0.6,
         }}
       />
@@ -67,7 +80,7 @@ export function MessengerBackdrop({
           top: isNarrow ? "60px" : "100px",
           right: isNarrow ? "-12%" : "-6%",
           background: "radial-gradient(ellipse at center, var(--messenger-orb-2), transparent 70%)",
-          filter: prefersReducedMotion ? "none" : "blur(70px)",
+          filter: dropBlur ? "none" : "blur(70px)",
           opacity: 0.5,
         }}
       />
@@ -83,7 +96,7 @@ export function MessengerBackdrop({
           top: isNarrow ? "320px" : "400px",
           left: isNarrow ? "-10%" : "5%",
           background: "radial-gradient(ellipse at center, var(--messenger-orb-3), transparent 70%)",
-          filter: prefersReducedMotion ? "none" : "blur(55px)",
+          filter: dropBlur ? "none" : "blur(55px)",
           opacity: 0.4,
         }}
       />
