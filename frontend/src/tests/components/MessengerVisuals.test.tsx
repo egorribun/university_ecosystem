@@ -52,7 +52,10 @@ describe("Messenger Visual Overhaul", () => {
     )
 
     const contactItem = screen.getByRole("button")
-    expect(contactItem.className).toContain("msg-contact-item")
+    // Wave 182 SW1 — refactored msg-contact-item → messenger-stagger-item
+    // (the legacy class had no CSS rules; entrance animation lives in the
+    // W181 SW1 .messenger-stagger-item utility).
+    expect(contactItem.className).toContain("messenger-stagger-item")
     expect(contactItem.className).toContain("rounded-2xl")
   })
 
@@ -63,7 +66,10 @@ describe("Messenger Visual Overhaul", () => {
       </QueryClientProvider>
     )
 
-    const chatArea = container.querySelector(".msg-chat-area")
+    // Wave 182 SW1 — refactored msg-chat-area → messenger-chat-area
+    // (W181 SW1 convention; rule lives in tokens/messenger.css after the
+    // .messenger-bubble-* / .messenger-active-chip section).
+    const chatArea = container.querySelector(".messenger-chat-area")
     expect(chatArea).toBeTruthy()
     expect(chatArea?.className).toContain("overflow-y-auto")
   })

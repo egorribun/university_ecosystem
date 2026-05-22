@@ -334,6 +334,85 @@
 }
 
 /* ═══════════════════════════════════════════════════════
+   CHAT BUBBLES — sent (own) + received (incoming)
+   Wave 182 SW1: fixed orphan-class bug (W118 SW4 pattern).
+   ChatWindow.tsx referenced legacy `msg-bubble-sent` +
+   `msg-bubble-received` classes that had ZERO CSS rules
+   defined anywhere, so bubbles rendered without backgrounds.
+   These rules consume the W181 SW1 tokens
+   `--messenger-bubble-sent-bg` + `--messenger-bubble-received-bg`
+   (and their light/dark shadow variants) — wiring the
+   violet gradient palette into the actual message render.
+   Padding + rounded corners + text color stay inline in
+   ChatWindow.tsx since they vary by sender (rounded-br-sm
+   for sent, rounded-bl-sm for received).
+   ═══════════════════════════════════════════════════════ */
+
+.messenger-bubble-sent {
+  background: var(--messenger-bubble-sent-bg);
+  box-shadow: var(--messenger-bubble-sent-shadow);
+}
+
+.messenger-bubble-received {
+  background: var(--messenger-bubble-received-bg);
+  box-shadow: var(--messenger-bubble-received-shadow);
+}
+
+/* ═══════════════════════════════════════════════════════
+   CHAT AREA — message-log container scope marker
+   Inherits bg from parent `bg-msg-chat` (Tailwind v4 utility
+   resolving to --color-msg-chat token via @theme alias in
+   tailwind.css). `isolation: isolate` contains z-index
+   stacking so MessengerBackdrop orbs (z: -1) don't bleed
+   through into other parts of the layout.
+   ═══════════════════════════════════════════════════════ */
+
+.messenger-chat-area {
+  position: relative;
+  isolation: isolate;
+}
+
+/* ═══════════════════════════════════════════════════════
+   ONLINE INDICATOR — solid emerald presence dot
+   Wave 182 SW1: ChatArea.tsx + ProfileModal.tsx used
+   `msg-online-indicator` marker class with NO background
+   (only inline absolute positioning + border). Without a
+   CSS rule, the indicator rendered as a hollow border —
+   invisible against the chat surface. This rule provides
+   the emerald fill consuming the W181 SW1
+   `--messenger-online-color` token. ContactList.tsx
+   already has inline `bg-(--success-bg)`; this rule
+   reinforces the same color via the messenger-scoped
+   token for consistency across all 3 callsites.
+   ═══════════════════════════════════════════════════════ */
+
+.messenger-online-indicator {
+  background: var(--messenger-online-color);
+  border-radius: 9999px;
+  box-shadow: 0 0 0 2px var(--bg-surface);
+}
+
+/* ═══════════════════════════════════════════════════════
+   UNREAD BADGE — pill-shaped count indicator
+   Wave 182 SW1: ContactList.tsx used `msg-unread-badge`
+   marker class with inline Tailwind providing layout +
+   error-text background. This rule consolidates the visual
+   styling into the messenger-scoped utility while inline
+   Tailwind continues to control layout (min-w, h, flex,
+   font-size). Reduces className verbosity at the callsite.
+   ═══════════════════════════════════════════════════════ */
+
+.messenger-unread-badge {
+  background: var(--error-text);
+  color: var(--text-inverse);
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  box-shadow:
+    0 1px 2px color-mix(in srgb, var(--error-text) 30%, transparent),
+    0 2px 8px color-mix(in srgb, var(--error-text) 15%, transparent);
+}
+
+/* ═══════════════════════════════════════════════════════
    SEND BUTTON — gradient violet→pink premium accent
    ═══════════════════════════════════════════════════════ */
 

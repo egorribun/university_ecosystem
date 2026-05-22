@@ -114,7 +114,10 @@ export function ProfileModal({ user, loading, error, onClose }: ProfileModalProp
                         }`}
                       />
                       {user.is_active && (
-                        <span className="msg-online-indicator absolute -bottom-1 -right-1 size-6 border-4 border-(--bg-surface)"></span>
+                        <span
+                          className="messenger-online-indicator absolute -bottom-1 -right-1 size-6 border-4 border-(--bg-surface)"
+                          aria-hidden="true"
+                        />
                       )}
                     </div>
                     <h4 className="sf-pro text-2xl font-bold tracking-tight">{user.full_name}</h4>

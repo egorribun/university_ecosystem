@@ -52,7 +52,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ messages }) => {
       role="log"
       aria-live="polite"
       aria-label={t("messenger:aria.messageList")}
-      className="msg-chat-area flex-1 min-h-0 overflow-y-auto p-4 custom-scrollbar"
+      className="messenger-chat-area flex-1 min-h-0 overflow-y-auto p-4 custom-scrollbar"
     >
       <div
         style={{
@@ -103,8 +103,8 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ messages }) => {
                   className={cn(
                     "max-w-4/5 md:max-w-3/4 px-4 py-2.5 text-base relative",
                     message.isMe
-                      ? "msg-bubble-sent text-[var(--text-inverse)] rounded-2xl rounded-br-sm md:rounded-br-2xl md:rounded-bl-sm"
-                      : "msg-bubble-received text-text-primary rounded-2xl rounded-bl-sm shadow-sm"
+                      ? "messenger-bubble-sent text-[var(--text-inverse)] rounded-2xl rounded-br-sm md:rounded-br-2xl md:rounded-bl-sm"
+                      : "messenger-bubble-received text-text-primary rounded-2xl rounded-bl-sm"
                   )}
                 >
                   {message.attachments && message.attachments.length > 0 && (

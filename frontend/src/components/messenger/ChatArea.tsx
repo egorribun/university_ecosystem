@@ -123,7 +123,10 @@ export function ChatArea({
                         className="size-11 rounded-full border-2 border-(--glass-border-subtle) object-cover"
                       />
                       {presenceMap[getOtherParticipant(activeChat)?.id ?? ""]?.active && (
-                        <span className="msg-online-indicator absolute bottom-0 right-0 size-3" />
+                        <span
+                          className="messenger-online-indicator absolute bottom-0 right-0 size-3"
+                          aria-hidden="true"
+                        />
                       )}
                     </div>
                     <div>

@@ -59,7 +59,7 @@ export function ContactList({ contacts, selectedId, onSelect }: ContactListProps
             whileHover={hoverAnim}
             whileTap={tapAnim}
             className={cn(
-              "msg-contact-item messenger-stagger-item flex items-center gap-3 p-3 mb-1 rounded-2xl cursor-pointer transition-all duration-base min-h-[60px]",
+              "messenger-stagger-item flex items-center gap-3 p-3 mb-1 rounded-2xl cursor-pointer transition-all duration-base min-h-[60px]",
               "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-violet-500) focus-visible:ring-offset-2 focus-visible:ring-offset-(--bg-surface)",
               isActive
                 ? "messenger-active-chip"
@@ -74,7 +74,10 @@ export function ContactList({ contacts, selectedId, onSelect }: ContactListProps
                 className="w-12 h-12 rounded-full object-cover shadow-sm"
               />
               {contact.online && (
-                <span className="msg-online-indicator absolute bottom-0 right-0 w-3.5 h-3.5 rounded-full bg-(--success-bg) border-2 border-(--bg-surface) dark:border-(--bg-page)"></span>
+                <span
+                  className="messenger-online-indicator absolute bottom-0 right-0 w-3.5 h-3.5 border-2 border-(--bg-surface) dark:border-(--bg-page)"
+                  aria-hidden="true"
+                />
               )}
             </div>
             <div className="flex-1 min-w-0">
@@ -95,7 +98,8 @@ export function ContactList({ contacts, selectedId, onSelect }: ContactListProps
                     initial={prefersReducedMotion ? false : { scale: 0 }}
                     animate={{ scale: 1 }}
                     transition={prefersReducedMotion ? { duration: 0 } : undefined}
-                    className="msg-unread-badge min-w-5 h-5 px-1 bg-(--error-text) text-[var(--text-inverse)] rounded-full text-label-xs font-black flex items-center justify-center shadow-lg shadow-(--error-text)/(--opacity-dim)"
+                    className="messenger-unread-badge min-w-5 h-5 px-1 rounded-full text-label-xs flex items-center justify-center"
+                    aria-label={`${contact.unread} unread`}
                   >
                     {contact.unread > 99 ? "99+" : contact.unread}
                   </m.span>
