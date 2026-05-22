@@ -283,7 +283,19 @@ export function ChatArea({
             )}
           </AnimatePresence>
 
-          <ChatWindow messages={messages} />
+          {/* Wave 184 SW1 (Path A) — searchQuery + onClearSearch threaded so
+              ChatWindow can filter messages + render search-empty empty state.
+              The raw `searchQuery` is passed through; ChatWindow applies
+              `useDebounced(searchQuery, "search")` (200ms) internally so the
+              per-keystroke render does NOT re-filter the message array.
+              onClearSearch clears the query but keeps the search input
+              mounted (showSearchInChat stays true) so the user can type a
+              new query immediately — matches W183 SW1 ContactList pattern. */}
+          <ChatWindow
+            messages={messages}
+            searchQuery={showSearchInChat ? searchQuery : ""}
+            onClearSearch={() => setSearchQuery("")}
+          />
           <TypingIndicator users={typingUsers} prefersReducedMotion={prefersReducedMotion} />
           <MessageInput onSend={handleSendMessage} />
         </>

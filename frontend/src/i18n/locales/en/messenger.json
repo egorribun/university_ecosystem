@@ -42,7 +42,12 @@
   },
   "noMessages": {
     "title": "Say hi 👋",
-    "description": "This conversation is empty. Send the first message to break the ice!"
+    "description": "This conversation is empty. Send the first message to break the ice!",
+    "searchEmpty": {
+      "title": "No messages found",
+      "description": "No messages match \"{{query}}\". Try a different search term.",
+      "clearSearch": "Clear search"
+    }
   },
   "connectionStatus": {
     "reconnecting": "Reconnecting…",

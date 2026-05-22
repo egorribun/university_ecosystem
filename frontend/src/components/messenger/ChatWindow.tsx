@@ -1,20 +1,44 @@
-import React, { useRef, useEffect } from "react"
+import React, { useRef, useEffect, useMemo } from "react"
 import { m, useReducedMotion } from "framer-motion" // Removed AnimatePresence, LayoutGroup as they are not used
-import { File, Check, CheckCheck, MessageCircleHeart } from "lucide-react"
+import { File, Check, CheckCheck, MessageCircleHeart, SearchX, X } from "lucide-react"
 import { useVirtualizer } from "@tanstack/react-virtual"
 import { useTranslation } from "react-i18next"
 import { cn } from "@/utils/cn"
 import SmartImage from "@/components/media/SmartImage"
 import { AVATAR_PLACEHOLDER_URL } from "@/constants/placeholders"
 import { sanitizeUrl } from "@/utils/media"
+import { useDebounced } from "@/hooks/useDebounced"
 import { Message } from "./types"
 
 interface ChatWindowProps {
   messages: Message[]
+  /**
+   * Wave 184 SW1 (Path A) — search query threaded from ChatArea.
+   * When non-empty, ChatWindow filters messages (case-insensitive substring
+   * match on `message.text`) and renders a "no search match" empty state if
+   * the filtered set is empty. Debouncing happens INSIDE ChatWindow via
+   * `useDebounced(searchQuery, "search")` (200ms, PERF-23-04 search preset)
+   * to keep the filter cost off the per-keystroke render path.
+   * Pre-W184 the ChatArea search input was styled (W183 SW2 matte-input)
+   * but non-functional — typing produced no filtering.
+   */
+  searchQuery?: string
+  /**
+   * Wave 184 SW1 (Path A) — clear-search callback. When the user has typed
+   * a query that filters to zero matches, the search-empty empty state
+   * renders a "Clear search" button that invokes this callback. Mirrors
+   * the W183 SW1 ContactList search-empty pattern (clears query but keeps
+   * the search input mounted so the user can type a new query immediately).
+   */
+  onClearSearch?: () => void
 }
 
 // PERF-27-02: Removed React.memo() — React Compiler "infer" mode handles memoization
-export const ChatWindow: React.FC<ChatWindowProps> = ({ messages }) => {
+export const ChatWindow: React.FC<ChatWindowProps> = ({
+  messages,
+  searchQuery = "",
+  onClearSearch,
+}) => {
   const { t } = useTranslation()
   // Wave 181 SW3 — useReducedMotion guard. Without this, virtualized message
   // bubbles fade+scale in on every scroll-into-view event, which becomes
@@ -22,8 +46,28 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ messages }) => {
   const prefersReducedMotion = useReducedMotion() ?? false
   const containerRef = useRef<HTMLDivElement>(null)
 
+  // Wave 184 SW1 (Path A) — debounce the search query so the per-keystroke
+  // render does NOT re-filter the message array. 200ms via "search" preset
+  // (PERF-23-04) matches ContactList search latency expectations.
+  const debouncedSearchQuery = useDebounced(searchQuery, "search")
+  const trimmedQuery = debouncedSearchQuery.trim()
+  const isSearchActive = trimmedQuery.length > 0
+
+  // Wave 184 SW1 (Path A) — filtered messages array. CRITICAL: this MUST
+  // run BEFORE the virtualizer length pass below (per W184 plan risk #1
+  // "filter messages BEFORE virtualizer length, not after"). If the
+  // virtualizer were initialized with `messages.length` and then the
+  // render mapped `filteredMessages[virtualRow.index]`, indices would
+  // misalign and most rows would render as nulls. Both virtualizer AND
+  // render iteration use `filteredMessages` from this single source.
+  const filteredMessages = useMemo(() => {
+    if (!isSearchActive) return messages
+    const needle = trimmedQuery.toLowerCase()
+    return messages.filter((message) => message.text.toLowerCase().includes(needle))
+  }, [messages, trimmedQuery, isSearchActive])
+
   const virtualizer = useVirtualizer({
-    count: messages.length,
+    count: filteredMessages.length,
     getScrollElement: () => containerRef.current,
     estimateSize: () => 80,
     overscan: 5,
@@ -31,20 +75,30 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ messages }) => {
 
   const prevMessagesLengthRef = useRef(0)
 
-  // Auto-scroll to bottom when new messages arrive
+  // Auto-scroll to bottom when new messages arrive.
+  // Wave 184 SW1 — track filtered length so search-narrowing doesn't trigger
+  // a spurious scroll-to-end. Auto-scroll only fires when the underlying
+  // message list grows (new incoming message), not when search filtering
+  // shrinks the displayed set.
   useEffect(() => {
-    if (messages.length > prevMessagesLengthRef.current) {
-      virtualizer.scrollToIndex(messages.length - 1, { align: "end", behavior: "auto" })
+    if (!isSearchActive && filteredMessages.length > prevMessagesLengthRef.current) {
+      virtualizer.scrollToIndex(filteredMessages.length - 1, {
+        align: "end",
+        behavior: "auto",
+      })
     }
-    prevMessagesLengthRef.current = messages.length
-  }, [messages.length, virtualizer])
+    prevMessagesLengthRef.current = filteredMessages.length
+  }, [filteredMessages.length, isSearchActive, virtualizer])
 
   // Initial scroll to bottom
   useEffect(() => {
-    if (messages.length > 0) {
-      virtualizer.scrollToIndex(messages.length - 1, { align: "end", behavior: "auto" })
+    if (!isSearchActive && filteredMessages.length > 0) {
+      virtualizer.scrollToIndex(filteredMessages.length - 1, {
+        align: "end",
+        behavior: "auto",
+      })
     }
-  }, [messages.length, virtualizer])
+  }, [filteredMessages.length, isSearchActive, virtualizer])
 
   // Wave 183 SW5 — no-messages-yet empty state when chat is selected but
   // message list is empty (new chat OR cleared chat). Pre-W183 the
@@ -93,6 +147,64 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ messages }) => {
     )
   }
 
+  // Wave 184 SW1 (Path A) — search-no-match empty state. Rendered when
+  // chat has messages but user's current search query filters to zero
+  // matches. Mirrors W183 SW1 ContactList search-empty pattern exactly
+  // (SearchX icon + interpolated query in description + Clear-search
+  // CTA). Re-uses the same i18n key shape: `messenger:noMessages.searchEmpty.*`.
+  if (isSearchActive && filteredMessages.length === 0) {
+    return (
+      <div
+        ref={containerRef}
+        role="log"
+        aria-live="polite"
+        aria-label={t("messenger:aria.messageList")}
+        className="messenger-chat-area flex flex-1 flex-col items-center justify-center px-6 py-10 text-center"
+      >
+        <m.div
+          initial={prefersReducedMotion ? false : { scale: 0.92, opacity: 0, y: 8 }}
+          animate={{ scale: 1, opacity: 1, y: 0 }}
+          transition={
+            prefersReducedMotion
+              ? { duration: 0 }
+              : { duration: 0.45, ease: [0.22, 1, 0.36, 1] as const }
+          }
+          className="flex w-full max-w-[24rem] flex-col items-center"
+        >
+          <div
+            className="messenger-card-matte mb-5 flex size-16 items-center justify-center"
+            style={{ background: "var(--messenger-card-bg)" }}
+          >
+            <SearchX
+              className="size-8 text-(--color-violet-500)"
+              style={{ opacity: "var(--opacity-strong)" }}
+              strokeWidth={1.5}
+              aria-hidden="true"
+            />
+          </div>
+          <h3 className="sf-pro mb-2 text-base font-bold leading-tight text-(--text-primary)">
+            {t("messenger:noMessages.searchEmpty.title")}
+          </h3>
+          <p className="mb-6 text-sm leading-relaxed text-(--text-secondary)">
+            {t("messenger:noMessages.searchEmpty.description", { query: trimmedQuery })}
+          </p>
+          {onClearSearch && (
+            <m.button
+              type="button"
+              whileHover={prefersReducedMotion ? undefined : { scale: 1.04 }}
+              whileTap={prefersReducedMotion ? undefined : { scale: 0.96 }}
+              onClick={onClearSearch}
+              className="inline-flex min-h-[44px] items-center gap-2 rounded-full border border-(--color-violet-500)/(--opacity-soft) bg-(--bg-surface)/(--opacity-medium) px-5 text-sm font-semibold text-(--text-primary) transition-colors hover:bg-(--bg-surface-hover)/(--opacity-medium) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-violet-500) focus-visible:ring-offset-2 focus-visible:ring-offset-(--bg-surface)"
+            >
+              <X className="size-4" strokeWidth={2.5} aria-hidden="true" />
+              <span>{t("messenger:noMessages.searchEmpty.clearSearch")}</span>
+            </m.button>
+          )}
+        </m.div>
+      </div>
+    )
+  }
+
   return (
     <div
       ref={containerRef}
@@ -109,7 +221,12 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ messages }) => {
         }}
       >
         {virtualizer.getVirtualItems().map((virtualRow) => {
-          const message = messages[virtualRow.index]
+          // Wave 184 SW1 (Path A) — index into FILTERED messages, not the raw
+          // array, so virtualRow.index aligns with the count passed to
+          // useVirtualizer above. Using `messages[virtualRow.index]` would
+          // misalign when a search query is active (virtualizer count =
+          // filteredMessages.length, but raw messages.length > filtered).
+          const message = filteredMessages[virtualRow.index]
           if (!message) return null
 
           return (
