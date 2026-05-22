@@ -54,6 +54,11 @@
     "lost": "Connection lost",
     "lostHint": "Messages may not be delivered until the connection is restored."
   },
+  "loading": {
+    "contacts": "Loading conversations…",
+    "messages": "Loading messages…",
+    "users": "Loading users…"
+  },
   "aria": {
     "messageList": "Chat messages",
     "removeAttachment": "Remove attachment",

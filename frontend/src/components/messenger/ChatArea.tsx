@@ -25,6 +25,14 @@ interface ChatAreaProps {
   selectedChatId: string | null
   activeChat: ReturnType<typeof useMessengerController>["activeChat"]
   messages: ReturnType<typeof useMessengerController>["messages"]
+  /**
+   * Wave 184 SW2 (Path B) — messages query loading flag lifted from
+   * useMessengerController (`messagesLoading` at hook line 452). Passed
+   * through to ChatWindow which renders skeleton message bubbles BEFORE
+   * the no-messages-yet empty state. Defensive UX for low-bandwidth
+   * users during message history fetch.
+   */
+  messagesLoading?: boolean
   showSearchInChat: boolean
   setShowSearchInChat: Dispatch<SetStateAction<boolean>>
   searchQuery: string
@@ -44,6 +52,7 @@ export function ChatArea({
   selectedChatId,
   activeChat,
   messages,
+  messagesLoading = false,
   showSearchInChat,
   setShowSearchInChat,
   searchQuery,
@@ -293,6 +302,7 @@ export function ChatArea({
               new query immediately — matches W183 SW1 ContactList pattern. */}
           <ChatWindow
             messages={messages}
+            isLoading={messagesLoading}
             searchQuery={showSearchInChat ? searchQuery : ""}
             onClearSearch={() => setSearchQuery("")}
           />

@@ -31,13 +31,28 @@ interface ChatWindowProps {
    * the search input mounted so the user can type a new query immediately).
    */
   onClearSearch?: () => void
+  /**
+   * Wave 184 SW2 (Path B) — messages query loading flag lifted from
+   * useMessengerController via ChatArea. When true, renders 6 skeleton
+   * message bubbles (h-[80px] alternating left/right alignment matching
+   * real bubble dimensions per W184 plan risk #4) BEFORE checking
+   * messages.length === 0. Prevents the W183 SW5 "Say hi" empty state
+   * from flashing briefly during the initial message history fetch.
+   * Uses `.messenger-skeleton` shimmer class from W181 SW1.
+   */
+  isLoading?: boolean
 }
+
+// Wave 184 SW2 (Path B) — skeleton bubble count. 6 alternating left/right
+// bubbles fills the chat viewport without being visually overwhelming.
+const SKELETON_BUBBLE_COUNT = 6
 
 // PERF-27-02: Removed React.memo() — React Compiler "infer" mode handles memoization
 export const ChatWindow: React.FC<ChatWindowProps> = ({
   messages,
   searchQuery = "",
   onClearSearch,
+  isLoading = false,
 }) => {
   const { t } = useTranslation()
   // Wave 181 SW3 — useReducedMotion guard. Without this, virtualized message
@@ -99,6 +114,55 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       })
     }
   }, [filteredMessages.length, isSearchActive, virtualizer])
+
+  // Wave 184 SW2 (Path B) — loading skeleton state. Rendered when the
+  // messages query is in-flight (initial fetch on chat selection). Must
+  // come BEFORE the no-messages-yet branch so an empty cache doesn't
+  // briefly flash "Say hi" before the real messages arrive. 6 alternating
+  // left/right bubble skeletons matching real bubble dimensions
+  // (h-[80px] estimate per W184 plan risk #4 — skeleton heights must
+  // match real rows to prevent CLS shift on load completion).
+  if (isLoading) {
+    return (
+      <div
+        role="status"
+        aria-live="polite"
+        aria-label={t("messenger:loading.messages")}
+        className="messenger-chat-area flex-1 min-h-0 overflow-y-auto p-4 custom-scrollbar"
+      >
+        <div className="flex flex-col gap-3">
+          {Array.from({ length: SKELETON_BUBBLE_COUNT }).map((_, idx) => {
+            const isMineSkeleton = idx % 2 === 1
+            // Width jitter so skeletons don't look uniformly mechanical.
+            // Deterministic per index (avoids hydration mismatches in any
+            // future SSR re-enablement).
+            const widthPct = 45 + ((idx * 13) % 35)
+            return (
+              <div
+                key={`message-skeleton-${idx}`}
+                className={cn(
+                  "flex items-end gap-2 md:gap-3",
+                  isMineSkeleton ? "flex-row-reverse" : "flex-row"
+                )}
+                aria-hidden="true"
+              >
+                <div className="messenger-skeleton size-9 shrink-0 rounded-full" />
+                <div
+                  className={cn(
+                    "messenger-skeleton min-h-[44px] rounded-2xl",
+                    isMineSkeleton
+                      ? "rounded-br-sm md:rounded-br-2xl md:rounded-bl-sm"
+                      : "rounded-bl-sm"
+                  )}
+                  style={{ width: `${widthPct}%` }}
+                />
+              </div>
+            )
+          })}
+        </div>
+      </div>
+    )
+  }
 
   // Wave 183 SW5 — no-messages-yet empty state when chat is selected but
   // message list is empty (new chat OR cleared chat). Pre-W183 the

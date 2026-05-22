@@ -12,6 +12,14 @@ interface MessengerSidebarProps {
   contacts: ReturnType<typeof useMessengerController>["contacts"]
   selectedChatId: string | null
   setIsNewChatModalOpen: Dispatch<SetStateAction<boolean>>
+  /**
+   * Wave 184 SW2 (Path B) — chats list query loading flag lifted from
+   * useMessengerController (`chatsLoading` at hook line 451). When true,
+   * ContactList renders skeleton rows BEFORE checking contacts.length === 0
+   * so the user sees first-paint feedback during async fetch rather than
+   * the W183 SW1 "No conversations yet" empty state flashing briefly.
+   */
+  isLoading?: boolean
 }
 
 const MOBILE_MENU_WIDTH = 300
@@ -21,6 +29,7 @@ export function MessengerSidebar({
   contacts,
   selectedChatId,
   setIsNewChatModalOpen,
+  isLoading = false,
 }: MessengerSidebarProps) {
   const { t } = useTranslation(["messenger", "common"])
   const navigate = useNavigate()
@@ -115,6 +124,7 @@ export function MessengerSidebar({
         searchQuery={searchQuery.trim()}
         onStartNewChat={handleStartNewChat}
         onClearSearch={handleClearSearch}
+        isLoading={isLoading}
       />
     </m.div>
   )

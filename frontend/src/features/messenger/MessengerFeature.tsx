@@ -39,6 +39,14 @@ export default function MessengerFeature() {
     // Data
     contacts,
     messages,
+    // Wave 184 SW2 (Path B) — lifted query loading flags from useMessengerController
+    // return value (chatsLoading + messagesLoading already exposed at lines 451-452
+    // pre-W184 but never consumed by orchestrator). Now threaded through
+    // MessengerSidebar → ContactList and ChatArea → ChatWindow so skeleton rows
+    // can render while async fetches are in-flight. Defensive UX for low-bandwidth
+    // users + first-paint feedback.
+    chatsLoading,
+    messagesLoading,
 
     // Profile
     profileUser,
@@ -135,6 +143,7 @@ export default function MessengerFeature() {
             contacts={contacts}
             selectedChatId={selectedChatId}
             setIsNewChatModalOpen={setIsNewChatModalOpen}
+            isLoading={chatsLoading}
           />
         )}
 
@@ -145,6 +154,7 @@ export default function MessengerFeature() {
             selectedChatId={selectedChatId}
             activeChat={activeChat}
             messages={messages}
+            messagesLoading={messagesLoading}
             showSearchInChat={showSearchInChat}
             setShowSearchInChat={setShowSearchInChat}
             searchQuery={searchQuery}

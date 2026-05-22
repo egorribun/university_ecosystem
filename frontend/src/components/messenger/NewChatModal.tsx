@@ -139,20 +139,39 @@ export const NewChatModal: React.FC<NewChatModalProps> = ({ open, onClose, onSel
               />
 
               <div className="max-h-96 overflow-y-auto custom-scrollbar pr-1 -mr-1">
-                {/* Wave 183 SW4 — added role=status + aria-live + aria-label so
-                    screen readers announce loading state. Pre-W183 just rendered
-                    the spinner with no semantic meaning to AT. */}
+                {/* Wave 184 SW2 (Path B) — replaced spinner with .messenger-skeleton
+                    rows matching real user-row dimensions (h-[60px], size-11 avatar,
+                    2-line text stack). Pre-W184 the centered spinner was a generic
+                    loading visual that didn't telegraph the row count or layout
+                    of the eventual results — skeleton rows give users a visual
+                    preview of what's coming. W183 SW4 a11y semantics preserved
+                    (role=status + aria-live=polite + aria-label). */}
                 {isLoading && (
                   <div
-                    className="flex flex-col items-center py-10"
+                    className="space-y-1"
                     role="status"
                     aria-live="polite"
-                    aria-label={t("common:statuses.loading")}
+                    aria-label={t("messenger:loading.users")}
                   >
-                    <div
-                      className="w-10 h-10 border-4 border-brand/(--opacity-subtle) border-t-brand rounded-full animate-spin"
-                      aria-hidden="true"
-                    />
+                    {Array.from({ length: 5 }).map((_, idx) => (
+                      <div
+                        key={`user-skeleton-${idx}`}
+                        className="flex items-center gap-4 p-3.5 rounded-2xl min-h-[60px]"
+                        aria-hidden="true"
+                      >
+                        <div className="messenger-skeleton w-11 h-11 rounded-2xl shrink-0" />
+                        <div className="flex flex-1 flex-col gap-2 min-w-0">
+                          <div
+                            className="messenger-skeleton h-4 rounded-md"
+                            style={{ width: `${55 + ((idx * 13) % 30)}%` }}
+                          />
+                          <div
+                            className="messenger-skeleton h-3 rounded-md"
+                            style={{ width: `${35 + ((idx * 7) % 30)}%` }}
+                          />
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 )}
 

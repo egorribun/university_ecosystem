@@ -21,7 +21,21 @@ interface ContactListProps {
   searchQuery?: string
   onStartNewChat?: () => void
   onClearSearch?: () => void
+  /**
+   * Wave 184 SW2 (Path B) — chats list query loading state. When true,
+   * renders 6 skeleton rows (h-[60px] matching real ContactRow dimensions
+   * per W184 plan risk #4 — skeleton heights must match real rows to
+   * prevent CLS shift on load completion) BEFORE checking contacts.length
+   * === 0. This prevents the W183 SW1 "No conversations yet" empty state
+   * from flashing briefly while the initial chats fetch is in-flight.
+   * Uses `.messenger-skeleton` shimmer class from W181 SW1 (messenger.css:635).
+   */
+  isLoading?: boolean
 }
+
+// Wave 184 SW2 (Path B) — skeleton row count. 6 rows is enough to fill the
+// sidebar viewport on most screens without being visually overwhelming.
+const SKELETON_ROW_COUNT = 6
 
 // PERF-24-02: Removed React.memo() — React Compiler "infer" mode handles
 // memoization automatically. Manual memo() caused redundant double-wrapping.
@@ -63,11 +77,49 @@ export function ContactList({
   searchQuery = "",
   onStartNewChat,
   onClearSearch,
+  isLoading = false,
 }: ContactListProps) {
   const { t } = useTranslation(["messenger"])
   const prefersReducedMotion = useReducedMotion() ?? false
   const hoverAnim = prefersReducedMotion ? undefined : { x: 4 }
   const tapAnim = prefersReducedMotion ? undefined : { scale: 0.98 }
+
+  // Wave 184 SW2 (Path B) — skeleton rows render BEFORE both empty-state
+  // branches (W183 SW1 no-conversations + no-search-match) so first-paint
+  // feedback during the initial chats fetch doesn't flash "No conversations
+  // yet" wrongly. Rows match the dimensions of real ContactRow (line ~150+
+  // below: 60px tall with size-12 avatar circle + 2 text lines stacked).
+  // Order matters: this MUST come before the contacts.length===0 branch.
+  if (isLoading) {
+    return (
+      <div
+        className="flex-1 overflow-y-auto custom-scrollbar p-2 bg-(--msg-sidebar-bg)"
+        role="status"
+        aria-live="polite"
+        aria-label={t("messenger:loading.contacts")}
+      >
+        {Array.from({ length: SKELETON_ROW_COUNT }).map((_, idx) => (
+          <div
+            key={`contact-skeleton-${idx}`}
+            className="flex items-center gap-3 px-3 py-2.5 min-h-[60px]"
+            aria-hidden="true"
+          >
+            <div className="messenger-skeleton size-12 shrink-0 rounded-full" />
+            <div className="flex flex-1 flex-col gap-2 min-w-0">
+              <div
+                className="messenger-skeleton h-3.5 rounded-md"
+                style={{ width: `${65 + ((idx * 11) % 25)}%` }}
+              />
+              <div
+                className="messenger-skeleton h-3 rounded-md"
+                style={{ width: `${45 + ((idx * 7) % 35)}%` }}
+              />
+            </div>
+          </div>
+        ))}
+      </div>
+    )
+  }
 
   if (contacts.length === 0) {
     const emptyEntrance = prefersReducedMotion ? undefined : { scale: 0.92, opacity: 0, y: 8 }
