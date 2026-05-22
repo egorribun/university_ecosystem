@@ -40,6 +40,10 @@
       "clearSearch": "Clear search"
     }
   },
+  "noMessages": {
+    "title": "Say hi 👋",
+    "description": "This conversation is empty. Send the first message to break the ice!"
+  },
   "aria": {
     "messageList": "Chat messages",
     "removeAttachment": "Remove attachment",

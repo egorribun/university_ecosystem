@@ -1,6 +1,6 @@
 import React, { useRef, useEffect } from "react"
 import { m, useReducedMotion } from "framer-motion" // Removed AnimatePresence, LayoutGroup as they are not used
-import { File, Check, CheckCheck } from "lucide-react"
+import { File, Check, CheckCheck, MessageCircleHeart } from "lucide-react"
 import { useVirtualizer } from "@tanstack/react-virtual"
 import { useTranslation } from "react-i18next"
 import { cn } from "@/utils/cn"
@@ -45,6 +45,53 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ messages }) => {
       virtualizer.scrollToIndex(messages.length - 1, { align: "end", behavior: "auto" })
     }
   }, [messages.length, virtualizer])
+
+  // Wave 183 SW5 — no-messages-yet empty state when chat is selected but
+  // message list is empty (new chat OR cleared chat). Pre-W183 the
+  // virtualizer rendered nothing for an empty messages array — user saw
+  // a blank chat area with no context about why or what to do next.
+  // Now mirrors the ChatArea empty-state visual language: matte icon
+  // container, violet accent, encouragement copy.
+  if (messages.length === 0) {
+    return (
+      <div
+        ref={containerRef}
+        role="log"
+        aria-live="polite"
+        aria-label={t("messenger:aria.messageList")}
+        className="messenger-chat-area flex flex-1 flex-col items-center justify-center px-6 py-10"
+      >
+        <m.div
+          initial={prefersReducedMotion ? false : { scale: 0.92, opacity: 0, y: 8 }}
+          animate={{ scale: 1, opacity: 1, y: 0 }}
+          transition={
+            prefersReducedMotion
+              ? { duration: 0 }
+              : { duration: 0.45, ease: [0.22, 1, 0.36, 1] as const }
+          }
+          className="flex w-full max-w-[24rem] flex-col items-center text-center"
+        >
+          <div
+            className="messenger-card-matte mb-5 flex size-16 items-center justify-center"
+            style={{ background: "var(--messenger-card-bg)" }}
+          >
+            <MessageCircleHeart
+              className="size-8 text-(--color-violet-500)"
+              style={{ opacity: "var(--opacity-strong)" }}
+              strokeWidth={1.5}
+              aria-hidden="true"
+            />
+          </div>
+          <h3 className="sf-pro mb-2 text-base font-bold leading-tight text-(--text-primary)">
+            {t("messenger:noMessages.title")}
+          </h3>
+          <p className="text-sm leading-relaxed text-(--text-secondary)">
+            {t("messenger:noMessages.description")}
+          </p>
+        </m.div>
+      </div>
+    )
+  }
 
   return (
     <div
