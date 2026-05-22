@@ -51,9 +51,7 @@ export function MessengerSidebar({
       className="panel-glass relative z-deep flex h-full w-full flex-col md:w-(--layout-max-sidebar) lg:w-(--layout-max-sidebar)"
     >
       <div className="header-glass flex items-center justify-between p-4">
-        <h1 className="sf-pro text-2xl font-bold tracking-tight">
-          {t("messenger:title", "Messages")}
-        </h1>
+        <h1 className="sf-pro text-2xl font-bold tracking-tight">{t("messenger:title")}</h1>
         <m.button
           id="messenger-new-chat-btn"
           type="button"
@@ -61,7 +59,7 @@ export function MessengerSidebar({
           whileTap={newChatTapAnim}
           onClick={() => setIsNewChatModalOpen(true)}
           className="rounded-full bg-(--primary-main)/(--opacity-low) p-2 text-msg-active min-h-[44px] min-w-[44px] flex items-center justify-center transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-violet-500) focus-visible:ring-offset-2 focus-visible:ring-offset-(--bg-surface)"
-          aria-label={t("messenger:newChat", "New Chat")}
+          aria-label={t("messenger:newChat")}
         >
           <SquarePen className="h-5 w-5" strokeWidth={2.5} />
         </m.button>
@@ -74,7 +72,7 @@ export function MessengerSidebar({
           onChange={(e) => setSearchQuery(e.target.value)}
           inputClassName="matte-input border-none py-2.5 outline-none transition-all"
           leadingIcon={<Search className="h-4 w-4" />}
-          placeholder={t("messenger:search", "Search")}
+          placeholder={t("messenger:search")}
           className="w-full"
         />
       </div>

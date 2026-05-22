@@ -71,7 +71,7 @@ export function ProfileModal({ user, loading, error, onClose }: ProfileModalProp
           >
             <div className="flex items-center justify-between border-b border-msg-border p-6 pb-4">
               <h3 id={titleId} className="sf-pro text-xl font-bold tracking-tight">
-                {user?.full_name || t("messenger:profile", "Profile")}
+                {user?.full_name || t("messenger:profile")}
               </h3>
               <m.button
                 type="button"
@@ -90,7 +90,7 @@ export function ProfileModal({ user, loading, error, onClose }: ProfileModalProp
                 <div className="flex flex-col items-center py-8">
                   <div className="h-12 w-12 animate-spin rounded-full border-4 border-t-brand border-brand/(--opacity-dim)"></div>
                   <p className="mt-4 text-sm font-medium text-(--text-secondary)">
-                    {t("messenger:loadingProfile", "Loading profile...")}
+                    {t("messenger:loadingProfile")}
                   </p>
                 </div>
               )}
@@ -127,7 +127,7 @@ export function ProfileModal({ user, loading, error, onClose }: ProfileModalProp
                   <div className="grid grid-cols-2 gap-3 pb-2">
                     <div className="rounded-md border border-subtle bg-(--bg-surface-hover)/(--opacity-medium) p-4">
                       <p className="mb-1 text-xs font-bold uppercase tracking-widest text-(--text-secondary)/(--opacity-strong)">
-                        {t("messenger:status", "Status")}
+                        {t("messenger:status")}
                       </p>
                       <span
                         className="messenger-status-badge"
@@ -142,9 +142,7 @@ export function ProfileModal({ user, loading, error, onClose }: ProfileModalProp
                           }}
                           aria-hidden="true"
                         />
-                        {user.is_active
-                          ? t("common:active", "Active")
-                          : t("common:inactive", "Inactive")}
+                        {user.is_active ? t("common:active") : t("common:inactive")}
                       </span>
                     </div>
                     {user.avatar_url && (
@@ -155,11 +153,9 @@ export function ProfileModal({ user, loading, error, onClose }: ProfileModalProp
                         className="rounded-md border border-(--primary-main)/(--opacity-subtle) bg-(--primary-main)/(--opacity-subtle) p-4 transition-colors hover:bg-(--primary-main)/(--opacity-subtle)"
                       >
                         <p className="mb-1 text-xs font-bold uppercase tracking-widest text-brand">
-                          {t("messenger:avatar", "Avatar")}
+                          {t("messenger:avatar")}
                         </p>
-                        <p className="text-sm font-bold text-brand">
-                          {t("messenger:viewAvatar", "Open full size")}
-                        </p>
+                        <p className="text-sm font-bold text-brand">{t("messenger:viewAvatar")}</p>
                       </a>
                     )}
                   </div>

@@ -4,6 +4,7 @@ import { AVATAR_PLACEHOLDER_URL } from "@/constants/placeholders"
 import { useMessenger } from "@/contexts/MessengerContext"
 import { useMessengerController } from "@/hooks/features/useMessengerController"
 import { motion as motionTokens } from "@/theme/tokens"
+import { cn } from "@/utils/cn"
 import { AnimatePresence, m, useReducedMotion } from "framer-motion"
 import {
   ChevronLeft,
@@ -142,7 +143,7 @@ export function ChatArea({
                             exit={{ opacity: 0, y: -5 }}
                             className="text-xs font-semibold uppercase tracking-wider text-msg-online"
                           >
-                            {t("messenger:online", "online")}
+                            {t("messenger:online")}
                           </m.p>
                         ) : (
                           <m.p
@@ -152,7 +153,7 @@ export function ChatArea({
                             exit={{ opacity: 0, y: -5 }}
                             className="text-xs font-medium text-text-secondary"
                           >
-                            {t("messenger:offline", "offline")}
+                            {t("messenger:offline")}
                           </m.p>
                         )}
                       </AnimatePresence>
@@ -176,7 +177,12 @@ export function ChatArea({
                       whileHover={{ scale: 1.05 }}
                       whileTap={{ scale: 0.95 }}
                       onClick={() => setShowChatMenu(!showChatMenu)}
-                      className={`rounded-full p-2.5 transition-colors ${showChatMenu ? "bg-(--bg-surface-hover)" : "hover:bg-(--bg-surface-hover)/(--opacity-medium)"}`}
+                      className={cn(
+                        "rounded-full p-2.5 transition-colors",
+                        showChatMenu
+                          ? "bg-(--bg-surface-hover)"
+                          : "hover:bg-(--bg-surface-hover)/(--opacity-medium)"
+                      )}
                     >
                       <MoreVertical className="h-5 w-5 text-text-secondary" strokeWidth={2} />
                     </m.button>
@@ -196,27 +202,30 @@ export function ChatArea({
                         >
                           {[
                             {
+                              id: "view-profile",
                               icon: User,
                               label: t("messenger:viewProfile"),
                               color: "text-primary-main",
                               action: handleViewProfile,
                             },
                             {
+                              id: "clear-chat",
                               icon: MessageCircleOff,
                               label: t("messenger:clearChat"),
                               color: "text-warning-text",
                               action: handleClearChat,
                             },
                             {
+                              id: "delete-chat",
                               icon: Trash2,
                               label: t("messenger:deleteChat"),
                               color: "text-error-text",
                               action: handleDeleteChat,
                             },
-                          ].map((item, idx) => (
+                          ].map((item) => (
                             <button
-                              id={`chat-action-${item.label.toLowerCase().replace(/\s+/g, "-")}`}
-                              key={idx}
+                              id={`chat-action-${item.id}`}
+                              key={item.id}
                               onClick={item.action}
                               className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-text-primary transition-colors hover:bg-bg-surface-hover"
                             >
@@ -257,7 +266,7 @@ export function ChatArea({
                   autoComplete="off"
                   autoCorrect="off"
                   spellCheck="false"
-                  placeholder={t("messenger:searchMessages", "Search messages...")}
+                  placeholder={t("messenger:searchMessages")}
                   className="text-md flex-1 rounded-md border-none bg-black/(--opacity-subtle) px-4 py-2.5 outline-none transition-all focus:ring-2 focus:ring-brand-main/(--opacity-medium) dark:bg-white/(--opacity-subtle)"
                 />
               </m.div>
@@ -301,7 +310,7 @@ export function ChatArea({
               width: "100%",
             }}
           >
-            {t("messenger:selectChat", "Choose a conversation")}
+            {t("messenger:selectChat")}
           </h3>
           <p
             className="mt-3 text-(--text-secondary)"
@@ -311,7 +320,7 @@ export function ChatArea({
               width: "100%",
             }}
           >
-            {t("messenger:selectChatDesc", "Connect with anyone across the university ecosystem.")}
+            {t("messenger:selectChatDesc")}
           </p>
         </div>
       )}

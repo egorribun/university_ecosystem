@@ -33,6 +33,8 @@
   "aria": {
     "messageList": "Chat messages",
     "removeAttachment": "Remove attachment",
-    "attachments": "Attachments"
+    "attachments": "Attachments",
+    "sendMessage": "Send message",
+    "unread": "{{count}} unread"
   }
 }

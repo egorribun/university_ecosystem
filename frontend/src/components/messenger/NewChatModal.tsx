@@ -99,7 +99,7 @@ export const NewChatModal: React.FC<NewChatModalProps> = ({ open, onClose, onSel
                 id={titleId}
                 className="text-xl font-black tracking-tight text-text-primary sf-pro"
               >
-                {t("messenger:newChat", "New Chat")}
+                {t("messenger:newChat")}
               </h3>
               <button
                 type="button"
@@ -116,7 +116,7 @@ export const NewChatModal: React.FC<NewChatModalProps> = ({ open, onClose, onSel
                 leadingIcon={<Search className="w-4.5 h-4.5" />}
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                placeholder={t("messenger:searchUsers", "Search users by name or email...")}
+                placeholder={t("messenger:searchUsers")}
                 className="w-full"
                 ref={(input) => {
                   if (input && open) {
@@ -138,7 +138,7 @@ export const NewChatModal: React.FC<NewChatModalProps> = ({ open, onClose, onSel
                       <Search className="w-8 h-8" />
                     </div>
                     <p className="text-sm font-bold text-(--text-secondary) opacity-medium">
-                      {t("messenger:noUsersFound", "No users found matching your search")}
+                      {t("messenger:noUsersFound")}
                     </p>
                   </div>
                 )}

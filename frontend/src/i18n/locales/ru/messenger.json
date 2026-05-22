@@ -33,6 +33,8 @@
   "aria": {
     "messageList": "Сообщения чата",
     "removeAttachment": "Удалить вложение",
-    "attachments": "Вложения"
+    "attachments": "Вложения",
+    "sendMessage": "Отправить сообщение",
+    "unread": "{{count}} непрочитано"
   }
 }

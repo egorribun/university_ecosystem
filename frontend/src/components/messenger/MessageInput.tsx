@@ -13,7 +13,11 @@ export const MessageInput: React.FC<MessageInputProps> = ({ onSend }) => {
   const { t } = useTranslation(["messenger"])
   const [text, setText] = useState("")
   const [showAttachMenu, setShowAttachMenu] = useState(false)
-  const [selectedFiles, setSelectedFiles] = useState<File[]>([])
+  // Wave 182 SW2 — selectedFiles tracks each File with a stable UUID
+  // (was File[]; composite key `${name}-${size}-${index}` collided when
+  // the user added two copies of the same file). UUIDs make removal +
+  // React reconciliation deterministic regardless of duplicates.
+  const [selectedFiles, setSelectedFiles] = useState<Array<{ id: string; file: File }>>([])
   const [svgRejected, setSvgRejected] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
   // Wave 181 SW3 — useReducedMotion guard for attach + send button micro-interactions.
@@ -26,7 +30,10 @@ export const MessageInput: React.FC<MessageInputProps> = ({ onSend }) => {
 
   const handleSend = () => {
     if (text.trim() || selectedFiles.length > 0) {
-      onSend(text, selectedFiles)
+      onSend(
+        text,
+        selectedFiles.map((entry) => entry.file)
+      )
       setText("")
       setSelectedFiles([])
       setShowAttachMenu(false)
@@ -84,13 +91,16 @@ export const MessageInput: React.FC<MessageInputProps> = ({ onSend }) => {
         setSvgRejected(true)
         setTimeout(() => setSvgRejected(false), 3000)
       }
-      setSelectedFiles((previousFiles) => [...previousFiles, ...validFiles])
+      setSelectedFiles((previousFiles) => [
+        ...previousFiles,
+        ...validFiles.map((file) => ({ id: crypto.randomUUID(), file })),
+      ])
     }
     if (fileInputRef.current) fileInputRef.current.value = ""
   }
 
-  const removeFile = (index: number) => {
-    setSelectedFiles((prev) => prev.filter((_, i) => i !== index))
+  const removeFile = (id: string) => {
+    setSelectedFiles((prev) => prev.filter((entry) => entry.id !== id))
   }
 
   return (
@@ -104,14 +114,14 @@ export const MessageInput: React.FC<MessageInputProps> = ({ onSend }) => {
             className="absolute -top-10 left-3 right-3 rounded-lg bg-error-bg px-3 py-1.5 text-sm text-error-text shadow-sm"
             role="alert"
           >
-            {t("messenger:svgNotAllowed", "SVG files are not allowed")}
+            {t("messenger:svgNotAllowed")}
           </m.div>
         )}
       </AnimatePresence>
       {selectedFiles.length > 0 && (
         <div className="flex gap-2 mb-3 overflow-x-auto pb-2 custom-scrollbar">
-          {selectedFiles.map((file, index) => (
-            <div key={`${file.name}-${file.size}-${index}`} className="relative shrink-0 group">
+          {selectedFiles.map(({ id, file }) => (
+            <div key={id} className="relative shrink-0 group">
               {file.type.startsWith("image/") ? (
                 <SmartImage
                   srcRaw={URL.createObjectURL(file)}
@@ -125,7 +135,7 @@ export const MessageInput: React.FC<MessageInputProps> = ({ onSend }) => {
               )}
               <button
                 type="button"
-                onClick={() => removeFile(index)}
+                onClick={() => removeFile(id)}
                 className="absolute -top-1.5 -right-1.5 min-h-[24px] min-w-[24px] bg-(--error-text) text-[var(--text-inverse)] rounded-full p-1 shadow-lg hover:bg-(--error-text)/(--opacity-hover) transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-violet-500) focus-visible:ring-offset-2 focus-visible:ring-offset-(--bg-surface)"
                 aria-label={t("messenger:aria.removeAttachment")}
               >
@@ -166,30 +176,32 @@ export const MessageInput: React.FC<MessageInputProps> = ({ onSend }) => {
                 exit={{ opacity: 0, scale: 0.95, y: 10 }}
                 className="absolute bottom-full left-0 mb-4 py-2 min-w-(--min-w-column) bg-(--bg-surface)/(--opacity-heavy) backdrop-blur-2xl rounded-2xl border border-(--glass-border) shadow-premium overflow-hidden ring-1 ring-black/(--opacity-faint)"
               >
-                {[
-                  {
-                    id: "photo",
-                    icon: ImageIcon,
-                    label: "Photo",
-                    color: "text-(--primary-main) bg-(--primary-main)/(--opacity-subtle)",
-                  },
-                  {
-                    id: "document",
-                    icon: FileText,
-                    label: "Document",
-                    color: "text-(--success-text) bg-(--success-text)/(--opacity-subtle)",
-                  },
-                  {
-                    id: "file",
-                    icon: File,
-                    label: "File",
-                    color: "text-(--warning-text) bg-(--warning-text)/(--opacity-subtle)",
-                  },
-                ].map((item) => (
+                {(
+                  [
+                    {
+                      id: "photo",
+                      icon: ImageIcon,
+                      labelKey: "messenger:attachPhoto",
+                      color: "text-(--primary-main) bg-(--primary-main)/(--opacity-subtle)",
+                    },
+                    {
+                      id: "document",
+                      icon: FileText,
+                      labelKey: "messenger:attachDocument",
+                      color: "text-(--success-text) bg-(--success-text)/(--opacity-subtle)",
+                    },
+                    {
+                      id: "file",
+                      icon: File,
+                      labelKey: "messenger:attachFile",
+                      color: "text-(--warning-text) bg-(--warning-text)/(--opacity-subtle)",
+                    },
+                  ] as const
+                ).map((item) => (
                   <button
                     id={`chat-attach-type-${item.id}`}
                     key={item.id}
-                    onClick={() => handleAttachmentClick(item.id as "photo" | "document" | "file")}
+                    onClick={() => handleAttachmentClick(item.id)}
                     className="w-full px-4 py-3 flex items-center gap-3 hover:bg-(--bg-surface-hover) transition-colors text-left group"
                   >
                     <div
@@ -200,9 +212,7 @@ export const MessageInput: React.FC<MessageInputProps> = ({ onSend }) => {
                     >
                       <item.icon size={18} />
                     </div>
-                    <span className="text-sm font-bold text-text-primary">
-                      {t(`messenger:attach${item.label}`)}
-                    </span>
+                    <span className="text-sm font-bold text-text-primary">{t(item.labelKey)}</span>
                   </button>
                 ))}
               </m.div>
@@ -216,7 +226,7 @@ export const MessageInput: React.FC<MessageInputProps> = ({ onSend }) => {
           value={text}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder={t("messenger:typeMessage", "Message...")}
+          placeholder={t("messenger:typeMessage")}
           className="flex-1 bg-transparent border-none focus:ring-0 outline-none resize-none max-h-48 py-2 md:py-2.5 px-1 text-base text-text-primary placeholder:text-(--text-secondary) placeholder:opacity-medium"
           rows={1}
         />
@@ -227,7 +237,7 @@ export const MessageInput: React.FC<MessageInputProps> = ({ onSend }) => {
           whileTap={sendTapAnim}
           onClick={handleSend}
           disabled={!sendCanFire}
-          aria-label={t("messenger:typeMessage")}
+          aria-label={t("messenger:aria.sendMessage")}
           className={cn(
             "min-h-[44px] min-w-[44px] p-2.5 rounded-xl transition-all duration-base",
             "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-violet-500) focus-visible:ring-offset-2 focus-visible:ring-offset-(--bg-surface)",
