@@ -39,14 +39,19 @@ export const MessageInput: React.FC<MessageInputProps> = ({ onSend }) => {
   const [svgRejected, setSvgRejected] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
-  // Wave 183 SW7 — revoke any outstanding Blob URLs on unmount to prevent
-  // memory leak. Mirrors W183 SW3 useMessengerController pattern.
+  // Wave 183 SW7 — mirror selectedFiles into a ref so the unmount cleanup
+  // can revoke outstanding Blob URLs without relying on the setState
+  // updater fn (which React does NOT invoke during component unmount —
+  // setState calls after unmount are batched + dropped). Without this
+  // ref, the unmount-cleanup branch would be a no-op + URLs leak.
+  const selectedFilesRef = useRef<SelectedFile[]>(selectedFiles)
+  useEffect(() => {
+    selectedFilesRef.current = selectedFiles
+  }, [selectedFiles])
+
   useEffect(() => {
     return () => {
-      setSelectedFiles((current) => {
-        current.forEach((entry) => URL.revokeObjectURL(entry.previewUrl))
-        return current
-      })
+      selectedFilesRef.current.forEach((entry) => URL.revokeObjectURL(entry.previewUrl))
     }
   }, [])
   // Wave 181 SW3 — useReducedMotion guard for attach + send button micro-interactions.
