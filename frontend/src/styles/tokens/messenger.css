@@ -62,6 +62,13 @@
       transparent 90%
     );
 
+    /* W183 polish-v3: light theme needs higher divider opacity than dark
+       (0.55 was empirically too subtle against light --bg-surface white;
+       blended ~#dddbf7 violet-on-white vs much higher contrast against
+       slate-950 in dark). Theme-scoped so dark mode keeps its current
+       balance (0.55 = visible + subtle on near-black). */
+    --messenger-divider-opacity: 0.8;
+
     /* ── Matte card system ────────────────────────── */
     --messenger-card-bg: color-mix(in srgb, var(--bg-surface) 96%, var(--color-indigo-50) 4%);
     --messenger-card-shadow:
@@ -185,6 +192,10 @@
     --messenger-orb-1: color-mix(in srgb, var(--color-violet-400) 22%, transparent);
     --messenger-orb-2: color-mix(in srgb, var(--color-pink-400) 18%, transparent);
     --messenger-orb-3: color-mix(in srgb, var(--color-indigo-400) 15%, transparent);
+
+    /* W183 polish-v3: dark mode keeps 0.55 (already verified visible against
+       slate-950 near-black surface; light mode override at 0.8). */
+    --messenger-divider-opacity: 0.55;
 
     /* W181 SW6 polish: matte card bg was indistinguishable from bg-msg-chat
        in dark mode (both near-black). Bumped from 5% indigo-950 mix to 12%
@@ -351,7 +362,7 @@
   height: 1px;
   margin: 0 1.25rem;
   background: var(--messenger-accent-line);
-  opacity: 0.55;
+  opacity: var(--messenger-divider-opacity, 0.55);
   pointer-events: none;
 }
 
