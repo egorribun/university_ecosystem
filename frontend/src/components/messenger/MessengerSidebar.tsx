@@ -20,6 +20,20 @@ interface MessengerSidebarProps {
    * the W183 SW1 "No conversations yet" empty state flashing briefly.
    */
   isLoading?: boolean
+  /**
+   * Wave 184 SW3 (Path B) — chats list query error flag lifted from
+   * useMessengerController. When true, ContactList renders a fetch-failure
+   * error empty state with Retry CTA BEFORE the contacts-empty branch.
+   * Distinguishes "no chats" (W183 SW1 empty state) from "network error"
+   * (this branch) so users have an actionable retry path.
+   */
+  isError?: boolean
+  /**
+   * Wave 184 SW3 (Path B) — retry callback wired to React Query's
+   * `refetch()` (typically `() => { void refetchChats() }`). Invoked
+   * when the user clicks the Retry button inside the error empty state.
+   */
+  onRetry?: () => void
 }
 
 const MOBILE_MENU_WIDTH = 300
@@ -30,6 +44,8 @@ export function MessengerSidebar({
   selectedChatId,
   setIsNewChatModalOpen,
   isLoading = false,
+  isError = false,
+  onRetry,
 }: MessengerSidebarProps) {
   const { t } = useTranslation(["messenger", "common"])
   const navigate = useNavigate()
@@ -125,6 +141,8 @@ export function MessengerSidebar({
         onStartNewChat={handleStartNewChat}
         onClearSearch={handleClearSearch}
         isLoading={isLoading}
+        isError={isError}
+        onRetry={onRetry}
       />
     </m.div>
   )

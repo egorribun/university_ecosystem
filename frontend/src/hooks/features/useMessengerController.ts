@@ -96,7 +96,17 @@ export const useMessengerController = () => {
   // inconsistency): pre-W180 this fired without the `enabled: isAuth` gate
   // that MessengerContext.tsx:66-70 already had. Cache identity preserved
   // via chatsQueryKey = ["chats"] (unchanged tuple shape).
-  const { data: chatsData, isLoading: chatsLoading } = useQuery({
+  // Wave 184 SW3 (Path B) — additionally surface `isError` + `refetch` so
+  // ContactList can render a fetch-failure error state with retry button.
+  // Pre-W184 fetch failures resulted in the empty-state "No conversations
+  // yet" branch flashing wrongly — the user had no way to distinguish
+  // "no chats" from "network error".
+  const {
+    data: chatsData,
+    isLoading: chatsLoading,
+    isError: chatsError,
+    refetch: refetchChats,
+  } = useQuery({
     ...chatsQueryOptions(),
     enabled: !!user,
   })
@@ -115,7 +125,14 @@ export const useMessengerController = () => {
 
   // Wave 180 SW3 — messages useQuery spreads messagesQueryOptions factory.
   // Pre-W180 `enabled: !!selectedChatId` gate preserved (no other changes).
-  const { data: messagesData, isLoading: messagesLoading } = useQuery({
+  // Wave 184 SW3 (Path B) — additionally surface `isError` + `refetch` for
+  // ChatWindow fetch-failure error state. Same rationale as chats (above).
+  const {
+    data: messagesData,
+    isLoading: messagesLoading,
+    isError: messagesError,
+    refetch: refetchMessages,
+  } = useQuery({
     ...messagesQueryOptions(selectedChatId),
     enabled: !!selectedChatId,
   })
@@ -450,6 +467,12 @@ export const useMessengerController = () => {
     messages: optimisticMessages,
     chatsLoading,
     messagesLoading,
+    // Wave 184 SW3 (Path B) — fetch-failure flags + refetch handles for
+    // ContactList + ChatWindow error empty-state branches with retry CTA.
+    chatsError,
+    refetchChats,
+    messagesError,
+    refetchMessages,
 
     // Profile
     profileUser,

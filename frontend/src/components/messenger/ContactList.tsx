@@ -1,5 +1,12 @@
 import { m, useReducedMotion } from "framer-motion"
-import { MessageCirclePlus, MessagesSquare, SearchX, X } from "lucide-react"
+import {
+  MessageCirclePlus,
+  MessagesSquare,
+  RotateCcw,
+  SearchX,
+  TriangleAlert,
+  X,
+} from "lucide-react"
 import { useTranslation } from "react-i18next"
 import { cn } from "@/utils/cn"
 import SmartImage from "@/components/media/SmartImage"
@@ -31,6 +38,21 @@ interface ContactListProps {
    * Uses `.messenger-skeleton` shimmer class from W181 SW1 (messenger.css:635).
    */
   isLoading?: boolean
+  /**
+   * Wave 184 SW3 (Path B) — chats list query error state. When true,
+   * renders a fetch-failure empty state with TriangleAlert icon + i18n
+   * description + Retry CTA. Distinguishes "no chats" (W183 SW1 empty
+   * state) from "network error" (this branch) so users have an actionable
+   * retry path without page reload. Order: isLoading → isError →
+   * contacts.length === 0 → normal render.
+   */
+  isError?: boolean
+  /**
+   * Wave 184 SW3 (Path B) — retry callback wired to React Query's
+   * `refetch()` (via MessengerFeature → useMessengerController). Invoked
+   * by the Retry button inside the error empty state.
+   */
+  onRetry?: () => void
 }
 
 // Wave 184 SW2 (Path B) — skeleton row count. 6 rows is enough to fill the
@@ -78,6 +100,8 @@ export function ContactList({
   onStartNewChat,
   onClearSearch,
   isLoading = false,
+  isError = false,
+  onRetry,
 }: ContactListProps) {
   const { t } = useTranslation(["messenger"])
   const prefersReducedMotion = useReducedMotion() ?? false
@@ -117,6 +141,65 @@ export function ContactList({
             </div>
           </div>
         ))}
+      </div>
+    )
+  }
+
+  // Wave 184 SW3 (Path B) — fetch-failure empty state. Order matters:
+  // must come AFTER isLoading (so a transient fetch error during refetch
+  // doesn't flash the error banner while the spinner should win) but
+  // BEFORE the contacts.length === 0 empty state (so a network error
+  // doesn't disguise itself as "No conversations yet"). Reuses the
+  // .messenger-card-matte container + violet accent palette (W181 SW1)
+  // for visual consistency with sibling empty states (W183 SW1).
+  if (isError) {
+    const errorEntrance = prefersReducedMotion ? undefined : { scale: 0.92, opacity: 0, y: 8 }
+    const errorAnimate = { scale: 1, opacity: 1, y: 0 }
+    const errorTransition = prefersReducedMotion
+      ? { duration: 0 }
+      : { duration: 0.45, ease: [0.22, 1, 0.36, 1] as const }
+    return (
+      <div
+        className="flex flex-1 flex-col items-center justify-center bg-(--msg-sidebar-bg) px-6 py-10 text-center"
+        role="alert"
+        aria-live="assertive"
+      >
+        <m.div
+          initial={errorEntrance}
+          animate={errorAnimate}
+          transition={errorTransition}
+          className="flex w-full max-w-[18rem] flex-col items-center"
+        >
+          <div
+            className="messenger-card-matte mb-6 flex size-20 items-center justify-center"
+            style={{ background: "var(--messenger-card-bg)" }}
+          >
+            <TriangleAlert
+              className="size-10 text-(--color-violet-500)"
+              style={{ opacity: "var(--opacity-strong)" }}
+              strokeWidth={1.5}
+              aria-hidden="true"
+            />
+          </div>
+          <h3 className="sf-pro mb-2 text-base font-bold leading-tight text-(--text-primary)">
+            {t("messenger:error.failedToLoadChats")}
+          </h3>
+          <p className="mb-6 text-sm leading-relaxed text-(--text-secondary)">
+            {t("messenger:error.failedToLoadChatsHint")}
+          </p>
+          {onRetry && (
+            <m.button
+              type="button"
+              whileHover={prefersReducedMotion ? undefined : { scale: 1.04 }}
+              whileTap={prefersReducedMotion ? undefined : { scale: 0.96 }}
+              onClick={onRetry}
+              className="messenger-send-btn inline-flex min-h-[44px] items-center gap-2 rounded-full px-5 text-sm font-semibold text-(--text-inverse) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-violet-500) focus-visible:ring-offset-2 focus-visible:ring-offset-(--bg-surface)"
+            >
+              <RotateCcw className="size-4" strokeWidth={2.5} aria-hidden="true" />
+              <span>{t("messenger:error.retry")}</span>
+            </m.button>
+          )}
+        </m.div>
       </div>
     )
   }

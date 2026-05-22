@@ -1,7 +1,7 @@
 import React, { useEffect, useId, useRef, useState } from "react"
 import { m, AnimatePresence, useReducedMotion } from "framer-motion"
 import { useTranslation } from "react-i18next"
-import { Search, X } from "lucide-react"
+import { RotateCcw, Search, TriangleAlert, X } from "lucide-react"
 import { useQuery } from "@tanstack/react-query"
 import client from "@/api/client"
 import type { User } from "@/types/User"
@@ -71,7 +71,17 @@ export const NewChatModal: React.FC<NewChatModalProps> = ({ open, onClose, onSel
     return () => document.removeEventListener("keydown", handler)
   }, [open, onClose])
 
-  const { data: users = [], isLoading } = useQuery({
+  // Wave 184 SW3 (Path B) — additionally destructure `isError` + `refetch`
+  // so the search dropdown can render a fetch-failure state with Retry
+  // CTA. Pre-W184 a /users search failure rendered the W183 SW4
+  // "noUsersFound" branch wrongly — user couldn't distinguish "no matches"
+  // from "network error".
+  const {
+    data: users = [],
+    isLoading,
+    isError,
+    refetch: refetchUsers,
+  } = useQuery({
     queryKey: ["users", debouncedSearch],
     queryFn: async () => {
       if (!debouncedSearch) return []
@@ -175,23 +185,69 @@ export const NewChatModal: React.FC<NewChatModalProps> = ({ open, onClose, onSel
                   </div>
                 )}
 
-                {!isLoading && users.length === 0 && search.length > MIN_SEARCH_LENGTH && (
+                {/* Wave 184 SW3 (Path B) — fetch-failure branch. Renders
+                    when the /users search query errored AND not currently
+                    loading (so refetch-in-flight shows the spinner, not
+                    the stale error). TriangleAlert + matte container +
+                    Retry button matches ContactList isError pattern. */}
+                {!isLoading && isError && (
                   <div
-                    className="text-center py-12 px-4 space-y-2"
-                    role="status"
-                    aria-live="polite"
+                    className="flex flex-col items-center py-10 px-4 text-center"
+                    role="alert"
+                    aria-live="assertive"
                   >
                     <div
-                      className="w-16 h-16 rounded-full bg-(--bg-surface-raised) mx-auto flex items-center justify-center text-(--text-secondary) opacity-dim"
-                      aria-hidden="true"
+                      className="messenger-card-matte mb-5 flex size-16 items-center justify-center"
+                      style={{ background: "var(--messenger-card-bg)" }}
                     >
-                      <Search className="w-8 h-8" />
+                      <TriangleAlert
+                        className="size-8 text-(--color-violet-500)"
+                        style={{ opacity: "var(--opacity-strong)" }}
+                        strokeWidth={1.5}
+                        aria-hidden="true"
+                      />
                     </div>
-                    <p className="text-sm font-bold text-(--text-secondary) opacity-medium">
-                      {t("messenger:noUsersFound")}
+                    <h4 className="sf-pro mb-2 text-base font-bold leading-tight text-(--text-primary)">
+                      {t("messenger:error.failedToLoadUsers")}
+                    </h4>
+                    <p className="mb-5 text-sm leading-relaxed text-(--text-secondary)">
+                      {t("messenger:error.failedToLoadUsersHint")}
                     </p>
+                    <m.button
+                      type="button"
+                      whileHover={prefersReducedMotion ? undefined : { scale: 1.04 }}
+                      whileTap={prefersReducedMotion ? undefined : { scale: 0.96 }}
+                      onClick={() => {
+                        void refetchUsers()
+                      }}
+                      className="messenger-send-btn inline-flex min-h-[44px] items-center gap-2 rounded-full px-5 text-sm font-semibold text-(--text-inverse) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-violet-500) focus-visible:ring-offset-2 focus-visible:ring-offset-(--bg-surface)"
+                    >
+                      <RotateCcw className="size-4" strokeWidth={2.5} aria-hidden="true" />
+                      <span>{t("messenger:error.retry")}</span>
+                    </m.button>
                   </div>
                 )}
+
+                {!isLoading &&
+                  !isError &&
+                  users.length === 0 &&
+                  search.length > MIN_SEARCH_LENGTH && (
+                    <div
+                      className="text-center py-12 px-4 space-y-2"
+                      role="status"
+                      aria-live="polite"
+                    >
+                      <div
+                        className="w-16 h-16 rounded-full bg-(--bg-surface-raised) mx-auto flex items-center justify-center text-(--text-secondary) opacity-dim"
+                        aria-hidden="true"
+                      >
+                        <Search className="w-8 h-8" />
+                      </div>
+                      <p className="text-sm font-bold text-(--text-secondary) opacity-medium">
+                        {t("messenger:noUsersFound")}
+                      </p>
+                    </div>
+                  )}
 
                 {/* Wave 183 SW4 — added role=listbox on container + role=option on
                     each user row so screen readers announce "list of N options"

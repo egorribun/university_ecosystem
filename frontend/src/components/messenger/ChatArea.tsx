@@ -33,6 +33,21 @@ interface ChatAreaProps {
    * users during message history fetch.
    */
   messagesLoading?: boolean
+  /**
+   * Wave 184 SW3 (Path B) — messages query error flag lifted from
+   * useMessengerController. ChatWindow renders a fetch-failure empty
+   * state with Retry CTA BEFORE the no-messages-yet branch. Distinguishes
+   * "new chat" from "network error" so users have an actionable retry
+   * path without page reload.
+   */
+  messagesError?: boolean
+  /**
+   * Wave 184 SW3 (Path B) — retry callback wired to React Query's
+   * `refetch()` for the messages query (via MessengerFeature →
+   * useMessengerController). Invoked by the Retry button inside the
+   * error empty state.
+   */
+  onRetryMessages?: () => void
   showSearchInChat: boolean
   setShowSearchInChat: Dispatch<SetStateAction<boolean>>
   searchQuery: string
@@ -53,6 +68,8 @@ export function ChatArea({
   activeChat,
   messages,
   messagesLoading = false,
+  messagesError = false,
+  onRetryMessages,
   showSearchInChat,
   setShowSearchInChat,
   searchQuery,
@@ -303,6 +320,8 @@ export function ChatArea({
           <ChatWindow
             messages={messages}
             isLoading={messagesLoading}
+            isError={messagesError}
+            onRetry={onRetryMessages}
             searchQuery={showSearchInChat ? searchQuery : ""}
             onClearSearch={() => setSearchQuery("")}
           />

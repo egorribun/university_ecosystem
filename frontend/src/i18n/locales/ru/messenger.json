@@ -59,6 +59,15 @@
     "messages": "Загрузка сообщений…",
     "users": "Загрузка пользователей…"
   },
+  "error": {
+    "failedToLoadChats": "Не удалось загрузить чаты",
+    "failedToLoadChatsHint": "Проверьте соединение и попробуйте снова.",
+    "failedToLoadMessages": "Не удалось загрузить сообщения",
+    "failedToLoadMessagesHint": "Проверьте соединение и попробуйте снова.",
+    "failedToLoadUsers": "Не удалось загрузить пользователей",
+    "failedToLoadUsersHint": "Проверьте соединение и попробуйте снова.",
+    "retry": "Повторить"
+  },
   "aria": {
     "messageList": "Сообщения чата",
     "removeAttachment": "Удалить вложение",

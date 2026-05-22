@@ -1,6 +1,15 @@
 import React, { useRef, useEffect, useMemo } from "react"
 import { m, useReducedMotion } from "framer-motion" // Removed AnimatePresence, LayoutGroup as they are not used
-import { File, Check, CheckCheck, MessageCircleHeart, SearchX, X } from "lucide-react"
+import {
+  File,
+  Check,
+  CheckCheck,
+  MessageCircleHeart,
+  RotateCcw,
+  SearchX,
+  TriangleAlert,
+  X,
+} from "lucide-react"
 import { useVirtualizer } from "@tanstack/react-virtual"
 import { useTranslation } from "react-i18next"
 import { cn } from "@/utils/cn"
@@ -41,6 +50,17 @@ interface ChatWindowProps {
    * Uses `.messenger-skeleton` shimmer class from W181 SW1.
    */
   isLoading?: boolean
+  /**
+   * Wave 184 SW3 (Path B) — messages query error flag. When true,
+   * renders a fetch-failure empty state with Retry CTA BEFORE the
+   * no-messages-yet branch. Distinguishes "new chat" from "network error".
+   */
+  isError?: boolean
+  /**
+   * Wave 184 SW3 (Path B) — retry callback wired to React Query's
+   * `refetch()`. Invoked by the Retry button inside the error empty state.
+   */
+  onRetry?: () => void
 }
 
 // Wave 184 SW2 (Path B) — skeleton bubble count. 6 alternating left/right
@@ -53,6 +73,8 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   searchQuery = "",
   onClearSearch,
   isLoading = false,
+  isError = false,
+  onRetry,
 }) => {
   const { t } = useTranslation()
   // Wave 181 SW3 — useReducedMotion guard. Without this, virtualized message
@@ -114,6 +136,66 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       })
     }
   }, [filteredMessages.length, isSearchActive, virtualizer])
+
+  // Wave 184 SW3 (Path B) — fetch-failure empty state. Order matters:
+  // must come AFTER isLoading (so a transient error during refetch
+  // doesn't flash the error banner while the spinner should win) but
+  // BEFORE the no-messages-yet branch (so network errors don't disguise
+  // themselves as "Say hi" UX). Mirrors ContactList isError pattern
+  // (W184 SW3) for visual consistency: TriangleAlert + matte card +
+  // Retry CTA wired to React Query's refetch().
+  if (isError) {
+    return (
+      <div
+        ref={containerRef}
+        role="alert"
+        aria-live="assertive"
+        aria-label={t("messenger:aria.messageList")}
+        className="messenger-chat-area flex flex-1 flex-col items-center justify-center px-6 py-10 text-center"
+      >
+        <m.div
+          initial={prefersReducedMotion ? false : { scale: 0.92, opacity: 0, y: 8 }}
+          animate={{ scale: 1, opacity: 1, y: 0 }}
+          transition={
+            prefersReducedMotion
+              ? { duration: 0 }
+              : { duration: 0.45, ease: [0.22, 1, 0.36, 1] as const }
+          }
+          className="flex w-full max-w-[24rem] flex-col items-center"
+        >
+          <div
+            className="messenger-card-matte mb-5 flex size-16 items-center justify-center"
+            style={{ background: "var(--messenger-card-bg)" }}
+          >
+            <TriangleAlert
+              className="size-8 text-(--color-violet-500)"
+              style={{ opacity: "var(--opacity-strong)" }}
+              strokeWidth={1.5}
+              aria-hidden="true"
+            />
+          </div>
+          <h3 className="sf-pro mb-2 text-base font-bold leading-tight text-(--text-primary)">
+            {t("messenger:error.failedToLoadMessages")}
+          </h3>
+          <p className="mb-6 text-sm leading-relaxed text-(--text-secondary)">
+            {t("messenger:error.failedToLoadMessagesHint")}
+          </p>
+          {onRetry && (
+            <m.button
+              type="button"
+              whileHover={prefersReducedMotion ? undefined : { scale: 1.04 }}
+              whileTap={prefersReducedMotion ? undefined : { scale: 0.96 }}
+              onClick={onRetry}
+              className="messenger-send-btn inline-flex min-h-[44px] items-center gap-2 rounded-full px-5 text-sm font-semibold text-(--text-inverse) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-violet-500) focus-visible:ring-offset-2 focus-visible:ring-offset-(--bg-surface)"
+            >
+              <RotateCcw className="size-4" strokeWidth={2.5} aria-hidden="true" />
+              <span>{t("messenger:error.retry")}</span>
+            </m.button>
+          )}
+        </m.div>
+      </div>
+    )
+  }
 
   // Wave 184 SW2 (Path B) — loading skeleton state. Rendered when the
   // messages query is in-flight (initial fetch on chat selection). Must

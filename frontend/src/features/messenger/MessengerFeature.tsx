@@ -47,6 +47,15 @@ export default function MessengerFeature() {
     // users + first-paint feedback.
     chatsLoading,
     messagesLoading,
+    // Wave 184 SW3 (Path B) — lifted query error flags + refetch handles
+    // for ContactList + ChatWindow fetch-failure empty-state branches with
+    // retry CTA. Pre-W184 fetch failures flashed the "No conversations
+    // yet" / "Say hi" empty states wrongly — user had no way to distinguish
+    // "empty" from "network error" + no path to retry without page reload.
+    chatsError,
+    refetchChats,
+    messagesError,
+    refetchMessages,
 
     // Profile
     profileUser,
@@ -144,6 +153,10 @@ export default function MessengerFeature() {
             selectedChatId={selectedChatId}
             setIsNewChatModalOpen={setIsNewChatModalOpen}
             isLoading={chatsLoading}
+            isError={chatsError}
+            onRetry={() => {
+              void refetchChats()
+            }}
           />
         )}
 
@@ -155,6 +168,10 @@ export default function MessengerFeature() {
             activeChat={activeChat}
             messages={messages}
             messagesLoading={messagesLoading}
+            messagesError={messagesError}
+            onRetryMessages={() => {
+              void refetchMessages()
+            }}
             showSearchInChat={showSearchInChat}
             setShowSearchInChat={setShowSearchInChat}
             searchQuery={searchQuery}

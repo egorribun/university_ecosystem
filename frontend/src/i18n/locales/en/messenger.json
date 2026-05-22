@@ -59,6 +59,15 @@
     "messages": "Loading messages…",
     "users": "Loading users…"
   },
+  "error": {
+    "failedToLoadChats": "Couldn't load conversations",
+    "failedToLoadChatsHint": "Check your connection and try again.",
+    "failedToLoadMessages": "Couldn't load messages",
+    "failedToLoadMessagesHint": "Check your connection and try again.",
+    "failedToLoadUsers": "Couldn't load users",
+    "failedToLoadUsersHint": "Check your connection and try again.",
+    "retry": "Try again"
+  },
   "aria": {
     "messageList": "Chat messages",
     "removeAttachment": "Remove attachment",
