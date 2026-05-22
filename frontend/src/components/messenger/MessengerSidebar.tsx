@@ -70,7 +70,15 @@ export function MessengerSidebar({
       }
       className="panel-glass relative z-deep flex h-full w-full flex-col md:w-(--layout-max-sidebar) lg:w-(--layout-max-sidebar)"
     >
-      <div className="header-glass flex items-center justify-between p-4">
+      {/* Wave 183 polish-v1: dropped `.header-glass border-b` cheap divider +
+          `bg-(--bg-surface-raised)` search wrapper that introduced a hard
+          background-color edge against the chat list below. Header + search
+          now share the panel-glass surface; ambient gradient divider below
+          (`.messenger-controls-divider`) provides intentional separation
+          matching W181 violet/pink palette. Increased header padding
+          (px-5 pt-5 pb-4) for breathing room around the title — user
+          reported "верхняя часть левого блока" needed visual upgrade. */}
+      <div className="sticky top-0 z-deep flex items-center justify-between bg-surface/(--opacity-medium) px-5 pt-5 pb-4 backdrop-blur-xl">
         <h1 className="sf-pro text-2xl font-bold tracking-tight">{t("messenger:title")}</h1>
         <m.button
           id="messenger-new-chat-btn"
@@ -85,7 +93,7 @@ export function MessengerSidebar({
         </m.button>
       </div>
 
-      <div className="bg-(--bg-surface-raised) p-4">
+      <div className="px-5 pb-4">
         <TextField
           id="messenger-sidebar-search"
           value={searchQuery}
@@ -96,6 +104,8 @@ export function MessengerSidebar({
           className="w-full"
         />
       </div>
+
+      <div className="messenger-controls-divider" aria-hidden="true" />
 
       <ContactList
         contacts={filteredContacts}

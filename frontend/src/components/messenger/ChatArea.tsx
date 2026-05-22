@@ -252,7 +252,7 @@ export function ChatArea({
                 initial={prefersReducedMotion ? false : { y: -20, opacity: 0 }}
                 animate={{ y: 0, opacity: 1 }}
                 exit={prefersReducedMotion ? { opacity: 0 } : { y: -20, opacity: 0 }}
-                className="header-glass z-deep flex h-(--navbar-h-base) shrink-0 items-center border-b border-glass-border bg-surface/(--opacity-medium) px-(--spacing-4) backdrop-blur-xl"
+                className="sticky top-0 z-deep flex h-(--navbar-h-base) shrink-0 items-center bg-surface/(--opacity-medium) px-(--spacing-4) backdrop-blur-xl"
               >
                 <m.button
                   type="button"

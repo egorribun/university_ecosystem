@@ -334,6 +334,28 @@
 }
 
 /* ═══════════════════════════════════════════════════════
+   CONTROLS DIVIDER — ambient gradient line replacing the
+   pre-W183-polish-v1 cheap CSS `.header-glass border-b
+   border-glass-border` divider. Sits between the sidebar
+   "controls" zone (title + search) and the chat list area.
+   Uses the existing W181 SW1 `--messenger-accent-line`
+   gradient (violet → pink with transparent fade ends);
+   `opacity: 0.55` keeps it subtle so it reads as
+   intentional ambient design language rather than a
+   functional border. Margin keeps it inset from the
+   sidebar edges, matching how `.messenger-card-matte`
+   uses its `::before` accent line top-of-card recipe.
+   ═══════════════════════════════════════════════════════ */
+
+.messenger-controls-divider {
+  height: 1px;
+  margin: 0 1.25rem;
+  background: var(--messenger-accent-line);
+  opacity: 0.55;
+  pointer-events: none;
+}
+
+/* ═══════════════════════════════════════════════════════
    CHAT BUBBLES — sent (own) + received (incoming)
    Wave 182 SW1: fixed orphan-class bug (W118 SW4 pattern).
    ChatWindow.tsx referenced legacy `msg-bubble-sent` +
