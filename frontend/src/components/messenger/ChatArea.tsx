@@ -296,29 +296,33 @@ export function ChatArea({
               aria-hidden="true"
             />
           </m.div>
-          {/* W181 SW6 polish: title + subtitle use explicit inline width so
-              the flex-col items-center parent doesn't shrink them to content.
-              Tailwind `w-full max-w-2xl` should work but empirically resolved
-              to 48px in v4 Rolldown — likely a `flex` short-utility + width
-              utility precedence quirk. Inline style sidesteps the utility
-              resolution entirely. */}
+          {/* W182 SW3 structural fix replacing W181 polish-v1 inline-style
+              workaround. Root cause (per Agent 2 investigation): on a
+              `flex flex-col items-center` parent, the cross-axis is
+              horizontal. `align-items: center` (the default behavior of
+              `items-center`) makes children shrink to intrinsic content
+              width unless they explicitly opt out via `align-self`. The
+              `w-full` Tailwind utility produces `width: 100%`, but a child
+              with `align-self: auto` (inheriting `items-center`) doesn't
+              "fill" the cross-axis — `width: 100%` resolves against the
+              already-shrunk intrinsic content box, hence the empirical
+              48px. Fix: `self-stretch` overrides to `align-self: stretch`
+              so the child fills the cross-axis; `max-w-2xl` caps render
+              width at 42rem; `mx-auto` (margin-inline: auto) centers the
+              capped element within the parent's allocated cross-axis space.
+              Cross-page audit (W182 SW3) examined 4 candidates
+              (EventsEmptyState, LoadingState, ProfileModal, NewChatModal):
+              none reproduce the same `w-full + max-w-N` child pattern, so
+              the bug is specific to this empty-state structure. */}
           <h3
-            className="sf-pro font-bold text-(--text-primary)"
-            style={{
-              fontSize: "var(--fs-messenger-hero)",
-              maxWidth: "42rem",
-              width: "100%",
-            }}
+            className="sf-pro self-stretch text-center font-bold text-(--text-primary) max-w-[42rem] mx-auto"
+            style={{ fontSize: "var(--fs-messenger-hero)" }}
           >
             {t("messenger:selectChat")}
           </h3>
           <p
-            className="mt-3 text-(--text-secondary)"
-            style={{
-              fontSize: "var(--fs-messenger-subtitle)",
-              maxWidth: "32rem",
-              width: "100%",
-            }}
+            className="mt-3 self-stretch text-center text-(--text-secondary) max-w-[32rem] mx-auto"
+            style={{ fontSize: "var(--fs-messenger-subtitle)" }}
           >
             {t("messenger:selectChatDesc")}
           </p>
