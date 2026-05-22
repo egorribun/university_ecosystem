@@ -68,10 +68,16 @@ export function ChatArea({
   const typingUsers = selectedChatId ? getTypingUsersForChat(selectedChatId) : []
   const prefersReducedMotion = useReducedMotion() ?? false
 
+  // Wave 183 SW3 — cancel rAF on unmount/re-fire to prevent focus attempts
+  // on a detached DOM node (memory leak + console error potential when the
+  // component unmounts mid-focus-frame, e.g., rapid navigation away from
+  // /messenger immediately after toggling chat search).
   useEffect(() => {
     if (showSearchInChat && searchInputRef.current) {
-      requestAnimationFrame(() => searchInputRef.current?.focus())
+      const rafId = requestAnimationFrame(() => searchInputRef.current?.focus())
+      return () => cancelAnimationFrame(rafId)
     }
+    return undefined
   }, [showSearchInChat])
 
   return (

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo, useOptimistic } from "react"
+import { useState, useEffect, useCallback, useMemo, useOptimistic, useRef } from "react"
 import { useNavigate, useParams } from "@tanstack/react-router"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { useTranslation } from "react-i18next"
@@ -61,6 +61,28 @@ export const useMessengerController = () => {
     cancelText?: string
     onConfirm: () => void
   } | null>(null)
+
+  // Wave 183 SW3 — track Blob URLs created by optimistic message attachments
+  // so they can be revoked on cleanup (component unmount) AND on mutation
+  // success (when the optimistic message is replaced by the server-returned
+  // message with real URLs). Pre-W183 `URL.createObjectURL(f)` in handleSendMessage
+  // was called per attached file but never revoked, leaking memory across
+  // long messenger sessions (each attached image = ~10-100 KB in the URL
+  // table, accumulating until tab close).
+  const blobUrlsRef = useRef<Set<string>>(new Set())
+
+  useEffect(() => {
+    // Snapshot the ref to a local variable so the cleanup closure references
+    // the SAME Set instance even if React's StrictMode double-invokes (or if
+    // the ref is reassigned in a future refactor). Per react-hooks/exhaustive-deps
+    // ESLint rule recommendation.
+    const blobUrls = blobUrlsRef.current
+    return () => {
+      // Revoke all outstanding Blob URLs on unmount to release native resources.
+      blobUrls.forEach((url) => URL.revokeObjectURL(url))
+      blobUrls.clear()
+    }
+  }, [])
 
   // Sync selection with URL
   useEffect(() => {
@@ -158,6 +180,19 @@ export const useMessengerController = () => {
         }
       )
       queryClient.invalidateQueries({ queryKey: ["chats"] })
+      // Wave 183 SW3 — revoke Blob URLs created by the optimistic message
+      // now that the server-returned message with real URLs has replaced it.
+      // Pre-W183 these URLs leaked until tab close.
+      blobUrlsRef.current.forEach((url) => URL.revokeObjectURL(url))
+      blobUrlsRef.current.clear()
+    },
+    onError: () => {
+      // Wave 183 SW3 — revoke Blob URLs on send failure too. The optimistic
+      // message may be retained by the user (e.g., retry pending) but the
+      // Blob URLs become orphaned because React will re-render the
+      // optimistic state from scratch on next attempt.
+      blobUrlsRef.current.forEach((url) => URL.revokeObjectURL(url))
+      blobUrlsRef.current.clear()
     },
   })
 
@@ -283,7 +318,9 @@ export const useMessengerController = () => {
     const tempId = crypto.randomUUID()
     const now = new Date()
 
-    // UI-only message for optimistic update
+    // Wave 183 SW3 — track Blob URLs created here so the mutation onSuccess/
+    // onError handlers can revoke them (preventing memory leak per-attachment).
+    // UI-only message for optimistic update.
     const optimisticMsg: UiMessage = {
       id: tempId,
       senderId: String(user?.id),
@@ -293,13 +330,17 @@ export const useMessengerController = () => {
       timestamp: formatMessageTime(now.toISOString()),
       isMe: true,
       status: "sent",
-      attachments: files.map((f, i) => ({
-        id: `${tempId}-${i}`,
-        url: URL.createObjectURL(f),
-        type: f.type.startsWith("image/") ? "image" : "file",
-        name: f.name,
-        size: f.size,
-      })),
+      attachments: files.map((f, i) => {
+        const blobUrl = URL.createObjectURL(f)
+        blobUrlsRef.current.add(blobUrl)
+        return {
+          id: `${tempId}-${i}`,
+          url: blobUrl,
+          type: f.type.startsWith("image/") ? "image" : "file",
+          name: f.name,
+          size: f.size,
+        }
+      }),
     }
 
     addOptimisticMessage(optimisticMsg)
@@ -321,8 +362,12 @@ export const useMessengerController = () => {
     if (!selectedChatId) return
     setConfirmDialog({
       open: true,
-      title: t("messenger:clearChatTitle", "Clear Chat"),
-      message: t("messenger:confirmClear", "Clear chat history for everyone?"),
+      // Wave 183 SW3 — removed positional `t(key, fallback)` antipattern
+      // (W175 SW7 + W150 SW3 + W182 SW2 baseline). All 5 keys verified
+      // present in messenger.json EN + RU locales pre-W183 (clearChatTitle,
+      // confirmClear, deleteChatTitle, confirmDelete, profileLoadError).
+      title: t("messenger:clearChatTitle"),
+      message: t("messenger:confirmClear"),
       variant: "warning",
       confirmText: t("common:buttons.clear"),
       cancelText: t("common:buttons.cancel"),
@@ -337,8 +382,8 @@ export const useMessengerController = () => {
     if (!selectedChatId) return
     setConfirmDialog({
       open: true,
-      title: t("messenger:deleteChatTitle", "Delete Chat"),
-      message: t("messenger:confirmDelete", "Delete this chat for all participants?"),
+      title: t("messenger:deleteChatTitle"),
+      message: t("messenger:confirmDelete"),
       variant: "danger",
       confirmText: t("common:buttons.delete"),
       cancelText: t("common:buttons.cancel"),
@@ -358,9 +403,7 @@ export const useMessengerController = () => {
     client
       .get<User>(`/users/${other.id}`)
       .then((response) => setProfileUser(response.data))
-      .catch(() =>
-        setProfileError(t("messenger:profileLoadError", "Unable to load participant profile"))
-      )
+      .catch(() => setProfileError(t("messenger:profileLoadError")))
       .finally(() => setIsProfileLoading(false))
   }
 
