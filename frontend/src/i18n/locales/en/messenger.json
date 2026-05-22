@@ -30,6 +30,16 @@
   "deleteChatTitle": "Delete Chat",
   "confirmDelete": "Delete this chat for all participants?",
   "profileLoadError": "Unable to load participant profile",
+  "noChats": {
+    "title": "No conversations yet",
+    "description": "Start a new chat to connect with peers across the university.",
+    "cta": "Start new conversation",
+    "searchEmpty": {
+      "title": "No results found",
+      "description": "No conversations match \"{{query}}\". Try a different search term.",
+      "clearSearch": "Clear search"
+    }
+  },
   "aria": {
     "messageList": "Chat messages",
     "removeAttachment": "Remove attachment",

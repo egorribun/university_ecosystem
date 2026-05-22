@@ -1,4 +1,5 @@
 import { m, useReducedMotion } from "framer-motion"
+import { MessageCirclePlus, MessagesSquare, SearchX, X } from "lucide-react"
 import { useTranslation } from "react-i18next"
 import { cn } from "@/utils/cn"
 import SmartImage from "@/components/media/SmartImage"
@@ -9,6 +10,17 @@ interface ContactListProps {
   contacts: Contact[]
   selectedId: string | null
   onSelect: (id: string) => void
+  /**
+   * Wave 183 SW1 — empty-state context.
+   * `isSearchActive` = true → render "no results match {query}" variant
+   * with SearchX icon and "Clear search" CTA.
+   * `isSearchActive` = false → render "no conversations yet" variant
+   * with MessagesSquare icon and "Start new conversation" CTA.
+   */
+  isSearchActive?: boolean
+  searchQuery?: string
+  onStartNewChat?: () => void
+  onClearSearch?: () => void
 }
 
 // PERF-24-02: Removed React.memo() — React Compiler "infer" mode handles
@@ -33,11 +45,105 @@ interface ContactListProps {
 //   horizontally on hover for users who opted into reduced motion).
 // - focus-visible ring on keyboard nav (WCAG 2.4.7).
 // - aria-current="true" on selected row for screen-reader awareness.
-export function ContactList({ contacts, selectedId, onSelect }: ContactListProps) {
+//
+// Wave 183 SW1 — Empty-state pattern. When contacts.length === 0:
+//  - With active search → "No results found" variant + Clear search CTA.
+//  - Without active search → "No conversations yet" variant + Start new chat CTA.
+// User-reported Issue #1: sidebar previously rendered an empty `<div>` when
+// contacts were absent (LHCI bypass user or zero-contact accounts), exposing
+// raw bg-(--msg-sidebar-bg) with no hierarchy. Now matches feature-page
+// parity (Activity/Events polish arcs) with matte icon container + violet
+// accent CTA. NEW i18n keys: messenger:noChats.{title, description, cta,
+// searchEmpty.{title, description, clearSearch}} in EN + RU.
+export function ContactList({
+  contacts,
+  selectedId,
+  onSelect,
+  isSearchActive = false,
+  searchQuery = "",
+  onStartNewChat,
+  onClearSearch,
+}: ContactListProps) {
   const { t } = useTranslation(["messenger"])
   const prefersReducedMotion = useReducedMotion() ?? false
   const hoverAnim = prefersReducedMotion ? undefined : { x: 4 }
   const tapAnim = prefersReducedMotion ? undefined : { scale: 0.98 }
+
+  if (contacts.length === 0) {
+    const emptyEntrance = prefersReducedMotion ? undefined : { scale: 0.92, opacity: 0, y: 8 }
+    const emptyAnimate = { scale: 1, opacity: 1, y: 0 }
+    const emptyTransition = prefersReducedMotion
+      ? { duration: 0 }
+      : { duration: 0.45, ease: [0.22, 1, 0.36, 1] as const }
+
+    const showSearchEmpty = isSearchActive
+    const Icon = showSearchEmpty ? SearchX : MessagesSquare
+    const titleKey = showSearchEmpty
+      ? "messenger:noChats.searchEmpty.title"
+      : "messenger:noChats.title"
+    const descriptionKey = showSearchEmpty
+      ? "messenger:noChats.searchEmpty.description"
+      : "messenger:noChats.description"
+    const descriptionInterp = showSearchEmpty ? { query: searchQuery } : undefined
+
+    return (
+      <div
+        className="flex flex-1 flex-col items-center justify-center bg-(--msg-sidebar-bg) px-6 py-10 text-center"
+        role="status"
+        aria-live="polite"
+      >
+        <m.div
+          initial={emptyEntrance}
+          animate={emptyAnimate}
+          transition={emptyTransition}
+          className="flex w-full max-w-[18rem] flex-col items-center"
+        >
+          <div
+            className="messenger-card-matte mb-6 flex size-20 items-center justify-center"
+            style={{ background: "var(--messenger-card-bg)" }}
+          >
+            <Icon
+              className="size-10 text-(--color-violet-500)"
+              style={{ opacity: "var(--opacity-strong)" }}
+              strokeWidth={1.5}
+              aria-hidden="true"
+            />
+          </div>
+          <h3 className="sf-pro mb-2 text-base font-bold leading-tight text-(--text-primary)">
+            {t(titleKey)}
+          </h3>
+          <p className="mb-6 text-sm leading-relaxed text-(--text-secondary)">
+            {t(descriptionKey, descriptionInterp)}
+          </p>
+          {showSearchEmpty
+            ? onClearSearch && (
+                <m.button
+                  type="button"
+                  whileHover={prefersReducedMotion ? undefined : { scale: 1.04 }}
+                  whileTap={prefersReducedMotion ? undefined : { scale: 0.96 }}
+                  onClick={onClearSearch}
+                  className="inline-flex min-h-[44px] items-center gap-2 rounded-full border border-(--color-violet-500)/(--opacity-soft) bg-(--bg-surface)/(--opacity-medium) px-5 text-sm font-semibold text-(--text-primary) transition-colors hover:bg-(--bg-surface-hover)/(--opacity-medium) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-violet-500) focus-visible:ring-offset-2 focus-visible:ring-offset-(--bg-surface)"
+                >
+                  <X className="size-4" strokeWidth={2.5} aria-hidden="true" />
+                  <span>{t("messenger:noChats.searchEmpty.clearSearch")}</span>
+                </m.button>
+              )
+            : onStartNewChat && (
+                <m.button
+                  type="button"
+                  whileHover={prefersReducedMotion ? undefined : { scale: 1.04 }}
+                  whileTap={prefersReducedMotion ? undefined : { scale: 0.96 }}
+                  onClick={onStartNewChat}
+                  className="messenger-send-btn inline-flex min-h-[44px] items-center gap-2 rounded-full px-5 text-sm font-semibold text-(--text-inverse) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-violet-500) focus-visible:ring-offset-2 focus-visible:ring-offset-(--bg-surface)"
+                >
+                  <MessageCirclePlus className="size-4" strokeWidth={2.5} aria-hidden="true" />
+                  <span>{t("messenger:noChats.cta")}</span>
+                </m.button>
+              )}
+        </m.div>
+      </div>
+    )
+  }
 
   return (
     <div className="flex-1 overflow-y-auto custom-scrollbar p-2 bg-(--msg-sidebar-bg)">

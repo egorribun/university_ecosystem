@@ -3,7 +3,7 @@ import { TextField } from "@/components/ui"
 import { useMessengerController } from "@/hooks/features/useMessengerController"
 import { m, useReducedMotion } from "framer-motion"
 import { Search, SquarePen } from "lucide-react"
-import { Dispatch, SetStateAction, useState } from "react"
+import { Dispatch, SetStateAction, useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { useNavigate } from "@tanstack/react-router"
 
@@ -39,6 +39,26 @@ export function MessengerSidebar({
   const sidebarExit =
     isMobile && !prefersReducedMotion ? { x: -MOBILE_MENU_WIDTH, opacity: 0 } : undefined
 
+  // Wave 183 SW1 — Filter contacts by search query. Search input previously
+  // had no effect on the rendered list (the search query was local state
+  // disconnected from ContactList). Now matches user expectation that typing
+  // narrows the contact list by name + last-message preview. Search empty
+  // state is rendered by ContactList itself (isSearchActive prop + dedicated
+  // "no results found" variant).
+  const normalisedSearch = searchQuery.trim().toLowerCase()
+  const isSearchActive = normalisedSearch.length > 0
+  const filteredContacts = useMemo(() => {
+    if (!isSearchActive) return contacts
+    return contacts.filter((contact) => {
+      const name = contact.name?.toLowerCase() ?? ""
+      const lastMessage = contact.lastMessage?.toLowerCase() ?? ""
+      return name.includes(normalisedSearch) || lastMessage.includes(normalisedSearch)
+    })
+  }, [contacts, isSearchActive, normalisedSearch])
+
+  const handleStartNewChat = () => setIsNewChatModalOpen(true)
+  const handleClearSearch = () => setSearchQuery("")
+
   return (
     <m.div
       key="sidebar"
@@ -57,7 +77,7 @@ export function MessengerSidebar({
           type="button"
           whileHover={newChatHoverAnim}
           whileTap={newChatTapAnim}
-          onClick={() => setIsNewChatModalOpen(true)}
+          onClick={handleStartNewChat}
           className="rounded-full bg-(--primary-main)/(--opacity-low) p-2 text-msg-active min-h-[44px] min-w-[44px] flex items-center justify-center transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-violet-500) focus-visible:ring-offset-2 focus-visible:ring-offset-(--bg-surface)"
           aria-label={t("messenger:newChat")}
         >
@@ -78,9 +98,13 @@ export function MessengerSidebar({
       </div>
 
       <ContactList
-        contacts={contacts}
+        contacts={filteredContacts}
         selectedId={selectedChatId}
         onSelect={(id: string) => navigate({ to: "/messenger/$chatId", params: { chatId: id } })}
+        isSearchActive={isSearchActive}
+        searchQuery={searchQuery.trim()}
+        onStartNewChat={handleStartNewChat}
+        onClearSearch={handleClearSearch}
       />
     </m.div>
   )

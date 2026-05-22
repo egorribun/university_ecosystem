@@ -53,12 +53,34 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
        * so the footer sits at y ≥ dvh — offscreen — and content growth keeps
        * it offscreen. Per web.dev CLS spec, shifts outside the viewport do
        * not count toward CLS.
+       *
+       * Wave 183 SW1 (FIX-183-01): for `isMessenger`, swap `min-h-dvh` for
+       * `h-[calc(100dvh-var(--navbar-h-base,4rem))]`. User-reported Issue #2
+       * "вся структура мессенджера находится высоко и очень много пустого
+       * пространства остается снизу" had two contributing causes:
+       *   (a) CSS spec: percentage heights (e.g. `h-full` on MessengerFeature
+       *       `.messenger-theme` outer div) DO NOT resolve against parent's
+       *       `min-height`. Only explicit `height` provides the containing
+       *       block for percentage resolution. With `min-h-dvh` only,
+       *       MessengerFeature `h-full` fell through to `height: auto` and
+       *       shrank to ~483px of viewport (just enough to fit ContactList
+       *       header + search + content), leaving ~417px of dark empty space
+       *       below.
+       *   (b) Navbar (sticky, 64px tall, in flex column) means messenger
+       *       cannot use plain `h-dvh` — that would force page height to
+       *       navbar(64) + main(900) = 964 → scroll.
+       * Fix: explicit `h-[calc(100dvh-var(--navbar-h-base,4rem))]` gives main
+       * an exact height that exactly fills viewport minus navbar (so no
+       * scroll) AND provides an explicit containing block for the messenger's
+       * `h-full` to resolve against. CLS protection from Wave 118 SW1 is not
+       * compromised because footer is HIDDEN on /messenger per
+       * `useRouteType.hideFooter` (W176 SW1 single source of truth).
        */}
       <main
         id="main-content"
         className={cn(
-          "vt-page-content w-full outline-none min-h-dvh",
-          isMessenger && "overflow-hidden"
+          "vt-page-content w-full outline-none",
+          isMessenger ? "h-[calc(100dvh-var(--navbar-h-base,4rem))] overflow-hidden" : "min-h-dvh"
         )}
       >
         {children}
