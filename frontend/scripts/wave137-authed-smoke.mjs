@@ -303,6 +303,18 @@ async function smokeRoute(page, routePath, outDir) {
     // messages are sufficient verification — body content rendering is proven
     // via curl HTTP byte count separately. Removing evaluate avoids hang.
     bodySnippet = null
+    // W183 Phase C: optional best-effort screenshot capture for visual proof
+    // through real Caddy → Node SSR → backend chain. Gated by env var; failure
+    // is non-fatal (page.screenshot() can hit same heavy-DOM wall family).
+    if (process.env.WAVE137_CAPTURE_SCREENSHOTS === "true") {
+      try {
+        const screenshotPath = path.join(outDir, `${safeFilename(routePath)}.png`)
+        await page.screenshot({ path: screenshotPath, fullPage: false, timeout: 15_000 })
+      } catch (screenshotErr) {
+        // Best-effort: log + continue. Don't fail the smoke run.
+        console.warn(`  screenshot capture failed: ${screenshotErr.message?.slice(0, 100)}`)
+      }
+    }
   } catch (err) {
     navError = err
   }
