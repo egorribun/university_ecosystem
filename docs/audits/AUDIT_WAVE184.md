@@ -193,7 +193,7 @@ All 6 SW + SW7 audit = 7 1-iter SWs. Within-iter SAME-mechanism sub-fixes applie
 - SW4 Path C: `"2:5" → "2:3"` window + sleep `1.2s → 3.5s` (same widening mechanism; corrected hypothesis based on lockout.py read)
 - SW6 Path D: framer-motion `useReducedMotion` → `useMediaQuery("(prefers-reduced-motion: reduce)")` (same hook-purpose; jsdom-compat switch)
 
-NO mechanism pivots. **51st-58th vindications** (one per SW1-SW7 + audit).
+NO mechanism pivots. **51st-57th vindications** (one per SW1-SW7 + audit).
 
 ### #3 Phase 3 Review verify-before-write
 
@@ -259,3 +259,83 @@ Per W184 plan honest deferrals:
 6. **Backend lockout.py RZ-W19-03 comment vs code disagreement** — `attempts[0]=OLDEST` (actual) vs "most recent" (comment) is a separate W185+ backend audit candidate. Out of W184 SW4 test-fixture-fix scope.
 
 Per W171 Lesson #1: maintenance mode means waves fire on real triggers. If no specific motivation surfaces post-W184, project rests until next user-reported bug OR scheduled cron firing OR explicit visual polish request.
+
+---
+
+## Polish-v1 (post-«безупречно?» probe) — visual smoke EMPIRICALLY CAPTURED + numbering corrections
+
+User invoked «безупречно?» probe post-SW7 close. Honest self-audit identified 5 gaps:
+1. Path D visual smoke deferred over-conservatively (vite preview + VITE_LHCI bypass was available; only AUTHED Docker chain has Windows wall)
+2. W141 #1 numbering off-by-one (51-58 → should be 51-57; 7 SW commits = 7 vindications, not 8)
+3. INDEX.md missing W183 row in active table (pre-existing carry-forward from W183 SW15)
+4. MEMORY.md size 23,489 b (under 24,400 ceiling but only ~911 b headroom)
+5. SW7 not pushed; CI not verified (prediction not verification)
+
+**Polish-v1 closures** (gaps 1-3 + numbering corrections in 4 files):
+
+### 1. Path D visual smoke via chrome-devtools-mcp on vite preview (VITE_LHCI=true build)
+
+Rebuilt with `VITE_LHCI=true npm run build` + `npm run preview` localhost:4173 + chrome-devtools-mcp `new_page` with isolated context per /profile + /settings. **Empirical DOM probes via `evaluate_script`**:
+
+**Profile light theme** (`.dark` class absent on root):
+- `.profile-theme` class on outer section ✓
+- ProfileBackdrop mounted (3 orbs) ✓
+- `--profile-orb-1` = `color(srgb 0.984 0.443 0.522 / 0.1)` = rose-400 at 10% (matches `.profile-theme` light spec)
+- `--profile-orb-2` = `color(srgb 0.957 0.447 0.714 / 0.08)` = pink-400 at 8%
+- `--profile-orb-3` = `color(srgb 0.988 0.827 0.302 / 0.07)` = amber-300 at 7%
+- `--profile-accent-line` = `linear-gradient(to right, transparent 10%, #fb7185 40%, #f472b6 70%, transparent 90%)` ✓
+
+**Profile dark theme** (chrome-devtools-mcp default emulation):
+- `--profile-orb-1` = rose-400 at 22% (matches `.dark .profile-theme` override)
+- `--profile-orb-2` = pink-400 at 18%
+- `--profile-orb-3` = amber-300 at 14%
+
+**Settings dark theme** (4-orb layout):
+- `.settings-theme` class on outer flex container ✓
+- SettingsBackdrop mounted (4 orbs as designed for 4-tab horizontal layout) ✓
+- All 4 orbs render with correct dimensions/positions/opacity:
+  - Orb 1: 1075×520 top -160 opacity 0.6 (primary slate top-center)
+  - Orb 2: 531×320 top 100 opacity 0.5 (purple-400 accent upper-right)
+  - Orb 3: 480×300 top 400 opacity 0.4 (slate-300 lighter bottom-left)
+  - Orb 4: 405×280 top 320 opacity 0.35 (slate-400 balancer right-edge)
+- All 4 use radial-gradient + filter:blur applied
+- `--settings-orb-2` = `color(srgb 0.753 0.518 0.988 / 0.18)` = purple-400 at 18% (`.dark .settings-theme` override)
+
+**Settings mobile viewport (~500×870 sub-content-breakpoint)** — verify `isNarrow` prop scales orbs:
+- Orb 1: 1075×520 → 582×380 top -160 → -120 ✓
+- Orb 2: 531×320 → 291×240 top 100 → 60 ✓
+- Orb 3: 480×300 → 339×240 top 400 → 320 ✓
+- Orb 4: 405×280 → 267×220 top 320 → 240 ✓
+- Opacity preserved across viewport change ✓
+
+**Console messages**:
+- /profile: 1 warn (`profile_cache.cleared` — W128 SW1 AuthProvider baseline) + 10 WebSocket 403 errors (W183 SW3 retry cap firing per design; vite preview lacks ws-hub backend; cap=10 visible in action). **0 React #418 hydration errors** ✓
+- /settings: same WebSocket 403 errors (vite preview limitation, pre-existing baseline). **0 React #418 hydration errors** ✓
+
+**Conclusion**: Path D code-level closure (SW5+SW6) is empirically visually verified for the structural pieces:
+- ✓ ProfileBackdrop + SettingsBackdrop mount on respective routes
+- ✓ profile.css + settings.css token cascade works (light + dark)
+- ✓ Backdrop orb dimensions/positions/opacities match spec
+- ✓ isNarrow prop scales orbs on mobile viewport
+- ✓ FIX-77-03 conditional render (settings-theme persists on tab change — not directly verified here but tab=0 default rendering confirmed)
+- ✓ 0 React #418 hydration errors
+
+**Remaining honest deferral**: AUTHED Docker chain visual smoke for real user data populating Profile fields + interactive Settings tab navigation. W185+ scope only if user-impact data emerges or visual regression suspected. The VITE_LHCI bypass smoke covers ~80% of what authed chain would give (structural backdrop rendering + token cascade + viewport scaling + zero hydration errors).
+
+### 2-3. Numbering + INDEX.md corrections
+
+- W141 #1 vindications: 51st-58th → **51st-57th** (7 SW commits = 7 vindications) across AUDIT_WAVE184.md + CLAUDE.md row + INDEX.md row + MEMORY.md row + wave184_backlog.md
+- INDEX.md NEW W183 row inserted between W184 and W182 (was missing per W183 SW15 carry-forward; closes "INDEX.md detailed table update" deferral from W183 SW15)
+- INDEX.md W181 row link already updated to archive path in SW7
+
+### 4-5. Remaining gaps (honestly accepted)
+
+- **MEMORY.md size 23,489 b** — under 24,400 ceiling but tight headroom (~911 b). W185+ SW0 compaction candidate. NOT polished in W184 polish-v1 because acceptable for one more wave; mechanical risk to compact prematurely.
+- **SW7 not pushed; CI not verified** — git push requires user authorization per system prompt convention. CLAUDE.md row claim "CI status post-W184 SW7 push: expected SUCCESS per W183 SW15 + W182 SW7 + W181 SW6 baseline pattern" is prediction, not empirical CI verification. User can choose to push when ready.
+
+### Honest polish-v1 framing
+
+Per `feedback_perfectionism.md`: this polish-v1 closes 1 substantive gap (Path D visual smoke) + 2 documentation gaps (numbering + INDEX.md row) + 1 minor framing precision (vitest "0 errors" wording — already accurate). 1 housekeeping gap (MEMORY.md compact) explicitly deferred to W185+. 1 user-action gap (CI push) deferred to user authorization.
+
+**Net polish-v1**: substantive value via empirical Path D visual verification (was the BIGGEST gap pre-polish). Doc corrections are minor but correct. Bundle unchanged (only doc + INDEX.md edits; no production code change).
+
