@@ -260,9 +260,16 @@ async function smokeRoute({ browser, target, outDir, timeoutMs, strict }) {
   await context.close()
 
   const errors = consoleMessages.filter((m) => m.type === "error" || m.type === "pageerror")
+  // W185 SW1: extend filter with W167 SW1 / wave137 regex pattern to catch production-minified
+  // "Minified React error #418-427" hydration errors. Pre-W185 the filter only matched unminified
+  // substrings ("hydrat" / "Hydration" / "did not match") and missed production React #418 firings
+  // emitted by `vendor-react-*.js` — same W166 (z) #2 filter-too-narrow bug class.
   const hydrationErrors = consoleMessages.filter(
     (m) =>
-      m.text.includes("hydrat") || m.text.includes("Hydration") || m.text.includes("did not match")
+      m.text.includes("hydrat") ||
+      m.text.includes("Hydration") ||
+      m.text.includes("did not match") ||
+      /Minified React error #(418|419|420|421|422|423|424|425|426|427)/.test(m.text)
   )
 
   const summary = {
