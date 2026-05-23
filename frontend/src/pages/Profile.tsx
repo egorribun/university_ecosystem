@@ -31,6 +31,7 @@ import {
   AchievementsSection,
   ProfileEditor,
   ProfileSkeleton,
+  ProfileBackdrop,
   parseAchievements,
   buildVCardString,
   calculateAvatarSize,
@@ -57,6 +58,11 @@ export default function Profile() {
   const reduceMotion = useMediaQuery("(prefers-reduced-motion: reduce)")
   const isWideScreen = useMediaQuery(`(min-width: ${breakpoints.wide})`)
   const isMobile = useMediaQuery(`(max-width: ${breakpoints.mobile})`)
+  // Wave 184 SW5 (Path D) — narrow breakpoint for ProfileBackdrop orb scaling
+  // (mirrors W181 SW2 MessengerBackdrop convention). Sub-content-breakpoint
+  // viewports (~< 900px) get scaled-down orbs to avoid overflow + keep
+  // visual weight balanced for the smaller stage.
+  const isNarrow = useMediaQuery(`(max-width: ${breakpoints.content})`)
   const { t } = useTranslation(["profile", "common"])
   const [qrOpen, setQrOpen] = useState(false)
   const [detailsOpen, setDetailsOpen] = useState(true)
@@ -223,11 +229,21 @@ export default function Profile() {
           animate={{ opacity: 1, y: 0 }}
           transition={isTest ? { duration: 0 } : { type: "spring", stiffness: 460, damping: 34 }}
         >
+          {/* Wave 184 SW5 (Path D) — profile-theme scope wrapper enables
+              tokens/profile.css (rose/pink/amber palette + matte cards +
+              skeleton) inside this subtree. ProfileBackdrop mounts inside
+              the section's `relative` positioning context so its
+              `absolute inset-0` orbs span the full Profile viewport. */}
           <section
-            className="profile-page relative min-h-screen flex flex-col py-12 sm:py-16 md:py-20 lg:py-24 px-3 sm:px-4 md:px-6 lg:px-8"
+            className="profile-theme profile-page relative min-h-screen flex flex-col py-12 sm:py-16 md:py-20 lg:py-24 px-3 sm:px-4 md:px-6 lg:px-8"
             data-testid="profile-root"
             aria-label={t("profile:aria.page")}
           >
+            <ProfileBackdrop
+              isNarrow={isNarrow}
+              isMobile={isMobile}
+              prefersReducedMotion={reduceMotion}
+            />
             <div className="container-fluid-responsive">
               <m.div
                 className="px-4 sm:px-6 md:px-8 lg:px-10 xl:px-12 py-8 sm:py-10 md:py-12 lg:py-14 rounded-sm sm:rounded-md md:rounded-lg relative overflow-hidden bg-primary-subtle-bg/(--opacity-subtle) shadow-glass border border-glass-border-subtle/(--opacity-dim) backdrop-blur-md"

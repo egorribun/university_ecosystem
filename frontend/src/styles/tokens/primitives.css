@@ -64,8 +64,19 @@
     --color-violet-300: #c4b5fd;
     --color-violet-400: #a78bfa;
     --color-violet-500: #8b5cf6;
+    --color-pink-300: #f9a8d4;
     --color-pink-400: #f472b6;
+    /* Wave 184 SW5 (Path D) — rose palette additions for /profile theme.
+       Profile palette = rose-400 (primary warm) + pink-400 (accent) +
+       amber-300 (cozy tertiary, already defined above). Distinct from
+       7 prior themed surfaces (Schedule blue, Map teal, Events amber-500,
+       News sky, Activity emerald, Footer blue-gradient, Admin indigo,
+       Messenger violet/pink/indigo). The "warm/personal" tonal axis
+       matches Profile's identity-centric semantics. */
+    --color-rose-300: #fda4af;
+    --color-rose-400: #fb7185;
     --color-rose-500: #f43f5e;
+    --color-rose-600: #e11d48;
 
     /* Matte Palette — desaturated variants for frosted glass surfaces (Wave 45) */
     --color-matte-sky: #c4dff0;

@@ -1,0 +1,223 @@
+/* ═══════════════════════════════════════════════════════
+   @PROPERTY — smooth dark↔light transitions for animated vars
+   (Mirror of activity.css W84 + schedule.css W64 + messenger.css W181
+   SW1 pattern. Wave 184 SW5 (Path D) — /profile page polish to
+   feature-page parity with W181-W183 messenger arc.)
+   ═══════════════════════════════════════════════════════ */
+@property --profile-orb-1 {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: transparent;
+}
+@property --profile-orb-2 {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: transparent;
+}
+@property --profile-orb-3 {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: transparent;
+}
+@property --profile-card-glow {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: transparent;
+}
+
+@layer base {
+  /* ═══════════════════════════════════════════════════════
+     PROFILE PAGE TOKENS
+     Scoped under .profile-theme. Rose/pink/amber warm palette —
+     identity-centric semantics for the user's personal page.
+     Distinct from 7 prior themed surfaces (Schedule blue, Map teal,
+     Events amber-500, News sky, Activity emerald, Footer
+     blue-gradient, Admin indigo-primary slate, Messenger
+     violet/pink/indigo).
+     Primary: rose-400 + Accent: pink-400 + Cozy tertiary: amber-300.
+     ═══════════════════════════════════════════════════════ */
+  .profile-theme {
+    /* ── Typography (mirrors messenger sizes) ──────── */
+    --fs-profile-hero: clamp(1.875rem, 3.2vw, 2.75rem);
+    --fs-profile-subtitle: clamp(0.9375rem, 1vw, 1.125rem);
+    --fs-profile-section: clamp(1.125rem, 1.5vw, 1.375rem);
+    --fs-profile-meta: clamp(0.6875rem, 0.75vw, 0.75rem);
+
+    /* ── Orbs (rose/pink/amber palette) ──────────────
+       Opacity tuned for visibility against light --bg-page; dark
+       theme overrides below double the opacity per W181 SW6 polish
+       lesson (orbs against near-black slate-950 need ~2× to register). */
+    --profile-hero-orb: color-mix(in srgb, var(--color-rose-400) 10%, transparent);
+    --profile-hero-highlight: color-mix(in srgb, var(--color-pink-400) 7%, transparent);
+    --profile-orb-1: color-mix(in srgb, var(--color-rose-400) 10%, transparent);
+    --profile-orb-2: color-mix(in srgb, var(--color-pink-400) 8%, transparent);
+    --profile-orb-3: color-mix(in srgb, var(--color-amber-300) 7%, transparent);
+
+    /* ── Gradients & Flares ────────────────────────── */
+    --grad-profile-conic: conic-gradient(
+      from 200deg at 50% 50%,
+      var(--profile-orb-1),
+      var(--profile-orb-2),
+      transparent 85%
+    );
+    --profile-accent-line: linear-gradient(
+      to right,
+      transparent 10%,
+      var(--color-rose-400) 40%,
+      var(--color-pink-400) 70%,
+      transparent 90%
+    );
+
+    /* ── Matte card system ────────────────────────── */
+    --profile-card-bg: color-mix(in srgb, var(--bg-surface) 96%, var(--color-rose-300) 4%);
+    --profile-card-shadow:
+      0 1px 2px color-mix(in srgb, black 5%, transparent),
+      0 4px 12px color-mix(in srgb, black 4%, transparent),
+      inset 0 1px 0 color-mix(in srgb, white 60%, transparent);
+    --profile-card-shadow-hover:
+      0 2px 4px color-mix(in srgb, black 6%, transparent),
+      0 8px 24px color-mix(in srgb, black 5%, transparent),
+      inset 0 1px 0 color-mix(in srgb, white 70%, transparent);
+    --profile-card-glow: color-mix(in srgb, var(--color-rose-400) 18%, transparent);
+
+    /* ── Section header accent (for ProfileDetails, achievements) ── */
+    --profile-section-accent: var(--color-rose-500);
+    --profile-section-accent-bg: color-mix(in srgb, var(--color-rose-400) 8%, var(--bg-surface));
+
+    /* ── Avatar ring (for user profile display) ──── */
+    --profile-avatar-ring: color-mix(in srgb, var(--color-rose-400) 35%, transparent);
+    --profile-avatar-ring-active: color-mix(in srgb, var(--color-rose-500) 50%, transparent);
+
+    /* ── Skeleton placeholders ────────────────────── */
+    --profile-skeleton-bg: color-mix(
+      in srgb,
+      var(--color-rose-300) 12%,
+      var(--color-slate-200) 88%
+    );
+  }
+
+  /* ── Dark Theme Overrides ──────────────────────── */
+  .dark .profile-theme {
+    /* Per W181 SW6 polish: orbs against near-black --bg-page = slate-950
+       need ~2× the light-mode opacity to register. Same calibration as
+       messenger.css dark overrides (22/18/15%). */
+    --profile-hero-orb: color-mix(in srgb, var(--color-rose-400) 22%, transparent);
+    --profile-hero-highlight: color-mix(in srgb, var(--color-pink-400) 16%, transparent);
+    --profile-orb-1: color-mix(in srgb, var(--color-rose-400) 22%, transparent);
+    --profile-orb-2: color-mix(in srgb, var(--color-pink-400) 18%, transparent);
+    --profile-orb-3: color-mix(in srgb, var(--color-amber-300) 14%, transparent);
+
+    /* W181 SW6 polish pattern: matte card bg was indistinguishable from
+       bg-page in dark mode; bumped tint mix from 4% (light) to 12% (dark)
+       for visible elevation against slate-950. */
+    --profile-card-bg: color-mix(in srgb, var(--bg-surface) 88%, var(--color-rose-500) 12%);
+
+    /* Section accent bg needs higher tint in dark too. */
+    --profile-section-accent-bg: color-mix(in srgb, var(--color-rose-400) 12%, var(--bg-surface));
+
+    /* Skeleton bg uses darker slate base in dark mode (mirror
+       messenger-skeleton-bg dark override). */
+    --profile-skeleton-bg: color-mix(in srgb, var(--color-rose-400) 8%, var(--color-slate-800) 92%);
+  }
+
+  /* ═══════════════════════════════════════════════════════
+     Profile matte card recipe — mirrors .messenger-card-matte
+     (messenger.css:297-325 W181 SW1) with rose accent line. Use
+     for ProfileHeader + ProfileDetails sections.
+     ═══════════════════════════════════════════════════════ */
+  .profile-card-matte {
+    position: relative;
+    background: var(--profile-card-bg);
+    box-shadow: var(--profile-card-shadow);
+    border-radius: 1.25rem;
+    overflow: hidden;
+    transition:
+      box-shadow var(--motion-duration-fast, 0.18s) var(--ease-premium, ease-out),
+      transform var(--motion-duration-fast, 0.18s) var(--ease-premium, ease-out);
+  }
+
+  .profile-card-matte::before {
+    content: "";
+    position: absolute;
+    inset: 0 0 auto 0;
+    height: 1px;
+    background: var(--profile-accent-line);
+    opacity: 0.7;
+    pointer-events: none;
+  }
+
+  .profile-card-matte:hover {
+    box-shadow:
+      var(--profile-card-shadow-hover),
+      0 0 0 1px var(--profile-card-glow);
+  }
+
+  /* ═══════════════════════════════════════════════════════
+     Profile skeleton (matches .messenger-skeleton W181 SW1 +
+     W184 SW2 reuse). Reused by Profile loading branches if
+     they're added in future polish waves (Profile.tsx itself
+     doesn't currently expose a global "loading" state — page
+     renders ProfileHeader unconditionally with internal sub-
+     skeleton patterns).
+     ═══════════════════════════════════════════════════════ */
+  .profile-skeleton {
+    background: var(--profile-skeleton-bg);
+    background-image: linear-gradient(
+      90deg,
+      transparent 0%,
+      color-mix(in srgb, white 18%, transparent) 50%,
+      transparent 100%
+    );
+    background-size: 200% 100%;
+    animation: profile-skeleton-shimmer var(--motion-duration-shimmer, 1.6s) ease-in-out infinite;
+    border-radius: var(--radius-sm, 0.75rem);
+  }
+
+  .dark .profile-skeleton {
+    background-image: linear-gradient(
+      90deg,
+      transparent 0%,
+      color-mix(in srgb, white 6%, transparent) 50%,
+      transparent 100%
+    );
+  }
+
+  @keyframes profile-skeleton-shimmer {
+    0% {
+      background-position: 200% 0;
+    }
+    100% {
+      background-position: -200% 0;
+    }
+  }
+
+  /* ═══════════════════════════════════════════════════════
+     Reduced-motion overrides — kill all transitions + animations
+     for users who opted into prefers-reduced-motion (FIX-69-a11y
+     pattern from Schedule polish arc).
+     ═══════════════════════════════════════════════════════ */
+  @media (prefers-reduced-motion: reduce) {
+    .profile-card-matte,
+    .profile-card-matte:hover {
+      transition: none;
+    }
+    .profile-skeleton {
+      animation: none;
+    }
+  }
+
+  /* ═══════════════════════════════════════════════════════
+     Print overrides — doubled-class specificity per FIX-72-04
+     (avoids !important; specificity bumps via repeated class).
+     ═══════════════════════════════════════════════════════ */
+  @media print {
+    .profile-theme.profile-theme {
+      background: white;
+      color: black;
+    }
+    .profile-theme.profile-theme .profile-card-matte {
+      background: white;
+      box-shadow: 0 0 0 1px var(--color-slate-200, #e5e7eb);
+    }
+  }
+}

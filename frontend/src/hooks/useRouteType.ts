@@ -17,11 +17,19 @@ export function useRouteType() {
   )
 
   const isMessenger = path.startsWith("/messenger")
+  // Wave 184 SW5 (Path D) — flag for /profile route enables MainLayout (and
+  // any future global chrome) to scope rose-palette decoration to this surface
+  // only. Same single-source-of-truth pattern as `isMessenger` per W176 SW1.
+  const isProfile = path.startsWith("/profile")
+  // Wave 184 SW6 (Path D) — same as isProfile but for /settings polish arc.
+  const isSettings = path.startsWith("/settings")
   const hideFooter = HIDE_FOOTER_PREFIXES.some((p) => path.startsWith(p))
 
   return {
     isCompactPage,
     isMessenger,
+    isProfile,
+    isSettings,
     hideFooter,
     loading: false, // Future proofing if we need async check
   }
