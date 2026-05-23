@@ -7,6 +7,8 @@ import { useForm, Controller, type SubmitHandler } from "react-hook-form"
 import { valibotResolver } from "@hookform/resolvers/valibot"
 
 import ParticleAuthBackground from "@/components/ui/ParticleAuthBackground"
+import AuthBackdrop from "@/components/auth/AuthBackdrop"
+import useMediaQuery from "@/hooks/useMediaQuery"
 import api from "@/api/client"
 import { Input } from "@/components/ui/Input"
 import { Select } from "@/components/ui/Select"
@@ -18,6 +20,9 @@ import { registerSchema, type RegisterValues } from "@/features/auth/schemas"
 const Register = () => {
   const { t } = useTranslation(["auth"])
   const navigate = useNavigate()
+  // Wave 186 SW3 — useReducedMotion via project's useMediaQuery (jsdom-safe
+  // per W184 SW6). Drops AuthBackdrop blur on mobile/reduced-motion.
+  const prefersReducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)")
   const [showPass, setShowPass] = useState(false)
   const [showConfirm, setShowConfirm] = useState(false)
   const [capsPass, setCapsPass] = useState(false)
@@ -148,7 +153,8 @@ const Register = () => {
     : t("auth:register.inviteOptional", { defaultValue: "Invitation is optional" })
 
   return (
-    <div className="relative min-h-screen w-full overflow-hidden bg-page text-text-primary">
+    <div className="auth-theme relative min-h-screen w-full overflow-hidden bg-page text-text-primary">
+      <AuthBackdrop prefersReducedMotion={prefersReducedMotion} />
       <ParticleAuthBackground />
       <div className="relative z-surface mx-auto grid min-h-screen w-full max-w-7xl grid-cols-1 items-stretch gap-10 px-4 py-12 sm:px-6 lg:grid-cols-2 lg:px-8">
         {/* Left Column - Hero */}
@@ -156,7 +162,7 @@ const Register = () => {
           initial={{ x: -200 }}
           animate={{ x: 0 }}
           transition={{ duration: 0.5, ease: "easeOut" }}
-          className="auth-card-glass flex w-full min-w-0 flex-col justify-center border-glass-border-subtle p-8 lg:p-12"
+          className="auth-card-matte flex w-full min-w-0 flex-col justify-center border-glass-border-subtle p-8 lg:p-12"
         >
           <div className="flex items-center gap-3 text-sm font-semibold uppercase tracking-widest text-text-primary/(--opacity-strong)">
             <Crown className="h-5 w-5" aria-hidden="true" />
@@ -188,7 +194,7 @@ const Register = () => {
           initial={{ y: 200 }}
           animate={{ y: 0 }}
           transition={{ duration: 0.5, ease: "easeOut", delay: 0.2 }}
-          className="auth-card-glass flex w-full min-w-0 flex-col justify-center border-glass-border-subtle bg-surface/(--opacity-hover) p-6 sm:p-10"
+          className="auth-card-matte flex w-full min-w-0 flex-col justify-center border-glass-border-subtle bg-surface/(--opacity-hover) p-6 sm:p-10"
         >
           <form
             onSubmit={handleSubmit(onSubmit)}

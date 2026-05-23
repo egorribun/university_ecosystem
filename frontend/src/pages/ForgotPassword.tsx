@@ -4,6 +4,8 @@ import { Link } from "@tanstack/react-router"
 import { useTranslation, Trans } from "react-i18next"
 import { Button, TextField, SectionCard, Chip } from "@/components/settings"
 import { m, AnimatePresence } from "framer-motion"
+import AuthBackdrop from "@/components/auth/AuthBackdrop"
+import useMediaQuery from "@/hooks/useMediaQuery"
 import { ChevronLeft, Send as SendIcon, CheckCircle2 } from "lucide-react"
 import { useForm } from "react-hook-form"
 import { valibotResolver } from "@hookform/resolvers/valibot"
@@ -16,6 +18,9 @@ const RESEND_COOLDOWN_SEC = 30
 
 export default function ForgotPassword() {
   const { t } = useTranslation(["auth"])
+  // Wave 186 SW3 — useReducedMotion via project's useMediaQuery (jsdom-safe
+  // per W184 SW6). Drops AuthBackdrop blur on mobile/reduced-motion.
+  const prefersReducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)")
   const [emailSuggestion, setEmailSuggestion] = useState<string | null>(null)
   const [cooldown, setCooldown] = useState(0)
   const [isSuccess, setIsSuccess] = useState(false)
@@ -87,12 +92,11 @@ export default function ForgotPassword() {
   }
 
   return (
-    <div className="min-h-screen bg-page text-text-primary flex items-center justify-center p-6 relative overflow-hidden">
-      {/* Background decorative elements */}
-      <div className="absolute top-0 left-0 w-full h-full pointer-events-none opacity-dim">
-        <div className="absolute top-[-10%] left-[-5%] w-2/5 h-2/5 bg-(--glow-spotlight-primary) rounded-full blur-(--glow-blur-massive)" />
-        <div className="absolute bottom-[-10%] right-[-5%] w-2/5 h-2/5 bg-(--glow-spotlight-secondary) rounded-full blur-(--glow-blur-massive)" />
-      </div>
+    <div className="auth-theme min-h-screen bg-page text-text-primary flex items-center justify-center p-6 relative overflow-hidden">
+      {/* Wave 186 SW3 — Replaces inline glow blocks (~5 lines duplicated
+          per Forgot/Reset) with AuthBackdrop component. Teal/cyan ambient
+          orbs scoped under .auth-theme. */}
+      <AuthBackdrop prefersReducedMotion={prefersReducedMotion} />
 
       <m.div
         initial={{ opacity: 0, y: 20 }}
