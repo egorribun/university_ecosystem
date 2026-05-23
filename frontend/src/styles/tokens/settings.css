@@ -1,0 +1,240 @@
+/* ═══════════════════════════════════════════════════════
+   @PROPERTY — smooth dark↔light transitions for animated vars
+   (Mirror of activity.css W84 + schedule.css W64 + messenger.css W181 SW1
+   + profile.css W184 SW5 pattern. Wave 184 SW6 (Path D) — /settings page
+   polish to feature-page parity with W181-W183 messenger arc + paired
+   with profile.css W184 SW5.)
+   ═══════════════════════════════════════════════════════ */
+@property --settings-orb-1 {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: transparent;
+}
+@property --settings-orb-2 {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: transparent;
+}
+@property --settings-orb-3 {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: transparent;
+}
+@property --settings-orb-4 {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: transparent;
+}
+@property --settings-card-glow {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: transparent;
+}
+
+@layer base {
+  /* ═══════════════════════════════════════════════════════
+     SETTINGS PAGE TOKENS
+     Scoped under .settings-theme. Slate/purple/slate-300 palette —
+     neutral/technical/configuration semantics for the user's settings
+     page. Mostly monochromatic slate (config = quiet, not flashy) with
+     a purple-400 cool accent for visual interest. Distinct from 8 prior
+     themed surfaces (Schedule blue, Map teal/cyan, Events amber-500,
+     News sky, Activity emerald, Footer blue-gradient, Admin indigo,
+     Messenger violet/pink/indigo, Profile rose/pink/amber).
+     Primary: slate-500 + Accent: purple-400 + Lighter tertiary: slate-300.
+     ═══════════════════════════════════════════════════════ */
+  .settings-theme {
+    /* ── Typography (mirrors messenger sizes) ──────── */
+    --fs-settings-hero: clamp(1.875rem, 3.2vw, 2.75rem);
+    --fs-settings-subtitle: clamp(0.9375rem, 1vw, 1.125rem);
+    --fs-settings-section: clamp(1.125rem, 1.5vw, 1.375rem);
+    --fs-settings-meta: clamp(0.6875rem, 0.75vw, 0.75rem);
+
+    /* ── Orbs (slate/purple/slate-300 palette) ─────────
+       4 orbs (vs 3 elsewhere) — Settings has a 4-tab horizontal layout
+       so the visual weight needs slightly more distribution. Per W184
+       plan SW6 step (b): different orb positioning vs Profile's 3-orb. */
+    --settings-hero-orb: color-mix(in srgb, var(--color-slate-500) 8%, transparent);
+    --settings-hero-highlight: color-mix(in srgb, var(--color-purple-400) 6%, transparent);
+    --settings-orb-1: color-mix(in srgb, var(--color-slate-500) 8%, transparent);
+    --settings-orb-2: color-mix(in srgb, var(--color-purple-400) 7%, transparent);
+    --settings-orb-3: color-mix(in srgb, var(--color-slate-300) 10%, transparent);
+    --settings-orb-4: color-mix(in srgb, var(--color-slate-400) 8%, transparent);
+
+    /* ── Gradients & Flares ────────────────────────── */
+    --grad-settings-conic: conic-gradient(
+      from 200deg at 50% 50%,
+      var(--settings-orb-1),
+      var(--settings-orb-2),
+      transparent 85%
+    );
+    --settings-accent-line: linear-gradient(
+      to right,
+      transparent 10%,
+      var(--color-slate-500) 35%,
+      var(--color-purple-400) 65%,
+      transparent 90%
+    );
+
+    /* ── Matte card system ────────────────────────── */
+    --settings-card-bg: color-mix(in srgb, var(--bg-surface) 96%, var(--color-slate-200) 4%);
+    --settings-card-shadow:
+      0 1px 2px color-mix(in srgb, black 5%, transparent),
+      0 4px 12px color-mix(in srgb, black 4%, transparent),
+      inset 0 1px 0 color-mix(in srgb, white 60%, transparent);
+    --settings-card-shadow-hover:
+      0 2px 4px color-mix(in srgb, black 6%, transparent),
+      0 8px 24px color-mix(in srgb, black 5%, transparent),
+      inset 0 1px 0 color-mix(in srgb, white 70%, transparent);
+    --settings-card-glow: color-mix(in srgb, var(--color-purple-400) 18%, transparent);
+
+    /* ── Tab highlight accent (active tab visual indicator).
+       Uses purple-400 (the unique accent color) so the active tab is
+       immediately distinguishable from the slate-on-slate baseline. */
+    --settings-tab-active-accent: var(--color-purple-400);
+    --settings-tab-active-bg: color-mix(in srgb, var(--color-purple-400) 8%, var(--bg-surface));
+    --settings-tab-hover-bg: color-mix(in srgb, var(--color-slate-400) 6%, var(--bg-surface));
+
+    /* ── Section header accent ───────────────────────
+       Slate primary for section dividers (technical/quiet) — purple is
+       reserved for active/highlight states. */
+    --settings-section-accent: var(--color-slate-500);
+    --settings-section-accent-bg: color-mix(in srgb, var(--color-slate-400) 6%, var(--bg-surface));
+
+    /* ── Skeleton placeholders ────────────────────── */
+    --settings-skeleton-bg: color-mix(
+      in srgb,
+      var(--color-slate-300) 12%,
+      var(--color-slate-100) 88%
+    );
+  }
+
+  /* ── Dark Theme Overrides ──────────────────────── */
+  .dark .settings-theme {
+    /* W181 SW6 polish: orbs against near-black --bg-page = slate-950 need
+       ~2× the light-mode opacity to register. Same calibration as
+       messenger.css + profile.css dark overrides. Note: slate primary is
+       inherently low-contrast against slate-950 in dark mode, so opacity
+       bumped slightly higher than rose/violet primaries (16-22% vs 22%). */
+    --settings-hero-orb: color-mix(in srgb, var(--color-slate-400) 20%, transparent);
+    --settings-hero-highlight: color-mix(in srgb, var(--color-purple-400) 16%, transparent);
+    --settings-orb-1: color-mix(in srgb, var(--color-slate-400) 20%, transparent);
+    --settings-orb-2: color-mix(in srgb, var(--color-purple-400) 18%, transparent);
+    --settings-orb-3: color-mix(in srgb, var(--color-slate-300) 14%, transparent);
+    --settings-orb-4: color-mix(in srgb, var(--color-slate-400) 15%, transparent);
+
+    /* W181 SW6 polish pattern: matte card bg was indistinguishable from
+       bg-page in dark mode; bumped tint mix from 4% (light) to 10% (dark)
+       for visible elevation against slate-950. */
+    --settings-card-bg: color-mix(in srgb, var(--bg-surface) 90%, var(--color-slate-700) 10%);
+
+    /* Active tab bg also needs higher tint in dark. */
+    --settings-tab-active-bg: color-mix(in srgb, var(--color-purple-400) 14%, var(--bg-surface));
+    --settings-tab-hover-bg: color-mix(in srgb, var(--color-slate-400) 10%, var(--bg-surface));
+
+    /* Skeleton bg uses darker slate base in dark mode. */
+    --settings-skeleton-bg: color-mix(
+      in srgb,
+      var(--color-slate-500) 12%,
+      var(--color-slate-800) 88%
+    );
+  }
+
+  /* ═══════════════════════════════════════════════════════
+     Settings matte card recipe — mirrors .messenger-card-matte
+     (messenger.css:297-325 W181 SW1) + .profile-card-matte
+     (profile.css W184 SW5) with slate+purple accent line. Reused
+     by SectionCard / SectionTitle / AccordionSection components.
+     ═══════════════════════════════════════════════════════ */
+  .settings-card-matte {
+    position: relative;
+    background: var(--settings-card-bg);
+    box-shadow: var(--settings-card-shadow);
+    border-radius: 1.25rem;
+    overflow: hidden;
+    transition:
+      box-shadow var(--motion-duration-fast, 0.18s) var(--ease-premium, ease-out),
+      transform var(--motion-duration-fast, 0.18s) var(--ease-premium, ease-out);
+  }
+
+  .settings-card-matte::before {
+    content: "";
+    position: absolute;
+    inset: 0 0 auto 0;
+    height: 1px;
+    background: var(--settings-accent-line);
+    opacity: 0.7;
+    pointer-events: none;
+  }
+
+  .settings-card-matte:hover {
+    box-shadow:
+      var(--settings-card-shadow-hover),
+      0 0 0 1px var(--settings-card-glow);
+  }
+
+  /* ═══════════════════════════════════════════════════════
+     Settings skeleton (matches messenger + profile shimmer pattern).
+     Ready for future loading-state polish (current Settings tabs render
+     synchronously after URL `?tab=N` validation; no global loading state).
+     ═══════════════════════════════════════════════════════ */
+  .settings-skeleton {
+    background: var(--settings-skeleton-bg);
+    background-image: linear-gradient(
+      90deg,
+      transparent 0%,
+      color-mix(in srgb, white 18%, transparent) 50%,
+      transparent 100%
+    );
+    background-size: 200% 100%;
+    animation: settings-skeleton-shimmer var(--motion-duration-shimmer, 1.6s) ease-in-out infinite;
+    border-radius: var(--radius-sm, 0.75rem);
+  }
+
+  .dark .settings-skeleton {
+    background-image: linear-gradient(
+      90deg,
+      transparent 0%,
+      color-mix(in srgb, white 6%, transparent) 50%,
+      transparent 100%
+    );
+  }
+
+  @keyframes settings-skeleton-shimmer {
+    0% {
+      background-position: 200% 0;
+    }
+    100% {
+      background-position: -200% 0;
+    }
+  }
+
+  /* ═══════════════════════════════════════════════════════
+     Reduced-motion overrides — kill transitions + animations for
+     prefers-reduced-motion (FIX-69-a11y pattern from Schedule arc).
+     ═══════════════════════════════════════════════════════ */
+  @media (prefers-reduced-motion: reduce) {
+    .settings-card-matte,
+    .settings-card-matte:hover {
+      transition: none;
+    }
+    .settings-skeleton {
+      animation: none;
+    }
+  }
+
+  /* ═══════════════════════════════════════════════════════
+     Print overrides — doubled-class specificity per FIX-72-04
+     (avoids !important; specificity bumps via repeated class).
+     ═══════════════════════════════════════════════════════ */
+  @media print {
+    .settings-theme.settings-theme {
+      background: white;
+      color: black;
+    }
+    .settings-theme.settings-theme .settings-card-matte {
+      background: white;
+      box-shadow: 0 0 0 1px var(--color-slate-200, #e5e7eb);
+    }
+  }
+}

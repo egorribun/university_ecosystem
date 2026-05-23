@@ -20,4 +20,4 @@
 @import "./tokens/admin.css";
 @import "./tokens/messenger.css";
 @import "./tokens/profile.css";
-/* Settings tokens deferred to W184 SW6 (Path D paired commit). */
+@import "./tokens/settings.css";

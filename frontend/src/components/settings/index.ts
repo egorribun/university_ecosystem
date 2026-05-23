@@ -3,6 +3,9 @@
  *
  * Re-exports all settings-related UI components for easy importing.
  */
+// Wave 184 SW6 (Path D) — Settings polish backdrop component.
+export { SettingsBackdrop } from "./SettingsBackdrop"
+
 export {
   // Types and helpers
   type ThemeMode,

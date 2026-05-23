@@ -4,8 +4,10 @@ import { useTranslation } from "react-i18next"
 import { Settings as SettingsIcon } from "lucide-react"
 
 import { PageLayout } from "@/components/layout/PageLayout"
-import { Tabs, Tab, Snackbar } from "@/components/settings"
+import { Tabs, Tab, Snackbar, SettingsBackdrop } from "@/components/settings"
 import { StepUpDialog } from "@/components/mfa/StepUpDialog"
+import useMediaQuery from "@/hooks/useMediaQuery"
+import { breakpoints } from "@/theme/tokens"
 
 import { SettingsGeneral } from "./settings/SettingsGeneral"
 import { SettingsProfile } from "./settings/SettingsProfile"
@@ -36,6 +38,23 @@ export default function Settings() {
   const panelBaseId = useId()
   const settingsPanelId = `${panelBaseId}-tabpanel`
   const activeTabId = `${settingsPanelId}-tab-${tab}`
+
+  // Wave 184 SW6 (Path D) — viewport flags for SettingsBackdrop orb scaling
+  // + GPU mitigation. Matches W181 SW2 MessengerBackdrop + W184 SW5
+  // ProfileBackdrop convention. isNarrow at content breakpoint (~< 900px)
+  // scales orbs down; isMobile (<= breakpoints.mobile) drops blur entirely.
+  //
+  // Within-iter SAME-mechanism sub-fix (W138 Lesson #1): originally used
+  // framer-motion's useReducedMotion() — which caused vitest unhandled
+  // errors in Settings.media.test.tsx + Settings.radio.test.tsx because
+  // framer-motion's hook touches `window.matchMedia(...).addEventListener`
+  // in initPrefersReducedMotion via a code path that jsdom's polyfill
+  // doesn't fully cover. Switched to the project's own useMediaQuery hook
+  // matching W184 SW5 Profile.tsx + W175 SW4 ProfileHeader convention —
+  // useMediaQuery is jsdom-polyfilled in setupTests.ts (W113 SW6 baseline).
+  const isNarrow = useMediaQuery(`(max-width: ${breakpoints.content})`)
+  const isMobile = useMediaQuery(`(max-width: ${breakpoints.mobile})`)
+  const prefersReducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)")
 
   // Shared Snackbar State
   const [snackbar, setSnackbar] = useState<{
@@ -121,11 +140,24 @@ export default function Settings() {
 
   return (
     <PageLayout variant="full">
+      {/* Wave 184 SW6 (Path D) — settings-theme scope wrapper enables
+          tokens/settings.css (slate/purple/slate-300 palette + matte cards
+          + tab highlight) inside this subtree. SettingsBackdrop mounts
+          inside the outer `relative` positioning context so its
+          `absolute inset-0` orbs span the full Settings viewport (NOT
+          per-tab — backdrop must NOT re-mount on tab change per FIX-77-03;
+          conditional render here is route-level, gated by Settings.tsx
+          rendering at all, which only happens at /settings route). */}
       <div
-        className="flex h-full w-full flex-col bg-(--bg-page) text-(--text-primary) sm:flex-row"
+        className="settings-theme flex h-full w-full flex-col bg-(--bg-page) text-(--text-primary) sm:flex-row relative"
         style={{ height: "40rem", maxHeight: "85vh" }}
       >
-        <div className="px-2 md:px-4">
+        <SettingsBackdrop
+          isNarrow={isNarrow}
+          isMobile={isMobile}
+          prefersReducedMotion={prefersReducedMotion}
+        />
+        <div className="px-2 md:px-4 relative z-base">
           <div
             data-fade
             className="mb-8 flex flex-wrap items-center gap-4 sm:gap-5 animate-fade-in delay-(--motion-delay-short)"
