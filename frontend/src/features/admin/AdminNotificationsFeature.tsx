@@ -278,7 +278,7 @@ export function AdminNotificationsFeature() {
                 <th scope="col" className="px-4 py-3">
                   <input
                     type="checkbox"
-                    className="h-4 w-4 rounded border-glass-border bg-(--bg-surface)/(--opacity-medium) text-brand focus:ring-brand/(--opacity-soft)"
+                    className="h-4 w-4 rounded border-glass-border bg-(--bg-surface)/(--opacity-medium) text-brand focus:ring-brand/(--opacity-soft) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2"
                     checked={allSelected}
                     onChange={handleSelectAll}
                     aria-label={t("admin:notifications.table.selectAll") ?? "Select all"}
@@ -342,7 +342,7 @@ export function AdminNotificationsFeature() {
                     <td className="px-4 py-3">
                       <input
                         type="checkbox"
-                        className="h-4 w-4 rounded border-glass-border bg-(--bg-surface)/(--opacity-medium) text-brand focus:ring-brand/(--opacity-soft)"
+                        className="h-4 w-4 rounded border-glass-border bg-(--bg-surface)/(--opacity-medium) text-brand focus:ring-brand/(--opacity-soft) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2"
                         checked={isSelected}
                         onChange={() => toggleSelect(job.id)}
                         aria-label={

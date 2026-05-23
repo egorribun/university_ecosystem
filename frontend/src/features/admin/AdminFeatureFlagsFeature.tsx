@@ -1,4 +1,5 @@
-import { m, AnimatePresence, useReducedMotion } from "framer-motion"
+import { m, AnimatePresence } from "framer-motion"
+import useMediaQuery from "@/hooks/useMediaQuery"
 import { useTranslation } from "react-i18next"
 import { Info, Percent } from "lucide-react"
 import { useQueryClient } from "@tanstack/react-query"
@@ -26,7 +27,7 @@ export function AdminFeatureFlagsFeature() {
   // fetchFlags + useState + useEffect. Loading state derived from isPending.
   const { data: flags = [], isPending: loading } = useAdminFeatureFlagsQuery()
   const { t } = useTranslation("admin")
-  const reducedMotion = useReducedMotion()
+  const reducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)")
 
   const handleToggle = async (name: string, currentStatus: FlagStatus) => {
     const nextStatus: FlagStatus = currentStatus === "disabled" ? "enabled" : "disabled"
@@ -71,7 +72,7 @@ export function AdminFeatureFlagsFeature() {
           className="mb-8"
         >
           <h1 className="text-4xl font-bold tracking-tight text-(--text-primary) sm:text-5xl">
-            {t("featureFlags.title", "Dynamic Feature Flags")}
+            {t("featureFlags.title")}
           </h1>
           <p className="mt-2 text-base text-(--text-secondary)">{t("featureFlags.subtitle")}</p>
         </m.div>
@@ -88,25 +89,25 @@ export function AdminFeatureFlagsFeature() {
                     scope="col"
                     className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-(--text-secondary) opacity-medium"
                   >
-                    {t("featureFlags.table.flag", "Feature Flag")}
+                    {t("featureFlags.table.flag")}
                   </th>
                   <th
                     scope="col"
                     className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-(--text-secondary) opacity-medium"
                   >
-                    {t("featureFlags.table.status", "Status")}
+                    {t("featureFlags.table.status")}
                   </th>
                   <th
                     scope="col"
                     className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-(--text-secondary) opacity-medium"
                   >
-                    {t("featureFlags.table.rollout", "Rollout")}
+                    {t("featureFlags.table.rollout")}
                   </th>
                   <th
                     scope="col"
                     className="px-6 py-4 text-right text-xs font-bold uppercase tracking-wider text-(--text-secondary) opacity-strong"
                   >
-                    {t("featureFlags.table.details", "Details")}
+                    {t("featureFlags.table.details")}
                   </th>
                 </tr>
               </thead>
@@ -156,7 +157,7 @@ export function AdminFeatureFlagsFeature() {
                               max="100"
                               step="5"
                               value={flag.percentage}
-                              aria-label={t("featureFlags.rollout.range", "Rollout Percentage")}
+                              aria-label={t("featureFlags.rollout.range")}
                               onChange={(event) =>
                                 handlePercentageChange(flag.name, parseInt(event.target.value))
                               }

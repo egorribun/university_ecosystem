@@ -1,5 +1,6 @@
 import { useState } from "react"
-import { m, AnimatePresence, useReducedMotion } from "framer-motion"
+import { m, AnimatePresence } from "framer-motion"
+import useMediaQuery from "@/hooks/useMediaQuery"
 import { useTranslation } from "react-i18next"
 import { formatDate, presets } from "@/utils/date"
 import {
@@ -23,7 +24,7 @@ import { AuditLog } from "@/types/Admin"
 function Row({ log }: { log: AuditLog }) {
   const [open, setOpen] = useState(false)
   const { t } = useTranslation("admin")
-  const reducedMotion = useReducedMotion()
+  const reducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)")
 
   const getActionColor = (action: string) => {
     if (action.includes("delete"))
@@ -220,7 +221,7 @@ export function AdminAuditFeature() {
   const [filters, setFilters] = useState({ resource_type: "", action: "" })
 
   const { t } = useTranslation("admin")
-  const reducedMotion = useReducedMotion()
+  const reducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)")
 
   // Wave 163 SW3 — useAdminAuditLogsQuery replaces pre-W163 useCallback
   // fetchLogs + useState(logs/total/loading) + useEffect. Pagination

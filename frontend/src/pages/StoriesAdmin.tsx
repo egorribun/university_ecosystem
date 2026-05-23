@@ -259,7 +259,7 @@ function StoryAdminItem({ story, formatDate, onRefresh }: StoryAdminItemProps) {
                     className="w-full h-full object-cover"
                   />
                 ) : (
-                  <div className="w-full h-full flex items-center justify-center p-6 text-center bg-linear-to-r from-blue-500 to-indigo-600 transition-all duration-base">
+                  <div className="w-full h-full flex items-center justify-center p-6 text-center bg-(--grad-admin-conic) transition-all duration-base">
                     <p className="text-xs font-medium text-(--text-secondary) opacity-strong">
                       {t("stories:list.noCover")}
                     </p>
