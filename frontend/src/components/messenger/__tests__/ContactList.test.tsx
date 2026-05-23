@@ -236,3 +236,107 @@ describe("ContactList — keyboard navigation (W183 SW4)", () => {
     expect(onSelect).toHaveBeenCalledWith("2")
   })
 })
+
+describe("ContactList — W184 SW2 skeleton + SW3 error states", () => {
+  it("renders 6 skeleton rows when isLoading=true (role=status + aria-live)", () => {
+    const { container } = render(
+      <ContactList contacts={[]} selectedId={null} onSelect={() => {}} isLoading />,
+      { wrapper }
+    )
+
+    // role="status" + aria-live="polite" + i18n aria-label
+    const statusEl = container.querySelector('[role="status"][aria-live="polite"]')
+    expect(statusEl).toBeTruthy()
+    expect(statusEl?.getAttribute("aria-label")).toBe("messenger:loading.contacts")
+
+    // 6 skeleton rows per SKELETON_ROW_COUNT (each row has avatar circle + 2 text lines)
+    const avatarSkeletons = container.querySelectorAll(".messenger-skeleton.size-12.rounded-full")
+    expect(avatarSkeletons.length).toBe(6)
+
+    // Each row has 2 text-line skeletons (title + subtitle) → 12 total .messenger-skeleton.h-X
+    const titleSkeletons = container.querySelectorAll<HTMLDivElement>(".messenger-skeleton.h-3\\.5")
+    const subtitleSkeletons = container.querySelectorAll<HTMLDivElement>(".messenger-skeleton.h-3")
+    expect(titleSkeletons.length).toBe(6)
+    expect(subtitleSkeletons.length).toBe(6)
+  })
+
+  it("skeleton width jitter follows deterministic formulas", () => {
+    const { container } = render(
+      <ContactList contacts={[]} selectedId={null} onSelect={() => {}} isLoading />,
+      { wrapper }
+    )
+
+    // Title line: 65 + ((idx * 11) % 25)%
+    const titleSkeletons = container.querySelectorAll<HTMLDivElement>(".messenger-skeleton.h-3\\.5")
+    titleSkeletons.forEach((el, idx) => {
+      const expectedTitleWidth = 65 + ((idx * 11) % 25)
+      expect(el.style.width).toBe(`${expectedTitleWidth}%`)
+    })
+
+    // Subtitle line: 45 + ((idx * 7) % 35)%
+    const subtitleSkeletons = container.querySelectorAll<HTMLDivElement>(".messenger-skeleton.h-3")
+    subtitleSkeletons.forEach((el, idx) => {
+      const expectedSubtitleWidth = 45 + ((idx * 7) % 35)
+      expect(el.style.width).toBe(`${expectedSubtitleWidth}%`)
+    })
+  })
+
+  it("renders TriangleAlert + role=alert + Retry CTA when isError=true", () => {
+    const onRetry = vi.fn()
+    const { container } = render(
+      <ContactList contacts={[]} selectedId={null} onSelect={() => {}} isError onRetry={onRetry} />,
+      { wrapper }
+    )
+
+    // role="alert" + aria-live="assertive" on error wrapper
+    const alertEl = container.querySelector('[role="alert"][aria-live="assertive"]')
+    expect(alertEl).toBeTruthy()
+
+    // Error i18n keys present
+    expect(screen.getByText("messenger:error.failedToLoadChats")).toBeTruthy()
+    expect(screen.getByText("messenger:error.failedToLoadChatsHint")).toBeTruthy()
+
+    // Retry CTA button present with i18n label
+    const retryBtn = screen.getByRole("button", { name: /messenger:error.retry/ })
+    expect(retryBtn).toBeTruthy()
+  })
+
+  it("Retry CTA fires onRetry callback on click (SW3)", () => {
+    const onRetry = vi.fn()
+    render(
+      <ContactList contacts={[]} selectedId={null} onSelect={() => {}} isError onRetry={onRetry} />,
+      { wrapper }
+    )
+
+    const retryBtn = screen.getByRole("button", { name: /messenger:error.retry/ })
+    fireEvent.click(retryBtn)
+    expect(onRetry).toHaveBeenCalledTimes(1)
+  })
+
+  it("branch order: isLoading takes priority over isError + empty contacts", () => {
+    // When BOTH isLoading=true AND isError=true, the isLoading branch fires first
+    // (code order at ContactList.tsx:117 vs :155). This matches ChatWindow's
+    // priority (W184 SW2 test "isError takes priority over isLoading" — different
+    // priority because ChatWindow checks isError FIRST, ContactList checks
+    // isLoading FIRST). Document the actual order via empirical test.
+    const { container } = render(
+      <ContactList
+        contacts={[]}
+        selectedId={null}
+        onSelect={() => {}}
+        isLoading
+        isError
+        onRetry={() => {}}
+      />,
+      { wrapper }
+    )
+
+    // Skeleton branch fires (isLoading checked FIRST in ContactList)
+    expect(container.querySelector('[role="status"][aria-live="polite"]')).toBeTruthy()
+    expect(container.querySelectorAll(".messenger-skeleton.size-12").length).toBe(6)
+
+    // Error branch does NOT fire
+    expect(container.querySelector('[role="alert"]')).toBeFalsy()
+    expect(screen.queryByText("messenger:error.failedToLoadChats")).toBeFalsy()
+  })
+})
