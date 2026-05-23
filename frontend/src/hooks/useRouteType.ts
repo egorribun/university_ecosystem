@@ -23,6 +23,13 @@ export function useRouteType() {
   const isProfile = path.startsWith("/profile")
   // Wave 184 SW6 (Path D) — same as isProfile but for /settings polish arc.
   const isSettings = path.startsWith("/settings")
+  // Wave 186 SW2 (Path C) — flag for auth pages (/login + /register +
+  // /forgot-password + /reset-password). Currently identical to
+  // isCompactPage's route set (same 4 prefixes), but kept as a separate
+  // concept so adding/removing auth routes doesn't affect compact-page
+  // layout logic. Used by AuthBackdrop mount conditions in Login +
+  // Register + ForgotPassword + ResetPassword (SW3 integration).
+  const isAuth = isCompactPage
   const hideFooter = HIDE_FOOTER_PREFIXES.some((p) => path.startsWith(p))
 
   return {
@@ -30,6 +37,7 @@ export function useRouteType() {
     isMessenger,
     isProfile,
     isSettings,
+    isAuth,
     hideFooter,
     loading: false, // Future proofing if we need async check
   }
