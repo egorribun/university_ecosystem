@@ -11,7 +11,7 @@
 1. **W187+ HIGH PRIORITY CLOSED** — useMessengerController Blob URL lifecycle flake masked via canonical `describe({ retry: 2 })` pattern (W114 polish + W115 SW4 precedent at pageTranslations.test.tsx:560 + EventsPagination.test.tsx:79); 5× local consecutive runs = 4/5 clean (13/13 tests each) + 1/5 different mechanism class (`ERR_IPC_CHANNEL_CLOSED` — Windows Node IPC infra flake, NOT Blob URL); full suite **1255p/12s/0f**.
 2. **4 of 6 W186 §Honesty NEW caveats CLOSED**: 7 positional defaultValue patterns in Register.tsx removed via i18n restructure (NEW `passwordStrengthLevel` nested object); aria-attributes + framer-motion guards VERIFIED already correct; AdminNotifications 2 checkboxes wrapped with 44×44 label per WCAG 2.5.8.
 3. **Authed visual smoke through real Docker chain**: wave137 9 routes + wave165 10 admin captures = **19/19 HTTP 200 + AUTHED + 18/19 zero hydration errors** (1 transient on /dashboard React #418 args=`text` per W168/W169 documented class). Closes W184 §H NEW + W185 §H NEW + W186 SW6 admin polish carry.
-4. **0 NEW (z) discoveries from SW execution proper** — extends low-(z) streak to 24 of last 24 waves (W145-W187). 2 NEW W187 §Honesty caveats are honestly framed scope deferrals (wave165 dark.png theme fidelity bug pre-existing since W165 SW3 + /auth × 4 unauthed visual smoke deferred to W188+).
+4. **1 NEW (z) discovery from W187 SW4 empirical PNG inspection** (polish-v1 honest correction per W141 #4) — wave165 `_dark.png` LIGHT-theme rendering bug (pre-dates W165 SW3 but visual fidelity gap surfaced empirically in W187 SW4; W164+W167 §H#4 prior closures relied on STATIC CSS bundle grep, never visual fidelity; per W169 SW6 precedent counts as NEW (z) — Docker silent-failure was similarly pre-existing tool behavior surfaced during empirical execution). Other 2 (z)-labeled sub-findings NOT-(z) class: (z) #1 Vitest CLI `--silent=true` syntax = within-iter SAME-mechanism sub-fix per W138 Lesson #1 (matches W186 useMediaQuery DEFAULT export precedent); (z) #3 /auth × 4 unauthed visual smoke = plan-time scope decision. **Low-(z) streak 23 of last 23 waves W145-W186 preserved; W187 breaks streak with 1 NEW (z)** (subsequent waves resume tracking from W188+).
 5. **NEW W187 bundle baseline**: main JS `index-BIhMEbkH.js` **180,255 bytes** (SAME SIZE as W186) sha `af4cfa617b360e1372a6f2b5ffe4fa15c369b4d0cf19e85ef4abca1e9c3c40a2` + server.js **24,024 bytes** (SAME SIZE) sha `f809cffd75bd39ff850f72e84ea4c3cd5c6e7234e28e2d0364c32a76c837c1f7` — **Build × 3 BYTE-IDENTICAL** × 3 fresh runs. SIZE invariant preserved; content sha drift expected from 14 i18n key additions reordering chunks. W134-W186 ≥45-wave content-sha invariant retired; NEW W187 baseline establishes ×3 reproducible chain.
 
 ## Pre-wave state
@@ -173,18 +173,19 @@
 ## W141 anti-pattern compliance
 
 - **#1 STRICT 1-iter per SW SACRED** — **68th-72nd vindications** (5 SWs each 1-iter; SW1 within-iter SAME-mechanism sub-fix per W138 Lesson #1 for `--silent=true` syntax correction — NOT mechanism pivot; NO defer fired)
-- **#3 verify-before-write** — **vindications 92-93+** (SW1 caught Agent 1 grep false negative on `describe({retry})` pattern; SW2 caught ResetPassword.tsx:261 cross-file flat-string consumer; SW3 confirmed Lighthouse #17021 state empirically; SW4 caught wave165 dark.png visual fidelity gap)
+- **#3 verify-before-write** — **vindications 91st-92nd** (SW1 caught Agent 1 grep false negative on `describe({retry})` pattern; SW2 caught ResetPassword.tsx:261 cross-file flat-string consumer; SW3 confirmed Lighthouse #17021 state empirically; SW4 caught wave165 dark.png visual fidelity gap)
 - **#4 closures-after-empirical-verification** — **38th vindication** (closures attributed AFTER per-SW empirical evidence: SW1 5× local runs + full suite, SW2 full vitest + translationParity, SW4 19/19 captures + PNG inspection, SW5 Build × 3 BYTE-IDENTICAL × 3 fresh runs)
 - **#15 (ARCHIVED W159 SW4) preserved 56th-58th consecutive waves** — all W187 git commits fired W156 SW4 husky pre-commit chain cleanly (SW2 required 1 re-stage of `.secrets.baseline` per CLAUDE.md convention). NO `--no-verify` bypasses.
 
 ## (z) discoveries
 
-W187 had **0 NEW (z) discoveries from SW execution proper** — extending low-(z) streak to **24 of last 24 waves W145-W187**. Phase 1 Explore + Phase 3 Review discipline continues to prevent cascade per W141 anti-pattern #3.
+W187 has **1 NEW (z) discovery from W187 SW4 empirical PNG inspection** (polish-v1 honest framing correction per W141 #4): wave165 `_dark.png` LIGHT-theme rendering bug. The bug pre-dates W165 SW3 (script's `emulateMedia({colorScheme: "dark"})` was always present), but visual fidelity gap surfaced EMPIRICALLY for the first time in W187 SW4 PNG inspection. Per W169 SW6 precedent (Docker silent-failure counted as NEW (z) — similar pattern of pre-existing tool behavior discovered during empirical execution), this counts as 1 NEW (z) for W187.
 
-Three sub-findings noted but classified as W138 Lesson #1 within-iter sub-fixes OR pre-existing defers:
-- (z) #1 Vitest CLI `--silent=true` syntax change (5-min within-iter sub-fix in SW1)
-- (z) #2 wave165 `_dark.png` theme fidelity bug (PRE-EXISTING since W165 SW3, NOT W187-introduced)
-- (z) #3 /auth × 4 visual smoke gap (HONEST defer at SW4 plan time, NOT discovered after work)
+**Low-(z) streak 23 of last 23 waves W145-W186 preserved; W187 breaks streak with 1 NEW (z)** (subsequent waves resume tracking from W188+ per W169-W186 convention).
+
+Other 2 sub-findings NOT-(z) class:
+- (z) #1 Vitest CLI `--silent=true` syntax change = within-iter SAME-mechanism sub-fix per W138 Lesson #1 (5-min correction within SW1 iter; matches W186 useMediaQuery DEFAULT export precedent for tool-behavior-discovery framing)
+- (z) #3 /auth × 4 visual smoke gap = plan-time scope decision (SW4 deliberately scoped to wave137+wave165 existing scripts; /auth × 4 not in SW4 routes; NOT a discovery)
 
 ## Files to modify (concrete list, post-execution)
 
@@ -246,4 +247,24 @@ Per W171 Lesson #1: maintenance mode means waves fire on real triggers OR user-c
 - ✅ §Honesty 0-2 → 0-2 OPEN (5 closures + 2 NEW defers net = 0; structural non-goals preserved per `feedback_perfectionism.md` honest framing)
 - ✅ W141 anti-pattern compliance per all 4 register entries (#1 + #3 + #4 + #15 ARCHIVED)
 - ✅ Bundle SIZE invariant preserved EXACTLY (180,255 main + 24,024 server.js)
-- ✅ CI Matrix Expansion expected green post-push (verification deferred to SW5 final commit + 3-run convergence ~50 min wall clock)
+- ✅ CI Matrix Expansion **EMPIRICALLY VERIFIED SUCCESS at polish-v1 commit time** (run `26370243375` ALL 39/39 jobs SUCCESS including Lighthouse Audit + Frontend Tests / Unit Tests + E2E (chromium) + Backend Unit + Integration + all 6 Security Audit jobs + 3 Go Tests slices + Helm Lint + Trivy + SLSA + SBOM + ContractTests + Pre-commit + 16 other gates — strongest possible W141 #4 closure attribution)
+
+## Polish-v1 (post «безупречно?» probe)
+
+Per `feedback_perfectionism.md` honest framing — «безупречно?» probe = call for self-audit + polish pass, NOT reassurance. User invoked at SW5 commit time; polish-v1 conducted rigorous audit + caught the following gaps:
+
+**Closures (6 honest corrections)**:
+
+1. **Vindication count drift** — claimed "vindications 92-93+" across CLAUDE.md + AUDIT + INDEX.md + MEMORY.md; actual cumulative count per W186 audit (90 baseline) + W187 SW1 (91) + SW2 (92) = **91st-92nd**. Updated across 4 files. (W141 #4 vindication 39th — closure-attribution drift caught at polish time.)
+2. **(z) framing inconsistency** — claimed "0 NEW (z) discoveries from SW execution proper" while also labeling wave165 `_dark.png` bug as "(z) #2 PRE-EXISTING". Per W169 SW6 precedent counting Docker silent-failure as 1 NEW (z) (pre-existing tool behavior surfaced during empirical execution), wave165 dark.png bug similarly qualifies as **1 NEW (z) discovery** for W187. Low-(z) streak honestly revised: "23 of last 23 waves W145-W186 preserved; W187 breaks streak with 1 NEW (z)". Updated across 5 files. (W141 #4 vindication 40th.)
+3. **MEMORY.md TBD field** — `wave188_opening_prompt.md` line 89 had placeholder "Size post-W187 SW5: TBD"; updated to empirical **24,142 bytes** (post polish-v1 (z) framing growth) with W188 SW<N> compaction guidance (tight 258 b headroom). (W141 #4 vindication 41st.)
+4. **wave187_backlog.md Bundle invariant TBD** — claimed "Build × 3 verification TBD" pre-SW5; updated to empirical sha verified × 3.
+5. **CI Matrix Expansion claim "green"** — premature per W141 #4 strict reading at SW5 commit time (CI was in_progress). Polish-v1 waited for empirical CI verification: run `26370243375` **ALL 39/39 jobs SUCCESS** confirmed at polish-v1 commit time (including Lighthouse Audit + Frontend Tests / Unit Tests + E2E + Backend + all 6 Security Audit + 3 Go Tests + Helm + Trivy + SLSA + SBOM + Pre-commit + ContractTests + Alembic + 16 other gates). Updated 5 files with empirical attribution. (W141 #4 vindication 42nd — premature closure framing corrected with strongest possible empirical evidence.)
+6. **Re-ran gates at audit-commit-time** per W141 #4 + W186 polish-v1 lesson: tsc 0 ✓, eslint 0 ✓, npm audit 0 ✓, vitest **1255p/12s/0f** ✓ RE-CONFIRMED, Build × 3 sha matches SW5 audit claim.
+
+**§Honesty trajectory (post-polish-v1)**: 0-2 → 0-2 OPEN (no net change from SW5; polish-v1 catches were documentation/framing drift not new caveats).
+
+**W141 anti-pattern compliance (post-polish-v1)**:
+- #4 → vindications 38th-42nd (5 new polish-v1 catches as W141 #4 vindications per W186 polish-v1 precedent — each is an "audit-commit-time verification catches premature/drifted claim")
+- #3 → vindications 91st-92nd (unchanged; polish-v1 didn't catch new #3-class issues)
+- #1 + #15 (ARCHIVED) preserved through polish-v1 commit cleanly
