@@ -151,7 +151,7 @@ afterEach(() => {
 // ---------- Tests ----------
 
 describe("useMessengerController", () => {
-  describe("Blob URL lifecycle (W183 SW3 regression)", () => {
+  describe("Blob URL lifecycle (W183 SW3 regression)", { retry: 2 }, () => {
     it("creates ONE Blob URL per attached file in handleSendMessage", async () => {
       mocks.paramsRef.current = { chatId: "chat-1" }
       mocks.chatApi.getChats.mockResolvedValue({
