@@ -276,13 +276,15 @@ export function AdminNotificationsFeature() {
             <thead>
               <tr className="border-b border-glass-border/(--opacity-subtle) bg-(--bg-surface-hover)/(--opacity-dim)">
                 <th scope="col" className="px-4 py-3">
-                  <input
-                    type="checkbox"
-                    className="h-4 w-4 rounded border-glass-border bg-(--bg-surface)/(--opacity-medium) text-brand focus:ring-brand/(--opacity-soft) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2"
-                    checked={allSelected}
-                    onChange={handleSelectAll}
-                    aria-label={t("admin:notifications.table.selectAll") ?? "Select all"}
-                  />
+                  <label className="inline-flex min-h-[44px] min-w-[44px] cursor-pointer items-center justify-center">
+                    <input
+                      type="checkbox"
+                      className="h-4 w-4 rounded border-glass-border bg-(--bg-surface)/(--opacity-medium) text-brand focus:ring-brand/(--opacity-soft) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2"
+                      checked={allSelected}
+                      onChange={handleSelectAll}
+                      aria-label={t("admin:notifications.table.selectAll") ?? "Select all"}
+                    />
+                  </label>
                 </th>
                 <th
                   scope="col"
@@ -340,15 +342,17 @@ export function AdminNotificationsFeature() {
                     )}
                   >
                     <td className="px-4 py-3">
-                      <input
-                        type="checkbox"
-                        className="h-4 w-4 rounded border-glass-border bg-(--bg-surface)/(--opacity-medium) text-brand focus:ring-brand/(--opacity-soft) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2"
-                        checked={isSelected}
-                        onChange={() => toggleSelect(job.id)}
-                        aria-label={
-                          t("admin:notifications.table.selectRow", { id: job.id }) ?? "Select"
-                        }
-                      />
+                      <label className="inline-flex min-h-[44px] min-w-[44px] cursor-pointer items-center justify-center">
+                        <input
+                          type="checkbox"
+                          className="h-4 w-4 rounded border-glass-border bg-(--bg-surface)/(--opacity-medium) text-brand focus:ring-brand/(--opacity-soft) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2"
+                          checked={isSelected}
+                          onChange={() => toggleSelect(job.id)}
+                          aria-label={
+                            t("admin:notifications.table.selectRow", { id: job.id }) ?? "Select"
+                          }
+                        />
+                      </label>
                     </td>
                     <td className="px-4 py-3 text-sm text-text-primary">
                       {formatJobKind(job.kind, t)}

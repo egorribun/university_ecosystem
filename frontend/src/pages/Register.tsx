@@ -122,11 +122,11 @@ const Register = () => {
   const passwordStrengthLabel = useMemo(() => {
     if (strength === null) return null
     return [
-      t("auth:register.passwordStrength.veryWeak", { defaultValue: "Very weak" }),
-      t("auth:register.passwordStrength.weak", { defaultValue: "Weak" }),
-      t("auth:register.passwordStrength.medium", { defaultValue: "Medium" }),
-      t("auth:register.passwordStrength.good", { defaultValue: "Good" }),
-      t("auth:register.passwordStrength.excellent", { defaultValue: "Excellent" }),
+      t("auth:register.passwordStrengthLevel.veryWeak"),
+      t("auth:register.passwordStrengthLevel.weak"),
+      t("auth:register.passwordStrengthLevel.medium"),
+      t("auth:register.passwordStrengthLevel.good"),
+      t("auth:register.passwordStrengthLevel.excellent"),
     ][strength]
   }, [strength, t])
 
@@ -150,7 +150,7 @@ const Register = () => {
 
   const inviteHint = needsInvite
     ? t("auth:register.inviteRequired")
-    : t("auth:register.inviteOptional", { defaultValue: "Invitation is optional" })
+    : t("auth:register.inviteOptional")
 
   return (
     <div className="auth-theme relative min-h-screen w-full overflow-hidden bg-page text-text-primary">
@@ -213,9 +213,7 @@ const Register = () => {
                   autoComplete="name"
                   disabled={isSubmitting}
                   error={!!errors.full_name}
-                  placeholder={
-                    t("auth:register.namePlaceholder", { defaultValue: "Full name" }) ?? undefined
-                  }
+                  placeholder={t("auth:register.namePlaceholder") ?? undefined}
                 />
                 {errors.full_name && (
                   <p className="text-xs text-error-text">{errors.full_name.message}</p>
