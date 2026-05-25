@@ -3893,7 +3893,7 @@ requires-dist = [
     { name = "sentry-sdk", extras = ["opentelemetry"], specifier = ">=2.57.0,<3" },
     { name = "sqlalchemy", extras = ["asyncio"], specifier = ">=2.0.49,<3" },
     { name = "starlette", specifier = ">=1.0.0,<2.0" },
-    { name = "strawberry-graphql", extras = ["fastapi"], specifier = ">=0.314.3,<0.316.0" },
+    { name = "strawberry-graphql", extras = ["fastapi"], specifier = ">=0.314.3,<0.317.0" },
     { name = "structlog", specifier = ">=25.5.0" },
     { name = "typer", specifier = ">=0.24.1" },
     { name = "urllib3", specifier = ">=2.6.3,<2.8" },
