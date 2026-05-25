@@ -1,0 +1,396 @@
+/* ═══════════════════════════════════════════════════════
+   @PROPERTY — smooth dark↔light transitions for animated vars
+   (M7 — parity with activity.css / schedule.css Wave 64 pattern)
+   ═══════════════════════════════════════════════════════ */
+@property --admin-orb-1 {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: transparent;
+}
+@property --admin-orb-2 {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: transparent;
+}
+@property --admin-orb-3 {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: transparent;
+}
+@property --admin-card-glow {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: transparent;
+}
+
+@layer base {
+  /* ═══════════════════════════════════════════════════════
+     ADMIN PAGES TOKENS
+     Scoped under .admin-theme — mirrors activity.css structure.
+     Indigo/slate palette — administrative gravity, system control.
+     Distinct from Dashboard (blue), Events (amber), News (sky),
+     Activity (emerald), Map (teal), Schedule (sched-blue/violet).
+     ═══════════════════════════════════════════════════════ */
+  .admin-theme {
+    /* ── Typography ─────────────────────────────────── */
+    --fs-admin-hero: clamp(1.875rem, 3.2vw, 2.75rem);
+    --fs-admin-subtitle: clamp(0.9375rem, 1vw, 1.125rem);
+    --fs-admin-card-title: clamp(1.05rem, 1.8vw, 1.25rem);
+    --fs-admin-table-header: clamp(0.6875rem, 0.8vw, 0.75rem);
+
+    /* ── Orbs (indigo palette) ──────────────────────── */
+    --admin-hero-orb: color-mix(in srgb, var(--color-indigo-500) 10%, transparent);
+    --admin-hero-highlight: color-mix(in srgb, var(--color-slate-500) 6%, transparent);
+    --admin-orb-1: color-mix(in srgb, var(--color-indigo-500) 12%, transparent);
+    --admin-orb-2: color-mix(in srgb, var(--color-slate-400) 8%, transparent);
+    --admin-orb-3: color-mix(in srgb, var(--color-indigo-400) 6%, transparent);
+
+    /* ── Gradients & Flares ────────────────────────── */
+    --grad-admin-conic: conic-gradient(
+      from 160deg at 50% 50%,
+      var(--admin-orb-1),
+      var(--admin-orb-2),
+      transparent 85%
+    );
+    --admin-accent-line: linear-gradient(
+      to right,
+      transparent 10%,
+      var(--color-indigo-500) 50%,
+      transparent 90%
+    );
+
+    /* ── Matte card system ────────────────────────── */
+    --admin-card-bg: color-mix(in srgb, var(--bg-surface) 96%, var(--color-indigo-50) 4%);
+    --admin-card-bg-hover: color-mix(in srgb, var(--bg-surface) 92%, var(--color-indigo-50) 8%);
+    --admin-card-glow: color-mix(in srgb, var(--color-indigo-400) 18%, transparent);
+    --admin-card-shadow:
+      0 1px 2px color-mix(in srgb, black 5%, transparent),
+      0 4px 12px color-mix(in srgb, black 4%, transparent),
+      inset 0 1px 0 color-mix(in srgb, white 60%, transparent);
+    --admin-card-shadow-hover:
+      0 2px 4px color-mix(in srgb, black 6%, transparent), 0 8px 24px var(--admin-card-glow),
+      inset 0 1px 0 color-mix(in srgb, white 70%, transparent);
+
+    /* ── Status accent colors ─────────────────────── */
+    --admin-success-accent: var(--color-emerald-500);
+    --admin-warning-accent: var(--color-amber-500);
+    --admin-error-accent: var(--color-rose-500);
+    --admin-info-accent: var(--color-indigo-500);
+    --admin-neutral-accent: var(--color-slate-500);
+
+    /* ── Tables ───────────────────────────────────── */
+    --admin-table-bg: color-mix(in srgb, var(--bg-surface) 94%, var(--color-indigo-50) 6%);
+    --admin-table-header-bg: color-mix(
+      in srgb,
+      var(--bg-surface-hover) 90%,
+      var(--color-indigo-100) 10%
+    );
+    --admin-table-row-hover: color-mix(
+      in srgb,
+      var(--bg-surface-hover) 70%,
+      var(--color-indigo-50) 30%
+    );
+    --admin-table-border: color-mix(in srgb, var(--color-indigo-200) 40%, transparent);
+
+    /* ── Badge / Chip / Pill ──────────────────────── */
+    --admin-badge-bg: color-mix(in srgb, var(--bg-surface) 90%, var(--color-slate-100) 10%);
+
+    /* ── Skeleton placeholder ─────────────────────── */
+    --admin-skeleton-bg: color-mix(
+      in srgb,
+      var(--color-indigo-200) 20%,
+      var(--color-slate-200) 80%
+    );
+
+    /* ── Featured mesh (background fill) ─────────── */
+    --admin-featured-mesh:
+      radial-gradient(
+        ellipse at 20% 50%,
+        color-mix(in srgb, var(--color-indigo-400) 8%, transparent) 0%,
+        transparent 60%
+      ),
+      radial-gradient(
+        ellipse at 80% 20%,
+        color-mix(in srgb, var(--color-slate-400) 6%, transparent) 0%,
+        transparent 50%
+      );
+  }
+
+  /* ── Dark Theme Overrides ──────────────────────── */
+  .dark .admin-theme {
+    --admin-hero-orb: color-mix(in srgb, var(--color-indigo-400) 16%, transparent);
+    --admin-hero-highlight: color-mix(in srgb, var(--color-slate-400) 10%, transparent);
+    --admin-orb-1: color-mix(in srgb, var(--color-indigo-400) 18%, transparent);
+    --admin-orb-2: color-mix(in srgb, var(--color-slate-400) 14%, transparent);
+    --admin-orb-3: color-mix(in srgb, var(--color-indigo-300) 10%, transparent);
+
+    --admin-card-bg: color-mix(in srgb, var(--bg-surface) 95%, var(--color-indigo-900) 5%);
+    --admin-card-bg-hover: color-mix(in srgb, var(--bg-surface) 90%, var(--color-indigo-900) 10%);
+    --admin-card-glow: color-mix(in srgb, var(--color-indigo-400) 22%, transparent);
+    --admin-card-shadow:
+      0 1px 2px color-mix(in srgb, black 20%, transparent),
+      0 4px 12px color-mix(in srgb, black 15%, transparent),
+      inset 0 1px 0 color-mix(in srgb, white 4%, transparent);
+    --admin-card-shadow-hover:
+      0 2px 4px color-mix(in srgb, black 25%, transparent), 0 8px 24px var(--admin-card-glow),
+      inset 0 1px 0 color-mix(in srgb, white 5%, transparent);
+
+    --admin-accent-line: linear-gradient(
+      to right,
+      transparent 10%,
+      var(--color-indigo-400) 50%,
+      transparent 90%
+    );
+
+    --admin-table-bg: color-mix(in srgb, var(--bg-surface) 92%, var(--color-indigo-900) 8%);
+    --admin-table-header-bg: color-mix(
+      in srgb,
+      var(--bg-surface-hover) 85%,
+      var(--color-slate-800) 15%
+    );
+    --admin-table-row-hover: color-mix(
+      in srgb,
+      var(--bg-surface-hover) 70%,
+      var(--color-indigo-900) 30%
+    );
+    --admin-table-border: color-mix(in srgb, var(--color-indigo-700) 50%, transparent);
+
+    --admin-badge-bg: color-mix(in srgb, var(--bg-surface) 85%, var(--color-slate-700) 15%);
+
+    --admin-skeleton-bg: color-mix(
+      in srgb,
+      var(--color-indigo-900) 20%,
+      var(--color-slate-700) 80%
+    );
+
+    --admin-featured-mesh:
+      radial-gradient(
+        ellipse at 20% 50%,
+        color-mix(in srgb, var(--color-indigo-400) 12%, transparent) 0%,
+        transparent 60%
+      ),
+      radial-gradient(
+        ellipse at 80% 20%,
+        color-mix(in srgb, var(--color-slate-400) 10%, transparent) 0%,
+        transparent 50%
+      );
+  }
+}
+
+/* ═══════════════════════════════════════════════════════
+   MATTE CARD
+   Shadow-based depth — no borders, no backdrop-blur.
+   --_accent scopes top gradient color per card type.
+   ═══════════════════════════════════════════════════════ */
+
+.admin-card-matte {
+  background: var(--admin-card-bg);
+  box-shadow: var(--admin-card-shadow);
+  border-radius: var(--radius-xl, 1rem);
+  overflow: clip;
+  position: relative;
+  transition:
+    transform 0.2s var(--ease-premium, ease-out),
+    box-shadow 0.2s var(--ease-premium, ease-out),
+    background 0.2s var(--ease-premium, ease-out);
+}
+
+.admin-card-matte::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 3px;
+  background: linear-gradient(to right, var(--_accent, var(--admin-info-accent)), transparent 80%);
+  opacity: 0.7;
+}
+
+.admin-card-matte:hover {
+  transform: translateY(-2px);
+  background: var(--admin-card-bg-hover);
+  box-shadow: var(--admin-card-shadow-hover);
+}
+
+.admin-card-matte:active {
+  transform: translateY(0);
+}
+
+/* ═══════════════════════════════════════════════════════
+   ADMIN TABLE — semantic styling + ARIA-aware header
+   Cells get padding via classes; aria-sort handled by SW2.
+   ═══════════════════════════════════════════════════════ */
+
+.admin-table {
+  background: var(--admin-table-bg);
+  border-radius: var(--radius-xl, 1rem);
+  overflow: clip;
+  box-shadow: var(--admin-card-shadow);
+}
+
+.admin-table thead {
+  background: var(--admin-table-header-bg);
+}
+
+.admin-table th {
+  font-size: var(--fs-admin-table-header);
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  padding: 0.875rem 1.25rem;
+  text-align: left;
+}
+
+.admin-table th[aria-sort] {
+  cursor: pointer;
+  user-select: none;
+  transition: color 0.15s ease;
+}
+
+.admin-table th[aria-sort]:hover {
+  color: var(--text-primary);
+}
+
+.admin-table tbody tr {
+  border-top: 1px solid var(--admin-table-border);
+  transition: background 0.15s ease;
+}
+
+.admin-table tbody tr:hover {
+  background: var(--admin-table-row-hover);
+}
+
+.admin-table td {
+  padding: 1rem 1.25rem;
+}
+
+/* ═══════════════════════════════════════════════════════
+   BADGE MATTE (status pills, role chips)
+   ═══════════════════════════════════════════════════════ */
+
+.admin-badge-matte {
+  background: var(--admin-badge-bg);
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, white 40%, transparent),
+    0 1px 3px color-mix(in srgb, black 8%, transparent),
+    0 2px 8px color-mix(in srgb, black 4%, transparent);
+  border-radius: var(--radius-lg, 0.75rem);
+  padding: 0.25rem 0.625rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.dark .admin-badge-matte {
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, white 6%, transparent),
+    0 1px 3px color-mix(in srgb, black 30%, transparent),
+    0 2px 8px color-mix(in srgb, black 20%, transparent);
+}
+
+/* ═══════════════════════════════════════════════════════
+   STAGGER ANIMATION (CSS-only — no Framer Motion)
+   Used by table rows + section cards.
+   ═══════════════════════════════════════════════════════ */
+
+.admin-stagger-item {
+  animation: admin-card-enter 0.4s var(--ease-premium, ease-out) both;
+  animation-delay: min(calc(var(--stagger-index, 0) * 60ms), 360ms);
+}
+
+@keyframes admin-card-enter {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+}
+
+/* ═══════════════════════════════════════════════════════
+   PAGE HEADER (hero + subtitle)
+   ═══════════════════════════════════════════════════════ */
+
+.admin-hero-title {
+  font-size: var(--fs-admin-hero);
+  font-weight: 700;
+  letter-spacing: -0.025em;
+  line-height: 1.1;
+  color: var(--text-primary);
+}
+
+.admin-hero-subtitle {
+  font-size: var(--fs-admin-subtitle);
+  color: var(--text-secondary);
+}
+
+/* ═══════════════════════════════════════════════════════
+   FOCUS-VISIBLE RING (SW2 a11y pattern)
+   ═══════════════════════════════════════════════════════ */
+
+.admin-focus-ring:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring-default, 0 0 0 2px var(--color-brand));
+  border-radius: var(--radius-md, 0.5rem);
+}
+
+/* ═══════════════════════════════════════════════════════
+   @STARTING-STYLE (progressive enhancement)
+   ═══════════════════════════════════════════════════════ */
+
+@starting-style {
+  .admin-stagger-item {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+}
+
+/* ═══════════════════════════════════════════════════════
+   REDUCED MOTION
+   ═══════════════════════════════════════════════════════ */
+
+@media (prefers-reduced-motion: reduce) {
+  .admin-card-matte:hover {
+    transform: none;
+  }
+  .admin-stagger-item {
+    animation-duration: 0.01s;
+    animation-delay: 0s;
+  }
+  .admin-table tbody tr {
+    transition-duration: 0s;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════
+   PRINT (parity with schedule/events/news/activity)
+   Doubled-class specificity per CLAUDE.md FIX-72-04 convention.
+   ═══════════════════════════════════════════════════════ */
+
+@media print {
+  .admin-theme.admin-theme {
+    background: white;
+    color: black;
+  }
+  .admin-theme.admin-theme .aurora-mesh::before,
+  .admin-theme.admin-theme .aurora-mesh::after,
+  .admin-theme.admin-theme [aria-hidden="true"]:not([role="img"]) {
+    display: none;
+  }
+  .admin-card-matte.admin-card-matte {
+    box-shadow: 0 0 0 1px var(--color-slate-200, #e5e7eb);
+    break-inside: avoid;
+  }
+  .admin-card-matte.admin-card-matte:hover {
+    transform: none;
+  }
+  .admin-table.admin-table {
+    box-shadow: 0 0 0 1px var(--color-slate-200, #e5e7eb);
+  }
+  .admin-table.admin-table tbody tr {
+    background: transparent;
+  }
+  .admin-badge-matte.admin-badge-matte {
+    box-shadow: 0 0 0 1px var(--color-slate-200, #e5e7eb);
+  }
+  .admin-theme.admin-theme svg {
+    color-adjust: exact;
+    print-color-adjust: exact;
+  }
+}

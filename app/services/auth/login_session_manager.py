@@ -67,10 +67,26 @@ class LoginSessionManager:
             else:
                 user.mfa_last_verified_at = now_val
 
+        # W136 SW1: embed `is_active` claim in JWT so gateway's `claims.IsActive`
+        # check at services/gateway/middleware/auth.go:720 can enforce user
+        # status edge-side (defense-in-depth alongside session revocation set).
+        # Closes W135 §Honesty #2 — pre-W136 the gateway returned 403 for ALL
+        # authed requests because the claim was missing from the payload.
+        #
+        # W166 SW1: embed `role` claim alongside `is_active` so SSR-side
+        # `_admin.tsx:34` beforeLoad reads role directly from JWT payload
+        # (via `ssrAuth.ts:127` validateJwt extraction) instead of waiting
+        # for the async `/users/me` call to settle. Closes W165 NEW W166+
+        # candidate #1 (admin auth JWT-no-role-claim race on cold-cache
+        # direct /admin/* URL navigation).
         token, session = await self.session_service.create_access_token(
             sub=user.id,
             metadata=metadata,
             bg_tasks=bg_tasks,
+            extra_claims={
+                "is_active": bool(user.is_active),
+                "role": user.role.value,
+            },
         )
 
         self._set_access_token_cookie(response, token)

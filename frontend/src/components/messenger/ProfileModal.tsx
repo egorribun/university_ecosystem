@@ -2,9 +2,11 @@ import SmartImage from "@/components/media/SmartImage"
 import { AVATAR_PLACEHOLDER_URL } from "@/constants/placeholders"
 import { User } from "@/types/User"
 
-import { AnimatePresence, m } from "framer-motion"
+import { AnimatePresence, m, useReducedMotion } from "framer-motion"
 import { X } from "lucide-react"
+import { useEffect, useId } from "react"
 import { useTranslation } from "react-i18next"
+import useFocusTrap from "@/hooks/useFocusTrap"
 
 interface ProfileModalProps {
   user: User | null
@@ -15,36 +17,85 @@ interface ProfileModalProps {
 
 export function ProfileModal({ user, loading, error, onClose }: ProfileModalProps) {
   const { t } = useTranslation(["messenger", "common"])
+  const titleId = useId()
+  const isOpen = Boolean(user || loading || error)
+  // Wave 181 SW4 — useReducedMotion guards on dialog entrance + close button
+  // rotate. Framer rotation is the most disorienting interaction for users
+  // with vestibular sensitivities; explicit gate ensures the X button just
+  // scales rather than rotating under reduced motion preference.
+  const prefersReducedMotion = useReducedMotion() ?? false
 
-  // Fixed early return logic for AnimatePresence
-  // if (!user && !loading && !error) return null
+  // Wave 175 SW3 — focus trap activates whenever modal is open (any of
+  // user/loading/error truthy). returnFocus restores focus to the element
+  // that opened the modal (chat header avatar, typically).
+  const containerRef = useFocusTrap<HTMLDivElement>({
+    active: isOpen,
+    onDeactivate: onClose,
+    returnFocus: true,
+  })
+
+  useEffect(() => {
+    if (!isOpen) return
+    const handler = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault()
+        onClose()
+      }
+    }
+    document.addEventListener("keydown", handler)
+    return () => document.removeEventListener("keydown", handler)
+  }, [isOpen, onClose])
 
   return (
     <AnimatePresence>
-      {(user || loading || error) && (
+      {isOpen && (
         <m.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           className="fixed inset-0 z-overlay flex items-center justify-center bg-overlay/(--opacity-strong) p-4 backdrop-blur-md"
+          role="presentation"
+          onClick={onClose}
         >
           <m.div
-            initial={{ opacity: 0, scale: 0.9, y: 20 }}
+            ref={containerRef}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby={titleId}
+            initial={prefersReducedMotion ? false : { opacity: 0, scale: 0.92, y: 20 }}
             animate={{ scale: 1, opacity: 1, y: 0 }}
-            exit={{ scale: 0.9, opacity: 0, y: 20 }}
-            className="z-modal w-full max-w-[32rem] overflow-hidden rounded-2xl border border-white/(--opacity-subtle) bg-(--bg-surface) shadow-2xl dark:bg-page"
+            exit={prefersReducedMotion ? { opacity: 0 } : { scale: 0.92, opacity: 0, y: 20 }}
+            transition={prefersReducedMotion ? { duration: 0 } : undefined}
+            className="messenger-card-matte z-modal w-full max-w-[32rem] sm:max-w-[28rem] md:max-w-[32rem]"
+            onClick={(event) => event.stopPropagation()}
           >
-            <div className="flex items-center justify-between border-b border-msg-border p-6 pb-4">
-              <h3 className="sf-pro text-xl font-bold tracking-tight">
-                {user?.full_name || t("messenger:profile", "Profile")}
+            {/* Wave 183 SW4 — border-msg-border (undefined token) →
+                border-(--glass-border)/(--opacity-subtle) (verified existing
+                token in semantics.css). Pre-W183 the bare `border-msg-border`
+                class produced NO border (CSS variable `--msg-border` doesn't
+                exist), making the header→body separator invisible. */}
+            <div className="flex items-center justify-between border-b border-(--glass-border)/(--opacity-subtle) p-6 pb-4">
+              <h3 id={titleId} className="sf-pro text-xl font-bold tracking-tight">
+                {user?.full_name || t("messenger:profile")}
               </h3>
+              {/* Wave 183 SW4 — removed `rotate: 90` from whileHover.
+                  Rotation animations on icon buttons are disorienting for
+                  users with vestibular sensitivities (WCAG 2.3.3 Level AAA
+                  + axe-core accessibility heuristics). useReducedMotion guard
+                  already prevented the rotation under OS preference, but the
+                  rotation still fired for default-preference users. Scale
+                  alone provides sufficient affordance. Also fixed invalid
+                  Tailwind class `hover:bg-surface-hover` →
+                  `hover:bg-(--bg-surface-hover)/(--opacity-medium)`. */}
               <m.button
-                whileHover={{ rotate: 90, scale: 1.1 }}
-                whileTap={{ scale: 0.9 }}
+                type="button"
+                whileHover={prefersReducedMotion ? undefined : { scale: 1.08 }}
+                whileTap={prefersReducedMotion ? undefined : { scale: 0.92 }}
                 onClick={onClose}
-                className="rounded-full p-2 transition-colors hover:bg-surface-hover"
+                aria-label={t("common:buttons.close")}
+                className="min-h-[44px] min-w-[44px] rounded-full p-2 flex items-center justify-center transition-colors hover:bg-(--bg-surface-hover)/(--opacity-medium) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-violet-500) focus-visible:ring-offset-2 focus-visible:ring-offset-(--bg-surface)"
               >
-                <X className="h-5 w-5" />
+                <X className="h-5 w-5" aria-hidden="true" />
               </m.button>
             </div>
 
@@ -53,7 +104,7 @@ export function ProfileModal({ user, loading, error, onClose }: ProfileModalProp
                 <div className="flex flex-col items-center py-8">
                   <div className="h-12 w-12 animate-spin rounded-full border-4 border-t-brand border-brand/(--opacity-dim)"></div>
                   <p className="mt-4 text-sm font-medium text-(--text-secondary)">
-                    {t("messenger:loadingProfile", "Loading profile...")}
+                    {t("messenger:loadingProfile")}
                   </p>
                 </div>
               )}
@@ -72,10 +123,15 @@ export function ProfileModal({ user, loading, error, onClose }: ProfileModalProp
                         srcRaw={user.avatar_url || AVATAR_PLACEHOLDER_URL}
                         fallback={AVATAR_PLACEHOLDER_URL}
                         alt={user.full_name ?? ""}
-                        className="size-24 rounded-md border-4 border-(--bg-surface) object-cover shadow-xl"
+                        className={`size-24 rounded-2xl border-4 border-(--bg-surface) object-cover shadow-xl ${
+                          user.is_active ? "messenger-avatar-ring" : ""
+                        }`}
                       />
                       {user.is_active && (
-                        <span className="msg-online-indicator absolute -bottom-1 -right-1 size-6 border-4 border-(--bg-surface)"></span>
+                        <span
+                          className="messenger-online-indicator absolute -bottom-1 -right-1 size-6 border-4 border-(--bg-surface)"
+                          aria-hidden="true"
+                        />
                       )}
                     </div>
                     <h4 className="sf-pro text-2xl font-bold tracking-tight">{user.full_name}</h4>
@@ -85,21 +141,23 @@ export function ProfileModal({ user, loading, error, onClose }: ProfileModalProp
                   <div className="grid grid-cols-2 gap-3 pb-2">
                     <div className="rounded-md border border-subtle bg-(--bg-surface-hover)/(--opacity-medium) p-4">
                       <p className="mb-1 text-xs font-bold uppercase tracking-widest text-(--text-secondary)/(--opacity-strong)">
-                        {t("messenger:status", "Status")}
+                        {t("messenger:status")}
                       </p>
-                      <p className="flex items-center gap-1.5 text-sm font-bold">
-                        {user.is_active ? (
-                          <>
-                            <span className="h-2 w-2 rounded-full bg-(--success-text)"></span>
-                            {t("common:active", "Active")}
-                          </>
-                        ) : (
-                          <>
-                            <span className="h-2 w-2 rounded-full bg-(--text-tertiary)"></span>
-                            {t("common:inactive", "Inactive")}
-                          </>
-                        )}
-                      </p>
+                      <span
+                        className="messenger-status-badge"
+                        data-status={user.is_active ? "online" : "offline"}
+                      >
+                        <span
+                          className="h-2 w-2 rounded-full"
+                          style={{
+                            background: user.is_active
+                              ? "var(--messenger-status-online-text)"
+                              : "var(--messenger-status-offline-text)",
+                          }}
+                          aria-hidden="true"
+                        />
+                        {user.is_active ? t("common:active") : t("common:inactive")}
+                      </span>
                     </div>
                     {user.avatar_url && (
                       <a
@@ -109,11 +167,9 @@ export function ProfileModal({ user, loading, error, onClose }: ProfileModalProp
                         className="rounded-md border border-(--primary-main)/(--opacity-subtle) bg-(--primary-main)/(--opacity-subtle) p-4 transition-colors hover:bg-(--primary-main)/(--opacity-subtle)"
                       >
                         <p className="mb-1 text-xs font-bold uppercase tracking-widest text-brand">
-                          {t("messenger:avatar", "Avatar")}
+                          {t("messenger:avatar")}
                         </p>
-                        <p className="text-sm font-bold text-brand">
-                          {t("messenger:viewAvatar", "Open full size")}
-                        </p>
+                        <p className="text-sm font-bold text-brand">{t("messenger:viewAvatar")}</p>
                       </a>
                     )}
                   </div>

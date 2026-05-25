@@ -89,14 +89,34 @@ jobs:
         run: npm ci
 
       - name: Install wasm-pack
-        uses: taiki-e/install-action@d9be7d8cda89035c9c843f78bd44d4f72d8403d4 # v2.79.7
-        with:
-          tool: wasm-pack
+        # W142 polish-v3 fix (replicates W141 polish-v2 from visual-audit.yml):
+        # taiki-e/install-action@v2.77.5 hardcodes drager/wasm-pack releases
+        # URL → 404 as of 2026-05-11; rustwasm/wasm-pack is the canonical
+        # repo since v0.14.0 (2026-01-20) but install-action doesn't auto-
+        # follow. Replaced with the official wasm-pack curl installer from
+        # rustwasm.github.io (same fix already in visual-audit.yml line 180).
+        run: |
+          curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+          wasm-pack --version
 
       - name: Build WASM modules
+        # Wave 146 polish-v5 — 3-attempt retry around `wasm-pack build` to
+        # absorb transient GitHub Releases binaryen download flakes (W139
+        # (z) #5 family). `wasm-pack build` internally fetches binaryen
+        # (wasm-opt) from `github.com/WebAssembly/binaryen/releases` on first
+        # run per Rust target; transient network errors there cause hard
+        # build failures. Same retry pattern as `visual-audit.yml` (W140 SW4
+        # iter3) — 3 attempts with 10s backoff; if all 3 fail, the build
+        # step exits non-zero on the last attempt and the CI step fails.
         run: |
-          wasm-pack build rust-crypto --target web
-          wasm-pack build wasm-sanitizer --target web
+          for i in 1 2 3; do
+            (wasm-pack build rust-crypto --target web && \
+             wasm-pack build wasm-sanitizer --target web) && exit 0
+            echo "wasm-pack build attempt $i failed; retrying in 10s..."
+            sleep 10
+          done
+          echo "wasm-pack build failed after 3 attempts" >&2
+          exit 1
 
       - name: Publish to Chromatic
         # SHA-pinned per RZ-22-03 convention (no mutable @v tags).

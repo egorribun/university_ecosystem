@@ -24,3 +24,25 @@ interface ImportMetaEnv {
 interface ImportMeta {
   readonly env: ImportMetaEnv
 }
+
+/**
+ * Wave 148 SW2 — Hydration sentinel for Playwright e2e tests.
+ *
+ * Set to `true` by a useEffect in `AppProviders.tsx` AFTER React commits the
+ * full provider tree (LanguageProvider → LazyMotion → MotionConfig →
+ * ProvidersInner → AuthContext → WebSocketProvider → MessengerProvider).
+ * `tests/e2e/url-state-persistence.spec.ts` uses
+ * `page.waitForFunction(() => window.__APP_HYDRATED === true)` to gate
+ * clicks/fills on controls that depend on onClick bindings from
+ * useURLState — these bindings attach during React commit, AFTER main.tsx's
+ * synchronous `#root.ready` class. Without the sentinel, Playwright clicks
+ * the SSR'd button before React commits → URL doesn't update (W125 createRoot
+ * SSR migration consequence per W147 §Honesty probe).
+ *
+ * NOT gated by VITE_LHCI or VITE_E2E_MODE — the sentinel ships in production
+ * builds too (1-byte boolean, useful for prod debugging; test-only flags
+ * would create prod-vs-test divergence risk).
+ */
+interface Window {
+  __APP_HYDRATED?: boolean
+}

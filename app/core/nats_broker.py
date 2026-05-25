@@ -86,6 +86,12 @@ class NatsTaskBroker:
         self._tasks: dict[str, Callable[..., Any]] = {}
         self._stream_name = "TASK_QUEUE"
         self._subject_prefix = "tasks"
+        # W140 SW1: file-processor consumes `files.process` as a separate stream.
+        # Backend (this broker) is the single source of truth for stream
+        # creation per W140 Q2 architecture (production parity); file-processor
+        # only subscribes and waits via compose depends_on (W140 SW3).
+        self._files_process_stream_name = "FILES_PROCESS"
+        self._files_process_subject = "files.process"
 
     @property
     def is_connected(self) -> bool:
@@ -128,6 +134,13 @@ class NatsTaskBroker:
             await self._js.add_stream(
                 name=self._stream_name,
                 subjects=[f"{self._subject_prefix}.>"],
+            )
+            # W140 SW1: provision file-processor's NATS stream. file-processor
+            # crashes at startup if this stream is missing (W139 §Honesty #6).
+            # add_stream is idempotent — re-creating the same stream is a no-op.
+            await self._js.add_stream(
+                name=self._files_process_stream_name,
+                subjects=[self._files_process_subject],
             )
             _logger.info("Connected to NATS JetStream for task processing")
         except Exception as exc:  # RZ-22-01-JUSTIFIED: re-raise-after-cleanup — logs then re-raises (reviewed TD-27-04)

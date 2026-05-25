@@ -91,12 +91,24 @@ export const checkSchedule = (lookaheadMinutes: number = 15) =>
     query: { lookahead_minutes: lookaheadMinutes },
   })
 
-export const fetchDeadLetterQueue = async (params?: { limit?: number; offset?: number }) => {
+export const fetchDeadLetterQueue = async (
+  params?: { limit?: number; offset?: number },
+  signal?: AbortSignal
+) => {
   // This endpoint seems to be missing from the generated SDK or has a different name.
   // Using direct import to avoid circular dependency or missing import errors.
+  //
+  // Wave 164 SW3 (Tier 4) — optional `signal?: AbortSignal` 2nd arg forwarded
+  // to the underlying axios call. Closes W163 SW3 NEW caveat (signal
+  // propagation polish carry-forward). Callers that don't have a signal pass
+  // undefined; axios treats absent `signal` as non-cancellable. The factory
+  // queryFn at `@/api/hooks/adminNotifications` now propagates the TanStack
+  // Query AbortSignal so route unmounts and refetch-replacement abort the
+  // in-flight request.
   const { apiClient } = await import("@/api/client")
   const response = await apiClient.get("/api/v1/notifications/admin/dead-letter", {
     params,
+    signal,
   })
   return ensureValidResponse(
     deadLetterListSchema,

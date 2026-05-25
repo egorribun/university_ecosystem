@@ -1,0 +1,293 @@
+{
+  "path": "/404",
+  "targetUrl": "http://localhost/404",
+  "finalUrl": "http://localhost/404",
+  "httpStatus": 404,
+  "navigationError": null,
+  "consoleMessages": [
+    {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 404 (Not Found)"
+    },
+    {
+      "type": "info",
+      "text": "[GlobalErrors] Handlers registered {source: global-error-handler}"
+    },
+    {
+      "type": "warning",
+      "text": "`WebAssembly.instantiateStreaming` failed because your server does not serve Wasm with `application/wasm` MIME type. Falling back to `WebAssembly.instantiate` which is slower. Original error:\n TypeError: Failed to execute 'compile' on 'WebAssembly': Incorrect response MIME type. Expected 'application/wasm'."
+    },
+    {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 500 (Internal Server Error)"
+    },
+    {
+      "type": "error",
+      "text": "[WebSocket] Ticket fetch failed; will retry. AxiosError: Request failed with status code 500\n    at gt (http://localhost/assets/vendor-http-BEbDtoUX.js:3:9771)\n    at XMLHttpRequest.g (http://localhost/assets/vendor-http-BEbDtoUX.js:3:14952)"
+    },
+    {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 500 (Internal Server Error)"
+    },
+    {
+      "type": "error",
+      "text": "[WebSocket] Ticket fetch failed; will retry. AxiosError: Request failed with status code 500\n    at gt (http://localhost/assets/vendor-http-BEbDtoUX.js:3:9771)\n    at XMLHttpRequest.g (http://localhost/assets/vendor-http-BEbDtoUX.js:3:14952)"
+    }
+  ],
+  "networkRequestCount": 92,
+  "networkRequests": [
+    {
+      "method": "GET",
+      "url": "http://localhost/404",
+      "status": 404
+    },
+    {
+      "method": "GET",
+      "url": "http://localhost/assets/index-CGpfqB4p.css",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "url": "http://localhost/assets/index-D41ZvI_K.js",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "url": "http://localhost/assets/rolldown-runtime-COnpUsM8.js",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "url": "http://localhost/assets/preload-helper-BaxTKtDE.js",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "url": "http://localhost/assets/useFocusTrap-CXzPY4SU.js",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "url": "http://localhost/assets/Match-EZT59vOf.js",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "url": "http://localhost/assets/vendor-query-BD7ECBNl.js",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "url": "http://localhost/assets/ClientOnly-DH2Y9vaU.js",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "url": "http://localhost/assets/link-g7UcNokq.js",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "url": "http://localhost/assets/matchContext-DgY8JJkj.js",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "url": "http://localhost/assets/useRouter-CGOJGxGS.js",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "url": "http://localhost/assets/useMatch-DKxoonjm.js",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "url": "http://localhost/assets/useNavigate-cIgd6vJ1.js",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "url": "http://localhost/assets/useParams-BnNhJY8f.js",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "url": "http://localhost/assets/useRouterState-D8Jld4Gr.js",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "url": "http://localhost/assets/useSearch-DrThN_jB.js",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "url": "http://localhost/assets/useStore-BZEtUX9u.js",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "url": "http://localhost/assets/invariant-DwV5sja5.js",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "url": "http://localhost/assets/vendor-http-BEbDtoUX.js",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "url": "http://localhost/assets/cn-DUElyQt4.js",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "url": "http://localhost/assets/vendor-ui-DMiHy0Qw.js",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "url": "http://localhost/assets/vendor-i18n-CMQWm2gi.js",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "url": "http://localhost/assets/dist-F0xOmpph.js",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "url": "http://localhost/assets/vendor-react-BLwoXvXC.js",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "url": "http://localhost/assets/dist-uxOnZ78b.js",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "url": "http://localhost/assets/MessengerContext-DVXFnFlV.js",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "url": "http://localhost/assets/client-BlXmM9U8.js",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "url": "http://localhost/assets/events-CTU1zjsz.js",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "url": "http://localhost/assets/news-PTujTeTV.js",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "url": "http://localhost/assets/schedule-73XqHds-.js",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "url": "http://localhost/assets/sessions-CGH1uCDv.js",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "url": "http://localhost/assets/ui-DBsQmVVS.js",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "url": "http://localhost/assets/subscribe-C32pAYFt.js",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "url": "http://localhost/assets/logger-BTdeJa5I.js",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "url": "http://localhost/assets/trustedTypes-uMgc5IVr.js",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "url": "http://localhost/assets/PageErrorBoundary-C1NtbBpt.js",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "url": "http://localhost/assets/ErrorBoundary-JTODjiOe.js",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "url": "http://localhost/assets/timeouts-B3KOFNQl.js",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "url": "http://localhost/assets/schema-BP2PRCsw.js",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "url": "http://localhost/assets/types-TzsiXoMV.js",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "url": "http://localhost/assets/schema-rWpZ4OBz.js",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "url": "http://localhost/assets/useSlidingIndicator-B7X3PnnC.js",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "url": "http://localhost/assets/useDashboardEvents-A38W3Vkm.js",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "url": "http://localhost/assets/useDashboardStories-BMOQrrLY.js",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "url": "http://localhost/assets/useDebounced-D3vuW0Lm.js",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "url": "http://localhost/assets/useMediaQuery-BxscBRTM.js",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "url": "http://localhost/assets/animations-B86dftXE.js",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "url": "http://localhost/assets/sanitize-DFeLVUJE.js",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "url": "http://localhost/static-shell-i18n.js",
+      "status": 200
+    }
+  ],
+  "axeError": null,
+  "axeViolationCount": 0,
+  "axeViolations": []
+}

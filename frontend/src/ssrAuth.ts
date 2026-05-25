@@ -98,7 +98,7 @@ let jwtVerifyOverride:
   | ((token: string) => Promise<{ payload: Record<string, unknown> } | null>) = null
 
 export function _setJwtVerifyOverrideForTests(
-  fn: ((token: string) => Promise<{ payload: Record<string, unknown> } | null>) | null,
+  fn: ((token: string) => Promise<{ payload: Record<string, unknown> } | null>) | null
 ) {
   jwtVerifyOverride = fn
 }

@@ -19,6 +19,22 @@ import api from "@/api/client"
 const RECONNECT_BASE_DELAY_MS = 1000 // 1 second
 const RECONNECT_MAX_DELAY_MS = 30000 // 30 seconds
 const PING_INTERVAL_MS = 30000 // Heartbeat every 30 seconds
+// Wave 183 SW3 — Cap reconnection attempts to prevent runaway retry loops
+// when backend is unreachable for extended periods. Before the cap, each
+// failed attempt logged ~2 console errors (WS handshake fail + onerror
+// handler). Empirically observed in SW1 verification under VITE_LHCI=true
+// with no backend: 15+ attempts logged 30+ errors in 30 seconds.
+// With max=10 attempts + exponential backoff (1s, 2s, 4s, 8s, 16s, then
+// 30s cap × 5), total retry window is ~3 minutes before stopping. After
+// the cap, the WS stays disconnected; user can manually retry via UI
+// (W183 SW6 will add a "Reconnect" banner). In real production with
+// backend running, first attempt typically succeeds, so this cap rarely
+// fires.
+const MAX_RECONNECT_ATTEMPTS = 10
+// Wave 183 SW3 — extract magic number into named constant (W181 SW1
+// convention). Typing indicator clears 3s after the last typing event from
+// a peer; if peer continues typing, the next event resets the timeout.
+const TYPING_INDICATOR_TIMEOUT_MS = 3000
 
 // MOD-W10-05: Per-message-type minimum interval (ms) for outgoing WS messages.
 // Prevents a runaway component from flooding the server with typing events
@@ -143,11 +159,7 @@ export function useChatWebSocket({
   // AppProviders chain in __root.tsx RootComponent) see disconnected state.
   // Without this arg, React 19 throws "Missing getServerSnapshot, which is
   // required for server-rendered content" at module evaluation time.
-  const isConnected = useSyncExternalStore(
-    wsStore.subscribe,
-    wsStore.getSnapshot,
-    () => false,
-  )
+  const isConnected = useSyncExternalStore(wsStore.subscribe, wsStore.getSnapshot, () => false)
 
   const [typingUsers, setTypingUsers] = useState<Map<string, TypingUser>>(new Map())
   const queryClient = useQueryClient()
@@ -269,7 +281,11 @@ export function useChatWebSocket({
             if (!validated) {
               // MOD-W18-02 (audit 2026-03-23 Wave 18): log invalid frames for
               // observability. Previously silent drops made attack detection difficult.
-              console.warn("[ws] Invalid frame dropped", { size: (event.data as string).length })
+              // Wave 183 SW3 — console.warn → logError. Invalid WS frames are
+              // security-relevant (attack detection signal); the project's
+              // logger pipes through Sentry breadcrumbs for forensic trail,
+              // unlike raw console.warn which is silently dropped in prod.
+              logError("[ws] Invalid frame dropped", { size: (event.data as string).length })
               return
             }
 
@@ -350,7 +366,7 @@ export function useChatWebSocket({
                       updated.delete(key)
                       return updated
                     })
-                  }, 3000)
+                  }, TYPING_INDICATOR_TIMEOUT_MS)
 
                   newMap.set(key, {
                     userId: validated.user_id,
@@ -412,7 +428,24 @@ export function useChatWebSocket({
           wsStore.setConnected(false)
           cleanup()
 
+          // Wave 183 SW3 — added MAX_RECONNECT_ATTEMPTS cap to prevent
+          // runaway retry loops. Pre-W183 retried indefinitely on every
+          // non-clean close, generating perpetual console errors when
+          // backend was unreachable for extended periods. Empirically
+          // observed in SW1 verification: 15+ attempts in 30s with no
+          // backend, 30+ console errors logged. With cap, total retry
+          // window is ~3 min (1s+2s+4s+8s+16s+30s×5) before giving up.
+          // After cap, WS stays disconnected; W183 SW6 will add a UI
+          // reconnect banner. Codes 1000 (normal close), 4001 (auth
+          // expired), 4003 (forbidden) already short-circuit retries.
           if (event.code !== 1000 && event.code !== 4001 && event.code !== 4003) {
+            if (reconnectAttemptRef.current >= MAX_RECONNECT_ATTEMPTS) {
+              logError(
+                "[ws] Max reconnect attempts reached; giving up. Manual reconnect required.",
+                { attempts: reconnectAttemptRef.current, lastCode: event.code }
+              )
+              return
+            }
             const delay = calculateReconnectDelay(reconnectAttemptRef.current)
             reconnectAttemptRef.current += 1
             reconnectTimeoutRef.current = setTimeout(() => {

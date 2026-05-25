@@ -37,6 +37,7 @@ import type { PendingMfaState } from "@/types/Auth"
 import { startAuthentication, browserSupportsWebAuthn } from "@simplewebauthn/browser"
 import { useLocalStorage } from "@/hooks/useLocalStorage"
 import { suggestEmailDomain } from "@/utils/authUtils"
+import { resolveRedirectPath } from "@/utils/redirect"
 import { loginSchema, type LoginValues } from "@/features/auth/schemas"
 
 type ChallengeMethod = PendingMfaState["methods"][number]
@@ -68,11 +69,15 @@ export type ChallengeWithAttempts = ChallengeMethod &
 export function useLoginForm() {
   const { t } = useTranslation(["auth"])
   const navigate = useNavigate()
-  const locationState = useRouterState({ select: (s) => s.location.state })
+  // W179 SW4 — read TanStack canonical `search.redirect` (matches _auth.tsx:47
+  // writer) instead of legacy `location.state.from.pathname` (React Router
+  // pattern that writer never sets, so pre-W179 redirectPath was always the
+  // fallback /dashboard regardless of unauth deep-link origin). Closes W177
+  // §Honesty #3 race condition. See frontend/src/utils/redirect.ts for the
+  // shared helper used by Login.tsx + _public.tsx + here (3-place dedup).
+  const search = useRouterState({ select: (s) => s.location.search })
+  const redirectPath = resolveRedirectPath((search as { redirect?: unknown } | null)?.redirect)
   const { login, pendingMfa, loginWithPasskey } = useAuth()
-
-  const state = locationState as { from?: { pathname: string } } | null
-  const redirectPath = state?.from?.pathname || "/dashboard"
 
   // Persistence for user convenience
   const [savedEmail, setSavedEmail] = useLocalStorage<string>("auth:lastEmail", "")

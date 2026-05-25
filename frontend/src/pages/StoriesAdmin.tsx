@@ -259,7 +259,7 @@ function StoryAdminItem({ story, formatDate, onRefresh }: StoryAdminItemProps) {
                     className="w-full h-full object-cover"
                   />
                 ) : (
-                  <div className="w-full h-full flex items-center justify-center p-6 text-center bg-linear-to-r from-blue-500 to-indigo-600 transition-all duration-base">
+                  <div className="w-full h-full flex items-center justify-center p-6 text-center bg-(--grad-admin-conic) transition-all duration-base">
                     <p className="text-xs font-medium text-(--text-secondary) opacity-strong">
                       {t("stories:list.noCover")}
                     </p>
@@ -369,9 +369,7 @@ function StoryAdminItem({ story, formatDate, onRefresh }: StoryAdminItemProps) {
       <ConfirmDialog
         open={showDeleteConfirm}
         title={t("stories:list.confirmDelete")}
-        message={t("stories:list.confirmDeleteDescription", {
-          defaultValue: "Are you sure you want to delete this story? This action cannot be undone.",
-        })}
+        message={t("stories:list.confirmDeleteDescription")}
         confirmText={t("common:buttons.delete")}
         cancelText={t("common:buttons.cancel")}
         variant="danger"
@@ -617,10 +615,10 @@ export default function StoriesAdmin() {
                         className="w-full h-full object-cover"
                       />
                       <div className="absolute inset-x-0 bottom-0 p-6 bg-linear-to-t from-black/(--opacity-hover) to-transparent">
-                        <h4 className="text-white font-bold text-lg">
+                        <h4 className="text-[var(--text-inverse)] font-bold text-lg">
                           {formState.titleRu || "Title"}
                         </h4>
-                        <p className="text-white/(--opacity-strong) text-sm line-clamp-2">
+                        <p className="text-[var(--text-inverse)]/(--opacity-strong) text-sm line-clamp-2">
                           {formState.shortTextRu || "Text"}
                         </p>
                       </div>

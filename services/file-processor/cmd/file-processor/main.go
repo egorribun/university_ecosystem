@@ -152,13 +152,59 @@ func initSentry(ctx context.Context, cfg *config.Config, logger *slog.Logger) {
 }
 
 func connectTemporal(ctx context.Context, cfg *config.Config, logger *slog.Logger) (client.Client, error) {
+	// Wave 141 SW5 — Path (a-auth): construct client options ONCE before the
+	// retry loop. Includes service token credentials when FP_TEMPORAL_API_KEY_FILE
+	// is set (W141 SW4 token minted by start-docker.ps1's
+	// New-TemporalServiceToken). Closes W137 §Honesty #5 + W140 NEW #6.
+	opts := client.Options{
+		HostPort: cfg.TemporalHost,
+	}
+
+	if cfg.TemporalAPIKeyFile != "" {
+		data, err := os.ReadFile(cfg.TemporalAPIKeyFile)
+		if err != nil {
+			logger.WarnContext(ctx, "Failed to read Temporal API key file; connecting without auth",
+				"path", cfg.TemporalAPIKeyFile,
+				"err", err,
+			)
+		} else {
+			token := strings.TrimSpace(string(data))
+			if token == "" {
+				logger.WarnContext(ctx, "Temporal API key file is empty; connecting without auth",
+					"path", cfg.TemporalAPIKeyFile,
+				)
+			} else {
+				// W141 SW5 critical detail: client.NewAPIKeyStaticCredentials AUTO-ENABLES
+				// TLS unless ConnectionOptions.TLSDisabled is true (verified at
+				// sdk-go/internal/client.go applyToOptions:
+				//   if opts.TLS == nil && !opts.TLSDisabled { opts.TLS = &tls.Config{} }
+				// ). Our dev compose runs plaintext gRPC at temporal:7233 (no TLS cert
+				// in start-docker.ps1 for Temporal Server itself), so we MUST opt out
+				// of auto-TLS or Dial fails with TLS handshake error. The Authorization:
+				// Bearer <token> header is still attached via the credentials' gRPC
+				// interceptor — only the transport-level TLS is bypassed.
+				//
+				// Production K8s deployments using managed Temporal Cloud will set
+				// TLS explicitly (real CA cert) — TLSDisabled stays false there.
+				opts.Credentials = client.NewAPIKeyStaticCredentials(token)
+				opts.ConnectionOptions = client.ConnectionOptions{
+					TLSDisabled: true,
+				}
+				logger.InfoContext(ctx, "Attached Temporal service token (TLS disabled for plaintext dev gRPC)",
+					"path", cfg.TemporalAPIKeyFile,
+					"token_chars", len(token),
+				)
+			}
+		}
+	} else {
+		logger.InfoContext(ctx, "No FP_TEMPORAL_API_KEY_FILE set; connecting to Temporal without auth")
+	}
+
 	var c client.Client
 	var err error
 	maxAttempts := 10
 	for attempt := 1; attempt <= maxAttempts; attempt++ {
-		c, err = client.Dial(client.Options{
-			HostPort: cfg.TemporalHost,
-		})
+		c, err = client.Dial(opts)
 		if err == nil {
 			logger.InfoContext(ctx, "Connected to Temporal", "addr", cfg.TemporalHost)
 			return c, nil
@@ -257,16 +303,60 @@ func startNatsSubscriber(ctx context.Context, cfg *config.Config, c client.Clien
 	}()
 }
 
+// W140 (z) #2: gRPC health probe (grpc.health.v1.Health) must be exempt
+// from auth interceptors. grpc-health-probe binary used in compose-level
+// healthcheck (W137 SW5) does not supply bearer tokens, matching the
+// standard Kubernetes gRPC health check protocol convention. Pre-W140 the
+// healthcheck was unreachable because file-processor never bound the gRPC
+// server (schema.graphql + GraphQL ID typing bugs blocked startup at
+// step 6), so this auth-blocked-health-probe bug was latent.
+const healthMethodPrefix = "/grpc.health.v1.Health/"
+
+func selectiveUnaryAuth(authFn auth.AuthFunc) grpc.UnaryServerInterceptor {
+	return func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
+		if strings.HasPrefix(info.FullMethod, healthMethodPrefix) {
+			return handler(ctx, req)
+		}
+		newCtx, err := authFn(ctx)
+		if err != nil {
+			return nil, err
+		}
+		return handler(newCtx, req)
+	}
+}
+
+func selectiveStreamAuth(authFn auth.AuthFunc) grpc.StreamServerInterceptor {
+	return func(srv interface{}, ss grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
+		if strings.HasPrefix(info.FullMethod, healthMethodPrefix) {
+			return handler(srv, ss)
+		}
+		newCtx, err := authFn(ss.Context())
+		if err != nil {
+			return err
+		}
+		wrapped := &authedServerStream{ServerStream: ss, ctx: newCtx}
+		return handler(srv, wrapped)
+	}
+}
+
+type authedServerStream struct {
+	grpc.ServerStream
+	ctx context.Context
+}
+
+func (s *authedServerStream) Context() context.Context { return s.ctx }
+
 func setupGRPCServer(ctx context.Context, cfg *config.Config, rsaPub *rsa.PublicKey, c client.Client, logger *slog.Logger) *grpc.Server {
+	authFn := authFunc(cfg.JWTSecret, rsaPub, logger)
 	grpcServer := grpc.NewServer(
 		grpc.StatsHandler(otelgrpc.NewServerHandler()),
 		grpc.ChainStreamInterceptor(
 			grpc_prometheus.StreamServerInterceptor,
-			auth.StreamServerInterceptor(authFunc(cfg.JWTSecret, rsaPub, logger)),
+			selectiveStreamAuth(authFn),
 		),
 		grpc.ChainUnaryInterceptor(
 			grpc_prometheus.UnaryServerInterceptor,
-			auth.UnaryServerInterceptor(authFunc(cfg.JWTSecret, rsaPub, logger)),
+			selectiveUnaryAuth(authFn),
 		),
 	)
 

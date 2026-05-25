@@ -1,0 +1,189 @@
+# Wave 136 SW6 — On-demand Linux build-orchestrated.mjs validation.
+#
+# ## Why this exists
+#
+# Wave 135 SW3 introduced `frontend/scripts/build-orchestrated.mjs` to
+# retire `wave127-build-x3.sh` watch+kill workaround. The orchestrator's
+# kill-after-artifacts pattern handles a Windows-specific post-prerender
+# hang in vite + tanstackStart's plugin chain (W136 SW5 trace identified
+# Worker thread MessagePort as the smoking gun).
+#
+# On Linux the underlying hang doesn't fire (different Worker pool
+# behaviour OR different vite plugin shutdown ordering), so vite typically
+# exits cleanly within a second of artifact emission. The orchestrator
+# code path that watches for artifacts then SIGTERMs the subprocess STILL
+# RUNS on Linux — but the SIGTERM is essentially a no-op (subprocess has
+# already self-exited).
+#
+# This workflow validates that:
+# 1. build-orchestrated.mjs runs cleanly on Linux (no behavioural difference
+#    that would bite CI consumers)
+# 2. Bundle output matches Windows local baseline byte-for-byte (BYTE-IDENTICAL
+#    invariant per W134/W135/W136 reproducibility discipline)
+# 3. wave127-build-x3.sh retirement holds across both platforms
+#
+# Closes W135 §Honesty #8 / #11 (Linux CI not validated; consolidated).
+#
+# ## Wave 136 SW6 baseline (W135 SW3 + W136 SW5+SW6)
+#
+# Expected outputs (BYTE-IDENTICAL across platforms when source unchanged):
+#   dist/client/assets/index-DqqHVXgy.js  139,808 bytes
+#   dist/client/_shell.html                65,864 bytes
+#   dist/client/sw.js                      53,181 bytes
+#   dist/server/server.js                  39,373 bytes
+#   Workbox precache: 209 files / 4.80 MB
+#
+# Linux build duration: ~15-25s (typically faster than Windows ~30s due
+# to no kill-after-artifacts SIGTERM grace window needed).
+#
+# ## Triggers
+#
+#   - `workflow_dispatch`: manual run via Actions UI or `gh workflow run`
+#
+# Triggering on PR/push is intentionally NOT done — that's already covered
+# by `ci.yml frontend-tests` which runs `npm run build` (which is now
+# `build-orchestrated.mjs` per W135 SW3 package.json wiring).
+name: Build Orchestrated Linux Validation
+
+on:
+  workflow_dispatch:
+    inputs:
+      runs:
+        description: "Number of consecutive builds to run for reproducibility check (default 3)."
+        required: false
+        type: string
+        default: "3"
+
+permissions: read-all
+
+concurrency:
+  group: build-orchestrated-linux-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-validation:
+    name: build-orchestrated.mjs on Linux
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Setup Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install wasm-pack
+        # W142 polish-v3 — taiki-e/install-action wasm-pack tool resolution
+        # broken: drager/wasm-pack 404 since v0.14.0 moved to rustwasm/
+        # wasm-pack; install-action hardcodes old repo. Pinned rustwasm
+        # canonical curl URL (HTTPS rustwasm.github.io, official installer).
+        # Same fix as W141 polish-v2 visual-audit.yml + W142 chromatic.yml.
+        run: |
+          curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+          wasm-pack --version
+
+      # Run build-orchestrated.mjs N times and capture hashes for the
+      # reproducibility check. Compare hash + size across runs to assert
+      # BYTE-IDENTICAL invariant.
+      - name: Run build-orchestrated.mjs × N
+        id: build_runs
+        run: |
+          set -e
+          RUNS=${{ inputs.runs }}
+          : "${RUNS:=3}"
+          echo "Running build × $RUNS for reproducibility check"
+
+          declare -a SHELL_HASHES
+          declare -a INDEX_HASHES
+          declare -a SW_HASHES
+          declare -a SERVER_HASHES
+
+          for i in $(seq 1 "$RUNS"); do
+            echo ""
+            echo "=== Build run $i / $RUNS ==="
+            rm -rf dist
+            START=$(date +%s)
+            npm run build 2>&1 | tail -25
+            END=$(date +%s)
+            DURATION=$((END - START))
+            echo "Build $i duration: ${DURATION}s"
+
+            INDEX_FILE=$(ls dist/client/assets/index-*.js | head -1)
+            INDEX_HASH=$(sha256sum "$INDEX_FILE" | awk '{print $1}')
+            SHELL_HASH=$(sha256sum dist/client/_shell.html | awk '{print $1}')
+            SW_HASH=$(sha256sum dist/client/sw.js | awk '{print $1}')
+            SERVER_HASH=$(sha256sum dist/server/server.js | awk '{print $1}')
+
+            INDEX_SIZE=$(stat -c %s "$INDEX_FILE")
+            SHELL_SIZE=$(stat -c %s dist/client/_shell.html)
+            SW_SIZE=$(stat -c %s dist/client/sw.js)
+            SERVER_SIZE=$(stat -c %s dist/server/server.js)
+
+            INDEX_HASHES[$i]="$INDEX_HASH"
+            SHELL_HASHES[$i]="$SHELL_HASH"
+            SW_HASHES[$i]="$SW_HASH"
+            SERVER_HASHES[$i]="$SERVER_HASH"
+
+            echo "Run $i: index-$(basename $INDEX_FILE) ($INDEX_SIZE bytes) sha256=${INDEX_HASH:0:16}..."
+            echo "Run $i: _shell.html ($SHELL_SIZE bytes) sha256=${SHELL_HASH:0:16}..."
+            echo "Run $i: sw.js ($SW_SIZE bytes) sha256=${SW_HASH:0:16}..."
+            echo "Run $i: server.js ($SERVER_SIZE bytes) sha256=${SERVER_HASH:0:16}..."
+          done
+
+          echo ""
+          echo "=== Reproducibility check ==="
+          ALL_MATCH=true
+          for i in $(seq 2 "$RUNS"); do
+            if [[ "${INDEX_HASHES[$i]}" != "${INDEX_HASHES[1]}" ]]; then
+              echo "::error::index-*.js hash differs run 1 vs run $i"
+              ALL_MATCH=false
+            fi
+            if [[ "${SHELL_HASHES[$i]}" != "${SHELL_HASHES[1]}" ]]; then
+              echo "::error::_shell.html hash differs run 1 vs run $i"
+              ALL_MATCH=false
+            fi
+            if [[ "${SW_HASHES[$i]}" != "${SW_HASHES[1]}" ]]; then
+              echo "::error::sw.js hash differs run 1 vs run $i"
+              ALL_MATCH=false
+            fi
+            if [[ "${SERVER_HASHES[$i]}" != "${SERVER_HASHES[1]}" ]]; then
+              echo "::error::server.js hash differs run 1 vs run $i"
+              ALL_MATCH=false
+            fi
+          done
+
+          if [[ "$ALL_MATCH" == "true" ]]; then
+            echo "✓ BYTE-IDENTICAL across $RUNS runs"
+            {
+              echo "## Build × $RUNS Reproducibility — BYTE-IDENTICAL ✓"
+              echo ""
+              echo "| Artifact | sha256 (first 16) |"
+              echo "|---|---|"
+              echo "| index-*.js | ${INDEX_HASHES[1]:0:16}... |"
+              echo "| _shell.html | ${SHELL_HASHES[1]:0:16}... |"
+              echo "| sw.js | ${SW_HASHES[1]:0:16}... |"
+              echo "| server.js | ${SERVER_HASHES[1]:0:16}... |"
+            } >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "::error::Build is NOT reproducible across runs"
+            exit 1
+          fi
+
+      - name: Upload dist artifacts
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: dist-linux-validation
+          path: frontend/dist
+          retention-days: 7
+          if-no-files-found: warn

@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs"
 import { copyFile, mkdir, readFile, writeFile } from "node:fs/promises"
 import path from "node:path"
 import process from "node:process"
@@ -6,7 +7,13 @@ import { fileURLToPath } from "node:url"
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 const frontendRoot = path.resolve(__dirname, "..")
-const distDir = path.join(frontendRoot, "dist")
+// W139 SW5 fix — post-W125 SSR migration, the SPA index.html mirror lives
+// at dist/client/index.html (per post-build-shell.mjs candidates). Pre-W125
+// it was at dist/index.html. Defensive detection handles both layouts so
+// LHCI route preparation works regardless of build pipeline variant.
+const distClientDir = path.join(frontendRoot, "dist", "client")
+const distLegacyDir = path.join(frontendRoot, "dist")
+const distDir = existsSync(path.join(distClientDir, "index.html")) ? distClientDir : distLegacyDir
 const entryFile = path.join(distDir, "index.html")
 
 // Wave 112 — LHCI covers all 6 target pages for baseline measurement.

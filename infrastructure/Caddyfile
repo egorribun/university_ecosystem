@@ -29,6 +29,15 @@
         -Server
     }
 
+    # Wave 137 SW4: backend's RFC 8615 well-known endpoints (JWKS, OpenID
+    # configuration, etc.) must be publicly reachable for ssrAuth.ts +
+    # external clients. Pre-W137 these fell through to the default handle
+    # (frontend SSR shell). Backend mounts the JWKS endpoint at
+    # /.well-known/jwks.json (app/api/well_known.py).
+    handle /.well-known/* {
+        reverse_proxy backend:8000
+    }
+
     # API Gateway (Go)
     handle /api/* {
         reverse_proxy gateway:8080
@@ -39,7 +48,38 @@
         reverse_proxy gateway:8080
     }
 
-    # WebSocket Hub (Go)
+    # Wave 173 SW1 — /ws/ticket is an HTTP POST endpoint on backend (via gateway)
+    # that issues short-lived OTT (one-time-tickets) for WS upgrade authentication
+    # (RZ-W14-01, see app/api/ws/ticket.py). It MUST precede the general /ws/*
+    # rule because Caddy `handle` blocks are mutually exclusive and matched in
+    # declaration order — without this exception POST /ws/ticket gets routed to
+    # ws-hub:8081 (a Go WS service with no HTTP /ticket endpoint) and returns
+    # 404, breaking ALL chat/messenger functionality. Closes W131 SW4 routing
+    # omission that lay dormant ≥17 waves because /messenger was Phase 5 punted.
+    handle /ws/ticket {
+        reverse_proxy gateway:8080
+    }
+
+    # Wave 173 polish-v1 — frontend `useChatWebSocket.ts:202` constructs WS URL
+    # as `/ws/chat?ticket=<hex>` but ws-hub Go service serves WS upgrade at
+    # plain `/ws` (`services/ws-hub/main.go:133 http.Handle("/ws", ...)`). Go's
+    # net/http `Handle("/ws", ...)` matches ONLY the exact path `/ws`, NOT
+    # `/ws/chat` (which would require `Handle("/ws/", ...)` trailing slash).
+    # Rewrite `/ws/chat` → `/ws` before proxying so frontend code + ws-hub Go
+    # both stay unchanged. Pre-W173 polish-v1: WS upgrade requests for
+    # `/ws/chat?ticket=<hex>` returned 404 from ws-hub (path mismatch). This
+    # was the W173 SW1 «безупречно?» finding — surface-level /ws/ticket fix
+    # closed HTTP ticket issuance but didn't restore full chat flow because
+    # the downstream WS upgrade was ALSO broken by W131 SW4 endpoint-class
+    # omission (same root cause class as /ws/ticket fix).
+    handle /ws/chat* {
+        rewrite * /ws
+        reverse_proxy ws-hub:8081
+    }
+
+    # WebSocket Hub (Go) — WS upgrade endpoint itself (catch-all for any
+    # future /ws/<other-path> routes; ws-hub will return 404 unless it
+    # explicitly handles those paths, but we route there for visibility).
     handle /ws/* {
         reverse_proxy ws-hub:8081
     }

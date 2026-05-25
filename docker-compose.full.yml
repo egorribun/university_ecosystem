@@ -16,6 +16,21 @@ services:
       DATABASE_URL: "postgresql+asyncpg://postgres:${POSTGRES_PASSWORD}@postgres:5432/university"
       FRONTEND_ORIGIN: http://localhost:8081
       FRONTEND_ORIGINS: http://localhost:8081,http://localhost:8080
+      # Wave 137 SW4: TrustedHostMiddleware allowlist. Default in dev is
+      # "localhost,127.0.0.1,testserver" which rejects requests from inside
+      # the docker network whose Host header is the docker-compose service-name
+      # DNS (e.g. frontend SSR fetches backend:8000/.well-known/jwks.json with
+      # Host: backend:8000 → 400 Bad Request). Adding `backend` so JWKS
+      # endpoint reachable from frontend, gateway, ws-hub via service-DNS.
+      # NOTE: middleware reads ALLOWED_HOSTS (not TRUSTED_HOSTS) — see
+      # app/core/middleware/setup.py:154 + cors_settings.py:25 + 154 (the
+      # `trusted_hosts_list` property is a separate read-only computation,
+      # `allowed_hosts_list` is what TrustedHostMiddleware consumes).
+      ALLOWED_HOSTS: "localhost,127.0.0.1,backend,caddy,0.0.0.0,testserver"
+      # Wave 137 SW4: dev-only — bump max sessions per user from 5 to 50 so
+      # repeated smoke runs during diagnostic don't hit the per-user cap.
+      # Production K8s should keep default (5) for credential-stuffing defense.
+      MAX_SESSIONS_PER_USER: "50"
       CACHE_ENABLED: "true"
       CACHE_REDIS_URL: "redis://:${REDIS_PASSWORD:-DevRedisPass2024x}@redis:6379/0"
       RATE_LIMIT_STORAGE_BACKEND: redis
@@ -40,6 +55,10 @@ services:
       ENABLE_OTEL_METRICS: "false"
     volumes:
       - static-data:/app/app/static
+      # Wave 137 SW1: RS256 private key mount (read-only).
+      # start-docker.ps1's New-JwtRs256Key generates ./.secrets/jwt_rs256.pem on host.
+      # Backend reads it at startup via jwt_settings.py:202-205 when ALGORITHM=RS256.
+      - ./.secrets:/app/.secrets:ro
     depends_on:
       postgres:
         condition: service_healthy
@@ -53,6 +72,24 @@ services:
     networks:
       - internal
       - public
+    # Wave 140 SW3-fix: override Dockerfile HEALTHCHECK (which uses /healthz Full
+    # Check requiring ES/SpiceDB/Tempo all reachable) with /health/ready (Lean
+    # readiness probe: just DB connectivity + not shutting down). Two reasons:
+    #   1. file-processor depends_on backend: service_healthy (W140 SW3) must
+    #      resolve reliably. `/healthz` returns 503 in dev compose when any of
+    #      ES/SpiceDB/Tempo is slow to start (W139 (z) #4 backend lifespan
+    #      blocker family), which prevents file-processor from ever starting
+    #      even though backend's lifespan startup (including NATS broker
+    #      connect + stream creation per W140 SW1) is fully complete.
+    #   2. `/health/ready` matches the K8s readinessProbe pattern (production
+    #      uses K8s readiness probes from manifest, not Docker HEALTHCHECK).
+    # Python stdlib urllib (same as Dockerfile pattern) — no curl/wget needed.
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/ready', timeout=4)"]
+      interval: 10s
+      timeout: 5s
+      start_period: 30s
+      retries: 5
     deploy:
       resources:
         limits:
@@ -76,7 +113,78 @@ services:
       dockerfile: frontend.Dockerfile
       target: runtime
       args:
-        VITE_BACKEND_ORIGIN: ""
+        # Wave 137 SW3: bake docker-internal backend service-name DNS at build time.
+        # ssrAuth.ts:79 reads import.meta.env.VITE_BACKEND_ORIGIN as a Rolldown
+        # build-time literal substitution (NOT runtime env lookup), so setting
+        # this in compose runtime env DOES NOT WORK. Must be a Docker build ARG.
+        # Pre-W137 the empty string fell back to ssrAuth.ts default localhost:8000
+        # which is unreachable from inside the frontend container → JWKS fetch
+        # failed silently → SSR returned UNAUTH → redirect to /login.
+        # Production CI overrides via deploy-time arg pointing at real backend
+        # hostname (e.g. https://api.example.com); compose value is dev-only.
+        VITE_BACKEND_ORIGIN: "http://backend:8000"
+        # W150 polish-followup — strip SSR shell content for dev compose to
+        # bypass React #418 hydration mismatch on local Docker stack. Production
+        # CI deploys should leave this unset for full SSR LCP wins.
+        DEV_NO_SSR_SHELL: "1"
+        # W153 SW1 — unminified bundle + linked source maps for /login wedge
+        # diagnosis (W150-polish-followup caveat #14, W152 iter-5 honest defer).
+        # KEEPS mode=production so JSX transform stays at production runtime
+        # (jsx not jsxDEV) — SSR-compatible. Strip this line + rebuild to
+        # return to production-minified output. NEVER set in production
+        # compose / CI deploy configs (would expose source maps + ship
+        # unminified bundle).
+        #
+        # W158 SW1 — wedge resolved via W156 SW3 hydrateRoot(document) + user
+        # real-Chrome × 3 browsers verified rendering at W157 close. Diagnostic
+        # flag now defaults OFF. Flip "" → "true" + rebuild if future
+        # client-side stack-trace debug needs the unminified bundle + linked
+        # source maps. Tree-shake invariants preserved per W157 SW1:
+        # 0 react-dom-client.development refs in PROD; 0 jsxDEV in server.js.
+        #
+        # W169 SW1+SW4 — Path D text-content investigation (B-full scope).
+        # SW1 enabled "true" + SW2 ran admin smoke with diagnostic bundle +
+        # SW2 found 0 React #418 firings across all 10 captures (diagnostic
+        # build did NOT reproduce W168 SW2 finding). Per W141 anti-pattern #1
+        # STRICT 1-iter cap, SW3 was a NO-OP (no mismatch to fix). SW4 reverts
+        # to "" + rebuilds for production-minified verification in SW5. Flag
+        # defaults OFF in long-lived branches.
+        # W180 polish-v2 (2026-05-21) — diagnostic build captured FULL unminified
+        # React #418 error on data-only routes; root cause identified as W152 SW2
+        # `import.meta.env.SSR ? null : <div>` legacy guard in router.ts
+        # defaultPendingComponent (post-W156 SW3 hydrateRoot(document) the
+        # hasRealSsrContent detection target no longer exists; guard became
+        # active harm on data-only routes' Suspense fallback DOM divergence).
+        # Fix applied in router.ts:102 + re-verified via wave137-authed-smoke:
+        # ALL 9 SSR routes now show 0 hydration errors under diagnostic build.
+        # Flag flipped back to "" + rebuilt for production-minified verification.
+        FRONTEND_BUILD_UNMINIFIED: ""
+        # W156 SW1 Tier 1 #1 — opt-in development React for /login wedge
+        # diagnosis (W155 NAMED React #418 + getParentHydrationBoundary
+        # mechanisms but minified error args [text, ""] hide exact mismatch).
+        # Aliases react-dom/client → development cjs bundle + scopes
+        # NODE_ENV=development to client environment only (server stays
+        # production → no W152 SW1 jsxDEV trap). NEVER set in production
+        # compose / CI deploy configs (would ship dev React ~150 KB larger).
+        #
+        # W157 SW1 — wedge resolved via W156 SW3 hydrateRoot(document) fix;
+        # diagnostic flag now defaults OFF. Flip to "true" + rebuild if
+        # future hydration debugging needs the dev React bundle's full
+        # error messages. Tree-shake invariant verified W157 SW1: PROD
+        # bundle has 0 react-dom-client.development refs.
+        #
+        # W169 SW1+SW4 — Path D paired diagnostic flag. SW1 enabled "true" +
+        # SW2 ran 10-capture admin smoke against dev React bundle; sidecars
+        # contained 0 unminified "Hydration failed because" phrases (dev
+        # React vendor bundle confirmed via grep to ship the phrase × 2
+        # internally). Conclusion: W168 SW2 finding NOT reproducible with
+        # diagnostic build → bundle-mode-dependent OR transient timing fluke.
+        # SW4 reverts to "" + rebuilds production-minified for SW5 verify.
+        #
+        # W180 polish-v2 (2026-05-21) — diagnostic React dev mode captured the
+        # exact element-type mismatch component stack pointing to defaultPendingComponent.
+        # Fix applied in router.ts:102; diagnostic flag reverted to "" for PROD verification.
+        FRONTEND_REACT_DEV_MODE: ""
     ports:
       - "8081:3000"
     networks:
@@ -309,7 +417,15 @@ services:
       GATEWAY_PORT: "8080"
       BACKEND_URL: http://backend:8000
       REDIS_URL: "redis://:${REDIS_PASSWORD:-DevRedisPass2024x}@redis:6379/3"
+      # JWT_SECRET kept for defense-in-depth: gateway falls back to HS256 if RS256
+      # verify fails. Pre-W137 in-flight HS256 tokens decode via this until expiry.
       JWT_SECRET: ${SECRET_KEY}
+      # Wave 137 SW1: enable RS256 verification via JWKS hot-reload (MOD-W17-03).
+      # Gateway polls backend's /.well-known/jwks.json every JWKS_REFRESH_INTERVAL
+      # seconds; atomic public-key swap on rotation. ws-hub already uses JWKS_URL
+      # default http://backend:8000/.well-known/jwks.json (no compose change needed).
+      JWKS_ENDPOINT: http://backend:8000/.well-known/jwks.json
+      JWKS_REFRESH_INTERVAL: "60"
       # AUDIT-INFRA-05: explicit opt-out for local dev — production K8s must NOT set this
       GRPC_USE_TLS: "false"
     depends_on:
@@ -339,6 +455,35 @@ services:
       JWT_SECRET: ${SECRET_KEY}
       # AUDIT-INFRA-02: required — ws-hub fails to start if empty
       WS_HUB_INTERNAL_SECRET: ${WS_HUB_INTERNAL_SECRET}
+      # Wave 173 polish-v1: ws-hub reads REDIS_URL + REDIS_PASSWORD per
+      # `services/ws-hub/pkg/config/config.go:120-121` (defaults: addr
+      # `redis:6379`, no password). Pre-W173-polish-v1, REDIS_PASSWORD
+      # was missing from compose env → ws-hub connected to Redis without
+      # auth → `NOAUTH Authentication required` startup error → fell back
+      # to "L2 cache disabled" mode → handlers.go:195 `redisClient.GetDel`
+      # for OTT validation returned error → ALL real tickets received 401
+      # at WS upgrade. Closes the second half of the chat flow chain
+      # (W173 SW1 Fix B closed /ws/ticket HTTP routing; this closes the
+      # downstream WS upgrade ticket validation that depends on Redis).
+      # Same-mechanism sub-fix per W138 Lesson #1 (ws-hub infra config
+      # gaps from W131-era multi-service split).
+      REDIS_URL: "redis:6379"
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+      # Wave 173 polish-v3: ws-hub default ALLOWED_ORIGINS per
+      # `services/ws-hub/pkg/config/config.go:103` = ["http://localhost:3000",
+      # "http://localhost:5173"] (Vite dev server ports). Production-like
+      # Docker setup accesses frontend via `http://localhost` (port 80, via
+      # Caddy reverse proxy) — browser sends `Origin: http://localhost` (no
+      # port). gorilla/websocket Upgrader CheckOrigin (handlers.go:40)
+      # rejected mismatch → 403 Forbidden on WS upgrade. Closes the THIRD
+      # ws-hub infra config gap from W131-era multi-service split arc.
+      # Same-mechanism polish-v3 sub-fix per W138 Lesson #1. Includes all
+      # common dev access patterns: `http://localhost` (Caddy port 80
+      # canonical), `http://localhost:8081` (direct frontend Node SSR port
+      # mapping per W132 SW1-fix), plus the legacy Vite dev defaults
+      # `http://localhost:3000` (Vite dev) + `http://localhost:5173` (Vite
+      # preview default) for parity with non-Docker dev workflows.
+      ALLOWED_ORIGINS: "http://localhost,http://localhost:8081,http://localhost:3000,http://localhost:5173"
       # MOD-01 (audit 2026-03-15 Wave 7): Standard OTel env vars — SDK reads
       # these automatically so no hardcoded endpoint in telemetry.go code.
       # OTEL_EXPORTER_OTLP_INSECURE=true is correct for local dev (tempo has
@@ -368,6 +513,34 @@ services:
       MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:?MINIO_ROOT_USER is required - set in .env file}
       MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:?MINIO_ROOT_PASSWORD is required - set in .env file}
       MINIO_BUCKET: uploads
+      # Wave 144 SW2 Step 3 — Path (a-auth) full ACTIVATION.
+      # W141 SW5 Go credentials chain (config.go TemporalAPIKeyFile field +
+      # main.go connectTemporal reading token from this path then attaching
+      # via `client.NewAPIKeyStaticCredentials(token)` + `ConnectionOptions.
+      # TLSDisabled: true` for plaintext dev gRPC) was scaffolded but kept
+      # disabled (empty env) through W141-W143 while temporal auth was
+      # blocked by (z) #10 root cause investigation.
+      #
+      # W143 SW2 contract test DISPROVED crypto root cause (Temporal uses
+      # go-jose/v4 + golang-jwt/jwt/v4 v4.5.2; encoding canonical; Python
+      # end-to-end verify passes). W144 SW2 plain temporalio/server:1.30.2
+      # + config.yaml JWT auth is the runtime verification step per W141
+      # anti-pattern #2.
+      #
+      # Token at .secrets/temporal_api_key (W141 SW4 minted with kid='primary'
+      # header) is mounted r/o via the volume below. If file-processor's
+      # connectTemporal logs "Using Temporal credentials from file" + then
+      # "Connected to Temporal addr=temporal:7233", W137 §Honesty #5 +
+      # W140 NEW #6 CLOSE.
+      FP_TEMPORAL_API_KEY_FILE: "/app/.secrets/temporal_api_key"
+    volumes:
+      # Wave 141 SW4 scaffolding preserved: read-only mount of .secrets/
+      # for the Temporal service token (and any future file-based credentials).
+      # Mirrors backend pattern at line 61 (./.secrets:/app/.secrets:ro). Token
+      # at .secrets/temporal_api_key is generated by start-docker.ps1's
+      # New-TemporalServiceToken function (W141 SW4 scaffolding); W142+ will
+      # activate the read via setting FP_TEMPORAL_API_KEY_FILE above.
+      - ./.secrets:/app/.secrets:ro
     depends_on:
       nats:
         condition: service_started
@@ -375,8 +548,82 @@ services:
         condition: service_healthy
       temporal:
         condition: service_healthy
+      # Wave 144 SW2: default namespace must be registered before file-processor
+      # connects (Temporal SDK uses namespace="default" by default; if it
+      # doesn't exist the client.Connect call fails with "namespace not found").
+      temporal-namespace-init:
+        condition: service_completed_successfully
+      # Wave 140 SW3: backend MUST be healthy before file-processor starts.
+      # Architectural contract per W140 Q2 (production parity):
+      #   - Backend's NatsTaskBroker.connect() (called via app/core/lifespan.py
+      #     Stage 5 _startup_background_workers → dishka_container.get(
+      #     NatsTaskBroker)) creates both TASK_QUEUE and FILES_PROCESS streams
+      #     (W140 SW1).
+      #   - Backend's `/healthz` (Dockerfile HEALTHCHECK at backend.Dockerfile:97-98
+      #     using Python stdlib urllib) only returns 200 after the lifespan
+      #     startup completes (FastAPI doesn't accept HTTP traffic until lifespan
+      #     finishes), so `service_healthy` means streams have been provisioned.
+      #   - file-processor's NATS QueueSubscribe at main.go:214 then finds the
+      #     stream and subscribes successfully (closes the chain W139 §Honesty #6).
+      backend:
+        condition: service_healthy
     networks:
       - internal
+    # Wave 137 SW5: gRPC healthcheck via grpc_health_probe binary baked into
+    # distroless runtime (services/file-processor/Dockerfile health-probe stage).
+    # main.go:277-280 already registers grpc_health_v1.HealthCheckResponse_SERVING
+    # for the FileProcessingService at :50051. Same pattern as authzed/spicedb.
+    #
+    # Wave 139 SW2 — Temporal connectivity restored (Path (a-rebind only)):
+    # file-processor's Temporal::Connect() now succeeds in the startup retry
+    # loop because the temporal entrypoint binds 0.0.0.0 (see temporal block
+    # ~line 539). Verified empirically via `docker logs file-processor`:
+    # `INFO Connected to Temporal addr=temporal:7233`.
+    #
+    # § Honesty pre-existing dev-stack gaps unmasked by W139 SW2:
+    # The rebind closes the FIRST blocker in startup sequence; two pre-existing
+    # blockers (always there, just masked by the Temporal blocker firing earlier)
+    # are now visible:
+    #   1. NATS subscribe failure: `Failed to subscribe to NATS queue —
+    #      nats: no stream matches subject`. NATS stream `files.process` is
+    #      not provisioned in dev compose. (Backend code likely creates
+    #      streams on-demand at startup, but there's a race / missing init.)
+    #   2. schema.graphql missing: `schema.graphql not found: open
+    #      schema.graphql: no such file or directory`. The distroless runtime
+    #      Dockerfile (services/file-processor/Dockerfile) does not COPY the
+    #      GraphQL schema file into the final image.
+    # Both cause file-processor's startup to abort BEFORE the gRPC server
+    # binds → healthcheck (`grpc_health_probe -addr=:50051`) fails → Docker
+    # restart loop. NOT regressions caused by W139 SW2 — pre-existing
+    # gaps newly-visible per W138 Lesson #2 (empirical findings disprove plan
+    # assumptions; the "5th unanticipated path" was that file-processor depends
+    # on more than Temporal).
+    #
+    # W137 §Honesty #5 closure status post-W139 SW2:
+    #   - Temporal connectivity blocker: CLOSED (verified)
+    #   - NATS stream provisioning gap: NEW W139 §Honesty caveat — W140+ scope
+    #   - schema.graphql Dockerfile gap: NEW W139 §Honesty caveat — W140+ scope
+    #   - Path (a-auth) full token validation: deferred per Context7 finding
+    #     (Temporal dev-server has no auth flag — needs image switch)
+    #
+    # Operational note: file-processor is currently `docker compose stop`'d
+    # (W139 SW2 wave-end state) to halt the restart loop. Run
+    # `docker compose -f docker-compose.full.yml start file-processor`
+    # to restart it (will still crash-loop until W140+ closes NATS + schema
+    # gaps; tail logs to confirm the unmasked errors).
+    #
+    # In PRODUCTION K8s the picture is unchanged — production deployments
+    # use external/managed Temporal cluster with its own auth (mTLS / API
+    # key), unaffected by this dev-compose-only change. Production NATS
+    # streams are provisioned via separate K8s manifests + CD pipeline; the
+    # schema.graphql Dockerfile gap may or may not affect production builds
+    # (W140 audit will determine).
+    healthcheck:
+      test: ["CMD", "grpc_health_probe", "-addr=:50051"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
     deploy:
       resources:
         limits:
@@ -443,31 +690,207 @@ services:
           memory: 256M
     restart: unless-stopped
 
-  temporal:
+  # ─── Temporal admin-tools schema bootstrap (W144 SW2 Step 2 sidecar) ───────
+  #
+  # One-shot sidecar that runs `temporal-sql-tool` to create the `temporal`
+  # and `temporal_visibility` PostgreSQL databases + schema. Required before
+  # the plain `temporalio/server:1.30.2` can connect.
+  #
+  # Schema files ship in the temporalio/admin-tools image at
+  # /etc/temporal/schema/postgresql/v12/{temporal,visibility}/versioned/.
+  # Schema bootstrap is idempotent — running again on an already-bootstrapped
+  # DB is a no-op (per `temporal-sql-tool create-database` semantics; falls
+  # through cleanly if database exists).
+  #
+  # `restart: "no"` — this is a one-shot container; once the schema exists,
+  # exit 0 + Docker reports `Exited (0)`. file-processor's
+  # `depends_on: temporal-admin-tools: service_completed_successfully` waits
+  # for clean exit before starting.
+  temporal-admin-tools:
     image: temporalio/admin-tools:1.30.2
+    container_name: temporal-admin-tools
+    environment:
+      SQL_PLUGIN: postgres12
+      SQL_HOST: postgres
+      SQL_PORT: "5432"
+      SQL_USER: "${POSTGRES_USER:-postgres}"
+      SQL_PASSWORD: "${POSTGRES_PASSWORD}"
+    entrypoint: [ "/bin/sh", "-c" ]
+    command:
+      - |
+        set -e
+        echo "[temporal-admin-tools] Bootstrapping temporal + temporal_visibility schemas..."
+        # temporal DB
+        temporal-sql-tool --plugin postgres12 --ep postgres -p 5432 -u "$$SQL_USER" --pw "$$SQL_PASSWORD" --db temporal create-database || true
+        temporal-sql-tool --plugin postgres12 --ep postgres -p 5432 -u "$$SQL_USER" --pw "$$SQL_PASSWORD" --db temporal setup-schema -v 0.0
+        temporal-sql-tool --plugin postgres12 --ep postgres -p 5432 -u "$$SQL_USER" --pw "$$SQL_PASSWORD" --db temporal update-schema -d /etc/temporal/schema/postgresql/v12/temporal/versioned
+        # temporal_visibility DB
+        temporal-sql-tool --plugin postgres12 --ep postgres -p 5432 -u "$$SQL_USER" --pw "$$SQL_PASSWORD" --db temporal_visibility create-database || true
+        temporal-sql-tool --plugin postgres12 --ep postgres -p 5432 -u "$$SQL_USER" --pw "$$SQL_PASSWORD" --db temporal_visibility setup-schema -v 0.0
+        temporal-sql-tool --plugin postgres12 --ep postgres -p 5432 -u "$$SQL_USER" --pw "$$SQL_PASSWORD" --db temporal_visibility update-schema -d /etc/temporal/schema/postgresql/v12/visibility/versioned
+        echo "[temporal-admin-tools] Schema bootstrap complete."
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - internal
+    restart: "no"
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: 512M
+
+  # ─── Temporal Server (plain image, W144 SW2 Path B) ────────────────────────
+  #
+  # W144 SW2 — Path B plain `temporalio/server:1.30.2` runtime swap.
+  #
+  # Previous history preserved:
+  #   - W139 SW2 baseline: `temporalio/admin-tools:1.30.2` + `temporal server
+  #     start-dev --ip 0.0.0.0 --db-filename /tmp/temporal.db` (SQLite, no
+  #     auth). file-processor connected via service-name DNS without JWT.
+  #   - W142 SW3-SW5 Path A (auto-setup with JWT) attempted + (z) #6-#10
+  #     cascade + SW5b honest rollback to W139 baseline.
+  #   - W143 SW2 contract test (tests/test_wave143_jwks_roundtrip.py) DISPROVED
+  #     Agent 2 "JWKS byte-encoding mismatch" hypothesis: Temporal uses
+  #     go-jose/v4 + golang-jwt/jwt/v4 v4.5.2 (NOT lestrrat-go/jwx); encoding
+  #     IS canonical RFC 7518 § 6.3.1.1; end-to-end Python verify of real
+  #     .secrets/temporal_api_key PASSES against both PEM-derived AND JWKS-
+  #     reconstructed pub keys.
+  #
+  # W144 SW2 strategy (W141 anti-pattern #2 — runtime swap IS verification):
+  #   - Replace admin-tools start-dev with plain `temporalio/server:1.30.2`
+  #   - Mount services/temporal/config.yaml — VERIFIED schema per upstream
+  #     development-postgres12.yaml + common/config/config.go Authorization
+  #     struct YAML tags (jwtKeyProvider, claimMapper, authorizer, audience)
+  #   - Schema bootstrap via temporal-admin-tools sidecar (above)
+  #   - Default namespace registration via temporal-namespace-init sidecar
+  #     (below)
+  #   - JWT auth wired via config.yaml global.authorization.jwtKeyProvider.
+  #     keySourceURIs pointing at backend's /.well-known/jwks.json (RS256
+  #     pub key fetch via go-jose; refresh interval 1m).
+  #
+  # If (z) #10 "crypto/rsa: verification error" re-appears post-runtime-swap,
+  # walk the 6-phase diagnostic decision tree per W144 Phase 1 Agent 2 report:
+  #   1. Token structure (kid='primary', alg=RS256, decoded payload)
+  #   2. JWKS endpoint reachability from temporal container
+  #   3. JWKS content match (kid='primary', kty=RSA, n+e present)
+  #   4. Temporal JWKS cache refresh timing
+  #   5. Audience claim validation (aud="temporal")
+  #   6. NEW (z) discovery + escalation
+  #
+  # W141/W142 scaffolding PRESERVED (config.yaml is additive, not subtractive):
+  #   - start-docker.ps1 New-JwtRs256Key (RSA-2048 private key, .NET 8 PSx7)
+  #   - start-docker.ps1 New-JwtRs256PublicKey (W142 SW3 scaffolding)
+  #   - start-docker.ps1 New-TemporalServiceToken (W141 SW4; kid='primary' header)
+  #   - file-processor Go credentials chain (W141 SW5; config.go +
+  #     main.go connectTemporal)
+  temporal:
+    image: temporalio/server:1.30.2
     container_name: temporal
     ports:
       - "127.0.0.1:7233:7233"  # gRPC: localhost only; access via SSH tunnel
-      # UI port (8233) not published: use SSH tunnel or internal access only
+      - "127.0.0.1:7243:7243"  # frontend HTTP (Temporal Web UI etc)
     environment:
-      - TEMPORAL_CLI_ADDRESS=temporal:7233
-    # P0-03 (audit 2026-03-06): Bind to 127.0.0.1 — Temporal dev-server has no auth.
-    # Without this, ALL containers on the `internal` network can execute arbitrary
-    # Workflows/Activities without authentication (full code execution vector).
-    entrypoint: [ "/bin/sh", "-c", "temporal server start-dev --ip 127.0.0.1 --ui-port 8233 --db-filename /tmp/temporal.db" ]
+      # W144 SW2 NEW (z) #17: Temporal v1.30.2 plain server does NOT do env-var
+      # substitution in YAML config (unlike auto-setup which renders via
+      # envsubst). Custom entrypoint at services/temporal/entrypoint.sh does
+      # sed-based substitution of ${POSTGRES_USER} + ${POSTGRES_PWD} before
+      # exec'ing temporal-server. POSTGRES_USER + POSTGRES_PWD are passed
+      # through here as the entrypoint's required inputs.
+      POSTGRES_USER: "${POSTGRES_USER:-postgres}"
+      POSTGRES_PWD: "${POSTGRES_PASSWORD}"
+    entrypoint: ["/bin/sh", "/etc/temporal/wave144-entrypoint.sh"]
+    volumes:
+      - ./services/temporal/config.yaml:/etc/temporal/config/docker.yaml:ro
+      - ./services/temporal/entrypoint.sh:/etc/temporal/wave144-entrypoint.sh:ro
+      # Defensive .secrets/ mount for any future file-based key import. The
+      # primary auth path uses HTTP JWKS via global.authorization.jwtKeyProvider
+      # in config.yaml (W142 (z) #6 disproved file:// URL scheme).
+      - ./.secrets:/app/.secrets:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+      temporal-admin-tools:
+        condition: service_completed_successfully
     networks:
       - internal
     healthcheck:
-      test: [ "CMD-SHELL", "temporal operator cluster health --address 127.0.0.1:7233 || exit 1" ]
+      # W144 SW2 NEW (z) #19: `temporalio/server:1.30.2` image ships only
+      # `temporal-server` binary (no `temporal` CLI, no `grpc_health_probe`),
+      # and busybox sh lacks /dev/tcp + busybox `nc -z` returns spurious
+      # non-zero exit codes even when the port is listening (W142 (z) #9
+      # repeat). gRPC port 7233 is bound to the container IP (not 127.0.0.1)
+      # so wget against localhost fails too. Workaround: probe Prometheus
+      # metrics endpoint which IS bound on 0.0.0.0:8000 and responds with
+      # metrics text when the server is healthy.
+      test: [ "CMD-SHELL", "wget -q --spider --timeout=3 http://127.0.0.1:8000/metrics || exit 1" ]
       interval: 10s
-      timeout: 10s
+      timeout: 5s
       retries: 10
+      start_period: 60s
     deploy:
       resources:
         limits:
           cpus: '0.50'
           memory: 1G
     restart: unless-stopped
+
+  # ─── Temporal namespace init (W144 SW2 Step 2 sidecar) ─────────────────────
+  #
+  # One-shot sidecar that registers the `default` namespace via the
+  # `temporal operator namespace create` CLI. Required because plain
+  # `temporalio/server:1.30.2` does NOT auto-create namespaces (unlike
+  # `temporalio/auto-setup` which does so via env vars).
+  #
+  # `default` namespace is what the file-processor Go client connects to
+  # (default value in Temporal SDK is "default" if not specified).
+  #
+  # `restart: "no"` — one-shot. Once namespace exists, exit 0.
+  # `--retention 1` — 1-day workflow history retention (dev-sized).
+  temporal-namespace-init:
+    image: temporalio/admin-tools:1.30.2
+    container_name: temporal-namespace-init
+    environment:
+      # W144 SW2 NEW (z) #20: `TEMPORAL_CLI_ADDRESS` is the v1 CLI env name;
+      # the v2 `temporal` CLI uses `TEMPORAL_ADDRESS` (no _CLI infix). Set
+      # both for cross-version compatibility + pass --address explicitly to
+      # eliminate any env-var-precedence ambiguity.
+      TEMPORAL_CLI_ADDRESS: "temporal:7233"
+      TEMPORAL_ADDRESS: "temporal:7233"
+    entrypoint: [ "/bin/sh", "-c" ]
+    command:
+      - |
+        set -e
+        echo "[temporal-namespace-init] Registering 'default' namespace..."
+        # Wait briefly for the frontend service to be fully accepting traffic
+        # (healthcheck reports healthy on metrics port 8000 but the gRPC
+        # frontend may need a few more seconds for first-RPC readiness).
+        for i in 1 2 3 4 5 6 7 8 9 10; do
+          if temporal operator namespace create --address temporal:7233 --namespace default --retention 24h; then
+            echo "[temporal-namespace-init] Default namespace registered."
+            exit 0
+          fi
+          if temporal operator namespace describe --address temporal:7233 --namespace default >/dev/null 2>&1; then
+            echo "[temporal-namespace-init] Default namespace already exists."
+            exit 0
+          fi
+          echo "[temporal-namespace-init] attempt $i: waiting 3s for frontend RPC..."
+          sleep 3
+        done
+        echo "[temporal-namespace-init] FAILED to register default namespace after 10 attempts."
+        exit 1
+    depends_on:
+      temporal:
+        condition: service_healthy
+    networks:
+      - internal
+    restart: "no"
+    deploy:
+      resources:
+        limits:
+          cpus: '0.10'
+          memory: 128M
 
   imgproxy:
     image: darthsim/imgproxy:v3.28.0
@@ -482,6 +905,15 @@ services:
     networks:
       - internal
       - public
+    # W136 SW7: imgproxy ships its own `imgproxy health` CLI subcommand
+    # (v3.18+). The container is distroless except for the imgproxy binary,
+    # so this is the only viable healthcheck path.
+    healthcheck:
+      test: ["CMD", "imgproxy", "health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
     deploy:
       resources:
         limits:
@@ -501,6 +933,14 @@ services:
       GF_USERS_ALLOW_SIGN_UP: "false"
     networks:
       - internal
+    # W136 SW7: grafana base image (alpine) has wget. /api/health endpoint
+    # returns JSON with database/version status; HTTP 200 = healthy.
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
     deploy:
       resources:
         limits:
@@ -516,6 +956,14 @@ services:
       - "127.0.0.1:9090:9090"
     networks:
       - internal
+    # W136 SW7: prom/prometheus base image is busybox-based with wget.
+    # /-/healthy returns 200 OK when ready to serve queries.
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:9090/-/healthy"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
     deploy:
       resources:
         limits:
@@ -530,11 +978,37 @@ services:
       - ./infrastructure/observability/tempo.yaml:/etc/tempo/tempo.yaml:ro
     networks:
       - internal
+    # W136 SW7 → W137 SW6: tempo's distroless image lacks any HTTP client to
+    # probe its own /ready endpoint on :3200. Sidecar pattern (tempo-healthprobe
+    # below) does the probing via shared network namespace. By-design caveat:
+    # sidecar healthcheck reflects PROBE health, NOT tempo container health
+    # directly — for compose `depends_on: service_healthy` semantics, the
+    # sidecar's healthy state is what downstream sees. Acceptable for dev;
+    # production K8s should use upstream's /ready via livenessProbe HTTP check.
     deploy:
       resources:
         limits:
           cpus: '0.25'
           memory: 512M
+    restart: unless-stopped
+
+  # W137 SW6: distroless healthcheck via curl sidecar pattern.
+  # network_mode: service:tempo shares the network namespace (probes
+  # localhost:3200/ready directly). curl base image is ~5MB so overhead is
+  # small. Sidecar keeps running via `sleep infinity` so its healthcheck
+  # has a stable container to attach to.
+  tempo-healthprobe:
+    image: curlimages/curl:8.10.1
+    network_mode: "service:tempo"
+    depends_on:
+      - tempo
+    command: ["sleep", "infinity"]
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:3200/ready"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
     restart: unless-stopped
 
   loki:
@@ -544,11 +1018,28 @@ services:
       - ./infrastructure/observability/loki.yaml:/etc/loki/loki.yaml:ro
     networks:
       - internal
+    # W136 SW7 → W137 SW6: same sidecar pattern as tempo — see loki-healthprobe.
+    # /ready endpoint on :3100 probed via curlimages/curl through shared
+    # network_mode. Same by-design caveat about sidecar-vs-container health.
     deploy:
       resources:
         limits:
           cpus: '0.25'
           memory: 512M
+    restart: unless-stopped
+
+  loki-healthprobe:
+    image: curlimages/curl:8.10.1
+    network_mode: "service:loki"
+    depends_on:
+      - loki
+    command: ["sleep", "infinity"]
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:3100/ready"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
     restart: unless-stopped
 
   caddy:

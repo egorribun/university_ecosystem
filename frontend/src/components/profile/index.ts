@@ -6,3 +6,5 @@ export * from "./DetailRow"
 export * from "./profileUtils"
 export * from "./ProfileSkeleton"
 export * from "./ProfileEditor"
+// Wave 184 SW5 (Path D) — Profile polish backdrop component.
+export * from "./ProfileBackdrop"

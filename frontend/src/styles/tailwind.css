@@ -820,18 +820,152 @@
 }
 
 @utility footer-link-premium {
-  display: inline-block;
-  color: var(--color-white);
+  /* Wave 175 SW1 — inline-flex + min-h 44px for WCAG 2.5.8 touch target
+     (was inline-block + ~20px hit area). --text-on-footer = constant
+     white in BOTH themes (footer is always-dark). Motion tokens
+     replace hardcoded "0.2s ease". Focus ring via --focus-ring-isolated
+     (double-ring 2px bg-page + 4px primary-main) per W121 SW5 — needed
+     because solid brand color alone has insufficient contrast on
+     blue-gradient footer surface.
+     Wave 176 SW4 — active-route accent dot via &[data-status="active"]
+     selector. TanStack Router auto-applies `data-status="active"` to the
+     matching <Link> (no `activeProps` needed — built-in API). */
+  display: inline-flex;
+  align-items: center;
+  min-height: 2.75rem;
+  border-radius: var(--radius-xs);
+  color: var(--text-on-footer);
   text-decoration: none;
   opacity: var(--opacity-heavy);
-  padding: 0.25rem 0;
+  padding: 0.25rem 0.25rem;
   font-size: var(--font-size-sm);
   font-weight: 500;
-  transition: all 0.2s ease;
+  transition:
+    opacity var(--motion-duration-fast) var(--ease-premium),
+    transform var(--motion-duration-fast) var(--ease-premium);
 
   &:hover {
     opacity: 1;
     transform: translateX(0.1875rem);
+  }
+
+  &:focus-visible {
+    outline: none;
+    opacity: 1;
+    box-shadow: var(--focus-ring-isolated);
+  }
+
+  /* Wave 176 SW4 — active-route indicator (4px white dot left of text).
+     Mirrors Linear/Stripe minimalist footer aesthetic. Zero Lucide icon
+     bundle delta. `flex-shrink: 0` prevents the dot from collapsing under
+     translate-x hover. Uses TanStack Router's built-in `data-status`
+     attribute (auto-applied on the active <Link> — no `activeProps`). */
+  &[data-status="active"] {
+    opacity: 1;
+  }
+  &[data-status="active"]::before {
+    content: "";
+    display: inline-block;
+    width: 0.25rem;
+    height: 0.25rem;
+    border-radius: 9999px;
+    background: var(--color-white);
+    margin-right: 0.5rem;
+    flex-shrink: 0;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    transition: none;
+    &:hover {
+      transform: none;
+    }
+  }
+}
+
+/* Wave 176 SW3 — Footer top accent stripe. Thin gradient bar sitting
+   immediately above the border-top to soften visual abruptness between
+   page content + footer. Gradient defined in `tokens/semantics.css` as
+   `--footer-accent-line` (white-tinted in light, sky-tinted in dark). */
+@utility footer-accent-stripe {
+  position: absolute;
+  inset-inline: 0;
+  top: 0;
+  height: 1px;
+  background: var(--footer-accent-line);
+  pointer-events: none;
+}
+
+/* Wave 176 SW3 — Footer column stagger via Tailwind v4 `@starting-style`.
+   Triggered on element mount (no IntersectionObserver needed unlike the
+   shared `.stagger-item` utility which requires `data-visible="true"`).
+   Use inline `style={{ "--stagger-i": N }}` to set per-column index.
+   Animation auto-respects `prefers-reduced-motion`. */
+@utility footer-stagger-item {
+  --stagger-i: 0;
+  opacity: 1;
+  transform: translateY(0);
+  transition:
+    opacity var(--motion-duration-medium, 500ms) var(--ease-premium),
+    transform var(--motion-duration-medium, 500ms) var(--ease-premium);
+  transition-delay: calc(var(--stagger-i) * 80ms);
+
+  @starting-style {
+    opacity: 0;
+    transform: translateY(0.5rem);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    transition: none;
+    transform: none;
+    @starting-style {
+      opacity: 1;
+      transform: none;
+    }
+  }
+}
+
+/* Wave 176 SW3 — Footer social button. Replaces `<Button variant="glass"
+   size="icon">` for the Telegram + Email icons. Glass + backdrop-blur on
+   the footer's already-dark surface read as invisible — this utility uses
+   a white-tinted overlay with thin border for clear edge on both blue
+   (light) + nav-dark (dark) backgrounds. WCAG 2.5.8 touch target (44px).
+   Focus ring via `--focus-ring-isolated` (W121 SW5) — same as
+   footer-link-premium. */
+@utility footer-social-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.75rem;
+  height: 2.75rem;
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--color-white) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-white) 18%, transparent);
+  color: var(--text-on-footer);
+  transition:
+    background-color var(--motion-duration-fast) var(--ease-premium),
+    border-color var(--motion-duration-fast) var(--ease-premium),
+    transform var(--motion-duration-fast) var(--ease-premium);
+
+  &:hover {
+    background: color-mix(in srgb, var(--color-white) 18%, transparent);
+    border-color: color-mix(in srgb, var(--color-white) 30%, transparent);
+    transform: translateY(-1px);
+  }
+
+  &:active {
+    transform: translateY(0);
+  }
+
+  &:focus-visible {
+    outline: none;
+    box-shadow: var(--focus-ring-isolated);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    transition: none;
+    &:hover {
+      transform: none;
+    }
   }
 }
 

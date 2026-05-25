@@ -1,0 +1,227 @@
+/* ═══════════════════════════════════════════════════════
+   @PROPERTY — smooth dark↔light transitions for animated vars
+   (Mirror of profile.css W184 SW5 + messenger.css W181 SW1 +
+   activity.css W84 + schedule.css W64 pattern. Wave 186 SW2
+   (Path C) — /login + /register + /forgot-password +
+   /reset-password polish to feature-page parity with W181-W184
+   themed surfaces arc.)
+   ═══════════════════════════════════════════════════════ */
+@property --auth-orb-1 {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: transparent;
+}
+@property --auth-orb-2 {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: transparent;
+}
+@property --auth-orb-3 {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: transparent;
+}
+@property --auth-card-glow {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: transparent;
+}
+
+@layer base {
+  /* ═══════════════════════════════════════════════════════
+     AUTH PAGE TOKENS
+     Scoped under .auth-theme. Teal/cyan "secure access" palette —
+     semantically distinct from 9 prior themed surfaces (Schedule blue,
+     Map teal/cyan navigation, Events amber-500, News sky, Activity
+     emerald, Footer blue-gradient, Admin indigo-slate, Messenger
+     violet/pink/indigo, Profile rose/pink/amber, Settings slate-purple).
+     Slight adjacency with /map teal-cyan family is acceptable for two
+     reasons: (a) distinct context (secure-access vs map-navigation);
+     (b) auth surfaces only visible during unauthenticated flow (logged-
+     out users never see /map). Map uses teal-400 PRIMARY + teal-500
+     SHEEN (lighter primary); Auth INVERTS to teal-500 PRIMARY + teal-400
+     SHEEN (darker primary) — visual differentiation through weight
+     ordering rather than new hues (primitives.css has only teal-400
+     + teal-500 + cyan-400 available — no teal-300).
+     Primary: teal-500 + Accent: cyan-400 + Sheen: teal-400.
+     ═══════════════════════════════════════════════════════ */
+  .auth-theme {
+    /* ── Typography (mirrors profile + messenger sizes) ────── */
+    --fs-auth-hero: clamp(1.875rem, 3.2vw, 2.75rem);
+    --fs-auth-subtitle: clamp(0.9375rem, 1vw, 1.125rem);
+    --fs-auth-section: clamp(1.125rem, 1.5vw, 1.375rem);
+    --fs-auth-meta: clamp(0.6875rem, 0.75vw, 0.75rem);
+
+    /* ── Orbs (teal/cyan palette) ──────────────
+       Opacity tuned for visibility against light --bg-page; dark
+       theme overrides below double the opacity per W181 SW6 polish
+       lesson (orbs against near-black slate-950 need ~2× to register). */
+    --auth-hero-orb: color-mix(in srgb, var(--color-teal-500) 10%, transparent);
+    --auth-hero-highlight: color-mix(in srgb, var(--color-cyan-400) 7%, transparent);
+    --auth-orb-1: color-mix(in srgb, var(--color-teal-500) 10%, transparent);
+    --auth-orb-2: color-mix(in srgb, var(--color-cyan-400) 8%, transparent);
+    --auth-orb-3: color-mix(in srgb, var(--color-teal-400) 7%, transparent);
+
+    /* ── Gradients & Flares ────────────────────────── */
+    --grad-auth-conic: conic-gradient(
+      from 200deg at 50% 50%,
+      var(--auth-orb-1),
+      var(--auth-orb-2),
+      transparent 85%
+    );
+    --auth-accent-line: linear-gradient(
+      to right,
+      transparent 10%,
+      var(--color-teal-500) 40%,
+      var(--color-cyan-400) 70%,
+      transparent 90%
+    );
+
+    /* ── Matte card system ────────────────────────── */
+    --auth-card-bg: color-mix(in srgb, var(--bg-surface) 96%, var(--color-teal-400) 4%);
+    --auth-card-shadow:
+      0 1px 2px color-mix(in srgb, black 5%, transparent),
+      0 4px 12px color-mix(in srgb, black 4%, transparent),
+      inset 0 1px 0 color-mix(in srgb, white 60%, transparent);
+    --auth-card-shadow-hover:
+      0 2px 4px color-mix(in srgb, black 6%, transparent),
+      0 8px 24px color-mix(in srgb, black 5%, transparent),
+      inset 0 1px 0 color-mix(in srgb, white 70%, transparent);
+    --auth-card-glow: color-mix(in srgb, var(--color-teal-500) 18%, transparent);
+
+    /* ── Section header accent (for hero copy, helper text) ── */
+    --auth-section-accent: var(--color-teal-500);
+    --auth-section-accent-bg: color-mix(in srgb, var(--color-teal-500) 8%, var(--bg-surface));
+
+    /* ── Form field ring (for inputs on focus) ──── */
+    --auth-input-ring: color-mix(in srgb, var(--color-teal-500) 35%, transparent);
+    --auth-input-ring-active: color-mix(in srgb, var(--color-teal-500) 50%, transparent);
+
+    /* ── Skeleton placeholders ────────────────────── */
+    --auth-skeleton-bg: color-mix(in srgb, var(--color-teal-400) 12%, var(--color-slate-200) 88%);
+  }
+
+  /* ── Dark Theme Overrides ──────────────────────── */
+  .dark .auth-theme {
+    /* Per W181 SW6 polish: orbs against near-black --bg-page = slate-950
+       need ~2× the light-mode opacity to register. Same calibration as
+       messenger.css + profile.css + settings.css dark overrides. */
+    --auth-hero-orb: color-mix(in srgb, var(--color-teal-500) 22%, transparent);
+    --auth-hero-highlight: color-mix(in srgb, var(--color-cyan-400) 16%, transparent);
+    --auth-orb-1: color-mix(in srgb, var(--color-teal-500) 22%, transparent);
+    --auth-orb-2: color-mix(in srgb, var(--color-cyan-400) 18%, transparent);
+    --auth-orb-3: color-mix(in srgb, var(--color-teal-400) 14%, transparent);
+
+    /* W181 SW6 polish pattern: matte card bg was indistinguishable from
+       bg-page in dark mode; bumped tint mix from 4% (light) to 12% (dark)
+       for visible elevation against slate-950. */
+    --auth-card-bg: color-mix(in srgb, var(--bg-surface) 88%, var(--color-teal-500) 12%);
+
+    /* Section accent bg needs higher tint in dark too. */
+    --auth-section-accent-bg: color-mix(in srgb, var(--color-teal-500) 12%, var(--bg-surface));
+
+    /* Skeleton bg uses darker slate base in dark mode (mirror
+       profile-skeleton-bg dark override). */
+    --auth-skeleton-bg: color-mix(in srgb, var(--color-teal-500) 8%, var(--color-slate-800) 92%);
+  }
+
+  /* ═══════════════════════════════════════════════════════
+     Auth matte card recipe — mirrors .profile-card-matte
+     (profile.css:128-153 W184 SW5) with teal accent line. Use
+     for auth form containers (replaces auth-card-glass in
+     Register, wraps SectionCard in ForgotPassword/ResetPassword).
+     ═══════════════════════════════════════════════════════ */
+  .auth-card-matte {
+    position: relative;
+    background: var(--auth-card-bg);
+    box-shadow: var(--auth-card-shadow);
+    border-radius: 1.25rem;
+    overflow: hidden;
+    transition:
+      box-shadow var(--motion-duration-fast, 0.18s) var(--ease-premium, ease-out),
+      transform var(--motion-duration-fast, 0.18s) var(--ease-premium, ease-out);
+  }
+
+  .auth-card-matte::before {
+    content: "";
+    position: absolute;
+    inset: 0 0 auto 0;
+    height: 1px;
+    background: var(--auth-accent-line);
+    opacity: 0.7;
+    pointer-events: none;
+  }
+
+  .auth-card-matte:hover {
+    box-shadow:
+      var(--auth-card-shadow-hover),
+      0 0 0 1px var(--auth-card-glow);
+  }
+
+  /* ═══════════════════════════════════════════════════════
+     Auth skeleton (matches .profile-skeleton W184 SW5 +
+     .messenger-skeleton W181 SW1 pattern). For loading states
+     during async auth checks (Register email validation, MFA
+     enrollment, reset-password token verification).
+     ═══════════════════════════════════════════════════════ */
+  .auth-skeleton {
+    background: var(--auth-skeleton-bg);
+    background-image: linear-gradient(
+      90deg,
+      transparent 0%,
+      color-mix(in srgb, white 18%, transparent) 50%,
+      transparent 100%
+    );
+    background-size: 200% 100%;
+    animation: auth-skeleton-shimmer var(--motion-duration-shimmer, 1.6s) ease-in-out infinite;
+    border-radius: var(--radius-sm, 0.75rem);
+  }
+
+  .dark .auth-skeleton {
+    background-image: linear-gradient(
+      90deg,
+      transparent 0%,
+      color-mix(in srgb, white 6%, transparent) 50%,
+      transparent 100%
+    );
+  }
+
+  @keyframes auth-skeleton-shimmer {
+    0% {
+      background-position: 200% 0;
+    }
+    100% {
+      background-position: -200% 0;
+    }
+  }
+
+  /* ═══════════════════════════════════════════════════════
+     Reduced-motion overrides — kill all transitions + animations
+     for users who opted into prefers-reduced-motion (FIX-69-a11y
+     pattern from Schedule polish arc, mirror profile.css:199-207).
+     ═══════════════════════════════════════════════════════ */
+  @media (prefers-reduced-motion: reduce) {
+    .auth-card-matte,
+    .auth-card-matte:hover {
+      transition: none;
+    }
+    .auth-skeleton {
+      animation: none;
+    }
+  }
+
+  /* ═══════════════════════════════════════════════════════
+     Print overrides — doubled-class specificity per FIX-72-04
+     (avoids !important; specificity bumps via repeated class).
+     ═══════════════════════════════════════════════════════ */
+  @media print {
+    .auth-theme.auth-theme {
+      background: white;
+      color: black;
+    }
+    .auth-theme.auth-theme .auth-card-matte {
+      background: white;
+      box-shadow: 0 0 0 1px var(--color-slate-200, #e5e7eb);
+    }
+  }
+}

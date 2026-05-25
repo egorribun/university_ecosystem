@@ -46,9 +46,12 @@ jobs:
         run: npm ci
 
       - name: Install wasm-pack
-        uses: taiki-e/install-action@d9be7d8cda89035c9c843f78bd44d4f72d8403d4 # v2.79.7
-        with:
-          tool: wasm-pack
+        # W142 polish-v3 — taiki-e/install-action wasm-pack broken (drager/
+        # wasm-pack 404; rustwasm/wasm-pack canonical since v0.14.0). Same
+        # fix as W141 polish-v2 visual-audit.yml + W142 chromatic.yml.
+        run: |
+          curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+          wasm-pack --version
 
       - name: Build WASM modules
         run: |
@@ -90,9 +93,12 @@ jobs:
         run: npm ci
 
       - name: Install wasm-pack
-        uses: taiki-e/install-action@d9be7d8cda89035c9c843f78bd44d4f72d8403d4 # v2.79.7
-        with:
-          tool: wasm-pack
+        # W142 polish-v3 — taiki-e/install-action wasm-pack broken (drager/
+        # wasm-pack 404; rustwasm/wasm-pack canonical since v0.14.0). Same
+        # fix as W141 polish-v2 visual-audit.yml + W142 chromatic.yml.
+        run: |
+          curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+          wasm-pack --version
 
       - name: Build WASM modules
         run: |
@@ -145,9 +151,12 @@ jobs:
       # The action verifies SHA256 checksums from official GitHub releases, preventing
       # supply chain attacks via DNS hijacking or CDN compromise (OWASP CI/CD C-PPE-1).
       - name: Install wasm-pack
-        uses: taiki-e/install-action@d9be7d8cda89035c9c843f78bd44d4f72d8403d4 # v2.79.7
-        with:
-          tool: wasm-pack
+        # W142 polish-v3 — taiki-e/install-action wasm-pack broken (drager/
+        # wasm-pack 404; rustwasm/wasm-pack canonical since v0.14.0). Same
+        # fix as W141 polish-v2 visual-audit.yml + W142 chromatic.yml.
+        run: |
+          curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+          wasm-pack --version
 
       - name: Build rust-crypto
         run: |
@@ -188,7 +197,7 @@ jobs:
           echo '{}' > bundle-report.json
           total_size=0
           main_chunk_size=0
-          for f in dist/assets/*.js; do
+          for f in dist/client/assets/*.js; do
             size=$(wc -c < "$f")
             name=$(basename "$f")
             total_size=$((total_size + size))
@@ -249,9 +258,12 @@ jobs:
         run: npm ci
 
       - name: Install wasm-pack
-        uses: taiki-e/install-action@d9be7d8cda89035c9c843f78bd44d4f72d8403d4 # v2.79.7
-        with:
-          tool: wasm-pack
+        # W142 polish-v3 — taiki-e/install-action wasm-pack broken (drager/
+        # wasm-pack 404; rustwasm/wasm-pack canonical since v0.14.0). Same
+        # fix as W141 polish-v2 visual-audit.yml + W142 chromatic.yml.
+        run: |
+          curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+          wasm-pack --version
 
       - name: Run Lighthouse CI
         run: npm run lhci

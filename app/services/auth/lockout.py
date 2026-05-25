@@ -101,8 +101,17 @@ class LockoutService:
         lock_until: datetime | None = None
         for threshold, seconds in rules:
             if total >= threshold:
-                # RZ-W19-03: use attempts[0] (most recent) not attempts[-1] (oldest)
-                # after _fetch_recent_attempts reverses the list, [0] is newest
+                # RZ-W19-03 (corrected W185 SW4 + cross-verified W184 SW4):
+                # use attempts[0] (OLDEST of top-`limit` slice — not most recent).
+                # _fetch_recent_attempts queries DB ORDER BY attempted_at.desc()
+                # then calls attempts.reverse() at line 86, so post-reverse [0] is
+                # the OLDEST attempt in the slice. Lockout extends `seconds` past
+                # the OLDEST attempt for wider CI parallel-worker drift tolerance
+                # (W184 SW4 widened "2:1" → "2:3" window + sleep 1.2s → 3.5s
+                # to close the W149 §Honesty #6 34-wave recurring flake exactly
+                # because the OLDEST-anchored timing is what the implementation
+                # uses — the pre-W185 comment claimed "[0] is newest" but the
+                # DESC + reverse chain actually puts OLDEST at [0]).
                 attempt_time = self._normalize_timestamp(attempts[0].attempted_at)
                 candidate = attempt_time + timedelta(seconds=seconds)
                 if candidate > now:

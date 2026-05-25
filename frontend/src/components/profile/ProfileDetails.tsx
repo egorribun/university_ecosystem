@@ -18,8 +18,10 @@ export const ProfileDetails = ({ user, isOpen, onToggle }: ProfileDetailsProps) 
   return (
     <SectionCard className="p-0 border-none bg-(--bg-surface)/(--opacity-subtle) rounded-3xl overflow-hidden">
       <button
+        type="button"
         onClick={onToggle}
-        className="mt-(--space-4) space-y-1 relative items-center justify-between px-6 py-5 hover:bg-(--bg-surface)/(--opacity-dim) transition-colors"
+        aria-expanded={isOpen}
+        className="mt-(--space-4) space-y-1 relative items-center justify-between px-6 py-5 hover:bg-(--bg-surface)/(--opacity-dim) transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-(--bg-surface)"
       >
         <h2 className="text-lg font-bold tracking-tight text-text-primary">
           {t("profile:sections.details")}

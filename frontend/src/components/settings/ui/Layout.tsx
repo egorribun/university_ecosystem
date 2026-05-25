@@ -1,4 +1,4 @@
-import React, { useState } from "react"
+import React, { useId, useRef, useState } from "react"
 import { m } from "framer-motion"
 import { cn } from "@/utils/cn"
 
@@ -193,11 +193,26 @@ export function Divider({
 }
 
 // Navigation Components
+// Wave 175 SW6 — full ARIA APG tabs pattern:
+// - role="tablist" with aria-orientation="horizontal"
+// - role="tab" + aria-selected + aria-controls (each tab points at the
+//   panel) + roving tabindex (active=0, inactive=-1) so Tab key skips
+//   inactive tabs to reach panel content (per ARIA APG guidance).
+// - Arrow-key keyboard nav (Left/Right with modulo, Home, End) — caller
+//   passes `panelId` so we can stable-id tabs `${panelId}-tab-${index}`
+//   and the parent wraps content in <section id={panelId} role="tabpanel"
+//   aria-labelledby={${panelId}-tab-${activeIndex}}>.
+// - When `panelId` not supplied, fall back to a useId()-generated value
+//   so the keyboard nav + roving tabindex still work for legacy callers
+//   (just without aria-controls/labelledby — the dialog still has
+//   role="tab" so screen readers identify tab context).
 export function Tabs({
   value,
   onChange,
   children,
   className = "",
+  panelId,
+  ariaLabel,
 }: {
   value: number
   onChange: (e: unknown, value: number) => void
@@ -205,10 +220,64 @@ export function Tabs({
   scrollButtons?: string
   children: React.ReactNode
   className?: string
+  panelId?: string
+  ariaLabel?: string
 }) {
+  const generatedId = useId()
+  const resolvedPanelId = panelId ?? `${generatedId}-tabpanel`
+  const tabIdPrefix = `${resolvedPanelId}-tab`
+  const containerRef = useRef<HTMLDivElement | null>(null)
+
+  const tabCount = React.Children.count(children)
+
+  const focusTab = (index: number) => {
+    const container = containerRef.current
+    if (!container) return
+    const tabButton = container.querySelector<HTMLButtonElement>(
+      `#${CSS.escape(tabIdPrefix)}-${index}`
+    )
+    tabButton?.focus()
+  }
+
+  const handleKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (tabCount <= 1) return
+    let nextIndex: number | null = null
+    switch (event.key) {
+      case "ArrowRight":
+        nextIndex = (value + 1) % tabCount
+        break
+      case "ArrowLeft":
+        nextIndex = (value - 1 + tabCount) % tabCount
+        break
+      case "Home":
+        nextIndex = 0
+        break
+      case "End":
+        nextIndex = tabCount - 1
+        break
+      default:
+        return
+    }
+    event.preventDefault()
+    onChange(null, nextIndex)
+    // Defer focus to next tick so the cloned button has updated tabIndex
+    // (selected tab gets tabIndex=0; others get -1). Without this defer
+    // browser may briefly focus the OLD tab before React re-renders.
+    queueMicrotask(() => focusTab(nextIndex as number))
+  }
+
   return (
+    // ARIA APG tabs pattern: role="tablist" is a CONTAINER role; the
+    // tablist itself should NOT be in tab order (only the active tab via
+    // roving tabindex). ESLint jsx-a11y treats tablist as interactive
+    // requiring tabIndex, but ARIA spec disagrees — disabling per W175 SW6.
+    // eslint-disable-next-line jsx-a11y/interactive-supports-focus
     <div
+      ref={containerRef}
       role="tablist"
+      aria-orientation="horizontal"
+      aria-label={ariaLabel}
+      onKeyDown={handleKeyDown}
       className={cn(
         "relative flex flex-wrap items-center gap-1.5 overflow-x-auto rounded-2xl px-1.5 py-1.5",
         "border border-(--glass-border) bg-(--bg-surface)/(--opacity-soft) backdrop-blur-md shadow-glass",
@@ -222,11 +291,15 @@ export function Tabs({
               selected?: boolean
               onClick?: () => void
               index?: number
+              tabId?: string
+              panelId?: string
             }>,
             {
               selected: value === index,
               index: index,
               onClick: () => onChange(null, index),
+              tabId: `${tabIdPrefix}-${index}`,
+              panelId: resolvedPanelId,
             }
           )
         }
@@ -241,20 +314,34 @@ export function Tab({
   selected,
   onClick,
   layoutId = "settings-tab-indicator",
+  tabId,
+  panelId,
 }: {
   label: string
   selected?: boolean
   onClick?: () => void
   layoutId?: string
+  // Wave 175 SW6 — supplied by parent Tabs via cloneElement.
+  index?: number
+  tabId?: string
+  panelId?: string
 }) {
   return (
     <button
       type="button"
       role="tab"
+      id={tabId}
       aria-selected={selected}
+      aria-controls={panelId}
+      // Roving tabindex per ARIA APG — only selected tab is in Tab-key
+      // order; inactive tabs are reachable via Arrow keys inside the
+      // tablist. Default `selected` to false for the first-render case
+      // when Tabs hasn't cloned yet.
+      tabIndex={selected ? 0 : -1}
       onClick={onClick}
       className={cn(
         "relative flex h-10 items-center justify-center rounded-xl px-5 text-sm font-black transition-all duration-slow",
+        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-(--bg-surface)",
         selected
           ? "text-text-primary"
           : "text-(--text-secondary) opacity-strong hover:opacity-100 hover:bg-(--bg-surface-hover)/(--opacity-dim)"

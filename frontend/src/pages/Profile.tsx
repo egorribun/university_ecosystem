@@ -1,5 +1,5 @@
 import { useAuth } from "@/contexts/AuthContext"
-import { useEffect, useState, useRef, useCallback } from "react"
+import { useEffect, useId, useState, useRef, useCallback } from "react"
 import { useNavigate } from "@tanstack/react-router"
 import api from "@/api/client"
 import type { User } from "@/types/User"
@@ -18,6 +18,7 @@ import {
 } from "@/components/settings"
 import { m } from "framer-motion"
 import { breakpoints } from "@/theme/tokens"
+import useMediaQuery from "@/hooks/useMediaQuery"
 
 import { useNowPlaying } from "@/hooks/useNowPlaying"
 import { useTranslation } from "react-i18next"
@@ -30,6 +31,7 @@ import {
   AchievementsSection,
   ProfileEditor,
   ProfileSkeleton,
+  ProfileBackdrop,
   parseAchievements,
   buildVCardString,
   calculateAvatarSize,
@@ -47,22 +49,31 @@ export default function Profile() {
   const [snackbar, setSnackbar] = useState<SnackbarState | null>(null)
   const [avatarVersion, setAvatarVersion] = useState(Date.now())
   const [coverVersion, setCoverVersion] = useState(Date.now())
-  const reduceMotion =
-    typeof window !== "undefined" &&
-    typeof window.matchMedia === "function" &&
-    window.matchMedia("(prefers-reduced-motion: reduce)").matches
-  const isWideScreen =
-    typeof window !== "undefined" &&
-    typeof window.matchMedia === "function" &&
-    window.matchMedia(`(min-width: ${breakpoints.wide})`).matches
-  const isMobile =
-    typeof window !== "undefined" &&
-    typeof window.matchMedia === "function" &&
-    window.matchMedia(`(max-width: ${breakpoints.mobile})`).matches
+  // Wave 175 SW4 — 3× top-level synchronous matchMedia calls (pre-W175 inline
+  // typeof-window guards) replaced with useMediaQuery hook. Benefits:
+  // (a) reactive — re-renders on viewport change / system preference change
+  //   (previously fixed at first render);
+  // (b) consistent SSR-safety (hook handles typeof window guard internally);
+  // (c) eliminates 3× repeated typeof-window/matchMedia boilerplate.
+  const reduceMotion = useMediaQuery("(prefers-reduced-motion: reduce)")
+  const isWideScreen = useMediaQuery(`(min-width: ${breakpoints.wide})`)
+  const isMobile = useMediaQuery(`(max-width: ${breakpoints.mobile})`)
+  // Wave 184 SW5 (Path D) — narrow breakpoint for ProfileBackdrop orb scaling
+  // (mirrors W181 SW2 MessengerBackdrop convention). Sub-content-breakpoint
+  // viewports (~< 900px) get scaled-down orbs to avoid overflow + keep
+  // visual weight balanced for the smaller stage.
+  const isNarrow = useMediaQuery(`(max-width: ${breakpoints.content})`)
   const { t } = useTranslation(["profile", "common"])
   const [qrOpen, setQrOpen] = useState(false)
   const [detailsOpen, setDetailsOpen] = useState(true)
   const [achievementOpen, setAchievementOpen] = useState<AchievementItem | null>(null)
+  // Wave 175 SW5 — stable IDs for Dialog aria-labelledby/aria-describedby
+  // wiring (shared Dialog now accepts ariaLabelledBy + ariaDescribedBy props;
+  // DialogTitle + DialogContent accept matching id prop).
+  const qrTitleId = useId()
+  const qrDescId = useId()
+  const achievementTitleId = useId()
+  const achievementDescId = useId()
   const emailButtonRef = useRef<HTMLButtonElement | null>(null)
   const telegramButtonRef = useRef<HTMLButtonElement | null>(null)
   const spotifyConnected = Boolean(user?.spotify_connected || user?.spotify_is_connected)
@@ -218,11 +229,21 @@ export default function Profile() {
           animate={{ opacity: 1, y: 0 }}
           transition={isTest ? { duration: 0 } : { type: "spring", stiffness: 460, damping: 34 }}
         >
+          {/* Wave 184 SW5 (Path D) — profile-theme scope wrapper enables
+              tokens/profile.css (rose/pink/amber palette + matte cards +
+              skeleton) inside this subtree. ProfileBackdrop mounts inside
+              the section's `relative` positioning context so its
+              `absolute inset-0` orbs span the full Profile viewport. */}
           <section
-            className="profile-page relative min-h-screen flex flex-col py-12 sm:py-16 md:py-20 lg:py-24 px-3 sm:px-4 md:px-6 lg:px-8"
+            className="profile-theme profile-page relative min-h-screen flex flex-col py-12 sm:py-16 md:py-20 lg:py-24 px-3 sm:px-4 md:px-6 lg:px-8"
             data-testid="profile-root"
             aria-label={t("profile:aria.page")}
           >
+            <ProfileBackdrop
+              isNarrow={isNarrow}
+              isMobile={isMobile}
+              prefersReducedMotion={reduceMotion}
+            />
             <div className="container-fluid-responsive">
               <m.div
                 className="px-4 sm:px-6 md:px-8 lg:px-10 xl:px-12 py-8 sm:py-10 md:py-12 lg:py-14 rounded-sm sm:rounded-md md:rounded-lg relative overflow-hidden bg-primary-subtle-bg/(--opacity-subtle) shadow-glass border border-glass-border-subtle/(--opacity-dim) backdrop-blur-md"
@@ -322,11 +343,27 @@ export default function Profile() {
       </PageFadeIn>
 
       {/* QR Code Dialog */}
-      <Dialog open={qrOpen} onClose={() => setQrOpen(false)} maxWidth="xs" fullWidth>
-        <DialogTitle className="text-center">{t("profile:dialog.qr.title")}</DialogTitle>
-        <DialogContent className="flex flex-col items-center justify-center gap-3 min-h-(--h-dialog-min)">
+      <Dialog
+        open={qrOpen}
+        onClose={() => setQrOpen(false)}
+        maxWidth="xs"
+        fullWidth
+        ariaLabelledBy={qrTitleId}
+        ariaDescribedBy={qrDescId}
+      >
+        <DialogTitle id={qrTitleId} className="text-center">
+          {t("profile:dialog.qr.title")}
+        </DialogTitle>
+        <DialogContent
+          id={qrDescId}
+          className="flex flex-col items-center justify-center gap-3 min-h-(--h-dialog-min)"
+        >
           <div className="w-full md:w-80 lg:w-96 flex flex-col border-r border-msg-border h-full relative z-deep bg-msg-sidebar">
-            <QRCodeSVG value={vCardData} size={300} level="H" includeMargin />
+            {/* Wave 175 SW5 — QR is decorative (vCard meaning conveyed by
+                dialog title "Share contact" + hint below); aria-hidden
+                prevents screen readers from announcing "graphic" with no
+                useful content (per W120 polish-v2 svg-img-alt gotcha). */}
+            <QRCodeSVG value={vCardData} size={300} level="H" includeMargin aria-hidden="true" />
           </div>
           <p className="text-xs text-(--text-secondary) text-center mt-2 opacity-hover">
             {t("profile:dialog.qr.hint")}
@@ -345,9 +382,11 @@ export default function Profile() {
         onClose={() => setAchievementOpen(null)}
         maxWidth="xs"
         fullWidth
+        ariaLabelledBy={achievementTitleId}
+        ariaDescribedBy={achievementDescId}
       >
-        <DialogTitle>{achievementOpen?.name}</DialogTitle>
-        <DialogContent className="grid gap-4 py-4">
+        <DialogTitle id={achievementTitleId}>{achievementOpen?.name}</DialogTitle>
+        <DialogContent id={achievementDescId} className="grid gap-4 py-4">
           {achievementOpen?.issuer && (
             <div className="flex flex-col gap-0.5">
               <span className="text-label-xs font-bold uppercase tracking-wider text-brand opacity-strong">

@@ -5,6 +5,11 @@ import { isAxiosError } from "axios"
 import { formatDate, toDate } from "@/utils/date"
 
 import api from "@/api/client"
+import {
+  invalidateSessions,
+  sessionsQueryOptions,
+  updateSessionInCache,
+} from "@/api/hooks/sessions"
 import { useAuth } from "@/contexts/AuthContext"
 import type { ActiveSession } from "@/types/Session"
 import type { SetSnackbar } from "@/pages/settings/types"
@@ -47,23 +52,28 @@ export function useSessionManagement({
   const { user, logout } = useAuth()
   const queryClient = useQueryClient()
 
-  const sessionsKey = useMemo(() => ["auth", "sessions", user?.id ?? "me"], [user?.id])
-
-  const fetchSessions = useCallback(async () => {
-    const { data } = await api.get<ActiveSession[]>("/auth/sessions")
-    return data
-  }, [])
+  // Wave 134 SW2 — sessions queryKey + queryFn now provided by the
+  // sessionsQueryOptions factory at api/hooks/sessions.ts so the SSR
+  // loader for /settings (routes/_auth/settings.tsx) can prefetch on
+  // ?tab=2 (Security) using the SAME cache slot that this client-side
+  // useQuery reads from. Cache identity is preserved at the queryKey
+  // tuple shape ["auth", "sessions", userId] (matches pre-W134 behaviour
+  // exactly). The factory also supplies staleTime: 30_000, gcTime, retry
+  // semantics — preserved verbatim from the pre-W134 inline config.
+  //
+  // Wave 135 SW1 — mutation cache writes now route through the factory's
+  // updateSessionInCache + invalidateSessions exports so the cache key is
+  // never touched directly from this hook. Closes W134 §Honesty #5.
+  const userId = user?.id ?? "me"
 
   const {
     data: sessionsData,
     isFetching: sessionsFetching,
     isError: sessionsIsError,
     error: sessionsError,
-  } = useQuery<ActiveSession[], unknown>({
-    queryKey: sessionsKey,
-    queryFn: fetchSessions,
+  } = useQuery({
+    ...sessionsQueryOptions(userId),
     enabled: tabActive && Boolean(user),
-    staleTime: 30_000,
   })
 
   const sessions = useMemo(() => (Array.isArray(sessionsData) ? sessionsData : []), [sessionsData])
@@ -118,12 +128,12 @@ export function useSessionManagement({
         const result = await revokeSessionMutation.mutateAsync(sessionId)
         setSnackbar({ text: t("settings:sessions.snackbar.revoked"), severity: "success" })
 
-        // Update cache immediately and then invalidate
-        queryClient.setQueryData<ActiveSession[] | undefined>(sessionsKey, (previous) => {
-          if (!Array.isArray(previous)) return previous
-          return previous.map((session) => (session.id === result.id ? result : session))
-        })
-        await queryClient.invalidateQueries({ queryKey: sessionsKey })
+        // Wave 135 SW1 — factory-routed cache mutation. The previous
+        // inline setQueryData + invalidateQueries pattern is now in
+        // updateSessionInCache + invalidateSessions at api/hooks/sessions.ts
+        // (closes W134 §Honesty #5).
+        updateSessionInCache(queryClient, userId, result)
+        await invalidateSessions(queryClient, userId)
 
         if (result?.is_current) {
           await logout()
@@ -141,14 +151,15 @@ export function useSessionManagement({
         })
       }
     },
-    [logout, openStepUpFor, queryClient, revokeSessionMutation, sessionsKey, setSnackbar, t]
+    [logout, openStepUpFor, queryClient, revokeSessionMutation, setSnackbar, t, userId]
   )
 
   const handleRevokeAllSessions = useCallback(
     async (options?: { skipStepUp?: boolean }) => {
       try {
         const result = await revokeAllSessionsMutation.mutateAsync()
-        await queryClient.invalidateQueries({ queryKey: sessionsKey })
+        // Wave 135 SW1 — factory-routed invalidation (closes W134 §Honesty #5).
+        await invalidateSessions(queryClient, userId)
         setSnackbar({
           text: t("settings:sessions.snackbar.revokedAll", {
             count: result?.revoked ?? 0,
@@ -168,7 +179,7 @@ export function useSessionManagement({
         })
       }
     },
-    [openStepUpFor, queryClient, revokeAllSessionsMutation, sessionsKey, setSnackbar, t]
+    [openStepUpFor, queryClient, revokeAllSessionsMutation, setSnackbar, t, userId]
   )
 
   useEffect(() => {

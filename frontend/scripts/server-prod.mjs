@@ -44,6 +44,10 @@ import { Readable } from "node:stream"
 import path from "node:path"
 import process from "node:process"
 import { pathToFileURL } from "node:url"
+// Wave 175 SW8 — CONTENT_TYPES extracted to a side-effect-free module
+// (`scripts/contentTypes.mjs`) so regression tests can import the map
+// without triggering this script's top-level createServer + listen.
+import { CONTENT_TYPES } from "./contentTypes.mjs"
 
 const PORT = Number(process.env.PORT ?? 3000)
 const HOST = process.env.HOST ?? "0.0.0.0"
@@ -68,7 +72,7 @@ const handler = handlerModule.default ?? handlerModule
 if (typeof handler?.fetch !== "function") {
   console.error(
     `server-prod: imported module from ${handlerEntryPath} does not expose .fetch handler. ` +
-      `Run 'npm run build' first to produce dist/server/server.js.`,
+      `Run 'npm run build' first to produce dist/server/server.js.`
   )
   process.exit(1)
 }
@@ -77,25 +81,13 @@ if (typeof handler?.fetch !== "function") {
 // actually contains; unknown extensions fall through to
 // `application/octet-stream` (browsers handle that gracefully for the
 // few stragglers like .map source-map files).
-const CONTENT_TYPES = Object.freeze({
-  ".js": "application/javascript; charset=utf-8",
-  ".mjs": "application/javascript; charset=utf-8",
-  ".css": "text/css; charset=utf-8",
-  ".html": "text/html; charset=utf-8",
-  ".json": "application/json; charset=utf-8",
-  ".webmanifest": "application/manifest+json; charset=utf-8",
-  ".svg": "image/svg+xml",
-  ".png": "image/png",
-  ".jpg": "image/jpeg",
-  ".jpeg": "image/jpeg",
-  ".webp": "image/webp",
-  ".ico": "image/x-icon",
-  ".woff2": "font/woff2",
-  ".woff": "font/woff",
-  ".ttf": "font/ttf",
-  ".map": "application/json; charset=utf-8",
-  ".txt": "text/plain; charset=utf-8",
-})
+// Wave 173 SW1 — `.wasm: application/wasm` invariant lives in
+// `./contentTypes.mjs` (imported above). Wave 175 SW8 extracted the map
+// to a side-effect-free module so regression tests can verify the
+// invariant without triggering server startup.
+//
+// Closes W131 SW7 omission that lay dormant ≥17 waves because /messenger
+// (chat — the only feature exercising crypto.worker) was Phase 5 punted.
 
 function serveStatic(req, res, urlPath) {
   // Security: reject paths that escape staticRoot via `..`. path.join +

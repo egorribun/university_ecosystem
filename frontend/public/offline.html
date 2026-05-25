@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="ru">
   <head>
     <meta charset="UTF-8" />
@@ -10,7 +10,13 @@
       }
       body {
         margin: 0;
-        font-family: "Inter", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        font-family:
+          "Inter",
+          system-ui,
+          -apple-system,
+          BlinkMacSystemFont,
+          "Segoe UI",
+          sans-serif;
         display: grid;
         min-height: 100vh;
         place-items: center;
@@ -63,7 +69,9 @@
         cursor: pointer;
         background: #0b63f4;
         color: #fff;
-        transition: transform 0.2s ease, box-shadow 0.2s ease;
+        transition:
+          transform 0.2s ease,
+          box-shadow 0.2s ease;
       }
       button:focus-visible {
         outline: 2px solid currentColor;
@@ -94,30 +102,36 @@
     <main>
       <h1 data-i18n="offline.title">Нет подключения к сети</h1>
       <p data-i18n="offline.description">
-        Экосистема ГУУ автоматически синхронизирует расписание, новости и карту кампуса,
-        как только вы вернётесь в сеть.
+        Экосистема ГУУ автоматически синхронизирует расписание, новости и карту кампуса, как только
+        вы вернётесь в сеть.
       </p>
       <ul>
-        <li data-i18n="offline.hints.0">Расписание и новости, просмотренные ранее, останутся доступными офлайн.</li>
-        <li data-i18n="offline.hints.1">Карта кампуса обновится автоматически после восстановления подключения.</li>
+        <li data-i18n="offline.hints.0">
+          Расписание и новости, просмотренные ранее, останутся доступными офлайн.
+        </li>
+        <li data-i18n="offline.hints.1">
+          Карта кампуса обновится автоматически после восстановления подключения.
+        </li>
       </ul>
       <button type="button" onclick="window.location.reload()" data-i18n="offline.retry">
         Повторить попытку
       </button>
-      <small data-i18n="offline.footer">Проверьте подключение или попробуйте открыть приложение позднее.</small>
+      <small data-i18n="offline.footer"
+        >Проверьте подключение или попробуйте открыть приложение позднее.</small
+      >
     </main>
     <script>
-      (function () {
+      ;(function () {
         import("./static-shell-i18n.js")
           .then(({ applyDocumentLanguage, applyOfflineTranslations, getPreferredLanguage }) => {
-            const language = getPreferredLanguage(window);
-            applyDocumentLanguage(document, language);
-            applyOfflineTranslations(document, language);
+            const language = getPreferredLanguage(window)
+            applyDocumentLanguage(document, language)
+            applyOfflineTranslations(document, language)
           })
           .catch((error) => {
-            console.error("Failed to load offline translations", error);
-          });
-      })();
+            console.error("Failed to load offline translations", error)
+          })
+      })()
     </script>
   </body>
 </html>

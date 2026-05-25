@@ -15,6 +15,13 @@ import { SearchDialog } from "@/components/search/SearchDialog"
 import { AppProviders } from "@/AppProviders"
 import { ThemeProvider } from "@/contexts/ThemeContext"
 import { QueryClientProvider } from "@tanstack/react-query"
+// W149 SW2 — PersistQueryClientProvider + singleton queryClient + idbPersister
+// moved here from main.tsx so the client RootComponent provider tree matches
+// SsrRoot's structurally for hydrateRoot reconciliation. SsrRoot (line 305)
+// continues to use per-request QueryClient from routerContext — IndexedDB is
+// browser-only, so server CANNOT use PersistQueryClientProvider regardless.
+import { PersistQueryClientProvider } from "@tanstack/react-query-persist-client"
+import { queryClient, idbPersister } from "@/app/queryClient"
 
 // Wave 125 Phase 2 — pre-paint inline scripts. These run in the document
 // scaffold BEFORE any React code or bundle JS evaluates, so they avoid
@@ -37,15 +44,19 @@ const THEME_INIT_SCRIPT = `;(function () {
   var html = document.documentElement
   if (dark) html.classList.add("dark")
 
-  // 2. Language Detection
+  // 2. Language Detection — MUST match SSR's extractLangFromRequest (ssrTheme.ts:resolveLang)
+  // which reads only the "ue:language" cookie (or localStorage mirror) and defaults to "ru".
+  // W150 polish-followup: REMOVED navigator.language fallback. SSR cannot read
+  // navigator.language (server-side), so if client did and switched to "en" while
+  // SSR stayed "ru", every i18n string mismatched -> React error #418 hydration
+  // failure -> renderer hang. Per W127 SW4 design: cookie-mirror + localStorage
+  // are the canonical sources; explicit language toggle in UI is the only way
+  // to switch from default Russian.
   var lang = "ru"
   try {
     var storedLang = localStorage.getItem("ue:language")
     if (storedLang === "en" || storedLang === "ru") {
       lang = storedLang
-    } else {
-      var browser = (navigator.language || "").toLowerCase()
-      if (browser.indexOf("en") === 0) lang = "en"
     }
   } catch (error) {}
   html.setAttribute("lang", lang)
@@ -120,18 +131,31 @@ body::after {
 /* LHCI_CSS_PLACEHOLDER */`
 
 export const Route = createRootRouteWithContext<RouterContext>()({
-  // Wave 126 polish — root opts INTO SSR so per-route SSR enablement
-  // can override more restrictively (per TanStack Start v1 docs:
-  // "Child routes inherit the Selective SSR configuration from their
-  // parent routes. However, an inherited SSR value can only be made
-  // MORE restrictive."). With `ssr: true` here, child layouts under
-  // `_auth.tsx` + `_admin.tsx` set `ssr: false` to preserve their
-  // client-only behavior (provider chain not yet hoisted for SSR);
-  // routes under `_public.tsx` inherit `ssr: true` which means
-  // `/login` can render server-side via `RootComponent`'s
-  // `import.meta.env.SSR` branch (returns minimal `<Outlet />` on
-  // SSR — Phase 5 will hoist providers so MainLayout becomes
-  // SSR-safe and full route SSR delivers the LCP win).
+  // Wave 128 SW2 baseline: root `ssr: true` so per-route `ssr: true` annotations
+  // on /dashboard + /events + /news + /schedule + /profile + /settings + per-page
+  // SSR LCP wins are honored (TanStack Start inheritance: child can only be MORE
+  // restrictive — `_auth.tsx` + `_admin.tsx` opt down to ssr:false; `_public.tsx`
+  // inherits ssr:true).
+  //
+  // Wave 154 SW1 — restored to W128 baseline AFTER W153 SW2 closed the underlying
+  // React #418 hydration mismatch root cause. The W150 polish-followup ssr:false
+  // workaround (commit 7c97de583, 2026-05-14) was a TEMPORARY fix that the author
+  // explicitly noted should be reverted "once the hydration mismatch is root-caused"
+  // (per the original inline comment block, pre-W154). W153 SW2 (commit d931492e3)
+  // IS that root-cause closure: it made `router.ts:78 defaultPendingComponent`
+  // SSR-aware via `import.meta.env.SSR` literal substitution, eliminating the
+  // W152 Phase 1.5 visible Loading… DOM that was tripping `main.tsx:121-127
+  // hasRealSsrContent` ELEMENT_NODE detection into the wrong (`hydrateRoot()`)
+  // branch on ssr:false routes.
+  //
+  // The ssr:false workaround was structurally NECESSARY at W150 (to escape #418)
+  // BUT became actively HARMFUL post-W152 Phase 1.7 `<StartClient />` adoption:
+  // `<StartClient />` reads `self.$_TSR.router` SSR stream to align client router
+  // state with server-emitted manifest entries. With ssr:false, that stream was
+  // minimal/empty → TanStack Router's `<Matches>` sat in ambiguous pending state →
+  // internal `<Suspense fallback={null}>` rendered nothing → V8 main-thread wedge
+  // severe enough to block DevTools attachment (per `App.tsx:30-51` comment block,
+  // user real-Chrome verified W153+W154 Q0).
   ssr: true,
   // Wave 125 Phase 2 — head() registers metadata that TanStack Router's
   // `<HeadContent />` injects into `<head>` during SSR + client. Mirrors
@@ -223,10 +247,8 @@ function RootShell({ children }: { children: React.ReactNode }) {
   // route + any nested routes (via TanStack Router's head merging).
   // `<Scripts />` injects the bundle entry script tags + modulepreload
   // links produced by Vite + tanstackStart.
-  const ssrTheme =
-    typeof globalThis !== "undefined" ? globalThis.__ssrThemeGetter__?.() : undefined
-  const ssrLang =
-    typeof globalThis !== "undefined" ? globalThis.__ssrLangGetter__?.() : undefined
+  const ssrTheme = typeof globalThis !== "undefined" ? globalThis.__ssrThemeGetter__?.() : undefined
+  const ssrLang = typeof globalThis !== "undefined" ? globalThis.__ssrLangGetter__?.() : undefined
   const isDark = ssrTheme === "dark"
   const lang = ssrLang ?? "ru"
 
@@ -236,7 +258,22 @@ function RootShell({ children }: { children: React.ReactNode }) {
         <HeadContent />
         <style dangerouslySetInnerHTML={{ __html: INITIAL_PAINT_CSS }} />
       </head>
-      <body>
+      {/*
+        W156 SW3 polish — `suppressHydrationWarning` on <body> because browser
+        extensions (LastPass / 1Password / Microsoft Bing Copilot / Grammarly /
+        etc.) inject attributes like `__processed_<uuid>__="true"` and
+        `bis_register="<base64 JSON>"` into <body> BEFORE React hydrates. The
+        attributes are not in our SSR HTML, so React 19 detects them as a
+        client-vs-server hydration mismatch and emits "A tree hydrated but
+        some attributes of the server rendered HTML didn't match the client
+        properties" warning. React's hydration-mismatch docs explicitly call
+        out this case: "It can also happen if the client has a browser
+        extension installed which messes with the HTML before React loaded."
+        suppressHydrationWarning targets <body> ONLY (children still get full
+        hydration checks); it's the canonical React 19 fix for extension-
+        injected attributes.
+      */}
+      <body suppressHydrationWarning>
         <div
           id="lhci-marker"
           style={{
@@ -256,7 +293,25 @@ function RootShell({ children }: { children: React.ReactNode }) {
         >
           LHCI RENDER START
         </div>
-        <div id="root">{children}</div>
+        {/*
+          W156 SW3 polish — `className="ready"` rendered server-side via JSX
+          so the opacity-1 state is in the SSR HTML from the start. Pre-W156
+          SW3 main.tsx imperatively added `.ready` via classList.add post-
+          hydrateRoot; React 19 hydration is concurrent + may span multiple
+          frames, so the imperative mutation (even via requestAnimationFrame)
+          races React's hydration comparison → "won't be patched up" warning.
+          Emitting the class via JSX gives both SSR and client the same
+          attribute from the start — no mismatch.
+          Trade-off: the opacity 0 → 1 transition (INITIAL_PAINT_CSS at line ~115)
+          never fires now (#root starts at opacity 1). Acceptable for SSR (content
+          is already rendered, no FOUC to hide); for noscript users, the existing
+          <noscript><style>{`#root { display: block !important; }`}</style></noscript>
+          fallback below preserves visibility independently.
+          main.tsx still hides the lhci-marker on LHCI builds (separate concern).
+        */}
+        <div id="root" className="ready">
+          {children}
+        </div>
         <noscript>
           <style>{`#root { display: block !important; }`}</style>
         </noscript>
@@ -286,21 +341,40 @@ function RootComponent() {
   if (import.meta.env.SSR) {
     return <SsrRoot />
   }
+  // W149 SW2 — PersistQueryClientProvider wraps RootComponent so the client
+  // tree matches SsrRoot's structure (QueryClientProvider wraps everything)
+  // for hydrateRoot reconciliation. SsrRoot uses per-request QueryClient
+  // from routerContext (W128 SW3); RootComponent uses the singleton from
+  // @/app/queryClient + idbPersister which hydrates the cache from
+  // IndexedDB post-mount asynchronously. The provider itself emits no DOM
+  // so the SSR HTML doesn't carry it — hydration compares only the
+  // rendered children, which ARE identical between SsrRoot + RootComponent.
+  //
+  // Wave 152 Phase 1.8 RAN as a diagnostic swap to vanilla
+  // `<QueryClientProvider>` to test the IDB-hydration-wedge hypothesis
+  // (H4 from opening prompt). RESULT: NEGATIVE — user-facing /login blank
+  // PERSISTED with vanilla provider. IDB hydration is NOT the wedge cause.
+  // Phase 1.8 reverted; PersistQueryClientProvider restored. W153+
+  // investigation should target AuthProvider's useProfileSync render loop,
+  // WebSocketProvider sync init, MessengerProvider, MainLayout, OR
+  // a deeper module-init issue (per W141 anti-pattern #1 iter cap reached).
   return (
-    <ThemeProvider>
-      <AppProviders>
-        <MainLayout>
-          <PageErrorBoundary>
-            <Outlet />
-          </PageErrorBoundary>
+    <PersistQueryClientProvider client={queryClient} persistOptions={{ persister: idbPersister }}>
+      <ThemeProvider>
+        <AppProviders>
+          <MainLayout>
+            <PageErrorBoundary>
+              <Outlet />
+            </PageErrorBoundary>
 
-          <SearchDialog />
-          <LivePushToasts />
-          <OfflineIndicator />
-          <InstallPrompt />
-        </MainLayout>
-      </AppProviders>
-    </ThemeProvider>
+            <SearchDialog />
+            <LivePushToasts />
+            <OfflineIndicator />
+            <InstallPrompt />
+          </MainLayout>
+        </AppProviders>
+      </ThemeProvider>
+    </PersistQueryClientProvider>
   )
 }
 

@@ -55,7 +55,11 @@ describe("useScheduleURLSync", () => {
 
     renderHook(() => useScheduleURLSync())
 
-    expect(mockSetParam).toHaveBeenCalledWith("w", "3")
+    // W147 SW5 — setParam now takes `number` for `w` after schedule schema
+    // changed to `v.union([v.number(), v.pipe(v.string(), v.transform(...))])`.
+    // Same union pattern as W120 SW5 mapSearchSchema; closes pre-W147 500
+    // bug where `?w=1` was rejected by `v.string()` validateSearch.
+    expect(mockSetParam).toHaveBeenCalledWith("w", 3)
   })
 
   it("removes 'w' param when weekOffset is 0", () => {

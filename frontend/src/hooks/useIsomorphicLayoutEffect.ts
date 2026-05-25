@@ -16,5 +16,4 @@ import { useEffect, useLayoutEffect } from "react"
  * Used by `MobileBottomNav.tsx` for sessionStorage scroll-restore handling
  * surfaced as SSR-warning during W128 plan exploration.
  */
-export const useIsomorphicLayoutEffect =
-  typeof window !== "undefined" ? useLayoutEffect : useEffect
+export const useIsomorphicLayoutEffect = typeof window !== "undefined" ? useLayoutEffect : useEffect

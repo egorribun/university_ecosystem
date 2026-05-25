@@ -94,14 +94,101 @@ const config: StorybookConfig = {
     // loader still requires the explicit flag (chrome-devtools-mcp verified
     // 2026-04-30). This hook keeps the flag scoped to Storybook builds only,
     // so the main app bundle isn't affected.
+    //
+    // Wave 146 SW3 — CLEAR `environments` to restore Storybook's iframe.html input.
+    //
+    // Storybook's `codeGeneratorPlugin` (at `node_modules/@storybook/builder-
+    // vite/dist/index.js`) sets `config.build.rollupOptions.input = iframePath`
+    // during its `config(config, { command })` hook to point the build at
+    // Storybook's iframe.html template (sourced from
+    // `@storybook/builder-vite/input/iframe.html`).
+    //
+    // BUT TanStack Start's `tanstack-start-core:config` plugin (at
+    // `node_modules/@tanstack/start-plugin-core/dist/esm/vite/plugin.js:83`)
+    // returns `environments: viteConfigPlan.environments` — and that plan
+    // (per `node_modules/@tanstack/start-plugin-core/dist/esm/vite/planning.js`
+    // `createViteConfigPlan`) sets
+    // `environments.<START_ENVIRONMENT_NAMES.client>.build.rollupOptions.input
+    //   = { index: ENTRY_POINTS.client }` (the main-app SPA entry).
+    //
+    // In Vite 8's environments API, the per-environment `build.rollupOptions`
+    // takes precedence over the top-level `build.rollupOptions` when the
+    // matching environment runs. Storybook's preview build maps to the
+    // "client" environment by default, so TanStack Start's `environments`
+    // configuration WINS and Vite ends up building the SPA entry (main app)
+    // instead of iframe.html. The result:
+    //
+    //   - `storybook-static/iframe.html` is NOT emitted at all (the input
+    //     that would have produced it is missing)
+    //   - `storybook-static/assets/*.js` is polluted with main-app chunks
+    //     (`Dashboard-*.js`, `Activity-*.js`, `AdminAudit-*.js`, etc. — these
+    //     are the SPA entry's transitive imports, not Storybook stories)
+    //   - Chromatic's `validateFiles` rejects the build because iframe.html
+    //     is required (preview iframe loads each story for screenshot
+    //     capture)
+    //
+    // We CANNOT filter `tanstack-start-core:config` itself: per the W125 plan
+    // comment above, removing it breaks every dependent plugin
+    // (`Cannot get config before root is resolved`) — start compiler, import
+    // protection, router-plugin all need it. So we KEEP the plugin and
+    // override its output: clear `environments` so Storybook's top-level
+    // `build.rollupOptions.input = iframe.html` is the only one Vite sees.
+    //
+    // Trade-off: TanStack Start's `define`, `resolve.noExternal`, and
+    // `builder.buildApp` are also returned by the `:config` plugin — those
+    // are still applied at the top level (only `environments` is on the
+    // per-environment side). So clearing `environments` doesn't disable
+    // TanStack Start's other functionality; it just stops the input override.
+    // Storybook's preview build doesn't need TanStack Start's client/server
+    // environment split — stories don't use server functions, and the build
+    // output is a static iframe + chunk graph, not an SSR runtime.
+    //
+    // This is structurally cleaner than the Wave 146 SW3 first attempt
+    // (merging rollupOptions into rolldownOptions). The first attempt
+    // changed the dual-field shape but didn't address the higher-precedence
+    // environments API override — iframe.html still missing after that fix.
     const buildConfig = (viteConfig as ViteUserConfigWithRolldown).build ?? {}
     const rolldownOpts = buildConfig.rolldownOptions ?? {}
     const rolldownOutput = rolldownOpts.output ?? {}
+
+    // Wave 146 SW3 — POST plugin to clear `environments` set by TanStack
+    // Start's `tanstack-start-core:config` (`enforce: 'pre'`).
+    //
+    // Diagnostic discovery: when viteFinal runs, `viteConfig.environments`
+    // is empty + `build.rollupOptions.input` is null. TanStack Start's
+    // `:config` plugin runs LATER (during Vite's actual build, not during
+    // Storybook's viteFinal hook), so any direct override in the returned
+    // config is silently re-overridden when the pre-plugin's `config()`
+    // hook fires.
+    //
+    // Vite resolves plugin config() hooks in order: enforce:'pre' first,
+    // normal plugins second, enforce:'post' last. So a post plugin's
+    // config() hook fires AFTER tanstack-start-core:config (enforce:'pre')
+    // and AFTER Storybook's codeGeneratorPlugin (enforce:'pre'), giving us
+    // the final say in `environments` (clear it) and `build.rollupOptions`
+    // (preserve Storybook's iframe.html input).
+    //
+    // This plugin clears `environments` so Vite falls back to the legacy
+    // (non-environments-API) build pipeline using top-level
+    // `build.rollupOptions.input` — which Storybook's codeGeneratorPlugin
+    // sets to its iframe.html template path. Result: Vite emits iframe.html
+    // as the build output, alongside chunk groups for the story imports.
+    const clearTanStackEnvironmentsPlugin: Plugin = {
+      name: "wave146-clear-tanstack-environments",
+      enforce: "post",
+      config(config) {
+        // Clear environments so the per-environment build.rollupOptions.input
+        // (set by TanStack Start to `ENTRY_POINTS.client`) doesn't override
+        // Storybook's top-level build.rollupOptions.input (= iframe.html).
+        ;(config as { environments?: unknown }).environments = undefined
+      },
+    }
     return {
       ...viteConfig,
-      plugins: allPlugins.filter(
-        (p) => !isPwaPlugin(p) && !isStorybookIncompatibleTanstackPlugin(p)
-      ),
+      plugins: [
+        ...allPlugins.filter((p) => !isPwaPlugin(p) && !isStorybookIncompatibleTanstackPlugin(p)),
+        clearTanStackEnvironmentsPlugin,
+      ],
       build: {
         ...buildConfig,
         rolldownOptions: {

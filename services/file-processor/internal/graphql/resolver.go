@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/google/uuid"
+	gql "github.com/graph-gophers/graphql-go"
 	"github.com/university-ecosystem/file-processor/internal/workflow"
 	"go.temporal.io/sdk/client"
 )
@@ -32,8 +33,15 @@ func sanitizeKey(key string) (string, error) {
 }
 
 // File returns a resolver for a specific file.
-func (r *Resolver) File(args struct{ ID string }) *FileResolver {
-	safeID, err := sanitizeKey(args.ID)
+//
+// W140 (z) #1: args.ID must be gql.ID (not string) because schema.graphql
+// declares `file(id: ID!): File` and graph-gophers/graphql-go v1.9.0+ enforces
+// strict ID type via MustParseSchema. Pre-W140 this was masked because
+// schema.graphql was missing from the runtime image (W139 §Honesty #7) — the
+// schema parse failed at step 9 before MustParseSchema reached the resolver
+// type check.
+func (r *Resolver) File(args struct{ ID gql.ID }) *FileResolver {
+	safeID, err := sanitizeKey(string(args.ID))
 	if err != nil {
 		// In a real GraphQL context, return an error, but here we fallback to safe empty
 		safeID = "invalid-path"
@@ -106,7 +114,9 @@ type FileResolver struct {
 }
 
 // ID returns the file ID.
-func (r *FileResolver) ID() string { return r.id }
+//
+// W140 (z) #1: return type is gql.ID (not string) per GraphQL ID! spec.
+func (r *FileResolver) ID() gql.ID { return gql.ID(r.id) }
 
 // URL returns the file URL.
 func (r *FileResolver) URL() string { return r.url }
@@ -125,7 +135,9 @@ type FileJobResolver struct {
 }
 
 // JobID returns the job ID.
-func (r *FileJobResolver) JobID() string { return r.jobID }
+//
+// W140 (z) #1: return type is gql.ID (not string) per schema FileJob.jobId ID!.
+func (r *FileJobResolver) JobID() gql.ID { return gql.ID(r.jobID) }
 
 // Status returns the job status.
 func (r *FileJobResolver) Status() string { return r.status }

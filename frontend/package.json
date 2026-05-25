@@ -9,7 +9,8 @@
   "scripts": {
     "preinstall": "node scripts/ensure-wasm.mjs",
     "dev": "vite",
-    "build": "node ./scripts/run-build.mjs",
+    "build": "node ./scripts/build-orchestrated.mjs",
+    "build:legacy": "node ./scripts/run-build.mjs",
     "build:shell": "node ./scripts/post-build-shell.mjs",
     "build:report": "npm run build -- --report",
     "preview": "vite preview",
@@ -26,11 +27,12 @@
     "test:watch": "vitest",
     "i18n:check": "vitest run src/tests/translationParity.test.ts",
     "test:e2e": "playwright test",
+    "visual:smoke": "node ./scripts/playwright-visual-smoke.mjs",
     "lhci": "node ./scripts/run-lhci.mjs",
     "lhci:windows": "node ./scripts/lhci-windows-fallback.mjs",
     "analyze": "ANALYZE=1 vite build",
     "lint-staged": "lint-staged",
-    "prepare": "husky ../.husky",
+    "prepare": "node ./scripts/setup-husky.cjs",
     "postinstall": "node ./scripts/setup-lhci-binaries.cjs",
     "generate:api": "openapi-ts",
     "generate:manifests": "node ./scripts/generate-manifests.mjs",
@@ -90,7 +92,6 @@
     "lucide-react": "^0.553.0",
     "maplibre-gl": "^5.22.0",
     "marked": "^17.0.5",
-    "nitro": "^3.0.260429-beta",
     "qrcode": "^1.5.4",
     "qrcode.react": "^4.2.0",
     "react": "^19.2.4",
@@ -106,7 +107,7 @@
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.11.2",
-    "@chromatic-com/storybook": "^4.1.3",
+    "@chromatic-com/storybook": "^5.1.2",
     "@eslint/js": "^9.12.0",
     "@hey-api/client-axios": "^0.9.1",
     "@hey-api/openapi-ts": "^0.93.1",
@@ -182,8 +183,8 @@
     "*.{ts,tsx,js,jsx}": [
       "eslint --fix"
     ],
-    "*.{ts,tsx,js,jsx,json,css,scss,md,html}": [
-      "prettier --check"
+    "*.{ts,tsx,js,jsx,json,css,scss,md,html,mjs,cjs}": [
+      "prettier --write"
     ]
   },
   "overrides": {

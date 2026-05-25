@@ -244,6 +244,13 @@ root/frontend/blob-report/
 **/.lighthouseci/
 **/vitest-report.xml
 
+# W179 polish-v1 — root-level .screenshots/ (chrome-devtools-mcp + Playwright
+# visual smoke artifacts). frontend/.gitignore covers frontend/.screenshots/
+# (W113 SW6) but root-level captures from `take_screenshot` / wave-specific
+# scripts that write to CWD-relative paths landed in repo-root .screenshots/
+# (W176 visual smoke surfaced the gap; W179 polish closes it).
+.screenshots/
+
 # Go coverage and temp files
 coverage.out
 coverage_report
@@ -369,3 +376,17 @@ native/rust_ext/fuzz/artifacts/
 *.Spotlight-V100
 *.Trashes
 ._*
+.wave136-trace/
+.wave160-lhci/
+
+# Wave 138 polish-followup (post-2026-05-08): memory/ moved to .claude profile only.
+# Auto-load source: C:\Users\egorribun\.claude\projects\C--<repo-slug>\memory\
+# Repo `memory/` directory removed entirely — single source of truth in .claude profile.
+# This eliminates dual-location drift risk (W138 polish discovered 5 missing files
+# pre-existed in .claude but NOT in repo) + sensitive-data exposure (test creds in
+# wave-specific files required pragma:allowlist) + maintenance overhead (~25 wave-
+# specific files no longer mirrored). AUDIT_WAVE*.md remain canonical for wave history
+# in docs/audits/. CLAUDE.md ## Audit Trail rows reference memory files as plain text
+# (clickable repo links would dangle). Future memory file additions stay in .claude
+# profile only; do NOT re-create memory/ in repo.
+memory/

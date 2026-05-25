@@ -43,7 +43,11 @@ if (!globalThis.crypto) (globalThis as any).crypto = webcrypto
 
 beforeAll(async () => {
   await i18n.changeLanguage("en")
-  document.documentElement.lang = "en"
+  if (typeof document !== "undefined") {
+    // jsdom env only — guard for node-env tests (Wave 133 SW1 ssrCookie tests use
+    // `@vitest-environment node` directive, where `document` is undefined).
+    document.documentElement.lang = "en"
+  }
   server.listen({ onUnhandledRequest: "warn" })
 })
 
@@ -60,44 +64,50 @@ afterEach(() => {
 
 afterAll(() => server.close())
 
-Object.defineProperty(window, "matchMedia", {
-  writable: true,
-  value: vi.fn().mockImplementation((query) => ({
-    matches: false,
-    media: query,
-    onchange: null,
-    addListener: vi.fn(),
-    removeListener: vi.fn(),
-    addEventListener: vi.fn(),
-    removeEventListener: vi.fn(),
-    dispatchEvent: vi.fn(),
-  })),
-})
-
-if (!("IntersectionObserver" in window)) {
-  Object.defineProperty(window, "IntersectionObserver", {
+// Wave 133 SW1 — guard window-touching polyfills with typeof check so node-env
+// tests (e.g. ssrCookie.test.ts via `@vitest-environment node`) don't crash on
+// `window is not defined` when the setupFile loads. jsdom-env tests behave
+// identically (typeof window === "object") and continue to receive the polyfills.
+if (typeof window !== "undefined") {
+  Object.defineProperty(window, "matchMedia", {
     writable: true,
-    value: class {
-      constructor() {}
-      observe() {}
-      unobserve() {}
-      disconnect() {}
-    },
+    value: vi.fn().mockImplementation((query) => ({
+      matches: false,
+      media: query,
+      onchange: null,
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    })),
   })
-}
 
-// ResizeObserver polyfill — jsdom lacks it, StoryList (scroll edge-fade detection) uses it
-// (Wave 113 SW6 polish — fixes 3 StoryList.test.tsx "ResizeObserver is not defined" errors).
-if (!("ResizeObserver" in window)) {
-  Object.defineProperty(window, "ResizeObserver", {
-    writable: true,
-    value: class {
-      constructor() {}
-      observe() {}
-      unobserve() {}
-      disconnect() {}
-    },
-  })
+  if (!("IntersectionObserver" in window)) {
+    Object.defineProperty(window, "IntersectionObserver", {
+      writable: true,
+      value: class {
+        constructor() {}
+        observe() {}
+        unobserve() {}
+        disconnect() {}
+      },
+    })
+  }
+
+  // ResizeObserver polyfill — jsdom lacks it, StoryList (scroll edge-fade detection) uses it
+  // (Wave 113 SW6 polish — fixes 3 StoryList.test.tsx "ResizeObserver is not defined" errors).
+  if (!("ResizeObserver" in window)) {
+    Object.defineProperty(window, "ResizeObserver", {
+      writable: true,
+      value: class {
+        constructor() {}
+        observe() {}
+        unobserve() {}
+        disconnect() {}
+      },
+    })
+  }
 }
 
 // PointerEvent capture polyfill — jsdom doesn't implement Element.hasPointerCapture /

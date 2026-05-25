@@ -1,0 +1,163 @@
+# Temporal Server v1.30.2 — plain server config for Wave 144 SW2 Path B
+#
+# References (per W141 anti-pattern #3 — VERIFIED upstream sources):
+#   - Upstream development-postgres12.yaml:
+#     https://github.com/temporalio/temporal/blob/v1.30.2/config/development-postgres12.yaml
+#   - Authorization struct YAML tags:
+#     https://github.com/temporalio/temporal/blob/v1.30.2/common/config/config.go
+#     lines 603-622 (Authorization) + 624-628 (JWTKeyProvider)
+#   - JWT signature verification path:
+#     https://github.com/temporalio/temporal/blob/v1.30.2/common/authorization/default_token_key_provider.go
+#     uses github.com/go-jose/go-jose/v4 (JWKS) + github.com/golang-jwt/jwt/v4 v4.5.2 (verify)
+#
+# CRITICAL schema correction vs W144 Phase 1 Agent 2 (which quoted Context7's
+# `tokenKeyProvider`): the actual upstream key is `jwtKeyProvider` (per
+# config.go:605 `yaml:"jwtKeyProvider"`). `claimMapper`, `authorizer`, and
+# `audience` are SIBLING fields at the same level (NOT nested inside
+# jwtKeyProvider). Confirmed by reading the Go struct + YAML tags.
+#
+# W143 SW2 contract test (tests/test_wave143_jwks_roundtrip.py) DISPROVED
+# Agent 2 W142's "JWKS byte-encoding mismatch" hypothesis: encoding IS
+# canonical RFC 7518 § 6.3.1.1; end-to-end Python verify against real
+# .secrets/temporal_api_key PASSES against both PEM-derived AND JWKS-
+# reconstructed pub keys. W144 SW2 plain-server runtime swap is the
+# verification step (per W141 anti-pattern #2) — if the same "crypto/rsa:
+# verification error" appears, it is structurally Temporal-runtime-specific,
+# walk the 6-phase diagnostic decision tree per Phase 1 Agent 2 report.
+
+log:
+  stdout: true
+  level: info
+
+# ─── Persistence ────────────────────────────────────────────────────────────
+#
+# Two PostgreSQL databases: `temporal` (primary) + `temporal_visibility`
+# (visibility queries). Schema bootstrap is performed once by the
+# `temporal-admin-tools` sidecar in docker-compose.full.yml (W144 SW2 Step 2)
+# via `temporal-sql-tool` commands before this server starts.
+persistence:
+  defaultStore: postgres-default
+  visibilityStore: postgres-visibility
+  numHistoryShards: 4  # dev-sized; production uses 512+
+  datastores:
+    postgres-default:
+      sql:
+        pluginName: "postgres12"
+        databaseName: "temporal"
+        connectAddr: "postgres:5432"   # service-name DNS inside compose network
+        connectProtocol: "tcp"
+        user: "${POSTGRES_USER}"        # rendered from compose env
+        password: "${POSTGRES_PWD}"
+        maxConns: 20
+        maxIdleConns: 20
+        maxConnLifetime: "1h"
+    postgres-visibility:
+      sql:
+        pluginName: "postgres12"
+        databaseName: "temporal_visibility"
+        connectAddr: "postgres:5432"
+        connectProtocol: "tcp"
+        user: "${POSTGRES_USER}"
+        password: "${POSTGRES_PWD}"
+        maxConns: 2
+        maxIdleConns: 2
+        maxConnLifetime: "1h"
+
+# ─── Global config (membership + metrics + authorization) ───────────────────
+global:
+  membership:
+    maxJoinDuration: 30s
+    # W144 SW2 NEW (z) #18: broadcastAddress must match an address that's
+    # reachable from within the membership ring. Upstream dev config uses
+    # "127.0.0.1" (single-node loopback), but our cross-container setup needs
+    # the container's actual bridge-network IP so file-processor can reach
+    # temporal:7233. The custom entrypoint.sh substitutes ${BROADCAST_ADDRESS}
+    # here with `getent hosts $(hostname)` output at start time.
+    broadcastAddress: "${BROADCAST_ADDRESS}"
+  pprof:
+    port: 7936
+  metrics:
+    prometheus:
+      framework: "tally"
+      timerType: "histogram"
+      listenAddress: "0.0.0.0:8000"
+  # ─── JWT authorization (W144 SW2 Path B closure target) ───────────────────
+  #
+  # The default JWT claim mapper validates the JWT signature against keys
+  # fetched from `jwtKeyProvider.keySourceURIs`. Refresh interval re-fetches
+  # the JWKS so that key rotation is picked up without restart.
+  #
+  # - `claimMapper: "default"` invokes `defaultJWTClaimMapper`: parses the
+  #   JWT, verifies signature against JWKS, extracts claims (admin role by
+  #   default if no permissions claim present).
+  # - `authorizer: ""` selects `noopAuthorizer`: allow all authenticated
+  #   requests. Suitable for dev (no permission enforcement); for production
+  #   set to `"default"` for `defaultAuthorizer`.
+  # - `audience: "temporal"` matches the `aud` claim minted by
+  #   start-docker.ps1's New-TemporalServiceToken function (default audience
+  #   value is "temporal").
+  authorization:
+    jwtKeyProvider:
+      keySourceURIs:
+        - "http://backend:8000/.well-known/jwks.json"
+      refreshInterval: 1m
+    claimMapper: "default"
+    authorizer: ""
+    audience: "temporal"
+
+# ─── Services (frontend/matching/history/worker) ────────────────────────────
+#
+# Each Temporal subsystem listens on its own gRPC port. `bindOnLocalHost:
+# false` so gRPC accepts external connections (clients connect from
+# file-processor container via service-name DNS `temporal:7233`).
+services:
+  frontend:
+    rpc:
+      grpcPort: 7233
+      membershipPort: 6933
+      bindOnLocalHost: false
+      httpPort: 7243
+  matching:
+    rpc:
+      grpcPort: 7235
+      membershipPort: 6935
+      bindOnLocalHost: false
+  history:
+    rpc:
+      grpcPort: 7234
+      membershipPort: 6934
+      bindOnLocalHost: false
+  worker:
+    rpc:
+      grpcPort: 7239
+      membershipPort: 6939
+      bindOnLocalHost: false
+
+# ─── Cluster metadata (single-cluster dev) ──────────────────────────────────
+#
+# `rpcAddress: "temporal:7233"` allows other Temporal services in the cluster
+# to discover the frontend via Docker service-name DNS. Single active cluster
+# (no global namespaces).
+clusterMetadata:
+  enableGlobalNamespace: false
+  failoverVersionIncrement: 10
+  masterClusterName: "active"
+  currentClusterName: "active"
+  clusterInformation:
+    active:
+      enabled: true
+      initialFailoverVersion: 1
+      rpcName: "frontend"
+      rpcAddress: "temporal:7233"
+
+dcRedirectionPolicy:
+  policy: "noop"
+
+# Default namespace registered by `temporal-namespace-init` sidecar (W144 SW2
+# Step 2). file-processor's Go client connects with namespace="default".
+namespaceDefaults:
+  archival:
+    history:
+      state: "disabled"
+    visibility:
+      state: "disabled"

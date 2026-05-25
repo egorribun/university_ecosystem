@@ -40,9 +40,24 @@ import { tanstackStart } from "@tanstack/react-start/plugin/vite"
 import { visualizer } from "rollup-plugin-visualizer"
 import { MASKABLE_ICON_BASE64 } from "./pwa-maskable-icons"
 import { generateManifests } from "./scripts/generate-manifests.mjs"
+// W136 SW6: shared Workbox config — eliminates drift between vite.config.mts
+// (full pipeline via vite-plugin-pwa) and scripts/build-orchestrated.mjs
+// (Windows local standalone workbox-build per W135 SW3 strategy).
+import { PWA_INJECT_CONFIG } from "./scripts/workbox-config.mjs"
 
 const srcDir = fileURLToPath(new URL("./src", import.meta.url))
 const publicDir = fileURLToPath(new URL("./public", import.meta.url))
+// W156 SW1 Tier 1 #1 — direct file path to react-dom dev bundle. Package's
+// `exports` field at react-dom/package.json:48-112 does NOT expose `./cjs/*`
+// subpaths under any condition, so a package-style alias
+// (`"react-dom/client": "react-dom/cjs/react-dom-client.development.js"`)
+// gets blocked by rolldown:vite-resolve with "is not exported under the
+// conditions" error. Resolving via absolute file path bypasses the exports
+// field gate — Vite's resolve.alias accepts both package specifiers and
+// absolute paths; the absolute-path branch skips package.json exports check.
+const reactDomDevClient = fileURLToPath(
+  new URL("./node_modules/react-dom/cjs/react-dom-client.development.js", import.meta.url)
+)
 const manifestSourcePath = resolve(publicDir, "manifest.source.json")
 
 const ensureMaskableIcons = () => {
@@ -211,6 +226,34 @@ export default defineConfig(({ mode }) => {
   const disableProxy = backendOrigin === ""
   const buildReport = process.env.BUILD_REPORT === "1"
   const analyze = mode === "analyze" || process.env.ANALYZE === "1" || buildReport
+  // W153 SW1 — opt-in flag to disable minify + emit linked source maps while
+  // KEEPING mode=production (so JSX transform stays at production runtime
+  // and SSR works correctly). Set via dev compose build arg only; CI / prod
+  // omit it. See `build.minify` + `build.sourcemap` blocks below for usage.
+  const isUnminified =
+    env.FRONTEND_BUILD_UNMINIFIED === "true" || process.env.FRONTEND_BUILD_UNMINIFIED === "true"
+  // W156 SW1 Tier 1 #1 — opt-in development React for /login wedge diagnosis.
+  //
+  // Mirrors W153 SW1 FRONTEND_BUILD_UNMINIFIED pattern. When set,
+  // vite.config.mts adds resolve.alias mapping `react-dom/client` to the
+  // development cjs bundle directly + an environments.client.define for
+  // `process.env.NODE_ENV = "development"` so the dev bundle's internal
+  // IIFE gate at `cjs/react-dom-client.development.js:15`
+  // (`"production" !== process.env.NODE_ENV && (function () { ... })()`)
+  // evaluates true and the React module loads.
+  //
+  // Server bundle is UNAFFECTED: server.ts imports
+  // @tanstack/react-start/server-entry → handler.fetch uses react-dom/server
+  // (NOT aliased), tanstackStart keeps top-level process.env.NODE_ENV at
+  // "production" for server environment, so react-dom-server.node.production.js
+  // loads as today → no jsxDEV trap (W152 SW1 regression history).
+  //
+  // Set ONLY in dev compose (docker-compose.full.yml) via Docker build ARG.
+  // CI / prod builds omit the flag → byte-identical to current production
+  // bundle. Tree-shake-safe at build time (flag read in Node at config-load,
+  // never ships to client bundle).
+  const isReactDevMode =
+    env.FRONTEND_REACT_DEV_MODE === "true" || process.env.FRONTEND_REACT_DEV_MODE === "true"
   const manifest = loadManifest()
 
   const mk = (rewrite = false) => ({
@@ -281,7 +324,23 @@ export default defineConfig(({ mode }) => {
     // convention for the auto-generated `routeTree.gen.ts`.
     tanstackStart({
       spa: { enabled: true },
-      router: { quoteStyle: "double" },
+      // Wave 178 SW1 — `routeFileIgnorePattern: "__tests__"` so
+      // `src/routes/__tests__/*.test.tsx` (W178 added the first one,
+      // _public.test.tsx) doesn't trigger the TanStack Router generator's
+      // "does not export a Route" warning on every build. Tests live
+      // co-located with routes for clarity; the prefix-with-"-" workaround
+      // (default `routeFileIgnorePrefix: "-"`) would clash with vitest's
+      // `*.test.tsx` glob. The pattern is a REGEX (NOT a glob — empirically
+      // verified W178 SW1 build attempt: "**/__tests__/**" → `new RegExp`
+      // throws "Nothing to repeat" because `**` isn't valid regex). A bare
+      // path substring matches paths containing `/__tests__/`.
+      // Wave 179 SW8 — extend pattern to also ignore `guards.ts` pure-function
+      // module at src/routes/guards.ts (W174 §Honesty #4-routeGuards closure).
+      // Like __tests__/, this file doesn't export a Route — it's the extracted
+      // beforeLoad helpers for _auth.tsx / _public.tsx / _admin.tsx. Pattern
+      // is REGEX (per W178 SW1 (z) #1) — alternation matches either folder
+      // segment "__tests__" OR file basename "guards".
+      router: { quoteStyle: "double", routeFileIgnorePattern: "__tests__|guards" },
       client: { entry: "main.tsx" },
       server: { entry: "server.ts" },
     }),
@@ -303,6 +362,20 @@ export default defineConfig(({ mode }) => {
       ],
     }),
     VitePWA({
+      // Wave 135 SW3 — `BUILD_SKIP_PWA=true` env flag (set by
+      // `frontend/scripts/build-orchestrated.mjs` only) disables the
+      // vite-plugin-pwa lifecycle without removing the plugin from the
+      // chain. tanstackStart's prerender + server-build steps depend on
+      // the plugin chain shape, so dropping the plugin object entirely
+      // skips `_shell.html` + `dist/server/server.js` emission. With
+      // `disable: true` the plugin is a no-op (skips `transformIndexHtml`
+      // injection AND the hanging `closeBundle._generateSW(ctx)` call),
+      // letting build-orchestrated.mjs do the SW compile + manifest
+      // injection itself in steps 4 + 5. Closes W126 polish #3
+      // (vite-plugin-pwa Windows hang) without disturbing dev mode or
+      // CI Linux builds (where `BUILD_SKIP_PWA` is unset and the plugin
+      // runs normally).
+      disable: process.env.BUILD_SKIP_PWA === "true",
       registerType: "autoUpdate",
       injectRegister: "script",
       strategies: "injectManifest",
@@ -354,32 +427,11 @@ export default defineConfig(({ mode }) => {
         ],
       },
       ...(manifest ? { manifest } : {}),
-      injectManifest: {
-        globPatterns: ["**/*.{js,css,html,ico,png,svg,webp,json}"],
-        // Wave 122 SW2: exclude PDF export libs from PWA precache. The chunks
-        // (jspdf, html2canvas, purify) are used ONLY by Activity export +
-        // Schedule export via dynamic `await import()`. Including them in
-        // __WB_MANIFEST forced the SW to fetch them on install on every page
-        // load — Lighthouse `unused-javascript` counted those bytes as wasted
-        // on /news, /events, and 5+ other routes. The dynamic imports still
-        // resolve on demand at click; first-export-attempt-while-offline is
-        // the only loss (acceptable — users rarely trigger PDF export offline
-        // and online round-trip restores capability after first cache).
-        globIgnores: [
-          "**/bundle-stats.*",
-          "**/offline.html",
-          "**/jspdf*.js",
-          "**/html2canvas*.js",
-          "**/purify*.js",
-        ],
-        // Wave 116 SW-Stretch — Storybook builds route through this same
-        // plugin and ship `sb-manager/globals-runtime.js` (3.25 MB) which
-        // exceeds Workbox's default 2 MB cache limit, failing
-        // `build-storybook`. The prod bundle's largest precache entry is
-        // `maplibre-gl-*.js` (~1.03 MB), well under 5 MB. Raising the cap
-        // unblocks Chromatic baseline setup without weakening prod caching.
-        maximumFileSizeToCacheInBytes: 5_000_000,
-      },
+      // W136 SW6: injectManifest config imported from
+      // ./scripts/workbox-config.mjs — single source of truth shared with
+      // build-orchestrated.mjs to prevent drift (closes W135 §Honesty #5).
+      // See workbox-config.mjs for rationale on glob ignores + size cap.
+      injectManifest: PWA_INJECT_CONFIG,
       devOptions: {
         enabled:
           process.env.VITE_PWA_DEV === "true" ||
@@ -426,6 +478,22 @@ export default defineConfig(({ mode }) => {
     resolve: {
       alias: {
         "@": srcDir,
+        // W156 SW1 Tier 1 #1 — alias react-dom/client → development cjs
+        // bundle when FRONTEND_REACT_DEV_MODE=true. Bypasses the client.js
+        // module-eval gate (line 31 `if (process.env.NODE_ENV === 'production')`).
+        // main.tsx is the SOLE consumer of react-dom/client; server.ts uses
+        // react-dom/server (NOT aliased). The alias destination is the absolute
+        // file path resolved at config-load time (`reactDomDevClient` constant
+        // above) because react-dom's `exports` field at package.json blocks
+        // `./cjs/*` subpaths under all conditions — package-specifier aliases
+        // fail with "is not exported under the conditions" via rolldown:vite-
+        // resolve. Absolute file paths skip the exports field gate.
+        // See isReactDevMode comment block above for full rationale.
+        ...(isReactDevMode
+          ? {
+              "react-dom/client": reactDomDevClient,
+            }
+          : {}),
       },
     },
     server: {
@@ -439,6 +507,30 @@ export default defineConfig(({ mode }) => {
       headers: { "Service-Worker-Allowed": "/" },
       proxy,
     },
+    // W156 SW1 Tier 1 #1 — scope NODE_ENV=development to CLIENT environment
+    // only. tanstackStart's planning.js writes top-level
+    // process.env.NODE_ENV define globally (as "production" by default). Our
+    // environments.client override layers on top for client bundle ONLY, so
+    // the dev react-dom bundle's internal gate at line 15 evaluates true and
+    // the React module loads. Server environment keeps "production" via
+    // tanstackStart's top-level define + no override here (avoids W152 SW1
+    // jsxDEV trap regression).
+    //
+    // Verification: post-build, `grep -c "process.env.NODE_ENV"`
+    //   dist/client/assets/index-*.js → 0 (replaced with "development" literal)
+    //   dist/server/server.js → 0 (replaced with "production" literal)
+    // If client check shows raw process.env.NODE_ENV → environments override
+    // stomped by tanstackStart; escalate honest defer to W157+ Option D
+    // POST-plugin approach per W141 anti-pattern #1.
+    environments: isReactDevMode
+      ? {
+          client: {
+            define: {
+              "process.env.NODE_ENV": JSON.stringify("development"),
+            },
+          },
+        }
+      : undefined,
     optimizeDeps: {
       exclude: ["qrcode"],
     },
@@ -447,11 +539,25 @@ export default defineConfig(({ mode }) => {
         mode === "production" ? { "console.log": "(() => {})", "console.debug": "(() => {})" } : {},
     },
     build: {
-      minify: true,
+      // W153 SW1 — opt-in unminified bundle + linked source maps for /login
+      // wedge diagnosis. FRONTEND_BUILD_UNMINIFIED=true (dev compose only):
+      //   - minify: false
+      //   - sourcemap: true (with //# sourceMappingURL= trailer)
+      //   - mode STAYS at "production" so JSX transform emits `jsx()` calls
+      //     (NOT `jsxDEV()`), keeping SSR runtime compatible with the
+      //     production react-dom-server.node.production.js loaded at runtime
+      //     (Dockerfile:NODE_ENV=production baked in runtime stage).
+      // SW1 fixup history: initial attempt used `--mode development` which
+      // broke SSR with `TypeError: jsxDEV is not a function` at RootShell —
+      // see post-build-shell.mjs:126 + this comment block. Keeping
+      // mode=production trades React DEV warnings for SSR-correctness; the
+      // unminified bundle + source maps remain useful for client-side stack
+      // trace resolution.
+      minify: isUnminified ? false : mode === "production",
       // P0-05 (audit 2026-03-06): "hidden" generates .map files for Sentry
       // symbolication but does NOT add //# sourceMappingURL= to .js bundles,
       // so browsers and attackers cannot download the full TypeScript source.
-      sourcemap: mode === "production" ? "hidden" : true,
+      sourcemap: isUnminified ? true : mode === "production" ? "hidden" : true,
       chunkSizeWarningLimit: 768,
       // Wave 122 SW2: Vite auto-injects `<link rel="modulepreload">` for every
       // chunk reachable from the entry import graph — including chunks loaded

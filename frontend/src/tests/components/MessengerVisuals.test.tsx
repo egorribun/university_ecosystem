@@ -52,19 +52,55 @@ describe("Messenger Visual Overhaul", () => {
     )
 
     const contactItem = screen.getByRole("button")
-    expect(contactItem.className).toContain("msg-contact-item")
+    // Wave 182 SW1 — refactored msg-contact-item → messenger-stagger-item
+    // (the legacy class had no CSS rules; entrance animation lives in the
+    // W181 SW1 .messenger-stagger-item utility).
+    expect(contactItem.className).toContain("messenger-stagger-item")
     expect(contactItem.className).toContain("rounded-2xl")
   })
 
   it("ChatWindow should have virtualizer and relative positioning", () => {
+    // Wave 183 SW5 — ChatWindow now renders a no-messages empty state when
+    // messages.length === 0 (instead of an empty virtualizer container).
+    // Pass at least one message to exercise the virtualizer branch this
+    // test asserts on.
+    const mockMessage = {
+      id: "1",
+      senderId: "user-1",
+      senderName: "John",
+      senderAvatar: "",
+      text: "Hello",
+      timestamp: "12:00",
+      isMe: false,
+      status: "sent" as const,
+    }
+    const { container } = render(
+      <QueryClientProvider client={queryClient}>
+        <ChatWindow messages={[mockMessage]} />
+      </QueryClientProvider>
+    )
+
+    // Wave 182 SW1 — refactored msg-chat-area → messenger-chat-area
+    // (W181 SW1 convention; rule lives in tokens/messenger.css after the
+    // .messenger-bubble-* / .messenger-active-chip section).
+    const chatArea = container.querySelector(".messenger-chat-area")
+    expect(chatArea).toBeTruthy()
+    expect(chatArea?.className).toContain("overflow-y-auto")
+  })
+
+  it("ChatWindow should render no-messages empty state when messages array is empty", () => {
+    // Wave 183 SW5 — verify empty state renders with role=log + aria-live
+    // + the noMessages.title key from messenger.json.
     const { container } = render(
       <QueryClientProvider client={queryClient}>
         <ChatWindow messages={[]} />
       </QueryClientProvider>
     )
 
-    const chatArea = container.querySelector(".msg-chat-area")
+    const chatArea = container.querySelector(".messenger-chat-area")
     expect(chatArea).toBeTruthy()
-    expect(chatArea?.className).toContain("overflow-y-auto")
+    expect(chatArea?.getAttribute("role")).toBe("log")
+    expect(chatArea?.getAttribute("aria-live")).toBe("polite")
+    expect(chatArea?.textContent).toContain("messenger:noMessages.title")
   })
 })

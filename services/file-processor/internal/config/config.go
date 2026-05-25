@@ -8,16 +8,23 @@ import (
 
 // Config holds processor configuration.
 type Config struct {
-	GRPCPort       string `mapstructure:"grpc_port"`
-	NatsURL        string `mapstructure:"nats_url"`
-	TemporalHost   string `mapstructure:"temporal_host"`
-	MinioBucket    string `mapstructure:"minio_bucket"`
-	MinioEndpoint  string `mapstructure:"minio_endpoint"`
-	MinioAccessKey string `mapstructure:"minio_access_key"`
-	MinioSecretKey string `mapstructure:"minio_secret_key"`
-	MinioSecure    bool   `mapstructure:"minio_secure"`
-	GraphQLPort    string `mapstructure:"graphql_port"`
-	JWTSecret      string `mapstructure:"jwt_secret"`
+	GRPCPort     string `mapstructure:"grpc_port"`
+	NatsURL      string `mapstructure:"nats_url"`
+	TemporalHost string `mapstructure:"temporal_host"`
+	// Wave 141 SW5 — Path (a-auth): path to file containing the Temporal service
+	// token (RS256 JWT minted by start-docker.ps1's New-TemporalServiceToken at
+	// W141 SW4). Read once at startup in connectTemporal. Empty value = no auth
+	// (development fallback; pre-W141 W139 SW2 behavior). Closes W137 §Honesty
+	// #5 + W140 NEW #6 (Path (a-auth) full closure with SW3 image swap + SW4
+	// token mint).
+	TemporalAPIKeyFile string `mapstructure:"temporal_api_key_file"`
+	MinioBucket        string `mapstructure:"minio_bucket"`
+	MinioEndpoint      string `mapstructure:"minio_endpoint"`
+	MinioAccessKey     string `mapstructure:"minio_access_key"`
+	MinioSecretKey     string `mapstructure:"minio_secret_key"`
+	MinioSecure        bool   `mapstructure:"minio_secure"`
+	GraphQLPort        string `mapstructure:"graphql_port"`
+	JWTSecret          string `mapstructure:"jwt_secret"`
 	// TD-W18-01 (audit 2026-03-23 Wave 18): RSA public key PEM for RS256 verification.
 	// When set, both RS256 and HS256 tokens are accepted (RS256 preferred).
 	// This brings file-processor into parity with ws-hub and gateway.
@@ -53,20 +60,21 @@ func Load() (*Config, error) {
 	viper.SetDefault("minio_secure", false)
 
 	bindEnvs := map[string]string{
-		"grpc_port":          "GRPC_PORT",
-		"nats_url":           "NATS_URL",
-		"temporal_host":      "TEMPORAL_HOST",
-		"minio_bucket":       "MINIO_BUCKET",
-		"minio_endpoint":     "MINIO_ENDPOINT",
-		"minio_access_key":   "MINIO_ACCESS_KEY",
-		"minio_secret_key":   "MINIO_SECRET_KEY",
-		"minio_secure":       "MINIO_SECURE",
-		"jwt_secret":         "JWT_SECRET",
-		"rsa_public_key_pem": "RSA_PUBLIC_KEY_PEM",
-		"sentry_dsn":         "SENTRY_DSN",
-		"environment":        "VITE_ENVIRONMENT",
-		"otlp_endpoint":      "OTLP_ENDPOINT",
-		"otlp_insecure":      "OTLP_INSECURE",
+		"grpc_port":             "GRPC_PORT",
+		"nats_url":              "NATS_URL",
+		"temporal_host":         "TEMPORAL_HOST",
+		"temporal_api_key_file": "TEMPORAL_API_KEY_FILE",
+		"minio_bucket":          "MINIO_BUCKET",
+		"minio_endpoint":        "MINIO_ENDPOINT",
+		"minio_access_key":      "MINIO_ACCESS_KEY",
+		"minio_secret_key":      "MINIO_SECRET_KEY",
+		"minio_secure":          "MINIO_SECURE",
+		"jwt_secret":            "JWT_SECRET",
+		"rsa_public_key_pem":    "RSA_PUBLIC_KEY_PEM",
+		"sentry_dsn":            "SENTRY_DSN",
+		"environment":           "VITE_ENVIRONMENT",
+		"otlp_endpoint":         "OTLP_ENDPOINT",
+		"otlp_insecure":         "OTLP_INSECURE",
 	}
 
 	for key, env := range bindEnvs {

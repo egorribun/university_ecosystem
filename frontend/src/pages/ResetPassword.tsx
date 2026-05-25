@@ -17,6 +17,8 @@ import { valibotResolver } from "@hookform/resolvers/valibot"
 
 import { Button, TextField, SectionCard, Alert } from "@/components/settings"
 import { ProgressBar } from "@/components/ui"
+import AuthBackdrop from "@/components/auth/AuthBackdrop"
+import useMediaQuery from "@/hooks/useMediaQuery"
 import { newPasswordSchema, type NewPasswordValues } from "@/features/auth/schemas"
 
 const RESET_URL = "/password/reset"
@@ -47,6 +49,9 @@ async function isPwnedPassword(pwd: string) {
 
 export default function ResetPassword() {
   const { t } = useTranslation(["auth", "common"])
+  // Wave 186 SW3 — useReducedMotion via project's useMediaQuery (jsdom-safe
+  // per W184 SW6). Drops AuthBackdrop blur on mobile/reduced-motion.
+  const prefersReducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)")
   const routeParameters = useParams({ strict: false })
   const searchParameters = useSearch({ strict: false })
   const token =
@@ -150,28 +155,11 @@ export default function ResetPassword() {
   }, [token, setError, t])
 
   return (
-    <div className="min-h-screen bg-page text-text-primary flex items-center justify-center p-(--fluid-px) relative overflow-hidden">
-      {/* Background decorative elements */}
-      <div className="absolute top-0 left-0 w-full h-full pointer-events-none opacity-dim">
-        <div
-          className="absolute bg-(--glow-spotlight-primary) rounded-full blur-(--glow-blur-massive)"
-          style={{
-            top: "var(--glow-inset-neg)",
-            right: "var(--glow-inset-subtle-neg)",
-            width: "40%",
-            height: "40%",
-          }}
-        />
-        <div
-          className="absolute bg-(--glow-spotlight-secondary) rounded-full blur-(--glow-blur-massive)"
-          style={{
-            bottom: "var(--glow-inset-neg)",
-            left: "var(--glow-inset-subtle-neg)",
-            width: "40%",
-            height: "40%",
-          }}
-        />
-      </div>
+    <div className="auth-theme min-h-screen bg-page text-text-primary flex items-center justify-center p-(--fluid-px) relative overflow-hidden">
+      {/* Wave 186 SW3 — Replaces inline glow blocks (~20 lines of
+          duplicated decorative code) with AuthBackdrop component.
+          Teal/cyan ambient orbs scoped under .auth-theme. */}
+      <AuthBackdrop prefersReducedMotion={prefersReducedMotion} />
 
       <m.div
         initial={{ opacity: 0, y: 20 }}

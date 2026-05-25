@@ -43,13 +43,16 @@ import {
 // node:async_hooks is server-only — Vite's environments build keeps this
 // import in the server chunk only; client bundle never loads it.
 //
-// Three storages (W126 + W127):
+// Four storages (W126 + W127 + W133):
 //   - requestAuthStorage: SSR auth state from access_token_v2 cookie (W126 SW3)
+//   - requestCookieStorage: raw Cookie header for SSR-side authenticated
+//     backend calls via axios interceptor (W133 SW1 — see api/client.ts)
 //   - requestThemeStorage: resolved theme from ue-mode cookie (W127 SW4)
 //   - requestLangStorage: resolved lang from ue:language cookie (W127 SW4)
 //
-// Layered as nested .run() calls so all three are visible to the handler.
+// Layered as nested .run() calls so all four are visible to the handler.
 const requestAuthStorage = new AsyncLocalStorage<SsrAuthState>()
+const requestCookieStorage = new AsyncLocalStorage<string>()
 const requestThemeStorage = new AsyncLocalStorage<ResolvedTheme>()
 const requestLangStorage = new AsyncLocalStorage<ResolvedLang>()
 
@@ -63,10 +66,12 @@ declare global {
   // `let`/`const` cannot augment the global namespace. ESLint's `no-var` /
   // `vars-on-top` rules do not flag declarations inside `declare global`.
   var __ssrAuthGetter__: (() => SsrAuthState | undefined) | undefined
+  var __ssrCookieGetter__: (() => string | undefined) | undefined
   var __ssrThemeGetter__: (() => ResolvedTheme | undefined) | undefined
   var __ssrLangGetter__: (() => ResolvedLang | undefined) | undefined
 }
 globalThis.__ssrAuthGetter__ = () => requestAuthStorage.getStore()
+globalThis.__ssrCookieGetter__ = () => requestCookieStorage.getStore()
 globalThis.__ssrThemeGetter__ = () => requestThemeStorage.getStore()
 globalThis.__ssrLangGetter__ = () => requestLangStorage.getStore()
 
@@ -85,6 +90,65 @@ const HEALTHZ_RESPONSE_INIT: ResponseInit = {
     "content-type": "application/json; charset=utf-8",
     "cache-control": "no-store",
   },
+}
+
+// Wave 180 SW3 — /messenger privacy posture (closes W161 SW2 concern #2).
+// Chat list + presence + counterpart names + last-message-preview is
+// user-private relationship state. SSR-rendered HTML for /messenger* paths
+// MUST NEVER be cached by browsers, intermediary CDNs/proxies, or Caddy —
+// otherwise a different user (or unauth'd request hitting same edge) could
+// see the prior user's chat state. Defensive headers:
+//   - Cache-Control: no-store, private, max-age=0 — browser + CDN must
+//     not persist; `private` blocks shared-cache; `max-age=0` matches
+//     spec for "absolute freshness required".
+//   - Vary: Cookie — explicit caching key variance signal (even with
+//     no-store, this defends against misconfigured upstream proxies).
+//
+// Implementation: inject headers AFTER `handler.fetch(request)` resolves
+// (Web Standard Response headers are immutable, so we rebuild via
+// `new Response(body, { ...init, headers })`). Pattern: only fires for
+// paths matching `/messenger` prefix — all other SSR routes (dashboard,
+// events, news, schedule, profile, settings) keep upstream-default headers.
+//
+// Per W127 SW6 `ssr: 'data-only'` pattern on messenger routes (W180 SW3),
+// the route component SHELL renders server-side (MainLayout + provider
+// tree → HTML stream — LCP win) but NO loader prefetches chat data (no
+// `ensureQueryData(chatsQueryOptions())` call). So the SSR-emitted HTML
+// contains NO user-private state — Cache-Control: no-store is defense-
+// in-depth, not a load-bearing privacy guarantee. The structural privacy
+// guarantee is the 'data-only' annotation + client-side chat data fetch.
+const MESSENGER_CACHE_CONTROL = "no-store, private, max-age=0"
+const MESSENGER_VARY = "Cookie"
+
+const MESSENGER_PATH_PREFIX = "/messenger"
+
+/**
+ * Wave 180 SW3 helper — augment SSR response headers for /messenger* paths.
+ * Returns the original response untouched for non-messenger paths (fast
+ * path; no Response clone overhead).
+ */
+const augmentResponseForMessenger = (response: Response): Response => {
+  const headers = new Headers(response.headers)
+  headers.set("cache-control", MESSENGER_CACHE_CONTROL)
+  const existingVary = headers.get("vary")
+  if (existingVary) {
+    // Preserve any existing Vary entries (e.g. Accept-Encoding from
+    // upstream gzip middleware); only append Cookie if not already listed.
+    const varyTokens = existingVary
+      .split(",")
+      .map((token) => token.trim().toLowerCase())
+      .filter(Boolean)
+    if (!varyTokens.includes("cookie")) {
+      headers.set("vary", `${existingVary}, ${MESSENGER_VARY}`)
+    }
+  } else {
+    headers.set("vary", MESSENGER_VARY)
+  }
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  })
 }
 
 export default createServerEntry({
@@ -112,10 +176,28 @@ export default createServerEntry({
     // directly without await.
     const theme = extractThemeFromRequest(request)
     const lang = extractLangFromRequest(request)
+    // Wave 133 SW1 — raw Cookie header for SSR-side authenticated backend
+    // calls. The axios client interceptor (frontend/src/api/client.ts)
+    // forwards this header on outgoing /api/v1 requests when running on
+    // Node SSR (typeof window === "undefined"). Stores empty string on
+    // unauthenticated requests so the getter never returns undefined when
+    // the chain is active. NEVER log or surface the raw value — it
+    // contains the access_token_v2 HttpOnly cookie.
+    const cookie = request.headers.get("cookie") ?? ""
+    // Wave 180 SW3 — /messenger privacy posture: inject Cache-Control: no-store
+    // + Vary: Cookie after handler.fetch resolves. Branch is path-prefix based;
+    // all other routes return upstream response unchanged (fast path; no
+    // Response clone overhead).
+    const isMessengerPath = url.pathname.startsWith(MESSENGER_PATH_PREFIX)
     return requestAuthStorage.run(auth, () =>
-      requestThemeStorage.run(theme, () =>
-        requestLangStorage.run(lang, () => handler.fetch(request)),
-      ),
+      requestCookieStorage.run(cookie, () =>
+        requestThemeStorage.run(theme, () =>
+          requestLangStorage.run(lang, async () => {
+            const response = await handler.fetch(request)
+            return isMessengerPath ? augmentResponseForMessenger(response) : response
+          })
+        )
+      )
     )
   },
 })

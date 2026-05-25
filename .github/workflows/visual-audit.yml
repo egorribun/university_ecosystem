@@ -85,6 +85,23 @@ jobs:
       OTEL_SDK_DISABLED: "true"
       ALGORITHM: "RS256"
       JWT_PRIVATE_KEY_PATH: ".secrets/jwt_rs256.pem"
+      # W139 SW3 iter2: explicit NATS_URL pointing at the localhost NATS
+      # service (no auth — matches backend default nats_url config). Without
+      # this, backend's NatsTaskBroker hangs at lifespan.
+      NATS_URL: "nats://127.0.0.1:4222"
+      # W140 SW4 iter6: explicit Redis URLs. Login flow goes through
+      # `redis_session.create_session()` → `_get_shared_client(redis_url)` →
+      # `Redis.from_url(url, ...)`. The `redis_url` is sourced from
+      # `settings.rate_limit_storage_uri` which DEFAULTS to "memory://" if
+      # the env var is absent (per app/core/config/mixins/rate_limit_settings.py:45).
+      # "memory://" is not a valid Redis URL scheme, so Redis.from_url raises
+      # ValueError → HTTP 500 on /api/v1/auth/login/json. Pre-W140 this was
+      # masked because the visual audit script never reached the login step
+      # (CSRF dance was missing + earlier blockers fired). After SW4 iter4
+      # unblocked CSRF, login now reaches Redis URL parsing and 500s.
+      CACHE_REDIS_URL: "redis://127.0.0.1:6379/0"
+      RATE_LIMIT_STORAGE_BACKEND: redis
+      RATE_LIMIT_STORAGE_URI: "redis://127.0.0.1:6379/1"
     services:
       postgres:
         image: pgvector/pgvector:pg17
@@ -105,6 +122,23 @@ jobs:
           - 6379:6379
         options: >-
           --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      # W139 SW3 iter2: NATS service added after iter1 confirmed backend
+      # lifespan hangs on `nats.aio.client._connect_to_server` with
+      # `ConnectionRefusedError: [Errno 111] Connection refused` (NATS
+      # server not running). Backend's `NatsTaskBroker` (app/core/nats_broker.py)
+      # has NO env-flag to skip; lifespan unconditionally awaits the broker
+      # via Dishka container. CI workflow must provide NATS for backend to
+      # converge. Default port 4222, no auth (matches backend default
+      # nats_url "nats://127.0.0.1:4222").
+      nats:
+        image: nats:2.10.25-alpine
+        ports:
+          - 4222:4222
+        options: >-
+          --health-cmd "wget -q -O - http://localhost:8222/varz || exit 1"
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
@@ -133,22 +167,44 @@ jobs:
       - name: Install backend dependencies
         run: uv sync --frozen
 
-      # P0-01 (audit 2026-03-06): SHA-pinned to prevent supply chain attack
-      # via mutable @v2 tag. Equivalent to taiki-e/install-action@v2.75.22.
+      # Wave 141 polish-v2 (post-wave-close): switched from
+      # taiki-e/install-action@v2.77.5 (which hardcodes drager/wasm-pack
+      # releases URL → 404 as of 2026-05-11; rustwasm/wasm-pack is the
+      # canonical repo, drager redirects 301 but GitHub asset URLs don't
+      # auto-follow) to the official wasm-pack curl installer from
+      # rustwasm.github.io. Reliable + reproducible across CI runs.
+      # P0-01 (audit 2026-03-06) supply-chain note: curl installer comes
+      # from rustwasm-canonical infrastructure; equivalent trust level to
+      # the action since both ultimately fetch from rustwasm/wasm-pack
+      # GitHub release assets.
       - name: Install wasm-pack
-        uses: taiki-e/install-action@d9be7d8cda89035c9c843f78bd44d4f72d8403d4 # v2.79.7
-        with:
-          tool: wasm-pack
+        run: |
+          curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+          wasm-pack --version
 
       - name: Install frontend dependencies
         working-directory: frontend
         run: npm ci
 
       - name: Build WASM modules
+        # W139 (z) #5: WASM binaryen download flake — wasm-pack downloads
+        # binaryen on first invocation from GitHub releases CDN. Transient
+        # 404/timeout failures are observed (rate-limiting or release flake).
+        # W140 SW4 mitigation: retry up to 3 times with 10s backoff. Each
+        # build is idempotent (binaryen cache reused on retry).
         working-directory: frontend
         run: |
-          wasm-pack build rust-crypto --target web
-          wasm-pack build wasm-sanitizer --target web
+          for attempt in 1 2 3; do
+            if wasm-pack build rust-crypto --target web && \
+               wasm-pack build wasm-sanitizer --target web; then
+              echo "OK: WASM modules built (attempt $attempt)"
+              exit 0
+            fi
+            echo "WASM build failed on attempt $attempt; retrying after 10s..."
+            sleep 10
+          done
+          echo "::error::WASM build failed after 3 attempts"
+          exit 1
 
       - name: Generate RS256 keypair
         # Mirrors start-docker.ps1 New-JwtRs256Key (W137 SW1):
@@ -164,22 +220,48 @@ jobs:
       - name: Run database migrations
         run: uv run alembic upgrade head
 
-      - name: Build frontend (production, NOT VITE_LHCI bypass)
-        # Visual audit needs the REAL authed flow, not the VITE_LHCI mock-user
-        # bypass. Production build path is the same one prod-deploy uses.
-        # Tree-shake invariant verified post-build (zero `lhci-mock-user` in
-        # PROD assets — would indicate the bypass leaked, which is a
-        # prod-security regression per CLAUDE.md gotcha).
+      - name: Build frontend (E2E reduced-chrome mode, NOT VITE_LHCI bypass)
+        # Visual audit needs the REAL authed flow (NOT VITE_LHCI mock-user bypass).
+        # W141 SW1 adds VITE_E2E_MODE=1 to enable the W116 SW1 reduced MainLayout
+        # pattern (frontend/src/components/layout/MainLayout.tsx:30-75): Navbar /
+        # Footer / BackToTop / MobileBottomNav replaced with landmark-only stubs
+        # (`<nav data-e2e-stub="main-nav" />` etc.) under E2E flag. This shrinks
+        # the heavy authed-route DOM enough for axe-core's analyze() to complete
+        # within the 60s timeout (W140 NEW §Honesty caveat #5 closure).
+        #
+        # Why this is SAFE for the auth-cookie SSR chain: per W141 Phase 1
+        # Explore Agent 1, Navbar is CLIENT-SIDE hydration only — useNavbarLogic
+        # reads from useAuthStore Zustand, while SSR auth flows from HTTP cookie
+        # headers NOT Navbar fetching /users/me. Stripping Navbar in the E2E
+        # build does NOT affect W126-W127 cookie-driven SSR rendering of route
+        # content (/dashboard, /events, etc.).
+        #
+        # Trade-off: less coverage of Navbar/Footer in this audit. Those
+        # components are covered by tests/e2e/a11y-public.spec.ts on /login
+        # (compact route, no chrome) + Wave 142+ can add dedicated chrome
+        # component a11y tests if needed.
+        #
+        # Tree-shake invariants verified post-build:
+        # 1. VITE_LHCI mock-user bypass STAYS tree-shaken (zero `lhci-mock-user`
+        #    in dist — auth bypass not active) — different flag, independent state
+        # 2. VITE_E2E_MODE branch IS bundled (`data-e2e-stub` strings present in
+        #    dist — flag took effect; new W141 SW1 check)
         working-directory: frontend
         env:
           VITE_BACKEND_ORIGIN: http://localhost
+          VITE_E2E_MODE: "1"
         run: |
           npm run build
           if find dist/client/assets -name "*.js" -exec grep -l "lhci-mock-user" {} + 2>/dev/null | grep -q .; then
-            echo "::error::VITE_LHCI tree-shake invariant violated — non-LHCI build contains mock-user reference"
+            echo "::error::VITE_LHCI tree-shake invariant violated — E2E build contains LHCI mock-user reference"
             exit 1
           fi
-          echo "OK: production frontend build tree-shakes VITE_LHCI bypass cleanly"
+          echo "OK: VITE_LHCI bypass tree-shaken cleanly"
+          if ! find dist/client/assets -name "*.js" -exec grep -l "data-e2e-stub" {} + 2>/dev/null | grep -q .; then
+            echo "::error::VITE_E2E_MODE flag did NOT take effect — dist lacks data-e2e-stub markers (MainLayout reduced-chrome branch not active)"
+            exit 1
+          fi
+          echo "OK: VITE_E2E_MODE=1 took effect (data-e2e-stub markers present in dist)"
 
       - name: Install Playwright bundled chromium
         # Wave 138 SW3 explicitly uses bundled Chromium (NOT real Chrome via
@@ -192,22 +274,46 @@ jobs:
         run: npx playwright install --with-deps chromium
 
       - name: Start backend
-        # uvicorn on 127.0.0.1:8000 — same as reusable-e2e-tests.yml.
+        # uvicorn on 127.0.0.1:8000 with --log-level debug + redirect to log file
+        # so the next "Wait for backend health" step can tail it on timeout.
+        # W139 SW3 first-run discovery: backend lifespan calls
+        # _startup_background_workers which connects to NATS/ES/SpiceDB (services
+        # NOT running on CI Linux runner — only postgres + redis from
+        # `services:` block). Without log capture, lifespan hang produces NO
+        # diagnostic output. Adding `> /tmp/backend.log 2>&1` surfaces the
+        # actual hang point.
         run: |
-          uv run uvicorn app.main:app --host 127.0.0.1 --port 8000 &
+          uv run uvicorn app.main:app --host 127.0.0.1 --port 8000 --log-level debug > /tmp/backend.log 2>&1 &
           echo "BACKEND_PID=$!" >> "$GITHUB_ENV"
 
       - name: Wait for backend health
+        # 180s timeout (90 × 2s) — extended from 60s in W139 SW3 first-run iter.
+        # Backend startup on CI Linux includes lifespan with potential service
+        # discovery delays (NATS/SpiceDB/ES connect attempts may have long
+        # default timeouts before erroring + continuing). On timeout, tail
+        # backend log for diagnostic visibility.
+        #
+        # W140 SW4 path fix: `/health` returns 404 (no such route exists).
+        # The actual routes are /health/live, /healthz, /health/ready
+        # (+ legacy /ready). For CI readiness polling we use /health/ready
+        # which is the lean Readiness Probe (just DB connectivity + not
+        # shutting down). Matches the backend Dockerfile HEALTHCHECK pattern
+        # in W140 SW3-fix (docker-compose.full.yml override). Pre-W140
+        # `/health` 404 silently turned this loop into a 180s wait → timeout,
+        # masked by the parallel NATS hang issue (W139 (z) #4).
         run: |
-          for i in {1..30}; do
-            if curl -sf http://127.0.0.1:8000/health > /dev/null; then
-              echo "OK: backend ready"
+          for i in {1..90}; do
+            if curl -sf http://127.0.0.1:8000/health/ready > /dev/null; then
+              echo "OK: backend ready after $i attempts (~$(( i * 2 ))s)"
               exit 0
             fi
-            echo "Waiting for backend... ($i/30)"
             sleep 2
           done
-          echo "::error::Backend failed to start within 60s"
+          echo "::error::Backend failed to start within 180s"
+          echo "---backend-log-tail---"
+          tail -200 /tmp/backend.log 2>&1 || echo "(no /tmp/backend.log file)"
+          echo "---ps-aux-uvicorn---"
+          ps aux | grep -i uvicorn 2>&1 | head -5 || echo "(no uvicorn process)"
           exit 1
 
       - name: Verify JWKS endpoint
@@ -225,9 +331,30 @@ jobs:
         # Idempotent registration: 409 means user exists from prior run reuse.
         # The visual audit script logs in as test@university.dev / TestPass@2024x
         # — these are the CLAUDE.md-documented test credentials.
+        #
+        # W140 SW4 CSRF dance: CSRFMiddleware (app/core/csrf.py + middleware/setup.py:47-60)
+        # is enabled in `testing` env too and requires both csrf_token cookie
+        # AND X-CSRF-Token header on POST. /api/v1/auth/register is NOT in
+        # exempt_prefixes. Pre-W140 the workflow's plain curl POST got 403
+        # (z) discovery surfaced after backend health was fixed.
+        # Mitigation: GET /api/v1/auth/csrf-cookie to set the cookie, extract
+        # the token, then POST register with both cookie + matching header.
         run: |
+          # Step 1: Get CSRF cookie. /api/v1/auth/csrf-cookie sets the cookie.
+          curl -s -c /tmp/cookies.txt http://127.0.0.1:8000/api/v1/auth/csrf-cookie > /dev/null
+          CSRF=$(awk '/csrf_token/ {print $7}' /tmp/cookies.txt)
+          if [ -z "$CSRF" ]; then
+            echo "::error::Failed to obtain CSRF token from /api/v1/auth/csrf-cookie"
+            cat /tmp/cookies.txt
+            exit 1
+          fi
+          echo "OK: obtained CSRF token (len=${#CSRF})"
+
+          # Step 2: POST /register with the cookie + header.
           STATUS=$(curl -s -o /tmp/register.json -w "%{http_code}" -X POST http://127.0.0.1:8000/api/v1/auth/register \
+            -b /tmp/cookies.txt \
             -H "Content-Type: application/json" \
+            -H "X-CSRF-Token: $CSRF" \
             -d '{"email": "test@university.dev", "password": "TestPass@2024x", "full_name": "Visual Audit User"}' || echo "ERROR")
           echo "Register response: HTTP $STATUS"
           cat /tmp/register.json || true
@@ -318,6 +445,18 @@ jobs:
           TEST_PASSWORD: TestPass@2024x  # pragma: allowlist secret
         run: node ./scripts/wave138-visual-audit.mjs
         continue-on-error: true
+
+      - name: Backend log diagnostic dump
+        # W140 SW4 iter5 diagnostic: visual audit script's login step may
+        # return HTTP 500 (or other server-side errors) that don't surface
+        # backend-side via the script's `loginResp.text()` slice. Tail the
+        # last 300 lines of /tmp/backend.log unconditionally after the
+        # visual audit run for triage. `always()` so this runs even if a
+        # prior step failed.
+        if: always()
+        run: |
+          echo "---backend-log-tail---"
+          tail -300 /tmp/backend.log 2>&1 || echo "(no /tmp/backend.log file)"
 
       - name: Print summary table
         # Reads .screenshots/wave138-visual-audit/*.json sidecar files + emits

@@ -17,3 +17,8 @@
 @import "./tokens/schedule.css";
 @import "./tokens/activity.css";
 @import "./tokens/map.css";
+@import "./tokens/admin.css";
+@import "./tokens/messenger.css";
+@import "./tokens/profile.css";
+@import "./tokens/settings.css";
+@import "./tokens/auth.css";

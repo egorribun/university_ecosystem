@@ -1,11 +1,13 @@
-import { useState, useCallback, useRef, useEffect } from "react"
+import { useState, useCallback, useRef, useEffect, useId } from "react"
 import { useSearch, useNavigate } from "@tanstack/react-router"
 import { useTranslation } from "react-i18next"
 import { Settings as SettingsIcon } from "lucide-react"
 
 import { PageLayout } from "@/components/layout/PageLayout"
-import { Tabs, Tab, Snackbar } from "@/components/settings"
+import { Tabs, Tab, Snackbar, SettingsBackdrop } from "@/components/settings"
 import { StepUpDialog } from "@/components/mfa/StepUpDialog"
+import useMediaQuery from "@/hooks/useMediaQuery"
+import { breakpoints } from "@/theme/tokens"
 
 import { SettingsGeneral } from "./settings/SettingsGeneral"
 import { SettingsProfile } from "./settings/SettingsProfile"
@@ -14,9 +16,45 @@ import { SettingsIntegrations } from "./settings/SettingsIntegrations"
 
 export default function Settings() {
   const { t } = useTranslation(["settings", "common"])
-  const searchParams = useSearch({ strict: false }) as Record<string, string | undefined>
+  // Wave 134 SW2 — tab state lifted from useState into the URL query
+  // string (?tab=N). Validated via settingsSearchSchema in
+  // routes/_auth/settings.tsx; invalid values fall back to 0 (General).
+  // Allows deep-linking from external sources (notification emails,
+  // help docs) to a specific tab. Spotify-callback ?spotify= flag
+  // (line ~50 below) was already URL-driven, this brings tab in line.
+  //
+  // strict: false — preserves the pre-W134 pattern so component-level
+  // tests (Settings.media.test.tsx, Settings.radio.test.tsx, etc.) can
+  // mount Settings without a fully-resolved /_auth/settings route
+  // match. The schema-validated TanStack search is still surfaced as
+  // a Record<string, unknown> here; we narrow the only fields we read
+  // (tab + spotify) inline.
+  const search = useSearch({ strict: false }) as { tab?: number; spotify?: string }
   const navigate = useNavigate()
-  const [tab, setTab] = useState(0)
+  const tab = search.tab ?? 0
+  // Wave 175 SW6 — stable panel id passed to Tabs + tabpanel wrapper so
+  // each Tab gets aria-controls={panelId} and the tabpanel has matching
+  // id + aria-labelledby={tabId of active tab} per ARIA APG.
+  const panelBaseId = useId()
+  const settingsPanelId = `${panelBaseId}-tabpanel`
+  const activeTabId = `${settingsPanelId}-tab-${tab}`
+
+  // Wave 184 SW6 (Path D) — viewport flags for SettingsBackdrop orb scaling
+  // + GPU mitigation. Matches W181 SW2 MessengerBackdrop + W184 SW5
+  // ProfileBackdrop convention. isNarrow at content breakpoint (~< 900px)
+  // scales orbs down; isMobile (<= breakpoints.mobile) drops blur entirely.
+  //
+  // Within-iter SAME-mechanism sub-fix (W138 Lesson #1): originally used
+  // framer-motion's useReducedMotion() — which caused vitest unhandled
+  // errors in Settings.media.test.tsx + Settings.radio.test.tsx because
+  // framer-motion's hook touches `window.matchMedia(...).addEventListener`
+  // in initPrefersReducedMotion via a code path that jsdom's polyfill
+  // doesn't fully cover. Switched to the project's own useMediaQuery hook
+  // matching W184 SW5 Profile.tsx + W175 SW4 ProfileHeader convention —
+  // useMediaQuery is jsdom-polyfilled in setupTests.ts (W113 SW6 baseline).
+  const isNarrow = useMediaQuery(`(max-width: ${breakpoints.content})`)
+  const isMobile = useMediaQuery(`(max-width: ${breakpoints.mobile})`)
+  const prefersReducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)")
 
   // Shared Snackbar State
   const [snackbar, setSnackbar] = useState<{
@@ -48,7 +86,7 @@ export default function Settings() {
   }, [])
 
   useEffect(() => {
-    const spotifyStatus = searchParams.spotify
+    const spotifyStatus = search.spotify
     if (spotifyStatus) {
       if (spotifyStatus === "connected")
         setSnackbar({
@@ -70,17 +108,56 @@ export default function Settings() {
           return next
         },
         replace: true,
+        viewTransition: false,
       })
     }
-  }, [searchParams, navigate, t])
+  }, [search, navigate, t])
+
+  // Wave 134 SW2 — tab change navigates to /settings?tab=N. `replace: true`
+  // so back button skips intermediate tabs (matches pre-W134 useState
+  // behaviour where navigation history wasn't polluted). `viewTransition:
+  // false` per FIX-77-03 — prevents view transition flash on tab change.
+  const setTab = useCallback(
+    (next: number) => {
+      void navigate({
+        to: ".",
+        search: (prev: Record<string, unknown>) => {
+          const out: Record<string, unknown> = { ...prev }
+          // tab=0 is the default; omit from URL for a clean /-friendly state.
+          if (next === 0) {
+            delete out.tab
+          } else {
+            out.tab = next
+          }
+          return out
+        },
+        replace: true,
+        viewTransition: false,
+      })
+    },
+    [navigate]
+  )
 
   return (
     <PageLayout variant="full">
+      {/* Wave 184 SW6 (Path D) — settings-theme scope wrapper enables
+          tokens/settings.css (slate/purple/slate-300 palette + matte cards
+          + tab highlight) inside this subtree. SettingsBackdrop mounts
+          inside the outer `relative` positioning context so its
+          `absolute inset-0` orbs span the full Settings viewport (NOT
+          per-tab — backdrop must NOT re-mount on tab change per FIX-77-03;
+          conditional render here is route-level, gated by Settings.tsx
+          rendering at all, which only happens at /settings route). */}
       <div
-        className="flex h-full w-full flex-col bg-(--bg-page) text-(--text-primary) sm:flex-row"
+        className="settings-theme flex h-full w-full flex-col bg-(--bg-page) text-(--text-primary) sm:flex-row relative"
         style={{ height: "40rem", maxHeight: "85vh" }}
       >
-        <div className="px-2 md:px-4">
+        <SettingsBackdrop
+          isNarrow={isNarrow}
+          isMobile={isMobile}
+          prefersReducedMotion={prefersReducedMotion}
+        />
+        <div className="px-2 md:px-4 relative z-base">
           <div
             data-fade
             className="mb-8 flex flex-wrap items-center gap-4 sm:gap-5 animate-fade-in delay-(--motion-delay-short)"
@@ -102,6 +179,8 @@ export default function Settings() {
               onChange={(_, value) => setTab(value)}
               variant="scrollable"
               scrollButtons="auto"
+              panelId={settingsPanelId}
+              ariaLabel={t("settings:tabs.ariaLabel")}
               className="border-b border-(--border-subtle)"
             >
               <Tab label={t("settings:tabs.general")} />
@@ -111,7 +190,17 @@ export default function Settings() {
             </Tabs>
           </div>
 
-          <div data-fade className="animate-fade-in delay-(--motion-delay-long)">
+          {/* Wave 175 SW6 — single stable tabpanel (W116 polish events tabs
+              pattern). aria-labelledby points at the currently-active tab
+              button id; aria-controls on every Tab points at this section. */}
+          <section
+            id={settingsPanelId}
+            role="tabpanel"
+            aria-labelledby={activeTabId}
+            tabIndex={0}
+            data-fade
+            className="animate-fade-in delay-(--motion-delay-long) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-(--bg-page)"
+          >
             {tab === 0 && <SettingsGeneral setSnackbar={setSnackbar} />}
             {tab === 1 && <SettingsProfile setSnackbar={setSnackbar} />}
             {tab === 2 && (
@@ -122,7 +211,7 @@ export default function Settings() {
               />
             )}
             {tab === 3 && <SettingsIntegrations setSnackbar={setSnackbar} />}
-          </div>
+          </section>
 
           {/* StepUp Dialog */}
           <StepUpDialog

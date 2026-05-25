@@ -11,6 +11,9 @@
   "noUsersFound": "Пользователи не найдены",
   "online": "в сети",
   "offline": "не в сети",
+  "typing": "{{name}} печатает...",
+  "typingMultiple": "{{count}} человек(а) печатают...",
+  "isTyping": "Печатает",
   "attachPhoto": "Фото",
   "attachDocument": "Документ",
   "attachFile": "Файл",
@@ -27,9 +30,52 @@
   "deleteChatTitle": "Удалить чат",
   "confirmDelete": "Удалить этот чат для всех участников?",
   "profileLoadError": "Не удалось загрузить профиль участника",
+  "noChats": {
+    "title": "Чатов пока нет",
+    "description": "Начните новый чат, чтобы связаться с участниками университета.",
+    "cta": "Начать новый чат",
+    "searchEmpty": {
+      "title": "Ничего не найдено",
+      "description": "Нет чатов, соответствующих «{{query}}». Попробуйте другой поисковый запрос.",
+      "clearSearch": "Очистить поиск"
+    }
+  },
+  "noMessages": {
+    "title": "Поздоровайтесь 👋",
+    "description": "В этом чате пока нет сообщений. Отправьте первое — растопите лёд!",
+    "searchEmpty": {
+      "title": "Сообщений не найдено",
+      "description": "Нет сообщений, соответствующих «{{query}}». Попробуйте другой поисковый запрос.",
+      "clearSearch": "Очистить поиск"
+    }
+  },
+  "connectionStatus": {
+    "reconnecting": "Переподключение…",
+    "lost": "Соединение потеряно",
+    "lostHint": "Сообщения могут не доставляться до восстановления соединения."
+  },
+  "loading": {
+    "contacts": "Загрузка чатов…",
+    "messages": "Загрузка сообщений…",
+    "users": "Загрузка пользователей…"
+  },
+  "error": {
+    "failedToLoadChats": "Не удалось загрузить чаты",
+    "failedToLoadChatsHint": "Проверьте соединение и попробуйте снова.",
+    "failedToLoadMessages": "Не удалось загрузить сообщения",
+    "failedToLoadMessagesHint": "Проверьте соединение и попробуйте снова.",
+    "failedToLoadUsers": "Не удалось загрузить пользователей",
+    "failedToLoadUsersHint": "Проверьте соединение и попробуйте снова.",
+    "retry": "Повторить"
+  },
   "aria": {
     "messageList": "Сообщения чата",
     "removeAttachment": "Удалить вложение",
-    "attachments": "Вложения"
+    "attachments": "Вложения",
+    "sendMessage": "Отправить сообщение",
+    "unread": "{{count}} непрочитано",
+    "messageSent": "Отправлено",
+    "messageRead": "Прочитано получателем",
+    "connectionStatus": "Статус соединения"
   }
 }

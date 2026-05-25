@@ -102,7 +102,13 @@ if (process.platform !== "win32") {
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 const frontendRoot = path.resolve(__dirname, "..")
-const distDir = path.join(frontendRoot, "dist")
+// W139 SW5 fix — post-W125 SSR migration, dist/ split into dist/client/ +
+// dist/server/. Lighthouse must serve from dist/client/ where index.html
+// lives. Pre-W125 it was dist/index.html. Defensive detection (matches
+// prepare-lhci-routes.mjs + run-lhci.mjs).
+const distClientDir = path.join(frontendRoot, "dist", "client")
+const distLegacyDir = path.join(frontendRoot, "dist")
+const distDir = existsSync(path.join(distClientDir, "index.html")) ? distClientDir : distLegacyDir
 const lhrDir = path.join(frontendRoot, ".lighthouseci")
 
 // CRITICAL: set VITE_LHCI BEFORE any build invocation so Rolldown DCE
@@ -373,7 +379,28 @@ async function main() {
     }
   } finally {
     console.log(`\n[preview] stopping vite preview…`)
-    await server.close()
+    // W162 SW2 (Tier 2 Path C refined) — Promise.race timeout closes W159
+    // §Honesty NEW #1 (vite preview server.close() hangs on Windows due to
+    // Worker thread active handles per W136 SW5 trace identifying
+    // `MessagePort + Pipe + Socket × 2`; same family as W126 polish #3
+    // vite-plugin-pwa Windows hang). The W148 SW3 Promise.race fast-fail
+    // pattern bounds the cleanup wait to a hard 5s ceiling; if close()
+    // doesn't return within that window, the explicit process.exit(0)
+    // call after summary table printing terminates the event loop
+    // regardless of lingering handles. W126 polish #3 deeper Worker thread
+    // root cause stays open as W163+ candidate.
+    const SERVER_CLOSE_TIMEOUT_MS = 5000
+    await Promise.race([
+      server.close(),
+      new Promise((resolve) =>
+        setTimeout(() => {
+          console.warn(
+            `  [server.close] ${SERVER_CLOSE_TIMEOUT_MS}ms timeout — proceeding to summary + force-exit`
+          )
+          resolve()
+        }, SERVER_CLOSE_TIMEOUT_MS)
+      ),
+    ])
   }
 
   // Print median summary table.
@@ -405,7 +432,18 @@ async function main() {
   console.log(`LHRs saved to: ${path.relative(frontendRoot, lhrDir)}/`)
 }
 
-main().catch((err) => {
-  console.error("\n[lhci-windows-fallback] fatal:", err)
-  process.exitCode = 1
-})
+main()
+  .then(() => {
+    // W162 SW2 — explicit process.exit(0) ensures the wrapper terminates
+    // cleanly even when vite preview's underlying Worker thread doesn't
+    // fully release the event loop after server.close() (or after the
+    // Promise.race timeout fires). Same hang family as W126 polish #3 /
+    // W135 SW3 / W136 SW5 trace agent finding. Without this, the script
+    // hangs indefinitely after printing the summary table, requiring
+    // manual Ctrl+C to terminate — recorded as W159 §Honesty NEW #1.
+    process.exit(0)
+  })
+  .catch((err) => {
+    console.error("\n[lhci-windows-fallback] fatal:", err)
+    process.exit(1)
+  })

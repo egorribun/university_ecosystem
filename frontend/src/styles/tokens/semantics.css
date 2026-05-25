@@ -72,6 +72,11 @@
     --text-secondary: var(--color-slate-600);
     --text-tertiary: var(--color-slate-500);
     --text-inverse: var(--color-white);
+    /* Wave 175 SW1 — Footer is theme-agnostic always-dark (blue gradient in
+       light / nav-dark gradient in dark); --text-inverse would be slate-950
+       in dark → low contrast. --text-on-footer = white in BOTH themes,
+       communicates intent "constant white on always-dark surface". */
+    --text-on-footer: var(--color-white);
 
     /* Borders */
     --border-subtle: var(--color-slate-200);
@@ -295,6 +300,27 @@
       linear-gradient(112deg, var(--primary-main) 0%, var(--primary-hover) 100%);
     --bg-footer-dark: var(--grad-nav-dark);
 
+    /* Wave 176 SW2 — Footer ambient orbs (light theme). Always-dark surface
+       (blue gradient base) — orbs use cooler sky/indigo hues to layer above
+       blue base without changing dominant color. White sheen adds a soft
+       brightening highlight. Same opacities work in both themes because
+       footer surface is constant-dark in both. */
+    --footer-orb-primary: color-mix(in srgb, var(--color-sky-300) 35%, transparent);
+    --footer-orb-secondary: color-mix(in srgb, var(--color-indigo-200) 28%, transparent);
+    --footer-orb-sheen: color-mix(in srgb, var(--color-white) 14%, transparent);
+    /* Top accent stripe — gradient bar sitting at top of footer to soften
+       visual abruptness between page content + footer. Constant white →
+       primary-main → constant white in light; sky-300 → sky-400 → sky-300
+       in dark. */
+    --footer-accent-line: linear-gradient(
+      90deg,
+      transparent 0%,
+      color-mix(in srgb, var(--color-white) 35%, transparent) 20%,
+      color-mix(in srgb, var(--color-white) 65%, transparent) 50%,
+      color-mix(in srgb, var(--color-white) 35%, transparent) 80%,
+      transparent 100%
+    );
+
     /* Messenger Semantic Colors (Light) */
     --msg-sidebar-bg: var(--color-slate-50);
     --msg-chat-bg: var(--color-white);
@@ -354,6 +380,9 @@
     --text-secondary: var(--color-slate-300);
     --text-tertiary: var(--color-slate-400);
     --text-inverse: var(--color-slate-950);
+    /* Wave 175 SW1 — see :root block; --text-on-footer = white in BOTH
+       themes (constant white on always-dark footer surface). */
+    --text-on-footer: var(--color-white);
 
     /* Borders */
     --border-subtle: var(--color-slate-700);
@@ -516,6 +545,21 @@
     --glass-tint1: color-mix(in srgb, var(--color-sky-400) var(--opacity-faint), transparent);
     --glass-tint2: color-mix(in srgb, var(--color-indigo-400) var(--opacity-faint), transparent);
     --glass-tint3: color-mix(in srgb, var(--color-black) var(--opacity-soft), transparent);
+
+    /* Wave 176 SW2 — Footer orbs (dark overrides). Brighter sky/indigo tones
+       to register on the nav-dark gradient base. Sheen stays subtle. */
+    --footer-orb-primary: color-mix(in srgb, var(--color-sky-400) 32%, transparent);
+    --footer-orb-secondary: color-mix(in srgb, var(--color-indigo-400) 26%, transparent);
+    --footer-orb-sheen: color-mix(in srgb, var(--color-white) 10%, transparent);
+    /* Dark accent stripe — slightly less bright + cooler. */
+    --footer-accent-line: linear-gradient(
+      90deg,
+      transparent 0%,
+      color-mix(in srgb, var(--color-sky-300) 25%, transparent) 20%,
+      color-mix(in srgb, var(--color-sky-300) 55%, transparent) 50%,
+      color-mix(in srgb, var(--color-sky-300) 25%, transparent) 80%,
+      transparent 100%
+    );
 
     /* Category badge colors — Wave 121 SW4 (dark overrides) */
     --cat-blue-bg: color-mix(in srgb, var(--color-blue-400) 16%, transparent);

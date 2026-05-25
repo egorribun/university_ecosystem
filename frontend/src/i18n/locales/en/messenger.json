@@ -11,6 +11,9 @@
   "noUsersFound": "No users found matching your search",
   "online": "online",
   "offline": "offline",
+  "typing": "{{name}} is typing...",
+  "typingMultiple": "{{count}} people are typing...",
+  "isTyping": "Typing",
   "attachPhoto": "Photo",
   "attachDocument": "Document",
   "attachFile": "File",
@@ -27,9 +30,52 @@
   "deleteChatTitle": "Delete Chat",
   "confirmDelete": "Delete this chat for all participants?",
   "profileLoadError": "Unable to load participant profile",
+  "noChats": {
+    "title": "No conversations yet",
+    "description": "Start a new chat to connect with peers across the university.",
+    "cta": "Start new conversation",
+    "searchEmpty": {
+      "title": "No results found",
+      "description": "No conversations match \"{{query}}\". Try a different search term.",
+      "clearSearch": "Clear search"
+    }
+  },
+  "noMessages": {
+    "title": "Say hi 👋",
+    "description": "This conversation is empty. Send the first message to break the ice!",
+    "searchEmpty": {
+      "title": "No messages found",
+      "description": "No messages match \"{{query}}\". Try a different search term.",
+      "clearSearch": "Clear search"
+    }
+  },
+  "connectionStatus": {
+    "reconnecting": "Reconnecting…",
+    "lost": "Connection lost",
+    "lostHint": "Messages may not be delivered until the connection is restored."
+  },
+  "loading": {
+    "contacts": "Loading conversations…",
+    "messages": "Loading messages…",
+    "users": "Loading users…"
+  },
+  "error": {
+    "failedToLoadChats": "Couldn't load conversations",
+    "failedToLoadChatsHint": "Check your connection and try again.",
+    "failedToLoadMessages": "Couldn't load messages",
+    "failedToLoadMessagesHint": "Check your connection and try again.",
+    "failedToLoadUsers": "Couldn't load users",
+    "failedToLoadUsersHint": "Check your connection and try again.",
+    "retry": "Try again"
+  },
   "aria": {
     "messageList": "Chat messages",
     "removeAttachment": "Remove attachment",
-    "attachments": "Attachments"
+    "attachments": "Attachments",
+    "sendMessage": "Send message",
+    "unread": "{{count}} unread",
+    "messageSent": "Sent",
+    "messageRead": "Read by recipient",
+    "connectionStatus": "Connection status"
   }
 }

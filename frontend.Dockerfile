@@ -24,6 +24,31 @@ RUN --mount=type=cache,target=/root/.npm \
 FROM base AS builder
 ARG VITE_BACKEND_ORIGIN=""
 ENV VITE_BACKEND_ORIGIN=$VITE_BACKEND_ORIGIN
+# W150 polish-followup — pass DEV_NO_SSR_SHELL through to post-build-shell.mjs
+# so the dev compose can opt into stripping <div id="root"> SSR content, which
+# unblocks local Docker stack hit by React error #418 hydration mismatch.
+ARG DEV_NO_SSR_SHELL=""
+ENV DEV_NO_SSR_SHELL=$DEV_NO_SSR_SHELL
+# W153 SW1 — opt-in unminified bundle + linked source maps so the wedged
+# renderer error becomes readable in Chrome DevTools via stack traces.
+# Defaults to empty (production minified) so CI / prod deploys are
+# untouched. Only the dev compose (docker-compose.full.yml) should set
+# this to "true". KEEPS mode=production to preserve JSX transform
+# (jsx() not jsxDEV()) so SSR runtime stays compatible with production
+# react-dom-server. Initial SW1 attempt used FRONTEND_BUILD_MODE=development
+# which broke SSR with jsxDEV runtime mismatch — see commit history.
+ARG FRONTEND_BUILD_UNMINIFIED=""
+ENV FRONTEND_BUILD_UNMINIFIED=$FRONTEND_BUILD_UNMINIFIED
+# W156 SW1 Tier 1 #1 — opt-in development React for /login wedge diagnosis.
+# Aliases react-dom/client → cjs/react-dom-client.development.js +
+# scopes NODE_ENV=development to client environment in vite.config.mts.
+# Captures FULL React #418 error message in Firefox DevTools (Windows
+# wedge persists post-W155 across Chrome regular/Incognito/Firefox).
+# Same scope/safety as FRONTEND_BUILD_UNMINIFIED: dev compose only,
+# NEVER set in CI / production deploys (would ship dev React bundle
+# ~150 KB larger + slower runtime checks).
+ARG FRONTEND_REACT_DEV_MODE=""
+ENV FRONTEND_REACT_DEV_MODE=$FRONTEND_REACT_DEV_MODE
 COPY --from=deps /app/node_modules ./node_modules
 COPY frontend ./
 # Copy pre-built WASM packages (FIX-44-02: prevents silent WASM build failure)
@@ -56,6 +81,13 @@ COPY --from=wasm-builder /wasm/wasm-sanitizer/pkg ./wasm-sanitizer/pkg
 # but browser dedupes by href — safe.
 RUN set -e; \
     echo "=== Build with watch+kill workaround (vite-plugin-pwa hang mitigation) ==="; \
+    # Wave 137 SW4 fix: clear dist/ before build so watch+kill detects FRESH
+    # artifacts (not stale copy from host frontend/dist/). The .dockerignore
+    # `dist/` pattern only matches top-level, not `frontend/dist/`, so stale
+    # host dist/ leaks into the build context via `COPY frontend ./`.
+    # Pre-W137 SW4 this masked W134-W136 "byte-identical reproducibility"
+    # claims because the watch+kill exited immediately on the copied dist.
+    rm -rf dist; \
     npm run build > /tmp/build.log 2>&1 & \
     BUILD_PID=$!; \
     i=0; \
@@ -129,7 +161,18 @@ COPY --from=prod-deps --chown=node:node /app/node_modules ./node_modules
 # server-prod.mjs Node wrapper (W131 SW1) — imports dist/server/server.js
 # default export, adapts Web Standards Request <-> Node IncomingMessage,
 # binds http.createServer on PORT/HOST.
+#
+# Wave 175 polish-followup: contentTypes.mjs is server-prod.mjs's sibling
+# module (W175 SW8 extracted CONTENT_TYPES map for side-effect-free import
+# in regression tests at frontend/src/__tests__/serverProdContentTypes.test.ts).
+# server-prod.mjs does `import { CONTENT_TYPES } from "./contentTypes.mjs"`.
+# Without copying both files, Node ESM resolver throws ERR_MODULE_NOT_FOUND
+# at runtime startup → frontend container crashes → Caddy "no upstreams
+# available" 503 cascade (caught via user Docker rebuild test).
+# The `.d.mts` TypeScript declarations are NOT copied — runtime-only Node
+# doesn't need them.
 COPY --chown=node:node frontend/scripts/server-prod.mjs ./scripts/server-prod.mjs
+COPY --chown=node:node frontend/scripts/contentTypes.mjs ./scripts/contentTypes.mjs
 
 # Build artifacts:
 #   dist/client/_shell.html + dist/client/index.html (mirror) + dist/client/assets/

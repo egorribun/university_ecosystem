@@ -1,4 +1,12 @@
-import { createContext, useCallback, useContext, useRef, useState, type ReactNode } from "react"
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react"
 import { createPortal } from "react-dom"
 
 type LiveRegionPoliteness = "polite" | "assertive"
@@ -44,6 +52,21 @@ export function LiveRegionProvider({ children }: LiveRegionProviderProps) {
   const [assertiveMessage, setAssertiveMessage] = useState("")
   const politeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const assertiveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // W156 SW3 — defer portal rendering until after mount to avoid SSR vs client
+  // hydration mismatch. Pre-W156 SW3 the portal was gated on
+  // `typeof document !== "undefined"` which produced different output on
+  // server (null) vs client (live region divs), triggering React #418
+  // hydration mismatch + subtree re-render that defeats SSR perf gains.
+  //
+  // Standard pattern: render NULL on both server initial render AND client
+  // initial render (matches), then a useEffect sets `mounted` after hydration
+  // completes, triggering a re-render with the live regions. Screen-reader
+  // announcements are non-critical at first paint — defer by one tick is
+  // acceptable.
+  const [mounted, setMounted] = useState(false)
+  useEffect(() => {
+    setMounted(true)
+  }, [])
 
   const announce = useCallback((message: string, politeness: LiveRegionPoliteness = "polite") => {
     // Clear any pending timeouts
@@ -65,7 +88,7 @@ export function LiveRegionProvider({ children }: LiveRegionProviderProps) {
   const contextValue: AnnouncerContextValue = { announce }
 
   const liveRegions =
-    typeof document !== "undefined"
+    mounted && typeof document !== "undefined"
       ? createPortal(
           <>
             {/* Polite live region - for non-urgent updates */}

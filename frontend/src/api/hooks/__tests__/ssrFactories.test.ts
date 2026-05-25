@@ -29,10 +29,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import { eventDetailQueryOptions } from "../events"
 import { newsDetailQueryOptions, prefetchNewsListQuery } from "../news"
-import {
-  scheduleGroupsQueryOptions,
-  pageScheduleQueryOptions,
-} from "../schedule"
+import { scheduleGroupsQueryOptions, pageScheduleQueryOptions } from "../schedule"
+import { sessionsQueryKey, sessionsQueryOptions } from "../sessions"
+import { currentUserQueryOptions, currentUserQueryKey } from "../users"
 import { weatherQueryOptions, weatherQueryKey } from "../weather"
 
 // TanStack Query's `FetchInfiniteQueryOptions` is a discriminated union over
@@ -351,5 +350,124 @@ describe("weatherQueryOptions (Wave 130 SW3)", () => {
   it("queryFn is callable", () => {
     const opts = weatherQueryOptions({ lat: 0, lon: 0 })
     expect(typeof opts.queryFn).toBe("function")
+  })
+})
+
+describe("currentUserQueryOptions (Wave 133 SW2)", () => {
+  it("queryKey shape is the stable readonly tuple ['users', 'me']", () => {
+    expect(currentUserQueryKey).toEqual(["users", "me"])
+  })
+
+  it("returned options expose the same queryKey reference (cache identity)", () => {
+    const opts = currentUserQueryOptions()
+    expect(opts.queryKey).toBe(currentUserQueryKey)
+  })
+
+  it("staleTime is 60_000 (matches schedule.ts pattern)", () => {
+    const opts = currentUserQueryOptions()
+    expect(opts.staleTime).toBe(60_000)
+  })
+
+  it("gcTime is 5 * 60_000 (matches schedule.ts pattern)", () => {
+    const opts = currentUserQueryOptions()
+    expect(opts.gcTime).toBe(5 * 60_000)
+  })
+
+  it("networkMode is 'online' (no SSR background-refetch on offline)", () => {
+    const opts = currentUserQueryOptions()
+    expect(opts.networkMode).toBe("online")
+  })
+
+  it("retry is 2 (mirrors schedule.ts; FIX-68-05 mobile flakiness)", () => {
+    const opts = currentUserQueryOptions()
+    expect(opts.retry).toBe(2)
+  })
+
+  it("retryDelay is exponential (1000 * 2^attempt, capped at 10_000)", () => {
+    const opts = currentUserQueryOptions()
+    expect(typeof opts.retryDelay).toBe("function")
+    if (typeof opts.retryDelay !== "function") return
+    expect(opts.retryDelay(0)).toBe(1_000)
+    expect(opts.retryDelay(1)).toBe(2_000)
+    expect(opts.retryDelay(2)).toBe(4_000)
+    expect(opts.retryDelay(3)).toBe(8_000)
+    expect(opts.retryDelay(4)).toBe(10_000) // capped
+    expect(opts.retryDelay(10)).toBe(10_000) // still capped
+  })
+
+  it("queryFn is a function (callable; signal-bearing AbortController forwarded)", () => {
+    const opts = currentUserQueryOptions()
+    expect(typeof opts.queryFn).toBe("function")
+  })
+
+  it("returns a fresh options object per call (not memoized — caller's responsibility)", () => {
+    const a = currentUserQueryOptions()
+    const b = currentUserQueryOptions()
+    expect(a).not.toBe(b)
+    // Same shape though — and the queryKey reference IS shared (stable readonly tuple)
+    expect(a.queryKey).toBe(b.queryKey)
+    expect(a.staleTime).toBe(b.staleTime)
+  })
+})
+
+describe("sessionsQueryOptions (Wave 134 SW2)", () => {
+  it("queryKey shape is ['auth', 'sessions', userId]", () => {
+    const opts = sessionsQueryOptions("user-1")
+    expect(opts.queryKey).toEqual(["auth", "sessions", "user-1"])
+  })
+
+  it("queryKey reflects userId verbatim (no normalization)", () => {
+    expect(sessionsQueryOptions("11111111-1111-1111-1111-111111111111").queryKey[2]).toBe(
+      "11111111-1111-1111-1111-111111111111"
+    )
+    expect(sessionsQueryOptions("me").queryKey[2]).toBe("me")
+  })
+
+  it("queryKey shape preserved across factory refactor (cache identity)", () => {
+    // Pre-W134 useSessionManagement used inline ["auth", "sessions", user?.id ?? "me"].
+    // The factory MUST produce the SAME tuple shape so SSR-prefetched entries
+    // (loader-side ensureQueryData) hydrate cleanly into the client-side
+    // useQuery consumer (useSessionManagement). Drift would silently break
+    // cache identity → client refetches even when SSR already populated cache.
+    expect(sessionsQueryKey("user-1")).toEqual(["auth", "sessions", "user-1"])
+    expect(sessionsQueryOptions("user-1").queryKey).toEqual(sessionsQueryKey("user-1"))
+  })
+
+  it("staleTime is 30_000 (matches pre-W134 useSessionManagement default)", () => {
+    expect(sessionsQueryOptions("user-1").staleTime).toBe(30_000)
+  })
+
+  it("gcTime is 5 * 60_000 (default schedule.ts pattern)", () => {
+    expect(sessionsQueryOptions("user-1").gcTime).toBe(5 * 60_000)
+  })
+
+  it("networkMode is 'online'", () => {
+    expect(sessionsQueryOptions("user-1").networkMode).toBe("online")
+  })
+
+  it("retry is 2 with exponential retryDelay (FIX-68-05)", () => {
+    const opts = sessionsQueryOptions("user-1")
+    expect(opts.retry).toBe(2)
+    expect(typeof opts.retryDelay).toBe("function")
+    if (typeof opts.retryDelay !== "function") return
+    expect(opts.retryDelay(0)).toBe(1_000)
+    expect(opts.retryDelay(1)).toBe(2_000)
+    expect(opts.retryDelay(2)).toBe(4_000)
+    expect(opts.retryDelay(4)).toBe(10_000) // capped
+  })
+
+  it("queryFn is callable (signal-bearing AbortController forwarded)", () => {
+    expect(typeof sessionsQueryOptions("user-1").queryFn).toBe("function")
+  })
+
+  it("queryKey tuple instances are NOT reference-equal across calls (acceptable — useQuery deep-compares)", () => {
+    // Unlike currentUserQueryOptions which exports a stable readonly
+    // tuple constant, sessionsQueryKey produces a fresh tuple per call
+    // (the userId is parameterised). useQuery + ensureQueryData both
+    // deep-compare queryKey, so this is fine for cache identity.
+    const a = sessionsQueryKey("user-1")
+    const b = sessionsQueryKey("user-1")
+    expect(a).not.toBe(b)
+    expect(a).toEqual(b)
   })
 })

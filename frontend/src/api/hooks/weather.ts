@@ -32,16 +32,17 @@ import {
 
 export type WeatherQueryKey = readonly ["weather", "snapshot", string, string]
 
-export const weatherQueryKey = (coordinates: WeatherCoordinates): WeatherQueryKey => [
-  "weather",
-  "snapshot",
-  Number(coordinates.lat).toFixed(4),
-  Number(coordinates.lon).toFixed(4),
-] as const
+export const weatherQueryKey = (coordinates: WeatherCoordinates): WeatherQueryKey =>
+  [
+    "weather",
+    "snapshot",
+    Number(coordinates.lat).toFixed(4),
+    Number(coordinates.lon).toFixed(4),
+  ] as const
 
 export const weatherQueryOptions = (
   coordinates: WeatherCoordinates,
-  cacheTtlMs: number = WEATHER_CACHE_TTL_MS,
+  cacheTtlMs: number = WEATHER_CACHE_TTL_MS
 ) => ({
   queryKey: weatherQueryKey(coordinates),
   queryFn: async ({ signal }: { signal?: AbortSignal }): Promise<WeatherSnapshot> => {

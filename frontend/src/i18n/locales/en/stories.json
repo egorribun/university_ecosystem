@@ -22,6 +22,7 @@
     "noCover": "No cover",
     "coverAlt": "Story cover for \"{{title}}\"",
     "confirmDelete": "Delete this story? This action cannot be undone.",
+    "confirmDeleteDescription": "Are you sure you want to delete this story? This action cannot be undone.",
     "details": {
       "published": "Published: {{date}}",
       "expires": "Expires: {{date}}",

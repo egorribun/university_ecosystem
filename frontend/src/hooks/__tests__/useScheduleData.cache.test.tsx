@@ -4,11 +4,9 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import type { ReactNode } from "react"
 
 import { useScheduleData } from "../useScheduleData"
-import {
-  scheduleGroupsQueryOptions,
-  pageScheduleQueryOptions,
-} from "@/api/hooks/schedule"
-import type { ScheduleGroup } from "@/components/schedule/scheduleUtils"
+import { scheduleGroupsQueryOptions, pageScheduleQueryOptions } from "@/api/hooks/schedule"
+import { currentUserQueryOptions } from "@/api/hooks/users"
+import type { ScheduleGroup, Lesson } from "@/components/schedule/scheduleUtils"
 
 /**
  * Wave 130 polish — closes §Honesty probe #4 (vitest count delta from
@@ -149,5 +147,64 @@ describe("useScheduleData (Wave 130 SW1 factory integration)", () => {
   it("groups queryKey shape preserved across factory refactor (cache identity)", () => {
     const opts = scheduleGroupsQueryOptions()
     expect(opts.queryKey).toEqual(["schedule", "groups"])
+  })
+
+  /**
+   * Wave 133 SW3 — full-SSR loader integration test. Asserts the cache-
+   * identity invariant for the new sequential prefetch chain:
+   *   Loader: ensureQueryData(currentUserQueryOptions())
+   *         + ensureQueryData(scheduleGroupsQueryOptions())
+   *         + ensureQueryData(pageScheduleQueryOptions(user.group_id))
+   * Pre-populating all three cache slots BEFORE useScheduleData renders
+   * should yield zero network calls — full SSR-rendered schedule.
+   */
+  it("Wave 133 SW3 — reads SSR-prefetched lessons cache for user's group without re-fetching network", async () => {
+    const groups: ScheduleGroup[] = [
+      { id: "group-A", name: "Group A" },
+      { id: "group-B", name: "Group B" },
+    ]
+    const lessons: Lesson[] = [
+      {
+        id: "lesson-1",
+        group_id: "group-A",
+        weekday: "monday",
+        start_time: "09:00",
+        end_time: "10:30",
+        subject: "Math",
+        teacher: "Dr. Smith",
+        room: "101",
+        lesson_type: "lecture",
+        parity: "both",
+      },
+    ]
+    const client = newClient()
+
+    // Simulate SSR loader's three ensureQueryData calls populating the cache.
+    client.setQueryData(currentUserQueryOptions().queryKey, {
+      id: "u1",
+      role: "student",
+      group_id: "group-A",
+    })
+    client.setQueryData(scheduleGroupsQueryOptions().queryKey, groups)
+    client.setQueryData(pageScheduleQueryOptions("group-A").queryKey, lessons)
+
+    // useAuth mirrors what AuthProvider would surface from /users/me on hydration.
+    useAuthMock.mockReturnValue({
+      user: { id: "u1", role: "student", group_id: "group-A" },
+    } as never)
+
+    const { result } = renderHook(() => useScheduleData(), { wrapper: wrapper(client) })
+
+    await waitFor(() => {
+      expect(result.current.groups).toEqual(groups)
+      expect(result.current.selectedGroup).toBe("group-A")
+      // useScheduleData exposes prefetched lessons as `rawSchedule` (raw query
+      // payload) + `schedule` (parity-filtered subset). Asserting `rawSchedule`
+      // matches the SSR-prefetched lessons confirms cache identity.
+      expect(result.current.rawSchedule).toEqual(lessons)
+    })
+
+    // Critical assertion: NO network calls. All three cache slots consumed.
+    expect(apiGetMock).not.toHaveBeenCalled()
   })
 })

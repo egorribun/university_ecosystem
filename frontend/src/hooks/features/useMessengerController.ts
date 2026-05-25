@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo, useOptimistic } from "react"
+import { useState, useEffect, useCallback, useMemo, useOptimistic, useRef } from "react"
 import { useNavigate, useParams } from "@tanstack/react-router"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { useTranslation } from "react-i18next"
@@ -12,6 +12,10 @@ import {
   type ChatsListResponse,
   type MessagesListResponse,
 } from "@/api/chat"
+// Wave 180 SW3 — extracted queryOptions factories close W134 §Honesty #10
+// (W161 SW2 concern #1: query gate inconsistency). See api/hooks/messenger.ts
+// header docblock for the full rationale.
+import { chatsQueryOptions, chatQueryOptions, messagesQueryOptions } from "@/api/hooks/messenger"
 import client from "@/api/client"
 import type { User } from "@/types/User"
 import type { Message as UiMessage } from "@/components/messenger"
@@ -26,7 +30,11 @@ const formatMessageTime = (dateString: string) => {
 export const useMessengerController = () => {
   const { t } = useTranslation(["messenger", "common"])
   const { user } = useAuth()
-  const { chatId } = useParams({ strict: false }) as { chatId?: string }
+  // W145 SW2 — `as` cast removed; TanStack v1 `useParams({ strict: false })`
+  // returns the union of all route params, so destructured `chatId` is
+  // `string | undefined` natively. Matches NewsDetail.tsx + EventDetail.tsx +
+  // ResetPassword.tsx codebase convention (4 callsites; all use strict:false).
+  const { chatId } = useParams({ strict: false })
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const { presenceMap } = useMessenger()
@@ -54,6 +62,28 @@ export const useMessengerController = () => {
     onConfirm: () => void
   } | null>(null)
 
+  // Wave 183 SW3 — track Blob URLs created by optimistic message attachments
+  // so they can be revoked on cleanup (component unmount) AND on mutation
+  // success (when the optimistic message is replaced by the server-returned
+  // message with real URLs). Pre-W183 `URL.createObjectURL(f)` in handleSendMessage
+  // was called per attached file but never revoked, leaking memory across
+  // long messenger sessions (each attached image = ~10-100 KB in the URL
+  // table, accumulating until tab close).
+  const blobUrlsRef = useRef<Set<string>>(new Set())
+
+  useEffect(() => {
+    // Snapshot the ref to a local variable so the cleanup closure references
+    // the SAME Set instance even if React's StrictMode double-invokes (or if
+    // the ref is reassigned in a future refactor). Per react-hooks/exhaustive-deps
+    // ESLint rule recommendation.
+    const blobUrls = blobUrlsRef.current
+    return () => {
+      // Revoke all outstanding Blob URLs on unmount to release native resources.
+      blobUrls.forEach((url) => URL.revokeObjectURL(url))
+      blobUrls.clear()
+    }
+  }, [])
+
   // Sync selection with URL
   useEffect(() => {
     setSelectedChatId(chatId || null)
@@ -61,25 +91,49 @@ export const useMessengerController = () => {
 
   // --- Queries ---
 
-  const { data: chatsData, isLoading: chatsLoading } = useQuery({
-    queryKey: ["chats"],
-    queryFn: () => chatApi.getChats(),
+  // Wave 180 SW3 — chat list useQuery spreads chatsQueryOptions() factory +
+  // adds `enabled: !!user` gate. Closes W161 SW2 concern #1 (query gate
+  // inconsistency): pre-W180 this fired without the `enabled: isAuth` gate
+  // that MessengerContext.tsx:66-70 already had. Cache identity preserved
+  // via chatsQueryKey = ["chats"] (unchanged tuple shape).
+  // Wave 184 SW3 (Path B) — additionally surface `isError` + `refetch` so
+  // ContactList can render a fetch-failure error state with retry button.
+  // Pre-W184 fetch failures resulted in the empty-state "No conversations
+  // yet" branch flashing wrongly — the user had no way to distinguish
+  // "no chats" from "network error".
+  const {
+    data: chatsData,
+    isLoading: chatsLoading,
+    isError: chatsError,
+    refetch: refetchChats,
+  } = useQuery({
+    ...chatsQueryOptions(),
+    enabled: !!user,
   })
   const chats = useMemo(() => chatsData?.items ?? [], [chatsData?.items])
 
+  // Wave 180 SW3 — single-chat fallback useQuery (fires when chat is NOT in
+  // the cached list yet, e.g. direct URL navigation). Spreads chatQueryOptions
+  // factory + preserves pre-W180 `enabled` gate (chatId present AND not already
+  // in list) + `retry: false` override (chat-not-found should surface quickly
+  // without exponential backoff, matching pre-W180 line 78 behaviour).
   const { data: singleChatData } = useQuery({
-    queryKey: ["chats", chatId],
-    queryFn: () => (chatId ? chatApi.getChat(chatId) : Promise.reject("No chatId")),
+    ...chatQueryOptions(chatId),
     enabled: !!chatId && !chats.some((c) => c.id === chatId),
     retry: false,
   })
 
-  const { data: messagesData, isLoading: messagesLoading } = useQuery({
-    queryKey: ["messages", selectedChatId],
-    queryFn: () =>
-      selectedChatId
-        ? chatApi.getMessages(selectedChatId)
-        : Promise.resolve({ items: [], has_more: false, next_cursor: null }),
+  // Wave 180 SW3 — messages useQuery spreads messagesQueryOptions factory.
+  // Pre-W180 `enabled: !!selectedChatId` gate preserved (no other changes).
+  // Wave 184 SW3 (Path B) — additionally surface `isError` + `refetch` for
+  // ChatWindow fetch-failure error state. Same rationale as chats (above).
+  const {
+    data: messagesData,
+    isLoading: messagesLoading,
+    isError: messagesError,
+    refetch: refetchMessages,
+  } = useQuery({
+    ...messagesQueryOptions(selectedChatId),
     enabled: !!selectedChatId,
   })
   const messages = useMemo(() => messagesData?.items ?? [], [messagesData?.items])
@@ -143,6 +197,19 @@ export const useMessengerController = () => {
         }
       )
       queryClient.invalidateQueries({ queryKey: ["chats"] })
+      // Wave 183 SW3 — revoke Blob URLs created by the optimistic message
+      // now that the server-returned message with real URLs has replaced it.
+      // Pre-W183 these URLs leaked until tab close.
+      blobUrlsRef.current.forEach((url) => URL.revokeObjectURL(url))
+      blobUrlsRef.current.clear()
+    },
+    onError: () => {
+      // Wave 183 SW3 — revoke Blob URLs on send failure too. The optimistic
+      // message may be retained by the user (e.g., retry pending) but the
+      // Blob URLs become orphaned because React will re-render the
+      // optimistic state from scratch on next attempt.
+      blobUrlsRef.current.forEach((url) => URL.revokeObjectURL(url))
+      blobUrlsRef.current.clear()
     },
   })
 
@@ -268,7 +335,9 @@ export const useMessengerController = () => {
     const tempId = crypto.randomUUID()
     const now = new Date()
 
-    // UI-only message for optimistic update
+    // Wave 183 SW3 — track Blob URLs created here so the mutation onSuccess/
+    // onError handlers can revoke them (preventing memory leak per-attachment).
+    // UI-only message for optimistic update.
     const optimisticMsg: UiMessage = {
       id: tempId,
       senderId: String(user?.id),
@@ -278,13 +347,17 @@ export const useMessengerController = () => {
       timestamp: formatMessageTime(now.toISOString()),
       isMe: true,
       status: "sent",
-      attachments: files.map((f, i) => ({
-        id: `${tempId}-${i}`,
-        url: URL.createObjectURL(f),
-        type: f.type.startsWith("image/") ? "image" : "file",
-        name: f.name,
-        size: f.size,
-      })),
+      attachments: files.map((f, i) => {
+        const blobUrl = URL.createObjectURL(f)
+        blobUrlsRef.current.add(blobUrl)
+        return {
+          id: `${tempId}-${i}`,
+          url: blobUrl,
+          type: f.type.startsWith("image/") ? "image" : "file",
+          name: f.name,
+          size: f.size,
+        }
+      }),
     }
 
     addOptimisticMessage(optimisticMsg)
@@ -306,8 +379,12 @@ export const useMessengerController = () => {
     if (!selectedChatId) return
     setConfirmDialog({
       open: true,
-      title: t("messenger:clearChatTitle", "Clear Chat"),
-      message: t("messenger:confirmClear", "Clear chat history for everyone?"),
+      // Wave 183 SW3 — removed positional `t(key, fallback)` antipattern
+      // (W175 SW7 + W150 SW3 + W182 SW2 baseline). All 5 keys verified
+      // present in messenger.json EN + RU locales pre-W183 (clearChatTitle,
+      // confirmClear, deleteChatTitle, confirmDelete, profileLoadError).
+      title: t("messenger:clearChatTitle"),
+      message: t("messenger:confirmClear"),
       variant: "warning",
       confirmText: t("common:buttons.clear"),
       cancelText: t("common:buttons.cancel"),
@@ -322,8 +399,8 @@ export const useMessengerController = () => {
     if (!selectedChatId) return
     setConfirmDialog({
       open: true,
-      title: t("messenger:deleteChatTitle", "Delete Chat"),
-      message: t("messenger:confirmDelete", "Delete this chat for all participants?"),
+      title: t("messenger:deleteChatTitle"),
+      message: t("messenger:confirmDelete"),
       variant: "danger",
       confirmText: t("common:buttons.delete"),
       cancelText: t("common:buttons.cancel"),
@@ -343,9 +420,7 @@ export const useMessengerController = () => {
     client
       .get<User>(`/users/${other.id}`)
       .then((response) => setProfileUser(response.data))
-      .catch(() =>
-        setProfileError(t("messenger:profileLoadError", "Unable to load participant profile"))
-      )
+      .catch(() => setProfileError(t("messenger:profileLoadError")))
       .finally(() => setIsProfileLoading(false))
   }
 
@@ -392,6 +467,12 @@ export const useMessengerController = () => {
     messages: optimisticMessages,
     chatsLoading,
     messagesLoading,
+    // Wave 184 SW3 (Path B) — fetch-failure flags + refetch handles for
+    // ContactList + ChatWindow error empty-state branches with retry CTA.
+    chatsError,
+    refetchChats,
+    messagesError,
+    refetchMessages,
 
     // Profile
     profileUser,

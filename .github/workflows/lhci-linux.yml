@@ -58,8 +58,33 @@ concurrency:
 jobs:
   lhci:
     name: Lighthouse on Linux
+    # W165 SW2 Tier 1 — Path (b) alternate runner experiment per
+    # frontend/scripts/run-lhci.mjs:171-174 framing. **TESTED + REVERTED**.
+    # Experiment ran ubuntu-22.04 vs ubuntu-latest (= ubuntu-24.04 alias).
+    # RESULT (CI run 26039934635 on 2026-05-18, 24m42s, single-session
+    # 9 URLs × 3 runs = 27 LHRs): **Perf=null reproduced for ALL 9 URLs**
+    # (Path B outcome per W141 anti-pattern #1 STRICT 1-iter cap; 19th
+    # total vindication post-W164). ubuntu-22.04 single-session medians:
+    # / LCP 2811ms TBT 493ms (W160 baseline: 2895/549 on ubuntu-latest),
+    # /dashboard LCP 2837/502 (W160: 2857/517) — within ±50-100ms variance.
+    # **Confirms STRUCTURAL Lighthouse 13.1.0 issue, NOT runner-OS-specific**.
+    # Individual metrics (CLS/LCP/TBT) measure cleanly on both runners;
+    # Perf composite needs speed-index audit which requires screenshots
+    # that current chromeFlags `--headless=new --disable-gpu` don't
+    # collect (per W162 SW1 "platform / limitation accepted" closure at
+    # run-lhci.mjs:142-211). SW2-revert restores `runs-on: ubuntu-latest`
+    # to preserve 81-LHR cross-wave comparability per W160 SW2 + W124 SW4
+    # 3-session × 3-run methodology. W160 NEW #2 LCP HOLD + #3 TBT HOLD
+    # stay structural carry-forward to W166+ pending upstream Lighthouse
+    # issue file OR alternate chrome flag (`--headless=chrome` already
+    # tried W161 SW1 Approach B, also failed).
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    # W161 SW1-fix: bumped 25 → 30. W160 SW2 baseline ran 23m45s with Perf=null
+    # (skipping screenshot work shortens runtime). W161 SW1 Approach B applies
+    # `--headless=chrome` which DOES collect screenshots → added screenshot
+    # + speed-index work pushes total runtime past 25m. 30m gives a 5-7 min
+    # margin while keeping the workflow honest about runner cost.
+    timeout-minutes: 30
     defaults:
       run:
         working-directory: frontend
@@ -80,11 +105,14 @@ jobs:
         run: npm ci
 
       - name: Install wasm-pack
-        # P0-01 (audit 2026-03-06): SHA-pinned to prevent supply chain attack
-        # via mutable @v2 tag. Equivalent to taiki-e/install-action@v2.75.22.
-        uses: taiki-e/install-action@d9be7d8cda89035c9c843f78bd44d4f72d8403d4 # v2.79.7
-        with:
-          tool: wasm-pack
+        # W142 polish-v3 — taiki-e/install-action wasm-pack tool resolution
+        # broken: drager/wasm-pack 404 since v0.14.0 moved to rustwasm/
+        # wasm-pack; install-action hardcodes old repo. Pinned rustwasm
+        # canonical curl URL (HTTPS rustwasm.github.io, official installer).
+        # Same fix as W141 polish-v2 visual-audit.yml + W142 chromatic.yml.
+        run: |
+          curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+          wasm-pack --version
 
       - name: Build WASM modules
         run: |
@@ -133,6 +161,12 @@ jobs:
         with:
           name: lighthouse-reports-on-demand
           path: frontend/.lighthouseci
+          # W160 SW1-fix: actions/upload-artifact@v7 defaults `include-hidden-files: false`,
+          # which strips contents of `.lighthouseci/` (hidden dir) so artifact upload reports
+          # "No files were found" even when @lhci/cli has populated the directory. Earlier
+          # actions versions (v3-v5) didn't have this filter — v6+ introduced the breaking
+          # change. Setting to `true` restores artifact-download capability.
+          include-hidden-files: true
           if-no-files-found: warn
 
       # Print a markdown summary table to the job log + step summary so
