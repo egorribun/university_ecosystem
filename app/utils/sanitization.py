@@ -161,10 +161,13 @@ def sanitize_filename(filename: str, max_length: int = 255) -> str:
 
     # Truncate to max length while preserving extension
     if len(filename) > max_length:
-        name, _, ext = filename.rpartition(".")
-        if ext:
+        name, sep, ext = filename.rpartition(".")
+        if sep == "." and ext:
             max_name_len = max_length - len(ext) - 1
-            filename = f"{name[:max_name_len]}.{ext}"
+            if max_name_len > 0:
+                filename = f"{name[:max_name_len]}.{ext}"
+            else:
+                filename = filename[:max_length]
         else:
             filename = filename[:max_length]
 

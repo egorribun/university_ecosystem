@@ -30,5 +30,5 @@
       "@testing-library/jest-dom"
     ]
   },
-  "include": ["src", "tests", "playwright.config.ts", ".storybook"]
+  "include": ["src", "tests", "playwright.config.ts", "vitest.config.ts", ".storybook"]
 }

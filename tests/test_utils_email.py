@@ -101,3 +101,39 @@ def test_send_reset_email_uses_starttls(monkeypatch):
     assert "Plain" in msg.get_body(preferencelist=("plain",)).get_content()
     assert "starttls" in calls
     assert "send_message" in calls
+
+
+def test_send_reset_email_insecure_smtp_error(monkeypatch):
+    log_calls = []
+
+    def tracking_log_event(level, message, **kwargs):
+        log_calls.append((level, message))
+
+    monkeypatch.setattr(email_utils, "_log_event", tracking_log_event)
+
+    monkeypatch.setattr(email_utils.settings, "smtp_user", "smtp-user")
+    monkeypatch.setattr(email_utils.settings, "smtp_security", "none")
+    monkeypatch.setattr(email_utils.settings, "is_development", False)
+
+    email_utils.send_reset_email(
+        "student@example.com",
+        "https://example.com/reset?token=super-secret",
+        "Student Name",
+    )
+    messages = [msg for _, msg in log_calls]
+    assert "password.reset_email.insecure_smtp" in messages
+
+
+def test_redact_sensitive_query():
+    # 1. Successful redaction of token and code
+    url = "http://example.com?token=secret123&code=mycode&other=public"
+    redacted = email_utils._redact_sensitive_query(url)
+    assert "token=%2A%2A%2Aredacted%2A%2A%2A" in redacted
+    assert "code=%2A%2A%2Aredacted%2A%2A%2A" in redacted
+    assert "other=public" in redacted
+
+    # 2. ValueError raising in urlsplit (covers line 80-81)
+    from unittest.mock import patch
+
+    with patch("urllib.parse.urlsplit", side_effect=ValueError("bad")):
+        assert email_utils._redact_sensitive_query("http://example.com") == "[redacted]"

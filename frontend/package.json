@@ -23,7 +23,7 @@
     "format:check": "prettier --check \"src/**/*.{ts,tsx,js,jsx,json,css,scss,md}\" \"tests/**/*.{ts,tsx,js,jsx}\" vite.config.mts playwright.config.ts vitest.config.ts tsconfig.json pwa-maskable-icons.ts \"scripts/**/*.mjs\"",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "test:ci": "vitest run --reporter=default --reporter=junit --outputFile=vitest-report.xml",
+    "test:ci": "vitest run --coverage --reporter=default --reporter=junit --outputFile=vitest-report.xml",
     "test:watch": "vitest",
     "i18n:check": "vitest run src/tests/translationParity.test.ts",
     "test:e2e": "playwright test",
