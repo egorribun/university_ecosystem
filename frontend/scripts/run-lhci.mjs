@@ -236,6 +236,20 @@ async function createConfig() {
       // 1-2 calendar weeks from this tick). State stays "tracked-upstream".
       // See memory/wave180_lighthouse_upstream_check.md for full snapshot +
       // pre-flight evidence captured at W180 Phase 1 Explore Agent 1.
+      //
+      // W188 SW5 — monitoring tick at W188 open (2026-05-26). WebFetch re-
+      // verified: state OPEN, 0 comments, 0 maintainer responses, 0 labels,
+      // 0 reactions since 2026-05-18 filing (8 calendar days elapsed). Per
+      // W180 SW1 calibration the W181-W185 window already closed (W181=
+      // 2026-05-22 → W185=2026-05-23; W187 closed 2026-05-24). Push next
+      // monitoring window to W189-W193 (sliding 1-week cadence preserved
+      // per W170 SW3 framework — re-check 1-2 calendar weeks from this
+      // tick at W195+ if still no upstream movement). State stays
+      // "tracked-upstream". Empirical evidence: no upstream-level CI
+      // ratchet possible without Linux CI Perf=null fix, no fix possible
+      // without upstream movement; Windows wrapper measurement remains
+      // canonical Perf measurement per W162 SW1 acceptance. See
+      // memory/wave188_lighthouse_upstream_check.md for full snapshot.
       chromeFlags:
         "--no-sandbox --disable-dev-shm-usage --allow-insecure-localhost --ignore-certificate-errors --test-type --disable-gpu --headless=new",
       throttlingMethod: "devtools",
