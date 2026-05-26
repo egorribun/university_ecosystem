@@ -11,8 +11,9 @@
 import { useCallback } from "react"
 import { useTranslation } from "react-i18next"
 import { X as CloseIcon, Keyboard as KeyboardIcon } from "lucide-react"
-import { AnimatePresence, m, useReducedMotion } from "framer-motion"
+import { AnimatePresence, m } from "framer-motion"
 import useFocusTrap from "@/hooks/useFocusTrap"
+import useMediaQuery from "@/hooks/useMediaQuery"
 
 interface MapShortcutsOverlayProps {
   open: boolean
@@ -42,7 +43,11 @@ const SHORTCUTS = [
  */
 export function MapShortcutsOverlay({ open, onClose }: MapShortcutsOverlayProps) {
   const { t } = useTranslation("map")
-  const prefersReduced = useReducedMotion()
+  // Wave 189 SW3 — migrated from framer-motion's `useReducedMotion()` (jsdom-
+  // incompat per W184 SW6 Gotcha) to project's `useMediaQuery` DEFAULT export.
+  // Behaviour preserved: hook returns boolean (was `boolean | null`; null was
+  // already falsy in the downstream conditional render).
+  const prefersReduced = useMediaQuery("(prefers-reduced-motion: reduce)")
 
   const handleClose = useCallback(() => onClose(), [onClose])
 
