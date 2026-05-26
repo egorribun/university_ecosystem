@@ -221,7 +221,7 @@ SW2 initial 1-layer cookie-only fix DISPROVED on first verification run via PNG 
 - **i18n parity**: 18/18 (no new keys — W187 14 new keys baseline preserved)
 - **Tree-shake invariant**: ✓ (W188 changes don't touch production frontend code that VITE_LHCI bypass would affect)
 - **SW IIFE invariant**: ✓ (per W138 SW2 — no SW changes in W188)
-- **CI gates** (polish-v1 honest framing): direct push to `egorribun` branch does NOT trigger `.github/workflows/ci.yml` (branches filter = `[main, develop, "release/**"]`). Polish-v1 caught the gap + opened [PR #1126](https://github.com/egorribun/university_ecosystem/pull/1126) (W141 anti-pattern #4 vindication — polish discovers the empirical-verification gap). At polish-v1 commit time: 10 status checks active on PR; CI Diagnostic SUCCESS; Chromatic + Lint × 3 (ws-hub, file-processor, gateway) + Pre-commit + Review Dependencies all IN_PROGRESS. SW1 commit `eac10b747` resolved Go Lint & SBOM failure on prior HEAD `67694edc0`; PR #1126 CI verifies the fix lands cleanly on egorribun→main flow.
+- **CI gates EMPIRICALLY GREEN** (post polish-v1+v2+v3+v4): direct push to `egorribun` branch does NOT trigger `.github/workflows/ci.yml` (branches filter = `[main, develop, "release/**"]`). Polish-v1 caught the gap + opened [PR #1126](https://github.com/egorribun/university_ecosystem/pull/1126). After polish-v3 closing all errcheck violations, PR #1126 reached FINAL STATE: **45 SUCCESS / 0 FAILURE / 3 SKIPPED + 1 NEUTRAL + 2 NONE = 51 checks + MERGEABLE**. All notable heavyweights PASS: Chromatic Visual Regression + Frontend Tests / Lighthouse Audit + E2E Tests (chromium) + CI Success aggregate. Polish-v2 `1ac112f1e` closed 41 pre-existing errcheck violations (file-processor graphql_depth_test.go: 5; ws-hub pkg/config/config_test.go: 36 via os.Setenv → t.Setenv Go 1.17+ idiom); polish-v3 `2b7a4ab19` closed last 1 violation in ws-hub internal/telemetry/telemetry_test.go:44. Root cause was inherited tech debt from commit `95c88882b` (post-W187 frontend CI hardening in PR #1125 merged at 15:31 with CI Matrix Expansion FAILURE) that introduced new Go test files violating `.golangci.yml errcheck.check-blank: true` policy (MOD-05 Wave 10 audit). Per W141 anti-pattern #4 vindication #40: polish-v2 commit claimed "0 remaining errcheck violations" based on local `go vet` + `go test` (which don't run errcheck); empirical CI surfaced the missed `telemetry_test.go` → polish-v3 corrective. The polish chain validates `feedback_perfectionism.md` discipline — empirical CI verification trumps local quick-checks.
 
 ## NEW W188 Gotchas
 
@@ -231,6 +231,53 @@ SW2 initial 1-layer cookie-only fix DISPROVED on first verification run via PNG 
 ## N+3 rotation
 
 `git mv docs/audits/AUDIT_WAVE185.md docs/audits/archive/AUDIT_WAVE185.md` — active waves post-W188: **W186/W187/W188**.
+
+## Polish chain (v1 + v2 + v3 + v4) — empirical wave-close closure
+
+User invoked «безупречно?» probe at SW6 wave-close, triggering 4 polish rounds following the W187 polish-v1 precedent pattern:
+
+### Polish-v1 commit `6f9fb73f1` — closed 2 self-audit gaps
+
+1. **CI trigger gap**: Direct push to `egorribun` does NOT trigger `.github/workflows/ci.yml` (branches filter = `[main, develop, "release/**"]`). SW6 audit claim "CI Matrix Expansion expected SUCCESS post-push" was wrong — 0 CI runs for HEAD `80fdbe4d0`. Fix: opened [PR #1126](https://github.com/egorribun/university_ecosystem/pull/1126) for canonical egorribun→main CI flow.
+2. **Bundle structural-argument incomplete**: SW6 audit claim "W134-W186 ≥45-wave invariant EXTENDS by structural argument" empirically wrong. Build × 3 fresh from clean state shows SIZE preserved (180,255 + 24,024) but content sha CHANGED vs W187. W134-W186 ≥45-wave content-sha chain RETIRES at W188; NEW W188 baseline (`a6baa155...d8b` main + `27a1812a...80a` server) established × 3 reproducible.
+
+Plus empirical re-verification: vitest 1256p/12s/0f full-suite (32.56s; 159 test files); MEMORY.md 23,017 b headroom.
+
+### Polish-v2 commit `1ac112f1e` — closed 41 pre-existing errcheck violations
+
+PR #1126 first CI run on HEAD `80fdbe4d0` surfaced 2 failures:
+- Lint file-processor: 5 errcheck violations in `graphql_depth_test.go`
+- Lint ws-hub: 36 errcheck violations in `pkg/config/config_test.go`
+
+**Root cause**: inherited tech debt from commit `95c88882b` "feat(ci): raise code coverage thresholds and establish testing gates" (post-W187 frontend CI hardening in PR #1125 merged at 15:31 WITH CI Matrix Expansion FAILURE) that added new Go test files violating `.golangci.yml errcheck.check-blank: true` policy (MOD-05 Wave 10 audit). PR #1125 was merged DESPITE CI red — W188 inherited the debt.
+
+**Fixes**:
+- file-processor `graphql_depth_test.go`: 3× `defer func() { _ = resp.Body.Close() }()` → append `//nolint:errcheck // test cleanup`; 2× `respBytes, _ := io.ReadAll(resp.Body)` → `respBytes, err := io.ReadAll(resp.Body); require.NoError(t, err)`
+- ws-hub `pkg/config/config_test.go`: 33× `os.Setenv(KEY, VAL)` → `t.Setenv(KEY, VAL)` (Go 1.17+ idiom, auto-restores at t.Cleanup); 3× `os.Unsetenv(env)` → `require.NoError(t, os.Unsetenv(env))`; eliminated 15+ lines of manual backup/restore boilerplate
+
+### Polish-v3 commit `2b7a4ab19` — closed last 1 errcheck violation
+
+Polish-v2 was incomplete — Lint ws-hub STILL failed on 1 remaining violation in `internal/telemetry/telemetry_test.go:44` (`_ = tp.Shutdown(ctx)`). Polish-v2 commit message had claimed "0 remaining errcheck violations in ws-hub" based on local `go vet` + `go test` (which don't run errcheck); empirical CI surfaced the missed file in a DIFFERENT subdir not surveyed in polish-v2 grep scope.
+
+**Fix**: append `//nolint:errcheck // test cleanup` to the discard. W138 Lesson #1 within-iter SAME-mechanism sub-fix — SAME errcheck pattern applied to additional file (NOT mechanism pivot).
+
+**W141 anti-pattern #4 vindication #40 REINFORCED**: polish-v2's local verification was insufficient; empirical CI verification trumps local quick-checks. Polish-v3 is the corrective response.
+
+### Polish-v4 commit (this commit) — final docs closure + CI green attribution
+
+PR #1126 polish-v3 CI run reached **FINAL STATE EMPIRICALLY GREEN**:
+- **51 total checks**: 45 SUCCESS / 0 FAILURE / 3 SKIPPED / 1 NEUTRAL (Auto-merge dependabot) / 2 NONE (informational)
+- **MERGEABLE: true**
+- Notable heavyweights ALL PASS: Chromatic Visual Regression ✓ + Frontend Tests / Lighthouse Audit ✓ + E2E Tests (chromium) ✓ + CI Success aggregate ✓
+
+Polish-v4 updates documentation (AUDIT_WAVE188.md + CLAUDE.md + MEMORY.md + wave188_backlog.md) to reflect the polish chain narrative + empirical CI green attribution per W141 anti-pattern #4 closure discipline.
+
+### Polish chain meta-lessons
+
+1. **«Безупречно?» probe is CALL FOR HONEST SELF-AUDIT**, not reassurance. 4 polish rounds in W188 close (vs W187's 1 polish-v1) reflect deeper-than-anticipated gaps requiring iterative correction.
+2. **Empirical CI verification trumps local checks** (W141 #4 vindication #40). Polish-v2 attempt to claim closure based on `go test` + `go vet` was structurally wrong (these don't run errcheck). The lesson: when claim involves CI tooling, only CI itself can verify.
+3. **Polish chain is canonical wave-close pattern** per W187 polish-v1+v2+v3 + W186 polish-v1 + W169 polish-v1+v2+v3 + W183 polish-v1+v2+v3 + W144 polish-v3 precedent. Polish iterations until CI verified GREEN are part of canonical discipline, NOT iter creep on the SAME SW (which W141 #1 SACRED forbids).
+4. **Pre-existing tech debt absorption**: polish-v2+v3 closed 41 errcheck violations inherited from commit `95c88882b` (PR #1125). PR #1125 was auto-merged despite CI red; W188 absorbed the debt as part of canonical wave-close closure. This is a real W141 #4 contribution (closing debt that wasn't on the original SW plan).
 
 ## W189+ candidates (priority order)
 
