@@ -2,11 +2,12 @@ import SmartImage from "@/components/media/SmartImage"
 import { AVATAR_PLACEHOLDER_URL } from "@/constants/placeholders"
 import { User } from "@/types/User"
 
-import { AnimatePresence, m, useReducedMotion } from "framer-motion"
+import { AnimatePresence, m } from "framer-motion"
 import { X } from "lucide-react"
 import { useEffect, useId } from "react"
 import { useTranslation } from "react-i18next"
 import useFocusTrap from "@/hooks/useFocusTrap"
+import useMediaQuery from "@/hooks/useMediaQuery"
 
 interface ProfileModalProps {
   user: User | null
@@ -23,7 +24,7 @@ export function ProfileModal({ user, loading, error, onClose }: ProfileModalProp
   // rotate. Framer rotation is the most disorienting interaction for users
   // with vestibular sensitivities; explicit gate ensures the X button just
   // scales rather than rotating under reduced motion preference.
-  const prefersReducedMotion = useReducedMotion() ?? false
+  const prefersReducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)")
 
   // Wave 175 SW3 — focus trap activates whenever modal is open (any of
   // user/loading/error truthy). returnFocus restores focus to the element

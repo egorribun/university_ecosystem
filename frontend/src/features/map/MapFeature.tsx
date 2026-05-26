@@ -9,7 +9,6 @@ import {
   Suspense,
 } from "react"
 import { useTranslation } from "react-i18next"
-import { useReducedMotion } from "framer-motion"
 import useMediaQuery from "@/hooks/useMediaQuery"
 import { useURLState } from "@/hooks/useURLState"
 import { logError } from "@/app/logger"
@@ -72,7 +71,7 @@ export function MapFeature() {
   const { t, i18n } = useTranslation("map")
   const isNarrow = useMediaQuery(`(max-width: ${breakpoints.content})`)
   const isDark = useSyncExternalStore(subscribeToDarkMode, getIsDark, () => SERVER_SNAPSHOT)
-  const prefersReducedMotion = useReducedMotion() ?? false
+  const prefersReducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)")
   const timePeriod = useTimeOfDay()
   const season = useSeason()
 

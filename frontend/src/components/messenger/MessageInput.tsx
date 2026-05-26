@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from "react"
-import { m, AnimatePresence, useReducedMotion } from "framer-motion"
+import { m, AnimatePresence } from "framer-motion"
+import useMediaQuery from "@/hooks/useMediaQuery"
 import { useTranslation } from "react-i18next"
 import { X, FileText, Image as ImageIcon, File, Paperclip, Send } from "lucide-react"
 import { cn } from "@/utils/cn"
@@ -55,7 +56,7 @@ export const MessageInput: React.FC<MessageInputProps> = ({ onSend }) => {
     }
   }, [])
   // Wave 181 SW3 — useReducedMotion guard for attach + send button micro-interactions.
-  const prefersReducedMotion = useReducedMotion() ?? false
+  const prefersReducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)")
   const attachHoverAnim = prefersReducedMotion ? undefined : { scale: 1.1 }
   const attachTapAnim = prefersReducedMotion ? undefined : { scale: 0.9 }
   const sendCanFire = text.trim().length > 0 || selectedFiles.length > 0

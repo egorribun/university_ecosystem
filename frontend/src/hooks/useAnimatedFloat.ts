@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react"
-import { useReducedMotion } from "framer-motion"
+import useMediaQuery from "@/hooks/useMediaQuery"
 
 // Wave 124 SW1 — Shared rAF-based numeric animation helper. Replaces
 // framer-motion useMotionValue + useSpring + animate (which require domMax
@@ -11,12 +11,20 @@ import { useReducedMotion } from "framer-motion"
 // `[0.16, 1, 0.3, 1]` (EASE_OUT_EXPO) UX-equivalently. Single rAF loop +
 // one re-render per frame — no MotionValue runtime needed.
 //
-// useReducedMotion remains in domAnimation set, so framer-motion still
-// supplies the reactive boolean.
+// Wave 190 SW4 — migrated from framer-motion's `useReducedMotion()` (jsdom-
+// incompat per W184 SW6 Gotcha — framer-motion's `initPrefersReducedMotion`
+// touches `window.matchMedia(...).addEventListener` through a code path
+// jsdom's polyfill doesn't fully cover, producing TypeError as vitest
+// unhandled errors in components that mount useAnimatedFloat consumers like
+// AnimatedRing + AttendanceCard) to project's `useMediaQuery` DEFAULT export
+// (jsdom-safe via setupTests.ts matchMedia polyfill + typeof-check fallback
+// at useMediaQuery.ts:50-53). Behavior identical: both return a reactive
+// boolean. The W124 SW1 note about "useReducedMotion remains in domAnimation
+// set" is now superseded.
 export const easeOutExpo = (t: number): number => (t >= 1 ? 1 : 1 - Math.pow(2, -10 * t))
 
 export function useAnimatedFloat(target: number, durationSeconds: number): number {
-  const reduce = useReducedMotion()
+  const reduce = useMediaQuery("(prefers-reduced-motion: reduce)")
   const [val, setVal] = useState<number>(reduce ? target : 0)
   const valRef = useRef<number>(reduce ? target : 0)
 

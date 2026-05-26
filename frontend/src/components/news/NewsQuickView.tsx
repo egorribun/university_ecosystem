@@ -3,7 +3,8 @@
  * Positioned above the card. Pointer-events-none so it doesn't block clicks.
  */
 
-import { m, AnimatePresence, useReducedMotion } from "framer-motion"
+import { m, AnimatePresence } from "framer-motion"
+import useMediaQuery from "@/hooks/useMediaQuery"
 import { Calendar, MessageCircle, Heart } from "lucide-react"
 import { getMoscowDate } from "@/utils/date"
 import { useTranslation } from "react-i18next"
@@ -33,7 +34,7 @@ export function NewsQuickView({
   position = "top",
 }: NewsQuickViewProps) {
   const { t } = useTranslation(["news"])
-  const prefersReduced = useReducedMotion()
+  const prefersReduced = useMediaQuery("(prefers-reduced-motion: reduce)")
   const dateLabel = created_at ? getMoscowDate(created_at) : ""
 
   return (
