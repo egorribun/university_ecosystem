@@ -160,6 +160,20 @@ describe("AdminFeatureFlags page", () => {
     expect(slider.getAttribute("value")).toBe("25")
   })
 
+  it("range slider has 44×44 px touch target wrapper (WCAG 2.5.8) — W188 SW3", async () => {
+    await renderPage()
+    await screen.findByText("ai_summaries")
+
+    const slider = screen.getByRole("slider", { name: /Rollout Percentage/i })
+    // W188 SW3 wraps the visual 6px range input in a min-h-[44px] flex-centered
+    // div so pointer hit area meets WCAG 2.5.8 without affecting visual size.
+    // Closes W186 §H NEW #6 deferred portion. Mirrors info-button 44×44 pattern.
+    const wrapper = slider.parentElement
+    expect(wrapper).not.toBeNull()
+    expect(wrapper!.className).toMatch(/min-h-\[44px\]/)
+    expect(wrapper!.className).toMatch(/items-center/)
+  })
+
   it("toggle switch fires patch request when clicked", async () => {
     await renderPage()
     await screen.findByText("new_dashboard_v2")
