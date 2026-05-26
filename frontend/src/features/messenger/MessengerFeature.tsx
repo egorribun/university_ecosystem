@@ -5,7 +5,7 @@ import { useMessenger } from "@/contexts/MessengerContext"
 import { useMessengerController } from "@/hooks/features/useMessengerController"
 import useMediaQuery from "@/hooks/useMediaQuery"
 import { breakpoints } from "@/theme/tokens"
-import { AnimatePresence, m, useReducedMotion } from "framer-motion"
+import { AnimatePresence, m } from "framer-motion"
 import { WifiOff } from "lucide-react"
 import { useTranslation } from "react-i18next"
 
@@ -86,7 +86,7 @@ export default function MessengerFeature() {
 
   const isMobile = useMediaQuery(`(max-width: ${breakpoints.mobile})`)
   const isNarrow = useMediaQuery(`(max-width: ${breakpoints.content})`)
-  const reducedMotionPref = useReducedMotion()
+  const reducedMotionPref = useMediaQuery("(prefers-reduced-motion: reduce)")
   const prefersReducedMotion = reducedMotionPref ?? false
 
   // Mobile view logic

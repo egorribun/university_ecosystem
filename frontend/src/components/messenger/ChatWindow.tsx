@@ -1,5 +1,6 @@
 import React, { useRef, useEffect, useMemo } from "react"
-import { m, useReducedMotion } from "framer-motion" // Removed AnimatePresence, LayoutGroup as they are not used
+import { m } from "framer-motion" // Removed AnimatePresence, LayoutGroup as they are not used
+import useMediaQuery from "@/hooks/useMediaQuery"
 import {
   File,
   Check,
@@ -80,7 +81,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   // Wave 181 SW3 — useReducedMotion guard. Without this, virtualized message
   // bubbles fade+scale in on every scroll-into-view event, which becomes
   // disorienting motion for reduced-motion users.
-  const prefersReducedMotion = useReducedMotion() ?? false
+  const prefersReducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)")
   const containerRef = useRef<HTMLDivElement>(null)
 
   // Wave 184 SW1 (Path A) — debounce the search query so the per-keystroke

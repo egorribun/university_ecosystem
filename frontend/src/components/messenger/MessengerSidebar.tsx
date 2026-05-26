@@ -1,7 +1,8 @@
 import { ContactList } from "@/components/messenger"
 import { TextField } from "@/components/ui"
 import { useMessengerController } from "@/hooks/features/useMessengerController"
-import { m, useReducedMotion } from "framer-motion"
+import useMediaQuery from "@/hooks/useMediaQuery"
+import { m } from "framer-motion"
 import { Search, SquarePen } from "lucide-react"
 import { Dispatch, SetStateAction, useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
@@ -54,7 +55,7 @@ export function MessengerSidebar({
   // + sidebar slide-in/out transitions (Framer Motion already provides motion
   // reduction at MotionConfig level via W127 hoist, but framer-motion docs
   // recommend explicit per-component guards for prop-level control).
-  const prefersReducedMotion = useReducedMotion() ?? false
+  const prefersReducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)")
   const newChatHoverAnim = prefersReducedMotion
     ? undefined
     : { scale: 1.08, backgroundColor: "var(--msg-sidebar-hover)" }

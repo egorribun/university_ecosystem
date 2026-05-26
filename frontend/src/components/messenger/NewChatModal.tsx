@@ -1,5 +1,6 @@
 import React, { useEffect, useId, useRef, useState } from "react"
-import { m, AnimatePresence, useReducedMotion } from "framer-motion"
+import { m, AnimatePresence } from "framer-motion"
+import useMediaQuery from "@/hooks/useMediaQuery"
 import { useTranslation } from "react-i18next"
 import { RotateCcw, Search, TriangleAlert, X } from "lucide-react"
 import { useQuery } from "@tanstack/react-query"
@@ -31,7 +32,7 @@ export const NewChatModal: React.FC<NewChatModalProps> = ({ open, onClose, onSel
   // (dialog entrance scale:0.95+y:20 and per-row whileHover x:4). Subtle
   // scale-on-hover/tap motions are handled globally by AppProviders
   // MotionConfig reducedMotion="user" (W124 SW1 + W127 SW1).
-  const prefersReducedMotion = useReducedMotion() ?? false
+  const prefersReducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)")
 
   // Wave 175 SW3 — focus trap + Escape handler.
   // initialFocus: false lets the TextField's auto-focus (line ~95) win without

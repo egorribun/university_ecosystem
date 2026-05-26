@@ -1,4 +1,4 @@
-import { m, useReducedMotion } from "framer-motion"
+import { m } from "framer-motion"
 import {
   MessageCirclePlus,
   MessagesSquare,
@@ -8,6 +8,7 @@ import {
   X,
 } from "lucide-react"
 import { useTranslation } from "react-i18next"
+import useMediaQuery from "@/hooks/useMediaQuery"
 import { cn } from "@/utils/cn"
 import SmartImage from "@/components/media/SmartImage"
 import { AVATAR_PLACEHOLDER_URL } from "@/constants/placeholders"
@@ -104,7 +105,7 @@ export function ContactList({
   onRetry,
 }: ContactListProps) {
   const { t } = useTranslation(["messenger"])
-  const prefersReducedMotion = useReducedMotion() ?? false
+  const prefersReducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)")
   const hoverAnim = prefersReducedMotion ? undefined : { x: 4 }
   const tapAnim = prefersReducedMotion ? undefined : { scale: 0.98 }
 

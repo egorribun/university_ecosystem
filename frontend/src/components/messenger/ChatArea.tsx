@@ -3,9 +3,10 @@ import { ChatWindow, MessageInput, TypingIndicator } from "@/components/messenge
 import { AVATAR_PLACEHOLDER_URL } from "@/constants/placeholders"
 import { useMessenger } from "@/contexts/MessengerContext"
 import { useMessengerController } from "@/hooks/features/useMessengerController"
+import useMediaQuery from "@/hooks/useMediaQuery"
 import { motion as motionTokens } from "@/theme/tokens"
 import { cn } from "@/utils/cn"
-import { AnimatePresence, m, useReducedMotion } from "framer-motion"
+import { AnimatePresence, m } from "framer-motion"
 import {
   ChevronLeft,
   MessageCircleOff,
@@ -92,7 +93,7 @@ export function ChatArea({
   // already (W134+ infra).
   const { getTypingUsersForChat } = useMessenger()
   const typingUsers = selectedChatId ? getTypingUsersForChat(selectedChatId) : []
-  const prefersReducedMotion = useReducedMotion() ?? false
+  const prefersReducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)")
 
   // Wave 183 SW3 — cancel rAF on unmount/re-fire to prevent focus attempts
   // on a detached DOM node (memory leak + console error potential when the
