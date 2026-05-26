@@ -1,10 +1,15 @@
 package handlers
 
 import (
+	"bytes"
+	"context"
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
+	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"net/http/httputil"
@@ -13,6 +18,10 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
+	pb "github.com/university-ecosystem/core/gen/go/file_processor/v1"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 type closeNotifyingRecorder struct {
@@ -229,3 +238,120 @@ func createTestProxy(targetURL string) *httputil.ReverseProxy {
 	}
 	return httputil.NewSingleHostReverseProxy(target)
 }
+
+type mockFileProcessingServiceClient struct {
+	resp *pb.ProcessFileResponse
+	err  error
+}
+
+func (m *mockFileProcessingServiceClient) ProcessFile(ctx context.Context, in *pb.ProcessFileRequest, opts ...grpc.CallOption) (*pb.ProcessFileResponse, error) {
+	return m.resp, m.err
+}
+
+func TestFileProcessSyncHandler_Errors(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	ctx := context.Background()
+
+	t.Run("nil_conn", func(t *testing.T) {
+		router := gin.New()
+		router.POST("/sync", FileProcessSyncHandler(ctx, nil, nil, logger))
+
+		w := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodPost, "/sync", bytes.NewReader([]byte("{}")))
+		router.ServeHTTP(w, req)
+
+		assert.Equal(t, http.StatusServiceUnavailable, w.Code)
+		assert.Contains(t, w.Body.String(), "unavailable")
+	})
+
+	t.Run("invalid_json", func(t *testing.T) {
+		dummyConn := &grpc.ClientConn{}
+		router := gin.New()
+		router.POST("/sync", FileProcessSyncHandler(ctx, dummyConn, nil, logger))
+
+		w := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodPost, "/sync", bytes.NewReader([]byte("{invalid-json}")))
+		router.ServeHTTP(w, req)
+
+		assert.Equal(t, http.StatusBadRequest, w.Code)
+	})
+
+	t.Run("success", func(t *testing.T) {
+		dummyConn := &grpc.ClientConn{}
+		mockClient := &mockFileProcessingServiceClient{
+			resp: &pb.ProcessFileResponse{
+				JobId:   "test-id",
+				DestKey: "output/done.png",
+			},
+		}
+		router := gin.New()
+		router.POST("/sync", FileProcessSyncHandler(ctx, dummyConn, mockClient, logger))
+
+		w := httptest.NewRecorder()
+		reqBody := `{"id":"550e8400-e29b-41d4-a716-446655440000","type":"resize","source_key":"in.png","dest_key":"out.png"}`
+		req := httptest.NewRequest(http.MethodPost, "/sync", bytes.NewReader([]byte(reqBody)))
+		req.Header.Set("Content-Type", "application/json")
+		router.ServeHTTP(w, req)
+
+		assert.Equal(t, http.StatusOK, w.Code)
+		assert.Contains(t, w.Body.String(), "output/done.png")
+	})
+
+	t.Run("grpc_status_mapping", func(t *testing.T) {
+		cases := []struct {
+			grpcCode codes.Code
+			wantHTTP int
+			wantMsg  string
+		}{
+			{codes.DeadlineExceeded, http.StatusGatewayTimeout, "upstream_timeout"},
+			{codes.Unavailable, http.StatusServiceUnavailable, "upstream_unavailable"},
+			{codes.PermissionDenied, http.StatusForbidden, "forbidden"},
+			{codes.Unauthenticated, http.StatusForbidden, "forbidden"},
+			{codes.ResourceExhausted, http.StatusTooManyRequests, "too_many_requests"},
+			{codes.InvalidArgument, http.StatusBadRequest, "invalid_argument"},
+			{codes.NotFound, http.StatusNotFound, "not_found"},
+			{codes.AlreadyExists, http.StatusConflict, "already_exists"},
+			{codes.Unimplemented, http.StatusNotImplemented, "unimplemented"},
+			{codes.Internal, http.StatusInternalServerError, "processing_failed"},
+		}
+
+		for _, tc := range cases {
+			t.Run(fmt.Sprintf("code_%s", tc.grpcCode), func(t *testing.T) {
+				dummyConn := &grpc.ClientConn{}
+				mockClient := &mockFileProcessingServiceClient{
+					err: status.Error(tc.grpcCode, "some grpc error"),
+				}
+				router := gin.New()
+				router.POST("/sync", FileProcessSyncHandler(ctx, dummyConn, mockClient, logger))
+
+				w := httptest.NewRecorder()
+				reqBody := `{"id":"550e8400-e29b-41d4-a716-446655440000","type":"resize","source_key":"in.png","dest_key":"out.png"}`
+				req := httptest.NewRequest(http.MethodPost, "/sync", bytes.NewReader([]byte(reqBody)))
+				req.Header.Set("Content-Type", "application/json")
+				router.ServeHTTP(w, req)
+
+				assert.Equal(t, tc.wantHTTP, w.Code)
+				assert.Contains(t, w.Body.String(), tc.wantMsg)
+			})
+		}
+	})
+
+	t.Run("non_grpc_error", func(t *testing.T) {
+		dummyConn := &grpc.ClientConn{}
+		mockClient := &mockFileProcessingServiceClient{
+			err: errors.New("raw non-grpc error"),
+		}
+		router := gin.New()
+		router.POST("/sync", FileProcessSyncHandler(ctx, dummyConn, mockClient, logger))
+
+		w := httptest.NewRecorder()
+		reqBody := `{"id":"550e8400-e29b-41d4-a716-446655440000","type":"resize","source_key":"in.png","dest_key":"out.png"}`
+		req := httptest.NewRequest(http.MethodPost, "/sync", bytes.NewReader([]byte(reqBody)))
+		req.Header.Set("Content-Type", "application/json")
+		router.ServeHTTP(w, req)
+
+		assert.Equal(t, http.StatusInternalServerError, w.Code)
+		assert.Contains(t, w.Body.String(), "processing_failed")
+	})
+}
+

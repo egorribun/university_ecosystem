@@ -283,7 +283,7 @@ jobs:
       test-group-name: "All-${{ matrix.name }}"
       test-pattern: "tests/"
       python-version: ${{ matrix.python-version }}
-      coverage-threshold: ${{ matrix.coverage-check && 78 || 0 }}
+      coverage-threshold: ${{ matrix.coverage-check && 80 || 0 }}
       run-integration-tests: ${{ matrix.run-integration }}
       parallel-workers: 0 # LOW-W19: 0 = auto-detect workers via pytest-xdist (-n auto)
       python-gil: ${{ matrix.free-threading && '0' || '1' }}  # MOD-24-03
@@ -340,6 +340,7 @@ jobs:
     with:
       service-directory: ${{ matrix.service }}
       go-version: "1.26.x"
+      coverage-threshold: 50
     secrets: inherit
 
   # MOD-W15-06 (audit 2026-03-23 Wave 15): Go fuzz testing for ws-hub message parsing.

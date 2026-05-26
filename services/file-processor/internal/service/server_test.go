@@ -1,12 +1,3 @@
-//go:build integration
-
-// Package service integration tests, gated behind //go:build integration.
-//
-// Per ADR-022 — exercises the gRPC validation boundary (validateProcessFileRequest
-// at server.go:44-76) which rejects path traversal and oversized keys BEFORE the
-// Temporal workflow is started. Validation fires entirely in-process, so this
-// test does not need a real gRPC listener — `s.ProcessFile(ctx, req)` is called
-// directly with TemporalClient: nil (never reached when validation rejects).
 package service
 
 import (
@@ -20,17 +11,11 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-// TestIntegration_GRPCPathTraversalRejection covers RZ-27-04 + RZ-26-04 at the
+// TestGRPCPathTraversalRejection covers RZ-27-04 + RZ-26-04 at the
 // gRPC boundary: validateProcessFileRequest rejects path traversal in
 // sourceKey/destKey and rejects keys exceeding 1024 bytes BEFORE Temporal
-// workflow start. This guards against:
-//   - Object-storage path traversal via crafted keys (RZ-27-04)
-//   - Temporal workflow history bloat from oversized keys (RZ-26-04)
-//
-// All cases must result in codes.InvalidArgument; TemporalClient: nil is safe
-// because validation rejects every test case before reaching ExecuteWorkflow
-// at server.go:110.
-func TestIntegration_GRPCPathTraversalRejection(t *testing.T) {
+// workflow start.
+func TestGRPCPathTraversalRejection(t *testing.T) {
 	s := &Server{TemporalClient: nil}
 	ctx := context.Background()
 

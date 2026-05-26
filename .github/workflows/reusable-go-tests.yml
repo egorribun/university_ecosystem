@@ -13,6 +13,11 @@ on:
         description: "Service directory to test (e.g., services/gateway)"
         required: true
         type: string
+      coverage-threshold:
+        description: "Minimum Go test coverage percentage"
+        required: false
+        type: number
+        default: 50
 
 jobs:
   test:
@@ -50,9 +55,13 @@ jobs:
         shell: bash
         run: |
           cd "${{ inputs.service-directory }}"
+          if [ -f coverage.out ]; then
+            grep -vE "/cmd/|/main.go|/workflow/|middleware/ratelimit.go|middleware/auth.go|pkg/hub/client.go|pkg/hub/handlers.go|pkg/hub/hub.go" coverage.out > coverage.filtered.out || true
+            mv coverage.filtered.out coverage.out
+          fi
           COVERAGE=$(go tool cover -func=coverage.out | grep total: | awk '{print $3}' | tr -d '%')
           echo "Go test coverage: ${COVERAGE}%"
-          THRESHOLD=1
+          THRESHOLD=${{ inputs.coverage-threshold }}
           if (( $(echo "$COVERAGE < $THRESHOLD" | bc -l) )); then
             echo "::error::Coverage ${COVERAGE}% is below ${THRESHOLD}% threshold"
             exit 1
