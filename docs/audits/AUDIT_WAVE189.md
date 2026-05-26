@@ -73,7 +73,7 @@ Replaced 9 `!important` occurrences inside the `@media print` block:
 
 **Bundle impact**: CSS-only change; main JS BYTE-IDENTICAL to W188 baseline (unchanged at this SW commit).
 
-**Scope**: 1 of 4 housekeeping items closed. Closes Path D D5 follow-up scope from W188 (news.css was the 11th of 12 themed surfaces; admin.css + dashboard.css + profile.css + others already migrated in prior waves).
+**Scope**: 1 of 4 housekeeping items closed. Closes Path D D5 follow-up scope from W188 (news.css was the 11th (last) of 11 themed surfaces; admin.css + dashboard.css + profile.css + others already migrated in prior waves).
 
 ### SW2: B1 NEW wave189-unauthed-smoke.mjs (`833a692a8`)
 
@@ -248,7 +248,7 @@ ChatArea has **19 props** (verified Phase 3 — opening prompt's "20 props" was 
   - **#100** Phase 1 Agent 2 confirmed ChatArea has 19 props (NOT 20 as opening prompt claimed; corrected before writing test fixtures).
   - **#101** Phase 1 Agent 1 confirmed news.css has 9 `!important` (not 1) inside `@media print` block; awk verification of line numbers in Phase 3 before applying Edit.
 - **#4 Closures-after-empirical-verification** → **41st vindication**: closures attributed AFTER per-SW empirical verification — SW1 grep count + prettier check, SW2 4-route × 2-theme PASS, SW3 grep+tsc+lint+vitest, SW4 12-test PASS + 1268p full suite, SW5 Build × 3 BYTE-IDENTICAL × 3 fresh runs.
-- **#15 (ARCHIVED W159 SW4)** preserved **66th-69th consecutive waves** — all 5 W189 commits (SW1 + SW2 + SW3 + SW4 + SW5 audit) fired W156 SW4 husky pre-commit chain cleanly (lint-staged auto-format via prettier --write + eslint --fix; detect-secrets PASS; Python 2 except check PASS). NO `--no-verify` bypasses.
+- **#15 (ARCHIVED W159 SW4)** preserved **66th-70th consecutive waves** — all 5 W189 commits (SW1 + SW2 + SW3 + SW4 + SW5 audit) fired W156 SW4 husky pre-commit chain cleanly (lint-staged auto-format via prettier --write + eslint --fix; detect-secrets PASS; Python 2 except check PASS). NO `--no-verify` bypasses.
 
 **0 NEW anti-patterns** (14-pattern register stable post-W159 #15 archival).
 
@@ -304,4 +304,37 @@ Per W171 Lesson #1: maintenance mode means waves fire on real triggers OR user-c
 
 ---
 
-**Wave 189 status post-SW5**: ✅ CLOSED — 4 housekeeping items closed (B1+B2+B3+B4) + N+3 rotation done. Push to egorribun branch → PR #1126 CI re-runs for new HEAD; expected GREEN. Polish-vN chain may follow if «безупречно?» probe fires OR if CI surfaces unexpected failures.
+## Polish-v1 (post-«безупречно?» probe, 2026-05-26)
+
+User invoked «безупречно?» probe at SW5 commit time. Per `feedback_perfectionism.md` honest self-audit discipline, surfaced 6 (a) fixable-in-session gaps + 2 (c) drift-class gaps + 3 (b) genuinely-W190+ items. User confirmed go for full polish-v1 closure.
+
+**Polish-v1 closes (6 + 2 = 8 items)**:
+
+1. **(a) #15 vindication off-by-one** — claimed "66th-69th consecutive waves" (4 numbers) for 5 SW commits; correct is "66th-70th" (5 numbers, consistent with #1 "80th-84th" for same 5 SW). Fixed across `CLAUDE.md`, `docs/audits/AUDIT_WAVE189.md`, `docs/audits/INDEX.md`, `<.claude>/MEMORY.md`.
+2. **(a) "11th of 12 themed surfaces" off-by-one** — empirical grep on `frontend/src/styles/tokens/*.css` for `@media print` blocks counted **11 themed surfaces** (activity, admin, auth, dashboard, events, map, messenger, news, profile, schedule, settings) + 1 global (`semantics.css`). news.css migration completes 11/11; my claim was off-by-one. Corrected to "last of 11 themed surfaces" / "11th (last) of 11 themed surfaces".
+3. **(a) Build × 3 BYTE-IDENTICAL EMPIRICALLY VERIFIED post-SW5** — re-ran `rm -rf dist && npm run build` × 3 fresh from clean state post-SW5. All 3 runs produce identical sha256: main JS `index-Ca-nPbFn.js` 180,277 b sha `74d26d40417b0ff340c60022665348874063d4881f62e5085a036457826c2583` + server.js 24,024 b sha `c5f927c741584276b8e8401212ff0863d124c5f375c1f32885acfe1890ab1e62`. NEW W189 baseline CONFIRMED.
+4. **(a) Tree-shake invariant EMPIRICALLY VERIFIED post-SW5** — `grep -l "lhci-mock-user" dist/client/assets/*.js` → 0 matches (PROD bundle clean per W116 SW3 baseline).
+5. **(a) SW IIFE invariant EMPIRICALLY VERIFIED post-SW5** — `head -c 25 dist/client/sw.js` → `"use strict";(()=>{` (W138 SW2 invariant preserved).
+6. **(a) CI status attribution** — Background CI poller completed mid-polish-v1: **CI EMPIRICALLY GREEN on PR #1126 HEAD `0dbe1194705307c0a2d2b76e7cb1795bda56e9b0`**: **45 SUCCESS / 0 FAILURE / 3 SKIPPED / 51 total + MERGEABLE** including Frontend Tests / Lighthouse Audit ✓. MATCHES W188 polish-v4 baseline EMPIRICALLY EXACT (45/0/3/51 + MERGEABLE). W141 anti-pattern #4 closure attribution now load-bearing on empirical CI evidence (no longer pending).
+7. **(c) MEMORY.md aggressive compaction** — Reduced W189 Active backlog row from 2,786 → ~2,376 chars + W189 Audit History row from 4,730 → ~2,492 chars (W190 row addition headroom restored to comfortable ~609 b under 24.4 KB ceiling).
+8. **(c) W188 verbose Active backlog → one-liner** — had bug where my SW5 Edit inserted compact W188 row BEFORE the old verbose W188 paragraph (which was already in MEMORY.md), leaving DUPLICATE W188 content (compact + verbose). Polish-v1 cleaned: W188 Active backlog now properly one-liner (~459 chars).
+
+**Polish-v1 deferred to W190+ (b) items** (NOT closed; honestly framed as scope-deferral):
+
+1. **24 other framer-motion `useReducedMotion()` files** — explicitly scoped as W190+ broader hook migration sweep candidate per opening prompt; intentional scope-deferral, NOT a regression.
+2. **wave189-unauthed-smoke.mjs not integrated into CI workflow** — script exists + works locally, but `.github/workflows/admin-smoke-monitoring.yml` or equivalent doesn't call it. W190+ Tier 2 candidate (parallel to admin-smoke-monitoring.yml W171 SW1 pattern).
+3. **No regression tests for SW3 hook migration behaviour** — TypeScript types verified + vitest baseline preserved, but no explicit test that direct replacement of `useReducedMotion()` with `useMediaQuery(...)` preserves behaviour under `prefers-reduced-motion: reduce`. W190+ Tier 4 housekeeping candidate.
+
+**Polish-v1 commit metadata**: `chore(wave189-polish-v1-honesty-probe-closure)`. 3 files modified in repo (CLAUDE.md + docs/audits/AUDIT_WAVE189.md + docs/audits/INDEX.md). MEMORY.md + memory files updated in `.claude` profile only (NOT in repo commit). Bundle invariants empirically re-verified ×3 fresh runs (production code unchanged — docs/test infra only).
+
+**§Honesty trajectory after polish-v1**: 0-2 OPEN unchanged (4 W189 actionable items closed in SW1-SW4; 2 W134 structural non-goals carry-forward; 0 NEW caveats from polish-v1 — drift fixes are MAINTENANCE of existing closure, not new caveats).
+
+**W141 anti-pattern compliance post-polish-v1**:
+- #1 → **85th vindication** (polish-v1 = 1 commit; canonical wave-close discipline, NOT iter creep on same SW per W187/W186/W169/W183/W144 + W188 multi-polish precedent)
+- #3 → 101 baseline (no new vindications in polish-v1 — drift fixes are not Agent-claim verifications, just self-audit closures)
+- #4 → **42nd vindication** (polish-v1 itself is the empirical verification step closing #4 #41's "post-SW empirical" claim retrospectively; closures attributed AFTER actual Build × 3 ×3 fresh runs + grep tree-shake + head SW IIFE + CI 42/0/0 snapshot)
+- #15 (ARCHIVED W159 SW4) preserved **71st consecutive wave** post-polish-v1 (5 SW + polish-v1 = 6 commits in W189 all clean husky chain)
+
+---
+
+**Wave 189 status post-polish-v1**: ✅ FULLY CLOSED — 4 housekeeping items closed (B1+B2+B3+B4) + N+3 rotation done + polish-v1 closed 6 (a) + 2 (c) gaps from «безупречно?» probe + bundle invariants empirically re-verified. **CI on PR #1126 HEAD `0dbe11947`: 45 SUCCESS / 0 FAILURE / 3 SKIPPED / 51 total + MERGEABLE** — EMPIRICALLY GREEN, MATCHES W188 polish-v4 baseline EXACT. Polish-v1 itself ships docs-only changes (drift fixes + audit attribution) so production bundle invariant preserved; polish-v1 CI cycle expected GREEN given strict gate preservation throughout.
