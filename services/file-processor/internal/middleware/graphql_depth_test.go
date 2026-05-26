@@ -43,8 +43,9 @@ func TestGraphQLDepthAndTimeout(t *testing.T) {
 		req.Header.Set("Content-Type", "application/json")
 		resp, err := http.DefaultClient.Do(req)
 		require.NoError(t, err)
-		defer func() { _ = resp.Body.Close() }()
-		respBytes, _ := io.ReadAll(resp.Body)
+		defer func() { _ = resp.Body.Close() }() //nolint:errcheck // test cleanup
+		respBytes, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
 
 		require.Equal(t, http.StatusBadRequest, resp.StatusCode)
 		require.Contains(t, string(respBytes), "depth")
@@ -58,8 +59,9 @@ func TestGraphQLDepthAndTimeout(t *testing.T) {
 		req.Header.Set("Content-Type", "application/json")
 		resp, err := http.DefaultClient.Do(req)
 		require.NoError(t, err)
-		defer func() { _ = resp.Body.Close() }()
-		respBytes, _ := io.ReadAll(resp.Body)
+		defer func() { _ = resp.Body.Close() }() //nolint:errcheck // test cleanup
+		respBytes, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
 
 		require.Equal(t, http.StatusOK, resp.StatusCode)
 		require.Contains(t, string(respBytes), `"data":"ok"`)
@@ -76,7 +78,7 @@ func TestGraphQLDepthAndTimeout(t *testing.T) {
 		resp, err := http.DefaultClient.Do(req)
 		elapsed := time.Since(start)
 		require.NoError(t, err)
-		defer func() { _ = resp.Body.Close() }()
+		defer func() { _ = resp.Body.Close() }() //nolint:errcheck // test cleanup
 
 		require.Equal(t, http.StatusGatewayTimeout, resp.StatusCode)
 		require.Less(t, elapsed, 1*time.Second)
