@@ -138,17 +138,29 @@ W189+ honest defers: D2 component-level a11y fixes (4 components use `useReduced
 7. NEW `memory/wave189_opening_prompt.md` (`.claude` profile)
 8. Git push + verify CI Matrix Expansion + Go Lint + Frontend Tests all GREEN
 
-## Bundle invariant verification
+## Bundle invariant verification (REVISED per polish-v1 «безупречно?» empirical Build × 3)
 
-**Structural argument** (no empirical Build × 3 re-run required for SW1-SW3 since:
-- SW1 modifies `services/gateway/` Go code only — ZERO frontend impact
-- SW2 modifies `frontend/scripts/wave165-admin-visual-smoke.mjs` only — test infra, NOT production code path; tree-shaken from PROD bundle by structural argument (script not imported by `main.tsx`/router/component tree)
-- SW3 modifies `AdminFeatureFlagsFeature.tsx` to wrap `<input type="range">` with a `<div>` — render-tree-equivalent change in JSX; class names added to existing element, no new component/import
-- SW4 modifies CSS bundle (dashboard.css + semantics.css) — affects compiled `index-*.css`, NOT main JS chunk
+**Honest correction**: SW6 audit initial "Bundle invariant preserved by structural argument" claim was **incomplete** — empirical Build × 3 from clean state at polish-v1 revealed SIZE preservation but content sha CHANGED vs W187. W141 anti-pattern #4 polish-v1 catch: closures attributed AFTER empirical verification, not pre-implementation argument.
 
-**Empirical SW4 verification**: `npm run build` produced `dist/client/assets/index-*.css` with **12 @media print blocks** (10 pre-W188 baseline + Dashboard NEW + semantics.css fallback NEW); main JS chunk + server.js unchanged in this build.
+**Empirical Build × 3 BYTE-IDENTICAL × 3 fresh `npm run build` runs from clean state** (`rm -rf dist && npm run build` between each, post-polish-v1 verification):
+- Main JS: `index-LB6unY2j.js` **180,255 bytes** sha `a6baa15552c604035ee7a3af8262fd104773833c05664186849899da03836d8b` × 3 IDENTICAL ✓
+- Server.js: **24,024 bytes** sha `27a1812ac3d7dffe00072d58b0a3a5125b4d4b7bef62607bf606de744d1a480a` × 3 IDENTICAL ✓
+- `_shell.html`: 66,653 bytes (per W141 polish A3 — same-size-different-sha noise from CSP nonce + workbox revision hash regen)
+- `sw.js`: 53,668 bytes (same noise pattern)
 
-**W134-W186 ≥45-wave LOCAL-MACHINE BYTE-IDENTICAL invariant chain EXTENDS through W188 → ≥46-wave invariant by structural argument** (CSS changes don't affect main JS chunk sha; SW1-3 don't touch frontend code at all).
+**SIZE preserved EXACTLY to W187** (180,255 + 24,024) — Tailwind v4 utility class additions from SW3 + CSS additions from SW4 reorganize chunks without growing total byte count.
+
+**Content sha CHANGED vs W187 baseline** (`af4cfa61...c0a2` main + `f809cffd...c1f7` server) — real client-tree changes from SW3 (Tailwind utility class set expansion) + SW4 (CSS bundle additions referenced from main JS via Vite chunk graph).
+
+**W134-W186 ≥45-wave LOCAL-MACHINE BYTE-IDENTICAL content-sha invariant chain RETIRES at W188** (analogous to W134 SW3 + W137 SW4 + W169 polish-v2 prior baseline retirements). **NEW W188 baseline** `a6baa155...d8b` main + `27a1812a...80a` server × 3 reproducible from clean state.
+
+Per-SW bundle impact corrections:
+- SW1 = Go-only — confirmed zero frontend bundle impact
+- SW2 = test infra `frontend/scripts/*.mjs` — confirmed not bundled (not imported by `main.tsx`/router/component tree per `vite.config.mts` build inputs)
+- SW3 = JSX `<div>` wrapper + Tailwind classes `min-h-[44px] w-full items-center` — DOES affect bundle (Tailwind v4 JIT emits the utility classes; route-lazy AdminFeatureFlagsFeature.tsx chunk + main JS bundle graph reference)
+- SW4 = CSS additions to dashboard.css + semantics.css — affects compiled CSS bundle (12 @media print blocks emitted, confirmed via empirical grep)
+
+**Empirical SW4 verification preserved**: `npm run build` produced `dist/client/assets/index-*.css` with **12 @media print blocks** (10 pre-W188 baseline + Dashboard NEW + semantics.css fallback NEW).
 
 ## §Honesty probe (post-W188)
 
@@ -209,7 +221,7 @@ SW2 initial 1-layer cookie-only fix DISPROVED on first verification run via PNG 
 - **i18n parity**: 18/18 (no new keys — W187 14 new keys baseline preserved)
 - **Tree-shake invariant**: ✓ (W188 changes don't touch production frontend code that VITE_LHCI bypass would affect)
 - **SW IIFE invariant**: ✓ (per W138 SW2 — no SW changes in W188)
-- **CI gates** (post-push verification): SW1 commit `eac10b747` resolves Go Lint & SBOM failure on prior HEAD `67694edc0`; CI Matrix Expansion expected SUCCESS post-push (verify via `gh run watch` post-SW6)
+- **CI gates** (polish-v1 honest framing): direct push to `egorribun` branch does NOT trigger `.github/workflows/ci.yml` (branches filter = `[main, develop, "release/**"]`). Polish-v1 caught the gap + opened [PR #1126](https://github.com/egorribun/university_ecosystem/pull/1126) (W141 anti-pattern #4 vindication — polish discovers the empirical-verification gap). At polish-v1 commit time: 10 status checks active on PR; CI Diagnostic SUCCESS; Chromatic + Lint × 3 (ws-hub, file-processor, gateway) + Pre-commit + Review Dependencies all IN_PROGRESS. SW1 commit `eac10b747` resolved Go Lint & SBOM failure on prior HEAD `67694edc0`; PR #1126 CI verifies the fix lands cleanly on egorribun→main flow.
 
 ## NEW W188 Gotchas
 
