@@ -354,4 +354,3 @@ func TestFileProcessSyncHandler_Errors(t *testing.T) {
 		assert.Contains(t, w.Body.String(), "processing_failed")
 	})
 }
-
