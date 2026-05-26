@@ -1,5 +1,6 @@
 import { useId, useMemo, type CSSProperties } from "react"
-import { m, useReducedMotion } from "framer-motion"
+import { m } from "framer-motion"
+import useMediaQuery from "@/hooks/useMediaQuery"
 import { useTranslation } from "react-i18next"
 import { motion as motionTokens } from "@/theme/tokens"
 
@@ -24,7 +25,7 @@ export function ActivityTrendChart({
   formatDate,
 }: ActivityTrendChartProps) {
   const { t } = useTranslation(["activity"])
-  const reduce = useReducedMotion()
+  const reduce = useMediaQuery("(prefers-reduced-motion: reduce)")
   const gradientId = useId() // unique per instance (L3) — must be before early return
 
   const chartWidth = 400 // SVG viewBox width; responsive via CSS width:100%

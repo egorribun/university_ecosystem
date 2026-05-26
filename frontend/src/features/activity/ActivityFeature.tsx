@@ -1,5 +1,4 @@
 import { useRef, type CSSProperties } from "react"
-import { useReducedMotion } from "framer-motion"
 import { Activity as TimelineIcon } from "lucide-react"
 import { cn } from "@/utils/cn"
 import useMediaQuery from "@/hooks/useMediaQuery"
@@ -54,7 +53,7 @@ export function ActivityFeature() {
 
   const comparative = useActivityComparative(attendance, grades, participation, period)
 
-  const reduce = useReducedMotion() ?? false
+  const reduce = useMediaQuery("(prefers-reduced-motion: reduce)")
   const isSm = useMediaQuery(`(max-width: ${breakpoints.small})`)
   const isMd = useMediaQuery(`(max-width: ${breakpoints.mobile})`)
   const isNarrow = useMediaQuery(`(max-width: ${breakpoints.dashboard})`)

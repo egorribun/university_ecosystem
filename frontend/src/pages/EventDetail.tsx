@@ -9,7 +9,6 @@
 import { useState, useEffect, useCallback, useRef } from "react"
 import { useParams, useNavigate } from "@tanstack/react-router"
 import { Info as InfoIcon, ArrowLeft as ArrowBackIcon } from "lucide-react"
-import { useReducedMotion } from "framer-motion"
 import { useAuth } from "@/contexts/AuthContext"
 import { useTranslation } from "react-i18next"
 import { Button, ConfirmDialog } from "@/components/ui"
@@ -42,7 +41,7 @@ export default function EventDetail() {
   const navigate = useNavigate()
   const { user } = useAuth()
   const queryClient = useQueryClient()
-  const prefersReducedMotion = useReducedMotion() ?? false
+  const prefersReducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)")
   const isNarrow = useMediaQuery(`(max-width: ${breakpoints.content})`)
   const { t, i18n } = useTranslation(["events", "common"])
   const language: "en" | "ru" = i18n.language?.startsWith("en") ? "en" : "ru"

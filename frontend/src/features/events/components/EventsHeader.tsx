@@ -5,7 +5,7 @@ import FadeSection from "@/components/motion/FadeSection"
 import { Button } from "@/components/ui"
 import { ALL_EVENT_CATEGORIES, type EventCategory } from "@/features/events/categories"
 import { cn } from "@/utils/cn"
-import { useReducedMotion } from "framer-motion"
+import useMediaQuery from "@/hooks/useMediaQuery"
 import type { EventDateRange, EventSortMode, EventTabKey } from "../types"
 import { useEventFilterPopover } from "@/components/events/EventFilterPopover"
 import { useSlidingIndicator } from "@/hooks/ui/useSlidingIndicator"
@@ -48,7 +48,7 @@ export const EventsHeader = ({
   onLocationChange,
 }: EventsHeaderProps) => {
   const { t } = useTranslation(["events", "common"])
-  const prefersReducedMotion = useReducedMotion()
+  const prefersReducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)")
 
   /* ── Sticky detection via IntersectionObserver ── */
   const sentinelRef = useRef<HTMLDivElement>(null)
