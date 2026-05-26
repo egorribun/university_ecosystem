@@ -578,3 +578,36 @@
     --cat-slate-text: var(--color-slate-400);
   }
 }
+
+/* ═══════════════════════════════════════════════════════
+   W188 SW4: Module-level @media print safety fallback for
+   surfaces without explicit @media print blocks. Pre-W188,
+   Dashboard (W188 SW4 fix above in dashboard.css) was the
+   only themed surface without one — but future-added themed
+   surfaces would also lack print coverage by default.
+   Closes Path D D5 sub-task as defense-in-depth.
+
+   Placed OUTSIDE @layer base intentionally — module-level
+   rules have higher specificity priority than @layer base
+   per CSS cascade-layers spec, ensuring this fallback wins
+   for surfaces that don't declare their own @media print.
+
+   Doubled-class FIX-72-04 pattern not applicable here (root
+   element scope, not themed-class scope). Print-color-adjust
+   property uses modern + webkit-prefixed names for Safari
+   compatibility (admin.css:392-395 baseline).
+   ═══════════════════════════════════════════════════════ */
+@media print {
+  html,
+  body {
+    background: white;
+    color: black;
+  }
+  [aria-hidden="true"]:not([role="img"]) {
+    display: none;
+  }
+  * {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+}
