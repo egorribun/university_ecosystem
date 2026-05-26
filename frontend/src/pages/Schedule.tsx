@@ -1,6 +1,6 @@
 import { useCallback, useState, useMemo, useRef } from "react"
 import { useTranslation } from "react-i18next"
-import { AnimatePresence, m, useReducedMotion } from "framer-motion"
+import { AnimatePresence, m } from "framer-motion"
 import { PageLayout } from "@/components/layout/PageLayout"
 import useMediaQuery from "@/hooks/useMediaQuery"
 import { breakpoints } from "@/theme/tokens"
@@ -155,7 +155,7 @@ function ScheduleContent() {
     (val?: string | null) => lessonTypeLabels.get(val ?? "") ?? val ?? "",
     [lessonTypeLabels]
   )
-  const prefersReduced = useReducedMotion()
+  const prefersReduced = useMediaQuery("(prefers-reduced-motion: reduce)")
 
   const confirmDeleteLesson = useCallback(async () => {
     const id = pendingDeleteId

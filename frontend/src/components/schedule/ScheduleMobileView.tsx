@@ -1,6 +1,7 @@
 import { useRef, useMemo, useCallback, useState } from "react"
 import { useTranslation } from "react-i18next"
-import { AnimatePresence, m, useReducedMotion } from "framer-motion"
+import { AnimatePresence, m } from "framer-motion"
+import useMediaQuery from "@/hooks/useMediaQuery"
 import { Badge } from "@/components/ui"
 import { DayColumn } from "@/components/schedule/DayColumn"
 import { useScheduleData } from "@/hooks/useScheduleData"
@@ -73,7 +74,7 @@ export function ScheduleMobileView({
   const { t } = useTranslation(["schedule"])
   const { openDialog, setAddDay } = useSchedulePage()
   const { compactMode } = useScheduleDisplayPreferences()
-  const prefersReduced = useReducedMotion()
+  const prefersReduced = useMediaQuery("(prefers-reduced-motion: reduce)")
   const { nextWeek, previousWeek } = useScheduleUIActions()
   const weekOffset = useWeekOffset()
   const dayCardRefs = useRef<(HTMLDivElement | null)[]>([])

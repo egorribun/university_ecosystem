@@ -1,8 +1,9 @@
 import { useCallback } from "react"
 import { useTranslation } from "react-i18next"
 import { X as CloseIcon, Keyboard as KeyboardIcon } from "lucide-react"
-import { AnimatePresence, m, useReducedMotion } from "framer-motion"
+import { AnimatePresence, m } from "framer-motion"
 import useFocusTrap from "@/hooks/useFocusTrap"
+import useMediaQuery from "@/hooks/useMediaQuery"
 
 interface ScheduleShortcutsOverlayProps {
   open: boolean
@@ -22,7 +23,7 @@ const SHORTCUTS = [
 // A11Y-65-01: Added useFocusTrap — replaces manual focus + keydown listener
 export function ScheduleShortcutsOverlay({ open, onClose }: ScheduleShortcutsOverlayProps) {
   const { t } = useTranslation(["schedule"])
-  const prefersReduced = useReducedMotion()
+  const prefersReduced = useMediaQuery("(prefers-reduced-motion: reduce)")
 
   const handleClose = useCallback(() => onClose(), [onClose])
 
