@@ -32,7 +32,6 @@ type ChatAreaProps = ComponentProps<typeof ChatArea>
  * Mocks applied:
  *  - react-i18next        → pass-through t() with JSON-serialized opts
  *  - SmartImage           → plain <img>
- *  - framer-motion        → useReducedMotion=false (jsdom-incompat per W184 SW6)
  *  - useMessenger         → { getTypingUsersForChat: () => [] }
  *  - useNavigate          → vi.fn() mock
  *  - ChatWindow           → stub <div data-testid="mock-chat-window" />
@@ -56,15 +55,15 @@ vi.mock("@/components/media/SmartImage", () => ({
   ),
 }))
 
-// W184 SW6 lesson — framer-motion's useReducedMotion is jsdom-incompat;
-// mock to return false deterministically (same pattern as ChatWindow.test.tsx).
-vi.mock("framer-motion", async () => {
-  const actual = await vi.importActual<typeof import("framer-motion")>("framer-motion")
-  return {
-    ...actual,
-    useReducedMotion: () => false,
-  }
-})
+// W190 SW1 migrated ChatArea + sibling messenger components from framer-motion's
+// jsdom-incompat `useReducedMotion()` hook to project's `useMediaQuery
+// ("(prefers-reduced-motion: reduce)")` DEFAULT export (jsdom-polyfilled at
+// setupTests.ts:13-30). The previous `vi.mock("framer-motion", { useReducedMotion:
+// () => false })` block was W184 SW6 defensive code that's now dead — no SUT-tree
+// code under this test calls framer-motion's useReducedMotion anymore. Removed at
+// W190 polish-v1 «безупречно?» cleanup. framer-motion's `motion.div` +
+// `AnimatePresence` exports used by ChatArea internals are still present from
+// real framer-motion module (no mock needed; jsdom-compatible).
 
 // useMessenger() context — only `getTypingUsersForChat` is consumed by ChatArea.
 vi.mock("@/contexts/MessengerContext", () => ({

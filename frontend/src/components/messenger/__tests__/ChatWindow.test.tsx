@@ -42,19 +42,15 @@ vi.mock("@/components/media/SmartImage", () => ({
   ),
 }))
 
-// Wave 184 SW6 lesson — framer-motion's useReducedMotion calls
-// matchMedia(...).addEventListener via initPrefersReducedMotion through a code
-// path jsdom's matchMedia polyfill doesn't fully cover (causes vitest
-// unhandled errors in some component contexts). Mock useReducedMotion to
-// return false deterministically so render branches with `prefersReducedMotion
-// ? ... : ...` resolve to the animated branch consistently.
-vi.mock("framer-motion", async () => {
-  const actual = await vi.importActual<typeof import("framer-motion")>("framer-motion")
-  return {
-    ...actual,
-    useReducedMotion: () => false,
-  }
-})
+// W190 SW1 migrated ChatWindow + sibling messenger components from framer-motion's
+// jsdom-incompat `useReducedMotion()` hook to project's `useMediaQuery
+// ("(prefers-reduced-motion: reduce)")` DEFAULT export (jsdom-polyfilled at
+// setupTests.ts:13-30). The previous `vi.mock("framer-motion", { useReducedMotion:
+// () => false })` block was W184 SW6 defensive code that's now dead — no SUT-tree
+// code under this test calls framer-motion's useReducedMotion anymore. Removed at
+// W190 polish-v1 «безупречно?» cleanup. framer-motion's `motion.div` exports used
+// by ChatWindow internals are still present from real framer-motion module
+// (no mock needed; jsdom-compatible).
 
 // Wave 185 SW2 — mock useDebounced to be a pass-through so search-filter
 // tests don't need fake timers + 200ms advance to trigger the debounce
