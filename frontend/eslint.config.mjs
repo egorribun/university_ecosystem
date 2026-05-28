@@ -14,7 +14,14 @@ import security from "eslint-plugin-security"
 
 export default tseslint.config(
   {
-    ignores: ["dist", "node_modules", "public", "vite.config.mts", "src/api/generated"],
+    ignores: [
+      "dist",
+      "node_modules",
+      "public",
+      "vite.config.mts",
+      ".storybook",
+      "src/api/generated",
+    ],
   },
   js.configs.recommended,
   ...tseslint.configs.recommended,

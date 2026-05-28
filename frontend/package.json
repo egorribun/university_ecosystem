@@ -181,7 +181,7 @@
   "description": "",
   "lint-staged": {
     "*.{ts,tsx,js,jsx}": [
-      "eslint --fix"
+      "eslint --fix --no-warn-ignored"
     ],
     "*.{ts,tsx,js,jsx,json,css,scss,md,html,mjs,cjs}": [
       "prettier --write"

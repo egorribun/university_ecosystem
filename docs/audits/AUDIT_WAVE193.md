@@ -81,7 +81,7 @@ Discoverable Storybook story files: **53 → 68** (53 active + 6 orphans + 9 new
 
 ## §Honesty probe
 
-- **§Honesty trajectory: 0-2 OPEN → 1-2 OPEN.**
+- **§Honesty trajectory: 0-2 OPEN → 1-2 OPEN at wave-close → 0-2 OPEN after polish-v1** (the 1 NEW caveat below was CLOSED in polish-v1 — see the Polish-v1 section).
   - **Delivered (not §Honesty closures — net-positive scope)**: E glob widen (resolved the orphan + features/-discoverability drift) + B backdrop coverage 2/11 → 11/11.
   - **1 NEW W193-surfaced caveat**: committing `.storybook/main.ts` (SW1) surfaced a **pre-existing** eslint *parsing error* in lint-staged — "`.storybook/main.ts` was not found by the project service". `.storybook/` isn't in eslint's typed-lint tsconfig, so the typed parser can't resolve it. **Non-blocking** (the commit completed; `tsc` 0; build OK) and **pre-existing** (surfaces on any `.storybook/*.ts` commit — W123/W125 hit it too). CI is unaffected (`npm run lint` only scans `src`+`tests`). W194 ~15 min candidate: add `.storybook/` to eslint's tsconfig project service OR scope it out of lint-staged's eslint task.
   - **2 structural carry-forward (unchanged, by-design)**: W134 §H#2 bundle delta recording-only; W134 §H#10 /messenger Phase 5 SSR by-design (W161 SW2 deliberate defer).
@@ -117,5 +117,17 @@ Discoverable Storybook story files: **53 → 68** (53 active + 6 orphans + 9 new
 - **B** — Continue D scope: remaining non-backdrop story candidates (MessageInput Blob-URL + SVG-rejection + FormData mock; Map markers × 3 MapLibre-GL mock; Profile Header+Editor; Auth LoginCredentialForm + MfaChallengeView; Activity visualizations × 3 ActivityTrendChart/BarChart/Heatmap; Navbar; Mobile menu). HARD tier (mocks).
 - **C** — Path E XL messenger backend wave (~6-10h — backend EMPIRICALLY NOT READY per W190 pre-flight: `read_status: bool` only, no `read_at`/`Reaction` table/`voice_message_url`).
 - **D** — Lighthouse #17021 next monitoring tick at the W196-W200 window (off-cadence now).
-- **E** — `.storybook/` eslint tsconfig gap (~15 min — closes the W193 §Honesty NEW caveat: add `.storybook/` to eslint's project service OR scope it out of lint-staged's eslint task).
+- **E** — ✅ DONE in polish-v1 (`.storybook` added to eslint `ignores` + `--no-warn-ignored` on lint-staged eslint task).
 - **F** — Visual verification: review the Chromatic build post-push for the 15 new story baselines (9 backdrops + 6 orphans) — expected auto-accepted as new baselines, 0 regressions on existing.
+
+---
+
+## Polish-v1 (post «безупречно?» probe, 2026-05-28)
+
+The probe surfaced 3 gaps against the project's own standard; polish-v1 closed 2 of 3 (the 3rd, CI, is external + was confirmed shortly after).
+
+1. **Build reproducibility upgraded × 1 → × 3 EMPIRICAL.** Wave-close did Build × 1; polish-v1 ran 2 more clean `rm -rf dist && npm run build`. All 3: main JS sha `1bff1fd7403b03e206534340bc89c53a37ce29d1240e923e83b4101c9c813c97` (= W190/W192 baseline) + server.js sha `fb8a586026a2e6c17b0143b775d501909a284f31de69097f89d1d73132fa8631` — **BYTE-IDENTICAL × 3**. The ≥52-wave LOCAL-MACHINE invariant is now confirmed empirically × 3, not × 1.
+2. **`.storybook/*.ts` lint-staged eslint parsing-error gap CLOSED** (was the 1 NEW W193 §Honesty caveat). Fix: added `".storybook"` to `eslint.config.mjs` `ignores` (line 17) — exactly mirroring the pre-existing `vite.config.mts` entry (both are build-config files outside the typed-lint tsconfig `projectService`) — plus `--no-warn-ignored` on the lint-staged eslint task (`frontend/package.json`). Verified: `npx eslint .storybook/main.ts` was a **parsing error (exit 1)** → now an ignored-file warning (exit 0); with `--no-warn-ignored` it is **fully silent (exit 0)**. `npm run lint` (src+tests scope) unaffected = 0. Both changes are dev-tooling only — NOT in the prod bundle (main JS stays byte-identical).
+3. **CI Matrix Expansion** — the only pending wave-close item; confirmed green after the long-pole matrix finished (Chromatic + Wave189 Smoke + Go Lint + Dependency Review all green at wave-close).
+
+**§Honesty post-polish-v1: 0-2 OPEN** (the lint-staged gap CLOSED; only the 2 W134 structural non-goals carry forward — W134 §H#2 bundle delta recording-only + W134 §H#10 /messenger Phase 5 SSR by-design). **W141 #4** vindicated: the «безупречно?» probe correctly drove a self-audit, not reassurance — 2 real gaps fixed + 1 confirmed. Polish-v1 commit touches `eslint.config.mjs` + `package.json` (dev-tooling) + docs; bundle invariant preserved (main JS sha `1bff1fd7...c97` unchanged across the Build × 3).
