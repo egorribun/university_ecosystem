@@ -250,6 +250,23 @@ async function createConfig() {
       // without upstream movement; Windows wrapper measurement remains
       // canonical Perf measurement per W162 SW1 acceptance. See
       // memory/wave188_lighthouse_upstream_check.md for full snapshot.
+      //
+      // W191 SW1 — monitoring tick at W191 open (2026-05-28). `gh issue view
+      // 17021 --repo GoogleChrome/lighthouse` re-verified: state OPEN, 0
+      // comments, 0 maintainer responses, 0 labels, 0 reactions, 0 assignees,
+      // updatedAt = createdAt (no edits) since 2026-05-18 filing (10 calendar
+      // days elapsed). Per W188 SW5 calibration the W189-W193 window currently
+      // active (W189 + W190 closed 2026-05-26 + W191 opens 2026-05-28 — all
+      // 3 fall inside window). Push next monitoring window to W195-W199
+      // (sliding 1-week cadence preserved per W170 SW3 framework — re-check
+      // 1-2 calendar weeks from this tick at W199+ if still no upstream
+      // movement). State stays "tracked-upstream" for 7th consecutive tick
+      // (W163 + W170 + W179 + W180 + W188 + W189 + W191 inclusive — though
+      // W189 + W190 inherited from W188 SW5 by-design without separate tick).
+      // Empirical evidence unchanged: no upstream-level CI ratchet possible
+      // without Linux CI Perf=null fix; Windows wrapper measurement remains
+      // canonical Perf measurement per W162 SW1 acceptance. See
+      // memory/wave191_lighthouse_upstream_check.md for full snapshot.
       chromeFlags:
         "--no-sandbox --disable-dev-shm-usage --allow-insecure-localhost --ignore-certificate-errors --test-type --disable-gpu --headless=new",
       throttlingMethod: "devtools",
