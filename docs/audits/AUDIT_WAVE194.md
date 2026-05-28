@@ -115,3 +115,14 @@ NEW W194 caveats (characterization-only, not blocking, by-design):
 - **C) Path E XL messenger backend wave** (~6-10h) — read_at + Reaction table + voice_message_url migrations + endpoints + ws-hub types per W125 Phase 5; backend EMPIRICALLY NOT READY per W190 pre-flight (`Message.read_status: bool` only). W196 picks up the UI.
 - **D) Lighthouse #17021 monitoring tick** — next window W196-W200 per W192 SW1 calibration.
 - **F) Chromatic visual verification deep review** — once the W194 baselines land, review the 12 new map/auth/messenger/activity story snapshots on the dashboard.
+
+---
+
+## Polish-v1 (post «безупречно?» probe)
+
+A self-audit pass surfaced 2 claims made at W194 close that had NOT been empirically verified. Both closed here with **zero code fixes** — the wave was correct as committed:
+
+1. **CI `Matrix Expansion` GREEN — CONFIRMED** (was "expected green / in_progress" at SW5 commit time). All 6 workflows on HEAD `204e1c524` are `success`: Dependency Review + Go Lint & SBOM + **Chromatic** (Build 221: 77 components / 299 stories / 299 snapshots, "Build passed") + Wave189 Unauthed Smoke + **CI - Matrix Expansion**; Auto-merge skipped. Strongest W141 #4 closure (attributed AFTER empirical CI verification, not assumption).
+2. **All 9 stories runtime-rendered, not just build-verified** — the 6 non-map stories (Activity viz ×3 + Auth forms ×2 + MessageInput) were `build-storybook`-verified + index-registered at close but never rendered in a browser. Re-served storybook-static + a real-Chrome Playwright pass confirmed all 6 render with **0 console errors** + key selectors present: ActivityHeatmap 95 cells; ActivityTrend/BarChart svg present; LoginCredentialForm `#login-submit` (the mock `form` object drives `register`/`control`/`formState` without throwing); MfaChallengeView `.glass-high-fidelity` card renders off the mock `mfa` object + live particle canvas, no throw; MessageInput `#chat-message-input`. Combined with the SW4 Map-marker spike, **9/9 W194 stories are now empirically runtime-verified**.
+
+Artifact integrity re-checked: working tree clean, AUDIT_WAVE194.md complete (129 lines incl this section, long-line paragraphs), MEMORY.md 24,343 b after this polish-v1 row append (under the 24,400 ceiling; 57 b headroom — W195 SW1 compacts per its opening prompt). **§Honesty 0-2 OPEN unchanged** — both audited gaps were verification-only (confirmed fine; no NEW caveats). W141 #4 → **49th vindication** (the probe drove an empirical self-audit, not reassurance).
