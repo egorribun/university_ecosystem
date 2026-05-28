@@ -260,13 +260,16 @@ async function createConfig() {
       // 3 fall inside window). Push next monitoring window to W195-W199
       // (sliding 1-week cadence preserved per W170 SW3 framework — re-check
       // 1-2 calendar weeks from this tick at W199+ if still no upstream
-      // movement). State stays "tracked-upstream" for 7th consecutive tick
-      // (W163 + W170 + W179 + W180 + W188 + W189 + W191 inclusive — though
-      // W189 + W190 inherited from W188 SW5 by-design without separate tick).
-      // Empirical evidence unchanged: no upstream-level CI ratchet possible
-      // without Linux CI Perf=null fix; Windows wrapper measurement remains
-      // canonical Perf measurement per W162 SW1 acceptance. See
-      // memory/wave191_lighthouse_upstream_check.md for full snapshot.
+      // movement). State stays "tracked-upstream" — **6th separately-fired
+      // tick (W163 + W170 + W179 + W180 + W188 + W191); 8 monitoring-state-
+      // preservations counting W189 + W190 inherited from W188 SW5 by-design
+      // without separate tick** (polish-v1 framing correction post «безупречно?»
+      // probe — SW1 narrative initially claimed "7th consecutive tick" which
+      // matched neither honest count). Empirical evidence unchanged: no
+      // upstream-level CI ratchet possible without Linux CI Perf=null fix;
+      // Windows wrapper measurement remains canonical Perf measurement per
+      // W162 SW1 acceptance. See memory/wave191_lighthouse_upstream_check.md
+      // for full snapshot (also corrected post-polish-v1).
       chromeFlags:
         "--no-sandbox --disable-dev-shm-usage --allow-insecure-localhost --ignore-certificate-errors --test-type --disable-gpu --headless=new",
       throttlingMethod: "devtools",

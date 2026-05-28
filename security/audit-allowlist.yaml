@@ -334,6 +334,45 @@ npm:
       expires: 2026-06-15
       reason: |
         Transitive via reference cascade from advisory 1118053.
+    # tmp Path Traversal advisory (GHSA-ph9p-34f9-6g65) — published during
+    # W191 wave execution (between W190 polish-v1 baseline + W191 SW5 push).
+    # Affects tmp <0.2.6; cascades through transitive @lhci/cli (LHCI is
+    # dev/CI-only tooling per W120 SW1 + W160 SW2 lhci-windows-fallback —
+    # NOT in production runtime). All 4 IDs come from single advisory; npm
+    # audit cascades each `via` reference into its own allowlist requirement.
+    # `npm audit --omit=dev` returns 0 vulnerabilities — production bundle
+    # tree-shake invariant preserved (LHCI not import-reachable from src/main.tsx).
+    - id: "1119610"
+      package: "tmp"
+      owner: frontend@university.example
+      expires: 2026-08-31
+      reason: |
+        tmp Path Traversal advisory GHSA-ph9p-34f9-6g65.
+        Transitive via @lhci/cli (Lighthouse CI tooling); dev-only.
+        Not in production bundle (npm audit --omit=dev returns 0).
+        Allowing until @lhci/cli publishes a release with tmp>=0.2.6 OR
+        LHCI sunset migrates to alternative tooling.
+    - id: "tmp"
+      package: "tmp"
+      owner: frontend@university.example
+      expires: 2026-08-31
+      reason: |
+        Transitive via reference cascade from advisory 1119610.
+        Dev-only via @lhci/cli.
+    - id: "inquirer"
+      package: "inquirer"
+      owner: frontend@university.example
+      expires: 2026-08-31
+      reason: |
+        Transitive via reference cascade from advisory 1119610.
+        Dev-only via @lhci/cli → inquirer 3.0.0-8.2.6 || 9.0.0-9.3.7.
+    - id: "external-editor"
+      package: "external-editor"
+      owner: frontend@university.example
+      expires: 2026-08-31
+      reason: |
+        Transitive via reference cascade from advisory 1119610.
+        Dev-only via @lhci/cli → inquirer → external-editor.
 
 pip:
   advisories:
