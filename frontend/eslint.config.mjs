@@ -142,6 +142,21 @@ export default tseslint.config(
               message:
                 "Legacy apiClient is deprecated. Please use the auto-generated SDK from src/api/generated/sdk.ts.",
             },
+            // Wave 191 SW3 — close W189 polish-v1 Tier 4 deferral (hook migration
+            // regression test). framer-motion's `useReducedMotion()` is jsdom-
+            // incompatible (W184 SW6 lesson — touches window.matchMedia(...)
+            // .addEventListener via initPrefersReducedMotion through a code
+            // path jsdom's polyfill doesn't fully cover, producing TypeError as
+            // vitest unhandled errors). W190 broader migration sweep closed all
+            // 25/25 component+hook source-level imports; this rule prevents
+            // regression. Belt-and-suspenders with vitest fs-grep guard at
+            // src/tests/hookMigrationRegression.test.ts.
+            {
+              name: "framer-motion",
+              importNames: ["useReducedMotion"],
+              message:
+                'framer-motion useReducedMotion is jsdom-incompatible (W184 SW6 + W190 broader migration sweep). Use `useMediaQuery("(prefers-reduced-motion: reduce)")` from `@/hooks/useMediaQuery` (DEFAULT export) instead. See CLAUDE.md ## Gotchas for full rationale.',
+            },
           ],
         },
       ],
