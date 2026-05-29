@@ -16,7 +16,12 @@ import { Skeleton } from "@/components/settings"
 import { addVersionParam, resolveProxyImageUrl } from "@/utils/media"
 import { useIntersectionObserver } from "@/hooks/useIntersectionObserver"
 
-const LAZY_ROOT_MARGIN = "12.5rem"
+// IntersectionObserver rootMargin accepts px/% only (NOT rem) — native browsers
+// throw `SyntaxError: rootMargin must be specified in pixels or percent` on rem.
+// 200px == the prior 12.5rem at a 16px root. Surfaced by the W195 SW6 story smoke
+// (AsyncImage is unused in prod + its jsdom test uses a lenient IO mock, so the
+// bug stayed latent until a real-browser Storybook render exposed it).
+const LAZY_ROOT_MARGIN = "200px"
 
 type Status = "idle" | "loading" | "loaded" | "error"
 
