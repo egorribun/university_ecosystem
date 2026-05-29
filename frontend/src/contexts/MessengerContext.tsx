@@ -13,7 +13,11 @@ interface MessengerContextType {
   getTypingUsersForChat: (chatId: string) => { userId: string; userName: string }[]
 }
 
-const MessengerContext = createContext<MessengerContextType | undefined>(undefined)
+// Wave 197 SW7 — exported so Storybook stories (ChatArea) can wrap a tsc-typed
+// MessengerContext.Provider stub without running the real provider's WebSocket /
+// query work. Additive, unused by the app graph → tree-shaken from the prod
+// bundle (the only consumer is the story, which is outside the Vite app entry).
+export const MessengerContext = createContext<MessengerContextType | undefined>(undefined)
 
 export const useMessenger = () => {
   const context = useContext(MessengerContext)
