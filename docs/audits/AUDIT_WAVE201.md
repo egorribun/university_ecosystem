@@ -7,7 +7,7 @@
 - **6 of 212 stories marked `parameters.chromatic.disableSnapshot: true`** — the Phase-1 audit classified the candidate set; the other ~206 are deterministic (fixed-date fixtures / static / `pauseAnimationAtEnd` framer-motion springs that settle, incl. the 15 pre-existing `chromatic:` stories — all unchanged). The 6: WeatherParticles + MapLibreMap (canvas/WebGL), ParticleAuthBackground + MfaChallengeView (particle bg), EventCard (relative-time text), FlipCountdown (live clock).
 - **chromatic.yml hygiene**: removed the plaintext `chpt_…` project token from the comment (0 `chpt_` now; value lives in the Secret / memory note) + refreshed the activation steps + documented the enforce-flip as a post-baseline follow-up. Behavior unchanged — `exitZeroOnChanges: true` (Report-mode) stays.
 - **Bundle main JS BYTE-IDENTICAL × 3** to W134-SW3 → W200 `1bff1fd7…c97` — the 6 `.stories.tsx` are outside the app Vite graph + chromatic.yml is CI config → zero bundle impact. **≥59-wave LOCAL invariant extends to ≥60-wave.** server.js `bd4a3402…885` × 3 unchanged. build-storybook index **893 unchanged** (684 stories + 209 docs); all 6 disableSnapshot stories remain enumerated (disableSnapshot is a Chromatic-side flag — keeps dev/docs value, drops only the futile pixel-diff).
-- **Activation is user-gated** (cannot be automated): set Secret `CHROMATIC_PROJECT_TOKEN` (reuse `chpt_48d051b3688a3e4` per Q2) + repo var `CHROMATIC_ENABLED=true`, then merge to main → `autoAcceptChanges` captures the first clean baseline. W201 delivers *readiness*, not the live baseline.
+- **Activation is user-gated** (cannot be automated): set Secret `CHROMATIC_PROJECT_TOKEN` (reuse `chpt_…` per Q2) + repo var `CHROMATIC_ENABLED=true`, then merge to main → `autoAcceptChanges` captures the first clean baseline. W201 delivers *readiness*, not the live baseline.
 
 ## Per-SW table
 
@@ -25,7 +25,7 @@ The Chromatic-determinism taxonomy that drove the 6-vs-rest split:
 
 ## Chromatic activation runbook (user-side, post-W201-merge)
 
-1. **Set the Secret** `CHROMATIC_PROJECT_TOKEN` = `chpt_48d051b3688a3e4` (reused per Q2; value in `memory/wave122_chromatic_upstream.md` / your Chromatic dashboard — no longer in the workflow comment).
+1. **Set the Secret** `CHROMATIC_PROJECT_TOKEN` = `chpt_…` (reused per Q2; value in `memory/wave122_chromatic_upstream.md` / your Chromatic dashboard — no longer in the workflow comment).
 2. **Set the repo variable** `CHROMATIC_ENABLED=true` (the `chromatic.yml` job is `if: vars.CHROMATIC_ENABLED == 'true'` — skips cleanly until then).
 3. **Merge a `frontend/**` change to `main`** → the workflow runs with `autoAcceptChanges` (already `github.ref == 'refs/heads/main'`) → captures the **first baseline** for all snapshot'd stories. The 6 disableSnapshot stories are intentionally skipped → no perpetual-red pollution.
 4. **Review** the baseline in the Chromatic dashboard.
@@ -44,7 +44,7 @@ The Chromatic-determinism taxonomy that drove the 6-vs-rest split:
 
 1. **The live Chromatic baseline + diffs are NOT verifiable in W201** — they require the user-side Secret + flag + a merge to main. W201 delivers activation-*readiness* (drift-resilient stories + clean workflow + runbook); the user completes activation. The CI Chromatic job skips cleanly (`if: vars.CHROMATIC_ENABLED == 'true'`) until the flag is set — so the W201 PR's Chromatic check reports success-by-skip, not success-by-snapshot. Honest scope boundary.
 2. **MfaChallengeView loses snapshot coverage of its glass-card MFA UI** — it renders the live ParticleAuthBackground canvas, which `disableSnapshot` skips entirely. Accepted vs a perpetual false-positive; the story remains for dev/docs. A future option: conditionally render a static bg under a Storybook flag to restore card coverage (not W201 scope).
-3. **Token reused, not rotated** (user Q2) — `chpt_48d051b3688a3e4` stays in git history + the memory note. Removed from the active workflow comment (hygiene). Chromatic project tokens are low-sensitivity (upload-only to one project); rotation remains available in the dashboard if the repo is public.
+3. **Token reused, not rotated** (user Q2) — `chpt_…` stays in git history + the memory note. Removed from the active workflow comment (hygiene). Chromatic project tokens are low-sensitivity (upload-only to one project); rotation remains available in the dashboard if the repo is public.
 4. Carry-forward structural non-goals (NOT W201 scope): **W134 §H#2** bundle-delta recording-only, **W134 §H#10** /messenger Phase 5 SSR by-design (W161 SW2).
 
 ## (z) discoveries + anti-patterns
