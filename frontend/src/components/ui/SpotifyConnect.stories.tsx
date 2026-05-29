@@ -1,4 +1,4 @@
-import { useEffect, useRef, type ReactNode } from "react"
+import { useEffect, type ReactNode } from "react"
 import type { Meta, StoryObj, Decorator } from "@storybook/react-vite"
 import { LazyMotion, domAnimation } from "framer-motion"
 import { useAuthStore } from "@/stores/useAuthStore"
@@ -9,10 +9,12 @@ import SpotifyConnect from "./SpotifyConnect"
 //
 // `useAuth().user` reads the Zustand store (NOT the AuthContext), which
 // Storybook doesn't populate → `if (!user) return null`. The StoreSeed harness
-// seeds useAuthStore once (before the child renders) and resets it on unmount,
-// so SpotifyConnect renders the connect / connected UI. `spotify_connected`
-// drives the variant. useNowPlaying is enabled-gated on connection + fails
-// gracefully (no track card) without a backend. Wrapped in `.settings-theme`.
+// seeds useAuthStore in an effect (a render-phase `useAuthStore.setState` trips
+// the React Compiler — `use*`-namespace member access, W128 SW1 class — at
+// build time, not just lint) and resets it on unmount, so SpotifyConnect renders
+// the connect / connected UI. `spotify_connected` drives the variant.
+// useNowPlaying is enabled-gated on connection + fails gracefully (no track
+// card) without a backend. Wrapped in `.settings-theme`.
 //
 // Variants: NotConnected / Connected / DarkMode.
 
@@ -29,16 +31,13 @@ const baseUser: User = {
 }
 
 const StoreSeed = ({ user, children }: { user: User; children: ReactNode }) => {
-  const seeded = useRef(false)
-  if (!seeded.current) {
-    // Zustand `.setState` is a static store method, NOT a hook — the
-    // react-compiler rule flags `use*`-namespace member access as a
-    // false positive (CLAUDE.md gotcha, W128 SW1 readSsrAuthHint class).
-    // eslint-disable-next-line react-compiler/react-compiler
+  // Seed inside the effect (NOT render) so the React Compiler doesn't flag the
+  // `useAuthStore.setState` reference. First paint sees user=null (SpotifyConnect
+  // renders null), the effect then seeds the store → re-render shows the content.
+  useEffect(() => {
     useAuthStore.setState({ user, loading: false })
-    seeded.current = true
-  }
-  useEffect(() => () => useAuthStore.setState({ user: null }), [])
+    return () => useAuthStore.setState({ user: null })
+  }, [user])
   return <>{children}</>
 }
 
