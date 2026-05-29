@@ -72,7 +72,10 @@ const meta: Meta<typeof MfaChallengeView> = {
   component: MfaChallengeView,
   parameters: {
     layout: "fullscreen",
-    chromatic: { pauseAnimationAtEnd: true },
+    // W201: renders the live ParticleAuthBackground canvas — pauseAnimationAtEnd
+    // can't freeze a particle swarm, so skip the snapshot (loses glass-card UI
+    // coverage; accepted vs a perpetual false-positive — AUDIT_WAVE201 §Honesty).
+    chromatic: { disableSnapshot: true },
   },
   tags: ["autodocs"],
 }

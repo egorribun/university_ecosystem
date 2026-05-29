@@ -50,7 +50,8 @@ const themed = (dark: boolean): Decorator => {
 const meta: Meta<typeof MapLibreMapComponent> = {
   title: "Map/MapLibreMap",
   component: MapLibreMapComponent,
-  parameters: { layout: "centered" },
+  // W201: WebGL + remote OpenFreeMap tiles (network + GPU) → skip Chromatic snapshot.
+  parameters: { layout: "centered", chromatic: { disableSnapshot: true } },
   tags: ["autodocs"],
 }
 

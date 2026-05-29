@@ -36,7 +36,8 @@ const framed = (dark: boolean): Decorator => {
 const meta: Meta<typeof WeatherParticles> = {
   title: "Map/WeatherParticles",
   component: WeatherParticles,
-  parameters: { layout: "centered" },
+  // W201: canvas Math.random() particles never settle → skip Chromatic snapshot.
+  parameters: { layout: "centered", chromatic: { disableSnapshot: true } },
   tags: ["autodocs"],
   args: { condition: "rain", isDark: false },
 }

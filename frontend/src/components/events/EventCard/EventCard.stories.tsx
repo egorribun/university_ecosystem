@@ -71,7 +71,9 @@ const themed = (dark: boolean): Decorator => {
 const meta: Meta<typeof EventCard> = {
   title: "Events/EventCard",
   component: EventCard,
-  parameters: { layout: "centered" },
+  // W201: Date.now()-relative dates → component-computed timeStatus + relative-time
+  // text drift day-over-day. Meta-level flag deep-merges into all variants. Skip snapshot.
+  parameters: { layout: "centered", chromatic: { disableSnapshot: true } },
   tags: ["autodocs"],
   args: { ...BASE },
 }

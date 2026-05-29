@@ -7,6 +7,8 @@ const meta: Meta<typeof FlipCountdown> = {
   tags: ["autodocs"],
   parameters: {
     layout: "centered",
+    // W201: live `new Date()`-relative countdown text drifts every build → skip snapshot.
+    chromatic: { disableSnapshot: true },
   },
 }
 

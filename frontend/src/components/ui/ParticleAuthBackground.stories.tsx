@@ -6,6 +6,8 @@ const meta: Meta<typeof ParticleAuthBackground> = {
   component: ParticleAuthBackground,
   parameters: {
     layout: "fullscreen",
+    // W201: 1000-particle canvas swarm (continuous, no VITE_E2E gate in Storybook) → skip snapshot.
+    chromatic: { disableSnapshot: true },
     backgrounds: {
       default: "dark",
     },
