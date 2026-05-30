@@ -27,6 +27,8 @@ const MESSENGER_STUB = {
   isConnected: true,
   sendTyping: () => {},
   sendRead: () => {},
+  sendJoin: () => {},
+  sendLeave: () => {},
   getTypingUsersForChat: () => [],
 }
 

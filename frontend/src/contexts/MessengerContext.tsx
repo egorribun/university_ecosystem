@@ -10,6 +10,11 @@ interface MessengerContextType {
   isConnected: boolean
   sendTyping: (chatId: string) => void
   sendRead: (chatId: string) => void // Wave 203 SW5 — chat-level (no message_id)
+  // Wave 204 SW5 — join/leave a ws-hub room (room == chat_id) so this client
+  // receives live chat.{room} fan-out. Driven by useMessengerController on
+  // chat-select (W204 SW6).
+  sendJoin: (chatId: string) => void
+  sendLeave: (chatId: string) => void
   getTypingUsersForChat: (chatId: string) => { userId: string; userName: string }[]
 }
 
@@ -28,44 +33,48 @@ export const useMessenger = () => {
 }
 
 export function MessengerProvider({ children }: { children: ReactNode }) {
-  const { isAuth } = useAuth()
+  const { isAuth, user } = useAuth()
   const queryClient = useQueryClient()
   const [presenceMap, setPresenceMap] = useState<Record<string, PresenceStatus>>({})
 
-  const { isConnected, sendTyping, sendRead, getTypingUsersForChat } = useChatWebSocket({
-    enabled: isAuth,
-    onPresenceUpdate: (userId, active, lastSeen) => {
-      // Validate WebSocket payload before mutating React Query cache.
-      // Guards against malformed or tampered presence messages from the WS server.
-      const isValid =
-        typeof userId === "string" &&
-        userId.length > 0 &&
-        userId.length < 40 &&
-        typeof active === "boolean" &&
-        (lastSeen === null || (typeof lastSeen === "string" && lastSeen.length < 50))
-      if (!isValid) return
+  const { isConnected, sendTyping, sendRead, sendJoin, sendLeave, getTypingUsersForChat } =
+    useChatWebSocket({
+      enabled: isAuth,
+      // Wave 204 SW5 — for the hook's self-echo guard (drops the sender's own
+      // new_message/read echo that the room fan-out sends back).
+      currentUserId: user?.id,
+      onPresenceUpdate: (userId, active, lastSeen) => {
+        // Validate WebSocket payload before mutating React Query cache.
+        // Guards against malformed or tampered presence messages from the WS server.
+        const isValid =
+          typeof userId === "string" &&
+          userId.length > 0 &&
+          userId.length < 40 &&
+          typeof active === "boolean" &&
+          (lastSeen === null || (typeof lastSeen === "string" && lastSeen.length < 50))
+        if (!isValid) return
 
-      setPresenceMap((prev) => ({
-        ...prev,
-        [userId]: { active, last_seen_at: lastSeen },
-      }))
+        setPresenceMap((prev) => ({
+          ...prev,
+          [userId]: { active, last_seen_at: lastSeen },
+        }))
 
-      // Also update the chats list cache to keep presence in sync
-      queryClient.setQueryData<ChatsListResponse | undefined>(["chats"], (old) => {
-        if (!old) return old
-        const items = old.items.map((chat) => {
-          const participates = chat.participants.some((p) => p.id === userId)
-          if (!participates) return chat
+        // Also update the chats list cache to keep presence in sync
+        queryClient.setQueryData<ChatsListResponse | undefined>(["chats"], (old) => {
+          if (!old) return old
+          const items = old.items.map((chat) => {
+            const participates = chat.participants.some((p) => p.id === userId)
+            if (!participates) return chat
 
-          const nextPresence = { ...(chat.presence || {}) }
-          nextPresence[userId] = { active, last_seen_at: lastSeen }
-          return { ...chat, presence: nextPresence }
+            const nextPresence = { ...(chat.presence || {}) }
+            nextPresence[userId] = { active, last_seen_at: lastSeen }
+            return { ...chat, presence: nextPresence }
+          })
+
+          return { ...old, items }
         })
-
-        return { ...old, items }
-      })
-    },
-  })
+      },
+    })
 
   const { data: chatsData } = useQuery({
     queryKey: ["chats"],
@@ -100,9 +109,20 @@ export function MessengerProvider({ children }: { children: ReactNode }) {
       isConnected,
       sendTyping,
       sendRead,
+      sendJoin,
+      sendLeave,
       getTypingUsersForChat,
     }),
-    [unreadCount, presenceMap, isConnected, sendTyping, sendRead, getTypingUsersForChat]
+    [
+      unreadCount,
+      presenceMap,
+      isConnected,
+      sendTyping,
+      sendRead,
+      sendJoin,
+      sendLeave,
+      getTypingUsersForChat,
+    ]
   )
 
   return <MessengerContext.Provider value={value}>{children}</MessengerContext.Provider>
