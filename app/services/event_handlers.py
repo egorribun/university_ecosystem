@@ -181,6 +181,11 @@ async def handle_message_sent(event: MessageSent) -> None:
                 event.message_id,
             )
             return
+        # Attach the loaded sender so serialize_message includes the sender record
+        # in the new_message broadcast (name/avatar on the recipient's live bubble)
+        # instead of "sender": null. Same db session, both objects already loaded —
+        # an in-memory relationship set, no extra query / flush.
+        message.sender = sender
 
         # 2. Fetch chat with participants
         if event.chat_id is None:

@@ -255,3 +255,65 @@ describe("parseWsMessage — message_edited / message_deleted (Wave 205)", () =>
     }
   })
 })
+
+describe("parseWsMessage — new_message with sender:null (Wave 205 SW9 live-new-message fix)", () => {
+  // serialize_message (the outbox new_message broadcast) emits sender:null when
+  // Message.sender is lazy="noload" (the handle_message_sent db.get path), plus
+  // edited_at/deleted_at:null on a fresh message. Pre-fix, MessageSchema.sender was
+  // v.optional(v.record(...)) which REJECTS null → the whole new_message frame was
+  // dropped by parseWsMessage → new_message never rendered live. These guard the
+  // schema staying nullable for those fields.
+  const outboxMessage = {
+    id: MSG_ID,
+    chat_id: CHAT_ID,
+    sender_id: SENDER_ID,
+    content: "live message",
+    created_at: "2026-05-30T22:48:00+00:00",
+    read_status: false,
+    read_at: null,
+    edited_at: null,
+    deleted_at: null,
+    sender: null,
+    sender_presence: null,
+    attachments: [],
+  }
+
+  it("accepts a new_message whose message has sender:null (the exact dropped frame)", () => {
+    const frame = parseWsMessage(
+      JSON.stringify({ type: "new_message", chat_id: CHAT_ID, message: outboxMessage })
+    )
+    expect(frame).not.toBeNull()
+    if (frame?.type === "new_message") {
+      expect(frame.message.id).toBe(MSG_ID)
+      expect(frame.message.sender).toBeNull()
+    }
+  })
+
+  it("still accepts a new_message whose message carries a sender record (enriched)", () => {
+    const frame = parseWsMessage(
+      JSON.stringify({
+        type: "new_message",
+        chat_id: CHAT_ID,
+        message: { ...outboxMessage, sender: { id: SENDER_ID, full_name: "Bob" } },
+      })
+    )
+    expect(frame).not.toBeNull()
+    if (frame?.type === "new_message") {
+      expect(frame.message.sender).toEqual({ id: SENDER_ID, full_name: "Bob" })
+    }
+  })
+
+  it("unwraps an enveloped new_message with sender:null (W204 envelope + outbox path)", () => {
+    const frame = parseWsMessage(
+      JSON.stringify({
+        type: "new_message",
+        room: CHAT_ID,
+        payload: { type: "new_message", chat_id: CHAT_ID, message: outboxMessage },
+      })
+    )
+    expect(frame).not.toBeNull()
+    if (frame?.type === "new_message") {
+      expect(frame.message.sender).toBeNull()
+    }
+  })
+})

@@ -32,9 +32,21 @@ const MessageSchema = v.object({
   // Wave 203 SW5 — read-receipt timestamp. optional+nullable so a cached
   // new_message frame serialized before the column existed still parses.
   read_at: v.optional(v.nullable(v.string())),
+  // Wave 205 SW9 — serialize_message (the new_message broadcast) emits edited_at/
+  // deleted_at (null on a fresh message). Declared optional+nullable so the wire
+  // value passes + threads into the cache; without these they'd be silently
+  // stripped as unknown keys.
+  edited_at: v.optional(v.nullable(v.string())),
+  deleted_at: v.optional(v.nullable(v.string())),
   // Optional attachment list — just validate shape, not individual entries
   attachments: v.optional(v.array(v.record(v.string(), v.unknown()))),
-  sender: v.optional(v.record(v.string(), v.unknown())),
+  // Wave 205 SW9 — serialize_message emits sender:null when the Message.sender
+  // relationship isn't eager-loaded (e.g. the outbox handle_message_sent path,
+  // which db.get's the message with lazy="noload" sender). MUST be nullable, not
+  // just optional: v.optional alone accepts `undefined` but REJECTS `null`, so a
+  // new_message frame with "sender": null was dropped by parseWsMessage as invalid
+  // (the whole reason new_message never rendered live until this fix).
+  sender: v.optional(v.nullable(v.record(v.string(), v.unknown()))),
 })
 
 export type ParsedMessage = v.InferOutput<typeof MessageSchema>
