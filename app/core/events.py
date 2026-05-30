@@ -507,6 +507,19 @@ class EventEmitterMixin:
             # Use object.__setattr__ for bypass to avoid any potential proxy interference
             object.__setattr__(self, "_pending_domain_events", [])
         self._pending_domain_events.append(event)
+        # W205 SW-A: capture_domain_events scans only session.new|dirty|deleted, so
+        # an aggregate that was already flushed before record_event is called (e.g.
+        # a repository create_*() that flushes, THEN the command records the event)
+        # is persistent — in none of those sets — and its StoredEvent (outbox row)
+        # was silently dropped, breaking the ENTIRE domain-event subsystem. Register
+        # the emitter on its session so capture can also scan tracked emitters. Only
+        # objects that actually record an event are tracked (no identity-map scan).
+        from sqlalchemy import inspect as sa_inspect
+
+        state = sa_inspect(self, raiseerr=False)
+        session = state.session if state is not None else None
+        if session is not None:
+            session.info.setdefault("_event_emitters", set()).add(self)
 
     def clear_events(self) -> None:
         """Clear all pending events."""
@@ -528,8 +541,17 @@ def capture_domain_events(
 
     # Pre-filter using generator/comprehension for C-level speed, checking only for the attribute
     changed_objects = session.new | session.dirty | session.deleted
+    # W205 SW-A: also scan emitters that recorded an event AFTER being flushed
+    # (persistent → absent from new|dirty|deleted). record_event tracks them on
+    # session.info["_event_emitters"]. Double-listing (an object in both new and
+    # tracked) is harmless: clear_events() empties its list on the first pass, so
+    # the second occurrence is filtered out by the truthiness check below.
+    tracked = session.info.get("_event_emitters")
+    candidate_objects = list(changed_objects)
+    if tracked:
+        candidate_objects.extend(tracked)
     emitters = (
-        obj for obj in changed_objects if getattr(obj, "_pending_domain_events", None)
+        obj for obj in candidate_objects if getattr(obj, "_pending_domain_events", None)
     )
 
     for obj in emitters:
@@ -580,6 +602,11 @@ def capture_domain_events(
         # Clear pending events after capturing
         obj.clear_events()
 
+    # W205 SW-A: drop the tracked emitters now their events are captured (or were
+    # already empty), so the set does not accumulate across flushes in one session.
+    if tracked:
+        tracked.clear()
+
     # HIGH-W19: Store collected events on the session info dict so that
     # _persist_captured_events (after_flush_postexec) can add them without
     # triggering a recursive flush.
@@ -600,13 +627,35 @@ def _persist_captured_events(session: Session, flush_context: Any) -> None:
         session.add_all(events_to_store)
 
 
+def capture_on_commit(session: Session) -> None:
+    """W205 SW-A: before_commit catch-all that closes the systemic outbox gap.
+
+    capture_domain_events (after_flush) only runs when a flush actually emits SQL.
+    An aggregate flushed BEFORE its record_event call (e.g. a content-only message
+    that repository.create_message() already flushed) leaves nothing dirty, so no
+    further flush — and thus no after_flush — ever fires, and the StoredEvent was
+    silently dropped (this broke the ENTIRE domain-event subsystem). before_commit
+    fires on EVERY commit regardless of pending changes, so it reliably captures the
+    emitters tracked by record_event on session.info["_event_emitters"]. We reuse
+    the existing collect + persist functions: capture_domain_events stashes the
+    StoredEvents, then _persist_captured_events adds them to the session so the
+    commit's own flush writes them atomically. Idempotent with any earlier
+    after_flush capture — clear_events() empties an emitter's list once captured, so
+    the second pass collects nothing.
+    """
+    capture_domain_events(session, None)
+    _persist_captured_events(session, None)
+
+
 async def register_event_listeners() -> None:
     """Register domain event capturing listeners for all sessions.
 
-    HIGH-W19: Two-phase registration:
-      1. after_flush          — collect events and clear model lists (no DB writes).
+    HIGH-W19 / W205 SW-A: three listeners:
+      1. after_flush          — collect events from objects in this flush (no DB writes).
       2. after_flush_postexec — add StoredEvent rows after flush machinery exits,
                                 preventing recursive flush.
+      3. before_commit        — catch-all for events recorded after an object's last
+                                flush, which after_flush never sees (no flush fires).
     """
     from sqlalchemy import event as sa_event
     from sqlalchemy.orm import Session
@@ -614,6 +663,9 @@ async def register_event_listeners() -> None:
     sa_event.listen(Session, "after_flush", capture_domain_events)
     # HIGH-W19: persist collected events only after the flush is fully complete.
     sa_event.listen(Session, "after_flush_postexec", _persist_captured_events)
+    # W205 SW-A: before_commit catch-all for events recorded after their last flush
+    # (no subsequent flush fires → after_flush never sees them). See capture_on_commit.
+    sa_event.listen(Session, "before_commit", capture_on_commit)
     logger.info("Domain event persistence listeners registered.")
 
 

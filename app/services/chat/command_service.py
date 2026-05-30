@@ -294,6 +294,14 @@ class ChatMessageDispatcher:
             # event registered after that flush is silently dropped and never lands in
             # the `stored_events` (outbox) table.
             #
+            # W205 SW-A: that premise was in fact FALSE here — repository.create_message()
+            # (above) ALREADY flushes the message, so by this point it is persistent
+            # (out of session.new), and record_event sets a non-mapped attr (no dirty
+            # mark), so capture missed it and the outbox stayed empty. The real fix is
+            # central (app/core/events.py): record_event now tracks the emitter on
+            # session.info so capture catches it regardless of flush ordering. This
+            # ordering is therefore no longer load-bearing, but is kept as defence.
+            #
             # UUID7PrimaryKeyMixin uses a Python-side default (generate_uuid7), so
             # message.id is populated by the __init__ constructor call above — it is
             # safe to reference here before the INSERT is flushed.
