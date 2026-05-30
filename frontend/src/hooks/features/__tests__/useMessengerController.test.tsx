@@ -70,6 +70,10 @@ vi.mock("@/contexts/MessengerContext", () => ({
     isConnected: true,
     sendTyping: vi.fn(),
     sendRead: vi.fn(),
+    // Wave 204 SW6 — the controller's room-lifecycle effect calls sendJoin/
+    // sendLeave on chat-select; the mock must provide them or the effect throws.
+    sendJoin: vi.fn(),
+    sendLeave: vi.fn(),
     getTypingUsersForChat: () => [],
     unreadCount: 0,
   }),
