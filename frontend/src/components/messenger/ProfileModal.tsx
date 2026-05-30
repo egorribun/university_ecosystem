@@ -67,7 +67,7 @@ export function ProfileModal({ user, loading, error, onClose }: ProfileModalProp
             animate={{ scale: 1, opacity: 1, y: 0 }}
             exit={prefersReducedMotion ? { opacity: 0 } : { scale: 0.92, opacity: 0, y: 20 }}
             transition={prefersReducedMotion ? { duration: 0 } : undefined}
-            className="messenger-card-matte z-modal w-full max-w-[32rem] sm:max-w-[28rem] md:max-w-[32rem]"
+            className="messenger-card-matte z-modal w-full max-w-[28rem] md:max-w-[32rem] lg:max-w-[36rem]"
             onClick={(event) => event.stopPropagation()}
           >
             {/* Wave 183 SW4 — border-msg-border (undefined token) →

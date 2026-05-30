@@ -59,7 +59,11 @@ export function TypingIndicator({ users, prefersReducedMotion = false }: TypingI
   return (
     <div className="px-4 py-1 shrink-0" aria-live="polite" role="status">
       <div className="inline-flex items-center gap-2 max-w-fit">
-        <div className="messenger-typing" aria-label={label}>
+        {/* Wave 202 SW4 — `aria-hidden` (was `aria-label={label}`): the visual
+            chip (animated dots / "Typing" short text) is decorative; the sr-only
+            span below is the SINGLE SR source. Pre-W202 both carried the label
+            inside the role=status live region → doubled SR announcement. */}
+        <div className="messenger-typing" aria-hidden="true">
           {prefersReducedMotion ? (
             <span className="text-xs font-medium text-(--text-secondary)">
               {t("messenger:isTyping")}

@@ -229,7 +229,7 @@ export function MessageInput({ onSend }: MessageInputProps) {
               <button
                 type="button"
                 onClick={() => removeFile(id)}
-                className="absolute -top-1.5 -right-1.5 size-8 bg-(--error-text) text-[var(--text-inverse)] rounded-full flex items-center justify-center shadow-lg hover:bg-(--error-text)/(--opacity-hover) transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-violet-500) focus-visible:ring-offset-2 focus-visible:ring-offset-(--bg-surface) after:absolute after:inset-[-6px] after:content-['']"
+                className="absolute -top-1.5 -right-1.5 size-8 md:size-9 bg-(--error-text) text-[var(--text-inverse)] rounded-full flex items-center justify-center shadow-lg hover:bg-(--error-text)/(--opacity-hover) transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-violet-500) focus-visible:ring-offset-2 focus-visible:ring-offset-(--bg-surface) after:absolute after:inset-[-6px] after:content-['']"
                 aria-label={t("messenger:aria.removeAttachment")}
               >
                 <X size={14} strokeWidth={3} aria-hidden="true" />

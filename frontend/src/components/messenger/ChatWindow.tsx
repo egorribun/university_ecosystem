@@ -412,7 +412,7 @@ export function ChatWindow({
 
                 <div
                   className={cn(
-                    "max-w-4/5 md:max-w-3/4 px-4 py-2.5 text-base relative",
+                    "max-w-4/5 sm:max-w-3/4 md:max-w-[68%] lg:max-w-[60%] xl:max-w-[52%] px-4 py-2.5 text-base relative",
                     message.isMe
                       ? "messenger-bubble-sent text-[var(--text-inverse)] rounded-2xl rounded-br-sm md:rounded-br-2xl md:rounded-bl-sm"
                       : "messenger-bubble-received text-text-primary rounded-2xl rounded-bl-sm"

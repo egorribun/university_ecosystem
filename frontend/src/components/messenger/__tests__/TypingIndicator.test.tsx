@@ -73,12 +73,13 @@ describe("TypingIndicator", () => {
       <TypingIndicator users={[{ userId: "u1", userName: "Alice" }]} prefersReducedMotion={false} />
     )
 
-    // `.messenger-typing` container has aria-label = the i18n result.
-    // Our mock `t()` serializes interpolation args as JSON so we can verify
-    // BOTH the key selection AND the `name: "Alice"` interpolation arg
-    // was correctly threaded.
-    const bubble = container.querySelector(".messenger-typing")
-    expect(bubble?.getAttribute("aria-label")).toBe('messenger:typing|{"name":"Alice"}')
+    // Wave 202 SW4 — the localized label now lives ONLY on the sr-only span
+    // (the redundant aria-label on the visual `.messenger-typing` chip was
+    // removed — see the "single SR source" test below). The mock `t()`
+    // serializes interpolation args as JSON so we verify BOTH the key selection
+    // AND the `name: "Alice"` interpolation arg were threaded.
+    const srOnly = container.querySelector(".sr-only")
+    expect(srOnly?.textContent).toBe('messenger:typing|{"name":"Alice"}')
   })
 
   it("multiple users emits messenger:typingMultiple key with count interpolation", () => {
@@ -96,20 +97,25 @@ describe("TypingIndicator", () => {
     // Multi-user path switches to messenger:typingMultiple with `count: N`
     // interpolation. Pluralization rules (1 vs 2 vs many) live in the
     // locale JSON's `_one` / `_few` / `_many` Russian plural suffixes,
-    // not in component logic.
-    const bubble = container.querySelector(".messenger-typing")
-    expect(bubble?.getAttribute("aria-label")).toBe('messenger:typingMultiple|{"count":3}')
+    // not in component logic. Wave 202 SW4 — asserted via the sr-only span
+    // (single SR source) now that the visual chip's aria-label was removed.
+    const srOnly = container.querySelector(".sr-only")
+    expect(srOnly?.textContent).toBe('messenger:typingMultiple|{"count":3}')
   })
 
-  it("provides sr-only backup label spanning the full localized text", () => {
+  it("announces via a single SR source (sr-only span; visual chip is aria-hidden)", () => {
     const { container } = render(
       <TypingIndicator users={[{ userId: "u1", userName: "Alice" }]} prefersReducedMotion={false} />
     )
 
-    // Belt + suspenders: the bubble itself has aria-label, AND there's a
-    // separate `.sr-only` span at the end that screen readers can pick up
-    // if the aria-label on the visual bubble doesn't surface in their
-    // navigation mode. Both should resolve to the same localized text.
+    // Wave 202 SW4 — pre-W202 the label was announced TWICE (an aria-label on
+    // the visual `.messenger-typing` chip AND the sr-only span), both inside
+    // the role=status live region → screen readers heard it doubled. The chip
+    // is now aria-hidden so the sr-only span is the SINGLE SR source.
+    const bubble = container.querySelector(".messenger-typing")
+    expect(bubble?.getAttribute("aria-hidden")).toBe("true")
+    expect(bubble?.getAttribute("aria-label")).toBeNull()
+
     const srOnly = container.querySelector(".sr-only")
     expect(srOnly).toBeTruthy()
     expect(srOnly?.textContent).toBe('messenger:typing|{"name":"Alice"}')
