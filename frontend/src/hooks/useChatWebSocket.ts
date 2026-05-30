@@ -101,6 +101,11 @@ export interface WebSocketMessage {
 
 export interface UseChatWebSocketOptions {
   enabled?: boolean
+  // Wave 204 SW4 — the current user's id, used to drop self-echoes: the
+  // NATS→ws-hub→room fan-out (W204 SW2) has no per-recipient exclusion, so the
+  // sender receives its own new_message/read frame back. Threaded from useAuth
+  // via MessengerContext (W204 SW5).
+  currentUserId?: string
   onNewMessage?: (message: Message, chatId: string) => void
   onTyping?: (chatId: string, userId: string, userName: string) => void
   // Wave 203 SW5 — chat-level read receipt: (chatId, readerId, readAt).
@@ -161,6 +166,7 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
 }
 export function useChatWebSocket({
   enabled = true,
+  currentUserId,
   onNewMessage,
   onTyping,
   onRead,
@@ -198,6 +204,11 @@ export function useChatWebSocket({
   const onAuthErrorRef = useRef(onAuthError)
   const mountedRef = useRef(false)
   const connectRef = useRef<() => void>(() => {})
+  // W204 SW4 — latest current-user id (self-echo guard) + the room this client
+  // should be joined to (re-sent on every (re)connect in ws.onopen, since
+  // ws-hub room membership is per-connection).
+  const currentUserIdRef = useRef(currentUserId)
+  const activeRoomRef = useRef<string | null>(null)
 
   useEffect(() => {
     onNewMessageRef.current = onNewMessage
@@ -206,6 +217,7 @@ export function useChatWebSocket({
     onOnlineStatusRef.current = onOnlineStatus
     onPresenceUpdateRef.current = onPresenceUpdate
     onAuthErrorRef.current = onAuthError
+    currentUserIdRef.current = currentUserId
   })
 
   const cleanup = useCallback(() => {
@@ -292,6 +304,18 @@ export function useChatWebSocket({
           wsStore.setConnected(true)
           reconnectAttemptRef.current = 0
 
+          // W204 SW4 — rejoin the active room on (re)connect. ws-hub room
+          // membership is per-connection: a reconnect is a fresh Client with
+          // empty Rooms, so without re-joining the browser silently receives
+          // nothing after a reconnect until the next chat-select.
+          if (activeRoomRef.current) {
+            try {
+              ws.send(JSON.stringify({ type: "join", room: activeRoomRef.current }))
+            } catch {
+              /* WS closed between open and send — the next connect re-joins */
+            }
+          }
+
           if (pingIntervalRef.current) clearInterval(pingIntervalRef.current)
           pingIntervalRef.current = setInterval(() => {
             if (ws.readyState === WebSocket.OPEN) {
@@ -316,6 +340,13 @@ export function useChatWebSocket({
 
             switch (validated.type) {
               case "new_message": {
+                // W204 SW4 — self-echo guard. The NATS→ws-hub→room fan-out has
+                // no per-recipient exclusion (it delivers to ALL room members
+                // incl. the sender), so the sender receives its own message
+                // back. Skip it: the sender already has the message (optimistic
+                // insert + sendMessage onSuccess), and processing the echo would
+                // wrongly +1 the sender's OWN unread_count in the chats cache.
+                if (validated.message.sender_id === currentUserIdRef.current) break
                 // Wave 202 SW2 — `validated.message` is the Valibot `ParsedMessage`
                 // (attachments/sender validated shape-only as Record<string,unknown>);
                 // the cache stores `@/api/chat` `Message` (typed Attachment[]/User).
@@ -409,6 +440,13 @@ export function useChatWebSocket({
               }
 
               case "read": {
+                // W204 SW4 — self-echo guard. The reader receives its own read
+                // frame back via the room fan-out (no per-recipient exclusion).
+                // Skip it: applyReadFrame would flip the OTHER party's messages
+                // to read in the reader's own cache (harmless but pointless
+                // churn). The SENDER (user_id !== me) DOES process it → their
+                // sent bubbles flip to "Seen · HH:MM" live.
+                if (validated.user_id === currentUserIdRef.current) break
                 // Wave 203 SW5 — chat-level read receipt. Flip every message NOT
                 // sent by the reader (validated.user_id) to read + stamp the
                 // chat-level read_at. applyReadFrame is the pure, unit-tested core.
@@ -539,6 +577,33 @@ export function useChatWebSocket({
     }
   }, [])
 
+  // W204 SW4 — join/leave a ws-hub room (room == chat_id). A client must JOIN
+  // to RECEIVE chat.{room} fan-out: ws-hub's collectRecipients returns nil for
+  // an empty Rooms[room]. ws-hub authorizes the join via
+  // /api/internal/chat/check-participant before adding the client. activeRoomRef
+  // is set FIRST (before the OPEN check) so a chat selected before the socket
+  // is open is still joined on the next ws.onopen.
+  const sendJoin = useCallback((roomId: string) => {
+    activeRoomRef.current = roomId
+    if (wsRef.current?.readyState !== WebSocket.OPEN) return
+    try {
+      // RZ-26-07: guard TOCTOU race — WS may close between readyState check and send.
+      wsRef.current.send(JSON.stringify({ type: "join", room: roomId }))
+    } catch {
+      /* WS closed between readyState check and send — onopen re-joins activeRoomRef */
+    }
+  }, [])
+
+  const sendLeave = useCallback((roomId: string) => {
+    if (activeRoomRef.current === roomId) activeRoomRef.current = null
+    if (wsRef.current?.readyState !== WebSocket.OPEN) return
+    try {
+      wsRef.current.send(JSON.stringify({ type: "leave", room: roomId }))
+    } catch {
+      /* WS closed — ws-hub strips room membership on disconnect anyway */
+    }
+  }, [])
+
   const getTypingUsersForChat = useCallback(
     (chatId: string) => {
       const users: { userId: string; userName: string }[] = []
@@ -556,6 +621,8 @@ export function useChatWebSocket({
     isConnected,
     sendTyping,
     sendRead,
+    sendJoin,
+    sendLeave,
     getTypingUsersForChat,
     disconnect,
     reconnect: connect,
