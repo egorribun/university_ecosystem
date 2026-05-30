@@ -39,6 +39,9 @@ def serialize_message(
         "content": message.content,
         "created_at": message.created_at.isoformat() if message.created_at else None,
         "read_status": message.read_status,
+        # Wave 203 SW3 — read-receipt timestamp (ISO 8601 or None). Surfaces in
+        # the new_message broadcast + the chat-level read broadcast (SW4).
+        "read_at": message.read_at.isoformat() if message.read_at else None,
         "sender": sender_data,
         "sender_presence": sender_presence,
         "attachments": [

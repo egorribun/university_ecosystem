@@ -19,11 +19,13 @@ the deterministic helpers + the notification fan-out:
 from __future__ import annotations
 
 import uuid
+from datetime import UTC, datetime
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from app.api.ws.serializers import serialize_message
 from app.services.chat.attachment_service import ChatAttachmentService
 from app.services.chat.notification_service import ChatNotificationService
 
@@ -322,3 +324,35 @@ async def test_notify_new_message_falls_back_to_user_when_no_profile() -> None:
         await svc.notify_new_message(message, [sender, other], sender)
 
     assert create.await_args.kwargs["title"] == "User"
+
+
+# ── 4. serialize_message read_at (Wave 203 SW3) ──────────────────────────────
+
+
+def _serializable_message(read_at: datetime | None) -> SimpleNamespace:
+    """A minimal Message ORM stand-in (sender=None so model_validate is skipped)."""
+    return SimpleNamespace(
+        id=uuid.uuid4(),
+        chat_id=uuid.uuid4(),
+        sender_id=uuid.uuid4(),
+        content="hi",
+        created_at=datetime(2026, 5, 30, 14, 32, tzinfo=UTC),
+        read_status=read_at is not None,
+        read_at=read_at,
+        sender=None,
+        attachments=[],
+    )
+
+
+def test_serialize_message_includes_read_at_iso() -> None:
+    """A read message serializes read_at as an ISO 8601 string."""
+    ts = datetime(2026, 5, 30, 14, 32, tzinfo=UTC)
+    result = serialize_message(_serializable_message(ts))
+    assert result["read_at"] == ts.isoformat()
+
+
+def test_serialize_message_read_at_none_when_unread() -> None:
+    """An unread message serializes read_at as None (key present)."""
+    result = serialize_message(_serializable_message(None))
+    assert "read_at" in result
+    assert result["read_at"] is None
