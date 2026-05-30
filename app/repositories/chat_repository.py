@@ -355,6 +355,66 @@ class ChatRepository(BaseRepository[Chat, ChatDTO, dict[str, Any], dict[str, Any
             affected = 0
         return read_at, affected
 
+    async def edit_message(
+        self, message_id: uuid.UUID, author_id: uuid.UUID, new_content: str
+    ) -> tuple[datetime | None, int]:
+        """Edit a message's content (author-only).
+
+        Wave 205 SW3 — mirrors mark_messages_read: stamps ``edited_at`` in Python
+        (``utc_now`` so the exact value is available to the broadcast frame) and
+        returns ``(edited_at, affected)``. The WHERE clause is the author-only guard
+        — ``sender_id == author_id AND deleted_at IS NULL`` — so a non-author or an
+        already-deleted message yields ``affected == 0`` (the caller raises 404, no
+        existence leak). ``edited_at`` is None when nothing matched.
+        """
+        edited_at = utc_now()
+        stmt = (
+            update(Message)
+            .where(
+                and_(
+                    Message.id == message_id,
+                    Message.sender_id == author_id,
+                    Message.deleted_at.is_(None),
+                )
+            )
+            .values(content=new_content, edited_at=edited_at)
+        )
+        result = await self.db.execute(stmt)
+        affected = int(getattr(result, "rowcount", 0) or 0)
+        if affected < 0:
+            affected = 0
+        return (edited_at if affected > 0 else None), affected
+
+    async def soft_delete_message(
+        self, message_id: uuid.UUID, author_id: uuid.UUID
+    ) -> tuple[datetime | None, int]:
+        """Soft-delete a message (author-only).
+
+        Wave 205 SW3 (D1) — sets ``deleted_at`` AND clears ``content`` (the deleted
+        text must not linger in the DB or leak through any response path); the row
+        persists as a tombstone the frontend renders as "Message deleted". Author-only
+        WHERE (``sender_id == author_id AND deleted_at IS NULL``) makes a repeat-delete
+        or a non-author a no-op (``affected == 0`` → caller raises 404). Returns
+        ``(deleted_at, affected)``.
+        """
+        deleted_at = utc_now()
+        stmt = (
+            update(Message)
+            .where(
+                and_(
+                    Message.id == message_id,
+                    Message.sender_id == author_id,
+                    Message.deleted_at.is_(None),
+                )
+            )
+            .values(deleted_at=deleted_at, content="")
+        )
+        result = await self.db.execute(stmt)
+        affected = int(getattr(result, "rowcount", 0) or 0)
+        if affected < 0:
+            affected = 0
+        return (deleted_at if affected > 0 else None), affected
+
     async def delete_messages(self, message_ids: list[uuid.UUID]) -> int:
         """
         Delete multiple messages by their IDs.

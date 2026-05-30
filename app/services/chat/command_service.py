@@ -35,6 +35,7 @@ if TYPE_CHECKING:
 from app.api.validation import (
     ensure_exists,
     raise_forbidden,
+    raise_not_found,
     raise_validation_error,
 )
 from app.api.ws.connection_manager import manager as ws_manager
@@ -460,6 +461,94 @@ class ChatMaintenanceService:
                 },
                 exclude_user_id=user.id,
             )
+
+    async def edit_message(
+        self,
+        chat_id: uuid.UUID,
+        message_id: uuid.UUID,
+        user: User,
+        new_content: str,
+        locale: str,
+    ) -> None:
+        """Edit a message's content (author-only) and broadcast it live.
+
+        Wave 205 SW3 — copies the mark_read synchronous-broadcast pattern: participant
+        check → repo edit → commit → gated broadcast AFTER commit (read-your-write).
+        The repo's author-only WHERE means affected == 0 ⇒ not the author / missing /
+        already deleted ⇒ 404 (raised before commit; nothing to persist).
+        """
+        chat = await self.repository.get_by_id(chat_id)
+        ensure_exists(chat, "chat", locale)
+        assert chat is not None  # noqa: S101
+
+        participant_ids = {p.id for p in chat.participants}
+        if user.id not in participant_ids:
+            raise_forbidden(locale, "errors.chat.not_participant")
+
+        edited_at, affected = await self.repository.edit_message(
+            message_id, user.id, new_content
+        )
+        if affected == 0:
+            raise_not_found("message", locale)
+
+        async with self.uow:
+            await self.uow.commit()
+
+        # Wave 205 SW3 — broadcast message_edited SYNCHRONOUSLY after commit so the
+        # edit flips live via the W204 bridge. exclude_user_id is omitted (broadcast
+        # to all): the NATS mirror can't exclude per-recipient anyway, and the FE
+        # cache-update is idempotent — the author's echo merely reconciles its
+        # optimistic client-time edited_at to the authoritative server value. A missed
+        # frame self-heals on refetch (edited_at is a persisted column).
+        await ws_manager.broadcast_to_chat(
+            chat_id,
+            {
+                "type": "message_edited",
+                "message_id": str(message_id),
+                "chat_id": str(chat_id),
+                "content": new_content,
+                "edited_at": edited_at.isoformat() if edited_at else None,
+            },
+        )
+
+    async def soft_delete_message(
+        self,
+        chat_id: uuid.UUID,
+        message_id: uuid.UUID,
+        user: User,
+        locale: str,
+    ) -> None:
+        """Soft-delete a message (author-only) and broadcast the tombstone live.
+
+        Wave 205 SW3 — same synchronous-broadcast pattern as edit_message. The repo
+        clears content + stamps deleted_at (D1 tombstone); affected == 0 ⇒ 404.
+        """
+        chat = await self.repository.get_by_id(chat_id)
+        ensure_exists(chat, "chat", locale)
+        assert chat is not None  # noqa: S101
+
+        participant_ids = {p.id for p in chat.participants}
+        if user.id not in participant_ids:
+            raise_forbidden(locale, "errors.chat.not_participant")
+
+        deleted_at, affected = await self.repository.soft_delete_message(
+            message_id, user.id
+        )
+        if affected == 0:
+            raise_not_found("message", locale)
+
+        async with self.uow:
+            await self.uow.commit()
+
+        await ws_manager.broadcast_to_chat(
+            chat_id,
+            {
+                "type": "message_deleted",
+                "message_id": str(message_id),
+                "chat_id": str(chat_id),
+                "deleted_at": deleted_at.isoformat() if deleted_at else None,
+            },
+        )
 
     async def clear_history(
         self, chat_id: uuid.UUID, user: User, locale: str
