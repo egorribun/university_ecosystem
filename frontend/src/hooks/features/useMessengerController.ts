@@ -149,6 +149,18 @@ export const useMessengerController = () => {
   }, [selectedChatId, chats, singleChatData])
 
   const transformedMessages = useMemo(() => {
+    // Wave 203 SW6 — find the LAST message the current user sent that has been
+    // read, so only THAT one renders the "Seen · HH:MM" marker (Telegram 1-on-1
+    // style). Survives a newer *unread* sent message: the marker stays on the
+    // last *read* one. Single reverse scan (≤200 buffered messages).
+    let lastReadId: string | null = null
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const m = messages[i]
+      if (m && m.sender_id === user?.id && m.read_at) {
+        lastReadId = m.id
+        break
+      }
+    }
     return messages.map((m) => {
       const isMe = m.sender_id === user?.id
       return {
@@ -160,6 +172,9 @@ export const useMessengerController = () => {
         timestamp: formatMessageTime(m.created_at),
         isMe,
         status: (m.read_status ? "read" : "sent") as "read" | "sent",
+        readAt: m.read_at ?? null,
+        readAtLabel: m.read_at ? formatMessageTime(m.read_at) : undefined,
+        isLastRead: m.id === lastReadId,
         attachments: m.attachments?.map((a) => ({
           id: a.id,
           url: a.url,

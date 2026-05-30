@@ -14,6 +14,7 @@
   "typing": "{{name}} печатает...",
   "typingMultiple": "{{count}} человек(а) печатают...",
   "isTyping": "Печатает",
+  "seen": "Просмотрено · {{time}}",
   "attachPhoto": "Фото",
   "attachDocument": "Документ",
   "attachFile": "Файл",

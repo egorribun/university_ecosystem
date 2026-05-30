@@ -25,5 +25,11 @@ export interface Message {
   timestamp: string
   isMe: boolean
   status?: "sent" | "read"
+  // Wave 203 SW6 — read receipts. readAtLabel is the pre-formatted HH:MM string;
+  // isLastRead marks the single most-recent read sent message that renders the
+  // "Seen · HH:MM" marker (computed in useMessengerController's transform).
+  readAt?: string | null
+  readAtLabel?: string
+  isLastRead?: boolean
   attachments?: Attachment[]
 }

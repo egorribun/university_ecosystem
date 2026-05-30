@@ -287,3 +287,79 @@ describe("ChatWindow — baseline ARIA shape", () => {
     expect(logEl?.getAttribute("aria-live")).toBe("polite")
   })
 })
+
+describe("ChatWindow — W203 read-receipt seen marker", () => {
+  it("renders the 'Seen · HH:MM' marker on the last read sent message", () => {
+    const messages: Message[] = [
+      makeMessage({ id: "1", text: "Hi", isMe: false }),
+      makeMessage({
+        id: "2",
+        text: "All set",
+        isMe: true,
+        status: "read",
+        readAt: "2026-05-30T14:32:00+00:00",
+        readAtLabel: "14:32",
+        isLastRead: true,
+      }),
+    ]
+    render(<ChatWindow messages={messages} />, { wrapper })
+    // i18n mock echoes `key|JSON(opts)` → time interpolation preserved.
+    expect(screen.getByText('messenger:seen|{"time":"14:32"}')).toBeTruthy()
+  })
+
+  it("renders the marker on ONLY the last read sent message (not earlier read ones)", () => {
+    const messages: Message[] = [
+      makeMessage({
+        id: "1",
+        text: "first",
+        isMe: true,
+        status: "read",
+        readAtLabel: "14:30",
+        isLastRead: false,
+      }),
+      makeMessage({
+        id: "2",
+        text: "second",
+        isMe: true,
+        status: "read",
+        readAtLabel: "14:32",
+        isLastRead: true,
+      }),
+    ]
+    render(<ChatWindow messages={messages} />, { wrapper })
+    expect(screen.queryByText('messenger:seen|{"time":"14:30"}')).toBeFalsy()
+    expect(screen.getByText('messenger:seen|{"time":"14:32"}')).toBeTruthy()
+  })
+
+  it("never renders the marker on a received message (isMe=false suppresses it)", () => {
+    const messages: Message[] = [
+      makeMessage({ id: "1", text: "theirs", isMe: false, readAtLabel: "14:32", isLastRead: true }),
+    ]
+    render(<ChatWindow messages={messages} />, { wrapper })
+    expect(screen.queryByText(/^messenger:seen/)).toBeFalsy()
+  })
+
+  it("does NOT render the marker when readAtLabel is absent (unread sent message)", () => {
+    const messages: Message[] = [
+      makeMessage({ id: "1", text: "pending", isMe: true, status: "sent", isLastRead: false }),
+    ]
+    render(<ChatWindow messages={messages} />, { wrapper })
+    expect(screen.queryByText(/^messenger:seen/)).toBeFalsy()
+  })
+
+  it("still renders the ✓✓ read-status icon (role=img) on a read sent message", () => {
+    const messages: Message[] = [
+      makeMessage({
+        id: "1",
+        text: "read msg",
+        isMe: true,
+        status: "read",
+        readAtLabel: "14:32",
+        isLastRead: true,
+      }),
+    ]
+    render(<ChatWindow messages={messages} />, { wrapper })
+    // W183 SW6 status-icon wrapper — unchanged by W203's marker addition.
+    expect(screen.getByRole("img", { name: "messenger:aria.messageRead" })).toBeTruthy()
+  })
+})

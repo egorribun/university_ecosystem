@@ -432,87 +432,97 @@ export function ChatWindow({
                   />
                 </div>
 
+                {/* Wave 203 SW6 — column wrapper so the single "Seen · HH:MM"
+                    marker can sit BELOW the bubble (right-aligned for sent). The
+                    max-w-* constraint moves to the column; the bubble keeps its
+                    box styling + max-w-full (caps at the column width). */}
                 <div
                   className={cn(
-                    "max-w-4/5 sm:max-w-3/4 md:max-w-[68%] lg:max-w-[60%] xl:max-w-[52%] px-4 py-2.5 text-base relative",
-                    message.isMe
-                      ? "messenger-bubble-sent text-[var(--text-inverse)] rounded-2xl rounded-br-sm md:rounded-br-2xl md:rounded-bl-sm"
-                      : "messenger-bubble-received text-text-primary rounded-2xl rounded-bl-sm"
+                    "flex min-w-0 max-w-4/5 flex-col gap-1 sm:max-w-3/4 md:max-w-[68%] lg:max-w-[60%] xl:max-w-[52%]",
+                    message.isMe ? "items-end" : "items-start"
                   )}
                 >
-                  {message.attachments && message.attachments.length > 0 && (
-                    <div className="mb-2 space-y-2">
-                      {message.attachments.map((attachment) => (
-                        <div key={attachment.id} className="overflow-hidden rounded-xl">
-                          {attachment.type === "image" ? (
-                            sanitizeUrl(attachment.url) ? (
-                              <SmartImage
-                                srcRaw={attachment.url}
-                                alt={attachment.name}
-                                className="w-full h-auto max-h-72 object-cover cursor-pointer hover:scale-hover transition-transform duration-slow"
-                                onClick={() => {
-                                  const safe = sanitizeUrl(attachment.url)
-                                  if (safe) window.open(safe, "_blank", "noopener,noreferrer")
-                                }}
-                              />
-                            ) : null
-                          ) : sanitizeUrl(attachment.url) ? (
-                            <a
-                              href={sanitizeUrl(attachment.url)!}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className={cn(
-                                "flex items-center gap-3 p-3 rounded-xl transition-colors border border-white/(--opacity-faint)",
-                                message.isMe
-                                  ? "bg-(--messenger-attachment-bg) hover:bg-(--messenger-attachment-bg-hover)"
-                                  : "bg-(--bg-surface-raised)/(--opacity-medium) hover:bg-(--bg-surface-hover)/(--opacity-medium)"
-                              )}
-                            >
-                              <div
+                  <div
+                    className={cn(
+                      "relative max-w-full px-4 py-2.5 text-base",
+                      message.isMe
+                        ? "messenger-bubble-sent text-[var(--text-inverse)] rounded-2xl rounded-br-sm md:rounded-br-2xl md:rounded-bl-sm"
+                        : "messenger-bubble-received text-text-primary rounded-2xl rounded-bl-sm"
+                    )}
+                  >
+                    {message.attachments && message.attachments.length > 0 && (
+                      <div className="mb-2 space-y-2">
+                        {message.attachments.map((attachment) => (
+                          <div key={attachment.id} className="overflow-hidden rounded-xl">
+                            {attachment.type === "image" ? (
+                              sanitizeUrl(attachment.url) ? (
+                                <SmartImage
+                                  srcRaw={attachment.url}
+                                  alt={attachment.name}
+                                  className="w-full h-auto max-h-72 object-cover cursor-pointer hover:scale-hover transition-transform duration-slow"
+                                  onClick={() => {
+                                    const safe = sanitizeUrl(attachment.url)
+                                    if (safe) window.open(safe, "_blank", "noopener,noreferrer")
+                                  }}
+                                />
+                              ) : null
+                            ) : sanitizeUrl(attachment.url) ? (
+                              <a
+                                href={sanitizeUrl(attachment.url)!}
+                                target="_blank"
+                                rel="noopener noreferrer"
                                 className={cn(
-                                  "p-2 rounded-lg",
+                                  "flex items-center gap-3 p-3 rounded-xl transition-colors border border-white/(--opacity-faint)",
                                   message.isMe
-                                    ? "bg-(--messenger-attachment-bg) text-[var(--text-inverse)]"
-                                    : "bg-(--bg-surface-raised) text-(--brand-main)"
+                                    ? "bg-(--messenger-attachment-bg) hover:bg-(--messenger-attachment-bg-hover)"
+                                    : "bg-(--bg-surface-raised)/(--opacity-medium) hover:bg-(--bg-surface-hover)/(--opacity-medium)"
                                 )}
                               >
-                                <File size={20} />
-                              </div>
-                              <div className="flex-1 min-w-0">
-                                <p className="truncate text-sm font-bold">{attachment.name}</p>
-                                <p className="text-micro opacity-medium font-medium">
-                                  {(attachment.size / 1024).toFixed(1)} KB
-                                </p>
-                              </div>
-                            </a>
-                          ) : null}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                  <p className="wrap-break-word leading-relaxed whitespace-pre-wrap">
-                    {message.text}
-                  </p>
-                  <div className="flex items-center justify-end gap-1.5 mt-(--space-1) opacity-hover">
-                    <span
-                      className="text-micro font-bold uppercase tracking-wider"
-                      style={{
-                        color: message.isMe ? "var(--primary-subtle)" : "var(--text-secondary)",
-                      }}
-                    >
-                      {message.timestamp}
-                    </span>
-                    {message.isMe && (
+                                <div
+                                  className={cn(
+                                    "p-2 rounded-lg",
+                                    message.isMe
+                                      ? "bg-(--messenger-attachment-bg) text-[var(--text-inverse)]"
+                                      : "bg-(--bg-surface-raised) text-(--brand-main)"
+                                  )}
+                                >
+                                  <File size={20} />
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <p className="truncate text-sm font-bold">{attachment.name}</p>
+                                  <p className="text-micro opacity-medium font-medium">
+                                    {(attachment.size / 1024).toFixed(1)} KB
+                                  </p>
+                                </div>
+                              </a>
+                            ) : null}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    <p className="wrap-break-word leading-relaxed whitespace-pre-wrap">
+                      {message.text}
+                    </p>
+                    <div className="flex items-center justify-end gap-1.5 mt-(--space-1) opacity-hover">
                       <span
-                        className="flex items-center opacity-hover"
-                        role="img"
-                        aria-label={
-                          message.status === "read"
-                            ? t("messenger:aria.messageRead")
-                            : t("messenger:aria.messageSent")
-                        }
+                        className="text-micro font-bold uppercase tracking-wider"
+                        style={{
+                          color: message.isMe ? "var(--primary-subtle)" : "var(--text-secondary)",
+                        }}
                       >
-                        {/* Wave 181 SW3 — text-white → text-[var(--text-inverse)]
+                        {message.timestamp}
+                      </span>
+                      {message.isMe && (
+                        <span
+                          className="flex items-center opacity-hover"
+                          role="img"
+                          aria-label={
+                            message.status === "read"
+                              ? t("messenger:aria.messageRead")
+                              : t("messenger:aria.messageSent")
+                          }
+                        >
+                          {/* Wave 181 SW3 — text-white → text-[var(--text-inverse)]
                             (theme-aware; same W175 SW2 pattern. text-inverse is
                             white in light, slate-950 in dark. On the violet
                             sent-bubble bg, white in light = 9.9:1 contrast,
@@ -523,20 +533,26 @@ export function ChatWindow({
                             "Read by recipient" instead of skipping the icon
                             entirely (previous aria-hidden default on lucide
                             icons meant SR users had no message-status feedback). */}
-                        {message.status === "read" ? (
-                          <CheckCheck
-                            className="w-3 h-3 text-[var(--text-inverse)]"
-                            aria-hidden="true"
-                          />
-                        ) : (
-                          <Check
-                            className="w-3 h-3 text-[var(--text-inverse)] opacity-medium"
-                            aria-hidden="true"
-                          />
-                        )}
-                      </span>
-                    )}
+                          {message.status === "read" ? (
+                            <CheckCheck
+                              className="w-3 h-3 text-[var(--text-inverse)]"
+                              aria-hidden="true"
+                            />
+                          ) : (
+                            <Check
+                              className="w-3 h-3 text-[var(--text-inverse)] opacity-medium"
+                              aria-hidden="true"
+                            />
+                          )}
+                        </span>
+                      )}
+                    </div>
                   </div>
+                  {message.isMe && message.isLastRead && message.readAtLabel ? (
+                    <span className="px-1 text-micro font-medium text-text-secondary">
+                      {t("messenger:seen", { time: message.readAtLabel })}
+                    </span>
+                  ) : null}
                 </div>
               </m.div>
             </div>
