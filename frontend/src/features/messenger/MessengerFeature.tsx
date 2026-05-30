@@ -75,6 +75,17 @@ export default function MessengerFeature() {
     handleCreateChat,
     handleClearChat,
     handleDeleteChat,
+
+    // Wave 205 SW6 — inline message edit + soft-delete. editingMessageId/
+    // editingMessageContent drive the inline editor in ChatWindow; the four
+    // handlers open/save/cancel the editor + open the delete confirm dialog.
+    editingMessageId,
+    editingMessageContent,
+    setEditingMessageContent,
+    handleEditMessage,
+    handleSaveEdit,
+    handleCancelEdit,
+    handleDeleteMessage,
   } = useMessengerController()
 
   // Wave 183 SW6 — surface WS connection status. useMessenger().isConnected
@@ -137,6 +148,13 @@ export default function MessengerFeature() {
       handleDeleteChat={handleDeleteChat}
       getOtherParticipant={getOtherParticipant}
       presenceMap={presenceMap}
+      editingMessageId={editingMessageId}
+      editingMessageContent={editingMessageContent}
+      onEditingContentChange={setEditingMessageContent}
+      onEditMessage={handleEditMessage}
+      onSaveEdit={handleSaveEdit}
+      onCancelEdit={handleCancelEdit}
+      onDeleteMessage={handleDeleteMessage}
     />
   )
 

@@ -61,6 +61,19 @@ interface ChatAreaProps {
   handleDeleteChat: () => void
   getOtherParticipant: ReturnType<typeof useMessengerController>["getOtherParticipant"]
   presenceMap: ReturnType<typeof useMessengerController>["presenceMap"]
+  /**
+   * Wave 205 SW6 — inline message edit + soft-delete, threaded from
+   * useMessengerController through MessengerFeature into ChatWindow. See
+   * ChatWindowProps for the per-field contract. All optional so ChatArea
+   * stays mountable in tests without the full messenger wiring.
+   */
+  editingMessageId?: string | null
+  editingMessageContent?: string
+  onEditingContentChange?: (content: string) => void
+  onEditMessage?: (messageId: string, currentText: string) => void
+  onSaveEdit?: (messageId: string) => void
+  onCancelEdit?: () => void
+  onDeleteMessage?: (messageId: string) => void
 }
 
 export function ChatArea({
@@ -83,6 +96,13 @@ export function ChatArea({
   handleDeleteChat,
   getOtherParticipant,
   presenceMap,
+  editingMessageId,
+  editingMessageContent,
+  onEditingContentChange,
+  onEditMessage,
+  onSaveEdit,
+  onCancelEdit,
+  onDeleteMessage,
 }: ChatAreaProps) {
   const { t } = useTranslation(["messenger", "common"])
   const navigate = useNavigate()
@@ -335,6 +355,13 @@ export function ChatArea({
             onRetry={onRetryMessages}
             searchQuery={showSearchInChat ? searchQuery : ""}
             onClearSearch={() => setSearchQuery("")}
+            editingMessageId={editingMessageId}
+            editingMessageContent={editingMessageContent}
+            onEditingContentChange={onEditingContentChange}
+            onEditMessage={onEditMessage}
+            onSaveEdit={onSaveEdit}
+            onCancelEdit={onCancelEdit}
+            onDeleteMessage={onDeleteMessage}
           />
           <TypingIndicator users={typingUsers} prefersReducedMotion={prefersReducedMotion} />
           <MessageInput onSend={handleSendMessage} />

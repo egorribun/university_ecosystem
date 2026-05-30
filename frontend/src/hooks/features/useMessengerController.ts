@@ -45,6 +45,9 @@ export const useMessengerController = () => {
   const [showSearchInChat, setShowSearchInChat] = useState(false)
   const [searchQuery, setSearchQuery] = useState("")
   const [showChatMenu, setShowChatMenu] = useState(false)
+  // Wave 205 SW6 — inline-edit state: which message is being edited + its draft.
+  const [editingMessageId, setEditingMessageId] = useState<string | null>(null)
+  const [editingMessageContent, setEditingMessageContent] = useState("")
 
   // Profile State
   const [profileUser, setProfileUser] = useState<User | null>(null)
@@ -175,6 +178,11 @@ export const useMessengerController = () => {
         readAt: m.read_at ?? null,
         readAtLabel: m.read_at ? formatMessageTime(m.read_at) : undefined,
         isLastRead: m.id === lastReadId,
+        // Wave 205 SW6 — edit/soft-delete UI fields. editedAtLabel feeds the
+        // "(edited)" tooltip; deletedAt set => ChatWindow renders the tombstone.
+        editedAt: m.edited_at ?? null,
+        editedAtLabel: m.edited_at ? formatMessageTime(m.edited_at) : undefined,
+        deletedAt: m.deleted_at ?? null,
         attachments: m.attachments?.map((a) => ({
           id: a.id,
           url: a.url,
@@ -326,6 +334,82 @@ export const useMessengerController = () => {
     },
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ["chats"] })
+    },
+  })
+
+  // Wave 205 SW6 — author-only edit (optimistic): write the new content +
+  // client-time edited_at to the cache immediately; the W205 SW3 broadcast echo
+  // reconciles to the authoritative server edited_at (applyMessageEditedFrame is
+  // idempotent). Rollback on error. Mirrors clearChatMutation's onMutate/onError/
+  // onSettled snapshot pattern, scoped to one message.
+  const editMessageMutation = useMutation({
+    mutationFn: ({
+      chatId,
+      messageId,
+      content,
+    }: {
+      chatId: string
+      messageId: string
+      content: string
+    }) => chatApi.editMessage(chatId, messageId, content),
+    onMutate: async ({ chatId, messageId, content }) => {
+      await queryClient.cancelQueries({ queryKey: ["messages", chatId] })
+      const previousMessages = queryClient.getQueryData<MessagesListResponse>(["messages", chatId])
+      const editedAt = new Date().toISOString()
+      queryClient.setQueryData<MessagesListResponse>(["messages", chatId], (old) =>
+        old
+          ? {
+              ...old,
+              items: old.items.map((m) =>
+                m.id === messageId ? { ...m, content, edited_at: editedAt } : m
+              ),
+            }
+          : old
+      )
+      return { previousMessages, chatId }
+    },
+    onError: (_error, _vars, context) => {
+      if (context?.previousMessages) {
+        queryClient.setQueryData(["messages", context.chatId], context.previousMessages)
+      }
+    },
+    onSettled: (_data, _error, { chatId }) => {
+      queryClient.invalidateQueries({ queryKey: ["messages", chatId], refetchType: "none" })
+      queryClient.invalidateQueries({ queryKey: ["chats"], refetchType: "none" })
+    },
+  })
+
+  // Wave 205 SW6 — author-only soft-delete (optimistic): stamp deleted_at + clear
+  // content/attachments (the tombstone) immediately; rollback on error.
+  const deleteMessageMutation = useMutation({
+    mutationFn: ({ chatId, messageId }: { chatId: string; messageId: string }) =>
+      chatApi.deleteMessage(chatId, messageId),
+    onMutate: async ({ chatId, messageId }) => {
+      await queryClient.cancelQueries({ queryKey: ["messages", chatId] })
+      const previousMessages = queryClient.getQueryData<MessagesListResponse>(["messages", chatId])
+      const deletedAt = new Date().toISOString()
+      queryClient.setQueryData<MessagesListResponse>(["messages", chatId], (old) =>
+        old
+          ? {
+              ...old,
+              items: old.items.map((m) =>
+                m.id === messageId
+                  ? { ...m, deleted_at: deletedAt, content: "", attachments: [] }
+                  : m
+              ),
+            }
+          : old
+      )
+      return { previousMessages, chatId }
+    },
+    onError: (_error, _vars, context) => {
+      if (context?.previousMessages) {
+        queryClient.setQueryData(["messages", context.chatId], context.previousMessages)
+      }
+    },
+    onSettled: (_data, _error, { chatId }) => {
+      queryClient.invalidateQueries({ queryKey: ["messages", chatId], refetchType: "none" })
+      queryClient.invalidateQueries({ queryKey: ["chats"], refetchType: "none" })
     },
   })
 
@@ -498,6 +582,46 @@ export const useMessengerController = () => {
     })
   }
 
+  // Wave 205 SW6 — inline message edit + soft-delete handlers.
+  const handleEditMessage = (messageId: string, currentText: string) => {
+    setEditingMessageId(messageId)
+    setEditingMessageContent(currentText)
+  }
+
+  const handleCancelEdit = () => {
+    setEditingMessageId(null)
+    setEditingMessageContent("")
+  }
+
+  const handleSaveEdit = (messageId: string) => {
+    if (!selectedChatId) return
+    const content = editingMessageContent.trim()
+    // Close the editor immediately (optimistic — the mutation's onMutate already
+    // updates the bubble). Empty edit = no-op (deletion is a separate action).
+    setEditingMessageId(null)
+    setEditingMessageContent("")
+    if (content) {
+      editMessageMutation.mutate({ chatId: selectedChatId, messageId, content })
+    }
+  }
+
+  const handleDeleteMessage = (messageId: string) => {
+    if (!selectedChatId) return
+    const chatId = selectedChatId
+    setConfirmDialog({
+      open: true,
+      title: t("messenger:deleteMessageTitle"),
+      message: t("messenger:confirmDeleteMessage"),
+      variant: "danger",
+      confirmText: t("common:buttons.delete"),
+      cancelText: t("common:buttons.cancel"),
+      onConfirm: () => {
+        deleteMessageMutation.mutate({ chatId, messageId })
+        setConfirmDialog(null)
+      },
+    })
+  }
+
   const handleViewProfile = () => {
     setShowChatMenu(false)
     const other = activeChat && getOtherParticipant(activeChat)
@@ -580,5 +704,14 @@ export const useMessengerController = () => {
     handleCreateChat,
     handleClearChat,
     handleDeleteChat,
+
+    // Wave 205 SW6 — message edit + soft-delete
+    editingMessageId,
+    editingMessageContent,
+    setEditingMessageContent,
+    handleEditMessage,
+    handleSaveEdit,
+    handleCancelEdit,
+    handleDeleteMessage,
   }
 }
