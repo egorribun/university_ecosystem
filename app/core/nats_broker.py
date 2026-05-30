@@ -17,6 +17,7 @@ from pydantic import BaseModel, ValidationError, field_validator
 
 from app.core.config import settings
 from app.core.logging import get_logger
+from app.core.orjson_utils import orjson
 
 P = ParamSpec("P")
 R_co = TypeVar("R_co", covariant=True)
@@ -212,6 +213,63 @@ class NatsTaskBroker:
                     subject,
                     json.dumps(payload).encode(),
                     headers=headers,
+                )
+
+    async def publish_core(self, subject: str, payload: dict[str, Any]) -> None:
+        """Publish an ephemeral event via CORE NATS (fire-and-forget, no stream).
+
+        W204 SW1: mirrors in-process ``ws_manager`` chat broadcasts onto the
+        ws-hub ``chat.*`` core subscription (``services/ws-hub`` hub.go:375) so
+        frames reach browser clients LIVE — the browser connects to ws-hub, NOT
+        the in-process FastAPI WebSocket, so the in-process fan-out never reaches
+        it (the messenger has been refetch/self-heal only).
+
+        Unlike :meth:`publish` (JetStream, durable), this uses the raw core
+        connection because ``chat.*`` has NO JetStream stream (only
+        ``TASK_QUEUE`` + ``FILES_PROCESS``) — a JetStream publish there would
+        error on the missing PubAck.  Ephemeral live frames need no persistence:
+        a dropped frame self-heals via the next refetch.
+
+        Serialises with orjson (native ``uuid.UUID`` + ``datetime`` support)
+        because the ``new_message`` frame nests ``serialize_message`` output
+        carrying raw ``uuid.UUID`` values (serializers.py) — stdlib
+        ``json.dumps`` would raise ``TypeError``.  ``default=str`` mirrors the
+        existing orjson callsite at logging.py:222.
+
+        Best-effort: never raises on infra failure so the caller's in-process
+        delivery + refetch fallback stay intact.
+        """
+        if self._nc is None:
+            await self.connect()
+        if self._nc is None:
+            _logger.warning(
+                "publish_core: NATS core connection unavailable, dropping subject=%s",
+                subject,
+            )
+            return
+
+        with tracer.start_as_current_span(
+            f"nats.publish_core:{subject}", kind=SpanKind.PRODUCER
+        ) as span:
+            headers: dict[str, str] = {}
+            propagate.inject(headers)
+            span.set_attribute("messaging.system", "nats")
+            span.set_attribute("messaging.destination", subject)
+            try:
+                await self._nc.publish(
+                    subject,
+                    orjson.dumps(payload, default=str),
+                    headers=headers,
+                )
+            except (
+                ConnectionError,
+                TimeoutError,
+                OSError,
+            ) as exc:  # RZ-20-04: narrowed — NATS infra errors; ephemeral frame self-heals via refetch
+                _logger.debug(
+                    "publish_core failed (self-heal via refetch): subject=%s err=%s",
+                    subject,
+                    exc,
                 )
 
     async def enqueue(self, task_name: str, *args: Any, **kwargs: Any) -> str:
