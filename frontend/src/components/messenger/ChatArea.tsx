@@ -328,6 +328,7 @@ export function ChatArea({
               mounted (showSearchInChat stays true) so the user can type a
               new query immediately — matches W183 SW1 ContactList pattern. */}
           <ChatWindow
+            key={selectedChatId}
             messages={messages}
             isLoading={messagesLoading}
             isError={messagesError}
