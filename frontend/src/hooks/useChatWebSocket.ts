@@ -291,12 +291,19 @@ export function useChatWebSocket({
 
             switch (validated.type) {
               case "new_message": {
+                // Wave 202 SW2 — `validated.message` is the Valibot `ParsedMessage`
+                // (attachments/sender validated shape-only as Record<string,unknown>);
+                // the cache stores `@/api/chat` `Message` (typed Attachment[]/User).
+                // `Message` is assignable to `ParsedMessage`, so the two are comparable
+                // → a single `as Message` is valid (collapsed from the prior, redundant
+                // `as unknown as Message` double-cast; the `unknown` hop was never needed).
+                // Do NOT delete the cast — `ParsedMessage` is NOT structurally `Message`.
                 queryClient.setQueryData<MessagesListResponse>(
                   ["messages", validated.chat_id],
                   (old) => {
                     if (!old)
                       return {
-                        items: [validated.message as unknown as Message],
+                        items: [validated.message as Message],
                         has_more: false,
                         next_cursor: null,
                       }
@@ -305,7 +312,7 @@ export function useChatWebSocket({
                     // Cap in-memory buffer at 200 messages — older messages are re-fetched
                     // via cursor-based pagination when the user scrolls up.
                     const MAX_BUFFERED_MESSAGES = 200
-                    const appended = [...old.items, validated.message as unknown as Message]
+                    const appended = [...old.items, validated.message as Message]
                     const trimmed =
                       appended.length > MAX_BUFFERED_MESSAGES
                         ? appended.slice(appended.length - MAX_BUFFERED_MESSAGES)
@@ -325,7 +332,7 @@ export function useChatWebSocket({
                       chat.id === validated.chat_id
                         ? {
                             ...chat,
-                            last_message: validated.message as unknown as Message,
+                            last_message: validated.message as Message,
                             unread_count: chat.unread_count + 1,
                           }
                         : chat
@@ -333,10 +340,7 @@ export function useChatWebSocket({
                   }
                 })
                 queryClient.invalidateQueries({ queryKey: ["chats"], refetchType: "none" })
-                onNewMessageRef.current?.(
-                  validated.message as unknown as Message,
-                  validated.chat_id
-                )
+                onNewMessageRef.current?.(validated.message as Message, validated.chat_id)
                 break
               }
 
