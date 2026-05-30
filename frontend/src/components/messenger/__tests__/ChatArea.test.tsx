@@ -235,9 +235,12 @@ describe("ChatArea — normal header rendering (chat selected)", () => {
     expect(screen.getByText("messenger:online")).toBeTruthy()
     expect(screen.queryByText("messenger:offline")).toBeFalsy()
 
-    // Online indicator span with messenger-online-indicator class
-    const onlineIndicator = container.querySelector(".messenger-online-indicator")
-    expect(onlineIndicator).toBeTruthy()
+    // Wave 202 SW5 — the active-chat header avatar now renders the pulsing
+    // presence ring (`.messenger-online-pulse`) instead of the static
+    // `.messenger-online-indicator` dot (the static dot remains in ContactList
+    // rows + ProfileModal). One infinite animation, only where the chat is open.
+    const onlinePulse = container.querySelector(".messenger-online-pulse")
+    expect(onlinePulse).toBeTruthy()
   })
 })
 

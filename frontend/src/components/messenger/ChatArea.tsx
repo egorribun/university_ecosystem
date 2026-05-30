@@ -156,9 +156,18 @@ export function ChatArea({
                         alt={getOtherParticipant(activeChat)?.full_name || ""}
                         className="size-11 rounded-full border-2 border-(--glass-border-subtle) object-cover"
                       />
+                      {/* Wave 202 SW5 — pulsing presence ring (was the static
+                          `.messenger-online-indicator` dot). Wired here, on the
+                          ACTIVE-chat header avatar ONLY = ONE infinite animation,
+                          where the conversation is open (best-in-class presence
+                          cue at ~zero perf cost). `.messenger-online-pulse` brings
+                          its own 10px emerald dot + surface ring + a pulsing
+                          `::after` (reduced-motion-guarded in tokens/messenger.css).
+                          ContactList rows + ProfileModal keep the static dot — a
+                          pulse per row would be N infinite animations. */}
                       {presenceMap[getOtherParticipant(activeChat)?.id ?? ""]?.active && (
                         <span
-                          className="messenger-online-indicator absolute bottom-0 right-0 size-3"
+                          className="messenger-online-pulse absolute bottom-0 right-0"
                           aria-hidden="true"
                         />
                       )}
