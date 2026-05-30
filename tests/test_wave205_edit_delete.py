@@ -226,3 +226,38 @@ class TestSerializerFields:
         frame = serialize_message(self._msg(edited_at=None, deleted_at=None))
         assert frame["edited_at"] is None
         assert frame["deleted_at"] is None
+
+
+class TestMessageResponseEmptyContentTombstone:
+    """Wave 205 SW4 — a soft-deleted message (D1 tombstone) carries content="" in
+    the RESPONSE. MessageResponse must accept it (GET /messages serializes deleted
+    rows field-by-field), while MessageCreate keeps the create-time min_length=1.
+
+    Regression: pre-fix, MessageResponse inherited MessageBase.content min_length=1,
+    so GET /messages 500'd with pydantic string_too_short the moment a chat held a
+    deleted message — surfaced by W205 SW9 live verification, missed by the
+    SimpleNamespace-based serialize_message tests above.
+    """
+
+    def test_message_response_accepts_empty_content_tombstone(self) -> None:
+        from app.schemas.chat import MessageResponse
+
+        resp = MessageResponse(
+            content="",
+            id=uuid.uuid4(),
+            chat_id=uuid.uuid4(),
+            sender_id=uuid.uuid4(),
+            created_at=datetime.now(UTC),
+            read_status=False,
+            deleted_at=datetime.now(UTC),
+        )
+        assert resp.content == ""
+        assert resp.deleted_at is not None
+
+    def test_message_create_still_rejects_empty_content(self) -> None:
+        from pydantic import ValidationError
+
+        from app.schemas.chat import MessageCreate
+
+        with pytest.raises(ValidationError):
+            MessageCreate(content="")
