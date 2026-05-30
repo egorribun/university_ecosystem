@@ -204,7 +204,13 @@ func (c *InternalAPIAuthClient) doRequest(ctx context.Context, userID, roomID st
 	params := url.Values{}
 	params.Set("user_id", userID)
 	params.Set("room_id", roomID)
-	fullURL := fmt.Sprintf("%s/api/internal/chat/check-participant?%s", c.baseURL, params.Encode())
+	// W204 SW7: the backend mounts the internal chat router under API_V1_PREFIX
+	// ("/api/v1") in app/api/internal/__init__.py, so the route is
+	// /api/v1/chat/check-participant — NOT /api/internal/... . The old path
+	// 404'd; this was dormant because no client ever sent a room "join" until
+	// W204 wired the frontend join, so CanJoinRoom was never exercised
+	// end-to-end (same dormant-gap class as the W173 /ws routing fixes).
+	fullURL := fmt.Sprintf("%s/api/v1/chat/check-participant?%s", c.baseURL, params.Encode())
 
 	req, err := http.NewRequestWithContext(callCtx, http.MethodGet, fullURL, nil)
 	if err != nil {

@@ -100,7 +100,7 @@ func TestInternalAPIAuthClient_CanJoinRoom(t *testing.T) {
 
 	t.Run("http request success", func(t *testing.T) {
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			assert.Equal(t, "/api/internal/chat/check-participant", r.URL.Path)
+			assert.Equal(t, "/api/v1/chat/check-participant", r.URL.Path)
 			assert.Equal(t, userID, r.URL.Query().Get("user_id"))
 			assert.Equal(t, roomID, r.URL.Query().Get("room_id"))
 			w.WriteHeader(http.StatusOK)
