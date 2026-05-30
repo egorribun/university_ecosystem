@@ -89,10 +89,56 @@ export default function MessengerFeature() {
   const reducedMotionPref = useMediaQuery("(prefers-reduced-motion: reduce)")
   const prefersReducedMotion = reducedMotionPref ?? false
 
-  // Mobile view logic
-  const showList = !isMobile || !selectedChatId
-  const showChat = !isMobile || selectedChatId
   const isBottomNavVisible = isMobile
+
+  // Wave 203 SW1 — extract the two panes (props written once) so the
+  // mobile/desktop branch below doesn't duplicate the prop lists. Both panes
+  // are keyed so AnimatePresence (mobile) tracks the single-pane swap cleanly
+  // and the desktop fragment reconciles them by stable key. `key="chat-area"`
+  // is on the ChatArea instance (stable across chat switches); the W202
+  // polish-v1 `key={selectedChatId}` lives on <ChatWindow> INSIDE ChatArea —
+  // different level, unaffected.
+  const sidebarPane = (
+    <MessengerSidebar
+      key="sidebar"
+      isMobile={isMobile}
+      contacts={contacts}
+      selectedChatId={selectedChatId}
+      setIsNewChatModalOpen={setIsNewChatModalOpen}
+      isLoading={chatsLoading}
+      isError={chatsError}
+      onRetry={() => {
+        void refetchChats()
+      }}
+    />
+  )
+
+  const chatPane = (
+    <ChatArea
+      key="chat-area"
+      isMobile={isMobile}
+      selectedChatId={selectedChatId}
+      activeChat={activeChat}
+      messages={messages}
+      messagesLoading={messagesLoading}
+      messagesError={messagesError}
+      onRetryMessages={() => {
+        void refetchMessages()
+      }}
+      showSearchInChat={showSearchInChat}
+      setShowSearchInChat={setShowSearchInChat}
+      searchQuery={searchQuery}
+      setSearchQuery={setSearchQuery}
+      showChatMenu={showChatMenu}
+      setShowChatMenu={setShowChatMenu}
+      handleSendMessage={handleSendMessage}
+      handleViewProfile={handleViewProfile}
+      handleClearChat={handleClearChat}
+      handleDeleteChat={handleDeleteChat}
+      getOtherParticipant={getOtherParticipant}
+      presenceMap={presenceMap}
+    />
+  )
 
   return (
     <div
@@ -144,49 +190,20 @@ export default function MessengerFeature() {
         )}
       </AnimatePresence>
 
-      <AnimatePresence mode="wait">
-        {/* Sidebar */}
-        {showList && (
-          <MessengerSidebar
-            isMobile={isMobile}
-            contacts={contacts}
-            selectedChatId={selectedChatId}
-            setIsNewChatModalOpen={setIsNewChatModalOpen}
-            isLoading={chatsLoading}
-            isError={chatsError}
-            onRetry={() => {
-              void refetchChats()
-            }}
-          />
-        )}
-
-        {/* Chat Area */}
-        {showChat && (
-          <ChatArea
-            isMobile={isMobile}
-            selectedChatId={selectedChatId}
-            activeChat={activeChat}
-            messages={messages}
-            messagesLoading={messagesLoading}
-            messagesError={messagesError}
-            onRetryMessages={() => {
-              void refetchMessages()
-            }}
-            showSearchInChat={showSearchInChat}
-            setShowSearchInChat={setShowSearchInChat}
-            searchQuery={searchQuery}
-            setSearchQuery={setSearchQuery}
-            showChatMenu={showChatMenu}
-            setShowChatMenu={setShowChatMenu}
-            handleSendMessage={handleSendMessage}
-            handleViewProfile={handleViewProfile}
-            handleClearChat={handleClearChat}
-            handleDeleteChat={handleDeleteChat}
-            getOtherParticipant={getOtherParticipant}
-            presenceMap={presenceMap}
-          />
-        )}
-      </AnimatePresence>
+      {/* Wave 203 SW1 — mobile: one keyed pane at a time inside
+          AnimatePresence mode="wait" (sidebar XOR chat-area, swap on
+          selectedChatId). Desktop: both panes render side-by-side in a plain
+          fragment (no AnimatePresence). Fixes the W202 §Honesty "multiple
+          children with the same key" console warning that fired when both
+          unkeyed panes rendered together inside mode="wait" on desktop. */}
+      {isMobile ? (
+        <AnimatePresence mode="wait">{selectedChatId ? chatPane : sidebarPane}</AnimatePresence>
+      ) : (
+        <>
+          {sidebarPane}
+          {chatPane}
+        </>
+      )}
 
       <NewChatModal
         open={isNewChatModalOpen}
