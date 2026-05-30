@@ -442,11 +442,18 @@ export function ChatWindow({
                               className={cn(
                                 "flex items-center gap-3 p-3 rounded-xl transition-colors border border-white/(--opacity-faint)",
                                 message.isMe
-                                  ? "bg-white/(--opacity-subtle) hover:bg-white/(--opacity-soft)"
+                                  ? "bg-(--messenger-attachment-bg) hover:bg-(--messenger-attachment-bg-hover)"
                                   : "bg-(--bg-surface-raised)/(--opacity-medium) hover:bg-(--bg-surface-hover)/(--opacity-medium)"
                               )}
                             >
-                              <div className="p-2 rounded-lg bg-white/(--opacity-subtle) text-(--brand-main)">
+                              <div
+                                className={cn(
+                                  "p-2 rounded-lg",
+                                  message.isMe
+                                    ? "bg-(--messenger-attachment-bg) text-[var(--text-inverse)]"
+                                    : "bg-(--bg-surface-raised) text-(--brand-main)"
+                                )}
+                              >
                                 <File size={20} />
                               </div>
                               <div className="flex-1 min-w-0">
