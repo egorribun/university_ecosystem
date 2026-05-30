@@ -429,9 +429,29 @@ class ChatMaintenanceService:
         if user.id not in participant_ids:
             raise_forbidden(locale, "errors.chat.not_participant")
 
-        await self.repository.mark_messages_read(chat_id, user.id)
+        read_at, affected = await self.repository.mark_messages_read(chat_id, user.id)
         async with self.uow:
             await self.uow.commit()
+
+        # Wave 203 SW4 — broadcast a chat-level read receipt so the other
+        # participant's sent bubbles flip to "seen" live. Ephemeral tier
+        # (inline ws_manager, like typing/presence) — NOT a domain event; a
+        # missed frame self-heals on the next message refetch (read_at is a
+        # persisted column). Gated on affected > 0 so repeated chat-opens with
+        # nothing new don't churn the sender's "Seen ·" timestamp. Broadcast
+        # AFTER commit so a sender that immediately refetches sees the persisted
+        # value (read-your-write safety).
+        if affected > 0:
+            await ws_manager.broadcast_to_chat(
+                chat_id,
+                {
+                    "type": "read",
+                    "chat_id": str(chat_id),
+                    "user_id": str(user.id),
+                    "read_at": read_at.isoformat(),
+                },
+                exclude_user_id=user.id,
+            )
 
     async def clear_history(
         self, chat_id: uuid.UUID, user: User, locale: str

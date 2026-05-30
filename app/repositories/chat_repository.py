@@ -10,7 +10,7 @@ from sqlalchemy.orm import selectinload
 
 from app.core.protocols import AsyncDatabaseSession
 from app.models import User
-from app.models.chat import Chat, Message, chat_participants
+from app.models.chat import Chat, Message, chat_participants, utc_now
 from app.repositories.base import BaseRepository
 from app.schemas.dtos.chat import ChatDTO, MessageDTO
 from app.utils.pagination import decode_datetime_cursor, encode_datetime_cursor
@@ -323,10 +323,21 @@ class ChatRepository(BaseRepository[Chat, ChatDTO, dict[str, Any], dict[str, Any
         await self.db.flush()
         return MessageDTO.model_validate(message)
 
-    async def mark_messages_read(self, chat_id: uuid.UUID, user_id: uuid.UUID) -> None:
+    async def mark_messages_read(
+        self, chat_id: uuid.UUID, user_id: uuid.UUID
+    ) -> tuple[datetime, int]:
+        """Mark all unread messages in a chat as read for a user.
+
+        Wave 203 SW4 — also stamps ``read_at`` and returns
+        ``(read_at, affected_count)`` so the caller can broadcast a chat-level
+        read receipt (only when ``affected_count > 0``) without a re-SELECT.
+        ``read_at`` is generated in Python (``utc_now``) rather than SQL
+        ``func.now()`` so the exact stored value is available to the broadcast
+        frame. The ``read_status.is_(False)`` filter means only newly-read
+        messages are stamped — an already-read message keeps its original
+        ``read_at``.
         """
-        Mark all unread messages in a chat as read for a user.
-        """
+        read_at = utc_now()
         stmt = (
             update(Message)
             .where(
@@ -336,9 +347,13 @@ class ChatRepository(BaseRepository[Chat, ChatDTO, dict[str, Any], dict[str, Any
                     Message.read_status.is_(False),
                 )
             )
-            .values(read_status=True)
+            .values(read_status=True, read_at=read_at)
         )
-        await self.db.execute(stmt)
+        result = await self.db.execute(stmt)
+        affected = int(getattr(result, "rowcount", 0) or 0)
+        if affected < 0:
+            affected = 0
+        return read_at, affected
 
     async def delete_messages(self, message_ids: list[uuid.UUID]) -> int:
         """

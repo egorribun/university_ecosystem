@@ -402,17 +402,54 @@ class TestSendMessageSuccess:
 class TestMarkRead:
     @pytest.mark.asyncio
     async def test_mark_read_success(self):
+        # Wave 203 SW4 — mark_messages_read returns (read_at, affected); when
+        # affected > 0 a chat-level read receipt is broadcast to the other
+        # participant after commit.
+        uow = _mock_uow()
+        user = _mock_user()
+        chat = _mock_chat(user.id)
+        read_at = datetime.now(UTC)
+        uow.chats.get_by_id = AsyncMock(return_value=chat)
+        uow.chats.mark_messages_read = AsyncMock(return_value=(read_at, 2))
+
+        svc = ChatMaintenanceService(uow, _mock_attachment_service())
+        with patch(
+            "app.services.chat.command_service.ws_manager.broadcast_to_chat",
+            new=AsyncMock(),
+        ) as broadcast:
+            await svc.mark_read(chat.id, user, "en")
+
+        uow.chats.mark_messages_read.assert_called_once_with(chat.id, user.id)
+        uow.commit.assert_called_once()
+        broadcast.assert_awaited_once()
+        call = broadcast.await_args
+        assert call.args[0] == chat.id
+        frame = call.args[1]
+        assert frame["type"] == "read"
+        assert frame["chat_id"] == str(chat.id)
+        assert frame["user_id"] == str(user.id)
+        assert frame["read_at"] == read_at.isoformat()
+        assert call.kwargs["exclude_user_id"] == user.id
+
+    @pytest.mark.asyncio
+    async def test_mark_read_no_unread_skips_broadcast(self):
+        # affected == 0 (nothing new to mark) → no broadcast, no "Seen" churn.
         uow = _mock_uow()
         user = _mock_user()
         chat = _mock_chat(user.id)
         uow.chats.get_by_id = AsyncMock(return_value=chat)
-        uow.chats.mark_messages_read = AsyncMock()
+        uow.chats.mark_messages_read = AsyncMock(return_value=(datetime.now(UTC), 0))
 
         svc = ChatMaintenanceService(uow, _mock_attachment_service())
-        await svc.mark_read(chat.id, user, "en")
+        with patch(
+            "app.services.chat.command_service.ws_manager.broadcast_to_chat",
+            new=AsyncMock(),
+        ) as broadcast:
+            await svc.mark_read(chat.id, user, "en")
 
         uow.chats.mark_messages_read.assert_called_once_with(chat.id, user.id)
         uow.commit.assert_called_once()
+        broadcast.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_mark_read_not_participant(self):
