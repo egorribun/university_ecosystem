@@ -339,6 +339,10 @@ def _serializable_message(read_at: datetime | None) -> SimpleNamespace:
         created_at=datetime(2026, 5, 30, 14, 32, tzinfo=UTC),
         read_status=read_at is not None,
         read_at=read_at,
+        # Wave 205 SW4 — serialize_message now reads edited_at/deleted_at; the
+        # stand-in must carry them (None) or .isoformat()-access AttributeErrors.
+        edited_at=None,
+        deleted_at=None,
         sender=None,
         attachments=[],
     )
