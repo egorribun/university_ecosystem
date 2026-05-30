@@ -54,6 +54,9 @@ def _mock_message(chat_id: uuid.UUID, sender_id: uuid.UUID):
     msg.content = "Test message"
     msg.created_at = datetime.now(UTC)
     msg.read_status = False
+    msg.read_at = (
+        None  # Wave 203 — explicit so MagicMock auto-attr doesn't break MessageResponse
+    )
     msg.sender = None
     msg.attachments = []
     return msg
@@ -299,3 +302,30 @@ class TestGetMessages:
         assert len(result.items) == 3
         assert result.has_more is True
         assert result.next_cursor == "cursor-abc"
+
+    @pytest.mark.asyncio
+    async def test_get_messages_surfaces_read_at(self):
+        # Wave 203 SW8 regression — get_messages constructs MessageResponse
+        # field-by-field and originally OMITTED read_at, so it defaulted to None
+        # even when the DB row had a timestamp (the seen-marker never showed on
+        # refetch). This asserts read_at now flows through.
+        user = _mock_user()
+        chat = _mock_chat(user.id)
+        msg = _mock_message(chat.id, user.id)
+        read_at = datetime(2026, 5, 30, 14, 32, tzinfo=UTC)
+        msg.read_status = True
+        msg.read_at = read_at
+
+        repo = MagicMock()
+        repo.get_by_id = AsyncMock(return_value=chat)
+        repo.get_messages = AsyncMock(return_value=([msg], False, None))
+
+        svc = ChatQueryService(AsyncMock(), repo)
+        with patch(
+            "app.services.chat.query_service.build_presence_map",
+            new_callable=AsyncMock,
+            return_value={},
+        ):
+            result = await svc.get_messages(chat.id, user, None, 20, "en")
+
+        assert result.items[0].read_at == read_at

@@ -107,6 +107,7 @@ class ChatQueryService:
                     content=l_msg.content,
                     created_at=l_msg.created_at,
                     read_status=l_msg.read_status,
+                    read_at=l_msg.read_at,  # Wave 203 SW8 fix — was dropped (defaulted None)
                     sender=l_msg.sender,
                     attachments=l_msg.attachments,
                     sender_presence=presence_map.get(l_msg.sender_id),
@@ -199,6 +200,7 @@ class ChatQueryService:
                 content=msg.content,
                 created_at=msg.created_at,
                 read_status=msg.read_status,
+                read_at=msg.read_at,  # Wave 203 SW8 fix — was dropped (defaulted None)
                 # LOW-W19: sender is intentionally omitted here.  The message
                 # list query uses a lightweight projection that does not eagerly
                 # load the full sender relationship in order to avoid N+1 queries.
