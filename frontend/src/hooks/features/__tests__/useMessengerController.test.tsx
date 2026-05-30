@@ -33,6 +33,9 @@ const mocks = vi.hoisted(() => ({
     createChat: vi.fn(),
     clearChat: vi.fn(),
     deleteChat: vi.fn(),
+    // Wave 205 SW6 — author-only edit / soft-delete
+    editMessage: vi.fn(),
+    deleteMessage: vi.fn(),
   },
   navigate: vi.fn(),
   paramsRef: { current: {} as { chatId?: string } },
@@ -145,6 +148,8 @@ beforeEach(() => {
     attachments: [],
   })
   mocks.chatApi.markRead.mockResolvedValue({ success: true })
+  mocks.chatApi.editMessage.mockResolvedValue({ status: "ok" })
+  mocks.chatApi.deleteMessage.mockResolvedValue({ status: "ok" })
   mocks.apiClient.get.mockResolvedValue({ data: mocks.testUser })
 })
 
@@ -469,6 +474,187 @@ describe("useMessengerController", () => {
       })
 
       expect(result.current.confirmDialog).toBeNull()
+    })
+  })
+
+  // Wave 205 SW6 — inline edit + soft-delete (optimistic mutations). The
+  // optimistic onMutate writes to the ["messages", chatId] cache which the
+  // controller's messages query observes, so result.current.messages reflects
+  // the optimistic value (and the rollback) without any refetch — exactly the
+  // behaviour these tests assert. retry: 2 on the cache-assert describe blocks
+  // matches the W183 Blob-lifecycle pattern (Windows parallel-IPC flake).
+  describe("Wave 205 SW6 — inline edit state machine", () => {
+    const seedSelectedChat = () => {
+      mocks.paramsRef.current = { chatId: "chat-1" }
+      mocks.chatApi.getChats.mockResolvedValue({
+        items: [
+          {
+            id: "chat-1",
+            participants: [{ id: "current-user-id" }, { id: "peer" }],
+            unread_count: 0,
+          },
+        ],
+        has_more: false,
+        next_cursor: null,
+      })
+    }
+
+    it("handleEditMessage seeds editingMessageId + editingMessageContent", () => {
+      const { result } = renderHook(() => useMessengerController(), { wrapper })
+      act(() => result.current.handleEditMessage("msg-1", "hello"))
+      expect(result.current.editingMessageId).toBe("msg-1")
+      expect(result.current.editingMessageContent).toBe("hello")
+    })
+
+    it("handleCancelEdit clears the editor state", () => {
+      const { result } = renderHook(() => useMessengerController(), { wrapper })
+      act(() => result.current.handleEditMessage("msg-1", "hello"))
+      act(() => result.current.handleCancelEdit())
+      expect(result.current.editingMessageId).toBeNull()
+      expect(result.current.editingMessageContent).toBe("")
+    })
+
+    it("handleSaveEdit closes the editor + skips the mutation on whitespace-only content", async () => {
+      seedSelectedChat()
+      const { result } = renderHook(() => useMessengerController(), { wrapper })
+      await waitFor(() => expect(result.current.selectedChatId).toBe("chat-1"))
+
+      act(() => result.current.handleEditMessage("msg-1", "x"))
+      act(() => result.current.setEditingMessageContent("   "))
+      act(() => result.current.handleSaveEdit("msg-1"))
+
+      expect(result.current.editingMessageId).toBeNull()
+      expect(mocks.chatApi.editMessage).not.toHaveBeenCalled()
+    })
+  })
+
+  describe("Wave 205 SW6 — optimistic edit/delete mutations", { retry: 2 }, () => {
+    const seedChatWithMessage = () => {
+      mocks.paramsRef.current = { chatId: "chat-1" }
+      mocks.chatApi.getChats.mockResolvedValue({
+        items: [
+          {
+            id: "chat-1",
+            participants: [{ id: "current-user-id" }, { id: "peer" }],
+            unread_count: 0,
+          },
+        ],
+        has_more: false,
+        next_cursor: null,
+      })
+      mocks.chatApi.getMessages.mockResolvedValue({
+        items: [
+          {
+            id: "msg-1",
+            chat_id: "chat-1",
+            sender_id: "current-user-id",
+            content: "original",
+            created_at: new Date().toISOString(),
+            read_status: false,
+          },
+        ],
+        has_more: false,
+        next_cursor: null,
+      })
+    }
+
+    it("optimistically updates content + editedAt on save (success)", async () => {
+      seedChatWithMessage()
+      const { result } = renderHook(() => useMessengerController(), { wrapper })
+      await waitFor(() =>
+        expect(result.current.messages.find((m) => m.id === "msg-1")?.text).toBe("original")
+      )
+
+      act(() => result.current.handleEditMessage("msg-1", "original"))
+      act(() => result.current.setEditingMessageContent("edited!"))
+      await act(async () => {
+        result.current.handleSaveEdit("msg-1")
+      })
+
+      await waitFor(() => {
+        const m = result.current.messages.find((msg) => msg.id === "msg-1")
+        expect(m?.text).toBe("edited!")
+        expect(m?.editedAt).toBeTruthy()
+      })
+      expect(mocks.chatApi.editMessage).toHaveBeenCalledWith("chat-1", "msg-1", "edited!")
+    })
+
+    it("rolls back content on edit mutation error", async () => {
+      seedChatWithMessage()
+      mocks.chatApi.editMessage.mockRejectedValue(new Error("network fail"))
+      const { result } = renderHook(() => useMessengerController(), { wrapper })
+      await waitFor(() =>
+        expect(result.current.messages.find((m) => m.id === "msg-1")?.text).toBe("original")
+      )
+
+      act(() => result.current.handleEditMessage("msg-1", "original"))
+      act(() => result.current.setEditingMessageContent("edited!"))
+      await act(async () => {
+        result.current.handleSaveEdit("msg-1")
+      })
+
+      await waitFor(() => {
+        const m = result.current.messages.find((msg) => msg.id === "msg-1")
+        expect(m?.text).toBe("original")
+        expect(m?.editedAt).toBeFalsy()
+      })
+    })
+
+    it("handleDeleteMessage opens a danger confirm dialog with the W205 i18n keys", async () => {
+      seedChatWithMessage()
+      const { result } = renderHook(() => useMessengerController(), { wrapper })
+      await waitFor(() => expect(result.current.selectedChatId).toBe("chat-1"))
+
+      act(() => result.current.handleDeleteMessage("msg-1"))
+
+      expect(result.current.confirmDialog).toEqual(
+        expect.objectContaining({
+          open: true,
+          variant: "danger",
+          title: "messenger:deleteMessageTitle",
+          message: "messenger:confirmDeleteMessage",
+        })
+      )
+    })
+
+    it("optimistically tombstones the message (deletedAt set + content cleared) on confirm (success)", async () => {
+      seedChatWithMessage()
+      const { result } = renderHook(() => useMessengerController(), { wrapper })
+      await waitFor(() =>
+        expect(result.current.messages.find((m) => m.id === "msg-1")?.text).toBe("original")
+      )
+
+      act(() => result.current.handleDeleteMessage("msg-1"))
+      await act(async () => {
+        result.current.confirmDialog?.onConfirm()
+      })
+
+      await waitFor(() => {
+        const m = result.current.messages.find((msg) => msg.id === "msg-1")
+        expect(m?.deletedAt).toBeTruthy()
+        expect(m?.text).toBe("")
+      })
+      expect(mocks.chatApi.deleteMessage).toHaveBeenCalledWith("chat-1", "msg-1")
+    })
+
+    it("rolls back the tombstone on delete mutation error", async () => {
+      seedChatWithMessage()
+      mocks.chatApi.deleteMessage.mockRejectedValue(new Error("fail"))
+      const { result } = renderHook(() => useMessengerController(), { wrapper })
+      await waitFor(() =>
+        expect(result.current.messages.find((m) => m.id === "msg-1")?.text).toBe("original")
+      )
+
+      act(() => result.current.handleDeleteMessage("msg-1"))
+      await act(async () => {
+        result.current.confirmDialog?.onConfirm()
+      })
+
+      await waitFor(() => {
+        const m = result.current.messages.find((msg) => msg.id === "msg-1")
+        expect(m?.deletedAt).toBeFalsy()
+        expect(m?.text).toBe("original")
+      })
     })
   })
 })

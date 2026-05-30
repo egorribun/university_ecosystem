@@ -363,3 +363,153 @@ describe("ChatWindow — W203 read-receipt seen marker", () => {
     expect(screen.getByRole("img", { name: "messenger:aria.messageRead" })).toBeTruthy()
   })
 })
+
+describe("ChatWindow — W205 SW6 edit/delete affordance + tombstone + inline editor", () => {
+  const makeOwn = (overrides: Partial<Message> = {}): Message =>
+    makeMessage({ id: "m1", text: "my message", isMe: true, ...overrides })
+
+  it("renders the edit + delete affordance on an own, non-deleted message", () => {
+    render(<ChatWindow messages={[makeOwn()]} />, { wrapper })
+    expect(screen.getByRole("button", { name: "messenger:editMessage" })).toBeTruthy()
+    expect(screen.getByRole("button", { name: "messenger:deleteMessage" })).toBeTruthy()
+  })
+
+  it("does NOT render the affordance on a received message", () => {
+    render(<ChatWindow messages={[makeMessage({ id: "r1", text: "theirs", isMe: false })]} />, {
+      wrapper,
+    })
+    expect(screen.queryByRole("button", { name: "messenger:editMessage" })).toBeFalsy()
+    expect(screen.queryByRole("button", { name: "messenger:deleteMessage" })).toBeFalsy()
+  })
+
+  it("the edit button fires onEditMessage(id, text)", () => {
+    const onEditMessage = vi.fn()
+    render(
+      <ChatWindow
+        messages={[makeOwn({ id: "m9", text: "edit me" })]}
+        onEditMessage={onEditMessage}
+      />,
+      { wrapper }
+    )
+    fireEvent.click(screen.getByRole("button", { name: "messenger:editMessage" }))
+    expect(onEditMessage).toHaveBeenCalledWith("m9", "edit me")
+  })
+
+  it("the delete button fires onDeleteMessage(id)", () => {
+    const onDeleteMessage = vi.fn()
+    render(<ChatWindow messages={[makeOwn({ id: "m9" })]} onDeleteMessage={onDeleteMessage} />, {
+      wrapper,
+    })
+    fireEvent.click(screen.getByRole("button", { name: "messenger:deleteMessage" }))
+    expect(onDeleteMessage).toHaveBeenCalledWith("m9")
+  })
+
+  it("renders the '(edited)' label when editedAt is set and the message is not deleted", () => {
+    render(
+      <ChatWindow
+        messages={[makeOwn({ editedAt: "2026-05-30T15:00:00+00:00", editedAtLabel: "15:00" })]}
+      />,
+      { wrapper }
+    )
+    expect(screen.getByText("messenger:edited")).toBeTruthy()
+  })
+
+  it("does NOT render the '(edited)' label when editedAt is absent", () => {
+    render(<ChatWindow messages={[makeOwn()]} />, { wrapper })
+    expect(screen.queryByText("messenger:edited")).toBeFalsy()
+  })
+
+  it("renders the deleted tombstone (messageDeleted) and drops content + affordance", () => {
+    render(
+      <ChatWindow
+        messages={[makeOwn({ text: "secret", deletedAt: "2026-05-30T15:01:00+00:00" })]}
+      />,
+      { wrapper }
+    )
+    expect(screen.getByText("messenger:messageDeleted")).toBeTruthy()
+    expect(screen.queryByText("secret")).toBeFalsy()
+    expect(screen.queryByRole("button", { name: "messenger:editMessage" })).toBeFalsy()
+    expect(screen.queryByRole("button", { name: "messenger:deleteMessage" })).toBeFalsy()
+  })
+
+  it("suppresses the 'Seen' marker AND the '(edited)' label on a deleted message", () => {
+    render(
+      <ChatWindow
+        messages={[
+          makeOwn({
+            deletedAt: "2026-05-30T15:01:00+00:00",
+            editedAt: "2026-05-30T15:00:00+00:00",
+            editedAtLabel: "15:00",
+            status: "read",
+            readAtLabel: "15:02",
+            isLastRead: true,
+          }),
+        ]}
+      />,
+      { wrapper }
+    )
+    expect(screen.queryByText(/^messenger:seen/)).toBeFalsy()
+    expect(screen.queryByText("messenger:edited")).toBeFalsy()
+  })
+
+  it("renders the inline editor (textarea seeded + Save/Cancel) when editingMessageId matches", () => {
+    render(
+      <ChatWindow
+        messages={[makeOwn({ id: "edit-1", text: "original" })]}
+        editingMessageId="edit-1"
+        editingMessageContent="draft text"
+      />,
+      { wrapper }
+    )
+    const textarea = screen.getByRole("textbox") as HTMLTextAreaElement
+    expect(textarea.value).toBe("draft text")
+    expect(screen.getByRole("button", { name: "common:buttons.save" })).toBeTruthy()
+    expect(screen.getByRole("button", { name: "common:buttons.cancel" })).toBeTruthy()
+    // the normal bubble content is replaced by the editor while editing
+    expect(screen.queryByText("original")).toBeFalsy()
+  })
+
+  it("Save fires onSaveEdit(id), Cancel fires onCancelEdit, typing fires onEditingContentChange", () => {
+    const onSaveEdit = vi.fn()
+    const onCancelEdit = vi.fn()
+    const onEditingContentChange = vi.fn()
+    render(
+      <ChatWindow
+        messages={[makeOwn({ id: "edit-2", text: "x" })]}
+        editingMessageId="edit-2"
+        editingMessageContent="hello"
+        onSaveEdit={onSaveEdit}
+        onCancelEdit={onCancelEdit}
+        onEditingContentChange={onEditingContentChange}
+      />,
+      { wrapper }
+    )
+    const textarea = screen.getByRole("textbox")
+    fireEvent.change(textarea, { target: { value: "hello!" } })
+    expect(onEditingContentChange).toHaveBeenCalledWith("hello!")
+    fireEvent.click(screen.getByRole("button", { name: "common:buttons.save" }))
+    expect(onSaveEdit).toHaveBeenCalledWith("edit-2")
+    fireEvent.click(screen.getByRole("button", { name: "common:buttons.cancel" }))
+    expect(onCancelEdit).toHaveBeenCalledTimes(1)
+  })
+
+  it("Enter (no shift) in the editor saves; Escape cancels", () => {
+    const onSaveEdit = vi.fn()
+    const onCancelEdit = vi.fn()
+    render(
+      <ChatWindow
+        messages={[makeOwn({ id: "edit-3" })]}
+        editingMessageId="edit-3"
+        editingMessageContent="z"
+        onSaveEdit={onSaveEdit}
+        onCancelEdit={onCancelEdit}
+      />,
+      { wrapper }
+    )
+    const textarea = screen.getByRole("textbox")
+    fireEvent.keyDown(textarea, { key: "Enter", shiftKey: false })
+    expect(onSaveEdit).toHaveBeenCalledWith("edit-3")
+    fireEvent.keyDown(textarea, { key: "Escape" })
+    expect(onCancelEdit).toHaveBeenCalledTimes(1)
+  })
+})
