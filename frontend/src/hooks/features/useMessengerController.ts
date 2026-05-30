@@ -37,7 +37,7 @@ export const useMessengerController = () => {
   const { chatId } = useParams({ strict: false })
   const navigate = useNavigate()
   const queryClient = useQueryClient()
-  const { presenceMap } = useMessenger()
+  const { presenceMap, sendJoin, sendLeave, isConnected } = useMessenger()
 
   // UI State
   const [selectedChatId, setSelectedChatId] = useState<string | null>(null)
@@ -400,6 +400,21 @@ export const useMessengerController = () => {
     document.addEventListener("visibilitychange", onVisible)
     return () => document.removeEventListener("visibilitychange", onVisible)
   }, [selectedChatId, markAsRead])
+
+  // Wave 204 SW6 — join the ws-hub room for the open chat so the browser
+  // receives live chat.{chatId} fan-out (new_message + read frames the backend
+  // bridges in W204 SW2). Without joining, ws-hub's collectRecipients returns
+  // nil for the empty room and nothing is delivered. Re-runs on selectedChatId
+  // change (cleanup leaves the previous room, then joins the new one) AND on
+  // isConnected flipping true (rejoin after a (re)connect — complements the
+  // hook's ws.onopen rejoin; both idempotent server-side). This completes the
+  // live flip: end of W204 SW6 = new_message + read receipts flip without a
+  // refetch. Independent of the W203 SW7/SW8 markRead effects above.
+  useEffect(() => {
+    if (!selectedChatId || !isConnected) return
+    sendJoin(selectedChatId)
+    return () => sendLeave(selectedChatId)
+  }, [selectedChatId, isConnected, sendJoin, sendLeave])
 
   const handleSendMessage = (text: string, files: File[]) => {
     if (!selectedChatId) return
