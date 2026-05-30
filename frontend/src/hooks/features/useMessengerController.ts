@@ -331,11 +331,22 @@ export const useMessengerController = () => {
 
   // --- Handlers ---
 
+  // Wave 203 SW8 — depend on the STABLE `.mutate`, not the whole mutation
+  // object. React Query v5 returns a new result object on every status
+  // transition (idle→pending→success), so `[markReadMutation]` makes this
+  // callback unstable. The open-effect below fires markAsRead unconditionally
+  // and lists it as a dependency → an unstable markAsRead is an infinite
+  // re-fire loop (mutate → status change → new object → new callback → effect
+  // re-fires → mutate…), which only the rate-limiter (429) capped. `.mutate`
+  // is referentially stable for the mutation's lifetime; React Compiler
+  // re-derives memoization from this captured value, so the compiled callback
+  // stays stable too.
+  const markReadMutate = markReadMutation.mutate
   const markAsRead = useCallback(
     (chatId: string) => {
-      markReadMutation.mutate(chatId)
+      markReadMutate(chatId)
     },
-    [markReadMutation]
+    [markReadMutate]
   )
 
   useEffect(() => {
