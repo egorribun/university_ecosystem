@@ -367,6 +367,8 @@ class ChatMessageDispatcher:
                 content=message.content,
                 created_at=message.created_at,
                 read_status=message.read_status,
+                edited_at=message.edited_at,  # Wave 205 SW4 — W203 SW8 gotcha
+                deleted_at=message.deleted_at,  # Wave 205 SW4 — W203 SW8 gotcha
                 sender=message.sender,
                 attachments=cast("list[AttachmentResponse]", message.attachments),
                 sender_presence=PresenceStatus(

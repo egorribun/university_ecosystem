@@ -37,6 +37,8 @@ class MessageDTO(SecureBaseModel):
     created_at: datetime
     read_status: bool = False
     read_at: datetime | None = None  # Wave 203 SW3 — read-receipt timestamp
+    edited_at: datetime | None = None  # Wave 205 SW4
+    deleted_at: datetime | None = None  # Wave 205 SW4
     sender: ChatParticipantDTO | None = None
     attachments: list[AttachmentDTO] = Field(
         default_factory=list, json_schema_extra={"default": []}

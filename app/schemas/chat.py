@@ -54,6 +54,8 @@ class MessageResponse(MessageBase):
     created_at: datetime
     read_status: bool
     read_at: datetime | None = None  # Wave 203 SW3 — read-receipt timestamp
+    edited_at: datetime | None = None  # Wave 205 SW4 — edit timestamp
+    deleted_at: datetime | None = None  # Wave 205 SW4 — soft-delete tombstone
     sender: ChatParticipant | None = None
     sender_presence: PresenceStatus | None = None
     attachments: list[AttachmentResponse] = Field(

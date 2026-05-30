@@ -42,6 +42,10 @@ def serialize_message(
         # Wave 203 SW3 — read-receipt timestamp (ISO 8601 or None). Surfaces in
         # the new_message broadcast + the chat-level read broadcast (SW4).
         "read_at": message.read_at.isoformat() if message.read_at else None,
+        # Wave 205 SW4 — edit/soft-delete timestamps; a freshly-sent message carries
+        # them as None in the new_message broadcast frame.
+        "edited_at": message.edited_at.isoformat() if message.edited_at else None,
+        "deleted_at": message.deleted_at.isoformat() if message.deleted_at else None,
         "sender": sender_data,
         "sender_presence": sender_presence,
         "attachments": [

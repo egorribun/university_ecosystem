@@ -164,6 +164,47 @@ async def mark_read(
     return {"status": "ok"}
 
 
+@router.patch(
+    "/{chat_id}/messages/{message_id}",
+    dependencies=[Depends(sensitive_route_limit())],
+)
+async def edit_message(
+    chat_id: uuid.UUID,
+    message_id: uuid.UUID,
+    current_user: Annotated[User, Depends(get_current_user)],
+    maintenance: Annotated[
+        ChatMaintenanceService, Depends(get_chat_maintenance_service)
+    ],
+    locale: Annotated[str, Depends(get_locale)],
+    content: str = Form(..., min_length=1, max_length=32768),
+) -> dict[str, str]:
+    """Edit a message's content (author-only).  W174 auto-cookie covers PATCH CSRF."""
+    await maintenance.edit_message(
+        chat_id, message_id, current_user, content, locale=locale
+    )
+    return {"status": "ok"}
+
+
+@router.delete(
+    "/{chat_id}/messages/{message_id}",
+    dependencies=[Depends(sensitive_route_limit())],
+)
+async def delete_message(
+    chat_id: uuid.UUID,
+    message_id: uuid.UUID,
+    current_user: Annotated[User, Depends(get_current_user)],
+    maintenance: Annotated[
+        ChatMaintenanceService, Depends(get_chat_maintenance_service)
+    ],
+    locale: Annotated[str, Depends(get_locale)],
+) -> dict[str, str]:
+    """Soft-delete a message (author-only).  W174 auto-cookie covers DELETE CSRF."""
+    await maintenance.soft_delete_message(
+        chat_id, message_id, current_user, locale=locale
+    )
+    return {"status": "ok"}
+
+
 @router.post(
     "/{chat_id}/clear",
     response_model=ChatMaintenanceResult,
