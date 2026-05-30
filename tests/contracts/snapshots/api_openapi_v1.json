@@ -413,6 +413,21 @@
         "title": "Body_comment_on_news_api_v1_news__id__comment_post",
         "type": "object"
       },
+      "Body_edit_message_api_v1_chats__chat_id__messages__message_id__patch": {
+        "properties": {
+          "content": {
+            "maxLength": 32768,
+            "minLength": 1,
+            "title": "Content",
+            "type": "string"
+          }
+        },
+        "required": [
+          "content"
+        ],
+        "title": "Body_edit_message_api_v1_chats__chat_id__messages__message_id__patch",
+        "type": "object"
+      },
       "Body_login_api_v1_auth_login_post": {
         "properties": {
           "client_id": {
@@ -1829,7 +1844,6 @@
           },
           "content": {
             "maxLength": 2000,
-            "minLength": 1,
             "title": "Content",
             "type": "string"
           },
@@ -1838,10 +1852,46 @@
             "title": "Created At",
             "type": "string"
           },
+          "deleted_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deleted At"
+          },
+          "edited_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Edited At"
+          },
           "id": {
             "format": "uuid",
             "title": "Id",
             "type": "string"
+          },
+          "read_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Read At"
           },
           "read_status": {
             "title": "Read Status",
@@ -7535,6 +7585,140 @@
           }
         ],
         "summary": "Send Message",
+        "tags": [
+          "chats"
+        ]
+      }
+    },
+    "/api/v1/chats/{chat_id}/messages/{message_id}": {
+      "delete": {
+        "description": "Soft-delete a message (author-only).  W174 auto-cookie covers DELETE CSRF.",
+        "operationId": "delete_message_api_v1_chats__chat_id__messages__message_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "chat_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Chat Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "message_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Message Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "title": "Response Delete Message Api V1 Chats  Chat Id  Messages  Message Id  Delete",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Delete Message",
+        "tags": [
+          "chats"
+        ]
+      },
+      "patch": {
+        "description": "Edit a message's content (author-only).  W174 auto-cookie covers PATCH CSRF.",
+        "operationId": "edit_message_api_v1_chats__chat_id__messages__message_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "chat_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Chat Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "message_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Message Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_edit_message_api_v1_chats__chat_id__messages__message_id__patch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "title": "Response Edit Message Api V1 Chats  Chat Id  Messages  Message Id  Patch",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Edit Message",
         "tags": [
           "chats"
         ]

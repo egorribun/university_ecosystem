@@ -52,9 +52,11 @@ class MessageResponse(MessageBase):
     # message (D1 tombstone) carries content="" in the RESPONSE, so the strict
     # create-time min_length must not apply on the way out, or GET /messages 500s
     # (pydantic string_too_short) the moment a chat contains a deleted message.
-    # Input validation stays strict: MessageCreate keeps min_length=1, and the
-    # POST/PATCH routes parse `content` via Form(..., min_length=1).
-    content: str = Field("", max_length=2000)
+    # `Field(...)` keeps content REQUIRED (the producer always sends it) — only the
+    # min_length floor is dropped. Input validation stays strict: MessageCreate
+    # keeps min_length=1, and the POST/PATCH routes parse content via
+    # Form(..., min_length=1).
+    content: str = Field(..., max_length=2000)
     id: UUID
     chat_id: UUID
     sender_id: UUID
