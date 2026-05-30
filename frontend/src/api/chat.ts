@@ -22,6 +22,8 @@ export interface Message {
   created_at: string
   read_status: boolean
   read_at?: string | null // Wave 203 — ISO read-receipt timestamp (null until read)
+  edited_at?: string | null // Wave 205 — ISO edit timestamp (null until edited)
+  deleted_at?: string | null // Wave 205 — ISO soft-delete timestamp (null = not deleted)
   sender?: User
   sender_presence?: PresenceStatus
   attachments?: Attachment[]
@@ -104,6 +106,22 @@ export const chatApi = {
 
   markRead: async (chatId: string) => {
     const response = await client.post(`/chats/${chatId}/read`)
+    return response.data
+  },
+
+  // Wave 205 — author-only edit / soft-delete. Edit sends FormData (the backend
+  // PATCH parses `content` as a Form field, matching sendMessage). Both flip live
+  // for the other participant via the W204 bridge; the author sees the optimistic
+  // mutation. 404 if not the author / message missing / already deleted.
+  editMessage: async (chatId: string, messageId: string, content: string) => {
+    const formData = new FormData()
+    formData.append("content", content)
+    const response = await client.patch(`/chats/${chatId}/messages/${messageId}`, formData)
+    return response.data
+  },
+
+  deleteMessage: async (chatId: string, messageId: string) => {
+    const response = await client.delete(`/chats/${chatId}/messages/${messageId}`)
     return response.data
   },
 

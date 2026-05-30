@@ -93,6 +93,25 @@ const PresenceSchema = v.object({
   last_seen: v.nullable(v.string()),
 })
 
+// Wave 205 — REST-initiated server→client broadcasts (the author edited / soft-deleted
+// a message). The frame field is `message_id` (NOT `id`); the cache-update matches on
+// it. No self-echo guard needed: the author already updated optimistically and the
+// cache-update is idempotent (the echo just reconciles to the server value).
+const MessageEditedSchema = v.object({
+  type: v.literal("message_edited"),
+  chat_id: UuidString,
+  message_id: UuidString,
+  content: v.pipe(v.string(), v.maxLength(32_768)),
+  edited_at: NonEmptyString,
+})
+
+const MessageDeletedSchema = v.object({
+  type: v.literal("message_deleted"),
+  chat_id: UuidString,
+  message_id: UuidString,
+  deleted_at: NonEmptyString,
+})
+
 // ── Discriminated union of all valid server→client frames ─────────────────────
 
 export const WsServerMessageSchema = v.variant("type", [
@@ -104,6 +123,8 @@ export const WsServerMessageSchema = v.variant("type", [
   ReadSchema,
   OnlineSchema,
   PresenceSchema,
+  MessageEditedSchema,
+  MessageDeletedSchema,
 ])
 
 export type WsServerMessage = v.InferOutput<typeof WsServerMessageSchema>

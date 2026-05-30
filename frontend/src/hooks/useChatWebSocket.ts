@@ -74,6 +74,45 @@ export function applyReadFrame(
   }
 }
 
+/**
+ * Wave 205 — pure cache update for a `message_edited` frame. Replaces content +
+ * edited_at for the matching message in the open chat. Idempotent: re-applying the
+ * same frame is a no-op, so the author's own NATS echo (arriving after the optimistic
+ * mutation) just reconciles its client-time edited_at to the authoritative server value.
+ */
+export function applyMessageEditedFrame(
+  old: MessagesListResponse | undefined,
+  frame: { message_id: string; content: string; edited_at: string }
+): MessagesListResponse | undefined {
+  if (!old) return old
+  return {
+    ...old,
+    items: old.items.map((m) =>
+      m.id === frame.message_id ? { ...m, content: frame.content, edited_at: frame.edited_at } : m
+    ),
+  }
+}
+
+/**
+ * Wave 205 — pure cache update for a `message_deleted` frame. Soft-deletes the
+ * matching message: stamps deleted_at + clears content/attachments (the tombstone the
+ * UI renders as "Message deleted"). Idempotent.
+ */
+export function applyMessageDeletedFrame(
+  old: MessagesListResponse | undefined,
+  frame: { message_id: string; deleted_at: string }
+): MessagesListResponse | undefined {
+  if (!old) return old
+  return {
+    ...old,
+    items: old.items.map((m) =>
+      m.id === frame.message_id
+        ? { ...m, deleted_at: frame.deleted_at, content: "", attachments: [] }
+        : m
+    ),
+  }
+}
+
 // WebSocket message types
 export type WebSocketMessageType =
   | "ping"
@@ -84,6 +123,8 @@ export type WebSocketMessageType =
   | "online"
   | "presence"
   | "error"
+  | "message_edited"
+  | "message_deleted"
 
 export interface WebSocketMessage {
   type: WebSocketMessageType
@@ -459,6 +500,35 @@ export function useChatWebSocket({
                   refetchType: "none",
                 })
                 onReadRef.current?.(validated.chat_id, validated.user_id, validated.read_at)
+                break
+              }
+
+              case "message_edited": {
+                // Wave 205 — no self-echo guard: the frame is REST-initiated (carries
+                // no actor) and applyMessageEditedFrame is idempotent, so the author's
+                // own echo merely reconciles its optimistic client-time edited_at to the
+                // authoritative server value. The OTHER participant sees the edit live.
+                queryClient.setQueryData<MessagesListResponse>(
+                  ["messages", validated.chat_id],
+                  (old) => applyMessageEditedFrame(old, validated)
+                )
+                queryClient.invalidateQueries({
+                  queryKey: ["messages", validated.chat_id],
+                  refetchType: "none",
+                })
+                break
+              }
+
+              case "message_deleted": {
+                // Wave 205 — soft-delete tombstone live; idempotent, no self-echo guard.
+                queryClient.setQueryData<MessagesListResponse>(
+                  ["messages", validated.chat_id],
+                  (old) => applyMessageDeletedFrame(old, validated)
+                )
+                queryClient.invalidateQueries({
+                  queryKey: ["messages", validated.chat_id],
+                  refetchType: "none",
+                })
                 break
               }
 

@@ -176,3 +176,82 @@ describe("parseWsMessage — Wave 204 SW3 ws-hub envelope unwrap + control frame
     expect(parseWsMessage("{not json")).toBeNull()
   })
 })
+
+describe("parseWsMessage — message_edited / message_deleted (Wave 205)", () => {
+  const EDITED_AT = "2026-05-30T15:00:00+00:00"
+  const DELETED_AT = "2026-05-30T15:01:00+00:00"
+
+  it("accepts a message_edited frame (message_id, content, edited_at)", () => {
+    const frame = parseWsMessage(
+      JSON.stringify({
+        type: "message_edited",
+        chat_id: CHAT_ID,
+        message_id: MSG_ID,
+        content: "edited text",
+        edited_at: EDITED_AT,
+      })
+    )
+    expect(frame).not.toBeNull()
+    if (frame?.type === "message_edited") {
+      expect(frame.message_id).toBe(MSG_ID)
+      expect(frame.content).toBe("edited text")
+      expect(frame.edited_at).toBe(EDITED_AT)
+    }
+  })
+
+  it("rejects a message_edited frame missing content", () => {
+    const frame = parseWsMessage(
+      JSON.stringify({
+        type: "message_edited",
+        chat_id: CHAT_ID,
+        message_id: MSG_ID,
+        edited_at: EDITED_AT,
+      })
+    )
+    expect(frame).toBeNull()
+  })
+
+  it("accepts a message_deleted frame (message_id, deleted_at)", () => {
+    const frame = parseWsMessage(
+      JSON.stringify({
+        type: "message_deleted",
+        chat_id: CHAT_ID,
+        message_id: MSG_ID,
+        deleted_at: DELETED_AT,
+      })
+    )
+    expect(frame).not.toBeNull()
+    if (frame?.type === "message_deleted") {
+      expect(frame.message_id).toBe(MSG_ID)
+      expect(frame.deleted_at).toBe(DELETED_AT)
+    }
+  })
+
+  it("rejects a message_deleted frame missing deleted_at", () => {
+    const frame = parseWsMessage(
+      JSON.stringify({ type: "message_deleted", chat_id: CHAT_ID, message_id: MSG_ID })
+    )
+    expect(frame).toBeNull()
+  })
+
+  it("unwraps an enveloped message_edited frame (W204 envelope)", () => {
+    const frame = parseWsMessage(
+      JSON.stringify({
+        type: "message_edited",
+        room: CHAT_ID,
+        payload: {
+          type: "message_edited",
+          chat_id: CHAT_ID,
+          message_id: MSG_ID,
+          content: "via envelope",
+          edited_at: EDITED_AT,
+        },
+      })
+    )
+    expect(frame).not.toBeNull()
+    if (frame?.type === "message_edited") {
+      expect(frame.message_id).toBe(MSG_ID)
+      expect(frame.content).toBe("via envelope")
+    }
+  })
+})

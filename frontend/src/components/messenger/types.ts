@@ -31,5 +31,11 @@ export interface Message {
   readAt?: string | null
   readAtLabel?: string
   isLastRead?: boolean
+  // Wave 205 — edit + soft-delete. editedAtLabel is the pre-formatted "(edited)"
+  // time tooltip; deletedAt set => render the "Message deleted" tombstone (drops
+  // the bubble content, attachments and the edit/delete affordance).
+  editedAt?: string | null
+  editedAtLabel?: string
+  deletedAt?: string | null
   attachments?: Attachment[]
 }
