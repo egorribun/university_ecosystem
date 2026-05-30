@@ -360,3 +360,73 @@ def test_serialize_message_read_at_none_when_unread() -> None:
     result = serialize_message(_serializable_message(None))
     assert "read_at" in result
     assert result["read_at"] is None
+
+
+# ── 5. handle_message_sent fetches the sender explicitly (Wave 205) ───────────
+
+
+@pytest.mark.asyncio
+async def test_handle_message_sent_fetches_sender_by_id_not_noload_relationship() -> (
+    None
+):
+    """Wave 205 regression: the outbox handler must load the sender via
+    db.get(User, sender_id), NOT pass message.sender (which is lazy="noload"
+    -> None after db.get(Message)). Passing message.sender crashed on sender.id
+    the first time this handler ran end-to-end — dormant for waves because the
+    outbox produced ZERO events until the SW-A capture-on-commit fix.
+    """
+    import app.services.event_handlers as eh
+    from app import models as app_models
+    from app.core.events import MessageSent
+
+    message_id = uuid.uuid4()
+    chat_id = uuid.uuid4()
+    sender_id = uuid.uuid4()
+
+    # db.get(Message) returns a message whose .sender is None (noload).
+    message = SimpleNamespace(
+        id=message_id, chat_id=chat_id, sender_id=sender_id, sender=None, content="hi"
+    )
+    fetched_sender = SimpleNamespace(id=sender_id, profile=None)
+
+    async def fake_get(model: object, _ident: object) -> object | None:
+        if model is app_models.Message:
+            return message
+        if model is app_models.User:
+            return fetched_sender
+        return None
+
+    db = MagicMock()
+    db.get = AsyncMock(side_effect=fake_get)
+    db.commit = AsyncMock()
+
+    session_cm = MagicMock()
+    session_cm.__aenter__ = AsyncMock(return_value=db)
+    session_cm.__aexit__ = AsyncMock(return_value=False)
+
+    repo = MagicMock()
+    repo.get_by_id = AsyncMock(
+        return_value=SimpleNamespace(participants=[fetched_sender])
+    )
+
+    service = MagicMock()
+    service.notify_new_message = AsyncMock()
+
+    event = MessageSent(message_id=message_id, chat_id=chat_id, sender_id=sender_id)
+
+    with (
+        patch("app.services.event_handlers.async_session", return_value=session_cm),
+        patch("app.repositories.chat_repository.ChatRepository", return_value=repo),
+        patch(
+            "app.services.chat.notification_service.ChatNotificationService",
+            return_value=service,
+        ),
+    ):
+        await eh.handle_message_sent(event)
+
+    service.notify_new_message.assert_awaited_once()
+    kwargs = service.notify_new_message.await_args.kwargs
+    # The fetched User — never the noload None relationship.
+    assert kwargs["sender"] is fetched_sender
+    assert kwargs["sender"] is not None
+    assert kwargs["message"] is message

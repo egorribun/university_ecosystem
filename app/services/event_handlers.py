@@ -156,10 +156,30 @@ async def handle_message_sent(event: MessageSent) -> None:
     async with async_session() as db:
         repo = ChatRepository(db)
 
-        # 1. Fetch message with sender (joined)
+        # 1. Fetch the message.
         message = await db.get(models.Message, event.message_id)
         if not message:
             logger.error("Message %s not found for notification", event.message_id)
+            return
+
+        # 1b. Fetch the sender EXPLICITLY. Message.sender is lazy="noload" (the
+        # N+1 guard — CLAUDE.md "ALL relationships must have explicit lazy=noload"),
+        # so db.get(Message) leaves message.sender == None. Passing message.sender
+        # straight to notify_new_message crashed on `sender.id` (AttributeError:
+        # 'NoneType' has no attribute 'id') the first time this handler ran
+        # end-to-end — the bug sat dormant for waves because the outbox produced
+        # ZERO events until the Wave 205 SW-A capture-on-commit fix restored the
+        # domain-event subsystem. Loading the User by sender_id makes new_message
+        # broadcasts actually fire (and notification_service's
+        # `(sender.profile and ...)` push-title guard already tolerates a
+        # noload profile == None).
+        sender = await db.get(models.User, message.sender_id)
+        if sender is None:
+            logger.error(
+                "Sender %s not found for message %s",
+                message.sender_id,
+                event.message_id,
+            )
             return
 
         # 2. Fetch chat with participants
@@ -178,7 +198,7 @@ async def handle_message_sent(event: MessageSent) -> None:
         await service.notify_new_message(
             message=message,
             chat_participants=chat.participants,
-            sender=message.sender,
+            sender=sender,
         )
         # Handle transaction for delivery.py updates
         await db.commit()
