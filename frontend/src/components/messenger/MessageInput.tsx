@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react"
+import { useEffect, useRef, useState, type ChangeEvent, type KeyboardEvent } from "react"
 import { m, AnimatePresence } from "framer-motion"
 import useMediaQuery from "@/hooks/useMediaQuery"
 import { useTranslation } from "react-i18next"
@@ -27,7 +27,33 @@ interface SelectedFile {
   previewUrl: string
 }
 
-export const MessageInput: React.FC<MessageInputProps> = ({ onSend }) => {
+// Wave 202 SW1 — hoisted from an inline render-time literal to a module-level
+// const so the array isn't reallocated each render (React Compiler memoizes the
+// component, but a stable module const is the codebase convention + removes the
+// per-render allocation). Labels stay i18n-driven via t(item.labelKey) at the
+// callsite; only the static {id, icon, labelKey, color} tuples are hoisted.
+const ATTACH_MENU_ITEMS = [
+  {
+    id: "photo",
+    icon: ImageIcon,
+    labelKey: "messenger:attachPhoto",
+    color: "text-(--primary-main) bg-(--primary-main)/(--opacity-subtle)",
+  },
+  {
+    id: "document",
+    icon: FileText,
+    labelKey: "messenger:attachDocument",
+    color: "text-(--success-text) bg-(--success-text)/(--opacity-subtle)",
+  },
+  {
+    id: "file",
+    icon: File,
+    labelKey: "messenger:attachFile",
+    color: "text-(--warning-text) bg-(--warning-text)/(--opacity-subtle)",
+  },
+] as const
+
+export function MessageInput({ onSend }: MessageInputProps) {
   const { t } = useTranslation(["messenger"])
   const [text, setText] = useState("")
   const [showAttachMenu, setShowAttachMenu] = useState(false)
@@ -80,7 +106,7 @@ export const MessageInput: React.FC<MessageInputProps> = ({ onSend }) => {
     }
   }
 
-  const handleKeyDown = (event: React.KeyboardEvent) => {
+  const handleKeyDown = (event: KeyboardEvent) => {
     if (event.key === "Enter" && !event.shiftKey) {
       event.preventDefault()
       handleSend()
@@ -105,7 +131,7 @@ export const MessageInput: React.FC<MessageInputProps> = ({ onSend }) => {
     }
   }
 
-  const handleFileSelect = async (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileSelect = async (event: ChangeEvent<HTMLInputElement>) => {
     const files = event.target.files
     if (files && files.length > 0) {
       const filteredFiles = await Promise.all(
@@ -243,28 +269,7 @@ export const MessageInput: React.FC<MessageInputProps> = ({ onSend }) => {
                 exit={{ opacity: 0, scale: 0.95, y: 10 }}
                 className="absolute bottom-full left-0 mb-4 py-2 min-w-(--min-w-column) bg-(--bg-surface)/(--opacity-heavy) backdrop-blur-2xl rounded-2xl border border-(--glass-border) shadow-premium overflow-hidden ring-1 ring-black/(--opacity-faint)"
               >
-                {(
-                  [
-                    {
-                      id: "photo",
-                      icon: ImageIcon,
-                      labelKey: "messenger:attachPhoto",
-                      color: "text-(--primary-main) bg-(--primary-main)/(--opacity-subtle)",
-                    },
-                    {
-                      id: "document",
-                      icon: FileText,
-                      labelKey: "messenger:attachDocument",
-                      color: "text-(--success-text) bg-(--success-text)/(--opacity-subtle)",
-                    },
-                    {
-                      id: "file",
-                      icon: File,
-                      labelKey: "messenger:attachFile",
-                      color: "text-(--warning-text) bg-(--warning-text)/(--opacity-subtle)",
-                    },
-                  ] as const
-                ).map((item) => (
+                {ATTACH_MENU_ITEMS.map((item) => (
                   <button
                     id={`chat-attach-type-${item.id}`}
                     key={item.id}

@@ -1,4 +1,4 @@
-import React, { useEffect, useId, useRef, useState } from "react"
+import { useEffect, useId, useRef, useState } from "react"
 import { m, AnimatePresence } from "framer-motion"
 import useMediaQuery from "@/hooks/useMediaQuery"
 import { useTranslation } from "react-i18next"
@@ -22,7 +22,7 @@ interface NewChatModalProps {
 const USERS_PAGE_LIMIT = 10
 const MIN_SEARCH_LENGTH = 1
 
-export const NewChatModal: React.FC<NewChatModalProps> = ({ open, onClose, onSelect }) => {
+export function NewChatModal({ open, onClose, onSelect }: NewChatModalProps) {
   const { t } = useTranslation(["messenger", "common"])
   const [search, setSearch] = useState("")
   const titleId = useId()

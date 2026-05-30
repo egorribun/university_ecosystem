@@ -1,4 +1,4 @@
-import React, { useRef, useEffect, useMemo } from "react"
+import { useRef, useEffect, useMemo } from "react"
 import { m } from "framer-motion" // Removed AnimatePresence, LayoutGroup as they are not used
 import useMediaQuery from "@/hooks/useMediaQuery"
 import {
@@ -69,14 +69,14 @@ interface ChatWindowProps {
 const SKELETON_BUBBLE_COUNT = 6
 
 // PERF-27-02: Removed React.memo() — React Compiler "infer" mode handles memoization
-export const ChatWindow: React.FC<ChatWindowProps> = ({
+export function ChatWindow({
   messages,
   searchQuery = "",
   onClearSearch,
   isLoading = false,
   isError = false,
   onRetry,
-}) => {
+}: ChatWindowProps) {
   const { t } = useTranslation()
   // Wave 181 SW3 — useReducedMotion guard. Without this, virtualized message
   // bubbles fade+scale in on every scroll-into-view event, which becomes
@@ -517,5 +517,3 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     </div>
   )
 }
-
-ChatWindow.displayName = "ChatWindow"

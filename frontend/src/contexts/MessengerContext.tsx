@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useMemo, useState, useEffect } from "react"
+import { createContext, useContext, useMemo, useState, useEffect, type ReactNode } from "react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { useChatWebSocket } from "@/hooks/useChatWebSocket"
 import { useAuth } from "./AuthContext"
@@ -27,7 +27,7 @@ export const useMessenger = () => {
   return context
 }
 
-export const MessengerProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+export function MessengerProvider({ children }: { children: ReactNode }) {
   const { isAuth } = useAuth()
   const queryClient = useQueryClient()
   const [presenceMap, setPresenceMap] = useState<Record<string, PresenceStatus>>({})
