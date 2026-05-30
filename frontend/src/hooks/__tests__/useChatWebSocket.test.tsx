@@ -51,7 +51,8 @@ vi.mock("@/api/schemas/wsMessage", () => ({
 }))
 
 // Import after mocks
-import { useChatWebSocket, WebSocketProvider } from "../useChatWebSocket"
+import { useChatWebSocket, WebSocketProvider, applyReadFrame } from "../useChatWebSocket"
+import type { MessagesListResponse } from "@/api/chat"
 
 // ---------- Helpers ----------
 
@@ -144,7 +145,8 @@ describe("useChatWebSocket", () => {
 
       expect(() => {
         act(() => {
-          result.current.sendRead("chat-1", "message-1")
+          // Wave 203 SW5 — sendRead is now chat-level (no message_id arg).
+          result.current.sendRead("chat-1")
         })
       }).not.toThrow()
     })
@@ -177,5 +179,64 @@ describe("useChatWebSocket", () => {
       expect(result1.current.isConnected).toBe(false)
       expect(result2.current.isConnected).toBe(false)
     })
+  })
+})
+
+// ---------- Wave 203 SW5: applyReadFrame (chat-level read receipt cache flip) ----------
+
+describe("applyReadFrame (Wave 203 SW5)", () => {
+  const reader = "11111111-1111-1111-1111-111111111111" // the OTHER participant
+  const me = "22222222-2222-2222-2222-222222222222" // the current user (sender)
+  const readAt = "2026-05-30T14:32:00+00:00"
+
+  const makeMessage = (id: string, sender_id: string) => ({
+    id,
+    chat_id: "chat-1",
+    sender_id,
+    content: "hi",
+    created_at: "2026-05-30T14:30:00+00:00",
+    read_status: false,
+  })
+
+  it("returns undefined when the cache is empty", () => {
+    expect(applyReadFrame(undefined, { user_id: reader, read_at: readAt })).toBeUndefined()
+  })
+
+  it("flips only messages NOT sent by the reader (my own sent messages)", () => {
+    const old: MessagesListResponse = {
+      items: [
+        makeMessage("m1", me), // my sent message → flips to read
+        makeMessage("m2", reader), // the reader's own message → untouched
+        makeMessage("m3", me), // my sent message → flips to read
+      ],
+      has_more: false,
+      next_cursor: null,
+    }
+
+    const result = applyReadFrame(old, { user_id: reader, read_at: readAt })
+    expect(result).toBeDefined()
+    const items = result?.items ?? []
+    const m1 = items.find((m) => m.id === "m1")
+    const m2 = items.find((m) => m.id === "m2")
+    const m3 = items.find((m) => m.id === "m3")
+
+    expect(m1?.read_status).toBe(true)
+    expect(m1?.read_at).toBe(readAt)
+    expect(m3?.read_status).toBe(true)
+    expect(m3?.read_at).toBe(readAt)
+    // The reader's own message is never flagged "seen" — no marker on received.
+    expect(m2?.read_status).toBe(false)
+    expect(m2?.read_at).toBeUndefined()
+  })
+
+  it("preserves has_more / next_cursor", () => {
+    const old: MessagesListResponse = {
+      items: [makeMessage("m1", me)],
+      has_more: true,
+      next_cursor: "cursor-x",
+    }
+    const result = applyReadFrame(old, { user_id: reader, read_at: readAt })
+    expect(result?.has_more).toBe(true)
+    expect(result?.next_cursor).toBe("cursor-x")
   })
 })

@@ -51,6 +51,29 @@ function calculateReconnectDelay(attempt: number): number {
   return Math.floor(Math.random() * base)
 }
 
+/**
+ * Wave 203 SW5 — pure cache update for a chat-level `read` frame. Extracted as a
+ * module-level function so it is unit-testable without the WS/ticket machinery
+ * (the useChatWebSocket hook test suite is describe.skip'd since W113 on a
+ * missing MSW ticket handler).
+ *
+ * The frame's `user_id` is the READER (the other participant). Every message NOT
+ * sent by the reader — i.e. the current user's own sent messages, in a 1-on-1 DM
+ * — flips to read + the chat-level read_at. Idempotent: re-applying is a no-op.
+ */
+export function applyReadFrame(
+  old: MessagesListResponse | undefined,
+  frame: { user_id: string; read_at: string | null }
+): MessagesListResponse | undefined {
+  if (!old) return old
+  return {
+    ...old,
+    items: old.items.map((m) =>
+      m.sender_id !== frame.user_id ? { ...m, read_status: true, read_at: frame.read_at } : m
+    ),
+  }
+}
+
 // WebSocket message types
 export type WebSocketMessageType =
   | "ping"
@@ -73,13 +96,15 @@ export interface WebSocketMessage {
   users?: string[]
   active?: boolean
   last_seen?: string | null
+  read_at?: string | null // Wave 203 — chat-level read-receipt timestamp
 }
 
 export interface UseChatWebSocketOptions {
   enabled?: boolean
   onNewMessage?: (message: Message, chatId: string) => void
   onTyping?: (chatId: string, userId: string, userName: string) => void
-  onRead?: (chatId: string, messageId: string, userId: string) => void
+  // Wave 203 SW5 — chat-level read receipt: (chatId, readerId, readAt).
+  onRead?: (chatId: string, userId: string, readAt: string | null) => void
   onOnlineStatus?: (userId: string, status: boolean) => void
   onPresenceUpdate?: (userId: string, active: boolean, lastSeen: string | null) => void
   /**
@@ -384,23 +409,18 @@ export function useChatWebSocket({
               }
 
               case "read": {
+                // Wave 203 SW5 — chat-level read receipt. Flip every message NOT
+                // sent by the reader (validated.user_id) to read + stamp the
+                // chat-level read_at. applyReadFrame is the pure, unit-tested core.
                 queryClient.setQueryData<MessagesListResponse>(
                   ["messages", validated.chat_id],
-                  (old) => {
-                    if (!old) return old
-                    return {
-                      ...old,
-                      items: old.items.map((m) =>
-                        m.id === validated.message_id ? { ...m, read_status: true } : m
-                      ),
-                    }
-                  }
+                  (old) => applyReadFrame(old, validated)
                 )
                 queryClient.invalidateQueries({
                   queryKey: ["messages", validated.chat_id],
                   refetchType: "none",
                 })
-                onReadRef.current?.(validated.chat_id, validated.message_id, validated.user_id)
+                onReadRef.current?.(validated.chat_id, validated.user_id, validated.read_at)
                 break
               }
 
@@ -504,15 +524,16 @@ export function useChatWebSocket({
     }
   }, [])
 
-  const sendRead = useCallback((chatId: string, messageId: string) => {
+  const sendRead = useCallback((chatId: string) => {
     if (wsRef.current?.readyState !== WebSocket.OPEN) return
     const key = `read:${chatId}`
     const now = Date.now()
     if (now - (lastSentRef.current.get(key) ?? 0) < OUTGOING_RATE_LIMITS.read!) return
     lastSentRef.current.set(key, now)
     try {
-      // RZ-26-07: guard TOCTOU race — WS may close between readyState check and send
-      wsRef.current.send(JSON.stringify({ type: "read", chat_id: chatId, message_id: messageId }))
+      // RZ-26-07: guard TOCTOU race — WS may close between readyState check and send.
+      // Wave 203 SW5 — chat-level read frame (no message_id).
+      wsRef.current.send(JSON.stringify({ type: "read", chat_id: chatId }))
     } catch {
       /* WS closed between readyState check and send — safe to ignore */
     }

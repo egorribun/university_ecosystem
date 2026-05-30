@@ -29,6 +29,9 @@ const MessageSchema = v.object({
   content: v.pipe(v.string(), v.maxLength(32_768)),
   created_at: NonEmptyString,
   read_status: v.boolean(),
+  // Wave 203 SW5 — read-receipt timestamp. optional+nullable so a cached
+  // new_message frame serialized before the column existed still parses.
+  read_at: v.optional(v.nullable(v.string())),
   // Optional attachment list — just validate shape, not individual entries
   attachments: v.optional(v.array(v.record(v.string(), v.unknown()))),
   sender: v.optional(v.record(v.string(), v.unknown())),
@@ -58,11 +61,14 @@ const TypingSchema = v.object({
   user_name: v.pipe(v.string(), v.minLength(1), v.maxLength(256)),
 })
 
+// Wave 203 SW5 — chat-level read receipt. The reader (user_id) marked the whole
+// chat read at read_at; the per-message message_id field is gone (the backend
+// bulk-marks + broadcasts one chat-level frame — see mark_read / dispatcher).
 const ReadSchema = v.object({
   type: v.literal("read"),
   chat_id: UuidString,
-  message_id: UuidString,
   user_id: UuidString,
+  read_at: v.nullable(v.string()),
 })
 
 const OnlineSchema = v.object({

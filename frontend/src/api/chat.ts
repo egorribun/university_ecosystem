@@ -21,6 +21,7 @@ export interface Message {
   content: string
   created_at: string
   read_status: boolean
+  read_at?: string | null // Wave 203 — ISO read-receipt timestamp (null until read)
   sender?: User
   sender_presence?: PresenceStatus
   attachments?: Attachment[]

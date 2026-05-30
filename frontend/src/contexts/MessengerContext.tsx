@@ -9,7 +9,7 @@ interface MessengerContextType {
   presenceMap: Record<string, PresenceStatus>
   isConnected: boolean
   sendTyping: (chatId: string) => void
-  sendRead: (chatId: string, messageId: string) => void
+  sendRead: (chatId: string) => void // Wave 203 SW5 — chat-level (no message_id)
   getTypingUsersForChat: (chatId: string) => { userId: string; userName: string }[]
 }
 
