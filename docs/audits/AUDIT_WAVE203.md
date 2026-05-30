@@ -1,0 +1,81 @@
+# AUDIT — Wave 203 (Messenger read receipts — `read_at` timestamps + "Seen" marker)
+
+> **Status: CLOSED.** First backend-wired feature of the messenger expansion arc (W202 made the surface a flawless foundation; W203+ adds backend-dependent features one per wave). User confirmed via AskUserQuestion: (1) **read receipts (`read_at`)** as the W203 feature; (2) UX = a **single Telegram/WhatsApp-style "Просмотрено · HH:MM / Seen · HH:MM" marker on the last read sent message** (1-on-1 DM); (3) **fold the W202 §Honesty #3 AnimatePresence two-pane desktop-warning fix in as the first SW**. 63rd consecutive wave with brainstorming + Phase 1 Explore + Plan-agent design + Phase 3 verify-before-write + W141 discipline. **8 SW** (SW8 carried two live-verification-caught bug fixes).
+
+## Headline
+
+- **End-to-end read receipts**: a nullable `read_at` column (SW2 + alembic `202605300001`) → surfaced in the WS serializer + REST DTOs (SW3) → REST `mark_read` returns `(read_at, affected)` and broadcasts a chat-level `{type:"read",chat_id,user_id,read_at}` frame **after commit, gated on `affected>0`** via the in-process `ws_manager` (SW4) → frontend types + Valibot `ReadSchema` (drop `message_id`) + a pure `applyReadFrame` cache-flip on `sender_id !== reader` (SW5) → a single "Seen · HH:MM" marker on the last read sent bubble, reverse-scan `isLastRead` in the controller, EN/RU i18n (SW6) → read-while-focused continuous mark-read via a growth-detector + `visibilitychange` listener (SW7).
+- **SW1 folded the W202 §Honesty #3 deferral**: `MessengerFeature` no longer wraps two unkeyed children in `<AnimatePresence mode="wait">` — mobile keeps the wait-wrapper over a single keyed pane; desktop renders both panes in a plain fragment. **0 "same key" warnings live** (verified).
+- **SW8 live Docker verification caught TWO real bugs that unit tests + build-green missed** — both fixed + re-verified live:
+  1. **`query_service` dropped `read_at`** (`c824538c1`): `get_messages` + the `last_message` builder construct `MessageResponse` field-by-field (explicit projection to dodge N+1), so the SW3 schema field defaulted to `None` → API `GET /messages` returned `read_at:null` despite the DB row having a timestamp → the seen marker never rendered on refetch. Adding a field to a schema does **not** retrofit hand-written constructors.
+  2. **`markAsRead` re-fire loop** (`fad382126`): the open-effect fires `markAsRead` unconditionally and depends on it, while `markAsRead`'s `useCallback` depended on the whole `markReadMutation` object (which React Query returns anew on every status transition) → infinite re-fire, hundreds of `POST /read` capped only by the 429 rate-limiter. Pre-existing but load-bearing now that receipts ship; fixed by depending on the referentially-stable `.mutate`.
+- **Bundle main JS 180,273 b — size UNCHANGED from W202, content-sha CHANGED** → NEW W203 baseline `e276aaa8a46278d9f5b06ceb3eb02c8a18d2893d690e7fbda5f76b933f455554` × 3 (BYTE-IDENTICAL across 3 clean builds). server.js 24,024 b sha `20c25eb2b04e2e8751ce37a83707507efa87faf29d15b8f148ea56fe5537eeb6` × 3.
+
+## Per-SW table
+
+| SW | Commit | Work | Gate |
+|----|--------|------|------|
+| SW1 | `96ec678bd` | `MessengerFeature` AnimatePresence: branch on `isMobile` (mobile = keyed wait-wrapper, desktop = plain fragment); closes W202 §H#3 | tsc 0, eslint 0, MessengerFeature 6/6 |
+| SW2 | `bab757bb6` | nullable `read_at` on `Message` + alembic `202605300001` (`_table_exists`/`_column_exists` guards, idempotent up/down/up) | ruff 0, single head, idempotency ✓ |
+| SW3 | `2bc92f137` | `read_at` in WS serializer + `MessageDTO` + `MessageResponse` | ruff 0, serializer/DTO slice green |
+| SW4 | `1db878111` | `mark_messages_read` → `(read_at, affected)`; command_service + dispatcher broadcast chat-level frame after commit, gated `affected>0` | ruff 0, mark_read tests green |
+| SW5 | `381d6cb22` | FE types + `types.gen.ts` `read_at`; `MessageSchema`/`ReadSchema` (drop `message_id`); pure `applyReadFrame`; `sendRead(chatId)` | tsc 0, eslint 0, wsMessage + useChatWebSocket green |
+| SW6 | `f52b8d480` | reverse-scan `isLastRead` + `readAtLabel` in controller; ChatWindow "Seen · HH:MM" marker; EN/RU `messenger:seen` (NO defaultValue) | tsc 0, eslint 0, ChatWindow green, i18n parity ✓ |
+| SW7 | `a408b6b37` | read-while-focused: growth-detector (dual-ref) + `visibilitychange` continuous mark-read | tsc 0, eslint 0, messenger serial green |
+| SW8 | `c824538c1` + `fad382126` + _(this)_ | live-caught: query_service `read_at` serialize + markAsRead loop fix; audit + N+3 (W200→archive) + docs + memory + Build × 3 + live re-verify | full gates green |
+
+## Verify-before-write hazards the Plan/Explore agents caught (W141 #3)
+
+- **`useChatWebSocket.test.tsx` is NOT `describe.skip`'d.** Both the Explore and Plan agents asserted it was skipped (WS/ticket machinery); a direct read disproved it — it's active. The SW5 `sendRead` signature change (drop `messageId`) broke its line-147 2-arg call → fixed to 1-arg in the same SW.
+- **SW2 W202 `as Message` cast preserved.** Adding `read_at?` to both `Message` and `MessageSchema` keeps `Message` assignable to `ParsedMessage`, so the W202 SW2 single cast still compiles — confirmed before editing, not after.
+- **Chat-level frame contract change is safe.** The client never sent `read` frames and only the backend broadcasts them, so dropping per-message `message_id` for `{chat_id, user_id, read_at}` is a both-ends-controlled change (verified across `dispatcher.py` + `useChatWebSocket.ts`).
+- **`read_at` generated in Python, not SQL.** `mark_messages_read` uses `utc_now()` (no `func.now()` round-trip), returns it alongside `rowcount`, so the service can broadcast the exact persisted timestamp after commit.
+
+## Verification (wave-close gates)
+
+- Per-SW: `npx tsc --noEmit` 0 + targeted `eslint --max-warnings=0` 0 + targeted vitest/pytest green. Husky chain clean on all commits (ruff/bandit/mypy on `app/` slices Passed; detect-secrets Passed; Python 2 except Passed; lint-staged prettier+eslint on FE files; NO `--no-verify`).
+- Wave-end: full `npx tsc --noEmit` 0; full `npm run lint` (`--max-warnings=0` src+tests) 0; **npm audit 0 vulnerabilities**; messenger suite (14 files) **142 passed / 0 failed** (serial — Windows Node-IPC parallel-OOM is documented W187 infra); backend chat slices (`test_chat_query_service` + `test_chat_command_service` + `test_ws_dispatcher_full`) **57 passed**.
+- **Build × 3 BYTE-IDENTICAL** main JS `e276aaa8…455554` ×3 (180,273 b) + server.js `20c25eb2…37eeb6` ×3 (24,024 b). Tree-shake invariant ✓ (0 `lhci-mock-user` in PROD client assets); SW IIFE invariant ✓ (`"use strict";(()=>{`); Cargo.lock no drift. NEW W203 baseline (W202 `170305…061a19` retires — 9 FE files changed).
+- **Live Docker verification (real Caddy → SSR → backend chain)**:
+  - **Loop fixed**: fresh authed userA on the chat fires `POST /read` **exactly once** (was hundreds); console **0 errors / 0 warnings** (was 1304× 429 + `ERR_INSUFFICIENT_RESOURCES`).
+  - **Seen marker self-heals from REST**: after the query_service fix, `GET /messages` returns `read_at=2026-05-30T12:42:49.019291Z` (was `null`), the controller computes `isLastRead`/`readAtLabel`, ChatWindow renders **"Просмотрено · 14:42"** (a distinct a11y node) alongside the ✓✓ "Прочитано получателем" icon.
+  - **SW1 AnimatePresence**: 0 "same key" warnings on the desktop two-pane.
+  - **Migration**: alembic head `202605300001`; `read_at` column present; idempotent up/down/up confirmed.
+
+## §Honesty probe
+
+1. **Live WS *push* (States 2-3) NOT observable in dev — by-design architecture gap, NOT a W203 regression.** The frontend WS connects to **ws-hub (Go)** (`/ws/chat` → Caddy → ws-hub `/ws`, W173); the backend broadcasts the read frame via the **Python in-process `ws_manager` ConnectionManager**. These two do not bridge in the dev stack, so the "other person reads → my bubble flips LIVE without refresh" path can't be observed here. This is **pre-existing and affects `new_message` identically** (W202 §H#1) — W203 deliberately follows the established `new_message` ephemeral-broadcast pattern. The feature **is** functional for real users via the **refetch self-heal path** (`read_at` persists + serializes; the marker renders on the next `getMessages`/navigation), which was verified live. Bridging ws-hub↔backend broadcast is a separate infra concern (W204+ candidate).
+2. **The two bugs were caught by live verification, not unit tests — and the loop was pre-existing.** Build-green ≠ runtime-correct: the `read_at` drop is a data-projection blind spot (fixtures look intentional) and the loop is an effect-feedback blind spot (single-render asserts never see the mutation-status→re-render→re-fire cycle). Both are now pinned (a `test_get_messages_surfaces_read_at` regression; the loop fix re-verified live at 1 `/read`). The loop predates W203 (the open-effect + unstable `markAsRead` are pre-W203) — read receipts merely made mark-read load-bearing enough to surface it.
+3. **Docker daemon crashed mid-verification (environment, recovered).** Docker Desktop fully crashed during the SW8 frontend rebuild (Windows; correlated with an MCP disconnect + heavy rebuild). Restarted it, brought the stack back healthy, and completed the live re-count. Not a code issue; recorded for honesty.
+4. **`mark_single_message_read` is now dead code.** After SW4's chat-level migration, the per-message path has no caller. Left in place (Python won't lint it as unused); flagged as a W204+ cleanup spin-off (not scope-expanded here).
+5. **CI not yet observed at wave-close commit time** — single push pending; will poll CI - Matrix Expansion + Frontend Tests / Unit Tests (the Windows-local full-parallel run OOMs; CI Linux runs the full suite + coverage per W198).
+6. Carry-forward structural non-goals (NOT W203 scope): **W134 §H#2** bundle-delta recording-only; **W134 §H#10** /messenger Phase 5 SSR by-design (`ssr: 'data-only'` per W180 SW3).
+
+## (z) discoveries + anti-patterns
+
+- **2 NEW (z) discoveries, both surfaced + fixed by live verification (not deferred):** (z)#1 `query_service` hand-written `MessageResponse` constructors silently drop schema-added fields (the `read_at:null` API bug); (z)#2 a `useMutation`-object dependency in a `useCallback` consumed by an unconditional effect is an infinite re-fire loop (React Query returns a new result object per status transition; depend on the stable `.mutate`). Both became CLAUDE.md Gotchas.
+- **0 NEW anti-patterns** (14-pattern register stable post-W159 #15 archival).
+- **W141 compliance**: #1 STRICT 1-iter (each SW landed 1-iter; the SW8 fixes are within-SW SAME-mechanism sub-fixes per W138 L#1 — "make the shipped feature actually work", not mechanism pivots); #3 (agent claims about `useChatWebSocket.test.tsx`-skip + the "redundant cast" were disproved by direct reads before writing); #4 (the loop-fix + marker-render claims were attributed only AFTER the live `POST /read`=1 + "Просмотрено · 14:42" + clean-console evidence — the bug was even found this way); #15 ARCHIVED preserved (all commits fired the husky chain cleanly, NO `--no-verify`).
+
+## NEW Gotchas (added to CLAUDE.md ## Gotchas)
+
+1. **Schema-added fields don't retrofit hand-written constructors** (W203 SW8): `query_service.get_messages` + the `get_chats` last-message builder construct `MessageResponse` field-by-field (explicit projection that omits `sender` to dodge N+1). A field added to the Pydantic schema (SW3 `read_at`) silently defaults to its `= None` at these sites — the WS serializer (`from_attributes`/`model_dump`) carried it but the explicit REST projections dropped it → `GET /messages` returned `read_at:null`. When adding a message field, audit EVERY explicit `MessageResponse(...)` construction, not just the schema.
+2. **`useMutation`-object dependency in an effect-consumed `useCallback` is an infinite loop** (W203 SW8): React Query v5 returns a NEW mutation result object on every status transition (idle→pending→success). `markAsRead = useCallback(c => mut.mutate(c), [mut])` consumed by `useEffect(() => mark(id), [id, markAsRead])` re-fires forever (mutate → status change → new object → new callback → effect re-fires). Depend on the referentially-stable `.mutate` (`const m = mut.mutate; useCallback(c => m(c), [m])`); React Compiler re-derives memoization from the captured stable value. Only the 429 rate-limiter capped the storm — verify mark-read-style effects with a live network trace, not just unit tests.
+3. **Chat-level ephemeral read frame** (W203 SW4): read receipts broadcast `{type:"read", chat_id, user_id (reader), read_at}` via inline `ws_manager.broadcast_to_chat` (the ephemeral tier — typing/presence/read), NOT the durable domain-event/outbox tier (reserved for `new_message`). `mark_messages_read` generates `read_at = utc_now()` in Python, returns `(read_at, affected)`, and the service broadcasts AFTER commit + only when `affected > 0` (repeated opens with 0 new unread → no churn). Cache-flip predicate is `sender_id !== reader_id`. NOTE: live push needs the ws-hub↔backend bridge (absent in dev, like `new_message`); the feature self-heals via `read_at` on the next `getMessages`.
+
+## Live verification before/after (the empirical core)
+
+| Check | Pre-fix | Post-fix |
+|-------|---------|----------|
+| `POST /read` count on chat open | hundreds (1304× 429 storm) | **1** (intended open-effect) |
+| Console errors/warns | 1304× 429 + `ERR_INSUFFICIENT_RESOURCES` | **0** |
+| `GET /messages` `read_at` (persisted row) | `null` | `2026-05-30T12:42:49.019291Z` |
+| Seen marker (REST self-heal) | absent | **"Просмотрено · 14:42"** |
+| ✓✓ read icon | — | "Прочитано получателем" |
+| AnimatePresence "same key" (desktop) | (W202 §H#3) | **0** |
+
+## Messenger arc / W204
+
+W203 shipped the first backend-wired feature (read receipts) end-to-end + self-healing on refetch, and surfaced two pre-existing/latent bugs that live verification fixed. The arc continues: **W204+ = the next backend-dependent feature** (message edit/delete or reactions, lowest backend risk first), each needing model + migration + repo/service + REST/ws-hub before the UI. Also tracked: **ws-hub↔backend live-broadcast bridge** (closes §H#1 — would make read receipts + `new_message` flip live in dev/prod without refetch), **`mark_single_message_read` dead-code cleanup** (§H#4), and the MessengerFeature AnimatePresence `mode="wait"` two-pane refactor (now CLOSED by SW1, so this carry-forward is retired).
+
+Memory references (`.claude` profile only): `memory/wave203_backlog.md`, `memory/wave204_opening_prompt.md`.
