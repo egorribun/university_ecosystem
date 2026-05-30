@@ -303,13 +303,17 @@ class ConnectionManager:
                 return [uuid.UUID(uid) for uid in entry.payload]
 
         # Single-flight: only one DB query per chat_id at a time.
-        # RZ-14-04: setdefault(key, asyncio.Lock()) always evaluates the default
-        # expression before checking the key — safe with WeakValueDictionary only
-        # if we use the explicit two-step pattern below, which avoids the
-        # double-instantiation race.
-        if chat_id not in self._participant_locks:
-            self._participant_locks[chat_id] = asyncio.Lock()
-        lock = self._participant_locks[chat_id]
+        # RZ-14-04 / W203 SW8: bind a LOCAL strong ref to the Lock BEFORE storing
+        # it in the WeakValueDictionary. `weak[key] = asyncio.Lock()` stores only a
+        # weak ref to a temporary that has no strong reference, so CPython
+        # refcounting reclaims it at end-of-statement → the read-back KeyErrors
+        # deterministically (surfaced by the REST mark_read broadcast — the first
+        # end-to-end caller through this branch with the cache disabled). The local
+        # `lock` keeps the object alive across the `async with lock:` below.
+        lock = self._participant_locks.get(chat_id)
+        if lock is None:
+            lock = asyncio.Lock()
+            self._participant_locks[chat_id] = lock
         async with lock:
             # Double-check after acquiring lock — another coroutine may have
             # already populated the cache while we were waiting.
