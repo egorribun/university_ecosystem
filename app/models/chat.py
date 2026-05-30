@@ -96,6 +96,17 @@ class Message(Base, EventEmitterMixin, UUID7PrimaryKeyMixin):
     read_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True, default=None
     )
+    # Wave 205 SW2 — edit + soft-delete timestamps. Both NULL until the message is
+    # edited / soft-deleted. Columns (not relationships), so the MOD-30-01
+    # explicit-lazy CI gate does not apply. Soft-delete keeps the row as a tombstone
+    # (content is cleared in the repo) so a "Message deleted" placeholder survives a
+    # refetch; queries deliberately do NOT filter deleted_at (W205 D1).
+    edited_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, default=None
+    )
+    deleted_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, default=None
+    )
 
     # Relationships
     # RZ-23-03 (audit 2026-03-25 Wave 23): Changed lazy="joined" → lazy="noload".
