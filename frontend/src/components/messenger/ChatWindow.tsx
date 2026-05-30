@@ -1,4 +1,4 @@
-import { useRef, useEffect, useMemo } from "react"
+import { useRef, useEffect, useMemo, useState } from "react"
 import { m } from "framer-motion" // Removed AnimatePresence, LayoutGroup as they are not used
 import useMediaQuery from "@/hooks/useMediaQuery"
 import {
@@ -113,6 +113,18 @@ export function ChatWindow({
 
   const prevMessagesLengthRef = useRef(0)
 
+  // Wave 202 SW6 — animate ONLY newly-appended messages, not every virtualized
+  // row that scrolls back into view (pre-W202 each remount re-fired the entrance
+  // = disorienting motion + needless work). `animateFromIndex` = the boundary
+  // from which rows count as "new"; rows below it render `initial={false}`
+  // (instant, no entrance). Init to Infinity so the first populated render (e.g.
+  // loaded history) never stampede-animates; the auto-scroll effect bumps it to
+  // the new length on each growth — which runs AFTER the new-message render, so
+  // at render time it still equals the previous length = exactly the just-
+  // appended tail. State (not a ref) → safe to read in render under React
+  // Compiler; the only ref (prevMessagesLengthRef) is touched solely in effects.
+  const [animateFromIndex, setAnimateFromIndex] = useState(Number.POSITIVE_INFINITY)
+
   // Auto-scroll to bottom when new messages arrive.
   // Wave 184 SW1 — track filtered length so search-narrowing doesn't trigger
   // a spurious scroll-to-end. Auto-scroll only fires when the underlying
@@ -124,6 +136,11 @@ export function ChatWindow({
         align: "end",
         behavior: "auto",
       })
+      // Wave 202 SW6 — advance the entrance boundary to the new length so the
+      // NEXT growth's render (which sees this as the previous length) animates
+      // only the freshly-appended rows. setAnimateFromIndex is a stable setter,
+      // so it's not required in the dependency array.
+      setAnimateFromIndex(filteredMessages.length)
     }
     prevMessagesLengthRef.current = filteredMessages.length
   }, [filteredMessages.length, isSearchActive, virtualizer])
@@ -376,6 +393,13 @@ export function ChatWindow({
           const message = filteredMessages[virtualRow.index]
           if (!message) return null
 
+          // Wave 202 SW6 — only newly-appended rows (index >= animateFromIndex)
+          // run the entrance; already-seen rows mount with initial={false} so
+          // they appear instantly on scroll-into-view (no re-animation). Search
+          // results never animate (the filtered set isn't "new" messages).
+          const animateEntrance =
+            !prefersReducedMotion && !isSearchActive && virtualRow.index >= animateFromIndex
+
           return (
             <div
               key={virtualRow.key}
@@ -387,12 +411,10 @@ export function ChatWindow({
               }}
             >
               <m.div
-                initial={prefersReducedMotion ? false : { opacity: 0, y: 10, scale: 0.95 }}
+                initial={animateEntrance ? { opacity: 0, y: 10, scale: 0.95 } : false}
                 animate={{ opacity: 1, y: 0, scale: 1 }}
                 transition={
-                  prefersReducedMotion
-                    ? { duration: 0 }
-                    : { duration: 0.3, ease: [0.22, 1, 0.36, 1] }
+                  animateEntrance ? { duration: 0.3, ease: [0.22, 1, 0.36, 1] } : { duration: 0 }
                 }
                 className={cn(
                   "flex items-end gap-2 md:gap-3 py-1 w-full md:flex-row group",
