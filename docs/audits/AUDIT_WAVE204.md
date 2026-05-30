@@ -119,3 +119,40 @@ The SW1→SW1-fix "publish-only-if-connected" correction is a **within-SW SAME-m
 - **Prod ws-hub deploy** (live bridge in prod — a separate infra wave: ws-hub absent from prod compose + k8s).
 - **Live typing** (the secure follow-up — needs a ws-hub send-side room-membership check + a typing self-echo guard + `currentUserName` threading).
 - Next backend-dependent messenger feature (edit/delete or reactions).
+
+---
+
+## Polish-v1 (post-«безупречно?» self-audit, 2026-05-30)
+
+The honest self-audit against the plan surfaced two real gaps in the close, both addressed here.
+
+### 1. Assertion #3 (read-flip) — now RIGOROUSLY CLOSED (was only frame-delivery-verified)
+
+The W204 close proved the bridge *delivers* a `read` frame to a browser (a frame captured in `__wsFrames`). It did NOT separately observe the plan's exact assertion #3: **"B reads → A's bubble flips to Seen live, with no refetch in A."** Polish-v1 closed it end-to-end (stack still healthy):
+
+- userA (real login `test@university.dev`) on the DM sent `W204-FLIP-…` (read_at: null → **no marker**; the pre-existing `Просмотрено · 14:42` from the main run was on an older message).
+- userB (`w203reader@university.dev`, login via a **separate curl session** — no browser-context clobber) `POST /chats/{id}/read` → 200 → `mark_messages_read` → `broadcast_to_chat(read, user_id=userB)` → `publish_core` → ws-hub → userA's WS.
+- userA was **idle** (no reload/navigate). Within ~9s its bubble flipped to **`Просмотрено · 20:45`** (fresh current-time stamp; the W203 marker correctly *moved* to the now-last-read sent message — seenCount stayed 1).
+- **No-refetch proof:** userA's network shows exactly **one** `GET …/messages` (the initial reload, reqid=485) and **no** subsequent message refetch. The flip came purely from the live WS frame → `applyReadFrame` updating the React Query cache in place. (reqid=486 `POST /read` is userA's *own* mark-read on open, not the flip trigger.)
+
+So the **cross-user read-receipt live flip — the W203 motivation — is now flawlessly proven**, not just frame-delivery-verified. (`__wsFrames` caught 0 frames because the constructor patch only wraps *new* sockets and userA's WS didn't reconnect; the *existing* socket handled it — the visible flip + zero-refetch is the proof.)
+
+### 2. new_message dev-producer gap — SHARPENED root cause (still W205+, still pre-existing)
+
+The close said "the async outbox producer doesn't complete in dev (`stored_events` empty)." Polish-v1 root-caused it precisely:
+
+- The OutboxWorker **IS** running (Reactive Mode, listening on `outbox_events` — current backend, 2h uptime).
+- `register_event_listeners()` **IS** called (lifespan.py:405) + both listeners registered (`after_flush` capture + `after_flush_postexec` persist) + logged at startup.
+- `send_message` **DOES** call `record_event(MessageSent)` unconditionally for every message (command_service.py:303, with the explicit ARCH-BE-01 comment ensuring it lands in `stored_events`); the *synchronous* `notify_new_message` is commented out (command_service.py:377) → new_message is **fully** outbox-gated.
+- **Yet `stored_events` is EMPTY for ALL aggregate types over the 2h uptime** (not just chat — `user.created`, `event.created`, etc. all absent), `failed_outbox_events` is empty, and the worker has **never** logged processing an event.
+
+⇒ The entire dev domain-event capture pipeline produces **zero** StoredEvents despite correct registration + the worker running + events being recorded. This is a **systemic, pre-existing dev-environment issue** affecting every event-driven feature (notifications, embeddings, chat), definitively **upstream of + independent of the W204 bridge** (W204 touched none of `send_message`/`events.py`/the uow/session config). The read path is unaffected because `mark_read` calls `broadcast_to_chat` *synchronously* (bypasses the outbox) — which is why W203 never surfaced it. Per STRICT 1-iter + "don't rabbit-hole pre-existing infra," it stays W205+, now with this exact characterization to start from.
+
+### 3. SW7-naming clarification + honest partial-delivery framing
+
+- **SW7 naming:** the plan's SW7 was "live typing (RECOMMEND DEFER)" — correctly deferred. The wave's `SW7` commit (`c06edef64`) is a *different* thing: the emergent ws-hub dormant-404 fix ((z) #1), numbered SW7 because it was the 7th code commit. Functionally everything is correct; the numbering overlap is noted so the two aren't conflated.
+- **Honest partial-delivery vs plan scope:** the plan's "Full live bridge, DEV" wanted **both** new_message + read flipping live. W204 delivers: the bridge built + the **read path flawlessly proven** (cross-user flip, live, no refetch), and **new_message NOT live** — blocked by the pre-existing systemic outbox-capture issue above (verified-by-construction via the proven bridge + SW1/SW3 unit-proofs). So W204 is **not** 100% of the plan's headline scope; it is a clean, honest partial delivery — the bridge is correct + proven, the read half is complete, and the new_message half is gated by pre-existing infra precisely characterized for W205.
+
+### Gates re-confirmed (polish-v1)
+
+CI was already green on the close commit `350b278bc` (Matrix Expansion + all 8 jobs ✅). Polish-v1 changes are docs-only (this section + CLAUDE.md row/Gotcha sharpening + MEMORY.md) — zero code/bundle impact; the W204 bundle baseline (`9d28a0be…` main / `2fe75921…` server, × 3 BYTE-IDENTICAL) is unchanged.
