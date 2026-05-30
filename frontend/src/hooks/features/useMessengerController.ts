@@ -344,6 +344,52 @@ export const useMessengerController = () => {
     }
   }, [selectedChatId, markAsRead])
 
+  // Wave 203 SW7 — mark-read while the chat is open AND focused. Pre-W203,
+  // markAsRead fired only on selectedChatId change (the effect above). If a
+  // message arrived while the user was LOOKING at the open chat, it was never
+  // marked read → the sender never saw "Seen" until the reader navigated away
+  // and back. This closes the gap: when the live `messages` cache (which the WS
+  // hub updates on `new_message`) grows with a message NOT sent by me, and the
+  // tab is visible, re-fire markAsRead → REST mark_read → SW4 broadcast → the
+  // sender's bubble flips to "Seen · HH:MM" live. No cross-subtree wiring — it
+  // piggybacks on the cache the WS hub already mutates. The dual refs
+  // distinguish "switched chats" (reset, don't fire — the open-effect handles
+  // it) from "new message in the same chat" (fire). No infinite loop:
+  // markAsRead invalidates ["chats"], not ["messages"], so it can't re-trigger.
+  const lastReadChatRef = useRef<string | null>(null)
+  const lastMessagesLenRef = useRef(0)
+  useEffect(() => {
+    if (!selectedChatId) {
+      lastReadChatRef.current = null
+      lastMessagesLenRef.current = 0
+      return
+    }
+    const chatChanged = lastReadChatRef.current !== selectedChatId
+    const grew = !chatChanged && messages.length > lastMessagesLenRef.current
+    lastReadChatRef.current = selectedChatId
+    lastMessagesLenRef.current = messages.length
+    if (chatChanged || !grew) return
+    const newest = messages[messages.length - 1]
+    if (newest && newest.sender_id !== user?.id && document.visibilityState === "visible") {
+      markAsRead(selectedChatId)
+    }
+  }, [messages, selectedChatId, markAsRead, user?.id])
+
+  // Wave 203 SW7 — refocusing the tab with a chat open marks it read too. The
+  // growth effect above can't fire on a pure refocus (messages.length is
+  // unchanged — messages that arrived while hidden bumped the length ref without
+  // firing). markAsRead is idempotent server-side (mark_read broadcasts only
+  // when affected > 0), so an unconditional fire on refocus is a cheap no-op
+  // when nothing is unread.
+  useEffect(() => {
+    if (!selectedChatId) return
+    const onVisible = () => {
+      if (document.visibilityState === "visible") markAsRead(selectedChatId)
+    }
+    document.addEventListener("visibilitychange", onVisible)
+    return () => document.removeEventListener("visibilitychange", onVisible)
+  }, [selectedChatId, markAsRead])
+
   const handleSendMessage = (text: string, files: File[]) => {
     if (!selectedChatId) return
 
