@@ -89,3 +89,90 @@ describe("parseWsMessage — new_message MessageSchema.read_at (Wave 203 SW5)", 
     }
   })
 })
+
+describe("parseWsMessage — Wave 204 SW3 ws-hub envelope unwrap + control frames", () => {
+  const message = {
+    id: MSG_ID,
+    chat_id: CHAT_ID,
+    sender_id: SENDER_ID,
+    content: "hi",
+    created_at: "2026-05-30T14:30:00+00:00",
+    read_status: false,
+    read_at: null,
+  }
+
+  it("unwraps an enveloped new_message frame to the inner flat frame", () => {
+    const frame = parseWsMessage(
+      JSON.stringify({
+        type: "new_message",
+        room: CHAT_ID,
+        payload: { type: "new_message", chat_id: CHAT_ID, message },
+        from: "backend",
+      })
+    )
+    expect(frame).not.toBeNull()
+    expect(frame?.type).toBe("new_message")
+    if (frame?.type === "new_message") {
+      expect(frame.chat_id).toBe(CHAT_ID)
+      expect(frame.message.id).toBe(MSG_ID)
+    }
+  })
+
+  it("unwraps an enveloped read frame to the inner flat frame", () => {
+    const frame = parseWsMessage(
+      JSON.stringify({
+        type: "read",
+        room: CHAT_ID,
+        payload: { type: "read", chat_id: CHAT_ID, user_id: USER_ID, read_at: READ_AT },
+      })
+    )
+    expect(frame).not.toBeNull()
+    if (frame?.type === "read") {
+      expect(frame.user_id).toBe(USER_ID)
+      expect(frame.read_at).toBe(READ_AT)
+    }
+  })
+
+  it("still accepts a flat (non-enveloped) frame — backward compat", () => {
+    const frame = parseWsMessage(
+      JSON.stringify({ type: "read", chat_id: CHAT_ID, user_id: USER_ID, read_at: null })
+    )
+    expect(frame?.type).toBe("read")
+  })
+
+  it("accepts a flat ws-hub error control frame with code", () => {
+    const frame = parseWsMessage(
+      JSON.stringify({
+        type: "error",
+        code: "message_too_large",
+        detail: "message exceeds 60 KB limit",
+      })
+    )
+    expect(frame).not.toBeNull()
+    expect(frame?.type).toBe("error")
+  })
+
+  it("accepts a flat rate_limit_exceeded control frame", () => {
+    const frame = parseWsMessage(JSON.stringify({ type: "rate_limit_exceeded" }))
+    expect(frame).not.toBeNull()
+    expect(frame?.type).toBe("rate_limit_exceeded")
+  })
+
+  it("returns null for an enveloped frame whose inner payload is malformed", () => {
+    const frame = parseWsMessage(
+      JSON.stringify({ type: "new_message", room: CHAT_ID, payload: { type: "new_message" } })
+    )
+    expect(frame).toBeNull()
+  })
+
+  it("returns null for a non-object payload envelope (validates outer, which fails)", () => {
+    const frame = parseWsMessage(
+      JSON.stringify({ type: "new_message", room: CHAT_ID, payload: "not-an-object" })
+    )
+    expect(frame).toBeNull()
+  })
+
+  it("returns null on JSON garbage", () => {
+    expect(parseWsMessage("{not json")).toBeNull()
+  })
+})

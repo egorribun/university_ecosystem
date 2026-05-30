@@ -45,8 +45,17 @@ const PongSchema = v.object({ type: v.literal("pong") })
 
 const ErrorSchema = v.object({
   type: v.literal("error"),
+  // Wave 204 SW3 — ws-hub control frames carry a `code` (e.g. "message_too_large")
+  // alongside detail (services/ws-hub client.go:158-162). Optional so plain
+  // backend error frames without a code still validate.
+  code: v.optional(v.pipe(v.string(), v.maxLength(256))),
   detail: v.optional(v.pipe(v.string(), v.maxLength(1024))),
 })
+
+// Wave 204 SW3 — ws-hub emits this directly to the client socket when a client
+// exceeds its outgoing message rate (client.go:178). Acknowledged in the union
+// so the hook stops logging it as an invalid frame; no handler action today.
+const RateLimitExceededSchema = v.object({ type: v.literal("rate_limit_exceeded") })
 
 const NewMessageSchema = v.object({
   type: v.literal("new_message"),
@@ -89,6 +98,7 @@ const PresenceSchema = v.object({
 export const WsServerMessageSchema = v.variant("type", [
   PongSchema,
   ErrorSchema,
+  RateLimitExceededSchema,
   NewMessageSchema,
   TypingSchema,
   ReadSchema,
@@ -109,7 +119,24 @@ export function parseWsMessage(raw: string): WsServerMessage | null {
   } catch {
     return null
   }
-  const result = v.safeParse(WsServerMessageSchema, parsed)
+  // Wave 204 SW3 — ws-hub fans out the `{type, room, payload}` envelope
+  // (services/ws-hub hub.go:323 marshals the whole Message struct), where
+  // `payload` is the flat frame the backend published to chat.{chat_id}.
+  // Unwrap it before validation so the existing discriminated-union schema
+  // keeps validating the flat frames unchanged. ws-hub ALSO sends flat control
+  // frames straight to the client socket ({type:"error",code}, {type:
+  // "rate_limit_exceeded"}) — those have no `payload`, so we validate them
+  // as-is. Key off `payload` PRESENCE (not the outer `type`) so ws-hub's
+  // notifications-sub re-typing (hub.go:501) doesn't matter here.
+  const frame =
+    parsed !== null &&
+    typeof parsed === "object" &&
+    "payload" in parsed &&
+    typeof (parsed as { payload?: unknown }).payload === "object" &&
+    (parsed as { payload?: unknown }).payload !== null
+      ? (parsed as { payload: unknown }).payload
+      : parsed
+  const result = v.safeParse(WsServerMessageSchema, frame)
   if (!result.success) {
     return null
   }
