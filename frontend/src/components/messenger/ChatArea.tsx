@@ -134,7 +134,7 @@ export function ChatArea({
                 <div className="flex items-center gap-3">
                   {isMobile && (
                     <m.button
-                      whileTap={{ scale: 0.9 }}
+                      whileTap={prefersReducedMotion ? undefined : { scale: 0.9 }}
                       onClick={() => navigate({ to: "/messenger" })}
                       className="-ml-1 rounded-full p-1.5 transition-colors hover:bg-(--bg-surface-hover)/(--opacity-medium)"
                     >
@@ -142,8 +142,8 @@ export function ChatArea({
                     </m.button>
                   )}
                   <m.button
-                    whileHover={{ scale: 1.02 }}
-                    whileTap={{ scale: 0.98 }}
+                    whileHover={prefersReducedMotion ? undefined : { scale: 1.02 }}
+                    whileTap={prefersReducedMotion ? undefined : { scale: 0.98 }}
                     className="flex cursor-pointer items-center gap-3 border-none bg-transparent text-left outline-none"
                     onClick={handleViewProfile}
                   >
@@ -206,8 +206,8 @@ export function ChatArea({
                 <div className="flex items-center gap-1.5">
                   <m.button
                     id="chat-search-toggle"
-                    whileHover={{ scale: 1.05 }}
-                    whileTap={{ scale: 0.95 }}
+                    whileHover={prefersReducedMotion ? undefined : { scale: 1.05 }}
+                    whileTap={prefersReducedMotion ? undefined : { scale: 0.95 }}
                     onClick={() => setShowSearchInChat(true)}
                     className="rounded-full p-2.5 transition-colors hover:bg-(--bg-surface-hover)/(--opacity-medium)"
                   >
@@ -216,8 +216,8 @@ export function ChatArea({
                   <div className="relative">
                     <m.button
                       id="chat-menu-toggle"
-                      whileHover={{ scale: 1.05 }}
-                      whileTap={{ scale: 0.95 }}
+                      whileHover={prefersReducedMotion ? undefined : { scale: 1.05 }}
+                      whileTap={prefersReducedMotion ? undefined : { scale: 0.95 }}
                       onClick={() => setShowChatMenu(!showChatMenu)}
                       className={cn(
                         "rounded-full p-2.5 transition-colors",
