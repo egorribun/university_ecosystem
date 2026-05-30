@@ -53,8 +53,9 @@ async def test_publish_core_serializes_uuid_and_datetime() -> None:
     """orjson serialises raw uuid.UUID + datetime without TypeError."""
     broker = NatsTaskBroker()
     mock_nc = MagicMock()
+    mock_nc.is_connected = True
     mock_nc.publish = AsyncMock()
-    broker._nc = mock_nc  # already "connected"
+    broker._nc = mock_nc  # already connected
 
     frame = _new_message_frame()
     subject = f"chat.{frame['room']}"
@@ -77,25 +78,20 @@ async def test_publish_core_serializes_uuid_and_datetime() -> None:
 
 
 @pytest.mark.asyncio
-async def test_publish_core_connects_if_needed() -> None:
-    """A None core connection triggers connect() before publishing."""
+async def test_publish_core_skips_when_nc_is_none() -> None:
+    """No connection → skip silently. publish_core must NOT trigger a connect
+    from this ephemeral hot path: a connect would add a multi-second timeout to
+    the message-send path during a NATS outage and would raise in test/CLI
+    contexts where NATS isn't running. The frame self-heals via refetch."""
     broker = NatsTaskBroker()
     assert broker._nc is None
 
-    mock_js = MagicMock()
-    mock_js.add_stream = AsyncMock()
-    mock_nc = MagicMock()
-    mock_nc.publish = AsyncMock()
-    mock_nc.jetstream = MagicMock(return_value=mock_js)
-    mock_nc.is_connected = True
-
-    with patch(
-        "app.core.nats_broker.nats.connect", new=AsyncMock(return_value=mock_nc)
-    ) as mock_connect:
+    with patch("app.core.nats_broker.nats.connect", new=AsyncMock()) as mock_connect:
+        # No exception; crucially, NO connect attempted.
         await broker.publish_core("chat.abc", {"type": "read", "room": "abc"})
 
-    mock_connect.assert_awaited_once()
-    mock_nc.publish.assert_awaited_once()
+    mock_connect.assert_not_awaited()
+    assert broker._nc is None
 
 
 @pytest.mark.asyncio
@@ -103,6 +99,7 @@ async def test_publish_core_swallows_publish_error() -> None:
     """A raising _nc.publish (infra error) is swallowed — never propagates."""
     broker = NatsTaskBroker()
     mock_nc = MagicMock()
+    mock_nc.is_connected = True
     mock_nc.publish = AsyncMock(side_effect=ConnectionError("nats down"))
     broker._nc = mock_nc
 
@@ -114,18 +111,15 @@ async def test_publish_core_swallows_publish_error() -> None:
 
 
 @pytest.mark.asyncio
-async def test_publish_core_returns_when_connection_unavailable() -> None:
-    """If connect() leaves _nc None, log + return without raising or publishing."""
+async def test_publish_core_skips_when_not_connected() -> None:
+    """A present-but-disconnected core connection → skip without publishing
+    (e.g. mid NATS-outage; the broker's background reconnect restores it)."""
     broker = NatsTaskBroker()
-    assert broker._nc is None
+    mock_nc = MagicMock()
+    mock_nc.is_connected = False
+    mock_nc.publish = AsyncMock()
+    broker._nc = mock_nc
 
-    # connect() that does NOT establish a connection (e.g. transient failure
-    # already swallowed elsewhere) — _nc stays None.
-    async def _noop_connect() -> None:
-        return None
+    await broker.publish_core("chat.abc", {"type": "read", "room": "abc"})
 
-    with patch.object(broker, "connect", new=AsyncMock(side_effect=_noop_connect)):
-        # No exception, no publish attempted.
-        await broker.publish_core("chat.abc", {"type": "read", "room": "abc"})
-
-    assert broker._nc is None
+    mock_nc.publish.assert_not_awaited()

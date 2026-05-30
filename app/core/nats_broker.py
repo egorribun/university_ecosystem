@@ -239,13 +239,14 @@ class NatsTaskBroker:
         Best-effort: never raises on infra failure so the caller's in-process
         delivery + refetch fallback stay intact.
         """
-        if self._nc is None:
-            await self.connect()
-        if self._nc is None:
-            _logger.warning(
-                "publish_core: NATS core connection unavailable, dropping subject=%s",
-                subject,
-            )
+        # Ephemeral best-effort: publish ONLY if the broker is already connected
+        # (the app lifespan connects it at startup). Do NOT trigger a connect
+        # from this hot path — a connect attempt would add a multi-second
+        # timeout to the message-send path during a NATS outage, and would raise
+        # in test/CLI contexts where NATS isn't running. A dropped frame
+        # self-heals via the next refetch; the broker's own background reconnect
+        # (max_reconnect_attempts=-1) restores the connection independently.
+        if self._nc is None or not self._nc.is_connected:
             return
 
         with tracer.start_as_current_span(
