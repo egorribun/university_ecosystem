@@ -597,13 +597,6 @@ class ChatRepository(BaseRepository[Chat, ChatDTO, dict[str, Any], dict[str, Any
         msg = result.scalars().first()
         return MessageDTO.model_validate(msg) if msg else None
 
-    async def mark_single_message_read(self, message_id: uuid.UUID) -> bool:
-        """Mark a single message as read. Returns True if successful."""
-        stmt = update(Message).where(Message.id == message_id).values(read_status=True)
-        result = await self.db.execute(stmt)
-        await self.db.flush()
-        return (int(getattr(result, "rowcount", 0) or 0)) > 0
-
     # P2-fix (audit 2026-02-26): Without a LIMIT the presence audience query is
     # O(chats × participants) and can load tens-of-thousands of UUIDs into memory
     # for heavily-connected users (e.g. admins in many group chats).
