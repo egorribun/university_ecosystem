@@ -2,6 +2,7 @@ import { useRef, useEffect, useMemo, useState } from "react"
 import { m } from "framer-motion" // Removed AnimatePresence, LayoutGroup as they are not used
 import useMediaQuery from "@/hooks/useMediaQuery"
 import {
+  ArrowDown,
   File,
   Check,
   CheckCheck,
@@ -116,6 +117,10 @@ const REACTION_EMOJIS = ["👍", "❤️", "😂", "😮", "😢"] as const
 // bubbles fills the chat viewport without being visually overwhelming.
 const SKELETON_BUBBLE_COUNT = 6
 
+// Wave 208 SW4 — show the scroll-to-bottom FAB once the user has scrolled this
+// many px up from the bottom. Module-level per W202 SW1 hoist convention.
+const SCROLL_FAB_THRESHOLD = 240
+
 // PERF-27-02: Removed React.memo() — React Compiler "infer" mode handles memoization
 export function ChatWindow({
   messages,
@@ -186,6 +191,14 @@ export function ChatWindow({
   // Compiler; the only ref (prevMessagesLengthRef) is touched solely in effects.
   const [animateFromIndex, setAnimateFromIndex] = useState(Number.POSITIVE_INFINITY)
 
+  // Wave 208 SW4 — scroll-to-bottom FAB visibility. State (not a ref) → safe to
+  // read in render under the React Compiler; the scroll position is read only
+  // inside the listener's handler below (ref access in a handler, never during
+  // render — same discipline as animateFromIndex). The FAB appears once the
+  // user scrolls > SCROLL_FAB_THRESHOLD px up from the bottom and hides when
+  // they return to (or auto-scroll back to) the latest message.
+  const [showJumpButton, setShowJumpButton] = useState(false)
+
   // Auto-scroll to bottom when new messages arrive.
   // Wave 184 SW1 — track filtered length so search-narrowing doesn't trigger
   // a spurious scroll-to-end. Auto-scroll only fires when the underlying
@@ -215,6 +228,29 @@ export function ChatWindow({
       })
     }
   }, [filteredMessages.length, isSearchActive, virtualizer])
+
+  // Wave 208 SW4 — toggle the scroll-to-bottom FAB based on scroll position.
+  // The scroll metrics are read inside the handler (ref access in a handler is
+  // allowed; never during render — same discipline as animateFromIndex). Only
+  // the main render has a scrollable list; the early-return branches (loading /
+  // error / empty / search-empty) mount a non-scrolling containerRef div, so we
+  // skip + force the FAB hidden there. The guard reads isLoading/isError/length
+  // so they are genuine deps → the listener re-binds to the live scroll element
+  // whenever the rendered branch changes. Passive + cleaned up on unmount/re-run.
+  useEffect(() => {
+    const el = containerRef.current
+    if (!el || isLoading || isError || filteredMessages.length === 0) {
+      setShowJumpButton(false)
+      return
+    }
+    const updateVisibility = () => {
+      const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight
+      setShowJumpButton(distanceFromBottom > SCROLL_FAB_THRESHOLD)
+    }
+    updateVisibility()
+    el.addEventListener("scroll", updateVisibility, { passive: true })
+    return () => el.removeEventListener("scroll", updateVisibility)
+  }, [filteredMessages.length, isLoading, isError])
 
   // Wave 206 — close the emoji picker on outside click / Escape. The +react
   // button + picker bar are tagged data-reaction-ui; a mousedown anywhere else
@@ -453,211 +489,214 @@ export function ChatWindow({
   }
 
   return (
-    <div
-      ref={containerRef}
-      role="log"
-      aria-live="polite"
-      aria-label={t("messenger:aria.messageList")}
-      className="messenger-chat-area flex-1 min-h-0 overflow-y-auto p-4 custom-scrollbar"
-    >
+    <div className="relative flex flex-1 min-h-0 flex-col">
       <div
-        style={{
-          height: `${virtualizer.getTotalSize()}px`,
-          width: "100%",
-          position: "relative",
-        }}
+        ref={containerRef}
+        role="log"
+        aria-live="polite"
+        aria-label={t("messenger:aria.messageList")}
+        className="messenger-chat-area flex-1 min-h-0 overflow-y-auto p-4 custom-scrollbar"
       >
-        {virtualizer.getVirtualItems().map((virtualRow) => {
-          // Wave 184 SW1 (Path A) — index into FILTERED messages, not the raw
-          // array, so virtualRow.index aligns with the count passed to
-          // useVirtualizer above. Using `messages[virtualRow.index]` would
-          // misalign when a search query is active (virtualizer count =
-          // filteredMessages.length, but raw messages.length > filtered).
-          const message = filteredMessages[virtualRow.index]
-          if (!message) return null
+        <div
+          style={{
+            height: `${virtualizer.getTotalSize()}px`,
+            width: "100%",
+            position: "relative",
+          }}
+        >
+          {virtualizer.getVirtualItems().map((virtualRow) => {
+            // Wave 184 SW1 (Path A) — index into FILTERED messages, not the raw
+            // array, so virtualRow.index aligns with the count passed to
+            // useVirtualizer above. Using `messages[virtualRow.index]` would
+            // misalign when a search query is active (virtualizer count =
+            // filteredMessages.length, but raw messages.length > filtered).
+            const message = filteredMessages[virtualRow.index]
+            if (!message) return null
 
-          // Wave 202 SW6 — only newly-appended rows (index >= animateFromIndex)
-          // run the entrance; already-seen rows mount with initial={false} so
-          // they appear instantly on scroll-into-view (no re-animation). Search
-          // results never animate (the filtered set isn't "new" messages).
-          const animateEntrance =
-            !prefersReducedMotion && !isSearchActive && virtualRow.index >= animateFromIndex
+            // Wave 202 SW6 — only newly-appended rows (index >= animateFromIndex)
+            // run the entrance; already-seen rows mount with initial={false} so
+            // they appear instantly on scroll-into-view (no re-animation). Search
+            // results never animate (the filtered set isn't "new" messages).
+            const animateEntrance =
+              !prefersReducedMotion && !isSearchActive && virtualRow.index >= animateFromIndex
 
-          return (
-            <div
-              key={virtualRow.key}
-              ref={virtualizer.measureElement}
-              data-index={virtualRow.index}
-              className="absolute top-0 left-0 w-full"
-              style={{
-                transform: `translateY(${virtualRow.start}px)`,
-              }}
-            >
-              <m.div
-                initial={animateEntrance ? { opacity: 0, y: 10, scale: 0.95 } : false}
-                animate={{ opacity: 1, y: 0, scale: 1 }}
-                transition={
-                  animateEntrance ? { duration: 0.3, ease: [0.22, 1, 0.36, 1] } : { duration: 0 }
-                }
-                className={cn(
-                  "flex items-end gap-2 md:gap-3 py-1 w-full md:flex-row group",
-                  message.isMe
-                    ? "flex-row-reverse justify-start md:justify-start"
-                    : "flex-row justify-start"
-                )}
+            return (
+              <div
+                key={virtualRow.key}
+                ref={virtualizer.measureElement}
+                data-index={virtualRow.index}
+                className="absolute top-0 left-0 w-full"
+                style={{
+                  transform: `translateY(${virtualRow.start}px)`,
+                }}
               >
-                <div className="shrink-0 mb-1">
-                  <SmartImage
-                    srcRaw={message.senderAvatar || AVATAR_PLACEHOLDER_URL}
-                    fallback={AVATAR_PLACEHOLDER_URL}
-                    alt={message.senderName || ""}
-                    className="w-8 h-8 md:w-9 md:h-9 rounded-full object-cover shadow-sm ring-1 ring-black/(--opacity-faint) dark:ring-white/(--opacity-faint)"
-                  />
-                </div>
+                <m.div
+                  initial={animateEntrance ? { opacity: 0, y: 10, scale: 0.95 } : false}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  transition={
+                    animateEntrance ? { duration: 0.3, ease: [0.22, 1, 0.36, 1] } : { duration: 0 }
+                  }
+                  className={cn(
+                    "flex items-end gap-2 md:gap-3 py-1 w-full md:flex-row group",
+                    message.isMe
+                      ? "flex-row-reverse justify-start md:justify-start"
+                      : "flex-row justify-start"
+                  )}
+                >
+                  <div className="shrink-0 mb-1">
+                    <SmartImage
+                      srcRaw={message.senderAvatar || AVATAR_PLACEHOLDER_URL}
+                      fallback={AVATAR_PLACEHOLDER_URL}
+                      alt={message.senderName || ""}
+                      className="w-8 h-8 md:w-9 md:h-9 rounded-full object-cover shadow-sm ring-1 ring-black/(--opacity-faint) dark:ring-white/(--opacity-faint)"
+                    />
+                  </div>
 
-                {/* Wave 203 SW6 — column wrapper so the single "Seen · HH:MM"
+                  {/* Wave 203 SW6 — column wrapper so the single "Seen · HH:MM"
                     marker can sit BELOW the bubble (right-aligned for sent). The
                     max-w-* constraint moves to the column; the bubble keeps its
                     box styling + max-w-full (caps at the column width). */}
-                <div
-                  className={cn(
-                    "flex min-w-0 max-w-4/5 flex-col gap-1 sm:max-w-3/4 md:max-w-[68%] lg:max-w-[60%] xl:max-w-[52%]",
-                    message.isMe ? "items-end" : "items-start"
-                  )}
-                >
-                  {message.deletedAt ? (
-                    // Wave 205 SW6 — deleted tombstone (D1: persistent, WhatsApp-style).
-                    // The row stays; content was cleared server-side. Drops
-                    // attachments + affordance + status + seen marker; uses the neutral
-                    // received-bubble style (not the violet sent bubble) + italic muted text.
-                    <div
-                      className={cn(
-                        "relative max-w-full px-4 py-2.5 text-base messenger-bubble-received rounded-2xl",
-                        message.isMe
-                          ? "rounded-br-sm md:rounded-br-2xl md:rounded-bl-sm"
-                          : "rounded-bl-sm"
-                      )}
-                    >
-                      <p className="italic leading-relaxed text-text-secondary">
-                        {t("messenger:messageDeleted")}
-                      </p>
-                      <div className="mt-(--space-1) flex justify-end opacity-hover">
-                        <span className="text-micro font-bold uppercase tracking-wider text-text-secondary">
-                          {message.timestamp}
-                        </span>
+                  <div
+                    className={cn(
+                      "flex min-w-0 max-w-4/5 flex-col gap-1 sm:max-w-3/4 md:max-w-[68%] lg:max-w-[60%] xl:max-w-[52%]",
+                      message.isMe ? "items-end" : "items-start"
+                    )}
+                  >
+                    {message.deletedAt ? (
+                      // Wave 205 SW6 — deleted tombstone (D1: persistent, WhatsApp-style).
+                      // The row stays; content was cleared server-side. Drops
+                      // attachments + affordance + status + seen marker; uses the neutral
+                      // received-bubble style (not the violet sent bubble) + italic muted text.
+                      <div
+                        className={cn(
+                          "relative max-w-full px-4 py-2.5 text-base messenger-bubble-received rounded-2xl",
+                          message.isMe
+                            ? "rounded-br-sm md:rounded-br-2xl md:rounded-bl-sm"
+                            : "rounded-bl-sm"
+                        )}
+                      >
+                        <p className="italic leading-relaxed text-text-secondary">
+                          {t("messenger:messageDeleted")}
+                        </p>
+                        <div className="mt-(--space-1) flex justify-end opacity-hover">
+                          <span className="text-micro font-bold uppercase tracking-wider text-text-secondary">
+                            {message.timestamp}
+                          </span>
+                        </div>
                       </div>
-                    </div>
-                  ) : editingMessageId === message.id ? (
-                    // Wave 205 SW6 — inline edit. Enter saves, Shift+Enter inserts a
-                    // newline, Esc cancels. The controller closes the editor + fires the
-                    // optimistic PATCH on save (handleSaveEdit). Uses the neutral
-                    // received-bubble style so the editor reads as an input, not a sent bubble.
-                    <div
-                      className={cn(
-                        "relative w-full max-w-full messenger-bubble-received rounded-2xl px-3 py-2.5",
-                        message.isMe
-                          ? "rounded-br-sm md:rounded-br-2xl md:rounded-bl-sm"
-                          : "rounded-bl-sm"
-                      )}
-                    >
-                      <label className="sr-only" htmlFor={`edit-message-${message.id}`}>
-                        {t("messenger:editMessage")}
-                      </label>
-                      <textarea
-                        id={`edit-message-${message.id}`}
-                        value={editingMessageContent}
-                        onChange={(event) => onEditingContentChange?.(event.target.value)}
-                        onKeyDown={(event) => {
-                          if (event.key === "Enter" && !event.shiftKey) {
-                            event.preventDefault()
-                            onSaveEdit?.(message.id)
-                          } else if (event.key === "Escape") {
-                            event.preventDefault()
-                            onCancelEdit?.()
-                          }
-                        }}
-                        rows={2}
-                        // eslint-disable-next-line jsx-a11y/no-autofocus
-                        autoFocus
-                        className="w-full resize-none rounded-lg bg-(--bg-surface)/(--opacity-medium) px-3 py-2 text-base leading-relaxed text-(--text-primary) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-violet-500)"
-                      />
-                      <div className="mt-2 flex items-center justify-end gap-2">
-                        <button
-                          type="button"
-                          onClick={onCancelEdit}
-                          className="inline-flex min-h-[40px] items-center rounded-full px-4 text-sm font-semibold text-(--text-secondary) transition-colors hover:text-(--text-primary) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-violet-500) focus-visible:ring-offset-2 focus-visible:ring-offset-(--bg-surface)"
-                        >
-                          {t("common:buttons.cancel")}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => onSaveEdit?.(message.id)}
-                          className="messenger-send-btn inline-flex min-h-[40px] items-center rounded-full px-5 text-sm font-semibold text-[var(--text-inverse)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-violet-500) focus-visible:ring-offset-2 focus-visible:ring-offset-(--bg-surface)"
-                        >
-                          {t("common:buttons.save")}
-                        </button>
+                    ) : editingMessageId === message.id ? (
+                      // Wave 205 SW6 — inline edit. Enter saves, Shift+Enter inserts a
+                      // newline, Esc cancels. The controller closes the editor + fires the
+                      // optimistic PATCH on save (handleSaveEdit). Uses the neutral
+                      // received-bubble style so the editor reads as an input, not a sent bubble.
+                      <div
+                        className={cn(
+                          "relative w-full max-w-full messenger-bubble-received rounded-2xl px-3 py-2.5",
+                          message.isMe
+                            ? "rounded-br-sm md:rounded-br-2xl md:rounded-bl-sm"
+                            : "rounded-bl-sm"
+                        )}
+                      >
+                        <label className="sr-only" htmlFor={`edit-message-${message.id}`}>
+                          {t("messenger:editMessage")}
+                        </label>
+                        <textarea
+                          id={`edit-message-${message.id}`}
+                          value={editingMessageContent}
+                          onChange={(event) => onEditingContentChange?.(event.target.value)}
+                          onKeyDown={(event) => {
+                            if (event.key === "Enter" && !event.shiftKey) {
+                              event.preventDefault()
+                              onSaveEdit?.(message.id)
+                            } else if (event.key === "Escape") {
+                              event.preventDefault()
+                              onCancelEdit?.()
+                            }
+                          }}
+                          rows={2}
+                          // eslint-disable-next-line jsx-a11y/no-autofocus
+                          autoFocus
+                          className="w-full resize-none rounded-lg bg-(--bg-surface)/(--opacity-medium) px-3 py-2 text-base leading-relaxed text-(--text-primary) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-violet-500)"
+                        />
+                        <div className="mt-2 flex items-center justify-end gap-2">
+                          <button
+                            type="button"
+                            onClick={onCancelEdit}
+                            className="inline-flex min-h-[40px] items-center rounded-full px-4 text-sm font-semibold text-(--text-secondary) transition-colors hover:text-(--text-primary) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-violet-500) focus-visible:ring-offset-2 focus-visible:ring-offset-(--bg-surface)"
+                          >
+                            {t("common:buttons.cancel")}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => onSaveEdit?.(message.id)}
+                            className="messenger-send-btn inline-flex min-h-[40px] items-center rounded-full px-5 text-sm font-semibold text-[var(--text-inverse)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-violet-500) focus-visible:ring-offset-2 focus-visible:ring-offset-(--bg-surface)"
+                          >
+                            {t("common:buttons.save")}
+                          </button>
+                        </div>
                       </div>
-                    </div>
-                  ) : (
-                    <div
-                      className={cn(
-                        "relative max-w-full px-4 py-2.5 text-base",
-                        message.isMe
-                          ? "messenger-bubble-sent text-[var(--text-inverse)] rounded-2xl rounded-br-sm md:rounded-br-2xl md:rounded-bl-sm"
-                          : "messenger-bubble-received text-text-primary rounded-2xl rounded-bl-sm"
-                      )}
-                    >
-                      {message.attachments && message.attachments.length > 0 && (
-                        <div className="mb-2 space-y-2">
-                          {message.attachments.map((attachment) => (
-                            <div key={attachment.id} className="overflow-hidden rounded-xl">
-                              {attachment.type === "image" ? (
-                                sanitizeUrl(attachment.url) ? (
-                                  <SmartImage
-                                    srcRaw={attachment.url}
-                                    alt={attachment.name}
-                                    className="w-full h-auto max-h-72 object-cover cursor-pointer hover:scale-hover transition-transform duration-slow"
-                                    onClick={() => {
-                                      const safe = sanitizeUrl(attachment.url)
-                                      if (safe) window.open(safe, "_blank", "noopener,noreferrer")
-                                    }}
-                                  />
-                                ) : null
-                              ) : sanitizeUrl(attachment.url) ? (
-                                <a
-                                  href={sanitizeUrl(attachment.url)!}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className={cn(
-                                    "flex items-center gap-3 p-3 rounded-xl transition-colors border border-white/(--opacity-faint)",
-                                    message.isMe
-                                      ? "bg-(--messenger-attachment-bg) hover:bg-(--messenger-attachment-bg-hover)"
-                                      : "bg-(--bg-surface-raised)/(--opacity-medium) hover:bg-(--bg-surface-hover)/(--opacity-medium)"
-                                  )}
-                                >
-                                  <div
+                    ) : (
+                      <div
+                        className={cn(
+                          "relative max-w-full px-4 py-2.5 text-base",
+                          message.isMe
+                            ? "messenger-bubble-sent text-[var(--text-inverse)] rounded-2xl rounded-br-sm md:rounded-br-2xl md:rounded-bl-sm"
+                            : "messenger-bubble-received text-text-primary rounded-2xl rounded-bl-sm"
+                        )}
+                      >
+                        {message.attachments && message.attachments.length > 0 && (
+                          <div className="mb-2 space-y-2">
+                            {message.attachments.map((attachment) => (
+                              <div key={attachment.id} className="overflow-hidden rounded-xl">
+                                {attachment.type === "image" ? (
+                                  sanitizeUrl(attachment.url) ? (
+                                    <SmartImage
+                                      srcRaw={attachment.url}
+                                      alt={attachment.name}
+                                      className="w-full h-auto max-h-72 object-cover cursor-pointer hover:scale-hover transition-transform duration-slow"
+                                      onClick={() => {
+                                        const safe = sanitizeUrl(attachment.url)
+                                        if (safe) window.open(safe, "_blank", "noopener,noreferrer")
+                                      }}
+                                    />
+                                  ) : null
+                                ) : sanitizeUrl(attachment.url) ? (
+                                  <a
+                                    href={sanitizeUrl(attachment.url)!}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
                                     className={cn(
-                                      "p-2 rounded-lg",
+                                      "flex items-center gap-3 p-3 rounded-xl transition-colors border border-white/(--opacity-faint)",
                                       message.isMe
-                                        ? "bg-(--messenger-attachment-bg) text-[var(--text-inverse)]"
-                                        : "bg-(--bg-surface-raised) text-(--brand-main)"
+                                        ? "bg-(--messenger-attachment-bg) hover:bg-(--messenger-attachment-bg-hover)"
+                                        : "bg-(--bg-surface-raised)/(--opacity-medium) hover:bg-(--bg-surface-hover)/(--opacity-medium)"
                                     )}
                                   >
-                                    <File size={20} />
-                                  </div>
-                                  <div className="flex-1 min-w-0">
-                                    <p className="truncate text-sm font-bold">{attachment.name}</p>
-                                    <p className="text-micro opacity-medium font-medium">
-                                      {(attachment.size / 1024).toFixed(1)} KB
-                                    </p>
-                                  </div>
-                                </a>
-                              ) : null}
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                      {/* Wave 207 — quoted reply preview. Sits above the content,
+                                    <div
+                                      className={cn(
+                                        "p-2 rounded-lg",
+                                        message.isMe
+                                          ? "bg-(--messenger-attachment-bg) text-[var(--text-inverse)]"
+                                          : "bg-(--bg-surface-raised) text-(--brand-main)"
+                                      )}
+                                    >
+                                      <File size={20} />
+                                    </div>
+                                    <div className="flex-1 min-w-0">
+                                      <p className="truncate text-sm font-bold">
+                                        {attachment.name}
+                                      </p>
+                                      <p className="text-micro opacity-medium font-medium">
+                                        {(attachment.size / 1024).toFixed(1)} KB
+                                      </p>
+                                    </div>
+                                  </a>
+                                ) : null}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                        {/* Wave 207 — quoted reply preview. Sits above the content,
                           inside the bubble. Author line = "You" when the quoted
                           message is mine (isMe resolved at transform time), else the
                           sender name. Body = the snippet (line-clamped 2) OR an
@@ -665,46 +704,46 @@ export function ChatWindow({
                           soft-deleted. Border-l accent + faint tint, theme-aware
                           per sent (text-inverse on violet) vs received (violet on
                           neutral). */}
-                      {message.replyTo ? (
-                        <div
-                          className={cn(
-                            "mb-2 rounded-lg border-l-2 px-2.5 py-1.5",
-                            message.isMe
-                              ? "border-(--text-inverse)/(--opacity-medium) bg-(--text-inverse)/(--opacity-faint)"
-                              : "border-(--color-violet-500)/(--opacity-medium) bg-(--color-violet-500)/(--opacity-faint)"
-                          )}
-                        >
-                          <p
+                        {message.replyTo ? (
+                          <div
                             className={cn(
-                              "text-micro font-semibold",
-                              message.isMe ? "text-[var(--text-inverse)]" : "text-(--brand-main)"
-                            )}
-                          >
-                            {message.replyTo.isMe
-                              ? t("messenger:replyTo.you")
-                              : (message.replyTo.senderName ??
-                                t("messenger:replyTo.unknownSender"))}
-                          </p>
-                          <p
-                            className={cn(
-                              "line-clamp-2 text-sm leading-snug",
-                              message.replyTo.deletedAt && "italic",
+                              "mb-2 rounded-lg border-l-2 px-2.5 py-1.5",
                               message.isMe
-                                ? "text-[var(--text-inverse)] opacity-medium"
-                                : "text-(--text-secondary)"
+                                ? "border-(--text-inverse)/(--opacity-medium) bg-(--text-inverse)/(--opacity-faint)"
+                                : "border-(--color-violet-500)/(--opacity-medium) bg-(--color-violet-500)/(--opacity-faint)"
                             )}
                           >
-                            {message.replyTo.deletedAt
-                              ? t("messenger:replyTo.deletedOriginal")
-                              : message.replyTo.text}
-                          </p>
-                        </div>
-                      ) : null}
-                      <p className="wrap-break-word leading-relaxed whitespace-pre-wrap">
-                        {message.text}
-                      </p>
-                      <div className="mt-(--space-1) flex items-center justify-between gap-2">
-                        {/* Wave 205 SW6 — own-message edit/delete affordance. Always
+                            <p
+                              className={cn(
+                                "text-micro font-semibold",
+                                message.isMe ? "text-[var(--text-inverse)]" : "text-(--brand-main)"
+                              )}
+                            >
+                              {message.replyTo.isMe
+                                ? t("messenger:replyTo.you")
+                                : (message.replyTo.senderName ??
+                                  t("messenger:replyTo.unknownSender"))}
+                            </p>
+                            <p
+                              className={cn(
+                                "line-clamp-2 text-sm leading-snug",
+                                message.replyTo.deletedAt && "italic",
+                                message.isMe
+                                  ? "text-[var(--text-inverse)] opacity-medium"
+                                  : "text-(--text-secondary)"
+                              )}
+                            >
+                              {message.replyTo.deletedAt
+                                ? t("messenger:replyTo.deletedOriginal")
+                                : message.replyTo.text}
+                            </p>
+                          </div>
+                        ) : null}
+                        <p className="wrap-break-word leading-relaxed whitespace-pre-wrap">
+                          {message.text}
+                        </p>
+                        <div className="mt-(--space-1) flex items-center justify-between gap-2">
+                          {/* Wave 205 SW6 — own-message edit/delete affordance. Always
                           rendered + reachable (touch + keyboard + mouse), subtle by
                           default (opacity-medium → full on hover/focus). Icons sit on
                           the violet sent bubble so they use text-inverse. p-1.5 around
@@ -713,95 +752,97 @@ export function ChatWindow({
                           secondary controls; a context-menu / long-press affordance is
                           future polish). A right-context-menu / hover-reveal UX is
                           out of W205 scope. */}
-                        {onStartReply || message.isMe ? (
-                          <div className="flex items-center gap-0.5">
-                            {/* Wave 207 — reply affordance on ALL bubbles (not just
+                          {onStartReply || message.isMe ? (
+                            <div className="flex items-center gap-0.5">
+                              {/* Wave 207 — reply affordance on ALL bubbles (not just
                               own). On the violet sent bubble it uses text-inverse +
                               inverse focus ring (matching edit/delete); on the neutral
                               received bubble it uses text-secondary + violet focus
                               ring. Same 28px hit area as edit/delete (accepted dense
                               in-bubble secondary control, per the W205 note below). */}
-                            {onStartReply ? (
-                              <button
-                                type="button"
-                                onClick={() => onStartReply(message.id)}
-                                aria-label={t("messenger:reply")}
-                                className={cn(
-                                  "flex items-center justify-center rounded-md p-1.5 opacity-medium transition-opacity hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2",
-                                  message.isMe
-                                    ? "text-[var(--text-inverse)] focus-visible:ring-[var(--text-inverse)]"
-                                    : "text-(--text-secondary) focus-visible:ring-(--color-violet-500)"
-                                )}
-                              >
-                                <Reply className="size-4" strokeWidth={2} aria-hidden="true" />
-                              </button>
-                            ) : null}
-                            {message.isMe ? (
-                              <>
+                              {onStartReply ? (
                                 <button
                                   type="button"
-                                  onClick={() => onEditMessage?.(message.id, message.text)}
-                                  aria-label={t("messenger:editMessage")}
-                                  className="flex items-center justify-center rounded-md p-1.5 text-[var(--text-inverse)] opacity-medium transition-opacity hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--text-inverse)]"
+                                  onClick={() => onStartReply(message.id)}
+                                  aria-label={t("messenger:reply")}
+                                  className={cn(
+                                    "flex items-center justify-center rounded-md p-1.5 opacity-medium transition-opacity hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2",
+                                    message.isMe
+                                      ? "text-[var(--text-inverse)] focus-visible:ring-[var(--text-inverse)]"
+                                      : "text-(--text-secondary) focus-visible:ring-(--color-violet-500)"
+                                  )}
                                 >
-                                  <Pencil className="size-4" strokeWidth={2} aria-hidden="true" />
+                                  <Reply className="size-4" strokeWidth={2} aria-hidden="true" />
                                 </button>
-                                <button
-                                  type="button"
-                                  onClick={() => onDeleteMessage?.(message.id)}
-                                  aria-label={t("messenger:deleteMessage")}
-                                  className="flex items-center justify-center rounded-md p-1.5 text-[var(--text-inverse)] opacity-medium transition-opacity hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--text-inverse)]"
-                                >
-                                  <Trash2 className="size-4" strokeWidth={2} aria-hidden="true" />
-                                </button>
-                              </>
-                            ) : null}
-                          </div>
-                        ) : (
-                          <span aria-hidden="true" />
-                        )}
-                        <div className="flex items-center gap-1.5 opacity-hover">
-                          {/* Wave 205 SW6 — "(edited)" label when the message was edited
+                              ) : null}
+                              {message.isMe ? (
+                                <>
+                                  <button
+                                    type="button"
+                                    onClick={() => onEditMessage?.(message.id, message.text)}
+                                    aria-label={t("messenger:editMessage")}
+                                    className="flex items-center justify-center rounded-md p-1.5 text-[var(--text-inverse)] opacity-medium transition-opacity hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--text-inverse)]"
+                                  >
+                                    <Pencil className="size-4" strokeWidth={2} aria-hidden="true" />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => onDeleteMessage?.(message.id)}
+                                    aria-label={t("messenger:deleteMessage")}
+                                    className="flex items-center justify-center rounded-md p-1.5 text-[var(--text-inverse)] opacity-medium transition-opacity hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--text-inverse)]"
+                                  >
+                                    <Trash2 className="size-4" strokeWidth={2} aria-hidden="true" />
+                                  </button>
+                                </>
+                              ) : null}
+                            </div>
+                          ) : (
+                            <span aria-hidden="true" />
+                          )}
+                          <div className="flex items-center gap-1.5 opacity-hover">
+                            {/* Wave 205 SW6 — "(edited)" label when the message was edited
                             (and not deleted). lowercase + muted; full edit timestamp in
                             the title tooltip. */}
-                          {message.editedAt ? (
+                            {message.editedAt ? (
+                              <span
+                                className="text-micro font-medium lowercase"
+                                title={
+                                  message.editedAtLabel
+                                    ? t("messenger:messageEditedAt", {
+                                        time: message.editedAtLabel,
+                                      })
+                                    : undefined
+                                }
+                                style={{
+                                  color: message.isMe
+                                    ? "var(--primary-subtle)"
+                                    : "var(--text-secondary)",
+                                }}
+                              >
+                                {t("messenger:edited")}
+                              </span>
+                            ) : null}
                             <span
-                              className="text-micro font-medium lowercase"
-                              title={
-                                message.editedAtLabel
-                                  ? t("messenger:messageEditedAt", { time: message.editedAtLabel })
-                                  : undefined
-                              }
+                              className="text-micro font-bold uppercase tracking-wider"
                               style={{
                                 color: message.isMe
                                   ? "var(--primary-subtle)"
                                   : "var(--text-secondary)",
                               }}
                             >
-                              {t("messenger:edited")}
+                              {message.timestamp}
                             </span>
-                          ) : null}
-                          <span
-                            className="text-micro font-bold uppercase tracking-wider"
-                            style={{
-                              color: message.isMe
-                                ? "var(--primary-subtle)"
-                                : "var(--text-secondary)",
-                            }}
-                          >
-                            {message.timestamp}
-                          </span>
-                          {message.isMe && (
-                            <span
-                              className="flex items-center opacity-hover"
-                              role="img"
-                              aria-label={
-                                message.status === "read"
-                                  ? t("messenger:aria.messageRead")
-                                  : t("messenger:aria.messageSent")
-                              }
-                            >
-                              {/* Wave 181 SW3 — text-white → text-[var(--text-inverse)]
+                            {message.isMe && (
+                              <span
+                                className="flex items-center opacity-hover"
+                                role="img"
+                                aria-label={
+                                  message.status === "read"
+                                    ? t("messenger:aria.messageRead")
+                                    : t("messenger:aria.messageSent")
+                                }
+                              >
+                                {/* Wave 181 SW3 — text-white → text-[var(--text-inverse)]
                             (theme-aware; same W175 SW2 pattern. text-inverse is
                             white in light, slate-950 in dark. On the violet
                             sent-bubble bg, white in light = 9.9:1 contrast,
@@ -812,107 +853,132 @@ export function ChatWindow({
                             "Read by recipient" instead of skipping the icon
                             entirely (previous aria-hidden default on lucide
                             icons meant SR users had no message-status feedback). */}
-                              {message.status === "read" ? (
-                                <CheckCheck
-                                  className="w-3 h-3 text-[var(--text-inverse)]"
-                                  aria-hidden="true"
-                                />
-                              ) : (
-                                <Check
-                                  className="w-3 h-3 text-[var(--text-inverse)] opacity-medium"
-                                  aria-hidden="true"
-                                />
-                              )}
-                            </span>
-                          )}
+                                {message.status === "read" ? (
+                                  <CheckCheck
+                                    className="w-3 h-3 text-[var(--text-inverse)]"
+                                    aria-hidden="true"
+                                  />
+                                ) : (
+                                  <Check
+                                    className="w-3 h-3 text-[var(--text-inverse)] opacity-medium"
+                                    aria-hidden="true"
+                                  />
+                                )}
+                              </span>
+                            )}
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  )}
-                  {/* Wave 206 — reaction footer (pills + "+react") + inline emoji
+                    )}
+                    {/* Wave 206 — reaction footer (pills + "+react") + inline emoji
                       picker. Hidden on deleted tombstones + while inline-editing.
                       Pills render read-only without onToggleReaction (tests/
                       storybook); the +react affordance + picker need the handler.
                       reactedByMe pills get the violet tint; clicking a pill toggles
                       that emoji. data-reaction-ui marks the outside-click exemptions. */}
-                  {!message.deletedAt &&
-                  editingMessageId !== message.id &&
-                  ((message.reactions && message.reactions.length > 0) || onToggleReaction) ? (
-                    <div
-                      className={cn(
-                        "flex flex-wrap items-center gap-1",
-                        message.isMe ? "justify-end" : "justify-start"
-                      )}
-                    >
-                      {message.reactions?.map((reaction) => (
-                        <ReactionPill
-                          key={reaction.emoji}
-                          chatId={chatId}
-                          messageId={message.id}
-                          emoji={reaction.emoji}
-                          count={reaction.count}
-                          reactedByMe={reaction.reactedByMe}
-                          onToggle={(value) => onToggleReaction?.(message.id, value)}
-                        />
-                      ))}
-                      {onToggleReaction ? (
-                        <button
-                          type="button"
-                          data-reaction-ui
-                          onClick={() =>
-                            setReactionPickerForId((prev) =>
-                              prev === message.id ? null : message.id
-                            )
-                          }
-                          aria-label={t("messenger:reactions.add")}
-                          aria-expanded={reactionPickerForId === message.id}
-                          className="inline-flex min-h-[28px] min-w-[28px] items-center justify-center rounded-full text-(--text-secondary) opacity-medium transition-opacity hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-violet-500) focus-visible:ring-offset-1 focus-visible:ring-offset-(--bg-surface)"
-                        >
-                          <SmilePlus className="size-4" strokeWidth={2} aria-hidden="true" />
-                        </button>
-                      ) : null}
-                    </div>
-                  ) : null}
-                  {reactionPickerForId === message.id && onToggleReaction ? (
-                    <div
-                      data-reaction-ui
-                      role="group"
-                      aria-label={t("messenger:reactions.add")}
-                      className={cn(
-                        "messenger-card-matte flex items-center gap-1 rounded-full px-2 py-1",
-                        message.isMe ? "self-end" : "self-start"
-                      )}
-                    >
-                      {REACTION_EMOJIS.map((emoji) => (
-                        <button
-                          key={emoji}
-                          type="button"
-                          onClick={() => {
-                            onToggleReaction(message.id, emoji)
-                            setReactionPickerForId(null)
-                          }}
-                          aria-label={t("messenger:reactions.react", { emoji })}
-                          className="inline-flex min-h-[36px] min-w-[36px] items-center justify-center rounded-full text-xl transition-transform hover:scale-125 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-violet-500)"
-                        >
-                          <span aria-hidden="true">{emoji}</span>
-                        </button>
-                      ))}
-                    </div>
-                  ) : null}
-                  {!message.deletedAt &&
-                  message.isMe &&
-                  message.isLastRead &&
-                  message.readAtLabel ? (
-                    <span className="px-1 text-micro font-medium text-text-secondary">
-                      {t("messenger:seen", { time: message.readAtLabel })}
-                    </span>
-                  ) : null}
-                </div>
-              </m.div>
-            </div>
-          )
-        })}
+                    {!message.deletedAt &&
+                    editingMessageId !== message.id &&
+                    ((message.reactions && message.reactions.length > 0) || onToggleReaction) ? (
+                      <div
+                        className={cn(
+                          "flex flex-wrap items-center gap-1",
+                          message.isMe ? "justify-end" : "justify-start"
+                        )}
+                      >
+                        {message.reactions?.map((reaction) => (
+                          <ReactionPill
+                            key={reaction.emoji}
+                            chatId={chatId}
+                            messageId={message.id}
+                            emoji={reaction.emoji}
+                            count={reaction.count}
+                            reactedByMe={reaction.reactedByMe}
+                            onToggle={(value) => onToggleReaction?.(message.id, value)}
+                          />
+                        ))}
+                        {onToggleReaction ? (
+                          <button
+                            type="button"
+                            data-reaction-ui
+                            onClick={() =>
+                              setReactionPickerForId((prev) =>
+                                prev === message.id ? null : message.id
+                              )
+                            }
+                            aria-label={t("messenger:reactions.add")}
+                            aria-expanded={reactionPickerForId === message.id}
+                            className="inline-flex min-h-[28px] min-w-[28px] items-center justify-center rounded-full text-(--text-secondary) opacity-medium transition-opacity hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-violet-500) focus-visible:ring-offset-1 focus-visible:ring-offset-(--bg-surface)"
+                          >
+                            <SmilePlus className="size-4" strokeWidth={2} aria-hidden="true" />
+                          </button>
+                        ) : null}
+                      </div>
+                    ) : null}
+                    {reactionPickerForId === message.id && onToggleReaction ? (
+                      <div
+                        data-reaction-ui
+                        role="group"
+                        aria-label={t("messenger:reactions.add")}
+                        className={cn(
+                          "messenger-card-matte flex items-center gap-1 rounded-full px-2 py-1",
+                          message.isMe ? "self-end" : "self-start"
+                        )}
+                      >
+                        {REACTION_EMOJIS.map((emoji) => (
+                          <button
+                            key={emoji}
+                            type="button"
+                            onClick={() => {
+                              onToggleReaction(message.id, emoji)
+                              setReactionPickerForId(null)
+                            }}
+                            aria-label={t("messenger:reactions.react", { emoji })}
+                            className="inline-flex min-h-[36px] min-w-[36px] items-center justify-center rounded-full text-xl transition-transform hover:scale-125 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-violet-500)"
+                          >
+                            <span aria-hidden="true">{emoji}</span>
+                          </button>
+                        ))}
+                      </div>
+                    ) : null}
+                    {!message.deletedAt &&
+                    message.isMe &&
+                    message.isLastRead &&
+                    message.readAtLabel ? (
+                      <span className="px-1 text-micro font-medium text-text-secondary">
+                        {t("messenger:seen", { time: message.readAtLabel })}
+                      </span>
+                    ) : null}
+                  </div>
+                </m.div>
+              </div>
+            )
+          })}
+        </div>
       </div>
+      {showJumpButton ? (
+        <m.button
+          type="button"
+          onClick={() =>
+            virtualizer.scrollToIndex(filteredMessages.length - 1, {
+              align: "end",
+              behavior: "smooth",
+            })
+          }
+          aria-label={t("messenger:aria.jumpToLatest")}
+          initial={prefersReducedMotion ? false : { opacity: 0, scale: 0.85, y: 8 }}
+          animate={{ opacity: 1, scale: 1, y: 0 }}
+          transition={
+            prefersReducedMotion
+              ? { duration: 0 }
+              : { duration: 0.2, ease: [0.22, 1, 0.36, 1] as const }
+          }
+          whileHover={prefersReducedMotion ? undefined : { scale: 1.05 }}
+          whileTap={prefersReducedMotion ? undefined : { scale: 0.95 }}
+          className="messenger-send-btn absolute bottom-4 right-4 z-10 inline-flex size-11 items-center justify-center rounded-full text-[var(--text-inverse)] shadow-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-violet-500) focus-visible:ring-offset-2 focus-visible:ring-offset-(--bg-surface)"
+        >
+          <ArrowDown className="size-5" strokeWidth={2.5} aria-hidden="true" />
+        </m.button>
+      ) : null}
     </div>
   )
 }

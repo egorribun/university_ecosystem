@@ -99,6 +99,7 @@
     "unread": "{{count}} unread",
     "messageSent": "Sent",
     "messageRead": "Read by recipient",
-    "connectionStatus": "Connection status"
+    "connectionStatus": "Connection status",
+    "jumpToLatest": "Jump to latest message"
   }
 }

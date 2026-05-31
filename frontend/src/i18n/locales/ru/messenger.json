@@ -99,6 +99,7 @@
     "unread": "{{count}} непрочитано",
     "messageSent": "Отправлено",
     "messageRead": "Прочитано получателем",
-    "connectionStatus": "Статус соединения"
+    "connectionStatus": "Статус соединения",
+    "jumpToLatest": "К последнему сообщению"
   }
 }
