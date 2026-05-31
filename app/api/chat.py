@@ -38,6 +38,7 @@ from app.schemas.chat import (
     ChatsListOut,
     MessageResponse,
     MessagesListOut,
+    ReactorOut,
 )
 from app.services.chat.command_service import (
     ChatMaintenanceService,
@@ -268,6 +269,33 @@ async def remove_reaction(
         chat_id, message_id, current_user, emoji, locale=locale
     )
     return {"status": "ok"}
+
+
+@router.get(
+    "/{chat_id}/messages/{message_id}/reactions",
+    response_model=list[ReactorOut],
+    dependencies=[Depends(sensitive_route_limit())],
+)
+async def get_reactors(
+    chat_id: uuid.UUID,
+    message_id: uuid.UUID,
+    current_user: Annotated[User, Depends(get_current_user)],
+    query_service: Annotated[ChatQueryService, Depends(get_read_chat_query_service)],
+    locale: Annotated[str, Depends(get_locale)],
+    emoji: str = Query(..., min_length=1, max_length=16),
+) -> list[ReactorOut]:
+    """List the users who reacted to a message with a specific emoji (Wave 207).
+
+    Powers the reactor-list "who reacted" popover — reactor identities are loaded
+    on-demand, NOT bundled into GET /messages. Participant-authz'd + message-in-chat
+    guarded (a participant of one chat can't enumerate reactors of a message in
+    another by guessing its id). emoji is a QUERY param (same robust shape as the
+    DELETE route, W206 SW7). Coexists with POST + DELETE at this path (FastAPI
+    routes by method).
+    """
+    return await query_service.get_reactors(
+        chat_id, message_id, emoji, current_user, locale=locale
+    )
 
 
 @router.post(

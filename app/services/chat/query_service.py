@@ -28,7 +28,7 @@ if TYPE_CHECKING:
     )
     from app.schemas.dtos.chat import MessageReactionDTO
 
-from app.api.validation import ensure_exists, raise_forbidden
+from app.api.validation import ensure_exists, raise_forbidden, raise_not_found
 from app.api.ws.presence import build_presence_map
 from app.repositories.chat_repository import ChatRepository
 from app.schemas.chat import (
@@ -38,6 +38,7 @@ from app.schemas.chat import (
     MessagesListOut,
     PresenceStatus,
     ReactionAggregate,
+    ReactorOut,
     ReplyPreview,
 )
 
@@ -265,3 +266,45 @@ class ChatQueryService:
             has_more=has_more,
             next_cursor=next_cursor,
         )
+
+    async def get_reactors(
+        self,
+        chat_id: uuid.UUID,
+        message_id: uuid.UUID,
+        emoji: str,
+        user: User,
+        locale: str,
+    ) -> list[ReactorOut]:
+        """Wave 207 — list the users who reacted to a message with one emoji.
+
+        Powers the reactor-list "who reacted" popover (on-demand — reactor
+        identities are deliberately NOT bundled into get_messages). Authz mirrors
+        get_messages exactly (get_by_id → ensure_exists → participant check) for
+        in-service consistency. The message-in-chat guard (message_exists_in_chat →
+        404) stops a participant of one chat enumerating reactors of a message in
+        another chat by guessing its id. Maps the repo's User rows → ReactorOut:
+        full_name/avatar_url live on User.profile (a lazy="noload" relationship the
+        repo selectinloads), so they're read via the profile with a None-guard —
+        mirrors notification_service's ``sender.profile and …`` pattern; a user with
+        no profile row yields name/avatar = None.
+        """
+        chat = await self.repository.get_by_id(chat_id)
+        ensure_exists(chat, "chat", locale)
+        assert chat is not None  # noqa: S101
+
+        participant_ids = {p.id for p in chat.participants}
+        if user.id not in participant_ids:
+            raise_forbidden(locale, "errors.chat.not_participant")
+
+        if not await self.repository.message_exists_in_chat(message_id, chat_id):
+            raise_not_found("message", locale)
+
+        reactors = await self.repository.get_reactors(message_id, emoji)
+        return [
+            ReactorOut(
+                user_id=u.id,
+                name=(u.profile.full_name if u.profile else None),
+                avatar_url=(u.profile.avatar_url if u.profile else None),
+            )
+            for u in reactors
+        ]

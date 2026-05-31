@@ -64,6 +64,20 @@ class ReactionAggregate(SecureBaseModel):
     reacted_by_me: bool = False
 
 
+class ReactorOut(SecureBaseModel):
+    """Wave 207 — one user in the reactor-list ("who reacted") popover.
+
+    Built by ChatQueryService.get_reactors from the User rows the repository joins
+    via message_reactions. ``user_id`` is remapped explicitly in the service (the
+    User row has ``.id``, not ``.user_id``) — no from_attributes auto-mapping; only
+    plain User columns (no relationship access → no N+1).
+    """
+
+    user_id: UUID
+    name: str | None = None
+    avatar_url: str | None = None
+
+
 # Wave 207 — a reply quote-preview carries only what the FE renders above a reply
 # bubble: who + a snippet + a deleted flag. Content is truncated so a reply never
 # ships its target's full body; the FE line-clamps the rest. A LEAN preview (not a
