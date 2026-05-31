@@ -7773,6 +7773,78 @@
       }
     },
     "/api/v1/chats/{chat_id}/messages/{message_id}/reactions": {
+      "delete": {
+        "description": "Remove an emoji reaction from a message (idempotent).\n\nW206 SW7 — emoji is a QUERY param, NOT a URL-path segment. Query params decode\nunambiguously (parse_qs); that is the robust shape for an arbitrary\nmulti-codepoint emoji used as a sub-resource selector, whereas multi-byte\ncontent in a URL path segment is a known fragility class. Verified LIVE\nend-to-end (two-browser cross-user add + remove of a real 👍, W206 SW7).\n\nHonest re-attribution: the mid-wave switch from the SW4 path route was first\nblamed on a Caddy path mis-decode, but live verification showed the earlier\n\"failed remove\" was a CORRUPT stored value — curl on Windows Git-Bash mangles a\nliteral multi-byte emoji in a request BODY to \"??\", so the curl-added reaction\nwas stored as \"??\" and no remove could match the correctly-encoded 👍. The\nquery param is retained as the more robust design (the path route was never\nverified for a real emoji). W174 auto-cookie covers DELETE CSRF.",
+        "operationId": "remove_reaction_api_v1_chats__chat_id__messages__message_id__reactions_delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "chat_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Chat Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "message_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Message Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "emoji",
+            "required": true,
+            "schema": {
+              "maxLength": 16,
+              "minLength": 1,
+              "title": "Emoji",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "title": "Response Remove Reaction Api V1 Chats  Chat Id  Messages  Message Id  Reactions Delete",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Remove Reaction",
+        "tags": [
+          "chats"
+        ]
+      },
       "post": {
         "description": "Add an emoji reaction to a message (idempotent, any participant).\n\nW174 auto-cookie covers POST CSRF.",
         "operationId": "add_reaction_api_v1_chats__chat_id__messages__message_id__reactions_post",
@@ -7840,80 +7912,6 @@
           }
         ],
         "summary": "Add Reaction",
-        "tags": [
-          "chats"
-        ]
-      }
-    },
-    "/api/v1/chats/{chat_id}/messages/{message_id}/reactions/{emoji}": {
-      "delete": {
-        "description": "Remove an emoji reaction from a message (idempotent).\n\nThe emoji is the URL-encoded path segment. W174 auto-cookie covers DELETE CSRF.",
-        "operationId": "remove_reaction_api_v1_chats__chat_id__messages__message_id__reactions__emoji__delete",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "chat_id",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "title": "Chat Id",
-              "type": "string"
-            }
-          },
-          {
-            "in": "path",
-            "name": "message_id",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "title": "Message Id",
-              "type": "string"
-            }
-          },
-          {
-            "in": "path",
-            "name": "emoji",
-            "required": true,
-            "schema": {
-              "maxLength": 16,
-              "minLength": 1,
-              "title": "Emoji",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "additionalProperties": {
-                    "type": "string"
-                  },
-                  "title": "Response Remove Reaction Api V1 Chats  Chat Id  Messages  Message Id  Reactions  Emoji  Delete",
-                  "type": "object"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "security": [
-          {
-            "OAuth2PasswordBearer": []
-          }
-        ],
-        "summary": "Remove Reaction",
         "tags": [
           "chats"
         ]

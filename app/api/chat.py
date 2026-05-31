@@ -17,7 +17,6 @@ from fastapi import (
     File,
     Form,
     Header,
-    Path,
     Query,
     UploadFile,
 )
@@ -231,7 +230,7 @@ async def add_reaction(
 
 
 @router.delete(
-    "/{chat_id}/messages/{message_id}/reactions/{emoji}",
+    "/{chat_id}/messages/{message_id}/reactions",
     dependencies=[Depends(sensitive_route_limit())],
 )
 async def remove_reaction(
@@ -242,11 +241,23 @@ async def remove_reaction(
         ChatMaintenanceService, Depends(get_chat_maintenance_service)
     ],
     locale: Annotated[str, Depends(get_locale)],
-    emoji: str = Path(..., min_length=1, max_length=16),
+    emoji: str = Query(..., min_length=1, max_length=16),
 ) -> dict[str, str]:
     """Remove an emoji reaction from a message (idempotent).
 
-    The emoji is the URL-encoded path segment. W174 auto-cookie covers DELETE CSRF.
+    W206 SW7 — emoji is a QUERY param, NOT a URL-path segment. Query params decode
+    unambiguously (parse_qs); that is the robust shape for an arbitrary
+    multi-codepoint emoji used as a sub-resource selector, whereas multi-byte
+    content in a URL path segment is a known fragility class. Verified LIVE
+    end-to-end (two-browser cross-user add + remove of a real 👍, W206 SW7).
+
+    Honest re-attribution: the mid-wave switch from the SW4 path route was first
+    blamed on a Caddy path mis-decode, but live verification showed the earlier
+    "failed remove" was a CORRUPT stored value — curl on Windows Git-Bash mangles a
+    literal multi-byte emoji in a request BODY to "??", so the curl-added reaction
+    was stored as "??" and no remove could match the correctly-encoded 👍. The
+    query param is retained as the more robust design (the path route was never
+    verified for a real emoji). W174 auto-cookie covers DELETE CSRF.
     """
     await maintenance.remove_reaction(
         chat_id, message_id, current_user, emoji, locale=locale

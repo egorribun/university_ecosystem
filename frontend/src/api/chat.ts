@@ -130,9 +130,11 @@ export const chatApi = {
   },
 
   // Wave 206 — emoji reactions (any participant, any message). add posts `emoji`
-  // as a Form field (matching the backend POST); remove URL-encodes the emoji path
-  // segment. Both flip live for other participants via the W204 bridge; the actor
-  // sees the optimistic toggleReactionMutation. Idempotent server-side.
+  // as a Form field (matching the backend POST); remove passes `emoji` as a query
+  // param (SW7 — query params decode unambiguously, the robust shape for arbitrary
+  // multi-codepoint content; verified live two-browser cross-user). Both flip live
+  // for other participants via the W204 bridge; the actor sees the optimistic
+  // toggleReactionMutation. Idempotent server-side.
   addReaction: async (chatId: string, messageId: string, emoji: string) => {
     const formData = new FormData()
     formData.append("emoji", emoji)
@@ -141,8 +143,11 @@ export const chatApi = {
   },
 
   removeReaction: async (chatId: string, messageId: string, emoji: string) => {
+    // W206 SW7 — emoji as a query param (not a URL-path segment): query params
+    // decode unambiguously, the robust shape for an arbitrary multi-codepoint emoji
+    // sub-resource selector. Verified live (real 👍 cross-user remove, no refetch).
     const response = await client.delete(
-      `/chats/${chatId}/messages/${messageId}/reactions/${encodeURIComponent(emoji)}`
+      `/chats/${chatId}/messages/${messageId}/reactions?emoji=${encodeURIComponent(emoji)}`
     )
     return response.data
   },
