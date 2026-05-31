@@ -257,6 +257,9 @@ class TestSendMessageSuccess:
                 "sender": None,
                 "attachments": [],
             }
+            mock_resp.replied_to = (
+                None  # Wave 207 — avoid truthy auto-mock in from_message
+            )
             return {m.id: mock_resp}
 
         uow.chats.get_last_messages = AsyncMock(side_effect=_get_last)
@@ -306,6 +309,9 @@ class TestSendMessageSuccess:
             "attachments": [],
         }
         cached_msg.sender_id = user.id
+        cached_msg.replied_to = (
+            None  # Wave 207 — avoid truthy auto-mock in from_message
+        )
         uow.chats.get_message_by_id = AsyncMock(return_value=cached_msg)
 
         dispatcher = ChatMessageDispatcher(
@@ -370,6 +376,7 @@ class TestSendMessageSuccess:
                 "sender": None,
                 "attachments": [],
             }
+            mr.replied_to = None  # Wave 207 — avoid truthy auto-mock in from_message
             return {m.id: mr}
 
         uow.chats.get_last_messages = AsyncMock(side_effect=_get_last)

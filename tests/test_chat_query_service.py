@@ -59,6 +59,9 @@ def _mock_message(chat_id: uuid.UUID, sender_id: uuid.UUID):
     )
     msg.sender = None
     msg.attachments = []
+    # Wave 207 — explicit so the auto-MagicMock attr isn't a truthy stand-in that
+    # ReplyPreview.from_message would try to build a quote preview from.
+    msg.replied_to = None
     return msg
 
 

@@ -198,12 +198,25 @@ async def handle_message_sent(event: MessageSent) -> None:
             logger.error("Chat %s not found for notification", event.chat_id)
             return
 
+        # 2b. Wave 207 — if this message is a reply, load the replied-to message
+        # (get_message_by_id selectinloads its sender) so serialize_message can
+        # embed the quote preview in the live new_message frame — the recipient
+        # sees the quote immediately, not just on the next refetch. None when not
+        # a reply, or when the target was hard-deleted (the SET NULL self-FK has
+        # already nulled message.reply_to_message_id by the time we read it here).
+        replied = (
+            await repo.get_message_by_id(message.reply_to_message_id)
+            if message.reply_to_message_id is not None
+            else None
+        )
+
         # 3. Trigger notifications
         service = ChatNotificationService(db)
         await service.notify_new_message(
             message=message,
             chat_participants=chat.participants,
             sender=sender,
+            replied=replied,
         )
         # Handle transaction for delivery.py updates
         await db.commit()

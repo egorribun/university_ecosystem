@@ -16,7 +16,7 @@ under platform-imposed size limits.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING  # TD-23-04 (audit 2026-03-25 Wave 23)
+from typing import TYPE_CHECKING, Any  # TD-23-04 (audit 2026-03-25 Wave 23)
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -43,8 +43,14 @@ class ChatNotificationService:
         message: Message,
         chat_participants: Sequence[User | ChatParticipantDTO],
         sender: User,
+        replied: Any = None,
     ) -> None:
-        """Notify participants about a new message."""
+        """Notify participants about a new message.
+
+        Wave 207 — ``replied`` is the replied-to message (a MessageDTO, loaded by
+        handle_message_sent) or None; it is passed to serialize_message so the
+        recipient's live new_message bubble carries the reply quote preview.
+        """
         # WebSocket real-time notification
         presence = await build_presence_map([message.sender_id])
         await ws_manager.broadcast_to_chat(
@@ -52,7 +58,7 @@ class ChatNotificationService:
             {
                 "type": "new_message",
                 "chat_id": str(message.chat_id),
-                "message": serialize_message(message, presence),
+                "message": serialize_message(message, presence, replied=replied),
             },
             exclude_user_id=sender.id,
         )

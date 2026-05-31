@@ -385,7 +385,12 @@ async def test_handle_message_sent_fetches_sender_by_id_not_noload_relationship(
 
     # db.get(Message) returns a message whose .sender is None (noload).
     message = SimpleNamespace(
-        id=message_id, chat_id=chat_id, sender_id=sender_id, sender=None, content="hi"
+        id=message_id,
+        chat_id=chat_id,
+        sender_id=sender_id,
+        sender=None,
+        content="hi",
+        reply_to_message_id=None,  # Wave 207 — handle_message_sent reads this attr
     )
     fetched_sender = SimpleNamespace(id=sender_id, profile=None)
 

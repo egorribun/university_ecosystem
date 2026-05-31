@@ -10,12 +10,14 @@ import uuid
 from typing import Any
 
 from app.models.chat import Message
-from app.schemas.chat import ChatParticipant, PresenceStatus
+from app.schemas.chat import ChatParticipant, PresenceStatus, ReplyPreview
 
 
 def serialize_message(
     message: Message,
     presence: dict[uuid.UUID, PresenceStatus] | None = None,
+    *,
+    replied: Any = None,
 ) -> dict[str, Any]:
     """Serialize a Message ORM object for WebSocket transmission."""
     sender_data = None
@@ -31,6 +33,26 @@ def serialize_message(
                 status.last_seen_at.isoformat() if status.last_seen_at else None
             ),
         }
+
+    # Wave 207 — reply quote preview (None when not a reply). `replied` is the
+    # replied-to message (a MessageDTO loaded by handle_message_sent with its
+    # sender); ReplyPreview.from_message reuses the REST truncation + sender-name
+    # logic. UUIDs stay raw (downstream orjson/json default=str stringifies them,
+    # matching id/chat_id/sender_id below); the datetime is isoformat'd inline to
+    # match this serializer's style.
+    reply_to = None
+    if replied is not None:
+        preview = ReplyPreview.from_message(replied)
+        if preview is not None:
+            reply_to = {
+                "id": preview.id,
+                "sender_id": preview.sender_id,
+                "sender_name": preview.sender_name,
+                "content": preview.content,
+                "deleted_at": (
+                    preview.deleted_at.isoformat() if preview.deleted_at else None
+                ),
+            }
 
     return {
         "id": message.id,
@@ -58,4 +80,6 @@ def serialize_message(
             }
             for att in (message.attachments or [])
         ],
+        # Wave 207 — reply quote preview for the recipient's live new_message bubble.
+        "reply_to": reply_to,
     }
