@@ -27,6 +27,10 @@ export interface Message {
   sender?: User
   sender_presence?: PresenceStatus
   attachments?: Attachment[]
+  // Wave 206 — per-emoji reaction aggregates. reacted_by_me is server-computed for
+  // the requesting user on GET /messages; on the WS delta frame the hook patches
+  // count only (reacted_by_me is per-viewer, never broadcast).
+  reactions?: { emoji: string; count: number; reacted_by_me: boolean }[]
 }
 
 export interface Chat {
@@ -122,6 +126,24 @@ export const chatApi = {
 
   deleteMessage: async (chatId: string, messageId: string) => {
     const response = await client.delete(`/chats/${chatId}/messages/${messageId}`)
+    return response.data
+  },
+
+  // Wave 206 — emoji reactions (any participant, any message). add posts `emoji`
+  // as a Form field (matching the backend POST); remove URL-encodes the emoji path
+  // segment. Both flip live for other participants via the W204 bridge; the actor
+  // sees the optimistic toggleReactionMutation. Idempotent server-side.
+  addReaction: async (chatId: string, messageId: string, emoji: string) => {
+    const formData = new FormData()
+    formData.append("emoji", emoji)
+    const response = await client.post(`/chats/${chatId}/messages/${messageId}/reactions`, formData)
+    return response.data
+  },
+
+  removeReaction: async (chatId: string, messageId: string, emoji: string) => {
+    const response = await client.delete(
+      `/chats/${chatId}/messages/${messageId}/reactions/${encodeURIComponent(emoji)}`
+    )
     return response.data
   },
 

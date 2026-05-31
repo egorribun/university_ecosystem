@@ -113,6 +113,45 @@ export function applyMessageDeletedFrame(
   }
 }
 
+/**
+ * Wave 206 — pure cache update for a `reaction_changed` DELTA frame. Patches the
+ * matched message's reaction aggregate: added → +1 (or push {emoji, count:1,
+ * reacted_by_me:false}); removed → -1 (drop when count hits 0). reacted_by_me is
+ * left untouched — the frame's actor is never the current user (the case-handler
+ * self-echo guard skips the actor, who already patched optimistically), and a
+ * peer's reaction must not flip the viewer's own flag. Drift self-heals on refetch.
+ */
+export function applyReactionChangedFrame(
+  old: MessagesListResponse | undefined,
+  frame: { message_id: string; emoji: string; action: "added" | "removed" }
+): MessagesListResponse | undefined {
+  if (!old) return old
+  return {
+    ...old,
+    items: old.items.map((m) => {
+      if (m.id !== frame.message_id) return m
+      const reactions = [...(m.reactions ?? [])]
+      const idx = reactions.findIndex((r) => r.emoji === frame.emoji)
+      const existing = reactions[idx] // idx === -1 → undefined (noUncheckedIndexedAccess)
+      if (frame.action === "added") {
+        if (existing) {
+          reactions[idx] = { ...existing, count: existing.count + 1 }
+        } else {
+          reactions.push({ emoji: frame.emoji, count: 1, reacted_by_me: false })
+        }
+      } else if (existing) {
+        const next = existing.count - 1
+        if (next <= 0) {
+          reactions.splice(idx, 1)
+        } else {
+          reactions[idx] = { ...existing, count: next }
+        }
+      }
+      return { ...m, reactions }
+    }),
+  }
+}
+
 // WebSocket message types
 export type WebSocketMessageType =
   | "ping"
@@ -125,6 +164,7 @@ export type WebSocketMessageType =
   | "error"
   | "message_edited"
   | "message_deleted"
+  | "reaction_changed"
 
 export interface WebSocketMessage {
   type: WebSocketMessageType
@@ -524,6 +564,23 @@ export function useChatWebSocket({
                 queryClient.setQueryData<MessagesListResponse>(
                   ["messages", validated.chat_id],
                   (old) => applyMessageDeletedFrame(old, validated)
+                )
+                queryClient.invalidateQueries({
+                  queryKey: ["messages", validated.chat_id],
+                  refetchType: "none",
+                })
+                break
+              }
+
+              case "reaction_changed": {
+                // Wave 206 — DELTA frame self-echo guard: the actor already patched
+                // optimistically in toggleReactionMutation, so applying its own echo
+                // would double-count. Other participants apply the delta live; a
+                // missed/duplicate frame self-heals on the next GET /messages.
+                if (validated.user_id === currentUserIdRef.current) break
+                queryClient.setQueryData<MessagesListResponse>(
+                  ["messages", validated.chat_id],
+                  (old) => applyReactionChangedFrame(old, validated)
                 )
                 queryClient.invalidateQueries({
                   queryKey: ["messages", validated.chat_id],

@@ -124,6 +124,21 @@ const MessageDeletedSchema = v.object({
   deleted_at: NonEmptyString,
 })
 
+// Wave 206 — DELTA reaction frame (the W203 read-frame archetype): carries the
+// actor (user_id) + the change, NOT the resolved aggregate (reacted_by_me is
+// per-viewer, so it can never travel in a broadcast). applyReactionChangedFrame
+// patches the matched message's emoji count ±1; the case-handler's self-echo
+// guard skips the actor (already patched optimistically). A missed/duplicate
+// delta self-heals on the next GET /messages (the persisted aggregate wins).
+const ReactionChangedSchema = v.object({
+  type: v.literal("reaction_changed"),
+  chat_id: UuidString,
+  message_id: UuidString,
+  user_id: UuidString,
+  emoji: NonEmptyString,
+  action: v.picklist(["added", "removed"]),
+})
+
 // ── Discriminated union of all valid server→client frames ─────────────────────
 
 export const WsServerMessageSchema = v.variant("type", [
@@ -137,6 +152,7 @@ export const WsServerMessageSchema = v.variant("type", [
   PresenceSchema,
   MessageEditedSchema,
   MessageDeletedSchema,
+  ReactionChangedSchema,
 ])
 
 export type WsServerMessage = v.InferOutput<typeof WsServerMessageSchema>
