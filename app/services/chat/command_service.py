@@ -672,6 +672,38 @@ class ChatMaintenanceService:
                 exclude_user_id=user.id,
             )
 
+    async def broadcast_typing(
+        self, chat_id: uuid.UUID, user: User, locale: str
+    ) -> None:
+        """Broadcast a 'typing' indicator to the OTHER chat participants (Wave 207).
+
+        The frontend WS connects to ws-hub, whose allowedMessageTypes drops "typing"
+        at its parse boundary (services/ws-hub client.go) — so a typing frame sent over
+        the socket goes nowhere. This REST endpoint does the participant authz +
+        broadcast the (now frontend-unreachable) in-process WS typing handler did
+        (app/api/ws/dispatcher.py): broadcast_to_chat → W204 bridge → ws-hub chat.*
+        fan-out → the other participants' live TypingIndicator. No DB write — typing is
+        ephemeral. check_participant (a single EXISTS) is the light authz for this
+        ~2/sec hot path; a non-participant (or unknown chat) → 403, no existence leak.
+        The user_name resolution + frame shape mirror dispatcher.py exactly (profile is
+        lazy="noload", so it falls back to the email when not eager-loaded).
+        """
+        if not await self.repository.check_participant(chat_id, user.id):
+            raise_forbidden(locale, "errors.chat.not_participant")
+
+        await ws_manager.broadcast_to_chat(
+            chat_id,
+            {
+                "type": "typing",
+                "chat_id": str(chat_id),
+                "user_id": str(user.id),
+                "user_name": getattr(user.profile, "full_name", None)
+                if getattr(user, "profile", None)
+                else str(user.email),
+            },
+            exclude_user_id=user.id,
+        )
+
     async def clear_history(
         self, chat_id: uuid.UUID, user: User, locale: str
     ) -> ChatMaintenanceResult:

@@ -299,6 +299,33 @@ async def get_reactors(
 
 
 @router.post(
+    "/{chat_id}/typing",
+    dependencies=[
+        Depends(sensitive_route_limit(limit=180, window_sec=60, key_prefix="typing"))
+    ],
+)
+async def typing_indicator(
+    chat_id: uuid.UUID,
+    current_user: Annotated[User, Depends(get_current_user)],
+    maintenance: Annotated[
+        ChatMaintenanceService, Depends(get_chat_maintenance_service)
+    ],
+    locale: Annotated[str, Depends(get_locale)],
+) -> dict[str, str]:
+    """Broadcast a 'typing' indicator to the other chat participants (Wave 207).
+
+    The frontend WS connects to ws-hub, which drops "typing" frames at its parse
+    boundary — so typing can't relay peer-to-peer over the socket. This REST endpoint
+    does the participant authz + broadcast (W204 bridge → ws-hub chat.* fan-out → the
+    other participants' live TypingIndicator). A permissive 180/60 limiter (vs the
+    strict 5/60 default) gives headroom over the client's 500ms (~2/sec) throttle while
+    capping broadcast-spam abuse. W174 auto-cookie covers POST CSRF.
+    """
+    await maintenance.broadcast_typing(chat_id, current_user, locale=locale)
+    return {"status": "ok"}
+
+
+@router.post(
     "/{chat_id}/clear",
     response_model=ChatMaintenanceResult,
     dependencies=[Depends(sensitive_route_limit())],
