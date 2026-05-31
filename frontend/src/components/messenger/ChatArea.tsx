@@ -74,6 +74,11 @@ interface ChatAreaProps {
   onSaveEdit?: (messageId: string) => void
   onCancelEdit?: () => void
   onDeleteMessage?: (messageId: string) => void
+  /**
+   * Wave 206 — toggle an emoji reaction on a message, threaded from
+   * useMessengerController through MessengerFeature into ChatWindow.
+   */
+  onToggleReaction?: (messageId: string, emoji: string) => void
 }
 
 export function ChatArea({
@@ -103,6 +108,7 @@ export function ChatArea({
   onSaveEdit,
   onCancelEdit,
   onDeleteMessage,
+  onToggleReaction,
 }: ChatAreaProps) {
   const { t } = useTranslation(["messenger", "common"])
   const navigate = useNavigate()
@@ -362,6 +368,7 @@ export function ChatArea({
             onSaveEdit={onSaveEdit}
             onCancelEdit={onCancelEdit}
             onDeleteMessage={onDeleteMessage}
+            onToggleReaction={onToggleReaction}
           />
           <TypingIndicator users={typingUsers} prefersReducedMotion={prefersReducedMotion} />
           <MessageInput onSend={handleSendMessage} />

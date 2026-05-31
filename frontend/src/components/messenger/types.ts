@@ -38,4 +38,8 @@ export interface Message {
   editedAtLabel?: string
   deletedAt?: string | null
   attachments?: Attachment[]
+  // Wave 206 — per-emoji reaction aggregates (camelCase UI shape; mapped from
+  // the API snake_case in useMessengerController's transform). reactedByMe drives
+  // the active-pill styling + toggle direction.
+  reactions?: { emoji: string; count: number; reactedByMe: boolean }[]
 }

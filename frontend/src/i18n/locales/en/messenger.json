@@ -76,6 +76,11 @@
     "failedToLoadUsersHint": "Check your connection and try again.",
     "retry": "Try again"
   },
+  "reactions": {
+    "add": "Add reaction",
+    "react": "React with {{emoji}}",
+    "tally": "Toggle {{emoji}} reaction, {{count}}"
+  },
   "aria": {
     "messageList": "Chat messages",
     "removeAttachment": "Remove attachment",

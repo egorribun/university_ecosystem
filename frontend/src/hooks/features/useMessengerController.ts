@@ -27,6 +27,40 @@ const formatMessageTime = (dateString: string) => {
   return formatDate(dateString, presets.chatTime)
 }
 
+// Wave 206 — API reaction aggregate shape (snake_case, as carried on @/api/chat
+// Message.reactions). The optimistic toggle below operates on this shape in the
+// ["messages", chatId] cache; the transform maps it to the camelCase UI shape.
+type ApiReaction = { emoji: string; count: number; reacted_by_me: boolean }
+
+/**
+ * Wave 206 — optimistic toggle of one emoji on a message's reaction aggregate.
+ * Unlike applyReactionChangedFrame (which patches count only for a PEER's delta),
+ * this is the ACTOR's optimistic patch, so it ALSO flips reacted_by_me. removing →
+ * count-1 + reacted_by_me=false (drop at 0); adding → count+1 + reacted_by_me=true
+ * (or push a fresh {count:1, reacted_by_me:true}). noUncheckedIndexedAccess-safe.
+ */
+const toggleReactionAggregate = (
+  reactions: ApiReaction[] | undefined,
+  emoji: string,
+  currentlyReacted: boolean
+): ApiReaction[] => {
+  const next = [...(reactions ?? [])]
+  const idx = next.findIndex((r) => r.emoji === emoji)
+  const existing = next[idx] // idx === -1 → undefined (noUncheckedIndexedAccess)
+  if (currentlyReacted) {
+    if (existing) {
+      const count = existing.count - 1
+      if (count <= 0) next.splice(idx, 1)
+      else next[idx] = { ...existing, count, reacted_by_me: false }
+    }
+  } else if (existing) {
+    next[idx] = { ...existing, count: existing.count + 1, reacted_by_me: true }
+  } else {
+    next.push({ emoji, count: 1, reacted_by_me: true })
+  }
+  return next
+}
+
 export const useMessengerController = () => {
   const { t } = useTranslation(["messenger", "common"])
   const { user } = useAuth()
@@ -189,6 +223,14 @@ export const useMessengerController = () => {
           type: a.file_type,
           name: a.filename,
           size: a.size,
+        })),
+        // Wave 206 — map API reaction aggregates (snake_case) → UI shape
+        // (camelCase reactedByMe). Server-computed reacted_by_me on GET /messages;
+        // the optimistic toggle + WS delta keep it live thereafter.
+        reactions: m.reactions?.map((r) => ({
+          emoji: r.emoji,
+          count: r.count,
+          reactedByMe: r.reacted_by_me,
         })),
       }
     })
@@ -413,6 +455,56 @@ export const useMessengerController = () => {
     },
   })
 
+  // Wave 206 — emoji reaction toggle (optimistic). mutationFn picks add/remove
+  // from currentlyReacted; onMutate flips the aggregate in the ["messages",chatId]
+  // cache immediately (toggleReactionAggregate), rollback on error. The server's
+  // delta broadcast is self-echo-guarded for the actor, so the optimistic patch is
+  // the actor's source of truth; refetch reconciles. Mirrors editMessageMutation.
+  const toggleReactionMutation = useMutation({
+    mutationFn: ({
+      chatId,
+      messageId,
+      emoji,
+      currentlyReacted,
+    }: {
+      chatId: string
+      messageId: string
+      emoji: string
+      currentlyReacted: boolean
+    }) =>
+      currentlyReacted
+        ? chatApi.removeReaction(chatId, messageId, emoji)
+        : chatApi.addReaction(chatId, messageId, emoji),
+    onMutate: async ({ chatId, messageId, emoji, currentlyReacted }) => {
+      await queryClient.cancelQueries({ queryKey: ["messages", chatId] })
+      const previousMessages = queryClient.getQueryData<MessagesListResponse>(["messages", chatId])
+      queryClient.setQueryData<MessagesListResponse>(["messages", chatId], (old) =>
+        old
+          ? {
+              ...old,
+              items: old.items.map((m) =>
+                m.id === messageId
+                  ? {
+                      ...m,
+                      reactions: toggleReactionAggregate(m.reactions, emoji, currentlyReacted),
+                    }
+                  : m
+              ),
+            }
+          : old
+      )
+      return { previousMessages, chatId }
+    },
+    onError: (_error, _vars, context) => {
+      if (context?.previousMessages) {
+        queryClient.setQueryData(["messages", context.chatId], context.previousMessages)
+      }
+    },
+    onSettled: (_data, _error, { chatId }) => {
+      queryClient.invalidateQueries({ queryKey: ["messages", chatId], refetchType: "none" })
+    },
+  })
+
   // --- Handlers ---
 
   // Wave 203 SW8 — depend on the STABLE `.mutate`, not the whole mutation
@@ -622,6 +714,23 @@ export const useMessengerController = () => {
     })
   }
 
+  // Wave 206 — toggle an emoji reaction on a message (any participant, any
+  // message). Reads currentlyReacted from the LIVE cache (not the `messages`
+  // closure) so the deps stay stable; depends on the referentially-stable
+  // `.mutate` (W203 SW8 lesson — the mutation object changes per status).
+  const toggleReactionMutate = toggleReactionMutation.mutate
+  const handleToggleReaction = useCallback(
+    (messageId: string, emoji: string) => {
+      if (!selectedChatId) return
+      const current = queryClient.getQueryData<MessagesListResponse>(["messages", selectedChatId])
+      const msg = current?.items.find((m) => m.id === messageId)
+      const currentlyReacted =
+        msg?.reactions?.some((r) => r.emoji === emoji && r.reacted_by_me) ?? false
+      toggleReactionMutate({ chatId: selectedChatId, messageId, emoji, currentlyReacted })
+    },
+    [selectedChatId, queryClient, toggleReactionMutate]
+  )
+
   const handleViewProfile = () => {
     setShowChatMenu(false)
     const other = activeChat && getOtherParticipant(activeChat)
@@ -713,5 +822,8 @@ export const useMessengerController = () => {
     handleSaveEdit,
     handleCancelEdit,
     handleDeleteMessage,
+
+    // Wave 206 — message reactions
+    handleToggleReaction,
   }
 }

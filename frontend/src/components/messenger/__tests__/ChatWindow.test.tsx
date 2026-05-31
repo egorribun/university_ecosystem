@@ -513,3 +513,103 @@ describe("ChatWindow — W205 SW6 edit/delete affordance + tombstone + inline ed
     expect(onCancelEdit).toHaveBeenCalledTimes(1)
   })
 })
+
+describe("ChatWindow — W206 reactions (pills + +react picker)", () => {
+  const withReactions = (
+    reactions: Message["reactions"],
+    overrides: Partial<Message> = {}
+  ): Message =>
+    makeMessage({ id: "rx1", text: "react to me", isMe: false, reactions, ...overrides })
+
+  it("renders a reaction pill (emoji + count + aria-pressed) for each aggregate", () => {
+    render(
+      <ChatWindow messages={[withReactions([{ emoji: "👍", count: 2, reactedByMe: false }])]} />,
+      {
+        wrapper,
+      }
+    )
+    const pill = screen.getByRole("button", {
+      name: 'messenger:reactions.tally|{"emoji":"👍","count":2}',
+    })
+    expect(pill.getAttribute("aria-pressed")).toBe("false")
+    expect(pill.textContent).toContain("👍")
+    expect(pill.textContent).toContain("2")
+  })
+
+  it("marks a reactedByMe pill aria-pressed=true", () => {
+    render(
+      <ChatWindow messages={[withReactions([{ emoji: "❤️", count: 1, reactedByMe: true }])]} />,
+      {
+        wrapper,
+      }
+    )
+    const pill = screen.getByRole("button", {
+      name: 'messenger:reactions.tally|{"emoji":"❤️","count":1}',
+    })
+    expect(pill.getAttribute("aria-pressed")).toBe("true")
+  })
+
+  it("clicking a pill fires onToggleReaction(messageId, emoji)", () => {
+    const onToggleReaction = vi.fn()
+    render(
+      <ChatWindow
+        messages={[withReactions([{ emoji: "👍", count: 1, reactedByMe: false }], { id: "msg-7" })]}
+        onToggleReaction={onToggleReaction}
+      />,
+      { wrapper }
+    )
+    fireEvent.click(
+      screen.getByRole("button", { name: 'messenger:reactions.tally|{"emoji":"👍","count":1}' })
+    )
+    expect(onToggleReaction).toHaveBeenCalledWith("msg-7", "👍")
+  })
+
+  it("renders the +react affordance only when onToggleReaction is provided", () => {
+    const { rerender } = render(<ChatWindow messages={[withReactions([])]} />, { wrapper })
+    expect(screen.queryByRole("button", { name: "messenger:reactions.add" })).toBeFalsy()
+    rerender(<ChatWindow messages={[withReactions([])]} onToggleReaction={() => {}} />)
+    expect(screen.getByRole("button", { name: "messenger:reactions.add" })).toBeTruthy()
+  })
+
+  it("opens the emoji picker on +react and fires onToggleReaction on selection (then closes)", () => {
+    const onToggleReaction = vi.fn()
+    render(
+      <ChatWindow
+        messages={[withReactions([], { id: "msg-9" })]}
+        onToggleReaction={onToggleReaction}
+      />,
+      { wrapper }
+    )
+    const pickerName = 'messenger:reactions.react|{"emoji":"👍"}'
+    // picker closed initially
+    expect(screen.queryByRole("button", { name: pickerName })).toBeFalsy()
+    // open it
+    fireEvent.click(screen.getByRole("button", { name: "messenger:reactions.add" }))
+    const thumbsUp = screen.getByRole("button", { name: pickerName })
+    // select → toggle + close
+    fireEvent.click(thumbsUp)
+    expect(onToggleReaction).toHaveBeenCalledWith("msg-9", "👍")
+    expect(screen.queryByRole("button", { name: pickerName })).toBeFalsy()
+  })
+
+  it("does NOT render reactions footer or picker on a deleted message", () => {
+    render(
+      <ChatWindow
+        messages={[
+          makeMessage({
+            id: "del-1",
+            text: "gone",
+            isMe: true,
+            deletedAt: "2026-05-31T10:00:00+00:00",
+            reactions: [{ emoji: "👍", count: 3, reactedByMe: false }],
+          }),
+        ]}
+        onToggleReaction={() => {}}
+      />,
+      { wrapper }
+    )
+    expect(screen.getByText("messenger:messageDeleted")).toBeTruthy()
+    expect(screen.queryByRole("button", { name: "messenger:reactions.add" })).toBeFalsy()
+    expect(screen.queryByRole("button", { name: /messenger:reactions\.tally/ })).toBeFalsy()
+  })
+})

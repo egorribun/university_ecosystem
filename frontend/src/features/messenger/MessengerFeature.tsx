@@ -86,6 +86,9 @@ export default function MessengerFeature() {
     handleSaveEdit,
     handleCancelEdit,
     handleDeleteMessage,
+
+    // Wave 206 — emoji reaction toggle (optimistic + live).
+    handleToggleReaction,
   } = useMessengerController()
 
   // Wave 183 SW6 — surface WS connection status. useMessenger().isConnected
@@ -155,6 +158,7 @@ export default function MessengerFeature() {
       onSaveEdit={handleSaveEdit}
       onCancelEdit={handleCancelEdit}
       onDeleteMessage={handleDeleteMessage}
+      onToggleReaction={handleToggleReaction}
     />
   )
 

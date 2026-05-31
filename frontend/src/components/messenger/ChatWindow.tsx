@@ -9,6 +9,7 @@ import {
   Pencil,
   RotateCcw,
   SearchX,
+  SmilePlus,
   Trash2,
   TriangleAlert,
   X,
@@ -83,7 +84,18 @@ interface ChatWindowProps {
   onSaveEdit?: (messageId: string) => void
   onCancelEdit?: () => void
   onDeleteMessage?: (messageId: string) => void
+  /**
+   * Wave 206 — toggle an emoji reaction on a message (any participant, any
+   * message). Threaded from useMessengerController via ChatArea. Optional so
+   * ChatWindow still renders standalone in tests/storybook: existing reaction
+   * pills display read-only, and the "+react" affordance + picker are hidden.
+   */
+  onToggleReaction?: (messageId: string, emoji: string) => void
 }
+
+// Wave 206 — fixed quick-reaction set (no emoji-picker dependency). Module-level
+// const per W202 SW1 hoist convention.
+const REACTION_EMOJIS = ["👍", "❤️", "😂", "😮", "😢"] as const
 
 // Wave 184 SW2 (Path B) — skeleton bubble count. 6 alternating left/right
 // bubbles fills the chat viewport without being visually overwhelming.
@@ -104,8 +116,12 @@ export function ChatWindow({
   onSaveEdit,
   onCancelEdit,
   onDeleteMessage,
+  onToggleReaction,
 }: ChatWindowProps) {
   const { t } = useTranslation()
+  // Wave 206 — which message's emoji picker is open (null = none). The "+react"
+  // affordance toggles it; selecting an emoji or clicking outside / Escape closes.
+  const [reactionPickerForId, setReactionPickerForId] = useState<string | null>(null)
   // Wave 181 SW3 — useReducedMotion guard. Without this, virtualized message
   // bubbles fade+scale in on every scroll-into-view event, which becomes
   // disorienting motion for reduced-motion users.
@@ -182,6 +198,28 @@ export function ChatWindow({
       })
     }
   }, [filteredMessages.length, isSearchActive, virtualizer])
+
+  // Wave 206 — close the emoji picker on outside click / Escape. The +react
+  // button + picker bar are tagged data-reaction-ui; a mousedown anywhere else
+  // closes (the listener is only attached while a picker is open, so the +react
+  // toggle itself — guarded by closest('[data-reaction-ui]') — still works).
+  useEffect(() => {
+    if (!reactionPickerForId) return
+    const onMouseDown = (event: MouseEvent) => {
+      const target = event.target as HTMLElement | null
+      if (target?.closest("[data-reaction-ui]")) return
+      setReactionPickerForId(null)
+    }
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setReactionPickerForId(null)
+    }
+    document.addEventListener("mousedown", onMouseDown)
+    document.addEventListener("keydown", onKeyDown)
+    return () => {
+      document.removeEventListener("mousedown", onMouseDown)
+      document.removeEventListener("keydown", onKeyDown)
+    }
+  }, [reactionPickerForId])
 
   // Wave 184 SW3 (Path B) — fetch-failure empty state. Order matters:
   // must come AFTER isLoading (so a transient error during refetch
@@ -706,6 +744,89 @@ export function ChatWindow({
                       </div>
                     </div>
                   )}
+                  {/* Wave 206 — reaction footer (pills + "+react") + inline emoji
+                      picker. Hidden on deleted tombstones + while inline-editing.
+                      Pills render read-only without onToggleReaction (tests/
+                      storybook); the +react affordance + picker need the handler.
+                      reactedByMe pills get the violet tint; clicking a pill toggles
+                      that emoji. data-reaction-ui marks the outside-click exemptions. */}
+                  {!message.deletedAt &&
+                  editingMessageId !== message.id &&
+                  ((message.reactions && message.reactions.length > 0) || onToggleReaction) ? (
+                    <div
+                      className={cn(
+                        "flex flex-wrap items-center gap-1",
+                        message.isMe ? "justify-end" : "justify-start"
+                      )}
+                    >
+                      {message.reactions?.map((reaction) => (
+                        <button
+                          key={reaction.emoji}
+                          type="button"
+                          data-reaction-ui
+                          onClick={() => onToggleReaction?.(message.id, reaction.emoji)}
+                          aria-pressed={reaction.reactedByMe}
+                          aria-label={t("messenger:reactions.tally", {
+                            emoji: reaction.emoji,
+                            count: reaction.count,
+                          })}
+                          className={cn(
+                            "inline-flex min-h-[28px] items-center gap-1 rounded-full border px-2 py-0.5 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-violet-500) focus-visible:ring-offset-1 focus-visible:ring-offset-(--bg-surface)",
+                            reaction.reactedByMe
+                              ? "border-(--color-violet-500)/(--opacity-medium) bg-(--color-violet-500)/(--opacity-soft) text-(--text-primary)"
+                              : "border-(--color-violet-500)/(--opacity-faint) bg-(--bg-surface-raised)/(--opacity-medium) text-(--text-secondary) hover:bg-(--bg-surface-hover)/(--opacity-medium)"
+                          )}
+                        >
+                          <span aria-hidden="true">{reaction.emoji}</span>
+                          <span className="text-micro font-semibold tabular-nums">
+                            {reaction.count}
+                          </span>
+                        </button>
+                      ))}
+                      {onToggleReaction ? (
+                        <button
+                          type="button"
+                          data-reaction-ui
+                          onClick={() =>
+                            setReactionPickerForId((prev) =>
+                              prev === message.id ? null : message.id
+                            )
+                          }
+                          aria-label={t("messenger:reactions.add")}
+                          aria-expanded={reactionPickerForId === message.id}
+                          className="inline-flex min-h-[28px] min-w-[28px] items-center justify-center rounded-full text-(--text-secondary) opacity-medium transition-opacity hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-violet-500) focus-visible:ring-offset-1 focus-visible:ring-offset-(--bg-surface)"
+                        >
+                          <SmilePlus className="size-4" strokeWidth={2} aria-hidden="true" />
+                        </button>
+                      ) : null}
+                    </div>
+                  ) : null}
+                  {reactionPickerForId === message.id && onToggleReaction ? (
+                    <div
+                      data-reaction-ui
+                      role="group"
+                      aria-label={t("messenger:reactions.add")}
+                      className={cn(
+                        "messenger-card-matte flex items-center gap-1 rounded-full px-2 py-1",
+                        message.isMe ? "self-end" : "self-start"
+                      )}
+                    >
+                      {REACTION_EMOJIS.map((emoji) => (
+                        <button
+                          key={emoji}
+                          type="button"
+                          onClick={() => {
+                            onToggleReaction(message.id, emoji)
+                            setReactionPickerForId(null)
+                          }}
+                          aria-label={t("messenger:reactions.react", { emoji })}
+                          className="inline-flex min-h-[36px] min-w-[36px] items-center justify-center rounded-full text-xl transition-transform hover:scale-125 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-violet-500)"
+                        >
+                          <span aria-hidden="true">{emoji}</span>
+                        </button>
+                      ))}
+                    </div>
+                  ) : null}
                   {!message.deletedAt &&
                   message.isMe &&
                   message.isLastRead &&

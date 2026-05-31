@@ -76,6 +76,11 @@
     "failedToLoadUsersHint": "Проверьте соединение и попробуйте снова.",
     "retry": "Повторить"
   },
+  "reactions": {
+    "add": "Добавить реакцию",
+    "react": "Отреагировать {{emoji}}",
+    "tally": "Переключить реакцию {{emoji}}, {{count}}"
+  },
   "aria": {
     "messageList": "Сообщения чата",
     "removeAttachment": "Удалить вложение",
