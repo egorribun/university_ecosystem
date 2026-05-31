@@ -435,3 +435,229 @@ async def test_handle_message_sent_fetches_sender_by_id_not_noload_relationship(
     assert kwargs["sender"] is fetched_sender
     assert kwargs["sender"] is not None
     assert kwargs["message"] is message
+
+
+# ── 6. Reply-notification SUPERSEDE (Wave 208) ───────────────────────────────
+
+
+def _replied(*, message_id: uuid.UUID, sender_id: uuid.UUID) -> SimpleNamespace:
+    """A replied-to MessageDTO stand-in.
+
+    notify_new_message reads ONLY ``.id`` + ``.sender_id`` off ``replied`` for the
+    supersede push path (serialize_message is patched in these tests, so its other
+    fields are irrelevant). The real object is a ``MessageDTO`` which carries both
+    (app/schemas/dtos/chat.py).
+    """
+    return SimpleNamespace(id=message_id, sender_id=sender_id)
+
+
+@pytest.mark.asyncio
+async def test_notify_reply_supersedes_quoted_author_off_generic() -> None:
+    """X replies to Y in a 3-person chat → Y is dropped from the generic
+    chat.message (only Z keeps it) and Y gets a specific chat.reply entry."""
+    sender = _user(uuid.uuid4(), full_name="Alice")  # X — replier
+    quoted = _user(uuid.uuid4())  # Y — author of the replied-to message
+    third = _user(uuid.uuid4())  # Z — unrelated participant
+    chat_id = uuid.uuid4()
+    message = _msg(chat_id=chat_id, sender_id=sender.id, content="re: hi")
+    replied = _replied(message_id=uuid.uuid4(), sender_id=quoted.id)
+
+    svc = ChatNotificationService(MagicMock())
+
+    with (
+        patch(
+            "app.services.chat.notification_service.build_presence_map",
+            new=AsyncMock(return_value={}),
+        ),
+        patch(
+            "app.services.chat.notification_service.serialize_message",
+            return_value={},
+        ),
+        patch(
+            "app.services.chat.notification_service.ws_manager.broadcast_to_chat",
+            new=AsyncMock(),
+        ),
+        patch(
+            "app.services.chat.notification_service.create_notifications_for_users",
+            new=AsyncMock(),
+        ) as create,
+    ):
+        await svc.notify_new_message(
+            message, [sender, quoted, third], sender, replied=replied
+        )
+
+    assert create.await_count == 2
+    by_type = {call.kwargs["type"]: call.kwargs for call in create.await_args_list}
+    assert set(by_type) == {"chat.message", "chat.reply"}
+
+    # Generic chat.message excludes the quoted author (supersede).
+    generic = by_type["chat.message"]
+    assert set(generic["user_ids"]) == {third.id}
+    assert quoted.id not in generic["user_ids"]
+
+    # Specific chat.reply goes ONLY to the quoted author.
+    reply = by_type["chat.reply"]
+    assert reply["user_ids"] == [quoted.id]
+    assert reply["title"] == "Alice"
+    assert reply["body"] == "re: hi"
+    assert reply["url"] == f"/messenger/{chat_id}"
+    assert reply["tag"] == f"chat-reply:{replied.id}"
+    assert reply["dedupe_key"] == f"chat-reply:{message.id}"
+    assert reply["topic"] == "chat"
+    payload = reply["payload_data"]
+    assert payload["chatId"] == str(chat_id)
+    assert payload["repliedToMessageId"] == str(replied.id)
+    assert payload["replyingMessageId"] == str(message.id)
+    assert payload["senderId"] == str(sender.id)
+    # All payload UUIDs stringified for JSON safety.
+    assert all(isinstance(v, str) for v in payload.values())
+
+
+@pytest.mark.asyncio
+async def test_notify_reply_in_dm_sends_only_chat_reply() -> None:
+    """In a 1-on-1 DM the quoted author is the ONLY other participant, so after
+    supersede the generic list is empty → exactly one chat.reply, no chat.message."""
+    sender = _user(uuid.uuid4(), full_name="Alice")
+    quoted = _user(uuid.uuid4())
+    chat_id = uuid.uuid4()
+    message = _msg(chat_id=chat_id, sender_id=sender.id, content="re: hi")
+    replied = _replied(message_id=uuid.uuid4(), sender_id=quoted.id)
+
+    svc = ChatNotificationService(MagicMock())
+
+    with (
+        patch(
+            "app.services.chat.notification_service.build_presence_map",
+            new=AsyncMock(return_value={}),
+        ),
+        patch(
+            "app.services.chat.notification_service.serialize_message",
+            return_value={},
+        ),
+        patch(
+            "app.services.chat.notification_service.ws_manager.broadcast_to_chat",
+            new=AsyncMock(),
+        ),
+        patch(
+            "app.services.chat.notification_service.create_notifications_for_users",
+            new=AsyncMock(),
+        ) as create,
+    ):
+        await svc.notify_new_message(message, [sender, quoted], sender, replied=replied)
+
+    create.assert_awaited_once()
+    kwargs = create.await_args.kwargs
+    assert kwargs["type"] == "chat.reply"
+    assert kwargs["user_ids"] == [quoted.id]
+    assert kwargs["dedupe_key"] == f"chat-reply:{message.id}"
+
+
+@pytest.mark.asyncio
+async def test_notify_self_reply_keeps_generic_no_chat_reply() -> None:
+    """Replying to your OWN message is NOT a reply-to-other → no supersede, no
+    chat.reply; the generic chat.message is sent unchanged."""
+    sender = _user(uuid.uuid4(), full_name="Alice")
+    other = _user(uuid.uuid4())
+    chat_id = uuid.uuid4()
+    message = _msg(chat_id=chat_id, sender_id=sender.id, content="re: my own")
+    replied = _replied(message_id=uuid.uuid4(), sender_id=sender.id)  # self-reply
+
+    svc = ChatNotificationService(MagicMock())
+
+    with (
+        patch(
+            "app.services.chat.notification_service.build_presence_map",
+            new=AsyncMock(return_value={}),
+        ),
+        patch(
+            "app.services.chat.notification_service.serialize_message",
+            return_value={},
+        ),
+        patch(
+            "app.services.chat.notification_service.ws_manager.broadcast_to_chat",
+            new=AsyncMock(),
+        ),
+        patch(
+            "app.services.chat.notification_service.create_notifications_for_users",
+            new=AsyncMock(),
+        ) as create,
+    ):
+        await svc.notify_new_message(message, [sender, other], sender, replied=replied)
+
+    create.assert_awaited_once()
+    kwargs = create.await_args.kwargs
+    assert kwargs["type"] == "chat.message"
+    assert set(kwargs["user_ids"]) == {other.id}
+
+
+@pytest.mark.asyncio
+async def test_handle_message_sent_loads_replied_for_reply() -> None:
+    """Wave 208: when the stored message is a reply, the outbox handler loads the
+    replied-to message via repo.get_message_by_id and threads it into
+    notify_new_message as ``replied`` (which then drives the supersede)."""
+    import app.services.event_handlers as eh
+    from app import models as app_models
+    from app.core.events import MessageSent
+
+    message_id = uuid.uuid4()
+    chat_id = uuid.uuid4()
+    sender_id = uuid.uuid4()
+    reply_target_id = uuid.uuid4()
+    quoted_sender_id = uuid.uuid4()
+
+    message = SimpleNamespace(
+        id=message_id,
+        chat_id=chat_id,
+        sender_id=sender_id,
+        sender=None,
+        content="re: hi",
+        reply_to_message_id=reply_target_id,  # this message IS a reply
+    )
+    fetched_sender = SimpleNamespace(id=sender_id, profile=None)
+    replied_dto = SimpleNamespace(id=reply_target_id, sender_id=quoted_sender_id)
+
+    async def fake_get(model: object, _ident: object) -> object | None:
+        if model is app_models.Message:
+            return message
+        if model is app_models.User:
+            return fetched_sender
+        return None
+
+    db = MagicMock()
+    db.get = AsyncMock(side_effect=fake_get)
+    db.commit = AsyncMock()
+
+    session_cm = MagicMock()
+    session_cm.__aenter__ = AsyncMock(return_value=db)
+    session_cm.__aexit__ = AsyncMock(return_value=False)
+
+    repo = MagicMock()
+    repo.get_by_id = AsyncMock(
+        return_value=SimpleNamespace(
+            participants=[
+                fetched_sender,
+                SimpleNamespace(id=quoted_sender_id, profile=None),
+            ]
+        )
+    )
+    repo.get_message_by_id = AsyncMock(return_value=replied_dto)
+
+    service = MagicMock()
+    service.notify_new_message = AsyncMock()
+
+    event = MessageSent(message_id=message_id, chat_id=chat_id, sender_id=sender_id)
+
+    with (
+        patch("app.services.event_handlers.async_session", return_value=session_cm),
+        patch("app.repositories.chat_repository.ChatRepository", return_value=repo),
+        patch(
+            "app.services.chat.notification_service.ChatNotificationService",
+            return_value=service,
+        ),
+    ):
+        await eh.handle_message_sent(event)
+
+    # The handler resolved the replied-to message and passed it through.
+    repo.get_message_by_id.assert_awaited_once_with(reply_target_id)
+    service.notify_new_message.assert_awaited_once()
+    assert service.notify_new_message.await_args.kwargs["replied"] is replied_dto
