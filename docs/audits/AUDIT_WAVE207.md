@@ -61,12 +61,16 @@ mobile long-press, forward-looking infra since chats are 1-on-1 DMs today).
   `MessageCreate.reply_to_message_id: UUID | None = None`.
 - `app/schemas/dtos/chat.py`: `MessageDTO.replied_to: "MessageDTO | None" = None` (forward ref).
 - `app/repositories/chat_repository.py`: `selectinload(Message.replied_to).selectinload(Message.sender)`
-  added to `get_messages` options **and** the `get_chats` last-message query (W203-SW8 two-site rule);
-  `get_message_for_reply(message_id, chat_id) -> Message | None` (validation + preview in one query —
-  None if the target isn't in this chat).
-- `app/services/chat/command_service.py` `send_message`: `+ reply_to_message_id` param → `get_message_for_reply`
-  → `raise_not_found("message", locale)` if None → set `message.reply_to_message_id`; keep `replied` for SW3's
-  broadcast preview.
+  added to `get_messages` options **and** the `get_chats` last-message query (W203-SW8 two-site rule) — the
+  quote preview is built via `ReplyPreview.from_message(replied_to)` (`schemas/chat.py:98` classmethod) over
+  that loaded relationship.
+- `app/services/chat/command_service.py` `send_message`: `+ reply_to_message_id` param. **Plan deviation
+  (honest):** plan SW2 specified a new `get_message_for_reply(message_id, chat_id)` repo method; the
+  implementation instead **reuses the W206 `message_exists_in_chat(reply_to_message_id, chat_id)` EXISTS check**
+  for the in-chat 404 validation (`raise_not_found("message", locale)` before any DB write — a 404-before-insert
+  that also avoids a mid-transaction FK error on the SET NULL self-FK), and the preview comes from the
+  `selectinload(replied_to)` reads (+ `get_message_by_id` on the idempotent-resend path) → `ReplyPreview.from_message`.
+  No new `get_message_for_reply` method exists; the EXISTS-check reuse is cleaner (one fewer query method).
 - `app/services/chat/query_service.py`: build `reply_to=ReplyPreview(...)` from `msg.replied_to` at BOTH the
   `get_messages` site and the `get_chats` last-message site.
 - `app/api/chat.py` `send_message`: `reply_to_message_id: uuid.UUID | None = Form(None)` threaded to the dispatcher.
@@ -278,6 +282,45 @@ byte-identical to W206** — expected for new client-tree code (honest framing).
 0 NEW anti-patterns (the 14-pattern register is stable post-W159 #15 archival).
 
 ---
+
+## Polish-pass self-audit («безупречно?», 2026-06-01)
+
+Cross-checked the close against the plan SW-by-SW + re-verified claims empirically. Findings:
+
+- **CORRECTED (W141 #3-class doc inaccuracy):** the audit + CLAUDE.md + INDEX all claimed a repo method
+  **`get_message_for_reply(message_id, chat_id)`** (the plan SW2 spec) — but **no such method exists**. The
+  implementation reused the W206 **`message_exists_in_chat(reply_to_message_id, chat_id)`** EXISTS check for the
+  in-chat 404-before-insert validation + builds the quote via **`ReplyPreview.from_message(replied_to)`**
+  (`schemas/chat.py:98`) over the `selectinload(replied_to)` reads. A cleaner reuse (one fewer query method) —
+  but the docs were written from the plan spec, not re-verified against the final code. Corrected across
+  AUDIT/CLAUDE/INDEX (MEMORY was already clean). Lesson: re-grep claimed symbol names against the code at
+  audit-write time.
+- **Build re-confirmed × 6 BYTE-IDENTICAL** post the coverage-followup commit (`6e4c7819a`, test-only): a fresh
+  clean `npm run build` still produces `index-Dm-a9dmU.js` sha `f5b650e3…df8b` + server.js `8dae5a45…4977`.
+  Test files aren't bundled; the bundle baseline holds.
+- **SW7 rate-limiter — sound, plan-guidance-followed (not a defect).** Plan SW7 said "Do NOT use
+  `sensitive_route_limit()` (too strict)" — conditional on its *default* rate (5/60). I read the impl
+  (`app/core/ratelimit/fastapi.py:26`): it's **purely a sliding-window rate limiter** (no step-up auth / CSRF /
+  other constraints), and `sensitive_route_limit(limit=180, window_sec=60, key_prefix="typing")` = 3/sec
+  per-user-per-chat — above the client's 500ms throttle (≤2/sec), so it never fires under normal use, and
+  `key_prefix="typing"` isolates its bucket. The plan's "resolve the exact limiter at SW7 by checking
+  sensitive_route_limit's rate" guidance was followed; `"or none"` would've been a typing-spam DoS vector.
+- **Mobile long-press — unit-tested, NOT live-touch-verified (honest nuance).** The live reactor-list proof used
+  the **desktop hover** trigger (the popover + the on-demand `GET /reactions` were proven end-to-end). The
+  **mobile long-press** path is covered by `ReactionPill.test.tsx` (a fake-timer test that advances past
+  `LONG_PRESS_MS`, opens the popover, renders the cached reactor, and confirms the toggle-click is suppressed) —
+  but it was not exercised on a real touch device. It opens the *same* popover via `setIsOpen(true)`; the trigger
+  differs. The plan SW9 live-verify said "hover/long-press shows reactors" (either-trigger framing) → satisfied
+  by hover live + long-press unit.
+- **Plan-compliance spot-checks all PASS:** W202 SW6b `animateFromIndex` (×4 in ChatWindow) +
+  `key={selectedChatId}` (ChatArea:369) preserved; `MessageDTO.replied_to` forward-ref present; reply button on
+  ALL bubbles (`ChatWindow.tsx:724`, independent of `isMe`); i18n NO `defaultValue` (the one hit is a *comment*);
+  temp cookie jars + scratch scripts deleted; working tree clean except the pre-existing quarantine `.bin` test
+  artifacts (untracked, not W207).
+
+**Verdict:** the wave is execution-flawless at the code level (all 9 plan SWs delivered; gates green; CI green on
+`6e4c7819a`; bundle byte-identical × 6). The one genuine issue was the `get_message_for_reply` doc mislabel,
+corrected here. The SW7 rate-limiter + mobile-long-press items are honest nuances, not defects.
 
 ## W208 candidates
 
