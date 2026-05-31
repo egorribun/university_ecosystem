@@ -9,7 +9,12 @@ import {
   useMemo,
 } from "react"
 import { useQueryClient } from "@tanstack/react-query"
-import type { Message, MessagesListResponse, ChatsListResponse } from "@/api/chat"
+import {
+  chatApi,
+  type Message,
+  type MessagesListResponse,
+  type ChatsListResponse,
+} from "@/api/chat"
 // Auth token storage handled natively via cookies
 import { logError } from "@/app/logger"
 import { parseWsMessage } from "@/api/schemas/wsMessage"
@@ -675,18 +680,23 @@ export function useChatWebSocket({
     }
   }, [enabled, connect, disconnect])
 
+  // Wave 207 — typing is broadcast via REST (POST /chats/{id}/typing), NOT over the
+  // WS: the frontend connects to ws-hub, whose allowedMessageTypes drops "typing" at
+  // its parse boundary, so the pre-W207 wsRef.send({type:"typing"}) went nowhere. The
+  // backend endpoint does participant authz + broadcast_to_chat → W204 bridge → ws-hub
+  // chat.* fan-out → the recipient's live TypingIndicator (the receive-side `case
+  // "typing"` handler is unchanged). The 500ms throttle is preserved (caps the REST
+  // rate, complements the server's 180/60 limiter). NO WS-open guard: delivery depends
+  // on the RECIPIENT's socket (server-side), not the sender's — so it fires whenever
+  // the user is typing. Fire-and-forget; typing is ephemeral, errors are swallowed.
   const sendTyping = useCallback((chatId: string) => {
-    if (wsRef.current?.readyState !== WebSocket.OPEN) return
     const key = `typing:${chatId}`
     const now = Date.now()
     if (now - (lastSentRef.current.get(key) ?? 0) < OUTGOING_RATE_LIMITS.typing!) return
     lastSentRef.current.set(key, now)
-    try {
-      // RZ-26-07: guard TOCTOU race — WS may close between readyState check and send
-      wsRef.current.send(JSON.stringify({ type: "typing", chat_id: chatId }))
-    } catch {
-      /* WS closed between readyState check and send — safe to ignore */
-    }
+    void chatApi.sendTyping(chatId).catch(() => {
+      /* typing is ephemeral — swallow transient errors */
+    })
   }, [])
 
   const sendRead = useCallback((chatId: string) => {

@@ -145,6 +145,15 @@ export const chatApi = {
     return response.data
   },
 
+  // Wave 207 — fire-and-forget typing indicator. The frontend WS connects to
+  // ws-hub, whose allowedMessageTypes drops "typing" frames — so the client posts
+  // here instead; the backend broadcasts to the other participants via the W204
+  // bridge. The hook throttles the call to 500ms; the caller swallows errors
+  // (typing is ephemeral).
+  sendTyping: async (chatId: string): Promise<void> => {
+    await client.post(`/chats/${chatId}/typing`)
+  },
+
   // Wave 205 — author-only edit / soft-delete. Edit sends FormData (the backend
   // PATCH parses `content` as a Form field, matching sendMessage). Both flip live
   // for the other participant via the W204 bridge; the author sees the optimistic

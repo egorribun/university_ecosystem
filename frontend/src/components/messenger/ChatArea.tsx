@@ -129,7 +129,7 @@ export function ChatArea({
   // via useMessenger().getTypingUsersForChat (MessengerContext). No backend
   // changes needed; typing events flow through ws-hub presence subscription
   // already (W134+ infra).
-  const { getTypingUsersForChat } = useMessenger()
+  const { getTypingUsersForChat, sendTyping } = useMessenger()
   const typingUsers = selectedChatId ? getTypingUsersForChat(selectedChatId) : []
   const prefersReducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)")
 
@@ -389,6 +389,9 @@ export function ChatArea({
             onSend={handleSendMessage}
             replyingTo={replyingTo}
             onCancelReply={onCancelReply}
+            onTyping={() => {
+              if (selectedChatId) sendTyping(selectedChatId)
+            }}
           />
         </>
       ) : (

@@ -14,6 +14,10 @@ interface MessageInputProps {
   // Optional so MessageInput renders standalone in tests/storybook.
   replyingTo?: { senderName: string | null; isMe: boolean; text: string } | null
   onCancelReply?: () => void
+  // Wave 207 — fire-and-forget typing signal, called on each keystroke. The hook
+  // throttles it to 500ms before POSTing /chats/{id}/typing. Optional so MessageInput
+  // renders standalone in tests/storybook.
+  onTyping?: () => void
 }
 
 // Wave 183 SW7 — extended selectedFiles tuple from {id, file} to
@@ -59,7 +63,7 @@ const ATTACH_MENU_ITEMS = [
   },
 ] as const
 
-export function MessageInput({ onSend, replyingTo, onCancelReply }: MessageInputProps) {
+export function MessageInput({ onSend, replyingTo, onCancelReply, onTyping }: MessageInputProps) {
   const { t } = useTranslation(["messenger", "common"])
   const [text, setText] = useState("")
   const [showAttachMenu, setShowAttachMenu] = useState(false)
@@ -333,7 +337,10 @@ export function MessageInput({ onSend, replyingTo, onCancelReply }: MessageInput
         <textarea
           id="chat-message-input"
           value={text}
-          onChange={(e) => setText(e.target.value)}
+          onChange={(e) => {
+            setText(e.target.value)
+            onTyping?.()
+          }}
           onKeyDown={handleKeyDown}
           placeholder={t("messenger:typeMessage")}
           aria-label={t("messenger:typeMessage")}
