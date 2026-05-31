@@ -215,7 +215,8 @@ Security constraints honored: no DB-credential / hash edits; two-account verific
 |------|--------|
 | `tsc --noEmit` | **0** |
 | `npm run lint` (eslint `--max-warnings=0 src tests`) | **0** |
-| vitest | **1344 passed / 12 skipped / 0 failed** (W206 baseline preserved — W207 FE is UI wiring; backend tests cover the features) |
+| vitest (`vitest run`) | **1364 passed / 12 skipped / 0 failed** (1344 W206 baseline + the SW9-followup coverage tests — see §Coverage-gate followup) |
+| **coverage** (`npm run test:ci`, the CI gate) | functions **70.27%** ≥ 70% · stmts 79.25% · branch 72.81% · lines 79.25% — all over threshold (restored after the SW9-followup) |
 | backend `uv run pytest` (FULL, −ws_hub_contract) | **2953 passed / 25 skipped / 0 failed** (W203 §H#5; +8 reply +6 reactors +3 typing vs the pre-W207 suite) |
 | W207 test slices | reply 8 · reactors 6 · typing 3 — all pass within the FULL suite |
 | OpenAPI contract | **pass** (pure additions hold the superset; no regen — W205 gotcha) |
@@ -260,6 +261,19 @@ byte-identical to W206** — expected for new client-tree code (honest framing).
   after the last frame, so a single short poll races bash-spawn + NATS→ws-hub→browser latency. The fix is a
   *generous overlap*: a producer loop emitting frames over several seconds while the consumer poll runs long
   enough to cover spawn latency + the producer window + one indicator lifetime.
+- **(z)#5 — the coverage gate (`npm run test:ci`) is a distinct gate from `vitest run`, and CI caught it (SW9
+  followup).** The first wave-close push (commit `e476b3172`) hit CI's **only** red: `Frontend Tests / Unit Tests`
+  failed on `ERROR: Coverage for functions (69.96%) does not meet global threshold (70%)` — all 1344 tests
+  PASSED; the failure was purely the coverage threshold. I had run `vitest run` (no `--coverage`) locally, not
+  `npm run test:ci` — the exact W198 §Honesty lesson recurring. The honest fix targeted the *measured* scope:
+  `vitest.config.ts` coverage **excludes `src/components/**` + `src/hooks/**`**, so ReactionPill.tsx +
+  useChatWebSocket/useMessengerController were invisible to the metric — the new included-scope functions W207
+  added were in `src/api/` (`chat.ts` `getReactors`/`sendTyping` + `messenger.ts` reactor factory). A
+  coverage-followup commit added `ReactionPill.test.tsx` (8) + reactor-factory tests in `messenger.test.ts` (6)
+  + comprehensive `chatApi` tests in `chat.test.ts` (8 — covering the 7 previously-untested methods
+  `getMessages`/`editMessage`/`deleteMessage`/`addReaction`/`removeReaction`/`getReactors`/`sendTyping`).
+  Local functions coverage 69.35% → **70.27%** (`npm run test:ci` exit 0). Reinforced lesson: **run
+  `npm run test:ci` before claiming any wave that adds source is CI-clean** — `vitest run` does not enforce the gate.
 
 0 NEW anti-patterns (the 14-pattern register is stable post-W159 #15 archival).
 
