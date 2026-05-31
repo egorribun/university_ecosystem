@@ -17,6 +17,7 @@ from fastapi import (
     File,
     Form,
     Header,
+    Path,
     Query,
     UploadFile,
 )
@@ -201,6 +202,54 @@ async def delete_message(
     """Soft-delete a message (author-only).  W174 auto-cookie covers DELETE CSRF."""
     await maintenance.soft_delete_message(
         chat_id, message_id, current_user, locale=locale
+    )
+    return {"status": "ok"}
+
+
+@router.post(
+    "/{chat_id}/messages/{message_id}/reactions",
+    dependencies=[Depends(sensitive_route_limit())],
+)
+async def add_reaction(
+    chat_id: uuid.UUID,
+    message_id: uuid.UUID,
+    current_user: Annotated[User, Depends(get_current_user)],
+    maintenance: Annotated[
+        ChatMaintenanceService, Depends(get_chat_maintenance_service)
+    ],
+    locale: Annotated[str, Depends(get_locale)],
+    emoji: str = Form(..., min_length=1, max_length=16),
+) -> dict[str, str]:
+    """Add an emoji reaction to a message (idempotent, any participant).
+
+    W174 auto-cookie covers POST CSRF.
+    """
+    await maintenance.add_reaction(
+        chat_id, message_id, current_user, emoji, locale=locale
+    )
+    return {"status": "ok"}
+
+
+@router.delete(
+    "/{chat_id}/messages/{message_id}/reactions/{emoji}",
+    dependencies=[Depends(sensitive_route_limit())],
+)
+async def remove_reaction(
+    chat_id: uuid.UUID,
+    message_id: uuid.UUID,
+    current_user: Annotated[User, Depends(get_current_user)],
+    maintenance: Annotated[
+        ChatMaintenanceService, Depends(get_chat_maintenance_service)
+    ],
+    locale: Annotated[str, Depends(get_locale)],
+    emoji: str = Path(..., min_length=1, max_length=16),
+) -> dict[str, str]:
+    """Remove an emoji reaction from a message (idempotent).
+
+    The emoji is the URL-encoded path segment. W174 auto-cookie covers DELETE CSRF.
+    """
+    await maintenance.remove_reaction(
+        chat_id, message_id, current_user, emoji, locale=locale
     )
     return {"status": "ok"}
 

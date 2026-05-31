@@ -400,6 +400,21 @@
         "title": "AuditLogOut",
         "type": "object"
       },
+      "Body_add_reaction_api_v1_chats__chat_id__messages__message_id__reactions_post": {
+        "properties": {
+          "emoji": {
+            "maxLength": 16,
+            "minLength": 1,
+            "title": "Emoji",
+            "type": "string"
+          }
+        },
+        "required": [
+          "emoji"
+        ],
+        "title": "Body_add_reaction_api_v1_chats__chat_id__messages__message_id__reactions_post",
+        "type": "object"
+      },
       "Body_comment_on_news_api_v1_news__id__comment_post": {
         "properties": {
           "content": {
@@ -1880,6 +1895,14 @@
             "format": "uuid",
             "title": "Id",
             "type": "string"
+          },
+          "reactions": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/ReactionAggregate"
+            },
+            "title": "Reactions",
+            "type": "array"
           },
           "read_at": {
             "anyOf": [
@@ -3438,6 +3461,31 @@
           "topics"
         ],
         "title": "PushTopicsResponse",
+        "type": "object"
+      },
+      "ReactionAggregate": {
+        "additionalProperties": false,
+        "description": "Wave 206 — per-emoji reaction tally on a message.\n\n`reacted_by_me` is computed server-side for the requesting user on the REST\npath (the aggregation in ChatQueryService knows current_user). On the WS\ndelta-frame path the client derives it locally — it's per-viewer, so it can\nnever travel in a broadcast frame.",
+        "properties": {
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "emoji": {
+            "title": "Emoji",
+            "type": "string"
+          },
+          "reacted_by_me": {
+            "default": false,
+            "title": "Reacted By Me",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "emoji",
+          "count"
+        ],
+        "title": "ReactionAggregate",
         "type": "object"
       },
       "RecoveryCodesGenerateOut": {
@@ -7719,6 +7767,153 @@
           }
         ],
         "summary": "Edit Message",
+        "tags": [
+          "chats"
+        ]
+      }
+    },
+    "/api/v1/chats/{chat_id}/messages/{message_id}/reactions": {
+      "post": {
+        "description": "Add an emoji reaction to a message (idempotent, any participant).\n\nW174 auto-cookie covers POST CSRF.",
+        "operationId": "add_reaction_api_v1_chats__chat_id__messages__message_id__reactions_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "chat_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Chat Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "message_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Message Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_add_reaction_api_v1_chats__chat_id__messages__message_id__reactions_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "title": "Response Add Reaction Api V1 Chats  Chat Id  Messages  Message Id  Reactions Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Add Reaction",
+        "tags": [
+          "chats"
+        ]
+      }
+    },
+    "/api/v1/chats/{chat_id}/messages/{message_id}/reactions/{emoji}": {
+      "delete": {
+        "description": "Remove an emoji reaction from a message (idempotent).\n\nThe emoji is the URL-encoded path segment. W174 auto-cookie covers DELETE CSRF.",
+        "operationId": "remove_reaction_api_v1_chats__chat_id__messages__message_id__reactions__emoji__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "chat_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Chat Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "message_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Message Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "emoji",
+            "required": true,
+            "schema": {
+              "maxLength": 16,
+              "minLength": 1,
+              "title": "Emoji",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "title": "Response Remove Reaction Api V1 Chats  Chat Id  Messages  Message Id  Reactions  Emoji  Delete",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Remove Reaction",
         "tags": [
           "chats"
         ]
