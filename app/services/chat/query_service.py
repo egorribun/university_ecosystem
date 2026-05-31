@@ -38,6 +38,7 @@ from app.schemas.chat import (
     MessagesListOut,
     PresenceStatus,
     ReactionAggregate,
+    ReplyPreview,
 )
 
 
@@ -145,6 +146,9 @@ class ChatQueryService:
                     # projection (no reaction selectinload); pills render only in the
                     # message list (W203-SW8 two-site rule — explicit empty here).
                     reactions=[],
+                    # Wave 207 — same lightweight projection: the chat-list quote
+                    # preview is omitted (explicit None per the two-site rule).
+                    reply_to=None,
                 )
 
             participant_status: dict[uuid.UUID, PresenceStatus] = {}
@@ -249,6 +253,9 @@ class ChatQueryService:
                 # Wave 206 — aggregate the selectinload'd reaction rows; reacted_by_me
                 # is computed for the requesting user (W203-SW8 two-site rule).
                 reactions=_aggregate_reactions(msg.reactions, user.id),
+                # Wave 207 — flatten the selectinload'd replied_to into the lean
+                # quote preview (None when not a reply). W203-SW8 two-site rule.
+                reply_to=ReplyPreview.from_message(msg.replied_to),
             )
             for msg in messages
         ]

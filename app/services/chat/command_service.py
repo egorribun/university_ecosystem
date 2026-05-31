@@ -52,6 +52,7 @@ from app.schemas.chat import (
     ChatMaintenanceResult,
     MessageResponse,
     PresenceStatus,
+    ReplyPreview,
 )
 
 
@@ -120,6 +121,7 @@ class ChatMessageDispatcher:
         files: list[UploadFile],
         locale: str,
         idempotency_key: str | None = None,
+        reply_to_message_id: uuid.UUID | None = None,
     ) -> MessageResponse:
         """Send a new message to a chat.
 
@@ -158,8 +160,11 @@ class ChatMessageDispatcher:
                 else:
                     _full = await self.repository.get_message_by_id(_msg_id)
                     if _full is not None:
+                        # Wave 207 — exclude the raw replied_to DTO from the spread
+                        # (MessageResponse is extra="forbid"); inject the lean preview.
                         return MessageResponse(
-                            **_full.model_dump(),
+                            **_full.model_dump(exclude={"replied_to"}),
+                            reply_to=ReplyPreview.from_message(_full.replied_to),
                             sender_presence=PresenceStatus(
                                 active=ws_manager.is_online(_full.sender_id)
                             ),
@@ -174,6 +179,18 @@ class ChatMessageDispatcher:
         is_participant = await self.repository.check_participant(chat_id, user.id)
         if not is_participant:
             raise_forbidden(locale, "errors.chat.not_participant")
+
+        # Wave 207 — if this is a reply, the target must exist AND be in THIS chat.
+        # message_exists_in_chat checks both (id == … AND chat_id == …) via EXISTS,
+        # so a reply to a message in another chat — or a bogus id — 404s before any
+        # DB write. The 404-before-insert also avoids a mid-transaction FK error on
+        # the SET NULL self-FK.
+        if reply_to_message_id is not None:
+            target_in_chat = await self.repository.message_exists_in_chat(
+                reply_to_message_id, chat_id
+            )
+            if not target_in_chat:
+                raise_not_found("message", locale)
 
         uploads = files or []
         if len(uploads) > int(settings.chat_attachment_max_files):
@@ -283,6 +300,7 @@ class ChatMessageDispatcher:
                 chat_id=chat_id,
                 sender_id=user.id,
                 content=content,
+                reply_to_message_id=reply_to_message_id,  # Wave 207
             )
             await self.repository.create_message(message)
 
@@ -374,10 +392,18 @@ class ChatMessageDispatcher:
                 sender_presence=PresenceStatus(
                     active=ws_manager.is_online(message.sender_id)
                 ),
+                # Wave 207 — degraded rare path (get_last_messages returned nothing);
+                # replied_to isn't loaded here, so the quote preview is omitted. The
+                # main + cache-hit paths carry it.
+                reply_to=None,
             )
         else:
             msg_data = MessageResponse(
-                **full_message.model_dump(),
+                # Wave 207 — exclude the raw replied_to DTO from the spread
+                # (MessageResponse is extra="forbid"); inject the lean preview built
+                # from the selectinload'd replied_to.
+                **full_message.model_dump(exclude={"replied_to"}),
+                reply_to=ReplyPreview.from_message(full_message.replied_to),
                 sender_presence=PresenceStatus(
                     active=ws_manager.is_online(message.sender_id)
                 ),

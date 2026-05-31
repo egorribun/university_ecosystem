@@ -189,7 +189,13 @@ class ChatRepository(BaseRepository[Chat, ChatDTO, dict[str, Any], dict[str, Any
         result = await self.db.execute(
             select(Message)
             .where(Message.id.in_(message_ids))
-            .options(selectinload(Message.sender), selectinload(Message.attachments))
+            .options(
+                selectinload(Message.sender),
+                selectinload(Message.attachments),
+                # Wave 207 — replied_to + its sender so the send response can build
+                # the reply preview (chat-list last-message keeps it lightweight).
+                selectinload(Message.replied_to).selectinload(Message.sender),
+            )
         )
         return {
             msg.id: MessageDTO.model_validate(msg) for msg in result.scalars().all()
@@ -297,6 +303,10 @@ class ChatRepository(BaseRepository[Chat, ChatDTO, dict[str, Any], dict[str, Any
                 # Wave 206 — one extra SELECT … WHERE message_id IN (…) per page;
                 # the query service aggregates these into ReactionAggregate.
                 selectinload(Message.reactions),
+                # Wave 207 — load the replied-to message + its sender for the quote
+                # preview (one extra SELECT … WHERE id IN (…) per page). The nested
+                # replied_to.replied_to stays noload → no deep nesting.
+                selectinload(Message.replied_to).selectinload(Message.sender),
             )
         )
 
@@ -549,7 +559,12 @@ class ChatRepository(BaseRepository[Chat, ChatDTO, dict[str, Any], dict[str, Any
         stmt = (
             select(Message)
             .where(Message.id == message_id)
-            .options(selectinload(Message.sender), selectinload(Message.attachments))
+            .options(
+                selectinload(Message.sender),
+                selectinload(Message.attachments),
+                # Wave 207 — replied_to for the idempotent-resend reply preview.
+                selectinload(Message.replied_to).selectinload(Message.sender),
+            )
         )
         result = await self.db.execute(stmt)
         msg = result.scalars().first()

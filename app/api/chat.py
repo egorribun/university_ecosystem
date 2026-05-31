@@ -129,6 +129,10 @@ async def send_message(
     locale: Annotated[str, Depends(get_locale)],
     content: str = Form(""),
     files: list[UploadFile] = File(default=[]),
+    reply_to_message_id: uuid.UUID | None = Form(
+        None,
+        description="ID of the message being replied to, if this is a reply.",
+    ),
     idempotency_key: str | None = Header(
         None,
         alias="Idempotency-Key",
@@ -144,6 +148,7 @@ async def send_message(
         files,
         locale=locale,
         idempotency_key=idempotency_key,
+        reply_to_message_id=reply_to_message_id,
     )
 
 

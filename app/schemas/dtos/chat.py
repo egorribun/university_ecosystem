@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import uuid
 from datetime import datetime
 
@@ -58,6 +60,12 @@ class MessageDTO(SecureBaseModel):
     reactions: list[MessageReactionDTO] = Field(
         default_factory=list, json_schema_extra={"default": []}
     )
+    # Wave 207 — the replied-to message (self-referential). Populated by
+    # selectinload(Message.replied_to) in the repo read methods; lazy="noload"
+    # yields None when not loaded. The nested DTO's own replied_to is noload →
+    # None (no deep nesting). ChatQueryService flattens this into the lean
+    # MessageResponse.reply_to preview.
+    replied_to: MessageDTO | None = None
 
 
 class ChatDTO(SecureBaseModel):

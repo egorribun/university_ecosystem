@@ -1,4 +1,7 @@
+from __future__ import annotations
+
 from datetime import datetime
+from typing import Any
 from uuid import UUID
 
 from pydantic import ConfigDict, Field
@@ -30,7 +33,9 @@ class MessageBase(SecureBaseModel):
 
 
 class MessageCreate(MessageBase):
-    pass
+    # Wave 207 — optional reply target. The send endpoint accepts this as a Form
+    # field; this schema documents the create shape.
+    reply_to_message_id: UUID | None = None
 
 
 class AttachmentResponse(SecureBaseModel):
@@ -57,6 +62,43 @@ class ReactionAggregate(SecureBaseModel):
     emoji: str
     count: int
     reacted_by_me: bool = False
+
+
+# Wave 207 — a reply quote-preview carries only what the FE renders above a reply
+# bubble: who + a snippet + a deleted flag. Content is truncated so a reply never
+# ships its target's full body; the FE line-clamps the rest. A LEAN preview (not a
+# nested MessageResponse) keeps the payload small and sidesteps recursion.
+REPLY_PREVIEW_MAX_CHARS = 200
+
+
+class ReplyPreview(SecureBaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    sender_id: UUID
+    sender_name: str | None = None
+    content: str
+    deleted_at: datetime | None = None
+
+    @classmethod
+    def from_message(cls, dto: Any) -> ReplyPreview | None:
+        """Build a preview from a (possibly None) replied-to message DTO.
+
+        Duck-typed (``Any``) to avoid a response→DTO-layer import. Returns None
+        when there is no reply target. ``content`` is truncated to
+        REPLY_PREVIEW_MAX_CHARS; a soft-deleted target carries content="" +
+        deleted_at set, which the FE renders as an "original deleted" placeholder.
+        """
+        if dto is None:
+            return None
+        sender = getattr(dto, "sender", None)
+        return cls(
+            id=dto.id,
+            sender_id=dto.sender_id,
+            sender_name=(sender.full_name if sender else None),
+            content=(dto.content or "")[:REPLY_PREVIEW_MAX_CHARS],
+            deleted_at=dto.deleted_at,
+        )
 
 
 class MessageResponse(MessageBase):
@@ -90,6 +132,11 @@ class MessageResponse(MessageBase):
     reactions: list[ReactionAggregate] = Field(
         default_factory=list, json_schema_extra={"default": []}
     )
+    # Wave 207 — quote preview of the message this one replies to (None = not a
+    # reply). Built in ChatQueryService.get_messages from the selectinload'd
+    # replied_to; the chat-list last-message preview leaves it None (lightweight
+    # projection, W203-SW8 two-site rule).
+    reply_to: ReplyPreview | None = None
 
 
 class ChatBase(SecureBaseModel):
