@@ -18,6 +18,16 @@ class AttachmentDTO(SecureBaseModel):
     created_at: datetime
 
 
+class MessageReactionDTO(SecureBaseModel):
+    # Wave 206 — raw reaction row (user_id + emoji) carried on MessageDTO. The
+    # query service aggregates these into ReactionAggregate {emoji, count,
+    # reacted_by_me}; only user_id + emoji are needed for that.
+    model_config = ConfigDict(from_attributes=True)
+
+    user_id: uuid.UUID
+    emoji: str
+
+
 class ChatParticipantDTO(SecureBaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: uuid.UUID
@@ -41,6 +51,11 @@ class MessageDTO(SecureBaseModel):
     deleted_at: datetime | None = None  # Wave 205 SW4
     sender: ChatParticipantDTO | None = None
     attachments: list[AttachmentDTO] = Field(
+        default_factory=list, json_schema_extra={"default": []}
+    )
+    # Wave 206 — raw reaction rows (populated by selectinload(Message.reactions)
+    # in ChatRepository.get_messages; lazy="noload" yields [] when not loaded).
+    reactions: list[MessageReactionDTO] = Field(
         default_factory=list, json_schema_extra={"default": []}
     )
 

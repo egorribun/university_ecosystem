@@ -6,11 +6,18 @@ from typing import Any
 
 from opentelemetry import trace
 from sqlalchemy import and_, delete, exists, func, or_, select, text, update
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import selectinload
 
 from app.core.protocols import AsyncDatabaseSession
 from app.models import User
-from app.models.chat import Chat, Message, chat_participants, utc_now
+from app.models.chat import (
+    Chat,
+    Message,
+    MessageReaction,
+    chat_participants,
+    utc_now,
+)
 from app.repositories.base import BaseRepository
 from app.schemas.dtos.chat import ChatDTO, MessageDTO
 from app.utils.pagination import decode_datetime_cursor, encode_datetime_cursor
@@ -414,6 +421,59 @@ class ChatRepository(BaseRepository[Chat, ChatDTO, dict[str, Any], dict[str, Any
         if affected < 0:
             affected = 0
         return (deleted_at if affected > 0 else None), affected
+
+    async def message_exists_in_chat(
+        self, message_id: uuid.UUID, chat_id: uuid.UUID
+    ) -> bool:
+        """Whether a message with this id belongs to this chat (Wave 206).
+
+        The reaction service calls this to return a clean 404 before an INSERT.
+        Unlike edit/delete (author-only WHERE → affected == 0 surfaces a missing
+        message), reactions are not author-gated, so a bogus message_id would
+        otherwise FK-fail the INSERT mid-transaction — hence an explicit check.
+        """
+        stmt = select(
+            exists().where(and_(Message.id == message_id, Message.chat_id == chat_id))
+        )
+        return bool((await self.db.execute(stmt)).scalar())
+
+    async def add_reaction(
+        self, message_id: uuid.UUID, user_id: uuid.UUID, emoji: str
+    ) -> bool:
+        """Add a reaction idempotently. Returns True iff a NEW row was inserted.
+
+        Wave 206 — pg_insert(...).on_conflict_do_nothing targets the
+        (user_id, message_id, emoji) unique constraint, so a repeat reaction is a
+        no-op (returns False → the caller skips the broadcast). The id +
+        created_at column defaults (generate_uuid7 / utc_now) are applied by the
+        Core insert for the omitted columns.
+        """
+        stmt = (
+            pg_insert(MessageReaction)
+            .values(message_id=message_id, user_id=user_id, emoji=emoji)
+            .on_conflict_do_nothing(index_elements=["user_id", "message_id", "emoji"])
+        )
+        result = await self.db.execute(stmt)
+        return int(getattr(result, "rowcount", 0) or 0) > 0
+
+    async def remove_reaction(
+        self, message_id: uuid.UUID, user_id: uuid.UUID, emoji: str
+    ) -> int:
+        """Remove a reaction. Returns affected rowcount (0 = nothing to remove).
+
+        Wave 206 — idempotent: removing a non-existent reaction is a benign no-op
+        (the caller skips the broadcast when affected == 0).
+        """
+        stmt = delete(MessageReaction).where(
+            and_(
+                MessageReaction.message_id == message_id,
+                MessageReaction.user_id == user_id,
+                MessageReaction.emoji == emoji,
+            )
+        )
+        result = await self.db.execute(stmt)
+        affected = int(getattr(result, "rowcount", 0) or 0)
+        return affected if affected > 0 else 0
 
     async def delete_messages(self, message_ids: list[uuid.UUID]) -> int:
         """

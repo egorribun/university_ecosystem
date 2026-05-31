@@ -45,6 +45,20 @@ class AttachmentResponse(SecureBaseModel):
     message_id: UUID | None = None
 
 
+class ReactionAggregate(SecureBaseModel):
+    """Wave 206 — per-emoji reaction tally on a message.
+
+    `reacted_by_me` is computed server-side for the requesting user on the REST
+    path (the aggregation in ChatQueryService knows current_user). On the WS
+    delta-frame path the client derives it locally — it's per-viewer, so it can
+    never travel in a broadcast frame.
+    """
+
+    emoji: str
+    count: int
+    reacted_by_me: bool = False
+
+
 class MessageResponse(MessageBase):
     model_config = ConfigDict(from_attributes=True)
 
@@ -68,6 +82,12 @@ class MessageResponse(MessageBase):
     sender: ChatParticipant | None = None
     sender_presence: PresenceStatus | None = None
     attachments: list[AttachmentResponse] = Field(
+        default_factory=list, json_schema_extra={"default": []}
+    )
+    # Wave 206 — per-emoji reaction aggregates. Built field-by-field in
+    # ChatQueryService.get_messages (W203-SW8 two-site rule); the chat-list
+    # last-message preview leaves this [] (lightweight projection).
+    reactions: list[ReactionAggregate] = Field(
         default_factory=list, json_schema_extra={"default": []}
     )
 
