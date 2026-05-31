@@ -367,6 +367,7 @@ export function ChatArea({
               new query immediately — matches W183 SW1 ContactList pattern. */}
           <ChatWindow
             key={selectedChatId}
+            chatId={selectedChatId ?? undefined}
             messages={messages}
             isLoading={messagesLoading}
             isError={messagesError}

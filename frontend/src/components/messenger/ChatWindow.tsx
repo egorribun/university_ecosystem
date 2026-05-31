@@ -23,6 +23,7 @@ import { AVATAR_PLACEHOLDER_URL } from "@/constants/placeholders"
 import { sanitizeUrl } from "@/utils/media"
 import { useDebounced } from "@/hooks/useDebounced"
 import { Message } from "./types"
+import { ReactionPill } from "./ReactionPill"
 
 interface ChatWindowProps {
   messages: Message[]
@@ -99,6 +100,12 @@ interface ChatWindowProps {
    * hidden without it).
    */
   onStartReply?: (messageId: string) => void
+  /**
+   * Wave 207 — selected chat id, threaded so each ReactionPill can fetch its
+   * reactor-list ("who reacted") on-demand. Optional: without it the reactor
+   * query is disabled (the pill still renders + toggles).
+   */
+  chatId?: string
 }
 
 // Wave 206 — fixed quick-reaction set (no emoji-picker dependency). Module-level
@@ -126,6 +133,7 @@ export function ChatWindow({
   onDeleteMessage,
   onToggleReaction,
   onStartReply,
+  chatId,
 }: ChatWindowProps) {
   const { t } = useTranslation()
   // Wave 206 — which message's emoji picker is open (null = none). The "+react"
@@ -837,28 +845,15 @@ export function ChatWindow({
                       )}
                     >
                       {message.reactions?.map((reaction) => (
-                        <button
+                        <ReactionPill
                           key={reaction.emoji}
-                          type="button"
-                          data-reaction-ui
-                          onClick={() => onToggleReaction?.(message.id, reaction.emoji)}
-                          aria-pressed={reaction.reactedByMe}
-                          aria-label={t("messenger:reactions.tally", {
-                            emoji: reaction.emoji,
-                            count: reaction.count,
-                          })}
-                          className={cn(
-                            "inline-flex min-h-[28px] items-center gap-1 rounded-full border px-2 py-0.5 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-violet-500) focus-visible:ring-offset-1 focus-visible:ring-offset-(--bg-surface)",
-                            reaction.reactedByMe
-                              ? "border-(--color-violet-500)/(--opacity-medium) bg-(--color-violet-500)/(--opacity-soft) text-(--text-primary)"
-                              : "border-(--color-violet-500)/(--opacity-faint) bg-(--bg-surface-raised)/(--opacity-medium) text-(--text-secondary) hover:bg-(--bg-surface-hover)/(--opacity-medium)"
-                          )}
-                        >
-                          <span aria-hidden="true">{reaction.emoji}</span>
-                          <span className="text-micro font-semibold tabular-nums">
-                            {reaction.count}
-                          </span>
-                        </button>
+                          chatId={chatId}
+                          messageId={message.id}
+                          emoji={reaction.emoji}
+                          count={reaction.count}
+                          reactedByMe={reaction.reactedByMe}
+                          onToggle={(value) => onToggleReaction?.(message.id, value)}
+                        />
                       ))}
                       {onToggleReaction ? (
                         <button

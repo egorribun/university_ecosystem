@@ -79,7 +79,10 @@
   "reactions": {
     "add": "Добавить реакцию",
     "react": "Отреагировать {{emoji}}",
-    "tally": "Переключить реакцию {{emoji}}, {{count}}"
+    "tally": "Переключить реакцию {{emoji}}, {{count}}",
+    "whoReacted": "Отреагировали {{emoji}}",
+    "reactorsLoading": "Загрузка…",
+    "reactorsEmpty": "Пока никого"
   },
   "reply": "Ответить",
   "replyingTo": "Ответ: {{name}}",

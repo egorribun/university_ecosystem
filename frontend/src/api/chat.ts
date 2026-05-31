@@ -45,6 +45,15 @@ export interface Message {
   } | null
 }
 
+// Wave 207 — one user in the reactor-list ("who reacted") popover. Matches the
+// backend ReactorOut {user_id, name, avatar_url}. Loaded on-demand via getReactors,
+// NOT bundled into GET /messages (only the count aggregate is).
+export interface Reactor {
+  user_id: string
+  name: string | null
+  avatar_url: string | null
+}
+
 export interface Chat {
   id: string
   participants: User[]
@@ -170,6 +179,17 @@ export const chatApi = {
     // decode unambiguously, the robust shape for an arbitrary multi-codepoint emoji
     // sub-resource selector. Verified live (real 👍 cross-user remove, no refetch).
     const response = await client.delete(
+      `/chats/${chatId}/messages/${messageId}/reactions?emoji=${encodeURIComponent(emoji)}`
+    )
+    return response.data
+  },
+
+  // Wave 207 — list the users who reacted to a message with one emoji (the
+  // reactor-list "who reacted" popover). On-demand; emoji as a query param,
+  // matching the DELETE route shape (W206 SW7). GET coexists with POST + DELETE
+  // at this path (backend routes by method).
+  getReactors: async (chatId: string, messageId: string, emoji: string): Promise<Reactor[]> => {
+    const response = await client.get<Reactor[]>(
       `/chats/${chatId}/messages/${messageId}/reactions?emoji=${encodeURIComponent(emoji)}`
     )
     return response.data

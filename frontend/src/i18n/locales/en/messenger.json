@@ -79,7 +79,10 @@
   "reactions": {
     "add": "Add reaction",
     "react": "React with {{emoji}}",
-    "tally": "Toggle {{emoji}} reaction, {{count}}"
+    "tally": "Toggle {{emoji}} reaction, {{count}}",
+    "whoReacted": "Reacted with {{emoji}}",
+    "reactorsLoading": "Loading…",
+    "reactorsEmpty": "No one yet"
   },
   "reply": "Reply",
   "replyingTo": "Replying to {{name}}",
