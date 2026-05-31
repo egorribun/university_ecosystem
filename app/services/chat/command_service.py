@@ -552,6 +552,100 @@ class ChatMaintenanceService:
             },
         )
 
+    async def add_reaction(
+        self,
+        chat_id: uuid.UUID,
+        message_id: uuid.UUID,
+        user: User,
+        emoji: str,
+        locale: str,
+    ) -> None:
+        """Add an emoji reaction (any participant, any message) and broadcast live.
+
+        Wave 206 — same synchronous-broadcast pattern as mark_read/edit. Reactions
+        are NOT author-gated, so a missing message can't surface as affected == 0;
+        an explicit message_exists_in_chat check raises 404 BEFORE the INSERT (also
+        avoids a mid-transaction FK IntegrityError on a bogus message_id). The
+        repo's idempotent ON CONFLICT DO NOTHING means a repeat reaction yields
+        is_new == False ⇒ no broadcast (no-op, 200).
+        """
+        chat = await self.repository.get_by_id(chat_id)
+        ensure_exists(chat, "chat", locale)
+        assert chat is not None  # noqa: S101
+
+        participant_ids = {p.id for p in chat.participants}
+        if user.id not in participant_ids:
+            raise_forbidden(locale, "errors.chat.not_participant")
+
+        if not await self.repository.message_exists_in_chat(message_id, chat_id):
+            raise_not_found("message", locale)
+
+        is_new = await self.repository.add_reaction(message_id, user.id, emoji)
+        async with self.uow:
+            await self.uow.commit()
+
+        # Wave 206 — DELTA frame (the W203 read-frame archetype): carries the actor
+        # + the change, NOT the resolved aggregate (reacted_by_me is per-viewer).
+        # Gated on is_new so a duplicate reaction doesn't double-count downstream.
+        # exclude_user_id excludes the actor from the in-process fan-out; the NATS
+        # mirror can't exclude per-recipient, so the FE self-echo guard
+        # (user_id === currentUserId → skip; the actor already patched
+        # optimistically) is the real protection. A missed/duplicate delta self-
+        # heals on the next GET /messages (the persisted aggregate is authoritative).
+        if is_new:
+            await ws_manager.broadcast_to_chat(
+                chat_id,
+                {
+                    "type": "reaction_changed",
+                    "chat_id": str(chat_id),
+                    "message_id": str(message_id),
+                    "user_id": str(user.id),
+                    "emoji": emoji,
+                    "action": "added",
+                },
+                exclude_user_id=user.id,
+            )
+
+    async def remove_reaction(
+        self,
+        chat_id: uuid.UUID,
+        message_id: uuid.UUID,
+        user: User,
+        emoji: str,
+        locale: str,
+    ) -> None:
+        """Remove an emoji reaction and broadcast the delta live.
+
+        Wave 206 — idempotent: removing a non-existent reaction is a benign no-op
+        (affected == 0 ⇒ no broadcast, 200; no existence 404 needed). Broadcast +
+        exclude_user_id semantics mirror add_reaction.
+        """
+        chat = await self.repository.get_by_id(chat_id)
+        ensure_exists(chat, "chat", locale)
+        assert chat is not None  # noqa: S101
+
+        participant_ids = {p.id for p in chat.participants}
+        if user.id not in participant_ids:
+            raise_forbidden(locale, "errors.chat.not_participant")
+
+        affected = await self.repository.remove_reaction(message_id, user.id, emoji)
+        async with self.uow:
+            await self.uow.commit()
+
+        if affected > 0:
+            await ws_manager.broadcast_to_chat(
+                chat_id,
+                {
+                    "type": "reaction_changed",
+                    "chat_id": str(chat_id),
+                    "message_id": str(message_id),
+                    "user_id": str(user.id),
+                    "emoji": emoji,
+                    "action": "removed",
+                },
+                exclude_user_id=user.id,
+            )
+
     async def clear_history(
         self, chat_id: uuid.UUID, user: User, locale: str
     ) -> ChatMaintenanceResult:

@@ -26,6 +26,7 @@ if TYPE_CHECKING:
         MessageResponse,
         MessagesListOut,
     )
+    from app.schemas.dtos.chat import MessageReactionDTO
 
 from app.api.validation import ensure_exists, raise_forbidden
 from app.api.ws.presence import build_presence_map
@@ -36,7 +37,34 @@ from app.schemas.chat import (
     MessageResponse,
     MessagesListOut,
     PresenceStatus,
+    ReactionAggregate,
 )
+
+
+def _aggregate_reactions(
+    rows: list[MessageReactionDTO], current_user_id: uuid.UUID
+) -> list[ReactionAggregate]:
+    """Wave 206 — fold raw reaction rows into per-emoji aggregates.
+
+    Preserves first-seen emoji order. ``reacted_by_me`` is set when the requesting
+    user reacted with that emoji (server-computed here on the REST path; on the WS
+    delta-frame path the client derives it locally). Built via plain counters and
+    constructed at the end so it never mutates a (possibly frozen) pydantic model.
+    """
+    counts: dict[str, int] = {}
+    mine: set[str] = set()
+    order: list[str] = []
+    for r in rows:
+        if r.emoji not in counts:
+            counts[r.emoji] = 0
+            order.append(r.emoji)
+        counts[r.emoji] += 1
+        if r.user_id == current_user_id:
+            mine.add(r.emoji)
+    return [
+        ReactionAggregate(emoji=e, count=counts[e], reacted_by_me=(e in mine))
+        for e in order
+    ]
 
 
 class ChatQueryService:
@@ -113,6 +141,10 @@ class ChatQueryService:
                     sender=l_msg.sender,
                     attachments=l_msg.attachments,
                     sender_presence=presence_map.get(l_msg.sender_id),
+                    # Wave 206 — chat-list last-message preview is a lightweight
+                    # projection (no reaction selectinload); pills render only in the
+                    # message list (W203-SW8 two-site rule — explicit empty here).
+                    reactions=[],
                 )
 
             participant_status: dict[uuid.UUID, PresenceStatus] = {}
@@ -214,6 +246,9 @@ class ChatQueryService:
                 sender=None,
                 attachments=cast("list[AttachmentResponse]", msg.attachments),
                 sender_presence=presence_map.get(msg.sender_id),
+                # Wave 206 — aggregate the selectinload'd reaction rows; reacted_by_me
+                # is computed for the requesting user (W203-SW8 two-site rule).
+                reactions=_aggregate_reactions(msg.reactions, user.id),
             )
             for msg in messages
         ]

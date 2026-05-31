@@ -291,7 +291,13 @@ class ChatRepository(BaseRepository[Chat, ChatDTO, dict[str, Any], dict[str, Any
         query = (
             select(Message)
             .where(Message.chat_id == chat_id)
-            .options(selectinload(Message.sender), selectinload(Message.attachments))
+            .options(
+                selectinload(Message.sender),
+                selectinload(Message.attachments),
+                # Wave 206 — one extra SELECT … WHERE message_id IN (…) per page;
+                # the query service aggregates these into ReactionAggregate.
+                selectinload(Message.reactions),
+            )
         )
 
         cursor_info = decode_datetime_cursor(cursor)
