@@ -108,6 +108,22 @@ class Message(Base, EventEmitterMixin, UUID7PrimaryKeyMixin):
     deleted_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True, default=None
     )
+    # Wave 207 — reply/quote self-FK. NULL = not a reply. ondelete="SET NULL"
+    # (NOT CASCADE like Attachment/MessageReaction): a reply is a standalone
+    # message that merely *references* an earlier one, so if the target is
+    # deleted the reply survives — this column nulls out and the FE renders an
+    # "original deleted" placeholder. DEBT-02 pattern: explicit index — a FK
+    # without an index full-scans on the SET NULL sweep (PG must find every row
+    # referencing a just-deleted message id to null it). The get_messages
+    # selectinload of replied_to filters on messages.id (the PK, already
+    # indexed), so this index serves the delete sweep, not the read.
+    reply_to_message_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("messages.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+        default=None,
+    )
 
     # Relationships
     # RZ-23-03 (audit 2026-03-25 Wave 23): Changed lazy="joined" → lazy="noload".
@@ -131,6 +147,19 @@ class Message(Base, EventEmitterMixin, UUID7PrimaryKeyMixin):
         "MessageReaction",
         back_populates="message",
         cascade="all, delete-orphan",
+        lazy="noload",
+    )
+    # Wave 207 — the message this one replies to (self-referential many-to-one).
+    # remote_side="Message.id" marks id as the parent/target side (Context7
+    # adjacency-list parent-pointer); reply_to_message_id is the sole Message→
+    # messages FK, so the join condition is inferred (no foreign_keys needed).
+    # No back_populates: we never render "messages that replied to this", only
+    # the forward quote. lazy="noload" (MOD-30-01 explicit-lazy CI gate);
+    # ChatRepository.get_messages adds selectinload(Message.replied_to) so the
+    # quote preview is a single extra SELECT … WHERE id IN (…) per page, no N+1.
+    replied_to: Mapped[Message | None] = relationship(
+        "Message",
+        remote_side="Message.id",
         lazy="noload",
     )
 
