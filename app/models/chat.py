@@ -13,6 +13,7 @@ from sqlalchemy import (
     Integer,
     String,
     Table,
+    UniqueConstraint,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -122,6 +123,16 @@ class Message(Base, EventEmitterMixin, UUID7PrimaryKeyMixin):
         cascade="all, delete-orphan",
         lazy="noload",
     )
+    # Wave 206 — message reactions (👍❤️😂😮😢). lazy="noload" per MOD-30-01
+    # (explicit-lazy CI gate); ChatRepository.get_messages adds
+    # selectinload(Message.reactions) so the aggregation is a single extra
+    # SELECT … WHERE message_id IN (…) per page, never an N+1.
+    reactions: Mapped[list[MessageReaction]] = relationship(
+        "MessageReaction",
+        back_populates="message",
+        cascade="all, delete-orphan",
+        lazy="noload",
+    )
 
 
 class Attachment(Base, UUID7PrimaryKeyMixin):
@@ -159,4 +170,54 @@ class Attachment(Base, UUID7PrimaryKeyMixin):
     # RZ-23-03 (audit 2026-03-25 Wave 23): Changed lazy="joined" → lazy="noload".
     message: Mapped[Message] = relationship(
         "Message", back_populates="attachments", lazy="noload"
+    )
+
+
+class MessageReaction(Base, UUID7PrimaryKeyMixin):
+    """Wave 206 — a single emoji reaction by one user on one message.
+
+    Per-(user, message, emoji) child row of Message (the first many-per-message
+    fact in the chat domain — mirrors the Attachment child-table pattern). The
+    (user_id, message_id, emoji) unique constraint makes a reaction idempotent;
+    the repo's pg_insert(...).on_conflict_do_nothing targets it. No
+    EventEmitterMixin: reactions broadcast synchronously via broadcast_to_chat
+    (the W203/W205 rail), not through the domain-event outbox.
+    """
+
+    __tablename__ = "message_reactions"
+
+    # DEBT-02 pattern (mirrors Attachment.message_id): explicit index — the
+    # get_messages aggregation does selectinload → WHERE message_id IN (…); the
+    # (user_id, message_id, emoji) unique constraint is user_id-leading, so it
+    # does NOT serve message_id lookups.
+    message_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("messages.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    # Bounded — holds one multi-codepoint emoji (e.g. ❤️ = U+2764 U+FE0F);
+    # matches the POST /reactions Form(max_length=16) cap.
+    emoji: Mapped[str] = mapped_column(String(16), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now
+    )
+
+    __table_args__ = (
+        UniqueConstraint(
+            "user_id",
+            "message_id",
+            "emoji",
+            name="uq_message_reactions_user_message_emoji",
+        ),
+    )
+
+    # lazy="noload" (MOD-30-01 explicit-lazy CI gate).
+    message: Mapped[Message] = relationship(
+        "Message", back_populates="reactions", lazy="noload"
     )
