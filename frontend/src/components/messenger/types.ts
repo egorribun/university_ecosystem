@@ -42,4 +42,15 @@ export interface Message {
   // the API snake_case in useMessengerController's transform). reactedByMe drives
   // the active-pill styling + toggle direction.
   reactions?: { emoji: string; count: number; reactedByMe: boolean }[]
+  // Wave 207 — reply/quote preview. `isMe` is resolved at transform time
+  // (reply_to.sender_id === user.id) so ChatWindow can render the "You" vs name
+  // author label without threading currentUserId; `deletedAt` set => render the
+  // "original deleted" placeholder. null/absent when this message isn't a reply.
+  replyTo?: {
+    id: string
+    senderName: string | null
+    isMe: boolean
+    text: string
+    deletedAt: string | null
+  } | null
 }

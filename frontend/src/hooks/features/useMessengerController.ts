@@ -83,6 +83,19 @@ export const useMessengerController = () => {
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null)
   const [editingMessageContent, setEditingMessageContent] = useState("")
 
+  // Wave 207 — reply/quote compose state. Set by handleStartReply when the user
+  // taps "reply" on a bubble; the MessageInput chip renders it; the send handler
+  // threads reply_to_message_id + builds the optimistic message's replyTo;
+  // cleared on send + on cancel. `isMe` is the ORIGINAL (quoted) message's isMe —
+  // copied into the optimistic replyTo so the "You" vs name label resolves
+  // identically to a server-fetched reply.
+  const [replyingTo, setReplyingTo] = useState<{
+    id: string
+    senderName: string | null
+    isMe: boolean
+    text: string
+  } | null>(null)
+
   // Profile State
   const [profileUser, setProfileUser] = useState<User | null>(null)
   const [isProfileLoading, setIsProfileLoading] = useState(false)
@@ -232,6 +245,19 @@ export const useMessengerController = () => {
           count: r.count,
           reactedByMe: r.reacted_by_me,
         })),
+        // Wave 207 — map the API reply preview (snake_case) → UI shape. isMe is
+        // resolved HERE (reply_to.sender_id === user.id) so ChatWindow renders the
+        // "You" vs name author label without a currentUserId prop. null when not a
+        // reply (or the target was hard-deleted → SET NULL nulled the ref).
+        replyTo: m.reply_to
+          ? {
+              id: m.reply_to.id,
+              senderName: m.reply_to.sender_name,
+              isMe: m.reply_to.sender_id === user?.id,
+              text: m.reply_to.content,
+              deletedAt: m.reply_to.deleted_at ?? null,
+            }
+          : null,
       }
     })
   }, [messages, user?.id, user?.full_name, user?.avatar_url])
@@ -246,8 +272,19 @@ export const useMessengerController = () => {
   // --- Mutations ---
 
   const sendMessageMutation = useMutation({
-    mutationFn: ({ chatId, content, files }: { chatId: string; content: string; files?: File[] }) =>
-      chatApi.sendMessage(chatId, content, files),
+    // Wave 207 — replyToMessageId threaded into the existing send mutation (no
+    // separate mutation): the FormData append is conditional in chatApi.sendMessage.
+    mutationFn: ({
+      chatId,
+      content,
+      files,
+      replyToMessageId,
+    }: {
+      chatId: string
+      content: string
+      files?: File[]
+      replyToMessageId?: string
+    }) => chatApi.sendMessage(chatId, content, files, replyToMessageId),
     onSuccess: (newMessage) => {
       queryClient.setQueryData<MessagesListResponse | undefined>(
         ["messages", selectedChatId],
@@ -610,6 +647,19 @@ export const useMessengerController = () => {
       timestamp: formatMessageTime(now.toISOString()),
       isMe: true,
       status: "sent",
+      // Wave 207 — optimistic reply preview from the in-compose replyingTo state
+      // (copied verbatim; the server-confirmed message replaces this with the real
+      // ReplyPreview). isMe is the QUOTED message's isMe so the bubble renders the
+      // same "You" vs name label the refetch would. null when not replying.
+      replyTo: replyingTo
+        ? {
+            id: replyingTo.id,
+            senderName: replyingTo.senderName,
+            isMe: replyingTo.isMe,
+            text: replyingTo.text,
+            deletedAt: null,
+          }
+        : null,
       attachments: files.map((f, i) => {
         const blobUrl = URL.createObjectURL(f)
         blobUrlsRef.current.add(blobUrl)
@@ -624,8 +674,37 @@ export const useMessengerController = () => {
     }
 
     addOptimisticMessage(optimisticMsg)
-    sendMessageMutation.mutate({ chatId: selectedChatId, content: text, files })
+    sendMessageMutation.mutate({
+      chatId: selectedChatId,
+      content: text,
+      files,
+      replyToMessageId: replyingTo?.id,
+    })
+    // Wave 207 — clear the reply context once the send is dispatched (the chip
+    // disappears; the optimistic bubble already carries its own replyTo copy).
+    setReplyingTo(null)
   }
+
+  // Wave 207 — start replying to a message. Resolves from transformedMessages
+  // (server-confirmed truth, NOT optimisticMessages): replying to a not-yet-sent
+  // optimistic message would thread its tempId as reply_to_message_id → backend
+  // 404. Deleted targets are skipped (you can't quote a tombstone). `isMe` +
+  // senderName are carried so the chip + optimistic bubble label resolve identically.
+  const handleStartReply = useCallback(
+    (messageId: string) => {
+      const target = transformedMessages.find((m) => m.id === messageId)
+      if (!target || target.deletedAt) return
+      setReplyingTo({
+        id: target.id,
+        senderName: target.senderName ?? null,
+        isMe: target.isMe,
+        text: target.text,
+      })
+    },
+    [transformedMessages]
+  )
+
+  const handleCancelReply = useCallback(() => setReplyingTo(null), [])
 
   const getOtherParticipant = useCallback(
     (chat: Chat) => {
@@ -825,5 +904,10 @@ export const useMessengerController = () => {
 
     // Wave 206 — message reactions
     handleToggleReaction,
+
+    // Wave 207 — reply/quote
+    replyingTo,
+    handleStartReply,
+    handleCancelReply,
   }
 }

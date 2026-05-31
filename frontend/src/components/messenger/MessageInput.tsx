@@ -8,6 +8,12 @@ import SmartImage from "@/components/media/SmartImage"
 
 interface MessageInputProps {
   onSend: (text: string, files: File[]) => void
+  // Wave 207 — reply/quote compose chip. When set, a "Replying to {name}" chip
+  // + snippet + cancel-X renders above the input row. senderName + isMe resolve
+  // the author label ("You" vs name); onCancelReply clears the reply context.
+  // Optional so MessageInput renders standalone in tests/storybook.
+  replyingTo?: { senderName: string | null; isMe: boolean; text: string } | null
+  onCancelReply?: () => void
 }
 
 // Wave 183 SW7 — extended selectedFiles tuple from {id, file} to
@@ -53,8 +59,8 @@ const ATTACH_MENU_ITEMS = [
   },
 ] as const
 
-export function MessageInput({ onSend }: MessageInputProps) {
-  const { t } = useTranslation(["messenger"])
+export function MessageInput({ onSend, replyingTo, onCancelReply }: MessageInputProps) {
+  const { t } = useTranslation(["messenger", "common"])
   const [text, setText] = useState("")
   const [showAttachMenu, setShowAttachMenu] = useState(false)
   // Wave 182 SW2 — selectedFiles tracks each File with a stable UUID
@@ -238,6 +244,32 @@ export function MessageInput({ onSend }: MessageInputProps) {
           ))}
         </div>
       )}
+      {/* Wave 207 — reply/quote compose chip. Renders above the input row when
+          the user is replying. Author label is "You" (replyingTo.isMe) or the
+          quoted sender name; the snippet is truncated. The X cancels (clears
+          the controller's replyingTo state). */}
+      {replyingTo ? (
+        <div className="mb-2 flex items-center gap-2 rounded-xl border-l-2 border-(--color-violet-500) bg-(--color-violet-500)/(--opacity-faint) px-3 py-2">
+          <div className="min-w-0 flex-1">
+            <p className="text-micro font-semibold text-(--brand-main)">
+              {t("messenger:replyingTo", {
+                name: replyingTo.isMe
+                  ? t("messenger:replyTo.you")
+                  : (replyingTo.senderName ?? t("messenger:replyTo.unknownSender")),
+              })}
+            </p>
+            <p className="truncate text-sm text-(--text-secondary)">{replyingTo.text}</p>
+          </div>
+          <button
+            type="button"
+            onClick={onCancelReply}
+            aria-label={t("common:buttons.cancel")}
+            className="flex min-h-[36px] min-w-[36px] shrink-0 items-center justify-center rounded-full text-(--text-secondary) transition-colors hover:bg-(--bg-surface-hover)/(--opacity-medium) hover:text-(--text-primary) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-violet-500)"
+          >
+            <X size={18} strokeWidth={2.5} aria-hidden="true" />
+          </button>
+        </div>
+      ) : null}
       <div className="flex items-end gap-2 bg-(--bg-surface-hover)/(--opacity-subtle) rounded-2xl border border-(--glass-border)/(--opacity-dim) p-2 focus-within:ring-4 focus-within:ring-(--brand-main)/(--opacity-faint) focus-within:border-(--brand-main)/(--opacity-dim) transition-all duration-base">
         <div className="relative">
           <m.button

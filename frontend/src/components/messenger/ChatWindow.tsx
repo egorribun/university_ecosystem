@@ -7,6 +7,7 @@ import {
   CheckCheck,
   MessageCircleHeart,
   Pencil,
+  Reply,
   RotateCcw,
   SearchX,
   SmilePlus,
@@ -91,6 +92,13 @@ interface ChatWindowProps {
    * pills display read-only, and the "+react" affordance + picker are hidden.
    */
   onToggleReaction?: (messageId: string, emoji: string) => void
+  /**
+   * Wave 207 — start replying to a message (rendered on ALL bubbles, not just
+   * own). Threaded from useMessengerController via ChatArea. Optional so
+   * ChatWindow renders standalone in tests/storybook (the reply affordance is
+   * hidden without it).
+   */
+  onStartReply?: (messageId: string) => void
 }
 
 // Wave 206 — fixed quick-reaction set (no emoji-picker dependency). Module-level
@@ -117,6 +125,7 @@ export function ChatWindow({
   onCancelEdit,
   onDeleteMessage,
   onToggleReaction,
+  onStartReply,
 }: ChatWindowProps) {
   const { t } = useTranslation()
   // Wave 206 — which message's emoji picker is open (null = none). The "+react"
@@ -640,6 +649,49 @@ export function ChatWindow({
                           ))}
                         </div>
                       )}
+                      {/* Wave 207 — quoted reply preview. Sits above the content,
+                          inside the bubble. Author line = "You" when the quoted
+                          message is mine (isMe resolved at transform time), else the
+                          sender name. Body = the snippet (line-clamped 2) OR an
+                          italic "original deleted" placeholder when the target was
+                          soft-deleted. Border-l accent + faint tint, theme-aware
+                          per sent (text-inverse on violet) vs received (violet on
+                          neutral). */}
+                      {message.replyTo ? (
+                        <div
+                          className={cn(
+                            "mb-2 rounded-lg border-l-2 px-2.5 py-1.5",
+                            message.isMe
+                              ? "border-(--text-inverse)/(--opacity-medium) bg-(--text-inverse)/(--opacity-faint)"
+                              : "border-(--color-violet-500)/(--opacity-medium) bg-(--color-violet-500)/(--opacity-faint)"
+                          )}
+                        >
+                          <p
+                            className={cn(
+                              "text-micro font-semibold",
+                              message.isMe ? "text-[var(--text-inverse)]" : "text-(--brand-main)"
+                            )}
+                          >
+                            {message.replyTo.isMe
+                              ? t("messenger:replyTo.you")
+                              : (message.replyTo.senderName ??
+                                t("messenger:replyTo.unknownSender"))}
+                          </p>
+                          <p
+                            className={cn(
+                              "line-clamp-2 text-sm leading-snug",
+                              message.replyTo.deletedAt && "italic",
+                              message.isMe
+                                ? "text-[var(--text-inverse)] opacity-medium"
+                                : "text-(--text-secondary)"
+                            )}
+                          >
+                            {message.replyTo.deletedAt
+                              ? t("messenger:replyTo.deletedOriginal")
+                              : message.replyTo.text}
+                          </p>
+                        </div>
+                      ) : null}
                       <p className="wrap-break-word leading-relaxed whitespace-pre-wrap">
                         {message.text}
                       </p>
@@ -653,24 +705,49 @@ export function ChatWindow({
                           secondary controls; a context-menu / long-press affordance is
                           future polish). A right-context-menu / hover-reveal UX is
                           out of W205 scope. */}
-                        {message.isMe ? (
+                        {onStartReply || message.isMe ? (
                           <div className="flex items-center gap-0.5">
-                            <button
-                              type="button"
-                              onClick={() => onEditMessage?.(message.id, message.text)}
-                              aria-label={t("messenger:editMessage")}
-                              className="flex items-center justify-center rounded-md p-1.5 text-[var(--text-inverse)] opacity-medium transition-opacity hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--text-inverse)]"
-                            >
-                              <Pencil className="size-4" strokeWidth={2} aria-hidden="true" />
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => onDeleteMessage?.(message.id)}
-                              aria-label={t("messenger:deleteMessage")}
-                              className="flex items-center justify-center rounded-md p-1.5 text-[var(--text-inverse)] opacity-medium transition-opacity hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--text-inverse)]"
-                            >
-                              <Trash2 className="size-4" strokeWidth={2} aria-hidden="true" />
-                            </button>
+                            {/* Wave 207 — reply affordance on ALL bubbles (not just
+                              own). On the violet sent bubble it uses text-inverse +
+                              inverse focus ring (matching edit/delete); on the neutral
+                              received bubble it uses text-secondary + violet focus
+                              ring. Same 28px hit area as edit/delete (accepted dense
+                              in-bubble secondary control, per the W205 note below). */}
+                            {onStartReply ? (
+                              <button
+                                type="button"
+                                onClick={() => onStartReply(message.id)}
+                                aria-label={t("messenger:reply")}
+                                className={cn(
+                                  "flex items-center justify-center rounded-md p-1.5 opacity-medium transition-opacity hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2",
+                                  message.isMe
+                                    ? "text-[var(--text-inverse)] focus-visible:ring-[var(--text-inverse)]"
+                                    : "text-(--text-secondary) focus-visible:ring-(--color-violet-500)"
+                                )}
+                              >
+                                <Reply className="size-4" strokeWidth={2} aria-hidden="true" />
+                              </button>
+                            ) : null}
+                            {message.isMe ? (
+                              <>
+                                <button
+                                  type="button"
+                                  onClick={() => onEditMessage?.(message.id, message.text)}
+                                  aria-label={t("messenger:editMessage")}
+                                  className="flex items-center justify-center rounded-md p-1.5 text-[var(--text-inverse)] opacity-medium transition-opacity hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--text-inverse)]"
+                                >
+                                  <Pencil className="size-4" strokeWidth={2} aria-hidden="true" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => onDeleteMessage?.(message.id)}
+                                  aria-label={t("messenger:deleteMessage")}
+                                  className="flex items-center justify-center rounded-md p-1.5 text-[var(--text-inverse)] opacity-medium transition-opacity hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--text-inverse)]"
+                                >
+                                  <Trash2 className="size-4" strokeWidth={2} aria-hidden="true" />
+                                </button>
+                              </>
+                            ) : null}
                           </div>
                         ) : (
                           <span aria-hidden="true" />

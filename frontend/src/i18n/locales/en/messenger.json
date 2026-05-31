@@ -81,6 +81,13 @@
     "react": "React with {{emoji}}",
     "tally": "Toggle {{emoji}} reaction, {{count}}"
   },
+  "reply": "Reply",
+  "replyingTo": "Replying to {{name}}",
+  "replyTo": {
+    "you": "You",
+    "deletedOriginal": "Original message deleted",
+    "unknownSender": "Unknown"
+  },
   "aria": {
     "messageList": "Chat messages",
     "removeAttachment": "Remove attachment",

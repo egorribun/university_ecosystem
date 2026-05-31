@@ -79,6 +79,15 @@ interface ChatAreaProps {
    * useMessengerController through MessengerFeature into ChatWindow.
    */
   onToggleReaction?: (messageId: string, emoji: string) => void
+  /**
+   * Wave 207 — reply/quote, threaded from useMessengerController through
+   * MessengerFeature. `replyingTo` drives the MessageInput compose chip;
+   * `onStartReply` wires each ChatWindow bubble's reply button; `onCancelReply`
+   * clears the reply context.
+   */
+  replyingTo?: { senderName: string | null; isMe: boolean; text: string } | null
+  onStartReply?: (messageId: string) => void
+  onCancelReply?: () => void
 }
 
 export function ChatArea({
@@ -109,6 +118,9 @@ export function ChatArea({
   onCancelEdit,
   onDeleteMessage,
   onToggleReaction,
+  replyingTo,
+  onStartReply,
+  onCancelReply,
 }: ChatAreaProps) {
   const { t } = useTranslation(["messenger", "common"])
   const navigate = useNavigate()
@@ -369,9 +381,14 @@ export function ChatArea({
             onCancelEdit={onCancelEdit}
             onDeleteMessage={onDeleteMessage}
             onToggleReaction={onToggleReaction}
+            onStartReply={onStartReply}
           />
           <TypingIndicator users={typingUsers} prefersReducedMotion={prefersReducedMotion} />
-          <MessageInput onSend={handleSendMessage} />
+          <MessageInput
+            onSend={handleSendMessage}
+            replyingTo={replyingTo}
+            onCancelReply={onCancelReply}
+          />
         </>
       ) : (
         <div

@@ -81,6 +81,13 @@
     "react": "Отреагировать {{emoji}}",
     "tally": "Переключить реакцию {{emoji}}, {{count}}"
   },
+  "reply": "Ответить",
+  "replyingTo": "Ответ: {{name}}",
+  "replyTo": {
+    "you": "Вы",
+    "deletedOriginal": "Исходное сообщение удалено",
+    "unknownSender": "Неизвестно"
+  },
   "aria": {
     "messageList": "Сообщения чата",
     "removeAttachment": "Удалить вложение",

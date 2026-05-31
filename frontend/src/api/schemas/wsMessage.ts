@@ -47,6 +47,23 @@ const MessageSchema = v.object({
   // new_message frame with "sender": null was dropped by parseWsMessage as invalid
   // (the whole reason new_message never rendered live until this fix).
   sender: v.optional(v.nullable(v.record(v.string(), v.unknown()))),
+  // Wave 207 — reply/quote preview (the lean ReplyPreview the backend's
+  // serialize_message embeds when this message replies to an earlier one).
+  // optional+nullable per the W205 pattern: serialize_message emits "reply_to":
+  // null on a non-reply frame (v.optional alone REJECTS null). The inner
+  // sender_name + deleted_at are always-present keys with possibly-null values,
+  // so they're v.nullable (not optional). content matches the message content cap.
+  reply_to: v.optional(
+    v.nullable(
+      v.object({
+        id: UuidString,
+        sender_id: UuidString,
+        sender_name: v.nullable(v.string()),
+        content: v.pipe(v.string(), v.maxLength(32_768)),
+        deleted_at: v.nullable(v.string()),
+      })
+    )
+  ),
 })
 
 export type ParsedMessage = v.InferOutput<typeof MessageSchema>

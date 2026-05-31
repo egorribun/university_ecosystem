@@ -31,6 +31,18 @@ export interface Message {
   // the requesting user on GET /messages; on the WS delta frame the hook patches
   // count only (reacted_by_me is per-viewer, never broadcast).
   reactions?: { emoji: string; count: number; reacted_by_me: boolean }[]
+  // Wave 207 — reply/quote preview (the lean ReplyPreview: the quoted message's
+  // id + sender + a content snippet + a deleted flag). null when this message
+  // isn't a reply, or when the reply target was hard-deleted (the SET NULL
+  // self-FK nulled the ref). Both GET /messages + the live new_message frame
+  // carry it.
+  reply_to?: {
+    id: string
+    sender_id: string
+    sender_name: string | null
+    content: string
+    deleted_at: string | null
+  } | null
 }
 
 export interface Chat {
@@ -96,13 +108,24 @@ export const chatApi = {
     return response.data
   },
 
-  sendMessage: async (chatId: string, content: string, files?: File[]) => {
+  sendMessage: async (
+    chatId: string,
+    content: string,
+    files?: File[],
+    replyToMessageId?: string
+  ) => {
     const formData = new FormData()
     formData.append("content", content)
     if (files && files.length > 0) {
       files.forEach((file) => {
         formData.append("files", file)
       })
+    }
+    // Wave 207 — reply/quote. The backend send_message validates the target
+    // exists AND is in this chat (404 otherwise); the new Message row carries
+    // reply_to_message_id, and the response/broadcast embed the quote preview.
+    if (replyToMessageId) {
+      formData.append("reply_to_message_id", replyToMessageId)
     }
     const response = await client.post<Message>(`/chats/${chatId}/messages`, formData)
     return response.data
