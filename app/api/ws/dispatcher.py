@@ -56,48 +56,6 @@ class MessageDispatcher:
                 source=PRESENCE_SOURCE_PING,
             )
 
-        elif msg_type == "typing":
-            chat_id = data.get("chat_id")
-            if chat_id:
-                try:
-                    chat_uuid = (
-                        uuid.UUID(chat_id) if isinstance(chat_id, str) else chat_id
-                    )
-                    async with async_session() as session:
-                        repo = ChatRepository(session)
-                        is_participant = await repo.check_participant(
-                            chat_uuid, user.id
-                        )
-
-                    if not is_participant:
-                        logger.warning(
-                            "Access denied: User %s tried to send typing indicator to chat %s without being a participant",
-                            user.id,
-                            chat_id,
-                        )
-                        await websocket.send_json(
-                            {"type": "error", "message": "Access denied"}
-                        )
-                        return
-                except ValueError:
-                    await websocket.send_json(
-                        {"type": "error", "message": "Invalid chat_id format"}
-                    )
-                    return
-
-                await self.manager.broadcast_to_chat(
-                    chat_uuid,
-                    {
-                        "type": "typing",
-                        "chat_id": str(chat_uuid),
-                        "user_id": str(user.id),
-                        "user_name": getattr(user.profile, "full_name", None)
-                        if getattr(user, "profile", None)
-                        else str(user.email),
-                    },
-                    exclude_user_id=user.id,
-                )
-
         elif msg_type == "read":
             # Wave 203 SW4 — chat-level read receipt. The client marks the whole
             # chat read (no per-message id); the SQL filter (sender_id != user)
