@@ -67,6 +67,11 @@ export interface Chat {
   created_at: string
   updated_at: string
   presence?: Record<string, PresenceStatus>
+  // Wave 210 G2 — per-member read high-water-marks (group-only; absent/[] for a
+  // DM, which keeps using Message.read_status). Populated by GET /chats/{id}
+  // (get_chat_details); the FE folds these + live `read` frames into a "seen by
+  // N" map. API-surface only this wave — the group marker UI is G4.
+  read_receipts?: { user_id: string; last_read_at: string }[]
 }
 
 // Paginated response types
