@@ -55,6 +55,33 @@ class Chat(Base, UUID7PrimaryKeyMixin):
         default=utc_now,
         onupdate=utc_now,
     )
+    # Wave 209 G1 — group-chat identity. chat_type discriminates a 1-on-1 DM
+    # ("dm") from a named group ("group"). A plain String(20) + CheckConstraint
+    # (mirroring Attachment.file_type), NOT a StrEnum: it is a closed two-value
+    # display discriminator, not a widely-used authz role like UserRole.
+    # server_default="dm" backfills existing rows in the same ALTER and keeps the
+    # untouched create_chat DM path default-free (the DB supplies "dm"). name is
+    # the group's display title (NULL for DMs — the FE derives a DM's label from
+    # the other participant). created_by is the group owner; ondelete="SET NULL"
+    # so deleting an owner account never cascade-deletes the group (it becomes
+    # ownerless — only self-leave removes members until a later ownership-transfer
+    # wave). chat_participants stays a plain M2M Table (no per-member role): the
+    # model is already N-participant capable, so G1 adds identity + a
+    # create/membership flow, not roles.
+    chat_type: Mapped[str] = mapped_column(
+        String(20), nullable=False, server_default="dm"
+    )  # 'dm' | 'group'
+    name: Mapped[str | None] = mapped_column(String(128), nullable=True, default=None)
+    created_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+        default=None,
+    )
+
+    __table_args__ = (
+        CheckConstraint("chat_type IN ('dm', 'group')", name="ck_chats_chat_type"),
+    )
 
     # RZ-14-01 (audit 2026-03-23): Changed lazy="selectin" → lazy="noload".
     # lazy="selectin" is an *unconditional* load strategy — SQLAlchemy fires a
