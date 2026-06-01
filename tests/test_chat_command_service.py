@@ -437,7 +437,9 @@ class TestMarkRead:
         ) as broadcast:
             await svc.mark_read(chat.id, user, "en")
 
-        uow.chats.mark_messages_read.assert_called_once_with(chat.id, user.id)
+        # Wave 210 G2 — chat_type is now threaded so groups mark-read via the
+        # per-recipient high-water-mark; a DM (_mock_chat default) passes "dm".
+        uow.chats.mark_messages_read.assert_called_once_with(chat.id, user.id, "dm")
         uow.commit.assert_called_once()
         broadcast.assert_awaited_once()
         call = broadcast.await_args
@@ -465,9 +467,29 @@ class TestMarkRead:
         ) as broadcast:
             await svc.mark_read(chat.id, user, "en")
 
-        uow.chats.mark_messages_read.assert_called_once_with(chat.id, user.id)
+        uow.chats.mark_messages_read.assert_called_once_with(chat.id, user.id, "dm")
         uow.commit.assert_called_once()
         broadcast.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_mark_read_group_passes_chat_type(self):
+        # Wave 210 G2 — a group chat threads chat_type="group" so the repo
+        # marks-read via the ChatReadReceipt high-water-mark, not read_status.
+        uow = _mock_uow()
+        user = _mock_user()
+        chat = _mock_chat(user.id, uuid.uuid4(), chat_type="group")
+        read_at = datetime.now(UTC)
+        uow.chats.get_by_id = AsyncMock(return_value=chat)
+        uow.chats.mark_messages_read = AsyncMock(return_value=(read_at, 1))
+
+        svc = ChatMaintenanceService(uow, _mock_attachment_service())
+        with patch(
+            "app.services.chat.command_service.ws_manager.broadcast_to_chat",
+            new=AsyncMock(),
+        ):
+            await svc.mark_read(chat.id, user, "en")
+
+        uow.chats.mark_messages_read.assert_called_once_with(chat.id, user.id, "group")
 
     @pytest.mark.asyncio
     async def test_mark_read_not_participant(self):

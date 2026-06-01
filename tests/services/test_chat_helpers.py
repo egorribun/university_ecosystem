@@ -410,8 +410,13 @@ async def test_handle_message_sent_fetches_sender_by_id_not_noload_relationship(
     session_cm.__aexit__ = AsyncMock(return_value=False)
 
     repo = MagicMock()
+    # Wave 210 G3 — the handler now reads chat.chat_type/name (a ChatDTO) to
+    # thread the group identity into notify_new_message; the stand-in must carry
+    # them or attribute access AttributeErrors.
     repo.get_by_id = AsyncMock(
-        return_value=SimpleNamespace(participants=[fetched_sender])
+        return_value=SimpleNamespace(
+            participants=[fetched_sender], chat_type="dm", name=None
+        )
     )
 
     service = MagicMock()
@@ -435,6 +440,9 @@ async def test_handle_message_sent_fetches_sender_by_id_not_noload_relationship(
     assert kwargs["sender"] is fetched_sender
     assert kwargs["sender"] is not None
     assert kwargs["message"] is message
+    # Wave 210 G3 — a DM chat threads chat_type="dm" + chat_name=None.
+    assert kwargs["chat_type"] == "dm"
+    assert kwargs["chat_name"] is None
 
 
 # ── 6. Reply-notification SUPERSEDE (Wave 208) ───────────────────────────────
@@ -637,7 +645,9 @@ async def test_handle_message_sent_loads_replied_for_reply() -> None:
             participants=[
                 fetched_sender,
                 SimpleNamespace(id=quoted_sender_id, profile=None),
-            ]
+            ],
+            chat_type="dm",
+            name=None,
         )
     )
     repo.get_message_by_id = AsyncMock(return_value=replied_dto)
@@ -661,3 +671,174 @@ async def test_handle_message_sent_loads_replied_for_reply() -> None:
     repo.get_message_by_id.assert_awaited_once_with(reply_target_id)
     service.notify_new_message.assert_awaited_once()
     assert service.notify_new_message.await_args.kwargs["replied"] is replied_dto
+
+
+# ── 7. Group notification re-tiering (Wave 210 G3) ───────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_notify_group_message_titles_by_group_name_and_fans_out() -> None:
+    """A GROUP push titles by the group name + prefixes the body with the sender,
+    and fans the generic chat.message out to ALL non-sender members."""
+    sender = _user(uuid.uuid4(), full_name="Alice")
+    b = _user(uuid.uuid4())
+    c = _user(uuid.uuid4())
+    d = _user(uuid.uuid4())
+    chat_id = uuid.uuid4()
+    message = _msg(chat_id=chat_id, sender_id=sender.id, content="hello")
+
+    svc = ChatNotificationService(MagicMock())
+
+    with (
+        patch(
+            "app.services.chat.notification_service.build_presence_map",
+            new=AsyncMock(return_value={}),
+        ),
+        patch(
+            "app.services.chat.notification_service.serialize_message",
+            return_value={},
+        ),
+        patch(
+            "app.services.chat.notification_service.ws_manager.broadcast_to_chat",
+            new=AsyncMock(),
+        ),
+        patch(
+            "app.services.chat.notification_service.create_notifications_for_users",
+            new=AsyncMock(),
+        ) as create,
+    ):
+        await svc.notify_new_message(
+            message,
+            [sender, b, c, d],
+            sender,
+            chat_type="group",
+            chat_name="Team",
+        )
+
+    create.assert_awaited_once()
+    kwargs = create.await_args.kwargs
+    assert kwargs["type"] == "chat.message"
+    # Group identity: title is the group name, body is sender-prefixed.
+    assert kwargs["title"] == "Team"
+    assert kwargs["body"] == "Alice: hello"
+    # Fans out to every non-sender member.
+    assert set(kwargs["user_ids"]) == {b.id, c.id, d.id}
+
+
+@pytest.mark.asyncio
+async def test_notify_group_reply_supersede_carries_group_name() -> None:
+    """Reply-supersede still works inside a group AND both the generic + reply
+    entries carry the group's identity (title=name, sender-prefixed body)."""
+    sender = _user(uuid.uuid4(), full_name="Alice")  # replier
+    quoted = _user(uuid.uuid4())  # author of the replied-to message
+    third = _user(uuid.uuid4())  # unrelated member
+    chat_id = uuid.uuid4()
+    message = _msg(chat_id=chat_id, sender_id=sender.id, content="re: hi")
+    replied = _replied(message_id=uuid.uuid4(), sender_id=quoted.id)
+
+    svc = ChatNotificationService(MagicMock())
+
+    with (
+        patch(
+            "app.services.chat.notification_service.build_presence_map",
+            new=AsyncMock(return_value={}),
+        ),
+        patch(
+            "app.services.chat.notification_service.serialize_message",
+            return_value={},
+        ),
+        patch(
+            "app.services.chat.notification_service.ws_manager.broadcast_to_chat",
+            new=AsyncMock(),
+        ),
+        patch(
+            "app.services.chat.notification_service.create_notifications_for_users",
+            new=AsyncMock(),
+        ) as create,
+    ):
+        await svc.notify_new_message(
+            message,
+            [sender, quoted, third],
+            sender,
+            replied=replied,
+            chat_type="group",
+            chat_name="Team",
+        )
+
+    assert create.await_count == 2
+    by_type = {call.kwargs["type"]: call.kwargs for call in create.await_args_list}
+    assert set(by_type) == {"chat.message", "chat.reply"}
+
+    # Supersede preserved: generic excludes the quoted author.
+    assert set(by_type["chat.message"]["user_ids"]) == {third.id}
+    # Both entries carry the group identity.
+    for kwargs in by_type.values():
+        assert kwargs["title"] == "Team"
+        assert kwargs["body"] == "Alice: re: hi"
+    # The reply entry still goes only to the quoted author.
+    assert by_type["chat.reply"]["user_ids"] == [quoted.id]
+
+
+@pytest.mark.asyncio
+async def test_handle_message_sent_threads_group_identity() -> None:
+    """Wave 210 G3 — the outbox handler threads chat_type/chat_name from the chat
+    DTO into notify_new_message so a group push is re-tiered."""
+    import app.services.event_handlers as eh
+    from app import models as app_models
+    from app.core.events import MessageSent
+
+    message_id = uuid.uuid4()
+    chat_id = uuid.uuid4()
+    sender_id = uuid.uuid4()
+
+    message = SimpleNamespace(
+        id=message_id,
+        chat_id=chat_id,
+        sender_id=sender_id,
+        sender=None,
+        content="hi",
+        reply_to_message_id=None,
+    )
+    fetched_sender = SimpleNamespace(id=sender_id, profile=None)
+
+    async def fake_get(model: object, _ident: object) -> object | None:
+        if model is app_models.Message:
+            return message
+        if model is app_models.User:
+            return fetched_sender
+        return None
+
+    db = MagicMock()
+    db.get = AsyncMock(side_effect=fake_get)
+    db.commit = AsyncMock()
+
+    session_cm = MagicMock()
+    session_cm.__aenter__ = AsyncMock(return_value=db)
+    session_cm.__aexit__ = AsyncMock(return_value=False)
+
+    repo = MagicMock()
+    repo.get_by_id = AsyncMock(
+        return_value=SimpleNamespace(
+            participants=[fetched_sender], chat_type="group", name="Team"
+        )
+    )
+
+    service = MagicMock()
+    service.notify_new_message = AsyncMock()
+
+    event = MessageSent(message_id=message_id, chat_id=chat_id, sender_id=sender_id)
+
+    with (
+        patch("app.services.event_handlers.async_session", return_value=session_cm),
+        patch("app.repositories.chat_repository.ChatRepository", return_value=repo),
+        patch(
+            "app.services.chat.notification_service.ChatNotificationService",
+            return_value=service,
+        ),
+    ):
+        await eh.handle_message_sent(event)
+
+    service.notify_new_message.assert_awaited_once()
+    kwargs = service.notify_new_message.await_args.kwargs
+    assert kwargs["chat_type"] == "group"
+    assert kwargs["chat_name"] == "Team"

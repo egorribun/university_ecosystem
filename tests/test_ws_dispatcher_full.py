@@ -83,6 +83,8 @@ class TestDispatchRead:
 
         mock_repo = MagicMock()
         mock_repo.check_participant = AsyncMock(return_value=True)
+        # Wave 210 G2 — the handler fetches chat_type to branch DM vs group.
+        mock_repo.get_chat_type = AsyncMock(return_value="dm")
         mock_repo.mark_messages_read = AsyncMock(return_value=(read_at, 2))
 
         mock_session = AsyncMock()
@@ -103,7 +105,7 @@ class TestDispatchRead:
             )
 
         mock_repo.mark_messages_read.assert_called_once_with(
-            uuid.UUID(chat_id), mock_user.id
+            uuid.UUID(chat_id), mock_user.id, "dm"
         )
         mock_session.commit.assert_called_once()
         mock_conn_manager.broadcast_to_chat.assert_called_once()
@@ -159,6 +161,8 @@ class TestDispatchRead:
 
         mock_repo = MagicMock()
         mock_repo.check_participant = AsyncMock(return_value=True)
+        # Wave 210 G2 — the handler awaits get_chat_type before mark_messages_read.
+        mock_repo.get_chat_type = AsyncMock(return_value="dm")
         mock_repo.mark_messages_read = AsyncMock(return_value=(datetime.now(UTC), 0))
 
         mock_session = AsyncMock()

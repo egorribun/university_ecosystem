@@ -206,6 +206,8 @@ class TestGetChatDetails:
         repo.get_by_id = AsyncMock(return_value=chat)
         repo.get_unread_count = AsyncMock(return_value=0)
         repo.get_last_message = AsyncMock(return_value=None)
+        # Wave 210 G2 — a group detail-fetch queries per-member read receipts.
+        repo.get_read_receipts = AsyncMock(return_value=[])
 
         svc = ChatQueryService(AsyncMock(), repo)
 
@@ -219,6 +221,36 @@ class TestGetChatDetails:
         assert result.chat_type == "group"
         assert result.name == "Team Chat"
         assert result.created_by == created_by
+        assert result.read_receipts == []
+
+    @pytest.mark.asyncio
+    async def test_group_populates_read_receipts(self):
+        # Wave 210 G2 — get_chat_details folds the repo's per-member read receipts
+        # into ChatResponse.read_receipts (the FE "seen by N" source).
+        user = _mock_user()
+        reader = uuid.uuid4()
+        read_at = datetime.now(UTC)
+        chat = _mock_chat(user.id, chat_type="group", name="Team", created_by=user.id)
+
+        repo = MagicMock()
+        repo.get_by_id = AsyncMock(return_value=chat)
+        repo.get_unread_count = AsyncMock(return_value=0)
+        repo.get_last_message = AsyncMock(return_value=None)
+        repo.get_read_receipts = AsyncMock(return_value=[(reader, read_at)])
+
+        svc = ChatQueryService(AsyncMock(), repo)
+
+        with patch(
+            "app.services.chat.query_service.build_presence_map",
+            new_callable=AsyncMock,
+            return_value={},
+        ):
+            result = await svc.get_chat_details(chat.id, user, "en")
+
+        repo.get_read_receipts.assert_awaited_once_with(chat.id)
+        assert len(result.read_receipts) == 1
+        assert result.read_receipts[0].user_id == reader
+        assert result.read_receipts[0].last_read_at == read_at
 
     @pytest.mark.asyncio
     async def test_not_found(self):
