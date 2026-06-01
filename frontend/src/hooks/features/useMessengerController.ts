@@ -387,6 +387,19 @@ export const useMessengerController = () => {
     },
   })
 
+  // Wave 211 G4 — create a named group chat (creator auto-included by the
+  // backend). On success: invalidate the chat list, navigate to the new group,
+  // close the modal. No optimism — the server assigns the id + the member set.
+  const createGroupMutation = useMutation({
+    mutationFn: ({ name, participantIds }: { name: string; participantIds: string[] }) =>
+      chatApi.createGroup(name, participantIds),
+    onSuccess: (newChat) => {
+      queryClient.invalidateQueries({ queryKey: ["chats"] })
+      navigate({ to: "/messenger/$chatId", params: { chatId: newChat.id } })
+      setIsNewChatModalOpen(false)
+    },
+  })
+
   // Wave 211 — forward a message (snapshot-copy) into a destination chat. On
   // success: invalidate the dest message list + the chat list (the forward is a
   // new message there), close the picker, and navigate to the destination so
@@ -824,6 +837,13 @@ export const useMessengerController = () => {
     createChatMutation.mutate(participantId)
   }
 
+  // Wave 211 G4 — create a group (name + ≥2 selected members; the backend
+  // requires ≥3 total incl. the creator, W209). NewChatModal validates before
+  // calling, so this just dispatches.
+  const handleCreateGroup = (name: string, participantIds: string[]) => {
+    createGroupMutation.mutate({ name, participantIds })
+  }
+
   const handleClearChat = () => {
     if (!selectedChatId) return
     setConfirmDialog({
@@ -1012,6 +1032,8 @@ export const useMessengerController = () => {
     // Actions
     handleSendMessage,
     handleCreateChat,
+    handleCreateGroup,
+    isCreatingGroup: createGroupMutation.isPending,
     handleClearChat,
     handleDeleteChat,
 

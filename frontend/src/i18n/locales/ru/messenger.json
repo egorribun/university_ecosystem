@@ -74,7 +74,8 @@
     "failedToLoadMessagesHint": "Проверьте соединение и попробуйте снова.",
     "failedToLoadUsers": "Не удалось загрузить пользователей",
     "failedToLoadUsersHint": "Проверьте соединение и попробуйте снова.",
-    "retry": "Повторить"
+    "retry": "Повторить",
+    "minMembers": "Выберите минимум 2 человек"
   },
   "reactions": {
     "add": "Добавить реакцию",
@@ -101,6 +102,15 @@
     "untitled": "Групповой чат",
     "members": "{{count}} участник(ов)"
   },
+  "newGroup": "Новая группа",
+  "modeToggle": "Тип чата",
+  "modeDirect": "Личный",
+  "modeGroup": "Группа",
+  "groupName": "Название группы",
+  "selectMembers": "Выбранные участники",
+  "removeMember": "Удалить {{name}}",
+  "createGroup": "Создать группу",
+  "creatingGroup": "Создание…",
   "dateDivider": {
     "today": "Сегодня",
     "yesterday": "Вчера"

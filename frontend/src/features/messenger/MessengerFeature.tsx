@@ -80,6 +80,8 @@ export default function MessengerFeature() {
     // Actions
     handleSendMessage,
     handleCreateChat,
+    handleCreateGroup,
+    isCreatingGroup,
     handleClearChat,
     handleDeleteChat,
 
@@ -258,6 +260,8 @@ export default function MessengerFeature() {
         open={isNewChatModalOpen}
         onClose={() => setIsNewChatModalOpen(false)}
         onSelect={(userId) => handleCreateChat(userId)}
+        onCreateGroup={handleCreateGroup}
+        isCreatingGroup={isCreatingGroup}
       />
 
       {/* Wave 211 — forward destination picker. Open when a message is selected

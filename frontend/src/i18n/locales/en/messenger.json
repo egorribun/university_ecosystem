@@ -74,7 +74,8 @@
     "failedToLoadMessagesHint": "Check your connection and try again.",
     "failedToLoadUsers": "Couldn't load users",
     "failedToLoadUsersHint": "Check your connection and try again.",
-    "retry": "Try again"
+    "retry": "Try again",
+    "minMembers": "Select at least 2 people"
   },
   "reactions": {
     "add": "Add reaction",
@@ -101,6 +102,15 @@
     "untitled": "Group chat",
     "members": "{{count}} members"
   },
+  "newGroup": "New group",
+  "modeToggle": "Chat type",
+  "modeDirect": "Direct",
+  "modeGroup": "Group",
+  "groupName": "Group name",
+  "selectMembers": "Selected members",
+  "removeMember": "Remove {{name}}",
+  "createGroup": "Create group",
+  "creatingGroup": "Creating…",
   "dateDivider": {
     "today": "Today",
     "yesterday": "Yesterday"

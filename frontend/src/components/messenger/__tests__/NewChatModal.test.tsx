@@ -1,4 +1,4 @@
-import { render, screen, fireEvent } from "@testing-library/react"
+import { render, screen, fireEvent, waitFor } from "@testing-library/react"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import type { ReactNode } from "react"
@@ -137,5 +137,82 @@ describe("NewChatModal", () => {
     // TextField passes aria-label through; should match the placeholder text
     const searchInputs = screen.getAllByLabelText("messenger:searchUsers")
     expect(searchInputs.length).toBeGreaterThan(0)
+  })
+
+  // ----- Wave 211 G4 — group-create mode -----
+  describe("group create mode (W211 G4)", () => {
+    it("shows the DM/Group toggle only when onCreateGroup is provided", () => {
+      const { rerender } = render(
+        <NewChatModal open={true} onClose={() => {}} onSelect={() => {}} />,
+        { wrapper }
+      )
+      // DM-only (no onCreateGroup) → no mode tablist.
+      expect(screen.queryByRole("tablist")).toBeNull()
+
+      rerender(
+        <NewChatModal open={true} onClose={() => {}} onSelect={() => {}} onCreateGroup={() => {}} />
+      )
+      expect(screen.getByRole("tablist")).toBeTruthy()
+      expect(screen.getByRole("tab", { name: "messenger:modeGroup" })).toBeTruthy()
+    })
+
+    it("group mode reveals the name field + create button", () => {
+      render(
+        <NewChatModal
+          open={true}
+          onClose={() => {}}
+          onSelect={() => {}}
+          onCreateGroup={() => {}}
+        />,
+        { wrapper }
+      )
+      fireEvent.click(screen.getByRole("tab", { name: "messenger:modeGroup" }))
+      expect(screen.getByLabelText("messenger:groupName")).toBeTruthy()
+      const createBtn = screen.getByRole("button", { name: "messenger:createGroup" })
+      // Disabled until a name + ≥2 members are chosen.
+      expect((createBtn as HTMLButtonElement).disabled).toBe(true)
+    })
+
+    it("creates a group with the name + selected member ids, ≥2 required", async () => {
+      mocks.apiGet.mockResolvedValue({
+        data: [
+          { id: "u1", full_name: "User One", email: "u1@x.com", avatar_url: null },
+          { id: "u2", full_name: "User Two", email: "u2@x.com", avatar_url: null },
+        ],
+      })
+      const onCreateGroup = vi.fn()
+      render(
+        <NewChatModal
+          open={true}
+          onClose={() => {}}
+          onSelect={() => {}}
+          onCreateGroup={onCreateGroup}
+        />,
+        { wrapper }
+      )
+      fireEvent.click(screen.getByRole("tab", { name: "messenger:modeGroup" }))
+
+      // Name the group + search for members (≥2 chars → query enabled). Target
+      // by role=textbox: the search aria-label is shared with the listbox div.
+      fireEvent.change(screen.getByRole("textbox", { name: "messenger:groupName" }), {
+        target: { value: "Project Alpha" },
+      })
+      fireEvent.change(screen.getByRole("textbox", { name: "messenger:searchUsers" }), {
+        target: { value: "user" },
+      })
+
+      // The debounced /users query resolves → the two rows appear.
+      const rowOne = await screen.findByText("User One")
+      fireEvent.click(rowOne)
+      const createBtn = screen.getByRole("button", { name: "messenger:createGroup" })
+      // One member selected — still under the ≥2 minimum.
+      expect((createBtn as HTMLButtonElement).disabled).toBe(true)
+
+      fireEvent.click(screen.getByText("User Two"))
+      await waitFor(() => expect((createBtn as HTMLButtonElement).disabled).toBe(false))
+
+      fireEvent.click(createBtn)
+      expect(onCreateGroup).toHaveBeenCalledWith("Project Alpha", ["u1", "u2"])
+    })
   })
 })
