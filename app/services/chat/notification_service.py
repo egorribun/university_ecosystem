@@ -47,6 +47,8 @@ class ChatNotificationService:
         chat_participants: Sequence[User | ChatParticipantDTO],
         sender: User,
         replied: Any = None,
+        chat_type: str = "dm",
+        chat_name: str | None = None,
     ) -> None:
         """Notify participants about a new message.
 
@@ -62,6 +64,16 @@ class ChatNotificationService:
         exactly one ``chat.reply`` entry. The live WebSocket frame above is
         unchanged — only the persistent bell/push entry upgrades. Self-replies
         (``replied.sender_id == sender.id``) are ignored.
+
+        Wave 210 G3 — group notification re-tiering. The fan-out was already
+        N-participant-capable (the recipient list excludes only the sender); G3
+        makes a GROUP push DISTINGUISHABLE from a DM push by carrying the group's
+        identity: a DM titles by sender name with a bare body (the recipient knows
+        the 1-on-1 counterpart), while a GROUP titles by ``chat_name`` and prefixes
+        the body with the sender ("Alice: hi") so the recipient learns BOTH which
+        group AND who posted. ``chat_type``/``chat_name`` are passed by
+        handle_message_sent (which already holds the chat DTO); they default to a
+        DM so existing callers/tests are unaffected.
         """
         # WebSocket real-time notification
         presence = await build_presence_map([message.sender_id])
@@ -96,11 +108,25 @@ class ChatNotificationService:
             content = message.content or ""
             body_preview = content[:100] + "..." if len(content) > 100 else content
 
+            # Wave 210 G3 — group pushes carry the group's identity (see the
+            # method docstring). A DM keeps sender-name title + bare body; a group
+            # titles by name + prefixes the body with the sender. The empty-body
+            # guard avoids a dangling "Alice: " when an attachment-only message
+            # has no text.
+            if chat_type == "group":
+                notif_title = chat_name or "Group"
+                notif_body = (
+                    f"{sender_name}: {body_preview}" if body_preview else sender_name
+                )
+            else:
+                notif_title = sender_name
+                notif_body = body_preview
+
             if other_participants:
                 await create_notifications_for_users(
                     self.session,
-                    title=sender_name,
-                    body=body_preview,
+                    title=notif_title,
+                    body=notif_body,
                     type="chat.message",
                     url=f"/messenger/{message.chat_id}",
                     tag=f"chat:{message.chat_id}",
@@ -123,8 +149,8 @@ class ChatNotificationService:
                 # FE (NotificationsBell renders generically) — no new FE i18n key.
                 await create_notifications_for_users(
                     self.session,
-                    title=sender_name,
-                    body=body_preview,
+                    title=notif_title,
+                    body=notif_body,
                     type="chat.reply",
                     url=f"/messenger/{message.chat_id}",
                     tag=f"chat-reply:{replied.id}",

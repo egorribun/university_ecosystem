@@ -211,12 +211,17 @@ async def handle_message_sent(event: MessageSent) -> None:
         )
 
         # 3. Trigger notifications
+        # Wave 210 G3 — pass the chat's identity so a GROUP push is titled by the
+        # group name + sender-prefixed body (DMs keep the sender-name title). chat
+        # is a ChatDTO from get_by_id, so chat_type/name are already loaded.
         service = ChatNotificationService(db)
         await service.notify_new_message(
             message=message,
             chat_participants=chat.participants,
             sender=sender,
             replied=replied,
+            chat_type=chat.chat_type,
+            chat_name=chat.name,
         )
         # Handle transaction for delivery.py updates
         await db.commit()
