@@ -343,6 +343,8 @@ def _serializable_message(read_at: datetime | None) -> SimpleNamespace:
         # stand-in must carry them (None) or .isoformat()-access AttributeErrors.
         edited_at=None,
         deleted_at=None,
+        # Wave 211 — serialize_message reads forwarded_from_name (a plain scalar).
+        forwarded_from_name=None,
         sender=None,
         attachments=[],
     )

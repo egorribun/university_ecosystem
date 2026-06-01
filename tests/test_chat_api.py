@@ -203,6 +203,123 @@ async def test_mark_read_logic(async_client, user_factory, db_session):
 
 
 @pytest.mark.asyncio
+async def test_forward_cross_chat_leak_403(async_client, user_factory, db_session):
+    # Wave 211 track F — the headline cross-chat-leak guard end-to-end. The actor
+    # is a participant of the DEST chat (can send) but NOT of the SOURCE chat, so
+    # forwarding a source message must 403 (the source participant check fires
+    # before any source message is read).
+    password = "TestPassword123!"
+    actor = await user_factory(hashed_password=await get_password_hash(password))
+    outsider1 = await user_factory()
+    outsider2 = await user_factory()
+    dest_peer = await user_factory()
+    headers = await _login(async_client, actor.email, password)
+
+    # Source chat the actor is NOT in, with a message.
+    source = Chat()
+    source.participants.extend([outsider1, outsider2])
+    db_session.add(source)
+    await db_session.commit()
+    await db_session.refresh(source)
+    secret = Message(chat_id=source.id, sender_id=outsider1.id, content="private")
+    db_session.add(secret)
+    await db_session.commit()
+    await db_session.refresh(secret)
+
+    # Dest chat the actor IS in.
+    dest = Chat()
+    dest.participants.extend([actor, dest_peer])
+    db_session.add(dest)
+    await db_session.commit()
+    await db_session.refresh(dest)
+
+    resp = await async_client.post(
+        f"/chats/{dest.id}/forward",
+        json={"source_chat_id": str(source.id), "message_ids": [str(secret.id)]},
+        headers=headers,
+    )
+    assert resp.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_forward_snapshot_lands_in_dest(async_client, user_factory, db_session):
+    # Wave 211 track F — a forwarded message is a snapshot copy in the dest chat:
+    # the content is copied and the message lands in the destination's message list.
+    password = "TestPassword123!"
+    actor = await user_factory(hashed_password=await get_password_hash(password))
+    source_peer = await user_factory()
+    dest_peer = await user_factory()
+    headers = await _login(async_client, actor.email, password)
+
+    source = Chat()
+    source.participants.extend([actor, source_peer])
+    db_session.add(source)
+    await db_session.commit()
+    await db_session.refresh(source)
+    original = Message(
+        chat_id=source.id, sender_id=source_peer.id, content="forward me"
+    )
+    db_session.add(original)
+    await db_session.commit()
+    await db_session.refresh(original)
+
+    dest = Chat()
+    dest.participants.extend([actor, dest_peer])
+    db_session.add(dest)
+    await db_session.commit()
+    await db_session.refresh(dest)
+
+    resp = await async_client.post(
+        f"/chats/{dest.id}/forward",
+        json={"source_chat_id": str(source.id), "message_ids": [str(original.id)]},
+        headers=headers,
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert len(body) == 1
+    assert body[0]["content"] == "forward me"
+    # The forward is a NEW message authored by the forwarder in the dest chat.
+    assert body[0]["chat_id"] == str(dest.id)
+    assert body[0]["sender_id"] == str(actor.id)
+
+    # It appears in the destination's message list.
+    listing = await async_client.get(f"/chats/{dest.id}/messages", headers=headers)
+    assert listing.status_code == 200
+    contents = [m["content"] for m in listing.json()["items"]]
+    assert "forward me" in contents
+
+
+@pytest.mark.asyncio
+async def test_forward_message_not_in_source_404(
+    async_client, user_factory, db_session
+):
+    # Wave 211 track F — a message id that is not in the source chat 404s before
+    # any message is created (all-or-nothing validation).
+    password = "TestPassword123!"
+    actor = await user_factory(hashed_password=await get_password_hash(password))
+    source_peer = await user_factory()
+    dest_peer = await user_factory()
+    headers = await _login(async_client, actor.email, password)
+
+    source = Chat()
+    source.participants.extend([actor, source_peer])
+    db_session.add(source)
+    dest = Chat()
+    dest.participants.extend([actor, dest_peer])
+    db_session.add(dest)
+    await db_session.commit()
+    await db_session.refresh(source)
+    await db_session.refresh(dest)
+
+    resp = await async_client.post(
+        f"/chats/{dest.id}/forward",
+        json={"source_chat_id": str(source.id), "message_ids": [str(uuid.uuid4())]},
+        headers=headers,
+    )
+    assert resp.status_code == 404
+
+
+@pytest.mark.asyncio
 async def test_cursor_helpers():
     dt = datetime(2025, 1, 1, 12, 0, 0, tzinfo=UTC)
     cid = "chat-123"
