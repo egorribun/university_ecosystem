@@ -57,7 +57,7 @@ User mandate: *"продолжаем работу на мессенджером 
 `feat(wave209-sw3-chatresponse-query-service)` — `app/schemas/chat.py` + `app/services/chat/query_service.py` + `tests/test_chat_query_service.py`.
 
 - `ChatResponse` += `chat_type`/`name`/`created_by`. New input schemas `GroupChatCreate{name, participant_ids}`, `AddParticipant{user_id}`, `RenameChat{name}`.
-- **The W203-SW8 rule is a *5*-site fan-out for `ChatResponse`:** explicit-pass at `creation_service.py:111`/`:140` (SW4) + `query_service.py:117`/`:197`; the `query_service.py:162` `model_dump(...)` **spread** auto-carries them and must NOT be re-passed (duplicate-kwarg crash). A missed explicit site silently renders a group as a nameless DM — *no error*.
+- **The W203-SW8 rule is a *5*-site fan-out for `ChatResponse`:** explicit-pass at `creation_service.py:112`/`:144` (SW4) + `query_service.py:117`/`:203`; the `query_service.py:168` `model_dump(...)` **spread** auto-carries them and must NOT be re-passed (duplicate-kwarg crash). A missed explicit site silently renders a group as a nameless DM — *no error*.
 - `test_chat_query_service`: `_mock_chat` parameterized with `chat_type`/`name`/`created_by` (defaults "dm"/None/None keep existing DM tests green; explicit set avoids the MagicMock-auto-attr → `str`/`UUID`-field 500 trap — same class as the W207 `replied_to=None` fix) + a new `test_returns_group_identity` assertion. **13 passed.**
 
 ---
