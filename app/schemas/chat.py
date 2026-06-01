@@ -161,10 +161,40 @@ class ChatCreate(ChatBase):
     participant_id: UUID  # The ID of the user to start a chat with
 
 
+class GroupChatCreate(ChatBase):
+    """Wave 209 G1 — create a named group chat.
+
+    participant_ids are the *other* members (the creator is added automatically).
+    min_length=1 is necessary-not-sufficient: the service enforces the real
+    3..100 total-size bound (creator + distinct members).
+    """
+
+    name: str = Field(..., min_length=1, max_length=128)
+    participant_ids: list[UUID] = Field(..., min_length=1)
+
+
+class AddParticipant(ChatBase):
+    """Wave 209 G1 — add one member to a group."""
+
+    user_id: UUID
+
+
+class RenameChat(ChatBase):
+    """Wave 209 G1 — rename a group's display title."""
+
+    name: str = Field(..., min_length=1, max_length=128)
+
+
 class ChatResponse(ChatBase):
     model_config = ConfigDict(from_attributes=True)
 
     id: UUID
+    # Wave 209 G1 — group-chat identity. chat_type defaults "dm" so a DM response
+    # (the untouched create_chat path) is valid without passing it; name is the
+    # group title (None for DMs); created_by is the group owner (None for DMs).
+    chat_type: str = "dm"
+    name: str | None = None
+    created_by: UUID | None = None
     participants: list[ChatParticipant]
     last_message: MessageResponse | None = None
     unread_count: int = 0

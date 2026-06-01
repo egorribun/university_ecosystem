@@ -28,11 +28,21 @@ def _mock_user(role: str = "student") -> MagicMock:
     return user
 
 
-def _mock_chat(*participant_ids: uuid.UUID):
+def _mock_chat(
+    *participant_ids: uuid.UUID,
+    chat_type: str = "dm",
+    name: str | None = None,
+    created_by: uuid.UUID | None = None,
+):
     chat = MagicMock()
     chat.id = uuid.uuid4()
     chat.created_at = datetime.now(UTC)
     chat.updated_at = datetime.now(UTC)
+    # Wave 209 G1 — explicit so the MagicMock auto-attr isn't fed into the
+    # ChatResponse str/UUID fields (the W203-SW8 / W207 replied_to trap → 500).
+    chat.chat_type = chat_type
+    chat.name = name
+    chat.created_by = created_by
     participants = []
     for pid in participant_ids:
         p = MagicMock()
@@ -180,6 +190,35 @@ class TestGetChatDetails:
 
         assert result.id == chat.id
         assert result.unread_count == 3
+
+    @pytest.mark.asyncio
+    async def test_returns_group_identity(self):
+        # Wave 209 G1 — get_chat_details must surface chat_type/name/created_by
+        # (the W203-SW8 5-site fan-out: a missed site silently renders a group as
+        # a nameless DM with no error).
+        user = _mock_user()
+        created_by = uuid.uuid4()
+        chat = _mock_chat(
+            user.id, chat_type="group", name="Team Chat", created_by=created_by
+        )
+
+        repo = MagicMock()
+        repo.get_by_id = AsyncMock(return_value=chat)
+        repo.get_unread_count = AsyncMock(return_value=0)
+        repo.get_last_message = AsyncMock(return_value=None)
+
+        svc = ChatQueryService(AsyncMock(), repo)
+
+        with patch(
+            "app.services.chat.query_service.build_presence_map",
+            new_callable=AsyncMock,
+            return_value={},
+        ):
+            result = await svc.get_chat_details(chat.id, user, "en")
+
+        assert result.chat_type == "group"
+        assert result.name == "Team Chat"
+        assert result.created_by == created_by
 
     @pytest.mark.asyncio
     async def test_not_found(self):

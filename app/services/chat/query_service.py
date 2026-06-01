@@ -116,6 +116,12 @@ class ChatQueryService:
             pre_responses.append(
                 ChatResponse(
                     id=chat.id,
+                    # Wave 209 G1 — group identity (chat is a ChatDTO). Passed
+                    # explicitly here; the model_dump spread below auto-carries
+                    # them onward (W203-SW8 5-site rule — do NOT re-pass there).
+                    chat_type=chat.chat_type,
+                    name=chat.name,
+                    created_by=chat.created_by,
                     participants=cast("list[ChatParticipant]", chat.participants),
                     last_message=cast("MessageResponse | None", last_message),
                     unread_count=data["unread_count"],
@@ -196,6 +202,10 @@ class ChatQueryService:
 
         return ChatResponse(
             id=chat.id,
+            # Wave 209 G1 — group identity (chat is a ChatDTO).
+            chat_type=chat.chat_type,
+            name=chat.name,
+            created_by=chat.created_by,
             participants=cast("list[ChatParticipant]", chat.participants),
             last_message=cast("MessageResponse | None", last_message),
             unread_count=unread_count,
