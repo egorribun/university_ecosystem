@@ -38,7 +38,7 @@ Second AskUserQuestion locked the sub-scope:
 
 The inbound WS typing handler died in W207 SW8 (frontend now POSTs the REST `/typing` endpoint; the Go ws-hub drops `"typing"` at its `allowedMessageTypes` boundary). An inbound `"typing"` now correctly falls to the `else` → "Unknown message type". The `ping`/`read`/`get_online`/`else` branches + the shared `async_session`/`ChatRepository`/`check_participant` imports (used by `read`) all stay → no import churn.
 
-- **Verify-before-write deviation from plan:** the plan said remove **both** `websocket.py` typing comments (`:90` + `:96`), but the **outbound** typing frame is still alive (emitted via the W207 `broadcast_typing` path → `broadcast_to_chat` → connected clients + the NATS bridge). So `:96` (to-client typing) **still accurately documents the endpoint's output contract** and is **KEPT**; only `:90` (from-client typing, which the dispatcher no longer accepts) is removed.
+- **Verify-before-write deviation from plan:** the plan said remove **both** `websocket.py` typing comments — the from-client one (`:90`) AND the to-client one — but the **outbound** typing frame is still alive (emitted via the W207 `broadcast_typing` path → `broadcast_to_chat` → connected clients + the NATS bridge). So the to-client typing comment (now `:95`, shifted up one line after the `:90` removal) **still accurately documents the endpoint's output contract** and is **KEPT**; only `:90` (from-client typing, which the dispatcher no longer accepts) is removed.
 - `tests/contracts/test_ws_message_contract.py` is **unchanged** — `"typing"` remains a valid server→client type, and `test_backend_dispatcher_uses_known_types` greps the dispatcher source for *unknown* types, so removing a *known* type cannot break it. No OpenAPI snapshot regen (WS handler, removes no routes).
 
 ---
@@ -124,7 +124,7 @@ NEW W208 caveats (honest deferrals, not defects):
 5. **E FAB scroll-visibility is jsdom-untestable** (no real scroll metrics) — covered by the React-Compiler build gate + the 131 messenger tests (no regression) + the straightforward state-driven logic. The plan acknowledged this; the dev-chain visual smoke is deferred (cold stack, matching the W183 SW14 precedent).
 6. **E dividers/grouping render** is verified by **4 deterministic SW5-followup ChatWindow tests** (substituting the impractical cold-Docker visual smoke) rather than a live visual capture.
 
-**0 NEW (z) discoveries** — Phase 1 Explore + Phase 3 verify-before-write resolved the load-bearing unknowns (MessageDTO `.sender_id`, `create_notifications_for_users` `dedupe_key`, the `:96` to-client-typing-still-alive deviation, the locale-less `formatMessageTime`, the coverage-excluded `src/hooks/**`) before any edit. Extends the low-(z) streak.
+**0 NEW (z) discoveries** — Phase 1 Explore + Phase 3 verify-before-write resolved the load-bearing unknowns (MessageDTO `.sender_id`, `create_notifications_for_users` `dedupe_key`, the `:95` to-client-typing-still-alive deviation, the locale-less `formatMessageTime`, the coverage-excluded `src/hooks/**`) before any edit. Extends the low-(z) streak.
 
 **0 NEW anti-patterns** (14-pattern register stable post-W159 #15 archival).
 
@@ -133,7 +133,7 @@ NEW W208 caveats (honest deferrals, not defects):
 ## W141 anti-pattern compliance
 
 - **#1 (STRICT 1-iter/SW):** each of SW1-SW6 landed in one iteration; the SW5-followup render tests are a within-SW5-mechanism completion (verifying SW5's render), not a pivot (W138 L#1). The duplicate-lucide-import in SW4 was a within-iter SAME-mechanism correction.
-- **#3 (verify-before-write):** read `MessageDTO`, `create_notifications_for_users`, `dispatcher.py`, `chat_repository.py:600-605`, `vitest.config.ts`, `date.ts`, `formatMessageTime`, the contract test + the test fixtures from source before depending on them; caught the plan's "remove both typing comments" overreach (`:96` is still accurate) + the locale-less `formatDate` trap + the coverage-excluded-hooks fact (the W207 lesson was right, the Explore agent was wrong).
+- **#3 (verify-before-write):** read `MessageDTO`, `create_notifications_for_users`, `dispatcher.py`, `chat_repository.py:600-605`, `vitest.config.ts`, `date.ts`, `formatMessageTime`, the contract test + the test fixtures from source before depending on them; caught the plan's "remove both typing comments" overreach (`:95` is still accurate) + the locale-less `formatDate` trap + the coverage-excluded-hooks fact (the W207 lesson was right, the Explore agent was wrong).
 - **#4 (no premature claims):** "GREEN" attributed only after captured gate output (pytest 2952, test:ci 1371 + coverage, Build × 3 sha); B's live-end-to-end is honestly NOT claimed (deferred §Honesty #4); "complete" waits for CI green post-push.
 - **#15 (ARCHIVED W159 SW4):** every commit fired the husky pre-commit chain cleanly; NO `--no-verify`.
 
