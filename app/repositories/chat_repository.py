@@ -5,7 +5,18 @@ from datetime import datetime
 from typing import Any
 
 from opentelemetry import trace
-from sqlalchemy import and_, delete, exists, func, insert, or_, select, text, update
+from sqlalchemy import (
+    and_,
+    case,
+    delete,
+    exists,
+    func,
+    insert,
+    or_,
+    select,
+    text,
+    update,
+)
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import selectinload
 
@@ -13,6 +24,7 @@ from app.core.protocols import AsyncDatabaseSession
 from app.models import User
 from app.models.chat import (
     Chat,
+    ChatReadReceipt,
     Message,
     MessageReaction,
     chat_participants,
@@ -134,14 +146,61 @@ class ChatRepository(BaseRepository[Chat, ChatDTO, dict[str, Any], dict[str, Any
             .cte("last_msg")
         )
 
+        # CTE-3 (Wave 210 G2): per-recipient unread for GROUP chats only. A
+        # message counts as unread when it is from another sender AND either the
+        # user has no read receipt yet OR the message post-dates their
+        # high-water-mark (ChatReadReceipt.last_read_at). DM unread stays in
+        # msg_stats_cte (Message.read_status) — Option A, byte-identical DM path.
+        # The inner join to Chat (chat_type='group') scans only group messages, so
+        # DM rows never reach this CTE. msg_stats_cte is deliberately NOT filtered
+        # to DMs: its last_message_at column still orders ALL chats (groups
+        # included) below — only the *count* is branched, never the ordering.
+        group_unread_cte = (
+            select(
+                Message.chat_id.label("chat_id"),
+                func.count().label("group_unread_count"),
+            )
+            .select_from(Message)
+            .join(
+                Chat,
+                and_(Chat.id == Message.chat_id, Chat.chat_type == "group"),
+            )
+            .outerjoin(
+                ChatReadReceipt,
+                and_(
+                    ChatReadReceipt.chat_id == Message.chat_id,
+                    ChatReadReceipt.user_id == user_id,
+                ),
+            )
+            .where(
+                Message.sender_id != user_id,
+                or_(
+                    ChatReadReceipt.last_read_at.is_(None),
+                    Message.created_at > ChatReadReceipt.last_read_at,
+                ),
+            )
+            .group_by(Message.chat_id)
+            .cte("group_unread")
+        )
+
         query = (
             select(
                 Chat,
-                func.coalesce(msg_stats_cte.c.unread_count, 0).label("unread_count"),
+                # Wave 210 G2: groups read their unread from the per-recipient
+                # high-water-mark CTE; DMs keep the read_status-based msg_stats
+                # count (byte-identical). The CASE picks the branch per row.
+                case(
+                    (
+                        Chat.chat_type == "group",
+                        func.coalesce(group_unread_cte.c.group_unread_count, 0),
+                    ),
+                    else_=func.coalesce(msg_stats_cte.c.unread_count, 0),
+                ).label("unread_count"),
                 last_msg_cte.c.last_message_id.label("last_message_id"),
             )
             .join(chat_participants, Chat.id == chat_participants.c.chat_id)
             .outerjoin(msg_stats_cte, Chat.id == msg_stats_cte.c.chat_id)
+            .outerjoin(group_unread_cte, Chat.id == group_unread_cte.c.chat_id)
             .outerjoin(last_msg_cte, Chat.id == last_msg_cte.c.chat_id)
             .where(chat_participants.c.user_id == user_id)
             .options(selectinload(Chat.participants))
@@ -304,13 +363,45 @@ class ChatRepository(BaseRepository[Chat, ChatDTO, dict[str, Any], dict[str, Any
         result = await self.db.execute(stmt)
         return int(getattr(result, "rowcount", 0) or 0)
 
-    async def get_unread_count(self, chat_id: uuid.UUID, user_id: uuid.UUID) -> int:
+    async def get_unread_count(
+        self, chat_id: uuid.UUID, user_id: uuid.UUID, chat_type: str = "dm"
+    ) -> int:
         """
         Count unread messages for a user in a chat.
+
+        Wave 210 G2 — DMs use Message.read_status (unchanged, Option A). GROUP
+        chats use the per-recipient ChatReadReceipt high-water-mark: a message is
+        unread when sender_id != user AND (no receipt OR created_at >
+        last_read_at). chat_type is passed by the sole caller (get_chat_details,
+        which already holds chat.chat_type) — no internal Chat re-query.
         """
         # MOD-02 (audit Wave 11): set RLS user so the PostgreSQL
-        # messages_participant_isolation policy applies.
+        # messages_participant_isolation policy applies. SET LOCAL is PG-only; the
+        # SQLite test DB rejects it, so the group branch is exercised at the repo
+        # level via get_chats_for_user (which has no _set_rls_user), not here.
         await self._set_rls_user(user_id)
+
+        if chat_type == "group":
+            group_query = (
+                select(func.count())
+                .select_from(Message)
+                .outerjoin(
+                    ChatReadReceipt,
+                    and_(
+                        ChatReadReceipt.chat_id == Message.chat_id,
+                        ChatReadReceipt.user_id == user_id,
+                    ),
+                )
+                .where(
+                    Message.chat_id == chat_id,
+                    Message.sender_id != user_id,
+                    or_(
+                        ChatReadReceipt.last_read_at.is_(None),
+                        Message.created_at > ChatReadReceipt.last_read_at,
+                    ),
+                )
+            )
+            return (await self.db.execute(group_query)).scalar_one()
 
         query = (
             select(func.count())
@@ -415,20 +506,74 @@ class ChatRepository(BaseRepository[Chat, ChatDTO, dict[str, Any], dict[str, Any
         return MessageDTO.model_validate(message)
 
     async def mark_messages_read(
-        self, chat_id: uuid.UUID, user_id: uuid.UUID
+        self, chat_id: uuid.UUID, user_id: uuid.UUID, chat_type: str = "dm"
     ) -> tuple[datetime, int]:
-        """Mark all unread messages in a chat as read for a user.
+        """Mark a chat read for a user; return ``(read_at, affected)``.
 
-        Wave 203 SW4 — also stamps ``read_at`` and returns
-        ``(read_at, affected_count)`` so the caller can broadcast a chat-level
-        read receipt (only when ``affected_count > 0``) without a re-SELECT.
-        ``read_at`` is generated in Python (``utc_now``) rather than SQL
-        ``func.now()`` so the exact stored value is available to the broadcast
-        frame. The ``read_status.is_(False)`` filter means only newly-read
-        messages are stamped — an already-read message keeps its original
-        ``read_at``.
+        Wave 203 SW4 — stamps ``read_at`` (Python ``utc_now`` so the exact stored
+        value is available to the broadcast frame) and returns
+        ``(read_at, affected_count)`` so the caller broadcasts a chat-level read
+        receipt only when ``affected_count > 0`` (no re-SELECT, no churn).
+
+        Wave 210 G2 — the DM path is BYTE-IDENTICAL to W203 (bulk update of
+        Message.read_status/read_at). The GROUP path uses the per-recipient
+        ChatReadReceipt high-water-mark: (a) count messages from OTHER senders not
+        yet covered by the mark BEFORE upserting, so the broadcast gate keeps DM
+        semantics (only broadcast when something new became read); (b) upsert the
+        receipt to ``read_at`` via the dialect-agnostic SELECT-then-(UPDATE|INSERT)
+        pattern (the add_participant precedent — NOT pg_insert.on_conflict, which
+        is PG-only and would not compile on the SQLite test DB); (c) return
+        ``(read_at, affected)``. The WS frame shape is UNCHANGED
+        (``{type:"read", chat_id, user_id, read_at}``).
         """
         read_at = utc_now()
+
+        if chat_type == "group":
+            old_last_read_at = (
+                await self.db.execute(
+                    select(ChatReadReceipt.last_read_at).where(
+                        and_(
+                            ChatReadReceipt.chat_id == chat_id,
+                            ChatReadReceipt.user_id == user_id,
+                        )
+                    )
+                )
+            ).scalar_one_or_none()
+
+            # (a) affected = other-sender messages not yet covered by the mark.
+            count_query = (
+                select(func.count())
+                .select_from(Message)
+                .where(
+                    Message.chat_id == chat_id,
+                    Message.sender_id != user_id,
+                )
+            )
+            if old_last_read_at is not None:
+                count_query = count_query.where(Message.created_at > old_last_read_at)
+            affected = (await self.db.execute(count_query)).scalar_one()
+
+            # (b) upsert the high-water-mark (check-then-INSERT|UPDATE, SQLite-safe).
+            if old_last_read_at is None:
+                await self.db.execute(
+                    insert(ChatReadReceipt).values(
+                        chat_id=chat_id, user_id=user_id, last_read_at=read_at
+                    )
+                )
+            else:
+                await self.db.execute(
+                    update(ChatReadReceipt)
+                    .where(
+                        and_(
+                            ChatReadReceipt.chat_id == chat_id,
+                            ChatReadReceipt.user_id == user_id,
+                        )
+                    )
+                    .values(last_read_at=read_at)
+                )
+            return read_at, int(affected)
+
+        # DM path — byte-identical to Wave 203.
         stmt = (
             update(Message)
             .where(
@@ -648,6 +793,32 @@ class ChatRepository(BaseRepository[Chat, ChatDTO, dict[str, Any], dict[str, Any
         )
         result = await self.db.execute(stmt)
         return [row[0] for row in result.all()]
+
+    async def get_read_receipts(
+        self, chat_id: uuid.UUID
+    ) -> list[tuple[uuid.UUID, datetime]]:
+        """Wave 210 G2 — all (user_id, last_read_at) read receipts for a chat.
+
+        Powers ChatResponse.read_receipts (the per-member "seen by" map the FE
+        folds together with live `read` frames). Group-only in practice — a DM
+        has no receipt rows, so this returns [] (DMs keep using read_status).
+        """
+        stmt = select(ChatReadReceipt.user_id, ChatReadReceipt.last_read_at).where(
+            ChatReadReceipt.chat_id == chat_id
+        )
+        result = await self.db.execute(stmt)
+        return [(row[0], row[1]) for row in result.all()]
+
+    async def get_chat_type(self, chat_id: uuid.UUID) -> str | None:
+        """Wave 210 G2 — single-column chat_type lookup for the WS read handler.
+
+        The dispatcher does not load the chat (only check_participant), so this
+        cheap PK lookup lets mark_messages_read branch DM vs group without the
+        heavier get_by_id selectinload.
+        """
+        return (
+            await self.db.execute(select(Chat.chat_type).where(Chat.id == chat_id))
+        ).scalar_one_or_none()
 
     async def get_message_by_id(self, message_id: uuid.UUID) -> MessageDTO | None:
         """Fetch a specific message by its ID, converted to DTO."""
