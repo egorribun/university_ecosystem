@@ -501,6 +501,15 @@ class ChatMessageDispatcher:
             # before creating anything (all-or-nothing).
             raise_not_found("message", locale)
 
+        # Resolve the ORIGINAL senders' display names for the "Forwarded from X"
+        # label. full_name lives on UserProfile, NOT the bare User selectinload'd
+        # into MessageDTO.sender (which yields full_name=None — the W207 SW5
+        # gotcha), so resolve it via a profile-loaded lookup. Batched: ONE SELECT
+        # for all distinct source senders, never an N+1.
+        sender_names = await self.repository.get_user_display_names(
+            list({src.sender_id for src in sources.values()})
+        )
+
         now = datetime.now(UTC)
         created: list[Message] = []
         for mid in ordered_ids:
@@ -510,9 +519,10 @@ class ChatMessageDispatcher:
                 sender_id=user.id,
                 content=src.content,
                 # Snapshot the ORIGINAL sender's name (the only forwarded-from datum
-                # the FE renders). The audit-only *_id columns record provenance but
-                # are never serialized / dereferenced cross-chat (privacy).
-                forwarded_from_name=(src.sender.full_name if src.sender else None),
+                # the FE renders), resolved via the profile-loaded batch above. The
+                # audit-only *_id columns record provenance but are never serialized
+                # / dereferenced cross-chat (privacy).
+                forwarded_from_name=sender_names.get(src.sender_id),
                 forwarded_from_chat_id=source_chat_id,
                 forwarded_from_message_id=src.id,
             )

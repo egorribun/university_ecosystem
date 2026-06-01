@@ -226,7 +226,6 @@ class TestForwardMessages:
         source_chat_id = uuid.uuid4()
         src = _message_dto(
             content="orig",
-            sender=_participant("Alice"),
             attachments=[_attachment_dto("https://cdn.example.com/pic.png")],
         )
         uow.chats.get_by_id = AsyncMock(return_value=dest)
@@ -235,6 +234,11 @@ class TestForwardMessages:
         uow.chats.create_message = AsyncMock(side_effect=_populate_id_on_create)
         uow.chats.add = MagicMock()
         uow.chats.update_timestamp_by_id = AsyncMock()
+        # The "Forwarded from X" name is resolved via a profile-loaded batch lookup
+        # (NOT MessageDTO.sender.full_name, which is None for a bare User — W207 SW5).
+        uow.chats.get_user_display_names = AsyncMock(
+            return_value={src.sender_id: "Alice"}
+        )
         uow.chats.get_last_messages = AsyncMock(
             side_effect=_reload_side_effect({src.id: src})
         )
@@ -275,6 +279,7 @@ class TestForwardMessages:
         uow.chats.create_message = AsyncMock(side_effect=_populate_id_on_create)
         uow.chats.add = MagicMock()
         uow.chats.update_timestamp_by_id = AsyncMock()
+        uow.chats.get_user_display_names = AsyncMock(return_value={})
         uow.chats.get_last_messages = AsyncMock(
             side_effect=_reload_side_effect({src.id: src})
         )
@@ -299,6 +304,7 @@ class TestForwardMessages:
         uow.chats.create_message = AsyncMock(side_effect=_populate_id_on_create)
         uow.chats.add = MagicMock()
         uow.chats.update_timestamp_by_id = AsyncMock()
+        uow.chats.get_user_display_names = AsyncMock(return_value={})
         uow.chats.get_last_messages = AsyncMock(side_effect=_reload_side_effect(srcs))
 
         responses = await _dispatcher(uow).forward_messages(
@@ -323,6 +329,7 @@ class TestForwardMessages:
         uow.chats.create_message = AsyncMock(side_effect=_populate_id_on_create)
         uow.chats.add = MagicMock()
         uow.chats.update_timestamp_by_id = AsyncMock()
+        uow.chats.get_user_display_names = AsyncMock(return_value={})
         uow.chats.get_last_messages = AsyncMock(
             side_effect=_reload_side_effect({src.id: src})
         )

@@ -247,7 +247,7 @@ async def test_forward_snapshot_lands_in_dest(async_client, user_factory, db_ses
     # the content is copied and the message lands in the destination's message list.
     password = "TestPassword123!"
     actor = await user_factory(hashed_password=await get_password_hash(password))
-    source_peer = await user_factory()
+    source_peer = await user_factory(full_name="Source Author")
     dest_peer = await user_factory()
     headers = await _login(async_client, actor.email, password)
 
@@ -281,6 +281,11 @@ async def test_forward_snapshot_lands_in_dest(async_client, user_factory, db_ses
     # The forward is a NEW message authored by the forwarder in the dest chat.
     assert body[0]["chat_id"] == str(dest.id)
     assert body[0]["sender_id"] == str(actor.id)
+    # The "Forwarded from X" label snapshots the ORIGINAL sender's display name,
+    # resolved from UserProfile.full_name (not the forwarder's). A bare
+    # selectinload(Message.sender) would leave this None (W207 SW5 gotcha) — this
+    # guards the get_user_display_names profile-loaded fix at the real-repo level.
+    assert body[0]["forwarded_from_name"] == "Source Author"
 
     # It appears in the destination's message list.
     listing = await async_client.get(f"/chats/{dest.id}/messages", headers=headers)
@@ -297,7 +302,7 @@ async def test_forward_message_not_in_source_404(
     # any message is created (all-or-nothing validation).
     password = "TestPassword123!"
     actor = await user_factory(hashed_password=await get_password_hash(password))
-    source_peer = await user_factory()
+    source_peer = await user_factory(full_name="Source Author")
     dest_peer = await user_factory()
     headers = await _login(async_client, actor.email, password)
 

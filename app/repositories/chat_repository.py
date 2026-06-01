@@ -260,6 +260,34 @@ class ChatRepository(BaseRepository[Chat, ChatDTO, dict[str, Any], dict[str, Any
             msg.id: MessageDTO.model_validate(msg) for msg in result.scalars().all()
         }
 
+    async def get_user_display_names(
+        self, user_ids: list[uuid.UUID]
+    ) -> dict[uuid.UUID, str | None]:
+        """Batch-resolve users' display names for the "Forwarded from X" label (W211).
+
+        full_name lives on UserProfile (a lazy="noload" relationship), so a bare
+        select(Message).selectinload(Message.sender) leaves MessageDTO.sender with
+        full_name=None — ChatParticipantDTO maps from User, which has no full_name
+        (the W207 SW5 gotcha). Forwarding needs the ORIGINAL sender's name, so
+        resolve it the same way ChatQueryService does: load User.profile
+        explicitly. Batched by id — a forward of N messages from K distinct senders
+        costs ONE SELECT, not an N+1. Returns {user_id: profile.full_name or None};
+        ids with no row / no profile yield None (the FE then shows a generic
+        "Forwarded" chip without a name).
+        """
+        if not user_ids:
+            return {}
+        stmt = (
+            select(User)
+            .where(User.id.in_(user_ids))
+            .options(selectinload(User.profile))
+        )
+        result = await self.db.execute(stmt)
+        return {
+            u.id: (u.profile.full_name if u.profile else None)
+            for u in result.scalars().all()
+        }
+
     async def find_existing_dm(
         self, user1_id: uuid.UUID, user2_id: uuid.UUID
     ) -> ChatDTO | None:
