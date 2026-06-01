@@ -466,7 +466,11 @@ class ChatMaintenanceService:
         if user.id not in participant_ids:
             raise_forbidden(locale, "errors.chat.not_participant")
 
-        read_at, affected = await self.repository.mark_messages_read(chat_id, user.id)
+        # Wave 210 G2 — pass chat_type so groups mark-read via the per-recipient
+        # ChatReadReceipt high-water-mark (DMs keep Message.read_status).
+        read_at, affected = await self.repository.mark_messages_read(
+            chat_id, user.id, chat.chat_type
+        )
         async with self.uow:
             await self.uow.commit()
 

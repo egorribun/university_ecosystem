@@ -92,8 +92,15 @@ class MessageDispatcher:
                         )
                         return
 
+                    # Wave 210 G2 — the dispatcher does not load the chat (only
+                    # check_participant), so a cheap chat_type lookup lets
+                    # mark_messages_read branch DM (Message.read_status) vs group
+                    # (per-recipient ChatReadReceipt high-water-mark). None →
+                    # "dm" is the safe default if the chat vanished between the
+                    # participant check and the read.
+                    chat_type = await repo.get_chat_type(chat_uuid)
                     read_at, affected = await repo.mark_messages_read(
-                        chat_uuid, user.id
+                        chat_uuid, user.id, chat_type or "dm"
                     )
                     await session.commit()
 

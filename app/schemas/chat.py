@@ -185,6 +185,20 @@ class RenameChat(ChatBase):
     name: str = Field(..., min_length=1, max_length=128)
 
 
+class ReadReceiptInfo(SecureBaseModel):
+    """Wave 210 G2 — one member's read high-water-mark for a group chat.
+
+    Service-computed (NOT a ChatDTO field) from ChatRepository.get_read_receipts.
+    The FE folds these + live `read` frames into a per-member "seen by N" map.
+    DMs carry [] (they keep using Message.read_status), so this rides only on the
+    get_chat_details response — the other ChatResponse construction sites omit it
+    and it defaults [].
+    """
+
+    user_id: UUID
+    last_read_at: datetime
+
+
 class ChatResponse(ChatBase):
     model_config = ConfigDict(from_attributes=True)
 
@@ -201,6 +215,11 @@ class ChatResponse(ChatBase):
     created_at: datetime
     updated_at: datetime
     presence: dict[UUID, PresenceStatus] | None = None
+    # Wave 210 G2 — per-member read receipts (group-only; [] for DMs and at the 4
+    # non-detail ChatResponse construction sites). Defaulted so the W209 5-site
+    # fan-out is untouched — only get_chat_details populates it (W203-SW8
+    # discipline: a defaulted field omitted by the other sites stays []).
+    read_receipts: list[ReadReceiptInfo] = Field(default_factory=list)
 
 
 class ChatsListOut(SecureBaseModel):

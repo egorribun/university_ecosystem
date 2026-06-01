@@ -39,6 +39,7 @@ from app.schemas.chat import (
     PresenceStatus,
     ReactionAggregate,
     ReactorOut,
+    ReadReceiptInfo,
     ReplyPreview,
 )
 
@@ -190,7 +191,11 @@ class ChatQueryService:
         if user.id not in participant_ids:
             raise_forbidden(locale, "errors.chat.not_participant")
 
-        unread_count = await self.repository.get_unread_count(chat_id, user.id)
+        # Wave 210 G2 — pass chat_type so a group's unread is the per-recipient
+        # ChatReadReceipt high-water-mark (DMs keep the read_status count).
+        unread_count = await self.repository.get_unread_count(
+            chat_id, user.id, chat.chat_type
+        )
         last_message = await self.repository.get_last_message(chat_id)
 
         presence_map = await build_presence_map(
@@ -199,6 +204,15 @@ class ChatQueryService:
         participant_status = {
             p.id: presence_map.get(p.id, PresenceStatus()) for p in chat.participants
         }
+
+        # Wave 210 G2 — per-member read map for the FE (group-only; a DM has no
+        # receipt rows). The FE folds these + live `read` frames into a "seen by"
+        # map. Gated on chat_type so DM detail-fetches skip the extra query.
+        receipt_rows = (
+            await self.repository.get_read_receipts(chat_id)
+            if chat.chat_type == "group"
+            else []
+        )
 
         return ChatResponse(
             id=chat.id,
@@ -212,6 +226,10 @@ class ChatQueryService:
             created_at=chat.created_at,
             updated_at=chat.updated_at,
             presence=participant_status,
+            read_receipts=[
+                ReadReceiptInfo(user_id=uid, last_read_at=ts)
+                for uid, ts in receipt_rows
+            ],
         )
 
     async def get_messages(
