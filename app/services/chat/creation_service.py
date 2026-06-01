@@ -24,6 +24,7 @@ from app.api.ws.presence import (
     invalidate_chat_participants_cache,
     invalidate_presence_audience_cache,
 )
+from app.core.config import settings
 from app.core.exceptions import BusinessRuleViolation
 from app.core.protocols import AsyncDatabaseSession
 from app.deps.cache import BaseCache
@@ -110,6 +111,9 @@ class ChatCreationService:
                 if existing_chat:
                     return ChatResponse(
                         id=existing_chat.id,
+                        chat_type=existing_chat.chat_type,
+                        name=existing_chat.name,
+                        created_by=existing_chat.created_by,
                         participants=cast(
                             "list[ChatParticipant]", existing_chat.participants
                         ),
@@ -139,6 +143,76 @@ class ChatCreationService:
 
         return ChatResponse(
             id=new_chat.id,
+            # Wave 209 G1 — DMs carry chat_type="dm" (the ChatDTO default) + null
+            # name/created_by; passed explicitly per the W203-SW8 5-site discipline.
+            chat_type=new_chat.chat_type,
+            name=new_chat.name,
+            created_by=new_chat.created_by,
+            participants=cast("list[ChatParticipant]", new_chat.participants),
+            created_at=new_chat.created_at,
+            updated_at=new_chat.updated_at,
+            presence={
+                p.id: presence_map.get(p.id, PresenceStatus())
+                for p in new_chat.participants
+            },
+        )
+
+    async def create_group(
+        self,
+        user: User,
+        name: str,
+        participant_ids: list[uuid.UUID],
+        locale: str,
+    ) -> ChatResponse:
+        """Create a named group chat owned by ``user`` (Wave 209 G1).
+
+        No Redis lock — a group has no DM-style find-or-create uniqueness
+        invariant. The creator is always a member; ``participant_ids`` are the
+        *other* members, de-duplicated with the creator dropped. Enforces the
+        settings.chat_group_min_members..max_members total-size bound (creator +
+        distinct members), then mirrors create_chat's post-commit
+        cache-invalidation + presence-hydration.
+        """
+        clean_name = name.strip()
+        if not clean_name:
+            raise_validation_error("errors.chat.group_name_required", locale)
+
+        seen: set[uuid.UUID] = set()
+        member_ids: list[uuid.UUID] = []
+        for pid in participant_ids:
+            if pid == user.id or pid in seen:
+                continue
+            seen.add(pid)
+            member_ids.append(pid)
+
+        total = len(member_ids) + 1  # + the creator
+        if total < settings.chat_group_min_members:
+            raise_validation_error("errors.chat.group_too_few_members", locale)
+        if total > settings.chat_group_max_members:
+            raise_validation_error("errors.chat.group_too_many_members", locale)
+
+        members: list[User] = []
+        for pid in member_ids:
+            member = await self.repository.get_user(pid)
+            ensure_exists(member, "users", locale)
+            assert member is not None  # noqa: S101
+            members.append(member)
+
+        new_chat = await self.repository.create_group(user, clean_name, members)
+        async with self.uow:
+            await self.uow.commit()
+
+        participant_ids_all: list[uuid.UUID] = [p.id for p in new_chat.participants]
+        await invalidate_chat_participants_cache(new_chat.id)
+        await invalidate_presence_audience_cache(*participant_ids_all)
+
+        presence_map = await build_presence_map(participant_ids_all, db=self.session)
+
+        return ChatResponse(
+            id=new_chat.id,
+            chat_type=new_chat.chat_type,
+            name=new_chat.name,
+            created_by=new_chat.created_by,
             participants=cast("list[ChatParticipant]", new_chat.participants),
             created_at=new_chat.created_at,
             updated_at=new_chat.updated_at,
