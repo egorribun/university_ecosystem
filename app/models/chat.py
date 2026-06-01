@@ -282,3 +282,46 @@ class MessageReaction(Base, UUID7PrimaryKeyMixin):
     message: Mapped[Message] = relationship(
         "Message", back_populates="reactions", lazy="noload"
     )
+
+
+class ChatReadReceipt(Base, UUID7PrimaryKeyMixin):
+    """Wave 210 G2 — per-recipient read high-water-mark for a GROUP chat.
+
+    One row per (chat, user): ``last_read_at`` is the timestamp up to which this
+    user has read the chat. Group unread = COUNT(messages WHERE sender_id != me
+    AND (no receipt OR created_at > last_read_at)). DMs keep
+    Message.read_status/read_at unchanged (Option A, W210 D1) — this table is
+    GROUP-only in practice. No EventEmitterMixin: the read receipt broadcasts
+    synchronously via broadcast_to_chat (the W203 rail), like MessageReaction —
+    not through the domain-event outbox. The (chat_id, user_id) unique constraint
+    makes mark_messages_read's upsert idempotent; the repo uses the dialect-
+    agnostic SELECT-then-(UPDATE|INSERT) pattern (the add_participant precedent),
+    NOT pg_insert.on_conflict (PG-only, would not compile on the SQLite test DB).
+    last_read_at alone (no last_read_message_id): the high-water-mark count needs
+    only the timestamp, and comparing created_at sidesteps the UUID7-ordering
+    fragility a message-id comparison would carry. Unlike MessageReaction (whose
+    unique key is user_id-leading, needing a separate message_id index), the
+    (chat_id, user_id) unique key here is chat_id-leading, so it already serves
+    both get_read_receipts (WHERE chat_id) and the unread-CTE join — no standalone
+    index needed.
+    """
+
+    __tablename__ = "chat_read_receipts"
+
+    chat_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("chats.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    last_read_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+
+    __table_args__ = (
+        UniqueConstraint("chat_id", "user_id", name="uq_chat_read_receipts_chat_user"),
+    )
