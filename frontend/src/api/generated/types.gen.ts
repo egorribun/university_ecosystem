@@ -969,6 +969,13 @@ export type MessageResponse = {
    * Read Status
    */
   read_status: boolean
+  /**
+   * Read At
+   * Wave 203 SW5 — hand-edited (the dev backend container still serves the
+   * pre-SW3 OpenAPI); regenerated automatically on the next `npm run
+   * generate:api` after the backend image is rebuilt with the read_at field.
+   */
+  read_at?: string | null
   sender?: ChatParticipant | null
   sender_presence?: PresenceStatus | null
   /**

@@ -4,7 +4,8 @@
  * Pattern source: components/news/NewsQuickView.tsx
  */
 
-import { m, AnimatePresence, useReducedMotion } from "framer-motion"
+import { m, AnimatePresence } from "framer-motion"
+import useMediaQuery from "@/hooks/useMediaQuery"
 import { Calendar, MapPin, Users } from "lucide-react"
 import { formatDate } from "@/utils/date"
 import { useTranslation } from "react-i18next"
@@ -44,7 +45,7 @@ export function EventQuickView({
   position = "top",
 }: EventQuickViewProps) {
   const { t } = useTranslation(["events"])
-  const prefersReduced = useReducedMotion()
+  const prefersReduced = useMediaQuery("(prefers-reduced-motion: reduce)")
 
   return (
     <AnimatePresence>

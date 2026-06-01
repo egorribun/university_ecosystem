@@ -1,6 +1,5 @@
 import { Link } from "@tanstack/react-router"
 import { Send, Mail } from "lucide-react"
-import { useReducedMotion } from "framer-motion"
 import type { CSSProperties } from "react"
 import guuLogo from "@/assets/guu_logo.png"
 import SmartImage from "@/components/media/SmartImage"
@@ -43,7 +42,13 @@ const ACTIVE_OPTIONS = { exact: false } as const
 export default function Footer() {
   const { t } = useTranslation(["navigation"])
   const currentYear = new Date().getFullYear()
-  const prefersReducedMotion = useReducedMotion() ?? false
+  // Wave 189 SW3 — migrated from framer-motion's `useReducedMotion()` (jsdom-
+  // incompat per W184 SW6 Gotcha) to project's `useMediaQuery` DEFAULT export.
+  // Removes hidden dependency on framer-motion's `initPrefersReducedMotion`
+  // listener-registration code path which crashes under jsdom's matchMedia
+  // polyfill. Behaviour preserved: returns boolean (was `boolean | null`
+  // requiring `?? false`).
+  const prefersReducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)")
   const isNarrow = useMediaQuery(`(max-width: ${breakpoints.content})`)
 
   const staggerStyle = (index: number): CSSProperties => ({ "--stagger-i": index }) as CSSProperties

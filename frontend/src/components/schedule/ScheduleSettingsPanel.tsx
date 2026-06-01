@@ -1,7 +1,8 @@
 import { useCallback } from "react"
 import useFocusTrap from "@/hooks/useFocusTrap"
 import { useTranslation } from "react-i18next"
-import { AnimatePresence, m, useReducedMotion } from "framer-motion"
+import { AnimatePresence, m } from "framer-motion"
+import useMediaQuery from "@/hooks/useMediaQuery"
 import {
   X as CloseIcon,
   Eye as VisibleIcon,
@@ -39,7 +40,7 @@ export function ScheduleSettingsPanel({
   gridRef,
 }: ScheduleSettingsPanelProps) {
   const { t } = useTranslation(["schedule", "common"])
-  const prefersReduced = useReducedMotion()
+  const prefersReduced = useMediaQuery("(prefers-reduced-motion: reduce)")
 
   const weekOffset = useWeekOffset()
   const hiddenWeekdays = useHiddenWeekdays()

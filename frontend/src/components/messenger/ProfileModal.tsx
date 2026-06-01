@@ -2,11 +2,12 @@ import SmartImage from "@/components/media/SmartImage"
 import { AVATAR_PLACEHOLDER_URL } from "@/constants/placeholders"
 import { User } from "@/types/User"
 
-import { AnimatePresence, m, useReducedMotion } from "framer-motion"
+import { AnimatePresence, m } from "framer-motion"
 import { X } from "lucide-react"
 import { useEffect, useId } from "react"
 import { useTranslation } from "react-i18next"
 import useFocusTrap from "@/hooks/useFocusTrap"
+import useMediaQuery from "@/hooks/useMediaQuery"
 
 interface ProfileModalProps {
   user: User | null
@@ -23,7 +24,7 @@ export function ProfileModal({ user, loading, error, onClose }: ProfileModalProp
   // rotate. Framer rotation is the most disorienting interaction for users
   // with vestibular sensitivities; explicit gate ensures the X button just
   // scales rather than rotating under reduced motion preference.
-  const prefersReducedMotion = useReducedMotion() ?? false
+  const prefersReducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)")
 
   // Wave 175 SW3 — focus trap activates whenever modal is open (any of
   // user/loading/error truthy). returnFocus restores focus to the element
@@ -66,7 +67,7 @@ export function ProfileModal({ user, loading, error, onClose }: ProfileModalProp
             animate={{ scale: 1, opacity: 1, y: 0 }}
             exit={prefersReducedMotion ? { opacity: 0 } : { scale: 0.92, opacity: 0, y: 20 }}
             transition={prefersReducedMotion ? { duration: 0 } : undefined}
-            className="messenger-card-matte z-modal w-full max-w-[32rem] sm:max-w-[28rem] md:max-w-[32rem]"
+            className="messenger-card-matte z-modal w-full max-w-[28rem] md:max-w-[32rem] lg:max-w-[36rem]"
             onClick={(event) => event.stopPropagation()}
           >
             {/* Wave 183 SW4 — border-msg-border (undefined token) →

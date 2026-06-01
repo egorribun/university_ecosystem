@@ -7,12 +7,20 @@ type RolldownBuild = { rolldownOptions?: RolldownOptions } & Record<string, unkn
 type ViteUserConfigWithRolldown = UserConfig & { build?: RolldownBuild }
 
 const config: StorybookConfig = {
-  // Wave 115 polish — restrict to `src/components/` so the glob doesn't
-  // pick up TanStack Router files that happen to match `*.stories.tsx`
-  // (e.g. `src/routes/_admin/admin.stories.tsx` — a route file, not a
-  // Storybook story). The eslint `storybook/default-exports` rule is
-  // also off for `src/routes/` per CLAUDE.md for the same reason.
-  stories: ["../src/components/**/*.stories.@(js|jsx|mjs|ts|tsx)"],
+  // Wave 115 + Wave 193 SW1 — two explicit glob patterns: the original
+  // `src/components/` tree PLUS the `src/features/` tree. The features/
+  // pattern was added W193 to track the ~80-wave features/ migration
+  // (Activity W112, Events/News, Admin W164, Messenger W145), which had
+  // silently orphaned every feature-co-located story since W115. Neither
+  // pattern touches `src/routes/`, so `src/routes/_admin/admin.stories.tsx`
+  // (a TanStack Router route file, not a Storybook story) stays excluded
+  // BY CONSTRUCTION — no negation pattern needed. The eslint
+  // `storybook/default-exports` rule is also off for `src/routes/` per
+  // CLAUDE.md for the same reason.
+  stories: [
+    "../src/components/**/*.stories.@(js|jsx|mjs|ts|tsx)",
+    "../src/features/**/*.stories.@(js|jsx|mjs|ts|tsx)",
+  ],
   addons: [
     "@chromatic-com/storybook",
     "@storybook/addon-vitest",

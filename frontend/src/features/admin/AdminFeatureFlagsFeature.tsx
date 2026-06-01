@@ -151,18 +151,25 @@ export function AdminFeatureFlagsFeature() {
                       <td className="px-6 py-5">
                         {flag.status === "percentage" ? (
                           <div className="flex flex-col gap-2 min-w-(--min-w-column)">
-                            <input
-                              type="range"
-                              min="0"
-                              max="100"
-                              step="5"
-                              value={flag.percentage}
-                              aria-label={t("featureFlags.rollout.range")}
-                              onChange={(event) =>
-                                handlePercentageChange(flag.name, parseInt(event.target.value))
-                              }
-                              className="h-1.5 w-full cursor-pointer appearance-none rounded-lg bg-glass-border accent-brand"
-                            />
+                            {/* W188 SW3: 44×44 px touch target wrap per W111 SW4 pattern
+                                (WCAG 2.5.8). Visual range stays 6px (h-1.5); the parent
+                                div bumps to min-h-[44px] flex-centered so the slider's
+                                pointer hit area extends to 44px without affecting visual
+                                size. Closes W186 §H NEW #6 deferred portion. */}
+                            <div className="flex min-h-[44px] w-full items-center">
+                              <input
+                                type="range"
+                                min="0"
+                                max="100"
+                                step="5"
+                                value={flag.percentage}
+                                aria-label={t("featureFlags.rollout.range")}
+                                onChange={(event) =>
+                                  handlePercentageChange(flag.name, parseInt(event.target.value))
+                                }
+                                className="h-1.5 w-full cursor-pointer appearance-none rounded-lg bg-glass-border accent-brand"
+                              />
+                            </div>
                             <div className="flex items-center justify-between text-label-xs font-bold uppercase tracking-widest text-(--text-secondary)">
                               <span>
                                 {t("featureFlags.rollout.percentage", { value: flag.percentage })}

@@ -56,61 +56,35 @@ class MessageDispatcher:
                 source=PRESENCE_SOURCE_PING,
             )
 
-        elif msg_type == "typing":
+        elif msg_type == "read":
+            # Wave 203 SW4 — chat-level read receipt. The client marks the whole
+            # chat read (no per-message id); the SQL filter (sender_id != user)
+            # in mark_messages_read scopes the update to the OTHER participant's
+            # messages. Then broadcast a chat-level frame to that participant so
+            # their sent bubbles flip to "seen" live. Mirrors typing's chat_id
+            # coercion + ValueError guard. Gated on affected > 0 (nothing new →
+            # no broadcast). All UUID fields stringified (RZ-33-08: json.dumps
+            # cannot serialize uuid.UUID).
             chat_id = data.get("chat_id")
             if chat_id:
                 try:
                     chat_uuid = (
                         uuid.UUID(chat_id) if isinstance(chat_id, str) else chat_id
                     )
-                    async with async_session() as session:
-                        repo = ChatRepository(session)
-                        is_participant = await repo.check_participant(
-                            chat_uuid, user.id
-                        )
-
-                    if not is_participant:
-                        logger.warning(
-                            "Access denied: User %s tried to send typing indicator to chat %s without being a participant",
-                            user.id,
-                            chat_id,
-                        )
-                        await websocket.send_json(
-                            {"type": "error", "message": "Access denied"}
-                        )
-                        return
                 except ValueError:
                     await websocket.send_json(
                         {"type": "error", "message": "Invalid chat_id format"}
                     )
                     return
 
-                await self.manager.broadcast_to_chat(
-                    chat_uuid,
-                    {
-                        "type": "typing",
-                        "chat_id": str(chat_uuid),
-                        "user_id": str(user.id),
-                        "user_name": getattr(user.profile, "full_name", None)
-                        if getattr(user, "profile", None)
-                        else str(user.email),
-                    },
-                    exclude_user_id=user.id,
-                )
-
-        elif msg_type == "read":
-            chat_id = data.get("chat_id")
-            message_id = data.get("message_id")
-            if chat_id and message_id:
                 async with async_session() as session:
                     repo = ChatRepository(session)
-                    is_participant = await repo.check_participant(chat_id, user.id)
+                    is_participant = await repo.check_participant(chat_uuid, user.id)
 
                     if not is_participant:
                         logger.warning(
-                            "User %s tried to mark message %s as read in chat %s without being a participant",
+                            "User %s tried to mark chat %s read without being a participant",
                             user.id,
-                            message_id,
                             chat_id,
                         )
                         await websocket.send_json(
@@ -118,20 +92,29 @@ class MessageDispatcher:
                         )
                         return
 
-                    msg = await repo.get_message_by_id(message_id)
-                    if msg and msg.chat_id == chat_id and msg.sender_id != user.id:
-                        await repo.mark_single_message_read(message_id)
-                        await session.commit()
+                    # Wave 210 G2 — the dispatcher does not load the chat (only
+                    # check_participant), so a cheap chat_type lookup lets
+                    # mark_messages_read branch DM (Message.read_status) vs group
+                    # (per-recipient ChatReadReceipt high-water-mark). None →
+                    # "dm" is the safe default if the chat vanished between the
+                    # participant check and the read.
+                    chat_type = await repo.get_chat_type(chat_uuid)
+                    read_at, affected = await repo.mark_messages_read(
+                        chat_uuid, user.id, chat_type or "dm"
+                    )
+                    await session.commit()
 
-                        await self.manager.send_to_user(
-                            msg.sender_id,
-                            {
-                                "type": "read",
-                                "chat_id": chat_id,
-                                "message_id": message_id,
-                                "user_id": user.id,
-                            },
-                        )
+                if affected > 0:
+                    await self.manager.broadcast_to_chat(
+                        chat_uuid,
+                        {
+                            "type": "read",
+                            "chat_id": str(chat_uuid),
+                            "user_id": str(user.id),
+                            "read_at": read_at.isoformat(),
+                        },
+                        exclude_user_id=user.id,
+                    )
 
         elif msg_type == "get_online":
             if user.role != UserRole.ADMIN:

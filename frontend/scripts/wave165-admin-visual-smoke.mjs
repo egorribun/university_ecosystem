@@ -309,6 +309,57 @@ async function smokeAdminRoute(page, routePath, theme, outDir) {
   page.on("request", requestHandler)
   page.on("response", responseHandler)
 
+  // W188 SW2: Three-layer theme initialization BEFORE page.goto so both
+  // SSR initial render AND client hydration converge on the correct theme.
+  //
+  // Pre-W188 (PRE-EXISTING bug since W165 SW3): the script only set the
+  // theme via post-goto root.classList.add("dark") which does NOT propagate
+  // to SSR's initial HTML response NOR survive client React hydration
+  // (ThemeContext reads localStorage on mount, defaults to "system" which
+  // falls back to "light" in headless Chrome without --force-colors flag).
+  // Result: _dark.png files captured LIGHT theme. W164 + W167 §H#4 closures
+  // relied on STATIC CSS bundle grep, never visual fidelity — the gap went
+  // unnoticed for ~22 waves until W187 SW4 PNG inspection surfaced it.
+  //
+  // Why three layers (W188 SW2-followup per W138 Lesson #1 within-iter
+  // SAME-mechanism sub-fix — all "init theme to <theme>", just multiple
+  // surfaces):
+  //   1. Cookie ue-mode=<theme> — per W127 SW2 cookie-mirror: server reads
+  //      via globalThis.__ssrThemeGetter__ (src/server.ts) → RootShell
+  //      renders <html class="dark"> in SSR HTML (no FOUC).
+  //   2. localStorage ue-mode=<theme> — per ThemeContext readStoredTheme()
+  //      at frontend/src/contexts/ThemeContext.tsx:18-25: client useState
+  //      initializer reads localStorage; absent this, defaults to "system"
+  //      → media query → "light" in headless Chrome → client React
+  //      OVERRIDES the SSR-rendered dark class on hydration. addInitScript
+  //      runs BEFORE any page script per navigation, so localStorage is
+  //      already populated when ThemeContext mounts.
+  //   3. emulateMedia colorScheme=<theme> — defense-in-depth: if a future
+  //      ThemeContext refactor adds prefers-color-scheme fallback, this
+  //      ensures media query returns the target value.
+  //
+  // Combined, the post-goto root.classList.add("dark") below stays as a
+  // 4th-layer client-side re-application after hydration settles (covers
+  // race conditions where Framer Motion entrance animations snap before
+  // React's theme effect fires).
+  const cookieDomain = new URL(ORIGIN).hostname
+  await page.context().addCookies([
+    {
+      name: "ue-mode",
+      value: theme,
+      domain: cookieDomain,
+      path: "/",
+    },
+  ])
+  await page.addInitScript((themeName) => {
+    try {
+      localStorage.setItem("ue-mode", themeName)
+    } catch {
+      // ignore Safari private-browsing failures (RZ-31-03)
+    }
+  }, theme)
+  await page.emulateMedia({ colorScheme: theme })
+
   const targetUrl = `${ORIGIN}${routePath}`
   let httpStatus = null
   let finalUrl = null
@@ -325,6 +376,10 @@ async function smokeAdminRoute(page, routePath, theme, outDir) {
 
     // Apply theme class on <html> element (Tailwind v4 class-based dark mode).
     // Light theme = no class; dark theme = add "dark" class.
+    // W188 SW2: this stays as defense-in-depth post cookie addition above —
+    // ThemeContext useEffect re-syncs class from cookie on mount, but explicit
+    // post-load class write covers any race where Framer Motion entrance
+    // animations snap before the React state propagation cycle completes.
     await page.evaluate((themeName) => {
       const root = document.documentElement
       if (themeName === "dark") {

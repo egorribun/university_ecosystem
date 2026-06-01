@@ -5,12 +5,31 @@ from datetime import datetime
 from typing import Any
 
 from opentelemetry import trace
-from sqlalchemy import and_, delete, exists, func, or_, select, text, update
+from sqlalchemy import (
+    and_,
+    case,
+    delete,
+    exists,
+    func,
+    insert,
+    or_,
+    select,
+    text,
+    update,
+)
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import selectinload
 
 from app.core.protocols import AsyncDatabaseSession
 from app.models import User
-from app.models.chat import Chat, Message, chat_participants
+from app.models.chat import (
+    Chat,
+    ChatReadReceipt,
+    Message,
+    MessageReaction,
+    chat_participants,
+    utc_now,
+)
 from app.repositories.base import BaseRepository
 from app.schemas.dtos.chat import ChatDTO, MessageDTO
 from app.utils.pagination import decode_datetime_cursor, encode_datetime_cursor
@@ -127,14 +146,61 @@ class ChatRepository(BaseRepository[Chat, ChatDTO, dict[str, Any], dict[str, Any
             .cte("last_msg")
         )
 
+        # CTE-3 (Wave 210 G2): per-recipient unread for GROUP chats only. A
+        # message counts as unread when it is from another sender AND either the
+        # user has no read receipt yet OR the message post-dates their
+        # high-water-mark (ChatReadReceipt.last_read_at). DM unread stays in
+        # msg_stats_cte (Message.read_status) — Option A, byte-identical DM path.
+        # The inner join to Chat (chat_type='group') scans only group messages, so
+        # DM rows never reach this CTE. msg_stats_cte is deliberately NOT filtered
+        # to DMs: its last_message_at column still orders ALL chats (groups
+        # included) below — only the *count* is branched, never the ordering.
+        group_unread_cte = (
+            select(
+                Message.chat_id.label("chat_id"),
+                func.count().label("group_unread_count"),
+            )
+            .select_from(Message)
+            .join(
+                Chat,
+                and_(Chat.id == Message.chat_id, Chat.chat_type == "group"),
+            )
+            .outerjoin(
+                ChatReadReceipt,
+                and_(
+                    ChatReadReceipt.chat_id == Message.chat_id,
+                    ChatReadReceipt.user_id == user_id,
+                ),
+            )
+            .where(
+                Message.sender_id != user_id,
+                or_(
+                    ChatReadReceipt.last_read_at.is_(None),
+                    Message.created_at > ChatReadReceipt.last_read_at,
+                ),
+            )
+            .group_by(Message.chat_id)
+            .cte("group_unread")
+        )
+
         query = (
             select(
                 Chat,
-                func.coalesce(msg_stats_cte.c.unread_count, 0).label("unread_count"),
+                # Wave 210 G2: groups read their unread from the per-recipient
+                # high-water-mark CTE; DMs keep the read_status-based msg_stats
+                # count (byte-identical). The CASE picks the branch per row.
+                case(
+                    (
+                        Chat.chat_type == "group",
+                        func.coalesce(group_unread_cte.c.group_unread_count, 0),
+                    ),
+                    else_=func.coalesce(msg_stats_cte.c.unread_count, 0),
+                ).label("unread_count"),
                 last_msg_cte.c.last_message_id.label("last_message_id"),
             )
             .join(chat_participants, Chat.id == chat_participants.c.chat_id)
             .outerjoin(msg_stats_cte, Chat.id == msg_stats_cte.c.chat_id)
+            .outerjoin(group_unread_cte, Chat.id == group_unread_cte.c.chat_id)
             .outerjoin(last_msg_cte, Chat.id == last_msg_cte.c.chat_id)
             .where(chat_participants.c.user_id == user_id)
             .options(selectinload(Chat.participants))
@@ -182,10 +248,44 @@ class ChatRepository(BaseRepository[Chat, ChatDTO, dict[str, Any], dict[str, Any
         result = await self.db.execute(
             select(Message)
             .where(Message.id.in_(message_ids))
-            .options(selectinload(Message.sender), selectinload(Message.attachments))
+            .options(
+                selectinload(Message.sender),
+                selectinload(Message.attachments),
+                # Wave 207 — replied_to + its sender so the send response can build
+                # the reply preview (chat-list last-message keeps it lightweight).
+                selectinload(Message.replied_to).selectinload(Message.sender),
+            )
         )
         return {
             msg.id: MessageDTO.model_validate(msg) for msg in result.scalars().all()
+        }
+
+    async def get_user_display_names(
+        self, user_ids: list[uuid.UUID]
+    ) -> dict[uuid.UUID, str | None]:
+        """Batch-resolve users' display names for the "Forwarded from X" label (W211).
+
+        full_name lives on UserProfile (a lazy="noload" relationship), so a bare
+        select(Message).selectinload(Message.sender) leaves MessageDTO.sender with
+        full_name=None — ChatParticipantDTO maps from User, which has no full_name
+        (the W207 SW5 gotcha). Forwarding needs the ORIGINAL sender's name, so
+        resolve it the same way ChatQueryService does: load User.profile
+        explicitly. Batched by id — a forward of N messages from K distinct senders
+        costs ONE SELECT, not an N+1. Returns {user_id: profile.full_name or None};
+        ids with no row / no profile yield None (the FE then shows a generic
+        "Forwarded" chip without a name).
+        """
+        if not user_ids:
+            return {}
+        stmt = (
+            select(User)
+            .where(User.id.in_(user_ids))
+            .options(selectinload(User.profile))
+        )
+        result = await self.db.execute(stmt)
+        return {
+            u.id: (u.profile.full_name if u.profile else None)
+            for u in result.scalars().all()
         }
 
     async def find_existing_dm(
@@ -223,13 +323,113 @@ class ChatRepository(BaseRepository[Chat, ChatDTO, dict[str, Any], dict[str, Any
         await self.db.flush()
         return self._to_dto(new_chat)
 
-    async def get_unread_count(self, chat_id: uuid.UUID, user_id: uuid.UUID) -> int:
+    async def create_group(
+        self, creator: User, name: str, member_users: list[User]
+    ) -> ChatDTO:
+        """Create a named group chat owned by ``creator`` (Wave 209 G1).
+
+        chat_type="group" + created_by=creator.id set group identity; the creator
+        is always a participant. Members are de-duplicated by id (the creator is
+        never double-added even if also passed in member_users). Mirrors
+        create_chat's Chat()/append/flush/_to_dto shape — no Redis lock, since a
+        group has no DM-style find-or-create uniqueness invariant.
+        """
+        new_chat = Chat(chat_type="group", name=name, created_by=creator.id)
+        seen: set[uuid.UUID] = set()
+        for participant in (creator, *member_users):
+            if participant.id in seen:
+                continue
+            seen.add(participant.id)
+            new_chat.participants.append(participant)
+        self.db.add(new_chat)
+        await self.db.flush()
+        return self._to_dto(new_chat)
+
+    async def add_participant(self, chat_id: uuid.UUID, user_id: uuid.UUID) -> bool:
+        """Add a user to a chat idempotently. Returns True iff a NEW row inserted.
+
+        Wave 209 G1 — SELECT-then-INSERT (the existing check_participant + a plain
+        Core insert), NOT pg_insert.on_conflict_do_nothing like add_reaction:
+        dialect-agnostic, so the full add-participant path is real-DB-testable on
+        the SQLite test DB as well as PostgreSQL. The composite (chat_id, user_id)
+        PK still guarantees uniqueness; the pre-check makes a repeat add a clean
+        no-op (returns False → the caller skips the broadcast) and avoids the
+        IntegrityError-driven transaction abort a bare insert would cause. The
+        TOCTOU window (two concurrent adds of the SAME user) is benign for this
+        rare admin action and PK-backstopped.
+        """
+        if await self.check_participant(chat_id, user_id):
+            return False
+        await self.db.execute(
+            insert(chat_participants).values(chat_id=chat_id, user_id=user_id)
+        )
+        return True
+
+    async def remove_participant(self, chat_id: uuid.UUID, user_id: uuid.UUID) -> int:
+        """Remove a user from a chat. Returns affected rowcount (0 = not a member).
+
+        Wave 209 G1 — idempotent: removing a non-member is a benign no-op (the
+        caller skips the broadcast when affected == 0). Mirrors remove_reaction.
+        """
+        stmt = delete(chat_participants).where(
+            and_(
+                chat_participants.c.chat_id == chat_id,
+                chat_participants.c.user_id == user_id,
+            )
+        )
+        result = await self.db.execute(stmt)
+        affected = int(getattr(result, "rowcount", 0) or 0)
+        return affected if affected > 0 else 0
+
+    async def rename_chat(self, chat_id: uuid.UUID, name: str) -> int:
+        """Rename a chat (group display title). Returns affected rowcount.
+
+        Wave 209 G1 — Core update; Chat.updated_at's onupdate=utc_now is applied
+        automatically so a renamed chat re-sorts to the top of the list.
+        """
+        stmt = update(Chat).where(Chat.id == chat_id).values(name=name)
+        result = await self.db.execute(stmt)
+        return int(getattr(result, "rowcount", 0) or 0)
+
+    async def get_unread_count(
+        self, chat_id: uuid.UUID, user_id: uuid.UUID, chat_type: str = "dm"
+    ) -> int:
         """
         Count unread messages for a user in a chat.
+
+        Wave 210 G2 — DMs use Message.read_status (unchanged, Option A). GROUP
+        chats use the per-recipient ChatReadReceipt high-water-mark: a message is
+        unread when sender_id != user AND (no receipt OR created_at >
+        last_read_at). chat_type is passed by the sole caller (get_chat_details,
+        which already holds chat.chat_type) — no internal Chat re-query.
         """
         # MOD-02 (audit Wave 11): set RLS user so the PostgreSQL
-        # messages_participant_isolation policy applies.
+        # messages_participant_isolation policy applies. SET LOCAL is PG-only; the
+        # SQLite test DB rejects it, so the group branch is exercised at the repo
+        # level via get_chats_for_user (which has no _set_rls_user), not here.
         await self._set_rls_user(user_id)
+
+        if chat_type == "group":
+            group_query = (
+                select(func.count())
+                .select_from(Message)
+                .outerjoin(
+                    ChatReadReceipt,
+                    and_(
+                        ChatReadReceipt.chat_id == Message.chat_id,
+                        ChatReadReceipt.user_id == user_id,
+                    ),
+                )
+                .where(
+                    Message.chat_id == chat_id,
+                    Message.sender_id != user_id,
+                    or_(
+                        ChatReadReceipt.last_read_at.is_(None),
+                        Message.created_at > ChatReadReceipt.last_read_at,
+                    ),
+                )
+            )
+            return (await self.db.execute(group_query)).scalar_one()
 
         query = (
             select(func.count())
@@ -284,7 +484,17 @@ class ChatRepository(BaseRepository[Chat, ChatDTO, dict[str, Any], dict[str, Any
         query = (
             select(Message)
             .where(Message.chat_id == chat_id)
-            .options(selectinload(Message.sender), selectinload(Message.attachments))
+            .options(
+                selectinload(Message.sender),
+                selectinload(Message.attachments),
+                # Wave 206 — one extra SELECT … WHERE message_id IN (…) per page;
+                # the query service aggregates these into ReactionAggregate.
+                selectinload(Message.reactions),
+                # Wave 207 — load the replied-to message + its sender for the quote
+                # preview (one extra SELECT … WHERE id IN (…) per page). The nested
+                # replied_to.replied_to stays noload → no deep nesting.
+                selectinload(Message.replied_to).selectinload(Message.sender),
+            )
         )
 
         cursor_info = decode_datetime_cursor(cursor)
@@ -323,10 +533,75 @@ class ChatRepository(BaseRepository[Chat, ChatDTO, dict[str, Any], dict[str, Any
         await self.db.flush()
         return MessageDTO.model_validate(message)
 
-    async def mark_messages_read(self, chat_id: uuid.UUID, user_id: uuid.UUID) -> None:
+    async def mark_messages_read(
+        self, chat_id: uuid.UUID, user_id: uuid.UUID, chat_type: str = "dm"
+    ) -> tuple[datetime, int]:
+        """Mark a chat read for a user; return ``(read_at, affected)``.
+
+        Wave 203 SW4 — stamps ``read_at`` (Python ``utc_now`` so the exact stored
+        value is available to the broadcast frame) and returns
+        ``(read_at, affected_count)`` so the caller broadcasts a chat-level read
+        receipt only when ``affected_count > 0`` (no re-SELECT, no churn).
+
+        Wave 210 G2 — the DM path is BYTE-IDENTICAL to W203 (bulk update of
+        Message.read_status/read_at). The GROUP path uses the per-recipient
+        ChatReadReceipt high-water-mark: (a) count messages from OTHER senders not
+        yet covered by the mark BEFORE upserting, so the broadcast gate keeps DM
+        semantics (only broadcast when something new became read); (b) upsert the
+        receipt to ``read_at`` via the dialect-agnostic SELECT-then-(UPDATE|INSERT)
+        pattern (the add_participant precedent — NOT pg_insert.on_conflict, which
+        is PG-only and would not compile on the SQLite test DB); (c) return
+        ``(read_at, affected)``. The WS frame shape is UNCHANGED
+        (``{type:"read", chat_id, user_id, read_at}``).
         """
-        Mark all unread messages in a chat as read for a user.
-        """
+        read_at = utc_now()
+
+        if chat_type == "group":
+            old_last_read_at = (
+                await self.db.execute(
+                    select(ChatReadReceipt.last_read_at).where(
+                        and_(
+                            ChatReadReceipt.chat_id == chat_id,
+                            ChatReadReceipt.user_id == user_id,
+                        )
+                    )
+                )
+            ).scalar_one_or_none()
+
+            # (a) affected = other-sender messages not yet covered by the mark.
+            count_query = (
+                select(func.count())
+                .select_from(Message)
+                .where(
+                    Message.chat_id == chat_id,
+                    Message.sender_id != user_id,
+                )
+            )
+            if old_last_read_at is not None:
+                count_query = count_query.where(Message.created_at > old_last_read_at)
+            affected = (await self.db.execute(count_query)).scalar_one()
+
+            # (b) upsert the high-water-mark (check-then-INSERT|UPDATE, SQLite-safe).
+            if old_last_read_at is None:
+                await self.db.execute(
+                    insert(ChatReadReceipt).values(
+                        chat_id=chat_id, user_id=user_id, last_read_at=read_at
+                    )
+                )
+            else:
+                await self.db.execute(
+                    update(ChatReadReceipt)
+                    .where(
+                        and_(
+                            ChatReadReceipt.chat_id == chat_id,
+                            ChatReadReceipt.user_id == user_id,
+                        )
+                    )
+                    .values(last_read_at=read_at)
+                )
+            return read_at, int(affected)
+
+        # DM path — byte-identical to Wave 203.
         stmt = (
             update(Message)
             .where(
@@ -336,9 +611,153 @@ class ChatRepository(BaseRepository[Chat, ChatDTO, dict[str, Any], dict[str, Any
                     Message.read_status.is_(False),
                 )
             )
-            .values(read_status=True)
+            .values(read_status=True, read_at=read_at)
         )
-        await self.db.execute(stmt)
+        result = await self.db.execute(stmt)
+        affected = int(getattr(result, "rowcount", 0) or 0)
+        if affected < 0:
+            affected = 0
+        return read_at, affected
+
+    async def edit_message(
+        self, message_id: uuid.UUID, author_id: uuid.UUID, new_content: str
+    ) -> tuple[datetime | None, int]:
+        """Edit a message's content (author-only).
+
+        Wave 205 SW3 — mirrors mark_messages_read: stamps ``edited_at`` in Python
+        (``utc_now`` so the exact value is available to the broadcast frame) and
+        returns ``(edited_at, affected)``. The WHERE clause is the author-only guard
+        — ``sender_id == author_id AND deleted_at IS NULL`` — so a non-author or an
+        already-deleted message yields ``affected == 0`` (the caller raises 404, no
+        existence leak). ``edited_at`` is None when nothing matched.
+        """
+        edited_at = utc_now()
+        stmt = (
+            update(Message)
+            .where(
+                and_(
+                    Message.id == message_id,
+                    Message.sender_id == author_id,
+                    Message.deleted_at.is_(None),
+                )
+            )
+            .values(content=new_content, edited_at=edited_at)
+        )
+        result = await self.db.execute(stmt)
+        affected = int(getattr(result, "rowcount", 0) or 0)
+        if affected < 0:
+            affected = 0
+        return (edited_at if affected > 0 else None), affected
+
+    async def soft_delete_message(
+        self, message_id: uuid.UUID, author_id: uuid.UUID
+    ) -> tuple[datetime | None, int]:
+        """Soft-delete a message (author-only).
+
+        Wave 205 SW3 (D1) — sets ``deleted_at`` AND clears ``content`` (the deleted
+        text must not linger in the DB or leak through any response path); the row
+        persists as a tombstone the frontend renders as "Message deleted". Author-only
+        WHERE (``sender_id == author_id AND deleted_at IS NULL``) makes a repeat-delete
+        or a non-author a no-op (``affected == 0`` → caller raises 404). Returns
+        ``(deleted_at, affected)``.
+        """
+        deleted_at = utc_now()
+        stmt = (
+            update(Message)
+            .where(
+                and_(
+                    Message.id == message_id,
+                    Message.sender_id == author_id,
+                    Message.deleted_at.is_(None),
+                )
+            )
+            .values(deleted_at=deleted_at, content="")
+        )
+        result = await self.db.execute(stmt)
+        affected = int(getattr(result, "rowcount", 0) or 0)
+        if affected < 0:
+            affected = 0
+        return (deleted_at if affected > 0 else None), affected
+
+    async def message_exists_in_chat(
+        self, message_id: uuid.UUID, chat_id: uuid.UUID
+    ) -> bool:
+        """Whether a message with this id belongs to this chat (Wave 206).
+
+        The reaction service calls this to return a clean 404 before an INSERT.
+        Unlike edit/delete (author-only WHERE → affected == 0 surfaces a missing
+        message), reactions are not author-gated, so a bogus message_id would
+        otherwise FK-fail the INSERT mid-transaction — hence an explicit check.
+        """
+        stmt = select(
+            exists().where(and_(Message.id == message_id, Message.chat_id == chat_id))
+        )
+        return bool((await self.db.execute(stmt)).scalar())
+
+    async def add_reaction(
+        self, message_id: uuid.UUID, user_id: uuid.UUID, emoji: str
+    ) -> bool:
+        """Add a reaction idempotently. Returns True iff a NEW row was inserted.
+
+        Wave 206 — pg_insert(...).on_conflict_do_nothing targets the
+        (user_id, message_id, emoji) unique constraint, so a repeat reaction is a
+        no-op (returns False → the caller skips the broadcast). The id +
+        created_at column defaults (generate_uuid7 / utc_now) are applied by the
+        Core insert for the omitted columns.
+        """
+        stmt = (
+            pg_insert(MessageReaction)
+            .values(message_id=message_id, user_id=user_id, emoji=emoji)
+            .on_conflict_do_nothing(index_elements=["user_id", "message_id", "emoji"])
+        )
+        result = await self.db.execute(stmt)
+        return int(getattr(result, "rowcount", 0) or 0) > 0
+
+    async def remove_reaction(
+        self, message_id: uuid.UUID, user_id: uuid.UUID, emoji: str
+    ) -> int:
+        """Remove a reaction. Returns affected rowcount (0 = nothing to remove).
+
+        Wave 206 — idempotent: removing a non-existent reaction is a benign no-op
+        (the caller skips the broadcast when affected == 0).
+        """
+        stmt = delete(MessageReaction).where(
+            and_(
+                MessageReaction.message_id == message_id,
+                MessageReaction.user_id == user_id,
+                MessageReaction.emoji == emoji,
+            )
+        )
+        result = await self.db.execute(stmt)
+        affected = int(getattr(result, "rowcount", 0) or 0)
+        return affected if affected > 0 else 0
+
+    async def get_reactors(self, message_id: uuid.UUID, emoji: str) -> list[User]:
+        """Fetch the users who reacted to a message with a specific emoji (Wave 207).
+
+        Powers the reactor-list "who reacted" popover. A direct JOIN of users →
+        message_reactions on the FK columns (no MessageReaction.user relationship
+        needed) returns the User rows in one query, oldest-reaction-first.
+        selectinload(User.profile) eagerly loads the profile (full_name + avatar_url
+        live on UserProfile, a lazy="noload" relationship — without this they'd be
+        None) so the service reads them in one extra SELECT, never an N+1. The
+        (user_id, message_id, emoji) unique constraint guarantees one reaction row
+        per user for this emoji, so the result is naturally distinct.
+        """
+        stmt = (
+            select(User)
+            .join(MessageReaction, MessageReaction.user_id == User.id)
+            .where(
+                and_(
+                    MessageReaction.message_id == message_id,
+                    MessageReaction.emoji == emoji,
+                )
+            )
+            .options(selectinload(User.profile))
+            .order_by(MessageReaction.created_at.asc())
+        )
+        result = await self.db.execute(stmt)
+        return list(result.scalars().all())
 
     async def delete_messages(self, message_ids: list[uuid.UUID]) -> int:
         """
@@ -403,23 +822,47 @@ class ChatRepository(BaseRepository[Chat, ChatDTO, dict[str, Any], dict[str, Any
         result = await self.db.execute(stmt)
         return [row[0] for row in result.all()]
 
+    async def get_read_receipts(
+        self, chat_id: uuid.UUID
+    ) -> list[tuple[uuid.UUID, datetime]]:
+        """Wave 210 G2 — all (user_id, last_read_at) read receipts for a chat.
+
+        Powers ChatResponse.read_receipts (the per-member "seen by" map the FE
+        folds together with live `read` frames). Group-only in practice — a DM
+        has no receipt rows, so this returns [] (DMs keep using read_status).
+        """
+        stmt = select(ChatReadReceipt.user_id, ChatReadReceipt.last_read_at).where(
+            ChatReadReceipt.chat_id == chat_id
+        )
+        result = await self.db.execute(stmt)
+        return [(row[0], row[1]) for row in result.all()]
+
+    async def get_chat_type(self, chat_id: uuid.UUID) -> str | None:
+        """Wave 210 G2 — single-column chat_type lookup for the WS read handler.
+
+        The dispatcher does not load the chat (only check_participant), so this
+        cheap PK lookup lets mark_messages_read branch DM vs group without the
+        heavier get_by_id selectinload.
+        """
+        return (
+            await self.db.execute(select(Chat.chat_type).where(Chat.id == chat_id))
+        ).scalar_one_or_none()
+
     async def get_message_by_id(self, message_id: uuid.UUID) -> MessageDTO | None:
         """Fetch a specific message by its ID, converted to DTO."""
         stmt = (
             select(Message)
             .where(Message.id == message_id)
-            .options(selectinload(Message.sender), selectinload(Message.attachments))
+            .options(
+                selectinload(Message.sender),
+                selectinload(Message.attachments),
+                # Wave 207 — replied_to for the idempotent-resend reply preview.
+                selectinload(Message.replied_to).selectinload(Message.sender),
+            )
         )
         result = await self.db.execute(stmt)
         msg = result.scalars().first()
         return MessageDTO.model_validate(msg) if msg else None
-
-    async def mark_single_message_read(self, message_id: uuid.UUID) -> bool:
-        """Mark a single message as read. Returns True if successful."""
-        stmt = update(Message).where(Message.id == message_id).values(read_status=True)
-        result = await self.db.execute(stmt)
-        await self.db.flush()
-        return (int(getattr(result, "rowcount", 0) or 0)) > 0
 
     # P2-fix (audit 2026-02-26): Without a LIMIT the presence audience query is
     # O(chats × participants) and can load tens-of-thousands of UUIDs into memory

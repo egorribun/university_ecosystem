@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react"
 import { createFileRoute, Outlet } from "@tanstack/react-router"
-import { useReducedMotion } from "framer-motion"
 import { breakpoints } from "@/theme/tokens"
 import useMediaQuery from "@/hooks/useMediaQuery"
 import { AdminBackdrop } from "@/features/admin/components/AdminBackdrop"
@@ -31,7 +30,7 @@ import { evaluateAdminGuard } from "./guards"
 // imperceptible and acceptable per W156 SW3 trade-off.
 function AdminLayout() {
   const [mounted, setMounted] = useState(false)
-  const prefersReducedMotion = useReducedMotion() ?? false
+  const prefersReducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)")
   const isNarrow = useMediaQuery(`(max-width: ${breakpoints.dashboard})`)
   useEffect(() => {
     setMounted(true)

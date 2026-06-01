@@ -7,7 +7,7 @@
  * @since Wave 108
  */
 import { useEffect, useRef } from "react"
-import { useReducedMotion } from "framer-motion"
+import useMediaQuery from "@/hooks/useMediaQuery"
 
 import type { WeatherCondition } from "@/utils/weatherCodes"
 
@@ -111,7 +111,7 @@ function recycleParticle(p: Particle, config: ParticleConfig, width: number): vo
 /* ------------------------------------------------------------------ */
 
 export function WeatherParticles({ condition, isDark }: WeatherParticlesProps) {
-  const prefersReducedMotion = useReducedMotion() ?? false
+  const prefersReducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)")
 
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)

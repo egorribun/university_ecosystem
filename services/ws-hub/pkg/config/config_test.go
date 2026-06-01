@@ -8,7 +8,16 @@ import (
 )
 
 func TestLoadConfig_DefaultsAndOverrides(t *testing.T) {
-	// Backup and clean env vars
+	// W188 polish-v2 — use t.Setenv (Go 1.17+) for auto-restore at test end,
+	// eliminating manual backup/restore boilerplate + errcheck violations on
+	// the prior `os.Setenv` pattern (.golangci.yml errcheck.check-blank: true
+	// per MOD-05 Wave 10 audit). t.Setenv saves the original value (or unset
+	// state) before setting, and restores it via t.Cleanup automatically.
+	//
+	// For env vars that we want to start UNSET (not preserved), we still need
+	// to clear them; use `t.Setenv` with empty string then `os.Unsetenv` via
+	// `require.NoError`. The test still verifies defaults (section 1) so a
+	// non-empty value bleeding from the developer's shell would be caught.
 	envVars := []string{
 		"WS_HUB_PORT", "NATS_URL", "NATS_USER", "NATS_PASSWORD",
 		"JWT_SECRETS", "JWT_SECRET", "SENTRY_DSN", "VITE_ENVIRONMENT",
@@ -18,22 +27,10 @@ func TestLoadConfig_DefaultsAndOverrides(t *testing.T) {
 		"WS_CLIENT_MSG_RATE_LIMIT", "WS_CLIENT_MSG_BURST", "WS_TICKET_TTL_SECONDS",
 		"REDIS_URL", "REDIS_PASSWORD", "REDIS_DB",
 	}
-	originalEnv := make(map[string]string)
+	// Clear env at test start (each Unsetenv is benign if var already unset).
 	for _, env := range envVars {
-		if val, exists := os.LookupEnv(env); exists {
-			originalEnv[env] = val
-			os.Unsetenv(env)
-		}
+		require.NoError(t, os.Unsetenv(env))
 	}
-	defer func() {
-		// Restore env vars
-		for _, env := range envVars {
-			os.Unsetenv(env)
-			if val, exists := originalEnv[env]; exists {
-				os.Setenv(env, val)
-			}
-		}
-	}()
 
 	// 1. Test defaults
 	cfg := LoadConfig()
@@ -62,29 +59,29 @@ func TestLoadConfig_DefaultsAndOverrides(t *testing.T) {
 	require.Equal(t, "", cfg.RedisPassword)
 	require.Equal(t, 0, cfg.RedisDB)
 
-	// 2. Test overrides and CIDR parsing
-	os.Setenv("WS_HUB_PORT", "9090")
-	os.Setenv("NATS_URL", "nats://localhost:4222")
-	os.Setenv("NATS_USER", "testuser")
-	os.Setenv("NATS_PASSWORD", "testpass")
-	os.Setenv("JWT_SECRETS", "secret-a, secret-b")
-	os.Setenv("SENTRY_DSN", "https://sentry")
-	os.Setenv("VITE_ENVIRONMENT", "production")
-	os.Setenv("ALLOWED_ORIGINS", "https://app.example.com")
-	os.Setenv("TRUSTED_PROXIES", "10.0.0.1, 192.168.1.0/24, invalid-cidr/abc")
-	os.Setenv("BACKEND_INTERNAL_URL", "http://backend-prod:8000")
-	os.Setenv("JWKS_URL", "http://backend-prod:8000/jwks")
-	os.Setenv("WS_SEND_BUFFER_SIZE", "512")
-	os.Setenv("WS_BROADCAST_BUFFER_SIZE", "8192")
-	os.Setenv("WS_BROADCAST_WORKERS", "6")
-	os.Setenv("WS_HUB_INTERNAL_SECRET", "supersecret")
-	os.Setenv("WS_HUB_MAX_CLIENTS", "500")
-	os.Setenv("WS_CLIENT_MSG_RATE_LIMIT", "25.5")
-	os.Setenv("WS_CLIENT_MSG_BURST", "50")
-	os.Setenv("WS_TICKET_TTL_SECONDS", "30")
-	os.Setenv("REDIS_URL", "redis-prod:6379")
-	os.Setenv("REDIS_PASSWORD", "redissecret")
-	os.Setenv("REDIS_DB", "2")
+	// 2. Test overrides and CIDR parsing (t.Setenv auto-restores at cleanup)
+	t.Setenv("WS_HUB_PORT", "9090")
+	t.Setenv("NATS_URL", "nats://localhost:4222")
+	t.Setenv("NATS_USER", "testuser")
+	t.Setenv("NATS_PASSWORD", "testpass")
+	t.Setenv("JWT_SECRETS", "secret-a, secret-b")
+	t.Setenv("SENTRY_DSN", "https://sentry")
+	t.Setenv("VITE_ENVIRONMENT", "production")
+	t.Setenv("ALLOWED_ORIGINS", "https://app.example.com")
+	t.Setenv("TRUSTED_PROXIES", "10.0.0.1, 192.168.1.0/24, invalid-cidr/abc")
+	t.Setenv("BACKEND_INTERNAL_URL", "http://backend-prod:8000")
+	t.Setenv("JWKS_URL", "http://backend-prod:8000/jwks")
+	t.Setenv("WS_SEND_BUFFER_SIZE", "512")
+	t.Setenv("WS_BROADCAST_BUFFER_SIZE", "8192")
+	t.Setenv("WS_BROADCAST_WORKERS", "6")
+	t.Setenv("WS_HUB_INTERNAL_SECRET", "supersecret")
+	t.Setenv("WS_HUB_MAX_CLIENTS", "500")
+	t.Setenv("WS_CLIENT_MSG_RATE_LIMIT", "25.5")
+	t.Setenv("WS_CLIENT_MSG_BURST", "50")
+	t.Setenv("WS_TICKET_TTL_SECONDS", "30")
+	t.Setenv("REDIS_URL", "redis-prod:6379")
+	t.Setenv("REDIS_PASSWORD", "redissecret")
+	t.Setenv("REDIS_DB", "2")
 
 	cfg = LoadConfig()
 	require.Equal(t, "9090", cfg.Port)
@@ -114,20 +111,20 @@ func TestLoadConfig_DefaultsAndOverrides(t *testing.T) {
 	require.Equal(t, 2, cfg.RedisDB)
 
 	// 3. Test legacy single JWT_SECRET fallback
-	os.Unsetenv("JWT_SECRETS")
-	os.Setenv("JWT_SECRET", "single-secret")
+	require.NoError(t, os.Unsetenv("JWT_SECRETS"))
+	t.Setenv("JWT_SECRET", "single-secret")
 	cfg = LoadConfig()
 	require.Equal(t, []string{"single-secret"}, cfg.JWTSecrets)
 
 	// 4. Test invalid float and int inputs to verify fallback to default
-	os.Setenv("WS_SEND_BUFFER_SIZE", "invalid-int")
-	os.Setenv("WS_BROADCAST_BUFFER_SIZE", "invalid-int")
-	os.Setenv("WS_BROADCAST_WORKERS", "invalid-int")
-	os.Setenv("WS_HUB_MAX_CLIENTS", "invalid-int")
-	os.Setenv("WS_CLIENT_MSG_RATE_LIMIT", "invalid-float")
-	os.Setenv("WS_CLIENT_MSG_BURST", "invalid-int")
-	os.Setenv("WS_TICKET_TTL_SECONDS", "invalid-int")
-	os.Setenv("REDIS_DB", "invalid-int")
+	t.Setenv("WS_SEND_BUFFER_SIZE", "invalid-int")
+	t.Setenv("WS_BROADCAST_BUFFER_SIZE", "invalid-int")
+	t.Setenv("WS_BROADCAST_WORKERS", "invalid-int")
+	t.Setenv("WS_HUB_MAX_CLIENTS", "invalid-int")
+	t.Setenv("WS_CLIENT_MSG_RATE_LIMIT", "invalid-float")
+	t.Setenv("WS_CLIENT_MSG_BURST", "invalid-int")
+	t.Setenv("WS_TICKET_TTL_SECONDS", "invalid-int")
+	t.Setenv("REDIS_DB", "invalid-int")
 
 	cfg = LoadConfig()
 	require.Equal(t, 256, cfg.SendBufferSize)

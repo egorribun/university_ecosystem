@@ -9,7 +9,12 @@ import {
   useMemo,
 } from "react"
 import { useQueryClient } from "@tanstack/react-query"
-import type { Message, MessagesListResponse, ChatsListResponse } from "@/api/chat"
+import {
+  chatApi,
+  type Message,
+  type MessagesListResponse,
+  type ChatsListResponse,
+} from "@/api/chat"
 // Auth token storage handled natively via cookies
 import { logError } from "@/app/logger"
 import { parseWsMessage } from "@/api/schemas/wsMessage"
@@ -51,6 +56,107 @@ function calculateReconnectDelay(attempt: number): number {
   return Math.floor(Math.random() * base)
 }
 
+/**
+ * Wave 203 SW5 — pure cache update for a chat-level `read` frame. Extracted as a
+ * module-level function so it is unit-testable without the WS/ticket machinery
+ * (the useChatWebSocket hook test suite is describe.skip'd since W113 on a
+ * missing MSW ticket handler).
+ *
+ * The frame's `user_id` is the READER (the other participant). Every message NOT
+ * sent by the reader — i.e. the current user's own sent messages, in a 1-on-1 DM
+ * — flips to read + the chat-level read_at. Idempotent: re-applying is a no-op.
+ */
+export function applyReadFrame(
+  old: MessagesListResponse | undefined,
+  frame: { user_id: string; read_at: string | null }
+): MessagesListResponse | undefined {
+  if (!old) return old
+  return {
+    ...old,
+    items: old.items.map((m) =>
+      m.sender_id !== frame.user_id ? { ...m, read_status: true, read_at: frame.read_at } : m
+    ),
+  }
+}
+
+/**
+ * Wave 205 — pure cache update for a `message_edited` frame. Replaces content +
+ * edited_at for the matching message in the open chat. Idempotent: re-applying the
+ * same frame is a no-op, so the author's own NATS echo (arriving after the optimistic
+ * mutation) just reconciles its client-time edited_at to the authoritative server value.
+ */
+export function applyMessageEditedFrame(
+  old: MessagesListResponse | undefined,
+  frame: { message_id: string; content: string; edited_at: string }
+): MessagesListResponse | undefined {
+  if (!old) return old
+  return {
+    ...old,
+    items: old.items.map((m) =>
+      m.id === frame.message_id ? { ...m, content: frame.content, edited_at: frame.edited_at } : m
+    ),
+  }
+}
+
+/**
+ * Wave 205 — pure cache update for a `message_deleted` frame. Soft-deletes the
+ * matching message: stamps deleted_at + clears content/attachments (the tombstone the
+ * UI renders as "Message deleted"). Idempotent.
+ */
+export function applyMessageDeletedFrame(
+  old: MessagesListResponse | undefined,
+  frame: { message_id: string; deleted_at: string }
+): MessagesListResponse | undefined {
+  if (!old) return old
+  return {
+    ...old,
+    items: old.items.map((m) =>
+      m.id === frame.message_id
+        ? { ...m, deleted_at: frame.deleted_at, content: "", attachments: [] }
+        : m
+    ),
+  }
+}
+
+/**
+ * Wave 206 — pure cache update for a `reaction_changed` DELTA frame. Patches the
+ * matched message's reaction aggregate: added → +1 (or push {emoji, count:1,
+ * reacted_by_me:false}); removed → -1 (drop when count hits 0). reacted_by_me is
+ * left untouched — the frame's actor is never the current user (the case-handler
+ * self-echo guard skips the actor, who already patched optimistically), and a
+ * peer's reaction must not flip the viewer's own flag. Drift self-heals on refetch.
+ */
+export function applyReactionChangedFrame(
+  old: MessagesListResponse | undefined,
+  frame: { message_id: string; emoji: string; action: "added" | "removed" }
+): MessagesListResponse | undefined {
+  if (!old) return old
+  return {
+    ...old,
+    items: old.items.map((m) => {
+      if (m.id !== frame.message_id) return m
+      const reactions = [...(m.reactions ?? [])]
+      const idx = reactions.findIndex((r) => r.emoji === frame.emoji)
+      const existing = reactions[idx] // idx === -1 → undefined (noUncheckedIndexedAccess)
+      if (frame.action === "added") {
+        if (existing) {
+          reactions[idx] = { ...existing, count: existing.count + 1 }
+        } else {
+          reactions.push({ emoji: frame.emoji, count: 1, reacted_by_me: false })
+        }
+      } else if (existing) {
+        const next = existing.count - 1
+        if (next <= 0) {
+          reactions.splice(idx, 1)
+        } else {
+          reactions[idx] = { ...existing, count: next }
+        }
+      }
+      return { ...m, reactions }
+    }),
+  }
+}
+
 // WebSocket message types
 export type WebSocketMessageType =
   | "ping"
@@ -61,6 +167,9 @@ export type WebSocketMessageType =
   | "online"
   | "presence"
   | "error"
+  | "message_edited"
+  | "message_deleted"
+  | "reaction_changed"
 
 export interface WebSocketMessage {
   type: WebSocketMessageType
@@ -73,13 +182,20 @@ export interface WebSocketMessage {
   users?: string[]
   active?: boolean
   last_seen?: string | null
+  read_at?: string | null // Wave 203 — chat-level read-receipt timestamp
 }
 
 export interface UseChatWebSocketOptions {
   enabled?: boolean
+  // Wave 204 SW4 — the current user's id, used to drop self-echoes: the
+  // NATS→ws-hub→room fan-out (W204 SW2) has no per-recipient exclusion, so the
+  // sender receives its own new_message/read frame back. Threaded from useAuth
+  // via MessengerContext (W204 SW5).
+  currentUserId?: string
   onNewMessage?: (message: Message, chatId: string) => void
   onTyping?: (chatId: string, userId: string, userName: string) => void
-  onRead?: (chatId: string, messageId: string, userId: string) => void
+  // Wave 203 SW5 — chat-level read receipt: (chatId, readerId, readAt).
+  onRead?: (chatId: string, userId: string, readAt: string | null) => void
   onOnlineStatus?: (userId: string, status: boolean) => void
   onPresenceUpdate?: (userId: string, active: boolean, lastSeen: string | null) => void
   /**
@@ -136,6 +252,7 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
 }
 export function useChatWebSocket({
   enabled = true,
+  currentUserId,
   onNewMessage,
   onTyping,
   onRead,
@@ -173,6 +290,11 @@ export function useChatWebSocket({
   const onAuthErrorRef = useRef(onAuthError)
   const mountedRef = useRef(false)
   const connectRef = useRef<() => void>(() => {})
+  // W204 SW4 — latest current-user id (self-echo guard) + the room this client
+  // should be joined to (re-sent on every (re)connect in ws.onopen, since
+  // ws-hub room membership is per-connection).
+  const currentUserIdRef = useRef(currentUserId)
+  const activeRoomRef = useRef<string | null>(null)
 
   useEffect(() => {
     onNewMessageRef.current = onNewMessage
@@ -181,6 +303,7 @@ export function useChatWebSocket({
     onOnlineStatusRef.current = onOnlineStatus
     onPresenceUpdateRef.current = onPresenceUpdate
     onAuthErrorRef.current = onAuthError
+    currentUserIdRef.current = currentUserId
   })
 
   const cleanup = useCallback(() => {
@@ -267,6 +390,18 @@ export function useChatWebSocket({
           wsStore.setConnected(true)
           reconnectAttemptRef.current = 0
 
+          // W204 SW4 — rejoin the active room on (re)connect. ws-hub room
+          // membership is per-connection: a reconnect is a fresh Client with
+          // empty Rooms, so without re-joining the browser silently receives
+          // nothing after a reconnect until the next chat-select.
+          if (activeRoomRef.current) {
+            try {
+              ws.send(JSON.stringify({ type: "join", room: activeRoomRef.current }))
+            } catch {
+              /* WS closed between open and send — the next connect re-joins */
+            }
+          }
+
           if (pingIntervalRef.current) clearInterval(pingIntervalRef.current)
           pingIntervalRef.current = setInterval(() => {
             if (ws.readyState === WebSocket.OPEN) {
@@ -291,12 +426,26 @@ export function useChatWebSocket({
 
             switch (validated.type) {
               case "new_message": {
+                // W204 SW4 — self-echo guard. The NATS→ws-hub→room fan-out has
+                // no per-recipient exclusion (it delivers to ALL room members
+                // incl. the sender), so the sender receives its own message
+                // back. Skip it: the sender already has the message (optimistic
+                // insert + sendMessage onSuccess), and processing the echo would
+                // wrongly +1 the sender's OWN unread_count in the chats cache.
+                if (validated.message.sender_id === currentUserIdRef.current) break
+                // Wave 202 SW2 — `validated.message` is the Valibot `ParsedMessage`
+                // (attachments/sender validated shape-only as Record<string,unknown>);
+                // the cache stores `@/api/chat` `Message` (typed Attachment[]/User).
+                // `Message` is assignable to `ParsedMessage`, so the two are comparable
+                // → a single `as Message` is valid (collapsed from the prior, redundant
+                // `as unknown as Message` double-cast; the `unknown` hop was never needed).
+                // Do NOT delete the cast — `ParsedMessage` is NOT structurally `Message`.
                 queryClient.setQueryData<MessagesListResponse>(
                   ["messages", validated.chat_id],
                   (old) => {
                     if (!old)
                       return {
-                        items: [validated.message as unknown as Message],
+                        items: [validated.message as Message],
                         has_more: false,
                         next_cursor: null,
                       }
@@ -305,7 +454,7 @@ export function useChatWebSocket({
                     // Cap in-memory buffer at 200 messages — older messages are re-fetched
                     // via cursor-based pagination when the user scrolls up.
                     const MAX_BUFFERED_MESSAGES = 200
-                    const appended = [...old.items, validated.message as unknown as Message]
+                    const appended = [...old.items, validated.message as Message]
                     const trimmed =
                       appended.length > MAX_BUFFERED_MESSAGES
                         ? appended.slice(appended.length - MAX_BUFFERED_MESSAGES)
@@ -325,7 +474,7 @@ export function useChatWebSocket({
                       chat.id === validated.chat_id
                         ? {
                             ...chat,
-                            last_message: validated.message as unknown as Message,
+                            last_message: validated.message as Message,
                             unread_count: chat.unread_count + 1,
                           }
                         : chat
@@ -333,10 +482,7 @@ export function useChatWebSocket({
                   }
                 })
                 queryClient.invalidateQueries({ queryKey: ["chats"], refetchType: "none" })
-                onNewMessageRef.current?.(
-                  validated.message as unknown as Message,
-                  validated.chat_id
-                )
+                onNewMessageRef.current?.(validated.message as Message, validated.chat_id)
                 break
               }
 
@@ -380,23 +526,71 @@ export function useChatWebSocket({
               }
 
               case "read": {
+                // W204 SW4 — self-echo guard. The reader receives its own read
+                // frame back via the room fan-out (no per-recipient exclusion).
+                // Skip it: applyReadFrame would flip the OTHER party's messages
+                // to read in the reader's own cache (harmless but pointless
+                // churn). The SENDER (user_id !== me) DOES process it → their
+                // sent bubbles flip to "Seen · HH:MM" live.
+                if (validated.user_id === currentUserIdRef.current) break
+                // Wave 203 SW5 — chat-level read receipt. Flip every message NOT
+                // sent by the reader (validated.user_id) to read + stamp the
+                // chat-level read_at. applyReadFrame is the pure, unit-tested core.
                 queryClient.setQueryData<MessagesListResponse>(
                   ["messages", validated.chat_id],
-                  (old) => {
-                    if (!old) return old
-                    return {
-                      ...old,
-                      items: old.items.map((m) =>
-                        m.id === validated.message_id ? { ...m, read_status: true } : m
-                      ),
-                    }
-                  }
+                  (old) => applyReadFrame(old, validated)
                 )
                 queryClient.invalidateQueries({
                   queryKey: ["messages", validated.chat_id],
                   refetchType: "none",
                 })
-                onReadRef.current?.(validated.chat_id, validated.message_id, validated.user_id)
+                onReadRef.current?.(validated.chat_id, validated.user_id, validated.read_at)
+                break
+              }
+
+              case "message_edited": {
+                // Wave 205 — no self-echo guard: the frame is REST-initiated (carries
+                // no actor) and applyMessageEditedFrame is idempotent, so the author's
+                // own echo merely reconciles its optimistic client-time edited_at to the
+                // authoritative server value. The OTHER participant sees the edit live.
+                queryClient.setQueryData<MessagesListResponse>(
+                  ["messages", validated.chat_id],
+                  (old) => applyMessageEditedFrame(old, validated)
+                )
+                queryClient.invalidateQueries({
+                  queryKey: ["messages", validated.chat_id],
+                  refetchType: "none",
+                })
+                break
+              }
+
+              case "message_deleted": {
+                // Wave 205 — soft-delete tombstone live; idempotent, no self-echo guard.
+                queryClient.setQueryData<MessagesListResponse>(
+                  ["messages", validated.chat_id],
+                  (old) => applyMessageDeletedFrame(old, validated)
+                )
+                queryClient.invalidateQueries({
+                  queryKey: ["messages", validated.chat_id],
+                  refetchType: "none",
+                })
+                break
+              }
+
+              case "reaction_changed": {
+                // Wave 206 — DELTA frame self-echo guard: the actor already patched
+                // optimistically in toggleReactionMutation, so applying its own echo
+                // would double-count. Other participants apply the delta live; a
+                // missed/duplicate frame self-heals on the next GET /messages.
+                if (validated.user_id === currentUserIdRef.current) break
+                queryClient.setQueryData<MessagesListResponse>(
+                  ["messages", validated.chat_id],
+                  (old) => applyReactionChangedFrame(old, validated)
+                )
+                queryClient.invalidateQueries({
+                  queryKey: ["messages", validated.chat_id],
+                  refetchType: "none",
+                })
                 break
               }
 
@@ -486,31 +680,64 @@ export function useChatWebSocket({
     }
   }, [enabled, connect, disconnect])
 
+  // Wave 207 — typing is broadcast via REST (POST /chats/{id}/typing), NOT over the
+  // WS: the frontend connects to ws-hub, whose allowedMessageTypes drops "typing" at
+  // its parse boundary, so the pre-W207 wsRef.send({type:"typing"}) went nowhere. The
+  // backend endpoint does participant authz + broadcast_to_chat → W204 bridge → ws-hub
+  // chat.* fan-out → the recipient's live TypingIndicator (the receive-side `case
+  // "typing"` handler is unchanged). The 500ms throttle is preserved (caps the REST
+  // rate, complements the server's 180/60 limiter). NO WS-open guard: delivery depends
+  // on the RECIPIENT's socket (server-side), not the sender's — so it fires whenever
+  // the user is typing. Fire-and-forget; typing is ephemeral, errors are swallowed.
   const sendTyping = useCallback((chatId: string) => {
-    if (wsRef.current?.readyState !== WebSocket.OPEN) return
     const key = `typing:${chatId}`
     const now = Date.now()
     if (now - (lastSentRef.current.get(key) ?? 0) < OUTGOING_RATE_LIMITS.typing!) return
     lastSentRef.current.set(key, now)
-    try {
-      // RZ-26-07: guard TOCTOU race — WS may close between readyState check and send
-      wsRef.current.send(JSON.stringify({ type: "typing", chat_id: chatId }))
-    } catch {
-      /* WS closed between readyState check and send — safe to ignore */
-    }
+    void chatApi.sendTyping(chatId).catch(() => {
+      /* typing is ephemeral — swallow transient errors */
+    })
   }, [])
 
-  const sendRead = useCallback((chatId: string, messageId: string) => {
+  const sendRead = useCallback((chatId: string) => {
     if (wsRef.current?.readyState !== WebSocket.OPEN) return
     const key = `read:${chatId}`
     const now = Date.now()
     if (now - (lastSentRef.current.get(key) ?? 0) < OUTGOING_RATE_LIMITS.read!) return
     lastSentRef.current.set(key, now)
     try {
-      // RZ-26-07: guard TOCTOU race — WS may close between readyState check and send
-      wsRef.current.send(JSON.stringify({ type: "read", chat_id: chatId, message_id: messageId }))
+      // RZ-26-07: guard TOCTOU race — WS may close between readyState check and send.
+      // Wave 203 SW5 — chat-level read frame (no message_id).
+      wsRef.current.send(JSON.stringify({ type: "read", chat_id: chatId }))
     } catch {
       /* WS closed between readyState check and send — safe to ignore */
+    }
+  }, [])
+
+  // W204 SW4 — join/leave a ws-hub room (room == chat_id). A client must JOIN
+  // to RECEIVE chat.{room} fan-out: ws-hub's collectRecipients returns nil for
+  // an empty Rooms[room]. ws-hub authorizes the join via
+  // /api/internal/chat/check-participant before adding the client. activeRoomRef
+  // is set FIRST (before the OPEN check) so a chat selected before the socket
+  // is open is still joined on the next ws.onopen.
+  const sendJoin = useCallback((roomId: string) => {
+    activeRoomRef.current = roomId
+    if (wsRef.current?.readyState !== WebSocket.OPEN) return
+    try {
+      // RZ-26-07: guard TOCTOU race — WS may close between readyState check and send.
+      wsRef.current.send(JSON.stringify({ type: "join", room: roomId }))
+    } catch {
+      /* WS closed between readyState check and send — onopen re-joins activeRoomRef */
+    }
+  }, [])
+
+  const sendLeave = useCallback((roomId: string) => {
+    if (activeRoomRef.current === roomId) activeRoomRef.current = null
+    if (wsRef.current?.readyState !== WebSocket.OPEN) return
+    try {
+      wsRef.current.send(JSON.stringify({ type: "leave", room: roomId }))
+    } catch {
+      /* WS closed — ws-hub strips room membership on disconnect anyway */
     }
   }, [])
 
@@ -531,6 +758,8 @@ export function useChatWebSocket({
     isConnected,
     sendTyping,
     sendRead,
+    sendJoin,
+    sendLeave,
     getTypingUsersForChat,
     disconnect,
     reconnect: connect,

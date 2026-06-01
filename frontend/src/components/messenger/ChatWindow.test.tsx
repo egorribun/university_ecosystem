@@ -34,6 +34,11 @@ const MSG_FIXTURE: Message[] = [
     timestamp: "12:01",
     isMe: true,
     status: "read",
+    // Wave 203 SW6 — the last read sent message renders the "Seen · HH:MM"
+    // marker; included here so the axe pass covers the new render path.
+    readAt: "2026-05-30T12:01:00+00:00",
+    readAtLabel: "12:01",
+    isLastRead: true,
   },
 ]
 

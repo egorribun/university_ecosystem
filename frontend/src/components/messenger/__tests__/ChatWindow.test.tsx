@@ -42,19 +42,15 @@ vi.mock("@/components/media/SmartImage", () => ({
   ),
 }))
 
-// Wave 184 SW6 lesson — framer-motion's useReducedMotion calls
-// matchMedia(...).addEventListener via initPrefersReducedMotion through a code
-// path jsdom's matchMedia polyfill doesn't fully cover (causes vitest
-// unhandled errors in some component contexts). Mock useReducedMotion to
-// return false deterministically so render branches with `prefersReducedMotion
-// ? ... : ...` resolve to the animated branch consistently.
-vi.mock("framer-motion", async () => {
-  const actual = await vi.importActual<typeof import("framer-motion")>("framer-motion")
-  return {
-    ...actual,
-    useReducedMotion: () => false,
-  }
-})
+// W190 SW1 migrated ChatWindow + sibling messenger components from framer-motion's
+// jsdom-incompat `useReducedMotion()` hook to project's `useMediaQuery
+// ("(prefers-reduced-motion: reduce)")` DEFAULT export (jsdom-polyfilled at
+// setupTests.ts:13-30). The previous `vi.mock("framer-motion", { useReducedMotion:
+// () => false })` block was W184 SW6 defensive code that's now dead — no SUT-tree
+// code under this test calls framer-motion's useReducedMotion anymore. Removed at
+// W190 polish-v1 «безупречно?» cleanup. framer-motion's `motion.div` exports used
+// by ChatWindow internals are still present from real framer-motion module
+// (no mock needed; jsdom-compatible).
 
 // Wave 185 SW2 — mock useDebounced to be a pass-through so search-filter
 // tests don't need fake timers + 200ms advance to trigger the debounce
@@ -289,5 +285,382 @@ describe("ChatWindow — baseline ARIA shape", () => {
     const logEl = container.querySelector('[role="log"]')
     expect(logEl).toBeTruthy()
     expect(logEl?.getAttribute("aria-live")).toBe("polite")
+  })
+})
+
+describe("ChatWindow — W203 read-receipt seen marker", () => {
+  it("renders the 'Seen · HH:MM' marker on the last read sent message", () => {
+    const messages: Message[] = [
+      makeMessage({ id: "1", text: "Hi", isMe: false }),
+      makeMessage({
+        id: "2",
+        text: "All set",
+        isMe: true,
+        status: "read",
+        readAt: "2026-05-30T14:32:00+00:00",
+        readAtLabel: "14:32",
+        isLastRead: true,
+      }),
+    ]
+    render(<ChatWindow messages={messages} />, { wrapper })
+    // i18n mock echoes `key|JSON(opts)` → time interpolation preserved.
+    expect(screen.getByText('messenger:seen|{"time":"14:32"}')).toBeTruthy()
+  })
+
+  it("renders the marker on ONLY the last read sent message (not earlier read ones)", () => {
+    const messages: Message[] = [
+      makeMessage({
+        id: "1",
+        text: "first",
+        isMe: true,
+        status: "read",
+        readAtLabel: "14:30",
+        isLastRead: false,
+      }),
+      makeMessage({
+        id: "2",
+        text: "second",
+        isMe: true,
+        status: "read",
+        readAtLabel: "14:32",
+        isLastRead: true,
+      }),
+    ]
+    render(<ChatWindow messages={messages} />, { wrapper })
+    expect(screen.queryByText('messenger:seen|{"time":"14:30"}')).toBeFalsy()
+    expect(screen.getByText('messenger:seen|{"time":"14:32"}')).toBeTruthy()
+  })
+
+  it("never renders the marker on a received message (isMe=false suppresses it)", () => {
+    const messages: Message[] = [
+      makeMessage({ id: "1", text: "theirs", isMe: false, readAtLabel: "14:32", isLastRead: true }),
+    ]
+    render(<ChatWindow messages={messages} />, { wrapper })
+    expect(screen.queryByText(/^messenger:seen/)).toBeFalsy()
+  })
+
+  it("does NOT render the marker when readAtLabel is absent (unread sent message)", () => {
+    const messages: Message[] = [
+      makeMessage({ id: "1", text: "pending", isMe: true, status: "sent", isLastRead: false }),
+    ]
+    render(<ChatWindow messages={messages} />, { wrapper })
+    expect(screen.queryByText(/^messenger:seen/)).toBeFalsy()
+  })
+
+  it("still renders the ✓✓ read-status icon (role=img) on a read sent message", () => {
+    const messages: Message[] = [
+      makeMessage({
+        id: "1",
+        text: "read msg",
+        isMe: true,
+        status: "read",
+        readAtLabel: "14:32",
+        isLastRead: true,
+      }),
+    ]
+    render(<ChatWindow messages={messages} />, { wrapper })
+    // W183 SW6 status-icon wrapper — unchanged by W203's marker addition.
+    expect(screen.getByRole("img", { name: "messenger:aria.messageRead" })).toBeTruthy()
+  })
+})
+
+describe("ChatWindow — W205 SW6 edit/delete affordance + tombstone + inline editor", () => {
+  const makeOwn = (overrides: Partial<Message> = {}): Message =>
+    makeMessage({ id: "m1", text: "my message", isMe: true, ...overrides })
+
+  it("renders the edit + delete affordance on an own, non-deleted message", () => {
+    render(<ChatWindow messages={[makeOwn()]} />, { wrapper })
+    expect(screen.getByRole("button", { name: "messenger:editMessage" })).toBeTruthy()
+    expect(screen.getByRole("button", { name: "messenger:deleteMessage" })).toBeTruthy()
+  })
+
+  it("does NOT render the affordance on a received message", () => {
+    render(<ChatWindow messages={[makeMessage({ id: "r1", text: "theirs", isMe: false })]} />, {
+      wrapper,
+    })
+    expect(screen.queryByRole("button", { name: "messenger:editMessage" })).toBeFalsy()
+    expect(screen.queryByRole("button", { name: "messenger:deleteMessage" })).toBeFalsy()
+  })
+
+  it("the edit button fires onEditMessage(id, text)", () => {
+    const onEditMessage = vi.fn()
+    render(
+      <ChatWindow
+        messages={[makeOwn({ id: "m9", text: "edit me" })]}
+        onEditMessage={onEditMessage}
+      />,
+      { wrapper }
+    )
+    fireEvent.click(screen.getByRole("button", { name: "messenger:editMessage" }))
+    expect(onEditMessage).toHaveBeenCalledWith("m9", "edit me")
+  })
+
+  it("the delete button fires onDeleteMessage(id)", () => {
+    const onDeleteMessage = vi.fn()
+    render(<ChatWindow messages={[makeOwn({ id: "m9" })]} onDeleteMessage={onDeleteMessage} />, {
+      wrapper,
+    })
+    fireEvent.click(screen.getByRole("button", { name: "messenger:deleteMessage" }))
+    expect(onDeleteMessage).toHaveBeenCalledWith("m9")
+  })
+
+  it("renders the '(edited)' label when editedAt is set and the message is not deleted", () => {
+    render(
+      <ChatWindow
+        messages={[makeOwn({ editedAt: "2026-05-30T15:00:00+00:00", editedAtLabel: "15:00" })]}
+      />,
+      { wrapper }
+    )
+    expect(screen.getByText("messenger:edited")).toBeTruthy()
+  })
+
+  it("does NOT render the '(edited)' label when editedAt is absent", () => {
+    render(<ChatWindow messages={[makeOwn()]} />, { wrapper })
+    expect(screen.queryByText("messenger:edited")).toBeFalsy()
+  })
+
+  it("renders the deleted tombstone (messageDeleted) and drops content + affordance", () => {
+    render(
+      <ChatWindow
+        messages={[makeOwn({ text: "secret", deletedAt: "2026-05-30T15:01:00+00:00" })]}
+      />,
+      { wrapper }
+    )
+    expect(screen.getByText("messenger:messageDeleted")).toBeTruthy()
+    expect(screen.queryByText("secret")).toBeFalsy()
+    expect(screen.queryByRole("button", { name: "messenger:editMessage" })).toBeFalsy()
+    expect(screen.queryByRole("button", { name: "messenger:deleteMessage" })).toBeFalsy()
+  })
+
+  it("suppresses the 'Seen' marker AND the '(edited)' label on a deleted message", () => {
+    render(
+      <ChatWindow
+        messages={[
+          makeOwn({
+            deletedAt: "2026-05-30T15:01:00+00:00",
+            editedAt: "2026-05-30T15:00:00+00:00",
+            editedAtLabel: "15:00",
+            status: "read",
+            readAtLabel: "15:02",
+            isLastRead: true,
+          }),
+        ]}
+      />,
+      { wrapper }
+    )
+    expect(screen.queryByText(/^messenger:seen/)).toBeFalsy()
+    expect(screen.queryByText("messenger:edited")).toBeFalsy()
+  })
+
+  it("renders the inline editor (textarea seeded + Save/Cancel) when editingMessageId matches", () => {
+    render(
+      <ChatWindow
+        messages={[makeOwn({ id: "edit-1", text: "original" })]}
+        editingMessageId="edit-1"
+        editingMessageContent="draft text"
+      />,
+      { wrapper }
+    )
+    const textarea = screen.getByRole("textbox") as HTMLTextAreaElement
+    expect(textarea.value).toBe("draft text")
+    expect(screen.getByRole("button", { name: "common:buttons.save" })).toBeTruthy()
+    expect(screen.getByRole("button", { name: "common:buttons.cancel" })).toBeTruthy()
+    // the normal bubble content is replaced by the editor while editing
+    expect(screen.queryByText("original")).toBeFalsy()
+  })
+
+  it("Save fires onSaveEdit(id), Cancel fires onCancelEdit, typing fires onEditingContentChange", () => {
+    const onSaveEdit = vi.fn()
+    const onCancelEdit = vi.fn()
+    const onEditingContentChange = vi.fn()
+    render(
+      <ChatWindow
+        messages={[makeOwn({ id: "edit-2", text: "x" })]}
+        editingMessageId="edit-2"
+        editingMessageContent="hello"
+        onSaveEdit={onSaveEdit}
+        onCancelEdit={onCancelEdit}
+        onEditingContentChange={onEditingContentChange}
+      />,
+      { wrapper }
+    )
+    const textarea = screen.getByRole("textbox")
+    fireEvent.change(textarea, { target: { value: "hello!" } })
+    expect(onEditingContentChange).toHaveBeenCalledWith("hello!")
+    fireEvent.click(screen.getByRole("button", { name: "common:buttons.save" }))
+    expect(onSaveEdit).toHaveBeenCalledWith("edit-2")
+    fireEvent.click(screen.getByRole("button", { name: "common:buttons.cancel" }))
+    expect(onCancelEdit).toHaveBeenCalledTimes(1)
+  })
+
+  it("Enter (no shift) in the editor saves; Escape cancels", () => {
+    const onSaveEdit = vi.fn()
+    const onCancelEdit = vi.fn()
+    render(
+      <ChatWindow
+        messages={[makeOwn({ id: "edit-3" })]}
+        editingMessageId="edit-3"
+        editingMessageContent="z"
+        onSaveEdit={onSaveEdit}
+        onCancelEdit={onCancelEdit}
+      />,
+      { wrapper }
+    )
+    const textarea = screen.getByRole("textbox")
+    fireEvent.keyDown(textarea, { key: "Enter", shiftKey: false })
+    expect(onSaveEdit).toHaveBeenCalledWith("edit-3")
+    fireEvent.keyDown(textarea, { key: "Escape" })
+    expect(onCancelEdit).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe("ChatWindow — W206 reactions (pills + +react picker)", () => {
+  const withReactions = (
+    reactions: Message["reactions"],
+    overrides: Partial<Message> = {}
+  ): Message =>
+    makeMessage({ id: "rx1", text: "react to me", isMe: false, reactions, ...overrides })
+
+  it("renders a reaction pill (emoji + count + aria-pressed) for each aggregate", () => {
+    render(
+      <ChatWindow messages={[withReactions([{ emoji: "👍", count: 2, reactedByMe: false }])]} />,
+      {
+        wrapper,
+      }
+    )
+    const pill = screen.getByRole("button", {
+      name: 'messenger:reactions.tally|{"emoji":"👍","count":2}',
+    })
+    expect(pill.getAttribute("aria-pressed")).toBe("false")
+    expect(pill.textContent).toContain("👍")
+    expect(pill.textContent).toContain("2")
+  })
+
+  it("marks a reactedByMe pill aria-pressed=true", () => {
+    render(
+      <ChatWindow messages={[withReactions([{ emoji: "❤️", count: 1, reactedByMe: true }])]} />,
+      {
+        wrapper,
+      }
+    )
+    const pill = screen.getByRole("button", {
+      name: 'messenger:reactions.tally|{"emoji":"❤️","count":1}',
+    })
+    expect(pill.getAttribute("aria-pressed")).toBe("true")
+  })
+
+  it("clicking a pill fires onToggleReaction(messageId, emoji)", () => {
+    const onToggleReaction = vi.fn()
+    render(
+      <ChatWindow
+        messages={[withReactions([{ emoji: "👍", count: 1, reactedByMe: false }], { id: "msg-7" })]}
+        onToggleReaction={onToggleReaction}
+      />,
+      { wrapper }
+    )
+    fireEvent.click(
+      screen.getByRole("button", { name: 'messenger:reactions.tally|{"emoji":"👍","count":1}' })
+    )
+    expect(onToggleReaction).toHaveBeenCalledWith("msg-7", "👍")
+  })
+
+  it("renders the +react affordance only when onToggleReaction is provided", () => {
+    const { rerender } = render(<ChatWindow messages={[withReactions([])]} />, { wrapper })
+    expect(screen.queryByRole("button", { name: "messenger:reactions.add" })).toBeFalsy()
+    rerender(<ChatWindow messages={[withReactions([])]} onToggleReaction={() => {}} />)
+    expect(screen.getByRole("button", { name: "messenger:reactions.add" })).toBeTruthy()
+  })
+
+  it("opens the emoji picker on +react and fires onToggleReaction on selection (then closes)", () => {
+    const onToggleReaction = vi.fn()
+    render(
+      <ChatWindow
+        messages={[withReactions([], { id: "msg-9" })]}
+        onToggleReaction={onToggleReaction}
+      />,
+      { wrapper }
+    )
+    const pickerName = 'messenger:reactions.react|{"emoji":"👍"}'
+    // picker closed initially
+    expect(screen.queryByRole("button", { name: pickerName })).toBeFalsy()
+    // open it
+    fireEvent.click(screen.getByRole("button", { name: "messenger:reactions.add" }))
+    const thumbsUp = screen.getByRole("button", { name: pickerName })
+    // select → toggle + close
+    fireEvent.click(thumbsUp)
+    expect(onToggleReaction).toHaveBeenCalledWith("msg-9", "👍")
+    expect(screen.queryByRole("button", { name: pickerName })).toBeFalsy()
+  })
+
+  it("does NOT render reactions footer or picker on a deleted message", () => {
+    render(
+      <ChatWindow
+        messages={[
+          makeMessage({
+            id: "del-1",
+            text: "gone",
+            isMe: true,
+            deletedAt: "2026-05-31T10:00:00+00:00",
+            reactions: [{ emoji: "👍", count: 3, reactedByMe: false }],
+          }),
+        ]}
+        onToggleReaction={() => {}}
+      />,
+      { wrapper }
+    )
+    expect(screen.getByText("messenger:messageDeleted")).toBeTruthy()
+    expect(screen.queryByRole("button", { name: "messenger:reactions.add" })).toBeFalsy()
+    expect(screen.queryByRole("button", { name: /messenger:reactions\.tally/ })).toBeFalsy()
+  })
+})
+
+describe("ChatWindow — W208 SW5 date dividers + sender grouping render", () => {
+  it("renders the date-divider label above a message flagged showDateDivider", () => {
+    render(
+      <ChatWindow
+        messages={[
+          makeMessage({
+            id: "d1",
+            text: "today msg",
+            showDateDivider: true,
+            dateLabel: "messenger:dateDivider.today",
+          }),
+          makeMessage({ id: "d2", text: "same day", showDateDivider: false }),
+        ]}
+      />,
+      { wrapper }
+    )
+    // dateLabel is rendered verbatim (pre-resolved in the transform — ChatWindow
+    // does not call t() for it). Only the divider-flagged message shows it.
+    expect(screen.getAllByText("messenger:dateDivider.today")).toHaveLength(1)
+  })
+
+  it("renders no date divider when showDateDivider is absent (optimistic / standalone)", () => {
+    render(<ChatWindow messages={[makeMessage({ id: "n1", text: "hi" })]} />, { wrapper })
+    expect(screen.queryByText("messenger:dateDivider.today")).toBeFalsy()
+    expect(screen.queryByText("messenger:dateDivider.yesterday")).toBeFalsy()
+  })
+
+  it("shows the avatar for a group-start message and hides it (spacer) for a grouped one", () => {
+    render(
+      <ChatWindow
+        messages={[
+          makeMessage({ id: "g1", text: "first", senderName: "GroupStart", isGroupStart: true }),
+          makeMessage({ id: "g2", text: "second", senderName: "Grouped", isGroupStart: false }),
+        ]}
+      />,
+      { wrapper }
+    )
+    // The mocked SmartImage renders <img alt={senderName}>; isGroupStart=false
+    // swaps it for an aria-hidden spacer (no avatar img for that sender).
+    expect(screen.queryByAltText("GroupStart")).toBeTruthy()
+    expect(screen.queryByAltText("Grouped")).toBeFalsy()
+  })
+
+  it("shows the avatar when isGroupStart is undefined (default — no grouping applied)", () => {
+    render(<ChatWindow messages={[makeMessage({ id: "u1", text: "hi", senderName: "Solo" })]} />, {
+      wrapper,
+    })
+    expect(screen.queryByAltText("Solo")).toBeTruthy()
   })
 })

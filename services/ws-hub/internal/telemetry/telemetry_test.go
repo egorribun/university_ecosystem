@@ -41,6 +41,6 @@ func TestInitTracer(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, tp)
 	t.Cleanup(func() {
-		_ = tp.Shutdown(ctx)
+		_ = tp.Shutdown(ctx) //nolint:errcheck // test cleanup
 	})
 }

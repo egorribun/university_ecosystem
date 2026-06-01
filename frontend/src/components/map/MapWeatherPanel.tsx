@@ -5,8 +5,9 @@
  */
 
 import { useEffect, useRef } from "react"
-import { AnimatePresence, m, useReducedMotion } from "framer-motion"
+import { AnimatePresence, m } from "framer-motion"
 import { useTranslation } from "react-i18next"
+import useMediaQuery from "@/hooks/useMediaQuery"
 import {
   Thermometer,
   Wind,
@@ -41,7 +42,10 @@ interface MapWeatherPanelProps {
 
 export function MapWeatherPanel({ data, open, onClose }: MapWeatherPanelProps) {
   const { t } = useTranslation("map")
-  const prefersReduced = useReducedMotion()
+  // Wave 189 SW3 — migrated from framer-motion's `useReducedMotion()` (jsdom-
+  // incompat per W184 SW6 Gotcha) to project's `useMediaQuery` DEFAULT export.
+  // Behaviour preserved: hook returns boolean (was `boolean | null`).
+  const prefersReduced = useMediaQuery("(prefers-reduced-motion: reduce)")
   const panelRef = useRef<HTMLDivElement>(null)
 
   /* ── Close on click outside ── */

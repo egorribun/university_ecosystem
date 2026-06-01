@@ -39,7 +39,13 @@ from app.models.chat import (
     Chat as Chat,
 )
 from app.models.chat import (
+    ChatReadReceipt as ChatReadReceipt,
+)
+from app.models.chat import (
     Message as Message,
+)
+from app.models.chat import (
+    MessageReaction as MessageReaction,
 )
 from app.models.dead_letter import (
     DeadLetterJob as DeadLetterJob,

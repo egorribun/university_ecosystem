@@ -14,6 +14,14 @@
   "typing": "{{name}} is typing...",
   "typingMultiple": "{{count}} people are typing...",
   "isTyping": "Typing",
+  "seen": "Seen · {{time}}",
+  "edited": "(edited)",
+  "editMessage": "Edit message",
+  "deleteMessage": "Delete message",
+  "messageDeleted": "Message deleted",
+  "messageEditedAt": "Edited {{time}}",
+  "deleteMessageTitle": "Delete message",
+  "confirmDeleteMessage": "Delete this message for everyone?",
   "attachPhoto": "Photo",
   "attachDocument": "Document",
   "attachFile": "File",
@@ -66,7 +74,55 @@
     "failedToLoadMessagesHint": "Check your connection and try again.",
     "failedToLoadUsers": "Couldn't load users",
     "failedToLoadUsersHint": "Check your connection and try again.",
-    "retry": "Try again"
+    "retry": "Try again",
+    "minMembers": "Select at least 2 people"
+  },
+  "reactions": {
+    "add": "Add reaction",
+    "react": "React with {{emoji}}",
+    "tally": "Toggle {{emoji}} reaction, {{count}}",
+    "whoReacted": "Reacted with {{emoji}}",
+    "reactorsLoading": "Loading…",
+    "reactorsEmpty": "No one yet"
+  },
+  "reply": "Reply",
+  "replyingTo": "Replying to {{name}}",
+  "replyTo": {
+    "you": "You",
+    "deletedOriginal": "Original message deleted",
+    "unknownSender": "Unknown"
+  },
+  "forward": "Forward",
+  "forwardedFrom": "Forwarded from {{name}}",
+  "forwardTo": "Forward to…",
+  "forwardNoChats": "No chats to forward to",
+  "forwardCurrentChat": "Current",
+  "unknownUser": "Unknown User",
+  "group": {
+    "untitled": "Group chat",
+    "members": "{{count}} members"
+  },
+  "newGroup": "New group",
+  "modeToggle": "Chat type",
+  "modeDirect": "Direct",
+  "modeGroup": "Group",
+  "groupName": "Group name",
+  "selectMembers": "Selected members",
+  "removeMember": "Remove {{name}}",
+  "createGroup": "Create group",
+  "creatingGroup": "Creating…",
+  "renameGroup": "Rename group",
+  "addMember": "Add members",
+  "leaveGroup": "Leave group",
+  "groupOwner": "Owner",
+  "memberYou": "you",
+  "removeMemberConfirm": "Remove",
+  "removeMemberTitle": "Remove member?",
+  "confirmRemoveMember": "Remove this member from the group?",
+  "confirmLeaveGroup": "Leave this group? You'll need to be added again to return.",
+  "dateDivider": {
+    "today": "Today",
+    "yesterday": "Yesterday"
   },
   "aria": {
     "messageList": "Chat messages",
@@ -76,6 +132,7 @@
     "unread": "{{count}} unread",
     "messageSent": "Sent",
     "messageRead": "Read by recipient",
-    "connectionStatus": "Connection status"
+    "connectionStatus": "Connection status",
+    "jumpToLatest": "Jump to latest message"
   }
 }

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import { m, useReducedMotion } from "framer-motion"
+import { m } from "framer-motion"
 import { useTranslation } from "react-i18next"
 import { motion as motionTokens } from "@/theme/tokens"
 import { cn } from "@/utils/cn"
@@ -11,7 +11,7 @@ const isTest = typeof import.meta !== "undefined" && import.meta.env.MODE === "t
 // PERF-27-02: Removed React.memo() — React Compiler "infer" mode handles memoization
 export function NowPlayingCard({ data }: { data: NowPlaying }) {
   const prefersReduce = useMediaQuery("(prefers-reduced-motion: reduce)")
-  const reduced = useReducedMotion()
+  const reduced = useMediaQuery("(prefers-reduced-motion: reduce)")
   const duration = data.duration_ms ?? 0
   const { t } = useTranslation(["profile"])
   const [imageLoaded, setImageLoaded] = useState(false)

@@ -236,6 +236,59 @@ async function createConfig() {
       // 1-2 calendar weeks from this tick). State stays "tracked-upstream".
       // See memory/wave180_lighthouse_upstream_check.md for full snapshot +
       // pre-flight evidence captured at W180 Phase 1 Explore Agent 1.
+      //
+      // W188 SW5 — monitoring tick at W188 open (2026-05-26). WebFetch re-
+      // verified: state OPEN, 0 comments, 0 maintainer responses, 0 labels,
+      // 0 reactions since 2026-05-18 filing (8 calendar days elapsed). Per
+      // W180 SW1 calibration the W181-W185 window already closed (W181=
+      // 2026-05-22 → W185=2026-05-23; W187 closed 2026-05-24). Push next
+      // monitoring window to W189-W193 (sliding 1-week cadence preserved
+      // per W170 SW3 framework — re-check 1-2 calendar weeks from this
+      // tick at W195+ if still no upstream movement). State stays
+      // "tracked-upstream". Empirical evidence: no upstream-level CI
+      // ratchet possible without Linux CI Perf=null fix, no fix possible
+      // without upstream movement; Windows wrapper measurement remains
+      // canonical Perf measurement per W162 SW1 acceptance. See
+      // memory/wave188_lighthouse_upstream_check.md for full snapshot.
+      //
+      // W191 SW1 — monitoring tick at W191 open (2026-05-28). `gh issue view
+      // 17021 --repo GoogleChrome/lighthouse` re-verified: state OPEN, 0
+      // comments, 0 maintainer responses, 0 labels, 0 reactions, 0 assignees,
+      // updatedAt = createdAt (no edits) since 2026-05-18 filing (10 calendar
+      // days elapsed). Per W188 SW5 calibration the W189-W193 window currently
+      // active (W189 + W190 closed 2026-05-26 + W191 opens 2026-05-28 — all
+      // 3 fall inside window). Push next monitoring window to W195-W199
+      // (sliding 1-week cadence preserved per W170 SW3 framework — re-check
+      // 1-2 calendar weeks from this tick at W199+ if still no upstream
+      // movement). State stays "tracked-upstream" — **6th separately-fired
+      // tick (W163 + W170 + W179 + W180 + W188 + W191); 8 monitoring-state-
+      // preservations counting W189 + W190 inherited from W188 SW5 by-design
+      // without separate tick** (polish-v1 framing correction post «безупречно?»
+      // probe — SW1 narrative initially claimed "7th consecutive tick" which
+      // matched neither honest count). Empirical evidence unchanged: no
+      // upstream-level CI ratchet possible without Linux CI Perf=null fix;
+      // Windows wrapper measurement remains canonical Perf measurement per
+      // W162 SW1 acceptance. See memory/wave191_lighthouse_upstream_check.md
+      // for full snapshot (also corrected post-polish-v1).
+      //
+      // W192 SW1 — monitoring tick at W192 open (2026-05-28, same calendar
+      // day as W191 close per session continuity). `gh issue view 17021
+      // --repo GoogleChrome/lighthouse` re-verified: state OPEN, 0 comments,
+      // 0 maintainer responses, 0 labels, 0 reactions, 0 assignees, updatedAt
+      // = createdAt (no edits) since 2026-05-18 filing (10 calendar days
+      // elapsed — IDENTICAL to W191 SW1 snapshot, no inter-wave movement).
+      // Per W191 SW1 calibration the W195-W199 window currently next-active.
+      // Push next monitoring window to **W196-W200** (sliding 1-week cadence
+      // preserved per W170 SW3 framework — re-check 1-2 calendar weeks from
+      // this tick at W200+ if still no upstream movement). State stays
+      // "tracked-upstream" — **7th separately-fired tick (W163 + W170 + W179
+      // + W180 + W188 + W191 + W192); 9 monitoring-state-preservations
+      // counting W189 + W190 inherited from W188 SW5 by-design without
+      // separate tick** (extends W191 SW1 polish-v1 honest count framing).
+      // Empirical evidence unchanged: no upstream-level CI ratchet possible
+      // without Linux CI Perf=null fix; Windows wrapper measurement remains
+      // canonical Perf measurement per W162 SW1 acceptance. See
+      // memory/wave192_lighthouse_upstream_check.md for full snapshot.
       chromeFlags:
         "--no-sandbox --disable-dev-shm-usage --allow-insecure-localhost --ignore-certificate-errors --test-type --disable-gpu --headless=new",
       throttlingMethod: "devtools",

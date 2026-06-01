@@ -156,11 +156,36 @@ async def handle_message_sent(event: MessageSent) -> None:
     async with async_session() as db:
         repo = ChatRepository(db)
 
-        # 1. Fetch message with sender (joined)
+        # 1. Fetch the message.
         message = await db.get(models.Message, event.message_id)
         if not message:
             logger.error("Message %s not found for notification", event.message_id)
             return
+
+        # 1b. Fetch the sender EXPLICITLY. Message.sender is lazy="noload" (the
+        # N+1 guard — CLAUDE.md "ALL relationships must have explicit lazy=noload"),
+        # so db.get(Message) leaves message.sender == None. Passing message.sender
+        # straight to notify_new_message crashed on `sender.id` (AttributeError:
+        # 'NoneType' has no attribute 'id') the first time this handler ran
+        # end-to-end — the bug sat dormant for waves because the outbox produced
+        # ZERO events until the Wave 205 SW-A capture-on-commit fix restored the
+        # domain-event subsystem. Loading the User by sender_id makes new_message
+        # broadcasts actually fire (and notification_service's
+        # `(sender.profile and ...)` push-title guard already tolerates a
+        # noload profile == None).
+        sender = await db.get(models.User, message.sender_id)
+        if sender is None:
+            logger.error(
+                "Sender %s not found for message %s",
+                message.sender_id,
+                event.message_id,
+            )
+            return
+        # Attach the loaded sender so serialize_message includes the sender record
+        # in the new_message broadcast (name/avatar on the recipient's live bubble)
+        # instead of "sender": null. Same db session, both objects already loaded —
+        # an in-memory relationship set, no extra query / flush.
+        message.sender = sender
 
         # 2. Fetch chat with participants
         if event.chat_id is None:
@@ -173,12 +198,30 @@ async def handle_message_sent(event: MessageSent) -> None:
             logger.error("Chat %s not found for notification", event.chat_id)
             return
 
+        # 2b. Wave 207 — if this message is a reply, load the replied-to message
+        # (get_message_by_id selectinloads its sender) so serialize_message can
+        # embed the quote preview in the live new_message frame — the recipient
+        # sees the quote immediately, not just on the next refetch. None when not
+        # a reply, or when the target was hard-deleted (the SET NULL self-FK has
+        # already nulled message.reply_to_message_id by the time we read it here).
+        replied = (
+            await repo.get_message_by_id(message.reply_to_message_id)
+            if message.reply_to_message_id is not None
+            else None
+        )
+
         # 3. Trigger notifications
+        # Wave 210 G3 — pass the chat's identity so a GROUP push is titled by the
+        # group name + sender-prefixed body (DMs keep the sender-name title). chat
+        # is a ChatDTO from get_by_id, so chat_type/name are already loaded.
         service = ChatNotificationService(db)
         await service.notify_new_message(
             message=message,
             chat_participants=chat.participants,
-            sender=message.sender,
+            sender=sender,
+            replied=replied,
+            chat_type=chat.chat_type,
+            chat_name=chat.name,
         )
         # Handle transaction for delivery.py updates
         await db.commit()

@@ -1,4 +1,7 @@
+from __future__ import annotations
+
 from datetime import datetime
+from typing import Any
 from uuid import UUID
 
 from pydantic import ConfigDict, Field
@@ -30,7 +33,9 @@ class MessageBase(SecureBaseModel):
 
 
 class MessageCreate(MessageBase):
-    pass
+    # Wave 207 — optional reply target. The send endpoint accepts this as a Form
+    # field; this schema documents the create shape.
+    reply_to_message_id: UUID | None = None
 
 
 class AttachmentResponse(SecureBaseModel):
@@ -45,19 +50,127 @@ class AttachmentResponse(SecureBaseModel):
     message_id: UUID | None = None
 
 
+class ReactionAggregate(SecureBaseModel):
+    """Wave 206 — per-emoji reaction tally on a message.
+
+    `reacted_by_me` is computed server-side for the requesting user on the REST
+    path (the aggregation in ChatQueryService knows current_user). On the WS
+    delta-frame path the client derives it locally — it's per-viewer, so it can
+    never travel in a broadcast frame.
+    """
+
+    emoji: str
+    count: int
+    reacted_by_me: bool = False
+
+
+class ReactorOut(SecureBaseModel):
+    """Wave 207 — one user in the reactor-list ("who reacted") popover.
+
+    Built by ChatQueryService.get_reactors from the User rows the repository joins
+    via message_reactions. ``user_id`` is remapped explicitly in the service (the
+    User row has ``.id``, not ``.user_id``) — no from_attributes auto-mapping; only
+    plain User columns (no relationship access → no N+1).
+    """
+
+    user_id: UUID
+    name: str | None = None
+    avatar_url: str | None = None
+
+
+# Wave 207 — a reply quote-preview carries only what the FE renders above a reply
+# bubble: who + a snippet + a deleted flag. Content is truncated so a reply never
+# ships its target's full body; the FE line-clamps the rest. A LEAN preview (not a
+# nested MessageResponse) keeps the payload small and sidesteps recursion.
+REPLY_PREVIEW_MAX_CHARS = 200
+
+
+class ReplyPreview(SecureBaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    sender_id: UUID
+    sender_name: str | None = None
+    content: str
+    deleted_at: datetime | None = None
+
+    @classmethod
+    def from_message(cls, dto: Any) -> ReplyPreview | None:
+        """Build a preview from a (possibly None) replied-to message DTO.
+
+        Duck-typed (``Any``) to avoid a response→DTO-layer import. Returns None
+        when there is no reply target. ``content`` is truncated to
+        REPLY_PREVIEW_MAX_CHARS; a soft-deleted target carries content="" +
+        deleted_at set, which the FE renders as an "original deleted" placeholder.
+        """
+        if dto is None:
+            return None
+        sender = getattr(dto, "sender", None)
+        return cls(
+            id=dto.id,
+            sender_id=dto.sender_id,
+            sender_name=(sender.full_name if sender else None),
+            content=(dto.content or "")[:REPLY_PREVIEW_MAX_CHARS],
+            deleted_at=dto.deleted_at,
+        )
+
+
 class MessageResponse(MessageBase):
     model_config = ConfigDict(from_attributes=True)
 
+    # Wave 205 SW4 — override MessageBase.content's min_length=1. A soft-deleted
+    # message (D1 tombstone) carries content="" in the RESPONSE, so the strict
+    # create-time min_length must not apply on the way out, or GET /messages 500s
+    # (pydantic string_too_short) the moment a chat contains a deleted message.
+    # `Field(...)` keeps content REQUIRED (the producer always sends it) — only the
+    # min_length floor is dropped. Input validation stays strict: MessageCreate
+    # keeps min_length=1, and the POST/PATCH routes parse content via
+    # Form(..., min_length=1).
+    content: str = Field(..., max_length=2000)
     id: UUID
     chat_id: UUID
     sender_id: UUID
     created_at: datetime
     read_status: bool
+    read_at: datetime | None = None  # Wave 203 SW3 — read-receipt timestamp
+    edited_at: datetime | None = None  # Wave 205 SW4 — edit timestamp
+    deleted_at: datetime | None = None  # Wave 205 SW4 — soft-delete tombstone
     sender: ChatParticipant | None = None
     sender_presence: PresenceStatus | None = None
     attachments: list[AttachmentResponse] = Field(
         default_factory=list, json_schema_extra={"default": []}
     )
+    # Wave 206 — per-emoji reaction aggregates. Built field-by-field in
+    # ChatQueryService.get_messages (W203-SW8 two-site rule); the chat-list
+    # last-message preview leaves this [] (lightweight projection).
+    reactions: list[ReactionAggregate] = Field(
+        default_factory=list, json_schema_extra={"default": []}
+    )
+    # Wave 207 — quote preview of the message this one replies to (None = not a
+    # reply). Built in ChatQueryService.get_messages from the selectinload'd
+    # replied_to; the chat-list last-message preview leaves it None (lightweight
+    # projection, W203-SW8 two-site rule).
+    reply_to: ReplyPreview | None = None
+    # Wave 211 — denormalized "Forwarded from X" label (None = not a forward).
+    # Snapshot-copy forwarding: a plain scalar that AUTO-carries through the 2
+    # spread-based MessageResponse construction sites (send_message idempotency-hit
+    # + main) via model_dump, and is set explicitly at the 3 field-by-field sites
+    # (send_message fallback, get_chats last-message, get_messages) per the
+    # W203-SW8 / W209 5-site rule. Never a nested preview (contrast reply_to) and
+    # never carries the audit-only forwarded_from_*_id columns — privacy.
+    forwarded_from_name: str | None = None
+
+
+# Wave 211 — forward 1..N messages from a source chat into a destination chat.
+# A dedicated input (NOT MessageCreate): forwarding takes no content/files — the
+# snapshot is copied from the source message(s). message_ids is bounded so a
+# single forward request can't fan out unboundedly.
+FORWARD_MAX_MESSAGES = 50
+
+
+class ForwardMessages(SecureBaseModel):
+    source_chat_id: UUID
+    message_ids: list[UUID] = Field(..., min_length=1, max_length=FORWARD_MAX_MESSAGES)
 
 
 class ChatBase(SecureBaseModel):
@@ -68,16 +181,65 @@ class ChatCreate(ChatBase):
     participant_id: UUID  # The ID of the user to start a chat with
 
 
+class GroupChatCreate(ChatBase):
+    """Wave 209 G1 — create a named group chat.
+
+    participant_ids are the *other* members (the creator is added automatically).
+    min_length=1 is necessary-not-sufficient: the service enforces the real
+    3..100 total-size bound (creator + distinct members).
+    """
+
+    name: str = Field(..., min_length=1, max_length=128)
+    participant_ids: list[UUID] = Field(..., min_length=1)
+
+
+class AddParticipant(ChatBase):
+    """Wave 209 G1 — add one member to a group."""
+
+    user_id: UUID
+
+
+class RenameChat(ChatBase):
+    """Wave 209 G1 — rename a group's display title."""
+
+    name: str = Field(..., min_length=1, max_length=128)
+
+
+class ReadReceiptInfo(SecureBaseModel):
+    """Wave 210 G2 — one member's read high-water-mark for a group chat.
+
+    Service-computed (NOT a ChatDTO field) from ChatRepository.get_read_receipts.
+    The FE folds these + live `read` frames into a per-member "seen by N" map.
+    DMs carry [] (they keep using Message.read_status), so this rides only on the
+    get_chat_details response — the other ChatResponse construction sites omit it
+    and it defaults [].
+    """
+
+    user_id: UUID
+    last_read_at: datetime
+
+
 class ChatResponse(ChatBase):
     model_config = ConfigDict(from_attributes=True)
 
     id: UUID
+    # Wave 209 G1 — group-chat identity. chat_type defaults "dm" so a DM response
+    # (the untouched create_chat path) is valid without passing it; name is the
+    # group title (None for DMs); created_by is the group owner (None for DMs).
+    chat_type: str = "dm"
+    name: str | None = None
+    created_by: UUID | None = None
     participants: list[ChatParticipant]
     last_message: MessageResponse | None = None
     unread_count: int = 0
     created_at: datetime
     updated_at: datetime
     presence: dict[UUID, PresenceStatus] | None = None
+    # Wave 210 G2 — per-member read receipts (group-only; [] for DMs and at the 4
+    # non-detail ChatResponse construction sites). Defaulted so the W209 5-site
+    # fan-out is untouched — only get_chat_details populates it (W203-SW8
+    # discipline: a defaulted field omitted by the other sites stays []).
+    read_receipts: list[ReadReceiptInfo] = Field(default_factory=list)
 
 
 class ChatsListOut(SecureBaseModel):

@@ -28,11 +28,21 @@ def _mock_user(role: str = "student") -> MagicMock:
     return user
 
 
-def _mock_chat(*participant_ids: uuid.UUID):
+def _mock_chat(
+    *participant_ids: uuid.UUID,
+    chat_type: str = "dm",
+    name: str | None = None,
+    created_by: uuid.UUID | None = None,
+):
     chat = MagicMock()
     chat.id = uuid.uuid4()
     chat.created_at = datetime.now(UTC)
     chat.updated_at = datetime.now(UTC)
+    # Wave 209 G1 — explicit so the MagicMock auto-attr isn't fed into the
+    # ChatResponse str/UUID fields (the W203-SW8 / W207 replied_to trap → 500).
+    chat.chat_type = chat_type
+    chat.name = name
+    chat.created_by = created_by
     participants = []
     for pid in participant_ids:
         p = MagicMock()
@@ -54,8 +64,17 @@ def _mock_message(chat_id: uuid.UUID, sender_id: uuid.UUID):
     msg.content = "Test message"
     msg.created_at = datetime.now(UTC)
     msg.read_status = False
+    msg.read_at = (
+        None  # Wave 203 — explicit so MagicMock auto-attr doesn't break MessageResponse
+    )
+    # Wave 211 — explicit so the MagicMock auto-attr isn't a non-str stand-in that
+    # MessageResponse.forwarded_from_name (str | None) rejects.
+    msg.forwarded_from_name = None
     msg.sender = None
     msg.attachments = []
+    # Wave 207 — explicit so the auto-MagicMock attr isn't a truthy stand-in that
+    # ReplyPreview.from_message would try to build a quote preview from.
+    msg.replied_to = None
     return msg
 
 
@@ -174,6 +193,67 @@ class TestGetChatDetails:
 
         assert result.id == chat.id
         assert result.unread_count == 3
+
+    @pytest.mark.asyncio
+    async def test_returns_group_identity(self):
+        # Wave 209 G1 — get_chat_details must surface chat_type/name/created_by
+        # (the W203-SW8 5-site fan-out: a missed site silently renders a group as
+        # a nameless DM with no error).
+        user = _mock_user()
+        created_by = uuid.uuid4()
+        chat = _mock_chat(
+            user.id, chat_type="group", name="Team Chat", created_by=created_by
+        )
+
+        repo = MagicMock()
+        repo.get_by_id = AsyncMock(return_value=chat)
+        repo.get_unread_count = AsyncMock(return_value=0)
+        repo.get_last_message = AsyncMock(return_value=None)
+        # Wave 210 G2 — a group detail-fetch queries per-member read receipts.
+        repo.get_read_receipts = AsyncMock(return_value=[])
+
+        svc = ChatQueryService(AsyncMock(), repo)
+
+        with patch(
+            "app.services.chat.query_service.build_presence_map",
+            new_callable=AsyncMock,
+            return_value={},
+        ):
+            result = await svc.get_chat_details(chat.id, user, "en")
+
+        assert result.chat_type == "group"
+        assert result.name == "Team Chat"
+        assert result.created_by == created_by
+        assert result.read_receipts == []
+
+    @pytest.mark.asyncio
+    async def test_group_populates_read_receipts(self):
+        # Wave 210 G2 — get_chat_details folds the repo's per-member read receipts
+        # into ChatResponse.read_receipts (the FE "seen by N" source).
+        user = _mock_user()
+        reader = uuid.uuid4()
+        read_at = datetime.now(UTC)
+        chat = _mock_chat(user.id, chat_type="group", name="Team", created_by=user.id)
+
+        repo = MagicMock()
+        repo.get_by_id = AsyncMock(return_value=chat)
+        repo.get_unread_count = AsyncMock(return_value=0)
+        repo.get_last_message = AsyncMock(return_value=None)
+        repo.get_read_receipts = AsyncMock(return_value=[(reader, read_at)])
+
+        svc = ChatQueryService(AsyncMock(), repo)
+
+        with patch(
+            "app.services.chat.query_service.build_presence_map",
+            new_callable=AsyncMock,
+            return_value={},
+        ):
+            result = await svc.get_chat_details(chat.id, user, "en")
+
+        repo.get_read_receipts.assert_awaited_once_with(chat.id)
+        assert len(result.read_receipts) == 1
+        assert result.read_receipts[0].user_id == reader
+        assert result.read_receipts[0].last_read_at == read_at
 
     @pytest.mark.asyncio
     async def test_not_found(self):
@@ -299,3 +379,30 @@ class TestGetMessages:
         assert len(result.items) == 3
         assert result.has_more is True
         assert result.next_cursor == "cursor-abc"
+
+    @pytest.mark.asyncio
+    async def test_get_messages_surfaces_read_at(self):
+        # Wave 203 SW8 regression — get_messages constructs MessageResponse
+        # field-by-field and originally OMITTED read_at, so it defaulted to None
+        # even when the DB row had a timestamp (the seen-marker never showed on
+        # refetch). This asserts read_at now flows through.
+        user = _mock_user()
+        chat = _mock_chat(user.id)
+        msg = _mock_message(chat.id, user.id)
+        read_at = datetime(2026, 5, 30, 14, 32, tzinfo=UTC)
+        msg.read_status = True
+        msg.read_at = read_at
+
+        repo = MagicMock()
+        repo.get_by_id = AsyncMock(return_value=chat)
+        repo.get_messages = AsyncMock(return_value=([msg], False, None))
+
+        svc = ChatQueryService(AsyncMock(), repo)
+        with patch(
+            "app.services.chat.query_service.build_presence_map",
+            new_callable=AsyncMock,
+            return_value={},
+        ):
+            result = await svc.get_messages(chat.id, user, None, 20, "en")
+
+        assert result.items[0].read_at == read_at

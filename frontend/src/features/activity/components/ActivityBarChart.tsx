@@ -1,5 +1,6 @@
 import { useMemo } from "react"
-import { m, useReducedMotion } from "framer-motion"
+import { m } from "framer-motion"
+import useMediaQuery from "@/hooks/useMediaQuery"
 import { useTranslation } from "react-i18next"
 import { motion as motionTokens } from "@/theme/tokens"
 
@@ -25,7 +26,7 @@ export function ActivityBarChart({
   title,
 }: ActivityBarChartProps) {
   const { t } = useTranslation(["activity"])
-  const reduce = useReducedMotion()
+  const reduce = useMediaQuery("(prefers-reduced-motion: reduce)")
 
   const { bars, svgHeight, barAreaWidth } = useMemo(() => {
     if (data.length === 0) return { bars: [], svgHeight: 0, barAreaWidth: 0 }

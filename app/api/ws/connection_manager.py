@@ -303,13 +303,17 @@ class ConnectionManager:
                 return [uuid.UUID(uid) for uid in entry.payload]
 
         # Single-flight: only one DB query per chat_id at a time.
-        # RZ-14-04: setdefault(key, asyncio.Lock()) always evaluates the default
-        # expression before checking the key — safe with WeakValueDictionary only
-        # if we use the explicit two-step pattern below, which avoids the
-        # double-instantiation race.
-        if chat_id not in self._participant_locks:
-            self._participant_locks[chat_id] = asyncio.Lock()
-        lock = self._participant_locks[chat_id]
+        # RZ-14-04 / W203 SW8: bind a LOCAL strong ref to the Lock BEFORE storing
+        # it in the WeakValueDictionary. `weak[key] = asyncio.Lock()` stores only a
+        # weak ref to a temporary that has no strong reference, so CPython
+        # refcounting reclaims it at end-of-statement → the read-back KeyErrors
+        # deterministically (surfaced by the REST mark_read broadcast — the first
+        # end-to-end caller through this branch with the cache disabled). The local
+        # `lock` keeps the object alive across the `async with lock:` below.
+        lock = self._participant_locks.get(chat_id)
+        if lock is None:
+            lock = asyncio.Lock()
+            self._participant_locks[chat_id] = lock
         async with lock:
             # Double-check after acquiring lock — another coroutine may have
             # already populated the cache while we were waiting.
@@ -361,6 +365,43 @@ class ConnectionManager:
             *(_throttled_send(p_id) for p_id in targets),
             return_exceptions=True,
         )
+
+        # W204 SW2 — mirror the frame onto the ws-hub `chat.*` core subscription
+        # so it reaches BROWSER clients live. Browsers connect to ws-hub (a
+        # separate Go service), NOT this in-process manager, so the fan-out
+        # above never reaches them — the messenger has been refetch/self-heal
+        # only. ws-hub unmarshals + re-fans the `{type, room, payload}` envelope
+        # to room members (join-gated via /api/internal/chat/check-participant).
+        #
+        # Additive + best-effort (W126 SW3 pattern): the in-process delivery
+        # above is untouched; a NATS failure self-heals via the next refetch.
+        # No per-recipient exclusion here (ws-hub fans to ALL room members,
+        # it can't honour exclude_user_id) — the frontend self-echo guard
+        # (W204 SW4) drops the sender's own echo. publish_core is core NATS
+        # (chat.* has no JetStream stream) + orjson (the new_message frame
+        # carries raw uuid.UUID values).
+        try:
+            from app.core.nats_broker import (  # lazy — avoid import cycle (ws_hub_client.py:52 pattern)
+                broker,
+            )
+
+            await broker.publish_core(
+                f"chat.{chat_id}",
+                {
+                    "type": message.get("type"),
+                    "room": str(chat_id),
+                    "payload": message,
+                },
+            )
+        except (ConnectionError, TimeoutError, OSError, RuntimeError) as exc:
+            # RZ-20-04: narrowed — NATS infra/connect errors. Never breaks the
+            # in-process return below; the browser self-heals via refetch.
+            logger.debug(
+                "ws-hub mirror publish failed (self-heal via refetch): chat=%s err=%s",
+                chat_id,
+                exc,
+            )
+
         return sum(r for r in results if isinstance(r, int))
 
     def _should_broadcast_presence(

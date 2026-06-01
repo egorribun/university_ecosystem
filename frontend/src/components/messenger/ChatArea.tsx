@@ -1,11 +1,13 @@
 import SmartImage from "@/components/media/SmartImage"
 import { ChatWindow, MessageInput, TypingIndicator } from "@/components/messenger"
+import { GroupAvatar } from "./GroupAvatar"
 import { AVATAR_PLACEHOLDER_URL } from "@/constants/placeholders"
 import { useMessenger } from "@/contexts/MessengerContext"
 import { useMessengerController } from "@/hooks/features/useMessengerController"
+import useMediaQuery from "@/hooks/useMediaQuery"
 import { motion as motionTokens } from "@/theme/tokens"
 import { cn } from "@/utils/cn"
-import { AnimatePresence, m, useReducedMotion } from "framer-motion"
+import { AnimatePresence, m } from "framer-motion"
 import {
   ChevronLeft,
   MessageCircleOff,
@@ -24,6 +26,19 @@ interface ChatAreaProps {
   isMobile: boolean
   selectedChatId: string | null
   activeChat: ReturnType<typeof useMessengerController>["activeChat"]
+  /**
+   * Wave 211 G4 — the active chat's resolved display identity (group name +
+   * member count vs the DM peer's name + presence), from useMessengerController.
+   * Optional so ChatArea stays mountable in tests without the full wiring; the
+   * header falls back to the DM path (getOtherParticipant) when absent.
+   */
+  activeChatDisplay?: ReturnType<typeof useMessengerController>["activeChatDisplay"]
+  /**
+   * Wave 211 G4 — open the group info / member-management panel (the group
+   * header's avatar+title button). Undefined for a DM (the header opens the peer
+   * profile via handleViewProfile instead). Wired in SW10.
+   */
+  onOpenGroupInfo?: () => void
   messages: ReturnType<typeof useMessengerController>["messages"]
   /**
    * Wave 184 SW2 (Path B) — messages query loading flag lifted from
@@ -60,12 +75,47 @@ interface ChatAreaProps {
   handleDeleteChat: () => void
   getOtherParticipant: ReturnType<typeof useMessengerController>["getOtherParticipant"]
   presenceMap: ReturnType<typeof useMessengerController>["presenceMap"]
+  /**
+   * Wave 205 SW6 — inline message edit + soft-delete, threaded from
+   * useMessengerController through MessengerFeature into ChatWindow. See
+   * ChatWindowProps for the per-field contract. All optional so ChatArea
+   * stays mountable in tests without the full messenger wiring.
+   */
+  editingMessageId?: string | null
+  editingMessageContent?: string
+  onEditingContentChange?: (content: string) => void
+  onEditMessage?: (messageId: string, currentText: string) => void
+  onSaveEdit?: (messageId: string) => void
+  onCancelEdit?: () => void
+  onDeleteMessage?: (messageId: string) => void
+  /**
+   * Wave 206 — toggle an emoji reaction on a message, threaded from
+   * useMessengerController through MessengerFeature into ChatWindow.
+   */
+  onToggleReaction?: (messageId: string, emoji: string) => void
+  /**
+   * Wave 207 — reply/quote, threaded from useMessengerController through
+   * MessengerFeature. `replyingTo` drives the MessageInput compose chip;
+   * `onStartReply` wires each ChatWindow bubble's reply button; `onCancelReply`
+   * clears the reply context.
+   */
+  replyingTo?: { senderName: string | null; isMe: boolean; text: string } | null
+  onStartReply?: (messageId: string) => void
+  onCancelReply?: () => void
+  /**
+   * Wave 211 — forward, threaded from useMessengerController through
+   * MessengerFeature. Wires each ChatWindow bubble's forward button → opens the
+   * ForwardModal destination picker (mounted in MessengerFeature).
+   */
+  onForward?: (messageId: string) => void
 }
 
 export function ChatArea({
   isMobile,
   selectedChatId,
   activeChat,
+  activeChatDisplay,
+  onOpenGroupInfo,
   messages,
   messagesLoading = false,
   messagesError = false,
@@ -82,6 +132,18 @@ export function ChatArea({
   handleDeleteChat,
   getOtherParticipant,
   presenceMap,
+  editingMessageId,
+  editingMessageContent,
+  onEditingContentChange,
+  onEditMessage,
+  onSaveEdit,
+  onCancelEdit,
+  onDeleteMessage,
+  onToggleReaction,
+  replyingTo,
+  onStartReply,
+  onCancelReply,
+  onForward,
 }: ChatAreaProps) {
   const { t } = useTranslation(["messenger", "common"])
   const navigate = useNavigate()
@@ -90,9 +152,9 @@ export function ChatArea({
   // via useMessenger().getTypingUsersForChat (MessengerContext). No backend
   // changes needed; typing events flow through ws-hub presence subscription
   // already (W134+ infra).
-  const { getTypingUsersForChat } = useMessenger()
+  const { getTypingUsersForChat, sendTyping } = useMessenger()
   const typingUsers = selectedChatId ? getTypingUsersForChat(selectedChatId) : []
-  const prefersReducedMotion = useReducedMotion() ?? false
+  const prefersReducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)")
 
   // Wave 183 SW3 — cancel rAF on unmount/re-fire to prevent focus attempts
   // on a detached DOM node (memory leak + console error potential when the
@@ -133,7 +195,7 @@ export function ChatArea({
                 <div className="flex items-center gap-3">
                   {isMobile && (
                     <m.button
-                      whileTap={{ scale: 0.9 }}
+                      whileTap={prefersReducedMotion ? undefined : { scale: 0.9 }}
                       onClick={() => navigate({ to: "/messenger" })}
                       className="-ml-1 rounded-full p-1.5 transition-colors hover:bg-(--bg-surface-hover)/(--opacity-medium)"
                     >
@@ -141,54 +203,73 @@ export function ChatArea({
                     </m.button>
                   )}
                   <m.button
-                    whileHover={{ scale: 1.02 }}
-                    whileTap={{ scale: 0.98 }}
+                    whileHover={prefersReducedMotion ? undefined : { scale: 1.02 }}
+                    whileTap={prefersReducedMotion ? undefined : { scale: 0.98 }}
                     className="flex cursor-pointer items-center gap-3 border-none bg-transparent text-left outline-none"
-                    onClick={handleViewProfile}
+                    onClick={() =>
+                      activeChatDisplay?.isGroup ? onOpenGroupInfo?.() : handleViewProfile()
+                    }
                   >
                     <div className="relative">
-                      <SmartImage
-                        srcRaw={
-                          getOtherParticipant(activeChat)?.avatar_url || AVATAR_PLACEHOLDER_URL
-                        }
-                        fallback={AVATAR_PLACEHOLDER_URL}
-                        alt={getOtherParticipant(activeChat)?.full_name || ""}
-                        className="size-11 rounded-full border-2 border-(--glass-border-subtle) object-cover"
-                      />
-                      {presenceMap[getOtherParticipant(activeChat)?.id ?? ""]?.active && (
-                        <span
-                          className="messenger-online-indicator absolute bottom-0 right-0 size-3"
-                          aria-hidden="true"
-                        />
+                      {/* Wave 211 G4 — group header: the GroupAvatar Users glyph +
+                          "{n} members" (no per-user photo, no presence). DM header:
+                          the peer photo + the Wave 202 SW5 pulsing presence ring
+                          (ONE infinite animation, only on the open conversation —
+                          ContactList rows keep the static dot). */}
+                      {activeChatDisplay?.isGroup ? (
+                        <GroupAvatar className="size-11" iconSize={20} />
+                      ) : (
+                        <>
+                          <SmartImage
+                            srcRaw={
+                              getOtherParticipant(activeChat)?.avatar_url || AVATAR_PLACEHOLDER_URL
+                            }
+                            fallback={AVATAR_PLACEHOLDER_URL}
+                            alt={getOtherParticipant(activeChat)?.full_name || ""}
+                            className="size-11 rounded-full border-2 border-(--glass-border-subtle) object-cover"
+                          />
+                          {presenceMap[getOtherParticipant(activeChat)?.id ?? ""]?.active && (
+                            <span
+                              className="messenger-online-pulse absolute bottom-0 right-0"
+                              aria-hidden="true"
+                            />
+                          )}
+                        </>
                       )}
                     </div>
                     <div>
                       <h2 className="sf-pro text-lg font-bold leading-tight">
-                        {getOtherParticipant(activeChat)?.full_name}
+                        {activeChatDisplay?.name ?? getOtherParticipant(activeChat)?.full_name}
                       </h2>
-                      <AnimatePresence mode="wait">
-                        {presenceMap[getOtherParticipant(activeChat)?.id ?? ""]?.active ? (
-                          <m.p
-                            key="online"
-                            initial={{ opacity: 0, y: 5 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            exit={{ opacity: 0, y: -5 }}
-                            className="text-xs font-semibold uppercase tracking-wider text-msg-online"
-                          >
-                            {t("messenger:online")}
-                          </m.p>
-                        ) : (
-                          <m.p
-                            key="offline"
-                            initial={{ opacity: 0, y: 5 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            exit={{ opacity: 0, y: -5 }}
-                            className="text-xs font-medium text-text-secondary"
-                          >
-                            {t("messenger:offline")}
-                          </m.p>
-                        )}
-                      </AnimatePresence>
+                      {activeChatDisplay?.isGroup ? (
+                        <p className="text-xs font-medium text-text-secondary">
+                          {t("messenger:group.members", { count: activeChatDisplay.memberCount })}
+                        </p>
+                      ) : (
+                        <AnimatePresence mode="wait">
+                          {presenceMap[getOtherParticipant(activeChat)?.id ?? ""]?.active ? (
+                            <m.p
+                              key="online"
+                              initial={{ opacity: 0, y: 5 }}
+                              animate={{ opacity: 1, y: 0 }}
+                              exit={{ opacity: 0, y: -5 }}
+                              className="text-xs font-semibold uppercase tracking-wider text-msg-online"
+                            >
+                              {t("messenger:online")}
+                            </m.p>
+                          ) : (
+                            <m.p
+                              key="offline"
+                              initial={{ opacity: 0, y: 5 }}
+                              animate={{ opacity: 1, y: 0 }}
+                              exit={{ opacity: 0, y: -5 }}
+                              className="text-xs font-medium text-text-secondary"
+                            >
+                              {t("messenger:offline")}
+                            </m.p>
+                          )}
+                        </AnimatePresence>
+                      )}
                     </div>
                   </m.button>
                 </div>
@@ -196,8 +277,8 @@ export function ChatArea({
                 <div className="flex items-center gap-1.5">
                   <m.button
                     id="chat-search-toggle"
-                    whileHover={{ scale: 1.05 }}
-                    whileTap={{ scale: 0.95 }}
+                    whileHover={prefersReducedMotion ? undefined : { scale: 1.05 }}
+                    whileTap={prefersReducedMotion ? undefined : { scale: 0.95 }}
                     onClick={() => setShowSearchInChat(true)}
                     className="rounded-full p-2.5 transition-colors hover:bg-(--bg-surface-hover)/(--opacity-medium)"
                   >
@@ -206,8 +287,8 @@ export function ChatArea({
                   <div className="relative">
                     <m.button
                       id="chat-menu-toggle"
-                      whileHover={{ scale: 1.05 }}
-                      whileTap={{ scale: 0.95 }}
+                      whileHover={prefersReducedMotion ? undefined : { scale: 1.05 }}
+                      whileTap={prefersReducedMotion ? undefined : { scale: 0.95 }}
                       onClick={() => setShowChatMenu(!showChatMenu)}
                       className={cn(
                         "rounded-full p-2.5 transition-colors",
@@ -318,15 +399,34 @@ export function ChatArea({
               mounted (showSearchInChat stays true) so the user can type a
               new query immediately — matches W183 SW1 ContactList pattern. */}
           <ChatWindow
+            key={selectedChatId}
+            chatId={selectedChatId ?? undefined}
             messages={messages}
             isLoading={messagesLoading}
             isError={messagesError}
             onRetry={onRetryMessages}
             searchQuery={showSearchInChat ? searchQuery : ""}
             onClearSearch={() => setSearchQuery("")}
+            editingMessageId={editingMessageId}
+            editingMessageContent={editingMessageContent}
+            onEditingContentChange={onEditingContentChange}
+            onEditMessage={onEditMessage}
+            onSaveEdit={onSaveEdit}
+            onCancelEdit={onCancelEdit}
+            onDeleteMessage={onDeleteMessage}
+            onToggleReaction={onToggleReaction}
+            onStartReply={onStartReply}
+            onForward={onForward}
           />
           <TypingIndicator users={typingUsers} prefersReducedMotion={prefersReducedMotion} />
-          <MessageInput onSend={handleSendMessage} />
+          <MessageInput
+            onSend={handleSendMessage}
+            replyingTo={replyingTo}
+            onCancelReply={onCancelReply}
+            onTyping={() => {
+              if (selectedChatId) sendTyping(selectedChatId)
+            }}
+          />
         </>
       ) : (
         <div

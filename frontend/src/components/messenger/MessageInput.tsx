@@ -1,5 +1,6 @@
-import React, { useEffect, useRef, useState } from "react"
-import { m, AnimatePresence, useReducedMotion } from "framer-motion"
+import { useEffect, useRef, useState, type ChangeEvent, type KeyboardEvent } from "react"
+import { m, AnimatePresence } from "framer-motion"
+import useMediaQuery from "@/hooks/useMediaQuery"
 import { useTranslation } from "react-i18next"
 import { X, FileText, Image as ImageIcon, File, Paperclip, Send } from "lucide-react"
 import { cn } from "@/utils/cn"
@@ -7,6 +8,16 @@ import SmartImage from "@/components/media/SmartImage"
 
 interface MessageInputProps {
   onSend: (text: string, files: File[]) => void
+  // Wave 207 — reply/quote compose chip. When set, a "Replying to {name}" chip
+  // + snippet + cancel-X renders above the input row. senderName + isMe resolve
+  // the author label ("You" vs name); onCancelReply clears the reply context.
+  // Optional so MessageInput renders standalone in tests/storybook.
+  replyingTo?: { senderName: string | null; isMe: boolean; text: string } | null
+  onCancelReply?: () => void
+  // Wave 207 — fire-and-forget typing signal, called on each keystroke. The hook
+  // throttles it to 500ms before POSTing /chats/{id}/typing. Optional so MessageInput
+  // renders standalone in tests/storybook.
+  onTyping?: () => void
 }
 
 // Wave 183 SW7 — extended selectedFiles tuple from {id, file} to
@@ -26,8 +37,34 @@ interface SelectedFile {
   previewUrl: string
 }
 
-export const MessageInput: React.FC<MessageInputProps> = ({ onSend }) => {
-  const { t } = useTranslation(["messenger"])
+// Wave 202 SW1 — hoisted from an inline render-time literal to a module-level
+// const so the array isn't reallocated each render (React Compiler memoizes the
+// component, but a stable module const is the codebase convention + removes the
+// per-render allocation). Labels stay i18n-driven via t(item.labelKey) at the
+// callsite; only the static {id, icon, labelKey, color} tuples are hoisted.
+const ATTACH_MENU_ITEMS = [
+  {
+    id: "photo",
+    icon: ImageIcon,
+    labelKey: "messenger:attachPhoto",
+    color: "text-(--primary-main) bg-(--primary-main)/(--opacity-subtle)",
+  },
+  {
+    id: "document",
+    icon: FileText,
+    labelKey: "messenger:attachDocument",
+    color: "text-(--success-text) bg-(--success-text)/(--opacity-subtle)",
+  },
+  {
+    id: "file",
+    icon: File,
+    labelKey: "messenger:attachFile",
+    color: "text-(--warning-text) bg-(--warning-text)/(--opacity-subtle)",
+  },
+] as const
+
+export function MessageInput({ onSend, replyingTo, onCancelReply, onTyping }: MessageInputProps) {
+  const { t } = useTranslation(["messenger", "common"])
   const [text, setText] = useState("")
   const [showAttachMenu, setShowAttachMenu] = useState(false)
   // Wave 182 SW2 — selectedFiles tracks each File with a stable UUID
@@ -55,7 +92,7 @@ export const MessageInput: React.FC<MessageInputProps> = ({ onSend }) => {
     }
   }, [])
   // Wave 181 SW3 — useReducedMotion guard for attach + send button micro-interactions.
-  const prefersReducedMotion = useReducedMotion() ?? false
+  const prefersReducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)")
   const attachHoverAnim = prefersReducedMotion ? undefined : { scale: 1.1 }
   const attachTapAnim = prefersReducedMotion ? undefined : { scale: 0.9 }
   const sendCanFire = text.trim().length > 0 || selectedFiles.length > 0
@@ -79,7 +116,7 @@ export const MessageInput: React.FC<MessageInputProps> = ({ onSend }) => {
     }
   }
 
-  const handleKeyDown = (event: React.KeyboardEvent) => {
+  const handleKeyDown = (event: KeyboardEvent) => {
     if (event.key === "Enter" && !event.shiftKey) {
       event.preventDefault()
       handleSend()
@@ -104,7 +141,7 @@ export const MessageInput: React.FC<MessageInputProps> = ({ onSend }) => {
     }
   }
 
-  const handleFileSelect = async (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileSelect = async (event: ChangeEvent<HTMLInputElement>) => {
     const files = event.target.files
     if (files && files.length > 0) {
       const filteredFiles = await Promise.all(
@@ -202,7 +239,7 @@ export const MessageInput: React.FC<MessageInputProps> = ({ onSend }) => {
               <button
                 type="button"
                 onClick={() => removeFile(id)}
-                className="absolute -top-1.5 -right-1.5 size-8 bg-(--error-text) text-[var(--text-inverse)] rounded-full flex items-center justify-center shadow-lg hover:bg-(--error-text)/(--opacity-hover) transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-violet-500) focus-visible:ring-offset-2 focus-visible:ring-offset-(--bg-surface) after:absolute after:inset-[-6px] after:content-['']"
+                className="absolute -top-1.5 -right-1.5 size-8 md:size-9 bg-(--error-text) text-[var(--text-inverse)] rounded-full flex items-center justify-center shadow-lg hover:bg-(--error-text)/(--opacity-hover) transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-violet-500) focus-visible:ring-offset-2 focus-visible:ring-offset-(--bg-surface) after:absolute after:inset-[-6px] after:content-['']"
                 aria-label={t("messenger:aria.removeAttachment")}
               >
                 <X size={14} strokeWidth={3} aria-hidden="true" />
@@ -211,6 +248,32 @@ export const MessageInput: React.FC<MessageInputProps> = ({ onSend }) => {
           ))}
         </div>
       )}
+      {/* Wave 207 — reply/quote compose chip. Renders above the input row when
+          the user is replying. Author label is "You" (replyingTo.isMe) or the
+          quoted sender name; the snippet is truncated. The X cancels (clears
+          the controller's replyingTo state). */}
+      {replyingTo ? (
+        <div className="mb-2 flex items-center gap-2 rounded-xl border-l-2 border-(--color-violet-500) bg-(--color-violet-500)/(--opacity-faint) px-3 py-2">
+          <div className="min-w-0 flex-1">
+            <p className="text-micro font-semibold text-(--brand-main)">
+              {t("messenger:replyingTo", {
+                name: replyingTo.isMe
+                  ? t("messenger:replyTo.you")
+                  : (replyingTo.senderName ?? t("messenger:replyTo.unknownSender")),
+              })}
+            </p>
+            <p className="truncate text-sm text-(--text-secondary)">{replyingTo.text}</p>
+          </div>
+          <button
+            type="button"
+            onClick={onCancelReply}
+            aria-label={t("common:buttons.cancel")}
+            className="flex min-h-[36px] min-w-[36px] shrink-0 items-center justify-center rounded-full text-(--text-secondary) transition-colors hover:bg-(--bg-surface-hover)/(--opacity-medium) hover:text-(--text-primary) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-violet-500)"
+          >
+            <X size={18} strokeWidth={2.5} aria-hidden="true" />
+          </button>
+        </div>
+      ) : null}
       <div className="flex items-end gap-2 bg-(--bg-surface-hover)/(--opacity-subtle) rounded-2xl border border-(--glass-border)/(--opacity-dim) p-2 focus-within:ring-4 focus-within:ring-(--brand-main)/(--opacity-faint) focus-within:border-(--brand-main)/(--opacity-dim) transition-all duration-base">
         <div className="relative">
           <m.button
@@ -242,28 +305,7 @@ export const MessageInput: React.FC<MessageInputProps> = ({ onSend }) => {
                 exit={{ opacity: 0, scale: 0.95, y: 10 }}
                 className="absolute bottom-full left-0 mb-4 py-2 min-w-(--min-w-column) bg-(--bg-surface)/(--opacity-heavy) backdrop-blur-2xl rounded-2xl border border-(--glass-border) shadow-premium overflow-hidden ring-1 ring-black/(--opacity-faint)"
               >
-                {(
-                  [
-                    {
-                      id: "photo",
-                      icon: ImageIcon,
-                      labelKey: "messenger:attachPhoto",
-                      color: "text-(--primary-main) bg-(--primary-main)/(--opacity-subtle)",
-                    },
-                    {
-                      id: "document",
-                      icon: FileText,
-                      labelKey: "messenger:attachDocument",
-                      color: "text-(--success-text) bg-(--success-text)/(--opacity-subtle)",
-                    },
-                    {
-                      id: "file",
-                      icon: File,
-                      labelKey: "messenger:attachFile",
-                      color: "text-(--warning-text) bg-(--warning-text)/(--opacity-subtle)",
-                    },
-                  ] as const
-                ).map((item) => (
+                {ATTACH_MENU_ITEMS.map((item) => (
                   <button
                     id={`chat-attach-type-${item.id}`}
                     key={item.id}
@@ -295,7 +337,10 @@ export const MessageInput: React.FC<MessageInputProps> = ({ onSend }) => {
         <textarea
           id="chat-message-input"
           value={text}
-          onChange={(e) => setText(e.target.value)}
+          onChange={(e) => {
+            setText(e.target.value)
+            onTyping?.()
+          }}
           onKeyDown={handleKeyDown}
           placeholder={t("messenger:typeMessage")}
           aria-label={t("messenger:typeMessage")}

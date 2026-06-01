@@ -26,8 +26,9 @@ if TYPE_CHECKING:
         MessageResponse,
         MessagesListOut,
     )
+    from app.schemas.dtos.chat import MessageReactionDTO
 
-from app.api.validation import ensure_exists, raise_forbidden
+from app.api.validation import ensure_exists, raise_forbidden, raise_not_found
 from app.api.ws.presence import build_presence_map
 from app.repositories.chat_repository import ChatRepository
 from app.schemas.chat import (
@@ -36,7 +37,37 @@ from app.schemas.chat import (
     MessageResponse,
     MessagesListOut,
     PresenceStatus,
+    ReactionAggregate,
+    ReactorOut,
+    ReadReceiptInfo,
+    ReplyPreview,
 )
+
+
+def _aggregate_reactions(
+    rows: list[MessageReactionDTO], current_user_id: uuid.UUID
+) -> list[ReactionAggregate]:
+    """Wave 206 — fold raw reaction rows into per-emoji aggregates.
+
+    Preserves first-seen emoji order. ``reacted_by_me`` is set when the requesting
+    user reacted with that emoji (server-computed here on the REST path; on the WS
+    delta-frame path the client derives it locally). Built via plain counters and
+    constructed at the end so it never mutates a (possibly frozen) pydantic model.
+    """
+    counts: dict[str, int] = {}
+    mine: set[str] = set()
+    order: list[str] = []
+    for r in rows:
+        if r.emoji not in counts:
+            counts[r.emoji] = 0
+            order.append(r.emoji)
+        counts[r.emoji] += 1
+        if r.user_id == current_user_id:
+            mine.add(r.emoji)
+    return [
+        ReactionAggregate(emoji=e, count=counts[e], reacted_by_me=(e in mine))
+        for e in order
+    ]
 
 
 class ChatQueryService:
@@ -86,6 +117,12 @@ class ChatQueryService:
             pre_responses.append(
                 ChatResponse(
                     id=chat.id,
+                    # Wave 209 G1 — group identity (chat is a ChatDTO). Passed
+                    # explicitly here; the model_dump spread below auto-carries
+                    # them onward (W203-SW8 5-site rule — do NOT re-pass there).
+                    chat_type=chat.chat_type,
+                    name=chat.name,
+                    created_by=chat.created_by,
                     participants=cast("list[ChatParticipant]", chat.participants),
                     last_message=cast("MessageResponse | None", last_message),
                     unread_count=data["unread_count"],
@@ -107,9 +144,20 @@ class ChatQueryService:
                     content=l_msg.content,
                     created_at=l_msg.created_at,
                     read_status=l_msg.read_status,
+                    read_at=l_msg.read_at,  # Wave 203 SW8 fix — was dropped (defaulted None)
+                    edited_at=l_msg.edited_at,  # Wave 205 SW4 — W203 SW8 gotcha
+                    deleted_at=l_msg.deleted_at,  # Wave 205 SW4 — W203 SW8 gotcha
+                    forwarded_from_name=l_msg.forwarded_from_name,  # Wave 211 — W203 SW8
                     sender=l_msg.sender,
                     attachments=l_msg.attachments,
                     sender_presence=presence_map.get(l_msg.sender_id),
+                    # Wave 206 — chat-list last-message preview is a lightweight
+                    # projection (no reaction selectinload); pills render only in the
+                    # message list (W203-SW8 two-site rule — explicit empty here).
+                    reactions=[],
+                    # Wave 207 — same lightweight projection: the chat-list quote
+                    # preview is omitted (explicit None per the two-site rule).
+                    reply_to=None,
                 )
 
             participant_status: dict[uuid.UUID, PresenceStatus] = {}
@@ -144,7 +192,11 @@ class ChatQueryService:
         if user.id not in participant_ids:
             raise_forbidden(locale, "errors.chat.not_participant")
 
-        unread_count = await self.repository.get_unread_count(chat_id, user.id)
+        # Wave 210 G2 — pass chat_type so a group's unread is the per-recipient
+        # ChatReadReceipt high-water-mark (DMs keep the read_status count).
+        unread_count = await self.repository.get_unread_count(
+            chat_id, user.id, chat.chat_type
+        )
         last_message = await self.repository.get_last_message(chat_id)
 
         presence_map = await build_presence_map(
@@ -154,14 +206,31 @@ class ChatQueryService:
             p.id: presence_map.get(p.id, PresenceStatus()) for p in chat.participants
         }
 
+        # Wave 210 G2 — per-member read map for the FE (group-only; a DM has no
+        # receipt rows). The FE folds these + live `read` frames into a "seen by"
+        # map. Gated on chat_type so DM detail-fetches skip the extra query.
+        receipt_rows = (
+            await self.repository.get_read_receipts(chat_id)
+            if chat.chat_type == "group"
+            else []
+        )
+
         return ChatResponse(
             id=chat.id,
+            # Wave 209 G1 — group identity (chat is a ChatDTO).
+            chat_type=chat.chat_type,
+            name=chat.name,
+            created_by=chat.created_by,
             participants=cast("list[ChatParticipant]", chat.participants),
             last_message=cast("MessageResponse | None", last_message),
             unread_count=unread_count,
             created_at=chat.created_at,
             updated_at=chat.updated_at,
             presence=participant_status,
+            read_receipts=[
+                ReadReceiptInfo(user_id=uid, last_read_at=ts)
+                for uid, ts in receipt_rows
+            ],
         )
 
     async def get_messages(
@@ -199,6 +268,10 @@ class ChatQueryService:
                 content=msg.content,
                 created_at=msg.created_at,
                 read_status=msg.read_status,
+                read_at=msg.read_at,  # Wave 203 SW8 fix — was dropped (defaulted None)
+                edited_at=msg.edited_at,  # Wave 205 SW4 — W203 SW8 gotcha
+                deleted_at=msg.deleted_at,  # Wave 205 SW4 — W203 SW8 gotcha
+                forwarded_from_name=msg.forwarded_from_name,  # Wave 211 — W203 SW8
                 # LOW-W19: sender is intentionally omitted here.  The message
                 # list query uses a lightweight projection that does not eagerly
                 # load the full sender relationship in order to avoid N+1 queries.
@@ -208,6 +281,12 @@ class ChatQueryService:
                 sender=None,
                 attachments=cast("list[AttachmentResponse]", msg.attachments),
                 sender_presence=presence_map.get(msg.sender_id),
+                # Wave 206 — aggregate the selectinload'd reaction rows; reacted_by_me
+                # is computed for the requesting user (W203-SW8 two-site rule).
+                reactions=_aggregate_reactions(msg.reactions, user.id),
+                # Wave 207 — flatten the selectinload'd replied_to into the lean
+                # quote preview (None when not a reply). W203-SW8 two-site rule.
+                reply_to=ReplyPreview.from_message(msg.replied_to),
             )
             for msg in messages
         ]
@@ -217,3 +296,45 @@ class ChatQueryService:
             has_more=has_more,
             next_cursor=next_cursor,
         )
+
+    async def get_reactors(
+        self,
+        chat_id: uuid.UUID,
+        message_id: uuid.UUID,
+        emoji: str,
+        user: User,
+        locale: str,
+    ) -> list[ReactorOut]:
+        """Wave 207 — list the users who reacted to a message with one emoji.
+
+        Powers the reactor-list "who reacted" popover (on-demand — reactor
+        identities are deliberately NOT bundled into get_messages). Authz mirrors
+        get_messages exactly (get_by_id → ensure_exists → participant check) for
+        in-service consistency. The message-in-chat guard (message_exists_in_chat →
+        404) stops a participant of one chat enumerating reactors of a message in
+        another chat by guessing its id. Maps the repo's User rows → ReactorOut:
+        full_name/avatar_url live on User.profile (a lazy="noload" relationship the
+        repo selectinloads), so they're read via the profile with a None-guard —
+        mirrors notification_service's ``sender.profile and …`` pattern; a user with
+        no profile row yields name/avatar = None.
+        """
+        chat = await self.repository.get_by_id(chat_id)
+        ensure_exists(chat, "chat", locale)
+        assert chat is not None  # noqa: S101
+
+        participant_ids = {p.id for p in chat.participants}
+        if user.id not in participant_ids:
+            raise_forbidden(locale, "errors.chat.not_participant")
+
+        if not await self.repository.message_exists_in_chat(message_id, chat_id):
+            raise_not_found("message", locale)
+
+        reactors = await self.repository.get_reactors(message_id, emoji)
+        return [
+            ReactorOut(
+                user_id=u.id,
+                name=(u.profile.full_name if u.profile else None),
+                avatar_url=(u.profile.avatar_url if u.profile else None),
+            )
+            for u in reactors
+        ]

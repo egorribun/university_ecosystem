@@ -112,6 +112,18 @@
       0 2px 8px color-mix(in srgb, black 3%, transparent),
       inset 0 1px 0 color-mix(in srgb, white 50%, transparent);
 
+    /* ── Attachment chip (file-link + icon container on SENT bubbles) ──
+       Wave 202 SW3: tokenizes the hardcoded `bg-white/(--opacity-subtle)`
+       ChatWindow used for the file-attachment chip. A low-opacity white veil
+       reads as a lighter elevated chip on the theme-independent violet
+       sent-bubble gradient — so NO `.dark` override is needed (the sent bubble
+       is violet in both themes). RECEIVED-bubble chips use the neutral
+       `--bg-surface-raised` instead: a white veil vanishes on the near-white
+       received bubble in light mode (the pre-W202 bug on the shared
+       file-icon container, which rendered on received bubbles too). */
+    --messenger-attachment-bg: color-mix(in srgb, white 14%, transparent);
+    --messenger-attachment-bg-hover: color-mix(in srgb, white 22%, transparent);
+
     /* ── Typing indicator ─────────────────────────── */
     --messenger-typing-bg: var(--messenger-bubble-received-bg);
     --messenger-typing-dot-color: color-mix(

@@ -319,6 +319,26 @@ TRANSLATIONS: Mapping[str, Mapping[str, str]] = {
         "ru": "Сообщение должно содержать текст или вложения",
         "en": "Message must contain text or attachments",
     },
+    "errors.chat.group_name_required": {
+        "ru": "Требуется название группы",
+        "en": "Group name is required",
+    },
+    "errors.chat.group_too_few_members": {
+        "ru": "В группе должно быть не менее 3 участников",
+        "en": "A group needs at least 3 members",
+    },
+    "errors.chat.group_too_many_members": {
+        "ru": "В группе не может быть более 100 участников",
+        "en": "A group cannot exceed 100 members",
+    },
+    "errors.chat.not_a_group": {
+        "ru": "Это действие доступно только в групповых чатах",
+        "en": "This action is only allowed in group chats",
+    },
+    "errors.chat.remove_forbidden": {
+        "ru": "Удалять других участников может только владелец группы",
+        "en": "Only the group owner can remove other members",
+    },
     "errors.files.unsupported_type": {
         "ru": "Неподдерживаемый тип файла",
         "en": "Unsupported media type",

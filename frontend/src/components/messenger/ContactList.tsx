@@ -1,4 +1,4 @@
-import { m, useReducedMotion } from "framer-motion"
+import { m } from "framer-motion"
 import {
   MessageCirclePlus,
   MessagesSquare,
@@ -8,9 +8,11 @@ import {
   X,
 } from "lucide-react"
 import { useTranslation } from "react-i18next"
+import useMediaQuery from "@/hooks/useMediaQuery"
 import { cn } from "@/utils/cn"
 import SmartImage from "@/components/media/SmartImage"
 import { AVATAR_PLACEHOLDER_URL } from "@/constants/placeholders"
+import { GroupAvatar } from "./GroupAvatar"
 import { Contact } from "./types"
 
 interface ContactListProps {
@@ -104,7 +106,7 @@ export function ContactList({
   onRetry,
 }: ContactListProps) {
   const { t } = useTranslation(["messenger"])
-  const prefersReducedMotion = useReducedMotion() ?? false
+  const prefersReducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)")
   const hoverAnim = prefersReducedMotion ? undefined : { x: 4 }
   const tapAnim = prefersReducedMotion ? undefined : { scale: 0.98 }
 
@@ -334,17 +336,25 @@ export function ContactList({
             )}
           >
             <div className="relative shrink-0">
-              <SmartImage
-                srcRaw={contact.avatar || AVATAR_PLACEHOLDER_URL}
-                fallback={AVATAR_PLACEHOLDER_URL}
-                alt={contact.name}
-                className="w-12 h-12 rounded-full object-cover shadow-sm"
-              />
-              {contact.online && (
-                <span
-                  className="messenger-online-indicator absolute bottom-0 right-0 w-3.5 h-3.5 border-2 border-(--bg-surface) dark:border-(--bg-page)"
-                  aria-hidden="true"
-                />
+              {/* Wave 211 G4 — group rows show the Users glyph (no per-user photo,
+                  no presence dot); DM rows keep the peer photo + online dot. */}
+              {contact.isGroup ? (
+                <GroupAvatar className="w-12 h-12" />
+              ) : (
+                <>
+                  <SmartImage
+                    srcRaw={contact.avatar || AVATAR_PLACEHOLDER_URL}
+                    fallback={AVATAR_PLACEHOLDER_URL}
+                    alt={contact.name}
+                    className="w-12 h-12 rounded-full object-cover shadow-sm"
+                  />
+                  {contact.online && (
+                    <span
+                      className="messenger-online-indicator absolute bottom-0 right-0 w-3.5 h-3.5 border-2 border-(--bg-surface) dark:border-(--bg-page)"
+                      aria-hidden="true"
+                    />
+                  )}
+                </>
               )}
             </div>
             <div className="flex-1 min-w-0">

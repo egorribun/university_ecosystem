@@ -65,12 +65,23 @@ def _mock_user(role: str = "student") -> MagicMock:
     return user
 
 
-def _mock_chat(owner_id: uuid.UUID, *participant_ids: uuid.UUID):
+def _mock_chat(
+    owner_id: uuid.UUID,
+    *participant_ids: uuid.UUID,
+    chat_type: str = "dm",
+    created_by: uuid.UUID | None = None,
+    name: str | None = None,
+):
     chat = MagicMock()
     chat.id = uuid.uuid4()
     chat.created_at = datetime.now(UTC)
     chat.updated_at = datetime.now(UTC)
     chat.messages = []
+    # Wave 209 G1 — explicit so MagicMock auto-attrs don't break the group authz
+    # gate (chat.chat_type) or the owner check (chat.created_by).
+    chat.chat_type = chat_type
+    chat.name = name
+    chat.created_by = created_by
     participants = []
     for pid in [owner_id, *participant_ids]:
         p = MagicMock()
@@ -257,6 +268,9 @@ class TestSendMessageSuccess:
                 "sender": None,
                 "attachments": [],
             }
+            mock_resp.replied_to = (
+                None  # Wave 207 — avoid truthy auto-mock in from_message
+            )
             return {m.id: mock_resp}
 
         uow.chats.get_last_messages = AsyncMock(side_effect=_get_last)
@@ -306,6 +320,9 @@ class TestSendMessageSuccess:
             "attachments": [],
         }
         cached_msg.sender_id = user.id
+        cached_msg.replied_to = (
+            None  # Wave 207 — avoid truthy auto-mock in from_message
+        )
         uow.chats.get_message_by_id = AsyncMock(return_value=cached_msg)
 
         dispatcher = ChatMessageDispatcher(
@@ -370,6 +387,7 @@ class TestSendMessageSuccess:
                 "sender": None,
                 "attachments": [],
             }
+            mr.replied_to = None  # Wave 207 — avoid truthy auto-mock in from_message
             return {m.id: mr}
 
         uow.chats.get_last_messages = AsyncMock(side_effect=_get_last)
@@ -402,17 +420,76 @@ class TestSendMessageSuccess:
 class TestMarkRead:
     @pytest.mark.asyncio
     async def test_mark_read_success(self):
+        # Wave 203 SW4 — mark_messages_read returns (read_at, affected); when
+        # affected > 0 a chat-level read receipt is broadcast to the other
+        # participant after commit.
+        uow = _mock_uow()
+        user = _mock_user()
+        chat = _mock_chat(user.id)
+        read_at = datetime.now(UTC)
+        uow.chats.get_by_id = AsyncMock(return_value=chat)
+        uow.chats.mark_messages_read = AsyncMock(return_value=(read_at, 2))
+
+        svc = ChatMaintenanceService(uow, _mock_attachment_service())
+        with patch(
+            "app.services.chat.command_service.ws_manager.broadcast_to_chat",
+            new=AsyncMock(),
+        ) as broadcast:
+            await svc.mark_read(chat.id, user, "en")
+
+        # Wave 210 G2 — chat_type is now threaded so groups mark-read via the
+        # per-recipient high-water-mark; a DM (_mock_chat default) passes "dm".
+        uow.chats.mark_messages_read.assert_called_once_with(chat.id, user.id, "dm")
+        uow.commit.assert_called_once()
+        broadcast.assert_awaited_once()
+        call = broadcast.await_args
+        assert call.args[0] == chat.id
+        frame = call.args[1]
+        assert frame["type"] == "read"
+        assert frame["chat_id"] == str(chat.id)
+        assert frame["user_id"] == str(user.id)
+        assert frame["read_at"] == read_at.isoformat()
+        assert call.kwargs["exclude_user_id"] == user.id
+
+    @pytest.mark.asyncio
+    async def test_mark_read_no_unread_skips_broadcast(self):
+        # affected == 0 (nothing new to mark) → no broadcast, no "Seen" churn.
         uow = _mock_uow()
         user = _mock_user()
         chat = _mock_chat(user.id)
         uow.chats.get_by_id = AsyncMock(return_value=chat)
-        uow.chats.mark_messages_read = AsyncMock()
+        uow.chats.mark_messages_read = AsyncMock(return_value=(datetime.now(UTC), 0))
 
         svc = ChatMaintenanceService(uow, _mock_attachment_service())
-        await svc.mark_read(chat.id, user, "en")
+        with patch(
+            "app.services.chat.command_service.ws_manager.broadcast_to_chat",
+            new=AsyncMock(),
+        ) as broadcast:
+            await svc.mark_read(chat.id, user, "en")
 
-        uow.chats.mark_messages_read.assert_called_once_with(chat.id, user.id)
+        uow.chats.mark_messages_read.assert_called_once_with(chat.id, user.id, "dm")
         uow.commit.assert_called_once()
+        broadcast.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_mark_read_group_passes_chat_type(self):
+        # Wave 210 G2 — a group chat threads chat_type="group" so the repo
+        # marks-read via the ChatReadReceipt high-water-mark, not read_status.
+        uow = _mock_uow()
+        user = _mock_user()
+        chat = _mock_chat(user.id, uuid.uuid4(), chat_type="group")
+        read_at = datetime.now(UTC)
+        uow.chats.get_by_id = AsyncMock(return_value=chat)
+        uow.chats.mark_messages_read = AsyncMock(return_value=(read_at, 1))
+
+        svc = ChatMaintenanceService(uow, _mock_attachment_service())
+        with patch(
+            "app.services.chat.command_service.ws_manager.broadcast_to_chat",
+            new=AsyncMock(),
+        ):
+            await svc.mark_read(chat.id, user, "en")
+
+        uow.chats.mark_messages_read.assert_called_once_with(chat.id, user.id, "group")
 
     @pytest.mark.asyncio
     async def test_mark_read_not_participant(self):
@@ -619,3 +696,137 @@ class TestDeleteChat:
 
         with pytest.raises(Exception):  # noqa: B017
             await svc.delete_chat(chat.id, user, "en")
+
+
+# ---------------------------------------------------------------------------
+# Group member management (Wave 209 G1)
+# ---------------------------------------------------------------------------
+
+
+_CACHE_MOD = "app.services.chat.command_service"
+
+
+def _patch_member_caches():
+    return (
+        patch(
+            f"{_CACHE_MOD}.invalidate_chat_participants_cache", new_callable=AsyncMock
+        ),
+        patch(
+            f"{_CACHE_MOD}.invalidate_presence_audience_cache", new_callable=AsyncMock
+        ),
+    )
+
+
+class TestGroupMemberManagement:
+    @pytest.mark.asyncio
+    async def test_add_participant_by_member_ok(self):
+        owner = _mock_user()
+        chat = _mock_chat(
+            owner.id, uuid.uuid4(), chat_type="group", created_by=owner.id
+        )
+        uow = _mock_uow()
+        uow.chats.get_by_id = AsyncMock(return_value=chat)
+        uow.chats.get_user = AsyncMock(return_value=_mock_user())
+        uow.chats.add_participant = AsyncMock(return_value=True)
+        svc = ChatMaintenanceService(uow, _mock_attachment_service())
+
+        p1, p2 = _patch_member_caches()
+        with p1, p2:
+            await svc.add_participant(chat.id, owner, uuid.uuid4(), "en")
+
+        uow.chats.add_participant.assert_awaited_once()
+        uow.commit.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_add_participant_non_participant_forbidden(self):
+        owner = _mock_user()
+        outsider = _mock_user()
+        chat = _mock_chat(owner.id, chat_type="group", created_by=owner.id)
+        uow = _mock_uow()
+        uow.chats.get_by_id = AsyncMock(return_value=chat)
+        uow.chats.add_participant = AsyncMock()
+        svc = ChatMaintenanceService(uow, _mock_attachment_service())
+
+        with pytest.raises(Exception):  # noqa: B017
+            await svc.add_participant(chat.id, outsider, uuid.uuid4(), "en")
+        uow.chats.add_participant.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_add_participant_on_dm_rejected(self):
+        owner = _mock_user()
+        chat = _mock_chat(owner.id, uuid.uuid4(), chat_type="dm")
+        uow = _mock_uow()
+        uow.chats.get_by_id = AsyncMock(return_value=chat)
+        uow.chats.add_participant = AsyncMock()
+        svc = ChatMaintenanceService(uow, _mock_attachment_service())
+
+        with pytest.raises(Exception):  # noqa: B017
+            await svc.add_participant(chat.id, owner, uuid.uuid4(), "en")
+        uow.chats.add_participant.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_remove_participant_self_leave_ok(self):
+        owner = _mock_user()
+        member = _mock_user()
+        chat = _mock_chat(owner.id, member.id, chat_type="group", created_by=owner.id)
+        uow = _mock_uow()
+        uow.chats.get_by_id = AsyncMock(return_value=chat)
+        uow.chats.remove_participant = AsyncMock(return_value=1)
+        svc = ChatMaintenanceService(uow, _mock_attachment_service())
+
+        p1, p2 = _patch_member_caches()
+        with p1, p2:
+            await svc.remove_participant(chat.id, member, member.id, "en")
+
+        uow.chats.remove_participant.assert_awaited_once()
+        uow.commit.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_remove_other_by_non_owner_forbidden(self):
+        owner = _mock_user()
+        member1 = _mock_user()
+        member2_id = uuid.uuid4()
+        chat = _mock_chat(
+            owner.id, member1.id, member2_id, chat_type="group", created_by=owner.id
+        )
+        uow = _mock_uow()
+        uow.chats.get_by_id = AsyncMock(return_value=chat)
+        uow.chats.remove_participant = AsyncMock()
+        svc = ChatMaintenanceService(uow, _mock_attachment_service())
+
+        with pytest.raises(Exception):  # noqa: B017
+            await svc.remove_participant(chat.id, member1, member2_id, "en")
+        uow.chats.remove_participant.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_remove_member_by_owner_ok(self):
+        owner = _mock_user()
+        member_id = uuid.uuid4()
+        chat = _mock_chat(owner.id, member_id, chat_type="group", created_by=owner.id)
+        uow = _mock_uow()
+        uow.chats.get_by_id = AsyncMock(return_value=chat)
+        uow.chats.remove_participant = AsyncMock(return_value=1)
+        svc = ChatMaintenanceService(uow, _mock_attachment_service())
+
+        p1, p2 = _patch_member_caches()
+        with p1, p2:
+            await svc.remove_participant(chat.id, owner, member_id, "en")
+
+        uow.chats.remove_participant.assert_awaited_once()
+        uow.commit.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_rename_by_member_ok(self):
+        owner = _mock_user()
+        chat = _mock_chat(
+            owner.id, uuid.uuid4(), chat_type="group", created_by=owner.id
+        )
+        uow = _mock_uow()
+        uow.chats.get_by_id = AsyncMock(return_value=chat)
+        uow.chats.rename_chat = AsyncMock(return_value=1)
+        svc = ChatMaintenanceService(uow, _mock_attachment_service())
+
+        await svc.rename_chat(chat.id, owner, "Renamed Group", "en")
+
+        uow.chats.rename_chat.assert_awaited_once_with(chat.id, "Renamed Group")
+        uow.commit.assert_awaited_once()

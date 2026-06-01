@@ -14,7 +14,6 @@ import { EventsShortcutsOverlay } from "./components/EventsShortcutsOverlay"
 import { EventsBackdrop } from "@/components/events/EventsBackdrop"
 import { inferEventCategory, type EventCategory } from "./categories"
 import { useEventsKeyboardNav } from "@/hooks/useEventsKeyboardNav"
-import { useReducedMotion } from "framer-motion"
 import useMediaQuery from "@/hooks/useMediaQuery"
 import { breakpoints } from "@/theme/tokens"
 import type { EventDateRange, EventSortMode, EventTabKey } from "./types"
@@ -62,7 +61,7 @@ export const EventsFeature = () => {
   const { language } = useLanguage()
   const queryClient = useQueryClient()
   const isOnline = useOnlineStatus()
-  const prefersReducedMotion = useReducedMotion() ?? false
+  const prefersReducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)")
   const isNarrow = useMediaQuery(`(max-width: ${breakpoints.content})`)
 
   /* ── URL-synced state ── */

@@ -30,6 +30,7 @@ export default defineConfig({
         "src/tests/**/*",
         "src/**/__tests__/**/*",
         "src/**/*.test.{ts,tsx}",
+        "src/**/*.stories.{ts,tsx}",
         "src/setupTests.ts",
         "src/routeTree.gen.ts",
         "src/api/generated/**/*",

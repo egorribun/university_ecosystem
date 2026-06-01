@@ -67,155 +67,25 @@ class TestDispatchPing:
 
 
 # ---------------------------------------------------------------------------
-# typing handler
-# ---------------------------------------------------------------------------
-
-
-class TestDispatchTyping:
-    @pytest.mark.asyncio
-    async def test_typing_broadcasts_to_chat(
-        self, ws_dispatcher, mock_websocket, mock_user, mock_conn_manager
-    ):
-        chat_id = uuid.uuid4()
-        mock_repo = MagicMock()
-        mock_repo.check_participant = AsyncMock(return_value=True)
-
-        @asynccontextmanager
-        async def fake_session():
-            yield MagicMock()
-
-        with (
-            patch("app.api.ws.dispatcher.async_session", fake_session),
-            patch("app.api.ws.dispatcher.ChatRepository", return_value=mock_repo),
-        ):
-            await ws_dispatcher.dispatch(
-                mock_websocket,
-                mock_user,
-                "test-jti",
-                {"type": "typing", "chat_id": str(chat_id)},
-            )
-
-        mock_conn_manager.broadcast_to_chat.assert_called_once()
-        call_args = mock_conn_manager.broadcast_to_chat.call_args
-        assert call_args[0][0] == chat_id
-        # exclude_user_id should be the sender
-        assert call_args[1].get("exclude_user_id") == mock_user.id
-
-    @pytest.mark.asyncio
-    async def test_typing_non_participant_denied(
-        self, ws_dispatcher, mock_websocket, mock_user, mock_conn_manager
-    ):
-        chat_id = uuid.uuid4()
-        mock_repo = MagicMock()
-        mock_repo.check_participant = AsyncMock(return_value=False)
-
-        @asynccontextmanager
-        async def fake_session():
-            yield MagicMock()
-
-        with (
-            patch("app.api.ws.dispatcher.async_session", fake_session),
-            patch("app.api.ws.dispatcher.ChatRepository", return_value=mock_repo),
-        ):
-            await ws_dispatcher.dispatch(
-                mock_websocket,
-                mock_user,
-                "test-jti",
-                {"type": "typing", "chat_id": str(chat_id)},
-            )
-
-        mock_websocket.send_json.assert_called_once()
-        msg = mock_websocket.send_json.call_args[0][0]
-        assert msg["type"] == "error"
-        assert "Access denied" in msg["message"]
-
-    @pytest.mark.asyncio
-    async def test_typing_invalid_chat_id(
-        self, ws_dispatcher, mock_websocket, mock_user, mock_conn_manager
-    ):
-        await ws_dispatcher.dispatch(
-            mock_websocket,
-            mock_user,
-            "test-jti",
-            {"type": "typing", "chat_id": "not-a-uuid"},
-        )
-
-        mock_websocket.send_json.assert_called_once()
-        msg = mock_websocket.send_json.call_args[0][0]
-        assert msg["type"] == "error"
-        assert "Invalid chat_id" in msg["message"]
-
-    @pytest.mark.asyncio
-    async def test_typing_no_chat_id(
-        self, ws_dispatcher, mock_websocket, mock_user, mock_conn_manager
-    ):
-        """Missing chat_id is silently ignored."""
-        await ws_dispatcher.dispatch(
-            mock_websocket,
-            mock_user,
-            "test-jti",
-            {"type": "typing"},
-        )
-
-        # No error, no broadcast
-        mock_websocket.send_json.assert_not_called()
-        mock_conn_manager.broadcast_to_chat.assert_not_called()
-
-    @pytest.mark.asyncio
-    async def test_typing_user_without_profile(
-        self, ws_dispatcher, mock_websocket, mock_conn_manager
-    ):
-        """User without profile uses email as user_name."""
-        user = MagicMock()
-        user.id = uuid.uuid4()
-        user.email = "noname@example.com"
-        user.profile = None
-
-        chat_id = uuid.uuid4()
-        mock_repo = MagicMock()
-        mock_repo.check_participant = AsyncMock(return_value=True)
-
-        @asynccontextmanager
-        async def fake_session():
-            yield MagicMock()
-
-        with (
-            patch("app.api.ws.dispatcher.async_session", fake_session),
-            patch("app.api.ws.dispatcher.ChatRepository", return_value=mock_repo),
-        ):
-            await ws_dispatcher.dispatch(
-                mock_websocket,
-                user,
-                "test-jti",
-                {"type": "typing", "chat_id": str(chat_id)},
-            )
-
-        broadcast_data = mock_conn_manager.broadcast_to_chat.call_args[0][1]
-        assert broadcast_data["user_name"] == user.email
-
-
-# ---------------------------------------------------------------------------
 # read handler
 # ---------------------------------------------------------------------------
 
 
 class TestDispatchRead:
     @pytest.mark.asyncio
-    async def test_read_marks_message_and_notifies_sender(
+    async def test_read_marks_chat_and_broadcasts(
         self, ws_dispatcher, mock_websocket, mock_user, mock_conn_manager
     ):
+        # Wave 203 SW4 — chat-level: bulk-mark via mark_messages_read, then
+        # broadcast a chat-level read frame to the other participant.
         chat_id = str(uuid.uuid4())
-        message_id = str(uuid.uuid4())
-        sender_id = uuid.uuid4()
-
-        mock_msg = MagicMock()
-        mock_msg.chat_id = chat_id
-        mock_msg.sender_id = sender_id
+        read_at = datetime.now(UTC)
 
         mock_repo = MagicMock()
         mock_repo.check_participant = AsyncMock(return_value=True)
-        mock_repo.get_message_by_id = AsyncMock(return_value=mock_msg)
-        mock_repo.mark_single_message_read = AsyncMock()
+        # Wave 210 G2 — the handler fetches chat_type to branch DM vs group.
+        mock_repo.get_chat_type = AsyncMock(return_value="dm")
+        mock_repo.mark_messages_read = AsyncMock(return_value=(read_at, 2))
 
         mock_session = AsyncMock()
 
@@ -231,19 +101,28 @@ class TestDispatchRead:
                 mock_websocket,
                 mock_user,
                 "test-jti",
-                {"type": "read", "chat_id": chat_id, "message_id": message_id},
+                {"type": "read", "chat_id": chat_id},
             )
 
-        mock_repo.mark_single_message_read.assert_called_once_with(message_id)
+        mock_repo.mark_messages_read.assert_called_once_with(
+            uuid.UUID(chat_id), mock_user.id, "dm"
+        )
         mock_session.commit.assert_called_once()
-        mock_conn_manager.send_to_user.assert_called_once()
+        mock_conn_manager.broadcast_to_chat.assert_called_once()
+        call = mock_conn_manager.broadcast_to_chat.call_args
+        assert call.args[0] == uuid.UUID(chat_id)
+        frame = call.args[1]
+        assert frame["type"] == "read"
+        assert frame["chat_id"] == chat_id
+        assert frame["user_id"] == str(mock_user.id)
+        assert frame["read_at"] == read_at.isoformat()
+        assert call.kwargs["exclude_user_id"] == mock_user.id
 
     @pytest.mark.asyncio
     async def test_read_non_participant_denied(
         self, ws_dispatcher, mock_websocket, mock_user, mock_conn_manager
     ):
         chat_id = str(uuid.uuid4())
-        message_id = str(uuid.uuid4())
 
         mock_repo = MagicMock()
         mock_repo.check_participant = AsyncMock(return_value=False)
@@ -260,32 +139,37 @@ class TestDispatchRead:
                 mock_websocket,
                 mock_user,
                 "test-jti",
-                {"type": "read", "chat_id": chat_id, "message_id": message_id},
+                {"type": "read", "chat_id": chat_id},
             )
 
         mock_websocket.send_json.assert_called_once()
         msg = mock_websocket.send_json.call_args[0][0]
         assert msg["type"] == "error"
+        mock_conn_manager.broadcast_to_chat.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_read_own_message_skipped(
+    async def test_read_no_unread_skips_broadcast(
         self, ws_dispatcher, mock_websocket, mock_user, mock_conn_manager
     ):
-        """Reading own message does not mark as read or notify."""
-        chat_id = str(uuid.uuid4())
-        message_id = str(uuid.uuid4())
+        """When nothing new is marked read (affected == 0), no receipt is sent.
 
-        mock_msg = MagicMock()
-        mock_msg.chat_id = chat_id
-        mock_msg.sender_id = mock_user.id  # sender is same as reader
+        Wave 203 SW4 — the per-message "own message" guard is now the SQL filter
+        (sender_id != user_id) inside mark_messages_read, so the handler simply
+        skips the broadcast when affected == 0.
+        """
+        chat_id = str(uuid.uuid4())
 
         mock_repo = MagicMock()
         mock_repo.check_participant = AsyncMock(return_value=True)
-        mock_repo.get_message_by_id = AsyncMock(return_value=mock_msg)
+        # Wave 210 G2 — the handler awaits get_chat_type before mark_messages_read.
+        mock_repo.get_chat_type = AsyncMock(return_value="dm")
+        mock_repo.mark_messages_read = AsyncMock(return_value=(datetime.now(UTC), 0))
+
+        mock_session = AsyncMock()
 
         @asynccontextmanager
         async def fake_session():
-            yield AsyncMock()
+            yield mock_session
 
         with (
             patch("app.api.ws.dispatcher.async_session", fake_session),
@@ -295,17 +179,18 @@ class TestDispatchRead:
                 mock_websocket,
                 mock_user,
                 "test-jti",
-                {"type": "read", "chat_id": chat_id, "message_id": message_id},
+                {"type": "read", "chat_id": chat_id},
             )
 
-        mock_repo.mark_single_message_read.assert_not_called()
-        mock_conn_manager.send_to_user.assert_not_called()
+        mock_repo.mark_messages_read.assert_called_once()
+        mock_session.commit.assert_called_once()
+        mock_conn_manager.broadcast_to_chat.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_read_missing_ids(
         self, ws_dispatcher, mock_websocket, mock_user, mock_conn_manager
     ):
-        """Missing chat_id or message_id is silently ignored."""
+        """Missing chat_id is silently ignored (no-op, no error frame)."""
         await ws_dispatcher.dispatch(
             mock_websocket,
             mock_user,
@@ -313,35 +198,30 @@ class TestDispatchRead:
             {"type": "read"},
         )
         mock_websocket.send_json.assert_not_called()
+        mock_conn_manager.broadcast_to_chat.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_read_message_not_found(
+    async def test_read_invalid_chat_id_format(
         self, ws_dispatcher, mock_websocket, mock_user, mock_conn_manager
     ):
-        """Non-existent message does not crash."""
-        chat_id = str(uuid.uuid4())
-        message_id = str(uuid.uuid4())
+        """A malformed chat_id is rejected with an error frame (no DB work).
 
-        mock_repo = MagicMock()
-        mock_repo.check_participant = AsyncMock(return_value=True)
-        mock_repo.get_message_by_id = AsyncMock(return_value=None)
+        Wave 203 SW4 — the chat-level handler coerces chat_id to UUID up-front
+        (mirroring the typing handler); an invalid value short-circuits before
+        any session/repo call.
+        """
+        await ws_dispatcher.dispatch(
+            mock_websocket,
+            mock_user,
+            "test-jti",
+            {"type": "read", "chat_id": "not-a-uuid"},
+        )
 
-        @asynccontextmanager
-        async def fake_session():
-            yield AsyncMock()
-
-        with (
-            patch("app.api.ws.dispatcher.async_session", fake_session),
-            patch("app.api.ws.dispatcher.ChatRepository", return_value=mock_repo),
-        ):
-            await ws_dispatcher.dispatch(
-                mock_websocket,
-                mock_user,
-                "test-jti",
-                {"type": "read", "chat_id": chat_id, "message_id": message_id},
-            )
-
-        mock_conn_manager.send_to_user.assert_not_called()
+        mock_websocket.send_json.assert_called_once()
+        msg = mock_websocket.send_json.call_args[0][0]
+        assert msg["type"] == "error"
+        assert "Invalid chat_id" in msg["message"]
+        mock_conn_manager.broadcast_to_chat.assert_not_called()
 
 
 # ---------------------------------------------------------------------------

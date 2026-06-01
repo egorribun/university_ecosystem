@@ -14,6 +14,14 @@
   "typing": "{{name}} печатает...",
   "typingMultiple": "{{count}} человек(а) печатают...",
   "isTyping": "Печатает",
+  "seen": "Просмотрено · {{time}}",
+  "edited": "(изменено)",
+  "editMessage": "Изменить сообщение",
+  "deleteMessage": "Удалить сообщение",
+  "messageDeleted": "Сообщение удалено",
+  "messageEditedAt": "Изменено {{time}}",
+  "deleteMessageTitle": "Удалить сообщение",
+  "confirmDeleteMessage": "Удалить это сообщение для всех?",
   "attachPhoto": "Фото",
   "attachDocument": "Документ",
   "attachFile": "Файл",
@@ -66,7 +74,55 @@
     "failedToLoadMessagesHint": "Проверьте соединение и попробуйте снова.",
     "failedToLoadUsers": "Не удалось загрузить пользователей",
     "failedToLoadUsersHint": "Проверьте соединение и попробуйте снова.",
-    "retry": "Повторить"
+    "retry": "Повторить",
+    "minMembers": "Выберите минимум 2 человек"
+  },
+  "reactions": {
+    "add": "Добавить реакцию",
+    "react": "Отреагировать {{emoji}}",
+    "tally": "Переключить реакцию {{emoji}}, {{count}}",
+    "whoReacted": "Отреагировали {{emoji}}",
+    "reactorsLoading": "Загрузка…",
+    "reactorsEmpty": "Пока никого"
+  },
+  "reply": "Ответить",
+  "replyingTo": "Ответ: {{name}}",
+  "replyTo": {
+    "you": "Вы",
+    "deletedOriginal": "Исходное сообщение удалено",
+    "unknownSender": "Неизвестно"
+  },
+  "forward": "Переслать",
+  "forwardedFrom": "Переслано от {{name}}",
+  "forwardTo": "Переслать в…",
+  "forwardNoChats": "Нет чатов для пересылки",
+  "forwardCurrentChat": "Текущий",
+  "unknownUser": "Неизвестный пользователь",
+  "group": {
+    "untitled": "Групповой чат",
+    "members": "{{count}} участник(ов)"
+  },
+  "newGroup": "Новая группа",
+  "modeToggle": "Тип чата",
+  "modeDirect": "Личный",
+  "modeGroup": "Группа",
+  "groupName": "Название группы",
+  "selectMembers": "Выбранные участники",
+  "removeMember": "Удалить {{name}}",
+  "createGroup": "Создать группу",
+  "creatingGroup": "Создание…",
+  "renameGroup": "Переименовать группу",
+  "addMember": "Добавить участников",
+  "leaveGroup": "Покинуть группу",
+  "groupOwner": "Владелец",
+  "memberYou": "вы",
+  "removeMemberConfirm": "Удалить",
+  "removeMemberTitle": "Удалить участника?",
+  "confirmRemoveMember": "Удалить этого участника из группы?",
+  "confirmLeaveGroup": "Покинуть группу? Чтобы вернуться, вас нужно будет добавить снова.",
+  "dateDivider": {
+    "today": "Сегодня",
+    "yesterday": "Вчера"
   },
   "aria": {
     "messageList": "Сообщения чата",
@@ -76,6 +132,7 @@
     "unread": "{{count}} непрочитано",
     "messageSent": "Отправлено",
     "messageRead": "Прочитано получателем",
-    "connectionStatus": "Статус соединения"
+    "connectionStatus": "Статус соединения",
+    "jumpToLatest": "К последнему сообщению"
   }
 }

@@ -35,6 +35,7 @@ if TYPE_CHECKING:
 from app.api.validation import (
     ensure_exists,
     raise_forbidden,
+    raise_not_found,
     raise_validation_error,
 )
 from app.api.ws.connection_manager import manager as ws_manager
@@ -51,6 +52,7 @@ from app.schemas.chat import (
     ChatMaintenanceResult,
     MessageResponse,
     PresenceStatus,
+    ReplyPreview,
 )
 
 
@@ -119,6 +121,7 @@ class ChatMessageDispatcher:
         files: list[UploadFile],
         locale: str,
         idempotency_key: str | None = None,
+        reply_to_message_id: uuid.UUID | None = None,
     ) -> MessageResponse:
         """Send a new message to a chat.
 
@@ -157,8 +160,11 @@ class ChatMessageDispatcher:
                 else:
                     _full = await self.repository.get_message_by_id(_msg_id)
                     if _full is not None:
+                        # Wave 207 — exclude the raw replied_to DTO from the spread
+                        # (MessageResponse is extra="forbid"); inject the lean preview.
                         return MessageResponse(
-                            **_full.model_dump(),
+                            **_full.model_dump(exclude={"replied_to"}),
+                            reply_to=ReplyPreview.from_message(_full.replied_to),
                             sender_presence=PresenceStatus(
                                 active=ws_manager.is_online(_full.sender_id)
                             ),
@@ -173,6 +179,18 @@ class ChatMessageDispatcher:
         is_participant = await self.repository.check_participant(chat_id, user.id)
         if not is_participant:
             raise_forbidden(locale, "errors.chat.not_participant")
+
+        # Wave 207 — if this is a reply, the target must exist AND be in THIS chat.
+        # message_exists_in_chat checks both (id == … AND chat_id == …) via EXISTS,
+        # so a reply to a message in another chat — or a bogus id — 404s before any
+        # DB write. The 404-before-insert also avoids a mid-transaction FK error on
+        # the SET NULL self-FK.
+        if reply_to_message_id is not None:
+            target_in_chat = await self.repository.message_exists_in_chat(
+                reply_to_message_id, chat_id
+            )
+            if not target_in_chat:
+                raise_not_found("message", locale)
 
         uploads = files or []
         if len(uploads) > int(settings.chat_attachment_max_files):
@@ -282,6 +300,7 @@ class ChatMessageDispatcher:
                 chat_id=chat_id,
                 sender_id=user.id,
                 content=content,
+                reply_to_message_id=reply_to_message_id,  # Wave 207
             )
             await self.repository.create_message(message)
 
@@ -293,6 +312,14 @@ class ChatMessageDispatcher:
             # in capture_domain_events() scans only `new | dirty | deleted`, so any
             # event registered after that flush is silently dropped and never lands in
             # the `stored_events` (outbox) table.
+            #
+            # W205 SW-A: that premise was in fact FALSE here — repository.create_message()
+            # (above) ALREADY flushes the message, so by this point it is persistent
+            # (out of session.new), and record_event sets a non-mapped attr (no dirty
+            # mark), so capture missed it and the outbox stayed empty. The real fix is
+            # central (app/core/events.py): record_event now tracks the emitter on
+            # session.info so capture catches it regardless of flush ordering. This
+            # ordering is therefore no longer load-bearing, but is kept as defence.
             #
             # UUID7PrimaryKeyMixin uses a Python-side default (generate_uuid7), so
             # message.id is populated by the __init__ constructor call above — it is
@@ -358,15 +385,26 @@ class ChatMessageDispatcher:
                 content=message.content,
                 created_at=message.created_at,
                 read_status=message.read_status,
+                edited_at=message.edited_at,  # Wave 205 SW4 — W203 SW8 gotcha
+                deleted_at=message.deleted_at,  # Wave 205 SW4 — W203 SW8 gotcha
+                forwarded_from_name=message.forwarded_from_name,  # Wave 211 — W203 SW8
                 sender=message.sender,
                 attachments=cast("list[AttachmentResponse]", message.attachments),
                 sender_presence=PresenceStatus(
                     active=ws_manager.is_online(message.sender_id)
                 ),
+                # Wave 207 — degraded rare path (get_last_messages returned nothing);
+                # replied_to isn't loaded here, so the quote preview is omitted. The
+                # main + cache-hit paths carry it.
+                reply_to=None,
             )
         else:
             msg_data = MessageResponse(
-                **full_message.model_dump(),
+                # Wave 207 — exclude the raw replied_to DTO from the spread
+                # (MessageResponse is extra="forbid"); inject the lean preview built
+                # from the selectinload'd replied_to.
+                **full_message.model_dump(exclude={"replied_to"}),
+                reply_to=ReplyPreview.from_message(full_message.replied_to),
                 sender_presence=PresenceStatus(
                     active=ws_manager.is_online(message.sender_id)
                 ),
@@ -403,6 +441,161 @@ class ChatMessageDispatcher:
 
         return msg_data
 
+    async def forward_messages(
+        self,
+        dest_chat_id: uuid.UUID,
+        user: User,
+        source_chat_id: uuid.UUID,
+        message_ids: list[uuid.UUID],
+        locale: str,
+    ) -> list[MessageResponse]:
+        """Forward 1..N messages from a source chat into a destination chat (Wave 211).
+
+        Snapshot-copy model: each source message's content + attachments are COPIED
+        into a fresh message in the destination chat, plus a denormalized
+        ``forwarded_from_name`` "Forwarded from X" label. The source is NEVER
+        dereferenced cross-chat to render content — the forward is self-contained,
+        so a destination viewer with no rights in the source chat cannot see source
+        content. Reactions are NOT copied (they belong to the source's context).
+
+        Authorization is authz-first (W209 discipline):
+          1. dest exists + actor is a dest participant (can send here) — 404/403;
+          2. actor is a SOURCE participant (can read there) — 403 BEFORE any source
+             read, so a non-participant never learns whether a source id exists
+             (the cross-chat-leak gate);
+          3. each id belongs to the source chat — 404, validated for ALL ids before
+             any message is created (all-or-nothing, mirroring the W207 reply
+             404-before-insert, looped).
+
+        All N forwards + their attachment copies are written in ONE transaction; each
+        emits ``MessageSent`` so the existing outbox → broadcast (W204) → notification
+        (W210 group context) rail fans them out unchanged.
+        """
+        # Dedupe while preserving order (a client could repeat an id).
+        ordered_ids = list(dict.fromkeys(message_ids))
+
+        # 1) DEST existence + participant (send-side) — authz-first.
+        dest_chat = await self.repository.get_by_id(dest_chat_id)
+        ensure_exists(dest_chat, "chat", locale)
+        assert dest_chat is not None  # noqa: S101
+        if not await self.repository.check_participant(dest_chat_id, user.id):
+            raise_forbidden(locale, "errors.chat.not_participant")
+
+        # 2) SOURCE participant (read-side) — the cross-chat-leak gate. Checked
+        #    BEFORE any source message is read, so forwarding FROM a chat the actor
+        #    is not in returns 403 without revealing whether any source id exists.
+        if not await self.repository.check_participant(source_chat_id, user.id):
+            raise_forbidden(locale, "errors.chat.not_participant")
+
+        # 3) Each id must belong to the source chat — validate ALL before creating
+        #    ANY message (all-or-nothing). message_exists_in_chat is one EXISTS/id.
+        for mid in ordered_ids:
+            if not await self.repository.message_exists_in_chat(mid, source_chat_id):
+                raise_not_found("message", locale)
+
+        # Batched load of the source messages (sender + attachments selectinload'd).
+        sources = await self.repository.get_last_messages(ordered_ids)
+        if len(sources) != len(ordered_ids):
+            # Defensive TOCTOU guard — message_exists_in_chat validated each id
+            # above; a gap here would be a negligible same-session race. Fail
+            # before creating anything (all-or-nothing).
+            raise_not_found("message", locale)
+
+        # Resolve the ORIGINAL senders' display names for the "Forwarded from X"
+        # label. full_name lives on UserProfile, NOT the bare User selectinload'd
+        # into MessageDTO.sender (which yields full_name=None — the W207 SW5
+        # gotcha), so resolve it via a profile-loaded lookup. Batched: ONE SELECT
+        # for all distinct source senders, never an N+1.
+        sender_names = await self.repository.get_user_display_names(
+            list({src.sender_id for src in sources.values()})
+        )
+
+        now = datetime.now(UTC)
+        created: list[Message] = []
+        for mid in ordered_ids:
+            src = sources[mid]
+            message = Message(
+                chat_id=dest_chat_id,
+                sender_id=user.id,
+                content=src.content,
+                # Snapshot the ORIGINAL sender's name (the only forwarded-from datum
+                # the FE renders), resolved via the profile-loaded batch above. The
+                # audit-only *_id columns record provenance but are never serialized
+                # / dereferenced cross-chat (privacy).
+                forwarded_from_name=sender_names.get(src.sender_id),
+                forwarded_from_chat_id=source_chat_id,
+                forwarded_from_message_id=src.id,
+            )
+            await self.repository.create_message(message)
+            # Record the event right after the flush (see send_message ARCH-BE-01 /
+            # W205 SW-A): central capture tracks the emitter on session.info, so the
+            # outbox lands regardless of later autoflush ordering. sender = the
+            # FORWARDER, chat = the DEST — a forward is a normal new message.
+            cast(EventEmitterMixin, message).record_event(
+                MessageSent(
+                    message_id=message.id,
+                    chat_id=message.chat_id,
+                    sender_id=message.sender_id,
+                    content_preview=message.content[:50],
+                )
+            )
+            # Copy the source attachments — same blob url (no re-upload), fresh rows
+            # pointing at the new message. Makes the forward self-contained.
+            for att in src.attachments:
+                self.repository.add(
+                    Attachment(
+                        message=message,
+                        url=att.url,
+                        file_type=att.file_type,
+                        filename=att.filename,
+                        size=att.size,
+                    )
+                )
+            created.append(message)
+
+        # One timestamp bump (dest re-sorts to top) + one atomic commit for all N.
+        await self.repository.update_timestamp_by_id(dest_chat_id, now)
+        async with self.uow:
+            await self.uow.commit()
+
+        # Reload all created messages (attachments selectinload'd) for the response,
+        # preserving source order. forwarded_from_name auto-carries via model_dump;
+        # a forward is not a reply → reply_to=None. message.id is the identity-map
+        # PK (not expired on commit), so the reload-by-id is safe.
+        reloaded = await self.repository.get_last_messages([m.id for m in created])
+        responses: list[MessageResponse] = []
+        for message in created:
+            presence = PresenceStatus(active=ws_manager.is_online(user.id))
+            full = reloaded.get(message.id)
+            if full is not None:
+                responses.append(
+                    MessageResponse(
+                        **full.model_dump(exclude={"replied_to"}),
+                        reply_to=None,
+                        sender_presence=presence,
+                    )
+                )
+            else:
+                # Degraded rare path (reload returned nothing) — refresh the expired
+                # ORM object before reading scalar columns (mirrors send_message).
+                await self.session.refresh(message)
+                responses.append(
+                    MessageResponse(
+                        id=message.id,
+                        chat_id=message.chat_id,
+                        sender_id=message.sender_id,
+                        content=message.content,
+                        created_at=message.created_at,
+                        read_status=message.read_status,
+                        edited_at=message.edited_at,
+                        deleted_at=message.deleted_at,
+                        forwarded_from_name=message.forwarded_from_name,
+                        sender_presence=presence,
+                        reply_to=None,
+                    )
+                )
+        return responses
+
 
 class ChatMaintenanceService:
     """Chat maintenance commands (mark-read, clear-history, delete-chat).
@@ -429,7 +622,352 @@ class ChatMaintenanceService:
         if user.id not in participant_ids:
             raise_forbidden(locale, "errors.chat.not_participant")
 
-        await self.repository.mark_messages_read(chat_id, user.id)
+        # Wave 210 G2 — pass chat_type so groups mark-read via the per-recipient
+        # ChatReadReceipt high-water-mark (DMs keep Message.read_status).
+        read_at, affected = await self.repository.mark_messages_read(
+            chat_id, user.id, chat.chat_type
+        )
+        async with self.uow:
+            await self.uow.commit()
+
+        # Wave 203 SW4 — broadcast a chat-level read receipt so the other
+        # participant's sent bubbles flip to "seen" live. Ephemeral tier
+        # (inline ws_manager, like typing/presence) — NOT a domain event; a
+        # missed frame self-heals on the next message refetch (read_at is a
+        # persisted column). Gated on affected > 0 so repeated chat-opens with
+        # nothing new don't churn the sender's "Seen ·" timestamp. Broadcast
+        # AFTER commit so a sender that immediately refetches sees the persisted
+        # value (read-your-write safety).
+        if affected > 0:
+            await ws_manager.broadcast_to_chat(
+                chat_id,
+                {
+                    "type": "read",
+                    "chat_id": str(chat_id),
+                    "user_id": str(user.id),
+                    "read_at": read_at.isoformat(),
+                },
+                exclude_user_id=user.id,
+            )
+
+    async def edit_message(
+        self,
+        chat_id: uuid.UUID,
+        message_id: uuid.UUID,
+        user: User,
+        new_content: str,
+        locale: str,
+    ) -> None:
+        """Edit a message's content (author-only) and broadcast it live.
+
+        Wave 205 SW3 — copies the mark_read synchronous-broadcast pattern: participant
+        check → repo edit → commit → gated broadcast AFTER commit (read-your-write).
+        The repo's author-only WHERE means affected == 0 ⇒ not the author / missing /
+        already deleted ⇒ 404 (raised before commit; nothing to persist).
+        """
+        chat = await self.repository.get_by_id(chat_id)
+        ensure_exists(chat, "chat", locale)
+        assert chat is not None  # noqa: S101
+
+        participant_ids = {p.id for p in chat.participants}
+        if user.id not in participant_ids:
+            raise_forbidden(locale, "errors.chat.not_participant")
+
+        edited_at, affected = await self.repository.edit_message(
+            message_id, user.id, new_content
+        )
+        if affected == 0:
+            raise_not_found("message", locale)
+
+        async with self.uow:
+            await self.uow.commit()
+
+        # Wave 205 SW3 — broadcast message_edited SYNCHRONOUSLY after commit so the
+        # edit flips live via the W204 bridge. exclude_user_id is omitted (broadcast
+        # to all): the NATS mirror can't exclude per-recipient anyway, and the FE
+        # cache-update is idempotent — the author's echo merely reconciles its
+        # optimistic client-time edited_at to the authoritative server value. A missed
+        # frame self-heals on refetch (edited_at is a persisted column).
+        await ws_manager.broadcast_to_chat(
+            chat_id,
+            {
+                "type": "message_edited",
+                "message_id": str(message_id),
+                "chat_id": str(chat_id),
+                "content": new_content,
+                "edited_at": edited_at.isoformat() if edited_at else None,
+            },
+        )
+
+    async def soft_delete_message(
+        self,
+        chat_id: uuid.UUID,
+        message_id: uuid.UUID,
+        user: User,
+        locale: str,
+    ) -> None:
+        """Soft-delete a message (author-only) and broadcast the tombstone live.
+
+        Wave 205 SW3 — same synchronous-broadcast pattern as edit_message. The repo
+        clears content + stamps deleted_at (D1 tombstone); affected == 0 ⇒ 404.
+        """
+        chat = await self.repository.get_by_id(chat_id)
+        ensure_exists(chat, "chat", locale)
+        assert chat is not None  # noqa: S101
+
+        participant_ids = {p.id for p in chat.participants}
+        if user.id not in participant_ids:
+            raise_forbidden(locale, "errors.chat.not_participant")
+
+        deleted_at, affected = await self.repository.soft_delete_message(
+            message_id, user.id
+        )
+        if affected == 0:
+            raise_not_found("message", locale)
+
+        async with self.uow:
+            await self.uow.commit()
+
+        await ws_manager.broadcast_to_chat(
+            chat_id,
+            {
+                "type": "message_deleted",
+                "message_id": str(message_id),
+                "chat_id": str(chat_id),
+                "deleted_at": deleted_at.isoformat() if deleted_at else None,
+            },
+        )
+
+    async def add_reaction(
+        self,
+        chat_id: uuid.UUID,
+        message_id: uuid.UUID,
+        user: User,
+        emoji: str,
+        locale: str,
+    ) -> None:
+        """Add an emoji reaction (any participant, any message) and broadcast live.
+
+        Wave 206 — same synchronous-broadcast pattern as mark_read/edit. Reactions
+        are NOT author-gated, so a missing message can't surface as affected == 0;
+        an explicit message_exists_in_chat check raises 404 BEFORE the INSERT (also
+        avoids a mid-transaction FK IntegrityError on a bogus message_id). The
+        repo's idempotent ON CONFLICT DO NOTHING means a repeat reaction yields
+        is_new == False ⇒ no broadcast (no-op, 200).
+        """
+        chat = await self.repository.get_by_id(chat_id)
+        ensure_exists(chat, "chat", locale)
+        assert chat is not None  # noqa: S101
+
+        participant_ids = {p.id for p in chat.participants}
+        if user.id not in participant_ids:
+            raise_forbidden(locale, "errors.chat.not_participant")
+
+        if not await self.repository.message_exists_in_chat(message_id, chat_id):
+            raise_not_found("message", locale)
+
+        is_new = await self.repository.add_reaction(message_id, user.id, emoji)
+        async with self.uow:
+            await self.uow.commit()
+
+        # Wave 206 — DELTA frame (the W203 read-frame archetype): carries the actor
+        # + the change, NOT the resolved aggregate (reacted_by_me is per-viewer).
+        # Gated on is_new so a duplicate reaction doesn't double-count downstream.
+        # exclude_user_id excludes the actor from the in-process fan-out; the NATS
+        # mirror can't exclude per-recipient, so the FE self-echo guard
+        # (user_id === currentUserId → skip; the actor already patched
+        # optimistically) is the real protection. A missed/duplicate delta self-
+        # heals on the next GET /messages (the persisted aggregate is authoritative).
+        if is_new:
+            await ws_manager.broadcast_to_chat(
+                chat_id,
+                {
+                    "type": "reaction_changed",
+                    "chat_id": str(chat_id),
+                    "message_id": str(message_id),
+                    "user_id": str(user.id),
+                    "emoji": emoji,
+                    "action": "added",
+                },
+                exclude_user_id=user.id,
+            )
+
+    async def remove_reaction(
+        self,
+        chat_id: uuid.UUID,
+        message_id: uuid.UUID,
+        user: User,
+        emoji: str,
+        locale: str,
+    ) -> None:
+        """Remove an emoji reaction and broadcast the delta live.
+
+        Wave 206 — idempotent: removing a non-existent reaction is a benign no-op
+        (affected == 0 ⇒ no broadcast, 200; no existence 404 needed). Broadcast +
+        exclude_user_id semantics mirror add_reaction.
+        """
+        chat = await self.repository.get_by_id(chat_id)
+        ensure_exists(chat, "chat", locale)
+        assert chat is not None  # noqa: S101
+
+        participant_ids = {p.id for p in chat.participants}
+        if user.id not in participant_ids:
+            raise_forbidden(locale, "errors.chat.not_participant")
+
+        affected = await self.repository.remove_reaction(message_id, user.id, emoji)
+        async with self.uow:
+            await self.uow.commit()
+
+        if affected > 0:
+            await ws_manager.broadcast_to_chat(
+                chat_id,
+                {
+                    "type": "reaction_changed",
+                    "chat_id": str(chat_id),
+                    "message_id": str(message_id),
+                    "user_id": str(user.id),
+                    "emoji": emoji,
+                    "action": "removed",
+                },
+                exclude_user_id=user.id,
+            )
+
+    async def broadcast_typing(
+        self, chat_id: uuid.UUID, user: User, locale: str
+    ) -> None:
+        """Broadcast a 'typing' indicator to the OTHER chat participants (Wave 207).
+
+        The frontend WS connects to ws-hub, whose allowedMessageTypes drops "typing"
+        at its parse boundary (services/ws-hub client.go) — so a typing frame sent over
+        the socket goes nowhere. This REST endpoint does the participant authz +
+        broadcast the (now frontend-unreachable) in-process WS typing handler did
+        (app/api/ws/dispatcher.py): broadcast_to_chat → W204 bridge → ws-hub chat.*
+        fan-out → the other participants' live TypingIndicator. No DB write — typing is
+        ephemeral. check_participant (a single EXISTS) is the light authz for this
+        ~2/sec hot path; a non-participant (or unknown chat) → 403, no existence leak.
+        The user_name resolution + frame shape mirror dispatcher.py exactly (profile is
+        lazy="noload", so it falls back to the email when not eager-loaded).
+        """
+        if not await self.repository.check_participant(chat_id, user.id):
+            raise_forbidden(locale, "errors.chat.not_participant")
+
+        await ws_manager.broadcast_to_chat(
+            chat_id,
+            {
+                "type": "typing",
+                "chat_id": str(chat_id),
+                "user_id": str(user.id),
+                "user_name": getattr(user.profile, "full_name", None)
+                if getattr(user, "profile", None)
+                else str(user.email),
+            },
+            exclude_user_id=user.id,
+        )
+
+    def _require_group_participant(
+        self, chat: Any, user: User, locale: str
+    ) -> set[uuid.UUID]:
+        """Authz gate for group member-management (Wave 209 G1).
+
+        Authz-first: a non-participant gets 403 (no chat existence/type leak)
+        BEFORE the chat-type check; a DM then gets 400 not_a_group. Returns the
+        current (pre-change) participant id set for cache invalidation.
+        """
+        participant_ids = {p.id for p in chat.participants}
+        if user.id not in participant_ids:
+            raise_forbidden(locale, "errors.chat.not_participant")
+        if chat.chat_type != "group":
+            raise_validation_error("errors.chat.not_a_group", locale)
+        return participant_ids
+
+    async def add_participant(
+        self,
+        chat_id: uuid.UUID,
+        user: User,
+        new_user_id: uuid.UUID,
+        locale: str,
+    ) -> None:
+        """Add a member to a group (Wave 209 G1 — any participant may add).
+
+        After commit, invalidate the chat-participant cache + the new + existing
+        members' presence-audience caches — the SECURITY invariant: broadcast_to_chat
+        AND the ws-hub join-gate both read chat:{id}:participants, so a stale cache
+        would lock the new member out of live frames (or keep a removed one in). No
+        live roster frame is pushed (FE refetches ["chats"] after the 200 — G3 adds
+        member-change frames). add_participant is idempotent (added == False ⇒ no
+        membership change ⇒ skip the invalidation).
+        """
+        chat = await self.repository.get_by_id(chat_id)
+        ensure_exists(chat, "chat", locale)
+        assert chat is not None  # noqa: S101
+
+        participant_ids = self._require_group_participant(chat, user, locale)
+
+        target = await self.repository.get_user(new_user_id)
+        ensure_exists(target, "users", locale)
+
+        added = await self.repository.add_participant(chat_id, new_user_id)
+        async with self.uow:
+            await self.uow.commit()
+
+        if added:
+            await invalidate_chat_participants_cache(chat_id)
+            await invalidate_presence_audience_cache(new_user_id, *participant_ids)
+
+    async def remove_participant(
+        self,
+        chat_id: uuid.UUID,
+        user: User,
+        target_user_id: uuid.UUID,
+        locale: str,
+    ) -> None:
+        """Remove a member from a group (Wave 209 G1).
+
+        The owner (created_by) may remove anyone; any member may remove themselves
+        (leave); anyone else → 403 remove_forbidden. After commit, invalidate the
+        same caches as add (security invariant). Removing a non-member is a benign
+        no-op (affected == 0 ⇒ skip the invalidation).
+        """
+        chat = await self.repository.get_by_id(chat_id)
+        ensure_exists(chat, "chat", locale)
+        assert chat is not None  # noqa: S101
+
+        participant_ids = self._require_group_participant(chat, user, locale)
+
+        is_self_leave = target_user_id == user.id
+        is_owner = chat.created_by == user.id
+        if not (is_self_leave or is_owner):
+            raise_forbidden(locale, "errors.chat.remove_forbidden")
+
+        affected = await self.repository.remove_participant(chat_id, target_user_id)
+        async with self.uow:
+            await self.uow.commit()
+
+        if affected:
+            await invalidate_chat_participants_cache(chat_id)
+            await invalidate_presence_audience_cache(target_user_id, *participant_ids)
+
+    async def rename_chat(
+        self, chat_id: uuid.UUID, user: User, name: str, locale: str
+    ) -> None:
+        """Rename a group's display title (Wave 209 G1 — any participant may rename).
+
+        No cache invalidation — the rename changes only the display name, not the
+        roster (the participant cache holds ids). FE refetches the chat list. The
+        RenameChat schema enforces min_length=1, but a whitespace-only name passes
+        that and is blank after strip, so re-validate here.
+        """
+        chat = await self.repository.get_by_id(chat_id)
+        ensure_exists(chat, "chat", locale)
+        assert chat is not None  # noqa: S101
+
+        self._require_group_participant(chat, user, locale)
+
+        clean_name = name.strip()
+        if not clean_name:
+            raise_validation_error("errors.chat.group_name_required", locale)
+
+        await self.repository.rename_chat(chat_id, clean_name)
         async with self.uow:
             await self.uow.commit()
 

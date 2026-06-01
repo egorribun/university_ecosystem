@@ -1,11 +1,18 @@
-import { ChatArea, MessengerBackdrop, MessengerSidebar, NewChatModal } from "@/components/messenger"
+import {
+  ChatArea,
+  ForwardModal,
+  GroupInfoPanel,
+  MessengerBackdrop,
+  MessengerSidebar,
+  NewChatModal,
+} from "@/components/messenger"
 import { ProfileModal } from "@/components/messenger/ProfileModal"
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog"
 import { useMessenger } from "@/contexts/MessengerContext"
 import { useMessengerController } from "@/hooks/features/useMessengerController"
 import useMediaQuery from "@/hooks/useMediaQuery"
 import { breakpoints } from "@/theme/tokens"
-import { AnimatePresence, m, useReducedMotion } from "framer-motion"
+import { AnimatePresence, m } from "framer-motion"
 import { WifiOff } from "lucide-react"
 import { useTranslation } from "react-i18next"
 
@@ -27,6 +34,7 @@ export default function MessengerFeature() {
     // State
     selectedChatId,
     activeChat,
+    activeChatDisplay,
     isNewChatModalOpen,
     setIsNewChatModalOpen,
     showSearchInChat,
@@ -73,8 +81,47 @@ export default function MessengerFeature() {
     // Actions
     handleSendMessage,
     handleCreateChat,
+    handleCreateGroup,
+    isCreatingGroup,
+    currentUserId,
+    showGroupInfo,
+    setShowGroupInfo,
+    handleRenameGroup,
+    handleAddMember,
+    handleRemoveMember,
+    isRenamingGroup,
+    isAddingMember,
     handleClearChat,
     handleDeleteChat,
+
+    // Wave 205 SW6 — inline message edit + soft-delete. editingMessageId/
+    // editingMessageContent drive the inline editor in ChatWindow; the four
+    // handlers open/save/cancel the editor + open the delete confirm dialog.
+    editingMessageId,
+    editingMessageContent,
+    setEditingMessageContent,
+    handleEditMessage,
+    handleSaveEdit,
+    handleCancelEdit,
+    handleDeleteMessage,
+
+    // Wave 206 — emoji reaction toggle (optimistic + live).
+    handleToggleReaction,
+
+    // Wave 207 — reply/quote compose state + handlers.
+    replyingTo,
+    handleStartReply,
+    handleCancelReply,
+
+    // Wave 211 — forward compose state + handlers. forwardSourceMessageId !== null
+    // opens the ForwardModal; handleStartForward wires each bubble's forward
+    // button; handleForwardToChat dispatches the snapshot-copy forward to the
+    // chosen destination; isForwarding disables the picker rows in-flight.
+    forwardSourceMessageId,
+    handleStartForward,
+    handleCancelForward,
+    handleForwardToChat,
+    isForwarding,
   } = useMessengerController()
 
   // Wave 183 SW6 — surface WS connection status. useMessenger().isConnected
@@ -86,13 +133,73 @@ export default function MessengerFeature() {
 
   const isMobile = useMediaQuery(`(max-width: ${breakpoints.mobile})`)
   const isNarrow = useMediaQuery(`(max-width: ${breakpoints.content})`)
-  const reducedMotionPref = useReducedMotion()
+  const reducedMotionPref = useMediaQuery("(prefers-reduced-motion: reduce)")
   const prefersReducedMotion = reducedMotionPref ?? false
 
-  // Mobile view logic
-  const showList = !isMobile || !selectedChatId
-  const showChat = !isMobile || selectedChatId
   const isBottomNavVisible = isMobile
+
+  // Wave 203 SW1 — extract the two panes (props written once) so the
+  // mobile/desktop branch below doesn't duplicate the prop lists. Both panes
+  // are keyed so AnimatePresence (mobile) tracks the single-pane swap cleanly
+  // and the desktop fragment reconciles them by stable key. `key="chat-area"`
+  // is on the ChatArea instance (stable across chat switches); the W202
+  // polish-v1 `key={selectedChatId}` lives on <ChatWindow> INSIDE ChatArea —
+  // different level, unaffected.
+  const sidebarPane = (
+    <MessengerSidebar
+      key="sidebar"
+      isMobile={isMobile}
+      contacts={contacts}
+      selectedChatId={selectedChatId}
+      setIsNewChatModalOpen={setIsNewChatModalOpen}
+      isLoading={chatsLoading}
+      isError={chatsError}
+      onRetry={() => {
+        void refetchChats()
+      }}
+    />
+  )
+
+  const chatPane = (
+    <ChatArea
+      key="chat-area"
+      isMobile={isMobile}
+      selectedChatId={selectedChatId}
+      activeChat={activeChat}
+      activeChatDisplay={activeChatDisplay}
+      onOpenGroupInfo={() => setShowGroupInfo(true)}
+      messages={messages}
+      messagesLoading={messagesLoading}
+      messagesError={messagesError}
+      onRetryMessages={() => {
+        void refetchMessages()
+      }}
+      showSearchInChat={showSearchInChat}
+      setShowSearchInChat={setShowSearchInChat}
+      searchQuery={searchQuery}
+      setSearchQuery={setSearchQuery}
+      showChatMenu={showChatMenu}
+      setShowChatMenu={setShowChatMenu}
+      handleSendMessage={handleSendMessage}
+      handleViewProfile={handleViewProfile}
+      handleClearChat={handleClearChat}
+      handleDeleteChat={handleDeleteChat}
+      getOtherParticipant={getOtherParticipant}
+      presenceMap={presenceMap}
+      editingMessageId={editingMessageId}
+      editingMessageContent={editingMessageContent}
+      onEditingContentChange={setEditingMessageContent}
+      onEditMessage={handleEditMessage}
+      onSaveEdit={handleSaveEdit}
+      onCancelEdit={handleCancelEdit}
+      onDeleteMessage={handleDeleteMessage}
+      onToggleReaction={handleToggleReaction}
+      replyingTo={replyingTo}
+      onStartReply={handleStartReply}
+      onCancelReply={handleCancelReply}
+      onForward={handleStartForward}
+    />
+  )
 
   return (
     <div
@@ -144,54 +251,40 @@ export default function MessengerFeature() {
         )}
       </AnimatePresence>
 
-      <AnimatePresence mode="wait">
-        {/* Sidebar */}
-        {showList && (
-          <MessengerSidebar
-            isMobile={isMobile}
-            contacts={contacts}
-            selectedChatId={selectedChatId}
-            setIsNewChatModalOpen={setIsNewChatModalOpen}
-            isLoading={chatsLoading}
-            isError={chatsError}
-            onRetry={() => {
-              void refetchChats()
-            }}
-          />
-        )}
-
-        {/* Chat Area */}
-        {showChat && (
-          <ChatArea
-            isMobile={isMobile}
-            selectedChatId={selectedChatId}
-            activeChat={activeChat}
-            messages={messages}
-            messagesLoading={messagesLoading}
-            messagesError={messagesError}
-            onRetryMessages={() => {
-              void refetchMessages()
-            }}
-            showSearchInChat={showSearchInChat}
-            setShowSearchInChat={setShowSearchInChat}
-            searchQuery={searchQuery}
-            setSearchQuery={setSearchQuery}
-            showChatMenu={showChatMenu}
-            setShowChatMenu={setShowChatMenu}
-            handleSendMessage={handleSendMessage}
-            handleViewProfile={handleViewProfile}
-            handleClearChat={handleClearChat}
-            handleDeleteChat={handleDeleteChat}
-            getOtherParticipant={getOtherParticipant}
-            presenceMap={presenceMap}
-          />
-        )}
-      </AnimatePresence>
+      {/* Wave 203 SW1 — mobile: one keyed pane at a time inside
+          AnimatePresence mode="wait" (sidebar XOR chat-area, swap on
+          selectedChatId). Desktop: both panes render side-by-side in a plain
+          fragment (no AnimatePresence). Fixes the W202 §Honesty "multiple
+          children with the same key" console warning that fired when both
+          unkeyed panes rendered together inside mode="wait" on desktop. */}
+      {isMobile ? (
+        <AnimatePresence mode="wait">{selectedChatId ? chatPane : sidebarPane}</AnimatePresence>
+      ) : (
+        <>
+          {sidebarPane}
+          {chatPane}
+        </>
+      )}
 
       <NewChatModal
         open={isNewChatModalOpen}
         onClose={() => setIsNewChatModalOpen(false)}
         onSelect={(userId) => handleCreateChat(userId)}
+        onCreateGroup={handleCreateGroup}
+        isCreatingGroup={isCreatingGroup}
+      />
+
+      {/* Wave 211 — forward destination picker. Open when a message is selected
+          for forwarding; lists the user's chats; a row tap dispatches the
+          single-message snapshot-copy forward (the controller navigates to the
+          destination on success, which closes this modal). */}
+      <ForwardModal
+        open={forwardSourceMessageId !== null}
+        onClose={handleCancelForward}
+        contacts={contacts}
+        currentChatId={selectedChatId}
+        onSelect={handleForwardToChat}
+        isForwarding={isForwarding}
       />
 
       <ProfileModal
@@ -199,6 +292,21 @@ export default function MessengerFeature() {
         loading={isProfileLoading}
         error={profileError}
         onClose={handleCloseProfile}
+      />
+
+      {/* Wave 211 G4 (SW10) — group info / member-management panel. Opened from
+          the group header (onOpenGroupInfo); rename + add/remove members + leave. */}
+      <GroupInfoPanel
+        open={showGroupInfo && activeChatDisplay?.isGroup === true}
+        onClose={() => setShowGroupInfo(false)}
+        chat={activeChat}
+        currentUserId={currentUserId}
+        presenceMap={presenceMap}
+        onRename={handleRenameGroup}
+        onAddMember={handleAddMember}
+        onRemoveMember={handleRemoveMember}
+        isRenaming={isRenamingGroup}
+        isAddingMember={isAddingMember}
       />
 
       <ConfirmDialog

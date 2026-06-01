@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useMemo, useState, useEffect } from "react"
+import { createContext, useContext, useMemo, useState, useEffect, type ReactNode } from "react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { useChatWebSocket } from "@/hooks/useChatWebSocket"
 import { useAuth } from "./AuthContext"
@@ -9,11 +9,20 @@ interface MessengerContextType {
   presenceMap: Record<string, PresenceStatus>
   isConnected: boolean
   sendTyping: (chatId: string) => void
-  sendRead: (chatId: string, messageId: string) => void
+  sendRead: (chatId: string) => void // Wave 203 SW5 — chat-level (no message_id)
+  // Wave 204 SW5 — join/leave a ws-hub room (room == chat_id) so this client
+  // receives live chat.{room} fan-out. Driven by useMessengerController on
+  // chat-select (W204 SW6).
+  sendJoin: (chatId: string) => void
+  sendLeave: (chatId: string) => void
   getTypingUsersForChat: (chatId: string) => { userId: string; userName: string }[]
 }
 
-const MessengerContext = createContext<MessengerContextType | undefined>(undefined)
+// Wave 197 SW7 — exported so Storybook stories (ChatArea) can wrap a tsc-typed
+// MessengerContext.Provider stub without running the real provider's WebSocket /
+// query work. Additive, unused by the app graph → tree-shaken from the prod
+// bundle (the only consumer is the story, which is outside the Vite app entry).
+export const MessengerContext = createContext<MessengerContextType | undefined>(undefined)
 
 export const useMessenger = () => {
   const context = useContext(MessengerContext)
@@ -23,45 +32,49 @@ export const useMessenger = () => {
   return context
 }
 
-export const MessengerProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { isAuth } = useAuth()
+export function MessengerProvider({ children }: { children: ReactNode }) {
+  const { isAuth, user } = useAuth()
   const queryClient = useQueryClient()
   const [presenceMap, setPresenceMap] = useState<Record<string, PresenceStatus>>({})
 
-  const { isConnected, sendTyping, sendRead, getTypingUsersForChat } = useChatWebSocket({
-    enabled: isAuth,
-    onPresenceUpdate: (userId, active, lastSeen) => {
-      // Validate WebSocket payload before mutating React Query cache.
-      // Guards against malformed or tampered presence messages from the WS server.
-      const isValid =
-        typeof userId === "string" &&
-        userId.length > 0 &&
-        userId.length < 40 &&
-        typeof active === "boolean" &&
-        (lastSeen === null || (typeof lastSeen === "string" && lastSeen.length < 50))
-      if (!isValid) return
+  const { isConnected, sendTyping, sendRead, sendJoin, sendLeave, getTypingUsersForChat } =
+    useChatWebSocket({
+      enabled: isAuth,
+      // Wave 204 SW5 — for the hook's self-echo guard (drops the sender's own
+      // new_message/read echo that the room fan-out sends back).
+      currentUserId: user?.id,
+      onPresenceUpdate: (userId, active, lastSeen) => {
+        // Validate WebSocket payload before mutating React Query cache.
+        // Guards against malformed or tampered presence messages from the WS server.
+        const isValid =
+          typeof userId === "string" &&
+          userId.length > 0 &&
+          userId.length < 40 &&
+          typeof active === "boolean" &&
+          (lastSeen === null || (typeof lastSeen === "string" && lastSeen.length < 50))
+        if (!isValid) return
 
-      setPresenceMap((prev) => ({
-        ...prev,
-        [userId]: { active, last_seen_at: lastSeen },
-      }))
+        setPresenceMap((prev) => ({
+          ...prev,
+          [userId]: { active, last_seen_at: lastSeen },
+        }))
 
-      // Also update the chats list cache to keep presence in sync
-      queryClient.setQueryData<ChatsListResponse | undefined>(["chats"], (old) => {
-        if (!old) return old
-        const items = old.items.map((chat) => {
-          const participates = chat.participants.some((p) => p.id === userId)
-          if (!participates) return chat
+        // Also update the chats list cache to keep presence in sync
+        queryClient.setQueryData<ChatsListResponse | undefined>(["chats"], (old) => {
+          if (!old) return old
+          const items = old.items.map((chat) => {
+            const participates = chat.participants.some((p) => p.id === userId)
+            if (!participates) return chat
 
-          const nextPresence = { ...(chat.presence || {}) }
-          nextPresence[userId] = { active, last_seen_at: lastSeen }
-          return { ...chat, presence: nextPresence }
+            const nextPresence = { ...(chat.presence || {}) }
+            nextPresence[userId] = { active, last_seen_at: lastSeen }
+            return { ...chat, presence: nextPresence }
+          })
+
+          return { ...old, items }
         })
-
-        return { ...old, items }
-      })
-    },
-  })
+      },
+    })
 
   const { data: chatsData } = useQuery({
     queryKey: ["chats"],
@@ -96,9 +109,20 @@ export const MessengerProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       isConnected,
       sendTyping,
       sendRead,
+      sendJoin,
+      sendLeave,
       getTypingUsersForChat,
     }),
-    [unreadCount, presenceMap, isConnected, sendTyping, sendRead, getTypingUsersForChat]
+    [
+      unreadCount,
+      presenceMap,
+      isConnected,
+      sendTyping,
+      sendRead,
+      sendJoin,
+      sendLeave,
+      getTypingUsersForChat,
+    ]
   )
 
   return <MessengerContext.Provider value={value}>{children}</MessengerContext.Provider>

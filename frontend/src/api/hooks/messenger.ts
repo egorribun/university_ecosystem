@@ -61,7 +61,13 @@
  */
 import type { QueryFunctionContext } from "@tanstack/react-query"
 
-import { chatApi, type Chat, type ChatsListResponse, type MessagesListResponse } from "@/api/chat"
+import {
+  chatApi,
+  type Chat,
+  type ChatsListResponse,
+  type MessagesListResponse,
+  type Reactor,
+} from "@/api/chat"
 
 // QueryKeys — preserve pre-W180 cache identity by matching the tuples
 // already used inline in useMessengerController.ts (W161 SW2 baseline) +
@@ -168,6 +174,37 @@ export const chatQueryOptions = (chatId: string | undefined) => ({
       throw new Error("chatId required")
     }
     return chatApi.getChat(chatId)
+  },
+  staleTime: QUERY_STALE_TIME_MS,
+  gcTime: QUERY_GC_TIME_MS,
+  networkMode: "online" as const,
+  retry: 2,
+  retryDelay,
+})
+
+/**
+ * Wave 207 — QueryKey for the reactor list of one message+emoji
+ * (GET /chats/:id/messages/:mid/reactions?emoji=). On-demand: fetched only when a
+ * ReactionPill popover opens (hover desktop / long-press mobile), NOT bundled into
+ * the message list. Keyed by all three so each emoji's reactor list caches
+ * independently.
+ */
+export const reactorsQueryKey = (chatId: string, messageId: string, emoji: string) =>
+  ["reactors", chatId, messageId, emoji] as const
+export type ReactorsQueryKey = ReturnType<typeof reactorsQueryKey>
+
+/**
+ * Wave 207 — pure factory for one message+emoji's reactor list. The consumer
+ * (ReactionPill) adds `enabled: isOpen && !!chatId` so the fetch only fires while
+ * the popover is open. A self-toggle updates the count optimistically (separate
+ * query key) but not this list — it self-heals on the next stale-open (staleTime
+ * 30 s), acceptable for supplementary identity info.
+ */
+export const reactorsQueryOptions = (chatId: string, messageId: string, emoji: string) => ({
+  queryKey: reactorsQueryKey(chatId, messageId, emoji),
+  queryFn: async ({ signal }: QueryFunctionContext<ReactorsQueryKey>): Promise<Reactor[]> => {
+    void signal
+    return chatApi.getReactors(chatId, messageId, emoji)
   },
   staleTime: QUERY_STALE_TIME_MS,
   gcTime: QUERY_GC_TIME_MS,

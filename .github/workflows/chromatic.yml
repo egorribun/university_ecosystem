@@ -28,13 +28,23 @@
 #   - https://github.com/rolldown/rolldown/issues/3982 (`import.meta.glob`; closed 2025-09-11)
 #   - https://github.com/vitejs/vite/issues/21948 (root cause; closed 2026-04-07 by Vite 8.0.6)
 #
+# ✅ Wave 201 (2026-05-30) — ACTIVATION-READY. The 6 non-deterministic stories
+# (WeatherParticles + MapLibreMap canvas/WebGL; ParticleAuthBackground +
+# MfaChallengeView particle bg; EventCard relative-time; FlipCountdown live
+# clock) carry `parameters.chromatic.disableSnapshot: true` so the first baseline
+# is clean. Full activation runbook: docs/audits/AUDIT_WAVE201.md.
+#
 # To enable Chromatic baseline (USER actions in repo settings):
 #
-#   1. Add `CHROMATIC_PROJECT_TOKEN` Secret with value `chpt_48d051b3688a3e4`.
+#   1. Add `CHROMATIC_PROJECT_TOKEN` Secret — value is NOT hardcoded here; it
+#      lives in your Chromatic dashboard / `memory/wave122_chromatic_upstream.md`.
 #   2. Set `CHROMATIC_ENABLED=true` repo variable.
-#   3. Open a PR touching `frontend/**` → this workflow triggers + uploads
-#      built stories + captures initial baseline.
-#   4. Accept baselines in Chromatic dashboard.
+#   3. Open/merge a PR touching `frontend/**` → this workflow triggers + uploads
+#      built stories. A merge to `main` auto-accepts the initial baseline
+#      (`autoAcceptChanges` below); subsequent PRs then surface diffs.
+#   4. Accept/review baselines in the Chromatic dashboard.
+#   5. (Optional follow-up, after the baseline is trusted) flip
+#      `exitZeroOnChanges: true → false` below to BLOCK PRs on un-accepted diffs.
 #
 # See `memory/wave122_chromatic_upstream.md` for full diagnosis history,
 # Storybook/Vite version requirements, and durability notes for the
@@ -124,8 +134,9 @@ jobs:
         with:
           projectToken: ${{ secrets.CHROMATIC_PROJECT_TOKEN }}
           workingDir: frontend
-          # Wave 112 SW1: collect-only mode until SW3 consistency baseline.
-          # Switch to `exitZeroOnChanges: false` after SW3 to enforce.
+          # Collect-only / REPORT mode (W201): diffs are visible but don't block PRs.
+          # Enforce by flipping this to `false` once the baseline is trusted
+          # (W201 documented this as a deliberate post-baseline follow-up).
           exitZeroOnChanges: true
           onlyChanged: true
           autoAcceptChanges: ${{ github.ref == 'refs/heads/main' }}

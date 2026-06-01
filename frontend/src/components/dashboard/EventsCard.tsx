@@ -2,10 +2,11 @@ import { useMemo, useState, useCallback, type CSSProperties, type KeyboardEvent 
 
 import { Link, useNavigate } from "@tanstack/react-router"
 import { useTranslation } from "react-i18next"
-import { m, AnimatePresence, useReducedMotion } from "framer-motion"
+import { m, AnimatePresence } from "framer-motion"
 import { Sparkles } from "lucide-react"
 
 import { Badge, Button, Card, Skeleton } from "@/components/ui"
+import useMediaQuery from "@/hooks/useMediaQuery"
 import { cn } from "@/utils/cn"
 import { useDashboardEvents, prefetchDashboardEvents } from "@/hooks/useDashboardEvents"
 import { prefetchEventsListQuery, EVENTS_PAGE_SIZE } from "@/api/hooks/events"
@@ -28,7 +29,10 @@ export function EventsCard({ className, style, ...props }: EventsCardProps) {
   const navigate = useNavigate()
   const { language } = useLanguage()
   const queryClient = useQueryClient()
-  const prefersReduced = useReducedMotion()
+  // Wave 189 SW3 — migrated from framer-motion's `useReducedMotion()` (jsdom-
+  // incompat per W184 SW6 Gotcha) to project's `useMediaQuery` DEFAULT export.
+  // Behaviour preserved: hook returns boolean (was `boolean | null`).
+  const prefersReduced = useMediaQuery("(prefers-reduced-motion: reduce)")
   const [eventsScope, setEventsScope] = useState<"today" | "week">("today")
 
   const dashboardEventsQuery = useDashboardEvents()

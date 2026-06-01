@@ -25,6 +25,8 @@ import {
   chatsQueryOptions,
   messagesQueryKey,
   messagesQueryOptions,
+  reactorsQueryKey,
+  reactorsQueryOptions,
 } from "@/api/hooks/messenger"
 
 describe("chatsQueryKey", () => {
@@ -153,5 +155,30 @@ describe("queryKey cross-factory identity", () => {
   it("chat + chats keys are distinct (no collision between list + single fetches)", () => {
     expect(chatsQueryKey).not.toEqual(chatQueryKey("any-id"))
     expect(chatQueryKey("any-id")).not.toEqual(messagesQueryKey("any-id"))
+  })
+})
+
+describe("reactorsQueryKey (W207 SW6)", () => {
+  it("returns the ['reactors', chatId, messageId, emoji] 4-tuple", () => {
+    expect(reactorsQueryKey("chat-1", "msg-1", "👍")).toEqual(["reactors", "chat-1", "msg-1", "👍"])
+  })
+
+  it("matches reactorsQueryOptions(...).queryKey for the same args", () => {
+    expect(reactorsQueryOptions("c", "m", "❤️").queryKey).toEqual(reactorsQueryKey("c", "m", "❤️"))
+  })
+
+  it("keys distinctly per emoji so each reactor list caches independently", () => {
+    expect(reactorsQueryKey("c", "m", "👍")).not.toEqual(reactorsQueryKey("c", "m", "❤️"))
+  })
+})
+
+describe("reactorsQueryOptions (W207 SW6)", () => {
+  it("preserves the W180 SW3 baseline factory shape (on-demand reactor list)", () => {
+    const opts = reactorsQueryOptions("c", "m", "😢")
+    expect(opts.staleTime).toBe(30_000)
+    expect(opts.gcTime).toBe(5 * 60_000)
+    expect(opts.networkMode).toBe("online")
+    expect(opts.retry).toBe(2)
+    expect(typeof opts.queryFn).toBe("function")
   })
 })

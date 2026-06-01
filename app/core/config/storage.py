@@ -80,6 +80,12 @@ class StorageSettings(BaseAppSettings):
     # slow down pagination queries, and can OOM during response serialisation.
     # 10 000 chars ≈ ~6 A4 pages; adjust via CHAT_MAX_MESSAGE_LENGTH env var.
     chat_max_message_length: int = 10_000
+    # Wave 209 G1 — group-chat size bounds (counted as creator + distinct
+    # members). Min 3 keeps a 2-person chat a DM (avoids colliding with
+    # find_existing_dm's ==2 participant lookup); max bounds the create fan-out
+    # and stays well under the presence-audience 500 cap.
+    chat_group_min_members: int = 3
+    chat_group_max_members: int = 100
 
     @cached_property
     def chat_attachment_allowed_mime_types_set(self) -> set[str]:

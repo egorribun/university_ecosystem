@@ -1,7 +1,8 @@
-import React, { useEffect, useId, useRef, useState } from "react"
-import { m, AnimatePresence, useReducedMotion } from "framer-motion"
+import { useEffect, useId, useRef, useState } from "react"
+import { m, AnimatePresence } from "framer-motion"
+import useMediaQuery from "@/hooks/useMediaQuery"
 import { useTranslation } from "react-i18next"
-import { RotateCcw, Search, TriangleAlert, X } from "lucide-react"
+import { Check, RotateCcw, Search, TriangleAlert, Users, X } from "lucide-react"
 import { useQuery } from "@tanstack/react-query"
 import client from "@/api/client"
 import type { User } from "@/types/User"
@@ -16,14 +17,40 @@ interface NewChatModalProps {
   open: boolean
   onClose: () => void
   onSelect: (userId: string) => void
+  /**
+   * Wave 211 G4 — create a group (name + ≥2 selected members). When provided, a
+   * DM/Group mode toggle appears; when absent, the modal stays DM-only (the
+   * pre-W211 behavior — keeps existing consumers + tests/stories unchanged).
+   */
+  onCreateGroup?: (name: string, participantIds: string[]) => void
+  /** Group-create mutation in-flight — disables the Create button + rows. */
+  isCreatingGroup?: boolean
 }
 
 const USERS_PAGE_LIMIT = 10
 const MIN_SEARCH_LENGTH = 1
+// Wave 211 G4 — backend requires ≥3 total participants (creator + members); the
+// creator is auto-included, so the user must select at least 2 others.
+const MIN_GROUP_MEMBERS = 2
+const MAX_GROUP_NAME_LENGTH = 128
 
-export const NewChatModal: React.FC<NewChatModalProps> = ({ open, onClose, onSelect }) => {
+export function NewChatModal({
+  open,
+  onClose,
+  onSelect,
+  onCreateGroup,
+  isCreatingGroup = false,
+}: NewChatModalProps) {
   const { t } = useTranslation(["messenger", "common"])
   const [search, setSearch] = useState("")
+  // Wave 211 G4 — group-create mode. The toggle only appears when onCreateGroup
+  // is provided (else DM-only, the pre-W211 behavior). selectedUsers holds full
+  // User objects so the chips can show name/avatar without a re-lookup.
+  const canCreateGroup = !!onCreateGroup
+  const [mode, setMode] = useState<"dm" | "group">("dm")
+  const [groupName, setGroupName] = useState("")
+  const [selectedUsers, setSelectedUsers] = useState<User[]>([])
+  const isGroupMode = canCreateGroup && mode === "group"
   const titleId = useId()
   // PERF-20-05: Debounce to prevent API call on every keystroke.
   const debouncedSearch = useDebounced(search, "default") // PERF-23-04: messenger search uses default preset (300ms)
@@ -31,7 +58,7 @@ export const NewChatModal: React.FC<NewChatModalProps> = ({ open, onClose, onSel
   // (dialog entrance scale:0.95+y:20 and per-row whileHover x:4). Subtle
   // scale-on-hover/tap motions are handled globally by AppProviders
   // MotionConfig reducedMotion="user" (W124 SW1 + W127 SW1).
-  const prefersReducedMotion = useReducedMotion() ?? false
+  const prefersReducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)")
 
   // Wave 175 SW3 — focus trap + Escape handler.
   // initialFocus: false lets the TextField's auto-focus (line ~95) win without
@@ -70,6 +97,41 @@ export const NewChatModal: React.FC<NewChatModalProps> = ({ open, onClose, onSel
     document.addEventListener("keydown", handler)
     return () => document.removeEventListener("keydown", handler)
   }, [open, onClose])
+
+  // Wave 211 G4 — reset group-create state when the modal closes so the next
+  // open starts clean (DM mode, no name, no selection, no stale search).
+  useEffect(() => {
+    if (open) return
+    setMode("dm")
+    setGroupName("")
+    setSelectedUsers([])
+    setSearch("")
+  }, [open])
+
+  // Wave 211 G4 — group-create derived state + helpers.
+  const trimmedGroupName = groupName.trim()
+  const selectedIds = new Set(selectedUsers.map((u) => String(u.id)))
+  const canSubmitGroup =
+    isGroupMode &&
+    trimmedGroupName.length > 0 &&
+    selectedUsers.length >= MIN_GROUP_MEMBERS &&
+    !isCreatingGroup
+
+  const toggleUserSelection = (user: User) => {
+    setSelectedUsers((prev) =>
+      prev.some((u) => String(u.id) === String(user.id))
+        ? prev.filter((u) => String(u.id) !== String(user.id))
+        : [...prev, user]
+    )
+  }
+
+  const handleSubmitGroup = () => {
+    if (!canSubmitGroup || !onCreateGroup) return
+    onCreateGroup(
+      trimmedGroupName,
+      selectedUsers.map((u) => String(u.id))
+    )
+  }
 
   // Wave 184 SW3 (Path B) — additionally destructure `isError` + `refetch`
   // so the search dropdown can render a fetch-failure state with Retry
@@ -125,7 +187,7 @@ export const NewChatModal: React.FC<NewChatModalProps> = ({ open, onClose, onSel
                 id={titleId}
                 className="text-xl font-black tracking-tight text-text-primary sf-pro"
               >
-                {t("messenger:newChat")}
+                {isGroupMode ? t("messenger:newGroup") : t("messenger:newChat")}
               </h3>
               <button
                 type="button"
@@ -138,6 +200,81 @@ export const NewChatModal: React.FC<NewChatModalProps> = ({ open, onClose, onSel
             </div>
 
             <div className="p-6">
+              {/* Wave 211 G4 — DM/Group mode toggle (only when group-create is
+                  wired via onCreateGroup; else the modal stays DM-only). */}
+              {canCreateGroup && (
+                <div
+                  className="mb-4 grid grid-cols-2 gap-1 rounded-2xl bg-(--bg-surface-raised)/(--opacity-medium) p-1"
+                  role="tablist"
+                  aria-label={t("messenger:modeToggle")}
+                >
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={!isGroupMode}
+                    onClick={() => setMode("dm")}
+                    className={`min-h-[40px] rounded-xl px-4 text-sm font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-violet-500) ${
+                      !isGroupMode
+                        ? "bg-(--color-violet-500) text-(--color-white) shadow-sm"
+                        : "text-(--text-secondary) hover:bg-(--bg-surface-hover)/(--opacity-medium)"
+                    }`}
+                  >
+                    {t("messenger:modeDirect")}
+                  </button>
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={isGroupMode}
+                    onClick={() => setMode("group")}
+                    className={`min-h-[40px] inline-flex items-center justify-center gap-1.5 rounded-xl px-4 text-sm font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-violet-500) ${
+                      isGroupMode
+                        ? "bg-(--color-violet-500) text-(--color-white) shadow-sm"
+                        : "text-(--text-secondary) hover:bg-(--bg-surface-hover)/(--opacity-medium)"
+                    }`}
+                  >
+                    <Users className="size-4" strokeWidth={2.25} aria-hidden="true" />
+                    {t("messenger:modeGroup")}
+                  </button>
+                </div>
+              )}
+
+              {/* Wave 211 G4 — group name field + the selected-member chip row
+                  (a chip tap removes that member). */}
+              {isGroupMode && (
+                <div className="mb-4 space-y-3">
+                  <TextField
+                    value={groupName}
+                    onChange={(e) => setGroupName(e.target.value)}
+                    placeholder={t("messenger:groupName")}
+                    aria-label={t("messenger:groupName")}
+                    maxLength={MAX_GROUP_NAME_LENGTH}
+                    className="w-full"
+                  />
+                  {selectedUsers.length > 0 && (
+                    <div className="flex flex-wrap gap-2" aria-label={t("messenger:selectMembers")}>
+                      {selectedUsers.map((u) => (
+                        <button
+                          key={u.id}
+                          type="button"
+                          onClick={() => toggleUserSelection(u)}
+                          aria-label={t("messenger:removeMember", { name: u.full_name })}
+                          className="matte-chip inline-flex items-center gap-1.5 rounded-full py-1 pl-1 pr-2.5 text-sm font-semibold text-(--text-primary) transition-colors hover:text-brand focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-violet-500)"
+                        >
+                          <SmartImage
+                            srcRaw={u.avatar_url || AVATAR_PLACEHOLDER_URL}
+                            fallback={AVATAR_PLACEHOLDER_URL}
+                            alt=""
+                            className="size-6 rounded-full object-cover"
+                          />
+                          <span className="max-w-[8rem] truncate">{u.full_name}</span>
+                          <X className="size-3.5 shrink-0" aria-hidden="true" />
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
               <TextField
                 leadingIcon={<Search className="w-4.5 h-4.5" />}
                 value={search}
@@ -262,41 +399,87 @@ export const NewChatModal: React.FC<NewChatModalProps> = ({ open, onClose, onSel
                   aria-label={t("messenger:searchUsers")}
                   aria-busy={isLoading}
                 >
-                  {users.map((user) => (
-                    <m.button
-                      key={user.id}
-                      type="button"
-                      role="option"
-                      aria-selected="false"
-                      whileHover={
-                        prefersReducedMotion
-                          ? undefined
-                          : { x: 4, backgroundColor: "var(--bg-surface-hover)" }
-                      }
-                      whileTap={prefersReducedMotion ? undefined : { scale: 0.98 }}
-                      onClick={() => onSelect(String(user.id))}
-                      className="w-full min-h-[60px] flex items-center gap-4 p-3.5 rounded-2xl transition-all text-left group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-violet-500) focus-visible:ring-offset-2 focus-visible:ring-offset-(--bg-surface)"
-                    >
-                      <div className="relative shrink-0">
-                        <SmartImage
-                          srcRaw={user.avatar_url || AVATAR_PLACEHOLDER_URL}
-                          fallback={AVATAR_PLACEHOLDER_URL}
-                          alt=""
-                          className="w-11 h-11 rounded-2xl object-cover shadow-sm ring-1 ring-black/(--opacity-faint)"
-                        />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-base font-black truncate leading-tight text-text-primary group-hover:text-brand transition-colors sf-pro">
-                          {user.full_name}
-                        </p>
-                        <p className="text-xs text-(--text-secondary) truncate font-medium opacity-medium">
-                          {user.email}
-                        </p>
-                      </div>
-                    </m.button>
-                  ))}
+                  {users.map((user) => {
+                    // Wave 211 G4 — group mode: a row tap toggles selection (the
+                    // Check indicator + violet tint reflect it); DM mode keeps the
+                    // single-select onSelect.
+                    const isSelected = selectedIds.has(String(user.id))
+                    return (
+                      <m.button
+                        key={user.id}
+                        type="button"
+                        role="option"
+                        aria-selected={isGroupMode ? isSelected : false}
+                        disabled={isGroupMode && isCreatingGroup}
+                        whileHover={
+                          prefersReducedMotion
+                            ? undefined
+                            : { x: 4, backgroundColor: "var(--bg-surface-hover)" }
+                        }
+                        whileTap={prefersReducedMotion ? undefined : { scale: 0.98 }}
+                        onClick={() =>
+                          isGroupMode ? toggleUserSelection(user) : onSelect(String(user.id))
+                        }
+                        className={`w-full min-h-[60px] flex items-center gap-4 p-3.5 rounded-2xl transition-all text-left group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-violet-500) focus-visible:ring-offset-2 focus-visible:ring-offset-(--bg-surface) disabled:opacity-medium disabled:cursor-not-allowed ${
+                          isSelected ? "bg-(--messenger-active-bg)" : ""
+                        }`}
+                      >
+                        <div className="relative shrink-0">
+                          <SmartImage
+                            srcRaw={user.avatar_url || AVATAR_PLACEHOLDER_URL}
+                            fallback={AVATAR_PLACEHOLDER_URL}
+                            alt=""
+                            className="w-11 h-11 rounded-2xl object-cover shadow-sm ring-1 ring-black/(--opacity-faint)"
+                          />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-base font-black truncate leading-tight text-text-primary group-hover:text-brand transition-colors sf-pro">
+                            {user.full_name}
+                          </p>
+                          <p className="text-xs text-(--text-secondary) truncate font-medium opacity-medium">
+                            {user.email}
+                          </p>
+                        </div>
+                        {isGroupMode && (
+                          <span
+                            className={`flex size-6 shrink-0 items-center justify-center rounded-full border-2 transition-colors ${
+                              isSelected
+                                ? "border-(--color-violet-500) bg-(--color-violet-500) text-(--color-white)"
+                                : "border-(--glass-border)"
+                            }`}
+                            aria-hidden="true"
+                          >
+                            {isSelected && <Check className="size-3.5" strokeWidth={3} />}
+                          </span>
+                        )}
+                      </m.button>
+                    )
+                  })}
                 </div>
               </div>
+
+              {/* Wave 211 G4 — group-create CTA + the min-members hint. Disabled
+                  until a non-empty name + ≥2 selected (backend ≥3 total). */}
+              {isGroupMode && (
+                <div className="mt-4 border-t border-(--glass-border)/(--opacity-subtle) pt-4">
+                  <button
+                    type="button"
+                    onClick={handleSubmitGroup}
+                    disabled={!canSubmitGroup}
+                    className="messenger-send-btn flex min-h-[44px] w-full items-center justify-center gap-2 rounded-full px-5 text-sm font-bold text-(--color-white) transition-opacity disabled:opacity-medium disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-violet-500) focus-visible:ring-offset-2 focus-visible:ring-offset-(--bg-surface)"
+                  >
+                    <Users className="size-4" strokeWidth={2.25} aria-hidden="true" />
+                    <span>
+                      {isCreatingGroup ? t("messenger:creatingGroup") : t("messenger:createGroup")}
+                    </span>
+                  </button>
+                  {selectedUsers.length < MIN_GROUP_MEMBERS && (
+                    <p className="mt-2 text-center text-xs font-medium text-(--text-secondary) opacity-medium">
+                      {t("messenger:error.minMembers")}
+                    </p>
+                  )}
+                </div>
+              )}
             </div>
           </m.div>
         </m.div>

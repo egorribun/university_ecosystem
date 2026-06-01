@@ -87,7 +87,6 @@ async def websocket_chat(websocket: WebSocket) -> None:
     - Fallback: HttpOnly access_token_v2 cookie (cookie-capable browsers)
 
     Message types (from client):\n    - {"type": "ping"} - Keep-alive ping
-    - {"type": "typing", "chat_id": "..."} - Typing indicator
     - {"type": "read", "chat_id": "...", "message_id": "..."} - Mark message as read
 
     Message types (to client):
