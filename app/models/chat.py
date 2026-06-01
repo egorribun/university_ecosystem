@@ -102,7 +102,9 @@ class Chat(Base, UUID7PrimaryKeyMixin):
     # Wave 211 — foreign_keys="Message.chat_id" disambiguates the join: Message
     # now has TWO chats.id FKs (chat_id + the audit-only forwarded_from_chat_id),
     # so the Chat↔Message link is no longer inferable. chat_id is the membership
-    # FK; forwarded_from_chat_id is never traversed by a relationship (privacy).
+    # FK; forwarded_from_chat_id is audit-only, never traversed by a mapped link
+    # (privacy). NB: keep the literal "relationship" away from a following "(" in
+    # comments — the MOD-30-01 CI gate regex (relationship\s*\() is comment-blind.
     messages: Mapped[list[Message]] = relationship(
         "Message",
         back_populates="chat",
