@@ -43,6 +43,41 @@ describe("chatApi", () => {
     expect(result).toEqual(mockChat)
   })
 
+  it("createGroup posts name + participant_ids", async () => {
+    const mockChat = { id: "group1", chat_type: "group", name: "Team" }
+    vi.mocked(client.post).mockResolvedValueOnce({ data: mockChat })
+
+    const result = await chatApi.createGroup("Team", ["u1", "u2"])
+    expect(client.post).toHaveBeenCalledWith("/chats/groups", {
+      name: "Team",
+      participant_ids: ["u1", "u2"],
+    })
+    expect(result).toEqual(mockChat)
+  })
+
+  it("addParticipant posts user_id to the participants endpoint", async () => {
+    vi.mocked(client.post).mockResolvedValueOnce({ data: { status: "ok" } })
+
+    await chatApi.addParticipant("chat1", "u3")
+    expect(client.post).toHaveBeenCalledWith("/chats/chat1/participants", {
+      user_id: "u3",
+    })
+  })
+
+  it("removeParticipant deletes the participant path", async () => {
+    vi.mocked(client.delete).mockResolvedValueOnce({ data: { status: "ok" } })
+
+    await chatApi.removeParticipant("chat1", "u3")
+    expect(client.delete).toHaveBeenCalledWith("/chats/chat1/participants/u3")
+  })
+
+  it("renameChat patches the chat with the new name", async () => {
+    vi.mocked(client.patch).mockResolvedValueOnce({ data: { status: "ok" } })
+
+    await chatApi.renameChat("chat1", "New Name")
+    expect(client.patch).toHaveBeenCalledWith("/chats/chat1", { name: "New Name" })
+  })
+
   it("sendMessage handles FormData with files", async () => {
     const mockMessage = { id: "msg1" }
     vi.mocked(client.post).mockResolvedValueOnce({ data: mockMessage })

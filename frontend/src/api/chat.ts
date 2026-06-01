@@ -56,6 +56,11 @@ export interface Reactor {
 
 export interface Chat {
   id: string
+  // Wave 209 G1 — group-chat identity. Optional so existing DM consumers compile
+  // unchanged (absent/"dm" for a DM); the group-rendering UI that reads these is G4.
+  chat_type?: "dm" | "group"
+  name?: string | null
+  created_by?: string | null
   participants: User[]
   last_message?: Message
   unread_count: number
@@ -100,6 +105,33 @@ export const chatApi = {
 
   createChat: async (participantId: string) => {
     const response = await client.post<Chat>("/chats", { participant_id: participantId })
+    return response.data
+  },
+
+  // Wave 209 G1 — group-chat surface. participantIds are the *other* members
+  // (the creator is added server-side); the backend enforces the 3..100 bound.
+  createGroup: async (name: string, participantIds: string[]) => {
+    const response = await client.post<Chat>("/chats/groups", {
+      name,
+      participant_ids: participantIds,
+    })
+    return response.data
+  },
+
+  addParticipant: async (chatId: string, userId: string) => {
+    const response = await client.post(`/chats/${chatId}/participants`, {
+      user_id: userId,
+    })
+    return response.data
+  },
+
+  removeParticipant: async (chatId: string, userId: string) => {
+    const response = await client.delete(`/chats/${chatId}/participants/${userId}`)
+    return response.data
+  },
+
+  renameChat: async (chatId: string, name: string) => {
+    const response = await client.patch(`/chats/${chatId}`, { name })
     return response.data
   },
 
