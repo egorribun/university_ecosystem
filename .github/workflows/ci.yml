@@ -63,25 +63,7 @@ jobs:
         # Note: uses Python 3.13 — some deps (http-ece) crash on 3.14 setup.py.
         run: |
           pip install uv
-          if ! uv lock --check; then
-            echo "::group::W210 DIAGNOSTIC — uv lock drift on CI edge (default resolution)"
-            uv lock || true
-            echo "--- changed name/version lines (committed vs CI-regenerated) ---"
-            git --no-pager diff --unified=0 uv.lock | grep -E "^[+-].*(name = |version = )" | head -120 || true
-            echo "--- diffstat ---"
-            git --no-pager diff --stat uv.lock || true
-            echo "::endgroup::"
-            echo "::error::uv.lock is out of sync — run 'uv lock' locally and commit the updated lockfile"
-            exit 1
-          fi
-
-      - name: Upload CI-regenerated uv.lock (W210 diagnostic)
-        if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: w210-ci-uvlock
-          path: uv.lock
-          include-hidden-files: true
+          uv lock --check || (echo "::error::uv.lock is out of sync — run 'uv lock' locally and commit the updated lockfile" && exit 1)
 
       - name: Run pre-commit (check only)
         id: precommit_check
