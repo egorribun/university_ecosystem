@@ -5,7 +5,7 @@ from datetime import datetime
 from typing import Any
 
 from opentelemetry import trace
-from sqlalchemy import and_, delete, exists, func, or_, select, text, update
+from sqlalchemy import and_, delete, exists, func, insert, or_, select, text, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import selectinload
 
@@ -235,6 +235,74 @@ class ChatRepository(BaseRepository[Chat, ChatDTO, dict[str, Any], dict[str, Any
         self.db.add(new_chat)
         await self.db.flush()
         return self._to_dto(new_chat)
+
+    async def create_group(
+        self, creator: User, name: str, member_users: list[User]
+    ) -> ChatDTO:
+        """Create a named group chat owned by ``creator`` (Wave 209 G1).
+
+        chat_type="group" + created_by=creator.id set group identity; the creator
+        is always a participant. Members are de-duplicated by id (the creator is
+        never double-added even if also passed in member_users). Mirrors
+        create_chat's Chat()/append/flush/_to_dto shape — no Redis lock, since a
+        group has no DM-style find-or-create uniqueness invariant.
+        """
+        new_chat = Chat(chat_type="group", name=name, created_by=creator.id)
+        seen: set[uuid.UUID] = set()
+        for participant in (creator, *member_users):
+            if participant.id in seen:
+                continue
+            seen.add(participant.id)
+            new_chat.participants.append(participant)
+        self.db.add(new_chat)
+        await self.db.flush()
+        return self._to_dto(new_chat)
+
+    async def add_participant(self, chat_id: uuid.UUID, user_id: uuid.UUID) -> bool:
+        """Add a user to a chat idempotently. Returns True iff a NEW row inserted.
+
+        Wave 209 G1 — SELECT-then-INSERT (the existing check_participant + a plain
+        Core insert), NOT pg_insert.on_conflict_do_nothing like add_reaction:
+        dialect-agnostic, so the full add-participant path is real-DB-testable on
+        the SQLite test DB as well as PostgreSQL. The composite (chat_id, user_id)
+        PK still guarantees uniqueness; the pre-check makes a repeat add a clean
+        no-op (returns False → the caller skips the broadcast) and avoids the
+        IntegrityError-driven transaction abort a bare insert would cause. The
+        TOCTOU window (two concurrent adds of the SAME user) is benign for this
+        rare admin action and PK-backstopped.
+        """
+        if await self.check_participant(chat_id, user_id):
+            return False
+        await self.db.execute(
+            insert(chat_participants).values(chat_id=chat_id, user_id=user_id)
+        )
+        return True
+
+    async def remove_participant(self, chat_id: uuid.UUID, user_id: uuid.UUID) -> int:
+        """Remove a user from a chat. Returns affected rowcount (0 = not a member).
+
+        Wave 209 G1 — idempotent: removing a non-member is a benign no-op (the
+        caller skips the broadcast when affected == 0). Mirrors remove_reaction.
+        """
+        stmt = delete(chat_participants).where(
+            and_(
+                chat_participants.c.chat_id == chat_id,
+                chat_participants.c.user_id == user_id,
+            )
+        )
+        result = await self.db.execute(stmt)
+        affected = int(getattr(result, "rowcount", 0) or 0)
+        return affected if affected > 0 else 0
+
+    async def rename_chat(self, chat_id: uuid.UUID, name: str) -> int:
+        """Rename a chat (group display title). Returns affected rowcount.
+
+        Wave 209 G1 — Core update; Chat.updated_at's onupdate=utc_now is applied
+        automatically so a renamed chat re-sorts to the top of the list.
+        """
+        stmt = update(Chat).where(Chat.id == chat_id).values(name=name)
+        result = await self.db.execute(stmt)
+        return int(getattr(result, "rowcount", 0) or 0)
 
     async def get_unread_count(self, chat_id: uuid.UUID, user_id: uuid.UUID) -> int:
         """

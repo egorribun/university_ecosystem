@@ -74,6 +74,14 @@ class ChatDTO(SecureBaseModel):
     id: uuid.UUID
     created_at: datetime
     updated_at: datetime
+    # Wave 209 G1 — group-chat identity. The silent gatekeeper: the repository
+    # returns ChatDTO (model_validate over the ORM Chat), so without these the new
+    # columns load from the DB but Pydantic drops them and the query service has
+    # nothing to forward into ChatResponse. chat_type defaults "dm" so a DM DTO is
+    # valid even if read before refresh; name/created_by are NULL for DMs.
+    chat_type: str = "dm"
+    name: str | None = None
+    created_by: uuid.UUID | None = None
     participants: list[ChatParticipantDTO] = Field(
         default_factory=list, json_schema_extra={"default": []}
     )

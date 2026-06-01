@@ -59,17 +59,22 @@ class Chat(Base, UUID7PrimaryKeyMixin):
     # ("dm") from a named group ("group"). A plain String(20) + CheckConstraint
     # (mirroring Attachment.file_type), NOT a StrEnum: it is a closed two-value
     # display discriminator, not a widely-used authz role like UserRole.
-    # server_default="dm" backfills existing rows in the same ALTER and keeps the
-    # untouched create_chat DM path default-free (the DB supplies "dm"). name is
-    # the group's display title (NULL for DMs — the FE derives a DM's label from
-    # the other participant). created_by is the group owner; ondelete="SET NULL"
-    # so deleting an owner account never cascade-deletes the group (it becomes
-    # ownerless — only self-leave removes members until a later ownership-transfer
-    # wave). chat_participants stays a plain M2M Table (no per-member role): the
-    # model is already N-participant capable, so G1 adds identity + a
-    # create/membership flow, not roles.
+    # default="dm" (Python) populates the ORM object in-memory at flush so the
+    # untouched create_chat DM path's _to_dto read is safe — a server-default-ONLY
+    # column is left expired post-INSERT, and a sync pydantic model_validate of an
+    # expired column in an async session would trigger a lazy refresh
+    # (MissingGreenlet). server_default="dm" (DDL) backfills existing rows in the
+    # same ALTER + covers non-ORM inserts; autogenerate only compares the DDL
+    # default, so both-defaults stays diff-clean. name is the group's display
+    # title (NULL for DMs — the FE derives a DM's label from the other
+    # participant). created_by is the group owner; ondelete="SET NULL" so deleting
+    # an owner account never cascade-deletes the group (it becomes ownerless —
+    # only self-leave removes members until a later ownership-transfer wave).
+    # chat_participants stays a plain M2M Table (no per-member role): the model is
+    # already N-participant capable, so G1 adds identity + a create/membership
+    # flow, not roles.
     chat_type: Mapped[str] = mapped_column(
-        String(20), nullable=False, server_default="dm"
+        String(20), nullable=False, default="dm", server_default="dm"
     )  # 'dm' | 'group'
     name: Mapped[str | None] = mapped_column(String(128), nullable=True, default=None)
     created_by: Mapped[uuid.UUID | None] = mapped_column(
