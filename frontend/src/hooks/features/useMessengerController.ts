@@ -17,8 +17,9 @@ import {
 // header docblock for the full rationale.
 import { chatsQueryOptions, chatQueryOptions, messagesQueryOptions } from "@/api/hooks/messenger"
 import client from "@/api/client"
+import { chatDisplayInfo } from "@/components/messenger/chatDisplay"
 import type { User } from "@/types/User"
-import type { Message as UiMessage } from "@/components/messenger"
+import type { Message as UiMessage, Contact } from "@/components/messenger"
 
 // dayjs.extend(utc) removed in favor of native Intl utility
 
@@ -936,28 +937,43 @@ export const useMessengerController = () => {
   }
 
   // Derived Data
-  const contacts = useMemo(
+  // Wave 211 G4 — branch DM vs group via chatDisplayInfo. A group row shows
+  // chat.name + the GroupAvatar glyph (avatar="") + no presence dot; a DM keeps
+  // the peer's profile name/avatar/presence (the prior path, now centralized).
+  const contacts = useMemo<Contact[]>(
     () =>
       chats.map((chat) => {
-        const other = getOtherParticipant(chat)
-        const status = other ? presenceMap[other.id] : undefined
+        const display = chatDisplayInfo(chat, user?.id, t)
+        const status = display.otherParticipant
+          ? presenceMap[display.otherParticipant.id]
+          : undefined
         return {
           id: chat.id,
-          name: other?.full_name || "Unknown User",
-          avatar: other?.avatar_url || "",
+          name: display.name,
+          avatar: display.avatar,
           lastMessage: chat.last_message?.content || "",
           lastMessageTime: chat.last_message ? formatMessageTime(chat.last_message.created_at) : "",
           unread: chat.unread_count,
-          online: status?.active ?? false,
+          online: display.isGroup ? false : (status?.active ?? false),
+          isGroup: display.isGroup,
+          memberCount: display.memberCount,
         }
       }),
-    [chats, getOtherParticipant, presenceMap]
+    [chats, user?.id, t, presenceMap]
+  )
+
+  // Wave 211 G4 — the active chat's resolved identity for the ChatArea header
+  // (group name + "{n} members" vs the DM peer's name + presence).
+  const activeChatDisplay = useMemo(
+    () => (activeChat ? chatDisplayInfo(activeChat, user?.id, t) : null),
+    [activeChat, user?.id, t]
   )
 
   return {
     // State
     selectedChatId,
     activeChat,
+    activeChatDisplay,
     isNewChatModalOpen,
     setIsNewChatModalOpen,
     showSearchInChat,

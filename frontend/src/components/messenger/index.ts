@@ -1,4 +1,6 @@
 export * from "./types"
+export * from "./chatDisplay"
+export * from "./GroupAvatar"
 export * from "./ContactList"
 export * from "./ChatWindow"
 export * from "./MessageInput"

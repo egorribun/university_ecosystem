@@ -33,6 +33,7 @@ export default function MessengerFeature() {
     // State
     selectedChatId,
     activeChat,
+    activeChatDisplay,
     isNewChatModalOpen,
     setIsNewChatModalOpen,
     showSearchInChat,
@@ -154,6 +155,7 @@ export default function MessengerFeature() {
       isMobile={isMobile}
       selectedChatId={selectedChatId}
       activeChat={activeChat}
+      activeChatDisplay={activeChatDisplay}
       messages={messages}
       messagesLoading={messagesLoading}
       messagesError={messagesError}

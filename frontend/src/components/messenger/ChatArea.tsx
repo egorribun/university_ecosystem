@@ -1,5 +1,6 @@
 import SmartImage from "@/components/media/SmartImage"
 import { ChatWindow, MessageInput, TypingIndicator } from "@/components/messenger"
+import { GroupAvatar } from "./GroupAvatar"
 import { AVATAR_PLACEHOLDER_URL } from "@/constants/placeholders"
 import { useMessenger } from "@/contexts/MessengerContext"
 import { useMessengerController } from "@/hooks/features/useMessengerController"
@@ -25,6 +26,19 @@ interface ChatAreaProps {
   isMobile: boolean
   selectedChatId: string | null
   activeChat: ReturnType<typeof useMessengerController>["activeChat"]
+  /**
+   * Wave 211 G4 — the active chat's resolved display identity (group name +
+   * member count vs the DM peer's name + presence), from useMessengerController.
+   * Optional so ChatArea stays mountable in tests without the full wiring; the
+   * header falls back to the DM path (getOtherParticipant) when absent.
+   */
+  activeChatDisplay?: ReturnType<typeof useMessengerController>["activeChatDisplay"]
+  /**
+   * Wave 211 G4 — open the group info / member-management panel (the group
+   * header's avatar+title button). Undefined for a DM (the header opens the peer
+   * profile via handleViewProfile instead). Wired in SW10.
+   */
+  onOpenGroupInfo?: () => void
   messages: ReturnType<typeof useMessengerController>["messages"]
   /**
    * Wave 184 SW2 (Path B) — messages query loading flag lifted from
@@ -100,6 +114,8 @@ export function ChatArea({
   isMobile,
   selectedChatId,
   activeChat,
+  activeChatDisplay,
+  onOpenGroupInfo,
   messages,
   messagesLoading = false,
   messagesError = false,
@@ -190,60 +206,70 @@ export function ChatArea({
                     whileHover={prefersReducedMotion ? undefined : { scale: 1.02 }}
                     whileTap={prefersReducedMotion ? undefined : { scale: 0.98 }}
                     className="flex cursor-pointer items-center gap-3 border-none bg-transparent text-left outline-none"
-                    onClick={handleViewProfile}
+                    onClick={() =>
+                      activeChatDisplay?.isGroup ? onOpenGroupInfo?.() : handleViewProfile()
+                    }
                   >
                     <div className="relative">
-                      <SmartImage
-                        srcRaw={
-                          getOtherParticipant(activeChat)?.avatar_url || AVATAR_PLACEHOLDER_URL
-                        }
-                        fallback={AVATAR_PLACEHOLDER_URL}
-                        alt={getOtherParticipant(activeChat)?.full_name || ""}
-                        className="size-11 rounded-full border-2 border-(--glass-border-subtle) object-cover"
-                      />
-                      {/* Wave 202 SW5 — pulsing presence ring (was the static
-                          `.messenger-online-indicator` dot). Wired here, on the
-                          ACTIVE-chat header avatar ONLY = ONE infinite animation,
-                          where the conversation is open (best-in-class presence
-                          cue at ~zero perf cost). `.messenger-online-pulse` brings
-                          its own 10px emerald dot + surface ring + a pulsing
-                          `::after` (reduced-motion-guarded in tokens/messenger.css).
-                          ContactList rows + ProfileModal keep the static dot — a
-                          pulse per row would be N infinite animations. */}
-                      {presenceMap[getOtherParticipant(activeChat)?.id ?? ""]?.active && (
-                        <span
-                          className="messenger-online-pulse absolute bottom-0 right-0"
-                          aria-hidden="true"
-                        />
+                      {/* Wave 211 G4 — group header: the GroupAvatar Users glyph +
+                          "{n} members" (no per-user photo, no presence). DM header:
+                          the peer photo + the Wave 202 SW5 pulsing presence ring
+                          (ONE infinite animation, only on the open conversation —
+                          ContactList rows keep the static dot). */}
+                      {activeChatDisplay?.isGroup ? (
+                        <GroupAvatar className="size-11" iconSize={20} />
+                      ) : (
+                        <>
+                          <SmartImage
+                            srcRaw={
+                              getOtherParticipant(activeChat)?.avatar_url || AVATAR_PLACEHOLDER_URL
+                            }
+                            fallback={AVATAR_PLACEHOLDER_URL}
+                            alt={getOtherParticipant(activeChat)?.full_name || ""}
+                            className="size-11 rounded-full border-2 border-(--glass-border-subtle) object-cover"
+                          />
+                          {presenceMap[getOtherParticipant(activeChat)?.id ?? ""]?.active && (
+                            <span
+                              className="messenger-online-pulse absolute bottom-0 right-0"
+                              aria-hidden="true"
+                            />
+                          )}
+                        </>
                       )}
                     </div>
                     <div>
                       <h2 className="sf-pro text-lg font-bold leading-tight">
-                        {getOtherParticipant(activeChat)?.full_name}
+                        {activeChatDisplay?.name ?? getOtherParticipant(activeChat)?.full_name}
                       </h2>
-                      <AnimatePresence mode="wait">
-                        {presenceMap[getOtherParticipant(activeChat)?.id ?? ""]?.active ? (
-                          <m.p
-                            key="online"
-                            initial={{ opacity: 0, y: 5 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            exit={{ opacity: 0, y: -5 }}
-                            className="text-xs font-semibold uppercase tracking-wider text-msg-online"
-                          >
-                            {t("messenger:online")}
-                          </m.p>
-                        ) : (
-                          <m.p
-                            key="offline"
-                            initial={{ opacity: 0, y: 5 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            exit={{ opacity: 0, y: -5 }}
-                            className="text-xs font-medium text-text-secondary"
-                          >
-                            {t("messenger:offline")}
-                          </m.p>
-                        )}
-                      </AnimatePresence>
+                      {activeChatDisplay?.isGroup ? (
+                        <p className="text-xs font-medium text-text-secondary">
+                          {t("messenger:group.members", { count: activeChatDisplay.memberCount })}
+                        </p>
+                      ) : (
+                        <AnimatePresence mode="wait">
+                          {presenceMap[getOtherParticipant(activeChat)?.id ?? ""]?.active ? (
+                            <m.p
+                              key="online"
+                              initial={{ opacity: 0, y: 5 }}
+                              animate={{ opacity: 1, y: 0 }}
+                              exit={{ opacity: 0, y: -5 }}
+                              className="text-xs font-semibold uppercase tracking-wider text-msg-online"
+                            >
+                              {t("messenger:online")}
+                            </m.p>
+                          ) : (
+                            <m.p
+                              key="offline"
+                              initial={{ opacity: 0, y: 5 }}
+                              animate={{ opacity: 1, y: 0 }}
+                              exit={{ opacity: 0, y: -5 }}
+                              className="text-xs font-medium text-text-secondary"
+                            >
+                              {t("messenger:offline")}
+                            </m.p>
+                          )}
+                        </AnimatePresence>
+                      )}
                     </div>
                   </m.button>
                 </div>

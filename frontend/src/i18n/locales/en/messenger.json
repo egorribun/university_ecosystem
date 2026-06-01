@@ -96,6 +96,11 @@
   "forwardTo": "Forward to…",
   "forwardNoChats": "No chats to forward to",
   "forwardCurrentChat": "Current",
+  "unknownUser": "Unknown User",
+  "group": {
+    "untitled": "Group chat",
+    "members": "{{count}} members"
+  },
   "dateDivider": {
     "today": "Today",
     "yesterday": "Yesterday"

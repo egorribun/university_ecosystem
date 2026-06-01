@@ -401,7 +401,36 @@ describe("useMessengerController", () => {
 
       const { result } = renderHook(() => useMessengerController(), { wrapper })
       await waitFor(() => expect(result.current.contacts).toHaveLength(1))
-      expect(result.current.contacts[0]!.name).toBe("Unknown User")
+      // Wave 211 G4 — the DM no-name fallback moved from a hardcoded "Unknown
+      // User" literal to t("messenger:unknownUser") (chatDisplayInfo). The mock
+      // t(key) => key returns the key (file convention; see :433).
+      expect(result.current.contacts[0]!.name).toBe("messenger:unknownUser")
+    })
+
+    it("renders a group chat with its name + member count, no presence (W211 G4)", async () => {
+      mocks.paramsRef.current = {}
+      mocks.chatApi.getChats.mockResolvedValue({
+        items: [
+          {
+            id: "group-1",
+            chat_type: "group",
+            name: "Project Alpha",
+            participants: [{ id: "current-user-id" }, { id: "peer-a" }, { id: "peer-b" }],
+            unread_count: 2,
+          },
+        ],
+        has_more: false,
+        next_cursor: null,
+      })
+
+      const { result } = renderHook(() => useMessengerController(), { wrapper })
+      await waitFor(() => expect(result.current.contacts).toHaveLength(1))
+      const contact = result.current.contacts[0]!
+      expect(contact.isGroup).toBe(true)
+      expect(contact.name).toBe("Project Alpha")
+      expect(contact.memberCount).toBe(3)
+      expect(contact.avatar).toBe("") // GroupAvatar renders the glyph, no photo
+      expect(contact.online).toBe(false) // no per-user presence dot for a group
     })
   })
 

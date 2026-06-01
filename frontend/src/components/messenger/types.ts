@@ -6,6 +6,11 @@ export interface Contact {
   lastMessageTime: string
   unread: number
   online: boolean
+  // Wave 211 G4 — group identity (absent/false for a DM). isGroup => render the
+  // GroupAvatar glyph instead of the photo + suppress the presence dot;
+  // memberCount drives the group header subtitle.
+  isGroup?: boolean
+  memberCount?: number
 }
 
 export interface Attachment {

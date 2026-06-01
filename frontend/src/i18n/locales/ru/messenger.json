@@ -96,6 +96,11 @@
   "forwardTo": "Переслать в…",
   "forwardNoChats": "Нет чатов для пересылки",
   "forwardCurrentChat": "Текущий",
+  "unknownUser": "Неизвестный пользователь",
+  "group": {
+    "untitled": "Групповой чат",
+    "members": "{{count}} участник(ов)"
+  },
   "dateDivider": {
     "today": "Сегодня",
     "yesterday": "Вчера"
