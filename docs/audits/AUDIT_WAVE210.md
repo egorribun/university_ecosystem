@@ -151,6 +151,17 @@ User mandate: *"продолжаем работу на мессенджером 
 
 ---
 
+## CI close-out (post-SW9 — 3 follow-up commits)
+
+The SW9 close docs (`f767c0c3f`) were committed before the CI run; the Matrix Expansion run then surfaced **2 pre-existing CI-infra blockers** (fresh upstream events in the W209→W210 window — **NOT W210 code**, which changed zero dependencies). Both resolved in-wave per W138 L#1 (making the wave's CI green is the same close-the-wave mechanism, not a pivot):
+
+- **(z)#1 — MOD-W5-03 `uv lock --check` gate failed on a CDN-edge skew.** The gate runs unpinned `pip install uv` + `uv lock --check`, which re-resolves the root project's `requires-dist` against the **live PyPI index**. CI's GitHub/Fastly edge serialized `redis>=7.4.0,<8` as `<9` while my local ISP edge (and a cold Rust-equipped Linux container, same uv 0.11.17) kept `<8` → **irreproducible locally**. ~14 diagnostic rounds (local uv 0.11.7→0.11.17, `--refresh`, `--offline`, `--upgrade`, `docker run` mount) all kept `<8`; `--upgrade` produced an over-broad **1921-line / 30-package wave** (correctly rejected). **Diagnosed decisively** by a temporary CI step (`41201964a`, reverted in the fix) that runs `uv lock` on failure + `actions/upload-artifact` the regenerated lock → `gh run download` + `diff` showed **exactly 1 changed line**: `requires-dist[redis] <8→<9`. **Fixed** by `5800cffab` aligning `pyproject.toml` `redis<8→<9` so both edges serialize identically; the **resolved redis version stays 7.4.0** (the lower bound — metadata-only cap widen, ZERO install change), verified clean (1-line lock diff, host `uv lock --check` exit 0). New durable Gotcha in `CLAUDE.md`.
+- **(z)#2 — Node.js Dependency Audit failed on a fresh critical vitest advisory.** GHSA-5xrq-8626-4rwp (id `1120011`, vitest UI-server arbitrary file read/exec) was published in the W209→W210 window. **Dev-only** — vitest is a devDependency, the vulnerable `vitest --ui` server never runs in CI/prod, and `npm audit --omit=dev` = **0 production vulnerabilities**. Allowlisted by `b0dc0b116` (`security/audit-allowlist.yaml`, expires 2026-08-31) per the W191 dev-only-cascade pattern (`audit_dependencies.py` collects each vuln's `via` identifiers — only `1120011` was unmatched; the tmp/inquirer/external-editor `1119610` cascade was already covered). Gate re-run locally → "no unapproved advisories" (exit 0).
+
+**Result:** **CI - Matrix Expansion = completed/success, 0 failures, Lighthouse + CI Success green on `b0dc0b116`** — the full Matrix (incl. the 13 new G2/G3 tests + Backend Unit/Integration + FE Unit + E2E + Contract + Build + Pre-commit + Security Audit) validates W210. The natural `pull_request: synchronize` was stuck in GitHub-Actions backlog (~12 min) → the run was triggered via `workflow_dispatch` (legitimate; `ci.yml` supports it). The **byte-identical FE-bundle** claim HOLDS — all 3 fixes are `pyproject.toml`/`uv.lock`/allowlist config; no FE bundle change. **§Honesty** unchanged at 0-2 OPEN (both fresh-disclosure CI-infra blockers RESOLVED in-wave, not deferred).
+
+---
+
 ## Messenger arc & next
 
 W203 read receipts → W204 live bridge → W205 new_message + edit/delete → W206 reactions → W207 reply/quote + reactor-list + typing → W208 reply notifications + cleanup + message-list polish → W209 group-chat backend foundation (G1) → **W210 group-message backend completion (G2 read receipts + G3 notification re-tiering) + B live verify**.
