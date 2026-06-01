@@ -66,6 +66,15 @@ class MessageDTO(SecureBaseModel):
     # None (no deep nesting). ChatQueryService flattens this into the lean
     # MessageResponse.reply_to preview.
     replied_to: MessageDTO | None = None
+    # Wave 211 — denormalized "Forwarded from X" label (snapshot-copy forwarding).
+    # The silent-gatekeeper discipline (see ChatDTO): the repo model_validates the
+    # ORM Message, so without this field the forwarded_from_name column loads from
+    # the DB but Pydantic drops it and the query/command services never see it. A
+    # plain scalar — no replied_to-style nesting, no selectinload — so it rides
+    # every select(Message) read for free once declared here. The audit-only
+    # forwarded_from_{chat,message}_id columns are deliberately NOT carried (never
+    # serialized, never dereferenced cross-chat — privacy).
+    forwarded_from_name: str | None = None
 
 
 class ChatDTO(SecureBaseModel):

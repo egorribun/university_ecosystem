@@ -151,6 +151,26 @@ class MessageResponse(MessageBase):
     # replied_to; the chat-list last-message preview leaves it None (lightweight
     # projection, W203-SW8 two-site rule).
     reply_to: ReplyPreview | None = None
+    # Wave 211 — denormalized "Forwarded from X" label (None = not a forward).
+    # Snapshot-copy forwarding: a plain scalar that AUTO-carries through the 2
+    # spread-based MessageResponse construction sites (send_message idempotency-hit
+    # + main) via model_dump, and is set explicitly at the 3 field-by-field sites
+    # (send_message fallback, get_chats last-message, get_messages) per the
+    # W203-SW8 / W209 5-site rule. Never a nested preview (contrast reply_to) and
+    # never carries the audit-only forwarded_from_*_id columns — privacy.
+    forwarded_from_name: str | None = None
+
+
+# Wave 211 — forward 1..N messages from a source chat into a destination chat.
+# A dedicated input (NOT MessageCreate): forwarding takes no content/files — the
+# snapshot is copied from the source message(s). message_ids is bounded so a
+# single forward request can't fan out unboundedly.
+FORWARD_MAX_MESSAGES = 50
+
+
+class ForwardMessages(SecureBaseModel):
+    source_chat_id: UUID
+    message_ids: list[UUID] = Field(..., min_length=1, max_length=FORWARD_MAX_MESSAGES)
 
 
 class ChatBase(SecureBaseModel):
