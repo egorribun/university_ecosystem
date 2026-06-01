@@ -99,9 +99,14 @@ class Chat(Base, UUID7PrimaryKeyMixin):
     participants = relationship(
         "User", secondary=chat_participants, backref="chats", lazy="noload"
     )
+    # Wave 211 — foreign_keys="Message.chat_id" disambiguates the join: Message
+    # now has TWO chats.id FKs (chat_id + the audit-only forwarded_from_chat_id),
+    # so the Chat↔Message link is no longer inferable. chat_id is the membership
+    # FK; forwarded_from_chat_id is never traversed by a relationship (privacy).
     messages: Mapped[list[Message]] = relationship(
         "Message",
         back_populates="chat",
+        foreign_keys="Message.chat_id",
         cascade="all, delete-orphan",
         lazy="noload",
     )
@@ -156,6 +161,38 @@ class Message(Base, EventEmitterMixin, UUID7PrimaryKeyMixin):
         index=True,
         default=None,
     )
+    # Wave 211 — message forwarding (snapshot-copy). A forwarded message is a
+    # fresh, self-contained copy in the DESTINATION chat: content + attachments
+    # are copied at forward time and forwarded_from_name is a denormalized
+    # "Forwarded from X" label. This is the privacy-safe model — the source may
+    # live in a chat the destination viewer cannot access, so NOTHING here is
+    # ever dereferenced to render source content cross-chat (contrast W207's
+    # replied_to, safe only because message_exists_in_chat pins a reply to the
+    # SAME chat). forwarded_from_name is the ONLY field the FE renders; the two
+    # *_id columns are AUDIT-ONLY (never serialized, never dereferenced).
+    # ondelete="SET NULL" (like reply_to_message_id, NOT CASCADE) so deleting the
+    # source chat/message never deletes the forward. forwarded_from_message_id is
+    # indexed — a self-FK to messages.id whose SET NULL sweep can fire in bulk
+    # when a chat is hard-deleted (chat_id CASCADE), exactly the
+    # reply_to_message_id / DEBT-02 rationale. forwarded_from_chat_id is NOT
+    # indexed (matches the un-indexed Chat.created_by SET NULL FK: a chats.id
+    # sweep fires only on the rare chat deletion and chats are few).
+    forwarded_from_name: Mapped[str | None] = mapped_column(
+        String(128), nullable=True, default=None
+    )
+    forwarded_from_chat_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("chats.id", ondelete="SET NULL"),
+        nullable=True,
+        default=None,
+    )
+    forwarded_from_message_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("messages.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+        default=None,
+    )
 
     # Relationships
     # RZ-23-03 (audit 2026-03-25 Wave 23): Changed lazy="joined" → lazy="noload".
@@ -163,7 +200,15 @@ class Message(Base, EventEmitterMixin, UUID7PrimaryKeyMixin):
     # message fetches (50-msg pagination), this adds 2 JOINs where the parent
     # context (chat_id, sender_id) is already known as FK columns.
     # Repository already uses selectinload(Message.sender) at all call sites.
-    chat: Mapped[Chat] = relationship("Chat", back_populates="messages", lazy="noload")
+    # Wave 211 — foreign_keys="Message.chat_id" (see Chat.messages): the audit-only
+    # forwarded_from_chat_id is a second chats.id FK, so the membership join must
+    # be stated explicitly.
+    chat: Mapped[Chat] = relationship(
+        "Chat",
+        back_populates="messages",
+        foreign_keys="Message.chat_id",
+        lazy="noload",
+    )
     sender = relationship("User", lazy="noload")
     attachments: Mapped[list[Attachment]] = relationship(
         "Attachment",
@@ -183,15 +228,20 @@ class Message(Base, EventEmitterMixin, UUID7PrimaryKeyMixin):
     )
     # Wave 207 — the message this one replies to (self-referential many-to-one).
     # remote_side="Message.id" marks id as the parent/target side (Context7
-    # adjacency-list parent-pointer); reply_to_message_id is the sole Message→
-    # messages FK, so the join condition is inferred (no foreign_keys needed).
-    # No back_populates: we never render "messages that replied to this", only
-    # the forward quote. lazy="noload" (MOD-30-01 explicit-lazy CI gate);
-    # ChatRepository.get_messages adds selectinload(Message.replied_to) so the
-    # quote preview is a single extra SELECT … WHERE id IN (…) per page, no N+1.
+    # adjacency-list parent-pointer). Wave 211 added forwarded_from_message_id, a
+    # SECOND Message→messages FK, so the join condition is no longer inferable —
+    # foreign_keys="Message.reply_to_message_id" disambiguates which self-FK this
+    # relationship traverses (without it SQLAlchemy raises AmbiguousForeignKeysError
+    # at mapper configuration). No back_populates: we never render "messages that
+    # replied to this", only the forward quote. lazy="noload" (MOD-30-01
+    # explicit-lazy CI gate); ChatRepository.get_messages adds
+    # selectinload(Message.replied_to) so the quote preview is a single extra
+    # SELECT … WHERE id IN (…) per page, no N+1. forwarded_from_message_id is
+    # AUDIT-ONLY and has NO relationship — it is never dereferenced (privacy).
     replied_to: Mapped[Message | None] = relationship(
         "Message",
         remote_side="Message.id",
+        foreign_keys="Message.reply_to_message_id",
         lazy="noload",
     )
 
