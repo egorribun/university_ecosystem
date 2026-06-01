@@ -67,6 +67,9 @@ def _mock_message(chat_id: uuid.UUID, sender_id: uuid.UUID):
     msg.read_at = (
         None  # Wave 203 — explicit so MagicMock auto-attr doesn't break MessageResponse
     )
+    # Wave 211 — explicit so the MagicMock auto-attr isn't a non-str stand-in that
+    # MessageResponse.forwarded_from_name (str | None) rejects.
+    msg.forwarded_from_name = None
     msg.sender = None
     msg.attachments = []
     # Wave 207 — explicit so the auto-MagicMock attr isn't a truthy stand-in that

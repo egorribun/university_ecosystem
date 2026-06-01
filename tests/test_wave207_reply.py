@@ -66,6 +66,7 @@ def _fake_message() -> SimpleNamespace:
         read_at=None,
         edited_at=None,
         deleted_at=None,
+        forwarded_from_name=None,  # Wave 211 — serialize_message reads this scalar
         sender=None,
         attachments=[],
     )

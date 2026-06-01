@@ -82,4 +82,8 @@ def serialize_message(
         ],
         # Wave 207 — reply quote preview for the recipient's live new_message bubble.
         "reply_to": reply_to,
+        # Wave 211 — denormalized "Forwarded from X" label (None = not a forward).
+        # A plain scalar column (no preview build, no selectinload — contrast
+        # reply_to). The audit-only forwarded_from_*_id columns are never emitted.
+        "forwarded_from_name": message.forwarded_from_name,
     }

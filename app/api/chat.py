@@ -37,6 +37,7 @@ from app.schemas.chat import (
     ChatMaintenanceResult,
     ChatResponse,
     ChatsListOut,
+    ForwardMessages,
     GroupChatCreate,
     MessageResponse,
     MessagesListOut,
@@ -177,6 +178,34 @@ async def send_message(
         locale=locale,
         idempotency_key=idempotency_key,
         reply_to_message_id=reply_to_message_id,
+    )
+
+
+@router.post(
+    "/{dest_chat_id}/forward",
+    response_model=list[MessageResponse],
+    dependencies=[Depends(sensitive_route_limit())],
+)
+async def forward_messages(
+    dest_chat_id: uuid.UUID,
+    body: ForwardMessages,
+    current_user: Annotated[User, Depends(get_current_user)],
+    dispatcher: Annotated[ChatMessageDispatcher, Depends(get_chat_message_dispatcher)],
+    locale: Annotated[str, Depends(get_locale)],
+) -> list[MessageResponse]:
+    """Forward 1..N messages from a source chat into this destination chat (Wave 211).
+
+    Snapshot-copy: copies the source content + attachments + a "Forwarded from X"
+    label; the source is never dereferenced cross-chat (privacy). The actor must be
+    a participant of BOTH the source chat (to read) AND this destination chat (to
+    send) — see ChatMessageDispatcher.forward_messages.
+    """
+    return await dispatcher.forward_messages(
+        dest_chat_id,
+        current_user,
+        body.source_chat_id,
+        body.message_ids,
+        locale=locale,
     )
 
 

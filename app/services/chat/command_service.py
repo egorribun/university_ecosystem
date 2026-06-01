@@ -387,6 +387,7 @@ class ChatMessageDispatcher:
                 read_status=message.read_status,
                 edited_at=message.edited_at,  # Wave 205 SW4 — W203 SW8 gotcha
                 deleted_at=message.deleted_at,  # Wave 205 SW4 — W203 SW8 gotcha
+                forwarded_from_name=message.forwarded_from_name,  # Wave 211 — W203 SW8
                 sender=message.sender,
                 attachments=cast("list[AttachmentResponse]", message.attachments),
                 sender_presence=PresenceStatus(
@@ -439,6 +440,151 @@ class ChatMessageDispatcher:
             )
 
         return msg_data
+
+    async def forward_messages(
+        self,
+        dest_chat_id: uuid.UUID,
+        user: User,
+        source_chat_id: uuid.UUID,
+        message_ids: list[uuid.UUID],
+        locale: str,
+    ) -> list[MessageResponse]:
+        """Forward 1..N messages from a source chat into a destination chat (Wave 211).
+
+        Snapshot-copy model: each source message's content + attachments are COPIED
+        into a fresh message in the destination chat, plus a denormalized
+        ``forwarded_from_name`` "Forwarded from X" label. The source is NEVER
+        dereferenced cross-chat to render content — the forward is self-contained,
+        so a destination viewer with no rights in the source chat cannot see source
+        content. Reactions are NOT copied (they belong to the source's context).
+
+        Authorization is authz-first (W209 discipline):
+          1. dest exists + actor is a dest participant (can send here) — 404/403;
+          2. actor is a SOURCE participant (can read there) — 403 BEFORE any source
+             read, so a non-participant never learns whether a source id exists
+             (the cross-chat-leak gate);
+          3. each id belongs to the source chat — 404, validated for ALL ids before
+             any message is created (all-or-nothing, mirroring the W207 reply
+             404-before-insert, looped).
+
+        All N forwards + their attachment copies are written in ONE transaction; each
+        emits ``MessageSent`` so the existing outbox → broadcast (W204) → notification
+        (W210 group context) rail fans them out unchanged.
+        """
+        # Dedupe while preserving order (a client could repeat an id).
+        ordered_ids = list(dict.fromkeys(message_ids))
+
+        # 1) DEST existence + participant (send-side) — authz-first.
+        dest_chat = await self.repository.get_by_id(dest_chat_id)
+        ensure_exists(dest_chat, "chat", locale)
+        assert dest_chat is not None  # noqa: S101
+        if not await self.repository.check_participant(dest_chat_id, user.id):
+            raise_forbidden(locale, "errors.chat.not_participant")
+
+        # 2) SOURCE participant (read-side) — the cross-chat-leak gate. Checked
+        #    BEFORE any source message is read, so forwarding FROM a chat the actor
+        #    is not in returns 403 without revealing whether any source id exists.
+        if not await self.repository.check_participant(source_chat_id, user.id):
+            raise_forbidden(locale, "errors.chat.not_participant")
+
+        # 3) Each id must belong to the source chat — validate ALL before creating
+        #    ANY message (all-or-nothing). message_exists_in_chat is one EXISTS/id.
+        for mid in ordered_ids:
+            if not await self.repository.message_exists_in_chat(mid, source_chat_id):
+                raise_not_found("message", locale)
+
+        # Batched load of the source messages (sender + attachments selectinload'd).
+        sources = await self.repository.get_last_messages(ordered_ids)
+        if len(sources) != len(ordered_ids):
+            # Defensive TOCTOU guard — message_exists_in_chat validated each id
+            # above; a gap here would be a negligible same-session race. Fail
+            # before creating anything (all-or-nothing).
+            raise_not_found("message", locale)
+
+        now = datetime.now(UTC)
+        created: list[Message] = []
+        for mid in ordered_ids:
+            src = sources[mid]
+            message = Message(
+                chat_id=dest_chat_id,
+                sender_id=user.id,
+                content=src.content,
+                # Snapshot the ORIGINAL sender's name (the only forwarded-from datum
+                # the FE renders). The audit-only *_id columns record provenance but
+                # are never serialized / dereferenced cross-chat (privacy).
+                forwarded_from_name=(src.sender.full_name if src.sender else None),
+                forwarded_from_chat_id=source_chat_id,
+                forwarded_from_message_id=src.id,
+            )
+            await self.repository.create_message(message)
+            # Record the event right after the flush (see send_message ARCH-BE-01 /
+            # W205 SW-A): central capture tracks the emitter on session.info, so the
+            # outbox lands regardless of later autoflush ordering. sender = the
+            # FORWARDER, chat = the DEST — a forward is a normal new message.
+            cast(EventEmitterMixin, message).record_event(
+                MessageSent(
+                    message_id=message.id,
+                    chat_id=message.chat_id,
+                    sender_id=message.sender_id,
+                    content_preview=message.content[:50],
+                )
+            )
+            # Copy the source attachments — same blob url (no re-upload), fresh rows
+            # pointing at the new message. Makes the forward self-contained.
+            for att in src.attachments:
+                self.repository.add(
+                    Attachment(
+                        message=message,
+                        url=att.url,
+                        file_type=att.file_type,
+                        filename=att.filename,
+                        size=att.size,
+                    )
+                )
+            created.append(message)
+
+        # One timestamp bump (dest re-sorts to top) + one atomic commit for all N.
+        await self.repository.update_timestamp_by_id(dest_chat_id, now)
+        async with self.uow:
+            await self.uow.commit()
+
+        # Reload all created messages (attachments selectinload'd) for the response,
+        # preserving source order. forwarded_from_name auto-carries via model_dump;
+        # a forward is not a reply → reply_to=None. message.id is the identity-map
+        # PK (not expired on commit), so the reload-by-id is safe.
+        reloaded = await self.repository.get_last_messages([m.id for m in created])
+        responses: list[MessageResponse] = []
+        for message in created:
+            presence = PresenceStatus(active=ws_manager.is_online(user.id))
+            full = reloaded.get(message.id)
+            if full is not None:
+                responses.append(
+                    MessageResponse(
+                        **full.model_dump(exclude={"replied_to"}),
+                        reply_to=None,
+                        sender_presence=presence,
+                    )
+                )
+            else:
+                # Degraded rare path (reload returned nothing) — refresh the expired
+                # ORM object before reading scalar columns (mirrors send_message).
+                await self.session.refresh(message)
+                responses.append(
+                    MessageResponse(
+                        id=message.id,
+                        chat_id=message.chat_id,
+                        sender_id=message.sender_id,
+                        content=message.content,
+                        created_at=message.created_at,
+                        read_status=message.read_status,
+                        edited_at=message.edited_at,
+                        deleted_at=message.deleted_at,
+                        forwarded_from_name=message.forwarded_from_name,
+                        sender_presence=presence,
+                        reply_to=None,
+                    )
+                )
+        return responses
 
 
 class ChatMaintenanceService:
