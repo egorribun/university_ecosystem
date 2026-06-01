@@ -704,6 +704,113 @@ class ChatMaintenanceService:
             exclude_user_id=user.id,
         )
 
+    def _require_group_participant(
+        self, chat: Any, user: User, locale: str
+    ) -> set[uuid.UUID]:
+        """Authz gate for group member-management (Wave 209 G1).
+
+        Authz-first: a non-participant gets 403 (no chat existence/type leak)
+        BEFORE the chat-type check; a DM then gets 400 not_a_group. Returns the
+        current (pre-change) participant id set for cache invalidation.
+        """
+        participant_ids = {p.id for p in chat.participants}
+        if user.id not in participant_ids:
+            raise_forbidden(locale, "errors.chat.not_participant")
+        if chat.chat_type != "group":
+            raise_validation_error("errors.chat.not_a_group", locale)
+        return participant_ids
+
+    async def add_participant(
+        self,
+        chat_id: uuid.UUID,
+        user: User,
+        new_user_id: uuid.UUID,
+        locale: str,
+    ) -> None:
+        """Add a member to a group (Wave 209 G1 — any participant may add).
+
+        After commit, invalidate the chat-participant cache + the new + existing
+        members' presence-audience caches — the SECURITY invariant: broadcast_to_chat
+        AND the ws-hub join-gate both read chat:{id}:participants, so a stale cache
+        would lock the new member out of live frames (or keep a removed one in). No
+        live roster frame is pushed (FE refetches ["chats"] after the 200 — G3 adds
+        member-change frames). add_participant is idempotent (added == False ⇒ no
+        membership change ⇒ skip the invalidation).
+        """
+        chat = await self.repository.get_by_id(chat_id)
+        ensure_exists(chat, "chat", locale)
+        assert chat is not None  # noqa: S101
+
+        participant_ids = self._require_group_participant(chat, user, locale)
+
+        target = await self.repository.get_user(new_user_id)
+        ensure_exists(target, "users", locale)
+
+        added = await self.repository.add_participant(chat_id, new_user_id)
+        async with self.uow:
+            await self.uow.commit()
+
+        if added:
+            await invalidate_chat_participants_cache(chat_id)
+            await invalidate_presence_audience_cache(new_user_id, *participant_ids)
+
+    async def remove_participant(
+        self,
+        chat_id: uuid.UUID,
+        user: User,
+        target_user_id: uuid.UUID,
+        locale: str,
+    ) -> None:
+        """Remove a member from a group (Wave 209 G1).
+
+        The owner (created_by) may remove anyone; any member may remove themselves
+        (leave); anyone else → 403 remove_forbidden. After commit, invalidate the
+        same caches as add (security invariant). Removing a non-member is a benign
+        no-op (affected == 0 ⇒ skip the invalidation).
+        """
+        chat = await self.repository.get_by_id(chat_id)
+        ensure_exists(chat, "chat", locale)
+        assert chat is not None  # noqa: S101
+
+        participant_ids = self._require_group_participant(chat, user, locale)
+
+        is_self_leave = target_user_id == user.id
+        is_owner = chat.created_by == user.id
+        if not (is_self_leave or is_owner):
+            raise_forbidden(locale, "errors.chat.remove_forbidden")
+
+        affected = await self.repository.remove_participant(chat_id, target_user_id)
+        async with self.uow:
+            await self.uow.commit()
+
+        if affected:
+            await invalidate_chat_participants_cache(chat_id)
+            await invalidate_presence_audience_cache(target_user_id, *participant_ids)
+
+    async def rename_chat(
+        self, chat_id: uuid.UUID, user: User, name: str, locale: str
+    ) -> None:
+        """Rename a group's display title (Wave 209 G1 — any participant may rename).
+
+        No cache invalidation — the rename changes only the display name, not the
+        roster (the participant cache holds ids). FE refetches the chat list. The
+        RenameChat schema enforces min_length=1, but a whitespace-only name passes
+        that and is blank after strip, so re-validate here.
+        """
+        chat = await self.repository.get_by_id(chat_id)
+        ensure_exists(chat, "chat", locale)
+        assert chat is not None  # noqa: S101
+
+        self._require_group_participant(chat, user, locale)
+
+        clean_name = name.strip()
+        if not clean_name:
+            raise_validation_error("errors.chat.group_name_required", locale)
+
+        await self.repository.rename_chat(chat_id, clean_name)
+        async with self.uow:
+            await self.uow.commit()
+
     async def clear_history(
         self, chat_id: uuid.UUID, user: User, locale: str
     ) -> ChatMaintenanceResult:
