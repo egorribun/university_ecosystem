@@ -88,6 +88,12 @@ interface ChatAreaProps {
   replyingTo?: { senderName: string | null; isMe: boolean; text: string } | null
   onStartReply?: (messageId: string) => void
   onCancelReply?: () => void
+  /**
+   * Wave 211 — forward, threaded from useMessengerController through
+   * MessengerFeature. Wires each ChatWindow bubble's forward button → opens the
+   * ForwardModal destination picker (mounted in MessengerFeature).
+   */
+  onForward?: (messageId: string) => void
 }
 
 export function ChatArea({
@@ -121,6 +127,7 @@ export function ChatArea({
   replyingTo,
   onStartReply,
   onCancelReply,
+  onForward,
 }: ChatAreaProps) {
   const { t } = useTranslation(["messenger", "common"])
   const navigate = useNavigate()
@@ -383,6 +390,7 @@ export function ChatArea({
             onDeleteMessage={onDeleteMessage}
             onToggleReaction={onToggleReaction}
             onStartReply={onStartReply}
+            onForward={onForward}
           />
           <TypingIndicator users={typingUsers} prefersReducedMotion={prefersReducedMotion} />
           <MessageInput

@@ -91,6 +91,11 @@
     "deletedOriginal": "Original message deleted",
     "unknownSender": "Unknown"
   },
+  "forward": "Forward",
+  "forwardedFrom": "Forwarded from {{name}}",
+  "forwardTo": "Forward to…",
+  "forwardNoChats": "No chats to forward to",
+  "forwardCurrentChat": "Current",
   "dateDivider": {
     "today": "Today",
     "yesterday": "Yesterday"

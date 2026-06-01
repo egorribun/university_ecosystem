@@ -91,6 +91,11 @@
     "deletedOriginal": "Исходное сообщение удалено",
     "unknownSender": "Неизвестно"
   },
+  "forward": "Переслать",
+  "forwardedFrom": "Переслано от {{name}}",
+  "forwardTo": "Переслать в…",
+  "forwardNoChats": "Нет чатов для пересылки",
+  "forwardCurrentChat": "Текущий",
   "dateDivider": {
     "today": "Сегодня",
     "yesterday": "Вчера"

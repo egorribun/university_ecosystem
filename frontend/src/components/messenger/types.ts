@@ -53,6 +53,11 @@ export interface Message {
     text: string
     deletedAt: string | null
   } | null
+  // Wave 211 — denormalized "Forwarded from X" label (null/absent = not a forward).
+  // Snapshot-copy forwarding: ChatWindow renders a "Forwarded from {name}" chip
+  // above the bubble content. Mapped from the API `forwarded_from_name` in
+  // useMessengerController's transform.
+  forwardedFromName?: string | null
   // Wave 208 SW5 — message-list annotations computed in useMessengerController's
   // transform. showDateDivider marks the first message of a new calendar day
   // (ChatWindow renders a "Today / Yesterday / <date>" divider above the bubble);

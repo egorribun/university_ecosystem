@@ -108,6 +108,12 @@ export const useMessengerController = () => {
     text: string
   } | null>(null)
 
+  // Wave 211 — forward compose state. The id of the message being forwarded
+  // (null = ForwardModal closed). Set by handleStartForward when the user taps
+  // "forward" on a bubble; the ForwardModal destination picker renders while
+  // non-null; cleared on cancel + on a successful forward.
+  const [forwardSourceMessageId, setForwardSourceMessageId] = useState<string | null>(null)
+
   // Profile State
   const [profileUser, setProfileUser] = useState<User | null>(null)
   const [isProfileLoading, setIsProfileLoading] = useState(false)
@@ -300,6 +306,9 @@ export const useMessengerController = () => {
               deletedAt: m.reply_to.deleted_at ?? null,
             }
           : null,
+        // Wave 211 — denormalized "Forwarded from X" label (snapshot-copy
+        // forwarding). null/absent for non-forwards; ChatWindow renders the chip.
+        forwardedFromName: m.forwarded_from_name ?? null,
         // Wave 208 SW5 — message-list annotations (date divider + grouping).
         showDateDivider,
         dateLabel,
@@ -374,6 +383,28 @@ export const useMessengerController = () => {
       queryClient.invalidateQueries({ queryKey: ["chats"] })
       navigate({ to: "/messenger/$chatId", params: { chatId: newChat.id } })
       setIsNewChatModalOpen(false)
+    },
+  })
+
+  // Wave 211 — forward a message (snapshot-copy) into a destination chat. On
+  // success: invalidate the dest message list + the chat list (the forward is a
+  // new message there), close the picker, and navigate to the destination so
+  // the user sees the forwarded message land (Telegram-style confirmation).
+  const forwardMutation = useMutation({
+    mutationFn: ({
+      destChatId,
+      sourceChatId,
+      messageIds,
+    }: {
+      destChatId: string
+      sourceChatId: string
+      messageIds: string[]
+    }) => chatApi.forwardMessages(destChatId, sourceChatId, messageIds),
+    onSuccess: (_messages, { destChatId }) => {
+      queryClient.invalidateQueries({ queryKey: ["messages", destChatId] })
+      queryClient.invalidateQueries({ queryKey: ["chats"] })
+      setForwardSourceMessageId(null)
+      navigate({ to: "/messenger/$chatId", params: { chatId: destChatId } })
     },
   })
 
@@ -752,6 +783,35 @@ export const useMessengerController = () => {
 
   const handleCancelReply = useCallback(() => setReplyingTo(null), [])
 
+  // Wave 211 — forward handlers. handleStartForward opens the ForwardModal for a
+  // message (resolved from transformedMessages — server-confirmed truth, not an
+  // optimistic temp id; deleted tombstones are skipped). handleCancelForward
+  // closes it; handleForwardToChat dispatches the single-message forward to the
+  // chosen destination (the backend endpoint accepts 1..N — the UI forwards one).
+  const handleStartForward = useCallback(
+    (messageId: string) => {
+      const target = transformedMessages.find((m) => m.id === messageId)
+      if (!target || target.deletedAt) return
+      setForwardSourceMessageId(messageId)
+    },
+    [transformedMessages]
+  )
+
+  const handleCancelForward = useCallback(() => setForwardSourceMessageId(null), [])
+
+  const forwardMutate = forwardMutation.mutate
+  const handleForwardToChat = useCallback(
+    (destChatId: string) => {
+      if (!forwardSourceMessageId || !selectedChatId) return
+      forwardMutate({
+        destChatId,
+        sourceChatId: selectedChatId,
+        messageIds: [forwardSourceMessageId],
+      })
+    },
+    [forwardSourceMessageId, selectedChatId, forwardMutate]
+  )
+
   const getOtherParticipant = useCallback(
     (chat: Chat) => {
       return chat.participants.find((p) => p.id !== user?.id)
@@ -955,5 +1015,12 @@ export const useMessengerController = () => {
     replyingTo,
     handleStartReply,
     handleCancelReply,
+
+    // Wave 211 — message forwarding (snapshot-copy)
+    forwardSourceMessageId,
+    handleStartForward,
+    handleCancelForward,
+    handleForwardToChat,
+    isForwarding: forwardMutation.isPending,
   }
 }

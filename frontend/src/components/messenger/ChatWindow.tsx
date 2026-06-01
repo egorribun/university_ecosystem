@@ -4,6 +4,7 @@ import useMediaQuery from "@/hooks/useMediaQuery"
 import {
   ArrowDown,
   File,
+  Forward,
   Check,
   CheckCheck,
   MessageCircleHeart,
@@ -102,6 +103,13 @@ interface ChatWindowProps {
    */
   onStartReply?: (messageId: string) => void
   /**
+   * Wave 211 — forward a message into another chat (rendered on ALL bubbles,
+   * like reply). Threaded from useMessengerController via ChatArea; opens the
+   * ForwardModal destination picker. Optional so ChatWindow renders standalone
+   * in tests/storybook (the forward affordance is hidden without it).
+   */
+  onForward?: (messageId: string) => void
+  /**
    * Wave 207 — selected chat id, threaded so each ReactionPill can fetch its
    * reactor-list ("who reacted") on-demand. Optional: without it the reactor
    * query is disabled (the pill still renders + toggles).
@@ -138,6 +146,7 @@ export function ChatWindow({
   onDeleteMessage,
   onToggleReaction,
   onStartReply,
+  onForward,
   chatId,
 }: ChatWindowProps) {
   const { t } = useTranslation()
@@ -665,6 +674,35 @@ export function ChatWindow({
                             : "messenger-bubble-received text-text-primary rounded-2xl rounded-bl-sm"
                         )}
                       >
+                        {/* Wave 211 — "Forwarded from X" header (snapshot-copy
+                          forwarding). Sits at the top of the bubble (above
+                          attachments + content), Telegram-style. Theme-aware:
+                          text-inverse on the violet sent bubble, brand-main on
+                          the neutral received bubble. forwardedFromName is
+                          null/absent for non-forwards; a forward carries
+                          replyTo=null, so this is mutually exclusive with the
+                          reply chip below. */}
+                        {message.forwardedFromName ? (
+                          <div
+                            className={cn(
+                              "mb-1.5 flex items-center gap-1 text-micro font-semibold italic",
+                              message.isMe
+                                ? "text-[var(--text-inverse)] opacity-medium"
+                                : "text-(--brand-main)"
+                            )}
+                          >
+                            <Forward
+                              className="size-3 shrink-0"
+                              strokeWidth={2.5}
+                              aria-hidden="true"
+                            />
+                            <span className="truncate">
+                              {t("messenger:forwardedFrom", {
+                                name: message.forwardedFromName,
+                              })}
+                            </span>
+                          </div>
+                        ) : null}
                         {message.attachments && message.attachments.length > 0 && (
                           <div className="mb-2 space-y-2">
                             {message.attachments.map((attachment) => (
@@ -773,7 +811,7 @@ export function ChatWindow({
                           secondary controls; a context-menu / long-press affordance is
                           future polish). A right-context-menu / hover-reveal UX is
                           out of W205 scope. */}
-                          {onStartReply || message.isMe ? (
+                          {onStartReply || onForward || message.isMe ? (
                             <div className="flex items-center gap-0.5">
                               {/* Wave 207 — reply affordance on ALL bubbles (not just
                               own). On the violet sent bubble it uses text-inverse +
@@ -794,6 +832,26 @@ export function ChatWindow({
                                   )}
                                 >
                                   <Reply className="size-4" strokeWidth={2} aria-hidden="true" />
+                                </button>
+                              ) : null}
+                              {/* Wave 211 — forward affordance on ALL bubbles (like
+                              reply). Opens the ForwardModal destination picker. Same
+                              28px hit area + theme-aware styling as reply (text-inverse
+                              + inverse ring on the violet sent bubble; text-secondary +
+                              violet ring on the neutral received bubble). */}
+                              {onForward ? (
+                                <button
+                                  type="button"
+                                  onClick={() => onForward(message.id)}
+                                  aria-label={t("messenger:forward")}
+                                  className={cn(
+                                    "flex items-center justify-center rounded-md p-1.5 opacity-medium transition-opacity hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2",
+                                    message.isMe
+                                      ? "text-[var(--text-inverse)] focus-visible:ring-[var(--text-inverse)]"
+                                      : "text-(--text-secondary) focus-visible:ring-(--color-violet-500)"
+                                  )}
+                                >
+                                  <Forward className="size-4" strokeWidth={2} aria-hidden="true" />
                                 </button>
                               ) : null}
                               {message.isMe ? (

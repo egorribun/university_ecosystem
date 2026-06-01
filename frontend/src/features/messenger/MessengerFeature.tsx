@@ -1,4 +1,10 @@
-import { ChatArea, MessengerBackdrop, MessengerSidebar, NewChatModal } from "@/components/messenger"
+import {
+  ChatArea,
+  ForwardModal,
+  MessengerBackdrop,
+  MessengerSidebar,
+  NewChatModal,
+} from "@/components/messenger"
 import { ProfileModal } from "@/components/messenger/ProfileModal"
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog"
 import { useMessenger } from "@/contexts/MessengerContext"
@@ -94,6 +100,16 @@ export default function MessengerFeature() {
     replyingTo,
     handleStartReply,
     handleCancelReply,
+
+    // Wave 211 — forward compose state + handlers. forwardSourceMessageId !== null
+    // opens the ForwardModal; handleStartForward wires each bubble's forward
+    // button; handleForwardToChat dispatches the snapshot-copy forward to the
+    // chosen destination; isForwarding disables the picker rows in-flight.
+    forwardSourceMessageId,
+    handleStartForward,
+    handleCancelForward,
+    handleForwardToChat,
+    isForwarding,
   } = useMessengerController()
 
   // Wave 183 SW6 — surface WS connection status. useMessenger().isConnected
@@ -167,6 +183,7 @@ export default function MessengerFeature() {
       replyingTo={replyingTo}
       onStartReply={handleStartReply}
       onCancelReply={handleCancelReply}
+      onForward={handleStartForward}
     />
   )
 
@@ -239,6 +256,19 @@ export default function MessengerFeature() {
         open={isNewChatModalOpen}
         onClose={() => setIsNewChatModalOpen(false)}
         onSelect={(userId) => handleCreateChat(userId)}
+      />
+
+      {/* Wave 211 — forward destination picker. Open when a message is selected
+          for forwarding; lists the user's chats; a row tap dispatches the
+          single-message snapshot-copy forward (the controller navigates to the
+          destination on success, which closes this modal). */}
+      <ForwardModal
+        open={forwardSourceMessageId !== null}
+        onClose={handleCancelForward}
+        contacts={contacts}
+        currentChatId={selectedChatId}
+        onSelect={handleForwardToChat}
+        isForwarding={isForwarding}
       />
 
       <ProfileModal
