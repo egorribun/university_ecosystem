@@ -111,6 +111,15 @@
   "removeMember": "Remove {{name}}",
   "createGroup": "Create group",
   "creatingGroup": "Creating…",
+  "renameGroup": "Rename group",
+  "addMember": "Add members",
+  "leaveGroup": "Leave group",
+  "groupOwner": "Owner",
+  "memberYou": "you",
+  "removeMemberConfirm": "Remove",
+  "removeMemberTitle": "Remove member?",
+  "confirmRemoveMember": "Remove this member from the group?",
+  "confirmLeaveGroup": "Leave this group? You'll need to be added again to return.",
   "dateDivider": {
     "today": "Today",
     "yesterday": "Yesterday"

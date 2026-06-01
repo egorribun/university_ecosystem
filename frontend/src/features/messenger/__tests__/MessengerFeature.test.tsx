@@ -49,6 +49,14 @@ vi.mock("@/components/messenger", async () => {
     NewChatModal: (props: { open?: boolean }) => (
       <div data-testid="mock-new-chat-modal" data-open={String(!!props.open)} />
     ),
+    // Wave 211 — ForwardModal + GroupInfoPanel mocked (GroupInfoPanel uses
+    // useQuery for the add-member search → would need a QueryClientProvider).
+    ForwardModal: (props: { open?: boolean }) => (
+      <div data-testid="mock-forward-modal" data-open={String(!!props.open)} />
+    ),
+    GroupInfoPanel: (props: { open?: boolean }) => (
+      <div data-testid="mock-group-info-panel" data-open={String(!!props.open)} />
+    ),
   }
 })
 
@@ -96,6 +104,25 @@ const makeController = (overrides: Record<string, unknown> = {}) => ({
   handleCreateChat: vi.fn(),
   handleClearChat: vi.fn(),
   handleDeleteChat: vi.fn(),
+  // Wave 211 SW6 — forward
+  forwardSourceMessageId: null,
+  handleStartForward: vi.fn(),
+  handleCancelForward: vi.fn(),
+  handleForwardToChat: vi.fn(),
+  isForwarding: false,
+  // Wave 211 G4 — group display (SW8) + create (SW9) + member mgmt (SW10)
+  activeChatDisplay: null,
+  handleCreateGroup: vi.fn(),
+  isCreatingGroup: false,
+  currentUserId: "current-user-id",
+  showGroupInfo: false,
+  setShowGroupInfo: vi.fn(),
+  handleRenameGroup: vi.fn(),
+  handleAddMember: vi.fn(),
+  handleRemoveMember: vi.fn(),
+  isRenamingGroup: false,
+  isAddingMember: false,
+  isRemovingMember: false,
   ...overrides,
 })
 

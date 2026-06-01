@@ -111,6 +111,15 @@
   "removeMember": "Удалить {{name}}",
   "createGroup": "Создать группу",
   "creatingGroup": "Создание…",
+  "renameGroup": "Переименовать группу",
+  "addMember": "Добавить участников",
+  "leaveGroup": "Покинуть группу",
+  "groupOwner": "Владелец",
+  "memberYou": "вы",
+  "removeMemberConfirm": "Удалить",
+  "removeMemberTitle": "Удалить участника?",
+  "confirmRemoveMember": "Удалить этого участника из группы?",
+  "confirmLeaveGroup": "Покинуть группу? Чтобы вернуться, вас нужно будет добавить снова.",
   "dateDivider": {
     "today": "Сегодня",
     "yesterday": "Вчера"

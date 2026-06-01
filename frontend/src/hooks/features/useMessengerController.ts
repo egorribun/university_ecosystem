@@ -130,6 +130,8 @@ export const useMessengerController = () => {
     cancelText?: string
     onConfirm: () => void
   } | null>(null)
+  // Wave 211 G4 (SW10) — group info / member-management panel open state.
+  const [showGroupInfo, setShowGroupInfo] = useState(false)
 
   // Wave 183 SW3 — track Blob URLs created by optimistic message attachments
   // so they can be revoked on cleanup (component unmount) AND on mutation
@@ -397,6 +399,41 @@ export const useMessengerController = () => {
       queryClient.invalidateQueries({ queryKey: ["chats"] })
       navigate({ to: "/messenger/$chatId", params: { chatId: newChat.id } })
       setIsNewChatModalOpen(false)
+    },
+  })
+
+  // Wave 211 G4 (SW10) — group member management. Each invalidates the chat list
+  // + the active chat detail so the panel + header reflect the change (W210
+  // read_receipts ride the ["chats", id] slot, so its detail is refreshed too).
+  const renameChatMutation = useMutation({
+    mutationFn: ({ chatId, name }: { chatId: string; name: string }) =>
+      chatApi.renameChat(chatId, name),
+    onSuccess: (_data, { chatId }) => {
+      queryClient.invalidateQueries({ queryKey: ["chats"] })
+      queryClient.invalidateQueries({ queryKey: ["chats", chatId] })
+    },
+  })
+
+  const addParticipantMutation = useMutation({
+    mutationFn: ({ chatId, userId }: { chatId: string; userId: string }) =>
+      chatApi.addParticipant(chatId, userId),
+    onSuccess: (_data, { chatId }) => {
+      queryClient.invalidateQueries({ queryKey: ["chats"] })
+      queryClient.invalidateQueries({ queryKey: ["chats", chatId] })
+    },
+  })
+
+  const removeParticipantMutation = useMutation({
+    mutationFn: ({ chatId, userId }: { chatId: string; userId: string }) =>
+      chatApi.removeParticipant(chatId, userId),
+    onSuccess: (_data, { chatId, userId }) => {
+      queryClient.invalidateQueries({ queryKey: ["chats"] })
+      queryClient.invalidateQueries({ queryKey: ["chats", chatId] })
+      // Leaving (removing self) exits the chat + closes the panel.
+      if (userId === user?.id) {
+        setShowGroupInfo(false)
+        navigate({ to: "/messenger" })
+      }
     },
   })
 
@@ -844,6 +881,39 @@ export const useMessengerController = () => {
     createGroupMutation.mutate({ name, participantIds })
   }
 
+  // Wave 211 G4 (SW10) — group member-management handlers (the panel validates
+  // owner-gating in the UI; the backend enforces it authoritatively).
+  const handleRenameGroup = (name: string) => {
+    const chatId = selectedChatId
+    const trimmed = name.trim()
+    if (!chatId || !trimmed) return
+    renameChatMutation.mutate({ chatId, name: trimmed })
+  }
+
+  const handleAddMember = (userId: string) => {
+    const chatId = selectedChatId
+    if (!chatId) return
+    addParticipantMutation.mutate({ chatId, userId })
+  }
+
+  const handleRemoveMember = (userId: string) => {
+    const chatId = selectedChatId
+    if (!chatId) return
+    const isSelf = userId === user?.id
+    setConfirmDialog({
+      open: true,
+      title: isSelf ? t("messenger:leaveGroup") : t("messenger:removeMemberTitle"),
+      message: isSelf ? t("messenger:confirmLeaveGroup") : t("messenger:confirmRemoveMember"),
+      variant: "danger",
+      confirmText: isSelf ? t("messenger:leaveGroup") : t("messenger:removeMemberConfirm"),
+      cancelText: t("common:buttons.cancel"),
+      onConfirm: () => {
+        removeParticipantMutation.mutate({ chatId, userId })
+        setConfirmDialog(null)
+      },
+    })
+  }
+
   const handleClearChat = () => {
     if (!selectedChatId) return
     setConfirmDialog({
@@ -1034,6 +1104,17 @@ export const useMessengerController = () => {
     handleCreateChat,
     handleCreateGroup,
     isCreatingGroup: createGroupMutation.isPending,
+
+    // Wave 211 G4 (SW10) — group info panel + member management
+    currentUserId: user?.id,
+    showGroupInfo,
+    setShowGroupInfo,
+    handleRenameGroup,
+    handleAddMember,
+    handleRemoveMember,
+    isRenamingGroup: renameChatMutation.isPending,
+    isAddingMember: addParticipantMutation.isPending,
+    isRemovingMember: removeParticipantMutation.isPending,
     handleClearChat,
     handleDeleteChat,
 

@@ -1,6 +1,7 @@
 import {
   ChatArea,
   ForwardModal,
+  GroupInfoPanel,
   MessengerBackdrop,
   MessengerSidebar,
   NewChatModal,
@@ -82,6 +83,14 @@ export default function MessengerFeature() {
     handleCreateChat,
     handleCreateGroup,
     isCreatingGroup,
+    currentUserId,
+    showGroupInfo,
+    setShowGroupInfo,
+    handleRenameGroup,
+    handleAddMember,
+    handleRemoveMember,
+    isRenamingGroup,
+    isAddingMember,
     handleClearChat,
     handleDeleteChat,
 
@@ -158,6 +167,7 @@ export default function MessengerFeature() {
       selectedChatId={selectedChatId}
       activeChat={activeChat}
       activeChatDisplay={activeChatDisplay}
+      onOpenGroupInfo={() => setShowGroupInfo(true)}
       messages={messages}
       messagesLoading={messagesLoading}
       messagesError={messagesError}
@@ -282,6 +292,21 @@ export default function MessengerFeature() {
         loading={isProfileLoading}
         error={profileError}
         onClose={handleCloseProfile}
+      />
+
+      {/* Wave 211 G4 (SW10) — group info / member-management panel. Opened from
+          the group header (onOpenGroupInfo); rename + add/remove members + leave. */}
+      <GroupInfoPanel
+        open={showGroupInfo && activeChatDisplay?.isGroup === true}
+        onClose={() => setShowGroupInfo(false)}
+        chat={activeChat}
+        currentUserId={currentUserId}
+        presenceMap={presenceMap}
+        onRename={handleRenameGroup}
+        onAddMember={handleAddMember}
+        onRemoveMember={handleRemoveMember}
+        isRenaming={isRenamingGroup}
+        isAddingMember={isAddingMember}
       />
 
       <ConfirmDialog
