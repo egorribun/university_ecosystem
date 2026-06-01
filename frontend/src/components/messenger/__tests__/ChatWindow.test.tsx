@@ -613,3 +613,54 @@ describe("ChatWindow — W206 reactions (pills + +react picker)", () => {
     expect(screen.queryByRole("button", { name: /messenger:reactions\.tally/ })).toBeFalsy()
   })
 })
+
+describe("ChatWindow — W208 SW5 date dividers + sender grouping render", () => {
+  it("renders the date-divider label above a message flagged showDateDivider", () => {
+    render(
+      <ChatWindow
+        messages={[
+          makeMessage({
+            id: "d1",
+            text: "today msg",
+            showDateDivider: true,
+            dateLabel: "messenger:dateDivider.today",
+          }),
+          makeMessage({ id: "d2", text: "same day", showDateDivider: false }),
+        ]}
+      />,
+      { wrapper }
+    )
+    // dateLabel is rendered verbatim (pre-resolved in the transform — ChatWindow
+    // does not call t() for it). Only the divider-flagged message shows it.
+    expect(screen.getAllByText("messenger:dateDivider.today")).toHaveLength(1)
+  })
+
+  it("renders no date divider when showDateDivider is absent (optimistic / standalone)", () => {
+    render(<ChatWindow messages={[makeMessage({ id: "n1", text: "hi" })]} />, { wrapper })
+    expect(screen.queryByText("messenger:dateDivider.today")).toBeFalsy()
+    expect(screen.queryByText("messenger:dateDivider.yesterday")).toBeFalsy()
+  })
+
+  it("shows the avatar for a group-start message and hides it (spacer) for a grouped one", () => {
+    render(
+      <ChatWindow
+        messages={[
+          makeMessage({ id: "g1", text: "first", senderName: "GroupStart", isGroupStart: true }),
+          makeMessage({ id: "g2", text: "second", senderName: "Grouped", isGroupStart: false }),
+        ]}
+      />,
+      { wrapper }
+    )
+    // The mocked SmartImage renders <img alt={senderName}>; isGroupStart=false
+    // swaps it for an aria-hidden spacer (no avatar img for that sender).
+    expect(screen.queryByAltText("GroupStart")).toBeTruthy()
+    expect(screen.queryByAltText("Grouped")).toBeFalsy()
+  })
+
+  it("shows the avatar when isGroupStart is undefined (default — no grouping applied)", () => {
+    render(<ChatWindow messages={[makeMessage({ id: "u1", text: "hi", senderName: "Solo" })]} />, {
+      wrapper,
+    })
+    expect(screen.queryByAltText("Solo")).toBeTruthy()
+  })
+})
