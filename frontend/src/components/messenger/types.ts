@@ -53,4 +53,15 @@ export interface Message {
     text: string
     deletedAt: string | null
   } | null
+  // Wave 208 SW5 — message-list annotations computed in useMessengerController's
+  // transform. showDateDivider marks the first message of a new calendar day
+  // (ChatWindow renders a "Today / Yesterday / <date>" divider above the bubble);
+  // dateLabel is the pre-resolved divider text. isGroupStart marks the first
+  // message of a sender-run (different sender, a > 5min gap, or a new day) — when
+  // explicitly false ChatWindow hides the avatar + tightens spacing (Telegram
+  // grouping). All optional so optimistic / standalone messages render without
+  // them (undefined === "show avatar, no grouping").
+  showDateDivider?: boolean
+  dateLabel?: string
+  isGroupStart?: boolean
 }

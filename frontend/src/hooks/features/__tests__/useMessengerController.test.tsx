@@ -88,6 +88,10 @@ vi.mock("@/contexts/MessengerContext", () => ({
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({
     t: (key: string) => key,
+    // Wave 208 SW5 — the transform reads i18n.language for the absolute
+    // date-divider label (formatDate locale). Provide a stable language so the
+    // memo doesn't throw on `i18n.language`.
+    i18n: { language: "en" },
   }),
 }))
 
@@ -757,6 +761,130 @@ describe("useMessengerController", () => {
         const r = result.current.messages.find((m) => m.id === "msg-1")?.reactions
         expect(r).toEqual([])
       })
+    })
+  })
+
+  // Wave 208 SW5 — date dividers + sender grouping. The transform annotates each
+  // message with showDateDivider/dateLabel/isGroupStart; result.current.messages
+  // reflects them (transformedMessages flows through optimisticMessages). retry: 2
+  // absorbs the rare midnight straddle between the test's `new Date()` and the
+  // transform's, matching the codebase hook-timing-flake convention.
+  describe("Wave 208 SW5 — date dividers + sender grouping", { retry: 2 }, () => {
+    const seedChatWithMessages = (
+      items: Array<{ id: string; sender_id: string; content: string; created_at: string }>
+    ) => {
+      mocks.paramsRef.current = { chatId: "chat-1" }
+      mocks.chatApi.getChats.mockResolvedValue({
+        items: [
+          {
+            id: "chat-1",
+            participants: [{ id: "current-user-id" }, { id: "peer" }],
+            unread_count: 0,
+          },
+        ],
+        has_more: false,
+        next_cursor: null,
+      })
+      mocks.chatApi.getMessages.mockResolvedValue({
+        items: items.map((it) => ({ ...it, chat_id: "chat-1", read_status: false })),
+        has_more: false,
+        next_cursor: null,
+      })
+    }
+
+    it("marks a date divider + group start on the first message of each calendar day", async () => {
+      const now = new Date()
+      const yesterdayNoon = new Date(now)
+      yesterdayNoon.setDate(now.getDate() - 1)
+      yesterdayNoon.setHours(12, 0, 0, 0)
+      const today9 = new Date(now)
+      today9.setHours(9, 0, 0, 0)
+      const today902 = new Date(today9)
+      today902.setMinutes(2)
+      seedChatWithMessages([
+        {
+          id: "A",
+          sender_id: "current-user-id",
+          content: "a",
+          created_at: yesterdayNoon.toISOString(),
+        },
+        { id: "B", sender_id: "current-user-id", content: "b", created_at: today9.toISOString() },
+        { id: "C", sender_id: "current-user-id", content: "c", created_at: today902.toISOString() },
+      ])
+
+      const { result } = renderHook(() => useMessengerController(), { wrapper })
+      await waitFor(() => expect(result.current.messages).toHaveLength(3))
+      const get = (id: string) => result.current.messages.find((m) => m.id === id)
+
+      // A — first message: divider (yesterday label) + group start.
+      expect(get("A")?.showDateDivider).toBe(true)
+      expect(get("A")?.isGroupStart).toBe(true)
+      expect(get("A")?.dateLabel).toBe("messenger:dateDivider.yesterday")
+      // B — new calendar day: divider (today label) + group start.
+      expect(get("B")?.showDateDivider).toBe(true)
+      expect(get("B")?.isGroupStart).toBe(true)
+      expect(get("B")?.dateLabel).toBe("messenger:dateDivider.today")
+      // C — same day + same sender within 5min: no divider, grouped.
+      expect(get("C")?.showDateDivider).toBe(false)
+      expect(get("C")?.isGroupStart).toBe(false)
+      expect(get("C")?.dateLabel).toBeUndefined()
+    })
+
+    it("starts a new group on a different sender or a > 5min gap (same day)", async () => {
+      const now = new Date()
+      const base = new Date(now)
+      base.setHours(9, 0, 0, 0)
+      const at = (mins: number) => {
+        const d = new Date(base)
+        d.setMinutes(mins)
+        return d.toISOString()
+      }
+      seedChatWithMessages([
+        { id: "M1", sender_id: "current-user-id", content: "1", created_at: at(0) },
+        { id: "M2", sender_id: "current-user-id", content: "2", created_at: at(1) },
+        { id: "M3", sender_id: "peer", content: "3", created_at: at(2) },
+        { id: "M4", sender_id: "peer", content: "4", created_at: at(15) },
+      ])
+
+      const { result } = renderHook(() => useMessengerController(), { wrapper })
+      await waitFor(() => expect(result.current.messages).toHaveLength(4))
+      const get = (id: string) => result.current.messages.find((m) => m.id === id)
+
+      expect(get("M1")?.isGroupStart).toBe(true) // first
+      expect(get("M2")?.isGroupStart).toBe(false) // same sender, +1min
+      expect(get("M3")?.isGroupStart).toBe(true) // different sender
+      expect(get("M4")?.isGroupStart).toBe(true) // same sender as M3 but +13min gap
+      // All same calendar day → only the first message shows a divider.
+      expect(get("M1")?.showDateDivider).toBe(true)
+      expect(get("M2")?.showDateDivider).toBe(false)
+      expect(get("M3")?.showDateDivider).toBe(false)
+      expect(get("M4")?.showDateDivider).toBe(false)
+    })
+
+    it("uses an absolute localized date label for messages older than yesterday", async () => {
+      const now = new Date()
+      const lastWeek = new Date(now)
+      lastWeek.setDate(now.getDate() - 7)
+      lastWeek.setHours(12, 0, 0, 0)
+      seedChatWithMessages([
+        {
+          id: "OLD",
+          sender_id: "current-user-id",
+          content: "old",
+          created_at: lastWeek.toISOString(),
+        },
+      ])
+
+      const { result } = renderHook(() => useMessengerController(), { wrapper })
+      await waitFor(() => expect(result.current.messages).toHaveLength(1))
+      const old = result.current.messages.find((m) => m.id === "OLD")
+
+      expect(old?.showDateDivider).toBe(true)
+      expect(old?.isGroupStart).toBe(true)
+      // Absolute formatted date — NOT the relative today/yesterday i18n keys.
+      expect(old?.dateLabel).toBeTruthy()
+      expect(old?.dateLabel).not.toBe("messenger:dateDivider.today")
+      expect(old?.dateLabel).not.toBe("messenger:dateDivider.yesterday")
     })
   })
 })

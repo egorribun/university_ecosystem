@@ -91,6 +91,10 @@
     "deletedOriginal": "Original message deleted",
     "unknownSender": "Unknown"
   },
+  "dateDivider": {
+    "today": "Today",
+    "yesterday": "Yesterday"
+  },
   "aria": {
     "messageList": "Chat messages",
     "removeAttachment": "Remove attachment",

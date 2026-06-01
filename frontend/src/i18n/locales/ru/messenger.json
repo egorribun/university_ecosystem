@@ -91,6 +91,10 @@
     "deletedOriginal": "Исходное сообщение удалено",
     "unknownSender": "Неизвестно"
   },
+  "dateDivider": {
+    "today": "Сегодня",
+    "yesterday": "Вчера"
+  },
   "aria": {
     "messageList": "Сообщения чата",
     "removeAttachment": "Удалить вложение",

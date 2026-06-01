@@ -530,6 +530,18 @@ export function ChatWindow({
                   transform: `translateY(${virtualRow.start}px)`,
                 }}
               >
+                {/* Wave 208 SW5 — date divider above the first message of a new
+                    calendar day. Rendered INSIDE the measureElement item so the
+                    virtualizer measures the divider + row together (no separate
+                    virtual row → the filteredMessages count/index alignment from
+                    W184 SW1 stays intact). */}
+                {message.showDateDivider && message.dateLabel ? (
+                  <div className="flex justify-center py-2">
+                    <span className="rounded-full bg-(--bg-surface-raised)/(--opacity-medium) px-3 py-1 text-micro font-semibold uppercase tracking-wide text-(--text-secondary)">
+                      {message.dateLabel}
+                    </span>
+                  </div>
+                ) : null}
                 <m.div
                   initial={animateEntrance ? { opacity: 0, y: 10, scale: 0.95 } : false}
                   animate={{ opacity: 1, y: 0, scale: 1 }}
@@ -537,19 +549,28 @@ export function ChatWindow({
                     animateEntrance ? { duration: 0.3, ease: [0.22, 1, 0.36, 1] } : { duration: 0 }
                   }
                   className={cn(
-                    "flex items-end gap-2 md:gap-3 py-1 w-full md:flex-row group",
+                    "flex items-end gap-2 md:gap-3 w-full md:flex-row group",
+                    message.isGroupStart === false ? "py-0.5" : "py-1",
                     message.isMe
                       ? "flex-row-reverse justify-start md:justify-start"
                       : "flex-row justify-start"
                   )}
                 >
+                  {/* Wave 208 SW5 — sender grouping: hide the avatar (keep a
+                      same-size spacer) for non-group-start messages so a run from
+                      one sender shares a single avatar. undefined (optimistic /
+                      standalone) keeps the avatar. */}
                   <div className="shrink-0 mb-1">
-                    <SmartImage
-                      srcRaw={message.senderAvatar || AVATAR_PLACEHOLDER_URL}
-                      fallback={AVATAR_PLACEHOLDER_URL}
-                      alt={message.senderName || ""}
-                      className="w-8 h-8 md:w-9 md:h-9 rounded-full object-cover shadow-sm ring-1 ring-black/(--opacity-faint) dark:ring-white/(--opacity-faint)"
-                    />
+                    {message.isGroupStart === false ? (
+                      <div className="w-8 h-8 md:w-9 md:h-9" aria-hidden="true" />
+                    ) : (
+                      <SmartImage
+                        srcRaw={message.senderAvatar || AVATAR_PLACEHOLDER_URL}
+                        fallback={AVATAR_PLACEHOLDER_URL}
+                        alt={message.senderName || ""}
+                        className="w-8 h-8 md:w-9 md:h-9 rounded-full object-cover shadow-sm ring-1 ring-black/(--opacity-faint) dark:ring-white/(--opacity-faint)"
+                      />
+                    )}
                   </div>
 
                   {/* Wave 203 SW6 — column wrapper so the single "Seen · HH:MM"

@@ -27,6 +27,18 @@ const formatMessageTime = (dateString: string) => {
   return formatDate(dateString, presets.chatTime)
 }
 
+// Wave 208 SW5 — group consecutive messages from the same sender within this
+// window (ms) under one avatar (Telegram-style). A larger gap, a different
+// sender, or a new calendar day starts a fresh group.
+const GROUP_GAP_MS = 5 * 60 * 1000
+
+// Wave 208 SW5 — same-calendar-day check (local time) for date dividers + group
+// boundaries. Pure (no locale / t) so it stays a module-level helper.
+const isSameCalendarDay = (a: Date, b: Date): boolean =>
+  a.getFullYear() === b.getFullYear() &&
+  a.getMonth() === b.getMonth() &&
+  a.getDate() === b.getDate()
+
 // Wave 206 — API reaction aggregate shape (snake_case, as carried on @/api/chat
 // Message.reactions). The optimistic toggle below operates on this shape in the
 // ["messages", chatId] cache; the transform maps it to the camelCase UI shape.
@@ -62,7 +74,7 @@ const toggleReactionAggregate = (
 }
 
 export const useMessengerController = () => {
-  const { t } = useTranslation(["messenger", "common"])
+  const { t, i18n } = useTranslation(["messenger", "common"])
   const { user } = useAuth()
   // W145 SW2 — `as` cast removed; TanStack v1 `useParams({ strict: false })`
   // returns the union of all route params, so destructured `chatId` is
@@ -211,8 +223,38 @@ export const useMessengerController = () => {
         break
       }
     }
-    return messages.map((m) => {
+    const now = new Date()
+    const yesterdayStart = new Date(now)
+    yesterdayStart.setDate(yesterdayStart.getDate() - 1)
+    return messages.map((m, i) => {
       const isMe = m.sender_id === user?.id
+      // Wave 208 SW5 — date dividers + sender grouping. `prev` is the previous
+      // message in chronological (ascending) order. A new calendar day shows a
+      // divider AND always starts a new group (the avatar reappears); a different
+      // sender or a > GROUP_GAP_MS gap also starts a new group. The absolute-date
+      // label MUST pass i18n.language (formatMessageTime above is locale-less →
+      // always en-US; the divider must localize). `now`/`yesterdayStart` are
+      // current-time snapshots computed once per memo run — intentionally NOT in
+      // the dep array (they'd defeat memoization; the relative labels refresh on
+      // the next message/auth/language change, which is sufficient).
+      const prev = i > 0 ? messages[i - 1] : undefined
+      const createdAt = new Date(m.created_at)
+      const showDateDivider = !prev || !isSameCalendarDay(createdAt, new Date(prev.created_at))
+      let dateLabel: string | undefined
+      if (showDateDivider) {
+        if (isSameCalendarDay(createdAt, now)) {
+          dateLabel = t("messenger:dateDivider.today")
+        } else if (isSameCalendarDay(createdAt, yesterdayStart)) {
+          dateLabel = t("messenger:dateDivider.yesterday")
+        } else {
+          dateLabel = formatDate(m.created_at, presets.chatGroup, i18n.language)
+        }
+      }
+      const isGroupStart =
+        !prev ||
+        showDateDivider ||
+        prev.sender_id !== m.sender_id ||
+        createdAt.getTime() - new Date(prev.created_at).getTime() > GROUP_GAP_MS
       return {
         id: m.id,
         senderId: String(m.sender_id),
@@ -258,9 +300,13 @@ export const useMessengerController = () => {
               deletedAt: m.reply_to.deleted_at ?? null,
             }
           : null,
+        // Wave 208 SW5 — message-list annotations (date divider + grouping).
+        showDateDivider,
+        dateLabel,
+        isGroupStart,
       }
     })
-  }, [messages, user?.id, user?.full_name, user?.avatar_url])
+  }, [messages, user?.id, user?.full_name, user?.avatar_url, t, i18n.language])
 
   // --- Optimistic UI ---
 
