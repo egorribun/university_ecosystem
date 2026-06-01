@@ -43,6 +43,12 @@ export interface Message {
     content: string
     deleted_at: string | null
   } | null
+  // Wave 211 — denormalized "Forwarded from X" label (null/absent = not a forward).
+  // Snapshot-copy forwarding: the source content + attachments are copied into this
+  // message; this scalar is the only forwarded-from datum (the source is never
+  // linked/dereferenced cross-chat — privacy). Both GET /messages + the live
+  // new_message frame carry it.
+  forwarded_from_name?: string | null
 }
 
 // Wave 207 — one user in the reactor-list ("who reacted") popover. Matches the
@@ -174,6 +180,24 @@ export const chatApi = {
       formData.append("reply_to_message_id", replyToMessageId)
     }
     const response = await client.post<Message>(`/chats/${chatId}/messages`, formData)
+    return response.data
+  },
+
+  // Wave 211 — forward 1..N messages from a source chat into a destination chat
+  // (snapshot-copy: the backend copies content + attachments + a "Forwarded from X"
+  // label; the source is never dereferenced cross-chat — privacy). JSON body, no
+  // file upload (the snapshot comes from the source). The actor must be a
+  // participant of BOTH chats (403 otherwise). Returns the created messages in
+  // source order; the single-message UI reads [0].
+  forwardMessages: async (
+    destChatId: string,
+    sourceChatId: string,
+    messageIds: string[]
+  ): Promise<Message[]> => {
+    const response = await client.post<Message[]>(`/chats/${destChatId}/forward`, {
+      source_chat_id: sourceChatId,
+      message_ids: messageIds,
+    })
     return response.data
   },
 

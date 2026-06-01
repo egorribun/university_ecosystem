@@ -129,6 +129,17 @@ describe("chatApi", () => {
     expect(formData.get("reply_to_message_id")).toBe("target-msg")
   })
 
+  it("forwardMessages POSTs source_chat_id + message_ids as JSON (W211)", async () => {
+    const forwarded = [{ id: "fwd1", content: "orig", forwarded_from_name: "Alice" }]
+    vi.mocked(client.post).mockResolvedValueOnce({ data: forwarded })
+    const result = await chatApi.forwardMessages("dest1", "src1", ["m1"])
+    expect(client.post).toHaveBeenCalledWith("/chats/dest1/forward", {
+      source_chat_id: "src1",
+      message_ids: ["m1"],
+    })
+    expect(result).toEqual(forwarded)
+  })
+
   it("editMessage PATCHes the message with FormData content (W205)", async () => {
     vi.mocked(client.patch).mockResolvedValueOnce({ data: { id: "msg1" } })
     await chatApi.editMessage("chat1", "msg1", "fixed")
