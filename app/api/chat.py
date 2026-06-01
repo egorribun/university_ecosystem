@@ -32,13 +32,16 @@ from app.api.deps import (
 from app.core.ratelimit import sensitive_route_limit
 from app.models import User
 from app.schemas.chat import (
+    AddParticipant,
     ChatCreate,
     ChatMaintenanceResult,
     ChatResponse,
     ChatsListOut,
+    GroupChatCreate,
     MessageResponse,
     MessagesListOut,
     ReactorOut,
+    RenameChat,
 )
 from app.services.chat.command_service import (
     ChatMaintenanceService,
@@ -81,6 +84,30 @@ async def create_chat(
     """Create a new chat with a user.  If a DM chat already exists, return it."""
     return await creation_service.create_chat(
         current_user, chat_in.participant_id, locale=locale
+    )
+
+
+@router.post(
+    "/groups",
+    response_model=ChatResponse,
+    dependencies=[Depends(sensitive_route_limit())],
+)
+async def create_group(
+    group_in: GroupChatCreate,
+    current_user: Annotated[User, Depends(get_current_user)],
+    creation_service: Annotated[
+        ChatCreationService, Depends(get_chat_creation_service)
+    ],
+    locale: Annotated[str, Depends(get_locale)],
+) -> ChatResponse:
+    """Create a named group chat (Wave 209 G1).
+
+    Static /groups route placed before the dynamic /{chat_id} routes (idiomatic
+    static-before-dynamic; no POST /{chat_id} exists today, but this future-proofs
+    against shadowing). W174 auto-cookie covers POST CSRF.
+    """
+    return await creation_service.create_group(
+        current_user, group_in.name, group_in.participant_ids, locale=locale
     )
 
 
@@ -357,3 +384,66 @@ async def delete_chat(
 ) -> ChatMaintenanceResult:
     """Delete a chat entirely for all participants (messages, attachments, links)."""
     return await maintenance.delete_chat(chat_id, current_user, locale=locale)
+
+
+@router.post(
+    "/{chat_id}/participants",
+    dependencies=[Depends(sensitive_route_limit())],
+)
+async def add_participant(
+    chat_id: uuid.UUID,
+    body: AddParticipant,
+    current_user: Annotated[User, Depends(get_current_user)],
+    maintenance: Annotated[
+        ChatMaintenanceService, Depends(get_chat_maintenance_service)
+    ],
+    locale: Annotated[str, Depends(get_locale)],
+) -> dict[str, str]:
+    """Add a member to a group (Wave 209 G1 — any participant). W174 auto-cookie."""
+    await maintenance.add_participant(
+        chat_id, current_user, body.user_id, locale=locale
+    )
+    return {"status": "ok"}
+
+
+@router.delete(
+    "/{chat_id}/participants/{user_id}",
+    dependencies=[Depends(sensitive_route_limit())],
+)
+async def remove_participant(
+    chat_id: uuid.UUID,
+    user_id: uuid.UUID,
+    current_user: Annotated[User, Depends(get_current_user)],
+    maintenance: Annotated[
+        ChatMaintenanceService, Depends(get_chat_maintenance_service)
+    ],
+    locale: Annotated[str, Depends(get_locale)],
+) -> dict[str, str]:
+    """Remove a member from a group / leave (Wave 209 G1 — owner or self).
+
+    3-segment path, distinct from DELETE /{chat_id} (delete-chat). W174 auto-cookie.
+    """
+    await maintenance.remove_participant(chat_id, current_user, user_id, locale=locale)
+    return {"status": "ok"}
+
+
+@router.patch(
+    "/{chat_id}",
+    dependencies=[Depends(sensitive_route_limit())],
+)
+async def rename_chat(
+    chat_id: uuid.UUID,
+    body: RenameChat,
+    current_user: Annotated[User, Depends(get_current_user)],
+    maintenance: Annotated[
+        ChatMaintenanceService, Depends(get_chat_maintenance_service)
+    ],
+    locale: Annotated[str, Depends(get_locale)],
+) -> dict[str, str]:
+    """Rename a group's title (Wave 209 G1 — any participant).
+
+    PATCH /{chat_id} is distinct from PATCH /{chat_id}/messages/{message_id}
+    (edit-message). W174 auto-cookie covers PATCH CSRF.
+    """
+    await maintenance.rename_chat(chat_id, current_user, body.name, locale=locale)
+    return {"status": "ok"}

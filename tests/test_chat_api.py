@@ -289,3 +289,151 @@ async def test_messaging_flow_success(async_client, user_factory, db_session):
         app.dependency_overrides.pop(get_read_db, None)
         app.dependency_overrides.pop(get_read_chat_query_service, None)
         app.dependency_overrides.pop(get_db, None)
+
+
+# ---------------------------------------------------------------------------
+# Group chats (Wave 209 G1)
+# ---------------------------------------------------------------------------
+
+_GROUP_PASSWORD = "TestPassword123!"
+
+
+async def _login_user(async_client, user_factory):
+    user = await user_factory(hashed_password=await get_password_hash(_GROUP_PASSWORD))
+    headers = await _login(async_client, user.email, _GROUP_PASSWORD)
+    return user, headers
+
+
+@pytest.mark.asyncio
+async def test_create_group_too_few_members(async_client, user_factory):
+    _creator, headers = await _login_user(async_client, user_factory)
+    other = await user_factory()
+    resp = await async_client.post(
+        "/chats/groups",
+        json={"name": "Team", "participant_ids": [str(other.id)]},
+        headers=headers,
+    )
+    assert resp.status_code == 400  # total 2 < min 3
+
+
+@pytest.mark.asyncio
+async def test_create_group_happy_path(async_client, user_factory):
+    _creator, headers = await _login_user(async_client, user_factory)
+    m1 = await user_factory()
+    m2 = await user_factory()
+    resp = await async_client.post(
+        "/chats/groups",
+        json={"name": "Team Chat", "participant_ids": [str(m1.id), str(m2.id)]},
+        headers=headers,
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["chat_type"] == "group"
+    assert data["name"] == "Team Chat"
+    assert data["created_by"] == str(_creator.id)
+    assert len(data["participants"]) == 3
+
+
+@pytest.mark.asyncio
+async def test_rename_group(async_client, user_factory):
+    _creator, headers = await _login_user(async_client, user_factory)
+    m1, m2 = await user_factory(), await user_factory()
+    created = await async_client.post(
+        "/chats/groups",
+        json={"name": "Old", "participant_ids": [str(m1.id), str(m2.id)]},
+        headers=headers,
+    )
+    chat_id = created.json()["id"]
+
+    resp = await async_client.patch(
+        f"/chats/{chat_id}", json={"name": "New Name"}, headers=headers
+    )
+    assert resp.status_code == 200
+    # Persistence is covered by the SW2 repo test (test_rename_chat_persists);
+    # GET /chats/{id} (get_unread_count → SET LOCAL RLS) is PostgreSQL-only and
+    # can't run on the SQLite test DB, so the integration test asserts the
+    # endpoint contract (status + routing + authz) only.
+
+
+@pytest.mark.asyncio
+async def test_add_participant(async_client, user_factory):
+    _creator, headers = await _login_user(async_client, user_factory)
+    m1, m2, newcomer = (
+        await user_factory(),
+        await user_factory(),
+        await user_factory(),
+    )
+    created = await async_client.post(
+        "/chats/groups",
+        json={"name": "Team", "participant_ids": [str(m1.id), str(m2.id)]},
+        headers=headers,
+    )
+    chat_id = created.json()["id"]
+
+    resp = await async_client.post(
+        f"/chats/{chat_id}/participants",
+        json={"user_id": str(newcomer.id)},
+        headers=headers,
+    )
+    assert resp.status_code == 200
+    # Count persistence covered by SW2 (test_add_participant_is_idempotent);
+    # GET /chats/{id} is PostgreSQL-RLS-only (see test_rename_group note).
+
+
+@pytest.mark.asyncio
+async def test_owner_removes_member(async_client, user_factory):
+    _creator, headers = await _login_user(async_client, user_factory)
+    m1, m2 = await user_factory(), await user_factory()
+    created = await async_client.post(
+        "/chats/groups",
+        json={"name": "Team", "participant_ids": [str(m1.id), str(m2.id)]},
+        headers=headers,
+    )
+    chat_id = created.json()["id"]
+
+    resp = await async_client.delete(
+        f"/chats/{chat_id}/participants/{m1.id}", headers=headers
+    )
+    assert resp.status_code == 200
+    # Count persistence covered by SW2 (test_remove_participant_is_idempotent);
+    # GET /chats/{id} is PostgreSQL-RLS-only (see test_rename_group note).
+
+
+@pytest.mark.asyncio
+async def test_dm_rejects_rename(async_client, user_factory):
+    _creator, headers = await _login_user(async_client, user_factory)
+    other = await user_factory()
+    dm = await async_client.post(
+        "/chats", json={"participant_id": str(other.id)}, headers=headers
+    )
+    dm_id = dm.json()["id"]
+
+    resp = await async_client.patch(
+        f"/chats/{dm_id}", json={"name": "Not allowed"}, headers=headers
+    )
+    assert resp.status_code == 400  # not_a_group
+
+
+@pytest.mark.asyncio
+async def test_non_owner_remove_forbidden_then_self_leave(async_client, user_factory):
+    _creator, headers = await _login_user(async_client, user_factory)
+    member1, m1_headers = await _login_user(async_client, user_factory)
+    m2 = await user_factory()
+    created = await async_client.post(
+        "/chats/groups",
+        json={"name": "Team", "participant_ids": [str(member1.id), str(m2.id)]},
+        headers=headers,
+    )
+    chat_id = created.json()["id"]
+
+    # member1 (not owner) tries to remove m2 → 403
+    forbidden = await async_client.delete(
+        f"/chats/{chat_id}/participants/{m2.id}", headers=m1_headers
+    )
+    assert forbidden.status_code == 403
+
+    # member1 leaves (self-removal) → 200
+    leave = await async_client.delete(
+        f"/chats/{chat_id}/participants/{member1.id}", headers=m1_headers
+    )
+    assert leave.status_code == 200
