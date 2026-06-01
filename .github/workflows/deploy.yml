@@ -30,7 +30,6 @@ jobs:
   validate:
     name: Pre-deployment validation
     runs-on: ubuntu-latest
-    if: ${{ true }}  # TD-W10-09: always run validation; skip_tests input removed
     services:
       postgres:
         image: pgvector/pgvector:pg17
