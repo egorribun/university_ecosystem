@@ -442,11 +442,11 @@ export type UseEventDetailQueryResult = UseQueryResult<Event, Error>
 export const eventDetailQueryOptions = (id: string) => ({
   queryKey: ["events", "detail", id] as EventDetailQueryKey,
   queryFn: async ({ signal }: { signal?: AbortSignal }): Promise<Event> => {
-    const { getEventApiV1EventsIdGet } = await import("@/api/generated/sdk.gen")
-    const response = await getEventApiV1EventsIdGet({
-      path: { id },
+    const { getEventApiV1EventsEventIdGet } = await import("@/api/generated/sdk.gen")
+    const response = await getEventApiV1EventsEventIdGet({
+      path: { event_id: id },
       signal,
-    } as Parameters<typeof getEventApiV1EventsIdGet>[0])
+    } as Parameters<typeof getEventApiV1EventsEventIdGet>[0])
     return response.data as Event
   },
   staleTime: 60_000,

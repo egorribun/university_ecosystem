@@ -16,9 +16,9 @@ export const createEvent = async (payload: CreateEventPayload) => {
   return data
 }
 
-export const uploadEventImage = async (file: File) => {
+export const uploadEventImage = async (file: File, eventId?: string | number) => {
   const { data } = await uploadEventImageApiV1EventsUploadImagePost({
-    body: { file },
+    body: { file, event_id: eventId ?? 0 },
   })
   const parsed = ensureValidResponse(uploadResponseSchema, data, "POST /api/v1/events/upload_image")
   return parsed.url
