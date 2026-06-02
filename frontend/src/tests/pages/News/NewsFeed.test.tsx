@@ -114,6 +114,7 @@ describe("News page interaction", () => {
               content: "Content 1",
               created_at: new Date().toISOString(),
               image_url: null,
+              image_url_optimized: null,
             },
             {
               id: "news-2",
@@ -121,6 +122,7 @@ describe("News page interaction", () => {
               content: "Content 2",
               created_at: new Date().toISOString(),
               image_url: null,
+              image_url_optimized: null,
             },
           ],
           has_more: false,

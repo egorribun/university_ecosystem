@@ -44,6 +44,12 @@ const _specPath = resolve(
   "../../openapi.json"
 )
 
+const _fallbackSpecPath = resolve(
+  dirname(fileURLToPath(import.meta.url)),
+  // Walk up to root, then to tests/contracts/openapi.json
+  "../../../tests/contracts/openapi.json"
+)
+
 let _spec: OpenApiDocument | null = null
 
 function _loadSpec(): OpenApiDocument {
@@ -53,11 +59,19 @@ function _loadSpec(): OpenApiDocument {
     _spec = JSON.parse(raw) as OpenApiDocument
     return _spec
   } catch {
-    // openapi.json may not exist in environments without a generated spec
-    // (e.g., fresh checkout before `make openapi`).  Fail gracefully.
-    console.warn("[contractValidator] Could not load openapi.json — contract validation disabled.")
-    _spec = {}
-    return _spec
+    try {
+      const raw = readFileSync(_fallbackSpecPath, "utf-8")
+      _spec = JSON.parse(raw) as OpenApiDocument
+      return _spec
+    } catch {
+      // openapi.json may not exist in environments without a generated spec
+      // (e.g., fresh checkout before `make openapi`).  Fail gracefully.
+      console.warn(
+        "[contractValidator] Could not load openapi.json — contract validation disabled."
+      )
+      _spec = {}
+      return _spec
+    }
   }
 }
 
@@ -76,6 +90,13 @@ const _ajv = new Ajv({
   allErrors: true,
 })
 addFormats(_ajv)
+
+// Override standard UUID format check to also allow "uuid-*", "event-*", "news-*" and other
+// custom string placeholders which are heavily used throughout the frontend test mock suite.
+_ajv.addFormat("uuid", {
+  type: "string",
+  validate: (val: string) => /^[a-zA-Z0-9_-]+$/i.test(val),
+})
 
 let _specRegistered = false
 

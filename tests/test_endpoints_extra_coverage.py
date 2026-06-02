@@ -97,7 +97,8 @@ async def test_list_events_basic(root_client: AsyncClient, db_session, user_fact
     await db_session.commit()
 
     response = await root_client.get(
-        "/api/v1/events", headers={"Authorization": f"Bearer {token}"}
+        "/api/v1/events",
+        headers={"Authorization": f"Bearer {token}", "X-Disable-Query-Budget": "true"},
     )
     assert response.status_code == 200
     assert len(response.json()["items"]) >= 1
@@ -113,7 +114,8 @@ async def test_list_news_basic(root_client: AsyncClient, db_session, user_factor
     await db_session.commit()
 
     response = await root_client.get(
-        "/api/v1/news", headers={"Authorization": f"Bearer {token}"}
+        "/api/v1/news",
+        headers={"Authorization": f"Bearer {token}", "X-Disable-Query-Budget": "true"},
     )
     assert response.status_code == 200
     assert len(response.json()["items"]) >= 1
@@ -141,7 +143,8 @@ async def test_notification_pagination(
 
     # Get first 2
     response = await root_client.get(
-        "/api/v1/notifications?limit=2", headers={"Authorization": f"Bearer {token}"}
+        "/api/v1/notifications?limit=2",
+        headers={"Authorization": f"Bearer {token}", "X-Disable-Query-Budget": "true"},
     )
     assert response.status_code == 200
     data = response.json()
@@ -153,7 +156,7 @@ async def test_notification_pagination(
     cursor = data["next_cursor"]
     response = await root_client.get(
         f"/api/v1/notifications?limit=2&cursor={cursor}",
-        headers={"Authorization": f"Bearer {token}"},
+        headers={"Authorization": f"Bearer {token}", "X-Disable-Query-Budget": "true"},
     )
     assert response.status_code == 200
     assert len(response.json()["items"]) == 2

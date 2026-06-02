@@ -69,8 +69,10 @@ beforeAll(async () => {
         if (contentType.includes("application/json")) {
           response
             .clone()
-            .json()
-            .then((body: unknown) => {
+            .text()
+            .then((text: string) => {
+              if (!text.trim()) return
+              const body = JSON.parse(text)
               validateResponseBody({
                 path,
                 method: request.method,
@@ -92,8 +94,10 @@ beforeAll(async () => {
           if (requestContentType.includes("application/json")) {
             request
               .clone()
-              .json()
-              .then((body: unknown) => {
+              .text()
+              .then((text: string) => {
+                if (!text.trim()) return
+                const body = JSON.parse(text)
                 validateRequestBody({ path, method: request.method, body })
               })
               .catch((error: unknown) => {

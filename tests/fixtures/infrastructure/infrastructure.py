@@ -80,17 +80,25 @@ def _collect_sync_engines() -> list:
     configured by the test session fixtures.
     """
     try:
-        from app.core.database import database
+        from app.core.database import engine, read_replica_engine
 
-        engines = [database.engine.sync_engine]
-        if hasattr(database, "read_replica_engine"):
-            engines.append(database.read_replica_engine.sync_engine)
+        engines = []
+        # _LazyProxy instances are never None, but their underlying targets
+        # will be None if they are not configured/initialized.
+        if engine is not None and engine._get_target() is not None:
+            sync_eng = engine.sync_engine
+            engines.append(sync_eng)
+        if (
+            read_replica_engine is not None
+            and read_replica_engine._get_target() is not None
+        ):
+            engines.append(read_replica_engine.sync_engine)
         return engines
     except Exception:
         return []
 
 
-def _build_budget_send(original_send, engines: list):
+def _build_budget_send(original_send):
     """Wrap an httpx AsyncClient.send method with the query budget gate.
 
     Only GET requests are checked — mutation requests (POST/PUT/PATCH/DELETE)
@@ -115,6 +123,7 @@ def _build_budget_send(original_send, engines: list):
             int(budget_header) if budget_header is not None else _DEFAULT_QUERY_BUDGET
         )
 
+        engines = _collect_sync_engines()
         listener = _QueryBudgetListener(engines)
         with listener:
             response = await original_send(request, *args, **kwargs)
@@ -211,8 +220,7 @@ async def async_client(app, prepare_database):
 
         # Layer 2: SQL Query Budget Gate — wraps the CSRF-rotating send so
         # that each GET request is counted and the test fails fast on N+1s.
-        engines = _collect_sync_engines()
-        ac.send = _build_budget_send(_csrf_rotating_send, engines)
+        ac.send = _build_budget_send(_csrf_rotating_send)
 
         yield ac
 
@@ -246,7 +254,6 @@ async def root_client(app, prepare_database):
             return response
 
         # Layer 2: SQL Query Budget Gate — mirrors the async_client gate.
-        engines = _collect_sync_engines()
-        ac.send = _build_budget_send(_csrf_rotating_send, engines)
+        ac.send = _build_budget_send(_csrf_rotating_send)
 
         yield ac

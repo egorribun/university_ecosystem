@@ -372,7 +372,16 @@ export const handlers = [
   ),
   http.get("*/users/me", () => HttpResponse.json(testUser)),
   http.get("*/stories", () => HttpResponse.json(testStories)),
-  http.get("*/news", () => HttpResponse.json(testNewsItems)),
+  http.get("*/news", () =>
+    HttpResponse.json({
+      items: testNewsItems,
+      total: testNewsItems.length,
+      limit: 12,
+      cursor: null,
+      next_cursor: null,
+      has_more: false,
+    })
+  ),
   http.get("*/news/:id", ({ params }) => {
     const id = params.id as string
     const item = testNewsItems.find((news) => news.id === id) || testNewsItems[0]
