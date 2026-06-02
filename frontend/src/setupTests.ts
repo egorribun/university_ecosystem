@@ -17,6 +17,7 @@ import {
 } from "./tests/mocks/handlers"
 import i18n from "./i18n/config"
 import { resetEtagCache } from "./api/client"
+import { validateRequestBody, validateResponseBody } from "./tests/contractValidator"
 
 declare module "vitest" {
   export interface Assertion {
@@ -49,6 +50,64 @@ beforeAll(async () => {
     document.documentElement.lang = "en"
   }
   server.listen({ onUnhandledRequest: "warn" })
+
+  // ── Contract validation hook (Phase 3 QA) ─────────────────────────────────
+  // Validates every MSW-mocked request + response pair against openapi.json.
+  // Set CONTRACT_VALIDATION_DISABLED=1 in your environment to bypass (e.g.
+  // while generating new mock handlers before the schema is updated).
+  if (process.env["CONTRACT_VALIDATION_DISABLED"] !== "1") {
+    server.events.on("response:mocked", ({ request, response }) => {
+      try {
+        const url = new URL(request.url)
+        const path = url.pathname
+
+        // Only validate paths that look like API calls
+        if (!path.startsWith("/api/") && !path.startsWith("/auth/")) return
+
+        // Validate response body
+        const contentType = response.headers.get("content-type") ?? ""
+        if (contentType.includes("application/json")) {
+          response
+            .clone()
+            .json()
+            .then((body: unknown) => {
+              validateResponseBody({
+                path,
+                method: request.method,
+                statusCode: response.status,
+                body,
+              })
+            })
+            .catch((error: unknown) => {
+              // Fail the test on contract violation — console.error surfaces
+              // the error in Vitest output even from async callbacks.
+              console.error("[ContractValidator]", error)
+              throw error
+            })
+        }
+
+        // Validate request body for mutation methods
+        if (["POST", "PUT", "PATCH"].includes(request.method.toUpperCase())) {
+          const requestContentType = request.headers.get("content-type") ?? ""
+          if (requestContentType.includes("application/json")) {
+            request
+              .clone()
+              .json()
+              .then((body: unknown) => {
+                validateRequestBody({ path, method: request.method, body })
+              })
+              .catch((error: unknown) => {
+                console.error("[ContractValidator]", error)
+                throw error
+              })
+          }
+        }
+      } catch (error) {
+        // Synchronous errors from URL parsing etc. — propagate to test output
+        console.error("[ContractValidator] Unexpected error:", error)
+      }
+    })
+  }
 })
 
 afterEach(() => {

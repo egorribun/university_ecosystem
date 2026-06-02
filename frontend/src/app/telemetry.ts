@@ -4,6 +4,8 @@ import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http"
 import { registerInstrumentations } from "@opentelemetry/instrumentation"
 import { FetchInstrumentation } from "@opentelemetry/instrumentation-fetch"
 import { XMLHttpRequestInstrumentation } from "@opentelemetry/instrumentation-xml-http-request"
+import { UserInteractionInstrumentation } from "@opentelemetry/instrumentation-user-interaction"
+import { ZoneContextManager } from "@opentelemetry/context-zone"
 import { Resource } from "@opentelemetry/resources"
 import { ATTR_SERVICE_NAME, ATTR_SERVICE_VERSION } from "@opentelemetry/semantic-conventions"
 
@@ -39,7 +41,12 @@ export function initTelemetry(env: ImportMetaEnv = import.meta.env) {
   const processor = env.DEV ? new SimpleSpanProcessor(exporter) : new BatchSpanProcessor(exporter)
 
   provider.addSpanProcessor(processor as unknown as SpanProcessor)
-  provider.register()
+
+  // ZoneContextManager propagates trace context across async boundaries
+  // (Promise chains, setTimeout, etc.) using Zone.js.  Without it, a span
+  // created on a button click is lost before the resulting fetch completes,
+  // breaking the frontend → gateway correlation in Grafana Tempo.
+  provider.register({ contextManager: new ZoneContextManager() })
 
   registerInstrumentations({
     instrumentations: [
@@ -56,6 +63,17 @@ export function initTelemetry(env: ImportMetaEnv = import.meta.env) {
           new RegExp(`${env.VITE_BACKEND_ORIGIN || ""}/api/.*`),
           /^\/api\/.*/,
         ],
+      }),
+      // UserInteractionInstrumentation automatically creates spans for
+      // click and submit events, giving Tempo a root span for each user
+      // action that triggered an API call.  The shouldPreventSpanCreation
+      // guard avoids noise from internal library clicks (e.g. Radix UI).
+      new UserInteractionInstrumentation({
+        eventNames: ["click", "submit"],
+        shouldPreventSpanCreation: (_eventType, element) => {
+          // Skip instrumentation for elements explicitly marked as internal
+          return element.getAttribute("data-no-trace") === "true"
+        },
       }),
     ],
   })

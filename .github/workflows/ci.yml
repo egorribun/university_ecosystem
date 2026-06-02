@@ -1010,6 +1010,65 @@ jobs:
         env:
           PACT_DO_NOT_TRACK: "true"
 
+  rust-ffi-asan:
+    # Phase 3 QA — ADR-023: Run PyO3 FFI tests under AddressSanitizer + LeakSanitizer.
+    # Memory errors that cross the Rust/Python boundary are invisible to Python's GC;
+    # ASan instruments every allocation so these classes of bugs fail loudly at CI time.
+    name: "Rust FFI — ASan / LSan"
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    if: |
+      github.event_name == 'push' ||
+      github.event_name == 'pull_request' ||
+      github.event_name == 'workflow_dispatch'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Set up Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: "3.13"
+
+      - name: Install uv
+        run: pip install uv
+
+      - name: Install Python dependencies (with maturin)
+        run: uv sync --extra dev
+
+      - name: Cache Cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            native/rust_ext/target/
+          key: ${{ runner.os }}-cargo-asan-${{ hashFiles('native/rust_ext/Cargo.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-asan-
+
+      - name: Install LLVM tools (required for ASan runtime)
+        run: |
+          rustup toolchain install nightly --component rust-src llvm-tools-preview --allow-downgrade --no-self-update
+
+      - name: Run FFI tests under ASan / LSan
+        env:
+          ENVIRONMENT: testing
+          DATABASE_URL: "sqlite+aiosqlite:///./test_asan.db"
+          SECRET_KEY: ${{ secrets.CI_TEST_SECRET_KEY }}
+        run: bash scripts/run_asan_tests.sh
+
+      - name: Upload ASan report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: asan-report
+          path: "asan-report.*"
+          if-no-files-found: ignore
+
   ci-success:
     name: CI Success
     runs-on: ubuntu-latest
@@ -1037,6 +1096,7 @@ jobs:
       - contract-tests
       - provenance-check
       - e2e-tests
+      - rust-ffi-asan
     steps:
       - name: Check all jobs passed
         shell: bash
@@ -1046,6 +1106,7 @@ jobs:
           # rate < 1 %. They are intentionally NOT in the blocking results
           # array but ARE reported separately below.
           results=(
+            "${{ needs.pre-commit-check.result }}"
             "${{ needs.compose-validate.result }}"
             "${{ needs.backend-tests.result }}"
             "${{ needs.backend-type-check.result }}"
@@ -1063,6 +1124,7 @@ jobs:
             "${{ needs.contract-tests.result }}"
             "${{ needs.provenance-check.result }}"
             "${{ needs.e2e-tests.result }}"
+            "${{ needs.rust-ffi-asan.result }}"
           )
 
           failed=false
