@@ -70,7 +70,7 @@ export function initTelemetry(env: ImportMetaEnv = import.meta.env) {
       // guard avoids noise from internal library clicks (e.g. Radix UI).
       new UserInteractionInstrumentation({
         eventNames: ["click", "submit"],
-        shouldPreventSpanCreation: (_eventType, element) => {
+        shouldPreventSpanCreation: (_eventType: string, element: Element) => {
           // Skip instrumentation for elements explicitly marked as internal
           return element.getAttribute("data-no-trace") === "true"
         },
