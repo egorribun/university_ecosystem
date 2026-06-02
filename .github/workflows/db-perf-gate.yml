@@ -31,6 +31,12 @@ jobs:
                   SECRET_KEY: test-secret-key-for-ci-perf-gate-only  # pragma: allowlist secret
                   ENVIRONMENT: test
               run: uv run alembic upgrade head
+            - name: Run Pytest to capture query logs
+              env:
+                  DATABASE_URL: postgresql+asyncpg://test:test@localhost:5432/test # pragma: allowlist secret
+                  SECRET_KEY: test-secret-key-for-ci-perf-gate-only  # pragma: allowlist secret
+                  ENVIRONMENT: testing
+              run: uv run pytest -v -k "not integration and not performance" --ignore=tests/performance
             - name: Run EXPLAIN checks
               env:
                   DATABASE_URL: postgresql+asyncpg://test:test@localhost:5432/test # pragma: allowlist secret
@@ -40,4 +46,5 @@ jobs:
                   uv run python scripts/db_explain_check.py \
                     --fail-on-seq-scan \
                     --tables news,events,users \
-                    --min-rows 10000
+                    --max-cost 500.0 \
+                    --log-dir tests

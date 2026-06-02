@@ -1,7 +1,7 @@
 FRONTEND_DIR := $(CURDIR)/frontend
 ENV_FILE ?= $(CURDIR)/.env
 
-.PHONY: install backend-install frontend-install lint lint-backend lint-frontend backend-test frontend-test test backend-typecheck frontend-typecheck frontend-build frontend-dev backend-serve generate-api alembic-check compose-lint docker-build docker-up docker-down coverage test-quick clean go-test go-coverage helm-lint docker-lint sbom-local db-validate pre-commit-all
+.PHONY: install backend-install frontend-install lint lint-backend lint-frontend backend-test frontend-test test backend-typecheck frontend-typecheck frontend-build frontend-dev backend-serve generate-api alembic-check compose-lint docker-build docker-up docker-down coverage test-quick clean go-test go-coverage helm-lint docker-lint sbom-local db-validate pre-commit-all test-trace-driven
 
 install: backend-install frontend-install
 
@@ -44,6 +44,10 @@ backend-serve:
 	uvicorn app.main:app --reload --host 0.0.0.0 --port 8000 --env-file $(ENV_FILE)
 
 test: backend-test frontend-test go-test
+
+test-trace-driven:
+	@echo "Running trace-driven integration test..."
+	RUN_INTEGRATION_TESTS=1 pytest tests/integration/test_trace_driven.py -v
 
 go-test:
 	@echo "Running all Go tests..."
@@ -105,6 +109,9 @@ clean:
 security-check:
 	pip-audit
 	npm audit --prefix $(FRONTEND_DIR)
+
+mutation-test:
+	uv run mutmut run
 
 # Kubernetes manifest validation
 k8s-lint:

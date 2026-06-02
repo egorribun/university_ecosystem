@@ -14,6 +14,8 @@ services:
       BACKEND_URL: http://backend:8000
       REDIS_URL: redis://:${REDIS_PASSWORD}@valkey:6379/3
       JWT_SECRET: ${JWT_SECRET:?JWT_SECRET must be explicitly set in .env (TD-W16-01)}
+      OTEL_EXPORTER_OTLP_ENDPOINT: tempo:4317
+      OTEL_EXPORTER_OTLP_INSECURE: "true"
     depends_on:
       backend:
         condition: service_healthy
@@ -40,6 +42,8 @@ services:
       WS_HUB_PORT: "8081"
       NATS_URL: nats://nats:4222
       JWT_SECRET: ${JWT_SECRET:?JWT_SECRET must be explicitly set in .env (TD-W16-01)}
+      OTEL_EXPORTER_OTLP_ENDPOINT: tempo:4317
+      OTEL_EXPORTER_OTLP_INSECURE: "true"
       # PERF-W15-04: Increase in production to handle burst reconnects (e.g. post-deploy)
       AUTH_CLIENT_MAX_CONNS_PER_HOST: "50"
     depends_on:

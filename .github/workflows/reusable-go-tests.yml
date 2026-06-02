@@ -17,7 +17,7 @@ on:
         description: "Minimum Go test coverage percentage"
         required: false
         type: number
-        default: 50
+        default: 80
 
 jobs:
   test:

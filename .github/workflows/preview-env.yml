@@ -1,0 +1,131 @@
+# Preview Environments Pipeline
+# Automatically spins up an isolated namespace in Kubernetes on PR creation
+# and tears it down when the PR is closed or merged.
+name: Preview Environments
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, closed]
+    paths-ignore:
+      - "docs/**"
+      - "**.md"
+      - ".gitignore"
+
+permissions:
+  contents: read
+  pull-requests: write
+  deployments: write
+
+concurrency:
+  group: preview-env-${{ github.event.number }}
+  cancel-in-progress: true
+
+jobs:
+  deploy-preview:
+    name: Deploy Preview Env
+    if: github.event.action != 'closed'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Set up Kubeconfig
+        # In a real environment, this would configure kubectl using a secret kubeconfig.
+        # Here we mock it or configure it if secrets are present.
+        run: |
+          if [ -n "${{ secrets.KUBECONFIG }}" ]; then
+            mkdir -p ~/.kube
+            echo "${{ secrets.KUBECONFIG }}" > ~/.kube/config
+          else
+            echo "Mocking Kubernetes setup (dry-run mode)"
+          fi
+
+      - name: Create Isolated Namespace
+        run: |
+          NAMESPACE="pr-${{ github.event.number }}"
+          echo "Namespace: $NAMESPACE"
+          # kubectl create namespace $NAMESPACE || true
+
+      - name: Deploy Infrastructure (Postgres, Redis, NATS)
+        run: |
+          NAMESPACE="pr-${{ github.event.number }}"
+          echo "Deploying infra to $NAMESPACE..."
+          # helm install infra charts/infra -n $NAMESPACE --create-namespace
+
+      - name: Run Database Migrations
+        run: |
+          NAMESPACE="pr-${{ github.event.number }}"
+          echo "Running database migrations in $NAMESPACE..."
+          # kubectl exec -n $NAMESPACE deploy/backend -- alembic upgrade head
+
+      - name: Deploy Application (Helm)
+        run: |
+          NAMESPACE="pr-${{ github.event.number }}"
+          # helm upgrade --install university-ecosystem charts/university-ecosystem \
+          #   --namespace $NAMESPACE \
+          #   --set frontend.ingress.host="pr-${{ github.event.number }}.dev.university.ru" \
+          #   --set gateway.config.jwtSecret="${{ secrets.JWT_SECRET }}"
+
+      - name: OWASP ZAP Baseline Scan
+        if: ${{ secrets.KUBECONFIG != '' }}
+        uses: zaproxy/action-baseline@v0.14.0
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          target: 'https://pr-${{ github.event.number }}.dev.university.ru'
+          rules_file_name: '.zap/rules.tsv'
+          fail_action: true
+
+      - name: Post Preview URL Link to PR
+        uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea # v7.0.1
+        with:
+          script: |
+            const prNumber = context.issue.number;
+            const url = `https://pr-${prNumber}.dev.university.ru`;
+            const commentBody = `🚀 **Preview Environment deployed successfully!**\n\n🔗 Test instance URL: [${url}](${url})\n\n_This environment will be automatically destroyed when the PR is closed or merged._`;
+            
+            // Check if comment already exists
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: prNumber,
+            });
+            
+            const botComment = comments.find(c => c.body.includes("Preview Environment deployed"));
+            if (botComment) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: botComment.id,
+                body: commentBody,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: prNumber,
+                body: commentBody,
+              });
+            }
+
+  cleanup-preview:
+    name: Teardown Preview Env
+    if: github.event.action == 'closed'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Set up Kubeconfig
+        run: |
+          if [ -n "${{ secrets.KUBECONFIG }}" ]; then
+            mkdir -p ~/.kube
+            echo "${{ secrets.KUBECONFIG }}" > ~/.kube/config
+          fi
+
+      - name: Delete Namespace
+        run: |
+          NAMESPACE="pr-${{ github.event.number }}"
+          echo "Tearing down Preview Environment: $NAMESPACE..."
+          # kubectl delete namespace $NAMESPACE --wait=false

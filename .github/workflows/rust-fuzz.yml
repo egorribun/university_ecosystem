@@ -1,0 +1,63 @@
+name: Rust Fuzzing
+
+on:
+  push:
+    branches: [ main, master ]
+    paths:
+      - 'native/rust_ext/**'
+  pull_request:
+    paths:
+      - 'native/rust_ext/**'
+  schedule:
+    # Run every Sunday at 00:00 UTC
+    - cron: '0 0 * * 0'
+  workflow_dispatch:
+
+permissions: read-all
+
+jobs:
+  fuzz:
+    name: Run cargo fuzz
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Install Rust nightly
+        uses: dtolnay/rust-toolchain@nightly
+
+      - name: Cache cargo registry & index
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            native/rust_ext/target/
+          key: ${{ runner.os }}-cargo-fuzz-${{ hashFiles('native/rust_ext/Cargo.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-fuzz-
+
+      - name: Install cargo-fuzz
+        run: cargo install cargo-fuzz
+
+      - name: Run fuzz target
+        run: |
+          cd native/rust_ext
+          # Run for 1 minute (60 seconds) on PR/push, or 5 minutes (300 seconds) on cron/dispatch
+          if [ "${{ github.event_name }}" = "schedule" ] || [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            DURATION=300
+          else
+            DURATION=60
+          fi
+          cargo fuzz run fuzz_target_1 -- -max_total_time=$DURATION
+
+      - name: Archive crashes
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fuzz-crashes
+          path: |
+            native/rust_ext/fuzz/artifacts/
+            native/rust_ext/fuzz/crash-*
+          if-no-files-found: ignore
