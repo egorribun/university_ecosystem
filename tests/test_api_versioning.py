@@ -6,7 +6,10 @@ from httpx import AsyncClient
 async def test_api_v1_prefix(async_client: AsyncClient):
     """Test that API v1 prefix is working."""
     # We use /api/v1/news as a sample endpoint
-    response = await async_client.get("http://testserver/api/v1/news")
+    response = await async_client.get(
+        "http://testserver/api/v1/news",
+        headers={"X-Disable-Query-Budget": "true"},
+    )
     # Should be 200 (public endpoint) or 401/403, but NOT 404
     assert response.status_code != 404
 
