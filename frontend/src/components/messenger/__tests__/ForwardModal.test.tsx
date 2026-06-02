@@ -98,8 +98,8 @@ describe("ForwardModal", () => {
 
     const images = screen.getAllByTestId("smart-image")
     expect(images).toHaveLength(2)
-    expect(images[0].getAttribute("src")).toBe("john.png")
-    expect(images[1].getAttribute("src")).toBe("jane.png")
+    expect(images[0]?.getAttribute("src")).toBe("john.png")
+    expect(images[1]?.getAttribute("src")).toBe("jane.png")
   })
 
   it("marks the current chat with (current)", () => {
@@ -191,7 +191,8 @@ describe("ForwardModal", () => {
     })
 
     // Try clicking one
-    fireEvent.click(options[0])
+    expect(options[0]).toBeTruthy()
+    fireEvent.click(options[0]!)
     expect(onSelect).not.toHaveBeenCalled()
   })
 })
