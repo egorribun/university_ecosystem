@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1.12
 
 # Build stage
-FROM golang:1.26.2-alpine3.22@sha256:7ef941168f213aa115df2e61364d67682129e99dc8188b734139dea862cc7d31 AS builder
+FROM golang:1.26.4-alpine3.22@sha256:cff7cf3120cd74bf0960cfe19a3efb6631161148d8e070f76976f73a13b2e3d4 AS builder
 
 WORKDIR /app
 

@@ -35,7 +35,7 @@ We will refine [vitest.config.ts](file:///c:/Users/egorribun/Documents/universit
 - **Thresholds**: Raised to `statements: 70`, `branches: 65`, `functions: 70`, `lines: 70`.
 
 ### 2.2. Go Microservices Testing Setup & File Reclassification
-To solve the version mismatch local compile error, local verification scripts will prepend the downloaded 1.26.2 toolchain path to `Path`.
+To solve the version mismatch local compile error, local verification scripts will prepend the downloaded 1.26.4 toolchain path to `Path`.
 We will also reclassify several test files that do not require external containers from "integration" to "unit" tests, bringing them into the standard `go test` coverage run.
 
 **Reclassified Files**:
@@ -74,7 +74,7 @@ We will add `tests/test_backend_coverage_booster.py` to cover untested edge case
 
 ### 3.1. Automated Verification
 - **Python**: Run `uv run pytest --cov=app --cov-report=term-missing` locally and ensure coverage is >= 80%.
-- **Go**: Run `$env:Path = 'C:\Users\egorribun\go\pkg\mod\golang.org\toolchain@v0.0.1-go1.26.2.windows-amd64\bin;' + $env:Path; cd services/gateway ; go test -cover ./...` (and repeat for other services) and ensure coverage is >= 50%.
+- **Go**: Run `$env:Path = 'C:\Users\egorribun\sdk\go1.26.4\bin;' + $env:Path; cd services/gateway ; go test -cover ./...` (and repeat for other services) and ensure coverage is >= 50%.
 - **Frontend**: Run `npm run test:ci --prefix frontend` and check if coverage threshold passes >= 70%.
 
 ### 3.2. CI Verification
