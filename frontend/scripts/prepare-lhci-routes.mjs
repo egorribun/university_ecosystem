@@ -19,7 +19,16 @@ const entryFile = path.join(distDir, "index.html")
 // Wave 112 — LHCI covers all 6 target pages for baseline measurement.
 // Auth-gated routes redirect to /login when no session — the redirect
 // itself is a valid CWV baseline (TTFB/FCP/LCP of the final page).
-const spaRoutes = ["login", "dashboard", "news", "schedule", "events", "activity", "map"]
+const spaRoutes = [
+  "login",
+  "dashboard",
+  "news",
+  "schedule",
+  "events",
+  "activity",
+  "map",
+  "messenger",
+]
 
 async function injectLhciMode(htmlPath) {
   let html = await readFile(htmlPath, "utf-8")

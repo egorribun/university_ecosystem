@@ -9,6 +9,12 @@ import {
 } from "./client"
 import { client } from "./client.gen"
 import type {
+  AddParticipantApiV1ChatsChatIdParticipantsPostData,
+  AddParticipantApiV1ChatsChatIdParticipantsPostErrors,
+  AddParticipantApiV1ChatsChatIdParticipantsPostResponses,
+  AddReactionApiV1ChatsChatIdMessagesMessageIdReactionsPostData,
+  AddReactionApiV1ChatsChatIdMessagesMessageIdReactionsPostErrors,
+  AddReactionApiV1ChatsChatIdMessagesMessageIdReactionsPostResponses,
   AddScheduleApiV1SchedulePostData,
   AddScheduleApiV1SchedulePostErrors,
   AddScheduleApiV1SchedulePostResponses,
@@ -30,9 +36,6 @@ import type {
   BroadcastApiV1PushBroadcastPostData,
   BroadcastApiV1PushBroadcastPostErrors,
   BroadcastApiV1PushBroadcastPostResponses,
-  BroadcastWebpushBroadcastPostData,
-  BroadcastWebpushBroadcastPostErrors,
-  BroadcastWebpushBroadcastPostResponses,
   ChangeEmailApiV1UsersMeEmailPostData,
   ChangeEmailApiV1UsersMeEmailPostErrors,
   ChangeEmailApiV1UsersMeEmailPostResponses,
@@ -62,6 +65,9 @@ import type {
   CreateEventApiV1EventsPostData,
   CreateEventApiV1EventsPostErrors,
   CreateEventApiV1EventsPostResponses,
+  CreateGroupApiV1ChatsGroupsPostData,
+  CreateGroupApiV1ChatsGroupsPostErrors,
+  CreateGroupApiV1ChatsGroupsPostResponses,
   CreateNewsApiV1NewsPostData,
   CreateNewsApiV1NewsPostErrors,
   CreateNewsApiV1NewsPostResponses,
@@ -93,6 +99,9 @@ import type {
   DeleteEventFileApiV1EventsFileFileIdDeleteData,
   DeleteEventFileApiV1EventsFileFileIdDeleteErrors,
   DeleteEventFileApiV1EventsFileFileIdDeleteResponses,
+  DeleteMessageApiV1ChatsChatIdMessagesMessageIdDeleteData,
+  DeleteMessageApiV1ChatsChatIdMessagesMessageIdDeleteErrors,
+  DeleteMessageApiV1ChatsChatIdMessagesMessageIdDeleteResponses,
   DeleteNewsApiV1NewsIdDeleteData,
   DeleteNewsApiV1NewsIdDeleteErrors,
   DeleteNewsApiV1NewsIdDeleteResponses,
@@ -102,9 +111,9 @@ import type {
   DeletePendingTotpEnrollmentApiV1AuthMfaTotpPendingEnrollmentIdDeleteData,
   DeletePendingTotpEnrollmentApiV1AuthMfaTotpPendingEnrollmentIdDeleteErrors,
   DeletePendingTotpEnrollmentApiV1AuthMfaTotpPendingEnrollmentIdDeleteResponses,
-  DeleteScheduleApiV1ScheduleScheduleIdDeleteData,
-  DeleteScheduleApiV1ScheduleScheduleIdDeleteErrors,
-  DeleteScheduleApiV1ScheduleScheduleIdDeleteResponses,
+  DeleteScheduleApiV1ScheduleIdDeleteData,
+  DeleteScheduleApiV1ScheduleIdDeleteErrors,
+  DeleteScheduleApiV1ScheduleIdDeleteResponses,
   DeleteStoryApiV1StoriesStoryIdDeleteData,
   DeleteStoryApiV1StoriesStoryIdDeleteErrors,
   DeleteStoryApiV1StoriesStoryIdDeleteResponses,
@@ -120,14 +129,14 @@ import type {
   DisableUserPushApiV1PushAdminDisableUserPostData,
   DisableUserPushApiV1PushAdminDisableUserPostErrors,
   DisableUserPushApiV1PushAdminDisableUserPostResponses,
-  DisableUserPushWebpushAdminDisableUserPostData,
-  DisableUserPushWebpushAdminDisableUserPostErrors,
-  DisableUserPushWebpushAdminDisableUserPostResponses,
   DisconnectApiV1SpotifyDisconnectPostData,
   DisconnectApiV1SpotifyDisconnectPostResponses,
   DownloadScheduleIcsApiV1ScheduleIcsGetData,
   DownloadScheduleIcsApiV1ScheduleIcsGetErrors,
   DownloadScheduleIcsApiV1ScheduleIcsGetResponses,
+  EditMessageApiV1ChatsChatIdMessagesMessageIdPatchData,
+  EditMessageApiV1ChatsChatIdMessagesMessageIdPatchErrors,
+  EditMessageApiV1ChatsChatIdMessagesMessageIdPatchResponses,
   ExportAccessAuditApiV1UsersAuditExportGetData,
   ExportAccessAuditApiV1UsersAuditExportGetErrors,
   ExportAccessAuditApiV1UsersAuditExportGetResponses,
@@ -136,6 +145,9 @@ import type {
   ForgotPasswordApiV1PasswordForgotPostData,
   ForgotPasswordApiV1PasswordForgotPostErrors,
   ForgotPasswordApiV1PasswordForgotPostResponses,
+  ForwardMessagesApiV1ChatsDestChatIdForwardPostData,
+  ForwardMessagesApiV1ChatsDestChatIdForwardPostErrors,
+  ForwardMessagesApiV1ChatsDestChatIdForwardPostResponses,
   GenerateRecoveryCodesEndpointApiV1AuthMfaRecoveryCodesPostData,
   GenerateRecoveryCodesEndpointApiV1AuthMfaRecoveryCodesPostResponses,
   GetChatApiV1ChatsChatIdGetData,
@@ -144,12 +156,14 @@ import type {
   GetChatsApiV1ChatsGetData,
   GetChatsApiV1ChatsGetErrors,
   GetChatsApiV1ChatsGetResponses,
-  GetEventApiV1EventsIdGetData,
-  GetEventApiV1EventsIdGetErrors,
-  GetEventApiV1EventsIdGetResponses,
-  GetEventFilesApiV1EventsIdFilesGetData,
-  GetEventFilesApiV1EventsIdFilesGetErrors,
-  GetEventFilesApiV1EventsIdFilesGetResponses,
+  GetCsrfCookieApiV1AuthCsrfCookieGetData,
+  GetCsrfCookieApiV1AuthCsrfCookieGetResponses,
+  GetEventApiV1EventsEventIdGetData,
+  GetEventApiV1EventsEventIdGetErrors,
+  GetEventApiV1EventsEventIdGetResponses,
+  GetEventFilesApiV1EventsEventIdFilesGetData,
+  GetEventFilesApiV1EventsEventIdFilesGetErrors,
+  GetEventFilesApiV1EventsEventIdFilesGetResponses,
   GetGroupsApiV1GroupsGetData,
   GetGroupsApiV1GroupsGetResponses,
   GetMessagesApiV1ChatsChatIdMessagesGetData,
@@ -163,11 +177,14 @@ import type {
   GetNewsInteractApiV1NewsIdInteractionsGetResponses,
   GetPushTopicsApiV1PushTopicsGetData,
   GetPushTopicsApiV1PushTopicsGetResponses,
+  GetReactorsApiV1ChatsChatIdMessagesMessageIdReactionsGetData,
+  GetReactorsApiV1ChatsChatIdMessagesMessageIdReactionsGetErrors,
+  GetReactorsApiV1ChatsChatIdMessagesMessageIdReactionsGetResponses,
   GetRootGetData,
   GetRootGetResponses,
-  GetScheduleApiV1ScheduleGroupIdGetData,
-  GetScheduleApiV1ScheduleGroupIdGetErrors,
-  GetScheduleApiV1ScheduleGroupIdGetResponses,
+  GetScheduleApiV1ScheduleIdGetData,
+  GetScheduleApiV1ScheduleIdGetErrors,
+  GetScheduleApiV1ScheduleIdGetResponses,
   GetSessionSigningKeyApiV1AuthSessionSigningKeyGetData,
   GetSessionSigningKeyApiV1AuthSessionSigningKeyGetResponses,
   GetUsersApiV1UsersGetData,
@@ -175,13 +192,14 @@ import type {
   GetUsersApiV1UsersGetResponses,
   GetVapidPublicKeyApiV1PushVapidPublicKeyGetData,
   GetVapidPublicKeyApiV1PushVapidPublicKeyGetResponses,
-  GetVapidPublicKeyWebpushVapidPublicKeyGetData,
-  GetVapidPublicKeyWebpushVapidPublicKeyGetResponses,
   GradeSummaryApiV1StatsGradesGetData,
   GradeSummaryApiV1StatsGradesGetErrors,
   GradeSummaryApiV1StatsGradesGetResponses,
   HealthzHealthzGetData,
+  HealthzHealthzGetErrors,
   HealthzHealthzGetResponses,
+  IssueWsUpgradeTicketWsTicketPostData,
+  IssueWsUpgradeTicketWsTicketPostResponses,
   LikeNewsApiV1NewsIdLikePostData,
   LikeNewsApiV1NewsIdLikePostErrors,
   LikeNewsApiV1NewsIdLikePostResponses,
@@ -205,6 +223,8 @@ import type {
   ListTotpEnrollmentsApiV1AuthMfaTotpGetResponses,
   ListWebauthnCredentialsApiV1AuthMfaWebauthnGetData,
   ListWebauthnCredentialsApiV1AuthMfaWebauthnGetResponses,
+  LivenessHealthLiveGetData,
+  LivenessHealthLiveGetResponses,
   LoginApiV1AuthLoginPostData,
   LoginApiV1AuthLoginPostErrors,
   LoginApiV1AuthLoginPostResponses,
@@ -243,6 +263,8 @@ import type {
   ProxyImageApiV1ImgPathGetData,
   ProxyImageApiV1ImgPathGetErrors,
   ProxyImageApiV1ImgPathGetResponses,
+  ReadyHealthReadyGetData,
+  ReadyHealthReadyGetResponses,
   ReadyReadyGetData,
   ReadyReadyGetResponses,
   ReceiveCspReportApiV1CspReportPostData,
@@ -250,6 +272,15 @@ import type {
   RegisterApiV1AuthRegisterPostData,
   RegisterApiV1AuthRegisterPostErrors,
   RegisterApiV1AuthRegisterPostResponses,
+  RemoveParticipantApiV1ChatsChatIdParticipantsUserIdDeleteData,
+  RemoveParticipantApiV1ChatsChatIdParticipantsUserIdDeleteErrors,
+  RemoveParticipantApiV1ChatsChatIdParticipantsUserIdDeleteResponses,
+  RemoveReactionApiV1ChatsChatIdMessagesMessageIdReactionsDeleteData,
+  RemoveReactionApiV1ChatsChatIdMessagesMessageIdReactionsDeleteErrors,
+  RemoveReactionApiV1ChatsChatIdMessagesMessageIdReactionsDeleteResponses,
+  RenameChatApiV1ChatsChatIdPatchData,
+  RenameChatApiV1ChatsChatIdPatchErrors,
+  RenameChatApiV1ChatsChatIdPatchResponses,
   RequestStepUpApiV1AuthMfaStepUpPostData,
   RequestStepUpApiV1AuthMfaStepUpPostResponses,
   ResetPasswordApiV1PasswordResetPostData,
@@ -273,9 +304,6 @@ import type {
   SendTestApiV1PushTestPostData,
   SendTestApiV1PushTestPostErrors,
   SendTestApiV1PushTestPostResponses,
-  SendTestWebpushSendTestPostData,
-  SendTestWebpushSendTestPostErrors,
-  SendTestWebpushSendTestPostResponses,
   SpotifyAuthUrlApiV1SpotifyAuthUrlGetData,
   SpotifyAuthUrlApiV1SpotifyAuthUrlGetResponses,
   SpotifyCallbackApiV1SpotifyCallbackGetData,
@@ -286,23 +314,26 @@ import type {
   StartTotpEnrollmentEndpointApiV1AuthMfaTotpStartPostResponses,
   StartWebauthnRegistrationApiV1AuthMfaWebauthnRegisterStartPostData,
   StartWebauthnRegistrationApiV1AuthMfaWebauthnRegisterStartPostResponses,
+  StatsSummaryApiV1StatsSummaryGetData,
+  StatsSummaryApiV1StatsSummaryGetErrors,
+  StatsSummaryApiV1StatsSummaryGetResponses,
   SubscribeApiV1PushSubscribePostData,
   SubscribeApiV1PushSubscribePostErrors,
   SubscribeApiV1PushSubscribePostResponses,
-  SubscribeWebpushSubscribePostData,
-  SubscribeWebpushSubscribePostErrors,
-  SubscribeWebpushSubscribePostResponses,
   SyncPlaylistsApiV1SpotifySyncPlaylistsPostData,
   SyncPlaylistsApiV1SpotifySyncPlaylistsPostResponses,
+  TypingIndicatorApiV1ChatsChatIdTypingPostData,
+  TypingIndicatorApiV1ChatsChatIdTypingPostErrors,
+  TypingIndicatorApiV1ChatsChatIdTypingPostResponses,
+  UnifiedSearchApiV1SearchGetData,
+  UnifiedSearchApiV1SearchGetErrors,
+  UnifiedSearchApiV1SearchGetResponses,
   UnregisterEventApiV1EventsAttendanceDeleteData,
   UnregisterEventApiV1EventsAttendanceDeleteErrors,
   UnregisterEventApiV1EventsAttendanceDeleteResponses,
   UnsubscribeApiV1PushUnsubscribePostData,
   UnsubscribeApiV1PushUnsubscribePostErrors,
   UnsubscribeApiV1PushUnsubscribePostResponses,
-  UnsubscribeWebpushUnsubscribePostData,
-  UnsubscribeWebpushUnsubscribePostErrors,
-  UnsubscribeWebpushUnsubscribePostResponses,
   UpdateCommentApiV1NewsCommentsCommentIdPatchData,
   UpdateCommentApiV1NewsCommentsCommentIdPatchErrors,
   UpdateCommentApiV1NewsCommentsCommentIdPatchResponses,
@@ -318,18 +349,15 @@ import type {
   UpdateNewsApiV1NewsIdPatchData,
   UpdateNewsApiV1NewsIdPatchErrors,
   UpdateNewsApiV1NewsIdPatchResponses,
-  UpdateScheduleApiV1ScheduleScheduleIdPatchData,
-  UpdateScheduleApiV1ScheduleScheduleIdPatchErrors,
-  UpdateScheduleApiV1ScheduleScheduleIdPatchResponses,
+  UpdateScheduleApiV1ScheduleIdPatchData,
+  UpdateScheduleApiV1ScheduleIdPatchErrors,
+  UpdateScheduleApiV1ScheduleIdPatchResponses,
   UpdateStoryApiV1StoriesStoryIdPatchData,
   UpdateStoryApiV1StoriesStoryIdPatchErrors,
   UpdateStoryApiV1StoriesStoryIdPatchResponses,
   UpdateSubscriptionTopicsApiV1PushSubscribeTopicsPatchData,
   UpdateSubscriptionTopicsApiV1PushSubscribeTopicsPatchErrors,
   UpdateSubscriptionTopicsApiV1PushSubscribeTopicsPatchResponses,
-  UpdateSubscriptionTopicsWebpushSubscribeTopicsPatchData,
-  UpdateSubscriptionTopicsWebpushSubscribeTopicsPatchErrors,
-  UpdateSubscriptionTopicsWebpushSubscribeTopicsPatchResponses,
   UpdateUserAdminApiV1UsersUserIdPatchData,
   UpdateUserAdminApiV1UsersUserIdPatchErrors,
   UpdateUserAdminApiV1UsersUserIdPatchResponses,
@@ -339,9 +367,9 @@ import type {
   UploadCoverApiV1UsersMeCoverPostData,
   UploadCoverApiV1UsersMeCoverPostErrors,
   UploadCoverApiV1UsersMeCoverPostResponses,
-  UploadEventFileApiV1EventsIdUploadFilePostData,
-  UploadEventFileApiV1EventsIdUploadFilePostErrors,
-  UploadEventFileApiV1EventsIdUploadFilePostResponses,
+  UploadEventFileApiV1EventsEventIdUploadFilePostData,
+  UploadEventFileApiV1EventsEventIdUploadFilePostErrors,
+  UploadEventFileApiV1EventsEventIdUploadFilePostResponses,
   UploadEventImageApiV1EventsUploadImagePostData,
   UploadEventImageApiV1EventsUploadImagePostErrors,
   UploadEventImageApiV1EventsUploadImagePostResponses,
@@ -389,19 +417,47 @@ export const getRootGet = <ThrowOnError extends boolean = false>(
   })
 
 /**
- * Healthz
+ * Liveness Probe
+ */
+export const livenessHealthLiveGet = <ThrowOnError extends boolean = false>(
+  options?: Options<LivenessHealthLiveGetData, ThrowOnError>
+) =>
+  (options?.client ?? client).get<LivenessHealthLiveGetResponses, unknown, ThrowOnError>({
+    responseType: "json",
+    url: "/health/live",
+    ...options,
+  })
+
+/**
+ * Full Health Check
  */
 export const healthzHealthzGet = <ThrowOnError extends boolean = false>(
   options?: Options<HealthzHealthzGetData, ThrowOnError>
 ) =>
-  (options?.client ?? client).get<HealthzHealthzGetResponses, unknown, ThrowOnError>({
+  (options?.client ?? client).get<
+    HealthzHealthzGetResponses,
+    HealthzHealthzGetErrors,
+    ThrowOnError
+  >({
     responseType: "json",
     url: "/healthz",
     ...options,
   })
 
 /**
- * Ready
+ * Readiness Probe
+ */
+export const readyHealthReadyGet = <ThrowOnError extends boolean = false>(
+  options?: Options<ReadyHealthReadyGetData, ThrowOnError>
+) =>
+  (options?.client ?? client).get<ReadyHealthReadyGetResponses, unknown, ThrowOnError>({
+    responseType: "json",
+    url: "/health/ready",
+    ...options,
+  })
+
+/**
+ * Legacy Readiness Check
  */
 export const readyReadyGet = <ThrowOnError extends boolean = false>(
   options?: Options<ReadyReadyGetData, ThrowOnError>
@@ -533,6 +589,24 @@ export const verifyMfaChallengeApiV1AuthMfaVerifyPost = <ThrowOnError extends bo
       "Content-Type": "application/json",
       ...options.headers,
     },
+  })
+
+/**
+ * Initialize CSRF token
+ *
+ * This endpoint sets a new robust CSRF cookie and is intended for SPAs to call before attempting a login.
+ */
+export const getCsrfCookieApiV1AuthCsrfCookieGet = <ThrowOnError extends boolean = false>(
+  options?: Options<GetCsrfCookieApiV1AuthCsrfCookieGetData, ThrowOnError>
+) =>
+  (options?.client ?? client).get<
+    GetCsrfCookieApiV1AuthCsrfCookieGetResponses,
+    unknown,
+    ThrowOnError
+  >({
+    responseType: "json",
+    url: "/api/v1/auth/csrf-cookie",
+    ...options,
   })
 
 /**
@@ -1743,18 +1817,20 @@ export const myEventsApiV1EventsMyGet = <ThrowOnError extends boolean = false>(
 /**
  * Upload Event File
  */
-export const uploadEventFileApiV1EventsIdUploadFilePost = <ThrowOnError extends boolean = false>(
-  options: Options<UploadEventFileApiV1EventsIdUploadFilePostData, ThrowOnError>
+export const uploadEventFileApiV1EventsEventIdUploadFilePost = <
+  ThrowOnError extends boolean = false,
+>(
+  options: Options<UploadEventFileApiV1EventsEventIdUploadFilePostData, ThrowOnError>
 ) =>
   (options.client ?? client).post<
-    UploadEventFileApiV1EventsIdUploadFilePostResponses,
-    UploadEventFileApiV1EventsIdUploadFilePostErrors,
+    UploadEventFileApiV1EventsEventIdUploadFilePostResponses,
+    UploadEventFileApiV1EventsEventIdUploadFilePostErrors,
     ThrowOnError
   >({
     ...formDataBodySerializer,
     responseType: "json",
     security: [{ scheme: "bearer", type: "http" }],
-    url: "/api/v1/events/{id}/upload_file",
+    url: "/api/v1/events/{event_id}/upload_file",
     ...options,
     headers: {
       "Content-Type": null,
@@ -1765,16 +1841,16 @@ export const uploadEventFileApiV1EventsIdUploadFilePost = <ThrowOnError extends 
 /**
  * Get Event Files
  */
-export const getEventFilesApiV1EventsIdFilesGet = <ThrowOnError extends boolean = false>(
-  options: Options<GetEventFilesApiV1EventsIdFilesGetData, ThrowOnError>
+export const getEventFilesApiV1EventsEventIdFilesGet = <ThrowOnError extends boolean = false>(
+  options: Options<GetEventFilesApiV1EventsEventIdFilesGetData, ThrowOnError>
 ) =>
   (options.client ?? client).get<
-    GetEventFilesApiV1EventsIdFilesGetResponses,
-    GetEventFilesApiV1EventsIdFilesGetErrors,
+    GetEventFilesApiV1EventsEventIdFilesGetResponses,
+    GetEventFilesApiV1EventsEventIdFilesGetErrors,
     ThrowOnError
   >({
     responseType: "json",
-    url: "/api/v1/events/{id}/files",
+    url: "/api/v1/events/{event_id}/files",
     ...options,
   })
 
@@ -1818,6 +1894,23 @@ export const deleteEventApiV1EventsEventIdDelete = <ThrowOnError extends boolean
   })
 
 /**
+ * Get Event
+ */
+export const getEventApiV1EventsEventIdGet = <ThrowOnError extends boolean = false>(
+  options: Options<GetEventApiV1EventsEventIdGetData, ThrowOnError>
+) =>
+  (options.client ?? client).get<
+    GetEventApiV1EventsEventIdGetResponses,
+    GetEventApiV1EventsEventIdGetErrors,
+    ThrowOnError
+  >({
+    responseType: "json",
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/api/v1/events/{event_id}",
+    ...options,
+  })
+
+/**
  * Update Event
  */
 export const updateEventApiV1EventsEventIdPatch = <ThrowOnError extends boolean = false>(
@@ -1836,23 +1929,6 @@ export const updateEventApiV1EventsEventIdPatch = <ThrowOnError extends boolean 
       "Content-Type": "application/json",
       ...options.headers,
     },
-  })
-
-/**
- * Get Event
- */
-export const getEventApiV1EventsIdGet = <ThrowOnError extends boolean = false>(
-  options: Options<GetEventApiV1EventsIdGetData, ThrowOnError>
-) =>
-  (options.client ?? client).get<
-    GetEventApiV1EventsIdGetResponses,
-    GetEventApiV1EventsIdGetErrors,
-    ThrowOnError
-  >({
-    responseType: "json",
-    security: [{ scheme: "bearer", type: "http" }],
-    url: "/api/v1/events/{id}",
-    ...options,
   })
 
 /**
@@ -1886,6 +1962,7 @@ export const semanticSearchApiV1EventsSearchSemanticGet = <ThrowOnError extends 
     ThrowOnError
   >({
     responseType: "json",
+    security: [{ scheme: "bearer", type: "http" }],
     url: "/api/v1/events/search/semantic",
     ...options,
   })
@@ -2116,6 +2193,7 @@ export const semanticSearchApiV1NewsSearchSemanticGet = <ThrowOnError extends bo
     ThrowOnError
   >({
     responseType: "json",
+    security: [{ scheme: "bearer", type: "http" }],
     url: "/api/v1/news/search/semantic",
     ...options,
   })
@@ -2239,52 +2317,53 @@ export const addScheduleApiV1SchedulePost = <ThrowOnError extends boolean = fals
   })
 
 /**
- * Get Schedule
- */
-export const getScheduleApiV1ScheduleGroupIdGet = <ThrowOnError extends boolean = false>(
-  options: Options<GetScheduleApiV1ScheduleGroupIdGetData, ThrowOnError>
-) =>
-  (options.client ?? client).get<
-    GetScheduleApiV1ScheduleGroupIdGetResponses,
-    GetScheduleApiV1ScheduleGroupIdGetErrors,
-    ThrowOnError
-  >({
-    responseType: "json",
-    url: "/api/v1/schedule/{group_id}",
-    ...options,
-  })
-
-/**
  * Delete Schedule
  */
-export const deleteScheduleApiV1ScheduleScheduleIdDelete = <ThrowOnError extends boolean = false>(
-  options: Options<DeleteScheduleApiV1ScheduleScheduleIdDeleteData, ThrowOnError>
+export const deleteScheduleApiV1ScheduleIdDelete = <ThrowOnError extends boolean = false>(
+  options: Options<DeleteScheduleApiV1ScheduleIdDeleteData, ThrowOnError>
 ) =>
   (options.client ?? client).delete<
-    DeleteScheduleApiV1ScheduleScheduleIdDeleteResponses,
-    DeleteScheduleApiV1ScheduleScheduleIdDeleteErrors,
+    DeleteScheduleApiV1ScheduleIdDeleteResponses,
+    DeleteScheduleApiV1ScheduleIdDeleteErrors,
     ThrowOnError
   >({
     responseType: "json",
     security: [{ scheme: "bearer", type: "http" }],
-    url: "/api/v1/schedule/{schedule_id}",
+    url: "/api/v1/schedule/{id}",
+    ...options,
+  })
+
+/**
+ * Get Schedule
+ */
+export const getScheduleApiV1ScheduleIdGet = <ThrowOnError extends boolean = false>(
+  options: Options<GetScheduleApiV1ScheduleIdGetData, ThrowOnError>
+) =>
+  (options.client ?? client).get<
+    GetScheduleApiV1ScheduleIdGetResponses,
+    GetScheduleApiV1ScheduleIdGetErrors,
+    ThrowOnError
+  >({
+    responseType: "json",
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/api/v1/schedule/{id}",
     ...options,
   })
 
 /**
  * Update Schedule
  */
-export const updateScheduleApiV1ScheduleScheduleIdPatch = <ThrowOnError extends boolean = false>(
-  options: Options<UpdateScheduleApiV1ScheduleScheduleIdPatchData, ThrowOnError>
+export const updateScheduleApiV1ScheduleIdPatch = <ThrowOnError extends boolean = false>(
+  options: Options<UpdateScheduleApiV1ScheduleIdPatchData, ThrowOnError>
 ) =>
   (options.client ?? client).patch<
-    UpdateScheduleApiV1ScheduleScheduleIdPatchResponses,
-    UpdateScheduleApiV1ScheduleScheduleIdPatchErrors,
+    UpdateScheduleApiV1ScheduleIdPatchResponses,
+    UpdateScheduleApiV1ScheduleIdPatchErrors,
     ThrowOnError
   >({
     responseType: "json",
     security: [{ scheme: "bearer", type: "http" }],
-    url: "/api/v1/schedule/{schedule_id}",
+    url: "/api/v1/schedule/{id}",
     ...options,
     headers: {
       "Content-Type": "application/json",
@@ -2346,6 +2425,29 @@ export const participationSummaryApiV1StatsParticipationGet = <
   })
 
 /**
+ * Stats Summary
+ *
+ * Return attendance, grades and participation stats in a single request.
+ *
+ * PERF-1 (audit 2026-03): replaces three separate client-side round-trips.
+ * All three sub-queries run concurrently via asyncio.gather and share the
+ * same Redis cache entries as the individual endpoints.
+ */
+export const statsSummaryApiV1StatsSummaryGet = <ThrowOnError extends boolean = false>(
+  options?: Options<StatsSummaryApiV1StatsSummaryGetData, ThrowOnError>
+) =>
+  (options?.client ?? client).get<
+    StatsSummaryApiV1StatsSummaryGetResponses,
+    StatsSummaryApiV1StatsSummaryGetErrors,
+    ThrowOnError
+  >({
+    responseType: "json",
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/api/v1/stats/summary",
+    ...options,
+  })
+
+/**
  * Creation Analytics
  *
  * Analytics powered by UUID v7:
@@ -2369,9 +2471,6 @@ export const creationAnalyticsApiV1StatsCreationGet = <ThrowOnError extends bool
  * Get Chats
  *
  * Get all chats for the current user with cursor-based pagination.
- *
- * Returns chats ordered by last message timestamp (newest first).
- * Use the `next_cursor` from the response to fetch the next page.
  */
 export const getChatsApiV1ChatsGet = <ThrowOnError extends boolean = false>(
   options?: Options<GetChatsApiV1ChatsGetData, ThrowOnError>
@@ -2390,7 +2489,7 @@ export const getChatsApiV1ChatsGet = <ThrowOnError extends boolean = false>(
 /**
  * Create Chat
  *
- * Create a new chat with a user. If a chat already exists, return it.
+ * Create a new chat with a user.  If a DM chat already exists, return it.
  */
 export const createChatApiV1ChatsPost = <ThrowOnError extends boolean = false>(
   options: Options<CreateChatApiV1ChatsPostData, ThrowOnError>
@@ -2403,6 +2502,33 @@ export const createChatApiV1ChatsPost = <ThrowOnError extends boolean = false>(
     responseType: "json",
     security: [{ scheme: "bearer", type: "http" }],
     url: "/api/v1/chats",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers,
+    },
+  })
+
+/**
+ * Create Group
+ *
+ * Create a named group chat (Wave 209 G1).
+ *
+ * Static /groups route placed before the dynamic /{chat_id} routes (idiomatic
+ * static-before-dynamic; no POST /{chat_id} exists today, but this future-proofs
+ * against shadowing). W174 auto-cookie covers POST CSRF.
+ */
+export const createGroupApiV1ChatsGroupsPost = <ThrowOnError extends boolean = false>(
+  options: Options<CreateGroupApiV1ChatsGroupsPostData, ThrowOnError>
+) =>
+  (options.client ?? client).post<
+    CreateGroupApiV1ChatsGroupsPostResponses,
+    CreateGroupApiV1ChatsGroupsPostErrors,
+    ThrowOnError
+  >({
+    responseType: "json",
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/api/v1/chats/groups",
     ...options,
     headers: {
       "Content-Type": "application/json",
@@ -2449,12 +2575,35 @@ export const getChatApiV1ChatsChatIdGet = <ThrowOnError extends boolean = false>
   })
 
 /**
+ * Rename Chat
+ *
+ * Rename a group's title (Wave 209 G1 — any participant).
+ *
+ * PATCH /{chat_id} is distinct from PATCH /{chat_id}/messages/{message_id}
+ * (edit-message). W174 auto-cookie covers PATCH CSRF.
+ */
+export const renameChatApiV1ChatsChatIdPatch = <ThrowOnError extends boolean = false>(
+  options: Options<RenameChatApiV1ChatsChatIdPatchData, ThrowOnError>
+) =>
+  (options.client ?? client).patch<
+    RenameChatApiV1ChatsChatIdPatchResponses,
+    RenameChatApiV1ChatsChatIdPatchErrors,
+    ThrowOnError
+  >({
+    responseType: "json",
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/api/v1/chats/{chat_id}",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers,
+    },
+  })
+
+/**
  * Get Messages
  *
- * Get messages for a chat with cursor-based pagination.
- *
- * Messages are returned in ascending order (oldest first).
- * Use the `next_cursor` from the response to fetch older messages.
+ * Get messages for a chat with cursor-based pagination (oldest first).
  */
 export const getMessagesApiV1ChatsChatIdMessagesGet = <ThrowOnError extends boolean = false>(
   options: Options<GetMessagesApiV1ChatsChatIdMessagesGetData, ThrowOnError>
@@ -2473,10 +2622,7 @@ export const getMessagesApiV1ChatsChatIdMessagesGet = <ThrowOnError extends bool
 /**
  * Send Message
  *
- * Send a message to a chat.
- *
- * The message is saved to the database and all chat participants
- * are notified via WebSocket in real-time.
+ * Send a message to a chat.  Supports ``Idempotency-Key`` header for retry-safe sends.
  */
 export const sendMessageApiV1ChatsChatIdMessagesPost = <ThrowOnError extends boolean = false>(
   options: Options<SendMessageApiV1ChatsChatIdMessagesPostData, ThrowOnError>
@@ -2493,6 +2639,36 @@ export const sendMessageApiV1ChatsChatIdMessagesPost = <ThrowOnError extends boo
     ...options,
     headers: {
       "Content-Type": null,
+      ...options.headers,
+    },
+  })
+
+/**
+ * Forward Messages
+ *
+ * Forward 1..N messages from a source chat into this destination chat (Wave 211).
+ *
+ * Snapshot-copy: copies the source content + attachments + a "Forwarded from X"
+ * label; the source is never dereferenced cross-chat (privacy). The actor must be
+ * a participant of BOTH the source chat (to read) AND this destination chat (to
+ * send) — see ChatMessageDispatcher.forward_messages.
+ */
+export const forwardMessagesApiV1ChatsDestChatIdForwardPost = <
+  ThrowOnError extends boolean = false,
+>(
+  options: Options<ForwardMessagesApiV1ChatsDestChatIdForwardPostData, ThrowOnError>
+) =>
+  (options.client ?? client).post<
+    ForwardMessagesApiV1ChatsDestChatIdForwardPostResponses,
+    ForwardMessagesApiV1ChatsDestChatIdForwardPostErrors,
+    ThrowOnError
+  >({
+    responseType: "json",
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/api/v1/chats/{dest_chat_id}/forward",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
       ...options.headers,
     },
   })
@@ -2517,6 +2693,170 @@ export const markReadApiV1ChatsChatIdReadPost = <ThrowOnError extends boolean = 
   })
 
 /**
+ * Delete Message
+ *
+ * Soft-delete a message (author-only).  W174 auto-cookie covers DELETE CSRF.
+ */
+export const deleteMessageApiV1ChatsChatIdMessagesMessageIdDelete = <
+  ThrowOnError extends boolean = false,
+>(
+  options: Options<DeleteMessageApiV1ChatsChatIdMessagesMessageIdDeleteData, ThrowOnError>
+) =>
+  (options.client ?? client).delete<
+    DeleteMessageApiV1ChatsChatIdMessagesMessageIdDeleteResponses,
+    DeleteMessageApiV1ChatsChatIdMessagesMessageIdDeleteErrors,
+    ThrowOnError
+  >({
+    responseType: "json",
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/api/v1/chats/{chat_id}/messages/{message_id}",
+    ...options,
+  })
+
+/**
+ * Edit Message
+ *
+ * Edit a message's content (author-only).  W174 auto-cookie covers PATCH CSRF.
+ */
+export const editMessageApiV1ChatsChatIdMessagesMessageIdPatch = <
+  ThrowOnError extends boolean = false,
+>(
+  options: Options<EditMessageApiV1ChatsChatIdMessagesMessageIdPatchData, ThrowOnError>
+) =>
+  (options.client ?? client).patch<
+    EditMessageApiV1ChatsChatIdMessagesMessageIdPatchResponses,
+    EditMessageApiV1ChatsChatIdMessagesMessageIdPatchErrors,
+    ThrowOnError
+  >({
+    ...urlSearchParamsBodySerializer,
+    responseType: "json",
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/api/v1/chats/{chat_id}/messages/{message_id}",
+    ...options,
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded",
+      ...options.headers,
+    },
+  })
+
+/**
+ * Remove Reaction
+ *
+ * Remove an emoji reaction from a message (idempotent).
+ *
+ * W206 SW7 — emoji is a QUERY param, NOT a URL-path segment. Query params decode
+ * unambiguously (parse_qs); that is the robust shape for an arbitrary
+ * multi-codepoint emoji used as a sub-resource selector, whereas multi-byte
+ * content in a URL path segment is a known fragility class. Verified LIVE
+ * end-to-end (two-browser cross-user add + remove of a real 👍, W206 SW7).
+ *
+ * Honest re-attribution: the mid-wave switch from the SW4 path route was first
+ * blamed on a Caddy path mis-decode, but live verification showed the earlier
+ * "failed remove" was a CORRUPT stored value — curl on Windows Git-Bash mangles a
+ * literal multi-byte emoji in a request BODY to "??", so the curl-added reaction
+ * was stored as "??" and no remove could match the correctly-encoded 👍. The
+ * query param is retained as the more robust design (the path route was never
+ * verified for a real emoji). W174 auto-cookie covers DELETE CSRF.
+ */
+export const removeReactionApiV1ChatsChatIdMessagesMessageIdReactionsDelete = <
+  ThrowOnError extends boolean = false,
+>(
+  options: Options<RemoveReactionApiV1ChatsChatIdMessagesMessageIdReactionsDeleteData, ThrowOnError>
+) =>
+  (options.client ?? client).delete<
+    RemoveReactionApiV1ChatsChatIdMessagesMessageIdReactionsDeleteResponses,
+    RemoveReactionApiV1ChatsChatIdMessagesMessageIdReactionsDeleteErrors,
+    ThrowOnError
+  >({
+    responseType: "json",
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/api/v1/chats/{chat_id}/messages/{message_id}/reactions",
+    ...options,
+  })
+
+/**
+ * Get Reactors
+ *
+ * List the users who reacted to a message with a specific emoji (Wave 207).
+ *
+ * Powers the reactor-list "who reacted" popover — reactor identities are loaded
+ * on-demand, NOT bundled into GET /messages. Participant-authz'd + message-in-chat
+ * guarded (a participant of one chat can't enumerate reactors of a message in
+ * another by guessing its id). emoji is a QUERY param (same robust shape as the
+ * DELETE route, W206 SW7). Coexists with POST + DELETE at this path (FastAPI
+ * routes by method).
+ */
+export const getReactorsApiV1ChatsChatIdMessagesMessageIdReactionsGet = <
+  ThrowOnError extends boolean = false,
+>(
+  options: Options<GetReactorsApiV1ChatsChatIdMessagesMessageIdReactionsGetData, ThrowOnError>
+) =>
+  (options.client ?? client).get<
+    GetReactorsApiV1ChatsChatIdMessagesMessageIdReactionsGetResponses,
+    GetReactorsApiV1ChatsChatIdMessagesMessageIdReactionsGetErrors,
+    ThrowOnError
+  >({
+    responseType: "json",
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/api/v1/chats/{chat_id}/messages/{message_id}/reactions",
+    ...options,
+  })
+
+/**
+ * Add Reaction
+ *
+ * Add an emoji reaction to a message (idempotent, any participant).
+ *
+ * W174 auto-cookie covers POST CSRF.
+ */
+export const addReactionApiV1ChatsChatIdMessagesMessageIdReactionsPost = <
+  ThrowOnError extends boolean = false,
+>(
+  options: Options<AddReactionApiV1ChatsChatIdMessagesMessageIdReactionsPostData, ThrowOnError>
+) =>
+  (options.client ?? client).post<
+    AddReactionApiV1ChatsChatIdMessagesMessageIdReactionsPostResponses,
+    AddReactionApiV1ChatsChatIdMessagesMessageIdReactionsPostErrors,
+    ThrowOnError
+  >({
+    ...urlSearchParamsBodySerializer,
+    responseType: "json",
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/api/v1/chats/{chat_id}/messages/{message_id}/reactions",
+    ...options,
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded",
+      ...options.headers,
+    },
+  })
+
+/**
+ * Typing Indicator
+ *
+ * Broadcast a 'typing' indicator to the other chat participants (Wave 207).
+ *
+ * The frontend WS connects to ws-hub, which drops "typing" frames at its parse
+ * boundary — so typing can't relay peer-to-peer over the socket. This REST endpoint
+ * does the participant authz + broadcast (W204 bridge → ws-hub chat.* fan-out → the
+ * other participants' live TypingIndicator). A permissive 180/60 limiter (vs the
+ * strict 5/60 default) gives headroom over the client's 500ms (~2/sec) throttle while
+ * capping broadcast-spam abuse. W174 auto-cookie covers POST CSRF.
+ */
+export const typingIndicatorApiV1ChatsChatIdTypingPost = <ThrowOnError extends boolean = false>(
+  options: Options<TypingIndicatorApiV1ChatsChatIdTypingPostData, ThrowOnError>
+) =>
+  (options.client ?? client).post<
+    TypingIndicatorApiV1ChatsChatIdTypingPostResponses,
+    TypingIndicatorApiV1ChatsChatIdTypingPostErrors,
+    ThrowOnError
+  >({
+    responseType: "json",
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/api/v1/chats/{chat_id}/typing",
+    ...options,
+  })
+
+/**
  * Clear Chat History
  *
  * Remove all messages (and attachments) from a chat for its participants.
@@ -2532,6 +2872,54 @@ export const clearChatHistoryApiV1ChatsChatIdClearPost = <ThrowOnError extends b
     responseType: "json",
     security: [{ scheme: "bearer", type: "http" }],
     url: "/api/v1/chats/{chat_id}/clear",
+    ...options,
+  })
+
+/**
+ * Add Participant
+ *
+ * Add a member to a group (Wave 209 G1 — any participant). W174 auto-cookie.
+ */
+export const addParticipantApiV1ChatsChatIdParticipantsPost = <
+  ThrowOnError extends boolean = false,
+>(
+  options: Options<AddParticipantApiV1ChatsChatIdParticipantsPostData, ThrowOnError>
+) =>
+  (options.client ?? client).post<
+    AddParticipantApiV1ChatsChatIdParticipantsPostResponses,
+    AddParticipantApiV1ChatsChatIdParticipantsPostErrors,
+    ThrowOnError
+  >({
+    responseType: "json",
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/api/v1/chats/{chat_id}/participants",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers,
+    },
+  })
+
+/**
+ * Remove Participant
+ *
+ * Remove a member from a group / leave (Wave 209 G1 — owner or self).
+ *
+ * 3-segment path, distinct from DELETE /{chat_id} (delete-chat). W174 auto-cookie.
+ */
+export const removeParticipantApiV1ChatsChatIdParticipantsUserIdDelete = <
+  ThrowOnError extends boolean = false,
+>(
+  options: Options<RemoveParticipantApiV1ChatsChatIdParticipantsUserIdDeleteData, ThrowOnError>
+) =>
+  (options.client ?? client).delete<
+    RemoveParticipantApiV1ChatsChatIdParticipantsUserIdDeleteResponses,
+    RemoveParticipantApiV1ChatsChatIdParticipantsUserIdDeleteErrors,
+    ThrowOnError
+  >({
+    responseType: "json",
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/api/v1/chats/{chat_id}/participants/{user_id}",
     ...options,
   })
 
@@ -2571,6 +2959,28 @@ export const receiveCspReportApiV1CspReportPost = <ThrowOnError extends boolean 
     unknown,
     ThrowOnError
   >({ url: "/api/v1/csp-report", ...options })
+
+/**
+ * Unified Search
+ *
+ * Unified search across news and events.
+ *
+ * Combines Elasticsearch full-text search.
+ * Results are grouped by type for the frontend SearchDialog.
+ */
+export const unifiedSearchApiV1SearchGet = <ThrowOnError extends boolean = false>(
+  options: Options<UnifiedSearchApiV1SearchGetData, ThrowOnError>
+) =>
+  (options.client ?? client).get<
+    UnifiedSearchApiV1SearchGetResponses,
+    UnifiedSearchApiV1SearchGetErrors,
+    ThrowOnError
+  >({
+    responseType: "json",
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/api/v1/search",
+    ...options,
+  })
 
 /**
  * List Feature Flags
@@ -2634,147 +3044,20 @@ export const listAuditLogsAdminAuditGet = <ThrowOnError extends boolean = false>
   })
 
 /**
- * Get Vapid Public Key
+ * Issue a WebSocket upgrade ticket
  *
- * Return configured VAPID public key.
+ * Issues a short-lived, single-use WebSocket upgrade ticket. The client must be authenticated via HttpOnly cookie or Bearer token. Connect to the WebSocket endpoint with ?ticket=<ticket> — the ticket is consumed atomically on first use and expires after WS_TICKET_TTL_SECONDS seconds if unused (default: 15 s; configure via settings.ws_ticket_ttl_seconds).
  */
-export const getVapidPublicKeyWebpushVapidPublicKeyGet = <ThrowOnError extends boolean = false>(
-  options?: Options<GetVapidPublicKeyWebpushVapidPublicKeyGetData, ThrowOnError>
+export const issueWsUpgradeTicketWsTicketPost = <ThrowOnError extends boolean = false>(
+  options?: Options<IssueWsUpgradeTicketWsTicketPostData, ThrowOnError>
 ) =>
-  (options?.client ?? client).get<
-    GetVapidPublicKeyWebpushVapidPublicKeyGetResponses,
+  (options?.client ?? client).post<
+    IssueWsUpgradeTicketWsTicketPostResponses,
     unknown,
     ThrowOnError
   >({
     responseType: "json",
-    url: "/webpush/vapid-public-key",
-    ...options,
-  })
-
-/**
- * Subscribe
- */
-export const subscribeWebpushSubscribePost = <ThrowOnError extends boolean = false>(
-  options: Options<SubscribeWebpushSubscribePostData, ThrowOnError>
-) =>
-  (options.client ?? client).post<
-    SubscribeWebpushSubscribePostResponses,
-    SubscribeWebpushSubscribePostErrors,
-    ThrowOnError
-  >({
-    responseType: "json",
     security: [{ scheme: "bearer", type: "http" }],
-    url: "/webpush/subscribe",
+    url: "/ws/ticket",
     ...options,
-    headers: {
-      "Content-Type": "application/json",
-      ...options.headers,
-    },
-  })
-
-/**
- * Update Subscription Topics
- */
-export const updateSubscriptionTopicsWebpushSubscribeTopicsPatch = <
-  ThrowOnError extends boolean = false,
->(
-  options: Options<UpdateSubscriptionTopicsWebpushSubscribeTopicsPatchData, ThrowOnError>
-) =>
-  (options.client ?? client).patch<
-    UpdateSubscriptionTopicsWebpushSubscribeTopicsPatchResponses,
-    UpdateSubscriptionTopicsWebpushSubscribeTopicsPatchErrors,
-    ThrowOnError
-  >({
-    responseType: "json",
-    security: [{ scheme: "bearer", type: "http" }],
-    url: "/webpush/subscribe/topics",
-    ...options,
-    headers: {
-      "Content-Type": "application/json",
-      ...options.headers,
-    },
-  })
-
-/**
- * Unsubscribe
- */
-export const unsubscribeWebpushUnsubscribePost = <ThrowOnError extends boolean = false>(
-  options: Options<UnsubscribeWebpushUnsubscribePostData, ThrowOnError>
-) =>
-  (options.client ?? client).post<
-    UnsubscribeWebpushUnsubscribePostResponses,
-    UnsubscribeWebpushUnsubscribePostErrors,
-    ThrowOnError
-  >({
-    responseType: "json",
-    security: [{ scheme: "bearer", type: "http" }],
-    url: "/webpush/unsubscribe",
-    ...options,
-    headers: {
-      "Content-Type": "application/json",
-      ...options.headers,
-    },
-  })
-
-/**
- * Send Test
- */
-export const sendTestWebpushSendTestPost = <ThrowOnError extends boolean = false>(
-  options?: Options<SendTestWebpushSendTestPostData, ThrowOnError>
-) =>
-  (options?.client ?? client).post<
-    SendTestWebpushSendTestPostResponses,
-    SendTestWebpushSendTestPostErrors,
-    ThrowOnError
-  >({
-    responseType: "json",
-    security: [{ scheme: "bearer", type: "http" }],
-    url: "/webpush/send-test",
-    ...options,
-    headers: {
-      "Content-Type": "application/json",
-      ...options?.headers,
-    },
-  })
-
-/**
- * Disable User Push
- */
-export const disableUserPushWebpushAdminDisableUserPost = <ThrowOnError extends boolean = false>(
-  options: Options<DisableUserPushWebpushAdminDisableUserPostData, ThrowOnError>
-) =>
-  (options.client ?? client).post<
-    DisableUserPushWebpushAdminDisableUserPostResponses,
-    DisableUserPushWebpushAdminDisableUserPostErrors,
-    ThrowOnError
-  >({
-    responseType: "json",
-    security: [{ scheme: "bearer", type: "http" }],
-    url: "/webpush/admin/disable-user",
-    ...options,
-    headers: {
-      "Content-Type": "application/json",
-      ...options.headers,
-    },
-  })
-
-/**
- * Broadcast
- */
-export const broadcastWebpushBroadcastPost = <ThrowOnError extends boolean = false>(
-  options: Options<BroadcastWebpushBroadcastPostData, ThrowOnError>
-) =>
-  (options.client ?? client).post<
-    BroadcastWebpushBroadcastPostResponses,
-    BroadcastWebpushBroadcastPostErrors,
-    ThrowOnError
-  >({
-    responseType: "json",
-    security: [{ scheme: "bearer", type: "http" }],
-    url: "/webpush/broadcast",
-    ...options,
-    headers: {
-      "Content-Type": "application/json",
-      ...options.headers,
-    },
   })
