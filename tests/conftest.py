@@ -350,3 +350,38 @@ def assert_max_queries(db_session):
                 )
 
     return _check
+
+
+# ---------------------------------------------------------------------------
+# SQL Query Logger for DB Performance Gate (Task 1)
+# ---------------------------------------------------------------------------
+from sqlalchemy import Engine, event
+
+_logged_queries: set[str] = set()
+
+
+@event.listens_for(Engine, "before_cursor_execute")
+def _log_query_before_execute(
+    conn, cursor, statement, parameters, context, executing_many
+):
+    stmt_upper = statement.strip().upper()
+    if not any(
+        stmt_upper.startswith(kw)
+        for kw in ("SELECT", "INSERT", "UPDATE", "DELETE", "WITH")
+    ):
+        return
+
+    normalized_stmt = " ".join(statement.split())
+    if normalized_stmt in _logged_queries:
+        return
+    _logged_queries.add(normalized_stmt)
+
+    worker_id = os.environ.get("PYTEST_XDIST_WORKER")
+    log_suffix = f"_{worker_id}" if worker_id else ""
+    log_path = Path(PROJECT_ROOT) / f"tests/queries{log_suffix}.log"
+
+    try:
+        with open(log_path, "a", encoding="utf-8") as f:
+            f.write(normalized_stmt + "\n")
+    except Exception:  # noqa: S110
+        pass

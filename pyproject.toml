@@ -418,6 +418,8 @@ dev = [
   # Python backend → ws-hub NATS message boundary.  pact-python v2 wraps the
   # Pact Rust FFI and exposes the pact.v3 API used in tests/contracts/.
   "pact-python==3.4.0",
+  "diff-cover>=9.2.0",
+  "mutmut>=3.0.0",
 ]
 
 # MOD-06 (audit Wave 11): dedicated security scanning group.
@@ -487,3 +489,11 @@ skips = [
   # B104: bind all interfaces — uvicorn does this intentionally (0.0.0.0).
   "B104",
 ]
+
+[tool.mutmut]
+paths_to_mutate = "app/"
+backup = false
+runner = "pytest -x"
+tests_dir = "tests/"
+dict_synonyms = "Struct,dict"
+

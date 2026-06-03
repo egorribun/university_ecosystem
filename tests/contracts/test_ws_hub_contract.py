@@ -31,9 +31,27 @@ from typing import Any
 
 import pytest
 
-pact_lib = pytest.importorskip("pact", reason="pact-python not installed")
-Pact = pact_lib.Pact
-match = pact_lib.match
+pact_lib = None
+try:
+    import pact
+
+    pact_lib = pact
+except ImportError:
+    pass
+
+if pact_lib is None:
+    pytestmark = pytest.mark.skip(
+        reason="pact-python is not installed or failed to load DLL (e.g. on Windows)"
+    )
+
+    class DummyPact:
+        pass
+
+    Pact = DummyPact
+    match = None
+else:
+    Pact = pact_lib.Pact
+    match = pact_lib.match
 
 # ---------------------------------------------------------------------------
 # Constants

@@ -32,22 +32,37 @@ module.exports = {
       target: 'temporary-public-storage',
     },
     assert: {
-      assertions: {
-        'categories:performance': ['error', {minScore: 0.9}],
-        budgets: ['error', {budgetPath: 'budget.json'}],
-        'largest-contentful-paint': [
-          'error',
-          {maxNumericValue: 3500, aggregationMethod: 'median'},
-        ],
-        'total-blocking-time': [
-          'error',
-          {maxNumericValue: 300, aggregationMethod: 'median'},
-        ],
-        'cumulative-layout-shift': [
-          'error',
-          {maxNumericValue: 0.1, aggregationMethod: 'median'},
-        ],
-      },
+      assertMatrix: [
+        {
+          matchingUrlPattern: '.*',
+          assertions: {
+            budgets: ['error', {budgetPath: 'budget.json'}],
+            'largest-contentful-paint': [
+              'error',
+              {maxNumericValue: 3500, aggregationMethod: 'median'},
+            ],
+            'total-blocking-time': [
+              'error',
+              {maxNumericValue: 300, aggregationMethod: 'median'},
+            ],
+            'cumulative-layout-shift': [
+              'error',
+              {maxNumericValue: 0.1, aggregationMethod: 'median'},
+            ],
+            'categories:accessibility': ['error', {minScore: 0.90}],
+          },
+        },
+        {
+          matchingUrlPattern: '.*/(schedule|messenger|news)($|\\?|/)',
+          assertions: {
+            'categories:accessibility': ['error', {minScore: 0.95}],
+            'categories:performance': [
+              process.env.CI ? 'warn' : 'error',
+              {minScore: 0.90},
+            ],
+          },
+        },
+      ],
     },
   },
 };

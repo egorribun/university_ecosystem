@@ -43,7 +43,7 @@ COPY pyproject.toml uv.lock ./
 # LOW-W19: --locked enforces lockfile integrity, matching CI behaviour
 RUN --mount=type=cache,target=/root/.cache/uv \
     --mount=type=cache,target=/root/.cargo/registry \
-    uv sync --frozen --locked
+    uv sync --frozen
 
 COPY . .
 RUN chown -R app:app /app

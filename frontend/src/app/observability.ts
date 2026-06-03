@@ -18,6 +18,21 @@ function parseSampleRate(value: string | undefined): number | undefined {
 export function initObservability(env: ImportMetaEnv = import.meta.env): boolean {
   if (initialized) return true
 
+  // ── OTel Web SDK ───────────────────────────────────────────────────────────
+  // Initialize telemetry unconditionally so that spans are exported in local
+  // development and staging environments even when VITE_SENTRY_DSN is not set.
+  // initTelemetry is a no-op when VITE_OTEL_EXPORTER_OTLP_ENDPOINT is absent
+  // in production (see telemetry.ts), so there is no performance impact for
+  // environments that have opted out of tracing entirely.
+  initTelemetry(env)
+
+  // Mark as initialized here — not at the end of the function — so that
+  // subsequent calls do not re-run initTelemetry() regardless of whether Sentry
+  // is configured.  The early guard `if (initialized) return true` at the top
+  // already prevents the whole function from running twice.
+  initialized = true
+
+  // ── Sentry ─────────────────────────────────────────────────────────────────
   const dsn = env.VITE_SENTRY_DSN
   if (!dsn) {
     return false
@@ -45,9 +60,7 @@ export function initObservability(env: ImportMetaEnv = import.meta.env): boolean
   }
 
   Sentry.init(config)
-  initTelemetry(env)
 
-  initialized = true
   return true
 }
 

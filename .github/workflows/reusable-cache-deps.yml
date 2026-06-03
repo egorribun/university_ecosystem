@@ -19,7 +19,7 @@ on:
                 description: "Go version"
                 required: false
                 type: string
-                default: "1.25.x"
+                default: "1.26.4"
         outputs:
             python-cache-hit:
                 description: "Whether Python cache was hit"
@@ -45,6 +45,7 @@ jobs:
                   python-version: ${{ inputs.python-version }}
 
             - name: Install uv
+              id: python-cache
               uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
               with:
                   enable-cache: true

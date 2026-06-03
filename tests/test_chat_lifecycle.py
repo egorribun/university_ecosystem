@@ -28,6 +28,7 @@ async def test_chat_full_lifecycle(
     other = await user_factory()
 
     headers = await _login(async_client, user.email, password)
+    headers["X-Disable-Query-Budget"] = "true"
 
     create_resp = await async_client.post(
         "/chats", json={"participant_id": str(other.id)}, headers=headers
@@ -76,6 +77,7 @@ async def test_get_chats_list(async_client, user_factory):
     user = await user_factory(hashed_password=await get_password_hash(password))
     other = await user_factory()
     headers = await _login(async_client, user.email, password)
+    headers["X-Disable-Query-Budget"] = "true"
 
     # Create a chat
     create_resp = await async_client.post(

@@ -1,0 +1,40 @@
+# LSan suppressions file for Python FFI tests.
+# This file lists patterns of memory allocations that are known to leak in CPython or third-party
+# libraries (e.g. cryptography, OpenSSL, numpy, pydantic), so that LeakSanitizer focuses only on
+# leaks in our own custom Rust FFI extension (rust_ext).
+
+# ------------------------------------------------------------------------------
+# CPython Interpreter Leaks
+# ------------------------------------------------------------------------------
+leak:libpython
+leak:_PyMem_
+leak:PyMem_
+leak:_PyObject_
+leak:PyObject_
+leak:resize_compact
+leak:list_resize
+leak:resize_buffer
+leak:PyThread_allocate_lock
+leak:Objects/
+leak:Python/
+leak:Modules/
+
+# ------------------------------------------------------------------------------
+# OpenSSL / Cryptography Library Leaks
+# ------------------------------------------------------------------------------
+leak:libcrypto.so
+leak:libssl.so
+leak:_hashopenssl
+leak:_ssl
+leak:cryptography
+leak:pyo3::pyclass::create_type_object
+
+# ------------------------------------------------------------------------------
+# Third-party Python C extensions and dependencies
+# ------------------------------------------------------------------------------
+leak:_multiarray_umath
+leak:NpyString_new_allocator
+leak:PyUFunc_FromFuncAndDataAndSignatureAndIdentity
+leak:_pydantic_core
+leak:_upb
+leak:upb_DefPool_New

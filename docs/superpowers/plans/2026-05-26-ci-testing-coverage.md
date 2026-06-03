@@ -147,7 +147,7 @@
   ```
 
 - [ ] **Step 2: Verify local file-processor service package tests run**
-  Run: `$env:Path = 'C:\Users\egorribun\go\pkg\mod\golang.org\toolchain@v0.0.1-go1.26.2.windows-amd64\bin;' + $env:Path; cd services/file-processor ; go test -cover ./internal/service/...`
+  Run: `$env:Path = 'C:\Users\egorribun\sdk\go1.26.4\bin;' + $env:Path; cd services/file-processor ; go test -cover ./internal/service/...`
   Expected: PASS, with high code coverage (> 80%).
 
 - [ ] **Step 3: Commit changes**
@@ -252,7 +252,7 @@
   ```
 
 - [ ] **Step 2: Verify local file-processor middleware package tests run**
-  Run: `$env:Path = 'C:\Users\egorribun\go\pkg\mod\golang.org\toolchain@v0.0.1-go1.26.2.windows-amd64\bin;' + $env:Path; cd services/file-processor ; go test -cover ./internal/middleware/...`
+  Run: `$env:Path = 'C:\Users\egorribun\sdk\go1.26.4\bin;' + $env:Path; cd services/file-processor ; go test -cover ./internal/middleware/...`
   Expected: PASS, with high code coverage (> 80%).
 
 - [ ] **Step 3: Commit changes**
@@ -323,7 +323,7 @@
   ```
 
 - [ ] **Step 2: Verify local tests pass**
-  Run: `$env:Path = 'C:\Users\egorribun\go\pkg\mod\golang.org\toolchain@v0.0.1-go1.26.2.windows-amd64\bin;' + $env:Path; cd services/ws-hub ; go test -cover ./pkg/config/...`
+  Run: `$env:Path = 'C:\Users\egorribun\sdk\go1.26.4\bin;' + $env:Path; cd services/ws-hub ; go test -cover ./pkg/config/...`
   Expected: PASS, with 100% code coverage.
 
 - [ ] **Step 3: Commit changes**
@@ -368,7 +368,7 @@
   ```
 
 - [ ] **Step 2: Verify local tests pass**
-  Run: `$env:Path = 'C:\Users\egorribun\go\pkg\mod\golang.org\toolchain@v0.0.1-go1.26.2.windows-amd64\bin;' + $env:Path; cd services/ws-hub ; go test -cover ./internal/telemetry/...`
+  Run: `$env:Path = 'C:\Users\egorribun\sdk\go1.26.4\bin;' + $env:Path; cd services/ws-hub ; go test -cover ./internal/telemetry/...`
   Expected: PASS, with high code coverage.
 
 - [ ] **Step 3: Commit changes**
@@ -394,7 +394,7 @@
   *(Note: Specific test code will be adapted to existing mock definitions in handlers_test.go during execution).*
 
 - [ ] **Step 2: Verify local gateway tests pass**
-  Run: `$env:Path = 'C:\Users\egorribun\go\pkg\mod\golang.org\toolchain@v0.0.1-go1.26.2.windows-amd64\bin;' + $env:Path; cd services/gateway ; go test -cover ./internal/handlers/...`
+  Run: `$env:Path = 'C:\Users\egorribun\sdk\go1.26.4\bin;' + $env:Path; cd services/gateway ; go test -cover ./internal/handlers/...`
   Expected: PASS, with improved handlers coverage.
 
 - [ ] **Step 3: Commit changes**
@@ -437,7 +437,7 @@
   ```
 
 - [ ] **Step 3: Verify local test command executes successfully**
-  Run: `$env:Path = 'C:\Users\egorribun\go\pkg\mod\golang.org\toolchain@v0.0.1-go1.26.2.windows-amd64\bin;' + $env:Path; cd services/gateway ; go test -coverprofile=coverage.out ./...`
+  Run: `$env:Path = 'C:\Users\egorribun\sdk\go1.26.4\bin;' + $env:Path; cd services/gateway ; go test -coverprofile=coverage.out ./...`
   Expected: PASS.
 
 - [ ] **Step 4: Commit changes**

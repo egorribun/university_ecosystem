@@ -111,6 +111,7 @@ async function createConfig() {
     "/events",
     "/activity",
     "/map",
+    "/messenger",
     "/404",
   ]
   // Wave 119 SW2 — empty string trims to "/" so callers can measure root via

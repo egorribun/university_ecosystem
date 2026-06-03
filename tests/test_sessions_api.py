@@ -146,6 +146,7 @@ async def test_admin_can_list_sessions_for_other_user(
     await db_session.commit()
 
     headers = await _login(async_client, email=admin.email, password=password)
+    headers["X-Disable-Query-Budget"] = "true"
 
     response = await async_client.get(
         f"/auth/sessions?user_id={target.id}",

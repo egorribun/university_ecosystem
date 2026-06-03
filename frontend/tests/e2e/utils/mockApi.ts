@@ -1,6 +1,7 @@
 import { expect, type Page } from "@playwright/test"
 import type { MfaTotpEnrollment, PendingMfaResponse, TotpEnrollmentStart } from "@/types/Mfa"
 import type { User } from "@/types/User"
+import { validateRequestBody, validateResponseBody } from "../../../src/tests/contractValidator"
 
 type NewsLogEntry = {
   header: string | undefined
@@ -362,6 +363,66 @@ export async function useMockApi(page: Page) {
       )
     }
   })
+
+  // ── Contract validation hook (Phase 3 QA) ─────────────────────────────────
+  // Validates every API JSON response observed by the page against openapi.json.
+  // Also validates request bodies for mutation methods via postData().
+  // Disabled when CONTRACT_VALIDATION_DISABLED=1 (e.g. in draft PR environments
+  // where the schema and mocks may temporarily be out of sync).
+  if (process.env["CONTRACT_VALIDATION_DISABLED"] !== "1") {
+    page.on("response", async (response) => {
+      const url = new URL(response.url())
+      const path = url.pathname
+      const method = response.request().method().toUpperCase()
+
+      // Only validate backend API paths
+      if (!path.startsWith("/api/")) return
+
+      const contentType = response.headers()["content-type"] ?? ""
+
+      // ── Validate response body ────────────────────────────────────────────
+      if (contentType.includes("application/json")) {
+        const body: unknown = await response.json().catch(() => null)
+        if (body !== null) {
+          validateResponseBody({
+            path,
+            method,
+            statusCode: response.status(),
+            body,
+          })
+        }
+      }
+
+      // ── Validate request body for mutations ───────────────────────────────
+      // postData() returns the raw request body string sent by the page.
+      // This gives us request schema coverage without needing a separate
+      // route intercept.
+      if (["POST", "PUT", "PATCH"].includes(method)) {
+        const requestContentType = response.request().headers()["content-type"] ?? ""
+        if (requestContentType.includes("application/json")) {
+          const postData = response.request().postData()
+          if (postData) {
+            try {
+              const requestBody: unknown = JSON.parse(postData)
+              validateRequestBody({ path, method, body: requestBody })
+            } catch (parseError) {
+              // JSON.parse failure means the body was not valid JSON —
+              // surface as a warning so the response-level error stays primary.
+              console.warn(
+                "[ContractValidator] Could not parse request body for",
+                method,
+                path,
+                parseError
+              )
+            }
+          }
+        }
+      }
+      // Errors from validateResponseBody / validateRequestBody propagate
+      // naturally as unhandled Promise rejections, which Playwright surfaces
+      // as test failures via its default unhandledRejection listener.
+    })
+  }
 
   await page.context().route("**/*", async (route) => {
     const request = route.request()

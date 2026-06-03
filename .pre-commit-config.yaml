@@ -82,13 +82,19 @@ repos:
         language: system
         files: "(\\.env(\\.example)?|docker-compose\\.yml)$"
 
-      # MOD-28-01: Local gate for Python 2 except syntax (mirrors CI gate MOD-27-01)
-      # Uses staged content via `git show :file` to avoid false positives from
-      # pre-commit stash/restore when ruff-format also modifies files.
+      # MOD-28-01: Local gate for Python 2 except syntax (mirrors CI gate MOD-27-01).
+      # Cross-platform Python implementation — no bash/WSL dependency (Windows safe).
+      # Reads staged content via `git show :file` to avoid false positives from
+      # pre-commit stash/restore when ruff-format also modifies staged files.
       - id: no-python2-except
         name: Reject Python 2 except syntax
         stages: [pre-commit]  # RZ-33-27: was [manual] — must run on every commit
-        entry: bash -c 'FAILS=""; for f in $(git diff --cached --name-only --diff-filter=ACM -- "*.py"); do HITS=$(git show ":$f" 2>/dev/null | grep -nP "except\s+\w+\s*,\s*\w+\s*:" || true); if [ -n "$HITS" ]; then while IFS= read -r line; do FAILS="$FAILS\n$f:$line"; done <<< "$HITS"; fi; done; if [ -n "$FAILS" ]; then echo -e "Python 2 except syntax found:$FAILS"; exit 1; fi'
+        entry: python scripts/check_no_python2_except.py
         language: system
         pass_filenames: false
         always_run: true
+
+  - repo: https://github.com/rhysd/actionlint
+    rev: v1.7.12
+    hooks:
+      - id: actionlint

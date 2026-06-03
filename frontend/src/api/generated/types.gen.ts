@@ -9,6 +9,10 @@ export type ClientOptions = {
  */
 export type ActiveSessionOut = {
   /**
+   * Created At
+   */
+  created_at: string
+  /**
    * Id
    */
   id: string
@@ -20,10 +24,6 @@ export type ActiveSessionOut = {
    * Jti
    */
   jti: string
-  /**
-   * Created At
-   */
-  created_at: string
   /**
    * Expires At
    */
@@ -64,6 +64,18 @@ export type ActiveSessionOut = {
    * Is Current
    */
   is_current?: boolean
+}
+
+/**
+ * AddParticipant
+ *
+ * Wave 209 G1 — add one member to a group.
+ */
+export type AddParticipant = {
+  /**
+   * User Id
+   */
+  user_id: string
 }
 
 /**
@@ -126,6 +138,14 @@ export type AttachmentResponse = {
    * Size
    */
   size: number
+  /**
+   * Created At
+   */
+  created_at?: string | null
+  /**
+   * Message Id
+   */
+  message_id?: string | null
 }
 
 /**
@@ -203,9 +223,29 @@ export type AuditLogOut = {
 }
 
 /**
+ * Body_add_reaction_api_v1_chats__chat_id__messages__message_id__reactions_post
+ */
+export type BodyAddReactionApiV1ChatsChatIdMessagesMessageIdReactionsPost = {
+  /**
+   * Emoji
+   */
+  emoji: string
+}
+
+/**
  * Body_comment_on_news_api_v1_news__id__comment_post
  */
 export type BodyCommentOnNewsApiV1NewsIdCommentPost = {
+  /**
+   * Content
+   */
+  content: string
+}
+
+/**
+ * Body_edit_message_api_v1_chats__chat_id__messages__message_id__patch
+ */
+export type BodyEditMessageApiV1ChatsChatIdMessagesMessageIdPatch = {
   /**
    * Content
    */
@@ -258,6 +298,12 @@ export type BodySendMessageApiV1ChatsChatIdMessagesPost = {
    * Files
    */
   files?: Array<Blob | File>
+  /**
+   * Reply To Message Id
+   *
+   * ID of the message being replied to, if this is a reply.
+   */
+  reply_to_message_id?: string | null
 }
 
 /**
@@ -281,9 +327,9 @@ export type BodyUploadCoverApiV1UsersMeCoverPost = {
 }
 
 /**
- * Body_upload_event_file_api_v1_events__id__upload_file_post
+ * Body_upload_event_file_api_v1_events__event_id__upload_file_post
  */
-export type BodyUploadEventFileApiV1EventsIdUploadFilePost = {
+export type BodyUploadEventFileApiV1EventsEventIdUploadFilePost = {
   /**
    * File
    */
@@ -298,6 +344,10 @@ export type BodyUploadEventImageApiV1EventsUploadImagePost = {
    * File
    */
   file: Blob | File
+  /**
+   * Event Id
+   */
+  event_id: string | number
 }
 
 /**
@@ -389,6 +439,18 @@ export type ChatResponse = {
    */
   id: string
   /**
+   * Chat Type
+   */
+  chat_type?: string
+  /**
+   * Name
+   */
+  name?: string | null
+  /**
+   * Created By
+   */
+  created_by?: string | null
+  /**
    * Participants
    */
   participants: Array<ChatParticipant>
@@ -411,6 +473,10 @@ export type ChatResponse = {
   presence?: {
     [key: string]: PresenceStatus
   } | null
+  /**
+   * Read Receipts
+   */
+  read_receipts?: Array<ReadReceiptInfo>
 }
 
 /**
@@ -528,6 +594,10 @@ export type EventAttendanceCreate = {
  */
 export type EventAttendanceOut = {
   /**
+   * Created At
+   */
+  created_at?: string | null
+  /**
    * Id
    */
   id: string
@@ -616,6 +686,10 @@ export type EventCreate = {
  */
 export type EventFileOut = {
   /**
+   * Created At
+   */
+  created_at?: string | null
+  /**
    * Id
    */
   id: string
@@ -637,6 +711,10 @@ export type EventFileOut = {
  * EventOut
  */
 export type EventOut = {
+  /**
+   * Created At
+   */
+  created_at: string
   /**
    * Id
    */
@@ -686,10 +764,6 @@ export type EventOut = {
    */
   created_by: string | unknown
   /**
-   * Created At
-   */
-  created_at: string
-  /**
    * Is Active
    */
   is_active: boolean
@@ -728,7 +802,7 @@ export type EventOut = {
   /**
    * Image Url Optimized
    */
-  readonly image_url_optimized: string | null
+  image_url_optimized?: string | null
 }
 
 /**
@@ -806,29 +880,33 @@ export type FeatureFlagOut = {
    */
   name: string
   /**
+   * Enabled
+   */
+  enabled: boolean
+  /**
    * Status
    */
-  status: string
+  status?: string
   /**
    * Description
    */
-  description: string
+  description?: string
   /**
    * Percentage
    */
-  percentage: number
+  percentage?: number
   /**
    * Allowed Users
    */
-  allowed_users: Array<string | unknown>
+  allowed_users?: Array<string | unknown>
   /**
    * Allowed Groups
    */
-  allowed_groups: Array<string>
+  allowed_groups?: Array<string>
   /**
    * Metadata
    */
-  metadata: {
+  metadata?: {
     [key: string]: unknown
   }
 }
@@ -837,6 +915,10 @@ export type FeatureFlagOut = {
  * FeatureFlagUpdateIn
  */
 export type FeatureFlagUpdateIn = {
+  /**
+   * Enabled
+   */
+  enabled?: boolean | null
   /**
    * Status
    */
@@ -862,9 +944,47 @@ export type ForgotPasswordIn = {
 }
 
 /**
+ * ForwardMessages
+ */
+export type ForwardMessages = {
+  /**
+   * Source Chat Id
+   */
+  source_chat_id: string
+  /**
+   * Message Ids
+   */
+  message_ids: Array<string>
+}
+
+/**
+ * GroupChatCreate
+ *
+ * Wave 209 G1 — create a named group chat.
+ *
+ * participant_ids are the *other* members (the creator is added automatically).
+ * min_length=1 is necessary-not-sufficient: the service enforces the real
+ * 3..100 total-size bound (creator + distinct members).
+ */
+export type GroupChatCreate = {
+  /**
+   * Name
+   */
+  name: string
+  /**
+   * Participant Ids
+   */
+  participant_ids: Array<string>
+}
+
+/**
  * GroupOut
  */
 export type GroupOut = {
+  /**
+   * Created At
+   */
+  created_at?: string | null
   /**
    * Id
    */
@@ -971,17 +1091,31 @@ export type MessageResponse = {
   read_status: boolean
   /**
    * Read At
-   * Wave 203 SW5 — hand-edited (the dev backend container still serves the
-   * pre-SW3 OpenAPI); regenerated automatically on the next `npm run
-   * generate:api` after the backend image is rebuilt with the read_at field.
    */
   read_at?: string | null
+  /**
+   * Edited At
+   */
+  edited_at?: string | null
+  /**
+   * Deleted At
+   */
+  deleted_at?: string | null
   sender?: ChatParticipant | null
   sender_presence?: PresenceStatus | null
   /**
    * Attachments
    */
   attachments?: Array<AttachmentResponse>
+  /**
+   * Reactions
+   */
+  reactions?: Array<ReactionAggregate>
+  reply_to?: ReplyPreview | null
+  /**
+   * Forwarded From Name
+   */
+  forwarded_from_name?: string | null
 }
 
 /**
@@ -1008,6 +1142,10 @@ export type MessagesListOut = {
  * MfaChallengeOut
  */
 export type MfaChallengeOut = {
+  /**
+   * Created At
+   */
+  created_at: string
   /**
    * Id
    */
@@ -1036,10 +1174,6 @@ export type MfaChallengeOut = {
    * Consumed At
    */
   consumed_at?: string | null
-  /**
-   * Created At
-   */
-  created_at: string
   /**
    * Payload
    */
@@ -1111,6 +1245,10 @@ export type MfaMethodChallengeOut = {
  */
 export type MfaTotpEnrollmentOut = {
   /**
+   * Created At
+   */
+  created_at: string
+  /**
    * Id
    */
   id: string
@@ -1134,10 +1272,6 @@ export type MfaTotpEnrollmentOut = {
    * Revoked At
    */
   revoked_at?: string | null
-  /**
-   * Created At
-   */
-  created_at: string
 }
 
 /**
@@ -1277,13 +1411,13 @@ export type NewsOut = {
    */
   image_url?: string | null
   /**
-   * Id
-   */
-  id: string
-  /**
    * Created At
    */
   created_at: string
+  /**
+   * Id
+   */
+  id: string
   /**
    * Likes Count
    */
@@ -1299,7 +1433,7 @@ export type NewsOut = {
   /**
    * Image Url Optimized
    */
-  readonly image_url_optimized: string | null
+  image_url_optimized?: string | null
 }
 
 /**
@@ -1363,6 +1497,10 @@ export type NotificationAction = {
  */
 export type NotificationOut = {
   /**
+   * Created At
+   */
+  created_at: string
+  /**
    * Id
    */
   id: string
@@ -1390,10 +1528,6 @@ export type NotificationOut = {
    * Url
    */
   url?: string | null
-  /**
-   * Created At
-   */
-  created_at: string
   /**
    * Read
    */
@@ -1784,6 +1918,78 @@ export type PushTopicsResponse = {
 }
 
 /**
+ * ReactionAggregate
+ *
+ * Wave 206 — per-emoji reaction tally on a message.
+ *
+ * `reacted_by_me` is computed server-side for the requesting user on the REST
+ * path (the aggregation in ChatQueryService knows current_user). On the WS
+ * delta-frame path the client derives it locally — it's per-viewer, so it can
+ * never travel in a broadcast frame.
+ */
+export type ReactionAggregate = {
+  /**
+   * Emoji
+   */
+  emoji: string
+  /**
+   * Count
+   */
+  count: number
+  /**
+   * Reacted By Me
+   */
+  reacted_by_me?: boolean
+}
+
+/**
+ * ReactorOut
+ *
+ * Wave 207 — one user in the reactor-list ("who reacted") popover.
+ *
+ * Built by ChatQueryService.get_reactors from the User rows the repository joins
+ * via message_reactions. ``user_id`` is remapped explicitly in the service (the
+ * User row has ``.id``, not ``.user_id``) — no from_attributes auto-mapping; only
+ * plain User columns (no relationship access → no N+1).
+ */
+export type ReactorOut = {
+  /**
+   * User Id
+   */
+  user_id: string
+  /**
+   * Name
+   */
+  name?: string | null
+  /**
+   * Avatar Url
+   */
+  avatar_url?: string | null
+}
+
+/**
+ * ReadReceiptInfo
+ *
+ * Wave 210 G2 — one member's read high-water-mark for a group chat.
+ *
+ * Service-computed (NOT a ChatDTO field) from ChatRepository.get_read_receipts.
+ * The FE folds these + live `read` frames into a per-member "seen by N" map.
+ * DMs carry [] (they keep using Message.read_status), so this rides only on the
+ * get_chat_details response — the other ChatResponse construction sites omit it
+ * and it defaults [].
+ */
+export type ReadReceiptInfo = {
+  /**
+   * User Id
+   */
+  user_id: string
+  /**
+   * Last Read At
+   */
+  last_read_at: string
+}
+
+/**
  * RecoveryCodesGenerateOut
  */
 export type RecoveryCodesGenerateOut = {
@@ -1795,6 +2001,44 @@ export type RecoveryCodesGenerateOut = {
    * Created At
    */
   created_at: string
+}
+
+/**
+ * RenameChat
+ *
+ * Wave 209 G1 — rename a group's display title.
+ */
+export type RenameChat = {
+  /**
+   * Name
+   */
+  name: string
+}
+
+/**
+ * ReplyPreview
+ */
+export type ReplyPreview = {
+  /**
+   * Id
+   */
+  id: string
+  /**
+   * Sender Id
+   */
+  sender_id: string
+  /**
+   * Sender Name
+   */
+  sender_name?: string | null
+  /**
+   * Content
+   */
+  content: string
+  /**
+   * Deleted At
+   */
+  deleted_at?: string | null
 }
 
 /**
@@ -1893,6 +2137,10 @@ export type ScheduleOut = {
    * Lesson Type
    */
   lesson_type?: string | null
+  /**
+   * Created At
+   */
+  created_at?: string | null
   /**
    * Id
    */
@@ -2098,6 +2346,10 @@ export type StoryCreate = {
  */
 export type StoryOut = {
   /**
+   * Created At
+   */
+  created_at: string
+  /**
    * Id
    */
   id: string
@@ -2142,13 +2394,9 @@ export type StoryOut = {
    */
   created_by?: string | unknown | null
   /**
-   * Created At
-   */
-  created_at: string
-  /**
    * Cover Url Optimized
    */
-  readonly cover_url_optimized: string | null
+  cover_url_optimized?: string | null
 }
 
 /**
@@ -2200,7 +2448,7 @@ export type TokenWithProfile = {
   /**
    * Access Token
    */
-  access_token: string
+  access_token?: string | null
   /**
    * Token Type
    */
@@ -2279,6 +2527,70 @@ export type UserAdminUpdate = {
  * UserCreate
  */
 export type UserCreate = {
+  /**
+   * About
+   */
+  about?: string | null
+  /**
+   * Telegram
+   */
+  telegram?: string | null
+  /**
+   * Profile Status
+   */
+  profile_status?: string | null
+  /**
+   * Profile Department
+   */
+  profile_department?: string | null
+  /**
+   * Position
+   */
+  position?: string | null
+  /**
+   * Course
+   */
+  course?: string | null
+  /**
+   * Institute
+   */
+  institute?: string | null
+  /**
+   * Achievements
+   */
+  achievements?: string | null
+  /**
+   * Education Level
+   */
+  education_level?: string | null
+  /**
+   * Track
+   */
+  track?: string | null
+  /**
+   * Program
+   */
+  program?: string | null
+  /**
+   * Record Book Number
+   */
+  record_book_number?: string | null
+  /**
+   * Timezone
+   */
+  timezone?: string | null
+  /**
+   * Dnd Enabled
+   */
+  dnd_enabled?: boolean
+  /**
+   * Dnd Start
+   */
+  dnd_start?: string | null
+  /**
+   * Dnd End
+   */
+  dnd_end?: string | null
   /**
    * Email
    */
@@ -2377,6 +2689,70 @@ export type UserEmailConfirmIn = {
  */
 export type UserOut = {
   /**
+   * About
+   */
+  about?: string | null
+  /**
+   * Telegram
+   */
+  telegram?: string | null
+  /**
+   * Profile Status
+   */
+  profile_status?: string | null
+  /**
+   * Profile Department
+   */
+  profile_department?: string | null
+  /**
+   * Position
+   */
+  position?: string | null
+  /**
+   * Course
+   */
+  course?: string | null
+  /**
+   * Institute
+   */
+  institute?: string | null
+  /**
+   * Achievements
+   */
+  achievements?: string | null
+  /**
+   * Education Level
+   */
+  education_level?: string | null
+  /**
+   * Track
+   */
+  track?: string | null
+  /**
+   * Program
+   */
+  program?: string | null
+  /**
+   * Record Book Number
+   */
+  record_book_number?: string | null
+  /**
+   * Timezone
+   */
+  timezone?: string | null
+  /**
+   * Dnd Enabled
+   */
+  dnd_enabled?: boolean
+  /**
+   * Dnd Start
+   */
+  dnd_start?: string | null
+  /**
+   * Dnd End
+   */
+  dnd_end?: string | null
+  /**
    * Email
    */
   email: string
@@ -2405,6 +2781,10 @@ export type UserOut = {
    * Spotify Display Name
    */
   spotify_display_name?: string | null
+  /**
+   * Created At
+   */
+  created_at?: string | null
   /**
    * Id
    */
@@ -2451,11 +2831,11 @@ export type UserOut = {
   /**
    * Avatar Url Optimized
    */
-  readonly avatar_url_optimized: string | null
+  avatar_url_optimized?: string | null
   /**
    * Cover Url Optimized
    */
-  readonly cover_url_optimized: string | null
+  cover_url_optimized?: string | null
 }
 
 /**
@@ -2477,9 +2857,13 @@ export type UserPasswordChangeIn = {
  */
 export type UserPreferencesBase = {
   /**
+   * Created At
+   */
+  created_at?: string | null
+  /**
    * Dnd Enabled
    */
-  dnd_enabled?: boolean
+  dnd_enabled?: boolean | null
   /**
    * Dnd Start
    */
@@ -2529,6 +2913,74 @@ export type UserProfileBase = {
  */
 export type UserProfileUpdate = {
   /**
+   * Institute
+   */
+  institute?: string | null
+  /**
+   * Course
+   */
+  course?: string | null
+  /**
+   * Education Level
+   */
+  education_level?: string | null
+  /**
+   * Track
+   */
+  track?: string | null
+  /**
+   * Program
+   */
+  program?: string | null
+  /**
+   * Record Book Number
+   */
+  record_book_number?: string | null
+  /**
+   * Created At
+   */
+  created_at?: string | null
+  /**
+   * Dnd Enabled
+   */
+  dnd_enabled?: boolean | null
+  /**
+   * Dnd Start
+   */
+  dnd_start?: string | null
+  /**
+   * Dnd End
+   */
+  dnd_end?: string | null
+  /**
+   * Timezone
+   */
+  timezone?: string | null
+  /**
+   * About
+   */
+  about?: string | null
+  /**
+   * Telegram
+   */
+  telegram?: string | null
+  /**
+   * Status
+   */
+  status?: string | null
+  /**
+   * Achievements
+   */
+  achievements?: string | null
+  /**
+   * Department
+   */
+  department?: string | null
+  /**
+   * Position
+   */
+  position?: string | null
+  /**
    * Full Name
    */
   full_name?: string | null
@@ -2547,6 +2999,38 @@ export type UserProfileUpdate = {
  * Publicly visible user profile information (PII-safe).
  */
 export type UserPublicOut = {
+  /**
+   * About
+   */
+  about?: string | null
+  /**
+   * Telegram
+   */
+  telegram?: string | null
+  /**
+   * Profile Status
+   */
+  profile_status?: string | null
+  /**
+   * Profile Department
+   */
+  profile_department?: string | null
+  /**
+   * Position
+   */
+  position?: string | null
+  /**
+   * Course
+   */
+  course?: string | null
+  /**
+   * Institute
+   */
+  institute?: string | null
+  /**
+   * Created At
+   */
+  created_at?: string | null
   /**
    * Id
    */
@@ -2577,7 +3061,7 @@ export type UserPublicOut = {
   /**
    * Avatar Url Optimized
    */
-  readonly avatar_url_optimized: string | null
+  avatar_url_optimized?: string | null
 }
 
 /**
@@ -2658,376 +3142,17 @@ export type WebAuthnRegistrationVerifyIn = {
 }
 
 /**
- * EventOut
+ * WsTicketResponse
  */
-export type EventOutWritable = {
+export type WsTicketResponse = {
   /**
-   * Id
+   * Ticket
    */
-  id: string
+  ticket: string
   /**
-   * Title
+   * Expires In
    */
-  title: string
-  /**
-   * Description
-   */
-  description?: string | null
-  /**
-   * Title En
-   */
-  title_en?: string | null
-  /**
-   * Description En
-   */
-  description_en?: string | null
-  /**
-   * Location
-   */
-  location?: string | null
-  /**
-   * Location En
-   */
-  location_en?: string | null
-  /**
-   * Event Type
-   */
-  event_type?: string | null
-  /**
-   * Event Type En
-   */
-  event_type_en?: string | null
-  /**
-   * Starts At
-   */
-  starts_at: string
-  /**
-   * Ends At
-   */
-  ends_at: string
-  /**
-   * Created By
-   */
-  created_by: string | unknown
-  /**
-   * Created At
-   */
-  created_at: string
-  /**
-   * Is Active
-   */
-  is_active: boolean
-  /**
-   * Speaker
-   */
-  speaker?: string | null
-  /**
-   * Image Url
-   */
-  image_url?: string | null
-  /**
-   * About
-   */
-  about?: string | null
-  /**
-   * About En
-   */
-  about_en?: string | null
-  /**
-   * Files
-   */
-  files?: Array<EventFileOut>
-  /**
-   * Participant Count
-   */
-  participant_count?: number
-  /**
-   * Is Registered
-   */
-  is_registered?: boolean | null
-  /**
-   * My Qr Token
-   */
-  my_qr_token?: string | null
-}
-
-/**
- * NewsOut
- */
-export type NewsOutWritable = {
-  /**
-   * Title
-   */
-  title: string
-  /**
-   * Content
-   */
-  content: string
-  /**
-   * Title En
-   */
-  title_en?: string | null
-  /**
-   * Content En
-   */
-  content_en?: string | null
-  /**
-   * Image Url
-   */
-  image_url?: string | null
-  /**
-   * Id
-   */
-  id: string
-  /**
-   * Created At
-   */
-  created_at: string
-  /**
-   * Likes Count
-   */
-  likes_count?: number
-  /**
-   * Comments Count
-   */
-  comments_count?: number
-  /**
-   * Is Liked
-   */
-  is_liked?: boolean
-}
-
-/**
- * PaginatedEvents
- */
-export type PaginatedEventsWritable = {
-  /**
-   * Items
-   */
-  items: Array<EventOutWritable>
-  /**
-   * Total
-   */
-  total?: number | null
-  /**
-   * Limit
-   */
-  limit: number
-  /**
-   * Cursor
-   */
-  cursor?: string | null
-  /**
-   * Next Cursor
-   */
-  next_cursor?: string | null
-  /**
-   * Has More
-   */
-  has_more: boolean
-}
-
-/**
- * PaginatedNews
- *
- * Paginated news response with cursor-based pagination.
- */
-export type PaginatedNewsWritable = {
-  /**
-   * Items
-   */
-  items: Array<NewsOutWritable>
-  /**
-   * Has More
-   */
-  has_more: boolean
-  /**
-   * Next Cursor
-   */
-  next_cursor?: string | null
-}
-
-/**
- * StoryOut
- */
-export type StoryOutWritable = {
-  /**
-   * Id
-   */
-  id: string
-  /**
-   * Title
-   */
-  title: string
-  /**
-   * Title En
-   */
-  title_en?: string | null
-  /**
-   * Short Text
-   */
-  short_text: string
-  /**
-   * Short Text En
-   */
-  short_text_en?: string | null
-  /**
-   * Cover Url
-   */
-  cover_url?: string | null
-  /**
-   * Cta Url
-   */
-  cta_url?: string | null
-  /**
-   * Published At
-   */
-  published_at: string
-  /**
-   * Expires At
-   */
-  expires_at: string
-  /**
-   * Is Active
-   */
-  is_active: boolean
-  /**
-   * Created By
-   */
-  created_by?: string | unknown | null
-  /**
-   * Created At
-   */
-  created_at: string
-}
-
-/**
- * TokenWithProfile
- */
-export type TokenWithProfileWritable = {
-  /**
-   * Access Token
-   */
-  access_token: string
-  /**
-   * Token Type
-   */
-  token_type?: string
-  user: UserOutWritable
-  session?: SessionSigningKeyOut | null
-}
-
-/**
- * UserOut
- */
-export type UserOutWritable = {
-  /**
-   * Email
-   */
-  email: string
-  /**
-   * Full Name
-   */
-  full_name?: string | null
-  role?: UserRole
-  /**
-   * Group Id
-   */
-  group_id?: string | null
-  /**
-   * Avatar Url
-   */
-  avatar_url?: string | null
-  /**
-   * Cover Url
-   */
-  cover_url?: string | null
-  /**
-   * Spotify Connected
-   */
-  spotify_connected?: boolean
-  /**
-   * Spotify Display Name
-   */
-  spotify_display_name?: string | null
-  /**
-   * Id
-   */
-  id: string
-  /**
-   * Is Active
-   */
-  is_active: boolean
-  /**
-   * Pending Email
-   */
-  pending_email?: string | null
-  /**
-   * Spotify Is Connected
-   */
-  spotify_is_connected?: boolean | null
-  /**
-   * Mfa Required
-   */
-  mfa_required?: boolean
-  /**
-   * Mfa Default Method
-   */
-  mfa_default_method?: string | null
-  /**
-   * Mfa Last Verified At
-   */
-  mfa_last_verified_at?: string | null
-  /**
-   * Totp Enrollments
-   */
-  totp_enrollments?: Array<MfaTotpEnrollmentOut>
-  /**
-   * Mfa Challenges
-   */
-  mfa_challenges?: Array<MfaChallengeOut>
-  /**
-   * Recovery Codes Left
-   */
-  recovery_codes_left?: number
-  profile_detail?: UserProfileBase | null
-  preferences?: UserPreferencesBase | null
-  education_path?: UserEducationBase | null
-}
-
-/**
- * UserPublicOut
- *
- * Publicly visible user profile information (PII-safe).
- */
-export type UserPublicOutWritable = {
-  /**
-   * Id
-   */
-  id: string
-  /**
-   * Full Name
-   */
-  full_name?: string | null
-  role?: UserRole
-  /**
-   * Group Id
-   */
-  group_id?: string | null
-  /**
-   * Avatar Url
-   */
-  avatar_url?: string | null
-  /**
-   * Cover Url
-   */
-  cover_url?: string | null
-  profile_detail?: UserProfileBase | null
-  education_path?: UserEducationBase | null
-  /**
-   * Is Active
-   */
-  is_active: boolean
+  expires_in: number
 }
 
 export type GetRootGetData = {
@@ -3044,12 +3169,47 @@ export type GetRootGetResponses = {
   200: unknown
 }
 
-export type HealthzHealthzGetData = {
+export type LivenessHealthLiveGetData = {
   body?: never
   path?: never
   query?: never
+  url: "/health/live"
+}
+
+export type LivenessHealthLiveGetResponses = {
+  /**
+   * Response Liveness Health Live Get
+   *
+   * Successful Response
+   */
+  200: {
+    [key: string]: string
+  }
+}
+
+export type LivenessHealthLiveGetResponse =
+  LivenessHealthLiveGetResponses[keyof LivenessHealthLiveGetResponses]
+
+export type HealthzHealthzGetData = {
+  body?: never
+  path?: never
+  query?: {
+    /**
+     * Brief
+     */
+    brief?: boolean
+  }
   url: "/healthz"
 }
+
+export type HealthzHealthzGetErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type HealthzHealthzGetError = HealthzHealthzGetErrors[keyof HealthzHealthzGetErrors]
 
 export type HealthzHealthzGetResponses = {
   /**
@@ -3057,6 +3217,27 @@ export type HealthzHealthzGetResponses = {
    */
   200: unknown
 }
+
+export type ReadyHealthReadyGetData = {
+  body?: never
+  path?: never
+  query?: never
+  url: "/health/ready"
+}
+
+export type ReadyHealthReadyGetResponses = {
+  /**
+   * Response Ready Health Ready Get
+   *
+   * Successful Response
+   */
+  200: {
+    [key: string]: string
+  }
+}
+
+export type ReadyHealthReadyGetResponse =
+  ReadyHealthReadyGetResponses[keyof ReadyHealthReadyGetResponses]
 
 export type ReadyReadyGetData = {
   body?: never
@@ -3067,10 +3248,16 @@ export type ReadyReadyGetData = {
 
 export type ReadyReadyGetResponses = {
   /**
+   * Response Ready Ready Get
+   *
    * Successful Response
    */
-  200: unknown
+  200: {
+    [key: string]: string
+  }
 }
+
+export type ReadyReadyGetResponse = ReadyReadyGetResponses[keyof ReadyReadyGetResponses]
 
 export type LogoutApiV1AuthLogoutPostData = {
   body?: never
@@ -3081,10 +3268,17 @@ export type LogoutApiV1AuthLogoutPostData = {
 
 export type LogoutApiV1AuthLogoutPostResponses = {
   /**
+   * Response Logout Api V1 Auth Logout Post
+   *
    * Successful Response
    */
-  200: unknown
+  200: {
+    [key: string]: string
+  }
 }
+
+export type LogoutApiV1AuthLogoutPostResponse =
+  LogoutApiV1AuthLogoutPostResponses[keyof LogoutApiV1AuthLogoutPostResponses]
 
 export type LoginPasskeyStartApiV1AuthLoginPasskeyStartPostData = {
   body: LoginPasskeyStartIn
@@ -3227,6 +3421,27 @@ export type VerifyMfaChallengeApiV1AuthMfaVerifyPostResponses = {
 export type VerifyMfaChallengeApiV1AuthMfaVerifyPostResponse =
   VerifyMfaChallengeApiV1AuthMfaVerifyPostResponses[keyof VerifyMfaChallengeApiV1AuthMfaVerifyPostResponses]
 
+export type GetCsrfCookieApiV1AuthCsrfCookieGetData = {
+  body?: never
+  path?: never
+  query?: never
+  url: "/api/v1/auth/csrf-cookie"
+}
+
+export type GetCsrfCookieApiV1AuthCsrfCookieGetResponses = {
+  /**
+   * Response Get Csrf Cookie Api V1 Auth Csrf Cookie Get
+   *
+   * Successful Response
+   */
+  200: {
+    [key: string]: string
+  }
+}
+
+export type GetCsrfCookieApiV1AuthCsrfCookieGetResponse =
+  GetCsrfCookieApiV1AuthCsrfCookieGetResponses[keyof GetCsrfCookieApiV1AuthCsrfCookieGetResponses]
+
 export type RegisterApiV1AuthRegisterPostData = {
   body: UserCreate
   path?: never
@@ -3246,10 +3461,17 @@ export type RegisterApiV1AuthRegisterPostError =
 
 export type RegisterApiV1AuthRegisterPostResponses = {
   /**
+   * Response Register Api V1 Auth Register Post
+   *
    * Successful Response
    */
-  200: unknown
+  200: {
+    [key: string]: unknown
+  }
 }
+
+export type RegisterApiV1AuthRegisterPostResponse =
+  RegisterApiV1AuthRegisterPostResponses[keyof RegisterApiV1AuthRegisterPostResponses]
 
 export type GetSessionSigningKeyApiV1AuthSessionSigningKeyGetData = {
   body?: never
@@ -3615,10 +3837,17 @@ export type DisconnectApiV1SpotifyDisconnectPostData = {
 
 export type DisconnectApiV1SpotifyDisconnectPostResponses = {
   /**
+   * Response Disconnect Api V1 Spotify Disconnect Post
+   *
    * Successful Response
    */
-  200: unknown
+  200: {
+    [key: string]: boolean
+  }
 }
+
+export type DisconnectApiV1SpotifyDisconnectPostResponse =
+  DisconnectApiV1SpotifyDisconnectPostResponses[keyof DisconnectApiV1SpotifyDisconnectPostResponses]
 
 export type ListPlaylistsApiV1SpotifyPlaylistsGetData = {
   body?: never
@@ -3629,6 +3858,8 @@ export type ListPlaylistsApiV1SpotifyPlaylistsGetData = {
 
 export type ListPlaylistsApiV1SpotifyPlaylistsGetResponses = {
   /**
+   * Response List Playlists Api V1 Spotify Playlists Get
+   *
    * Successful Response
    */
   200: unknown
@@ -3643,10 +3874,17 @@ export type SyncPlaylistsApiV1SpotifySyncPlaylistsPostData = {
 
 export type SyncPlaylistsApiV1SpotifySyncPlaylistsPostResponses = {
   /**
+   * Response Sync Playlists Api V1 Spotify Sync Playlists Post
+   *
    * Successful Response
    */
-  200: unknown
+  200: {
+    [key: string]: unknown
+  }
 }
+
+export type SyncPlaylistsApiV1SpotifySyncPlaylistsPostResponse =
+  SyncPlaylistsApiV1SpotifySyncPlaylistsPostResponses[keyof SyncPlaylistsApiV1SpotifySyncPlaylistsPostResponses]
 
 export type ListSessionsApiV1AuthSessionsGetData = {
   body?: never
@@ -3755,10 +3993,17 @@ export type ClearNotificationsApiV1NotificationsDeleteData = {
 
 export type ClearNotificationsApiV1NotificationsDeleteResponses = {
   /**
+   * Response Clear Notifications Api V1 Notifications Delete
+   *
    * Successful Response
    */
-  200: unknown
+  200: {
+    [key: string]: unknown
+  }
 }
+
+export type ClearNotificationsApiV1NotificationsDeleteResponse =
+  ClearNotificationsApiV1NotificationsDeleteResponses[keyof ClearNotificationsApiV1NotificationsDeleteResponses]
 
 export type ListNotificationsApiV1NotificationsGetData = {
   body?: never
@@ -3820,10 +4065,17 @@ export type MarkReadSingleApiV1NotificationsNotifIdReadPatchError =
 
 export type MarkReadSingleApiV1NotificationsNotifIdReadPatchResponses = {
   /**
+   * Response Mark Read Single Api V1 Notifications  Notif Id  Read Patch
+   *
    * Successful Response
    */
-  200: unknown
+  200: {
+    [key: string]: boolean
+  }
 }
+
+export type MarkReadSingleApiV1NotificationsNotifIdReadPatchResponse =
+  MarkReadSingleApiV1NotificationsNotifIdReadPatchResponses[keyof MarkReadSingleApiV1NotificationsNotifIdReadPatchResponses]
 
 export type MarkAllReadApiV1NotificationsReadAllPostData = {
   body?: never
@@ -3834,10 +4086,17 @@ export type MarkAllReadApiV1NotificationsReadAllPostData = {
 
 export type MarkAllReadApiV1NotificationsReadAllPostResponses = {
   /**
+   * Response Mark All Read Api V1 Notifications Read All Post
+   *
    * Successful Response
    */
-  200: unknown
+  200: {
+    [key: string]: unknown
+  }
 }
+
+export type MarkAllReadApiV1NotificationsReadAllPostResponse =
+  MarkAllReadApiV1NotificationsReadAllPostResponses[keyof MarkAllReadApiV1NotificationsReadAllPostResponses]
 
 export type DeleteNotificationApiV1NotificationsNotifIdDeleteData = {
   body?: never
@@ -3863,10 +4122,17 @@ export type DeleteNotificationApiV1NotificationsNotifIdDeleteError =
 
 export type DeleteNotificationApiV1NotificationsNotifIdDeleteResponses = {
   /**
+   * Response Delete Notification Api V1 Notifications  Notif Id  Delete
+   *
    * Successful Response
    */
-  200: unknown
+  200: {
+    [key: string]: boolean
+  }
 }
+
+export type DeleteNotificationApiV1NotificationsNotifIdDeleteResponse =
+  DeleteNotificationApiV1NotificationsNotifIdDeleteResponses[keyof DeleteNotificationApiV1NotificationsNotifIdDeleteResponses]
 
 export type CheckScheduleAndGenerateApiV1NotificationsCheckSchedulePostData = {
   body?: never
@@ -4059,7 +4325,7 @@ export type AdminGetUserTopicsApiV1PushAdminTopicsUserIdGetData = {
     /**
      * User Id
      */
-    user_id: number
+    user_id: string
   }
   query?: never
   url: "/api/v1/push/admin/topics/{user_id}"
@@ -4091,7 +4357,7 @@ export type AdminUpdateUserTopicsApiV1PushAdminTopicsUserIdPutData = {
     /**
      * User Id
      */
-    user_id: number
+    user_id: string
   }
   query?: never
   url: "/api/v1/push/admin/topics/{user_id}"
@@ -4490,6 +4756,10 @@ export type GetUsersApiV1UsersGetData = {
      * Offset
      */
     offset?: number
+    /**
+     * After Id
+     */
+    after_id?: string | null
   }
   url: "/api/v1/users"
 }
@@ -4663,10 +4933,17 @@ export type ForgotPasswordApiV1PasswordForgotPostError =
 
 export type ForgotPasswordApiV1PasswordForgotPostResponses = {
   /**
+   * Response Forgot Password Api V1 Password Forgot Post
+   *
    * Successful Response
    */
-  200: unknown
+  200: {
+    [key: string]: boolean
+  }
 }
+
+export type ForgotPasswordApiV1PasswordForgotPostResponse =
+  ForgotPasswordApiV1PasswordForgotPostResponses[keyof ForgotPasswordApiV1PasswordForgotPostResponses]
 
 export type ResetPasswordApiV1PasswordResetPostData = {
   body: ResetPasswordIn
@@ -4687,10 +4964,17 @@ export type ResetPasswordApiV1PasswordResetPostError =
 
 export type ResetPasswordApiV1PasswordResetPostResponses = {
   /**
+   * Response Reset Password Api V1 Password Reset Post
+   *
    * Successful Response
    */
-  200: unknown
+  200: {
+    [key: string]: boolean
+  }
 }
+
+export type ResetPasswordApiV1PasswordResetPostResponse =
+  ResetPasswordApiV1PasswordResetPostResponses[keyof ResetPasswordApiV1PasswordResetPostResponses]
 
 export type GetGroupsApiV1GroupsGetData = {
   body?: never
@@ -4889,71 +5173,71 @@ export type MyEventsApiV1EventsMyGetResponses = {
 export type MyEventsApiV1EventsMyGetResponse =
   MyEventsApiV1EventsMyGetResponses[keyof MyEventsApiV1EventsMyGetResponses]
 
-export type UploadEventFileApiV1EventsIdUploadFilePostData = {
-  body: BodyUploadEventFileApiV1EventsIdUploadFilePost
+export type UploadEventFileApiV1EventsEventIdUploadFilePostData = {
+  body: BodyUploadEventFileApiV1EventsEventIdUploadFilePost
   path: {
     /**
-     * Id
+     * Event Id
      */
-    id: string | number
+    event_id: string | number
   }
   query?: never
-  url: "/api/v1/events/{id}/upload_file"
+  url: "/api/v1/events/{event_id}/upload_file"
 }
 
-export type UploadEventFileApiV1EventsIdUploadFilePostErrors = {
+export type UploadEventFileApiV1EventsEventIdUploadFilePostErrors = {
   /**
    * Validation Error
    */
   422: HttpValidationError
 }
 
-export type UploadEventFileApiV1EventsIdUploadFilePostError =
-  UploadEventFileApiV1EventsIdUploadFilePostErrors[keyof UploadEventFileApiV1EventsIdUploadFilePostErrors]
+export type UploadEventFileApiV1EventsEventIdUploadFilePostError =
+  UploadEventFileApiV1EventsEventIdUploadFilePostErrors[keyof UploadEventFileApiV1EventsEventIdUploadFilePostErrors]
 
-export type UploadEventFileApiV1EventsIdUploadFilePostResponses = {
+export type UploadEventFileApiV1EventsEventIdUploadFilePostResponses = {
   /**
    * Successful Response
    */
   200: EventFileOut
 }
 
-export type UploadEventFileApiV1EventsIdUploadFilePostResponse =
-  UploadEventFileApiV1EventsIdUploadFilePostResponses[keyof UploadEventFileApiV1EventsIdUploadFilePostResponses]
+export type UploadEventFileApiV1EventsEventIdUploadFilePostResponse =
+  UploadEventFileApiV1EventsEventIdUploadFilePostResponses[keyof UploadEventFileApiV1EventsEventIdUploadFilePostResponses]
 
-export type GetEventFilesApiV1EventsIdFilesGetData = {
+export type GetEventFilesApiV1EventsEventIdFilesGetData = {
   body?: never
   path: {
     /**
-     * Id
+     * Event Id
      */
-    id: string | number
+    event_id: string | number
   }
   query?: never
-  url: "/api/v1/events/{id}/files"
+  url: "/api/v1/events/{event_id}/files"
 }
 
-export type GetEventFilesApiV1EventsIdFilesGetErrors = {
+export type GetEventFilesApiV1EventsEventIdFilesGetErrors = {
   /**
    * Validation Error
    */
   422: HttpValidationError
 }
 
-export type GetEventFilesApiV1EventsIdFilesGetError =
-  GetEventFilesApiV1EventsIdFilesGetErrors[keyof GetEventFilesApiV1EventsIdFilesGetErrors]
+export type GetEventFilesApiV1EventsEventIdFilesGetError =
+  GetEventFilesApiV1EventsEventIdFilesGetErrors[keyof GetEventFilesApiV1EventsEventIdFilesGetErrors]
 
-export type GetEventFilesApiV1EventsIdFilesGetResponses = {
+export type GetEventFilesApiV1EventsEventIdFilesGetResponses = {
   /**
-   * Response Get Event Files Api V1 Events  Id  Files Get
+   * Response Get Event Files Api V1 Events  Event Id  Files Get
    *
    * Successful Response
    */
   200: Array<EventFileOut>
 }
 
-export type GetEventFilesApiV1EventsIdFilesGetResponse =
-  GetEventFilesApiV1EventsIdFilesGetResponses[keyof GetEventFilesApiV1EventsIdFilesGetResponses]
+export type GetEventFilesApiV1EventsEventIdFilesGetResponse =
+  GetEventFilesApiV1EventsEventIdFilesGetResponses[keyof GetEventFilesApiV1EventsEventIdFilesGetResponses]
 
 export type UploadEventImageApiV1EventsUploadImagePostData = {
   body: BodyUploadEventImageApiV1EventsUploadImagePost
@@ -4974,10 +5258,17 @@ export type UploadEventImageApiV1EventsUploadImagePostError =
 
 export type UploadEventImageApiV1EventsUploadImagePostResponses = {
   /**
+   * Response Upload Event Image Api V1 Events Upload Image Post
+   *
    * Successful Response
    */
-  200: unknown
+  200: {
+    [key: string]: string
+  }
 }
+
+export type UploadEventImageApiV1EventsUploadImagePostResponse =
+  UploadEventImageApiV1EventsUploadImagePostResponses[keyof UploadEventImageApiV1EventsUploadImagePostResponses]
 
 export type DeleteEventApiV1EventsEventIdDeleteData = {
   body?: never
@@ -5015,6 +5306,44 @@ export type DeleteEventApiV1EventsEventIdDeleteResponses = {
 export type DeleteEventApiV1EventsEventIdDeleteResponse =
   DeleteEventApiV1EventsEventIdDeleteResponses[keyof DeleteEventApiV1EventsEventIdDeleteResponses]
 
+export type GetEventApiV1EventsEventIdGetData = {
+  body?: never
+  headers?: {
+    /**
+     * If-None-Match
+     */
+    "if-none-match"?: string | null
+  }
+  path: {
+    /**
+     * Event Id
+     */
+    event_id: string | number
+  }
+  query?: never
+  url: "/api/v1/events/{event_id}"
+}
+
+export type GetEventApiV1EventsEventIdGetErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type GetEventApiV1EventsEventIdGetError =
+  GetEventApiV1EventsEventIdGetErrors[keyof GetEventApiV1EventsEventIdGetErrors]
+
+export type GetEventApiV1EventsEventIdGetResponses = {
+  /**
+   * Successful Response
+   */
+  200: EventOut
+}
+
+export type GetEventApiV1EventsEventIdGetResponse =
+  GetEventApiV1EventsEventIdGetResponses[keyof GetEventApiV1EventsEventIdGetResponses]
+
 export type UpdateEventApiV1EventsEventIdPatchData = {
   body: EventUpdate
   path: {
@@ -5046,44 +5375,6 @@ export type UpdateEventApiV1EventsEventIdPatchResponses = {
 
 export type UpdateEventApiV1EventsEventIdPatchResponse =
   UpdateEventApiV1EventsEventIdPatchResponses[keyof UpdateEventApiV1EventsEventIdPatchResponses]
-
-export type GetEventApiV1EventsIdGetData = {
-  body?: never
-  headers?: {
-    /**
-     * If-None-Match
-     */
-    "if-none-match"?: string | null
-  }
-  path: {
-    /**
-     * Id
-     */
-    id: string | number
-  }
-  query?: never
-  url: "/api/v1/events/{id}"
-}
-
-export type GetEventApiV1EventsIdGetErrors = {
-  /**
-   * Validation Error
-   */
-  422: HttpValidationError
-}
-
-export type GetEventApiV1EventsIdGetError =
-  GetEventApiV1EventsIdGetErrors[keyof GetEventApiV1EventsIdGetErrors]
-
-export type GetEventApiV1EventsIdGetResponses = {
-  /**
-   * Successful Response
-   */
-  200: EventOut
-}
-
-export type GetEventApiV1EventsIdGetResponse =
-  GetEventApiV1EventsIdGetResponses[keyof GetEventApiV1EventsIdGetResponses]
 
 export type DeleteEventFileApiV1EventsFileFileIdDeleteData = {
   body?: never
@@ -5374,10 +5665,17 @@ export type LikeNewsApiV1NewsIdLikePostError =
 
 export type LikeNewsApiV1NewsIdLikePostResponses = {
   /**
+   * Response Like News Api V1 News  Id  Like Post
+   *
    * Successful Response
    */
-  200: unknown
+  200: {
+    [key: string]: boolean
+  }
 }
+
+export type LikeNewsApiV1NewsIdLikePostResponse =
+  LikeNewsApiV1NewsIdLikePostResponses[keyof LikeNewsApiV1NewsIdLikePostResponses]
 
 export type CommentOnNewsApiV1NewsIdCommentPostData = {
   body: BodyCommentOnNewsApiV1NewsIdCommentPost
@@ -5476,10 +5774,17 @@ export type DeleteCommentApiV1NewsCommentsCommentIdDeleteError =
 
 export type DeleteCommentApiV1NewsCommentsCommentIdDeleteResponses = {
   /**
+   * Response Delete Comment Api V1 News Comments  Comment Id  Delete
+   *
    * Successful Response
    */
-  200: unknown
+  200: {
+    [key: string]: boolean
+  }
 }
+
+export type DeleteCommentApiV1NewsCommentsCommentIdDeleteResponse =
+  DeleteCommentApiV1NewsCommentsCommentIdDeleteResponses[keyof DeleteCommentApiV1NewsCommentsCommentIdDeleteResponses]
 
 export type UpdateCommentApiV1NewsCommentsCommentIdPatchData = {
   body: NewsCommentUpdate
@@ -5532,10 +5837,17 @@ export type UploadNewsImageApiV1NewsUploadImagePostError =
 
 export type UploadNewsImageApiV1NewsUploadImagePostResponses = {
   /**
+   * Response Upload News Image Api V1 News Upload Image Post
+   *
    * Successful Response
    */
-  200: unknown
+  200: {
+    [key: string]: string
+  }
 }
+
+export type UploadNewsImageApiV1NewsUploadImagePostResponse =
+  UploadNewsImageApiV1NewsUploadImagePostResponses[keyof UploadNewsImageApiV1NewsUploadImagePostResponses]
 
 export type SemanticSearchApiV1NewsSearchSemanticGetData = {
   body?: never
@@ -5737,10 +6049,17 @@ export type UploadStoryCoverApiV1StoriesUploadCoverPostError =
 
 export type UploadStoryCoverApiV1StoriesUploadCoverPostResponses = {
   /**
+   * Response Upload Story Cover Api V1 Stories Upload Cover Post
+   *
    * Successful Response
    */
-  200: unknown
+  200: {
+    [key: string]: string
+  }
 }
+
+export type UploadStoryCoverApiV1StoriesUploadCoverPostResponse =
+  UploadStoryCoverApiV1StoriesUploadCoverPostResponses[keyof UploadStoryCoverApiV1StoriesUploadCoverPostResponses]
 
 export type AddScheduleApiV1SchedulePostData = {
   body: ScheduleCreate
@@ -5769,7 +6088,43 @@ export type AddScheduleApiV1SchedulePostResponses = {
 export type AddScheduleApiV1SchedulePostResponse =
   AddScheduleApiV1SchedulePostResponses[keyof AddScheduleApiV1SchedulePostResponses]
 
-export type GetScheduleApiV1ScheduleGroupIdGetData = {
+export type DeleteScheduleApiV1ScheduleIdDeleteData = {
+  body?: never
+  path: {
+    /**
+     * Id
+     */
+    id: string
+  }
+  query?: never
+  url: "/api/v1/schedule/{id}"
+}
+
+export type DeleteScheduleApiV1ScheduleIdDeleteErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type DeleteScheduleApiV1ScheduleIdDeleteError =
+  DeleteScheduleApiV1ScheduleIdDeleteErrors[keyof DeleteScheduleApiV1ScheduleIdDeleteErrors]
+
+export type DeleteScheduleApiV1ScheduleIdDeleteResponses = {
+  /**
+   * Response Delete Schedule Api V1 Schedule  Id  Delete
+   *
+   * Successful Response
+   */
+  200: {
+    [key: string]: unknown
+  }
+}
+
+export type DeleteScheduleApiV1ScheduleIdDeleteResponse =
+  DeleteScheduleApiV1ScheduleIdDeleteResponses[keyof DeleteScheduleApiV1ScheduleIdDeleteResponses]
+
+export type GetScheduleApiV1ScheduleIdGetData = {
   body?: never
   headers?: {
     /**
@@ -5779,103 +6134,67 @@ export type GetScheduleApiV1ScheduleGroupIdGetData = {
   }
   path: {
     /**
-     * Group Id
+     * Id
      */
-    group_id: string
+    id: string
   }
   query?: never
-  url: "/api/v1/schedule/{group_id}"
+  url: "/api/v1/schedule/{id}"
 }
 
-export type GetScheduleApiV1ScheduleGroupIdGetErrors = {
+export type GetScheduleApiV1ScheduleIdGetErrors = {
   /**
    * Validation Error
    */
   422: HttpValidationError
 }
 
-export type GetScheduleApiV1ScheduleGroupIdGetError =
-  GetScheduleApiV1ScheduleGroupIdGetErrors[keyof GetScheduleApiV1ScheduleGroupIdGetErrors]
+export type GetScheduleApiV1ScheduleIdGetError =
+  GetScheduleApiV1ScheduleIdGetErrors[keyof GetScheduleApiV1ScheduleIdGetErrors]
 
-export type GetScheduleApiV1ScheduleGroupIdGetResponses = {
+export type GetScheduleApiV1ScheduleIdGetResponses = {
   /**
-   * Response Get Schedule Api V1 Schedule  Group Id  Get
+   * Response Get Schedule Api V1 Schedule  Id  Get
    *
    * Successful Response
    */
   200: Array<ScheduleOut>
 }
 
-export type GetScheduleApiV1ScheduleGroupIdGetResponse =
-  GetScheduleApiV1ScheduleGroupIdGetResponses[keyof GetScheduleApiV1ScheduleGroupIdGetResponses]
+export type GetScheduleApiV1ScheduleIdGetResponse =
+  GetScheduleApiV1ScheduleIdGetResponses[keyof GetScheduleApiV1ScheduleIdGetResponses]
 
-export type DeleteScheduleApiV1ScheduleScheduleIdDeleteData = {
-  body?: never
-  path: {
-    /**
-     * Schedule Id
-     */
-    schedule_id: string
-  }
-  query?: never
-  url: "/api/v1/schedule/{schedule_id}"
-}
-
-export type DeleteScheduleApiV1ScheduleScheduleIdDeleteErrors = {
-  /**
-   * Validation Error
-   */
-  422: HttpValidationError
-}
-
-export type DeleteScheduleApiV1ScheduleScheduleIdDeleteError =
-  DeleteScheduleApiV1ScheduleScheduleIdDeleteErrors[keyof DeleteScheduleApiV1ScheduleScheduleIdDeleteErrors]
-
-export type DeleteScheduleApiV1ScheduleScheduleIdDeleteResponses = {
-  /**
-   * Response Delete Schedule Api V1 Schedule  Schedule Id  Delete
-   *
-   * Successful Response
-   */
-  200: {
-    [key: string]: unknown
-  }
-}
-
-export type DeleteScheduleApiV1ScheduleScheduleIdDeleteResponse =
-  DeleteScheduleApiV1ScheduleScheduleIdDeleteResponses[keyof DeleteScheduleApiV1ScheduleScheduleIdDeleteResponses]
-
-export type UpdateScheduleApiV1ScheduleScheduleIdPatchData = {
+export type UpdateScheduleApiV1ScheduleIdPatchData = {
   body: ScheduleUpdate
   path: {
     /**
-     * Schedule Id
+     * Id
      */
-    schedule_id: string
+    id: string
   }
   query?: never
-  url: "/api/v1/schedule/{schedule_id}"
+  url: "/api/v1/schedule/{id}"
 }
 
-export type UpdateScheduleApiV1ScheduleScheduleIdPatchErrors = {
+export type UpdateScheduleApiV1ScheduleIdPatchErrors = {
   /**
    * Validation Error
    */
   422: HttpValidationError
 }
 
-export type UpdateScheduleApiV1ScheduleScheduleIdPatchError =
-  UpdateScheduleApiV1ScheduleScheduleIdPatchErrors[keyof UpdateScheduleApiV1ScheduleScheduleIdPatchErrors]
+export type UpdateScheduleApiV1ScheduleIdPatchError =
+  UpdateScheduleApiV1ScheduleIdPatchErrors[keyof UpdateScheduleApiV1ScheduleIdPatchErrors]
 
-export type UpdateScheduleApiV1ScheduleScheduleIdPatchResponses = {
+export type UpdateScheduleApiV1ScheduleIdPatchResponses = {
   /**
    * Successful Response
    */
   200: ScheduleOut
 }
 
-export type UpdateScheduleApiV1ScheduleScheduleIdPatchResponse =
-  UpdateScheduleApiV1ScheduleScheduleIdPatchResponses[keyof UpdateScheduleApiV1ScheduleScheduleIdPatchResponses]
+export type UpdateScheduleApiV1ScheduleIdPatchResponse =
+  UpdateScheduleApiV1ScheduleIdPatchResponses[keyof UpdateScheduleApiV1ScheduleIdPatchResponses]
 
 export type AttendanceSummaryApiV1StatsAttendanceGetData = {
   body?: never
@@ -5994,6 +6313,45 @@ export type ParticipationSummaryApiV1StatsParticipationGetResponses = {
   200: unknown
 }
 
+export type StatsSummaryApiV1StatsSummaryGetData = {
+  body?: never
+  headers?: {
+    /**
+     * If-None-Match
+     */
+    "if-none-match"?: string | null
+  }
+  path?: never
+  query?: {
+    /**
+     * Period
+     */
+    period?: string
+    /**
+     * Skip Cache
+     */
+    skip_cache?: boolean
+  }
+  url: "/api/v1/stats/summary"
+}
+
+export type StatsSummaryApiV1StatsSummaryGetErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type StatsSummaryApiV1StatsSummaryGetError =
+  StatsSummaryApiV1StatsSummaryGetErrors[keyof StatsSummaryApiV1StatsSummaryGetErrors]
+
+export type StatsSummaryApiV1StatsSummaryGetResponses = {
+  /**
+   * Successful Response
+   */
+  200: unknown
+}
+
 export type CreationAnalyticsApiV1StatsCreationGetData = {
   body?: never
   path?: never
@@ -6024,10 +6382,17 @@ export type CreationAnalyticsApiV1StatsCreationGetError =
 
 export type CreationAnalyticsApiV1StatsCreationGetResponses = {
   /**
+   * Response Creation Analytics Api V1 Stats Creation Get
+   *
    * Successful Response
    */
-  200: unknown
+  200: {
+    [key: string]: unknown
+  }
 }
+
+export type CreationAnalyticsApiV1StatsCreationGetResponse =
+  CreationAnalyticsApiV1StatsCreationGetResponses[keyof CreationAnalyticsApiV1StatsCreationGetResponses]
 
 export type GetChatsApiV1ChatsGetData = {
   body?: never
@@ -6096,6 +6461,33 @@ export type CreateChatApiV1ChatsPostResponses = {
 export type CreateChatApiV1ChatsPostResponse =
   CreateChatApiV1ChatsPostResponses[keyof CreateChatApiV1ChatsPostResponses]
 
+export type CreateGroupApiV1ChatsGroupsPostData = {
+  body: GroupChatCreate
+  path?: never
+  query?: never
+  url: "/api/v1/chats/groups"
+}
+
+export type CreateGroupApiV1ChatsGroupsPostErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type CreateGroupApiV1ChatsGroupsPostError =
+  CreateGroupApiV1ChatsGroupsPostErrors[keyof CreateGroupApiV1ChatsGroupsPostErrors]
+
+export type CreateGroupApiV1ChatsGroupsPostResponses = {
+  /**
+   * Successful Response
+   */
+  200: ChatResponse
+}
+
+export type CreateGroupApiV1ChatsGroupsPostResponse =
+  CreateGroupApiV1ChatsGroupsPostResponses[keyof CreateGroupApiV1ChatsGroupsPostResponses]
+
 export type DeleteChatApiV1ChatsChatIdDeleteData = {
   body?: never
   path: {
@@ -6160,6 +6552,42 @@ export type GetChatApiV1ChatsChatIdGetResponses = {
 export type GetChatApiV1ChatsChatIdGetResponse =
   GetChatApiV1ChatsChatIdGetResponses[keyof GetChatApiV1ChatsChatIdGetResponses]
 
+export type RenameChatApiV1ChatsChatIdPatchData = {
+  body: RenameChat
+  path: {
+    /**
+     * Chat Id
+     */
+    chat_id: string
+  }
+  query?: never
+  url: "/api/v1/chats/{chat_id}"
+}
+
+export type RenameChatApiV1ChatsChatIdPatchErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type RenameChatApiV1ChatsChatIdPatchError =
+  RenameChatApiV1ChatsChatIdPatchErrors[keyof RenameChatApiV1ChatsChatIdPatchErrors]
+
+export type RenameChatApiV1ChatsChatIdPatchResponses = {
+  /**
+   * Response Rename Chat Api V1 Chats  Chat Id  Patch
+   *
+   * Successful Response
+   */
+  200: {
+    [key: string]: string
+  }
+}
+
+export type RenameChatApiV1ChatsChatIdPatchResponse =
+  RenameChatApiV1ChatsChatIdPatchResponses[keyof RenameChatApiV1ChatsChatIdPatchResponses]
+
 export type GetMessagesApiV1ChatsChatIdMessagesGetData = {
   body?: never
   path: {
@@ -6207,6 +6635,14 @@ export type GetMessagesApiV1ChatsChatIdMessagesGetResponse =
 
 export type SendMessageApiV1ChatsChatIdMessagesPostData = {
   body?: BodySendMessageApiV1ChatsChatIdMessagesPost
+  headers?: {
+    /**
+     * Idempotency-Key
+     *
+     * Client-generated idempotency key to deduplicate retried sends.
+     */
+    "Idempotency-Key"?: string | null
+  }
   path: {
     /**
      * Chat Id
@@ -6237,6 +6673,40 @@ export type SendMessageApiV1ChatsChatIdMessagesPostResponses = {
 export type SendMessageApiV1ChatsChatIdMessagesPostResponse =
   SendMessageApiV1ChatsChatIdMessagesPostResponses[keyof SendMessageApiV1ChatsChatIdMessagesPostResponses]
 
+export type ForwardMessagesApiV1ChatsDestChatIdForwardPostData = {
+  body: ForwardMessages
+  path: {
+    /**
+     * Dest Chat Id
+     */
+    dest_chat_id: string
+  }
+  query?: never
+  url: "/api/v1/chats/{dest_chat_id}/forward"
+}
+
+export type ForwardMessagesApiV1ChatsDestChatIdForwardPostErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type ForwardMessagesApiV1ChatsDestChatIdForwardPostError =
+  ForwardMessagesApiV1ChatsDestChatIdForwardPostErrors[keyof ForwardMessagesApiV1ChatsDestChatIdForwardPostErrors]
+
+export type ForwardMessagesApiV1ChatsDestChatIdForwardPostResponses = {
+  /**
+   * Response Forward Messages Api V1 Chats  Dest Chat Id  Forward Post
+   *
+   * Successful Response
+   */
+  200: Array<MessageResponse>
+}
+
+export type ForwardMessagesApiV1ChatsDestChatIdForwardPostResponse =
+  ForwardMessagesApiV1ChatsDestChatIdForwardPostResponses[keyof ForwardMessagesApiV1ChatsDestChatIdForwardPostResponses]
+
 export type MarkReadApiV1ChatsChatIdReadPostData = {
   body?: never
   path: {
@@ -6261,10 +6731,261 @@ export type MarkReadApiV1ChatsChatIdReadPostError =
 
 export type MarkReadApiV1ChatsChatIdReadPostResponses = {
   /**
+   * Response Mark Read Api V1 Chats  Chat Id  Read Post
+   *
    * Successful Response
    */
-  200: unknown
+  200: {
+    [key: string]: string
+  }
 }
+
+export type MarkReadApiV1ChatsChatIdReadPostResponse =
+  MarkReadApiV1ChatsChatIdReadPostResponses[keyof MarkReadApiV1ChatsChatIdReadPostResponses]
+
+export type DeleteMessageApiV1ChatsChatIdMessagesMessageIdDeleteData = {
+  body?: never
+  path: {
+    /**
+     * Chat Id
+     */
+    chat_id: string
+    /**
+     * Message Id
+     */
+    message_id: string
+  }
+  query?: never
+  url: "/api/v1/chats/{chat_id}/messages/{message_id}"
+}
+
+export type DeleteMessageApiV1ChatsChatIdMessagesMessageIdDeleteErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type DeleteMessageApiV1ChatsChatIdMessagesMessageIdDeleteError =
+  DeleteMessageApiV1ChatsChatIdMessagesMessageIdDeleteErrors[keyof DeleteMessageApiV1ChatsChatIdMessagesMessageIdDeleteErrors]
+
+export type DeleteMessageApiV1ChatsChatIdMessagesMessageIdDeleteResponses = {
+  /**
+   * Response Delete Message Api V1 Chats  Chat Id  Messages  Message Id  Delete
+   *
+   * Successful Response
+   */
+  200: {
+    [key: string]: string
+  }
+}
+
+export type DeleteMessageApiV1ChatsChatIdMessagesMessageIdDeleteResponse =
+  DeleteMessageApiV1ChatsChatIdMessagesMessageIdDeleteResponses[keyof DeleteMessageApiV1ChatsChatIdMessagesMessageIdDeleteResponses]
+
+export type EditMessageApiV1ChatsChatIdMessagesMessageIdPatchData = {
+  body: BodyEditMessageApiV1ChatsChatIdMessagesMessageIdPatch
+  path: {
+    /**
+     * Chat Id
+     */
+    chat_id: string
+    /**
+     * Message Id
+     */
+    message_id: string
+  }
+  query?: never
+  url: "/api/v1/chats/{chat_id}/messages/{message_id}"
+}
+
+export type EditMessageApiV1ChatsChatIdMessagesMessageIdPatchErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type EditMessageApiV1ChatsChatIdMessagesMessageIdPatchError =
+  EditMessageApiV1ChatsChatIdMessagesMessageIdPatchErrors[keyof EditMessageApiV1ChatsChatIdMessagesMessageIdPatchErrors]
+
+export type EditMessageApiV1ChatsChatIdMessagesMessageIdPatchResponses = {
+  /**
+   * Response Edit Message Api V1 Chats  Chat Id  Messages  Message Id  Patch
+   *
+   * Successful Response
+   */
+  200: {
+    [key: string]: string
+  }
+}
+
+export type EditMessageApiV1ChatsChatIdMessagesMessageIdPatchResponse =
+  EditMessageApiV1ChatsChatIdMessagesMessageIdPatchResponses[keyof EditMessageApiV1ChatsChatIdMessagesMessageIdPatchResponses]
+
+export type RemoveReactionApiV1ChatsChatIdMessagesMessageIdReactionsDeleteData = {
+  body?: never
+  path: {
+    /**
+     * Chat Id
+     */
+    chat_id: string
+    /**
+     * Message Id
+     */
+    message_id: string
+  }
+  query: {
+    /**
+     * Emoji
+     */
+    emoji: string
+  }
+  url: "/api/v1/chats/{chat_id}/messages/{message_id}/reactions"
+}
+
+export type RemoveReactionApiV1ChatsChatIdMessagesMessageIdReactionsDeleteErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type RemoveReactionApiV1ChatsChatIdMessagesMessageIdReactionsDeleteError =
+  RemoveReactionApiV1ChatsChatIdMessagesMessageIdReactionsDeleteErrors[keyof RemoveReactionApiV1ChatsChatIdMessagesMessageIdReactionsDeleteErrors]
+
+export type RemoveReactionApiV1ChatsChatIdMessagesMessageIdReactionsDeleteResponses = {
+  /**
+   * Response Remove Reaction Api V1 Chats  Chat Id  Messages  Message Id  Reactions Delete
+   *
+   * Successful Response
+   */
+  200: {
+    [key: string]: string
+  }
+}
+
+export type RemoveReactionApiV1ChatsChatIdMessagesMessageIdReactionsDeleteResponse =
+  RemoveReactionApiV1ChatsChatIdMessagesMessageIdReactionsDeleteResponses[keyof RemoveReactionApiV1ChatsChatIdMessagesMessageIdReactionsDeleteResponses]
+
+export type GetReactorsApiV1ChatsChatIdMessagesMessageIdReactionsGetData = {
+  body?: never
+  path: {
+    /**
+     * Chat Id
+     */
+    chat_id: string
+    /**
+     * Message Id
+     */
+    message_id: string
+  }
+  query: {
+    /**
+     * Emoji
+     */
+    emoji: string
+  }
+  url: "/api/v1/chats/{chat_id}/messages/{message_id}/reactions"
+}
+
+export type GetReactorsApiV1ChatsChatIdMessagesMessageIdReactionsGetErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type GetReactorsApiV1ChatsChatIdMessagesMessageIdReactionsGetError =
+  GetReactorsApiV1ChatsChatIdMessagesMessageIdReactionsGetErrors[keyof GetReactorsApiV1ChatsChatIdMessagesMessageIdReactionsGetErrors]
+
+export type GetReactorsApiV1ChatsChatIdMessagesMessageIdReactionsGetResponses = {
+  /**
+   * Response Get Reactors Api V1 Chats  Chat Id  Messages  Message Id  Reactions Get
+   *
+   * Successful Response
+   */
+  200: Array<ReactorOut>
+}
+
+export type GetReactorsApiV1ChatsChatIdMessagesMessageIdReactionsGetResponse =
+  GetReactorsApiV1ChatsChatIdMessagesMessageIdReactionsGetResponses[keyof GetReactorsApiV1ChatsChatIdMessagesMessageIdReactionsGetResponses]
+
+export type AddReactionApiV1ChatsChatIdMessagesMessageIdReactionsPostData = {
+  body: BodyAddReactionApiV1ChatsChatIdMessagesMessageIdReactionsPost
+  path: {
+    /**
+     * Chat Id
+     */
+    chat_id: string
+    /**
+     * Message Id
+     */
+    message_id: string
+  }
+  query?: never
+  url: "/api/v1/chats/{chat_id}/messages/{message_id}/reactions"
+}
+
+export type AddReactionApiV1ChatsChatIdMessagesMessageIdReactionsPostErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type AddReactionApiV1ChatsChatIdMessagesMessageIdReactionsPostError =
+  AddReactionApiV1ChatsChatIdMessagesMessageIdReactionsPostErrors[keyof AddReactionApiV1ChatsChatIdMessagesMessageIdReactionsPostErrors]
+
+export type AddReactionApiV1ChatsChatIdMessagesMessageIdReactionsPostResponses = {
+  /**
+   * Response Add Reaction Api V1 Chats  Chat Id  Messages  Message Id  Reactions Post
+   *
+   * Successful Response
+   */
+  200: {
+    [key: string]: string
+  }
+}
+
+export type AddReactionApiV1ChatsChatIdMessagesMessageIdReactionsPostResponse =
+  AddReactionApiV1ChatsChatIdMessagesMessageIdReactionsPostResponses[keyof AddReactionApiV1ChatsChatIdMessagesMessageIdReactionsPostResponses]
+
+export type TypingIndicatorApiV1ChatsChatIdTypingPostData = {
+  body?: never
+  path: {
+    /**
+     * Chat Id
+     */
+    chat_id: string
+  }
+  query?: never
+  url: "/api/v1/chats/{chat_id}/typing"
+}
+
+export type TypingIndicatorApiV1ChatsChatIdTypingPostErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type TypingIndicatorApiV1ChatsChatIdTypingPostError =
+  TypingIndicatorApiV1ChatsChatIdTypingPostErrors[keyof TypingIndicatorApiV1ChatsChatIdTypingPostErrors]
+
+export type TypingIndicatorApiV1ChatsChatIdTypingPostResponses = {
+  /**
+   * Response Typing Indicator Api V1 Chats  Chat Id  Typing Post
+   *
+   * Successful Response
+   */
+  200: {
+    [key: string]: string
+  }
+}
+
+export type TypingIndicatorApiV1ChatsChatIdTypingPostResponse =
+  TypingIndicatorApiV1ChatsChatIdTypingPostResponses[keyof TypingIndicatorApiV1ChatsChatIdTypingPostResponses]
 
 export type ClearChatHistoryApiV1ChatsChatIdClearPostData = {
   body?: never
@@ -6297,6 +7018,82 @@ export type ClearChatHistoryApiV1ChatsChatIdClearPostResponses = {
 
 export type ClearChatHistoryApiV1ChatsChatIdClearPostResponse =
   ClearChatHistoryApiV1ChatsChatIdClearPostResponses[keyof ClearChatHistoryApiV1ChatsChatIdClearPostResponses]
+
+export type AddParticipantApiV1ChatsChatIdParticipantsPostData = {
+  body: AddParticipant
+  path: {
+    /**
+     * Chat Id
+     */
+    chat_id: string
+  }
+  query?: never
+  url: "/api/v1/chats/{chat_id}/participants"
+}
+
+export type AddParticipantApiV1ChatsChatIdParticipantsPostErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type AddParticipantApiV1ChatsChatIdParticipantsPostError =
+  AddParticipantApiV1ChatsChatIdParticipantsPostErrors[keyof AddParticipantApiV1ChatsChatIdParticipantsPostErrors]
+
+export type AddParticipantApiV1ChatsChatIdParticipantsPostResponses = {
+  /**
+   * Response Add Participant Api V1 Chats  Chat Id  Participants Post
+   *
+   * Successful Response
+   */
+  200: {
+    [key: string]: string
+  }
+}
+
+export type AddParticipantApiV1ChatsChatIdParticipantsPostResponse =
+  AddParticipantApiV1ChatsChatIdParticipantsPostResponses[keyof AddParticipantApiV1ChatsChatIdParticipantsPostResponses]
+
+export type RemoveParticipantApiV1ChatsChatIdParticipantsUserIdDeleteData = {
+  body?: never
+  path: {
+    /**
+     * Chat Id
+     */
+    chat_id: string
+    /**
+     * User Id
+     */
+    user_id: string
+  }
+  query?: never
+  url: "/api/v1/chats/{chat_id}/participants/{user_id}"
+}
+
+export type RemoveParticipantApiV1ChatsChatIdParticipantsUserIdDeleteErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type RemoveParticipantApiV1ChatsChatIdParticipantsUserIdDeleteError =
+  RemoveParticipantApiV1ChatsChatIdParticipantsUserIdDeleteErrors[keyof RemoveParticipantApiV1ChatsChatIdParticipantsUserIdDeleteErrors]
+
+export type RemoveParticipantApiV1ChatsChatIdParticipantsUserIdDeleteResponses = {
+  /**
+   * Response Remove Participant Api V1 Chats  Chat Id  Participants  User Id  Delete
+   *
+   * Successful Response
+   */
+  200: {
+    [key: string]: string
+  }
+}
+
+export type RemoveParticipantApiV1ChatsChatIdParticipantsUserIdDeleteResponse =
+  RemoveParticipantApiV1ChatsChatIdParticipantsUserIdDeleteResponses[keyof RemoveParticipantApiV1ChatsChatIdParticipantsUserIdDeleteResponses]
 
 export type ProxyImageApiV1ImgPathGetData = {
   body?: never
@@ -6354,6 +7151,56 @@ export type ReceiveCspReportApiV1CspReportPostResponses = {
 
 export type ReceiveCspReportApiV1CspReportPostResponse =
   ReceiveCspReportApiV1CspReportPostResponses[keyof ReceiveCspReportApiV1CspReportPostResponses]
+
+export type UnifiedSearchApiV1SearchGetData = {
+  body?: never
+  path?: never
+  query: {
+    /**
+     * Q
+     *
+     * Search query
+     */
+    q: string
+    /**
+     * Type
+     *
+     * Search type: news, events, or all
+     */
+    type?: string
+    /**
+     * Limit
+     *
+     * Max results per type
+     */
+    limit?: number
+  }
+  url: "/api/v1/search"
+}
+
+export type UnifiedSearchApiV1SearchGetErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type UnifiedSearchApiV1SearchGetError =
+  UnifiedSearchApiV1SearchGetErrors[keyof UnifiedSearchApiV1SearchGetErrors]
+
+export type UnifiedSearchApiV1SearchGetResponses = {
+  /**
+   * Response Unified Search Api V1 Search Get
+   *
+   * Successful Response
+   */
+  200: {
+    [key: string]: unknown
+  }
+}
+
+export type UnifiedSearchApiV1SearchGetResponse =
+  UnifiedSearchApiV1SearchGetResponses[keyof UnifiedSearchApiV1SearchGetResponses]
 
 export type ListFeatureFlagsAdminFeatureFlagsGetData = {
   body?: never
@@ -6458,196 +7305,19 @@ export type ListAuditLogsAdminAuditGetResponses = {
 export type ListAuditLogsAdminAuditGetResponse =
   ListAuditLogsAdminAuditGetResponses[keyof ListAuditLogsAdminAuditGetResponses]
 
-export type GetVapidPublicKeyWebpushVapidPublicKeyGetData = {
+export type IssueWsUpgradeTicketWsTicketPostData = {
   body?: never
   path?: never
   query?: never
-  url: "/webpush/vapid-public-key"
+  url: "/ws/ticket"
 }
 
-export type GetVapidPublicKeyWebpushVapidPublicKeyGetResponses = {
-  /**
-   * Response Get Vapid Public Key Webpush Vapid Public Key Get
-   *
-   * Successful Response
-   */
-  200: {
-    [key: string]: string | null
-  }
-}
-
-export type GetVapidPublicKeyWebpushVapidPublicKeyGetResponse =
-  GetVapidPublicKeyWebpushVapidPublicKeyGetResponses[keyof GetVapidPublicKeyWebpushVapidPublicKeyGetResponses]
-
-export type SubscribeWebpushSubscribePostData = {
-  body: PushSubscriptionIn
-  path?: never
-  query?: never
-  url: "/webpush/subscribe"
-}
-
-export type SubscribeWebpushSubscribePostErrors = {
-  /**
-   * Validation Error
-   */
-  422: HttpValidationError
-}
-
-export type SubscribeWebpushSubscribePostError =
-  SubscribeWebpushSubscribePostErrors[keyof SubscribeWebpushSubscribePostErrors]
-
-export type SubscribeWebpushSubscribePostResponses = {
+export type IssueWsUpgradeTicketWsTicketPostResponses = {
   /**
    * Successful Response
    */
-  200: PushSubscriptionOut
+  201: WsTicketResponse
 }
 
-export type SubscribeWebpushSubscribePostResponse =
-  SubscribeWebpushSubscribePostResponses[keyof SubscribeWebpushSubscribePostResponses]
-
-export type UpdateSubscriptionTopicsWebpushSubscribeTopicsPatchData = {
-  body: PushSubscriptionTopicsUpdate
-  path?: never
-  query?: never
-  url: "/webpush/subscribe/topics"
-}
-
-export type UpdateSubscriptionTopicsWebpushSubscribeTopicsPatchErrors = {
-  /**
-   * Validation Error
-   */
-  422: HttpValidationError
-}
-
-export type UpdateSubscriptionTopicsWebpushSubscribeTopicsPatchError =
-  UpdateSubscriptionTopicsWebpushSubscribeTopicsPatchErrors[keyof UpdateSubscriptionTopicsWebpushSubscribeTopicsPatchErrors]
-
-export type UpdateSubscriptionTopicsWebpushSubscribeTopicsPatchResponses = {
-  /**
-   * Successful Response
-   */
-  200: PushSubscriptionOut
-}
-
-export type UpdateSubscriptionTopicsWebpushSubscribeTopicsPatchResponse =
-  UpdateSubscriptionTopicsWebpushSubscribeTopicsPatchResponses[keyof UpdateSubscriptionTopicsWebpushSubscribeTopicsPatchResponses]
-
-export type UnsubscribeWebpushUnsubscribePostData = {
-  body: PushSubscriptionDelete
-  path?: never
-  query?: never
-  url: "/webpush/unsubscribe"
-}
-
-export type UnsubscribeWebpushUnsubscribePostErrors = {
-  /**
-   * Validation Error
-   */
-  422: HttpValidationError
-}
-
-export type UnsubscribeWebpushUnsubscribePostError =
-  UnsubscribeWebpushUnsubscribePostErrors[keyof UnsubscribeWebpushUnsubscribePostErrors]
-
-export type UnsubscribeWebpushUnsubscribePostResponses = {
-  /**
-   * Response Unsubscribe Webpush Unsubscribe Post
-   *
-   * Successful Response
-   */
-  200: {
-    [key: string]: boolean
-  }
-}
-
-export type UnsubscribeWebpushUnsubscribePostResponse =
-  UnsubscribeWebpushUnsubscribePostResponses[keyof UnsubscribeWebpushUnsubscribePostResponses]
-
-export type SendTestWebpushSendTestPostData = {
-  /**
-   * Payload
-   */
-  body?: PushTestRequest | null
-  path?: never
-  query?: never
-  url: "/webpush/send-test"
-}
-
-export type SendTestWebpushSendTestPostErrors = {
-  /**
-   * Validation Error
-   */
-  422: HttpValidationError
-}
-
-export type SendTestWebpushSendTestPostError =
-  SendTestWebpushSendTestPostErrors[keyof SendTestWebpushSendTestPostErrors]
-
-export type SendTestWebpushSendTestPostResponses = {
-  /**
-   * Successful Response
-   */
-  200: SendTestResponse
-}
-
-export type SendTestWebpushSendTestPostResponse =
-  SendTestWebpushSendTestPostResponses[keyof SendTestWebpushSendTestPostResponses]
-
-export type DisableUserPushWebpushAdminDisableUserPostData = {
-  body: DisableUserPushRequest
-  path?: never
-  query?: never
-  url: "/webpush/admin/disable-user"
-}
-
-export type DisableUserPushWebpushAdminDisableUserPostErrors = {
-  /**
-   * Validation Error
-   */
-  422: HttpValidationError
-}
-
-export type DisableUserPushWebpushAdminDisableUserPostError =
-  DisableUserPushWebpushAdminDisableUserPostErrors[keyof DisableUserPushWebpushAdminDisableUserPostErrors]
-
-export type DisableUserPushWebpushAdminDisableUserPostResponses = {
-  /**
-   * Response Disable User Push Webpush Admin Disable User Post
-   *
-   * Successful Response
-   */
-  200: {
-    [key: string]: number | boolean
-  }
-}
-
-export type DisableUserPushWebpushAdminDisableUserPostResponse =
-  DisableUserPushWebpushAdminDisableUserPostResponses[keyof DisableUserPushWebpushAdminDisableUserPostResponses]
-
-export type BroadcastWebpushBroadcastPostData = {
-  body: NotifyBody
-  path?: never
-  query?: never
-  url: "/webpush/broadcast"
-}
-
-export type BroadcastWebpushBroadcastPostErrors = {
-  /**
-   * Validation Error
-   */
-  422: HttpValidationError
-}
-
-export type BroadcastWebpushBroadcastPostError =
-  BroadcastWebpushBroadcastPostErrors[keyof BroadcastWebpushBroadcastPostErrors]
-
-export type BroadcastWebpushBroadcastPostResponses = {
-  /**
-   * Successful Response
-   */
-  200: SendTestResponse
-}
-
-export type BroadcastWebpushBroadcastPostResponse =
-  BroadcastWebpushBroadcastPostResponses[keyof BroadcastWebpushBroadcastPostResponses]
+export type IssueWsUpgradeTicketWsTicketPostResponse =
+  IssueWsUpgradeTicketWsTicketPostResponses[keyof IssueWsUpgradeTicketWsTicketPostResponses]

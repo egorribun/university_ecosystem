@@ -41,7 +41,7 @@ def test_sanitize_filename():
 
 def test_sanitize_path():
     # Use a relative-to-root path that resolves consistently in the test environment
-    base = Path("C:/tmp/safe") if Path("C:/").exists() else Path("/tmp/safe")
+    base = Path("C:/safe_dir") if Path("C:/").exists() else Path("/safe_dir")
     # Wrap in Path to ensure same type for comparison
     assert sanitize_path("file.txt", base) == base / "file.txt"
     assert sanitize_path("../../etc/passwd", base) is None

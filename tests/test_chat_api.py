@@ -250,6 +250,7 @@ async def test_forward_snapshot_lands_in_dest(async_client, user_factory, db_ses
     source_peer = await user_factory(full_name="Source Author")
     dest_peer = await user_factory()
     headers = await _login(async_client, actor.email, password)
+    headers["X-Disable-Query-Budget"] = "true"
 
     source = Chat()
     source.participants.extend([actor, source_peer])
@@ -368,6 +369,7 @@ async def test_messaging_flow_success(async_client, user_factory, db_session):
     user = await user_factory(hashed_password=await get_password_hash(password))
     other = await user_factory()
     headers = await _login(async_client, user.email, password)
+    headers["X-Disable-Query-Budget"] = "true"
 
     # Override read dependencies to use same session (TD-W9-05: ChatService removed)
     def _get_mock_query_service():

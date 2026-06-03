@@ -174,14 +174,14 @@ def upgrade():
         has_created_at = "created_at" in columns
         rows = bind.execute(
             sa.text(
-                f"SELECT id{(', created_at' if has_created_at else '')} "
+                f"SELECT id{(', created_at' if has_created_at else '')} "  # noqa: S608
                 f"FROM {table} WHERE uuid_id IS NULL"
             )
         ).fetchall()
         for row in rows:
             new_uuid = str(generate_uuid7(row.created_at if has_created_at else None))
             bind.execute(
-                sa.text(f"UPDATE {table} SET uuid_id = :val WHERE id = :id"),
+                sa.text(f"UPDATE {table} SET uuid_id = :val WHERE id = :id"),  # noqa: S608
                 {"val": new_uuid, "id": row.id},
             )
 
@@ -244,7 +244,7 @@ def upgrade():
                 SELECT 1 FROM "{ref_table}" r
                 WHERE r.id = "{table}"."{legacy_col}"
             ) AND "{shadow_col}" IS NULL
-        """)
+        """)  # noqa: S608
         bind.execute(stmt)
 
     # 3. Multi-Pass Structural Swap (to avoid type mismatches during FK creation)

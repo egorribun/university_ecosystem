@@ -5,6 +5,7 @@ from unittest.mock import MagicMock
 
 import pytest
 import pytest_asyncio
+from sqlalchemy import event as sa_event
 
 import app.core.ratelimit as ratelimit_module
 from app import main
@@ -13,6 +14,125 @@ from asgi_lifespan import LifespanManager
 # Static CSRF token for test clients — used by both the cookie and the header.
 # Using a fixed value keeps debugging simple and removes non-determinism.
 _TEST_CSRF_TOKEN: str = secrets.token_urlsafe(32)
+
+_DEFAULT_QUERY_BUDGET: int = 5
+
+
+class _QueryBudgetListener:
+    """Counts SQL statements executed within a single HTTP request boundary.
+
+    WHY: N+1 query regressions are silent in unit tests but catastrophic in
+    production.  By counting queries per GET request we create a trip-wire that
+    fails the test long before the regression hits staging.
+
+    Usage headers (test clients only):
+      X-Query-Budget: <int>  — override the per-request limit for one call
+      X-Disable-Query-Budget — disable the check entirely for one call
+    """
+
+    def __init__(self, engines: list) -> None:
+        # engines is a list of SQLAlchemy SyncEngine instances to instrument.
+        self._engines = engines
+        self._count: int = 0
+
+    # ── Listener ────────────────────────────────────────────────────────────
+
+    def _on_before_cursor_execute(
+        self, conn, cursor, statement, parameters, context, executemany
+    ) -> None:
+        self._count += 1
+
+    # ── Context manager protocol ─────────────────────────────────────────────
+
+    def __enter__(self) -> _QueryBudgetListener:
+        for engine in self._engines:
+            sa_event.listen(
+                engine, "before_cursor_execute", self._on_before_cursor_execute
+            )
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
+        for engine in self._engines:
+            if sa_event.contains(
+                engine, "before_cursor_execute", self._on_before_cursor_execute
+            ):
+                sa_event.remove(
+                    engine, "before_cursor_execute", self._on_before_cursor_execute
+                )
+
+    # ── Assertion helper ─────────────────────────────────────────────────────
+
+    def assert_within_budget(self, budget: int) -> None:
+        """Fail the currently-running test if the budget was exceeded."""
+        if self._count > budget:
+            pytest.fail(
+                f"SQL Query Budget exceeded: {self._count} queries executed "
+                f"(budget={budget}). Possible N+1 regression. "
+                "Use X-Query-Budget header to raise the limit for this test, "
+                "or X-Disable-Query-Budget to skip the check."
+            )
+
+
+def _collect_sync_engines() -> list:
+    """Return all active SQLAlchemy sync engines for budget instrumentation.
+
+    We import lazily to avoid import-time side effects before the app is
+    configured by the test session fixtures.
+    """
+    try:
+        from app.core.database import engine, read_replica_engine
+
+        engines = []
+        # _LazyProxy instances are never None, but their underlying targets
+        # will be None if they are not configured/initialized.
+        if engine is not None and engine._get_target() is not None:
+            sync_eng = engine.sync_engine
+            engines.append(sync_eng)
+        if (
+            read_replica_engine is not None
+            and read_replica_engine._get_target() is not None
+        ):
+            engines.append(read_replica_engine.sync_engine)
+        return engines
+    except Exception:
+        return []
+
+
+def _build_budget_send(original_send):
+    """Wrap an httpx AsyncClient.send method with the query budget gate.
+
+    Only GET requests are checked — mutation requests (POST/PUT/PATCH/DELETE)
+    legitimately issue many queries inside a transaction and should not be
+    gated the same way.
+    """
+
+    async def _budget_guarded_send(request, *args, **kwargs):
+        is_read_request = request.method.upper() == "GET"
+        budget_disabled = "x-disable-query-budget" in {
+            k.lower() for k in request.headers
+        }
+
+        if not is_read_request or budget_disabled:
+            return await original_send(request, *args, **kwargs)
+
+        # Parse custom budget from header (falls back to default).
+        budget_header = request.headers.get("x-query-budget") or request.headers.get(
+            "X-Query-Budget"
+        )
+        budget = (
+            int(budget_header) if budget_header is not None else _DEFAULT_QUERY_BUDGET
+        )
+
+        engines = _collect_sync_engines()
+        listener = _QueryBudgetListener(engines)
+        with listener:
+            response = await original_send(request, *args, **kwargs)
+
+        # Rotate CSRF token regardless (existing behaviour) then gate queries.
+        listener.assert_within_budget(budget)
+        return response
+
+    return _budget_guarded_send
 
 
 @pytest_asyncio.fixture(scope="session")
@@ -87,10 +207,10 @@ async def async_client(app, prepare_database):
     ) as ac:
         ac.cookies.set("csrf_token", _TEST_CSRF_TOKEN, domain="testserver.local")
 
-        # Intercept responses to automatically apply rotated CSRF tokens to future requests
+        # Layer 1: CSRF token rotation — must run on every response.
         original_send = ac.send
 
-        async def _intercepted_send(*args, **kwargs):
+        async def _csrf_rotating_send(*args, **kwargs):
             response = await original_send(*args, **kwargs)
             for header in response.headers.get_list("set-cookie"):
                 if header.lower().startswith("csrf_token="):
@@ -98,7 +218,9 @@ async def async_client(app, prepare_database):
                     ac.headers["X-CSRF-Token"] = new_token
             return response
 
-        ac.send = _intercepted_send
+        # Layer 2: SQL Query Budget Gate — wraps the CSRF-rotating send so
+        # that each GET request is counted and the test fails fast on N+1s.
+        ac.send = _build_budget_send(_csrf_rotating_send)
 
         yield ac
 
@@ -120,10 +242,10 @@ async def root_client(app, prepare_database):
     ) as ac:
         ac.cookies.set("csrf_token", _TEST_CSRF_TOKEN, domain="testserver.local")
 
-        # Intercept responses to automatically apply rotated CSRF tokens to future requests
+        # Layer 1: CSRF token rotation — must run on every response.
         original_send = ac.send
 
-        async def _intercepted_send(*args, **kwargs):
+        async def _csrf_rotating_send(*args, **kwargs):
             response = await original_send(*args, **kwargs)
             for header in response.headers.get_list("set-cookie"):
                 if header.lower().startswith("csrf_token="):
@@ -131,6 +253,7 @@ async def root_client(app, prepare_database):
                     ac.headers["X-CSRF-Token"] = new_token
             return response
 
-        ac.send = _intercepted_send
+        # Layer 2: SQL Query Budget Gate — mirrors the async_client gate.
+        ac.send = _build_budget_send(_csrf_rotating_send)
 
         yield ac

@@ -339,7 +339,7 @@ jobs:
     uses: ./.github/workflows/reusable-go-tests.yml
     with:
       service-directory: ${{ matrix.service }}
-      go-version: "1.26.x"
+      go-version: "1.26.4"
       coverage-threshold: 50
     secrets: inherit
 
@@ -356,7 +356,7 @@ jobs:
 
       - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0
         with:
-          go-version: "1.26.x"
+          go-version: "1.26.4"
           cache-dependency-path: services/ws-hub/go.sum
 
       # PERF-W18-04 (audit 2026-03-23 Wave 18): increased from 30s to 120s for
@@ -386,7 +386,7 @@ jobs:
     uses: ./.github/workflows/reusable-go-integration-tests.yml
     with:
       service-directory: services/ws-hub
-      go-version: "1.26.x"
+      go-version: "1.26.4"
     secrets: inherit
 
   go-integration-file-processor:
@@ -395,7 +395,7 @@ jobs:
     uses: ./.github/workflows/reusable-go-integration-tests.yml
     with:
       service-directory: services/file-processor
-      go-version: "1.26.x"
+      go-version: "1.26.4"
     secrets: inherit
 
   go-integration-gateway:
@@ -404,7 +404,7 @@ jobs:
     uses: ./.github/workflows/reusable-go-integration-tests.yml
     with:
       service-directory: services/gateway
-      go-version: "1.26.x"
+      go-version: "1.26.4"
     secrets: inherit
 
   frontend-tests:
@@ -922,10 +922,10 @@ jobs:
 
       - name: Validate manifests with kubeconform
         run: |
-          cat /tmp/backend-manifests.yaml | \
-            /tmp/kubeconform -strict -summary \
+          /tmp/kubeconform -strict -summary \
             -schema-location default \
-            -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json'
+            -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json' \
+            /tmp/backend-manifests.yaml
 
   # MOD-W15-04 (audit 2026-03-23 Wave 15): Postgres migration gate.
   # Validates alembic upgrade head + downgrade base + upgrade head round-trip
@@ -1010,6 +1010,65 @@ jobs:
         env:
           PACT_DO_NOT_TRACK: "true"
 
+  rust-ffi-asan:
+    # Phase 3 QA — ADR-023: Run PyO3 FFI tests under AddressSanitizer + LeakSanitizer.
+    # Memory errors that cross the Rust/Python boundary are invisible to Python's GC;
+    # ASan instruments every allocation so these classes of bugs fail loudly at CI time.
+    name: "Rust FFI — ASan / LSan"
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    if: |
+      github.event_name == 'push' ||
+      github.event_name == 'pull_request' ||
+      github.event_name == 'workflow_dispatch'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Set up Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: "3.13"
+
+      - name: Install uv
+        run: pip install uv
+
+      - name: Install Python dependencies (with maturin)
+        run: uv sync --group dev
+
+      - name: Cache Cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            native/rust_ext/target/
+          key: ${{ runner.os }}-cargo-asan-${{ hashFiles('native/rust_ext/Cargo.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-asan-
+
+      - name: Install LLVM tools (required for ASan runtime)
+        run: |
+          rustup toolchain install nightly --component rust-src --component llvm-tools --allow-downgrade --no-self-update
+
+      - name: Run FFI tests under ASan / LSan
+        env:
+          ENVIRONMENT: testing
+          DATABASE_URL: "sqlite+aiosqlite:///./test_asan.db"
+          SECRET_KEY: ${{ secrets.CI_TEST_SECRET_KEY }}
+        run: bash scripts/run_asan_tests.sh
+
+      - name: Upload ASan report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: asan-report
+          path: "asan-report.*"
+          if-no-files-found: ignore
+
   ci-success:
     name: CI Success
     runs-on: ubuntu-latest
@@ -1037,6 +1096,7 @@ jobs:
       - contract-tests
       - provenance-check
       - e2e-tests
+      - rust-ffi-asan
     steps:
       - name: Check all jobs passed
         shell: bash
@@ -1046,6 +1106,7 @@ jobs:
           # rate < 1 %. They are intentionally NOT in the blocking results
           # array but ARE reported separately below.
           results=(
+            "${{ needs.pre-commit-check.result }}"
             "${{ needs.compose-validate.result }}"
             "${{ needs.backend-tests.result }}"
             "${{ needs.backend-type-check.result }}"
@@ -1063,6 +1124,7 @@ jobs:
             "${{ needs.contract-tests.result }}"
             "${{ needs.provenance-check.result }}"
             "${{ needs.e2e-tests.result }}"
+            "${{ needs.rust-ffi-asan.result }}"
           )
 
           failed=false

@@ -27,6 +27,7 @@ allow-licenses:
   - Zlib
   - BSL-1.0
   - LicenseRef-scancode-protobuf
+  - LicenseRef-scancode-google-patent-license-golang
 
 allow-ghsas: []
 
@@ -42,6 +43,25 @@ allow-ghsas: []
 # (purl spec, dependency-review-action v4+).
 allow-dependencies-licenses:
   - "pkg:pypi/pact-python"
+  - "pkg:github/actions/cache"
+  - "pkg:github/actions/upload-artifact"
+  - "pkg:golang/github.com/davecgh/go-spew"
+  - "pkg:golang/github.com/kr/pretty"
+  - "pkg:golang/github.com/pmezard/go-difflib"
+  - "pkg:golang/github.com/redis/go-redis/v9"
+  - "pkg:golang/github.com/rogpeppe/go-internal"
+  - "pkg:golang/gopkg.in/check.v1"
+  - "pkg:golang/gopkg.in/yaml.v3"
+  - "pkg:golang/github.com/pelletier/go-toml/v2"
+  - "pkg:golang/github.com/goccy/go-json"
+  - "pkg:golang/github.com/klauspost/cpuid/v2"
+  - "pkg:golang/github.com/spf13/pflag"
+  - "pkg:pypi/diff-cover"
+  - "pkg:pypi/linkify-it-py"
+  - "pkg:pypi/mdit-py-plugins"
+  - "pkg:pypi/mutmut"
+  - "pkg:pypi/textual"
+  - "pkg:pypi/uc-micro-py"
 
 vulnerability-check: true
 license-check: true
