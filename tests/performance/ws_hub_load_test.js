@@ -23,7 +23,7 @@ const WS_URL = __ENV.WS_URL || 'ws://localhost:8083';
 export default function () {
     const vuId = __VU;
     const email = `loadtest_user_${vuId}@example.com`;
-    const password = 'ValidPass123!';
+    const password = 'ValidPass123!'; // pragma: allowlist secret
     const fullName = `LoadTest User ${vuId}`;
 
     const headers = { 'Content-Type': 'application/json' };

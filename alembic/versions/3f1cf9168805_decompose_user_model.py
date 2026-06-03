@@ -208,12 +208,12 @@ def downgrade() -> None:
             if inspector.has_table(table):
                 set_clause = ", ".join(
                     [
-                        f"{f} = (SELECT {f} FROM {table} WHERE {table}.user_id = users.id)"
+                        f"{f} = (SELECT {f} FROM {table} WHERE {table}.user_id = users.id)"  # noqa: S608
                         for f in fields
                     ]
                 )
                 op.execute(
-                    f"UPDATE users SET {set_clause} "
+                    f"UPDATE users SET {set_clause} "  # noqa: S608
                     f"WHERE id IN (SELECT user_id FROM {table})"
                 )
 

@@ -344,6 +344,7 @@ jobs:
           THEME: ${{ matrix.theme }}
           SIDECAR_DIR: .screenshots/wave189-unauthed-smoke-${{ matrix.theme }}
         run: |
+          # shellcheck disable=SC2016
           node -e '
             const fs = require("node:fs");
             const path = require("node:path");

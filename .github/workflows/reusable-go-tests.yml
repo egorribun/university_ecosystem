@@ -72,6 +72,7 @@ jobs:
         id: artifact-name
         shell: bash
         run: |
+          # shellcheck disable=SC1003
           # Sanitize path: replace / and \ with -
           SANITIZED=$(echo "${{ inputs.service-directory }}" | tr '/\\' '-')
           echo "name=go-coverage-$SANITIZED" >> "$GITHUB_OUTPUT"

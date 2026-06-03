@@ -342,6 +342,7 @@ jobs:
         run: |
           # Step 1: Get CSRF cookie. /api/v1/auth/csrf-cookie sets the cookie.
           curl -s -c /tmp/cookies.txt http://127.0.0.1:8000/api/v1/auth/csrf-cookie > /dev/null
+          # shellcheck disable=SC2016  # $7 is an awk positional field ref, not a shell var
           CSRF=$(awk '/csrf_token/ {print $7}' /tmp/cookies.txt)
           if [ -z "$CSRF" ]; then
             echo "::error::Failed to obtain CSRF token from /api/v1/auth/csrf-cookie"
@@ -465,6 +466,7 @@ jobs:
         if: always()
         working-directory: frontend
         run: |
+          # shellcheck disable=SC2016  # ${...} are JS template literals, not shell vars
           node -e '
             const fs = require("node:fs");
             const path = require("node:path");

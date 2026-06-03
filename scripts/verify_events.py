@@ -38,7 +38,7 @@ async def verify_event_capture():
         test_email = f"test_{uuid.uuid4().hex[:8]}@example.com"
         user = User(
             email=test_email,
-            hashed_password="hashed_password",  # pragma: allowlist secret
+            hashed_password="hashed_password",  # pragma: allowlist secret  # noqa: S106
             profile={"full_name": "Event Test User"},
             is_active=True,
         )

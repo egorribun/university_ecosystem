@@ -61,14 +61,16 @@ jobs:
 
       - name: Deploy Application (Helm)
         run: |
-          NAMESPACE="pr-${{ github.event.number }}"
+          # NAMESPACE="pr-${{ github.event.number }}"
           # helm upgrade --install university-ecosystem charts/university-ecosystem \
           #   --namespace $NAMESPACE \
           #   --set frontend.ingress.host="pr-${{ github.event.number }}.dev.university.ru" \
           #   --set gateway.config.jwtSecret="${{ secrets.JWT_SECRET }}"
 
       - name: OWASP ZAP Baseline Scan
-        if: ${{ secrets.KUBECONFIG != '' }}
+        env:
+          KUBECONFIG: ${{ secrets.KUBECONFIG }}
+        if: ${{ env.KUBECONFIG != '' }}
         uses: zaproxy/action-baseline@v0.14.0
         with:
           token: ${{ secrets.GITHUB_TOKEN }}

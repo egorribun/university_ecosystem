@@ -9,9 +9,12 @@ ERROR_BUDGET = 0
 def main():
     print(f"Checking Mypy error budget (Budget: {ERROR_BUDGET})...")
 
+    import shutil
+
+    uv_path = shutil.which("uv") or "uv"
     # Run mypy on the app directory
-    result = subprocess.run(
-        ["uv", "run", "mypy", "app", "--no-error-summary", "--hide-error-context"],
+    result = subprocess.run(  # noqa: S603  # trusted static args, no shell=True
+        [uv_path, "run", "mypy", "app", "--no-error-summary", "--hide-error-context"],
         capture_output=True,
         text=True,
         encoding="utf-8",

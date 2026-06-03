@@ -71,7 +71,8 @@ def ensure_partitioned(table_name: str, create_sql: str, partition_key: str) -> 
 
     # Check if table is already partitioned
     res = conn.execute(
-        sa.text(f"SELECT relkind FROM pg_class WHERE relname = '{table_name}'")
+        sa.text("SELECT relkind FROM pg_class WHERE relname = :table_name"),
+        {"table_name": table_name},
     ).fetchone()
 
     if res and res[0] == "p":  # 'p' means partitioned table
@@ -92,7 +93,7 @@ def ensure_partitioned(table_name: str, create_sql: str, partition_key: str) -> 
     columns = [c["name"] for c in inspector.get_columns(f"{table_name}_old")]
     cols_str = ", ".join(columns)
     op.execute(
-        f"INSERT INTO {table_name} ({cols_str}) SELECT {cols_str} FROM {table_name}_old"
+        f"INSERT INTO {table_name} ({cols_str}) SELECT {cols_str} FROM {table_name}_old"  # noqa: S608
     )
     op.execute(f"DROP TABLE {table_name}_old")
 
@@ -874,32 +875,39 @@ def upgrade() -> None:
             batch_op.f("ix_notification_deliveries_status"), ["status"], unique=False
         )
 
-    assert inspector is not None
-    existing_constraints = {
-        c["name"] for c in inspector.get_unique_constraints("active_sessions")
-    }
-
-    with safe_batch_alter_table("active_sessions", schema=None) as batch_op:
-        batch_op.alter_column("signing_key", existing_type=sa.VARCHAR(), nullable=False)
-        batch_op.drop_index(batch_op.f("ix_active_sessions_user_last_seen"))
-        if "uq_active_sessions_jti" in existing_constraints:
-            batch_op.drop_constraint(
-                batch_op.f("uq_active_sessions_jti"), type_="unique"
-            )
-
-    assert inspector is not None
-    if inspector.has_table("failed_login_attempts"):
-        existing_failed_login_indexes = {
-            i["name"] for i in inspector.get_indexes("failed_login_attempts")
+    if inspector is not None:
+        existing_constraints = {
+            c["name"] for c in inspector.get_unique_constraints("active_sessions")
         }
 
-        with safe_batch_alter_table("failed_login_attempts", schema=None) as batch_op:
-            if "ix_failed_login_attempts_user_id" not in existing_failed_login_indexes:
-                batch_op.create_index(
-                    batch_op.f("ix_failed_login_attempts_user_id"),
-                    ["user_id"],
-                    unique=False,
+        with safe_batch_alter_table("active_sessions", schema=None) as batch_op:
+            batch_op.alter_column(
+                "signing_key", existing_type=sa.VARCHAR(), nullable=False
+            )
+            batch_op.drop_index(batch_op.f("ix_active_sessions_user_last_seen"))
+            if "uq_active_sessions_jti" in existing_constraints:
+                batch_op.drop_constraint(
+                    batch_op.f("uq_active_sessions_jti"), type_="unique"
                 )
+
+    if inspector is not None:
+        if inspector.has_table("failed_login_attempts"):
+            existing_failed_login_indexes = {
+                i["name"] for i in inspector.get_indexes("failed_login_attempts")
+            }
+
+            with safe_batch_alter_table(
+                "failed_login_attempts", schema=None
+            ) as batch_op:
+                if (
+                    "ix_failed_login_attempts_user_id"
+                    not in existing_failed_login_indexes
+                ):
+                    batch_op.create_index(
+                        batch_op.f("ix_failed_login_attempts_user_id"),
+                        ["user_id"],
+                        unique=False,
+                    )
 
     if inspector.has_table("mfa_challenges"):
         existing_mfa_indexes = {

@@ -118,7 +118,7 @@ jobs:
             DURATION=$((END - START))
             echo "Build $i duration: ${DURATION}s"
 
-            INDEX_FILE=$(ls dist/client/assets/index-*.js | head -1)
+            INDEX_FILE=$(find dist/client/assets -name "index-*.js" | head -1)
             INDEX_HASH=$(sha256sum "$INDEX_FILE" | awk '{print $1}')
             SHELL_HASH=$(sha256sum dist/client/_shell.html | awk '{print $1}')
             SW_HASH=$(sha256sum dist/client/sw.js | awk '{print $1}')
@@ -129,12 +129,12 @@ jobs:
             SW_SIZE=$(stat -c %s dist/client/sw.js)
             SERVER_SIZE=$(stat -c %s dist/server/server.js)
 
-            INDEX_HASHES[$i]="$INDEX_HASH"
-            SHELL_HASHES[$i]="$SHELL_HASH"
-            SW_HASHES[$i]="$SW_HASH"
-            SERVER_HASHES[$i]="$SERVER_HASH"
+            INDEX_HASHES[i]="$INDEX_HASH"
+            SHELL_HASHES[i]="$SHELL_HASH"
+            SW_HASHES[i]="$SW_HASH"
+            SERVER_HASHES[i]="$SERVER_HASH"
 
-            echo "Run $i: index-$(basename $INDEX_FILE) ($INDEX_SIZE bytes) sha256=${INDEX_HASH:0:16}..."
+            echo "Run $i: index-$(basename "$INDEX_FILE") ($INDEX_SIZE bytes) sha256=${INDEX_HASH:0:16}..."
             echo "Run $i: _shell.html ($SHELL_SIZE bytes) sha256=${SHELL_HASH:0:16}..."
             echo "Run $i: sw.js ($SW_SIZE bytes) sha256=${SW_HASH:0:16}..."
             echo "Run $i: server.js ($SERVER_SIZE bytes) sha256=${SERVER_HASH:0:16}..."

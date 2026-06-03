@@ -614,7 +614,7 @@ async def test_redis_cache_close_no_client() -> None:
 def test_sanitize_path_exact_base_allowed() -> None:
     from pathlib import Path
 
-    base = Path("/tmp/base")
+    base = Path("/safe/base")
     # Resolving the base dir itself is allowed
     result = sanitize_path("", base)
     # base / "" resolves to base itself → allowed
@@ -624,6 +624,6 @@ def test_sanitize_path_exact_base_allowed() -> None:
 def test_sanitize_path_windows_abs_blocked() -> None:
     from pathlib import Path
 
-    base = Path("/tmp/base")
+    base = Path("/safe/base")
     result = sanitize_path("/absolute/escape", base)
     assert result is None

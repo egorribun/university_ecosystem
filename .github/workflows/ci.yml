@@ -922,10 +922,10 @@ jobs:
 
       - name: Validate manifests with kubeconform
         run: |
-          cat /tmp/backend-manifests.yaml | \
-            /tmp/kubeconform -strict -summary \
+          /tmp/kubeconform -strict -summary \
             -schema-location default \
-            -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json'
+            -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json' \
+            /tmp/backend-manifests.yaml
 
   # MOD-W15-04 (audit 2026-03-23 Wave 15): Postgres migration gate.
   # Validates alembic upgrade head + downgrade base + upgrade head round-trip

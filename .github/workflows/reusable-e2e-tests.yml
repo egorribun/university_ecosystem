@@ -111,7 +111,7 @@ jobs:
         working-directory: frontend
         env:
           BROWSER: ${{ inputs.browser }}
-        run: npx playwright install --with-deps $BROWSER
+        run: npx playwright install --with-deps "$BROWSER"
 
       - name: Run database migrations
         run: uv run alembic upgrade head
@@ -148,8 +148,8 @@ jobs:
             BASE_URL="http://127.0.0.1:5173"
           fi
 
-          npx playwright test $TEST_PATTERN \
-            --project=$BROWSER \
+          npx playwright test "$TEST_PATTERN" \
+            --project="$BROWSER" \
             --reporter=html
 
       # Wave 122 SW3: cross-env URL_STATE_E2E auto-managed mode.
@@ -225,7 +225,7 @@ jobs:
         if: always()
         run: |
           if [[ -n "$BACKEND_PID" ]]; then
-            kill $BACKEND_PID || true
+            kill "$BACKEND_PID" || true
           fi
 
       - name: Upload Playwright report

@@ -175,6 +175,7 @@ jobs:
       - name: Print summary table
         if: always()
         run: |
+          # shellcheck disable=SC2016  # ${...} are JS template literals, not shell vars
           node -e '
             const fs = require("node:fs");
             const path = require("node:path");

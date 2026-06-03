@@ -43,8 +43,8 @@ def upgrade() -> None:
 
     op.execute(
         sa.text(
-            f"""
-            UPDATE {_TABLE_NAME}
+            """
+            UPDATE mfa_totp_enrollments
             SET is_active = FALSE
             WHERE confirmed_at IS NULL AND is_active = TRUE
             """
@@ -64,8 +64,8 @@ def downgrade() -> None:
 
     op.execute(
         sa.text(
-            f"""
-            UPDATE {_TABLE_NAME}
+            """
+            UPDATE mfa_totp_enrollments
             SET is_active = TRUE
             WHERE confirmed_at IS NULL AND is_active = FALSE
             """
