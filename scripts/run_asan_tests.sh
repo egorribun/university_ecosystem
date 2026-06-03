@@ -53,8 +53,9 @@ echo "==> [ASan] Rebuilding rust_ext under ASan (nightly, force-reinstall)..."
 (
   cd "${RUST_EXT_DIR}"
   RUSTUP_TOOLCHAIN=nightly \
-  RUSTFLAGS="-Zsanitizer=address -Zbuild-std=std,panic_abort" \
-    uv run maturin develop --release
+  RUSTFLAGS="-Zsanitizer=address" \
+    uv run maturin develop --release \
+      --cargo-extra-args="-Zbuild-std=std,panic_abort"
 )
 
 # ── Step 3: Locate the ASan runtime shared library ───────────────────────────
@@ -82,7 +83,7 @@ done
 
 if [[ -z "${ASAN_LIB}" ]]; then
   echo "ERROR: Could not locate ASan runtime library under Rust sysroot '${RUST_SYSROOT}'."
-  echo "       Try: rustup component add llvm-tools-preview --toolchain nightly"
+  echo "       Try: rustup component add llvm-tools --toolchain nightly"
   exit 1
 fi
 
