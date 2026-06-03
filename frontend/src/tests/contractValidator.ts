@@ -195,6 +195,7 @@ function _matchOpenApiPath(concretePath: string, spec: OpenApiDocument): string 
 
     // derived from the OpenAPI spec (build-time snapshot), not user input.
     // All special characters are escaped above before substituting {param} slots.
+    // eslint-disable-next-line security/detect-non-literal-regexp
     const regex = new RegExp(`^${pattern}$`, "u")
 
     if (regex.test(concretePath)) {
