@@ -36,3 +36,7 @@ public/sw.js
 # `.wave136-trace/` pattern — file stays local for forensic reference but
 # bypasses prettier scope):
 .wave136-trace/
+
+# MSW auto-generated mock handlers and wrappers
+src/tests/mocks/generated/
+
