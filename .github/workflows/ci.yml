@@ -1036,7 +1036,7 @@ jobs:
         run: pip install uv
 
       - name: Install Python dependencies (with maturin)
-        run: uv sync --extra dev
+        run: uv sync --group dev
 
       - name: Cache Cargo registry
         uses: actions/cache@v4
