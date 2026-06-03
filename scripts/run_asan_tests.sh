@@ -110,6 +110,7 @@ fi
 
 LD_PRELOAD="${ASAN_LIB}" \
 ASAN_OPTIONS="${ASAN_LOG_OPT}detect_leaks=1:detect_odr_violation=0:abort_on_error=1" \
+LSAN_OPTIONS="suppressions=${REPO_ROOT}/tests/lsan_suppressions.txt" \
   uv run pytest \
     tests/test_smoke_rust_audit.py \
     tests/test_smoke_rust_partitions.py \
@@ -118,3 +119,4 @@ ASAN_OPTIONS="${ASAN_LOG_OPT}detect_leaks=1:detect_odr_violation=0:abort_on_erro
     --tb=short
 
 echo "==> [ASan] All FFI tests passed — no memory errors or leaks detected."
+
