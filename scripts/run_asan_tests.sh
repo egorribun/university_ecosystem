@@ -40,21 +40,24 @@ echo "==> [ASan] Installing Rust nightly toolchain and rust-src component..."
 rustup toolchain install nightly --component rust-src --allow-downgrade --no-self-update
 rustup override set nightly --path "${RUST_EXT_DIR}"
 
-# ── Step 2: Rebuild rust_ext with ASan instrumentation ───────────────────────
+# ── Step 2: Locate target and rebuild rust_ext with ASan instrumentation ──────
 #
-# RUSTFLAGS=-Zsanitizer=address instructs rustc to instrument every memory
-# access.  We also pass -Zbuild-std=std,panic_abort so the sanitizer can
-# trace through std internals without false positives.
-#
-# maturin develop builds a .so that is importable from the current Python env.
-# We force-reinstall so that any previously cached non-instrumented build is
-# replaced immediately.
+# We detect the target triple to set target-specific RUSTFLAGS. This prevents
+# RUSTFLAGS=-Zsanitizer=address from applying to host builds (such as proc-macros
+# like pyo3-macros and indoc), which would fail to load in the unsanitized compiler.
+# We also pass --target to force Cargo to treat host and target separately.
+echo "==> [ASan] Detecting target triple..."
+RUST_SYSROOT="$(rustup run nightly rustc --print sysroot)"
+HOST_TRIPLE="$(rustup run nightly rustc -vV | grep "^host:" | awk '{print $2}')"
+
 echo "==> [ASan] Rebuilding rust_ext under ASan (nightly, force-reinstall)..."
 (
   cd "${RUST_EXT_DIR}"
-  RUSTUP_TOOLCHAIN=nightly \
-  RUSTFLAGS="-Zsanitizer=address" \
-    uv run maturin develop --release -- -Zbuild-std=std,panic_abort
+  unset RUSTFLAGS
+  RUSTUP_TOOLCHAIN=nightly
+  TRIPLE_UPPER="$(echo "${HOST_TRIPLE}" | tr '-' '_' | tr '[:lower:]' '[:upper:]')"
+  export "CARGO_TARGET_${TRIPLE_UPPER}_RUSTFLAGS=-Zsanitizer=address"
+  uv run maturin develop --release --target "${HOST_TRIPLE}" -Zbuild-std=std,panic_abort
 )
 
 # ── Step 3: Locate the ASan runtime shared library ───────────────────────────
@@ -64,8 +67,6 @@ echo "==> [ASan] Rebuilding rust_ext under ASan (nightly, force-reinstall)..."
 # its exact path depends on the host architecture and Rust version.
 echo "==> [ASan] Locating ASan runtime library..."
 
-RUST_SYSROOT="$(rustup run nightly rustc --print sysroot)"
-HOST_TRIPLE="$(rustup run nightly rustc -vV | grep "^host:" | awk '{print $2}')"
 
 # Prefer libclang_rt.asan-<arch>.so (LLVM layout) then fall back to
 # libclang_rt.asan.so and libasan.so (GCC layout).
