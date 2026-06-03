@@ -1052,7 +1052,7 @@ jobs:
 
       - name: Install LLVM tools (required for ASan runtime)
         run: |
-          rustup toolchain install nightly --component rust-src llvm-tools-preview --allow-downgrade --no-self-update
+          rustup toolchain install nightly --component rust-src --component llvm-tools --allow-downgrade --no-self-update
 
       - name: Run FFI tests under ASan / LSan
         env:
