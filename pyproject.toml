@@ -479,12 +479,15 @@ skips = [
 ]
 
 [tool.mutmut]
-# mutmut 3.x config keys. The 2.x keys (paths_to_mutate / backup / runner /
-# tests_dir / dict_synonyms) were removed in the 3.0 rewrite. mutmut 3.x
-# auto-detects pytest; `source_paths` defines the mutation universe and
-# `pytest_add_cli_args_test_selection` scopes the test run. Incremental file
+# mutmut 3.5.0 config (read from [tool.mutmut] in pyproject by config_reader()).
+# The installed 3.5.0 reads `paths_to_mutate` (a LIST — load_config() iterates the
+# value, so a bare string would be split char-by-char) to locate the mutation
+# universe; without it mutmut falls back to guess_paths_to_mutate(), which does
+# NOT try app/ and raises FileNotFoundError ("Could not figure out where the code
+# to mutate is"). `source_paths` is a newer/unreleased key NOT recognized by 3.5.0.
+# `pytest_add_cli_args_test_selection` scopes the pytest run. Incremental file
 # selection is done positionally via dotted-module glob patterns at the CLI
-# (see .github/workflows/ci.yml mutation-tests job).
-source_paths = ["app/"]
+# (see .github/workflows/ci.yml mutation-tests job) — those filter within this universe.
+paths_to_mutate = ["app/"]
 pytest_add_cli_args_test_selection = ["tests/"]
 

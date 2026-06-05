@@ -458,20 +458,20 @@ func TestValidate_RejectsRS256TokenWhenHS256Configured(t *testing.T) {
 
 func TestExtractAlgFromHeader(t *testing.T) {
 	t.Run("valid RS256 token", func(t *testing.T) {
-		tokenString := "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiYWRtaW4iOnRydWV9.signature"
+		tokenString := "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiYWRtaW4iOnRydWV9.signature" //nolint:gosec // G101 JWT header/payload test fixture, not a real credential // pragma: allowlist secret
 		alg, err := extractAlgFromHeader(tokenString)
 		require.NoError(t, err)
 		assert.Equal(t, "RS256", alg)
 	})
 
 	t.Run("missing alg", func(t *testing.T) {
-		tokenString := "eyJ0eXAiOiJKV1QifQ.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiYWRtaW4iOnRydWV9.signature"
+		tokenString := "eyJ0eXAiOiJKV1QifQ.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiYWRtaW4iOnRydWV9.signature" //nolint:gosec // G101 JWT header/payload test fixture, not a real credential // pragma: allowlist secret
 		_, err := extractAlgFromHeader(tokenString)
 		require.Error(t, err)
 	})
 
 	t.Run("malformed base64", func(t *testing.T) {
-		tokenString := "invalid!!!.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiYWRtaW4iOnRydWV9.signature"
+		tokenString := "invalid!!!.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiYWRtaW4iOnRydWV9.signature" //nolint:gosec // G101: malformed JWT test fixture, not a real credential
 		_, err := extractAlgFromHeader(tokenString)
 		require.Error(t, err)
 	})
@@ -549,4 +549,3 @@ func TestJWKSRefresher(t *testing.T) {
 
 	assert.NotNil(t, m.rsaPublicKey.Load())
 }
-
