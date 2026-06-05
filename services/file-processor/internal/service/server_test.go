@@ -157,4 +157,3 @@ func TestProcessFile_TemporalError(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to start workflow")
 }
-

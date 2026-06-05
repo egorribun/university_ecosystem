@@ -345,7 +345,7 @@ func TestHandleWebSocket_Errors(t *testing.T) {
 	})
 
 	t.Run("redis nil error", func(t *testing.T) {
-		validTicket := "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2"
+		validTicket := "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2" // pragma: allowlist secret
 		rec := httptest.NewRecorder()
 		req := httptest.NewRequest(http.MethodGet, "/ws?ticket="+validTicket, nil)
 		h.redisClient = nil
@@ -374,7 +374,7 @@ func TestValidateToken(t *testing.T) {
 	})
 
 	t.Run("HS256 success", func(t *testing.T) {
-		secret := "my-secret-key"
+		secret := "my-secret-key" // pragma: allowlist secret
 		token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
 			"sub": "user-123",
 			"exp": time.Now().Add(time.Hour).Unix(),
@@ -398,5 +398,3 @@ func TestValidateToken(t *testing.T) {
 		assert.Error(t, err)
 	})
 }
-
-

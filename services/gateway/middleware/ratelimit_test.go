@@ -223,4 +223,3 @@ func TestRateLimiter_Middleware_InMemoryFallbackOnRedisError(t *testing.T) {
 	router.ServeHTTP(w3, req3)
 	assert.Equal(t, http.StatusTooManyRequests, w3.Code)
 }
-

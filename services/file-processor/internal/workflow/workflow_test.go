@@ -164,9 +164,9 @@ func TestEncodeImage_Formats(t *testing.T) {
 		{"jpeg", "jpeg"},
 		{"jpg", "jpg"},
 		{"png", "png"},
-		{"webp", "png"},                  // transcode webp -> png
-		{"gif", "jpeg"},                   // fallback to jpeg
-		{"unknown-format", "jpeg"},        // fallback to jpeg
+		{"webp", "png"},            // transcode webp -> png
+		{"gif", "jpeg"},            // fallback to jpeg
+		{"unknown-format", "jpeg"}, // fallback to jpeg
 	}
 
 	for _, tc := range cases {
@@ -211,5 +211,3 @@ func TestBuildMinIOClient(t *testing.T) {
 	require.NoError(t, err)
 	assert.NotNil(t, client)
 }
-
-

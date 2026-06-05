@@ -533,7 +533,7 @@ func TestJWKSRefresher(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write(jwksBytes)
+		_, _ = w.Write(jwksBytes) //nolint:errcheck // test JWKS handler; write to httptest server cannot fail
 	}))
 	defer server.Close()
 
