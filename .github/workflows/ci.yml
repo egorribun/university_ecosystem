@@ -283,9 +283,10 @@ jobs:
       test-group-name: "All-${{ matrix.name }}"
       test-pattern: "tests/"
       python-version: ${{ matrix.python-version }}
-      # Ratchet floor at measured reality (hermetic ~82.2%); raise incrementally
+      # Ratchet floor at measured reality (local hermetic ~83.1% after the W211
+      # coverage climb; CI Linux+integration measures higher). Raise incrementally
       # as the backend coverage campaign lands. Unified with pyproject/Makefile.
-      coverage-threshold: ${{ matrix.coverage-check && 82 || 0 }}
+      coverage-threshold: ${{ matrix.coverage-check && 83 || 0 }}
       run-integration-tests: ${{ matrix.run-integration }}
       parallel-workers: 0 # LOW-W19: 0 = auto-detect workers via pytest-xdist (-n auto)
       python-gil: ${{ matrix.free-threading && '0' || '1' }}  # MOD-24-03
