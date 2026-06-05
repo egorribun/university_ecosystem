@@ -117,24 +117,29 @@ async def test_list_logs_filters_pagination_and_limit_cap(audit_repo, user_facto
 async def test_prune_logs_deletes_only_older_than_cutoff(audit_repo, user_factory):
     ua = await user_factory()
     now = datetime.now(UTC)
+    # NOTE: data_access_logs is RANGE-partitioned by created_at on PostgreSQL
+    # (postgresql_partition_by on the model). Inserts must land in an existing
+    # partition, so keep all timestamps within a recent window (~minutes) — a
+    # days-ago row would raise CheckViolationError ("no partition found") on the
+    # CI integration tier even though SQLite (flat table) accepts it.
     await audit_repo.batch_create(
         [
             {
                 "actor_user_id": ua.id,
                 "resource_type": "user",
                 "action": "old",
-                "created_at": now - timedelta(days=40),
+                "created_at": now - timedelta(minutes=90),
             },
             {
                 "actor_user_id": ua.id,
                 "resource_type": "user",
                 "action": "new",
-                "created_at": now - timedelta(days=1),
+                "created_at": now - timedelta(minutes=10),
             },
         ]
     )
 
-    deleted = await audit_repo.prune_logs(now - timedelta(days=30))
+    deleted = await audit_repo.prune_logs(now - timedelta(minutes=60))
     assert deleted == 1
 
     remaining = await audit_repo.list_logs(actor_id=ua.id)
