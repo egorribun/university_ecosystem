@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect, beforeEach, vi } from "vitest"
-import { act } from "@testing-library/react"
+import { act, renderHook } from "@testing-library/react"
 import type { PendingMfaState, UserState } from "@/types/Auth"
 
 // Mock localStorage
@@ -323,5 +323,131 @@ describe("useAuthStore", () => {
       useAuthStore.getState().setAuthOperation(true)
     })
     expect(useAuthStore.getState().authOperation).toBe(true)
+  })
+})
+
+describe("store selector hooks and remaining actions", () => {
+  beforeEach(() => {
+    localStorageMock.clear()
+    vi.resetModules()
+  })
+
+  it("appShell: setSidebarCollapsed and toggleMobileDrawer", async () => {
+    const { useAppShellStore } = await import("../appShellStore")
+
+    act(() => {
+      useAppShellStore.getState().setSidebarCollapsed(true)
+    })
+    expect(useAppShellStore.getState().sidebarCollapsed).toBe(true)
+
+    act(() => {
+      useAppShellStore.getState().toggleMobileDrawer()
+    })
+    expect(useAppShellStore.getState().mobileDrawerOpen).toBe(true)
+
+    act(() => {
+      useAppShellStore.getState().toggleMobileDrawer()
+    })
+    expect(useAppShellStore.getState().mobileDrawerOpen).toBe(false)
+  })
+
+  it("appShell: selector hooks reflect store state", async () => {
+    const mod = await import("../appShellStore")
+
+    expect(renderHook(() => mod.useSidebarCollapsed()).result.current).toBe(false)
+    expect(renderHook(() => mod.useMobileDrawerOpen()).result.current).toBe(false)
+    expect(renderHook(() => mod.useThemeMode()).result.current).toBe("system")
+
+    const { result } = renderHook(() => mod.useAppShellActions())
+    expect(typeof result.current.toggleSidebar).toBe("function")
+    act(() => {
+      result.current.setThemeMode("dark")
+    })
+    expect(mod.useAppShellStore.getState().themeMode).toBe("dark")
+  })
+
+  it("notification: setAllTopics, clearToasts, and addToast defaults", async () => {
+    const { useNotificationStore } = await import("../notificationStore")
+
+    act(() => {
+      useNotificationStore.getState().setAllTopics({
+        schedule: false,
+        news: false,
+        events: false,
+        system: false,
+      })
+    })
+    expect(useNotificationStore.getState().topics.schedule).toBe(false)
+
+    act(() => {
+      useNotificationStore.getState().addToast("default toast")
+    })
+    const toast = useNotificationStore.getState().toasts[0]!
+    expect(toast.severity).toBe("info") // default severity
+    expect(toast.duration).toBe(5000) // default duration
+
+    act(() => {
+      useNotificationStore.getState().addToast("second")
+      useNotificationStore.getState().clearToasts()
+    })
+    expect(useNotificationStore.getState().toasts).toHaveLength(0)
+  })
+
+  it("notification: selector hooks reflect store state", async () => {
+    const mod = await import("../notificationStore")
+
+    expect(renderHook(() => mod.useNotificationTopics()).result.current.schedule).toBe(true)
+    expect(renderHook(() => mod.useNotificationPermission()).result.current).toBe("default")
+    expect(renderHook(() => mod.useToasts()).result.current).toEqual([])
+
+    const { result } = renderHook(() => mod.useNotificationActions())
+    expect(typeof result.current.addToast).toBe("function")
+  })
+
+  it("scheduleUI: setWeekOffset, setHiddenWeekdays, resetPreferences", async () => {
+    const { useScheduleUIStore } = await import("../scheduleUIStore")
+
+    act(() => {
+      useScheduleUIStore.getState().setWeekOffset(5)
+      useScheduleUIStore.getState().setHiddenWeekdays([1, 2])
+    })
+    expect(useScheduleUIStore.getState().weekOffset).toBe(5)
+    expect(useScheduleUIStore.getState().hiddenWeekdays).toEqual([1, 2])
+
+    act(() => {
+      useScheduleUIStore.getState().resetPreferences()
+    })
+    expect(useScheduleUIStore.getState().weekOffset).toBe(0)
+    expect(useScheduleUIStore.getState().hiddenWeekdays).toEqual([])
+  })
+
+  it("scheduleUI: selector hooks reflect store state", async () => {
+    const mod = await import("../scheduleUIStore")
+
+    expect(renderHook(() => mod.useWeekOffset()).result.current).toBe(0)
+    expect(renderHook(() => mod.useViewMode()).result.current).toBe("week")
+    expect(renderHook(() => mod.useHiddenWeekdays()).result.current).toEqual([])
+    expect(
+      renderHook(() => mod.useScheduleDisplayPreferences()).result.current.showPastLessons
+    ).toBe(true)
+
+    const { result } = renderHook(() => mod.useScheduleUIActions())
+    expect(typeof result.current.nextWeek).toBe("function")
+  })
+
+  it("auth: selector hooks reflect store state", async () => {
+    const mod = await import("../useAuthStore")
+
+    expect(renderHook(() => mod.useAuthUser()).result.current).toBeNull()
+    expect(renderHook(() => mod.useAuthLoading()).result.current).toBe(true)
+    expect(renderHook(() => mod.useAuthPendingMfa()).result.current).toBeNull()
+    expect(renderHook(() => mod.useAuthOperation()).result.current).toBe(false)
+
+    const { result } = renderHook(() => mod.useAuthActions())
+    expect(typeof result.current.setUser).toBe("function")
+    act(() => {
+      result.current.setLoading(false)
+    })
+    expect(mod.useAuthStore.getState().loading).toBe(false)
   })
 })
