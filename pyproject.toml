@@ -490,4 +490,12 @@ skips = [
 # (see .github/workflows/ci.yml mutation-tests job) — those filter within this universe.
 paths_to_mutate = ["app/"]
 pytest_add_cli_args_test_selection = ["tests/"]
+# mutmut runs the baseline/stats suite inside an isolated `mutants/` copy that
+# contains only paths_to_mutate + also_copy (tests/, pyproject, pytest.ini, ...).
+# tests/test_migrations_runtime.py reads alembic's ScriptDirectory from the
+# alembic/ scripts folder, which is NOT copied → baseline fails with "Path
+# doesn't exist: mutants/alembic" → "failed to collect stats". That test checks
+# alembic head convergence (infra), not app/ source logic, so it provides zero
+# mutation-killing signal — exclude it from the mutation run.
+pytest_add_cli_args = ["--ignore=tests/test_migrations_runtime.py"]
 
