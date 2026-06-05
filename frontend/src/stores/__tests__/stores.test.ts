@@ -4,6 +4,7 @@
 
 import { describe, it, expect, beforeEach, vi } from "vitest"
 import { act } from "@testing-library/react"
+import type { PendingMfaState, UserState } from "@/types/Auth"
 
 // Mock localStorage
 const localStorageMock = (() => {
@@ -276,7 +277,11 @@ describe("useAuthStore", () => {
   it("should update user state with direct value or updater function", async () => {
     const { useAuthStore } = await import("../useAuthStore")
 
-    const mockUser = { id: "user-123", email: "user@example.com", name: "User" } as any
+    const mockUser = {
+      id: "user-123",
+      email: "user@example.com",
+      name: "User",
+    } as unknown as UserState
 
     act(() => {
       useAuthStore.getState().setUser(mockUser)
@@ -284,7 +289,9 @@ describe("useAuthStore", () => {
     expect(useAuthStore.getState().user).toEqual(mockUser)
 
     act(() => {
-      useAuthStore.getState().setUser((prev: any) => ({ ...prev, name: "Updated Name" }))
+      useAuthStore
+        .getState()
+        .setUser((prev) => ({ ...(prev as object), name: "Updated Name" }) as unknown as UserState)
     })
     expect(useAuthStore.getState().user).toEqual({ ...mockUser, name: "Updated Name" })
   })
@@ -301,7 +308,7 @@ describe("useAuthStore", () => {
   it("should update pending MFA state", async () => {
     const { useAuthStore } = await import("../useAuthStore")
 
-    const mockMfa = { ticket: "mfa-ticket", methods: [] } as any
+    const mockMfa = { ticket: "mfa-ticket", methods: [] } as unknown as PendingMfaState
 
     act(() => {
       useAuthStore.getState().setPendingMfa(mockMfa)
@@ -318,4 +325,3 @@ describe("useAuthStore", () => {
     expect(useAuthStore.getState().authOperation).toBe(true)
   })
 })
-
