@@ -2,19 +2,56 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"net"
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/assert"
 )
 
+// respondRESP writes a canned RESP reply for the given uppercased request
+// fragment, covering only the commands uni-cli exercises. Extracted from the
+// accept loop to keep setupMockRedisServer under the cognitive-complexity gate.
+func respondRESP(write func(string), upperPart string) {
+	switch {
+	case strings.Contains(upperPart, "HELLO"):
+		write("-ERR unknown command 'HELLO'\r\n")
+	case strings.Contains(upperPart, "CLIENT"):
+		write("-ERR unknown command 'CLIENT'\r\n")
+	case strings.Contains(upperPart, "PING"):
+		write("+PONG\r\n")
+	case strings.Contains(upperPart, "INFO"):
+		if strings.Contains(upperPart, "STATS") {
+			s := "# Stats\r\ntotal_connections:42\r\n"
+			write(fmt.Sprintf("$%d\r\n%s\r\n", len(s), s))
+		} else {
+			s := "# Memory\r\nused_memory_human:10.5M\r\n"
+			write(fmt.Sprintf("$%d\r\n%s\r\n", len(s), s))
+		}
+	case strings.Contains(upperPart, "KEYS"):
+		if strings.Contains(upperPart, "NONEXISTENT") {
+			write("*0\r\n")
+		} else {
+			write("*2\r\n$11\r\ncache:key_1\r\n$11\r\ncache:key_2\r\n")
+		}
+	case strings.Contains(upperPart, "DEL"):
+		write(":2\r\n")
+	case strings.Contains(upperPart, "DBSIZE"):
+		write(":5\r\n")
+	default:
+		write("+OK\r\n")
+	}
+}
+
 // Setup mock RESP server to simulate Redis without external dependencies.
 func setupMockRedisServer(t *testing.T) (string, func()) {
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	var lc net.ListenConfig
+	ln, err := lc.Listen(context.Background(), "tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("failed to start mock redis server: %v", err)
 	}
@@ -26,50 +63,20 @@ func setupMockRedisServer(t *testing.T) (string, func()) {
 				return
 			}
 			go func(c net.Conn) {
-				defer c.Close()
+				defer func() { _ = c.Close() }()                      //nolint:errcheck // mock server cleanup
+				write := func(s string) { _, _ = c.Write([]byte(s)) } //nolint:errcheck // mock server best-effort write
 				buf := make([]byte, 2048)
 				for {
 					n, err := c.Read(buf)
 					if err != nil {
 						return
 					}
-					req := string(buf[:n])
-					
-					// Split pipelined RESP commands (each starts with '*')
-					parts := strings.Split(req, "*")
-					for _, part := range parts {
+					// Split pipelined RESP commands (each starts with '*').
+					for _, part := range strings.Split(string(buf[:n]), "*") {
 						if part == "" {
 							continue
 						}
-						upperPart := strings.ToUpper(part)
-						
-						if strings.Contains(upperPart, "HELLO") {
-							c.Write([]byte("-ERR unknown command 'HELLO'\r\n"))
-						} else if strings.Contains(upperPart, "CLIENT") {
-							c.Write([]byte("-ERR unknown command 'CLIENT'\r\n"))
-						} else if strings.Contains(upperPart, "PING") {
-							c.Write([]byte("+PONG\r\n"))
-						} else if strings.Contains(upperPart, "INFO") {
-							if strings.Contains(upperPart, "STATS") {
-								s := "# Stats\r\ntotal_connections:42\r\n"
-								c.Write([]byte(fmt.Sprintf("$%d\r\n%s\r\n", len(s), s)))
-							} else {
-								s := "# Memory\r\nused_memory_human:10.5M\r\n"
-								c.Write([]byte(fmt.Sprintf("$%d\r\n%s\r\n", len(s), s)))
-							}
-						} else if strings.Contains(upperPart, "KEYS") {
-							if strings.Contains(upperPart, "NONEXISTENT") {
-								c.Write([]byte("*0\r\n"))
-							} else {
-								c.Write([]byte("*2\r\n$11\r\ncache:key_1\r\n$11\r\ncache:key_2\r\n"))
-							}
-						} else if strings.Contains(upperPart, "DEL") {
-							c.Write([]byte(":2\r\n"))
-						} else if strings.Contains(upperPart, "DBSIZE") {
-							c.Write([]byte(":5\r\n"))
-						} else {
-							c.Write([]byte("+OK\r\n"))
-						}
+						respondRESP(write, strings.ToUpper(part))
 					}
 				}
 			}(conn)
@@ -80,37 +87,49 @@ func setupMockRedisServer(t *testing.T) (string, func()) {
 	redisURLStr := fmt.Sprintf("redis://%s", addr)
 
 	return redisURLStr, func() {
-		_ = ln.Close()
+		_ = ln.Close() //nolint:errcheck // mock server cleanup
 	}
 }
 
 func captureStdout(f func() error) (string, error) {
 	old := os.Stdout
-	r, w, _ := os.Pipe()
+	r, w, _ := os.Pipe() //nolint:errcheck // os.Pipe failure is not a realistic test condition
 	os.Stdout = w
 
 	err := f()
 
-	w.Close()
+	_ = w.Close() //nolint:errcheck // best-effort close of pipe writer
 	os.Stdout = old
 
 	var buf bytes.Buffer
-	_, _ = buf.ReadFrom(r)
+	_, _ = buf.ReadFrom(r) //nolint:errcheck // best-effort read of captured output
 	return buf.String(), err
+}
+
+// mockRedisClient returns a newRedisClientFunc that connects to the given URL,
+// propagating any ParseURL error rather than discarding it.
+func mockRedisClient(url string) func() (*redis.Client, error) {
+	return func() (*redis.Client, error) {
+		opt, err := redis.ParseURL(url)
+		if err != nil {
+			return nil, err
+		}
+		return redis.NewClient(opt), nil
+	}
 }
 
 func TestNewRootCmd(t *testing.T) {
 	cmd := newRootCmd()
-	
+
 	assert.Equal(t, "uni-cli", cmd.Use)
 	assert.True(t, cmd.HasSubCommands())
-	
+
 	// Check if all expected commands are present
 	commands := make(map[string]bool)
 	for _, c := range cmd.Commands() {
 		commands[c.Name()] = true
 	}
-	
+
 	assert.True(t, commands["cache"])
 	assert.True(t, commands["health"])
 	assert.True(t, commands["metrics"])
@@ -121,7 +140,7 @@ func TestGetEnv(t *testing.T) {
 		t.Setenv("TEST_ENV_VAR", "test-value")
 		assert.Equal(t, "test-value", getEnv("TEST_ENV_VAR", "default"))
 	})
-	
+
 	t.Run("returns default value if not set", func(t *testing.T) {
 		assert.Equal(t, "default", getEnv("NON_EXISTENT_VAR", "default"))
 	})
@@ -139,10 +158,7 @@ func TestCacheClearCommand(t *testing.T) {
 		confirmActionFunc = oldConfirmFunc
 	}()
 
-	newRedisClientFunc = func() (*redis.Client, error) {
-		opt, _ := redis.ParseURL(redisURLStr)
-		return redis.NewClient(opt), nil
-	}
+	newRedisClientFunc = mockRedisClient(redisURLStr)
 
 	t.Run("clear confirmation accepted", func(t *testing.T) {
 		confirmActionFunc = func(prompt string) bool {
@@ -199,10 +215,7 @@ func TestCacheStatsCommand(t *testing.T) {
 	oldRedisFunc := newRedisClientFunc
 	defer func() { newRedisClientFunc = oldRedisFunc }()
 
-	newRedisClientFunc = func() (*redis.Client, error) {
-		opt, _ := redis.ParseURL(redisURLStr)
-		return redis.NewClient(opt), nil
-	}
+	newRedisClientFunc = mockRedisClient(redisURLStr)
 
 	cmd := newRootCmd()
 	output, err := captureStdout(func() error {
@@ -222,10 +235,7 @@ func TestHealthCommand(t *testing.T) {
 	oldRedisFunc := newRedisClientFunc
 	defer func() { newRedisClientFunc = oldRedisFunc }()
 
-	newRedisClientFunc = func() (*redis.Client, error) {
-		opt, _ := redis.ParseURL(redisURLStr)
-		return redis.NewClient(opt), nil
-	}
+	newRedisClientFunc = mockRedisClient(redisURLStr)
 
 	cmd := newRootCmd()
 	output, err := captureStdout(func() error {
@@ -245,10 +255,7 @@ func TestMetricsShowCommand(t *testing.T) {
 	oldRedisFunc := newRedisClientFunc
 	defer func() { newRedisClientFunc = oldRedisFunc }()
 
-	newRedisClientFunc = func() (*redis.Client, error) {
-		opt, _ := redis.ParseURL(redisURLStr)
-		return redis.NewClient(opt), nil
-	}
+	newRedisClientFunc = mockRedisClient(redisURLStr)
 
 	t.Run("normal metrics", func(t *testing.T) {
 		cmd := newRootCmd()
@@ -273,4 +280,50 @@ func TestMetricsShowCommand(t *testing.T) {
 		assert.Contains(t, output, "Detailed stats:")
 		assert.Contains(t, output, "total_connections:42")
 	})
+}
+
+// TestCommandsFailWhenRedisUnavailable verifies the failure-path exit codes:
+// every Redis-dependent subcommand must return a non-zero exit (an error) when
+// the broker is unreachable. This includes `health`, which previously printed
+// an error but exited 0 — useless for monitoring/CI.
+func TestCommandsFailWhenRedisUnavailable(t *testing.T) {
+	oldRedisFunc := newRedisClientFunc
+	oldConfirmFunc := confirmActionFunc
+	defer func() {
+		newRedisClientFunc = oldRedisFunc
+		confirmActionFunc = oldConfirmFunc
+	}()
+
+	// Port 1 (tcpmux) is effectively never listening → fast ECONNREFUSED.
+	newRedisClientFunc = func() (*redis.Client, error) {
+		opt, err := redis.ParseURL("redis://127.0.0.1:1/0")
+		if err != nil {
+			return nil, err
+		}
+		opt.DialTimeout = 500 * time.Millisecond
+		opt.MaxRetries = -1 // fail fast, no backoff retries
+		return redis.NewClient(opt), nil
+	}
+	confirmActionFunc = func(string) bool { return true }
+
+	cases := []struct {
+		name string
+		args []string
+	}{
+		{"cache clear", []string{"cache", "clear", "cache:*"}},
+		{"cache stats", []string{"cache", "stats"}},
+		{"metrics show", []string{"metrics", "show"}},
+		{"health", []string{"health"}},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			cmd := newRootCmd()
+			_, err := captureStdout(func() error {
+				cmd.SetArgs(tc.args)
+				return cmd.Execute()
+			})
+			assert.Error(t, err, "expected non-zero exit (error) when Redis is unavailable")
+		})
+	}
 }
