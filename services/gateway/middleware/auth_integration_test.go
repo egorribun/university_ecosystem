@@ -10,6 +10,7 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/redis/go-redis/v9"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/testcontainers/testcontainers-go"
 	tclog "github.com/testcontainers/testcontainers-go/log"
@@ -140,3 +141,67 @@ func TestIntegration_L1CacheXFetchProbabilisticRefresh(t *testing.T) {
 	require.LessOrEqual(t, delta, sessionCount,
 		"refresh count cannot exceed sessionCount=%d, got %d (counter regression?)", sessionCount, delta)
 }
+
+func TestIntegration_WarmL1Cache(t *testing.T) {
+	rdb := startRedisContainerForAuth(t)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	t.Cleanup(cancel)
+
+	m := NewJWTMiddleware("test-secret", rdb)
+
+	// Set revoked keys in Redis
+	require.NoError(t, rdb.Set(ctx, "revoked:jti:jti-warm-1", "1", 30*time.Second).Err())
+	require.NoError(t, rdb.Set(ctx, "revoked:jti:jti-warm-2", "1", 30*time.Second).Err())
+
+	// L1 Cache should be empty initially
+	_, ok1 := m.l1cache.Get("revoked:jti:jti-warm-1")
+	_, ok2 := m.l1cache.Get("revoked:jti:jti-warm-2")
+	require.False(t, ok1)
+	require.False(t, ok2)
+
+	// Warm cache
+	m.WarmL1Cache(ctx)
+
+	// Now keys should be present in L1 Cache
+	val1, ok1 := m.l1cache.Get("revoked:jti:jti-warm-1")
+	val2, ok2 := m.l1cache.Get("revoked:jti:jti-warm-2")
+	require.True(t, ok1)
+	require.True(t, ok2)
+	assert.True(t, val1.exists)
+	assert.True(t, val2.exists)
+}
+
+func TestIntegration_ListenForRevocations(t *testing.T) {
+	rdb := startRedisContainerForAuth(t)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+
+	m := NewJWTMiddleware("test-secret", rdb)
+
+	// Start listener
+	m.ListenForRevocations(ctx)
+
+	// Wait a tiny bit for the connection to establish
+	time.Sleep(100 * time.Millisecond)
+
+	// Manually add key to L1 cache
+	key := "revoked:jti:jti-pubsub-test"
+	m.l1cache.Add(key, cacheEntry{exists: true, storedAt: time.Now()})
+
+	// Verify key exists in L1 cache
+	_, ok := m.l1cache.Get(key)
+	require.True(t, ok)
+
+	// Publish revocation message
+	require.NoError(t, rdb.Publish(ctx, "session:revocations", "jti-pubsub-test").Err())
+
+	// Wait for pubsub delivery
+	time.Sleep(150 * time.Millisecond)
+
+	// Verify key is evicted from L1 cache
+	_, ok = m.l1cache.Get(key)
+	assert.False(t, ok, "key should be evicted from L1 cache on revocation publication")
+}
+

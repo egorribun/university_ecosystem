@@ -32,7 +32,11 @@ services:
     environment:
       ENVIRONMENT: testing
       AUTO_CREATE_SCHEMA: "false"
+      RUN_INTEGRATION_TESTS: "1"
       DATABASE_URL: postgresql+asyncpg://postgres:test@postgres:5432/test_db
+      INTEGRATION_DATABASE_URL: postgresql+asyncpg://postgres:DevSecurePass2024x@university_ecosystem-postgres-1:5432/university
+      TEST_USER_EMAIL: test@university.dev
+      TEST_USER_PASSWORD: TestPass@2024x
       CACHE_REDIS_URL: redis://redis:6379/0
       RATE_LIMIT_STORAGE_URI: redis://redis:6379/1
       NATS_URL: nats://test-nats:4222
@@ -42,6 +46,9 @@ services:
       # under PostgreSQL's max_connections=200 limit.
       DATABASE_POOL_SIZE: 5
       DATABASE_MAX_OVERFLOW: 10
+      BACKEND_URL: http://backend:8000
+      GATEWAY_URL: http://gateway:8080
+      TEMPO_URL: http://tempo:3200
     depends_on:
       postgres:
         condition: service_healthy
@@ -49,6 +56,8 @@ services:
         condition: service_healthy
     networks:
       - test-net
+      - app_internal
+      - app_db
     volumes:
       - .:/app
     # LOW-W19: removed stale --ignore=tests/performance (directory has no Python tests)
@@ -57,3 +66,9 @@ services:
 
 networks:
   test-net:
+  app_internal:
+    external: true
+    name: university_ecosystem_internal
+  app_db:
+    external: true
+    name: university_ecosystem_db_net

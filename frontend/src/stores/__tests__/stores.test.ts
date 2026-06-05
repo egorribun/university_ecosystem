@@ -257,3 +257,65 @@ describe("appShellStore", () => {
     expect(useAppShellStore.getState().themeMode).toBe("dark")
   })
 })
+
+describe("useAuthStore", () => {
+  beforeEach(() => {
+    vi.resetModules()
+  })
+
+  it("should have default state", async () => {
+    const { useAuthStore } = await import("../useAuthStore")
+    const state = useAuthStore.getState()
+
+    expect(state.user).toBeNull()
+    expect(state.loading).toBe(true)
+    expect(state.pendingMfa).toBeNull()
+    expect(state.authOperation).toBe(false)
+  })
+
+  it("should update user state with direct value or updater function", async () => {
+    const { useAuthStore } = await import("../useAuthStore")
+
+    const mockUser = { id: "user-123", email: "user@example.com", name: "User" } as any
+
+    act(() => {
+      useAuthStore.getState().setUser(mockUser)
+    })
+    expect(useAuthStore.getState().user).toEqual(mockUser)
+
+    act(() => {
+      useAuthStore.getState().setUser((prev: any) => ({ ...prev, name: "Updated Name" }))
+    })
+    expect(useAuthStore.getState().user).toEqual({ ...mockUser, name: "Updated Name" })
+  })
+
+  it("should update loading state", async () => {
+    const { useAuthStore } = await import("../useAuthStore")
+
+    act(() => {
+      useAuthStore.getState().setLoading(false)
+    })
+    expect(useAuthStore.getState().loading).toBe(false)
+  })
+
+  it("should update pending MFA state", async () => {
+    const { useAuthStore } = await import("../useAuthStore")
+
+    const mockMfa = { ticket: "mfa-ticket", methods: [] } as any
+
+    act(() => {
+      useAuthStore.getState().setPendingMfa(mockMfa)
+    })
+    expect(useAuthStore.getState().pendingMfa).toEqual(mockMfa)
+  })
+
+  it("should update auth operation state", async () => {
+    const { useAuthStore } = await import("../useAuthStore")
+
+    act(() => {
+      useAuthStore.getState().setAuthOperation(true)
+    })
+    expect(useAuthStore.getState().authOperation).toBe(true)
+  })
+})
+

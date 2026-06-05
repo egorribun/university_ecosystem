@@ -63,7 +63,7 @@ class ChatRepository(BaseRepository[Chat, ChatDTO, dict[str, Any], dict[str, Any
         # outside one it would silently apply for the rest of the session
         assert self.db.in_transaction(), "SET LOCAL requires an active transaction"  # noqa: S101
         await self.db.execute(
-            text("SET LOCAL app.current_user_id = :uid"),
+            text("SELECT set_config('app.current_user_id', :uid, true)"),
             {"uid": str(user_id)},
         )
 

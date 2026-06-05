@@ -10,7 +10,6 @@ from sqlalchemy import update
 from app.core.config import settings
 from app.core.database import async_session
 from app.core.logging import get_logger
-from app.models import User
 from app.utils.files import normalize_filename_prefix
 
 if TYPE_CHECKING:
@@ -77,10 +76,12 @@ async def _update_column(
 ) -> None:
     if not mapping:
         return
-    column = getattr(User, column_name)
+    from app.models.users import UserProfile
+
+    column = getattr(UserProfile, column_name)
     for old_url, new_url in mapping.items():
         await session.execute(
-            update(User).where(column == old_url).values({column_name: new_url})
+            update(UserProfile).where(column == old_url).values({column_name: new_url})
         )
 
 

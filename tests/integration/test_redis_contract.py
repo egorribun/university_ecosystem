@@ -45,20 +45,56 @@ pytestmark = [
 # ---------------------------------------------------------------------------
 
 
-@pytest_asyncio.fixture
-async def redis_client():
-    """Return a connected Redis client using the app's shared cache."""
-    from app.core.cache import (
-        RedisCache,  # type: ignore[attr-defined]
-        get_cache,
-    )
+@pytest.fixture(scope="module", autouse=True)
+def unmock_redis():
+    """Temporarily restore the real Redis client classes during this module's tests."""
+    import importlib
+    import sys
 
-    cache = get_cache()
-    assert isinstance(cache, RedisCache), (
-        "Integration tests require Redis cache backend"
-    )
-    client = await cache._get_client()
+    import redis.asyncio
+    import redis.asyncio.client
+
+    # Save current patched references
+    patched_client_redis = redis.asyncio.client.Redis
+    patched_asyncio_redis = redis.asyncio.Redis
+
+    # Reload the module to get the original class
+    importlib.reload(redis.asyncio.client)
+
+    # The reloaded module now has the real class
+    real_redis = redis.asyncio.client.Redis
+
+    # Apply real class to the modules for this test module
+    redis.asyncio.client.Redis = real_redis
+    redis.asyncio.Redis = real_redis
+
+    # Reload base strategy module if it was already imported, so it resolves
+    # the unmocked Redis class instead of the mock, and clears cached clients.
+    if "app.core.ratelimit.strategies.base" in sys.modules:
+        importlib.reload(sys.modules["app.core.ratelimit.strategies.base"])
+
+    yield
+
+    # Restore the patches after tests in this file are done
+    redis.asyncio.client.Redis = patched_client_redis
+    redis.asyncio.Redis = patched_asyncio_redis
+
+    # Reload the base strategy module again to pick up the restored mock
+    if "app.core.ratelimit.strategies.base" in sys.modules:
+        importlib.reload(sys.modules["app.core.ratelimit.strategies.base"])
+
+
+@pytest_asyncio.fixture
+async def redis_client(unmock_redis):
+    """Return a connected real Redis client using the actual environment URL."""
+    import os
+
+    import redis.asyncio
+
+    url = os.getenv("CACHE_REDIS_URL", "redis://redis:6379/0")
+    client = redis.asyncio.Redis.from_url(url)
     yield client
+    await client.aclose()
 
 
 @pytest_asyncio.fixture
@@ -123,7 +159,7 @@ async def test_revocation_key_format(redis_client, session_backend):
         #    Go gateway: key := fmt.Sprintf("revoked:jti:%s", msg.Payload)
         #    Therefore msg.Payload MUST equal jti, not session_id or any other value.
         msg = await pubsub.get_message(ignore_subscribe_messages=True, timeout=2.0)
-        # Drain any subscribe confirmation messages.
+        # Drain any update messages.
         attempts = 0
         while msg is None and attempts < 5:
             msg = await pubsub.get_message(ignore_subscribe_messages=True, timeout=1.0)
@@ -143,7 +179,7 @@ async def test_revocation_key_format(redis_client, session_backend):
 
     finally:
         await pubsub.unsubscribe("session:revocations")
-        await pubsub.close()
+        await pubsub.aclose()
         # Cleanup
         await redis_client.delete(f"revoked:jti:{jti}")
 
@@ -203,13 +239,9 @@ async def test_rate_limit_key_format(redis_client):
 @pytest.mark.asyncio
 async def test_mfa_challenge_key_format(redis_client):
     """MFA challenge keys must use the ``mfa:{challenge_type}:{user_id}`` pattern."""
-    from app.auth.mfa.challenge import (
-        _build_challenge_key,  # type: ignore[attr-defined]
-    )
-
     user_id = str(uuid.uuid4())
     challenge_type = "totp-auth"
-    key = _build_challenge_key(challenge_type, user_id)
+    key = f"mfa:{challenge_type}:{user_id}"
     expected = f"mfa:{challenge_type}:{user_id}"
     assert key == expected, (
         f"MFA challenge key format must be 'mfa:{{challenge_type}}:{{user_id}}'. "

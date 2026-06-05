@@ -412,6 +412,8 @@ async def _scan_upload_with_clamd(
                     ConnectionError,
                 ):  # RZ-22-01: narrowed — network close errors
                     logger.debug("Failed to close clamd writer cleanly", exc_info=True)
+    except FileScannerPayloadTooLarge:
+        raise
     except TimeoutError as exc:
         raise FileScannerUnavailableError("clamd scan timed out") from exc
     except Exception as exc:  # RZ-22-01-JUSTIFIED: convert-to-domain — wraps clamd stream errors (reviewed TD-27-04)

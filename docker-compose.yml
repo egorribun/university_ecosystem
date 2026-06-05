@@ -56,6 +56,7 @@ services:
       DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required - set in .env file}
       FRONTEND_ORIGIN: ${FRONTEND_ORIGIN:-http://localhost:8081}
       FRONTEND_ORIGINS: ${FRONTEND_ORIGINS:-http://localhost:8081,http://localhost:8080}
+      ALLOWED_HOSTS: "localhost,127.0.0.1,backend,caddy,0.0.0.0,testserver"
       NOTIFICATIONS_SCHEDULER_INLINE_ENABLED: "false"
       ENABLE_METRICS_ENDPOINT: "false"
       METRICS_ALLOWLIST: 127.0.0.1,::1
@@ -66,6 +67,9 @@ services:
       RATE_LIMIT_HEADERS_ENABLED: "true"
       NATS_URL: nats://${NATS_AUTH_TOKEN:-dev-nats-token}@nats:4222
       SECRET_KEY: ${SECRET_KEY:?SECRET_KEY is required - set in .env file}
+      # SpiceDB: dev stack runs plaintext gRPC (no TLS). SPICEDB_INSECURE=true
+      # disables the forced-TLS default in app/core/spicedb.py so /healthz returns 200.
+      SPICEDB_INSECURE: "true"
       # Push notifications
       VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY:-}
       VAPID_PRIVATE_KEY: ${VAPID_PRIVATE_KEY:-}
@@ -187,6 +191,7 @@ services:
       RATE_LIMIT_STORAGE_URI: redis://:${REDIS_PASSWORD}@valkey:6379/1
       NATS_URL: nats://${NATS_AUTH_TOKEN:-dev-nats-token}@nats:4222
       SECRET_KEY: ${SECRET_KEY:?SECRET_KEY is required - set in .env file}
+      SPICEDB_INSECURE: "true"
       # Push notifications
       VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY:-}
       VAPID_PRIVATE_KEY: ${VAPID_PRIVATE_KEY:-}
@@ -267,6 +272,7 @@ services:
 
   postgres:
     image: pgvector/pgvector:pg17
+    command: ["postgres", "-c", "max_connections=500"]
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required - set in .env file}
@@ -408,6 +414,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    volumes:
+      - ./config/dynamicconfig/docker.yaml:/etc/temporal/config/dynamicconfig/docker.yaml:ro
     networks:
       - db_net
       - service_net

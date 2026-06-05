@@ -343,41 +343,25 @@ relative_files = true
 source = ["app"]
 branch = true
 omit = [
-  # Infrastructure-dependent: require live NATS, ClamAV, Elasticsearch, or libvips
-  "app/core/nats_broker.py",
-  "app/services/nats_messaging.py",
-  "app/services/file_scanner.py",
-  "app/services/search.py",
-  "app/services/image_proxy.py",
-  "app/services/geolocation.py",
-  "app/utils/images_vips.py",
   # Entrypoints / maintenance scripts — not unit-testable
   "app/worker.py",
-  "app/management/normalize_static.py",
-  "app/management/weekly_cleanup.py",
   # Entrypoints / scripts — not unit-testable
   "app/__main__.py",
-  "app/management/reset_mfa.py",
-  "app/management/stories_cleanup.py",
-  "app/scripts/backfill_uuids.py",
   "app/core/uvloop_setup.py",
   "app/core/lifespan.py",
   "app/core/profiling.py",
-  "app/cli/*",
   "app/core/ci/*",
   # Observability SDK init — requires live OTel collector / Sentry DSN
   "app/core/observability.py",
   # Prometheus metric definitions — declarative Counter/Histogram; middleware tested separately
   "app/core/metrics.py",
-  # SpiceDB Watch stream — requires live gRPC connection (same rationale as nats_broker)
-  "app/core/spicedb_watch.py",
   # NATS task wrappers — thin @broker.task() decorators; inner service functions tested directly
   "app/tasks/*",
 ]
 
 [tool.coverage.report]
 show_missing = true
-fail_under = 80  # Raised from 78 — new tests for utils/img, uuid_v7, request_coalescing bring actual coverage to 79%
+fail_under = 80  # Target 80%+ coverage across Python backend
 exclude_lines = [
   "pragma: no cover",
   "def __repr__",

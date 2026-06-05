@@ -2,7 +2,14 @@ package middleware
 
 import (
 	"context"
+	"crypto/rand"
+	"crypto/rsa"
+	"crypto/x509"
+	"encoding/base64"
+	"encoding/json"
+	"encoding/pem"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -338,3 +345,208 @@ func TestShouldRefreshProbabilistic_BoundaryAndStatistical(t *testing.T) {
 			"near-expiry entries must refresh at ~81.9%% (<95%%), got %d/1000", fired)
 	})
 }
+
+func TestNewJWTMiddlewareWithConfig_PanicsOnInvalidRSAPubKey(t *testing.T) {
+	assert.Panics(t, func() {
+		NewJWTMiddlewareWithConfig("secret", "invalid-pem-data", nil, DefaultL1CacheConfig())
+	})
+}
+
+func TestValidate_AcceptsRS256Token(t *testing.T) {
+	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	require.NoError(t, err)
+
+	pubASN1, err := x509.MarshalPKIXPublicKey(&privateKey.PublicKey)
+	require.NoError(t, err)
+	pubBytes := pem.EncodeToMemory(&pem.Block{
+		Type:  "PUBLIC KEY",
+		Bytes: pubASN1,
+	})
+
+	m := NewJWTMiddlewareWithConfig("secret", string(pubBytes), nil, DefaultL1CacheConfig())
+	router := createTestRouter(m.Validate(context.Background()))
+
+	claims := Claims{
+		RegisteredClaims: jwt.RegisteredClaims{
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour)),
+			IssuedAt:  jwt.NewNumericDate(time.Now()),
+			ID:        "session-123",
+		},
+		UserID:   "user-123",
+		IsActive: true,
+	}
+
+	token := jwt.NewWithClaims(jwt.SigningMethodRS256, claims)
+	tokenString, err := token.SignedString(privateKey)
+	require.NoError(t, err)
+
+	request := httptest.NewRequest(http.MethodGet, "/test", nil)
+	request.Header.Set("Authorization", "Bearer "+tokenString)
+	recorder := httptest.NewRecorder()
+
+	router.ServeHTTP(recorder, request)
+
+	assert.Equal(t, http.StatusOK, recorder.Code)
+}
+
+func TestValidate_RejectsHS256TokenWhenRS256Configured(t *testing.T) {
+	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	require.NoError(t, err)
+
+	pubASN1, err := x509.MarshalPKIXPublicKey(&privateKey.PublicKey)
+	require.NoError(t, err)
+	pubBytes := pem.EncodeToMemory(&pem.Block{
+		Type:  "PUBLIC KEY",
+		Bytes: pubASN1,
+	})
+
+	m := NewJWTMiddlewareWithConfig("secret", string(pubBytes), nil, DefaultL1CacheConfig())
+	router := createTestRouter(m.Validate(context.Background()))
+
+	claims := Claims{
+		RegisteredClaims: jwt.RegisteredClaims{
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour)),
+			IssuedAt:  jwt.NewNumericDate(time.Now()),
+			ID:        "session-123",
+		},
+		UserID:   "user-123",
+		IsActive: true,
+	}
+
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	tokenString, err := token.SignedString([]byte("secret"))
+	require.NoError(t, err)
+
+	request := httptest.NewRequest(http.MethodGet, "/test", nil)
+	request.Header.Set("Authorization", "Bearer "+tokenString)
+	recorder := httptest.NewRecorder()
+
+	router.ServeHTTP(recorder, request)
+
+	assert.Equal(t, http.StatusUnauthorized, recorder.Code)
+}
+
+func TestValidate_RejectsRS256TokenWhenHS256Configured(t *testing.T) {
+	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	require.NoError(t, err)
+
+	m := NewJWTMiddleware("secret", nil)
+	router := createTestRouter(m.Validate(context.Background()))
+
+	claims := Claims{
+		RegisteredClaims: jwt.RegisteredClaims{
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour)),
+			IssuedAt:  jwt.NewNumericDate(time.Now()),
+			ID:        "session-123",
+		},
+		UserID:   "user-123",
+		IsActive: true,
+	}
+
+	token := jwt.NewWithClaims(jwt.SigningMethodRS256, claims)
+	tokenString, err := token.SignedString(privateKey)
+	require.NoError(t, err)
+
+	request := httptest.NewRequest(http.MethodGet, "/test", nil)
+	request.Header.Set("Authorization", "Bearer "+tokenString)
+	recorder := httptest.NewRecorder()
+
+	router.ServeHTTP(recorder, request)
+
+	assert.Equal(t, http.StatusUnauthorized, recorder.Code)
+}
+
+func TestExtractAlgFromHeader(t *testing.T) {
+	t.Run("valid RS256 token", func(t *testing.T) {
+		tokenString := "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiYWRtaW4iOnRydWV9.signature"
+		alg, err := extractAlgFromHeader(tokenString)
+		require.NoError(t, err)
+		assert.Equal(t, "RS256", alg)
+	})
+
+	t.Run("missing alg", func(t *testing.T) {
+		tokenString := "eyJ0eXAiOiJKV1QifQ.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiYWRtaW4iOnRydWV9.signature"
+		_, err := extractAlgFromHeader(tokenString)
+		require.Error(t, err)
+	})
+
+	t.Run("malformed base64", func(t *testing.T) {
+		tokenString := "invalid!!!.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiYWRtaW4iOnRydWV9.signature"
+		_, err := extractAlgFromHeader(tokenString)
+		require.Error(t, err)
+	})
+}
+
+func TestValidateIAT(t *testing.T) {
+	t.Run("missing iat", func(t *testing.T) {
+		claims := &Claims{}
+		err := validateIAT(claims)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "missing iat claim")
+	})
+
+	t.Run("future iat", func(t *testing.T) {
+		claims := &Claims{
+			RegisteredClaims: jwt.RegisteredClaims{
+				IssuedAt: jwt.NewNumericDate(time.Now().Add(10 * time.Minute)),
+			},
+		}
+		err := validateIAT(claims)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "issued in the future")
+	})
+
+	t.Run("too old iat", func(t *testing.T) {
+		claims := &Claims{
+			RegisteredClaims: jwt.RegisteredClaims{
+				IssuedAt: jwt.NewNumericDate(time.Now().Add(-25 * time.Hour)),
+			},
+		}
+		err := validateIAT(claims)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "is too old")
+	})
+}
+
+func TestJWKSRefresher(t *testing.T) {
+	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	require.NoError(t, err)
+
+	nB64 := base64.RawURLEncoding.EncodeToString(privateKey.N.Bytes())
+	eB64 := base64.RawURLEncoding.EncodeToString([]byte{1, 0, 1})
+
+	jwks := struct {
+		Keys []map[string]string `json:"keys"`
+	}{
+		Keys: []map[string]string{
+			{
+				"kty": "RSA",
+				"n":   nB64,
+				"e":   eB64,
+			},
+		},
+	}
+
+	jwksBytes, err := json.Marshal(jwks)
+	require.NoError(t, err)
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write(jwksBytes)
+	}))
+	defer server.Close()
+
+	m := NewJWTMiddleware("secret", nil)
+	assert.Nil(t, m.rsaPublicKey.Load())
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	m.StartJWKSRefresher(ctx, server.URL, 50*time.Millisecond, slog.Default())
+
+	time.Sleep(150 * time.Millisecond)
+
+	assert.NotNil(t, m.rsaPublicKey.Load())
+}
+

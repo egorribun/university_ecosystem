@@ -99,24 +99,31 @@ def test_conflict_detection_is_symmetric(
 ) -> None:
     """detect_conflicts(a, [b]) returns b iff detect_conflicts(b, [a]) returns a."""
     try:
-        from native.rust_ext import detect_conflicts
+        from rust_ext import ScheduleItem, detect_conflicts
     except ImportError:
         pytest.skip("Rust extension not built")
 
     base_date = datetime(2026, 3, 25, tzinfo=UTC)
 
-    item_a = {
-        "id": str(uuid4()),
-        "title": "A",
-        "start": (base_date + timedelta(hours=start_a)).isoformat(),
-        "end": (base_date + timedelta(hours=start_a, minutes=dur_a)).isoformat(),
-    }
-    item_b = {
-        "id": str(uuid4()),
-        "title": "B",
-        "start": (base_date + timedelta(hours=start_b)).isoformat(),
-        "end": (base_date + timedelta(hours=start_b, minutes=dur_b)).isoformat(),
-    }
+    start_time_a = int((base_date + timedelta(hours=start_a)).timestamp())
+    end_time_a = int((base_date + timedelta(hours=start_a, minutes=dur_a)).timestamp())
+    start_time_b = int((base_date + timedelta(hours=start_b)).timestamp())
+    end_time_b = int((base_date + timedelta(hours=start_b, minutes=dur_b)).timestamp())
+
+    item_a = ScheduleItem(
+        id=1,
+        weekday="Monday",
+        start_time=start_time_a,
+        end_time=end_time_a,
+        parity="EveryWeek",
+    )
+    item_b = ScheduleItem(
+        id=2,
+        weekday="Monday",
+        start_time=start_time_b,
+        end_time=end_time_b,
+        parity="EveryWeek",
+    )
 
     a_conflicts_b = len(detect_conflicts(item_a, [item_b])) > 0
     b_conflicts_a = len(detect_conflicts(item_b, [item_a])) > 0

@@ -48,19 +48,18 @@ jobs:
           cd "${{ inputs.service-directory }}"
           go test -v -race -coverprofile=coverage.out ./...
 
-      # MOD-26-01: enforce minimum Go test coverage.
-      # Threshold lowered to 1% — ensures tests exist and run; services
-      # currently range from 1.4% (ws-hub) to 31% (gateway).
+      # MOD-26-01: Enforce minimum Go test coverage on all non-generated/non-mock code.
       - name: Check coverage threshold
         shell: bash
         run: |
           cd "${{ inputs.service-directory }}"
           if [ -f coverage.out ]; then
-            grep -vE "/cmd/|/main.go|/workflow/|middleware/ratelimit.go|middleware/auth.go|pkg/hub/client.go|pkg/hub/handlers.go|pkg/hub/hub.go" coverage.out > coverage.filtered.out || true
+            # Filter out protobuf files, mock files, and generated schema/API files
+            grep -vE "\.pb\.go|_mock\.go|mock_|/gen/go" coverage.out > coverage.filtered.out || true
             mv coverage.filtered.out coverage.out
           fi
           COVERAGE=$(go tool cover -func=coverage.out | grep total: | awk '{print $3}' | tr -d '%')
-          echo "Go test coverage: ${COVERAGE}%"
+          echo "Go test coverage (excluding generated/mocks): ${COVERAGE}%"
           THRESHOLD=${{ inputs.coverage-threshold }}
           if (( $(echo "$COVERAGE < $THRESHOLD" | bc -l) )); then
             echo "::error::Coverage ${COVERAGE}% is below ${THRESHOLD}% threshold"

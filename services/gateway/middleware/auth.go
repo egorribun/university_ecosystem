@@ -183,36 +183,61 @@ func (m *JWTMiddleware) StartJWKSRefresher(ctx context.Context, endpoint string,
 		prometheus.MustRegister(jwksRefreshes, jwksRefreshErrors, jwksKeyRotations)
 	})
 
-	// RZ-33-19: rsaPublicKey is already atomic.Pointer on the struct — no local copy needed.
-
 	httpClient := &http.Client{Timeout: 10 * time.Second}
-	backoff := interval
+
+	minRetryInterval := 2 * time.Second
+	if interval < minRetryInterval {
+		minRetryInterval = interval
+	}
+	maxRetryInterval := 30 * time.Second
+	if interval < maxRetryInterval {
+		maxRetryInterval = interval
+	}
 
 	go func() {
-		ticker := time.NewTicker(interval)
-		defer ticker.Stop()
+		var nextInterval time.Duration
+		var retryCount int
+
+		jwksRefreshes.Inc()
+		newKey, err := fetchJWKSPublicKey(ctx, httpClient, endpoint)
+		if err != nil {
+			jwksRefreshErrors.Inc()
+			retryCount = 1
+			nextInterval = minRetryInterval
+			logger.WarnContext(ctx, "Initial JWKS fetch failed, retrying soon", "err", err, "next_retry_in", nextInterval)
+		} else {
+			m.rsaPublicKey.Store(newKey)
+			nextInterval = interval
+			logger.InfoContext(ctx, "Initial JWKS fetch succeeded")
+		}
+
+		timer := time.NewTimer(nextInterval)
+		defer timer.Stop()
 
 		for {
 			select {
 			case <-ctx.Done():
 				return
-			case <-ticker.C:
+			case <-timer.C:
 				jwksRefreshes.Inc()
 				newKey, err := fetchJWKSPublicKey(ctx, httpClient, endpoint)
 				if err != nil {
 					jwksRefreshErrors.Inc()
-					logger.WarnContext(ctx, "JWKS refresh failed", "err", err, "backoff", backoff)
-					// Exponential backoff on failure (capped at 5 min).
-					backoff = min(backoff*2, 5*time.Minute)
-					ticker.Reset(backoff)
+					retryCount++
+					// Exponential backoff starting at minRetryInterval, doubling on each failure.
+					nextInterval = minRetryInterval * (1 << (retryCount - 1))
+					if nextInterval > maxRetryInterval || nextInterval <= 0 { // overflow check
+						nextInterval = maxRetryInterval
+					}
+					logger.WarnContext(ctx, "JWKS refresh failed, retrying", "err", err, "attempt", retryCount, "next_retry_in", nextInterval)
+					timer.Reset(nextInterval)
 					continue
 				}
 
-				// Reset backoff on success.
-				if backoff != interval {
-					backoff = interval
-					ticker.Reset(interval)
-				}
+				// Reset retry count and interval on success.
+				retryCount = 0
+				nextInterval = interval
+				timer.Reset(nextInterval)
 
 				// Atomic swap — RZ-33-19: hot path reads via m.rsaPublicKey.Load().
 				old := m.rsaPublicKey.Load()

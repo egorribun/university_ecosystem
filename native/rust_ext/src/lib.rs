@@ -446,4 +446,56 @@ mod tests {
         assert!(result.is_ok());
         assert!(!result.ok().unwrap());
     }
+
+    #[test]
+    fn test_parse_weekday() {
+        assert_eq!(parse_weekday("monday"), Some(Weekday::Mon));
+        assert_eq!(parse_weekday("MON"), Some(Weekday::Mon));
+        assert_eq!(parse_weekday("Friday"), Some(Weekday::Fri));
+        assert_eq!(parse_weekday("invalid"), None);
+    }
+
+    #[test]
+    fn test_check_conflict_proto() {
+        let item1 = ScheduleItem {
+            id: None,
+            weekday: "monday".to_string(),
+            start_time: 1000,
+            end_time: 2000,
+            parity: "both".to_string(),
+        };
+        let item2 = ScheduleItem {
+            id: None,
+            weekday: "monday".to_string(),
+            start_time: 1500,
+            end_time: 2500,
+            parity: "both".to_string(),
+        };
+        let item3 = ScheduleItem {
+            id: None,
+            weekday: "tuesday".to_string(),
+            start_time: 1000,
+            end_time: 2000,
+            parity: "both".to_string(),
+        };
+
+        // Conflicting: same weekday, overlapping times, parity "both"
+        assert!(check_conflict_proto(&item1, &item2));
+        // Not conflicting: different weekdays
+        assert!(!check_conflict_proto(&item1, &item3));
+    }
+
+    #[test]
+    fn signature_verification_success() {
+        let key = "my-secret-key";
+        let data = "test-log-data";
+        
+        let mut mac = Hmac::<Sha256>::new_from_slice(key.as_bytes()).unwrap();
+        mac.update(data.as_bytes());
+        let result_bytes = mac.finalize().into_bytes();
+        let sig_hex = hex::encode(result_bytes);
+        
+        let verified = verify_audit_signature(vec![key.to_string()], data.to_string(), sig_hex).unwrap();
+        assert!(verified);
+    }
 }

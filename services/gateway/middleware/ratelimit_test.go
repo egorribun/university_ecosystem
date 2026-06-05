@@ -1,11 +1,15 @@
 package middleware
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/go-redis/redis_rate/v10"
+	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -140,3 +144,83 @@ func TestRateLimiter_StructFields(t *testing.T) {
 
 	assert.Equal(t, 50, rl.rps)
 }
+
+func TestRateLimiter_InMemoryAllow_LimitsCorrectly(t *testing.T) {
+	rl := &RateLimiter{
+		fallbackCounters: make(map[string]*fallbackEntry),
+		fallbackLimit:    3,
+		fallbackWindow:   60,
+	}
+
+	// 1st request
+	assert.True(t, rl.inMemoryAllow("client-1"))
+	// 2nd request
+	assert.True(t, rl.inMemoryAllow("client-1"))
+	// 3rd request
+	assert.True(t, rl.inMemoryAllow("client-1"))
+	// 4th request -> blocked
+	assert.False(t, rl.inMemoryAllow("client-1"))
+}
+
+func TestRateLimiter_InMemoryAllow_ResetsAfterWindow(t *testing.T) {
+	rl := &RateLimiter{
+		fallbackCounters: make(map[string]*fallbackEntry),
+		fallbackLimit:    2,
+		fallbackWindow:   1, // 1 second window
+	}
+
+	assert.True(t, rl.inMemoryAllow("client-1"))
+	assert.True(t, rl.inMemoryAllow("client-1"))
+	assert.False(t, rl.inMemoryAllow("client-1")) // blocked
+
+	// Sleep for 1.1s to cross the 1s window boundary
+	time.Sleep(1100 * time.Millisecond)
+
+	// Should be allowed again
+	assert.True(t, rl.inMemoryAllow("client-1"))
+}
+
+func TestRateLimiter_IsHealthPath(t *testing.T) {
+	assert.True(t, isHealthPath("/health"))
+	assert.True(t, isHealthPath("/readiness"))
+	assert.True(t, isHealthPath("/metrics"))
+	assert.False(t, isHealthPath("/api/v1/some-resource"))
+}
+
+func TestRateLimiter_Middleware_InMemoryFallbackOnRedisError(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	// Setup RateLimiter with invalid Redis client to trigger Redis connection error
+	rl := &RateLimiter{
+		client:           nil,
+		limiter:          redis_rate.NewLimiter(redis.NewClient(&redis.Options{Addr: "localhost:1"})),
+		rps:              5,
+		fallbackCounters: make(map[string]*fallbackEntry),
+		fallbackLimit:    2,
+		fallbackWindow:   60,
+	}
+
+	router := gin.New()
+	router.GET("/test", rl.Middleware(context.Background()), func(c *gin.Context) {
+		c.Status(http.StatusOK)
+	})
+
+	// Make 1st request -> should pass (Redis fails, fallback allows 1st)
+	req1 := httptest.NewRequest(http.MethodGet, "/test", nil)
+	w1 := httptest.NewRecorder()
+	router.ServeHTTP(w1, req1)
+	assert.Equal(t, http.StatusOK, w1.Code)
+
+	// Make 2nd request -> should pass (fallback allows 2nd)
+	req2 := httptest.NewRequest(http.MethodGet, "/test", nil)
+	w2 := httptest.NewRecorder()
+	router.ServeHTTP(w2, req2)
+	assert.Equal(t, http.StatusOK, w2.Code)
+
+	// Make 3rd request -> should be blocked (Too Many Requests)
+	req3 := httptest.NewRequest(http.MethodGet, "/test", nil)
+	w3 := httptest.NewRecorder()
+	router.ServeHTTP(w3, req3)
+	assert.Equal(t, http.StatusTooManyRequests, w3.Code)
+}
+

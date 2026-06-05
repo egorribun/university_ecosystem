@@ -14,6 +14,9 @@ import (
 var (
 	redisURL string
 	verbose  bool
+
+	newRedisClientFunc = newRedisClient
+	confirmActionFunc  = confirmAction
 )
 
 func main() {
@@ -66,7 +69,7 @@ func cacheCmd() *cobra.Command {
 				pattern = args[0]
 			}
 
-			client, err := newRedisClient()
+			client, err := newRedisClientFunc()
 			if err != nil {
 				return fmt.Errorf("failed to connect to Redis: %w", err)
 			}
@@ -87,7 +90,7 @@ func cacheCmd() *cobra.Command {
 
 			// Confirm
 			fmt.Printf("Found %d keys matching '%s'\n", len(keys), pattern)
-			if !confirmAction("Clear these keys?") {
+			if !confirmActionFunc("Clear these keys?") {
 				fmt.Println("Aborted")
 				return nil
 			}
@@ -108,7 +111,7 @@ func cacheCmd() *cobra.Command {
 		Use:   "stats",
 		Short: "Show cache statistics",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			client, err := newRedisClient()
+			client, err := newRedisClientFunc()
 			if err != nil {
 				return err
 			}
@@ -143,7 +146,7 @@ func healthCmd() *cobra.Command {
 
 			// Check Redis
 			fmt.Print("Redis: ")
-			client, err := newRedisClient()
+			client, err := newRedisClientFunc()
 			if err != nil {
 				fmt.Println("❌ ", err)
 			} else {
@@ -175,7 +178,7 @@ func metricsCmd() *cobra.Command {
 		Use:   "show",
 		Short: "Show current metrics",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			client, err := newRedisClient()
+			client, err := newRedisClientFunc()
 			if err != nil {
 				return err
 			}

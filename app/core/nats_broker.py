@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import functools
+import inspect
 import json
 import os
 import uuid
@@ -403,7 +404,7 @@ class NatsTaskBroker:
                                     async with (
                                         request_container_param() as request_container
                                     ):
-                                        if asyncio.iscoroutinefunction(handler):  # noqa: B023
+                                        if inspect.iscoroutinefunction(handler):  # noqa: B023
                                             wrapped = wrap_injection(
                                                 func=handler,  # noqa: B023
                                                 container_getter=lambda _, __: (
@@ -431,7 +432,7 @@ class NatsTaskBroker:
                                                 cancellable=True,
                                             )
                                 else:
-                                    if asyncio.iscoroutinefunction(handler):  # noqa: B023
+                                    if inspect.iscoroutinefunction(handler):  # noqa: B023
                                         await handler(*args, **kwargs)  # noqa: B023
                                     else:
                                         import anyio

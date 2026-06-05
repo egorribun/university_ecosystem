@@ -53,23 +53,72 @@ pytestmark = [
 # ---------------------------------------------------------------------------
 
 
-@pytest_asyncio.fixture(scope="module")
-async def pg_engine():
-    """Dedicated async engine pointing at the PostgreSQL test database."""
+@pytest.fixture(scope="module")
+def pg_engine():
+    """Dedicated async engine pointing at the PostgreSQL test database (superuser)."""
     engine = create_async_engine(_PG_URL, echo=False, future=True)
     yield engine
-    await engine.dispose()
+    engine.sync_engine.dispose()
+
+
+@pytest_asyncio.fixture(scope="module", autouse=True)
+async def setup_rls_role(pg_engine):
+    """Create a temporary non-superuser role and grant necessary privileges for testing RLS."""
+    async with pg_engine.connect() as conn:
+        await conn.execute(
+            text("""
+            DO $$
+            BEGIN
+                IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = 'rls_test_user') THEN
+                    CREATE ROLE rls_test_user WITH LOGIN PASSWORD 'test_pass';
+                END IF;
+            END
+            $$;
+        """)
+        )
+        await conn.execute(
+            text("GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO rls_test_user")
+        )
+        await conn.execute(
+            text(
+                "GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO rls_test_user"
+            )
+        )
+        await conn.commit()
+
+
+@pytest.fixture(scope="module")
+def non_superuser_engine():
+    """Dedicated async engine connecting as the non-superuser rls_test_user."""
+    from urllib.parse import urlparse, urlunparse
+
+    parsed = urlparse(_PG_URL)
+    netloc = f"rls_test_user:test_pass@{parsed.hostname}:{parsed.port}"
+    test_url = urlunparse(parsed._replace(netloc=netloc))
+    engine = create_async_engine(test_url, echo=False, future=True)
+    yield engine
+    engine.sync_engine.dispose()
 
 
 @pytest_asyncio.fixture
-async def pg_session(pg_engine) -> AsyncSession:
-    """Fresh async session; rolled back after every test for isolation."""
+async def pg_session(non_superuser_engine) -> AsyncSession:
+    """Fresh async session using the non-superuser connection; rolled back after every test."""
+    async_session = sessionmaker(
+        non_superuser_engine, class_=AsyncSession, expire_on_commit=False
+    )
+    async with async_session() as session:
+        async with session.begin():
+            yield session
+            await session.rollback()
+
+
+@pytest_asyncio.fixture
+async def admin_session(pg_engine) -> AsyncSession:
+    """Fresh async session using the superuser/admin connection; rolled back after every test."""
     async_session = sessionmaker(pg_engine, class_=AsyncSession, expire_on_commit=False)
     async with async_session() as session:
         async with session.begin():
             yield session
-            # The transaction is rolled back automatically when the
-            # begin() context exits without commit.
             await session.rollback()
 
 
@@ -88,8 +137,8 @@ async def two_users_and_chat(pg_session: AsyncSession):
     for uid, email in [(user_a_id, "rls_a@test.com"), (user_b_id, "rls_b@test.com")]:
         await pg_session.execute(
             text(
-                "INSERT INTO users (id, email, hashed_password, role, is_active) "
-                "VALUES (:id, :email, 'x', 'student', true)"
+                "INSERT INTO users (id, email, hashed_password, role, is_active, mfa_required) "
+                "VALUES (:id, :email, 'x', 'student', true, false)"
             ),
             {"id": uid, "email": email},
         )
@@ -102,7 +151,9 @@ async def two_users_and_chat(pg_session: AsyncSession):
 
     # Insert Chat
     await pg_session.execute(
-        text("INSERT INTO chats (id, created_at) VALUES (:id, NOW())"),
+        text(
+            "INSERT INTO chats (id, created_at, updated_at) VALUES (:id, NOW(), NOW())"
+        ),
         {"id": chat_id},
     )
 
@@ -133,18 +184,19 @@ async def test_rls_allows_sender_to_read_own_message(
     user_a_id, _, chat_id = two_users_and_chat
     msg_id = str(uuid.uuid4())
 
+    # Set GUC first so the insert is allowed under RLS policy for the non-superuser
+    await pg_session.execute(
+        text("SELECT set_config('app.current_user_id', :uid, true)"), {"uid": user_a_id}
+    )
+
     await pg_session.execute(
         text(
-            "INSERT INTO messages (id, chat_id, sender_id, content, created_at) "
-            "VALUES (:id, :chat_id, :sender, 'hello', NOW())"
+            "INSERT INTO messages (id, chat_id, sender_id, content, created_at, read_status) "
+            "VALUES (:id, :chat_id, :sender, 'hello', NOW(), false)"
         ),
         {"id": msg_id, "chat_id": chat_id, "sender": user_a_id},
     )
 
-    # Activate RLS as user A
-    await pg_session.execute(
-        text("SET LOCAL app.current_user_id = :uid"), {"uid": user_a_id}
-    )
     result = await pg_session.execute(
         text("SELECT id FROM messages WHERE id = :id"), {"id": msg_id}
     )
@@ -167,7 +219,9 @@ async def test_rls_blocks_non_participant_from_reading_message(
     # New chat with only user_a
     solo_chat_id = str(uuid.uuid4())
     await pg_session.execute(
-        text("INSERT INTO chats (id, created_at) VALUES (:id, NOW())"),
+        text(
+            "INSERT INTO chats (id, created_at, updated_at) VALUES (:id, NOW(), NOW())"
+        ),
         {"id": solo_chat_id},
     )
     await pg_session.execute(
@@ -179,17 +233,22 @@ async def test_rls_blocks_non_participant_from_reading_message(
     )
 
     msg_id = str(uuid.uuid4())
+    # Set GUC as user_a first so we can insert the message in user_a's chat
+    await pg_session.execute(
+        text("SELECT set_config('app.current_user_id', :uid, true)"), {"uid": user_a_id}
+    )
+
     await pg_session.execute(
         text(
-            "INSERT INTO messages (id, chat_id, sender_id, content, created_at) "
-            "VALUES (:id, :chat_id, :sender, 'secret', NOW())"
+            "INSERT INTO messages (id, chat_id, sender_id, content, created_at, read_status) "
+            "VALUES (:id, :chat_id, :sender, 'secret', NOW(), false)"
         ),
         {"id": msg_id, "chat_id": solo_chat_id, "sender": user_a_id},
     )
 
     # Activate RLS as user B (not a participant in solo_chat)
     await pg_session.execute(
-        text("SET LOCAL app.current_user_id = :uid"), {"uid": user_b_id}
+        text("SELECT set_config('app.current_user_id', :uid, true)"), {"uid": user_b_id}
     )
     result = await pg_session.execute(
         text("SELECT id FROM messages WHERE id = :id"), {"id": msg_id}
@@ -214,27 +273,36 @@ async def test_rls_with_null_user_id_returns_no_messages(
     user_a_id, _, chat_id = two_users_and_chat
     msg_id = str(uuid.uuid4())
 
+    # Set GUC first so the insert is allowed
+    await pg_session.execute(
+        text("SELECT set_config('app.current_user_id', :uid, true)"), {"uid": user_a_id}
+    )
+
     await pg_session.execute(
         text(
-            "INSERT INTO messages (id, chat_id, sender_id, content, created_at) "
-            "VALUES (:id, :chat_id, :sender, 'private', NOW())"
+            "INSERT INTO messages (id, chat_id, sender_id, content, created_at, read_status) "
+            "VALUES (:id, :chat_id, :sender, 'private', NOW(), false)"
         ),
         {"id": msg_id, "chat_id": chat_id, "sender": user_a_id},
     )
 
-    # Set RLS to empty string (simulates miscall with no user)
-    await pg_session.execute(text("SET LOCAL app.current_user_id = ''"))
+    # Set RLS to a random non-existent UUID (simulates miscall with no participant user)
+    await pg_session.execute(
+        text("SELECT set_config('app.current_user_id', :uid, true)"),
+        {"uid": str(uuid.uuid4())},
+    )
     result = await pg_session.execute(
         text("SELECT id FROM messages WHERE id = :id"), {"id": msg_id}
     )
     row = result.fetchone()
-    assert row is None, "RLS with empty current_user_id must not expose any messages"
+    assert row is None, (
+        "RLS with non-participant current_user_id must not expose any messages"
+    )
 
 
 @pytest.mark.asyncio
 async def test_rls_superuser_context_bypasses_policy(
-    pg_session: AsyncSession,
-    two_users_and_chat,
+    admin_session: AsyncSession,
 ):
     """Without SET LOCAL, a superuser connection bypasses RLS entirely.
 
@@ -242,19 +310,36 @@ async def test_rls_superuser_context_bypasses_policy(
     operations (e.g. Alembic, background cleanup jobs).  The test documents
     and asserts this intentional bypass rather than flagging it as a bug.
     """
-    user_a_id, _user_b_id, chat_id = two_users_and_chat
+    user_id = str(uuid.uuid4())
+    chat_id = str(uuid.uuid4())
     msg_id = str(uuid.uuid4())
 
-    await pg_session.execute(
+    # Insert user
+    await admin_session.execute(
         text(
-            "INSERT INTO messages (id, chat_id, sender_id, content, created_at) "
-            "VALUES (:id, :chat_id, :sender, 'admin-visible', NOW())"
+            "INSERT INTO users (id, email, hashed_password, role, is_active, mfa_required) "
+            "VALUES (:id, 'rls_super@test.com', 'x', 'student', true, false)"
         ),
-        {"id": msg_id, "chat_id": chat_id, "sender": user_a_id},
+        {"id": user_id},
+    )
+    # Insert Chat
+    await admin_session.execute(
+        text(
+            "INSERT INTO chats (id, created_at, updated_at) VALUES (:id, NOW(), NOW())"
+        ),
+        {"id": chat_id},
+    )
+    # Insert Message
+    await admin_session.execute(
+        text(
+            "INSERT INTO messages (id, chat_id, sender_id, content, created_at, read_status) "
+            "VALUES (:id, :chat_id, :sender, 'admin-visible', NOW(), false)"
+        ),
+        {"id": msg_id, "chat_id": chat_id, "sender": user_id},
     )
 
     # No SET LOCAL — superuser/backend connection sees all rows
-    result = await pg_session.execute(
+    result = await admin_session.execute(
         text("SELECT id FROM messages WHERE id = :id"), {"id": msg_id}
     )
     row = result.fetchone()
@@ -277,7 +362,7 @@ async def test_rls_scoped_to_transaction(
     async with async_session() as session:
         async with session.begin():
             await session.execute(
-                text("SET LOCAL app.current_user_id = 'some-user-id'")
+                text("SELECT set_config('app.current_user_id', 'some-user-id', true)")
             )
             result = await session.execute(
                 text("SELECT current_setting('app.current_user_id', TRUE)")

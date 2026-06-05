@@ -13,7 +13,7 @@ on:
                 description: "Minimum coverage percentage"
                 required: false
                 type: number
-                default: 78
+                default: 90
             run-integration-tests:
                 description: "Run PostgreSQL integration tests"
                 required: false

@@ -32,8 +32,11 @@ BACKEND_URL = os.getenv("BACKEND_URL", "http://localhost:8000")
 GATEWAY_URL = os.getenv("GATEWAY_URL", "http://localhost:8080")
 TEMPO_URL = os.getenv("TEMPO_URL", "http://localhost:3200")
 DATABASE_URL = os.getenv(
-    "DATABASE_URL",
-    "postgresql+asyncpg://test:test@localhost:5432/test",  # pragma: allowlist secret
+    "INTEGRATION_DATABASE_URL",
+    os.getenv(
+        "DATABASE_URL",
+        "postgresql+asyncpg://test:test@localhost:5432/test",  # pragma: allowlist secret
+    ),
 )
 
 _RUN = bool(os.getenv("RUN_INTEGRATION_TESTS"))
@@ -49,13 +52,13 @@ pytestmark = [
 # ---------------------------------------------------------------------------
 
 
-@pytest.fixture(scope="module")
+@pytest.fixture
 def db_engine():
     """Create async SQLAlchemy engine pointing to the integration test database."""
     engine = create_async_engine(DATABASE_URL, echo=False, future=True)
     yield engine
-    # Cleanup connection pool on exit
-    asyncio.run(engine.dispose())
+    # Cleanup connection pool on exit synchronously to avoid event loop issues
+    engine.sync_engine.dispose()
 
 
 @pytest.fixture
@@ -78,8 +81,8 @@ async def setup_integration_data(db_engine):
             # 1. Insert user
             await conn.execute(
                 text(
-                    "INSERT INTO users (id, email, hashed_password, role, is_active) "
-                    "VALUES (:id, :email, :password_hash, 'student', true)"
+                    "INSERT INTO users (id, email, hashed_password, role, is_active, mfa_required) "
+                    "VALUES (:id, :email, :password_hash, 'student', true, false)"
                 ),
                 {"id": user_id, "email": email, "password_hash": hashed_password},
             )
@@ -94,8 +97,8 @@ async def setup_integration_data(db_engine):
             # 3. Insert chat
             await conn.execute(
                 text(
-                    "INSERT INTO chats (id, created_at, chat_type) "
-                    "VALUES (:id, NOW(), 'group')"
+                    "INSERT INTO chats (id, created_at, updated_at, chat_type) "
+                    "VALUES (:id, NOW(), NOW(), 'group')"
                 ),
                 {"id": chat_id},
             )
@@ -183,16 +186,23 @@ async def test_trace_propagation_across_services(setup_integration_data) -> None
     traceparent = f"00-{trace_id}-{parent_span_id}-01"
 
     async with httpx.AsyncClient(timeout=10.0) as client:
+        # Fetch CSRF token first
+        await client.get(f"{BACKEND_URL}/health/ready")
+        csrf_token = client.cookies.get("csrf_token", "")
+
         # 1. Login via backend to get the access token and cookies
         login_resp = await client.post(
-            f"{BACKEND_URL}/api/auth/login",
+            f"{BACKEND_URL}/api/v1/auth/login/json",
             json={"email": email, "password": password},
+            headers={"x-csrf-token": csrf_token},
         )
         assert login_resp.status_code == 200, (
             f"Login failed: {login_resp.status_code} {login_resp.text}"
         )
         login_data = login_resp.json()
-        token = login_data["access_token"]
+        token = login_data.get("access_token") or login_resp.cookies.get(
+            "access_token_v2", ""
+        )
         cookies = dict(login_resp.cookies)
 
         # 2. Issue a POST /chats/{chat_id}/typing request via the Go Gateway carrying traceparent
@@ -201,10 +211,10 @@ async def test_trace_propagation_across_services(setup_integration_data) -> None
             "traceparent": traceparent,
             "Content-Type": "application/json",
         }
+        client.cookies.update(cookies)
         typing_resp = await client.post(
             f"{GATEWAY_URL}/api/v1/chats/{chat_id}/typing",
             headers=headers,
-            cookies=cookies,
         )
         assert typing_resp.status_code == 200, (
             f"Gateway typing request failed: {typing_resp.status_code} {typing_resp.text}"
