@@ -57,15 +57,16 @@ export default defineConfig({
         "src/utils/spotify.ts",
         "src/utils/workerChrome.ts",
       ],
-      // Ratchet floors at measured reality (statements 65.95 / branches 71.4 /
-      // functions 67.28 / lines 65.95 after the W211 climb: store selector hooks
-      // + pure util/api tests — weather, validation, building/weather icons,
-      // localize, cache, transitions). NO-REGRESSION floors with a ~1pt buffer,
-      // NOT the target — raise incrementally as the campaign adds tests (target
-      // 90). The previous 90 was set ahead of actual coverage and red-walled CI.
+      // Ratchet floors at measured reality. After the Activity-chart render
+      // tests (features/activity/components): statements 66.01 / branches 71.71 /
+      // functions 67.28 / lines 66.01. Branches raised 70→71 (0.71 buffer).
+      // statements/lines HELD at 65 — measured 66.01 has no platform cushion
+      // (local == CI), so a 66 floor would be a 0.01 knife-edge; functions HELD
+      // at 66 (unchanged this wave). NO-REGRESSION floors, NOT the target —
+      // raise incrementally as the campaign adds tests (target 90).
       thresholds: {
         statements: 65,
-        branches: 70,
+        branches: 71,
         functions: 66,
         lines: 65,
       },

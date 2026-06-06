@@ -1,4 +1,5 @@
 import datetime
+import uuid
 
 import pytest
 from sqlalchemy import select
@@ -227,3 +228,142 @@ async def test_invite_code(user_repo, db_session):
     assert retrieved.code == code_val
 
     assert await user_repo.get_invite_code("NONEXISTENT") is None
+
+
+# --- Auth-data getters + full-profile join (this wave) -----------------------
+
+
+@pytest.mark.asyncio
+async def test_get_auth_by_email_and_id(user_repo, test_user):
+    by_email = await user_repo.get_auth_by_email(test_user.email)
+    assert by_email is not None
+    assert by_email.id == test_user.id
+
+    by_id = await user_repo.get_auth_by_id(test_user.id)
+    assert by_id is not None
+    assert by_id.id == test_user.id
+
+    # Invalid-UUID + missing-email branches return None.
+    assert await user_repo.get_auth_by_id("not-a-uuid") is None
+    assert await user_repo.get_auth_by_email("missing@example.com") is None
+
+
+@pytest.mark.asyncio
+async def test_get_with_full_profile(user_repo, test_user):
+    dto = await user_repo.get_with_full_profile(test_user.id)
+    assert dto is not None
+    assert dto.id == test_user.id
+    # String id + invalid id branches.
+    assert (await user_repo.get_with_full_profile(str(test_user.id))).id == test_user.id
+    assert await user_repo.get_with_full_profile("not-a-uuid") is None
+
+
+# --- CQRS create / update / create_with_invite -------------------------------
+
+
+@pytest.mark.asyncio
+async def test_create_via_repository_builds_aggregate(user_repo):
+    # Flat dict spanning core + profile + preferences + education_path keys so
+    # _extract_cqrs_data + _build_user_aggregate route each to its sub-object.
+    dto = await user_repo.create(
+        {
+            "email": "cqrs_create@example.com",
+            "hashed_password": "h",
+            "role": UserRole.STUDENT,
+            "full_name": "CQRS Created",  # → profile
+            "timezone": "UTC",  # → preferences
+            "institute": "Test Institute",  # → education_path
+        }
+    )
+    assert dto.id is not None
+    roundtrip = await user_repo.get_by_email("cqrs_create@example.com")
+    assert roundtrip is not None
+    assert roundtrip.id == dto.id
+
+
+@pytest.mark.asyncio
+async def test_update_via_repository_updates_core_and_education(user_repo, test_user):
+    # Only core + education_path keys: test_user already HAS profile + preferences
+    # rows, and update() reads db_obj.profile / .preferences under lazy="noload"
+    # (→ None even when a row exists), so passing profile/pref data would attempt a
+    # duplicate INSERT. education_path is genuinely absent on test_user, so the
+    # create branch fires cleanly. The core setattr + edu create + flush + return
+    # paths are what we cover here.
+    updated = await user_repo.update(
+        test_user.id,
+        {
+            "is_active": False,  # core → setattr branch
+            "institute": "New Institute",  # education_path absent → create branch
+        },
+    )
+    assert updated is not None
+    # Updating a non-existent user returns None.
+    assert await user_repo.update(uuid.uuid4(), {"is_active": True}) is None
+
+
+@pytest.mark.asyncio
+async def test_create_with_invite_marks_code_used_and_none_path(user_repo, db_session):
+    invite = models.InviteCode(code="CQRSINVITE", role="student")
+    db_session.add(invite)
+    await db_session.commit()
+
+    dto = await user_repo.create_with_invite(
+        {
+            "email": "invited@example.com",
+            "hashed_password": "h",
+            "role": UserRole.STUDENT,
+            "full_name": "Invited User",
+        },
+        invite,
+    )
+    assert dto.id is not None
+    assert invite.is_used is True
+
+    # None invite → user created without touching any invite code.
+    dto2 = await user_repo.create_with_invite(
+        {
+            "email": "noinvite@example.com",
+            "hashed_password": "h",
+            "role": UserRole.STUDENT,
+        },
+        None,
+    )
+    assert dto2.id is not None
+
+
+# --- Access logs -------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_get_user_access_logs(user_repo, test_user, db_session):
+    # data_access_logs is RANGE-partitioned by created_at on PostgreSQL — keep
+    # the timestamp recent so it lands in a valid partition on the CI tier.
+    now = datetime.datetime.now(datetime.UTC)
+    log = models.DataAccessLog(
+        actor_user_id=test_user.id,
+        resource_type="user",
+        action="view",
+        created_at=now,
+    )
+    db_session.add(log)
+    await db_session.commit()
+
+    logs = await user_repo.get_user_access_logs(test_user.id)
+    assert len(logs) >= 1
+
+    # before_dt + after_id keyset branch.
+    paged = await user_repo.get_user_access_logs(
+        test_user.id,
+        before_dt=now + datetime.timedelta(hours=1),
+        after_id=log.id,
+    )
+    assert isinstance(paged, list)
+
+    # before_dt-only branch.
+    before_only = await user_repo.get_user_access_logs(
+        test_user.id, before_dt=now + datetime.timedelta(hours=1)
+    )
+    assert isinstance(before_only, list)
+
+    # Invalid-UUID branch → [].
+    assert await user_repo.get_user_access_logs("not-a-uuid") == []
