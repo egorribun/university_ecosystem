@@ -35,6 +35,17 @@ services:
       - ./.secrets:/app/.secrets:ro
 
   ws-hub:
+    # go.yml attaches ws-hub to internal + public ONLY -- NOT cache_net, where
+    # valkey lives (docker-compose.yml:341). So ws-hub cannot resolve `valkey`
+    # ("lookup valkey ... server misbehaving" = a cross-network SERVFAIL, not
+    # transient DNS) -> Redis connect fails -> the OTT ticket GETDEL hard-rejects
+    # -> the WS 101 upgrade fails. Restate internal+public (so nats + backend
+    # stay reachable) + add cache_net. Works whether v2.x merges the networks
+    # sequence by union or replace -- both yield internal+public+cache_net.
+    networks:
+      - internal
+      - public
+      - cache_net
     environment:
       # ws-hub HARD-EXITS at startup if WS_HUB_INTERNAL_SECRET is empty
       # (services/ws-hub/main.go:28 os.Exit(1) -- "WS_HUB_INTERNAL_SECRET is not

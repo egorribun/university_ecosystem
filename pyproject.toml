@@ -524,7 +524,10 @@ pytest_add_cli_args_test_selection = ["tests/"]
 # + reverted: it could not enumerate every loop-bound global from the Windows dev box
 # that cannot run mutmut, and recreating an async client at session-teardown introduced
 # an "I/O operation on closed file" cascade. Exclusion is the deterministic,
-# override-free pattern (mutmut is POSIX-only — verified via CI only).
+# override-free pattern (mutmut is POSIX-only — verified via CI only). mutmut's
+# clean test runs pytest with --maxfail=1, so loop-fragile tests surface ONE per
+# CI round; this PR's WS/auth/notifications changes pulled test_push_router_full,
+# test_auth_mfa + test_notifications_api into the changed-module clean-test subset.
 pytest_add_cli_args = [
     "--ignore=tests/test_migrations_runtime.py",
     "--ignore=tests/test_wave173_caddy_routing.py",
@@ -532,5 +535,6 @@ pytest_add_cli_args = [
     "--ignore=tests/test_spotify_fallback.py",
     "--ignore=tests/test_push_router_full.py",
     "--ignore=tests/test_auth_mfa.py",
+    "--ignore=tests/test_notifications_api.py",
 ]
 

@@ -23,7 +23,12 @@ const BASE_URL = __ENV.API_BASE_URL || 'http://localhost:8000';
 export default function () {
     const responses = http.batch([
         ['GET', `${BASE_URL}/`, null, { tags: { name: 'Root' } }],
-        ['GET', `${BASE_URL}/healthz`, null, { tags: { name: 'Health' } }],
+        // /health/ready is the LEAN readiness probe (DB connectivity only,
+        // app/api/health.py:362). The full /healthz (:159) also checks
+        // ES/SpiceDB/Tempo and returns 503 when any flaps under load (tempo is
+        // `unhealthy` in CI -> ~15% 503 -> http_req_failed breach). The lean
+        // probe is the right target for a request-throughput load test.
+        ['GET', `${BASE_URL}/health/ready`, null, { tags: { name: 'Ready' } }],
     ]);
 
     check(responses[0], {
@@ -31,7 +36,7 @@ export default function () {
     });
 
     check(responses[1], {
-        'healthz status is 200': (r) => r.status === 200,
+        'health/ready status is 200': (r) => r.status === 200,
     });
 
     sleep(1);

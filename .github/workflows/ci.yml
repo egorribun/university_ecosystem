@@ -1251,6 +1251,16 @@ jobs:
             sleep 2
           done
 
+          # ws-hub's Redis connect is startup-ONLY (no retry). It came up during
+          # the heavy parallel build, before valkey was reachable + while Docker
+          # DNS SERVFAILed, so it gave up on Redis ("continuing without L2 cache")
+          # -> the OTT ticket GETDEL hard-rejects -> the WS 101 upgrade fails. The
+          # stack is settled now + ws-hub is on cache_net (fragment): bounce it so
+          # initRedis reconnects to valkey, then confirm in the logs.
+          docker compose -f docker-compose.infra.yml -f docker-compose.go.yml -f docker-compose.yml -f docker-compose.ci-loadtest.yml restart ws-hub
+          sleep 6
+          docker compose -f docker-compose.infra.yml -f docker-compose.go.yml -f docker-compose.yml -f docker-compose.ci-loadtest.yml logs --tail=15 ws-hub | grep -iE "Redis connected|continuing without L2" || echo "::warning::ws-hub Redis status not found in logs"
+
       # Always-on ws-hub diagnostics: round 1 showed ws-hub `Restarting` but CI
       # never captured its logs, so the WS-chain root cause was unknown. Confirm
       # the fragment's Redis/NATS env overrides actually merged on compose v2.x
