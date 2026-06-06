@@ -256,6 +256,11 @@ jobs:
         run: |
           Copy-Item .env.example .env
           docker compose -f docker-compose.yml config
+          # Also validate the merged load-and-chaos stack (infra + go + base +
+          # CI override). docker-compose.go.yml uses strict ${JWT_SECRET:?}
+          # (absent from .env.example); a dummy value is fine for `config`.
+          $env:JWT_SECRET = "dummy-ci-validate-secret"  # pragma: allowlist secret
+          docker compose -f docker-compose.infra.yml -f docker-compose.go.yml -f docker-compose.yml -f docker-compose.ci-loadtest.yml config | Out-Null
 
   backend-tests:
     name: "Backend Tests (${{ matrix.name }})"
@@ -1133,7 +1138,7 @@ jobs:
   load-and-chaos-tests:
     name: Load and Chaos Resilience Tests
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30 # +3 Go builds (gateway/ws-hub/file-processor) + temporal boot
     needs:
       - pre-commit-check
       - compose-validate
@@ -1162,16 +1167,61 @@ jobs:
         if: env.SECRET_KEY == ''
         run: echo "SECRET_KEY=$(openssl rand -hex 32)" >> "$GITHUB_ENV"
 
+      # docker-compose.go.yml uses strict ${JWT_SECRET:?} (gateway + ws-hub) and
+      # JWT_SECRET is NOT in .env.example. Its value is irrelevant for the WS
+      # ticket flow (tickets are Redis-validated), so an ephemeral one suffices.
+      - name: Generate ephemeral JWT_SECRET
+        run: echo "JWT_SECRET=$(openssl rand -hex 32)" >> "$GITHUB_ENV"
+
+      # Backend ALGORITHM=RS256 + JWT_PRIVATE_KEY_PATH=.secrets/jwt_rs256.pem.
+      # The key is NOT baked into the image (no source mount in prod), so login
+      # cannot sign tokens without it. Generate it here; docker-compose.ci-loadtest.yml
+      # bind-mounts ./.secrets into the backend (WORKDIR /app). Mirrors the
+      # visual-audit.yml / wave189-unauthed-smoke.yml precedent.
+      - name: Generate RS256 keypair
+        run: |
+          mkdir -p .secrets
+          openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out .secrets/jwt_rs256.pem
+
       - name: Spin up Docker Compose
         run: |
-          docker compose -f docker-compose.infra.yml -f docker-compose.yml up -d
-          echo "Waiting for services to be healthy..."
-          sleep 20
+          docker compose \
+            -f docker-compose.infra.yml \
+            -f docker-compose.go.yml \
+            -f docker-compose.yml \
+            -f docker-compose.ci-loadtest.yml \
+            up -d --build
+          echo "Waiting for backend + gateway to be ready..."
+          # Readiness poll replaces a blind `sleep 20`: the backend builds the
+          # RS256 signer + connects to valkey/postgres, and the gateway depends
+          # on a healthy backend (3 Go images build first). Poll /healthz, then
+          # the gateway /health.
+          backend_ready=""
+          for i in $(seq 1 90); do
+            if curl -fsS http://localhost:8000/healthz >/dev/null 2>&1; then
+              echo "backend ready (after $((i * 2))s)"; backend_ready=1; break
+            fi
+            sleep 2
+          done
+          if [ -z "$backend_ready" ]; then
+            echo "::warning::backend /healthz not ready after 180s; dumping status + logs"
+            docker compose -f docker-compose.infra.yml -f docker-compose.go.yml -f docker-compose.yml -f docker-compose.ci-loadtest.yml ps || true
+            docker compose -f docker-compose.infra.yml -f docker-compose.go.yml -f docker-compose.yml -f docker-compose.ci-loadtest.yml logs --tail=80 backend || true
+          fi
+          for i in $(seq 1 30); do
+            if curl -fsS http://localhost:8080/health >/dev/null 2>&1; then
+              echo "gateway ready (after $((i * 2))s)"; break
+            fi
+            sleep 2
+          done
 
       - name: Run k6 load tests
         run: |
-          docker run --network="host" -i grafana/k6 run - <tests/performance/load_test.js
-          docker run --network="host" -i grafana/k6 run - <tests/performance/ws_hub_load_test.js
+          docker run --network="host" -i -e API_BASE_URL=http://localhost:8000 \
+            grafana/k6 run - <tests/performance/load_test.js
+          docker run --network="host" -i \
+            -e API_BASE_URL=http://localhost:8000 -e WS_URL=ws://localhost:8083 \
+            grafana/k6 run - <tests/performance/ws_hub_load_test.js
 
       - name: Run chaos resilience tests
         env:
@@ -1179,12 +1229,22 @@ jobs:
           API_BASE_URL: "http://localhost:8000"
           GATEWAY_URL: "http://localhost:8080"
           DATABASE_URL_SYNC: "postgresql://postgres:postgres@localhost:5432/university" # pragma: allowlist secret
+          # The chaos suite's internal `docker compose stop/start` calls carry no
+          # -f flags. COMPOSE_FILE (Linux separator ':') makes them target the
+          # full merged stack so nats / ws-hub / gateway are visible.
+          COMPOSE_FILE: "docker-compose.infra.yml:docker-compose.go.yml:docker-compose.yml:docker-compose.ci-loadtest.yml"
         run: |
           uv run pytest tests/chaos/test_resilience.py -v
 
       - name: Tear down Docker Compose
         if: always()
-        run: docker compose down
+        run: |
+          docker compose \
+            -f docker-compose.infra.yml \
+            -f docker-compose.go.yml \
+            -f docker-compose.yml \
+            -f docker-compose.ci-loadtest.yml \
+            down -v
 
   ci-success:
     name: CI Success

@@ -1,0 +1,41 @@
+# CI-only override for the "Load and Chaos Resilience Tests" job.
+#
+# Layered LAST after docker-compose.infra.yml + docker-compose.go.yml +
+# docker-compose.yml. It host-publishes the backend + postgres so the k6 load
+# tests (docker run --network=host) and the chaos suite can reach them on
+# localhost, bind-mounts the RS256 signing key into the backend, and points the
+# Go ws-hub at the password-protected valkey + the auth'd nats.
+#
+# Caddy is BYPASSED for the load tests: k6 hits backend:8000 + ws-hub:8083 +
+# gateway:8080 directly, so the production services/caddy/Caddyfile (incl. the
+# W132 weighted_round_robin canary block) is untouched.
+#
+# NEVER used outside CI — the prod stack keeps the backend on `expose:` only.
+services:
+  backend:
+    ports:
+      - "8000:8000" # L1 — k6/chaos reach the backend on localhost:8000
+    volumes:
+      # L8 — RS256 private key. backend.Dockerfile sets WORKDIR /app and
+      # JWT_PRIVATE_KEY_PATH=.secrets/jwt_rs256.pem (relative) -> resolves to
+      # /app/.secrets/jwt_rs256.pem. Generated on the runner by the ci.yml step.
+      - ./.secrets:/app/.secrets:ro
+
+  postgres:
+    ports:
+      - "5432:5432" # L6 — defensive; the only DB-poll chaos test skips on /token
+
+  ws-hub:
+    environment:
+      # The OTT ticket is WRITTEN by the backend to valkey DB 0
+      # (CACHE_REDIS_URL=redis://:${REDIS_PASSWORD}@valkey:6379/0) and READ here
+      # via GETDEL. ws-hub's defaults (REDIS_URL=redis:6379, REDIS_PASSWORD="",
+      # REDIS_DB=0) point at the wrong host + no password -> ticket validation
+      # 401s. Override host + password; DB 0 already matches the backend.
+      REDIS_URL: valkey:6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+      REDIS_DB: "0"
+      # nats runs with --auth ${NATS_AUTH_TOKEN}; the go.yml default URL lacks the
+      # token. The WS upgrade (101) is NATS-independent, but message fan-out needs
+      # an authenticated NATS connection.
+      NATS_URL: nats://${NATS_AUTH_TOKEN}@nats:4222

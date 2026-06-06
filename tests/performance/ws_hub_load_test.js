@@ -1,6 +1,15 @@
 import ws from 'k6/ws';
 import http from 'k6/http';
 import { check, sleep } from 'k6';
+import { Rate } from 'k6/metrics';
+
+// Custom error-rate metric backing the `errors` threshold in options below.
+// Without this definition k6 fails at init with "threshold defined on
+// non-existent metric 'errors'". Recorded only at the deterministic steps
+// (register/login/ticket/connect) — NOT the message handler, whose delivery
+// depends on NATS fan-out and is best-effort, so the threshold passes on a
+// successful 101 upgrade alone.
+const errors = new Rate('errors');
 
 // k6 Options & SLA thresholds
 export const options = {
@@ -35,9 +44,10 @@ export default function () {
         full_name: fullName,
     });
     const regRes = http.post(`${BASE_URL}/api/v1/auth/register`, registerPayload, { headers });
-    check(regRes, {
+    const regOk = check(regRes, {
         'registration status is 200 or 400': (r) => r.status === 200 || r.status === 400,
     });
+    errors.add(!regOk);
 
     // 2. Login User via JSON
     const loginPayload = JSON.stringify({
@@ -48,6 +58,7 @@ export default function () {
     const loginOk = check(loginRes, {
         'login is successful (200)': (r) => r.status === 200,
     });
+    errors.add(!loginOk);
 
     if (!loginOk) {
         console.error(`Login failed for ${email}: ${loginRes.body}`);
@@ -66,6 +77,7 @@ export default function () {
     const ticketOk = check(ticketRes, {
         'ticket issued (201)': (r) => r.status === 201,
     });
+    errors.add(!ticketOk);
 
     if (!ticketOk) {
         console.error(`Ticket issuance failed: ${ticketRes.body}`);
@@ -75,8 +87,12 @@ export default function () {
     const ticketData = JSON.parse(ticketRes.body);
     const ticket = ticketData.ticket;
 
-    // 4. Establish WebSocket connection with the ticket
-    const url = `${WS_URL}/ws/chat?ticket=${encodeURIComponent(ticket)}`;
+    // 4. Establish WebSocket connection with the ticket.
+    // ws-hub serves the upgrade at exact /ws (services/ws-hub/main.go:133
+    // http.Handle("/ws", ...)). The /ws/chat -> /ws rewrite lives only in the
+    // DEV infrastructure/Caddyfile; k6 connects directly to ws-hub (Caddy is
+    // bypassed in CI), so /ws/chat would 404 — connect to /ws.
+    const url = `${WS_URL}/ws?ticket=${encodeURIComponent(ticket)}`;
 
     const res = ws.connect(url, {}, function (socket) {
         socket.on('open', function () {
@@ -118,9 +134,10 @@ export default function () {
         }, 8000);
     });
 
-    check(res, {
+    const wsOk = check(res, {
         'websocket connection established': (r) => r && r.status === 101,
     });
+    errors.add(!wsOk);
 
     sleep(1);
 }

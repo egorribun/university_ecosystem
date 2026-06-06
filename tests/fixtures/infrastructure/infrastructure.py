@@ -179,7 +179,18 @@ async def app():
     except RuntimeError as exc:
         # Suppress "unable to perform operation on <TCPTransport closed=True>"
         # from httpx/httpcore teardown — known uvloop/asyncio race condition.
-        if "TCPTransport" not in str(exc) and "closed" not in str(exc):
+        # Also suppress "The future belongs to a different loop than the one
+        # specified": surfaces ONLY under mutmut, which calls pytest.main()
+        # multiple times in one process (stats -> clean-test -> per-mutant), so
+        # session-loop-bound module globals (DB engine, etc.) raise at the second
+        # run's teardown. Mirrors the clean_database swallow in
+        # tests/fixtures/database/database.py which already drops this class.
+        message = str(exc).lower()
+        if (
+            "tcptransport" not in message
+            and "closed" not in message
+            and "different loop" not in message
+        ):
             raise
 
 
