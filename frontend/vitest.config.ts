@@ -57,21 +57,20 @@ export default defineConfig({
         "src/utils/spotify.ts",
         "src/utils/workerChrome.ts",
       ],
-      // Ratchet floors at measured reality. After the components/ui + navbar
-      // render-test slice (NotificationRelevanceScore, Spinner, ThemeToggle,
-      // ContentSummary, ScaleIn, StaggerChildren, CardActionArea, Snackbar,
-      // SafeHtml, Schedule/ProfileCardSkeleton, NavbarPill, LiveRegionProvider):
-      // statements 67.08 / branches 72.21 / functions 67.73 / lines 67.08.
-      // statements + lines RAISED 65→66 (1.08 buffer). branches HELD at 71
-      // (72.21 → a 72 floor is only 0.21, < the ~0.5 no-cushion margin).
-      // functions HELD at 66 (67.73 → a 67 floor would be only 0.73; with
-      // local == CI we keep the conservative margin). NO-REGRESSION floors, NOT
-      // the target — raise incrementally as the campaign adds tests (target 90).
+      // Ratchet floors at measured reality. After the components/ui primitives
+      // render-test slice (Badge, EmptyState, ProgressBar, Tooltip, Checkbox,
+      // Switch — on top of the prior NotificationRelevanceScore/Spinner/...
+      // slice): statements 67.09 / branches 72.34 / functions 67.86 / lines 67.09.
+      // statements + lines + functions RAISED 66→67 (1.09 / 1.09 / 0.86 buffers,
+      // all ≥ the ~0.5 no-cushion margin). branches HELD at 71 (72.34 → a 72
+      // floor is only 0.34, < 0.5 — wait for a larger render slice). NO-REGRESSION
+      // floors, NOT the target — raise incrementally (target 90; local == CI, so
+      // there is no integration cushion: keep ≥~0.5pp headroom before any raise).
       thresholds: {
-        statements: 66,
+        statements: 67,
         branches: 71,
-        functions: 66,
-        lines: 66,
+        functions: 67,
+        lines: 67,
       },
     },
   },

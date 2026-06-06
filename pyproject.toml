@@ -362,12 +362,12 @@ omit = [
 [tool.coverage.report]
 show_missing = true
 # Ratchet floor at measured reality. Local hermetic (Windows, pyvips skipped)
-# = 84.01% after the repository-coverage climb (session / story / notification /
-# auth / user / news / event repositories); CI (Linux + integration tier)
-# measures ~0.7pp higher. No-regression floor, NOT the aspirational target —
-# raise incrementally as the campaign adds tests (target 95%). Unified across
-# pyproject / Makefile / ci.yml.
-fail_under = 84
+# = 85.33% local hermetic after the service/repository-coverage climb
+# (chat_repository / audit_service / news_service / event_service); CI
+# (Linux + integration tier) measures ~0.7pp higher. No-regression floor, NOT
+# the aspirational target — raise incrementally as the campaign adds tests
+# (target 95%). Unified across pyproject / Makefile / ci.yml.
+fail_under = 85
 exclude_lines = [
   "pragma: no cover",
   "def __repr__",

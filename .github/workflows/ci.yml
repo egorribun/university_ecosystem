@@ -283,11 +283,11 @@ jobs:
       test-group-name: "All-${{ matrix.name }}"
       test-pattern: "tests/"
       python-version: ${{ matrix.python-version }}
-      # Ratchet floor at measured reality (local hermetic ~84.0% after the
-      # repository-coverage climb; CI Linux+integration measures higher). Raise
-      # incrementally as the backend coverage campaign lands. Unified with
+      # Ratchet floor at measured reality (local hermetic ~85.33% after the
+      # service/repository-coverage climb; CI Linux+integration measures higher).
+      # Raise incrementally as the backend coverage campaign lands. Unified with
       # pyproject/Makefile.
-      coverage-threshold: ${{ matrix.coverage-check && 84 || 0 }}
+      coverage-threshold: ${{ matrix.coverage-check && 85 || 0 }}
       run-integration-tests: ${{ matrix.run-integration }}
       parallel-workers: 0 # LOW-W19: 0 = auto-detect workers via pytest-xdist (-n auto)
       python-gil: ${{ matrix.free-threading && '0' || '1' }}  # MOD-24-03
@@ -1115,6 +1115,14 @@ jobs:
         run: uv sync --group dev
 
       - name: Run incremental mutmut
+        # Track A (session 5): MUTMUT=1 makes the prepare_database fixture dispose
+        # the module-global async engine pool at the start of each pytest.main()
+        # invocation, so mutmut's stats -> clean-test -> per-mutant re-runs each
+        # rebind it to their own event loop instead of reusing the first run's
+        # (which raised "future belongs to a different loop" at async teardown and
+        # failed the clean-test phase). No effect on any other pytest run.
+        env:
+          MUTMUT: "1"
         run: |
           git diff --name-only origin/main...HEAD | grep '^app/.*\.py$' > /tmp/changed_py.txt || true
           if [ -s /tmp/changed_py.txt ]; then

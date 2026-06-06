@@ -472,3 +472,139 @@ async def test_unregister_attendance_not_found(event_service, mock_repo):
     mock_repo.delete_attendance.return_value = False
     res = await event_service.unregister_attendance(MagicMock(), uuid4())
     assert res == {"ok": False}
+
+
+# --------------------------------------------------------------------------- #
+# delete_event — not-found guard + best-effort file-cleanup on OSError         #
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.asyncio
+async def test_delete_event_not_found_returns_false(event_service, mock_repo):
+    mock_repo.get.return_value = None
+    assert await event_service.delete_event(uuid4()) is False
+
+
+@pytest.mark.asyncio
+async def test_delete_event_swallows_file_cleanup_errors(
+    event_service, mock_uow, mock_repo
+):
+    event_id = uuid4()
+    mock_repo.get.return_value = create_mock_event(event_id)  # has image_url
+    mock_repo.get_event_file_urls.return_value = ["file1.png", "file2.png"]
+
+    # Storage deletion failing is non-fatal — the commit already succeeded.
+    with patch(
+        "app.utils.files.delete_static_file",
+        new=AsyncMock(side_effect=OSError("storage down")),
+    ):
+        assert await event_service.delete_event(event_id) is True
+
+    mock_uow.commit.assert_awaited_once()
+
+
+# --------------------------------------------------------------------------- #
+# register_attendance — not-found + closed (active flag and expired window)    #
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.asyncio
+async def test_register_attendance_event_not_found(event_service, mock_repo):
+    from app.core.exceptions.domain import EntityNotFound
+
+    mock_repo.get_for_registration.return_value = None
+    with pytest.raises(EntityNotFound):
+        await event_service.register_attendance(
+            schemas.EventAttendanceCreate(event_id=uuid4()), uuid4()
+        )
+
+
+@pytest.mark.asyncio
+async def test_register_attendance_closed_when_inactive(event_service, mock_repo):
+    ev = create_mock_event()
+    ev.is_active = False
+    mock_repo.get_for_registration.return_value = ev
+    with pytest.raises(ValueError, match="registration_closed"):
+        await event_service.register_attendance(
+            schemas.EventAttendanceCreate(event_id=uuid4()), uuid4()
+        )
+
+
+@pytest.mark.asyncio
+async def test_register_attendance_closed_when_window_expired(event_service, mock_repo):
+    ev = create_mock_event()
+    # Naive past datetime exercises the tz-normalisation branch + the
+    # ends_at <= now "registration_closed" guard.
+    ev.ends_at = datetime(2020, 1, 1)
+    mock_repo.get_for_registration.return_value = ev
+    with pytest.raises(ValueError, match="registration_closed"):
+        await event_service.register_attendance(
+            schemas.EventAttendanceCreate(event_id=uuid4()), uuid4()
+        )
+
+
+@pytest.mark.asyncio
+async def test_register_attendance_updates_existing_unregistered(
+    event_service, mock_uow, mock_repo
+):
+    data = schemas.EventAttendanceCreate(event_id=uuid4())
+    user_id = uuid4()
+    mock_repo.get_for_registration.return_value = create_mock_event()
+    existing = EventAttendanceDTO(
+        id=uuid4(), event_id=data.event_id, user_id=user_id, registered_at=None
+    )
+    mock_repo.get_attendance.return_value = existing
+    mock_repo.update_attendance.return_value = existing
+
+    with patch(
+        "app.services.event_service.attendance_tokens.issue_token",
+        return_value="tok",
+    ):
+        result = await event_service.register_attendance(data, user_id)
+
+    # registered_at was None -> the update branch runs + commits + re-issues a token.
+    mock_repo.update_attendance.assert_awaited_once()
+    mock_uow.commit.assert_awaited_once()
+    assert result.qr_token == "tok"
+
+
+# --------------------------------------------------------------------------- #
+# get_event_detail — ensure_secret_material refresh path                       #
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.asyncio
+async def test_get_event_detail_refreshes_secret_material(
+    event_service, mock_uow, mock_repo
+):
+    event_id, user_id = uuid4(), uuid4()
+    mock_event = create_mock_event(event_id)
+    attendance = MagicMock()
+    attendance.user_id = user_id
+    attendance.qr_secret = "secret"
+    attendance.qr_hmac = "hmac"
+
+    result = MagicMock()
+    result.event = mock_event
+    result.participant_count = 3
+    result.user_attendance = attendance
+    mock_repo.get_event_with_details.return_value = result
+
+    with (
+        patch(
+            "app.services.event_service.attendance_tokens.ensure_secret_material",
+            return_value=True,
+        ),
+        patch(
+            "app.services.event_service.attendance_tokens.issue_token",
+            return_value="tok",
+        ),
+    ):
+        out = await event_service.get_event_detail(event_id, user_id)
+
+    # ensure_secret_material True -> the repo update + commit branch runs.
+    mock_repo.update_attendance.assert_awaited_once()
+    mock_uow.commit.assert_awaited_once()
+    assert out is not None
+    assert out.my_qr_token == "tok"
+    assert out.is_registered is True
