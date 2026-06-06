@@ -345,12 +345,16 @@ def test_secure_audit_resign_frozen_dto_returns_false():
 
 
 @pytest.mark.asyncio
-async def test_secure_audit_create_log_and_verify_batch(db_session):
+async def test_secure_audit_create_log_and_verify_batch(db_session, user_factory):
+    # actor_user_id must reference a real users row: the PostgreSQL integration
+    # tier enforces the data_access_logs.actor_user_id FK (SQLite does not by
+    # default), so a synthetic uuid4() raises ForeignKeyViolationError on CI.
+    actor = await user_factory()
     svc = SecureAuditService(signing_key=b"db-signing-key")
 
     dto = await svc.create_log(
         db_session,
-        actor_user_id=uuid4(),
+        actor_user_id=actor.id,
         resource_type="user",
         resource_id="7",
         action="read",

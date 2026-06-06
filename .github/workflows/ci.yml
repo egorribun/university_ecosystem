@@ -1115,14 +1115,6 @@ jobs:
         run: uv sync --group dev
 
       - name: Run incremental mutmut
-        # Track A (session 5): MUTMUT=1 makes the prepare_database fixture dispose
-        # the module-global async engine pool at the start of each pytest.main()
-        # invocation, so mutmut's stats -> clean-test -> per-mutant re-runs each
-        # rebind it to their own event loop instead of reusing the first run's
-        # (which raised "future belongs to a different loop" at async teardown and
-        # failed the clean-test phase). No effect on any other pytest run.
-        env:
-          MUTMUT: "1"
         run: |
           git diff --name-only origin/main...HEAD | grep '^app/.*\.py$' > /tmp/changed_py.txt || true
           if [ -s /tmp/changed_py.txt ]; then

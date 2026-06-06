@@ -20,19 +20,6 @@ def _compile_jsonb_sqlite(_element, _compiler, **_kwargs):
 @pytest_asyncio.fixture(scope="session", autouse=True)
 async def prepare_database() -> AsyncIterator[None]:
     init_database()
-    # Track A (mutmut): mutmut runs pytest.main() MULTIPLE times in ONE process
-    # (stats -> clean test -> per-mutant). The module-global async engine's
-    # connection pool binds to the FIRST run's event loop, so the SECOND run
-    # (a fresh pytest-asyncio session loop) raises "The future belongs to a
-    # different loop" at async-fixture teardown — failing mutmut's clean-test
-    # phase regardless of which tests are selected (the autouse clean_database
-    # fixture touches the global engine for every test). Disposing the pool at
-    # session start rebinds it to the current run's loop. close=False abandons
-    # the prior-loop pool WITHOUT awaiting its connections (awaiting them would
-    # itself be the cross-loop error). Gated to MUTMUT=1 (set only by the CI
-    # mutation-tests step) so a normal pytest run is completely unaffected.
-    if os.environ.get("MUTMUT"):
-        await database.engine.dispose(close=False)
     database_url = os.environ.get("DATABASE_URL", "")
     is_postgresql = database_url.startswith("postgresql")
 
