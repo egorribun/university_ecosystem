@@ -258,8 +258,10 @@ jobs:
           docker compose -f docker-compose.yml config
           # Also validate the merged load-and-chaos stack (infra + go + base +
           # CI override). docker-compose.go.yml uses strict ${JWT_SECRET:?}
-          # (absent from .env.example); a dummy value is fine for `config`.
+          # (absent from .env.example); dummy values are fine for `config`.
+          # WS_HUB_INTERNAL_SECRET is referenced (non-strict) by the CI fragment.
           $env:JWT_SECRET = "dummy-ci-validate-secret"  # pragma: allowlist secret
+          $env:WS_HUB_INTERNAL_SECRET = "dummy-ci-validate-secret"  # pragma: allowlist secret
           docker compose -f docker-compose.infra.yml -f docker-compose.go.yml -f docker-compose.yml -f docker-compose.ci-loadtest.yml config | Out-Null
 
   backend-tests:
@@ -1120,8 +1122,6 @@ jobs:
         run: uv sync --group dev
 
       - name: Run incremental mutmut
-        env:
-          MUTMUT: "1" # gates tests/conftest.py::pytest_sessionfinish loop-bound-global reset
         run: |
           git diff --name-only origin/main...HEAD | grep '^app/.*\.py$' > /tmp/changed_py.txt || true
           if [ -s /tmp/changed_py.txt ]; then
@@ -1172,8 +1172,15 @@ jobs:
       # docker-compose.go.yml uses strict ${JWT_SECRET:?} (gateway + ws-hub) and
       # JWT_SECRET is NOT in .env.example. Its value is irrelevant for the WS
       # ticket flow (tickets are Redis-validated), so an ephemeral one suffices.
-      - name: Generate ephemeral JWT_SECRET
-        run: echo "JWT_SECRET=$(openssl rand -hex 32)" >> "$GITHUB_ENV"
+      # WS_HUB_INTERNAL_SECRET: ws-hub HARD-EXITS at startup if it is empty
+      # (services/ws-hub/main.go:28 os.Exit(1)); go.yml's ws-hub block doesn't
+      # set it + it is absent from .env.example. The ci-loadtest fragment wires
+      # the SAME value into backend + ws-hub so the room-join authz HMAC (W204)
+      # matches.
+      - name: Generate ephemeral JWT_SECRET + WS_HUB_INTERNAL_SECRET
+        run: |
+          echo "JWT_SECRET=$(openssl rand -hex 32)" >> "$GITHUB_ENV"
+          echo "WS_HUB_INTERNAL_SECRET=$(openssl rand -hex 32)" >> "$GITHUB_ENV"
 
       # Backend ALGORITHM=RS256 + JWT_PRIVATE_KEY_PATH=.secrets/jwt_rs256.pem.
       # The key is NOT baked into the image (no source mount in prod), so login
@@ -1198,16 +1205,25 @@ jobs:
             -f docker-compose.ci-loadtest.yml \
             up -d --build
 
-          # Host-publish backend:8000 via a socat sidecar on the compose
-          # `internal` network (backend is attached to it). docker compose v2.x
-          # on the CI runner does NOT apply a ports: override added to backend's
+          # Host-publish backend:8000 via a socat sidecar. docker compose v2.x on
+          # the CI runner does NOT apply a ports: override added to backend's
           # expose-only base, so k6 (--network=host), the readiness poll and the
           # chaos suite cannot reach localhost:8000 otherwise. socat is
           # version-independent. gateway:8080 is already host-published by go.yml.
+          #
+          # DUAL-HOMING (round-3): backend is ONLY on `internal: true` networks
+          # (service_net/db_net/cache_net/event_net/internal — docker-compose.yml
+          # :650-661), and `-p` is a SILENT no-op for a container whose only net
+          # is internal:true (round-2: `ci-pf-backend Up` with an EMPTY Ports
+          # column -> localhost:8000 connection refused). So start socat on the
+          # default bridge (host-publishable) for `-p`, THEN attach the internal
+          # net so it can DNS-resolve + reach backend:8000 (resolved lazily per
+          # client, so attaching before traffic arrives is sufficient).
           NET=$(docker network ls --format '{{.Name}}' | grep -E '_internal$' | head -1)
           echo "Internal network: ${NET:-<none>}"
-          docker run -d --name ci-pf-backend --network="$NET" -p 8000:8000 \
+          docker run -d --name ci-pf-backend -p 8000:8000 \
             alpine/socat TCP-LISTEN:8000,fork,reuseaddr TCP:backend:8000
+          docker network connect "$NET" ci-pf-backend
           docker ps --filter name=ci-pf-backend --format '{{.Names}} {{.Status}} {{.Ports}}'
 
           echo "Waiting for backend + gateway to be ready..."

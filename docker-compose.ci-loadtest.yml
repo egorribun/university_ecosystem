@@ -19,6 +19,14 @@
 # (incl. the W132 weighted_round_robin canary block) is untouched.
 services:
   backend:
+    environment:
+      # ws-hub validates room-join authz by calling the backend's internal API
+      # with an HMAC signed by WS_HUB_INTERNAL_SECRET (W204). The base compose
+      # does not set it (backend defaults to "" in dev), so wire the SAME value
+      # the CI job exported into BOTH backend + ws-hub -> the join handshake
+      # matches. (The 101 upgrade is ticket-based + works regardless; this makes
+      # the full WS chain -- connect + join -- correct end-to-end.)
+      WS_HUB_INTERNAL_SECRET: ${WS_HUB_INTERNAL_SECRET}
     volumes:
       # L8 -- RS256 private key. backend.Dockerfile sets WORKDIR /app and
       # JWT_PRIVATE_KEY_PATH=.secrets/jwt_rs256.pem (relative) -> resolves to
@@ -28,6 +36,13 @@ services:
 
   ws-hub:
     environment:
+      # ws-hub HARD-EXITS at startup if WS_HUB_INTERNAL_SECRET is empty
+      # (services/ws-hub/main.go:28 os.Exit(1) -- "WS_HUB_INTERNAL_SECRET is not
+      # set"). go.yml's ws-hub block doesn't set it + .env.example lacks it ->
+      # the round-2 ws-hub Restarting(1) loop (confirmed via the always-on
+      # diagnostics step). The CI job exports the value to GITHUB_ENV; same
+      # secret as backend above so the room-join authz HMAC matches.
+      WS_HUB_INTERNAL_SECRET: ${WS_HUB_INTERNAL_SECRET}
       # The OTT ticket is WRITTEN by the backend to valkey DB 0
       # (CACHE_REDIS_URL=redis://:${REDIS_PASSWORD}@valkey:6379/0) and READ here
       # via GETDEL. ws-hub's defaults (REDIS_URL=redis:6379, REDIS_PASSWORD="",

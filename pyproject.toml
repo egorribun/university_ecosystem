@@ -514,16 +514,23 @@ pytest_add_cli_args_test_selection = ["tests/"]
 # here because it is deterministic + override-free (mutmut is POSIX-only — it
 # cannot run on the Windows dev box, so this is verified via CI only).
 #
-# test_spotify_fallback.py is excluded for a DIFFERENT reason: mutmut runs pytest
-# multiple times in one process (stats -> clean test -> per-mutant), and its async
-# client fixtures error at teardown with "The future belongs to a different loop"
-# under that repeated-pytest-asyncio-loop reuse — failing mutmut's "clean test"
-# phase. It passes fine in normal CI; the error is a mutmut-isolation artifact, so
-# it carries no usable mutation signal there and is excluded.
+# test_spotify_fallback.py, test_push_router_full.py + test_auth_mfa.py are excluded
+# for a DIFFERENT reason: mutmut runs pytest multiple times in one process (stats ->
+# clean test -> per-mutant), and their async client/login fixtures error in the 2nd+
+# run with "The future belongs to a different loop" (a pytest-asyncio loop-reuse
+# artifact). They pass fine in normal CI (the backend coverage gate still runs them);
+# the error is a mutmut-isolation artifact carrying no usable mutation signal there.
+# An in-process global-reset hook (tests/conftest.py::pytest_sessionfinish) was tried
+# + reverted: it could not enumerate every loop-bound global from the Windows dev box
+# that cannot run mutmut, and recreating an async client at session-teardown introduced
+# an "I/O operation on closed file" cascade. Exclusion is the deterministic,
+# override-free pattern (mutmut is POSIX-only — verified via CI only).
 pytest_add_cli_args = [
     "--ignore=tests/test_migrations_runtime.py",
     "--ignore=tests/test_wave173_caddy_routing.py",
     "--ignore=tests/test_wave173_ws_hub_env.py",
     "--ignore=tests/test_spotify_fallback.py",
+    "--ignore=tests/test_push_router_full.py",
+    "--ignore=tests/test_auth_mfa.py",
 ]
 
