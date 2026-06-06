@@ -1,7 +1,10 @@
+from unittest.mock import AsyncMock, MagicMock
+
 import pytest
-from fastapi import status
+from fastapi import HTTPException, status
 
 from app.api import health
+from app.services.storage import StorageBackend
 from app.utils import migrations
 
 
@@ -303,3 +306,88 @@ async def test_healthcheck_file_scanner_uses_lightweight_probe(
     assert response.status_code == status.HTTP_200_OK
     assert data["file_scanner"] == "ok"
     _assert_latency_present(data, "file_scanner_latency_ms")
+
+
+# --------------------------------------------------------------------------- #
+# Track C (session 6) additions — liveness / readiness / brief mode +          #
+# storage-probe real bodies + cache-invalidate error branch.                   #
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.asyncio
+async def test_liveness_always_alive():
+    assert await health.liveness() == {"status": "alive"}
+
+
+@pytest.mark.asyncio
+async def test_ready_returns_ready_when_not_shutting_down():
+    health.reset_shutdown_flag()
+    assert await health.ready() == {"status": "ready"}
+
+
+@pytest.mark.asyncio
+async def test_ready_returns_503_during_shutdown():
+    health.set_shutdown_flag()
+    try:
+        with pytest.raises(HTTPException) as exc_info:
+            await health.ready()
+        assert exc_info.value.status_code == status.HTTP_503_SERVICE_UNAVAILABLE
+    finally:
+        health.reset_shutdown_flag()
+
+
+@pytest.mark.asyncio
+async def test_healthcheck_brief_omits_internals(async_client):
+    response = await async_client.get("http://testserver/healthz?brief=true")
+    data = response.json()
+    assert response.status_code == status.HTTP_200_OK
+    assert data["status"] == "ok"
+    assert data["db"] == "ok"  # top-level statuses kept
+    assert "pool" not in data  # infra internals omitted
+    assert "db_migrations_current" not in data
+    assert not any(k.endswith("_latency_ms") for k in data)  # latencies omitted
+
+
+@pytest.mark.asyncio
+async def test_lightweight_storage_probe_ok_error_and_non_backend():
+    backend = MagicMock(spec=StorageBackend)  # passes isinstance(StorageBackend)
+    backend.exists = AsyncMock(return_value=True)
+    assert await health._lightweight_storage_probe(backend) == "ok"
+
+    backend.exists = AsyncMock(return_value=False)
+    assert await health._lightweight_storage_probe(backend) == "error"
+
+    backend.exists = AsyncMock(side_effect=RuntimeError("boom"))
+    assert await health._lightweight_storage_probe(backend) == "error"
+
+    # A non-StorageBackend short-circuits to None before any probe.
+    assert await health._lightweight_storage_probe(object()) is None
+
+
+@pytest.mark.asyncio
+async def test_write_delete_storage_probe_delete_failure_and_success():
+    backend = MagicMock()
+    backend.save_file = AsyncMock(return_value="healthz/probe.txt")
+    backend.delete_file = AsyncMock(side_effect=RuntimeError("delete failed"))
+    assert await health._write_delete_storage_probe(backend) == "error"
+
+    backend.delete_file = AsyncMock(return_value=None)
+    assert await health._write_delete_storage_probe(backend) == "ok"
+
+
+@pytest.mark.asyncio
+async def test_healthcheck_cache_invalidate_failure(async_client, monkeypatch):
+    class _InvalidateFailingCache:
+        enabled = True
+
+        async def set(self, key, payload, ttl=None):
+            return None  # set succeeds
+
+        async def invalidate(self, key):
+            raise RuntimeError("invalidate failed")  # finally-block error path
+
+    monkeypatch.setattr(health, "get_cache", lambda: _InvalidateFailingCache())
+    response = await async_client.get("http://testserver/healthz")
+    data = response.json()
+    assert response.status_code == status.HTTP_503_SERVICE_UNAVAILABLE
+    assert data["cache"] == "error"
