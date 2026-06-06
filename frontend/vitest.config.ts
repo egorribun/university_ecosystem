@@ -57,18 +57,21 @@ export default defineConfig({
         "src/utils/spotify.ts",
         "src/utils/workerChrome.ts",
       ],
-      // Ratchet floors at measured reality. After the Activity-chart render
-      // tests (features/activity/components): statements 66.01 / branches 71.71 /
-      // functions 67.28 / lines 66.01. Branches raised 70→71 (0.71 buffer).
-      // statements/lines HELD at 65 — measured 66.01 has no platform cushion
-      // (local == CI), so a 66 floor would be a 0.01 knife-edge; functions HELD
-      // at 66 (unchanged this wave). NO-REGRESSION floors, NOT the target —
-      // raise incrementally as the campaign adds tests (target 90).
+      // Ratchet floors at measured reality. After the components/ui + navbar
+      // render-test slice (NotificationRelevanceScore, Spinner, ThemeToggle,
+      // ContentSummary, ScaleIn, StaggerChildren, CardActionArea, Snackbar,
+      // SafeHtml, Schedule/ProfileCardSkeleton, NavbarPill, LiveRegionProvider):
+      // statements 67.08 / branches 72.21 / functions 67.73 / lines 67.08.
+      // statements + lines RAISED 65→66 (1.08 buffer). branches HELD at 71
+      // (72.21 → a 72 floor is only 0.21, < the ~0.5 no-cushion margin).
+      // functions HELD at 66 (67.73 → a 67 floor would be only 0.73; with
+      // local == CI we keep the conservative margin). NO-REGRESSION floors, NOT
+      // the target — raise incrementally as the campaign adds tests (target 90).
       thresholds: {
-        statements: 65,
+        statements: 66,
         branches: 71,
         functions: 66,
-        lines: 65,
+        lines: 66,
       },
     },
   },

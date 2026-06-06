@@ -282,21 +282,84 @@ async def test_create_via_repository_builds_aggregate(user_repo):
 
 
 @pytest.mark.asyncio
-async def test_update_via_repository_updates_core_and_education(user_repo, test_user):
-    # Only core + education_path keys: test_user already HAS profile + preferences
-    # rows, and update() reads db_obj.profile / .preferences under lazy="noload"
-    # (→ None even when a row exists), so passing profile/pref data would attempt a
-    # duplicate INSERT. education_path is genuinely absent on test_user, so the
-    # create branch fires cleanly. The core setattr + edu create + flush + return
-    # paths are what we cover here.
+async def test_update_via_repository_upserts_all_children(user_repo, test_user):
+    # test_user already HAS profile + preferences rows and NO education_path. A
+    # flat dict spanning core + profile + preferences + education_path keys
+    # exercises BOTH branches of update()'s _upsert_child: UPDATE the existing
+    # profile, UPDATE the existing preferences, CREATE the missing
+    # education_path. Before the noload fix this raised a UNIQUE violation
+    # because db_obj.profile read None under lazy="noload" so the INSERT branch
+    # fired against an already-present user_profiles row. (update() consumes the
+    # FLAT-key form via _extract_cqrs_data — the nested {"profile": {...}} form
+    # is handled by app/services/user/logic.py, a separate path.)
     updated = await user_repo.update(
         test_user.id,
         {
-            "is_active": False,  # core → setattr branch
-            "institute": "New Institute",  # education_path absent → create branch
+            "is_active": False,  # core → setattr
+            "full_name": "Updated Name",  # profile exists → UPDATE branch
+            "timezone": "Europe/Moscow",  # preferences exist → UPDATE branch
+            "institute": "New Institute",  # education_path absent → CREATE branch
         },
     )
     assert updated is not None
+
+    # The existing profile row was UPDATED in place. user_profiles.user_id is
+    # the PK, so a duplicate INSERT would have raised before we reached here —
+    # reaching this assert is itself the regression guard.
+    profile = (
+        (
+            await user_repo.db.execute(
+                select(models.UserProfile).where(
+                    models.UserProfile.user_id == test_user.id
+                )
+            )
+        )
+        .scalars()
+        .first()
+    )
+    assert profile is not None
+    assert profile.full_name == "Updated Name"
+
+    prefs = (
+        (
+            await user_repo.db.execute(
+                select(models.UserPreferences).where(
+                    models.UserPreferences.user_id == test_user.id
+                )
+            )
+        )
+        .scalars()
+        .first()
+    )
+    assert prefs is not None
+    assert prefs.timezone == "Europe/Moscow"
+
+    edu = (
+        (
+            await user_repo.db.execute(
+                select(models.EducationPath).where(
+                    models.EducationPath.user_id == test_user.id
+                )
+            )
+        )
+        .scalars()
+        .first()
+    )
+    assert edu is not None
+    assert edu.institute == "New Institute"
+
+    user_row = (
+        (
+            await user_repo.db.execute(
+                select(models.User).where(models.User.id == test_user.id)
+            )
+        )
+        .scalars()
+        .first()
+    )
+    assert user_row is not None
+    assert user_row.is_active is False
+
     # Updating a non-existent user returns None.
     assert await user_repo.update(uuid.uuid4(), {"is_active": True}) is None
 

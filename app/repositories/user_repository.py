@@ -535,29 +535,51 @@ class UserRepository(BaseRepository[User, UserDTO, schemas.UserCreate, dict[str,
         for field, value in core_data.items():
             setattr(db_obj, field, value)
 
-        if profile_data:
-            if db_obj.profile is None:
-                db_obj.profile = models.UserProfile(**profile_data)
-            else:
-                for field, value in profile_data.items():
-                    setattr(db_obj.profile, field, value)
-
-        if pref_data:
-            if db_obj.preferences is None:
-                db_obj.preferences = models.UserPreferences(**pref_data)
-            else:
-                for field, value in pref_data.items():
-                    setattr(db_obj.preferences, field, value)
-
-        if edu_data:
-            if db_obj.education_path is None:
-                db_obj.education_path = models.EducationPath(**edu_data)
-            else:
-                for field, value in edu_data.items():
-                    setattr(db_obj.education_path, field, value)
+        await self._upsert_child(db_obj, "profile", models.UserProfile, profile_data)
+        await self._upsert_child(
+            db_obj, "preferences", models.UserPreferences, pref_data
+        )
+        await self._upsert_child(
+            db_obj, "education_path", models.EducationPath, edu_data
+        )
 
         await self.db.flush()
         return self._to_dto(db_obj)
+
+    async def _upsert_child(
+        self,
+        db_obj: User,
+        rel_name: str,
+        child_model: type[Any],
+        data: dict[str, Any] | None,
+    ) -> None:
+        """INSERT-or-UPDATE a User child row (profile/preferences/education_path).
+
+        The User -> child relationships are ``lazy="noload"`` (N+1 guard,
+        MOD-30-01), so ``db_obj.<rel_name>`` reads ``None`` even when a row
+        already exists. Trusting that attribute made ``update()`` always take
+        the INSERT branch -> ``UNIQUE`` violation. We query the child table
+        explicitly by ``user_id`` to decide INSERT-vs-UPDATE while keeping the
+        read relationships ``noload``. Setting ``db_obj.<rel_name>`` on the
+        update branch overrides the noload read so ``_to_dto`` sees the change.
+        """
+        if not data:
+            return
+        existing = (
+            (
+                await self.db.execute(
+                    select(child_model).where(child_model.user_id == db_obj.id)
+                )
+            )
+            .scalars()
+            .first()
+        )
+        if existing is None:
+            setattr(db_obj, rel_name, child_model(**data))
+            return
+        for field, value in data.items():
+            setattr(existing, field, value)
+        setattr(db_obj, rel_name, existing)
 
     async def create_with_invite(
         self, user_data: dict[str, Any], invite_code: models.InviteCode | None
