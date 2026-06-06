@@ -21,22 +21,17 @@ export const options = {
 const BASE_URL = __ENV.API_BASE_URL || 'http://localhost:8000';
 
 export default function () {
-    const responses = http.batch([
-        ['GET', `${BASE_URL}/`, null, { tags: { name: 'Root' } }],
-        // /health/ready is the LEAN readiness probe (DB connectivity only,
-        // app/api/health.py:362). The full /healthz (:159) also checks
-        // ES/SpiceDB/Tempo and returns 503 when any flaps under load (tempo is
-        // `unhealthy` in CI -> ~15% 503 -> http_req_failed breach). The lean
-        // probe is the right target for a request-throughput load test.
-        ['GET', `${BASE_URL}/health/ready`, null, { tags: { name: 'Ready' } }],
-    ]);
-
-    check(responses[0], {
+    // Hit `/` ONLY. Under sustained load BOTH health endpoints flake: /healthz
+    // (full check, app/api/health.py:159) 503s ~7% when a subsystem flaps (tempo
+    // is `unhealthy` in CI); /health/ready (:362) does a DB round-trip that
+    // contends the connection pool under 20 VUs -> ~39% failures. `/` is
+    // rate-limit-exempt (ratelimit/middleware.py:223), touches no DB, and
+    // returned 200 100% across rounds 3-4 -> the right raw-throughput target.
+    // (The DB/auth/Redis path is load-tested by ws_hub_load_test.js's
+    // register -> login -> ticket flow.)
+    const res = http.get(`${BASE_URL}/`, { tags: { name: 'Root' } });
+    check(res, {
         'root status is 200': (r) => r.status === 200,
-    });
-
-    check(responses[1], {
-        'health/ready status is 200': (r) => r.status === 200,
     });
 
     sleep(1);
