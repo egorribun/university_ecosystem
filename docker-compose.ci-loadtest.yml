@@ -27,6 +27,16 @@ services:
       # matches. (The 101 upgrade is ticket-based + works regardless; this makes
       # the full WS chain -- connect + join -- correct end-to-end.)
       WS_HUB_INTERNAL_SECRET: ${WS_HUB_INTERNAL_SECRET}
+      # Auth rate-limit headroom for the k6 WS load test. /login/json uses
+      # rate_limit_sensitive ("5/minute") + /register uses rate_limit_auth_register
+      # ("5/minute"), both keyed PER-IP for unauthenticated requests
+      # (ratelimit/fastapi.py) -- and ALL k6 VUs share one source IP via socat, so
+      # the defaults 429 the load test. Raise them (the WS test also logs in ONCE
+      # per VU). Chaos-safe: the chaos suite exercises the GATEWAY's Go
+      # rate-limiter, not these backend rate_limit_* values.
+      RATE_LIMIT_SENSITIVE: 100000/minute
+      RATE_LIMIT_AUTH_LOGIN: 100000/minute
+      RATE_LIMIT_AUTH_REGISTER: 100000/minute
     volumes:
       # L8 -- RS256 private key. backend.Dockerfile sets WORKDIR /app and
       # JWT_PRIVATE_KEY_PATH=.secrets/jwt_rs256.pem (relative) -> resolves to
