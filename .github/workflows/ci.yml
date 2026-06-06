@@ -1289,6 +1289,31 @@ jobs:
             -e API_BASE_URL=http://localhost:8000 -e WS_URL=ws://localhost:8083 \
             grafana/k6 run - <tests/performance/ws_hub_load_test.js
 
+      # ROUND-7 DIAGNOSTIC (W147 §Honesty NEW #1 discipline): rounds 5+6 each
+      # pivoted the k6 CSRF mechanism without ground truth. Stop guessing — read
+      # the backend's OWN rejection log. structlog emits one of three distinct
+      # warnings (app/core/csrf.py:349/362/377) with method= + path= fields:
+      #   "CSRF rejected (missing token)"        -> cookie OR header absent
+      #   "CSRF rejected (token mismatch)"       -> compare_digest(cookie,header) fail
+      #   "CSRF rejected (invalid HMAC signature)" -> session_id/anon-nonce binding fail
+      # The k6 WS dance hits /register, /login/json, /ws/ticket. The rejection
+      # string + the path pinpoints the EXACT failing step + sub-cause so round-8
+      # fixes precisely. Strong hypothesis to confirm/refute: /login/json sets the
+      # access_token cookie -> _extract_session_id switches session_id from anon:X
+      # to the authenticated session, but the csrf_token is still HMAC-bound to
+      # anon:X and does NOT rotate (csrf.py:391 only sets when absent) -> the
+      # /ws/ticket POST (Bearer + auth-cookie present -> CSRF NOT skipped,
+      # csrf.py:339) fails with "invalid HMAC signature" on path=/ws/ticket.
+      # if: always() -> runs even though the k6 step fails on the errors threshold.
+      - name: Diagnose backend CSRF (WS k6 auth dance — round-7)
+        if: always()
+        run: |
+          CF="-f docker-compose.infra.yml -f docker-compose.go.yml -f docker-compose.yml -f docker-compose.ci-loadtest.yml"
+          echo "=== backend CSRF rejections (string + method= + path=) ==="
+          docker compose $CF logs --tail=600 backend 2>&1 | grep -iE "CSRF rejected" | tail -40 || echo "(no 'CSRF rejected' log lines found)"
+          echo "=== backend 4xx/rate-limit context ==="
+          docker compose $CF logs --tail=200 backend 2>&1 | grep -iE "warning|error|429|403|rate.?limit|/register|/login|/ws/ticket" | tail -30 || true
+
       - name: Run chaos resilience tests
         env:
           CHAOS_TESTS: "1"
