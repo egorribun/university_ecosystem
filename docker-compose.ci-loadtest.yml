@@ -1,29 +1,30 @@
 # CI-only override for the "Load and Chaos Resilience Tests" job.
 #
 # Layered LAST after docker-compose.infra.yml + docker-compose.go.yml +
-# docker-compose.yml. It host-publishes the backend + postgres so the k6 load
-# tests (docker run --network=host) and the chaos suite can reach them on
-# localhost, bind-mounts the RS256 signing key into the backend, and points the
-# Go ws-hub at the password-protected valkey + the auth'd nats.
+# docker-compose.yml. It bind-mounts the RS256 signing key into the backend and
+# points the Go ws-hub at the password-protected valkey + the auth'd nats.
 #
-# Caddy is BYPASSED for the load tests: k6 hits backend:8000 + ws-hub:8083 +
-# gateway:8080 directly, so the production services/caddy/Caddyfile (incl. the
-# W132 weighted_round_robin canary block) is untouched.
+# NOTE on host-publishing: the backend is reached on the host (k6 --network=host,
+# the readiness poll, the chaos suite) via a `socat` sidecar started in the CI
+# job, NOT via a `ports:` override here. Reason: docker compose v2.x (the CI
+# runner) does NOT merge a `ports:` override added to a service whose base
+# definition has only `expose:` (backend, postgres) -- it silently drops them
+# (verified: CI `docker compose ps` showed backend with no published port even
+# though `config` on v5.x renders it). A `volumes:` override DOES merge on v2.x
+# (the RS256 mount below applies), so this file keeps only the merge-safe
+# overrides and leaves host-publishing to the version-independent socat sidecar.
 #
-# NEVER used outside CI — the prod stack keeps the backend on `expose:` only.
+# Caddy is BYPASSED for the load tests: k6 hits backend:8000 (via socat) +
+# ws-hub:8081 + gateway:8080 directly, so the production services/caddy/Caddyfile
+# (incl. the W132 weighted_round_robin canary block) is untouched.
 services:
   backend:
-    ports:
-      - "8000:8000" # L1 — k6/chaos reach the backend on localhost:8000
     volumes:
-      # L8 — RS256 private key. backend.Dockerfile sets WORKDIR /app and
+      # L8 -- RS256 private key. backend.Dockerfile sets WORKDIR /app and
       # JWT_PRIVATE_KEY_PATH=.secrets/jwt_rs256.pem (relative) -> resolves to
-      # /app/.secrets/jwt_rs256.pem. Generated on the runner by the ci.yml step.
+      # /app/.secrets/jwt_rs256.pem. The CI job generates the key + chmod 644
+      # so the non-root backend user can read it (else: Permission denied).
       - ./.secrets:/app/.secrets:ro
-
-  postgres:
-    ports:
-      - "5432:5432" # L6 — defensive; the only DB-poll chaos test skips on /token
 
   ws-hub:
     environment:
@@ -32,10 +33,10 @@ services:
       # via GETDEL. ws-hub's defaults (REDIS_URL=redis:6379, REDIS_PASSWORD="",
       # REDIS_DB=0) point at the wrong host + no password -> ticket validation
       # 401s. Override host + password; DB 0 already matches the backend.
+      # (environment overrides DO merge on compose v2.x, unlike ports.)
       REDIS_URL: valkey:6379
       REDIS_PASSWORD: ${REDIS_PASSWORD}
       REDIS_DB: "0"
-      # nats runs with --auth ${NATS_AUTH_TOKEN}; the go.yml default URL lacks the
-      # token. The WS upgrade (101) is NATS-independent, but message fan-out needs
-      # an authenticated NATS connection.
+      # nats runs with --auth ${NATS_AUTH_TOKEN}; the go.yml default URL lacks
+      # the token. WS upgrade (101) is NATS-independent; message fan-out is not.
       NATS_URL: nats://${NATS_AUTH_TOKEN}@nats:4222

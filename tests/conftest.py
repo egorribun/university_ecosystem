@@ -133,6 +133,69 @@ def monkeypatch_session():
     mp.undo()
 
 
+def pytest_sessionfinish(session, exitstatus):
+    """Track A (mutmut): reset loop-bound module globals between mutmut's
+    repeated ``pytest.main()`` runs (stats -> clean-test -> per-mutant).
+
+    mutmut calls ``pytest.main()`` multiple times IN ONE PROCESS. Under
+    ``asyncio_mode=auto`` + session-scoped loops the module-global DB engine
+    (and the eager spotify client) bind to the FIRST run's event loop and are
+    reused by the SECOND, so the clean-test run's HTTP requests raise
+    ``ValueError: The future belongs to a different loop`` mid-request (observed:
+    ``test_push_router_full.py::test_forbidden_for_non_admin`` -> ``_login`` ->
+    ``infrastructure.py:_csrf_rotating_send``).
+
+    ``pytest_sessionfinish`` fires AFTER every fixture finalizes -- crucially
+    after ``prepare_database``'s teardown ``drop_all`` (database.py), which still
+    needs a live engine -- so nulling the globals here is ordering-safe (a
+    session-scoped fixture teardown could fire before ``drop_all`` and break it).
+    Both ``initialize_database_for_tests`` and ``prepare_database`` call
+    ``init_database()`` at the next run's start, so the engine is rebuilt on the
+    next run's fresh loop.
+
+    Gated to MUTMUT=1 (set only by the CI mutation-tests step) so a normal
+    ``pytest`` invocation -- which runs ``pytest.main()`` exactly once -- is a
+    no-op.
+    """
+    import os
+
+    if not os.environ.get("MUTMUT"):
+        return
+
+    import contextlib
+
+    # DB engine (LAZY): null the globals so the next run's init_database()
+    # rebuilds the engine + session factories on the next run's loop. The
+    # session loop is already closed here, so we do NOT await dispose(); the
+    # abandoned prior-loop connections are GC'd (prepare_database removes +
+    # recreates the SQLite file at the next run's start).
+    with contextlib.suppress(Exception):
+        import app.core.database as _db
+
+        _db._engine = None
+        _db._async_session = None
+        _db._read_replica_engine = None
+        _db._read_session_factory = None
+
+    # Eager spotify client (no lazy getter): reassign a fresh client so its
+    # await-sites bind to the next run's loop. Defensive -- spotify tests are
+    # only in the clean-test subset when the diff touches app/api/spotify.py.
+    with contextlib.suppress(Exception):
+        import httpx
+
+        import app.api.spotify as _sp
+
+        _sp._spotify_http_client = httpx.AsyncClient(
+            http2=True,
+            timeout=httpx.Timeout(10.0, connect=5.0),
+            limits=httpx.Limits(
+                max_connections=20,
+                max_keepalive_connections=10,
+                keepalive_expiry=30,
+            ),
+        )
+
+
 @pytest.fixture(autouse=True)
 def mock_cache_backend(monkeypatch, mock_global_redis):
     """Ensure the global cache backend uses the fake redis client."""

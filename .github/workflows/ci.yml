@@ -1120,6 +1120,8 @@ jobs:
         run: uv sync --group dev
 
       - name: Run incremental mutmut
+        env:
+          MUTMUT: "1" # gates tests/conftest.py::pytest_sessionfinish loop-bound-global reset
         run: |
           git diff --name-only origin/main...HEAD | grep '^app/.*\.py$' > /tmp/changed_py.txt || true
           if [ -s /tmp/changed_py.txt ]; then
@@ -1182,6 +1184,10 @@ jobs:
         run: |
           mkdir -p .secrets
           openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out .secrets/jwt_rs256.pem
+          # The backend runs as a non-root user and the :ro bind-mount inherits
+          # host perms. Default genpkey output is 0600 (runner-owned) -> the
+          # backend user gets "[Errno 13] Permission denied". 0644 = readable.
+          chmod 644 .secrets/jwt_rs256.pem
 
       - name: Spin up Docker Compose
         run: |
@@ -1191,6 +1197,19 @@ jobs:
             -f docker-compose.yml \
             -f docker-compose.ci-loadtest.yml \
             up -d --build
+
+          # Host-publish backend:8000 via a socat sidecar on the compose
+          # `internal` network (backend is attached to it). docker compose v2.x
+          # on the CI runner does NOT apply a ports: override added to backend's
+          # expose-only base, so k6 (--network=host), the readiness poll and the
+          # chaos suite cannot reach localhost:8000 otherwise. socat is
+          # version-independent. gateway:8080 is already host-published by go.yml.
+          NET=$(docker network ls --format '{{.Name}}' | grep -E '_internal$' | head -1)
+          echo "Internal network: ${NET:-<none>}"
+          docker run -d --name ci-pf-backend --network="$NET" -p 8000:8000 \
+            alpine/socat TCP-LISTEN:8000,fork,reuseaddr TCP:backend:8000
+          docker ps --filter name=ci-pf-backend --format '{{.Names}} {{.Status}} {{.Ports}}'
+
           echo "Waiting for backend + gateway to be ready..."
           # Readiness poll replaces a blind `sleep 20`: the backend builds the
           # RS256 signer + connects to valkey/postgres, and the gateway depends
@@ -1206,7 +1225,8 @@ jobs:
           if [ -z "$backend_ready" ]; then
             echo "::warning::backend /healthz not ready after 180s; dumping status + logs"
             docker compose -f docker-compose.infra.yml -f docker-compose.go.yml -f docker-compose.yml -f docker-compose.ci-loadtest.yml ps || true
-            docker compose -f docker-compose.infra.yml -f docker-compose.go.yml -f docker-compose.yml -f docker-compose.ci-loadtest.yml logs --tail=80 backend || true
+            docker compose -f docker-compose.infra.yml -f docker-compose.go.yml -f docker-compose.yml -f docker-compose.ci-loadtest.yml logs --tail=80 backend ws-hub gateway || true
+            docker logs ci-pf-backend 2>&1 | tail -20 || true
           fi
           for i in $(seq 1 30); do
             if curl -fsS http://localhost:8080/health >/dev/null 2>&1; then
@@ -1215,8 +1235,28 @@ jobs:
             sleep 2
           done
 
+      # Always-on ws-hub diagnostics: round 1 showed ws-hub `Restarting` but CI
+      # never captured its logs, so the WS-chain root cause was unknown. Confirm
+      # the fragment's Redis/NATS env overrides actually merged on compose v2.x
+      # (ws-hub is distroless -> `inspect` the configured env, no shell to `exec`)
+      # and dump the logs so the restart cause is visible even if the WS k6 test
+      # then passes.
+      - name: Diagnose ws-hub (full-section-6 WS chain)
+        if: always()
+        run: |
+          CF="-f docker-compose.infra.yml -f docker-compose.go.yml -f docker-compose.yml -f docker-compose.ci-loadtest.yml"
+          echo "=== ws-hub container status ==="
+          docker compose $CF ps ws-hub || true
+          echo "=== ws-hub configured Redis/NATS env (merge check) ==="
+          WSID=$(docker compose $CF ps -q ws-hub 2>/dev/null || true)
+          docker inspect "$WSID" --format '{{range .Config.Env}}{{println .}}{{end}}' 2>/dev/null | grep -E 'REDIS|NATS|JWT|ALLOWED|WS_HUB' || true
+          echo "=== ws-hub logs (restart cause) ==="
+          docker compose $CF logs --tail=80 ws-hub || true
+
       - name: Run k6 load tests
         run: |
+          # Backend reached via the socat host-publish (localhost:8000); ws-hub
+          # via its go.yml host port (localhost:8083).
           docker run --network="host" -i -e API_BASE_URL=http://localhost:8000 \
             grafana/k6 run - <tests/performance/load_test.js
           docker run --network="host" -i \
@@ -1239,6 +1279,7 @@ jobs:
       - name: Tear down Docker Compose
         if: always()
         run: |
+          docker rm -f ci-pf-backend || true
           docker compose \
             -f docker-compose.infra.yml \
             -f docker-compose.go.yml \
