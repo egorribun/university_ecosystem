@@ -166,6 +166,45 @@ class UserRepository(BaseRepository[User, UserDTO, schemas.UserCreate, dict[str,
         obj = result.unique().scalars().first()
         return self._to_dto(obj) if obj else None
 
+    async def get_orm_for_update_with_relations(
+        self, id: uuid.UUID | str
+    ) -> User | None:
+        """Fetch the ORM ``User`` locked FOR UPDATE with the profile /
+        preferences / education_path children eager-loaded.
+
+        The ``User -> child`` relationships are ``lazy="noload"`` (N+1 guard,
+        MOD-30-01), so the generic ``get_orm_for_update`` returns a ``User``
+        whose ``.profile`` reads ``None`` even when a row already exists.
+        Services that mutate those children in place via
+        ``update_user_attributes`` (profile + media updates) rely on the
+        ``if not user.<child>`` check to decide INSERT-vs-UPDATE; under noload
+        that check is always truthy, so an existing-child user takes the INSERT
+        branch -> a second row hits the ``user_id`` PK -> ``UNIQUE`` violation
+        (the W185 noload twin-bug, the sibling of the one fixed in ``update()``
+        via ``_upsert_child``). Eager-loading here makes that check correct
+        while leaving the relationship DEFAULT ``noload`` for every read path.
+
+        ``selectinload`` (NOT ``joinedload``) is required alongside
+        ``with_for_update()``: PostgreSQL rejects ``FOR UPDATE`` on the nullable
+        side of an OUTER JOIN, and these 1:1 children are frequently absent.
+        ``selectinload`` issues a separate IN-load, so the row lock applies only
+        to the ``users`` row (``with_for_update`` is a harmless no-op on the
+        SQLite test harness).
+        """
+        target_id = self._cast_id(id)
+        stmt = (
+            select(User)
+            .where(User.id == target_id)
+            .options(
+                selectinload(User.profile),
+                selectinload(User.preferences),
+                selectinload(User.education_path),
+            )
+            .with_for_update()
+        )
+        result = await self.db.execute(stmt)
+        return result.scalars().first()
+
     async def list_users(
         self,
         filters: schemas.UserSearchFilter | None = None,

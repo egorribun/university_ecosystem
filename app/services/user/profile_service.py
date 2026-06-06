@@ -66,10 +66,15 @@ class UserProfileService:
                 self.repo, payload["email"], exclude_user_id=user_identity
             )
 
-        # Fetch ORM user with lock.
+        # Fetch ORM user WITH child relations eager-loaded + row-locked. The
+        # eager-load is required: update_user_attributes() decides INSERT-vs-
+        # UPDATE on profile/preferences/education_path via `if not user.<child>`,
+        # but those relationships are lazy="noload" so a bare _get_orm() reads
+        # them as None even when a row exists -> duplicate INSERT -> UNIQUE
+        # violation (the W185 noload twin-bug).
         # Handle UserLike (could be ID, DTO or ORM)
         user_identity = extract_user_id(user)
-        db_user = await self.repo._get_orm(user_identity, with_for_update=True)
+        db_user = await self.repo.get_orm_for_update_with_relations(user_identity)
         if not db_user:
             raise EntityNotFound("User", user_identity)
 
@@ -130,8 +135,9 @@ class UserProfileService:
         if "email" in payload and payload["email"] is not None:
             payload["email"] = str(payload["email"]).strip().lower()
 
-        # Fetch ORM user with lock
-        db_user = await self.repo._get_orm(user_id, with_for_update=True)
+        # Fetch ORM user WITH child relations eager-loaded + row-locked
+        # (noload twin-bug — see update_user_profile above).
+        db_user = await self.repo.get_orm_for_update_with_relations(user_id)
         if not db_user:
             raise EntityNotFound("User", user_id)
 

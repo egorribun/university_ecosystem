@@ -430,3 +430,149 @@ async def test_get_user_access_logs(user_repo, test_user, db_session):
 
     # Invalid-UUID branch → [].
     assert await user_repo.get_user_access_logs("not-a-uuid") == []
+
+
+@pytest.mark.asyncio
+async def test_get_orm_for_update_with_relations_loads_noload_children(
+    user_repo, test_user, db_session
+):
+    """The eager-loading update-fetch loads the lazy="noload" children that a
+    bare _get_orm() reads as None — the W185 noload twin-bug condition.
+
+    expunge_all() clears the identity map so both fetches genuinely re-query
+    (otherwise the cached instance from the fixture would mask the difference).
+    """
+    user_id = test_user.id
+
+    # Bare fetch: the children are lazy="noload" → None despite real rows.
+    db_session.expunge_all()
+    bare = await user_repo._get_orm(user_id, with_for_update=True)
+    assert bare is not None
+    assert bare.profile is None  # noload trap (a user_profiles row DOES exist)
+    assert bare.preferences is None
+
+    # Eager-loading fetch: the children are loaded.
+    db_session.expunge_all()
+    eager = await user_repo.get_orm_for_update_with_relations(user_id)
+    assert eager is not None
+    assert eager.profile is not None
+    assert eager.profile.full_name == "Test Repo User"
+    assert eager.preferences is not None
+    # education_path genuinely absent for test_user → stays None (no row).
+    assert eager.education_path is None
+
+
+@pytest.mark.asyncio
+async def test_update_user_attributes_via_eager_fetch_upserts_existing(
+    user_repo, test_user, db_session
+):
+    """Regression for the W185 noload twin-bug in the profile/media update path.
+
+    test_user HAS profile + preferences and NO education_path. Fetching via the
+    eager-loading method (as profile_service/media_service now do) makes
+    update_user_attributes UPDATE the existing children + CREATE the missing one
+    — no duplicate INSERT, no UNIQUE violation on the user_id PK.
+    """
+    from app.services.user.logic import update_user_attributes
+
+    user_id = test_user.id
+    db_session.expunge_all()
+
+    db_user = await user_repo.get_orm_for_update_with_relations(user_id)
+    assert db_user is not None
+
+    update_user_attributes(
+        db_user,
+        {
+            "full_name": "Eager Updated",  # profile exists → UPDATE
+            "timezone": "Europe/Berlin",  # preferences exist → UPDATE
+            "institute": "Eager Institute",  # education_path absent → CREATE
+        },
+    )
+    db_session.add(db_user)
+    await db_session.commit()
+
+    # Exactly one row per child table — user_id is the PK, so a duplicate INSERT
+    # would have raised before this point (reaching these asserts IS the guard).
+    profiles = (
+        (
+            await db_session.execute(
+                select(models.UserProfile).where(models.UserProfile.user_id == user_id)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert len(profiles) == 1
+    assert profiles[0].full_name == "Eager Updated"
+
+    prefs = (
+        (
+            await db_session.execute(
+                select(models.UserPreferences).where(
+                    models.UserPreferences.user_id == user_id
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert len(prefs) == 1
+    assert prefs[0].timezone == "Europe/Berlin"
+
+    edu = (
+        (
+            await db_session.execute(
+                select(models.EducationPath).where(
+                    models.EducationPath.user_id == user_id
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert len(edu) == 1
+    assert edu[0].institute == "Eager Institute"
+
+
+@pytest.mark.asyncio
+async def test_update_user_attributes_via_eager_fetch_creates_missing_profile(
+    user_repo, db_session
+):
+    """A user with NO profile row: the eager fetch reads profile=None (correctly,
+    no row), so update_user_attributes CREATEs exactly one — the eager-load fix
+    does not break the legitimate INSERT branch.
+    """
+    from app.services.user.logic import update_user_attributes
+
+    bare_user = models.User(
+        email="no_profile_repo@example.com",
+        hashed_password="hashed_password",
+        is_active=True,
+        role=UserRole.STUDENT,
+    )
+    db_session.add(bare_user)
+    await db_session.commit()
+    user_id = bare_user.id
+    db_session.expunge_all()
+
+    db_user = await user_repo.get_orm_for_update_with_relations(user_id)
+    assert db_user is not None
+    assert db_user.profile is None  # genuinely no row
+
+    update_user_attributes(db_user, {"full_name": "Brand New", "about": "Hello"})
+    db_session.add(db_user)
+    await db_session.commit()
+
+    profiles = (
+        (
+            await db_session.execute(
+                select(models.UserProfile).where(models.UserProfile.user_id == user_id)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert len(profiles) == 1
+    assert profiles[0].full_name == "Brand New"
+    assert profiles[0].about == "Hello"

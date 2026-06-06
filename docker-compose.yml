@@ -394,10 +394,58 @@ services:
           cpus: "0.50"
           memory: 512M
 
+  # ─── Temporal schema bootstrap (W144 SW2 Step 1 sidecar) ───────────────────
+  #
+  # Plain temporalio/server:1.30.2 does NOT auto-create the temporal +
+  # temporal_visibility databases/schema (unlike temporalio/auto-setup). This
+  # one-shot sidecar runs temporal-sql-tool create-database + setup/update-schema
+  # before the server starts. `restart: "no"` — once the schema exists it exits 0
+  # and the temporal service's `service_completed_successfully` dependency
+  # proceeds. (Ported from docker-compose.full.yml W144; networks adapted to the
+  # db_net/service_net topology of this compose.)
+  temporal-admin-tools:
+    image: temporalio/admin-tools:1.30.2
+    container_name: temporal-admin-tools
+    environment:
+      SQL_PLUGIN: postgres12
+      SQL_HOST: postgres
+      SQL_PORT: "5432"
+      SQL_USER: "${POSTGRES_USER:-postgres}"
+      SQL_PASSWORD: "${POSTGRES_PASSWORD}"
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        set -e
+        echo "[temporal-admin-tools] Bootstrapping temporal + temporal_visibility schemas..."
+        # temporal DB
+        temporal-sql-tool --plugin postgres12 --ep postgres -p 5432 -u "$$SQL_USER" --pw "$$SQL_PASSWORD" --db temporal create-database || true
+        temporal-sql-tool --plugin postgres12 --ep postgres -p 5432 -u "$$SQL_USER" --pw "$$SQL_PASSWORD" --db temporal setup-schema -v 0.0
+        temporal-sql-tool --plugin postgres12 --ep postgres -p 5432 -u "$$SQL_USER" --pw "$$SQL_PASSWORD" --db temporal update-schema -d /etc/temporal/schema/postgresql/v12/temporal/versioned
+        # temporal_visibility DB
+        temporal-sql-tool --plugin postgres12 --ep postgres -p 5432 -u "$$SQL_USER" --pw "$$SQL_PASSWORD" --db temporal_visibility create-database || true
+        temporal-sql-tool --plugin postgres12 --ep postgres -p 5432 -u "$$SQL_USER" --pw "$$SQL_PASSWORD" --db temporal_visibility setup-schema -v 0.0
+        temporal-sql-tool --plugin postgres12 --ep postgres -p 5432 -u "$$SQL_USER" --pw "$$SQL_PASSWORD" --db temporal_visibility update-schema -d /etc/temporal/schema/postgresql/v12/visibility/versioned
+        echo "[temporal-admin-tools] Schema bootstrap complete."
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - db_net
+    restart: "no"
+    deploy:
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: 512M
+
   temporal:
-    # HIGH-6 FIX: Use PostgreSQL-backed server instead of ephemeral dev SQLite.
-    # Dev-mode stored workflows in /tmp/temporal.db which was wiped on every restart,
-    # causing silent workflow state loss.
+    # PostgreSQL-backed server (HIGH-6). W144 SW2: plain temporalio/server does
+    # NOT do env-var substitution in its YAML config, so the custom entrypoint
+    # sed-renders services/temporal/config.yaml (${POSTGRES_USER}/${POSTGRES_PWD}/
+    # ${BROADCAST_ADDRESS}) before exec'ing temporal-server. The proven dev wiring
+    # from docker-compose.full.yml is ported here so the CI/prod compose's
+    # Temporal actually boots (it had been crash-looping exit(1) since the
+    # plain-server migration — net win for prod, not just the CI Load-and-Chaos job).
     image: temporalio/server:1.30.2
     container_name: temporal
     ports:
@@ -405,40 +453,81 @@ services:
       # built-in auth. External access via SSH tunnel: ssh -L 7233:localhost:7233 host
       - "127.0.0.1:7233:7233"
     environment:
-      - DB=postgresql
-      - DB_PORT=5432
-      - POSTGRES_USER=${POSTGRES_USER:-postgres}
-      - POSTGRES_PWD=${POSTGRES_PASSWORD}
-      - POSTGRES_SEEDS=postgres
-      - TEMPORAL_BROADCAST_ADDRESS=temporal
+      # POSTGRES_USER + POSTGRES_PWD are the entrypoint's required sed inputs.
+      POSTGRES_USER: "${POSTGRES_USER:-postgres}"
+      POSTGRES_PWD: "${POSTGRES_PASSWORD}"
+    entrypoint: ["/bin/sh", "/etc/temporal/wave144-entrypoint.sh"]
+    volumes:
+      - ./services/temporal/config.yaml:/etc/temporal/config/docker.yaml:ro
+      - ./services/temporal/entrypoint.sh:/etc/temporal/wave144-entrypoint.sh:ro
     depends_on:
       postgres:
         condition: service_healthy
-    volumes:
-      - ./config/dynamicconfig/docker.yaml:/etc/temporal/config/dynamicconfig/docker.yaml:ro
+      temporal-admin-tools:
+        condition: service_completed_successfully
     networks:
       - db_net
       - service_net
     healthcheck:
+      # W144 SW2 NEW (z) #19: temporalio/server:1.30.2 ships only `temporal-server`
+      # (no `temporal` CLI / grpc_health_probe), and the gRPC port is bound to the
+      # container IP (not 127.0.0.1). Probe the Prometheus metrics endpoint, which
+      # IS bound on 0.0.0.0:8000 and serves text once the server is healthy.
       test:
-        [
-          "CMD",
-          "temporal",
-          "operator",
-          "cluster",
-          "health",
-          "--address",
-          "127.0.0.1:7233",
-        ]
-      interval: 15s
-      timeout: 10s
+        ["CMD-SHELL", "wget -q --spider --timeout=3 http://127.0.0.1:8000/metrics || exit 1"]
+      interval: 10s
+      timeout: 5s
       retries: 10
-      start_period: 30s
+      start_period: 60s
     deploy:
       resources:
         limits:
           cpus: "0.50"
           memory: 1G
+
+  # ─── Temporal namespace init (W144 SW2 Step 2 sidecar) ─────────────────────
+  #
+  # Plain temporalio/server does NOT auto-register the `default` namespace. This
+  # one-shot sidecar registers it via the admin-tools `temporal` CLI once the
+  # server's gRPC frontend is accepting traffic. `restart: "no"`.
+  temporal-namespace-init:
+    image: temporalio/admin-tools:1.30.2
+    container_name: temporal-namespace-init
+    environment:
+      # W144 SW2 NEW (z) #20: set both the v1 (_CLI) and v2 env names + pass
+      # --address explicitly to avoid env-var-precedence ambiguity.
+      TEMPORAL_CLI_ADDRESS: "temporal:7233"
+      TEMPORAL_ADDRESS: "temporal:7233"
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        set -e
+        echo "[temporal-namespace-init] Registering 'default' namespace..."
+        for i in 1 2 3 4 5 6 7 8 9 10; do
+          if temporal operator namespace create --address temporal:7233 --namespace default --retention 24h; then
+            echo "[temporal-namespace-init] Default namespace registered."
+            exit 0
+          fi
+          if temporal operator namespace describe --address temporal:7233 --namespace default >/dev/null 2>&1; then
+            echo "[temporal-namespace-init] Default namespace already exists."
+            exit 0
+          fi
+          echo "[temporal-namespace-init] attempt $$i: waiting 3s for frontend RPC..."
+          sleep 3
+        done
+        echo "[temporal-namespace-init] FAILED to register default namespace after 10 attempts."
+        exit 1
+    depends_on:
+      temporal:
+        condition: service_healthy
+    networks:
+      - service_net
+    restart: "no"
+    deploy:
+      resources:
+        limits:
+          cpus: "0.10"
+          memory: 128M
 
   temporal-ui:
     image: temporalio/ui:2.48.1

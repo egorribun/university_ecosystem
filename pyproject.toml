@@ -492,12 +492,30 @@ skips = [
 # (see .github/workflows/ci.yml mutation-tests job) — those filter within this universe.
 paths_to_mutate = ["app/"]
 pytest_add_cli_args_test_selection = ["tests/"]
-# mutmut runs the baseline/stats suite inside an isolated `mutants/` copy that
-# contains only paths_to_mutate + also_copy (tests/, pyproject, pytest.ini, ...).
-# tests/test_migrations_runtime.py reads alembic's ScriptDirectory from the
-# alembic/ scripts folder, which is NOT copied → baseline fails with "Path
-# doesn't exist: mutants/alembic" → "failed to collect stats". That test checks
-# alembic head convergence (infra), not app/ source logic, so it provides zero
-# mutation-killing signal — exclude it from the mutation run.
-pytest_add_cli_args = ["--ignore=tests/test_migrations_runtime.py"]
+# mutmut runs the baseline/stats suite inside an isolated `mutants/` copy whose
+# tree is built by copy_src_dir() (walk_all_files copies ONLY paths_to_mutate =
+# app/) plus copy_also_copy_files() (the user-config `also_copy` paths). tests/
+# arrives via mutmut's own test-selection copy, but on-disk repo files OUTSIDE
+# app/+tests/ are NOT copied — so infra-contract tests that assert those files
+# fail in the mutants/ copy with "Path doesn't exist: mutants/<path>" →
+# "failed to collect stats. runner returned 1" (the mutmut CI job's sole failure
+# mode; `mutmut run` itself exits 0 even with surviving mutants — score-gating is
+# the separate `export_cicd_stats` command the CI does not call).
+#
+# These three tests assert repo files mutmut's mutants/ copy lacks AND exercise
+# ZERO app/ source (pure infra-config contracts → zero mutation-killing signal),
+# so they are correctly excluded from the mutation baseline:
+#   - test_migrations_runtime.py  → alembic/ ScriptDirectory (head convergence)
+#   - test_wave173_caddy_routing  → infrastructure/Caddyfile  (W173 routing)
+#   - test_wave173_ws_hub_env     → docker-compose.full.yml   (W173 ws-hub env)
+# Durable alternative (for the future "re-promote mutmut to blocking" roadmap
+# item): `also_copy = ["infrastructure", "docker-compose.full.yml"]` (+ alembic/)
+# keeps them running in the baseline by copying the files in. We use --ignore
+# here because it is deterministic + override-free (mutmut is POSIX-only — it
+# cannot run on the Windows dev box, so this is verified via CI only).
+pytest_add_cli_args = [
+    "--ignore=tests/test_migrations_runtime.py",
+    "--ignore=tests/test_wave173_caddy_routing.py",
+    "--ignore=tests/test_wave173_ws_hub_env.py",
+]
 

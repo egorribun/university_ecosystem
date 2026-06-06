@@ -19,13 +19,13 @@ class UserMediaService:
 
     async def upload_avatar(self, user: UserLike, file: UploadFile) -> UserDTO:
         user_identity = extract_user_id(user)
-        # LOW-W19: _get_orm() and _to_dto() are private repository methods.
-        # UserRepository does not yet expose public equivalents that return ORM
-        # instances with pessimistic locking (with_for_update) while also
-        # producing typed DTOs.  These calls are intentional and should be
-        # replaced once UserRepository.get_orm() / UserRepository.to_dto() are
-        # promoted to the public API.
-        db_user = await self.repo._get_orm(user_identity, with_for_update=True)
+        # Fetch the row-locked ORM user WITH profile/preferences/education_path
+        # eager-loaded. Required because update_user_attributes() below mutates
+        # the profile, and `db_user.profile` is lazy="noload" — a bare _get_orm()
+        # reads it as None, so the old-avatar cleanup is skipped AND a duplicate
+        # UserProfile is INSERTed -> UNIQUE violation (the W185 noload twin-bug).
+        # _to_dto() remains the one private call pending a public to_dto().
+        db_user = await self.repo.get_orm_for_update_with_relations(user_identity)
         if not db_user:
             raise EntityNotFound("User", user_identity)
 
@@ -48,7 +48,7 @@ class UserMediaService:
 
     async def upload_cover(self, user: UserLike, file: UploadFile) -> UserDTO:
         user_identity = extract_user_id(user)
-        db_user = await self.repo._get_orm(user_identity, with_for_update=True)
+        db_user = await self.repo.get_orm_for_update_with_relations(user_identity)
         if not db_user:
             raise EntityNotFound("User", user_identity)
 
@@ -71,7 +71,7 @@ class UserMediaService:
 
     async def delete_avatar(self, user: UserLike) -> UserDTO:
         user_identity = extract_user_id(user)
-        db_user = await self.repo._get_orm(user_identity, with_for_update=True)
+        db_user = await self.repo.get_orm_for_update_with_relations(user_identity)
         if not db_user:
             raise EntityNotFound("User", user_identity)
         if db_user.profile and db_user.profile.avatar_url:
@@ -86,7 +86,7 @@ class UserMediaService:
 
     async def delete_cover(self, user: UserLike) -> UserDTO:
         user_identity = extract_user_id(user)
-        db_user = await self.repo._get_orm(user_identity, with_for_update=True)
+        db_user = await self.repo.get_orm_for_update_with_relations(user_identity)
         if not db_user:
             raise EntityNotFound("User", user_identity)
         if db_user.profile and db_user.profile.cover_url:
