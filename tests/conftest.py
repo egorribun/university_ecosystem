@@ -179,6 +179,39 @@ def link_read_db_to_write_db():
 
 
 @pytest.fixture(autouse=True)
+def _reset_settings_cached_properties():
+    """Pop settings @cached_property caches before each test.
+
+    pydantic v2 does NOT invalidate a @cached_property (e.g.
+    ``event_file_allowed_mime_types_set``) when its underlying RAW field
+    (``event_file_allowed_mime_types``) is reassigned. In a shared in-process
+    session — mutmut's clean-test runs the changed-modules covering subset in ONE
+    pytest process; pytest-xdist within a worker; etc. — a stale derived value
+    leaks across tests: a prior PDF-upload test caches {'application/pdf'}, then a
+    later text/plain test monkeypatches the raw field but save_attachment still
+    reads the stale set -> 415 unsupported_type. Popping the cached_property entries
+    (identified via the class MRO, so pydantic FIELDS are never touched) forces
+    every derived value to recompute from the current (monkeypatched-or-default) raw
+    field. Confirmed via the mutmut clean-test diagnostic (MUTMUT_DEBUG_UPLOAD):
+    ``cfg event allowlist`` was a stale ['application/pdf'] while the raw field was
+    ['text/plain'].
+    """
+    import functools
+
+    from app.core.config import settings
+
+    cached_names = [
+        name
+        for klass in type(settings).__mro__
+        for name, attr in vars(klass).items()
+        if isinstance(attr, functools.cached_property)
+    ]
+    for name in cached_names:
+        settings.__dict__.pop(name, None)
+    yield
+
+
+@pytest.fixture(autouse=True)
 def mock_nats_broker(monkeypatch):
     """Mock the NATS broker so tests using LifespanManager don't hang on connect()."""
     from app.core.nats_broker import broker
