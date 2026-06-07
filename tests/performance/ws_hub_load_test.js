@@ -49,12 +49,13 @@ const vuAuthed = {};
 // Signed double-submit CSRF (app/core/csrf.py): GET /api/v1/auth/csrf-cookie
 // sets the `csrf_token` cookie; mutating POSTs must echo it as the X-CSRF-Token
 // header (the middleware does secrets.compare_digest(cookie, header) at
-// csrf.py:361). k6's cookie jar is per-VU + persists across iterations, so it
-// carries csrf_token automatically; we re-read it from the jar on each call so
-// a server-side token rotation (csrf.py:397) is picked up.
-function csrfHeaders(extra) {
-    const jar = http.cookieJar();
-    const cookies = jar.cookiesForURL(`${BASE_URL}/`);
+// csrf.py:361). Build the header by reading the csrf_token that k6's jar WOULD
+// send to the EXACT targetUrl (cookiesForURL honours the cookie's Path), so the
+// header value always equals the cookie value the request carries -> the
+// double-submit compare matches. Reading per-URL (not a fixed "/") avoids a
+// header/cookie mismatch if a cookie's Path ever scopes it away from a route.
+function csrfHeaders(targetUrl, extra) {
+    const cookies = http.cookieJar().cookiesForURL(targetUrl);
     const token = (cookies['csrf_token'] && cookies['csrf_token'][0]) || '';
     return Object.assign({ 'Content-Type': 'application/json', 'X-CSRF-Token': token }, extra || {});
 }
@@ -76,7 +77,7 @@ function authenticate(vuId) {
     const regRes = http.post(
         `${BASE_URL}/api/v1/auth/register`,
         JSON.stringify({ email: email, password: password, full_name: fullName }),
-        { headers: csrfHeaders() }
+        { headers: csrfHeaders(`${BASE_URL}/api/v1/auth/register`) }
     );
     errors.add(!(regRes.status === 200 || regRes.status === 400));
 
@@ -87,7 +88,7 @@ function authenticate(vuId) {
     const loginRes = http.post(
         `${BASE_URL}/api/v1/auth/login/json`,
         JSON.stringify({ email: email, password: password }),
-        { headers: csrfHeaders() }
+        { headers: csrfHeaders(`${BASE_URL}/api/v1/auth/login/json`) }
     );
     const loginOk = check(loginRes, {
         'login is successful (200)': (r) => r.status === 200,
@@ -113,15 +114,26 @@ export default function () {
         vuAuthed[vuId] = true;
     }
 
-    // 4. Request a WS upgrade ticket (NOT rate-limited; ws/ticket.py has no
-    // sensitive_route_limit). Auth rides the HttpOnly access_token_v2 cookie in
-    // the jar (ws/ticket.py:8 accepts "HttpOnly cookie OR Bearer token"); we send
-    // NO Bearer because W126 leaves no token in the login body. That auth cookie
-    // makes this a CSRF-checked request (has_auth_cookie -> csrf.py:339 does NOT
-    // skip), so we attach X-CSRF-Token; login already rotated the jar's csrf_token
-    // to bind to the authenticated session, so the signed double-submit validates.
+    // 4a. Re-prime the CSRF cookie each iteration. ROUND-9 evidence: the
+    // login-rotated csrf_token is present for the FIRST post-login ticket but
+    // then cookie_present=False on /ws/ticket -> "CSRF rejected (missing token)"
+    // (a k6 jar cross-iteration lifecycle gap; ticket.py sets/clears no cookie).
+    // A fresh AUTHENTICATED GET re-establishes a Path=/ csrf_token bound to the
+    // current session immediately before the ticket POST. /csrf-cookie rides the
+    // :default limiter (raised in the CI fragment), so the extra GET is rate-safe.
+    const reprimeRes = http.get(`${BASE_URL}/api/v1/auth/csrf-cookie`);
+    errors.add(reprimeRes.status !== 200);
+
+    // 4b. Request the WS upgrade ticket. Auth rides the HttpOnly access_token_v2
+    // cookie in the jar (ws/ticket.py:8 accepts "HttpOnly cookie OR Bearer"); we
+    // send NO Bearer (W126 leaves no token in the login body). The auth cookie
+    // makes this CSRF-checked (has_auth_cookie -> csrf.py:339 does NOT skip), so
+    // we attach X-CSRF-Token read for the /ws/ticket URL specifically -> it equals
+    // the csrf_token the jar sends there (just re-primed, bound to the session) ->
+    // the signed double-submit validates. /ws/ticket rides the WEBSOCKET limiter
+    // (rate_limit_websocket), also raised in the CI fragment.
     const ticketRes = http.post(`${BASE_URL}/ws/ticket`, null, {
-        headers: csrfHeaders(),
+        headers: csrfHeaders(`${BASE_URL}/ws/ticket`),
     });
     const ticketOk = check(ticketRes, {
         'ticket issued (201)': (r) => r.status === 201,

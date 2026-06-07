@@ -51,6 +51,11 @@ services:
       RATE_LIMIT_SENSITIVE: 100000/minute
       RATE_LIMIT_AUTH_LOGIN: 100000/minute
       RATE_LIMIT_AUTH_REGISTER: 100000/minute
+      # POST /ws/ticket is gated by the WEBSOCKET limiter (rate_limit_websocket
+      # "60/minute", bucket "ip:<ip>:/ws"). ROUND-9 observed limit=60 429s on
+      # /ws/ticket: all VUs share the socat IP and the test retries the ticket
+      # ~1x/s. Separate from rate_limit_default/sensitive; raise it too.
+      RATE_LIMIT_WEBSOCKET: 100000/minute
       # Concurrent-session headroom for the WS load test. Each /login/json mints
       # a session and the backend caps them per user (session_service.py:170 ->
       # max_sessions_per_user, default 5 in non-test envs). ROUND-8 observed
