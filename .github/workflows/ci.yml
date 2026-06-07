@@ -1122,6 +1122,13 @@ jobs:
         run: uv sync --group dev
 
       - name: Run incremental mutmut
+        env:
+          # TEMPORARY diagnostic: tells tests/conftest.py (pytest_sessionstart /
+          # pytest_runtest_logstart) to append mutmut's in-process clean-test
+          # execution ORDER to this file, so the deterministic covering-subset order
+          # can be replayed LOCALLY to diagnose order-dependent test-isolation bugs.
+          # Removed once mutmut is green.
+          MUTMUT_DUMP_ORDER: /tmp/mutmut_order.log
         run: |
           git diff --name-only origin/main...HEAD | grep '^app/.*\.py$' > /tmp/changed_py.txt || true
           if [ -s /tmp/changed_py.txt ]; then
@@ -1135,6 +1142,17 @@ jobs:
             set +f
           else
             echo "No changed Python source files found. Skipping mutation testing."
+          fi
+
+      - name: Dump mutmut clean-test order (TEMPORARY diagnostic)
+        if: always()
+        run: |
+          echo "=== mutmut in-process pytest execution order (sessions: stats / clean-test / forced-fail) ==="
+          if [ -f /tmp/mutmut_order.log ]; then
+            wc -l /tmp/mutmut_order.log
+            cat /tmp/mutmut_order.log
+          else
+            echo "(no order file — mutmut may have skipped or errored before collection)"
           fi
 
   load-and-chaos-tests:
