@@ -1313,6 +1313,19 @@ jobs:
           docker compose $CF logs --tail=600 backend 2>&1 | grep -iE "CSRF rejected" | tail -40 || echo "(no 'CSRF rejected' log lines found)"
           echo "=== backend 4xx/rate-limit context ==="
           docker compose $CF logs --tail=200 backend 2>&1 | grep -iE "warning|error|429|403|rate.?limit|/register|/login|/ws/ticket" | tail -30 || true
+          # ROUND-14: backend container HEALTH -- this is the gate the chaos suite's
+          # setup `docker compose up -d` waits on (service_healthy). round-13's
+          # /health/ready (wait_db 1-attempt) flapped under the k6 DB load; round-14
+          # uses "/" (DB-less). Show the live health + the actual endpoint responses
+          # so the cause is visible whether or not "/" makes it healthy.
+          echo "=== backend container health (chaos up -d gate) ==="
+          docker compose $CF ps backend || true
+          BID=$(docker compose $CF ps -q backend 2>/dev/null || true)
+          docker inspect "$BID" --format '{{json .State.Health}}' 2>/dev/null | head -c 1500 || true
+          echo
+          echo "=== backend / + /health/ready (from inside the container) ==="
+          docker compose $CF exec -T backend python -c "import urllib.request; print('root status', urllib.request.urlopen('http://127.0.0.1:8000/', timeout=4).status)" 2>&1 | tail -3 || true
+          docker compose $CF exec -T backend python -c "import urllib.request; print('ready status', urllib.request.urlopen('http://127.0.0.1:8000/health/ready', timeout=4).status)" 2>&1 | tail -3 || true
 
       - name: Run chaos resilience tests
         env:
