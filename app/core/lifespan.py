@@ -217,10 +217,20 @@ async def _startup_background_workers(app: FastAPI) -> None:
     if not hasattr(app.state, "background_tasks"):
         app.state.background_tasks = set()
 
-    # Orchestrate periodic background loop
-    app.state.background_tasks.add(
-        asyncio.create_task(_periodic_scheduler_loop(), name="periodic_scheduler")
-    )
+    # Orchestrate periodic background loop.
+    # Test-isolation: skip in the "testing" environment (matches the Outbox/NATS
+    # gate below + the partition-scheduler gate). The daemon does no useful work
+    # within a test's lifetime (it jitter-sleeps 0-60 s then awaits _SCHEDULER_STOP),
+    # but its asyncio.Task + Event bind to the session event loop and LEAK across
+    # mutmut's multiple in-process pytest.main() runs (stats -> clean-test ->
+    # forced-fail), surfacing as "ValueError: The future belongs to a different
+    # loop" at async teardown of the 2nd run — the sole blocker for the mutmut CI
+    # job. No test references it (grep-verified); it was the only background daemon
+    # NOT already gated out of testing.
+    if settings.environment != "testing":
+        app.state.background_tasks.add(
+            asyncio.create_task(_periodic_scheduler_loop(), name="periodic_scheduler")
+        )
 
     # Boot components from DI container
     if settings.environment != "testing":

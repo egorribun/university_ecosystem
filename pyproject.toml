@@ -514,27 +514,28 @@ pytest_add_cli_args_test_selection = ["tests/"]
 # here because it is deterministic + override-free (mutmut is POSIX-only — it
 # cannot run on the Windows dev box, so this is verified via CI only).
 #
-# test_spotify_fallback.py, test_push_router_full.py + test_auth_mfa.py are excluded
-# for a DIFFERENT reason: mutmut runs pytest multiple times in one process (stats ->
-# clean test -> per-mutant), and their async client/login fixtures error in the 2nd+
-# run with "The future belongs to a different loop" (a pytest-asyncio loop-reuse
-# artifact). They pass fine in normal CI (the backend coverage gate still runs them);
-# the error is a mutmut-isolation artifact carrying no usable mutation signal there.
-# An in-process global-reset hook (tests/conftest.py::pytest_sessionfinish) was tried
-# + reverted: it could not enumerate every loop-bound global from the Windows dev box
-# that cannot run mutmut, and recreating an async client at session-teardown introduced
-# an "I/O operation on closed file" cascade. Exclusion is the deterministic,
-# override-free pattern (mutmut is POSIX-only — verified via CI only). mutmut's
-# clean test runs pytest with --maxfail=1, so loop-fragile tests surface ONE per
-# CI round; this PR's WS/auth/notifications changes pulled test_push_router_full,
-# test_auth_mfa + test_notifications_api into the changed-module clean-test subset.
+# UPDATE (mutmut-green fix): the async cross-loop exclusions (test_spotify_fallback /
+# test_push_router_full / test_auth_mfa / test_notifications_api) have been REMOVED.
+# mutmut runs pytest multiple times IN ONE PROCESS (stats -> clean test -> forced-fail,
+# then os.fork per mutant), and the 2nd pytest.main() errored at async teardown with
+# "The future belongs to a different loop". ROOT CAUSE = the lifespan `periodic_scheduler`
+# background daemon (app/core/lifespan.py) — the ONLY background task NOT already gated
+# out of the "testing" environment (Outbox/NATS/partition all skip in testing). Its
+# asyncio.Task + Event bound to run-1's event loop and leaked into run-2 -> cross-loop
+# error. Gating it on `settings.environment != "testing"` (matching the existing daemon
+# gates) removes the only loop-leaking background task, so EVERY async test now survives
+# mutmut's multi-pytest.main() cycle. Validated locally on Windows WITHOUT mutmut via a
+# 2x-pytest.main()-in-one-process repro over the 5 formerly-failing files / 87 tests
+# (incl. test_event_attendance_api, session-5's "moved-to" failure) -> run-2 clean.
+# (Session-5's dispose-engine hook only MOVED the failure because the engine was not the
+# first leaker — periodic_scheduler's Task/Event was. No conftest hook is needed now.)
 pytest_add_cli_args = [
+    # 3 infra-contract tests: see the note above — mutmut's mutants/ copy contains ONLY
+    # app/+tests/, so these (which assert on-disk repo files OUTSIDE that tree + exercise
+    # ZERO app/ source) fail with "Path doesn't exist: mutants/<path>" + carry no
+    # mutation signal. Durable alternative: also_copy = ["infrastructure", "alembic", ...].
     "--ignore=tests/test_migrations_runtime.py",
     "--ignore=tests/test_wave173_caddy_routing.py",
     "--ignore=tests/test_wave173_ws_hub_env.py",
-    "--ignore=tests/test_spotify_fallback.py",
-    "--ignore=tests/test_push_router_full.py",
-    "--ignore=tests/test_auth_mfa.py",
-    "--ignore=tests/test_notifications_api.py",
 ]
 
