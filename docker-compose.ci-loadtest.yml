@@ -72,6 +72,22 @@ services:
       # /app/.secrets/jwt_rs256.pem. The CI job generates the key + chmod 644
       # so the non-root backend user can read it (else: Permission denied).
       - ./.secrets:/app/.secrets:ro
+    # ROUND-13: override the base HEALTHCHECK (docker-compose.yml:111 uses /healthz
+    # -- the FULL check requiring ES/SpiceDB/Tempo all reachable, which 503s under
+    # k6 load when a subsystem flaps -> the container is marked UNHEALTHY even
+    # though the app is fine, k6 auth all passed). The chaos suite's setup runs
+    # `docker compose up -d`, which then fails exit 1 ("dependency failed to start:
+    # container backend-1 is unhealthy") on a service_healthy dependency, ERRORing
+    # all 5 chaos tests at setup. Use /health/ready (Lean Readiness Probe -- DB
+    # connectivity only, app/api/health.py:362), mirroring the docker-compose.full
+    # .yml W140 SW3-fix. healthcheck is a map -> the override merges per-key on
+    # compose v2.x. Lets the chaos `up -d` see a healthy backend so the suite runs.
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/ready', timeout=4)"]
+      interval: 10s
+      timeout: 5s
+      start_period: 30s
+      retries: 5
 
   ws-hub:
     # go.yml attaches ws-hub to internal + public ONLY -- NOT cache_net, where
