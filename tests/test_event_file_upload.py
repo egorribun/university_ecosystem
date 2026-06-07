@@ -332,12 +332,18 @@ async def test_upload_event_file_rejects_mismatched_metadata(
     )
     monkeypatch.setattr(settings, "event_file_allowed_extensions", [".txt", ".pdf"])
     monkeypatch.setattr(settings, "event_file_max_size_bytes", 1024)
-    # save_attachment uses the _set properties (cached_property); patch them too
-    type(settings).event_file_allowed_mime_types_set = property(
-        lambda self: {"text/plain", "application/pdf"}
+    # save_attachment reads the derived _set @cached_property. monkeypatch the CLASS
+    # so the override is RESTORED on teardown — a raw `type(settings).X = ...` leaks
+    # the descriptor into every later test (mutmut clean-test -> stale-allowlist 415).
+    monkeypatch.setattr(
+        type(settings),
+        "event_file_allowed_mime_types_set",
+        property(lambda self: {"text/plain", "application/pdf"}),
     )
-    type(settings).event_file_allowed_extensions_set = property(
-        lambda self: {"txt", "pdf"}
+    monkeypatch.setattr(
+        type(settings),
+        "event_file_allowed_extensions_set",
+        property(lambda self: {"txt", "pdf"}),
     )
 
     with pytest.raises(HTTPException) as excinfo:
@@ -465,11 +471,19 @@ async def test_upload_event_file_allows_multipage_pdf(
     monkeypatch.setattr(settings, "event_file_allowed_mime_types", ["application/pdf"])
     monkeypatch.setattr(settings, "event_file_allowed_extensions", [".pdf"])
     monkeypatch.setattr(settings, "event_file_max_size_bytes", 2048)
-    # save_attachment uses the _set properties (cached_property); patch them too
-    type(settings).event_file_allowed_mime_types_set = property(
-        lambda self: {"application/pdf"}
+    # save_attachment reads the derived _set @cached_property. monkeypatch the CLASS
+    # so the override is RESTORED on teardown — a raw `type(settings).X = ...` leaks
+    # the descriptor into every later test (mutmut clean-test -> stale-allowlist 415).
+    monkeypatch.setattr(
+        type(settings),
+        "event_file_allowed_mime_types_set",
+        property(lambda self: {"application/pdf"}),
     )
-    type(settings).event_file_allowed_extensions_set = property(lambda self: {"pdf"})
+    monkeypatch.setattr(
+        type(settings),
+        "event_file_allowed_extensions_set",
+        property(lambda self: {"pdf"}),
+    )
 
     result = await events.upload_event_file(
         event.id, upload, request=None, db=db_session, user=admin, checker=mock_checker
@@ -499,11 +513,19 @@ async def test_upload_event_file_quarantines_polyglot_pdf(
     monkeypatch.setattr(settings, "event_file_allowed_mime_types", ["application/pdf"])
     monkeypatch.setattr(settings, "event_file_allowed_extensions", [".pdf"])
     monkeypatch.setattr(settings, "event_file_max_size_bytes", 2048)
-    # save_attachment uses the _set properties (cached_property); patch them too
-    type(settings).event_file_allowed_mime_types_set = property(
-        lambda self: {"application/pdf"}
+    # save_attachment reads the derived _set @cached_property. monkeypatch the CLASS
+    # so the override is RESTORED on teardown — a raw `type(settings).X = ...` leaks
+    # the descriptor into every later test (mutmut clean-test -> stale-allowlist 415).
+    monkeypatch.setattr(
+        type(settings),
+        "event_file_allowed_mime_types_set",
+        property(lambda self: {"application/pdf"}),
     )
-    type(settings).event_file_allowed_extensions_set = property(lambda self: {"pdf"})
+    monkeypatch.setattr(
+        type(settings),
+        "event_file_allowed_extensions_set",
+        property(lambda self: {"pdf"}),
+    )
 
     with pytest.raises(HTTPException) as excinfo:
         await events.upload_event_file(
@@ -549,12 +571,18 @@ async def test_upload_event_file_quarantines_svg_with_js(
         settings, "event_file_allowed_extensions", [".svg", ".pdf", ".txt"]
     )
     monkeypatch.setattr(settings, "event_file_max_size_bytes", 2048)
-    # save_attachment uses the _set properties (cached_property); patch them too
-    type(settings).event_file_allowed_mime_types_set = property(
-        lambda self: {"image/svg+xml", "application/pdf", "text/plain"}
+    # save_attachment reads the derived _set @cached_property. monkeypatch the CLASS
+    # so the override is RESTORED on teardown — a raw `type(settings).X = ...` leaks
+    # the descriptor into every later test (mutmut clean-test -> stale-allowlist 415).
+    monkeypatch.setattr(
+        type(settings),
+        "event_file_allowed_mime_types_set",
+        property(lambda self: {"image/svg+xml", "application/pdf", "text/plain"}),
     )
-    type(settings).event_file_allowed_extensions_set = property(
-        lambda self: {"svg", "pdf", "txt"}
+    monkeypatch.setattr(
+        type(settings),
+        "event_file_allowed_extensions_set",
+        property(lambda self: {"svg", "pdf", "txt"}),
     )
 
     with pytest.raises(HTTPException) as excinfo:
@@ -595,11 +623,19 @@ async def test_upload_event_file_allows_clean_payload_with_scanner(
     monkeypatch.setattr(settings, "event_file_allowed_mime_types", ["text/plain"])
     monkeypatch.setattr(settings, "event_file_allowed_extensions", [".txt"])
     monkeypatch.setattr(settings, "event_file_max_size_bytes", 1024)
-    # save_attachment uses the _set properties (cached_property); patch them too
-    type(settings).event_file_allowed_mime_types_set = property(
-        lambda self: {"text/plain"}
+    # save_attachment reads the derived _set @cached_property. monkeypatch the CLASS
+    # so the override is RESTORED on teardown — a raw `type(settings).X = ...` leaks
+    # the descriptor into every later test (mutmut clean-test -> stale-allowlist 415).
+    monkeypatch.setattr(
+        type(settings),
+        "event_file_allowed_mime_types_set",
+        property(lambda self: {"text/plain"}),
     )
-    type(settings).event_file_allowed_extensions_set = property(lambda self: {"txt"})
+    monkeypatch.setattr(
+        type(settings),
+        "event_file_allowed_extensions_set",
+        property(lambda self: {"txt"}),
+    )
 
     calls: list[tuple[bytes, str | None, int | None]] = []
 
@@ -671,11 +707,19 @@ async def test_delete_event_file_removes_payload(
     monkeypatch.setattr(settings, "event_file_allowed_mime_types", ["text/plain"])
     monkeypatch.setattr(settings, "event_file_allowed_extensions", [".txt"])
     monkeypatch.setattr(settings, "event_file_max_size_bytes", 1024)
-    # save_attachment uses the _set properties (cached_property); patch them too
-    type(settings).event_file_allowed_mime_types_set = property(
-        lambda self: {"text/plain"}
+    # save_attachment reads the derived _set @cached_property. monkeypatch the CLASS
+    # so the override is RESTORED on teardown — a raw `type(settings).X = ...` leaks
+    # the descriptor into every later test (mutmut clean-test -> stale-allowlist 415).
+    monkeypatch.setattr(
+        type(settings),
+        "event_file_allowed_mime_types_set",
+        property(lambda self: {"text/plain"}),
     )
-    type(settings).event_file_allowed_extensions_set = property(lambda self: {"txt"})
+    monkeypatch.setattr(
+        type(settings),
+        "event_file_allowed_extensions_set",
+        property(lambda self: {"txt"}),
+    )
 
     event_file = await events.upload_event_file(
         event.id, upload, request=None, db=db_session, user=admin, checker=mock_checker
