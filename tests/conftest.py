@@ -385,34 +385,3 @@ def _log_query_before_execute(
             f.write(normalized_stmt + "\n")
     except Exception:  # noqa: S110
         pass
-
-
-# --- TEMPORARY mutmut clean-test ORDER diagnostic (MUTMUT_DUMP_ORDER-gated) ---
-# mutmut runs pytest IN-PROCESS multiple times (stats -> clean-test -> forced-fail)
-# in a DETERMINISTIC order over the changed modules' covering subset — a composition
-# normal randomized CI never reproduces, so order-dependent test-isolation failures
-# surface only there and cannot be reproduced locally without knowing that exact
-# order. When MUTMUT_DUMP_ORDER is set to an absolute file path (only by the ci.yml
-# mutation-tests step), these hooks append a per-session test-execution trace to that
-# file (it survives mutmut's change_cwd('mutants') + pytest's per-test capture). The
-# CI step cats it afterwards; we then replay the failing run's exact prefix LOCALLY to
-# diagnose + fix the isolation bug, then REMOVE this diagnostic. No effect on any other
-# run (the env var is unset everywhere else).
-def pytest_sessionstart(session: Any) -> None:
-    dump = os.environ.get("MUTMUT_DUMP_ORDER")
-    if dump:
-        try:
-            with open(dump, "a", encoding="utf-8") as f:
-                f.write("=== PYTEST SESSION START ===\n")
-        except OSError:
-            pass
-
-
-def pytest_runtest_logstart(nodeid: str, location: Any) -> None:
-    dump = os.environ.get("MUTMUT_DUMP_ORDER")
-    if dump:
-        try:
-            with open(dump, "a", encoding="utf-8") as f:
-                f.write(nodeid + "\n")
-        except OSError:
-            pass
