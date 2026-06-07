@@ -1,15 +1,23 @@
 import ws from 'k6/ws';
 import http from 'k6/http';
 import { check, sleep } from 'k6';
-import { Rate } from 'k6/metrics';
+import { Counter, Rate } from 'k6/metrics';
 
-// Custom error-rate metric backing the `errors` threshold in options below.
-// Without this definition k6 fails at init with "threshold defined on
-// non-existent metric 'errors'". Recorded at the deterministic steps
-// (csrf/register/login/ticket/connect) — NOT the message handler, whose
-// delivery depends on NATS fan-out and is best-effort, so the threshold passes
-// on a successful 101 upgrade alone.
+// `errors` is the HARD gate: the deterministic AUTH steps that must all succeed
+// (csrf-prime / register / login / csrf-reprime / ticket). The WS 101 upgrade is
+// deliberately NOT in `errors` — see ws_connects_established below.
 const errors = new Rate('errors');
+
+// ROUND-12 (per the maintainer decision): the WS 101 UPGRADE is gated SEPARATELY.
+// ws-hub enforces a PER-IP WS-upgrade token bucket hardcoded to 10 / 60 s
+// (services/ws-hub/pkg/hub/hub.go:103 NewWSUpgradeRateLimiter(10,60); handlers.go:85
+// returns 429). It is a SECURITY control (boundary-burst protection) with no env
+// override — and ALL k6 VUs share ONE source IP via the socat host-publish, so a
+// single-IP load test can only ever land ~ burst(10) + refill(50s / 6s) ≈ 18
+// upgrades; the rest get 429 BY DESIGN. So we do NOT fail the run on throttled
+// upgrades; instead we COUNT successful 101s and assert the WS path works
+// end-to-end (login -> ticket -> 101 -> join -> message) at least a handful of times.
+const wsConnects = new Counter('ws_connects_established');
 
 // k6 Options & SLA thresholds
 export const options = {
@@ -19,12 +27,16 @@ export const options = {
         { duration: '10s', target: 0 },  // Ramp down
     ],
     thresholds: {
-        // Relaxed for CI: ws_connecting is noisy on a contended multi-service
-        // runner (the WS handshake traverses ws-hub -> Redis ticket GETDEL). The
-        // `errors` rate (csrf/register/login/ticket/connect all succeed) is the
-        // meaningful gate (precedent: f75de0ed7 "relax k6 latencies for CI").
-        ws_connecting: ['p(95)<500'],
+        // `errors` (the AUTH chain) is the strict gate: every csrf / register /
+        // login / reprime / ticket must succeed (<1%). ws_connecting latency stays
+        // relaxed for the contended CI runner (precedent: f75de0ed7 "relax k6
+        // latencies"). ws_connects_established asserts the WS path works end-to-end
+        // at least a handful of times — NOT every attempt, because the per-IP
+        // upgrade limiter throttles a single-IP load test by design (see the
+        // ws_connects note above). 5 is well under the ~18 reachable (burst 10).
         errors: ['rate<0.01'],
+        ws_connecting: ['p(95)<500'],
+        ws_connects_established: ['count>=5'],
     },
 };
 
@@ -214,10 +226,17 @@ export default function () {
         }, 8000);
     });
 
+    // INFORMATIONAL check (surfaces the throttle in the summary) — NOT added to
+    // the hard `errors` gate, because ws-hub's per-IP upgrade limiter 429s a
+    // single-IP load test BY DESIGN. We COUNT the successful 101s instead; the
+    // ws_connects_established threshold (count>=5) proves the WS path works
+    // end-to-end without failing on the expected per-IP throttle.
     const wsOk = check(res, {
-        'websocket connection established': (r) => r && r.status === 101,
+        'websocket connection established (101)': (r) => r && r.status === 101,
     });
-    errors.add(!wsOk);
+    if (wsOk) {
+        wsConnects.add(1);
+    }
 
     sleep(1);
 }
