@@ -1198,12 +1198,25 @@ jobs:
 
       - name: Spin up Docker Compose
         run: |
-          docker compose \
-            -f docker-compose.infra.yml \
-            -f docker-compose.go.yml \
-            -f docker-compose.yml \
-            -f docker-compose.ci-loadtest.yml \
-            up -d --build
+          CF_UP="-f docker-compose.infra.yml -f docker-compose.go.yml -f docker-compose.yml -f docker-compose.ci-loadtest.yml"
+          # ROUND-15: retry `up -d --build`. The full stack pulls many infra
+          # images (tempo, temporal-ui, ...) from Docker Hub, which intermittently
+          # times out on the CI runner ("net/http: request canceled ...
+          # Client.Timeout exceeded while awaiting headers") and INTERRUPTS the
+          # whole compose-up -> exit 1 (round-14 died here, a pure registry flake
+          # unrelated to the test changes). Build cache makes retries fast and the
+          # transient pull almost always succeeds on a 2nd/3rd attempt.
+          up_ok=""
+          for attempt in 1 2 3; do
+            if docker compose $CF_UP up -d --build; then
+              echo "compose up succeeded (attempt $attempt)"; up_ok=1; break
+            fi
+            echo "::warning::compose up attempt $attempt failed (likely a Docker Hub pull timeout); retrying in 15s"
+            sleep 15
+          done
+          if [ -z "$up_ok" ]; then
+            echo "compose up failed after 3 attempts"; exit 1
+          fi
 
           # Host-publish backend:8000 via a socat sidecar. docker compose v2.x on
           # the CI runner does NOT apply a ports: override added to backend's
