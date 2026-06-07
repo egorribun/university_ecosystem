@@ -1127,6 +1127,13 @@ jobs:
         run: uv sync --group dev
 
       - name: Run incremental mutmut (time-boxed, advisory)
+        env:
+          # TEMPORARY diagnostic (removed once mutmut is green): tests/conftest.py's
+          # pytest_runtest_makereport hook appends the live detection / allowlist /
+          # singleton-identity state of any FAILED test_event_file_upload test to this
+          # file, pinning WHY the uploads hit 415 only in mutmut's in-process clean-test
+          # (not reproducible locally). Surfaced by the "Dump upload-415 diagnostic" step.
+          MUTMUT_DEBUG_UPLOAD: /tmp/mutmut_upload_debug.log
         run: |
           git diff --name-only origin/main...HEAD | grep '^app/.*\.py$' > /tmp/changed_py.txt || true
           if [ ! -s /tmp/changed_py.txt ]; then
@@ -1161,6 +1168,16 @@ jobs:
           else
             echo "::error::mutmut exited $ec before the time-box — a genuine clean-test/forced-fail/stats failure (isolation regression). Failing the job."
             exit "$ec"
+          fi
+
+      - name: Dump upload-415 diagnostic (TEMPORARY)
+        if: always()
+        run: |
+          echo "=== test_event_file_upload 415 clean-test state (MUTMUT_DEBUG_UPLOAD) ==="
+          if [ -f /tmp/mutmut_upload_debug.log ]; then
+            cat /tmp/mutmut_upload_debug.log
+          else
+            echo "(no diagnostic file — mutmut may have failed before any upload test ran, or the clean-test passed)"
           fi
 
   load-and-chaos-tests:
