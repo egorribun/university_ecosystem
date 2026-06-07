@@ -12,16 +12,30 @@ BACKEND_ROOT = PROJECT_ROOT
 @pytest.fixture(autouse=True)
 def restore_config_module():
     """Restores the config module to its original state after each test."""
+    from app.core import config as config_module
+    from app.core.config import base as base_module
+
     original_env = dict(os.environ)
+    # importlib.reload(config_module) rebinds config_module.settings to a NEW
+    # Settings() instance (config/__init__.py:310 `settings = _load_settings()`),
+    # which permanently diverges from the ORIGINAL singleton that ~90 modules
+    # captured via `from app.core.config import settings` at their own import time
+    # (e.g. command_service). A later test that does monkeypatch.setattr(settings, …)
+    # then patches the reloaded object while those modules keep reading the original
+    # -> a silent cross-module isolation break (e.g. chat_attachment_max_files=0 never
+    # reaches command_service -> the upload is saved -> ck_attachment_url_scheme).
+    # Capture the original instance and reinstate it after the cleanup reload so
+    # singleton identity (and cross-module monkeypatch) survives the reloads. This is a
+    # latent seed-dependent flake in randomized CI; mutmut (2x pytest.main() in one
+    # process: stats run -> clean-test) makes it deterministic.
+    original_settings = config_module.settings
     yield
     os.environ.clear()
     os.environ.update(original_env)
 
-    from app.core import config as config_module
-    from app.core.config import base as base_module
-
     importlib.reload(base_module)
     importlib.reload(config_module)
+    config_module.settings = original_settings
 
 
 @contextmanager
