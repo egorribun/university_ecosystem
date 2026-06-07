@@ -31,15 +31,20 @@ export const options = {
 const BASE_URL = __ENV.API_BASE_URL || 'http://localhost:8000';
 const WS_URL = __ENV.WS_URL || 'ws://localhost:8083';
 
-// Per-VU token cache. k6 runs the default function repeatedly in the SAME JS
-// context per VU, so a module-level object keyed by __VU persists across
-// iterations. We register + login ONCE per VU and reuse the token: the auth
-// endpoints (/login/json, /register) are PER-IP rate-limited
-// (app/core/ratelimit/fastapi.py keys unauthenticated requests by client IP),
-// and ALL k6 VUs share one source IP via the socat host-publish, so re-logging
-// in every iteration trips the limiter (429). The unthrottled /ws/ticket + the
-// WS upgrade are the per-iteration workload — the actual WS load being measured.
-const vuTokens = {};
+// Per-VU auth FLAG (not a token). k6 runs the default function repeatedly in the
+// SAME JS context per VU, so a module-level object keyed by __VU persists across
+// iterations. We register + login ONCE per VU; thereafter k6's per-VU cookie jar
+// carries the HttpOnly access_token_v2 + the (login-rotated) csrf_token cookies,
+// so each per-iteration /ws/ticket POST authenticates via those cookies with no
+// re-login. Logging in once per VU is essential: each /login/json mints a session
+// and the backend caps concurrent sessions per user (session_service.py:170 ->
+// max_sessions_per_user) -> re-logging in every iteration exhausted the cap (403
+// "too_many_sessions" — round-8). It also dodges the PER-IP auth rate-limits (all
+// VUs share one source IP via socat). We cache a SUCCESS FLAG, NOT a token: W126
+// moved the access token to the HttpOnly access_token_v2 cookie, so /login/json's
+// body EXCLUDES access_token (response_model_exclude_none + Token.access_token=
+// None) -> there is no Bearer token to read; auth rides the cookie jar instead.
+const vuAuthed = {};
 
 // Signed double-submit CSRF (app/core/csrf.py): GET /api/v1/auth/csrf-cookie
 // sets the `csrf_token` cookie; mutating POSTs must echo it as the X-CSRF-Token
@@ -54,13 +59,16 @@ function csrfHeaders(extra) {
     return Object.assign({ 'Content-Type': 'application/json', 'X-CSRF-Token': token }, extra || {});
 }
 
-// Register + login a VU's user ONCE; returns the access token (or null).
+// Register + login a VU's user ONCE. Returns true on success. Login mints the
+// session and populates the VU cookie jar (access_token_v2 + the rotated
+// csrf_token); subsequent /ws/ticket POSTs ride those cookies. No token is
+// returned — W126's HttpOnly cookie auth leaves none in the body.
 function authenticate(vuId) {
     const email = `loadtest_user_${vuId}@example.com`;
     const password = 'ValidPass123!'; // pragma: allowlist secret
     const fullName = `LoadTest User ${vuId}`;
 
-    // 1. Prime the CSRF cookie (exempt endpoint; sets csrf_token in the jar).
+    // 1. Prime the CSRF cookie (exempt endpoint; sets csrf_token + _csrf_anon_nonce).
     const csrfRes = http.get(`${BASE_URL}/api/v1/auth/csrf-cookie`);
     errors.add(csrfRes.status !== 200);
 
@@ -72,7 +80,10 @@ function authenticate(vuId) {
     );
     errors.add(!(regRes.status === 200 || regRes.status === 400));
 
-    // 3. Login (JSON) with CSRF header.
+    // 3. Login (JSON) with CSRF header. On success the response sets the HttpOnly
+    //    access_token_v2 cookie AND rotates the csrf_token (login_session_manager
+    //    .py:94 -> signal_csrf_rotation), so the jar's csrf_token is now bound to
+    //    the authenticated session — exactly what the cookie-auth'd /ws/ticket needs.
     const loginRes = http.post(
         `${BASE_URL}/api/v1/auth/login/json`,
         JSON.stringify({ email: email, password: password }),
@@ -84,31 +95,33 @@ function authenticate(vuId) {
     errors.add(!loginOk);
     if (!loginOk) {
         console.error(`Login failed for ${email}: ${loginRes.body}`);
-        return null;
+        return false;
     }
-    return JSON.parse(loginRes.body).access_token;
+    return true;
 }
 
 export default function () {
     const vuId = __VU;
 
-    // Authenticate ONCE per VU; reuse the token for all subsequent iterations.
-    if (!vuTokens[vuId]) {
-        const token = authenticate(vuId);
-        if (!token) {
+    // Authenticate ONCE per VU; the cookie jar then carries auth for every
+    // subsequent iteration (login mints exactly one session per VU).
+    if (!vuAuthed[vuId]) {
+        if (!authenticate(vuId)) {
             sleep(1);
             return;
         }
-        vuTokens[vuId] = token;
+        vuAuthed[vuId] = true;
     }
-    const token = vuTokens[vuId];
 
     // 4. Request a WS upgrade ticket (NOT rate-limited; ws/ticket.py has no
-    // sensitive_route_limit). Bearer auth + carry the CSRF header too, since the
-    // jar may hold an auth cookie which disables the Bearer-only CSRF bypass
-    // (csrf.py:339 skips CSRF only for Bearer requests WITHOUT an auth cookie).
+    // sensitive_route_limit). Auth rides the HttpOnly access_token_v2 cookie in
+    // the jar (ws/ticket.py:8 accepts "HttpOnly cookie OR Bearer token"); we send
+    // NO Bearer because W126 leaves no token in the login body. That auth cookie
+    // makes this a CSRF-checked request (has_auth_cookie -> csrf.py:339 does NOT
+    // skip), so we attach X-CSRF-Token; login already rotated the jar's csrf_token
+    // to bind to the authenticated session, so the signed double-submit validates.
     const ticketRes = http.post(`${BASE_URL}/ws/ticket`, null, {
-        headers: csrfHeaders({ Authorization: `Bearer ${token}` }),
+        headers: csrfHeaders(),
     });
     const ticketOk = check(ticketRes, {
         'ticket issued (201)': (r) => r.status === 201,

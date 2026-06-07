@@ -51,6 +51,16 @@ services:
       RATE_LIMIT_SENSITIVE: 100000/minute
       RATE_LIMIT_AUTH_LOGIN: 100000/minute
       RATE_LIMIT_AUTH_REGISTER: 100000/minute
+      # Concurrent-session headroom for the WS load test. Each /login/json mints
+      # a session and the backend caps them per user (session_service.py:170 ->
+      # max_sessions_per_user, default 5 in non-test envs). ROUND-8 observed
+      # 10 VUs x 5 = 50 logins then 403 "too_many_sessions" because the test
+      # re-logged-in every iteration (it cached JSON body .access_token, which
+      # W126 leaves absent -> HttpOnly access_token_v2 cookie). The round-9 test
+      # rewrite logs in ONCE per VU (cookie-jar auth thereafter) -> 1 session/VU
+      # steady state; this cap raise is belt-and-suspenders against any ramp-up
+      # retry. Backend-only; chaos-safe (gateway Go limiter is separate).
+      MAX_SESSIONS_PER_USER: 100000
     volumes:
       # L8 -- RS256 private key. backend.Dockerfile sets WORKDIR /app and
       # JWT_PRIVATE_KEY_PATH=.secrets/jwt_rs256.pem (relative) -> resolves to
