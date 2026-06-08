@@ -15,8 +15,6 @@ Note: pyvips requires libvips to be installed at the system level:
 
 from __future__ import annotations
 
-import pyvips
-
 from app.core.logging import get_logger
 
 logger = get_logger(__name__)

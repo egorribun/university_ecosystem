@@ -68,6 +68,30 @@ def _run_docker_compose(cmd: str) -> str:
         raise
 
 
+def _gateway_reachable() -> bool:
+    """True if the Go gateway is up at GATEWAY_URL/health.
+
+    The two gateway-dependent chaos tests below call GATEWAY_URL as their FIRST
+    action OUTSIDE any try/except, so they HARD-ERROR (not skip) when the gateway
+    isn't running — e.g. when docker-compose.go.yml isn't part of the stack. Used
+    as a skipif condition so those tests skip cleanly in that case instead.
+
+    The CHAOS_TESTS guard short-circuits to False during normal (non-chaos)
+    collection: the module is runtime-skipped via the module-level pytestmark
+    anyway, and an unguarded probe would add a connect-timeout to every `pytest`
+    collection (testpaths includes tests/, and mutmut copies tests/ into
+    mutants/tests/). When CHAOS_TESTS=1 the CI job has already brought the stack
+    up + readiness-polled the gateway before pytest collects this module.
+    """
+    if os.getenv("CHAOS_TESTS") != "1":
+        return False
+    try:
+        with httpx.Client(base_url=GATEWAY_URL, timeout=3.0) as client:
+            return client.get("/health").status_code == 200
+    except (httpx.HTTPError, OSError):
+        return False
+
+
 def _wait_for_outbox_event_processed(
     db_url: str,
     event_type: str,
@@ -302,6 +326,10 @@ def test_valkey_outage_idempotency_fail_open(setup_chaos_env, authenticated_clie
     )
 
 
+@pytest.mark.skipif(
+    not _gateway_reachable(),
+    reason="Go gateway not reachable (docker-compose.go.yml not loaded)",
+)
 def test_valkey_redis_down_resilience(setup_chaos_env):
     """Verify that backend degrades gracefully when Redis/Valkey goes down.
 
@@ -335,6 +363,10 @@ def test_valkey_redis_down_resilience(setup_chaos_env):
         time.sleep(3)
 
 
+@pytest.mark.skipif(
+    not _gateway_reachable(),
+    reason="Go gateway not reachable (docker-compose.go.yml not loaded)",
+)
 def test_ws_hub_down_gateway_proxy_fallback(setup_chaos_env):
     """Verify that when ws-hub is down, gateway handles the failure gracefully.
 

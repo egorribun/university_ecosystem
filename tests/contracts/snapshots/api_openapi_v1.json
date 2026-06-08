@@ -129,6 +129,22 @@
         "title": "ActiveSessionOut",
         "type": "object"
       },
+      "AddParticipant": {
+        "additionalProperties": false,
+        "description": "Wave 209 G1 — add one member to a group.",
+        "properties": {
+          "user_id": {
+            "format": "uuid",
+            "title": "User Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "user_id"
+        ],
+        "title": "AddParticipant",
+        "type": "object"
+      },
       "AdminUserTopicsResponse": {
         "additionalProperties": false,
         "properties": {
@@ -522,6 +538,19 @@
             },
             "title": "Files",
             "type": "array"
+          },
+          "reply_to_message_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "ID of the message being replied to, if this is a reply.",
+            "title": "Reply To Message Id"
           }
         },
         "title": "Body_send_message_api_v1_chats__chat_id__messages_post",
@@ -720,10 +749,27 @@
       "ChatResponse": {
         "additionalProperties": false,
         "properties": {
+          "chat_type": {
+            "default": "dm",
+            "title": "Chat Type",
+            "type": "string"
+          },
           "created_at": {
             "format": "date-time",
             "title": "Created At",
             "type": "string"
+          },
+          "created_by": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created By"
           },
           "id": {
             "format": "uuid",
@@ -739,6 +785,17 @@
                 "type": "null"
               }
             ]
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
           },
           "participants": {
             "items": {
@@ -763,6 +820,13 @@
               }
             ],
             "title": "Presence"
+          },
+          "read_receipts": {
+            "items": {
+              "$ref": "#/components/schemas/ReadReceiptInfo"
+            },
+            "title": "Read Receipts",
+            "type": "array"
           },
           "unread_count": {
             "default": 0,
@@ -1713,6 +1777,59 @@
         "title": "ForgotPasswordIn",
         "type": "object"
       },
+      "ForwardMessages": {
+        "additionalProperties": false,
+        "properties": {
+          "message_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "maxItems": 50,
+            "minItems": 1,
+            "title": "Message Ids",
+            "type": "array"
+          },
+          "source_chat_id": {
+            "format": "uuid",
+            "title": "Source Chat Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source_chat_id",
+          "message_ids"
+        ],
+        "title": "ForwardMessages",
+        "type": "object"
+      },
+      "GroupChatCreate": {
+        "additionalProperties": false,
+        "description": "Wave 209 G1 — create a named group chat.\n\nparticipant_ids are the *other* members (the creator is added automatically).\nmin_length=1 is necessary-not-sufficient: the service enforces the real\n3..100 total-size bound (creator + distinct members).",
+        "properties": {
+          "name": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "participant_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "minItems": 1,
+            "title": "Participant Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "name",
+          "participant_ids"
+        ],
+        "title": "GroupChatCreate",
+        "type": "object"
+      },
       "GroupOut": {
         "properties": {
           "course": {
@@ -1891,6 +2008,17 @@
             ],
             "title": "Edited At"
           },
+          "forwarded_from_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Forwarded From Name"
+          },
           "id": {
             "format": "uuid",
             "title": "Id",
@@ -1919,6 +2047,16 @@
           "read_status": {
             "title": "Read Status",
             "type": "boolean"
+          },
+          "reply_to": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ReplyPreview"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "sender": {
             "anyOf": [
@@ -3488,6 +3626,66 @@
         "title": "ReactionAggregate",
         "type": "object"
       },
+      "ReactorOut": {
+        "additionalProperties": false,
+        "description": "Wave 207 — one user in the reactor-list (\"who reacted\") popover.\n\nBuilt by ChatQueryService.get_reactors from the User rows the repository joins\nvia message_reactions. ``user_id`` is remapped explicitly in the service (the\nUser row has ``.id``, not ``.user_id``) — no from_attributes auto-mapping; only\nplain User columns (no relationship access → no N+1).",
+        "properties": {
+          "avatar_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avatar Url"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "user_id": {
+            "format": "uuid",
+            "title": "User Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "user_id"
+        ],
+        "title": "ReactorOut",
+        "type": "object"
+      },
+      "ReadReceiptInfo": {
+        "additionalProperties": false,
+        "description": "Wave 210 G2 — one member's read high-water-mark for a group chat.\n\nService-computed (NOT a ChatDTO field) from ChatRepository.get_read_receipts.\nThe FE folds these + live `read` frames into a per-member \"seen by N\" map.\nDMs carry [] (they keep using Message.read_status), so this rides only on the\nget_chat_details response — the other ChatResponse construction sites omit it\nand it defaults [].",
+        "properties": {
+          "last_read_at": {
+            "format": "date-time",
+            "title": "Last Read At",
+            "type": "string"
+          },
+          "user_id": {
+            "format": "uuid",
+            "title": "User Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "user_id",
+          "last_read_at"
+        ],
+        "title": "ReadReceiptInfo",
+        "type": "object"
+      },
       "RecoveryCodesGenerateOut": {
         "additionalProperties": false,
         "properties": {
@@ -3509,6 +3707,72 @@
           "created_at"
         ],
         "title": "RecoveryCodesGenerateOut",
+        "type": "object"
+      },
+      "RenameChat": {
+        "additionalProperties": false,
+        "description": "Wave 209 G1 — rename a group's display title.",
+        "properties": {
+          "name": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "RenameChat",
+        "type": "object"
+      },
+      "ReplyPreview": {
+        "additionalProperties": false,
+        "properties": {
+          "content": {
+            "title": "Content",
+            "type": "string"
+          },
+          "deleted_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deleted At"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "sender_id": {
+            "format": "uuid",
+            "title": "Sender Id",
+            "type": "string"
+          },
+          "sender_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sender Name"
+          }
+        },
+        "required": [
+          "id",
+          "sender_id",
+          "content"
+        ],
+        "title": "ReplyPreview",
         "type": "object"
       },
       "ResetPasswordIn": {
@@ -7337,6 +7601,53 @@
         ]
       }
     },
+    "/api/v1/chats/groups": {
+      "post": {
+        "description": "Create a named group chat (Wave 209 G1).\n\nStatic /groups route placed before the dynamic /{chat_id} routes (idiomatic\nstatic-before-dynamic; no POST /{chat_id} exists today, but this future-proofs\nagainst shadowing). W174 auto-cookie covers POST CSRF.",
+        "operationId": "create_group_api_v1_chats_groups_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GroupChatCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Create Group",
+        "tags": [
+          "chats"
+        ]
+      }
+    },
     "/api/v1/chats/{chat_id}": {
       "delete": {
         "description": "Delete a chat entirely for all participants (messages, attachments, links).",
@@ -7428,6 +7739,67 @@
           }
         ],
         "summary": "Get Chat",
+        "tags": [
+          "chats"
+        ]
+      },
+      "patch": {
+        "description": "Rename a group's title (Wave 209 G1 — any participant).\n\nPATCH /{chat_id} is distinct from PATCH /{chat_id}/messages/{message_id}\n(edit-message). W174 auto-cookie covers PATCH CSRF.",
+        "operationId": "rename_chat_api_v1_chats__chat_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "chat_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Chat Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RenameChat"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "title": "Response Rename Chat Api V1 Chats  Chat Id  Patch",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Rename Chat",
         "tags": [
           "chats"
         ]
@@ -7845,6 +8217,78 @@
           "chats"
         ]
       },
+      "get": {
+        "description": "List the users who reacted to a message with a specific emoji (Wave 207).\n\nPowers the reactor-list \"who reacted\" popover — reactor identities are loaded\non-demand, NOT bundled into GET /messages. Participant-authz'd + message-in-chat\nguarded (a participant of one chat can't enumerate reactors of a message in\nanother by guessing its id). emoji is a QUERY param (same robust shape as the\nDELETE route, W206 SW7). Coexists with POST + DELETE at this path (FastAPI\nroutes by method).",
+        "operationId": "get_reactors_api_v1_chats__chat_id__messages__message_id__reactions_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "chat_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Chat Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "message_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Message Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "emoji",
+            "required": true,
+            "schema": {
+              "maxLength": 16,
+              "minLength": 1,
+              "title": "Emoji",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ReactorOut"
+                  },
+                  "title": "Response Get Reactors Api V1 Chats  Chat Id  Messages  Message Id  Reactions Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Get Reactors",
+        "tags": [
+          "chats"
+        ]
+      },
       "post": {
         "description": "Add an emoji reaction to a message (idempotent, any participant).\n\nW174 auto-cookie covers POST CSRF.",
         "operationId": "add_reaction_api_v1_chats__chat_id__messages__message_id__reactions_post",
@@ -7917,6 +8361,132 @@
         ]
       }
     },
+    "/api/v1/chats/{chat_id}/participants": {
+      "post": {
+        "description": "Add a member to a group (Wave 209 G1 — any participant). W174 auto-cookie.",
+        "operationId": "add_participant_api_v1_chats__chat_id__participants_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "chat_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Chat Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AddParticipant"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "title": "Response Add Participant Api V1 Chats  Chat Id  Participants Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Add Participant",
+        "tags": [
+          "chats"
+        ]
+      }
+    },
+    "/api/v1/chats/{chat_id}/participants/{user_id}": {
+      "delete": {
+        "description": "Remove a member from a group / leave (Wave 209 G1 — owner or self).\n\n3-segment path, distinct from DELETE /{chat_id} (delete-chat). W174 auto-cookie.",
+        "operationId": "remove_participant_api_v1_chats__chat_id__participants__user_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "chat_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Chat Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "user_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "User Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "title": "Response Remove Participant Api V1 Chats  Chat Id  Participants  User Id  Delete",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Remove Participant",
+        "tags": [
+          "chats"
+        ]
+      }
+    },
     "/api/v1/chats/{chat_id}/read": {
       "post": {
         "description": "Mark all messages in a chat as read.",
@@ -7965,6 +8535,122 @@
           }
         ],
         "summary": "Mark Read",
+        "tags": [
+          "chats"
+        ]
+      }
+    },
+    "/api/v1/chats/{chat_id}/typing": {
+      "post": {
+        "description": "Broadcast a 'typing' indicator to the other chat participants (Wave 207).\n\nThe frontend WS connects to ws-hub, which drops \"typing\" frames at its parse\nboundary — so typing can't relay peer-to-peer over the socket. This REST endpoint\ndoes the participant authz + broadcast (W204 bridge → ws-hub chat.* fan-out → the\nother participants' live TypingIndicator). A permissive 180/60 limiter (vs the\nstrict 5/60 default) gives headroom over the client's 500ms (~2/sec) throttle while\ncapping broadcast-spam abuse. W174 auto-cookie covers POST CSRF.",
+        "operationId": "typing_indicator_api_v1_chats__chat_id__typing_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "chat_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Chat Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "title": "Response Typing Indicator Api V1 Chats  Chat Id  Typing Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Typing Indicator",
+        "tags": [
+          "chats"
+        ]
+      }
+    },
+    "/api/v1/chats/{dest_chat_id}/forward": {
+      "post": {
+        "description": "Forward 1..N messages from a source chat into this destination chat (Wave 211).\n\nSnapshot-copy: copies the source content + attachments + a \"Forwarded from X\"\nlabel; the source is never dereferenced cross-chat (privacy). The actor must be\na participant of BOTH the source chat (to read) AND this destination chat (to\nsend) — see ChatMessageDispatcher.forward_messages.",
+        "operationId": "forward_messages_api_v1_chats__dest_chat_id__forward_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "dest_chat_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Dest Chat Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ForwardMessages"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/MessageResponse"
+                  },
+                  "title": "Response Forward Messages Api V1 Chats  Dest Chat Id  Forward Post",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Forward Messages",
         "tags": [
           "chats"
         ]

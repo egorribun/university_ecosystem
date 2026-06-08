@@ -76,20 +76,21 @@ async def unified_search(
 
 def _format_hits(raw: dict[str, Any], result_type: str) -> list[dict[str, Any]]:
     """Format Elasticsearch hits into a clean frontend-friendly structure."""
-    hits = raw.get("hits", {}).get("hits", [])
+    hits = raw.get("hits", [])
     formatted: list[dict[str, Any]] = []
+    summary_field = "content" if result_type == "news" else "description"
 
     for hit in hits:
-        source = hit.get("_source", {})
-        highlight = hit.get("highlight", {})
+        source = hit.get("source", {})
+        highlight = hit.get("highlights", {})
         formatted.append(
             {
-                "id": hit.get("_id", ""),
+                "id": hit.get("id", ""),
                 "type": result_type,
                 "title": source.get("title", ""),
-                "summary": _get_highlight_or_field(highlight, source, "content"),
-                "score": hit.get("_score", 0),
-                "url": f"/{result_type}/{hit.get('_id', '')}",
+                "summary": _get_highlight_or_field(highlight, source, summary_field),
+                "score": hit.get("score", 0),
+                "url": f"/{result_type}/{hit.get('id', '')}",
             }
         )
 

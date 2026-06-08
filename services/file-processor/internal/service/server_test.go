@@ -5,8 +5,10 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	pb "github.com/university-ecosystem/core/gen/go/file_processor/v1"
+	"go.temporal.io/sdk/client"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -80,4 +82,78 @@ func TestGRPCPathTraversalRejection(t *testing.T) {
 				"expected error to contain %q, got %q", tc.wantContains, st.Message())
 		})
 	}
+}
+
+type mockWorkflowRun struct {
+	client.WorkflowRun
+	id string
+}
+
+func (m *mockWorkflowRun) GetID() string {
+	return m.id
+}
+
+type mockTemporalClient struct {
+	client.Client
+	executeFunc func(ctx context.Context, options client.StartWorkflowOptions, workflow interface{}, args ...interface{}) (client.WorkflowRun, error)
+}
+
+func (m *mockTemporalClient) ExecuteWorkflow(ctx context.Context, options client.StartWorkflowOptions, workflow interface{}, args ...interface{}) (client.WorkflowRun, error) {
+	if m.executeFunc != nil {
+		return m.executeFunc(ctx, options, workflow, args...)
+	}
+	return nil, nil
+}
+
+func TestProcessFile_Success(t *testing.T) {
+	ctx := context.Background()
+
+	mockClient := &mockTemporalClient{
+		executeFunc: func(ctx context.Context, options client.StartWorkflowOptions, workflow interface{}, args ...interface{}) (client.WorkflowRun, error) {
+			assert.Equal(t, "file-process-job123", options.ID)
+			return &mockWorkflowRun{id: "run-456"}, nil
+		},
+	}
+
+	s := &Server{
+		TemporalClient: mockClient,
+	}
+
+	req := &pb.ProcessFileRequest{
+		Id:        "job123",
+		Type:      "image_resize",
+		SourceKey: "input/image.png",
+		DestKey:   "output/resized.png",
+		Options:   map[string]string{"width": "300"},
+	}
+
+	resp, err := s.ProcessFile(ctx, req)
+	require.NoError(t, err)
+	assert.True(t, resp.Success)
+	assert.Equal(t, "run-456", resp.JobId)
+}
+
+func TestProcessFile_TemporalError(t *testing.T) {
+	ctx := context.Background()
+
+	mockClient := &mockTemporalClient{
+		executeFunc: func(ctx context.Context, options client.StartWorkflowOptions, workflow interface{}, args ...interface{}) (client.WorkflowRun, error) {
+			return nil, assert.AnError
+		},
+	}
+
+	s := &Server{
+		TemporalClient: mockClient,
+	}
+
+	req := &pb.ProcessFileRequest{
+		Id:        "job123",
+		Type:      "image_resize",
+		SourceKey: "input/image.png",
+		DestKey:   "output/resized.png",
+	}
+
+	_, err := s.ProcessFile(ctx, req)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "failed to start workflow")
 }

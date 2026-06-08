@@ -176,10 +176,28 @@ async def app():
     yield main.app  # yield the ASGI app, not the manager
     try:
         await manager.__aexit__(None, None, None)
-    except RuntimeError as exc:
+    except (RuntimeError, ValueError) as exc:
         # Suppress "unable to perform operation on <TCPTransport closed=True>"
         # from httpx/httpcore teardown — known uvloop/asyncio race condition.
-        if "TCPTransport" not in str(exc) and "closed" not in str(exc):
+        # Also suppress "The future belongs to a different loop than the one
+        # specified": surfaces ONLY under mutmut, which calls pytest.main()
+        # multiple times in one process (stats -> clean-test -> per-mutant), so
+        # session-loop-bound module globals raise at the second run's teardown.
+        # NOTE: "different loop" is raised as a *ValueError* (asyncio tasks.py
+        # ensure_future), NOT a RuntimeError — so this except MUST include
+        # ValueError or it escapes (the message guard below still re-raises every
+        # other ValueError). Defense-in-depth: the periodic_scheduler daemon (the
+        # primary leaker) is gated out of "testing" in app/core/lifespan.py, so
+        # this swallow is dormant for it; it remains a safety net for any future
+        # changed-module that pulls a different loop-bound global into the
+        # clean-test set. Mirrors the clean_database swallow in
+        # tests/fixtures/database/database.py.
+        message = str(exc).lower()
+        if (
+            "tcptransport" not in message
+            and "closed" not in message
+            and "different loop" not in message
+        ):
             raise
 
 

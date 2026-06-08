@@ -337,6 +337,8 @@ async def test_upload_avatar_cleans_up_on_commit_failure(
 
     service = UserService(mock_uow, AuditService(), AsyncMock())
     service.repo.add = MagicMock()
+    # W185 twin-bug fix: media update paths fetch via the eager-loading method.
+    service.repo.get_orm_for_update_with_relations.return_value = user
     service.repo._get_orm.return_value = user
     service.repo._to_dto.return_value = user
 
@@ -386,6 +388,8 @@ async def test_upload_cover_cleans_up_on_commit_failure(
 
     service = UserService(mock_uow, AuditService(), AsyncMock())
     service.repo.add = MagicMock()
+    # W185 twin-bug fix: media update paths fetch via the eager-loading method.
+    service.repo.get_orm_for_update_with_relations.return_value = user
     service.repo._get_orm.return_value = user
     service.repo._to_dto.return_value = user
 

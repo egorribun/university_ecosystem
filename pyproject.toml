@@ -343,41 +343,31 @@ relative_files = true
 source = ["app"]
 branch = true
 omit = [
-  # Infrastructure-dependent: require live NATS, ClamAV, Elasticsearch, or libvips
-  "app/core/nats_broker.py",
-  "app/services/nats_messaging.py",
-  "app/services/file_scanner.py",
-  "app/services/search.py",
-  "app/services/image_proxy.py",
-  "app/services/geolocation.py",
-  "app/utils/images_vips.py",
   # Entrypoints / maintenance scripts — not unit-testable
   "app/worker.py",
-  "app/management/normalize_static.py",
-  "app/management/weekly_cleanup.py",
   # Entrypoints / scripts — not unit-testable
   "app/__main__.py",
-  "app/management/reset_mfa.py",
-  "app/management/stories_cleanup.py",
-  "app/scripts/backfill_uuids.py",
   "app/core/uvloop_setup.py",
   "app/core/lifespan.py",
   "app/core/profiling.py",
-  "app/cli/*",
   "app/core/ci/*",
   # Observability SDK init — requires live OTel collector / Sentry DSN
   "app/core/observability.py",
   # Prometheus metric definitions — declarative Counter/Histogram; middleware tested separately
   "app/core/metrics.py",
-  # SpiceDB Watch stream — requires live gRPC connection (same rationale as nats_broker)
-  "app/core/spicedb_watch.py",
   # NATS task wrappers — thin @broker.task() decorators; inner service functions tested directly
   "app/tasks/*",
 ]
 
 [tool.coverage.report]
 show_missing = true
-fail_under = 80  # Raised from 78 — new tests for utils/img, uuid_v7, request_coalescing bring actual coverage to 79%
+# Ratchet floor at measured reality. Local hermetic (Windows, pyvips skipped)
+# = 85.33% local hermetic after the service/repository-coverage climb
+# (chat_repository / audit_service / news_service / event_service); CI
+# (Linux + integration tier) measures ~0.7pp higher. No-regression floor, NOT
+# the aspirational target — raise incrementally as the campaign adds tests
+# (target 95%). Unified across pyproject / Makefile / ci.yml.
+fail_under = 85
 exclude_lines = [
   "pragma: no cover",
   "def __repr__",
@@ -491,9 +481,61 @@ skips = [
 ]
 
 [tool.mutmut]
-paths_to_mutate = "app/"
-backup = false
-runner = "pytest -x"
-tests_dir = "tests/"
-dict_synonyms = "Struct,dict"
+# mutmut 3.5.0 config (read from [tool.mutmut] in pyproject by config_reader()).
+# The installed 3.5.0 reads `paths_to_mutate` (a LIST — load_config() iterates the
+# value, so a bare string would be split char-by-char) to locate the mutation
+# universe; without it mutmut falls back to guess_paths_to_mutate(), which does
+# NOT try app/ and raises FileNotFoundError ("Could not figure out where the code
+# to mutate is"). `source_paths` is a newer/unreleased key NOT recognized by 3.5.0.
+# `pytest_add_cli_args_test_selection` scopes the pytest run. Incremental file
+# selection is done positionally via dotted-module glob patterns at the CLI
+# (see .github/workflows/ci.yml mutation-tests job) — those filter within this universe.
+paths_to_mutate = ["app/"]
+pytest_add_cli_args_test_selection = ["tests/"]
+# mutmut runs the baseline/stats suite inside an isolated `mutants/` copy whose
+# tree is built by copy_src_dir() (walk_all_files copies ONLY paths_to_mutate =
+# app/) plus copy_also_copy_files() (the user-config `also_copy` paths). tests/
+# arrives via mutmut's own test-selection copy, but on-disk repo files OUTSIDE
+# app/+tests/ are NOT copied — so infra-contract tests that assert those files
+# fail in the mutants/ copy with "Path doesn't exist: mutants/<path>" →
+# "failed to collect stats. runner returned 1" (the mutmut CI job's sole failure
+# mode; `mutmut run` itself exits 0 even with surviving mutants — score-gating is
+# the separate `export_cicd_stats` command the CI does not call).
+#
+# These three tests assert repo files mutmut's mutants/ copy lacks AND exercise
+# ZERO app/ source (pure infra-config contracts → zero mutation-killing signal),
+# so they are correctly excluded from the mutation baseline:
+#   - test_migrations_runtime.py  → alembic/ ScriptDirectory (head convergence)
+#   - test_wave173_caddy_routing  → infrastructure/Caddyfile  (W173 routing)
+#   - test_wave173_ws_hub_env     → docker-compose.full.yml   (W173 ws-hub env)
+# Durable alternative (for the future "re-promote mutmut to blocking" roadmap
+# item): `also_copy = ["infrastructure", "docker-compose.full.yml"]` (+ alembic/)
+# keeps them running in the baseline by copying the files in. We use --ignore
+# here because it is deterministic + override-free (mutmut is POSIX-only — it
+# cannot run on the Windows dev box, so this is verified via CI only).
+#
+# UPDATE (mutmut-green fix): the async cross-loop exclusions (test_spotify_fallback /
+# test_push_router_full / test_auth_mfa / test_notifications_api) have been REMOVED.
+# mutmut runs pytest multiple times IN ONE PROCESS (stats -> clean test -> forced-fail,
+# then os.fork per mutant), and the 2nd pytest.main() errored at async teardown with
+# "The future belongs to a different loop". ROOT CAUSE = the lifespan `periodic_scheduler`
+# background daemon (app/core/lifespan.py) — the ONLY background task NOT already gated
+# out of the "testing" environment (Outbox/NATS/partition all skip in testing). Its
+# asyncio.Task + Event bound to run-1's event loop and leaked into run-2 -> cross-loop
+# error. Gating it on `settings.environment != "testing"` (matching the existing daemon
+# gates) removes the only loop-leaking background task, so EVERY async test now survives
+# mutmut's multi-pytest.main() cycle. Validated locally on Windows WITHOUT mutmut via a
+# 2x-pytest.main()-in-one-process repro over the 5 formerly-failing files / 87 tests
+# (incl. test_event_attendance_api, session-5's "moved-to" failure) -> run-2 clean.
+# (Session-5's dispose-engine hook only MOVED the failure because the engine was not the
+# first leaker — periodic_scheduler's Task/Event was. No conftest hook is needed now.)
+pytest_add_cli_args = [
+    # 3 infra-contract tests: see the note above — mutmut's mutants/ copy contains ONLY
+    # app/+tests/, so these (which assert on-disk repo files OUTSIDE that tree + exercise
+    # ZERO app/ source) fail with "Path doesn't exist: mutants/<path>" + carry no
+    # mutation signal. Durable alternative: also_copy = ["infrastructure", "alembic", ...].
+    "--ignore=tests/test_migrations_runtime.py",
+    "--ignore=tests/test_wave173_caddy_routing.py",
+    "--ignore=tests/test_wave173_ws_hub_env.py",
+]
 

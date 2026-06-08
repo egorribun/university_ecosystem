@@ -1,6 +1,23 @@
 import ws from 'k6/ws';
 import http from 'k6/http';
 import { check, sleep } from 'k6';
+import { Counter, Rate } from 'k6/metrics';
+
+// `errors` is the HARD gate: the deterministic AUTH steps that must all succeed
+// (csrf-prime / register / login / csrf-reprime / ticket). The WS 101 upgrade is
+// deliberately NOT in `errors` — see ws_connects_established below.
+const errors = new Rate('errors');
+
+// ROUND-12 (per the maintainer decision): the WS 101 UPGRADE is gated SEPARATELY.
+// ws-hub enforces a PER-IP WS-upgrade token bucket hardcoded to 10 / 60 s
+// (services/ws-hub/pkg/hub/hub.go:103 NewWSUpgradeRateLimiter(10,60); handlers.go:85
+// returns 429). It is a SECURITY control (boundary-burst protection) with no env
+// override — and ALL k6 VUs share ONE source IP via the socat host-publish, so a
+// single-IP load test can only ever land ~ burst(10) + refill(50s / 6s) ≈ 18
+// upgrades; the rest get 429 BY DESIGN. So we do NOT fail the run on throttled
+// upgrades; instead we COUNT successful 101s and assert the WS path works
+// end-to-end (login -> ticket -> 101 -> join -> message) at least a handful of times.
+const wsConnects = new Counter('ws_connects_established');
 
 // k6 Options & SLA thresholds
 export const options = {
@@ -10,73 +27,164 @@ export const options = {
         { duration: '10s', target: 0 },  // Ramp down
     ],
     thresholds: {
-        // SLA: 95% of connections should be established in less than 200ms
-        ws_connecting: ['p(95)<200'],
-        // Ensure error rate is less than 1%
+        // `errors` (the AUTH chain) is the strict gate: every csrf / register /
+        // login / reprime / ticket must succeed (<1%). ws_connecting latency stays
+        // relaxed for the contended CI runner (precedent: f75de0ed7 "relax k6
+        // latencies"). ws_connects_established asserts the WS path works end-to-end
+        // at least a handful of times — NOT every attempt, because the per-IP
+        // upgrade limiter throttles a single-IP load test by design (see the
+        // ws_connects note above). 5 is well under the ~18 reachable (burst 10).
         errors: ['rate<0.01'],
+        ws_connecting: ['p(95)<500'],
+        ws_connects_established: ['count>=5'],
     },
 };
 
 const BASE_URL = __ENV.API_BASE_URL || 'http://localhost:8000';
 const WS_URL = __ENV.WS_URL || 'ws://localhost:8083';
 
-export default function () {
-    const vuId = __VU;
+// Per-VU JWT cache. k6 runs the default function repeatedly in the SAME JS context
+// per VU, so a module-level object keyed by __VU persists across iterations as a
+// plain JS value (this DOES survive — unlike the cookie jar; see ROUND-11 below).
+// We register + login ONCE per VU (each /login/json mints a session, the backend
+// caps concurrent sessions per user — session_service.py:170 -> too_many_sessions
+// — and the PER-IP auth limiters apply since all VUs share one socat IP), read the
+// access token ONCE, and reuse it as a Bearer header on every /ws/ticket POST.
+//
+// ROUND-11 — why a Bearer header, not the cookie jar: round-10 evidence showed
+// BOTH csrf_token AND the HttpOnly access_token_v2 cookie present for the FIRST
+// post-login ticket then GONE on later iterations (10 ok = 1/VU first iter, 317
+// fail; round-9 was 403 CSRF-missing, round-10 401 "Could not validate
+// credentials"), i.e. k6's per-VU jar does NOT carry these cookies across
+// iterations. W126 EXCLUDES access_token from the /login/json BODY
+// (response_model_exclude_none + Token.access_token=None), BUT the HttpOnly
+// access_token_v2 COOKIE value IS the raw JWT (login_session_manager.py:172,
+// path=/, 60-min TTL) and k6 (not a browser) reads it via cookiesForURL right
+// after login. We cache that JWT string (jar-independent) and send it as
+// Authorization: Bearer on the ticket -> auth survives any jar reset, and with no
+// auth cookie carried by the reset jar the Bearer request also SKIPS CSRF
+// (csrf.py:339).
+const vuTokens = {};
+
+// Signed double-submit CSRF (app/core/csrf.py): GET /api/v1/auth/csrf-cookie
+// sets the `csrf_token` cookie; mutating POSTs must echo it as the X-CSRF-Token
+// header (the middleware does secrets.compare_digest(cookie, header) at
+// csrf.py:361). Build the header by reading the csrf_token that k6's jar WOULD
+// send to the EXACT targetUrl (cookiesForURL honours the cookie's Path), so the
+// header value always equals the cookie value the request carries -> the
+// double-submit compare matches. Reading per-URL (not a fixed "/") avoids a
+// header/cookie mismatch if a cookie's Path ever scopes it away from a route.
+function csrfHeaders(targetUrl, extra) {
+    const cookies = http.cookieJar().cookiesForURL(targetUrl);
+    const token = (cookies['csrf_token'] && cookies['csrf_token'][0]) || '';
+    return Object.assign({ 'Content-Type': 'application/json', 'X-CSRF-Token': token }, extra || {});
+}
+
+// Register + login a VU's user ONCE. Returns the access-token JWT (read from the
+// HttpOnly access_token_v2 cookie) on success, or null. The JWT is cached + sent
+// as a Bearer header on every later /ws/ticket POST (jar-independent — see the
+// vuTokens note above).
+function authenticate(vuId) {
     const email = `loadtest_user_${vuId}@example.com`;
     const password = 'ValidPass123!'; // pragma: allowlist secret
     const fullName = `LoadTest User ${vuId}`;
 
-    const headers = { 'Content-Type': 'application/json' };
+    // 1. Prime the CSRF cookie (exempt endpoint; sets csrf_token + _csrf_anon_nonce).
+    const csrfRes = http.get(`${BASE_URL}/api/v1/auth/csrf-cookie`);
+    errors.add(csrfRes.status !== 200);
 
-    // 1. Register User (Ignore 400 Bad Request if already registered)
-    const registerPayload = JSON.stringify({
-        email: email,
-        password: password,
-        full_name: fullName,
-    });
-    const regRes = http.post(`${BASE_URL}/api/v1/auth/register`, registerPayload, { headers });
-    check(regRes, {
-        'registration status is 200 or 400': (r) => r.status === 200 || r.status === 400,
-    });
+    // 2. Register (idempotent: 200 new / 400 already-registered) with CSRF header.
+    const regRes = http.post(
+        `${BASE_URL}/api/v1/auth/register`,
+        JSON.stringify({ email: email, password: password, full_name: fullName }),
+        { headers: csrfHeaders(`${BASE_URL}/api/v1/auth/register`) }
+    );
+    errors.add(!(regRes.status === 200 || regRes.status === 400));
 
-    // 2. Login User via JSON
-    const loginPayload = JSON.stringify({
-        email: email,
-        password: password,
-    });
-    const loginRes = http.post(`${BASE_URL}/api/v1/auth/login/json`, loginPayload, { headers });
+    // 3. Login (JSON) with CSRF header. On success the response sets the HttpOnly
+    //    access_token_v2 cookie AND rotates the csrf_token (login_session_manager
+    //    .py:94 -> signal_csrf_rotation), so the jar's csrf_token is now bound to
+    //    the authenticated session — exactly what the cookie-auth'd /ws/ticket needs.
+    const loginRes = http.post(
+        `${BASE_URL}/api/v1/auth/login/json`,
+        JSON.stringify({ email: email, password: password }),
+        { headers: csrfHeaders(`${BASE_URL}/api/v1/auth/login/json`) }
+    );
     const loginOk = check(loginRes, {
         'login is successful (200)': (r) => r.status === 200,
     });
-
+    errors.add(!loginOk);
     if (!loginOk) {
         console.error(`Login failed for ${email}: ${loginRes.body}`);
-        return;
+        return null;
     }
+    // Read the raw JWT from the HttpOnly access_token_v2 cookie (its value == the
+    // JWT, login_session_manager.py:172) NOW, while the jar still holds it. We
+    // return it to be cached + sent as a Bearer header (jar-independent) thereafter.
+    const authCookies = http.cookieJar().cookiesForURL(`${BASE_URL}/`);
+    const jwt = (authCookies['access_token_v2'] && authCookies['access_token_v2'][0]) || '';
+    if (!jwt) {
+        console.error(`No access_token_v2 cookie after login for ${email}`);
+        errors.add(true);
+        return null;
+    }
+    return jwt;
+}
 
-    const loginData = JSON.parse(loginRes.body);
-    const token = loginData.access_token;
+export default function () {
+    const vuId = __VU;
 
-    // 3. Request WS Upgrade Ticket
-    const authHeaders = {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`,
-    };
-    const ticketRes = http.post(`${BASE_URL}/ws/ticket`, null, { headers: authHeaders });
+    // Authenticate ONCE per VU; cache the JWT (a plain JS value persists across
+    // iterations — the cookie jar does not) and reuse it as a Bearer below.
+    if (!vuTokens[vuId]) {
+        const newJwt = authenticate(vuId);
+        if (!newJwt) {
+            sleep(1);
+            return;
+        }
+        vuTokens[vuId] = newJwt;
+    }
+    const jwt = vuTokens[vuId];
+
+    // 4a. Re-prime the CSRF cookie each iteration. ROUND-9 evidence: the
+    // login-rotated csrf_token is present for the FIRST post-login ticket but
+    // then cookie_present=False on /ws/ticket -> "CSRF rejected (missing token)"
+    // (a k6 jar cross-iteration lifecycle gap; ticket.py sets/clears no cookie).
+    // A fresh AUTHENTICATED GET re-establishes a Path=/ csrf_token bound to the
+    // current session immediately before the ticket POST. /csrf-cookie rides the
+    // :default limiter (raised in the CI fragment), so the extra GET is rate-safe.
+    const reprimeRes = http.get(`${BASE_URL}/api/v1/auth/csrf-cookie`);
+    errors.add(reprimeRes.status !== 200);
+
+    // 4b. Request the WS upgrade ticket. ROUND-11: authenticate with the cached
+    // JWT as a Bearer header (ws/ticket.py:8 accepts "HttpOnly cookie OR Bearer"),
+    // because k6's jar does NOT carry the access_token_v2 cookie across iterations
+    // (round-10: 401 on every ticket after a VU's first). A header is jar-
+    // independent. If the (reset) jar carries no auth cookie, this Bearer request
+    // SKIPS CSRF (csrf.py:339); if it ever DOES carry one, the re-primed per-URL
+    // X-CSRF-Token still validates -- so we send both, robust either way.
+    // /ws/ticket rides the WEBSOCKET limiter (rate_limit_websocket), raised in the
+    // CI fragment so the per-iteration ticket volume does not 429.
+    const ticketRes = http.post(`${BASE_URL}/ws/ticket`, null, {
+        headers: csrfHeaders(`${BASE_URL}/ws/ticket`, { Authorization: `Bearer ${jwt}` }),
+    });
     const ticketOk = check(ticketRes, {
         'ticket issued (201)': (r) => r.status === 201,
     });
-
+    errors.add(!ticketOk);
     if (!ticketOk) {
         console.error(`Ticket issuance failed: ${ticketRes.body}`);
+        sleep(1);
         return;
     }
+    const ticket = JSON.parse(ticketRes.body).ticket;
 
-    const ticketData = JSON.parse(ticketRes.body);
-    const ticket = ticketData.ticket;
-
-    // 4. Establish WebSocket connection with the ticket
-    const url = `${WS_URL}/ws/chat?ticket=${encodeURIComponent(ticket)}`;
+    // 5. Establish the WebSocket connection with the ticket.
+    // ws-hub serves the upgrade at exact /ws (services/ws-hub/main.go:133
+    // http.Handle("/ws", ...)). The /ws/chat -> /ws rewrite lives only in the
+    // DEV infrastructure/Caddyfile; k6 connects directly to ws-hub (Caddy is
+    // bypassed in CI), so /ws/chat would 404 — connect to /ws.
+    const url = `${WS_URL}/ws?ticket=${encodeURIComponent(ticket)}`;
 
     const res = ws.connect(url, {}, function (socket) {
         socket.on('open', function () {
@@ -118,9 +226,17 @@ export default function () {
         }, 8000);
     });
 
-    check(res, {
-        'websocket connection established': (r) => r && r.status === 101,
+    // INFORMATIONAL check (surfaces the throttle in the summary) — NOT added to
+    // the hard `errors` gate, because ws-hub's per-IP upgrade limiter 429s a
+    // single-IP load test BY DESIGN. We COUNT the successful 101s instead; the
+    // ws_connects_established threshold (count>=5) proves the WS path works
+    // end-to-end without failing on the expected per-IP throttle.
+    const wsOk = check(res, {
+        'websocket connection established (101)': (r) => r && r.status === 101,
     });
+    if (wsOk) {
+        wsConnects.add(1);
+    }
 
     sleep(1);
 }

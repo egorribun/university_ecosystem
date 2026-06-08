@@ -1,9 +1,14 @@
 package workflow
 
 import (
+	"image"
 	"testing"
 
+	"github.com/minio/minio-go/v7"
+	"github.com/minio/minio-go/v7/pkg/credentials"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"github.com/university-ecosystem/file-processor/internal/config"
 )
 
 func TestGetValidatedDimension_ReturnsDefaultForMissingKey(t *testing.T) {
@@ -115,4 +120,94 @@ func TestProcessResult_StructFieldsAreAccessible(t *testing.T) {
 	assert.Equal(t, "result/image.jpg", result.DestKey)
 	assert.Empty(t, result.Error)
 	assert.Equal(t, int64(1500), result.Duration)
+}
+
+func TestSanitizeMinIOKey_ValidKeys(t *testing.T) {
+	cases := []string{
+		"images/profile.jpg",
+		"documents/report.pdf",
+		"archive.zip",
+	}
+	for _, tc := range cases {
+		t.Run(tc, func(t *testing.T) {
+			res, err := sanitizeMinIOKey(tc)
+			assert.NoError(t, err)
+			assert.Equal(t, tc, res)
+		})
+	}
+}
+
+func TestSanitizeMinIOKey_Errors(t *testing.T) {
+	cases := []struct {
+		name string
+		key  string
+	}{
+		{"empty key", ""},
+		{"path traversal parent", "../etc/passwd"},
+		{"path traversal middle", "images/../../passwd"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := sanitizeMinIOKey(tc.key)
+			assert.Error(t, err)
+		})
+	}
+}
+
+func TestEncodeImage_Formats(t *testing.T) {
+	img := image.NewRGBA(image.Rect(0, 0, 10, 10))
+
+	cases := []struct {
+		format     string
+		wantFormat string
+	}{
+		{"jpeg", "jpeg"},
+		{"jpg", "jpg"},
+		{"png", "png"},
+		{"webp", "png"},            // transcode webp -> png
+		{"gif", "jpeg"},            // fallback to jpeg
+		{"unknown-format", "jpeg"}, // fallback to jpeg
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.format, func(t *testing.T) {
+			buf, format, err := encodeImage(img, tc.format)
+			assert.NoError(t, err)
+			assert.NotEmpty(t, buf.Bytes())
+			assert.Equal(t, tc.wantFormat, format)
+		})
+	}
+}
+
+func TestNewFileActivities_NilClient(t *testing.T) {
+	cfg := &config.Config{MinioBucket: "test-bucket"}
+	_, err := NewFileActivities(cfg, nil)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "must not be nil")
+}
+
+func TestNewFileActivities_Success(t *testing.T) {
+	cfg := &config.Config{MinioBucket: "test-bucket"}
+	dummyClient, err := minio.New("localhost:9000", &minio.Options{
+		Creds: credentials.NewStaticV4("access", "secret", ""),
+	})
+	require.NoError(t, err)
+
+	activities, err := NewFileActivities(cfg, dummyClient)
+	require.NoError(t, err)
+	assert.Equal(t, "test-bucket", activities.Bucket)
+	assert.Equal(t, dummyClient, activities.MinioClient)
+}
+
+func TestBuildMinIOClient(t *testing.T) {
+	cfg := &config.Config{
+		MinioEndpoint:  "localhost:9000",
+		MinioAccessKey: "access",
+		MinioSecretKey: "secret",
+		MinioSecure:    false,
+	}
+
+	client, err := BuildMinIOClient(cfg)
+	require.NoError(t, err)
+	assert.NotNil(t, client)
 }

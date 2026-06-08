@@ -2,10 +2,17 @@ package hub
 
 import (
 	"context"
+	"encoding/json"
 	"log/slog"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"testing"
+	"time"
 
+	"github.com/golang-jwt/jwt/v5"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"github.com/university-ecosystem/ws-hub/pkg/config"
 	"go.opentelemetry.io/otel"
 )
@@ -190,4 +197,204 @@ func TestHub_AuthorizeRoomJoin(t *testing.T) {
 	if h.AuthorizeRoomJoin(ctx, "user1", "room1") {
 		t.Errorf("Expected AuthorizeRoomJoin to return false when authClient is nil")
 	}
+}
+
+func TestClient_HandleIncomingMessage_JoinLeave(t *testing.T) {
+	h := setupTestHub()
+	ctx := context.Background()
+
+	client := &Client{
+		ID:     "client1",
+		UserID: "user1",
+		Rooms:  make(map[string]bool),
+		Send:   make(chan []byte, 10),
+		Hub:    h,
+		ctx:    ctx,
+	}
+
+	// Test join
+	joinMsg := Message{Type: "join", Room: "room1"}
+	client.handleIncomingMessage(joinMsg, []byte(`{"type":"join","room":"room1"}`))
+	h.mu.RLock()
+	if !client.Rooms["room1"] {
+		t.Errorf("Expected client to have joined room1")
+	}
+	if len(h.Rooms["room1"]) != 1 {
+		t.Errorf("Expected room1 to have 1 client registered in Hub")
+	}
+	h.mu.RUnlock()
+
+	// Test leave
+	leaveMsg := Message{Type: "leave", Room: "room1"}
+	client.handleIncomingMessage(leaveMsg, []byte(`{"type":"leave","room":"room1"}`))
+	h.mu.RLock()
+	if client.Rooms["room1"] {
+		t.Errorf("Expected client to have left room1")
+	}
+	if len(h.Rooms["room1"]) != 0 {
+		t.Errorf("Expected room1 to have 0 clients registered in Hub")
+	}
+	h.mu.RUnlock()
+}
+
+func TestClient_HandleMessage_RateLimiter(t *testing.T) {
+	h := setupTestHub()
+	ctx := context.Background()
+
+	// Configure low rate limit for testing
+	h.clientMsgRateLimit = 1.0
+	h.clientMsgRateBurst = 1
+
+	client := &Client{
+		ID:     "client1",
+		UserID: "user1",
+		Rooms:  make(map[string]bool),
+		Send:   make(chan []byte, 10),
+		Hub:    h,
+		ctx:    ctx,
+	}
+
+	// Helper to call handleMessage and recover from NATS publish panic (since NATS is nil)
+	callHandleMessage := func() (panicked bool) {
+		defer func() {
+			if r := recover(); r != nil {
+				panicked = true
+			}
+		}()
+		msg := Message{Type: "message", Room: "room1"}
+		client.handleMessage(msg, []byte(`{"type":"message","room":"room1","payload":{"text":"hello"}}`))
+		return false
+	}
+
+	// First message: should pass rate limit and try to publish to NATS (causing a panic)
+	panicked := callHandleMessage()
+	if !panicked {
+		t.Errorf("Expected first message to pass rate limiter and panic on nil NATS")
+	}
+
+	// Second message immediately after: should trigger rate limiter (returns early without NATS and writes to Send channel)
+	panicked = callHandleMessage()
+	if panicked {
+		t.Errorf("Expected second message to be rate limited and not panic")
+	}
+
+	// Assert rate_limit_exceeded notification was written to Send channel
+	select {
+	case notice := <-client.Send:
+		var raw map[string]string
+		if err := json.Unmarshal(notice, &raw); err != nil {
+			t.Fatalf("Failed to parse notice: %v", err)
+		}
+		if raw["type"] != "rate_limit_exceeded" {
+			t.Errorf("Expected type rate_limit_exceeded, got %q", raw["type"])
+		}
+	default:
+		t.Errorf("Expected rate_limit_exceeded notice in Send channel")
+	}
+}
+
+func TestClient_HandleIncomingMessage_Invalid(t *testing.T) {
+	h := setupTestHub()
+	ctx := context.Background()
+
+	client := &Client{
+		ID:     "client1",
+		UserID: "user1",
+		Rooms:  make(map[string]bool),
+		Send:   make(chan []byte, 10),
+		Hub:    h,
+		ctx:    ctx,
+	}
+
+	// Unknown type message
+	invalidMsg := Message{Type: "unknown_type", Room: "room1"}
+	client.handleIncomingMessage(invalidMsg, []byte(`{"type":"unknown_type","room":"room1"}`))
+
+	// Should do nothing (no panic, rooms unaffected)
+	if len(client.Rooms) != 0 {
+		t.Errorf("Expected rooms to remain empty")
+	}
+}
+
+func TestHandleWebSocket_Errors(t *testing.T) {
+	h := setupTestHub()
+	cfg := &config.Config{
+		TrustedProxiesSet: make(map[string]struct{}),
+	}
+
+	t.Run("missing ticket", func(t *testing.T) {
+		rec := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodGet, "/ws", nil)
+		h.HandleWebSocket(rec, req, cfg)
+		assert.Equal(t, http.StatusUnauthorized, rec.Code)
+	})
+
+	t.Run("invalid ticket length", func(t *testing.T) {
+		rec := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodGet, "/ws?ticket=short", nil)
+		h.HandleWebSocket(rec, req, cfg)
+		assert.Equal(t, http.StatusUnauthorized, rec.Code)
+	})
+
+	t.Run("invalid ticket charset", func(t *testing.T) {
+		invalidTicket := "invalid-hex-chars-that-are-long-enough-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+		rec := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodGet, "/ws?ticket="+invalidTicket, nil)
+		h.HandleWebSocket(rec, req, cfg)
+		assert.Equal(t, http.StatusUnauthorized, rec.Code)
+	})
+
+	t.Run("redis nil error", func(t *testing.T) {
+		validTicket := "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2" // pragma: allowlist secret
+		rec := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodGet, "/ws?ticket="+validTicket, nil)
+		h.redisClient = nil
+		h.HandleWebSocket(rec, req, cfg)
+		assert.Equal(t, http.StatusUnauthorized, rec.Code)
+	})
+}
+
+func TestValidateToken(t *testing.T) {
+	h := setupTestHub()
+
+	t.Run("malformed token", func(t *testing.T) {
+		_, err := h.ValidateToken(context.Background(), "invalid-token", []string{"secret"})
+		assert.Error(t, err)
+	})
+
+	t.Run("unsupported algorithm", func(t *testing.T) {
+		// Create a token with alg = None
+		token := jwt.New(jwt.SigningMethodNone)
+		tokenStr, err := token.SignedString(jwt.UnsafeAllowNoneSignatureType)
+		require.NoError(t, err)
+
+		_, err = h.ValidateToken(context.Background(), tokenStr, []string{"secret"})
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "unsupported JWT algorithm")
+	})
+
+	t.Run("HS256 success", func(t *testing.T) {
+		secret := "my-secret-key" // pragma: allowlist secret
+		token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
+			"sub": "user-123",
+			"exp": time.Now().Add(time.Hour).Unix(),
+		})
+		tokenStr, err := token.SignedString([]byte(secret))
+		require.NoError(t, err)
+
+		sub, err := h.ValidateToken(context.Background(), tokenStr, []string{secret})
+		require.NoError(t, err)
+		assert.Equal(t, "user-123", sub)
+	})
+
+	t.Run("HS256 invalid signature", func(t *testing.T) {
+		token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
+			"sub": "user-123",
+		})
+		tokenStr, err := token.SignedString([]byte("correct-secret"))
+		require.NoError(t, err)
+
+		_, err = h.ValidateToken(context.Background(), tokenStr, []string{"wrong-secret"})
+		assert.Error(t, err)
+	})
 }

@@ -72,6 +72,8 @@ async def test_user_service_basics():
     # Mock repo.get to return user
     user_repo.get.return_value = user
     user_repo._get_orm.return_value = user
+    # W185 twin-bug fix: profile update path fetches via the eager-loading method.
+    user_repo.get_orm_for_update_with_relations.return_value = user
 
     # Mock db.execute to return a mock result
     # We use MagicMock for the result because scalars() is a

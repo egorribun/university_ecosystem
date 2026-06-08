@@ -329,7 +329,12 @@ async def clean_database(prepare_database: None) -> AsyncIterator[None]:
             )
             await asyncio.sleep(delay)
             delay *= 2
-        except RuntimeError as exc:
+        except (RuntimeError, ValueError) as exc:
+            # "different loop" is an asyncio *ValueError* (tasks.py ensure_future),
+            # NOT a RuntimeError — include ValueError or it escapes the swallow.
+            # The message guard below re-raises every other ValueError. Defense-in-
+            # depth for mutmut's multi-pytest.main() teardown (the periodic_scheduler
+            # daemon — the primary leaker — is gated out of "testing" in lifespan.py).
             error_message = str(exc).lower()
             if (
                 "event loop is closed" in error_message

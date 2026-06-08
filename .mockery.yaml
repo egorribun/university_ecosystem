@@ -1,0 +1,14 @@
+# .mockery.yaml
+# Mockery configuration for Go interface mock generation.
+# Ref: https://github.com/vektra/mockery
+
+with-expecter: true
+all: false
+dir: mocks
+mockname: "Mock{{.InterfaceName}}"
+outpkg: mocks
+filename: "mock_{{.InterfaceName|snake}}.go"
+packages:
+  github.com/university-ecosystem/ws-hub/pkg/hub:
+    interfaces:
+      - RoomAuthClient

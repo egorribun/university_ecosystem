@@ -185,3 +185,167 @@ async def test_warm_news():
         await cache_warmup._warm_news(mock_cache, mock_db)
 
         assert mock_cache.set.call_count >= 1
+
+
+# --------------------------------------------------------------------------- #
+# Track C (session 6) additions — early-return guards + _warm_events +         #
+# _warm_schedule / _warm_stats wrappers + warm_cache backend-disabled/error.   #
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.asyncio
+async def test_warm_schedule_group_skips_when_cache_disabled():
+    cache = AsyncMock()
+    cache.enabled = False
+    await cache_warmup._warm_schedule_group(
+        cache, AsyncMock(), uuid.uuid4(), ttl_seconds=60
+    )
+    cache.get.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_warm_schedule_group_skips_when_cached_fresh():
+    cache = AsyncMock()
+    cache.enabled = True
+    cache.get.return_value = CacheEntry(payload={}, stored_at=time.time(), etag="x")
+    await cache_warmup._warm_schedule_group(
+        cache, AsyncMock(), uuid.uuid4(), ttl_seconds=60
+    )
+    cache.set.assert_not_called()  # fresh entry → no recompute
+
+
+@pytest.mark.asyncio
+async def test_warm_schedule_group_skips_when_no_rows():
+    cache = AsyncMock()
+    cache.enabled = True
+    cache.get.return_value = None
+    with (
+        patch("app.services.schedule_service.ScheduleService") as mock_service,
+        patch("app.services.schedule_optimizer.ScheduleOptimizerService"),
+    ):
+        mock_service.return_value.get_schedule = AsyncMock(return_value=[])
+        await cache_warmup._warm_schedule_group(
+            cache, AsyncMock(), uuid.uuid4(), ttl_seconds=60
+        )
+    cache.set.assert_not_called()  # empty schedule → nothing cached
+
+
+@pytest.mark.asyncio
+async def test_warm_schedule_skips_without_group_ids():
+    with patch("app.services.cache_warmup.settings") as ms:
+        ms.cache_warmup_group_ids = []
+        await cache_warmup._warm_schedule(AsyncMock(), AsyncMock())  # early return
+
+
+@pytest.mark.asyncio
+async def test_warm_schedule_fans_out_per_group():
+    with (
+        patch("app.services.cache_warmup.settings") as ms,
+        patch("app.services.cache_warmup._warm_schedule_group", AsyncMock()) as mwsg,
+    ):
+        ms.cache_warmup_group_ids = ("g1", "g2")
+        ms.cache_default_ttl_seconds = 300
+        await cache_warmup._warm_schedule(AsyncMock(), AsyncMock())
+    assert mwsg.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_warm_stats_skips_without_user_ids():
+    with patch("app.services.cache_warmup.settings") as ms:
+        ms.cache_warmup_stats_user_ids = []
+        await cache_warmup._warm_stats(AsyncMock(), AsyncMock())  # early return
+
+
+@pytest.mark.asyncio
+async def test_warm_stats_fans_out_per_user_period():
+    with (
+        patch("app.services.cache_warmup.settings") as ms,
+        patch("app.services.cache_warmup._warm_stats_for_user", AsyncMock()) as mwsfu,
+    ):
+        ms.cache_warmup_stats_user_ids = ("u1",)
+        ms.cache_warmup_period_keys = ("30d", "90d")
+        await cache_warmup._warm_stats(AsyncMock(), AsyncMock())
+    assert mwsfu.await_count == 2  # 1 user x 2 periods
+
+
+@pytest.mark.asyncio
+async def test_warm_stats_for_user_skips_when_cached_fresh():
+    cache = AsyncMock()
+    cache.enabled = True
+    fresh = CacheEntry(payload={}, stored_at=time.time(), etag="x")
+    with patch(
+        "app.services.cache_warmup.stats_cache.get_cached_stats",
+        AsyncMock(return_value=fresh),
+    ):
+        await cache_warmup._warm_stats_for_user(cache, AsyncMock(), uuid.uuid4(), "30d")
+    # returned before constructing UserAnalyticsService → no recompute
+
+
+@pytest.mark.asyncio
+async def test_warm_news_skips_when_cache_disabled():
+    cache = AsyncMock()
+    cache.enabled = False
+    await cache_warmup._warm_news(cache, AsyncMock())
+    cache.set.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_warm_events_skips_when_cache_disabled():
+    cache = AsyncMock()
+    cache.enabled = False
+    await cache_warmup._warm_events(cache, AsyncMock())
+    cache.set.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_warm_events_populates_both_locales():
+    cache = AsyncMock()
+    cache.enabled = True
+    cache.get.return_value = None
+    with (
+        patch("app.api.events._get_events_list_version", AsyncMock(return_value="v1")),
+        patch("app.repositories.unit_of_work.uow_from_session"),
+        patch("app.services.vector_service.VectorService"),
+        patch("app.services.event_service.EventService") as mock_event_service,
+    ):
+        mock_event_service.return_value.get_events = AsyncMock(
+            return_value={"items": [], "has_more": False, "next_cursor": None}
+        )
+        await cache_warmup._warm_events(cache, AsyncMock())
+    assert cache.set.call_count == 2  # ru + en
+
+
+@pytest.mark.asyncio
+async def test_warm_cache_skips_when_backend_disabled():
+    with (
+        patch("app.services.cache_warmup.settings") as ms,
+        patch("app.services.cache_warmup.get_cache") as mgc,
+    ):
+        ms.cache_warmup_enabled = True
+        backend = MagicMock()
+        backend.enabled = False
+        mgc.return_value = backend
+        await cache_warmup.warm_cache()  # backend disabled → returns before gather
+
+
+@pytest.mark.asyncio
+async def test_warm_cache_swallows_connection_errors():
+    with (
+        patch("app.services.cache_warmup.settings") as ms,
+        patch("app.services.cache_warmup.get_cache") as mgc,
+        patch("app.services.cache_warmup.async_session") as msess,
+        patch(
+            "app.services.cache_warmup._warm_schedule",
+            AsyncMock(side_effect=ConnectionError("boom")),
+        ),
+        patch("app.services.cache_warmup._warm_stats", AsyncMock()),
+        patch("app.services.cache_warmup._warm_news", AsyncMock()),
+        patch("app.services.cache_warmup._warm_events", AsyncMock()),
+    ):
+        ms.cache_warmup_enabled = True
+        backend = MagicMock()
+        backend.enabled = True
+        mgc.return_value = backend
+        msess.return_value.__aenter__.return_value = AsyncMock()
+        # Must not raise — the except (ConnectionError, ...) handler swallows it.
+        await cache_warmup.warm_cache()

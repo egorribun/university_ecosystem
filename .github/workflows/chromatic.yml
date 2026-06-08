@@ -134,6 +134,16 @@ jobs:
         with:
           projectToken: ${{ secrets.CHROMATIC_PROJECT_TOKEN }}
           workingDir: frontend
+          # NOTE (2026-06-05): the Chromatic snapshot quota for this billing
+          # cycle is exhausted, so the "UI Tests" commit status hangs on
+          # "Update your plan to resume testing" until the plan is restored or
+          # the monthly quota resets. It is NON-BLOCKING (PR stays MERGEABLE).
+          # We intentionally keep publishing here so "Storybook Publish —
+          # N stories published" still confirms the build compiles + uploads.
+          # To also suppress the stuck "UI Tests" check while keeping the
+          # publish, disable it in the Chromatic dashboard (Manage → Checks),
+          # OR restore/upgrade the plan. (`skip: true` is the code lever that
+          # clears BOTH statuses — but it stops publishing too, so it's not used.)
           # Collect-only / REPORT mode (W201): diffs are visible but don't block PRs.
           # Enforce by flipping this to `false` once the baseline is trusted
           # (W201 documented this as a deliberate post-baseline follow-up).

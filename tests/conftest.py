@@ -179,6 +179,46 @@ def link_read_db_to_write_db():
 
 
 @pytest.fixture(autouse=True)
+def _reset_settings_cached_properties():
+    """Pop settings @cached_property caches before each test (defense-in-depth).
+
+    pydantic v2 does NOT invalidate a @cached_property (e.g.
+    ``event_file_allowed_mime_types_set``) when its underlying RAW field
+    (``event_file_allowed_mime_types``) is reassigned. In a shared in-process
+    session — mutmut's clean-test runs the changed-modules covering subset in ONE
+    pytest process; pytest-xdist within a worker; etc. — a stale derived value could
+    otherwise leak across tests: a prior PDF-upload test caches {'application/pdf'},
+    then a later text/plain test monkeypatches the raw field but save_attachment
+    still reads the stale set. Popping the cached_property entries (identified via the
+    class MRO, so pydantic FIELDS are never touched) forces every derived value to
+    recompute from the current (monkeypatched-or-default) raw field.
+
+    NOTE: the actual upload-415 seen in mutmut's clean-test was a DIFFERENT root cause
+    — six event-upload tests overrode the derived sets via an unrestored
+    ``type(settings).event_file_allowed_mime_types_set = property(...)`` CLASS
+    mutation that leaked into every later test (fixed by switching them to
+    ``monkeypatch.setattr`` in test_event_file_upload.py). That leak rebinds the
+    attribute to a plain ``property`` object, which this fixture's
+    ``isinstance(..., functools.cached_property)`` enumeration intentionally skips —
+    so this fixture is retained purely as defense-in-depth against the genuine
+    @cached_property-staleness sub-case, not as the upload-415 fix.
+    """
+    import functools
+
+    from app.core.config import settings
+
+    cached_names = [
+        name
+        for klass in type(settings).__mro__
+        for name, attr in vars(klass).items()
+        if isinstance(attr, functools.cached_property)
+    ]
+    for name in cached_names:
+        settings.__dict__.pop(name, None)
+    yield
+
+
+@pytest.fixture(autouse=True)
 def mock_nats_broker(monkeypatch):
     """Mock the NATS broker so tests using LifespanManager don't hang on connect()."""
     from app.core.nats_broker import broker

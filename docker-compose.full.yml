@@ -22,11 +22,13 @@ services:
       # DNS (e.g. frontend SSR fetches backend:8000/.well-known/jwks.json with
       # Host: backend:8000 → 400 Bad Request). Adding `backend` so JWKS
       # endpoint reachable from frontend, gateway, ws-hub via service-DNS.
+      # `gateway` added so Go gateway's reverse-proxy requests are accepted
+      # (httputil.ReverseProxy forwards the incoming Host header unchanged).
       # NOTE: middleware reads ALLOWED_HOSTS (not TRUSTED_HOSTS) — see
       # app/core/middleware/setup.py:154 + cors_settings.py:25 + 154 (the
       # `trusted_hosts_list` property is a separate read-only computation,
       # `allowed_hosts_list` is what TrustedHostMiddleware consumes).
-      ALLOWED_HOSTS: "localhost,127.0.0.1,backend,caddy,0.0.0.0,testserver"
+      ALLOWED_HOSTS: "localhost,127.0.0.1,backend,caddy,gateway,0.0.0.0,testserver"
       # Wave 137 SW4: dev-only — bump max sessions per user from 5 to 50 so
       # repeated smoke runs during diagnostic don't hit the per-user cap.
       # Production K8s should keep default (5) for credential-stuffing defense.
@@ -265,6 +267,7 @@ services:
     # Major version (pg17) floats within the same PostgreSQL release; to pin to a
     # patch update check https://hub.docker.com/r/pgvector/pgvector/tags
     image: pgvector/pgvector:pg17
+    command: ["postgres", "-c", "max_connections=500"]
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}

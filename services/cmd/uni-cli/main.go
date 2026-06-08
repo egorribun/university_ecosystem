@@ -14,6 +14,9 @@ import (
 var (
 	redisURL string
 	verbose  bool
+
+	newRedisClientFunc = newRedisClient
+	confirmActionFunc  = confirmAction
 )
 
 func main() {
@@ -48,7 +51,7 @@ func getEnv(key, defaultValue string) string {
 	return defaultValue
 }
 
-// cacheCmd returns the cache management command group
+// cacheCmd returns the cache management command group.
 func cacheCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "cache",
@@ -66,11 +69,11 @@ func cacheCmd() *cobra.Command {
 				pattern = args[0]
 			}
 
-			client, err := newRedisClient()
+			client, err := newRedisClientFunc()
 			if err != nil {
 				return fmt.Errorf("failed to connect to Redis: %w", err)
 			}
-			defer func() { _ = client.Close() }()
+			defer func() { _ = client.Close() }() //nolint:errcheck // best-effort cleanup
 
 			ctx := context.Background()
 
@@ -87,7 +90,7 @@ func cacheCmd() *cobra.Command {
 
 			// Confirm
 			fmt.Printf("Found %d keys matching '%s'\n", len(keys), pattern)
-			if !confirmAction("Clear these keys?") {
+			if !confirmActionFunc("Clear these keys?") {
 				fmt.Println("Aborted")
 				return nil
 			}
@@ -108,11 +111,11 @@ func cacheCmd() *cobra.Command {
 		Use:   "stats",
 		Short: "Show cache statistics",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			client, err := newRedisClient()
+			client, err := newRedisClientFunc()
 			if err != nil {
 				return err
 			}
-			defer func() { _ = client.Close() }()
+			defer func() { _ = client.Close() }() //nolint:errcheck // best-effort cleanup
 
 			ctx := context.Background()
 
@@ -132,7 +135,11 @@ func cacheCmd() *cobra.Command {
 	return cmd
 }
 
-// healthCmd returns the health check command
+// healthCmd returns the health check command.
+//
+// A failing dependency yields a non-zero exit code (returns an error) so that
+// monitoring tools and CI gates can rely on the exit status — a health check
+// that always exits 0 is useless for automation.
 func healthCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "health",
@@ -141,30 +148,37 @@ func healthCmd() *cobra.Command {
 			fmt.Println("System Health Check")
 			fmt.Println("-------------------")
 
+			healthy := true
+
 			// Check Redis
 			fmt.Print("Redis: ")
-			client, err := newRedisClient()
+			client, err := newRedisClientFunc()
 			if err != nil {
 				fmt.Println("❌ ", err)
+				healthy = false
 			} else {
 				ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 				defer cancel()
 				if err := client.Ping(ctx).Err(); err != nil {
 					fmt.Println("❌ ", err)
+					healthy = false
 				} else {
 					fmt.Println("✅ Connected")
 				}
-				_ = client.Close()
+				_ = client.Close() //nolint:errcheck // best-effort cleanup
 			}
 
-			// Add more health checks as needed
+			// Add more health checks as needed.
 			fmt.Println("\nAll checks completed")
+			if !healthy {
+				return fmt.Errorf("one or more health checks failed")
+			}
 			return nil
 		},
 	}
 }
 
-// metricsCmd returns metrics commands
+// metricsCmd returns metrics commands.
 func metricsCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "metrics",
@@ -175,17 +189,23 @@ func metricsCmd() *cobra.Command {
 		Use:   "show",
 		Short: "Show current metrics",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			client, err := newRedisClient()
+			client, err := newRedisClientFunc()
 			if err != nil {
 				return err
 			}
-			defer func() { _ = client.Close() }()
+			defer func() { _ = client.Close() }() //nolint:errcheck // best-effort cleanup
 
 			ctx := context.Background()
 
 			// Get basic metrics from Redis
-			dbSize, _ := client.DBSize(ctx).Result()
-			info, _ := client.Info(ctx, "stats").Result()
+			dbSize, err := client.DBSize(ctx).Result()
+			if err != nil {
+				return err
+			}
+			info, err := client.Info(ctx, "stats").Result()
+			if err != nil {
+				return err
+			}
 
 			fmt.Println("System Metrics")
 			fmt.Println("--------------")
@@ -214,6 +234,6 @@ func newRedisClient() (*redis.Client, error) {
 func confirmAction(prompt string) bool {
 	var response string
 	fmt.Printf("%s [y/N]: ", prompt)
-	fmt.Scanln(&response)
+	fmt.Scanln(&response) //nolint:errcheck // interactive prompt; empty/err input treated as "no"
 	return response == "y" || response == "Y"
 }

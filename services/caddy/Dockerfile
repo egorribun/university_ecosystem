@@ -12,6 +12,8 @@ ARG GO_VERSION=1.24
 # ── Stage 1: build ────────────────────────────────────────────────────────────
 FROM golang:1.24-alpine@sha256:8bee1901f1e530bfb4a7850aa7a479d17ae3a18beb6e09064ed54cfd245b7191 AS builder
 
+ARG CADDY_VERSION
+
 RUN apk add --no-cache git
 
 # Install xcaddy — the official Caddy plugin build tool.
@@ -26,4 +28,4 @@ RUN xcaddy build v${CADDY_VERSION} \
 # ── Stage 2: runtime ──────────────────────────────────────────────────────────
 FROM caddy:2.9.1-alpine@sha256:b4e3952384eb9524a887633ce65c752dd7c71314d2c2acf98cd5c715aaa534f0
 
-COPY --from=builder /root/caddy /usr/bin/caddy
+COPY --from=builder /go/caddy /usr/bin/caddy

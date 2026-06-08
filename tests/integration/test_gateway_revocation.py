@@ -51,6 +51,37 @@ pytestmark = [
 ]
 
 
+@pytest.fixture(autouse=True)
+async def cleanup_active_sessions():
+    """Revoke all existing sessions for the test user to avoid concurrent session limits."""
+    db_url = os.getenv("INTEGRATION_DATABASE_URL", os.getenv("DATABASE_URL", ""))
+    if not db_url or not db_url.startswith("postgresql"):
+        yield
+        return
+
+    from sqlalchemy import text
+    from sqlalchemy.ext.asyncio import create_async_engine
+
+    engine = create_async_engine(db_url, echo=False, future=True)
+    async with engine.connect() as conn:
+        async with conn.begin():
+            # Get user ID
+            res = await conn.execute(
+                text("SELECT id FROM users WHERE email = :email"), {"email": TEST_EMAIL}
+            )
+            row = res.fetchone()
+            if row:
+                user_id = row[0]
+                # Revoke all sessions
+                await conn.execute(
+                    text("DELETE FROM active_sessions WHERE user_id = :uid"),
+                    {"uid": user_id},
+                )
+
+    engine.sync_engine.dispose()
+    yield
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -58,13 +89,18 @@ pytestmark = [
 
 async def _login(client: httpx.AsyncClient) -> tuple[str, dict[str, str]]:
     """Login via the Python backend and return (access_token, cookies)."""
+    # Fetch CSRF token first
+    await client.get(f"{BACKEND_URL}/health/ready")
+    csrf_token = client.cookies.get("csrf_token", "")
+
     resp = await client.post(
-        f"{BACKEND_URL}/api/auth/login",
+        f"{BACKEND_URL}/api/v1/auth/login/json",
         json={"email": TEST_EMAIL, "password": TEST_PASSWORD},
+        headers={"x-csrf-token": csrf_token},
     )
     assert resp.status_code == 200, f"Login failed: {resp.status_code} {resp.text}"
     data = resp.json()
-    token: str = data["access_token"]
+    token: str = data.get("access_token") or resp.cookies.get("access_token_v2", "")
     # Collect Set-Cookie headers so we can replay them to the gateway
     cookies: dict[str, str] = dict(resp.cookies)
     return token, cookies
@@ -74,10 +110,14 @@ async def _logout(
     client: httpx.AsyncClient, token: str, cookies: dict[str, str]
 ) -> None:
     """Logout via the Python backend (stores revocation in Redis)."""
+    csrf_token = client.cookies.get("csrf_token", "") or cookies.get("csrf_token", "")
+    client.cookies.update(cookies)
     resp = await client.post(
-        f"{BACKEND_URL}/api/auth/logout",
-        headers={"Authorization": f"Bearer {token}"},
-        cookies=cookies,
+        f"{BACKEND_URL}/api/v1/auth/logout",
+        headers={
+            "Authorization": f"Bearer {token}",
+            "x-csrf-token": csrf_token,
+        },
     )
     assert resp.status_code in (200, 204), (
         f"Logout failed: {resp.status_code} {resp.text}"
@@ -90,10 +130,10 @@ async def _gateway_request(
     cookies: dict[str, str],
 ) -> int:
     """Send an authenticated request through the Go gateway and return HTTP status."""
+    client.cookies.update(cookies)
     resp = await client.get(
-        f"{GATEWAY_URL}/api/me",
+        f"{GATEWAY_URL}/api/v1/users/me",
         headers={"Authorization": f"Bearer {token}"},
-        cookies=cookies,
     )
     return resp.status_code
 
@@ -157,7 +197,7 @@ async def test_gateway_rejects_revoked_session_with_different_client() -> None:
     async with httpx.AsyncClient(timeout=10.0) as attacker:
         # No cookies — Bearer token only (attacker may not have the session cookie)
         resp = await attacker.get(
-            f"{GATEWAY_URL}/api/me",
+            f"{GATEWAY_URL}/api/v1/users/me",
             headers={"Authorization": f"Bearer {token}"},
         )
 

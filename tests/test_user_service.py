@@ -58,6 +58,11 @@ def mock_repo():
     repo.check_email_exists = AsyncMock()
     repo.delete_sensitive_data = AsyncMock()
     repo._get_orm = AsyncMock()
+    # W185 twin-bug fix: profile/media update paths now fetch via the eager-
+    # loading get_orm_for_update_with_relations. Alias it to the same mock so
+    # existing `repo._get_orm.return_value = ...` setups configure both (no call-
+    # arg assertions on _get_orm exist, so aliasing is safe).
+    repo.get_orm_for_update_with_relations = repo._get_orm
     repo._to_dto = MagicMock()
     repo.add = MagicMock()
     repo.update = AsyncMock()
