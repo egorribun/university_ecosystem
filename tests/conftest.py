@@ -180,21 +180,28 @@ def link_read_db_to_write_db():
 
 @pytest.fixture(autouse=True)
 def _reset_settings_cached_properties():
-    """Pop settings @cached_property caches before each test.
+    """Pop settings @cached_property caches before each test (defense-in-depth).
 
     pydantic v2 does NOT invalidate a @cached_property (e.g.
     ``event_file_allowed_mime_types_set``) when its underlying RAW field
     (``event_file_allowed_mime_types``) is reassigned. In a shared in-process
     session — mutmut's clean-test runs the changed-modules covering subset in ONE
-    pytest process; pytest-xdist within a worker; etc. — a stale derived value
-    leaks across tests: a prior PDF-upload test caches {'application/pdf'}, then a
-    later text/plain test monkeypatches the raw field but save_attachment still
-    reads the stale set -> 415 unsupported_type. Popping the cached_property entries
-    (identified via the class MRO, so pydantic FIELDS are never touched) forces
-    every derived value to recompute from the current (monkeypatched-or-default) raw
-    field. Confirmed via the mutmut clean-test diagnostic (MUTMUT_DEBUG_UPLOAD):
-    ``cfg event allowlist`` was a stale ['application/pdf'] while the raw field was
-    ['text/plain'].
+    pytest process; pytest-xdist within a worker; etc. — a stale derived value could
+    otherwise leak across tests: a prior PDF-upload test caches {'application/pdf'},
+    then a later text/plain test monkeypatches the raw field but save_attachment
+    still reads the stale set. Popping the cached_property entries (identified via the
+    class MRO, so pydantic FIELDS are never touched) forces every derived value to
+    recompute from the current (monkeypatched-or-default) raw field.
+
+    NOTE: the actual upload-415 seen in mutmut's clean-test was a DIFFERENT root cause
+    — six event-upload tests overrode the derived sets via an unrestored
+    ``type(settings).event_file_allowed_mime_types_set = property(...)`` CLASS
+    mutation that leaked into every later test (fixed by switching them to
+    ``monkeypatch.setattr`` in test_event_file_upload.py). That leak rebinds the
+    attribute to a plain ``property`` object, which this fixture's
+    ``isinstance(..., functools.cached_property)`` enumeration intentionally skips —
+    so this fixture is retained purely as defense-in-depth against the genuine
+    @cached_property-staleness sub-case, not as the upload-415 fix.
     """
     import functools
 
@@ -418,57 +425,3 @@ def _log_query_before_execute(
             f.write(normalized_stmt + "\n")
     except Exception:  # noqa: S110
         pass
-
-
-# --- TEMPORARY mutmut clean-test 415 diagnostic (MUTMUT_DEBUG_UPLOAD-gated) ---
-# The test_event_file_upload uploads hit 415 in mutmut's in-process clean-test but
-# NOT locally (4 repro attempts) — the pollution is intrinsic to mutmut's full
-# covering-subset composition under change_cwd('mutants'). On a FAILED upload test
-# this appends the live detection + settings-allowlist + singleton-identity state to
-# the file named by the env var (absolute path -> survives change_cwd + capture),
-# pinning the exact cause: detect=None -> mock ineffective (429); detect valid but
-# allowlist wrong -> 436/376; cfg.settings is not files.settings -> identity
-# divergence. Removed once mutmut is green. No effect when the env var is unset.
-def pytest_runtest_logreport(report: Any) -> None:
-    dump = os.environ.get("MUTMUT_DEBUG_UPLOAD")
-    if not dump:
-        return
-    if not (
-        report.when == "call"
-        and report.failed
-        and "test_event_file_upload" in report.nodeid
-    ):
-        return
-    try:
-        import app.core.config as _cfg
-        import app.utils.files as _f
-
-        files_settings = getattr(_f, "settings", None)
-        detect_fn = getattr(_f.detect_mime_type, "__name__", "?")
-        detect_val = _f.detect_mime_type(b"clean-looking")
-        same = _cfg.settings is files_settings
-        cfg_allow = sorted(_cfg.settings.event_file_allowed_mime_types_set)
-        files_allow = (
-            sorted(files_settings.event_file_allowed_mime_types_set)
-            if files_settings is not None
-            else "<no files.settings>"
-        )
-        lines = [
-            f"=== {report.nodeid} ===",
-            f"detect_mime_type fn        = {detect_fn}",
-            f"detect(b'clean-looking')   = {detect_val!r}",
-            f"cfg.settings is files.settings = {same}",
-            f"cfg event allowlist        = {cfg_allow}",
-            f"files event allowlist      = {files_allow}",
-            f"cfg raw event mime         = {getattr(_cfg.settings, 'event_file_allowed_mime_types', '?')}",
-            f"failure repr               = {str(report.longrepr)[:700]}",
-        ]
-        with open(dump, "a", encoding="utf-8") as fh:
-            fh.write("\n".join(lines) + "\n\n")
-    except Exception as exc:
-        # diagnostic is best-effort: never let it fail a test
-        try:
-            with open(dump, "a", encoding="utf-8") as fh:
-                fh.write(f"[debug error] {exc!r}\n")
-        except OSError:
-            pass
