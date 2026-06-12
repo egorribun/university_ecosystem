@@ -56,3 +56,105 @@ pub fn strip_html(html: &str) -> String {
         .clean(html)
         .to_string()
 }
+
+// Native unit tests (testing session 9). #[wasm_bindgen] leaves the functions
+// callable as plain Rust on a non-wasm target, and ammonia is a native crate,
+// so these exercise the exact sanitization code paths the browser runs. The
+// crate-type already includes "rlib", so no Cargo.toml change is needed. The
+// browser parity is deliberately NOT re-run via wasm-pack here: pure Rust ->
+// identical code paths (wasm-sanitizer has no JS-only branches). Assertions are
+// presence/absence based to stay robust across ammonia minor versions.
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn rich_text_strips_script_element_and_content() {
+        let out = sanitize_rich_text("<p>safe</p><script>alert('xss')</script>");
+        assert!(out.contains("safe"), "allowed text must survive: {out}");
+        assert!(!out.contains("<script"), "script tag must be removed: {out}");
+        assert!(!out.contains("alert"), "script content must be removed: {out}");
+    }
+
+    #[test]
+    fn rich_text_strips_onerror_handler_and_img() {
+        let out = sanitize_rich_text("<img src=x onerror=alert(1)>");
+        assert!(!out.contains("onerror"), "event handler must be stripped: {out}");
+        assert!(!out.contains("<img"), "img is not in the allowed tag set: {out}");
+    }
+
+    #[test]
+    fn rich_text_drops_javascript_scheme_href() {
+        let out = sanitize_rich_text(r#"<a href="javascript:alert(1)">click</a>"#);
+        assert!(out.contains("click"), "link text must survive: {out}");
+        assert!(!out.contains("javascript:"), "javascript: scheme must be dropped: {out}");
+    }
+
+    #[test]
+    fn rich_text_drops_data_scheme_href() {
+        let out = sanitize_rich_text(r#"<a href="data:text/html,<script>1</script>">x</a>"#);
+        assert!(!out.contains("data:"), "data: scheme must be dropped: {out}");
+        assert!(!out.contains("<script"), "embedded script must be gone: {out}");
+    }
+
+    #[test]
+    fn rich_text_keeps_https_link_with_noopener_rel() {
+        let out = sanitize_rich_text(r#"<a href="https://example.com" target="_blank">go</a>"#);
+        assert!(out.contains(r#"href="https://example.com""#), "https href must survive: {out}");
+        assert!(out.contains("noopener"), "rel must include noopener: {out}");
+        assert!(out.contains("noreferrer"), "rel must include noreferrer: {out}");
+    }
+
+    #[test]
+    fn rich_text_keeps_allowed_formatting_tags() {
+        let out = sanitize_rich_text("<p><strong>bold</strong> and <em>em</em></p>");
+        assert!(out.contains("<strong>bold</strong>"), "strong must survive: {out}");
+        assert!(out.contains("<em>em</em>"), "em must survive: {out}");
+    }
+
+    #[test]
+    fn rich_text_strips_unknown_tag_but_keeps_text() {
+        let out = sanitize_rich_text("<div class=evil>content</div>");
+        assert!(out.contains("content"), "text must survive: {out}");
+        assert!(!out.contains("<div"), "div is not in the rich-text allow list: {out}");
+    }
+
+    #[test]
+    fn basic_keeps_only_inline_emphasis_tags() {
+        let out = sanitize_html_basic("<p>para</p><b>bold</b><script>x</script>");
+        assert!(out.contains("<b>bold</b>"), "b must survive: {out}");
+        assert!(out.contains("para"), "stripped-tag text must survive: {out}");
+        assert!(!out.contains("<p>"), "p is not in the basic allow list: {out}");
+        assert!(!out.contains("<script"), "script must be removed: {out}");
+    }
+
+    #[test]
+    fn basic_removes_anchor_tags() {
+        let out = sanitize_html_basic(r#"<a href="https://x.com">link</a>"#);
+        assert!(out.contains("link"), "anchor text must survive: {out}");
+        assert!(!out.contains("<a"), "anchors are not allowed in basic mode: {out}");
+    }
+
+    #[test]
+    fn strip_html_removes_all_tags_keeps_text() {
+        let out = strip_html("<b>hi</b> <i>there</i><script>nope</script>");
+        assert!(out.contains("hi"), "text must survive: {out}");
+        assert!(out.contains("there"), "text must survive: {out}");
+        assert!(!out.contains('<'), "no tags may remain: {out}");
+        assert!(!out.contains("nope"), "script content must be removed: {out}");
+    }
+
+    #[test]
+    fn strip_html_is_idempotent_on_plain_text() {
+        let plain = "just plain text, no markup";
+        assert_eq!(strip_html(plain), plain);
+        assert_eq!(strip_html(&strip_html("<b>x</b>")), strip_html("<b>x</b>"));
+    }
+
+    #[test]
+    fn sanitizers_handle_empty_input() {
+        assert_eq!(sanitize_rich_text(""), "");
+        assert_eq!(sanitize_html_basic(""), "");
+        assert_eq!(strip_html(""), "");
+    }
+}

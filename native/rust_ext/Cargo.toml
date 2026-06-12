@@ -9,7 +9,7 @@ name = "rust_ext"
 crate-type = ["cdylib", "rlib"]  # rlib needed for cargo-fuzz and #[cfg(test)]
 
 [dependencies]
-pyo3 = { version = "0.27", features = ["extension-module", "chrono"] }
+pyo3 = { version = "0.27", features = ["chrono"] }
 # TD-22-02 (Wave 22): Pin exact versions for reproducible builds of
 # security-critical FFI code. Renovate will propose updates via Cargo rule.
 rayon = "=1.11.0"
@@ -17,3 +17,16 @@ chrono = { version = "0.4", features = ["serde"] }
 hmac = "=0.12.1"
 sha2 = "=0.10.9"
 hex = "=0.4.3"
+
+# Variant B feature-gate (testing session 9). extension-module stays the DEFAULT,
+# so every existing build site is unchanged: maturin/uv (the abi3 wheel),
+# cargo-fuzz, and the rust-ffi-asan CI job all build with default features and
+# keep `pyo3/extension-module`. The new rust-tests CI job runs the 19 unit tests
+# with `cargo test --no-default-features --lib`: extension-module produces
+# undefined Python symbols in a standalone test binary on Linux, so dropping it
+# lets the binary link libpython directly (CI exports LD_LIBRARY_PATH from
+# sysconfig LIBDIR). On Windows the python import lib is always linked, so a
+# default-features `cargo test` also works locally.
+[features]
+default = ["extension-module"]
+extension-module = ["pyo3/extension-module"]

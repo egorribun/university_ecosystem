@@ -4,7 +4,9 @@ version = "0.1.0"
 edition = "2021"
 
 [lib]
-crate-type = ["cdylib"]
+# rlib added (testing session 9) so the crate can be linked into native
+# `cargo test` binaries for the RFC KAT tests; cdylib still drives wasm-pack.
+crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 wasm-bindgen = "0.2"
@@ -14,3 +16,8 @@ pbkdf2 = "0.12"
 scrypt = "0.11"
 hex = "0.4"
 getrandom = { version = "0.2", features = ["js"] }
+
+[dev-dependencies]
+# Exact pair for the locked wasm-bindgen 0.2.114 (TD-22-02 pin style). Drives
+# the browser-parity KATs in tests/wasm.rs under `wasm-pack test`.
+wasm-bindgen-test = "=0.3.64"
