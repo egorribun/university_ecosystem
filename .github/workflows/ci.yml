@@ -355,15 +355,22 @@ jobs:
         # unit-coverage run excludes — see the go-integration-* jobs + ADR-022.
         # These are no-regression floors to raise incrementally as unit tests
         # are added (target 80 across the board).
+        # Session 9 climb (first Go ratchet): new dependency-free unit tests
+        # (mock RESP servers, httptest JWKS, Temporal testsuite, gRPC metadata
+        # auth) lifted every service. Floor = floor(measured ×2) − 2 buffer.
         include:
           - service: services/gateway
-            coverage-threshold: 45
+            # Measured 63.0% unit-only ×2 (setupRouter smoke + Redis-revocation
+            # RESP mock + JWKS error paths + RequireRole). Floor 61.
+            coverage-threshold: 61
           - service: services/file-processor
-            # Measured 29.0% unit-only on CI (heavy generated gRPC/GraphQL +
-            # Temporal-integration paths excluded). Floor 28 = reality − buffer.
-            coverage-threshold: 28
+            # Measured 51.4% unit-only ×2 (cmd/* auth helpers + resolver/sanitizeKey
+            # + Temporal testsuite workflow + depth middleware). Floor 49.
+            coverage-threshold: 49
           - service: services/ws-hub
-            coverage-threshold: 35
+            # Measured 64.9% unit-only ×2 (NATS handler closures + Run/broadcast
+            # loop + RS256/JWKS + ticket-RESP mock + WS upgrade E2E). Floor 62.
+            coverage-threshold: 62
           - service: services/cmd/uni-cli
             coverage-threshold: 80
     needs: pre-commit-check
