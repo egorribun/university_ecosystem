@@ -294,7 +294,7 @@ jobs:
       # service/repository-coverage climb; CI Linux+integration measures higher).
       # Raise incrementally as the backend coverage campaign lands. Unified with
       # pyproject/Makefile.
-      coverage-threshold: ${{ matrix.coverage-check && 85 || 0 }}
+      coverage-threshold: ${{ matrix.coverage-check && 86 || 0 }}
       run-integration-tests: ${{ matrix.run-integration }}
       parallel-workers: 0 # LOW-W19: 0 = auto-detect workers via pytest-xdist (-n auto)
       python-gil: ${{ matrix.free-threading && '0' || '1' }}  # MOD-24-03
