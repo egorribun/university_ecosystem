@@ -62,6 +62,13 @@ allow-dependencies-licenses:
   - "pkg:pypi/mutmut"
   - "pkg:pypi/textual"
   - "pkg:pypi/uc-micro-py"
+  # Session 9 Stream D — wasm-bindgen-test (=0.3.64, rust-crypto dev-dep for the
+  # browser-parity KATs) pulls minicov 0.3.8 transitively. minicov is dual
+  # Apache-2.0/MIT (permissive, compatible) but its crate metadata emits the
+  # malformed string "LicenseRef-bad-apache-2.0mit", which the Advisory DB
+  # cannot map to an SPDX id — same metadata-parsing artifact class as the
+  # pact-python PEP-639 case above. Test/coverage-only transitive dep.
+  - "pkg:cargo/minicov"
 
 vulnerability-check: true
 license-check: true
