@@ -362,12 +362,14 @@ omit = [
 [tool.coverage.report]
 show_missing = true
 # Ratchet floor at measured reality. Local hermetic (Windows, pyvips skipped)
-# = 86.53% after the session-9 service-layer climb (session_service /
-# analytics_service / notifications delivery+core+news_events /
-# compliance_service); CI (Linux + integration tier) measures ~0.7pp higher.
+# = 88.04% after the session-10 service-layer climb (user.stats_service /
+# analytics / minio_storage / auth.security_service + webpush / auth_service /
+# mfa.challenge / chat.command_service / orjson_utils / etag / mfa_challenge_cleanup
+# + event_service IntegrityError-retry + user.logic noload-create catch-ups);
+# CI (Linux + integration tier) measures ~0.7pp higher.
 # No-regression floor, NOT the aspirational target — raise incrementally as
 # the campaign adds tests (target 95%). Unified across pyproject / Makefile / ci.yml.
-fail_under = 86
+fail_under = 88
 exclude_lines = [
   "pragma: no cover",
   "def __repr__",

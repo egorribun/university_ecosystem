@@ -608,3 +608,111 @@ async def test_get_event_detail_refreshes_secret_material(
     assert out is not None
     assert out.my_qr_token == "tok"
     assert out.is_registered is True
+
+
+# ---------------------------------------------------------------------------
+# IntegrityError race-retry path (testing session 10) — covers
+# event_service.py:327-363, which the existing race test does not reach
+# (it sets mock_repo.commit.side_effect, but register_attendance commits via
+# self.uow.commit()). Here uow.commit raises IntegrityError on the FIRST call
+# and succeeds on the retry.
+# ---------------------------------------------------------------------------
+
+
+def _registration_event():
+    ev = MagicMock()
+    ev.is_active = True
+    ev.ends_at = datetime.now(UTC) + timedelta(hours=1)
+    return ev
+
+
+@pytest.mark.asyncio
+async def test_register_attendance_integrity_retry_updates_registered_at(
+    event_service, mock_uow, mock_repo
+):
+    data = schemas.EventAttendanceCreate(event_id=uuid4())
+    user_id = uuid4()
+
+    mock_repo.get_for_registration.return_value = _registration_event()
+    # 1st get_attendance (pre-create) None; 2nd (post-race) returns a DTO with
+    # registered_at=None → the retry_updates branch fires.
+    raced = EventAttendanceDTO(
+        id=uuid4(), event_id=data.event_id, user_id=user_id, registered_at=None
+    )
+    updated = EventAttendanceDTO(
+        id=raced.id,
+        event_id=data.event_id,
+        user_id=user_id,
+        registered_at=datetime.now(UTC),
+    )
+    mock_repo.get_attendance.side_effect = [None, raced]
+    mock_repo.create_attendance.return_value = raced
+    mock_repo.update_attendance.return_value = updated
+    # uow.commit: 1st call (after create) raises, retry commit succeeds.
+    mock_uow.commit.side_effect = [
+        IntegrityError("dup", {}, Exception()),
+        None,
+    ]
+
+    with patch(
+        "app.services.event_service.attendance_tokens.issue_token",
+        return_value="tok",
+    ):
+        result = await event_service.register_attendance(data, user_id)
+
+    mock_uow.rollback.assert_awaited_once()
+    mock_repo.update_attendance.assert_awaited_once()
+    assert result.qr_token == "tok"
+
+
+@pytest.mark.asyncio
+async def test_register_attendance_integrity_retry_already_registered(
+    event_service, mock_uow, mock_repo
+):
+    data = schemas.EventAttendanceCreate(event_id=uuid4())
+    user_id = uuid4()
+
+    mock_repo.get_for_registration.return_value = _registration_event()
+    # Post-race DTO already has registered_at set → retry_updates stays empty,
+    # so update_attendance + the retry commit are skipped (347-354 not taken).
+    already = EventAttendanceDTO(
+        id=uuid4(),
+        event_id=data.event_id,
+        user_id=user_id,
+        registered_at=datetime.now(UTC),
+    )
+    mock_repo.get_attendance.side_effect = [None, already]
+    mock_repo.create_attendance.return_value = already
+    mock_uow.commit.side_effect = [IntegrityError("dup", {}, Exception())]
+
+    with patch(
+        "app.services.event_service.attendance_tokens.issue_token",
+        return_value="tok2",
+    ):
+        result = await event_service.register_attendance(data, user_id)
+
+    mock_uow.rollback.assert_awaited_once()
+    mock_repo.update_attendance.assert_not_awaited()
+    assert result.qr_token == "tok2"
+
+
+@pytest.mark.asyncio
+async def test_register_attendance_integrity_not_found_raises_value_error(
+    event_service, mock_uow, mock_repo
+):
+    data = schemas.EventAttendanceCreate(event_id=uuid4())
+    user_id = uuid4()
+
+    mock_repo.get_for_registration.return_value = _registration_event()
+    # Post-race get_attendance still None → fall to repo.get; a found event →
+    # ValueError (registration failed), covering 335-337.
+    mock_repo.get_attendance.side_effect = [None, None]
+    mock_repo.create_attendance.return_value = EventAttendanceDTO(
+        id=uuid4(), event_id=data.event_id, user_id=user_id, registered_at=None
+    )
+    mock_repo.get.return_value = MagicMock()  # event exists
+    mock_uow.commit.side_effect = [IntegrityError("dup", {}, Exception())]
+
+    with pytest.raises(ValueError):
+        await event_service.register_attendance(data, user_id)
+    mock_uow.rollback.assert_awaited_once()
