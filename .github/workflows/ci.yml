@@ -294,7 +294,7 @@ jobs:
       # service/repository-coverage climb; CI Linux+integration measures higher).
       # Raise incrementally as the backend coverage campaign lands. Unified with
       # pyproject/Makefile.
-      coverage-threshold: ${{ matrix.coverage-check && 85 || 0 }}
+      coverage-threshold: ${{ matrix.coverage-check && 86 || 0 }}
       run-integration-tests: ${{ matrix.run-integration }}
       parallel-workers: 0 # LOW-W19: 0 = auto-detect workers via pytest-xdist (-n auto)
       python-gil: ${{ matrix.free-threading && '0' || '1' }}  # MOD-24-03
@@ -355,15 +355,22 @@ jobs:
         # unit-coverage run excludes — see the go-integration-* jobs + ADR-022.
         # These are no-regression floors to raise incrementally as unit tests
         # are added (target 80 across the board).
+        # Session 9 climb (first Go ratchet): new dependency-free unit tests
+        # (mock RESP servers, httptest JWKS, Temporal testsuite, gRPC metadata
+        # auth) lifted every service. Floor = floor(measured ×2) − 2 buffer.
         include:
           - service: services/gateway
-            coverage-threshold: 45
+            # Measured 63.0% unit-only ×2 (setupRouter smoke + Redis-revocation
+            # RESP mock + JWKS error paths + RequireRole). Floor 61.
+            coverage-threshold: 61
           - service: services/file-processor
-            # Measured 29.0% unit-only on CI (heavy generated gRPC/GraphQL +
-            # Temporal-integration paths excluded). Floor 28 = reality − buffer.
-            coverage-threshold: 28
+            # Measured 51.4% unit-only ×2 (cmd/* auth helpers + resolver/sanitizeKey
+            # + Temporal testsuite workflow + depth middleware). Floor 49.
+            coverage-threshold: 49
           - service: services/ws-hub
-            coverage-threshold: 35
+            # Measured 64.9% unit-only ×2 (NATS handler closures + Run/broadcast
+            # loop + RS256/JWKS + ticket-RESP mock + WS upgrade E2E). Floor 62.
+            coverage-threshold: 62
           - service: services/cmd/uni-cli
             coverage-threshold: 80
     needs: pre-commit-check
@@ -1100,6 +1107,88 @@ jobs:
           path: "asan-report.*"
           if-no-files-found: ignore
 
+  rust-tests:
+    # Testing session 9, Stream D — the first `cargo test` job in CI (the prior
+    # Rust coverage came only from the ASan job + the weekly fuzz run).
+    # Runs the native unit/KAT suites for all three Rust crates plus the
+    # browser-parity wasm-bindgen tests for rust-crypto. Deterministic, so it is
+    # BLOCKING (in the ci-success results array), unlike the advisory mutation /
+    # load-and-chaos jobs.
+    name: "Rust — cargo test (×3 crates) + wasm-pack"
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    if: |
+      github.event_name == 'push' ||
+      github.event_name == 'pull_request' ||
+      github.event_name == 'workflow_dispatch'
+    env:
+      RUST_BACKTRACE: "1"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Set up Python
+        # rust_ext is a PyO3 crate: even with --no-default-features (extension-module
+        # dropped) the build links libpython, so a Python install must be present.
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: "3.13"
+
+      - name: Set up Rust (stable + wasm32 target)
+        uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Cache Cargo registry + target dirs
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            native/rust_ext/target/
+            frontend/wasm-sanitizer/target/
+            frontend/rust-crypto/target/
+          key: ${{ runner.os }}-cargo-rust-tests-${{ hashFiles('native/rust_ext/Cargo.toml', 'frontend/wasm-sanitizer/Cargo.toml', 'frontend/rust-crypto/Cargo.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-rust-tests-
+
+      - name: rust_ext — native unit tests (--no-default-features)
+        # extension-module produces undefined Python symbols in a standalone test
+        # binary on Linux; drop it and point the linker/loader at setup-python's
+        # libpython via sysconfig LIBDIR.
+        working-directory: native/rust_ext
+        run: |
+          LIBDIR="$(python -c 'import sysconfig; print(sysconfig.get_config_var("LIBDIR"))')"
+          export LD_LIBRARY_PATH="${LIBDIR}:${LD_LIBRARY_PATH}"
+          cargo test --no-default-features --lib
+
+      - name: wasm-sanitizer — native unit tests
+        working-directory: frontend/wasm-sanitizer
+        run: cargo test --lib
+
+      - name: rust-crypto — native KAT tests
+        working-directory: frontend/rust-crypto
+        run: cargo test --lib
+
+      - name: Install wasm-pack
+        # rustwasm canonical curl installer (W141 polish-v2 / W142 polish-v3:
+        # taiki-e/install-action hardcodes the old drager/wasm-pack repo → 404).
+        run: |
+          curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+          wasm-pack --version
+
+      - name: rust-crypto — browser-parity KATs (wasm-pack, headless Chrome)
+        # ubuntu-latest preinstalls Chrome + sets CHROMEWEBDRIVER; fall back to
+        # wasm-pack's auto-download if the env var is unset.
+        run: |
+          if [ -n "${CHROMEWEBDRIVER:-}" ] && [ -x "${CHROMEWEBDRIVER}/chromedriver" ]; then
+            export CHROMEDRIVER="${CHROMEWEBDRIVER}/chromedriver"
+          fi
+          wasm-pack test --headless --chrome frontend/rust-crypto
+
   mutation-tests:
     name: Incremental Mutation Tests (mutmut)
     runs-on: ubuntu-latest
@@ -1430,6 +1519,7 @@ jobs:
       - provenance-check
       - e2e-tests
       - rust-ffi-asan
+      - rust-tests
       - mutation-tests
       - load-and-chaos-tests
     steps:
@@ -1477,6 +1567,7 @@ jobs:
             "${{ needs.provenance-check.result }}"
             "${{ needs.e2e-tests.result }}"
             "${{ needs.rust-ffi-asan.result }}"
+            "${{ needs.rust-tests.result }}"
           )
 
           failed=false

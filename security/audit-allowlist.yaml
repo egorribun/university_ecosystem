@@ -406,6 +406,63 @@ npm:
       expires: 2026-08-31
       reason: |
         Transitive via reference cascade from lodash advisories.
+    # Session 9 — fresh upstream disclosures since main's last green run (the
+    # frontend lockfile is UNCHANGED by this PR; npm audit --omit=dev still
+    # returns 0, so all of these are dev/build-tooling only). npm rotated the
+    # source ids of advisories already allowlisted at 1119610 (tmp) / 1120011
+    # (vitest); the new ids + the package-name "via" rollups need explicit
+    # entries. Revisit when esbuild/vite/vitest ship patched dev tooling.
+    - id: "1120126"
+      package: "vitest"
+      owner: frontend@university.example
+      expires: 2026-08-31
+      reason: |
+        Vitest UI server arbitrary file read/execute (GHSA-5xrq-8626-4rwp) —
+        rotated source id of the already-allowlisted 1120011. The UI server is a
+        dev-only tool; npm audit --omit=dev returns 0.
+    - id: "1120654"
+      package: "tmp"
+      owner: frontend@university.example
+      expires: 2026-08-31
+      reason: |
+        tmp path traversal via unsanitized prefix/postfix (GHSA-ph9p-34f9-6g65) —
+        rotated source id of the already-allowlisted 1119610. Dev/test transitive.
+    - id: "1120679"
+      package: "esbuild"
+      owner: frontend@university.example
+      expires: 2026-08-31
+      reason: |
+        esbuild missing binary integrity verification in the Deno module enables
+        RCE via NPM_CONFIG_REGISTRY (GHSA-gv7w-rqvm-qjhr). The Deno vector does not
+        apply to our npm/Vite build; esbuild is build-time tooling only.
+    - id: "1120680"
+      package: "esbuild"
+      owner: frontend@university.example
+      expires: 2026-08-31
+      reason: |
+        esbuild arbitrary file read when running the dev server on Windows
+        (GHSA-g7r4-m6w7-qqqr, low). Affects `esbuild serve` only, not prod builds.
+    - id: "esbuild"
+      package: "esbuild"
+      owner: frontend@university.example
+      expires: 2026-08-31
+      reason: |
+        Package-name rollup for the esbuild advisories above (the dev-server /
+        Deno-module vectors); build-time tooling only.
+    - id: "vite"
+      package: "vite"
+      owner: frontend@university.example
+      expires: 2026-08-31
+      reason: |
+        Transitive via reference cascade — vite is flagged solely because it
+        depends on the esbuild advisories above. Build-time tooling only.
+    - id: "vite-node"
+      package: "vite-node"
+      owner: frontend@university.example
+      expires: 2026-08-31
+      reason: |
+        Transitive via reference cascade — vite-node is flagged solely via its
+        esbuild/vite dependency. Test-time tooling only.
 
 pip:
   advisories:
