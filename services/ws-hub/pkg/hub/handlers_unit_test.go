@@ -387,3 +387,119 @@ func TestHandleWebSocket_InvalidTicketRejected(t *testing.T) {
 	defer func() { _ = resp.Body.Close() }() //nolint:errcheck // test cleanup
 	assert.Equal(t, http.StatusUnauthorized, resp.StatusCode)
 }
+
+// ---------------------------------------------------------------------------
+// validateHMAC — direct branch coverage (testing session 11)
+//
+// ValidateToken routes by the token's alg header BEFORE calling validateHMAC,
+// so the wrong-alg branch inside validateHMAC's keyFunc is unreachable through
+// ValidateToken. These tests call (*Hub).validateHMAC directly (white-box, same
+// package) to cover every branch of handlers.go:352-380.
+// ---------------------------------------------------------------------------
+
+// signHS256 forges an HS256 token signed with secret (mirrors the inline forge
+// pattern already used in hub_test.go).
+func signHS256(t *testing.T, secret string, claims jwt.MapClaims) string {
+	t.Helper()
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	signed, err := token.SignedString([]byte(secret))
+	require.NoError(t, err)
+	return signed
+}
+
+func TestValidateHMAC_EmptySecrets(t *testing.T) {
+	h := setupTestHub()
+	// len(secrets) == 0 → handlers.go:354 returns jwt.ErrTokenSignatureInvalid directly.
+	sub, err := h.validateHMAC("any.token.value", nil)
+	assert.Empty(t, sub)
+	assert.ErrorIs(t, err, jwt.ErrTokenSignatureInvalid)
+
+	// Also exercise the explicit empty-slice form.
+	_, err = h.validateHMAC("any.token.value", []string{})
+	assert.ErrorIs(t, err, jwt.ErrTokenSignatureInvalid)
+}
+
+func TestValidateHMAC_WrongAlg(t *testing.T) {
+	h := setupTestHub()
+	secret := "hmac-secret" // pragma: allowlist secret
+
+	t.Run("RS256-signed token hits unexpected-signing-method", func(t *testing.T) {
+		priv, err := rsa.GenerateKey(rand.Reader, 2048)
+		require.NoError(t, err)
+		rsToken := signRS256(t, priv, "kid-x", jwt.MapClaims{
+			"sub": "user-rs",
+			"exp": time.Now().Add(time.Hour).Unix(),
+		})
+		// Direct call — keyFunc rejects t.Method != HS256 → lastErr → returned at :377.
+		sub, err := h.validateHMAC(rsToken, []string{secret})
+		assert.Empty(t, sub)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "unexpected signing method")
+	})
+
+	t.Run("none-alg token hits unexpected-signing-method", func(t *testing.T) {
+		noneTok := jwt.New(jwt.SigningMethodNone)
+		noneTok.Claims = jwt.MapClaims{"sub": "user-none"}
+		signed, err := noneTok.SignedString(jwt.UnsafeAllowNoneSignatureType)
+		require.NoError(t, err)
+		sub, err := h.validateHMAC(signed, []string{secret})
+		assert.Empty(t, sub)
+		require.Error(t, err)
+	})
+}
+
+func TestValidateHMAC_MissingSubClaim(t *testing.T) {
+	h := setupTestHub()
+	secret := "hmac-secret" // pragma: allowlist secret
+	// Valid signature + valid claims, but no "sub" → handlers.go:373 returns
+	// jwt.ErrTokenInvalidClaims directly.
+	token := signHS256(t, secret, jwt.MapClaims{
+		"exp": time.Now().Add(time.Hour).Unix(),
+		// deliberately no "sub"
+	})
+	sub, err := h.validateHMAC(token, []string{secret})
+	assert.Empty(t, sub)
+	assert.ErrorIs(t, err, jwt.ErrTokenInvalidClaims)
+}
+
+func TestValidateHMAC_MultiSecretRotation(t *testing.T) {
+	h := setupTestHub()
+	oldSecret := "old-rotated-out-secret" // pragma: allowlist secret
+	newSecret := "new-rotated-out-secret" // pragma: allowlist secret
+	// Signed with the SECOND secret → first secret's Parse fails (lastErr set,
+	// continue), second secret succeeds → loop returns sub at :371.
+	token := signHS256(t, newSecret, jwt.MapClaims{
+		"sub": "user-rotated",
+		"exp": time.Now().Add(time.Hour).Unix(),
+	})
+	sub, err := h.validateHMAC(token, []string{oldSecret, newSecret})
+	require.NoError(t, err)
+	assert.Equal(t, "user-rotated", sub)
+}
+
+func TestValidateHMAC_AllSecretsFail(t *testing.T) {
+	h := setupTestHub()
+	token := signHS256(t, "the-real-secret", jwt.MapClaims{ // pragma: allowlist secret
+		"sub": "user-x",
+		"exp": time.Now().Add(time.Hour).Unix(),
+	})
+	// Neither candidate secret matches → both Parse calls fail, lastErr returned
+	// at handlers.go:377. jwt/v5 joins ErrTokenSignatureInvalid into the parse
+	// error, so errors.Is unwraps it (assert.Equal would FAIL — it's wrapped).
+	sub, err := h.validateHMAC(token, []string{"wrong-1", "wrong-2"}) // pragma: allowlist secret
+	assert.Empty(t, sub)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, jwt.ErrTokenSignatureInvalid)
+}
+
+func TestValidateHMAC_ValidHS256(t *testing.T) {
+	h := setupTestHub()
+	secret := "hmac-secret" // pragma: allowlist secret
+	token := signHS256(t, secret, jwt.MapClaims{
+		"sub": "user-ok",
+		"exp": time.Now().Add(time.Hour).Unix(),
+	})
+	sub, err := h.validateHMAC(token, []string{secret})
+	require.NoError(t, err)
+	assert.Equal(t, "user-ok", sub)
+}

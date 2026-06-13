@@ -254,3 +254,77 @@ func restoreEnv(t *testing.T, key, value string) {
 		}
 	}
 }
+
+// TestGetEnvFloat64 covers getEnvFloat64: unset/empty → default, valid float
+// parse, and the parse-error warn-path (previously uncovered). t.Setenv auto-
+// restores via t.Cleanup, so there's no errcheck surface on os.Setenv.
+func TestGetEnvFloat64(t *testing.T) {
+	const key = "TEST_FLOAT64_XYZ"
+
+	tests := []struct {
+		name     string
+		setEnv   bool
+		envValue string
+		def      float64
+		want     float64
+	}{
+		{name: "unset returns default", setEnv: false, def: 1.0, want: 1.0},
+		{name: "empty string returns default", setEnv: true, envValue: "", def: 0.5, want: 0.5},
+		{name: "valid float is parsed", setEnv: true, envValue: "0.1", def: 1.0, want: 0.1},
+		{name: "integer-looking float is parsed", setEnv: true, envValue: "2", def: 1.0, want: 2.0},
+		{name: "negative float is parsed", setEnv: true, envValue: "-3.5", def: 1.0, want: -3.5},
+		{name: "parse error returns default (warn path)", setEnv: true, envValue: "not_a_float", def: 0.25, want: 0.25},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if tc.setEnv {
+				t.Setenv(key, tc.envValue)
+			} else if err := os.Unsetenv(key); err != nil {
+				t.Fatalf("failed to unset env: %v", err)
+			}
+
+			got := getEnvFloat64(key, tc.def)
+
+			assert.Equal(t, tc.want, got)
+		})
+	}
+}
+
+// TestGetEnvSlice covers getEnvSlice: unset/empty → default, comma-split with
+// per-part TrimSpace + skip-empty, and the all-empty-after-trim fallback
+// (previously uncovered). The "whitespace is NOT a separator" case pins the
+// strings.Split(s, ",") contract (guards against a future strings.Fields swap).
+func TestGetEnvSlice(t *testing.T) {
+	const key = "TEST_SLICE_XYZ"
+
+	tests := []struct {
+		name     string
+		setEnv   bool
+		envValue string
+		def      []string
+		want     []string
+	}{
+		{name: "unset returns default", setEnv: false, def: []string{"a", "b"}, want: []string{"a", "b"}},
+		{name: "empty string returns default", setEnv: true, envValue: "", def: []string{"x"}, want: []string{"x"}},
+		{name: "single item is trimmed", setEnv: true, envValue: "  one  ", def: []string{"fallback"}, want: []string{"one"}},
+		{name: "comma-separated items split and trimmed", setEnv: true, envValue: "a, b ,c", def: []string{"fallback"}, want: []string{"a", "b", "c"}},
+		{name: "empty-after-trim parts are skipped", setEnv: true, envValue: "a,,  ,b", def: []string{"fallback"}, want: []string{"a", "b"}},
+		{name: "all-empty-after-trim returns default", setEnv: true, envValue: " , ,  ", def: []string{"fallback-1", "fallback-2"}, want: []string{"fallback-1", "fallback-2"}},
+		{name: "whitespace is not a separator (only comma)", setEnv: true, envValue: "alpha beta", def: []string{"fallback"}, want: []string{"alpha beta"}},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if tc.setEnv {
+				t.Setenv(key, tc.envValue)
+			} else if err := os.Unsetenv(key); err != nil {
+				t.Fatalf("failed to unset env: %v", err)
+			}
+
+			got := getEnvSlice(key, tc.def)
+
+			assert.Equal(t, tc.want, got)
+		})
+	}
+}

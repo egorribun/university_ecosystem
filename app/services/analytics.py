@@ -197,7 +197,7 @@ class AnalyticsService:
             UNION ALL
             SELECT
                 'events_attended' as type, COUNT(*) as count
-            FROM event_attendees WHERE user_id = :user_id
+            FROM event_attendance WHERE user_id = :user_id
             UNION ALL
             SELECT
                 'messages_sent' as type, COUNT(*) as count

@@ -398,3 +398,47 @@ func TestValidateToken(t *testing.T) {
 		assert.Error(t, err)
 	})
 }
+
+// TestHub_HandleRegister_MaxClientsReject covers the capacity-reject branch in
+// hub.go:219 (h.maxClients > 0 && len(h.Clients) >= h.maxClients). The 2nd
+// client must hit closeOnce.Do(close(Send)) + Conn.Close() and NOT be added to
+// the Clients map. newConnPair / newClientOn live in client_unit_test.go (same
+// package). A non-nil *websocket.Conn is REQUIRED: handleRegister calls
+// client.Conn.Close() on reject (hub.go:225) — a nil Conn would nil-panic.
+func TestHub_HandleRegister_MaxClientsReject(t *testing.T) {
+	h := setupTestHub()
+	h.maxClients = 1 // private field, white-box override (cfg.MaxClients=10 default)
+	ctx := context.Background()
+
+	// First client: real server-side conn, registers successfully.
+	srv1, _ := newConnPair(t)
+	c1 := newClientOn(h, srv1, "cap-client-1", "u1")
+	h.handleRegister(ctx, c1)
+
+	h.mu.RLock()
+	require.Len(t, h.Clients, 1, "first client should register")
+	_, ok1 := h.Clients["cap-client-1"]
+	h.mu.RUnlock()
+	require.True(t, ok1)
+
+	// Second client: hub is at capacity → reject branch (hub.go:219-228).
+	srv2, _ := newConnPair(t)
+	c2 := newClientOn(h, srv2, "cap-client-2", "u2")
+	h.handleRegister(ctx, c2)
+
+	// Rejected client is NOT in the map.
+	h.mu.RLock()
+	assert.Len(t, h.Clients, 1, "second client must be rejected at capacity")
+	_, ok2 := h.Clients["cap-client-2"]
+	h.mu.RUnlock()
+	assert.False(t, ok2, "rejected client must not appear in Clients map")
+
+	// Reject path ran closeOnce.Do(close(Send)) — a receive on a closed empty
+	// channel returns immediately with ok=false.
+	select {
+	case _, recvOK := <-c2.Send:
+		assert.False(t, recvOK, "rejected client's Send channel must be closed")
+	default:
+		t.Errorf("expected rejected client's Send channel to be closed (closeOnce ran), got open channel")
+	}
+}
