@@ -354,3 +354,106 @@ func TestFileProcessSyncHandler_Errors(t *testing.T) {
 		assert.Contains(t, w.Body.String(), "processing_failed")
 	})
 }
+
+// spyFileProcessingClient wraps mockFileProcessingServiceClient to record whether
+// ProcessFile was invoked, so the dispatch test can assert which branch of
+// ProxyOrFileHandler fired without standing up a real gRPC server.
+type spyFileProcessingClient struct {
+	mock   *mockFileProcessingServiceClient
+	called *bool
+}
+
+func (s *spyFileProcessingClient) ProcessFile(ctx context.Context, in *pb.ProcessFileRequest, opts ...grpc.CallOption) (*pb.ProcessFileResponse, error) {
+	if s.called != nil {
+		*s.called = true
+	}
+	return s.mock.ProcessFile(ctx, in, opts...)
+}
+
+// TestProxyOrFileHandler_Dispatch verifies the router/dispatch decision in
+// ProxyOrFileHandler (handlers.go:93-100): only POST /v1/files/process/sync is
+// routed to the gRPC file handler; every other method/path falls through to the
+// reverse proxy. The gRPC handler body itself is covered by
+// TestFileProcessSyncHandler_Errors — here we exercise only the dispatch branch.
+func TestProxyOrFileHandler_Dispatch(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	ctx := context.Background()
+
+	const proxySentinelStatus = http.StatusTeapot // 418 — unmistakable proxy sentinel
+	const proxySentinelBody = "proxied-ok"
+
+	// There's no injectable proxyFn in ProxyOrFileHandler, so the proxy "spy" must
+	// be a real httptest backend behind createTestProxy. It records the hit and
+	// returns a sentinel status so we can assert status passthrough.
+	newRouter := func(proxyCalled, grpcCalled *bool) *gin.Engine {
+		backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			*proxyCalled = true
+			w.WriteHeader(proxySentinelStatus)
+			if _, err := w.Write([]byte(proxySentinelBody)); err != nil {
+				t.Errorf("backend write failed: %v", err)
+			}
+		}))
+		t.Cleanup(backend.Close)
+
+		proxy := createTestProxy(backend.URL)
+		grpcMock := &spyFileProcessingClient{
+			mock:   &mockFileProcessingServiceClient{resp: &pb.ProcessFileResponse{JobId: "dispatch-job", DestKey: "out.png"}},
+			called: grpcCalled,
+		}
+		dummyConn := &grpc.ClientConn{} // non-nil to pass the grpcConn==nil guard
+
+		r := gin.New()
+		// The /v1/*path wildcard makes c.Param("path") resolve to the captured
+		// suffix (handlers.go:94). Any() registers the handler for all verbs.
+		r.Any("/v1/*path", ProxyOrFileHandler(proxy, nil, ctx, dummyConn, grpcMock, logger))
+		return r
+	}
+
+	t.Run("GET any path routes to proxy", func(t *testing.T) {
+		var proxyCalled, grpcCalled bool
+		router := newRouter(&proxyCalled, &grpcCalled)
+
+		w := newCloseNotifyingRecorder()
+		req := httptest.NewRequest(http.MethodGet, "/v1/files/process/sync", nil)
+		router.ServeHTTP(w, req)
+
+		// Even on the file path, a GET fails the method guard → proxy branch.
+		assert.True(t, proxyCalled, "GET must route to the reverse proxy")
+		assert.False(t, grpcCalled, "gRPC handler must not fire for GET")
+		assert.Equal(t, proxySentinelStatus, w.Code, "proxy backend status must pass through")
+		assert.Contains(t, w.Body.String(), proxySentinelBody)
+	})
+
+	t.Run("POST non-file path routes to proxy", func(t *testing.T) {
+		var proxyCalled, grpcCalled bool
+		router := newRouter(&proxyCalled, &grpcCalled)
+
+		w := newCloseNotifyingRecorder()
+		req := httptest.NewRequest(http.MethodPost, "/v1/other/endpoint", bytes.NewReader([]byte("{}")))
+		req.Header.Set("Content-Type", "application/json")
+		router.ServeHTTP(w, req)
+
+		// path == "/other/endpoint" != "/files/process/sync" → proxy branch.
+		assert.True(t, proxyCalled, "POST to a non-file path must route to the reverse proxy")
+		assert.False(t, grpcCalled, "gRPC handler must not fire for a non-file POST path")
+		assert.Equal(t, proxySentinelStatus, w.Code, "proxy backend status must pass through")
+		assert.Contains(t, w.Body.String(), proxySentinelBody)
+	})
+
+	t.Run("POST files process sync routes to gRPC", func(t *testing.T) {
+		var proxyCalled, grpcCalled bool
+		router := newRouter(&proxyCalled, &grpcCalled)
+
+		w := newCloseNotifyingRecorder()
+		reqBody := `{"id":"550e8400-e29b-41d4-a716-446655440000","type":"resize","source_key":"in.png","dest_key":"out.png"}`
+		req := httptest.NewRequest(http.MethodPost, "/v1/files/process/sync", bytes.NewReader([]byte(reqBody)))
+		req.Header.Set("Content-Type", "application/json")
+		router.ServeHTTP(w, req)
+
+		// method==POST && path=="/files/process/sync" → gRPC branch (handlers.go:95-98).
+		assert.True(t, grpcCalled, "POST /v1/files/process/sync must route to the gRPC file handler")
+		assert.False(t, proxyCalled, "reverse proxy must not fire for the file-process path")
+		assert.Equal(t, http.StatusOK, w.Code)
+		assert.Contains(t, w.Body.String(), "out.png")
+	})
+}

@@ -363,20 +363,20 @@ jobs:
         # file-processor validateProcessFileRequest rejection arms.
         include:
           - service: services/gateway
-            # Measured 64.3% unit-only ×2 (s9 + s10 Optional RS256-downgrade /
-            # malformed-alg / valid-RS256 / revoked-session + extractAlg arms +
-            # JWKS equal-key). Floor 62.
-            coverage-threshold: 62
+            # Measured 67.5% unit-only ×2 (s11 getEnvFloat64/getEnvSlice config
+            # branches + ProxyOrFileHandler dispatch GET/POST-nonfile/POST-file
+            # routing). Floor 65 = floor(67.5) − 2.
+            coverage-threshold: 65
           - service: services/file-processor
             # Measured 52.3% unit-only ×2 (s9 + s10 validateProcessFileRequest
             # empty-id/unsupported-type/empty-keys/options-limit/oversized-opt).
             # Floor 50.
             coverage-threshold: 50
           - service: services/ws-hub
-            # Measured 67.2% unit-only ×2 (s9 + s10 client.go ReadPump/WritePump/
-            # handleMessage guards/JoinRoom/LeaveRoom/safeSend via gorilla pairs).
-            # Floor 65.
-            coverage-threshold: 65
+            # Measured 68.3% unit-only (s11 validateHMAC empty/wrong-alg/missing-sub/
+            # rotation/all-fail/valid branches + handleRegister max-clients reject).
+            # min-of-two 68.3 → Floor 66 = floor(68.3) − 2.
+            coverage-threshold: 66
           - service: services/cmd/uni-cli
             coverage-threshold: 80
     needs: pre-commit-check
