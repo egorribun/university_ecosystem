@@ -1,0 +1,175 @@
+/**
+ * Render coverage tests (testing session 10) for the small, prop-driven navbar
+ * pieces that prior sessions left untested: DesktopNav, NavbarLogo,
+ * MobileDrawerProfile, MobileDrawerQuickActions, and UserMenu (loading /
+ * unauthenticated / authenticated states). Mirrors the renderWithRouter +
+ * stub-props pattern from NavbarOverflowMenu.test.tsx (session 9 template).
+ */
+import { screen } from "@testing-library/react"
+import userEvent from "@testing-library/user-event"
+import { describe, expect, it, vi } from "vitest"
+import { Home, Calendar } from "lucide-react"
+import type { TFunction } from "i18next"
+
+// UserMenu's authed branch renders MessengerButton + NotificationsBell, which
+// require MessengerProvider / notification context renderWithRouter doesn't
+// supply. Stub them — the focus here is UserMenu's own auth-state markup.
+vi.mock("@/components/layout/MessengerButton", () => ({
+  default: () => <div data-testid="messenger-button" />,
+}))
+vi.mock("@/components/feedback/NotificationsBell", () => ({
+  default: () => <div data-testid="notifications-bell" />,
+}))
+
+import { DesktopNav } from "@/components/navbar/DesktopNav"
+import { NavbarLogo } from "@/components/navbar/NavbarLogo"
+import { MobileDrawerProfile } from "@/components/navbar/MobileDrawerProfile"
+import { MobileDrawerQuickActions } from "@/components/navbar/MobileDrawerQuickActions"
+import { UserMenu } from "@/components/navbar/UserMenu"
+import { renderWithRouter } from "@/tests/helpers/renderWithRouter"
+import { testUser } from "@/tests/mocks/handlers"
+import type { NavigationItem } from "@/config/navigation"
+
+const t = ((key: string) => key) as unknown as TFunction
+
+const navItems: NavigationItem[] = [
+  { to: "/news", label: "News", icon: Home },
+  { to: "/events", label: "Events", icon: Calendar },
+]
+
+describe("DesktopNav", () => {
+  it("renders a list item + premium link per nav entry", async () => {
+    await renderWithRouter({
+      ui: () => (
+        <DesktopNav
+          menuLinks={navItems}
+          isActive={(to) => to === "/news"}
+          isSameTarget={() => false}
+          scrollToTop={vi.fn()}
+          markScrollFromBottom={vi.fn()}
+          prefersReducedMotion
+          isCompact={false}
+        />
+      ),
+      authProvider: false,
+    })
+    expect(screen.getByText("News")).toBeInTheDocument()
+    expect(screen.getByText("Events")).toBeInTheDocument()
+    // active entry carries data-active.
+    const newsLink = document.getElementById("navbar-link-news")
+    expect(newsLink).toHaveAttribute("data-active")
+  })
+
+  it("scrolls to top instead of navigating when the link targets the current page", async () => {
+    const scrollToTop = vi.fn()
+    await renderWithRouter({
+      ui: () => (
+        <DesktopNav
+          menuLinks={navItems}
+          isActive={() => false}
+          isSameTarget={(to) => to === "/news"}
+          scrollToTop={scrollToTop}
+          markScrollFromBottom={vi.fn()}
+          prefersReducedMotion
+          isCompact
+        />
+      ),
+      authProvider: false,
+    })
+    await userEvent.click(screen.getByText("News"))
+    expect(scrollToTop).toHaveBeenCalledWith("auto")
+  })
+})
+
+describe("NavbarLogo", () => {
+  it("renders the brand link to /dashboard with alt + brand name", async () => {
+    const onLogoClick = vi.fn()
+    await renderWithRouter({
+      ui: () => (
+        <NavbarLogo
+          t={t}
+          isMobile={false}
+          isCompact={false}
+          isPhone={false}
+          prefersReducedMotion
+          onLogoClick={onLogoClick}
+          markScrollFromBottom={vi.fn()}
+        />
+      ),
+      authProvider: false,
+    })
+    const link = document.getElementById("navbar-logo-link")
+    expect(link).toHaveAttribute("href", "/dashboard")
+    expect(screen.getByText("navigation:brandName")).toBeInTheDocument()
+  })
+})
+
+describe("MobileDrawerProfile", () => {
+  it("renders name + role chip and fires onProfileClick", async () => {
+    const onProfileClick = vi.fn()
+    await renderWithRouter({
+      ui: () => <MobileDrawerProfile user={testUser} onProfileClick={onProfileClick} t={t} />,
+      authProvider: false,
+    })
+    expect(screen.getByText(testUser.full_name as string)).toBeInTheDocument()
+    expect(screen.getByText("navigation:role.student")).toBeInTheDocument()
+    await userEvent.click(screen.getByRole("button"))
+    expect(onProfileClick).toHaveBeenCalledOnce()
+  })
+
+  it("shows the admin role label for admin users", async () => {
+    await renderWithRouter({
+      ui: () => (
+        <MobileDrawerProfile user={{ ...testUser, role: "admin" }} onProfileClick={vi.fn()} t={t} />
+      ),
+      authProvider: false,
+    })
+    expect(screen.getByText("navigation:role.admin")).toBeInTheDocument()
+  })
+})
+
+describe("MobileDrawerQuickActions", () => {
+  it("renders the 3 quick-action buttons and wires their handlers", async () => {
+    const onSearch = vi.fn()
+    const onNotifications = vi.fn()
+    const onSettings = vi.fn()
+    await renderWithRouter({
+      ui: () => (
+        <MobileDrawerQuickActions
+          onSearch={onSearch}
+          onNotifications={onNotifications}
+          onSettings={onSettings}
+          prefersReducedMotion
+          t={(key) => key}
+        />
+      ),
+      authProvider: false,
+    })
+    await userEvent.click(screen.getByRole("button", { name: "navigation:menu.search" }))
+    await userEvent.click(screen.getByRole("button", { name: "navigation:menu.notifications" }))
+    await userEvent.click(screen.getByRole("button", { name: "navigation:menu.settings" }))
+    expect(onSearch).toHaveBeenCalledOnce()
+    expect(onNotifications).toHaveBeenCalledOnce()
+    expect(onSettings).toHaveBeenCalledOnce()
+  })
+})
+
+describe("UserMenu", () => {
+  it("renders the loading skeleton when loading", async () => {
+    await renderWithRouter({
+      ui: () => <UserMenu user={null} isAuth={false} loading go={vi.fn()} t={(key) => key} />,
+    })
+    expect(screen.getByLabelText("common:aria.loadingUserMenu")).toBeInTheDocument()
+  })
+
+  it("renders the authenticated profile affordance + routes to /profile", async () => {
+    const go = vi.fn()
+    await renderWithRouter({
+      ui: () => <UserMenu user={testUser} isAuth loading={false} go={go} t={(key) => key} />,
+    })
+    // The authed branch renders the profile avatar + button (both titled).
+    expect(screen.getAllByTitle("navigation:aria.openProfile").length).toBeGreaterThan(0)
+    await userEvent.click(screen.getByRole("button", { name: "navigation:aria.openProfile" }))
+    expect(go).toHaveBeenCalledWith("/profile")
+  })
+})

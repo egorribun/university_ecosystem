@@ -57,20 +57,20 @@ export default defineConfig({
         "src/utils/spotify.ts",
         "src/utils/workerChrome.ts",
       ],
-      // Ratchet floors at measured reality. After the session-9 slice
-      // (NavbarOverflowMenu + AdminBackdrop + AdminNotifications topics flows +
-      // NewsHeader handlers): statements 68.17 / branches 73.08 / functions
-      // 69.09 / lines 68.17. functions RAISED 67→68 (69.09 → 1.09 buffer,
-      // ≥ the ~0.5 no-cushion margin). statements/lines HELD at 67 (68.17 → a
-      // 68 floor is only 0.17 over) and branches HELD at 72 (73.08 → a 73
-      // floor is only 0.08 over). NO-REGRESSION floors, NOT the target — raise
+      // Ratchet floors at measured reality. After the session-10 slice
+      // (api/notifications generated-SDK mocks + NavbarPieces render batch +
+      // ContentCard slots + uiMiscPrimitives Dialog/MediaSlot/table): statements
+      // 68.51 / branches 73.69 / functions 69.92 / lines 68.51. All four RAISED:
+      // statements/lines 67→68 (68.51 → 0.51 buffer), branches 72→73 (73.69 →
+      // 0.69 buffer), functions 68→69 (69.92 → 0.92 buffer) — each clears the
+      // ~0.5pp no-cushion margin. NO-REGRESSION floors, NOT the target — raise
       // incrementally (target 90; local == CI, so there is no integration
       // cushion: keep ≥~0.5pp headroom before any raise).
       thresholds: {
-        statements: 67,
-        branches: 72,
-        functions: 68,
-        lines: 67,
+        statements: 68,
+        branches: 73,
+        functions: 69,
+        lines: 68,
       },
     },
   },
