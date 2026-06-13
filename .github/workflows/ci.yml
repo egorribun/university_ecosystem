@@ -290,11 +290,11 @@ jobs:
       test-group-name: "All-${{ matrix.name }}"
       test-pattern: "tests/"
       python-version: ${{ matrix.python-version }}
-      # Ratchet floor at measured reality (local hermetic ~85.33% after the
-      # service/repository-coverage climb; CI Linux+integration measures higher).
+      # Ratchet floor at measured reality (local hermetic 88.04% after the
+      # session-10 service-layer climb; CI Linux+integration measures ~0.7pp higher).
       # Raise incrementally as the backend coverage campaign lands. Unified with
       # pyproject/Makefile.
-      coverage-threshold: ${{ matrix.coverage-check && 86 || 0 }}
+      coverage-threshold: ${{ matrix.coverage-check && 88 || 0 }}
       run-integration-tests: ${{ matrix.run-integration }}
       parallel-workers: 0 # LOW-W19: 0 = auto-detect workers via pytest-xdist (-n auto)
       python-gil: ${{ matrix.free-threading && '0' || '1' }}  # MOD-24-03
@@ -358,19 +358,25 @@ jobs:
         # Session 9 climb (first Go ratchet): new dependency-free unit tests
         # (mock RESP servers, httptest JWKS, Temporal testsuite, gRPC metadata
         # auth) lifted every service. Floor = floor(measured ×2) − 2 buffer.
+        # Session 10 climb: ws-hub client.go pump/room/handleMessage unit tests
+        # (gorilla conn pairs); gateway Optional()/extractAlg/JWKS-equal-key edges;
+        # file-processor validateProcessFileRequest rejection arms.
         include:
           - service: services/gateway
-            # Measured 63.0% unit-only ×2 (setupRouter smoke + Redis-revocation
-            # RESP mock + JWKS error paths + RequireRole). Floor 61.
-            coverage-threshold: 61
-          - service: services/file-processor
-            # Measured 51.4% unit-only ×2 (cmd/* auth helpers + resolver/sanitizeKey
-            # + Temporal testsuite workflow + depth middleware). Floor 49.
-            coverage-threshold: 49
-          - service: services/ws-hub
-            # Measured 64.9% unit-only ×2 (NATS handler closures + Run/broadcast
-            # loop + RS256/JWKS + ticket-RESP mock + WS upgrade E2E). Floor 62.
+            # Measured 64.3% unit-only ×2 (s9 + s10 Optional RS256-downgrade /
+            # malformed-alg / valid-RS256 / revoked-session + extractAlg arms +
+            # JWKS equal-key). Floor 62.
             coverage-threshold: 62
+          - service: services/file-processor
+            # Measured 52.3% unit-only ×2 (s9 + s10 validateProcessFileRequest
+            # empty-id/unsupported-type/empty-keys/options-limit/oversized-opt).
+            # Floor 50.
+            coverage-threshold: 50
+          - service: services/ws-hub
+            # Measured 67.2% unit-only ×2 (s9 + s10 client.go ReadPump/WritePump/
+            # handleMessage guards/JoinRoom/LeaveRoom/safeSend via gorilla pairs).
+            # Floor 65.
+            coverage-threshold: 65
           - service: services/cmd/uni-cli
             coverage-threshold: 80
     needs: pre-commit-check
