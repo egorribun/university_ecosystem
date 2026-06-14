@@ -4,7 +4,12 @@ use pyo3::prelude::*;
 use rayon::prelude::*;
 use chrono::{Utc, TimeZone, Datelike, Duration, NaiveDate, Weekday};
 
-#[pyclass]
+// pyo3 0.29 (RUSTSEC-2026-0176/-0177 bump): the automatic FromPyObject derive
+// for Clone #[pyclass] types is becoming opt-in. ScheduleItem is extracted from
+// Python as Vec<ScheduleItem>/&ScheduleItem in the #[pyfunction]s below, so it
+// needs the derive — opt in explicitly (behavior-preserving + forward-compatible
+// with the pyo3 release that removes the auto-derive).
+#[pyclass(from_py_object)]
 #[derive(Clone, Debug)]
 pub struct ScheduleItem {
     #[pyo3(get, set)]
@@ -176,7 +181,12 @@ pub fn parse_weekday(s: &str) -> Option<Weekday> {
     }
 }
 
-#[pyclass]
+// pyo3 0.29 (RUSTSEC-2026-0176/-0177 bump): the automatic FromPyObject derive
+// for Clone #[pyclass] types is becoming opt-in. ScheduleItem is extracted from
+// Python as Vec<ScheduleItem>/&ScheduleItem in the #[pyfunction]s below, so it
+// needs the derive — opt in explicitly (behavior-preserving + forward-compatible
+// with the pyo3 release that removes the auto-derive).
+#[pyclass(from_py_object)]
 #[derive(Clone, Debug)]
 pub struct PartitionInfo {
     #[pyo3(get)]

@@ -13,7 +13,15 @@ COPY gen/go ./gen/go
 COPY services/gateway/go.mod services/gateway/go.sum* ./services/gateway/
 
 WORKDIR /app/services/gateway
-RUN go mod download
+# Retry to tolerate transient "unexpected EOF" from proxy.golang.org under
+# bandwidth contention with parallel compose builds (Go does not retry zip
+# fetches; partial downloads persist within the RUN, so retries resume).
+RUN n=0; until go mod download; do \
+      n=$((n + 1)); \
+      if [ "$n" -ge 5 ]; then echo "go mod download failed after $n attempts" >&2; exit 1; fi; \
+      echo "go mod download failed, retry $n/5 in 5s..."; \
+      sleep 5; \
+    done
 
 # Copy source
 COPY services/gateway .

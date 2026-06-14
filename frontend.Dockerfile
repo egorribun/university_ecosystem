@@ -17,8 +17,17 @@ RUN wasm-pack build rust-crypto --target web \
 FROM base AS deps
 COPY frontend/package.json frontend/package-lock.json ./
 COPY frontend/scripts ./scripts/
+# Retry to tolerate transient ECONNRESET / "network aborted" from the npm
+# registry under bandwidth contention with parallel compose builds (npm does
+# not reliably retry a mid-stream socket reset). The /root/.npm cache mount
+# means already-fetched tarballs resume from cache on retry.
 RUN --mount=type=cache,target=/root/.npm \
-  npm ci --legacy-peer-deps
+  n=0; until npm ci --legacy-peer-deps; do \
+    n=$((n + 1)); \
+    if [ "$n" -ge 5 ]; then echo "npm ci failed after $n attempts" >&2; exit 1; fi; \
+    echo "npm ci failed (network), retry $n/5 in 5s..."; \
+    sleep 5; \
+  done
 
 # Stage 4: Builder
 FROM base AS builder
@@ -129,8 +138,16 @@ COPY frontend/scripts ./scripts/
 # `preinstall` (ensure-wasm.mjs that creates placeholder pkg/ dirs for the
 # wasm-sanitizer + rust-crypto file:// deps) is preserved and still runs.
 RUN npm pkg delete scripts.prepare scripts.postinstall
+# Retry to tolerate transient ECONNRESET / "network aborted" from the npm
+# registry under bandwidth contention with parallel compose builds (this step
+# failed exactly that way). The /root/.npm cache mount resumes from cache.
 RUN --mount=type=cache,target=/root/.npm \
-  npm ci --omit=dev --legacy-peer-deps
+  n=0; until npm ci --omit=dev --legacy-peer-deps; do \
+    n=$((n + 1)); \
+    if [ "$n" -ge 5 ]; then echo "npm ci failed after $n attempts" >&2; exit 1; fi; \
+    echo "npm ci failed (network), retry $n/5 in 5s..."; \
+    sleep 5; \
+  done
 
 # Stage 6: Runtime — Node SSR (Wave 131 Phase 4)
 # Replaces the prior `nginxinc/nginx-unprivileged:1.28.2-alpine` runtime
