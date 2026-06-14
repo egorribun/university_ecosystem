@@ -13,7 +13,15 @@ COPY gen/go ./gen/go
 COPY services/file-processor/go.mod services/file-processor/go.sum* ./services/file-processor/
 
 WORKDIR /app/services/file-processor
-RUN go mod download
+# Retry to tolerate transient "unexpected EOF" from proxy.golang.org under
+# bandwidth contention with parallel compose builds (Go does not retry zip
+# fetches; partial downloads persist within the RUN, so retries resume).
+RUN n=0; until go mod download; do \
+      n=$((n + 1)); \
+      if [ "$n" -ge 5 ]; then echo "go mod download failed after $n attempts" >&2; exit 1; fi; \
+      echo "go mod download failed, retry $n/5 in 5s..."; \
+      sleep 5; \
+    done
 
 # Copy source
 COPY services/file-processor .
@@ -32,9 +40,17 @@ RUN CGO_ENABLED=0 GOOS=linux go build \
 # (used at docker-compose.full.yml:435).
 FROM alpine:3.20 AS health-probe
 ARG GRPC_HEALTH_PROBE_VERSION=v0.4.27
+# Retry to tolerate transient network errors from the GitHub release CDN under
+# bandwidth contention with parallel compose builds. -O truncates on retry, so
+# no stale partial; the until loop hard-fails after 5 attempts.
 RUN apk add --no-cache wget && \
-    wget -qO /grpc_health_probe \
-      "https://github.com/grpc-ecosystem/grpc-health-probe/releases/download/${GRPC_HEALTH_PROBE_VERSION}/grpc_health_probe-linux-amd64" && \
+    n=0; until wget -qO /grpc_health_probe \
+      "https://github.com/grpc-ecosystem/grpc-health-probe/releases/download/${GRPC_HEALTH_PROBE_VERSION}/grpc_health_probe-linux-amd64"; do \
+      n=$((n + 1)); \
+      if [ "$n" -ge 5 ]; then echo "grpc_health_probe download failed after $n attempts" >&2; exit 1; fi; \
+      echo "grpc_health_probe download failed, retry $n/5 in 5s..."; \
+      sleep 5; \
+    done && \
     chmod +x /grpc_health_probe
 
 # Runtime stage
