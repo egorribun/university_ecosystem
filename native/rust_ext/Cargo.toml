@@ -9,7 +9,7 @@ name = "rust_ext"
 crate-type = ["cdylib", "rlib"]  # rlib needed for cargo-fuzz and #[cfg(test)]
 
 [dependencies]
-pyo3 = { version = "0.27", features = ["chrono"] }
+pyo3 = { version = "0.29", features = ["chrono"] }  # RUSTSEC-2026-0176/-0177: patched in >=0.29.0
 # TD-22-02 (Wave 22): Pin exact versions for reproducible builds of
 # security-critical FFI code. Renovate will propose updates via Cargo rule.
 rayon = "=1.11.0"

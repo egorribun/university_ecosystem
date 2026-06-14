@@ -8,7 +8,7 @@
 //! run the same ammonia configuration, so a given HTML string will always
 //! produce the same sanitized output on both sides.
 
-use ammonia::{Builder, UrlRelative};
+use ammonia::Builder;
 use pyo3::prelude::*;
 use std::collections::{HashMap, HashSet};
 
