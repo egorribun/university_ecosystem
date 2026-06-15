@@ -4087,7 +4087,7 @@ requires-dist = [
     { name = "diskcache", specifier = ">=5.6.3" },
     { name = "elasticsearch", extras = ["async"], specifier = ">=9.3.0,<10.0.0" },
     { name = "email-validator", specifier = ">=2.3.0,<3" },
-    { name = "fastapi", specifier = ">=0.135.3,<0.137" },
+    { name = "fastapi", specifier = ">=0.135.3,<0.138" },
     { name = "filelock", specifier = ">=3.25.2" },
     { name = "geoip2", specifier = ">=5.2.0" },
     { name = "grpcio", specifier = ">=1.80.0" },
