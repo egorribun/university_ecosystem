@@ -549,3 +549,33 @@ func TestJWKSRefresher(t *testing.T) {
 
 	assert.NotNil(t, m.rsaPublicKey.Load())
 }
+
+func TestJWTMiddleware_CheckL1Cache(t *testing.T) {
+	m := NewJWTMiddleware(testSecret, nil)
+
+	t.Run("miss when key absent", func(t *testing.T) {
+		exists, found := m.checkL1Cache("absent-key")
+		assert.False(t, found)
+		assert.False(t, exists)
+	})
+
+	t.Run("hit for a far-from-expiry entry", func(t *testing.T) {
+		// XFetch refreshes when `remaining < threshold`. A far-future storedAt makes
+		// `remaining` enormous so the probabilistic refresh never fires → the hit
+		// branch (l1Hits + return entry.exists,true) is exercised deterministically.
+		// (A now-fresh entry has a ~37% refresh probability with beta=1.0 → flaky.)
+		m.l1cache.Add("hit-key", cacheEntry{exists: true, storedAt: time.Now().Add(1000 * time.Hour)})
+		exists, found := m.checkL1Cache("hit-key")
+		assert.True(t, found)
+		assert.True(t, exists)
+	})
+
+	t.Run("probabilistic refresh reports a miss for a stale entry", func(t *testing.T) {
+		// storedAt far past the L1 TTL → XFetch deterministically refreshes →
+		// checkL1Cache returns (false, false) so the caller revalidates via Redis.
+		m.l1cache.Add("stale-key", cacheEntry{exists: true, storedAt: time.Now().Add(-time.Hour)})
+		exists, found := m.checkL1Cache("stale-key")
+		assert.False(t, found)
+		assert.False(t, exists)
+	})
+}
