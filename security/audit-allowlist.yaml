@@ -463,6 +463,104 @@ npm:
       reason: |
         Transitive via reference cascade — vite-node is flagged solely via its
         esbuild/vite dependency. Test-time tooling only.
+    # ── Session-12 (2026-06-16) fresh-disclosure batch ───────────────────────
+    # 10 advisories + 2 package-name rollups published after #1139 merged, on an
+    # UNCHANGED package-lock (the s12 PR added zero npm deps). 7 are dev/build
+    # tooling (never shipped); 3 (form-data, protobufjs ×2) sit in the prod npm
+    # tree but are NOT reachable in the browser bundle (verified `npm audit
+    # --omit=dev`). A proper transitive bump (axios/@opentelemetry/vite) is its
+    # own dependency-bump wave — these temporary entries unblock CI meanwhile.
+    - id: "1120809"
+      package: "@vitest/browser"
+      owner: frontend@university.example
+      expires: 2026-09-30
+      reason: |
+        Critical: Vitest Browser Mode exposes a CDP-proxy API (GHSA-7q8f-…).
+        Test runner only — @vitest/browser is a devDependency, never bundled.
+    - id: "1120790"
+      package: "vite"
+      owner: frontend@university.example
+      expires: 2026-09-30
+      reason: |
+        High: vite `server.fs.deny` bypass on Windows alternate paths. Affects
+        the DEV server only; the production static bundle ships no vite runtime.
+    - id: "1120791"
+      package: "vite"
+      owner: frontend@university.example
+      expires: 2026-09-30
+      reason: |
+        High: vite `server.fs.deny` bypass (alternate source ID). Dev server only.
+    - id: "1120785"
+      package: "vite"
+      owner: frontend@university.example
+      expires: 2026-09-30
+      reason: |
+        Moderate: launch-editor NTLMv2 hash disclosure via UNC path (vite dev
+        error overlay). Dev server only; not in the production bundle.
+    - id: "1120786"
+      package: "vite"
+      owner: frontend@university.example
+      expires: 2026-09-30
+      reason: |
+        Moderate: launch-editor NTLMv2 disclosure (alternate source ID). Dev only.
+    - id: "1120730"
+      package: "ws"
+      owner: frontend@university.example
+      expires: 2026-09-30
+      reason: |
+        High: ws memory-exhaustion DoS from tiny fragments. Transitive via dev
+        tooling (lhci / vitest); the browser app uses native WebSocket, not `ws`.
+    - id: "1120731"
+      package: "ws"
+      owner: frontend@university.example
+      expires: 2026-09-30
+      reason: |
+        High: ws memory-exhaustion DoS (alternate source ID). Dev-tool transitive.
+    - id: "1120743"
+      package: "form-data"
+      owner: frontend@university.example
+      expires: 2026-09-30
+      reason: |
+        High: form-data CRLF injection via predictable boundary (GHSA-fjxv-…).
+        In the prod npm tree via axios, but the BROWSER bundle uses the native
+        FormData API — `form-data` is axios's Node-only adapter, never bundled,
+        so the vulnerable boundary code never executes in the app.
+    - id: "1120799"
+      package: "protobufjs"
+      owner: frontend@university.example
+      expires: 2026-09-30
+      reason: |
+        High: protobufjs DoS via unbounded Any expansion. In the prod tree via
+        @opentelemetry, but the frontend exporter only ENCODES outbound traces —
+        it never parses untrusted protobuf, which the advisory requires.
+    - id: "1120742"
+      package: "protobufjs"
+      owner: frontend@university.example
+      expires: 2026-09-30
+      reason: |
+        Moderate: protobufjs schema-derived names shadow runtime-significant
+        properties. Same not-exploitable rationale as 1120799 (encode-only use).
+    - id: "@apidevtools/swagger-parser"
+      package: "@apidevtools/swagger-parser"
+      owner: frontend@university.example
+      expires: 2026-09-30
+      reason: |
+        Package-name rollup — flagged solely because it depends on the
+        form-data advisory above (dev/openapi-codegen tooling, not bundled).
+    - id: "@lhci/utils"
+      package: "@lhci/utils"
+      owner: frontend@university.example
+      expires: 2026-09-30
+      reason: |
+        Package-name rollup — @lhci/utils (Lighthouse CI) is flagged via its
+        transitive ws/form-data deps. Test/CI tooling only, never bundled.
+    - id: "lighthouse"
+      package: "lighthouse"
+      owner: frontend@university.example
+      expires: 2026-09-30
+      reason: |
+        Package-name rollup — lighthouse (via @lhci/cli) is flagged via its
+        transitive ws/protobufjs deps. CI performance-audit tooling, not bundled.
 
 pip:
   advisories:
