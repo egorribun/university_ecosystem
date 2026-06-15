@@ -57,19 +57,19 @@ export default defineConfig({
         "src/utils/spotify.ts",
         "src/utils/workerChrome.ts",
       ],
-      // Ratchet floors at measured reality. After the session-11 hook batch
-      // (useScheduleConfig + useBookmarks + useLessonNotes + useNewsInteraction +
-      // ScheduleDesktopTable): statements 69.22 / branches 74.72 / functions 71.76
-      // / lines 69.22. RAISED: branches 73→74 (74.72 → 0.72 buffer), functions
-      // 69→71 (71.76 → 0.76 buffer, aggressive +2). statements/lines HOLD at 68
-      // (69.22 < 69.5 — short of the ~0.5pp no-cushion margin). NO-REGRESSION
-      // floors, NOT the target — raise incrementally (target 90; local == CI, so
-      // there is no integration cushion: keep ≥~0.5pp headroom before any raise).
+      // Ratchet floors at measured reality. After the session-12 batch
+      // (Select.tsx + useNotifications): statements 69.50 / branches 74.92 /
+      // functions 72.10 / lines 69.50. RAISED: statements 68→69 + lines 68→69
+      // (69.50 clears the +0.5 no-cushion buffer exactly; gate at 69 sits ~0.5
+      // below measured). branches HOLD 74 (74.92 < 75.5) + functions HOLD 71
+      // (72.10 < 72.5). NO-REGRESSION floors, NOT the target — raise
+      // incrementally (target 90; local == CI, so there is no integration
+      // cushion: keep ≥~0.5pp headroom before any raise).
       thresholds: {
-        statements: 68,
+        statements: 69,
         branches: 74,
         functions: 71,
-        lines: 68,
+        lines: 69,
       },
     },
   },
