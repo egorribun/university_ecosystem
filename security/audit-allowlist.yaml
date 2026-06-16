@@ -253,10 +253,14 @@ npm:
     # range narrows. All 13 IDs come from the single source 1118053; npm
     # audit cascades each `via` reference into its own allowlist
     # requirement.
+    # SESSION-13 (2026-06-16) re-extended 2026-06-15 → 2026-09-16: still no
+    # clean @tanstack re-issue; installed @tanstack/history STILL 1.161.6
+    # (verified, predates 1.161.9/1.161.12) — not bundle-reachable as a real
+    # vuln. s13 added zero npm deps; this is the expired-entry revisit only.
     - id: "1118053"
       package: "@tanstack/history"
       owner: frontend@university.example
-      expires: 2026-06-15
+      expires: 2026-09-16
       reason: |
         @tanstack supply-chain advisory GHSA-rmmr-r34h-pfm5.
         Installed @tanstack/history@1.161.6 predates flagged malware
@@ -265,73 +269,73 @@ npm:
     - id: "@tanstack/history"
       package: "@tanstack/history"
       owner: frontend@university.example
-      expires: 2026-06-15
+      expires: 2026-09-16
       reason: |
         Transitive via reference cascade from advisory 1118053.
     - id: "@tanstack/react-router"
       package: "@tanstack/react-router"
       owner: frontend@university.example
-      expires: 2026-06-15
+      expires: 2026-09-16
       reason: |
         Transitive via reference cascade from advisory 1118053.
     - id: "@tanstack/react-start-client"
       package: "@tanstack/react-start-client"
       owner: frontend@university.example
-      expires: 2026-06-15
+      expires: 2026-09-16
       reason: |
         Transitive via reference cascade from advisory 1118053.
     - id: "@tanstack/react-start-rsc"
       package: "@tanstack/react-start-rsc"
       owner: frontend@university.example
-      expires: 2026-06-15
+      expires: 2026-09-16
       reason: |
         Transitive via reference cascade from advisory 1118053.
     - id: "@tanstack/react-start-server"
       package: "@tanstack/react-start-server"
       owner: frontend@university.example
-      expires: 2026-06-15
+      expires: 2026-09-16
       reason: |
         Transitive via reference cascade from advisory 1118053.
     - id: "@tanstack/router-core"
       package: "@tanstack/router-core"
       owner: frontend@university.example
-      expires: 2026-06-15
+      expires: 2026-09-16
       reason: |
         Transitive via reference cascade from advisory 1118053.
     - id: "@tanstack/router-generator"
       package: "@tanstack/router-generator"
       owner: frontend@university.example
-      expires: 2026-06-15
+      expires: 2026-09-16
       reason: |
         Transitive via reference cascade from advisory 1118053.
     - id: "@tanstack/router-plugin"
       package: "@tanstack/router-plugin"
       owner: frontend@university.example
-      expires: 2026-06-15
+      expires: 2026-09-16
       reason: |
         Transitive via reference cascade from advisory 1118053.
     - id: "@tanstack/start-client-core"
       package: "@tanstack/start-client-core"
       owner: frontend@university.example
-      expires: 2026-06-15
+      expires: 2026-09-16
       reason: |
         Transitive via reference cascade from advisory 1118053.
     - id: "@tanstack/start-plugin-core"
       package: "@tanstack/start-plugin-core"
       owner: frontend@university.example
-      expires: 2026-06-15
+      expires: 2026-09-16
       reason: |
         Transitive via reference cascade from advisory 1118053.
     - id: "@tanstack/start-server-core"
       package: "@tanstack/start-server-core"
       owner: frontend@university.example
-      expires: 2026-06-15
+      expires: 2026-09-16
       reason: |
         Transitive via reference cascade from advisory 1118053.
     - id: "@tanstack/start-storage-context"
       package: "@tanstack/start-storage-context"
       owner: frontend@university.example
-      expires: 2026-06-15
+      expires: 2026-09-16
       reason: |
         Transitive via reference cascade from advisory 1118053.
     # tmp Path Traversal advisory (GHSA-ph9p-34f9-6g65) — published during
