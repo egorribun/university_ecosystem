@@ -16,7 +16,7 @@ require (
 	// Install the FFI once: go run github.com/pact-foundation/pact-go/v2/install
 	github.com/pact-foundation/pact-go/v2 v2.5.1
 	github.com/prometheus/client_golang v1.23.2
-	github.com/redis/go-redis/v9 v9.20.0
+	github.com/redis/go-redis/v9 v9.20.1
 	github.com/sony/gobreaker v1.0.0
 	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.69.0
 	go.opentelemetry.io/otel v1.44.0
