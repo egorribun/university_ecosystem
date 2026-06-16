@@ -57,19 +57,21 @@ export default defineConfig({
         "src/utils/spotify.ts",
         "src/utils/workerChrome.ts",
       ],
-      // Ratchet floors at measured reality. After the session-12 batch
-      // (Select.tsx + useNotifications): statements 69.50 / branches 74.92 /
-      // functions 72.10 / lines 69.50. RAISED: statements 68→69 + lines 68→69
-      // (69.50 clears the +0.5 no-cushion buffer exactly; gate at 69 sits ~0.5
-      // below measured). branches HOLD 74 (74.92 < 75.5) + functions HOLD 71
-      // (72.10 < 72.5). NO-REGRESSION floors, NOT the target — raise
-      // incrementally (target 90; local == CI, so there is no integration
-      // cushion: keep ≥~0.5pp headroom before any raise).
+      // Ratchet floors at measured reality. SESSION-13 render-test sweep
+      // (37 files: News/Events/Schedule/Map-UI/Dashboard families +
+      // useScheduleReminders + Tier-3 maplibre markers/MapControls):
+      // statements 79.43 / branches 74.74 / functions 72.52 / lines 79.43 — a
+      // +9.93pp statement JUMP from the s12 floor (69.50). RAISED: statements
+      // 69→78 + lines 69→78 (78.93 floor after the 0.5 no-cushion buffer) +
+      // functions 71→72 (72.02 floor). branches HOLD 74 (74.74 < 75.5 — render-
+      // tests add statements, not new branch paths). NO-REGRESSION floors, NOT
+      // the target — raise incrementally (target 90; local == CI, so there is
+      // no integration cushion: keep ≥~0.5pp headroom before any raise).
       thresholds: {
-        statements: 69,
+        statements: 78,
         branches: 74,
-        functions: 71,
-        lines: 69,
+        functions: 72,
+        lines: 78,
       },
     },
   },
