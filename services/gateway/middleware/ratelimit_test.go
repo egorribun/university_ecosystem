@@ -223,3 +223,18 @@ func TestRateLimiter_Middleware_InMemoryFallbackOnRedisError(t *testing.T) {
 	router.ServeHTTP(w3, req3)
 	assert.Equal(t, http.StatusTooManyRequests, w3.Code)
 }
+
+func TestNewRateLimiter_InvalidURLReturnsError(t *testing.T) {
+	// redis.ParseURL fails immediately on a malformed scheme — no network,
+	// covering the early error arm without a live Redis.
+	rl, err := NewRateLimiter(context.Background(), "://not-a-valid-url", 10, 20)
+	assert.Error(t, err)
+	assert.Nil(t, rl)
+}
+
+func TestRateLimiter_GetClient_ReturnsUnderlyingClient(t *testing.T) {
+	// redis.NewClient does not dial, so a white-box struct literal is enough.
+	client := redis.NewClient(&redis.Options{Addr: "localhost:6379"})
+	rl := &RateLimiter{client: client}
+	assert.Same(t, client, rl.GetClient())
+}

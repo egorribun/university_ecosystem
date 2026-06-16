@@ -152,3 +152,30 @@ func TestInternalAPIAuthClient_CanJoinRoom(t *testing.T) {
 		assert.Equal(t, lastCallCount, callCount, "should not hit server when breaker is open")
 	})
 }
+
+func TestInternalAPIAuthClient_Invalidate_RejectsInvalidIDs(t *testing.T) {
+	client := NewInternalAPIAuthClient("http://localhost", nil)
+	validUser := "550e8400-e29b-41d4-a716-446655440000"
+	validRoom := "660e8400-e29b-41d4-a716-446655441111"
+
+	// A malformed userID is a no-op (guard at the top) — must not panic or touch cache.
+	client.cache.Add(validUser+":"+validRoom, cacheEntry{allowed: true, expiresAt: time.Now().Add(time.Hour)})
+	client.Invalidate("not-a-uuid", validRoom)
+	_, ok := client.cache.Get(validUser + ":" + validRoom)
+	assert.True(t, ok, "invalid userID must leave the cache untouched")
+
+	// A malformed roomID (non-wildcard) is also a no-op — the single-room guard.
+	client.Invalidate(validUser, "not-a-uuid")
+	_, ok = client.cache.Get(validUser + ":" + validRoom)
+	assert.True(t, ok, "invalid roomID must leave the cache untouched")
+}
+
+func TestInternalAPIAuthClient_CanJoinRoom_RejectsInvalidIDs(t *testing.T) {
+	client := NewInternalAPIAuthClient("http://localhost", nil)
+	validUser := "550e8400-e29b-41d4-a716-446655440000"
+	validRoom := "660e8400-e29b-41d4-a716-446655441111"
+
+	// Malformed IDs are rejected before any cache lookup or HTTP request.
+	assert.False(t, client.CanJoinRoom(context.Background(), "not-a-uuid", validRoom))
+	assert.False(t, client.CanJoinRoom(context.Background(), validUser, "not-a-uuid"))
+}
