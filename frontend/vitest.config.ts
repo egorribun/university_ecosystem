@@ -57,21 +57,24 @@ export default defineConfig({
         "src/utils/spotify.ts",
         "src/utils/workerChrome.ts",
       ],
-      // Ratchet floors at measured reality. SESSION-13 render-test sweep
-      // (37 files: News/Events/Schedule/Map-UI/Dashboard families +
-      // useScheduleReminders + Tier-3 maplibre markers/MapControls):
-      // statements 79.43 / branches 74.74 / functions 72.52 / lines 79.43 — a
-      // +9.93pp statement JUMP from the s12 floor (69.50). RAISED: statements
-      // 69→78 + lines 69→78 (78.93 floor after the 0.5 no-cushion buffer) +
-      // functions 71→72 (72.02 floor). branches HOLD 74 (74.74 < 75.5 — render-
-      // tests add statements, not new branch paths). NO-REGRESSION floors, NOT
-      // the target — raise incrementally (target 90; local == CI, so there is
-      // no integration cushion: keep ≥~0.5pp headroom before any raise).
+      // Ratchet floors at measured reality. SESSION-14 multi-lane sweep
+      // (31 files: Lane B fresh render/data/barrel + Lane C LOW-% partials &
+      // branch top-ups + Lane A Tier-3 map internals — WeatherParticles 0→88%,
+      // MapFeature 0→81%, MapLibreMap fresh): statements 85.98 / branches 76.1 /
+      // functions 75.17 / lines 85.98 — a +6.55pp statement JUMP from the s13
+      // floor (79.43). RAISED: statements 78→85 + lines 78→85 (85.48 floor after
+      // the 0.5 no-cushion buffer) + functions 72→74 (74.67 floor) + branches
+      // 74→75 (75.6 floor — render+partial tests finally moved branch coverage).
+      // NO-REGRESSION floors, NOT the target — raise incrementally (target 90;
+      // local == CI, so there is no integration cushion: keep ≥~0.5pp headroom
+      // before any raise). DEFERRED to s15 (subagent session limit): Lane D
+      // logic-hooks (useChatWebSocket un-skip — needs a /ws/ticket test handler
+      // not currently in mocks/server.ts; useProfileSync hook + useMessengerController).
       thresholds: {
-        statements: 78,
-        branches: 74,
-        functions: 72,
-        lines: 78,
+        statements: 85,
+        branches: 75,
+        functions: 74,
+        lines: 85,
       },
     },
   },
