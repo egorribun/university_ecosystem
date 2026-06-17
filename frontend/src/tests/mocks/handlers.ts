@@ -358,6 +358,12 @@ export const resetAdminDeadLetterJobs = () => {
 resetTestMfa()
 
 export const handlers = [
+  // WebSocket upgrade-ticket endpoint. Lives OUTSIDE the /api/v1 prefix (the
+  // hook posts with baseURL: "" so it hits bare /ws/ticket), so the setupTests
+  // openapi contract validator — which only guards /api/ + /auth/ — ignores it.
+  http.post("*/ws/ticket", () =>
+    HttpResponse.json({ ticket: "test-ws-ticket", expires_in: 15 }, { status: 201 })
+  ),
   http.get("*/auth/session/signing-key", () =>
     HttpResponse.json({ signing_key: "test-session-signing-key" })
   ),
