@@ -1,0 +1,132 @@
+import { useState } from "react"
+import { render, screen } from "@testing-library/react"
+import userEvent from "@testing-library/user-event"
+import { describe, it, expect, vi } from "vitest"
+
+vi.mock("react-i18next", () => ({
+  useTranslation: () => ({
+    t: (key: string) => key,
+    i18n: { language: "en", changeLanguage: () => Promise.resolve() },
+  }),
+}))
+
+import { useEventFilterPopover } from "@/components/events/EventFilterPopover"
+import type { EventDateRange } from "@/features/events/types"
+
+/**
+ * `useEventFilterPopover` is a HEADLESS hook (not a component). Mount it inside
+ * a tiny harness that wires a trigger button to `referenceProps` and renders
+ * `popoverNode` so we can exercise the real popover render path + callbacks.
+ */
+function Harness({
+  onDateRangeChange,
+  onLocationChange,
+  initialDateRange = "" as EventDateRange,
+  initialLocation = "",
+}: {
+  onDateRangeChange: (v: EventDateRange) => void
+  onLocationChange: (v: string) => void
+  initialDateRange?: EventDateRange
+  initialLocation?: string
+}) {
+  const [dateRange, setDateRange] = useState<EventDateRange>(initialDateRange)
+  const [location, setLocation] = useState(initialLocation)
+
+  const { referenceProps, filtersActive, popoverNode } = useEventFilterPopover({
+    dateRange,
+    onDateRangeChange: (v) => {
+      setDateRange(v)
+      onDateRangeChange(v)
+    },
+    location,
+    onLocationChange: (v) => {
+      setLocation(v)
+      onLocationChange(v)
+    },
+  })
+
+  return (
+    <div>
+      <button {...referenceProps}>open filters</button>
+      <span data-testid="active">{String(filtersActive)}</span>
+      {popoverNode}
+    </div>
+  )
+}
+
+describe("useEventFilterPopover", () => {
+  it("opens the popover on trigger click and renders the date quick-buttons", async () => {
+    const user = userEvent.setup()
+    render(<Harness onDateRangeChange={vi.fn()} onLocationChange={vi.fn()} />)
+
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
+    await user.click(screen.getByText("open filters"))
+
+    expect(screen.getByRole("dialog")).toBeInTheDocument()
+    expect(screen.getByText("events:filters.dateRange")).toBeInTheDocument()
+    expect(screen.getByText("events:filters.allDates")).toBeInTheDocument()
+    expect(screen.getByText("events:filters.today")).toBeInTheDocument()
+    expect(screen.getByText("events:filters.thisWeek")).toBeInTheDocument()
+    expect(screen.getByText("events:filters.thisMonth")).toBeInTheDocument()
+  })
+
+  it("fires onDateRangeChange with the right range for each quick-button", async () => {
+    const user = userEvent.setup()
+    const onDateRangeChange = vi.fn<(v: EventDateRange) => void>()
+    render(<Harness onDateRangeChange={onDateRangeChange} onLocationChange={vi.fn()} />)
+
+    await user.click(screen.getByText("open filters"))
+
+    await user.click(screen.getByText("events:filters.today"))
+    expect(onDateRangeChange).toHaveBeenLastCalledWith("today")
+
+    await user.click(screen.getByText("events:filters.thisWeek"))
+    expect(onDateRangeChange).toHaveBeenLastCalledWith("week")
+
+    await user.click(screen.getByText("events:filters.thisMonth"))
+    expect(onDateRangeChange).toHaveBeenLastCalledWith("month")
+  })
+
+  it("forwards typed location and resets both filters via the Reset button", async () => {
+    const user = userEvent.setup()
+    const onDateRangeChange = vi.fn<(v: EventDateRange) => void>()
+    const onLocationChange = vi.fn<(v: string) => void>()
+    render(<Harness onDateRangeChange={onDateRangeChange} onLocationChange={onLocationChange} />)
+
+    await user.click(screen.getByText("open filters"))
+
+    await user.type(screen.getByLabelText("events:filters.location"), "A")
+    expect(onLocationChange).toHaveBeenCalledWith("A")
+
+    await user.click(screen.getByText("common:buttons.reset"))
+    expect(onDateRangeChange).toHaveBeenLastCalledWith("")
+    expect(onLocationChange).toHaveBeenLastCalledWith("")
+  })
+
+  it("closes the popover via the Done button", async () => {
+    const user = userEvent.setup()
+    render(<Harness onDateRangeChange={vi.fn()} onLocationChange={vi.fn()} />)
+
+    await user.click(screen.getByText("open filters"))
+    expect(screen.getByRole("dialog")).toBeInTheDocument()
+
+    await user.click(screen.getByText("common:buttons.done"))
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
+  })
+
+  it("reports filtersActive=true when a date range or location is preset", () => {
+    render(
+      <Harness
+        onDateRangeChange={vi.fn()}
+        onLocationChange={vi.fn()}
+        initialDateRange={"today" as EventDateRange}
+      />
+    )
+    expect(screen.getByTestId("active")).toHaveTextContent("true")
+  })
+
+  it("reports filtersActive=false when nothing is filtered", () => {
+    render(<Harness onDateRangeChange={vi.fn()} onLocationChange={vi.fn()} />)
+    expect(screen.getByTestId("active")).toHaveTextContent("false")
+  })
+})
