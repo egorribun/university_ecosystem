@@ -58,7 +58,7 @@ export default defineConfig({
         "src/utils/workerChrome.ts",
       ],
       // Ratchet floors at measured reality. SESSION-14 multi-lane sweep
-      // (31 files: Lane B fresh render/data/barrel + Lane C LOW-% partials &
+      // (25 files / +171 runtime tests: Lane B fresh render/data/barrel + Lane C LOW-% partials &
       // branch top-ups + Lane A Tier-3 map internals — WeatherParticles 0→88%,
       // MapFeature 0→81%, MapLibreMap fresh): statements 85.98 / branches 76.1 /
       // functions 75.17 / lines 85.98 — a +6.55pp statement JUMP from the s13
