@@ -57,24 +57,30 @@ export default defineConfig({
         "src/utils/spotify.ts",
         "src/utils/workerChrome.ts",
       ],
-      // Ratchet floors at measured reality. SESSION-14 multi-lane sweep
-      // (25 files / +171 runtime tests: Lane B fresh render/data/barrel + Lane C LOW-% partials &
-      // branch top-ups + Lane A Tier-3 map internals — WeatherParticles 0→88%,
-      // MapFeature 0→81%, MapLibreMap fresh): statements 85.98 / branches 76.1 /
-      // functions 75.17 / lines 85.98 — a +6.55pp statement JUMP from the s13
-      // floor (79.43). RAISED: statements 78→85 + lines 78→85 (85.48 floor after
-      // the 0.5 no-cushion buffer) + functions 72→74 (74.67 floor) + branches
-      // 74→75 (75.6 floor — render+partial tests finally moved branch coverage).
-      // NO-REGRESSION floors, NOT the target — raise incrementally (target 90;
-      // local == CI, so there is no integration cushion: keep ≥~0.5pp headroom
-      // before any raise). DEFERRED to s15 (subagent session limit): Lane D
-      // logic-hooks (useChatWebSocket un-skip — needs a /ws/ticket test handler
-      // not currently in mocks/server.ts; useProfileSync hook + useMessengerController).
+      // Ratchet floors at measured reality. SESSION-15 MAXIMAL whole-project sweep
+      // (40 new test files / ~635 tests via Workflow orchestration: Lane F fresh
+      // render/logic + .branches top-ups (api interceptors/client/mfa/queryClient,
+      // events/news/messenger/schedule/profile/feedback/pwa components, EventsFeature
+      // 99% + MapFeature 100% orchestrators), Lane D hook-tier (useAuthApi/useLoginFlow/
+      // useSessionCrypto/usePushPreferences/keyboard-nav + events.ts 98%/news.ts 98%),
+      // and the 3 hard hooks in the main loop — useChatWebSocket UN-SKIPPED (W113 ->
+      // 32%→78.9% via a /ws/ticket MSW handler + frame-cache helpers + live frame
+      // switch), useMessengerController.branches, useProfileSync.branches (fetchCurrentUser
+      // + cross-tab sync): statements 91.35 / branches 80.60 / functions 82.39 / lines
+      // 91.35 — a +5.36pp statement JUMP from the s14 floor (85.99). RAISED: statements
+      // 85→90 + lines 85→90 (90.85 floor after the 0.5 no-cushion buffer) + functions
+      // 74→81 (81.89 floor) + branches 75→80 (80.10 floor). NO-REGRESSION floors, NOT
+      // the target — raise incrementally (target 90→95; local == CI, so there is no
+      // integration cushion: keep ≥~0.5pp headroom before any raise; branches jitter
+      // ±0.01 run-to-run from one async-timing map branch). REMAINING (s16 candidates):
+      // useProfileSync initFn cached-restore paths (unreachable — readCachedEnvelope()
+      // source bug always returns undefined), useChatWebSocket ping/reconnect-cap 30s
+      // timer paths, api/client 429-retry loop, etagCache/sanitize/sw long-tail.
       thresholds: {
-        statements: 85,
-        branches: 75,
-        functions: 74,
-        lines: 85,
+        statements: 90,
+        branches: 80,
+        functions: 81,
+        lines: 90,
       },
     },
   },
