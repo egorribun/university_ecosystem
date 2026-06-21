@@ -1,6 +1,6 @@
-import { render, screen } from "@testing-library/react"
+import { act, fireEvent, render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
-import { beforeEach, describe, expect, it, vi } from "vitest"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import type { useNotifications } from "@/hooks/useNotifications"
 import NotificationsBell from "../feedback/NotificationsBell"
 
@@ -237,5 +237,192 @@ describe("NotificationsBell", () => {
     await user.click(openButton)
 
     expect(screen.getByText("Couldn't load more notifications")).toBeInTheDocument()
+  })
+
+  describe("dropdown positioning", () => {
+    const originalInnerWidth = window.innerWidth
+
+    const setInnerWidth = (width: number) => {
+      Object.defineProperty(window, "innerWidth", {
+        configurable: true,
+        writable: true,
+        value: width,
+      })
+    }
+
+    afterEach(() => {
+      setInnerWidth(originalInnerWidth)
+    })
+
+    it("computes desktop coordinates (right offset, no mobile width)", async () => {
+      setInnerWidth(1024)
+      const state = baseState()
+      useNotificationsMock.mockReturnValue(state)
+
+      const user = userEvent.setup()
+      render(<NotificationsBell />)
+
+      await user.click(screen.getByRole("button", { name: "Open notifications" }))
+
+      const dropdown = screen.getByRole("heading", { name: "Notifications" }).closest("div")!
+        .parentElement!.parentElement as HTMLElement
+      // jsdom getBoundingClientRect is all-zero → top = 0 + 12, right = 1024 - 0
+      expect(dropdown.style.top).toBe("12px")
+      expect(dropdown.style.right).toBe("1024px")
+      // Desktop branch leaves width unset (undefined → empty string)
+      expect(dropdown.style.width).toBe("")
+    })
+
+    it("computes mobile coordinates (no right offset, viewport-relative width)", async () => {
+      setInnerWidth(500)
+      const state = baseState()
+      useNotificationsMock.mockReturnValue(state)
+
+      const user = userEvent.setup()
+      render(<NotificationsBell />)
+
+      await user.click(screen.getByRole("button", { name: "Open notifications" }))
+
+      const dropdown = screen.getByRole("heading", { name: "Notifications" }).closest("div")!
+        .parentElement!.parentElement as HTMLElement
+      expect(dropdown.style.top).toBe("12px")
+      // Mobile branch sets right to null → undefined → empty string
+      expect(dropdown.style.right).toBe("")
+      expect(dropdown.style.width).toBe("calc(100vw - 2rem)")
+    })
+
+    it("recomputes position when the window resizes", async () => {
+      setInnerWidth(1024)
+      const state = baseState()
+      useNotificationsMock.mockReturnValue(state)
+
+      const user = userEvent.setup()
+      render(<NotificationsBell />)
+
+      await user.click(screen.getByRole("button", { name: "Open notifications" }))
+
+      const findDropdown = () =>
+        screen.getByRole("heading", { name: "Notifications" }).closest("div")!.parentElement!
+          .parentElement as HTMLElement
+
+      expect(findDropdown().style.right).toBe("1024px")
+
+      // Shrink below the mobile breakpoint and fire the resize listener
+      setInnerWidth(500)
+      act(() => {
+        window.dispatchEvent(new Event("resize"))
+      })
+
+      const dropdown = findDropdown()
+      expect(dropdown.style.right).toBe("")
+      expect(dropdown.style.width).toBe("calc(100vw - 2rem)")
+    })
+  })
+
+  describe("click-outside handling", () => {
+    it("closes the dropdown when clicking outside the button and dropdown", async () => {
+      const state = baseState()
+      useNotificationsMock.mockReturnValue(state)
+
+      const user = userEvent.setup()
+      render(<NotificationsBell />)
+
+      await user.click(screen.getByRole("button", { name: "Open notifications" }))
+      expect(screen.getByRole("heading", { name: "Notifications" })).toBeInTheDocument()
+
+      // mousedown on document.body — outside both refs → closes
+      fireEvent.mouseDown(document.body)
+
+      expect(screen.queryByRole("heading", { name: "Notifications" })).not.toBeInTheDocument()
+    })
+
+    it("keeps the dropdown open when clicking inside it", async () => {
+      const state = baseState()
+      useNotificationsMock.mockReturnValue(state)
+
+      const user = userEvent.setup()
+      render(<NotificationsBell />)
+
+      await user.click(screen.getByRole("button", { name: "Open notifications" }))
+
+      const heading = screen.getByRole("heading", { name: "Notifications" })
+      // mousedown inside the dropdown → guard short-circuits, stays open
+      fireEvent.mouseDown(heading)
+
+      expect(screen.getByRole("heading", { name: "Notifications" })).toBeInTheDocument()
+    })
+
+    it("keeps the dropdown open when clicking the trigger button itself", async () => {
+      const state = baseState()
+      useNotificationsMock.mockReturnValue(state)
+
+      const user = userEvent.setup()
+      render(<NotificationsBell />)
+
+      const openButton = screen.getByRole("button", { name: "Open notifications" })
+      await user.click(openButton)
+
+      // mousedown on the button is inside buttonRef → contains() guard keeps it open
+      fireEvent.mouseDown(openButton)
+
+      expect(screen.getByRole("heading", { name: "Notifications" })).toBeInTheDocument()
+    })
+  })
+
+  describe("bulk actions", () => {
+    it("marks all notifications as read", async () => {
+      const state = baseState()
+      state.data = [
+        {
+          id: "uuid-1",
+          title: "Welcome",
+          body: "",
+          created_at: "2024-01-01T00:00:00Z",
+          read: false,
+        },
+      ]
+      state.unreadCount = 1
+      const markAll = vi.fn()
+      state.markAll = markAll
+      useNotificationsMock.mockReturnValue(state)
+
+      const user = userEvent.setup()
+      render(<NotificationsBell />)
+
+      await user.click(screen.getByRole("button", { name: "Open notifications" }))
+      await user.click(screen.getByTitle("Mark all as read"))
+
+      expect(markAll).toHaveBeenCalledTimes(1)
+    })
+
+    it("clears all notifications and closes the dropdown on success", async () => {
+      const state = baseState()
+      state.data = [
+        {
+          id: "uuid-1",
+          title: "Welcome",
+          body: "",
+          created_at: "2024-01-01T00:00:00Z",
+          read: true,
+        },
+      ]
+      const clearAll = vi.fn((_arg?: unknown, opts?: { onSuccess?: () => void }) => {
+        opts?.onSuccess?.()
+      })
+      state.clearAll = clearAll as NotificationsState["clearAll"]
+      useNotificationsMock.mockReturnValue(state)
+
+      const user = userEvent.setup()
+      render(<NotificationsBell />)
+
+      await user.click(screen.getByRole("button", { name: "Open notifications" }))
+      expect(screen.getByRole("heading", { name: "Notifications" })).toBeInTheDocument()
+
+      await user.click(screen.getByTitle("Clear"))
+
+      expect(clearAll).toHaveBeenCalledTimes(1)
+      // onSuccess callback flips isOpen → false, unmounting the dropdown
+      expect(screen.queryByRole("heading", { name: "Notifications" })).not.toBeInTheDocument()
+    })
   })
 })

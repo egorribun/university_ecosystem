@@ -363,20 +363,24 @@ jobs:
         # file-processor validateProcessFileRequest rejection arms.
         include:
           - service: services/gateway
-            # Measured 68.9% unit-only ×2 (s12 checkL1Cache miss/hit/probabilistic-
-            # refresh + NewRateLimiter bad-URL + GetClient white-box). RAISED 65→66:
-            # Floor 66 = floor(68.9) − 2.
-            coverage-threshold: 66
+            # Measured 75.8% unit-only (s16: miniredis pub/sub revocation listener
+            # ListenForRevocations 9.5→90.5 + listenOnce 0→80; NewRateLimiter
+            # Ping-OK 30→90 + Middleware 53.8→100 via redis_rate GCRA on miniredis
+            # Lua). middleware 76.5→87.8. RAISED 66→73: floor(75.8) − 2 = 73.
+            coverage-threshold: 73
           - service: services/file-processor
-            # Measured 52.3% unit-only ×2 (s9 + s10 validateProcessFileRequest
-            # empty-id/unsupported-type/empty-keys/options-limit/oversized-opt).
-            # Floor 50.
-            coverage-threshold: 50
+            # Measured 67.4% unit-only (s16: workflow activities via httptest
+            # fake-S3 — ResizeImageActivity/downloadAndDecodeImage default-run
+            # coverage, was integration-tag-only; + cmd initLogger/initSentry/
+            # initTracer/stream-auth-error/authedServerStream.Context). Workflow
+            # pkg 41.4→84.7, cmd 33→44.4. RAISED 50→65: floor(67.4) − 2 = 65.
+            coverage-threshold: 65
           - service: services/ws-hub
-            # Measured 68.8% unit-only ×2 (s12 Invalidate + CanJoinRoom invalid-UUID
-            # guard arms on top of s11 validateHMAC/handleRegister). HOLD 66:
-            # floor(68.8) − 2 = 66 (next floor 67 needs ≥ 69).
-            coverage-threshold: 66
+            # Measured 72.7% unit-only (s16: miniredis L2 in CanJoinRoom 59.5→89.2
+            # + Invalidate 73.7→100; root main.go initLogger/initRedis 0→100;
+            # NATS handler ctx-done + notif full-channel branches). pkg/hub
+            # 77.7→80.8, root 0→10.4. RAISED 66→70: floor(72.7) − 2 = 70.
+            coverage-threshold: 70
           - service: services/cmd/uni-cli
             coverage-threshold: 80
     needs: pre-commit-check
