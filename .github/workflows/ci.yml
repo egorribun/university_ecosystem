@@ -368,10 +368,12 @@ jobs:
             # Floor 66 = floor(68.9) − 2.
             coverage-threshold: 66
           - service: services/file-processor
-            # Measured 52.3% unit-only ×2 (s9 + s10 validateProcessFileRequest
-            # empty-id/unsupported-type/empty-keys/options-limit/oversized-opt).
-            # Floor 50.
-            coverage-threshold: 50
+            # Measured 67.4% unit-only (s16: workflow activities via httptest
+            # fake-S3 — ResizeImageActivity/downloadAndDecodeImage default-run
+            # coverage, was integration-tag-only; + cmd initLogger/initSentry/
+            # initTracer/stream-auth-error/authedServerStream.Context). Workflow
+            # pkg 41.4→84.7, cmd 33→44.4. RAISED 50→65: floor(67.4) − 2 = 65.
+            coverage-threshold: 65
           - service: services/ws-hub
             # Measured 68.8% unit-only ×2 (s12 Invalidate + CanJoinRoom invalid-UUID
             # guard arms on top of s11 validateHMAC/handleRegister). HOLD 66:
