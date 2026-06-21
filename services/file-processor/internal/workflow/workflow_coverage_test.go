@@ -77,10 +77,10 @@ func (f *fakeS3) handler() http.HandlerFunc {
 			w.Header().Set("Content-Length", strconv.Itoa(len(f.getBody)))
 			w.WriteHeader(http.StatusOK)
 			if r.Method == http.MethodGet {
-				_, _ = w.Write(f.getBody)
+				_, _ = w.Write(f.getBody) //nolint:errcheck // test server best-effort
 			}
 		case http.MethodPut:
-			b, _ := io.ReadAll(r.Body)
+			b, _ := io.ReadAll(r.Body) //nolint:errcheck // test handler best-effort
 			f.putBody = b
 			status := f.putStatus
 			if status == 0 {

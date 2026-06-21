@@ -20,7 +20,7 @@ import (
 func TestListenOnce_RemovesL1KeyOnRevocationMessage(t *testing.T) {
 	mr := miniredis.RunT(t)
 	client := redis.NewClient(&redis.Options{Addr: mr.Addr()})
-	t.Cleanup(func() { _ = client.Close() })
+	t.Cleanup(func() { _ = client.Close() }) //nolint:errcheck // best-effort cleanup
 
 	m := NewJWTMiddleware(testSecret, client)
 	m.l1cache.Add("revoked:jti:abc", cacheEntry{exists: true, storedAt: time.Now()})
@@ -34,7 +34,7 @@ func TestListenOnce_RemovesL1KeyOnRevocationMessage(t *testing.T) {
 	// is published before SUBSCRIBE registers, it's lost — retrying guarantees
 	// at least one lands after the listener is live.
 	require.Eventually(t, func() bool {
-		_ = client.Publish(context.Background(), "session:revocations", "abc").Err()
+		_ = client.Publish(context.Background(), "session:revocations", "abc").Err() //nolint:errcheck // fire-and-forget; Eventually retries
 		_, ok := m.l1cache.Get("revoked:jti:abc")
 		return !ok
 	}, 3*time.Second, 50*time.Millisecond)
@@ -45,7 +45,7 @@ func TestListenOnce_RemovesL1KeyOnRevocationMessage(t *testing.T) {
 	// received message, so the next delivery makes it return.
 	cancel()
 	require.Eventually(t, func() bool {
-		_ = client.Publish(context.Background(), "session:revocations", "drain").Err()
+		_ = client.Publish(context.Background(), "session:revocations", "drain").Err() //nolint:errcheck // fire-and-forget; Eventually retries
 		select {
 		case <-done:
 			return true
@@ -64,7 +64,7 @@ func TestListenForRevocations_NilRedisIsNoOp(t *testing.T) {
 func TestListenForRevocations_ProcessesThenReconnectsOnDisconnect(t *testing.T) {
 	mr := miniredis.RunT(t)
 	client := redis.NewClient(&redis.Options{Addr: mr.Addr()})
-	t.Cleanup(func() { _ = client.Close() })
+	t.Cleanup(func() { _ = client.Close() }) //nolint:errcheck // best-effort cleanup
 
 	m := NewJWTMiddleware(testSecret, client)
 	m.l1cache.Add("revoked:jti:xyz", cacheEntry{exists: true, storedAt: time.Now()})
@@ -74,7 +74,7 @@ func TestListenForRevocations_ProcessesThenReconnectsOnDisconnect(t *testing.T) 
 	m.ListenForRevocations(ctx) // spawns the listener goroutine
 
 	require.Eventually(t, func() bool {
-		_ = client.Publish(context.Background(), "session:revocations", "xyz").Err()
+		_ = client.Publish(context.Background(), "session:revocations", "xyz").Err() //nolint:errcheck // fire-and-forget; Eventually retries
 		_, ok := m.l1cache.Get("revoked:jti:xyz")
 		return !ok
 	}, 3*time.Second, 50*time.Millisecond)

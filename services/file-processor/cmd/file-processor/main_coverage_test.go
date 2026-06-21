@@ -29,7 +29,7 @@ func TestInitLogger_ReturnsJSONLogger(t *testing.T) {
 	logger := initLogger()
 	require.NotNil(t, logger)
 	// Smoke: a log call must not panic with the custom ReplaceAttr time handler.
-	logger.Info("init-logger-smoke", "k", "v")
+	logger.InfoContext(context.Background(), "init-logger-smoke", "k", "v")
 }
 
 func TestInitSentry_NoDSNIsNoOp(t *testing.T) {

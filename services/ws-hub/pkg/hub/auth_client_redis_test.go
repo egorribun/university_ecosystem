@@ -28,7 +28,7 @@ func newMiniredisClient(t *testing.T) (*miniredis.Miniredis, *redis.Client) {
 	t.Helper()
 	mr := miniredis.RunT(t)
 	rc := redis.NewClient(&redis.Options{Addr: mr.Addr()})
-	t.Cleanup(func() { _ = rc.Close() })
+	t.Cleanup(func() { _ = rc.Close() }) //nolint:errcheck // best-effort cleanup
 	return mr, rc
 }
 

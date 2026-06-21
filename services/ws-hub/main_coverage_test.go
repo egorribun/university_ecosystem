@@ -24,7 +24,7 @@ func discardLogger() *slog.Logger {
 func TestInitLogger_ReturnsLogger(t *testing.T) {
 	logger := initLogger()
 	require.NotNil(t, logger)
-	logger.Info("init-logger-smoke")
+	logger.InfoContext(context.Background(), "init-logger-smoke")
 }
 
 func TestInitRedis_SuccessWithMiniredis(t *testing.T) {
@@ -32,7 +32,7 @@ func TestInitRedis_SuccessWithMiniredis(t *testing.T) {
 	cfg := &config.Config{RedisURL: mr.Addr()}
 	rdb := initRedis(context.Background(), cfg, discardLogger())
 	require.NotNil(t, rdb, "Ping must succeed against miniredis → L2 enabled")
-	t.Cleanup(func() { _ = rdb.Close() })
+	t.Cleanup(func() { _ = rdb.Close() }) //nolint:errcheck // best-effort cleanup
 	require.NoError(t, rdb.Ping(context.Background()).Err())
 }
 
