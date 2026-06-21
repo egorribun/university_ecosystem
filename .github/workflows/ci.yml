@@ -363,10 +363,11 @@ jobs:
         # file-processor validateProcessFileRequest rejection arms.
         include:
           - service: services/gateway
-            # Measured 68.9% unit-only ×2 (s12 checkL1Cache miss/hit/probabilistic-
-            # refresh + NewRateLimiter bad-URL + GetClient white-box). RAISED 65→66:
-            # Floor 66 = floor(68.9) − 2.
-            coverage-threshold: 66
+            # Measured 75.8% unit-only (s16: miniredis pub/sub revocation listener
+            # ListenForRevocations 9.5→90.5 + listenOnce 0→80; NewRateLimiter
+            # Ping-OK 30→90 + Middleware 53.8→100 via redis_rate GCRA on miniredis
+            # Lua). middleware 76.5→87.8. RAISED 66→73: floor(75.8) − 2 = 73.
+            coverage-threshold: 73
           - service: services/file-processor
             # Measured 67.4% unit-only (s16: workflow activities via httptest
             # fake-S3 — ResizeImageActivity/downloadAndDecodeImage default-run
