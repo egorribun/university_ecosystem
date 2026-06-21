@@ -565,6 +565,58 @@ npm:
       reason: |
         Package-name rollup — lighthouse (via @lhci/cli) is flagged via its
         transitive ws/protobufjs deps. CI performance-audit tooling, not bundled.
+    - id: "1121186"
+      package: "undici"
+      owner: frontend@university.example
+      expires: 2026-09-21
+      reason: |
+        Fresh-disclosure (2026-06) undici TLS certificate validation bypass (high).
+        Transitive only (no direct dep); the Vite browser bundle uses native fetch,
+        so undici is Node-only build/SSR tooling and not reachable by clients. The
+        SSR server only calls the trusted internal backend. fixAvailable via a
+        transitive bump — tracked for a dedicated dep-hygiene pass (testing W17).
+    - id: "1121188"
+      package: "undici"
+      owner: frontend@university.example
+      expires: 2026-09-21
+      reason: |
+        Fresh-disclosure (2026-06) undici cross-user information disclosure (moderate).
+        Transitive undici; not in the browser bundle (native fetch). See id 1121186.
+    - id: "1121190"
+      package: "undici"
+      owner: frontend@university.example
+      expires: 2026-09-21
+      reason: |
+        Fresh-disclosure (2026-06) undici WebSocket client DoS (high). Transitive
+        undici; not in the browser bundle (native fetch). See id 1121186.
+    - id: "1121240"
+      package: "undici"
+      owner: frontend@university.example
+      expires: 2026-09-21
+      reason: |
+        Fresh-disclosure (2026-06) undici HTTP header injection via Set-Cookie
+        (moderate). Transitive undici; not in the browser bundle. See id 1121186.
+    - id: "1121243"
+      package: "undici"
+      owner: frontend@university.example
+      expires: 2026-09-21
+      reason: |
+        Fresh-disclosure (2026-06) undici WebSocket client DoS (high, second source).
+        Transitive undici; not in the browser bundle. See id 1121186.
+    - id: "1121248"
+      package: "undici"
+      owner: frontend@university.example
+      expires: 2026-09-21
+      reason: |
+        Fresh-disclosure (2026-06) undici HTTP response queue poisoning (low).
+        Transitive undici; not in the browser bundle. See id 1121186.
+    - id: "1121253"
+      package: "undici"
+      owner: frontend@university.example
+      expires: 2026-09-21
+      reason: |
+        Fresh-disclosure (2026-06) undici Set-Cookie SameSite attribute downgrade
+        (low). Transitive undici; not in the browser bundle. See id 1121186.
 
 pip:
   advisories:
