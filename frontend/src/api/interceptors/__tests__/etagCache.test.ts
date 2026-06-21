@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { AxiosHeaders } from "axios"
 import type { AxiosResponse, InternalAxiosRequestConfig } from "axios"
 
@@ -229,5 +229,225 @@ describe("etagCache — handleEtagResponse", () => {
     // A logout clears the response cache + bumps the epoch.
     clearCachesOnLogout()
     expect(responseCache.get("epoch:key")).toBeUndefined()
+  })
+
+  it("discards the result when the session epoch changes DURING the async HMAC", async () => {
+    // Bump the epoch from inside crypto.subtle.sign — this fires after the
+    // epochSnapshot is captured but before the post-HMAC re-check, so the
+    // computed entry must be thrown away (RED-02 stale-result guard).
+    const realSign = crypto.subtle.sign.bind(crypto.subtle)
+    const signSpy = vi
+      .spyOn(crypto.subtle, "sign")
+      .mockImplementation(async (...args: Parameters<typeof realSign>) => {
+        incrementSessionEpoch()
+        return realSign(...args)
+      })
+
+    const response = makeResponse(
+      200,
+      { etag: '"epoch-race"', "content-type": "application/json" },
+      { v: 99 }
+    )
+    await handleEtagResponse(response, "epoch:race")
+
+    // The etag tag is still written (it happens before the async HMAC) but the
+    // signed payload is discarded because the epoch moved mid-flight.
+    expect(etagCache.get("epoch:race")).toBe('"epoch-race"')
+    expect(responseCache.get("epoch:race")).toBeUndefined()
+
+    signSpy.mockRestore()
+  })
+
+  it("evicts both caches on 304 when the stored HMAC does not verify", async () => {
+    // Cache a valid signed 200 first.
+    const data = { items: ["x"] }
+    const first = makeResponse(
+      200,
+      { etag: '"etag-bad-hmac"', "content-type": "application/json" },
+      data
+    )
+    await handleEtagResponse(first, "bad:hmac")
+    expect(responseCache.get("bad:hmac")).toBeDefined()
+
+    // Corrupt the stored HMAC so the 304 restore-time verification fails.
+    const corrupted = responseCache.get("bad:hmac")!
+    responseCache.set("bad:hmac", { ...corrupted, hmac: "00".repeat(32) })
+
+    const notModified = makeResponse(304, { etag: '"etag-bad-hmac"' }, null)
+    await handleEtagResponse(notModified, "bad:hmac")
+
+    // Mismatch path: status stays 304, both caches evicted.
+    expect(notModified.status).toBe(304)
+    expect(notModified.data).toBeNull()
+    expect(etagCache.get("bad:hmac")).toBeUndefined()
+    expect(responseCache.get("bad:hmac")).toBeUndefined()
+  })
+
+  it("evicts both caches on 304 when there is no signing key", async () => {
+    // Seed a response cache entry, then drop the signing key before the 304.
+    const data = { a: 1 }
+    const first = makeResponse(
+      200,
+      { etag: '"etag-nokey-304"', "content-type": "application/json" },
+      data
+    )
+    await handleEtagResponse(first, "nokey:304")
+    expect(responseCache.get("nokey:304")).toBeDefined()
+
+    registerSigningKeyAccessor(() => null)
+    const notModified = makeResponse(304, { etag: '"etag-nokey-304"' }, null)
+    await handleEtagResponse(notModified, "nokey:304")
+
+    expect(notModified.status).toBe(304)
+    expect(etagCache.get("nokey:304")).toBeUndefined()
+    expect(responseCache.get("nokey:304")).toBeUndefined()
+  })
+})
+
+describe("etagCache — debounced flush + visibilitychange", () => {
+  beforeEach(() => {
+    etagCache.clear()
+    responseCache.clear()
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+    vi.restoreAllMocks()
+    // Reset the visibilityState override back to the jsdom default so other
+    // suites are not left with a "hidden" tab (which would auto-flush).
+    Object.defineProperty(document, "visibilityState", {
+      configurable: true,
+      get: () => "visible",
+    })
+  })
+
+  it("debounced set persists to localStorage only after the 30s flush timer fires", () => {
+    vi.useFakeTimers()
+    const setItemSpy = vi.spyOn(Storage.prototype, "setItem")
+
+    etagCache.set("flush:k1", '"tag-flush"')
+    // Nothing persisted synchronously — flush is debounced.
+    const beforeCalls = setItemSpy.mock.calls.filter(([k]) => k.startsWith("ue:etag-cache"))
+    expect(beforeCalls.length).toBe(0)
+
+    vi.advanceTimersByTime(30_000)
+
+    const afterCalls = setItemSpy.mock.calls.filter(([k]) => k.startsWith("ue:etag-cache"))
+    expect(afterCalls.length).toBeGreaterThanOrEqual(1)
+    const persisted = afterCalls[afterCalls.length - 1]![1]
+    expect(persisted).toContain("flush:k1")
+  })
+
+  it("a second set within the debounce window resets the timer (single flush)", () => {
+    vi.useFakeTimers()
+    const setItemSpy = vi.spyOn(Storage.prototype, "setItem")
+
+    etagCache.set("flush:a", '"a"')
+    vi.advanceTimersByTime(20_000)
+    etagCache.set("flush:b", '"b"') // resets the 30s window
+    vi.advanceTimersByTime(20_000) // 40s total but only 20s since last set → no flush yet
+
+    expect(setItemSpy.mock.calls.filter(([k]) => k.startsWith("ue:etag-cache")).length).toBe(0)
+
+    vi.advanceTimersByTime(10_000) // now 30s since last set → flush fires once
+
+    const calls = setItemSpy.mock.calls.filter(([k]) => k.startsWith("ue:etag-cache"))
+    expect(calls.length).toBe(1)
+    expect(calls[0]![1]).toContain("flush:b")
+  })
+
+  it("visibilitychange to hidden flushes immediately (no timer wait)", () => {
+    const setItemSpy = vi.spyOn(Storage.prototype, "setItem")
+    etagCache.set("vis:k", '"vis-tag"')
+
+    setItemSpy.mockClear()
+    Object.defineProperty(document, "visibilityState", {
+      configurable: true,
+      get: () => "hidden",
+    })
+    document.dispatchEvent(new Event("visibilitychange"))
+
+    const calls = setItemSpy.mock.calls.filter(([k]) => k.startsWith("ue:etag-cache"))
+    expect(calls.length).toBeGreaterThanOrEqual(1)
+    expect(calls[calls.length - 1]![1]).toContain("vis:k")
+  })
+
+  it("evicts the oldest 50% and retries once on QuotaExceededError", () => {
+    // Seed three entries with distinct lastUsed timestamps via Date.now control.
+    const nowSpy = vi.spyOn(Date, "now")
+    nowSpy.mockReturnValue(1000)
+    etagCache.set("q:oldest", '"o"')
+    nowSpy.mockReturnValue(2000)
+    etagCache.set("q:mid", '"m"')
+    nowSpy.mockReturnValue(3000)
+    etagCache.set("q:newest", '"n"')
+    nowSpy.mockReturnValue(4000)
+
+    const realSetItem = Storage.prototype.setItem
+    let throwOnce = true
+    const setItemSpy = vi.spyOn(Storage.prototype, "setItem").mockImplementation(function (
+      this: Storage,
+      key: string,
+      value: string
+    ) {
+      if (key.startsWith("ue:etag-cache") && throwOnce) {
+        throwOnce = false
+        throw new DOMException("quota", "QuotaExceededError")
+      }
+      // Delegate to the real impl for the retry write.
+      realSetItem.call(this, key, value)
+    })
+
+    // Trigger an immediate flush via visibilitychange (avoids the 30s timer).
+    Object.defineProperty(document, "visibilityState", {
+      configurable: true,
+      get: () => "hidden",
+    })
+    document.dispatchEvent(new Event("visibilitychange"))
+
+    // Two write attempts: the failing one + the retry after eviction.
+    const cacheWrites = setItemSpy.mock.calls.filter(([k]) => k.startsWith("ue:etag-cache"))
+    expect(cacheWrites.length).toBe(2)
+
+    // ceil(3/2) = 2 oldest evicted → only the newest survives in memory.
+    nowSpy.mockReturnValue(5000)
+    expect(etagCache.get("q:oldest")).toBeUndefined()
+    expect(etagCache.get("q:mid")).toBeUndefined()
+    expect(etagCache.get("q:newest")).toBe('"n"')
+
+    nowSpy.mockRestore()
+  })
+})
+
+describe("etagCache — lazy hydration on first access (isolated module)", () => {
+  const KEY = "ue:etag-cache:v1"
+
+  beforeEach(() => {
+    vi.resetModules()
+    localStorage.clear()
+  })
+
+  afterEach(() => {
+    localStorage.clear()
+  })
+
+  it("hydrates the in-memory map from localStorage on first get()", async () => {
+    const seeded: [string, { tag: string; lastUsed: number }][] = [
+      ["seeded:key", { tag: '"seeded-tag"', lastUsed: 123 }],
+    ]
+    localStorage.setItem(KEY, JSON.stringify(seeded))
+
+    const mod = await import("../etagCache")
+    // First access triggers hydration from the seeded localStorage payload.
+    expect(mod.etagCache.get("seeded:key")).toBe('"seeded-tag"')
+  })
+
+  it("starts empty and logs a warning when stored JSON is corrupt", async () => {
+    localStorage.setItem(KEY, "{not-valid-json")
+
+    const mod = await import("../etagCache")
+    // Corrupt payload → hydration fails gracefully to an empty map, no throw.
+    expect(() => mod.etagCache.get("anything")).not.toThrow()
+    expect(mod.etagCache.get("anything")).toBeUndefined()
   })
 })
