@@ -7,8 +7,8 @@ authors = ["Admin"]
 license = "MIT"
 
 [lib]
-# cdylib = native Python extension (.pyd / .so)
-crate-type = ["cdylib"]
+# cdylib = native Python extension (.pyd / .so), rlib for fuzzing/testing
+crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 # PyO3 extension-module feature = embed Python only at link time, not startup.

@@ -1050,6 +1050,8 @@ jobs:
         run: uv sync --frozen
 
       - name: Run contract tests (consumer-side)
+        # Wave 2.1: now includes test_file_processor_contract.py (ProcessResult
+        # callback schema) alongside the existing ws-hub NATS contract.
         run: |
           uv run pytest tests/contracts/ -v \
             --tb=short \
@@ -1057,6 +1059,125 @@ jobs:
             -k "not integration"
         env:
           PACT_DO_NOT_TRACK: "true"
+
+  # Wave 2.3 — Schemathesis property-based OpenAPI conformance gate.
+  # Generates random-but-valid requests from the live FastAPI OpenAPI schema
+  # and asserts every response conforms to the declared contract.
+  # Uses ASGI transport — fully hermetic, no Docker or network required.
+  schemathesis-api-tests:
+    name: Schemathesis — API Schema Conformance
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: pre-commit-check
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+
+      - name: Set up Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: "3.13"
+
+      - name: Generate CI secret key if not configured (RZ-14-06)
+        if: env.SECRET_KEY == ''
+        run: echo "SECRET_KEY=$(openssl rand -hex 32)" >> "$GITHUB_ENV"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
+        with:
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      - name: Install dependencies (with schemathesis)
+        run: uv sync --frozen --group dev
+
+      - name: Run Schemathesis conformance tests
+        env:
+          DATABASE_URL: "sqlite+aiosqlite:///./test_schemathesis.db"
+          ENVIRONMENT: testing
+          OTEL_SDK_DISABLED: "true"
+        run: |
+          uv run pytest tests/test_schemathesis_api.py -v \
+            --tb=short \
+            -p no:cacheprovider
+
+  # Wave 2.4 — MSW mock drift gate.
+  # Regenerates MSW handlers from the OpenAPI spec and fails if they differ
+  # from what is committed.  Ensures frontend mock handlers (used in Vitest
+  # and Storybook) never silently diverge from the live API contract.
+  msw-mock-drift:
+    name: MSW Mock Drift Gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs:
+      - pre-commit-check
+      - openapi-verify
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+
+      - name: Set up Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Set up Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: "3.13"
+
+      - name: Generate CI secret key if not configured (RZ-14-06)
+        if: env.SECRET_KEY == ''
+        run: echo "SECRET_KEY=$(openssl rand -hex 32)" >> "$GITHUB_ENV"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
+        with:
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      - name: Install backend dependencies
+        run: uv sync --frozen --no-dev
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Generate OpenAPI spec from live FastAPI app
+        env:
+          DATABASE_URL: "sqlite+aiosqlite:///:memory:"
+          ENVIRONMENT: testing
+        run: |
+          uv run python3 - <<'PY'
+          import json, pathlib
+          from app.main import app
+          schema_path = pathlib.Path("frontend/openapi.json")
+          schema_path.write_text(json.dumps(app.openapi()))
+          PY
+
+      - name: Regenerate MSW mock handlers from OpenAPI spec
+        working-directory: frontend
+        env:
+          OPENAPI_PATH: openapi.json
+        run: npm run generate:api
+
+      - name: Fail if MSW mocks are out of sync with OpenAPI spec
+        run: |
+          # If any generated file differs from what is committed, the
+          # developer must run `npm run generate:api` locally and commit
+          # the updated mock handlers.
+          git diff --exit-code -- frontend/src/tests/mocks/generated/ || {
+            echo "::error::MSW mock handlers are out of sync with the OpenAPI spec."
+            echo "Run 'npm run generate:api' locally, review the diff, and commit."
+            exit 1
+          }
+          echo "✅ MSW mock handlers are in sync with the OpenAPI spec."
 
   rust-ffi-asan:
     # Phase 3 QA — ADR-023: Run PyO3 FFI tests under AddressSanitizer + LeakSanitizer.
@@ -1094,7 +1215,8 @@ jobs:
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
             native/rust_ext/target/
-          key: ${{ runner.os }}-cargo-asan-${{ hashFiles('native/rust_ext/Cargo.toml') }}
+            crates/pyo3-sanitizer/target/
+          key: ${{ runner.os }}-cargo-asan-${{ hashFiles('native/rust_ext/Cargo.toml', 'crates/pyo3-sanitizer/Cargo.toml') }}
           restore-keys: |
             ${{ runner.os }}-cargo-asan-
 
@@ -1161,7 +1283,8 @@ jobs:
             native/rust_ext/target/
             frontend/wasm-sanitizer/target/
             frontend/rust-crypto/target/
-          key: ${{ runner.os }}-cargo-rust-tests-${{ hashFiles('native/rust_ext/Cargo.toml', 'frontend/wasm-sanitizer/Cargo.toml', 'frontend/rust-crypto/Cargo.toml') }}
+            crates/pyo3-sanitizer/target/
+          key: ${{ runner.os }}-cargo-rust-tests-${{ hashFiles('native/rust_ext/Cargo.toml', 'frontend/wasm-sanitizer/Cargo.toml', 'frontend/rust-crypto/Cargo.toml', 'crates/pyo3-sanitizer/Cargo.toml') }}
           restore-keys: |
             ${{ runner.os }}-cargo-rust-tests-
 
@@ -1174,6 +1297,13 @@ jobs:
           LIBDIR="$(python -c 'import sysconfig; print(sysconfig.get_config_var("LIBDIR"))')"
           export LD_LIBRARY_PATH="${LIBDIR}:${LD_LIBRARY_PATH}"
           cargo test --no-default-features --lib
+
+      - name: pyo3-sanitizer — native unit tests
+        working-directory: crates/pyo3-sanitizer
+        run: |
+          LIBDIR="$(python -c 'import sysconfig; print(sysconfig.get_config_var("LIBDIR"))')"
+          export LD_LIBRARY_PATH="${LIBDIR}:${LD_LIBRARY_PATH}"
+          cargo test --lib
 
       - name: wasm-sanitizer — native unit tests
         working-directory: frontend/wasm-sanitizer
@@ -1526,6 +1656,8 @@ jobs:
       - go-integration-file-processor
       - go-integration-gateway
       - contract-tests
+      - schemathesis-api-tests
+      - msw-mock-drift
       - provenance-check
       - e2e-tests
       - rust-ffi-asan
@@ -1573,11 +1705,18 @@ jobs:
             "${{ needs.helm-validate.result }}"
             "${{ needs.db-migration-gate.result }}"
             "${{ needs.go-fuzz.result }}"
+            "${{ needs.go-integration-ws-hub.result }}"
+            "${{ needs.go-integration-file-processor.result }}"
+            "${{ needs.go-integration-gateway.result }}"
             "${{ needs.contract-tests.result }}"
+            "${{ needs.schemathesis-api-tests.result }}"
+            "${{ needs.msw-mock-drift.result }}"
             "${{ needs.provenance-check.result }}"
             "${{ needs.e2e-tests.result }}"
             "${{ needs.rust-ffi-asan.result }}"
             "${{ needs.rust-tests.result }}"
+            "${{ needs.mutation-tests.result }}"
+            "${{ needs.load-and-chaos-tests.result }}"
           )
 
           failed=false

@@ -469,7 +469,7 @@ class TestOutboxWorkerDispatch:
         )
 
         with patch("app.core.events._EVENT_REGISTRY", {"StrictEvent": StrictEvent}):
-            with pytest.raises(Exception):
+            with pytest.raises(TypeError):
                 await worker._dispatch_event(se)
 
         assert se.error_count == 1
@@ -526,7 +526,7 @@ class TestDeadLetterQueueMarkJobFailed:
         job.retry_count = 3
         job.max_retries = 3
         job.job_type = "email"
-        job.job_hash = "abc123def456"
+        job.job_hash = "abc123def456"  # pragma: allowlist secret
 
         await dlq.mark_job_failed(job, "final error")
 

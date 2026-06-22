@@ -64,15 +64,12 @@ async def delete_sessions_matching(
     delete_stmt = delete(ActiveSession).where(whereclause)  # type: ignore[arg-type]
     # MED-W19: SQLite does not support RETURNING on DELETE; PostgreSQL does.
     supports_returning = not _is_sqlite
-    supports_rowcount_returning = not _is_sqlite
     if supports_returning:
         delete_stmt = delete_stmt.returning(ActiveSession.id)  # type: ignore[assignment]
         delete_result = await db.execute(delete_stmt)
-        rowcount: int | None = None
-        if supports_rowcount_returning:
-            rowcount = getattr(delete_result, "rowcount", None)
-            if rowcount is None and hasattr(delete_result, "raw"):
-                rowcount = getattr(delete_result.raw, "rowcount", None)
+        rowcount = getattr(delete_result, "rowcount", None)
+        if rowcount is None and hasattr(delete_result, "raw"):
+            rowcount = getattr(delete_result.raw, "rowcount", None)
         if rowcount is not None:
             deleted = int(rowcount)
         else:
@@ -179,7 +176,7 @@ async def start_session_cleanup_scheduler(
 
     async def _stop() -> None:
         if task.done():
-            with suppress(Exception):
+            with suppress(Exception, asyncio.CancelledError):
                 task.result()
             return
         task.cancel()

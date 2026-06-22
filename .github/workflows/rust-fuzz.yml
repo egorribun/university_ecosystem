@@ -41,7 +41,7 @@ jobs:
       - name: Install cargo-fuzz
         run: cargo install cargo-fuzz
 
-      - name: Run fuzz target
+      - name: Run fuzz targets
         run: |
           cd native/rust_ext
           # Run for 1 minute (60 seconds) on PR/push, or 5 minutes (300 seconds) on cron/dispatch
@@ -50,7 +50,10 @@ jobs:
           else
             DURATION=60
           fi
+          echo "Running fuzz_target_1 for $DURATION seconds..."
           cargo fuzz run fuzz_target_1 -- -max_total_time=$DURATION
+          echo "Running fuzz_sanitizer for $DURATION seconds..."
+          cargo fuzz run fuzz_sanitizer -- -max_total_time=$DURATION
 
       - name: Archive crashes
         if: failure()

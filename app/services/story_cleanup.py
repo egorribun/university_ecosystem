@@ -94,7 +94,7 @@ async def start_story_cleanup_scheduler(
 
     async def _stop() -> None:
         if task.done():
-            with suppress(Exception):
+            with suppress(Exception, asyncio.CancelledError):
                 task.result()
             return
         task.cancel()

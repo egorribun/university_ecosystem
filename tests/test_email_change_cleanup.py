@@ -1,5 +1,6 @@
 import asyncio
 import datetime as dt
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from sqlalchemy import select
@@ -135,3 +136,54 @@ async def test_start_email_change_cleanup_scheduler(monkeypatch):
 
     assert calls
     assert calls[0] == config.normalized_retention_minutes()
+
+
+async def test_cleanup_stale_email_change_tokens_no_args_and_zero_deleted(db_session):
+    mock_factory = MagicMock()
+    mock_factory.return_value.__aenter__.return_value = db_session
+    mock_factory.return_value.__aexit__ = AsyncMock()
+
+    with patch("app.services.email_change_cleanup.async_session", mock_factory):
+        cleaned = await cleanup_stale_email_change_tokens()
+        assert cleaned == 0
+
+
+async def test_email_change_cleanup_scheduler_cancel_and_error(monkeypatch):
+    async def fake_cleanup_cancel(*args, **kwargs):
+        raise asyncio.CancelledError()
+
+    monkeypatch.setattr(
+        email_change_cleanup, "cleanup_stale_email_change_tokens", fake_cleanup_cancel
+    )
+
+    real_sleep = asyncio.sleep
+
+    async def fast_sleep(_: float):
+        await real_sleep(0.0001)
+
+    monkeypatch.setattr(email_change_cleanup.asyncio, "sleep", fast_sleep)
+
+    stop = await start_email_change_cleanup_scheduler()
+    await real_sleep(0.02)
+    await stop()
+    await stop()
+
+
+async def test_email_change_cleanup_scheduler_other_error(monkeypatch):
+    async def fake_cleanup_error(*args, **kwargs):
+        raise ValueError("db error")
+
+    monkeypatch.setattr(
+        email_change_cleanup, "cleanup_stale_email_change_tokens", fake_cleanup_error
+    )
+
+    real_sleep = asyncio.sleep
+
+    async def fast_sleep(_: float):
+        await real_sleep(0.0001)
+
+    monkeypatch.setattr(email_change_cleanup.asyncio, "sleep", fast_sleep)
+
+    stop = await start_email_change_cleanup_scheduler()
+    await real_sleep(0.02)
+    await stop()

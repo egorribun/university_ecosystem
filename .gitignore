@@ -391,3 +391,6 @@ native/rust_ext/fuzz/artifacts/
 # (clickable repo links would dangle). Future memory file additions stay in .claude
 # profile only; do NOT re-create memory/ in repo.
 memory/
+
+# Test runtime static files
+app/test-static/

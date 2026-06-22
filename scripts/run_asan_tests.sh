@@ -60,6 +60,16 @@ echo "==> [ASan] Rebuilding rust_ext under ASan (nightly, force-reinstall)..."
   uv run maturin develop --release --target "${HOST_TRIPLE}" -Zbuild-std=std,panic_abort
 )
 
+echo "==> [ASan] Rebuilding pyo3-sanitizer under ASan (nightly, force-reinstall)..."
+(
+  cd "${REPO_ROOT}/crates/pyo3-sanitizer"
+  unset RUSTFLAGS
+  RUSTUP_TOOLCHAIN=nightly
+  TRIPLE_UPPER="$(echo "${HOST_TRIPLE}" | tr '-' '_' | tr '[:lower:]' '[:upper:]')"
+  export "CARGO_TARGET_${TRIPLE_UPPER}_RUSTFLAGS=-Zsanitizer=address"
+  uv run maturin develop --release --target "${HOST_TRIPLE}" -Zbuild-std=std,panic_abort
+)
+
 # ── Step 3: Locate the ASan runtime shared library ───────────────────────────
 #
 # The ASan runtime must be LD_PRELOAD-ed when running Python because Python
@@ -115,8 +125,16 @@ LSAN_OPTIONS="suppressions=${REPO_ROOT}/tests/lsan_suppressions.txt" \
     tests/test_smoke_rust_audit.py \
     tests/test_smoke_rust_partitions.py \
     tests/test_property_based.py \
+    tests/test_content_processing.py \
+    tests/test_smoke_pyo3_ext.py \
     -v \
     --tb=short
 
-echo "==> [ASan] All FFI tests passed — no memory errors or leaks detected."
+echo "==> [ASan] Running Atheris API fuzzer under ASan/LSan..."
+LD_PRELOAD="${ASAN_LIB}" \
+ASAN_OPTIONS="${ASAN_LOG_OPT}detect_leaks=1:detect_odr_violation=0:abort_on_error=1" \
+LSAN_OPTIONS="suppressions=${REPO_ROOT}/tests/lsan_suppressions.txt" \
+  uv run python tests/fuzz/run_atheris.py -max_total_time=60
+
+echo "==> [ASan] All FFI tests and Atheris fuzzing passed — no memory errors or leaks detected."
 

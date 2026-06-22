@@ -26,18 +26,20 @@ from __future__ import annotations
 
 import json
 import re
+import sys
 from pathlib import Path
 from typing import Any
 
 import pytest
 
 pact_lib = None
-try:
-    import pact
+if sys.platform != "win32":
+    try:
+        import pact
 
-    pact_lib = pact
-except ImportError:
-    pass
+        pact_lib = pact
+    except ImportError:
+        pass
 
 if pact_lib is None:
     pytestmark = pytest.mark.skip(

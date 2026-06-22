@@ -315,11 +315,11 @@ from app.services.file_scanner import (
 
 def test_create_clamd_client_unix_socket():
     with patch("app.services.file_scanner.settings") as mock_settings:
-        mock_settings.event_file_scanner_socket = "/tmp/clamd.ctl"
+        mock_settings.event_file_scanner_socket = "/tmp/clamd.ctl"  # noqa: S108
         mock_settings.event_file_scanner_timeout = 10.0
         with patch("clamd.ClamdUnixSocket") as mock_unix:
             _create_clamd_client()
-            mock_unix.assert_called_once_with(path="/tmp/clamd.ctl", timeout=10.0)
+            mock_unix.assert_called_once_with(path="/tmp/clamd.ctl", timeout=10.0)  # noqa: S108
 
 
 def test_scan_with_clamd_stream_malformed():
@@ -502,7 +502,7 @@ async def test_scan_for_malware_quarantine_narrowed_errors():
 async def test_scan_bytes_with_clamd_wrapper():
     from app.services.file_scanner import _ScanResult
 
-    res = _ScanResult(signature=None, duration=0.05, bytes_scanned=4)
+    _ScanResult(signature=None, duration=0.05, bytes_scanned=4)
     with patch("app.services.file_scanner._scan_with_clamd_stream", return_value=None):
         result = await _scan_bytes_with_clamd(b"data")
         assert result.signature is None
@@ -512,7 +512,7 @@ async def test_scan_bytes_with_clamd_wrapper():
 @pytest.mark.anyio
 async def test_scan_upload_with_clamd_unix_socket():
     with patch("app.services.file_scanner.settings") as mock_settings:
-        mock_settings.event_file_scanner_socket = "/tmp/clamd.ctl"
+        mock_settings.event_file_scanner_socket = "/tmp/clamd.ctl"  # noqa: S108
         mock_settings.event_file_scanner_timeout = 5.0
 
         mock_upload = AsyncMock(spec=UploadFile)
@@ -532,7 +532,7 @@ async def test_scan_upload_with_clamd_unix_socket():
             "asyncio.open_unix_connection", mock_open_unix, create=True
         ) as mock_conn:
             res = await _scan_upload_with_clamd(mock_upload, size_limit=1000)
-            mock_conn.assert_called_once_with("/tmp/clamd.ctl")
+            mock_conn.assert_called_once_with("/tmp/clamd.ctl")  # noqa: S108
             assert res.signature is None
 
 

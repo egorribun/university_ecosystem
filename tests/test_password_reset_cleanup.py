@@ -1,5 +1,6 @@
 import asyncio
 import datetime as dt
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from sqlalchemy import func, select
@@ -142,3 +143,61 @@ async def test_forgot_password_limits_active_tokens(
     active_count = active.scalar_one()
 
     assert active_count <= max(1, settings.password_reset_max_active_tokens)
+
+
+@pytest.mark.asyncio
+async def test_cleanup_stale_password_reset_tokens_no_args_and_zero_deleted(db_session):
+    mock_factory = MagicMock()
+    mock_factory.return_value.__aenter__.return_value = db_session
+    mock_factory.return_value.__aexit__ = AsyncMock()
+
+    with patch("app.services.password_reset_cleanup.async_session", mock_factory):
+        deleted = await cleanup_stale_password_reset_tokens()
+        assert deleted == 0
+
+
+@pytest.mark.asyncio
+async def test_password_reset_cleanup_scheduler_cancel_and_error(monkeypatch):
+    async def fake_cleanup_cancel(*args, **kwargs):
+        raise asyncio.CancelledError()
+
+    monkeypatch.setattr(
+        password_reset_cleanup,
+        "cleanup_stale_password_reset_tokens",
+        fake_cleanup_cancel,
+    )
+
+    real_sleep = asyncio.sleep
+
+    async def fast_sleep(_: float):
+        await real_sleep(0.0001)
+
+    monkeypatch.setattr(password_reset_cleanup.asyncio, "sleep", fast_sleep)
+
+    stop = await start_password_reset_cleanup_scheduler()
+    await real_sleep(0.02)
+    await stop()
+    await stop()
+
+
+@pytest.mark.asyncio
+async def test_password_reset_cleanup_scheduler_other_error(monkeypatch):
+    async def fake_cleanup_error(*args, **kwargs):
+        raise ValueError("db error")
+
+    monkeypatch.setattr(
+        password_reset_cleanup,
+        "cleanup_stale_password_reset_tokens",
+        fake_cleanup_error,
+    )
+
+    real_sleep = asyncio.sleep
+
+    async def fast_sleep(_: float):
+        await real_sleep(0.0001)
+
+    monkeypatch.setattr(password_reset_cleanup.asyncio, "sleep", fast_sleep)
+
+    stop = await start_password_reset_cleanup_scheduler()
+    await real_sleep(0.02)
+    await stop()

@@ -348,15 +348,8 @@ omit = [
   # Entrypoints / scripts — not unit-testable
   "app/__main__.py",
   "app/core/uvloop_setup.py",
-  "app/core/lifespan.py",
   "app/core/profiling.py",
   "app/core/ci/*",
-  # Observability SDK init — requires live OTel collector / Sentry DSN
-  "app/core/observability.py",
-  # Prometheus metric definitions — declarative Counter/Histogram; middleware tested separately
-  "app/core/metrics.py",
-  # NATS task wrappers — thin @broker.task() decorators; inner service functions tested directly
-  "app/tasks/*",
 ]
 
 [tool.coverage.report]
@@ -415,6 +408,13 @@ dev = [
   "pact-python==3.4.0",
   "diff-cover>=9.2.0",
   "mutmut>=3.0.0",
+  # Wave 2 / Task 2.3 — Schemathesis for property-based OpenAPI conformance testing.
+  # Generates random-but-valid requests from the OpenAPI spec and asserts the
+  # server's responses match the declared schemas (status codes, bodies, headers).
+  # Runs against the live FastAPI app in CI via ASGI transport (no network needed).
+  # NOTE: schemathesis 3.x requires pytest<9; use 4.x which lifted this restriction.
+  "schemathesis>=4.0.0,<5",
+  "atheris>=2.3.0 ; sys_platform == 'linux'",
 ]
 
 # MOD-06 (audit Wave 11): dedicated security scanning group.

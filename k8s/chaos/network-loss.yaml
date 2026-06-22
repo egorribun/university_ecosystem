@@ -1,0 +1,14 @@
+apiVersion: chaos-mesh.org/v1alpha1
+kind: NetworkChaos
+metadata:
+  name: backend-network-loss
+spec:
+  action: loss
+  mode: all
+  selector:
+    labelSelectors:
+      app.kubernetes.io/name: backend
+  loss:
+    loss: "10"
+    correlation: "50"
+  duration: "45s"

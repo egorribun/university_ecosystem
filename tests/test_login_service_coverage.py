@@ -491,3 +491,41 @@ async def test_extract_client_info_forwarded(login_service):
             ip, ua = login_service.session_manager.extract_client_info(req)
             assert ip == "10.0.0.1"
             assert ua == "client-ua"
+
+
+async def test_mfa_coordinator_no_response():
+    from app.services.auth.mfa_coordinator import MfaCoordinator
+
+    mock_uow = MagicMock()
+    mock_uow.commit = AsyncMock()
+    mock_repo = AsyncMock()
+    mock_repo.has_active_mfa.return_value = True
+    mock_repo.get_user_mfa_capabilities.return_value = {"totp": True}
+
+    mfa_coord = MfaCoordinator(uow=mock_uow, auth_repo=mock_repo)
+
+    user = MagicMock()
+    user.id = uuid4()
+    user.mfa_required = True
+    user.mfa_default_method = "totp"
+
+    challenge = MagicMock()
+    challenge.token = "token"
+    challenge.expires_at = datetime.now(UTC)
+
+    with (
+        patch(
+            "app.services.auth.mfa_coordinator.mfa.start_totp_verification",
+            new_callable=AsyncMock,
+            return_value=challenge,
+        ),
+        patch(
+            "app.services.auth.mfa_coordinator.mfa.describe_challenge_attempts",
+            return_value=(0, 3, 3),
+        ),
+    ):
+        res = await mfa_coord.check_and_issue_challenges(
+            user=user, request=MagicMock(), response=None, locale="en"
+        )
+        assert res is not None
+        assert res.default_method == "totp"

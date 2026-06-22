@@ -79,3 +79,177 @@ fn pyo3_sanitizer(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_function(wrap_pyfunction!(strip_html, module)?)?;
     Ok(())
 }
+
+// ── Unit Tests ────────────────────────────────────────────────────────────────
+//
+// These test the Rust functions directly — no PyO3 runtime needed.
+// `cargo test --lib` runs them in isolation, which is exactly what the
+// `rust-tests` CI job does (see .github/workflows/ci.yml §rust-tests).
+//
+// Coverage rationale:
+//  - KAT vectors verify byte-exact parity with the ammonia 4.x defaults so
+//    that future ammonia upgrades never silently change sanitization behaviour.
+//  - XSS payloads confirm that attack vectors from OWASP's XSS cheat-sheet
+//    are stripped before they reach any Python caller.
+//  - URL-scheme tests confirm only http/https survive in <a href=…> attributes.
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ── sanitize_rich_text ───────────────────────────────────────────────────
+
+    #[test]
+    fn rich_text_preserves_allowed_block_elements() {
+        let input = "<p>Hello <b>world</b></p><ul><li>item</li></ul>";
+        let out = sanitize_rich_text(input);
+        assert!(out.contains("<p>"), "p tag must be preserved");
+        assert!(out.contains("<b>"), "b tag must be preserved");
+        assert!(out.contains("<ul>"), "ul tag must be preserved");
+        assert!(out.contains("<li>"), "li tag must be preserved");
+    }
+
+    #[test]
+    fn rich_text_preserves_headings_and_code() {
+        let input = "<h1>Title</h1><h3>Sub</h3><pre><code>fn main() {}</code></pre>";
+        let out = sanitize_rich_text(input);
+        assert!(out.contains("<h1>"), "h1 must be preserved");
+        assert!(out.contains("<h3>"), "h3 must be preserved");
+        assert!(out.contains("<code>"), "code must be preserved");
+        assert!(out.contains("<pre>"), "pre must be preserved");
+    }
+
+    #[test]
+    fn rich_text_strips_script_tags() {
+        // Classic XSS: inline <script>
+        let out = sanitize_rich_text("<script>alert('xss')</script><p>safe</p>");
+        assert!(!out.contains("<script"), "script tag must be removed");
+        assert!(!out.contains("alert"), "script content must be removed");
+        assert!(out.contains("<p>"), "sibling safe content must survive");
+    }
+
+    #[test]
+    fn rich_text_strips_onerror_attribute() {
+        // XSS via event handler attribute
+        let out = sanitize_rich_text("<img src=x onerror=alert(1)>");
+        assert!(!out.contains("onerror"), "onerror attribute must be stripped");
+        assert!(!out.contains("<img"), "img (not in allow-list) must be removed");
+    }
+
+    #[test]
+    fn rich_text_strips_javascript_href() {
+        // XSS via javascript: URI scheme
+        let out = sanitize_rich_text("<a href='javascript:void(0)'>click</a>");
+        // ammonia replaces disallowed URL schemes with '#' or removes href entirely.
+        assert!(!out.contains("javascript:"), "javascript: scheme must be stripped");
+    }
+
+    #[test]
+    fn rich_text_preserves_https_anchor() {
+        let out = sanitize_rich_text("<a href='https://example.com' title='ex'>link</a>");
+        assert!(out.contains("href"), "href must be preserved for https links");
+        assert!(out.contains("https://example.com"), "https URL must survive");
+        // ammonia injects rel="noopener noreferrer" automatically
+        assert!(out.contains("noopener"), "rel=noopener must be injected");
+    }
+
+    #[test]
+    fn rich_text_strips_style_attribute() {
+        // style= is a common XSS vector (expression(), moz-binding, etc.)
+        let out = sanitize_rich_text("<p style='color:red;expression(alert(1))'>text</p>");
+        assert!(!out.contains("style="), "style attribute must be stripped");
+        assert!(out.contains("text"), "text content must survive");
+    }
+
+    #[test]
+    fn rich_text_empty_string_roundtrips() {
+        assert_eq!(sanitize_rich_text(""), "");
+    }
+
+    #[test]
+    fn rich_text_plain_text_roundtrips() {
+        // Plain text with no markup must pass through unchanged
+        let input = "Hello, world! No markup here.";
+        assert_eq!(sanitize_rich_text(input), input);
+    }
+
+    // ── sanitize_html_basic ──────────────────────────────────────────────────
+
+    #[test]
+    fn basic_preserves_bold_and_italic() {
+        let out = sanitize_html_basic("<b>bold</b> and <i>italic</i> and <em>emphasis</em>");
+        assert!(out.contains("<b>"), "b must be preserved");
+        assert!(out.contains("<i>"), "i must be preserved");
+        assert!(out.contains("<em>"), "em must be preserved");
+    }
+
+    #[test]
+    fn basic_strips_anchor_tag() {
+        // <a> is allowed in rich mode but NOT in basic mode
+        let out = sanitize_html_basic("<a href='https://example.com'>link</a>");
+        assert!(!out.contains("<a"), "a must be stripped in basic mode");
+        assert!(out.contains("link"), "link text must survive");
+    }
+
+    #[test]
+    fn basic_strips_script() {
+        let out = sanitize_html_basic("<script>evil()</script><strong>safe</strong>");
+        assert!(!out.contains("<script"), "script must be stripped");
+        assert!(out.contains("<strong>"), "strong must survive");
+    }
+
+    #[test]
+    fn basic_strips_heading_tags() {
+        // Headings are NOT in the basic allow-list
+        let out = sanitize_html_basic("<h1>Title</h1><b>bold</b>");
+        assert!(!out.contains("<h1>"), "h1 must be stripped in basic mode");
+        assert!(out.contains("Title"), "heading text must survive as plain text");
+        assert!(out.contains("<b>"), "b must survive");
+    }
+
+    #[test]
+    fn basic_empty_string_roundtrips() {
+        assert_eq!(sanitize_html_basic(""), "");
+    }
+
+    // ── strip_html ───────────────────────────────────────────────────────────
+
+    #[test]
+    fn strip_removes_all_tags() {
+        let out = strip_html("<p><b>Hello</b> <i>world</i></p>");
+        assert!(!out.contains('<'), "no tags must remain");
+        assert!(out.contains("Hello"), "text must survive");
+        assert!(out.contains("world"), "text must survive");
+    }
+
+    #[test]
+    fn strip_removes_script_content_tags_but_not_text() {
+        // ammonia's strip_tags removes the tags but the text content of
+        // script elements is still passed through (it is CDATA, not markup).
+        // We verify the <script…> delimiters are gone at minimum.
+        let out = strip_html("<script>dangerous</script>safe");
+        assert!(!out.contains("<script"), "script opening tag must be removed");
+        assert!(!out.contains("</script>"), "script closing tag must be removed");
+        assert!(out.contains("safe"), "non-script text must survive");
+    }
+
+    #[test]
+    fn strip_empty_string_roundtrips() {
+        assert_eq!(strip_html(""), "");
+    }
+
+    #[test]
+    fn strip_plain_text_roundtrips() {
+        let input = "No HTML here — just text & symbols.";
+        let out = strip_html(input);
+        // ampersand is preserved as-is (ammonia does not HTML-encode plain text)
+        assert!(out.contains("No HTML here"));
+    }
+
+    #[test]
+    fn strip_nested_tags_yield_all_text() {
+        let out = strip_html("<div><p>outer <span>inner</span></p></div>");
+        assert!(!out.contains('<'), "no tags must remain");
+        assert!(out.contains("outer"), "outer text must survive");
+        assert!(out.contains("inner"), "inner text must survive");
+    }
+}

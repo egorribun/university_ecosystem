@@ -27,8 +27,12 @@ R_co = TypeVar("R_co", covariant=True)
 class Task(Protocol[P, R_co]):
     """Protocol for NATS tasks with 'kick' method."""
 
-    async def __call__(self, *args: P.args, **kwargs: P.kwargs) -> R_co: ...
-    async def kick(self, *args: P.args, **kwargs: P.kwargs) -> None: ...
+    async def __call__(
+        self, *args: P.args, **kwargs: P.kwargs
+    ) -> R_co: ...  # pragma: no cover
+    async def kick(
+        self, *args: P.args, **kwargs: P.kwargs
+    ) -> None: ...  # pragma: no cover
 
 
 _logger = get_logger(__name__)
@@ -429,7 +433,7 @@ class NatsTaskBroker:
                                                     *args,  # noqa: B023
                                                     **kwargs,  # noqa: B023
                                                 ),
-                                                cancellable=True,
+                                                abandon_on_cancel=True,
                                             )
                                 else:
                                     if inspect.iscoroutinefunction(handler):  # noqa: B023
@@ -439,7 +443,7 @@ class NatsTaskBroker:
 
                                         await anyio.to_thread.run_sync(
                                             functools.partial(handler, *args, **kwargs),  # noqa: B023
-                                            cancellable=True,
+                                            abandon_on_cancel=True,
                                         )
 
                             try:

@@ -18,12 +18,38 @@ _PROJECT_ROOT = Path(__file__).resolve().parents[3]
 
 def _resolve_env_file(base_dir: Path) -> Path | None:
     """Locate a concrete environment file if one has been provided."""
+    example_override = os.environ.get("ENV_EXAMPLE_PATH")
+    if example_override is not None:
+        example_path = Path(example_override)
+    else:
+        example_path = base_dir / ".env.example"
 
-    example_path = base_dir / ".env.example"
     try:
         example_bytes = example_path.read_bytes()
     except OSError:
         example_bytes = None
+
+    env_override = os.environ.get("ENV_FILE_PATH")
+    if env_override is not None:
+        if not env_override:
+            return None
+        candidate = Path(env_override)
+        if candidate.is_file():
+            if example_bytes is not None:
+                try:
+                    candidate_bytes = candidate.read_bytes()
+                except OSError:
+                    candidate_bytes = None
+                else:
+                    if candidate_bytes == example_bytes:
+                        logging.getLogger(__name__).warning(
+                            "%s is identical to %s; update it with real secrets "
+                            "before deploying.",
+                            candidate,
+                            example_path,
+                        )
+            return candidate
+        return None
 
     for name in (".env", ".env.local"):
         candidate = base_dir / name

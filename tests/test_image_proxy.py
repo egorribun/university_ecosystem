@@ -268,7 +268,7 @@ async def test_get_transformed_image_redis_setex_error():
 
     with patch("app.deps.cache.get_cache_client", return_value=mock_redis):
         with patch("app.services.image_proxy.logger.warning") as mock_warn:
-            data, mime = await get_transformed_image(
+            _, mime = await get_transformed_image(
                 mock_backend, "/static/avatar.png", width=10, format_preference="webp"
             )
             assert mime == "image/webp"

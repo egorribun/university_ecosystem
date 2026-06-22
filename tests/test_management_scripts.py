@@ -116,7 +116,7 @@ def test_rename_files_real_fs(tmp_path) -> None:
     collision_target = avatars_dir / "unsafe-name_123.png"
     collision_target.write_text("exists")
 
-    avatar_mapping, cover_mapping = _rename_files(tmp_path)
+    avatar_mapping, _ = _rename_files(tmp_path)
 
     # It should normalize to "unsafe-name_123-1.png" because of collision!
     expected_new_file = avatars_dir / "unsafe-name_123-1.png"
@@ -130,7 +130,7 @@ def test_rename_files_real_fs(tmp_path) -> None:
 
 @pytest.mark.asyncio
 async def test_normalize_static_main(mock_db_session) -> None:
-    base_dir = Path("/tmp/static")
+    base_dir = Path("/tmp/static")  # noqa: S108
 
     # Override session.begin to be a MagicMock so it behaves as a synchronous context manager
     mock_db_session.begin = MagicMock()
@@ -252,7 +252,7 @@ def test_reset_mfa_main() -> None:
     args = argparse.Namespace(user_id=1, email=None, no_notify=True)
     with (
         patch("app.management.reset_mfa._build_arg_parser") as mock_parser,
-        patch("app.management.reset_mfa._async_main") as mock_async_main,
+        patch("app.management.reset_mfa._async_main"),
         patch("app.management.reset_mfa.asyncio.run") as mock_run,
     ):
         mock_parser.return_value.parse_args.return_value = args
@@ -343,7 +343,9 @@ async def test_run_weekly_cleanup(mock_db_session) -> None:
         patch("app.management.weekly_cleanup.engine", mock_engine),
         patch("app.management.weekly_cleanup.settings") as mock_settings,
     ):
-        mock_settings.database_url = "postgresql://user:pass@localhost/mydb"
+        mock_settings.database_url = (
+            "postgresql://user:pass@localhost/mydb"  # pragma: allowlist secret
+        )
 
         orphaned_calls = 0
         stale_calls = 0
