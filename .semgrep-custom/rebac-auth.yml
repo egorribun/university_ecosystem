@@ -1,0 +1,48 @@
+rules:
+  - id: fastapi-rebac-auth-missing
+    metadata:
+      category: security
+      description: "FastAPI endpoint might be missing authorization or ReBAC checks."
+      severity: ERROR
+    languages:
+      - python
+    message: "FastAPI endpoint does not appear to enforce authorization. Ensure it uses Depends(...) or check_permission, or add '# nosec: public_endpoint'."
+    paths:
+      include:
+        - "app/routers/**"
+    patterns:
+      - pattern-either:
+          - pattern: |
+              @router.get(...)
+              async def $FUNC(...):
+                ...
+          - pattern: |
+              @router.post(...)
+              async def $FUNC(...):
+                ...
+          - pattern: |
+              @router.put(...)
+              async def $FUNC(...):
+                ...
+          - pattern: |
+              @router.delete(...)
+              async def $FUNC(...):
+                ...
+          - pattern: |
+              @router.patch(...)
+              async def $FUNC(...):
+                ...
+      - and-not:
+          pattern: |
+            @$DECORATOR(...)
+            async def $FUNC(..., $VAR = Depends(...), ...):
+              ...
+      - and-not:
+          pattern: |
+            @$DECORATOR(...)
+            async def $FUNC(...):
+              ...
+              await $CHECKER.check_permission(...)
+              ...
+      - and-not:
+          pattern-regex: "(?s).*#\\s*nosec:\\s*public_endpoint.*"

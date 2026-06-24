@@ -72,3 +72,61 @@ func TestSetupRouter_WiresRoutesAndProbes(t *testing.T) {
 		assert.Contains(t, rec.Body.String(), "endpoint not found")
 	})
 }
+
+func TestInitLogger(t *testing.T) {
+	logger := initLogger()
+	assert.NotNil(t, logger)
+}
+
+func TestInitSentry(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	
+	t.Run("disabled sentry", func(t *testing.T) {
+		cfg := &config.Config{SentryDSN: ""}
+		assert.NotPanics(t, func() {
+			initSentry(cfg, logger)
+		})
+	})
+	
+	t.Run("invalid sentry dsn", func(t *testing.T) {
+		cfg := &config.Config{SentryDSN: "invalid-dsn"}
+		assert.NotPanics(t, func() {
+			initSentry(cfg, logger)
+		})
+	})
+}
+
+func TestInitGRPC(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	cfg := &config.Config{
+		FileProcessorAddr: "localhost:50051",
+		GrpcUseTLS:        false,
+	}
+	conn, client := initGRPC(cfg, logger)
+	assert.NotNil(t, conn)
+	assert.NotNil(t, client)
+	_ = conn.Close()
+}
+
+func TestInitTracer_Failure(t *testing.T) {
+	cfg := &config.Config{
+		OtelEndpoint: "http://localhost:4317",
+		GrpcUseTLS:   false,
+	}
+	tp, err := initTracer(context.Background(), cfg)
+	if err == nil {
+		assert.NotNil(t, tp)
+		_ = tp.Shutdown(context.Background())
+	}
+}
+
+func TestRunServer_Error(t *testing.T) {
+	cfg := &config.Config{
+		Port: "-1",
+	}
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	router := gin.New()
+	assert.NotPanics(t, func() {
+		runServer(cfg, router, logger)
+	})
+}

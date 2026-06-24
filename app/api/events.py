@@ -57,6 +57,17 @@ logger = get_logger(__name__)
 router = APIRouter(prefix="/events", tags=["events"])
 
 _EVENTS_CACHE_CONTROL = "private, max-age=180"
+
+
+def _validate_id_type(id_val: uuid.UUID | int) -> None:
+    if isinstance(id_val, int):
+        # Prevent SQLite/Postgres 64-bit signed integer overflow
+        if not (-9223372036854775808 <= id_val <= 9223372036854775807):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="ID out of 64-bit integer range."
+            )
+
 _EVENTS_LIST_CACHE_PREFIX = events_cache_version.prefix
 
 
@@ -254,6 +265,7 @@ async def upload_event_file(
     user: models.User = Depends(get_current_user),
     checker: PermissionChecker = Depends(get_permission_checker),
 ) -> models.EventFile:
+    _validate_id_type(event_id)
     locale = resolve_locale(request=request, user=user)
     event = await db.get(models.Event, event_id)
     ensure_exists(event, "events", locale)
@@ -287,6 +299,7 @@ async def upload_event_file(
 async def get_event_files(
     event_id: uuid.UUID | int, db: AsyncSession = Depends(get_read_db)
 ) -> list[models.EventFile]:
+    _validate_id_type(event_id)
     files = (
         (
             await db.execute(
@@ -314,6 +327,7 @@ async def upload_event_image(
     db: AsyncSession = Depends(get_db),
     checker: PermissionChecker = Depends(get_permission_checker),
 ) -> dict[str, str]:
+    _validate_id_type(event_id)
     locale = resolve_locale(request=request, user=user)
 
     # RZ-003 Fix: Deny unlinked anonymous file uploads to prevent Storage DoS
@@ -422,6 +436,7 @@ async def delete_event(
     user: models.User = Depends(get_current_user),
     checker: PermissionChecker = Depends(get_permission_checker),
 ) -> dict[str, bool]:
+    _validate_id_type(event_id)
     locale = resolve_locale(request=request, user=user)
 
     # RZ-003 (audit 2026-03-04): Replaced require_owner_or_admin() with
@@ -459,6 +474,7 @@ async def get_event(
     if_none_match: str | None = Header(default=None),
     events: EventService = Depends(get_read_event_service),
 ) -> schemas.EventOut | Response | Any:
+    _validate_id_type(event_id)
     locale = resolve_locale(request=request, user=user)
 
     payload = await events.get_event_detail(event_id, user.id, locale=locale)
@@ -476,6 +492,7 @@ async def delete_event_file(
     user: models.User = Depends(get_current_user),
     checker: PermissionChecker = Depends(get_permission_checker),
 ) -> dict[str, bool]:
+    _validate_id_type(file_id)
     locale = resolve_locale(request=request, user=user)
     ef = await db.get(models.EventFile, file_id)
     if not ef:

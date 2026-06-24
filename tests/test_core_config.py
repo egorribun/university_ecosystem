@@ -9,11 +9,31 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 BACKEND_ROOT = PROJECT_ROOT
 
 
+def _reload_all_config():
+    """Reloads all settings modules in correct dependency order.
+    
+    This is necessary because Pydantic's BaseSettings caches SettingsConfigDict (env_file, etc.)
+    at class definition time. If we reload app.core.config.base, we must also reload all mixin
+    modules that subclass BaseAppSettings so they pick up the new base class definition.
+    """
+    from app.core.config import base, database, security, cache, observability, storage, notifications, integrations, app_gen
+    from app.core import config as config_module
+    importlib.reload(base)
+    importlib.reload(database)
+    importlib.reload(security)
+    importlib.reload(cache)
+    importlib.reload(observability)
+    importlib.reload(storage)
+    importlib.reload(notifications)
+    importlib.reload(integrations)
+    importlib.reload(app_gen)
+    return importlib.reload(config_module)
+
+
 @pytest.fixture(autouse=True)
 def restore_config_module():
     """Restores the config module to its original state after each test."""
     from app.core import config as config_module
-    from app.core.config import base as base_module
 
     original_env = dict(os.environ)
     # importlib.reload(config_module) rebinds config_module.settings to a NEW
@@ -33,8 +53,7 @@ def restore_config_module():
     os.environ.clear()
     os.environ.update(original_env)
 
-    importlib.reload(base_module)
-    importlib.reload(config_module)
+    _reload_all_config()
     config_module.settings = original_settings
 
 
@@ -78,10 +97,7 @@ def test_settings_require_real_secret_when_env_missing(monkeypatch):
 
     with _temporary_env_file(None):
         from app.core import config as config_module
-        from app.core.config import base as base_module
-
-        importlib.reload(base_module)
-        config_module = importlib.reload(config_module)
+        config_module = _reload_all_config()
 
         assert config_module._ENV_FILE is None
 
@@ -104,10 +120,7 @@ def test_settings_allow_development_defaults_when_opted_in(monkeypatch):
 
     with _temporary_env_file(None):
         from app.core import config as config_module
-        from app.core.config import base as base_module
-
-        importlib.reload(base_module)
-        config_module = importlib.reload(config_module)
+        config_module = _reload_all_config()
 
         settings = config_module.Settings(_allow_missing=True)
 
@@ -142,11 +155,9 @@ def test_settings_warn_when_env_matches_example(monkeypatch, caplog, tmp_path):
 
     with _temporary_env_file(test_example_content) as env_path:
         from app.core import config as config_module
-        from app.core.config import base as base_module
 
         with caplog.at_level("WARNING"):
-            importlib.reload(base_module)
-            config_module = importlib.reload(config_module)
+            config_module = _reload_all_config()
 
         assert env_path.resolve() == config_module._ENV_FILE
 
@@ -168,10 +179,7 @@ def test_notifications_allowed_push_topics_parsed(monkeypatch):
 
     with _temporary_env_file(None):
         from app.core import config as config_module
-        from app.core.config import base as base_module
-
-        importlib.reload(base_module)
-        config_module = importlib.reload(config_module)
+        config_module = _reload_all_config()
         settings = config_module.Settings(_allow_missing=True)
 
     assert settings.notifications_allowed_push_topics == [
@@ -196,8 +204,7 @@ def test_auto_create_schema_default_true_in_development(monkeypatch):
 
     with _temporary_env_file(None):
         from app.core import config as config_module
-
-        config_module = importlib.reload(config_module)
+        config_module = _reload_all_config()
         settings = config_module.Settings()
 
     assert settings.auto_create_schema is True
@@ -228,8 +235,7 @@ def test_auto_create_schema_default_false_in_production(monkeypatch, tmp_path):
 
     with _temporary_env_file(None):
         from app.core import config as config_module
-
-        config_module = importlib.reload(config_module)
+        config_module = _reload_all_config()
         settings = config_module.Settings()
 
     assert settings.auto_create_schema is False
@@ -264,7 +270,7 @@ def test_auto_create_schema_warns_when_enabled_in_production(
         from app.core import config as config_module
 
         with caplog.at_level("WARNING"):
-            config_module = importlib.reload(config_module)
+            config_module = _reload_all_config()
             settings = config_module.Settings()
 
     assert settings.auto_create_schema is True
@@ -284,7 +290,7 @@ def test_response_compression_toggle(monkeypatch):
     with _temporary_env_file(None):
         from app.core import config as config_module
 
-        config_module = importlib.reload(config_module)
+        config_module = _reload_all_config()
         default_settings = config_module.Settings()
         assert default_settings.response_compression_enabled is True
         assert (
@@ -293,7 +299,7 @@ def test_response_compression_toggle(monkeypatch):
         )
 
         monkeypatch.setenv("ENABLE_RESPONSE_COMPRESSION", "false")
-        config_module = importlib.reload(config_module)
+        config_module = _reload_all_config()
         disabled_settings = config_module.Settings()
         assert disabled_settings.response_compression_enabled is False
         assert (

@@ -199,6 +199,7 @@ async def _validate_subscription_payload(
 
 
 @router.get("/vapid-public-key")
+# nosec: public_endpoint
 async def get_vapid_public_key() -> dict[str, str | None]:
     """Return configured VAPID public key."""
     key = settings.VAPID_PUBLIC_KEY.strip() if settings.VAPID_PUBLIC_KEY else ""

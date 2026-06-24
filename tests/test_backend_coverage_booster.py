@@ -370,3 +370,246 @@ async def test_paginate_cursor_empty_decoded_and_null_last_val():
     assert (
         res.next_cursor is None
     )  # Because last_cursor_value is None (covers 167->170 branch)
+
+
+def test_spotify_shim_coverage():
+    import app.auth.spotify as spotify_shim
+    assert spotify_shim.router is not None
+
+
+@pytest.mark.asyncio
+async def test_search_provider():
+    from app.core.di.search import SearchProvider
+    provider = SearchProvider()
+    generator = provider.search_service()
+    svc = await anext(generator)
+    assert svc is not None
+    try:
+        await generator.__anext__()
+    except StopAsyncIteration:
+        pass
+
+
+@pytest.mark.asyncio
+async def test_app_exceptions():
+    from app.core.exceptions import (
+        ResourceNotFoundException,
+        PermissionDeniedException,
+        InvalidOperationException,
+        app_exception_handler,
+        AppException,
+    )
+    from fastapi import Request
+
+    rnfe = ResourceNotFoundException("Not found", {"item": 1})
+    assert rnfe.status_code == 404
+    assert rnfe.code == "resource_not_found"
+
+    pde = PermissionDeniedException("Denied", {"user": "guest"})
+    assert pde.status_code == 403
+    assert pde.code == "permission_denied"
+
+    ioe = InvalidOperationException("Invalid", {"op": "write"})
+    assert ioe.status_code == 400
+    assert ioe.code == "invalid_operation"
+
+    # Mock Request
+    request = MagicMock(spec=Request)
+
+    # Test handler with AppException
+    resp1 = await app_exception_handler(request, rnfe)
+    assert resp1.status_code == 404
+
+    # Test handler with non-AppException
+    resp2 = await app_exception_handler(request, ValueError("Oops"))
+    assert resp2.status_code == 500
+
+
+@pytest.mark.asyncio
+async def test_content_size_limit_middleware():
+    from app.core.middleware.content_size import ContentSizeLimitMiddleware
+    from starlette.types import Scope, Receive, Send
+    from starlette.requests import Request as StarletteRequest
+
+    # Create dummy app
+    async def dummy_app(scope, receive, send):
+        await send({"type": "http.response.start", "status": 200})
+        await send({"type": "http.response.body", "body": b"ok", "more_body": False})
+
+    # Test non-http scope
+    mw = ContentSizeLimitMiddleware(dummy_app)
+    scope = {"type": "lifespan", "query_string": b""}
+    calls = []
+    async def dummy_receive():
+        return {"type": "lifespan.startup"}
+    async def dummy_send(message):
+        calls.append(message)
+    await mw(scope, dummy_receive, dummy_send)
+
+    # Test HTTP scope under limit
+    scope = {
+        "type": "http",
+        "method": "POST",
+        "path": "/submit",
+        "headers": [(b"content-length", b"10")],
+        "query_string": b"",
+    }
+    calls = []
+    async def receive():
+        return {"type": "http.request", "body": b"1234567890", "more_body": False}
+    async def send(message):
+        calls.append(message)
+
+    await mw(scope, receive, send)
+    assert any(c.get("status") == 200 for c in calls)
+
+    # Test HTTP scope exceeding limit (fast path content-length)
+    mw_small = ContentSizeLimitMiddleware(dummy_app, max_bytes=5)
+    scope = {
+        "type": "http",
+        "method": "POST",
+        "path": "/submit",
+        "headers": [(b"content-length", b"10")],
+        "query_string": b"",
+    }
+    calls = []
+    await mw_small(scope, receive, send)
+    assert any(c.get("status") == 413 for c in calls)
+
+    # Test HTTP scope with invalid Content-Length
+    scope = {
+        "type": "http",
+        "method": "POST",
+        "path": "/submit",
+        "headers": [(b"content-length", b"not-an-integer")],
+        "query_string": b"",
+    }
+    calls = []
+    await mw_small(scope, receive, send)
+    assert any(c.get("status") == 400 for c in calls)
+
+    # Test chunked/unknown length (slow path) exceeding limit
+    scope = {
+        "type": "http",
+        "method": "POST",
+        "path": "/submit",
+        "headers": [],
+        "query_string": b"",
+    }
+    calls = []
+    chunk_index = 0
+    async def receive_chunks():
+        nonlocal chunk_index
+        if chunk_index == 0:
+            chunk_index += 1
+            return {"type": "http.request", "body": b"12345", "more_body": True}
+        else:
+            return {"type": "http.request", "body": b"67890", "more_body": False}
+
+    await mw_small(scope, receive_chunks, send)
+    assert any(c.get("status") == 413 for c in calls)
+
+    # Test chunked/unknown length within limit (slow path)
+    calls = []
+    chunk_index = 0
+    async def receive_small_chunks():
+        nonlocal chunk_index
+        if chunk_index == 0:
+            chunk_index += 1
+            return {"type": "http.request", "body": b"12", "more_body": True}
+        else:
+            return {"type": "http.request", "body": b"34", "more_body": False}
+
+    await mw_small(scope, receive_small_chunks, send)
+    assert any(c.get("status") == 200 for c in calls)
+
+    # Test chunked/unknown length exceeding mem threshold to spill to disk
+    mw_threshold = ContentSizeLimitMiddleware(dummy_app, max_bytes=100)
+    mw_threshold._MEM_BUFFER_THRESHOLD = 5
+    calls = []
+    chunk_index = 0
+    async def receive_spill_chunks():
+        nonlocal chunk_index
+        if chunk_index == 0:
+            chunk_index += 1
+            return {"type": "http.request", "body": b"1234", "more_body": True}
+        elif chunk_index == 1:
+            chunk_index += 1
+            return {"type": "http.request", "body": b"5678", "more_body": False}
+        else:
+            return {"type": "http.request", "body": b"", "more_body": False}
+
+    await mw_threshold(scope, receive_spill_chunks, send)
+    assert any(c.get("status") == 200 for c in calls)
+
+
+def test_configure_middleware_rate_limiting():
+    from app.core.middleware.setup import configure_middleware
+    from app.core.config import Settings
+    from fastapi import FastAPI
+    app = FastAPI()
+    settings = Settings()
+    settings.rate_limit_enabled = True
+    settings.rate_limit_storage_backend = "redis"
+    settings.rate_limit_storage_uri = "redis://localhost"
+    settings.rate_limit_default_list = ["10/minute"]
+    settings.rate_limit_news = "5/minute"
+    settings.response_compression_enabled = True
+    settings.trusted_proxies = "127.0.0.1"
+    settings.allowed_hosts = "localhost"
+    
+    configure_middleware(app, settings)
+    # Verifies it registers without throwing exception
+
+
+@pytest.mark.asyncio
+async def test_spicedb_channel_lifecycle(monkeypatch):
+    from app.core import spicedb
+    from app.core.config import settings
+    import grpc
+
+    old_endpoint = settings.spicedb_endpoint
+    old_channel = spicedb._global_channel
+
+    try:
+        spicedb._global_channel = None
+
+        # 1. Test insecure channel creation
+        monkeypatch.setenv("SPICEDB_INSECURE", "true")
+        settings.spicedb_endpoint = "http://localhost:50051"
+        mock_insecure = MagicMock()
+        mock_insecure.close = AsyncMock()
+
+        with patch("grpc.aio.insecure_channel", return_value=mock_insecure) as mock_insecure_call:
+            generator = spicedb.get_async_spicedb_channel()
+            chan = await anext(generator)
+            assert chan is mock_insecure
+            mock_insecure_call.assert_called_once()
+
+            await spicedb.close_global_spicedb_channel()
+            mock_insecure.close.assert_called_once()
+            assert spicedb._global_channel is None
+
+        # 2. Test secure channel creation
+        monkeypatch.setenv("SPICEDB_INSECURE", "false")
+        settings.spicedb_endpoint = "https://localhost:50051"
+        mock_secure = MagicMock()
+        mock_secure.close = AsyncMock()
+
+        with (
+            patch("grpc.aio.secure_channel", return_value=mock_secure) as mock_secure_call,
+            patch("grpcutil.bearer_token_credentials", return_value=MagicMock())
+        ):
+            generator = spicedb.get_async_spicedb_channel()
+            chan = await anext(generator)
+            assert chan is mock_secure
+            mock_secure_call.assert_called_once()
+
+            await spicedb.close_global_spicedb_channel()
+            mock_secure.close.assert_called_once()
+            assert spicedb._global_channel is None
+
+    finally:
+        settings.spicedb_endpoint = old_endpoint
+        spicedb._global_channel = old_channel
+

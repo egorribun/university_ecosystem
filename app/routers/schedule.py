@@ -28,6 +28,7 @@ def _build_filename(group: models.Group) -> str:
 
 
 @router.get("/ics", response_class=Response)
+# nosec: public_endpoint
 async def download_schedule_ics(
     request: Request,
     schedule_service: Annotated[Any, Depends(get_read_schedule_service)],

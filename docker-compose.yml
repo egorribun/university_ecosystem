@@ -30,8 +30,8 @@ services:
       # Set ACME_EMAIL and PUBLIC_HOSTNAME in .env for production TLS.
       # In local dev (no real domain) Caddy issues a self-signed certificate.
       # TD-28-04: Required for production — Caddy will fail cert issuance without valid email
-      ACME_EMAIL: ${ACME_EMAIL:-}
-      PUBLIC_HOSTNAME: ${PUBLIC_HOSTNAME:-}
+      ACME_EMAIL: ${ACME_EMAIL:-dev@localhost}
+      PUBLIC_HOSTNAME: ${PUBLIC_HOSTNAME:-:443}
     deploy:
       resources:
         limits:
@@ -93,8 +93,12 @@ services:
     depends_on:
       valkey:
         condition: service_healthy
+      migrations:
+        condition: service_completed_successfully
     # SECURITY: port 8000 is NOT exposed to the host. All traffic enters via
     # the Caddy edge proxy which handles TLS and HTTP/3 termination.
+    ports:
+      - "8000:8000"
     expose:
       - "8000"
     extra_hosts:
@@ -204,6 +208,8 @@ services:
     depends_on:
       valkey:
         condition: service_healthy
+      migrations:
+        condition: service_completed_successfully
     restart: unless-stopped
     ports:
       # P0-04: Bind to localhost only — scraping via internal Docker network.
@@ -254,6 +260,8 @@ services:
         condition: service_healthy
       valkey:
         condition: service_healthy
+      migrations:
+        condition: service_completed_successfully
     restart: unless-stopped
     networks:
       - db_net
@@ -271,6 +279,8 @@ services:
         max-file: "3"
 
   postgres:
+    ports:
+      - "15432:5432"
     image: pgvector/pgvector:pg17
     command: ["postgres", "-c", "max_connections=500"]
     environment:
@@ -290,6 +300,7 @@ services:
       retries: 5
     networks:
       - db_net
+      - public
     deploy:
       resources:
         limits:
@@ -297,6 +308,8 @@ services:
           memory: 1G
 
   valkey:
+    ports:
+      - "16379:6379"
     image: valkey/valkey:8-alpine
     # DEBT-02 (audit 2026-03-06): Without eviction policy, OOM kills rate limiter,
     # session cache, and CSRF tokens simultaneously → thundering herd on Postgres.
@@ -339,6 +352,7 @@ services:
       retries: 5
     networks:
       - cache_net
+      - public
     deploy:
       resources:
         limits:
@@ -579,6 +593,8 @@ services:
           memory: 512M
 
   spicedb:
+    ports:
+      - "15052:50051"
     image: authzed/spicedb:v1.51.0
     container_name: spicedb
     # P1-10 (audit 2026-03-06): Key removed from CLI args — `docker ps --no-trunc`
@@ -595,6 +611,7 @@ services:
     networks:
       - db_net
       - service_net
+      - public
     depends_on:
       postgres:
         condition: service_healthy

@@ -351,10 +351,68 @@ async def test_periodic_task_metrics():
 
 
 def test_notification_queue_metrics():
-    nqm = obs.get_notification_queue_metrics()
+    nqm = obs.reinitialize_notification_queue_metrics(registry=REGISTRY)
     assert nqm is not None
     nqm.reset()
     nqm.dead_lettered_jobs.set(1.0)
     val = REGISTRY.get_sample_value("notification_queue_dead_lettered_jobs")
     assert val is not None
     assert val == 1.0
+
+
+def test_create_worker_metrics():
+    wm = obs.create_worker_metrics("test_worker_cli")
+    assert wm is not None
+    wm.mark_startup()
+    assert wm.status == "ok"
+    wm.record_success(notifications_created=5)
+    assert wm.status == "ok"
+    assert wm.last_success is not None
+    assert wm.last_run is not None
+
+    wm.record_failure()
+    assert wm.status == "degraded"
+    assert wm.last_failure is not None
+
+
+@pytest.mark.filterwarnings("ignore::DeprecationWarning")
+@pytest.mark.anyio
+async def test_worker_monitoring_app_and_server():
+    from fastapi.testclient import TestClient
+    wm = obs.create_worker_metrics("test_worker_server")
+    app = obs.create_worker_monitoring_app(worker_name="test_worker_server", metrics=wm)
+
+    client = TestClient(app)
+    resp = client.get("/healthz")
+    assert resp.status_code == 200
+    assert resp.json()["worker"] == "test_worker_server"
+
+    resp_metrics = client.get("/metrics")
+    assert resp_metrics.status_code == 200
+    assert b"test_worker_server_last_run_timestamp_seconds" in resp_metrics.content
+
+    # Port validation
+    with pytest.raises(ValueError):
+        await obs.start_worker_monitoring_server(app, host="127.0.0.1", port=0)
+
+    # Test start and stop server on ephemeral port
+    import socket
+    s = socket.socket()
+    s.bind(("", 0))
+    port = s.getsockname()[1]
+    s.close()
+
+    stop_fn = await obs.start_worker_monitoring_server(app, host="127.0.0.1", port=port)
+    assert callable(stop_fn)
+    await stop_fn()
+
+
+def test_configure_worker_observability():
+    with patch("app.core.observability.settings") as mock_settings:
+        mock_settings.enable_otel = False
+        mock_settings.log_level = "info"
+        mock_settings.environment = "testing"
+        obs.configure_worker_observability(worker_name="test_worker_obs")
+
+
+

@@ -312,3 +312,55 @@ class OutboxWorker:
             logger.error("Failed to reconstruct event %s: %s", se.id, e)
             se.error_count += 1
             raise
+
+
+async def _wait_for_signals(stop_event: asyncio.Event) -> None:
+    import signal
+    loop = asyncio.get_running_loop()
+    handled_signals = [signal.SIGINT, signal.SIGTERM]
+
+    def _handler(*_: object) -> None:
+        stop_event.set()
+
+    for sig in handled_signals:
+        try:
+            loop.add_signal_handler(sig, _handler)
+        except NotImplementedError:  # pragma: no cover - Windows fallback
+            signal.signal(sig, lambda *_: stop_event.set())
+
+    await stop_event.wait()
+
+
+async def main() -> None:
+    from app.core.database import init_database, wait_db
+    from app.core.events import register_event_listeners
+    from app.services.event_handlers import configure_event_handlers
+    from app.core.config import settings
+
+    init_database()
+    await wait_db(max_attempts=10)
+
+    await register_event_listeners()
+    configure_event_handlers()
+
+    worker = OutboxWorker(
+        poll_interval=settings.outbox_poll_interval_seconds,
+        batch_size=settings.outbox_batch_size,
+    )
+
+    stop_event = asyncio.Event()
+
+    async with asyncio.TaskGroup() as tg:
+        worker_task = tg.create_task(worker.run_forever())
+        tg.create_task(_wait_for_signals(stop_event))
+
+        await stop_event.wait()
+        await worker.stop()
+        worker_task.cancel()
+
+    logger.info("Outbox worker stopped")
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
+

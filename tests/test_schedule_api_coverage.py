@@ -189,7 +189,8 @@ async def test_schedule_api_coverage(
             assert res.status_code == 200
             assert res.json() == {"ok": True}
     finally:
-        app.dependency_overrides.clear()
+        # Cleaned up by conftest
+        pass
         if hasattr(app.state, "dishka_container"):
             await app.state.dishka_container.close()
         app.state.dishka_container = original_container

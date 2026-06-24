@@ -464,10 +464,10 @@ export async function useMockApi(page: Page) {
       try {
         if ((headers["content-type"] ?? "").includes("application/json")) {
           const parsed = JSON.parse(postData)
-          username = parsed.username || ""
+          username = parsed.username || parsed.email || ""
         } else {
           const params = new URLSearchParams(postData)
-          username = params.get("username") || ""
+          username = params.get("username") || params.get("email") || ""
         }
       } catch {
         // ignore
@@ -510,6 +510,15 @@ export async function useMockApi(page: Page) {
     // --- Profile ---
     if (normPath.includes("api/users/me")) {
       if (method === "GET") {
+        const authHeader = request.headers()["authorization"] || request.headers()["Authorization"]
+        if (!state.loggedIn && (!authHeader || !authHeader.includes("Bearer"))) {
+          await route.fulfill({
+            status: 401,
+            contentType: "application/json",
+            body: JSON.stringify({ detail: "Unauthorized" }),
+          })
+          return
+        }
         await route.fulfill({ status: 200, body: JSON.stringify(state.profile) })
         return
       }
@@ -806,7 +815,7 @@ export async function useMockApi(page: Page) {
     state,
     async login(p: Page) {
       await p.goto("/login")
-      await p.fill('input[name="username"]', "student@example.com")
+      await p.fill('input[name="email"]', "student@example.com")
       await p.fill('input[name="password"]', "Password123")
       await p.click('button[type="submit"]')
       await expect(p).toHaveURL(/\/dashboard$|\/$/)

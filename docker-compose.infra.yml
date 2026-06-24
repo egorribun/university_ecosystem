@@ -2,6 +2,18 @@
 # Run with: docker compose -f docker-compose.yml -f docker-compose.infra.yml up -d
 
 services:
+  postgres:
+    ports:
+      - "54321:5432"
+
+  valkey:
+    ports:
+      - "63791:6379"
+
+  spicedb:
+    ports:
+      - "50052:50051"
+
   # Caddy - Reverse proxy with automatic HTTPS
   caddy:
     image: caddy:2.9.1-alpine

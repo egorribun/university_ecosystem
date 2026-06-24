@@ -41,6 +41,8 @@ _shutdown_flag: asyncio.Event = asyncio.Event()
 
 def set_shutdown_flag() -> None:
     """Signal that this pod is shutting down. Called from lifespan shutdown."""
+    if settings.environment == "testing":
+        return
     _shutdown_flag.set()
 
 

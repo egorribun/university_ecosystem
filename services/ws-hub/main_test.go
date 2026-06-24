@@ -1,6 +1,9 @@
 package main
 
 import (
+	"context"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -100,3 +103,95 @@ func TestHub_InitialState(t *testing.T) {
 	assert.NotNil(t, h.Unregister)
 	assert.NotNil(t, h.Broadcast)
 }
+
+func TestInitLogger(t *testing.T) {
+	logger := initLogger()
+	assert.NotNil(t, logger)
+}
+
+func TestInitRedis_FailsGracefully(t *testing.T) {
+	cfg := &config.Config{
+		RedisURL: "localhost:9999", // invalid/unreachable
+	}
+	logger := initLogger()
+	rdb := initRedis(context.Background(), cfg, logger)
+	assert.Nil(t, rdb)
+}
+
+func TestSetupHubAndHandlers_ProbesHealth(t *testing.T) {
+	cfg := &config.Config{
+		Port:           "8081",
+		BackendURL:     "http://localhost:1",
+		AllowedOrigins: []string{"http://localhost:3000"},
+	}
+	logger := initLogger()
+	
+	// Create hub and handlers
+	h := setupHub(context.Background(), cfg, logger, nil, nil)
+	assert.NotNil(t, h)
+	
+	setupHandlers(h, cfg, logger, nil, nil)
+	
+	t.Run("liveness endpoint", func(t *testing.T) {
+		rec := httptest.NewRecorder()
+		req, _ := http.NewRequest(http.MethodGet, "/health/live", nil)
+		http.DefaultServeMux.ServeHTTP(rec, req)
+		assert.Equal(t, http.StatusOK, rec.Code)
+		assert.Contains(t, rec.Body.String(), "alive")
+	})
+
+	t.Run("readiness endpoint degraded", func(t *testing.T) {
+		rec := httptest.NewRecorder()
+		req, _ := http.NewRequest(http.MethodGet, "/health/ready", nil)
+		http.DefaultServeMux.ServeHTTP(rec, req)
+		// Expecting 502/503 because NATS/Redis/JWKS are not initialized/configured
+		assert.Equal(t, http.StatusServiceUnavailable, rec.Code)
+		assert.Contains(t, rec.Body.String(), "degraded")
+	})
+
+	t.Run("legacy health endpoint", func(t *testing.T) {
+		rec := httptest.NewRecorder()
+		req, _ := http.NewRequest(http.MethodGet, "/health", nil)
+		http.DefaultServeMux.ServeHTTP(rec, req)
+		assert.Equal(t, http.StatusOK, rec.Code)
+		assert.Contains(t, rec.Body.String(), "healthy")
+	})
+
+	t.Run("websocket endpoint rejects non-upgrade", func(t *testing.T) {
+		rec := httptest.NewRecorder()
+		req, _ := http.NewRequest(http.MethodGet, "/ws", nil)
+		http.DefaultServeMux.ServeHTTP(rec, req)
+		// websocket upgrade should fail with unauthorized due to missing ticket
+		assert.Equal(t, http.StatusUnauthorized, rec.Code)
+	})
+
+	t.Run("metrics endpoint", func(t *testing.T) {
+		rec := httptest.NewRecorder()
+		req, _ := http.NewRequest(http.MethodGet, "/metrics", nil)
+		http.DefaultServeMux.ServeHTTP(rec, req)
+		assert.Equal(t, http.StatusOK, rec.Code)
+	})
+}
+
+func TestSetupHub_JWKS(t *testing.T) {
+	cfg := &config.Config{
+		Port:           "8081",
+		BackendURL:     "http://localhost:1",
+		AllowedOrigins: []string{"http://localhost:3000"},
+		JWKSURL:        "http://127.0.0.1:1/jwks",
+	}
+	logger := initLogger()
+	h := setupHub(context.Background(), cfg, logger, nil, nil)
+	assert.NotNil(t, h)
+	assert.True(t, h.HasJWKSCache())
+}
+
+func TestRunServer_Error(t *testing.T) {
+	cfg := &config.Config{
+		Port: "-1",
+	}
+	logger := initLogger()
+	h := hub.NewHub(nil, logger, nil, cfg, nil)
+	runServer(cfg, logger, h)
+}
+

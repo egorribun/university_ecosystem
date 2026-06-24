@@ -101,7 +101,8 @@ async def test_news_interactions_endpoint(async_client: AsyncClient, mock_news_s
     assert data["likes_count"] == 10
     assert data["is_liked"] is True
 
-    app.dependency_overrides = {}
+    # Cleaned up by conftest
+    pass
 
 
 @pytest.mark.asyncio
@@ -176,7 +177,8 @@ async def test_update_comment(async_client: AsyncClient, mock_news_service):
     )
     assert resp.status_code == 403  # raise_forbidden returns 403
 
-    app.dependency_overrides = {}
+    # Cleaned up by conftest
+    pass
 
 
 @pytest.mark.asyncio
@@ -205,7 +207,8 @@ async def test_delete_comment(async_client: AsyncClient, mock_news_service):
     resp = await async_client.delete(f"/news/comments/{uuid.UUID(int=1)}")
     assert resp.status_code == 403
 
-    app.dependency_overrides = {}
+    # Cleaned up by conftest
+    pass
 
 
 @pytest.mark.asyncio
@@ -238,7 +241,8 @@ async def test_semantic_search(
     mock_vector_service.get_embedding.assert_awaited()
     mock_vector_service.search_similar.assert_awaited()
 
-    app.dependency_overrides = {}
+    # Cleaned up by conftest
+    pass
 
 
 # Missing: upload_news_image. Requires mocking save_upload in app.api.news
@@ -269,4 +273,5 @@ async def test_upload_news_image(async_client: AsyncClient):
     resp = await async_client.post("/news/upload_image", files=files)
     assert resp.status_code == 403
 
-    app.dependency_overrides = {}
+    # Cleaned up by conftest
+    pass

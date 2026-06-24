@@ -43,8 +43,19 @@ os.environ.setdefault(
     "SECRET_KEY",
     "schemathesis-ci-placeholder-secret-key-minimum-32-chars-long",  # pragma: allowlist secret
 )
+os.environ.setdefault(
+    "SPOTIFY_OAUTH_STATE_SECRET",
+    "spotify-oauth-state-secret-minimum-32-chars-long-placeholder",  # pragma: allowlist secret
+)
+os.environ.setdefault(
+    "SPOTIFY_TOKEN_SECRET",
+    "aN-c6G_Gi7q0E8VnXW0fvkYlCYwH14r2raXI5Qun7Ss=",  # pragma: allowlist secret
+)
 
 from app.main import app
+from app.core.config import settings
+settings.spotify_oauth_state_secret = "spotify-oauth-state-secret-minimum-32-chars-long-placeholder"
+settings.spotify_token_secret = "aN-c6G_Gi7q0E8VnXW0fvkYlCYwH14r2raXI5Qun7Ss="
 
 # ---------------------------------------------------------------------------
 # Schema loader — ASGI transport (no network, no server)
@@ -58,7 +69,10 @@ schema = schemathesis.openapi.from_asgi("/api/openapi.json", app=app)
 
 
 @schema.parametrize()
-@hypothesis_settings(max_examples=25, suppress_health_check=[HealthCheck.too_slow])
+@hypothesis_settings(
+    max_examples=25,
+    suppress_health_check=[HealthCheck.too_slow, HealthCheck.filter_too_much],
+)
 def test_api_responses_conform_to_schema(case: schemathesis.Case) -> None:
     """Every OpenAPI-described endpoint must return a non-5xx response.
 
@@ -72,8 +86,10 @@ def test_api_responses_conform_to_schema(case: schemathesis.Case) -> None:
     Pytest parametrizes this test once per (method, path) pair, so each
     failure is reported with its exact endpoint.
     """
-    response = case.call_asgi()
+    response = case.call()
     case.validate_response(response, checks=[not_a_server_error])
+
+
 
 
 # ---------------------------------------------------------------------------

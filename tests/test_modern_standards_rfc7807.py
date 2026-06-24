@@ -29,7 +29,8 @@ async def test_error_rfc7807_compliance(async_client, user_factory):
         assert "instance" in data
         assert "detail" in data
     finally:
-        app.dependency_overrides = {}
+        # Cleaned up by conftest
+        pass
 
 
 @pytest.mark.asyncio

@@ -124,7 +124,9 @@ func setupHub(ctx context.Context, cfg *config.Config, logger *slog.Logger, nc *
 
 	h.StartLimiterCleanup(ctx)
 	go h.Run(ctx)
-	h.SubscribeToNATS(ctx)
+	if nc != nil {
+		h.SubscribeToNATS(ctx)
+	}
 	hub.SetAllowedOrigins(cfg.AllowedOrigins)
 	return h
 }
@@ -156,7 +158,7 @@ func setupHandlers(h *hub.Hub, cfg *config.Config, logger *slog.Logger, nc *nats
 
 	http.Handle("/health/ready", otelhttp.NewHandler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		checks := map[string]string{}
-		if !nc.IsConnected() {
+		if nc == nil || !nc.IsConnected() {
 			checks["nats"] = "disconnected"
 		}
 		if rdb != nil {

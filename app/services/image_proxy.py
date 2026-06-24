@@ -75,7 +75,7 @@ async def get_transformed_image(
             # Safe deserialization via msgspec — no code execution risk.
             data, mime = _cache_decode(cached_payload)
             return data, mime
-    except (ConnectionError, TimeoutError, OSError) as exc:
+    except (ConnectionError, TimeoutError, OSError, RuntimeError) as exc:
         # RZ-20-04: Narrowed from bare Exception — Redis unavailability.
         logger.warning("Redis cache read failed for %s: %s", path, exc)
     # Note: StorageBackend protocol doesn't have a direct 'get_file_bytes'
@@ -113,7 +113,7 @@ async def get_transformed_image(
             redis_client = await get_cache_client()
             payload = _cache_encode(transformed_data, mime)
             await redis_client.setex(redis_key, _CACHE_TTL, payload)
-        except (ConnectionError, TimeoutError, OSError) as exc:
+        except (ConnectionError, TimeoutError, OSError, RuntimeError) as exc:
             # RZ-20-04: Narrowed — Redis write failure is non-fatal.
             logger.warning("Redis cache write failed for %s: %s", path, exc)
 

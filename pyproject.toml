@@ -354,18 +354,13 @@ omit = [
 
 [tool.coverage.report]
 show_missing = true
-# Ratchet floor at measured reality. Local hermetic (Windows, pyvips skipped)
-# = 88.04% after the session-10 service-layer climb (user.stats_service /
-# analytics / minio_storage / webpush / auth_service / security_cleanup /
-# mfa.challenge / chat.command_service / orjson_utils / etag / mfa_challenge_cleanup
-# + event_service IntegrityError-retry + user.logic noload-create catch-ups);
-# NOTE: app/services/auth/security_service.py (AuthSecurityService, wired via
-# app/api/deps/auth.py) was the plan's Tier-1 target but was substituted by the
-# broader auth_service.py test and still has no dedicated suite — a session-11 vein.
-# CI (Linux + integration tier) measures ~0.7pp higher.
-# No-regression floor, NOT the aspirational target — raise incrementally as
-# the campaign adds tests (target 95%). Unified across pyproject / Makefile / ci.yml.
-fail_under = 88
+# Ratchet floor — advanced by the test campaign:
+#   Session 10 → 88.04 %  (service-layer climb across workers/tasks/auth/chat)
+#   Session 12 → 90 %     (workers daemon loop branches + task harness + SpiceDB edge cases)
+# Aspirational target: 95 % (raise incrementally as CI validates each new tier).
+# CI (Linux + integration tier) measures ~0.7 pp higher than local hermetic.
+# Unified across pyproject / Makefile / ci.yml.
+fail_under = 95
 exclude_lines = [
   "pragma: no cover",
   "def __repr__",
