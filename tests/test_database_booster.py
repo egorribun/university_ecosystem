@@ -153,16 +153,20 @@ def test_init_database_double_check_lock():
     init_database()
 
     # Trigger inner check double-checked locking (line 588)
-    db_module._engine = None
-    class MockInitLock:
-        def __enter__(self):
-            db_module._engine = MagicMock()
-            return self
-        def __exit__(self, exc_type, exc_val, exc_tb):
-            pass
-            
-    with patch("app.core.database._init_lock", MockInitLock()):
-        init_database(None)
+    original_engine = db_module._engine
+    try:
+        db_module._engine = None
+        class MockInitLock:
+            def __enter__(self):
+                db_module._engine = MagicMock()
+                return self
+            def __exit__(self, exc_type, exc_val, exc_tb):
+                pass
+                
+        with patch("app.core.database._init_lock", MockInitLock()):
+            init_database(None)
+    finally:
+        db_module._engine = original_engine
 
 @pytest.mark.asyncio
 async def test_get_read_db():

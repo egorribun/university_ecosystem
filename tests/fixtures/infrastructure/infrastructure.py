@@ -80,6 +80,7 @@ def _collect_sync_engines() -> list:
     configured by the test session fixtures.
     """
     try:
+        from unittest.mock import Mock
         from app.core.database import engine, read_replica_engine
 
         engines = []
@@ -87,12 +88,15 @@ def _collect_sync_engines() -> list:
         # will be None if they are not configured/initialized.
         if engine is not None and engine._get_target() is not None:
             sync_eng = engine.sync_engine
-            engines.append(sync_eng)
+            if not isinstance(sync_eng, Mock):
+                engines.append(sync_eng)
         if (
             read_replica_engine is not None
             and read_replica_engine._get_target() is not None
         ):
-            engines.append(read_replica_engine.sync_engine)
+            sync_eng = read_replica_engine.sync_engine
+            if not isinstance(sync_eng, Mock):
+                engines.append(sync_eng)
         return engines
     except Exception:
         return []
