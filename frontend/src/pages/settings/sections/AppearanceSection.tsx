@@ -67,7 +67,9 @@ export function AppearanceSection(_props: SettingsSectionProps) {
                   <FormControlLabel
                     key={code}
                     value={code}
-                    control={<Radio />}
+                    control={
+                      <Radio aria-label={t(`settings:appearance.language.options.${code}`)} />
+                    }
                     label={t(`settings:appearance.language.options.${code}`)}
                   />
                 ))}
@@ -90,7 +92,7 @@ export function AppearanceSection(_props: SettingsSectionProps) {
                   <FormControlLabel
                     key={option.value}
                     value={option.value}
-                    control={<Radio />}
+                    control={<Radio aria-label={option.label} />}
                     label={
                       <span className="flex items-center gap-2">
                         <option.icon className="w-4 h-4" />

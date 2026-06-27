@@ -81,6 +81,7 @@ def _collect_sync_engines() -> list:
     """
     try:
         from unittest.mock import Mock
+
         from app.core.database import engine, read_replica_engine
 
         engines = []

@@ -52,10 +52,15 @@ os.environ.setdefault(
     "aN-c6G_Gi7q0E8VnXW0fvkYlCYwH14r2raXI5Qun7Ss=",  # pragma: allowlist secret
 )
 
-from app.main import app
 from app.core.config import settings
-settings.spotify_oauth_state_secret = "spotify-oauth-state-secret-minimum-32-chars-long-placeholder"
-settings.spotify_token_secret = "aN-c6G_Gi7q0E8VnXW0fvkYlCYwH14r2raXI5Qun7Ss="
+from app.main import app
+
+settings.spotify_oauth_state_secret = (
+    "spotify-oauth-state-secret-minimum-32-chars-long-placeholder"
+)
+settings.spotify_token_secret = (
+    "aN-c6G_Gi7q0E8VnXW0fvkYlCYwH14r2raXI5Qun7Ss="  # pragma: allowlist secret
+)
 
 # ---------------------------------------------------------------------------
 # Schema loader — ASGI transport (no network, no server)
@@ -88,8 +93,6 @@ def test_api_responses_conform_to_schema(case: schemathesis.Case) -> None:
     """
     response = case.call()
     case.validate_response(response, checks=[not_a_server_error])
-
-
 
 
 # ---------------------------------------------------------------------------

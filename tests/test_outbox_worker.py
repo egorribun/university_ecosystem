@@ -12,6 +12,7 @@ from app.workers.outbox import OutboxWorker
 @pytest.fixture(autouse=True)
 def mock_outbox_session(db_session, monkeypatch):
     """Binds all async_session calls in this test module to the test's db_session transaction."""
+
     @contextlib.asynccontextmanager
     async def mock_async_session():
         yield db_session
@@ -206,6 +207,7 @@ async def test_outbox_worker_listen_loop(monkeypatch):
     mock_conn.execute.assert_called_once_with("SELECT 1")
     mock_conn.close.assert_called_once()
 
+
 @pytest.mark.asyncio
 async def test_outbox_worker_run_stop(monkeypatch):
     # Use a very small poll interval for testing
@@ -233,6 +235,7 @@ async def test_outbox_worker_run_stop(monkeypatch):
     await asyncio.wait_for(task, timeout=1.0)
     assert worker._is_running is False
 
+
 @pytest.mark.asyncio
 async def test_outbox_worker_unknown_event_type(db_session, monkeypatch):
     worker = OutboxWorker()
@@ -252,6 +255,7 @@ async def test_outbox_worker_unknown_event_type(db_session, monkeypatch):
     assert processed_count == 1
 
     from app.core.database import async_session
+
     async with async_session() as db:
         result = await db.get(StoredEvent, event_id)
         assert result.error_count == 1
@@ -282,6 +286,7 @@ async def test_outbox_worker_dispatch_exception(db_session, monkeypatch):
     assert processed_count == 1
 
     from app.core.database import async_session
+
     async with async_session() as db:
         result = await db.get(StoredEvent, event_id)
         assert result.error_count == 2
@@ -290,13 +295,13 @@ async def test_outbox_worker_dispatch_exception(db_session, monkeypatch):
 
 @pytest.mark.asyncio
 async def test_outbox_worker_listen_loop_exceptions(monkeypatch):
-    from unittest.mock import AsyncMock
     import asyncpg
 
     worker = OutboxWorker(poll_interval=0.01)
     worker._is_running = True
 
     attempts = 0
+
     async def mock_connect_fail(*args, **kwargs):
         nonlocal attempts
         attempts += 1
@@ -309,6 +314,7 @@ async def test_outbox_worker_listen_loop_exceptions(monkeypatch):
 
     async def mock_sleep(seconds):
         pass
+
     monkeypatch.setattr(asyncio, "sleep", mock_sleep)
 
     await worker._listen_loop()
@@ -318,17 +324,24 @@ async def test_outbox_worker_listen_loop_exceptions(monkeypatch):
 @pytest.mark.asyncio
 async def test_outbox_worker_main(monkeypatch):
     from unittest.mock import AsyncMock
-    from app.workers.outbox import main
+
     import app.workers.outbox
+    from app.workers.outbox import main
 
     monkeypatch.setattr("app.core.database.init_database", lambda: None)
+
     async def mock_wait_db(*args, **kwargs):
         pass
+
     monkeypatch.setattr("app.core.database.wait_db", mock_wait_db)
+
     async def mock_register():
         pass
+
     monkeypatch.setattr("app.core.events.register_event_listeners", mock_register)
-    monkeypatch.setattr("app.services.event_handlers.configure_event_handlers", lambda: None)
+    monkeypatch.setattr(
+        "app.services.event_handlers.configure_event_handlers", lambda: None
+    )
 
     mock_run = AsyncMock()
     mock_stop = AsyncMock()
@@ -337,6 +350,7 @@ async def test_outbox_worker_main(monkeypatch):
 
     async def mock_wait_signals(stop_event):
         stop_event.set()
+
     monkeypatch.setattr(app.workers.outbox, "_wait_for_signals", mock_wait_signals)
 
     await main()
@@ -346,12 +360,14 @@ async def test_outbox_worker_main(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_wait_for_signals(monkeypatch):
-    from app.workers.outbox import _wait_for_signals
     import signal
+
+    from app.workers.outbox import _wait_for_signals
 
     stop_event = asyncio.Event()
     loop = asyncio.get_running_loop()
     handlers = {}
+
     def mock_add_handler(sig, handler):
         handlers[sig] = handler
 
@@ -376,8 +392,9 @@ async def test_wait_for_signals(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_wait_for_signals_not_implemented(monkeypatch):
-    from app.workers.outbox import _wait_for_signals
     import signal
+
+    from app.workers.outbox import _wait_for_signals
 
     stop_event = asyncio.Event()
     loop = asyncio.get_running_loop()
@@ -388,6 +405,7 @@ async def test_wait_for_signals_not_implemented(monkeypatch):
     monkeypatch.setattr(loop, "add_signal_handler", mock_add_handler)
 
     signal_handlers = {}
+
     def mock_signal(sig, handler):
         signal_handlers[sig] = handler
         return None
@@ -402,4 +420,3 @@ async def test_wait_for_signals_not_implemented(monkeypatch):
 
     await asyncio.wait_for(wait_task, timeout=1.0)
     assert stop_event.is_set()
-

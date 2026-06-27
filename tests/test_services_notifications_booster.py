@@ -5,9 +5,9 @@
 
 Goal: bring these 3 modules from ~12-29% to ~85%+.
 """
+
 from __future__ import annotations
 
-import asyncio
 from datetime import time
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -18,10 +18,10 @@ from app.services.notifications.quiet_hours import (
     prepare_push_payload_for_user,
 )
 
-
 # ===========================================================================
 # quiet_hours.py
 # ===========================================================================
+
 
 class TestIsUserInQuietHours:
     def _make_user(self, *, dnd_enabled: bool, dnd_start=None, dnd_end=None, tz="UTC"):
@@ -58,22 +58,30 @@ class TestIsUserInQuietHours:
 
     def test_dnd_daytime_window_inside(self):
         """09:00-17:00 DND; now=12:00 → in quiet hours."""
-        user = self._make_user(dnd_enabled=True, dnd_start=time(9, 0), dnd_end=time(17, 0))
+        user = self._make_user(
+            dnd_enabled=True, dnd_start=time(9, 0), dnd_end=time(17, 0)
+        )
         assert is_user_in_quiet_hours(user, now_time=time(12, 0))
 
     def test_dnd_daytime_window_outside(self):
         """09:00-17:00 DND; now=18:00 → not in quiet hours."""
-        user = self._make_user(dnd_enabled=True, dnd_start=time(9, 0), dnd_end=time(17, 0))
+        user = self._make_user(
+            dnd_enabled=True, dnd_start=time(9, 0), dnd_end=time(17, 0)
+        )
         assert not is_user_in_quiet_hours(user, now_time=time(18, 0))
 
     def test_dnd_overnight_window_inside(self):
         """22:00-08:00 (overnight); now=23:00 → in quiet hours."""
-        user = self._make_user(dnd_enabled=True, dnd_start=time(22, 0), dnd_end=time(8, 0))
+        user = self._make_user(
+            dnd_enabled=True, dnd_start=time(22, 0), dnd_end=time(8, 0)
+        )
         assert is_user_in_quiet_hours(user, now_time=time(23, 0))
 
     def test_dnd_overnight_window_outside(self):
         """22:00-08:00 (overnight); now=12:00 → not in quiet hours."""
-        user = self._make_user(dnd_enabled=True, dnd_start=time(22, 0), dnd_end=time(8, 0))
+        user = self._make_user(
+            dnd_enabled=True, dnd_start=time(22, 0), dnd_end=time(8, 0)
+        )
         assert not is_user_in_quiet_hours(user, now_time=time(12, 0))
 
     def test_now_time_resolved_from_user_when_none(self):
@@ -159,6 +167,7 @@ class TestPreparePushPayloadForUser:
 # scheduler.py — start_notifications_scheduler proxy
 # ===========================================================================
 
+
 @pytest.mark.asyncio
 async def test_start_notifications_scheduler_delegates_to_worker():
     """start_notifications_scheduler should call the worker implementation."""
@@ -166,7 +175,10 @@ async def test_start_notifications_scheduler_delegates_to_worker():
 
     mock_cancel_fn = MagicMock()
 
-    with patch("app.workers.notifications.start_notifications_scheduler", new=AsyncMock(return_value=mock_cancel_fn)) as mock_start:
+    with patch(
+        "app.workers.notifications.start_notifications_scheduler",
+        new=AsyncMock(return_value=mock_cancel_fn),
+    ) as mock_start:
         result = await start_notifications_scheduler(poll_seconds=10, window_minutes=5)
         mock_start.assert_called_once_with(
             poll_seconds=10,
@@ -179,6 +191,7 @@ async def test_start_notifications_scheduler_delegates_to_worker():
 # ===========================================================================
 # stats.py
 # ===========================================================================
+
 
 @pytest.mark.asyncio
 async def test_aggregate_notification_delivery_stats_empty():
@@ -221,7 +234,9 @@ async def test_aggregate_notification_delivery_stats_with_rows():
         mock_stmt.where.return_value = mock_stmt
         mock_select.return_value = mock_stmt
 
-        result = await aggregate_notification_delivery_stats(db, since=None, channel=None)
+        result = await aggregate_notification_delivery_stats(
+            db, since=None, channel=None
+        )
 
     assert len(result) == 1
     assert result[0]["channel"] == "push"
@@ -231,6 +246,7 @@ async def test_aggregate_notification_delivery_stats_with_rows():
 @pytest.mark.asyncio
 async def test_aggregate_notification_delivery_stats_with_filters():
     from datetime import UTC, datetime
+
     from app.services.notifications.stats import aggregate_notification_delivery_stats
 
     db = AsyncMock()
@@ -246,7 +262,9 @@ async def test_aggregate_notification_delivery_stats_with_filters():
         mock_stmt.where.return_value = mock_stmt
         mock_select.return_value = mock_stmt
 
-        result = await aggregate_notification_delivery_stats(db, since=since, channel="push")
+        result = await aggregate_notification_delivery_stats(
+            db, since=since, channel="push"
+        )
 
     assert result == []
     # where should be called twice (once for since, once for channel)

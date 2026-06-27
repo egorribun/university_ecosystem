@@ -3,10 +3,10 @@
 Targets NotificationsScheduler lifecycle, start_notifications_scheduler,
 and run_worker to lift coverage from 0%.
 """
+
 from __future__ import annotations
 
 import asyncio
-from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -17,10 +17,10 @@ from app.workers.notifications import (
     start_notifications_scheduler,
 )
 
-
 # ---------------------------------------------------------------------------
 # NotificationsScheduler unit tests
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture
 def scheduler() -> NotificationsScheduler:
@@ -56,8 +56,10 @@ def test_scheduler_clamps_min_values():
 
 @pytest.mark.asyncio
 async def test_run_once_returns_created_count(scheduler: NotificationsScheduler):
-    with patch("app.workers.notifications.async_session") as mock_cm, \
-         patch("app.workers.notifications.generate_schedule_reminders", return_value=3) as mock_gen:
+    with (
+        patch("app.workers.notifications.async_session") as mock_cm,
+        patch("app.workers.notifications.generate_schedule_reminders", return_value=3),
+    ):
         mock_db = AsyncMock()
         mock_cm.return_value.__aenter__ = AsyncMock(return_value=mock_db)
         mock_cm.return_value.__aexit__ = AsyncMock(return_value=False)
@@ -88,7 +90,9 @@ async def test_run_forever_success_path(scheduler_with_metrics: NotificationsSch
 
 
 @pytest.mark.asyncio
-async def test_run_forever_records_success_with_created(scheduler_with_metrics: NotificationsScheduler):
+async def test_run_forever_records_success_with_created(
+    scheduler_with_metrics: NotificationsScheduler,
+):
     """When run_once returns created > 0, success metrics are recorded."""
     iterations = 0
 
@@ -109,7 +113,9 @@ async def test_run_forever_records_success_with_created(scheduler_with_metrics: 
 
 
 @pytest.mark.asyncio
-async def test_run_forever_records_success_zero_created(scheduler_with_metrics: NotificationsScheduler):
+async def test_run_forever_records_success_zero_created(
+    scheduler_with_metrics: NotificationsScheduler,
+):
     """When run_once returns 0, success metrics are recorded but no log."""
     iterations = 0
 
@@ -130,7 +136,9 @@ async def test_run_forever_records_success_zero_created(scheduler_with_metrics: 
 
 
 @pytest.mark.asyncio
-async def test_run_forever_backoff_on_failure(scheduler_with_metrics: NotificationsScheduler):
+async def test_run_forever_backoff_on_failure(
+    scheduler_with_metrics: NotificationsScheduler,
+):
     """On exception, failures are counted and backoff applied."""
     iterations = 0
     sleep_durations: list[float] = []
@@ -186,6 +194,7 @@ async def test_run_forever_no_metrics_on_failure():
 # start_notifications_scheduler tests
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.asyncio
 async def test_start_notifications_scheduler_creates_and_stops_task():
     """start_notifications_scheduler returns a stop callable that cancels the task."""
@@ -199,8 +208,12 @@ async def test_start_notifications_scheduler_creates_and_stops_task():
         except asyncio.CancelledError:
             raise
 
-    with patch.object(NotificationsScheduler, "run_forever", side_effect=fake_run_forever), \
-         patch("app.workers.notifications.settings") as mock_settings:
+    with (
+        patch.object(
+            NotificationsScheduler, "run_forever", side_effect=fake_run_forever
+        ),
+        patch("app.workers.notifications.settings") as mock_settings,
+    ):
         mock_settings.notifications_scheduler_poll_seconds = 60
         mock_settings.notifications_scheduler_window_minutes = 15
         mock_settings.notifications_scheduler_max_backoff_seconds = 300
@@ -217,6 +230,7 @@ async def test_start_notifications_scheduler_creates_and_stops_task():
 @pytest.mark.asyncio
 async def test_start_notifications_scheduler_reuses_existing_task():
     """If a task is already running, returns a stop for the existing task."""
+
     # Create a real long-lived task
     async def long_task():
         try:
@@ -229,7 +243,9 @@ async def test_start_notifications_scheduler_reuses_existing_task():
     workers_mod._scheduler_task = existing
 
     try:
-        stop_fn = await start_notifications_scheduler(poll_seconds=1, window_minutes=5, max_backoff_seconds=10)
+        stop_fn = await start_notifications_scheduler(
+            poll_seconds=1, window_minutes=5, max_backoff_seconds=10
+        )
         assert callable(stop_fn)
         # stop_fn should cancel the existing task
         await stop_fn()
@@ -244,6 +260,7 @@ async def test_start_notifications_scheduler_reuses_existing_task():
 @pytest.mark.asyncio
 async def test_start_notifications_scheduler_stops_done_task():
     """If the existing task is already done, calling stop is a no-op."""
+
     async def quick_task():
         return
 
@@ -253,7 +270,9 @@ async def test_start_notifications_scheduler_stops_done_task():
     workers_mod._scheduler_task = done_task
 
     try:
-        stop_fn = await start_notifications_scheduler(poll_seconds=1, window_minutes=5, max_backoff_seconds=10)
+        stop_fn = await start_notifications_scheduler(
+            poll_seconds=1, window_minutes=5, max_backoff_seconds=10
+        )
         await stop_fn()
     finally:
         workers_mod._scheduler_task = None
@@ -270,8 +289,12 @@ async def test_start_notifications_scheduler_uses_settings_defaults():
         except asyncio.CancelledError:
             raise
 
-    with patch.object(NotificationsScheduler, "run_forever", side_effect=fake_run_forever), \
-         patch("app.workers.notifications.settings") as mock_settings:
+    with (
+        patch.object(
+            NotificationsScheduler, "run_forever", side_effect=fake_run_forever
+        ),
+        patch("app.workers.notifications.settings") as mock_settings,
+    ):
         mock_settings.notifications_scheduler_poll_seconds = 30
         mock_settings.notifications_scheduler_window_minutes = 10
         mock_settings.notifications_scheduler_max_backoff_seconds = 120

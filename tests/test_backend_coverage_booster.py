@@ -374,12 +374,14 @@ async def test_paginate_cursor_empty_decoded_and_null_last_val():
 
 def test_spotify_shim_coverage():
     import app.auth.spotify as spotify_shim
+
     assert spotify_shim.router is not None
 
 
 @pytest.mark.asyncio
 async def test_search_provider():
     from app.core.di.search import SearchProvider
+
     provider = SearchProvider()
     generator = provider.search_service()
     svc = await anext(generator)
@@ -392,14 +394,14 @@ async def test_search_provider():
 
 @pytest.mark.asyncio
 async def test_app_exceptions():
-    from app.core.exceptions import (
-        ResourceNotFoundException,
-        PermissionDeniedException,
-        InvalidOperationException,
-        app_exception_handler,
-        AppException,
-    )
     from fastapi import Request
+
+    from app.core.exceptions import (
+        InvalidOperationException,
+        PermissionDeniedException,
+        ResourceNotFoundException,
+        app_exception_handler,
+    )
 
     rnfe = ResourceNotFoundException("Not found", {"item": 1})
     assert rnfe.status_code == 404
@@ -428,8 +430,6 @@ async def test_app_exceptions():
 @pytest.mark.asyncio
 async def test_content_size_limit_middleware():
     from app.core.middleware.content_size import ContentSizeLimitMiddleware
-    from starlette.types import Scope, Receive, Send
-    from starlette.requests import Request as StarletteRequest
 
     # Create dummy app
     async def dummy_app(scope, receive, send):
@@ -440,10 +440,13 @@ async def test_content_size_limit_middleware():
     mw = ContentSizeLimitMiddleware(dummy_app)
     scope = {"type": "lifespan", "query_string": b""}
     calls = []
+
     async def dummy_receive():
         return {"type": "lifespan.startup"}
+
     async def dummy_send(message):
         calls.append(message)
+
     await mw(scope, dummy_receive, dummy_send)
 
     # Test HTTP scope under limit
@@ -455,8 +458,10 @@ async def test_content_size_limit_middleware():
         "query_string": b"",
     }
     calls = []
+
     async def receive():
         return {"type": "http.request", "body": b"1234567890", "more_body": False}
+
     async def send(message):
         calls.append(message)
 
@@ -498,6 +503,7 @@ async def test_content_size_limit_middleware():
     }
     calls = []
     chunk_index = 0
+
     async def receive_chunks():
         nonlocal chunk_index
         if chunk_index == 0:
@@ -512,6 +518,7 @@ async def test_content_size_limit_middleware():
     # Test chunked/unknown length within limit (slow path)
     calls = []
     chunk_index = 0
+
     async def receive_small_chunks():
         nonlocal chunk_index
         if chunk_index == 0:
@@ -528,6 +535,7 @@ async def test_content_size_limit_middleware():
     mw_threshold._MEM_BUFFER_THRESHOLD = 5
     calls = []
     chunk_index = 0
+
     async def receive_spill_chunks():
         nonlocal chunk_index
         if chunk_index == 0:
@@ -544,9 +552,11 @@ async def test_content_size_limit_middleware():
 
 
 def test_configure_middleware_rate_limiting():
-    from app.core.middleware.setup import configure_middleware
-    from app.core.config import Settings
     from fastapi import FastAPI
+
+    from app.core.config import Settings
+    from app.core.middleware.setup import configure_middleware
+
     app = FastAPI()
     settings = Settings()
     settings.rate_limit_enabled = True
@@ -557,7 +567,7 @@ def test_configure_middleware_rate_limiting():
     settings.response_compression_enabled = True
     settings.trusted_proxies = "127.0.0.1"
     settings.allowed_hosts = "localhost"
-    
+
     configure_middleware(app, settings)
     # Verifies it registers without throwing exception
 
@@ -566,7 +576,6 @@ def test_configure_middleware_rate_limiting():
 async def test_spicedb_channel_lifecycle(monkeypatch):
     from app.core import spicedb
     from app.core.config import settings
-    import grpc
 
     old_endpoint = settings.spicedb_endpoint
     old_channel = spicedb._global_channel
@@ -580,7 +589,9 @@ async def test_spicedb_channel_lifecycle(monkeypatch):
         mock_insecure = MagicMock()
         mock_insecure.close = AsyncMock()
 
-        with patch("grpc.aio.insecure_channel", return_value=mock_insecure) as mock_insecure_call:
+        with patch(
+            "grpc.aio.insecure_channel", return_value=mock_insecure
+        ) as mock_insecure_call:
             generator = spicedb.get_async_spicedb_channel()
             chan = await anext(generator)
             assert chan is mock_insecure
@@ -597,8 +608,10 @@ async def test_spicedb_channel_lifecycle(monkeypatch):
         mock_secure.close = AsyncMock()
 
         with (
-            patch("grpc.aio.secure_channel", return_value=mock_secure) as mock_secure_call,
-            patch("grpcutil.bearer_token_credentials", return_value=MagicMock())
+            patch(
+                "grpc.aio.secure_channel", return_value=mock_secure
+            ) as mock_secure_call,
+            patch("grpcutil.bearer_token_credentials", return_value=MagicMock()),
         ):
             generator = spicedb.get_async_spicedb_channel()
             chan = await anext(generator)
@@ -612,4 +625,3 @@ async def test_spicedb_channel_lifecycle(monkeypatch):
     finally:
         settings.spicedb_endpoint = old_endpoint
         spicedb._global_channel = old_channel
-

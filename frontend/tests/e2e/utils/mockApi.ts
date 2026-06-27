@@ -814,18 +814,15 @@ export async function useMockApi(page: Page) {
   return {
     state,
     async login(p: Page) {
-      await p.goto("/login")
-      await p.fill('input[name="email"]', "student@example.com")
-      await p.fill('input[name="password"]', "Password123")
-      await p.click('button[type="submit"]')
-      await expect(p).toHaveURL(/\/dashboard$|\/$/)
-      // Ensure tokens are persisted in localStorage for subsequent reloads/navigations
+      state.loggedIn = true
+      await p.goto("/")
       await p.evaluate(() => {
         localStorage.setItem("access_token", "mock-token")
         localStorage.setItem("refresh_token", "mock-refresh")
         localStorage.setItem("ue:language", "ru")
       })
-      state.loggedIn = true
+      await p.goto("/dashboard")
+      await expect(p).toHaveURL(/\/dashboard$/)
     },
     async setOffline(p: Page, offline: boolean) {
       state.offline = offline

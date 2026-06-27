@@ -316,6 +316,7 @@ class OutboxWorker:
 
 async def _wait_for_signals(stop_event: asyncio.Event) -> None:
     import signal
+
     loop = asyncio.get_running_loop()
     handled_signals = [signal.SIGINT, signal.SIGTERM]
 
@@ -332,10 +333,10 @@ async def _wait_for_signals(stop_event: asyncio.Event) -> None:
 
 
 async def main() -> None:
+    from app.core.config import settings
     from app.core.database import init_database, wait_db
     from app.core.events import register_event_listeners
     from app.services.event_handlers import configure_event_handlers
-    from app.core.config import settings
 
     init_database()
     await wait_db(max_attempts=10)
@@ -363,4 +364,3 @@ async def main() -> None:
 
 if __name__ == "__main__":
     asyncio.run(main())
-

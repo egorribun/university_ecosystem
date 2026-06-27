@@ -6,25 +6,62 @@ const ENABLED = process.env.URL_STATE_E2E === "true"
 const BASE = process.env.URL_STATE_E2E_BASE ?? "http://127.0.0.1:4175"
 
 // Shared fixtures used across route handlers.
-const CURRENT_USER_ID = "uuid-1"
-const OTHER_USER_ID = "other-user-uuid"
-const CHAT_ID = "chat-uuid-1"
+const CURRENT_USER_ID = "lhci-mock-user"
+const OTHER_USER_ID = "00000000-0000-4000-8000-000000000002"
+const CHAT_ID = "00000000-0000-4000-8000-000000000001"
+const apiPathMatches = (url: URL, path: string) =>
+  url.pathname === path || url.pathname === path.replace("/api/", "/api/v1/")
 
-const CURRENT_USER = {
+const CHAT_COLLECTION_MATCH = (url: URL) => apiPathMatches(url, "/api/chats")
+const chatDetailMatch = (url: URL) => apiPathMatches(url, `/api/chats/${CHAT_ID}`)
+const chatMessagesMatch = (url: URL) => apiPathMatches(url, `/api/chats/${CHAT_ID}/messages`)
+const chatReadMatch = (url: URL) => apiPathMatches(url, `/api/chats/${CHAT_ID}/read`)
+const chatTypingMatch = (url: URL) => apiPathMatches(url, `/api/chats/${CHAT_ID}/typing`)
+const chatReactionsMatch = (url: URL) => {
+  const base = `/api/chats/${CHAT_ID}/messages/`
+  const v1Base = base.replace("/api/", "/api/v1/")
+  return (
+    (url.pathname.startsWith(base) || url.pathname.startsWith(v1Base)) &&
+    url.pathname.endsWith("/reactions")
+  )
+}
+const chatForwardMatch = (url: URL) => apiPathMatches(url, `/api/chats/${CHAT_ID}/forward`)
+const otherUserMatch = (url: URL) => apiPathMatches(url, `/api/users/${OTHER_USER_ID}`)
+
+const makeUser = (user: { id: string; email: string; full_name: string }) => ({
+  ...user,
+  role: "student",
+  group_id: null,
+  avatar_url: null,
+  avatar_url_optimized: null,
+  cover_url: null,
+  cover_url_optimized: null,
+  profile_detail: null,
+  education_path: null,
+  preferences: null,
+  spotify_connected: false,
+  spotify_display_name: null,
+  spotify_is_connected: false,
+  is_active: true,
+  mfa_required: false,
+  mfa_default_method: null,
+  mfa_last_verified_at: null,
+  recovery_codes_left: 0,
+  totp_enrollments: [],
+  mfa_challenges: [],
+})
+
+const CURRENT_USER = makeUser({
   id: CURRENT_USER_ID,
   email: "student@example.com",
   full_name: "Иван Иванов",
-  role: "student",
-  avatar_url: null,
-}
+})
 
-const OTHER_USER = {
+const OTHER_USER = makeUser({
   id: OTHER_USER_ID,
   email: "other@example.com",
   full_name: "Other User",
-  role: "student",
-  avatar_url: null,
-}
+})
 
 const DM_CHAT = {
   id: CHAT_ID,
@@ -62,7 +99,13 @@ test.describe("Messenger Chat Workflow", () => {
 
   test.use({ baseURL: BASE, serviceWorkers: "block" })
 
-  test("runs full DM chat workflow: open chat → send → receive via WS → react → reply → forward → read receipt", async ({ page }) => {
+  test("runs full DM chat workflow: open chat → send → receive via WS → react → reply → forward → read receipt", async ({
+    page,
+  }) => {
+    await page.addInitScript(() => {
+      ;(window as Window & { __E2E_NETWORK_API_MOCKS__?: boolean }).__E2E_NETWORK_API_MOCKS__ = true
+    })
+
     // 1. Setup global mock API (auth, profile, news, schedule, etc.)
     await useMockApi(page)
 
@@ -71,7 +114,7 @@ test.describe("Messenger Chat Workflow", () => {
 
     // GET  /api/chats        → list with one DM chat
     // POST /api/chats        → create (unused in DM flow)
-    await page.route("**/api/chats", async (route) => {
+    await page.route(CHAT_COLLECTION_MATCH, async (route) => {
       if (route.request().method() === "GET") {
         await route.fulfill({
           status: 200,
@@ -87,7 +130,7 @@ test.describe("Messenger Chat Workflow", () => {
       }
     })
 
-    await page.route(`**/api/chats/${CHAT_ID}`, async (route) => {
+    await page.route(chatDetailMatch, async (route) => {
       await route.fulfill({
         status: 200,
         contentType: "application/json",
@@ -95,7 +138,7 @@ test.describe("Messenger Chat Workflow", () => {
       })
     })
 
-    await page.route(`**/api/chats/${CHAT_ID}/messages`, async (route) => {
+    await page.route(chatMessagesMatch, async (route) => {
       if (route.request().method() === "GET") {
         await route.fulfill({
           status: 200,
@@ -121,19 +164,31 @@ test.describe("Messenger Chat Workflow", () => {
       }
     })
 
-    await page.route(`**/api/chats/${CHAT_ID}/read`, async (route) => {
-      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ success: true }) })
+    await page.route(chatReadMatch, async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ success: true }),
+      })
     })
 
-    await page.route(`**/api/chats/${CHAT_ID}/typing`, async (route) => {
-      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ success: true }) })
+    await page.route(chatTypingMatch, async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ success: true }),
+      })
     })
 
-    await page.route(`**/api/chats/${CHAT_ID}/messages/**/reactions**`, async (route) => {
-      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ success: true }) })
+    await page.route(chatReactionsMatch, async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ success: true }),
+      })
     })
 
-    await page.route(`**/api/chats/${CHAT_ID}/forward`, async (route) => {
+    await page.route(chatForwardMatch, async (route) => {
       await route.fulfill({
         status: 200,
         contentType: "application/json",
@@ -152,7 +207,7 @@ test.describe("Messenger Chat Workflow", () => {
       })
     })
 
-    await page.route(`**/api/users/${OTHER_USER_ID}`, async (route) => {
+    await page.route(otherUserMatch, async (route) => {
       await route.fulfill({
         status: 200,
         contentType: "application/json",
@@ -166,7 +221,6 @@ test.describe("Messenger Chat Workflow", () => {
     // 3. Inject mock WebSocket — replaces the real WS connection so the test
     //    controls inbound frames explicitly, removing the 404-on-ws-hub dependency.
     await page.addInitScript(() => {
-      ;(window as any).MockWebSocketInstances = []
       class MockWebSocket {
         url: string
         readyState: number
@@ -178,7 +232,9 @@ test.describe("Messenger Chat Workflow", () => {
         constructor(url: string) {
           this.url = url
           this.readyState = 0 // CONNECTING
-          ;(window as any).MockWebSocketInstances.push(this)
+          const store = window as unknown as Window & { MockWebSocketInstances?: MockWebSocket[] }
+          store.MockWebSocketInstances ??= []
+          store.MockWebSocketInstances.push(this)
           // Simulate async open so the app has time to attach handlers.
           setTimeout(() => {
             this.readyState = 1 // OPEN
@@ -199,7 +255,10 @@ test.describe("Messenger Chat Workflow", () => {
           this.onmessage?.({ data: typeof data === "string" ? data : JSON.stringify(data) })
         }
       }
-      ;(window as any).WebSocket = MockWebSocket
+      ;(
+        window as unknown as Window & { MockWebSocketInstances: MockWebSocket[] }
+      ).MockWebSocketInstances = []
+      ;(window as Window & { WebSocket: unknown }).WebSocket = MockWebSocket
     })
 
     // 4. Navigate to messenger
@@ -231,31 +290,41 @@ test.describe("Messenger Chat Workflow", () => {
     await expect(page.getByText("Привет от Ивана!")).toBeVisible({ timeout: 10_000 })
 
     // 10. Simulate an inbound WebSocket frame (new message from Other User).
-    await page.evaluate(() => {
-      const instances = (window as any).MockWebSocketInstances as any[]
-      const ws = instances[instances.length - 1]
-      ws?.triggerMessage({
-        type: "new_message",
-        chat_id: "chat-uuid-1",
-        message: {
-          id: "msg-uuid-ws-received",
-          chat_id: "chat-uuid-1",
-          sender_id: "other-user-uuid",
-          content: "Рад слышать! Ответ получен.",
-          created_at: new Date().toISOString(),
-          read_status: false,
-          sender: {
-            id: "other-user-uuid",
-            email: "other@example.com",
-            full_name: "Other User",
-            role: "student",
+    await page.evaluate(
+      ({ chatId, otherUserId }) => {
+        type MockWebSocketInstance = { triggerMessage?: (data: unknown) => void }
+        const instances =
+          (window as Window & { MockWebSocketInstances?: MockWebSocketInstance[] })
+            .MockWebSocketInstances ?? []
+        const ws = instances[instances.length - 1]
+        ws?.triggerMessage?.({
+          type: "new_message",
+          chat_id: chatId,
+          message: {
+            id: "00000000-0000-4000-8000-000000000012",
+            chat_id: chatId,
+            sender_id: otherUserId,
+            content: "Рад слышать! Ответ получен.",
+            created_at: new Date().toISOString(),
+            read_status: false,
+            sender: {
+              id: otherUserId,
+              email: "other@example.com",
+              full_name: "Other User",
+              role: "student",
+              is_active: true,
+            },
+            reactions: [],
           },
-          reactions: [],
-        },
-      })
-    })
+        })
+      },
+      { chatId: CHAT_ID, otherUserId: OTHER_USER_ID }
+    )
 
-    await expect(page.getByText("Рад слышать! Ответ получен.")).toBeVisible({ timeout: 10_000 })
+    const chatLog = page.getByRole("log", { name: /Сообщения чата/i })
+    await expect(chatLog.getByText("Рад слышать! Ответ получен.")).toBeVisible({
+      timeout: 10_000,
+    })
 
     // 11. Accessibility scan in the active chat area.
     const a11yChat = await new AxeBuilder({ page })
@@ -285,18 +354,24 @@ test.describe("Messenger Chat Workflow", () => {
     await page.keyboard.press("Escape")
 
     // 14. Read-receipt WebSocket frame.
-    await page.evaluate(() => {
-      const instances = (window as any).MockWebSocketInstances as any[]
-      const ws = instances[instances.length - 1]
-      ws?.triggerMessage({
-        type: "read",
-        chat_id: "chat-uuid-1",
-        user_id: "other-user-uuid",
-        read_at: new Date().toISOString(),
-      })
-    })
+    await page.evaluate(
+      ({ chatId, otherUserId }) => {
+        type MockWebSocketInstance = { triggerMessage?: (data: unknown) => void }
+        const instances =
+          (window as Window & { MockWebSocketInstances?: MockWebSocketInstance[] })
+            .MockWebSocketInstances ?? []
+        const ws = instances[instances.length - 1]
+        ws?.triggerMessage?.({
+          type: "read",
+          chat_id: chatId,
+          user_id: otherUserId,
+          read_at: new Date().toISOString(),
+        })
+      },
+      { chatId: CHAT_ID, otherUserId: OTHER_USER_ID }
+    )
 
     // The chat log remains visible after the read frame is applied.
-    await expect(page.getByRole("log", { name: /Сообщения чата/i })).toBeVisible()
+    await expect(chatLog).toBeVisible()
   })
 })

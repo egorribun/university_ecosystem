@@ -11,13 +11,24 @@ BACKEND_ROOT = PROJECT_ROOT
 
 def _reload_all_config():
     """Reloads all settings modules in correct dependency order.
-    
+
     This is necessary because Pydantic's BaseSettings caches SettingsConfigDict (env_file, etc.)
     at class definition time. If we reload app.core.config.base, we must also reload all mixin
     modules that subclass BaseAppSettings so they pick up the new base class definition.
     """
-    from app.core.config import base, database, security, cache, observability, storage, notifications, integrations, app_gen
     from app.core import config as config_module
+    from app.core.config import (
+        app_gen,
+        base,
+        cache,
+        database,
+        integrations,
+        notifications,
+        observability,
+        security,
+        storage,
+    )
+
     importlib.reload(base)
     importlib.reload(database)
     importlib.reload(security)
@@ -96,7 +107,6 @@ def test_settings_require_real_secret_when_env_missing(monkeypatch):
     monkeypatch.delenv("SECRET_KEY", raising=False)
 
     with _temporary_env_file(None):
-        from app.core import config as config_module
         config_module = _reload_all_config()
 
         assert config_module._ENV_FILE is None
@@ -119,7 +129,6 @@ def test_settings_allow_development_defaults_when_opted_in(monkeypatch):
     monkeypatch.delenv("SECRET_KEY", raising=False)
 
     with _temporary_env_file(None):
-        from app.core import config as config_module
         config_module = _reload_all_config()
 
         settings = config_module.Settings(_allow_missing=True)
@@ -178,7 +187,6 @@ def test_notifications_allowed_push_topics_parsed(monkeypatch):
     )
 
     with _temporary_env_file(None):
-        from app.core import config as config_module
         config_module = _reload_all_config()
         settings = config_module.Settings(_allow_missing=True)
 
@@ -203,7 +211,6 @@ def test_auto_create_schema_default_true_in_development(monkeypatch):
     monkeypatch.delenv("AUTO_CREATE_SCHEMA", raising=False)
 
     with _temporary_env_file(None):
-        from app.core import config as config_module
         config_module = _reload_all_config()
         settings = config_module.Settings()
 
@@ -234,7 +241,6 @@ def test_auto_create_schema_default_false_in_production(monkeypatch, tmp_path):
     monkeypatch.delenv("AUTO_CREATE_SCHEMA", raising=False)
 
     with _temporary_env_file(None):
-        from app.core import config as config_module
         config_module = _reload_all_config()
         settings = config_module.Settings()
 
@@ -288,8 +294,6 @@ def test_response_compression_toggle(monkeypatch):
     monkeypatch.delenv("ENABLE_RESPONSE_COMPRESSION", raising=False)
 
     with _temporary_env_file(None):
-        from app.core import config as config_module
-
         config_module = _reload_all_config()
         default_settings = config_module.Settings()
         assert default_settings.response_compression_enabled is True

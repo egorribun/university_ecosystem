@@ -6,40 +6,68 @@ const ENABLED = process.env.URL_STATE_E2E === "true"
 const BASE = process.env.URL_STATE_E2E_BASE ?? "http://127.0.0.1:4175"
 
 // ── Shared fixtures ────────────────────────────────────────────────────────────
-const CURRENT_USER_ID = "uuid-1"
+const CURRENT_USER_ID = "lhci-mock-user"
 const GROUP_CHAT_ID = "chat-uuid-group"
+const MEMBER_TWO_ID = "member-user-2"
+const apiPathMatches = (url: URL, path: string) =>
+  url.pathname === path || url.pathname === path.replace("/api/", "/api/v1/")
 
-const CURRENT_USER = {
+const CHAT_COLLECTION_MATCH = (url: URL) => apiPathMatches(url, "/api/chats")
+const GROUP_CREATE_MATCH = (url: URL) => apiPathMatches(url, "/api/chats/groups")
+const USERS_MATCH = (url: URL) => apiPathMatches(url, "/api/users")
+const groupDetailMatch = (url: URL) => apiPathMatches(url, `/api/chats/${GROUP_CHAT_ID}`)
+const groupMessagesMatch = (url: URL) => apiPathMatches(url, `/api/chats/${GROUP_CHAT_ID}/messages`)
+const groupParticipantsMatch = (url: URL) =>
+  apiPathMatches(url, `/api/chats/${GROUP_CHAT_ID}/participants`)
+const memberTwoParticipantMatch = (url: URL) =>
+  apiPathMatches(url, `/api/chats/${GROUP_CHAT_ID}/participants/${MEMBER_TWO_ID}`)
+
+const makeUser = (user: { id: string; email: string; full_name: string }) => ({
+  ...user,
+  role: "student",
+  group_id: null,
+  avatar_url: null,
+  avatar_url_optimized: null,
+  cover_url: null,
+  cover_url_optimized: null,
+  profile_detail: null,
+  education_path: null,
+  preferences: null,
+  spotify_connected: false,
+  spotify_display_name: null,
+  spotify_is_connected: false,
+  is_active: true,
+  mfa_required: false,
+  mfa_default_method: null,
+  mfa_last_verified_at: null,
+  recovery_codes_left: 0,
+  totp_enrollments: [],
+  mfa_challenges: [],
+})
+
+const CURRENT_USER = makeUser({
   id: CURRENT_USER_ID,
   email: "student@example.com",
   full_name: "Иван Иванов",
-  role: "student",
-  avatar_url: null,
-}
+})
 
-const MEMBER_ONE = {
+const MEMBER_ONE = makeUser({
   id: "member-user-1",
   email: "member1@example.com",
   full_name: "Member One",
-  role: "student",
-  avatar_url: null,
-}
+})
 
-const MEMBER_TWO = {
-  id: "member-user-2",
+const MEMBER_TWO = makeUser({
+  id: MEMBER_TWO_ID,
   email: "member2@example.com",
   full_name: "Member Two",
-  role: "student",
-  avatar_url: null,
-}
+})
 
-const MEMBER_THREE = {
+const MEMBER_THREE = makeUser({
   id: "member-user-3",
   email: "member3@example.com",
   full_name: "Member Three",
-  role: "student",
-  avatar_url: null,
-}
+})
 
 const SEARCH_RESULTS = [MEMBER_ONE, MEMBER_TWO, MEMBER_THREE]
 
@@ -62,12 +90,15 @@ test.describe("Group Chat Management", () => {
   test.use({ baseURL: BASE, serviceWorkers: "block" })
 
   test("creates a group and manages members/title in group info panel", async ({ page }) => {
+    await page.addInitScript(() => {
+      ;(window as Window & { __E2E_NETWORK_API_MOCKS__?: boolean }).__E2E_NETWORK_API_MOCKS__ = true
+    })
+
     // 1. Global mocks (auth, profile, news, schedule…)
     await useMockApi(page)
 
     // 2. Inject mock WebSocket so the WS hub 404 does not stall page load.
     await page.addInitScript(() => {
-      ;(window as any).MockWebSocketInstances = []
       class MockWebSocket {
         url: string
         readyState: number
@@ -78,7 +109,9 @@ test.describe("Group Chat Management", () => {
         constructor(url: string) {
           this.url = url
           this.readyState = 0
-          ;(window as any).MockWebSocketInstances.push(this)
+          const store = window as unknown as Window & { MockWebSocketInstances?: MockWebSocket[] }
+          store.MockWebSocketInstances ??= []
+          store.MockWebSocketInstances.push(this)
           setTimeout(() => {
             this.readyState = 1
             this.onopen?.()
@@ -90,7 +123,10 @@ test.describe("Group Chat Management", () => {
           this.onclose?.()
         }
       }
-      ;(window as any).WebSocket = MockWebSocket
+      ;(
+        window as unknown as Window & { MockWebSocketInstances: MockWebSocket[] }
+      ).MockWebSocketInstances = []
+      ;(window as Window & { WebSocket: unknown }).WebSocket = MockWebSocket
     })
 
     // 3. Chat API mocks — registered before navigation so they're active
@@ -98,7 +134,7 @@ test.describe("Group Chat Management", () => {
 
     // GET  /api/chats  → empty list (no existing chats)
     // POST /api/chats  → group creation returns the new group
-    await page.route("**/api/chats", async (route) => {
+    await page.route(CHAT_COLLECTION_MATCH, async (route) => {
       if (route.request().method() === "POST") {
         await route.fulfill({
           status: 200,
@@ -114,9 +150,17 @@ test.describe("Group Chat Management", () => {
       }
     })
 
+    await page.route(GROUP_CREATE_MATCH, async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(CREATED_GROUP),
+      })
+    })
+
     // User search — any query string on /api/users with a "search" param.
     // Playwright glob "**/api/users*" matches any URL starting with /api/users.
-    await page.route("**/api/users*", async (route) => {
+    await page.route(USERS_MATCH, async (route) => {
       const url = route.request().url()
       if (url.includes("search=")) {
         await route.fulfill({
@@ -132,13 +176,16 @@ test.describe("Group Chat Management", () => {
     // GET  /api/chats/{id}   → group details
     // PATCH /api/chats/{id}  → rename response
     // DELETE /api/chats/{id} → group deletion
-    await page.route(`**/api/chats/${GROUP_CHAT_ID}`, async (route) => {
+    await page.route(groupDetailMatch, async (route) => {
       if (route.request().method() === "PATCH") {
-        const payload = (await route.request().postDataJSON()) ?? {}
+        const payload = ((await route.request().postDataJSON()) ?? {}) as { name?: string }
         await route.fulfill({
           status: 200,
           contentType: "application/json",
-          body: JSON.stringify({ ...CREATED_GROUP, name: (payload as any).name ?? CREATED_GROUP.name }),
+          body: JSON.stringify({
+            ...CREATED_GROUP,
+            name: payload.name ?? CREATED_GROUP.name,
+          }),
         })
       } else if (route.request().method() === "DELETE") {
         await route.fulfill({
@@ -155,7 +202,7 @@ test.describe("Group Chat Management", () => {
       }
     })
 
-    await page.route(`**/api/chats/${GROUP_CHAT_ID}/messages`, async (route) => {
+    await page.route(groupMessagesMatch, async (route) => {
       await route.fulfill({
         status: 200,
         contentType: "application/json",
@@ -164,7 +211,7 @@ test.describe("Group Chat Management", () => {
     })
 
     // Add participant
-    await page.route(`**/api/chats/${GROUP_CHAT_ID}/participants`, async (route) => {
+    await page.route(groupParticipantsMatch, async (route) => {
       await route.fulfill({
         status: 200,
         contentType: "application/json",
@@ -173,7 +220,7 @@ test.describe("Group Chat Management", () => {
     })
 
     // Kick participant (Member Two)
-    await page.route(`**/api/chats/${GROUP_CHAT_ID}/participants/${MEMBER_TWO.id}`, async (route) => {
+    await page.route(memberTwoParticipantMatch, async (route) => {
       await route.fulfill({
         status: 200,
         contentType: "application/json",
@@ -196,7 +243,7 @@ test.describe("Group Chat Management", () => {
     await page.getByLabel("Название группы").fill("Супер Группа")
 
     // 8. Search users. The search input uses aria-label="Поиск пользователей".
-    await page.getByLabel("Поиск пользователей").fill("Member")
+    await page.getByRole("textbox", { name: "Поиск пользователей" }).fill("Member")
 
     // 9. Wait for the search results listbox to populate, then select members.
     //    Each option has role="option"; select by visible text.
@@ -261,6 +308,10 @@ test.describe("Group Chat Management", () => {
     const kickBtn = page.getByLabel("Удалить Member Two")
     await expect(kickBtn).toBeVisible({ timeout: 5_000 })
     await kickBtn.click()
+    const removeDialog = page.getByRole("alertdialog", { name: "Удалить участника?" })
+    await expect(removeDialog).toBeVisible({ timeout: 5_000 })
+    await removeDialog.getByRole("button", { name: "Удалить" }).click()
+    await expect(removeDialog).not.toBeVisible()
 
     // 18. Close the panel.
     await page.getByLabel("Закрыть").click()

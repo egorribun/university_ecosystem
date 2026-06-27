@@ -4,11 +4,10 @@ Covers sanitize_html, sanitize_rich_text, sanitize_filename, sanitize_path,
 sanitize_email, sanitize_url, strip_control_chars, truncate, sanitize_optional_text.
 Goal: bring coverage from 12% to ~90%.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
-
-import pytest
 
 from app.utils.sanitization import (
     sanitize_email,
@@ -22,10 +21,10 @@ from app.utils.sanitization import (
     truncate,
 )
 
-
 # ---------------------------------------------------------------------------
 # sanitize_html
 # ---------------------------------------------------------------------------
+
 
 def test_sanitize_html_strips_all_tags_by_default():
     result = sanitize_html("<script>alert('xss')</script> Hello")
@@ -57,6 +56,7 @@ def test_sanitize_html_script_stripped_even_with_basic_tags():
 # ---------------------------------------------------------------------------
 # sanitize_rich_text
 # ---------------------------------------------------------------------------
+
 
 def test_sanitize_rich_text_empty():
     assert sanitize_rich_text("") == ""
@@ -106,6 +106,7 @@ def test_sanitize_rich_text_strips_comments():
 # sanitize_filename
 # ---------------------------------------------------------------------------
 
+
 def test_sanitize_filename_empty_returns_unnamed():
     assert sanitize_filename("") == "unnamed"
 
@@ -122,7 +123,7 @@ def test_sanitize_filename_strips_path_separators():
 
 
 def test_sanitize_filename_removes_windows_invalid_chars():
-    result = sanitize_filename('file<name>:with|invalid?chars*.txt')
+    result = sanitize_filename("file<name>:with|invalid?chars*.txt")
     assert "<" not in result
     assert ">" not in result
     assert ":" not in result
@@ -163,6 +164,7 @@ def test_sanitize_filename_removes_double_dots():
 # sanitize_path
 # ---------------------------------------------------------------------------
 
+
 def test_sanitize_path_valid_path(tmp_path):
     subdir = tmp_path / "subdir"
     subdir.mkdir()
@@ -191,10 +193,10 @@ def test_sanitize_path_relative_traversal_blocked(tmp_path):
     assert result is None or isinstance(result, Path)
 
 
-
 # ---------------------------------------------------------------------------
 # sanitize_email
 # ---------------------------------------------------------------------------
+
 
 def test_sanitize_email_lowercases():
     assert sanitize_email("User@Example.COM") == "user@example.com"
@@ -211,6 +213,7 @@ def test_sanitize_email_empty():
 # ---------------------------------------------------------------------------
 # sanitize_url
 # ---------------------------------------------------------------------------
+
 
 def test_sanitize_url_valid_https():
     result = sanitize_url("https://example.com/path")
@@ -264,7 +267,8 @@ def test_sanitize_url_private_ip_blocked():
 
 
 def test_sanitize_url_credentials_blocked():
-    assert sanitize_url("https://user:pass@example.com/") is None
+    credential_url = "https://user:pass@example.com/"  # pragma: allowlist secret
+    assert sanitize_url(credential_url) is None
 
 
 def test_sanitize_url_no_netloc_blocked():
@@ -285,6 +289,7 @@ def test_sanitize_url_whitespace_stripped():
 # ---------------------------------------------------------------------------
 # strip_control_chars
 # ---------------------------------------------------------------------------
+
 
 def test_strip_control_chars_empty():
     assert strip_control_chars("") == ""
@@ -313,6 +318,7 @@ def test_strip_control_chars_removes_other_controls():
 # truncate
 # ---------------------------------------------------------------------------
 
+
 def test_truncate_no_truncation_needed():
     assert truncate("Hello", 10) == "Hello"
 
@@ -340,6 +346,7 @@ def test_truncate_custom_suffix():
 # ---------------------------------------------------------------------------
 # sanitize_optional_text
 # ---------------------------------------------------------------------------
+
 
 def test_sanitize_optional_text_none():
     assert sanitize_optional_text(None) is None

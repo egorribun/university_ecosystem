@@ -3,12 +3,12 @@
 Targets OutboxWorker: stop(), run_forever(), process_batch(), _dispatch_event(),
 _move_to_dlq() and _on_notification(). Coverage goal: ~80%.
 """
+
 from __future__ import annotations
 
 import asyncio
 import dataclasses
 import uuid
-from datetime import UTC, datetime
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -16,10 +16,10 @@ import pytest
 
 from app.workers.outbox import OutboxWorker
 
-
 # ---------------------------------------------------------------------------
 # Helpers / fixtures
 # ---------------------------------------------------------------------------
+
 
 def make_stored_event(
     event_type: str = "TestEvent",
@@ -53,6 +53,7 @@ def worker() -> OutboxWorker:
 # Basic construction
 # ---------------------------------------------------------------------------
 
+
 def test_worker_defaults():
     w = OutboxWorker()
     assert w.poll_interval == 5.0
@@ -71,6 +72,7 @@ def test_on_notification_sets_wakeup_event(worker: OutboxWorker):
 # stop()
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.asyncio
 async def test_stop_sets_is_running_false_and_wakes_event(worker: OutboxWorker):
     worker._is_running = True
@@ -82,6 +84,7 @@ async def test_stop_sets_is_running_false_and_wakes_event(worker: OutboxWorker):
 # ---------------------------------------------------------------------------
 # _dispatch_event tests
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_dispatch_event_unknown_type(worker: OutboxWorker):
@@ -114,8 +117,10 @@ async def test_dispatch_event_known_type(worker: OutboxWorker):
     )
 
     mock_bus = AsyncMock()
-    with patch("app.core.events._EVENT_REGISTRY", {"FakeEvent": FakeEvent}), \
-         patch("app.workers.outbox.event_bus", mock_bus):
+    with (
+        patch("app.core.events._EVENT_REGISTRY", {"FakeEvent": FakeEvent}),
+        patch("app.workers.outbox.event_bus", mock_bus),
+    ):
         await worker._dispatch_event(se)
 
     mock_bus.publish.assert_called_once()
@@ -134,12 +139,18 @@ async def test_dispatch_event_with_metadata(worker: OutboxWorker):
     se = make_stored_event(
         event_type="MetaEvent",
         payload={"value": 42},
-        metadata_={"event_id": "restored-id", "correlation_id": "corr-1", "user_id": "usr-1"},
+        metadata_={
+            "event_id": "restored-id",
+            "correlation_id": "corr-1",
+            "user_id": "usr-1",
+        },
     )
 
     mock_bus = AsyncMock()
-    with patch("app.core.events._EVENT_REGISTRY", {"MetaEvent": MetaEvent}), \
-         patch("app.workers.outbox.event_bus", mock_bus):
+    with (
+        patch("app.core.events._EVENT_REGISTRY", {"MetaEvent": MetaEvent}),
+        patch("app.workers.outbox.event_bus", mock_bus),
+    ):
         await worker._dispatch_event(se)
 
     mock_bus.publish.assert_called_once()
@@ -160,8 +171,10 @@ async def test_dispatch_event_constructor_raises(worker: OutboxWorker):
 
     se = make_stored_event(event_type="BadEvent", payload={"required": "x"})
 
-    with patch("app.core.events._EVENT_REGISTRY", {"BadEvent": BadEvent}), \
-         patch("app.workers.outbox.event_bus", AsyncMock()):
+    with (
+        patch("app.core.events._EVENT_REGISTRY", {"BadEvent": BadEvent}),
+        patch("app.workers.outbox.event_bus", AsyncMock()),
+    ):
         with pytest.raises(ValueError):
             await worker._dispatch_event(se)
 
@@ -171,6 +184,7 @@ async def test_dispatch_event_constructor_raises(worker: OutboxWorker):
 # ---------------------------------------------------------------------------
 # _move_to_dlq tests
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_move_to_dlq(worker: OutboxWorker):
@@ -184,8 +198,16 @@ async def test_move_to_dlq(worker: OutboxWorker):
     mock_instance.id = uuid.uuid4()
     mock_failed_event_cls.return_value = mock_instance
 
-    with patch("app.models.failed_outbox_events.FailedOutboxEvent", mock_failed_event_cls, create=True), \
-         patch("app.workers.outbox.FailedOutboxEvent", mock_failed_event_cls, create=True):
+    with (
+        patch(
+            "app.models.failed_outbox_events.FailedOutboxEvent",
+            mock_failed_event_cls,
+            create=True,
+        ),
+        patch(
+            "app.workers.outbox.FailedOutboxEvent", mock_failed_event_cls, create=True
+        ),
+    ):
         await worker._move_to_dlq(mock_db, se, "some error")
 
     mock_db.add.assert_called_once()
@@ -195,6 +217,7 @@ async def test_move_to_dlq(worker: OutboxWorker):
 # ---------------------------------------------------------------------------
 # process_batch tests
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_process_batch_empty_returns_zero(worker: OutboxWorker):
@@ -234,8 +257,10 @@ async def test_process_batch_successful_dispatch(worker: OutboxWorker):
     mock_db.execute = AsyncMock(side_effect=[mock_result, mock_pending_result])
     mock_db.commit = AsyncMock()
 
-    with patch("app.workers.outbox.async_session") as mock_cm, \
-         patch.object(worker, "_dispatch_event", new_callable=AsyncMock):
+    with (
+        patch("app.workers.outbox.async_session") as mock_cm,
+        patch.object(worker, "_dispatch_event", new_callable=AsyncMock),
+    ):
         mock_cm.return_value.__aenter__ = AsyncMock(return_value=mock_db)
         mock_cm.return_value.__aexit__ = AsyncMock(return_value=False)
 
@@ -264,8 +289,10 @@ async def test_process_batch_dispatch_failure_increments_error(worker: OutboxWor
     async def dispatch_fail(event: Any) -> None:
         raise RuntimeError("boom")
 
-    with patch("app.workers.outbox.async_session") as mock_cm, \
-         patch.object(worker, "_dispatch_event", side_effect=dispatch_fail):
+    with (
+        patch("app.workers.outbox.async_session") as mock_cm,
+        patch.object(worker, "_dispatch_event", side_effect=dispatch_fail),
+    ):
         mock_cm.return_value.__aenter__ = AsyncMock(return_value=mock_db)
         mock_cm.return_value.__aexit__ = AsyncMock(return_value=False)
 
@@ -276,7 +303,9 @@ async def test_process_batch_dispatch_failure_increments_error(worker: OutboxWor
 
 
 @pytest.mark.asyncio
-async def test_process_batch_dispatch_failure_hits_dlq_at_max_retries(worker: OutboxWorker):
+async def test_process_batch_dispatch_failure_hits_dlq_at_max_retries(
+    worker: OutboxWorker,
+):
     """When dispatch fails and error_count >= max_retries, event goes to DLQ."""
     worker.max_retries = 2
     se = make_stored_event("Evt", error_count=1)  # One away from max
@@ -298,9 +327,15 @@ async def test_process_batch_dispatch_failure_hits_dlq_at_max_retries(worker: Ou
     mock_failed_event = MagicMock()
     mock_failed_event.id = uuid.uuid4()
 
-    with patch("app.workers.outbox.async_session") as mock_cm, \
-         patch.object(worker, "_dispatch_event", side_effect=dispatch_fail), \
-         patch("app.models.failed_outbox_events.FailedOutboxEvent", return_value=mock_failed_event, create=True):
+    with (
+        patch("app.workers.outbox.async_session") as mock_cm,
+        patch.object(worker, "_dispatch_event", side_effect=dispatch_fail),
+        patch(
+            "app.models.failed_outbox_events.FailedOutboxEvent",
+            return_value=mock_failed_event,
+            create=True,
+        ),
+    ):
         mock_cm.return_value.__aenter__ = AsyncMock(return_value=mock_db)
         mock_cm.return_value.__aexit__ = AsyncMock(return_value=False)
 
@@ -313,6 +348,7 @@ async def test_process_batch_dispatch_failure_hits_dlq_at_max_retries(worker: Ou
 # ---------------------------------------------------------------------------
 # run_forever tests
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_run_forever_cancels_cleanly(worker: OutboxWorker):
@@ -359,8 +395,10 @@ async def test_run_forever_handles_exception_in_loop(worker: OutboxWorker):
 
     worker.process_batch = mock_process_batch  # type: ignore[method-assign]
 
-    with patch.object(worker, "_listen_loop", side_effect=mock_listen_loop), \
-         patch("asyncio.sleep", new_callable=AsyncMock):
+    with (
+        patch.object(worker, "_listen_loop", side_effect=mock_listen_loop),
+        patch("asyncio.sleep", new_callable=AsyncMock),
+    ):
         with pytest.raises(asyncio.CancelledError):
             await worker.run_forever()
 

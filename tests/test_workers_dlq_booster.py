@@ -4,26 +4,25 @@ Covers DeadLetterQueue, compute_job_hash, check_duplicate_job,
 mark_job_retrying, mark_job_completed, mark_job_failed, get_queue_stats,
 cleanup_completed_jobs. Goal: bring coverage from 27% to ~90%.
 """
+
 from __future__ import annotations
 
-import json
 from datetime import UTC, datetime, timedelta
-from typing import Any
-from unittest.mock import AsyncMock, MagicMock, call, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from app.models.dead_letter import JobStatus
 from app.workers.dead_letter_queue import (
     DeadLetterQueue,
     check_duplicate_job,
     compute_job_hash,
 )
-from app.models.dead_letter import DeadLetterJob, JobStatus
-
 
 # ---------------------------------------------------------------------------
 # compute_job_hash
 # ---------------------------------------------------------------------------
+
 
 def test_compute_job_hash_is_stable():
     h1 = compute_job_hash("SendEmail", {"to": "a@b.com", "subject": "Hi"})
@@ -53,6 +52,7 @@ def test_compute_job_hash_returns_64_hex_chars():
 # check_duplicate_job
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.asyncio
 async def test_check_duplicate_job_returns_true_when_exists():
     mock_session = AsyncMock()
@@ -78,6 +78,7 @@ async def test_check_duplicate_job_returns_false_when_not_exists():
 # ---------------------------------------------------------------------------
 # DeadLetterQueue.add_failed_job
 # ---------------------------------------------------------------------------
+
 
 def make_dlq(session: AsyncMock | None = None) -> DeadLetterQueue:
     if session is None:
@@ -115,10 +116,10 @@ async def test_add_failed_job_creates_new_job():
     assert result is not None
 
 
-
 # ---------------------------------------------------------------------------
 # DeadLetterQueue.get_jobs_ready_for_retry
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_get_jobs_ready_for_retry_returns_list():
@@ -150,6 +151,7 @@ async def test_get_jobs_ready_for_retry_empty():
 # DeadLetterQueue.mark_job_retrying
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.asyncio
 async def test_mark_job_retrying_increments_count_and_flushes():
     session = AsyncMock()
@@ -169,6 +171,7 @@ async def test_mark_job_retrying_increments_count_and_flushes():
 # ---------------------------------------------------------------------------
 # DeadLetterQueue.mark_job_completed
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_mark_job_completed_sets_status_and_flushes():
@@ -190,6 +193,7 @@ async def test_mark_job_completed_sets_status_and_flushes():
 # ---------------------------------------------------------------------------
 # DeadLetterQueue.mark_job_failed
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_mark_job_failed_permanently_on_max_retries():
@@ -239,10 +243,10 @@ async def test_mark_job_failed_backoff_capped_at_max():
     job = MagicMock()
     job.job_type = "MyJob"
     job.job_hash = "d" * 16
-    job.retry_count = 10   # Large retry count — would overflow without cap
+    job.retry_count = 10  # Large retry count — would overflow without cap
     job.max_retries = 20
 
-    before = datetime.now(UTC)
+    datetime.now(UTC)
     await dlq.mark_job_failed(job, "error")
     after = datetime.now(UTC)
 
@@ -256,6 +260,7 @@ async def test_mark_job_failed_backoff_capped_at_max():
 # ---------------------------------------------------------------------------
 # DeadLetterQueue.get_queue_stats
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_get_queue_stats_aggregates_correctly():
@@ -285,6 +290,7 @@ async def test_get_queue_stats_aggregates_correctly():
 # ---------------------------------------------------------------------------
 # DeadLetterQueue.cleanup_completed_jobs
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_cleanup_completed_jobs_returns_deleted_count():

@@ -225,7 +225,7 @@ def test_send_reset_email_plain_with_user_dev(mock_smtp, mock_settings):
     mock_settings.smtp_port = 25
     mock_settings.smtp_security = "none"
     mock_settings.smtp_user = "dev_user"
-    mock_settings.smtp_password = "dev_password"
+    mock_settings.smtp_password = "dev_password"  # pragma: allowlist secret
     mock_settings.is_development = True
 
     instance = mock_smtp.return_value.__enter__.return_value
@@ -246,7 +246,7 @@ from app.utils.email import (
 
 def test_build_lockout_email_content():
     """Test generating lockout email content with a name."""
-    subject, plain, html = build_lockout_email_content("John Doe")
+    subject, _plain, html = build_lockout_email_content("John Doe")
     assert "John Doe" in html
     assert isinstance(subject, str)
     assert len(subject) > 0
@@ -254,7 +254,7 @@ def test_build_lockout_email_content():
 
 def test_build_lockout_email_content_no_name():
     """Test generating lockout email content without a name."""
-    subject, plain, html = build_lockout_email_content()
+    subject, _plain, _html = build_lockout_email_content()
     assert isinstance(subject, str)
     assert len(subject) > 0
 
@@ -395,12 +395,10 @@ def test_send_lockout_email_plain_with_user_dev(mock_smtp, mock_settings):
     mock_settings.smtp_port = 25
     mock_settings.smtp_security = "none"
     mock_settings.smtp_user = "dev_user"
-    mock_settings.smtp_password = "dev_password"
+    mock_settings.smtp_password = "dev_password"  # pragma: allowlist secret
     mock_settings.is_development = True
 
     instance = mock_smtp.return_value.__enter__.return_value
     send_lockout_email("user@example.com", "John Doe")
     instance.login.assert_called_once_with("dev_user", "dev_password")
     instance.send_message.assert_called_once()
-
-

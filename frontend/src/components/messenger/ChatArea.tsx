@@ -277,6 +277,7 @@ export function ChatArea({
                 <div className="flex items-center gap-1.5">
                   <m.button
                     id="chat-search-toggle"
+                    aria-label={t("messenger:searchMessages")}
                     whileHover={prefersReducedMotion ? undefined : { scale: 1.05 }}
                     whileTap={prefersReducedMotion ? undefined : { scale: 0.95 }}
                     onClick={() => setShowSearchInChat(true)}
@@ -287,6 +288,7 @@ export function ChatArea({
                   <div className="relative">
                     <m.button
                       id="chat-menu-toggle"
+                      aria-label={t("messenger:chatActions")}
                       whileHover={prefersReducedMotion ? undefined : { scale: 1.05 }}
                       whileTap={prefersReducedMotion ? undefined : { scale: 0.95 }}
                       onClick={() => setShowChatMenu(!showChatMenu)}
