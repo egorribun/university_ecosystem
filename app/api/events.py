@@ -65,8 +65,9 @@ def _validate_id_type(id_val: uuid.UUID | int) -> None:
         if not (-9223372036854775808 <= id_val <= 9223372036854775807):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="ID out of 64-bit integer range."
+                detail="ID out of 64-bit integer range.",
             )
+
 
 _EVENTS_LIST_CACHE_PREFIX = events_cache_version.prefix
 

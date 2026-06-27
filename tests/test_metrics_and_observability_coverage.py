@@ -379,6 +379,7 @@ def test_create_worker_metrics():
 @pytest.mark.anyio
 async def test_worker_monitoring_app_and_server():
     from fastapi.testclient import TestClient
+
     wm = obs.create_worker_metrics("test_worker_server")
     app = obs.create_worker_monitoring_app(worker_name="test_worker_server", metrics=wm)
 
@@ -397,6 +398,7 @@ async def test_worker_monitoring_app_and_server():
 
     # Test start and stop server on ephemeral port
     import socket
+
     s = socket.socket()
     s.bind(("", 0))
     port = s.getsockname()[1]
@@ -413,6 +415,3 @@ def test_configure_worker_observability():
         mock_settings.log_level = "info"
         mock_settings.environment = "testing"
         obs.configure_worker_observability(worker_name="test_worker_obs")
-
-
-

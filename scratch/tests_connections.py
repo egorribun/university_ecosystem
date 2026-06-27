@@ -1,5 +1,5 @@
 import socket
-import sys
+
 
 def test_port(host, port):
     try:
@@ -9,6 +9,7 @@ def test_port(host, port):
     except Exception as e:
         print(f"Failed to connect to {host}:{port} - {e}")
         return False
+
 
 print("Testing connections from host:")
 for ip in ["127.0.0.1", "::1", "localhost"]:
