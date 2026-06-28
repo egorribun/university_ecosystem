@@ -39,3 +39,7 @@ leak:_upb
 leak:upb_DefPool_New
 leak:rpds
 
+# Atheris Fuzzer / pybind11 binding leaks
+leak:pybind11
+leak:atheris
+
