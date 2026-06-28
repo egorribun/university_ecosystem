@@ -149,9 +149,9 @@ jobs:
           node-version: "22"
 
       - name: Install openapi-diff
-        # openapi-diff by Tufin: detects breaking vs. non-breaking changes.
-        # Pinned to exact version for reproducibility.
-        run: npm install --global @tufin/oasdiff@1.10.57
+        # oasdiff detects breaking vs. non-breaking changes.
+        # Pinned to exact npm wrapper and native binary versions for reproducibility.
+        run: npm install --global @oasdiff-js/oasdiff-js@1.0.0
 
       - name: Check for breaking changes against committed snapshot
         # The snapshot (tests/contracts/openapi.json) represents the

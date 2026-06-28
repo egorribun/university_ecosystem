@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"github.com/university-ecosystem/ws-hub/pkg/config"
 	"github.com/university-ecosystem/ws-hub/pkg/hub"
 )
@@ -125,16 +126,17 @@ func TestSetupHubAndHandlers_ProbesHealth(t *testing.T) {
 		AllowedOrigins: []string{"http://localhost:3000"},
 	}
 	logger := initLogger()
-	
+
 	// Create hub and handlers
 	h := setupHub(context.Background(), cfg, logger, nil, nil)
 	assert.NotNil(t, h)
-	
+
 	setupHandlers(h, cfg, logger, nil, nil)
-	
+
 	t.Run("liveness endpoint", func(t *testing.T) {
 		rec := httptest.NewRecorder()
-		req, _ := http.NewRequest(http.MethodGet, "/health/live", nil)
+		req, err := http.NewRequest(http.MethodGet, "/health/live", nil)
+		require.NoError(t, err)
 		http.DefaultServeMux.ServeHTTP(rec, req)
 		assert.Equal(t, http.StatusOK, rec.Code)
 		assert.Contains(t, rec.Body.String(), "alive")
@@ -142,7 +144,8 @@ func TestSetupHubAndHandlers_ProbesHealth(t *testing.T) {
 
 	t.Run("readiness endpoint degraded", func(t *testing.T) {
 		rec := httptest.NewRecorder()
-		req, _ := http.NewRequest(http.MethodGet, "/health/ready", nil)
+		req, err := http.NewRequest(http.MethodGet, "/health/ready", nil)
+		require.NoError(t, err)
 		http.DefaultServeMux.ServeHTTP(rec, req)
 		// Expecting 502/503 because NATS/Redis/JWKS are not initialized/configured
 		assert.Equal(t, http.StatusServiceUnavailable, rec.Code)
@@ -151,7 +154,8 @@ func TestSetupHubAndHandlers_ProbesHealth(t *testing.T) {
 
 	t.Run("legacy health endpoint", func(t *testing.T) {
 		rec := httptest.NewRecorder()
-		req, _ := http.NewRequest(http.MethodGet, "/health", nil)
+		req, err := http.NewRequest(http.MethodGet, "/health", nil)
+		require.NoError(t, err)
 		http.DefaultServeMux.ServeHTTP(rec, req)
 		assert.Equal(t, http.StatusOK, rec.Code)
 		assert.Contains(t, rec.Body.String(), "healthy")
@@ -159,7 +163,8 @@ func TestSetupHubAndHandlers_ProbesHealth(t *testing.T) {
 
 	t.Run("websocket endpoint rejects non-upgrade", func(t *testing.T) {
 		rec := httptest.NewRecorder()
-		req, _ := http.NewRequest(http.MethodGet, "/ws", nil)
+		req, err := http.NewRequest(http.MethodGet, "/ws", nil)
+		require.NoError(t, err)
 		http.DefaultServeMux.ServeHTTP(rec, req)
 		// websocket upgrade should fail with unauthorized due to missing ticket
 		assert.Equal(t, http.StatusUnauthorized, rec.Code)
@@ -167,7 +172,8 @@ func TestSetupHubAndHandlers_ProbesHealth(t *testing.T) {
 
 	t.Run("metrics endpoint", func(t *testing.T) {
 		rec := httptest.NewRecorder()
-		req, _ := http.NewRequest(http.MethodGet, "/metrics", nil)
+		req, err := http.NewRequest(http.MethodGet, "/metrics", nil)
+		require.NoError(t, err)
 		http.DefaultServeMux.ServeHTTP(rec, req)
 		assert.Equal(t, http.StatusOK, rec.Code)
 	})
@@ -194,4 +200,3 @@ func TestRunServer_Error(t *testing.T) {
 	h := hub.NewHub(nil, logger, nil, cfg, nil)
 	runServer(cfg, logger, h)
 }
-

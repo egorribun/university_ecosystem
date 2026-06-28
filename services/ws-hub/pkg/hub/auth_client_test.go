@@ -184,4 +184,3 @@ func TestInternalAPIAuthClient_StartEviction(t *testing.T) {
 	client := NewInternalAPIAuthClient("http://localhost", nil)
 	client.StartEviction(context.Background())
 }
-
