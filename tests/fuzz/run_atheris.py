@@ -1,6 +1,11 @@
 #!/usr/bin/env python
 # tests/fuzz/run_atheris.py — coverage-guided Python API fuzzer
+import os
 import sys
+
+os.environ.setdefault("SECRET_KEY", "test-secret-key-32-characters-long-entropy")
+os.environ.setdefault("ENVIRONMENT", "testing")
+
 
 import atheris
 
