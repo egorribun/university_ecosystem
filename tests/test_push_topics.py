@@ -5,7 +5,7 @@ from unittest.mock import MagicMock
 import pytest
 from sqlalchemy import select
 
-from app.models import PushSubscription, UserPushTopic
+from app.models import PushSubscription, User, UserPushTopic
 from app.services import push_topics as pt
 
 
@@ -124,7 +124,14 @@ def test_subscription_supports_topic_subscription_topics_restriction(monkeypatch
 
 @pytest.mark.asyncio
 async def test_upsert_user_topics(db_session):
-    user_id = uuid.uuid4()
+    user = User(
+        email=f"push-{uuid.uuid4()}@example.com",
+        hashed_password="pw",  # pragma: allowlist secret
+        is_active=True,
+    )
+    db_session.add(user)
+    await db_session.flush()
+    user_id = user.id
     allowed = ["news", "alerts"]
 
     # New preference
@@ -151,7 +158,14 @@ async def test_upsert_user_topics(db_session):
 
 @pytest.mark.asyncio
 async def test_synchronize_user_topics(db_session):
-    user_id = uuid.uuid4()
+    user = User(
+        email=f"push-{uuid.uuid4()}@example.com",
+        hashed_password="pw",  # pragma: allowlist secret
+        is_active=True,
+    )
+    db_session.add(user)
+    await db_session.flush()
+    user_id = user.id
     allowed = ["news", "alerts"]
 
     sub1 = PushSubscription(

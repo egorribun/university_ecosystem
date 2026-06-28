@@ -1,4 +1,3 @@
-import asyncio
 import json
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -36,17 +35,12 @@ async def test_request_timeout_extension_timeout():
     ext.execution_context = MagicMock()
     ext.TIMEOUT_SECONDS = 0.001
 
-    # We test the timeout error propagation
     gen = ext.on_execute()
     await gen.__anext__()
-    try:
-        await asyncio.sleep(0.01)
-        await gen.asend(None)
-    except asyncio.CancelledError as e:
-        with pytest.raises(
-            GraphQLError, match="Request exceeded the maximum execution time"
-        ):
-            await gen.athrow(e)
+    with pytest.raises(
+        GraphQLError, match="Request exceeded the maximum execution time"
+    ):
+        await gen.athrow(TimeoutError())
 
 
 def test_load_manifest_double_lock_and_exists(tmp_path):

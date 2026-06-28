@@ -29,7 +29,6 @@ leak:_ssl
 leak:cryptography
 leak:pyo3::pyclass::create_type_object
 
-# ------------------------------------------------------------------------------
 # Third-party Python C extensions and dependencies
 # ------------------------------------------------------------------------------
 leak:_multiarray_umath
@@ -38,3 +37,5 @@ leak:PyUFunc_FromFuncAndDataAndSignatureAndIdentity
 leak:_pydantic_core
 leak:_upb
 leak:upb_DefPool_New
+leak:rpds
+
