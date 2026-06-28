@@ -537,5 +537,8 @@ pytest_add_cli_args = [
     "--ignore=tests/test_migrations_runtime.py",
     "--ignore=tests/test_wave173_caddy_routing.py",
     "--ignore=tests/test_wave173_ws_hub_env.py",
+    # Schemathesis dynamically generates tests that pytest cannot collect individually by node ID,
+    # causing exit code 4 / BadTestExecutionCommandsException. Ignore them under mutmut.
+    "--ignore=tests/test_schemathesis_api.py",
 ]
 
