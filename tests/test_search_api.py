@@ -108,7 +108,8 @@ async def test_unified_search_all_success(
         assert event_results[0]["url"] == "/events/event-1"
 
     finally:
-        app.dependency_overrides.clear()
+        # Cleaned up by conftest
+        pass
         if hasattr(app.state, "dishka_container"):
             await app.state.dishka_container.close()
         app.state.dishka_container = original_container
@@ -153,7 +154,8 @@ async def test_unified_search_only_news(
         assert data["results"]["news"][0]["id"] == "news-2"
 
     finally:
-        app.dependency_overrides.clear()
+        # Cleaned up by conftest
+        pass
         if hasattr(app.state, "dishka_container"):
             await app.state.dishka_container.close()
         app.state.dishka_container = original_container
@@ -189,7 +191,8 @@ async def test_unified_search_connection_error_fallback(
         assert data["results"]["events"] == []
 
     finally:
-        app.dependency_overrides.clear()
+        # Cleaned up by conftest
+        pass
         if hasattr(app.state, "dishka_container"):
             await app.state.dishka_container.close()
         app.state.dishka_container = original_container

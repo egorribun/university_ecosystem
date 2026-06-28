@@ -136,8 +136,9 @@ def _wait_for_outbox_event_processed(
 @pytest.fixture(scope="module")
 def setup_chaos_env():
     """Ensure docker compose environment is up before the module runs."""
-    _run_docker_compose("up -d")
-    time.sleep(3)  # Wait for services to initialise
+    if os.getenv("GITHUB_ACTIONS") != "true":
+        _run_docker_compose("up -d --no-build --no-recreate")
+        time.sleep(3)  # Wait for services to initialise
     yield
     # Restore any services that a test may have stopped
     _run_docker_compose("start valkey nats ws-hub gateway")
@@ -157,7 +158,7 @@ def authenticated_client(setup_chaos_env) -> httpx.Client:
     }
     with httpx.Client(base_url=BASE_URL, timeout=10.0) as client:
         # Obtain auth token
-        response = client.post("/api/v1/auth/token", data=credentials)
+        response = client.post("/api/v1/auth/login", data=credentials)
         if response.status_code != 200:
             pytest.skip(f"Could not authenticate chaos test user: {response.text}")
 

@@ -87,9 +87,7 @@ describe("SyncStatus", () => {
   it("renders the online status badge when online (Cloud icon, no count)", async () => {
     setOnline(true)
     render(<SyncStatus />)
-    await flushQueue()
-
-    const status = screen.getByRole("status")
+    const status = await screen.findByRole("status")
     expect(status).toBeInTheDocument()
     expect(status).toHaveAttribute("title", "common:sync.online")
     // No pending count badge when the queue is empty.
@@ -108,23 +106,21 @@ describe("SyncStatus", () => {
     await seedPendingInteractions(3)
     setOnline(false)
     render(<SyncStatus />)
-    await flushQueue()
 
-    const status = screen.getByRole("status")
+    const status = await screen.findByRole("status")
     expect(status).toBeInTheDocument()
     expect(status).toHaveAttribute("title", "common:sync.offline")
-    expect(screen.getByText("3")).toBeInTheDocument()
+    expect(await screen.findByText("3")).toBeInTheDocument()
   })
 
   it("renders the online badge with a pending count when online + queued items", async () => {
     await seedPendingInteractions(2)
     setOnline(true)
     render(<SyncStatus />)
-    await flushQueue()
 
-    const status = screen.getByRole("status")
+    const status = await screen.findByRole("status")
     expect(status).toHaveAttribute("title", "common:sync.online")
-    expect(screen.getByText("2")).toBeInTheDocument()
+    expect(await screen.findByText("2")).toBeInTheDocument()
   })
 
   it("re-evaluates the queue on the 3s interval and reflects newly-seeded items", async () => {
@@ -132,9 +128,8 @@ describe("SyncStatus", () => {
     // which vi.advanceTimersByTimeAsync does not drive reliably.
     setOnline(true)
     render(<SyncStatus />)
-    await flushQueue()
-    // Initial empty queue → online badge, no count.
-    expect(screen.getByRole("status")).toHaveAttribute("title", "common:sync.online")
+    const status = await screen.findByRole("status")
+    expect(status).toHaveAttribute("title", "common:sync.online")
     expect(screen.queryByText("1")).not.toBeInTheDocument()
 
     // Seed an item, then wait past the 3s interval for the scheduled re-check.
@@ -143,14 +138,14 @@ describe("SyncStatus", () => {
       await new Promise((r) => setTimeout(r, 3200))
     })
 
-    expect(screen.getByText("1")).toBeInTheDocument()
+    expect(await screen.findByText("1")).toBeInTheDocument()
   }, 10000)
 
   it("reacts to the window offline event (hides when the queue is empty)", async () => {
     setOnline(true)
     render(<SyncStatus />)
-    await flushQueue()
-    expect(screen.getByRole("status")).toBeInTheDocument()
+    const status = await screen.findByRole("status")
+    expect(status).toBeInTheDocument()
 
     await act(async () => {
       setOnline(false)

@@ -22,7 +22,7 @@ func TestMaxQueryDepth_GETPassesThrough(t *testing.T) {
 	handler := MaxQueryDepthMiddleware(2, http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {
 		called = true
 	}))
-	req := httptest.NewRequest(http.MethodGet, "/graphql?query={a{b{c{d}}}}", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/graphql?query={a{b{c{d}}}}", nil)
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
 
@@ -34,7 +34,7 @@ func TestMaxQueryDepth_InvalidJSONRejected(t *testing.T) {
 	handler := MaxQueryDepthMiddleware(2, http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {
 		t.Fatal("downstream must not be called")
 	}))
-	req := httptest.NewRequest(http.MethodPost, "/graphql", strings.NewReader("{broken"))
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/graphql", strings.NewReader("{broken"))
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
 
@@ -50,7 +50,7 @@ func TestMaxQueryDepth_RestoresBodyForDownstream(t *testing.T) {
 		require.NoError(t, err)
 		downstreamBody = string(data)
 	}))
-	req := httptest.NewRequest(http.MethodPost, "/graphql", strings.NewReader(body))
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/graphql", strings.NewReader(body))
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
 
@@ -86,7 +86,7 @@ func TestRequestTimeout_ContextDeadlineApplied(t *testing.T) {
 	handler := RequestTimeoutMiddleware(50*time.Millisecond, http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
 		_, sawDeadline = r.Context().Deadline()
 	}))
-	req := httptest.NewRequest(http.MethodPost, "/graphql", strings.NewReader("{}"))
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/graphql", strings.NewReader("{}"))
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
 

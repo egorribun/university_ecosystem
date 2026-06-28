@@ -179,3 +179,8 @@ func TestInternalAPIAuthClient_CanJoinRoom_RejectsInvalidIDs(t *testing.T) {
 	assert.False(t, client.CanJoinRoom(context.Background(), "not-a-uuid", validRoom))
 	assert.False(t, client.CanJoinRoom(context.Background(), validUser, "not-a-uuid"))
 }
+
+func TestInternalAPIAuthClient_StartEviction(t *testing.T) {
+	client := NewInternalAPIAuthClient("http://localhost", nil)
+	client.StartEviction(context.Background())
+}

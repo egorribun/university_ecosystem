@@ -327,7 +327,7 @@ async def test_ready_returns_ready_when_not_shutting_down():
 
 @pytest.mark.asyncio
 async def test_ready_returns_503_during_shutdown():
-    health.set_shutdown_flag()
+    health._shutdown_flag.set()
     try:
         with pytest.raises(HTTPException) as exc_info:
             await health.ready()

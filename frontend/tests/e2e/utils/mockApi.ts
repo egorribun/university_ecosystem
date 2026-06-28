@@ -134,7 +134,7 @@ const MOCK_EVENTS_COUNT = 50
 const ONE_HOUR_MS = 60 * 60 * 1000
 const ONE_DAY_MS = 24 * ONE_HOUR_MS
 
-const now = new Date()
+const now = new Date("2026-06-27T10:00:00Z")
 const mockEvents = Array.from({ length: MOCK_EVENTS_COUNT }, (_, index) => {
   const id = `uuid-${index + 10}`
   const start = new Date(now.getTime() + (index + 1) * ONE_DAY_MS)
@@ -190,7 +190,7 @@ const createDeadLetterJobs = (): AdminDeadLetterJob[] => [
 
 const getWeekdayName = (): string => {
   const names = ["Воскресенье", "Понедельник", "Вторник", "Среда", "Четверг", "Пятница", "Суббота"]
-  return names[new Date().getDay()] ?? ""
+  return names[now.getDay()] ?? ""
 }
 
 const mockSchedule = [
@@ -208,30 +208,30 @@ const mockSchedule = [
 ]
 
 const createMockSessions = (): SessionMock[] => {
-  const now = Date.now()
+  const nowTime = now.getTime()
   return [
     {
       id: "session-1",
       user_id: "uuid-1",
       jti: "mock-session-current",
-      created_at: new Date(now).toISOString(),
-      expires_at: new Date(now + 60 * 60 * 1000).toISOString(),
+      created_at: new Date(nowTime).toISOString(),
+      expires_at: new Date(nowTime + 60 * 60 * 1000).toISOString(),
       revoked_at: null,
       ip_address: MOCK_IP_1,
       user_agent: "Playwright Test Browser",
-      last_seen_at: new Date(now).toISOString(),
+      last_seen_at: new Date(nowTime).toISOString(),
       is_current: true,
     },
     {
       id: "session-2",
       user_id: "uuid-1",
       jti: "mock-session-secondary",
-      created_at: new Date(now - 2 * 60 * 60 * 1000).toISOString(),
-      expires_at: new Date(now + 2 * 60 * 60 * 1000).toISOString(),
+      created_at: new Date(nowTime - 2 * 60 * 60 * 1000).toISOString(),
+      expires_at: new Date(nowTime + 2 * 60 * 60 * 1000).toISOString(),
       revoked_at: null,
       ip_address: MOCK_IP_2,
       user_agent: "Safari/17.0 (iPhone; CPU iPhone OS)",
-      last_seen_at: new Date(now - 15 * 60 * 1000).toISOString(),
+      last_seen_at: new Date(nowTime - 15 * 60 * 1000).toISOString(),
       is_current: false,
     },
   ]
@@ -464,10 +464,10 @@ export async function useMockApi(page: Page) {
       try {
         if ((headers["content-type"] ?? "").includes("application/json")) {
           const parsed = JSON.parse(postData)
-          username = parsed.username || ""
+          username = parsed.username || parsed.email || ""
         } else {
           const params = new URLSearchParams(postData)
-          username = params.get("username") || ""
+          username = params.get("username") || params.get("email") || ""
         }
       } catch {
         // ignore
@@ -510,6 +510,15 @@ export async function useMockApi(page: Page) {
     // --- Profile ---
     if (normPath.includes("api/users/me")) {
       if (method === "GET") {
+        const authHeader = request.headers()["authorization"] || request.headers()["Authorization"]
+        if (!state.loggedIn && (!authHeader || !authHeader.includes("Bearer"))) {
+          await route.fulfill({
+            status: 401,
+            contentType: "application/json",
+            body: JSON.stringify({ detail: "Unauthorized" }),
+          })
+          return
+        }
         await route.fulfill({ status: 200, body: JSON.stringify(state.profile) })
         return
       }
@@ -805,18 +814,15 @@ export async function useMockApi(page: Page) {
   return {
     state,
     async login(p: Page) {
-      await p.goto("/login")
-      await p.fill('input[name="username"]', "student@example.com")
-      await p.fill('input[name="password"]', "Password123")
-      await p.click('button[type="submit"]')
-      await expect(p).toHaveURL(/\/dashboard$|\/$/)
-      // Ensure tokens are persisted in localStorage for subsequent reloads/navigations
+      state.loggedIn = true
+      await p.goto("/")
       await p.evaluate(() => {
         localStorage.setItem("access_token", "mock-token")
         localStorage.setItem("refresh_token", "mock-refresh")
         localStorage.setItem("ue:language", "ru")
       })
-      state.loggedIn = true
+      await p.goto("/dashboard")
+      await expect(p).toHaveURL(/\/dashboard$/)
     },
     async setOffline(p: Page, offline: boolean) {
       state.offline = offline

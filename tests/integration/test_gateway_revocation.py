@@ -110,7 +110,7 @@ async def _logout(
     client: httpx.AsyncClient, token: str, cookies: dict[str, str]
 ) -> None:
     """Logout via the Python backend (stores revocation in Redis)."""
-    csrf_token = client.cookies.get("csrf_token", "") or cookies.get("csrf_token", "")
+    csrf_token = cookies.get("csrf_token", "")
     client.cookies.update(cookies)
     resp = await client.post(
         f"{BACKEND_URL}/api/v1/auth/logout",

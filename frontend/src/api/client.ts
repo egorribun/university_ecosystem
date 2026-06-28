@@ -73,7 +73,29 @@ const api = axios.create({
 })
 
 if (import.meta.env.VITE_LHCI === "true") {
+  const networkAdapter = axios.getAdapter(api.defaults.adapter)
+  const resolveRequestPath = (config: AxiosRequestConfig): string => {
+    const rawUrl = config.url ?? ""
+    const rawBaseUrl = config.baseURL ?? ""
+    const isAbsoluteUrl = rawUrl.includes("://") || rawUrl.startsWith("//")
+    const combinedUrl = isAbsoluteUrl
+      ? rawUrl
+      : `${rawBaseUrl.replace(/\/+$/u, "")}/${rawUrl.replace(/^\/+/u, "")}`
+    const baseOrigin = typeof window === "undefined" ? "http://localhost" : window.location.origin
+    return new URL(combinedUrl, baseOrigin).pathname
+  }
+  const shouldUseE2ENetworkMocks = (config: AxiosRequestConfig) => {
+    if (typeof window === "undefined") return false
+    const e2eWindow = window as Window & { __E2E_NETWORK_API_MOCKS__?: boolean }
+    if (e2eWindow.__E2E_NETWORK_API_MOCKS__ !== true) return false
+    const path = resolveRequestPath(config)
+    return path.startsWith("/api/v1/chats") || path === "/api/v1/users"
+  }
+
   api.defaults.adapter = async (config) => {
+    if (shouldUseE2ENetworkMocks(config)) {
+      return networkAdapter(config)
+    }
     return {
       data: { items: [] }, // Provide a safe default object/array combo
       status: 200,

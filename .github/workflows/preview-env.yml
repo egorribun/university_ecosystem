@@ -67,6 +67,14 @@ jobs:
           #   --set frontend.ingress.host="pr-${{ github.event.number }}.dev.university.ru" \
           #   --set gateway.config.jwtSecret="${{ secrets.JWT_SECRET }}"
 
+      - name: Deploy Chaos Mesh Experiments
+        run: |
+          # NAMESPACE="pr-${{ github.event.number }}"
+          # echo "Deploying Chaos Mesh manifests to $NAMESPACE..."
+          # kubectl apply -n $NAMESPACE -f k8s/chaos/network-delay.yaml
+          # kubectl apply -n $NAMESPACE -f k8s/chaos/network-loss.yaml
+          # kubectl apply -n $NAMESPACE -f k8s/chaos/pod-failure.yaml
+
       - name: OWASP ZAP Baseline Scan
         env:
           KUBECONFIG: ${{ secrets.KUBECONFIG }}
@@ -125,6 +133,14 @@ jobs:
             mkdir -p ~/.kube
             echo "${{ secrets.KUBECONFIG }}" > ~/.kube/config
           fi
+
+      - name: Teardown Chaos Mesh Experiments
+        run: |
+          # NAMESPACE="pr-${{ github.event.number }}"
+          # echo "Deleting Chaos Mesh manifests in $NAMESPACE..."
+          # kubectl delete -n $NAMESPACE -f k8s/chaos/network-delay.yaml --ignore-not-found
+          # kubectl delete -n $NAMESPACE -f k8s/chaos/network-loss.yaml --ignore-not-found
+          # kubectl delete -n $NAMESPACE -f k8s/chaos/pod-failure.yaml --ignore-not-found
 
       - name: Delete Namespace
         run: |

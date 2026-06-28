@@ -56,7 +56,7 @@ test.describe.skip("Multi-factor authentication flows", () => {
     await page.goto("/login")
     await page.waitForURL(/\/login$/)
 
-    await page.locator('input[name="username"]').fill("mfa@example.com")
+    await page.locator('input[name="email"]').fill("mfa@example.com")
     await page.locator('input[name="password"]').fill("Password123")
     await page.locator('button[type="submit"]').click()
 
@@ -75,7 +75,7 @@ test.describe.skip("Multi-factor authentication flows", () => {
     await page.goto("/login")
     await page.waitForURL(/\/login$/)
 
-    await page.locator('input[name="username"]').fill("mfa@example.com")
+    await page.locator('input[name="email"]').fill("mfa@example.com")
     await page.locator('input[name="password"]').fill("Password123")
     await page.locator('button[type="submit"]').click()
 

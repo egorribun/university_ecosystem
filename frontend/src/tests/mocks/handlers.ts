@@ -381,9 +381,6 @@ export const handlers = [
   http.get("*/news", () =>
     HttpResponse.json({
       items: testNewsItems,
-      total: testNewsItems.length,
-      limit: 12,
-      cursor: null,
       next_cursor: null,
       has_more: false,
     })

@@ -55,4 +55,5 @@ async def test_stats_api_coverage(mock_user, mock_stats_handler):
             )
             assert res.status_code == 304
     finally:
-        app.dependency_overrides.clear()
+        # Cleaned up by conftest
+        pass

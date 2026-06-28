@@ -195,9 +195,11 @@ class OutboxWorker:
                         OUTBOX_EVENTS_PROCESSED.labels(
                             event_type=se.event_type, status="success"
                         ).inc()
-                    except Exception:  # RZ-22-01-JUSTIFIED: handler-nak — catch-all for dispatch errors, increments retry counter (reviewed TD-27-04)
+                    except Exception as exc:  # RZ-22-01-JUSTIFIED: handler-nak — catch-all for dispatch errors, increments retry counter (reviewed TD-27-04)
                         se.error_count += 1
-                        last_error = traceback.format_exc()
+                        last_error = (
+                            f"{type(exc).__name__}: {exc}\n{traceback.format_exc()}"
+                        )
                         # Store first 500 chars of error for audit trail
                         se.last_error = last_error[:500]
                         # MOD-08: Move to DLQ after max_retries instead of
@@ -312,3 +314,55 @@ class OutboxWorker:
             logger.error("Failed to reconstruct event %s: %s", se.id, e)
             se.error_count += 1
             raise
+
+
+async def _wait_for_signals(stop_event: asyncio.Event) -> None:
+    import signal
+
+    loop = asyncio.get_running_loop()
+    handled_signals = [signal.SIGINT, signal.SIGTERM]
+
+    def _handler(*_: object) -> None:
+        stop_event.set()
+
+    for sig in handled_signals:
+        try:
+            loop.add_signal_handler(sig, _handler)
+        except NotImplementedError:  # pragma: no cover - Windows fallback
+            signal.signal(sig, lambda *_: stop_event.set())
+
+    await stop_event.wait()
+
+
+async def main() -> None:
+    from app.core.config import settings
+    from app.core.database import init_database, wait_db
+    from app.core.events import register_event_listeners
+    from app.services.event_handlers import configure_event_handlers
+
+    init_database()
+    await wait_db(max_attempts=10)
+
+    await register_event_listeners()
+    configure_event_handlers()
+
+    worker = OutboxWorker(
+        poll_interval=settings.outbox_poll_interval_seconds,
+        batch_size=settings.outbox_batch_size,
+    )
+
+    stop_event = asyncio.Event()
+
+    async with asyncio.TaskGroup() as tg:
+        worker_task = tg.create_task(worker.run_forever())
+        tg.create_task(_wait_for_signals(stop_event))
+
+        await stop_event.wait()
+        await worker.stop()
+        worker_task.cancel()
+
+    logger.info("Outbox worker stopped")
+
+
+if __name__ == "__main__":
+    asyncio.run(main())

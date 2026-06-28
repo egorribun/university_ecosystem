@@ -64,7 +64,8 @@ async def test_update_event_rebac_allowed(async_client, user_factory):
             assert response.status_code == 200
             mock_checker.check_permission.assert_called_once()
     finally:
-        app.dependency_overrides = {}
+        # Cleaned up by conftest
+        pass
 
 
 @pytest.mark.asyncio
@@ -102,4 +103,5 @@ async def test_update_event_rebac_denied(async_client, user_factory):
         mock_checker.check_permission.assert_called_once()
         assert response.headers["Content-Type"] == "application/problem+json"
     finally:
-        app.dependency_overrides = {}
+        # Cleaned up by conftest
+        pass

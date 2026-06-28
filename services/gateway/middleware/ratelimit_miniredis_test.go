@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/alicebob/miniredis/v2"
 	"github.com/gin-gonic/gin"
@@ -64,4 +65,38 @@ func TestRateLimiter_Middleware_HealthExemptAndLimitEnforced(t *testing.T) {
 	}
 	assert.True(t, got200, "at least one request must be allowed")
 	assert.True(t, got429, "rate limiter must eventually return 429")
+}
+
+func TestRateLimiter_StartFallbackCleanup_Cancel(t *testing.T) {
+	rl := &RateLimiter{
+		fallbackCounters: make(map[string]*fallbackEntry),
+		fallbackLimit:    2,
+		fallbackWindow:   1,
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	rl.startFallbackCleanup(ctx)
+
+	// Cancel context to stop the goroutine
+	cancel()
+	time.Sleep(10 * time.Millisecond)
+}
+
+func TestRateLimiter_GetClientKey_NonStringUserID(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	rl := &RateLimiter{rps: 100}
+
+	router := gin.New()
+	var capturedKey string
+	router.GET("/test", func(c *gin.Context) {
+		c.Set("user_id", 12345) // int instead of string
+		capturedKey = rl.getClientKey(c)
+		c.Status(http.StatusOK)
+	})
+
+	request := httptest.NewRequest(http.MethodGet, "/test", nil)
+	request.RemoteAddr = "192.168.1.100:12345"
+	recorder := httptest.NewRecorder()
+	router.ServeHTTP(recorder, request)
+
+	assert.Contains(t, capturedKey, "ip:")
 }

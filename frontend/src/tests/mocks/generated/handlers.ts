@@ -3943,6 +3943,8 @@ export function getHealthzHealthzGet422Response() {
         })(),
         msg: faker.lorem.words(),
         type: faker.lorem.words(),
+        input: null,
+        ctx: {},
       }));
     })(),
   };
@@ -3999,6 +4001,8 @@ export function getLoginPasskeyStartApiV1AuthLoginPasskeyStartPost422Response() 
         })(),
         msg: faker.lorem.words(),
         type: faker.lorem.words(),
+        input: null,
+        ctx: {},
       }));
     })(),
   };
@@ -4258,6 +4262,8 @@ export function getLoginPasskeyVerifyApiV1AuthLoginPasskeyVerifyPost422Response(
         })(),
         msg: faker.lorem.words(),
         type: faker.lorem.words(),
+        input: null,
+        ctx: {},
       }));
     })(),
   };
@@ -4517,6 +4523,8 @@ export function getLoginApiV1AuthLoginPost422Response() {
         })(),
         msg: faker.lorem.words(),
         type: faker.lorem.words(),
+        input: null,
+        ctx: {},
       }));
     })(),
   };
@@ -4776,6 +4784,8 @@ export function getLoginJsonApiV1AuthLoginJsonPost422Response() {
         })(),
         msg: faker.lorem.words(),
         type: faker.lorem.words(),
+        input: null,
+        ctx: {},
       }));
     })(),
   };
@@ -4994,6 +5004,8 @@ export function getVerifyMfaChallengeApiV1AuthMfaVerifyPost422Response() {
         })(),
         msg: faker.lorem.words(),
         type: faker.lorem.words(),
+        input: null,
+        ctx: {},
       }));
     })(),
   };
@@ -5035,6 +5047,8 @@ export function getRegisterApiV1AuthRegisterPost422Response() {
         })(),
         msg: faker.lorem.words(),
         type: faker.lorem.words(),
+        input: null,
+        ctx: {},
       }));
     })(),
   };
@@ -5094,6 +5108,8 @@ export function getStartTotpEnrollmentEndpointApiV1AuthMfaTotpStartPost422Respon
         })(),
         msg: faker.lorem.words(),
         type: faker.lorem.words(),
+        input: null,
+        ctx: {},
       }));
     })(),
   };
@@ -5143,6 +5159,8 @@ export function getConfirmTotpEnrollmentApiV1AuthMfaTotpConfirmPost422Response()
         })(),
         msg: faker.lorem.words(),
         type: faker.lorem.words(),
+        input: null,
+        ctx: {},
       }));
     })(),
   };
@@ -5199,6 +5217,8 @@ export function getDeletePendingTotpEnrollmentApiV1AuthMfaTotpPendingEnrollmentI
         })(),
         msg: faker.lorem.words(),
         type: faker.lorem.words(),
+        input: null,
+        ctx: {},
       }));
     })(),
   };
@@ -5238,6 +5258,8 @@ export function getDeleteTotpEnrollmentApiV1AuthMfaTotpEnrollmentIdDelete422Resp
         })(),
         msg: faker.lorem.words(),
         type: faker.lorem.words(),
+        input: null,
+        ctx: {},
       }));
     })(),
   };
@@ -5284,6 +5306,8 @@ export function getConfirmWebauthnRegistrationApiV1AuthMfaWebauthnRegisterConfir
         })(),
         msg: faker.lorem.words(),
         type: faker.lorem.words(),
+        input: null,
+        ctx: {},
       }));
     })(),
   };
@@ -5334,6 +5358,8 @@ export function getDeleteWebauthnCredentialApiV1AuthMfaWebauthnCredentialIdDelet
         })(),
         msg: faker.lorem.words(),
         type: faker.lorem.words(),
+        input: null,
+        ctx: {},
       }));
     })(),
   };
@@ -5420,6 +5446,8 @@ export function getSpotifyCallbackApiV1SpotifyCallbackGet422Response() {
         })(),
         msg: faker.lorem.words(),
         type: faker.lorem.words(),
+        input: null,
+        ctx: {},
       }));
     })(),
   };
@@ -5526,6 +5554,8 @@ export function getListSessionsApiV1AuthSessionsGet422Response() {
         })(),
         msg: faker.lorem.words(),
         type: faker.lorem.words(),
+        input: null,
+        ctx: {},
       }));
     })(),
   };
@@ -5588,6 +5618,8 @@ export function getRevokeSessionApiV1AuthSessionsSessionIdDelete422Response() {
         })(),
         msg: faker.lorem.words(),
         type: faker.lorem.words(),
+        input: null,
+        ctx: {},
       }));
     })(),
   };
@@ -5625,6 +5657,8 @@ export function getRevokeOtherSessionsApiV1AuthSessionsRevokeOthersPost422Respon
         })(),
         msg: faker.lorem.words(),
         type: faker.lorem.words(),
+        input: null,
+        ctx: {},
       }));
     })(),
   };
@@ -5686,6 +5720,8 @@ export function getListNotificationsApiV1NotificationsGet422Response() {
         })(),
         msg: faker.lorem.words(),
         type: faker.lorem.words(),
+        input: null,
+        ctx: {},
       }));
     })(),
   };
@@ -5727,6 +5763,8 @@ export function getMarkReadSingleApiV1NotificationsNotifIdReadPatch422Response()
         })(),
         msg: faker.lorem.words(),
         type: faker.lorem.words(),
+        input: null,
+        ctx: {},
       }));
     })(),
   };
@@ -5768,6 +5806,8 @@ export function getDeleteNotificationApiV1NotificationsNotifIdDelete422Response(
         })(),
         msg: faker.lorem.words(),
         type: faker.lorem.words(),
+        input: null,
+        ctx: {},
       }));
     })(),
   };
@@ -5829,6 +5869,8 @@ export function getCheckScheduleAndGenerateApiV1NotificationsCheckSchedulePost42
         })(),
         msg: faker.lorem.words(),
         type: faker.lorem.words(),
+        input: null,
+        ctx: {},
       }));
     })(),
   };
@@ -5899,6 +5941,8 @@ export function getSubscribeApiV1PushSubscribePost422Response() {
         })(),
         msg: faker.lorem.words(),
         type: faker.lorem.words(),
+        input: null,
+        ctx: {},
       }));
     })(),
   };
@@ -5958,6 +6002,8 @@ export function getUpdateSubscriptionTopicsApiV1PushSubscribeTopicsPatch422Respo
         })(),
         msg: faker.lorem.words(),
         type: faker.lorem.words(),
+        input: null,
+        ctx: {},
       }));
     })(),
   };
@@ -5995,6 +6041,8 @@ export function getUnsubscribeApiV1PushUnsubscribePost422Response() {
         })(),
         msg: faker.lorem.words(),
         type: faker.lorem.words(),
+        input: null,
+        ctx: {},
       }));
     })(),
   };
@@ -6062,6 +6110,8 @@ export function getSendTestApiV1PushTestPost422Response() {
         })(),
         msg: faker.lorem.words(),
         type: faker.lorem.words(),
+        input: null,
+        ctx: {},
       }));
     })(),
   };
@@ -6120,6 +6170,8 @@ export function getAdminGetUserTopicsApiV1PushAdminTopicsUserIdGet422Response() 
         })(),
         msg: faker.lorem.words(),
         type: faker.lorem.words(),
+        input: null,
+        ctx: {},
       }));
     })(),
   };
@@ -6178,6 +6230,8 @@ export function getAdminUpdateUserTopicsApiV1PushAdminTopicsUserIdPut422Response
         })(),
         msg: faker.lorem.words(),
         type: faker.lorem.words(),
+        input: null,
+        ctx: {},
       }));
     })(),
   };
@@ -6220,6 +6274,8 @@ export function getDisableUserPushApiV1PushAdminDisableUserPost422Response() {
         })(),
         msg: faker.lorem.words(),
         type: faker.lorem.words(),
+        input: null,
+        ctx: {},
       }));
     })(),
   };
@@ -6261,6 +6317,8 @@ export function getBroadcastApiV1PushBroadcastPost422Response() {
         })(),
         msg: faker.lorem.words(),
         type: faker.lorem.words(),
+        input: null,
+        ctx: {},
       }));
     })(),
   };
@@ -6292,6 +6350,8 @@ export function getDownloadScheduleIcsApiV1ScheduleIcsGet422Response() {
         })(),
         msg: faker.lorem.words(),
         type: faker.lorem.words(),
+        input: null,
+        ctx: {},
       }));
     })(),
   };
@@ -6651,6 +6711,8 @@ export function getUpdateMeApiV1UsersMePut422Response() {
         })(),
         msg: faker.lorem.words(),
         type: faker.lorem.words(),
+        input: null,
+        ctx: {},
       }));
     })(),
   };
@@ -6846,6 +6908,8 @@ export function getChangeEmailApiV1UsersMeEmailPost422Response() {
         })(),
         msg: faker.lorem.words(),
         type: faker.lorem.words(),
+        input: null,
+        ctx: {},
       }));
     })(),
   };
@@ -7041,6 +7105,8 @@ export function getVerifyEmailChangeApiV1UsersMeEmailConfirmPost422Response() {
         })(),
         msg: faker.lorem.words(),
         type: faker.lorem.words(),
+        input: null,
+        ctx: {},
       }));
     })(),
   };
@@ -7079,6 +7145,8 @@ export function getChangePasswordApiV1UsersMePasswordPost422Response() {
         })(),
         msg: faker.lorem.words(),
         type: faker.lorem.words(),
+        input: null,
+        ctx: {},
       }));
     })(),
   };
@@ -7163,6 +7231,8 @@ export function getDeleteCurrentUserAccountApiV1UsersMeDeletePost422Response() {
         })(),
         msg: faker.lorem.words(),
         type: faker.lorem.words(),
+        input: null,
+        ctx: {},
       }));
     })(),
   };
@@ -7358,6 +7428,8 @@ export function getUploadAvatarApiV1UsersMeAvatarPost422Response() {
         })(),
         msg: faker.lorem.words(),
         type: faker.lorem.words(),
+        input: null,
+        ctx: {},
       }));
     })(),
   };
@@ -7717,6 +7789,8 @@ export function getUploadCoverApiV1UsersMeCoverPost422Response() {
         })(),
         msg: faker.lorem.words(),
         type: faker.lorem.words(),
+        input: null,
+        ctx: {},
       }));
     })(),
   };
@@ -8076,6 +8150,8 @@ export function getCreateUserApiV1UsersPost422Response() {
         })(),
         msg: faker.lorem.words(),
         type: faker.lorem.words(),
+        input: null,
+        ctx: {},
       }));
     })(),
   };
@@ -8389,6 +8465,8 @@ export function getGetUsersApiV1UsersGet422Response() {
         })(),
         msg: faker.lorem.words(),
         type: faker.lorem.words(),
+        input: null,
+        ctx: {},
       }));
     })(),
   };
@@ -8424,6 +8502,8 @@ export function getExportAccessAuditApiV1UsersAuditExportGet422Response() {
         })(),
         msg: faker.lorem.words(),
         type: faker.lorem.words(),
+        input: null,
+        ctx: {},
       }));
     })(),
   };
@@ -8619,6 +8699,8 @@ export function getUpdateUserAdminApiV1UsersUserIdPatch422Response() {
         })(),
         msg: faker.lorem.words(),
         type: faker.lorem.words(),
+        input: null,
+        ctx: {},
       }));
     })(),
   };
@@ -8654,6 +8736,8 @@ export function getDeleteUserAdminApiV1UsersUserIdDelete422Response() {
         })(),
         msg: faker.lorem.words(),
         type: faker.lorem.words(),
+        input: null,
+        ctx: {},
       }));
     })(),
   };
@@ -8691,6 +8775,8 @@ export function getForgotPasswordApiV1PasswordForgotPost422Response() {
         })(),
         msg: faker.lorem.words(),
         type: faker.lorem.words(),
+        input: null,
+        ctx: {},
       }));
     })(),
   };
@@ -8728,6 +8814,8 @@ export function getResetPasswordApiV1PasswordResetPost422Response() {
         })(),
         msg: faker.lorem.words(),
         type: faker.lorem.words(),
+        input: null,
+        ctx: {},
       }));
     })(),
   };
@@ -8826,6 +8914,8 @@ export function getCreateEventApiV1EventsPost422Response() {
         })(),
         msg: faker.lorem.words(),
         type: faker.lorem.words(),
+        input: null,
+        ctx: {},
       }));
     })(),
   };
@@ -8926,6 +9016,8 @@ export function getAllEventsApiV1EventsGet422Response() {
         })(),
         msg: faker.lorem.words(),
         type: faker.lorem.words(),
+        input: null,
+        ctx: {},
       }));
     })(),
   };
@@ -8971,6 +9063,8 @@ export function getAttendApiV1EventsAttendancePost422Response() {
         })(),
         msg: faker.lorem.words(),
         type: faker.lorem.words(),
+        input: null,
+        ctx: {},
       }));
     })(),
   };
@@ -9006,6 +9100,8 @@ export function getUnregisterEventApiV1EventsAttendanceDelete422Response() {
         })(),
         msg: faker.lorem.words(),
         type: faker.lorem.words(),
+        input: null,
+        ctx: {},
       }));
     })(),
   };
@@ -9096,6 +9192,8 @@ export function getMyEventsApiV1EventsMyGet422Response() {
         })(),
         msg: faker.lorem.words(),
         type: faker.lorem.words(),
+        input: null,
+        ctx: {},
       }));
     })(),
   };
@@ -9140,6 +9238,8 @@ export function getUploadEventFileApiV1EventsEventIdUploadFilePost422Response() 
         })(),
         msg: faker.lorem.words(),
         type: faker.lorem.words(),
+        input: null,
+        ctx: {},
       }));
     })(),
   };
@@ -9191,6 +9291,8 @@ export function getGetEventFilesApiV1EventsEventIdFilesGet422Response() {
         })(),
         msg: faker.lorem.words(),
         type: faker.lorem.words(),
+        input: null,
+        ctx: {},
       }));
     })(),
   };
@@ -9228,6 +9330,8 @@ export function getUploadEventImageApiV1EventsUploadImagePost422Response() {
         })(),
         msg: faker.lorem.words(),
         type: faker.lorem.words(),
+        input: null,
+        ctx: {},
       }));
     })(),
   };
@@ -9306,6 +9410,8 @@ export function getUpdateEventApiV1EventsEventIdPatch422Response() {
         })(),
         msg: faker.lorem.words(),
         type: faker.lorem.words(),
+        input: null,
+        ctx: {},
       }));
     })(),
   };
@@ -9341,6 +9447,8 @@ export function getDeleteEventApiV1EventsEventIdDelete422Response() {
         })(),
         msg: faker.lorem.words(),
         type: faker.lorem.words(),
+        input: null,
+        ctx: {},
       }));
     })(),
   };
@@ -9419,6 +9527,8 @@ export function getGetEventApiV1EventsEventIdGet422Response() {
         })(),
         msg: faker.lorem.words(),
         type: faker.lorem.words(),
+        input: null,
+        ctx: {},
       }));
     })(),
   };
@@ -9454,6 +9564,8 @@ export function getDeleteEventFileApiV1EventsFileFileIdDelete422Response() {
         })(),
         msg: faker.lorem.words(),
         type: faker.lorem.words(),
+        input: null,
+        ctx: {},
       }));
     })(),
   };
@@ -9544,6 +9656,8 @@ export function getSemanticSearchApiV1EventsSearchSemanticGet422Response() {
         })(),
         msg: faker.lorem.words(),
         type: faker.lorem.words(),
+        input: null,
+        ctx: {},
       }));
     })(),
   };
@@ -9594,6 +9708,8 @@ export function getCreateNewsApiV1NewsPost422Response() {
         })(),
         msg: faker.lorem.words(),
         type: faker.lorem.words(),
+        input: null,
+        ctx: {},
       }));
     })(),
   };
@@ -9655,6 +9771,8 @@ export function getNewsListApiV1NewsGet422Response() {
         })(),
         msg: faker.lorem.words(),
         type: faker.lorem.words(),
+        input: null,
+        ctx: {},
       }));
     })(),
   };
@@ -9705,6 +9823,8 @@ export function getGetNewsApiV1NewsIdGet422Response() {
         })(),
         msg: faker.lorem.words(),
         type: faker.lorem.words(),
+        input: null,
+        ctx: {},
       }));
     })(),
   };
@@ -9755,6 +9875,8 @@ export function getUpdateNewsApiV1NewsIdPatch422Response() {
         })(),
         msg: faker.lorem.words(),
         type: faker.lorem.words(),
+        input: null,
+        ctx: {},
       }));
     })(),
   };
@@ -9790,6 +9912,8 @@ export function getDeleteNewsApiV1NewsIdDelete422Response() {
         })(),
         msg: faker.lorem.words(),
         type: faker.lorem.words(),
+        input: null,
+        ctx: {},
       }));
     })(),
   };
@@ -9827,6 +9951,8 @@ export function getLikeNewsApiV1NewsIdLikePost422Response() {
         })(),
         msg: faker.lorem.words(),
         type: faker.lorem.words(),
+        input: null,
+        ctx: {},
       }));
     })(),
   };
@@ -9868,6 +9994,8 @@ export function getCommentOnNewsApiV1NewsIdCommentPost422Response() {
         })(),
         msg: faker.lorem.words(),
         type: faker.lorem.words(),
+        input: null,
+        ctx: {},
       }));
     })(),
   };
@@ -9921,6 +10049,8 @@ export function getGetNewsInteractApiV1NewsIdInteractionsGet422Response() {
         })(),
         msg: faker.lorem.words(),
         type: faker.lorem.words(),
+        input: null,
+        ctx: {},
       }));
     })(),
   };
@@ -9962,6 +10092,8 @@ export function getUpdateCommentApiV1NewsCommentsCommentIdPatch422Response() {
         })(),
         msg: faker.lorem.words(),
         type: faker.lorem.words(),
+        input: null,
+        ctx: {},
       }));
     })(),
   };
@@ -9999,6 +10131,8 @@ export function getDeleteCommentApiV1NewsCommentsCommentIdDelete422Response() {
         })(),
         msg: faker.lorem.words(),
         type: faker.lorem.words(),
+        input: null,
+        ctx: {},
       }));
     })(),
   };
@@ -10036,6 +10170,8 @@ export function getUploadNewsImageApiV1NewsUploadImagePost422Response() {
         })(),
         msg: faker.lorem.words(),
         type: faker.lorem.words(),
+        input: null,
+        ctx: {},
       }));
     })(),
   };
@@ -10093,6 +10229,8 @@ export function getSemanticSearchApiV1NewsSearchSemanticGet422Response() {
         })(),
         msg: faker.lorem.words(),
         type: faker.lorem.words(),
+        input: null,
+        ctx: {},
       }));
     })(),
   };
@@ -10152,6 +10290,8 @@ export function getListStoriesApiV1StoriesGet422Response() {
         })(),
         msg: faker.lorem.words(),
         type: faker.lorem.words(),
+        input: null,
+        ctx: {},
       }));
     })(),
   };
@@ -10204,6 +10344,8 @@ export function getCreateStoryApiV1StoriesPost422Response() {
         })(),
         msg: faker.lorem.words(),
         type: faker.lorem.words(),
+        input: null,
+        ctx: {},
       }));
     })(),
   };
@@ -10256,6 +10398,8 @@ export function getUpdateStoryApiV1StoriesStoryIdPatch422Response() {
         })(),
         msg: faker.lorem.words(),
         type: faker.lorem.words(),
+        input: null,
+        ctx: {},
       }));
     })(),
   };
@@ -10291,6 +10435,8 @@ export function getDeleteStoryApiV1StoriesStoryIdDelete422Response() {
         })(),
         msg: faker.lorem.words(),
         type: faker.lorem.words(),
+        input: null,
+        ctx: {},
       }));
     })(),
   };
@@ -10328,6 +10474,8 @@ export function getUploadStoryCoverApiV1StoriesUploadCoverPost422Response() {
         })(),
         msg: faker.lorem.words(),
         type: faker.lorem.words(),
+        input: null,
+        ctx: {},
       }));
     })(),
   };
@@ -10382,6 +10530,8 @@ export function getAddScheduleApiV1SchedulePost422Response() {
         })(),
         msg: faker.lorem.words(),
         type: faker.lorem.words(),
+        input: null,
+        ctx: {},
       }));
     })(),
   };
@@ -10443,6 +10593,8 @@ export function getGetScheduleApiV1ScheduleIdGet422Response() {
         })(),
         msg: faker.lorem.words(),
         type: faker.lorem.words(),
+        input: null,
+        ctx: {},
       }));
     })(),
   };
@@ -10497,6 +10649,8 @@ export function getUpdateScheduleApiV1ScheduleIdPatch422Response() {
         })(),
         msg: faker.lorem.words(),
         type: faker.lorem.words(),
+        input: null,
+        ctx: {},
       }));
     })(),
   };
@@ -10532,6 +10686,8 @@ export function getDeleteScheduleApiV1ScheduleIdDelete422Response() {
         })(),
         msg: faker.lorem.words(),
         type: faker.lorem.words(),
+        input: null,
+        ctx: {},
       }));
     })(),
   };
@@ -10567,6 +10723,8 @@ export function getAttendanceSummaryApiV1StatsAttendanceGet422Response() {
         })(),
         msg: faker.lorem.words(),
         type: faker.lorem.words(),
+        input: null,
+        ctx: {},
       }));
     })(),
   };
@@ -10602,6 +10760,8 @@ export function getGradeSummaryApiV1StatsGradesGet422Response() {
         })(),
         msg: faker.lorem.words(),
         type: faker.lorem.words(),
+        input: null,
+        ctx: {},
       }));
     })(),
   };
@@ -10637,6 +10797,8 @@ export function getParticipationSummaryApiV1StatsParticipationGet422Response() {
         })(),
         msg: faker.lorem.words(),
         type: faker.lorem.words(),
+        input: null,
+        ctx: {},
       }));
     })(),
   };
@@ -10672,6 +10834,8 @@ export function getStatsSummaryApiV1StatsSummaryGet422Response() {
         })(),
         msg: faker.lorem.words(),
         type: faker.lorem.words(),
+        input: null,
+        ctx: {},
       }));
     })(),
   };
@@ -10707,6 +10871,8 @@ export function getCreationAnalyticsApiV1StatsCreationGet422Response() {
         })(),
         msg: faker.lorem.words(),
         type: faker.lorem.words(),
+        input: null,
+        ctx: {},
       }));
     })(),
   };
@@ -10911,6 +11077,8 @@ export function getGetChatsApiV1ChatsGet422Response() {
         })(),
         msg: faker.lorem.words(),
         type: faker.lorem.words(),
+        input: null,
+        ctx: {},
       }));
     })(),
   };
@@ -11091,6 +11259,8 @@ export function getCreateChatApiV1ChatsPost422Response() {
         })(),
         msg: faker.lorem.words(),
         type: faker.lorem.words(),
+        input: null,
+        ctx: {},
       }));
     })(),
   };
@@ -11271,6 +11441,8 @@ export function getCreateGroupApiV1ChatsGroupsPost422Response() {
         })(),
         msg: faker.lorem.words(),
         type: faker.lorem.words(),
+        input: null,
+        ctx: {},
       }));
     })(),
   };
@@ -11451,6 +11623,8 @@ export function getGetChatApiV1ChatsChatIdGet422Response() {
         })(),
         msg: faker.lorem.words(),
         type: faker.lorem.words(),
+        input: null,
+        ctx: {},
       }));
     })(),
   };
@@ -11491,6 +11665,8 @@ export function getDeleteChatApiV1ChatsChatIdDelete422Response() {
         })(),
         msg: faker.lorem.words(),
         type: faker.lorem.words(),
+        input: null,
+        ctx: {},
       }));
     })(),
   };
@@ -11528,6 +11704,8 @@ export function getRenameChatApiV1ChatsChatIdPatch422Response() {
         })(),
         msg: faker.lorem.words(),
         type: faker.lorem.words(),
+        input: null,
+        ctx: {},
       }));
     })(),
   };
@@ -11668,6 +11846,8 @@ export function getGetMessagesApiV1ChatsChatIdMessagesGet422Response() {
         })(),
         msg: faker.lorem.words(),
         type: faker.lorem.words(),
+        input: null,
+        ctx: {},
       }));
     })(),
   };
@@ -11790,6 +11970,8 @@ export function getSendMessageApiV1ChatsChatIdMessagesPost422Response() {
         })(),
         msg: faker.lorem.words(),
         type: faker.lorem.words(),
+        input: null,
+        ctx: {},
       }));
     })(),
   };
@@ -11923,6 +12105,8 @@ export function getForwardMessagesApiV1ChatsDestChatIdForwardPost422Response() {
         })(),
         msg: faker.lorem.words(),
         type: faker.lorem.words(),
+        input: null,
+        ctx: {},
       }));
     })(),
   };
@@ -11960,6 +12144,8 @@ export function getMarkReadApiV1ChatsChatIdReadPost422Response() {
         })(),
         msg: faker.lorem.words(),
         type: faker.lorem.words(),
+        input: null,
+        ctx: {},
       }));
     })(),
   };
@@ -11997,6 +12183,8 @@ export function getEditMessageApiV1ChatsChatIdMessagesMessageIdPatch422Response(
         })(),
         msg: faker.lorem.words(),
         type: faker.lorem.words(),
+        input: null,
+        ctx: {},
       }));
     })(),
   };
@@ -12034,6 +12222,8 @@ export function getDeleteMessageApiV1ChatsChatIdMessagesMessageIdDelete422Respon
         })(),
         msg: faker.lorem.words(),
         type: faker.lorem.words(),
+        input: null,
+        ctx: {},
       }));
     })(),
   };
@@ -12071,6 +12261,8 @@ export function getAddReactionApiV1ChatsChatIdMessagesMessageIdReactionsPost422R
         })(),
         msg: faker.lorem.words(),
         type: faker.lorem.words(),
+        input: null,
+        ctx: {},
       }));
     })(),
   };
@@ -12108,6 +12300,8 @@ export function getRemoveReactionApiV1ChatsChatIdMessagesMessageIdReactionsDelet
         })(),
         msg: faker.lorem.words(),
         type: faker.lorem.words(),
+        input: null,
+        ctx: {},
       }));
     })(),
   };
@@ -12154,6 +12348,8 @@ export function getGetReactorsApiV1ChatsChatIdMessagesMessageIdReactionsGet422Re
         })(),
         msg: faker.lorem.words(),
         type: faker.lorem.words(),
+        input: null,
+        ctx: {},
       }));
     })(),
   };
@@ -12191,6 +12387,8 @@ export function getTypingIndicatorApiV1ChatsChatIdTypingPost422Response() {
         })(),
         msg: faker.lorem.words(),
         type: faker.lorem.words(),
+        input: null,
+        ctx: {},
       }));
     })(),
   };
@@ -12231,6 +12429,8 @@ export function getClearChatHistoryApiV1ChatsChatIdClearPost422Response() {
         })(),
         msg: faker.lorem.words(),
         type: faker.lorem.words(),
+        input: null,
+        ctx: {},
       }));
     })(),
   };
@@ -12268,6 +12468,8 @@ export function getAddParticipantApiV1ChatsChatIdParticipantsPost422Response() {
         })(),
         msg: faker.lorem.words(),
         type: faker.lorem.words(),
+        input: null,
+        ctx: {},
       }));
     })(),
   };
@@ -12305,6 +12507,8 @@ export function getRemoveParticipantApiV1ChatsChatIdParticipantsUserIdDelete422R
         })(),
         msg: faker.lorem.words(),
         type: faker.lorem.words(),
+        input: null,
+        ctx: {},
       }));
     })(),
   };
@@ -12340,6 +12544,8 @@ export function getProxyImageApiV1ImgPathGet422Response() {
         })(),
         msg: faker.lorem.words(),
         type: faker.lorem.words(),
+        input: null,
+        ctx: {},
       }));
     })(),
   };
@@ -12375,6 +12581,8 @@ export function getUnifiedSearchApiV1SearchGet422Response() {
         })(),
         msg: faker.lorem.words(),
         type: faker.lorem.words(),
+        input: null,
+        ctx: {},
       }));
     })(),
   };
@@ -12471,6 +12679,8 @@ export function getUpdateFeatureFlagAdminFeatureFlagsNamePatch422Response() {
         })(),
         msg: faker.lorem.words(),
         type: faker.lorem.words(),
+        input: null,
+        ctx: {},
       }));
     })(),
   };
@@ -12533,6 +12743,8 @@ export function getListAuditLogsAdminAuditGet422Response() {
         })(),
         msg: faker.lorem.words(),
         type: faker.lorem.words(),
+        input: null,
+        ctx: {},
       }));
     })(),
   };

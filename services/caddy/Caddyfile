@@ -19,11 +19,11 @@
 
     # Auto-HTTPS certificate management email (required for ACME production).
     # In dev environments without a real domain, Caddy falls back to self-signed.
-    email {$ACME_EMAIL:dev@localhost}
+    email {$ACME_EMAIL}
 }
 
 # Main HTTPS site — matches the public hostname or falls back to :443.
-{$PUBLIC_HOSTNAME::443} {
+{$PUBLIC_HOSTNAME} {
 
     # --- WebSocket upgrade rate limit (MED-05) --------------------------------
     # Throttle WebSocket connection creation to 10 upgrades / minute per IP.

@@ -37,6 +37,30 @@ TRANSLATIONS: Mapping[str, Mapping[str, str]] = {
         "ru": "Ссылка для сброса пароля: {link}\nОна действует {minutes} минут.",
         "en": "Password reset link: {link}\nIt is valid for {minutes} minutes.",
     },
+    "email.lockout.subject": {
+        "ru": "Учетная запись заблокирована — Экосистема ГУУ",
+        "en": "Account locked — GUU Ecosystem",
+    },
+    "email.lockout.heading": {
+        "ru": "Учетная запись заблокирована",
+        "en": "Account Locked",
+    },
+    "email.lockout.greeting": {
+        "ru": "Здравствуйте{name}!",
+        "en": "Hello{name}!",
+    },
+    "email.lockout.body": {
+        "ru": "Ваша учетная запись была временно заблокирована из-за слишком большого количества неудачных попыток входа.",
+        "en": "Your account has been temporarily locked due to too many failed login attempts.",
+    },
+    "email.lockout.action": {
+        "ru": "Пожалуйста, подождите или обратитесь в службу поддержки для разблокировки.",
+        "en": "Please wait or contact support to unlock your account.",
+    },
+    "email.lockout.plain": {
+        "ru": "Ваша учетная запись временно заблокирована из-за слишком большого количества неудачных попыток входа.",
+        "en": "Your account has been temporarily locked due to too many failed login attempts.",
+    },
     "errors.already_exists": {
         "ru": "Запись уже существует: {identifier}",
         "en": "Record already exists: {identifier}",

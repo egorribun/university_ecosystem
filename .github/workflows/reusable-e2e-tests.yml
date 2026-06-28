@@ -221,6 +221,17 @@ jobs:
             --project=chromium \
             --reporter=html
 
+      - name: Run authenticated accessibility E2E tests (cross-env auto-managed)
+        if: inputs.browser == 'chromium'
+        working-directory: frontend
+        env:
+          URL_STATE_E2E: "true"
+          VITE_BACKEND_ORIGIN: http://127.0.0.1:8000
+        run: |
+          npx playwright test accessibility.spec.ts \
+            --project=chromium \
+            --reporter=html
+
       - name: Terminate backend
         if: always()
         run: |

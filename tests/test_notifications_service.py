@@ -603,3 +603,43 @@ async def test_news_creation_enqueues_notifications(
     await notification_queue.wait_for_all_jobs(timeout=1.0)
     await asyncio.wait_for(delivery_started.wait(), timeout=1.0)
     assert calls == 1
+
+
+@pytest.mark.asyncio
+async def test_aggregate_notification_delivery_stats_filtering(
+    db_session, user_factory
+):
+    user = await user_factory()
+    now = dt.datetime.now(dt.UTC)
+    note = Notification(user_id=user.id, title="Title", body="Body", created_at=now)
+    db_session.add(note)
+    await db_session.commit()
+
+    deliv1 = NotificationDelivery(
+        notification_id=note.id,
+        notification_created_at=note.created_at,
+        channel="email",
+        status="sent",
+        attempted_at=now - dt.timedelta(hours=2),
+        delivered_at=now - dt.timedelta(hours=2),
+    )
+    deliv2 = NotificationDelivery(
+        notification_id=note.id,
+        notification_created_at=note.created_at,
+        channel="webpush",
+        status="failed",
+        attempted_at=now - dt.timedelta(minutes=10),
+    )
+    db_session.add_all([deliv1, deliv2])
+    await db_session.commit()
+
+    # Query with since and channel
+    stats = await aggregate_notification_delivery_stats(
+        db_session,
+        since=now - dt.timedelta(hours=1),
+        channel="webpush",
+    )
+    assert len(stats) == 1
+    assert stats[0]["channel"] == "webpush"
+    assert stats[0]["status"] == "failed"
+    assert stats[0]["count"] == 1

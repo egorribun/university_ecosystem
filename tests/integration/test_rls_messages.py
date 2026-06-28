@@ -70,7 +70,7 @@ async def setup_rls_role(pg_engine):
             DO $$
             BEGIN
                 IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = 'rls_test_user') THEN
-                    CREATE ROLE rls_test_user WITH LOGIN PASSWORD 'test_pass';
+                    CREATE ROLE rls_test_user WITH LOGIN PASSWORD 'test_pass'; -- pragma: allowlist secret
                 END IF;
             END
             $$;

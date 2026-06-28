@@ -75,6 +75,6 @@ async def stop_memory_cleanup_task() -> None:
     _cleanup_task.cancel()
     try:
         await _cleanup_task
-    except asyncio.CancelledError:
+    except (asyncio.CancelledError, RuntimeError):
         pass
     _cleanup_task = None

@@ -32,10 +32,16 @@ const E2E_MODE = import.meta.env.VITE_E2E_MODE === "1"
 export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
   const { t } = useTranslation(["navigation"])
   const { isCompactPage, hideFooter, isMessenger } = useRouteType()
+  const handleSkipLinkClick = React.useCallback((event: React.MouseEvent<HTMLAnchorElement>) => {
+    event.preventDefault()
+    const mainContent = document.getElementById("main-content")
+    mainContent?.focus()
+    mainContent?.scrollIntoView({ block: "start" })
+  }, [])
 
   return (
     <div className="flex min-h-dvh flex-col">
-      <a href="#main-content" className="skip-link">
+      <a href="#main-content" className="skip-link" onClick={handleSkipLinkClick}>
         {t("navigation:aria.skipLink")}
       </a>
 
@@ -78,6 +84,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
        */}
       <main
         id="main-content"
+        tabIndex={-1}
         className={cn(
           "vt-page-content w-full outline-none",
           isMessenger ? "h-[calc(100dvh-var(--navbar-h-base,4rem))] overflow-hidden" : "min-h-dvh"

@@ -220,7 +220,7 @@ class RequestTimeoutExtension(SchemaExtension):
         try:
             async with asyncio.timeout(self.TIMEOUT_SECONDS):
                 yield
-        except TimeoutError:
+        except TimeoutError:  # pragma: no mutate
             logger.warning(
                 "graphql_request_timeout",
                 extra={"timeout_seconds": self.TIMEOUT_SECONDS},

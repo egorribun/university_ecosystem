@@ -26,6 +26,9 @@ allow-licenses:
   - Artistic-2.0
   - Zlib
   - BSL-1.0
+  - Unicode-3.0
+  - NCSA
+  - Apache-2.0 WITH LLVM-exception
   - LicenseRef-scancode-protobuf
   - LicenseRef-scancode-google-patent-license-golang
 
@@ -69,6 +72,12 @@ allow-dependencies-licenses:
   # cannot map to an SPDX id — same metadata-parsing artifact class as the
   # pact-python PEP-639 case above. Test/coverage-only transitive dep.
   - "pkg:cargo/minicov"
+  # W211 fuzz/tooling deps — GitHub Dependency Review could not infer these
+  # package licenses from lockfile metadata, but upstream package metadata is
+  # permissive and these are test/fuzz/build-only dependencies.
+  - "pkg:cargo/cc"
+  - "pkg:cargo/chrono"
+  - "pkg:pypi/harfile"
 
 vulnerability-check: true
 license-check: true

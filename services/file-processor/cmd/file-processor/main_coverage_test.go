@@ -13,11 +13,14 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"os"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/university-ecosystem/file-processor/internal/config"
+	"go.temporal.io/sdk/client"
 	"google.golang.org/grpc"
 )
 
@@ -102,4 +105,140 @@ func TestSelectiveStreamAuth_WrappedStreamCarriesAuthedContext(t *testing.T) {
 	info := &grpc.StreamServerInfo{FullMethod: "/file_processor.v1.FileProcessingService/Watch"}
 	require.NoError(t, interceptor(nil, ss, info, handler))
 	assert.Equal(t, "sub-123", seen, "wrapped stream must carry the authed context value")
+}
+
+func TestConnectTemporal_CancelledContext(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // cancel immediately
+	cfg := &config.Config{
+		TemporalHost: "localhost:1",
+	}
+	c, err := connectTemporal(ctx, cfg, discardLogger())
+	assert.Error(t, err)
+	assert.Nil(t, c)
+}
+
+func TestStartNatsSubscriber_FailGracefully(t *testing.T) {
+	cfg := &config.Config{
+		NatsURL: "nats://127.0.0.1:1",
+	}
+	assert.NotPanics(t, func() {
+		startNatsSubscriber(context.Background(), cfg, nil, discardLogger())
+	})
+}
+
+func TestSetupGraphQLServer(t *testing.T) {
+	content, err := os.ReadFile("../../schema.graphql")
+	if err == nil {
+		require.NoError(t, os.WriteFile("schema.graphql", content, 0600)) // #nosec G703 -- test-only fixed schema path.
+		t.Cleanup(func() {
+			require.NoError(t, os.Remove("schema.graphql"))
+		})
+	}
+
+	cfg := &config.Config{
+		GraphQLPort: "0",
+		MinioBucket: "test-bucket",
+		JWTSecret:   "test-secret",
+	}
+	srv := setupGraphQLServer(context.Background(), cfg, nil, nil, discardLogger())
+	assert.NotNil(t, srv)
+}
+
+func TestRunServers_CleanShutdown(t *testing.T) {
+	content, err := os.ReadFile("../../schema.graphql")
+	if err == nil {
+		require.NoError(t, os.WriteFile("schema.graphql", content, 0600)) // #nosec G703 -- test-only fixed schema path.
+		t.Cleanup(func() {
+			require.NoError(t, os.Remove("schema.graphql"))
+		})
+	}
+
+	cfg := &config.Config{
+		GRPCPort:    "0",
+		GraphQLPort: "0",
+		MinioBucket: "test-bucket",
+		JWTSecret:   "test-secret",
+	}
+	grpcSrv := setupGRPCServer(context.Background(), cfg, nil, nil, discardLogger())
+	graphqlSrv := setupGraphQLServer(context.Background(), cfg, nil, nil, discardLogger())
+
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() {
+		time.Sleep(100 * time.Millisecond)
+		cancel()
+	}()
+
+	assert.NotPanics(t, func() {
+		runServers(ctx, grpcSrv, graphqlSrv, cfg, discardLogger())
+	})
+}
+
+func TestConnectTemporal_APIKeyFileHandling(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // cancel immediately to avoid actually waiting/retrying
+
+	t.Run("non-existent file", func(t *testing.T) {
+		cfg := &config.Config{
+			TemporalHost:       "localhost:1",
+			TemporalAPIKeyFile: "non-existent-key-file.txt",
+		}
+		c, err := connectTemporal(ctx, cfg, discardLogger())
+		assert.Error(t, err)
+		assert.Nil(t, c)
+	})
+
+	t.Run("empty file", func(t *testing.T) {
+		tmpFile, err := os.CreateTemp("", "empty-key")
+		require.NoError(t, err)
+		t.Cleanup(func() {
+			require.NoError(t, os.Remove(tmpFile.Name()))
+		})
+		require.NoError(t, tmpFile.Close())
+
+		cfg := &config.Config{
+			TemporalHost:       "localhost:1",
+			TemporalAPIKeyFile: tmpFile.Name(),
+		}
+		c, err := connectTemporal(ctx, cfg, discardLogger())
+		assert.Error(t, err)
+		assert.Nil(t, c)
+	})
+
+	t.Run("valid key file", func(t *testing.T) {
+		tmpFile, err := os.CreateTemp("", "valid-key")
+		require.NoError(t, err)
+		t.Cleanup(func() {
+			require.NoError(t, os.Remove(tmpFile.Name()))
+		})
+		_, err = tmpFile.WriteString("my-secret-temporal-token")
+		require.NoError(t, err)
+		require.NoError(t, tmpFile.Close())
+
+		cfg := &config.Config{
+			TemporalHost:       "localhost:1",
+			TemporalAPIKeyFile: tmpFile.Name(),
+		}
+		c, err := connectTemporal(ctx, cfg, discardLogger())
+		assert.Error(t, err)
+		assert.Nil(t, c)
+	})
+}
+
+func TestSetupTemporalWorker(t *testing.T) {
+	cfg := &config.Config{
+		MinioEndpoint:  "localhost:9000",
+		MinioAccessKey: "minioadmin",
+		MinioSecretKey: "minioadmin",
+		MinioBucket:    "test-bucket",
+	}
+
+	c, err := client.NewLazyClient(client.Options{
+		HostPort: "localhost:7233",
+	})
+	require.NoError(t, err)
+
+	assert.NotPanics(t, func() {
+		setupTemporalWorker(context.Background(), c, cfg, discardLogger())
+	})
 }

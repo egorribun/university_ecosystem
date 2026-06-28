@@ -130,7 +130,7 @@ async def start_notifications_scheduler(
 
     async def _stop_task(task: asyncio.Task[None]) -> None:
         if task.done():
-            with suppress(Exception):
+            with suppress(Exception, asyncio.CancelledError):
                 task.result()
             return
         task.cancel()

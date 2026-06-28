@@ -61,4 +61,5 @@ async def test_chat_api_exhaustive(mock_user, mock_db):
             # delete chat
             await ac.delete("/api/v1/chats/00000000-0000-0000-0000-000000000000")
     finally:
-        app.dependency_overrides.clear()
+        # Cleaned up by conftest
+        pass

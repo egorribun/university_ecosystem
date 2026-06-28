@@ -11,7 +11,8 @@ from app.models import User
 @pytest.fixture(autouse=True)
 def _cleanup_overrides():
     yield
-    app.dependency_overrides.clear()
+    # Cleaned up by conftest
+    pass
 
 
 # Helper to create fresh users in DB

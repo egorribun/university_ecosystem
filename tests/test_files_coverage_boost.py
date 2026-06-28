@@ -10,7 +10,6 @@ Targets uncovered branches:
 
 from __future__ import annotations
 
-import io
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -28,7 +27,6 @@ def _make_upload(
     filename: str = "test.jpg",
 ) -> UploadFile:
     """Return a minimal UploadFile backed by in-memory bytes."""
-    file_obj = io.BytesIO(data)
     upload = MagicMock(spec=UploadFile)
     upload.content_type = content_type
     upload.filename = filename
@@ -92,7 +90,7 @@ class TestPrepareLocalStorage:
         from app.utils.files import _prepare_local_storage
 
         backend = MagicMock(spec=StaticFSStorage)
-        backend.base_dir = Path("/tmp/static")
+        backend.base_dir = Path("/tmp/static")  # noqa: S108
 
         with patch(
             "app.utils.files.asyncio.to_thread", new_callable=AsyncMock
@@ -120,7 +118,7 @@ class TestPrepareLocalStorage:
         from app.utils.files import _prepare_local_storage
 
         backend = MagicMock(spec=StaticFSStorage)
-        backend.base_dir = Path("/tmp/static")
+        backend.base_dir = Path("/tmp/static")  # noqa: S108
 
         with patch(
             "app.utils.files.asyncio.to_thread", new_callable=AsyncMock

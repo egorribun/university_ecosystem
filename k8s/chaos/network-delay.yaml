@@ -1,0 +1,15 @@
+apiVersion: chaos-mesh.org/v1alpha1
+kind: NetworkChaos
+metadata:
+  name: backend-network-delay
+spec:
+  action: delay
+  mode: all
+  selector:
+    labelSelectors:
+      app.kubernetes.io/name: backend
+  delay:
+    latency: "150ms"
+    jitter: "10ms"
+    correlation: "50"
+  duration: "45s"
