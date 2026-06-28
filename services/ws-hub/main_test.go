@@ -135,7 +135,7 @@ func TestSetupHubAndHandlers_ProbesHealth(t *testing.T) {
 
 	t.Run("liveness endpoint", func(t *testing.T) {
 		rec := httptest.NewRecorder()
-		req, err := http.NewRequest(http.MethodGet, "/health/live", nil)
+		req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, "/health/live", nil)
 		require.NoError(t, err)
 		http.DefaultServeMux.ServeHTTP(rec, req)
 		assert.Equal(t, http.StatusOK, rec.Code)
@@ -144,7 +144,7 @@ func TestSetupHubAndHandlers_ProbesHealth(t *testing.T) {
 
 	t.Run("readiness endpoint degraded", func(t *testing.T) {
 		rec := httptest.NewRecorder()
-		req, err := http.NewRequest(http.MethodGet, "/health/ready", nil)
+		req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, "/health/ready", nil)
 		require.NoError(t, err)
 		http.DefaultServeMux.ServeHTTP(rec, req)
 		// Expecting 502/503 because NATS/Redis/JWKS are not initialized/configured
@@ -154,7 +154,7 @@ func TestSetupHubAndHandlers_ProbesHealth(t *testing.T) {
 
 	t.Run("legacy health endpoint", func(t *testing.T) {
 		rec := httptest.NewRecorder()
-		req, err := http.NewRequest(http.MethodGet, "/health", nil)
+		req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, "/health", nil)
 		require.NoError(t, err)
 		http.DefaultServeMux.ServeHTTP(rec, req)
 		assert.Equal(t, http.StatusOK, rec.Code)
@@ -163,7 +163,7 @@ func TestSetupHubAndHandlers_ProbesHealth(t *testing.T) {
 
 	t.Run("websocket endpoint rejects non-upgrade", func(t *testing.T) {
 		rec := httptest.NewRecorder()
-		req, err := http.NewRequest(http.MethodGet, "/ws", nil)
+		req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, "/ws", nil)
 		require.NoError(t, err)
 		http.DefaultServeMux.ServeHTTP(rec, req)
 		// websocket upgrade should fail with unauthorized due to missing ticket
@@ -172,7 +172,7 @@ func TestSetupHubAndHandlers_ProbesHealth(t *testing.T) {
 
 	t.Run("metrics endpoint", func(t *testing.T) {
 		rec := httptest.NewRecorder()
-		req, err := http.NewRequest(http.MethodGet, "/metrics", nil)
+		req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, "/metrics", nil)
 		require.NoError(t, err)
 		http.DefaultServeMux.ServeHTTP(rec, req)
 		assert.Equal(t, http.StatusOK, rec.Code)

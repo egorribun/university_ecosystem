@@ -22,19 +22,91 @@
         }
       }
     },
+    "/health/live": {
+      "get": {
+        "tags": [
+          "health"
+        ],
+        "summary": "Liveness Probe",
+        "operationId": "liveness_health_live_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "type": "object",
+                  "title": "Response Liveness Health Live Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/healthz": {
       "get": {
         "tags": [
           "health"
         ],
-        "summary": "Healthz",
+        "summary": "Full Health Check",
         "operationId": "healthz_healthz_get",
+        "parameters": [
+          {
+            "name": "brief",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Brief"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "Successful Response",
             "content": {
               "application/json": {
                 "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/health/ready": {
+      "get": {
+        "tags": [
+          "health"
+        ],
+        "summary": "Readiness Probe",
+        "operationId": "ready_health_ready_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "type": "object",
+                  "title": "Response Ready Health Ready Get"
+                }
               }
             }
           }
@@ -46,14 +118,20 @@
         "tags": [
           "health"
         ],
-        "summary": "Ready",
+        "summary": "Legacy Readiness Check",
         "operationId": "ready_ready_get",
         "responses": {
           "200": {
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "type": "object",
+                  "title": "Response Ready Ready Get"
+                }
               }
             }
           }
@@ -74,7 +152,13 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "type": "object",
+                  "title": "Response Logout Api V1 Auth Logout Post"
+                }
               }
             }
           }
@@ -310,6 +394,32 @@
         }
       }
     },
+    "/api/v1/auth/csrf-cookie": {
+      "get": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Initialize CSRF token",
+        "description": "This endpoint sets a new robust CSRF cookie and is intended for SPAs to call before attempting a login.",
+        "operationId": "get_csrf_cookie_api_v1_auth_csrf_cookie_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "type": "object",
+                  "title": "Response Get Csrf Cookie Api V1 Auth Csrf Cookie Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/auth/register": {
       "post": {
         "tags": [
@@ -332,7 +442,11 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Register Api V1 Auth Register Post"
+                }
               }
             }
           },
@@ -909,7 +1023,13 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "additionalProperties": {
+                    "type": "boolean"
+                  },
+                  "type": "object",
+                  "title": "Response Disconnect Api V1 Spotify Disconnect Post"
+                }
               }
             }
           }
@@ -933,7 +1053,9 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "title": "Response List Playlists Api V1 Spotify Playlists Get"
+                }
               }
             }
           }
@@ -958,7 +1080,11 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Sync Playlists Api V1 Spotify Sync Playlists Post"
+                }
               }
             }
           }
@@ -1213,7 +1339,11 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Clear Notifications Api V1 Notifications Delete"
+                }
               }
             }
           }
@@ -1249,7 +1379,13 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "boolean"
+                  },
+                  "title": "Response Mark Read Single Api V1 Notifications  Notif Id  Read Patch"
+                }
               }
             }
           },
@@ -1278,7 +1414,11 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Mark All Read Api V1 Notifications Read All Post"
+                }
               }
             }
           }
@@ -1319,7 +1459,13 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "boolean"
+                  },
+                  "title": "Response Delete Notification Api V1 Notifications  Notif Id  Delete"
+                }
               }
             }
           },
@@ -1658,7 +1804,8 @@
             "in": "path",
             "required": true,
             "schema": {
-              "type": "integer",
+              "type": "string",
+              "format": "uuid",
               "title": "User Id"
             }
           }
@@ -1703,7 +1850,8 @@
             "in": "path",
             "required": true,
             "schema": {
-              "type": "integer",
+              "type": "string",
+              "format": "uuid",
               "title": "User Id"
             }
           }
@@ -2432,7 +2580,9 @@
             "required": false,
             "schema": {
               "type": "integer",
-              "default": 100,
+              "maximum": 200,
+              "minimum": 1,
+              "default": 50,
               "title": "Limit"
             }
           },
@@ -2442,8 +2592,26 @@
             "required": false,
             "schema": {
               "type": "integer",
+              "minimum": 0,
               "default": 0,
               "title": "Offset"
+            }
+          },
+          {
+            "name": "after_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "After Id"
             }
           }
         ],
@@ -2680,7 +2848,13 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "additionalProperties": {
+                    "type": "boolean"
+                  },
+                  "type": "object",
+                  "title": "Response Forgot Password Api V1 Password Forgot Post"
+                }
               }
             }
           },
@@ -2719,7 +2893,13 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "additionalProperties": {
+                    "type": "boolean"
+                  },
+                  "type": "object",
+                  "title": "Response Reset Password Api V1 Password Reset Post"
+                }
               }
             }
           },
@@ -3079,13 +3259,13 @@
         }
       }
     },
-    "/api/v1/events/{id}/upload_file": {
+    "/api/v1/events/{event_id}/upload_file": {
       "post": {
         "tags": [
           "events"
         ],
         "summary": "Upload Event File",
-        "operationId": "upload_event_file_api_v1_events__id__upload_file_post",
+        "operationId": "upload_event_file_api_v1_events__event_id__upload_file_post",
         "security": [
           {
             "OAuth2PasswordBearer": []
@@ -3093,7 +3273,7 @@
         ],
         "parameters": [
           {
-            "name": "id",
+            "name": "event_id",
             "in": "path",
             "required": true,
             "schema": {
@@ -3106,7 +3286,7 @@
                   "type": "integer"
                 }
               ],
-              "title": "Id"
+              "title": "Event Id"
             }
           }
         ],
@@ -3144,16 +3324,16 @@
         }
       }
     },
-    "/api/v1/events/{id}/files": {
+    "/api/v1/events/{event_id}/files": {
       "get": {
         "tags": [
           "events"
         ],
         "summary": "Get Event Files",
-        "operationId": "get_event_files_api_v1_events__id__files_get",
+        "operationId": "get_event_files_api_v1_events__event_id__files_get",
         "parameters": [
           {
-            "name": "id",
+            "name": "event_id",
             "in": "path",
             "required": true,
             "schema": {
@@ -3166,7 +3346,7 @@
                   "type": "integer"
                 }
               ],
-              "title": "Id"
+              "title": "Event Id"
             }
           }
         ],
@@ -3180,7 +3360,7 @@
                   "items": {
                     "$ref": "#/components/schemas/EventFileOut"
                   },
-                  "title": "Response Get Event Files Api V1 Events  Id  Files Get"
+                  "title": "Response Get Event Files Api V1 Events  Event Id  Files Get"
                 }
               }
             }
@@ -3220,7 +3400,13 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "type": "object",
+                  "title": "Response Upload Event Image Api V1 Events Upload Image Post"
+                }
               }
             }
           },
@@ -3360,15 +3546,13 @@
             }
           }
         }
-      }
-    },
-    "/api/v1/events/{id}": {
+      },
       "get": {
         "tags": [
           "events"
         ],
         "summary": "Get Event",
-        "operationId": "get_event_api_v1_events__id__get",
+        "operationId": "get_event_api_v1_events__event_id__get",
         "security": [
           {
             "OAuth2PasswordBearer": []
@@ -3376,7 +3560,7 @@
         ],
         "parameters": [
           {
-            "name": "id",
+            "name": "event_id",
             "in": "path",
             "required": true,
             "schema": {
@@ -3389,7 +3573,7 @@
                   "type": "integer"
                 }
               ],
-              "title": "Id"
+              "title": "Event Id"
             }
           },
           {
@@ -3498,6 +3682,11 @@
         "summary": "Semantic Search",
         "description": "Semantic search for events using embeddings.",
         "operationId": "semantic_search_api_v1_events_search_semantic_get",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
         "parameters": [
           {
             "name": "query",
@@ -3914,7 +4103,13 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "boolean"
+                  },
+                  "title": "Response Like News Api V1 News  Id  Like Post"
+                }
               }
             }
           },
@@ -4030,6 +4225,7 @@
             "required": false,
             "schema": {
               "type": "integer",
+              "maximum": 10000,
               "minimum": 0,
               "default": 0,
               "title": "Offset"
@@ -4145,7 +4341,13 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "boolean"
+                  },
+                  "title": "Response Delete Comment Api V1 News Comments  Comment Id  Delete"
+                }
               }
             }
           },
@@ -4184,7 +4386,13 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "type": "object",
+                  "title": "Response Upload News Image Api V1 News Upload Image Post"
+                }
               }
             }
           },
@@ -4214,6 +4422,11 @@
         "summary": "Semantic Search",
         "description": "Semantic search for news articles using embeddings.",
         "operationId": "semantic_search_api_v1_news_search_semantic_get",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
         "parameters": [
           {
             "name": "query",
@@ -4526,7 +4739,13 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "type": "object",
+                  "title": "Response Upload Story Cover Api V1 Stories Upload Cover Post"
+                }
               }
             }
           },
@@ -4594,22 +4813,27 @@
         ]
       }
     },
-    "/api/v1/schedule/{group_id}": {
+    "/api/v1/schedule/{id}": {
       "get": {
         "tags": [
           "schedule"
         ],
         "summary": "Get Schedule",
-        "operationId": "get_schedule_api_v1_schedule__group_id__get",
+        "operationId": "get_schedule_api_v1_schedule__id__get",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
         "parameters": [
           {
-            "name": "group_id",
+            "name": "id",
             "in": "path",
             "required": true,
             "schema": {
               "type": "string",
               "format": "uuid",
-              "title": "Group Id"
+              "title": "Id"
             }
           },
           {
@@ -4639,7 +4863,7 @@
                   "items": {
                     "$ref": "#/components/schemas/ScheduleOut"
                   },
-                  "title": "Response Get Schedule Api V1 Schedule  Group Id  Get"
+                  "title": "Response Get Schedule Api V1 Schedule  Id  Get"
                 }
               }
             }
@@ -4655,15 +4879,13 @@
             }
           }
         }
-      }
-    },
-    "/api/v1/schedule/{schedule_id}": {
+      },
       "patch": {
         "tags": [
           "schedule"
         ],
         "summary": "Update Schedule",
-        "operationId": "update_schedule_api_v1_schedule__schedule_id__patch",
+        "operationId": "update_schedule_api_v1_schedule__id__patch",
         "security": [
           {
             "OAuth2PasswordBearer": []
@@ -4671,13 +4893,13 @@
         ],
         "parameters": [
           {
-            "name": "schedule_id",
+            "name": "id",
             "in": "path",
             "required": true,
             "schema": {
               "type": "string",
               "format": "uuid",
-              "title": "Schedule Id"
+              "title": "Id"
             }
           }
         ],
@@ -4719,7 +4941,7 @@
           "schedule"
         ],
         "summary": "Delete Schedule",
-        "operationId": "delete_schedule_api_v1_schedule__schedule_id__delete",
+        "operationId": "delete_schedule_api_v1_schedule__id__delete",
         "security": [
           {
             "OAuth2PasswordBearer": []
@@ -4727,13 +4949,13 @@
         ],
         "parameters": [
           {
-            "name": "schedule_id",
+            "name": "id",
             "in": "path",
             "required": true,
             "schema": {
               "type": "string",
               "format": "uuid",
-              "title": "Schedule Id"
+              "title": "Id"
             }
           }
         ],
@@ -4745,7 +4967,7 @@
                 "schema": {
                   "type": "object",
                   "additionalProperties": true,
-                  "title": "Response Delete Schedule Api V1 Schedule  Schedule Id  Delete"
+                  "title": "Response Delete Schedule Api V1 Schedule  Id  Delete"
                 }
               }
             }
@@ -4979,6 +5201,79 @@
         }
       }
     },
+    "/api/v1/stats/summary": {
+      "get": {
+        "tags": [
+          "stats"
+        ],
+        "summary": "Stats Summary",
+        "description": "Return attendance, grades and participation stats in a single request.\n\nPERF-1 (audit 2026-03): replaces three separate client-side round-trips.\nAll three sub-queries run concurrently via asyncio.gather and share the\nsame Redis cache entries as the individual endpoints.",
+        "operationId": "stats_summary_api_v1_stats_summary_get",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "period",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "30d",
+              "title": "Period"
+            }
+          },
+          {
+            "name": "skip_cache",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Skip Cache"
+            }
+          },
+          {
+            "name": "if-none-match",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If-None-Match"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/stats/creation": {
       "get": {
         "tags": [
@@ -5020,7 +5315,11 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Creation Analytics Api V1 Stats Creation Get"
+                }
               }
             }
           },
@@ -5043,7 +5342,7 @@
           "chats"
         ],
         "summary": "Get Chats",
-        "description": "Get all chats for the current user with cursor-based pagination.\n\nReturns chats ordered by last message timestamp (newest first).\nUse the `next_cursor` from the response to fetch the next page.",
+        "description": "Get all chats for the current user with cursor-based pagination.",
         "operationId": "get_chats_api_v1_chats_get",
         "security": [
           {
@@ -5112,7 +5411,7 @@
           "chats"
         ],
         "summary": "Create Chat",
-        "description": "Create a new chat with a user. If a chat already exists, return it.",
+        "description": "Create a new chat with a user.  If a DM chat already exists, return it.",
         "operationId": "create_chat_api_v1_chats_post",
         "security": [
           {
@@ -5151,6 +5450,53 @@
             }
           }
         }
+      }
+    },
+    "/api/v1/chats/groups": {
+      "post": {
+        "tags": [
+          "chats"
+        ],
+        "summary": "Create Group",
+        "description": "Create a named group chat (Wave 209 G1).\n\nStatic /groups route placed before the dynamic /{chat_id} routes (idiomatic\nstatic-before-dynamic; no POST /{chat_id} exists today, but this future-proofs\nagainst shadowing). W174 auto-cookie covers POST CSRF.",
+        "operationId": "create_group_api_v1_chats_groups_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GroupChatCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ]
       }
     },
     "/api/v1/chats/{chat_id}": {
@@ -5247,6 +5593,67 @@
             }
           }
         }
+      },
+      "patch": {
+        "tags": [
+          "chats"
+        ],
+        "summary": "Rename Chat",
+        "description": "Rename a group's title (Wave 209 G1 — any participant).\n\nPATCH /{chat_id} is distinct from PATCH /{chat_id}/messages/{message_id}\n(edit-message). W174 auto-cookie covers PATCH CSRF.",
+        "operationId": "rename_chat_api_v1_chats__chat_id__patch",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "chat_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Chat Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RenameChat"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "title": "Response Rename Chat Api V1 Chats  Chat Id  Patch"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/api/v1/chats/{chat_id}/messages": {
@@ -5255,7 +5662,7 @@
           "chats"
         ],
         "summary": "Get Messages",
-        "description": "Get messages for a chat with cursor-based pagination.\n\nMessages are returned in ascending order (oldest first).\nUse the `next_cursor` from the response to fetch older messages.",
+        "description": "Get messages for a chat with cursor-based pagination (oldest first).",
         "operationId": "get_messages_api_v1_chats__chat_id__messages_get",
         "security": [
           {
@@ -5334,7 +5741,7 @@
           "chats"
         ],
         "summary": "Send Message",
-        "description": "Send a message to a chat.\n\nThe message is saved to the database and all chat participants\nare notified via WebSocket in real-time.\n\nSupports the ``Idempotency-Key`` header: identical requests with the same\nkey return the cached response for 24 hours without creating duplicate\nmessages (Stripe-style retry-safe API).",
+        "description": "Send a message to a chat.  Supports ``Idempotency-Key`` header for retry-safe sends.",
         "operationId": "send_message_api_v1_chats__chat_id__messages_post",
         "security": [
           {
@@ -5351,6 +5758,25 @@
               "format": "uuid",
               "title": "Chat Id"
             }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 64
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Client-generated idempotency key to deduplicate retried sends.",
+              "title": "Idempotency-Key"
+            },
+            "description": "Client-generated idempotency key to deduplicate retried sends."
           }
         ],
         "requestBody": {
@@ -5369,6 +5795,69 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/MessageResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/chats/{dest_chat_id}/forward": {
+      "post": {
+        "tags": [
+          "chats"
+        ],
+        "summary": "Forward Messages",
+        "description": "Forward 1..N messages from a source chat into this destination chat (Wave 211).\n\nSnapshot-copy: copies the source content + attachments + a \"Forwarded from X\"\nlabel; the source is never dereferenced cross-chat (privacy). The actor must be\na participant of BOTH the source chat (to read) AND this destination chat (to\nsend) — see ChatMessageDispatcher.forward_messages.",
+        "operationId": "forward_messages_api_v1_chats__dest_chat_id__forward_post",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "dest_chat_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Dest Chat Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ForwardMessages"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/MessageResponse"
+                  },
+                  "title": "Response Forward Messages Api V1 Chats  Dest Chat Id  Forward Post"
                 }
               }
             }
@@ -5416,7 +5905,417 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "title": "Response Mark Read Api V1 Chats  Chat Id  Read Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/chats/{chat_id}/messages/{message_id}": {
+      "patch": {
+        "tags": [
+          "chats"
+        ],
+        "summary": "Edit Message",
+        "description": "Edit a message's content (author-only).  W174 auto-cookie covers PATCH CSRF.",
+        "operationId": "edit_message_api_v1_chats__chat_id__messages__message_id__patch",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "chat_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Chat Id"
+            }
+          },
+          {
+            "name": "message_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Message Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_edit_message_api_v1_chats__chat_id__messages__message_id__patch"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "title": "Response Edit Message Api V1 Chats  Chat Id  Messages  Message Id  Patch"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "chats"
+        ],
+        "summary": "Delete Message",
+        "description": "Soft-delete a message (author-only).  W174 auto-cookie covers DELETE CSRF.",
+        "operationId": "delete_message_api_v1_chats__chat_id__messages__message_id__delete",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "chat_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Chat Id"
+            }
+          },
+          {
+            "name": "message_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Message Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "title": "Response Delete Message Api V1 Chats  Chat Id  Messages  Message Id  Delete"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/chats/{chat_id}/messages/{message_id}/reactions": {
+      "post": {
+        "tags": [
+          "chats"
+        ],
+        "summary": "Add Reaction",
+        "description": "Add an emoji reaction to a message (idempotent, any participant).\n\nW174 auto-cookie covers POST CSRF.",
+        "operationId": "add_reaction_api_v1_chats__chat_id__messages__message_id__reactions_post",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "chat_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Chat Id"
+            }
+          },
+          {
+            "name": "message_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Message Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_add_reaction_api_v1_chats__chat_id__messages__message_id__reactions_post"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "title": "Response Add Reaction Api V1 Chats  Chat Id  Messages  Message Id  Reactions Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "chats"
+        ],
+        "summary": "Remove Reaction",
+        "description": "Remove an emoji reaction from a message (idempotent).\n\nW206 SW7 — emoji is a QUERY param, NOT a URL-path segment. Query params decode\nunambiguously (parse_qs); that is the robust shape for an arbitrary\nmulti-codepoint emoji used as a sub-resource selector, whereas multi-byte\ncontent in a URL path segment is a known fragility class. Verified LIVE\nend-to-end (two-browser cross-user add + remove of a real 👍, W206 SW7).\n\nHonest re-attribution: the mid-wave switch from the SW4 path route was first\nblamed on a Caddy path mis-decode, but live verification showed the earlier\n\"failed remove\" was a CORRUPT stored value — curl on Windows Git-Bash mangles a\nliteral multi-byte emoji in a request BODY to \"??\", so the curl-added reaction\nwas stored as \"??\" and no remove could match the correctly-encoded 👍. The\nquery param is retained as the more robust design (the path route was never\nverified for a real emoji). W174 auto-cookie covers DELETE CSRF.",
+        "operationId": "remove_reaction_api_v1_chats__chat_id__messages__message_id__reactions_delete",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "chat_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Chat Id"
+            }
+          },
+          {
+            "name": "message_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Message Id"
+            }
+          },
+          {
+            "name": "emoji",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 16,
+              "title": "Emoji"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "title": "Response Remove Reaction Api V1 Chats  Chat Id  Messages  Message Id  Reactions Delete"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "chats"
+        ],
+        "summary": "Get Reactors",
+        "description": "List the users who reacted to a message with a specific emoji (Wave 207).\n\nPowers the reactor-list \"who reacted\" popover — reactor identities are loaded\non-demand, NOT bundled into GET /messages. Participant-authz'd + message-in-chat\nguarded (a participant of one chat can't enumerate reactors of a message in\nanother by guessing its id). emoji is a QUERY param (same robust shape as the\nDELETE route, W206 SW7). Coexists with POST + DELETE at this path (FastAPI\nroutes by method).",
+        "operationId": "get_reactors_api_v1_chats__chat_id__messages__message_id__reactions_get",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "chat_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Chat Id"
+            }
+          },
+          {
+            "name": "message_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Message Id"
+            }
+          },
+          {
+            "name": "emoji",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 16,
+              "title": "Emoji"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ReactorOut"
+                  },
+                  "title": "Response Get Reactors Api V1 Chats  Chat Id  Messages  Message Id  Reactions Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/chats/{chat_id}/typing": {
+      "post": {
+        "tags": [
+          "chats"
+        ],
+        "summary": "Typing Indicator",
+        "description": "Broadcast a 'typing' indicator to the other chat participants (Wave 207).\n\nThe frontend WS connects to ws-hub, which drops \"typing\" frames at its parse\nboundary — so typing can't relay peer-to-peer over the socket. This REST endpoint\ndoes the participant authz + broadcast (W204 bridge → ws-hub chat.* fan-out → the\nother participants' live TypingIndicator). A permissive 180/60 limiter (vs the\nstrict 5/60 default) gives headroom over the client's 500ms (~2/sec) throttle while\ncapping broadcast-spam abuse. W174 auto-cookie covers POST CSRF.",
+        "operationId": "typing_indicator_api_v1_chats__chat_id__typing_post",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "chat_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Chat Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "title": "Response Typing Indicator Api V1 Chats  Chat Id  Typing Post"
+                }
               }
             }
           },
@@ -5465,6 +6364,132 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ChatMaintenanceResult"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/chats/{chat_id}/participants": {
+      "post": {
+        "tags": [
+          "chats"
+        ],
+        "summary": "Add Participant",
+        "description": "Add a member to a group (Wave 209 G1 — any participant). W174 auto-cookie.",
+        "operationId": "add_participant_api_v1_chats__chat_id__participants_post",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "chat_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Chat Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AddParticipant"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "title": "Response Add Participant Api V1 Chats  Chat Id  Participants Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/chats/{chat_id}/participants/{user_id}": {
+      "delete": {
+        "tags": [
+          "chats"
+        ],
+        "summary": "Remove Participant",
+        "description": "Remove a member from a group / leave (Wave 209 G1 — owner or self).\n\n3-segment path, distinct from DELETE /{chat_id} (delete-chat). W174 auto-cookie.",
+        "operationId": "remove_participant_api_v1_chats__chat_id__participants__user_id__delete",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "chat_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Chat Id"
+            }
+          },
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "User Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "title": "Response Remove Participant Api V1 Chats  Chat Id  Participants  User Id  Delete"
                 }
               }
             }
@@ -5568,6 +6593,86 @@
         "responses": {
           "204": {
             "description": "Successful Response"
+          }
+        }
+      }
+    },
+    "/api/v1/search": {
+      "get": {
+        "tags": [
+          "search"
+        ],
+        "summary": "Unified Search",
+        "description": "Unified search across news and events.\n\nCombines Elasticsearch full-text search.\nResults are grouped by type for the frontend SearchDialog.",
+        "operationId": "unified_search_api_v1_search_get",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256,
+              "description": "Search query",
+              "title": "Q"
+            },
+            "description": "Search query"
+          },
+          {
+            "name": "type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "Search type: news, events, or all",
+              "default": "all",
+              "title": "Type"
+            },
+            "description": "Search type: news, events, or all"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 50,
+              "minimum": 1,
+              "description": "Max results per type",
+              "default": 10,
+              "title": "Limit"
+            },
+            "description": "Max results per type"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Unified Search Api V1 Search Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
           }
         }
       }
@@ -5792,325 +6897,21 @@
         }
       }
     },
-    "/webpush/vapid-public-key": {
-      "get": {
-        "tags": [
-          "webpush"
-        ],
-        "summary": "Get Vapid Public Key",
-        "description": "Return configured VAPID public key.",
-        "operationId": "get_vapid_public_key_webpush_vapid_public_key_get",
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "additionalProperties": {
-                    "anyOf": [
-                      {
-                        "type": "string"
-                      },
-                      {
-                        "type": "null"
-                      }
-                    ]
-                  },
-                  "type": "object",
-                  "title": "Response Get Vapid Public Key Webpush Vapid Public Key Get"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/webpush/subscribe": {
+    "/ws/ticket": {
       "post": {
         "tags": [
-          "webpush"
+          "websocket"
         ],
-        "summary": "Subscribe",
-        "operationId": "subscribe_webpush_subscribe_post",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/PushSubscriptionIn"
-              }
-            }
-          },
-          "required": true
-        },
+        "summary": "Issue a WebSocket upgrade ticket",
+        "description": "Issues a short-lived, single-use WebSocket upgrade ticket. The client must be authenticated via HttpOnly cookie or Bearer token. Connect to the WebSocket endpoint with ?ticket=<ticket> — the ticket is consumed atomically on first use and expires after WS_TICKET_TTL_SECONDS seconds if unused (default: 15 s; configure via settings.ws_ticket_ttl_seconds).",
+        "operationId": "issue_ws_upgrade_ticket_ws_ticket_post",
         "responses": {
-          "200": {
+          "201": {
             "description": "Successful Response",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/PushSubscriptionOut"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "OAuth2PasswordBearer": []
-          }
-        ]
-      }
-    },
-    "/webpush/subscribe/topics": {
-      "patch": {
-        "tags": [
-          "webpush"
-        ],
-        "summary": "Update Subscription Topics",
-        "operationId": "update_subscription_topics_webpush_subscribe_topics_patch",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/PushSubscriptionTopicsUpdate"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PushSubscriptionOut"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "OAuth2PasswordBearer": []
-          }
-        ]
-      }
-    },
-    "/webpush/unsubscribe": {
-      "post": {
-        "tags": [
-          "webpush"
-        ],
-        "summary": "Unsubscribe",
-        "operationId": "unsubscribe_webpush_unsubscribe_post",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/PushSubscriptionDelete"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "additionalProperties": {
-                    "type": "boolean"
-                  },
-                  "type": "object",
-                  "title": "Response Unsubscribe Webpush Unsubscribe Post"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "OAuth2PasswordBearer": []
-          }
-        ]
-      }
-    },
-    "/webpush/send-test": {
-      "post": {
-        "tags": [
-          "webpush"
-        ],
-        "summary": "Send Test",
-        "operationId": "send_test_webpush_send_test_post",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "anyOf": [
-                  {
-                    "$ref": "#/components/schemas/PushTestRequest"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ],
-                "title": "Payload"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SendTestResponse"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "OAuth2PasswordBearer": []
-          }
-        ]
-      }
-    },
-    "/webpush/admin/disable-user": {
-      "post": {
-        "tags": [
-          "webpush"
-        ],
-        "summary": "Disable User Push",
-        "operationId": "disable_user_push_webpush_admin_disable_user_post",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/DisableUserPushRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "additionalProperties": {
-                    "anyOf": [
-                      {
-                        "type": "integer"
-                      },
-                      {
-                        "type": "boolean"
-                      }
-                    ]
-                  },
-                  "type": "object",
-                  "title": "Response Disable User Push Webpush Admin Disable User Post"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "OAuth2PasswordBearer": []
-          }
-        ]
-      }
-    },
-    "/webpush/broadcast": {
-      "post": {
-        "tags": [
-          "webpush"
-        ],
-        "summary": "Broadcast",
-        "operationId": "broadcast_webpush_broadcast_post",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/NotifyBody"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SendTestResponse"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/WsTicketResponse"
                 }
               }
             }
@@ -6128,6 +6929,11 @@
     "schemas": {
       "ActiveSessionOut": {
         "properties": {
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
           "id": {
             "type": "string",
             "format": "uuid",
@@ -6141,11 +6947,6 @@
           "jti": {
             "type": "string",
             "title": "Jti"
-          },
-          "created_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Created At"
           },
           "expires_at": {
             "type": "string",
@@ -6246,13 +7047,29 @@
         },
         "type": "object",
         "required": [
+          "created_at",
           "id",
           "user_id",
           "jti",
-          "created_at",
           "expires_at"
         ],
         "title": "ActiveSessionOut"
+      },
+      "AddParticipant": {
+        "properties": {
+          "user_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "User Id"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "user_id"
+        ],
+        "title": "AddParticipant",
+        "description": "Wave 209 G1 — add one member to a group."
       },
       "AdminUserTopicsResponse": {
         "properties": {
@@ -6292,6 +7109,7 @@
             "title": "Updated At"
           }
         },
+        "additionalProperties": false,
         "type": "object",
         "required": [
           "user_id",
@@ -6308,9 +7126,11 @@
               "type": "string"
             },
             "type": "array",
-            "title": "Topics"
+            "title": "Topics",
+            "default": []
           }
         },
+        "additionalProperties": false,
         "type": "object",
         "title": "AdminUserTopicsUpdate"
       },
@@ -6336,8 +7156,33 @@
           "size": {
             "type": "integer",
             "title": "Size"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "message_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message Id"
           }
         },
+        "additionalProperties": false,
         "type": "object",
         "required": [
           "id",
@@ -6362,6 +7207,7 @@
             "title": "Total"
           }
         },
+        "additionalProperties": false,
         "type": "object",
         "required": [
           "items",
@@ -6485,6 +7331,7 @@
             "title": "Is Valid"
           }
         },
+        "additionalProperties": false,
         "type": "object",
         "required": [
           "id",
@@ -6494,6 +7341,21 @@
           "is_valid"
         ],
         "title": "AuditLogOut"
+      },
+      "Body_add_reaction_api_v1_chats__chat_id__messages__message_id__reactions_post": {
+        "properties": {
+          "emoji": {
+            "type": "string",
+            "maxLength": 16,
+            "minLength": 1,
+            "title": "Emoji"
+          }
+        },
+        "type": "object",
+        "required": [
+          "emoji"
+        ],
+        "title": "Body_add_reaction_api_v1_chats__chat_id__messages__message_id__reactions_post"
       },
       "Body_comment_on_news_api_v1_news__id__comment_post": {
         "properties": {
@@ -6507,6 +7369,21 @@
           "content"
         ],
         "title": "Body_comment_on_news_api_v1_news__id__comment_post"
+      },
+      "Body_edit_message_api_v1_chats__chat_id__messages__message_id__patch": {
+        "properties": {
+          "content": {
+            "type": "string",
+            "maxLength": 32768,
+            "minLength": 1,
+            "title": "Content"
+          }
+        },
+        "type": "object",
+        "required": [
+          "content"
+        ],
+        "title": "Body_edit_message_api_v1_chats__chat_id__messages__message_id__patch"
       },
       "Body_login_api_v1_auth_login_post": {
         "properties": {
@@ -6582,11 +7459,24 @@
           "files": {
             "items": {
               "type": "string",
-              "format": "binary"
+              "contentMediaType": "application/octet-stream"
             },
             "type": "array",
             "title": "Files",
             "default": []
+          },
+          "reply_to_message_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reply To Message Id",
+            "description": "ID of the message being replied to, if this is a reply."
           }
         },
         "type": "object",
@@ -6596,7 +7486,7 @@
         "properties": {
           "file": {
             "type": "string",
-            "format": "binary",
+            "contentMediaType": "application/octet-stream",
             "title": "File"
           }
         },
@@ -6610,7 +7500,7 @@
         "properties": {
           "file": {
             "type": "string",
-            "format": "binary",
+            "contentMediaType": "application/octet-stream",
             "title": "File"
           }
         },
@@ -6624,7 +7514,7 @@
         "properties": {
           "file": {
             "type": "string",
-            "format": "binary",
+            "contentMediaType": "application/octet-stream",
             "title": "File"
           }
         },
@@ -6632,19 +7522,32 @@
         "required": [
           "file"
         ],
-        "title": "Body_upload_event_file_api_v1_events__id__upload_file_post"
+        "title": "Body_upload_event_file_api_v1_events__event_id__upload_file_post"
       },
       "Body_upload_event_image_api_v1_events_upload_image_post": {
         "properties": {
           "file": {
             "type": "string",
-            "format": "binary",
+            "contentMediaType": "application/octet-stream",
             "title": "File"
+          },
+          "event_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "integer"
+              }
+            ],
+            "title": "Event Id"
           }
         },
         "type": "object",
         "required": [
-          "file"
+          "file",
+          "event_id"
         ],
         "title": "Body_upload_event_image_api_v1_events_upload_image_post"
       },
@@ -6652,7 +7555,7 @@
         "properties": {
           "file": {
             "type": "string",
-            "format": "binary",
+            "contentMediaType": "application/octet-stream",
             "title": "File"
           }
         },
@@ -6666,7 +7569,7 @@
         "properties": {
           "file": {
             "type": "string",
-            "format": "binary",
+            "contentMediaType": "application/octet-stream",
             "title": "File"
           }
         },
@@ -6684,6 +7587,7 @@
             "title": "Participant Id"
           }
         },
+        "additionalProperties": false,
         "type": "object",
         "required": [
           "participant_id"
@@ -6712,6 +7616,7 @@
             "default": 0
           }
         },
+        "additionalProperties": false,
         "type": "object",
         "required": [
           "chat_id",
@@ -6758,6 +7663,7 @@
             "title": "Is Active"
           }
         },
+        "additionalProperties": false,
         "type": "object",
         "required": [
           "id",
@@ -6772,6 +7678,34 @@
             "type": "string",
             "format": "uuid",
             "title": "Id"
+          },
+          "chat_type": {
+            "type": "string",
+            "title": "Chat Type",
+            "default": "dm"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "created_by": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created By"
           },
           "participants": {
             "items": {
@@ -6821,8 +7755,16 @@
               }
             ],
             "title": "Presence"
+          },
+          "read_receipts": {
+            "items": {
+              "$ref": "#/components/schemas/ReadReceiptInfo"
+            },
+            "type": "array",
+            "title": "Read Receipts"
           }
         },
+        "additionalProperties": false,
         "type": "object",
         "required": [
           "id",
@@ -6858,6 +7800,7 @@
             "title": "Next Cursor"
           }
         },
+        "additionalProperties": false,
         "type": "object",
         "required": [
           "items"
@@ -6877,6 +7820,7 @@
             "title": "Anonymized Email"
           }
         },
+        "additionalProperties": false,
         "type": "object",
         "required": [
           "deleted",
@@ -6892,6 +7836,7 @@
             "description": "Explicit consent to remove personal data"
           }
         },
+        "additionalProperties": false,
         "type": "object",
         "required": [
           "confirm"
@@ -6946,6 +7891,7 @@
             "title": "Access Logs"
           }
         },
+        "additionalProperties": false,
         "type": "object",
         "required": [
           "profile"
@@ -6961,6 +7907,7 @@
             "description": "User ID for which push notifications should be disabled"
           }
         },
+        "additionalProperties": false,
         "type": "object",
         "required": [
           "user_id"
@@ -6982,6 +7929,7 @@
             "title": "Event Id"
           }
         },
+        "additionalProperties": false,
         "type": "object",
         "required": [
           "event_id"
@@ -6990,6 +7938,18 @@
       },
       "EventAttendanceOut": {
         "properties": {
+          "created_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
           "id": {
             "type": "string",
             "format": "uuid",
@@ -7169,6 +8129,7 @@
             "title": "About En"
           }
         },
+        "additionalProperties": false,
         "type": "object",
         "required": [
           "title",
@@ -7179,6 +8140,18 @@
       },
       "EventFileOut": {
         "properties": {
+          "created_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
           "id": {
             "type": "string",
             "format": "uuid",
@@ -7215,6 +8188,11 @@
       },
       "EventOut": {
         "properties": {
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
           "id": {
             "type": "string",
             "format": "uuid",
@@ -7320,11 +8298,6 @@
             ],
             "title": "Created By"
           },
-          "created_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Created At"
-          },
           "is_active": {
             "type": "boolean",
             "title": "Is Active"
@@ -7378,7 +8351,8 @@
               "$ref": "#/components/schemas/EventFileOut"
             },
             "type": "array",
-            "title": "Files"
+            "title": "Files",
+            "default": []
           },
           "participant_count": {
             "type": "integer",
@@ -7416,20 +8390,18 @@
                 "type": "null"
               }
             ],
-            "title": "Image Url Optimized",
-            "readOnly": true
+            "title": "Image Url Optimized"
           }
         },
         "type": "object",
         "required": [
+          "created_at",
           "id",
           "title",
           "starts_at",
           "ends_at",
           "created_by",
-          "created_at",
-          "is_active",
-          "image_url_optimized"
+          "is_active"
         ],
         "title": "EventOut"
       },
@@ -7603,6 +8575,7 @@
             "title": "About En"
           }
         },
+        "additionalProperties": false,
         "type": "object",
         "title": "EventUpdate"
       },
@@ -7612,17 +8585,24 @@
             "type": "string",
             "title": "Name"
           },
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled"
+          },
           "status": {
             "type": "string",
-            "title": "Status"
+            "title": "Status",
+            "default": "active"
           },
           "description": {
             "type": "string",
-            "title": "Description"
+            "title": "Description",
+            "default": ""
           },
           "percentage": {
             "type": "integer",
-            "title": "Percentage"
+            "title": "Percentage",
+            "default": 100
           },
           "allowed_users": {
             "items": {
@@ -7649,20 +8629,27 @@
             "title": "Metadata"
           }
         },
+        "additionalProperties": false,
         "type": "object",
         "required": [
           "name",
-          "status",
-          "description",
-          "percentage",
-          "allowed_users",
-          "allowed_groups",
-          "metadata"
+          "enabled"
         ],
         "title": "FeatureFlagOut"
       },
       "FeatureFlagUpdateIn": {
         "properties": {
+          "enabled": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Enabled"
+          },
           "status": {
             "anyOf": [
               {
@@ -7697,6 +8684,7 @@
             "title": "Description"
           }
         },
+        "additionalProperties": false,
         "type": "object",
         "title": "FeatureFlagUpdateIn"
       },
@@ -7708,14 +8696,80 @@
             "title": "Email"
           }
         },
+        "additionalProperties": false,
         "type": "object",
         "required": [
           "email"
         ],
         "title": "ForgotPasswordIn"
       },
+      "ForwardMessages": {
+        "properties": {
+          "source_chat_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Source Chat Id"
+          },
+          "message_ids": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "maxItems": 50,
+            "minItems": 1,
+            "title": "Message Ids"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "source_chat_id",
+          "message_ids"
+        ],
+        "title": "ForwardMessages"
+      },
+      "GroupChatCreate": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Name"
+          },
+          "participant_ids": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "minItems": 1,
+            "title": "Participant Ids"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "name",
+          "participant_ids"
+        ],
+        "title": "GroupChatCreate",
+        "description": "Wave 209 G1 — create a named group chat.\n\nparticipant_ids are the *other* members (the creator is added automatically).\nmin_length=1 is necessary-not-sufficient: the service enforces the real\n3..100 total-size bound (creator + distinct members)."
+      },
       "GroupOut": {
         "properties": {
+          "created_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
           "id": {
             "type": "string",
             "format": "uuid",
@@ -7834,6 +8888,7 @@
         "properties": {
           "content": {
             "type": "string",
+            "maxLength": 2000,
             "title": "Content"
           },
           "id": {
@@ -7859,6 +8914,42 @@
           "read_status": {
             "type": "boolean",
             "title": "Read Status"
+          },
+          "read_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Read At"
+          },
+          "edited_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Edited At"
+          },
+          "deleted_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deleted At"
           },
           "sender": {
             "anyOf": [
@@ -7887,8 +8978,38 @@
             "type": "array",
             "title": "Attachments",
             "default": []
+          },
+          "reactions": {
+            "items": {
+              "$ref": "#/components/schemas/ReactionAggregate"
+            },
+            "type": "array",
+            "title": "Reactions",
+            "default": []
+          },
+          "reply_to": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ReplyPreview"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "forwarded_from_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Forwarded From Name"
           }
         },
+        "additionalProperties": false,
         "type": "object",
         "required": [
           "content",
@@ -7926,6 +9047,7 @@
             "title": "Next Cursor"
           }
         },
+        "additionalProperties": false,
         "type": "object",
         "required": [
           "items"
@@ -7935,6 +9057,11 @@
       },
       "MfaChallengeOut": {
         "properties": {
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
           "id": {
             "type": "string",
             "format": "uuid",
@@ -7982,11 +9109,6 @@
             ],
             "title": "Consumed At"
           },
-          "created_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Created At"
-          },
           "payload": {
             "anyOf": [
               {
@@ -8007,12 +9129,12 @@
         },
         "type": "object",
         "required": [
+          "created_at",
           "id",
           "user_id",
           "challenge_type",
           "token",
-          "expires_at",
-          "created_at"
+          "expires_at"
         ],
         "title": "MfaChallengeOut"
       },
@@ -8039,6 +9161,7 @@
             "default": false
           }
         },
+        "additionalProperties": false,
         "type": "object",
         "required": [
           "disabled"
@@ -8120,6 +9243,11 @@
       },
       "MfaTotpEnrollmentOut": {
         "properties": {
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
           "id": {
             "type": "string",
             "format": "uuid",
@@ -8168,19 +9296,14 @@
               }
             ],
             "title": "Revoked At"
-          },
-          "created_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Created At"
           }
         },
         "type": "object",
         "required": [
+          "created_at",
           "id",
           "user_id",
-          "is_active",
-          "created_at"
+          "is_active"
         ],
         "title": "MfaTotpEnrollmentOut"
       },
@@ -8197,12 +9320,16 @@
           },
           "challenge_token": {
             "type": "string",
+            "maxLength": 128,
+            "minLength": 32,
+            "pattern": "^[a-zA-Z0-9_\\-]+$",
             "title": "Challenge Token"
           },
           "code": {
             "anyOf": [
               {
-                "type": "string"
+                "type": "string",
+                "maxLength": 19
               },
               {
                 "type": "null"
@@ -8261,6 +9388,7 @@
             "title": "Created At"
           }
         },
+        "additionalProperties": false,
         "type": "object",
         "required": [
           "id",
@@ -8280,6 +9408,7 @@
             "title": "Content"
           }
         },
+        "additionalProperties": false,
         "type": "object",
         "required": [
           "content"
@@ -8330,6 +9459,7 @@
             "title": "Image Url"
           }
         },
+        "additionalProperties": false,
         "type": "object",
         "required": [
           "title",
@@ -8359,6 +9489,7 @@
             "title": "Comments Count"
           }
         },
+        "additionalProperties": false,
         "type": "object",
         "required": [
           "likes_count",
@@ -8411,15 +9542,15 @@
             ],
             "title": "Image Url"
           },
-          "id": {
-            "type": "string",
-            "format": "uuid",
-            "title": "Id"
-          },
           "created_at": {
             "type": "string",
             "format": "date-time",
             "title": "Created At"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
           },
           "likes_count": {
             "type": "integer",
@@ -8445,17 +9576,16 @@
                 "type": "null"
               }
             ],
-            "title": "Image Url Optimized",
-            "readOnly": true
+            "title": "Image Url Optimized"
           }
         },
+        "additionalProperties": false,
         "type": "object",
         "required": [
           "title",
           "content",
-          "id",
           "created_at",
-          "image_url_optimized"
+          "id"
         ],
         "title": "NewsOut"
       },
@@ -8517,6 +9647,7 @@
             "title": "Image Url"
           }
         },
+        "additionalProperties": false,
         "type": "object",
         "title": "NewsUpdate"
       },
@@ -8557,6 +9688,7 @@
             "description": "Optional icon URL"
           }
         },
+        "additionalProperties": false,
         "type": "object",
         "required": [
           "action",
@@ -8566,6 +9698,11 @@
       },
       "NotificationOut": {
         "properties": {
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
           "id": {
             "type": "string",
             "format": "uuid",
@@ -8630,11 +9767,6 @@
             ],
             "title": "Url"
           },
-          "created_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Created At"
-          },
           "read": {
             "type": "boolean",
             "title": "Read"
@@ -8654,9 +9786,9 @@
         },
         "type": "object",
         "required": [
+          "created_at",
           "id",
           "title",
-          "created_at",
           "read"
         ],
         "title": "NotificationOut"
@@ -8690,6 +9822,7 @@
             "title": "Next Cursor"
           }
         },
+        "additionalProperties": false,
         "type": "object",
         "required": [
           "items",
@@ -8820,6 +9953,7 @@
             "title": "Data"
           }
         },
+        "additionalProperties": false,
         "type": "object",
         "required": [
           "title"
@@ -8877,6 +10011,7 @@
             "title": "Has More"
           }
         },
+        "additionalProperties": false,
         "type": "object",
         "required": [
           "items",
@@ -8910,6 +10045,7 @@
             "title": "Next Cursor"
           }
         },
+        "additionalProperties": false,
         "type": "object",
         "required": [
           "items",
@@ -8930,6 +10066,7 @@
             "default": 0
           }
         },
+        "additionalProperties": false,
         "type": "object",
         "required": [
           "ok"
@@ -9011,6 +10148,7 @@
             "title": "Last Seen At"
           }
         },
+        "additionalProperties": false,
         "type": "object",
         "title": "PresenceStatus",
         "description": "Represents a participant's presence state."
@@ -9022,6 +10160,7 @@
             "title": "Endpoint"
           }
         },
+        "additionalProperties": false,
         "type": "object",
         "required": [
           "endpoint"
@@ -9066,6 +10205,7 @@
             "description": "User agent override"
           }
         },
+        "additionalProperties": false,
         "type": "object",
         "required": [
           "endpoint",
@@ -9086,6 +10226,7 @@
             "description": "Authentication secret"
           }
         },
+        "additionalProperties": false,
         "type": "object",
         "required": [
           "p256dh",
@@ -9162,9 +10303,11 @@
               "type": "string"
             },
             "type": "array",
-            "title": "Topics"
+            "title": "Topics",
+            "default": []
           }
         },
+        "additionalProperties": false,
         "type": "object",
         "required": [
           "id",
@@ -9187,9 +10330,11 @@
               "type": "string"
             },
             "type": "array",
-            "title": "Topics"
+            "title": "Topics",
+            "default": []
           }
         },
+        "additionalProperties": false,
         "type": "object",
         "required": [
           "endpoint"
@@ -9336,6 +10481,7 @@
             "description": "Target user id for testing"
           }
         },
+        "additionalProperties": false,
         "type": "object",
         "title": "PushTestRequest"
       },
@@ -9373,12 +10519,98 @@
             "title": "Updated At"
           }
         },
+        "additionalProperties": false,
         "type": "object",
         "required": [
           "allowed",
           "topics"
         ],
         "title": "PushTopicsResponse"
+      },
+      "ReactionAggregate": {
+        "properties": {
+          "emoji": {
+            "type": "string",
+            "title": "Emoji"
+          },
+          "count": {
+            "type": "integer",
+            "title": "Count"
+          },
+          "reacted_by_me": {
+            "type": "boolean",
+            "title": "Reacted By Me",
+            "default": false
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "emoji",
+          "count"
+        ],
+        "title": "ReactionAggregate",
+        "description": "Wave 206 — per-emoji reaction tally on a message.\n\n`reacted_by_me` is computed server-side for the requesting user on the REST\npath (the aggregation in ChatQueryService knows current_user). On the WS\ndelta-frame path the client derives it locally — it's per-viewer, so it can\nnever travel in a broadcast frame."
+      },
+      "ReactorOut": {
+        "properties": {
+          "user_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "User Id"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "avatar_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avatar Url"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "user_id"
+        ],
+        "title": "ReactorOut",
+        "description": "Wave 207 — one user in the reactor-list (\"who reacted\") popover.\n\nBuilt by ChatQueryService.get_reactors from the User rows the repository joins\nvia message_reactions. ``user_id`` is remapped explicitly in the service (the\nUser row has ``.id``, not ``.user_id``) — no from_attributes auto-mapping; only\nplain User columns (no relationship access → no N+1)."
+      },
+      "ReadReceiptInfo": {
+        "properties": {
+          "user_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "User Id"
+          },
+          "last_read_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Last Read At"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "user_id",
+          "last_read_at"
+        ],
+        "title": "ReadReceiptInfo",
+        "description": "Wave 210 G2 — one member's read high-water-mark for a group chat.\n\nService-computed (NOT a ChatDTO field) from ChatRepository.get_read_receipts.\nThe FE folds these + live `read` frames into a per-member \"seen by N\" map.\nDMs carry [] (they keep using Message.read_status), so this rides only on the\nget_chat_details response — the other ChatResponse construction sites omit it\nand it defaults []."
       },
       "RecoveryCodesGenerateOut": {
         "properties": {
@@ -9395,12 +10627,79 @@
             "title": "Created At"
           }
         },
+        "additionalProperties": false,
         "type": "object",
         "required": [
           "codes",
           "created_at"
         ],
         "title": "RecoveryCodesGenerateOut"
+      },
+      "RenameChat": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Name"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "title": "RenameChat",
+        "description": "Wave 209 G1 — rename a group's display title."
+      },
+      "ReplyPreview": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "sender_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Sender Id"
+          },
+          "sender_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sender Name"
+          },
+          "content": {
+            "type": "string",
+            "title": "Content"
+          },
+          "deleted_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deleted At"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "sender_id",
+          "content"
+        ],
+        "title": "ReplyPreview"
       },
       "ResetPasswordIn": {
         "properties": {
@@ -9415,6 +10714,7 @@
             "title": "Password"
           }
         },
+        "additionalProperties": false,
         "type": "object",
         "required": [
           "token",
@@ -9493,6 +10793,7 @@
             "title": "Lesson Type"
           }
         },
+        "additionalProperties": false,
         "type": "object",
         "required": [
           "group_id",
@@ -9573,6 +10874,18 @@
             ],
             "title": "Lesson Type"
           },
+          "created_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
           "id": {
             "type": "string",
             "format": "uuid",
@@ -9590,6 +10903,7 @@
             "title": "Lesson Type Display"
           }
         },
+        "additionalProperties": false,
         "type": "object",
         "required": [
           "group_id",
@@ -9706,6 +11020,7 @@
             "title": "Lesson Type"
           }
         },
+        "additionalProperties": false,
         "type": "object",
         "title": "ScheduleUpdate"
       },
@@ -9740,6 +11055,7 @@
             "title": "Detail"
           }
         },
+        "additionalProperties": false,
         "type": "object",
         "required": [
           "sent",
@@ -9756,6 +11072,7 @@
             "default": 0
           }
         },
+        "additionalProperties": false,
         "type": "object",
         "title": "SessionBulkRevokeOut"
       },
@@ -9766,6 +11083,7 @@
             "title": "Signing Key"
           }
         },
+        "additionalProperties": false,
         "type": "object",
         "required": [
           "signing_key"
@@ -9779,6 +11097,7 @@
             "title": "Url"
           }
         },
+        "additionalProperties": false,
         "type": "object",
         "required": [
           "url"
@@ -9840,7 +11159,8 @@
               "type": "string"
             },
             "type": "array",
-            "title": "Artists"
+            "title": "Artists",
+            "default": []
           },
           "album_name": {
             "anyOf": [
@@ -9892,6 +11212,7 @@
             "title": "Fetched At"
           }
         },
+        "additionalProperties": false,
         "type": "object",
         "required": [
           "is_playing",
@@ -9983,6 +11304,7 @@
             "default": true
           }
         },
+        "additionalProperties": false,
         "type": "object",
         "required": [
           "title",
@@ -9992,6 +11314,11 @@
       },
       "StoryOut": {
         "properties": {
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
           "id": {
             "type": "string",
             "format": "uuid",
@@ -10075,11 +11402,6 @@
             ],
             "title": "Created By"
           },
-          "created_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Created At"
-          },
           "cover_url_optimized": {
             "anyOf": [
               {
@@ -10089,20 +11411,18 @@
                 "type": "null"
               }
             ],
-            "title": "Cover Url Optimized",
-            "readOnly": true
+            "title": "Cover Url Optimized"
           }
         },
         "type": "object",
         "required": [
+          "created_at",
           "id",
           "title",
           "short_text",
           "published_at",
           "expires_at",
-          "is_active",
-          "created_at",
-          "cover_url_optimized"
+          "is_active"
         ],
         "title": "StoryOut"
       },
@@ -10210,13 +11530,21 @@
             "title": "Is Active"
           }
         },
+        "additionalProperties": false,
         "type": "object",
         "title": "StoryUpdate"
       },
       "TokenWithProfile": {
         "properties": {
           "access_token": {
-            "type": "string",
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Access Token"
           },
           "token_type": {
@@ -10238,9 +11566,9 @@
             ]
           }
         },
+        "additionalProperties": false,
         "type": "object",
         "required": [
-          "access_token",
           "user"
         ],
         "title": "TokenWithProfile"
@@ -10374,6 +11702,7 @@
             "title": "Reset Mfa"
           }
         },
+        "additionalProperties": false,
         "type": "object",
         "title": "UserAdminUpdate"
       },
@@ -10401,7 +11730,7 @@
             ],
             "title": "Telegram"
           },
-          "status": {
+          "profile_status": {
             "anyOf": [
               {
                 "type": "string"
@@ -10410,9 +11739,9 @@
                 "type": "null"
               }
             ],
-            "title": "Status"
+            "title": "Profile Status"
           },
-          "department": {
+          "profile_department": {
             "anyOf": [
               {
                 "type": "string"
@@ -10421,7 +11750,7 @@
                 "type": "null"
               }
             ],
-            "title": "Department"
+            "title": "Profile Department"
           },
           "position": {
             "anyOf": [
@@ -10639,6 +11968,7 @@
             "title": "Invite Code"
           }
         },
+        "additionalProperties": false,
         "type": "object",
         "required": [
           "email",
@@ -10715,6 +12045,7 @@
             "title": "Record Book Number"
           }
         },
+        "additionalProperties": false,
         "type": "object",
         "title": "UserEducationBase"
       },
@@ -10730,6 +12061,7 @@
             "title": "Password"
           }
         },
+        "additionalProperties": false,
         "type": "object",
         "required": [
           "email",
@@ -10744,6 +12076,7 @@
             "title": "Token"
           }
         },
+        "additionalProperties": false,
         "type": "object",
         "required": [
           "token"
@@ -10774,7 +12107,7 @@
             ],
             "title": "Telegram"
           },
-          "status": {
+          "profile_status": {
             "anyOf": [
               {
                 "type": "string"
@@ -10783,9 +12116,9 @@
                 "type": "null"
               }
             ],
-            "title": "Status"
+            "title": "Profile Status"
           },
-          "department": {
+          "profile_department": {
             "anyOf": [
               {
                 "type": "string"
@@ -10794,7 +12127,7 @@
                 "type": "null"
               }
             ],
-            "title": "Department"
+            "title": "Profile Department"
           },
           "position": {
             "anyOf": [
@@ -10994,6 +12327,18 @@
             ],
             "title": "Spotify Display Name"
           },
+          "created_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
           "id": {
             "type": "string",
             "format": "uuid",
@@ -11059,14 +12404,16 @@
               "$ref": "#/components/schemas/MfaTotpEnrollmentOut"
             },
             "type": "array",
-            "title": "Totp Enrollments"
+            "title": "Totp Enrollments",
+            "default": []
           },
           "mfa_challenges": {
             "items": {
               "$ref": "#/components/schemas/MfaChallengeOut"
             },
             "type": "array",
-            "title": "Mfa Challenges"
+            "title": "Mfa Challenges",
+            "default": []
           },
           "recovery_codes_left": {
             "type": "integer",
@@ -11112,8 +12459,7 @@
                 "type": "null"
               }
             ],
-            "title": "Avatar Url Optimized",
-            "readOnly": true
+            "title": "Avatar Url Optimized"
           },
           "cover_url_optimized": {
             "anyOf": [
@@ -11124,17 +12470,15 @@
                 "type": "null"
               }
             ],
-            "title": "Cover Url Optimized",
-            "readOnly": true
+            "title": "Cover Url Optimized"
           }
         },
+        "additionalProperties": false,
         "type": "object",
         "required": [
           "email",
           "id",
-          "is_active",
-          "avatar_url_optimized",
-          "cover_url_optimized"
+          "is_active"
         ],
         "title": "UserOut"
       },
@@ -11151,6 +12495,7 @@
             "title": "New Password"
           }
         },
+        "additionalProperties": false,
         "type": "object",
         "required": [
           "current_password",
@@ -11160,10 +12505,28 @@
       },
       "UserPreferencesBase": {
         "properties": {
+          "created_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
           "dnd_enabled": {
-            "type": "boolean",
-            "title": "Dnd Enabled",
-            "default": false
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dnd Enabled"
           },
           "dnd_start": {
             "anyOf": [
@@ -11273,15 +12636,100 @@
             "title": "Position"
           }
         },
+        "additionalProperties": false,
         "type": "object",
         "title": "UserProfileBase"
       },
       "UserProfileUpdate": {
         "properties": {
+          "institute": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Institute"
+          },
+          "course": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Course"
+          },
+          "education_level": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Education Level"
+          },
+          "track": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Track"
+          },
+          "program": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Program"
+          },
+          "record_book_number": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Record Book Number"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
           "dnd_enabled": {
-            "type": "boolean",
-            "title": "Dnd Enabled",
-            "default": false
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dnd Enabled"
           },
           "dnd_start": {
             "anyOf": [
@@ -11438,6 +12886,7 @@
             ]
           }
         },
+        "additionalProperties": false,
         "type": "object",
         "title": "UserProfileUpdate"
       },
@@ -11465,7 +12914,7 @@
             ],
             "title": "Telegram"
           },
-          "status": {
+          "profile_status": {
             "anyOf": [
               {
                 "type": "string"
@@ -11474,9 +12923,9 @@
                 "type": "null"
               }
             ],
-            "title": "Status"
+            "title": "Profile Status"
           },
-          "department": {
+          "profile_department": {
             "anyOf": [
               {
                 "type": "string"
@@ -11485,7 +12934,7 @@
                 "type": "null"
               }
             ],
-            "title": "Department"
+            "title": "Profile Department"
           },
           "position": {
             "anyOf": [
@@ -11519,6 +12968,18 @@
               }
             ],
             "title": "Institute"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
           },
           "id": {
             "type": "string",
@@ -11607,15 +13068,14 @@
                 "type": "null"
               }
             ],
-            "title": "Avatar Url Optimized",
-            "readOnly": true
+            "title": "Avatar Url Optimized"
           }
         },
+        "additionalProperties": false,
         "type": "object",
         "required": [
           "id",
-          "is_active",
-          "avatar_url_optimized"
+          "is_active"
         ],
         "title": "UserPublicOut",
         "description": "Publicly visible user profile information (PII-safe)."
@@ -11655,6 +13115,13 @@
           "type": {
             "type": "string",
             "title": "Error Type"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "ctx": {
+            "type": "object",
+            "title": "Context"
           }
         },
         "type": "object",
@@ -11677,6 +13144,7 @@
             "title": "Challenge Token"
           }
         },
+        "additionalProperties": false,
         "type": "object",
         "required": [
           "publicKey",
@@ -11696,6 +13164,7 @@
             "title": "Challenge Token"
           }
         },
+        "additionalProperties": false,
         "type": "object",
         "required": [
           "publicKey",
@@ -11726,12 +13195,31 @@
             "title": "Label"
           }
         },
+        "additionalProperties": false,
         "type": "object",
         "required": [
           "challenge",
           "response"
         ],
         "title": "WebAuthnRegistrationVerifyIn"
+      },
+      "WsTicketResponse": {
+        "properties": {
+          "ticket": {
+            "type": "string",
+            "title": "Ticket"
+          },
+          "expires_in": {
+            "type": "integer",
+            "title": "Expires In"
+          }
+        },
+        "type": "object",
+        "required": [
+          "ticket",
+          "expires_in"
+        ],
+        "title": "WsTicketResponse"
       }
     },
     "securitySchemes": {

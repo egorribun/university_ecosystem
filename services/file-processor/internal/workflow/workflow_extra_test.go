@@ -171,5 +171,8 @@ func TestDownloadAndDecodeImage_ContextCancelledDuringFetch(t *testing.T) {
 
 	// The call may return a ContextCancelled error or succeed (if decode wins the
 	// race); both are acceptable — the key assertion is that it does not panic or hang.
-	_, _, _ = a.downloadAndDecodeImage(ctx, "in/img.png")
+	_, _, err := a.downloadAndDecodeImage(ctx, "in/img.png")
+	if err != nil {
+		assert.Error(t, err)
+	}
 }

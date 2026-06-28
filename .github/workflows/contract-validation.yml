@@ -156,13 +156,13 @@ jobs:
       - name: Check for breaking changes against committed snapshot
         # The snapshot (tests/contracts/openapi.json) represents the
         # "old" (main-branch) spec.  The generated spec is the "new" (PR) spec.
-        # --fail-on-diff=breaking exits non-zero only on breaking changes.
+        # --fail-on ERR exits non-zero only on breaking changes.
         # Additive changes (new paths, new optional fields) are allowed.
         run: |
           oasdiff breaking \
             tests/contracts/openapi.json \
             /tmp/pr-openapi.json \
-            --fail-on-diff || {
+            --fail-on ERR || {
             echo "::error::Breaking OpenAPI changes detected in this PR."
             echo "Additive changes (new endpoints, optional fields) are fine."
             echo "Renaming/removing required fields, changing parameter types,"

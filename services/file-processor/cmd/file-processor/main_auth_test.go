@@ -158,7 +158,7 @@ func runMiddleware(t *testing.T, secret string, rsaPub *rsa.PublicKey, authHeade
 		}
 	})
 	handler := httpJWTMiddleware(secret, rsaPub, testLogger(), next)
-	req := httptest.NewRequest(http.MethodPost, "/graphql", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/graphql", nil)
 	if authHeader != "" {
 		req.Header.Set("Authorization", authHeader)
 	}

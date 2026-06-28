@@ -28,11 +28,12 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"github.com/university-ecosystem/gateway/internal/config"
 )
 
 func TestSetupRouter_WiresRoutesAndProbes(t *testing.T) {
-	cfg := &config.Config{
+	cfg := &config.Config{ // #nosec G101 -- test-only smoke config placeholders.
 		Port:               "8080",
 		BackendURL:         "http://127.0.0.1:1",                           // parseable, never dialed by these probes
 		RedisURL:           "",                                             // → rate-limiter-absent branch → nil redis client
@@ -54,20 +55,20 @@ func TestSetupRouter_WiresRoutesAndProbes(t *testing.T) {
 
 	t.Run("health is public", func(t *testing.T) {
 		rec := httptest.NewRecorder()
-		router.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/health", nil))
+		router.ServeHTTP(rec, httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/health", nil))
 		assert.Equal(t, http.StatusOK, rec.Code)
 	})
 
 	t.Run("protected v1 route without auth is 401", func(t *testing.T) {
 		rec := httptest.NewRecorder()
-		router.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/users/me", nil))
+		router.ServeHTTP(rec, httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api/v1/users/me", nil))
 		assert.Equal(t, http.StatusUnauthorized, rec.Code)
 		assert.Contains(t, rec.Body.String(), "missing authorization header")
 	})
 
 	t.Run("unknown /api route is 404 JSON", func(t *testing.T) {
 		rec := httptest.NewRecorder()
-		router.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/totally/unknown", nil))
+		router.ServeHTTP(rec, httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api/totally/unknown", nil))
 		assert.Equal(t, http.StatusNotFound, rec.Code)
 		assert.Contains(t, rec.Body.String(), "endpoint not found")
 	})
@@ -80,14 +81,14 @@ func TestInitLogger(t *testing.T) {
 
 func TestInitSentry(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	
+
 	t.Run("disabled sentry", func(t *testing.T) {
 		cfg := &config.Config{SentryDSN: ""}
 		assert.NotPanics(t, func() {
 			initSentry(cfg, logger)
 		})
 	})
-	
+
 	t.Run("invalid sentry dsn", func(t *testing.T) {
 		cfg := &config.Config{SentryDSN: "invalid-dsn"}
 		assert.NotPanics(t, func() {
@@ -105,7 +106,7 @@ func TestInitGRPC(t *testing.T) {
 	conn, client := initGRPC(cfg, logger)
 	assert.NotNil(t, conn)
 	assert.NotNil(t, client)
-	_ = conn.Close()
+	require.NoError(t, conn.Close())
 }
 
 func TestInitTracer_Failure(t *testing.T) {
@@ -116,7 +117,7 @@ func TestInitTracer_Failure(t *testing.T) {
 	tp, err := initTracer(context.Background(), cfg)
 	if err == nil {
 		assert.NotNil(t, tp)
-		_ = tp.Shutdown(context.Background())
+		require.NoError(t, tp.Shutdown(context.Background()))
 	}
 }
 

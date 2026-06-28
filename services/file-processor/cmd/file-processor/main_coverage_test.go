@@ -130,9 +130,9 @@ func TestStartNatsSubscriber_FailGracefully(t *testing.T) {
 func TestSetupGraphQLServer(t *testing.T) {
 	content, err := os.ReadFile("../../schema.graphql")
 	if err == nil {
-		_ = os.WriteFile("schema.graphql", content, 0644)
+		require.NoError(t, os.WriteFile("schema.graphql", content, 0600)) // #nosec G703 -- test-only fixed schema path.
 		t.Cleanup(func() {
-			_ = os.Remove("schema.graphql")
+			require.NoError(t, os.Remove("schema.graphql"))
 		})
 	}
 
@@ -148,9 +148,9 @@ func TestSetupGraphQLServer(t *testing.T) {
 func TestRunServers_CleanShutdown(t *testing.T) {
 	content, err := os.ReadFile("../../schema.graphql")
 	if err == nil {
-		_ = os.WriteFile("schema.graphql", content, 0644)
+		require.NoError(t, os.WriteFile("schema.graphql", content, 0600)) // #nosec G703 -- test-only fixed schema path.
 		t.Cleanup(func() {
-			_ = os.Remove("schema.graphql")
+			require.NoError(t, os.Remove("schema.graphql"))
 		})
 	}
 
@@ -191,8 +191,10 @@ func TestConnectTemporal_APIKeyFileHandling(t *testing.T) {
 	t.Run("empty file", func(t *testing.T) {
 		tmpFile, err := os.CreateTemp("", "empty-key")
 		require.NoError(t, err)
-		defer os.Remove(tmpFile.Name())
-		_ = tmpFile.Close()
+		t.Cleanup(func() {
+			require.NoError(t, os.Remove(tmpFile.Name()))
+		})
+		require.NoError(t, tmpFile.Close())
 
 		cfg := &config.Config{
 			TemporalHost:       "localhost:1",
@@ -206,9 +208,12 @@ func TestConnectTemporal_APIKeyFileHandling(t *testing.T) {
 	t.Run("valid key file", func(t *testing.T) {
 		tmpFile, err := os.CreateTemp("", "valid-key")
 		require.NoError(t, err)
-		defer os.Remove(tmpFile.Name())
-		_, _ = tmpFile.WriteString("my-secret-temporal-token")
-		_ = tmpFile.Close()
+		t.Cleanup(func() {
+			require.NoError(t, os.Remove(tmpFile.Name()))
+		})
+		_, err = tmpFile.WriteString("my-secret-temporal-token")
+		require.NoError(t, err)
+		require.NoError(t, tmpFile.Close())
 
 		cfg := &config.Config{
 			TemporalHost:       "localhost:1",
@@ -237,5 +242,3 @@ func TestSetupTemporalWorker(t *testing.T) {
 		setupTemporalWorker(context.Background(), c, cfg, discardLogger())
 	})
 }
-
-
