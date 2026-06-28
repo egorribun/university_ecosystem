@@ -537,6 +537,5 @@ pytest_add_cli_args = [
     "--ignore=tests/test_migrations_runtime.py",
     "--ignore=tests/test_wave173_caddy_routing.py",
     "--ignore=tests/test_wave173_ws_hub_env.py",
-    "-k", "not test_request_timeout_extension_timeout",
 ]
 

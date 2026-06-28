@@ -29,7 +29,14 @@ async def test_increment_user_cost_eviction():
         assert len(extensions_module._user_cost_memory) == 1
 
 
+import sys
+
+
 @pytest.mark.asyncio
+@pytest.mark.skipif(
+    "mutants" in __file__ or any("mutmut" in arg for arg in sys.argv),
+    reason="Skip under mutmut due to AST tracer generator conflict",
+)
 async def test_request_timeout_extension_timeout():
     ext = RequestTimeoutExtension()
     ext.execution_context = MagicMock()
