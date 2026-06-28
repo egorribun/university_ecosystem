@@ -54,7 +54,7 @@ echo "==> [ASan] Rebuilding rust_ext under ASan (nightly, force-reinstall)..."
 (
   cd "${RUST_EXT_DIR}"
   unset RUSTFLAGS
-  RUSTUP_TOOLCHAIN=nightly
+  export RUSTUP_TOOLCHAIN=nightly
   TRIPLE_UPPER="$(echo "${HOST_TRIPLE}" | tr '-' '_' | tr '[:lower:]' '[:upper:]')"
   export "CARGO_TARGET_${TRIPLE_UPPER}_RUSTFLAGS=-Zsanitizer=address"
   uv run maturin develop --release --target "${HOST_TRIPLE}" -Zbuild-std=std,panic_abort
@@ -64,7 +64,7 @@ echo "==> [ASan] Rebuilding pyo3-sanitizer under ASan (nightly, force-reinstall)
 (
   cd "${REPO_ROOT}/crates/pyo3-sanitizer"
   unset RUSTFLAGS
-  RUSTUP_TOOLCHAIN=nightly
+  export RUSTUP_TOOLCHAIN=nightly
   TRIPLE_UPPER="$(echo "${HOST_TRIPLE}" | tr '-' '_' | tr '[:lower:]' '[:upper:]')"
   export "CARGO_TARGET_${TRIPLE_UPPER}_RUSTFLAGS=-Zsanitizer=address"
   uv run maturin develop --release --target "${HOST_TRIPLE}" -Zbuild-std=std,panic_abort
@@ -137,4 +137,3 @@ LSAN_OPTIONS="suppressions=${REPO_ROOT}/tests/lsan_suppressions.txt" \
   uv run python tests/fuzz/run_atheris.py -max_total_time=60
 
 echo "==> [ASan] All FFI tests and Atheris fuzzing passed — no memory errors or leaks detected."
-

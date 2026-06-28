@@ -1003,7 +1003,10 @@ async def test_verify_database_readiness_exceptions():
             mock_settings.environment = "development"
             with patch("app.core.lifespan._logger.warning") as mock_warn:
                 await _verify_database_readiness()
-                mock_warn.assert_called_once()
+                assert any(
+                    "Database unavailable" in call.args[0]
+                    for call in mock_warn.call_args_list
+                )
 
 
 @pytest.mark.asyncio

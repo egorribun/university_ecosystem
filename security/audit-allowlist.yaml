@@ -617,6 +617,14 @@ npm:
       reason: |
         Fresh-disclosure (2026-06) undici Set-Cookie SameSite attribute downgrade
         (low). Transitive undici; not in the browser bundle. See id 1121186.
+    - id: "1121427"
+      package: "undici"
+      owner: frontend@university.example
+      expires: 2026-09-21
+      reason: |
+        Fresh-disclosure (2026-06) undici shared-cache whitespace bypass causing
+        cross-user information disclosure (moderate). Transitive undici; not in
+        the browser bundle (native fetch). See id 1121186.
 
 pip:
   advisories:

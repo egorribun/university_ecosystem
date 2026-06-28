@@ -134,7 +134,7 @@ const MOCK_EVENTS_COUNT = 50
 const ONE_HOUR_MS = 60 * 60 * 1000
 const ONE_DAY_MS = 24 * ONE_HOUR_MS
 
-const now = new Date()
+const now = new Date("2026-06-27T10:00:00Z")
 const mockEvents = Array.from({ length: MOCK_EVENTS_COUNT }, (_, index) => {
   const id = `uuid-${index + 10}`
   const start = new Date(now.getTime() + (index + 1) * ONE_DAY_MS)
@@ -190,7 +190,7 @@ const createDeadLetterJobs = (): AdminDeadLetterJob[] => [
 
 const getWeekdayName = (): string => {
   const names = ["Воскресенье", "Понедельник", "Вторник", "Среда", "Четверг", "Пятница", "Суббота"]
-  return names[new Date().getDay()] ?? ""
+  return names[now.getDay()] ?? ""
 }
 
 const mockSchedule = [
@@ -208,30 +208,30 @@ const mockSchedule = [
 ]
 
 const createMockSessions = (): SessionMock[] => {
-  const now = Date.now()
+  const nowTime = now.getTime()
   return [
     {
       id: "session-1",
       user_id: "uuid-1",
       jti: "mock-session-current",
-      created_at: new Date(now).toISOString(),
-      expires_at: new Date(now + 60 * 60 * 1000).toISOString(),
+      created_at: new Date(nowTime).toISOString(),
+      expires_at: new Date(nowTime + 60 * 60 * 1000).toISOString(),
       revoked_at: null,
       ip_address: MOCK_IP_1,
       user_agent: "Playwright Test Browser",
-      last_seen_at: new Date(now).toISOString(),
+      last_seen_at: new Date(nowTime).toISOString(),
       is_current: true,
     },
     {
       id: "session-2",
       user_id: "uuid-1",
       jti: "mock-session-secondary",
-      created_at: new Date(now - 2 * 60 * 60 * 1000).toISOString(),
-      expires_at: new Date(now + 2 * 60 * 60 * 1000).toISOString(),
+      created_at: new Date(nowTime - 2 * 60 * 60 * 1000).toISOString(),
+      expires_at: new Date(nowTime + 2 * 60 * 60 * 1000).toISOString(),
       revoked_at: null,
       ip_address: MOCK_IP_2,
       user_agent: "Safari/17.0 (iPhone; CPU iPhone OS)",
-      last_seen_at: new Date(now - 15 * 60 * 1000).toISOString(),
+      last_seen_at: new Date(nowTime - 15 * 60 * 1000).toISOString(),
       is_current: false,
     },
   ]

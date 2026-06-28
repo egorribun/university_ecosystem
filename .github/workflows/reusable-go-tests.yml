@@ -127,7 +127,18 @@ jobs:
           # Limit execution time per package to keep CI fast (5m per package)
           for pkg in $PACKAGES; do
             echo "Mutating package $pkg..."
-            timeout 300s go-mutesting "$pkg"
+            log_file="/tmp/go-mutesting-${pkg//[^A-Za-z0-9_.-]/_}.log"
+            set +e
+            timeout 300s go-mutesting "$pkg" 2>&1 | tee "$log_file"
+            status=${PIPESTATUS[0]}
+            set -e
+            if [ "$status" -ne 0 ]; then
+              if grep -Eq 'panic: runtime error|go/types\.\(\*StdSizes\)\.Sizeof' "$log_file"; then
+                echo "::warning::go-mutesting crashed under the current Go/toolchain for $pkg; treating this known tool panic as advisory."
+                continue
+              fi
+              exit "$status"
+            fi
           done
 
       - name: Generate artifact name

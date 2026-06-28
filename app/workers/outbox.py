@@ -195,9 +195,11 @@ class OutboxWorker:
                         OUTBOX_EVENTS_PROCESSED.labels(
                             event_type=se.event_type, status="success"
                         ).inc()
-                    except Exception:  # RZ-22-01-JUSTIFIED: handler-nak — catch-all for dispatch errors, increments retry counter (reviewed TD-27-04)
+                    except Exception as exc:  # RZ-22-01-JUSTIFIED: handler-nak — catch-all for dispatch errors, increments retry counter (reviewed TD-27-04)
                         se.error_count += 1
-                        last_error = traceback.format_exc()
+                        last_error = (
+                            f"{type(exc).__name__}: {exc}\n{traceback.format_exc()}"
+                        )
                         # Store first 500 chars of error for audit trail
                         se.last_error = last_error[:500]
                         # MOD-08: Move to DLQ after max_retries instead of

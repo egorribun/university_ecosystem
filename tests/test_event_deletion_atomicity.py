@@ -1,4 +1,4 @@
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock
 
 import pytest
@@ -24,7 +24,7 @@ async def test_delete_event_file_atomicity_vulnerability_fix(
         created_by=admin.id,
         event_type="workshop",
         starts_at=datetime.now(UTC),
-        ends_at=datetime.now(UTC),
+        ends_at=datetime.now(UTC) + timedelta(hours=1),
     )
     db_session.add(event)
     await db_session.commit()
