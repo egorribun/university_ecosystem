@@ -3,8 +3,12 @@
 import os
 import sys
 
-os.environ.setdefault("SECRET_KEY", "test-secret-key-32-characters-long-entropy")
-os.environ.setdefault("ENVIRONMENT", "testing")
+if not os.environ.get("SECRET_KEY"):
+    os.environ["SECRET_KEY"] = (
+        "test-secret-key-32-characters-long-entropy"  # pragma: allowlist secret
+    )
+if not os.environ.get("ENVIRONMENT"):
+    os.environ["ENVIRONMENT"] = "testing"
 
 
 import atheris
