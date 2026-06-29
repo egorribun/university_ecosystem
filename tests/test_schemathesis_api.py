@@ -28,6 +28,7 @@ from __future__ import annotations
 import json
 import os
 
+import hypothesis
 import schemathesis
 from schemathesis.checks import not_a_server_error
 
@@ -42,13 +43,13 @@ os.environ.setdefault(
     "schemathesis-ci-placeholder-secret-key-minimum-32-chars-long",  # pragma: allowlist secret
 )
 
-from app.main import app  # noqa: E402 — env vars must be set before import
+from app.main import app
 
 # ---------------------------------------------------------------------------
 # Schema loader — ASGI transport (no network, no server)
 # ---------------------------------------------------------------------------
 
-schema = schemathesis.openapi.from_asgi("/openapi.json", app=app)
+schema = schemathesis.openapi.from_asgi("/api/openapi.json", app=app)
 
 # ---------------------------------------------------------------------------
 # Stateless property-based conformance tests
@@ -56,7 +57,7 @@ schema = schemathesis.openapi.from_asgi("/openapi.json", app=app)
 
 
 @schema.parametrize()
-@schemathesis.settings(max_examples=25, suppress_health_check=["too_slow"])
+@hypothesis.settings(max_examples=25, suppress_health_check=["too_slow"])
 def test_api_responses_conform_to_schema(case: schemathesis.Case) -> None:
     """Every OpenAPI-described endpoint must return a non-5xx response.
 
@@ -70,7 +71,7 @@ def test_api_responses_conform_to_schema(case: schemathesis.Case) -> None:
     Pytest parametrizes this test once per (method, path) pair, so each
     failure is reported with its exact endpoint.
     """
-    response = case.call_asgi()
+    response = case.call()
     case.validate_response(response, checks=[not_a_server_error])
 
 

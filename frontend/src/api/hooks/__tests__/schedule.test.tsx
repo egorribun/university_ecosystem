@@ -22,10 +22,7 @@ const apiMock = vi.hoisted(() => ({
 }))
 vi.mock("@/api/client", () => ({ default: apiMock }))
 
-import {
-  pageScheduleQueryOptions,
-  scheduleGroupsQueryOptions,
-} from "@/api/hooks/schedule"
+import { pageScheduleQueryOptions, scheduleGroupsQueryOptions } from "@/api/hooks/schedule"
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 const makeWrapper = (queryClient: QueryClient) => {
@@ -67,7 +64,6 @@ describe("scheduleGroupsQueryOptions queryFn execution", () => {
 
     const { result } = renderHook(
       () => {
-
         return useQuery(scheduleGroupsQueryOptions())
       },
       { wrapper: makeWrapper(queryClient) }
@@ -87,7 +83,6 @@ describe("scheduleGroupsQueryOptions queryFn execution", () => {
 
     const { result } = renderHook(
       () => {
-
         return useQuery(scheduleGroupsQueryOptions())
       },
       { wrapper: makeWrapper(queryClient) }
@@ -103,15 +98,12 @@ describe("scheduleGroupsQueryOptions queryFn execution", () => {
 
     const { result } = renderHook(
       () => {
-
         return useQuery(scheduleGroupsQueryOptions())
       },
       { wrapper: makeWrapper(queryClient) }
     )
 
-    
-
-    //("Network Error")
+    await waitFor(() => expect(result.current.isError).toBe(true))
   })
 })
 
@@ -128,7 +120,6 @@ describe("pageScheduleQueryOptions queryFn execution", () => {
 
     const { result } = renderHook(
       () => {
-
         return useQuery(pageScheduleQueryOptions("group-abc"))
       },
       { wrapper: makeWrapper(queryClient) }
@@ -148,7 +139,6 @@ describe("pageScheduleQueryOptions queryFn execution", () => {
 
     const { result } = renderHook(
       () => {
-
         return useQuery(pageScheduleQueryOptions("group-1"))
       },
       { wrapper: makeWrapper(queryClient) }
@@ -162,7 +152,6 @@ describe("pageScheduleQueryOptions queryFn execution", () => {
   it("does not fetch when groupId is null (enabled: false)", async () => {
     const { result } = renderHook(
       () => {
-
         return useQuery(pageScheduleQueryOptions(null))
       },
       { wrapper: makeWrapper(queryClient) }

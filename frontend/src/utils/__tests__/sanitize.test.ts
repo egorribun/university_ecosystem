@@ -30,7 +30,7 @@ beforeEach(() => {
 describe("sanitize utilities", () => {
   describe("sanitizeNewsHtml", () => {
     it("returns empty string for null input", async () => {
-      const result = await sanitizeNewsHtml(null)
+      await sanitizeNewsHtml(null)
       expect(mocks.sanitize_rich_text).toHaveBeenCalledWith("")
     })
 
@@ -63,7 +63,7 @@ describe("sanitize utilities", () => {
     })
 
     it("returns empty string for null input", async () => {
-      const result = await sanitizeNewsText(null)
+      await sanitizeNewsText(null)
       expect(mocks.strip_html).toHaveBeenCalledWith("")
     })
 
@@ -113,7 +113,7 @@ describe("sanitize utilities", () => {
     })
 
     it("rejects URLs with username/password", () => {
-      expect(sanitizeHttpUrl("https://admin:pass@evil.com")).toBeNull()
+      expect(sanitizeHttpUrl("https://admin:pass@evil.com")).toBeNull() // pragma: allowlist secret
     })
 
     it("handles relative URLs by resolving against window.location.origin", () => {

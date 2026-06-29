@@ -32,6 +32,9 @@ os.environ["ALGORITHM"] = "HS256"
 os.environ["ACCESS_TOKEN_EXPIRE_MINUTES"] = "30"
 os.environ["STATIC_DIR"] = "app/test-static"
 os.environ["SPOTIFY_TOKEN_SECRET"] = "aN-c6G_Gi7q0E8VnXW0fvkYlCYwH14r2raXI5Qun7Ss="
+os.environ["SPOTIFY_OAUTH_STATE_SECRET"] = (
+    "aN-c6G_Gi7q0E8VnXW0fvkYlCYwH14r2raXI5Qun7Ss="
+)
 os.environ["CACHE_ENABLED"] = "false"
 os.environ["ENABLE_OTEL"] = "false"
 os.environ["SESSION_STORAGE_BACKEND"] = "redis"

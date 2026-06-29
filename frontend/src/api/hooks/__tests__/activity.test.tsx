@@ -55,23 +55,23 @@ afterEach(() => {
 // ── activityQueryKey ────────────────────────────────────────────────────────
 describe("activityQueryKey", () => {
   it("returns ['activity', 'summary', period, language] tuple", () => {
-    expect(activityQueryKey({ period: "week", language: "ru" })).toEqual([
+    expect(activityQueryKey({ period: "30d", language: "ru" })).toEqual([
       "activity",
       "summary",
-      "week",
+      "30d",
       "ru",
     ])
   })
 
   it("produces distinct keys for different periods", () => {
-    const weekKey = activityQueryKey({ period: "week", language: "ru" })
-    const monthKey = activityQueryKey({ period: "month", language: "ru" })
+    const weekKey = activityQueryKey({ period: "30d", language: "ru" })
+    const monthKey = activityQueryKey({ period: "90d", language: "ru" })
     expect(weekKey).not.toEqual(monthKey)
   })
 
   it("produces distinct keys for different languages", () => {
-    const ruKey = activityQueryKey({ period: "week", language: "ru" })
-    const enKey = activityQueryKey({ period: "week", language: "en" })
+    const ruKey = activityQueryKey({ period: "30d", language: "ru" })
+    const enKey = activityQueryKey({ period: "30d", language: "en" })
     expect(ruKey).not.toEqual(enKey)
   })
 })
@@ -79,23 +79,23 @@ describe("activityQueryKey", () => {
 // ── activitySummaryOptions ──────────────────────────────────────────────────
 describe("activitySummaryOptions", () => {
   it("queryKey matches activityQueryKey output for the same params", () => {
-    const params = { period: "month" as const, language: "en" }
+    const params = { period: "90d" as const, language: "en" }
     const opts = activitySummaryOptions(params)
     expect(opts.queryKey).toEqual(activityQueryKey(params))
   })
 
   it("staleTime is 60_000 (1 minute)", () => {
-    const opts = activitySummaryOptions({ period: "week", language: "ru" })
+    const opts = activitySummaryOptions({ period: "30d", language: "ru" })
     expect(opts.staleTime).toBe(60_000)
   })
 
   it("gcTime is 5 * 60_000 (5 minutes)", () => {
-    const opts = activitySummaryOptions({ period: "week", language: "ru" })
+    const opts = activitySummaryOptions({ period: "30d", language: "ru" })
     expect(opts.gcTime).toBe(5 * 60_000)
   })
 
   it("queryFn is callable", () => {
-    const opts = activitySummaryOptions({ period: "week", language: "ru" })
+    const opts = activitySummaryOptions({ period: "30d", language: "ru" })
     expect(typeof opts.queryFn).toBe("function")
   })
 })
@@ -112,7 +112,7 @@ describe("useActivitySummaryQuery", () => {
     apiMock.get.mockResolvedValueOnce({ data: FULL_ENVELOPE })
 
     const { result } = renderHook(
-      () => useActivitySummaryQuery({ period: "week", language: "ru" }),
+      () => useActivitySummaryQuery({ period: "30d", language: "ru" }),
       { wrapper: makeWrapper(queryClient) }
     )
 
@@ -123,7 +123,7 @@ describe("useActivitySummaryQuery", () => {
     expect(result.current.data).toEqual(FULL_ENVELOPE)
     expect(apiMock.get).toHaveBeenCalledWith(
       "/stats/summary",
-      expect.objectContaining({ params: { period: "week" } })
+      expect.objectContaining({ params: { period: "30d" } })
     )
   })
 
@@ -135,7 +135,7 @@ describe("useActivitySummaryQuery", () => {
       .mockResolvedValueOnce({ data: PARTICIPATION_STUB })
 
     const { result } = renderHook(
-      () => useActivitySummaryQuery({ period: "month", language: "en" }),
+      () => useActivitySummaryQuery({ period: "90d", language: "en" }),
       { wrapper: makeWrapper(queryClient) }
     )
 
@@ -151,15 +151,15 @@ describe("useActivitySummaryQuery", () => {
     expect(apiMock.get).toHaveBeenCalledTimes(4)
     expect(apiMock.get).toHaveBeenCalledWith(
       "/stats/attendance",
-      expect.objectContaining({ params: { period: "month" } })
+      expect.objectContaining({ params: { period: "90d" } })
     )
     expect(apiMock.get).toHaveBeenCalledWith(
       "/stats/grades",
-      expect.objectContaining({ params: { period: "month" } })
+      expect.objectContaining({ params: { period: "90d" } })
     )
     expect(apiMock.get).toHaveBeenCalledWith(
       "/stats/participation",
-      expect.objectContaining({ params: { period: "month" } })
+      expect.objectContaining({ params: { period: "90d" } })
     )
   })
 
@@ -171,7 +171,7 @@ describe("useActivitySummaryQuery", () => {
       .mockResolvedValueOnce({ data: PARTICIPATION_STUB })
 
     const { result } = renderHook(
-      () => useActivitySummaryQuery({ period: "week", language: "ru" }),
+      () => useActivitySummaryQuery({ period: "30d", language: "ru" }),
       { wrapper: makeWrapper(queryClient) }
     )
 
@@ -188,7 +188,7 @@ describe("useActivitySummaryQuery", () => {
     })
 
     const { result } = renderHook(
-      () => useActivitySummaryQuery({ period: "week", language: "ru" }),
+      () => useActivitySummaryQuery({ period: "30d", language: "ru" }),
       { wrapper: makeWrapper(queryClient) }
     )
 
@@ -200,11 +200,7 @@ describe("useActivitySummaryQuery", () => {
 
   it("respects the enabled option (disabled does not fire fetch)", async () => {
     const { result } = renderHook(
-      () =>
-        useActivitySummaryQuery(
-          { period: "week", language: "ru" },
-          { enabled: false }
-        ),
+      () => useActivitySummaryQuery({ period: "30d", language: "ru" }, { enabled: false }),
       { wrapper: makeWrapper(queryClient) }
     )
 

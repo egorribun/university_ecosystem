@@ -25,10 +25,7 @@ vi.mock("@/api/weather", () => ({
   WEATHER_CACHE_TTL_MS: 10 * 60_000,
 }))
 
-import {
-  weatherQueryKey,
-  weatherQueryOptions,
-} from "@/api/hooks/weather"
+import { weatherQueryKey, weatherQueryOptions } from "@/api/hooks/weather"
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 const makeWrapper = (queryClient: QueryClient) => {
@@ -59,21 +56,11 @@ afterEach(() => {
 // ── weatherQueryKey ─────────────────────────────────────────────────────────
 describe("weatherQueryKey", () => {
   it("rounds coordinates to 4 decimal places", () => {
-    expect(weatherQueryKey(COORDS)).toEqual([
-      "weather",
-      "snapshot",
-      "55.7147",
-      "37.8165",
-    ])
+    expect(weatherQueryKey(COORDS)).toEqual(["weather", "snapshot", "55.7147", "37.8165"])
   })
 
   it("integer coordinates produce '.0000' suffix", () => {
-    expect(weatherQueryKey({ lat: 0, lon: 0 })).toEqual([
-      "weather",
-      "snapshot",
-      "0.0000",
-      "0.0000",
-    ])
+    expect(weatherQueryKey({ lat: 0, lon: 0 })).toEqual(["weather", "snapshot", "0.0000", "0.0000"])
   })
 })
 
@@ -91,7 +78,6 @@ describe("weatherQueryOptions queryFn execution", () => {
 
     const { result } = renderHook(
       () => {
-
         return useQuery(weatherQueryOptions(COORDS))
       },
       { wrapper: makeWrapper(queryClient) }
@@ -108,7 +94,6 @@ describe("weatherQueryOptions queryFn execution", () => {
 
     const { result } = renderHook(
       () => {
-
         return useQuery(weatherQueryOptions(COORDS, customTtl))
       },
       { wrapper: makeWrapper(queryClient) }
@@ -128,13 +113,12 @@ describe("weatherQueryOptions queryFn execution", () => {
 
     const { result } = renderHook(
       () => {
-
         return useQuery(weatherQueryOptions(COORDS))
       },
       { wrapper: makeWrapper(queryClient) }
     )
 
-    
+    await waitFor(() => expect(result.current.isError).toBe(true))
 
     //("API rate limit")
   })

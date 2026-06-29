@@ -21,10 +21,7 @@ vi.mock("@/hooks/auth/useProfileSync", () => ({
   fetchCurrentUser: fetchCurrentUserMock,
 }))
 
-import {
-  currentUserQueryKey,
-  currentUserQueryOptions,
-} from "@/api/hooks/users"
+import { currentUserQueryKey, currentUserQueryOptions } from "@/api/hooks/users"
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 const makeWrapper = (queryClient: QueryClient) => {
@@ -75,7 +72,6 @@ describe("currentUserQueryOptions queryFn execution", () => {
 
     const { result } = renderHook(
       () => {
-
         return useQuery(currentUserQueryOptions())
       },
       { wrapper: makeWrapper(queryClient) }
@@ -93,7 +89,6 @@ describe("currentUserQueryOptions queryFn execution", () => {
 
     const { result } = renderHook(
       () => {
-
         return useQuery(currentUserQueryOptions())
       },
       { wrapper: makeWrapper(queryClient) }
@@ -111,13 +106,11 @@ describe("currentUserQueryOptions queryFn execution", () => {
 
     const { result } = renderHook(
       () => {
-
         return useQuery(currentUserQueryOptions())
       },
       { wrapper: makeWrapper(queryClient) }
     )
-
-    
+    await waitFor(() => expect(result.current.isError).toBe(true))
 
     //("401 Unauthorized")
   })
