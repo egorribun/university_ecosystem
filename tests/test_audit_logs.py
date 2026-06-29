@@ -24,7 +24,17 @@ def _find_event(caplog, logger_name: str, event: str) -> dict:
             continue
         if payload.get("event") == event:
             return cast(dict[Any, Any], payload)
-    print(f"\n--- CAPLOG RECORDS (looking for {logger_name} / {event}) ---")
+
+    # Print diagnostics
+    logger = logging.getLogger(logger_name)
+    print(f"\n--- LOGGER DIAGNOSTICS FOR {logger_name} ---")
+    print(f"Level: {logger.level}")
+    print(f"Effective Level: {logger.getEffectiveLevel()}")
+    print(f"Propagate: {logger.propagate}")
+    print(f"Handlers: {logger.handlers}")
+    print(f"Root Handlers: {logging.getLogger().handlers}")
+    print(f"Root Level: {logging.getLogger().level}")
+    print(f"--- CAPLOG RECORDS (looking for {logger_name} / {event}) ---")
     for r in caplog.records:
         print(f"logger={r.name} level={r.levelname} message={r.message}")
     print("-----------------------------------------------------------\n")
