@@ -50,6 +50,7 @@ class TestConnectionManager:
         assert mock_ws1 in connection_manager.active_connections[user_id]
         assert mock_ws2 in connection_manager.active_connections[user_id]
 
+    @pytest.mark.asyncio
     async def test_disconnect_removes_connection(
         self, connection_manager: ConnectionManager
     ):
@@ -67,6 +68,7 @@ class TestConnectionManager:
         assert user_id not in connection_manager.active_connections
         assert mock_ws not in connection_manager.connection_users
 
+    @pytest.mark.asyncio
     async def test_disconnect_keeps_other_connections(
         self, connection_manager: ConnectionManager
     ):

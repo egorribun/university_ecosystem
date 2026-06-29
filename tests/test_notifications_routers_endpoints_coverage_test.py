@@ -1,6 +1,7 @@
 import pytest
 from httpx import AsyncClient
 
+from app.auth.security import get_password_hash
 from app.models import User
 from app.models.enums import UserRole
 
@@ -20,12 +21,17 @@ async def _login(client: AsyncClient, email: str) -> dict[str, str]:
 
 @pytest.mark.asyncio
 async def test_push_endpoints(async_client: AsyncClient, db_session, test_user: User):
+    hashed = await get_password_hash(_TEST_PASSWORD)
+    test_user.hashed_password = hashed
+    db_session.add(test_user)
+    await db_session.commit()
+
     headers = await _login(async_client, test_user.email)
 
     # 1. /push/vapid-public-key
     resp = await async_client.get("/push/vapid-public-key")
     assert resp.status_code == 200
-    assert "public_key" in resp.json()
+    assert "publicKey" in resp.json()
 
     # 2. /push/subscribe
     payload = {
@@ -50,7 +56,7 @@ async def test_push_endpoints(async_client: AsyncClient, db_session, test_user: 
 
     # 5. /push/test
     resp = await async_client.post("/push/test", headers=headers)
-    assert resp.status_code in (200, 400, 500)
+    assert resp.status_code == 403
 
     # 6. /push/unsubscribe
     resp = await async_client.post(
@@ -65,6 +71,8 @@ async def test_admin_push_endpoints(
 ):
     # Make user admin
     test_user.role = UserRole.ADMIN
+    hashed = await get_password_hash(_TEST_PASSWORD)
+    test_user.hashed_password = hashed
     db_session.add(test_user)
     await db_session.commit()
 
@@ -77,9 +85,9 @@ async def test_admin_push_endpoints(
 
     # /push/admin/topics/{user_id} (PUT)
     resp = await async_client.put(
-        f"/push/admin/topics/{user_id}", json={"topics": ["urgent"]}, headers=headers
+        f"/push/admin/topics/{user_id}", json={"topics": ["system"]}, headers=headers
     )
-    assert resp.status_code == 200
+    assert resp.status_code == 200, resp.text
 
     # /push/admin/disable-user
     resp = await async_client.post(

@@ -9,11 +9,14 @@ from app.services.auth.credential_validator import CredentialValidator
 
 @pytest.fixture
 def mocks():
+    lockout_service = AsyncMock()
+    lockout_service.get_lockout_message = MagicMock()
+    lockout_service.format_duration = MagicMock()
     return {
         "uow": AsyncMock(),
         "user_repo": AsyncMock(),
         "profile_service": AsyncMock(),
-        "lockout_service": AsyncMock(),
+        "lockout_service": lockout_service,
         "audit": MagicMock(),
         "session_manager": MagicMock(),
         "request": AsyncMock(spec=Request),
@@ -125,9 +128,7 @@ async def test_validate_credentials_invalid_password_triggers_lockout(
             )
 
         assert exc.value.status_code == 423
-        mock_kick.assert_awaited_once_with(
-            "test@example.com", "John Doe", lock_until, 5, "en"
-        )
+        mock_kick.assert_awaited_once_with("test@example.com", "John Doe", "en")
 
 
 @pytest.mark.asyncio

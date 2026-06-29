@@ -34,22 +34,24 @@ This contract catches that drift at CI time.
 from __future__ import annotations
 
 import json
+
+# ---------------------------------------------------------------------------
+# Pact availability guard (same pattern as test_ws_hub_contract.py)
+# ---------------------------------------------------------------------------
+import sys
 from pathlib import Path
 from typing import Any
 
 import pytest
 
-# ---------------------------------------------------------------------------
-# Pact availability guard (same pattern as test_ws_hub_contract.py)
-# ---------------------------------------------------------------------------
-
 pact_lib = None
-try:
-    import pact
+if sys.platform != "win32":
+    try:
+        import pact
 
-    pact_lib = pact
-except ImportError:
-    pass
+        pact_lib = pact
+    except ImportError:
+        pass
 
 if pact_lib is None:
     pytestmark = pytest.mark.skip(

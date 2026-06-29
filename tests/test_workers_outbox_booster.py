@@ -92,7 +92,7 @@ async def test_dispatch_event_unknown_type(worker: OutboxWorker):
     se = make_stored_event(event_type="NoSuchEvent")
     original_error_count = se.error_count
 
-    with patch("app.workers.outbox._EVENT_REGISTRY", {}):
+    with patch("app.core.events._EVENT_REGISTRY", {}):
         await worker._dispatch_event(se)
 
     # error_count should be bumped
@@ -118,7 +118,7 @@ async def test_dispatch_event_known_type(worker: OutboxWorker):
 
     mock_bus = AsyncMock()
     with (
-        patch("app.workers.outbox._EVENT_REGISTRY", {"FakeEvent": FakeEvent}),
+        patch("app.core.events._EVENT_REGISTRY", {"FakeEvent": FakeEvent}),
         patch("app.workers.outbox.event_bus", mock_bus),
     ):
         await worker._dispatch_event(se)
@@ -148,7 +148,7 @@ async def test_dispatch_event_with_metadata(worker: OutboxWorker):
 
     mock_bus = AsyncMock()
     with (
-        patch("app.workers.outbox._EVENT_REGISTRY", {"MetaEvent": MetaEvent}),
+        patch("app.core.events._EVENT_REGISTRY", {"MetaEvent": MetaEvent}),
         patch("app.workers.outbox.event_bus", mock_bus),
     ):
         await worker._dispatch_event(se)
@@ -172,7 +172,7 @@ async def test_dispatch_event_constructor_raises(worker: OutboxWorker):
     se = make_stored_event(event_type="BadEvent", payload={"required": "x"})
 
     with (
-        patch("app.workers.outbox._EVENT_REGISTRY", {"BadEvent": BadEvent}),
+        patch("app.core.events._EVENT_REGISTRY", {"BadEvent": BadEvent}),
         patch("app.workers.outbox.event_bus", AsyncMock()),
     ):
         with pytest.raises(ValueError):
@@ -198,7 +198,10 @@ async def test_move_to_dlq(worker: OutboxWorker):
     mock_instance.id = uuid.uuid4()
     mock_failed_event_cls.return_value = mock_instance
 
-    with patch("app.workers.outbox.FailedOutboxEvent", mock_failed_event_cls):
+    with patch(
+        "app.models.failed_outbox_events.FailedOutboxEvent",
+        mock_failed_event_cls,
+    ):
         await worker._move_to_dlq(mock_db, se, "some error")
 
     mock_db.add.assert_called_once()
@@ -321,7 +324,10 @@ async def test_process_batch_dispatch_failure_hits_dlq_at_max_retries(
     with (
         patch("app.workers.outbox.async_session") as mock_cm,
         patch.object(worker, "_dispatch_event", side_effect=dispatch_fail),
-        patch("app.workers.outbox.FailedOutboxEvent", return_value=mock_failed_event),
+        patch(
+            "app.models.failed_outbox_events.FailedOutboxEvent",
+            return_value=mock_failed_event,
+        ),
     ):
         mock_cm.return_value.__aenter__ = AsyncMock(return_value=mock_db)
         mock_cm.return_value.__aexit__ = AsyncMock(return_value=False)
