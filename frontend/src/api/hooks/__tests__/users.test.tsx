@@ -106,7 +106,7 @@ describe("currentUserQueryOptions queryFn execution", () => {
 
     const { result } = renderHook(
       () => {
-        return useQuery(currentUserQueryOptions())
+        return useQuery({ ...currentUserQueryOptions(), retry: false })
       },
       { wrapper: makeWrapper(queryClient) }
     )

@@ -64,7 +64,7 @@ describe("scheduleGroupsQueryOptions queryFn execution", () => {
 
     const { result } = renderHook(
       () => {
-        return useQuery(scheduleGroupsQueryOptions())
+        return useQuery({ ...scheduleGroupsQueryOptions(), retry: false })
       },
       { wrapper: makeWrapper(queryClient) }
     )
@@ -83,7 +83,7 @@ describe("scheduleGroupsQueryOptions queryFn execution", () => {
 
     const { result } = renderHook(
       () => {
-        return useQuery(scheduleGroupsQueryOptions())
+        return useQuery({ ...scheduleGroupsQueryOptions(), retry: false })
       },
       { wrapper: makeWrapper(queryClient) }
     )
@@ -98,7 +98,7 @@ describe("scheduleGroupsQueryOptions queryFn execution", () => {
 
     const { result } = renderHook(
       () => {
-        return useQuery(scheduleGroupsQueryOptions())
+        return useQuery({ ...scheduleGroupsQueryOptions(), retry: false })
       },
       { wrapper: makeWrapper(queryClient) }
     )
@@ -120,7 +120,7 @@ describe("pageScheduleQueryOptions queryFn execution", () => {
 
     const { result } = renderHook(
       () => {
-        return useQuery(pageScheduleQueryOptions("group-abc"))
+        return useQuery({ ...pageScheduleQueryOptions("group-abc"), retry: false })
       },
       { wrapper: makeWrapper(queryClient) }
     )

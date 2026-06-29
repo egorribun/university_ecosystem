@@ -113,7 +113,7 @@ describe("weatherQueryOptions queryFn execution", () => {
 
     const { result } = renderHook(
       () => {
-        return useQuery(weatherQueryOptions(COORDS))
+        return useQuery({ ...weatherQueryOptions(COORDS), retry: false })
       },
       { wrapper: makeWrapper(queryClient) }
     )

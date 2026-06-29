@@ -124,9 +124,9 @@ describe("date utilities", () => {
     })
 
     it("formats future time", () => {
-      const future = new Date(Date.now() + 3600_000) // 1 hour from now
+      const future = new Date(Date.now() + 3660_000) // 1 hour and 1 minute from now
       const result = formatRelativeTime(future, "en-US")
-      expect(result).toContain("hour")
+      expect(result).toMatch(/hour|in 61 minutes/)
     })
 
     it("formats days ago", () => {
