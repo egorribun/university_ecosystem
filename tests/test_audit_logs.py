@@ -43,6 +43,10 @@ def _find_event(caplog, logger_name: str, event: str) -> dict:
 
 async def test_login_success_logs_audit(async_client, user_factory, caplog):
     caplog.set_level(logging.INFO, logger="app.auth")
+    logger = logging.getLogger("app.auth")
+    print(
+        f"\n[TEST DEBUG AUTH] level={logger.level} effective={logger.getEffectiveLevel()} enabled={logger.isEnabledFor(logging.INFO)} disable={logging.root.manager.disable}\n"
+    )
     caplog.clear()
     hashed = await get_password_hash("StrongPass123!")
     user = await user_factory(hashed_password=hashed, is_active=True)
@@ -109,6 +113,10 @@ async def test_password_reset_completed_audit(
     async_client, user_factory, db_session, caplog
 ):
     caplog.set_level(logging.INFO, logger="app.users.audit")
+    logger = logging.getLogger("app.users.audit")
+    print(
+        f"\n[TEST DEBUG RESET Completed] level={logger.level} effective={logger.getEffectiveLevel()} enabled={logger.isEnabledFor(logging.INFO)} disable={logging.root.manager.disable}\n"
+    )
     caplog.clear()
     hashed = await get_password_hash("ResetCompletePass123!")
     user = await user_factory(hashed_password=hashed, is_active=True)
