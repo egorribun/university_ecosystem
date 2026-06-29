@@ -88,9 +88,7 @@ describe("adminAuditLogsQueryKey", () => {
 describe("adminAuditLogsQueryOptions", () => {
   it("queryKey matches adminAuditLogsQueryKey for same args", () => {
     const opts = adminAuditLogsQueryOptions(FILLED_FILTERS, DEFAULT_PAGINATION)
-    expect(opts.queryKey).toEqual(
-      adminAuditLogsQueryKey(FILLED_FILTERS, DEFAULT_PAGINATION)
-    )
+    expect(opts.queryKey).toEqual(adminAuditLogsQueryKey(FILLED_FILTERS, DEFAULT_PAGINATION))
   })
 
   it("staleTime is 30_000 (30 seconds)", () => {
@@ -120,10 +118,9 @@ describe("useAdminAuditLogsQuery", () => {
   it("fetches audit logs and returns data on success", async () => {
     apiMock.get.mockResolvedValueOnce({ data: AUDIT_LOG_STUB })
 
-    const { result } = renderHook(
-      () => useAdminAuditLogsQuery(EMPTY_FILTERS, DEFAULT_PAGINATION),
-      { wrapper: makeWrapper(queryClient) }
-    )
+    const { result } = renderHook(() => useAdminAuditLogsQuery(EMPTY_FILTERS, DEFAULT_PAGINATION), {
+      wrapper: makeWrapper(queryClient),
+    })
 
     expect(result.current.isLoading).toBe(true)
 
@@ -136,10 +133,9 @@ describe("useAdminAuditLogsQuery", () => {
     apiMock.get.mockResolvedValueOnce({ data: AUDIT_LOG_STUB })
 
     const pagination: AdminAuditPagination = { page: 2, rowsPerPage: 10 }
-    const { result } = renderHook(
-      () => useAdminAuditLogsQuery(EMPTY_FILTERS, pagination),
-      { wrapper: makeWrapper(queryClient) }
-    )
+    const { result } = renderHook(() => useAdminAuditLogsQuery(EMPTY_FILTERS, pagination), {
+      wrapper: makeWrapper(queryClient),
+    })
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true))
 
@@ -154,10 +150,9 @@ describe("useAdminAuditLogsQuery", () => {
   it("omits empty filter values from API params", async () => {
     apiMock.get.mockResolvedValueOnce({ data: AUDIT_LOG_STUB })
 
-    const { result } = renderHook(
-      () => useAdminAuditLogsQuery(EMPTY_FILTERS, DEFAULT_PAGINATION),
-      { wrapper: makeWrapper(queryClient) }
-    )
+    const { result } = renderHook(() => useAdminAuditLogsQuery(EMPTY_FILTERS, DEFAULT_PAGINATION), {
+      wrapper: makeWrapper(queryClient),
+    })
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true))
 
@@ -190,10 +185,9 @@ describe("useAdminAuditLogsQuery", () => {
   it("enters error state when API call fails", async () => {
     apiMock.get.mockRejectedValueOnce(new Error("403 Forbidden"))
 
-    const { result } = renderHook(
-      () => useAdminAuditLogsQuery(EMPTY_FILTERS, DEFAULT_PAGINATION),
-      { wrapper: makeWrapper(queryClient) }
-    )
+    const { result } = renderHook(() => useAdminAuditLogsQuery(EMPTY_FILTERS, DEFAULT_PAGINATION), {
+      wrapper: makeWrapper(queryClient),
+    })
 
     await waitFor(() => expect(result.current.isError).toBe(true))
 

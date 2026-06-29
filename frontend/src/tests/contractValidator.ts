@@ -243,8 +243,7 @@ export function validateRequestBody(options: {
 
   const requestBodySchema = (
     (operation["requestBody"] as Record<string, unknown> | undefined)?.["content"] as
-      | Record<string, unknown>
-      | undefined
+      Record<string, unknown> | undefined
   )?.["application/json"] as Record<string, unknown> | undefined
 
   if (!requestBodySchema?.["schema"]) return
@@ -299,8 +298,7 @@ export function validateResponseBody(options: {
 
   const responseBodySchema = (
     (responseSpec["content"] as Record<string, unknown> | undefined)?.["application/json"] as
-      | Record<string, unknown>
-      | undefined
+      Record<string, unknown> | undefined
   )?.["schema"] as SchemaObject | undefined
 
   if (!responseBodySchema) return

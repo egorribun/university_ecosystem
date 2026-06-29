@@ -104,7 +104,8 @@ describe("browser utilities", () => {
 
     it("returns false for Firefox on iOS (FxiOS)", () => {
       mockNavigator({
-        userAgent: "Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) FxiOS/120.0 Safari/605.1.15",
+        userAgent:
+          "Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) FxiOS/120.0 Safari/605.1.15",
         vendor: "Apple Computer, Inc.",
       })
       expect(isSafari()).toBe(false)
@@ -112,7 +113,8 @@ describe("browser utilities", () => {
 
     it("returns false for Chrome on iOS (CriOS)", () => {
       mockNavigator({
-        userAgent: "Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) CriOS/120.0 Safari/605.1.15",
+        userAgent:
+          "Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) CriOS/120.0 Safari/605.1.15",
         vendor: "Apple Computer, Inc.",
       })
       expect(isSafari()).toBe(false)
@@ -120,8 +122,7 @@ describe("browser utilities", () => {
 
     it("returns false for Edge (Edg in UA)", () => {
       mockNavigator({
-        userAgent:
-          "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) Safari/537.36 Edg/120.0",
+        userAgent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) Safari/537.36 Edg/120.0",
         vendor: "Apple Computer, Inc.",
       })
       expect(isSafari()).toBe(false)
@@ -129,8 +130,7 @@ describe("browser utilities", () => {
 
     it("returns false for Opera (OPR in UA)", () => {
       mockNavigator({
-        userAgent:
-          "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) Safari/537.36 OPR/100.0",
+        userAgent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) Safari/537.36 OPR/100.0",
         vendor: "Apple Computer, Inc.",
       })
       expect(isSafari()).toBe(false)

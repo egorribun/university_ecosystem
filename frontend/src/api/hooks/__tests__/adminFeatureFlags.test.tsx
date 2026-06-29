@@ -133,10 +133,9 @@ describe("useAdminFeatureFlagsQuery", () => {
   })
 
   it("respects the enabled option", async () => {
-    const { result } = renderHook(
-      () => useAdminFeatureFlagsQuery({ enabled: false }),
-      { wrapper: makeWrapper(queryClient) }
-    )
+    const { result } = renderHook(() => useAdminFeatureFlagsQuery({ enabled: false }), {
+      wrapper: makeWrapper(queryClient),
+    })
 
     expect(result.current.fetchStatus).toBe("idle")
     expect(apiMock.get).not.toHaveBeenCalled()

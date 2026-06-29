@@ -16,8 +16,7 @@ export type OptimisticEventFile = {
 }
 
 export type FileOptimisticAction =
-  | { type: "add"; file: OptimisticEventFile }
-  | { type: "remove"; id: OptimisticEventFile["id"] }
+  { type: "add"; file: OptimisticEventFile } | { type: "remove"; id: OptimisticEventFile["id"] }
 
 export const applyOptimisticFileAction = (
   current: OptimisticEventFile[],

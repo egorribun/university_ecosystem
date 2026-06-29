@@ -157,8 +157,7 @@ function resolveNavigationType(): WebVitalMetric["navigationType"] {
   }
 
   const navigationEntry = performance.getEntriesByType("navigation")[0] as
-    | PerformanceNavigationTiming
-    | undefined
+    PerformanceNavigationTiming | undefined
   if (!navigationEntry || !navigationEntry.type) {
     return "navigate"
   }

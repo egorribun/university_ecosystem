@@ -157,10 +157,9 @@ describe("useAdminUsersQuery", () => {
   it("fetches users and returns data on success", async () => {
     apiMock.get.mockResolvedValueOnce({ data: USERS_STUB })
 
-    const { result } = renderHook(
-      () => useAdminUsersQuery(EMPTY_FILTERS),
-      { wrapper: makeWrapper(queryClient) }
-    )
+    const { result } = renderHook(() => useAdminUsersQuery(EMPTY_FILTERS), {
+      wrapper: makeWrapper(queryClient),
+    })
 
     expect(result.current.isLoading).toBe(true)
 
@@ -172,10 +171,9 @@ describe("useAdminUsersQuery", () => {
   it("omits empty filter values from API params", async () => {
     apiMock.get.mockResolvedValueOnce({ data: USERS_STUB })
 
-    const { result } = renderHook(
-      () => useAdminUsersQuery(EMPTY_FILTERS),
-      { wrapper: makeWrapper(queryClient) }
-    )
+    const { result } = renderHook(() => useAdminUsersQuery(EMPTY_FILTERS), {
+      wrapper: makeWrapper(queryClient),
+    })
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true))
 
@@ -188,10 +186,9 @@ describe("useAdminUsersQuery", () => {
   it("includes non-empty filter values in API params", async () => {
     apiMock.get.mockResolvedValueOnce({ data: USERS_STUB })
 
-    const { result } = renderHook(
-      () => useAdminUsersQuery(FILLED_FILTERS),
-      { wrapper: makeWrapper(queryClient) }
-    )
+    const { result } = renderHook(() => useAdminUsersQuery(FILLED_FILTERS), {
+      wrapper: makeWrapper(queryClient),
+    })
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true))
 
@@ -210,10 +207,9 @@ describe("useAdminUsersQuery", () => {
   it("normalises non-array response to empty array", async () => {
     apiMock.get.mockResolvedValueOnce({ data: null })
 
-    const { result } = renderHook(
-      () => useAdminUsersQuery(EMPTY_FILTERS),
-      { wrapper: makeWrapper(queryClient) }
-    )
+    const { result } = renderHook(() => useAdminUsersQuery(EMPTY_FILTERS), {
+      wrapper: makeWrapper(queryClient),
+    })
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true))
 
@@ -223,10 +219,9 @@ describe("useAdminUsersQuery", () => {
   it("enters error state when API call fails", async () => {
     apiMock.get.mockRejectedValueOnce(new Error("Network Error"))
 
-    const { result } = renderHook(
-      () => useAdminUsersQuery(EMPTY_FILTERS),
-      { wrapper: makeWrapper(queryClient) }
-    )
+    const { result } = renderHook(() => useAdminUsersQuery(EMPTY_FILTERS), {
+      wrapper: makeWrapper(queryClient),
+    })
 
     await waitFor(() => expect(result.current.isError).toBe(true))
 
@@ -234,10 +229,9 @@ describe("useAdminUsersQuery", () => {
   })
 
   it("respects the enabled option", async () => {
-    const { result } = renderHook(
-      () => useAdminUsersQuery(EMPTY_FILTERS, { enabled: false }),
-      { wrapper: makeWrapper(queryClient) }
-    )
+    const { result } = renderHook(() => useAdminUsersQuery(EMPTY_FILTERS, { enabled: false }), {
+      wrapper: makeWrapper(queryClient),
+    })
 
     expect(result.current.fetchStatus).toBe("idle")
     expect(apiMock.get).not.toHaveBeenCalled()

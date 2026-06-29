@@ -58,17 +58,11 @@ afterEach(() => {
 // ── adminDeadLetterQueueQueryKey ────────────────────────────────────────────
 describe("adminDeadLetterQueueQueryKey", () => {
   it("is the static tuple ['admin', 'notifications', 'dead-letter']", () => {
-    expect(adminDeadLetterQueueQueryKey).toEqual([
-      "admin",
-      "notifications",
-      "dead-letter",
-    ])
+    expect(adminDeadLetterQueueQueryKey).toEqual(["admin", "notifications", "dead-letter"])
   })
 
   it("matches adminDeadLetterQueueQueryOptions().queryKey reference identity", () => {
-    expect(adminDeadLetterQueueQueryOptions().queryKey).toBe(
-      adminDeadLetterQueueQueryKey
-    )
+    expect(adminDeadLetterQueueQueryOptions().queryKey).toBe(adminDeadLetterQueueQueryKey)
   })
 })
 
@@ -135,10 +129,9 @@ describe("useAdminDeadLetterQueueQuery", () => {
   })
 
   it("respects the enabled option", async () => {
-    const { result } = renderHook(
-      () => useAdminDeadLetterQueueQuery({ enabled: false }),
-      { wrapper: makeWrapper(queryClient) }
-    )
+    const { result } = renderHook(() => useAdminDeadLetterQueueQuery({ enabled: false }), {
+      wrapper: makeWrapper(queryClient),
+    })
 
     expect(result.current.fetchStatus).toBe("idle")
     expect(fetchMock).not.toHaveBeenCalled()
