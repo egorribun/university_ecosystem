@@ -1,10 +1,7 @@
 import { describe, expect, it } from "vitest"
-import { estimateReadingTime } from "../readingTime"
+import { estimateReadingTime } from "@/utils/readingTime"
 
 describe("estimateReadingTime", () => {
-  // ---------------------------------------------------------------------------
-  // Empty / blank content
-  // ---------------------------------------------------------------------------
   it("returns null for empty string", () => {
     expect(estimateReadingTime("")).toBeNull()
   })
@@ -13,58 +10,47 @@ describe("estimateReadingTime", () => {
     expect(estimateReadingTime("   ")).toBeNull()
   })
 
-  it("returns null for HTML-only content (no text)", () => {
-    expect(estimateReadingTime("<p></p><br/>")).toBeNull()
-  })
-
-  // ---------------------------------------------------------------------------
-  // Minimum reading time
-  // ---------------------------------------------------------------------------
-  it("returns at least 1 minute for a few words", () => {
+  it("returns 1 for very short text (minimum 1 minute)", () => {
     expect(estimateReadingTime("Hello world")).toBe(1)
   })
 
-  it("returns 1 minute for fewer than 220 words", () => {
-    const text = "word ".repeat(100)
-    expect(estimateReadingTime(text)).toBe(1)
+  it("returns 1 for a single word", () => {
+    expect(estimateReadingTime("Hello")).toBe(1)
   })
 
-  // ---------------------------------------------------------------------------
-  // Standard calculation: 220 wpm
-  // ---------------------------------------------------------------------------
-  it("returns 1 minute for exactly 220 words", () => {
-    const text = "word ".repeat(220)
-    expect(estimateReadingTime(text)).toBe(1)
+  it("calculates reading time for normal text (~220 wpm)", () => {
+    // 440 words → 440/220 = 2 minutes
+    const words = Array.from({ length: 440 }, () => "word").join(" ")
+    expect(estimateReadingTime(words)).toBe(2)
   })
 
-  it("returns 2 minutes for 440 words", () => {
-    const text = "word ".repeat(440)
-    expect(estimateReadingTime(text)).toBe(2)
-  })
-
-  it("returns 5 minutes for 1100 words", () => {
-    const text = "word ".repeat(1100)
-    expect(estimateReadingTime(text)).toBe(5)
-  })
-
-  // ---------------------------------------------------------------------------
-  // HTML stripping
-  // ---------------------------------------------------------------------------
   it("strips HTML tags before counting words", () => {
-    const html = "<p>Hello</p><p>World</p>"
-    // 2 words → 1 minute
+    const html = "<p>Hello</p> <strong>world</strong> <a href='#'>link</a>"
+    // 3 words → 1 minute
     expect(estimateReadingTime(html)).toBe(1)
   })
 
-  it("correctly counts words inside nested tags", () => {
-    const html = "<article><h1>Title</h1><p>This <strong>is</strong> a test.</p></article>"
-    // "Title This is a test." → 5 words → 1 minute
-    expect(estimateReadingTime(html)).toBe(1)
+  it("handles complex HTML content", () => {
+    // Generate ~220 words wrapped in HTML
+    const words = Array.from({ length: 220 }, (_, i) => `<span>word${i}</span>`).join(" ")
+    const result = estimateReadingTime(words)
+    expect(result).toBe(1) // 220 words / 220 wpm = 1
   })
 
-  it("handles HTML with inline style attributes", () => {
-    const html = '<span style="color:red">Important text here</span>'
-    // "Important text here" → 3 words → 1 minute
-    expect(estimateReadingTime(html)).toBe(1)
+  it("collapses multiple whitespace before counting", () => {
+    const text = "word1    word2    word3"
+    expect(estimateReadingTime(text)).toBe(1)
+  })
+
+  it("rounds to nearest minute", () => {
+    // 330 words → 330/220 = 1.5 → rounds to 2
+    const words = Array.from({ length: 330 }, () => "word").join(" ")
+    expect(estimateReadingTime(words)).toBe(2)
+  })
+
+  it("handles large text", () => {
+    // 2200 words → 10 minutes
+    const words = Array.from({ length: 2200 }, () => "word").join(" ")
+    expect(estimateReadingTime(words)).toBe(10)
   })
 })

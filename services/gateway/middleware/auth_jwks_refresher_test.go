@@ -48,13 +48,11 @@ func TestJWKSRefresher_FailuresAndRetries(t *testing.T) {
 		if count == 1 {
 			// First request fails with 500
 			w.WriteHeader(http.StatusInternalServerError)
-			_, err := w.Write([]byte("internal error"))
-			require.NoError(t, err)
+			_, _ = w.Write([]byte("internal error"))
 		} else {
 			// Subsequent requests succeed
 			w.WriteHeader(http.StatusOK)
-			_, err := w.Write(jwksBytes1)
-			require.NoError(t, err)
+			_, _ = w.Write(jwksBytes1)
 		}
 	}))
 	defer server.Close()
@@ -94,9 +92,7 @@ func TestJWKSRefresher_KeyRotation(t *testing.T) {
 	nB64_2 := base64.RawURLEncoding.EncodeToString(privateKey2.N.Bytes())
 	eB64 := base64.RawURLEncoding.EncodeToString([]byte{1, 0, 1})
 
-	makeJWKS := func(t *testing.T, n string) []byte {
-		t.Helper()
-
+	makeJWKS := func(n string) []byte {
 		jwks := struct {
 			Keys []map[string]string `json:"keys"`
 		}{
@@ -108,8 +104,7 @@ func TestJWKSRefresher_KeyRotation(t *testing.T) {
 				},
 			},
 		}
-		b, err := json.Marshal(jwks)
-		require.NoError(t, err)
+		b, _ := json.Marshal(jwks)
 		return b
 	}
 
@@ -119,11 +114,9 @@ func TestJWKSRefresher_KeyRotation(t *testing.T) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		if atomic.LoadInt32(&useKey2) == 1 {
-			_, err := w.Write(makeJWKS(t, nB64_2))
-			require.NoError(t, err)
+			_, _ = w.Write(makeJWKS(nB64_2))
 		} else {
-			_, err := w.Write(makeJWKS(t, nB64_1))
-			require.NoError(t, err)
+			_, _ = w.Write(makeJWKS(nB64_1))
 		}
 	}))
 	defer server.Close()

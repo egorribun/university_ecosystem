@@ -34,24 +34,22 @@ This contract catches that drift at CI time.
 from __future__ import annotations
 
 import json
-
-# ---------------------------------------------------------------------------
-# Pact availability guard (same pattern as test_ws_hub_contract.py)
-# ---------------------------------------------------------------------------
-import sys
 from pathlib import Path
 from typing import Any
 
 import pytest
 
-pact_lib = None
-if sys.platform != "win32":
-    try:
-        import pact
+# ---------------------------------------------------------------------------
+# Pact availability guard (same pattern as test_ws_hub_contract.py)
+# ---------------------------------------------------------------------------
 
-        pact_lib = pact
-    except ImportError:
-        pass
+pact_lib = None
+try:
+    import pact
+
+    pact_lib = pact
+except ImportError:
+    pass
 
 if pact_lib is None:
     pytestmark = pytest.mark.skip(
@@ -87,9 +85,7 @@ _SAMPLE_DURATION_MS = 423
 # ---------------------------------------------------------------------------
 
 
-def _backend_callback_handler(
-    msg: str | bytes | None, context: dict[str, Any]
-) -> dict[str, Any]:
+def _backend_callback_handler(msg: str | bytes | None, context: dict[str, Any]) -> dict[str, Any]:
     """Simulate the Python backend's file-processor callback receiver.
 
     Mirrors the validation a Python endpoint must perform on a
@@ -125,9 +121,7 @@ def _backend_callback_handler(
 
     # Optional fields type-check (only validate if present)
     if "dest_key" in payload:
-        assert isinstance(payload["dest_key"], str), (
-            "dest_key must be a string when present"
-        )
+        assert isinstance(payload["dest_key"], str), "dest_key must be a string when present"
 
     if "error" in payload:
         assert isinstance(payload["error"], str), "error must be a string when present"

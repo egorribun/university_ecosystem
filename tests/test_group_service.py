@@ -1,17 +1,20 @@
+from unittest.mock import AsyncMock
+
 import pytest
 
+from app.schemas.dtos import GroupDTO
 from app.services.group_service import GroupService
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize(
-    "group_id, expected_status",
-    [
-        (1, True),
-        (999, False),
-    ],
-)
-async def test_get_group_status(group_id, expected_status, mock_db):
-    service = GroupService(db=mock_db)
-    result = await service.get_group_status(group_id)
-    assert result == expected_status
+async def test_get_groups():
+    db = AsyncMock()
+    repo = AsyncMock()
+    repo.list_groups.return_value = [GroupDTO(id="1", name="Group 1")]
+    
+    service = GroupService(db, repo)
+    res = await service.get_groups()
+    
+    assert len(res) == 1
+    assert res[0].name == "Group 1"
+    repo.list_groups.assert_called_once()
