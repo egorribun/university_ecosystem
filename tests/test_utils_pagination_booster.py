@@ -4,11 +4,11 @@ Covers encode_cursor, decode_cursor, encode_datetime_cursor,
 decode_datetime_cursor, paginate_cursor, CursorPage, CursorParams.
 Goal: 90%+ coverage.
 """
+
 from __future__ import annotations
 
-import base64
 import uuid
-from datetime import UTC, datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -23,10 +23,10 @@ from app.utils.pagination import (
     paginate_cursor,
 )
 
-
 # ---------------------------------------------------------------------------
 # encode_cursor / decode_cursor
 # ---------------------------------------------------------------------------
+
 
 def test_encode_cursor_integer():
     encoded = encode_cursor(42)
@@ -66,6 +66,7 @@ def test_encode_decode_roundtrip():
 # ---------------------------------------------------------------------------
 # encode_datetime_cursor / decode_datetime_cursor
 # ---------------------------------------------------------------------------
+
 
 def test_encode_decode_datetime_cursor_roundtrip():
     now = datetime(2025, 6, 15, 12, 30, 45, 123456, tzinfo=UTC)
@@ -117,6 +118,7 @@ def test_encode_datetime_cursor_int_secondary():
 # CursorParams
 # ---------------------------------------------------------------------------
 
+
 def test_cursor_params_defaults():
     params = CursorParams()
     assert params.cursor is None
@@ -141,14 +143,19 @@ def test_cursor_params_limit_clamps():
 # CursorPage
 # ---------------------------------------------------------------------------
 
+
 def test_cursor_page_basic():
-    page: CursorPage[int] = CursorPage(items=[1, 2, 3], next_cursor="abc", has_more=True)
+    page: CursorPage[int] = CursorPage(
+        items=[1, 2, 3], next_cursor="abc", has_more=True
+    )
     assert len(page.items) == 3
     assert page.has_more
 
 
 def test_cursor_page_no_more():
-    page: CursorPage[str] = CursorPage(items=["a"], next_cursor=None, has_more=False, total_count=1)
+    page: CursorPage[str] = CursorPage(
+        items=["a"], next_cursor=None, has_more=False, total_count=1
+    )
     assert not page.has_more
     assert page.total_count == 1
 
@@ -156,6 +163,7 @@ def test_cursor_page_no_more():
 # ---------------------------------------------------------------------------
 # paginate_cursor
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_paginate_cursor_no_cursor_no_total():
@@ -234,7 +242,9 @@ async def test_paginate_cursor_with_total():
     session.scalars.return_value = mock_scalars
 
     params = CursorParams(limit=10)
-    result = await paginate_cursor(session, stmt, cursor_column, params, include_total=True)
+    result = await paginate_cursor(
+        session, stmt, cursor_column, params, include_total=True
+    )
 
     assert result.total_count == 42
 
@@ -253,7 +263,9 @@ async def test_paginate_cursor_ascending_order():
     session.scalars.return_value = mock_scalars
 
     params = CursorParams(limit=10)
-    result = await paginate_cursor(session, stmt, cursor_column, params, descending=False)
+    result = await paginate_cursor(
+        session, stmt, cursor_column, params, descending=False
+    )
 
     cursor_column.asc.assert_called()
     assert not result.has_more

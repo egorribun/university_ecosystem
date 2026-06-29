@@ -15,7 +15,6 @@ from httpx import ASGITransport, AsyncClient
 
 from app.routers.schedule import _build_filename
 
-
 # ---------------------------------------------------------------------------
 # _build_filename unit tests
 # ---------------------------------------------------------------------------
@@ -41,7 +40,7 @@ class TestBuildFilename:
         assert result.startswith("schedule-")
         assert result.endswith(".ics")
         # Only A-Za-z0-9 and hyphens should remain
-        name_part = result[len("schedule-"):-len(".ics")]
+        name_part = result[len("schedule-") : -len(".ics")]
         assert all(c.isalnum() or c == "-" for c in name_part)
 
     def test_empty_name_uses_group_id(self):
@@ -146,7 +145,9 @@ class TestDownloadScheduleIcs:
             return_value=ics_content,
         ):
             transport = ASGITransport(app=app)
-            async with AsyncClient(transport=transport, base_url="http://test") as client:
+            async with AsyncClient(
+                transport=transport, base_url="http://test"
+            ) as client:
                 response = await client.get(f"/schedule/ics?group={group_id}")
 
         assert response.status_code == 200
@@ -199,15 +200,20 @@ class TestDownloadScheduleIcs:
         app.dependency_overrides[get_read_db] = lambda: mock_db
         app.dependency_overrides[get_read_schedule_service] = lambda: mock_service
 
-        with patch(
-            "app.routers.schedule.generate_schedule_ics",
-            return_value="BEGIN:VCALENDAR\nEND:VCALENDAR",
-        ), patch(
-            "app.routers.schedule.resolve_locale",
-            return_value="uk",
+        with (
+            patch(
+                "app.routers.schedule.generate_schedule_ics",
+                return_value="BEGIN:VCALENDAR\nEND:VCALENDAR",
+            ),
+            patch(
+                "app.routers.schedule.resolve_locale",
+                return_value="uk",
+            ),
         ):
             transport = ASGITransport(app=app)
-            async with AsyncClient(transport=transport, base_url="http://test") as client:
+            async with AsyncClient(
+                transport=transport, base_url="http://test"
+            ) as client:
                 response = await client.get(
                     f"/schedule/ics?group={group_id}",
                     headers={"Accept-Language": "uk"},
@@ -243,7 +249,9 @@ class TestDownloadScheduleIcs:
             return_value="BEGIN:VCALENDAR\nEND:VCALENDAR",
         ):
             transport = ASGITransport(app=app)
-            async with AsyncClient(transport=transport, base_url="http://test") as client:
+            async with AsyncClient(
+                transport=transport, base_url="http://test"
+            ) as client:
                 response = await client.get(f"/schedule/ics?group={group_id}")
 
         assert response.status_code == 200
@@ -251,7 +259,11 @@ class TestDownloadScheduleIcs:
         assert "attachment" in disposition
         assert ".ics" in disposition
         # Filename should not contain path separators
-        assert "/" not in disposition.split("filename=")[1] if "filename=" in disposition else True
+        assert (
+            "/" not in disposition.split("filename=")[1]
+            if "filename=" in disposition
+            else True
+        )
 
     @pytest.mark.asyncio
     async def test_cache_control_no_cache(self):
@@ -280,7 +292,9 @@ class TestDownloadScheduleIcs:
             return_value="BEGIN:VCALENDAR\nEND:VCALENDAR",
         ):
             transport = ASGITransport(app=app)
-            async with AsyncClient(transport=transport, base_url="http://test") as client:
+            async with AsyncClient(
+                transport=transport, base_url="http://test"
+            ) as client:
                 response = await client.get(f"/schedule/ics?group={group_id}")
 
         assert response.status_code == 200

@@ -7,8 +7,7 @@ and http_exception_handler for correct RFC 7807 responses.
 from __future__ import annotations
 
 import json
-from typing import Any
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 from fastapi import HTTPException, status
@@ -27,7 +26,6 @@ from app.core.exceptions.handlers import (
     domain_exception_handler,
     http_exception_handler,
 )
-
 
 # ---------------------------------------------------------------------------
 # _loc_to_pointer
@@ -97,10 +95,11 @@ class TestAsgiJsonProblem:
         async def mock_send(message: dict) -> None:
             messages.append(message)
 
-        with patch(
-            "app.core.exceptions.handlers.translate", return_value="Bad Request"
-        ), patch(
-            "app.core.exceptions.handlers.get_trace_id", return_value="trace-123"
+        with (
+            patch("app.core.exceptions.handlers.translate", return_value="Bad Request"),
+            patch(
+                "app.core.exceptions.handlers.get_trace_id", return_value="trace-123"
+            ),
         ):
             await asgi_json_problem(
                 mock_send,
@@ -117,9 +116,7 @@ class TestAsgiJsonProblem:
         assert start_msg["status"] == 400
 
         # Check content-type header
-        headers_dict = {
-            k.decode(): v.decode() for k, v in start_msg["headers"]
-        }
+        headers_dict = {k.decode(): v.decode() for k, v in start_msg["headers"]}
         assert headers_dict["content-type"] == "application/problem+json"
 
     @pytest.mark.asyncio
@@ -130,10 +127,11 @@ class TestAsgiJsonProblem:
         async def mock_send(message: dict) -> None:
             messages.append(message)
 
-        with patch(
-            "app.core.exceptions.handlers.translate", return_value="Not Found"
-        ), patch(
-            "app.core.exceptions.handlers.get_trace_id", return_value="trace-456"
+        with (
+            patch("app.core.exceptions.handlers.translate", return_value="Not Found"),
+            patch(
+                "app.core.exceptions.handlers.get_trace_id", return_value="trace-456"
+            ),
         ):
             await asgi_json_problem(
                 mock_send,
@@ -159,10 +157,11 @@ class TestAsgiJsonProblem:
         async def mock_send(message: dict) -> None:
             messages.append(message)
 
-        with patch(
-            "app.core.exceptions.handlers.translate", return_value="Error"
-        ), patch(
-            "app.core.exceptions.handlers.get_trace_id", return_value="trace-789"
+        with (
+            patch("app.core.exceptions.handlers.translate", return_value="Error"),
+            patch(
+                "app.core.exceptions.handlers.get_trace_id", return_value="trace-789"
+            ),
         ):
             await asgi_json_problem(
                 mock_send,
@@ -173,9 +172,7 @@ class TestAsgiJsonProblem:
             )
 
         start_msg = messages[0]
-        headers_dict = {
-            k.decode(): v.decode() for k, v in start_msg["headers"]
-        }
+        headers_dict = {k.decode(): v.decode() for k, v in start_msg["headers"]}
         assert headers_dict.get("Retry-After") == "60"
         assert headers_dict.get("X-Custom") == "value"
 
@@ -187,10 +184,11 @@ class TestAsgiJsonProblem:
         async def mock_send(message: dict) -> None:
             messages.append(message)
 
-        with patch(
-            "app.core.exceptions.handlers.translate", return_value="Translated"
-        ), patch(
-            "app.core.exceptions.handlers.get_trace_id", return_value="trace-000"
+        with (
+            patch("app.core.exceptions.handlers.translate", return_value="Translated"),
+            patch(
+                "app.core.exceptions.handlers.get_trace_id", return_value="trace-000"
+            ),
         ):
             await asgi_json_problem(
                 mock_send,
@@ -322,9 +320,7 @@ class TestDomainExceptionHandler:
         exc = PermissionDenied()
         request = _make_request()
 
-        with patch(
-            "app.core.exceptions.handlers.get_trace_id", return_value="trace"
-        ):
+        with patch("app.core.exceptions.handlers.get_trace_id", return_value="trace"):
             response = await domain_exception_handler(request, exc)
 
         assert response.media_type == "application/problem+json"
@@ -418,9 +414,7 @@ class TestHttpExceptionHandler:
         exc = HTTPException(status_code=400, detail="Bad request")
         request = _make_request("/api/v2/users")
 
-        with patch(
-            "app.core.exceptions.handlers.get_trace_id", return_value="trace"
-        ):
+        with patch("app.core.exceptions.handlers.get_trace_id", return_value="trace"):
             response = await http_exception_handler(request, exc)
 
         body = json.loads(response.body)
@@ -436,9 +430,7 @@ class TestHttpExceptionHandler:
         )
         request = _make_request()
 
-        with patch(
-            "app.core.exceptions.handlers.get_trace_id", return_value="trace"
-        ):
+        with patch("app.core.exceptions.handlers.get_trace_id", return_value="trace"):
             response = await http_exception_handler(request, exc)
 
         assert response.status_code == 401

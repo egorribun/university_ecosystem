@@ -17,7 +17,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -27,7 +26,7 @@ def _make_db_context(**entities: object) -> AsyncMock:
     """Return an AsyncMock session whose .get() returns entities by model class."""
     db = AsyncMock()
 
-    async def _get(model, pk):  # noqa: ANN001
+    async def _get(model, pk):
         return entities.get(model.__name__)
 
     db.get.side_effect = _get
@@ -89,7 +88,9 @@ class TestCleanupTasks:
             from app.tasks.cleanups import cleanup_dead_letter_jobs_task
 
             await cleanup_dead_letter_jobs_task()
-            mock_queue.cleanup_dead_lettered_jobs.assert_awaited_once_with(retention_days=7)
+            mock_queue.cleanup_dead_lettered_jobs.assert_awaited_once_with(
+                retention_days=7
+            )
 
     @pytest.mark.asyncio
     async def test_cleanup_dead_letter_jobs_disabled(self) -> None:

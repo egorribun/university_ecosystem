@@ -3,14 +3,11 @@
 Targets lightweight utility functions that do not require DB connections
 or real VAPID credentials. Goal: bring coverage of pure/utility paths to ~50%.
 """
+
 from __future__ import annotations
 
-import json
-from datetime import time, timezone
-from typing import Any
+from datetime import time
 from unittest.mock import MagicMock, patch
-
-import pytest
 
 from app.services import webpush as webpush_mod
 from app.services.webpush import (
@@ -22,10 +19,10 @@ from app.services.webpush import (
     json_dumps,
 )
 
-
 # ---------------------------------------------------------------------------
 # json_dumps
 # ---------------------------------------------------------------------------
+
 
 def test_json_dumps_basic():
     assert json_dumps({"key": "value"}) == '{"key": "value"}'
@@ -44,6 +41,7 @@ def test_json_dumps_empty_dict():
 # ---------------------------------------------------------------------------
 # _mask_endpoint
 # ---------------------------------------------------------------------------
+
 
 def test_mask_endpoint_none():
     assert _mask_endpoint(None) is None
@@ -74,6 +72,7 @@ def test_mask_endpoint_no_scheme():
 # _sanitize_vibrate
 # ---------------------------------------------------------------------------
 
+
 def test_sanitize_vibrate_list_of_ints():
     assert _sanitize_vibrate([100, 50, 200]) == [100, 50, 200]
 
@@ -102,6 +101,7 @@ def test_sanitize_vibrate_tuple():
 # ---------------------------------------------------------------------------
 # _current_local_time
 # ---------------------------------------------------------------------------
+
 
 def test_current_local_time_no_user():
     t = _current_local_time(None)
@@ -153,6 +153,7 @@ def test_current_local_time_user_tz_empty_string():
 # ---------------------------------------------------------------------------
 # _is_user_in_quiet_hours
 # ---------------------------------------------------------------------------
+
 
 def test_is_user_in_quiet_hours_no_user():
     assert not _is_user_in_quiet_hours(None)
@@ -243,6 +244,7 @@ def test_is_user_in_quiet_hours_simple_daytime_window():
 # cleanup()
 # ---------------------------------------------------------------------------
 
+
 def test_cleanup_no_op_when_nothing_initialized():
     """cleanup() should not raise when no engine is initialized."""
     # Reset module state
@@ -281,6 +283,7 @@ def test_cleanup_disposes_engine():
 # ---------------------------------------------------------------------------
 # _get_sync_url
 # ---------------------------------------------------------------------------
+
 
 def test_get_sync_url_asyncpg_converts_to_psycopg():
     """asyncpg driver suffix should be replaced with psycopg."""

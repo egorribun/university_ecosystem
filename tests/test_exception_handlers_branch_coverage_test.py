@@ -1,18 +1,20 @@
-import pytest
 import json
 from unittest.mock import AsyncMock, patch
-from fastapi import Request, HTTPException, status
-from app.core.exceptions.handlers import (
-    _loc_to_pointer,
-    asgi_json_problem,
-    domain_exception_handler,
-    http_exception_handler,
-)
+
+import pytest
+from fastapi import HTTPException, Request, status
+
 from app.core.exceptions.domain import (
     BusinessRuleViolation,
     EntityAlreadyExists,
     EntityNotFound,
     PermissionDenied,
+)
+from app.core.exceptions.handlers import (
+    _loc_to_pointer,
+    asgi_json_problem,
+    domain_exception_handler,
+    http_exception_handler,
 )
 
 
@@ -47,7 +49,10 @@ async def test_asgi_json_problem_detail_text():
 
 @pytest.mark.asyncio
 async def test_asgi_json_problem_detail_key(monkeypatch):
-    monkeypatch.setattr("app.core.exceptions.handlers.translate", lambda k, locale, **kwargs: f"tr_{k}_{kwargs.get('foo', '')}")
+    monkeypatch.setattr(
+        "app.core.exceptions.handlers.translate",
+        lambda k, locale, **kwargs: f"tr_{k}_{kwargs.get('foo', '')}",
+    )
     send = AsyncMock()
     await asgi_json_problem(
         send,
@@ -64,7 +69,9 @@ async def test_asgi_json_problem_detail_key(monkeypatch):
 @pytest.mark.asyncio
 async def test_asgi_json_problem_no_detail():
     send = AsyncMock()
-    with patch("app.core.exceptions.handlers.translate", return_value="Translated Title"):
+    with patch(
+        "app.core.exceptions.handlers.translate", return_value="Translated Title"
+    ):
         await asgi_json_problem(
             send,
             status_code=500,
@@ -78,20 +85,50 @@ async def test_asgi_json_problem_no_detail():
 @pytest.mark.parametrize(
     "exception_cls, kwargs, expected_status, expected_type",
     [
-        (EntityNotFound, {"entity_type": "User", "entity_id": "1"}, status.HTTP_404_NOT_FOUND, "https://api.university.edu/probs/not-found"),
-        (EntityAlreadyExists, {"entity_type": "User", "entity_id": "1"}, status.HTTP_409_CONFLICT, "https://api.university.edu/probs/conflict"),
-        (PermissionDenied, {}, status.HTTP_403_FORBIDDEN, "https://api.university.edu/probs/forbidden"),
-        (BusinessRuleViolation, {"message": "Invalid rule"}, status.HTTP_400_BAD_REQUEST, "https://api.university.edu/probs/business-rule"),
+        (
+            EntityNotFound,
+            {"entity_type": "User", "entity_id": "1"},
+            status.HTTP_404_NOT_FOUND,
+            "https://api.university.edu/probs/not-found",
+        ),
+        (
+            EntityAlreadyExists,
+            {"entity_type": "User", "entity_id": "1"},
+            status.HTTP_409_CONFLICT,
+            "https://api.university.edu/probs/conflict",
+        ),
+        (
+            PermissionDenied,
+            {},
+            status.HTTP_403_FORBIDDEN,
+            "https://api.university.edu/probs/forbidden",
+        ),
+        (
+            BusinessRuleViolation,
+            {"message": "Invalid rule"},
+            status.HTTP_400_BAD_REQUEST,
+            "https://api.university.edu/probs/business-rule",
+        ),
     ],
 )
 @pytest.mark.asyncio
-async def test_domain_exception_handler(monkeypatch, exception_cls, kwargs, expected_status, expected_type):
+async def test_domain_exception_handler(
+    monkeypatch, exception_cls, kwargs, expected_status, expected_type
+):
     monkeypatch.setattr("app.core.exceptions.handlers.resolve_locale", lambda req: "en")
-    monkeypatch.setattr("app.core.exceptions.handlers.translate", lambda k, locale, **kw: f"tr_{k}")
+    monkeypatch.setattr(
+        "app.core.exceptions.handlers.translate", lambda k, locale, **kw: f"tr_{k}"
+    )
     monkeypatch.setattr("app.core.exceptions.handlers.get_trace_id", lambda: "trace123")
 
-    request = Request(scope={"type": "http", "method": "GET", "url": "http://testserver/"})
-    exc = exception_cls(**kwargs) if kwargs and exception_cls is not PermissionDenied else exception_cls()
+    request = Request(
+        scope={"type": "http", "method": "GET", "url": "http://testserver/"}
+    )
+    exc = (
+        exception_cls(**kwargs)
+        if kwargs and exception_cls is not PermissionDenied
+        else exception_cls()
+    )
 
     response = await domain_exception_handler(request, exc)
     assert response.status_code == expected_status
@@ -104,13 +141,19 @@ async def test_domain_exception_handler(monkeypatch, exception_cls, kwargs, expe
 async def test_domain_exception_handler_fallback(monkeypatch):
     # Test fallback if it's a generic Exception or some other domain exception not explicitly handled
     monkeypatch.setattr("app.core.exceptions.handlers.resolve_locale", lambda req: "en")
-    monkeypatch.setattr("app.core.exceptions.handlers.translate", lambda k, locale, **kw: f"tr_{k}")
-    
+    monkeypatch.setattr(
+        "app.core.exceptions.handlers.translate", lambda k, locale, **kw: f"tr_{k}"
+    )
+
     class CustomDomainException(Exception):
         pass
 
-    request = Request(scope={"type": "http", "method": "GET", "url": "http://testserver/"})
-    response = await domain_exception_handler(request, CustomDomainException("some error"))
+    request = Request(
+        scope={"type": "http", "method": "GET", "url": "http://testserver/"}
+    )
+    response = await domain_exception_handler(
+        request, CustomDomainException("some error")
+    )
     assert response.status_code == status.HTTP_400_BAD_REQUEST
     body = json.loads(response.body.decode("utf-8"))
     assert body["detail"] == "some error"
@@ -135,10 +178,16 @@ async def test_domain_exception_handler_fallback(monkeypatch):
 @pytest.mark.asyncio
 async def test_http_exception_handler(monkeypatch, status_code, expected_title_key):
     monkeypatch.setattr("app.core.exceptions.handlers.resolve_locale", lambda req: "en")
-    monkeypatch.setattr("app.core.exceptions.handlers.translate", lambda k, locale: f"tr_{k}")
+    monkeypatch.setattr(
+        "app.core.exceptions.handlers.translate", lambda k, locale: f"tr_{k}"
+    )
 
-    request = Request(scope={"type": "http", "method": "GET", "url": "http://testserver/"})
-    exc = HTTPException(status_code=status_code, detail="some detail", headers={"X-A": "B"})
+    request = Request(
+        scope={"type": "http", "method": "GET", "url": "http://testserver/"}
+    )
+    exc = HTTPException(
+        status_code=status_code, detail="some detail", headers={"X-A": "B"}
+    )
 
     response = await http_exception_handler(request, exc)
     assert response.status_code == status_code

@@ -4,19 +4,18 @@
 
 Goal: bring both from ~26-30% to ~85%.
 """
+
 from __future__ import annotations
 
 import uuid
 from datetime import UTC, datetime
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
-
 
 # ===========================================================================
 # uuid_v7.py
 # ===========================================================================
-
 from app.utils.uuid_v7 import extract_timestamp_from_uuid_v7, generate_uuid7
 
 
@@ -58,6 +57,7 @@ class TestGenerateUuidV7:
     def test_temporal_ordering(self):
         """UUIDs generated later should have greater integer values (monotone)."""
         import time
+
         uid1 = generate_uuid7()
         time.sleep(0.002)  # 2ms gap
         uid2 = generate_uuid7()
@@ -93,13 +93,13 @@ class TestExtractTimestampFromUuidV7:
 # geolocation.py
 # ===========================================================================
 
+import app.services.geolocation as geo_mod
 from app.services.geolocation import (
     GeolocationService,
     LocationInfo,
     get_geolocation_service_instance,
     shutdown_geolocation_service,
 )
-import app.services.geolocation as geo_mod
 
 
 class TestLocationInfo:
@@ -111,7 +111,9 @@ class TestLocationInfo:
         assert info.longitude is None
 
     def test_with_values(self):
-        info = LocationInfo(country="US", city="NYC", latitude="40.7", longitude="-74.0")
+        info = LocationInfo(
+            country="US", city="NYC", latitude="40.7", longitude="-74.0"
+        )
         assert info.country == "US"
         assert info.city == "NYC"
 
@@ -242,7 +244,10 @@ class TestGeolocationServiceInitialize:
         service.reader = None
         service.db_path = "/nonexistent/path/geoip.mmdb"
 
-        with patch("app.services.geolocation.aiofiles.open", side_effect=FileNotFoundError("not found")):
+        with patch(
+            "app.services.geolocation.aiofiles.open",
+            side_effect=FileNotFoundError("not found"),
+        ):
             await service.initialize()
 
         assert service._initialized

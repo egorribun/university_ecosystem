@@ -1,18 +1,26 @@
 #!/usr/bin/env python
 # tests/fuzz/run_atheris.py — coverage-guided Python API fuzzer
 import sys
+
 import atheris
 
 # Instrument imports to track coverage
 with atheris.instrument_imports():
-    from app.utils.sanitization import sanitize_html, sanitize_rich_text, sanitize_filename, sanitize_url
-    from app.schemas.schemas import UserPreferencesBase, ResetPasswordIn
-    from pydantic import ValidationError
     from fastapi import HTTPException
+    from pydantic import ValidationError
+
+    from app.schemas.schemas import ResetPasswordIn, UserPreferencesBase
+    from app.utils.sanitization import (
+        sanitize_filename,
+        sanitize_html,
+        sanitize_rich_text,
+        sanitize_url,
+    )
+
 
 def TestOneInput(data):
     fdp = atheris.FuzzedDataProvider(data)
-    
+
     # 1. Fuzz sanitization functions
     try:
         html_input = fdp.ConsumeUnicodeNoSurrogates(1000)
@@ -46,7 +54,7 @@ def TestOneInput(data):
     try:
         dnd_enabled = fdp.ConsumeBool()
         timezone = fdp.ConsumeUnicodeNoSurrogates(100)
-        
+
         # Construct raw payload
         payload = {
             "dnd_enabled": dnd_enabled,
@@ -57,7 +65,7 @@ def TestOneInput(data):
             payload["dnd_start"] = fdp.ConsumeUnicodeNoSurrogates(20)
         if fdp.ConsumeBool():
             payload["dnd_end"] = fdp.ConsumeUnicodeNoSurrogates(20)
-            
+
         UserPreferencesBase.model_validate(payload)
     except (ValidationError, ValueError):
         # Expected validation / domain logic errors
@@ -70,10 +78,7 @@ def TestOneInput(data):
     try:
         token = fdp.ConsumeUnicodeNoSurrogates(100)
         password = fdp.ConsumeUnicodeNoSurrogates(300)
-        payload = {
-            "token": token,
-            "password": password
-        }
+        payload = {"token": token, "password": password}
         ResetPasswordIn.model_validate(payload)
     except (ValidationError, ValueError):
         # Expected validation / domain logic errors
@@ -82,10 +87,12 @@ def TestOneInput(data):
         print(f"CRASH in ResetPasswordIn validation: {e}", file=sys.stderr)
         raise
 
+
 def main():
     # Setup and run fuzzer
     atheris.Setup(sys.argv, TestOneInput)
     atheris.Fuzz()
+
 
 if __name__ == "__main__":
     main()

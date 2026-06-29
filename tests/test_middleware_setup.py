@@ -7,9 +7,8 @@ and that each helper function passes the right parameters from Settings.
 from __future__ import annotations
 
 from typing import Any
-from unittest.mock import MagicMock, call, patch
+from unittest.mock import MagicMock
 
-import pytest
 from fastapi import FastAPI
 
 from app.core.middleware.setup import (
@@ -19,7 +18,6 @@ from app.core.middleware.setup import (
     _configure_security_core,
     configure_middleware,
 )
-
 
 # ---------------------------------------------------------------------------
 # Minimal mock settings factory

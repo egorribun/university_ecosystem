@@ -8,7 +8,7 @@ header injection.
 from __future__ import annotations
 
 import pytest
-from fastapi import FastAPI, Request
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from httpx import ASGITransport, AsyncClient
 from starlette.responses import Response
@@ -17,7 +17,6 @@ from app.core.middleware.response_hardening import (
     _ensure_vary_header,
     http_response_hardening,
 )
-
 
 # ---------------------------------------------------------------------------
 # _ensure_vary_header unit tests
@@ -83,9 +82,7 @@ class TestEnsureVaryHeader:
 # ---------------------------------------------------------------------------
 
 
-def _build_test_app(
-    *, cors_origins: list[str] | None = None
-) -> FastAPI:
+def _build_test_app(*, cors_origins: list[str] | None = None) -> FastAPI:
     """Build a minimal FastAPI app with the response hardening middleware."""
     test_app = FastAPI()
 

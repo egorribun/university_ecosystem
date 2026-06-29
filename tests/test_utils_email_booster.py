@@ -4,12 +4,11 @@ Covers _redact_sensitive_query, build_reset_email_content,
 build_lockout_email_content, send_reset_email, send_lockout_email.
 Goal: bring coverage from 22% to ~85%.
 """
+
 from __future__ import annotations
 
 import smtplib
 from unittest.mock import MagicMock, patch
-
-import pytest
 
 from app.utils.email import (
     _redact_sensitive_query,
@@ -19,10 +18,10 @@ from app.utils.email import (
     send_reset_email,
 )
 
-
 # ---------------------------------------------------------------------------
 # _redact_sensitive_query
 # ---------------------------------------------------------------------------
+
 
 def test_redact_sensitive_query_redacts_token():
     url = "https://example.com/reset?token=abc123&foo=bar"
@@ -73,8 +72,11 @@ def test_redact_sensitive_query_url_without_query():
 # build_reset_email_content
 # ---------------------------------------------------------------------------
 
+
 def test_build_reset_email_content_returns_tuple():
-    subject, plain, html = build_reset_email_content("https://example.com/reset", "John")
+    subject, plain, html = build_reset_email_content(
+        "https://example.com/reset", "John"
+    )
     assert isinstance(subject, str)
     assert isinstance(plain, str)
     assert isinstance(html, str)
@@ -104,6 +106,7 @@ def test_build_reset_email_content_no_name():
 # build_lockout_email_content
 # ---------------------------------------------------------------------------
 
+
 def test_build_lockout_email_content_returns_tuple():
     subject, plain, html = build_lockout_email_content("Jane")
     assert isinstance(subject, str)
@@ -119,6 +122,7 @@ def test_build_lockout_email_content_with_locale():
 # ---------------------------------------------------------------------------
 # send_reset_email — early exits
 # ---------------------------------------------------------------------------
+
 
 def test_send_reset_email_no_host_logs_warning():
     """When SMTP host is not configured, falls back silently."""
@@ -155,9 +159,11 @@ def test_send_reset_email_insecure_smtp_not_dev_logs_error():
 
 def test_send_reset_email_via_ssl():
     """send_reset_email uses SMTP_SSL when security=ssl."""
-    with patch("app.utils.email.settings") as mock_settings, \
-         patch("app.utils.email.smtplib.SMTP_SSL") as mock_smtp_ssl_cls, \
-         patch("app.utils.email.ssl.create_default_context"):
+    with (
+        patch("app.utils.email.settings") as mock_settings,
+        patch("app.utils.email.smtplib.SMTP_SSL") as mock_smtp_ssl_cls,
+        patch("app.utils.email.ssl.create_default_context"),
+    ):
         mock_settings.smtp_host = "smtp.example.com"
         mock_settings.smtp_port = 465
         mock_settings.smtp_user = ""
@@ -179,9 +185,11 @@ def test_send_reset_email_via_ssl():
 
 def test_send_reset_email_via_starttls():
     """send_reset_email uses STARTTLS when security=starttls."""
-    with patch("app.utils.email.settings") as mock_settings, \
-         patch("app.utils.email.smtplib.SMTP") as mock_smtp_cls, \
-         patch("app.utils.email.ssl.create_default_context"):
+    with (
+        patch("app.utils.email.settings") as mock_settings,
+        patch("app.utils.email.smtplib.SMTP") as mock_smtp_cls,
+        patch("app.utils.email.ssl.create_default_context"),
+    ):
         mock_settings.smtp_host = "smtp.example.com"
         mock_settings.smtp_port = 587
         mock_settings.smtp_user = ""
@@ -203,9 +211,11 @@ def test_send_reset_email_via_starttls():
 
 def test_send_reset_email_via_plain_smtp_with_login():
     """send_reset_email uses plain SMTP with login when user is set and dev mode."""
-    with patch("app.utils.email.settings") as mock_settings, \
-         patch("app.utils.email.smtplib.SMTP") as mock_smtp_cls, \
-         patch("app.utils.email.ssl.create_default_context"):
+    with (
+        patch("app.utils.email.settings") as mock_settings,
+        patch("app.utils.email.smtplib.SMTP") as mock_smtp_cls,
+        patch("app.utils.email.ssl.create_default_context"),
+    ):
         mock_settings.smtp_host = "smtp.example.com"
         mock_settings.smtp_port = 25
         mock_settings.smtp_user = "admin"
@@ -226,9 +236,14 @@ def test_send_reset_email_via_plain_smtp_with_login():
 
 def test_send_reset_email_catches_smtp_exception():
     """SMTP errors are caught and logged without re-raising."""
-    with patch("app.utils.email.settings") as mock_settings, \
-         patch("app.utils.email.smtplib.SMTP_SSL", side_effect=smtplib.SMTPException("fail")), \
-         patch("app.utils.email.ssl.create_default_context"):
+    with (
+        patch("app.utils.email.settings") as mock_settings,
+        patch(
+            "app.utils.email.smtplib.SMTP_SSL",
+            side_effect=smtplib.SMTPException("fail"),
+        ),
+        patch("app.utils.email.ssl.create_default_context"),
+    ):
         mock_settings.smtp_host = "smtp.example.com"
         mock_settings.smtp_port = 465
         mock_settings.smtp_user = ""
@@ -244,9 +259,13 @@ def test_send_reset_email_catches_smtp_exception():
 
 def test_send_reset_email_catches_os_error():
     """OS errors are caught and logged without re-raising."""
-    with patch("app.utils.email.settings") as mock_settings, \
-         patch("app.utils.email.smtplib.SMTP", side_effect=OSError("connection refused")), \
-         patch("app.utils.email.ssl.create_default_context"):
+    with (
+        patch("app.utils.email.settings") as mock_settings,
+        patch(
+            "app.utils.email.smtplib.SMTP", side_effect=OSError("connection refused")
+        ),
+        patch("app.utils.email.ssl.create_default_context"),
+    ):
         mock_settings.smtp_host = "smtp.example.com"
         mock_settings.smtp_port = 587
         mock_settings.smtp_user = ""
@@ -262,6 +281,7 @@ def test_send_reset_email_catches_os_error():
 # ---------------------------------------------------------------------------
 # send_lockout_email
 # ---------------------------------------------------------------------------
+
 
 def test_send_lockout_email_no_host_logs_warning():
     """When SMTP is not configured, falls back silently."""
@@ -280,9 +300,11 @@ def test_send_lockout_email_no_host_logs_warning():
 
 def test_send_lockout_email_via_ssl():
     """send_lockout_email uses SMTP_SSL when security=ssl."""
-    with patch("app.utils.email.settings") as mock_settings, \
-         patch("app.utils.email.smtplib.SMTP_SSL") as mock_smtp_ssl_cls, \
-         patch("app.utils.email.ssl.create_default_context"):
+    with (
+        patch("app.utils.email.settings") as mock_settings,
+        patch("app.utils.email.smtplib.SMTP_SSL") as mock_smtp_ssl_cls,
+        patch("app.utils.email.ssl.create_default_context"),
+    ):
         mock_settings.smtp_host = "smtp.example.com"
         mock_settings.smtp_port = 465
         mock_settings.smtp_user = ""
@@ -303,9 +325,13 @@ def test_send_lockout_email_via_ssl():
 
 def test_send_lockout_email_catches_smtp_exception():
     """SMTP errors are caught without re-raising."""
-    with patch("app.utils.email.settings") as mock_settings, \
-         patch("app.utils.email.smtplib.SMTP", side_effect=smtplib.SMTPException("fail")), \
-         patch("app.utils.email.ssl.create_default_context"):
+    with (
+        patch("app.utils.email.settings") as mock_settings,
+        patch(
+            "app.utils.email.smtplib.SMTP", side_effect=smtplib.SMTPException("fail")
+        ),
+        patch("app.utils.email.ssl.create_default_context"),
+    ):
         mock_settings.smtp_host = "smtp.example.com"
         mock_settings.smtp_port = 587
         mock_settings.smtp_user = ""
@@ -336,9 +362,11 @@ def test_send_lockout_email_insecure_not_dev_logs_error():
 
 def test_send_lockout_email_via_plain_smtp_no_user():
     """Plain SMTP without user credentials sends without login."""
-    with patch("app.utils.email.settings") as mock_settings, \
-         patch("app.utils.email.smtplib.SMTP") as mock_smtp_cls, \
-         patch("app.utils.email.ssl.create_default_context"):
+    with (
+        patch("app.utils.email.settings") as mock_settings,
+        patch("app.utils.email.smtplib.SMTP") as mock_smtp_cls,
+        patch("app.utils.email.ssl.create_default_context"),
+    ):
         mock_settings.smtp_host = "smtp.example.com"
         mock_settings.smtp_port = 25
         mock_settings.smtp_user = ""

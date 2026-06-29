@@ -11,10 +11,10 @@ async def test_get_groups():
     db = AsyncMock()
     repo = AsyncMock()
     repo.list_groups.return_value = [GroupDTO(id="1", name="Group 1")]
-    
+
     service = GroupService(db, repo)
     res = await service.get_groups()
-    
+
     assert len(res) == 1
     assert res[0].name == "Group 1"
     repo.list_groups.assert_called_once()

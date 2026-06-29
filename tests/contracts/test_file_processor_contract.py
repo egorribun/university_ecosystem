@@ -85,7 +85,9 @@ _SAMPLE_DURATION_MS = 423
 # ---------------------------------------------------------------------------
 
 
-def _backend_callback_handler(msg: str | bytes | None, context: dict[str, Any]) -> dict[str, Any]:
+def _backend_callback_handler(
+    msg: str | bytes | None, context: dict[str, Any]
+) -> dict[str, Any]:
     """Simulate the Python backend's file-processor callback receiver.
 
     Mirrors the validation a Python endpoint must perform on a
@@ -121,7 +123,9 @@ def _backend_callback_handler(msg: str | bytes | None, context: dict[str, Any]) 
 
     # Optional fields type-check (only validate if present)
     if "dest_key" in payload:
-        assert isinstance(payload["dest_key"], str), "dest_key must be a string when present"
+        assert isinstance(payload["dest_key"], str), (
+            "dest_key must be a string when present"
+        )
 
     if "error" in payload:
         assert isinstance(payload["error"], str), "error must be a string when present"

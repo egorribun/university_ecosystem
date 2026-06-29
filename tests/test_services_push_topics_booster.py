@@ -4,6 +4,7 @@ Covers normalize_topic, normalize_topics, resolve_topics, sort_topics,
 get_allowed_topics, subscription_supports_topic, and async DB operations.
 Goal: bring coverage from 14% to ~80%.
 """
+
 from __future__ import annotations
 
 import uuid
@@ -18,10 +19,9 @@ from app.services.push_topics import (
     resolve_topics,
     sort_topics,
     subscription_supports_topic,
-    upsert_user_topics,
     synchronize_user_topics,
+    upsert_user_topics,
 )
-
 
 # Minimal set of allowed topics for tests
 ALLOWED = ["news", "events", "announcements"]
@@ -30,6 +30,7 @@ ALLOWED = ["news", "events", "announcements"]
 # ---------------------------------------------------------------------------
 # normalize_topic
 # ---------------------------------------------------------------------------
+
 
 def test_normalize_topic_valid():
     result = normalize_topic("news", allowed_topics=ALLOWED)
@@ -80,6 +81,7 @@ def test_normalize_topic_valid_strict():
 # normalize_topics
 # ---------------------------------------------------------------------------
 
+
 def test_normalize_topics_empty_input():
     result = normalize_topics(None, allowed_topics=ALLOWED)
     assert result == []
@@ -116,6 +118,7 @@ def test_normalize_topics_all_unknown():
 # sort_topics
 # ---------------------------------------------------------------------------
 
+
 def test_sort_topics_ordered_by_allowed_list():
     topics = ["events", "news"]
     allowed = ["news", "events", "announcements"]
@@ -139,6 +142,7 @@ def test_sort_topics_unknown_topics_go_to_end():
 # resolve_topics
 # ---------------------------------------------------------------------------
 
+
 def test_resolve_topics_none_falls_back_to_existing():
     existing = ["news", "events"]
     result = resolve_topics(None, existing=existing, allowed_topics=ALLOWED)
@@ -161,6 +165,7 @@ def test_resolve_topics_none_raw_and_none_existing():
 # get_allowed_topics
 # ---------------------------------------------------------------------------
 
+
 def test_get_allowed_topics_with_mock_settings():
     mock_settings = MagicMock()
     mock_settings.notifications_allowed_push_topics_list = ["news", "events"]
@@ -172,6 +177,7 @@ def test_get_allowed_topics_with_mock_settings():
 # ---------------------------------------------------------------------------
 # subscription_supports_topic
 # ---------------------------------------------------------------------------
+
 
 def test_subscription_supports_topic_none_topic():
     """Unknown/None topic → always supported."""
@@ -189,7 +195,9 @@ def test_subscription_supports_topic_none_subscription():
 def test_subscription_supports_topic_unknown_topic():
     """Unknown topic (not in allowed list) → normalize returns None → supported."""
     mock_sub = MagicMock()
-    result = subscription_supports_topic(mock_sub, "unknown-topic", allowed_topics=ALLOWED)
+    result = subscription_supports_topic(
+        mock_sub, "unknown-topic", allowed_topics=ALLOWED
+    )
     assert result is True
 
 
@@ -225,7 +233,6 @@ def test_subscription_supports_topic_not_in_stored_list():
 
 def test_subscription_supports_topic_with_user_preferences():
     """User preferences restrict allowed topics."""
-    from sqlalchemy.orm import attributes as orm_attrs
 
     mock_prefs = MagicMock()
     mock_prefs.topics = ["news"]
@@ -241,14 +248,16 @@ def test_subscription_supports_topic_with_user_preferences():
     mock_state = MagicMock()
     mock_state.unloaded = set()  # nothing unloaded
 
-    with patch("app.services.push_topics.orm_attributes.instance_state", return_value=mock_state):
+    with patch(
+        "app.services.push_topics.orm_attributes.instance_state",
+        return_value=mock_state,
+    ):
         result = subscription_supports_topic(mock_sub, "news", allowed_topics=ALLOWED)
     assert result is True
 
 
 def test_subscription_supports_topic_user_prefs_deny():
     """User preferences don't include topic → denied even if sub has it."""
-    from sqlalchemy.orm import attributes as orm_attrs
 
     mock_prefs = MagicMock()
     mock_prefs.topics = ["events"]  # user only wants events
@@ -263,7 +272,10 @@ def test_subscription_supports_topic_user_prefs_deny():
     mock_state = MagicMock()
     mock_state.unloaded = set()
 
-    with patch("app.services.push_topics.orm_attributes.instance_state", return_value=mock_state):
+    with patch(
+        "app.services.push_topics.orm_attributes.instance_state",
+        return_value=mock_state,
+    ):
         result = subscription_supports_topic(mock_sub, "news", allowed_topics=ALLOWED)
     assert result is False
 
@@ -271,6 +283,7 @@ def test_subscription_supports_topic_user_prefs_deny():
 # ---------------------------------------------------------------------------
 # upsert_user_topics (async)
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_upsert_user_topics_creates_new_record():
@@ -329,6 +342,7 @@ async def test_upsert_user_topics_filters_unknown():
 # ---------------------------------------------------------------------------
 # synchronize_user_topics (async)
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_synchronize_user_topics_updates_subscriptions():

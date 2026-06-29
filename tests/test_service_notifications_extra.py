@@ -1,11 +1,11 @@
+import asyncio
 import datetime as dt
 from datetime import UTC
 from unittest.mock import AsyncMock, MagicMock
-import asyncio
 
 import pytest
 
-from app.models import Notification, NotificationDelivery, Schedule, User
+from app.models import Schedule, User
 from app.services.notifications.cleanup import cleanup_stale_notifications
 from app.services.notifications.quiet_hours import (
     is_user_in_quiet_hours,
@@ -25,7 +25,7 @@ from app.services.notifications.stats import aggregate_notification_delivery_sta
 @pytest.mark.asyncio
 async def test_aggregate_notification_delivery_stats():
     db = AsyncMock()
-    
+
     mock_row = MagicMock()
     mock_row._mapping = {
         "channel": "push",
@@ -38,11 +38,11 @@ async def test_aggregate_notification_delivery_stats():
     mock_result = MagicMock()
     mock_result.__iter__.return_value = [mock_row]
     db.execute.return_value = mock_result
-    
+
     stats = await aggregate_notification_delivery_stats(
         db, since=dt.datetime(2023, 1, 1, tzinfo=UTC), channel="push"
     )
-    
+
     assert len(stats) == 1
     assert stats[0] == {
         "channel": "push",
@@ -71,7 +71,7 @@ def test_is_user_in_quiet_hours(dnd_enabled, dnd_start, dnd_end, now_time, expec
     user.preferences = MagicMock(
         dnd_enabled=dnd_enabled, dnd_start=dnd_start, dnd_end=dnd_end
     )
-    
+
     assert is_user_in_quiet_hours(user, now_time=now_time) is expected
 
 
@@ -85,9 +85,9 @@ def test_prepare_push_payload_for_user():
         dnd_enabled=True, dnd_start=dt.time(22, 0), dnd_end=dt.time(8, 0)
     )
     payload = {"data": {"foo": "bar"}}
-    
+
     res = prepare_push_payload_for_user(payload, user, now_time=dt.time(23, 0))
-    
+
     assert res["silent"] is True
     assert res["vibrate"] == []
     assert res["renotify"] is False
@@ -103,23 +103,28 @@ def test_prepare_push_payload_for_user():
 @pytest.mark.asyncio
 async def test_cleanup_stale_notifications_refined(monkeypatch):
     db = AsyncMock()
-    mock_settings = MagicMock(notifications_retention_days=30, notifications_retention_batch_size=10)
+    mock_settings = MagicMock(
+        notifications_retention_days=30, notifications_retention_batch_size=10
+    )
     monkeypatch.setattr("app.services.notifications.cleanup.settings", mock_settings)
-    
+
     def scalars_side_effect(*args, **kwargs):
         mock = MagicMock()
         mock.all.side_effect = [[1], []]
         return mock
-        
+
     db.scalars.side_effect = scalars_side_effect
-    
+
     mock_exec = MagicMock()
     mock_exec.rowcount = 1
     db.execute.return_value = mock_exec
 
-    n_del, d_del = await cleanup_stale_notifications(db=db, now=dt.datetime(2023, 2, 1, tzinfo=UTC))
+    n_del, d_del = await cleanup_stale_notifications(
+        db=db, now=dt.datetime(2023, 2, 1, tzinfo=UTC)
+    )
     assert n_del == 1
     assert d_del == 1
+
 
 @pytest.mark.asyncio
 async def test_cleanup_stale_notifications_zero_retention():
@@ -127,26 +132,32 @@ async def test_cleanup_stale_notifications_zero_retention():
     assert n_del == 0
     assert d_del == 0
 
+
 @pytest.mark.asyncio
 async def test_cleanup_stale_notifications_no_db(monkeypatch):
     mock_session_ctx = MagicMock()
     mock_db = AsyncMock()
     mock_session_ctx.__aenter__.return_value = mock_db
-    monkeypatch.setattr("app.services.notifications.cleanup._async_session", lambda: mock_session_ctx)
-    
-    mock_settings = MagicMock(notifications_retention_days=30, notifications_retention_batch_size=10)
+    monkeypatch.setattr(
+        "app.services.notifications.cleanup._async_session", lambda: mock_session_ctx
+    )
+
+    mock_settings = MagicMock(
+        notifications_retention_days=30, notifications_retention_batch_size=10
+    )
     monkeypatch.setattr("app.services.notifications.cleanup.settings", mock_settings)
-    
+
     def scalars_side_effect(*args, **kwargs):
         mock = MagicMock()
         mock.all.side_effect = [[], []]
         return mock
-        
+
     mock_db.scalars.side_effect = scalars_side_effect
 
     n_del, d_del = await cleanup_stale_notifications()
     assert n_del == 0
     assert d_del == 0
+
 
 @pytest.mark.asyncio
 async def test_start_notifications_scheduler(monkeypatch):
@@ -155,20 +166,26 @@ async def test_start_notifications_scheduler(monkeypatch):
     await start_notifications_scheduler()
     mock_start.assert_called_once()
 
+
 @pytest.mark.asyncio
 async def test_scheduler_loop(monkeypatch):
     mock_worker_module = MagicMock()
     mock_scheduler = AsyncMock()
     mock_scheduler.run_forever.side_effect = asyncio.CancelledError()
     mock_worker_module.NotificationsScheduler.return_value = mock_scheduler
-    monkeypatch.setattr("app.services.notifications.scheduler.worker_module", mock_worker_module, raising=False)
-    
+    monkeypatch.setattr(
+        "app.services.notifications.scheduler.worker_module",
+        mock_worker_module,
+        raising=False,
+    )
+
     import sys
+
     sys.modules["app.workers"] = MagicMock()
     sys.modules["app.workers.notifications"] = mock_worker_module
-    
-    from app.services.notifications.scheduler import _scheduler_loop
+
     await _scheduler_loop()
+
 
 def test_build_schedule_reminder_message():
     lesson = Schedule()
@@ -177,14 +194,23 @@ def test_build_schedule_reminder_message():
     lesson.lesson_type = "Lecture"
     lesson.subject = "Math"
     lesson.room = "101"
-    
-    title, body, tag, data_payload, title_translations, body_translations, dedupe_value = build_schedule_reminder_message(lesson)
-    
+
+    (
+        title,
+        body,
+        tag,
+        data_payload,
+        title_translations,
+        body_translations,
+        dedupe_value,
+    ) = build_schedule_reminder_message(lesson)
+
     assert title
     assert body
     assert tag
     assert data_payload
     assert dedupe_value
+
 
 @pytest.mark.asyncio
 async def test_generate_schedule_reminders(monkeypatch):
@@ -195,26 +221,30 @@ async def test_generate_schedule_reminders(monkeypatch):
     mock_schedule.group_id = "g1"
     mock_schedule.start_time = dt.datetime.now(UTC) + dt.timedelta(minutes=2)
     mock_schedule.lesson_type = "Lecture"
-    
+
     mock_scalars = MagicMock()
     mock_scalars.scalars().all.return_value = [mock_schedule]
-    
+
     # Mock users
     mock_users = MagicMock()
     mock_users.__iter__.return_value = [("u1", "g1")]
-    
+
     # Mock existing
     mock_existing = MagicMock()
     mock_existing.__iter__.return_value = []
-    
+
     db.execute.side_effect = [mock_scalars, mock_users, mock_existing]
-    
+
     mock_create = AsyncMock()
     mock_create.return_value = 1
-    monkeypatch.setattr("app.services.notifications.schedule_reminders.create_notifications_for_users", mock_create)
-    
+    monkeypatch.setattr(
+        "app.services.notifications.schedule_reminders.create_notifications_for_users",
+        mock_create,
+    )
+
     res = await generate_schedule_reminders(db)
     assert res == 1
+
 
 @pytest.mark.asyncio
 async def test_generate_schedule_reminders_no_schedules():
@@ -222,6 +252,6 @@ async def test_generate_schedule_reminders_no_schedules():
     mock_scalars = MagicMock()
     mock_scalars.scalars().all.return_value = []
     db.execute.return_value = mock_scalars
-    
+
     res = await generate_schedule_reminders(db)
     assert res == 0

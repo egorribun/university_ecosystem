@@ -1,10 +1,11 @@
+from datetime import UTC, datetime, timedelta
+from unittest.mock import AsyncMock, patch
+
 import pytest
-from datetime import datetime, UTC, timedelta
-from unittest.mock import AsyncMock, patch, MagicMock
+from fastapi import HTTPException
 
 from app.models import ActiveSession
 from app.services.auth.security_service import AuthSecurityService
-from fastapi import HTTPException
 
 
 @pytest.fixture
@@ -17,7 +18,7 @@ def test_validate_session_expiry_tzinfo_none(auth_security_service):
     # If tzinfo is None, it should attach UTC
     session = ActiveSession(expires_at=datetime.now() + timedelta(days=1))
     session.expires_at = session.expires_at.replace(tzinfo=None)
-    
+
     # Should not raise exception
     auth_security_service.validate_session_expiry(session)
 
@@ -47,7 +48,7 @@ async def test_handle_mfa_ttl_expired_with_no_tz(mock_settings, auth_security_se
     verified_at = datetime.now() - timedelta(seconds=3601)
     verified_at = verified_at.replace(tzinfo=None)
     session = ActiveSession(mfa_verified_at=verified_at)
-    
+
     await auth_security_service.handle_mfa_ttl(session)
     assert session.mfa_verified_at is None
     auth_security_service.db.commit.assert_awaited_once()

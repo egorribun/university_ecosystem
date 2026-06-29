@@ -17,14 +17,17 @@ pact_lib = None
 if sys.platform != "win32":
     try:
         import pact
+
         pact_lib = pact
     except ImportError:
         pass
 
 if pact_lib is None:
     pytestmark = pytest.mark.skip(reason="pact-python is not installed")
+
     class DummyPact:
         pass
+
     Pact = DummyPact
     match = None
 else:
@@ -35,6 +38,7 @@ PACT_DIR = Path(__file__).parent / "pacts"
 CONSUMER_NAME = "file-processor"
 PROVIDER_NAME = "university-backend"
 
+
 @pytest.fixture(scope="module")
 def pact() -> Pact:
     PACT_DIR.mkdir(parents=True, exist_ok=True)
@@ -42,7 +46,10 @@ def pact() -> Pact:
     yield p.with_specification("V4")
     p.write_file(PACT_DIR, overwrite=True)
 
-def _files_process_handler(msg: str | bytes | None, context: dict[str, Any]) -> dict[str, Any]:
+
+def _files_process_handler(
+    msg: str | bytes | None, context: dict[str, Any]
+) -> dict[str, Any]:
     """Simulate the file-processor NATS subscriber for files.process."""
     assert msg is not None, "Message body must not be None"
     payload: dict[str, Any] = json.loads(msg)
@@ -54,6 +61,7 @@ def _files_process_handler(msg: str | bytes | None, context: dict[str, Any]) -> 
     assert "dest_key" in payload, "Missing required field: 'dest_key'"
 
     return payload
+
 
 def test_files_process_event_contract(pact: Pact) -> None:
     """Contract: file-processor expects ProcessJob schema."""

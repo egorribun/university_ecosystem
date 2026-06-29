@@ -7,8 +7,7 @@ and redis.py (RedisSlidingWindowStrategy with fakeredis).
 from __future__ import annotations
 
 import asyncio
-import time
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import fakeredis.aioredis
 import pytest
@@ -31,7 +30,6 @@ from app.core.ratelimit.strategies.redis import (
     RedisSlidingWindowStrategy,
     _load_script_sha,
 )
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -357,9 +355,7 @@ class TestRedisSlidingWindowStrategy:
         """Non-ResponseError RedisError subtypes are re-raised as-is."""
         mock_client = AsyncMock()
         mock_client.script_load = AsyncMock(return_value="fake-sha")
-        mock_client.evalsha = AsyncMock(
-            side_effect=RedisError("Connection refused")
-        )
+        mock_client.evalsha = AsyncMock(side_effect=RedisError("Connection refused"))
 
         set_rate_limit_client_factory(lambda url: mock_client)
         try:
