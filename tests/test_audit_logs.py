@@ -24,6 +24,10 @@ def _find_event(caplog, logger_name: str, event: str) -> dict:
             continue
         if payload.get("event") == event:
             return cast(dict[Any, Any], payload)
+    print(f"\n--- CAPLOG RECORDS (looking for {logger_name} / {event}) ---")
+    for r in caplog.records:
+        print(f"logger={r.name} level={r.levelname} message={r.message}")
+    print("-----------------------------------------------------------\n")
     raise AssertionError(f"event {event!r} not found for logger {logger_name!r}")
 
 

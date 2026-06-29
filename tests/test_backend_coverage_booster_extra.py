@@ -146,7 +146,7 @@ async def test_mfa_start_totp_enrollment_endpoint():
         res = await mfa_api.start_totp_enrollment_endpoint(
             request=request, payload=payload, user=user
         )
-        assert res.secret == "secret"
+        assert res.secret == "secret"  # pragma: allowlist secret
         assert res.otpauth_url == "url"
 
 
@@ -195,19 +195,20 @@ async def test_existing_notification_columns_mocked():
 
 @pytest.mark.asyncio
 async def test_list_notifications_bad_cursor():
+    request = MagicMock()
     db = AsyncMock()
     user = MagicMock()
     response = MagicMock()
     with pytest.raises(HTTPException) as exc:
         await notifications_api.list_notifications(
-            response, db, user=user, cursor="invalid_base64_string"
+            request, response, db=db, user=user, cursor="invalid_base64_string"
         )
     assert exc.value.status_code == 400
 
     bad_cursor = base64.b64encode(b"2026-01-01T00:00:00,not-a-uuid").decode()
     with pytest.raises(HTTPException) as exc:
         await notifications_api.list_notifications(
-            response, db, user=user, cursor=bad_cursor
+            request, response, db=db, user=user, cursor=bad_cursor
         )
     assert exc.value.status_code == 400
 
@@ -450,7 +451,7 @@ def test_configure_metrics_placeholder_credentials():
 
     with patch("app.core.metrics.settings") as mock_settings:
         mock_settings.enable_metrics_endpoint = True
-        mock_settings.metrics_basic_auth_password = "admin"
+        mock_settings.metrics_basic_auth_password = "admin"  # pragma: allowlist secret
         mock_settings.metrics_basic_auth_username = "admin"
 
         metrics_core.configure_metrics(app)
@@ -468,7 +469,7 @@ async def test_request_metrics_middleware_exception():
     request = MagicMock()
     request.method = "GET"
 
-    with patch("app.core.metrics._REQUEST_COUNT") as mock_counter:
+    with patch("app.core.metrics._REQUEST_COUNT"):
         with pytest.raises(ValueError, match="test-error"):
             await middleware.dispatch(request, call_next)
 

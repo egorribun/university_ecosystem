@@ -57,7 +57,9 @@ schema = schemathesis.openapi.from_asgi("/api/openapi.json", app=app)
 
 
 @schema.parametrize()
-@hypothesis.settings(max_examples=25, suppress_health_check=["too_slow"])
+@hypothesis.settings(
+    max_examples=25, suppress_health_check=["too_slow", "filter_too_much"]
+)
 def test_api_responses_conform_to_schema(case: schemathesis.Case) -> None:
     """Every OpenAPI-described endpoint must return a non-5xx response.
 

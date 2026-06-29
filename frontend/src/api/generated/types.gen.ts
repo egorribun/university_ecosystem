@@ -3806,9 +3806,17 @@ export type SpotifyCallbackApiV1SpotifyCallbackGetData = {
 
 export type SpotifyCallbackApiV1SpotifyCallbackGetErrors = {
   /**
+   * Bad Request
+   */
+  400: unknown
+  /**
    * Validation Error
    */
   422: HttpValidationError
+  /**
+   * Service Unavailable
+   */
+  503: unknown
 }
 
 export type SpotifyCallbackApiV1SpotifyCallbackGetError =

@@ -406,6 +406,8 @@ export type Options<
 
 /**
  * Root
+ *
+ * Root
  */
 export const getRootGet = <ThrowOnError extends boolean = false>(
   options?: Options<GetRootGetData, ThrowOnError>
@@ -418,6 +420,8 @@ export const getRootGet = <ThrowOnError extends boolean = false>(
 
 /**
  * Liveness Probe
+ *
+ * Liveness Probe
  */
 export const livenessHealthLiveGet = <ThrowOnError extends boolean = false>(
   options?: Options<LivenessHealthLiveGetData, ThrowOnError>
@@ -429,6 +433,8 @@ export const livenessHealthLiveGet = <ThrowOnError extends boolean = false>(
   })
 
 /**
+ * Full Health Check
+ *
  * Full Health Check
  */
 export const healthzHealthzGet = <ThrowOnError extends boolean = false>(
@@ -446,6 +452,8 @@ export const healthzHealthzGet = <ThrowOnError extends boolean = false>(
 
 /**
  * Readiness Probe
+ *
+ * Readiness Probe
  */
 export const readyHealthReadyGet = <ThrowOnError extends boolean = false>(
   options?: Options<ReadyHealthReadyGetData, ThrowOnError>
@@ -457,6 +465,8 @@ export const readyHealthReadyGet = <ThrowOnError extends boolean = false>(
   })
 
 /**
+ * Legacy Readiness Check
+ *
  * Legacy Readiness Check
  */
 export const readyReadyGet = <ThrowOnError extends boolean = false>(
@@ -488,6 +498,8 @@ export const logoutApiV1AuthLogoutPost = <ThrowOnError extends boolean = false>(
 
 /**
  * Login Passkey Start
+ *
+ * Login Passkey Start
  */
 export const loginPasskeyStartApiV1AuthLoginPasskeyStartPost = <
   ThrowOnError extends boolean = false,
@@ -509,6 +521,8 @@ export const loginPasskeyStartApiV1AuthLoginPasskeyStartPost = <
   })
 
 /**
+ * Login Passkey Verify
+ *
  * Login Passkey Verify
  */
 export const loginPasskeyVerifyApiV1AuthLoginPasskeyVerifyPost = <
@@ -532,6 +546,8 @@ export const loginPasskeyVerifyApiV1AuthLoginPasskeyVerifyPost = <
 
 /**
  * Login
+ *
+ * Login
  */
 export const loginApiV1AuthLoginPost = <ThrowOnError extends boolean = false>(
   options: Options<LoginApiV1AuthLoginPostData, ThrowOnError>
@@ -553,6 +569,8 @@ export const loginApiV1AuthLoginPost = <ThrowOnError extends boolean = false>(
 
 /**
  * Login Json
+ *
+ * Login Json
  */
 export const loginJsonApiV1AuthLoginJsonPost = <ThrowOnError extends boolean = false>(
   options: Options<LoginJsonApiV1AuthLoginJsonPostData, ThrowOnError>
@@ -572,6 +590,8 @@ export const loginJsonApiV1AuthLoginJsonPost = <ThrowOnError extends boolean = f
   })
 
 /**
+ * Verify Mfa Challenge
+ *
  * Verify Mfa Challenge
  */
 export const verifyMfaChallengeApiV1AuthMfaVerifyPost = <ThrowOnError extends boolean = false>(
@@ -611,6 +631,8 @@ export const getCsrfCookieApiV1AuthCsrfCookieGet = <ThrowOnError extends boolean
 
 /**
  * Register
+ *
+ * Register
  */
 export const registerApiV1AuthRegisterPost = <ThrowOnError extends boolean = false>(
   options: Options<RegisterApiV1AuthRegisterPostData, ThrowOnError>
@@ -631,6 +653,8 @@ export const registerApiV1AuthRegisterPost = <ThrowOnError extends boolean = fal
 
 /**
  * Get Session Signing Key
+ *
+ * Get Session Signing Key
  */
 export const getSessionSigningKeyApiV1AuthSessionSigningKeyGet = <
   ThrowOnError extends boolean = false,
@@ -649,6 +673,8 @@ export const getSessionSigningKeyApiV1AuthSessionSigningKeyGet = <
   })
 
 /**
+ * Start Totp Enrollment Endpoint
+ *
  * Start Totp Enrollment Endpoint
  */
 export const startTotpEnrollmentEndpointApiV1AuthMfaTotpStartPost = <
@@ -673,6 +699,8 @@ export const startTotpEnrollmentEndpointApiV1AuthMfaTotpStartPost = <
 
 /**
  * Confirm Totp Enrollment
+ *
+ * Confirm Totp Enrollment
  */
 export const confirmTotpEnrollmentApiV1AuthMfaTotpConfirmPost = <
   ThrowOnError extends boolean = false,
@@ -696,6 +724,8 @@ export const confirmTotpEnrollmentApiV1AuthMfaTotpConfirmPost = <
 
 /**
  * List Totp Enrollments
+ *
+ * List Totp Enrollments
  */
 export const listTotpEnrollmentsApiV1AuthMfaTotpGet = <ThrowOnError extends boolean = false>(
   options?: Options<ListTotpEnrollmentsApiV1AuthMfaTotpGetData, ThrowOnError>
@@ -712,6 +742,8 @@ export const listTotpEnrollmentsApiV1AuthMfaTotpGet = <ThrowOnError extends bool
   })
 
 /**
+ * Delete Pending Totp Enrollment
+ *
  * Delete Pending Totp Enrollment
  */
 export const deletePendingTotpEnrollmentApiV1AuthMfaTotpPendingEnrollmentIdDelete = <
@@ -734,6 +766,8 @@ export const deletePendingTotpEnrollmentApiV1AuthMfaTotpPendingEnrollmentIdDelet
 
 /**
  * Delete Totp Enrollment
+ *
+ * Delete Totp Enrollment
  */
 export const deleteTotpEnrollmentApiV1AuthMfaTotpEnrollmentIdDelete = <
   ThrowOnError extends boolean = false,
@@ -752,6 +786,8 @@ export const deleteTotpEnrollmentApiV1AuthMfaTotpEnrollmentIdDelete = <
   })
 
 /**
+ * Start Webauthn Registration
+ *
  * Start Webauthn Registration
  */
 export const startWebauthnRegistrationApiV1AuthMfaWebauthnRegisterStartPost = <
@@ -774,6 +810,8 @@ export const startWebauthnRegistrationApiV1AuthMfaWebauthnRegisterStartPost = <
   })
 
 /**
+ * Confirm Webauthn Registration
+ *
  * Confirm Webauthn Registration
  */
 export const confirmWebauthnRegistrationApiV1AuthMfaWebauthnRegisterConfirmPost = <
@@ -801,6 +839,8 @@ export const confirmWebauthnRegistrationApiV1AuthMfaWebauthnRegisterConfirmPost 
 
 /**
  * List Webauthn Credentials
+ *
+ * List Webauthn Credentials
  */
 export const listWebauthnCredentialsApiV1AuthMfaWebauthnGet = <
   ThrowOnError extends boolean = false,
@@ -819,6 +859,8 @@ export const listWebauthnCredentialsApiV1AuthMfaWebauthnGet = <
   })
 
 /**
+ * Delete Webauthn Credential
+ *
  * Delete Webauthn Credential
  */
 export const deleteWebauthnCredentialApiV1AuthMfaWebauthnCredentialIdDelete = <
@@ -839,6 +881,8 @@ export const deleteWebauthnCredentialApiV1AuthMfaWebauthnCredentialIdDelete = <
 
 /**
  * Generate Recovery Codes Endpoint
+ *
+ * Generate Recovery Codes Endpoint
  */
 export const generateRecoveryCodesEndpointApiV1AuthMfaRecoveryCodesPost = <
   ThrowOnError extends boolean = false,
@@ -858,6 +902,8 @@ export const generateRecoveryCodesEndpointApiV1AuthMfaRecoveryCodesPost = <
 
 /**
  * Request Step Up
+ *
+ * Request Step Up
  */
 export const requestStepUpApiV1AuthMfaStepUpPost = <ThrowOnError extends boolean = false>(
   options?: Options<RequestStepUpApiV1AuthMfaStepUpPostData, ThrowOnError>
@@ -874,6 +920,8 @@ export const requestStepUpApiV1AuthMfaStepUpPost = <ThrowOnError extends boolean
   })
 
 /**
+ * Spotify Auth Url
+ *
  * Spotify Auth Url
  */
 export const spotifyAuthUrlApiV1SpotifyAuthUrlGet = <ThrowOnError extends boolean = false>(
@@ -892,6 +940,8 @@ export const spotifyAuthUrlApiV1SpotifyAuthUrlGet = <ThrowOnError extends boolea
 
 /**
  * Spotify Callback
+ *
+ * Spotify Callback
  */
 export const spotifyCallbackApiV1SpotifyCallbackGet = <ThrowOnError extends boolean = false>(
   options: Options<SpotifyCallbackApiV1SpotifyCallbackGetData, ThrowOnError>
@@ -907,6 +957,8 @@ export const spotifyCallbackApiV1SpotifyCallbackGet = <ThrowOnError extends bool
   })
 
 /**
+ * Now Playing
+ *
  * Now Playing
  */
 export const nowPlayingApiV1SpotifyNowPlayingGet = <ThrowOnError extends boolean = false>(
@@ -925,6 +977,8 @@ export const nowPlayingApiV1SpotifyNowPlayingGet = <ThrowOnError extends boolean
 
 /**
  * Disconnect
+ *
+ * Disconnect
  */
 export const disconnectApiV1SpotifyDisconnectPost = <ThrowOnError extends boolean = false>(
   options?: Options<DisconnectApiV1SpotifyDisconnectPostData, ThrowOnError>
@@ -941,6 +995,8 @@ export const disconnectApiV1SpotifyDisconnectPost = <ThrowOnError extends boolea
   })
 
 /**
+ * List Playlists
+ *
  * List Playlists
  */
 export const listPlaylistsApiV1SpotifyPlaylistsGet = <ThrowOnError extends boolean = false>(
@@ -978,6 +1034,8 @@ export const syncPlaylistsApiV1SpotifySyncPlaylistsPost = <ThrowOnError extends 
 
 /**
  * List Sessions
+ *
+ * List Sessions
  */
 export const listSessionsApiV1AuthSessionsGet = <ThrowOnError extends boolean = false>(
   options?: Options<ListSessionsApiV1AuthSessionsGetData, ThrowOnError>
@@ -995,6 +1053,8 @@ export const listSessionsApiV1AuthSessionsGet = <ThrowOnError extends boolean = 
 
 /**
  * Revoke Session
+ *
+ * Revoke Session
  */
 export const revokeSessionApiV1AuthSessionsSessionIdDelete = <ThrowOnError extends boolean = false>(
   options: Options<RevokeSessionApiV1AuthSessionsSessionIdDeleteData, ThrowOnError>
@@ -1011,6 +1071,8 @@ export const revokeSessionApiV1AuthSessionsSessionIdDelete = <ThrowOnError exten
   })
 
 /**
+ * Revoke Other Sessions
+ *
  * Revoke Other Sessions
  */
 export const revokeOtherSessionsApiV1AuthSessionsRevokeOthersPost = <
@@ -1031,6 +1093,8 @@ export const revokeOtherSessionsApiV1AuthSessionsRevokeOthersPost = <
 
 /**
  * Clear Notifications
+ *
+ * Clear Notifications
  */
 export const clearNotificationsApiV1NotificationsDelete = <ThrowOnError extends boolean = false>(
   options?: Options<ClearNotificationsApiV1NotificationsDeleteData, ThrowOnError>
@@ -1048,6 +1112,8 @@ export const clearNotificationsApiV1NotificationsDelete = <ThrowOnError extends 
 
 /**
  * List Notifications
+ *
+ * List Notifications
  */
 export const listNotificationsApiV1NotificationsGet = <ThrowOnError extends boolean = false>(
   options?: Options<ListNotificationsApiV1NotificationsGetData, ThrowOnError>
@@ -1064,6 +1130,8 @@ export const listNotificationsApiV1NotificationsGet = <ThrowOnError extends bool
   })
 
 /**
+ * Mark Read Single
+ *
  * Mark Read Single
  */
 export const markReadSingleApiV1NotificationsNotifIdReadPatch = <
@@ -1084,6 +1152,8 @@ export const markReadSingleApiV1NotificationsNotifIdReadPatch = <
 
 /**
  * Mark All Read
+ *
+ * Mark All Read
  */
 export const markAllReadApiV1NotificationsReadAllPost = <ThrowOnError extends boolean = false>(
   options?: Options<MarkAllReadApiV1NotificationsReadAllPostData, ThrowOnError>
@@ -1100,6 +1170,8 @@ export const markAllReadApiV1NotificationsReadAllPost = <ThrowOnError extends bo
   })
 
 /**
+ * Delete Notification
+ *
  * Delete Notification
  */
 export const deleteNotificationApiV1NotificationsNotifIdDelete = <
@@ -1119,6 +1191,8 @@ export const deleteNotificationApiV1NotificationsNotifIdDelete = <
   })
 
 /**
+ * Check Schedule And Generate
+ *
  * Check Schedule And Generate
  */
 export const checkScheduleAndGenerateApiV1NotificationsCheckSchedulePost = <
@@ -1157,6 +1231,8 @@ export const getVapidPublicKeyApiV1PushVapidPublicKeyGet = <ThrowOnError extends
 
 /**
  * Subscribe
+ *
+ * Subscribe
  */
 export const subscribeApiV1PushSubscribePost = <ThrowOnError extends boolean = false>(
   options: Options<SubscribeApiV1PushSubscribePostData, ThrowOnError>
@@ -1177,6 +1253,8 @@ export const subscribeApiV1PushSubscribePost = <ThrowOnError extends boolean = f
   })
 
 /**
+ * Update Subscription Topics
+ *
  * Update Subscription Topics
  */
 export const updateSubscriptionTopicsApiV1PushSubscribeTopicsPatch = <
@@ -1201,6 +1279,8 @@ export const updateSubscriptionTopicsApiV1PushSubscribeTopicsPatch = <
 
 /**
  * Unsubscribe
+ *
+ * Unsubscribe
  */
 export const unsubscribeApiV1PushUnsubscribePost = <ThrowOnError extends boolean = false>(
   options: Options<UnsubscribeApiV1PushUnsubscribePostData, ThrowOnError>
@@ -1222,6 +1302,8 @@ export const unsubscribeApiV1PushUnsubscribePost = <ThrowOnError extends boolean
 
 /**
  * Get Push Topics
+ *
+ * Get Push Topics
  */
 export const getPushTopicsApiV1PushTopicsGet = <ThrowOnError extends boolean = false>(
   options?: Options<GetPushTopicsApiV1PushTopicsGetData, ThrowOnError>
@@ -1234,6 +1316,8 @@ export const getPushTopicsApiV1PushTopicsGet = <ThrowOnError extends boolean = f
   })
 
 /**
+ * Send Test
+ *
  * Send Test
  */
 export const sendTestApiV1PushTestPost = <ThrowOnError extends boolean = false>(
@@ -1256,6 +1340,8 @@ export const sendTestApiV1PushTestPost = <ThrowOnError extends boolean = false>(
 
 /**
  * Admin Get User Topics
+ *
+ * Admin Get User Topics
  */
 export const adminGetUserTopicsApiV1PushAdminTopicsUserIdGet = <
   ThrowOnError extends boolean = false,
@@ -1274,6 +1360,8 @@ export const adminGetUserTopicsApiV1PushAdminTopicsUserIdGet = <
   })
 
 /**
+ * Admin Update User Topics
+ *
  * Admin Update User Topics
  */
 export const adminUpdateUserTopicsApiV1PushAdminTopicsUserIdPut = <
@@ -1298,6 +1386,8 @@ export const adminUpdateUserTopicsApiV1PushAdminTopicsUserIdPut = <
 
 /**
  * Disable User Push
+ *
+ * Disable User Push
  */
 export const disableUserPushApiV1PushAdminDisableUserPost = <ThrowOnError extends boolean = false>(
   options: Options<DisableUserPushApiV1PushAdminDisableUserPostData, ThrowOnError>
@@ -1318,6 +1408,8 @@ export const disableUserPushApiV1PushAdminDisableUserPost = <ThrowOnError extend
   })
 
 /**
+ * Broadcast
+ *
  * Broadcast
  */
 export const broadcastApiV1PushBroadcastPost = <ThrowOnError extends boolean = false>(
@@ -1340,6 +1432,8 @@ export const broadcastApiV1PushBroadcastPost = <ThrowOnError extends boolean = f
 
 /**
  * Download Schedule Ics
+ *
+ * Download Schedule Ics
  */
 export const downloadScheduleIcsApiV1ScheduleIcsGet = <ThrowOnError extends boolean = false>(
   options: Options<DownloadScheduleIcsApiV1ScheduleIcsGetData, ThrowOnError>
@@ -1351,6 +1445,8 @@ export const downloadScheduleIcsApiV1ScheduleIcsGet = <ThrowOnError extends bool
   >({ url: "/api/v1/schedule/ics", ...options })
 
 /**
+ * Me
+ *
  * Me
  */
 export const meApiV1UsersMeGet = <ThrowOnError extends boolean = false>(
@@ -1364,6 +1460,8 @@ export const meApiV1UsersMeGet = <ThrowOnError extends boolean = false>(
   })
 
 /**
+ * Update Me
+ *
  * Update Me
  */
 export const updateMeApiV1UsersMePut = <ThrowOnError extends boolean = false>(
@@ -1386,6 +1484,8 @@ export const updateMeApiV1UsersMePut = <ThrowOnError extends boolean = false>(
 
 /**
  * Change Email
+ *
+ * Change Email
  */
 export const changeEmailApiV1UsersMeEmailPost = <ThrowOnError extends boolean = false>(
   options: Options<ChangeEmailApiV1UsersMeEmailPostData, ThrowOnError>
@@ -1406,6 +1506,8 @@ export const changeEmailApiV1UsersMeEmailPost = <ThrowOnError extends boolean = 
   })
 
 /**
+ * Confirm Email Change
+ *
  * Confirm Email Change
  */
 export const verifyEmailChangeApiV1UsersMeEmailConfirmPost = <ThrowOnError extends boolean = false>(
@@ -1428,6 +1530,8 @@ export const verifyEmailChangeApiV1UsersMeEmailConfirmPost = <ThrowOnError exten
 
 /**
  * Change Password
+ *
+ * Change Password
  */
 export const changePasswordApiV1UsersMePasswordPost = <ThrowOnError extends boolean = false>(
   options: Options<ChangePasswordApiV1UsersMePasswordPostData, ThrowOnError>
@@ -1449,6 +1553,8 @@ export const changePasswordApiV1UsersMePasswordPost = <ThrowOnError extends bool
 
 /**
  * Export Current User Data
+ *
+ * Export Current User Data
  */
 export const exportCurrentUserDataApiV1UsersMeExportPost = <ThrowOnError extends boolean = false>(
   options?: Options<ExportCurrentUserDataApiV1UsersMeExportPostData, ThrowOnError>
@@ -1465,6 +1571,8 @@ export const exportCurrentUserDataApiV1UsersMeExportPost = <ThrowOnError extends
   })
 
 /**
+ * Delete Current User Account
+ *
  * Delete Current User Account
  */
 export const deleteCurrentUserAccountApiV1UsersMeDeletePost = <
@@ -1489,6 +1597,8 @@ export const deleteCurrentUserAccountApiV1UsersMeDeletePost = <
 
 /**
  * Delete Avatar
+ *
+ * Delete Avatar
  */
 export const deleteAvatarApiV1UsersMeAvatarDelete = <ThrowOnError extends boolean = false>(
   options?: Options<DeleteAvatarApiV1UsersMeAvatarDeleteData, ThrowOnError>
@@ -1505,6 +1615,8 @@ export const deleteAvatarApiV1UsersMeAvatarDelete = <ThrowOnError extends boolea
   })
 
 /**
+ * Upload Avatar
+ *
  * Upload Avatar
  */
 export const uploadAvatarApiV1UsersMeAvatarPost = <ThrowOnError extends boolean = false>(
@@ -1528,6 +1640,8 @@ export const uploadAvatarApiV1UsersMeAvatarPost = <ThrowOnError extends boolean 
 
 /**
  * Delete Cover
+ *
+ * Delete Cover
  */
 export const deleteCoverApiV1UsersMeCoverDelete = <ThrowOnError extends boolean = false>(
   options?: Options<DeleteCoverApiV1UsersMeCoverDeleteData, ThrowOnError>
@@ -1544,6 +1658,8 @@ export const deleteCoverApiV1UsersMeCoverDelete = <ThrowOnError extends boolean 
   })
 
 /**
+ * Upload Cover
+ *
  * Upload Cover
  */
 export const uploadCoverApiV1UsersMeCoverPost = <ThrowOnError extends boolean = false>(
@@ -1587,6 +1703,8 @@ export const getUsersApiV1UsersGet = <ThrowOnError extends boolean = false>(
 
 /**
  * Create User
+ *
+ * Create User
  */
 export const createUserApiV1UsersPost = <ThrowOnError extends boolean = false>(
   options: Options<CreateUserApiV1UsersPostData, ThrowOnError>
@@ -1608,6 +1726,8 @@ export const createUserApiV1UsersPost = <ThrowOnError extends boolean = false>(
 
 /**
  * Export Access Audit
+ *
+ * Export Access Audit
  */
 export const exportAccessAuditApiV1UsersAuditExportGet = <ThrowOnError extends boolean = false>(
   options?: Options<ExportAccessAuditApiV1UsersAuditExportGetData, ThrowOnError>
@@ -1625,6 +1745,8 @@ export const exportAccessAuditApiV1UsersAuditExportGet = <ThrowOnError extends b
 
 /**
  * Delete User Admin
+ *
+ * Delete User Admin
  */
 export const deleteUserAdminApiV1UsersUserIdDelete = <ThrowOnError extends boolean = false>(
   options: Options<DeleteUserAdminApiV1UsersUserIdDeleteData, ThrowOnError>
@@ -1641,6 +1763,8 @@ export const deleteUserAdminApiV1UsersUserIdDelete = <ThrowOnError extends boole
   })
 
 /**
+ * Update User Admin
+ *
  * Update User Admin
  */
 export const updateUserAdminApiV1UsersUserIdPatch = <ThrowOnError extends boolean = false>(
@@ -1663,6 +1787,8 @@ export const updateUserAdminApiV1UsersUserIdPatch = <ThrowOnError extends boolea
 
 /**
  * Forgot Password
+ *
+ * Forgot Password
  */
 export const forgotPasswordApiV1PasswordForgotPost = <ThrowOnError extends boolean = false>(
   options: Options<ForgotPasswordApiV1PasswordForgotPostData, ThrowOnError>
@@ -1683,6 +1809,8 @@ export const forgotPasswordApiV1PasswordForgotPost = <ThrowOnError extends boole
 
 /**
  * Reset Password
+ *
+ * Reset Password
  */
 export const resetPasswordApiV1PasswordResetPost = <ThrowOnError extends boolean = false>(
   options: Options<ResetPasswordApiV1PasswordResetPostData, ThrowOnError>
@@ -1702,6 +1830,8 @@ export const resetPasswordApiV1PasswordResetPost = <ThrowOnError extends boolean
   })
 
 /**
+ * Get Groups
+ *
  * Get Groups
  */
 export const getGroupsApiV1GroupsGet = <ThrowOnError extends boolean = false>(
@@ -1734,6 +1864,8 @@ export const allEventsApiV1EventsGet = <ThrowOnError extends boolean = false>(
 
 /**
  * Create Event
+ *
+ * Create Event
  */
 export const createEventApiV1EventsPost = <ThrowOnError extends boolean = false>(
   options: Options<CreateEventApiV1EventsPostData, ThrowOnError>
@@ -1754,6 +1886,8 @@ export const createEventApiV1EventsPost = <ThrowOnError extends boolean = false>
   })
 
 /**
+ * Unregister Event
+ *
  * Unregister Event
  */
 export const unregisterEventApiV1EventsAttendanceDelete = <ThrowOnError extends boolean = false>(
@@ -1799,6 +1933,8 @@ export const attendApiV1EventsAttendancePost = <ThrowOnError extends boolean = f
 
 /**
  * My Events
+ *
+ * My Events
  */
 export const myEventsApiV1EventsMyGet = <ThrowOnError extends boolean = false>(
   options?: Options<MyEventsApiV1EventsMyGetData, ThrowOnError>
@@ -1815,6 +1951,8 @@ export const myEventsApiV1EventsMyGet = <ThrowOnError extends boolean = false>(
   })
 
 /**
+ * Upload Event File
+ *
  * Upload Event File
  */
 export const uploadEventFileApiV1EventsEventIdUploadFilePost = <
@@ -1840,6 +1978,8 @@ export const uploadEventFileApiV1EventsEventIdUploadFilePost = <
 
 /**
  * Get Event Files
+ *
+ * Get Event Files
  */
 export const getEventFilesApiV1EventsEventIdFilesGet = <ThrowOnError extends boolean = false>(
   options: Options<GetEventFilesApiV1EventsEventIdFilesGetData, ThrowOnError>
@@ -1855,6 +1995,8 @@ export const getEventFilesApiV1EventsEventIdFilesGet = <ThrowOnError extends boo
   })
 
 /**
+ * Upload Event Image
+ *
  * Upload Event Image
  */
 export const uploadEventImageApiV1EventsUploadImagePost = <ThrowOnError extends boolean = false>(
@@ -1878,6 +2020,8 @@ export const uploadEventImageApiV1EventsUploadImagePost = <ThrowOnError extends 
 
 /**
  * Delete Event
+ *
+ * Delete Event
  */
 export const deleteEventApiV1EventsEventIdDelete = <ThrowOnError extends boolean = false>(
   options: Options<DeleteEventApiV1EventsEventIdDeleteData, ThrowOnError>
@@ -1895,6 +2039,8 @@ export const deleteEventApiV1EventsEventIdDelete = <ThrowOnError extends boolean
 
 /**
  * Get Event
+ *
+ * Get Event
  */
 export const getEventApiV1EventsEventIdGet = <ThrowOnError extends boolean = false>(
   options: Options<GetEventApiV1EventsEventIdGetData, ThrowOnError>
@@ -1911,6 +2057,8 @@ export const getEventApiV1EventsEventIdGet = <ThrowOnError extends boolean = fal
   })
 
 /**
+ * Update Event
+ *
  * Update Event
  */
 export const updateEventApiV1EventsEventIdPatch = <ThrowOnError extends boolean = false>(
@@ -1932,6 +2080,8 @@ export const updateEventApiV1EventsEventIdPatch = <ThrowOnError extends boolean 
   })
 
 /**
+ * Delete Event File
+ *
  * Delete Event File
  */
 export const deleteEventFileApiV1EventsFileFileIdDelete = <ThrowOnError extends boolean = false>(
@@ -1988,6 +2138,8 @@ export const newsListApiV1NewsGet = <ThrowOnError extends boolean = false>(
 
 /**
  * Create News
+ *
+ * Create News
  */
 export const createNewsApiV1NewsPost = <ThrowOnError extends boolean = false>(
   options: Options<CreateNewsApiV1NewsPostData, ThrowOnError>
@@ -2008,6 +2160,8 @@ export const createNewsApiV1NewsPost = <ThrowOnError extends boolean = false>(
   })
 
 /**
+ * Delete News
+ *
  * Delete News
  */
 export const deleteNewsApiV1NewsIdDelete = <ThrowOnError extends boolean = false>(
@@ -2045,6 +2199,8 @@ export const getNewsApiV1NewsIdGet = <ThrowOnError extends boolean = false>(
 
 /**
  * Update News
+ *
+ * Update News
  */
 export const updateNewsApiV1NewsIdPatch = <ThrowOnError extends boolean = false>(
   options: Options<UpdateNewsApiV1NewsIdPatchData, ThrowOnError>
@@ -2066,6 +2222,8 @@ export const updateNewsApiV1NewsIdPatch = <ThrowOnError extends boolean = false>
 
 /**
  * Like News
+ *
+ * Like News
  */
 export const likeNewsApiV1NewsIdLikePost = <ThrowOnError extends boolean = false>(
   options: Options<LikeNewsApiV1NewsIdLikePostData, ThrowOnError>
@@ -2082,6 +2240,8 @@ export const likeNewsApiV1NewsIdLikePost = <ThrowOnError extends boolean = false
   })
 
 /**
+ * Comment On News
+ *
  * Comment On News
  */
 export const commentOnNewsApiV1NewsIdCommentPost = <ThrowOnError extends boolean = false>(
@@ -2104,6 +2264,8 @@ export const commentOnNewsApiV1NewsIdCommentPost = <ThrowOnError extends boolean
 
 /**
  * Get News Interact
+ *
+ * Get News Interact
  */
 export const getNewsInteractApiV1NewsIdInteractionsGet = <ThrowOnError extends boolean = false>(
   options: Options<GetNewsInteractApiV1NewsIdInteractionsGetData, ThrowOnError>
@@ -2121,6 +2283,8 @@ export const getNewsInteractApiV1NewsIdInteractionsGet = <ThrowOnError extends b
 
 /**
  * Delete Comment
+ *
+ * Delete Comment
  */
 export const deleteCommentApiV1NewsCommentsCommentIdDelete = <ThrowOnError extends boolean = false>(
   options: Options<DeleteCommentApiV1NewsCommentsCommentIdDeleteData, ThrowOnError>
@@ -2137,6 +2301,8 @@ export const deleteCommentApiV1NewsCommentsCommentIdDelete = <ThrowOnError exten
   })
 
 /**
+ * Update Comment
+ *
  * Update Comment
  */
 export const updateCommentApiV1NewsCommentsCommentIdPatch = <ThrowOnError extends boolean = false>(
@@ -2158,6 +2324,8 @@ export const updateCommentApiV1NewsCommentsCommentIdPatch = <ThrowOnError extend
   })
 
 /**
+ * Upload News Image
+ *
  * Upload News Image
  */
 export const uploadNewsImageApiV1NewsUploadImagePost = <ThrowOnError extends boolean = false>(
@@ -2200,6 +2368,8 @@ export const semanticSearchApiV1NewsSearchSemanticGet = <ThrowOnError extends bo
 
 /**
  * List Stories
+ *
+ * List Stories
  */
 export const listStoriesApiV1StoriesGet = <ThrowOnError extends boolean = false>(
   options?: Options<ListStoriesApiV1StoriesGetData, ThrowOnError>
@@ -2215,6 +2385,8 @@ export const listStoriesApiV1StoriesGet = <ThrowOnError extends boolean = false>
   })
 
 /**
+ * Create Story
+ *
  * Create Story
  */
 export const createStoryApiV1StoriesPost = <ThrowOnError extends boolean = false>(
@@ -2237,6 +2409,8 @@ export const createStoryApiV1StoriesPost = <ThrowOnError extends boolean = false
 
 /**
  * Delete Story
+ *
+ * Delete Story
  */
 export const deleteStoryApiV1StoriesStoryIdDelete = <ThrowOnError extends boolean = false>(
   options: Options<DeleteStoryApiV1StoriesStoryIdDeleteData, ThrowOnError>
@@ -2253,6 +2427,8 @@ export const deleteStoryApiV1StoriesStoryIdDelete = <ThrowOnError extends boolea
   })
 
 /**
+ * Update Story
+ *
  * Update Story
  */
 export const updateStoryApiV1StoriesStoryIdPatch = <ThrowOnError extends boolean = false>(
@@ -2274,6 +2450,8 @@ export const updateStoryApiV1StoriesStoryIdPatch = <ThrowOnError extends boolean
   })
 
 /**
+ * Upload Story Cover
+ *
  * Upload Story Cover
  */
 export const uploadStoryCoverApiV1StoriesUploadCoverPost = <ThrowOnError extends boolean = false>(
@@ -2297,6 +2475,8 @@ export const uploadStoryCoverApiV1StoriesUploadCoverPost = <ThrowOnError extends
 
 /**
  * Add Schedule
+ *
+ * Add Schedule
  */
 export const addScheduleApiV1SchedulePost = <ThrowOnError extends boolean = false>(
   options: Options<AddScheduleApiV1SchedulePostData, ThrowOnError>
@@ -2318,6 +2498,8 @@ export const addScheduleApiV1SchedulePost = <ThrowOnError extends boolean = fals
 
 /**
  * Delete Schedule
+ *
+ * Delete Schedule
  */
 export const deleteScheduleApiV1ScheduleIdDelete = <ThrowOnError extends boolean = false>(
   options: Options<DeleteScheduleApiV1ScheduleIdDeleteData, ThrowOnError>
@@ -2335,6 +2517,8 @@ export const deleteScheduleApiV1ScheduleIdDelete = <ThrowOnError extends boolean
 
 /**
  * Get Schedule
+ *
+ * Get Schedule
  */
 export const getScheduleApiV1ScheduleIdGet = <ThrowOnError extends boolean = false>(
   options: Options<GetScheduleApiV1ScheduleIdGetData, ThrowOnError>
@@ -2351,6 +2535,8 @@ export const getScheduleApiV1ScheduleIdGet = <ThrowOnError extends boolean = fal
   })
 
 /**
+ * Update Schedule
+ *
  * Update Schedule
  */
 export const updateScheduleApiV1ScheduleIdPatch = <ThrowOnError extends boolean = false>(
@@ -2373,6 +2559,8 @@ export const updateScheduleApiV1ScheduleIdPatch = <ThrowOnError extends boolean 
 
 /**
  * Attendance Summary
+ *
+ * Attendance Summary
  */
 export const attendanceSummaryApiV1StatsAttendanceGet = <ThrowOnError extends boolean = false>(
   options?: Options<AttendanceSummaryApiV1StatsAttendanceGetData, ThrowOnError>
@@ -2390,6 +2578,8 @@ export const attendanceSummaryApiV1StatsAttendanceGet = <ThrowOnError extends bo
 
 /**
  * Grade Summary
+ *
+ * Grade Summary
  */
 export const gradeSummaryApiV1StatsGradesGet = <ThrowOnError extends boolean = false>(
   options?: Options<GradeSummaryApiV1StatsGradesGetData, ThrowOnError>
@@ -2406,6 +2596,8 @@ export const gradeSummaryApiV1StatsGradesGet = <ThrowOnError extends boolean = f
   })
 
 /**
+ * Participation Summary
+ *
  * Participation Summary
  */
 export const participationSummaryApiV1StatsParticipationGet = <

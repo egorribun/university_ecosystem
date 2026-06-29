@@ -1093,10 +1093,12 @@ export const handlers = [
         await getSpotifyCallbackApiV1SpotifyCallbackGet200Response(),
         { status: 200 },
       ],
+      [undefined, { status: 400 }],
       [
         await getSpotifyCallbackApiV1SpotifyCallbackGet422Response(),
         { status: 422 },
       ],
+      [undefined, { status: 503 }],
     ] as [any, { status: number }][];
 
     const [body, init] =
