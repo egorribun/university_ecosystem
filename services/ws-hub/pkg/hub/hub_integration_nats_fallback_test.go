@@ -7,8 +7,6 @@ import (
 	"encoding/json"
 	"testing"
 	"time"
-
-	"github.com/nats-io/nats.go"
 )
 
 func TestIntegration_ClientHandleMessage_JetStreamFallback(t *testing.T) {

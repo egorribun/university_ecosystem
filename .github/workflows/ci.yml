@@ -1228,7 +1228,7 @@ jobs:
         env:
           ENVIRONMENT: testing
           DATABASE_URL: "sqlite+aiosqlite:///./test_asan.db"
-          SECRET_KEY: ${{ secrets.CI_TEST_SECRET_KEY }}
+          SECRET_KEY: ${{ secrets.CI_TEST_SECRET_KEY || 'test-secret-key-1234567890abcdef' }}
         run: bash scripts/run_asan_tests.sh
 
       - name: Upload ASan report on failure
