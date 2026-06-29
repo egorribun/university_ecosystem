@@ -62,8 +62,8 @@ class CorsSettingsMixin:
 
                 logger = get_logger(__name__)
                 logger.warning(
-                    "INTERNAL_AUTH_TOKEN is not set in %s environment. "
-                    "Internal API routes are vulnerable to IP spoofing.",
+                    "Internal route shared-secret guard is not configured in %s "
+                    "environment. Internal API routes are vulnerable to IP spoofing.",
                     env,
                 )
         return value

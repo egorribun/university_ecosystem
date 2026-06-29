@@ -82,11 +82,11 @@ class GraphQLTokenValidator:
 
             _redis = await get_cache_client()
             if await _redis.exists(f"revoked:jti:{jti}"):
-                logger.debug("GraphQL: JTI revoked in Redis jti=%s", jti)
+                logger.debug("GraphQL: session revoked in Redis")
                 return False
         except (ConnectionError, TimeoutError, OSError) as exc:
             # RZ-20-04: Narrowed — Redis unavailable → fall through to DB check.
-            logger.debug("GraphQL token check fallback to DB: %s", exc)  # nosec B110
+            logger.debug("GraphQL session check fallback to DB: %s", exc)  # nosec B110
         return True
 
     async def _load_db_session(self, jti: str) -> ActiveSession | None:
@@ -101,9 +101,7 @@ class GraphQLTokenValidator:
             return result.scalar_one_or_none()
         except (OSError, ConnectionError) as exc:
             # RZ-20-04: Narrowed — fail-closed on infra fault (deny, don't accept).
-            logger.warning(
-                "GraphQL: DB session load failed, denying token jti=%s: %s", jti, exc
-            )
+            logger.warning("GraphQL: DB session load failed; denying request: %s", exc)
             return None
 
     def _check_expiry(self, session: ActiveSession) -> bool:
@@ -114,7 +112,7 @@ class GraphQLTokenValidator:
         if expires_at.tzinfo is None:
             expires_at = expires_at.replace(tzinfo=UTC)
         if expires_at <= datetime.now(UTC):
-            logger.debug("GraphQL: session expired jti=%s", session.jti)
+            logger.debug("GraphQL: session expired")
             return False
         return True
 
@@ -127,7 +125,7 @@ class GraphQLTokenValidator:
             result = await self._session.execute(select(User).where(User.id == val))
             return result.scalar_one_or_none()
         except (ValueError, TypeError) as exc:
-            logger.debug("GraphQL: invalid user_id in token: %s", exc)
+            logger.debug("GraphQL: invalid subject claim: %s", exc)
             return None
 
     async def _check_fingerprint(self, user: User, session: ActiveSession) -> bool:

@@ -152,6 +152,7 @@ class RateLimitMiddleware:
                 )
 
             locale = resolve_locale(request=request)
+            # nosemgrep: python.flask.security.audit.directly-returned-format-string.directly-returned-format-string
             await asgi_json_problem(
                 send,
                 status_code=429,

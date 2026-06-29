@@ -40,21 +40,28 @@ jobs:
             go.sum
 
       - name: Install dependencies
+        env:
+          SERVICE_DIRECTORY: ${{ inputs.service-directory }}
         run: |
-          cd "${{ inputs.service-directory }}"
+          cd "$SERVICE_DIRECTORY"
           go mod download
 
       - name: Run tests with coverage
+        env:
+          SERVICE_DIRECTORY: ${{ inputs.service-directory }}
         run: |
-          echo "Testing ${{ inputs.service-directory }}..."
-          cd "${{ inputs.service-directory }}"
+          echo "Testing $SERVICE_DIRECTORY..."
+          cd "$SERVICE_DIRECTORY"
           go test -v -race -coverprofile=coverage.out ./...
 
       # MOD-26-01: Enforce minimum Go test coverage on all non-generated/non-mock code.
       - name: Check coverage threshold
         shell: bash
+        env:
+          COVERAGE_THRESHOLD: ${{ inputs.coverage-threshold }}
+          SERVICE_DIRECTORY: ${{ inputs.service-directory }}
         run: |
-          cd "${{ inputs.service-directory }}"
+          cd "$SERVICE_DIRECTORY"
           if [ -f coverage.out ]; then
             # Filter out protobuf files, mock files, and generated schema/API files
             grep -vE "\.pb\.go|_mock\.go|mock_|/gen/go" coverage.out > coverage.filtered.out || true
@@ -62,7 +69,7 @@ jobs:
           fi
           COVERAGE=$(go tool cover -func=coverage.out | grep total: | awk '{print $3}' | tr -d '%')
           echo "Go test coverage (excluding generated/mocks): ${COVERAGE}%"
-          THRESHOLD=${{ inputs.coverage-threshold }}
+          THRESHOLD="$COVERAGE_THRESHOLD"
           if (( $(echo "$COVERAGE < $THRESHOLD" | bc -l) )); then
             echo "::error::Coverage ${COVERAGE}% is below ${THRESHOLD}% threshold"
             exit 1
@@ -74,11 +81,15 @@ jobs:
 
       - name: Run incremental mutation tests
         shell: bash
+        env:
+          BASE_REF_NAME: ${{ github.event.pull_request.base.ref || 'main' }}
+          EVENT_NAME: ${{ github.event_name }}
+          SERVICE_DIRECTORY: ${{ inputs.service-directory }}
         run: |
           # Configure base ref for diff
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            git fetch origin ${{ github.event.pull_request.base.ref }} --depth=1 || true
-            BASE_REF="origin/${{ github.event.pull_request.base.ref }}"
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            git fetch origin "$BASE_REF_NAME" --depth=1 || true
+            BASE_REF="origin/$BASE_REF_NAME"
           else
             git fetch origin main --depth=1 || true
             BASE_REF="HEAD~1"
@@ -90,19 +101,19 @@ jobs:
           echo "Comparing against $BASE_REF to find modified Go files..."
           
           # Find modified Go files within the service directory (excluding tests and generated files)
-          CHANGED_FILES=$(git diff --name-only "$BASE_REF"...HEAD | grep "^${{ inputs.service-directory }}/" | grep "\.go$" | grep -v "_test\.go$" | grep -v "\.pb\.go$" | grep -v "/gen/" || true)
+          CHANGED_FILES=$(git diff --name-only "$BASE_REF"...HEAD | grep "^${SERVICE_DIRECTORY}/" | grep "\.go$" | grep -v "_test\.go$" | grep -v "\.pb\.go$" | grep -v "/gen/" || true)
           
           if [ -z "$CHANGED_FILES" ]; then
-            echo "No changed Go source files found in ${{ inputs.service-directory }}. Skipping mutation tests."
+            echo "No changed Go source files found in $SERVICE_DIRECTORY. Skipping mutation tests."
             exit 0
           fi
           
           # Map files to their package paths relative to service directory
-          cd "${{ inputs.service-directory }}"
+          cd "$SERVICE_DIRECTORY"
           PACKAGES=""
           for file in $CHANGED_FILES; do
             # Remove service-directory prefix
-            rel_file=${file#${{ inputs.service-directory }}/}
+            rel_file=${file#"$SERVICE_DIRECTORY"/}
             pkg_dir=$(dirname "$rel_file")
             if [ "$pkg_dir" = "." ]; then
               pkg="./..."
@@ -145,10 +156,12 @@ jobs:
         if: always()
         id: artifact-name
         shell: bash
+        env:
+          SERVICE_DIRECTORY: ${{ inputs.service-directory }}
         run: |
           # shellcheck disable=SC1003
           # Sanitize path: replace / and \ with -
-          SANITIZED=$(echo "${{ inputs.service-directory }}" | tr '/\\' '-')
+          SANITIZED=$(echo "$SERVICE_DIRECTORY" | tr '/\\' '-')
           echo "name=go-coverage-$SANITIZED" >> "$GITHUB_OUTPUT"
 
       - name: Upload coverage artifacts

@@ -7,7 +7,7 @@ FROM rust:1.94.1-slim-bookworm@sha256:5ae2d2ef9875c9c2407bf9b5678e6375304f7ecf8e
 # Stage 1: Builder
 # MOD-21-08 (Wave 21): Updated to Python 3.14 for free-threading support,
 # deferred annotation evaluation (PEP 649), and improved error messages.
-FROM python:3.14-slim-bookworm AS builder
+FROM python:3.14-slim-bookworm@sha256:4ff4b92a68355dbdb52584ab3391dff8d371a61d4e063468bfd0130e3189c6d9 AS builder
 
 # Pin uv to an exact version for reproducible builds.
 # Use 0.10.8 for proven stability in current scan environments.
@@ -31,6 +31,7 @@ RUN --mount=type=cache,id=apt-lists-builder,target=/var/lib/apt/lists \
     build-essential \
     curl \
     && rm -rf /var/lib/apt/lists/*
+RUN python -m pip install --no-cache-dir --upgrade pip==26.0
 
 # Copy Rust toolchain from the dedicated stage.
 COPY --from=rust-toolchain /usr/local/cargo /usr/local/cargo
@@ -54,7 +55,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-dev --no-install-project
 
 # Stage 2: Runtime
-FROM python:3.14-slim-bookworm AS runtime
+FROM python:3.14-slim-bookworm@sha256:4ff4b92a68355dbdb52584ab3391dff8d371a61d4e063468bfd0130e3189c6d9 AS runtime
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
@@ -77,6 +78,7 @@ RUN --mount=type=cache,id=apt-lists-runtime,target=/var/lib/apt/lists \
     && rm -rf /var/lib/apt/lists/* \
     && groupadd --system --gid 10001 app \
     && useradd --system --uid 10001 --gid app --home-dir /home/app --shell /usr/sbin/nologin --no-create-home app
+RUN python -m pip install --no-cache-dir --upgrade pip==26.0
 
 # Copy virtual environment from builder
 COPY --from=builder --chown=app:app /opt/venv /opt/venv

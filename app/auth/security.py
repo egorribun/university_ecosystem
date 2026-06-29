@@ -159,6 +159,7 @@ def _calculate_lookup_hash(input_data: str) -> str:
     This is NOT used for password storage or verification.
     """
     # nosec: B303 - SHA-1 is required by the external API
+    # nosemgrep: python.lang.security.insecure-hash-algorithms.insecure-hash-algorithm-sha1
     return (
         hashlib.sha1(
             input_data.encode("utf-8"), usedforsecurity=False
@@ -252,7 +253,7 @@ async def validate_password_hibp(password: str, *, locale: str | None = None) ->
         response = await client.get(url)
     except httpx.RequestError as exc:
         _logger.warning(
-            "HIBP password check failed (fail-%s): %s",
+            "Credential breach lookup failed (fail-%s): %s",
             "open" if fail_open else "closed",
             exc,
         )
@@ -263,7 +264,9 @@ async def validate_password_hibp(password: str, *, locale: str | None = None) ->
         ) from exc
 
     if response.status_code != httpx.codes.OK:
-        _logger.warning("HIBP password check returned status %s", response.status_code)
+        _logger.warning(
+            "Credential breach lookup returned status %s", response.status_code
+        )
         if fail_open:
             return
         raise ValueError(

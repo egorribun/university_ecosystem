@@ -1,15 +1,16 @@
 import argparse
 import os
+import shlex
 import subprocess
 import sys
 
 
-def get_alembic_cmd():
+def get_alembic_cmd() -> list[str]:
     # Priority 1: Direct 'alembic' script in PATH
     try:
         # Check if alembic exists and is runnable
         subprocess.run(["alembic", "--version"], capture_output=True, check=True)  # noqa: S607
-        return "alembic"
+        return ["alembic"]
     except (subprocess.CalledProcessError, FileNotFoundError):
         pass
 
@@ -20,22 +21,22 @@ def get_alembic_cmd():
             capture_output=True,
             check=True,
         )
-        return "uv run alembic"
+        return ["uv", "run", "alembic"]
     except (subprocess.CalledProcessError, FileNotFoundError):
         pass
 
     # Priority 3: python module (some environments might prefer this)
     # Note: 'python -m alembic' sometimes fails if __main__ is missing.
-    return "python -m alembic"
+    return [sys.executable, "-m", "alembic"]
 
 
 ALEMBIC_BASE_CMD = get_alembic_cmd()
-print(f"INFO: Using Alembic command: {ALEMBIC_BASE_CMD}")
+print(f"INFO: Using Alembic command: {shlex.join(ALEMBIC_BASE_CMD)}")
 
 
-def run_command(cmd, env=None):
-    print(f"Executing: {cmd}")
-    result = subprocess.run(cmd, shell=True, env=env)  # noqa: S602
+def run_command(cmd: list[str], env=None) -> bool:
+    print(f"Executing: {shlex.join(cmd)}")
+    result = subprocess.run(cmd, shell=False, env=env, check=False)  # noqa: S603
     if result.returncode != 0:
         print(f"Error: Command failed with exit code {result.returncode}")
         return False
@@ -101,7 +102,9 @@ def main():
 
     # 2. Upgrade to Head
     print("\n--- Phase 1: Upgrade to Head ---")
-    if not run_command(f"{ALEMBIC_BASE_CMD} -c alembic.ini upgrade head", env):
+    if not run_command(
+        [*ALEMBIC_BASE_CMD, "-c", "alembic.ini", "upgrade", "head"], env
+    ):
         sys.exit(1)
 
     # 3. Test Downgrade
@@ -110,7 +113,7 @@ def main():
     print(f"Downgrading to: {downgrade_target}")
 
     if not run_command(
-        f"{ALEMBIC_BASE_CMD} -c alembic.ini downgrade {downgrade_target}", env
+        [*ALEMBIC_BASE_CMD, "-c", "alembic.ini", "downgrade", downgrade_target], env
     ):
         print(
             "\n[!] Downgrade failed! This usually means a migration in the chain "
@@ -121,7 +124,9 @@ def main():
 
     # 4. Final Upgrade back to Head
     print("\n--- Phase 3: Final Upgrade back to Head ---")
-    if not run_command(f"{ALEMBIC_BASE_CMD} -c alembic.ini upgrade head", env):
+    if not run_command(
+        [*ALEMBIC_BASE_CMD, "-c", "alembic.ini", "upgrade", "head"], env
+    ):
         print(
             "\n[!] Final upgrade failed! The downgrade left the DB in a broken state."
         )

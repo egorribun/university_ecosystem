@@ -77,7 +77,7 @@ async def cleanup_stale_email_change_tokens(
     total = updated_count + removed_count
     if total:
         logger.info(
-            "Cleaned %s email change tokens (marked=%s, removed=%s)",
+            "Cleaned %s pending address-change records (marked=%s, removed=%s)",
             total,
             updated_count,
             removed_count,

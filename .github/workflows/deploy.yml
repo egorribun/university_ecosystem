@@ -234,8 +234,10 @@ jobs:
 
       - name: Deploy (placeholder)
         id: deploy
+        env:
+          DEPLOY_ENVIRONMENT: ${{ inputs.environment }}
         run: |
-          echo "::notice::Blue-Green deployment to ${{ inputs.environment }}"
+          echo "::notice::Blue-Green deployment to ${DEPLOY_ENVIRONMENT}"
           echo "Backend image: ${{ needs.build-backend.outputs.digest }}"
           echo "Frontend image: ${{ needs.build-frontend.outputs.digest }}"
           echo "WS Hub image: ${{ needs.build-ws-hub.outputs.digest }}"
@@ -248,7 +250,7 @@ jobs:
           # 3. Switch traffic from "blue" to "green"
           # 4. Keep "blue" as rollback target
 
-          echo "url=https://${{ inputs.environment }}.example.com" >> "$GITHUB_OUTPUT"
+          echo "url=https://${DEPLOY_ENVIRONMENT}.example.com" >> "$GITHUB_OUTPUT"
 
       - name: Record DORA Lead Time for Changes
         # DORA metric: time from triggering commit's author date to deployment.
@@ -256,8 +258,11 @@ jobs:
         # 'environment' field above. Lead Time requires explicit calculation.
         id: dora
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          DEPLOY_ENVIRONMENT: ${{ inputs.environment }}
         with:
           script: |
+            const environment = process.env.DEPLOY_ENVIRONMENT
             // Fetch the triggering commit to get its author date
             const { data: commit } = await github.rest.repos.getCommit({
               owner: context.repo.owner,
@@ -277,7 +282,7 @@ jobs:
               .addHeading('DORA: Lead Time for Changes', 3)
               .addTable([
                 [{ data: 'Metric', header: true }, { data: 'Value', header: true }],
-                ['Environment', '${{ inputs.environment }}'],
+                ['Environment', environment],
                 ['Commit SHA', context.sha.slice(0, 7)],
                 ['Commit author date', commit.commit.author.date],
                 ['Deploy time (UTC)', new Date(deployTs).toISOString()],

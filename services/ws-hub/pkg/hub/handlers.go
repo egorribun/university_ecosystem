@@ -138,6 +138,9 @@ func (h *Hub) HandleWebSocket(w http.ResponseWriter, r *http.Request, cfg *confi
 		return
 	}
 
+	// CheckOrigin is configured on the package-level upgrader and validates
+	// the request Origin against the configured allow-list before upgrading.
+	// nosemgrep: go.gorilla.security.audit.websocket-missing-origin-check.websocket-missing-origin-check
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		h.Logger.ErrorContext(setupCtx, "WebSocket upgrade failed", "err", err)
