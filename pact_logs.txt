@@ -1,0 +1,620 @@
+﻿2026-06-29T10:25:09.8252120Z Current runner version: '2.335.1'
+2026-06-29T10:25:09.8285491Z ##[group]Runner Image Provisioner
+2026-06-29T10:25:09.8286827Z Hosted Compute Agent
+2026-06-29T10:25:09.8287866Z Version: 20260611.554
+2026-06-29T10:25:09.8289343Z Commit: 5e0782fdc9014723d3be820dd114dd31555c2bd1
+2026-06-29T10:25:09.8290554Z Build Date: 2026-06-11T21:40:46Z
+2026-06-29T10:25:09.8291767Z Worker ID: {46563cd4-58ae-473b-852f-4e2dfd6b5fa5}
+2026-06-29T10:25:09.8292994Z Azure Region: eastus
+2026-06-29T10:25:09.8294036Z ##[endgroup]
+2026-06-29T10:25:09.8296178Z ##[group]Operating System
+2026-06-29T10:25:09.8297239Z Ubuntu
+2026-06-29T10:25:09.8298458Z 24.04.4
+2026-06-29T10:25:09.8299295Z LTS
+2026-06-29T10:25:09.8300235Z ##[endgroup]
+2026-06-29T10:25:09.8301185Z ##[group]Runner Image
+2026-06-29T10:25:09.8302184Z Image: ubuntu-24.04
+2026-06-29T10:25:09.8303173Z Version: 20260622.220.1
+2026-06-29T10:25:09.8305229Z Included Software: https://github.com/actions/runner-images/blob/ubuntu24/20260622.220/images/ubuntu/Ubuntu2404-Readme.md
+2026-06-29T10:25:09.8307985Z Image Release: https://github.com/actions/runner-images/releases/tag/ubuntu24%2F20260622.220
+2026-06-29T10:25:09.8310004Z ##[endgroup]
+2026-06-29T10:25:09.8314975Z ##[group]GITHUB_TOKEN Permissions
+2026-06-29T10:25:09.8318029Z Actions: read
+2026-06-29T10:25:09.8319259Z ArtifactMetadata: read
+2026-06-29T10:25:09.8320289Z Attestations: read
+2026-06-29T10:25:09.8321356Z Checks: read
+2026-06-29T10:25:09.8322334Z CodeQuality: read
+2026-06-29T10:25:09.8323399Z Contents: read
+2026-06-29T10:25:09.8324401Z Deployments: read
+2026-06-29T10:25:09.8325346Z Discussions: read
+2026-06-29T10:25:09.8326329Z Issues: read
+2026-06-29T10:25:09.8327232Z Metadata: read
+2026-06-29T10:25:09.8328545Z Models: read
+2026-06-29T10:25:09.8329495Z Packages: read
+2026-06-29T10:25:09.8330577Z Pages: read
+2026-06-29T10:25:09.8331696Z PullRequests: read
+2026-06-29T10:25:09.8332671Z RepositoryProjects: read
+2026-06-29T10:25:09.8333712Z SecurityEvents: read
+2026-06-29T10:25:09.8334703Z Statuses: read
+2026-06-29T10:25:09.8335679Z VulnerabilityAlerts: read
+2026-06-29T10:25:09.8336733Z ##[endgroup]
+2026-06-29T10:25:09.8340073Z Secret source: Actions
+2026-06-29T10:25:09.8341352Z Prepare workflow directory
+2026-06-29T10:25:09.9074723Z Prepare all required actions
+2026-06-29T10:25:09.9129102Z Getting action download info
+2026-06-29T10:25:10.1183758Z Download action repository 'actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0' (SHA:9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0)
+2026-06-29T10:25:10.2006956Z Download action repository 'actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1' (SHA:ece7cb06caefa5fff74198d8649806c4678c61a1)
+2026-06-29T10:25:10.4148661Z Download action repository 'astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39' (SHA:fac544c07dec837d0ccb6301d7b5580bf5edae39)
+2026-06-29T10:25:10.6866405Z Complete job name: Contract Tests
+2026-06-29T10:25:10.7573941Z ##[group]Run actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+2026-06-29T10:25:10.7575120Z with:
+2026-06-29T10:25:10.7575618Z   repository: egorribun/university_ecosystem
+2026-06-29T10:25:10.7580713Z   token: ***
+2026-06-29T10:25:10.7581168Z   ssh-strict: true
+2026-06-29T10:25:10.7581615Z   ssh-user: git
+2026-06-29T10:25:10.7582212Z   persist-credentials: true
+2026-06-29T10:25:10.7582763Z   clean: true
+2026-06-29T10:25:10.7583208Z   sparse-checkout-cone-mode: true
+2026-06-29T10:25:10.7583729Z   fetch-depth: 1
+2026-06-29T10:25:10.7584167Z   fetch-tags: false
+2026-06-29T10:25:10.7584617Z   show-progress: true
+2026-06-29T10:25:10.7585077Z   lfs: false
+2026-06-29T10:25:10.7585499Z   submodules: false
+2026-06-29T10:25:10.7585961Z   set-safe-directory: true
+2026-06-29T10:25:10.7586477Z   allow-unsafe-pr-checkout: false
+2026-06-29T10:25:10.7587290Z env:
+2026-06-29T10:25:10.7587714Z   SECRET_KEY: 
+2026-06-29T10:25:10.7588333Z   ENVIRONMENT: testing
+2026-06-29T10:25:10.7588853Z ##[endgroup]
+2026-06-29T10:25:10.8729304Z Syncing repository: egorribun/university_ecosystem
+2026-06-29T10:25:10.8731605Z ##[group]Getting Git version info
+2026-06-29T10:25:10.8732845Z Working directory is '/home/runner/work/university_ecosystem/university_ecosystem'
+2026-06-29T10:25:10.8734241Z [command]/usr/bin/git version
+2026-06-29T10:25:10.8817429Z git version 2.54.0
+2026-06-29T10:25:10.8840096Z ##[endgroup]
+2026-06-29T10:25:10.8851185Z Temporarily overriding HOME='/home/runner/work/_temp/c08838eb-0715-4149-b635-ecd36a5366f3' before making global git config changes
+2026-06-29T10:25:10.8853698Z Adding repository directory to the temporary git global config as a safe directory
+2026-06-29T10:25:10.8858650Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/university_ecosystem/university_ecosystem
+2026-06-29T10:25:10.8912487Z Deleting the contents of '/home/runner/work/university_ecosystem/university_ecosystem'
+2026-06-29T10:25:10.8916358Z ##[group]Determining repository object format
+2026-06-29T10:25:10.8918394Z ##[endgroup]
+2026-06-29T10:25:10.8919768Z ##[group]Initializing the repository
+2026-06-29T10:25:10.8923376Z [command]/usr/bin/git init /home/runner/work/university_ecosystem/university_ecosystem
+2026-06-29T10:25:10.9058623Z hint: Using 'master' as the name for the initial branch. This default branch name
+2026-06-29T10:25:10.9060001Z hint: will change to "main" in Git 3.0. To configure the initial branch name
+2026-06-29T10:25:10.9061462Z hint: to use in all of your new repositories, which will suppress this warning,
+2026-06-29T10:25:10.9062286Z hint: call:
+2026-06-29T10:25:10.9062712Z hint:
+2026-06-29T10:25:10.9063255Z hint: 	git config --global init.defaultBranch <name>
+2026-06-29T10:25:10.9064379Z hint:
+2026-06-29T10:25:10.9065463Z hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
+2026-06-29T10:25:10.9067272Z hint: 'development'. The just-created branch can be renamed via this command:
+2026-06-29T10:25:10.9068735Z hint:
+2026-06-29T10:25:10.9069236Z hint: 	git branch -m <name>
+2026-06-29T10:25:10.9069744Z hint:
+2026-06-29T10:25:10.9070409Z hint: Disable this message with "git config set advice.defaultBranchName false"
+2026-06-29T10:25:10.9071614Z Initialized empty Git repository in /home/runner/work/university_ecosystem/university_ecosystem/.git/
+2026-06-29T10:25:10.9078410Z [command]/usr/bin/git remote add origin https://github.com/egorribun/university_ecosystem
+2026-06-29T10:25:10.9130303Z ##[endgroup]
+2026-06-29T10:25:10.9132397Z ##[group]Disabling automatic garbage collection
+2026-06-29T10:25:10.9134343Z [command]/usr/bin/git config --local gc.auto 0
+2026-06-29T10:25:10.9162530Z ##[endgroup]
+2026-06-29T10:25:10.9163612Z ##[group]Setting up auth
+2026-06-29T10:25:10.9164186Z Removing SSH command configuration
+2026-06-29T10:25:10.9168414Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+2026-06-29T10:25:10.9202598Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+2026-06-29T10:25:10.9585486Z Removing HTTP extra header
+2026-06-29T10:25:10.9589913Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-06-29T10:25:10.9617083Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+2026-06-29T10:25:10.9827672Z Removing includeIf entries pointing to credentials config files
+2026-06-29T10:25:10.9832541Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+2026-06-29T10:25:10.9878713Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+2026-06-29T10:25:11.0086725Z [command]/usr/bin/git config --file /home/runner/work/_temp/git-credentials-bae44ded-b378-4744-8ecd-adf77cdf52e5.config http.https://github.com/.extraheader AUTHORIZATION: basic ***
+2026-06-29T10:25:11.0122482Z [command]/usr/bin/git config --local includeIf.gitdir:/home/runner/work/university_ecosystem/university_ecosystem/.git.path /home/runner/work/_temp/git-credentials-bae44ded-b378-4744-8ecd-adf77cdf52e5.config
+2026-06-29T10:25:11.0151253Z [command]/usr/bin/git config --local includeIf.gitdir:/home/runner/work/university_ecosystem/university_ecosystem/.git/worktrees/*.path /home/runner/work/_temp/git-credentials-bae44ded-b378-4744-8ecd-adf77cdf52e5.config
+2026-06-29T10:25:11.0182512Z [command]/usr/bin/git config --local includeIf.gitdir:/github/workspace/.git.path /github/runner_temp/git-credentials-bae44ded-b378-4744-8ecd-adf77cdf52e5.config
+2026-06-29T10:25:11.0212792Z [command]/usr/bin/git config --local includeIf.gitdir:/github/workspace/.git/worktrees/*.path /github/runner_temp/git-credentials-bae44ded-b378-4744-8ecd-adf77cdf52e5.config
+2026-06-29T10:25:11.0239358Z ##[endgroup]
+2026-06-29T10:25:11.0240684Z ##[group]Fetching the repository
+2026-06-29T10:25:11.0245183Z [command]/usr/bin/git -c protocol.version=2 fetch --no-tags --prune --no-recurse-submodules --depth=1 origin +65023b5ce480aee08e169c9728922b87253ec757:refs/remotes/pull/1159/merge
+2026-06-29T10:25:12.3023205Z From https://github.com/egorribun/university_ecosystem
+2026-06-29T10:25:12.3025474Z  * [new ref]         65023b5ce480aee08e169c9728922b87253ec757 -> pull/1159/merge
+2026-06-29T10:25:12.3062360Z ##[endgroup]
+2026-06-29T10:25:12.3064389Z ##[group]Determining the checkout info
+2026-06-29T10:25:12.3066515Z ##[endgroup]
+2026-06-29T10:25:12.3068797Z [command]/usr/bin/git sparse-checkout disable
+2026-06-29T10:25:12.3116947Z [command]/usr/bin/git config --local --unset-all extensions.worktreeConfig
+2026-06-29T10:25:12.3216192Z ##[group]Checking out the ref
+2026-06-29T10:25:12.3218564Z [command]/usr/bin/git checkout --progress --force refs/remotes/pull/1159/merge
+2026-06-29T10:25:12.5139948Z Note: switching to 'refs/remotes/pull/1159/merge'.
+2026-06-29T10:25:12.5141457Z 
+2026-06-29T10:25:12.5142755Z You are in 'detached HEAD' state. You can look around, make experimental
+2026-06-29T10:25:12.5145268Z changes and commit them, and you can discard any commits you make in this
+2026-06-29T10:25:12.5147949Z state without impacting any branches by switching back to a branch.
+2026-06-29T10:25:12.5149757Z 
+2026-06-29T10:25:12.5150555Z If you want to create a new branch to retain commits you create, you may
+2026-06-29T10:25:12.5152384Z do so (now or later) by using -c with the switch command. Example:
+2026-06-29T10:25:12.5153329Z 
+2026-06-29T10:25:12.5153717Z   git switch -c <new-branch-name>
+2026-06-29T10:25:12.5154423Z 
+2026-06-29T10:25:12.5154817Z Or undo this operation with:
+2026-06-29T10:25:12.5155665Z 
+2026-06-29T10:25:12.5156158Z   git switch -
+2026-06-29T10:25:12.5156907Z 
+2026-06-29T10:25:12.5157793Z Turn off this advice by setting config variable advice.detachedHead to false
+2026-06-29T10:25:12.5160101Z 
+2026-06-29T10:25:12.5161835Z HEAD is now at 65023b5 Merge 1dd8e6aa36d18c668edf16b103b749ecfaddd796 into 5d36f306d4cbafad896a6d7bb3cadba0e7aa67f9
+2026-06-29T10:25:12.5167041Z ##[endgroup]
+2026-06-29T10:25:12.5202247Z [command]/usr/bin/git log -1 --format=%H
+2026-06-29T10:25:12.5226435Z 65023b5ce480aee08e169c9728922b87253ec757
+2026-06-29T10:25:12.5539911Z ##[group]Run actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+2026-06-29T10:25:12.5541012Z with:
+2026-06-29T10:25:12.5541793Z   python-version: 3.13
+2026-06-29T10:25:12.5542598Z   check-latest: false
+2026-06-29T10:25:12.5546703Z   token: ***
+2026-06-29T10:25:12.5547495Z   update-environment: true
+2026-06-29T10:25:12.5548578Z   allow-prereleases: false
+2026-06-29T10:25:12.5549431Z   freethreaded: false
+2026-06-29T10:25:12.5550212Z env:
+2026-06-29T10:25:12.5550945Z   SECRET_KEY: 
+2026-06-29T10:25:12.5551719Z   ENVIRONMENT: testing
+2026-06-29T10:25:12.5552514Z ##[endgroup]
+2026-06-29T10:25:12.6811611Z ##[group]Installed versions
+2026-06-29T10:25:12.6920477Z Successfully set up CPython (3.13.14)
+2026-06-29T10:25:12.6922239Z ##[endgroup]
+2026-06-29T10:25:12.7173031Z ##[group]Run astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39
+2026-06-29T10:25:12.7174111Z with:
+2026-06-29T10:25:12.7175050Z   enable-cache: true
+2026-06-29T10:25:12.7175872Z   cache-dependency-glob: uv.lock
+2026-06-29T10:25:12.7176741Z   activate-environment: false
+2026-06-29T10:25:12.7177587Z   no-project: false
+2026-06-29T10:25:12.7178776Z   working-directory: /home/runner/work/university_ecosystem/university_ecosystem
+2026-06-29T10:25:12.7183093Z   github-token: ***
+2026-06-29T10:25:12.7183899Z   restore-cache: true
+2026-06-29T10:25:12.7184696Z   save-cache: true
+2026-06-29T10:25:12.7185484Z   prune-cache: true
+2026-06-29T10:25:12.7186280Z   cache-python: false
+2026-06-29T10:25:12.7187103Z   ignore-nothing-to-cache: false
+2026-06-29T10:25:12.7187970Z   ignore-empty-workdir: false
+2026-06-29T10:25:12.7189141Z   download-from-astral-mirror: true
+2026-06-29T10:25:12.7190031Z   add-problem-matchers: true
+2026-06-29T10:25:12.7190854Z   quiet: false
+2026-06-29T10:25:12.7191684Z   resolution-strategy: highest
+2026-06-29T10:25:12.7192517Z env:
+2026-06-29T10:25:12.7193317Z   SECRET_KEY: 
+2026-06-29T10:25:12.7194087Z   ENVIRONMENT: testing
+2026-06-29T10:25:12.7194991Z   pythonLocation: /opt/hostedtoolcache/Python/3.13.14/x64
+2026-06-29T10:25:12.7196103Z   PKG_CONFIG_PATH: /opt/hostedtoolcache/Python/3.13.14/x64/lib/pkgconfig
+2026-06-29T10:25:12.7197200Z   Python_ROOT_DIR: /opt/hostedtoolcache/Python/3.13.14/x64
+2026-06-29T10:25:12.7198492Z   Python2_ROOT_DIR: /opt/hostedtoolcache/Python/3.13.14/x64
+2026-06-29T10:25:12.7199549Z   Python3_ROOT_DIR: /opt/hostedtoolcache/Python/3.13.14/x64
+2026-06-29T10:25:12.7200600Z   LD_LIBRARY_PATH: /opt/hostedtoolcache/Python/3.13.14/x64/lib
+2026-06-29T10:25:12.7201564Z ##[endgroup]
+2026-06-29T10:25:12.8967977Z Trying to find version for uv in: /home/runner/work/university_ecosystem/university_ecosystem/uv.toml
+2026-06-29T10:25:12.8969746Z Could not find file: /home/runner/work/university_ecosystem/university_ecosystem/uv.toml
+2026-06-29T10:25:12.8971297Z Trying to find version for uv in: /home/runner/work/university_ecosystem/university_ecosystem/pyproject.toml
+2026-06-29T10:25:12.8985791Z Could not determine uv version from uv.toml or pyproject.toml. Falling back to latest.
+2026-06-29T10:25:12.8991014Z Fetching manifest data from https://raw.githubusercontent.com/astral-sh/versions/main/v1/uv.ndjson ...
+2026-06-29T10:25:12.9601566Z Downloading uv from "https://releases.astral.sh/github/uv/releases/download/0.11.25/uv-x86_64-unknown-linux-gnu.tar.gz" ...
+2026-06-29T10:25:13.1491434Z [command]/usr/bin/tar xz --warning=no-unknown-keyword --overwrite -C /home/runner/work/_temp/f67b46c9-d014-489c-b1a9-3ce403897139 -f /home/runner/work/_temp/f66e00c4-c36b-4563-bf30-90751e8896a7
+2026-06-29T10:25:13.6575897Z Added /home/runner/.local/bin to the path
+2026-06-29T10:25:13.6579790Z Added /opt/hostedtoolcache/uv/0.11.25/x86_64 to the path
+2026-06-29T10:25:13.6581735Z Set UV_PYTHON_INSTALL_DIR to /home/runner/work/_temp/uv-python-dir
+2026-06-29T10:25:13.6582424Z Added /home/runner/work/_temp/uv-python-dir to the path
+2026-06-29T10:25:13.6592417Z Set UV_CACHE_DIR to /home/runner/work/_temp/setup-uv-cache
+2026-06-29T10:25:13.6593312Z Successfully installed uv version 0.11.25
+2026-06-29T10:25:13.7804129Z Searching files using cache dependency glob: /home/runner/work/university_ecosystem/university_ecosystem/uv.lock
+2026-06-29T10:25:13.7842650Z /home/runner/work/university_ecosystem/university_ecosystem/uv.lock
+2026-06-29T10:25:13.7871032Z Found 1 files to hash.
+2026-06-29T10:25:13.7938501Z Trying to restore cache from GitHub Actions cache with key: setup-uv-2-x86_64-unknown-linux-gnu-ubuntu-24.04-3.13.14-pruned-ec190df264d98af0d00bbfdf49e015d20785723a1b5113bccbec16b868d57a38
+2026-06-29T10:25:13.8384257Z No GitHub Actions cache found for key: setup-uv-2-x86_64-unknown-linux-gnu-ubuntu-24.04-3.13.14-pruned-ec190df264d98af0d00bbfdf49e015d20785723a1b5113bccbec16b868d57a38
+2026-06-29T10:25:13.9526177Z ##[group]Run uv sync --frozen
+2026-06-29T10:25:13.9526507Z [36;1muv sync --frozen[0m
+2026-06-29T10:25:13.9725222Z shell: /usr/bin/bash -e {0}
+2026-06-29T10:25:13.9725493Z env:
+2026-06-29T10:25:13.9725685Z   SECRET_KEY: 
+2026-06-29T10:25:13.9726139Z   ENVIRONMENT: testing
+2026-06-29T10:25:13.9726442Z   pythonLocation: /opt/hostedtoolcache/Python/3.13.14/x64
+2026-06-29T10:25:13.9726894Z   PKG_CONFIG_PATH: /opt/hostedtoolcache/Python/3.13.14/x64/lib/pkgconfig
+2026-06-29T10:25:13.9727352Z   Python_ROOT_DIR: /opt/hostedtoolcache/Python/3.13.14/x64
+2026-06-29T10:25:13.9727756Z   Python2_ROOT_DIR: /opt/hostedtoolcache/Python/3.13.14/x64
+2026-06-29T10:25:13.9728539Z   Python3_ROOT_DIR: /opt/hostedtoolcache/Python/3.13.14/x64
+2026-06-29T10:25:13.9729011Z   LD_LIBRARY_PATH: /opt/hostedtoolcache/Python/3.13.14/x64/lib
+2026-06-29T10:25:13.9729438Z   UV_PYTHON_INSTALL_DIR: /home/runner/work/_temp/uv-python-dir
+2026-06-29T10:25:13.9729868Z   UV_CACHE_DIR: /home/runner/work/_temp/setup-uv-cache
+2026-06-29T10:25:13.9730184Z ##[endgroup]
+2026-06-29T10:25:13.9940931Z Using CPython 3.13.14 interpreter at: /opt/hostedtoolcache/Python/3.13.14/x64/bin/python3
+2026-06-29T10:25:13.9941475Z Creating virtual environment at: .venv
+2026-06-29T10:25:14.0265504Z    Building pyo3-sanitizer @ file:///home/runner/work/university_ecosystem/university_ecosystem/crates/pyo3-sanitizer
+2026-06-29T10:25:14.0267379Z    Building rust-ext @ file:///home/runner/work/university_ecosystem/university_ecosystem/native/rust_ext
+2026-06-29T10:25:14.0931962Z Downloading cryptography (4.5MiB)
+2026-06-29T10:25:14.0957559Z Downloading maturin (10.1MiB)
+2026-06-29T10:25:14.1106426Z Downloading pact-python-ffi (6.3MiB)
+2026-06-29T10:25:14.1107456Z Downloading atheris (33.2MiB)
+2026-06-29T10:25:14.1111982Z Downloading aiohttp (1.7MiB)
+2026-06-29T10:25:14.1115390Z Downloading grpcio (6.5MiB)
+2026-06-29T10:25:14.1119496Z Downloading pygments (1.2MiB)
+2026-06-29T10:25:14.1126376Z Downloading jsonschema-rs (3.8MiB)
+2026-06-29T10:25:14.1128624Z Downloading polars-runtime-32 (53.6MiB)
+2026-06-29T10:25:14.1130614Z Downloading pyright (6.1MiB)
+2026-06-29T10:25:14.1135779Z Downloading asyncpg (3.4MiB)
+2026-06-29T10:25:14.1137904Z Downloading numpy (15.9MiB)
+2026-06-29T10:25:14.1140382Z Downloading pydantic-core (2.0MiB)
+2026-06-29T10:25:14.1142602Z Downloading pillow (6.8MiB)
+2026-06-29T10:25:14.1144850Z Downloading sqlalchemy (3.1MiB)
+2026-06-29T10:25:14.1146950Z Downloading uvloop (4.2MiB)
+2026-06-29T10:25:14.1149296Z Downloading libcst (2.2MiB)
+2026-06-29T10:25:14.1151520Z Downloading pillow-avif-plugin (5.3MiB)
+2026-06-29T10:25:14.1153731Z Downloading pyroscope-io (6.4MiB)
+2026-06-29T10:25:14.1155985Z Downloading brotli (1.4MiB)
+2026-06-29T10:25:14.1158222Z Downloading ruff (10.8MiB)
+2026-06-29T10:25:14.1160815Z Downloading pycryptodome (2.2MiB)
+2026-06-29T10:25:14.1163105Z Downloading psycopg-binary (4.9MiB)
+2026-06-29T10:25:14.1166765Z Downloading mypy (14.0MiB)
+2026-06-29T10:25:14.1170800Z Downloading virtualenv (7.2MiB)
+2026-06-29T10:25:14.1180723Z Downloading botocore (13.4MiB)
+2026-06-29T10:25:14.9820637Z  Downloaded brotli
+2026-06-29T10:25:15.0876718Z  Downloaded pygments
+2026-06-29T10:25:15.1186298Z  Downloaded aiohttp
+2026-06-29T10:25:15.2285302Z  Downloaded pydantic-core
+2026-06-29T10:25:15.3383482Z    Building http-ece==1.2.1
+2026-06-29T10:25:15.4199448Z    Building pyvips==3.1.1
+2026-06-29T10:25:15.6319204Z  Downloaded asyncpg
+2026-06-29T10:25:15.6407138Z  Downloaded jsonschema-rs
+2026-06-29T10:25:15.6837366Z  Downloaded pycryptodome
+2026-06-29T10:25:15.7343455Z  Downloaded sqlalchemy
+2026-06-29T10:25:15.7954069Z  Downloaded uvloop
+2026-06-29T10:25:15.8620258Z  Downloaded libcst
+2026-06-29T10:25:15.9028907Z  Downloaded pillow-avif-plugin
+2026-06-29T10:25:15.9101411Z  Downloaded psycopg-binary
+2026-06-29T10:25:15.9467492Z  Downloaded cryptography
+2026-06-29T10:25:16.1202206Z  Downloaded pact-python-ffi
+2026-06-29T10:25:16.1367702Z  Downloaded pyroscope-io
+2026-06-29T10:25:16.1903618Z  Downloaded grpcio
+2026-06-29T10:25:16.2152372Z  Downloaded pillow
+2026-06-29T10:25:16.3112592Z  Downloaded virtualenv
+2026-06-29T10:25:16.6956700Z  Downloaded maturin
+2026-06-29T10:25:16.7397289Z  Downloaded ruff
+2026-06-29T10:25:17.2161830Z       Built http-ece==1.2.1
+2026-06-29T10:25:17.3343734Z  Downloaded numpy
+2026-06-29T10:25:17.6960103Z       Built pyvips==3.1.1
+2026-06-29T10:25:17.7724462Z  Downloaded atheris
+2026-06-29T10:25:17.9404254Z  Downloaded polars-runtime-32
+2026-06-29T10:25:17.9404748Z  Downloaded botocore
+2026-06-29T10:25:18.0914553Z  Downloaded mypy
+2026-06-29T10:25:18.6062706Z  Downloaded pyright
+2026-06-29T10:25:44.0223956Z       Built rust-ext @ file:///home/runner/work/university_ecosystem/university_ecosystem/native/rust_ext
+2026-06-29T10:25:50.2556291Z       Built pyo3-sanitizer @ file:///home/runner/work/university_ecosystem/university_ecosystem/crates/pyo3-sanitizer
+2026-06-29T10:25:50.2611428Z Prepared 211 packages in 36.24s
+2026-06-29T10:25:50.5251371Z Installed 211 packages in 263ms
+2026-06-29T10:25:50.5253958Z  + aioboto3==15.5.0
+2026-06-29T10:25:50.5254382Z  + aiobotocore==2.25.1
+2026-06-29T10:25:50.5254772Z  + aiofiles==25.1.0
+2026-06-29T10:25:50.5255153Z  + aiohappyeyeballs==2.6.1
+2026-06-29T10:25:50.5255553Z  + aiohttp==3.14.1
+2026-06-29T10:25:50.5257684Z  + aioitertools==0.13.0
+2026-06-29T10:25:50.5268817Z  + aiosignal==1.4.0
+2026-06-29T10:25:50.5289228Z  + aiosqlite==0.22.1
+2026-06-29T10:25:50.5289604Z  + alembic==1.18.4
+2026-06-29T10:25:50.5289962Z  + annotated-doc==0.0.4
+2026-06-29T10:25:50.5290352Z  + annotated-types==0.7.0
+2026-06-29T10:25:50.5290729Z  + anyio==4.13.0
+2026-06-29T10:25:50.5291065Z  + argon2-cffi==25.1.0
+2026-06-29T10:25:50.5291469Z  + argon2-cffi-bindings==25.1.0
+2026-06-29T10:25:50.5291881Z  + asgi-lifespan==2.1.0
+2026-06-29T10:25:50.5292242Z  + asgiref==3.11.1
+2026-06-29T10:25:50.5292572Z  + asyncpg==0.31.0
+2026-06-29T10:25:50.5292901Z  + atheris==3.0.0
+2026-06-29T10:25:50.5293220Z  + attrs==26.1.0
+2026-06-29T10:25:50.5293548Z  + authzed==1.24.4
+2026-06-29T10:25:50.5293875Z  + bandit==1.9.4
+2026-06-29T10:25:50.5294214Z  + boto3==1.40.61
+2026-06-29T10:25:50.5294542Z  + botocore==1.40.61
+2026-06-29T10:25:50.5294882Z  + brotli==1.2.0
+2026-06-29T10:25:50.5295208Z  + brotli-asgi==1.6.0
+2026-06-29T10:25:50.5295553Z  + cbor2==6.0.1
+2026-06-29T10:25:50.5295886Z  + certifi==2026.4.22
+2026-06-29T10:25:50.5296220Z  + cffi==2.0.0
+2026-06-29T10:25:50.5296533Z  + cfgv==3.5.0
+2026-06-29T10:25:50.5296842Z  + chardet==7.4.3
+2026-06-29T10:25:50.5297191Z  + charset-normalizer==3.4.7
+2026-06-29T10:25:50.5297576Z  + clamd==1.0.2
+2026-06-29T10:25:50.5297888Z  + click==8.3.3
+2026-06-29T10:25:50.5298391Z  + coverage==7.13.5
+2026-06-29T10:25:50.5298729Z  + cross-web==0.6.0
+2026-06-29T10:25:50.5299077Z  + cryptography==49.0.0
+2026-06-29T10:25:50.5299442Z  + defusedxml==0.7.1
+2026-06-29T10:25:50.5299787Z  + diff-cover==10.3.0
+2026-06-29T10:25:50.5300122Z  + dishka==1.10.1
+2026-06-29T10:25:50.5300443Z  + diskcache==5.6.3
+2026-06-29T10:25:50.5300774Z  + distlib==0.4.0
+2026-06-29T10:25:50.5301100Z  + dnspython==2.8.0
+2026-06-29T10:25:50.5301463Z  + elastic-transport==9.2.1
+2026-06-29T10:25:50.5301871Z  + elasticsearch==9.3.0
+2026-06-29T10:25:50.5302396Z  + email-validator==2.3.0
+2026-06-29T10:25:50.5302774Z  + execnet==2.1.2
+2026-06-29T10:25:50.5303104Z  + fakeredis==2.35.1
+2026-06-29T10:25:50.5303450Z  + fastapi==0.136.1
+2026-06-29T10:25:50.5303782Z  + filelock==3.29.0
+2026-06-29T10:25:50.5304119Z  + frozenlist==1.8.0
+2026-06-29T10:25:50.5304465Z  + geoip2==5.2.0
+2026-06-29T10:25:50.5305242Z  + googleapis-common-protos==1.74.0
+2026-06-29T10:25:50.5324562Z  + graphql-core==3.2.8
+2026-06-29T10:25:50.5324928Z  + greenlet==3.5.0
+2026-06-29T10:25:50.5325312Z  + grpc-interceptor==0.15.4
+2026-06-29T10:25:50.5325572Z  + grpcio==1.80.0
+2026-06-29T10:25:50.5325806Z  + grpcio-health-checking==1.80.0
+2026-06-29T10:25:50.5326068Z  + gunicorn==25.3.0
+2026-06-29T10:25:50.5326274Z  + h11==0.16.0
+2026-06-29T10:25:50.5326460Z  + h2==4.3.0
+2026-06-29T10:25:50.5326647Z  + harfile==0.5.0
+2026-06-29T10:25:50.5326847Z  + hpack==4.1.0
+2026-06-29T10:25:50.5327291Z  + http-ece==1.2.1
+2026-06-29T10:25:50.5327504Z  + httpcore==1.0.9
+2026-06-29T10:25:50.5327728Z  + httptools==0.7.1
+2026-06-29T10:25:50.5328016Z  + httpx==0.28.1
+2026-06-29T10:25:50.5328558Z  + hyperframe==6.1.0
+2026-06-29T10:25:50.5328777Z  + hypothesis==6.152.4
+2026-06-29T10:25:50.5329180Z  + hypothesis-graphql==0.13.0
+2026-06-29T10:25:50.5329442Z  + hypothesis-jsonschema==0.23.1
+2026-06-29T10:25:50.5329694Z  + identify==2.6.19
+2026-06-29T10:25:50.5329891Z  + idna==3.18
+2026-06-29T10:25:50.5330105Z  + importlib-metadata==8.7.1
+2026-06-29T10:25:50.5330351Z  + iniconfig==2.3.0
+2026-06-29T10:25:50.5330554Z  + jinja2==3.1.6
+2026-06-29T10:25:50.5330749Z  + jmespath==1.1.0
+2026-06-29T10:25:50.5330949Z  + jsonschema==4.25.1
+2026-06-29T10:25:50.5331163Z  + jsonschema-rs==0.46.5
+2026-06-29T10:25:50.5331406Z  + jsonschema-specifications==2025.9.1
+2026-06-29T10:25:50.5331687Z  + junit-xml==1.9
+2026-06-29T10:25:50.5331883Z  + libcst==1.8.6
+2026-06-29T10:25:50.5332069Z  + librt==0.9.0
+2026-06-29T10:25:50.5332274Z  + linkify-it-py==2.1.0
+2026-06-29T10:25:50.5332495Z  + mako==1.3.12
+2026-06-29T10:25:50.5332696Z  + markdown-it-py==4.0.0
+2026-06-29T10:25:50.5332920Z  + markupsafe==3.0.3
+2026-06-29T10:25:50.5333127Z  + maturin==1.13.1
+2026-06-29T10:25:50.5333329Z  + maxminddb==3.1.1
+2026-06-29T10:25:50.5333550Z  + mdit-py-plugins==0.6.1
+2026-06-29T10:25:50.5333779Z  + mdurl==0.1.2
+2026-06-29T10:25:50.5333972Z  + minio==7.2.20
+2026-06-29T10:25:50.5334170Z  + multidict==6.7.1
+2026-06-29T10:25:50.5334373Z  + mutmut==3.5.0
+2026-06-29T10:25:50.5334560Z  + mypy==1.20.2
+2026-06-29T10:25:50.5334763Z  + mypy-extensions==1.1.0
+2026-06-29T10:25:50.5334990Z  + nats-py==2.14.0
+2026-06-29T10:25:50.5335189Z  + nh3==0.3.5
+2026-06-29T10:25:50.5335375Z  + nodeenv==1.10.0
+2026-06-29T10:25:50.5335569Z  + numpy==2.4.4
+2026-06-29T10:25:50.5335768Z  + openfeature-sdk==0.9.0
+2026-06-29T10:25:50.5336007Z  + opentelemetry-api==1.41.1
+2026-06-29T10:25:50.5336259Z  + opentelemetry-distro==0.62b1
+2026-06-29T10:25:50.5336535Z  + opentelemetry-exporter-otlp==1.41.1
+2026-06-29T10:25:50.5336872Z  + opentelemetry-exporter-otlp-proto-common==1.41.1
+2026-06-29T10:25:50.5337243Z  + opentelemetry-exporter-otlp-proto-grpc==1.41.1
+2026-06-29T10:25:50.5337597Z  + opentelemetry-exporter-otlp-proto-http==1.41.1
+2026-06-29T10:25:50.5337941Z  + opentelemetry-instrumentation==0.62b1
+2026-06-29T10:25:50.5338510Z  + opentelemetry-instrumentation-asgi==0.62b1
+2026-06-29T10:25:50.5338859Z  + opentelemetry-instrumentation-asyncpg==0.62b1
+2026-06-29T10:25:50.5339205Z  + opentelemetry-instrumentation-fastapi==0.62b1
+2026-06-29T10:25:50.5339544Z  + opentelemetry-instrumentation-httpx==0.62b1
+2026-06-29T10:25:50.5339878Z  + opentelemetry-instrumentation-redis==0.62b1
+2026-06-29T10:25:50.5340224Z  + opentelemetry-instrumentation-sqlalchemy==0.62b1
+2026-06-29T10:25:50.5340553Z  + opentelemetry-proto==1.41.1
+2026-06-29T10:25:50.5340809Z  + opentelemetry-sdk==1.41.1
+2026-06-29T10:25:50.5341081Z  + opentelemetry-semantic-conventions==0.62b1
+2026-06-29T10:25:50.5341393Z  + opentelemetry-util-http==0.62b1
+2026-06-29T10:25:50.5341648Z  + orjson==3.11.8
+2026-06-29T10:25:50.5341847Z  + packaging==26.2
+2026-06-29T10:25:50.5342056Z  + pact-python==3.4.0
+2026-06-29T10:25:50.5342284Z  + pact-python-ffi==0.5.3.0
+2026-06-29T10:25:50.5342511Z  + pathspec==1.1.1
+2026-06-29T10:25:50.5342718Z  + pgvector==0.4.2
+2026-06-29T10:25:50.5342912Z  + pillow==12.2.0
+2026-06-29T10:25:50.5343121Z  + pillow-avif-plugin==1.5.5
+2026-06-29T10:25:50.5343362Z  + platformdirs==4.9.6
+2026-06-29T10:25:50.5343575Z  + pluggy==1.6.0
+2026-06-29T10:25:50.5343774Z  + polars==1.40.1
+2026-06-29T10:25:50.5343982Z  + polars-runtime-32==1.40.1
+2026-06-29T10:25:50.5344216Z  + pre-commit==4.6.0
+2026-06-29T10:25:50.5344431Z  + prometheus-client==0.25.0
+2026-06-29T10:25:50.5344663Z  + propcache==0.4.1
+2026-06-29T10:25:50.5344863Z  + protobuf==7.34.1
+2026-06-29T10:25:50.5345058Z  + psutil==7.2.2
+2026-06-29T10:25:50.5345252Z  + psycopg==3.3.4
+2026-06-29T10:25:50.5345461Z  + psycopg-binary==3.3.4
+2026-06-29T10:25:50.5345686Z  + py-vapid==1.9.4
+2026-06-29T10:25:50.5346027Z  + pyasn1==0.6.3
+2026-06-29T10:25:50.5346240Z  + pycparser==3.0
+2026-06-29T10:25:50.5346445Z  + pycryptodome==3.23.0
+2026-06-29T10:25:50.5346659Z  + pydantic==2.13.3
+2026-06-29T10:25:50.5346865Z  + pydantic-core==2.46.3
+2026-06-29T10:25:50.5347209Z  + pydantic-settings==2.14.2
+2026-06-29T10:25:50.5347448Z  + pygments==2.20.0
+2026-06-29T10:25:50.5347647Z  + pyjwt==2.13.0
+2026-06-29T10:25:50.5348369Z  + pyo3-sanitizer==0.1.0 (from file:///home/runner/work/university_ecosystem/university_ecosystem/crates/pyo3-sanitizer)
+2026-06-29T10:25:50.5348922Z  + pyopenssl==26.3.0
+2026-06-29T10:25:50.5349132Z  + pyotp==2.9.0
+2026-06-29T10:25:50.5349338Z  + pyrate-limiter==4.4.0
+2026-06-29T10:25:50.5349556Z  + pyright==1.1.409
+2026-06-29T10:25:50.5349763Z  + pyroscope-io==1.0.6
+2026-06-29T10:25:50.5349973Z  + pytest==9.0.3
+2026-06-29T10:25:50.5350176Z  + pytest-asyncio==1.3.0
+2026-06-29T10:25:50.5350399Z  + pytest-cov==7.1.0
+2026-06-29T10:25:50.5350618Z  + pytest-xdist==3.8.0
+2026-06-29T10:25:50.5350851Z  + python-dateutil==2.9.0.post0
+2026-06-29T10:25:50.5351103Z  + python-discovery==1.2.2
+2026-06-29T10:25:50.5351333Z  + python-dotenv==1.2.2
+2026-06-29T10:25:50.5351551Z  + python-magic==0.4.27
+2026-06-29T10:25:50.5351772Z  + python-multipart==0.0.32
+2026-06-29T10:25:50.5352006Z  + pyvips==3.1.1
+2026-06-29T10:25:50.5352208Z  + pywebpush==2.3.0
+2026-06-29T10:25:50.5352408Z  + pyyaml==6.0.3
+2026-06-29T10:25:50.5352601Z  + pyyaml-ft==8.0.0
+2026-06-29T10:25:50.5352794Z  + redis==7.4.0
+2026-06-29T10:25:50.5352988Z  + referencing==0.37.0
+2026-06-29T10:25:50.5353195Z  + requests==2.33.1
+2026-06-29T10:25:50.5353391Z  + rich==15.0.0
+2026-06-29T10:25:50.5353583Z  + rpds-py==0.30.0
+2026-06-29T10:25:50.5353778Z  + ruff==0.15.12
+2026-06-29T10:25:50.5354195Z  + rust-ext==0.1.0 (from file:///home/runner/work/university_ecosystem/university_ecosystem/native/rust_ext)
+2026-06-29T10:25:50.5354676Z  + s3transfer==0.14.0
+2026-06-29T10:25:50.5354888Z  + schemathesis==4.21.10
+2026-06-29T10:25:50.5355109Z  + sentry-sdk==2.58.0
+2026-06-29T10:25:50.5355326Z  + setproctitle==1.3.7
+2026-06-29T10:25:50.5355539Z  + shellingham==1.5.4
+2026-06-29T10:25:50.5355739Z  + six==1.17.0
+2026-06-29T10:25:50.5355927Z  + sniffio==1.3.1
+2026-06-29T10:25:50.5356141Z  + sortedcontainers==2.4.0
+2026-06-29T10:25:50.5356370Z  + sqlalchemy==2.0.49
+2026-06-29T10:25:50.5356572Z  + starlette==1.3.1
+2026-06-29T10:25:50.5356786Z  + starlette-testclient==0.4.1
+2026-06-29T10:25:50.5357024Z  + stevedore==5.7.0
+2026-06-29T10:25:50.5357236Z  + strawberry-graphql==0.319.0
+2026-06-29T10:25:50.5357493Z  + structlog==25.5.0
+2026-06-29T10:25:50.5357697Z  + tenacity==9.1.4
+2026-06-29T10:25:50.5357892Z  + textual==8.2.7
+2026-06-29T10:25:50.5358309Z  + tomli==2.4.1
+2026-06-29T10:25:50.5358532Z  + typer==0.25.1
+2026-06-29T10:25:50.5358742Z  + types-aiofiles==25.1.0.20260409
+2026-06-29T10:25:50.5359000Z  + types-cffi==2.0.0.20260429
+2026-06-29T10:25:50.5359246Z  + types-pyopenssl==24.1.0.20240722
+2026-06-29T10:25:50.5359521Z  + types-pyyaml==6.0.12.20260408
+2026-06-29T10:25:50.5359775Z  + types-redis==4.6.0.20241004
+2026-06-29T10:25:50.5360023Z  + types-requests==2.33.0.20260408
+2026-06-29T10:25:50.5360280Z  + types-setuptools==82.0.0.20260408
+2026-06-29T10:25:50.5360537Z  + typing-extensions==4.15.0
+2026-06-29T10:25:50.5360783Z  + typing-inspection==0.4.2
+2026-06-29T10:25:50.5361011Z  + uc-micro-py==2.0.0
+2026-06-29T10:25:50.5361218Z  + urllib3==2.7.0
+2026-06-29T10:25:50.5361414Z  + uvicorn==0.46.0
+2026-06-29T10:25:50.5361612Z  + uvloop==0.22.1
+2026-06-29T10:25:50.5361808Z  + virtualenv==21.3.0
+2026-06-29T10:25:50.5362015Z  + watchfiles==1.1.1
+2026-06-29T10:25:50.5362215Z  + webauthn==2.7.1
+2026-06-29T10:25:50.5362410Z  + websockets==16.0
+2026-06-29T10:25:50.5362606Z  + werkzeug==3.1.8
+2026-06-29T10:25:50.5362797Z  + wrapt==1.17.3
+2026-06-29T10:25:50.5362989Z  + yarl==1.23.0
+2026-06-29T10:25:50.5363177Z  + zipp==3.23.1
+2026-06-29T10:25:50.5363364Z  + zxcvbn==4.5.0
+2026-06-29T10:25:50.5588454Z ##[group]Run uv run pytest tests/contracts/ -v \
+2026-06-29T10:25:50.5588903Z [36;1muv run pytest tests/contracts/ -v \[0m
+2026-06-29T10:25:50.5589211Z [36;1m  --tb=short \[0m
+2026-06-29T10:25:50.5589457Z [36;1m  -p no:cacheprovider \[0m
+2026-06-29T10:25:50.5589721Z [36;1m  -k "not integration"[0m
+2026-06-29T10:25:50.5621664Z shell: /usr/bin/bash -e {0}
+2026-06-29T10:25:50.5622061Z env:
+2026-06-29T10:25:50.5622242Z   SECRET_KEY: 
+2026-06-29T10:25:50.5622443Z   ENVIRONMENT: testing
+2026-06-29T10:25:50.5622734Z   pythonLocation: /opt/hostedtoolcache/Python/3.13.14/x64
+2026-06-29T10:25:50.5623169Z   PKG_CONFIG_PATH: /opt/hostedtoolcache/Python/3.13.14/x64/lib/pkgconfig
+2026-06-29T10:25:50.5623590Z   Python_ROOT_DIR: /opt/hostedtoolcache/Python/3.13.14/x64
+2026-06-29T10:25:50.5623970Z   Python2_ROOT_DIR: /opt/hostedtoolcache/Python/3.13.14/x64
+2026-06-29T10:25:50.5624351Z   Python3_ROOT_DIR: /opt/hostedtoolcache/Python/3.13.14/x64
+2026-06-29T10:25:50.5624787Z   LD_LIBRARY_PATH: /opt/hostedtoolcache/Python/3.13.14/x64/lib
+2026-06-29T10:25:50.5625189Z   UV_PYTHON_INSTALL_DIR: /home/runner/work/_temp/uv-python-dir
+2026-06-29T10:25:50.5625560Z   UV_CACHE_DIR: /home/runner/work/_temp/setup-uv-cache
+2026-06-29T10:25:50.5625866Z   PACT_DO_NOT_TRACK: true
+2026-06-29T10:25:50.5626092Z ##[endgroup]
+2026-06-29T10:26:03.1052512Z ============================= test session starts ==============================
+2026-06-29T10:26:03.1053455Z platform linux -- Python 3.13.14, pytest-9.0.3, pluggy-1.6.0 -- /home/runner/work/university_ecosystem/university_ecosystem/.venv/bin/python
+2026-06-29T10:26:03.1054525Z hypothesis profile 'ci' -> database=None, deadline=None, print_blob=True, derandomize=True, suppress_health_check=(HealthCheck.too_slow,)
+2026-06-29T10:26:03.1055335Z rootdir: /home/runner/work/university_ecosystem/university_ecosystem
+2026-06-29T10:26:03.1055922Z configfile: pytest.ini (WARNING: ignoring pytest config in pyproject.toml!)
+2026-06-29T10:26:03.1056604Z plugins: hypothesis-6.152.4, anyio-4.13.0, cov-7.1.0, xdist-3.8.0, asyncio-1.3.0, schemathesis-4.21.10
+2026-06-29T10:26:03.1057453Z asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+2026-06-29T10:26:03.2941309Z collecting ... collected 36 items
+2026-06-29T10:26:03.2941695Z 
+2026-06-29T10:26:03.9477758Z tests/contracts/test_file_processor_contract.py::test_file_processing_success_callback_contract PASSED [  2%]
+2026-06-29T10:26:03.9707362Z tests/contracts/test_file_processor_contract.py::test_file_processing_failure_callback_contract PASSED [  5%]
+2026-06-29T10:26:04.1406200Z tests/contracts/test_file_processor_grpc_contract.py::test_process_file_grpc_contract FAILED [  8%]
+2026-06-29T10:26:04.1633857Z tests/contracts/test_files_process_contract.py::test_files_process_event_contract PASSED [ 11%]
+2026-06-29T10:26:04.1880920Z tests/contracts/test_gateway_rest_contract.py::test_gateway_rest_contract FAILED [ 13%]
+2026-06-29T10:26:04.6890060Z tests/contracts/test_openapi_contract.py::test_api_version_matches_semver PASSED [ 16%]
+2026-06-29T10:26:04.7107601Z tests/contracts/test_openapi_contract.py::test_core_routes_present[/api/v1/auth] PASSED [ 19%]
+2026-06-29T10:26:04.7333390Z tests/contracts/test_openapi_contract.py::test_core_routes_present[/api/v1/users] PASSED [ 22%]
+2026-06-29T10:26:04.7566983Z tests/contracts/test_openapi_contract.py::test_core_routes_present[/api/v1/news] PASSED [ 25%]
+2026-06-29T10:26:04.7779514Z tests/contracts/test_openapi_contract.py::test_core_routes_present[/api/v1/events] PASSED [ 27%]
+2026-06-29T10:26:04.7995457Z tests/contracts/test_openapi_contract.py::test_core_routes_present[/api/v1/schedule] PASSED [ 30%]
+2026-06-29T10:26:04.8223504Z tests/contracts/test_openapi_contract.py::test_core_routes_present[/api/v1/notifications] PASSED [ 33%]
+2026-06-29T10:26:04.8514544Z tests/contracts/test_openapi_contract.py::test_openapi_contract_snapshot PASSED [ 36%]
+2026-06-29T10:26:04.8731121Z tests/contracts/test_redis_key_contracts.py::test_revocation_key_format_matches_go_gateway PASSED [ 38%]
+2026-06-29T10:26:04.8951029Z tests/contracts/test_redis_key_contracts.py::test_ws_ticket_key_prefix_matches_go_ws_hub PASSED [ 41%]
+2026-06-29T10:26:04.9178949Z tests/contracts/test_redis_key_contracts.py::test_ws_ticket_key_full_format PASSED [ 44%]
+2026-06-29T10:26:04.9398674Z tests/contracts/test_redis_key_contracts.py::test_ws_ticket_value_format PASSED [ 47%]
+2026-06-29T10:26:04.9608011Z tests/contracts/test_redis_key_contracts.py::test_revocations_pubsub_channel PASSED [ 50%]
+2026-06-29T10:26:04.9830242Z tests/contracts/test_ws_hub_contract.py::test_cache_invalidation_event_contract PASSED [ 52%]
+2026-06-29T10:26:05.0056995Z tests/contracts/test_ws_message_contract.py::test_pong_message_format PASSED [ 55%]
+2026-06-29T10:26:05.0271601Z tests/contracts/test_ws_message_contract.py::test_typing_message_format PASSED [ 58%]
+2026-06-29T10:26:05.0484758Z tests/contracts/test_ws_message_contract.py::test_read_message_format PASSED [ 61%]
+2026-06-29T10:26:05.0709654Z tests/contracts/test_ws_message_contract.py::test_presence_message_format PASSED [ 63%]
+2026-06-29T10:26:05.0927458Z tests/contracts/test_ws_message_contract.py::test_online_message_format PASSED [ 66%]
+2026-06-29T10:26:05.1167925Z tests/contracts/test_ws_message_contract.py::test_new_message_format PASSED [ 69%]
+2026-06-29T10:26:05.1389854Z tests/contracts/test_ws_message_contract.py::test_error_message_format PASSED [ 72%]
+2026-06-29T10:26:05.1617789Z tests/contracts/test_ws_message_contract.py::test_backend_dispatcher_uses_known_types PASSED [ 75%]
+2026-06-29T10:26:05.1845389Z tests/contracts/test_ws_message_contract.py::test_backend_connection_manager_uses_known_types PASSED [ 77%]
+2026-06-29T10:26:05.2062182Z tests/contracts/test_ws_message_contract.py::test_all_message_types_have_field_definitions[error] PASSED [ 80%]
+2026-06-29T10:26:05.2286183Z tests/contracts/test_ws_message_contract.py::test_all_message_types_have_field_definitions[new_message] PASSED [ 83%]
+2026-06-29T10:26:05.2508775Z tests/contracts/test_ws_message_contract.py::test_all_message_types_have_field_definitions[online] PASSED [ 86%]
+2026-06-29T10:26:05.2724296Z tests/contracts/test_ws_message_contract.py::test_all_message_types_have_field_definitions[online_list] PASSED [ 88%]
+2026-06-29T10:26:05.2942924Z tests/contracts/test_ws_message_contract.py::test_all_message_types_have_field_definitions[pong] PASSED [ 91%]
+2026-06-29T10:26:05.3163414Z tests/contracts/test_ws_message_contract.py::test_all_message_types_have_field_definitions[presence] PASSED [ 94%]
+2026-06-29T10:26:05.3390829Z tests/contracts/test_ws_message_contract.py::test_all_message_types_have_field_definitions[read] PASSED [ 97%]
+2026-06-29T10:26:06.3637562Z tests/contracts/test_ws_message_contract.py::test_all_message_types_have_field_definitions[typing] PASSED [100%]
+2026-06-29T10:26:06.3639021Z 
+2026-06-29T10:26:06.3639298Z =================================== FAILURES ===================================
+2026-06-29T10:26:06.3640171Z _______________________ test_process_file_grpc_contract ________________________
+2026-06-29T10:26:06.3641132Z tests/contracts/test_file_processor_grpc_contract.py:52: in test_process_file_grpc_contract
+2026-06-29T10:26:06.3641750Z     .with_request(
+2026-06-29T10:26:06.3642012Z      ^^^^^^^^^^^^
+2026-06-29T10:26:06.3642509Z E   AttributeError: 'SyncMessageInteraction' object has no attribute 'with_request'
+2026-06-29T10:26:06.3643177Z __________________________ test_gateway_rest_contract __________________________
+2026-06-29T10:26:06.3643740Z tests/contracts/test_gateway_rest_contract.py:53: in test_gateway_rest_contract
+2026-06-29T10:26:06.3644298Z     .will_respond_with(status=200, body={"status": match.like("ok")})
+2026-06-29T10:26:06.3644719Z      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2026-06-29T10:26:06.3645245Z E   TypeError: HttpInteraction.will_respond_with() got an unexpected keyword argument 'body'
+2026-06-29T10:26:06.3645810Z =============================== warnings summary ===============================
+2026-06-29T10:26:06.3646582Z .venv/lib/python3.13/site-packages/pydantic/main.py:263
+2026-06-29T10:26:06.3647710Z   /home/runner/work/university_ecosystem/university_ecosystem/.venv/lib/python3.13/site-packages/pydantic/main.py:263: UserWarning: HS256 is not recommended for production. Use RS256 with a dedicated public/private key pair.
+2026-06-29T10:26:06.3649222Z     validated_self = self.__pydantic_validator__.validate_python(data, self_instance=self)
+2026-06-29T10:26:06.3649773Z 
+2026-06-29T10:26:06.3650007Z -- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+2026-06-29T10:26:06.3650517Z =========================== short test summary info ============================
+2026-06-29T10:26:06.3651454Z FAILED tests/contracts/test_file_processor_grpc_contract.py::test_process_file_grpc_contract - AttributeError: 'SyncMessageInteraction' object has no attribute 'with_request'
+2026-06-29T10:26:06.3652837Z FAILED tests/contracts/test_gateway_rest_contract.py::test_gateway_rest_contract - TypeError: HttpInteraction.will_respond_with() got an unexpected keyword argument 'body'
+2026-06-29T10:26:06.3653755Z =================== 2 failed, 34 passed, 1 warning in 2.46s ====================
+2026-06-29T10:26:07.2250731Z ##[error]Process completed with exit code 1.
+2026-06-29T10:26:07.2386360Z Post job cleanup.
+2026-06-29T10:26:07.3192915Z [command]/usr/bin/git version
+2026-06-29T10:26:07.3230169Z git version 2.54.0
+2026-06-29T10:26:07.3272812Z Temporarily overriding HOME='/home/runner/work/_temp/4d0f568f-fc2d-42de-9c9d-6ee4d7577ac2' before making global git config changes
+2026-06-29T10:26:07.3274103Z Adding repository directory to the temporary git global config as a safe directory
+2026-06-29T10:26:07.3278363Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/university_ecosystem/university_ecosystem
+2026-06-29T10:26:07.3308448Z Removing SSH command configuration
+2026-06-29T10:26:07.3314331Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+2026-06-29T10:26:07.3373780Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+2026-06-29T10:26:07.3600808Z Removing HTTP extra header
+2026-06-29T10:26:07.3605586Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-06-29T10:26:07.3637428Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+2026-06-29T10:26:07.3858609Z Removing includeIf entries pointing to credentials config files
+2026-06-29T10:26:07.3864477Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+2026-06-29T10:26:07.3891703Z includeif.gitdir:/home/runner/work/university_ecosystem/university_ecosystem/.git.path
+2026-06-29T10:26:07.3892663Z includeif.gitdir:/home/runner/work/university_ecosystem/university_ecosystem/.git/worktrees/*.path
+2026-06-29T10:26:07.3893198Z includeif.gitdir:/github/workspace/.git.path
+2026-06-29T10:26:07.3893568Z includeif.gitdir:/github/workspace/.git/worktrees/*.path
+2026-06-29T10:26:07.3900695Z [command]/usr/bin/git config --local --get-all includeif.gitdir:/home/runner/work/university_ecosystem/university_ecosystem/.git.path
+2026-06-29T10:26:07.3922269Z /home/runner/work/_temp/git-credentials-bae44ded-b378-4744-8ecd-adf77cdf52e5.config
+2026-06-29T10:26:07.3931835Z [command]/usr/bin/git config --local --unset includeif.gitdir:/home/runner/work/university_ecosystem/university_ecosystem/.git.path /home/runner/work/_temp/git-credentials-bae44ded-b378-4744-8ecd-adf77cdf52e5.config
+2026-06-29T10:26:07.3967088Z [command]/usr/bin/git config --local --get-all includeif.gitdir:/home/runner/work/university_ecosystem/university_ecosystem/.git/worktrees/*.path
+2026-06-29T10:26:07.3989444Z /home/runner/work/_temp/git-credentials-bae44ded-b378-4744-8ecd-adf77cdf52e5.config
+2026-06-29T10:26:07.3998513Z [command]/usr/bin/git config --local --unset includeif.gitdir:/home/runner/work/university_ecosystem/university_ecosystem/.git/worktrees/*.path /home/runner/work/_temp/git-credentials-bae44ded-b378-4744-8ecd-adf77cdf52e5.config
+2026-06-29T10:26:07.4034689Z [command]/usr/bin/git config --local --get-all includeif.gitdir:/github/workspace/.git.path
+2026-06-29T10:26:07.4055464Z /github/runner_temp/git-credentials-bae44ded-b378-4744-8ecd-adf77cdf52e5.config
+2026-06-29T10:26:07.4062721Z [command]/usr/bin/git config --local --unset includeif.gitdir:/github/workspace/.git.path /github/runner_temp/git-credentials-bae44ded-b378-4744-8ecd-adf77cdf52e5.config
+2026-06-29T10:26:07.4092749Z [command]/usr/bin/git config --local --get-all includeif.gitdir:/github/workspace/.git/worktrees/*.path
+2026-06-29T10:26:07.4113464Z /github/runner_temp/git-credentials-bae44ded-b378-4744-8ecd-adf77cdf52e5.config
+2026-06-29T10:26:07.4121765Z [command]/usr/bin/git config --local --unset includeif.gitdir:/github/workspace/.git/worktrees/*.path /github/runner_temp/git-credentials-bae44ded-b378-4744-8ecd-adf77cdf52e5.config
+2026-06-29T10:26:07.4152622Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+2026-06-29T10:26:07.4369498Z Removing credentials config '/home/runner/work/_temp/git-credentials-bae44ded-b378-4744-8ecd-adf77cdf52e5.config'
+2026-06-29T10:26:07.4509578Z Cleaning up orphan processes

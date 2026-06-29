@@ -48,10 +48,12 @@ func TestJWKSRefresher_FailuresAndRetries(t *testing.T) {
 		if count == 1 {
 			// First request fails with 500
 			w.WriteHeader(http.StatusInternalServerError)
+			//nolint:errcheck // We explicitly don't care about the return value or error here
 			_, _ = w.Write([]byte("internal error"))
 		} else {
 			// Subsequent requests succeed
 			w.WriteHeader(http.StatusOK)
+			//nolint:errcheck // We explicitly don't care about the return value or error here
 			_, _ = w.Write(jwksBytes1)
 		}
 	}))

@@ -12,7 +12,7 @@ import (
 func FuzzJWTValidation(f *testing.F) {
 	// Provide seeds
 	f.Add("Bearer invalid.token.here")
-	f.Add("Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.e30.signature")
+	f.Add("Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.e30.signature") // pragma: allowlist secret
 	f.Add("invalid_header")
 	f.Add("")
 
@@ -29,11 +29,11 @@ func FuzzJWTValidation(f *testing.F) {
 		if err != nil {
 			return
 		}
-		
+
 		if authHeader != "" {
 			req.Header.Set("Authorization", authHeader)
 		}
-		
+
 		c.Request = req
 
 		// The handler should safely reject invalid tokens without panicking

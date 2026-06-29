@@ -205,7 +205,6 @@
     "protobufjs": ">=8.6.0",
     "js-yaml": ">=4.2.0",
     "lodash": ">=4.17.24",
-    "@babel/core": ">=7.29.6",
     "@opentelemetry/core": ">=2.8.0",
     "uuid": ">=14.0.0",
     "lighthouse": "^13.1.0"

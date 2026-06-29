@@ -411,6 +411,7 @@ dev = [
   # NOTE: schemathesis 3.x requires pytest<9; use 4.x which lifted this restriction.
   "schemathesis>=4.0.0,<5",
   "atheris>=2.3.0 ; sys_platform == 'linux'",
+  "testcontainers>=4.14.2",
 ]
 
 # MOD-06 (audit Wave 11): dedicated security scanning group.

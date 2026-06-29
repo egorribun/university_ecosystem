@@ -12,13 +12,13 @@ package workflow
 import (
 	"bytes"
 	"context"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"github.com/university-ecosystem/file-processor/internal/config"
 	"image"
 	"image/jpeg"
 	"net/http/httptest"
 	"testing"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
-	"github.com/university-ecosystem/file-processor/internal/config"
 )
 
 // ── encodeImage ───────────────────────────────────────────────────────────────

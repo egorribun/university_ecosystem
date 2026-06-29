@@ -1,0 +1,212 @@
+﻿2026-06-29T10:25:10.9106552Z Current runner version: '2.335.1'
+2026-06-29T10:25:10.9131508Z ##[group]Runner Image Provisioner
+2026-06-29T10:25:10.9132419Z Hosted Compute Agent
+2026-06-29T10:25:10.9133156Z Version: 20260611.554
+2026-06-29T10:25:10.9134102Z Commit: 5e0782fdc9014723d3be820dd114dd31555c2bd1
+2026-06-29T10:25:10.9134969Z Build Date: 2026-06-11T21:40:46Z
+2026-06-29T10:25:10.9135692Z Worker ID: {42755ea5-dea7-4078-aebc-cee0bfe22b3d}
+2026-06-29T10:25:10.9136421Z Azure Region: westus
+2026-06-29T10:25:10.9137048Z ##[endgroup]
+2026-06-29T10:25:10.9138998Z ##[group]Operating System
+2026-06-29T10:25:10.9139686Z Ubuntu
+2026-06-29T10:25:10.9140433Z 24.04.4
+2026-06-29T10:25:10.9140980Z LTS
+2026-06-29T10:25:10.9141543Z ##[endgroup]
+2026-06-29T10:25:10.9142164Z ##[group]Runner Image
+2026-06-29T10:25:10.9142790Z Image: ubuntu-24.04
+2026-06-29T10:25:10.9143667Z Version: 20260622.220.1
+2026-06-29T10:25:10.9144934Z Included Software: https://github.com/actions/runner-images/blob/ubuntu24/20260622.220/images/ubuntu/Ubuntu2404-Readme.md
+2026-06-29T10:25:10.9146548Z Image Release: https://github.com/actions/runner-images/releases/tag/ubuntu24%2F20260622.220
+2026-06-29T10:25:10.9147557Z ##[endgroup]
+2026-06-29T10:25:10.9148718Z ##[group]GITHUB_TOKEN Permissions
+2026-06-29T10:25:10.9150619Z Contents: read
+2026-06-29T10:25:10.9151347Z Metadata: read
+2026-06-29T10:25:10.9151957Z ##[endgroup]
+2026-06-29T10:25:10.9154470Z Secret source: Actions
+2026-06-29T10:25:10.9155281Z Prepare workflow directory
+2026-06-29T10:25:10.9795222Z Prepare all required actions
+2026-06-29T10:25:10.9834140Z Getting action download info
+2026-06-29T10:25:11.3651927Z Download action repository 'actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0' (SHA:9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0)
+2026-06-29T10:25:11.4471846Z Download action repository 'actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1' (SHA:ece7cb06caefa5fff74198d8649806c4678c61a1)
+2026-06-29T10:25:11.9694976Z Download action repository 'pre-commit/action@2c7b3805fd2a0fd8c1884dcaebf91fc102a13ecd' (SHA:2c7b3805fd2a0fd8c1884dcaebf91fc102a13ecd)
+2026-06-29T10:25:12.2974143Z Getting action download info
+2026-06-29T10:25:12.4554308Z Download action repository 'actions/cache@v4' (SHA:0057852bfaa89a56745cba8c7296529d2fc39830)
+2026-06-29T10:25:12.6250182Z Complete job name: Pre-commit & Linting (Read-only)
+2026-06-29T10:25:12.7142691Z ##[group]Run actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+2026-06-29T10:25:12.7144771Z with:
+2026-06-29T10:25:12.7145597Z   fetch-depth: 0
+2026-06-29T10:25:12.7146597Z   repository: egorribun/university_ecosystem
+2026-06-29T10:25:12.7157063Z   token: ***
+2026-06-29T10:25:12.7157931Z   ssh-strict: true
+2026-06-29T10:25:12.7158790Z   ssh-user: git
+2026-06-29T10:25:12.7159666Z   persist-credentials: true
+2026-06-29T10:25:12.7160665Z   clean: true
+2026-06-29T10:25:12.7161556Z   sparse-checkout-cone-mode: true
+2026-06-29T10:25:12.7162618Z   fetch-tags: false
+2026-06-29T10:25:12.7163723Z   show-progress: true
+2026-06-29T10:25:12.7164624Z   lfs: false
+2026-06-29T10:25:12.7165487Z   submodules: false
+2026-06-29T10:25:12.7166390Z   set-safe-directory: true
+2026-06-29T10:25:12.7167406Z   allow-unsafe-pr-checkout: false
+2026-06-29T10:25:12.7168802Z env:
+2026-06-29T10:25:12.7169588Z   SECRET_KEY: 
+2026-06-29T10:25:12.7170429Z   ENVIRONMENT: testing
+2026-06-29T10:25:12.7171377Z ##[endgroup]
+2026-06-29T10:25:12.8217225Z Syncing repository: egorribun/university_ecosystem
+2026-06-29T10:25:12.8220992Z ##[group]Getting Git version info
+2026-06-29T10:25:12.8222747Z Working directory is '/home/runner/work/university_ecosystem/university_ecosystem'
+2026-06-29T10:25:12.8225750Z [command]/usr/bin/git version
+2026-06-29T10:25:12.8302411Z git version 2.54.0
+2026-06-29T10:25:12.8325420Z ##[endgroup]
+2026-06-29T10:25:12.8336876Z Temporarily overriding HOME='/home/runner/work/_temp/25b91f95-e5ef-4717-b70c-6803cf894ce8' before making global git config changes
+2026-06-29T10:25:12.8339702Z Adding repository directory to the temporary git global config as a safe directory
+2026-06-29T10:25:12.8342899Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/university_ecosystem/university_ecosystem
+2026-06-29T10:25:12.8395653Z Deleting the contents of '/home/runner/work/university_ecosystem/university_ecosystem'
+2026-06-29T10:25:12.8406168Z ##[group]Determining repository object format
+2026-06-29T10:25:12.8409239Z ##[endgroup]
+2026-06-29T10:25:12.8411569Z ##[group]Initializing the repository
+2026-06-29T10:25:12.8414850Z [command]/usr/bin/git init /home/runner/work/university_ecosystem/university_ecosystem
+2026-06-29T10:25:12.8541330Z hint: Using 'master' as the name for the initial branch. This default branch name
+2026-06-29T10:25:12.8544155Z hint: will change to "main" in Git 3.0. To configure the initial branch name
+2026-06-29T10:25:12.8547536Z hint: to use in all of your new repositories, which will suppress this warning,
+2026-06-29T10:25:12.8549930Z hint: call:
+2026-06-29T10:25:12.8551217Z hint:
+2026-06-29T10:25:12.8552697Z hint: 	git config --global init.defaultBranch <name>
+2026-06-29T10:25:12.8554474Z hint:
+2026-06-29T10:25:12.8555627Z hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
+2026-06-29T10:25:12.8558084Z hint: 'development'. The just-created branch can be renamed via this command:
+2026-06-29T10:25:12.8559606Z hint:
+2026-06-29T10:25:12.8560435Z hint: 	git branch -m <name>
+2026-06-29T10:25:12.8561356Z hint:
+2026-06-29T10:25:12.8562599Z hint: Disable this message with "git config set advice.defaultBranchName false"
+2026-06-29T10:25:12.8565573Z Initialized empty Git repository in /home/runner/work/university_ecosystem/university_ecosystem/.git/
+2026-06-29T10:25:12.8569363Z [command]/usr/bin/git remote add origin https://github.com/egorribun/university_ecosystem
+2026-06-29T10:25:12.8609175Z ##[endgroup]
+2026-06-29T10:25:12.8610859Z ##[group]Disabling automatic garbage collection
+2026-06-29T10:25:12.8612724Z [command]/usr/bin/git config --local gc.auto 0
+2026-06-29T10:25:12.8645935Z ##[endgroup]
+2026-06-29T10:25:12.8647666Z ##[group]Setting up auth
+2026-06-29T10:25:12.8648945Z Removing SSH command configuration
+2026-06-29T10:25:12.8651008Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+2026-06-29T10:25:12.8687013Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+2026-06-29T10:25:12.9145309Z Removing HTTP extra header
+2026-06-29T10:25:12.9151067Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-06-29T10:25:12.9187756Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+2026-06-29T10:25:12.9407715Z Removing includeIf entries pointing to credentials config files
+2026-06-29T10:25:12.9412105Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+2026-06-29T10:25:12.9446524Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+2026-06-29T10:25:12.9691890Z [command]/usr/bin/git config --file /home/runner/work/_temp/git-credentials-67797764-fffc-4fb1-b4e9-fbc100db0f83.config http.https://github.com/.extraheader AUTHORIZATION: basic ***
+2026-06-29T10:25:12.9738812Z [command]/usr/bin/git config --local includeIf.gitdir:/home/runner/work/university_ecosystem/university_ecosystem/.git.path /home/runner/work/_temp/git-credentials-67797764-fffc-4fb1-b4e9-fbc100db0f83.config
+2026-06-29T10:25:12.9867837Z [command]/usr/bin/git config --local includeIf.gitdir:/home/runner/work/university_ecosystem/university_ecosystem/.git/worktrees/*.path /home/runner/work/_temp/git-credentials-67797764-fffc-4fb1-b4e9-fbc100db0f83.config
+2026-06-29T10:25:12.9878071Z [command]/usr/bin/git config --local includeIf.gitdir:/github/workspace/.git.path /github/runner_temp/git-credentials-67797764-fffc-4fb1-b4e9-fbc100db0f83.config
+2026-06-29T10:25:12.9905989Z [command]/usr/bin/git config --local includeIf.gitdir:/github/workspace/.git/worktrees/*.path /github/runner_temp/git-credentials-67797764-fffc-4fb1-b4e9-fbc100db0f83.config
+2026-06-29T10:25:12.9918089Z ##[endgroup]
+2026-06-29T10:25:12.9921094Z ##[group]Fetching the repository
+2026-06-29T10:25:12.9925999Z [command]/usr/bin/git -c protocol.version=2 fetch --no-tags --prune --no-recurse-submodules origin +refs/heads/*:refs/remotes/origin/* +refs/tags/*:refs/tags/* +65023b5ce480aee08e169c9728922b87253ec757:refs/remotes/pull/1159/merge
+2026-06-29T10:25:19.3480655Z From https://github.com/egorribun/university_ecosystem
+2026-06-29T10:25:19.3481816Z  * [new branch]          egorribun  -> origin/egorribun
+2026-06-29T10:25:19.3482962Z  * [new branch]          main       -> origin/main
+2026-06-29T10:25:19.3484244Z  * [new tag]             v1.0.0     -> v1.0.0
+2026-06-29T10:25:19.3485288Z  * [new ref]             65023b5ce480aee08e169c9728922b87253ec757 -> pull/1159/merge
+2026-06-29T10:25:19.3525229Z ##[endgroup]
+2026-06-29T10:25:19.3526134Z ##[group]Determining the checkout info
+2026-06-29T10:25:19.3526960Z ##[endgroup]
+2026-06-29T10:25:19.3532703Z [command]/usr/bin/git sparse-checkout disable
+2026-06-29T10:25:19.3580491Z [command]/usr/bin/git config --local --unset-all extensions.worktreeConfig
+2026-06-29T10:25:19.3610085Z ##[group]Checking out the ref
+2026-06-29T10:25:19.3612812Z [command]/usr/bin/git checkout --progress --force refs/remotes/pull/1159/merge
+2026-06-29T10:25:19.5797341Z Note: switching to 'refs/remotes/pull/1159/merge'.
+2026-06-29T10:25:19.5798045Z 
+2026-06-29T10:25:19.5798634Z You are in 'detached HEAD' state. You can look around, make experimental
+2026-06-29T10:25:19.5799844Z changes and commit them, and you can discard any commits you make in this
+2026-06-29T10:25:19.5800891Z state without impacting any branches by switching back to a branch.
+2026-06-29T10:25:19.5801496Z 
+2026-06-29T10:25:19.5801913Z If you want to create a new branch to retain commits you create, you may
+2026-06-29T10:25:19.5803041Z do so (now or later) by using -c with the switch command. Example:
+2026-06-29T10:25:19.5803873Z 
+2026-06-29T10:25:19.5804141Z   git switch -c <new-branch-name>
+2026-06-29T10:25:19.5804557Z 
+2026-06-29T10:25:19.5805030Z Or undo this operation with:
+2026-06-29T10:25:19.5805789Z 
+2026-06-29T10:25:19.5806019Z   git switch -
+2026-06-29T10:25:19.5806294Z 
+2026-06-29T10:25:19.5806755Z Turn off this advice by setting config variable advice.detachedHead to false
+2026-06-29T10:25:19.5807467Z 
+2026-06-29T10:25:19.5808263Z HEAD is now at 65023b5ce Merge 1dd8e6aa36d18c668edf16b103b749ecfaddd796 into 5d36f306d4cbafad896a6d7bb3cadba0e7aa67f9
+2026-06-29T10:25:19.5821530Z ##[endgroup]
+2026-06-29T10:25:19.5872320Z [command]/usr/bin/git log -1 --format=%H
+2026-06-29T10:25:19.5907370Z 65023b5ce480aee08e169c9728922b87253ec757
+2026-06-29T10:25:19.6186394Z ##[group]Run actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+2026-06-29T10:25:19.6186934Z with:
+2026-06-29T10:25:19.6187228Z   python-version: 3.13
+2026-06-29T10:25:19.6187528Z   check-latest: false
+2026-06-29T10:25:19.6190508Z   token: ***
+2026-06-29T10:25:19.6190788Z   update-environment: true
+2026-06-29T10:25:19.6191100Z   allow-prereleases: false
+2026-06-29T10:25:19.6191403Z   freethreaded: false
+2026-06-29T10:25:19.6191671Z env:
+2026-06-29T10:25:19.6191904Z   SECRET_KEY: 
+2026-06-29T10:25:19.6192162Z   ENVIRONMENT: testing
+2026-06-29T10:25:19.6192429Z ##[endgroup]
+2026-06-29T10:25:19.7553869Z ##[group]Installed versions
+2026-06-29T10:25:19.7692869Z Successfully set up CPython (3.13.14)
+2026-06-29T10:25:19.7694603Z ##[endgroup]
+2026-06-29T10:25:19.7822284Z ##[group]Run pip install uv
+2026-06-29T10:25:19.7822637Z [36;1mpip install uv[0m
+2026-06-29T10:25:19.7823199Z [36;1muv lock --check || (echo "::error::uv.lock is out of sync — run 'uv lock' locally and commit the updated lockfile" && exit 1)[0m
+2026-06-29T10:25:19.8333960Z shell: /usr/bin/bash -e {0}
+2026-06-29T10:25:19.8334293Z env:
+2026-06-29T10:25:19.8334520Z   SECRET_KEY: 
+2026-06-29T10:25:19.8334987Z   ENVIRONMENT: testing
+2026-06-29T10:25:19.8335335Z   pythonLocation: /opt/hostedtoolcache/Python/3.13.14/x64
+2026-06-29T10:25:19.8335861Z   PKG_CONFIG_PATH: /opt/hostedtoolcache/Python/3.13.14/x64/lib/pkgconfig
+2026-06-29T10:25:19.8336374Z   Python_ROOT_DIR: /opt/hostedtoolcache/Python/3.13.14/x64
+2026-06-29T10:25:19.8336840Z   Python2_ROOT_DIR: /opt/hostedtoolcache/Python/3.13.14/x64
+2026-06-29T10:25:19.8337300Z   Python3_ROOT_DIR: /opt/hostedtoolcache/Python/3.13.14/x64
+2026-06-29T10:25:19.8337773Z   LD_LIBRARY_PATH: /opt/hostedtoolcache/Python/3.13.14/x64/lib
+2026-06-29T10:25:19.8338204Z ##[endgroup]
+2026-06-29T10:25:23.2567422Z Collecting uv
+2026-06-29T10:25:23.3206734Z   Downloading uv-0.11.25-py3-none-manylinux_2_17_x86_64.manylinux2014_x86_64.whl.metadata (11 kB)
+2026-06-29T10:25:23.3381676Z Downloading uv-0.11.25-py3-none-manylinux_2_17_x86_64.manylinux2014_x86_64.whl (26.3 MB)
+2026-06-29T10:25:23.4409310Z    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 26.3/26.3 MB 343.4 MB/s  0:00:00
+2026-06-29T10:25:23.5115565Z Installing collected packages: uv
+2026-06-29T10:25:23.7846887Z Successfully installed uv-0.11.25
+2026-06-29T10:25:23.9100372Z Using CPython 3.13.14 interpreter at: /opt/hostedtoolcache/Python/3.13.14/x64/bin/python3
+2026-06-29T10:25:28.6985071Z Resolved 245 packages in 4.77s
+2026-06-29T10:25:28.7075484Z The lockfile at `uv.lock` needs to be updated, but `--check` was provided. To update the lockfile, run `uv lock`.
+2026-06-29T10:25:28.7281466Z ##[error]uv.lock is out of sync — run 'uv lock' locally and commit the updated lockfile
+2026-06-29T10:25:28.7294198Z ##[error]Process completed with exit code 1.
+2026-06-29T10:25:28.7427972Z Post job cleanup.
+2026-06-29T10:25:28.8295972Z [command]/usr/bin/git version
+2026-06-29T10:25:28.8337747Z git version 2.54.0
+2026-06-29T10:25:28.8374326Z Temporarily overriding HOME='/home/runner/work/_temp/bdaeb5a5-d34c-4741-8bd0-be59c62d3ab8' before making global git config changes
+2026-06-29T10:25:28.8375426Z Adding repository directory to the temporary git global config as a safe directory
+2026-06-29T10:25:28.8388764Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/university_ecosystem/university_ecosystem
+2026-06-29T10:25:28.8422118Z Removing SSH command configuration
+2026-06-29T10:25:28.8429903Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+2026-06-29T10:25:28.8466672Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+2026-06-29T10:25:28.8701908Z Removing HTTP extra header
+2026-06-29T10:25:28.8707842Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-06-29T10:25:28.8743150Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+2026-06-29T10:25:28.8970320Z Removing includeIf entries pointing to credentials config files
+2026-06-29T10:25:28.8977041Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+2026-06-29T10:25:28.9010068Z includeif.gitdir:/home/runner/work/university_ecosystem/university_ecosystem/.git.path
+2026-06-29T10:25:28.9011449Z includeif.gitdir:/home/runner/work/university_ecosystem/university_ecosystem/.git/worktrees/*.path
+2026-06-29T10:25:28.9012608Z includeif.gitdir:/github/workspace/.git.path
+2026-06-29T10:25:28.9013671Z includeif.gitdir:/github/workspace/.git/worktrees/*.path
+2026-06-29T10:25:28.9019696Z [command]/usr/bin/git config --local --get-all includeif.gitdir:/home/runner/work/university_ecosystem/university_ecosystem/.git.path
+2026-06-29T10:25:28.9042310Z /home/runner/work/_temp/git-credentials-67797764-fffc-4fb1-b4e9-fbc100db0f83.config
+2026-06-29T10:25:28.9052862Z [command]/usr/bin/git config --local --unset includeif.gitdir:/home/runner/work/university_ecosystem/university_ecosystem/.git.path /home/runner/work/_temp/git-credentials-67797764-fffc-4fb1-b4e9-fbc100db0f83.config
+2026-06-29T10:25:28.9085656Z [command]/usr/bin/git config --local --get-all includeif.gitdir:/home/runner/work/university_ecosystem/university_ecosystem/.git/worktrees/*.path
+2026-06-29T10:25:28.9107254Z /home/runner/work/_temp/git-credentials-67797764-fffc-4fb1-b4e9-fbc100db0f83.config
+2026-06-29T10:25:28.9115664Z [command]/usr/bin/git config --local --unset includeif.gitdir:/home/runner/work/university_ecosystem/university_ecosystem/.git/worktrees/*.path /home/runner/work/_temp/git-credentials-67797764-fffc-4fb1-b4e9-fbc100db0f83.config
+2026-06-29T10:25:28.9148436Z [command]/usr/bin/git config --local --get-all includeif.gitdir:/github/workspace/.git.path
+2026-06-29T10:25:28.9169428Z /github/runner_temp/git-credentials-67797764-fffc-4fb1-b4e9-fbc100db0f83.config
+2026-06-29T10:25:28.9176766Z [command]/usr/bin/git config --local --unset includeif.gitdir:/github/workspace/.git.path /github/runner_temp/git-credentials-67797764-fffc-4fb1-b4e9-fbc100db0f83.config
+2026-06-29T10:25:28.9206789Z [command]/usr/bin/git config --local --get-all includeif.gitdir:/github/workspace/.git/worktrees/*.path
+2026-06-29T10:25:28.9231620Z /github/runner_temp/git-credentials-67797764-fffc-4fb1-b4e9-fbc100db0f83.config
+2026-06-29T10:25:28.9241194Z [command]/usr/bin/git config --local --unset includeif.gitdir:/github/workspace/.git/worktrees/*.path /github/runner_temp/git-credentials-67797764-fffc-4fb1-b4e9-fbc100db0f83.config
+2026-06-29T10:25:28.9275346Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+2026-06-29T10:25:28.9494769Z Removing credentials config '/home/runner/work/_temp/git-credentials-67797764-fffc-4fb1-b4e9-fbc100db0f83.config'
+2026-06-29T10:25:28.9632336Z Evaluate and set job outputs
+2026-06-29T10:25:28.9638158Z Cleaning up orphan processes
