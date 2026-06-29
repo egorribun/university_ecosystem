@@ -24,8 +24,8 @@ func FuzzJWTValidation(f *testing.F) {
 	f.Fuzz(func(t *testing.T, authHeader string) {
 		w := httptest.NewRecorder()
 		c, _ := gin.CreateTestContext(w)
-		
-		req, err := http.NewRequest(http.MethodGet, "/", nil)
+
+		req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, "/", nil)
 		if err != nil {
 			return
 		}

@@ -16,8 +16,6 @@ import (
 	"image/jpeg"
 	"net/http/httptest"
 	"testing"
-
-	
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/university-ecosystem/file-processor/internal/config"
@@ -172,5 +170,6 @@ func TestDownloadAndDecodeImage_ContextCancelledDuringFetch(t *testing.T) {
 
 	// The call may return a ContextCancelled error or succeed (if decode wins the
 	// race); both are acceptable — the key assertion is that it does not panic or hang.
+	//nolint:errcheck // We explicitly don't care about the return value or error here
 	_, _, _ = a.downloadAndDecodeImage(ctx, "in/img.png")
 }

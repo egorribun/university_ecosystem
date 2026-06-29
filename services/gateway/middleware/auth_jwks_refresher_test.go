@@ -104,6 +104,7 @@ func TestJWKSRefresher_KeyRotation(t *testing.T) {
 				},
 			},
 		}
+		//nolint:errcheck // We explicitly don't care about the return value or error here
 		b, _ := json.Marshal(jwks)
 		return b
 	}
@@ -114,8 +115,10 @@ func TestJWKSRefresher_KeyRotation(t *testing.T) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		if atomic.LoadInt32(&useKey2) == 1 {
+			//nolint:errcheck // We explicitly don't care about the return value or error here
 			_, _ = w.Write(makeJWKS(nB64_2))
 		} else {
+			//nolint:errcheck // We explicitly don't care about the return value or error here
 			_, _ = w.Write(makeJWKS(nB64_1))
 		}
 	}))

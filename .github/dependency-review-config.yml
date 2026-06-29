@@ -65,6 +65,7 @@ allow-dependencies-licenses:
   - "pkg:pypi/mutmut"
   - "pkg:pypi/textual"
   - "pkg:pypi/uc-micro-py"
+  - "pkg:npm/%40apideck/better-ajv-errors"
   # Session 9 Stream D — wasm-bindgen-test (=0.3.64, rust-crypto dev-dep for the
   # browser-parity KATs) pulls minicov 0.3.8 transitively. minicov is dual
   # Apache-2.0/MIT (permissive, compatible) but its crate metadata emits the

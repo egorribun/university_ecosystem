@@ -80,12 +80,12 @@ func BenchmarkJWKToRSAPublicKey(b *testing.B) {
 		b.Fatalf("failed to generate RSA key: %v", err)
 	}
 
-	nB64 := base64.RawURLEncoding.EncodeToString(privateKey.PublicKey.N.Bytes())
+	nB64 := base64.RawURLEncoding.EncodeToString(privateKey.N.Bytes())
 
 	eBytes := []byte{
-		byte(privateKey.PublicKey.E >> 16),
-		byte(privateKey.PublicKey.E >> 8),
-		byte(privateKey.PublicKey.E),
+		byte(privateKey.E >> 16),
+		byte(privateKey.E >> 8),
+		byte(privateKey.E),
 	}
 	eB64 := base64.RawURLEncoding.EncodeToString(eBytes)
 

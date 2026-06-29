@@ -14,14 +14,17 @@ pact_lib = None
 if sys.platform != "win32":
     try:
         import pact
+
         pact_lib = pact
     except ImportError:
         pass
 
 if pact_lib is None:
     pytestmark = pytest.mark.skip(reason="pact-python is not installed")
+
     class DummyPact:
         pass
+
     Pact = DummyPact
     match = None
 else:
@@ -32,6 +35,7 @@ PACT_DIR = Path(__file__).parent / "pacts"
 CONSUMER_NAME = "university-backend"
 PROVIDER_NAME = "file-processor"
 
+
 @pytest.fixture(scope="module")
 def pact() -> Pact:
     PACT_DIR.mkdir(parents=True, exist_ok=True)
@@ -40,10 +44,11 @@ def pact() -> Pact:
     yield p.with_specification("V4")
     p.write_file(PACT_DIR, overwrite=True)
 
+
 def test_process_file_grpc_contract(pact: Pact) -> None:
     """Contract: Backend expects ProcessFile to return ProcessFileResponse."""
     (
-        pact.upon_receiving("a gRPC request for ProcessFile", "Synchronous/Messages")
+        pact.upon_receiving("a gRPC request for ProcessFile", "Sync")
         .with_request(
             {
                 "id": match.like("uuid"),
@@ -53,15 +58,15 @@ def test_process_file_grpc_contract(pact: Pact) -> None:
                 "options": {"width": "800"},
                 "callback_url": match.like("http://backend/callback"),
             },
-            "application/grpc"
+            "application/grpc",
         )
         .with_body(
             {
                 "job_id": match.like("uuid"),
                 "success": match.like(True),
                 "dest_key": match.like("uploads/processed/img.jpg"),
-                "duration_ms": match.like(100)
+                "duration_ms": match.like(100),
             },
-            "application/grpc"
+            "application/grpc",
         )
     )
