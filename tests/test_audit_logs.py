@@ -41,13 +41,17 @@ def _find_event(caplog, logger_name: str, event: str) -> dict:
     raise AssertionError(f"event {event!r} not found for logger {logger_name!r}")
 
 
-async def test_login_success_logs_audit(async_client, user_factory, caplog):
-    caplog.set_level(logging.INFO, logger="app.auth")
-    logger = logging.getLogger("app.auth")
-    print(
-        f"\n[TEST DEBUG AUTH] level={logger.level} effective={logger.getEffectiveLevel()} enabled={logger.isEnabledFor(logging.INFO)} disable={logging.root.manager.disable}\n"
-    )
+def _setup_logger(caplog, logger_name: str) -> None:
+    caplog.set_level(logging.INFO, logger=logger_name)
+    logger = logging.getLogger(logger_name)
+    logger.disabled = False
+    if hasattr(logger, "_cache"):
+        logger._cache.clear()
     caplog.clear()
+
+
+async def test_login_success_logs_audit(async_client, user_factory, caplog):
+    _setup_logger(caplog, "app.auth")
     hashed = await get_password_hash("StrongPass123!")
     user = await user_factory(hashed_password=hashed, is_active=True)
 
@@ -66,8 +70,7 @@ async def test_login_success_logs_audit(async_client, user_factory, caplog):
 
 
 async def test_login_failure_logs_audit(async_client, user_factory, caplog):
-    caplog.set_level(logging.INFO, logger="app.auth")
-    caplog.clear()
+    _setup_logger(caplog, "app.auth")
     hashed = await get_password_hash("ValidPass123!")
     user = await user_factory(hashed_password=hashed, is_active=True)
 
@@ -85,8 +88,7 @@ async def test_login_failure_logs_audit(async_client, user_factory, caplog):
 
 
 async def test_logout_revocation_logs_audit(async_client, user_factory, caplog):
-    caplog.set_level(logging.INFO, logger="app.auth")
-    caplog.clear()
+    _setup_logger(caplog, "app.auth")
     hashed = await get_password_hash("LogoutPass123!")
     user = await user_factory(hashed_password=hashed, is_active=True)
 
@@ -112,12 +114,7 @@ async def test_logout_revocation_logs_audit(async_client, user_factory, caplog):
 async def test_password_reset_completed_audit(
     async_client, user_factory, db_session, caplog
 ):
-    caplog.set_level(logging.INFO, logger="app.users.audit")
-    logger = logging.getLogger("app.users.audit")
-    print(
-        f"\n[TEST DEBUG RESET Completed] level={logger.level} effective={logger.getEffectiveLevel()} enabled={logger.isEnabledFor(logging.INFO)} disable={logging.root.manager.disable}\n"
-    )
-    caplog.clear()
+    _setup_logger(caplog, "app.users.audit")
     hashed = await get_password_hash("ResetCompletePass123!")
     user = await user_factory(hashed_password=hashed, is_active=True)
 
@@ -148,8 +145,7 @@ async def test_password_reset_completed_audit(
 
 
 async def test_password_reset_initiation_audit(async_client, user_factory, caplog):
-    caplog.set_level(logging.INFO, logger="app.users.audit")
-    caplog.clear()
+    _setup_logger(caplog, "app.users.audit")
     hashed = await get_password_hash("ResetInitPass123!")
     user = await user_factory(hashed_password=hashed, is_active=True)
 
