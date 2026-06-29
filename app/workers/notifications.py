@@ -177,7 +177,7 @@ async def _wait_for_signals(stop_event: asyncio.Event) -> None:
     for sig in handled_signals:
         try:
             loop.add_signal_handler(sig, _handler)
-        except NotImplementedError:  # pragma: no cover - Windows fallback
+        except NotImplementedError:
             signal.signal(sig, lambda *_: stop_event.set())
 
     await stop_event.wait()

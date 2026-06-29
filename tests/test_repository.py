@@ -75,11 +75,11 @@ class _StubRepo(ReadOnlyRepository[Any, Any]):
     """Minimal concrete subclass used to exercise ``_cast_id`` in isolation."""
 
     @property
-    def model(self) -> type[Any]:  # pragma: no cover - test stub
+    def model(self) -> type[Any]:
         return type(self)
 
     @property
-    def dto_class(self) -> type[Any]:  # pragma: no cover - test stub
+    def dto_class(self) -> type[Any]:
         return type(self)
 
 

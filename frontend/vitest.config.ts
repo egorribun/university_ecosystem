@@ -43,19 +43,6 @@ export default defineConfig({
         "src/utils/mapFallback.ts",
         "src/utils/performance.ts",
         "src/test/**/*",
-        "src/routes/**/*",
-        "src/pages/**/*",
-        "src/push/**/*",
-        "src/i18n/**/*",
-        "src/utils/a11y.ts",
-        "src/utils/categoryIcons.ts",
-        "src/utils/buildingHours.ts",
-        "src/utils/cryptoWorker.ts",
-        "src/utils/prefetchRoutes.ts",
-        "src/utils/roomStatus.ts",
-        "src/utils/scrollUtils.ts",
-        "src/utils/spotify.ts",
-        "src/utils/workerChrome.ts",
       ],
       // Ratchet floors at measured reality. SESSION-15 MAXIMAL whole-project sweep
       // (40 new test files / ~635 tests via Workflow orchestration: Lane F fresh
@@ -77,10 +64,10 @@ export default defineConfig({
       // source bug always returns undefined), useChatWebSocket ping/reconnect-cap 30s
       // timer paths, api/client 429-retry loop, etagCache/sanitize/sw long-tail.
       thresholds: {
-        statements: 90,
-        branches: 80,
-        functions: 81,
-        lines: 90,
+        statements: 86,
+        branches: 75,
+        functions: 79,
+        lines: 86,
       },
     },
   },

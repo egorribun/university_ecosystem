@@ -353,6 +353,7 @@ omit = [
 ]
 
 [tool.coverage.report]
+fail_under = 89
 show_missing = true
 # Ratchet floor — advanced by the test campaign:
 #   Session 10 → 88.04 %  (service-layer climb across workers/tasks/auth/chat)
@@ -360,7 +361,7 @@ show_missing = true
 # Aspirational target: 95 % (raise incrementally as CI validates each new tier).
 # CI (Linux + integration tier) measures ~0.7 pp higher than local hermetic.
 # Unified across pyproject / Makefile / ci.yml.
-fail_under = 95
+# (Replaced fail_under = 95 with 89 above after cheat removal)
 exclude_lines = [
   "pragma: no cover",
   "def __repr__",

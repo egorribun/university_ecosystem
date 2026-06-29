@@ -68,7 +68,7 @@ class _RecordingStorage:
         )
         return f"https://cdn.example/{relative_path}"
 
-    async def delete_file(self, file_url: str) -> None:  # pragma: no cover - unused
+    async def delete_file(self, file_url: str) -> None:
         self.calls.append(("delete", (file_url,), {}))
 
 

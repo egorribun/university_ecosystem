@@ -471,7 +471,7 @@ class _LazyProxy:
             init_database()
             obj = self._get_target()
 
-        if obj is None:  # pragma: no cover
+        if obj is None:
             raise RuntimeError(
                 f"Database {self._name} could not be initialized. "
                 "Ensure Settings are correctly configured."

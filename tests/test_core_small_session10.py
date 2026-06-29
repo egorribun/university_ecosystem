@@ -157,7 +157,7 @@ def _build_request(
 
 
 def _middleware(**kwargs: Any) -> ETagMiddleware:
-    async def _app(scope: Any, receive: Any, send: Any) -> None:  # pragma: no cover
+    async def _app(scope: Any, receive: Any, send: Any) -> None:
         raise AssertionError("ASGI app must not be invoked in direct dispatch tests")
 
     return ETagMiddleware(_app, **kwargs)
@@ -357,7 +357,7 @@ async def test_cancel_during_cleanup_hits_inner_cancelled_branch(
     async def _blocking(**_kwargs: object) -> int:
         started.set()
         await asyncio.sleep(3600)  # parked here until the task is cancelled
-        return 0  # pragma: no cover - never reached
+        return 0
 
     monkeypatch.setattr(mfa_cleanup_module, "cleanup_stale_mfa_challenges", _blocking)
 

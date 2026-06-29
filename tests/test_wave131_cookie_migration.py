@@ -79,7 +79,7 @@ class TestWave131CookieSameSiteMigration:
         """CSRFMiddleware constructed with the migrated samesite emits lax cookies."""
         from app.core.csrf import CSRFMiddleware
 
-        async def _stub(scope, receive, send):  # pragma: no cover - never called
+        async def _stub(scope, receive, send):
             return None
 
         settings = SecuritySettings()

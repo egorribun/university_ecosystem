@@ -132,23 +132,23 @@ async def test_rate_limit_skips_static_paths():
     )
 
     @app.get("/static/example.png")
-    async def _static() -> Response:  # pragma: no cover - simple passthrough
+    async def _static() -> Response:
         return Response(content=b"", media_type="image/png")
 
     @app.get("/media/example.png")
-    async def _media() -> Response:  # pragma: no cover - simple passthrough
+    async def _media() -> Response:
         return Response(content=b"", media_type="image/png")
 
     @app.get("/storage/example.png")
-    async def _storage() -> Response:  # pragma: no cover - simple passthrough
+    async def _storage() -> Response:
         return Response(content=b"", media_type="image/png")
 
     @app.get("/assets/app.js")
-    async def _assets() -> Response:  # pragma: no cover - simple passthrough
+    async def _assets() -> Response:
         return Response(content=b"console.log('hi');", media_type="text/javascript")
 
     @app.get("/limited")
-    async def _limited():  # pragma: no cover - simple passthrough
+    async def _limited():
         return {"ok": True}
 
     transport = httpx.ASGITransport(app=app)
@@ -257,7 +257,7 @@ async def test_rate_limit_memory_backend_blocks_requests():
     )
 
     @app.get("/ping")
-    async def _ping():  # pragma: no cover - minimal endpoint definition
+    async def _ping():
         return {"ok": True}
 
     transport = httpx.ASGITransport(app=app)
@@ -288,7 +288,7 @@ async def test_sensitive_dependency_memory_backend(monkeypatch):
     app = FastAPI()
 
     @app.get("/limited", dependencies=[Depends(dependency)])
-    async def _limited():  # pragma: no cover - minimal endpoint
+    async def _limited():
         return {"ok": True}
 
     transport = httpx.ASGITransport(app=app)
@@ -320,7 +320,7 @@ async def test_sensitive_dependency_memory_backend_resolves_proxy_headers(monkey
     app = FastAPI()
 
     @app.get("/limited", dependencies=[Depends(dependency)])
-    async def _limited():  # pragma: no cover - minimal endpoint
+    async def _limited():
         return {"ok": True}
 
     transport = httpx.ASGITransport(app=app)
@@ -363,7 +363,7 @@ async def test_sensitive_dependency_memory_backend_ignores_untrusted_proxy_heade
     app = FastAPI()
 
     @app.get("/limited", dependencies=[Depends(dependency)])
-    async def _limited():  # pragma: no cover - minimal endpoint
+    async def _limited():
         return {"ok": True}
 
     transport = httpx.ASGITransport(app=app)
@@ -406,7 +406,7 @@ async def test_sensitive_dependency_redis_backend(
     app = FastAPI()
 
     @app.get("/limited", dependencies=[Depends(dependency)])
-    async def _limited():  # pragma: no cover - minimal endpoint
+    async def _limited():
         return {"ok": True}
 
     def _fail_check(*args, **kwargs):
@@ -452,7 +452,7 @@ async def test_sensitive_dependency_redis_backend_forwarded_header(
     app = FastAPI()
 
     @app.get("/limited", dependencies=[Depends(dependency)])
-    async def _limited():  # pragma: no cover - minimal endpoint
+    async def _limited():
         return {"ok": True}
 
     def _fail_check(*args, **kwargs):
@@ -536,7 +536,7 @@ async def test_rate_limit_middleware_allows_when_redis_fails(monkeypatch):
     )
 
     @app.get("/ping")
-    async def _ping():  # pragma: no cover - simple response
+    async def _ping():
         return {"ok": True}
 
     async def fail_check(self, identifier, limit=None, window_seconds=None):
@@ -658,15 +658,15 @@ async def test_rate_limit_per_endpoint_limits():
     )
 
     @app.post("/auth/login")
-    async def _login():  # pragma: no cover - minimal endpoint
+    async def _login():
         return {"ok": True}
 
     @app.get("/api/data")
-    async def _api_data():  # pragma: no cover - minimal endpoint
+    async def _api_data():
         return {"data": []}
 
     @app.get("/other")
-    async def _other():  # pragma: no cover - minimal endpoint
+    async def _other():
         return {"other": True}
 
     transport = httpx.ASGITransport(app=app)

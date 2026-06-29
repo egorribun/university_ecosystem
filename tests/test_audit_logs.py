@@ -20,7 +20,7 @@ def _find_event(caplog, logger_name: str, event: str) -> dict:
             continue
         try:
             payload = json.loads(record.message)
-        except json.JSONDecodeError:  # pragma: no cover - defensive guard
+        except json.JSONDecodeError:
             continue
         if payload.get("event") == event:
             return cast(dict[Any, Any], payload)

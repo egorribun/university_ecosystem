@@ -155,7 +155,7 @@ async def test_create_event_records_enqueue_failure(
 
     headers = await _login(async_client, teacher.email, password)
 
-    def _failing_add_task(self, func, *args, **kwargs):  # pragma: no cover - test shim
+    def _failing_add_task(self, func, *args, **kwargs):
         raise RuntimeError("notification queue unavailable")
 
     monkeypatch.setattr(events.BackgroundTasks, "add_task", _failing_add_task)

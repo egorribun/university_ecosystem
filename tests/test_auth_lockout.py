@@ -28,7 +28,7 @@ def _find_event(caplog: Any, event: str) -> dict[Any, Any] | None:
             payload = json.loads(record.message)
             if isinstance(payload, dict) and payload.get("event") == event:
                 return payload
-        except json.JSONDecodeError:  # pragma: no cover - defensive guard
+        except json.JSONDecodeError:
             continue
     return None
 
