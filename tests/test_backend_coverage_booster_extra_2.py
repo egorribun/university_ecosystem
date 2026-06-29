@@ -1029,9 +1029,11 @@ def test_shutdown_observability():
 @pytest.mark.asyncio
 async def test_complete_passkey_enrollment_invalid_payload():
     request = MagicMock()
+    request.state = MagicMock()
     db = AsyncMock()
     user = MagicMock()
     user.id = uuid.uuid4()
+    setup_dishka_mock(request, db)
 
     mock_challenge = MagicMock()
     mock_challenge.payload = None
@@ -1047,7 +1049,7 @@ async def test_complete_passkey_enrollment_invalid_payload():
     ):
         with pytest.raises(HTTPException) as exc:
             await mfa_api.confirm_webauthn_registration(
-                payload, request, db, MagicMock(), user
+                payload=payload, request=request, user=user
             )
         assert exc.value.status_code == 400
 
@@ -1055,9 +1057,11 @@ async def test_complete_passkey_enrollment_invalid_payload():
 @pytest.mark.asyncio
 async def test_complete_passkey_enrollment_verification_fails():
     request = MagicMock()
+    request.state = MagicMock()
     db = AsyncMock()
     user = MagicMock()
     user.id = uuid.uuid4()
+    setup_dishka_mock(request, db)
 
     mock_challenge = MagicMock()
     mock_challenge.payload = {"options": {"challenge": "challenge_str"}}
@@ -1080,7 +1084,7 @@ async def test_complete_passkey_enrollment_verification_fails():
     ):
         with pytest.raises(HTTPException) as exc:
             await mfa_api.confirm_webauthn_registration(
-                payload, request, db, MagicMock(), user
+                payload=payload, request=request, user=user
             )
         assert exc.value.status_code == 400
 
@@ -1118,7 +1122,7 @@ async def test_complete_passkey_enrollment_success():
         setup_dishka_mock(request, db, mock_audit_inst)
 
         res = await mfa_api.confirm_webauthn_registration(
-            payload, request, db, mock_audit_inst, user
+            payload=payload, request=request, user=user
         )
         assert res.mfa_required is True
         assert res.disabled is False
@@ -1261,7 +1265,7 @@ async def test_get_online_users_for_user():
 
     with (
         patch(
-            "app.api.websocket._get_presence_audience",
+            "app.api.ws.presence._get_presence_audience",
             AsyncMock(return_value=[target_id1, target_id2]),
         ),
         patch("app.api.websocket.manager") as mock_manager,
@@ -1279,6 +1283,9 @@ async def test_websocket_chat_rate_limit():
     websocket.send_json = AsyncMock()
 
     with patch("app.api.websocket.manager") as mock_manager:
+        mock_manager.connect = AsyncMock(return_value=True)
+        mock_manager.broadcast_presence = AsyncMock()
+        mock_manager.disconnect = AsyncMock()
         mock_manager.check_rate_limit.return_value = False
         websocket.receive_text.side_effect = Exception("break loop")
 
@@ -1313,6 +1320,9 @@ async def test_websocket_chat_payload_too_large():
         ),
         patch("app.api.websocket.manager") as mock_manager,
     ):
+        mock_manager.connect = AsyncMock(return_value=True)
+        mock_manager.broadcast_presence = AsyncMock()
+        mock_manager.disconnect = AsyncMock()
         mock_manager.check_rate_limit.return_value = True
         await websocket_api.websocket_chat(websocket)
         websocket.close.assert_called_with(code=1009, reason="Payload too large")
@@ -1342,6 +1352,9 @@ async def test_websocket_chat_malformed_json():
         ),
         patch("app.api.websocket.manager") as mock_manager,
     ):
+        mock_manager.connect = AsyncMock(return_value=True)
+        mock_manager.broadcast_presence = AsyncMock()
+        mock_manager.disconnect = AsyncMock()
         mock_manager.check_rate_limit.return_value = True
         with pytest.raises(Exception, match="break loop"):
             await websocket_api.websocket_chat(websocket)
