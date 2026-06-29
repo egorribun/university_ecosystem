@@ -50,5 +50,6 @@ def test_gateway_rest_contract(pact: Pact) -> None:
         pact.upon_receiving("a request to /health")
         .given("Backend is running")
         .with_request(method="GET", path="/health")
-        .will_respond_with(status=200, body={"status": match.like("ok")})
+        .will_respond_with(200)
+        .with_body({"status": match.like("ok")})
     )

@@ -49,7 +49,7 @@ def test_process_file_grpc_contract(pact: Pact) -> None:
     """Contract: Backend expects ProcessFile to return ProcessFileResponse."""
     (
         pact.upon_receiving("a gRPC request for ProcessFile", "Sync")
-        .with_request(
+        .with_body(
             {
                 "id": match.like("uuid"),
                 "type": match.like("resize"),
@@ -60,6 +60,7 @@ def test_process_file_grpc_contract(pact: Pact) -> None:
             },
             "application/grpc",
         )
+        .will_respond_with()
         .with_body(
             {
                 "job_id": match.like("uuid"),
