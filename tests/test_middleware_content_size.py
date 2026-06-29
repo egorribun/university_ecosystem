@@ -28,7 +28,9 @@ def _build_test_app(max_bytes: int = _MAX_BYTES) -> FastAPI:
     @test_app.post("/echo")
     async def echo_body(request: Request) -> JSONResponse:
         body = await request.body()
-        return JSONResponse({"length": len(body), "body": body.decode("utf-8", "replace")})
+        return JSONResponse(
+            {"length": len(body), "body": body.decode("utf-8", "replace")}
+        )
 
     @test_app.put("/echo")
     async def echo_put(request: Request) -> JSONResponse:
@@ -62,7 +64,10 @@ def app() -> FastAPI:
     return _build_test_app()
 
 
-@pytest.fixture
+import pytest_asyncio
+
+
+@pytest_asyncio.fixture
 async def client(app: FastAPI) -> AsyncClient:
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as ac:
@@ -94,7 +99,7 @@ async def test_non_http_scope_passthrough():
     # should not block. We catch the inner error to prove passthrough.
     try:
         await middleware(scope, mock_receive, mock_send)
-    except Exception:
+    except Exception:  # noqa: S110
         pass  # Inner app doesn't handle lifespan — expected
 
 
@@ -226,7 +231,7 @@ async def test_websocket_path_bypasses_body_check(client: AsyncClient):
 async def test_delete_with_body_within_limit(client: AsyncClient):
     """DELETE request with a body within limit succeeds (RFC 9110 permits body)."""
     payload = b"delete-payload"
-    response = await client.delete("/delete-with-body", content=payload)
+    response = await client.request("DELETE", "/delete-with-body", content=payload)
     assert response.status_code == 200
     data = response.json()
     assert data["length"] == len(payload)
@@ -239,7 +244,7 @@ async def test_delete_with_body_exceeds_limit():
     transport = ASGITransport(app=test_app)
     async with AsyncClient(transport=transport, base_url="http://test") as ac:
         payload = b"x" * 100
-        response = await ac.delete("/delete-with-body", content=payload)
+        response = await ac.request("DELETE", "/delete-with-body", content=payload)
     assert response.status_code == 413
 
 

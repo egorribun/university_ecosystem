@@ -60,9 +60,12 @@ class ContentSizeLimitMiddleware:
         await self._dispatch(request, send)
 
     async def _dispatch(self, request: Request, send: Send) -> None:
+        path = request.url.path or ""
+        is_ws_path = path.startswith("/ws")
+
         # Fast path: Content-Length declared → reject immediately, no body read.
         cl_header = request.headers.get("content-length")
-        if cl_header is not None:
+        if cl_header is not None and not is_ws_path:
             try:
                 cl = int(cl_header)
             except ValueError:
@@ -94,10 +97,7 @@ class ContentSizeLimitMiddleware:
         # Extend to DELETE because RFC 9110 permits DELETE with a body, and
         # payloads without Content-Length would bypass the fast path.
         method = request.method.upper()
-        path = request.url.path or ""
-        has_body = method in {"POST", "PUT", "PATCH", "DELETE"} and not path.startswith(
-            "/ws"
-        )
+        has_body = method in {"POST", "PUT", "PATCH", "DELETE"} and not is_ws_path
         if has_body and cl_header is None:
             new_request, rejected = await self._read_and_replay_body(request, send)
             if rejected:

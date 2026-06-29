@@ -7,7 +7,7 @@ inputs. Also tests Annotated types in Pydantic models.
 from __future__ import annotations
 
 import pytest
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel
 
 from app.schemas.validators import (
     CleanStr,
@@ -15,7 +15,6 @@ from app.schemas.validators import (
     MediumSanitizedStr,
     RichTextStr,
     SafeFilename,
-    SafeRichText,
     SafeUrl,
     SanitizedEmail,
     SanitizedInput,
@@ -33,7 +32,6 @@ from app.schemas.validators import (
     _truncate_1000,
     _truncate_5000,
 )
-
 
 # ---------------------------------------------------------------------------
 # _sanitize_html_validator
@@ -61,7 +59,7 @@ class TestSanitizeHtmlValidator:
         malicious = '<script>alert("xss")</script>'
         result = _sanitize_html_validator(malicious)
         assert "<script>" not in result
-        assert "alert" in result  # Text content preserved without tags
+        assert "alert" not in result  # nh3 drops <script> content entirely
 
     def test_html_entities_safe(self):
         """HTML entities are handled safely."""
@@ -104,7 +102,7 @@ class TestSanitizeHtmlWithBasicTags:
 
     def test_strips_dangerous_tags(self):
         """Script and other dangerous tags are stripped."""
-        result = _sanitize_html_with_basic_tags('<script>alert(1)</script><b>ok</b>')
+        result = _sanitize_html_with_basic_tags("<script>alert(1)</script><b>ok</b>")
         assert "<script>" not in result
         assert "<b>ok</b>" in result
 

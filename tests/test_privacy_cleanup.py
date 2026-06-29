@@ -9,7 +9,6 @@ from __future__ import annotations
 import asyncio
 from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
-from uuid import uuid4
 
 import pytest
 
@@ -19,7 +18,6 @@ from app.services.privacy_cleanup import (
     cleanup_privacy_artifacts,
     start_privacy_cleanup_scheduler,
 )
-
 
 # ---------------------------------------------------------------------------
 # _cutoff: correct calculation
@@ -194,10 +192,13 @@ class TestCleanupPrivacyArtifacts:
         mock_track.__aenter__ = AsyncMock(return_value=mock_run)
         mock_track.__aexit__ = AsyncMock(return_value=None)
 
+        mock_metrics = MagicMock()
+        mock_metrics.track_execution.return_value = mock_track
+
         with (
             patch(
-                "app.services.privacy_cleanup._METRICS.track_execution",
-                return_value=mock_track,
+                "app.services.privacy_cleanup._METRICS",
+                mock_metrics,
             ),
             patch(
                 "app.services.privacy_cleanup.cleanup_access_logs",
@@ -249,7 +250,13 @@ class TestPrivacyCleanupScheduler:
         with patch(
             "app.services.privacy_cleanup.cleanup_privacy_artifacts",
             new_callable=AsyncMock,
-            return_value={"sessions": 0, "mfa_challenges": 0, "mfa_enrollments": 0, "failed_logins": 0, "access_logs": 0},
+            return_value={
+                "sessions": 0,
+                "mfa_challenges": 0,
+                "mfa_enrollments": 0,
+                "failed_logins": 0,
+                "access_logs": 0,
+            },
         ):
             stop_function = await start_privacy_cleanup_scheduler(config=config)
 
@@ -288,7 +295,13 @@ class TestPrivacyCleanupScheduler:
         with patch(
             "app.services.privacy_cleanup.cleanup_privacy_artifacts",
             new_callable=AsyncMock,
-            return_value={"sessions": 0, "mfa_challenges": 0, "mfa_enrollments": 0, "failed_logins": 0, "access_logs": 0},
+            return_value={
+                "sessions": 0,
+                "mfa_challenges": 0,
+                "mfa_enrollments": 0,
+                "failed_logins": 0,
+                "access_logs": 0,
+            },
         ):
             stop_function = await start_privacy_cleanup_scheduler(config=config)
             await asyncio.sleep(0.05)
