@@ -181,6 +181,9 @@ class AuditService:
         redacted_payload = self._redact_sensitive(payload)
 
         target_logger = self._select_logger(event_str)
+        print(
+            f"[AUDIT DEBUG] event={event_str} level={level} logger={target_logger.name} enabled={target_logger.isEnabledFor(level)} handlers={target_logger.handlers} propagate={target_logger.propagate}"
+        )
         target_logger.log(
             level, json.dumps(redacted_payload, default=str), extra=redacted_payload
         )
