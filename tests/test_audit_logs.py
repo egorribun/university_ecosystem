@@ -32,7 +32,7 @@ def _find_event(caplog, logger_name: str, event: str) -> dict:
 
 
 async def test_login_success_logs_audit(async_client, user_factory, caplog):
-    caplog.set_level(logging.INFO)
+    caplog.set_level(logging.INFO, logger="app.auth")
     caplog.clear()
     hashed = await get_password_hash("StrongPass123!")
     user = await user_factory(hashed_password=hashed, is_active=True)
@@ -52,7 +52,7 @@ async def test_login_success_logs_audit(async_client, user_factory, caplog):
 
 
 async def test_login_failure_logs_audit(async_client, user_factory, caplog):
-    caplog.set_level(logging.INFO)
+    caplog.set_level(logging.INFO, logger="app.auth")
     caplog.clear()
     hashed = await get_password_hash("ValidPass123!")
     user = await user_factory(hashed_password=hashed, is_active=True)
@@ -71,7 +71,7 @@ async def test_login_failure_logs_audit(async_client, user_factory, caplog):
 
 
 async def test_logout_revocation_logs_audit(async_client, user_factory, caplog):
-    caplog.set_level(logging.INFO)
+    caplog.set_level(logging.INFO, logger="app.auth")
     caplog.clear()
     hashed = await get_password_hash("LogoutPass123!")
     user = await user_factory(hashed_password=hashed, is_active=True)
@@ -98,7 +98,7 @@ async def test_logout_revocation_logs_audit(async_client, user_factory, caplog):
 async def test_password_reset_completed_audit(
     async_client, user_factory, db_session, caplog
 ):
-    caplog.set_level(logging.INFO)
+    caplog.set_level(logging.INFO, logger="app.users.audit")
     caplog.clear()
     hashed = await get_password_hash("ResetCompletePass123!")
     user = await user_factory(hashed_password=hashed, is_active=True)
@@ -130,7 +130,7 @@ async def test_password_reset_completed_audit(
 
 
 async def test_password_reset_initiation_audit(async_client, user_factory, caplog):
-    caplog.set_level(logging.INFO)
+    caplog.set_level(logging.INFO, logger="app.users.audit")
     caplog.clear()
     hashed = await get_password_hash("ResetInitPass123!")
     user = await user_factory(hashed_password=hashed, is_active=True)

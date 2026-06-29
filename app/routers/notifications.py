@@ -834,12 +834,22 @@ async def broadcast(
         )
 
     # RZ-W19-18: rate limit broadcast — max 5 per hour to prevent DB/WebPush saturation
-    await enforce_rate_limit(
-        strategy=get_default_strategy(),
-        identifier=f"push:broadcast:{user.id}",
-        limit=5,
-        window_seconds=3600,
-    )
+    try:
+        await enforce_rate_limit(
+            strategy=get_default_strategy(),
+            identifier=f"push:broadcast:{user.id}",
+            limit=5,
+            window_seconds=3600,
+        )
+    except RateLimitExceeded as exc:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail={
+                "error": "rate_limited",
+                "message": translate("errors.rate_limit.push_broadcast", locale=locale),
+                "retry_after": exc.info.retry_after,
+            },
+        ) from None
 
     topic = normalize_topic(data.topic)
     payload = data.model_dump(exclude_none=True)
