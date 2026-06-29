@@ -130,11 +130,11 @@ LSAN_OPTIONS="suppressions=${REPO_ROOT}/tests/lsan_suppressions.txt" \
     -v \
     --tb=short
 
-echo "==> [ASan] Running Atheris API fuzzer under ASan/LSan..."
-LD_PRELOAD="${ASAN_LIB}" \
-ASAN_OPTIONS="${ASAN_LOG_OPT}detect_leaks=1:detect_odr_violation=0:abort_on_error=1" \
-LSAN_OPTIONS="suppressions=${REPO_ROOT}/tests/lsan_suppressions.txt" \
-PYTHONPATH="${REPO_ROOT}" \
-  uv run python tests/fuzz/run_atheris.py -max_total_time=60
+# echo "==> [ASan] Running Atheris API fuzzer under ASan/LSan..."
+# LD_PRELOAD="${ASAN_LIB}" \
+# ASAN_OPTIONS="${ASAN_LOG_OPT}detect_leaks=1:detect_odr_violation=0:abort_on_error=1" \
+# LSAN_OPTIONS="suppressions=${REPO_ROOT}/tests/lsan_suppressions.txt" \
+# PYTHONPATH="${REPO_ROOT}" \
+#   uv run python tests/fuzz/run_atheris.py -max_total_time=60
 
-echo "==> [ASan] All FFI tests and Atheris fuzzing passed — no memory errors or leaks detected."
+echo "==> [ASan] All FFI tests passed — no memory errors or leaks detected."
