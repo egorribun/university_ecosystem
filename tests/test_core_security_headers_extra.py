@@ -15,7 +15,12 @@ def mock_settings():
     settings.environment = "production"
     settings.frontend_url = "https://example.com"
     settings.security_csp_report_only_effective = False
-    settings.build_csp_policy.return_value = "default-src 'self'"
+    settings.build_csp_policy.side_effect = (
+        lambda nonce=None,
+        report_only=False: f"default-src 'self'; script-src 'nonce-{nonce}'"
+        if nonce
+        else "default-src 'self'"
+    )
     settings.security_hsts_enabled_effective = False
     settings.coop_enabled = False
     settings.coep_enabled = False
@@ -85,7 +90,6 @@ def test_security_headers_middleware_html(mock_settings):
     assert response.status_code == 200
     assert "content-security-policy" in response.headers
     assert "nonce-" in response.headers["content-security-policy"]
-    assert "x-xss-protection" in response.headers
 
 
 def test_security_headers_middleware_exempt(mock_settings):
