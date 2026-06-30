@@ -45,7 +45,7 @@ async def test_handle_mfa_ttl_no_ttl(mock_settings, auth_security_service):
 async def test_handle_mfa_ttl_expired_with_no_tz(mock_settings, auth_security_service):
     mock_settings.mfa_step_up_ttl_seconds = 3600
     # expired
-    verified_at = datetime.now() - timedelta(seconds=3601)
+    verified_at = datetime.now(UTC) - timedelta(seconds=3601)
     verified_at = verified_at.replace(tzinfo=None)
     session = ActiveSession(mfa_verified_at=verified_at)
 
@@ -74,7 +74,7 @@ async def test_sync_last_seen_none(auth_security_service):
 
 @pytest.mark.asyncio
 async def test_sync_last_seen_no_tz(auth_security_service):
-    last_seen_at = datetime.now() - timedelta(seconds=400)
+    last_seen_at = datetime.now(UTC) - timedelta(seconds=400)
     last_seen_at = last_seen_at.replace(tzinfo=None)
     session = ActiveSession(id="123", last_seen_at=last_seen_at)
     await auth_security_service.sync_last_seen(session, cached_session=False)

@@ -428,3 +428,17 @@ def _log_query_before_execute(
             f.write(normalized_stmt + "\n")
     except Exception:  # noqa: S110
         pass
+
+
+@pytest.fixture(autouse=True)
+async def cleanup_asyncio_tasks():
+    """Cancel all running tasks except the current one to prevent hangs/leaks."""
+    yield
+    import asyncio
+
+    current_task = asyncio.current_task()
+    tasks = [t for t in asyncio.all_tasks() if t is not current_task]
+    if tasks:
+        for task in tasks:
+            task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
