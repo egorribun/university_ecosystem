@@ -296,7 +296,7 @@ jobs:
       # pyproject/Makefile.
       coverage-threshold: ${{ matrix.coverage-check && 88 || 0 }}
       run-integration-tests: ${{ matrix.run-integration }}
-      parallel-workers: -1 # Disable pytest-xdist to prevent OOM-killer cancellation on 7GB VM runners
+      parallel-workers: 0 # LOW-W19: 0 = auto-detect workers via pytest-xdist (-n auto)
       python-gil: ${{ matrix.free-threading && '0' || '1' }}  # MOD-24-03
     secrets: inherit
 
