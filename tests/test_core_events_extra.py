@@ -59,7 +59,7 @@ def test_event_registry():
     @register_event
     @dataclass
     class RegisteredEvent(DomainEvent):
-        my_field: str
+        my_field: str = ""
 
     assert "RegisteredEvent" in [cls.__name__ for cls in (RegisteredEvent,)]
 
