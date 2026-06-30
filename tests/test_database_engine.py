@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-import logging
 from types import SimpleNamespace
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -143,7 +143,7 @@ async def test_create_session_factory_uses_pool_settings_for_production(monkeypa
 
 
 @pytest.mark.asyncio
-async def test_wait_db_logs_final_error_and_raises_cause(monkeypatch, caplog):
+async def test_wait_db_logs_final_error_and_raises_cause(monkeypatch):
     attempts: list[int] = []
 
     class _FailingConnection:
@@ -163,10 +163,12 @@ async def test_wait_db_logs_final_error_and_raises_cause(monkeypatch, caplog):
     async def _fake_sleep(delay: float) -> None:
         sleep_calls.append(delay)
 
+    fake_logger = SimpleNamespace(warning=MagicMock(), error=MagicMock())
     monkeypatch.setattr(database_module, "engine", _FailingEngine())
+    monkeypatch.setattr(database_module, "logger", fake_logger)
     monkeypatch.setattr(database_module.asyncio, "sleep", _fake_sleep)
 
-    with caplog.at_level(logging.WARNING), pytest.raises(RuntimeError) as excinfo:
+    with pytest.raises(RuntimeError) as excinfo:
         await database_module.wait_db(max_attempts=2, base_delay=0.25)
 
     assert "Database connection failed after 2 attempts: transient outage" in str(
@@ -178,19 +180,25 @@ async def test_wait_db_logs_final_error_and_raises_cause(monkeypatch, caplog):
     assert len(sleep_calls) == 1
     assert 0.0 <= sleep_calls[0] <= 0.5  # cap = min(max_delay, 0.25 * 2^1) = 0.5
 
-    error_logs = [
-        record for record in caplog.records if record.levelname in {"WARNING", "ERROR"}
-    ]
-    assert any(
-        record.levelname == "WARNING" and "unavailable" in str(record.msg)
-        for record in error_logs
+    fake_logger.warning.assert_called_once()
+    warning_args = fake_logger.warning.call_args.args
+    assert warning_args[:3] == (
+        "Database unavailable on attempt %s/%s: %s",
+        1,
+        2,
     )
-    assert any(
-        record.levelname == "ERROR"
-        and "unavailable" in str(record.msg)
-        and "transient outage" in str(record.__dict__)
-        for record in error_logs
+    assert "transient outage" in str(warning_args[3])
+    assert fake_logger.warning.call_args.kwargs == {"exc_info": False}
+
+    fake_logger.error.assert_called_once()
+    error_args = fake_logger.error.call_args.args
+    assert error_args[:3] == (
+        "Database unavailable on attempt %s/%s: %s",
+        2,
+        2,
     )
+    assert "transient outage" in str(error_args[3])
+    assert fake_logger.error.call_args.kwargs == {"exc_info": True}
 
 
 def test_after_cursor_execute_handles_no_start_time():
