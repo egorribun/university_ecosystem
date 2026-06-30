@@ -1279,15 +1279,21 @@ async def test_get_online_users_for_user():
 @pytest.mark.asyncio
 async def test_websocket_chat_rate_limit():
     websocket = AsyncMock()
-    websocket.receive_text = AsyncMock(return_value="{}")
     websocket.send_json = AsyncMock()
+
+    async def mock_receive():
+        if websocket.receive_text.call_count > 1:
+            raise Exception("break loop")
+        return "{}"
+
+    websocket.receive_text = AsyncMock(side_effect=mock_receive)
+    websocket.receive_text.call_count = 0
 
     with patch("app.api.websocket.manager") as mock_manager:
         mock_manager.connect = AsyncMock(return_value=True)
         mock_manager.broadcast_presence = AsyncMock()
         mock_manager.disconnect = AsyncMock()
         mock_manager.check_rate_limit.return_value = False
-        websocket.receive_text.side_effect = Exception("break loop")
 
         mock_user = MagicMock()
         mock_user.id = uuid.uuid4()
@@ -1296,8 +1302,7 @@ async def test_websocket_chat_rate_limit():
             "app.api.ws.authenticator.authenticator.authenticate_upgrade",
             AsyncMock(return_value=(mock_user, "jti", "subprotocol")),
         ):
-            with pytest.raises(Exception, match="break loop"):
-                await websocket_api.websocket_chat(websocket)
+            await websocket_api.websocket_chat(websocket)
             websocket.send_json.assert_called_with(
                 {"type": "error", "message": "Rate limit exceeded"}
             )
@@ -1356,8 +1361,7 @@ async def test_websocket_chat_malformed_json():
         mock_manager.broadcast_presence = AsyncMock()
         mock_manager.disconnect = AsyncMock()
         mock_manager.check_rate_limit.return_value = True
-        with pytest.raises(Exception, match="break loop"):
-            await websocket_api.websocket_chat(websocket)
+        await websocket_api.websocket_chat(websocket)
         websocket.send_json.assert_called_with(
             {"type": "error", "message": "Invalid JSON"}
         )

@@ -139,6 +139,12 @@ async def websocket_chat(websocket: WebSocket) -> None:
         dispatcher = MessageDispatcher(manager)
         while True:
             try:
+                text_data = await websocket.receive_text()
+                if len(text_data) > 32768:
+                    logger.warning("WS payload too large from user %s", user.id)
+                    await websocket.close(code=1009, reason="Payload too large")
+                    return
+
                 # 1. Message Rate Limiting (Audit 6.3)
                 if not manager.check_rate_limit(websocket):
                     logger.warning(
@@ -150,12 +156,6 @@ async def websocket_chat(websocket: WebSocket) -> None:
                     )
                     await asyncio.sleep(0.1)
                     continue
-
-                text_data = await websocket.receive_text()
-                if len(text_data) > 32768:
-                    logger.warning("WS payload too large from user %s", user.id)
-                    await websocket.close(code=1009, reason="Payload too large")
-                    return
 
                 data = orjson.loads(text_data)
             except (json.JSONDecodeError, ValueError, orjson.JSONDecodeError) as exc:
