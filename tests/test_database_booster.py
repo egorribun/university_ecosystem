@@ -162,10 +162,13 @@ async def test_check_replication_lag_none():
 @pytest.mark.asyncio
 async def test_check_replication_lag_success():
     mock_conn = AsyncMock()
-    mock_conn.execute.return_value.one_or_none.return_value = (100.0,)
+    mock_result = MagicMock()
+    mock_result.one_or_none.return_value = (100.0,)
+    mock_conn.execute.return_value = mock_result
 
     mock_engine = MagicMock()
     mock_engine.connect.return_value = mock_conn
+    mock_engine.connect.return_value.__aenter__.return_value = mock_conn
 
     with patch("app.core.database._read_replica_engine", mock_engine):
         res = await check_replication_lag()
@@ -197,5 +200,5 @@ def test_create_session_factory_replica():
     mock_settings.database_pool_pre_ping = True
 
     # Just run it to make sure replica path is executed
-    eng, sess, rep = create_session_factory(mock_settings)
+    _eng, _sess, rep = create_session_factory(mock_settings)
     assert rep is not None

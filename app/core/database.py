@@ -485,7 +485,7 @@ class _LazyProxy:
         # RZ-NEW-005 (audit 2026-03-19): Use module-level _PROXY_ALLOWED_DUNDER_SETATTR
         # constant — avoids recreating the frozenset on every __setattr__ call.
         if name in _PROXY_ALLOWED_DUNDER_SETATTR:
-            object.__setattr__(self, name, value)
+            setattr(self._get_current_object(), name, value)
             return
 
         raise AttributeError(

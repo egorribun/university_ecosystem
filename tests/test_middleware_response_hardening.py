@@ -214,6 +214,5 @@ async def test_wildcard_cors_no_vary_injection():
         )
     assert response.status_code == 200
     # Wildcard CORS should NOT trigger Vary injection because acao == "*"
-    vary = response.headers.get("vary", "")
     # When acao is "*", the middleware skips _ensure_vary_header
     # (however CORSMiddleware itself may add a Vary header)
