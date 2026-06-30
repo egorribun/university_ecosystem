@@ -26,7 +26,7 @@ def test_get_tags_for_key():
 
 @pytest.mark.asyncio
 async def test_register_key_with_tags(monkeypatch):
-    mock_redis = AsyncMock()
+    mock_redis = MagicMock()
     mock_pipe = MagicMock()
     mock_pipe.execute = AsyncMock()
     mock_redis.pipeline.return_value = mock_pipe
@@ -53,8 +53,10 @@ async def test_register_key_with_tags_no_tags():
 
 @pytest.mark.asyncio
 async def test_invalidate_by_tag(monkeypatch):
-    mock_redis = AsyncMock()
-    mock_redis.smembers.return_value = {b"schedule:group:1", b"schedule:group:2"}
+    mock_redis = MagicMock()
+    mock_redis.smembers = AsyncMock(
+        return_value={b"schedule:group:1", b"schedule:group:2"}
+    )
     mock_pipe = MagicMock()
     mock_pipe.execute = AsyncMock()
     mock_redis.pipeline.return_value = mock_pipe
@@ -71,8 +73,8 @@ async def test_invalidate_by_tag(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_invalidate_by_tag_no_keys(monkeypatch):
-    mock_redis = AsyncMock()
-    mock_redis.smembers.return_value = set()
+    mock_redis = MagicMock()
+    mock_redis.smembers = AsyncMock(return_value=set())
 
     async def mock_get_client():
         return mock_redis
