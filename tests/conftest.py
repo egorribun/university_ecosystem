@@ -435,10 +435,19 @@ async def cleanup_asyncio_tasks():
     """Cancel all running tasks except the current one to prevent hangs/leaks."""
     yield
     import asyncio
+    import gc
 
     current_task = asyncio.current_task()
     tasks = [t for t in asyncio.all_tasks() if t is not current_task]
     if tasks:
         for task in tasks:
             task.cancel()
-        await asyncio.gather(*tasks, return_exceptions=True)
+        try:
+            await asyncio.wait_for(
+                asyncio.gather(*tasks, return_exceptions=True), timeout=3.0
+            )
+        except TimeoutError:
+            pass
+
+    # Reclaim memory to prevent OOM-killer termination in CI
+    gc.collect()
