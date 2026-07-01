@@ -285,7 +285,39 @@ def _find_audit_event(caplog, logger_name: str, event: str) -> dict:
             continue
         if payload.get("event") == event:
             return cast(dict[Any, Any], payload)
+
+    # Print diagnostics so CI failures are actionable (mirrors test_audit_logs._find_event).
+    lg = logging.getLogger(logger_name)
+    print(f"\n--- LOGGER DIAGNOSTICS FOR {logger_name} ---")
+    print(f"Level: {lg.level}")
+    print(f"Effective Level: {lg.getEffectiveLevel()}")
+    print(f"Propagate: {lg.propagate}")
+    print(f"Disabled: {lg.disabled}")
+    print(f"Handlers: {lg.handlers}")
+    print(f"Root Handlers: {logging.getLogger().handlers}")
+    print(f"Root Level: {logging.getLogger().level}")
+    print(f"--- CAPLOG RECORDS (looking for {logger_name!r} / {event!r}) ---")
+    for r in caplog.records:
+        print(f"  logger={r.name} level={r.levelname} msg={r.getMessage()!r}")
+    print("-----------------------------------------------------------\n")
     raise AssertionError(f"Audit event {event!r} not found for logger {logger_name!r}")
+
+
+def _setup_audit_logger(caplog, logger_name: str = "app.users.audit") -> None:
+    """Defensive logger setup for caplog capture — mirrors test_audit_logs._setup_logger.
+
+    On Python 3.13, Manager._clear_cache() can leave a stale False entry in
+    a newly-created logger's _cache.  The explicit .clear() call below ensures
+    the very next isEnabledFor() call recomputes the result with the level we
+    just set via caplog.set_level().
+    """
+    caplog.set_level(logging.INFO, logger=logger_name)
+    lg = logging.getLogger(logger_name)
+    lg.disabled = False
+    lg.propagate = True  # Guard against any xdist cross-test propagation change.
+    if hasattr(lg, "_cache"):
+        lg._cache.clear()
+    caplog.clear()
 
 
 @pytest.mark.asyncio
@@ -726,7 +758,7 @@ async def test_admin_reset_endpoint_clears_mfa_state(
 async def test_reset_mfa_command_resets_state(
     user_factory, db_session, caplog, monkeypatch
 ):
-    caplog.set_level(logging.INFO, logger="app.users.audit")
+    _setup_audit_logger(caplog)
 
     user = await user_factory(email="cli-reset@example.com")
 
@@ -793,7 +825,7 @@ async def test_reset_mfa_command_resets_state(
 
 @pytest.mark.asyncio
 async def test_reset_mfa_command_noop_logs_reason(user_factory, caplog, monkeypatch):
-    caplog.set_level(logging.INFO, logger="app.users.audit")
+    _setup_audit_logger(caplog)
 
     user = await user_factory(email="cli-noop@example.com")
 
