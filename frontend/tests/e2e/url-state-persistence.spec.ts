@@ -179,11 +179,17 @@ test.describe("URL-state persistence (Wave 120 SW7)", () => {
   // SW1's initial fix used `page.waitForResponse(/api/v1/groups).catch()`
   // but W148 SW3 (z) #1 controlled experiment proved this unreliable. See
   // /news comment above for the full root-cause analysis. Same fix here.
+  //
+  // W149 follow-up — waitUntil:"domcontentloaded" added to page.goto +
+  // page.reload (same root cause as /events × 2: React Query retry-storm
+  // under aborted API routes starves the event loop, blocking the "load"
+  // event and triggering the 90 s page.reload timeout). DOMContentLoaded
+  // fires before React Query retries saturate the main thread.
   test("/schedule week offset persists across reload", async ({ page }) => {
     await page.route("**/api/v1/**", (route) => route.abort("internetdisconnected"))
-    await page.goto("/schedule?w=1")
+    await page.goto("/schedule?w=1", { waitUntil: "domcontentloaded", timeout: 30_000 })
     await expect(page).toHaveURL(/[?&]w=1/, { timeout: 15_000 })
-    await page.reload()
+    await page.reload({ waitUntil: "domcontentloaded", timeout: 30_000 })
     await expect(page).toHaveURL(/[?&]w=1/)
   })
 
