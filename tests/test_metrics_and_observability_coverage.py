@@ -1,7 +1,38 @@
-from prometheus_client import REGISTRY
+from types import SimpleNamespace
+
+from prometheus_client import REGISTRY, CollectorRegistry
+from starlette.requests import Request
 
 import app.core.metrics as m
 import app.core.observability as obs
+
+
+def _make_request(
+    path: str = "/",
+    *,
+    route_path: str | None = None,
+    router_prefix: str | None = None,
+    root_path: str = "",
+    client_host: str = "127.0.0.1",
+    headers: dict[str, str] | None = None,
+) -> Request:
+    scope = {
+        "type": "http",
+        "method": "GET",
+        "path": path,
+        "root_path": root_path,
+        "headers": [
+            (name.lower().encode("latin-1"), value.encode("latin-1"))
+            for name, value in (headers or {}).items()
+        ],
+        "client": (client_host, 12345),
+        "server": ("testserver", 80),
+        "scheme": "http",
+    }
+    if route_path is not None:
+        router = SimpleNamespace(prefix=router_prefix) if router_prefix else None
+        scope["route"] = SimpleNamespace(path=route_path, router=router)
+    return Request(scope)
 
 
 def test_record_background_task_error():
@@ -176,27 +207,43 @@ def test_record_db_operation():
 
 def test_resolve_path_template():
     assert (
-        m._resolve_path_template("/api/v1/users/123/profile")
+        m._resolve_path_template(
+            _make_request(
+                "/api/v1/users/123/profile",
+                route_path="/api/v1/users/{id}/profile",
+            )
+        )
         == "/api/v1/users/{id}/profile"
     )
-    assert m._resolve_path_template("/api/v1/news/456") == "/api/v1/news/{id}"
     assert (
-        m._resolve_path_template("/static/images/avatar.png") == "/static/images/{id}"
+        m._resolve_path_template(
+            _make_request("/api/v1/news/456", route_path="/api/v1/news/{id}")
+        )
+        == "/api/v1/news/{id}"
     )
-    assert m._resolve_path_template("/healthz") == "/healthz"
+    assert m._resolve_path_template(_make_request("/healthz")) == "/healthz"
 
 
 def test_resolve_router_label():
-    assert m._resolve_router_label("/api/v1/users/123") == "users"
-    assert m._resolve_router_label("/api/v1/news") == "news"
-    assert m._resolve_router_label("/auth/login") == "auth"
-    assert m._resolve_router_label("/unknown") == "unknown"
+    assert (
+        m._resolve_router_label(
+            _make_request(
+                "/api/v1/users/123", route_path="/users/{id}", router_prefix="/users"
+            )
+        )
+        == "/users"
+    )
+    assert (
+        m._resolve_router_label(_make_request("/api/v1/news", root_path="/api/v1"))
+        == "/api/v1"
+    )
+    assert m._resolve_router_label(_make_request("/unknown")) == "root"
 
 
 def test_authorization_header():
-    assert m._authorization_header("Basic dXNlcjpwYXNz") == (True, "user", "pass")
-    assert m._authorization_header("Basic invalid") == (False, "", "")
-    assert m._authorization_header("Bearer token") == (False, "", "")
+    request = _make_request(headers={"Authorization": "Basic dXNlcjpwYXNz"})
+    assert m._authorization_header(request) == "Basic dXNlcjpwYXNz"
+    assert m._authorization_header(_make_request()) == ""
 
 
 def test_is_loopback_value():
@@ -206,23 +253,38 @@ def test_is_loopback_value():
     assert m._is_loopback_value("10.0.0.1") is False
 
 
-def test_allowlist_is_loopback_only():
-    assert m._allowlist_is_loopback_only(["127.0.0.1", "::1", "localhost"]) is True
-    assert m._allowlist_is_loopback_only(["127.0.0.1", "10.0.0.1"]) is False
+def test_allowlist_is_loopback_only(monkeypatch):
+    monkeypatch.setattr(m.settings, "metrics_allowlist", "127.0.0.1,::1,localhost")
+    assert m._allowlist_is_loopback_only() is True
+
+    monkeypatch.setattr(m.settings, "metrics_allowlist", "127.0.0.1,10.0.0.1")
+    assert m._allowlist_is_loopback_only() is False
 
 
-def test_is_allowed():
-    assert m._is_allowed("127.0.0.1", ["127.0.0.1"]) is True
-    assert m._is_allowed("10.0.0.1", ["127.0.0.1"]) is False
-    # CIDR range
-    assert m._is_allowed("10.0.0.5", ["10.0.0.0/24"]) is True
-    assert m._is_allowed("10.0.1.5", ["10.0.0.0/24"]) is False
+def test_is_allowed(monkeypatch):
+    monkeypatch.setattr(m.settings, "metrics_allowlist", "127.0.0.1")
+    assert m._is_allowed(_make_request(client_host="127.0.0.1")) is True
+    assert m._is_allowed(_make_request(client_host="10.0.0.1")) is False
+
+    monkeypatch.setattr(m.settings, "metrics_allowlist", "10.0.0.0/24")
+    assert m._is_allowed(_make_request(client_host="10.0.0.5")) is True
+    assert m._is_allowed(_make_request(client_host="10.0.1.5")) is False
 
 
-def test_metrics_auth_config_is_invalid():
-    assert m._metrics_auth_config_is_invalid("user", "") is True
-    assert m._metrics_auth_config_is_invalid("", "pass") is True
-    assert m._metrics_auth_config_is_invalid("user", "pass") is False
+def test_metrics_auth_config_is_invalid(monkeypatch):
+    monkeypatch.setattr(m.settings, "enable_metrics_endpoint", True)
+    monkeypatch.setattr(m.settings, "metrics_allowlist", "")
+    monkeypatch.setattr(m.settings, "metrics_basic_auth_username", "user")
+    monkeypatch.setattr(m.settings, "metrics_basic_auth_password", "")
+    assert m._metrics_auth_config_is_invalid() is True
+
+    monkeypatch.setattr(m.settings, "metrics_basic_auth_username", "")
+    monkeypatch.setattr(m.settings, "metrics_basic_auth_password", "pass")
+    assert m._metrics_auth_config_is_invalid() is True
+
+    monkeypatch.setattr(m.settings, "metrics_basic_auth_username", "user")
+    monkeypatch.setattr(m.settings, "metrics_basic_auth_password", "pass")
+    assert m._metrics_auth_config_is_invalid() is False
 
 
 def test_sanitize_metric_name():
@@ -244,31 +306,33 @@ def test_build_otel_resource_attributes():
 
 
 def test_resolve_headers():
-    headers = {"Authorization": "Bearer token", "X-Request-Id": "123"}
+    headers = "Authorization=Bearer token,X-Request-Id=123"
     resolved = obs._resolve_headers(headers)
     assert resolved["Authorization"] == "Bearer token"
     assert resolved["X-Request-Id"] == "123"
 
 
 def test_periodic_task_metrics():
-    ptm = obs.get_periodic_task_metrics()
+    registry = CollectorRegistry()
+    ptm = obs.get_periodic_task_metrics("test_periodic", registry=registry)
     assert ptm is not None
-    run = obs.PeriodicTaskRun(
-        task_name="test_periodic", duration_seconds=1.5, success=True
-    )
-    ptm.record_run(run)
+    ptm.runs_total.inc()
+    ptm.duration_seconds.observe(1.5)
 
-    val = REGISTRY.get_sample_value(
-        "periodic_task_duration_seconds_count",
-        {"task_name": "test_periodic", "success": "true"},
-    )
+    val = registry.get_sample_value("periodic_task_test_periodic_runs_total")
     assert val is not None
     assert val >= 1.0
+    assert (
+        registry.get_sample_value("periodic_task_test_periodic_duration_seconds_count")
+        == 1.0
+    )
 
 
 def test_notification_queue_metrics():
-    nqm = obs.get_notification_queue_metrics()
+    registry = CollectorRegistry()
+    nqm = obs.create_notification_queue_metrics(registry=registry)
     assert nqm is not None
-    nqm.record_dead_letter(1)
-    val = REGISTRY.get_sample_value("notification_queue_dead_lettered_jobs")
+    nqm.dead_lettered_jobs.set(1)
+    val = registry.get_sample_value("notification_queue_dead_lettered_jobs")
     assert val is not None
+    assert val == 1.0
