@@ -37,18 +37,14 @@ from app.services.event_handlers import (
 @pytest.mark.asyncio
 async def test_simple_handlers():
     # Mostly for coverage as they only log
-    await log_all_events(UserCreated(user_id=1, email="a@b.com", role="student"))
-    await handle_user_created(UserCreated(user_id=1, email="a@b.com", role="student"))
-    await handle_user_logged_in(
-        UserLoggedIn(user_id=1, ip_address="127.0.0.1", user_agent="test")
-    )
+    await log_all_events(UserCreated(user_id=1, email="a@b.com"))
+    await handle_user_created(UserCreated(user_id=1, email="a@b.com"))
+    await handle_user_logged_in(UserLoggedIn(user_id=1, ip_address="127.0.0.1"))
     await handle_mfa_enabled(MfaEnabled(user_id=1, method="totp"))
     await handle_event_created(
         EventCreated(event_id_entity=1, organizer_id=1, title="Test")
     )
-    await handle_event_registration(
-        EventRegistration(event_id_entity=1, user_id=1, registration_id=1)
-    )
+    await handle_event_registration(EventRegistration(event_id_entity=1, user_id=1))
     await handle_notification_sent(
         NotificationSent(notification_id="1", user_id=1, notification_type="test")
     )
@@ -120,7 +116,7 @@ async def test_generate_news_embedding(monkeypatch):
     mock_news = News(id=1, title="News", content="Content")
     mock_db.get.return_value = mock_news
 
-    await generate_news_embedding(NewsCreated(news_id=1, author_id=1))
+    await generate_news_embedding(NewsCreated(news_id=1, title="News"))
 
     mock_db.get.assert_called_once_with(News, 1)
     mock_vector_service.get_embedding.assert_called_once_with("News Content")
@@ -139,12 +135,13 @@ async def test_handle_message_sent(monkeypatch):
 
     mock_repo = AsyncMock()
     monkeypatch.setattr(
-        "app.services.event_handlers.ChatRepository", lambda db: mock_repo
+        "app.repositories.chat_repository.ChatRepository", lambda db: mock_repo
     )
 
     mock_service = AsyncMock()
     monkeypatch.setattr(
-        "app.services.event_handlers.ChatNotificationService", lambda db: mock_service
+        "app.services.chat.notification_service.ChatNotificationService",
+        lambda db: mock_service,
     )
 
     mock_msg = Message(id=1, sender_id=1, chat_id=1, reply_to_message_id=None)
@@ -182,7 +179,7 @@ async def test_handle_attachment_cleanup_requested(monkeypatch):
     mock_service = AsyncMock()
     mock_service_cls = MagicMock(return_value=mock_service)
     monkeypatch.setattr(
-        "app.services.event_handlers.ChatAttachmentService", mock_service_cls
+        "app.services.chat.attachment_service.ChatAttachmentService", mock_service_cls
     )
 
     await handle_attachment_cleanup_requested(
