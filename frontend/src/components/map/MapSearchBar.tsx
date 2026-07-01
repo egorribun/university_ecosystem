@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback, useRef, useId, type KeyboardEvent } from "react"
+import { useState, useMemo, useCallback, useRef, useId, useEffect, type KeyboardEvent } from "react"
 import { useTranslation } from "react-i18next"
 import { Search, X } from "lucide-react"
 import type { CampusBuilding, BuildingId } from "@/data/campusBuildings"
@@ -40,6 +40,18 @@ export function MapSearchBar({
   const [isOpen, setIsOpen] = useState(false)
   const [activeIdx, setActiveIdx] = useState(-1)
 
+  // Tracks the blur→close timeout so it can be cancelled on unmount or explicit
+  // close events, preventing state updates into a torn-down environment.
+  const blurTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  useEffect(() => {
+    return () => {
+      if (blurTimeoutRef.current !== null) {
+        clearTimeout(blurTimeoutRef.current)
+      }
+    }
+  }, [])
+
   const results = useMemo((): SearchResult[] => {
     const q = query.trim().toLowerCase()
     if (!q) return []
@@ -80,6 +92,11 @@ export function MapSearchBar({
 
   const handleSelect = useCallback(
     (result: SearchResult) => {
+      // Cancel any pending blur→close timer so it doesn't race with this explicit close.
+      if (blurTimeoutRef.current !== null) {
+        clearTimeout(blurTimeoutRef.current)
+        blurTimeoutRef.current = null
+      }
       if (result.type === "building") {
         onSelectBuilding(result.buildingLetter)
       } else if (result.roomId && result.floor) {
@@ -160,7 +177,9 @@ export function MapSearchBar({
             setActiveIdx(-1)
           }}
           onFocus={() => query.trim() && setIsOpen(true)}
-          onBlur={() => setTimeout(() => setIsOpen(false), 200)}
+          onBlur={() => {
+            blurTimeoutRef.current = setTimeout(() => setIsOpen(false), 200)
+          }}
           onKeyDown={handleKeyDown}
           className="flex-1 bg-transparent text-sm font-medium text-text-primary placeholder:text-[var(--text-tertiary)] outline-none"
         />
@@ -168,6 +187,11 @@ export function MapSearchBar({
           <button
             type="button"
             onClick={() => {
+              // Cancel the blur timer that fires when the clear button receives focus.
+              if (blurTimeoutRef.current !== null) {
+                clearTimeout(blurTimeoutRef.current)
+                blurTimeoutRef.current = null
+              }
               setQuery("")
               setIsOpen(false)
               inputRef.current?.focus()

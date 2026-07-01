@@ -682,7 +682,7 @@ async def test_disabling_last_factor_clears_mfa_requirement(
 async def test_admin_reset_endpoint_clears_mfa_state(
     async_client, user_factory, db_session, monkeypatch, caplog
 ):
-    caplog.set_level(logging.INFO, logger="app.users.audit")
+    _setup_audit_logger(caplog)
 
     admin_password = "AdminResetPass123!"
     admin = await user_factory(
