@@ -18,6 +18,20 @@ from app.core.exceptions.handlers import (
 )
 
 
+def _make_request(path: str = "/") -> Request:
+    return Request(
+        scope={
+            "type": "http",
+            "method": "GET",
+            "scheme": "http",
+            "server": ("testserver", 80),
+            "path": path,
+            "headers": [],
+            "query_string": b"",
+        }
+    )
+
+
 def test_loc_to_pointer():
     assert _loc_to_pointer(()) == ""
     assert _loc_to_pointer(("body", "user", "email")) == "/body/user/email"
@@ -39,7 +53,7 @@ async def test_asgi_json_problem_detail_text():
     start_call = send.call_args_list[0][0][0]
     assert start_call["type"] == "http.response.start"
     assert start_call["status"] == 400
-    headers = dict(start_call["headers"])
+    headers = {name.lower(): value for name, value in start_call["headers"]}
     assert headers[b"x-test"] == b"1"
 
     body_call = send.call_args_list[1][0][0]
@@ -87,13 +101,13 @@ async def test_asgi_json_problem_no_detail():
     [
         (
             EntityNotFound,
-            {"entity_type": "User", "entity_id": "1"},
+            {"entity_name": "User", "identifier": "1"},
             status.HTTP_404_NOT_FOUND,
             "https://api.university.edu/probs/not-found",
         ),
         (
             EntityAlreadyExists,
-            {"entity_type": "User", "entity_id": "1"},
+            {"entity_name": "User", "identifier": "1"},
             status.HTTP_409_CONFLICT,
             "https://api.university.edu/probs/conflict",
         ),
@@ -115,15 +129,15 @@ async def test_asgi_json_problem_no_detail():
 async def test_domain_exception_handler(
     monkeypatch, exception_cls, kwargs, expected_status, expected_type
 ):
-    monkeypatch.setattr("app.core.exceptions.handlers.resolve_locale", lambda req: "en")
+    monkeypatch.setattr(
+        "app.core.exceptions.handlers.resolve_locale", lambda **kwargs: "en"
+    )
     monkeypatch.setattr(
         "app.core.exceptions.handlers.translate", lambda k, locale, **kw: f"tr_{k}"
     )
     monkeypatch.setattr("app.core.exceptions.handlers.get_trace_id", lambda: "trace123")
 
-    request = Request(
-        scope={"type": "http", "method": "GET", "url": "http://testserver/"}
-    )
+    request = _make_request()
     exc = (
         exception_cls(**kwargs)
         if kwargs and exception_cls is not PermissionDenied
@@ -140,7 +154,9 @@ async def test_domain_exception_handler(
 @pytest.mark.asyncio
 async def test_domain_exception_handler_fallback(monkeypatch):
     # Test fallback if it's a generic Exception or some other domain exception not explicitly handled
-    monkeypatch.setattr("app.core.exceptions.handlers.resolve_locale", lambda req: "en")
+    monkeypatch.setattr(
+        "app.core.exceptions.handlers.resolve_locale", lambda **kwargs: "en"
+    )
     monkeypatch.setattr(
         "app.core.exceptions.handlers.translate", lambda k, locale, **kw: f"tr_{k}"
     )
@@ -148,9 +164,7 @@ async def test_domain_exception_handler_fallback(monkeypatch):
     class CustomDomainException(Exception):
         pass
 
-    request = Request(
-        scope={"type": "http", "method": "GET", "url": "http://testserver/"}
-    )
+    request = _make_request()
     response = await domain_exception_handler(
         request, CustomDomainException("some error")
     )
@@ -177,14 +191,14 @@ async def test_domain_exception_handler_fallback(monkeypatch):
 )
 @pytest.mark.asyncio
 async def test_http_exception_handler(monkeypatch, status_code, expected_title_key):
-    monkeypatch.setattr("app.core.exceptions.handlers.resolve_locale", lambda req: "en")
+    monkeypatch.setattr(
+        "app.core.exceptions.handlers.resolve_locale", lambda **kwargs: "en"
+    )
     monkeypatch.setattr(
         "app.core.exceptions.handlers.translate", lambda k, locale: f"tr_{k}"
     )
 
-    request = Request(
-        scope={"type": "http", "method": "GET", "url": "http://testserver/"}
-    )
+    request = _make_request()
     exc = HTTPException(
         status_code=status_code, detail="some detail", headers={"X-A": "B"}
     )
