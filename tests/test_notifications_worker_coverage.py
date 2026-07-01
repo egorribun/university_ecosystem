@@ -59,7 +59,12 @@ async def test_scheduler_run_forever_failure():
 
     scheduler.run_once = mock_run_once
 
-    with patch("asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
+    # Patch the module-local reference so the worker's backoff sleep is a
+    # no-op, but the test's own `await asyncio.sleep(0.1)` still yields
+    # real time to the event loop — giving the worker task a chance to
+    # execute run_once(), hit the exception, and call record_failure()
+    # before task.cancel() fires.
+    with patch("app.workers.notifications.asyncio.sleep", new_callable=AsyncMock):
         task = asyncio.create_task(scheduler.run_forever())
         await asyncio.sleep(0.1)
         task.cancel()
@@ -97,7 +102,7 @@ async def test_wait_for_signals():
         await asyncio.sleep(0.01)
         stop_event.set()
 
-    asyncio.create_task(trigger())
+    _task = asyncio.create_task(trigger())  # noqa: RUF006 — fire-and-forget; sets stop_event
     await _wait_for_signals(stop_event)
     assert stop_event.is_set()
 
@@ -106,8 +111,8 @@ async def test_wait_for_signals():
 async def test_run_worker_flow():
     with (
         patch("app.workers.notifications.configure_worker_observability") as mock_obs,
-        patch("app.workers.notifications.create_worker_metrics") as mock_metrics,
-        patch("app.workers.notifications.create_worker_monitoring_app") as mock_app,
+        patch("app.workers.notifications.create_worker_metrics"),
+        patch("app.workers.notifications.create_worker_monitoring_app"),
         patch(
             "app.workers.notifications.start_worker_monitoring_server",
             new_callable=AsyncMock,
@@ -118,7 +123,10 @@ async def test_run_worker_flow():
         patch(
             "app.workers.notifications.NotificationsScheduler.run_forever",
             new_callable=AsyncMock,
-        ) as mock_run_forever,
+        ),
+        # mock_run_forever not needed — run_forever is patched to prevent
+        # the background task from actually running; assertions are on the
+        # orchestration calls below.
         patch(
             "app.workers.notifications._wait_for_signals", new_callable=AsyncMock
         ) as mock_wait_signals,
