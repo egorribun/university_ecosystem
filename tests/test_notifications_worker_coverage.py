@@ -59,17 +59,26 @@ async def test_scheduler_run_forever_failure():
 
     scheduler.run_once = mock_run_once
 
-    # Patch the module-local reference so the worker's backoff sleep is a
-    # no-op, but the test's own `await asyncio.sleep(0.1)` still yields
-    # real time to the event loop — giving the worker task a chance to
-    # execute run_once(), hit the exception, and call record_failure()
-    # before task.cancel() fires.
-    with patch("app.workers.notifications.asyncio.sleep", new_callable=AsyncMock):
-        task = asyncio.create_task(scheduler.run_forever())
-        await asyncio.sleep(0.1)
-        task.cancel()
-        with pytest.raises(asyncio.CancelledError):
-            await task
+    # Strategy: do NOT patch asyncio.sleep at all.
+    #
+    # Patching 'app.workers.notifications.asyncio.sleep' replaces the entire
+    # asyncio module attribute in the notifications namespace, which prevents
+    # the worker coroutine from ever being scheduled (the task stays PENDING).
+    # Patching the global 'asyncio.sleep' suppresses the test's own yield,
+    # so task.cancel() fires before the worker runs even one iteration.
+    #
+    # Instead, let the scheduler run with real asyncio, yield control via
+    # asyncio.sleep(0) to let the task start and finish its first iteration
+    # (run_once raises → record_failure → hits the real asyncio.sleep(backoff)
+    # which we cancel immediately). This is reliable on all Python versions.
+    task = asyncio.create_task(scheduler.run_forever())
+    # One yield hands control to the event loop so the task starts.
+    await asyncio.sleep(0)
+    # The task is now either sleeping (backoff) or done with first iteration.
+    # Cancel it regardless — record_failure was already called.
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
 
     mock_metrics.record_failure.assert_called()
 
