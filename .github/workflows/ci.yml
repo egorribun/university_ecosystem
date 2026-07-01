@@ -54,13 +54,13 @@ jobs:
       - name: Set up Python for lock check
         uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
-          python-version: "3.13"
+          python-version: "3.14"
 
       - name: Verify uv.lock is up to date (MOD-W5-03)
         # MOD-03 (audit Wave 12): explicit error annotation in GitHub Actions UI panel.
         # `uv lock --check` already exits non-zero on mismatch; the `|| (... && exit 1)`
         # addition surfaces the error in the Checks summary, not just the raw log.
-        # Note: uses Python 3.13 — some deps (http-ece) crash on 3.14 setup.py.
+        # Note: uv.lock is generated for the project's Python version (3.14).
         run: |
           pip install uv
           uv lock --check || (echo "::error::uv.lock is out of sync — run 'uv lock' locally and commit the updated lockfile" && exit 1)
@@ -270,20 +270,11 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - python-version: "3.13"
-            name: "Python 3.13"
+          - python-version: "3.14"
+            name: "Python 3.14"
             coverage-check: true
             run-integration: true
             free-threading: false
-          # MOD-24-03: Free-threading CI variant — temporarily disabled.
-          # http-ece 1.2.1 (pywebpush dep) crashes on Python 3.14 during
-          # setup.py ("Disabling the GIL is not supported by this build").
-          # Re-enable once http-ece ships a 3.14-compatible release.
-          # - python-version: "3.14"
-          #   name: "Python 3.14 (free-threading)"
-          #   coverage-check: false
-          #   run-integration: false
-          #   free-threading: true
     needs: pre-commit-check
     uses: ./.github/workflows/reusable-backend-tests.yml
     with:
@@ -314,7 +305,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
-          python-version: "3.13"
+          python-version: "3.14"
 
       - name: Generate CI secret key if not configured (RZ-14-06)
         if: env.SECRET_KEY == ''
@@ -475,7 +466,7 @@ jobs:
     uses: ./.github/workflows/reusable-e2e-tests.yml
     with:
       node-version: "22"
-      python-version: "3.13"
+      python-version: "3.14"
       browser: chromium
     secrets: inherit
 
@@ -488,7 +479,7 @@ jobs:
       actions: read
     uses: ./.github/workflows/reusable-security-audit.yml
     with:
-      python-version: "3.13"
+      python-version: "3.14"
       node-version: "22"
     secrets: inherit
 
@@ -606,7 +597,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
-          python-version: "3.13"
+          python-version: "3.14"
 
       - name: Generate CI secret key if not configured (RZ-14-06)
         if: env.SECRET_KEY == ''
@@ -716,7 +707,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
-          python-version: "3.13"
+          python-version: "3.14"
 
       - name: Generate CI secret key if not configured (RZ-14-06)
         if: env.SECRET_KEY == ''
@@ -779,7 +770,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
-          python-version: "3.13"
+          python-version: "3.14"
 
       - name: Generate CI secret key if not configured (RZ-14-06)
         if: env.SECRET_KEY == ''
@@ -1038,7 +1029,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
-          python-version: "3.13"
+          python-version: "3.14"
 
       - name: Install uv
         uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
@@ -1078,7 +1069,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
-          python-version: "3.13"
+          python-version: "3.14"
 
       - name: Generate CI secret key if not configured (RZ-14-06)
         if: env.SECRET_KEY == ''
@@ -1130,7 +1121,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
-          python-version: "3.13"
+          python-version: "3.14"
 
       - name: Generate CI secret key if not configured (RZ-14-06)
         if: env.SECRET_KEY == ''
@@ -1199,7 +1190,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
-          python-version: "3.13"
+          python-version: "3.14"
 
       - name: Install uv
         run: pip install uv
@@ -1266,7 +1257,7 @@ jobs:
         # dropped) the build links libpython, so a Python install must be present.
         uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
-          python-version: "3.13"
+          python-version: "3.14"
 
       - name: Set up Rust (stable + wasm32 target)
         uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
@@ -1347,7 +1338,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
-          python-version: "3.13"
+          python-version: "3.14"
 
       - name: Install uv
         uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
@@ -1417,7 +1408,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
-          python-version: "3.13"
+          python-version: "3.14"
 
       - name: Install uv
         uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0

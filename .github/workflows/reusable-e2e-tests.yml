@@ -14,7 +14,7 @@ on:
         description: "Python version for backend"
         required: false
         type: string
-        default: "3.13"
+        default: "3.14"
       browser:
         description: "Browser to test (chromium, firefox, webkit)"
         required: false
