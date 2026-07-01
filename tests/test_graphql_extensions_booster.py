@@ -1,7 +1,6 @@
-import asyncio
 import json
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from graphql import GraphQLError
@@ -16,16 +15,23 @@ from app.graphql.extensions import (
 
 
 @pytest.mark.asyncio
-async def test_increment_user_cost_eviction():
+async def test_increment_user_cost_eviction(monkeypatch):
     # Force memory limit check
+    monkeypatch.setattr(
+        "app.deps.cache.get_cache_client",
+        AsyncMock(side_effect=ConnectionError),
+    )
     extensions_module._user_cost_memory.clear()
-    for i in range(10005):
-        extensions_module._user_cost_memory[str(i)] = (1, 123)
+    try:
+        for i in range(10005):
+            extensions_module._user_cost_memory[str(i)] = (1, 123)
 
-    res = await _increment_user_cost("user123", 10, 123)
-    assert res == 10
-    # Should have cleared and only contains the new user
-    assert len(extensions_module._user_cost_memory) == 1
+        res = await _increment_user_cost("user123", 10, 123)
+        assert res == 10
+        # Should have cleared and only contains the new user
+        assert extensions_module._user_cost_memory == {"user123": (10, 123)}
+    finally:
+        extensions_module._user_cost_memory.clear()
 
 
 @pytest.mark.asyncio
@@ -34,19 +40,13 @@ async def test_request_timeout_extension_timeout():
     ext.execution_context = MagicMock()
     ext.TIMEOUT_SECONDS = 0.001
 
-    async def dummy_execute():
-        await asyncio.sleep(0.05)
-        yield
-
     # We test the timeout error propagation
     gen = ext.on_execute()
     await gen.__anext__()
-    try:
-        await gen.asend(None)
-    except GraphQLError as e:
-        assert "Request exceeded the maximum execution time" in str(e)
-    except TimeoutError:
-        pass
+    with pytest.raises(
+        GraphQLError, match="Request exceeded the maximum execution time"
+    ):
+        await gen.athrow(TimeoutError)
 
 
 def test_load_manifest_double_lock_and_exists(tmp_path):
