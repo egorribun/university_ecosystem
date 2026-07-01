@@ -10,6 +10,20 @@ Uses ``schemathesis.openapi.from_asgi`` with the FastAPI ASGI app directly
 (available in schemathesis >=4.0 with the TestClient transport).  No network
 or server process required — fully hermetic.
 
+Schema loading is lazy via ``schemathesis.pytest.from_fixture``:
+
+    _lazy_schema = schemathesis.pytest.from_fixture("loaded_schema")
+
+This creates a ``LazySchema`` that stores the fixture name as a string at
+module parse/collection time.  The actual ``from_asgi()`` ASGI round-trip only
+happens at test *execution* time (via ``request.getfixturevalue("loaded_schema")``
+inside the wrapped test), never during pytest collection.  This prevents the
+app lifespan from blocking collection when backing services are unavailable.
+
+The ``@_lazy_schema.parametrize()`` decorator is intercepted by the schemathesis
+pytest plugin which parametrizes the test over every (method, path) pair and
+runs a Hypothesis test for each one.
+
 What this catches
 -----------------
 - Response body missing a declared required field
@@ -31,6 +45,7 @@ import os
 import hypothesis
 import pytest
 import schemathesis
+from hypothesis import HealthCheck
 from schemathesis.checks import not_a_server_error
 
 # ---------------------------------------------------------------------------
@@ -44,34 +59,49 @@ os.environ.setdefault(
     "schemathesis-ci-placeholder-secret-key-minimum-32-chars-long",  # pragma: allowlist secret
 )
 
-from app.main import app
+from app.main import app  # env vars must be set before this import
 
 # ---------------------------------------------------------------------------
-# Schema loader — deferred to avoid blocking during pytest collection.
+# Schema loader — evaluated at module parse time but the ASGI call is deferred.
 #
-# schemathesis.openapi.from_asgi() performs an ASGI round-trip to fetch the
-# OpenAPI spec.  When called at module level it executes during *collection*,
-# which triggers the app's lifespan and can hang indefinitely if a backing
-# service (DB, NATS, SpiceDB) is unavailable.
-#
-# We lazily compute the schema inside a session-scoped fixture so the ASGI
-# call only happens when the schemathesis tests are actually run, not during
-# collection of the full test suite.
+# ``schemathesis.pytest.from_fixture("loaded_schema")`` returns a ``LazySchema``
+# that stores the fixture name as a plain string.  No ASGI round-trip happens
+# here.  The real ``schemathesis.openapi.from_asgi()`` call only occurs inside
+# the test body (via ``request.getfixturevalue("loaded_schema")``), so a slow
+# or missing backing service cannot hang pytest collection.
 # ---------------------------------------------------------------------------
+
+_lazy_schema = schemathesis.pytest.from_fixture("loaded_schema")
 
 
 @pytest.fixture(scope="session")
 def loaded_schema():
-    """Return the schemathesis schema loaded from the ASGI app."""
+    """Return the schemathesis schema loaded from the ASGI app.
+
+    Session-scoped so the ASGI round-trip (fetching /api/openapi.json) happens
+    exactly once per pytest session, not once per test case.
+    """
     return schemathesis.openapi.from_asgi("/api/openapi.json", app=app)
 
 
 # ---------------------------------------------------------------------------
 # Stateless property-based conformance tests
+#
+# Decorator order matters for Hypothesis settings to take effect with a
+# LazySchema: @hypothesis.settings must be the OUTER decorator so that it sets
+# ``_hypothesis_internal_use_settings`` on the function that
+# ``LazySchema.parametrize()`` returned (and that schemathesis reads back at
+# test run time via ``getattr(wrapped_test, "_hypothesis_internal_use_settings",
+# None)``).
 # ---------------------------------------------------------------------------
 
 
-def test_api_responses_conform_to_schema(loaded_schema) -> None:
+@hypothesis.settings(
+    max_examples=25,
+    suppress_health_check=[HealthCheck.too_slow, HealthCheck.filter_too_much],
+)
+@_lazy_schema.parametrize()
+def test_api_responses_conform_to_schema(case: schemathesis.Case) -> None:
     """Every OpenAPI-described endpoint must return a non-5xx response.
 
     Schemathesis generates random valid requests for every (method, path)
@@ -81,19 +111,11 @@ def test_api_responses_conform_to_schema(loaded_schema) -> None:
     Checks applied:
       ``not_a_server_error`` — no 5xx responses for valid input shapes.
 
-    Pytest parametrizes this test once per (method, path) pair, so each
-    failure is reported with its exact endpoint.
+    The schemathesis pytest plugin parametrizes this test once per (method,
+    path) pair, reporting each failure with its exact endpoint.
     """
-
-    @loaded_schema.parametrize()
-    @hypothesis.settings(
-        max_examples=25, suppress_health_check=["too_slow", "filter_too_much"]
-    )
-    def _run(case: schemathesis.Case) -> None:
-        response = case.call()
-        case.validate_response(response, checks=[not_a_server_error])
-
-    _run()
+    response = case.call()
+    case.validate_response(response, checks=[not_a_server_error])
 
 
 # ---------------------------------------------------------------------------
