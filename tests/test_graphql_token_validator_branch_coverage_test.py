@@ -15,9 +15,7 @@ def validator():
 
 
 @pytest.mark.asyncio
-@patch(
-    "app.services.auth.graphql_token_validator.get_cache_client", new_callable=AsyncMock
-)
+@patch("app.deps.cache.get_cache_client", new_callable=AsyncMock)
 async def test_redis_jti_check_connection_error(mock_get_cache, validator):
     redis_mock = AsyncMock()
     redis_mock.exists.side_effect = ConnectionError("Redis down")
@@ -45,7 +43,7 @@ async def test_load_user_value_error(validator):
 
 
 @pytest.mark.asyncio
-@patch("app.services.auth.graphql_token_validator.AuthFingerprintService")
+@patch("app.services.auth.fingerprint_service.AuthFingerprintService")
 async def test_check_fingerprint_exception(mock_fp_service, validator):
     session = MagicMock(spec=ActiveSession, fingerprint_hash="hash", jti="jti_123")
     user = MagicMock(spec=User, id=uuid.uuid4())
