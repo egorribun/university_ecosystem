@@ -100,7 +100,10 @@ class TestSetRateLimitClientFactory:
 
     def test_overrides_factory(self):
         """Custom factory replaces the default."""
-        custom_factory = lambda url: MagicMock()
+
+        def custom_factory(url):
+            return MagicMock()
+
         set_rate_limit_client_factory(custom_factory)
         # Verify it was set (we reset in teardown)
         set_rate_limit_client_factory(None)
@@ -247,8 +250,71 @@ class TestRedisSlidingWindowStrategy:
 
     @pytest.fixture
     def fake_redis(self):
-        """Create a fresh fakeredis instance for each test."""
-        return fakeredis.aioredis.FakeRedis(decode_responses=False)
+        """Fresh fakeredis with Lua scripting stubbed in Python.
+
+        fakeredis needs the ``lupa`` C-extension for SCRIPT LOAD / EVALSHA.
+        Without it every scripting call raises
+        ``ResponseError: unknown command 'script'``, which the production code
+        converts to ``RateLimitStorageUnavailable`` — making the happy-path
+        tests impossible to run.
+
+        We side-step the dependency by implementing the rate-limit Lua script
+        logic in Python, using only the sorted-set primitives that fakeredis
+        supports natively (ZADD, ZCARD, ZREMRANGEBYSCORE, PEXPIRE, ZRANGE).
+        """
+        import random
+
+        redis = fakeredis.aioredis.FakeRedis(decode_responses=False)
+        _FAKE_SHA = "fakeredis-lua-stub-000000000000000001"
+
+        async def _run_rate_limit_script(key, limit, now_ms, window_ms):
+            """Python equivalent of _RATE_LIMIT_SCRIPT in redis.py."""
+            if isinstance(key, bytes):
+                key = key.decode()
+            cutoff = now_ms - window_ms
+
+            await redis.zremrangebyscore(key, "-inf", cutoff)
+            current = int(await redis.zcard(key))
+
+            if current >= limit:
+                oldest = await redis.zrange(key, 0, 0, withscores=True)
+                retry_after_ms = 0
+                if oldest:
+                    oldest_ts = float(oldest[0][1])
+                    retry_after_ms = max(0, int(oldest_ts + window_ms - now_ms))
+                return [0, 0, retry_after_ms]
+
+            member = f"{now_ms}:{random.randint(0, 999999)}"  # noqa: S311
+            await redis.zadd(key, {member: float(now_ms)})
+            await redis.pexpire(key, window_ms)
+            remaining = limit - current - 1
+            return [1, remaining, 0]
+
+        async def _script_load(script):
+            return _FAKE_SHA
+
+        async def _evalsha(sha, numkeys, *args, **kwargs):
+            key, limit, now_ms, window_ms = (
+                args[0],
+                int(args[1]),
+                int(args[2]),
+                int(args[3]),
+            )
+            return await _run_rate_limit_script(key, limit, now_ms, window_ms)
+
+        async def _eval(script, numkeys, *args, **kwargs):
+            key, limit, now_ms, window_ms = (
+                args[0],
+                int(args[1]),
+                int(args[2]),
+                int(args[3]),
+            )
+            return await _run_rate_limit_script(key, limit, now_ms, window_ms)
+
+        redis.script_load = _script_load
+        redis.evalsha = _evalsha
+        redis.eval = _eval
+        return redis
 
     @pytest.fixture(autouse=True)
     def _reset_sha_cache(self):
