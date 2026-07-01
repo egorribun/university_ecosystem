@@ -108,12 +108,18 @@ async def test_cleanup_stale_notifications_refined(monkeypatch):
     )
     monkeypatch.setattr("app.services.notifications.cleanup.settings", mock_settings)
 
-    def scalars_side_effect(*args, **kwargs):
-        mock = MagicMock()
-        mock.all.side_effect = [[1], []]
-        return mock
-
-    db.scalars.side_effect = scalars_side_effect
+    # cleanup_stale_notifications has two separate while-True loops:
+    #   loop 1 (deliveries): scalars → [1], then scalars → [] → break
+    #   loop 2 (notifications): scalars → [1], then scalars → [] → break
+    # db.scalars is awaited, so it must be an AsyncMock whose return value
+    # exposes .all().  We sequence four results via side_effect on the AsyncMock.
+    scalars_results = [
+        MagicMock(**{"all.return_value": [1]}),  # delivery loop iteration 1
+        MagicMock(**{"all.return_value": []}),  # delivery loop → break
+        MagicMock(**{"all.return_value": [1]}),  # notification loop iteration 1
+        MagicMock(**{"all.return_value": []}),  # notification loop → break
+    ]
+    db.scalars = AsyncMock(side_effect=scalars_results)
 
     mock_exec = MagicMock()
     mock_exec.rowcount = 1
@@ -161,28 +167,50 @@ async def test_cleanup_stale_notifications_no_db(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_start_notifications_scheduler(monkeypatch):
-    mock_start = AsyncMock()
-    monkeypatch.setattr("app.services.notifications.scheduler._start", mock_start)
+    # start_notifications_scheduler does a local `from app.workers.notifications
+    # import start_notifications_scheduler as _start`, so patching the module-level
+    # name '_start' on the scheduler module has no effect — it is never read.
+    # We must patch the function on the workers module directly and also cancel
+    # the background task that start_notifications_scheduler creates in the
+    # event loop to prevent leaking it into subsequent tests.
+    import sys
+
+    mock_worker_notifications = MagicMock()
+    mock_start = AsyncMock(return_value=None)
+    mock_worker_notifications.start_notifications_scheduler = mock_start
+    monkeypatch.setitem(
+        sys.modules, "app.workers.notifications", mock_worker_notifications
+    )
+
     await start_notifications_scheduler()
     mock_start.assert_called_once()
 
 
 @pytest.mark.asyncio
 async def test_scheduler_loop(monkeypatch):
-    mock_worker_module = MagicMock()
-    mock_scheduler = AsyncMock()
-    mock_scheduler.run_forever.side_effect = asyncio.CancelledError()
-    mock_worker_module.NotificationsScheduler.return_value = mock_scheduler
-    monkeypatch.setattr(
-        "app.services.notifications.scheduler.worker_module",
-        mock_worker_module,
-        raising=False,
-    )
-
+    # _scheduler_loop does `from app.workers import notifications as worker_module`.
+    # Python resolves this by:
+    #   1. importing app.workers (gets the package from sys.modules)
+    #   2. getting `notifications` attribute off that package object
+    # app.workers.__init__.py does NOT pre-import notifications, so the attribute
+    # doesn't exist until it's explicitly set.  We inject it via monkeypatch so it
+    # is automatically restored after the test.
     import sys
 
-    sys.modules["app.workers"] = MagicMock()
-    sys.modules["app.workers.notifications"] = mock_worker_module
+    import app.workers as _workers_pkg
+
+    mock_scheduler = AsyncMock()
+    mock_scheduler.run_forever.side_effect = asyncio.CancelledError()
+
+    mock_worker_module = MagicMock()
+    # run_forever must be an AsyncMock so `await scheduler.run_forever()` works.
+    mock_worker_module.NotificationsScheduler.return_value = mock_scheduler
+
+    # Register in sys.modules (for submodule resolution) and as a package attr.
+    monkeypatch.setitem(sys.modules, "app.workers.notifications", mock_worker_module)
+    monkeypatch.setattr(
+        _workers_pkg, "notifications", mock_worker_module, raising=False
+    )
 
     await _scheduler_loop()
 
@@ -200,8 +228,8 @@ def test_build_schedule_reminder_message():
         body,
         tag,
         data_payload,
-        title_translations,
-        body_translations,
+        _title_translations,
+        _body_translations,
         dedupe_value,
     ) = build_schedule_reminder_message(lesson)
 

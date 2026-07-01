@@ -24,18 +24,24 @@ from app.utils.email import (
 
 
 def test_redact_sensitive_query_redacts_token():
+    from urllib.parse import unquote
+
     url = "https://example.com/reset?token=abc123&foo=bar"
     result = _redact_sensitive_query(url)
     assert "abc123" not in result
-    assert "***redacted***" in result
+    # urlencode percent-encodes '*' as '%2A'; decode before comparing.
+    assert "***redacted***" in unquote(result)
     assert "foo=bar" in result
 
 
 def test_redact_sensitive_query_redacts_code():
+    from urllib.parse import unquote
+
     url = "https://example.com/verify?code=secret&locale=en"
     result = _redact_sensitive_query(url)
     assert "secret" not in result
-    assert "***redacted***" in result
+    # urlencode percent-encodes '*' as '%2A'; decode before comparing.
+    assert "***redacted***" in unquote(result)
     assert "locale=en" in result
 
 
@@ -98,7 +104,7 @@ def test_build_reset_email_content_with_locale():
 
 
 def test_build_reset_email_content_no_name():
-    subject, plain, html = build_reset_email_content("https://example.com/reset")
+    _subject, _plain, html = build_reset_email_content("https://example.com/reset")
     assert isinstance(html, str)
 
 
@@ -115,7 +121,7 @@ def test_build_lockout_email_content_returns_tuple():
 
 
 def test_build_lockout_email_content_with_locale():
-    subject, plain, html = build_lockout_email_content("Bob", locale="en")
+    subject, _plain, _html = build_lockout_email_content("Bob", locale="en")
     assert isinstance(subject, str)
 
 
@@ -146,7 +152,7 @@ def test_send_reset_email_insecure_smtp_not_dev_logs_error():
         mock_settings.smtp_host = "smtp.example.com"
         mock_settings.smtp_port = 25
         mock_settings.smtp_user = "user"
-        mock_settings.smtp_password = "pass"
+        mock_settings.smtp_password = "pass"  # pragma: allowlist secret
         mock_settings.mail_from = "no-reply@example.com"
         mock_settings.smtp_security = "none"
         mock_settings.smtp_starttls = False
@@ -219,7 +225,7 @@ def test_send_reset_email_via_plain_smtp_with_login():
         mock_settings.smtp_host = "smtp.example.com"
         mock_settings.smtp_port = 25
         mock_settings.smtp_user = "admin"
-        mock_settings.smtp_password = "secret"
+        mock_settings.smtp_password = "secret"  # pragma: allowlist secret
         mock_settings.mail_from = "no-reply@example.com"
         mock_settings.smtp_security = "none"
         mock_settings.smtp_starttls = False
@@ -350,7 +356,7 @@ def test_send_lockout_email_insecure_not_dev_logs_error():
         mock_settings.smtp_host = "smtp.example.com"
         mock_settings.smtp_port = 25
         mock_settings.smtp_user = "user"
-        mock_settings.smtp_password = "pass"
+        mock_settings.smtp_password = "pass"  # pragma: allowlist secret
         mock_settings.mail_from = "no-reply@example.com"
         mock_settings.smtp_security = "none"
         mock_settings.smtp_starttls = False

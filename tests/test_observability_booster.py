@@ -6,8 +6,35 @@ import pytest
 import app.core.observability
 
 
+@pytest.fixture(autouse=True)
+def reset_otel_state():
+    """Reset module-level OTel flags before every test.
+
+    _configure_otel sets _otel_configured=True and registers global
+    OTel providers as a side-effect. Without cleanup the state leaks
+    across tests (e.g. configure_observability sees the flag and skips
+    its own setup, causing subsequent assertions to fail).
+
+    We must also remove any LoggingHandler added to the root logger;
+    leftover handlers compare log levels against their logger_provider,
+    which may be a MagicMock, causing TypeError in subsequent tests.
+    """
+    app.core.observability._otel_configured = False
+    app.core.observability._sqlalchemy_instrumented = False
+    yield
+    # Tear down OTel logging handler if one was installed during the test
+    handler = app.core.observability._otel_logging_handler
+    if handler is not None:
+        import logging
+
+        logging.getLogger().removeHandler(handler)
+    app.core.observability._otel_configured = False
+    app.core.observability._sqlalchemy_instrumented = False
+    app.core.observability._otel_logger_provider = None
+    app.core.observability._otel_logging_handler = None
+
+
 def test_resolve_current_trace_id_valid_span():
-    # Setup mock trace provider and valid span context
     mock_span = MagicMock()
     mock_span_context = MagicMock()
     mock_span_context.is_valid = True
@@ -16,7 +43,7 @@ def test_resolve_current_trace_id_valid_span():
 
     with patch("opentelemetry.trace.get_current_span", return_value=mock_span):
         res = app.core.observability._resolve_current_trace_id()
-        assert res == "123456789abcdef0123456789abcdef0"
+        assert res == "123456789abcdef0123456789abcdef0"  # pragma: allowlist secret
 
 
 def test_configure_sentry():
@@ -30,20 +57,32 @@ def test_configure_sentry():
         mock_settings.sentry_profiles_sample_rate = 1.0
         mock_settings.service_version = "1.0.0"
 
-        mock_provider = MagicMock()
-
-        # Test basic sentry config
-        app.core.observability._configure_sentry(mock_provider)
+        app.core.observability._configure_sentry(MagicMock())
         mock_init.assert_called()
 
 
 def test_configure_otel_concurrency():
-    # Set _otel_configured = True to hit fast paths
-    app.core.observability._otel_configured = True
-    res = app.core.observability._configure_otel(MagicMock())
-    assert res is not None
+    # _configure_otel checks settings.enable_otel before the _otel_configured
+    # flag, so we must patch enable_otel=True to reach the fast-path branches.
+    # We also patch trace.get_tracer_provider so the fast-paths return a mock
+    # instead of starting real OTLP exporters/background threads.
 
-    # Reset and test with mock lock
+    mock_provider = MagicMock()
+
+    # Branch 1: _otel_configured=True → early-return via get_tracer_provider()
+    with (
+        patch("app.core.observability.settings") as mock_settings,
+        patch(
+            "app.core.observability.trace.get_tracer_provider",
+            return_value=mock_provider,
+        ),
+    ):
+        mock_settings.enable_otel = True
+        app.core.observability._otel_configured = True
+        res = app.core.observability._configure_otel(MagicMock())
+        assert res is not None
+
+    # Reset and test Branch 2: _otel_configured becomes True inside the lock
     app.core.observability._otel_configured = False
 
     class MockOtelLock:
@@ -54,15 +93,38 @@ def test_configure_otel_concurrency():
         def __exit__(self, exc_type, exc_val, exc_tb):
             pass
 
-    with patch("app.core.observability._otel_lock", MockOtelLock()):
+    with (
+        patch("app.core.observability.settings") as mock_settings,
+        patch(
+            "app.core.observability.trace.get_tracer_provider",
+            return_value=mock_provider,
+        ),
+        patch("app.core.observability._otel_lock", MockOtelLock()),
+    ):
+        mock_settings.enable_otel = True
         res = app.core.observability._configure_otel(MagicMock())
         assert res is not None
 
 
 def test_configure_otel_instrumentation_errors():
-    app.core.observability._otel_configured = False
+    # Mock all heavyweight OTel constructors so no real gRPC threads are
+    # spawned (real OTLP exporters try to connect to localhost:4317).
     with (
         patch("app.core.observability.settings") as mock_settings,
+        patch("app.core.observability.TracerProvider", return_value=MagicMock()),
+        patch("app.core.observability.MeterProvider", return_value=MagicMock()),
+        patch("app.core.observability.LoggerProvider", return_value=MagicMock()),
+        patch("app.core.observability.OTLPSpanExporter"),
+        patch("app.core.observability.OTLPMetricExporter"),
+        patch("app.core.observability.OTLPLogExporter"),
+        patch("app.core.observability.PeriodicExportingMetricReader"),
+        patch("app.core.observability.BatchSpanProcessor"),
+        patch("app.core.observability.BatchLogRecordProcessor"),
+        patch("app.core.observability.LoggingHandler"),
+        patch("app.core.observability.trace.set_tracer_provider"),
+        patch("app.core.observability.metrics.set_meter_provider"),
+        patch("app.core.observability.set_global_textmap"),
+        patch("app.core.observability.set_logger_provider"),
         patch(
             "app.core.observability.SQLAlchemyInstrumentor.instrument",
             side_effect=RuntimeError,
@@ -83,8 +145,7 @@ def test_configure_otel_instrumentation_errors():
         mock_settings.enable_otel_metrics = True
         mock_settings.enable_otel_logs = True
 
-        engine = MagicMock()
-        res = app.core.observability._configure_otel(engine)
+        res = app.core.observability._configure_otel(MagicMock())
         assert res is not None
 
 
@@ -95,6 +156,8 @@ def test_configure_observability_instrument_app_error():
 
     with (
         patch("app.core.observability.settings") as mock_settings,
+        patch("app.core.observability._configure_logging"),
+        patch("app.core.observability._configure_sentry"),
         patch(
             "app.core.observability.FastAPIInstrumentor.instrument_app",
             side_effect=RuntimeError,
@@ -117,7 +180,6 @@ def test_get_periodic_task_metrics_cache():
 
 @pytest.mark.asyncio
 async def test_start_worker_monitoring_server_old_uvicorn():
-    mock_app = MagicMock()
     mock_server = MagicMock()
     mock_event = asyncio.Event()
     mock_server.started = mock_event
@@ -130,7 +192,7 @@ async def test_start_worker_monitoring_server_old_uvicorn():
 
     with patch("uvicorn.Server", return_value=mock_server):
         stop_fn = await app.core.observability.start_worker_monitoring_server(
-            mock_app, host="127.0.0.1", port=8000
+            MagicMock(), host="127.0.0.1", port=8000
         )
         await stop_fn()
 
@@ -138,6 +200,7 @@ async def test_start_worker_monitoring_server_old_uvicorn():
 def test_configure_worker_observability():
     with (
         patch("app.core.observability.settings") as mock_settings,
+        patch("app.core.observability._configure_logging"),
         patch("app.core.observability._configure_otel") as mock_conf_otel,
     ):
         mock_settings.enable_otel = True

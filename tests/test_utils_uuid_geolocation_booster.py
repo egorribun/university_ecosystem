@@ -31,8 +31,10 @@ class TestGenerateUuidV7:
     def test_variant_is_rfc4122(self):
         """UUID variant bits should be 0b10 (RFC 4122/9562)."""
         result = generate_uuid7()
-        # Variant is encoded in byte 8 (MSB) — top 2 bits should be 10
-        variant_byte = (result.int >> 64) & 0xFF
+        # Variant is encoded in byte 8 (0-indexed from MSB), which sits at
+        # bits 63-56 of the 128-bit integer.  Shift right 56, not 64.
+        # Shifting by 64 extracts byte 7 (the version nibble region).
+        variant_byte = (result.int >> 56) & 0xFF
         assert (variant_byte >> 6) == 0b10
 
     def test_with_explicit_datetime(self):
@@ -43,12 +45,18 @@ class TestGenerateUuidV7:
 
     def test_timestamp_roundtrip(self):
         """Timestamp extracted from UUIDv7 should be close to generation time."""
+        # UUIDv7 stores timestamps at millisecond precision.  Truncate `before`
+        # to the same precision so that sub-millisecond clock ticks between
+        # datetime.now() and generate_uuid7() don't cause a false failure.
+        from datetime import timedelta
+
         before = datetime.now(UTC)
         uid = generate_uuid7()
         after = datetime.now(UTC)
 
         extracted = extract_timestamp_from_uuid_v7(uid)
-        assert before <= extracted <= after
+        before_ms = before - timedelta(microseconds=before.microsecond % 1000)
+        assert before_ms <= extracted <= after
 
     def test_uniqueness(self):
         ids = {generate_uuid7() for _ in range(100)}

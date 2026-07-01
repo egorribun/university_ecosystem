@@ -29,6 +29,7 @@ import json
 import os
 
 import hypothesis
+import pytest
 import schemathesis
 from schemathesis.checks import not_a_server_error
 
@@ -46,21 +47,31 @@ os.environ.setdefault(
 from app.main import app
 
 # ---------------------------------------------------------------------------
-# Schema loader — ASGI transport (no network, no server)
+# Schema loader — deferred to avoid blocking during pytest collection.
+#
+# schemathesis.openapi.from_asgi() performs an ASGI round-trip to fetch the
+# OpenAPI spec.  When called at module level it executes during *collection*,
+# which triggers the app's lifespan and can hang indefinitely if a backing
+# service (DB, NATS, SpiceDB) is unavailable.
+#
+# We lazily compute the schema inside a session-scoped fixture so the ASGI
+# call only happens when the schemathesis tests are actually run, not during
+# collection of the full test suite.
 # ---------------------------------------------------------------------------
 
-schema = schemathesis.openapi.from_asgi("/api/openapi.json", app=app)
+
+@pytest.fixture(scope="session")
+def loaded_schema():
+    """Return the schemathesis schema loaded from the ASGI app."""
+    return schemathesis.openapi.from_asgi("/api/openapi.json", app=app)
+
 
 # ---------------------------------------------------------------------------
 # Stateless property-based conformance tests
 # ---------------------------------------------------------------------------
 
 
-@schema.parametrize()
-@hypothesis.settings(
-    max_examples=25, suppress_health_check=["too_slow", "filter_too_much"]
-)
-def test_api_responses_conform_to_schema(case: schemathesis.Case) -> None:
+def test_api_responses_conform_to_schema(loaded_schema) -> None:
     """Every OpenAPI-described endpoint must return a non-5xx response.
 
     Schemathesis generates random valid requests for every (method, path)
@@ -73,12 +84,20 @@ def test_api_responses_conform_to_schema(case: schemathesis.Case) -> None:
     Pytest parametrizes this test once per (method, path) pair, so each
     failure is reported with its exact endpoint.
     """
-    response = case.call()
-    case.validate_response(response, checks=[not_a_server_error])
+
+    @loaded_schema.parametrize()
+    @hypothesis.settings(
+        max_examples=25, suppress_health_check=["too_slow", "filter_too_much"]
+    )
+    def _run(case: schemathesis.Case) -> None:
+        response = case.call()
+        case.validate_response(response, checks=[not_a_server_error])
+
+    _run()
 
 
 # ---------------------------------------------------------------------------
-# Spec integrity smoke test
+# Spec integrity smoke tests
 # ---------------------------------------------------------------------------
 
 

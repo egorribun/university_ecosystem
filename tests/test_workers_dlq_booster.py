@@ -109,12 +109,17 @@ async def test_add_failed_job_creates_new_job():
 
     dlq = make_dlq(session)
 
-    with patch("app.workers.dead_letter_queue.DeadLetterJob") as mock_job_cls:
+    # `select(DeadLetterJob)` calls SQLAlchemy column validation before the mock
+    # is used.  Patch both `select` (a module-level import) and `DeadLetterJob`
+    # so neither touches real SQLAlchemy coercion machinery.
+    with (
+        patch("app.workers.dead_letter_queue.select") as mock_select,
+        patch("app.workers.dead_letter_queue.DeadLetterJob") as mock_job_cls,
+    ):
+        mock_select.return_value = MagicMock()  # select(...) → plain mock chain
         mock_instance = MagicMock()
         mock_job_cls.return_value = mock_instance
-        result = await dlq.add_failed_job(
-            "MyJob", {"k": "v"}, "bad error", max_retries=5
-        )
+        await dlq.add_failed_job("MyJob", {"k": "v"}, "bad error", max_retries=5)
 
     session.add.assert_called_once()
     session.flush.assert_called_once()
@@ -250,7 +255,6 @@ async def test_mark_job_failed_backoff_capped_at_max():
     job.retry_count = 10  # Large retry count — would overflow without cap
     job.max_retries = 20
 
-    before = datetime.now(UTC)
     await dlq.mark_job_failed(job, "error")
     after = datetime.now(UTC)
 
