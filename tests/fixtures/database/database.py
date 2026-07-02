@@ -24,6 +24,86 @@ async def prepare_database() -> AsyncIterator[None]:
     is_postgresql = database_url.startswith("postgresql")
 
     if is_postgresql:
+        # Safety-net: ensure RANGE-partitioned tables have at least a DEFAULT
+        # partition and a partition for the current month.  Alembic migrations
+        # should handle this via 202607020001, but guard here in case a migration
+        # drop/recreate left a table without partitions (e.g. 202603280001 removes
+        # data_access_logs_default as a reconcile step, relying on 202607020001 to
+        # recreate it — if that migration's DDL ran in a rolled-back txn on some
+        # postgres versions the partition may be absent at test time).
+        from datetime import UTC, datetime
+
+        import sqlalchemy as sa
+
+        _PARTITIONED_TABLES = [
+            ("data_access_logs", "created_at"),
+            ("notifications", "created_at"),
+            ("notification_deliveries", "attempted_at"),
+            ("failed_login_attempts", "attempted_at"),
+        ]
+
+        now = datetime.now(UTC).replace(
+            day=1, hour=0, minute=0, second=0, microsecond=0
+        )
+        # next-month boundary
+        next_m = now.month % 12 + 1
+        next_y = now.year + (1 if now.month == 12 else 0)
+        next_month = now.replace(year=next_y, month=next_m)
+
+        async with database.engine.execution_options(
+            isolation_level="AUTOCOMMIT"
+        ).connect() as conn:
+            for tbl, key in _PARTITIONED_TABLES:
+                # Check relkind
+                rk_row = await conn.execute(
+                    sa.text(
+                        "SELECT c.relkind FROM pg_class c "
+                        "JOIN pg_namespace n ON n.oid = c.relnamespace "
+                        "WHERE c.relname = :t AND n.nspname = 'public'"
+                    ),
+                    {"t": tbl},
+                )
+                rk = rk_row.scalar()
+                if rk != "p":
+                    continue  # not partitioned or doesn't exist
+
+                # Existing child partitions
+                rows = await conn.execute(
+                    sa.text(
+                        "SELECT child.relname FROM pg_inherits "
+                        "JOIN pg_class child ON pg_inherits.inhrelid = child.oid "
+                        "JOIN pg_class parent ON pg_inherits.inhparent = parent.oid "
+                        "JOIN pg_namespace n ON n.oid = parent.relnamespace "
+                        "WHERE parent.relname = :t AND n.nspname = 'public'"
+                    ),
+                    {"t": tbl},
+                )
+                existing = {r[0] for r in rows}
+
+                # DEFAULT partition
+                default_name = f"{tbl}_default"
+                if default_name not in existing:
+                    await conn.execute(
+                        sa.text(
+                            f"CREATE TABLE IF NOT EXISTS {default_name} "
+                            f"PARTITION OF {tbl} DEFAULT"
+                        )
+                    )
+
+                # Current-month partition
+                suffix = now.strftime("%Y_%m")
+                month_name = f"{tbl}_{suffix}"
+                if month_name not in existing:
+                    start_iso = now.strftime("%Y-%m-%d %H:%M:%S+00")
+                    end_iso = next_month.strftime("%Y-%m-%d %H:%M:%S+00")
+                    await conn.execute(
+                        sa.text(
+                            f"CREATE TABLE IF NOT EXISTS {month_name} "
+                            f"PARTITION OF {tbl} "
+                            f"FOR VALUES FROM ('{start_iso}') TO ('{end_iso}')"
+                        )
+                    )
+
         yield
         return
 
