@@ -40,7 +40,7 @@ class TestCleanupNotificationsTask:
             )
 
             # If it's still wrapped we call the coroutine function directly
-            if hasattr(inner, "__call__"):
+            if callable(inner):
                 await inner()
             mock_cleanup.assert_called_once_with(retention_days=30)
 
@@ -60,7 +60,7 @@ class TestCleanupNotificationsTask:
                 "__wrapped__",
                 cleanups.cleanup_notifications_task,
             )
-            if hasattr(inner, "__call__"):
+            if callable(inner):
                 await inner()
             mock_cleanup.assert_not_called()
 
@@ -78,7 +78,7 @@ class TestCleanupSessionsTask:
                 "__wrapped__",
                 cleanups.cleanup_sessions_task,
             )
-            if hasattr(inner, "__call__"):
+            if callable(inner):
                 await inner()
             mock_cleanup.assert_called_once()
 
@@ -100,7 +100,7 @@ class TestCleanupStoriesTask:
                 "__wrapped__",
                 cleanups.cleanup_stories_task,
             )
-            if hasattr(inner, "__call__"):
+            if callable(inner):
                 await inner()
             mock_cleanup.assert_called_once()
 
@@ -120,7 +120,7 @@ class TestCleanupStoriesTask:
                 "__wrapped__",
                 cleanups.cleanup_stories_task,
             )
-            if hasattr(inner, "__call__"):
+            if callable(inner):
                 await inner()
             mock_cleanup.assert_not_called()
 
@@ -143,7 +143,7 @@ class TestCleanupPasswordResetTokensTask:
                 "__wrapped__",
                 cleanups.cleanup_password_reset_tokens_task,
             )
-            if hasattr(inner, "__call__"):
+            if callable(inner):
                 await inner()
             mock_cleanup.assert_called_once_with(retention_minutes=60)
 
@@ -166,7 +166,7 @@ class TestCleanupEmailChangeTokensTask:
                 "__wrapped__",
                 cleanups.cleanup_email_change_tokens_task,
             )
-            if hasattr(inner, "__call__"):
+            if callable(inner):
                 await inner()
             mock_cleanup.assert_called_once_with(retention_minutes=120)
 
@@ -184,7 +184,7 @@ class TestCleanupMfaChallengesTask:
                 "__wrapped__",
                 cleanups.cleanup_mfa_challenges_task,
             )
-            if hasattr(inner, "__call__"):
+            if callable(inner):
                 await inner()
             mock_cleanup.assert_called_once()
 
@@ -210,7 +210,7 @@ class TestCleanupPrivacyArtifactsTask:
                 "__wrapped__",
                 cleanups.cleanup_privacy_artifacts_task,
             )
-            if hasattr(inner, "__call__"):
+            if callable(inner):
                 await inner()
             mock_cleanup.assert_called_once()
 
@@ -232,7 +232,7 @@ class TestManagePartitionsTask:
                 "__wrapped__",
                 cleanups.manage_partitions_task,
             )
-            if hasattr(inner, "__call__"):
+            if callable(inner):
                 await inner()
             mock_ensure.assert_called_once()
 
@@ -252,7 +252,7 @@ class TestManagePartitionsTask:
                 "__wrapped__",
                 cleanups.manage_partitions_task,
             )
-            if hasattr(inner, "__call__"):
+            if callable(inner):
                 await inner()
             mock_ensure.assert_not_called()
 
@@ -273,7 +273,7 @@ class TestCleanupDeadLetterJobsTask:
                 "__wrapped__",
                 cleanups.cleanup_dead_letter_jobs_task,
             )
-            if hasattr(inner, "__call__"):
+            if callable(inner):
                 await inner()
             mock_nq.cleanup_dead_lettered_jobs.assert_called_once_with(retention_days=7)
 
@@ -364,7 +364,7 @@ class TestEnqueueNewsNotificationTask:
                 "__wrapped__",
                 notif_tasks.enqueue_news_notification_task,
             )
-            if hasattr(inner, "__call__"):
+            if callable(inner):
                 await inner(news_id=news_id, locale="en")
 
             mock_notify.assert_called_once_with(mock_db, mock_news, locale="en")
@@ -393,7 +393,7 @@ class TestEnqueueNewsNotificationTask:
                 "__wrapped__",
                 notif_tasks.enqueue_news_notification_task,
             )
-            if hasattr(inner, "__call__"):
+            if callable(inner):
                 await inner(news_id=news_id)
 
             mock_notify.assert_not_called()
@@ -425,7 +425,7 @@ class TestEnqueueEventNotificationTask:
                 "__wrapped__",
                 notif_tasks.enqueue_event_notification_task,
             )
-            if hasattr(inner, "__call__"):
+            if callable(inner):
                 await inner(event_id=event_id, locale="ru")
 
             mock_notify.assert_called_once_with(mock_db, mock_event, locale="ru")
@@ -461,7 +461,7 @@ class TestEnqueueCommentNotificationTask:
                 "__wrapped__",
                 notif_tasks.enqueue_comment_notification_task,
             )
-            if hasattr(inner, "__call__"):
+            if callable(inner):
                 await inner(
                     news_id=news_id, comment_id=comment_id, user_id=user_id, locale="en"
                 )
@@ -496,7 +496,7 @@ class TestEnqueueCommentNotificationTask:
                 "__wrapped__",
                 notif_tasks.enqueue_comment_notification_task,
             )
-            if hasattr(inner, "__call__"):
+            if callable(inner):
                 await inner(news_id=news_id, comment_id=comment_id, user_id=user_id)
 
             mock_notify.assert_not_called()

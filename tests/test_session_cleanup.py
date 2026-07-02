@@ -78,7 +78,7 @@ async def test_delete_sessions_matching_postgres_rowcount():
     # Under PostgreSQL, rowcount is returned
     with patch(
         "app.core.config.settings.database_url",
-        "postgresql+asyncpg://user:pass@host/db",
+        "postgresql+asyncpg://user:pass@host/db",  # pragma: allowlist secret  # pragma: allowlist secret
     ):
         res = await delete_sessions_matching(db=db, whereclause=whereclause)
         assert res == 6
@@ -98,7 +98,7 @@ async def test_delete_sessions_matching_postgres_raw_rowcount():
 
     with patch(
         "app.core.config.settings.database_url",
-        "postgresql+asyncpg://user:pass@host/db",
+        "postgresql+asyncpg://user:pass@host/db",  # pragma: allowlist secret
     ):
         res = await delete_sessions_matching(db=db, whereclause=whereclause)
         assert res == 7
@@ -117,7 +117,7 @@ async def test_delete_sessions_matching_postgres_fetchall():
 
     with patch(
         "app.core.config.settings.database_url",
-        "postgresql+asyncpg://user:pass@host/db",
+        "postgresql+asyncpg://user:pass@host/db",  # pragma: allowlist secret
     ):
         res = await delete_sessions_matching(db=db, whereclause=whereclause)
         assert res == 3
@@ -263,7 +263,7 @@ async def test_start_session_cleanup_scheduler_error():
         ) as mock_cleanup,
         patch(
             "app.services.session_cleanup.asyncio.sleep", side_effect=mock_sleep_fn
-        ) as mock_sleep,
+        ) as _,
     ):
         mock_cleanup.side_effect = ValueError("db error")
         stop_fn = await start_session_cleanup_scheduler()
@@ -285,7 +285,7 @@ async def test_start_session_cleanup_scheduler_cancel_error():
         ) as mock_cleanup,
         patch(
             "app.services.session_cleanup.asyncio.sleep", side_effect=mock_sleep_fn
-        ) as mock_sleep,
+        ) as _,
     ):
         mock_cleanup.side_effect = asyncio.CancelledError()
         stop_fn = await start_session_cleanup_scheduler()

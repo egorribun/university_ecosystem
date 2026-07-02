@@ -51,9 +51,7 @@ async def test_start_story_cleanup_scheduler_normal():
         patch(
             "app.services.story_cleanup.cleanup_expired_stories", new_callable=AsyncMock
         ) as mock_cleanup,
-        patch(
-            "app.services.story_cleanup.asyncio.sleep", new_callable=AsyncMock
-        ) as mock_sleep,
+        patch("app.services.story_cleanup.asyncio.sleep", new_callable=AsyncMock) as _,
     ):
         mock_cleanup.return_value = 2
 
@@ -72,9 +70,7 @@ async def test_start_story_cleanup_scheduler_error():
         patch(
             "app.services.story_cleanup.cleanup_expired_stories", new_callable=AsyncMock
         ) as mock_cleanup,
-        patch(
-            "app.services.story_cleanup.asyncio.sleep", new_callable=AsyncMock
-        ) as mock_sleep,
+        patch("app.services.story_cleanup.asyncio.sleep", new_callable=AsyncMock) as _,
     ):
         mock_cleanup.side_effect = ValueError("db error")
         stop_fn = await start_story_cleanup_scheduler()
