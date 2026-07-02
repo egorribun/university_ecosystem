@@ -10,8 +10,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Buf Binary
-RUN curl -L -o /usr/local/bin/buf "https://github.com/bufbuild/buf/releases/download/v1.50.0/buf-$(uname -s)-$(uname -m)" && \
+# Install Buf Binary — pinned to v1.50.0 with verified SHA256 integrity check.
+# Digest sourced from: https://github.com/bufbuild/buf/releases/download/v1.50.0/sha256.txt
+# Architecture: Linux-x86_64 (CI runners are amd64). Update both when upgrading buf.
+RUN set -eux; \
+    BUF_VERSION="v1.50.0"; \
+    BUF_SHA256="154ea883ce098eac4fa106ff9ee4e4964bb97f809dd8ec9c34a432b466ce1494"; \  # pragma: allowlist secret
+    curl -fsSL -o /usr/local/bin/buf \
+        "https://github.com/bufbuild/buf/releases/download/${BUF_VERSION}/buf-Linux-x86_64"; \
+    echo "${BUF_SHA256}  /usr/local/bin/buf" | sha256sum -c -; \
     chmod +x /usr/local/bin/buf
 
 # Install Go Plugins with pinned versions

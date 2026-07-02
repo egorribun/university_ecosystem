@@ -28,12 +28,20 @@ smoke_*_logs.txt
 # Go coverage output
 cover.out
 coverage.out
+coverage.json
+coverage
 
 # Test databases
 test.db
 test-migration.db
 test_gw*.db
+test_sch.db
+university.db
 cache/images/cache.db
+
+# Compiled binaries (Go, Rust, Windows)
+*.exe
+*.out
 
 pids
 *.pid

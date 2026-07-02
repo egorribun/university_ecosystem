@@ -15,8 +15,6 @@ RUN --mount=type=cache,id=apt-lists-test,target=/var/lib/apt/lists \
     && rm -rf /var/lib/apt/lists/* \
     && groupadd --system --gid 10001 app \
     && useradd --system --uid 10001 --gid app --home-dir /home/app --shell /bin/bash app
-RUN python -m pip install --no-cache-dir --upgrade pip==26.1
-
 # MOD-30-05: Install Rust toolchain from official Docker image instead of
 # curl|sh (supply chain risk — executing unversioned script from internet).
 # Pin to a specific Rust version for reproducible builds.
