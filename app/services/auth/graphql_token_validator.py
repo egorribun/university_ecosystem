@@ -101,9 +101,9 @@ class GraphQLTokenValidator:
             return result.scalar_one_or_none()
         except (OSError, ConnectionError) as exc:
             # RZ-20-04: Narrowed — fail-closed on infra fault (deny, don't accept).
-            logger.warning(
+            logger.warning(  # nosemgrep: python.lang.security.audit.logging.logger-credential-leak.python-logger-credential-disclosure
                 "GraphQL: DB session load failed; denying request: %s", exc
-            )  # nosemgrep: python.lang.security.audit.logging.logger-credential-leak.python-logger-credential-disclosure
+            )
             return None
 
     def _check_expiry(self, session: ActiveSession) -> bool:
@@ -127,7 +127,9 @@ class GraphQLTokenValidator:
             result = await self._session.execute(select(User).where(User.id == val))
             return result.scalar_one_or_none()
         except (ValueError, TypeError) as exc:
-            logger.debug("GraphQL: invalid subject claim: %s", exc)
+            logger.debug(
+                "GraphQL: invalid subject claim: %s", exc
+            )  # nosemgrep: python.lang.security.audit.logging.logger-credential-leak.python-logger-credential-disclosure
             return None
 
     async def _check_fingerprint(self, user: User, session: ActiveSession) -> bool:

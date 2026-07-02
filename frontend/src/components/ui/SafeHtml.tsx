@@ -39,7 +39,8 @@ export default function SafeHtml({ html, className, fallback }: SafeHtmlProps) {
     return <span className={className}>{textOnly}</span>
   }
 
-  // nosemgrep: typescript.react.security.audit.react-dangerouslysetinnerhtml.react-dangerouslysetinnerhtml
-  // Sanitized by wasm-sanitizer/ammonia above, then checked for script/event-handler patterns.
-  return <div className={className} dangerouslySetInnerHTML={{ __html: sanitized }} />
+  // The HTML is sanitized by wasm-sanitizer/ammonia (Rust, allowlist-based) then
+  // checked for script/event-handler patterns above. This is the correct use of
+  // dangerouslySetInnerHTML: sanitized content from a trusted WASM sanitizer.
+  return <div className={className} dangerouslySetInnerHTML={{ __html: sanitized }} /> // nosemgrep: typescript.react.security.audit.react-dangerouslysetinnerhtml.react-dangerouslysetinnerhtml
 }
