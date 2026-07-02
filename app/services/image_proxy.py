@@ -20,7 +20,7 @@ try:
         obj = _msgpack.decode(payload)
         return bytes(obj["d"]), str(obj["m"])
 
-except ImportError:  # pragma: no cover — fallback if msgspec not installed
+except ImportError:
     # json + base64 as a safe fallback (no pickle in any code path)
     import base64
     import json

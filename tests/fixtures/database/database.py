@@ -24,6 +24,86 @@ async def prepare_database() -> AsyncIterator[None]:
     is_postgresql = database_url.startswith("postgresql")
 
     if is_postgresql:
+        # Safety-net: unconditionally ensure DEFAULT + prev/current/next-month
+        # RANGE partitions exist for all partitioned tables.  Using
+        # CREATE TABLE IF NOT EXISTS makes every statement idempotent.
+        # We skip the relkind pre-check: if the table is not partitioned or
+        # does not exist the statement will fail; we suppress that error so
+        # other tables are still processed.
+        from datetime import UTC, datetime, timedelta
+
+        import sqlalchemy as sa
+
+        _PARTITIONED_TABLES = [
+            "data_access_logs",
+            "notifications",
+            "notification_deliveries",
+            "failed_login_attempts",
+        ]
+
+        now = datetime.now(UTC)
+        # Cover the previous, current, and next calendar month to handle
+        # tests that use timestamps near month boundaries.
+        months = [
+            now - timedelta(days=32),  # prev month
+            now,  # current month
+            now + timedelta(days=32),  # next month
+        ]
+
+        async with database.engine.execution_options(
+            isolation_level="AUTOCOMMIT"
+        ).connect() as conn:
+            for tbl in _PARTITIONED_TABLES:
+                # Only partition tables that are actually partitioned (relkind='p').
+                rk_row = await conn.execute(
+                    sa.text(
+                        "SELECT c.relkind FROM pg_class c "
+                        "JOIN pg_namespace n ON n.oid = c.relnamespace "
+                        "WHERE c.relname = :t AND n.nspname = 'public'"
+                    ),
+                    {"t": tbl},
+                )
+                if rk_row.scalar() != "p":
+                    continue  # table absent or not range-partitioned
+
+                # DEFAULT partition — absorbs any out-of-range insert.
+                await conn.execute(
+                    sa.text(
+                        f"CREATE TABLE IF NOT EXISTS {tbl}_default "
+                        f"PARTITION OF {tbl} DEFAULT"
+                    )
+                )
+
+                # Monthly range partitions covering prev, current, and next month.
+                for m_dt in months:
+                    start_of_month = m_dt.replace(
+                        day=1,
+                        hour=0,
+                        minute=0,
+                        second=0,
+                        microsecond=0,
+                        tzinfo=UTC,
+                    )
+                    next_month = (start_of_month + timedelta(days=32)).replace(
+                        day=1,
+                        hour=0,
+                        minute=0,
+                        second=0,
+                        microsecond=0,
+                        tzinfo=UTC,
+                    )
+                    suffix = start_of_month.strftime("%Y_%m")
+                    part_name = f"{tbl}_{suffix}"
+                    start_iso = start_of_month.strftime("%Y-%m-%d %H:%M:%S+00")
+                    end_iso = next_month.strftime("%Y-%m-%d %H:%M:%S+00")
+                    await conn.execute(
+                        sa.text(
+                            f"CREATE TABLE IF NOT EXISTS {part_name} "
+                            f"PARTITION OF {tbl} "
+                            f"FOR VALUES FROM ('{start_iso}') TO ('{end_iso}')"
+                        )
+                    )
+
         yield
         return
 

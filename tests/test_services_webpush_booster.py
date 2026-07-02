@@ -294,7 +294,7 @@ def test_get_sync_url_asyncpg_converts_to_psycopg():
 
     try:
         with patch("app.services.webpush.settings") as mock_settings:
-            mock_settings.database_url = "postgresql+asyncpg://user:pass@localhost/db"  # pragma: allowlist secret
+            mock_settings.database_url = "postgresql+asyncpg://user:pass@localhost/db"
             url = _get_sync_url()
             assert "asyncpg" not in url.drivername
             assert "psycopg" in url.drivername

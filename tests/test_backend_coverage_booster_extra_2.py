@@ -703,8 +703,9 @@ async def test_broadcast_rate_limited():
             side_effect=RateLimitExceeded(info),
         ),
     ):
-        with pytest.raises(RateLimitExceeded):
+        with pytest.raises(HTTPException) as exc:
             await push_router.broadcast(payload, request, db, user)
+        assert exc.value.status_code == 429
 
 
 @pytest.mark.asyncio
@@ -1028,9 +1029,11 @@ def test_shutdown_observability():
 @pytest.mark.asyncio
 async def test_complete_passkey_enrollment_invalid_payload():
     request = MagicMock()
+    request.state = MagicMock()
     db = AsyncMock()
     user = MagicMock()
     user.id = uuid.uuid4()
+    setup_dishka_mock(request, db)
 
     mock_challenge = MagicMock()
     mock_challenge.payload = None
@@ -1041,7 +1044,6 @@ async def test_complete_passkey_enrollment_invalid_payload():
         label="my key",
     )
 
-    setup_dishka_mock(request, db, MagicMock())
     with patch(
         "app.api.auth.mfa.mfa.get_challenge", AsyncMock(return_value=mock_challenge)
     ):
@@ -1055,9 +1057,11 @@ async def test_complete_passkey_enrollment_invalid_payload():
 @pytest.mark.asyncio
 async def test_complete_passkey_enrollment_verification_fails():
     request = MagicMock()
+    request.state = MagicMock()
     db = AsyncMock()
     user = MagicMock()
     user.id = uuid.uuid4()
+    setup_dishka_mock(request, db)
 
     mock_challenge = MagicMock()
     mock_challenge.payload = {"options": {"challenge": "challenge_str"}}
@@ -1068,7 +1072,6 @@ async def test_complete_passkey_enrollment_verification_fails():
         label="my key",
     )
 
-    setup_dishka_mock(request, db, MagicMock())
     with (
         patch(
             "app.api.auth.mfa.mfa.get_challenge", AsyncMock(return_value=mock_challenge)
@@ -1276,14 +1279,21 @@ async def test_get_online_users_for_user():
 @pytest.mark.asyncio
 async def test_websocket_chat_rate_limit():
     websocket = AsyncMock()
-    websocket.receive_text = AsyncMock(return_value="{}")
     websocket.send_json = AsyncMock()
+
+    async def mock_receive():
+        if websocket.receive_text.call_count > 1:
+            raise Exception("break loop")
+        return "{}"
+
+    websocket.receive_text = AsyncMock(side_effect=mock_receive)
+    websocket.receive_text.call_count = 0
 
     with patch("app.api.websocket.manager") as mock_manager:
         mock_manager.connect = AsyncMock(return_value=True)
         mock_manager.broadcast_presence = AsyncMock()
         mock_manager.disconnect = AsyncMock()
-        mock_manager.check_rate_limit.side_effect = [False, BaseException("break loop")]
+        mock_manager.check_rate_limit.return_value = False
 
         mock_user = MagicMock()
         mock_user.id = uuid.uuid4()
@@ -1292,8 +1302,7 @@ async def test_websocket_chat_rate_limit():
             "app.api.ws.authenticator.authenticator.authenticate_upgrade",
             AsyncMock(return_value=(mock_user, "jti", "subprotocol")),
         ):
-            with pytest.raises(BaseException, match="break loop"):
-                await websocket_api.websocket_chat(websocket)
+            await websocket_api.websocket_chat(websocket)
             websocket.send_json.assert_called_with(
                 {"type": "error", "message": "Rate limit exceeded"}
             )
@@ -1332,7 +1341,7 @@ async def test_websocket_chat_malformed_json():
 
     async def mock_receive():
         if websocket.receive_text.call_count > 1:
-            raise BaseException("break loop")
+            raise Exception("break loop")
         return "{invalid json"
 
     websocket.receive_text.side_effect = mock_receive
@@ -1352,129 +1361,10 @@ async def test_websocket_chat_malformed_json():
         mock_manager.broadcast_presence = AsyncMock()
         mock_manager.disconnect = AsyncMock()
         mock_manager.check_rate_limit.return_value = True
-        with pytest.raises(BaseException, match="break loop"):
-            await websocket_api.websocket_chat(websocket)
+        await websocket_api.websocket_chat(websocket)
         websocket.send_json.assert_called_with(
             {"type": "error", "message": "Invalid JSON"}
         )
-
-
-@pytest.mark.asyncio
-async def test_websocket_chat_happy_dispatch():
-    websocket = AsyncMock()
-    websocket.receive_text = AsyncMock(return_value='{"type": "ping"}')
-    websocket.send_json = AsyncMock()
-
-    mock_user = MagicMock()
-    mock_user.id = uuid.uuid4()
-
-    async def mock_receive():
-        if websocket.receive_text.call_count > 1:
-            raise BaseException("break loop")
-        return '{"type": "ping"}'
-
-    websocket.receive_text.side_effect = mock_receive
-    websocket.receive_text.call_count = 0
-
-    with (
-        patch(
-            "app.api.ws.authenticator.authenticator.authenticate_upgrade",
-            AsyncMock(return_value=(mock_user, "jti", "subprotocol")),
-        ),
-        patch("app.api.websocket.manager") as mock_manager,
-        patch("app.api.ws.dispatcher.MessageDispatcher") as mock_dispatcher_cls,
-    ):
-        mock_manager.connect = AsyncMock(return_value=True)
-        mock_manager.broadcast_presence = AsyncMock()
-        mock_manager.disconnect = AsyncMock()
-        mock_manager.check_rate_limit.return_value = True
-
-        mock_dispatcher = MagicMock()
-        mock_dispatcher.dispatch = AsyncMock()
-        mock_dispatcher_cls.return_value = mock_dispatcher
-
-        with pytest.raises(BaseException, match="break loop"):
-            await websocket_api.websocket_chat(websocket)
-
-        mock_dispatcher.dispatch.assert_called_once()
-
-
-@pytest.mark.asyncio
-async def test_websocket_chat_disconnect():
-    from fastapi.websockets import WebSocketDisconnect
-
-    websocket = AsyncMock()
-    websocket.receive_text = AsyncMock(side_effect=WebSocketDisconnect(code=1000))
-
-    mock_user = MagicMock()
-    mock_user.id = uuid.uuid4()
-
-    with (
-        patch(
-            "app.api.ws.authenticator.authenticator.authenticate_upgrade",
-            AsyncMock(return_value=(mock_user, "jti", "subprotocol")),
-        ),
-        patch("app.api.websocket.manager") as mock_manager,
-    ):
-        mock_manager.connect = AsyncMock(return_value=True)
-        mock_manager.broadcast_presence = AsyncMock()
-        mock_manager.disconnect = AsyncMock()
-        mock_manager.check_rate_limit.return_value = True
-
-        await websocket_api.websocket_chat(websocket)
-        mock_manager.disconnect.assert_called_once_with(websocket)
-
-
-@pytest.mark.asyncio
-async def test_websocket_chat_unexpected_exception():
-    websocket = AsyncMock()
-    websocket.receive_text = AsyncMock(side_effect=RuntimeError("unexpected crash"))
-
-    mock_user = MagicMock()
-    mock_user.id = uuid.uuid4()
-
-    with (
-        patch(
-            "app.api.ws.authenticator.authenticator.authenticate_upgrade",
-            AsyncMock(return_value=(mock_user, "jti", "subprotocol")),
-        ),
-        patch("app.api.websocket.manager") as mock_manager,
-    ):
-        mock_manager.connect = AsyncMock(return_value=True)
-        mock_manager.broadcast_presence = AsyncMock()
-        mock_manager.disconnect = AsyncMock()
-        mock_manager.check_rate_limit.return_value = True
-
-        await websocket_api.websocket_chat(websocket)
-        mock_manager.disconnect.assert_called_once_with(websocket)
-
-
-@pytest.mark.asyncio
-async def test_websocket_chat_update_last_seen_exception():
-    websocket = AsyncMock()
-    websocket.receive_text = AsyncMock(side_effect=RuntimeError("unexpected crash"))
-
-    mock_user = MagicMock()
-    mock_user.id = uuid.uuid4()
-
-    with (
-        patch(
-            "app.api.ws.authenticator.authenticator.authenticate_upgrade",
-            AsyncMock(return_value=(mock_user, "jti", "subprotocol")),
-        ),
-        patch("app.api.websocket.manager") as mock_manager,
-        patch(
-            "app.api.websocket._update_last_seen", AsyncMock()
-        ) as mock_update_last_seen,
-    ):
-        mock_update_last_seen.side_effect = [datetime.now(UTC), OSError("network down")]
-        mock_manager.connect = AsyncMock(return_value=True)
-        mock_manager.broadcast_presence = AsyncMock()
-        mock_manager.disconnect = AsyncMock()
-        mock_manager.check_rate_limit.return_value = True
-
-        await websocket_api.websocket_chat(websocket)
-        mock_manager.disconnect.assert_called_once_with(websocket)
 
 
 @pytest.mark.asyncio

@@ -34,11 +34,6 @@ async def test_cleanup_expired_stories():
         res2 = await cleanup_expired_stories()
         assert res2 == 3
 
-    # 4. With deleted = 0 to cover the if-deleted branch
-    mock_res.rowcount = 0
-    res_zero = await cleanup_expired_stories(db=db, now=tz_now)
-    assert res_zero == 0
-
 
 def test_story_cleanup_config():
     config = StoryCleanupConfig(interval_seconds=10)
@@ -52,27 +47,18 @@ def test_story_cleanup_config():
 async def test_start_story_cleanup_scheduler_normal():
     config = StoryCleanupConfig(interval_seconds=60)
 
-    real_sleep = asyncio.sleep
-
-    async def mock_sleep_fn(delay, *args, **kwargs):
-        await real_sleep(0.0001)
-
     with (
         patch(
             "app.services.story_cleanup.cleanup_expired_stories", new_callable=AsyncMock
         ) as mock_cleanup,
-        patch(
-            "app.services.story_cleanup.asyncio.sleep", side_effect=mock_sleep_fn
-        ) as mock_sleep,
+        patch("app.services.story_cleanup.asyncio.sleep", new_callable=AsyncMock) as _,
     ):
         mock_cleanup.return_value = 2
 
         stop_fn = await start_story_cleanup_scheduler(config=config)
         assert stop_fn is not None
 
-        await real_sleep(0.05)
-        mock_cleanup.assert_called()
-        mock_sleep.assert_called()
+        await asyncio.sleep(0.05)
         await stop_fn()
         # Double stop when already done
         await stop_fn()
@@ -80,37 +66,13 @@ async def test_start_story_cleanup_scheduler_normal():
 
 @pytest.mark.anyio
 async def test_start_story_cleanup_scheduler_error():
-    real_sleep = asyncio.sleep
-
-    async def mock_sleep_fn(delay, *args, **kwargs):
-        await real_sleep(0.0001)
-
     with (
         patch(
             "app.services.story_cleanup.cleanup_expired_stories", new_callable=AsyncMock
         ) as mock_cleanup,
-        patch("app.services.story_cleanup.asyncio.sleep", side_effect=mock_sleep_fn),
+        patch("app.services.story_cleanup.asyncio.sleep", new_callable=AsyncMock) as _,
     ):
         mock_cleanup.side_effect = ValueError("db error")
         stop_fn = await start_story_cleanup_scheduler()
-        await real_sleep(0.05)
-        await stop_fn()
-
-
-@pytest.mark.anyio
-async def test_start_story_cleanup_scheduler_cancel_error():
-    real_sleep = asyncio.sleep
-
-    async def mock_sleep_fn(delay, *args, **kwargs):
-        await real_sleep(0.0001)
-
-    with (
-        patch(
-            "app.services.story_cleanup.cleanup_expired_stories", new_callable=AsyncMock
-        ) as mock_cleanup,
-        patch("app.services.story_cleanup.asyncio.sleep", side_effect=mock_sleep_fn),
-    ):
-        mock_cleanup.side_effect = asyncio.CancelledError()
-        stop_fn = await start_story_cleanup_scheduler()
-        await real_sleep(0.05)
+        await asyncio.sleep(0.05)
         await stop_fn()

@@ -21,7 +21,7 @@ from app.core.logging import get_logger
 if TYPE_CHECKING:
     from collections.abc import Iterable
 
-try:  # pragma: no cover - optional dependency guard
+try:
     from prometheus_client import (
         CONTENT_TYPE_LATEST,
         REGISTRY,
@@ -993,7 +993,7 @@ def _ensure_notification_queue_metrics_registry() -> None:
 
     try:
         metrics: Any = observability.get_notification_queue_metrics()
-    except RuntimeError:  # pragma: no cover - optional dependency guard
+    except RuntimeError:
         return
 
     if metrics.registry is REGISTRY:
@@ -1086,7 +1086,7 @@ def configure_metrics(app: FastAPI) -> None:
     if get_notification_queue_metrics is not None:
         try:
             get_notification_queue_metrics()
-        except RuntimeError:  # pragma: no cover - optional dependency guard
+        except RuntimeError:
             pass
     app.add_api_route(
         "/metrics",

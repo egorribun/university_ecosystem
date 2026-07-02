@@ -94,8 +94,7 @@ function getJwks() {
  * real createRemoteJWKSet flow.
  */
 let jwtVerifyOverride:
-  | null
-  | ((token: string) => Promise<{ payload: Record<string, unknown> } | null>) = null
+  null | ((token: string) => Promise<{ payload: Record<string, unknown> } | null>) = null
 
 export function _setJwtVerifyOverrideForTests(
   fn: ((token: string) => Promise<{ payload: Record<string, unknown> } | null>) | null

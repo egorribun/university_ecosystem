@@ -21,7 +21,7 @@ from .response_hardening import http_response_hardening
 
 try:
     from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
-except ImportError:  # pragma: no cover
+except ImportError:
     ProxyHeadersMiddleware: Any = None  # type: ignore[no-redef]
 
 if TYPE_CHECKING:

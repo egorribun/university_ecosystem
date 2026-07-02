@@ -82,8 +82,7 @@ export const pageScheduleQueryOptions = (groupId: string | null) => ({
   queryKey: (groupId != null
     ? scheduleQueryKey(groupId)
     : (["schedule", "group", "none"] as const)) as
-    | ActiveScheduleQueryKey
-    | InactiveScheduleQueryKey,
+    ActiveScheduleQueryKey | InactiveScheduleQueryKey,
   queryFn: async ({
     signal,
   }: QueryFunctionContext<ActiveScheduleQueryKey | InactiveScheduleQueryKey>): Promise<

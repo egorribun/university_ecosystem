@@ -156,7 +156,7 @@ def detect_mime_type(data: bytes) -> str | None:
     if detector is not None:
         try:
             result = detector.from_buffer(data)
-        except AttributeError:  # pragma: no cover - fallback path
+        except AttributeError:
             try:
                 result = (
                     _magic_module.from_buffer(data, mime=True)

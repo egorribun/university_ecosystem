@@ -1,68 +1,68 @@
 import { describe, expect, it } from "vitest"
-import { levenshtein } from "../levenshtein"
+import { levenshtein } from "@/utils/levenshtein"
 
 describe("levenshtein", () => {
-  // ---------------------------------------------------------------------------
-  // Zero-cost base cases
-  // ---------------------------------------------------------------------------
-  it("returns 0 for two identical strings", () => {
-    expect(levenshtein("hello", "hello")).toBe(0)
+  it("returns 0 for identical strings", () => {
+    expect(levenshtein("kitten", "kitten")).toBe(0)
   })
 
   it("returns 0 for two empty strings", () => {
     expect(levenshtein("", "")).toBe(0)
   })
 
-  // ---------------------------------------------------------------------------
-  // Empty string edge cases
-  // ---------------------------------------------------------------------------
-  it("returns length of b when a is empty", () => {
-    expect(levenshtein("", "abc")).toBe(3)
+  it("returns length of second string when first is empty", () => {
+    expect(levenshtein("", "hello")).toBe(5)
   })
 
-  it("returns length of a when b is empty", () => {
-    expect(levenshtein("abc", "")).toBe(3)
+  it("returns length of first string when second is empty", () => {
+    expect(levenshtein("hello", "")).toBe(5)
   })
 
-  // ---------------------------------------------------------------------------
-  // Single operations
-  // ---------------------------------------------------------------------------
-  it("returns 1 for single insertion", () => {
-    expect(levenshtein("cat", "cats")).toBe(1)
-  })
-
-  it("returns 1 for single deletion", () => {
-    expect(levenshtein("cats", "cat")).toBe(1)
-  })
-
-  it("returns 1 for single substitution", () => {
+  it("computes single character difference (substitution)", () => {
     expect(levenshtein("cat", "bat")).toBe(1)
   })
 
-  // ---------------------------------------------------------------------------
-  // Real-world email domain typos (the actual use case)
-  // ---------------------------------------------------------------------------
-  it("detects 1-char typo in gmail.com", () => {
-    expect(levenshtein("gmai.com", "gmail.com")).toBe(1)
+  it("computes single character insertion", () => {
+    expect(levenshtein("cat", "cats")).toBe(1)
   })
 
-  it("detects 2-char typo in yandex.ru", () => {
-    expect(levenshtein("yandexru", "yandex.ru")).toBe(1)
+  it("computes single character deletion", () => {
+    expect(levenshtein("cats", "cat")).toBe(1)
   })
 
-  it("handles completely different strings", () => {
-    expect(levenshtein("abc", "xyz")).toBe(3)
-  })
-
-  // ---------------------------------------------------------------------------
-  // Longer strings
-  // ---------------------------------------------------------------------------
-  it("computes distance for longer inputs correctly", () => {
-    // kitten → sitting: classic benchmark = 3
+  it("computes classic kitten/sitting distance", () => {
     expect(levenshtein("kitten", "sitting")).toBe(3)
   })
 
+  it("returns length of longer string for completely different strings", () => {
+    expect(levenshtein("abc", "xyz")).toBe(3)
+  })
+
+  it("handles single-character strings", () => {
+    expect(levenshtein("a", "b")).toBe(1)
+    expect(levenshtein("a", "a")).toBe(0)
+  })
+
   it("is symmetric", () => {
-    expect(levenshtein("abc", "abcd")).toBe(levenshtein("abcd", "abc"))
+    expect(levenshtein("abc", "def")).toBe(levenshtein("def", "abc"))
+  })
+
+  it("handles longer strings", () => {
+    // "sunday" → "saturday": distance 3
+    expect(levenshtein("sunday", "saturday")).toBe(3)
+  })
+
+  it("handles case sensitivity", () => {
+    expect(levenshtein("Hello", "hello")).toBe(1)
+  })
+
+  it("handles strings of very different lengths", () => {
+    expect(levenshtein("a", "abcdefgh")).toBe(7)
+  })
+
+  it("handles email domain typo detection", () => {
+    // Practical use case: detecting email domain typos
+    expect(levenshtein("gmail.com", "gmai.com")).toBe(1)
+    expect(levenshtein("gmail.com", "gmial.com")).toBe(2)
   })
 })

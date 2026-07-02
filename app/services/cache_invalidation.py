@@ -77,7 +77,7 @@ async def register_key_with_tags(key: str, ttl_seconds: int = 3600) -> None:
             pipe.sadd(tag_index_key, key)
             pipe.expire(tag_index_key, ttl_seconds)
         await pipe.execute()
-    except (ConnectionError, TimeoutError, OSError) as exc:  # pragma: no cover
+    except (ConnectionError, TimeoutError, OSError) as exc:
         # RZ-20-04 (audit 2026-03-24): Narrowed from bare Exception to
         # connection/timeout family — logic bugs (TypeError, KeyError) now
         # propagate instead of being silently swallowed.
@@ -110,7 +110,7 @@ async def invalidate_by_tag(tag: CacheTag) -> int:
 
         logger.info("Invalidated %d keys for tag %s", len(keys), tag)
         return len(keys)
-    except (ConnectionError, TimeoutError, OSError) as exc:  # pragma: no cover
+    except (ConnectionError, TimeoutError, OSError) as exc:
         # RZ-20-04: Narrowed — Redis unavailability is the expected failure mode.
         logger.warning("Failed to invalidate tag %s: %s", tag, exc)
         return 0

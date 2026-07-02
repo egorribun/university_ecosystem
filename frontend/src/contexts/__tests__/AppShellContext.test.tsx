@@ -1,0 +1,328 @@
+import { renderHook, act } from "@testing-library/react"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
+import type { ReactNode } from "react"
+
+import { AppShellProvider, useAppShell } from "@/contexts/AppShellContext"
+
+const wrapper = ({ children }: { children: ReactNode }) => (
+  <AppShellProvider>{children}</AppShellProvider>
+)
+
+beforeEach(() => {
+  document.body.classList.remove("blurred")
+  document.body.style.overflow = ""
+  window.sessionStorage.clear()
+})
+
+afterEach(() => {
+  vi.restoreAllMocks()
+  document.body.classList.remove("blurred")
+  document.body.style.overflow = ""
+})
+
+describe("AppShellContext", () => {
+  describe("useAppShell hook", () => {
+    it("throws when used outside AppShellProvider", () => {
+      const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {})
+
+      expect(() => {
+        renderHook(() => useAppShell())
+      }).toThrow(/useAppShell must be used within an AppShellProvider/)
+
+      errorSpy.mockRestore()
+    })
+
+    it("returns expected shape inside AppShellProvider", () => {
+      const { result } = renderHook(() => useAppShell(), { wrapper })
+
+      expect(result.current).toMatchObject({
+        setOverlayState: expect.any(Function),
+        scrollToTop: expect.any(Function),
+        markScrollSnapshot: expect.any(Function),
+        restoreScrollIfNeeded: expect.any(Function),
+      })
+    })
+  })
+
+  describe("setOverlayState", () => {
+    it("adds 'blurred' class to body when blurred=true", () => {
+      const { result } = renderHook(() => useAppShell(), { wrapper })
+
+      act(() => {
+        result.current.setOverlayState("modal-1", { blurred: true, scrollLocked: false })
+      })
+
+      expect(document.body.classList.contains("blurred")).toBe(true)
+    })
+
+    it("sets overflow hidden on body when scrollLocked=true", () => {
+      const { result } = renderHook(() => useAppShell(), { wrapper })
+
+      act(() => {
+        result.current.setOverlayState("modal-1", { blurred: false, scrollLocked: true })
+      })
+
+      expect(document.body.style.overflow).toBe("hidden")
+    })
+
+    it("does not add 'blurred' when blurred=false", () => {
+      const { result } = renderHook(() => useAppShell(), { wrapper })
+
+      act(() => {
+        result.current.setOverlayState("modal-1", { blurred: false, scrollLocked: false })
+      })
+
+      expect(document.body.classList.contains("blurred")).toBe(false)
+    })
+
+    it("aggregates overlay state — any blurred → blurred", () => {
+      const { result } = renderHook(() => useAppShell(), { wrapper })
+
+      act(() => {
+        result.current.setOverlayState("overlay-a", { blurred: false, scrollLocked: false })
+        result.current.setOverlayState("overlay-b", { blurred: true, scrollLocked: false })
+      })
+
+      expect(document.body.classList.contains("blurred")).toBe(true)
+    })
+
+    it("aggregates overlay state — any locked → locked", () => {
+      const { result } = renderHook(() => useAppShell(), { wrapper })
+
+      act(() => {
+        result.current.setOverlayState("overlay-a", { blurred: false, scrollLocked: false })
+        result.current.setOverlayState("overlay-b", { blurred: false, scrollLocked: true })
+      })
+
+      expect(document.body.style.overflow).toBe("hidden")
+    })
+
+    it("removing overlay (null state) recalculates aggregated state", () => {
+      const { result } = renderHook(() => useAppShell(), { wrapper })
+
+      act(() => {
+        result.current.setOverlayState("overlay-a", { blurred: true, scrollLocked: true })
+        result.current.setOverlayState("overlay-b", { blurred: true, scrollLocked: false })
+      })
+
+      expect(document.body.classList.contains("blurred")).toBe(true)
+
+      act(() => {
+        result.current.setOverlayState("overlay-a", null)
+      })
+
+      // overlay-b still has blurred=true
+      expect(document.body.classList.contains("blurred")).toBe(true)
+
+      act(() => {
+        result.current.setOverlayState("overlay-b", null)
+      })
+
+      // No more overlays — blurred removed
+      expect(document.body.classList.contains("blurred")).toBe(false)
+      expect(document.body.style.overflow).not.toBe("hidden")
+    })
+
+    it("removing scroll-locked overlay restores previous overflow", () => {
+      const { result } = renderHook(() => useAppShell(), { wrapper })
+
+      act(() => {
+        result.current.setOverlayState("modal-1", { blurred: false, scrollLocked: true })
+      })
+      expect(document.body.style.overflow).toBe("hidden")
+
+      act(() => {
+        result.current.setOverlayState("modal-1", null)
+      })
+      expect(document.body.style.overflow).not.toBe("hidden")
+    })
+  })
+
+  describe("scrollToTop", () => {
+    it("calls scrollTo on the scroll root element", () => {
+      // Create a scrollable element for getScrollRoot to find
+      const scrollRoot = document.createElement("div")
+      scrollRoot.setAttribute("data-scroll-root", "")
+      Object.defineProperty(scrollRoot, "scrollHeight", { value: 2000, configurable: true })
+      Object.defineProperty(scrollRoot, "clientHeight", { value: 500, configurable: true })
+      scrollRoot.scrollTop = 500
+      vi.spyOn(window, "getComputedStyle").mockReturnValue({
+        overflowY: "auto",
+      } as CSSStyleDeclaration)
+
+      scrollRoot.scrollTo = vi.fn()
+      document.body.appendChild(scrollRoot)
+
+      const { result } = renderHook(() => useAppShell(), { wrapper })
+
+      act(() => {
+        result.current.scrollToTop("auto")
+      })
+
+      expect(scrollRoot.scrollTo).toHaveBeenCalledWith({ top: 0, behavior: "auto" })
+
+      document.body.removeChild(scrollRoot)
+    })
+
+    it("uses smooth behavior when no behavior specified and no reduced motion", () => {
+      const scrollRoot = document.createElement("div")
+      scrollRoot.setAttribute("data-scroll-root", "")
+      Object.defineProperty(scrollRoot, "scrollHeight", { value: 2000, configurable: true })
+      Object.defineProperty(scrollRoot, "clientHeight", { value: 500, configurable: true })
+      vi.spyOn(window, "getComputedStyle").mockReturnValue({
+        overflowY: "auto",
+      } as CSSStyleDeclaration)
+
+      scrollRoot.scrollTo = vi.fn()
+      document.body.appendChild(scrollRoot)
+
+      // Mock matchMedia to report no reduced motion preference
+      vi.spyOn(window, "matchMedia").mockReturnValue({
+        matches: false,
+        media: "(prefers-reduced-motion: reduce)",
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+      } as unknown as MediaQueryList)
+
+      const { result } = renderHook(() => useAppShell(), { wrapper })
+
+      act(() => {
+        result.current.scrollToTop()
+      })
+
+      expect(scrollRoot.scrollTo).toHaveBeenCalledWith({ top: 0, behavior: "smooth" })
+
+      document.body.removeChild(scrollRoot)
+    })
+  })
+
+  describe("markScrollSnapshot / restoreScrollIfNeeded", () => {
+    it("markScrollSnapshot stores flag when scroll position is near bottom", () => {
+      const scrollRoot = document.createElement("div")
+      scrollRoot.setAttribute("data-scroll-root", "")
+      Object.defineProperty(scrollRoot, "scrollHeight", { value: 1000, configurable: true })
+      Object.defineProperty(scrollRoot, "clientHeight", { value: 500, configurable: true })
+      Object.defineProperty(scrollRoot, "scrollTop", {
+        value: 490,
+        writable: true,
+        configurable: true,
+      })
+      vi.spyOn(window, "getComputedStyle").mockReturnValue({
+        overflowY: "auto",
+      } as CSSStyleDeclaration)
+
+      document.body.appendChild(scrollRoot)
+
+      const { result } = renderHook(() => useAppShell(), { wrapper })
+
+      act(() => {
+        result.current.markScrollSnapshot()
+      })
+
+      expect(window.sessionStorage.getItem("__scrollTopNext")).toBe("1")
+
+      document.body.removeChild(scrollRoot)
+    })
+
+    it("markScrollSnapshot does NOT store flag when not near bottom", () => {
+      const scrollRoot = document.createElement("div")
+      scrollRoot.setAttribute("data-scroll-root", "")
+      Object.defineProperty(scrollRoot, "scrollHeight", { value: 2000, configurable: true })
+      Object.defineProperty(scrollRoot, "clientHeight", { value: 500, configurable: true })
+      Object.defineProperty(scrollRoot, "scrollTop", {
+        value: 100,
+        writable: true,
+        configurable: true,
+      })
+      vi.spyOn(window, "getComputedStyle").mockReturnValue({
+        overflowY: "auto",
+      } as CSSStyleDeclaration)
+
+      document.body.appendChild(scrollRoot)
+
+      const { result } = renderHook(() => useAppShell(), { wrapper })
+
+      act(() => {
+        result.current.markScrollSnapshot()
+      })
+
+      expect(window.sessionStorage.getItem("__scrollTopNext")).toBeNull()
+
+      document.body.removeChild(scrollRoot)
+    })
+
+    it("restoreScrollIfNeeded consumes flag and scrolls to top", () => {
+      window.sessionStorage.setItem("__scrollTopNext", "1")
+
+      const scrollRoot = document.createElement("div")
+      scrollRoot.setAttribute("data-scroll-root", "")
+      Object.defineProperty(scrollRoot, "scrollHeight", { value: 2000, configurable: true })
+      Object.defineProperty(scrollRoot, "clientHeight", { value: 500, configurable: true })
+      vi.spyOn(window, "getComputedStyle").mockReturnValue({
+        overflowY: "auto",
+      } as CSSStyleDeclaration)
+
+      scrollRoot.scrollTo = vi.fn()
+      document.body.appendChild(scrollRoot)
+
+      vi.spyOn(window, "matchMedia").mockReturnValue({
+        matches: false,
+        media: "",
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+      } as unknown as MediaQueryList)
+
+      const { result } = renderHook(() => useAppShell(), { wrapper })
+
+      act(() => {
+        result.current.restoreScrollIfNeeded()
+      })
+
+      // Flag should be consumed
+      expect(window.sessionStorage.getItem("__scrollTopNext")).toBeNull()
+
+      document.body.removeChild(scrollRoot)
+    })
+
+    it("restoreScrollIfNeeded does nothing when no flag is set", () => {
+      const scrollRoot = document.createElement("div")
+      scrollRoot.setAttribute("data-scroll-root", "")
+      Object.defineProperty(scrollRoot, "scrollHeight", { value: 2000, configurable: true })
+      Object.defineProperty(scrollRoot, "clientHeight", { value: 500, configurable: true })
+      vi.spyOn(window, "getComputedStyle").mockReturnValue({
+        overflowY: "auto",
+      } as CSSStyleDeclaration)
+
+      scrollRoot.scrollTo = vi.fn()
+      document.body.appendChild(scrollRoot)
+
+      const { result } = renderHook(() => useAppShell(), { wrapper })
+
+      act(() => {
+        result.current.restoreScrollIfNeeded()
+      })
+
+      expect(scrollRoot.scrollTo).not.toHaveBeenCalled()
+
+      document.body.removeChild(scrollRoot)
+    })
+  })
+
+  describe("cleanup on unmount", () => {
+    it("removes 'blurred' class and resets overflow on unmount", () => {
+      const { result, unmount } = renderHook(() => useAppShell(), { wrapper })
+
+      act(() => {
+        result.current.setOverlayState("modal-1", { blurred: true, scrollLocked: true })
+      })
+
+      expect(document.body.classList.contains("blurred")).toBe(true)
+      expect(document.body.style.overflow).toBe("hidden")
+
+      unmount()
+
+      expect(document.body.classList.contains("blurred")).toBe(false)
+      expect(document.body.style.overflow).toBe("")
+    })
+  })
+})

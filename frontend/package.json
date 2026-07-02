@@ -182,7 +182,8 @@
     "workbox-routing": "^7.4.0",
     "workbox-strategies": "^7.4.0",
     "workbox-window": "^7.3.0",
-    "zod": "^3.25.76"
+    "zod": "^3.25.76",
+    "@babel/core": "^7.26.0"
   },
   "description": "",
   "lint-staged": {
@@ -199,7 +200,13 @@
     "serialize-javascript": ">=7.0.5",
     "basic-ftp": ">=5.3.1",
     "tar": ">=7.5.11",
-    "undici": ">=7.24.0",
+    "undici": ">=8.5.0",
+    "dompurify": ">=3.4.11",
+    "form-data": ">=4.0.6",
+    "protobufjs": ">=8.6.0",
+    "js-yaml": "4.2.0",
+    "lodash": ">=4.17.24",
+    "@opentelemetry/core": ">=1.30.1 <2.0.0",
     "uuid": ">=14.0.0",
     "lighthouse": "^13.1.0"
   }

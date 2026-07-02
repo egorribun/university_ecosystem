@@ -77,7 +77,7 @@ async def cleanup_stale_email_change_tokens(
     total = updated_count + removed_count
     if total:
         logger.info(
-            "Cleaned %s email change tokens (marked=%s, removed=%s)",
+            "Cleaned %s pending address-change records (marked=%s, removed=%s)",
             total,
             updated_count,
             removed_count,
@@ -117,7 +117,7 @@ async def start_email_change_cleanup_scheduler(
                         run.observe_deleted(cleaned)
                 except asyncio.CancelledError:
                     raise
-                except (OSError, ConnectionError):  # pragma: no cover
+                except (OSError, ConnectionError):
                     # RZ-20-04 (audit 2026-03-24): Narrowed — DB/network errors only.
                     # Logic bugs (TypeError, KeyError) now propagate to Sentry.
                     logger.exception("Failed to cleanup email change tokens")
@@ -141,5 +141,5 @@ async def start_email_change_cleanup_scheduler(
     return _stop
 
 
-if __name__ == "__main__":  # pragma: no cover - convenience entrypoint
+if __name__ == "__main__":
     asyncio.run(cleanup_stale_email_change_tokens())

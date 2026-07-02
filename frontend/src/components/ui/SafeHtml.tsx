@@ -39,5 +39,6 @@ export default function SafeHtml({ html, className, fallback }: SafeHtmlProps) {
     return <span className={className}>{textOnly}</span>
   }
 
+  // nosemgrep: typescript.react.security.audit.react-dangerouslysetinnerhtml.react-dangerouslysetinnerhtml
   return <div className={className} dangerouslySetInnerHTML={{ __html: sanitized }} />
 }

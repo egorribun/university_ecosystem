@@ -9,27 +9,6 @@ npm:
       reason: |
         Tailwind CSS 3.x pulls in sucrase's glob CLI; pinning ensures we stay on the patched release until the Tailwind 4 upgrade.
   advisories:
-    - id: "1112818"
-      package: "@isaacs/brace-expansion"
-      owner: frontend@university.example
-      expires: 2026-06-30
-      reason: |
-        Critical DoS vulnerability (GHSA-7h2j-956f-4vf2) in brace-expansion.
-        Allowing temporarily until downstream dependencies (likely vite or storybook) patch this.
-    - id: "1112862"
-      package: "@isaacs/brace-expansion"
-      owner: frontend@university.example
-      expires: 2026-06-30
-      reason: |
-        Uncontrolled Resource Consumption (GHSA-7h2j-956f-4vf2) in brace-expansion.
-        Adding specific source ID from npm audit report to the allowlist.
-    - id: "1112954"
-      package: "@isaacs/brace-expansion"
-      owner: frontend@university.example
-      expires: 2026-06-30
-      reason: |
-        Uncontrolled Resource Consumption (GHSA-7h2j-956f-4vf2) in brace-expansion.
-        Another source ID for the same vulnerability found in recent audit.
     - id: "1115382"
       package: picomatch
       owner: frontend@university.example

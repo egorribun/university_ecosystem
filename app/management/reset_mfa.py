@@ -132,7 +132,7 @@ def main() -> None:
     args = parser.parse_args()
     try:
         asyncio.run(_async_main(args))
-    except ValueError as exc:  # pragma: no cover - CLI feedback
+    except ValueError as exc:
         parser.error(str(exc))
 
 

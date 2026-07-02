@@ -276,7 +276,7 @@ async def test_unsupported_topic_records_skipped_topic_row(
 
     sent_calls: list = []
 
-    def _fake_send(s, payload):  # pragma: no cover — must not be called
+    def _fake_send(s, payload):
         sent_calls.append(payload)
         return WebPushResult(
             subscription_id=s.id,

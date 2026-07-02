@@ -27,12 +27,8 @@ R_co = TypeVar("R_co", covariant=True)
 class Task(Protocol[P, R_co]):
     """Protocol for NATS tasks with 'kick' method."""
 
-    async def __call__(
-        self, *args: P.args, **kwargs: P.kwargs
-    ) -> R_co: ...  # pragma: no cover
-    async def kick(
-        self, *args: P.args, **kwargs: P.kwargs
-    ) -> None: ...  # pragma: no cover
+    async def __call__(self, *args: P.args, **kwargs: P.kwargs) -> R_co: ...
+    async def kick(self, *args: P.args, **kwargs: P.kwargs) -> None: ...
 
 
 _logger = get_logger(__name__)

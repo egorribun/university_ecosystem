@@ -33,13 +33,16 @@ def upgrade() -> None:
     if not _table_exists(inspector, table_name):
         op.create_table(
             table_name,
-            sa.Column("id", sa.Integer(), primary_key=True),
+            # PostgreSQL partitioned tables require every unique/PK constraint to
+            # include all partitioning columns.  Since we partition by created_at,
+            # the PK must be (id, created_at) — not just (id).
+            sa.Column("id", sa.Integer(), nullable=False),
             sa.Column("actor_user_id", sa.Integer(), nullable=True),
             sa.Column("subject_user_id", sa.Integer(), nullable=True),
             sa.Column("resource_type", sa.String(length=64), nullable=False),
             sa.Column("resource_id", sa.String(length=128), nullable=True),
             sa.Column("action", sa.String(length=64), nullable=False),
-            sa.Column("context", sa.dialects.postgresql.JSONB(), nullable=True),
+            sa.Column("context", sa.JSON(), nullable=True),
             sa.Column("ip_address", sa.String(length=64), nullable=True),
             sa.Column("user_agent", sa.String(length=512), nullable=True),
             sa.Column(
@@ -48,13 +51,27 @@ def upgrade() -> None:
                 nullable=False,
                 server_default=sa.func.now(),
             ),
+            sa.PrimaryKeyConstraint("id", "created_at"),
             sa.ForeignKeyConstraint(
                 ["actor_user_id"], ["users.id"], ondelete="SET NULL"
             ),
             sa.ForeignKeyConstraint(
                 ["subject_user_id"], ["users.id"], ondelete="SET NULL"
             ),
+            # Declare as RANGE-partitioned so fresh CI schemas accept inserts.
+            # The DEFAULT partition below absorbs rows until monthly partitions
+            # are created by migration 202607020001.
+            postgresql_partition_by="RANGE (created_at)",
         )
+        # Create the DEFAULT partition immediately so any INSERT succeeds before
+        # the monthly-partition migration runs.
+        if bind.dialect.name == "postgresql":
+            op.execute(
+                sa.text(
+                    "CREATE TABLE IF NOT EXISTS data_access_logs_default "
+                    "PARTITION OF data_access_logs DEFAULT"
+                )
+            )
 
     inspector = sa.inspect(bind)
     existing_indexes = (

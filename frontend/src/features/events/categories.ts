@@ -6,13 +6,7 @@
  */
 
 export type EventCategory =
-  | "lecture"
-  | "seminar"
-  | "conference"
-  | "workshop"
-  | "social"
-  | "sport"
-  | "other"
+  "lecture" | "seminar" | "conference" | "workshop" | "social" | "sport" | "other"
 
 type CategoryRule = {
   id: EventCategory

@@ -20,16 +20,38 @@ def _find_event(caplog, logger_name: str, event: str) -> dict:
             continue
         try:
             payload = json.loads(record.message)
-        except json.JSONDecodeError:  # pragma: no cover - defensive guard
+        except json.JSONDecodeError:
             continue
         if payload.get("event") == event:
             return cast(dict[Any, Any], payload)
+
+    # Print diagnostics
+    logger = logging.getLogger(logger_name)
+    print(f"\n--- LOGGER DIAGNOSTICS FOR {logger_name} ---")
+    print(f"Level: {logger.level}")
+    print(f"Effective Level: {logger.getEffectiveLevel()}")
+    print(f"Propagate: {logger.propagate}")
+    print(f"Handlers: {logger.handlers}")
+    print(f"Root Handlers: {logging.getLogger().handlers}")
+    print(f"Root Level: {logging.getLogger().level}")
+    print(f"--- CAPLOG RECORDS (looking for {logger_name} / {event}) ---")
+    for r in caplog.records:
+        print(f"logger={r.name} level={r.levelname} message={r.message}")
+    print("-----------------------------------------------------------\n")
     raise AssertionError(f"event {event!r} not found for logger {logger_name!r}")
 
 
-async def test_login_success_logs_audit(async_client, user_factory, caplog):
-    caplog.set_level(logging.INFO)
+def _setup_logger(caplog, logger_name: str) -> None:
+    caplog.set_level(logging.INFO, logger=logger_name)
+    logger = logging.getLogger(logger_name)
+    logger.disabled = False
+    if hasattr(logger, "_cache"):
+        logger._cache.clear()
     caplog.clear()
+
+
+async def test_login_success_logs_audit(async_client, user_factory, caplog):
+    _setup_logger(caplog, "app.auth")
     hashed = await get_password_hash("StrongPass123!")
     user = await user_factory(hashed_password=hashed, is_active=True)
 
@@ -48,8 +70,7 @@ async def test_login_success_logs_audit(async_client, user_factory, caplog):
 
 
 async def test_login_failure_logs_audit(async_client, user_factory, caplog):
-    caplog.set_level(logging.INFO)
-    caplog.clear()
+    _setup_logger(caplog, "app.auth")
     hashed = await get_password_hash("ValidPass123!")
     user = await user_factory(hashed_password=hashed, is_active=True)
 
@@ -67,8 +88,7 @@ async def test_login_failure_logs_audit(async_client, user_factory, caplog):
 
 
 async def test_logout_revocation_logs_audit(async_client, user_factory, caplog):
-    caplog.set_level(logging.INFO)
-    caplog.clear()
+    _setup_logger(caplog, "app.auth")
     hashed = await get_password_hash("LogoutPass123!")
     user = await user_factory(hashed_password=hashed, is_active=True)
 
@@ -91,29 +111,10 @@ async def test_logout_revocation_logs_audit(async_client, user_factory, caplog):
     assert event["reason"] == "user_initiated"
 
 
-async def test_password_reset_initiation_audit(async_client, user_factory, caplog):
-    caplog.set_level(logging.INFO)
-    caplog.clear()
-    hashed = await get_password_hash("ResetInitPass123!")
-    user = await user_factory(hashed_password=hashed, is_active=True)
-
-    response = await async_client.post(
-        "/password/forgot",
-        json={"email": user.email},
-    )
-
-    assert response.status_code == 200
-
-    event = _find_event(caplog, "app.users.audit", "password.reset.initiated")
-    assert event["user_id"] == str(user.id)
-    assert event["reason"] == "initiated"
-
-
 async def test_password_reset_completed_audit(
     async_client, user_factory, db_session, caplog
 ):
-    caplog.set_level(logging.INFO)
-    caplog.clear()
+    _setup_logger(caplog, "app.users.audit")
     hashed = await get_password_hash("ResetCompletePass123!")
     user = await user_factory(hashed_password=hashed, is_active=True)
 
@@ -141,3 +142,20 @@ async def test_password_reset_completed_audit(
     event = _find_event(caplog, "app.users.audit", "password.reset.completed")
     assert event["user_id"] == str(user.id)
     assert event["reason"] == "completed"
+
+
+async def test_password_reset_initiation_audit(async_client, user_factory, caplog):
+    _setup_logger(caplog, "app.users.audit")
+    hashed = await get_password_hash("ResetInitPass123!")
+    user = await user_factory(hashed_password=hashed, is_active=True)
+
+    response = await async_client.post(
+        "/password/forgot",
+        json={"email": user.email},
+    )
+
+    assert response.status_code == 200
+
+    event = _find_event(caplog, "app.users.audit", "password.reset.initiated")
+    assert event["user_id"] == str(user.id)
+    assert event["reason"] == "initiated"

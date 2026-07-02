@@ -1,140 +1,214 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
-import { StorageItem, IS_BROWSER } from "../storage"
+import { describe, expect, it, vi, beforeEach, afterEach } from "vitest"
 
-// ---------------------------------------------------------------------------
-// Helpers — jsdom provides localStorage, so we can spy on it directly
-// ---------------------------------------------------------------------------
+const mocks = vi.hoisted(() => ({
+  logWarning: vi.fn(),
+}))
 
-describe("IS_BROWSER", () => {
-  it("is true in a jsdom environment", () => {
-    expect(IS_BROWSER).toBe(true)
-  })
+vi.mock("@/app/logger", () => ({
+  logWarning: mocks.logWarning,
+}))
+
+import { StorageItem, IS_BROWSER, pushConsentStorage, profileCacheStorage } from "@/utils/storage"
+
+beforeEach(() => {
+  vi.clearAllMocks()
+  localStorage.clear()
 })
 
-describe("StorageItem", () => {
-  beforeEach(() => {
-    localStorage.clear()
-    vi.spyOn(console, "warn").mockImplementation(() => {})
-  })
+afterEach(() => {
+  vi.restoreAllMocks()
+})
 
-  afterEach(() => {
-    vi.restoreAllMocks()
-  })
-
-  // ---------------------------------------------------------------------------
-  // get()
-  // ---------------------------------------------------------------------------
-  describe("get()", () => {
-    it("returns null (fallback) when key is not set", () => {
-      const item = new StorageItem<string>("test-key")
-      expect(item.get()).toBeNull()
-    })
-
-    it("returns provided fallback when key is not set", () => {
-      const item = new StorageItem<string>("missing-key", "default")
-      expect(item.get()).toBe("default")
-    })
-
-    it("returns parsed value when key exists", () => {
-      localStorage.setItem("my-key", JSON.stringify({ count: 42 }))
-      const item = new StorageItem<{ count: number }>("my-key")
-      expect(item.get()).toEqual({ count: 42 })
-    })
-
-    it("returns fallback and does not throw when stored JSON is corrupt", () => {
-      localStorage.setItem("bad-json", "not-valid-json{{{")
-      const item = new StorageItem<string>("bad-json", "fallback")
-      expect(item.get()).toBe("fallback")
+describe("storage utilities", () => {
+  describe("IS_BROWSER", () => {
+    it("is true in jsdom environment", () => {
+      expect(IS_BROWSER).toBe(true)
     })
   })
 
-  // ---------------------------------------------------------------------------
-  // set()
-  // ---------------------------------------------------------------------------
-  describe("set()", () => {
-    it("stores the value and returns true", () => {
-      const item = new StorageItem<number>("count-key")
-      const result = item.set(7)
-      expect(result).toBe(true)
-      expect(JSON.parse(localStorage.getItem("count-key")!)).toBe(7)
+  describe("StorageItem", () => {
+    describe("get()", () => {
+      it("returns fallback when key does not exist", () => {
+        const item = new StorageItem<string>("nonexistent", "default")
+        expect(item.get()).toBe("default")
+      })
+
+      it("returns null fallback by default", () => {
+        const item = new StorageItem<string>("nonexistent")
+        expect(item.get()).toBeNull()
+      })
+
+      it("returns parsed JSON value from localStorage", () => {
+        localStorage.setItem("test-key", JSON.stringify({ name: "Alice" }))
+        const item = new StorageItem<{ name: string }>("test-key")
+        expect(item.get()).toEqual({ name: "Alice" })
+      })
+
+      it("returns string value from localStorage", () => {
+        localStorage.setItem("test-string", JSON.stringify("hello"))
+        const item = new StorageItem<string>("test-string")
+        expect(item.get()).toBe("hello")
+      })
+
+      it("returns number value from localStorage", () => {
+        localStorage.setItem("test-num", JSON.stringify(42))
+        const item = new StorageItem<number>("test-num")
+        expect(item.get()).toBe(42)
+      })
+
+      it("returns boolean value from localStorage", () => {
+        localStorage.setItem("test-bool", JSON.stringify(true))
+        const item = new StorageItem<boolean>("test-bool")
+        expect(item.get()).toBe(true)
+      })
+
+      it("returns fallback on JSON parse error", () => {
+        localStorage.setItem("bad-json", "{invalid json")
+        const item = new StorageItem<object>("bad-json", { fallback: true })
+        expect(item.get()).toEqual({ fallback: true })
+      })
+
+      it("logs warning on parse error", () => {
+        localStorage.setItem("bad-json", "not-json")
+        const item = new StorageItem<string>("bad-json")
+        item.get()
+        // logWarning called once with descriptive message
+        expect(mocks.logWarning).toHaveBeenCalled()
+      })
     })
 
-    it("dispatches a StorageEvent with the new serialized value", () => {
-      const item = new StorageItem<string>("event-key")
-      const events: StorageEvent[] = []
-      window.addEventListener("storage", (e) => events.push(e))
-      item.set("hello")
-      window.removeEventListener("storage", (e) => events.push(e))
+    describe("set()", () => {
+      it("writes JSON-serialized value to localStorage", () => {
+        const item = new StorageItem<{ count: number }>("test-set")
+        item.set({ count: 5 })
+        expect(JSON.parse(localStorage.getItem("test-set")!)).toEqual({ count: 5 })
+      })
 
-      const storageEvent = events.find((e) => e.key === "event-key")
-      expect(storageEvent).toBeDefined()
-      expect(storageEvent?.newValue).toBe(JSON.stringify("hello"))
+      it("returns true on success", () => {
+        const item = new StorageItem<string>("test-success")
+        expect(item.set("value")).toBe(true)
+      })
+
+      it("dispatches StorageEvent for same-tab sync", () => {
+        const listener = vi.fn()
+        window.addEventListener("storage", listener)
+
+        const item = new StorageItem<string>("test-event")
+        item.set("hello")
+
+        expect(listener).toHaveBeenCalledWith(
+          expect.objectContaining({
+            key: "test-event",
+            newValue: JSON.stringify("hello"),
+          })
+        )
+
+        window.removeEventListener("storage", listener)
+      })
+
+      it("returns false on QuotaExceededError", () => {
+        vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+          throw new DOMException("Quota exceeded", "QuotaExceededError")
+        })
+
+        const item = new StorageItem<string>("quota-fail")
+        expect(item.set("data")).toBe(false)
+      })
+
+      it("dispatches StorageEvent with null newValue on QuotaExceededError", () => {
+        vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+          throw new DOMException("Quota exceeded", "QuotaExceededError")
+        })
+
+        const listener = vi.fn()
+        window.addEventListener("storage", listener)
+
+        const item = new StorageItem<string>("quota-event")
+        item.set("data")
+
+        expect(listener).toHaveBeenCalledWith(
+          expect.objectContaining({
+            key: "quota-event",
+            newValue: null,
+          })
+        )
+
+        window.removeEventListener("storage", listener)
+      })
+
+      it("logs warning on error", () => {
+        vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+          throw new Error("Storage error")
+        })
+
+        const item = new StorageItem<string>("error-log")
+        item.set("data")
+        expect(mocks.logWarning).toHaveBeenCalled()
+      })
     })
 
-    it("overwrites a previously stored value", () => {
-      const item = new StorageItem<number>("overwrite-key")
-      item.set(1)
-      item.set(2)
-      expect(item.get()).toBe(2)
+    describe("remove()", () => {
+      it("removes item from localStorage", () => {
+        localStorage.setItem("to-remove", JSON.stringify("val"))
+        const item = new StorageItem<string>("to-remove")
+        item.remove()
+        expect(localStorage.getItem("to-remove")).toBeNull()
+      })
+
+      it("dispatches StorageEvent with null newValue", () => {
+        localStorage.setItem("to-remove-event", JSON.stringify("val"))
+        const listener = vi.fn()
+        window.addEventListener("storage", listener)
+
+        const item = new StorageItem<string>("to-remove-event")
+        item.remove()
+
+        expect(listener).toHaveBeenCalledWith(
+          expect.objectContaining({
+            key: "to-remove-event",
+            newValue: null,
+          })
+        )
+
+        window.removeEventListener("storage", listener)
+      })
+
+      it("handles error gracefully", () => {
+        vi.spyOn(Storage.prototype, "removeItem").mockImplementation(() => {
+          throw new Error("Remove failed")
+        })
+
+        const item = new StorageItem<string>("remove-error")
+        // Should not throw
+        expect(() => item.remove()).not.toThrow()
+        expect(mocks.logWarning).toHaveBeenCalled()
+      })
     })
 
-    it("stores complex objects with JSON serialization", () => {
-      const item = new StorageItem<{ a: number; b: string }>("obj-key")
-      item.set({ a: 1, b: "two" })
-      expect(item.get()).toEqual({ a: 1, b: "two" })
+    describe("exists()", () => {
+      it("returns true when key exists", () => {
+        localStorage.setItem("exists-key", "value")
+        const item = new StorageItem<string>("exists-key")
+        expect(item.exists()).toBe(true)
+      })
+
+      it("returns false when key does not exist", () => {
+        const item = new StorageItem<string>("missing-key")
+        expect(item.exists()).toBe(false)
+      })
     })
   })
 
-  // ---------------------------------------------------------------------------
-  // remove()
-  // ---------------------------------------------------------------------------
-  describe("remove()", () => {
-    it("removes an existing key", () => {
-      const item = new StorageItem<string>("rm-key")
-      item.set("value")
-      item.remove()
-      expect(localStorage.getItem("rm-key")).toBeNull()
+  describe("pre-defined storage instances", () => {
+    it("pushConsentStorage has correct key", () => {
+      pushConsentStorage.set("granted")
+      expect(localStorage.getItem("push-notification-consent")).toBe(JSON.stringify("granted"))
     })
 
-    it("does not throw when removing a non-existent key", () => {
-      const item = new StorageItem<string>("nonexistent")
-      expect(() => item.remove()).not.toThrow()
-    })
-
-    it("dispatches a StorageEvent with newValue=null on removal", () => {
-      const item = new StorageItem<string>("rm-event-key")
-      item.set("data")
-
-      const events: StorageEvent[] = []
-      window.addEventListener("storage", (e) => events.push(e))
-      item.remove()
-      window.removeEventListener("storage", (e) => events.push(e))
-
-      const storageEvent = events.find((e) => e.key === "rm-event-key")
-      expect(storageEvent).toBeDefined()
-      expect(storageEvent?.newValue).toBeNull()
-    })
-  })
-
-  // ---------------------------------------------------------------------------
-  // exists()
-  // ---------------------------------------------------------------------------
-  describe("exists()", () => {
-    it("returns false when key is not set", () => {
-      expect(new StorageItem<string>("absent").exists()).toBe(false)
-    })
-
-    it("returns true when key is set", () => {
-      const item = new StorageItem<string>("present")
-      item.set("value")
-      expect(item.exists()).toBe(true)
-    })
-
-    it("returns false after removing the key", () => {
-      const item = new StorageItem<string>("was-present")
-      item.set("v")
-      item.remove()
-      expect(item.exists()).toBe(false)
+    it("profileCacheStorage has correct key", () => {
+      const data = { name: "test" }
+      profileCacheStorage.set(data)
+      expect(localStorage.getItem("sub-profile-cache")).toBe(JSON.stringify(data))
     })
   })
 })

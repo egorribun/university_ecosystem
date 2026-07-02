@@ -5,11 +5,7 @@
  */
 
 export type SnackbarKey =
-  | "spotifyConnected"
-  | "spotifyError"
-  | "copied"
-  | "profileUpdated"
-  | "error"
+  "spotifyConnected" | "spotifyError" | "copied" | "profileUpdated" | "error"
 
 export type SnackbarState = {
   key?: SnackbarKey

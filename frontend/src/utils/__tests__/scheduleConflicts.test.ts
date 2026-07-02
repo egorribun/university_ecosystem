@@ -1,137 +1,137 @@
-import { describe, expect, it } from "vitest"
-import { detectConflicts } from "../scheduleConflicts"
-import type { Lesson } from "@/components/schedule/scheduleUtils"
+import { describe, expect, it, vi } from "vitest"
 
-// ---------------------------------------------------------------------------
-// Factory helper — builds a minimal Lesson object
-// ---------------------------------------------------------------------------
-const makeLesson = (id: string, weekday: string, startTime: string, endTime: string): Lesson => ({
-  id,
-  weekday,
+const mocks = vi.hoisted(() => ({
+  parseMinutes: vi.fn((s: string | null | undefined): number | null => {
+    if (!s) return null
+    const match = /(\d{2}):(\d{2})/.exec(s)
+    if (match) {
+      const h = Number(match[1])
+      const m = Number(match[2])
+      if (h >= 0 && h <= 23 && m >= 0 && m <= 59) return h * 60 + m
+    }
+    return null
+  }),
+  getTimeStr: vi.fn((lesson: { start_time: string | null }) => {
+    if (!lesson?.start_time) return ""
+    const match = /(\d{2}):(\d{2})/.exec(lesson.start_time)
+    return match ? `${match[1]}:${match[2]}` : ""
+  }),
+}))
+
+vi.mock("@/components/schedule/scheduleUtils", () => ({
+  parseMinutes: mocks.parseMinutes,
+  getTimeStr: mocks.getTimeStr,
+}))
+
+import { detectConflicts } from "@/utils/scheduleConflicts"
+
+type TestLesson = {
+  id: string
+  weekday: string
+  parity: "both"
+  start_time: string | null
+  end_time: string | null
+}
+
+const makeLesson = (overrides: Partial<TestLesson> & { id: string }): TestLesson => ({
+  weekday: "Monday",
   parity: "both",
-  start_time: startTime,
-  end_time: endTime,
+  start_time: "09:00",
+  end_time: "10:30",
+  ...overrides,
 })
 
-describe("detectConflicts", () => {
-  // ---------------------------------------------------------------------------
-  // Empty / trivial
-  // ---------------------------------------------------------------------------
-  it("returns an empty set for no lessons", () => {
-    expect(detectConflicts([])).toEqual(new Set())
+describe("scheduleConflicts — detectConflicts", () => {
+  it("returns empty set for empty lessons array", () => {
+    const result = detectConflicts([])
+    expect(result.size).toBe(0)
   })
 
-  it("returns an empty set for a single lesson", () => {
-    const lessons = [makeLesson("a", "Monday", "09:00", "10:30")]
-    expect(detectConflicts(lessons)).toEqual(new Set())
+  it("returns empty set for a single lesson", () => {
+    const result = detectConflicts([makeLesson({ id: "1" })])
+    expect(result.size).toBe(0)
   })
 
-  // ---------------------------------------------------------------------------
-  // No conflict — lessons are consecutive
-  // ---------------------------------------------------------------------------
-  it("returns empty set when lessons are back-to-back (no overlap)", () => {
+  it("returns empty set when lessons are on different days", () => {
     const lessons = [
-      makeLesson("a", "Monday", "09:00", "10:30"),
-      makeLesson("b", "Monday", "10:30", "12:00"), // starts exactly when first ends
-    ]
-    expect(detectConflicts(lessons)).toEqual(new Set())
-  })
-
-  it("returns empty set when lessons on the same day do not overlap", () => {
-    const lessons = [
-      makeLesson("a", "Monday", "09:00", "10:00"),
-      makeLesson("b", "Monday", "11:00", "12:00"),
-    ]
-    expect(detectConflicts(lessons)).toEqual(new Set())
-  })
-
-  // ---------------------------------------------------------------------------
-  // Conflict detected
-  // ---------------------------------------------------------------------------
-  it("flags two overlapping lessons", () => {
-    const lessons = [
-      makeLesson("a", "Monday", "09:00", "11:00"),
-      makeLesson("b", "Monday", "10:00", "12:00"),
+      makeLesson({ id: "1", weekday: "Monday", start_time: "09:00", end_time: "10:30" }),
+      makeLesson({ id: "2", weekday: "Tuesday", start_time: "09:00", end_time: "10:30" }),
     ]
     const result = detectConflicts(lessons)
-    expect(result).toContain("a")
-    expect(result).toContain("b")
-    expect(result.size).toBe(2)
+    expect(result.size).toBe(0)
   })
 
-  it("flags lesson fully contained inside another", () => {
+  it("returns empty set for adjacent (non-overlapping) lessons", () => {
     const lessons = [
-      makeLesson("outer", "Tuesday", "08:00", "14:00"),
-      makeLesson("inner", "Tuesday", "10:00", "11:00"),
+      makeLesson({ id: "1", weekday: "Monday", start_time: "09:00", end_time: "10:30" }),
+      makeLesson({ id: "2", weekday: "Monday", start_time: "10:30", end_time: "12:00" }),
     ]
     const result = detectConflicts(lessons)
-    expect(result).toContain("outer")
-    expect(result).toContain("inner")
+    expect(result.size).toBe(0)
   })
 
-  it("flags three-way conflict on one day", () => {
+  it("detects two overlapping lessons on the same day", () => {
     const lessons = [
-      makeLesson("x", "Wednesday", "09:00", "11:00"),
-      makeLesson("y", "Wednesday", "10:00", "12:00"),
-      makeLesson("z", "Wednesday", "10:30", "11:30"),
+      makeLesson({ id: "1", weekday: "Monday", start_time: "09:00", end_time: "10:30" }),
+      makeLesson({ id: "2", weekday: "Monday", start_time: "10:00", end_time: "11:30" }),
     ]
     const result = detectConflicts(lessons)
-    expect(result.size).toBe(3)
+    expect(result.has("1")).toBe(true)
+    expect(result.has("2")).toBe(true)
   })
 
-  // ---------------------------------------------------------------------------
-  // Cross-day isolation — conflicts on different days must not bleed through
-  // ---------------------------------------------------------------------------
-  it("does not flag lessons on different days with identical times", () => {
+  it("detects fully contained lesson as conflict", () => {
     const lessons = [
-      makeLesson("mon", "Monday", "09:00", "10:30"),
-      makeLesson("tue", "Tuesday", "09:00", "10:30"),
-    ]
-    expect(detectConflicts(lessons)).toEqual(new Set())
-  })
-
-  it("detects conflict only on the affected day when another day is clean", () => {
-    const lessons = [
-      // Monday conflict
-      makeLesson("a", "Monday", "09:00", "11:00"),
-      makeLesson("b", "Monday", "10:00", "12:00"),
-      // Tuesday clean
-      makeLesson("c", "Tuesday", "09:00", "10:00"),
+      makeLesson({ id: "1", weekday: "Monday", start_time: "09:00", end_time: "12:00" }),
+      makeLesson({ id: "2", weekday: "Monday", start_time: "10:00", end_time: "11:00" }),
     ]
     const result = detectConflicts(lessons)
-    expect(result).toContain("a")
-    expect(result).toContain("b")
-    expect(result).not.toContain("c")
+    expect(result.has("1")).toBe(true)
+    expect(result.has("2")).toBe(true)
   })
 
-  // ---------------------------------------------------------------------------
-  // Null / missing times — must not throw
-  // ---------------------------------------------------------------------------
-  it("skips lessons with null start_time without throwing", () => {
+  it("detects multiple conflicts among three lessons", () => {
     const lessons = [
-      {
-        id: "null-start",
-        weekday: "Monday",
-        parity: "both" as const,
-        start_time: null,
-        end_time: "10:00",
-      },
-      makeLesson("ok", "Monday", "09:00", "10:00"),
+      makeLesson({ id: "1", weekday: "Monday", start_time: "09:00", end_time: "10:30" }),
+      makeLesson({ id: "2", weekday: "Monday", start_time: "10:00", end_time: "11:30" }),
+      makeLesson({ id: "3", weekday: "Monday", start_time: "11:00", end_time: "12:30" }),
     ]
-    expect(() => detectConflicts(lessons)).not.toThrow()
+    const result = detectConflicts(lessons)
+    // 1 overlaps with 2, 2 overlaps with 3
+    expect(result.has("1")).toBe(true)
+    expect(result.has("2")).toBe(true)
+    expect(result.has("3")).toBe(true)
   })
 
-  it("skips lessons with null end_time without throwing", () => {
+  it("only flags lessons that actually overlap (not unrelated ones)", () => {
     const lessons = [
-      {
-        id: "null-end",
-        weekday: "Monday",
-        parity: "both" as const,
-        start_time: "09:00",
-        end_time: null,
-      },
-      makeLesson("ok", "Monday", "11:00", "12:00"),
+      makeLesson({ id: "1", weekday: "Monday", start_time: "09:00", end_time: "10:00" }),
+      makeLesson({ id: "2", weekday: "Monday", start_time: "09:30", end_time: "10:30" }),
+      makeLesson({ id: "3", weekday: "Monday", start_time: "14:00", end_time: "15:30" }),
     ]
-    expect(() => detectConflicts(lessons)).not.toThrow()
+    const result = detectConflicts(lessons)
+    expect(result.has("1")).toBe(true)
+    expect(result.has("2")).toBe(true)
+    expect(result.has("3")).toBe(false)
+  })
+
+  it("skips lessons with null start_time or end_time", () => {
+    const lessons = [
+      makeLesson({ id: "1", weekday: "Monday", start_time: "09:00", end_time: "10:30" }),
+      makeLesson({ id: "2", weekday: "Monday", start_time: null, end_time: "11:30" }),
+    ]
+    const result = detectConflicts(lessons)
+    expect(result.size).toBe(0)
+  })
+
+  it("handles conflicts across different days independently", () => {
+    const lessons = [
+      makeLesson({ id: "1", weekday: "Monday", start_time: "09:00", end_time: "10:30" }),
+      makeLesson({ id: "2", weekday: "Monday", start_time: "10:00", end_time: "11:30" }),
+      makeLesson({ id: "3", weekday: "Tuesday", start_time: "09:00", end_time: "10:30" }),
+      makeLesson({ id: "4", weekday: "Tuesday", start_time: "10:00", end_time: "11:30" }),
+    ]
+    const result = detectConflicts(lessons)
+    expect(result.size).toBe(4)
   })
 })

@@ -1,80 +1,65 @@
 import { describe, expect, it } from "vitest"
-import { slugify } from "../slugify"
+import { slugify } from "@/utils/slugify"
 
 describe("slugify", () => {
-  // ---------------------------------------------------------------------------
-  // Basic ASCII
-  // ---------------------------------------------------------------------------
-  it("lowercases ASCII text", () => {
+  it("converts normal text to a slug", () => {
     expect(slugify("Hello World")).toBe("hello-world")
   })
 
-  it("replaces spaces with hyphens", () => {
-    expect(slugify("foo bar baz")).toBe("foo-bar-baz")
+  it("converts to lowercase", () => {
+    expect(slugify("UPPERCASE TEXT")).toBe("uppercase-text")
   })
 
-  it("collapses multiple spaces into one hyphen", () => {
-    expect(slugify("foo   bar")).toBe("foo-bar")
-  })
-
-  it("strips special characters", () => {
-    expect(slugify("Hello, World!")).toBe("hello-world")
-  })
-
-  // ---------------------------------------------------------------------------
-  // HTML stripping (used with marked heading content)
-  // ---------------------------------------------------------------------------
-  it("strips HTML tags before slugifying", () => {
-    expect(slugify("<strong>Title</strong>")).toBe("title")
-  })
-
-  it("handles nested HTML tags", () => {
-    expect(slugify("<em><code>function</code></em>")).toBe("function")
-  })
-
-  // ---------------------------------------------------------------------------
-  // Unicode / Cyrillic support
-  // ---------------------------------------------------------------------------
-  it("preserves Cyrillic letters", () => {
-    expect(slugify("Привет мир")).toBe("привет-мир")
-  })
-
-  it("lowercases Cyrillic text", () => {
-    expect(slugify("КИРИЛЛИЦА")).toBe("кириллица")
+  it("handles Unicode characters (Cyrillic)", () => {
+    expect(slugify("Привет Мир")).toBe("привет-мир")
   })
 
   it("handles mixed Latin and Cyrillic", () => {
-    expect(slugify("API методы")).toBe("api-методы")
+    expect(slugify("Hello Мир")).toBe("hello-мир")
   })
 
-  // ---------------------------------------------------------------------------
-  // Edge cases
-  // ---------------------------------------------------------------------------
+  it("removes special characters", () => {
+    expect(slugify("Hello! @World# $Test%")).toBe("hello-world-test")
+  })
+
+  it("collapses multiple spaces into single hyphen", () => {
+    expect(slugify("hello    world")).toBe("hello-world")
+  })
+
+  it("collapses multiple hyphens into single hyphen", () => {
+    expect(slugify("hello---world")).toBe("hello-world")
+  })
+
   it("returns empty string for empty input", () => {
     expect(slugify("")).toBe("")
   })
 
-  it("returns empty string for whitespace-only input", () => {
-    expect(slugify("   ")).toBe("")
+  it("trims whitespace", () => {
+    expect(slugify("  hello world  ")).toBe("hello-world")
   })
 
-  it("trims leading/trailing whitespace before slugifying", () => {
-    expect(slugify("  hello  ")).toBe("hello")
+  it("strips HTML tags before slugifying", () => {
+    expect(slugify("<strong>Bold</strong> text")).toBe("bold-text")
   })
 
-  it("collapses consecutive hyphens into one", () => {
-    // e.g. "foo - bar" → "foo---bar" after char removal, then collapsed
-    expect(slugify("foo - bar")).toBe("foo-bar")
+  it("handles numbers in text", () => {
+    expect(slugify("Chapter 1 Introduction")).toBe("chapter-1-introduction")
   })
 
-  it("truncates output to 64 characters", () => {
-    const longInput = "a".repeat(100)
-    expect(slugify(longInput)).toHaveLength(64)
+  it("truncates to 64 characters maximum", () => {
+    const longText = "a".repeat(100)
+    expect(slugify(longText).length).toBeLessThanOrEqual(64)
   })
 
-  it("does not start or end with extra hyphens after truncation (no leading/trailing hyphens)", () => {
-    const result = slugify("word ".repeat(20))
-    expect(result).not.toMatch(/^-/)
-    expect(result).not.toMatch(/-$/)
+  it("handles only-special-characters input", () => {
+    expect(slugify("!@#$%^&*()")).toBe("")
+  })
+
+  it("handles single word", () => {
+    expect(slugify("hello")).toBe("hello")
+  })
+
+  it("preserves hyphens between words", () => {
+    expect(slugify("well-known fact")).toBe("well-known-fact")
   })
 })

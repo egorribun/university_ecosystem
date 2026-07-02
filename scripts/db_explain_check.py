@@ -159,6 +159,8 @@ async def run_explain_analysis(
                     explain_sql = (
                         f"EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON) {clean_query}"
                     )
+                    # Add timeout to explain query to prevent hangs
+                    await conn.execute(text("SET statement_timeout = '15s'"))
                     result = await conn.execute(text(explain_sql))
                     plan_json_str = result.scalar()
                     await transaction.rollback()

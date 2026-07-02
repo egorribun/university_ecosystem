@@ -1,151 +1,225 @@
-import { describe, expect, it } from "vitest"
-import { sanitizeHttpUrl, sanitizeEmailAddress, sanitizeTelegramUrl } from "../sanitize"
+import { describe, expect, it, vi, beforeEach } from "vitest"
 
-// ---------------------------------------------------------------------------
-// sanitizeHttpUrl
-// ---------------------------------------------------------------------------
-describe("sanitizeHttpUrl", () => {
-  // Allowed protocols
-  it("passes through a valid https URL", () => {
-    const url = "https://example.com/path?q=1"
-    expect(sanitizeHttpUrl(url)).toBe(url)
-  })
+const mocks = vi.hoisted(() => ({
+  sanitize_rich_text: vi.fn((s: string) => s),
+  strip_html: vi.fn((s: string) => s.replace(/<[^>]*>/g, "")),
+  logWarning: vi.fn(),
+}))
 
-  it("passes through a valid http URL", () => {
-    const url = "http://example.com/"
-    expect(sanitizeHttpUrl(url)).toBe(url)
-  })
+vi.mock("wasm-sanitizer", () => ({
+  sanitize_rich_text: mocks.sanitize_rich_text,
+  strip_html: mocks.strip_html,
+}))
 
-  // Protocol blocking
-  it("blocks javascript: protocol", () => {
-    expect(sanitizeHttpUrl("javascript:alert(1)")).toBeNull()
-  })
+vi.mock("@/app/logger", () => ({
+  logWarning: mocks.logWarning,
+}))
 
-  it("blocks data: protocol", () => {
-    expect(sanitizeHttpUrl("data:text/html,<h1>hi</h1>")).toBeNull()
-  })
+import {
+  sanitizeNewsHtml,
+  sanitizeNewsText,
+  sanitizeHttpUrl,
+  sanitizeEmailAddress,
+  sanitizeTelegramUrl,
+} from "@/utils/sanitize"
 
-  it("blocks ftp: protocol", () => {
-    expect(sanitizeHttpUrl("ftp://files.example.com/")).toBeNull()
-  })
-
-  // Credentials in URL
-  it("blocks URLs with username", () => {
-    expect(sanitizeHttpUrl("https://user@example.com")).toBeNull()
-  })
-
-  it("blocks URLs with password", () => {
-    expect(sanitizeHttpUrl("https://user:pass@example.com")).toBeNull() // pragma: allowlist secret
-  })
-
-  // Null / empty / invalid
-  it("returns null for null input", () => {
-    expect(sanitizeHttpUrl(null)).toBeNull()
-  })
-
-  it("returns null for empty string", () => {
-    expect(sanitizeHttpUrl("")).toBeNull()
-  })
-
-  it("returns null for undefined", () => {
-    expect(sanitizeHttpUrl(undefined)).toBeNull()
-  })
-
-  it("resolves bare words against window.location.origin (jsdom localhost) — returns a valid http URL, not null", () => {
-    // In a browser context, new URL("not a url", "http://localhost") succeeds;
-    // the function only blocks by protocol (javascript:, ftp:, etc.) and credentials.
-    // Truly unparseable inputs like pure whitespace return null.
-    const result = sanitizeHttpUrl("not a url")
-    // jsdom resolves this as http://localhost/not%20a%20url — valid http → passes through
-    expect(result).not.toBeNull()
-    expect(result).toMatch(/^http:\/\//)
-  })
+beforeEach(() => {
+  vi.clearAllMocks()
 })
 
-// ---------------------------------------------------------------------------
-// sanitizeEmailAddress
-// ---------------------------------------------------------------------------
-describe("sanitizeEmailAddress", () => {
-  it("returns a valid email unchanged", () => {
-    expect(sanitizeEmailAddress("user@example.com")).toBe("user@example.com")
+describe("sanitize utilities", () => {
+  describe("sanitizeNewsHtml", () => {
+    it("returns empty string for null input", async () => {
+      await sanitizeNewsHtml(null)
+      expect(mocks.sanitize_rich_text).toHaveBeenCalledWith("")
+    })
+
+    it("returns empty string for undefined input", async () => {
+      await sanitizeNewsHtml(undefined)
+      expect(mocks.sanitize_rich_text).toHaveBeenCalledWith("")
+    })
+
+    it("passes source through sanitize_rich_text", async () => {
+      mocks.sanitize_rich_text.mockReturnValue("<p>safe</p>")
+      const result = await sanitizeNewsHtml("<p>safe</p><script>alert(1)</script>")
+      expect(result).toBe("<p>safe</p>")
+    })
+
+    it("falls back to regex strip when wasm-sanitizer throws", async () => {
+      mocks.sanitize_rich_text.mockImplementation(() => {
+        throw new Error("WASM unavailable")
+      })
+
+      const result = await sanitizeNewsHtml("<p>hello</p><script>bad</script>")
+      expect(result).toBe("hellobad")
+    })
   })
 
-  it("trims surrounding whitespace", () => {
-    expect(sanitizeEmailAddress("  user@example.com  ")).toBe("user@example.com")
+  describe("sanitizeNewsText", () => {
+    it("strips HTML tags via strip_html", async () => {
+      mocks.strip_html.mockReturnValue("plain text")
+      const result = await sanitizeNewsText("<p>plain text</p>")
+      expect(result).toBe("plain text")
+    })
+
+    it("returns empty string for null input", async () => {
+      await sanitizeNewsText(null)
+      expect(mocks.strip_html).toHaveBeenCalledWith("")
+    })
+
+    it("falls back to regex strip when wasm-sanitizer throws", async () => {
+      mocks.strip_html.mockImplementation(() => {
+        throw new Error("WASM unavailable")
+      })
+
+      const result = await sanitizeNewsText("<div>content</div>")
+      expect(result).toBe("content")
+    })
   })
 
-  it("returns empty string for null", () => {
-    expect(sanitizeEmailAddress(null)).toBe("")
+  describe("sanitizeHttpUrl", () => {
+    it("returns null for null input", () => {
+      expect(sanitizeHttpUrl(null)).toBeNull()
+    })
+
+    it("returns null for undefined input", () => {
+      expect(sanitizeHttpUrl(undefined)).toBeNull()
+    })
+
+    it("returns null for empty string", () => {
+      expect(sanitizeHttpUrl("")).toBeNull()
+    })
+
+    it("allows valid http URL", () => {
+      const result = sanitizeHttpUrl("http://example.com/page")
+      expect(result).toBe("http://example.com/page")
+    })
+
+    it("allows valid https URL", () => {
+      const result = sanitizeHttpUrl("https://example.com/page")
+      expect(result).toBe("https://example.com/page")
+    })
+
+    it("rejects javascript: protocol", () => {
+      expect(sanitizeHttpUrl("javascript:alert(1)")).toBeNull()
+    })
+
+    it("rejects data: protocol", () => {
+      expect(sanitizeHttpUrl("data:text/html,<h1>hello</h1>")).toBeNull()
+    })
+
+    it("rejects ftp: protocol", () => {
+      expect(sanitizeHttpUrl("ftp://files.example.com/file")).toBeNull()
+    })
+
+    it("rejects URLs with username/password", () => {
+      expect(sanitizeHttpUrl("https://admin:pass@evil.com")).toBeNull() // pragma: allowlist secret
+    })
+
+    it("handles relative URLs by resolving against window.location.origin", () => {
+      const result = sanitizeHttpUrl("/path/to/page")
+      expect(result).toMatch(/^https?:\/\//)
+      expect(result).toContain("/path/to/page")
+    })
   })
 
-  it("returns empty string for undefined", () => {
-    expect(sanitizeEmailAddress(undefined)).toBe("")
+  describe("sanitizeEmailAddress", () => {
+    it("returns empty string for null", () => {
+      expect(sanitizeEmailAddress(null)).toBe("")
+    })
+
+    it("returns empty string for undefined", () => {
+      expect(sanitizeEmailAddress(undefined)).toBe("")
+    })
+
+    it("returns empty string for empty string", () => {
+      expect(sanitizeEmailAddress("")).toBe("")
+    })
+
+    it("returns valid email as-is", () => {
+      expect(sanitizeEmailAddress("user@example.com")).toBe("user@example.com")
+    })
+
+    it("trims whitespace around valid email", () => {
+      expect(sanitizeEmailAddress("  user@example.com  ")).toBe("user@example.com")
+    })
+
+    it("rejects email without @", () => {
+      expect(sanitizeEmailAddress("userexample.com")).toBe("")
+    })
+
+    it("rejects email without domain", () => {
+      expect(sanitizeEmailAddress("user@")).toBe("")
+    })
+
+    it("rejects email with spaces", () => {
+      expect(sanitizeEmailAddress("user @example.com")).toBe("")
+    })
+
+    it("rejects email without TLD", () => {
+      expect(sanitizeEmailAddress("user@example")).toBe("")
+    })
   })
 
-  it("returns empty string for invalid email (no @)", () => {
-    expect(sanitizeEmailAddress("notanemail")).toBe("")
-  })
+  describe("sanitizeTelegramUrl", () => {
+    it("returns empty string for null", () => {
+      expect(sanitizeTelegramUrl(null)).toBe("")
+    })
 
-  it("returns empty string for email with spaces", () => {
-    expect(sanitizeEmailAddress("user @example.com")).toBe("")
-  })
+    it("returns empty string for undefined", () => {
+      expect(sanitizeTelegramUrl(undefined)).toBe("")
+    })
 
-  it("returns empty string for empty string", () => {
-    expect(sanitizeEmailAddress("")).toBe("")
-  })
-})
+    it("returns empty string for empty string", () => {
+      expect(sanitizeTelegramUrl("")).toBe("")
+    })
 
-// ---------------------------------------------------------------------------
-// sanitizeTelegramUrl
-// ---------------------------------------------------------------------------
-describe("sanitizeTelegramUrl", () => {
-  // Username format
-  it("converts @username to t.me URL", () => {
-    expect(sanitizeTelegramUrl("@username123")).toBe("https://t.me/username123")
-  })
+    it("converts @username to https://t.me/username", () => {
+      expect(sanitizeTelegramUrl("@university")).toBe("https://t.me/university")
+    })
 
-  it("converts bare username to t.me URL", () => {
-    expect(sanitizeTelegramUrl("username123")).toBe("https://t.me/username123")
-  })
+    it("accepts valid t.me URL", () => {
+      const result = sanitizeTelegramUrl("https://t.me/university")
+      expect(result).toContain("t.me")
+    })
 
-  it("passes through a valid t.me URL", () => {
-    expect(sanitizeTelegramUrl("https://t.me/username123")).toBe("https://t.me/username123")
-  })
+    it("accepts valid telegram.me URL", () => {
+      const result = sanitizeTelegramUrl("https://telegram.me/university")
+      expect(result).toContain("telegram.me")
+    })
 
-  it("passes through telegram.me URL", () => {
-    expect(sanitizeTelegramUrl("https://telegram.me/channel")).toBe("https://telegram.me/channel")
-  })
+    it("rejects non-telegram HTTP URLs", () => {
+      expect(sanitizeTelegramUrl("https://evil.com/phish")).toBe("")
+    })
 
-  // Invalid usernames
-  it("rejects username shorter than 5 chars", () => {
-    expect(sanitizeTelegramUrl("@ab")).toBe("")
-  })
+    it("rejects short usernames (less than 5 chars)", () => {
+      expect(sanitizeTelegramUrl("@abc")).toBe("")
+    })
 
-  it("rejects username longer than 32 chars", () => {
-    expect(sanitizeTelegramUrl("a".repeat(33))).toBe("")
-  })
+    it("rejects usernames with special characters", () => {
+      expect(sanitizeTelegramUrl("@user!name")).toBe("")
+    })
 
-  it("rejects username with invalid characters", () => {
-    expect(sanitizeTelegramUrl("user name")).toBe("") // space not allowed
-    expect(sanitizeTelegramUrl("user-name")).toBe("") // hyphen not allowed
-  })
+    it("rejects path traversal attempts", () => {
+      expect(sanitizeTelegramUrl("../../admin")).toBe("")
+    })
 
-  // Path traversal
-  it("rejects path-traversal attempts", () => {
-    expect(sanitizeTelegramUrl("../../admin")).toBe("")
-  })
+    it("handles double @ prefix", () => {
+      expect(sanitizeTelegramUrl("@@username_valid")).toBe("https://t.me/username_valid")
+    })
 
-  // Non-Telegram https URLs
-  it("rejects non-Telegram https URL", () => {
-    expect(sanitizeTelegramUrl("https://evil.com/page")).toBe("")
-  })
+    it("rejects usernames longer than 32 characters", () => {
+      const longUsername = "@" + "a".repeat(33)
+      expect(sanitizeTelegramUrl(longUsername)).toBe("")
+    })
 
-  // Null / empty
-  it("returns empty string for null", () => {
-    expect(sanitizeTelegramUrl(null)).toBe("")
-  })
+    it("accepts username at exactly 32 characters", () => {
+      const exactUsername = "@" + "a".repeat(32)
+      expect(sanitizeTelegramUrl(exactUsername)).toBe("https://t.me/" + "a".repeat(32))
+    })
 
-  it("returns empty string for empty string", () => {
-    expect(sanitizeTelegramUrl("")).toBe("")
+    it("accepts username at exactly 5 characters", () => {
+      expect(sanitizeTelegramUrl("@abcde")).toBe("https://t.me/abcde")
+    })
   })
 })

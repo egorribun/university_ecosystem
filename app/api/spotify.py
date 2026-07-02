@@ -308,7 +308,13 @@ async def spotify_auth_url(
     return {"url": url}
 
 
-@router.get("/callback")
+@router.get(
+    "/callback",
+    responses={
+        503: {"description": "Service Unavailable"},
+        400: {"description": "Bad Request"},
+    },
+)
 async def spotify_callback(
     request: Request,
     code: str = Query(...),

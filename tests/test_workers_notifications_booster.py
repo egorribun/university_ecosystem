@@ -58,7 +58,9 @@ def test_scheduler_clamps_min_values():
 async def test_run_once_returns_created_count(scheduler: NotificationsScheduler):
     with (
         patch("app.workers.notifications.async_session") as mock_cm,
-        patch("app.workers.notifications.generate_schedule_reminders", return_value=3),
+        patch(
+            "app.workers.notifications.generate_schedule_reminders", return_value=3
+        ) as _,
     ):
         mock_db = AsyncMock()
         mock_cm.return_value.__aenter__ = AsyncMock(return_value=mock_db)

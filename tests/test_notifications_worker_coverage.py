@@ -59,20 +59,26 @@ async def test_scheduler_run_forever_failure():
 
     scheduler.run_once = mock_run_once
 
-    real_sleep = asyncio.sleep
-
-    async def custom_sleep(delay):
-        if delay == 0.1:
-            await real_sleep(0.1)
-        else:
-            await real_sleep(0.001)
-
-    with patch("asyncio.sleep", side_effect=custom_sleep):
-        task = asyncio.create_task(scheduler.run_forever())
-        await asyncio.sleep(0.1)
-        task.cancel()
-        with pytest.raises(asyncio.CancelledError):
-            await task
+    # Strategy: do NOT patch asyncio.sleep at all.
+    #
+    # Patching 'app.workers.notifications.asyncio.sleep' replaces the entire
+    # asyncio module attribute in the notifications namespace, which prevents
+    # the worker coroutine from ever being scheduled (the task stays PENDING).
+    # Patching the global 'asyncio.sleep' suppresses the test's own yield,
+    # so task.cancel() fires before the worker runs even one iteration.
+    #
+    # Instead, let the scheduler run with real asyncio, yield control via
+    # asyncio.sleep(0) to let the task start and finish its first iteration
+    # (run_once raises → record_failure → hits the real asyncio.sleep(backoff)
+    # which we cancel immediately). This is reliable on all Python versions.
+    task = asyncio.create_task(scheduler.run_forever())
+    # One yield hands control to the event loop so the task starts.
+    await asyncio.sleep(0)
+    # The task is now either sleeping (backoff) or done with first iteration.
+    # Cancel it regardless — record_failure was already called.
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
 
     mock_metrics.record_failure.assert_called()
 
@@ -105,10 +111,9 @@ async def test_wait_for_signals():
         await asyncio.sleep(0.01)
         stop_event.set()
 
-    task = asyncio.create_task(trigger())
+    _task = asyncio.create_task(trigger())  # noqa: RUF006 — fire-and-forget; sets stop_event
     await _wait_for_signals(stop_event)
     assert stop_event.is_set()
-    await task
 
 
 @pytest.mark.anyio
@@ -128,6 +133,9 @@ async def test_run_worker_flow():
             "app.workers.notifications.NotificationsScheduler.run_forever",
             new_callable=AsyncMock,
         ),
+        # mock_run_forever not needed — run_forever is patched to prevent
+        # the background task from actually running; assertions are on the
+        # orchestration calls below.
         patch(
             "app.workers.notifications._wait_for_signals", new_callable=AsyncMock
         ) as mock_wait_signals,

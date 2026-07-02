@@ -1,116 +1,93 @@
-import { describe, expect, it } from "vitest"
-import { mixColorWithWhite, lightenColor } from "../color"
+import { describe, expect, it, vi, beforeEach } from "vitest"
+import { mixColorWithWhite, lightenColor } from "@/utils/color"
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
+describe("color utilities", () => {
+  describe("mixColorWithWhite", () => {
+    beforeEach(() => {
+      // Default: CSS.supports unavailable — forces hex fallback path
+      vi.stubGlobal("CSS", undefined)
+    })
 
-/**
- * Helper to check if the returned value is a color-mix CSS expression.
- * In jsdom, CSS.supports is available but may not support color-mix(),
- * so we handle both the hex-fallback and the CSS function path.
- */
-const isCssMix = (value: string) => value.startsWith("color-mix(")
-const isHex = (value: string) => /^#[0-9a-f]{6}$/i.test(value)
-
-describe("mixColorWithWhite", () => {
-  // ---------------------------------------------------------------------------
-  // Coefficient clamping
-  // ---------------------------------------------------------------------------
-  it("clamps coefficient below 0 to 0 (no mixing)", () => {
-    const result = mixColorWithWhite("#ff0000", -0.5)
-    // coefficient 0 → 0% white mixed in → original color unchanged or base expression
-    if (isCssMix(result)) {
-      expect(result).toContain("0%") // 0% white
-    } else {
-      // hex path: 0% white → channel + 0 = original
+    it("returns original color when coefficient is 0 (hex path)", () => {
+      const result = mixColorWithWhite("#ff0000", 0)
       expect(result).toBe("#ff0000")
-    }
-  })
+    })
 
-  it("clamps coefficient above 1 to 1 (pure white)", () => {
-    const result = mixColorWithWhite("#000000", 2)
-    if (isCssMix(result)) {
-      expect(result).toContain("100%")
-    } else {
+    it("returns white when coefficient is 1 (hex path)", () => {
+      const result = mixColorWithWhite("#000000", 1)
       expect(result).toBe("#ffffff")
-    }
-  })
+    })
 
-  // ---------------------------------------------------------------------------
-  // Hex fallback path (when CSS.supports is unavailable or returns false)
-  // ---------------------------------------------------------------------------
-  describe("hex fallback (CSS.supports mocked away)", () => {
-    it("mixes black with white at 0.5 → mid-grey #7f7f7f or #808080", () => {
-      // Temporarily disable CSS.supports so hex path is forced
-      const originalCSS = globalThis.CSS
-      Object.defineProperty(globalThis, "CSS", { value: undefined, writable: true })
-
+    it("mixes black with 50% white → #808080 (hex path)", () => {
       const result = mixColorWithWhite("#000000", 0.5)
-
-      Object.defineProperty(globalThis, "CSS", { value: originalCSS, writable: true })
-
-      // Mid-grey: channel = 0 + (255 - 0) * 0.5 = 127 or 128 due to rounding
-      expect(isHex(result)).toBe(true)
-      expect(result).toMatch(/^#[78][0-9a-f]{5}$/)
+      // Each channel: Math.round(0 + (255 - 0) * 0.5) = 128 = 0x80
+      expect(result).toBe("#808080")
     })
 
-    it("mixes pure red (#ff0000) with white at 0.5", () => {
-      const originalCSS = globalThis.CSS
-      Object.defineProperty(globalThis, "CSS", { value: undefined, writable: true })
-
-      const result = mixColorWithWhite("#ff0000", 0.5)
-
-      Object.defineProperty(globalThis, "CSS", { value: originalCSS, writable: true })
-
-      expect(isHex(result)).toBe(true)
-      // red channel stays 255, g and b channels become ~128
-      expect(result.toUpperCase()).toMatch(/^#FF/)
-    })
-
-    it("expands 3-char hex shorthand (#f00 → #ff0000)", () => {
-      const originalCSS = globalThis.CSS
-      Object.defineProperty(globalThis, "CSS", { value: undefined, writable: true })
-
+    it("handles shorthand hex (#f00)", () => {
       const result = mixColorWithWhite("#f00", 0)
-
-      Object.defineProperty(globalThis, "CSS", { value: originalCSS, writable: true })
-
-      // With coefficient 0, no white mixed in → pure red
-      expect(result.toUpperCase()).toBe("#FF0000")
+      expect(result).toBe("#ff0000")
     })
 
-    it("returns original color unchanged for unrecognised format", () => {
-      const originalCSS = globalThis.CSS
-      Object.defineProperty(globalThis, "CSS", { value: undefined, writable: true })
+    it("handles hex without # prefix", () => {
+      const result = mixColorWithWhite("ff0000", 0)
+      expect(result).toBe("#ff0000")
+    })
 
-      const result = mixColorWithWhite("var(--primary)", 0.3)
+    it("clamps coefficient below 0 to 0", () => {
+      const result = mixColorWithWhite("#ff0000", -0.5)
+      expect(result).toBe("#ff0000")
+    })
 
-      Object.defineProperty(globalThis, "CSS", { value: originalCSS, writable: true })
-
-      // Not a hex → tryMixHexWithWhite returns null → fallback to original
-      expect(result).toBe("var(--primary)")
+    it("clamps coefficient above 1 to 1", () => {
+      const result = mixColorWithWhite("#000000", 1.5)
+      expect(result).toBe("#ffffff")
     })
 
     it("trims whitespace from color input", () => {
-      const originalCSS = globalThis.CSS
-      Object.defineProperty(globalThis, "CSS", { value: undefined, writable: true })
+      const result = mixColorWithWhite("  #ff0000  ", 0)
+      expect(result).toBe("#ff0000")
+    })
 
-      const result = mixColorWithWhite("  #000000  ", 1)
+    it("returns original color for non-hex CSS color when CSS.supports unavailable", () => {
+      // rgb(), hsl(), named colors can't be parsed as hex → fallback to trimmed input
+      const result = mixColorWithWhite("rgb(255, 0, 0)", 0.5)
+      expect(result).toBe("rgb(255, 0, 0)")
+    })
 
-      Object.defineProperty(globalThis, "CSS", { value: originalCSS, writable: true })
+    it("uses color-mix expression when CSS.supports is available and supports it", () => {
+      vi.stubGlobal("CSS", {
+        supports: vi.fn().mockReturnValue(true),
+      })
 
-      expect(isHex(result)).toBe(true)
-      expect(result).toBe("#ffffff")
+      const result = mixColorWithWhite("#ff0000", 0.3)
+      expect(result).toContain("color-mix")
+      expect(result).toContain("srgb")
+    })
+
+    it("falls back to hex when CSS.supports returns false", () => {
+      vi.stubGlobal("CSS", {
+        supports: vi.fn().mockReturnValue(false),
+      })
+
+      const result = mixColorWithWhite("#ff0000", 0.5)
+      expect(result).toMatch(/^#[0-9a-f]{6}$/)
+    })
+
+    it("handles case-insensitive hex", () => {
+      const result = mixColorWithWhite("#FF0000", 0)
+      expect(result).toBe("#ff0000")
+    })
+
+    it("returns empty string color as-is for invalid input", () => {
+      const result = mixColorWithWhite("", 0.5)
+      expect(result).toBe("")
     })
   })
-})
 
-// ---------------------------------------------------------------------------
-// lightenColor — alias for mixColorWithWhite
-// ---------------------------------------------------------------------------
-describe("lightenColor", () => {
-  it("is the same reference as mixColorWithWhite", () => {
-    expect(lightenColor).toBe(mixColorWithWhite)
+  describe("lightenColor", () => {
+    it("is an alias for mixColorWithWhite", () => {
+      expect(lightenColor).toBe(mixColorWithWhite)
+    })
   })
 })

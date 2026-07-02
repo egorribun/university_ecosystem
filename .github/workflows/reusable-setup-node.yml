@@ -17,7 +17,7 @@ on:
                 description: "Node.js version to install"
                 required: false
                 type: string
-                default: "22"
+                default: "20"
             working-directory:
                 description: "Working directory for npm install"
                 required: false

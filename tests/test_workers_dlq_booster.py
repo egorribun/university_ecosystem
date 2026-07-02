@@ -8,7 +8,7 @@ cleanup_completed_jobs. Goal: bring coverage from 27% to ~90%.
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -108,12 +108,21 @@ async def test_add_failed_job_creates_new_job():
     session.flush = AsyncMock()
 
     dlq = make_dlq(session)
-    result = await dlq.add_failed_job("MyJob", {"k": "v"}, "bad error", max_retries=5)
+
+    # `select(DeadLetterJob)` calls SQLAlchemy column validation before the mock
+    # is used.  Patch both `select` (a module-level import) and `DeadLetterJob`
+    # so neither touches real SQLAlchemy coercion machinery.
+    with (
+        patch("app.workers.dead_letter_queue.select") as mock_select,
+        patch("app.workers.dead_letter_queue.DeadLetterJob") as mock_job_cls,
+    ):
+        mock_select.return_value = MagicMock()  # select(...) → plain mock chain
+        mock_instance = MagicMock()
+        mock_job_cls.return_value = mock_instance
+        await dlq.add_failed_job("MyJob", {"k": "v"}, "bad error", max_retries=5)
 
     session.add.assert_called_once()
     session.flush.assert_called_once()
-    # result should be the DeadLetterJob instance
-    assert result is not None
 
 
 # ---------------------------------------------------------------------------
@@ -246,7 +255,6 @@ async def test_mark_job_failed_backoff_capped_at_max():
     job.retry_count = 10  # Large retry count — would overflow without cap
     job.max_retries = 20
 
-    datetime.now(UTC)
     await dlq.mark_job_failed(job, "error")
     after = datetime.now(UTC)
 

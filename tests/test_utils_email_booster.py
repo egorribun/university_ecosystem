@@ -24,21 +24,25 @@ from app.utils.email import (
 
 
 def test_redact_sensitive_query_redacts_token():
+    from urllib.parse import unquote
+
     url = "https://example.com/reset?token=abc123&foo=bar"
     result = _redact_sensitive_query(url)
     assert "abc123" not in result
-    # urlencode URL-encodes the *** markers, so we check the raw value is gone
-    assert "token=" in result  # key preserved
-    assert "abc123" not in result  # value replaced
+    # urlencode percent-encodes '*' as '%2A'; decode before comparing.
+    assert "***redacted***" in unquote(result)
+    assert "foo=bar" in result
 
 
 def test_redact_sensitive_query_redacts_code():
+    from urllib.parse import unquote
+
     url = "https://example.com/verify?code=secret&locale=en"
     result = _redact_sensitive_query(url)
     assert "secret" not in result
-    # urlencode URL-encodes the *** markers, check original value is gone
-    assert "code=" in result  # key preserved
-    assert "secret" not in result  # value replaced
+    # urlencode percent-encodes '*' as '%2A'; decode before comparing.
+    assert "***redacted***" in unquote(result)
+    assert "locale=en" in result
 
 
 def test_redact_sensitive_query_no_sensitive_params():

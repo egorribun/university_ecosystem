@@ -156,7 +156,7 @@ async def test_healthcheck_storage_probe_skips_heavy_when_disabled(
         probes["light"] += 1
         return "ok"
 
-    async def _unexpected_heavy_probe(_backend):  # pragma: no cover - guarded
+    async def _unexpected_heavy_probe(_backend):
         probes["heavy"] += 1
         raise AssertionError("heavy probe should not run when disabled")
 
@@ -295,7 +295,7 @@ async def test_healthcheck_file_scanner_uses_lightweight_probe(
 
     async def _forbidden_scan(
         _payload, *, locale=None, size_bytes: int | None = None
-    ) -> None:  # pragma: no cover
+    ) -> None:
         raise AssertionError("health check should not trigger file scanning")
 
     monkeypatch.setattr(health, "check_file_scanner_health", _fake_health_check)

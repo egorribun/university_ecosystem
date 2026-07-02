@@ -347,7 +347,7 @@ class CSRFMiddleware:
         if method in _MUTATION_METHODS:
             if not cookie_token or not header_token:
                 _logger.warning(
-                    "CSRF rejected (missing token)",
+                    "CSRF rejected (missing CSRF proof)",
                     method=method,
                     path=path,
                     cookie_present=bool(cookie_token),
@@ -360,7 +360,7 @@ class CSRFMiddleware:
             # Step 1: Classic Double-Submit — constant-time comparison.
             if not secrets.compare_digest(cookie_token, header_token):
                 _logger.warning(
-                    "CSRF rejected (token mismatch)",
+                    "CSRF rejected (CSRF proof mismatch)",
                     method=method,
                     path=path,
                     request_id=request_id_ctx.get(""),

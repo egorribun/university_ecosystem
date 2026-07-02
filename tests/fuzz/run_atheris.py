@@ -1,15 +1,6 @@
 #!/usr/bin/env python
 # tests/fuzz/run_atheris.py — coverage-guided Python API fuzzer
-import os
 import sys
-
-if not os.environ.get("SECRET_KEY"):
-    os.environ["SECRET_KEY"] = (
-        "test-secret-key-32-characters-long-entropy"  # pragma: allowlist secret
-    )
-if not os.environ.get("ENVIRONMENT"):
-    os.environ["ENVIRONMENT"] = "testing"
-
 
 import atheris
 
@@ -46,7 +37,7 @@ def TestOneInput(data):
 
     try:
         filename_input = fdp.ConsumeUnicodeNoSurrogates(500)
-        max_len = fdp.ConsumeIntInRange(1, 300)
+        max_len = fdp.ConsumeIntegerInRange(1, 300)
         sanitize_filename(filename_input, max_length=max_len)
     except Exception as e:
         print(f"CRASH in filename sanitization: {e}", file=sys.stderr)

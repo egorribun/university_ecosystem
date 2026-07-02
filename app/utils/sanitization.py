@@ -185,6 +185,8 @@ def sanitize_path(path: str, base_dir: str | Path) -> Path | None:
     Returns:
         Safe absolute path, or None if path escapes base_dir
     """
+    if "\x00" in path:
+        return None
     try:
         base = Path(base_dir).resolve()
         user_path = (base / path).resolve()

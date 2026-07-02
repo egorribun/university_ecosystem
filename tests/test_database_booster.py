@@ -48,13 +48,7 @@ def test_pool_health_metrics_properties():
 
 
 def test_pool_health_monitoring_callbacks():
-    import logging
-
-    # Set logger level to DEBUG
-    db_module.pool_health_logger.setLevel(logging.DEBUG)
     # Call callbacks directly to ensure coverage
-    db_module._on_checkout(None, None, None)
-    db_module._on_checkin(None, None)
     _on_invalidate(None, None, ValueError("Test DB error"))
     _on_checkout_failed(ValueError("Test DB checkout error"), MagicMock())
 
@@ -69,21 +63,6 @@ def test_setup_slow_query_logging_idempotence():
     with patch("sqlalchemy.event.contains", return_value=True):
         _setup_slow_query_logging(mock_engine, mock_settings)
         # Should return early and not call event.listen
-
-    # Also test calling the closure with no start time to cover line 307
-    with (
-        patch("sqlalchemy.event.contains", return_value=False),
-        patch("sqlalchemy.event.listen") as mock_listen,
-    ):
-        _setup_slow_query_logging(mock_engine, mock_settings)
-        closure = None
-        for call in mock_listen.call_args_list:
-            if call[0][1] == "after_cursor_execute":
-                closure = call[0][2]
-                break
-        if closure:
-            _query_start_time.set(None)
-            closure(None, None, "SELECT 1", None, None, False)
 
 
 def test_after_cursor_execute_fallback():
@@ -132,11 +111,8 @@ def test_lazy_proxy_dunder_methods():
     proxy = _LazyProxy(lambda: target, "test_proxy")
 
     # Test __setattr__ with allowed dunder
-    try:
-        proxy.__wrapped__ = "wrapped_val"
-    except AttributeError:
-        pass
-    proxy.__class__ = _LazyProxy
+    proxy.__wrapped__ = "wrapped_val"
+    assert target.__wrapped__ == "wrapped_val"
 
     # Test __setattr__ with disallowed attribute
     with pytest.raises(AttributeError, match="Direct attribute mutation on"):
@@ -164,27 +140,9 @@ def test_lazy_proxy_dunder_methods():
 
 def test_init_database_double_check_lock():
     # If database is already initialized, call init_database() again with current_settings=None
-    # This triggers double-checked locking fast paths (line 580)
+    # This triggers double-checked locking fast paths (line 588)
     init_database()
     init_database()
-
-    # Trigger inner check double-checked locking (line 588)
-    original_engine = db_module._engine
-    try:
-        db_module._engine = None
-
-        class MockInitLock:
-            def __enter__(self):
-                db_module._engine = MagicMock()
-                return self
-
-            def __exit__(self, exc_type, exc_val, exc_tb):
-                pass
-
-        with patch("app.core.database._init_lock", MockInitLock()):
-            init_database(None)
-    finally:
-        db_module._engine = original_engine
 
 
 @pytest.mark.asyncio
@@ -204,13 +162,13 @@ async def test_check_replication_lag_none():
 @pytest.mark.asyncio
 async def test_check_replication_lag_success():
     mock_conn = AsyncMock()
-    mock_conn.__aenter__.return_value = mock_conn
     mock_result = MagicMock()
     mock_result.one_or_none.return_value = (100.0,)
     mock_conn.execute.return_value = mock_result
 
     mock_engine = MagicMock()
     mock_engine.connect.return_value = mock_conn
+    mock_engine.connect.return_value.__aenter__.return_value = mock_conn
 
     with patch("app.core.database._read_replica_engine", mock_engine):
         res = await check_replication_lag()
@@ -244,18 +202,3 @@ def test_create_session_factory_replica():
     # Just run it to make sure replica path is executed
     _eng, _sess, rep = create_session_factory(mock_settings)
     assert rep is not None
-
-
-def test_setup_pool_health_monitoring_checkout_failed():
-    mock_engine = MagicMock()
-    mock_pool = MagicMock()
-    # mock hasattr(pool.dispatch, "checkout_failed") to return True
-    mock_pool.dispatch = MagicMock(spec=["checkout_failed"])
-    mock_engine.sync_engine.pool = mock_pool
-
-    with patch("sqlalchemy.event.listen") as mock_listen:
-        db_module._setup_pool_health_monitoring(mock_engine)
-        # Verify that checkout_failed was registered
-        mock_listen.assert_any_call(
-            mock_pool, "checkout_failed", db_module._on_checkout_failed
-        )

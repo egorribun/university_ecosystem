@@ -421,9 +421,7 @@ class WorkerMetrics:
 
 
 def create_worker_metrics(name: str) -> WorkerMetrics:
-    if (
-        CollectorRegistry is None or Counter is None or Gauge is None
-    ):  # pragma: no cover - safety
+    if CollectorRegistry is None or Counter is None or Gauge is None:
         raise RuntimeError("prometheus-client is required to create worker metrics")
 
     metric_name = _sanitize_metric_name(name)
@@ -536,7 +534,7 @@ class PeriodicTaskMetrics:
 def get_periodic_task_metrics(
     name: str, *, registry: CollectorRegistry | None = None
 ) -> PeriodicTaskMetrics:
-    if Counter is None or Histogram is None:  # pragma: no cover - safety
+    if Counter is None or Histogram is None:
         raise RuntimeError("prometheus-client is required for periodic task metrics")
 
     metric_key = _sanitize_metric_name(name)
@@ -740,7 +738,7 @@ def get_notification_queue_metrics() -> NotificationQueueMetrics:
                     or Histogram is None
                     or CollectorRegistry is None
                     or REGISTRY is None
-                ):  # pragma: no cover
+                ):
                     raise RuntimeError(
                         "prometheus-client is required to create notification queue metrics"
                     )
@@ -763,7 +761,7 @@ def create_notification_queue_metrics(
         or Histogram is None
         or CollectorRegistry is None
         or REGISTRY is None
-    ):  # pragma: no cover - optional dependency guard
+    ):
         raise RuntimeError(
             "prometheus-client is required to create notification queue metrics"
         )

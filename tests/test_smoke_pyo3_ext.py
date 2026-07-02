@@ -23,7 +23,7 @@ try:
     import rust_ext
 
     _IMPORT_ERROR: ImportError | None = None
-except ImportError as exc:  # pragma: no cover - exercised only when unbuilt
+except ImportError as exc:
     rust_ext = None  # type: ignore[assignment]
     _IMPORT_ERROR = exc
 

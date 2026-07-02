@@ -7,8 +7,6 @@ Goal: bring coverage from 12% to ~90%.
 
 from __future__ import annotations
 
-from pathlib import Path
-
 from app.utils.sanitization import (
     sanitize_email,
     sanitize_filename,
@@ -185,12 +183,11 @@ def test_sanitize_path_exact_base_dir(tmp_path):
     assert result is not None or result is None  # not throwing
 
 
-def test_sanitize_path_relative_traversal_blocked(tmp_path):
-    """Path with many parent references should be blocked."""
-    result = sanitize_path("a/b/../../../secret", tmp_path)
-    # If it resolves outside base, returns None
-    # If it happens to be inside base, also fine — just no exception
-    assert result is None or isinstance(result, Path)
+def test_sanitize_path_os_error_returns_none(tmp_path):
+    """Invalid path should return None."""
+    # Passing a string with null byte causes issues on some OSes
+    result = sanitize_path("\x00invalid", tmp_path)
+    assert result is None
 
 
 # ---------------------------------------------------------------------------
@@ -267,8 +264,7 @@ def test_sanitize_url_private_ip_blocked():
 
 
 def test_sanitize_url_credentials_blocked():
-    credential_url = "https://user:pass@example.com/"  # pragma: allowlist secret
-    assert sanitize_url(credential_url) is None
+    assert sanitize_url("https://user:pass@example.com/") is None
 
 
 def test_sanitize_url_no_netloc_blocked():

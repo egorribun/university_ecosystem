@@ -195,26 +195,20 @@ async def test_existing_notification_columns_mocked():
 
 @pytest.mark.asyncio
 async def test_list_notifications_bad_cursor():
-    from fastapi import Response
-
+    request = MagicMock()
     db = AsyncMock()
     user = MagicMock()
-    request = MagicMock()
-    response = Response()
+    response = MagicMock()
     with pytest.raises(HTTPException) as exc:
         await notifications_api.list_notifications(
-            request=request,
-            response=response,
-            db=db,
-            user=user,
-            cursor="invalid_base64_string",
+            request, response, db=db, user=user, cursor="invalid_base64_string"
         )
     assert exc.value.status_code == 400
 
     bad_cursor = base64.b64encode(b"2026-01-01T00:00:00,not-a-uuid").decode()
     with pytest.raises(HTTPException) as exc:
         await notifications_api.list_notifications(
-            request=request, response=response, db=db, user=user, cursor=bad_cursor
+            request, response, db=db, user=user, cursor=bad_cursor
         )
     assert exc.value.status_code == 400
 

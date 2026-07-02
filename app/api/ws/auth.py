@@ -27,7 +27,7 @@ try:
         _jwt_lib.exceptions.InvalidTokenError,
         _jwt_lib.exceptions.ExpiredSignatureError,
     )
-except ImportError:  # pragma: no cover
+except ImportError:
     _JWT_DECODE_ERRORS = (ValueError,)
 
 

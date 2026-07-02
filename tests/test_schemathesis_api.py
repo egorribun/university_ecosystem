@@ -10,6 +10,20 @@ Uses ``schemathesis.openapi.from_asgi`` with the FastAPI ASGI app directly
 (available in schemathesis >=4.0 with the TestClient transport).  No network
 or server process required — fully hermetic.
 
+Schema loading is lazy via ``schemathesis.pytest.from_fixture``:
+
+    _lazy_schema = schemathesis.pytest.from_fixture("loaded_schema")
+
+This creates a ``LazySchema`` that stores the fixture name as a string at
+module parse/collection time.  The actual ``from_asgi()`` ASGI round-trip only
+happens at test *execution* time (via ``request.getfixturevalue("loaded_schema")``
+inside the wrapped test), never during pytest collection.  This prevents the
+app lifespan from blocking collection when backing services are unavailable.
+
+The ``@_lazy_schema.parametrize()`` decorator is intercepted by the schemathesis
+pytest plugin which parametrizes the test over every (method, path) pair and
+runs a Hypothesis test for each one.
+
 What this catches
 -----------------
 - Response body missing a declared required field
@@ -28,9 +42,10 @@ from __future__ import annotations
 import json
 import os
 
+import hypothesis
+import pytest
 import schemathesis
 from hypothesis import HealthCheck
-from hypothesis import settings as hypothesis_settings
 from schemathesis.checks import not_a_server_error
 
 # ---------------------------------------------------------------------------
@@ -43,41 +58,49 @@ os.environ.setdefault(
     "SECRET_KEY",
     "schemathesis-ci-placeholder-secret-key-minimum-32-chars-long",  # pragma: allowlist secret
 )
-os.environ.setdefault(
-    "SPOTIFY_OAUTH_STATE_SECRET",
-    "spotify-oauth-state-secret-minimum-32-chars-long-placeholder",  # pragma: allowlist secret
-)
-os.environ.setdefault(
-    "SPOTIFY_TOKEN_SECRET",
-    "aN-c6G_Gi7q0E8VnXW0fvkYlCYwH14r2raXI5Qun7Ss=",  # pragma: allowlist secret
-)
 
-from app.core.config import settings
-from app.main import app
-
-settings.spotify_oauth_state_secret = (
-    "spotify-oauth-state-secret-minimum-32-chars-long-placeholder"
-)
-settings.spotify_token_secret = (
-    "aN-c6G_Gi7q0E8VnXW0fvkYlCYwH14r2raXI5Qun7Ss="  # pragma: allowlist secret
-)
+from app.main import app  # env vars must be set before this import
 
 # ---------------------------------------------------------------------------
-# Schema loader — ASGI transport (no network, no server)
+# Schema loader — evaluated at module parse time but the ASGI call is deferred.
+#
+# ``schemathesis.pytest.from_fixture("loaded_schema")`` returns a ``LazySchema``
+# that stores the fixture name as a plain string.  No ASGI round-trip happens
+# here.  The real ``schemathesis.openapi.from_asgi()`` call only occurs inside
+# the test body (via ``request.getfixturevalue("loaded_schema")``), so a slow
+# or missing backing service cannot hang pytest collection.
 # ---------------------------------------------------------------------------
 
-schema = schemathesis.openapi.from_asgi("/api/openapi.json", app=app)
+_lazy_schema = schemathesis.pytest.from_fixture("loaded_schema")
+
+
+@pytest.fixture(scope="session")
+def loaded_schema():
+    """Return the schemathesis schema loaded from the ASGI app.
+
+    Session-scoped so the ASGI round-trip (fetching /api/openapi.json) happens
+    exactly once per pytest session, not once per test case.
+    """
+    return schemathesis.openapi.from_asgi("/api/openapi.json", app=app)
+
 
 # ---------------------------------------------------------------------------
 # Stateless property-based conformance tests
+#
+# Decorator order matters for Hypothesis settings to take effect with a
+# LazySchema: @hypothesis.settings must be the OUTER decorator so that it sets
+# ``_hypothesis_internal_use_settings`` on the function that
+# ``LazySchema.parametrize()`` returned (and that schemathesis reads back at
+# test run time via ``getattr(wrapped_test, "_hypothesis_internal_use_settings",
+# None)``).
 # ---------------------------------------------------------------------------
 
 
-@schema.parametrize()
-@hypothesis_settings(
+@hypothesis.settings(
     max_examples=25,
     suppress_health_check=[HealthCheck.too_slow, HealthCheck.filter_too_much],
 )
+@_lazy_schema.parametrize()
 def test_api_responses_conform_to_schema(case: schemathesis.Case) -> None:
     """Every OpenAPI-described endpoint must return a non-5xx response.
 
@@ -88,15 +111,15 @@ def test_api_responses_conform_to_schema(case: schemathesis.Case) -> None:
     Checks applied:
       ``not_a_server_error`` — no 5xx responses for valid input shapes.
 
-    Pytest parametrizes this test once per (method, path) pair, so each
-    failure is reported with its exact endpoint.
+    The schemathesis pytest plugin parametrizes this test once per (method,
+    path) pair, reporting each failure with its exact endpoint.
     """
     response = case.call()
     case.validate_response(response, checks=[not_a_server_error])
 
 
 # ---------------------------------------------------------------------------
-# Spec integrity smoke test
+# Spec integrity smoke tests
 # ---------------------------------------------------------------------------
 
 

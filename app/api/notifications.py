@@ -187,7 +187,7 @@ def _localized_notification_field(
 async def _existing_notification_columns(db: AsyncDatabaseSession) -> set[str]:
     def _sync_get_columns(sync_session: Any) -> set[str]:
         bind = sync_session.bind
-        if bind is None:  # pragma: no cover - defensive guard
+        if bind is None:
             return set()
         inspector = inspect(bind)
         try:
@@ -359,7 +359,7 @@ def _serialize_notification(
     }
     try:
         return NotificationOut.model_validate(data)
-    except ValidationError as exc:  # pragma: no cover - defensive guard
+    except ValidationError as exc:
         logger.warning(
             "Failed to validate notification payload for id=%s: %s", identifier, exc
         )
@@ -410,7 +410,7 @@ async def list_notifications(
         )
         try:
             unread = (await db.execute(q_unread)).scalar_one() or 0
-        except SQLAlchemyError as exc:  # pragma: no cover - defensive fallback
+        except SQLAlchemyError as exc:
             if not _is_missing_column_error(exc):
                 raise
             logger.warning(
@@ -424,7 +424,7 @@ async def list_notifications(
         )
         try:
             unread = (await db.execute(count_stmt)).scalar_one() or 0
-        except SQLAlchemyError as exc:  # pragma: no cover - defensive fallback
+        except SQLAlchemyError as exc:
             logger.warning(
                 "Falling back to row-based total count due to SQLAlchemy error",
                 extra={"error": str(exc), "user_id": str(user.id)},

@@ -13,6 +13,12 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+# Pin all tests in this file to one xdist worker.
+# These tests are pure-logic (no DB fixtures) but share a session-scope
+# event loop. Running them across workers with --dist=loadgroup causes
+# cross-worker loop contention and deadlocks on Python 3.14 / Linux CI.
+pytestmark = pytest.mark.xdist_group("logic_misc_coverage")
+
 # ---------------------------------------------------------------------------
 # 1. graphql/extensions.py — QueryCostExtension + _CostVisitor
 # ---------------------------------------------------------------------------

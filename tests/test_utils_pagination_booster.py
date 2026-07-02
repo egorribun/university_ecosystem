@@ -12,7 +12,6 @@ from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from pydantic import ValidationError
 
 from app.utils.pagination import (
     CursorPage,
@@ -133,6 +132,8 @@ def test_cursor_params_custom():
 
 
 def test_cursor_params_limit_clamps():
+    from pydantic import ValidationError
+
     with pytest.raises(ValidationError):
         CursorParams(limit=0)
 
@@ -221,11 +222,16 @@ async def test_paginate_cursor_has_more():
 
 @pytest.mark.asyncio
 async def test_paginate_cursor_with_total():
-    """include_total=True triggers a count query via session.execute."""
-    from unittest.mock import patch as mock_patch
+    """include_total=True triggers a count query."""
+    from unittest.mock import patch
 
     session = AsyncMock()
     stmt = MagicMock()
+    # stmt chain must survive order_by / limit calls
+    stmt.where.return_value = stmt
+    stmt.order_by.return_value = stmt
+    stmt.limit.return_value = stmt
+
     cursor_column = MagicMock()
     cursor_column.desc.return_value = cursor_column
     cursor_column.key = "id"
@@ -240,16 +246,23 @@ async def test_paginate_cursor_with_total():
     mock_scalars = MagicMock()
     mock_scalars.all.return_value = items
 
-    session.execute.return_value = count_result
-    session.scalars.return_value = mock_scalars
+    # paginate_cursor does `from sqlalchemy import func, select` as a *local*
+    # import inside the function body, so we must patch sqlalchemy itself.
+    # Otherwise `select(func.count()).select_from(MagicMock())` triggers
+    # SQLAlchemy's FROM-expression validation and raises ArgumentError.
+    mock_count_stmt = MagicMock()
+    mock_func = MagicMock()
+    mock_select = MagicMock(return_value=mock_count_stmt)
+
+    session.execute = AsyncMock(return_value=count_result)
+    session.scalars = AsyncMock(return_value=mock_scalars)
 
     params = CursorParams(limit=10)
 
-    # Patch sqlalchemy.select at the source module since it's locally imported
-    mock_select_result = MagicMock()
-    mock_select_result.select_from.return_value = mock_select_result
-
-    with mock_patch("sqlalchemy.select", return_value=mock_select_result):
+    with (
+        patch("sqlalchemy.select", mock_select),
+        patch("sqlalchemy.func", mock_func),
+    ):
         result = await paginate_cursor(
             session, stmt, cursor_column, params, include_total=True
         )

@@ -32,6 +32,9 @@ os.environ["ALGORITHM"] = "HS256"
 os.environ["ACCESS_TOKEN_EXPIRE_MINUTES"] = "30"
 os.environ["STATIC_DIR"] = "app/test-static"
 os.environ["SPOTIFY_TOKEN_SECRET"] = "aN-c6G_Gi7q0E8VnXW0fvkYlCYwH14r2raXI5Qun7Ss="
+os.environ["SPOTIFY_OAUTH_STATE_SECRET"] = (
+    "aN-c6G_Gi7q0E8VnXW0fvkYlCYwH14r2raXI5Qun7Ss="
+)
 os.environ["CACHE_ENABLED"] = "false"
 os.environ["ENABLE_OTEL"] = "false"
 os.environ["SESSION_STORAGE_BACKEND"] = "redis"
@@ -425,3 +428,26 @@ def _log_query_before_execute(
             f.write(normalized_stmt + "\n")
     except Exception:  # noqa: S110
         pass
+
+
+@pytest.fixture(autouse=True)
+async def cleanup_asyncio_tasks():
+    """Cancel all running tasks except the current one to prevent hangs/leaks."""
+    yield
+    import asyncio
+    import gc
+
+    current_task = asyncio.current_task()
+    tasks = [t for t in asyncio.all_tasks() if t is not current_task]
+    if tasks:
+        for task in tasks:
+            task.cancel()
+        try:
+            await asyncio.wait_for(
+                asyncio.gather(*tasks, return_exceptions=True), timeout=3.0
+            )
+        except TimeoutError:
+            pass
+
+    # Reclaim memory to prevent OOM-killer termination in CI
+    gc.collect()

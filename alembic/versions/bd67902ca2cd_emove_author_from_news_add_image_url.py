@@ -45,6 +45,7 @@ def upgrade() -> None:
         for fk_name in fk_names:
             batch_op.drop_constraint(fk_name, type_="foreignkey")
         if "author_id" in columns:
+            batch_op.drop_index("ix_news_author_id")
             batch_op.drop_column("author_id")
         if "image_url" not in columns:
             batch_op.add_column(sa.Column("image_url", sa.String(), nullable=True))

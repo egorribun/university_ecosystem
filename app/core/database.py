@@ -471,7 +471,7 @@ class _LazyProxy:
             init_database()
             obj = self._get_target()
 
-        if obj is None:  # pragma: no cover
+        if obj is None:
             raise RuntimeError(
                 f"Database {self._name} could not be initialized. "
                 "Ensure Settings are correctly configured."
@@ -485,7 +485,7 @@ class _LazyProxy:
         # RZ-NEW-005 (audit 2026-03-19): Use module-level _PROXY_ALLOWED_DUNDER_SETATTR
         # constant — avoids recreating the frozenset on every __setattr__ call.
         if name in _PROXY_ALLOWED_DUNDER_SETATTR:
-            object.__setattr__(self, name, value)
+            setattr(self._get_current_object(), name, value)
             return
 
         raise AttributeError(

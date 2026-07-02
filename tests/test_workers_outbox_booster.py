@@ -198,15 +198,9 @@ async def test_move_to_dlq(worker: OutboxWorker):
     mock_instance.id = uuid.uuid4()
     mock_failed_event_cls.return_value = mock_instance
 
-    with (
-        patch(
-            "app.models.failed_outbox_events.FailedOutboxEvent",
-            mock_failed_event_cls,
-            create=True,
-        ),
-        patch(
-            "app.workers.outbox.FailedOutboxEvent", mock_failed_event_cls, create=True
-        ),
+    with patch(
+        "app.models.failed_outbox_events.FailedOutboxEvent",
+        mock_failed_event_cls,
     ):
         await worker._move_to_dlq(mock_db, se, "some error")
 
@@ -333,7 +327,6 @@ async def test_process_batch_dispatch_failure_hits_dlq_at_max_retries(
         patch(
             "app.models.failed_outbox_events.FailedOutboxEvent",
             return_value=mock_failed_event,
-            create=True,
         ),
     ):
         mock_cm.return_value.__aenter__ = AsyncMock(return_value=mock_db)

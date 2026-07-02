@@ -28,12 +28,14 @@ class TestGenerateUuidV7:
         result = generate_uuid7()
         assert result.version == 7
 
-    def test_string_format_has_version_7(self):
-        """UUIDv7 string representation should have '7' as the first char of the 3rd segment."""
+    def test_variant_is_rfc4122(self):
+        """UUID variant bits should be 0b10 (RFC 4122/9562)."""
         result = generate_uuid7()
-        uid_str = str(result)
-        parts = uid_str.split("-")
-        assert parts[2].startswith("7"), f"Expected version 7 in UUID string: {uid_str}"
+        # Variant is encoded in byte 8 (0-indexed from MSB), which sits at
+        # bits 63-56 of the 128-bit integer.  Shift right 56, not 64.
+        # Shifting by 64 extracts byte 7 (the version nibble region).
+        variant_byte = (result.int >> 56) & 0xFF
+        assert (variant_byte >> 6) == 0b10
 
     def test_with_explicit_datetime(self):
         dt = datetime(2025, 6, 15, 12, 0, 0, tzinfo=UTC)
@@ -43,16 +45,18 @@ class TestGenerateUuidV7:
 
     def test_timestamp_roundtrip(self):
         """Timestamp extracted from UUIDv7 should be close to generation time."""
+        # UUIDv7 stores timestamps at millisecond precision.  Truncate `before`
+        # to the same precision so that sub-millisecond clock ticks between
+        # datetime.now() and generate_uuid7() don't cause a false failure.
+        from datetime import timedelta
+
         before = datetime.now(UTC)
         uid = generate_uuid7()
         after = datetime.now(UTC)
 
         extracted = extract_timestamp_from_uuid_v7(uid)
-        # Allow 1ms rounding (UUIDv7 has ms-level precision)
-        from datetime import timedelta
-
-        tolerance = timedelta(milliseconds=1)
-        assert before - tolerance <= extracted <= after + tolerance
+        before_ms = before - timedelta(microseconds=before.microsecond % 1000)
+        assert before_ms <= extracted <= after
 
     def test_uniqueness(self):
         ids = {generate_uuid7() for _ in range(100)}

@@ -10,9 +10,25 @@ Reference: https://cheatsheetseries.owasp.org/cheatsheets/XSS_Filter_Evasion_Che
 
 from __future__ import annotations
 
+from html.parser import HTMLParser
+
 import pytest
 
 from app.services.content_processing import SanitizationMode, sanitize
+
+
+class _AnchorHrefParser(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__()
+        self.hrefs: list[str] = []
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if tag != "a":
+            return
+        for name, value in attrs:
+            if name == "href" and value is not None:
+                self.hrefs.append(value)
+
 
 # ---------------------------------------------------------------------------
 # OWASP Filter Evasion Cheat Sheet — canonical XSS payloads
@@ -115,8 +131,10 @@ def test_rich_text_preserves_safe_link() -> None:
     """RICH_TEXT must keep safe https:// anchors with noopener noreferrer."""
     safe_link = '<a href="https://example.com" title="Example">visit</a>'
     result = sanitize(safe_link, mode=SanitizationMode.RICH_TEXT)
+    parser = _AnchorHrefParser()
+    parser.feed(result)
 
-    assert "https://example.com" in result
+    assert parser.hrefs == ["https://example.com"]
     assert "noopener noreferrer" in result
 
 

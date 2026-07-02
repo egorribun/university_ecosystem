@@ -39,9 +39,44 @@ jobs:
           # Publish to public Scorecard API (shows badge on README, requires public repo)
           publish_results: true
 
+      - name: Filter policy-only Scorecard SARIF findings
+        shell: python
+        run: |
+          import json
+          from pathlib import Path
+
+          sarif_path = Path("scorecard-results.sarif")
+          sarif = json.loads(sarif_path.read_text(encoding="utf-8"))
+          suppressed_rule_ids = {
+              # These are repository policy or operations signals. Keep them in
+              # the published Scorecard result, but do not duplicate them as
+              # source-code alerts where they cannot be remediated by a diff.
+              "BranchProtectionID",
+              "CIIBestPracticesID",
+              "CodeReviewID",
+              "PinnedDependenciesID",
+              "TokenPermissionsID",
+              # Dependency CVEs are uploaded by Trivy with package context.
+              "VulnerabilitiesID",
+          }
+
+          for run in sarif.get("runs", []):
+              tool = run.get("tool", {}).get("driver", {})
+              tool["rules"] = [
+                  rule
+                  for rule in tool.get("rules", [])
+                  if rule.get("id") not in suppressed_rule_ids
+              ]
+              run["results"] = [
+                  result
+                  for result in run.get("results", [])
+                  if result.get("ruleId") not in suppressed_rule_ids
+              ]
+
+          sarif_path.write_text(json.dumps(sarif, indent=2), encoding="utf-8")
+
       - name: Upload SARIF results to GitHub Security tab
         uses: github/codeql-action/upload-sarif@8aad20d150bbac5944a9f9d289da16a4b0d87c1e # v4.36.2
         with:
           sarif_file: scorecard-results.sarif
-
 

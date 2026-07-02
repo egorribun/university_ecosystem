@@ -8,7 +8,7 @@ on:
         description: "Python version for pip-audit"
         required: false
         type: string
-        default: "3.13"
+        default: "3.14"
       node-version:
         description: "Node.js version for npm audit"
         required: false
@@ -213,7 +213,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
-          python-version: "3.13"
+          python-version: "3.14"
 
       - name: Install detect-secrets
         run: pip install detect-secrets==1.5.0
