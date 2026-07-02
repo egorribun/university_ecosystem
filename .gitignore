@@ -19,6 +19,16 @@ failed_tests_list.txt
 last_failed_tests*.txt
 final_check.txt
 
+# Agent-generated log artifacts (accidentally committed — must not recur)
+*_logs.txt
+*_logs_*.txt
+*_log.txt
+smoke_*_logs.txt
+
+# Go coverage output
+cover.out
+coverage.out
+
 # Test databases
 test.db
 test-migration.db
