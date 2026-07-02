@@ -27,7 +27,7 @@ jobs:
     permissions:
       actions: read          # Required by the SLSA generator
       id-token: write        # OIDC token for keyless signing
-      packages: write        # Push provenance attestation to GHCR
+      packages: write        # Required: push provenance attestation to GHCR
     uses: slsa-framework/slsa-github-generator/.github/workflows/generator_container_slsa3.yml@f7dd8c54c2067bafc12ca7a55595d5ee9b75204a # v2.1.0
     with:
       image: ghcr.io/${{ github.repository }}/backend
@@ -42,7 +42,7 @@ jobs:
     permissions:
       actions: read
       id-token: write
-      packages: write
+      packages: write        # Required: push provenance attestation to GHCR
     uses: slsa-framework/slsa-github-generator/.github/workflows/generator_container_slsa3.yml@f7dd8c54c2067bafc12ca7a55595d5ee9b75204a # v2.1.0
     with:
       image: ghcr.io/${{ github.repository }}/frontend
@@ -57,7 +57,7 @@ jobs:
     permissions:
       actions: read
       id-token: write
-      packages: write
+      packages: write        # Required: push provenance attestation to GHCR
     strategy:
       matrix:
         service: [ws-hub, file-processor, gateway]

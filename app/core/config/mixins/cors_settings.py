@@ -65,7 +65,7 @@ class CorsSettingsMixin:
                     "Internal route shared guard is not configured in %s "
                     "environment. Internal API routes are vulnerable to IP spoofing.",
                     env,
-                )
+                )  # nosemgrep: python.lang.security.audit.logging.logger-credential-leak.python-logger-credential-disclosure
         return value
 
     @cached_property

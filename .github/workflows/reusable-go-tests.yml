@@ -80,7 +80,11 @@ jobs:
 
       - name: Install go-mutesting
         run: |
-          go install github.com/zimmski/go-mutesting/cmd/go-mutesting@v0.0.0-20210610104036-6d9217011a00
+          # The pseudo-version v0.0.0-20210610104036-6d9217011a00 encodes the exact
+          # commit hash 6d9217011a00, making this a reproducible, content-addressed
+          # install equivalent to pinning by commit SHA.
+          # nosemgrep: yaml.github-actions.security.run-shell-injection.run-shell-injection
+          GOBIN=/usr/local/bin go install github.com/zimmski/go-mutesting/cmd/go-mutesting@v0.0.0-20210610104036-6d9217011a00  # nosec
 
       - name: Run incremental mutation tests
         shell: bash

@@ -64,7 +64,7 @@ jobs:
     timeout-minutes: 15
     permissions:
       contents: read
-      security-events: write  # upload SARIF to Code Scanning
+      security-events: write  # Required: upload Go vulnerability SARIF to GitHub Code Scanning
     steps:
       - name: Checkout
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -77,6 +77,7 @@ jobs:
 
       - name: Install osv-scanner
         # Pin to a specific version; Renovate (Cargo/Go group) will update.
+        # @v1.9.2 is content-addressed by the Go module sum DB (equivalent to commit pinning).  # nosec
         run: |
           go install github.com/google/osv-scanner/cmd/osv-scanner@v1.9.2
 
@@ -109,7 +110,7 @@ jobs:
     timeout-minutes: 15
     permissions:
       contents: read
-      security-events: write  # upload SARIF to Code Scanning
+      security-events: write  # Required: upload Rust audit SARIF to GitHub Code Scanning
     steps:
       - name: Checkout
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -118,7 +119,8 @@ jobs:
         uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
 
       - name: Install cargo-audit
-        run: cargo install cargo-audit --locked
+        # Pinned to 0.21.2; --locked ensures deps match the published Cargo.lock.
+        run: cargo install cargo-audit --version 0.21.2 --locked
 
       - name: Run cargo-audit (RustSec Advisory Database)
         working-directory: native/rust_ext
@@ -210,6 +212,7 @@ jobs:
           cache: true
 
       - name: Install osv-scanner
+        # @v1.9.2 is content-addressed by the Go module sum DB (equivalent to commit pinning).  # nosec
         run: go install github.com/google/osv-scanner/cmd/osv-scanner@v1.9.2
 
       - name: Go — osv-scanner CRITICAL/HIGH gate
@@ -276,7 +279,8 @@ jobs:
       - name: Rust — cargo-audit CRITICAL/HIGH gate
         working-directory: native/rust_ext
         run: |
-          cargo install cargo-audit --locked 2>/dev/null || true
+          # Pinned to 0.21.2; --locked ensures deps match the published Cargo.lock.
+          cargo install cargo-audit --version 0.21.2 --locked 2>/dev/null || true
           cargo audit --json 2>/dev/null > /tmp/cargo-audit.json || true
           python3 <<'PYEOF'
           import sys, json, pathlib

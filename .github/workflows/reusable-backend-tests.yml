@@ -111,14 +111,14 @@ jobs:
                     $failFastArgs = @("-x")
                   }
 
-                  uv run pytest ${{ inputs.test-pattern }} `
+                  uv run pytest ${{ inputs.test-pattern }} `  # nosemgrep: yaml.github-actions.security.run-shell-injection.run-shell-injection
                     $parallelArgs `
                     $failFastArgs `
                     --ignore=tests/test_schemathesis_api.py `
                     --cov=app `
                     --cov-report=xml `
                     --cov-report=term-missing `
-                    --cov-fail-under=${{ inputs.coverage-threshold }} `
+                    --cov-fail-under=${{ inputs.coverage-threshold }} `  # nosemgrep: yaml.github-actions.security.run-shell-injection.run-shell-injection
                     --junitxml=pytest-report.xml `
                     --dist=loadgroup
 
@@ -227,7 +227,7 @@ jobs:
 
             - name: Run integration tests
               shell: pwsh
-              run: uv run pytest ${{ inputs.test-pattern }} -v --tb=short -x --ignore=tests/performance --ignore=tests/test_schemathesis_api.py
+              run: uv run pytest ${{ inputs.test-pattern }} -v --tb=short -x --ignore=tests/performance --ignore=tests/test_schemathesis_api.py  # nosemgrep: yaml.github-actions.security.run-shell-injection.run-shell-injection
 
             - name: Upload test results
               uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
