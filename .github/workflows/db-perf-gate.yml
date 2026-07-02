@@ -30,7 +30,33 @@ jobs:
                   DATABASE_URL: postgresql+asyncpg://test:test@localhost:5432/test # pragma: allowlist secret
                   SECRET_KEY: test-secret-key-for-ci-perf-gate-only  # pragma: allowlist secret
                   ENVIRONMENT: test
-              run: uv run alembic upgrade head
+              run: uv run alembic upgrade head 2>&1
+            - name: Diagnose partition state post-migration
+              env:
+                  PGPASSWORD: test # pragma: allowlist secret
+              run: |
+                  echo '=== relkind of partitioned tables ==='
+                  psql -h localhost -U test -d test -c "
+                    SELECT relname, relkind
+                    FROM pg_class c
+                    JOIN pg_namespace n ON n.oid = c.relnamespace
+                    WHERE n.nspname = 'public'
+                      AND relname IN ('data_access_logs','notifications',
+                                      'notification_deliveries','failed_login_attempts')
+                    ORDER BY relname;
+                  "
+                  echo '=== child partitions via pg_inherits ==='
+                  psql -h localhost -U test -d test -c "
+                    SELECT parent.relname AS parent, child.relname AS child
+                    FROM pg_inherits
+                    JOIN pg_class parent ON pg_inherits.inhparent = parent.oid
+                    JOIN pg_class child  ON pg_inherits.inhrelid  = child.oid
+                    WHERE parent.relname IN ('data_access_logs','notifications',
+                                             'notification_deliveries','failed_login_attempts')
+                    ORDER BY parent.relname, child.relname;
+                  "
+                  echo '=== alembic_version ==='
+                  psql -h localhost -U test -d test -c "SELECT * FROM alembic_version;"
             - name: Run Pytest to capture query logs
               env:
                   DATABASE_URL: postgresql+asyncpg://test:test@localhost:5432/test # pragma: allowlist secret
