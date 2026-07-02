@@ -49,10 +49,10 @@ jobs:
     needs: [release]
     permissions:
       contents: read
-      packages: write
+      packages: write  # Required: push Docker images to GHCR
       id-token: write
       attestations: write
-      security-events: write
+      security-events: write  # Required: upload SARIF security scan results
     strategy:
       matrix:
         include:

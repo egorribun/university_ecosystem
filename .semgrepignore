@@ -1,1 +1,5 @@
-alembic/versions/**
+# Alembic migration files use sqlalchemy.text() for DDL-only operations
+# (partitioning, full-text search indexes, triggers) where no user input
+# reaches the SQL. The text() usage is the correct and only way to express
+# these PostgreSQL-specific DDL statements.
+alembic/versions/

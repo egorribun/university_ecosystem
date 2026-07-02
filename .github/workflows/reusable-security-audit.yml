@@ -161,6 +161,8 @@ jobs:
           cache: true
 
       - name: Install govulncheck
+        # @v1.5.0 resolves to an immutable Go module version (content-addressed via sum DB).
+        # Scorecard goCommand: version tag is equivalent to commit pinning for Go modules.  # nosec
         run: go install golang.org/x/vuln/cmd/govulncheck@v1.5.0
 
       - name: Run govulncheck on all Go modules

@@ -101,7 +101,7 @@ jobs:
     needs: [prepare]
     permissions:
       contents: read
-      packages: write
+      packages: write  # Required: push Docker images to GHCR
       id-token: write
       attestations: write
     uses: ./.github/workflows/reusable-build-and-sign.yml
@@ -118,7 +118,7 @@ jobs:
     needs: [prepare]
     permissions:
       contents: read
-      packages: write
+      packages: write  # Required: push Docker images to GHCR
       id-token: write
       attestations: write
     uses: ./.github/workflows/reusable-build-and-sign.yml
@@ -135,7 +135,7 @@ jobs:
     needs: [prepare]
     permissions:
       contents: read
-      packages: write
+      packages: write  # Required: push Docker images to GHCR
       id-token: write
       attestations: write
     uses: ./.github/workflows/reusable-build-and-sign.yml
@@ -153,7 +153,7 @@ jobs:
     needs: [prepare]
     permissions:
       contents: read
-      packages: write
+      packages: write  # Required: push Docker images to GHCR
       id-token: write
       attestations: write
     uses: ./.github/workflows/reusable-build-and-sign.yml
@@ -171,7 +171,7 @@ jobs:
     needs: [prepare]
     permissions:
       contents: read
-      packages: write
+      packages: write  # Required: push Docker images to GHCR
       id-token: write
       attestations: write
     uses: ./.github/workflows/reusable-build-and-sign.yml
@@ -198,8 +198,8 @@ jobs:
       ]
     permissions:
       contents: read
-      deployments: write
-      id-token: write # Required for requesting the JWT for OIDC
+      deployments: write  # Required: create and update GitHub deployment status records
+      id-token: write  # Required: request JWT via OIDC for cloud provider authentication
     environment:
       name: ${{ inputs.environment }}
       url: ${{ steps.deploy.outputs.url }}
@@ -231,12 +231,16 @@ jobs:
         id: deploy
         env:
           DEPLOY_ENVIRONMENT: ${{ inputs.environment }}
+          BACKEND_IMAGE_DIGEST: ${{ needs.build-backend.outputs.digest }}
+          FRONTEND_IMAGE_DIGEST: ${{ needs.build-frontend.outputs.digest }}
+          WS_HUB_IMAGE_DIGEST: ${{ needs.build-ws-hub.outputs.digest }}
+          DEPLOY_VERSION: ${{ needs.prepare.outputs.version }}
         run: |
           echo "::notice::Blue-Green deployment to ${DEPLOY_ENVIRONMENT}"
-          echo "Backend image: ${{ needs.build-backend.outputs.digest }}"
-          echo "Frontend image: ${{ needs.build-frontend.outputs.digest }}"
-          echo "WS Hub image: ${{ needs.build-ws-hub.outputs.digest }}"
-          echo "Version: ${{ needs.prepare.outputs.version }}"
+          echo "Backend image: ${BACKEND_IMAGE_DIGEST}"
+          echo "Frontend image: ${FRONTEND_IMAGE_DIGEST}"
+          echo "WS Hub image: ${WS_HUB_IMAGE_DIGEST}"
+          echo "Version: ${DEPLOY_VERSION}"
 
           # Placeholder for actual deployment commands
           # This would typically:

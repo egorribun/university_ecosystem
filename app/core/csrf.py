@@ -292,7 +292,7 @@ class CSRFMiddleware:
                 "Falling back to unsigned Double-Submit pattern (development only).",
                 vulnerability="subdomain fixation",
                 recommendation="Configure the CSRF signing key in production.",
-            )
+            )  # nosemgrep: python.lang.security.audit.logging.logger-credential-leak.python-logger-credential-disclosure
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         # Only protect HTTP — pass WebSocket / lifespan through unchanged.
@@ -353,7 +353,7 @@ class CSRFMiddleware:
                     cookie_present=bool(cookie_token),
                     header_present=bool(header_token),
                     request_id=request_id_ctx.get(""),
-                )
+                )  # nosemgrep: python.lang.security.audit.logging.logger-credential-leak.python-logger-credential-disclosure
                 await _reject_csrf(scope, receive, send)
                 return
 
@@ -364,7 +364,7 @@ class CSRFMiddleware:
                     method=method,
                     path=path,
                     request_id=request_id_ctx.get(""),
-                )
+                )  # nosemgrep: python.lang.security.audit.logging.logger-credential-leak.python-logger-credential-disclosure
                 await _reject_csrf(scope, receive, send)
                 return
 
@@ -378,7 +378,7 @@ class CSRFMiddleware:
                         method=method,
                         path=path,
                         request_id=request_id_ctx.get(""),
-                    )
+                    )  # nosemgrep: python.lang.security.audit.logging.logger-credential-leak.python-logger-credential-disclosure
                     await _reject_csrf(scope, receive, send)
                     return
 

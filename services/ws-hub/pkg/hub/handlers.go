@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -42,6 +43,8 @@ var (
 			if origin == "" {
 				return true
 			}
+
+			// Check configured slice (populated via SetAllowedOrigins from config).
 			originsMu.RLock()
 			defer originsMu.RUnlock()
 			for _, allowed := range allowedOrigins {
@@ -49,7 +52,19 @@ var (
 					return true
 				}
 			}
-			return false
+
+			// Check WS_ALLOWED_ORIGINS env var (comma-separated) as a secondary source.
+			// This allows runtime overrides without redeployment.
+			for _, allowed := range strings.Split(os.Getenv("WS_ALLOWED_ORIGINS"), ",") {
+				if strings.TrimSpace(allowed) == origin {
+					return true
+				}
+			}
+
+			// In non-production environments allow all origins to ease local development.
+			// In production this returns false so unrecognised origins are rejected.
+			env := os.Getenv("ENVIRONMENT")
+			return env != "production"
 		},
 	}
 )

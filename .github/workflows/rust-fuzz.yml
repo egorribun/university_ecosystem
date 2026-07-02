@@ -39,7 +39,8 @@ jobs:
             ${{ runner.os }}-cargo-fuzz-
 
       - name: Install cargo-fuzz
-        run: cargo install cargo-fuzz
+        # Pinned to 0.12.0 for reproducibility; update deliberately when a new version is validated.
+        run: cargo install cargo-fuzz --version 0.12.0 --locked
 
       - name: Run fuzz targets
         env:

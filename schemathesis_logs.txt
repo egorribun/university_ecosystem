@@ -1,0 +1,1023 @@
+﻿2026-06-29T14:25:31.2493382Z Current runner version: '2.335.1'
+2026-06-29T14:25:31.2517934Z ##[group]Runner Image Provisioner
+2026-06-29T14:25:31.2518824Z Hosted Compute Agent
+2026-06-29T14:25:31.2519509Z Version: 20260611.554
+2026-06-29T14:25:31.2520147Z Commit: 5e0782fdc9014723d3be820dd114dd31555c2bd1
+2026-06-29T14:25:31.2520856Z Build Date: 2026-06-11T21:40:46Z
+2026-06-29T14:25:31.2521967Z Worker ID: {093f48be-64be-4bb9-8f0d-a02375ad0887}
+2026-06-29T14:25:31.2522740Z Azure Region: westus
+2026-06-29T14:25:31.2523356Z ##[endgroup]
+2026-06-29T14:25:31.2524917Z ##[group]Operating System
+2026-06-29T14:25:31.2525558Z Ubuntu
+2026-06-29T14:25:31.2526192Z 24.04.4
+2026-06-29T14:25:31.2526692Z LTS
+2026-06-29T14:25:31.2527180Z ##[endgroup]
+2026-06-29T14:25:31.2527785Z ##[group]Runner Image
+2026-06-29T14:25:31.2528410Z Image: ubuntu-24.04
+2026-06-29T14:25:31.2529036Z Version: 20260622.220.1
+2026-06-29T14:25:31.2530236Z Included Software: https://github.com/actions/runner-images/blob/ubuntu24/20260622.220/images/ubuntu/Ubuntu2404-Readme.md
+2026-06-29T14:25:31.2532175Z Image Release: https://github.com/actions/runner-images/releases/tag/ubuntu24%2F20260622.220
+2026-06-29T14:25:31.2533171Z ##[endgroup]
+2026-06-29T14:25:31.2534377Z ##[group]GITHUB_TOKEN Permissions
+2026-06-29T14:25:31.2536235Z Contents: read
+2026-06-29T14:25:31.2536980Z Metadata: read
+2026-06-29T14:25:31.2537542Z ##[endgroup]
+2026-06-29T14:25:31.2539562Z Secret source: Actions
+2026-06-29T14:25:31.2540467Z Prepare workflow directory
+2026-06-29T14:25:31.3067657Z Prepare all required actions
+2026-06-29T14:25:31.3105353Z Getting action download info
+2026-06-29T14:25:31.6677289Z Download action repository 'actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0' (SHA:9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0)
+2026-06-29T14:25:31.7541045Z Download action repository 'actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1' (SHA:ece7cb06caefa5fff74198d8649806c4678c61a1)
+2026-06-29T14:25:32.2490275Z Download action repository 'astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39' (SHA:fac544c07dec837d0ccb6301d7b5580bf5edae39)
+2026-06-29T14:25:32.8387242Z Complete job name: Schemathesis — API Schema Conformance
+2026-06-29T14:25:32.9109060Z ##[group]Run actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+2026-06-29T14:25:32.9110174Z with:
+2026-06-29T14:25:32.9110655Z   repository: egorribun/university_ecosystem
+2026-06-29T14:25:32.9115574Z   token: ***
+2026-06-29T14:25:32.9116021Z   ssh-strict: true
+2026-06-29T14:25:32.9116467Z   ssh-user: git
+2026-06-29T14:25:32.9116909Z   persist-credentials: true
+2026-06-29T14:25:32.9117404Z   clean: true
+2026-06-29T14:25:32.9117887Z   sparse-checkout-cone-mode: true
+2026-06-29T14:25:32.9118414Z   fetch-depth: 1
+2026-06-29T14:25:32.9118856Z   fetch-tags: false
+2026-06-29T14:25:32.9119305Z   show-progress: true
+2026-06-29T14:25:32.9119742Z   lfs: false
+2026-06-29T14:25:32.9120153Z   submodules: false
+2026-06-29T14:25:32.9120611Z   set-safe-directory: true
+2026-06-29T14:25:32.9121120Z   allow-unsafe-pr-checkout: false
+2026-06-29T14:25:32.9122091Z env:
+2026-06-29T14:25:32.9122544Z   SECRET_KEY: 
+2026-06-29T14:25:32.9122987Z   ENVIRONMENT: testing
+2026-06-29T14:25:32.9123480Z ##[endgroup]
+2026-06-29T14:25:33.0057823Z Syncing repository: egorribun/university_ecosystem
+2026-06-29T14:25:33.0060428Z ##[group]Getting Git version info
+2026-06-29T14:25:33.0062237Z Working directory is '/home/runner/work/university_ecosystem/university_ecosystem'
+2026-06-29T14:25:33.0064201Z [command]/usr/bin/git version
+2026-06-29T14:25:33.0127302Z git version 2.54.0
+2026-06-29T14:25:33.0147955Z ##[endgroup]
+2026-06-29T14:25:33.0157962Z Temporarily overriding HOME='/home/runner/work/_temp/56dcf020-28df-4f01-95a3-d8f9e50a6ae3' before making global git config changes
+2026-06-29T14:25:33.0159385Z Adding repository directory to the temporary git global config as a safe directory
+2026-06-29T14:25:33.0163700Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/university_ecosystem/university_ecosystem
+2026-06-29T14:25:33.0212703Z Deleting the contents of '/home/runner/work/university_ecosystem/university_ecosystem'
+2026-06-29T14:25:33.0215849Z ##[group]Determining repository object format
+2026-06-29T14:25:33.0217226Z ##[endgroup]
+2026-06-29T14:25:33.0218282Z ##[group]Initializing the repository
+2026-06-29T14:25:33.0221322Z [command]/usr/bin/git init /home/runner/work/university_ecosystem/university_ecosystem
+2026-06-29T14:25:33.0328647Z hint: Using 'master' as the name for the initial branch. This default branch name
+2026-06-29T14:25:33.0329909Z hint: will change to "main" in Git 3.0. To configure the initial branch name
+2026-06-29T14:25:33.0330882Z hint: to use in all of your new repositories, which will suppress this warning,
+2026-06-29T14:25:33.0331957Z hint: call:
+2026-06-29T14:25:33.0332394Z hint:
+2026-06-29T14:25:33.0332919Z hint: 	git config --global init.defaultBranch <name>
+2026-06-29T14:25:33.0333716Z hint:
+2026-06-29T14:25:33.0334728Z hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
+2026-06-29T14:25:33.0336078Z hint: 'development'. The just-created branch can be renamed via this command:
+2026-06-29T14:25:33.0337558Z hint:
+2026-06-29T14:25:33.0338416Z hint: 	git branch -m <name>
+2026-06-29T14:25:33.0339355Z hint:
+2026-06-29T14:25:33.0340579Z hint: Disable this message with "git config set advice.defaultBranchName false"
+2026-06-29T14:25:33.0342979Z Initialized empty Git repository in /home/runner/work/university_ecosystem/university_ecosystem/.git/
+2026-06-29T14:25:33.0346338Z [command]/usr/bin/git remote add origin https://github.com/egorribun/university_ecosystem
+2026-06-29T14:25:33.0390176Z ##[endgroup]
+2026-06-29T14:25:33.0391778Z ##[group]Disabling automatic garbage collection
+2026-06-29T14:25:33.0393853Z [command]/usr/bin/git config --local gc.auto 0
+2026-06-29T14:25:33.0423187Z ##[endgroup]
+2026-06-29T14:25:33.0424436Z ##[group]Setting up auth
+2026-06-29T14:25:33.0425054Z Removing SSH command configuration
+2026-06-29T14:25:33.0428956Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+2026-06-29T14:25:33.0465829Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+2026-06-29T14:25:33.0805825Z Removing HTTP extra header
+2026-06-29T14:25:33.0813122Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-06-29T14:25:33.0845974Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+2026-06-29T14:25:33.1057653Z Removing includeIf entries pointing to credentials config files
+2026-06-29T14:25:33.1058785Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+2026-06-29T14:25:33.1087932Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+2026-06-29T14:25:33.1310501Z [command]/usr/bin/git config --file /home/runner/work/_temp/git-credentials-bc3d9ebc-4843-47fe-99be-50b78fbccda5.config http.https://github.com/.extraheader AUTHORIZATION: basic ***
+2026-06-29T14:25:33.1347423Z [command]/usr/bin/git config --local includeIf.gitdir:/home/runner/work/university_ecosystem/university_ecosystem/.git.path /home/runner/work/_temp/git-credentials-bc3d9ebc-4843-47fe-99be-50b78fbccda5.config
+2026-06-29T14:25:33.1377654Z [command]/usr/bin/git config --local includeIf.gitdir:/home/runner/work/university_ecosystem/university_ecosystem/.git/worktrees/*.path /home/runner/work/_temp/git-credentials-bc3d9ebc-4843-47fe-99be-50b78fbccda5.config
+2026-06-29T14:25:33.1410029Z [command]/usr/bin/git config --local includeIf.gitdir:/github/workspace/.git.path /github/runner_temp/git-credentials-bc3d9ebc-4843-47fe-99be-50b78fbccda5.config
+2026-06-29T14:25:33.1439887Z [command]/usr/bin/git config --local includeIf.gitdir:/github/workspace/.git/worktrees/*.path /github/runner_temp/git-credentials-bc3d9ebc-4843-47fe-99be-50b78fbccda5.config
+2026-06-29T14:25:33.1466793Z ##[endgroup]
+2026-06-29T14:25:33.1468189Z ##[group]Fetching the repository
+2026-06-29T14:25:33.1474803Z [command]/usr/bin/git -c protocol.version=2 fetch --no-tags --prune --no-recurse-submodules --depth=1 origin +9b4952377158986a90a30a621ead5ef996faedcf:refs/remotes/pull/1159/merge
+2026-06-29T14:25:33.9665516Z From https://github.com/egorribun/university_ecosystem
+2026-06-29T14:25:33.9666991Z  * [new ref]         9b4952377158986a90a30a621ead5ef996faedcf -> pull/1159/merge
+2026-06-29T14:25:33.9700756Z ##[endgroup]
+2026-06-29T14:25:33.9703595Z ##[group]Determining the checkout info
+2026-06-29T14:25:33.9705764Z ##[endgroup]
+2026-06-29T14:25:33.9707296Z [command]/usr/bin/git sparse-checkout disable
+2026-06-29T14:25:33.9752524Z [command]/usr/bin/git config --local --unset-all extensions.worktreeConfig
+2026-06-29T14:25:33.9780800Z ##[group]Checking out the ref
+2026-06-29T14:25:33.9783530Z [command]/usr/bin/git checkout --progress --force refs/remotes/pull/1159/merge
+2026-06-29T14:25:34.1872853Z Note: switching to 'refs/remotes/pull/1159/merge'.
+2026-06-29T14:25:34.1874453Z 
+2026-06-29T14:25:34.1875607Z You are in 'detached HEAD' state. You can look around, make experimental
+2026-06-29T14:25:34.1878349Z changes and commit them, and you can discard any commits you make in this
+2026-06-29T14:25:34.1881006Z state without impacting any branches by switching back to a branch.
+2026-06-29T14:25:34.1882621Z 
+2026-06-29T14:25:34.1883607Z If you want to create a new branch to retain commits you create, you may
+2026-06-29T14:25:34.1886094Z do so (now or later) by using -c with the switch command. Example:
+2026-06-29T14:25:34.1887176Z 
+2026-06-29T14:25:34.1887696Z   git switch -c <new-branch-name>
+2026-06-29T14:25:34.1888538Z 
+2026-06-29T14:25:34.1889086Z Or undo this operation with:
+2026-06-29T14:25:34.1889858Z 
+2026-06-29T14:25:34.1890349Z   git switch -
+2026-06-29T14:25:34.1890956Z 
+2026-06-29T14:25:34.1892976Z Turn off this advice by setting config variable advice.detachedHead to false
+2026-06-29T14:25:34.1895110Z 
+2026-06-29T14:25:34.1897596Z HEAD is now at 9b49523 Merge c2e6342309e06d8b2600c1a91600b648ec962aea into 5d36f306d4cbafad896a6d7bb3cadba0e7aa67f9
+2026-06-29T14:25:34.1903532Z ##[endgroup]
+2026-06-29T14:25:34.1906262Z [command]/usr/bin/git log -1 --format=%H
+2026-06-29T14:25:34.1907822Z 9b4952377158986a90a30a621ead5ef996faedcf
+2026-06-29T14:25:34.2245736Z ##[group]Run actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+2026-06-29T14:25:34.2247461Z with:
+2026-06-29T14:25:34.2248305Z   python-version: 3.13
+2026-06-29T14:25:34.2249310Z   check-latest: false
+2026-06-29T14:25:34.2262380Z   token: ***
+2026-06-29T14:25:34.2263316Z   update-environment: true
+2026-06-29T14:25:34.2264376Z   allow-prereleases: false
+2026-06-29T14:25:34.2265412Z   freethreaded: false
+2026-06-29T14:25:34.2266332Z env:
+2026-06-29T14:25:34.2267128Z   SECRET_KEY: 
+2026-06-29T14:25:34.2267998Z   ENVIRONMENT: testing
+2026-06-29T14:25:34.2268940Z ##[endgroup]
+2026-06-29T14:25:34.3536845Z ##[group]Installed versions
+2026-06-29T14:25:34.4147051Z Successfully set up CPython (3.13.14)
+2026-06-29T14:25:34.4148913Z ##[endgroup]
+2026-06-29T14:25:34.4316811Z ##[group]Run echo "SECRET_KEY=$(openssl rand -hex 32)" >> "$GITHUB_ENV"
+2026-06-29T14:25:34.4318831Z [36;1mecho "SECRET_KEY=$(openssl rand -hex 32)" >> "$GITHUB_ENV"[0m
+2026-06-29T14:25:34.4618601Z shell: /usr/bin/bash -e {0}
+2026-06-29T14:25:34.4619696Z env:
+2026-06-29T14:25:34.4620522Z   SECRET_KEY: 
+2026-06-29T14:25:34.4621408Z   ENVIRONMENT: testing
+2026-06-29T14:25:34.4623011Z   pythonLocation: /opt/hostedtoolcache/Python/3.13.14/x64
+2026-06-29T14:25:34.4624893Z   PKG_CONFIG_PATH: /opt/hostedtoolcache/Python/3.13.14/x64/lib/pkgconfig
+2026-06-29T14:25:34.4626736Z   Python_ROOT_DIR: /opt/hostedtoolcache/Python/3.13.14/x64
+2026-06-29T14:25:34.4628389Z   Python2_ROOT_DIR: /opt/hostedtoolcache/Python/3.13.14/x64
+2026-06-29T14:25:34.4630039Z   Python3_ROOT_DIR: /opt/hostedtoolcache/Python/3.13.14/x64
+2026-06-29T14:25:34.4631844Z   LD_LIBRARY_PATH: /opt/hostedtoolcache/Python/3.13.14/x64/lib
+2026-06-29T14:25:34.4633547Z ##[endgroup]
+2026-06-29T14:25:34.5084090Z ##[group]Run astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39
+2026-06-29T14:25:34.5085605Z with:
+2026-06-29T14:25:34.5086399Z   enable-cache: true
+2026-06-29T14:25:34.5087335Z   cache-dependency-glob: uv.lock
+2026-06-29T14:25:34.5088424Z   activate-environment: false
+2026-06-29T14:25:34.5089450Z   no-project: false
+2026-06-29T14:25:34.5090846Z   working-directory: /home/runner/work/university_ecosystem/university_ecosystem
+2026-06-29T14:25:34.5103279Z   github-token: ***
+2026-06-29T14:25:34.5104185Z   restore-cache: true
+2026-06-29T14:25:34.5105097Z   save-cache: true
+2026-06-29T14:25:34.5105965Z   prune-cache: true
+2026-06-29T14:25:34.5106850Z   cache-python: false
+2026-06-29T14:25:34.5107808Z   ignore-nothing-to-cache: false
+2026-06-29T14:25:34.5108889Z   ignore-empty-workdir: false
+2026-06-29T14:25:34.5109952Z   download-from-astral-mirror: true
+2026-06-29T14:25:34.5111079Z   add-problem-matchers: true
+2026-06-29T14:25:34.5112397Z   quiet: false
+2026-06-29T14:25:34.5113330Z   resolution-strategy: highest
+2026-06-29T14:25:34.5114321Z env:
+2026-06-29T14:25:34.5115555Z   SECRET_KEY: 2f5445fbaad7053689001350e45b8953f482889822bc34a36ae13e458e867f84
+2026-06-29T14:25:34.5117118Z   ENVIRONMENT: testing
+2026-06-29T14:25:34.5118254Z   pythonLocation: /opt/hostedtoolcache/Python/3.13.14/x64
+2026-06-29T14:25:34.5119925Z   PKG_CONFIG_PATH: /opt/hostedtoolcache/Python/3.13.14/x64/lib/pkgconfig
+2026-06-29T14:25:34.5121790Z   Python_ROOT_DIR: /opt/hostedtoolcache/Python/3.13.14/x64
+2026-06-29T14:25:34.5123361Z   Python2_ROOT_DIR: /opt/hostedtoolcache/Python/3.13.14/x64
+2026-06-29T14:25:34.5124919Z   Python3_ROOT_DIR: /opt/hostedtoolcache/Python/3.13.14/x64
+2026-06-29T14:25:34.5126481Z   LD_LIBRARY_PATH: /opt/hostedtoolcache/Python/3.13.14/x64/lib
+2026-06-29T14:25:34.5127800Z ##[endgroup]
+2026-06-29T14:25:34.6906813Z Trying to find version for uv in: /home/runner/work/university_ecosystem/university_ecosystem/uv.toml
+2026-06-29T14:25:34.6909422Z Could not find file: /home/runner/work/university_ecosystem/university_ecosystem/uv.toml
+2026-06-29T14:25:34.6912450Z Trying to find version for uv in: /home/runner/work/university_ecosystem/university_ecosystem/pyproject.toml
+2026-06-29T14:25:34.6927984Z Could not determine uv version from uv.toml or pyproject.toml. Falling back to latest.
+2026-06-29T14:25:34.6934568Z Fetching manifest data from https://raw.githubusercontent.com/astral-sh/versions/main/v1/uv.ndjson ...
+2026-06-29T14:25:34.7532064Z Downloading uv from "https://releases.astral.sh/github/uv/releases/download/0.11.25/uv-x86_64-unknown-linux-gnu.tar.gz" ...
+2026-06-29T14:25:34.9185908Z [command]/usr/bin/tar xz --warning=no-unknown-keyword --overwrite -C /home/runner/work/_temp/7a37e561-8eb7-42a8-baa8-f05cc5d78ba5 -f /home/runner/work/_temp/e4dae23d-f845-43db-a54e-f40540456907
+2026-06-29T14:25:35.4139853Z Added /home/runner/.local/bin to the path
+2026-06-29T14:25:35.4145029Z Added /opt/hostedtoolcache/uv/0.11.25/x86_64 to the path
+2026-06-29T14:25:35.4147869Z Set UV_PYTHON_INSTALL_DIR to /home/runner/work/_temp/uv-python-dir
+2026-06-29T14:25:35.4150587Z Added /home/runner/work/_temp/uv-python-dir to the path
+2026-06-29T14:25:35.4164496Z Set UV_CACHE_DIR to /home/runner/work/_temp/setup-uv-cache
+2026-06-29T14:25:35.4166908Z Successfully installed uv version 0.11.25
+2026-06-29T14:25:36.0347431Z Searching files using cache dependency glob: /home/runner/work/university_ecosystem/university_ecosystem/uv.lock
+2026-06-29T14:25:36.0382804Z /home/runner/work/university_ecosystem/university_ecosystem/uv.lock
+2026-06-29T14:25:36.0411943Z Found 1 files to hash.
+2026-06-29T14:25:36.0475333Z Trying to restore cache from GitHub Actions cache with key: setup-uv-2-x86_64-unknown-linux-gnu-ubuntu-24.04-3.13.14-pruned-71dfdf0d4a300a0d67d9d952f4538f5442121a92e7efe2f125b9799386f14838
+2026-06-29T14:25:36.3360258Z Cache hit for: setup-uv-2-x86_64-unknown-linux-gnu-ubuntu-24.04-3.13.14-pruned-71dfdf0d4a300a0d67d9d952f4538f5442121a92e7efe2f125b9799386f14838
+2026-06-29T14:25:37.5883867Z Received 1772144 of 1772144 (100.0%), 1.8 MBs/sec
+2026-06-29T14:25:37.5884621Z Cache Size: ~2 MB (1772144 B)
+2026-06-29T14:25:37.5954801Z [command]/usr/bin/tar -xf /home/runner/work/_temp/e165314f-7cdb-4050-b89c-8247429aa971/cache.tzst -P -C /home/runner/work/university_ecosystem/university_ecosystem --use-compress-program unzstd
+2026-06-29T14:25:37.6089321Z Cache restored successfully
+2026-06-29T14:25:37.6095218Z cache restored from GitHub Actions cache with key: setup-uv-2-x86_64-unknown-linux-gnu-ubuntu-24.04-3.13.14-pruned-71dfdf0d4a300a0d67d9d952f4538f5442121a92e7efe2f125b9799386f14838
+2026-06-29T14:25:37.7229506Z ##[group]Run uv sync --frozen --group dev
+2026-06-29T14:25:37.7229901Z [36;1muv sync --frozen --group dev[0m
+2026-06-29T14:25:37.7261968Z shell: /usr/bin/bash -e {0}
+2026-06-29T14:25:37.7262387Z env:
+2026-06-29T14:25:37.7262919Z   SECRET_KEY: 2f5445fbaad7053689001350e45b8953f482889822bc34a36ae13e458e867f84
+2026-06-29T14:25:37.7263549Z   ENVIRONMENT: testing
+2026-06-29T14:25:37.7263852Z   pythonLocation: /opt/hostedtoolcache/Python/3.13.14/x64
+2026-06-29T14:25:37.7264305Z   PKG_CONFIG_PATH: /opt/hostedtoolcache/Python/3.13.14/x64/lib/pkgconfig
+2026-06-29T14:25:37.7264738Z   Python_ROOT_DIR: /opt/hostedtoolcache/Python/3.13.14/x64
+2026-06-29T14:25:37.7265140Z   Python2_ROOT_DIR: /opt/hostedtoolcache/Python/3.13.14/x64
+2026-06-29T14:25:37.7265543Z   Python3_ROOT_DIR: /opt/hostedtoolcache/Python/3.13.14/x64
+2026-06-29T14:25:37.7265945Z   LD_LIBRARY_PATH: /opt/hostedtoolcache/Python/3.13.14/x64/lib
+2026-06-29T14:25:37.7266381Z   UV_PYTHON_INSTALL_DIR: /home/runner/work/_temp/uv-python-dir
+2026-06-29T14:25:37.7266753Z   UV_CACHE_DIR: /home/runner/work/_temp/setup-uv-cache
+2026-06-29T14:25:37.7267057Z ##[endgroup]
+2026-06-29T14:25:37.7465603Z Using CPython 3.13.14 interpreter at: /opt/hostedtoolcache/Python/3.13.14/x64/bin/python3
+2026-06-29T14:25:37.7466202Z Creating virtual environment at: .venv
+2026-06-29T14:25:37.7779993Z    Building pyo3-sanitizer @ file:///home/runner/work/university_ecosystem/university_ecosystem/crates/pyo3-sanitizer
+2026-06-29T14:25:37.7783036Z    Building rust-ext @ file:///home/runner/work/university_ecosystem/university_ecosystem/native/rust_ext
+2026-06-29T14:25:37.8385196Z Downloading botocore (13.4MiB)
+2026-06-29T14:25:37.8390931Z Downloading pyright (6.1MiB)
+2026-06-29T14:25:37.8392514Z Downloading cryptography (4.5MiB)
+2026-06-29T14:25:37.8393747Z Downloading uvloop (4.2MiB)
+2026-06-29T14:25:37.8394928Z Downloading asyncpg (3.4MiB)
+2026-06-29T14:25:37.8396206Z Downloading sqlalchemy (3.1MiB)
+2026-06-29T14:25:37.8397347Z Downloading pygments (1.2MiB)
+2026-06-29T14:25:37.8398507Z Downloading aiohttp (1.7MiB)
+2026-06-29T14:25:37.8572969Z Downloading ruff (10.8MiB)
+2026-06-29T14:25:37.8574072Z Downloading polars-runtime-32 (53.6MiB)
+2026-06-29T14:25:37.8575492Z Downloading grpcio (6.5MiB)
+2026-06-29T14:25:37.8576938Z Downloading psycopg-binary (4.9MiB)
+2026-06-29T14:25:37.8578499Z Downloading brotli (1.4MiB)
+2026-06-29T14:25:37.8582530Z Downloading pyroscope-io (6.4MiB)
+2026-06-29T14:25:37.8583786Z Downloading jsonschema-rs (3.8MiB)
+2026-06-29T14:25:37.8585447Z Downloading maturin (10.1MiB)
+2026-06-29T14:25:37.8586978Z Downloading numpy (15.9MiB)
+2026-06-29T14:25:37.8588661Z Downloading pillow-avif-plugin (5.3MiB)
+2026-06-29T14:25:37.8594244Z Downloading pycryptodome (2.2MiB)
+2026-06-29T14:25:37.8595496Z Downloading pillow (6.8MiB)
+2026-06-29T14:25:37.8598507Z Downloading mypy (14.0MiB)
+2026-06-29T14:25:37.8600175Z Downloading pydantic-core (2.0MiB)
+2026-06-29T14:25:37.8601887Z Downloading pact-python-ffi (6.3MiB)
+2026-06-29T14:25:37.8603580Z Downloading virtualenv (7.2MiB)
+2026-06-29T14:25:37.8606752Z Downloading atheris (33.2MiB)
+2026-06-29T14:25:37.8609800Z Downloading libcst (2.2MiB)
+2026-06-29T14:25:38.5524370Z  Downloaded brotli
+2026-06-29T14:25:38.7389757Z  Downloaded aiohttp
+2026-06-29T14:25:38.7976057Z  Downloaded pydantic-core
+2026-06-29T14:25:39.1685596Z  Downloaded pygments
+2026-06-29T14:25:39.3131257Z  Downloaded asyncpg
+2026-06-29T14:25:39.3371869Z  Downloaded pycryptodome
+2026-06-29T14:25:39.3565254Z  Downloaded jsonschema-rs
+2026-06-29T14:25:39.4547502Z  Downloaded sqlalchemy
+2026-06-29T14:25:39.4784553Z  Downloaded uvloop
+2026-06-29T14:25:39.5313270Z  Downloaded libcst
+2026-06-29T14:25:39.5605603Z  Downloaded psycopg-binary
+2026-06-29T14:25:39.5993976Z  Downloaded pillow-avif-plugin
+2026-06-29T14:25:39.6190312Z  Downloaded cryptography
+2026-06-29T14:25:39.7193814Z  Downloaded pact-python-ffi
+2026-06-29T14:25:39.7477572Z  Downloaded grpcio
+2026-06-29T14:25:39.7641103Z  Downloaded pyroscope-io
+2026-06-29T14:25:39.8208877Z  Downloaded pillow
+2026-06-29T14:25:39.8448293Z  Downloaded virtualenv
+2026-06-29T14:25:40.1341653Z  Downloaded maturin
+2026-06-29T14:25:40.1615076Z  Downloaded ruff
+2026-06-29T14:25:40.5068212Z  Downloaded numpy
+2026-06-29T14:25:40.9220955Z  Downloaded atheris
+2026-06-29T14:25:41.0517480Z  Downloaded polars-runtime-32
+2026-06-29T14:25:41.0674575Z  Downloaded botocore
+2026-06-29T14:25:41.1804023Z  Downloaded mypy
+2026-06-29T14:25:41.5529077Z  Downloaded pyright
+2026-06-29T14:26:14.3885104Z       Built rust-ext @ file:///home/runner/work/university_ecosystem/university_ecosystem/native/rust_ext
+2026-06-29T14:26:22.3219279Z       Built pyo3-sanitizer @ file:///home/runner/work/university_ecosystem/university_ecosystem/crates/pyo3-sanitizer
+2026-06-29T14:26:22.3274822Z Prepared 213 packages in 44.56s
+2026-06-29T14:26:22.6027839Z Installed 213 packages in 275ms
+2026-06-29T14:26:22.6028969Z  + aioboto3==15.5.0
+2026-06-29T14:26:22.6029383Z  + aiobotocore==2.25.1
+2026-06-29T14:26:22.6030282Z  + aiofiles==25.1.0
+2026-06-29T14:26:22.6030809Z  + aiohappyeyeballs==2.6.1
+2026-06-29T14:26:22.6031269Z  + aiohttp==3.14.1
+2026-06-29T14:26:22.6031887Z  + aioitertools==0.13.0
+2026-06-29T14:26:22.6032306Z  + aiosignal==1.4.0
+2026-06-29T14:26:22.6032696Z  + aiosqlite==0.22.1
+2026-06-29T14:26:22.6033074Z  + alembic==1.18.4
+2026-06-29T14:26:22.6033457Z  + annotated-doc==0.0.4
+2026-06-29T14:26:22.6033881Z  + annotated-types==0.7.0
+2026-06-29T14:26:22.6034331Z  + anyio==4.13.0
+2026-06-29T14:26:22.6034703Z  + argon2-cffi==25.1.0
+2026-06-29T14:26:22.6035122Z  + argon2-cffi-bindings==25.1.0
+2026-06-29T14:26:22.6035587Z  + asgi-lifespan==2.1.0
+2026-06-29T14:26:22.6035997Z  + asgiref==3.11.1
+2026-06-29T14:26:22.6036343Z  + asyncpg==0.31.0
+2026-06-29T14:26:22.6036631Z  + atheris==3.0.0
+2026-06-29T14:26:22.6036866Z  + attrs==26.1.0
+2026-06-29T14:26:22.6037206Z  + authzed==1.24.4
+2026-06-29T14:26:22.6037491Z  + bandit==1.9.4
+2026-06-29T14:26:22.6037958Z  + boto3==1.40.61
+2026-06-29T14:26:22.6038346Z  + botocore==1.40.61
+2026-06-29T14:26:22.6038741Z  + brotli==1.2.0
+2026-06-29T14:26:22.6039110Z  + brotli-asgi==1.6.0
+2026-06-29T14:26:22.6039489Z  + cbor2==6.0.1
+2026-06-29T14:26:22.6039843Z  + certifi==2026.4.22
+2026-06-29T14:26:22.6040211Z  + cffi==2.0.0
+2026-06-29T14:26:22.6040560Z  + cfgv==3.5.0
+2026-06-29T14:26:22.6040892Z  + chardet==7.4.3
+2026-06-29T14:26:22.6041288Z  + charset-normalizer==3.4.7
+2026-06-29T14:26:22.6041946Z  + clamd==1.0.2
+2026-06-29T14:26:22.6042292Z  + click==8.3.3
+2026-06-29T14:26:22.6042648Z  + coverage==7.13.5
+2026-06-29T14:26:22.6043008Z  + cross-web==0.6.0
+2026-06-29T14:26:22.6043378Z  + cryptography==49.0.0
+2026-06-29T14:26:22.6043784Z  + defusedxml==0.7.1
+2026-06-29T14:26:22.6044157Z  + diff-cover==10.3.0
+2026-06-29T14:26:22.6044534Z  + dishka==1.10.1
+2026-06-29T14:26:22.6044880Z  + diskcache==5.6.3
+2026-06-29T14:26:22.6045239Z  + distlib==0.4.0
+2026-06-29T14:26:22.6045605Z  + dnspython==2.8.0
+2026-06-29T14:26:22.6045961Z  + docker==7.1.0
+2026-06-29T14:26:22.6046347Z  + elastic-transport==9.2.1
+2026-06-29T14:26:22.6046773Z  + elasticsearch==9.3.0
+2026-06-29T14:26:22.6047191Z  + email-validator==2.3.0
+2026-06-29T14:26:22.6047600Z  + execnet==2.1.2
+2026-06-29T14:26:22.6047963Z  + fakeredis==2.35.1
+2026-06-29T14:26:22.6048358Z  + fastapi==0.136.1
+2026-06-29T14:26:22.6048720Z  + filelock==3.29.0
+2026-06-29T14:26:22.6049080Z  + frozenlist==1.8.0
+2026-06-29T14:26:22.6049452Z  + geoip2==5.2.0
+2026-06-29T14:26:22.6050179Z  + googleapis-common-protos==1.74.0
+2026-06-29T14:26:22.6050660Z  + graphql-core==3.2.8
+2026-06-29T14:26:22.6051060Z  + greenlet==3.5.0
+2026-06-29T14:26:22.6051436Z  + grpc-interceptor==0.15.4
+2026-06-29T14:26:22.6052064Z  + grpcio==1.80.0
+2026-06-29T14:26:22.6052444Z  + grpcio-health-checking==1.80.0
+2026-06-29T14:26:22.6052926Z  + gunicorn==25.3.0
+2026-06-29T14:26:22.6053281Z  + h11==0.16.0
+2026-06-29T14:26:22.6053613Z  + h2==4.3.0
+2026-06-29T14:26:22.6053944Z  + harfile==0.5.0
+2026-06-29T14:26:22.6054290Z  + hpack==4.1.0
+2026-06-29T14:26:22.6054651Z  + http-ece==1.2.1
+2026-06-29T14:26:22.6055180Z  + httpcore==1.0.9
+2026-06-29T14:26:22.6055839Z  + httptools==0.7.1
+2026-06-29T14:26:22.6056244Z  + httpx==0.28.1
+2026-06-29T14:26:22.6056596Z  + hyperframe==6.1.0
+2026-06-29T14:26:22.6056979Z  + hypothesis==6.152.4
+2026-06-29T14:26:22.6057383Z  + hypothesis-graphql==0.13.0
+2026-06-29T14:26:22.6057847Z  + hypothesis-jsonschema==0.23.1
+2026-06-29T14:26:22.6058300Z  + identify==2.6.19
+2026-06-29T14:26:22.6058664Z  + idna==3.18
+2026-06-29T14:26:22.6059034Z  + importlib-metadata==8.7.1
+2026-06-29T14:26:22.6059453Z  + iniconfig==2.3.0
+2026-06-29T14:26:22.6059810Z  + jinja2==3.1.6
+2026-06-29T14:26:22.6060153Z  + jmespath==1.1.0
+2026-06-29T14:26:22.6060481Z  + jsonschema==4.25.1
+2026-06-29T14:26:22.6060819Z  + jsonschema-rs==0.46.5
+2026-06-29T14:26:22.6063654Z  + jsonschema-specifications==2025.9.1
+2026-06-29T14:26:22.6064161Z  + junit-xml==1.9
+2026-06-29T14:26:22.6064514Z  + libcst==1.8.6
+2026-06-29T14:26:22.6064847Z  + librt==0.9.0
+2026-06-29T14:26:22.6065189Z  + linkify-it-py==2.1.0
+2026-06-29T14:26:22.6065554Z  + mako==1.3.12
+2026-06-29T14:26:22.6065911Z  + markdown-it-py==4.0.0
+2026-06-29T14:26:22.6066309Z  + markupsafe==3.0.3
+2026-06-29T14:26:22.6066661Z  + maturin==1.13.1
+2026-06-29T14:26:22.6067004Z  + maxminddb==3.1.1
+2026-06-29T14:26:22.6067368Z  + mdit-py-plugins==0.6.1
+2026-06-29T14:26:22.6067946Z  + mdurl==0.1.2
+2026-06-29T14:26:22.6068354Z  + minio==7.2.20
+2026-06-29T14:26:22.6068757Z  + multidict==6.7.1
+2026-06-29T14:26:22.6069177Z  + mutmut==3.5.0
+2026-06-29T14:26:22.6069564Z  + mypy==1.20.2
+2026-06-29T14:26:22.6069974Z  + mypy-extensions==1.1.0
+2026-06-29T14:26:22.6070423Z  + nats-py==2.14.0
+2026-06-29T14:26:22.6070817Z  + nh3==0.3.5
+2026-06-29T14:26:22.6071198Z  + nodeenv==1.10.0
+2026-06-29T14:26:22.6071831Z  + numpy==2.4.4
+2026-06-29T14:26:22.6072207Z  + openfeature-sdk==0.9.0
+2026-06-29T14:26:22.6072620Z  + opentelemetry-api==1.41.1
+2026-06-29T14:26:22.6073067Z  + opentelemetry-distro==0.62b1
+2026-06-29T14:26:22.6073560Z  + opentelemetry-exporter-otlp==1.41.1
+2026-06-29T14:26:22.6074132Z  + opentelemetry-exporter-otlp-proto-common==1.41.1
+2026-06-29T14:26:22.6074794Z  + opentelemetry-exporter-otlp-proto-grpc==1.41.1
+2026-06-29T14:26:22.6075421Z  + opentelemetry-exporter-otlp-proto-http==1.41.1
+2026-06-29T14:26:22.6075993Z  + opentelemetry-instrumentation==0.62b1
+2026-06-29T14:26:22.6076545Z  + opentelemetry-instrumentation-asgi==0.62b1
+2026-06-29T14:26:22.6077124Z  + opentelemetry-instrumentation-asyncpg==0.62b1
+2026-06-29T14:26:22.6077742Z  + opentelemetry-instrumentation-fastapi==0.62b1
+2026-06-29T14:26:22.6078337Z  + opentelemetry-instrumentation-httpx==0.62b1
+2026-06-29T14:26:22.6078920Z  + opentelemetry-instrumentation-redis==0.62b1
+2026-06-29T14:26:22.6079524Z  + opentelemetry-instrumentation-sqlalchemy==0.62b1
+2026-06-29T14:26:22.6080082Z  + opentelemetry-proto==1.41.1
+2026-06-29T14:26:22.6080508Z  + opentelemetry-sdk==1.41.1
+2026-06-29T14:26:22.6080982Z  + opentelemetry-semantic-conventions==0.62b1
+2026-06-29T14:26:22.6081732Z  + opentelemetry-util-http==0.62b1
+2026-06-29T14:26:22.6082180Z  + orjson==3.11.8
+2026-06-29T14:26:22.6082533Z  + packaging==26.2
+2026-06-29T14:26:22.6082891Z  + pact-python==3.4.0
+2026-06-29T14:26:22.6083300Z  + pact-python-ffi==0.5.3.0
+2026-06-29T14:26:22.6083699Z  + pathspec==1.1.1
+2026-06-29T14:26:22.6084059Z  + pgvector==0.4.2
+2026-06-29T14:26:22.6084398Z  + pillow==12.2.0
+2026-06-29T14:26:22.6084757Z  + pillow-avif-plugin==1.5.5
+2026-06-29T14:26:22.6085187Z  + platformdirs==4.9.6
+2026-06-29T14:26:22.6085762Z  + pluggy==1.6.0
+2026-06-29T14:26:22.6086100Z  + polars==1.40.1
+2026-06-29T14:26:22.6086458Z  + polars-runtime-32==1.40.1
+2026-06-29T14:26:22.6086860Z  + pre-commit==4.6.0
+2026-06-29T14:26:22.6087235Z  + prometheus-client==0.25.0
+2026-06-29T14:26:22.6087638Z  + propcache==0.4.1
+2026-06-29T14:26:22.6087981Z  + protobuf==7.34.1
+2026-06-29T14:26:22.6088321Z  + psutil==7.2.2
+2026-06-29T14:26:22.6088661Z  + psycopg==3.3.4
+2026-06-29T14:26:22.6089025Z  + psycopg-binary==3.3.4
+2026-06-29T14:26:22.6089405Z  + py-vapid==1.9.4
+2026-06-29T14:26:22.6089753Z  + pyasn1==0.6.3
+2026-06-29T14:26:22.6090085Z  + pycparser==3.0
+2026-06-29T14:26:22.6090590Z  + pycryptodome==3.23.0
+2026-06-29T14:26:22.6090983Z  + pydantic==2.13.3
+2026-06-29T14:26:22.6091335Z  + pydantic-core==2.46.3
+2026-06-29T14:26:22.6092036Z  + pydantic-settings==2.14.2
+2026-06-29T14:26:22.6092440Z  + pygments==2.20.0
+2026-06-29T14:26:22.6092784Z  + pyjwt==2.13.0
+2026-06-29T14:26:22.6093623Z  + pyo3-sanitizer==0.1.0 (from file:///home/runner/work/university_ecosystem/university_ecosystem/crates/pyo3-sanitizer)
+2026-06-29T14:26:22.6094587Z  + pyopenssl==26.3.0
+2026-06-29T14:26:22.6094940Z  + pyotp==2.9.0
+2026-06-29T14:26:22.6095288Z  + pyrate-limiter==4.4.0
+2026-06-29T14:26:22.6095669Z  + pyright==1.1.409
+2026-06-29T14:26:22.6096035Z  + pyroscope-io==1.0.6
+2026-06-29T14:26:22.6096402Z  + pytest==9.0.3
+2026-06-29T14:26:22.6096754Z  + pytest-asyncio==1.3.0
+2026-06-29T14:26:22.6097135Z  + pytest-cov==7.1.0
+2026-06-29T14:26:22.6097529Z  + pytest-xdist==3.8.0
+2026-06-29T14:26:22.6097925Z  + python-dateutil==2.9.0.post0
+2026-06-29T14:26:22.6098349Z  + python-discovery==1.2.2
+2026-06-29T14:26:22.6098761Z  + python-dotenv==1.2.2
+2026-06-29T14:26:22.6099147Z  + python-magic==0.4.27
+2026-06-29T14:26:22.6099537Z  + python-multipart==0.0.32
+2026-06-29T14:26:22.6099931Z  + pyvips==3.1.1
+2026-06-29T14:26:22.6100264Z  + pywebpush==2.3.0
+2026-06-29T14:26:22.6100609Z  + pyyaml==6.0.3
+2026-06-29T14:26:22.6100938Z  + pyyaml-ft==8.0.0
+2026-06-29T14:26:22.6101278Z  + redis==7.4.0
+2026-06-29T14:26:22.6101780Z  + referencing==0.37.0
+2026-06-29T14:26:22.6102099Z  + requests==2.33.1
+2026-06-29T14:26:22.6102394Z  + rich==15.0.0
+2026-06-29T14:26:22.6102698Z  + rpds-py==0.30.0
+2026-06-29T14:26:22.6103011Z  + ruff==0.15.12
+2026-06-29T14:26:22.6103687Z  + rust-ext==0.1.0 (from file:///home/runner/work/university_ecosystem/university_ecosystem/native/rust_ext)
+2026-06-29T14:26:22.6104473Z  + s3transfer==0.14.0
+2026-06-29T14:26:22.6104810Z  + schemathesis==4.21.10
+2026-06-29T14:26:22.6105172Z  + sentry-sdk==2.58.0
+2026-06-29T14:26:22.6105517Z  + setproctitle==1.3.7
+2026-06-29T14:26:22.6105873Z  + shellingham==1.5.4
+2026-06-29T14:26:22.6106197Z  + six==1.17.0
+2026-06-29T14:26:22.6106487Z  + sniffio==1.3.1
+2026-06-29T14:26:22.6106834Z  + sortedcontainers==2.4.0
+2026-06-29T14:26:22.6107177Z  + sqlalchemy==2.0.49
+2026-06-29T14:26:22.6107489Z  + starlette==1.3.1
+2026-06-29T14:26:22.6107816Z  + starlette-testclient==0.4.1
+2026-06-29T14:26:22.6108186Z  + stevedore==5.7.0
+2026-06-29T14:26:22.6108523Z  + strawberry-graphql==0.319.0
+2026-06-29T14:26:22.6108899Z  + structlog==25.5.0
+2026-06-29T14:26:22.6109244Z  + tenacity==9.1.4
+2026-06-29T14:26:22.6109588Z  + testcontainers==4.14.2
+2026-06-29T14:26:22.6109952Z  + textual==8.2.7
+2026-06-29T14:26:22.6110278Z  + tomli==2.4.1
+2026-06-29T14:26:22.6110592Z  + typer==0.25.1
+2026-06-29T14:26:22.6110943Z  + types-aiofiles==25.1.0.20260409
+2026-06-29T14:26:22.6111400Z  + types-cffi==2.0.0.20260429
+2026-06-29T14:26:22.6112049Z  + types-pyopenssl==24.1.0.20240722
+2026-06-29T14:26:22.6112477Z  + types-pyyaml==6.0.12.20260408
+2026-06-29T14:26:22.6112903Z  + types-redis==4.6.0.20241004
+2026-06-29T14:26:22.6113304Z  + types-requests==2.33.0.20260408
+2026-06-29T14:26:22.6113745Z  + types-setuptools==82.0.0.20260408
+2026-06-29T14:26:22.6114230Z  + typing-extensions==4.15.0
+2026-06-29T14:26:22.6114670Z  + typing-inspection==0.4.2
+2026-06-29T14:26:22.6115092Z  + uc-micro-py==2.0.0
+2026-06-29T14:26:22.6115462Z  + urllib3==2.7.0
+2026-06-29T14:26:22.6116024Z  + uvicorn==0.46.0
+2026-06-29T14:26:22.6116377Z  + uvloop==0.22.1
+2026-06-29T14:26:22.6116730Z  + virtualenv==21.3.0
+2026-06-29T14:26:22.6117118Z  + watchfiles==1.1.1
+2026-06-29T14:26:22.6117489Z  + webauthn==2.7.1
+2026-06-29T14:26:22.6117844Z  + websockets==16.0
+2026-06-29T14:26:22.6118204Z  + werkzeug==3.1.8
+2026-06-29T14:26:22.6118556Z  + wrapt==1.17.3
+2026-06-29T14:26:22.6118894Z  + yarl==1.23.0
+2026-06-29T14:26:22.6119226Z  + zipp==3.23.1
+2026-06-29T14:26:22.6119563Z  + zxcvbn==4.5.0
+2026-06-29T14:26:22.6199475Z ##[group]Run uv run pytest tests/test_schemathesis_api.py -v \
+2026-06-29T14:26:22.6199978Z [36;1muv run pytest tests/test_schemathesis_api.py -v \[0m
+2026-06-29T14:26:22.6200309Z [36;1m  --tb=short \[0m
+2026-06-29T14:26:22.6200558Z [36;1m  -p no:cacheprovider[0m
+2026-06-29T14:26:22.6232481Z shell: /usr/bin/bash -e {0}
+2026-06-29T14:26:22.6232739Z env:
+2026-06-29T14:26:22.6233061Z   SECRET_KEY: 2f5445fbaad7053689001350e45b8953f482889822bc34a36ae13e458e867f84
+2026-06-29T14:26:22.6233487Z   ENVIRONMENT: testing
+2026-06-29T14:26:22.6233806Z   pythonLocation: /opt/hostedtoolcache/Python/3.13.14/x64
+2026-06-29T14:26:22.6234259Z   PKG_CONFIG_PATH: /opt/hostedtoolcache/Python/3.13.14/x64/lib/pkgconfig
+2026-06-29T14:26:22.6234693Z   Python_ROOT_DIR: /opt/hostedtoolcache/Python/3.13.14/x64
+2026-06-29T14:26:22.6235085Z   Python2_ROOT_DIR: /opt/hostedtoolcache/Python/3.13.14/x64
+2026-06-29T14:26:22.6235472Z   Python3_ROOT_DIR: /opt/hostedtoolcache/Python/3.13.14/x64
+2026-06-29T14:26:22.6235898Z   LD_LIBRARY_PATH: /opt/hostedtoolcache/Python/3.13.14/x64/lib
+2026-06-29T14:26:22.6236301Z   UV_PYTHON_INSTALL_DIR: /home/runner/work/_temp/uv-python-dir
+2026-06-29T14:26:22.6236716Z   UV_CACHE_DIR: /home/runner/work/_temp/setup-uv-cache
+2026-06-29T14:26:22.6237091Z   DATABASE_URL: sqlite+aiosqlite:///./test_schemathesis.db
+2026-06-29T14:26:22.6237427Z   OTEL_SDK_DISABLED: true
+2026-06-29T14:26:22.6237650Z ##[endgroup]
+2026-06-29T14:26:34.7879024Z ============================= test session starts ==============================
+2026-06-29T14:26:34.7879966Z platform linux -- Python 3.13.14, pytest-9.0.3, pluggy-1.6.0 -- /home/runner/work/university_ecosystem/university_ecosystem/.venv/bin/python
+2026-06-29T14:26:34.7881123Z hypothesis profile 'ci' -> database=None, deadline=None, print_blob=True, derandomize=True, suppress_health_check=(HealthCheck.too_slow,)
+2026-06-29T14:26:34.7882270Z rootdir: /home/runner/work/university_ecosystem/university_ecosystem
+2026-06-29T14:26:34.7883128Z configfile: pytest.ini (WARNING: ignoring pytest config in pyproject.toml!)
+2026-06-29T14:26:34.7884046Z plugins: hypothesis-6.152.4, anyio-4.13.0, cov-7.1.0, xdist-3.8.0, asyncio-1.3.0, schemathesis-4.21.10
+2026-06-29T14:26:34.7885298Z asyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=session, asyncio_default_test_loop_scope=session
+2026-06-29T14:27:20.0127110Z collecting ... collected 137 items
+2026-06-29T14:27:20.0127539Z 
+2026-06-29T14:27:20.6954813Z tests/test_schemathesis_api.py::test_api_responses_conform_to_schema[GET /] PASSED [  0%]
+2026-06-29T14:27:20.9075171Z tests/test_schemathesis_api.py::test_api_responses_conform_to_schema[GET /health/live] PASSED [  1%]
+2026-06-29T14:27:22.2888952Z tests/test_schemathesis_api.py::test_api_responses_conform_to_schema[GET /healthz] PASSED [  2%]
+2026-06-29T14:27:22.5098125Z tests/test_schemathesis_api.py::test_api_responses_conform_to_schema[GET /health/ready] PASSED [  2%]
+2026-06-29T14:27:22.7370464Z tests/test_schemathesis_api.py::test_api_responses_conform_to_schema[GET /ready] PASSED [  3%]
+2026-06-29T14:27:22.9507049Z tests/test_schemathesis_api.py::test_api_responses_conform_to_schema[POST /api/v1/auth/logout] PASSED [  4%]
+2026-06-29T14:27:24.1662682Z tests/test_schemathesis_api.py::test_api_responses_conform_to_schema[POST /api/v1/auth/login/passkey/start] PASSED [  5%]
+2026-06-29T14:27:26.1777606Z tests/test_schemathesis_api.py::test_api_responses_conform_to_schema[POST /api/v1/auth/login/passkey/verify] PASSED [  5%]
+2026-06-29T14:27:27.4920261Z tests/test_schemathesis_api.py::test_api_responses_conform_to_schema[POST /api/v1/auth/login] PASSED [  6%]
+2026-06-29T14:27:28.9403698Z tests/test_schemathesis_api.py::test_api_responses_conform_to_schema[POST /api/v1/auth/login/json] PASSED [  7%]
+2026-06-29T14:27:31.0536197Z tests/test_schemathesis_api.py::test_api_responses_conform_to_schema[POST /api/v1/auth/mfa/verify] PASSED [  8%]
+2026-06-29T14:27:31.2699454Z tests/test_schemathesis_api.py::test_api_responses_conform_to_schema[GET /api/v1/auth/csrf-cookie] PASSED [  8%]
+2026-06-29T14:27:36.4315958Z tests/test_schemathesis_api.py::test_api_responses_conform_to_schema[POST /api/v1/auth/register] PASSED [  9%]
+2026-06-29T14:27:36.6652335Z tests/test_schemathesis_api.py::test_api_responses_conform_to_schema[GET /api/v1/auth/session/signing-key] PASSED [ 10%]
+2026-06-29T14:27:37.9987545Z tests/test_schemathesis_api.py::test_api_responses_conform_to_schema[POST /api/v1/auth/mfa/totp/start] PASSED [ 10%]
+2026-06-29T14:27:39.2713807Z tests/test_schemathesis_api.py::test_api_responses_conform_to_schema[POST /api/v1/auth/mfa/totp/confirm] PASSED [ 11%]
+2026-06-29T14:27:39.4885137Z tests/test_schemathesis_api.py::test_api_responses_conform_to_schema[GET /api/v1/auth/mfa/totp] PASSED [ 12%]
+2026-06-29T14:27:40.3951816Z tests/test_schemathesis_api.py::test_api_responses_conform_to_schema[DELETE /api/v1/auth/mfa/totp/pending/{enrollment_id}] PASSED [ 13%]
+2026-06-29T14:27:41.2884302Z tests/test_schemathesis_api.py::test_api_responses_conform_to_schema[DELETE /api/v1/auth/mfa/totp/{enrollment_id}] PASSED [ 13%]
+2026-06-29T14:27:41.5044072Z tests/test_schemathesis_api.py::test_api_responses_conform_to_schema[POST /api/v1/auth/mfa/webauthn/register/start] PASSED [ 14%]
+2026-06-29T14:27:43.0982108Z tests/test_schemathesis_api.py::test_api_responses_conform_to_schema[POST /api/v1/auth/mfa/webauthn/register/confirm] PASSED [ 15%]
+2026-06-29T14:27:43.3221906Z tests/test_schemathesis_api.py::test_api_responses_conform_to_schema[GET /api/v1/auth/mfa/webauthn] PASSED [ 16%]
+2026-06-29T14:27:44.2468205Z tests/test_schemathesis_api.py::test_api_responses_conform_to_schema[DELETE /api/v1/auth/mfa/webauthn/{credential_id}] PASSED [ 16%]
+2026-06-29T14:27:44.4693288Z tests/test_schemathesis_api.py::test_api_responses_conform_to_schema[POST /api/v1/auth/mfa/recovery-codes] PASSED [ 17%]
+2026-06-29T14:27:44.6859850Z tests/test_schemathesis_api.py::test_api_responses_conform_to_schema[POST /api/v1/auth/mfa/step-up] PASSED [ 18%]
+2026-06-29T14:27:44.9038879Z tests/test_schemathesis_api.py::test_api_responses_conform_to_schema[GET /api/v1/spotify/auth-url] PASSED [ 18%]
+2026-06-29T14:27:45.8063103Z tests/test_schemathesis_api.py::test_api_responses_conform_to_schema[GET /api/v1/spotify/callback] PASSED [ 19%]
+2026-06-29T14:27:46.0201909Z tests/test_schemathesis_api.py::test_api_responses_conform_to_schema[GET /api/v1/spotify/now-playing] PASSED [ 20%]
+2026-06-29T14:27:46.2357592Z tests/test_schemathesis_api.py::test_api_responses_conform_to_schema[POST /api/v1/spotify/disconnect] PASSED [ 21%]
+2026-06-29T14:27:46.4513594Z tests/test_schemathesis_api.py::test_api_responses_conform_to_schema[GET /api/v1/spotify/playlists] PASSED [ 21%]
+2026-06-29T14:27:46.6642331Z tests/test_schemathesis_api.py::test_api_responses_conform_to_schema[POST /api/v1/spotify/sync-playlists] PASSED [ 22%]
+2026-06-29T14:27:47.6668868Z tests/test_schemathesis_api.py::test_api_responses_conform_to_schema[GET /api/v1/auth/sessions] PASSED [ 23%]
+2026-06-29T14:27:48.5720062Z tests/test_schemathesis_api.py::test_api_responses_conform_to_schema[DELETE /api/v1/auth/sessions/{session_id}] PASSED [ 24%]
+2026-06-29T14:27:49.5090448Z tests/test_schemathesis_api.py::test_api_responses_conform_to_schema[POST /api/v1/auth/sessions/revoke-others] PASSED [ 24%]
+2026-06-29T14:27:51.0100923Z tests/test_schemathesis_api.py::test_api_responses_conform_to_schema[GET /api/v1/notifications] PASSED [ 25%]
+2026-06-29T14:27:51.0766836Z tests/test_schemathesis_api.py::test_api_responses_conform_to_schema[DELETE /api/v1/notifications] PASSED [ 26%]
+2026-06-29T14:27:51.9976048Z tests/test_schemathesis_api.py::test_api_responses_conform_to_schema[PATCH /api/v1/notifications/{notif_id}/read] PASSED [ 27%]
+2026-06-29T14:27:52.2170257Z tests/test_schemathesis_api.py::test_api_responses_conform_to_schema[POST /api/v1/notifications/read-all] PASSED [ 27%]
+2026-06-29T14:27:53.4973545Z tests/test_schemathesis_api.py::test_api_responses_conform_to_schema[DELETE /api/v1/notifications/{notif_id}] PASSED [ 28%]
+2026-06-29T14:27:54.5916945Z tests/test_schemathesis_api.py::test_api_responses_conform_to_schema[POST /api/v1/notifications/check-schedule] PASSED [ 29%]
+2026-06-29T14:27:54.8059776Z tests/test_schemathesis_api.py::test_api_responses_conform_to_schema[GET /api/v1/push/vapid-public-key] PASSED [ 29%]
+2026-06-29T14:27:56.6718828Z tests/test_schemathesis_api.py::test_api_responses_conform_to_schema[POST /api/v1/push/subscribe] PASSED [ 30%]
+2026-06-29T14:27:57.9553737Z tests/test_schemathesis_api.py::test_api_responses_conform_to_schema[PATCH /api/v1/push/subscribe/topics] PASSED [ 31%]
+2026-06-29T14:27:59.0012786Z tests/test_schemathesis_api.py::test_api_responses_conform_to_schema[POST /api/v1/push/unsubscribe] PASSED [ 32%]
+2026-06-29T14:27:59.2236738Z tests/test_schemathesis_api.py::test_api_responses_conform_to_schema[GET /api/v1/push/topics] PASSED [ 32%]
+2026-06-29T14:28:02.8011239Z tests/test_schemathesis_api.py::test_api_responses_conform_to_schema[POST /api/v1/push/test] PASSED [ 33%]
+2026-06-29T14:28:03.7891206Z tests/test_schemathesis_api.py::test_api_responses_conform_to_schema[GET /api/v1/push/admin/topics/{user_id}] PASSED [ 34%]
+2026-06-29T14:28:04.9757555Z tests/test_schemathesis_api.py::test_api_responses_conform_to_schema[PUT /api/v1/push/admin/topics/{user_id}] PASSED [ 35%]
+2026-06-29T14:28:06.0192170Z tests/test_schemathesis_api.py::test_api_responses_conform_to_schema[POST /api/v1/push/admin/disable-user] PASSED [ 35%]
+2026-06-29T14:28:09.2536964Z tests/test_schemathesis_api.py::test_api_responses_conform_to_schema[POST /api/v1/push/broadcast] PASSED [ 36%]
+2026-06-29T14:28:10.4123931Z tests/test_schemathesis_api.py::test_api_responses_conform_to_schema[GET /api/v1/schedule/ics] PASSED [ 37%]
+2026-06-29T14:28:10.6220331Z tests/test_schemathesis_api.py::test_api_responses_conform_to_schema[GET /api/v1/users/me] PASSED [ 37%]
+2026-06-29T14:28:17.5152377Z tests/test_schemathesis_api.py::test_api_responses_conform_to_schema[PUT /api/v1/users/me] PASSED [ 38%]
+2026-06-29T14:28:18.7076267Z tests/test_schemathesis_api.py::test_api_responses_conform_to_schema[POST /api/v1/users/me/email] PASSED [ 39%]
+2026-06-29T14:28:19.7480115Z tests/test_schemathesis_api.py::test_api_responses_conform_to_schema[POST /api/v1/users/me/email/confirm] PASSED [ 40%]
+2026-06-29T14:28:21.0122246Z tests/test_schemathesis_api.py::test_api_responses_conform_to_schema[POST /api/v1/users/me/password] PASSED [ 40%]
+2026-06-29T14:28:21.2275199Z tests/test_schemathesis_api.py::test_api_responses_conform_to_schema[POST /api/v1/users/me/export] PASSED [ 41%]
+2026-06-29T14:28:22.3407685Z tests/test_schemathesis_api.py::test_api_responses_conform_to_schema[POST /api/v1/users/me/delete] PASSED [ 42%]
+2026-06-29T14:28:23.2953546Z tests/test_schemathesis_api.py::test_api_responses_conform_to_schema[POST /api/v1/users/me/avatar] PASSED [ 43%]
+2026-06-29T14:28:23.3606465Z tests/test_schemathesis_api.py::test_api_responses_conform_to_schema[DELETE /api/v1/users/me/avatar] PASSED [ 43%]
+2026-06-29T14:28:24.3289989Z tests/test_schemathesis_api.py::test_api_responses_conform_to_schema[POST /api/v1/users/me/cover] PASSED [ 44%]
+2026-06-29T14:28:24.3927464Z tests/test_schemathesis_api.py::test_api_responses_conform_to_schema[DELETE /api/v1/users/me/cover] PASSED [ 45%]
+2026-06-29T14:28:29.4102121Z tests/test_schemathesis_api.py::test_api_responses_conform_to_schema[POST /api/v1/users] PASSED [ 45%]
+2026-06-29T14:28:33.1387727Z tests/test_schemathesis_api.py::test_api_responses_conform_to_schema[GET /api/v1/users] PASSED [ 46%]
+2026-06-29T14:28:34.7429867Z tests/test_schemathesis_api.py::test_api_responses_conform_to_schema[GET /api/v1/users/audit/export] PASSED [ 47%]
+2026-06-29T14:28:36.6859743Z tests/test_schemathesis_api.py::test_api_responses_conform_to_schema[PATCH /api/v1/users/{user_id}] PASSED [ 48%]
+2026-06-29T14:28:37.4466546Z tests/test_schemathesis_api.py::test_api_responses_conform_to_schema[DELETE /api/v1/users/{user_id}] PASSED [ 48%]
+2026-06-29T14:28:38.5525065Z tests/test_schemathesis_api.py::test_api_responses_conform_to_schema[POST /api/v1/password/forgot] PASSED [ 49%]
+2026-06-29T14:28:39.8173550Z tests/test_schemathesis_api.py::test_api_responses_conform_to_schema[POST /api/v1/password/reset] PASSED [ 50%]
+2026-06-29T14:28:40.0355986Z tests/test_schemathesis_api.py::test_api_responses_conform_to_schema[GET /api/v1/groups] PASSED [ 51%]
+2026-06-29T14:28:43.0967295Z tests/test_schemathesis_api.py::test_api_responses_conform_to_schema[POST /api/v1/events] PASSED [ 51%]
+2026-06-29T14:28:45.2737895Z tests/test_schemathesis_api.py::test_api_responses_conform_to_schema[GET /api/v1/events] PASSED [ 52%]
+2026-06-29T14:28:46.3848670Z tests/test_schemathesis_api.py::test_api_responses_conform_to_schema[POST /api/v1/events/attendance] PASSED [ 53%]
+2026-06-29T14:28:47.3565361Z tests/test_schemathesis_api.py::test_api_responses_conform_to_schema[DELETE /api/v1/events/attendance] PASSED [ 54%]
+2026-06-29T14:28:49.0058539Z tests/test_schemathesis_api.py::test_api_responses_conform_to_schema[GET /api/v1/events/my] PASSED [ 54%]
+2026-06-29T14:28:50.1861351Z tests/test_schemathesis_api.py::test_api_responses_conform_to_schema[POST /api/v1/events/{event_id}/upload_file] PASSED [ 55%]
+2026-06-29T14:28:51.2331389Z tests/test_schemathesis_api.py::test_api_responses_conform_to_schema[GET /api/v1/events/{event_id}/files] PASSED [ 56%]
+2026-06-29T14:28:52.3730600Z tests/test_schemathesis_api.py::test_api_responses_conform_to_schema[POST /api/v1/events/upload_image] PASSED [ 56%]
+2026-06-29T14:28:55.8367676Z tests/test_schemathesis_api.py::test_api_responses_conform_to_schema[PATCH /api/v1/events/{event_id}] PASSED [ 57%]
+2026-06-29T14:28:56.6509609Z tests/test_schemathesis_api.py::test_api_responses_conform_to_schema[DELETE /api/v1/events/{event_id}] PASSED [ 58%]
+2026-06-29T14:28:57.8774024Z tests/test_schemathesis_api.py::test_api_responses_conform_to_schema[GET /api/v1/events/{event_id}] PASSED [ 59%]
+2026-06-29T14:28:58.8470332Z tests/test_schemathesis_api.py::test_api_responses_conform_to_schema[DELETE /api/v1/events/file/{file_id}] PASSED [ 59%]
+2026-06-29T14:29:03.4238193Z tests/test_schemathesis_api.py::test_api_responses_conform_to_schema[GET /api/v1/events/search/semantic] PASSED [ 60%]
+2026-06-29T14:29:05.1175294Z tests/test_schemathesis_api.py::test_api_responses_conform_to_schema[POST /api/v1/news] PASSED [ 61%]
+2026-06-29T14:29:08.3129225Z tests/test_schemathesis_api.py::test_api_responses_conform_to_schema[GET /api/v1/news] PASSED [ 62%]
+2026-06-29T14:29:10.4530822Z tests/test_schemathesis_api.py::test_api_responses_conform_to_schema[GET /api/v1/news/{id}] PASSED [ 62%]
+2026-06-29T14:29:12.1542760Z tests/test_schemathesis_api.py::test_api_responses_conform_to_schema[PATCH /api/v1/news/{id}] PASSED [ 63%]
+2026-06-29T14:29:12.9500862Z tests/test_schemathesis_api.py::test_api_responses_conform_to_schema[DELETE /api/v1/news/{id}] PASSED [ 64%]
+2026-06-29T14:29:13.8943114Z tests/test_schemathesis_api.py::test_api_responses_conform_to_schema[POST /api/v1/news/{id}/like] PASSED [ 64%]
+2026-06-29T14:29:15.2335406Z tests/test_schemathesis_api.py::test_api_responses_conform_to_schema[POST /api/v1/news/{id}/comment] PASSED [ 65%]
+2026-06-29T14:29:19.0879006Z tests/test_schemathesis_api.py::test_api_responses_conform_to_schema[GET /api/v1/news/{id}/interactions] PASSED [ 66%]
+2026-06-29T14:29:20.5727315Z tests/test_schemathesis_api.py::test_api_responses_conform_to_schema[PATCH /api/v1/news/comments/{comment_id}] PASSED [ 67%]
+2026-06-29T14:29:21.4054944Z tests/test_schemathesis_api.py::test_api_responses_conform_to_schema[DELETE /api/v1/news/comments/{comment_id}] PASSED [ 67%]
+2026-06-29T14:29:22.4745458Z tests/test_schemathesis_api.py::test_api_responses_conform_to_schema[POST /api/v1/news/upload_image] PASSED [ 68%]
+2026-06-29T14:29:26.7796658Z tests/test_schemathesis_api.py::test_api_responses_conform_to_schema[GET /api/v1/news/search/semantic] PASSED [ 69%]
+2026-06-29T14:29:28.5425723Z tests/test_schemathesis_api.py::test_api_responses_conform_to_schema[GET /api/v1/stories] PASSED [ 70%]
+2026-06-29T14:29:30.7992092Z tests/test_schemathesis_api.py::test_api_responses_conform_to_schema[POST /api/v1/stories] PASSED [ 70%]
+2026-06-29T14:29:33.4862064Z tests/test_schemathesis_api.py::test_api_responses_conform_to_schema[PATCH /api/v1/stories/{story_id}] PASSED [ 71%]
+2026-06-29T14:29:34.3330565Z tests/test_schemathesis_api.py::test_api_responses_conform_to_schema[DELETE /api/v1/stories/{story_id}] PASSED [ 72%]
+2026-06-29T14:29:35.7695656Z tests/test_schemathesis_api.py::test_api_responses_conform_to_schema[POST /api/v1/stories/upload_cover] PASSED [ 72%]
+2026-06-29T14:29:38.1160689Z tests/test_schemathesis_api.py::test_api_responses_conform_to_schema[POST /api/v1/schedule] PASSED [ 73%]
+2026-06-29T14:29:39.3609325Z tests/test_schemathesis_api.py::test_api_responses_conform_to_schema[GET /api/v1/schedule/{id}] PASSED [ 74%]
+2026-06-29T14:29:41.8845977Z tests/test_schemathesis_api.py::test_api_responses_conform_to_schema[PATCH /api/v1/schedule/{id}] PASSED [ 75%]
+2026-06-29T14:29:42.7279777Z tests/test_schemathesis_api.py::test_api_responses_conform_to_schema[DELETE /api/v1/schedule/{id}] PASSED [ 75%]
+2026-06-29T14:29:44.4939068Z tests/test_schemathesis_api.py::test_api_responses_conform_to_schema[GET /api/v1/stats/attendance] PASSED [ 76%]
+2026-06-29T14:29:46.2250942Z tests/test_schemathesis_api.py::test_api_responses_conform_to_schema[GET /api/v1/stats/grades] PASSED [ 77%]
+2026-06-29T14:29:47.9927595Z tests/test_schemathesis_api.py::test_api_responses_conform_to_schema[GET /api/v1/stats/participation] PASSED [ 78%]
+2026-06-29T14:29:49.7485190Z tests/test_schemathesis_api.py::test_api_responses_conform_to_schema[GET /api/v1/stats/summary] PASSED [ 78%]
+2026-06-29T14:29:50.8523051Z tests/test_schemathesis_api.py::test_api_responses_conform_to_schema[GET /api/v1/stats/creation] PASSED [ 79%]
+2026-06-29T14:29:52.5141326Z tests/test_schemathesis_api.py::test_api_responses_conform_to_schema[GET /api/v1/chats] PASSED [ 80%]
+2026-06-29T14:29:53.5132079Z tests/test_schemathesis_api.py::test_api_responses_conform_to_schema[POST /api/v1/chats] PASSED [ 81%]
+2026-06-29T14:29:55.0484746Z tests/test_schemathesis_api.py::test_api_responses_conform_to_schema[POST /api/v1/chats/groups] PASSED [ 81%]
+2026-06-29T14:29:56.0180163Z tests/test_schemathesis_api.py::test_api_responses_conform_to_schema[GET /api/v1/chats/{chat_id}] PASSED [ 82%]
+2026-06-29T14:29:56.7954843Z tests/test_schemathesis_api.py::test_api_responses_conform_to_schema[DELETE /api/v1/chats/{chat_id}] PASSED [ 83%]
+2026-06-29T14:29:58.0405134Z tests/test_schemathesis_api.py::test_api_responses_conform_to_schema[PATCH /api/v1/chats/{chat_id}] PASSED [ 83%]
+2026-06-29T14:29:59.7475451Z tests/test_schemathesis_api.py::test_api_responses_conform_to_schema[GET /api/v1/chats/{chat_id}/messages] PASSED [ 84%]
+2026-06-29T14:30:00.8220798Z tests/test_schemathesis_api.py::test_api_responses_conform_to_schema[POST /api/v1/chats/{chat_id}/messages] FAILED [ 85%]
+2026-06-29T14:30:02.4668936Z tests/test_schemathesis_api.py::test_api_responses_conform_to_schema[POST /api/v1/chats/{dest_chat_id}/forward] PASSED [ 86%]
+2026-06-29T14:30:03.4502505Z tests/test_schemathesis_api.py::test_api_responses_conform_to_schema[POST /api/v1/chats/{chat_id}/read] PASSED [ 86%]
+2026-06-29T14:30:05.1924499Z tests/test_schemathesis_api.py::test_api_responses_conform_to_schema[PATCH /api/v1/chats/{chat_id}/messages/{message_id}] PASSED [ 87%]
+2026-06-29T14:30:06.0472334Z tests/test_schemathesis_api.py::test_api_responses_conform_to_schema[DELETE /api/v1/chats/{chat_id}/messages/{message_id}] PASSED [ 88%]
+2026-06-29T14:30:07.3108927Z tests/test_schemathesis_api.py::test_api_responses_conform_to_schema[POST /api/v1/chats/{chat_id}/messages/{message_id}/reactions] PASSED [ 89%]
+2026-06-29T14:30:08.4154580Z tests/test_schemathesis_api.py::test_api_responses_conform_to_schema[DELETE /api/v1/chats/{chat_id}/messages/{message_id}/reactions] PASSED [ 89%]
+2026-06-29T14:30:09.6075123Z tests/test_schemathesis_api.py::test_api_responses_conform_to_schema[GET /api/v1/chats/{chat_id}/messages/{message_id}/reactions] PASSED [ 90%]
+2026-06-29T14:30:10.5590907Z tests/test_schemathesis_api.py::test_api_responses_conform_to_schema[POST /api/v1/chats/{chat_id}/typing] PASSED [ 91%]
+2026-06-29T14:30:11.4805121Z tests/test_schemathesis_api.py::test_api_responses_conform_to_schema[POST /api/v1/chats/{chat_id}/clear] PASSED [ 91%]
+2026-06-29T14:30:12.6851877Z tests/test_schemathesis_api.py::test_api_responses_conform_to_schema[POST /api/v1/chats/{chat_id}/participants] PASSED [ 92%]
+2026-06-29T14:30:13.7081441Z tests/test_schemathesis_api.py::test_api_responses_conform_to_schema[DELETE /api/v1/chats/{chat_id}/participants/{user_id}] PASSED [ 93%]
+2026-06-29T14:30:15.1547041Z tests/test_schemathesis_api.py::test_api_responses_conform_to_schema[GET /api/v1/img/{path}] PASSED [ 94%]
+2026-06-29T14:30:15.3766135Z tests/test_schemathesis_api.py::test_api_responses_conform_to_schema[POST /api/v1/csp-report] PASSED [ 94%]
+2026-06-29T14:30:17.2388275Z tests/test_schemathesis_api.py::test_api_responses_conform_to_schema[GET /api/v1/search] PASSED [ 95%]
+2026-06-29T14:30:17.4624342Z tests/test_schemathesis_api.py::test_api_responses_conform_to_schema[GET /admin/feature-flags] PASSED [ 96%]
+2026-06-29T14:30:19.1242171Z tests/test_schemathesis_api.py::test_api_responses_conform_to_schema[PATCH /admin/feature-flags/{name}] PASSED [ 97%]
+2026-06-29T14:30:22.2369815Z tests/test_schemathesis_api.py::test_api_responses_conform_to_schema[GET /admin/audit] PASSED [ 97%]
+2026-06-29T14:30:22.4599571Z tests/test_schemathesis_api.py::test_api_responses_conform_to_schema[POST /ws/ticket] PASSED [ 98%]
+2026-06-29T14:30:22.4824307Z tests/test_schemathesis_api.py::test_openapi_spec_declares_paths PASSED  [ 99%]
+2026-06-29T14:30:22.5850392Z tests/test_schemathesis_api.py::test_openapi_spec_is_valid_json PASSED   [100%]
+2026-06-29T14:30:22.5851024Z 
+2026-06-29T14:30:22.5851206Z =================================== FAILURES ===================================
+2026-06-29T14:30:22.5852226Z _ test_api_responses_conform_to_schema[POST /api/v1/chats/{chat_id}/messages] __
+2026-06-29T14:30:22.5853400Z E   hypothesis.errors.FailedHealthCheck: Too many generated examples are filtered out for this operation
+2026-06-29T14:30:22.5854308Z     
+2026-06-29T14:30:22.5854774Z     Unable to identify the specific parameter. Common causes:
+2026-06-29T14:30:22.5855452Z       - Complex regex patterns that match few strings
+2026-06-29T14:30:22.5856142Z       - Multiple overlapping constraints (pattern + format + enum)
+2026-06-29T14:30:22.5856716Z     
+2026-06-29T14:30:22.5857764Z     Tip: Simplify constraints or widen acceptable value ranges. You can disable this health check with @settings(suppress_health_check=[HealthCheck.filter_too_much])
+2026-06-29T14:30:22.5859254Z All traceback entries are hidden. Pass `--full-trace` to see hidden and internal frames.
+2026-06-29T14:30:22.5859842Z ----------------------------- Captured stdout call -----------------------------
+2026-06-29T14:30:22.5862113Z [2m2026-06-29T14:29:59.751013Z[0m [[33m[1mwarning  [0m] [[0m[1m[34mapp.core.lifespan[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m"DI container smoke-test FAILED:\n  - BaseCache: Cannot find factory for (BaseCache, component='', scope=Scope.APP). Check scopes in your providers. It is missing or has invalid scope."[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.5864465Z [2m2026-06-29T14:29:59.764716Z[0m [[32m[1minfo     [0m] [[0m[1m[34mapp.tasks.cleanups[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m'NATS periodic cleanups initialised'[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.5866119Z [2m2026-06-29T14:29:59.764878Z[0m [[32m[1minfo     [0m] [[0m[1m[34mapp.core.lifespan[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m'Background workers (Outbox, NATS) disabled in testing environment'[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.5868912Z [2m2026-06-29T14:29:59.766906Z[0m [[33m[1mwarning  [0m] [[0m[1m[34mapp.core.csrf[0m][0m [36mcookie_present[0m=[35mFalse[0m [36menvironment[0m=[35mtesting[0m [36mheader_present[0m=[35mFalse[0m [36mmessage[0m=[35m'CSRF rejected (missing CSRF proof)'[0m [36mmethod[0m=[35mPOST[0m [36mpath[0m=[35m/api/v1/chats/e3e70682-c209-1cac-a29f-6fbed82c07cd/messages[0m [36mrequest_id[0m=[35m[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.5871996Z [2m2026-06-29T14:29:59.770840Z[0m [[33m[1mwarning  [0m] [[0m[1m[34mapp.core.lifespan[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m"DI container smoke-test FAILED:\n  - BaseCache: Cannot find factory for (BaseCache, component='', scope=Scope.APP). Check scopes in your providers. It is missing or has invalid scope."[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.5875919Z [2m2026-06-29T14:29:59.786393Z[0m [[32m[1minfo     [0m] [[0m[1m[34mapp.tasks.cleanups[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m'NATS periodic cleanups initialised'[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.5878845Z [2m2026-06-29T14:29:59.786537Z[0m [[32m[1minfo     [0m] [[0m[1m[34mapp.core.lifespan[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m'Background workers (Outbox, NATS) disabled in testing environment'[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.5882173Z [2m2026-06-29T14:29:59.788470Z[0m [[33m[1mwarning  [0m] [[0m[1m[34mapp.core.csrf[0m][0m [36mcookie_present[0m=[35mFalse[0m [36menvironment[0m=[35mtesting[0m [36mheader_present[0m=[35mFalse[0m [36mmessage[0m=[35m'CSRF rejected (missing CSRF proof)'[0m [36mmethod[0m=[35mPOST[0m [36mpath[0m=[35m/api/v1/chats/e3e70682-c209-1cac-a29f-6fbed82c07cd/messages[0m [36mrequest_id[0m=[35m[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.5885100Z [2m2026-06-29T14:29:59.792321Z[0m [[33m[1mwarning  [0m] [[0m[1m[34mapp.core.lifespan[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m"DI container smoke-test FAILED:\n  - BaseCache: Cannot find factory for (BaseCache, component='', scope=Scope.APP). Check scopes in your providers. It is missing or has invalid scope."[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.5887122Z [2m2026-06-29T14:29:59.808660Z[0m [[32m[1minfo     [0m] [[0m[1m[34mapp.tasks.cleanups[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m'NATS periodic cleanups initialised'[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.5888769Z [2m2026-06-29T14:29:59.808800Z[0m [[32m[1minfo     [0m] [[0m[1m[34mapp.core.lifespan[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m'Background workers (Outbox, NATS) disabled in testing environment'[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.5891231Z [2m2026-06-29T14:29:59.810738Z[0m [[33m[1mwarning  [0m] [[0m[1m[34mapp.core.csrf[0m][0m [36mcookie_present[0m=[35mFalse[0m [36menvironment[0m=[35mtesting[0m [36mheader_present[0m=[35mFalse[0m [36mmessage[0m=[35m'CSRF rejected (missing CSRF proof)'[0m [36mmethod[0m=[35mPOST[0m [36mpath[0m=[35m/api/v1/chats/e3e70682-c209-1cac-a29f-6fbed82c07cd/messages[0m [36mrequest_id[0m=[35m[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.5894220Z [2m2026-06-29T14:29:59.814251Z[0m [[33m[1mwarning  [0m] [[0m[1m[34mapp.core.lifespan[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m"DI container smoke-test FAILED:\n  - BaseCache: Cannot find factory for (BaseCache, component='', scope=Scope.APP). Check scopes in your providers. It is missing or has invalid scope."[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.5896222Z [2m2026-06-29T14:29:59.830262Z[0m [[32m[1minfo     [0m] [[0m[1m[34mapp.tasks.cleanups[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m'NATS periodic cleanups initialised'[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.5898181Z [2m2026-06-29T14:29:59.830404Z[0m [[32m[1minfo     [0m] [[0m[1m[34mapp.core.lifespan[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m'Background workers (Outbox, NATS) disabled in testing environment'[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.5900582Z [2m2026-06-29T14:29:59.832283Z[0m [[33m[1mwarning  [0m] [[0m[1m[34mapp.core.csrf[0m][0m [36mcookie_present[0m=[35mFalse[0m [36menvironment[0m=[35mtesting[0m [36mheader_present[0m=[35mFalse[0m [36mmessage[0m=[35m'CSRF rejected (missing CSRF proof)'[0m [36mmethod[0m=[35mPOST[0m [36mpath[0m=[35m/api/v1/chats/e3e70682-c209-1cac-a29f-6fbed82c07cd/messages[0m [36mrequest_id[0m=[35m[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.5904870Z [2m2026-06-29T14:29:59.835766Z[0m [[33m[1mwarning  [0m] [[0m[1m[34mapp.core.lifespan[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m"DI container smoke-test FAILED:\n  - BaseCache: Cannot find factory for (BaseCache, component='', scope=Scope.APP). Check scopes in your providers. It is missing or has invalid scope."[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.5908488Z [2m2026-06-29T14:29:59.853958Z[0m [[32m[1minfo     [0m] [[0m[1m[34mapp.tasks.cleanups[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m'NATS periodic cleanups initialised'[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.5911864Z [2m2026-06-29T14:29:59.854100Z[0m [[32m[1minfo     [0m] [[0m[1m[34mapp.core.lifespan[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m'Background workers (Outbox, NATS) disabled in testing environment'[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.5915735Z [2m2026-06-29T14:29:59.855997Z[0m [[33m[1mwarning  [0m] [[0m[1m[34mapp.core.csrf[0m][0m [36mcookie_present[0m=[35mFalse[0m [36menvironment[0m=[35mtesting[0m [36mheader_present[0m=[35mFalse[0m [36mmessage[0m=[35m'CSRF rejected (missing CSRF proof)'[0m [36mmethod[0m=[35mPOST[0m [36mpath[0m=[35m/api/v1/chats/e3e70682-c209-1cac-a29f-6fbed82c07cd/messages[0m [36mrequest_id[0m=[35m[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.5918554Z [2m2026-06-29T14:29:59.859360Z[0m [[33m[1mwarning  [0m] [[0m[1m[34mapp.core.lifespan[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m"DI container smoke-test FAILED:\n  - BaseCache: Cannot find factory for (BaseCache, component='', scope=Scope.APP). Check scopes in your providers. It is missing or has invalid scope."[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.5920576Z [2m2026-06-29T14:29:59.874792Z[0m [[32m[1minfo     [0m] [[0m[1m[34mapp.tasks.cleanups[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m'NATS periodic cleanups initialised'[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.5922509Z [2m2026-06-29T14:29:59.874931Z[0m [[32m[1minfo     [0m] [[0m[1m[34mapp.core.lifespan[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m'Background workers (Outbox, NATS) disabled in testing environment'[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.5924939Z [2m2026-06-29T14:29:59.876784Z[0m [[33m[1mwarning  [0m] [[0m[1m[34mapp.core.csrf[0m][0m [36mcookie_present[0m=[35mFalse[0m [36menvironment[0m=[35mtesting[0m [36mheader_present[0m=[35mFalse[0m [36mmessage[0m=[35m'CSRF rejected (missing CSRF proof)'[0m [36mmethod[0m=[35mPOST[0m [36mpath[0m=[35m/api/v1/chats/e3e70682-c209-1cac-a29f-6fbed82c07cd/messages[0m [36mrequest_id[0m=[35m[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.5927682Z [2m2026-06-29T14:29:59.880117Z[0m [[33m[1mwarning  [0m] [[0m[1m[34mapp.core.lifespan[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m"DI container smoke-test FAILED:\n  - BaseCache: Cannot find factory for (BaseCache, component='', scope=Scope.APP). Check scopes in your providers. It is missing or has invalid scope."[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.5929891Z [2m2026-06-29T14:29:59.895371Z[0m [[32m[1minfo     [0m] [[0m[1m[34mapp.tasks.cleanups[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m'NATS periodic cleanups initialised'[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.5931883Z [2m2026-06-29T14:29:59.895516Z[0m [[32m[1minfo     [0m] [[0m[1m[34mapp.core.lifespan[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m'Background workers (Outbox, NATS) disabled in testing environment'[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.5934337Z [2m2026-06-29T14:29:59.897422Z[0m [[33m[1mwarning  [0m] [[0m[1m[34mapp.core.csrf[0m][0m [36mcookie_present[0m=[35mFalse[0m [36menvironment[0m=[35mtesting[0m [36mheader_present[0m=[35mFalse[0m [36mmessage[0m=[35m'CSRF rejected (missing CSRF proof)'[0m [36mmethod[0m=[35mPOST[0m [36mpath[0m=[35m/api/v1/chats/e3e70682-c209-1cac-a29f-6fbed82c07cd/messages[0m [36mrequest_id[0m=[35m[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.5937076Z [2m2026-06-29T14:29:59.900978Z[0m [[33m[1mwarning  [0m] [[0m[1m[34mapp.core.lifespan[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m"DI container smoke-test FAILED:\n  - BaseCache: Cannot find factory for (BaseCache, component='', scope=Scope.APP). Check scopes in your providers. It is missing or has invalid scope."[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.5939075Z [2m2026-06-29T14:29:59.916469Z[0m [[32m[1minfo     [0m] [[0m[1m[34mapp.tasks.cleanups[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m'NATS periodic cleanups initialised'[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.5940698Z [2m2026-06-29T14:29:59.916611Z[0m [[32m[1minfo     [0m] [[0m[1m[34mapp.core.lifespan[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m'Background workers (Outbox, NATS) disabled in testing environment'[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.5944037Z [2m2026-06-29T14:29:59.918460Z[0m [[33m[1mwarning  [0m] [[0m[1m[34mapp.core.csrf[0m][0m [36mcookie_present[0m=[35mFalse[0m [36menvironment[0m=[35mtesting[0m [36mheader_present[0m=[35mFalse[0m [36mmessage[0m=[35m'CSRF rejected (missing CSRF proof)'[0m [36mmethod[0m=[35mPOST[0m [36mpath[0m=[35m/api/v1/chats/e3e70682-c209-1cac-a29f-6fbed82c07cd/messages[0m [36mrequest_id[0m=[35m[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.5946809Z [2m2026-06-29T14:29:59.921754Z[0m [[33m[1mwarning  [0m] [[0m[1m[34mapp.core.lifespan[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m"DI container smoke-test FAILED:\n  - BaseCache: Cannot find factory for (BaseCache, component='', scope=Scope.APP). Check scopes in your providers. It is missing or has invalid scope."[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.5948812Z [2m2026-06-29T14:29:59.937425Z[0m [[32m[1minfo     [0m] [[0m[1m[34mapp.tasks.cleanups[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m'NATS periodic cleanups initialised'[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.5950434Z [2m2026-06-29T14:29:59.937570Z[0m [[32m[1minfo     [0m] [[0m[1m[34mapp.core.lifespan[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m'Background workers (Outbox, NATS) disabled in testing environment'[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.5952969Z [2m2026-06-29T14:29:59.939491Z[0m [[33m[1mwarning  [0m] [[0m[1m[34mapp.core.csrf[0m][0m [36mcookie_present[0m=[35mFalse[0m [36menvironment[0m=[35mtesting[0m [36mheader_present[0m=[35mFalse[0m [36mmessage[0m=[35m'CSRF rejected (missing CSRF proof)'[0m [36mmethod[0m=[35mPOST[0m [36mpath[0m=[35m/api/v1/chats/0/messages[0m [36mrequest_id[0m=[35m[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.5955738Z [2m2026-06-29T14:29:59.943177Z[0m [[33m[1mwarning  [0m] [[0m[1m[34mapp.core.lifespan[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m"DI container smoke-test FAILED:\n  - BaseCache: Cannot find factory for (BaseCache, component='', scope=Scope.APP). Check scopes in your providers. It is missing or has invalid scope."[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.5957851Z [2m2026-06-29T14:29:59.957792Z[0m [[32m[1minfo     [0m] [[0m[1m[34mapp.tasks.cleanups[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m'NATS periodic cleanups initialised'[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.5959494Z [2m2026-06-29T14:29:59.957935Z[0m [[32m[1minfo     [0m] [[0m[1m[34mapp.core.lifespan[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m'Background workers (Outbox, NATS) disabled in testing environment'[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.5962003Z [2m2026-06-29T14:29:59.959819Z[0m [[33m[1mwarning  [0m] [[0m[1m[34mapp.core.csrf[0m][0m [36mcookie_present[0m=[35mFalse[0m [36menvironment[0m=[35mtesting[0m [36mheader_present[0m=[35mFalse[0m [36mmessage[0m=[35m'CSRF rejected (missing CSRF proof)'[0m [36mmethod[0m=[35mPOST[0m [36mpath[0m=[35m/api/v1/chats/null,null/messages[0m [36mrequest_id[0m=[35m[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.5964674Z [2m2026-06-29T14:29:59.963281Z[0m [[33m[1mwarning  [0m] [[0m[1m[34mapp.core.lifespan[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m"DI container smoke-test FAILED:\n  - BaseCache: Cannot find factory for (BaseCache, component='', scope=Scope.APP). Check scopes in your providers. It is missing or has invalid scope."[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.5966676Z [2m2026-06-29T14:29:59.979662Z[0m [[32m[1minfo     [0m] [[0m[1m[34mapp.tasks.cleanups[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m'NATS periodic cleanups initialised'[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.5968308Z [2m2026-06-29T14:29:59.979804Z[0m [[32m[1minfo     [0m] [[0m[1m[34mapp.core.lifespan[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m'Background workers (Outbox, NATS) disabled in testing environment'[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.5970561Z [2m2026-06-29T14:29:59.981712Z[0m [[33m[1mwarning  [0m] [[0m[1m[34mapp.core.csrf[0m][0m [36mcookie_present[0m=[35mFalse[0m [36menvironment[0m=[35mtesting[0m [36mheader_present[0m=[35mFalse[0m [36mmessage[0m=[35m'CSRF rejected (missing CSRF proof)'[0m [36mmethod[0m=[35mPOST[0m [36mpath[0m=[35m/api/v1/chats/null/messages[0m [36mrequest_id[0m=[35m[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.5973444Z [2m2026-06-29T14:29:59.985177Z[0m [[33m[1mwarning  [0m] [[0m[1m[34mapp.core.lifespan[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m"DI container smoke-test FAILED:\n  - BaseCache: Cannot find factory for (BaseCache, component='', scope=Scope.APP). Check scopes in your providers. It is missing or has invalid scope."[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.5975446Z [2m2026-06-29T14:30:00.001290Z[0m [[32m[1minfo     [0m] [[0m[1m[34mapp.tasks.cleanups[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m'NATS periodic cleanups initialised'[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.5977071Z [2m2026-06-29T14:30:00.001427Z[0m [[32m[1minfo     [0m] [[0m[1m[34mapp.core.lifespan[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m'Background workers (Outbox, NATS) disabled in testing environment'[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.5979324Z [2m2026-06-29T14:30:00.003267Z[0m [[33m[1mwarning  [0m] [[0m[1m[34mapp.core.csrf[0m][0m [36mcookie_present[0m=[35mFalse[0m [36menvironment[0m=[35mtesting[0m [36mheader_present[0m=[35mFalse[0m [36mmessage[0m=[35m'CSRF rejected (missing CSRF proof)'[0m [36mmethod[0m=[35mPOST[0m [36mpath[0m=[35m/api/v1/chats/false/messages[0m [36mrequest_id[0m=[35m[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.5982516Z [2m2026-06-29T14:30:00.006604Z[0m [[33m[1mwarning  [0m] [[0m[1m[34mapp.core.lifespan[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m"DI container smoke-test FAILED:\n  - BaseCache: Cannot find factory for (BaseCache, component='', scope=Scope.APP). Check scopes in your providers. It is missing or has invalid scope."[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.5986447Z [2m2026-06-29T14:30:00.023858Z[0m [[32m[1minfo     [0m] [[0m[1m[34mapp.tasks.cleanups[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m'NATS periodic cleanups initialised'[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.5988192Z [2m2026-06-29T14:30:00.024008Z[0m [[32m[1minfo     [0m] [[0m[1m[34mapp.core.lifespan[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m'Background workers (Outbox, NATS) disabled in testing environment'[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.5990446Z [2m2026-06-29T14:30:00.025866Z[0m [[33m[1mwarning  [0m] [[0m[1m[34mapp.core.csrf[0m][0m [36mcookie_present[0m=[35mFalse[0m [36menvironment[0m=[35mtesting[0m [36mheader_present[0m=[35mFalse[0m [36mmessage[0m=[35m'CSRF rejected (missing CSRF proof)'[0m [36mmethod[0m=[35mPOST[0m [36mpath[0m=[35m/api/v1/chats/0/messages[0m [36mrequest_id[0m=[35m[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.5993359Z [2m2026-06-29T14:30:00.029433Z[0m [[33m[1mwarning  [0m] [[0m[1m[34mapp.core.lifespan[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m"DI container smoke-test FAILED:\n  - BaseCache: Cannot find factory for (BaseCache, component='', scope=Scope.APP). Check scopes in your providers. It is missing or has invalid scope."[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.5995412Z [2m2026-06-29T14:30:00.044703Z[0m [[32m[1minfo     [0m] [[0m[1m[34mapp.tasks.cleanups[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m'NATS periodic cleanups initialised'[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.5997052Z [2m2026-06-29T14:30:00.044843Z[0m [[32m[1minfo     [0m] [[0m[1m[34mapp.core.lifespan[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m'Background workers (Outbox, NATS) disabled in testing environment'[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.5999434Z [2m2026-06-29T14:30:00.046732Z[0m [[33m[1mwarning  [0m] [[0m[1m[34mapp.core.csrf[0m][0m [36mcookie_present[0m=[35mFalse[0m [36menvironment[0m=[35mtesting[0m [36mheader_present[0m=[35mFalse[0m [36mmessage[0m=[35m'CSRF rejected (missing CSRF proof)'[0m [36mmethod[0m=[35mPOST[0m [36mpath[0m=[35m/api/v1/chats/e3e70682-c209-1cac-a29f-6fbed82c07cd/messages[0m [36mrequest_id[0m=[35m[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6002371Z [2m2026-06-29T14:30:00.050057Z[0m [[33m[1mwarning  [0m] [[0m[1m[34mapp.core.lifespan[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m"DI container smoke-test FAILED:\n  - BaseCache: Cannot find factory for (BaseCache, component='', scope=Scope.APP). Check scopes in your providers. It is missing or has invalid scope."[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6004380Z [2m2026-06-29T14:30:00.065840Z[0m [[32m[1minfo     [0m] [[0m[1m[34mapp.tasks.cleanups[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m'NATS periodic cleanups initialised'[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6005998Z [2m2026-06-29T14:30:00.065981Z[0m [[32m[1minfo     [0m] [[0m[1m[34mapp.core.lifespan[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m'Background workers (Outbox, NATS) disabled in testing environment'[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6008691Z [2m2026-06-29T14:30:00.067965Z[0m [[33m[1mwarning  [0m] [[0m[1m[34mapp.core.csrf[0m][0m [36mcookie_present[0m=[35mFalse[0m [36menvironment[0m=[35mtesting[0m [36mheader_present[0m=[35mFalse[0m [36mmessage[0m=[35m'CSRF rejected (missing CSRF proof)'[0m [36mmethod[0m=[35mPOST[0m [36mpath[0m=[35m/api/v1/chats/e3e70682-c209-1cac-a29f-6fbed82c07cd/messages[0m [36mrequest_id[0m=[35m[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6011402Z [2m2026-06-29T14:30:00.071692Z[0m [[33m[1mwarning  [0m] [[0m[1m[34mapp.core.lifespan[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m"DI container smoke-test FAILED:\n  - BaseCache: Cannot find factory for (BaseCache, component='', scope=Scope.APP). Check scopes in your providers. It is missing or has invalid scope."[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6013675Z [2m2026-06-29T14:30:00.086491Z[0m [[32m[1minfo     [0m] [[0m[1m[34mapp.tasks.cleanups[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m'NATS periodic cleanups initialised'[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6015303Z [2m2026-06-29T14:30:00.086658Z[0m [[32m[1minfo     [0m] [[0m[1m[34mapp.core.lifespan[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m'Background workers (Outbox, NATS) disabled in testing environment'[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6017675Z [2m2026-06-29T14:30:00.088701Z[0m [[33m[1mwarning  [0m] [[0m[1m[34mapp.core.csrf[0m][0m [36mcookie_present[0m=[35mFalse[0m [36menvironment[0m=[35mtesting[0m [36mheader_present[0m=[35mFalse[0m [36mmessage[0m=[35m'CSRF rejected (missing CSRF proof)'[0m [36mmethod[0m=[35mPOST[0m [36mpath[0m=[35m/api/v1/chats/e3e70682-c209-1cac-a29f-6fbed82c07cd/messages[0m [36mrequest_id[0m=[35m[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6020366Z [2m2026-06-29T14:30:00.092644Z[0m [[33m[1mwarning  [0m] [[0m[1m[34mapp.core.lifespan[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m"DI container smoke-test FAILED:\n  - BaseCache: Cannot find factory for (BaseCache, component='', scope=Scope.APP). Check scopes in your providers. It is missing or has invalid scope."[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6022565Z [2m2026-06-29T14:30:00.109394Z[0m [[32m[1minfo     [0m] [[0m[1m[34mapp.tasks.cleanups[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m'NATS periodic cleanups initialised'[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6024197Z [2m2026-06-29T14:30:00.109583Z[0m [[32m[1minfo     [0m] [[0m[1m[34mapp.core.lifespan[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m'Background workers (Outbox, NATS) disabled in testing environment'[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6026569Z [2m2026-06-29T14:30:00.111784Z[0m [[33m[1mwarning  [0m] [[0m[1m[34mapp.core.csrf[0m][0m [36mcookie_present[0m=[35mFalse[0m [36menvironment[0m=[35mtesting[0m [36mheader_present[0m=[35mFalse[0m [36mmessage[0m=[35m'CSRF rejected (missing CSRF proof)'[0m [36mmethod[0m=[35mPOST[0m [36mpath[0m=[35m/api/v1/chats/e3e70682-c209-1cac-a29f-6fbed82c07cd/messages[0m [36mrequest_id[0m=[35m[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6029300Z [2m2026-06-29T14:30:00.115838Z[0m [[33m[1mwarning  [0m] [[0m[1m[34mapp.core.lifespan[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m"DI container smoke-test FAILED:\n  - BaseCache: Cannot find factory for (BaseCache, component='', scope=Scope.APP). Check scopes in your providers. It is missing or has invalid scope."[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6031313Z [2m2026-06-29T14:30:00.132450Z[0m [[32m[1minfo     [0m] [[0m[1m[34mapp.tasks.cleanups[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m'NATS periodic cleanups initialised'[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6033320Z [2m2026-06-29T14:30:00.132598Z[0m [[32m[1minfo     [0m] [[0m[1m[34mapp.core.lifespan[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m'Background workers (Outbox, NATS) disabled in testing environment'[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6035825Z [2m2026-06-29T14:30:00.134688Z[0m [[33m[1mwarning  [0m] [[0m[1m[34mapp.core.csrf[0m][0m [36mcookie_present[0m=[35mFalse[0m [36menvironment[0m=[35mtesting[0m [36mheader_present[0m=[35mFalse[0m [36mmessage[0m=[35m'CSRF rejected (missing CSRF proof)'[0m [36mmethod[0m=[35mPOST[0m [36mpath[0m=[35m/api/v1/chats/e3e70682-c209-1cac-a29f-6fbed82c07cd/messages[0m [36mrequest_id[0m=[35m[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6038555Z [2m2026-06-29T14:30:00.138580Z[0m [[33m[1mwarning  [0m] [[0m[1m[34mapp.core.lifespan[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m"DI container smoke-test FAILED:\n  - BaseCache: Cannot find factory for (BaseCache, component='', scope=Scope.APP). Check scopes in your providers. It is missing or has invalid scope."[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6040568Z [2m2026-06-29T14:30:00.155194Z[0m [[32m[1minfo     [0m] [[0m[1m[34mapp.tasks.cleanups[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m'NATS periodic cleanups initialised'[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6042419Z [2m2026-06-29T14:30:00.155358Z[0m [[32m[1minfo     [0m] [[0m[1m[34mapp.core.lifespan[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m'Background workers (Outbox, NATS) disabled in testing environment'[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6044802Z [2m2026-06-29T14:30:00.157380Z[0m [[33m[1mwarning  [0m] [[0m[1m[34mapp.core.csrf[0m][0m [36mcookie_present[0m=[35mFalse[0m [36menvironment[0m=[35mtesting[0m [36mheader_present[0m=[35mFalse[0m [36mmessage[0m=[35m'CSRF rejected (missing CSRF proof)'[0m [36mmethod[0m=[35mPOST[0m [36mpath[0m=[35m/api/v1/chats/e3e70682-c209-1cac-a29f-6fbed82c07cd/messages[0m [36mrequest_id[0m=[35m[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6047554Z [2m2026-06-29T14:30:00.161274Z[0m [[33m[1mwarning  [0m] [[0m[1m[34mapp.core.lifespan[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m"DI container smoke-test FAILED:\n  - BaseCache: Cannot find factory for (BaseCache, component='', scope=Scope.APP). Check scopes in your providers. It is missing or has invalid scope."[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6049566Z [2m2026-06-29T14:30:00.177968Z[0m [[32m[1minfo     [0m] [[0m[1m[34mapp.tasks.cleanups[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m'NATS periodic cleanups initialised'[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6051199Z [2m2026-06-29T14:30:00.178135Z[0m [[32m[1minfo     [0m] [[0m[1m[34mapp.core.lifespan[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m'Background workers (Outbox, NATS) disabled in testing environment'[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6053828Z [2m2026-06-29T14:30:00.180304Z[0m [[33m[1mwarning  [0m] [[0m[1m[34mapp.core.csrf[0m][0m [36mcookie_present[0m=[35mFalse[0m [36menvironment[0m=[35mtesting[0m [36mheader_present[0m=[35mFalse[0m [36mmessage[0m=[35m'CSRF rejected (missing CSRF proof)'[0m [36mmethod[0m=[35mPOST[0m [36mpath[0m=[35m/api/v1/chats/e3e70682-c209-1cac-a29f-6fbed82c07cd/messages[0m [36mrequest_id[0m=[35m[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6056542Z [2m2026-06-29T14:30:00.184331Z[0m [[33m[1mwarning  [0m] [[0m[1m[34mapp.core.lifespan[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m"DI container smoke-test FAILED:\n  - BaseCache: Cannot find factory for (BaseCache, component='', scope=Scope.APP). Check scopes in your providers. It is missing or has invalid scope."[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6058705Z [2m2026-06-29T14:30:00.198741Z[0m [[32m[1minfo     [0m] [[0m[1m[34mapp.tasks.cleanups[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m'NATS periodic cleanups initialised'[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6060434Z [2m2026-06-29T14:30:00.198885Z[0m [[32m[1minfo     [0m] [[0m[1m[34mapp.core.lifespan[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m'Background workers (Outbox, NATS) disabled in testing environment'[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6063033Z [2m2026-06-29T14:30:00.201678Z[0m [[33m[1mwarning  [0m] [[0m[1m[34mapp.core.csrf[0m][0m [36mcookie_present[0m=[35mFalse[0m [36menvironment[0m=[35mtesting[0m [36mheader_present[0m=[35mFalse[0m [36mmessage[0m=[35m'CSRF rejected (missing CSRF proof)'[0m [36mmethod[0m=[35mPOST[0m [36mpath[0m=[35m/api/v1/chats/e3e70682-c209-1cac-a29f-6fbed82c07cd/messages[0m [36mrequest_id[0m=[35m[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6065746Z [2m2026-06-29T14:30:00.205483Z[0m [[33m[1mwarning  [0m] [[0m[1m[34mapp.core.lifespan[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m"DI container smoke-test FAILED:\n  - BaseCache: Cannot find factory for (BaseCache, component='', scope=Scope.APP). Check scopes in your providers. It is missing or has invalid scope."[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6067759Z [2m2026-06-29T14:30:00.219920Z[0m [[32m[1minfo     [0m] [[0m[1m[34mapp.tasks.cleanups[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m'NATS periodic cleanups initialised'[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6069386Z [2m2026-06-29T14:30:00.220082Z[0m [[32m[1minfo     [0m] [[0m[1m[34mapp.core.lifespan[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m'Background workers (Outbox, NATS) disabled in testing environment'[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6071980Z [2m2026-06-29T14:30:00.222128Z[0m [[33m[1mwarning  [0m] [[0m[1m[34mapp.core.csrf[0m][0m [36mcookie_present[0m=[35mFalse[0m [36menvironment[0m=[35mtesting[0m [36mheader_present[0m=[35mFalse[0m [36mmessage[0m=[35m'CSRF rejected (missing CSRF proof)'[0m [36mmethod[0m=[35mPOST[0m [36mpath[0m=[35m/api/v1/chats/e3e70682-c209-1cac-a29f-6fbed82c07cd/messages[0m [36mrequest_id[0m=[35m[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6074714Z [2m2026-06-29T14:30:00.226268Z[0m [[33m[1mwarning  [0m] [[0m[1m[34mapp.core.lifespan[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m"DI container smoke-test FAILED:\n  - BaseCache: Cannot find factory for (BaseCache, component='', scope=Scope.APP). Check scopes in your providers. It is missing or has invalid scope."[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6076717Z [2m2026-06-29T14:30:00.242312Z[0m [[32m[1minfo     [0m] [[0m[1m[34mapp.tasks.cleanups[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m'NATS periodic cleanups initialised'[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6078343Z [2m2026-06-29T14:30:00.242477Z[0m [[32m[1minfo     [0m] [[0m[1m[34mapp.core.lifespan[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m'Background workers (Outbox, NATS) disabled in testing environment'[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6080736Z [2m2026-06-29T14:30:00.244659Z[0m [[33m[1mwarning  [0m] [[0m[1m[34mapp.core.csrf[0m][0m [36mcookie_present[0m=[35mFalse[0m [36menvironment[0m=[35mtesting[0m [36mheader_present[0m=[35mFalse[0m [36mmessage[0m=[35m'CSRF rejected (missing CSRF proof)'[0m [36mmethod[0m=[35mPOST[0m [36mpath[0m=[35m/api/v1/chats/e3e70682-c209-1cac-a29f-6fbed82c07cd/messages[0m [36mrequest_id[0m=[35m[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6083768Z [2m2026-06-29T14:30:00.248761Z[0m [[33m[1mwarning  [0m] [[0m[1m[34mapp.core.lifespan[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m"DI container smoke-test FAILED:\n  - BaseCache: Cannot find factory for (BaseCache, component='', scope=Scope.APP). Check scopes in your providers. It is missing or has invalid scope."[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6086011Z [2m2026-06-29T14:30:00.265122Z[0m [[32m[1minfo     [0m] [[0m[1m[34mapp.tasks.cleanups[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m'NATS periodic cleanups initialised'[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6087645Z [2m2026-06-29T14:30:00.265295Z[0m [[32m[1minfo     [0m] [[0m[1m[34mapp.core.lifespan[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m'Background workers (Outbox, NATS) disabled in testing environment'[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6090017Z [2m2026-06-29T14:30:00.267266Z[0m [[33m[1mwarning  [0m] [[0m[1m[34mapp.core.csrf[0m][0m [36mcookie_present[0m=[35mFalse[0m [36menvironment[0m=[35mtesting[0m [36mheader_present[0m=[35mFalse[0m [36mmessage[0m=[35m'CSRF rejected (missing CSRF proof)'[0m [36mmethod[0m=[35mPOST[0m [36mpath[0m=[35m/api/v1/chats/e3e70682-c209-1cac-a29f-6fbed82c07cd/messages[0m [36mrequest_id[0m=[35m[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6092964Z [2m2026-06-29T14:30:00.270952Z[0m [[33m[1mwarning  [0m] [[0m[1m[34mapp.core.lifespan[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m"DI container smoke-test FAILED:\n  - BaseCache: Cannot find factory for (BaseCache, component='', scope=Scope.APP). Check scopes in your providers. It is missing or has invalid scope."[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6094991Z [2m2026-06-29T14:30:00.285433Z[0m [[32m[1minfo     [0m] [[0m[1m[34mapp.tasks.cleanups[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m'NATS periodic cleanups initialised'[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6096607Z [2m2026-06-29T14:30:00.285602Z[0m [[32m[1minfo     [0m] [[0m[1m[34mapp.core.lifespan[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m'Background workers (Outbox, NATS) disabled in testing environment'[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6098986Z [2m2026-06-29T14:30:00.287730Z[0m [[33m[1mwarning  [0m] [[0m[1m[34mapp.core.csrf[0m][0m [36mcookie_present[0m=[35mFalse[0m [36menvironment[0m=[35mtesting[0m [36mheader_present[0m=[35mFalse[0m [36mmessage[0m=[35m'CSRF rejected (missing CSRF proof)'[0m [36mmethod[0m=[35mPOST[0m [36mpath[0m=[35m/api/v1/chats/e3e70682-c209-1cac-a29f-6fbed82c07cd/messages[0m [36mrequest_id[0m=[35m[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6101894Z [2m2026-06-29T14:30:00.291874Z[0m [[33m[1mwarning  [0m] [[0m[1m[34mapp.core.lifespan[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m"DI container smoke-test FAILED:\n  - BaseCache: Cannot find factory for (BaseCache, component='', scope=Scope.APP). Check scopes in your providers. It is missing or has invalid scope."[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6103898Z [2m2026-06-29T14:30:00.308339Z[0m [[32m[1minfo     [0m] [[0m[1m[34mapp.tasks.cleanups[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m'NATS periodic cleanups initialised'[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6105518Z [2m2026-06-29T14:30:00.308494Z[0m [[32m[1minfo     [0m] [[0m[1m[34mapp.core.lifespan[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m'Background workers (Outbox, NATS) disabled in testing environment'[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6107895Z [2m2026-06-29T14:30:00.310531Z[0m [[33m[1mwarning  [0m] [[0m[1m[34mapp.core.csrf[0m][0m [36mcookie_present[0m=[35mFalse[0m [36menvironment[0m=[35mtesting[0m [36mheader_present[0m=[35mFalse[0m [36mmessage[0m=[35m'CSRF rejected (missing CSRF proof)'[0m [36mmethod[0m=[35mPOST[0m [36mpath[0m=[35m/api/v1/chats/e3e70682-c209-1cac-a29f-6fbed82c07cd/messages[0m [36mrequest_id[0m=[35m[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6110831Z [2m2026-06-29T14:30:00.314495Z[0m [[33m[1mwarning  [0m] [[0m[1m[34mapp.core.lifespan[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m"DI container smoke-test FAILED:\n  - BaseCache: Cannot find factory for (BaseCache, component='', scope=Scope.APP). Check scopes in your providers. It is missing or has invalid scope."[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6113131Z [2m2026-06-29T14:30:00.330909Z[0m [[32m[1minfo     [0m] [[0m[1m[34mapp.tasks.cleanups[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m'NATS periodic cleanups initialised'[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6114752Z [2m2026-06-29T14:30:00.331060Z[0m [[32m[1minfo     [0m] [[0m[1m[34mapp.core.lifespan[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m'Background workers (Outbox, NATS) disabled in testing environment'[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6117128Z [2m2026-06-29T14:30:00.333081Z[0m [[33m[1mwarning  [0m] [[0m[1m[34mapp.core.csrf[0m][0m [36mcookie_present[0m=[35mFalse[0m [36menvironment[0m=[35mtesting[0m [36mheader_present[0m=[35mFalse[0m [36mmessage[0m=[35m'CSRF rejected (missing CSRF proof)'[0m [36mmethod[0m=[35mPOST[0m [36mpath[0m=[35m/api/v1/chats/e3e70682-c209-1cac-a29f-6fbed82c07cd/messages[0m [36mrequest_id[0m=[35m[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6119840Z [2m2026-06-29T14:30:00.336788Z[0m [[33m[1mwarning  [0m] [[0m[1m[34mapp.core.lifespan[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m"DI container smoke-test FAILED:\n  - BaseCache: Cannot find factory for (BaseCache, component='', scope=Scope.APP). Check scopes in your providers. It is missing or has invalid scope."[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6122097Z [2m2026-06-29T14:30:00.354235Z[0m [[32m[1minfo     [0m] [[0m[1m[34mapp.tasks.cleanups[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m'NATS periodic cleanups initialised'[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6123742Z [2m2026-06-29T14:30:00.354401Z[0m [[32m[1minfo     [0m] [[0m[1m[34mapp.core.lifespan[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m'Background workers (Outbox, NATS) disabled in testing environment'[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6126116Z [2m2026-06-29T14:30:00.356453Z[0m [[33m[1mwarning  [0m] [[0m[1m[34mapp.core.csrf[0m][0m [36mcookie_present[0m=[35mFalse[0m [36menvironment[0m=[35mtesting[0m [36mheader_present[0m=[35mFalse[0m [36mmessage[0m=[35m'CSRF rejected (missing CSRF proof)'[0m [36mmethod[0m=[35mPOST[0m [36mpath[0m=[35m/api/v1/chats/e3e70682-c209-1cac-a29f-6fbed82c07cd/messages[0m [36mrequest_id[0m=[35m[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6128825Z [2m2026-06-29T14:30:00.360481Z[0m [[33m[1mwarning  [0m] [[0m[1m[34mapp.core.lifespan[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m"DI container smoke-test FAILED:\n  - BaseCache: Cannot find factory for (BaseCache, component='', scope=Scope.APP). Check scopes in your providers. It is missing or has invalid scope."[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6130816Z [2m2026-06-29T14:30:00.375647Z[0m [[32m[1minfo     [0m] [[0m[1m[34mapp.tasks.cleanups[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m'NATS periodic cleanups initialised'[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6132708Z [2m2026-06-29T14:30:00.375818Z[0m [[32m[1minfo     [0m] [[0m[1m[34mapp.core.lifespan[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m'Background workers (Outbox, NATS) disabled in testing environment'[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6135372Z [2m2026-06-29T14:30:00.378730Z[0m [[33m[1mwarning  [0m] [[0m[1m[34mapp.core.csrf[0m][0m [36mcookie_present[0m=[35mFalse[0m [36menvironment[0m=[35mtesting[0m [36mheader_present[0m=[35mFalse[0m [36mmessage[0m=[35m'CSRF rejected (missing CSRF proof)'[0m [36mmethod[0m=[35mPOST[0m [36mpath[0m=[35m/api/v1/chats/e3e70682-c209-1cac-a29f-6fbed82c07cd/messages[0m [36mrequest_id[0m=[35m[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6138099Z [2m2026-06-29T14:30:00.382912Z[0m [[33m[1mwarning  [0m] [[0m[1m[34mapp.core.lifespan[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m"DI container smoke-test FAILED:\n  - BaseCache: Cannot find factory for (BaseCache, component='', scope=Scope.APP). Check scopes in your providers. It is missing or has invalid scope."[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6140088Z [2m2026-06-29T14:30:00.399602Z[0m [[32m[1minfo     [0m] [[0m[1m[34mapp.tasks.cleanups[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m'NATS periodic cleanups initialised'[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6141946Z [2m2026-06-29T14:30:00.399756Z[0m [[32m[1minfo     [0m] [[0m[1m[34mapp.core.lifespan[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m'Background workers (Outbox, NATS) disabled in testing environment'[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6144345Z [2m2026-06-29T14:30:00.401737Z[0m [[33m[1mwarning  [0m] [[0m[1m[34mapp.core.csrf[0m][0m [36mcookie_present[0m=[35mFalse[0m [36menvironment[0m=[35mtesting[0m [36mheader_present[0m=[35mFalse[0m [36mmessage[0m=[35m'CSRF rejected (missing CSRF proof)'[0m [36mmethod[0m=[35mPOST[0m [36mpath[0m=[35m/api/v1/chats/e3e70682-c209-1cac-a29f-6fbed82c07cd/messages[0m [36mrequest_id[0m=[35m[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6147069Z [2m2026-06-29T14:30:00.410342Z[0m [[33m[1mwarning  [0m] [[0m[1m[34mapp.core.lifespan[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m"DI container smoke-test FAILED:\n  - BaseCache: Cannot find factory for (BaseCache, component='', scope=Scope.APP). Check scopes in your providers. It is missing or has invalid scope."[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6149059Z [2m2026-06-29T14:30:00.424369Z[0m [[32m[1minfo     [0m] [[0m[1m[34mapp.tasks.cleanups[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m'NATS periodic cleanups initialised'[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6150689Z [2m2026-06-29T14:30:00.424534Z[0m [[32m[1minfo     [0m] [[0m[1m[34mapp.core.lifespan[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m'Background workers (Outbox, NATS) disabled in testing environment'[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6153207Z [2m2026-06-29T14:30:00.427274Z[0m [[33m[1mwarning  [0m] [[0m[1m[34mapp.core.csrf[0m][0m [36mcookie_present[0m=[35mFalse[0m [36menvironment[0m=[35mtesting[0m [36mheader_present[0m=[35mFalse[0m [36mmessage[0m=[35m'CSRF rejected (missing CSRF proof)'[0m [36mmethod[0m=[35mPOST[0m [36mpath[0m=[35m/api/v1/chats/e3e70682-c209-1cac-a29f-6fbed82c07cd/messages[0m [36mrequest_id[0m=[35m[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6155930Z [2m2026-06-29T14:30:00.442693Z[0m [[33m[1mwarning  [0m] [[0m[1m[34mapp.core.lifespan[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m"DI container smoke-test FAILED:\n  - BaseCache: Cannot find factory for (BaseCache, component='', scope=Scope.APP). Check scopes in your providers. It is missing or has invalid scope."[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6157927Z [2m2026-06-29T14:30:00.456578Z[0m [[32m[1minfo     [0m] [[0m[1m[34mapp.tasks.cleanups[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m'NATS periodic cleanups initialised'[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6159677Z [2m2026-06-29T14:30:00.456748Z[0m [[32m[1minfo     [0m] [[0m[1m[34mapp.core.lifespan[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m'Background workers (Outbox, NATS) disabled in testing environment'[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6162447Z [2m2026-06-29T14:30:00.458763Z[0m [[33m[1mwarning  [0m] [[0m[1m[34mapp.core.csrf[0m][0m [36mcookie_present[0m=[35mFalse[0m [36menvironment[0m=[35mtesting[0m [36mheader_present[0m=[35mFalse[0m [36mmessage[0m=[35m'CSRF rejected (missing CSRF proof)'[0m [36mmethod[0m=[35mPOST[0m [36mpath[0m=[35m/api/v1/chats/80bcd261-6aa9-4d9e-a130-7498f327ef15/messages[0m [36mrequest_id[0m=[35m[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6165193Z [2m2026-06-29T14:30:00.525474Z[0m [[33m[1mwarning  [0m] [[0m[1m[34mapp.core.lifespan[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m"DI container smoke-test FAILED:\n  - BaseCache: Cannot find factory for (BaseCache, component='', scope=Scope.APP). Check scopes in your providers. It is missing or has invalid scope."[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6167198Z [2m2026-06-29T14:30:00.540197Z[0m [[32m[1minfo     [0m] [[0m[1m[34mapp.tasks.cleanups[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m'NATS periodic cleanups initialised'[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6168837Z [2m2026-06-29T14:30:00.540384Z[0m [[32m[1minfo     [0m] [[0m[1m[34mapp.core.lifespan[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m'Background workers (Outbox, NATS) disabled in testing environment'[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6171217Z [2m2026-06-29T14:30:00.542848Z[0m [[33m[1mwarning  [0m] [[0m[1m[34mapp.core.csrf[0m][0m [36mcookie_present[0m=[35mFalse[0m [36menvironment[0m=[35mtesting[0m [36mheader_present[0m=[35mFalse[0m [36mmessage[0m=[35m'CSRF rejected (missing CSRF proof)'[0m [36mmethod[0m=[35mPOST[0m [36mpath[0m=[35m/api/v1/chats/0fa17398-a3a8-1be8-bebb-24910e2bc0f8/messages[0m [36mrequest_id[0m=[35m[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6174211Z [2m2026-06-29T14:30:00.589093Z[0m [[33m[1mwarning  [0m] [[0m[1m[34mapp.core.lifespan[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m"DI container smoke-test FAILED:\n  - BaseCache: Cannot find factory for (BaseCache, component='', scope=Scope.APP). Check scopes in your providers. It is missing or has invalid scope."[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6176202Z [2m2026-06-29T14:30:00.603385Z[0m [[32m[1minfo     [0m] [[0m[1m[34mapp.tasks.cleanups[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m'NATS periodic cleanups initialised'[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6177816Z [2m2026-06-29T14:30:00.603558Z[0m [[32m[1minfo     [0m] [[0m[1m[34mapp.core.lifespan[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m'Background workers (Outbox, NATS) disabled in testing environment'[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6180197Z [2m2026-06-29T14:30:00.605784Z[0m [[33m[1mwarning  [0m] [[0m[1m[34mapp.core.csrf[0m][0m [36mcookie_present[0m=[35mFalse[0m [36menvironment[0m=[35mtesting[0m [36mheader_present[0m=[35mFalse[0m [36mmessage[0m=[35m'CSRF rejected (missing CSRF proof)'[0m [36mmethod[0m=[35mPOST[0m [36mpath[0m=[35m/api/v1/chats/7f27f714-6284-2cef-842c-95ed7df50942/messages[0m [36mrequest_id[0m=[35m[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6183027Z [2m2026-06-29T14:30:00.644821Z[0m [[33m[1mwarning  [0m] [[0m[1m[34mapp.core.lifespan[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m"DI container smoke-test FAILED:\n  - BaseCache: Cannot find factory for (BaseCache, component='', scope=Scope.APP). Check scopes in your providers. It is missing or has invalid scope."[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6185148Z [2m2026-06-29T14:30:00.662084Z[0m [[32m[1minfo     [0m] [[0m[1m[34mapp.tasks.cleanups[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m'NATS periodic cleanups initialised'[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6186869Z [2m2026-06-29T14:30:00.662264Z[0m [[32m[1minfo     [0m] [[0m[1m[34mapp.core.lifespan[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m'Background workers (Outbox, NATS) disabled in testing environment'[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6189250Z [2m2026-06-29T14:30:00.664350Z[0m [[33m[1mwarning  [0m] [[0m[1m[34mapp.core.csrf[0m][0m [36mcookie_present[0m=[35mFalse[0m [36menvironment[0m=[35mtesting[0m [36mheader_present[0m=[35mFalse[0m [36mmessage[0m=[35m'CSRF rejected (missing CSRF proof)'[0m [36mmethod[0m=[35mPOST[0m [36mpath[0m=[35m/api/v1/chats/c10f3e94-fd9c-50d2-a3e7-351166edc0fd/messages[0m [36mrequest_id[0m=[35m[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6192096Z [2m2026-06-29T14:30:00.705787Z[0m [[33m[1mwarning  [0m] [[0m[1m[34mapp.core.lifespan[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m"DI container smoke-test FAILED:\n  - BaseCache: Cannot find factory for (BaseCache, component='', scope=Scope.APP). Check scopes in your providers. It is missing or has invalid scope."[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6194120Z [2m2026-06-29T14:30:00.719558Z[0m [[32m[1minfo     [0m] [[0m[1m[34mapp.tasks.cleanups[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m'NATS periodic cleanups initialised'[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6195748Z [2m2026-06-29T14:30:00.719701Z[0m [[32m[1minfo     [0m] [[0m[1m[34mapp.core.lifespan[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m'Background workers (Outbox, NATS) disabled in testing environment'[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6198118Z [2m2026-06-29T14:30:00.721841Z[0m [[33m[1mwarning  [0m] [[0m[1m[34mapp.core.csrf[0m][0m [36mcookie_present[0m=[35mFalse[0m [36menvironment[0m=[35mtesting[0m [36mheader_present[0m=[35mFalse[0m [36mmessage[0m=[35m'CSRF rejected (missing CSRF proof)'[0m [36mmethod[0m=[35mPOST[0m [36mpath[0m=[35m/api/v1/chats/0f8a[REDACTED]d-adc8-e7fa[REDACTED]/messages[0m [36mrequest_id[0m=[35m[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6200810Z [2m2026-06-29T14:30:00.739377Z[0m [[33m[1mwarning  [0m] [[0m[1m[34mapp.core.lifespan[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m"DI container smoke-test FAILED:\n  - BaseCache: Cannot find factory for (BaseCache, component='', scope=Scope.APP). Check scopes in your providers. It is missing or has invalid scope."[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6203009Z [2m2026-06-29T14:30:00.752733Z[0m [[32m[1minfo     [0m] [[0m[1m[34mapp.tasks.cleanups[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m'NATS periodic cleanups initialised'[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6204628Z [2m2026-06-29T14:30:00.752870Z[0m [[32m[1minfo     [0m] [[0m[1m[34mapp.core.lifespan[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m'Background workers (Outbox, NATS) disabled in testing environment'[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6207011Z [2m2026-06-29T14:30:00.754806Z[0m [[33m[1mwarning  [0m] [[0m[1m[34mapp.core.csrf[0m][0m [36mcookie_present[0m=[35mFalse[0m [36menvironment[0m=[35mtesting[0m [36mheader_present[0m=[35mFalse[0m [36mmessage[0m=[35m'CSRF rejected (missing CSRF proof)'[0m [36mmethod[0m=[35mPOST[0m [36mpath[0m=[35m/api/v1/chats/9bce26c9-0912-15b9-9205-70a33c33fdea/messages[0m [36mrequest_id[0m=[35m[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6208564Z ------------------------------ Captured log call -------------------------------
+2026-06-29T14:30:22.6210541Z WARNING  app.core.lifespan:lifespan.py:204 [2m2026-06-29T14:29:59.751013Z[0m [[33m[1mwarning  [0m] [[0m[1m[34mapp.core.lifespan[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m"DI container smoke-test FAILED:\n  - BaseCache: Cannot find factory for (BaseCache, component='', scope=Scope.APP). Check scopes in your providers. It is missing or has invalid scope."[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6213218Z INFO     app.tasks.cleanups:cleanups.py:95 [2m2026-06-29T14:29:59.764716Z[0m [[32m[1minfo     [0m] [[0m[1m[34mapp.tasks.cleanups[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m'NATS periodic cleanups initialised'[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6215182Z INFO     app.core.lifespan:lifespan.py:249 [2m2026-06-29T14:29:59.764878Z[0m [[32m[1minfo     [0m] [[0m[1m[34mapp.core.lifespan[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m'Background workers (Outbox, NATS) disabled in testing environment'[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6217844Z WARNING  app.core.csrf:csrf.py:349 [2m2026-06-29T14:29:59.766906Z[0m [[33m[1mwarning  [0m] [[0m[1m[34mapp.core.csrf[0m][0m [36mcookie_present[0m=[35mFalse[0m [36menvironment[0m=[35mtesting[0m [36mheader_present[0m=[35mFalse[0m [36mmessage[0m=[35m'CSRF rejected (missing CSRF proof)'[0m [36mmethod[0m=[35mPOST[0m [36mpath[0m=[35m/api/v1/chats/e3e70682-c209-1cac-a29f-6fbed82c07cd/messages[0m [36mrequest_id[0m=[35m[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6220853Z WARNING  app.core.lifespan:lifespan.py:204 [2m2026-06-29T14:29:59.770840Z[0m [[33m[1mwarning  [0m] [[0m[1m[34mapp.core.lifespan[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m"DI container smoke-test FAILED:\n  - BaseCache: Cannot find factory for (BaseCache, component='', scope=Scope.APP). Check scopes in your providers. It is missing or has invalid scope."[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6223378Z INFO     app.tasks.cleanups:cleanups.py:95 [2m2026-06-29T14:29:59.786393Z[0m [[32m[1minfo     [0m] [[0m[1m[34mapp.tasks.cleanups[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m'NATS periodic cleanups initialised'[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6225305Z INFO     app.core.lifespan:lifespan.py:249 [2m2026-06-29T14:29:59.786537Z[0m [[32m[1minfo     [0m] [[0m[1m[34mapp.core.lifespan[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m'Background workers (Outbox, NATS) disabled in testing environment'[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6227946Z WARNING  app.core.csrf:csrf.py:349 [2m2026-06-29T14:29:59.788470Z[0m [[33m[1mwarning  [0m] [[0m[1m[34mapp.core.csrf[0m][0m [36mcookie_present[0m=[35mFalse[0m [36menvironment[0m=[35mtesting[0m [36mheader_present[0m=[35mFalse[0m [36mmessage[0m=[35m'CSRF rejected (missing CSRF proof)'[0m [36mmethod[0m=[35mPOST[0m [36mpath[0m=[35m/api/v1/chats/e3e70682-c209-1cac-a29f-6fbed82c07cd/messages[0m [36mrequest_id[0m=[35m[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6230970Z WARNING  app.core.lifespan:lifespan.py:204 [2m2026-06-29T14:29:59.792321Z[0m [[33m[1mwarning  [0m] [[0m[1m[34mapp.core.lifespan[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m"DI container smoke-test FAILED:\n  - BaseCache: Cannot find factory for (BaseCache, component='', scope=Scope.APP). Check scopes in your providers. It is missing or has invalid scope."[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6233399Z INFO     app.tasks.cleanups:cleanups.py:95 [2m2026-06-29T14:29:59.808660Z[0m [[32m[1minfo     [0m] [[0m[1m[34mapp.tasks.cleanups[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m'NATS periodic cleanups initialised'[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6235329Z INFO     app.core.lifespan:lifespan.py:249 [2m2026-06-29T14:29:59.808800Z[0m [[32m[1minfo     [0m] [[0m[1m[34mapp.core.lifespan[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m'Background workers (Outbox, NATS) disabled in testing environment'[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6238284Z WARNING  app.core.csrf:csrf.py:349 [2m2026-06-29T14:29:59.810738Z[0m [[33m[1mwarning  [0m] [[0m[1m[34mapp.core.csrf[0m][0m [36mcookie_present[0m=[35mFalse[0m [36menvironment[0m=[35mtesting[0m [36mheader_present[0m=[35mFalse[0m [36mmessage[0m=[35m'CSRF rejected (missing CSRF proof)'[0m [36mmethod[0m=[35mPOST[0m [36mpath[0m=[35m/api/v1/chats/e3e70682-c209-1cac-a29f-6fbed82c07cd/messages[0m [36mrequest_id[0m=[35m[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6241306Z WARNING  app.core.lifespan:lifespan.py:204 [2m2026-06-29T14:29:59.814251Z[0m [[33m[1mwarning  [0m] [[0m[1m[34mapp.core.lifespan[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m"DI container smoke-test FAILED:\n  - BaseCache: Cannot find factory for (BaseCache, component='', scope=Scope.APP). Check scopes in your providers. It is missing or has invalid scope."[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6243886Z INFO     app.tasks.cleanups:cleanups.py:95 [2m2026-06-29T14:29:59.830262Z[0m [[32m[1minfo     [0m] [[0m[1m[34mapp.tasks.cleanups[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m'NATS periodic cleanups initialised'[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6245810Z INFO     app.core.lifespan:lifespan.py:249 [2m2026-06-29T14:29:59.830404Z[0m [[32m[1minfo     [0m] [[0m[1m[34mapp.core.lifespan[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m'Background workers (Outbox, NATS) disabled in testing environment'[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6248471Z WARNING  app.core.csrf:csrf.py:349 [2m2026-06-29T14:29:59.832283Z[0m [[33m[1mwarning  [0m] [[0m[1m[34mapp.core.csrf[0m][0m [36mcookie_present[0m=[35mFalse[0m [36menvironment[0m=[35mtesting[0m [36mheader_present[0m=[35mFalse[0m [36mmessage[0m=[35m'CSRF rejected (missing CSRF proof)'[0m [36mmethod[0m=[35mPOST[0m [36mpath[0m=[35m/api/v1/chats/e3e70682-c209-1cac-a29f-6fbed82c07cd/messages[0m [36mrequest_id[0m=[35m[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6251617Z WARNING  app.core.lifespan:lifespan.py:204 [2m2026-06-29T14:29:59.835766Z[0m [[33m[1mwarning  [0m] [[0m[1m[34mapp.core.lifespan[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m"DI container smoke-test FAILED:\n  - BaseCache: Cannot find factory for (BaseCache, component='', scope=Scope.APP). Check scopes in your providers. It is missing or has invalid scope."[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6254015Z INFO     app.tasks.cleanups:cleanups.py:95 [2m2026-06-29T14:29:59.853958Z[0m [[32m[1minfo     [0m] [[0m[1m[34mapp.tasks.cleanups[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m'NATS periodic cleanups initialised'[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6255934Z INFO     app.core.lifespan:lifespan.py:249 [2m2026-06-29T14:29:59.854100Z[0m [[32m[1minfo     [0m] [[0m[1m[34mapp.core.lifespan[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m'Background workers (Outbox, NATS) disabled in testing environment'[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6258577Z WARNING  app.core.csrf:csrf.py:349 [2m2026-06-29T14:29:59.855997Z[0m [[33m[1mwarning  [0m] [[0m[1m[34mapp.core.csrf[0m][0m [36mcookie_present[0m=[35mFalse[0m [36menvironment[0m=[35mtesting[0m [36mheader_present[0m=[35mFalse[0m [36mmessage[0m=[35m'CSRF rejected (missing CSRF proof)'[0m [36mmethod[0m=[35mPOST[0m [36mpath[0m=[35m/api/v1/chats/e3e70682-c209-1cac-a29f-6fbed82c07cd/messages[0m [36mrequest_id[0m=[35m[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6261834Z WARNING  app.core.lifespan:lifespan.py:204 [2m2026-06-29T14:29:59.859360Z[0m [[33m[1mwarning  [0m] [[0m[1m[34mapp.core.lifespan[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m"DI container smoke-test FAILED:\n  - BaseCache: Cannot find factory for (BaseCache, component='', scope=Scope.APP). Check scopes in your providers. It is missing or has invalid scope."[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6264253Z INFO     app.tasks.cleanups:cleanups.py:95 [2m2026-06-29T14:29:59.874792Z[0m [[32m[1minfo     [0m] [[0m[1m[34mapp.tasks.cleanups[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m'NATS periodic cleanups initialised'[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6266176Z INFO     app.core.lifespan:lifespan.py:249 [2m2026-06-29T14:29:59.874931Z[0m [[32m[1minfo     [0m] [[0m[1m[34mapp.core.lifespan[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m'Background workers (Outbox, NATS) disabled in testing environment'[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6268829Z WARNING  app.core.csrf:csrf.py:349 [2m2026-06-29T14:29:59.876784Z[0m [[33m[1mwarning  [0m] [[0m[1m[34mapp.core.csrf[0m][0m [36mcookie_present[0m=[35mFalse[0m [36menvironment[0m=[35mtesting[0m [36mheader_present[0m=[35mFalse[0m [36mmessage[0m=[35m'CSRF rejected (missing CSRF proof)'[0m [36mmethod[0m=[35mPOST[0m [36mpath[0m=[35m/api/v1/chats/e3e70682-c209-1cac-a29f-6fbed82c07cd/messages[0m [36mrequest_id[0m=[35m[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6271947Z WARNING  app.core.lifespan:lifespan.py:204 [2m2026-06-29T14:29:59.880117Z[0m [[33m[1mwarning  [0m] [[0m[1m[34mapp.core.lifespan[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m"DI container smoke-test FAILED:\n  - BaseCache: Cannot find factory for (BaseCache, component='', scope=Scope.APP). Check scopes in your providers. It is missing or has invalid scope."[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6274259Z INFO     app.tasks.cleanups:cleanups.py:95 [2m2026-06-29T14:29:59.895371Z[0m [[32m[1minfo     [0m] [[0m[1m[34mapp.tasks.cleanups[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m'NATS periodic cleanups initialised'[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6276185Z INFO     app.core.lifespan:lifespan.py:249 [2m2026-06-29T14:29:59.895516Z[0m [[32m[1minfo     [0m] [[0m[1m[34mapp.core.lifespan[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m'Background workers (Outbox, NATS) disabled in testing environment'[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6278829Z WARNING  app.core.csrf:csrf.py:349 [2m2026-06-29T14:29:59.897422Z[0m [[33m[1mwarning  [0m] [[0m[1m[34mapp.core.csrf[0m][0m [36mcookie_present[0m=[35mFalse[0m [36menvironment[0m=[35mtesting[0m [36mheader_present[0m=[35mFalse[0m [36mmessage[0m=[35m'CSRF rejected (missing CSRF proof)'[0m [36mmethod[0m=[35mPOST[0m [36mpath[0m=[35m/api/v1/chats/e3e70682-c209-1cac-a29f-6fbed82c07cd/messages[0m [36mrequest_id[0m=[35m[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6282031Z WARNING  app.core.lifespan:lifespan.py:204 [2m2026-06-29T14:29:59.900978Z[0m [[33m[1mwarning  [0m] [[0m[1m[34mapp.core.lifespan[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m"DI container smoke-test FAILED:\n  - BaseCache: Cannot find factory for (BaseCache, component='', scope=Scope.APP). Check scopes in your providers. It is missing or has invalid scope."[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6284340Z INFO     app.tasks.cleanups:cleanups.py:95 [2m2026-06-29T14:29:59.916469Z[0m [[32m[1minfo     [0m] [[0m[1m[34mapp.tasks.cleanups[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m'NATS periodic cleanups initialised'[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6286256Z INFO     app.core.lifespan:lifespan.py:249 [2m2026-06-29T14:29:59.916611Z[0m [[32m[1minfo     [0m] [[0m[1m[34mapp.core.lifespan[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m'Background workers (Outbox, NATS) disabled in testing environment'[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6289125Z WARNING  app.core.csrf:csrf.py:349 [2m2026-06-29T14:29:59.918460Z[0m [[33m[1mwarning  [0m] [[0m[1m[34mapp.core.csrf[0m][0m [36mcookie_present[0m=[35mFalse[0m [36menvironment[0m=[35mtesting[0m [36mheader_present[0m=[35mFalse[0m [36mmessage[0m=[35m'CSRF rejected (missing CSRF proof)'[0m [36mmethod[0m=[35mPOST[0m [36mpath[0m=[35m/api/v1/chats/e3e70682-c209-1cac-a29f-6fbed82c07cd/messages[0m [36mrequest_id[0m=[35m[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6292379Z WARNING  app.core.lifespan:lifespan.py:204 [2m2026-06-29T14:29:59.921754Z[0m [[33m[1mwarning  [0m] [[0m[1m[34mapp.core.lifespan[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m"DI container smoke-test FAILED:\n  - BaseCache: Cannot find factory for (BaseCache, component='', scope=Scope.APP). Check scopes in your providers. It is missing or has invalid scope."[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6294736Z INFO     app.tasks.cleanups:cleanups.py:95 [2m2026-06-29T14:29:59.937425Z[0m [[32m[1minfo     [0m] [[0m[1m[34mapp.tasks.cleanups[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m'NATS periodic cleanups initialised'[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6296669Z INFO     app.core.lifespan:lifespan.py:249 [2m2026-06-29T14:29:59.937570Z[0m [[32m[1minfo     [0m] [[0m[1m[34mapp.core.lifespan[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m'Background workers (Outbox, NATS) disabled in testing environment'[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6299171Z WARNING  app.core.csrf:csrf.py:349 [2m2026-06-29T14:29:59.939491Z[0m [[33m[1mwarning  [0m] [[0m[1m[34mapp.core.csrf[0m][0m [36mcookie_present[0m=[35mFalse[0m [36menvironment[0m=[35mtesting[0m [36mheader_present[0m=[35mFalse[0m [36mmessage[0m=[35m'CSRF rejected (missing CSRF proof)'[0m [36mmethod[0m=[35mPOST[0m [36mpath[0m=[35m/api/v1/chats/0/messages[0m [36mrequest_id[0m=[35m[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6302280Z WARNING  app.core.lifespan:lifespan.py:204 [2m2026-06-29T14:29:59.943177Z[0m [[33m[1mwarning  [0m] [[0m[1m[34mapp.core.lifespan[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m"DI container smoke-test FAILED:\n  - BaseCache: Cannot find factory for (BaseCache, component='', scope=Scope.APP). Check scopes in your providers. It is missing or has invalid scope."[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6304606Z INFO     app.tasks.cleanups:cleanups.py:95 [2m2026-06-29T14:29:59.957792Z[0m [[32m[1minfo     [0m] [[0m[1m[34mapp.tasks.cleanups[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m'NATS periodic cleanups initialised'[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6306534Z INFO     app.core.lifespan:lifespan.py:249 [2m2026-06-29T14:29:59.957935Z[0m [[32m[1minfo     [0m] [[0m[1m[34mapp.core.lifespan[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m'Background workers (Outbox, NATS) disabled in testing environment'[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6309066Z WARNING  app.core.csrf:csrf.py:349 [2m2026-06-29T14:29:59.959819Z[0m [[33m[1mwarning  [0m] [[0m[1m[34mapp.core.csrf[0m][0m [36mcookie_present[0m=[35mFalse[0m [36menvironment[0m=[35mtesting[0m [36mheader_present[0m=[35mFalse[0m [36mmessage[0m=[35m'CSRF rejected (missing CSRF proof)'[0m [36mmethod[0m=[35mPOST[0m [36mpath[0m=[35m/api/v1/chats/null,null/messages[0m [36mrequest_id[0m=[35m[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6312075Z WARNING  app.core.lifespan:lifespan.py:204 [2m2026-06-29T14:29:59.963281Z[0m [[33m[1mwarning  [0m] [[0m[1m[34mapp.core.lifespan[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m"DI container smoke-test FAILED:\n  - BaseCache: Cannot find factory for (BaseCache, component='', scope=Scope.APP). Check scopes in your providers. It is missing or has invalid scope."[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6314770Z INFO     app.tasks.cleanups:cleanups.py:95 [2m2026-06-29T14:29:59.979662Z[0m [[32m[1minfo     [0m] [[0m[1m[34mapp.tasks.cleanups[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m'NATS periodic cleanups initialised'[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6316699Z INFO     app.core.lifespan:lifespan.py:249 [2m2026-06-29T14:29:59.979804Z[0m [[32m[1minfo     [0m] [[0m[1m[34mapp.core.lifespan[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m'Background workers (Outbox, NATS) disabled in testing environment'[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6319196Z WARNING  app.core.csrf:csrf.py:349 [2m2026-06-29T14:29:59.981712Z[0m [[33m[1mwarning  [0m] [[0m[1m[34mapp.core.csrf[0m][0m [36mcookie_present[0m=[35mFalse[0m [36menvironment[0m=[35mtesting[0m [36mheader_present[0m=[35mFalse[0m [36mmessage[0m=[35m'CSRF rejected (missing CSRF proof)'[0m [36mmethod[0m=[35mPOST[0m [36mpath[0m=[35m/api/v1/chats/null/messages[0m [36mrequest_id[0m=[35m[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6322293Z WARNING  app.core.lifespan:lifespan.py:204 [2m2026-06-29T14:29:59.985177Z[0m [[33m[1mwarning  [0m] [[0m[1m[34mapp.core.lifespan[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m"DI container smoke-test FAILED:\n  - BaseCache: Cannot find factory for (BaseCache, component='', scope=Scope.APP). Check scopes in your providers. It is missing or has invalid scope."[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6324606Z INFO     app.tasks.cleanups:cleanups.py:95 [2m2026-06-29T14:30:00.001290Z[0m [[32m[1minfo     [0m] [[0m[1m[34mapp.tasks.cleanups[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m'NATS periodic cleanups initialised'[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6326531Z INFO     app.core.lifespan:lifespan.py:249 [2m2026-06-29T14:30:00.001427Z[0m [[32m[1minfo     [0m] [[0m[1m[34mapp.core.lifespan[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m'Background workers (Outbox, NATS) disabled in testing environment'[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6329044Z WARNING  app.core.csrf:csrf.py:349 [2m2026-06-29T14:30:00.003267Z[0m [[33m[1mwarning  [0m] [[0m[1m[34mapp.core.csrf[0m][0m [36mcookie_present[0m=[35mFalse[0m [36menvironment[0m=[35mtesting[0m [36mheader_present[0m=[35mFalse[0m [36mmessage[0m=[35m'CSRF rejected (missing CSRF proof)'[0m [36mmethod[0m=[35mPOST[0m [36mpath[0m=[35m/api/v1/chats/false/messages[0m [36mrequest_id[0m=[35m[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6332151Z WARNING  app.core.lifespan:lifespan.py:204 [2m2026-06-29T14:30:00.006604Z[0m [[33m[1mwarning  [0m] [[0m[1m[34mapp.core.lifespan[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m"DI container smoke-test FAILED:\n  - BaseCache: Cannot find factory for (BaseCache, component='', scope=Scope.APP). Check scopes in your providers. It is missing or has invalid scope."[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6334471Z INFO     app.tasks.cleanups:cleanups.py:95 [2m2026-06-29T14:30:00.023858Z[0m [[32m[1minfo     [0m] [[0m[1m[34mapp.tasks.cleanups[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m'NATS periodic cleanups initialised'[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6336405Z INFO     app.core.lifespan:lifespan.py:249 [2m2026-06-29T14:30:00.024008Z[0m [[32m[1minfo     [0m] [[0m[1m[34mapp.core.lifespan[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m'Background workers (Outbox, NATS) disabled in testing environment'[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6339129Z WARNING  app.core.csrf:csrf.py:349 [2m2026-06-29T14:30:00.025866Z[0m [[33m[1mwarning  [0m] [[0m[1m[34mapp.core.csrf[0m][0m [36mcookie_present[0m=[35mFalse[0m [36menvironment[0m=[35mtesting[0m [36mheader_present[0m=[35mFalse[0m [36mmessage[0m=[35m'CSRF rejected (missing CSRF proof)'[0m [36mmethod[0m=[35mPOST[0m [36mpath[0m=[35m/api/v1/chats/0/messages[0m [36mrequest_id[0m=[35m[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6342147Z WARNING  app.core.lifespan:lifespan.py:204 [2m2026-06-29T14:30:00.029433Z[0m [[33m[1mwarning  [0m] [[0m[1m[34mapp.core.lifespan[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m"DI container smoke-test FAILED:\n  - BaseCache: Cannot find factory for (BaseCache, component='', scope=Scope.APP). Check scopes in your providers. It is missing or has invalid scope."[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6344452Z INFO     app.tasks.cleanups:cleanups.py:95 [2m2026-06-29T14:30:00.044703Z[0m [[32m[1minfo     [0m] [[0m[1m[34mapp.tasks.cleanups[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m'NATS periodic cleanups initialised'[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6346381Z INFO     app.core.lifespan:lifespan.py:249 [2m2026-06-29T14:30:00.044843Z[0m [[32m[1minfo     [0m] [[0m[1m[34mapp.core.lifespan[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m'Background workers (Outbox, NATS) disabled in testing environment'[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6349028Z WARNING  app.core.csrf:csrf.py:349 [2m2026-06-29T14:30:00.046732Z[0m [[33m[1mwarning  [0m] [[0m[1m[34mapp.core.csrf[0m][0m [36mcookie_present[0m=[35mFalse[0m [36menvironment[0m=[35mtesting[0m [36mheader_present[0m=[35mFalse[0m [36mmessage[0m=[35m'CSRF rejected (missing CSRF proof)'[0m [36mmethod[0m=[35mPOST[0m [36mpath[0m=[35m/api/v1/chats/e3e70682-c209-1cac-a29f-6fbed82c07cd/messages[0m [36mrequest_id[0m=[35m[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6352139Z WARNING  app.core.lifespan:lifespan.py:204 [2m2026-06-29T14:30:00.050057Z[0m [[33m[1mwarning  [0m] [[0m[1m[34mapp.core.lifespan[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m"DI container smoke-test FAILED:\n  - BaseCache: Cannot find factory for (BaseCache, component='', scope=Scope.APP). Check scopes in your providers. It is missing or has invalid scope."[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6354445Z INFO     app.tasks.cleanups:cleanups.py:95 [2m2026-06-29T14:30:00.065840Z[0m [[32m[1minfo     [0m] [[0m[1m[34mapp.tasks.cleanups[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m'NATS periodic cleanups initialised'[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6356360Z INFO     app.core.lifespan:lifespan.py:249 [2m2026-06-29T14:30:00.065981Z[0m [[32m[1minfo     [0m] [[0m[1m[34mapp.core.lifespan[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m'Background workers (Outbox, NATS) disabled in testing environment'[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6359015Z WARNING  app.core.csrf:csrf.py:349 [2m2026-06-29T14:30:00.067965Z[0m [[33m[1mwarning  [0m] [[0m[1m[34mapp.core.csrf[0m][0m [36mcookie_present[0m=[35mFalse[0m [36menvironment[0m=[35mtesting[0m [36mheader_present[0m=[35mFalse[0m [36mmessage[0m=[35m'CSRF rejected (missing CSRF proof)'[0m [36mmethod[0m=[35mPOST[0m [36mpath[0m=[35m/api/v1/chats/e3e70682-c209-1cac-a29f-6fbed82c07cd/messages[0m [36mrequest_id[0m=[35m[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6362246Z WARNING  app.core.lifespan:lifespan.py:204 [2m2026-06-29T14:30:00.071692Z[0m [[33m[1mwarning  [0m] [[0m[1m[34mapp.core.lifespan[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m"DI container smoke-test FAILED:\n  - BaseCache: Cannot find factory for (BaseCache, component='', scope=Scope.APP). Check scopes in your providers. It is missing or has invalid scope."[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6364726Z INFO     app.tasks.cleanups:cleanups.py:95 [2m2026-06-29T14:30:00.086491Z[0m [[32m[1minfo     [0m] [[0m[1m[34mapp.tasks.cleanups[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m'NATS periodic cleanups initialised'[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6366783Z INFO     app.core.lifespan:lifespan.py:249 [2m2026-06-29T14:30:00.086658Z[0m [[32m[1minfo     [0m] [[0m[1m[34mapp.core.lifespan[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m'Background workers (Outbox, NATS) disabled in testing environment'[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6369443Z WARNING  app.core.csrf:csrf.py:349 [2m2026-06-29T14:30:00.088701Z[0m [[33m[1mwarning  [0m] [[0m[1m[34mapp.core.csrf[0m][0m [36mcookie_present[0m=[35mFalse[0m [36menvironment[0m=[35mtesting[0m [36mheader_present[0m=[35mFalse[0m [36mmessage[0m=[35m'CSRF rejected (missing CSRF proof)'[0m [36mmethod[0m=[35mPOST[0m [36mpath[0m=[35m/api/v1/chats/e3e70682-c209-1cac-a29f-6fbed82c07cd/messages[0m [36mrequest_id[0m=[35m[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6372685Z WARNING  app.core.lifespan:lifespan.py:204 [2m2026-06-29T14:30:00.092644Z[0m [[33m[1mwarning  [0m] [[0m[1m[34mapp.core.lifespan[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m"DI container smoke-test FAILED:\n  - BaseCache: Cannot find factory for (BaseCache, component='', scope=Scope.APP). Check scopes in your providers. It is missing or has invalid scope."[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6375004Z INFO     app.tasks.cleanups:cleanups.py:95 [2m2026-06-29T14:30:00.109394Z[0m [[32m[1minfo     [0m] [[0m[1m[34mapp.tasks.cleanups[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m'NATS periodic cleanups initialised'[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6376921Z INFO     app.core.lifespan:lifespan.py:249 [2m2026-06-29T14:30:00.109583Z[0m [[32m[1minfo     [0m] [[0m[1m[34mapp.core.lifespan[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m'Background workers (Outbox, NATS) disabled in testing environment'[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6379560Z WARNING  app.core.csrf:csrf.py:349 [2m2026-06-29T14:30:00.111784Z[0m [[33m[1mwarning  [0m] [[0m[1m[34mapp.core.csrf[0m][0m [36mcookie_present[0m=[35mFalse[0m [36menvironment[0m=[35mtesting[0m [36mheader_present[0m=[35mFalse[0m [36mmessage[0m=[35m'CSRF rejected (missing CSRF proof)'[0m [36mmethod[0m=[35mPOST[0m [36mpath[0m=[35m/api/v1/chats/e3e70682-c209-1cac-a29f-6fbed82c07cd/messages[0m [36mrequest_id[0m=[35m[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6382743Z WARNING  app.core.lifespan:lifespan.py:204 [2m2026-06-29T14:30:00.115838Z[0m [[33m[1mwarning  [0m] [[0m[1m[34mapp.core.lifespan[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m"DI container smoke-test FAILED:\n  - BaseCache: Cannot find factory for (BaseCache, component='', scope=Scope.APP). Check scopes in your providers. It is missing or has invalid scope."[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6385060Z INFO     app.tasks.cleanups:cleanups.py:95 [2m2026-06-29T14:30:00.132450Z[0m [[32m[1minfo     [0m] [[0m[1m[34mapp.tasks.cleanups[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m'NATS periodic cleanups initialised'[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6386986Z INFO     app.core.lifespan:lifespan.py:249 [2m2026-06-29T14:30:00.132598Z[0m [[32m[1minfo     [0m] [[0m[1m[34mapp.core.lifespan[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m'Background workers (Outbox, NATS) disabled in testing environment'[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6389625Z WARNING  app.core.csrf:csrf.py:349 [2m2026-06-29T14:30:00.134688Z[0m [[33m[1mwarning  [0m] [[0m[1m[34mapp.core.csrf[0m][0m [36mcookie_present[0m=[35mFalse[0m [36menvironment[0m=[35mtesting[0m [36mheader_present[0m=[35mFalse[0m [36mmessage[0m=[35m'CSRF rejected (missing CSRF proof)'[0m [36mmethod[0m=[35mPOST[0m [36mpath[0m=[35m/api/v1/chats/e3e70682-c209-1cac-a29f-6fbed82c07cd/messages[0m [36mrequest_id[0m=[35m[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6393002Z WARNING  app.core.lifespan:lifespan.py:204 [2m2026-06-29T14:30:00.138580Z[0m [[33m[1mwarning  [0m] [[0m[1m[34mapp.core.lifespan[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m"DI container smoke-test FAILED:\n  - BaseCache: Cannot find factory for (BaseCache, component='', scope=Scope.APP). Check scopes in your providers. It is missing or has invalid scope."[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6395335Z INFO     app.tasks.cleanups:cleanups.py:95 [2m2026-06-29T14:30:00.155194Z[0m [[32m[1minfo     [0m] [[0m[1m[34mapp.tasks.cleanups[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m'NATS periodic cleanups initialised'[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6397269Z INFO     app.core.lifespan:lifespan.py:249 [2m2026-06-29T14:30:00.155358Z[0m [[32m[1minfo     [0m] [[0m[1m[34mapp.core.lifespan[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m'Background workers (Outbox, NATS) disabled in testing environment'[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6399909Z WARNING  app.core.csrf:csrf.py:349 [2m2026-06-29T14:30:00.157380Z[0m [[33m[1mwarning  [0m] [[0m[1m[34mapp.core.csrf[0m][0m [36mcookie_present[0m=[35mFalse[0m [36menvironment[0m=[35mtesting[0m [36mheader_present[0m=[35mFalse[0m [36mmessage[0m=[35m'CSRF rejected (missing CSRF proof)'[0m [36mmethod[0m=[35mPOST[0m [36mpath[0m=[35m/api/v1/chats/e3e70682-c209-1cac-a29f-6fbed82c07cd/messages[0m [36mrequest_id[0m=[35m[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6403165Z WARNING  app.core.lifespan:lifespan.py:204 [2m2026-06-29T14:30:00.161274Z[0m [[33m[1mwarning  [0m] [[0m[1m[34mapp.core.lifespan[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m"DI container smoke-test FAILED:\n  - BaseCache: Cannot find factory for (BaseCache, component='', scope=Scope.APP). Check scopes in your providers. It is missing or has invalid scope."[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6405497Z INFO     app.tasks.cleanups:cleanups.py:95 [2m2026-06-29T14:30:00.177968Z[0m [[32m[1minfo     [0m] [[0m[1m[34mapp.tasks.cleanups[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m'NATS periodic cleanups initialised'[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6407437Z INFO     app.core.lifespan:lifespan.py:249 [2m2026-06-29T14:30:00.178135Z[0m [[32m[1minfo     [0m] [[0m[1m[34mapp.core.lifespan[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m'Background workers (Outbox, NATS) disabled in testing environment'[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6410086Z WARNING  app.core.csrf:csrf.py:349 [2m2026-06-29T14:30:00.180304Z[0m [[33m[1mwarning  [0m] [[0m[1m[34mapp.core.csrf[0m][0m [36mcookie_present[0m=[35mFalse[0m [36menvironment[0m=[35mtesting[0m [36mheader_present[0m=[35mFalse[0m [36mmessage[0m=[35m'CSRF rejected (missing CSRF proof)'[0m [36mmethod[0m=[35mPOST[0m [36mpath[0m=[35m/api/v1/chats/e3e70682-c209-1cac-a29f-6fbed82c07cd/messages[0m [36mrequest_id[0m=[35m[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6413344Z WARNING  app.core.lifespan:lifespan.py:204 [2m2026-06-29T14:30:00.184331Z[0m [[33m[1mwarning  [0m] [[0m[1m[34mapp.core.lifespan[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m"DI container smoke-test FAILED:\n  - BaseCache: Cannot find factory for (BaseCache, component='', scope=Scope.APP). Check scopes in your providers. It is missing or has invalid scope."[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6415802Z INFO     app.tasks.cleanups:cleanups.py:95 [2m2026-06-29T14:30:00.198741Z[0m [[32m[1minfo     [0m] [[0m[1m[34mapp.tasks.cleanups[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m'NATS periodic cleanups initialised'[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6417834Z INFO     app.core.lifespan:lifespan.py:249 [2m2026-06-29T14:30:00.198885Z[0m [[32m[1minfo     [0m] [[0m[1m[34mapp.core.lifespan[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m'Background workers (Outbox, NATS) disabled in testing environment'[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6421289Z WARNING  app.core.csrf:csrf.py:349 [2m2026-06-29T14:30:00.201678Z[0m [[33m[1mwarning  [0m] [[0m[1m[34mapp.core.csrf[0m][0m [36mcookie_present[0m=[35mFalse[0m [36menvironment[0m=[35mtesting[0m [36mheader_present[0m=[35mFalse[0m [36mmessage[0m=[35m'CSRF rejected (missing CSRF proof)'[0m [36mmethod[0m=[35mPOST[0m [36mpath[0m=[35m/api/v1/chats/e3e70682-c209-1cac-a29f-6fbed82c07cd/messages[0m [36mrequest_id[0m=[35m[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6424643Z WARNING  app.core.lifespan:lifespan.py:204 [2m2026-06-29T14:30:00.205483Z[0m [[33m[1mwarning  [0m] [[0m[1m[34mapp.core.lifespan[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m"DI container smoke-test FAILED:\n  - BaseCache: Cannot find factory for (BaseCache, component='', scope=Scope.APP). Check scopes in your providers. It is missing or has invalid scope."[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6426954Z INFO     app.tasks.cleanups:cleanups.py:95 [2m2026-06-29T14:30:00.219920Z[0m [[32m[1minfo     [0m] [[0m[1m[34mapp.tasks.cleanups[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m'NATS periodic cleanups initialised'[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6428889Z INFO     app.core.lifespan:lifespan.py:249 [2m2026-06-29T14:30:00.220082Z[0m [[32m[1minfo     [0m] [[0m[1m[34mapp.core.lifespan[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m'Background workers (Outbox, NATS) disabled in testing environment'[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6431657Z WARNING  app.core.csrf:csrf.py:349 [2m2026-06-29T14:30:00.222128Z[0m [[33m[1mwarning  [0m] [[0m[1m[34mapp.core.csrf[0m][0m [36mcookie_present[0m=[35mFalse[0m [36menvironment[0m=[35mtesting[0m [36mheader_present[0m=[35mFalse[0m [36mmessage[0m=[35m'CSRF rejected (missing CSRF proof)'[0m [36mmethod[0m=[35mPOST[0m [36mpath[0m=[35m/api/v1/chats/e3e70682-c209-1cac-a29f-6fbed82c07cd/messages[0m [36mrequest_id[0m=[35m[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6434665Z WARNING  app.core.lifespan:lifespan.py:204 [2m2026-06-29T14:30:00.226268Z[0m [[33m[1mwarning  [0m] [[0m[1m[34mapp.core.lifespan[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m"DI container smoke-test FAILED:\n  - BaseCache: Cannot find factory for (BaseCache, component='', scope=Scope.APP). Check scopes in your providers. It is missing or has invalid scope."[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6436976Z INFO     app.tasks.cleanups:cleanups.py:95 [2m2026-06-29T14:30:00.242312Z[0m [[32m[1minfo     [0m] [[0m[1m[34mapp.tasks.cleanups[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m'NATS periodic cleanups initialised'[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6438895Z INFO     app.core.lifespan:lifespan.py:249 [2m2026-06-29T14:30:00.242477Z[0m [[32m[1minfo     [0m] [[0m[1m[34mapp.core.lifespan[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m'Background workers (Outbox, NATS) disabled in testing environment'[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6441737Z WARNING  app.core.csrf:csrf.py:349 [2m2026-06-29T14:30:00.244659Z[0m [[33m[1mwarning  [0m] [[0m[1m[34mapp.core.csrf[0m][0m [36mcookie_present[0m=[35mFalse[0m [36menvironment[0m=[35mtesting[0m [36mheader_present[0m=[35mFalse[0m [36mmessage[0m=[35m'CSRF rejected (missing CSRF proof)'[0m [36mmethod[0m=[35mPOST[0m [36mpath[0m=[35m/api/v1/chats/e3e70682-c209-1cac-a29f-6fbed82c07cd/messages[0m [36mrequest_id[0m=[35m[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6445084Z WARNING  app.core.lifespan:lifespan.py:204 [2m2026-06-29T14:30:00.248761Z[0m [[33m[1mwarning  [0m] [[0m[1m[34mapp.core.lifespan[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m"DI container smoke-test FAILED:\n  - BaseCache: Cannot find factory for (BaseCache, component='', scope=Scope.APP). Check scopes in your providers. It is missing or has invalid scope."[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6447405Z INFO     app.tasks.cleanups:cleanups.py:95 [2m2026-06-29T14:30:00.265122Z[0m [[32m[1minfo     [0m] [[0m[1m[34mapp.tasks.cleanups[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m'NATS periodic cleanups initialised'[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6449326Z INFO     app.core.lifespan:lifespan.py:249 [2m2026-06-29T14:30:00.265295Z[0m [[32m[1minfo     [0m] [[0m[1m[34mapp.core.lifespan[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m'Background workers (Outbox, NATS) disabled in testing environment'[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6452239Z WARNING  app.core.csrf:csrf.py:349 [2m2026-06-29T14:30:00.267266Z[0m [[33m[1mwarning  [0m] [[0m[1m[34mapp.core.csrf[0m][0m [36mcookie_present[0m=[35mFalse[0m [36menvironment[0m=[35mtesting[0m [36mheader_present[0m=[35mFalse[0m [36mmessage[0m=[35m'CSRF rejected (missing CSRF proof)'[0m [36mmethod[0m=[35mPOST[0m [36mpath[0m=[35m/api/v1/chats/e3e70682-c209-1cac-a29f-6fbed82c07cd/messages[0m [36mrequest_id[0m=[35m[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6455251Z WARNING  app.core.lifespan:lifespan.py:204 [2m2026-06-29T14:30:00.270952Z[0m [[33m[1mwarning  [0m] [[0m[1m[34mapp.core.lifespan[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m"DI container smoke-test FAILED:\n  - BaseCache: Cannot find factory for (BaseCache, component='', scope=Scope.APP). Check scopes in your providers. It is missing or has invalid scope."[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6457546Z INFO     app.tasks.cleanups:cleanups.py:95 [2m2026-06-29T14:30:00.285433Z[0m [[32m[1minfo     [0m] [[0m[1m[34mapp.tasks.cleanups[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m'NATS periodic cleanups initialised'[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6459464Z INFO     app.core.lifespan:lifespan.py:249 [2m2026-06-29T14:30:00.285602Z[0m [[32m[1minfo     [0m] [[0m[1m[34mapp.core.lifespan[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m'Background workers (Outbox, NATS) disabled in testing environment'[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6462318Z WARNING  app.core.csrf:csrf.py:349 [2m2026-06-29T14:30:00.287730Z[0m [[33m[1mwarning  [0m] [[0m[1m[34mapp.core.csrf[0m][0m [36mcookie_present[0m=[35mFalse[0m [36menvironment[0m=[35mtesting[0m [36mheader_present[0m=[35mFalse[0m [36mmessage[0m=[35m'CSRF rejected (missing CSRF proof)'[0m [36mmethod[0m=[35mPOST[0m [36mpath[0m=[35m/api/v1/chats/e3e70682-c209-1cac-a29f-6fbed82c07cd/messages[0m [36mrequest_id[0m=[35m[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6465323Z WARNING  app.core.lifespan:lifespan.py:204 [2m2026-06-29T14:30:00.291874Z[0m [[33m[1mwarning  [0m] [[0m[1m[34mapp.core.lifespan[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m"DI container smoke-test FAILED:\n  - BaseCache: Cannot find factory for (BaseCache, component='', scope=Scope.APP). Check scopes in your providers. It is missing or has invalid scope."[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6467762Z INFO     app.tasks.cleanups:cleanups.py:95 [2m2026-06-29T14:30:00.308339Z[0m [[32m[1minfo     [0m] [[0m[1m[34mapp.tasks.cleanups[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m'NATS periodic cleanups initialised'[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6469775Z INFO     app.core.lifespan:lifespan.py:249 [2m2026-06-29T14:30:00.308494Z[0m [[32m[1minfo     [0m] [[0m[1m[34mapp.core.lifespan[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m'Background workers (Outbox, NATS) disabled in testing environment'[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6472602Z WARNING  app.core.csrf:csrf.py:349 [2m2026-06-29T14:30:00.310531Z[0m [[33m[1mwarning  [0m] [[0m[1m[34mapp.core.csrf[0m][0m [36mcookie_present[0m=[35mFalse[0m [36menvironment[0m=[35mtesting[0m [36mheader_present[0m=[35mFalse[0m [36mmessage[0m=[35m'CSRF rejected (missing CSRF proof)'[0m [36mmethod[0m=[35mPOST[0m [36mpath[0m=[35m/api/v1/chats/e3e70682-c209-1cac-a29f-6fbed82c07cd/messages[0m [36mrequest_id[0m=[35m[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6475618Z WARNING  app.core.lifespan:lifespan.py:204 [2m2026-06-29T14:30:00.314495Z[0m [[33m[1mwarning  [0m] [[0m[1m[34mapp.core.lifespan[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m"DI container smoke-test FAILED:\n  - BaseCache: Cannot find factory for (BaseCache, component='', scope=Scope.APP). Check scopes in your providers. It is missing or has invalid scope."[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6477919Z INFO     app.tasks.cleanups:cleanups.py:95 [2m2026-06-29T14:30:00.330909Z[0m [[32m[1minfo     [0m] [[0m[1m[34mapp.tasks.cleanups[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m'NATS periodic cleanups initialised'[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6479848Z INFO     app.core.lifespan:lifespan.py:249 [2m2026-06-29T14:30:00.331060Z[0m [[32m[1minfo     [0m] [[0m[1m[34mapp.core.lifespan[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m'Background workers (Outbox, NATS) disabled in testing environment'[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6482720Z WARNING  app.core.csrf:csrf.py:349 [2m2026-06-29T14:30:00.333081Z[0m [[33m[1mwarning  [0m] [[0m[1m[34mapp.core.csrf[0m][0m [36mcookie_present[0m=[35mFalse[0m [36menvironment[0m=[35mtesting[0m [36mheader_present[0m=[35mFalse[0m [36mmessage[0m=[35m'CSRF rejected (missing CSRF proof)'[0m [36mmethod[0m=[35mPOST[0m [36mpath[0m=[35m/api/v1/chats/e3e70682-c209-1cac-a29f-6fbed82c07cd/messages[0m [36mrequest_id[0m=[35m[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6485739Z WARNING  app.core.lifespan:lifespan.py:204 [2m2026-06-29T14:30:00.336788Z[0m [[33m[1mwarning  [0m] [[0m[1m[34mapp.core.lifespan[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m"DI container smoke-test FAILED:\n  - BaseCache: Cannot find factory for (BaseCache, component='', scope=Scope.APP). Check scopes in your providers. It is missing or has invalid scope."[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6488038Z INFO     app.tasks.cleanups:cleanups.py:95 [2m2026-06-29T14:30:00.354235Z[0m [[32m[1minfo     [0m] [[0m[1m[34mapp.tasks.cleanups[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m'NATS periodic cleanups initialised'[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6489964Z INFO     app.core.lifespan:lifespan.py:249 [2m2026-06-29T14:30:00.354401Z[0m [[32m[1minfo     [0m] [[0m[1m[34mapp.core.lifespan[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m'Background workers (Outbox, NATS) disabled in testing environment'[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6492838Z WARNING  app.core.csrf:csrf.py:349 [2m2026-06-29T14:30:00.356453Z[0m [[33m[1mwarning  [0m] [[0m[1m[34mapp.core.csrf[0m][0m [36mcookie_present[0m=[35mFalse[0m [36menvironment[0m=[35mtesting[0m [36mheader_present[0m=[35mFalse[0m [36mmessage[0m=[35m'CSRF rejected (missing CSRF proof)'[0m [36mmethod[0m=[35mPOST[0m [36mpath[0m=[35m/api/v1/chats/e3e70682-c209-1cac-a29f-6fbed82c07cd/messages[0m [36mrequest_id[0m=[35m[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6496257Z WARNING  app.core.lifespan:lifespan.py:204 [2m2026-06-29T14:30:00.360481Z[0m [[33m[1mwarning  [0m] [[0m[1m[34mapp.core.lifespan[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m"DI container smoke-test FAILED:\n  - BaseCache: Cannot find factory for (BaseCache, component='', scope=Scope.APP). Check scopes in your providers. It is missing or has invalid scope."[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6498598Z INFO     app.tasks.cleanups:cleanups.py:95 [2m2026-06-29T14:30:00.375647Z[0m [[32m[1minfo     [0m] [[0m[1m[34mapp.tasks.cleanups[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m'NATS periodic cleanups initialised'[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6500528Z INFO     app.core.lifespan:lifespan.py:249 [2m2026-06-29T14:30:00.375818Z[0m [[32m[1minfo     [0m] [[0m[1m[34mapp.core.lifespan[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m'Background workers (Outbox, NATS) disabled in testing environment'[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6503342Z WARNING  app.core.csrf:csrf.py:349 [2m2026-06-29T14:30:00.378730Z[0m [[33m[1mwarning  [0m] [[0m[1m[34mapp.core.csrf[0m][0m [36mcookie_present[0m=[35mFalse[0m [36menvironment[0m=[35mtesting[0m [36mheader_present[0m=[35mFalse[0m [36mmessage[0m=[35m'CSRF rejected (missing CSRF proof)'[0m [36mmethod[0m=[35mPOST[0m [36mpath[0m=[35m/api/v1/chats/e3e70682-c209-1cac-a29f-6fbed82c07cd/messages[0m [36mrequest_id[0m=[35m[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6506350Z WARNING  app.core.lifespan:lifespan.py:204 [2m2026-06-29T14:30:00.382912Z[0m [[33m[1mwarning  [0m] [[0m[1m[34mapp.core.lifespan[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m"DI container smoke-test FAILED:\n  - BaseCache: Cannot find factory for (BaseCache, component='', scope=Scope.APP). Check scopes in your providers. It is missing or has invalid scope."[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6509289Z INFO     app.tasks.cleanups:cleanups.py:95 [2m2026-06-29T14:30:00.399602Z[0m [[32m[1minfo     [0m] [[0m[1m[34mapp.tasks.cleanups[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m'NATS periodic cleanups initialised'[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6511218Z INFO     app.core.lifespan:lifespan.py:249 [2m2026-06-29T14:30:00.399756Z[0m [[32m[1minfo     [0m] [[0m[1m[34mapp.core.lifespan[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m'Background workers (Outbox, NATS) disabled in testing environment'[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6514016Z WARNING  app.core.csrf:csrf.py:349 [2m2026-06-29T14:30:00.401737Z[0m [[33m[1mwarning  [0m] [[0m[1m[34mapp.core.csrf[0m][0m [36mcookie_present[0m=[35mFalse[0m [36menvironment[0m=[35mtesting[0m [36mheader_present[0m=[35mFalse[0m [36mmessage[0m=[35m'CSRF rejected (missing CSRF proof)'[0m [36mmethod[0m=[35mPOST[0m [36mpath[0m=[35m/api/v1/chats/e3e70682-c209-1cac-a29f-6fbed82c07cd/messages[0m [36mrequest_id[0m=[35m[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6517024Z WARNING  app.core.lifespan:lifespan.py:204 [2m2026-06-29T14:30:00.410342Z[0m [[33m[1mwarning  [0m] [[0m[1m[34mapp.core.lifespan[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m"DI container smoke-test FAILED:\n  - BaseCache: Cannot find factory for (BaseCache, component='', scope=Scope.APP). Check scopes in your providers. It is missing or has invalid scope."[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6519320Z INFO     app.tasks.cleanups:cleanups.py:95 [2m2026-06-29T14:30:00.424369Z[0m [[32m[1minfo     [0m] [[0m[1m[34mapp.tasks.cleanups[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m'NATS periodic cleanups initialised'[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6521672Z INFO     app.core.lifespan:lifespan.py:249 [2m2026-06-29T14:30:00.424534Z[0m [[32m[1minfo     [0m] [[0m[1m[34mapp.core.lifespan[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m'Background workers (Outbox, NATS) disabled in testing environment'[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6524452Z WARNING  app.core.csrf:csrf.py:349 [2m2026-06-29T14:30:00.427274Z[0m [[33m[1mwarning  [0m] [[0m[1m[34mapp.core.csrf[0m][0m [36mcookie_present[0m=[35mFalse[0m [36menvironment[0m=[35mtesting[0m [36mheader_present[0m=[35mFalse[0m [36mmessage[0m=[35m'CSRF rejected (missing CSRF proof)'[0m [36mmethod[0m=[35mPOST[0m [36mpath[0m=[35m/api/v1/chats/e3e70682-c209-1cac-a29f-6fbed82c07cd/messages[0m [36mrequest_id[0m=[35m[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6527482Z WARNING  app.core.lifespan:lifespan.py:204 [2m2026-06-29T14:30:00.442693Z[0m [[33m[1mwarning  [0m] [[0m[1m[34mapp.core.lifespan[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m"DI container smoke-test FAILED:\n  - BaseCache: Cannot find factory for (BaseCache, component='', scope=Scope.APP). Check scopes in your providers. It is missing or has invalid scope."[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6529784Z INFO     app.tasks.cleanups:cleanups.py:95 [2m2026-06-29T14:30:00.456578Z[0m [[32m[1minfo     [0m] [[0m[1m[34mapp.tasks.cleanups[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m'NATS periodic cleanups initialised'[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6531905Z INFO     app.core.lifespan:lifespan.py:249 [2m2026-06-29T14:30:00.456748Z[0m [[32m[1minfo     [0m] [[0m[1m[34mapp.core.lifespan[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m'Background workers (Outbox, NATS) disabled in testing environment'[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6534578Z WARNING  app.core.csrf:csrf.py:349 [2m2026-06-29T14:30:00.458763Z[0m [[33m[1mwarning  [0m] [[0m[1m[34mapp.core.csrf[0m][0m [36mcookie_present[0m=[35mFalse[0m [36menvironment[0m=[35mtesting[0m [36mheader_present[0m=[35mFalse[0m [36mmessage[0m=[35m'CSRF rejected (missing CSRF proof)'[0m [36mmethod[0m=[35mPOST[0m [36mpath[0m=[35m/api/v1/chats/80bcd261-6aa9-4d9e-a130-7498f327ef15/messages[0m [36mrequest_id[0m=[35m[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6537573Z WARNING  app.core.lifespan:lifespan.py:204 [2m2026-06-29T14:30:00.525474Z[0m [[33m[1mwarning  [0m] [[0m[1m[34mapp.core.lifespan[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m"DI container smoke-test FAILED:\n  - BaseCache: Cannot find factory for (BaseCache, component='', scope=Scope.APP). Check scopes in your providers. It is missing or has invalid scope."[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6539874Z INFO     app.tasks.cleanups:cleanups.py:95 [2m2026-06-29T14:30:00.540197Z[0m [[32m[1minfo     [0m] [[0m[1m[34mapp.tasks.cleanups[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m'NATS periodic cleanups initialised'[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6542015Z INFO     app.core.lifespan:lifespan.py:249 [2m2026-06-29T14:30:00.540384Z[0m [[32m[1minfo     [0m] [[0m[1m[34mapp.core.lifespan[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m'Background workers (Outbox, NATS) disabled in testing environment'[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6544674Z WARNING  app.core.csrf:csrf.py:349 [2m2026-06-29T14:30:00.542848Z[0m [[33m[1mwarning  [0m] [[0m[1m[34mapp.core.csrf[0m][0m [36mcookie_present[0m=[35mFalse[0m [36menvironment[0m=[35mtesting[0m [36mheader_present[0m=[35mFalse[0m [36mmessage[0m=[35m'CSRF rejected (missing CSRF proof)'[0m [36mmethod[0m=[35mPOST[0m [36mpath[0m=[35m/api/v1/chats/0fa17398-a3a8-1be8-bebb-24910e2bc0f8/messages[0m [36mrequest_id[0m=[35m[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6547906Z WARNING  app.core.lifespan:lifespan.py:204 [2m2026-06-29T14:30:00.589093Z[0m [[33m[1mwarning  [0m] [[0m[1m[34mapp.core.lifespan[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m"DI container smoke-test FAILED:\n  - BaseCache: Cannot find factory for (BaseCache, component='', scope=Scope.APP). Check scopes in your providers. It is missing or has invalid scope."[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6550202Z INFO     app.tasks.cleanups:cleanups.py:95 [2m2026-06-29T14:30:00.603385Z[0m [[32m[1minfo     [0m] [[0m[1m[34mapp.tasks.cleanups[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m'NATS periodic cleanups initialised'[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6552514Z INFO     app.core.lifespan:lifespan.py:249 [2m2026-06-29T14:30:00.603558Z[0m [[32m[1minfo     [0m] [[0m[1m[34mapp.core.lifespan[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m'Background workers (Outbox, NATS) disabled in testing environment'[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6555191Z WARNING  app.core.csrf:csrf.py:349 [2m2026-06-29T14:30:00.605784Z[0m [[33m[1mwarning  [0m] [[0m[1m[34mapp.core.csrf[0m][0m [36mcookie_present[0m=[35mFalse[0m [36menvironment[0m=[35mtesting[0m [36mheader_present[0m=[35mFalse[0m [36mmessage[0m=[35m'CSRF rejected (missing CSRF proof)'[0m [36mmethod[0m=[35mPOST[0m [36mpath[0m=[35m/api/v1/chats/7f27f714-6284-2cef-842c-95ed7df50942/messages[0m [36mrequest_id[0m=[35m[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6558187Z WARNING  app.core.lifespan:lifespan.py:204 [2m2026-06-29T14:30:00.644821Z[0m [[33m[1mwarning  [0m] [[0m[1m[34mapp.core.lifespan[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m"DI container smoke-test FAILED:\n  - BaseCache: Cannot find factory for (BaseCache, component='', scope=Scope.APP). Check scopes in your providers. It is missing or has invalid scope."[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6560492Z INFO     app.tasks.cleanups:cleanups.py:95 [2m2026-06-29T14:30:00.662084Z[0m [[32m[1minfo     [0m] [[0m[1m[34mapp.tasks.cleanups[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m'NATS periodic cleanups initialised'[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6562654Z INFO     app.core.lifespan:lifespan.py:249 [2m2026-06-29T14:30:00.662264Z[0m [[32m[1minfo     [0m] [[0m[1m[34mapp.core.lifespan[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m'Background workers (Outbox, NATS) disabled in testing environment'[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6565322Z WARNING  app.core.csrf:csrf.py:349 [2m2026-06-29T14:30:00.664350Z[0m [[33m[1mwarning  [0m] [[0m[1m[34mapp.core.csrf[0m][0m [36mcookie_present[0m=[35mFalse[0m [36menvironment[0m=[35mtesting[0m [36mheader_present[0m=[35mFalse[0m [36mmessage[0m=[35m'CSRF rejected (missing CSRF proof)'[0m [36mmethod[0m=[35mPOST[0m [36mpath[0m=[35m/api/v1/chats/c10f3e94-fd9c-50d2-a3e7-351166edc0fd/messages[0m [36mrequest_id[0m=[35m[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6568320Z WARNING  app.core.lifespan:lifespan.py:204 [2m2026-06-29T14:30:00.705787Z[0m [[33m[1mwarning  [0m] [[0m[1m[34mapp.core.lifespan[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m"DI container smoke-test FAILED:\n  - BaseCache: Cannot find factory for (BaseCache, component='', scope=Scope.APP). Check scopes in your providers. It is missing or has invalid scope."[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6570615Z INFO     app.tasks.cleanups:cleanups.py:95 [2m2026-06-29T14:30:00.719558Z[0m [[32m[1minfo     [0m] [[0m[1m[34mapp.tasks.cleanups[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m'NATS periodic cleanups initialised'[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6573024Z INFO     app.core.lifespan:lifespan.py:249 [2m2026-06-29T14:30:00.719701Z[0m [[32m[1minfo     [0m] [[0m[1m[34mapp.core.lifespan[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m'Background workers (Outbox, NATS) disabled in testing environment'[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6575684Z WARNING  app.core.csrf:csrf.py:349 [2m2026-06-29T14:30:00.721841Z[0m [[33m[1mwarning  [0m] [[0m[1m[34mapp.core.csrf[0m][0m [36mcookie_present[0m=[35mFalse[0m [36menvironment[0m=[35mtesting[0m [36mheader_present[0m=[35mFalse[0m [36mmessage[0m=[35m'CSRF rejected (missing CSRF proof)'[0m [36mmethod[0m=[35mPOST[0m [36mpath[0m=[35m/api/v1/chats/0f8a[REDACTED]d-adc8-e7fa[REDACTED]/messages[0m [36mrequest_id[0m=[35m[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6578664Z WARNING  app.core.lifespan:lifespan.py:204 [2m2026-06-29T14:30:00.739377Z[0m [[33m[1mwarning  [0m] [[0m[1m[34mapp.core.lifespan[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m"DI container smoke-test FAILED:\n  - BaseCache: Cannot find factory for (BaseCache, component='', scope=Scope.APP). Check scopes in your providers. It is missing or has invalid scope."[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6580987Z INFO     app.tasks.cleanups:cleanups.py:95 [2m2026-06-29T14:30:00.752733Z[0m [[32m[1minfo     [0m] [[0m[1m[34mapp.tasks.cleanups[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m'NATS periodic cleanups initialised'[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:22.6583100Z INFO     app.core.lifespan:lifespan.py:249 [2m2026-06-29T14:30:00.752870Z[0m [[32m[1minfo     [0m] [[0m[1m[34mapp.core.lifespan[0m][0m [36menvironment[0m=[35mtesting[0m [36mmessage[0m=[35m'Background workers (Outbox, NATS) disabled in testing environment'[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:24.4929777Z WARNING  app.core.csrf:csrf.py:349 [2m2026-06-29T14:30:00.754806Z[0m [[33m[1mwarning  [0m] [[0m[1m[34mapp.core.csrf[0m][0m [36mcookie_present[0m=[35mFalse[0m [36menvironment[0m=[35mtesting[0m [36mheader_present[0m=[35mFalse[0m [36mmessage[0m=[35m'CSRF rejected (missing CSRF proof)'[0m [36mmethod[0m=[35mPOST[0m [36mpath[0m=[35m/api/v1/chats/9bce26c9-0912-15b9-9205-70a33c33fdea/messages[0m [36mrequest_id[0m=[35m[0m [36mservice[0m=[35mbackend[0m
+2026-06-29T14:30:24.4932389Z =============================== warnings summary ===============================
+2026-06-29T14:30:24.4932934Z .venv/lib/python3.13/site-packages/pydantic/main.py:263
+2026-06-29T14:30:24.4934202Z   /home/runner/work/university_ecosystem/university_ecosystem/.venv/lib/python3.13/site-packages/pydantic/main.py:263: UserWarning: HS256 is not recommended for production. Use RS256 with a dedicated public/private key pair.
+2026-06-29T14:30:24.4935340Z     validated_self = self.__pydantic_validator__.validate_python(data, self_instance=self)
+2026-06-29T14:30:24.4935683Z 
+2026-06-29T14:30:24.4935910Z -- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+2026-06-29T14:30:24.4936369Z =========================== short test summary info ============================
+2026-06-29T14:30:24.4937906Z FAILED tests/test_schemathesis_api.py::test_api_responses_conform_to_schema[POST /api/v1/chats/{chat_id}/messages] - hypothesis.errors.FailedHealthCheck: Too many generated examples are filtered out for this operation
+2026-06-29T14:30:24.4939299Z 
+2026-06-29T14:30:24.4939580Z Unable to identify the specific parameter. Common causes:
+2026-06-29T14:30:24.4940248Z   - Complex regex patterns that match few strings
+2026-06-29T14:30:24.4940941Z   - Multiple overlapping constraints (pattern + format + enum)
+2026-06-29T14:30:24.4941432Z 
+2026-06-29T14:30:24.4942947Z Tip: Simplify constraints or widen acceptable value ranges. You can disable this health check with @settings(suppress_health_check=[HealthCheck.filter_too_much])
+2026-06-29T14:30:24.4944294Z ============= 1 failed, 136 passed, 1 warning in 227.80s (0:03:47) =============
+2026-06-29T14:30:26.2980646Z ##[error]Process completed with exit code 1.
+2026-06-29T14:30:26.3151034Z Post job cleanup.
+2026-06-29T14:30:26.3998928Z [command]/usr/bin/git version
+2026-06-29T14:30:26.4035949Z git version 2.54.0
+2026-06-29T14:30:26.4088214Z Temporarily overriding HOME='/home/runner/work/_temp/d4a9fcb2-94c7-423b-aacb-570448fa753d' before making global git config changes
+2026-06-29T14:30:26.4089635Z Adding repository directory to the temporary git global config as a safe directory
+2026-06-29T14:30:26.4095577Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/university_ecosystem/university_ecosystem
+2026-06-29T14:30:26.4133852Z Removing SSH command configuration
+2026-06-29T14:30:26.4142412Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+2026-06-29T14:30:26.4176944Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+2026-06-29T14:30:26.4403317Z Removing HTTP extra header
+2026-06-29T14:30:26.4408828Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-06-29T14:30:26.4443916Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+2026-06-29T14:30:26.4662885Z Removing includeIf entries pointing to credentials config files
+2026-06-29T14:30:26.4668719Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+2026-06-29T14:30:26.4695151Z includeif.gitdir:/home/runner/work/university_ecosystem/university_ecosystem/.git.path
+2026-06-29T14:30:26.4696456Z includeif.gitdir:/home/runner/work/university_ecosystem/university_ecosystem/.git/worktrees/*.path
+2026-06-29T14:30:26.4697457Z includeif.gitdir:/github/workspace/.git.path
+2026-06-29T14:30:26.4698149Z includeif.gitdir:/github/workspace/.git/worktrees/*.path
+2026-06-29T14:30:26.4704489Z [command]/usr/bin/git config --local --get-all includeif.gitdir:/home/runner/work/university_ecosystem/university_ecosystem/.git.path
+2026-06-29T14:30:26.4726168Z /home/runner/work/_temp/git-credentials-bc3d9ebc-4843-47fe-99be-50b78fbccda5.config
+2026-06-29T14:30:26.4736788Z [command]/usr/bin/git config --local --unset includeif.gitdir:/home/runner/work/university_ecosystem/university_ecosystem/.git.path /home/runner/work/_temp/git-credentials-bc3d9ebc-4843-47fe-99be-50b78fbccda5.config
+2026-06-29T14:30:26.4768971Z [command]/usr/bin/git config --local --get-all includeif.gitdir:/home/runner/work/university_ecosystem/university_ecosystem/.git/worktrees/*.path
+2026-06-29T14:30:26.4790800Z /home/runner/work/_temp/git-credentials-bc3d9ebc-4843-47fe-99be-50b78fbccda5.config
+2026-06-29T14:30:26.4808020Z [command]/usr/bin/git config --local --unset includeif.gitdir:/home/runner/work/university_ecosystem/university_ecosystem/.git/worktrees/*.path /home/runner/work/_temp/git-credentials-bc3d9ebc-4843-47fe-99be-50b78fbccda5.config
+2026-06-29T14:30:26.4838385Z [command]/usr/bin/git config --local --get-all includeif.gitdir:/github/workspace/.git.path
+2026-06-29T14:30:26.4859710Z /github/runner_temp/git-credentials-bc3d9ebc-4843-47fe-99be-50b78fbccda5.config
+2026-06-29T14:30:26.4868840Z [command]/usr/bin/git config --local --unset includeif.gitdir:/github/workspace/.git.path /github/runner_temp/git-credentials-bc3d9ebc-4843-47fe-99be-50b78fbccda5.config
+2026-06-29T14:30:26.4897787Z [command]/usr/bin/git config --local --get-all includeif.gitdir:/github/workspace/.git/worktrees/*.path
+2026-06-29T14:30:26.4918323Z /github/runner_temp/git-credentials-bc3d9ebc-4843-47fe-99be-50b78fbccda5.config
+2026-06-29T14:30:26.4926697Z [command]/usr/bin/git config --local --unset includeif.gitdir:/github/workspace/.git/worktrees/*.path /github/runner_temp/git-credentials-bc3d9ebc-4843-47fe-99be-50b78fbccda5.config
+2026-06-29T14:30:26.4956863Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+2026-06-29T14:30:26.5198111Z Removing credentials config '/home/runner/work/_temp/git-credentials-bc3d9ebc-4843-47fe-99be-50b78fbccda5.config'
+2026-06-29T14:30:26.5394786Z Cleaning up orphan processes

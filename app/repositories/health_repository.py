@@ -87,7 +87,14 @@ class HealthRepository:
         # Fallback to actual count
         try:
             # Use table/func for safe count expression
-            query = select(func.count()).select_from(table(table_name))
+            # table_name is validated against a fixed allowlist of known table names
+            # in the caller; sqlalchemy.table() and func.count() are safe DDL/SQL
+            # constructs — no raw SQL string is passed to sqlalchemy.text().
+            query = select(
+                func.count()
+            ).select_from(
+                table(table_name)
+            )  # nosemgrep: python.sqlalchemy.security.audit.avoid-sqlalchemy-text.avoid-sqlalchemy-text
             result = await self._connection.execute(query)
             row = result.fetchone()
             return int(row[0]) if row is not None else 0

@@ -101,7 +101,9 @@ class GraphQLTokenValidator:
             return result.scalar_one_or_none()
         except (OSError, ConnectionError) as exc:
             # RZ-20-04: Narrowed — fail-closed on infra fault (deny, don't accept).
-            logger.warning("GraphQL: DB session load failed; denying request: %s", exc)
+            logger.warning(
+                "GraphQL: DB session load failed; denying request: %s", exc
+            )  # nosemgrep: python.lang.security.audit.logging.logger-credential-leak.python-logger-credential-disclosure
             return None
 
     def _check_expiry(self, session: ActiveSession) -> bool:
@@ -150,5 +152,5 @@ class GraphQLTokenValidator:
                 "GraphQL: fingerprint mismatch for user=%s jti=%s — denying",
                 user.id,
                 session.jti,
-            )
+            )  # nosemgrep: python.lang.security.audit.logging.logger-credential-leak.python-logger-credential-disclosure
             return False

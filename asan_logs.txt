@@ -1,0 +1,1448 @@
+Rust FFI — ASan / LSan	UNKNOWN STEP	﻿2026-06-29T10:44:51.6132332Z Current runner version: '2.335.1'
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:51.6157237Z ##[group]Runner Image Provisioner
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:51.6158238Z Hosted Compute Agent
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:51.6158858Z Version: 20260611.554
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:51.6159563Z Commit: 5e0782fdc9014723d3be820dd114dd31555c2bd1
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:51.6160308Z Build Date: 2026-06-11T21:40:46Z
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:51.6160980Z Worker ID: {3e09d01a-daec-480e-9113-feb7b7bf13be}
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:51.6161798Z Azure Region: westus
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:51.6162361Z ##[endgroup]
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:51.6164165Z ##[group]Operating System
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:51.6164841Z Ubuntu
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:51.6165359Z 24.04.4
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:51.6165952Z LTS
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:51.6166465Z ##[endgroup]
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:51.6166990Z ##[group]Runner Image
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:51.6167633Z Image: ubuntu-24.04
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:51.6168200Z Version: 20260622.220.1
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:51.6169516Z Included Software: https://github.com/actions/runner-images/blob/ubuntu24/20260622.220/images/ubuntu/Ubuntu2404-Readme.md
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:51.6171108Z Image Release: https://github.com/actions/runner-images/releases/tag/ubuntu24%2F20260622.220
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:51.6172138Z ##[endgroup]
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:51.6173586Z ##[group]GITHUB_TOKEN Permissions
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:51.6175612Z Contents: read
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:51.6176225Z Metadata: read
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:51.6176878Z ##[endgroup]
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:51.6179034Z Secret source: Actions
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:51.6179774Z Prepare workflow directory
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:51.6720114Z Prepare all required actions
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:51.6759310Z Getting action download info
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:52.1163359Z Download action repository 'actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0' (SHA:9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0)
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:52.2289133Z Download action repository 'actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1' (SHA:ece7cb06caefa5fff74198d8649806c4678c61a1)
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:52.7245627Z Download action repository 'actions/cache@v6' (SHA:55cc8345863c7cc4c66a329aec7e433d2d1c52a9)
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:53.2787880Z Download action repository 'actions/upload-artifact@v7' (SHA:043fb46d1a93c77aae656e7c1c64a875d1fc6a0a)
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:53.4727623Z Complete job name: Rust FFI — ASan / LSan
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:53.5625574Z ##[group]Run actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:53.5627543Z with:
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:53.5628496Z   repository: egorribun/university_ecosystem
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:53.5640218Z   token: ***
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:53.5641110Z   ssh-strict: true
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:53.5642013Z   ssh-user: git
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:53.5643057Z   persist-credentials: true
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:53.5644072Z   clean: true
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:53.5644994Z   sparse-checkout-cone-mode: true
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:53.5646087Z   fetch-depth: 1
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:53.5646989Z   fetch-tags: false
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:53.5647927Z   show-progress: true
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:53.5648871Z   lfs: false
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:53.5649724Z   submodules: false
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:53.5650668Z   set-safe-directory: true
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:53.5651788Z   allow-unsafe-pr-checkout: false
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:53.5653490Z env:
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:53.5654326Z   SECRET_KEY: 
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:53.5655211Z   ENVIRONMENT: testing
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:53.5656211Z ##[endgroup]
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:53.6677902Z Syncing repository: egorribun/university_ecosystem
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:53.6682436Z ##[group]Getting Git version info
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:53.6684722Z Working directory is '/home/runner/work/university_ecosystem/university_ecosystem'
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:53.6687245Z [command]/usr/bin/git version
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:53.6748651Z git version 2.54.0
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:53.6774518Z ##[endgroup]
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:53.6786788Z Temporarily overriding HOME='/home/runner/work/_temp/f9a0d9a3-bb61-441e-94ba-aba7b0a5dfbe' before making global git config changes
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:53.6791937Z Adding repository directory to the temporary git global config as a safe directory
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:53.6795148Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/university_ecosystem/university_ecosystem
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:53.6861371Z Deleting the contents of '/home/runner/work/university_ecosystem/university_ecosystem'
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:53.6866300Z ##[group]Determining repository object format
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:53.6869444Z ##[endgroup]
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:53.6872107Z ##[group]Initializing the repository
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:53.6875658Z [command]/usr/bin/git init /home/runner/work/university_ecosystem/university_ecosystem
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:53.6985867Z hint: Using 'master' as the name for the initial branch. This default branch name
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:53.6989635Z hint: will change to "main" in Git 3.0. To configure the initial branch name
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:53.6996419Z hint: to use in all of your new repositories, which will suppress this warning,
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:53.6999225Z hint: call:
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:53.7000652Z hint:
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:53.7002451Z hint: 	git config --global init.defaultBranch <name>
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:53.7005017Z hint:
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:53.7007133Z hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:53.7010898Z hint: 'development'. The just-created branch can be renamed via this command:
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:53.7017657Z hint:
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:53.7019232Z hint: 	git branch -m <name>
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:53.7021009Z hint:
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:53.7023569Z hint: Disable this message with "git config set advice.defaultBranchName false"
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:53.7027855Z Initialized empty Git repository in /home/runner/work/university_ecosystem/university_ecosystem/.git/
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:53.7034875Z [command]/usr/bin/git remote add origin https://github.com/egorribun/university_ecosystem
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:53.7055779Z ##[endgroup]
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:53.7058987Z ##[group]Disabling automatic garbage collection
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:53.7061403Z [command]/usr/bin/git config --local gc.auto 0
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:53.7094987Z ##[endgroup]
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:53.7097930Z ##[group]Setting up auth
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:53.7100217Z Removing SSH command configuration
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:53.7103578Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:53.7147089Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:53.7513493Z Removing HTTP extra header
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:53.7518847Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:53.7552423Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:53.7808343Z Removing includeIf entries pointing to credentials config files
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:53.7810393Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:53.7933154Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:53.8092334Z [command]/usr/bin/git config --file /home/runner/work/_temp/git-credentials-6c885176-c62c-48c6-84f6-243fc8786085.config http.https://github.com/.extraheader AUTHORIZATION: basic ***
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:53.8132026Z [command]/usr/bin/git config --local includeIf.gitdir:/home/runner/work/university_ecosystem/university_ecosystem/.git.path /home/runner/work/_temp/git-credentials-6c885176-c62c-48c6-84f6-243fc8786085.config
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:53.8164099Z [command]/usr/bin/git config --local includeIf.gitdir:/home/runner/work/university_ecosystem/university_ecosystem/.git/worktrees/*.path /home/runner/work/_temp/git-credentials-6c885176-c62c-48c6-84f6-243fc8786085.config
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:53.8198203Z [command]/usr/bin/git config --local includeIf.gitdir:/github/workspace/.git.path /github/runner_temp/git-credentials-6c885176-c62c-48c6-84f6-243fc8786085.config
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:53.8230172Z [command]/usr/bin/git config --local includeIf.gitdir:/github/workspace/.git/worktrees/*.path /github/runner_temp/git-credentials-6c885176-c62c-48c6-84f6-243fc8786085.config
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:53.8259269Z ##[endgroup]
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:53.8262388Z ##[group]Fetching the repository
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:53.8267793Z [command]/usr/bin/git -c protocol.version=2 fetch --no-tags --prune --no-recurse-submodules --depth=1 origin +a628864d6b1d9375810119e04bf08b837f15b93b:refs/remotes/pull/1159/merge
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:55.3273325Z From https://github.com/egorribun/university_ecosystem
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:55.3275405Z  * [new ref]         a628864d6b1d9375810119e04bf08b837f15b93b -> pull/1159/merge
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:55.3312048Z ##[endgroup]
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:55.3312664Z ##[group]Determining the checkout info
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:55.3314279Z ##[endgroup]
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:55.3319185Z [command]/usr/bin/git sparse-checkout disable
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:55.3365660Z [command]/usr/bin/git config --local --unset-all extensions.worktreeConfig
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:55.3393883Z ##[group]Checking out the ref
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:55.3397432Z [command]/usr/bin/git checkout --progress --force refs/remotes/pull/1159/merge
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:55.5457259Z Note: switching to 'refs/remotes/pull/1159/merge'.
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:55.5457797Z 
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:55.5458274Z You are in 'detached HEAD' state. You can look around, make experimental
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:55.5458942Z changes and commit them, and you can discard any commits you make in this
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:55.5459582Z state without impacting any branches by switching back to a branch.
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:55.5459993Z 
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:55.5474923Z If you want to create a new branch to retain commits you create, you may
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:55.5476023Z do so (now or later) by using -c with the switch command. Example:
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:55.5476352Z 
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:55.5476497Z   git switch -c <new-branch-name>
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:55.5476709Z 
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:55.5476878Z Or undo this operation with:
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:55.5477082Z 
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:55.5477194Z   git switch -
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:55.5477511Z 
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:55.5477969Z Turn off this advice by setting config variable advice.detachedHead to false
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:55.5478562Z 
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:55.5479291Z HEAD is now at a628864 Merge d9dc58003e2ee07664cff00ec07642027c544c06 into 5d36f306d4cbafad896a6d7bb3cadba0e7aa67f9
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:55.5480630Z ##[endgroup]
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:55.5525611Z [command]/usr/bin/git log -1 --format=%H
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:55.5552755Z a628864d6b1d9375810119e04bf08b837f15b93b
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:55.5826624Z ##[group]Run actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:55.5827074Z with:
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:55.5827287Z   python-version: 3.13
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:55.5827531Z   check-latest: false
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:55.5830690Z   token: ***
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:55.5830910Z   update-environment: true
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:55.5831162Z   allow-prereleases: false
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:55.5831444Z   freethreaded: false
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:55.5831655Z env:
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:55.5831837Z   SECRET_KEY: 
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:55.5832042Z   ENVIRONMENT: testing
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:55.5832281Z ##[endgroup]
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:55.7152406Z ##[group]Installed versions
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:55.7813268Z Successfully set up CPython (3.13.14)
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:55.7814221Z ##[endgroup]
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:55.7937640Z ##[group]Run pip install uv
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:55.7937984Z ^[[36;1mpip install uv^[[0m
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:55.8279978Z shell: /usr/bin/bash -e {0}
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:55.8280349Z env:
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:55.8280605Z   SECRET_KEY: 
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:55.8280897Z   ENVIRONMENT: testing
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:55.8281293Z   pythonLocation: /opt/hostedtoolcache/Python/3.13.14/x64
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:55.8281898Z   PKG_CONFIG_PATH: /opt/hostedtoolcache/Python/3.13.14/x64/lib/pkgconfig
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:55.8282490Z   Python_ROOT_DIR: /opt/hostedtoolcache/Python/3.13.14/x64
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:55.8283476Z   Python2_ROOT_DIR: /opt/hostedtoolcache/Python/3.13.14/x64
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:55.8284017Z   Python3_ROOT_DIR: /opt/hostedtoolcache/Python/3.13.14/x64
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:55.8284455Z   LD_LIBRARY_PATH: /opt/hostedtoolcache/Python/3.13.14/x64/lib
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:55.8285066Z ##[endgroup]
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:58.4984913Z Collecting uv
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:58.5463131Z   Downloading uv-0.11.25-py3-none-manylinux_2_17_x86_64.manylinux2014_x86_64.whl.metadata (11 kB)
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:58.5583245Z Downloading uv-0.11.25-py3-none-manylinux_2_17_x86_64.manylinux2014_x86_64.whl (26.3 MB)
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:58.6810159Z    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 26.3/26.3 MB 271.0 MB/s  0:00:00
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:58.7357306Z Installing collected packages: uv
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:59.0106782Z Successfully installed uv-0.11.25
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:59.0713378Z ##[group]Run uv sync --group dev
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:59.0713757Z ^[[36;1muv sync --group dev^[[0m
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:59.0745329Z shell: /usr/bin/bash -e {0}
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:59.0745582Z env:
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:59.0745766Z   SECRET_KEY: 
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:59.0745976Z   ENVIRONMENT: testing
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:59.0746276Z   pythonLocation: /opt/hostedtoolcache/Python/3.13.14/x64
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:59.0746730Z   PKG_CONFIG_PATH: /opt/hostedtoolcache/Python/3.13.14/x64/lib/pkgconfig
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:59.0747152Z   Python_ROOT_DIR: /opt/hostedtoolcache/Python/3.13.14/x64
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:59.0747547Z   Python2_ROOT_DIR: /opt/hostedtoolcache/Python/3.13.14/x64
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:59.0747934Z   Python3_ROOT_DIR: /opt/hostedtoolcache/Python/3.13.14/x64
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:59.0748316Z   LD_LIBRARY_PATH: /opt/hostedtoolcache/Python/3.13.14/x64/lib
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:59.0748636Z ##[endgroup]
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:59.1384973Z Using CPython 3.13.14 interpreter at: /opt/hostedtoolcache/Python/3.13.14/x64/bin/python3
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:59.1385875Z Creating virtual environment at: .venv
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:59.1542670Z Resolved 247 packages in 1ms
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:59.1714836Z    Building rust-ext @ file:///home/runner/work/university_ecosystem/university_ecosystem/native/rust_ext
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:59.1726074Z    Building pyo3-sanitizer @ file:///home/runner/work/university_ecosystem/university_ecosystem/crates/pyo3-sanitizer
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:59.2298798Z Downloading ruff (10.8MiB)
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:59.2300439Z Downloading psycopg-binary (4.9MiB)
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:59.2301530Z Downloading cryptography (4.5MiB)
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:59.2302535Z Downloading uvloop (4.2MiB)
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:59.2308845Z Downloading sqlalchemy (3.1MiB)
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:59.2314367Z Downloading pycryptodome (2.2MiB)
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:59.2322513Z Downloading aiohttp (1.7MiB)
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:59.2484538Z Downloading pyright (6.1MiB)
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:59.2485576Z Downloading pydantic-core (2.0MiB)
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:59.2487007Z Downloading brotli (1.4MiB)
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:59.2497220Z Downloading asyncpg (3.4MiB)
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:59.2500105Z Downloading libcst (2.2MiB)
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:59.2502037Z Downloading pygments (1.2MiB)
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:59.2505144Z Downloading pillow (6.8MiB)
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:59.2506779Z Downloading botocore (13.4MiB)
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:59.2508504Z Downloading numpy (15.9MiB)
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:59.2510794Z Downloading grpcio (6.5MiB)
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:59.2512661Z Downloading polars-runtime-32 (53.6MiB)
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:59.2514690Z Downloading atheris (33.2MiB)
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:59.2516519Z Downloading virtualenv (7.2MiB)
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:59.2518895Z Downloading maturin (10.1MiB)
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:59.2520595Z Downloading pact-python-ffi (6.3MiB)
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:59.2522469Z Downloading mypy (14.0MiB)
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:59.2526052Z Downloading jsonschema-rs (3.8MiB)
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:59.2528376Z Downloading pyroscope-io (6.4MiB)
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:44:59.2531441Z Downloading pillow-avif-plugin (5.3MiB)
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:00.1255731Z  Downloaded brotli
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:00.1675636Z  Downloaded pygments
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:00.3403362Z  Downloaded aiohttp
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:00.4489106Z  Downloaded pydantic-core
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:00.7247106Z    Building http-ece==1.2.1
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:00.8571678Z    Building pyvips==3.1.1
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:00.8990108Z  Downloaded asyncpg
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:00.9023917Z  Downloaded jsonschema-rs
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:00.9254703Z  Downloaded pycryptodome
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:00.9840752Z  Downloaded uvloop
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:00.9968083Z  Downloaded sqlalchemy
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:01.1242039Z  Downloaded libcst
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:01.1582517Z  Downloaded psycopg-binary
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:01.1624287Z  Downloaded cryptography
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:01.1668930Z  Downloaded pillow-avif-plugin
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:01.3282304Z  Downloaded pact-python-ffi
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:01.3478110Z  Downloaded pyroscope-io
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:01.4071973Z  Downloaded pillow
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:01.4138613Z  Downloaded grpcio
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:01.4430509Z  Downloaded virtualenv
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:01.7898284Z  Downloaded maturin
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:01.8090210Z  Downloaded ruff
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:02.3687261Z       Built http-ece==1.2.1
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:02.4077423Z  Downloaded numpy
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:02.5891495Z       Built pyvips==3.1.1
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:02.7528483Z  Downloaded atheris
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:02.8769207Z  Downloaded polars-runtime-32
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:02.8887391Z  Downloaded botocore
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:03.0223103Z  Downloaded mypy
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:03.4160519Z  Downloaded pyright
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:34.4101137Z       Built rust-ext @ file:///home/runner/work/university_ecosystem/university_ecosystem/native/rust_ext
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:40.8993372Z       Built pyo3-sanitizer @ file:///home/runner/work/university_ecosystem/university_ecosystem/crates/pyo3-sanitizer
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:40.9045140Z Prepared 213 packages in 41.74s
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1617924Z Installed 213 packages in 256ms
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1626400Z  + aioboto3==15.5.0
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1626926Z  + aiobotocore==2.25.1
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1627342Z  + aiofiles==25.1.0
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1627765Z  + aiohappyeyeballs==2.6.1
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1638748Z  + aiohttp==3.14.1
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1639133Z  + aioitertools==0.13.0
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1639502Z  + aiosignal==1.4.0
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1639848Z  + aiosqlite==0.22.1
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1640194Z  + alembic==1.18.4
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1640538Z  + annotated-doc==0.0.4
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1640925Z  + annotated-types==0.7.0
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1641325Z  + anyio==4.13.0
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1641663Z  + argon2-cffi==25.1.0
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1642046Z  + argon2-cffi-bindings==25.1.0
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1642478Z  + asgi-lifespan==2.1.0
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1643035Z  + asgiref==3.11.1
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1643381Z  + asyncpg==0.31.0
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1643713Z  + atheris==3.0.0
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1644041Z  + attrs==26.1.0
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1644368Z  + authzed==1.24.4
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1644695Z  + bandit==1.9.4
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1645013Z  + boto3==1.40.61
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1645343Z  + botocore==1.40.61
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1645700Z  + brotli==1.2.0
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1646027Z  + brotli-asgi==1.6.0
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1646372Z  + cbor2==6.0.1
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1646699Z  + certifi==2026.4.22
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1647033Z  + cffi==2.0.0
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1647344Z  + cfgv==3.5.0
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1647653Z  + chardet==7.4.3
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1648012Z  + charset-normalizer==3.4.7
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1648409Z  + clamd==1.0.2
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1648736Z  + click==8.3.3
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1649050Z  + coverage==7.13.5
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1649384Z  + cross-web==0.6.0
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1649730Z  + cryptography==49.0.0
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1650095Z  + defusedxml==0.7.1
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1650468Z  + diff-cover==10.3.0
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1650812Z  + dishka==1.10.1
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1651139Z  + diskcache==5.6.3
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1651466Z  + distlib==0.4.0
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1651795Z  + dnspython==2.8.0
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1652127Z  + docker==7.1.0
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1652480Z  + elastic-transport==9.2.1
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1653062Z  + elasticsearch==9.3.0
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1653916Z  + email-validator==2.3.0
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1654302Z  + execnet==2.1.2
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1654630Z  + fakeredis==2.35.1
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1654973Z  + fastapi==0.136.1
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1655311Z  + filelock==3.29.0
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1655643Z  + frozenlist==1.8.0
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1655979Z  + geoip2==5.2.0
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1656346Z  + googleapis-common-protos==1.74.0
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1657085Z  + graphql-core==3.2.8
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1657435Z  + greenlet==3.5.0
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1657796Z  + grpc-interceptor==0.15.4
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1658178Z  + grpcio==1.80.0
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1658540Z  + grpcio-health-checking==1.80.0
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1658966Z  + gunicorn==25.3.0
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1659293Z  + h11==0.16.0
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1659596Z  + h2==4.3.0
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1659914Z  + harfile==0.5.0
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1660243Z  + hpack==4.1.0
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1660566Z  + http-ece==1.2.1
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1660977Z  + httpcore==1.0.9
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1661552Z  + httptools==0.7.1
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1661909Z  + httpx==0.28.1
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1662246Z  + hyperframe==6.1.0
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1662608Z  + hypothesis==6.152.4
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1663177Z  + hypothesis-graphql==0.13.0
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1663611Z  + hypothesis-jsonschema==0.23.1
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1664034Z  + identify==2.6.19
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1664362Z  + idna==3.18
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1664713Z  + importlib-metadata==8.7.1
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1665115Z  + iniconfig==2.3.0
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1665442Z  + jinja2==3.1.6
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1665770Z  + jmespath==1.1.0
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1666112Z  + jsonschema==4.25.1
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1666468Z  + jsonschema-rs==0.46.5
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1666927Z  + jsonschema-specifications==2025.9.1
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1667381Z  + junit-xml==1.9
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1667709Z  + libcst==1.8.6
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1668031Z  + librt==0.9.0
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1668370Z  + linkify-it-py==2.1.0
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1668728Z  + mako==1.3.12
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1669067Z  + markdown-it-py==4.0.0
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1669445Z  + markupsafe==3.0.3
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1669784Z  + maturin==1.13.1
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1670117Z  + maxminddb==3.1.1
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1670472Z  + mdit-py-plugins==0.6.1
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1670850Z  + mdurl==0.1.2
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1671164Z  + minio==7.2.20
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1671517Z  + multidict==6.7.1
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1671854Z  + mutmut==3.5.0
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1672184Z  + mypy==1.20.2
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1672518Z  + mypy-extensions==1.1.0
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1673074Z  + nats-py==2.14.0
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1673398Z  + nh3==0.3.5
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1673712Z  + nodeenv==1.10.0
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1674037Z  + numpy==2.4.4
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1674374Z  + openfeature-sdk==0.9.0
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1674763Z  + opentelemetry-api==1.41.1
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1675188Z  + opentelemetry-distro==0.62b1
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1675662Z  + opentelemetry-exporter-otlp==1.41.1
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1676233Z  + opentelemetry-exporter-otlp-proto-common==1.41.1
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1676876Z  + opentelemetry-exporter-otlp-proto-grpc==1.41.1
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1677492Z  + opentelemetry-exporter-otlp-proto-http==1.41.1
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1678058Z  + opentelemetry-instrumentation==0.62b1
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1678604Z  + opentelemetry-instrumentation-asgi==0.62b1
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1679192Z  + opentelemetry-instrumentation-asyncpg==0.62b1
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1679807Z  + opentelemetry-instrumentation-fastapi==0.62b1
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1680396Z  + opentelemetry-instrumentation-httpx==0.62b1
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1680969Z  + opentelemetry-instrumentation-redis==0.62b1
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1681572Z  + opentelemetry-instrumentation-sqlalchemy==0.62b1
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1682127Z  + opentelemetry-proto==1.41.1
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1682554Z  + opentelemetry-sdk==1.41.1
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1683248Z  + opentelemetry-semantic-conventions==0.62b1
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1683777Z  + opentelemetry-util-http==0.62b1
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1684202Z  + orjson==3.11.8
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1684541Z  + packaging==26.2
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1684889Z  + pact-python==3.4.0
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1685252Z  + pact-python-ffi==0.5.3.0
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1685642Z  + pathspec==1.1.1
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1685977Z  + pgvector==0.4.2
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1686311Z  + pillow==12.2.0
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1686665Z  + pillow-avif-plugin==1.5.5
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1687070Z  + platformdirs==4.9.6
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1687662Z  + pluggy==1.6.0
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1687997Z  + polars==1.40.1
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1688346Z  + polars-runtime-32==1.40.1
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1688738Z  + pre-commit==4.6.0
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1689107Z  + prometheus-client==0.25.0
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1689502Z  + propcache==0.4.1
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1689838Z  + protobuf==7.34.1
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1690167Z  + psutil==7.2.2
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1690490Z  + psycopg==3.3.4
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1690836Z  + psycopg-binary==3.3.4
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1691214Z  + py-vapid==1.9.4
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1691556Z  + pyasn1==0.6.3
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1692038Z  + pycparser==3.0
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1692450Z  + pycryptodome==3.23.0
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1692998Z  + pydantic==2.13.3
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1693359Z  + pydantic-core==2.46.3
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1693760Z  + pydantic-settings==2.14.2
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1694147Z  + pygments==2.20.0
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1694476Z  + pyjwt==2.13.0
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1695277Z  + pyo3-sanitizer==0.1.0 (from file:///home/runner/work/university_ecosystem/university_ecosystem/crates/pyo3-sanitizer)
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1696196Z  + pyopenssl==26.3.0
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1723722Z  + pyotp==2.9.0
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1724182Z  + pyrate-limiter==4.4.0
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1724589Z  + pyright==1.1.409
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1724958Z  + pyroscope-io==1.0.6
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1725318Z  + pytest==9.0.3
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1725666Z  + pytest-asyncio==1.3.0
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1726061Z  + pytest-cov==7.1.0
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1726435Z  + pytest-xdist==3.8.0
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1726824Z  + python-dateutil==2.9.0.post0
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1727284Z  + python-discovery==1.2.2
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1727686Z  + python-dotenv==1.2.2
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1728065Z  + python-magic==0.4.27
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1728457Z  + python-multipart==0.0.32
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1728852Z  + pyvips==3.1.1
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1729194Z  + pywebpush==2.3.0
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1729537Z  + pyyaml==6.0.3
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1729867Z  + pyyaml-ft==8.0.0
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1730204Z  + redis==7.4.0
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1730547Z  + referencing==0.37.0
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1730913Z  + requests==2.33.1
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1731258Z  + rich==15.0.0
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1731602Z  + rpds-py==0.30.0
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1731941Z  + ruff==0.15.12
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1732663Z  + rust-ext==0.1.0 (from file:///home/runner/work/university_ecosystem/university_ecosystem/native/rust_ext)
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1733757Z  + s3transfer==0.14.0
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1734140Z  + schemathesis==4.21.10
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1734530Z  + sentry-sdk==2.58.0
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1734898Z  + setproctitle==1.3.7
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1735275Z  + shellingham==1.5.4
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1735624Z  + six==1.17.0
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1735947Z  + sniffio==1.3.1
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1736311Z  + sortedcontainers==2.4.0
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1736700Z  + sqlalchemy==2.0.49
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1737056Z  + starlette==1.3.1
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1737421Z  + starlette-testclient==0.4.1
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1737821Z  + stevedore==5.7.0
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1738194Z  + strawberry-graphql==0.319.0
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1738592Z  + structlog==25.5.0
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1738935Z  + tenacity==9.1.4
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1739311Z  + testcontainers==4.14.2
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1739687Z  + textual==8.2.7
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1740024Z  + tomli==2.4.1
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1740348Z  + typer==0.25.1
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1740703Z  + types-aiofiles==25.1.0.20260409
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1741166Z  + types-cffi==2.0.0.20260429
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1741595Z  + types-pyopenssl==24.1.0.20240722
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1742053Z  + types-pyyaml==6.0.12.20260408
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1742472Z  + types-redis==4.6.0.20241004
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1743154Z  + types-requests==2.33.0.20260408
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1743622Z  + types-setuptools==82.0.0.20260408
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1744076Z  + typing-extensions==4.15.0
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1744501Z  + typing-inspection==0.4.2
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1744908Z  + uc-micro-py==2.0.0
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1745265Z  + urllib3==2.7.0
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1745604Z  + uvicorn==0.46.0
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1746197Z  + uvloop==0.22.1
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1746551Z  + virtualenv==21.3.0
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1746923Z  + watchfiles==1.1.1
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1747279Z  + webauthn==2.7.1
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1747623Z  + websockets==16.0
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1747965Z  + werkzeug==3.1.8
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1748300Z  + wrapt==1.17.3
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1748631Z  + yarl==1.23.0
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1748959Z  + zipp==3.23.1
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.1749283Z  + zxcvbn==4.5.0
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.2702460Z ##[group]Run actions/cache@v6
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.2703095Z with:
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.2703678Z   path: ~/.cargo/registry/index/
+Rust FFI — ASan / LSan	UNKNOWN STEP	~/.cargo/registry/cache/
+Rust FFI — ASan / LSan	UNKNOWN STEP	~/.cargo/git/db/
+Rust FFI — ASan / LSan	UNKNOWN STEP	native/rust_ext/target/
+Rust FFI — ASan / LSan	UNKNOWN STEP	crates/pyo3-sanitizer/target/
+Rust FFI — ASan / LSan	UNKNOWN STEP	
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.2704514Z   key: Linux-cargo-asan-8f75545125c59b330c18b628ec4823efb44712d83b187a4966ec92e1418ff821
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.2705041Z   restore-keys: Linux-cargo-asan-
+Rust FFI — ASan / LSan	UNKNOWN STEP	
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.2705330Z   enableCrossOsArchive: false
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.2705576Z   fail-on-cache-miss: false
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.2705821Z   lookup-only: false
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.2706031Z   save-always: false
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.2706225Z env:
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.2706397Z   SECRET_KEY: 
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.2706594Z   ENVIRONMENT: testing
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.2706877Z   pythonLocation: /opt/hostedtoolcache/Python/3.13.14/x64
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.2707326Z   PKG_CONFIG_PATH: /opt/hostedtoolcache/Python/3.13.14/x64/lib/pkgconfig
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.2707789Z   Python_ROOT_DIR: /opt/hostedtoolcache/Python/3.13.14/x64
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.2708166Z   Python2_ROOT_DIR: /opt/hostedtoolcache/Python/3.13.14/x64
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.2708539Z   Python3_ROOT_DIR: /opt/hostedtoolcache/Python/3.13.14/x64
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.2708917Z   LD_LIBRARY_PATH: /opt/hostedtoolcache/Python/3.13.14/x64/lib
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.2709240Z ##[endgroup]
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:41.6405175Z Cache hit for: Linux-cargo-asan-8f75545125c59b330c18b628ec4823efb44712d83b187a4966ec92e1418ff821
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:42.9345876Z Received 0 of 308604185 (0.0%), 0.0 MBs/sec
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:43.9384374Z Received 113246208 of 308604185 (36.7%), 53.9 MBs/sec
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:44.9363223Z Received 239075328 of 308604185 (77.5%), 75.9 MBs/sec
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:45.4401002Z Received 308604185 of 308604185 (100.0%), 84.0 MBs/sec
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:45.4401750Z Cache Size: ~294 MB (308604185 B)
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:45.4468761Z [command]/usr/bin/tar -xf /home/runner/work/_temp/3abe7213-fc8c-4054-b658-ce09438e6c93/cache.tzst -P -C /home/runner/work/university_ecosystem/university_ecosystem --use-compress-program unzstd
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:47.1610609Z Cache restored successfully
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:47.1826044Z Cache restored from key: Linux-cargo-asan-8f75545125c59b330c18b628ec4823efb44712d83b187a4966ec92e1418ff821
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:47.1978618Z ##[group]Run rustup toolchain install nightly --component rust-src --component llvm-tools --allow-downgrade --no-self-update
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:47.1979564Z ^[[36;1mrustup toolchain install nightly --component rust-src --component llvm-tools --allow-downgrade --no-self-update^[[0m
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:47.2011343Z shell: /usr/bin/bash -e {0}
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:47.2011600Z env:
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:47.2011792Z   SECRET_KEY: 
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:47.2012003Z   ENVIRONMENT: testing
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:47.2012309Z   pythonLocation: /opt/hostedtoolcache/Python/3.13.14/x64
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:47.2013031Z   PKG_CONFIG_PATH: /opt/hostedtoolcache/Python/3.13.14/x64/lib/pkgconfig
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:47.2013529Z   Python_ROOT_DIR: /opt/hostedtoolcache/Python/3.13.14/x64
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:47.2013911Z   Python2_ROOT_DIR: /opt/hostedtoolcache/Python/3.13.14/x64
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:47.2014299Z   Python3_ROOT_DIR: /opt/hostedtoolcache/Python/3.13.14/x64
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:47.2014736Z   LD_LIBRARY_PATH: /opt/hostedtoolcache/Python/3.13.14/x64/lib
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:47.2015069Z ##[endgroup]
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:47.2659511Z info: syncing channel updates for nightly-x86_64-unknown-linux-gnu
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:47.5038823Z info: latest update on 2026-06-29 for version 1.98.0-nightly (df6ee909e 2026-06-28)
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:47.5083239Z info: downloading 5 components
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:58.6411395Z 
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:58.6487275Z   nightly-x86_64-unknown-linux-gnu installed - rustc 1.98.0-nightly (df6ee909e 2026-06-28)
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:58.6487965Z 
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:58.6574398Z ##[group]Run bash scripts/run_asan_tests.sh
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:58.6574779Z ^[[36;1mbash scripts/run_asan_tests.sh^[[0m
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:58.6606731Z shell: /usr/bin/bash -e {0}
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:58.6606984Z env:
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:58.6607173Z   SECRET_KEY: 
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:58.6607379Z   ENVIRONMENT: testing
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:58.6607677Z   pythonLocation: /opt/hostedtoolcache/Python/3.13.14/x64
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:58.6608132Z   PKG_CONFIG_PATH: /opt/hostedtoolcache/Python/3.13.14/x64/lib/pkgconfig
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:58.6608563Z   Python_ROOT_DIR: /opt/hostedtoolcache/Python/3.13.14/x64
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:58.6608948Z   Python2_ROOT_DIR: /opt/hostedtoolcache/Python/3.13.14/x64
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:58.6609329Z   Python3_ROOT_DIR: /opt/hostedtoolcache/Python/3.13.14/x64
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:58.6609734Z   LD_LIBRARY_PATH: /opt/hostedtoolcache/Python/3.13.14/x64/lib
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:58.6610107Z   DATABASE_URL: sqlite+aiosqlite:///./test_asan.db
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:58.6610407Z ##[endgroup]
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:58.6700608Z ==> [ASan] Repository root: /home/runner/work/university_ecosystem/university_ecosystem
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:58.6701891Z ==> [ASan] Rust extension:  /home/runner/work/university_ecosystem/university_ecosystem/native/rust_ext
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:58.6703319Z ==> [ASan] Installing Rust nightly toolchain and rust-src component...
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:58.7139641Z info: syncing channel updates for nightly-x86_64-unknown-linux-gnu
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:58.7896363Z info: latest update on 2026-06-29 for version 1.98.0-nightly (df6ee909e 2026-06-28)
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:58.8024710Z info: component rust-src is up to date
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:58.8037610Z 
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:58.8111252Z   nightly-x86_64-unknown-linux-gnu unchanged - rustc 1.98.0-nightly (df6ee909e 2026-06-28)
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:58.8111921Z 
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:58.8189171Z info: override toolchain for /home/runner/work/university_ecosystem/university_ecosystem/native/rust_ext set to nightly-x86_64-unknown-linux-gnu
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:58.8202314Z ==> [ASan] Detecting target triple...
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:58.8490753Z ==> [ASan] Rebuilding rust_ext under ASan (nightly, force-reinstall)...
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:59.0472409Z 🔗 Found pyo3 bindings
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:59.0960774Z 🐍 Found CPython 3.13 at /home/runner/work/university_ecosystem/university_ecosystem/.venv/bin/python
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:59.3244907Z    Compiling compiler_builtins v0.1.160 (/home/runner/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/compiler-builtins/compiler-builtins)
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:59.3248134Z    Compiling core v0.0.0 (/home/runner/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core)
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:59.3249451Z    Compiling libc v0.2.185
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:59.3250100Z    Compiling object v0.37.3
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:59.4634664Z    Compiling std v0.0.0 (/home/runner/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std)
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:59.5504215Z    Compiling target-lexicon v0.13.5
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:59.5533872Z    Compiling version_check v0.9.5
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:59.5762680Z    Compiling typenum v1.19.0
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:59.7674103Z    Compiling proc-macro2 v1.0.106
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:59.7830745Z    Compiling generic-array v0.14.7
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:59.8924443Z    Compiling crossbeam-utils v0.8.21
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:45:59.9640764Z    Compiling unicode-ident v1.0.24
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:46:00.0255686Z    Compiling quote v1.0.45
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:46:00.1556791Z    Compiling pyo3-build-config v0.29.0
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:46:00.2274071Z    Compiling serde_core v1.0.228
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:46:00.4099466Z    Compiling autocfg v1.5.0
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:46:00.6990127Z    Compiling num-traits v0.2.19
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:46:00.7834481Z    Compiling serde v1.0.228
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:46:00.8086562Z    Compiling libc v0.2.182
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:46:00.9993828Z    Compiling syn v2.0.117
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:46:01.0510952Z    Compiling rayon-core v1.13.0
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:46:01.0608272Z    Compiling pyo3-ffi v0.29.0
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:46:01.1180916Z    Compiling heck v0.5.0
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:46:01.2627944Z    Compiling pyo3 v0.29.0
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:46:03.1915539Z    Compiling pyo3-macros-backend v0.29.0
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:46:06.0106144Z    Compiling pyo3-macros v0.29.0
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:46:13.2557126Z    Compiling rustc-std-workspace-core v1.99.0 (/home/runner/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/rustc-std-workspace-core)
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:46:13.2874736Z    Compiling alloc v0.0.0 (/home/runner/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/alloc)
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:46:13.4629628Z    Compiling adler2 v2.0.1
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:46:13.5756203Z    Compiling memchr v2.7.6
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:46:14.4394493Z    Compiling unwind v0.0.0 (/home/runner/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/unwind)
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:46:14.4818731Z    Compiling panic_abort v0.0.0 (/home/runner/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/panic_abort)
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:46:14.5233703Z    Compiling cfg-if v1.0.4
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:46:14.5575669Z    Compiling rustc-demangle v0.1.27
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:46:14.8537557Z    Compiling rustc-literal-escaper v0.0.8
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:46:16.0174999Z    Compiling rustc-std-workspace-alloc v1.99.0 (/home/runner/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/rustc-std-workspace-alloc)
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:46:16.0177665Z    Compiling panic_unwind v0.0.0 (/home/runner/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/panic_unwind)
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:46:16.0473309Z    Compiling gimli v0.32.3
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:46:16.0859709Z    Compiling miniz_oxide v0.8.9
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:46:16.1575673Z    Compiling hashbrown v0.17.1
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:46:16.8629639Z    Compiling std_detect v0.1.5 (/home/runner/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std_detect)
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:46:18.1242194Z    Compiling addr2line v0.25.1
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:46:22.8389765Z    Compiling proc_macro v0.0.0 (/home/runner/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/proc_macro)
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:46:25.8184598Z    Compiling crypto-common v0.1.7
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:46:25.8934567Z    Compiling crossbeam-epoch v0.9.18
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:46:26.1573953Z    Compiling block-buffer v0.10.4
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:46:26.2451667Z    Compiling subtle v2.6.1
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:46:26.3524973Z    Compiling digest v0.10.7
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:46:26.5565799Z    Compiling crossbeam-deque v0.8.6
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:46:27.7197592Z    Compiling iana-time-zone v0.1.65
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:46:28.9903983Z    Compiling chrono v0.4.44
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:46:31.8494382Z    Compiling cpufeatures v0.2.17
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:46:31.8805808Z    Compiling once_cell v1.21.3
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:46:32.1174011Z    Compiling either v1.15.0
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:46:32.2654055Z    Compiling rayon v1.11.0
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:46:34.3520794Z    Compiling sha2 v0.10.9
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:46:36.2689884Z    Compiling hmac v0.12.1
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:46:36.3527934Z    Compiling hex v0.4.3
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:46:40.5860265Z    Compiling rust_ext v0.1.0 (/home/runner/work/university_ecosystem/university_ecosystem/native/rust_ext)
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:46:41.9393192Z     Finished `release` profile [optimized] target(s) in 42.77s
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:46:41.9950375Z 📦 Built wheel for CPython 3.13 to /tmp/.tmpB0Ul8A/rust_ext-0.1.0-cp313-cp313-linux_x86_64.whl
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:46:42.0752248Z ✏️ Setting installed package as editable
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:46:42.1102287Z 🛠 Installed rust_ext-0.1.0
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:46:42.1139214Z ==> [ASan] Rebuilding pyo3-sanitizer under ASan (nightly, force-reinstall)...
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:46:42.2707499Z 🔗 Found pyo3 bindings with abi3 support
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:46:42.3141520Z 🐍 Found CPython 3.13 at /home/runner/work/university_ecosystem/university_ecosystem/.venv/bin/python
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:46:42.4725141Z    Compiling compiler_builtins v0.1.160 (/home/runner/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/compiler-builtins/compiler-builtins)
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:46:42.4728301Z    Compiling core v0.0.0 (/home/runner/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core)
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:46:42.4753968Z    Compiling libc v0.2.185
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:46:42.4754865Z    Compiling object v0.37.3
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:46:42.6254566Z    Compiling std v0.0.0 (/home/runner/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std)
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:46:42.6969687Z    Compiling proc-macro2 v1.0.106
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:46:42.7217149Z    Compiling quote v1.0.45
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:46:42.7509302Z    Compiling unicode-ident v1.0.24
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:46:42.8056674Z    Compiling siphasher v1.0.2
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:46:42.8704028Z    Compiling rand_core v0.6.4
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:46:42.9417649Z    Compiling phf_shared v0.11.3
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:46:42.9744548Z    Compiling rand v0.8.6
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:46:43.0653915Z    Compiling libc v0.2.182
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:46:43.4426489Z    Compiling syn v2.0.117
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:46:43.4865525Z    Compiling phf_generator v0.11.3
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:46:43.5016790Z    Compiling target-lexicon v0.13.5
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:46:43.6094360Z    Compiling parking_lot_core v0.9.12
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:46:43.7183887Z    Compiling serde_core v1.0.228
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:46:43.9602273Z    Compiling icu_normalizer_data v2.1.1
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:46:44.0362182Z    Compiling serde v1.0.228
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:46:44.1514070Z    Compiling icu_properties_data v2.1.2
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:46:44.2068328Z    Compiling pyo3-build-config v0.29.0
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:46:44.2324365Z    Compiling string_cache_codegen v0.5.4
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:46:44.5293919Z    Compiling phf_codegen v0.11.3
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:46:44.5944057Z    Compiling web_atoms v0.1.3
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:46:45.1224332Z    Compiling pyo3-ffi v0.29.0
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:46:45.2786606Z    Compiling heck v0.5.0
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:46:45.3774369Z    Compiling pyo3 v0.29.0
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:46:46.5671446Z    Compiling synstructure v0.13.2
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:46:46.5672365Z    Compiling pyo3-macros-backend v0.29.0
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:46:47.7522631Z    Compiling zerofrom-derive v0.1.6
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:46:47.7535515Z    Compiling yoke-derive v0.8.1
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:46:48.6444930Z    Compiling zerovec-derive v0.11.2
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:46:48.8474083Z    Compiling displaydoc v0.2.5
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:46:49.3244531Z    Compiling phf_macros v0.11.3
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:46:49.6304289Z    Compiling match_token v0.35.0
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:46:49.7476611Z    Compiling cssparser-macros v0.6.1
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:46:50.4054423Z    Compiling pyo3-macros v0.29.0
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:46:56.7703448Z    Compiling rustc-std-workspace-core v1.99.0 (/home/runner/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/rustc-std-workspace-core)
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:46:56.7705701Z    Compiling alloc v0.0.0 (/home/runner/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/alloc)
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:46:57.6934096Z    Compiling adler2 v2.0.1
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:46:57.7604002Z    Compiling memchr v2.7.6
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:46:57.7944710Z    Compiling unwind v0.0.0 (/home/runner/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/unwind)
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:46:57.8304146Z    Compiling cfg-if v1.0.4
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:46:57.8575150Z    Compiling panic_abort v0.0.0 (/home/runner/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/panic_abort)
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:46:57.8902560Z    Compiling rustc-demangle v0.1.27
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:46:58.2323875Z    Compiling rustc-literal-escaper v0.0.8
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:46:59.3539043Z    Compiling rustc-std-workspace-alloc v1.99.0 (/home/runner/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/rustc-std-workspace-alloc)
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:46:59.3541121Z    Compiling panic_unwind v0.0.0 (/home/runner/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/panic_unwind)
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:46:59.3732160Z    Compiling gimli v0.32.3
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:46:59.3814099Z    Compiling miniz_oxide v0.8.9
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:46:59.4034742Z    Compiling std_detect v0.1.5 (/home/runner/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/std_detect)
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:46:59.5570243Z    Compiling hashbrown v0.17.1
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:47:01.3155401Z    Compiling addr2line v0.25.1
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:47:05.4441503Z    Compiling proc_macro v0.0.0 (/home/runner/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/proc_macro)
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:47:06.1197391Z    Compiling stable_deref_trait v1.2.1
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:47:06.1203679Z    Compiling zerofrom v0.1.6
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:47:06.1504103Z    Compiling smallvec v1.15.1
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:47:06.1977145Z    Compiling yoke v0.8.1
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:47:06.3400181Z    Compiling zerovec v0.11.5
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:47:06.9893827Z    Compiling tinystr v0.8.2
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:47:07.2854141Z    Compiling writeable v0.6.2
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:47:07.3040817Z    Compiling litemap v0.8.1
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:47:07.4483177Z    Compiling icu_locale_core v2.1.1
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:47:07.5849170Z    Compiling potential_utf v0.1.4
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:47:07.6754339Z    Compiling zerotrie v0.2.3
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:47:07.9830650Z    Compiling scopeguard v1.2.0
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:47:08.0524538Z    Compiling new_debug_unreachable v1.0.6
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:47:08.2982164Z    Compiling lock_api v0.4.14
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:47:08.5094202Z    Compiling icu_provider v2.1.1
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:47:08.8193980Z    Compiling icu_collections v2.1.1
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:47:09.3662466Z    Compiling parking_lot v0.12.5
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:47:09.5953908Z    Compiling phf v0.11.3
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:47:09.8203857Z    Compiling mac v0.1.1
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:47:09.8543994Z    Compiling precomputed-hash v0.1.1
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:47:09.9264163Z    Compiling icu_normalizer v2.1.1
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:47:09.9444820Z    Compiling futf v0.1.5
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:47:10.0317286Z    Compiling icu_properties v2.1.2
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:47:10.8704393Z    Compiling utf-8 v0.7.6
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:47:10.9794259Z    Compiling tendril v0.4.3
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:47:11.2356476Z    Compiling idna_adapter v1.2.1
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:47:11.3055952Z    Compiling log v0.4.29
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:47:11.4403845Z    Compiling percent-encoding v2.3.2
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:47:11.5681893Z    Compiling utf8_iter v1.0.4
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:47:11.6063948Z    Compiling dtoa v1.0.11
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:47:11.6613925Z    Compiling idna v1.1.0
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:47:11.7003615Z    Compiling dtoa-short v0.3.5
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:47:11.8379616Z    Compiling form_urlencoded v1.2.2
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:47:11.9723749Z    Compiling itoa v1.0.17
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:47:12.1248880Z    Compiling cssparser v0.35.0
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:47:12.1864616Z    Compiling url v2.5.8
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:47:12.4328907Z    Compiling string_cache v0.8.9
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:47:13.2428282Z    Compiling markup5ever v0.35.0
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:47:13.4817830Z    Compiling html5ever v0.35.0
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:47:13.4939761Z    Compiling maplit v1.0.2
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:47:13.5298557Z    Compiling once_cell v1.21.3
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:47:14.4874215Z    Compiling ammonia v4.1.2
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:47:17.9097110Z    Compiling pyo3-sanitizer v0.1.0 (/home/runner/work/university_ecosystem/university_ecosystem/crates/pyo3-sanitizer)
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:47:32.5323896Z     Finished `release` profile [optimized] target(s) in 50.14s
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:47:32.6456188Z 📦 Built wheel for abi3 Python ≥ 3.11 to /tmp/.tmp4MoDTI/pyo3_sanitizer-0.1.0-cp311-abi3-linux_x86_64.whl
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:47:32.7318410Z ✏️ Setting installed package as editable
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:47:32.7663739Z 🛠 Installed pyo3_sanitizer-0.1.0
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:47:32.7701520Z ==> [ASan] Locating ASan runtime library...
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:47:32.7794956Z ==> [ASan] Using ASan runtime: /lib/x86_64-linux-gnu/libasan.so.8
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:47:32.7796369Z ==> [ASan] Running FFI tests under ASan/LSan...
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:47:32.9130181Z Uninstalled 2 packages in 1ms
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:47:32.9159546Z Installed 2 packages in 3ms
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:47:51.6212230Z ============================= test session starts ==============================
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:47:51.6214189Z platform linux -- Python 3.13.14, pytest-9.0.3, pluggy-1.6.0 -- /home/runner/work/university_ecosystem/university_ecosystem/.venv/bin/python
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:47:51.6215602Z cachedir: .pytest_cache
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:47:51.6216843Z hypothesis profile 'ci' -> database=None, deadline=None, print_blob=True, derandomize=True, suppress_health_check=(HealthCheck.too_slow,)
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:47:51.6220768Z rootdir: /home/runner/work/university_ecosystem/university_ecosystem
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:47:51.6221414Z configfile: pytest.ini (WARNING: ignoring pytest config in pyproject.toml!)
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:47:51.6222131Z plugins: hypothesis-6.152.4, anyio-4.13.0, cov-7.1.0, xdist-3.8.0, asyncio-1.3.0, schemathesis-4.21.10
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:47:51.6223432Z asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:47:53.6931680Z collecting ... collected 70 items
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:47:54.6216603Z 
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:47:54.6217621Z tests/test_smoke_rust_audit.py::test_rust_audit_verification PASSED      [  1%]
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:47:54.6548814Z tests/test_smoke_rust_partitions.py::test_rust_partition_logic PASSED    [  2%]
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:47:54.9700752Z tests/test_property_based.py::test_user_schema_round_trip PASSED         [  4%]
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:47:57.4578649Z tests/test_property_based.py::test_argon2_hash_verify_round_trip PASSED  [  5%]
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:47:58.2045433Z tests/test_property_based.py::test_argon2_wrong_password_rejected PASSED [  7%]
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:47:58.2899077Z tests/test_property_based.py::test_conflict_detection_is_symmetric PASSED [  8%]
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:47:58.4685164Z tests/test_property_based.py::test_uuid_validation_rejects_non_uuids PASSED [ 10%]
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:47:58.5650379Z tests/test_property_based.py::test_pagination_bounds_clamped PASSED      [ 11%]
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:47:58.6644213Z tests/test_property_based.py::test_uuidv7_round_trip_timestamp PASSED    [ 12%]
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:47:58.8151395Z tests/test_property_based.py::test_uuidv7_temporal_ordering PASSED       [ 14%]
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:47:58.9485492Z tests/test_property_based.py::test_html_sanitization_idempotency PASSED  [ 15%]
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:47:59.0741179Z tests/test_property_based.py::test_filename_sanitization_length_and_safe_chars PASSED [ 17%]
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:47:59.1072640Z tests/test_content_processing.py::test_rich_text_blocks_xss_payload[basic_script_tag] PASSED [ 18%]
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:47:59.1411284Z tests/test_content_processing.py::test_rich_text_blocks_xss_payload[img_onerror] PASSED [ 20%]
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:47:59.1784372Z tests/test_content_processing.py::test_rich_text_blocks_xss_payload[svg_onload] PASSED [ 21%]
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:47:59.2115052Z tests/test_content_processing.py::test_rich_text_blocks_xss_payload[javascript_protocol_anchor] PASSED [ 22%]
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:47:59.2452469Z tests/test_content_processing.py::test_rich_text_blocks_xss_payload[data_uri_link] PASSED [ 24%]
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:47:59.2786977Z tests/test_content_processing.py::test_rich_text_blocks_xss_payload[marquee_onstart] PASSED [ 25%]
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:47:59.3146226Z tests/test_content_processing.py::test_rich_text_blocks_xss_payload[iframe_srcdoc] PASSED [ 27%]
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:47:59.3479397Z tests/test_content_processing.py::test_rich_text_blocks_xss_payload[details_toggle] PASSED [ 28%]
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:47:59.3818683Z tests/test_content_processing.py::test_rich_text_blocks_xss_payload[input_autofocus] PASSED [ 30%]
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:47:59.4176195Z tests/test_content_processing.py::test_rich_text_blocks_xss_payload[video_onerror] PASSED [ 31%]
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:47:59.4520439Z tests/test_content_processing.py::test_rich_text_blocks_xss_payload[base64_img] PASSED [ 32%]
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:47:59.4861707Z tests/test_content_processing.py::test_rich_text_blocks_xss_payload[mixed_case_script] PASSED [ 34%]
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:47:59.5196774Z tests/test_content_processing.py::test_rich_text_blocks_xss_payload[null_byte_injection] PASSED [ 35%]
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:47:59.5537673Z tests/test_content_processing.py::test_rich_text_blocks_xss_payload[newline_evasion] PASSED [ 37%]
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:47:59.5870101Z tests/test_content_processing.py::test_rich_text_blocks_xss_payload[embedded_tab] PASSED [ 38%]
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:47:59.6207680Z tests/test_content_processing.py::test_rich_text_blocks_xss_payload[vbscript_href] PASSED [ 40%]
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:47:59.6532409Z tests/test_content_processing.py::test_basic_mode_blocks_xss_payload[basic_script_tag] PASSED [ 41%]
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:47:59.6872622Z tests/test_content_processing.py::test_basic_mode_blocks_xss_payload[img_onerror] PASSED [ 42%]
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:47:59.7208432Z tests/test_content_processing.py::test_basic_mode_blocks_xss_payload[svg_onload] PASSED [ 44%]
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:47:59.7540467Z tests/test_content_processing.py::test_basic_mode_blocks_xss_payload[javascript_protocol_anchor] PASSED [ 45%]
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:47:59.7888822Z tests/test_content_processing.py::test_basic_mode_blocks_xss_payload[data_uri_link] PASSED [ 47%]
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:47:59.8212171Z tests/test_content_processing.py::test_basic_mode_blocks_xss_payload[marquee_onstart] PASSED [ 48%]
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:47:59.8536184Z tests/test_content_processing.py::test_basic_mode_blocks_xss_payload[iframe_srcdoc] PASSED [ 50%]
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:47:59.8906251Z tests/test_content_processing.py::test_basic_mode_blocks_xss_payload[details_toggle] PASSED [ 51%]
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:47:59.9248204Z tests/test_content_processing.py::test_basic_mode_blocks_xss_payload[input_autofocus] PASSED [ 52%]
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:47:59.9597010Z tests/test_content_processing.py::test_basic_mode_blocks_xss_payload[video_onerror] PASSED [ 54%]
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:47:59.9926049Z tests/test_content_processing.py::test_basic_mode_blocks_xss_payload[base64_img] PASSED [ 55%]
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:00.0268787Z tests/test_content_processing.py::test_basic_mode_blocks_xss_payload[mixed_case_script] PASSED [ 57%]
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:00.0606655Z tests/test_content_processing.py::test_basic_mode_blocks_xss_payload[null_byte_injection] PASSED [ 58%]
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:00.0943236Z tests/test_content_processing.py::test_basic_mode_blocks_xss_payload[newline_evasion] PASSED [ 60%]
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:00.1285326Z tests/test_content_processing.py::test_basic_mode_blocks_xss_payload[embedded_tab] PASSED [ 61%]
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:00.1628431Z tests/test_content_processing.py::test_basic_mode_blocks_xss_payload[vbscript_href] PASSED [ 62%]
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:00.1970013Z tests/test_content_processing.py::test_strip_mode_removes_all_markup[basic_script_tag] PASSED [ 64%]
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:00.2310236Z tests/test_content_processing.py::test_strip_mode_removes_all_markup[img_onerror] PASSED [ 65%]
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:00.2662046Z tests/test_content_processing.py::test_strip_mode_removes_all_markup[svg_onload] PASSED [ 67%]
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:00.2996620Z tests/test_content_processing.py::test_strip_mode_removes_all_markup[javascript_protocol_anchor] PASSED [ 68%]
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:00.3340425Z tests/test_content_processing.py::test_strip_mode_removes_all_markup[data_uri_link] PASSED [ 70%]
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:00.3673382Z tests/test_content_processing.py::test_strip_mode_removes_all_markup[marquee_onstart] PASSED [ 71%]
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:00.4000695Z tests/test_content_processing.py::test_strip_mode_removes_all_markup[iframe_srcdoc] PASSED [ 72%]
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:00.4336730Z tests/test_content_processing.py::test_strip_mode_removes_all_markup[details_toggle] PASSED [ 74%]
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:00.4687607Z tests/test_content_processing.py::test_strip_mode_removes_all_markup[input_autofocus] PASSED [ 75%]
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:00.5018924Z tests/test_content_processing.py::test_strip_mode_removes_all_markup[video_onerror] PASSED [ 77%]
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:00.5357652Z tests/test_content_processing.py::test_strip_mode_removes_all_markup[base64_img] PASSED [ 78%]
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:00.5682451Z tests/test_content_processing.py::test_strip_mode_removes_all_markup[mixed_case_script] PASSED [ 80%]
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:00.6027580Z tests/test_content_processing.py::test_strip_mode_removes_all_markup[null_byte_injection] PASSED [ 81%]
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:00.6353289Z tests/test_content_processing.py::test_strip_mode_removes_all_markup[newline_evasion] PASSED [ 82%]
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:00.6694796Z tests/test_content_processing.py::test_strip_mode_removes_all_markup[embedded_tab] PASSED [ 84%]
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:00.7033668Z tests/test_content_processing.py::test_strip_mode_removes_all_markup[vbscript_href] PASSED [ 85%]
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:00.7394273Z tests/test_content_processing.py::test_rich_text_preserves_safe_formatting PASSED [ 87%]
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:00.7734808Z tests/test_content_processing.py::test_rich_text_preserves_safe_link PASSED [ 88%]
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:00.8085261Z tests/test_content_processing.py::test_strip_returns_plain_text PASSED   [ 90%]
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:00.8533712Z tests/test_content_processing.py::test_invalid_sanitization_mode_raises_value_error PASSED [ 91%]
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:00.8871159Z tests/test_smoke_pyo3_ext.py::test_rust_ext_importable_in_ci PASSED      [ 92%]
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:00.9211431Z tests/test_smoke_pyo3_ext.py::test_detect_conflicts_overlap_same_day_parity PASSED [ 94%]
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:00.9554005Z tests/test_smoke_pyo3_ext.py::test_detect_conflicts_respects_parity PASSED [ 95%]
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:00.9895924Z tests/test_smoke_pyo3_ext.py::test_batch_detect_conflicts_finds_overlapping_pair PASSED [ 97%]
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:01.0235778Z tests/test_smoke_pyo3_ext.py::test_find_optimal_slot_avoids_existing PASSED [ 98%]
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:02.5064306Z tests/test_smoke_pyo3_ext.py::test_verify_audit_signature_ffi_parity PASSED [100%]
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:02.5065441Z 
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:02.5065874Z =============================== warnings summary ===============================
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:02.5066560Z .venv/lib/python3.13/site-packages/pydantic/main.py:263
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:02.5068207Z   /home/runner/work/university_ecosystem/university_ecosystem/.venv/lib/python3.13/site-packages/pydantic/main.py:263: UserWarning: HS256 is not recommended for production. Use RS256 with a dedicated public/private key pair.
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:02.5070318Z     validated_self = self.__pydantic_validator__.validate_python(data, self_instance=self)
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:02.5071054Z 
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:02.5071469Z -- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:02.5072395Z ======================== 70 passed, 1 warning in 9.80s =========================
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:04.7865760Z -----------------------------------------------------
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:04.7866461Z Suppressions used:
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:04.7866884Z   count      bytes template
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:04.7867245Z    7150    7718821 libpython
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:04.7867607Z      45       4171 libcrypto.so
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:04.7867985Z      19       2360 cryptography
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:04.7869050Z      46        583 _multiarray_umath
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:04.7869324Z       2        160 _pydantic_core
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:04.7869572Z      60     203536 _upb
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:04.7869779Z       3        144 rpds
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:04.7870026Z -----------------------------------------------------
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:04.7870246Z 
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:04.8681948Z ==> [ASan] Running Atheris API fuzzer under ASan/LSan...
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:05.0354922Z INFO: Instrumenting fastapi
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:05.0393472Z INFO: Instrumenting starlette
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:05.0401407Z INFO: Instrumenting starlette.status
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:05.0513566Z INFO: Instrumenting starlette.exceptions
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:05.0599097Z INFO: Instrumenting http
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:05.0766264Z INFO: Instrumenting fastapi.applications
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:05.2551129Z INFO: Instrumenting annotated_doc
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:05.2559904Z INFO: Instrumenting annotated_doc.main
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:05.2604602Z INFO: Instrumenting fastapi.routing
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:05.6709457Z INFO: Instrumenting email
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:05.6748693Z INFO: Instrumenting email.message
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:05.8786780Z INFO: Instrumenting quopri
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:05.9649613Z INFO: Instrumenting email.utils
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:06.0388084Z INFO: Instrumenting datetime
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:06.0411451Z INFO: Instrumenting urllib
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:06.0417212Z INFO: Instrumenting urllib.parse
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:06.2342551Z INFO: Instrumenting ipaddress
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:06.5622578Z INFO: Instrumenting email._parseaddr
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:06.7079914Z INFO: Instrumenting email.errors
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:06.7321421Z INFO: Instrumenting email._policybase
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:06.7668169Z INFO: Instrumenting email.header
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:06.8752715Z INFO: Instrumenting email.quoprimime
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:06.9165895Z INFO: Instrumenting email.base64mime
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:06.9264984Z INFO: Instrumenting base64
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:07.0623834Z INFO: Instrumenting struct
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:07.0639596Z INFO: Instrumenting email.charset
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:07.1010762Z INFO: Instrumenting email.encoders
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:07.1078058Z INFO: Instrumenting email._encoded_words
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:07.1330810Z INFO: Instrumenting email.iterators
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:07.1483976Z INFO: Instrumenting json
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:07.1760326Z INFO: Instrumenting json.decoder
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:07.2429378Z INFO: Instrumenting json.scanner
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:07.2694406Z INFO: Instrumenting json.encoder
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:07.3495405Z INFO: Instrumenting anyio
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:07.3696139Z INFO: Instrumenting anyio._core
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:07.3704808Z INFO: Instrumenting anyio._core._contextmanagers
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:07.3956484Z INFO: Instrumenting anyio._core._eventloop
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:07.4268925Z INFO: Instrumenting contextvars
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:07.4280197Z INFO: Instrumenting anyio._core._exceptions
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:07.4528017Z INFO: Instrumenting sniffio
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:07.4539569Z INFO: Instrumenting sniffio._version
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:07.4544924Z INFO: Instrumenting sniffio._impl
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:07.4629074Z INFO: Instrumenting anyio._core._fileio
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:07.6496825Z INFO: Instrumenting anyio.to_thread
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:07.6567663Z INFO: Instrumenting anyio.abc
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:07.6671197Z INFO: Instrumenting anyio.abc._eventloop
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:07.7139668Z INFO: Instrumenting signal
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:07.7327924Z INFO: Instrumenting socket
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:07.9024434Z INFO: Instrumenting selectors
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:08.0092767Z INFO: Instrumenting anyio.abc._resources
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:08.0145633Z INFO: Instrumenting anyio.abc._sockets
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:08.0772292Z INFO: Instrumenting anyio._core._typedattr
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:08.0879798Z INFO: Instrumenting anyio.abc._streams
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:08.1151900Z INFO: Instrumenting anyio.abc._tasks
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:08.1434353Z INFO: Instrumenting anyio.abc._subprocesses
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:08.1505834Z INFO: Instrumenting anyio.abc._testing
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:08.1567641Z INFO: Instrumenting anyio._core._synchronization
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:08.2745691Z INFO: Instrumenting anyio.lowlevel
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:08.3037930Z INFO: Instrumenting anyio._core._tasks
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:08.3218339Z INFO: Instrumenting anyio._core._testing
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:08.3369003Z INFO: Instrumenting anyio.from_thread
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:08.4248242Z INFO: Instrumenting concurrent
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:08.4253668Z INFO: Instrumenting concurrent.futures
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:08.4296714Z INFO: Instrumenting concurrent.futures._base
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:08.5568805Z INFO: Instrumenting anyio._core._resources
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:08.5606697Z INFO: Instrumenting anyio._core._signals
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:08.5631123Z INFO: Instrumenting anyio._core._sockets
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:08.7192509Z INFO: Instrumenting ssl
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:08.9564941Z INFO: Instrumenting anyio.streams
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:08.9574188Z INFO: Instrumenting anyio.streams.stapled
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:08.9894916Z INFO: Instrumenting anyio.streams.tls
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:09.0706412Z INFO: Instrumenting anyio._core._streams
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:09.0775044Z INFO: Instrumenting anyio.streams.memory
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:09.1338829Z INFO: Instrumenting anyio._core._subprocesses
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:09.1664415Z INFO: Instrumenting subprocess
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:09.6440583Z INFO: Instrumenting locale
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:09.9392324Z INFO: Instrumenting _locale
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:09.9394890Z WARNING: It looks like this module is imported by a custom loader. Atheris has experimental support for this. However, it may be incompatible with certain libraries. If you experience unusual errors or poor coverage collection, try atheris.instrument_all() instead, add enable_loader_override=False to instrument_imports(), or file an issue on GitHub.
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:09.9415870Z INFO: Instrumenting anyio._core._tempfile
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:10.0363067Z INFO: Instrumenting fastapi.params
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:10.1277465Z INFO: Instrumenting fastapi.exceptions
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:10.1540246Z INFO: Instrumenting pydantic
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:10.1954502Z INFO: Instrumenting pydantic._migration
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:10.2093855Z INFO: Instrumenting pydantic.warnings
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:10.2305287Z INFO: Instrumenting pydantic.version
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:10.2438572Z INFO: Instrumenting pydantic_core
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:10.2549834Z INFO: Instrumenting typing_extensions
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:11.0482183Z INFO: Instrumenting pydantic_core.core_schema
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:11.3198447Z INFO: Instrumenting decimal
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:11.3227600Z INFO: Instrumenting numbers
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:11.3875307Z INFO: Instrumenting pydantic.errors
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:11.4042015Z INFO: Instrumenting typing_inspection
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:11.4047865Z INFO: Instrumenting typing_inspection.introspection
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:11.4883895Z INFO: Instrumenting typing_inspection.typing_objects
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:11.5352332Z INFO: Instrumenting pydantic._internal
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:11.5358894Z INFO: Instrumenting pydantic._internal._repr
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:11.5653870Z INFO: Instrumenting pydantic._internal._typing_extra
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:11.6693954Z INFO: Instrumenting pydantic._internal._namespace_utils
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:11.6963261Z INFO: Instrumenting pydantic.main
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:11.9161354Z INFO: Instrumenting pydantic._internal._config
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:11.9705500Z INFO: Instrumenting pydantic.aliases
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:11.9878261Z INFO: Instrumenting pydantic._internal._internal_dataclass
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:11.9912416Z INFO: Instrumenting pydantic.config
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:12.0161299Z INFO: Instrumenting pydantic._internal._decorators
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:12.1448378Z INFO: Instrumenting pydantic._internal._core_utils
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:12.1758038Z INFO: Instrumenting pydantic._internal._utils
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:12.2517689Z INFO: Instrumenting pydantic._internal._import_utils
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:12.2617277Z INFO: Instrumenting pydantic._internal._fields
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:12.3806372Z INFO: Instrumenting pydantic._internal._generics
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:12.4542752Z INFO: Instrumenting pydantic._internal._forward_ref
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:12.4584237Z INFO: Instrumenting pydantic._internal._docs_extraction
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:12.5019172Z INFO: Instrumenting pydantic._internal._mock_val_ser
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:12.5316038Z INFO: Instrumenting pydantic.plugin
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:12.5439895Z INFO: Instrumenting pydantic.plugin._schema_validator
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:12.5664958Z INFO: Instrumenting pydantic._internal._model_construction
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:12.7133858Z INFO: Instrumenting pydantic._internal._generate_schema
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:13.2811088Z INFO: Instrumenting fractions
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:13.4591511Z INFO: Instrumenting uuid
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:13.5895504Z INFO: Instrumenting zoneinfo
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:13.5938384Z INFO: Instrumenting zoneinfo._tzpath
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:13.6274929Z INFO: Instrumenting sysconfig
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:13.7312686Z INFO: Instrumenting _sysconfigdata__linux_x86_64-linux-gnu
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:13.8358678Z INFO: Instrumenting zoneinfo._common
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:13.8588699Z INFO: Instrumenting pydantic.annotated_handlers
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:13.8659026Z INFO: Instrumenting pydantic.functional_validators
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:13.9437548Z INFO: Instrumenting pydantic.json_schema
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:14.3685286Z INFO: Instrumenting pydantic._internal._core_metadata
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:14.4014623Z INFO: Instrumenting pydantic._internal._schema_generation_shared
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:14.4189426Z INFO: Instrumenting pydantic._internal._discriminated_union
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:14.5094038Z INFO: Instrumenting pydantic._internal._known_annotated_metadata
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:14.5750412Z INFO: Instrumenting pydantic._internal._schema_gather
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:14.6400984Z INFO: Instrumenting pydantic._internal._signature
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:14.6718746Z INFO: Instrumenting pydantic.fields
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:14.8774387Z INFO: Instrumenting annotated_types
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:14.9441471Z INFO: Instrumenting pydantic._internal._validators
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:15.0278048Z INFO: Instrumenting pydantic.types
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:15.2660962Z INFO: Instrumenting pydantic.plugin._loader
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:15.2776648Z INFO: Instrumenting importlib.metadata
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:15.4054152Z INFO: Instrumenting zipfile
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:15.9413805Z INFO: Instrumenting importlib.util
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:15.9423200Z INFO: Instrumenting zipfile._path
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:15.9996077Z INFO: Instrumenting zipfile._path.glob
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:16.0140216Z INFO: Instrumenting importlib.metadata._meta
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:16.0238499Z INFO: Instrumenting importlib.metadata._collections
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:16.0287783Z INFO: Instrumenting importlib.metadata._functools
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:16.0336627Z INFO: Instrumenting importlib.metadata._itertools
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:16.1257268Z INFO: Instrumenting fastapi.openapi
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:16.1263238Z INFO: Instrumenting fastapi.openapi.models
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:16.2187905Z INFO: Instrumenting fastapi._compat
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:16.2239191Z INFO: Instrumenting fastapi._compat.shared
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:16.2701310Z INFO: Instrumenting fastapi.types
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:16.2728731Z INFO: Instrumenting starlette.datastructures
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:16.4495902Z INFO: Instrumenting shlex
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:16.5759312Z INFO: Instrumenting starlette.concurrency
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:16.5898438Z INFO: Instrumenting starlette.types
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:16.5962726Z INFO: Instrumenting fastapi._compat.v2
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:16.6876551Z INFO: Instrumenting fastapi.openapi.constants
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:16.6892432Z INFO: Instrumenting pydantic.type_adapter
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:16.7550401Z INFO: Instrumenting fastapi.logger
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:16.7558989Z INFO: Instrumenting pydantic.networks
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:16.8863373Z INFO: Instrumenting email_validator
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:16.8900092Z INFO: Instrumenting email_validator.exceptions
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:16.8927187Z INFO: Instrumenting email_validator.types
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:16.9246066Z INFO: Instrumenting email_validator.validate_email
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:16.9610636Z INFO: Instrumenting email_validator.syntax
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:17.1112521Z INFO: Instrumenting email_validator.rfc_constants
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:17.1522703Z INFO: Instrumenting idna
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:17.1544144Z INFO: Instrumenting idna.core
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:17.2940395Z INFO: Instrumenting idna.idnadata
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:17.2959387Z INFO: Instrumenting idna.intranges
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:17.3080769Z INFO: Instrumenting idna.package_data
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:17.3090724Z INFO: Instrumenting email_validator.version
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:17.3138824Z INFO: Instrumenting importlib.metadata._adapters
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:17.3268877Z INFO: Instrumenting importlib.metadata._text
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:17.3358468Z INFO: Instrumenting email.parser
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:17.3483809Z INFO: Instrumenting email.feedparser
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:18.2272124Z INFO: Instrumenting fastapi.datastructures
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:18.2501050Z INFO: Instrumenting fastapi.dependencies
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:18.2506805Z INFO: Instrumenting fastapi.dependencies.models
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:18.3001879Z INFO: Instrumenting fastapi.security
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:18.3030348Z INFO: Instrumenting fastapi.security.api_key
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:18.3214261Z INFO: Instrumenting fastapi.security.base
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:18.3230171Z INFO: Instrumenting starlette.requests
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:18.4299011Z INFO: Instrumenting http.cookies
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:18.5104382Z INFO: Instrumenting starlette._utils
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:18.5388988Z INFO: Instrumenting starlette.formparsers
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:18.6019762Z INFO: Instrumenting python_multipart
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:18.6031008Z INFO: Instrumenting python_multipart.multipart
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:18.9051668Z INFO: Instrumenting python_multipart.decoders
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:18.9283129Z INFO: Instrumenting python_multipart.exceptions
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:18.9368301Z INFO: Instrumenting fastapi.security.http
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:18.9718069Z INFO: Instrumenting fastapi.security.utils
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:18.9785264Z INFO: Instrumenting fastapi.security.oauth2
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:19.0112174Z INFO: Instrumenting fastapi.param_functions
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:19.1313659Z INFO: Instrumenting fastapi.security.open_id_connect_url
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:19.1406842Z INFO: Instrumenting fastapi.dependencies.utils
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:19.3559382Z INFO: Instrumenting fastapi.background
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:19.3595763Z INFO: Instrumenting starlette.background
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:19.3696554Z INFO: Instrumenting fastapi.concurrency
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:19.3767540Z INFO: Instrumenting fastapi.utils
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:19.3967770Z INFO: Instrumenting starlette.responses
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:19.5990820Z INFO: Instrumenting hashlib
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:19.6293776Z INFO: Instrumenting mimetypes
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:19.7118427Z INFO: Instrumenting secrets
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:19.7168400Z INFO: Instrumenting hmac
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:19.7527953Z INFO: Instrumenting starlette.websockets
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:19.8169789Z INFO: Instrumenting fastapi.encoders
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:19.8690762Z INFO: Instrumenting pydantic.color
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:19.9512287Z INFO: Instrumenting colorsys
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:19.9827091Z INFO: Instrumenting fastapi.sse
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:20.0057619Z INFO: Instrumenting starlette.routing
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:20.1883506Z INFO: Instrumenting starlette._exception_handler
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:20.2033951Z INFO: Instrumenting starlette.convertors
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:20.2205417Z INFO: Instrumenting starlette.middleware
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:20.2361356Z INFO: Instrumenting fastapi.exception_handlers
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:20.2424652Z INFO: Instrumenting fastapi.websockets
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:20.2435438Z INFO: Instrumenting fastapi.middleware
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:20.2442639Z INFO: Instrumenting fastapi.middleware.asyncexitstack
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:20.2506346Z INFO: Instrumenting fastapi.openapi.docs
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:20.2642425Z INFO: Instrumenting fastapi.openapi.utils
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:20.3879237Z INFO: Instrumenting http.client
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:20.6742417Z INFO: Instrumenting fastapi.responses
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:20.6865756Z INFO: Instrumenting orjson
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:20.6881149Z INFO: Instrumenting starlette.applications
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:20.7059384Z INFO: Instrumenting starlette.middleware.errors
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:20.7325389Z INFO: Instrumenting html
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:20.7472321Z INFO: Instrumenting html.entities
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:21.1147488Z INFO: Instrumenting starlette.middleware.exceptions
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:21.1301875Z INFO: Instrumenting starlette.middleware.base
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:21.1936934Z INFO: Instrumenting fastapi.requests
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:21.1945658Z INFO: Instrumenting app
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:21.1953430Z INFO: Instrumenting app.schemas.schemas
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:21.3369367Z INFO: Instrumenting app.core.localization
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:21.3383963Z INFO: Instrumenting app.core.localization.core
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:21.3664285Z INFO: Instrumenting app.core.localization.formatting
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:21.3909421Z INFO: Instrumenting app.core.localization.dictionary
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:21.4248872Z INFO: Instrumenting app.models
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:21.4317073Z INFO: Instrumenting app.core.database
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:21.5358775Z INFO: Instrumenting asyncio
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:21.5417898Z INFO: Instrumenting asyncio.base_events
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:22.0295993Z INFO: Instrumenting heapq
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:22.1161118Z INFO: Instrumenting asyncio.constants
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:22.1186480Z INFO: Instrumenting asyncio.coroutines
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:22.1383002Z INFO: Instrumenting asyncio.events
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:22.2333962Z INFO: Instrumenting asyncio.format_helpers
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:22.2488373Z INFO: Instrumenting asyncio.base_futures
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:22.2619232Z INFO: Instrumenting asyncio.exceptions
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:22.2707554Z INFO: Instrumenting asyncio.base_tasks
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:22.2947249Z INFO: Instrumenting asyncio.futures
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:22.3559167Z INFO: Instrumenting asyncio.protocols
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:22.3737998Z INFO: Instrumenting asyncio.sslproto
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:22.5380326Z INFO: Instrumenting asyncio.transports
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:22.5678991Z INFO: Instrumenting asyncio.log
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:22.5694221Z INFO: Instrumenting asyncio.staggered
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:22.5976357Z INFO: Instrumenting asyncio.locks
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:22.7038999Z INFO: Instrumenting asyncio.mixins
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:22.7091081Z INFO: Instrumenting asyncio.tasks
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:22.9112171Z INFO: Instrumenting asyncio.queues
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:22.9615539Z INFO: Instrumenting asyncio.timeouts
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:22.9901782Z INFO: Instrumenting asyncio.trsock
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:23.0054716Z INFO: Instrumenting asyncio.runners
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:23.0425222Z INFO: Instrumenting asyncio.streams
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:23.1702115Z INFO: Instrumenting asyncio.subprocess
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:23.2214752Z INFO: Instrumenting asyncio.taskgroups
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:23.2642995Z INFO: Instrumenting asyncio.threads
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:23.2672363Z INFO: Instrumenting asyncio.unix_events
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:23.5480362Z INFO: Instrumenting asyncio.base_subprocess
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:23.6207583Z INFO: Instrumenting asyncio.selector_events
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:23.9398189Z INFO: Instrumenting sqlite3
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:23.9426721Z INFO: Instrumenting sqlite3.dbapi2
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:23.9598798Z INFO: Instrumenting sqlalchemy
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:24.0018521Z INFO: Instrumenting sqlalchemy.util
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:24.0269828Z INFO: Instrumenting sqlalchemy.util.preloaded
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:24.0424950Z INFO: Instrumenting sqlalchemy.util._collections
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:24.1464027Z INFO: Instrumenting sqlalchemy.util._has_cy
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:24.1510985Z INFO: Instrumenting sqlalchemy.cyextension
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:24.1536512Z INFO: Instrumenting sqlalchemy.exc
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:24.2418780Z INFO: Instrumenting sqlalchemy.util.compat
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:24.3173379Z INFO: Instrumenting platform
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:24.5193608Z INFO: Instrumenting sqlalchemy.util.typing
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:24.6412451Z INFO: Instrumenting sqlalchemy.util.concurrency
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:24.6572682Z INFO: Instrumenting greenlet
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:24.6605245Z INFO: Instrumenting sqlalchemy.util._concurrency_py3k
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:24.6960534Z INFO: Instrumenting sqlalchemy.util.langhelpers
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:25.0759728Z INFO: Instrumenting sqlalchemy.util.deprecations
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:25.1315623Z INFO: Instrumenting sqlalchemy.engine
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:25.1418521Z INFO: Instrumenting sqlalchemy.engine.events
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:25.1780749Z INFO: Instrumenting sqlalchemy.engine.base
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:25.5309028Z INFO: Instrumenting sqlalchemy.engine.interfaces
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:25.6625259Z INFO: Instrumenting sqlalchemy.event
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:25.6656308Z INFO: Instrumenting sqlalchemy.event.api
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:25.6741576Z INFO: Instrumenting sqlalchemy.event.base
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:25.7410713Z INFO: Instrumenting sqlalchemy.event.attr
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:25.8421074Z INFO: Instrumenting sqlalchemy.event.legacy
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:25.8753844Z INFO: Instrumenting sqlalchemy.event.registry
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:25.9229511Z INFO: Instrumenting sqlalchemy.pool
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:25.9268314Z INFO: Instrumenting sqlalchemy.pool.events
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:25.9425293Z INFO: Instrumenting sqlalchemy.pool.base
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:26.1640454Z INFO: Instrumenting sqlalchemy.log
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:26.2051247Z INFO: Instrumenting sqlalchemy.pool.impl
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:26.2784412Z INFO: Instrumenting sqlalchemy.util.queue
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:26.3343426Z INFO: Instrumenting sqlalchemy.sql
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:26.3545483Z INFO: Instrumenting sqlalchemy.sql._typing
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:26.4045270Z INFO: Instrumenting sqlalchemy.sql.roles
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:26.4647786Z INFO: Instrumenting sqlalchemy.inspection
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:26.4859293Z INFO: Instrumenting sqlalchemy.sql.base
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:26.7771453Z INFO: Instrumenting sqlalchemy.sql.visitors
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:26.8731890Z INFO: Instrumenting sqlalchemy.sql.cache_key
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:26.9894090Z INFO: Instrumenting sqlalchemy.sql.traversals
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:27.1834930Z INFO: Instrumenting sqlalchemy.sql.operators
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:27.3683958Z INFO: Instrumenting sqlalchemy.sql.compiler
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:28.6606142Z INFO: Instrumenting sqlalchemy.sql.coercions
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:28.8742753Z INFO: Instrumenting sqlalchemy.sql.crud
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:29.1394411Z INFO: Instrumenting sqlalchemy.sql.dml
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:29.2899969Z INFO: Instrumenting sqlalchemy.sql.util
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:29.5663002Z INFO: Instrumenting sqlalchemy.sql.annotation
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:29.6364838Z INFO: Instrumenting sqlalchemy.sql.ddl
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:29.8143736Z INFO: Instrumenting sqlalchemy.sql.elements
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:30.4214895Z INFO: Instrumenting sqlalchemy.sql.type_api
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:30.5895574Z INFO: Instrumenting sqlalchemy.util.topological
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:30.6128117Z INFO: Instrumenting sqlalchemy.sql.schema
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:31.2632699Z INFO: Instrumenting sqlalchemy.sql.selectable
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:31.9077913Z INFO: Instrumenting sqlalchemy.sql.sqltypes
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:32.2791328Z INFO: Instrumenting pickle
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:32.6336248Z INFO: Instrumenting _compat_pickle
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:32.6540720Z INFO: Instrumenting sqlalchemy.engine.processors
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:32.6585437Z INFO: Instrumenting sqlalchemy.engine._py_processors
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:32.7134807Z INFO: Instrumenting sqlalchemy.sql.functions
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:32.8982414Z INFO: Instrumenting sqlalchemy.sql.expression
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:32.9198272Z INFO: Instrumenting sqlalchemy.sql._dml_constructors
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:32.9231263Z INFO: Instrumenting sqlalchemy.sql._elements_constructors
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:32.9584626Z INFO: Instrumenting sqlalchemy.sql._selectable_constructors
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:32.9939433Z INFO: Instrumenting sqlalchemy.sql.lambdas
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:33.2234101Z INFO: Instrumenting sqlalchemy.sql.naming
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:33.2579633Z INFO: Instrumenting sqlalchemy.sql.events
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:33.2687088Z INFO: Instrumenting sqlalchemy.sql.default_comparator
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:33.3378298Z INFO: Instrumenting sqlalchemy.engine.util
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:33.3686706Z INFO: Instrumenting sqlalchemy.engine.create
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:33.4426484Z INFO: Instrumenting sqlalchemy.engine.url
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:33.5315994Z INFO: Instrumenting sqlalchemy.dialects
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:33.5399808Z INFO: Instrumenting sqlalchemy.engine.mock
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:33.5547049Z INFO: Instrumenting sqlalchemy.engine.cursor
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:33.7991621Z INFO: Instrumenting sqlalchemy.engine.result
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:34.0528963Z INFO: Instrumenting sqlalchemy.engine.row
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:34.0994265Z INFO: Instrumenting sqlalchemy.engine.reflection
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:34.3653816Z INFO: Instrumenting sqlalchemy.schema
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:34.3746712Z INFO: Instrumenting sqlalchemy.types
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:34.3850337Z INFO: Instrumenting sqlalchemy.engine.default
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:34.7398973Z INFO: Instrumenting sqlalchemy.engine.characteristics
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:34.7590129Z INFO: Instrumenting sqlalchemy.ext
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:34.7600734Z INFO: Instrumenting sqlalchemy.ext.asyncio
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:34.7632561Z INFO: Instrumenting sqlalchemy.ext.asyncio.engine
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:34.8910226Z INFO: Instrumenting sqlalchemy.ext.asyncio.exc
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:34.8941330Z INFO: Instrumenting sqlalchemy.ext.asyncio.base
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:34.9333585Z INFO: Instrumenting sqlalchemy.ext.asyncio.result
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:35.0263698Z INFO: Instrumenting sqlalchemy.ext.asyncio.scoping
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:35.1109522Z INFO: Instrumenting sqlalchemy.ext.asyncio.session
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:35.2374123Z INFO: Instrumenting sqlalchemy.orm
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:35.2621623Z INFO: Instrumenting sqlalchemy.orm.exc
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:35.2915346Z INFO: Instrumenting sqlalchemy.orm.util
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:35.6311830Z INFO: Instrumenting sqlalchemy.orm.attributes
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:35.9815012Z INFO: Instrumenting sqlalchemy.orm.collections
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:36.1884194Z INFO: Instrumenting sqlalchemy.orm.base
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:36.2679818Z INFO: Instrumenting sqlalchemy.orm._typing
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:36.2939163Z INFO: Instrumenting sqlalchemy.sql._orm_types
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:36.2991672Z INFO: Instrumenting sqlalchemy.orm.mapped_collection
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:36.3490657Z INFO: Instrumenting sqlalchemy.orm.interfaces
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:36.4608244Z INFO: Instrumenting sqlalchemy.orm.path_registry
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:36.5835309Z INFO: Instrumenting sqlalchemy.orm.mapper
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:37.2139388Z INFO: Instrumenting sqlalchemy.orm.instrumentation
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:37.3177307Z INFO: Instrumenting sqlalchemy.orm.state
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:37.4596804Z INFO: Instrumenting sqlalchemy.orm.loading
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:37.7864525Z INFO: Instrumenting sqlalchemy.orm.context
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:38.2089340Z INFO: Instrumenting sqlalchemy.future
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:38.2101111Z INFO: Instrumenting sqlalchemy.future.engine
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:38.2120403Z INFO: Instrumenting sqlalchemy.orm.strategies
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:38.7424563Z INFO: Instrumenting sqlalchemy.orm.properties
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:38.8684076Z INFO: Instrumenting sqlalchemy.orm.strategy_options
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:39.1133525Z INFO: Instrumenting sqlalchemy.orm.descriptor_props
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:39.2923376Z INFO: Instrumenting sqlalchemy.orm.relationships
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:39.8016623Z INFO: Instrumenting sqlalchemy.orm.query
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:40.0517833Z INFO: Instrumenting sqlalchemy.orm.unitofwork
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:40.1992580Z INFO: Instrumenting sqlalchemy.orm.session
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:40.7444348Z INFO: Instrumenting sqlalchemy.orm.bulk_persistence
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:41.0403532Z INFO: Instrumenting sqlalchemy.orm.evaluator
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:41.1001147Z INFO: Instrumenting sqlalchemy.orm.persistence
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:41.3928245Z INFO: Instrumenting sqlalchemy.orm.sync
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:41.4207138Z INFO: Instrumenting sqlalchemy.orm.identity
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:41.4689955Z INFO: Instrumenting sqlalchemy.orm.state_changes
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:41.5005820Z INFO: Instrumenting sqlalchemy.orm._orm_constructors
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:41.5702598Z INFO: Instrumenting sqlalchemy.orm.decl_api
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:41.7802206Z INFO: Instrumenting sqlalchemy.orm.clsregistry
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:41.8743583Z INFO: Instrumenting sqlalchemy.orm.decl_base
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:42.2365410Z INFO: Instrumenting sqlalchemy.orm.dynamic
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:42.2744055Z INFO: Instrumenting sqlalchemy.orm.writeonly
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:42.3646113Z INFO: Instrumenting sqlalchemy.orm.events
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:42.5015671Z INFO: Instrumenting sqlalchemy.orm.scoping
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:42.5917239Z INFO: Instrumenting sqlalchemy.orm.dependency
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:42.8751487Z INFO: Instrumenting app.core.config
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:42.9154599Z INFO: Instrumenting app.core.logging
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:42.9390078Z INFO: Instrumenting structlog
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:42.9489108Z INFO: Instrumenting structlog.contextvars
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:42.9713970Z INFO: Instrumenting structlog.typing
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:42.9922912Z INFO: Instrumenting structlog.dev
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:43.0993972Z INFO: Instrumenting structlog._frames
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:43.1120629Z INFO: Instrumenting structlog.exceptions
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:43.1149545Z INFO: Instrumenting structlog.processors
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:43.2101751Z INFO: Instrumenting structlog._log_levels
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:43.2165402Z INFO: Instrumenting structlog._utils
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:43.2198535Z INFO: Instrumenting structlog.tracebacks
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:43.2843957Z INFO: Instrumenting rich
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:43.3000075Z INFO: Instrumenting rich._extension
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:43.3019297Z INFO: Instrumenting rich.pretty
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:43.4913545Z INFO: Instrumenting rich.repr
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:43.5212537Z INFO: Instrumenting attr
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:43.5304411Z INFO: Instrumenting attr.converters
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:43.5446520Z INFO: Instrumenting attr._compat
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:43.5575492Z INFO: Instrumenting attr._make
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:44.0741032Z INFO: Instrumenting attr._config
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:44.0761597Z INFO: Instrumenting attr.setters
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:44.0822643Z INFO: Instrumenting attr.exceptions
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:44.0995879Z INFO: Instrumenting attr.filters
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:44.1055361Z INFO: Instrumenting attr.validators
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:44.1908157Z INFO: Instrumenting attr._cmp
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:44.2053773Z INFO: Instrumenting attr._funcs
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:44.2540184Z INFO: Instrumenting attr._next_gen
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:44.2697896Z INFO: Instrumenting attr._version_info
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:44.2830874Z INFO: Instrumenting rich._loop
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:44.2925989Z INFO: Instrumenting rich._pick
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:44.2953248Z INFO: Instrumenting rich.abc
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:44.3009996Z INFO: Instrumenting rich.cells
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:44.3573448Z INFO: Instrumenting rich._unicode_data
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:44.3732050Z INFO: Instrumenting rich._unicode_data._versions
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:44.3766459Z INFO: Instrumenting rich.highlighter
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:44.4005462Z INFO: Instrumenting rich.text
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:44.6409750Z INFO: Instrumenting rich._wrap
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:44.6565868Z INFO: Instrumenting rich.align
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:44.7191112Z INFO: Instrumenting rich.constrain
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:44.7263145Z INFO: Instrumenting rich.jupyter
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:44.7510380Z INFO: Instrumenting rich.segment
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:44.8679178Z INFO: Instrumenting rich.style
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:45.0413879Z INFO: Instrumenting rich.errors
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:45.0483085Z INFO: Instrumenting rich.color
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:45.2333932Z INFO: Instrumenting rich._palettes
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:45.2349140Z INFO: Instrumenting rich.palette
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:45.2537757Z INFO: Instrumenting rich.color_triplet
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:45.2587102Z INFO: Instrumenting rich.terminal_theme
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:45.2683359Z INFO: Instrumenting rich.measure
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:45.2852610Z INFO: Instrumenting rich.protocol
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:45.2931277Z INFO: Instrumenting rich.containers
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:45.3351159Z INFO: Instrumenting rich.control
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:45.3707557Z INFO: Instrumenting rich.emoji
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:45.3836930Z INFO: Instrumenting rich._emoji_replace
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:45.3973248Z INFO: Instrumenting rich.console
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:45.7911434Z INFO: Instrumenting rich._null_file
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:45.8022897Z INFO: Instrumenting rich.themes
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:45.8032078Z INFO: Instrumenting rich.default_styles
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:45.8506411Z INFO: Instrumenting rich.theme
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:45.8702837Z INFO: Instrumenting rich._export_format
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:45.8709909Z INFO: Instrumenting rich._fileno
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:45.8737146Z INFO: Instrumenting rich._log_render
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:45.8948592Z INFO: Instrumenting rich.markup
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:45.9440272Z INFO: Instrumenting rich.pager
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:45.9505327Z INFO: Instrumenting rich.region
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:45.9525610Z INFO: Instrumenting rich.screen
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:45.9625022Z INFO: Instrumenting rich.styled
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:45.9726997Z INFO: Instrumenting rich.traceback
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:46.1987416Z INFO: Instrumenting pygments
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:46.2065886Z INFO: Instrumenting pygments.lexers
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:46.2742242Z INFO: Instrumenting pygments.lexers._mapping
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:46.3445817Z INFO: Instrumenting pygments.modeline
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:46.3534680Z INFO: Instrumenting pygments.plugin
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:46.3611712Z INFO: Instrumenting pygments.util
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:46.4073854Z INFO: Instrumenting pygments.token
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:46.4307666Z INFO: Instrumenting rich.columns
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:46.4786427Z INFO: Instrumenting rich.padding
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:46.5089638Z INFO: Instrumenting rich.table
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:46.7129424Z INFO: Instrumenting rich.box
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:46.7498695Z INFO: Instrumenting rich._ratio
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:46.7861005Z INFO: Instrumenting rich.panel
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:46.8351746Z INFO: Instrumenting rich.scope
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:46.8467766Z INFO: Instrumenting rich.syntax
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:47.0002601Z INFO: Instrumenting pygments.lexer
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:47.2344297Z INFO: Instrumenting pygments.filter
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:47.2430024Z INFO: Instrumenting pygments.filters
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:47.3674391Z INFO: Instrumenting pygments.regexopt
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:47.3890627Z INFO: Instrumenting pygments.style
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:47.4347082Z INFO: Instrumenting pygments.styles
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:47.4467860Z INFO: Instrumenting pygments.styles._mapping
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:47.4614261Z INFO: Instrumenting structlog.stdlib
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:47.5855664Z INFO: Instrumenting structlog._config
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:47.6232285Z INFO: Instrumenting structlog._native
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:47.6565918Z INFO: Instrumenting structlog._base
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:47.6834931Z INFO: Instrumenting structlog._output
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:47.7234320Z INFO: Instrumenting structlog.testing
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:47.7419284Z INFO: Instrumenting structlog.threadlocal
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:47.7790554Z INFO: Instrumenting structlog._greenlets
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:47.7854849Z INFO: Instrumenting structlog.types
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:47.7867509Z INFO: Instrumenting structlog._generic
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:47.7923803Z INFO: Instrumenting structlog.twisted
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:47.8219351Z INFO: Instrumenting app.core.orjson_utils
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:47.8349079Z INFO: Instrumenting app.core.config.app_gen
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:47.8503319Z INFO: Instrumenting app.core.config.base
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:47.9085766Z INFO: Instrumenting pydantic_settings
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:47.9111792Z INFO: Instrumenting pydantic_settings.exceptions
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:47.9124862Z INFO: Instrumenting pydantic_settings.main
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:48.0365781Z INFO: Instrumenting argparse
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:48.5884634Z INFO: Instrumenting gettext
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:48.7135997Z INFO: Instrumenting pydantic.dataclasses
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:48.7687080Z INFO: Instrumenting pydantic._internal._dataclasses
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:48.8063225Z INFO: Instrumenting pydantic_settings.sources
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:48.8102860Z INFO: Instrumenting pydantic_settings.sources.base
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:48.9068016Z INFO: Instrumenting pydantic_settings.utils
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:48.9134829Z INFO: Instrumenting pydantic_settings.sources.types
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:48.9259389Z INFO: Instrumenting pydantic_settings.sources.utils
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:48.9956802Z INFO: Instrumenting pydantic.root_model
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:49.0171120Z INFO: Instrumenting pydantic_settings.sources.providers
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:49.0198340Z INFO: Instrumenting pydantic_settings.sources.providers.aws
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:49.0296646Z INFO: Instrumenting pydantic_settings.sources.providers.env
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:49.0938010Z INFO: Instrumenting pydantic_settings.sources.providers.azure
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:49.1205783Z INFO: Instrumenting pydantic.alias_generators
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:49.1292761Z INFO: Instrumenting pydantic_settings.sources.providers.cli
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:49.6308546Z INFO: Instrumenting pydantic_settings.sources.providers.dotenv
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:49.6688133Z INFO: Instrumenting dotenv
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:49.6754861Z INFO: Instrumenting dotenv.main
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:49.7590123Z INFO: Instrumenting dotenv.parser
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:49.7957652Z INFO: Instrumenting dotenv.variables
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:49.8161414Z INFO: Instrumenting pydantic_settings.sources.providers.gcp
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:49.8567750Z INFO: Instrumenting pydantic_settings.sources.providers.json
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:49.8655572Z INFO: Instrumenting pydantic_settings.sources.providers.pyproject
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:49.8761799Z INFO: Instrumenting pydantic_settings.sources.providers.toml
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:49.8894579Z INFO: Instrumenting pydantic_settings.sources.providers.secrets
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:49.9110287Z INFO: Instrumenting pydantic_settings.sources.providers.yaml
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:49.9314973Z INFO: Instrumenting pydantic_settings.sources.providers.nested_secrets
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:49.9757854Z INFO: Instrumenting pydantic_settings.version
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:50.0033298Z INFO: Instrumenting app.core.config.cache
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:50.0364266Z INFO: Instrumenting app.core.config.database
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:50.0621639Z INFO: Instrumenting app.core.config.integrations
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:50.0887837Z INFO: Instrumenting app.core.config.notifications
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:50.1397619Z INFO: Instrumenting app.core.config.observability
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:50.1519184Z INFO: Instrumenting app.core.config.security
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:50.1670423Z INFO: Instrumenting app.core.config.mixins
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:50.1684855Z INFO: Instrumenting app.core.config.mixins.cors_settings
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:50.2179517Z INFO: Instrumenting app.core.config.mixins.csp_settings
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:50.2633999Z INFO: Instrumenting app.core.config.mixins.jwt_settings
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:50.3081734Z INFO: Instrumenting app.core.config.mixins.mfa_settings
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:50.3262040Z INFO: Instrumenting app.core.config.mixins.rate_limit_settings
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:50.4105935Z INFO: Instrumenting app.core.config.storage
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:50.7237541Z Traceback (most recent call last):
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:50.7259354Z   File "/home/runner/work/university_ecosystem/university_ecosystem/tests/fuzz/run_atheris.py", line 12, in <module>
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:50.7260266Z     from app.schemas.schemas import ResetPasswordIn, UserPreferencesBase
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:50.7261133Z   File "/home/runner/work/university_ecosystem/university_ecosystem/app/schemas/schemas.py", line 18, in <module>
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:50.7261809Z     from app.models.enums import UserRole
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:50.7262477Z   File "/home/runner/work/university_ecosystem/university_ecosystem/app/models/__init__.py", line 1, in <module>
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:50.7263575Z     from app.core.database import Base as Base
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:50.7264274Z   File "/home/runner/work/university_ecosystem/university_ecosystem/app/core/database.py", line 24, in <module>
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:50.7264968Z     from app.core.config import Settings, settings
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:50.7265702Z   File "/home/runner/work/university_ecosystem/university_ecosystem/app/core/config/__init__.py", line 310, in <module>
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:50.7266381Z     settings = _load_settings()
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:50.7267067Z   File "/home/runner/work/university_ecosystem/university_ecosystem/app/core/config/__init__.py", line 263, in _load_settings
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:50.7267760Z     return Settings()
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:50.7268338Z   File "/home/runner/work/university_ecosystem/university_ecosystem/app/core/config/base.py", line 157, in __init__
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:50.7268856Z     super().__init__(**values)
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:50.7269091Z     ~~~~~~~~~~~~~~~~^^^^^^^^^^
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:50.7269714Z   File "/home/runner/work/university_ecosystem/university_ecosystem/.venv/lib/python3.13/site-packages/pydantic_settings/main.py", line 247, in __init__
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:50.7270532Z     super().__init__(**__pydantic_self__.__class__._settings_build_values(sources, init_kwargs))
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:50.7271027Z     ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:50.7271764Z   File "/home/runner/work/university_ecosystem/university_ecosystem/.venv/lib/python3.13/site-packages/pydantic/main.py", line 263, in __init__
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:50.7272528Z     validated_self = self.__pydantic_validator__.validate_python(data, self_instance=self)
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:50.7273504Z pydantic_core._pydantic_core.ValidationError: 1 validation error for Settings
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:50.7273902Z secret_key
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:50.7274504Z   Value error, SECRET_KEY must not be empty [type=value_error, input_value='', input_type=str]
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:50.7275513Z     For further information visit https://errors.pydantic.dev/2.13/v/value_error
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:51.0883270Z -----------------------------------------------------
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:51.1502718Z Suppressions used:
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:51.1505745Z   count      bytes template
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:51.1506020Z     332     344089 libpython
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:51.1506263Z       2        160 _pydantic_core
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:51.1506568Z -----------------------------------------------------
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:51.1506791Z 
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:51.1516571Z ##[error]Process completed with exit code 1.
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:51.1585605Z ##[group]Run actions/upload-artifact@v7
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:51.1585930Z with:
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:51.1586130Z   name: asan-report
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:51.1586350Z   path: asan-report.*
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:51.1586584Z   if-no-files-found: ignore
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:51.1586824Z   compression-level: 6
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:51.1587038Z   overwrite: false
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:51.1587250Z   include-hidden-files: false
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:51.1587487Z   archive: true
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:51.1587683Z env:
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:51.1587862Z   SECRET_KEY: 
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:51.1588057Z   ENVIRONMENT: testing
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:51.1588345Z   pythonLocation: /opt/hostedtoolcache/Python/3.13.14/x64
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:51.1589023Z   PKG_CONFIG_PATH: /opt/hostedtoolcache/Python/3.13.14/x64/lib/pkgconfig
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:51.1589444Z   Python_ROOT_DIR: /opt/hostedtoolcache/Python/3.13.14/x64
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:51.1589827Z   Python2_ROOT_DIR: /opt/hostedtoolcache/Python/3.13.14/x64
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:51.1590236Z   Python3_ROOT_DIR: /opt/hostedtoolcache/Python/3.13.14/x64
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:51.1590619Z   LD_LIBRARY_PATH: /opt/hostedtoolcache/Python/3.13.14/x64/lib
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:51.1590939Z ##[endgroup]
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:51.3120696Z No files were found with the provided path: asan-report.*. No artifacts will be uploaded.
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:51.3312532Z Post job cleanup.
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:51.4187083Z [command]/usr/bin/git version
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:51.4233027Z git version 2.54.0
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:51.4271724Z Temporarily overriding HOME='/home/runner/work/_temp/8bec1ef7-d340-454d-9f45-3e4a51024cae' before making global git config changes
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:51.4272904Z Adding repository directory to the temporary git global config as a safe directory
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:51.4286549Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/university_ecosystem/university_ecosystem
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:51.4324699Z Removing SSH command configuration
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:51.4331386Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:51.4370976Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:51.4627381Z Removing HTTP extra header
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:51.4634943Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:51.4681957Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:51.4949036Z Removing includeIf entries pointing to credentials config files
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:51.4955383Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:51.4985870Z includeif.gitdir:/home/runner/work/university_ecosystem/university_ecosystem/.git.path
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:51.4986646Z includeif.gitdir:/home/runner/work/university_ecosystem/university_ecosystem/.git/worktrees/*.path
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:51.4992554Z includeif.gitdir:/github/workspace/.git.path
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:51.4993880Z includeif.gitdir:/github/workspace/.git/worktrees/*.path
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:51.4995437Z [command]/usr/bin/git config --local --get-all includeif.gitdir:/home/runner/work/university_ecosystem/university_ecosystem/.git.path
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:51.5016814Z /home/runner/work/_temp/git-credentials-6c885176-c62c-48c6-84f6-243fc8786085.config
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:51.5026897Z [command]/usr/bin/git config --local --unset includeif.gitdir:/home/runner/work/university_ecosystem/university_ecosystem/.git.path /home/runner/work/_temp/git-credentials-6c885176-c62c-48c6-84f6-243fc8786085.config
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:51.5061404Z [command]/usr/bin/git config --local --get-all includeif.gitdir:/home/runner/work/university_ecosystem/university_ecosystem/.git/worktrees/*.path
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:51.5082683Z /home/runner/work/_temp/git-credentials-6c885176-c62c-48c6-84f6-243fc8786085.config
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:51.5091857Z [command]/usr/bin/git config --local --unset includeif.gitdir:/home/runner/work/university_ecosystem/university_ecosystem/.git/worktrees/*.path /home/runner/work/_temp/git-credentials-6c885176-c62c-48c6-84f6-243fc8786085.config
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:51.5123902Z [command]/usr/bin/git config --local --get-all includeif.gitdir:/github/workspace/.git.path
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:51.5145272Z /github/runner_temp/git-credentials-6c885176-c62c-48c6-84f6-243fc8786085.config
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:51.5152362Z [command]/usr/bin/git config --local --unset includeif.gitdir:/github/workspace/.git.path /github/runner_temp/git-credentials-6c885176-c62c-48c6-84f6-243fc8786085.config
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:51.5184232Z [command]/usr/bin/git config --local --get-all includeif.gitdir:/github/workspace/.git/worktrees/*.path
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:51.5205730Z /github/runner_temp/git-credentials-6c885176-c62c-48c6-84f6-243fc8786085.config
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:51.5213478Z [command]/usr/bin/git config --local --unset includeif.gitdir:/github/workspace/.git/worktrees/*.path /github/runner_temp/git-credentials-6c885176-c62c-48c6-84f6-243fc8786085.config
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:51.5247385Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:51.5480208Z Removing credentials config '/home/runner/work/_temp/git-credentials-6c885176-c62c-48c6-84f6-243fc8786085.config'
+Rust FFI — ASan / LSan	UNKNOWN STEP	2026-06-29T10:48:51.5615205Z Cleaning up orphan processes
