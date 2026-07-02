@@ -1,4 +1,4 @@
-import uuid
+from typing import ClassVar
 from unittest.mock import MagicMock
 
 import pytest
@@ -68,7 +68,7 @@ def test_subscription_supports_topic_user_without_preferences():
 
 def test_subscription_supports_topic_user_with_matching_preferences(monkeypatch):
     class MockPrefs:
-        topics = ["news"]
+        topics: ClassVar[list[str]] = ["news"]
 
     class MockUser:
         id = "user-123"
@@ -79,7 +79,7 @@ def test_subscription_supports_topic_user_with_matching_preferences(monkeypatch)
     sub.topics = None
 
     class MockState:
-        unloaded = set()
+        unloaded: ClassVar[set[str]] = set()
 
     monkeypatch.setattr(
         "sqlalchemy.orm.attributes.instance_state", lambda obj: MockState()
@@ -94,7 +94,7 @@ def test_subscription_supports_topic_user_with_matching_preferences(monkeypatch)
 
 def test_subscription_supports_topic_subscription_topics_restriction(monkeypatch):
     class MockPrefs:
-        topics = ["news", "alerts"]
+        topics: ClassVar[list[str]] = ["news", "alerts"]
 
     class MockUser:
         id = "user-123"
@@ -105,7 +105,7 @@ def test_subscription_supports_topic_subscription_topics_restriction(monkeypatch
     sub.topics = ["news"]
 
     class MockState:
-        unloaded = set()
+        unloaded: ClassVar[set[str]] = set()
 
     monkeypatch.setattr(
         "sqlalchemy.orm.attributes.instance_state", lambda obj: MockState()
@@ -122,8 +122,9 @@ def test_subscription_supports_topic_subscription_topics_restriction(monkeypatch
 
 
 @pytest.mark.asyncio
-async def test_upsert_user_topics(db_session):
-    user_id = uuid.uuid4()
+async def test_upsert_user_topics(db_session, user_factory):
+    user = await user_factory()
+    user_id = user.id
     allowed = ["news", "alerts"]
 
     # New preference
@@ -149,8 +150,9 @@ async def test_upsert_user_topics(db_session):
 
 
 @pytest.mark.asyncio
-async def test_synchronize_user_topics(db_session):
-    user_id = uuid.uuid4()
+async def test_synchronize_user_topics(db_session, user_factory):
+    user = await user_factory()
+    user_id = user.id
     allowed = ["news", "alerts"]
 
     sub1 = PushSubscription(
