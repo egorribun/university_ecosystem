@@ -57,6 +57,52 @@ jobs:
                   "
                   echo '=== alembic_version ==='
                   psql -h localhost -U test -d test -c "SELECT * FROM alembic_version;"
+            - name: Ensure RANGE partitions exist before pytest
+              env:
+                  PGPASSWORD: test # pragma: allowlist secret
+              run: |
+                  # Create DEFAULT + prev/current/next-month partitions for every
+                  # RANGE-partitioned table using IF NOT EXISTS so the step is
+                  # idempotent.  psql exits 0 even when the partition already exists.
+                  #
+                  # This is the authoritative safety-net: Alembic's 202607020001
+                  # migration should already have created these, but we guarantee it
+                  # here so that no Python-level fixture failure can block the tests.
+                  PREV_MONTH=$(date -u -d "$(date +%Y-%m-01) -1 month" +%Y_%m)
+                  CURR_MONTH=$(date -u +%Y_%m)
+                  NEXT_MONTH=$(date -u -d "$(date +%Y-%m-01) +1 month" +%Y_%m)
+                  PREV_START=$(date -u -d "$(date +%Y-%m-01) -1 month" +%Y-%m-01)
+                  CURR_START=$(date -u +%Y-%m-01)
+                  NEXT_START=$(date -u -d "$(date +%Y-%m-01) +1 month" +%Y-%m-01)
+                  AFTER_NEXT=$(date -u -d "$(date +%Y-%m-01) +2 month" +%Y-%m-01)
+
+                  for TABLE in data_access_logs notifications notification_deliveries failed_login_attempts; do
+                      psql -h localhost -U test -d test -c "
+                        CREATE TABLE IF NOT EXISTS ${TABLE}_default
+                          PARTITION OF ${TABLE} DEFAULT;
+                        CREATE TABLE IF NOT EXISTS ${TABLE}_${PREV_MONTH}
+                          PARTITION OF ${TABLE}
+                          FOR VALUES FROM ('${PREV_START}') TO ('${CURR_START}');
+                        CREATE TABLE IF NOT EXISTS ${TABLE}_${CURR_MONTH}
+                          PARTITION OF ${TABLE}
+                          FOR VALUES FROM ('${CURR_START}') TO ('${NEXT_START}');
+                        CREATE TABLE IF NOT EXISTS ${TABLE}_${NEXT_MONTH}
+                          PARTITION OF ${TABLE}
+                          FOR VALUES FROM ('${NEXT_START}') TO ('${AFTER_NEXT}');
+                      " 2>&1 || echo "WARN: partition step for ${TABLE} had errors (may be a non-partitioned table, ignored)"
+                  done
+
+                  echo '=== Final partition state ==='
+                  psql -h localhost -U test -d test -c "
+                    SELECT parent.relname AS parent, child.relname AS child
+                    FROM pg_inherits
+                    JOIN pg_class parent ON pg_inherits.inhparent = parent.oid
+                    JOIN pg_class child  ON pg_inherits.inhrelid  = child.oid
+                    WHERE parent.relname IN ('data_access_logs','notifications',
+                                             'notification_deliveries','failed_login_attempts')
+                    ORDER BY parent.relname, child.relname;
+                  "
+
             - name: Run Pytest to capture query logs
               env:
                   DATABASE_URL: postgresql+asyncpg://test:test@localhost:5432/test # pragma: allowlist secret
