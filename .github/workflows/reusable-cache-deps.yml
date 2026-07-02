@@ -2,6 +2,9 @@
 # Provides enhanced caching for dependencies across workflows
 name: Cache Dependencies
 
+permissions:
+    contents: read
+
 on:
     workflow_call:
         inputs:
@@ -99,4 +102,3 @@ jobs:
                     echo "| Node.js | ${{ steps.node-cache.outputs.cache-hit || 'false' }} |"
                     echo "| Go | (managed by setup-go) |"
                   } >> "$GITHUB_STEP_SUMMARY"
-

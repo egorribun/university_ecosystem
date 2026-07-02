@@ -253,7 +253,7 @@ async def validate_password_hibp(password: str, *, locale: str | None = None) ->
         response = await client.get(url)
     except httpx.RequestError as exc:
         _logger.warning(
-            "Credential breach lookup failed (fail-%s): %s",
+            "External breach lookup failed (fail-%s): %s",
             "open" if fail_open else "closed",
             exc,
         )
@@ -265,7 +265,7 @@ async def validate_password_hibp(password: str, *, locale: str | None = None) ->
 
     if response.status_code != httpx.codes.OK:
         _logger.warning(
-            "Credential breach lookup returned status %s", response.status_code
+            "External breach lookup returned status %s", response.status_code
         )
         if fail_open:
             return

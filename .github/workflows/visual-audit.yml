@@ -178,9 +178,9 @@ jobs:
       # the action since both ultimately fetch from rustwasm/wasm-pack
       # GitHub release assets.
       - name: Install wasm-pack
-        run: |
-          curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
-          wasm-pack --version
+        uses: taiki-e/install-action@54420ca6e3a4cab262aeabc1af4f52908ca28931 # wasm-pack
+        with:
+          tool: wasm-pack@0.13.1
 
       - name: Install frontend dependencies
         working-directory: frontend

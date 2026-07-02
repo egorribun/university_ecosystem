@@ -26,7 +26,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
-      contents: write   # upload artifact + attest
+      contents: read
       id-token: write   # sigstore OIDC token for attestation
       attestations: write
     steps:
@@ -34,7 +34,7 @@ jobs:
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
 
       - name: Install uv
-        run: pip install uv
+        uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
 
       - name: Generate SBOM — Python workspace
         # anchore/sbom-action — Renovate will update digest
@@ -301,4 +301,3 @@ jobs:
               sys.exit(1)
           print(f"cargo-audit: {len(vulns)} total advisory(ies), 0 HIGH/CRITICAL — gate passed.")
           PYEOF
-

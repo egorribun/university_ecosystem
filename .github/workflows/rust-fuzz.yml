@@ -24,10 +24,10 @@ jobs:
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
 
       - name: Install Rust nightly
-        uses: dtolnay/rust-toolchain@nightly
+        uses: dtolnay/rust-toolchain@efcb852328a9f50117170cc43094fb6f09eaf1ae # nightly
 
       - name: Cache cargo registry & index
-        uses: actions/cache@v6
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: |
             ~/.cargo/registry/index/
@@ -42,10 +42,12 @@ jobs:
         run: cargo install cargo-fuzz
 
       - name: Run fuzz targets
+        env:
+          EVENT_NAME: ${{ github.event_name }}
         run: |
           cd native/rust_ext
           # Run for 1 minute (60 seconds) on PR/push, or 5 minutes (300 seconds) on cron/dispatch
-          if [ "${{ github.event_name }}" = "schedule" ] || [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+          if [ "${EVENT_NAME}" = "schedule" ] || [ "${EVENT_NAME}" = "workflow_dispatch" ]; then
             DURATION=300
           else
             DURATION=60
@@ -57,7 +59,7 @@ jobs:
 
       - name: Archive crashes
         if: failure()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: fuzz-crashes
           path: |

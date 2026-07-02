@@ -40,5 +40,6 @@ export default function SafeHtml({ html, className, fallback }: SafeHtmlProps) {
   }
 
   // nosemgrep: typescript.react.security.audit.react-dangerouslysetinnerhtml.react-dangerouslysetinnerhtml
+  // Sanitized by wasm-sanitizer/ammonia above, then checked for script/event-handler patterns.
   return <div className={className} dangerouslySetInnerHTML={{ __html: sanitized }} />
 }

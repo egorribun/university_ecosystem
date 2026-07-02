@@ -93,7 +93,7 @@ jobs:
       - name: Generate version tag
         id: version
         run: |
-          VERSION="${{ github.sha }}"
+          VERSION="${GITHUB_SHA}"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
   build-backend:
@@ -104,7 +104,6 @@ jobs:
       packages: write
       id-token: write
       attestations: write
-      security-events: write
     uses: ./.github/workflows/reusable-build-and-sign.yml
     with:
       image_name: "backend"
@@ -122,7 +121,6 @@ jobs:
       packages: write
       id-token: write
       attestations: write
-      security-events: write
     uses: ./.github/workflows/reusable-build-and-sign.yml
     with:
       image_name: "frontend"
@@ -140,7 +138,6 @@ jobs:
       packages: write
       id-token: write
       attestations: write
-      security-events: write
     uses: ./.github/workflows/reusable-build-and-sign.yml
     with:
       image_name: "ws-hub"
@@ -159,7 +156,6 @@ jobs:
       packages: write
       id-token: write
       attestations: write
-      security-events: write
     uses: ./.github/workflows/reusable-build-and-sign.yml
     with:
       image_name: "gateway"
@@ -178,7 +174,6 @@ jobs:
       packages: write
       id-token: write
       attestations: write
-      security-events: write
     uses: ./.github/workflows/reusable-build-and-sign.yml
     with:
       image_name: "file-processor"
@@ -392,16 +387,20 @@ jobs:
     if: always()
     steps:
       - name: Deployment summary
+        env:
+          DEPLOY_ENVIRONMENT: ${{ inputs.environment }}
+          DEPLOY_VERSION: ${{ needs.prepare.outputs.version }}
+          DEPLOY_STATUS: ${{ needs.deploy.result }}
+          ROLLBACK_STATUS: ${{ needs.rollback.result }}
+          TRIGGER_ACTOR: ${{ github.actor }}
         run: |
-          cat <<'SUMMARY' >> "$GITHUB_STEP_SUMMARY"
-          ## Deployment Summary
-
-          | Property | Value |
-          |----------|-------|
-          | Environment | `${{ inputs.environment }}` |
-          | Version | `${{ needs.prepare.outputs.version }}` |
-          | Deploy Status | `${{ needs.deploy.result }}` |
-          | Rollback Test | `${{ needs.rollback.result }}` |
-
-          **Triggered by:** @${{ github.actor }}
-          SUMMARY
+          {
+            printf '%s\n\n' '## Deployment Summary'
+            printf '%s\n' '| Property | Value |'
+            printf '%s\n' '|----------|-------|'
+            printf '| Environment | `%s` |\n' "${DEPLOY_ENVIRONMENT}"
+            printf '| Version | `%s` |\n' "${DEPLOY_VERSION}"
+            printf '| Deploy Status | `%s` |\n' "${DEPLOY_STATUS}"
+            printf '| Rollback Test | `%s` |\n\n' "${ROLLBACK_STATUS}"
+            printf '**Triggered by:** @%s\n' "${TRIGGER_ACTOR}"
+          } >> "$GITHUB_STEP_SUMMARY"

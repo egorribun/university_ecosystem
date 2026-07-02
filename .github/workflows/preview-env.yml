@@ -14,7 +14,7 @@ on:
 permissions:
   contents: read
   pull-requests: write
-  deployments: write
+  issues: write
 
 concurrency:
   group: preview-env-${{ github.event.number }}
@@ -33,29 +33,37 @@ jobs:
       - name: Set up Kubeconfig
         # In a real environment, this would configure kubectl using a secret kubeconfig.
         # Here we mock it or configure it if secrets are present.
+        env:
+          PREVIEW_KUBECONFIG: ${{ secrets.KUBECONFIG }}
         run: |
-          if [ -n "${{ secrets.KUBECONFIG }}" ]; then
+          if [ -n "${PREVIEW_KUBECONFIG}" ]; then
             mkdir -p ~/.kube
-            echo "${{ secrets.KUBECONFIG }}" > ~/.kube/config
+            printf '%s' "${PREVIEW_KUBECONFIG}" > ~/.kube/config
           else
             echo "Mocking Kubernetes setup (dry-run mode)"
           fi
 
       - name: Create Isolated Namespace
+        env:
+          PR_NUMBER: ${{ github.event.number }}
         run: |
-          NAMESPACE="pr-${{ github.event.number }}"
+          NAMESPACE="pr-${PR_NUMBER}"
           echo "Namespace: $NAMESPACE"
           # kubectl create namespace $NAMESPACE || true
 
       - name: Deploy Infrastructure (Postgres, Redis, NATS)
+        env:
+          PR_NUMBER: ${{ github.event.number }}
         run: |
-          NAMESPACE="pr-${{ github.event.number }}"
+          NAMESPACE="pr-${PR_NUMBER}"
           echo "Deploying infra to $NAMESPACE..."
           # helm install infra charts/infra -n $NAMESPACE --create-namespace
 
       - name: Run Database Migrations
+        env:
+          PR_NUMBER: ${{ github.event.number }}
         run: |
-          NAMESPACE="pr-${{ github.event.number }}"
+          NAMESPACE="pr-${PR_NUMBER}"
           echo "Running database migrations in $NAMESPACE..."
           # kubectl exec -n $NAMESPACE deploy/backend -- alembic upgrade head
 
@@ -79,7 +87,7 @@ jobs:
         env:
           KUBECONFIG: ${{ secrets.KUBECONFIG }}
         if: ${{ env.KUBECONFIG != '' }}
-        uses: zaproxy/action-baseline@v0.15.0
+        uses: zaproxy/action-baseline@6c5a007541891231cd9e0ddec25d4f25c59c9874 # v0.15.0
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           target: 'https://pr-${{ github.event.number }}.dev.university.ru'
@@ -128,10 +136,12 @@ jobs:
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
 
       - name: Set up Kubeconfig
+        env:
+          PREVIEW_KUBECONFIG: ${{ secrets.KUBECONFIG }}
         run: |
-          if [ -n "${{ secrets.KUBECONFIG }}" ]; then
+          if [ -n "${PREVIEW_KUBECONFIG}" ]; then
             mkdir -p ~/.kube
-            echo "${{ secrets.KUBECONFIG }}" > ~/.kube/config
+            printf '%s' "${PREVIEW_KUBECONFIG}" > ~/.kube/config
           fi
 
       - name: Teardown Chaos Mesh Experiments
@@ -143,7 +153,9 @@ jobs:
           # kubectl delete -n $NAMESPACE -f k8s/chaos/pod-failure.yaml --ignore-not-found
 
       - name: Delete Namespace
+        env:
+          PR_NUMBER: ${{ github.event.number }}
         run: |
-          NAMESPACE="pr-${{ github.event.number }}"
+          NAMESPACE="pr-${PR_NUMBER}"
           echo "Tearing down Preview Environment: $NAMESPACE..."
           # kubectl delete namespace $NAMESPACE --wait=false

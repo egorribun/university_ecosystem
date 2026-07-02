@@ -1,6 +1,9 @@
 # Reusable Go Tests Workflow
 name: Go Tests
 
+permissions:
+  contents: read
+
 on:
   workflow_call:
     inputs:
@@ -77,7 +80,7 @@ jobs:
 
       - name: Install go-mutesting
         run: |
-          go install github.com/zimmski/go-mutesting/cmd/go-mutesting@latest
+          go install github.com/zimmski/go-mutesting/cmd/go-mutesting@v0.0.0-20210610104036-6d9217011a00
 
       - name: Run incremental mutation tests
         shell: bash

@@ -8,7 +8,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from sqlalchemy import select, text
+from sqlalchemy import BigInteger, cast, column, func, select
+from sqlalchemy.sql import table
 
 from app.core.logging import get_logger
 from app.schemas.dtos.analytics import HealthStatsDTO
@@ -66,15 +67,15 @@ class HealthRepository:
         """
         try:
             # Try fast approximate count first (PostgreSQL)
+            pg_class = table(
+                "pg_class",
+                column("reltuples"),
+                column("relname"),
+            )
             result = await self._connection.execute(
-                text(
-                    """
-                    SELECT reltuples::bigint AS count
-                    FROM pg_class
-                    WHERE relname = :table_name
-                    """
-                ),
-                {"table_name": table_name},
+                select(cast(pg_class.c.reltuples, BigInteger).label("count")).where(
+                    pg_class.c.relname == table_name
+                )
             )
             row = result.fetchone()
             if row is not None and row[0] >= 0:
@@ -85,9 +86,6 @@ class HealthRepository:
 
         # Fallback to actual count
         try:
-            from sqlalchemy import func
-            from sqlalchemy.sql import table
-
             # Use table/func for safe count expression
             query = select(func.count()).select_from(table(table_name))
             result = await self._connection.execute(query)
@@ -99,19 +97,23 @@ class HealthRepository:
     async def get_connection_stats(self) -> HealthStatsDTO:
         """Get database connection statistics (PostgreSQL only)."""
         try:
+            pg_stat_database = table(
+                "pg_stat_database",
+                column("numbackends"),
+                column("xact_commit"),
+                column("xact_rollback"),
+                column("blks_hit"),
+                column("blks_read"),
+                column("datname"),
+            )
             result = await self._connection.execute(
-                text(  # nosemgrep: python.sqlalchemy.security.audit.avoid-sqlalchemy-text.avoid-sqlalchemy-text
-                    """
-                    SELECT
-                        numbackends as active_connections,
-                        xact_commit as commits,
-                        xact_rollback as rollbacks,
-                        blks_hit as cache_hits,
-                        blks_read as disk_reads
-                    FROM pg_stat_database
-                    WHERE datname = current_database()
-                    """
-                )
+                select(
+                    pg_stat_database.c.numbackends.label("active_connections"),
+                    pg_stat_database.c.xact_commit.label("commits"),
+                    pg_stat_database.c.xact_rollback.label("rollbacks"),
+                    pg_stat_database.c.blks_hit.label("cache_hits"),
+                    pg_stat_database.c.blks_read.label("disk_reads"),
+                ).where(pg_stat_database.c.datname == func.current_database())
             )
             row = result.fetchone()
             if row is not None:

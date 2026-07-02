@@ -10,6 +10,9 @@
 
 name: Setup Python
 
+permissions:
+  contents: read
+
 on:
     workflow_call:
         inputs:
@@ -52,4 +55,3 @@ jobs:
               run: |
                   uv lock --check
                   uv sync --frozen
-

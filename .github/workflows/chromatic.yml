@@ -124,9 +124,9 @@ jobs:
         # repo since v0.14.0 (2026-01-20) but install-action doesn't auto-
         # follow. Replaced with the official wasm-pack curl installer from
         # rustwasm.github.io (same fix already in visual-audit.yml line 180).
-        run: |
-          curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
-          wasm-pack --version
+        uses: taiki-e/install-action@54420ca6e3a4cab262aeabc1af4f52908ca28931 # wasm-pack
+        with:
+          tool: wasm-pack@0.13.1
 
       - name: Build WASM modules
         # Wave 146 polish-v5 — 3-attempt retry around `wasm-pack build` to

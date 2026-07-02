@@ -31,7 +31,7 @@ def upgrade() -> None:
         return
 
     op.execute(
-        sa.text(
+        sa.text(  # nosemgrep: python.sqlalchemy.security.audit.avoid-sqlalchemy-text.avoid-sqlalchemy-text
             f"""
             CREATE INDEX IF NOT EXISTS {_PRIMARY_INDEX_NAME}
             ON events
@@ -58,4 +58,8 @@ def downgrade() -> None:
     if bind.dialect.name != "postgresql":
         return
 
-    op.execute(sa.text(f"DROP INDEX IF EXISTS {_PRIMARY_INDEX_NAME}"))
+    op.execute(
+        sa.text(  # nosemgrep: python.sqlalchemy.security.audit.avoid-sqlalchemy-text.avoid-sqlalchemy-text
+            f"DROP INDEX IF EXISTS {_PRIMARY_INDEX_NAME}"
+        )
+    )

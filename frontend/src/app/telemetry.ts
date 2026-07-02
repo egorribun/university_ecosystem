@@ -1,4 +1,4 @@
-import { WebTracerProvider, type SpanProcessor } from "@opentelemetry/sdk-trace-web"
+import { WebTracerProvider } from "@opentelemetry/sdk-trace-web"
 import { BatchSpanProcessor, SimpleSpanProcessor } from "@opentelemetry/sdk-trace-base"
 import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http"
 import { registerInstrumentations } from "@opentelemetry/instrumentation"
@@ -6,7 +6,7 @@ import { FetchInstrumentation } from "@opentelemetry/instrumentation-fetch"
 import { XMLHttpRequestInstrumentation } from "@opentelemetry/instrumentation-xml-http-request"
 import { UserInteractionInstrumentation } from "@opentelemetry/instrumentation-user-interaction"
 import { ZoneContextManager } from "@opentelemetry/context-zone"
-import { Resource } from "@opentelemetry/resources"
+import { resourceFromAttributes } from "@opentelemetry/resources"
 import { ATTR_SERVICE_NAME, ATTR_SERVICE_VERSION } from "@opentelemetry/semantic-conventions"
 
 let provider: WebTracerProvider | null = null
@@ -27,20 +27,19 @@ export function initTelemetry(env: ImportMetaEnv = import.meta.env) {
     return
   }
 
-  provider = new WebTracerProvider({
-    resource: new Resource({
-      [ATTR_SERVICE_NAME]: serviceName,
-      [ATTR_SERVICE_VERSION]: serviceVersion,
-    }),
-  })
-
   const exporter = new OTLPTraceExporter({
     url: endpoint,
   })
 
   const processor = env.DEV ? new SimpleSpanProcessor(exporter) : new BatchSpanProcessor(exporter)
 
-  provider.addSpanProcessor(processor as unknown as SpanProcessor)
+  provider = new WebTracerProvider({
+    resource: resourceFromAttributes({
+      [ATTR_SERVICE_NAME]: serviceName,
+      [ATTR_SERVICE_VERSION]: serviceVersion,
+    }),
+    spanProcessors: [processor],
+  })
 
   // ZoneContextManager propagates trace context across async boundaries
   // (Promise chains, setTimeout, etc.) using Zone.js.  Without it, a span

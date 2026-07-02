@@ -31,7 +31,7 @@ RUN --mount=type=cache,id=apt-lists-builder,target=/var/lib/apt/lists \
     build-essential \
     curl \
     && rm -rf /var/lib/apt/lists/*
-RUN python -m pip install --no-cache-dir --upgrade pip==26.0
+RUN python -m pip install --no-cache-dir --upgrade pip==26.1
 
 # Copy Rust toolchain from the dedicated stage.
 COPY --from=rust-toolchain /usr/local/cargo /usr/local/cargo
@@ -78,7 +78,7 @@ RUN --mount=type=cache,id=apt-lists-runtime,target=/var/lib/apt/lists \
     && rm -rf /var/lib/apt/lists/* \
     && groupadd --system --gid 10001 app \
     && useradd --system --uid 10001 --gid app --home-dir /home/app --shell /usr/sbin/nologin --no-create-home app
-RUN python -m pip install --no-cache-dir --upgrade pip==26.0
+RUN python -m pip install --no-cache-dir --upgrade pip==26.1
 
 # Copy virtual environment from builder
 COPY --from=builder --chown=app:app /opt/venv /opt/venv

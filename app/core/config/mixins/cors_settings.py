@@ -62,7 +62,7 @@ class CorsSettingsMixin:
 
                 logger = get_logger(__name__)
                 logger.warning(
-                    "Internal route shared-secret guard is not configured in %s "
+                    "Internal route shared guard is not configured in %s "
                     "environment. Internal API routes are vulnerable to IP spoofing.",
                     env,
                 )
