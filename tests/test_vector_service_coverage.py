@@ -146,3 +146,41 @@ async def test_close(vector_service):
     vector_service._client.aclose = AsyncMock()
     await vector_service.close()
     vector_service._client.aclose.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_search_similar_with_scores_no_attributes(vector_service, mock_db):
+    with (
+        patch.object(settings, "semantic_search_enabled", True),
+        patch("app.services.vector_service.select") as _mock_select,
+    ):
+
+        class SparseModel:
+            embedding = MagicMock()
+
+        mock_model = SparseModel()
+        mock_distance = MagicMock()
+        mock_score_column = MagicMock()
+        mock_score_column.desc.return_value = mock_score_column
+        mock_score_column.__ge__ = MagicMock(return_value=MagicMock())
+
+        mock_sub_result = MagicMock()
+        mock_sub_result.label.return_value = mock_score_column
+        mock_distance.__rsub__ = MagicMock(return_value=mock_sub_result)
+        mock_model.embedding.cosine_distance.return_value = mock_distance
+
+        mock_result = MagicMock()
+        mock_result.all.return_value = []
+        mock_db.execute.return_value = mock_result
+
+        results = await vector_service.search_similar_with_scores(mock_model, [0.1])
+        assert results == []
+
+
+@pytest.mark.asyncio
+async def test_vector_service_context_manager(mock_db):
+    with patch("app.services.vector_service.validate_url_not_internal"):
+        async with VectorService(mock_db) as service:
+            service._client.aclose = AsyncMock()
+            assert service.db is mock_db
+        service._client.aclose.assert_called_once()

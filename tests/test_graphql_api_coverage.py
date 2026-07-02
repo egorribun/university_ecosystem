@@ -203,6 +203,27 @@ class TestDataLoaders:
         result = await load_events_by_ids([eid], session)
         assert result[0] is mock_event
 
+    def test_dataloader_registry_properties(self):
+        from app.graphql.dataloaders import DataLoaderRegistry
+
+        session = AsyncMock()
+        registry = DataLoaderRegistry(session)
+
+        # Access and verify users loader property
+        users_loader = registry.users
+        assert users_loader is not None
+        assert registry.users is users_loader
+
+        # Access and verify news loader property
+        news_loader = registry.news
+        assert news_loader is not None
+        assert registry.news is news_loader
+
+        # Access and verify events loader property
+        events_loader = registry.events
+        assert events_loader is not None
+        assert registry.events is events_loader
+
 
 # ===========================================================================
 # CQRS — Schedule Query Handler

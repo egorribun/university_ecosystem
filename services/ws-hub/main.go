@@ -49,7 +49,9 @@ func main() {
 	}
 
 	nc := initNats(ctx, cfg, logger)
-	defer nc.Close()
+	if nc != nil {
+		defer nc.Close()
+	}
 
 	rdb := initRedis(ctx, cfg, logger)
 	if rdb != nil {
@@ -78,7 +80,7 @@ func initLogger() *slog.Logger {
 	return slog.New(handler)
 }
 
-func initNats(ctx context.Context, cfg *config.Config, logger *slog.Logger) *nats.Conn {
+var initNats = func(ctx context.Context, cfg *config.Config, logger *slog.Logger) *nats.Conn {
 	natsOpts := []nats.Option{
 		nats.RetryOnFailedConnect(true),
 		nats.MaxReconnects(-1),

@@ -120,6 +120,8 @@ func TestInitRedis_FailsGracefully(t *testing.T) {
 }
 
 func TestSetupHubAndHandlers_ProbesHealth(t *testing.T) {
+	http.DefaultServeMux = http.NewServeMux()
+
 	cfg := &config.Config{
 		Port:           "8081",
 		BackendURL:     "http://localhost:1",
