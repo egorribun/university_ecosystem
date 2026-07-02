@@ -10,6 +10,9 @@
 
 name: Setup Node.js
 
+permissions:
+  contents: read
+
 on:
     workflow_call:
         inputs:
@@ -48,4 +51,3 @@ jobs:
             - name: Install dependencies
               if: ${{ inputs.install-deps }}
               run: npm ci
-

@@ -15,13 +15,13 @@ RUN --mount=type=cache,id=apt-lists-test,target=/var/lib/apt/lists \
     && rm -rf /var/lib/apt/lists/* \
     && groupadd --system --gid 10001 app \
     && useradd --system --uid 10001 --gid app --home-dir /home/app --shell /bin/bash app
-RUN python -m pip install --no-cache-dir --upgrade pip==26.0
+RUN python -m pip install --no-cache-dir --upgrade pip==26.1
 
 # MOD-30-05: Install Rust toolchain from official Docker image instead of
 # curl|sh (supply chain risk — executing unversioned script from internet).
 # Pin to a specific Rust version for reproducible builds.
-COPY --from=rust:1.94.1-slim-bookworm /usr/local/rustup /usr/local/rustup
-COPY --from=rust:1.94.1-slim-bookworm /usr/local/cargo /usr/local/cargo
+COPY --from=rust:1.94.1-slim-bookworm@sha256:5ae2d2ef9875c9c2407bf9b5678e6375304f7ecf8ea46b23e403a5690ec357ec /usr/local/rustup /usr/local/rustup
+COPY --from=rust:1.94.1-slim-bookworm@sha256:5ae2d2ef9875c9c2407bf9b5678e6375304f7ecf8ea46b23e403a5690ec357ec /usr/local/cargo /usr/local/cargo
 ENV RUSTUP_HOME="/usr/local/rustup" \
     CARGO_HOME="/usr/local/cargo" \
     PATH="/usr/local/cargo/bin:$PATH"

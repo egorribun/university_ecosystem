@@ -1,6 +1,9 @@
 # Reusable Frontend Tests Workflow
 name: Frontend Tests
 
+permissions:
+  contents: read
+
 on:
   workflow_call:
     inputs:
@@ -49,9 +52,9 @@ jobs:
         # W142 polish-v3 — taiki-e/install-action wasm-pack broken (drager/
         # wasm-pack 404; rustwasm/wasm-pack canonical since v0.14.0). Same
         # fix as W141 polish-v2 visual-audit.yml + W142 chromatic.yml.
-        run: |
-          curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
-          wasm-pack --version
+        uses: taiki-e/install-action@54420ca6e3a4cab262aeabc1af4f52908ca28931 # wasm-pack
+        with:
+          tool: wasm-pack@0.13.1
 
       - name: Build WASM modules
         run: |
@@ -102,9 +105,9 @@ jobs:
         # W142 polish-v3 — taiki-e/install-action wasm-pack broken (drager/
         # wasm-pack 404; rustwasm/wasm-pack canonical since v0.14.0). Same
         # fix as W141 polish-v2 visual-audit.yml + W142 chromatic.yml.
-        run: |
-          curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
-          wasm-pack --version
+        uses: taiki-e/install-action@54420ca6e3a4cab262aeabc1af4f52908ca28931 # wasm-pack
+        with:
+          tool: wasm-pack@0.13.1
 
       - name: Build WASM modules
         run: |
@@ -153,16 +156,16 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      # P0-01 (audit 2026-03-06): Replaced unsafe `curl | sh` with taiki-e/install-action.
+      # P0-01 (audit 2026-03-06): Replaced unsafe shell-piped installer with taiki-e/install-action.
       # The action verifies SHA256 checksums from official GitHub releases, preventing
       # supply chain attacks via DNS hijacking or CDN compromise (OWASP CI/CD C-PPE-1).
       - name: Install wasm-pack
         # W142 polish-v3 — taiki-e/install-action wasm-pack broken (drager/
         # wasm-pack 404; rustwasm/wasm-pack canonical since v0.14.0). Same
         # fix as W141 polish-v2 visual-audit.yml + W142 chromatic.yml.
-        run: |
-          curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
-          wasm-pack --version
+        uses: taiki-e/install-action@54420ca6e3a4cab262aeabc1af4f52908ca28931 # wasm-pack
+        with:
+          tool: wasm-pack@0.13.1
 
       - name: Build rust-crypto
         run: |
@@ -267,9 +270,9 @@ jobs:
         # W142 polish-v3 — taiki-e/install-action wasm-pack broken (drager/
         # wasm-pack 404; rustwasm/wasm-pack canonical since v0.14.0). Same
         # fix as W141 polish-v2 visual-audit.yml + W142 chromatic.yml.
-        run: |
-          curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
-          wasm-pack --version
+        uses: taiki-e/install-action@54420ca6e3a4cab262aeabc1af4f52908ca28931 # wasm-pack
+        with:
+          tool: wasm-pack@0.13.1
 
       - name: Run Lighthouse CI
         run: npm run lhci
@@ -281,4 +284,3 @@ jobs:
           name: lighthouse-reports
           path: ${{ inputs.working-directory }}/.lighthouseci
           if-no-files-found: warn
-

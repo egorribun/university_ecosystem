@@ -38,7 +38,7 @@ RUN CGO_ENABLED=0 GOOS=linux go build \
 # (services/file-processor/cmd/file-processor/main.go:277-280) but distroless
 # images lack any HTTP/gRPC client. Same pattern as authzed/spicedb image
 # (used at docker-compose.full.yml:435).
-FROM alpine:3.20 AS health-probe
+FROM alpine:3.20@sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc AS health-probe
 ARG GRPC_HEALTH_PROBE_VERSION=v0.4.27
 # Retry to tolerate transient network errors from the GitHub release CDN under
 # bandwidth contention with parallel compose builds. -O truncates on retry, so

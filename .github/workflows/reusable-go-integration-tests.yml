@@ -10,6 +10,9 @@
 # 30 days falls below 1 % per ADR-022 §Migration step 5.
 name: Go Integration Tests
 
+permissions:
+  contents: read
+
 on:
   workflow_call:
     inputs:

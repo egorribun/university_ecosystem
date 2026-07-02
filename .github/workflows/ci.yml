@@ -56,13 +56,15 @@ jobs:
         with:
           python-version: "3.14"
 
+      - name: Install uv
+        uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
+
       - name: Verify uv.lock is up to date (MOD-W5-03)
         # MOD-03 (audit Wave 12): explicit error annotation in GitHub Actions UI panel.
         # `uv lock --check` already exits non-zero on mismatch; the `|| (... && exit 1)`
         # addition surfaces the error in the Checks summary, not just the raw log.
         # Note: uv.lock is generated for the project's Python version (3.14).
         run: |
-          pip install uv
           uv lock --check || (echo "::error::uv.lock is out of sync — run 'uv lock' locally and commit the updated lockfile" && exit 1)
 
       - name: Run pre-commit (check only)
@@ -893,7 +895,9 @@ jobs:
 
       - name: Build backend image for scanning
         # LOW-W19: root Dockerfile does not exist; backend image uses backend.Dockerfile
-        run: docker build -t university-ecosystem/backend:${{ github.sha }} -f backend.Dockerfile .
+        env:
+          IMAGE_TAG: ${{ github.sha }}
+        run: docker build -t "university-ecosystem/backend:${IMAGE_TAG}" -f backend.Dockerfile .
 
       - name: Run Trivy vulnerability scanner
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.28.0
@@ -943,12 +947,14 @@ jobs:
             --set gateway.config.jwtSecret=ci-placeholder
 
       - name: Helm template — dry-run
+        env:
+          IMAGE_TAG: ${{ github.sha }}
         run: |  # pragma: allowlist secret
           helm template university-ecosystem charts/university-ecosystem/ \
             --set redis.enabled=false \
             --set nats.enabled=false \
             --set gateway.config.jwtSecret=ci-placeholder \
-            --set image.tag=test-sha-${{ github.sha }} \
+            --set image.tag="test-sha-${IMAGE_TAG}" \
             > /tmp/backend-manifests.yaml
           echo "Helm template rendered successfully ($(wc -l < /tmp/backend-manifests.yaml) lines)"
 
@@ -1193,13 +1199,13 @@ jobs:
           python-version: "3.14"
 
       - name: Install uv
-        run: pip install uv
+        uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
 
       - name: Install Python dependencies (with maturin)
         run: uv sync --group dev
 
       - name: Cache Cargo registry
-        uses: actions/cache@v6
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: |
             ~/.cargo/registry/index/
@@ -1224,7 +1230,7 @@ jobs:
 
       - name: Upload ASan report on failure
         if: failure()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: asan-report
           path: "asan-report.*"
@@ -1307,9 +1313,9 @@ jobs:
       - name: Install wasm-pack
         # rustwasm canonical curl installer (W141 polish-v2 / W142 polish-v3:
         # taiki-e/install-action hardcodes the old drager/wasm-pack repo → 404).
-        run: |
-          curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
-          wasm-pack --version
+        uses: taiki-e/install-action@54420ca6e3a4cab262aeabc1af4f52908ca28931 # wasm-pack
+        with:
+          tool: wasm-pack@0.13.1
 
       - name: rust-crypto — browser-parity KATs (wasm-pack, headless Chrome)
         # ubuntu-latest preinstalls Chrome + sets CHROMEWEBDRIVER; fall back to

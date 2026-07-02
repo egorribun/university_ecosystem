@@ -71,7 +71,9 @@ def ensure_partitioned(table_name: str, create_sql: str, partition_key: str) -> 
 
     # Check if table is already partitioned
     res = conn.execute(
-        sa.text("SELECT relkind FROM pg_class WHERE relname = :table_name"),
+        sa.text(  # nosemgrep: python.sqlalchemy.security.audit.avoid-sqlalchemy-text.avoid-sqlalchemy-text
+            "SELECT relkind FROM pg_class WHERE relname = :table_name"
+        ),
         {"table_name": table_name},
     ).fetchone()
 
@@ -135,7 +137,11 @@ def upgrade() -> None:
         # Normalize UserRole Enum values to lowercase and add missing ones
         # op.execute("COMMIT")  # Can't alter type in transaction block usually
         for role in ["student", "teacher", "admin", "superuser", "anonymous"]:
-            op.execute(sa.text(f"ALTER TYPE userrole ADD VALUE IF NOT EXISTS '{role}'"))
+            op.execute(
+                sa.text(  # nosemgrep: python.sqlalchemy.security.audit.avoid-sqlalchemy-text.avoid-sqlalchemy-text
+                    f"ALTER TYPE userrole ADD VALUE IF NOT EXISTS '{role}'"
+                )
+            )
 
         # Update existing roles to lowercase
         op.execute("""

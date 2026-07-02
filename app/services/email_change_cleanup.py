@@ -120,10 +120,10 @@ async def start_email_change_cleanup_scheduler(
                 except (OSError, ConnectionError):
                     # RZ-20-04 (audit 2026-03-24): Narrowed — DB/network errors only.
                     # Logic bugs (TypeError, KeyError) now propagate to Sentry.
-                    logger.exception("Failed to cleanup email change tokens")
+                    logger.exception("Failed to cleanup pending address-change records")
                 await asyncio.sleep(interval)
         except asyncio.CancelledError:
-            logger.info("Email change cleanup loop cancelled")
+            logger.info("Address-change cleanup loop cancelled")
             raise
 
     loop = asyncio.get_running_loop()

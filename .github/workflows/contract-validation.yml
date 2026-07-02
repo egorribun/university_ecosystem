@@ -75,7 +75,7 @@ jobs:
           node-version: "22"
 
       - name: Install Spectral CLI
-        run: npm install --global @stoplight/spectral-cli@6
+        run: npm install --global @stoplight/spectral-cli@6.16.1
 
       - name: Run Spectral lint
         # Continue-on-error so SARIF is always uploaded, even on failures.

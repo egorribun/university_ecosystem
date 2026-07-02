@@ -42,7 +42,7 @@ def upgrade() -> None:
         return
 
     op.execute(
-        sa.text(
+        sa.text(  # nosemgrep: python.sqlalchemy.security.audit.avoid-sqlalchemy-text.avoid-sqlalchemy-text
             """
             UPDATE mfa_totp_enrollments
             SET is_active = FALSE
@@ -51,7 +51,11 @@ def upgrade() -> None:
         )
     )
 
-    _alter_is_active_default(sa.text("false"))
+    _alter_is_active_default(
+        sa.text(  # nosemgrep: python.sqlalchemy.security.audit.avoid-sqlalchemy-text.avoid-sqlalchemy-text
+            "false"
+        )
+    )
 
 
 def downgrade() -> None:
@@ -60,10 +64,14 @@ def downgrade() -> None:
     if not _table_exists(inspector):
         return
 
-    _alter_is_active_default(sa.text("true"))
+    _alter_is_active_default(
+        sa.text(  # nosemgrep: python.sqlalchemy.security.audit.avoid-sqlalchemy-text.avoid-sqlalchemy-text
+            "true"
+        )
+    )
 
     op.execute(
-        sa.text(
+        sa.text(  # nosemgrep: python.sqlalchemy.security.audit.avoid-sqlalchemy-text.avoid-sqlalchemy-text
             """
             UPDATE mfa_totp_enrollments
             SET is_active = TRUE

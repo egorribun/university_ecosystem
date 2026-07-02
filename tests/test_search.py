@@ -23,6 +23,13 @@ async def test_search_service_lazy_client():
         )
         assert service._client is client
 
+    # Client without http_auth
+    service_no_auth = SearchService(hosts="http://localhost:9200", http_auth=None)
+    with patch("app.services.search.AsyncElasticsearch") as mock_ae_no_auth:
+        client_no_auth = service_no_auth.client
+        assert client_no_auth is not None
+        mock_ae_no_auth.assert_called_once_with(hosts=["http://localhost:9200"])
+
 
 @pytest.mark.anyio
 async def test_search_service_close():
@@ -33,6 +40,11 @@ async def test_search_service_close():
     await service.close()
     mock_client.close.assert_called_once()
     assert service._client is None
+
+    # Close when client is already None
+    service_no_client = SearchService()
+    await service_no_client.close()
+    assert service_no_client._client is None
 
 
 @pytest.mark.anyio
@@ -48,6 +60,16 @@ async def test_search_service_ensure_index():
     mock_client.indices.exists.assert_called_once_with(index="test-index")
     mock_client.indices.create.assert_called_once_with(
         index="test-index", body={"mappings": {"foo": "bar"}}
+    )
+
+    # Index does not exist and no mappings provided
+    mock_client.indices.exists.reset_mock()
+    mock_client.indices.create.reset_mock()
+    mock_client.indices.exists.return_value = False
+    await service.ensure_index("test-index-no-mappings", mappings=None)
+    mock_client.indices.exists.assert_called_once_with(index="test-index-no-mappings")
+    mock_client.indices.create.assert_called_once_with(
+        index="test-index-no-mappings", body={}
     )
 
     # Index exists
@@ -82,7 +104,13 @@ async def test_search_service_bulk_index():
     documents = [{"id": "1", "val": "A"}, {"id": "2", "val": "B"}]
 
     with patch("app.services.search.async_bulk", new_callable=AsyncMock) as mock_bulk:
-        mock_bulk.return_value = (2, [])
+
+        async def mock_bulk_consume(client, actions, **kwargs):
+            # Consume the generator to ensure the inner generate_actions function is executed
+            list(actions)
+            return 2, []
+
+        mock_bulk.side_effect = mock_bulk_consume
         success, failed = await service.bulk_index("test-index", documents)
 
         assert success == 2
@@ -149,6 +177,11 @@ async def test_search_service_search_validation_and_execution():
     assert body["size"] == 100
     assert body["from"] == 10000
 
+    # Search with highlight=False
+    mock_client.search.reset_mock()
+    await service.search("test-index", "query", fields=["title"], highlight=False)
+    assert "highlight" not in mock_client.search.call_args.kwargs["body"]
+
 
 @pytest.mark.anyio
 async def test_search_service_suggest():
@@ -175,6 +208,11 @@ async def test_search_service_suggest():
     # Capped size checks (max 20)
     body = mock_client.search.call_args.kwargs["body"]
     assert body["suggest"]["suggestions"]["completion"]["size"] == 20
+
+    # Empty suggestions branch cover
+    mock_client.search.return_value = {}
+    res_empty = await service.suggest("test-index", "prefix-q")
+    assert res_empty == []
 
 
 def test_get_search_service():

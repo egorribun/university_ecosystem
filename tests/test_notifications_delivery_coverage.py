@@ -334,3 +334,66 @@ async def test_translations_populate_localized_columns(
     assert notif.title_en == "Title-EN"
     assert notif.body == "Тело"
     assert notif.body_en == "Body-EN"
+
+
+@pytest.mark.asyncio
+async def test_outbox_event_created_on_delivery(
+    db_session, user_factory, push_configured, no_process_results, monkeypatch
+):
+    from sqlalchemy import delete
+
+    from app.models.domain_events import StoredEvent
+
+    user = await user_factory()
+    await _add_subscription(db_session, user.id)
+
+    def _fake_send(s, payload):
+        return WebPushResult(
+            subscription_id=s.id,
+            endpoint=s.endpoint,
+            user_id=s.user_id,
+            status="sent",
+            status_code=201,
+        )
+
+    monkeypatch.setattr(notifications_delivery, "send_web_push", _fake_send)
+
+    # Clean out any old stored events
+    await db_session.execute(delete(StoredEvent))
+
+    created = await create_notifications_for_users(
+        db_session,
+        title="Outbox Test",
+        user_ids=[user.id],
+    )
+    assert created == 1
+
+    # Check outbox events in DB
+    events = (await db_session.execute(select(StoredEvent))).scalars().all()
+    assert len(events) == 1
+    assert events[0].event_type == "notification.delivery_requested"
+    assert "notification_ids" in events[0].payload
+
+
+@pytest.mark.asyncio
+async def test_webpush_timeout_records_error(
+    db_session, user_factory, push_configured, no_process_results, monkeypatch
+):
+    user = await user_factory()
+    await _add_subscription(db_session, user.id)
+
+    def _timeout_send(s, payload):
+        raise TimeoutError("simulate timeout")
+
+    monkeypatch.setattr(notifications_delivery, "send_web_push", _timeout_send)
+
+    await create_notifications_for_users(
+        db_session,
+        title="Timeout Test",
+        user_ids=[user.id],
+    )
+
+    rows = await _delivery_rows_for_user(db_session, user.id)
+    assert len(rows) == 1
+    assert rows[0].status == "error"
+    assert "push delivery timed out" in rows[0].detail

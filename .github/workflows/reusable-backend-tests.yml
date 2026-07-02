@@ -1,6 +1,9 @@
 # Reusable Backend Tests Workflow
 name: Backend Tests
 
+permissions:
+    contents: read
+
 on:
     workflow_call:
         inputs:
@@ -122,8 +125,10 @@ jobs:
             - name: Check differential coverage (diff-cover)
               if: ${{ github.event_name == 'pull_request' && inputs.coverage-threshold > 0 }}
               shell: pwsh
+              env:
+                COMPARE_BRANCH: ${{ github.base_ref }}
               run: |
-                $compareBranch = "${{ github.base_ref }}"
+                $compareBranch = $env:COMPARE_BRANCH
                 git fetch origin $compareBranch
                 uv run diff-cover coverage.xml --compare-branch=origin/$compareBranch --fail-under=80
 
@@ -231,5 +236,3 @@ jobs:
                   name: postgres-test-failures-${{ inputs.test-group-name }}
                   path: pytest-report.xml
                   if-no-files-found: ignore
-
-

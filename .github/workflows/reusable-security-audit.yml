@@ -1,6 +1,9 @@
 # Reusable Security Audit Workflow
 name: Security Audit
 
+permissions:
+  contents: read
+
 on:
   workflow_call:
     inputs:
@@ -158,7 +161,7 @@ jobs:
           cache: true
 
       - name: Install govulncheck
-        run: go install golang.org/x/vuln/cmd/govulncheck@latest
+        run: go install golang.org/x/vuln/cmd/govulncheck@v1.5.0
 
       - name: Run govulncheck on all Go modules
         # Audit all workspace modules. govulncheck fails if a directory has no packages,

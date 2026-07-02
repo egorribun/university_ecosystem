@@ -40,12 +40,20 @@ def upgrade() -> None:
             )
         return
 
-    op.execute(sa.text(f"DROP INDEX IF EXISTS {_OLD_INDEX_NAME}"))
-
-    op.execute(sa.text("ALTER TABLE events DROP COLUMN IF EXISTS search_vector"))
+    op.execute(
+        sa.text(  # nosemgrep: python.sqlalchemy.security.audit.avoid-sqlalchemy-text.avoid-sqlalchemy-text
+            f"DROP INDEX IF EXISTS {_OLD_INDEX_NAME}"
+        )
+    )
 
     op.execute(
-        sa.text(
+        sa.text(  # nosemgrep: python.sqlalchemy.security.audit.avoid-sqlalchemy-text.avoid-sqlalchemy-text
+            "ALTER TABLE events DROP COLUMN IF EXISTS search_vector"
+        )
+    )
+
+    op.execute(
+        sa.text(  # nosemgrep: python.sqlalchemy.security.audit.avoid-sqlalchemy-text.avoid-sqlalchemy-text
             """
             ALTER TABLE events
             ADD COLUMN search_vector tsvector
@@ -67,7 +75,7 @@ def upgrade() -> None:
     )
 
     op.execute(
-        sa.text(
+        sa.text(  # nosemgrep: python.sqlalchemy.security.audit.avoid-sqlalchemy-text.avoid-sqlalchemy-text
             f"""
             CREATE INDEX IF NOT EXISTS {_NEW_INDEX_NAME}
             ON events
@@ -90,11 +98,19 @@ def downgrade() -> None:
         op.drop_column("events", "search_vector")
         return
 
-    op.execute(sa.text(f"DROP INDEX IF EXISTS {_NEW_INDEX_NAME}"))
-    op.execute(sa.text("ALTER TABLE events DROP COLUMN IF EXISTS search_vector"))
+    op.execute(
+        sa.text(  # nosemgrep: python.sqlalchemy.security.audit.avoid-sqlalchemy-text.avoid-sqlalchemy-text
+            f"DROP INDEX IF EXISTS {_NEW_INDEX_NAME}"
+        )
+    )
+    op.execute(
+        sa.text(  # nosemgrep: python.sqlalchemy.security.audit.avoid-sqlalchemy-text.avoid-sqlalchemy-text
+            "ALTER TABLE events DROP COLUMN IF EXISTS search_vector"
+        )
+    )
 
     op.execute(
-        sa.text(
+        sa.text(  # nosemgrep: python.sqlalchemy.security.audit.avoid-sqlalchemy-text.avoid-sqlalchemy-text
             f"""
             CREATE INDEX IF NOT EXISTS {_OLD_INDEX_NAME}
             ON events

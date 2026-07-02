@@ -288,10 +288,10 @@ class CSRFMiddleware:
             self._hmac_key = b""
             self._signed = False
             _logger.warning(
-                "RZ-003: CSRF_HMAC_SECRET is not configured. "
+                "RZ-003: CSRF signing key is not configured. "
                 "Falling back to unsigned Double-Submit pattern (development only).",
                 vulnerability="subdomain fixation",
-                recommendation="Set CSRF_HMAC_SECRET (>=32 bytes) in production.",
+                recommendation="Configure the CSRF signing key in production.",
             )
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:

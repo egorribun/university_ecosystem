@@ -196,3 +196,121 @@ async def test_unified_search_connection_error_fallback(
         if hasattr(app.state, "dishka_container"):
             await app.state.dishka_container.close()
         app.state.dishka_container = original_container
+
+
+@pytest.mark.asyncio
+async def test_unified_search_only_events(
+    async_client: AsyncClient, mock_user, mock_search_service
+):
+    mock_search_service.search.return_value = {
+        "total": 1,
+        "hits": [
+            {
+                "id": "event-2",
+                "score": 1.8,
+                "source": {
+                    "title": "Only Event Title",
+                    "description": "Only event description",
+                },
+                "highlights": {},
+            }
+        ],
+    }
+
+    app.dependency_overrides[get_current_user] = lambda: mock_user
+
+    class TestProvider(Provider):
+        @provide(scope=Scope.APP)
+        def search_svc(self) -> SearchService:
+            return mock_search_service
+
+    original_container = getattr(app.state, "dishka_container", None)
+    app.state.dishka_container = make_async_container(TestProvider())
+
+    try:
+        resp = await async_client.get(
+            "/search",
+            params={"q": "event-only", "type": "events", "limit": 10},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "events" in data["results"]
+        assert "news" not in data["results"]
+        assert len(data["results"]["events"]) == 1
+        assert data["results"]["events"][0]["id"] == "event-2"
+
+    finally:
+        if hasattr(app.state, "dishka_container"):
+            await app.state.dishka_container.close()
+        app.state.dishka_container = original_container
+
+
+@pytest.mark.asyncio
+async def test_unified_search_invalid_type(
+    async_client: AsyncClient, mock_user, mock_search_service
+):
+    app.dependency_overrides[get_current_user] = lambda: mock_user
+
+    class TestProvider(Provider):
+        @provide(scope=Scope.APP)
+        def search_svc(self) -> SearchService:
+            return mock_search_service
+
+    original_container = getattr(app.state, "dishka_container", None)
+    app.state.dishka_container = make_async_container(TestProvider())
+
+    try:
+        resp = await async_client.get(
+            "/search",
+            params={"q": "invalid", "type": "invalid_type"},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["results"] == {}
+
+    finally:
+        if hasattr(app.state, "dishka_container"):
+            await app.state.dishka_container.close()
+        app.state.dishka_container = original_container
+
+
+@pytest.mark.asyncio
+async def test_unified_search_non_string_fallback(
+    async_client: AsyncClient, mock_user, mock_search_service
+):
+    mock_search_service.search.return_value = {
+        "total": 1,
+        "hits": [
+            {
+                "id": "news-non-str",
+                "score": 1.0,
+                # value of content is None, which triggers line 112 of search.py
+                "source": {"title": "Title", "content": None},
+                "highlights": {},
+            }
+        ],
+    }
+
+    app.dependency_overrides[get_current_user] = lambda: mock_user
+
+    class TestProvider(Provider):
+        @provide(scope=Scope.APP)
+        def search_svc(self) -> SearchService:
+            return mock_search_service
+
+    original_container = getattr(app.state, "dishka_container", None)
+    app.state.dishka_container = make_async_container(TestProvider())
+
+    try:
+        resp = await async_client.get(
+            "/search",
+            params={"q": "test", "type": "news"},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["results"]["news"][0]["summary"] == ""
+
+    finally:
+        if hasattr(app.state, "dishka_container"):
+            await app.state.dishka_container.close()
+        app.state.dishka_container = original_container

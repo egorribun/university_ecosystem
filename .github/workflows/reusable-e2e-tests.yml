@@ -2,6 +2,9 @@
 # Runs Playwright E2E tests against a running backend
 name: E2E Tests
 
+permissions:
+  contents: read
+
 on:
   workflow_call:
     inputs:
@@ -103,9 +106,9 @@ jobs:
       # boundary as the SHA-pinned action's upstream source). Same fix as
       # W141 polish-v2 visual-audit.yml + W142 chromatic.yml.
       - name: Install wasm-pack
-        run: |
-          curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
-          wasm-pack --version
+        uses: taiki-e/install-action@54420ca6e3a4cab262aeabc1af4f52908ca28931 # wasm-pack
+        with:
+          tool: wasm-pack@0.13.1
 
       - name: Install Playwright
         working-directory: frontend
@@ -254,5 +257,3 @@ jobs:
           name: playwright-traces-${{ inputs.browser }}
           path: frontend/test-results/
           retention-days: 7
-
-

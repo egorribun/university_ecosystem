@@ -12,6 +12,7 @@ import (
 
 	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // respondRESP writes a canned RESP reply for the given uppercased request
@@ -327,3 +328,65 @@ func TestCommandsFailWhenRedisUnavailable(t *testing.T) {
 		})
 	}
 }
+
+func TestNewRedisClient(t *testing.T) {
+	oldURL := redisURL
+	defer func() { redisURL = oldURL }()
+
+	// Valid URL
+	redisURL = "redis://localhost:6379/0"
+	client, err := newRedisClient()
+	assert.NoError(t, err)
+	assert.NotNil(t, client)
+	_ = client.Close()
+
+	// Invalid URL
+	redisURL = "invalid-url"
+	client, err = newRedisClient()
+	assert.Error(t, err)
+	assert.Nil(t, client)
+}
+
+func TestConfirmAction_Stdin(t *testing.T) {
+	// Backup original confirmActionFunc
+	oldConfirmFunc := confirmActionFunc
+	defer func() { confirmActionFunc = oldConfirmFunc }()
+	confirmActionFunc = confirmAction
+
+	// Test positive confirmation
+	r, w, err := os.Pipe()
+	require.NoError(t, err)
+	oldStdin := os.Stdin
+	os.Stdin = r
+	defer func() { os.Stdin = oldStdin }()
+
+	_, err = w.Write([]byte("y\n"))
+	require.NoError(t, err)
+	assert.True(t, confirmActionFunc("Prompt?"))
+
+	// Test negative confirmation
+	r2, w2, err := os.Pipe()
+	require.NoError(t, err)
+	os.Stdin = r2
+
+	_, err = w2.Write([]byte("N\n"))
+	require.NoError(t, err)
+	assert.False(t, confirmActionFunc("Prompt?"))
+
+	// Cleanup
+	_ = w.Close()
+	_ = r.Close()
+	_ = w2.Close()
+	_ = r2.Close()
+}
+
+func TestMain_Execute(t *testing.T) {
+	oldArgs := os.Args
+	defer func() { os.Args = oldArgs }()
+	os.Args = []string{"uni-cli", "--help"}
+
+	assert.NotPanics(t, func() {
+		main()
+	})
+}
+

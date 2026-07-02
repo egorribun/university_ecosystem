@@ -11,9 +11,4 @@ RUN apt-get update \
         libpq-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Pre-install backend dependencies to speed up container start
-COPY root/requirements.txt /tmp/pip-tmp/requirements.txt
-RUN pip install --no-cache-dir -r /tmp/pip-tmp/requirements.txt \
-    && rm -rf /tmp/pip-tmp
-
 WORKDIR /workspace
