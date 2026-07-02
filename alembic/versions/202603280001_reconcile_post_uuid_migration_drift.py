@@ -276,19 +276,13 @@ def upgrade() -> None:
     """Reconcile ORM models with DB after UUID v7 migration."""
 
     # ------------------------------------------------------------------
-    # 0. Drop data_access_logs_default partition (autogenerate artefact)
-    #    May not exist on fresh DBs — guard with DO $$ block.
+    # 0. data_access_logs_default — intentionally KEPT.
+    #    Previously this block dropped the DEFAULT partition as an
+    #    autogenerate clean-up step; however 202607020001 re-creates it
+    #    anyway and the DEFAULT is a permanent safety-net that prevents
+    #    CheckViolationError on inserts that fall outside every explicit
+    #    range partition.  Dropping it here breaks the CI test suite.
     # ------------------------------------------------------------------
-    op.execute(
-        sa.text(
-            "DO $$ BEGIN "
-            "IF EXISTS (SELECT 1 FROM pg_class WHERE relname = 'data_access_logs_default') THEN "
-            "ALTER TABLE data_access_logs DETACH PARTITION data_access_logs_default; "
-            "DROP TABLE data_access_logs_default; "
-            "END IF; "
-            "END $$"
-        )
-    )
 
     # ------------------------------------------------------------------
     # 1. Drop all shadow / uuid_id / stale indexes
