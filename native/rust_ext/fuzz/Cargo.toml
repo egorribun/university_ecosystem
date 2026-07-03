@@ -12,6 +12,7 @@ libfuzzer-sys = "0.4"
 
 [dependencies.rust_ext]
 path = ".."
+default-features = false
 
 [dependencies.pyo3-sanitizer]
 path = "../../../crates/pyo3-sanitizer"
