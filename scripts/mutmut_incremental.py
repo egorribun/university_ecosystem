@@ -1,14 +1,35 @@
 import subprocess
 import sys
-import xml.etree.ElementTree as ET
+from collections.abc import Sequence
+from shutil import which
+
+from defusedxml import ElementTree as ET
+
+
+def resolve_executable(name: str) -> str:
+    executable = which(name)
+    if executable is None:
+        print(f"Required executable not found on PATH: {name}")
+        sys.exit(1)
+    return executable
+
+
+GIT = resolve_executable("git")
+MUTMUT = resolve_executable("mutmut")
+
+
+def run_command(
+    args: Sequence[str], **kwargs: object
+) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(args, **kwargs)  # noqa: S603 - args use resolved allowlisted executables, shell=False.
 
 
 def get_changed_files():
     # Try to compare with origin/main, then main, then HEAD~1 as fallback
     for target in ["origin/main", "main", "HEAD~1"]:
         try:
-            res = subprocess.run(
-                ["git", "diff", "--name-only", target],
+            res = run_command(
+                [GIT, "diff", "--name-only", target],
                 capture_output=True,
                 text=True,
                 check=True,
@@ -20,8 +41,8 @@ def get_changed_files():
             continue
     # Fallback to local git diff against HEAD
     try:
-        res = subprocess.run(
-            ["git", "diff", "--name-only"], capture_output=True, text=True, check=True
+        res = run_command(
+            [GIT, "diff", "--name-only"], capture_output=True, text=True, check=True
         )
         return [f.strip() for f in res.stdout.splitlines() if f.strip()]
     except subprocess.CalledProcessError:
@@ -44,14 +65,12 @@ def main():
     print(f"Running mutmut for modified files: {paths_arg}")
 
     # Run mutmut
-    run_res = subprocess.run(
-        ["mutmut", "run", f"--paths-to-mutate={paths_arg}"], check=False
-    )
+    run_command([MUTMUT, "run", f"--paths-to-mutate={paths_arg}"], check=False)
 
     # Generate and parse junit report
     print("Generating mutation report...")
-    junit_res = subprocess.run(
-        ["mutmut", "junit"], capture_output=True, text=True, check=False
+    junit_res = run_command(
+        [MUTMUT, "junit"], capture_output=True, text=True, check=False
     )
 
     if junit_res.returncode != 0:
