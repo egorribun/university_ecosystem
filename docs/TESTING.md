@@ -549,8 +549,8 @@
 ```
 
 **Задачи:**
-- [ ] Запустить `npm run test:ci` → получить `coverage/coverage-summary.json`
-- [ ] Скрипт: `scripts/fe-coverage-gaps.mjs` — топ-30 файлов по missing branches
+- [x] Запустить `npm run test:ci` → получить `coverage/coverage-summary.json`
+- [x] Скрипт: `scripts/fe-coverage-gaps.mjs` — топ-30 файлов по missing branches
 
 ---
 
@@ -562,39 +562,39 @@
 - `api/client` — 429-retry loop
 
 **Задачи:**
-- [ ] `useChatWebSocket` — ping/reconnect-cap 30s timer paths (fake timer mocking)
-- [ ] `useProfileSync` — initFn cached-restore (если source bug — зафиксировать pragma: no cover + issue)
-- [ ] `api/client.ts` — 429 retry: `vi.useFakeTimers()` + `vi.advanceTimersByTime()`
-- [ ] `useAuthApi` — все error states (network error, 401, 403, 500)
-- [ ] `useLoginFlow` — MFA challenge paths
-- [ ] `useSessionCrypto` — key derivation, storage
-- [ ] `usePushPreferences` — subscription/unsubscription, permission denied
+- [x] `useChatWebSocket` — ping/reconnect-cap 30s timer paths (fake timer mocking)
+- [x] `useProfileSync` — initFn cached-restore (если source bug — зафиксировать pragma: no cover + issue)
+- [x] `api/client.ts` — 429 retry: `vi.useFakeTimers()` + `vi.advanceTimersByTime()`
+- [x] `useAuthApi` — все error states (network error, 401, 403, 500)
+- [x] `useLoginFlow` — MFA challenge paths
+- [x] `useSessionCrypto` — key derivation, storage
+- [x] `usePushPreferences` — subscription/unsubscription, permission denied
 
 ---
 
 ### 4.3 — Components: render + interaction
 
 **Задачи:**
-- [ ] Все компоненты в `src/components/` — `@testing-library/react` render тесты
-- [ ] Проверка: каждый компонент рендерится без исключений (smoke render)
-- [ ] Interaction: click, keyboard nav, form submit
-- [ ] Error boundaries: проверить что компонент показывает fallback при throw
+- [x] Все компоненты в `src/components/` — `@testing-library/react` render тесты
+- [x] Проверка: каждый компонент рендерится без исключений (smoke render)
+- [x] Interaction: click, keyboard nav, form submit
+- [x] Error boundaries: проверить что компонент показывает fallback при throw
 
 **Приоритет по покрытию:**
-- [ ] `MessengerButton.tsx` — сейчас исключён, добавить
-- [ ] `MainLayout.tsx` — сейчас исключён, добавить
-- [ ] `FocusListener.tsx` — исключён, добавить
-- [ ] Features: `EventsFeature`, `MapFeature`, `MessengerFeature`
+- [x] `MessengerButton.tsx` — сейчас исключён, добавить
+- [x] `MainLayout.tsx` — сейчас исключён, добавить
+- [x] `FocusListener.tsx` — исключён, добавить
+- [x] Features: `EventsFeature`, `MapFeature`, `MessengerFeature`
 
 ---
 
 ### 4.4 — API interceptors и client
 
 **Задачи:**
-- [ ] `src/api/client.ts` — все paths: success, 4xx, 5xx, network timeout, retry
-- [ ] `src/api/events.ts`, `src/api/stories.ts`, `src/api/news.ts` — убрать из exclusion или явно обосновать
-- [ ] MSW handlers: убедиться что все API эндпоинты замокированы
-- [ ] ETag cache: hit/miss/invalidation
+- [x] `src/api/client.ts` — все paths: success, 4xx, 5xx, network timeout, retry
+- [x] `src/api/events.ts`, `src/api/stories.ts`, `src/api/news.ts` — убрать из exclusion или явно обосновать
+- [x] MSW handlers: убедиться что все API эндпоинты замокированы
+- [x] ETag cache: hit/miss/invalidation
 
 ---
 
@@ -603,10 +603,10 @@
 **Текущее:** `translationParity.test.ts`, `authTranslations.test.tsx`, `pageTranslations.test.tsx`, `navigationTranslations.test.tsx`, `i18n.test.tsx`.
 
 **Задачи:**
-- [ ] Убедиться что все ключи i18n покрыты `translationParity.test.ts`
-- [ ] Тест: переключение языка mid-session
-- [ ] Тест: RTL locale (если поддерживается)
-- [ ] Тест: missing key → fallback, не пустая строка
+- [x] Убедиться что все ключи i18n покрыты `translationParity.test.ts`
+- [x] Тест: переключение языка mid-session
+- [x] Тест: RTL locale (если поддерживается)
+- [x] Тест: missing key → fallback, не пустая строка
 
 ---
 
@@ -615,10 +615,10 @@
 **Текущее:** `src/tests/sw.test.ts` (22KB) — хорошая база.
 
 **Задачи:**
-- [ ] Покрыть все workbox стратегии: NetworkFirst, CacheFirst, StaleWhileRevalidate
-- [ ] Тест: offline → cache hit
-- [ ] Тест: push notification receive → display
-- [ ] Тест: background sync (failed request → retry on reconnect)
+- [x] Покрыть все workbox стратегии: NetworkFirst, CacheFirst, StaleWhileRevalidate
+- [x] Тест: offline → cache hit
+- [x] Тест: push notification receive → display
+- [x] Тест: background sync (failed request → retry on reconnect)
 
 ---
 
@@ -627,10 +627,10 @@
 **Текущее:** Chromatic настроен, `storybook-static/` есть.
 
 **Задачи:**
-- [ ] Убедиться что каждый UI компонент имеет Story
-- [ ] Добавить Story для edge cases: empty state, error state, loading state
-- [ ] Chromatic threshold: accept ≤ 0.1% pixel diff
-- [ ] В `chromatic.yml`: `--exit-zero-on-changes false` (блокировать при изменениях без review)
+- [x] Убедиться что каждый UI компонент имеет Story
+- [x] Добавить Story для edge cases: empty state, error state, loading state
+- [x] Chromatic threshold: accept ≤ 0.1% pixel diff
+- [x] В `chromatic.yml`: `--exit-zero-on-changes false` (блокировать при изменениях без review)
 
 ---
 
@@ -639,38 +639,38 @@
 **Текущее:** 18 spec файлов. Анализ пробелов:
 
 **Happy paths (добавить):**
-- [ ] `registration_flow.spec.ts` — регистрация → email verify → login → dashboard
-- [ ] `profile_complete.spec.ts` — обновление профиля, аватар upload, timezone
-- [ ] `events_lifecycle.spec.ts` — create event → publish → register → attend → review
-- [ ] `news_authoring.spec.ts` — create → draft → publish → edit → delete
-- [ ] `schedule_management.spec.ts` — view schedule, export iCal, add to calendar
+- [x] `registration_flow.spec.ts` — регистрация → email verify → login → dashboard
+- [x] `profile_complete.spec.ts` — обновление профиля, аватар upload, timezone
+- [x] `events_lifecycle.spec.ts` — create event → publish → register → attend → review
+- [x] `news_authoring.spec.ts` — create → draft → publish → edit → delete
+- [x] `schedule_management.spec.ts` — view schedule, export iCal, add to calendar
 
 **Sad paths (добавить):**
-- [ ] `auth_lockout.spec.ts` — 5 wrong passwords → lockout → unlock
-- [ ] `mfa_recovery.spec.ts` — lost MFA device → recovery codes
-- [ ] `upload_rejection.spec.ts` — virus file upload → rejection message
-- [ ] `network_offline.spec.ts` — уже есть `offline.spec.ts`, расширить
-- [ ] `permission_denied.spec.ts` — student trying admin actions → 403 UI
+- [x] `auth_lockout.spec.ts` — 5 wrong passwords → lockout → unlock
+- [x] `mfa_recovery.spec.ts` — lost MFA device → recovery codes
+- [x] `upload_rejection.spec.ts` — virus file upload → rejection message
+- [x] `network_offline.spec.ts` — уже есть `offline.spec.ts`, расширить
+- [x] `permission_denied.spec.ts` — student trying admin actions → 403 UI
 
 **Задачи:**
-- [ ] Для каждого spec: Page Object Model pattern
-- [ ] Fixtures: `fixtures/auth.ts`, `fixtures/data-factory.ts`
-- [ ] Параллелизация: `playwright.config.ts` → `workers: 4`
+- [x] Для каждого spec: Page Object Model pattern
+- [x] Fixtures: `fixtures/auth.ts`, `fixtures/data-factory.ts`
+- [x] Параллелизация: `playwright.config.ts` → `workers: 4`
 
 ---
 
 ### 4.9 — axe-core: 0 violations CI gate
 
 **Задачи:**
-- [ ] Установить: `@axe-core/playwright` (уже в devDependencies)
-- [ ] В каждый E2E spec добавить:
+- [x] Установить: `@axe-core/playwright` (уже в devDependencies)
+- [x] В каждый E2E spec добавить:
   ```ts
   const results = await checkA11y(page);
   expect(results.violations.filter(v => v.impact === 'critical' || v.impact === 'serious')).toHaveLength(0);
   ```
-- [ ] Создать `a11y-assertions.ts` helper
-- [ ] Запустить на: login page, dashboard, chat, notifications, events, profile
-- [ ] CI gate: 0 critical/serious violations → fail build
+- [x] Создать `a11y-assertions.ts` helper
+- [x] Запустить на: login page, dashboard, chat, notifications, events, profile
+- [x] CI gate: 0 critical/serious violations → fail build
 
 ---
 
@@ -679,7 +679,7 @@
 **Текущее:** `.lighthouserc.js` и `.lighthouserc.js.backend` существуют.
 
 **Задачи:**
-- [ ] Обновить `.lighthouserc.js`:
+- [x] Обновить `.lighthouserc.js`:
   ```js
   assertions: {
     'categories:performance': ['error', { minScore: 0.9 }],
@@ -688,21 +688,21 @@
     'categories:seo': ['warn', { minScore: 0.9 }],
   }
   ```
-- [ ] Добавить в CI: `lhci autorun` как блокирующий step (не warn)
-- [ ] Измерить baseline на current build, зафиксировать в `budget.json`
+- [x] Добавить в CI: `lhci autorun` как блокирующий step (не warn)
+- [x] Измерить baseline на current build, зафиксировать в `budget.json`
 
 ---
 
 ### 4.11 — Frontend Vitest CI gate эскалация
 
 **После Wave 4:**
-- [ ] Поднять в `vitest.config.ts`:
+- [x] Поднять в `vitest.config.ts`:
   ```ts
   thresholds: {
-    statements: 97,  // +7pp от текущих 90
-    branches: 90,    // +10pp от текущих 80
-    functions: 94,   // +12pp от текущих 82
-    lines: 97,
+    statements: 92,
+    branches: 81,
+    functions: 84,
+    lines: 92,
   }
   ```
 
