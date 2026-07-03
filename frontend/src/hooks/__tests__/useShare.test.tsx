@@ -136,7 +136,7 @@ describe("useShare", () => {
     })
 
     const { result } = renderHook(() => useShare({ title: "Test" }))
-    expect(result.current.shareOptions[0].href).toContain(
+    expect(result.current.shareOptions[0]!.href).toContain(
       "https%3A%2F%2Ftest-location.com%2Fcurrent-page"
     )
 
@@ -214,8 +214,8 @@ describe("useShare", () => {
   })
 
   it("handleShare returns early if already sharing", async () => {
-    let resolveShare!: (value: unknown) => void
-    const sharePromise = new Promise((resolve) => {
+    let resolveShare!: (value: void | PromiseLike<void>) => void
+    const sharePromise = new Promise<void>((resolve) => {
       resolveShare = resolve
     })
     vi.mocked(navigator.share).mockReturnValue(sharePromise)
