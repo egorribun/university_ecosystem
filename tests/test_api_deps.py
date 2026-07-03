@@ -448,3 +448,175 @@ async def test_enforce_fresh_mfa_success(mock_request):
 
         # Should not raise
         _enforce_fresh_mfa(mock_request)
+
+
+import hashlib
+import hmac
+
+
+@pytest.mark.asyncio
+async def test_get_current_user_gateway_signature_success(
+    mock_request, db_session, user_factory
+):
+    user = await user_factory(is_active=True)
+    jti = "gateway-jti"
+    now = datetime.now(UTC)
+    session = ActiveSession(
+        user_id=user.id,
+        jti=jti,
+        expires_at=now + timedelta(hours=1),
+    )
+    db_session.add(session)
+    await db_session.commit()
+
+    user_id_str = str(user.id)
+    mock_request.headers = {
+        "X-User-ID": user_id_str,
+        "X-Session-ID": jti,
+    }
+
+    # Set internal_hmac_secret
+    with patch(
+        "app.api.deps.auth.settings",
+        MagicMock(
+            internal_hmac_secret="secret-key",  # pragma: allowlist secret
+            environment="testing",
+        ),
+    ):
+        # Calculate signature
+        sig = hmac.new(
+            b"secret-key",  # pragma: allowlist secret
+            f"{user_id_str}:{jti}".encode(),
+            hashlib.sha256,
+        ).hexdigest()
+        mock_request.headers["X-Internal-Signature"] = sig
+
+        returned_user = await get_current_user(mock_request, None, db_session)
+        assert returned_user.id == user.id
+
+
+@pytest.mark.asyncio
+async def test_get_current_user_gateway_signature_failure(
+    mock_request, db_session, user_factory
+):
+    user = await user_factory(is_active=True)
+    jti = "gateway-jti"
+
+    mock_request.headers = {
+        "X-User-ID": str(user.id),
+        "X-Session-ID": jti,
+        "X-Internal-Signature": "wrong-signature",
+    }
+
+    with patch(
+        "app.api.deps.auth.settings",
+        MagicMock(
+            internal_hmac_secret="secret-key",  # pragma: allowlist secret
+            environment="testing",
+        ),
+    ):
+        with pytest.raises(HTTPException) as exc:
+            await get_current_user(mock_request, None, db_session)
+        assert exc.value.status_code == status.HTTP_401_UNAUTHORIZED
+
+
+@pytest.mark.asyncio
+async def test_get_current_user_gateway_secret_missing_production(
+    mock_request, db_session, user_factory
+):
+    user = await user_factory(is_active=True)
+    jti = "gateway-jti"
+
+    mock_request.headers = {
+        "X-User-ID": str(user.id),
+        "X-Session-ID": jti,
+    }
+
+    with patch(
+        "app.api.deps.auth.settings",
+        MagicMock(internal_hmac_secret="", environment="production"),
+    ):
+        with pytest.raises(HTTPException) as exc:
+            await get_current_user(mock_request, None, db_session)
+        assert exc.value.status_code == status.HTTP_401_UNAUTHORIZED
+
+
+@pytest.mark.asyncio
+async def test_get_current_user_gateway_invalid_uuid(mock_request, db_session):
+    mock_request.headers = {
+        "X-User-ID": "invalid-uuid-format",
+        "X-Session-ID": "some-session",
+    }
+
+    with patch(
+        "app.api.deps.auth.settings",
+        MagicMock(internal_hmac_secret="", environment="testing"),
+    ):
+        with pytest.raises(HTTPException) as exc:
+            await get_current_user(mock_request, None, db_session)
+        assert exc.value.status_code == status.HTTP_401_UNAUTHORIZED
+
+
+@pytest.mark.asyncio
+async def test_get_current_user_jti_revoked_in_redis(
+    mock_request, db_session, user_factory
+):
+    user = await user_factory(is_active=True)
+    jti = "revoked-redis-jti"
+
+    payload = {"sub": str(user.id), "jti": jti}
+
+    mock_redis = AsyncMock()
+    mock_redis.exists.return_value = True
+
+    with patch("app.services.auth.token_service.decode_token", return_value=payload):
+        with patch("app.api.deps.auth.get_cache_client", return_value=mock_redis):
+            with pytest.raises(HTTPException) as exc:
+                await get_current_user(mock_request, "token", db_session)
+            assert exc.value.status_code == status.HTTP_401_UNAUTHORIZED
+            mock_redis.exists.assert_called_once_with(f"revoked:jti:{jti}")
+
+
+@pytest.mark.asyncio
+async def test_get_current_user_jti_redis_connection_error(
+    mock_request, db_session, user_factory
+):
+    user = await user_factory(is_active=True)
+    jti = "redis-error-jti"
+    now = datetime.now(UTC)
+    session = ActiveSession(
+        user_id=user.id,
+        jti=jti,
+        expires_at=now + timedelta(hours=1),
+    )
+    db_session.add(session)
+    await db_session.commit()
+
+    payload = {"sub": str(user.id), "jti": jti}
+
+    mock_redis = AsyncMock()
+    mock_redis.exists.side_effect = ConnectionError("Redis down")
+
+    with patch("app.services.auth.token_service.decode_token", return_value=payload):
+        with patch("app.api.deps.auth.get_cache_client", return_value=mock_redis):
+            # Should fall through and succeed from DB
+            returned_user = await get_current_user(mock_request, "token", db_session)
+            assert returned_user.id == user.id
+
+
+@pytest.mark.asyncio
+async def test_get_current_admin_user_spicedb_unavailable(mock_request):
+    from app.auth.rbac import SpiceDBUnavailableError
+
+    user = MagicMock(spec=User)
+    user.id = "test-user-id"
+    user.role = "admin"
+
+    mock_checker = MagicMock()
+    mock_checker.check_admin = AsyncMock(
+        side_effect=SpiceDBUnavailableError("SpiceDB down")
+    )
+
+    with pytest.raises(HTTPException) as exc:
+        await get_current_admin_user(mock_request, user, mock_checker)
+    assert exc.value.status_code == status.HTTP_503_SERVICE_UNAVAILABLE

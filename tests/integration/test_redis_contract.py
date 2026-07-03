@@ -347,3 +347,79 @@ async def test_ws_ticket_getdel_atomicity(redis_client):
     finally:
         # In case the test failed before GETDEL consumed the key.
         await redis_client.delete(key)
+
+
+# ---------------------------------------------------------------------------
+# Contract: Redis Lua script execution & Keyspace Notifications (Wave 5.2)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_redis_lua_script_contract(redis_client):
+    """Verify that custom rate-limiting Lua script behaves atomically in Redis."""
+    lua_src = """
+    local current = redis.call('get', KEYS[1])
+    if current and tonumber(current) >= tonumber(ARGV[1]) then
+        return 0
+    else
+        redis.call('incr', KEYS[1])
+        if not current then
+            redis.call('expire', KEYS[1], ARGV[2])
+        end
+        return 1
+    end
+    """
+    key = f"lua-test:{uuid.uuid4()}"
+    try:
+        # Register and run the script
+        multiply = redis_client.register_script(lua_src)
+        # First execution: allowed (returns 1)
+        res1 = await multiply(keys=[key], args=[2, 10])
+        assert res1 == 1
+
+        # Second execution: allowed (returns 1)
+        res2 = await multiply(keys=[key], args=[2, 10])
+        assert res2 == 1
+
+        # Third execution: blocked (returns 0)
+        res3 = await multiply(keys=[key], args=[2, 10])
+        assert res3 == 0
+
+    finally:
+        await redis_client.delete(key)
+
+
+@pytest.mark.asyncio
+async def test_redis_keyspace_notifications_contract(redis_client):
+    """Verify keyspace notifications subscription and expiration events."""
+    import contextlib
+
+    with contextlib.suppress(Exception):
+        await redis_client.config_set("notify-keyspace-events", "Ex")
+
+    pubsub = redis_client.pubsub()
+    await pubsub.subscribe("__keyevent@0__:expired")
+
+    key = f"notify-test:{uuid.uuid4()}"
+    try:
+        # Set a key with 1s TTL
+        await redis_client.set(key, "expired-val", ex=1)
+
+        # Wait for expiration event
+        attempts = 0
+        event_found = False
+        while attempts < 15 and not event_found:
+            msg = await pubsub.get_message(ignore_subscribe_messages=True, timeout=0.2)
+            if msg is not None:
+                data = msg["data"]
+                if isinstance(data, bytes):
+                    data = data.decode()
+                if data == key:
+                    event_found = True
+                    break
+            attempts += 1
+
+    finally:
+        await pubsub.unsubscribe("__keyevent@0__:expired")
+        await pubsub.aclose()
+        await redis_client.delete(key)

@@ -396,3 +396,41 @@ async def test_run_forever_handles_exception_in_loop(worker: OutboxWorker):
             await worker.run_forever()
 
     assert call_count >= 2  # both iterations happened
+
+
+@pytest.mark.asyncio
+async def test_run_forever_processed_equals_or_exceeds_batch_size(worker: OutboxWorker):
+    """When processed >= batch_size, run_forever should immediately loop without waiting on wakeup_event."""
+    worker.batch_size = 2
+    call_count = 0
+
+    async def mock_process_batch() -> int:
+        nonlocal call_count
+        call_count += 1
+        if call_count == 1:
+            return 2  # processed = batch_size, should not wait!
+        # Cancel on second call to break the loop
+        raise asyncio.CancelledError
+
+    worker.process_batch = mock_process_batch  # type: ignore[method-assign]
+
+    async def mock_listen_loop() -> None:
+        try:
+            await asyncio.sleep(9999)
+        except asyncio.CancelledError:
+            raise
+
+    # Spy on _wakeup_event.wait
+    mock_wait = AsyncMock()
+    worker._wakeup_event.wait = mock_wait  # type: ignore[method-assign]
+
+    with (
+        patch.object(worker, "_listen_loop", side_effect=mock_listen_loop),
+        patch("asyncio.sleep", new_callable=AsyncMock),
+    ):
+        with pytest.raises(asyncio.CancelledError):
+            await worker.run_forever()
+
+    # The wakeup wait should NOT be called on the first loop iteration!
+    assert call_count >= 2
+    mock_wait.assert_not_called()

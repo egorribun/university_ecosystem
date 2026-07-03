@@ -57,3 +57,14 @@ func TestLoad_ReadsEnvironmentVariables(t *testing.T) {
 	assert.Equal(t, "9999", cfg.GRPCPort)
 	assert.Equal(t, "nats://custom:4222", cfg.NatsURL)
 }
+
+func TestLoad_MissingCredentials(t *testing.T) {
+	t.Setenv("FP_MINIO_ACCESS_KEY", "")
+	_, err := Load()
+	assert.Error(t, err)
+
+	t.Setenv("FP_MINIO_ACCESS_KEY", "access")
+	t.Setenv("FP_MINIO_SECRET_KEY", "")
+	_, err = Load()
+	assert.Error(t, err)
+}

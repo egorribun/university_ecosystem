@@ -127,6 +127,7 @@ func NewInternalAPIAuthClient(baseURL string, redisClient *redis.Client) *Intern
 // StartEviction is no longer needed since lru.Cache manages its own memory bound.
 // We keep it as a no-op to satisfy existing interfaces if any.
 func (c *InternalAPIAuthClient) StartEviction(ctx context.Context) {
+	_ = ctx
 	// The lru.Cache will naturally bound its size to 100k items.
 	// Expired entries are ignored on read and eventually evicted when space is needed.
 }

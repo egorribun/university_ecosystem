@@ -53,7 +53,7 @@ func TestValidate_RejectsMissingAuthorizationHeader(t *testing.T) {
 	middleware := NewJWTMiddleware(testSecret, nil)
 	router := createTestRouter(middleware.Validate(context.Background()))
 
-	request := httptest.NewRequest(http.MethodGet, "/test", nil)
+	request := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/test", nil)
 	recorder := httptest.NewRecorder()
 
 	router.ServeHTTP(recorder, request)
@@ -78,7 +78,7 @@ func TestValidate_RejectsInvalidAuthorizationFormat(t *testing.T) {
 
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
-			request := httptest.NewRequest(http.MethodGet, "/test", nil)
+			request := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/test", nil)
 			request.Header.Set("Authorization", testCase.header)
 			recorder := httptest.NewRecorder()
 
@@ -93,7 +93,7 @@ func TestValidate_RejectsInvalidToken(t *testing.T) {
 	middleware := NewJWTMiddleware(testSecret, nil)
 	router := createTestRouter(middleware.Validate(context.Background()))
 
-	request := httptest.NewRequest(http.MethodGet, "/test", nil)
+	request := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/test", nil)
 	request.Header.Set("Authorization", "Bearer invalid.token.here")
 	recorder := httptest.NewRecorder()
 
@@ -117,7 +117,7 @@ func TestValidate_RejectsTokenSignedWithWrongSecret(t *testing.T) {
 	}
 	wrongSecretToken := createValidToken("wrong-secret", claims)
 
-	request := httptest.NewRequest(http.MethodGet, "/test", nil)
+	request := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/test", nil)
 	request.Header.Set("Authorization", "Bearer "+wrongSecretToken)
 	recorder := httptest.NewRecorder()
 
@@ -140,7 +140,7 @@ func TestValidate_RejectsInactiveUser(t *testing.T) {
 	}
 	token := createValidToken(testSecret, claims)
 
-	request := httptest.NewRequest(http.MethodGet, "/test", nil)
+	request := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/test", nil)
 	request.Header.Set("Authorization", "Bearer "+token)
 	recorder := httptest.NewRecorder()
 
@@ -174,7 +174,7 @@ func TestValidate_AcceptsValidTokenAndSetsContext(t *testing.T) {
 	}
 	token := createValidToken(testSecret, claims)
 
-	request := httptest.NewRequest(http.MethodGet, "/test", nil)
+	request := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/test", nil)
 	request.Header.Set("Authorization", "Bearer "+token)
 	recorder := httptest.NewRecorder()
 
@@ -195,7 +195,7 @@ func TestOptional_AllowsRequestWithoutToken(t *testing.T) {
 		c.Status(http.StatusOK)
 	})
 
-	request := httptest.NewRequest(http.MethodGet, "/test", nil)
+	request := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/test", nil)
 	recorder := httptest.NewRecorder()
 
 	router.ServeHTTP(recorder, request)
@@ -224,7 +224,7 @@ func TestOptional_ExtractsClaimsWhenTokenProvided(t *testing.T) {
 	}
 	token := createValidToken(testSecret, claims)
 
-	request := httptest.NewRequest(http.MethodGet, "/test", nil)
+	request := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/test", nil)
 	request.Header.Set("Authorization", "Bearer "+token)
 	recorder := httptest.NewRecorder()
 
@@ -238,7 +238,7 @@ func TestRequireRole_RejectsWhenRoleNotInContext(t *testing.T) {
 	router := gin.New()
 	router.GET("/test", RequireRole("admin"))
 
-	request := httptest.NewRequest(http.MethodGet, "/test", nil)
+	request := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/test", nil)
 	recorder := httptest.NewRecorder()
 
 	router.ServeHTTP(recorder, request)
@@ -254,7 +254,7 @@ func TestRequireRole_RejectsWrongRole(t *testing.T) {
 		c.Next()
 	}, RequireRole("admin", "moderator"))
 
-	request := httptest.NewRequest(http.MethodGet, "/test", nil)
+	request := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/test", nil)
 	recorder := httptest.NewRecorder()
 
 	router.ServeHTTP(recorder, request)
@@ -274,7 +274,7 @@ func TestRequireRole_AcceptsMatchingRole(t *testing.T) {
 		c.Status(http.StatusOK)
 	})
 
-	request := httptest.NewRequest(http.MethodGet, "/test", nil)
+	request := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/test", nil)
 	recorder := httptest.NewRecorder()
 
 	router.ServeHTTP(recorder, request)
@@ -380,7 +380,7 @@ func TestValidate_AcceptsRS256Token(t *testing.T) {
 	tokenString, err := token.SignedString(privateKey)
 	require.NoError(t, err)
 
-	request := httptest.NewRequest(http.MethodGet, "/test", nil)
+	request := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/test", nil)
 	request.Header.Set("Authorization", "Bearer "+tokenString)
 	recorder := httptest.NewRecorder()
 
@@ -417,7 +417,7 @@ func TestValidate_RejectsHS256TokenWhenRS256Configured(t *testing.T) {
 	tokenString, err := token.SignedString([]byte("secret"))
 	require.NoError(t, err)
 
-	request := httptest.NewRequest(http.MethodGet, "/test", nil)
+	request := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/test", nil)
 	request.Header.Set("Authorization", "Bearer "+tokenString)
 	recorder := httptest.NewRecorder()
 
@@ -447,7 +447,7 @@ func TestValidate_RejectsRS256TokenWhenHS256Configured(t *testing.T) {
 	tokenString, err := token.SignedString(privateKey)
 	require.NoError(t, err)
 
-	request := httptest.NewRequest(http.MethodGet, "/test", nil)
+	request := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/test", nil)
 	request.Header.Set("Authorization", "Bearer "+tokenString)
 	recorder := httptest.NewRecorder()
 

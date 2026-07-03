@@ -154,6 +154,98 @@ def _ws_hub_handler(msg: str | bytes | None, context: dict[str, Any]) -> dict[st
     return payload
 
 
+def _broadcast_handler(
+    msg: str | bytes | None, context: dict[str, Any]
+) -> dict[str, Any]:
+    """Simulate the ws-hub NATS broadcast.all subscriber.
+
+    Mirrors the structural checks the Go code enforces on broadcast messages.
+    Expected schema: {data: {payload, sender_id, timestamp}, signature}.
+    """
+    assert msg is not None, "NATS message body must not be None"
+
+    payload: dict[str, Any] = json.loads(msg)
+    assert isinstance(payload, dict), "Top-level payload must be a JSON object"
+
+    assert "data" in payload, "Missing required top-level field: 'data'"
+    assert "signature" in payload, "Missing required top-level field: 'signature'"
+
+    data = payload["data"]
+    assert isinstance(data, dict), "'data' must be a JSON object"
+    for field in ("payload", "sender_id", "timestamp"):
+        assert field in data, f"Missing required field: 'data.{field}'"
+
+    _uuid_re = re.compile(_UUID_PATTERN, re.IGNORECASE)
+    assert _uuid_re.match(str(data["sender_id"])), (
+        f"data.sender_id is not a valid UUID: {data['sender_id']!r}"
+    )
+
+    ts = data["timestamp"]
+    assert isinstance(ts, int) and ts >= 0, (
+        f"data.timestamp must be a non-negative integer, got {ts!r}"
+    )
+
+    sig = payload["signature"]
+    assert re.fullmatch(_HMAC_HEX_PATTERN, str(sig)), (
+        f"signature must be exactly 64 lower-case hex chars, got {sig!r}"
+    )
+
+    return payload
+
+
+def _heartbeat_handler(
+    msg: str | bytes | None, context: dict[str, Any]
+) -> dict[str, Any]:
+    """Simulate the ws-hub NATS client.timeout subscriber.
+
+    Mirrors the structural checks the Go code enforces on heartbeat timeout messages.
+    Expected schema: {data: {user_id, reason, timestamp}, signature}.
+    """
+    assert msg is not None, "NATS message body must not be None"
+
+    payload: dict[str, Any] = json.loads(msg)
+    assert isinstance(payload, dict), "Top-level payload must be a JSON object"
+
+    assert "data" in payload, "Missing required top-level field: 'data'"
+    assert "signature" in payload, "Missing required top-level field: 'signature'"
+
+    data = payload["data"]
+    assert isinstance(data, dict), "'data' must be a JSON object"
+    for field in ("user_id", "reason", "timestamp"):
+        assert field in data, f"Missing required field: 'data.{field}'"
+
+    _uuid_re = re.compile(_UUID_PATTERN, re.IGNORECASE)
+    assert _uuid_re.match(str(data["user_id"])), (
+        f"data.user_id is not a valid UUID: {data['user_id']!r}"
+    )
+
+    ts = data["timestamp"]
+    assert isinstance(ts, int) and ts >= 0, (
+        f"data.timestamp must be a non-negative integer, got {ts!r}"
+    )
+
+    sig = payload["signature"]
+    assert re.fullmatch(_HMAC_HEX_PATTERN, str(sig)), (
+        f"signature must be exactly 64 lower-case hex chars, got {sig!r}"
+    )
+
+    return payload
+
+
+def _verify_ws_hub_message(
+    msg: str | bytes | None, context: dict[str, Any]
+) -> dict[str, Any]:
+    """Dispatch accumulated async pact interactions by their NATS subject."""
+    subject = context.get("nats_subject")
+    if subject == "cache.invalidate":
+        return _ws_hub_handler(msg, context)
+    if subject == "broadcast.all":
+        return _broadcast_handler(msg, context)
+    if subject == "client.timeout":
+        return _heartbeat_handler(msg, context)
+    raise AssertionError(f"Unexpected NATS subject in pact metadata: {subject!r}")
+
+
 # ---------------------------------------------------------------------------
 # Contract interaction tests
 # ---------------------------------------------------------------------------
@@ -202,4 +294,46 @@ def test_cache_invalidation_event_contract(pact: Pact) -> None:
         )
         .with_metadata({"nats_subject": "cache.invalidate"})
     )
-    pact.verify(_ws_hub_handler, "Async")
+    pact.verify(_verify_ws_hub_message, "Async")
+
+
+def test_broadcast_to_many_contract(pact: Pact) -> None:
+    """Contract: ws-hub expects broadcast event payloads in this schema."""
+    (
+        pact.upon_receiving("a broadcast event to all clients", "Async")
+        .with_body(
+            {
+                "data": {
+                    "payload": match.like(
+                        "Attention: System maintenance scheduled tonight."
+                    ),
+                    "sender_id": match.regex(_SAMPLE_USER_ID, regex=_UUID_PATTERN),
+                    "timestamp": match.like(_SAMPLE_TIMESTAMP),
+                },
+                "signature": match.regex(_SAMPLE_SIGNATURE, regex=_HMAC_HEX_PATTERN),
+            },
+            "application/json",
+        )
+        .with_metadata({"nats_subject": "broadcast.all"})
+    )
+    pact.verify(_verify_ws_hub_message, "Async")
+
+
+def test_heartbeat_timeout_contract(pact: Pact) -> None:
+    """Contract: Python backend expects heartbeat timeout notifications in this schema."""
+    (
+        pact.upon_receiving("a client heartbeat timeout event", "Async")
+        .with_body(
+            {
+                "data": {
+                    "user_id": match.regex(_SAMPLE_USER_ID, regex=_UUID_PATTERN),
+                    "reason": match.like("ping timeout after 30 seconds"),
+                    "timestamp": match.like(_SAMPLE_TIMESTAMP),
+                },
+                "signature": match.regex(_SAMPLE_SIGNATURE, regex=_HMAC_HEX_PATTERN),
+            },
+            "application/json",
+        )
+        .with_metadata({"nats_subject": "client.timeout"})
+    )
+    pact.verify(_verify_ws_hub_message, "Async")

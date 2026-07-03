@@ -83,9 +83,9 @@ func BenchmarkJWKToRSAPublicKey(b *testing.B) {
 	nB64 := base64.RawURLEncoding.EncodeToString(privateKey.N.Bytes())
 
 	eBytes := []byte{
-		byte(privateKey.E >> 16),
-		byte(privateKey.E >> 8),
-		byte(privateKey.E),
+		byte(privateKey.E >> 16), //nolint:gosec // G115: RSA public exponent fits in 3 bytes by definition
+		byte(privateKey.E >> 8),  //nolint:gosec // G115: RSA public exponent fits in 3 bytes by definition
+		byte(privateKey.E),       //nolint:gosec // G115: RSA public exponent fits in 3 bytes by definition
 	}
 	eB64 := base64.RawURLEncoding.EncodeToString(eBytes)
 

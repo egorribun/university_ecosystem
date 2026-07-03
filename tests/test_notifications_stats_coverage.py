@@ -3,7 +3,7 @@ import uuid
 
 import pytest
 
-from app.models.notifications import NotificationDelivery
+from app.models.notifications import Notification, NotificationDelivery
 from app.services.notifications.stats import aggregate_notification_delivery_stats
 from app.utils.uuid_v7 import generate_uuid7
 
@@ -22,9 +22,18 @@ async def test_aggregate_stats_empty(db_session):
 
 
 @pytest.mark.asyncio
-async def test_aggregate_stats_success(db_session):
+async def test_aggregate_stats_success(db_session, user_factory):
     now = datetime.datetime.now(datetime.UTC)
     notif_id = uuid.uuid4()
+    user = await user_factory()
+    notification = Notification(
+        id=notif_id,
+        user_id=user.id,
+        title="Stats notification",
+        body="Delivery stats",
+        type="system",
+        created_at=now,
+    )
 
     # Seed 3 delivery records
     # Group 1: channel="push", status="delivered" (2 rows)
@@ -57,7 +66,7 @@ async def test_aggregate_stats_success(db_session):
         delivered_at=None,
     )
 
-    db_session.add_all([d1, d2, d3])
+    db_session.add_all([notification, d1, d2, d3])
     await db_session.commit()
 
     # Aggregate all
@@ -83,9 +92,18 @@ async def test_aggregate_stats_success(db_session):
 
 
 @pytest.mark.asyncio
-async def test_aggregate_stats_filtering(db_session):
+async def test_aggregate_stats_filtering(db_session, user_factory):
     now = datetime.datetime.now(datetime.UTC)
     notif_id = uuid.uuid4()
+    user = await user_factory()
+    notification = Notification(
+        id=notif_id,
+        user_id=user.id,
+        title="Filtered stats notification",
+        body="Delivery stats",
+        type="system",
+        created_at=now,
+    )
 
     # 1. Row outside since filter
     d1 = NotificationDelivery(
@@ -118,7 +136,7 @@ async def test_aggregate_stats_filtering(db_session):
         delivered_at=now - datetime.timedelta(minutes=5),
     )
 
-    db_session.add_all([d1, d2, d3])
+    db_session.add_all([notification, d1, d2, d3])
     await db_session.commit()
 
     # Filter with since (last 1 hour)

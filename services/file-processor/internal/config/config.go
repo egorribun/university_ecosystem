@@ -42,6 +42,8 @@ type Config struct {
 
 // Load loads the configuration from environment variables using Viper.
 func Load() (*Config, error) {
+	viper.Reset()
+	viper.AllowEmptyEnv(true)
 	// LOW-W19: set prefix "FP" so this service reads FP_GRPC_PORT etc. and does
 	// not accidentally consume unrelated env vars from the host environment.
 	// Existing deployments that use un-prefixed vars must be updated to add "FP_".

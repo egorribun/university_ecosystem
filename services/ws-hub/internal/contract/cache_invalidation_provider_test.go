@@ -66,9 +66,50 @@ type cacheInvalidationPayload struct {
 	Signature string                `json:"signature"`
 }
 
+// broadcastData mirrors the NATS broadcast.all payload data.
+// Field declaration order must stay alphabetical by JSON tag to match
+// Python's json.dumps(sort_keys=True, separators=(",", ":")) signing.
+type broadcastData struct {
+	Payload   string `json:"payload"`
+	SenderID  string `json:"sender_id"`
+	Timestamp uint64 `json:"timestamp"`
+}
+
+// broadcastPayload is the full wire format published for broadcast events.
+type broadcastPayload struct {
+	Data      broadcastData `json:"data"`
+	Signature string        `json:"signature"`
+}
+
+// heartbeatTimeoutData mirrors the NATS client.timeout payload data.
+// Field declaration order must stay alphabetical by JSON tag.
+type heartbeatTimeoutData struct {
+	Reason    string `json:"reason"`
+	Timestamp uint64 `json:"timestamp"`
+	UserID    string `json:"user_id"`
+}
+
+// heartbeatTimeoutPayload is the full wire format published for timeout events.
+type heartbeatTimeoutPayload struct {
+	Data      heartbeatTimeoutData `json:"data"`
+	Signature string               `json:"signature"`
+}
+
 // ---------------------------------------------------------------------------
 // Helper — reproduces app/services/ws_hub_client.py signing logic exactly.
 // ---------------------------------------------------------------------------
+
+func signData(data any, secret string) (string, error) {
+	dataBytes, err := json.Marshal(data)
+	if err != nil {
+		return "", fmt.Errorf("json.Marshal data: %w", err)
+	}
+
+	hFunc := hmac.New(sha256.New, []byte(secret))
+	hFunc.Write(dataBytes)
+
+	return hex.EncodeToString(hFunc.Sum(nil)), nil
+}
 
 // buildInvalidationPayload signs a cache invalidation payload the same way the
 // Python WsHubClient does:
@@ -86,19 +127,50 @@ func buildInvalidationPayload(userID, roomID, secret string) (cacheInvalidationP
 		UserID:    userID,
 	}
 
-	// json.Marshal uses field declaration order (room_id, timestamp, user_id) —
-	// identical to Python's sort_keys=True on the same keys.
-	dataBytes, err := json.Marshal(data)
+	signature, err := signData(data, secret)
 	if err != nil {
-		return cacheInvalidationPayload{}, fmt.Errorf("json.Marshal data: %w", err)
+		return cacheInvalidationPayload{}, err
 	}
-
-	hFunc := hmac.New(sha256.New, []byte(secret))
-	hFunc.Write(dataBytes)
 
 	return cacheInvalidationPayload{
 		Data:      data,
-		Signature: hex.EncodeToString(hFunc.Sum(nil)),
+		Signature: signature,
+	}, nil
+}
+
+func buildBroadcastPayload(senderID, message, secret string) (broadcastPayload, error) {
+	data := broadcastData{
+		Payload:   message,
+		SenderID:  senderID,
+		Timestamp: uint64(time.Now().UnixMicro()), //nolint:gosec // monotonic timestamp, not a secret
+	}
+
+	signature, err := signData(data, secret)
+	if err != nil {
+		return broadcastPayload{}, err
+	}
+
+	return broadcastPayload{
+		Data:      data,
+		Signature: signature,
+	}, nil
+}
+
+func buildHeartbeatTimeoutPayload(userID, reason, secret string) (heartbeatTimeoutPayload, error) {
+	data := heartbeatTimeoutData{
+		Reason:    reason,
+		Timestamp: uint64(time.Now().UnixMicro()), //nolint:gosec // monotonic timestamp, not a secret
+		UserID:    userID,
+	}
+
+	signature, err := signData(data, secret)
+	if err != nil {
+		return heartbeatTimeoutPayload{}, err
+	}
+
+	return heartbeatTimeoutPayload{
+		Data:      data,
+		Signature: signature,
 	}, nil
 }
 
@@ -149,6 +221,34 @@ func TestCacheInvalidationMessageProvider(t *testing.T) {
 			return payload, pactMessage.Metadata{
 				"contentType":  "application/json",
 				"nats_subject": "cache.invalidate",
+			}, nil
+		},
+		"a broadcast event to all clients": func(_ []models.ProviderState) (pactMessage.Body, pactMessage.Metadata, error) {
+			payload, err := buildBroadcastPayload(
+				"550e8400-e29b-41d4-a716-446655440000",
+				"Attention: System maintenance scheduled tonight.",
+				secret,
+			)
+			if err != nil {
+				return nil, nil, err
+			}
+			return payload, pactMessage.Metadata{
+				"contentType":  "application/json",
+				"nats_subject": "broadcast.all",
+			}, nil
+		},
+		"a client heartbeat timeout event": func(_ []models.ProviderState) (pactMessage.Body, pactMessage.Metadata, error) {
+			payload, err := buildHeartbeatTimeoutPayload(
+				"550e8400-e29b-41d4-a716-446655440000",
+				"ping timeout after 30 seconds",
+				secret,
+			)
+			if err != nil {
+				return nil, nil, err
+			}
+			return payload, pactMessage.Metadata{
+				"contentType":  "application/json",
+				"nats_subject": "client.timeout",
 			}, nil
 		},
 	}

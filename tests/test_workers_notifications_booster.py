@@ -303,3 +303,121 @@ async def test_start_notifications_scheduler_uses_settings_defaults():
 
         stop_fn = await start_notifications_scheduler()
         await stop_fn()
+
+
+@pytest.mark.asyncio
+async def test_wait_for_signals_handler():
+    from app.workers.notifications import _wait_for_signals
+
+    event = asyncio.Event()
+
+    # Mock loop.add_signal_handler to call the handler immediately
+    class MockLoop:
+        def add_signal_handler(self, sig, handler, *args):
+            # Trigger the handler synchronously
+            handler()
+
+    with patch("asyncio.get_running_loop", return_value=MockLoop()):
+        await _wait_for_signals(event)
+        assert event.is_set()
+
+
+@pytest.mark.asyncio
+@patch("app.workers.notifications.wait_db", new_callable=AsyncMock)
+@patch(
+    "app.workers.notifications.NotificationsScheduler.run_forever",
+    new_callable=AsyncMock,
+)
+async def test_run_worker_success(mock_run_forever, mock_wait_db):
+    from app.workers.notifications import run_worker
+
+    async def trigger_stop(stop_event):
+        await asyncio.sleep(0.01)
+        stop_event.set()
+
+    with (
+        patch("app.workers.notifications._wait_for_signals", side_effect=trigger_stop),
+        patch(
+            "app.workers.notifications.settings",
+            MagicMock(
+                notifications_worker_metrics_port=0,
+                notifications_scheduler_poll_seconds=1,
+                notifications_scheduler_window_minutes=5,
+                notifications_scheduler_max_backoff_seconds=10,
+            ),
+        ),
+        patch("app.workers.notifications.configure_worker_observability"),
+        patch("app.workers.notifications.create_worker_metrics"),
+        patch("app.workers.notifications.webpush"),
+    ):
+        await run_worker()
+        mock_run_forever.assert_called_once()
+
+
+@pytest.mark.asyncio
+@patch("app.workers.notifications.wait_db", new_callable=AsyncMock)
+@patch(
+    "app.workers.notifications.NotificationsScheduler.run_forever",
+    new_callable=AsyncMock,
+)
+async def test_run_worker_with_metrics_server(mock_run_forever, mock_wait_db):
+    from app.workers.notifications import run_worker
+
+    async def trigger_stop(stop_event):
+        await asyncio.sleep(0.01)
+        stop_event.set()
+
+    mock_monitor_stop = AsyncMock()
+
+    with (
+        patch("app.workers.notifications._wait_for_signals", side_effect=trigger_stop),
+        patch(
+            "app.workers.notifications.settings",
+            MagicMock(
+                notifications_worker_metrics_port=8000,
+                notifications_worker_metrics_host="localhost",
+                notifications_scheduler_poll_seconds=1,
+                notifications_scheduler_window_minutes=5,
+                notifications_scheduler_max_backoff_seconds=10,
+            ),
+        ),
+        patch("app.workers.notifications.configure_worker_observability"),
+        patch("app.workers.notifications.create_worker_metrics"),
+        patch("app.workers.notifications.create_worker_monitoring_app"),
+        patch(
+            "app.workers.notifications.start_worker_monitoring_server",
+            return_value=mock_monitor_stop,
+        ),
+        patch("app.workers.notifications.webpush"),
+    ):
+        await run_worker()
+        mock_run_forever.assert_called_once()
+        mock_monitor_stop.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+@patch("app.workers.notifications.run_worker", new_callable=AsyncMock)
+async def test_main_calls_run_worker(mock_run_worker):
+    from app.workers.notifications import main
+
+    await main()
+    mock_run_worker.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_run_forever_success_no_metrics(scheduler: NotificationsScheduler):
+    """When metrics is None and run_once yields created > 0, we log but don't record."""
+    iterations = 0
+
+    async def mock_run_once() -> int:
+        nonlocal iterations
+        iterations += 1
+        if iterations >= 2:
+            raise asyncio.CancelledError
+        return 3
+
+    scheduler.run_once = mock_run_once  # type: ignore[method-assign]
+
+    with patch("asyncio.sleep", new_callable=AsyncMock):
+        with pytest.raises(asyncio.CancelledError):
+            await scheduler.run_forever()

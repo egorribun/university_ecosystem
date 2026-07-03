@@ -111,16 +111,20 @@ jobs:
                     $failFastArgs = @("-x")
                   }
 
-                  uv run pytest ${{ inputs.test-pattern }} `  # nosemgrep: yaml.github-actions.security.run-shell-injection.run-shell-injection
-                    $parallelArgs `
-                    $failFastArgs `
-                    --ignore=tests/test_schemathesis_api.py `
-                    --cov=app `
-                    --cov-report=xml `
-                    --cov-report=term-missing `
-                    --cov-fail-under=${{ inputs.coverage-threshold }} `  # nosemgrep: yaml.github-actions.security.run-shell-injection.run-shell-injection
-                    --junitxml=pytest-report.xml `
-                    --dist=loadgroup
+                  $pytestArgs = @("${{ inputs.test-pattern }}")  # nosemgrep: yaml.github-actions.security.run-shell-injection.run-shell-injection
+                  $pytestArgs += $parallelArgs
+                  $pytestArgs += $failFastArgs
+                  $pytestArgs += @(
+                    "--ignore=tests/test_schemathesis_api.py",
+                    "--cov=app",
+                    "--cov-report=xml",
+                    "--cov-report=term-missing",
+                    "--cov-fail-under=${{ inputs.coverage-threshold }}",  # nosemgrep: yaml.github-actions.security.run-shell-injection.run-shell-injection
+                    "--junitxml=pytest-report.xml",
+                    "--dist=loadgroup"
+                  )
+
+                  uv run pytest @pytestArgs
 
             - name: Check differential coverage (diff-cover)
               if: ${{ github.event_name == 'pull_request' && inputs.coverage-threshold > 0 }}

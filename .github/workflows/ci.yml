@@ -721,6 +721,22 @@ jobs:
           enable-cache: true
           cache-dependency-glob: "uv.lock"
 
+      - name: Cache Cargo registry
+        # rust-ext is built by maturin during uv sync; cache the registry so
+        # transient crates.io network faults (e.g. HTTP/2 framing errors) do
+        # not cause a full build failure on every cold-cache run.
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            native/rust_ext/target/
+          key: ${{ runner.os }}-cargo-openapi-${{ hashFiles('native/rust_ext/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-openapi-
+            ${{ runner.os }}-cargo-
+
       - name: Install backend dependencies
         shell: pwsh
         run: |
@@ -1138,6 +1154,22 @@ jobs:
         with:
           enable-cache: true
           cache-dependency-glob: "uv.lock"
+
+      - name: Cache Cargo registry
+        # rust-ext is built by maturin during uv sync; cache the registry so
+        # transient crates.io network faults (e.g. HTTP/2 framing errors) do
+        # not cause a full build failure on every cold-cache run.
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            native/rust_ext/target/
+          key: ${{ runner.os }}-cargo-msw-${{ hashFiles('native/rust_ext/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-msw-
+            ${{ runner.os }}-cargo-
 
       - name: Install backend dependencies
         run: uv sync --frozen --no-dev

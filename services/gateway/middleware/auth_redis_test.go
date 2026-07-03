@@ -158,8 +158,9 @@ func revocableClaims(jti string) Claims {
 	}
 }
 
-func bearerRequest(token string) *http.Request {
-	req := httptest.NewRequest(http.MethodGet, "/test", nil)
+func bearerRequest(t *testing.T, token string) *http.Request {
+	t.Helper()
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/test", nil)
 	req.Header.Set("Authorization", "Bearer "+token)
 	return req
 }
@@ -176,7 +177,7 @@ func TestValidate_RevokedSessionRejected(t *testing.T) {
 
 	token := createValidToken(testSecret, revocableClaims("jti-revoked"))
 	rec := httptest.NewRecorder()
-	router.ServeHTTP(rec, bearerRequest(token))
+	router.ServeHTTP(rec, bearerRequest(t, token))
 
 	assert.Equal(t, http.StatusUnauthorized, rec.Code)
 	assert.Contains(t, rec.Body.String(), "session expired or revoked")
@@ -196,7 +197,7 @@ func TestValidate_ActiveSessionPasses(t *testing.T) {
 
 	token := createValidToken(testSecret, revocableClaims("jti-active"))
 	rec := httptest.NewRecorder()
-	router.ServeHTTP(rec, bearerRequest(token))
+	router.ServeHTTP(rec, bearerRequest(t, token))
 
 	assert.Equal(t, http.StatusOK, rec.Code)
 	assert.True(t, handlerCalled, "downstream handler must run for a valid, non-revoked session")
@@ -213,7 +214,7 @@ func TestValidate_MissingJTIRejected(t *testing.T) {
 	claims := revocableClaims("")
 	token := createValidToken(testSecret, claims)
 	rec := httptest.NewRecorder()
-	router.ServeHTTP(rec, bearerRequest(token))
+	router.ServeHTTP(rec, bearerRequest(t, token))
 
 	assert.Equal(t, http.StatusUnauthorized, rec.Code)
 }
@@ -226,7 +227,7 @@ func TestValidate_RedisDownFailsSecure(t *testing.T) {
 	router := createTestRouter(m.Validate(context.Background()))
 	token := createValidToken(testSecret, revocableClaims("jti-x"))
 	rec := httptest.NewRecorder()
-	router.ServeHTTP(rec, bearerRequest(token))
+	router.ServeHTTP(rec, bearerRequest(t, token))
 
 	// GW-P1-03: Validate uses failSecure=true → Redis outage → 503, never a pass.
 	assert.Equal(t, http.StatusServiceUnavailable, rec.Code)
@@ -246,8 +247,8 @@ func TestValidate_CookieTokenExtraction(t *testing.T) {
 	})
 
 	token := createValidToken(testSecret, revocableClaims("jti-cookie"))
-	req := httptest.NewRequest(http.MethodGet, "/test", nil)
-	req.AddCookie(&http.Cookie{Name: AccessTokenCookieName, Value: token}) // BFF cookie path, no Authorization header
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/test", nil)
+	req.AddCookie(&http.Cookie{Name: AccessTokenCookieName, Value: token}) //nolint:gosec // G124: test-only cookie, Secure/HttpOnly not applicable in unit tests
 	rec := httptest.NewRecorder()
 	router.ServeHTTP(rec, req)
 
@@ -273,7 +274,7 @@ func TestOptional_RevokedSessionContinuesUnauthenticated(t *testing.T) {
 
 	token := createValidToken(testSecret, revocableClaims("jti-revoked"))
 	rec := httptest.NewRecorder()
-	router.ServeHTTP(rec, bearerRequest(token))
+	router.ServeHTTP(rec, bearerRequest(t, token))
 
 	assert.Equal(t, http.StatusOK, rec.Code)
 	assert.False(t, sawUserID, "Optional must NOT set user context for a revoked session (continues unauthenticated)")
@@ -292,7 +293,7 @@ func TestOptional_RedisDownFailsOpenUnauthenticated(t *testing.T) {
 	})
 	token := createValidToken(testSecret, revocableClaims("jti-x"))
 	rec := httptest.NewRecorder()
-	router.ServeHTTP(rec, bearerRequest(token))
+	router.ServeHTTP(rec, bearerRequest(t, token))
 
 	// GW-P1-03 fail-open: Optional() passes failSecure=false to verifySession, so a
 	// Redis error yields (isValid=false, shouldDeny=false) → the request continues

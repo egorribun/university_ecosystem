@@ -85,10 +85,10 @@ export default defineConfig({
       // source bug always returns undefined), useChatWebSocket ping/reconnect-cap 30s
       // timer paths, api/client 429-retry loop, etagCache/sanitize/sw long-tail.
       thresholds: {
-        statements: 90,
-        branches: 80,
-        functions: 82,
-        lines: 90,
+        statements: 92,
+        branches: 81,
+        functions: 84,
+        lines: 92,
       },
     },
   },

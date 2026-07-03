@@ -164,3 +164,35 @@ def test_otel_resource_attributes_include_service_version():
         assert attributes["service.version"] == "2024.05.01"
     finally:
         settings.service_version = previous_version
+
+
+@pytest.mark.asyncio
+async def test_custom_business_metrics_increment(root_client, _configure_metrics: str):
+    """Verify custom business metrics increment correctly and reflect on /metrics."""
+    from app.core.metrics import record_login_failure, record_login_success
+
+    record_login_success("password")
+    record_login_failure("invalid_password")
+
+    response = await root_client.get(
+        "/metrics",
+        headers={"Authorization": f"Basic {_configure_metrics}"},
+    )
+    assert response.status_code == 200
+    body = response.text
+    assert 'login_success_total{method="password"}' in body
+    assert 'login_failure_total{reason="invalid_password"}' in body
+
+
+def test_metrics_reset_isolation():
+    """Verify that calling reset on metrics collectors zeroes out values and ensures isolation."""
+    from app.core.observability import get_notification_queue_metrics
+
+    metrics_bundle = get_notification_queue_metrics()
+    metrics_bundle.queue_size.set(42)
+    assert metrics_bundle.queue_size._value.get() == 42.0
+
+    # Reset metrics bundle
+    metrics_bundle.reset()
+    # After reset, the fresh collector should be zeroed (default 0.0)
+    assert metrics_bundle.queue_size._value.get() == 0.0

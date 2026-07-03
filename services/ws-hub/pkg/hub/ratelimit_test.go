@@ -133,3 +133,37 @@ func TestRealIP(t *testing.T) {
 		})
 	}
 }
+
+func TestWSUpgradeRateLimiter_GC(t *testing.T) {
+	l := &WSUpgradeRateLimiter{
+		capacity:    2,
+		ratePerSec:  2,
+		idleTimeout: 1 * time.Second,
+		stopGC:      make(chan struct{}),
+		gcInterval:  10 * time.Millisecond,
+	}
+
+	l.buckets.Store("1.1.1.1", &wsUpgradeBucket{
+		tokens:   2,
+		lastRefr: time.Now().Add(-10 * time.Second),
+	})
+	l.buckets.Store("2.2.2.2", &wsUpgradeBucket{
+		tokens:   2,
+		lastRefr: time.Now(),
+	})
+
+	go l.gcLoop()
+
+	time.Sleep(50 * time.Millisecond)
+	l.Stop()
+
+	_, ok1 := l.buckets.Load("1.1.1.1")
+	_, ok2 := l.buckets.Load("2.2.2.2")
+
+	if ok1 {
+		t.Errorf("Expected 1.1.1.1 to be cleaned up by GC")
+	}
+	if !ok2 {
+		t.Errorf("Expected 2.2.2.2 to remain")
+	}
+}

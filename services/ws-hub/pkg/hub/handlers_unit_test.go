@@ -20,6 +20,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -352,6 +353,10 @@ func TestHandleWebSocket_E2EUpgradeJoinAndDeliver(t *testing.T) {
 }
 
 func TestHandleWebSocket_RejectsDisallowedOrigin(t *testing.T) {
+	origEnv := os.Getenv("ENVIRONMENT")
+	require.NoError(t, os.Setenv("ENVIRONMENT", "production"))
+	defer func() { require.NoError(t, os.Setenv("ENVIRONMENT", origEnv)) }()
+
 	SetAllowedOrigins([]string{"http://allowed.example"})
 	defer SetAllowedOrigins(nil)
 
@@ -502,4 +507,110 @@ func TestValidateHMAC_ValidHS256(t *testing.T) {
 	sub, err := h.validateHMAC(token, []string{secret})
 	require.NoError(t, err)
 	assert.Equal(t, "user-ok", sub)
+}
+
+func signRS512(t *testing.T, key *rsa.PrivateKey, kid string, claims jwt.Claims) string {
+	t.Helper()
+	token := jwt.NewWithClaims(jwt.SigningMethodRS512, claims)
+	token.Header["kid"] = kid
+	str, err := token.SignedString(key)
+	require.NoError(t, err)
+	return str
+}
+
+func TestValidateRS256_EdgeCases(t *testing.T) {
+	ctx := context.Background()
+	priv, err := rsa.GenerateKey(rand.Reader, 2048)
+	require.NoError(t, err)
+	pub := &priv.PublicKey
+
+	// Build a real JWK set from the test public key so JWKS validation succeeds.
+	key, err := jwk.FromRaw(pub)
+	require.NoError(t, err)
+	require.NoError(t, key.Set(jwk.KeyIDKey, "kid-1"))
+	buf, err := json.Marshal(key)
+	require.NoError(t, err)
+	var jwkKey map[string]interface{}
+	require.NoError(t, json.Unmarshal(buf, &jwkKey))
+	jwksMap := map[string]interface{}{
+		"keys": []map[string]interface{}{jwkKey},
+	}
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if err := json.NewEncoder(w).Encode(jwksMap); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
+	}))
+	defer server.Close()
+
+	h := setupTestHub()
+	h.jwksCache = jwk.NewCache(ctx)
+	h.jwksURL = server.URL
+	err = h.jwksCache.Register(h.jwksURL)
+	require.NoError(t, err)
+
+	t.Run("unexpected signing method", func(t *testing.T) {
+		token := signRS512(t, priv, "kid-1", jwt.MapClaims{
+			"sub": "user-rs",
+			"exp": time.Now().Add(time.Hour).Unix(),
+		})
+		_, err := h.validateRS256(ctx, token)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "invalid RS256 token")
+	})
+
+	t.Run("sub is not a string rejected", func(t *testing.T) {
+		token := signRS256(t, priv, "kid-1", jwt.MapClaims{
+			"sub": 12345, // integer instead of string
+			"exp": time.Now().Add(time.Hour).Unix(),
+		})
+		_, err := h.validateRS256(ctx, token)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "invalid RS256 token")
+	})
+}
+
+func TestHandleWebSocket_EdgeCases(t *testing.T) {
+	t.Run("rate limited", func(t *testing.T) {
+		h := setupTestHub()
+		h.UpgradeLimiter.capacity = 0 // block all
+		h.UpgradeLimiter.ratePerSec = 0
+
+		rec := httptest.NewRecorder()
+		req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, "/ws?ticket=123", nil)
+		require.NoError(t, err)
+
+		cfg := &config.Config{}
+		h.HandleWebSocket(rec, req, cfg)
+		assert.Equal(t, http.StatusTooManyRequests, rec.Code)
+	})
+
+	t.Run("at capacity", func(t *testing.T) {
+		h := hubWithTicketRedis(t, "user-123:jti-abc")
+		h.maxClients = 1
+		h.Clients["existing-client"] = &Client{}
+
+		rec := httptest.NewRecorder()
+		req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, "/ws?ticket="+validTicket, nil)
+		require.NoError(t, err)
+
+		cfg := &config.Config{}
+		h.HandleWebSocket(rec, req, cfg)
+		assert.Equal(t, http.StatusServiceUnavailable, rec.Code)
+	})
+
+	t.Run("upgrade failed", func(t *testing.T) {
+		h := hubWithTicketRedis(t, "user-123:jti-abc")
+
+		rec := httptest.NewRecorder()
+		// standard GET request is not a valid WebSocket upgrade request
+		req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, "/ws?ticket="+validTicket, nil)
+		require.NoError(t, err)
+
+		cfg := &config.Config{}
+		h.HandleWebSocket(rec, req, cfg)
+		// Gorilla upgrader returns 400 Bad Request if upgrade fails
+		assert.Equal(t, http.StatusBadRequest, rec.Code)
+	})
 }

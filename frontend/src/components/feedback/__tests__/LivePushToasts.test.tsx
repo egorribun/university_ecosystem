@@ -1,5 +1,4 @@
-import { act, render, screen, waitFor } from "@testing-library/react"
-import userEvent from "@testing-library/user-event"
+import { act, render, screen, fireEvent } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 vi.mock("framer-motion", async () =>
@@ -48,9 +47,11 @@ describe("LivePushToasts", () => {
   beforeEach(() => {
     window.localStorage.clear()
     installFakeServiceWorker()
+    vi.useFakeTimers()
   })
 
   afterEach(() => {
+    vi.clearAllTimers()
     vi.useRealTimers()
     window.localStorage.clear()
   })
@@ -78,7 +79,11 @@ describe("LivePushToasts", () => {
       },
     })
 
-    expect(await screen.findByText("Saved")).toBeInTheDocument()
+    act(() => {
+      vi.advanceTimersByTime(0)
+    })
+
+    expect(screen.getByText("Saved")).toBeInTheDocument()
     expect(screen.getByText("Your changes were saved")).toBeInTheDocument()
   })
 
@@ -90,7 +95,11 @@ describe("LivePushToasts", () => {
       toast: { id: "t-info", title: "Heads up", body: "Something happened" },
     })
 
-    expect(await screen.findByText("Heads up")).toBeInTheDocument()
+    act(() => {
+      vi.advanceTimersByTime(0)
+    })
+
+    expect(screen.getByText("Heads up")).toBeInTheDocument()
   })
 
   it("renders a warning toast", async () => {
@@ -106,7 +115,11 @@ describe("LivePushToasts", () => {
       },
     })
 
-    expect(await screen.findByText("Careful")).toBeInTheDocument()
+    act(() => {
+      vi.advanceTimersByTime(0)
+    })
+
+    expect(screen.getByText("Careful")).toBeInTheDocument()
   })
 
   it("renders an error toast", async () => {
@@ -122,7 +135,11 @@ describe("LivePushToasts", () => {
       },
     })
 
-    expect(await screen.findByText("Failed")).toBeInTheDocument()
+    act(() => {
+      vi.advanceTimersByTime(0)
+    })
+
+    expect(screen.getByText("Failed")).toBeInTheDocument()
   })
 
   it("ignores a PUSH_NOTIFICATION with no content (empty title and body)", async () => {
@@ -149,12 +166,15 @@ describe("LivePushToasts", () => {
 
     await dispatchSwMessage({ type: "SYNC_COMPLETE" })
 
-    expect(await screen.findByText("notifications:sync.title")).toBeInTheDocument()
+    act(() => {
+      vi.advanceTimersByTime(0)
+    })
+
+    expect(screen.getByText("notifications:sync.title")).toBeInTheDocument()
     expect(screen.getByText("notifications:sync.body")).toBeInTheDocument()
   })
 
   it("dismisses the current toast when the close button is clicked", async () => {
-    const user = userEvent.setup()
     render(<LivePushToasts />)
 
     await dispatchSwMessage({
@@ -162,17 +182,22 @@ describe("LivePushToasts", () => {
       toast: { id: "t-close", title: "Closable", body: "Tap to close" },
     })
 
-    expect(await screen.findByText("Closable")).toBeInTheDocument()
-
-    await user.click(screen.getByRole("button", { name: "common:buttons.close" }))
-
-    await waitFor(() => {
-      expect(screen.queryByText("Closable")).not.toBeInTheDocument()
+    act(() => {
+      vi.advanceTimersByTime(0)
     })
+
+    expect(screen.getByText("Closable")).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole("button", { name: "common:buttons.close" }))
+
+    act(() => {
+      vi.advanceTimersByTime(300)
+    })
+
+    expect(screen.queryByText("Closable")).not.toBeInTheDocument()
   })
 
   it("renders an action button when the toast carries a safe URL, and opening it dismisses the toast", async () => {
-    const user = userEvent.setup()
     const openSpy = vi.spyOn(window, "open").mockReturnValue(null)
     render(<LivePushToasts />)
 
@@ -186,15 +211,22 @@ describe("LivePushToasts", () => {
       },
     })
 
-    const actionButton = await screen.findByText("notifications:toast.open")
+    act(() => {
+      vi.advanceTimersByTime(0)
+    })
+
+    const actionButton = screen.getByText("notifications:toast.open")
     expect(actionButton).toBeInTheDocument()
 
-    await user.click(actionButton)
+    fireEvent.click(actionButton)
 
     expect(openSpy).toHaveBeenCalled()
-    await waitFor(() => {
-      expect(screen.queryByText("Open me")).not.toBeInTheDocument()
+
+    act(() => {
+      vi.advanceTimersByTime(300)
     })
+
+    expect(screen.queryByText("Open me")).not.toBeInTheDocument()
 
     openSpy.mockRestore()
   })
@@ -212,12 +244,15 @@ describe("LivePushToasts", () => {
       },
     })
 
-    expect(await screen.findByText("No link")).toBeInTheDocument()
+    act(() => {
+      vi.advanceTimersByTime(0)
+    })
+
+    expect(screen.getByText("No link")).toBeInTheDocument()
     expect(screen.queryByText("notifications:toast.open")).not.toBeInTheDocument()
   })
 
   it("auto-dismisses the toast after TOAST_LONG via the timeout", async () => {
-    vi.useFakeTimers()
     render(<LivePushToasts />)
 
     act(() => {
@@ -252,9 +287,11 @@ describe("LivePushToasts", () => {
 
     render(<LivePushToasts />)
 
-    // The mount-time visibilitychange handler fires synchronously; the toast
-    // surfaces once the queue→current effect runs.
-    expect(await screen.findByText("Buffered")).toBeInTheDocument()
+    act(() => {
+      vi.advanceTimersByTime(0)
+    })
+
+    expect(screen.getByText("Buffered")).toBeInTheDocument()
     // Buffer is consumed (cleared) after flushing.
     expect(window.localStorage.getItem(BUFFER_STORAGE_KEY)).toBe("[]")
   })

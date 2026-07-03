@@ -1,11 +1,17 @@
 package main
 
 import (
+	"bufio"
 	"context"
+	"net"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
+	"github.com/alicebob/miniredis/v2"
+	"github.com/nats-io/nats.go"
+	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/university-ecosystem/ws-hub/pkg/config"
@@ -201,4 +207,89 @@ func TestRunServer_Error(t *testing.T) {
 	logger := initLogger()
 	h := hub.NewHub(nil, logger, nil, cfg, nil)
 	runServer(cfg, logger, h)
+}
+
+func TestSetupHubAndHandlers_ReadinessHealthy(t *testing.T) {
+	http.DefaultServeMux = http.NewServeMux()
+
+	lc := net.ListenConfig{}
+	l, err := lc.Listen(t.Context(), "tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	defer func() { _ = l.Close() }() //nolint:errcheck // test listener cleanup
+
+	go func() {
+		conn, err := l.Accept()
+		if err != nil {
+			return
+		}
+		defer func() { _ = conn.Close() }() //nolint:errcheck // test conn cleanup
+		if _, writeErr := conn.Write([]byte(`INFO {"server_id":"MOCK","version":"2.0.0","host":"127.0.0.1","port":4222,"auth_required":false}` + "\r\n")); writeErr != nil {
+			t.Logf("mock NATS INFO write failed: %v", writeErr)
+			return
+		}
+
+		reader := bufio.NewReader(conn)
+		for {
+			line, err := reader.ReadString('\n')
+			if err != nil {
+				return
+			}
+			if strings.HasPrefix(line, "PING") {
+				if _, writeErr := conn.Write([]byte("PONG\r\n")); writeErr != nil {
+					t.Logf("mock NATS PONG write failed: %v", writeErr)
+					return
+				}
+			}
+		}
+	}()
+
+	nc, err := nats.Connect("nats://" + l.Addr().String())
+	require.NoError(t, err)
+	defer nc.Close()
+
+	mr := miniredis.RunT(t)
+	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	defer func() { _ = rdb.Close() }() //nolint:errcheck // test cleanup
+
+	cfg := &config.Config{
+		Port:           "8081",
+		BackendURL:     "http://localhost:1",
+		AllowedOrigins: []string{"http://localhost:3000"},
+		JWKSURL:        "http://127.0.0.1:1/jwks",
+	}
+	logger := initLogger()
+
+	h := setupHub(context.Background(), cfg, logger, nc, rdb)
+	setupHandlers(h, cfg, logger, nc, rdb)
+
+	rec := httptest.NewRecorder()
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, "/health/ready", nil)
+	require.NoError(t, err)
+	http.DefaultServeMux.ServeHTTP(rec, req)
+	assert.Equal(t, http.StatusOK, rec.Code)
+	assert.Contains(t, rec.Body.String(), "ready")
+}
+
+func TestSetupHubAndHandlers_ReadinessRedisPingError(t *testing.T) {
+	http.DefaultServeMux = http.NewServeMux()
+
+	rdb := redis.NewClient(&redis.Options{Addr: "127.0.0.1:1"})
+	defer func() { _ = rdb.Close() }() //nolint:errcheck // test cleanup
+
+	cfg := &config.Config{
+		Port:           "8081",
+		BackendURL:     "http://localhost:1",
+		AllowedOrigins: []string{"http://localhost:3000"},
+	}
+	logger := initLogger()
+
+	h := setupHub(context.Background(), cfg, logger, nil, rdb)
+	setupHandlers(h, cfg, logger, nil, rdb)
+
+	rec := httptest.NewRecorder()
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, "/health/ready", nil)
+	require.NoError(t, err)
+	http.DefaultServeMux.ServeHTTP(rec, req)
+	assert.Equal(t, http.StatusServiceUnavailable, rec.Code)
+	assert.Contains(t, rec.Body.String(), "degraded")
 }

@@ -378,3 +378,29 @@ async def test_rls_scoped_to_transaction(
         assert value in ("", None), (
             f"SET LOCAL must be cleared after transaction commit, got {value!r}"
         )
+
+
+@pytest.mark.asyncio
+async def test_rls_blocks_writing_mismatched_sender_id(
+    pg_session: AsyncSession,
+    two_users_and_chat,
+):
+    """Writing a message with a sender_id different from the RLS current_user_id must fail."""
+    user_a_id, user_b_id, chat_id = two_users_and_chat
+    msg_id = str(uuid.uuid4())
+
+    await pg_session.execute(
+        text("SELECT set_config('app.current_user_id', :uid, true)"), {"uid": user_b_id}
+    )
+
+    from sqlalchemy.exc import DBAPIError
+
+    with pytest.raises(DBAPIError):
+        await pg_session.execute(
+            text(
+                "INSERT INTO messages (id, chat_id, sender_id, content, created_at, read_status) "
+                "VALUES (:id, :chat_id, :sender, 'imposter', NOW(), false)"
+            ),
+            {"id": msg_id, "chat_id": chat_id, "sender": user_a_id},
+        )
+        await pg_session.flush()

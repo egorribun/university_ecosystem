@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"sync"
 	"testing"
 	"time"
 
@@ -183,4 +184,58 @@ func TestInternalAPIAuthClient_CanJoinRoom_RejectsInvalidIDs(t *testing.T) {
 func TestInternalAPIAuthClient_StartEviction(t *testing.T) {
 	client := NewInternalAPIAuthClient("http://localhost", nil)
 	client.StartEviction(context.Background())
+}
+
+func TestInternalAPIAuthClient_DoRequest_NewRequestError(t *testing.T) {
+	client := NewInternalAPIAuthClient(":%invalid", nil) // invalid URL scheme/format
+	userID := "550e8400-e29b-41d4-a716-446655440000"
+	roomID := "660e8400-e29b-41d4-a716-446655441111"
+	_, err := client.doRequest(context.Background(), userID, roomID)
+	assert.Error(t, err)
+}
+
+func TestInternalAPIAuthClient_DoRequest_DoError(t *testing.T) {
+	client := NewInternalAPIAuthClient("http://nonexistent.domain.invalid", nil)
+	userID := "550e8400-e29b-41d4-a716-446655440000"
+	roomID := "660e8400-e29b-41d4-a716-446655441111"
+	_, err := client.doRequest(context.Background(), userID, roomID)
+	assert.Error(t, err)
+}
+
+func TestInternalAPIAuthClient_CanJoinRoom_SingleFlight(t *testing.T) {
+	userID := "550e8400-e29b-41d4-a716-446655440000"
+	roomID := "660e8400-e29b-41d4-a716-446655441111"
+
+	blockCh := make(chan struct{})
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		<-blockCh
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	client := NewInternalAPIAuthClient(server.URL, nil)
+
+	var wg sync.WaitGroup
+	wg.Add(2)
+
+	var allowed1, allowed2 bool
+	go func() {
+		defer wg.Done()
+		allowed1 = client.CanJoinRoom(context.Background(), userID, roomID)
+	}()
+
+	time.Sleep(20 * time.Millisecond)
+
+	go func() {
+		defer wg.Done()
+		allowed2 = client.CanJoinRoom(context.Background(), userID, roomID)
+	}()
+
+	time.Sleep(20 * time.Millisecond)
+
+	close(blockCh)
+	wg.Wait()
+
+	assert.True(t, allowed1)
+	assert.True(t, allowed2)
 }
