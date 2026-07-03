@@ -98,3 +98,50 @@ def test_verify_audit_signature_ffi_parity():
     sig = hmac.new(key.encode(), log_data.encode(), hashlib.sha256).hexdigest()
     assert rust_ext.verify_audit_signature([key], log_data, sig) is True
     assert rust_ext.verify_audit_signature(["wrong-key"], log_data, sig) is False
+
+
+@requires_rust_ext
+def test_rust_ext_invalid_types_raise_type_error():
+    # 1. Invalid argument types to ScheduleItem constructor
+    with pytest.raises(TypeError):
+        # start_time must be int, not string
+        rust_ext.ScheduleItem("monday", "not-an-int", 3600, "both")
+
+    with pytest.raises(TypeError):
+        # weekday must be string, not None
+        rust_ext.ScheduleItem(None, 0, 3600, "both")  # type: ignore[arg-type]
+
+    # 2. Invalid argument types to detect_conflicts
+    with pytest.raises(TypeError):
+        target = rust_ext.ScheduleItem("monday", 0, 3600, "both")
+        # existing must be a list, not a string
+        rust_ext.detect_conflicts(target, "not-a-list")  # type: ignore[arg-type]
+
+
+@requires_rust_ext
+def test_rust_ext_multithreading_safety():
+    import threading
+
+    # Create a larger list of items to detect conflicts on
+    items = [
+        rust_ext.ScheduleItem("monday", i * 10, i * 10 + 5, "both") for i in range(100)
+    ]
+
+    errors = []
+
+    def run_fuzz():
+        try:
+            for _ in range(50):
+                # Call batch_detect_conflicts concurrently from multiple threads
+                pairs = rust_ext.batch_detect_conflicts(items)
+                assert isinstance(pairs, list)
+        except Exception as e:
+            errors.append(e)
+
+    threads = [threading.Thread(target=run_fuzz) for _ in range(5)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    assert not errors, f"Errors occurred during concurrent execution: {errors}"
