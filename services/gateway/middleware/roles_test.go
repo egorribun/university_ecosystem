@@ -32,7 +32,7 @@ func roleRouter(seed interface{}, roles ...string) *gin.Engine {
 
 func TestRequireRole_NoRoleInContext(t *testing.T) {
 	rec := httptest.NewRecorder()
-	roleRouter(nil, "admin").ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/admin", nil))
+	roleRouter(nil, "admin").ServeHTTP(rec, httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/admin", nil))
 	assert.Equal(t, http.StatusForbidden, rec.Code)
 	assert.Contains(t, rec.Body.String(), "role not found in token")
 }
@@ -40,20 +40,20 @@ func TestRequireRole_NoRoleInContext(t *testing.T) {
 func TestRequireRole_NonStringRoleRejected(t *testing.T) {
 	// TD-10: an int in the context must NOT panic the goroutine.
 	rec := httptest.NewRecorder()
-	roleRouter(12345, "admin").ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/admin", nil))
+	roleRouter(12345, "admin").ServeHTTP(rec, httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/admin", nil))
 	assert.Equal(t, http.StatusForbidden, rec.Code)
 	assert.Contains(t, rec.Body.String(), "insufficient permissions")
 }
 
 func TestRequireRole_RoleNotInSet(t *testing.T) {
 	rec := httptest.NewRecorder()
-	roleRouter("student", "admin", "staff").ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/admin", nil))
+	roleRouter("student", "admin", "staff").ServeHTTP(rec, httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/admin", nil))
 	assert.Equal(t, http.StatusForbidden, rec.Code)
 	assert.Contains(t, rec.Body.String(), "insufficient permissions")
 }
 
 func TestRequireRole_MatchingRolePasses(t *testing.T) {
 	rec := httptest.NewRecorder()
-	roleRouter("admin", "admin", "staff").ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/admin", nil))
+	roleRouter("admin", "admin", "staff").ServeHTTP(rec, httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/admin", nil))
 	assert.Equal(t, http.StatusOK, rec.Code)
 }

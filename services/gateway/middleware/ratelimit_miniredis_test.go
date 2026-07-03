@@ -42,7 +42,7 @@ func TestRateLimiter_Middleware_HealthExemptAndLimitEnforced(t *testing.T) {
 	// Health path bypasses the limiter entirely — always 200.
 	for i := 0; i < 5; i++ {
 		w := httptest.NewRecorder()
-		req := httptest.NewRequest(http.MethodGet, "/health", nil)
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/health", nil)
 		r.ServeHTTP(w, req)
 		require.Equal(t, http.StatusOK, w.Code)
 	}
@@ -53,7 +53,7 @@ func TestRateLimiter_Middleware_HealthExemptAndLimitEnforced(t *testing.T) {
 	var got200, got429 bool
 	for i := 0; i < 12; i++ {
 		w := httptest.NewRecorder()
-		req := httptest.NewRequest(http.MethodGet, "/api/thing", nil)
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api/thing", nil)
 		req.RemoteAddr = "203.0.113.7:1234"
 		r.ServeHTTP(w, req)
 		switch w.Code {
@@ -93,7 +93,7 @@ func TestRateLimiter_GetClientKey_NonStringUserID(t *testing.T) {
 		c.Status(http.StatusOK)
 	})
 
-	request := httptest.NewRequest(http.MethodGet, "/test", nil)
+	request := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/test", nil)
 	request.RemoteAddr = "192.168.1.100:12345"
 	recorder := httptest.NewRecorder()
 	router.ServeHTTP(recorder, request)

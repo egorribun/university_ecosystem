@@ -71,11 +71,8 @@ def test_gateway_rest_forbidden_contract(pact: Pact) -> None:
     (
         pact.upon_receiving("a request to an admin route with student credentials")
         .given("Backend is running")
-        .with_request(
-            method="POST",
-            path="/api/v1/admin/users",
-            headers={"Authorization": "Bearer student-token"},
-        )
+        .with_request(method="POST", path="/api/v1/admin/users")
+        .with_headers({"Authorization": "Bearer student-token"})
         .will_respond_with(403)
         .with_body({"detail": match.like("Operation not permitted")})
     )

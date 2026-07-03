@@ -212,7 +212,8 @@ func TestRunServer_Error(t *testing.T) {
 func TestSetupHubAndHandlers_ReadinessHealthy(t *testing.T) {
 	http.DefaultServeMux = http.NewServeMux()
 
-	l, err := net.Listen("tcp", "127.0.0.1:0")
+	lc := net.ListenConfig{}
+	l, err := lc.Listen(t.Context(), "tcp", "127.0.0.1:0")
 	require.NoError(t, err)
 	defer func() { _ = l.Close() }() //nolint:errcheck // test listener cleanup
 
@@ -222,7 +223,10 @@ func TestSetupHubAndHandlers_ReadinessHealthy(t *testing.T) {
 			return
 		}
 		defer func() { _ = conn.Close() }() //nolint:errcheck // test conn cleanup
-		_, _ = conn.Write([]byte(`INFO {"server_id":"MOCK","version":"2.0.0","host":"127.0.0.1","port":4222,"auth_required":false}` + "\r\n"))
+		if _, writeErr := conn.Write([]byte(`INFO {"server_id":"MOCK","version":"2.0.0","host":"127.0.0.1","port":4222,"auth_required":false}` + "\r\n")); writeErr != nil {
+			t.Logf("mock NATS INFO write failed: %v", writeErr)
+			return
+		}
 
 		reader := bufio.NewReader(conn)
 		for {
@@ -231,7 +235,10 @@ func TestSetupHubAndHandlers_ReadinessHealthy(t *testing.T) {
 				return
 			}
 			if strings.HasPrefix(line, "PING") {
-				_, _ = conn.Write([]byte("PONG\r\n"))
+				if _, writeErr := conn.Write([]byte("PONG\r\n")); writeErr != nil {
+					t.Logf("mock NATS PONG write failed: %v", writeErr)
+					return
+				}
 			}
 		}
 	}()

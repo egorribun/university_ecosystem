@@ -22,17 +22,22 @@ type mockNatsServer struct {
 }
 
 func newMockNatsServer(t *testing.T) *mockNatsServer {
-	l, err := net.Listen("tcp", "127.0.0.1:0")
+	lc := net.ListenConfig{}
+	l, err := lc.Listen(t.Context(), "tcp", "127.0.0.1:0")
 	require.NoError(t, err)
 	s := &mockNatsServer{
 		listener: l,
 		addr:     l.Addr().String(),
 	}
 	t.Cleanup(func() {
-		_ = l.Close()
+		if err := l.Close(); err != nil {
+			t.Logf("mock NATS listener close failed: %v", err)
+		}
 		s.mu.Lock()
 		for _, c := range s.conns {
-			_ = c.Close()
+			if err := c.Close(); err != nil {
+				t.Logf("mock NATS conn close failed: %v", err)
+			}
 		}
 		s.mu.Unlock()
 	})
@@ -54,9 +59,15 @@ func (s *mockNatsServer) run() {
 		s.conns = append(s.conns, conn)
 		s.mu.Unlock()
 		go func(c net.Conn) {
-			defer func() { _ = c.Close() }() //nolint:errcheck // test conn cleanup
+			defer func() {
+				if err := c.Close(); err != nil {
+					return
+				}
+			}()
 			info := `INFO {"server_id":"MOCK","version":"2.0.0","host":"127.0.0.1","port":4222,"auth_required":false}` + "\r\n"
-			_, _ = c.Write([]byte(info))
+			if _, err := c.Write([]byte(info)); err != nil {
+				return
+			}
 
 			reader := bufio.NewReader(c)
 			for {
@@ -65,7 +76,9 @@ func (s *mockNatsServer) run() {
 					return
 				}
 				if strings.HasPrefix(line, "PING") {
-					_, _ = c.Write([]byte("PONG\r\n"))
+					if _, err := c.Write([]byte("PONG\r\n")); err != nil {
+						return
+					}
 				}
 			}
 		}(conn)

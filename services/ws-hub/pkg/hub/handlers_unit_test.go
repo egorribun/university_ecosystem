@@ -578,7 +578,7 @@ func TestHandleWebSocket_EdgeCases(t *testing.T) {
 		h.UpgradeLimiter.ratePerSec = 0
 
 		rec := httptest.NewRecorder()
-		req, err := http.NewRequest(http.MethodGet, "/ws?ticket=123", nil)
+		req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, "/ws?ticket=123", nil)
 		require.NoError(t, err)
 
 		cfg := &config.Config{}
@@ -592,7 +592,7 @@ func TestHandleWebSocket_EdgeCases(t *testing.T) {
 		h.Clients["existing-client"] = &Client{}
 
 		rec := httptest.NewRecorder()
-		req, err := http.NewRequest(http.MethodGet, "/ws?ticket="+validTicket, nil)
+		req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, "/ws?ticket="+validTicket, nil)
 		require.NoError(t, err)
 
 		cfg := &config.Config{}
@@ -605,7 +605,7 @@ func TestHandleWebSocket_EdgeCases(t *testing.T) {
 
 		rec := httptest.NewRecorder()
 		// standard GET request is not a valid WebSocket upgrade request
-		req, err := http.NewRequest(http.MethodGet, "/ws?ticket="+validTicket, nil)
+		req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, "/ws?ticket="+validTicket, nil)
 		require.NoError(t, err)
 
 		cfg := &config.Config{}

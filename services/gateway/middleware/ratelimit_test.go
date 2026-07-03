@@ -28,7 +28,7 @@ func TestRateLimiter_GetClientKey_ReturnsUserIDWhenAuthenticated(t *testing.T) {
 		c.Status(http.StatusOK)
 	})
 
-	request := httptest.NewRequest(http.MethodGet, "/test", nil)
+	request := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/test", nil)
 	recorder := httptest.NewRecorder()
 	router.ServeHTTP(recorder, request)
 
@@ -49,7 +49,7 @@ func TestRateLimiter_GetClientKey_ReturnsIPWhenNotAuthenticated(t *testing.T) {
 		c.Status(http.StatusOK)
 	})
 
-	request := httptest.NewRequest(http.MethodGet, "/test", nil)
+	request := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/test", nil)
 	request.RemoteAddr = "192.168.1.100:12345"
 	recorder := httptest.NewRecorder()
 	router.ServeHTTP(recorder, request)
@@ -76,7 +76,7 @@ func TestRateLimiter_GetClientKey_UsesXForwardedFor(t *testing.T) {
 		c.Status(http.StatusOK)
 	})
 
-	request := httptest.NewRequest(http.MethodGet, "/test", nil)
+	request := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/test", nil)
 	request.RemoteAddr = "127.0.0.1:1234"
 	request.Header.Set("X-Forwarded-For", "10.0.0.1")
 	recorder := httptest.NewRecorder()
@@ -104,7 +104,7 @@ func TestRateLimiter_GetClientKey_TrimsWhitespaceFromForwardedIP(t *testing.T) {
 		c.Status(http.StatusOK)
 	})
 
-	request := httptest.NewRequest(http.MethodGet, "/test", nil)
+	request := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/test", nil)
 	request.RemoteAddr = "127.0.0.1:1234"
 	request.Header.Set("X-Forwarded-For", " 172.16.0.1 ")
 	recorder := httptest.NewRecorder()
@@ -128,7 +128,7 @@ func TestRateLimiter_GetClientKey_PrefersUserIDOverIP(t *testing.T) {
 		c.Status(http.StatusOK)
 	})
 
-	request := httptest.NewRequest(http.MethodGet, "/test", nil)
+	request := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/test", nil)
 	request.Header.Set("X-Forwarded-For", "10.0.0.1")
 	request.RemoteAddr = "192.168.1.1:12345"
 	recorder := httptest.NewRecorder()
@@ -206,19 +206,19 @@ func TestRateLimiter_Middleware_InMemoryFallbackOnRedisError(t *testing.T) {
 	})
 
 	// Make 1st request -> should pass (Redis fails, fallback allows 1st)
-	req1 := httptest.NewRequest(http.MethodGet, "/test", nil)
+	req1 := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/test", nil)
 	w1 := httptest.NewRecorder()
 	router.ServeHTTP(w1, req1)
 	assert.Equal(t, http.StatusOK, w1.Code)
 
 	// Make 2nd request -> should pass (fallback allows 2nd)
-	req2 := httptest.NewRequest(http.MethodGet, "/test", nil)
+	req2 := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/test", nil)
 	w2 := httptest.NewRecorder()
 	router.ServeHTTP(w2, req2)
 	assert.Equal(t, http.StatusOK, w2.Code)
 
 	// Make 3rd request -> should be blocked (Too Many Requests)
-	req3 := httptest.NewRequest(http.MethodGet, "/test", nil)
+	req3 := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/test", nil)
 	w3 := httptest.NewRecorder()
 	router.ServeHTTP(w3, req3)
 	assert.Equal(t, http.StatusTooManyRequests, w3.Code)

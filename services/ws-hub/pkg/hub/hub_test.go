@@ -325,14 +325,14 @@ func TestHandleWebSocket_Errors(t *testing.T) {
 
 	t.Run("missing ticket", func(t *testing.T) {
 		rec := httptest.NewRecorder()
-		req := httptest.NewRequest(http.MethodGet, "/ws", nil)
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/ws", nil)
 		h.HandleWebSocket(rec, req, cfg)
 		assert.Equal(t, http.StatusUnauthorized, rec.Code)
 	})
 
 	t.Run("invalid ticket length", func(t *testing.T) {
 		rec := httptest.NewRecorder()
-		req := httptest.NewRequest(http.MethodGet, "/ws?ticket=short", nil)
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/ws?ticket=short", nil)
 		h.HandleWebSocket(rec, req, cfg)
 		assert.Equal(t, http.StatusUnauthorized, rec.Code)
 	})
@@ -340,7 +340,7 @@ func TestHandleWebSocket_Errors(t *testing.T) {
 	t.Run("invalid ticket charset", func(t *testing.T) {
 		invalidTicket := "invalid-hex-chars-that-are-long-enough-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
 		rec := httptest.NewRecorder()
-		req := httptest.NewRequest(http.MethodGet, "/ws?ticket="+invalidTicket, nil)
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/ws?ticket="+invalidTicket, nil)
 		h.HandleWebSocket(rec, req, cfg)
 		assert.Equal(t, http.StatusUnauthorized, rec.Code)
 	})
@@ -348,7 +348,7 @@ func TestHandleWebSocket_Errors(t *testing.T) {
 	t.Run("redis nil error", func(t *testing.T) {
 		validTicket := "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2" // pragma: allowlist secret
 		rec := httptest.NewRecorder()
-		req := httptest.NewRequest(http.MethodGet, "/ws?ticket="+validTicket, nil)
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/ws?ticket="+validTicket, nil)
 		h.redisClient = nil
 		h.HandleWebSocket(rec, req, cfg)
 		assert.Equal(t, http.StatusUnauthorized, rec.Code)

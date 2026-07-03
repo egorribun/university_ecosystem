@@ -46,7 +46,7 @@ func TestMain_ExitOnShortJWTSecret(t *testing.T) {
 		return
 	}
 
-	cmd := exec.Command(os.Args[0], "-test.run=TestMain_ExitOnShortJWTSecret") //nolint:gosec // G204: intentional re-exec of test binary
+	cmd := exec.CommandContext(t.Context(), os.Args[0], "-test.run=TestMain_ExitOnShortJWTSecret") //nolint:gosec // G204: intentional re-exec of test binary
 	cmd.Env = append(os.Environ(), "RUN_CRASHING_MAIN=JWT")
 	var errStdout, errStderr bytes.Buffer
 	cmd.Stdout = &errStdout
@@ -74,7 +74,7 @@ func TestMain_ExitOnInvalidBackendURL(t *testing.T) {
 		return
 	}
 
-	cmd := exec.Command(os.Args[0], "-test.run=TestMain_ExitOnInvalidBackendURL") //nolint:gosec // G204: intentional re-exec of test binary
+	cmd := exec.CommandContext(t.Context(), os.Args[0], "-test.run=TestMain_ExitOnInvalidBackendURL") //nolint:gosec // G204: intentional re-exec of test binary
 	cmd.Env = append(os.Environ(), "RUN_CRASHING_MAIN=BACKEND")
 	err := cmd.Run()
 	if e, ok := err.(*exec.ExitError); ok && !e.Success() {
@@ -95,7 +95,7 @@ func TestMain_ExitOnConfigLoadFailure(t *testing.T) {
 		return
 	}
 
-	cmd := exec.Command(os.Args[0], "-test.run=TestMain_ExitOnConfigLoadFailure") //nolint:gosec // G204: intentional re-exec of test binary
+	cmd := exec.CommandContext(t.Context(), os.Args[0], "-test.run=TestMain_ExitOnConfigLoadFailure") //nolint:gosec // G204: intentional re-exec of test binary
 	cmd.Env = append(os.Environ(), "RUN_CRASHING_MAIN=CONFIG")
 	err := cmd.Run()
 	if e, ok := err.(*exec.ExitError); ok && !e.Success() {

@@ -126,7 +126,7 @@ func TestOptional_RS256Configured_RejectsHS256Downgrade(t *testing.T) {
 	// A well-formed HS256 token — a downgrade attempt under RS256 config.
 	hs := createValidToken(testSecret, freshClaims("jti-hs"))
 	rec := httptest.NewRecorder()
-	router.ServeHTTP(rec, bearerRequest(hs))
+	router.ServeHTTP(rec, bearerRequest(t, hs))
 
 	assert.Equal(t, http.StatusOK, rec.Code, "optional auth continues")
 	_, hasUser := (*captured)["user_id"]
@@ -142,7 +142,7 @@ func TestOptional_RS256Configured_MalformedHeaderUnauthenticated(t *testing.T) {
 	router.GET("/test", m.Optional(context.Background()), probe)
 
 	rec := httptest.NewRecorder()
-	router.ServeHTTP(rec, bearerRequest("garbage-not-a-jwt"))
+	router.ServeHTTP(rec, bearerRequest(t, "garbage-not-a-jwt"))
 
 	assert.Equal(t, http.StatusOK, rec.Code)
 	_, hasUser := (*captured)["user_id"]
@@ -160,7 +160,7 @@ func TestOptional_RS256Configured_ValidTokenSetsContext(t *testing.T) {
 
 	token := signRS256(t, priv, freshClaims("jti-ok"))
 	rec := httptest.NewRecorder()
-	router.ServeHTTP(rec, bearerRequest(token))
+	router.ServeHTTP(rec, bearerRequest(t, token))
 
 	assert.Equal(t, http.StatusOK, rec.Code)
 	assert.Equal(t, "user-edge", (*captured)["user_id"], "valid RS256 token sets user context")
@@ -173,7 +173,7 @@ func TestOptional_NoTokenContinues(t *testing.T) {
 	router.GET("/test", m.Optional(context.Background()), probe)
 
 	rec := httptest.NewRecorder()
-	router.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/test", nil))
+	router.ServeHTTP(rec, httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/test", nil))
 
 	assert.Equal(t, http.StatusOK, rec.Code)
 	_, hasUser := (*captured)["user_id"]
@@ -193,7 +193,7 @@ func TestOptional_RevokedSessionContinuesUnauthenticatedHS256(t *testing.T) {
 
 	token := createValidToken(testSecret, revocableClaims("jti-revoked"))
 	rec := httptest.NewRecorder()
-	router.ServeHTTP(rec, bearerRequest(token))
+	router.ServeHTTP(rec, bearerRequest(t, token))
 
 	assert.Equal(t, http.StatusOK, rec.Code)
 	_, hasUser := (*captured)["user_id"]
@@ -211,7 +211,7 @@ func TestOptional_ValidSessionSetsContextHS256(t *testing.T) {
 
 	token := createValidToken(testSecret, revocableClaims("jti-live"))
 	rec := httptest.NewRecorder()
-	router.ServeHTTP(rec, bearerRequest(token))
+	router.ServeHTTP(rec, bearerRequest(t, token))
 
 	assert.Equal(t, http.StatusOK, rec.Code)
 	assert.Equal(t, "user-1", (*captured)["user_id"])

@@ -338,7 +338,7 @@ func TestNewRedisClient(t *testing.T) {
 	client, err := newRedisClient()
 	assert.NoError(t, err)
 	assert.NotNil(t, client)
-	_ = client.Close()
+	require.NoError(t, client.Close())
 
 	// Invalid URL
 	redisURL = "invalid-url"
@@ -374,10 +374,10 @@ func TestConfirmAction_Stdin(t *testing.T) {
 	assert.False(t, confirmActionFunc("Prompt?"))
 
 	// Cleanup
-	_ = w.Close()
-	_ = r.Close()
-	_ = w2.Close()
-	_ = r2.Close()
+	require.NoError(t, w.Close())
+	require.NoError(t, r.Close())
+	require.NoError(t, w2.Close())
+	require.NoError(t, r2.Close())
 }
 
 func TestMain_Execute(t *testing.T) {
@@ -389,4 +389,3 @@ func TestMain_Execute(t *testing.T) {
 		main()
 	})
 }
-

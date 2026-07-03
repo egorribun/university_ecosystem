@@ -50,7 +50,7 @@ describe("useTilt", () => {
   it("applies transforms onMouseMove and resets onMouseLeave when enabled", () => {
     const { result } = renderHook(() => useTilt({ max: 10, scale: 1.05 }))
     const el = document.createElement("div")
-    
+
     // Mock getBoundingClientRect
     el.getBoundingClientRect = () => ({
       left: 10,

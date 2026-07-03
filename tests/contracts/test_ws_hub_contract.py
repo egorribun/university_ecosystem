@@ -232,6 +232,20 @@ def _heartbeat_handler(
     return payload
 
 
+def _verify_ws_hub_message(
+    msg: str | bytes | None, context: dict[str, Any]
+) -> dict[str, Any]:
+    """Dispatch accumulated async pact interactions by their NATS subject."""
+    subject = context.get("nats_subject")
+    if subject == "cache.invalidate":
+        return _ws_hub_handler(msg, context)
+    if subject == "broadcast.all":
+        return _broadcast_handler(msg, context)
+    if subject == "client.timeout":
+        return _heartbeat_handler(msg, context)
+    raise AssertionError(f"Unexpected NATS subject in pact metadata: {subject!r}")
+
+
 # ---------------------------------------------------------------------------
 # Contract interaction tests
 # ---------------------------------------------------------------------------
@@ -280,7 +294,7 @@ def test_cache_invalidation_event_contract(pact: Pact) -> None:
         )
         .with_metadata({"nats_subject": "cache.invalidate"})
     )
-    pact.verify(_ws_hub_handler, "Async")
+    pact.verify(_verify_ws_hub_message, "Async")
 
 
 def test_broadcast_to_many_contract(pact: Pact) -> None:
@@ -302,7 +316,7 @@ def test_broadcast_to_many_contract(pact: Pact) -> None:
         )
         .with_metadata({"nats_subject": "broadcast.all"})
     )
-    pact.verify(_broadcast_handler, "Async")
+    pact.verify(_verify_ws_hub_message, "Async")
 
 
 def test_heartbeat_timeout_contract(pact: Pact) -> None:
@@ -322,4 +336,4 @@ def test_heartbeat_timeout_contract(pact: Pact) -> None:
         )
         .with_metadata({"nats_subject": "client.timeout"})
     )
-    pact.verify(_heartbeat_handler, "Async")
+    pact.verify(_verify_ws_hub_message, "Async")

@@ -14,7 +14,7 @@ const { mockPush, mockLogger } = vi.hoisted(() => ({
     logWarning: vi.fn(),
     logDebug: vi.fn(),
     logError: vi.fn(),
-  }
+  },
 }))
 
 vi.mock("@/push/subscribe", () => mockPush)
@@ -23,7 +23,7 @@ vi.mock("@/app/logger", () => mockLogger)
 beforeEach(() => {
   vi.useFakeTimers()
   vi.clearAllMocks()
-  
+
   // Setup Notification global
   vi.stubGlobal("Notification", {})
 })
@@ -83,7 +83,7 @@ describe("usePushSync — internal flows", () => {
   it("bails out early if push is not supported", async () => {
     mockPush.isPushSupported.mockReturnValue(false)
     renderHook(() => usePushSync(true))
-    
+
     await vi.runAllTimersAsync()
     expect(mockPush.recoverPushConsentFromBrowser).not.toHaveBeenCalled()
   })
@@ -91,9 +91,9 @@ describe("usePushSync — internal flows", () => {
   it("bails out early if Notification is undefined", async () => {
     mockPush.isPushSupported.mockReturnValue(true)
     vi.stubGlobal("Notification", undefined)
-    
+
     renderHook(() => usePushSync(true))
-    
+
     await vi.runAllTimersAsync()
     expect(mockPush.recoverPushConsentFromBrowser).not.toHaveBeenCalled()
   })

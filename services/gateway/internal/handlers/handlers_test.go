@@ -244,6 +244,13 @@ type mockFileProcessingServiceClient struct {
 	err  error
 }
 
+func newRequestWithChildContext(t *testing.T, parent context.Context, method, target string, body io.Reader) *http.Request {
+	t.Helper()
+	reqCtx, cancel := context.WithCancel(parent)
+	t.Cleanup(cancel)
+	return httptest.NewRequestWithContext(reqCtx, method, target, body)
+}
+
 func (m *mockFileProcessingServiceClient) ProcessFile(ctx context.Context, in *pb.ProcessFileRequest, opts ...grpc.CallOption) (*pb.ProcessFileResponse, error) {
 	return m.resp, m.err
 }
@@ -257,7 +264,7 @@ func TestFileProcessSyncHandler_Errors(t *testing.T) {
 		router.POST("/sync", FileProcessSyncHandler(ctx, nil, nil, logger))
 
 		w := httptest.NewRecorder()
-		req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/sync", bytes.NewReader([]byte("{}")))
+		req := newRequestWithChildContext(t, ctx, http.MethodPost, "/sync", bytes.NewReader([]byte("{}")))
 		router.ServeHTTP(w, req)
 
 		assert.Equal(t, http.StatusServiceUnavailable, w.Code)
@@ -270,7 +277,7 @@ func TestFileProcessSyncHandler_Errors(t *testing.T) {
 		router.POST("/sync", FileProcessSyncHandler(ctx, dummyConn, nil, logger))
 
 		w := httptest.NewRecorder()
-		req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/sync", bytes.NewReader([]byte("{invalid-json}")))
+		req := newRequestWithChildContext(t, ctx, http.MethodPost, "/sync", bytes.NewReader([]byte("{invalid-json}")))
 		router.ServeHTTP(w, req)
 
 		assert.Equal(t, http.StatusBadRequest, w.Code)
@@ -289,7 +296,7 @@ func TestFileProcessSyncHandler_Errors(t *testing.T) {
 
 		w := httptest.NewRecorder()
 		reqBody := `{"id":"550e8400-e29b-41d4-a716-446655440000","type":"resize","source_key":"in.png","dest_key":"out.png"}`
-		req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/sync", bytes.NewReader([]byte(reqBody)))
+		req := newRequestWithChildContext(t, ctx, http.MethodPost, "/sync", bytes.NewReader([]byte(reqBody)))
 		req.Header.Set("Content-Type", "application/json")
 		router.ServeHTTP(w, req)
 
@@ -326,7 +333,7 @@ func TestFileProcessSyncHandler_Errors(t *testing.T) {
 
 				w := httptest.NewRecorder()
 				reqBody := `{"id":"550e8400-e29b-41d4-a716-446655440000","type":"resize","source_key":"in.png","dest_key":"out.png"}`
-				req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/sync", bytes.NewReader([]byte(reqBody)))
+				req := newRequestWithChildContext(t, ctx, http.MethodPost, "/sync", bytes.NewReader([]byte(reqBody)))
 				req.Header.Set("Content-Type", "application/json")
 				router.ServeHTTP(w, req)
 
@@ -346,7 +353,7 @@ func TestFileProcessSyncHandler_Errors(t *testing.T) {
 
 		w := httptest.NewRecorder()
 		reqBody := `{"id":"550e8400-e29b-41d4-a716-446655440000","type":"resize","source_key":"in.png","dest_key":"out.png"}`
-		req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/sync", bytes.NewReader([]byte(reqBody)))
+		req := newRequestWithChildContext(t, ctx, http.MethodPost, "/sync", bytes.NewReader([]byte(reqBody)))
 		req.Header.Set("Content-Type", "application/json")
 		router.ServeHTTP(w, req)
 

@@ -26,7 +26,8 @@ import (
 func TestMain_InvalidPortExitsCleanly(t *testing.T) {
 	http.DefaultServeMux = http.NewServeMux()
 
-	l, err := net.Listen("tcp", "127.0.0.1:0")
+	lc := net.ListenConfig{}
+	l, err := lc.Listen(t.Context(), "tcp", "127.0.0.1:0")
 	require.NoError(t, err)
 	defer func() { _ = l.Close() }() //nolint:errcheck // test listener cleanup
 
@@ -36,7 +37,10 @@ func TestMain_InvalidPortExitsCleanly(t *testing.T) {
 			return
 		}
 		defer func() { _ = conn.Close() }() //nolint:errcheck // test conn cleanup
-		_, _ = conn.Write([]byte(`INFO {"server_id":"MOCK","version":"2.0.0","host":"127.0.0.1","port":4222,"auth_required":false}` + "\r\n"))
+		if _, writeErr := conn.Write([]byte(`INFO {"server_id":"MOCK","version":"2.0.0","host":"127.0.0.1","port":4222,"auth_required":false}` + "\r\n")); writeErr != nil {
+			t.Logf("mock NATS INFO write failed: %v", writeErr)
+			return
+		}
 
 		reader := bufio.NewReader(conn)
 		for {
@@ -45,7 +49,10 @@ func TestMain_InvalidPortExitsCleanly(t *testing.T) {
 				return
 			}
 			if strings.HasPrefix(line, "PING") {
-				_, _ = conn.Write([]byte("PONG\r\n"))
+				if _, writeErr := conn.Write([]byte("PONG\r\n")); writeErr != nil {
+					t.Logf("mock NATS PONG write failed: %v", writeErr)
+					return
+				}
 			}
 		}
 	}()
@@ -72,7 +79,7 @@ func TestMain_ExitOnMissingInternalSecret(t *testing.T) {
 		return
 	}
 
-	cmd := exec.Command(os.Args[0], "-test.run=TestMain_ExitOnMissingInternalSecret") //nolint:gosec // G204: intentional re-exec of test binary
+	cmd := exec.CommandContext(t.Context(), os.Args[0], "-test.run=TestMain_ExitOnMissingInternalSecret") //nolint:gosec // G204: intentional re-exec of test binary
 	cmd.Env = append(os.Environ(), "RUN_CRASHING_MAIN=SECRET")
 	var errStdout, errStderr bytes.Buffer
 	cmd.Stdout = &errStdout
@@ -107,7 +114,7 @@ func TestMain_ExitOnJWKSFailure(t *testing.T) {
 		return
 	}
 
-	cmd := exec.Command(os.Args[0], "-test.run=TestMain_ExitOnJWKSFailure") //nolint:gosec // G204: intentional re-exec of test binary
+	cmd := exec.CommandContext(t.Context(), os.Args[0], "-test.run=TestMain_ExitOnJWKSFailure") //nolint:gosec // G204: intentional re-exec of test binary
 	cmd.Env = append(os.Environ(), "RUN_CRASHING_MAIN=JWKS")
 	err := cmd.Run()
 	if e, ok := err.(*exec.ExitError); ok && !e.Success() {
@@ -118,7 +125,8 @@ func TestMain_ExitOnJWKSFailure(t *testing.T) {
 }
 
 func TestInitNats_Success(t *testing.T) {
-	l, err := net.Listen("tcp", "127.0.0.1:0")
+	lc := net.ListenConfig{}
+	l, err := lc.Listen(t.Context(), "tcp", "127.0.0.1:0")
 	require.NoError(t, err)
 	defer func() { _ = l.Close() }() //nolint:errcheck // test listener cleanup
 
@@ -128,7 +136,10 @@ func TestInitNats_Success(t *testing.T) {
 			return
 		}
 		defer func() { _ = conn.Close() }() //nolint:errcheck // test conn cleanup
-		_, _ = conn.Write([]byte(`INFO {"server_id":"MOCK","version":"2.0.0","host":"127.0.0.1","port":4222,"auth_required":false}` + "\r\n"))
+		if _, writeErr := conn.Write([]byte(`INFO {"server_id":"MOCK","version":"2.0.0","host":"127.0.0.1","port":4222,"auth_required":false}` + "\r\n")); writeErr != nil {
+			t.Logf("mock NATS INFO write failed: %v", writeErr)
+			return
+		}
 
 		reader := bufio.NewReader(conn)
 		for {
@@ -137,7 +148,10 @@ func TestInitNats_Success(t *testing.T) {
 				return
 			}
 			if strings.HasPrefix(line, "PING") {
-				_, _ = conn.Write([]byte("PONG\r\n"))
+				if _, writeErr := conn.Write([]byte("PONG\r\n")); writeErr != nil {
+					t.Logf("mock NATS PONG write failed: %v", writeErr)
+					return
+				}
 			}
 		}
 	}()
@@ -165,7 +179,7 @@ func TestInitNats_ExitOnFailure(t *testing.T) {
 		return
 	}
 
-	cmd := exec.Command(os.Args[0], "-test.run=TestInitNats_ExitOnFailure") //nolint:gosec // G204: intentional re-exec of test binary
+	cmd := exec.CommandContext(t.Context(), os.Args[0], "-test.run=TestInitNats_ExitOnFailure") //nolint:gosec // G204: intentional re-exec of test binary
 	cmd.Env = append(os.Environ(), "RUN_CRASHING_NATS=1")
 	err := cmd.Run()
 	if e, ok := err.(*exec.ExitError); ok && !e.Success() {
