@@ -136,7 +136,9 @@ describe("useShare", () => {
     })
 
     const { result } = renderHook(() => useShare({ title: "Test" }))
-    expect(result.current.shareOptions[0].href).toContain("https%3A%2F%2Ftest-location.com%2Fcurrent-page")
+    expect(result.current.shareOptions[0].href).toContain(
+      "https%3A%2F%2Ftest-location.com%2Fcurrent-page"
+    )
 
     Object.defineProperty(window, "location", {
       value: { href: originalLocation },
@@ -212,7 +214,7 @@ describe("useShare", () => {
   })
 
   it("handleShare returns early if already sharing", async () => {
-    let resolveShare: any
+    let resolveShare!: (value: unknown) => void
     const sharePromise = new Promise((resolve) => {
       resolveShare = resolve
     })
@@ -223,13 +225,13 @@ describe("useShare", () => {
     )
 
     // First call sets sharing = true
-    let p1: any
+    let p1!: Promise<void>
     act(() => {
       p1 = result.current.handleShare()
     })
 
     // Second call should return early
-    let p2: any
+    let p2!: Promise<void>
     act(() => {
       p2 = result.current.handleShare()
     })

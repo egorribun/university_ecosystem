@@ -8,12 +8,12 @@ import React from "react"
 const mockFetchWeatherSnapshot = vi.fn()
 vi.mock("@/api/weather", () => ({
   WEATHER_CACHE_TTL_MS: 300000,
-  fetchWeatherSnapshot: (...args: any[]) => mockFetchWeatherSnapshot(...args),
+  fetchWeatherSnapshot: (...args: unknown[]) => mockFetchWeatherSnapshot(...args),
 }))
 
 // Mock weatherQueryOptions
 vi.mock("@/api/hooks/weather", () => ({
-  weatherQueryOptions: (coords: any, ttl: number) => ({
+  weatherQueryOptions: (coords: unknown, ttl: number) => ({
     queryKey: ["weather", coords, ttl],
   }),
 }))
@@ -26,7 +26,7 @@ vi.mock("../useMediaQuery", () => ({
 
 // Mock getWeatherIconMeta
 vi.mock("@/utils/weatherIcons", () => ({
-  getWeatherIconMeta: (code: string) => ({
+  getWeatherIconMeta: (_code: string) => ({
     icon: "mock-icon",
     translationKeySuffix: "mock-suffix",
     animation: "pulse",
@@ -81,7 +81,10 @@ describe("useWeather", () => {
     const customTtl = 5000
     mockFetchWeatherSnapshot.mockRejectedValue(new Error("Network Error"))
 
-    const { result } = renderHook(() => useWeather({ coordinates: customCoords, cacheTtlMs: customTtl }), { wrapper })
+    const { result } = renderHook(
+      () => useWeather({ coordinates: customCoords, cacheTtlMs: customTtl }),
+      { wrapper }
+    )
 
     await waitFor(() => expect(result.current.isLoading).toBe(false))
 

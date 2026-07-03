@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor, fireEvent } from "@testing-library/react"
+import { act, render, screen, fireEvent } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 vi.mock("framer-motion", async () =>
@@ -78,7 +78,7 @@ describe("LivePushToasts", () => {
         data: { severity: "success" },
       },
     })
-    
+
     act(() => {
       vi.advanceTimersByTime(0)
     })
