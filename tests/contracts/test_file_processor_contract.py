@@ -217,3 +217,45 @@ def test_file_processing_failure_callback_contract(pact: Pact) -> None:
         .with_metadata({"nats_subject": "file.processed"})
     )
     pact.verify(_backend_callback_handler, "Async")
+
+
+def test_file_processing_size_exceeded_callback_contract(pact: Pact) -> None:
+    """Contract: Python backend expects this failure schema for a file size limit violation."""
+    (
+        pact.upon_receiving(
+            "a file processing result failing due to size limit", "Async"
+        )
+        .with_body(
+            {
+                "job_id": match.like(_SAMPLE_JOB_ID),
+                "success": match.like(False),
+                "error": match.like(
+                    "file size 104857601 bytes exceeds the maximum limit of 104857600 bytes"
+                ),
+                "duration_ms": match.like(12),
+            },
+            "application/json",
+        )
+        .with_metadata({"nats_subject": "file.processed"})
+    )
+    pact.verify(_backend_callback_handler, "Async")
+
+
+def test_file_processing_infected_callback_contract(pact: Pact) -> None:
+    """Contract: Python backend expects this failure schema when malware is detected by ClamAV."""
+    (
+        pact.upon_receiving(
+            "a file processing result failing due to virus detection", "Async"
+        )
+        .with_body(
+            {
+                "job_id": match.like(_SAMPLE_JOB_ID),
+                "success": match.like(False),
+                "error": match.like("malware detected: Eicar-Signature"),
+                "duration_ms": match.like(85),
+            },
+            "application/json",
+        )
+        .with_metadata({"nats_subject": "file.processed"})
+    )
+    pact.verify(_backend_callback_handler, "Async")

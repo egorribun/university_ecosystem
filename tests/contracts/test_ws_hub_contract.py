@@ -203,3 +203,45 @@ def test_cache_invalidation_event_contract(pact: Pact) -> None:
         .with_metadata({"nats_subject": "cache.invalidate"})
     )
     pact.verify(_ws_hub_handler, "Async")
+
+
+def test_broadcast_to_many_contract(pact: Pact) -> None:
+    """Contract: ws-hub expects broadcast event payloads in this schema."""
+    (
+        pact.upon_receiving("a broadcast event to all clients", "Async")
+        .with_body(
+            {
+                "data": {
+                    "payload": match.like(
+                        "Attention: System maintenance scheduled tonight."
+                    ),
+                    "sender_id": match.regex(_SAMPLE_USER_ID, regex=_UUID_PATTERN),
+                    "timestamp": match.like(_SAMPLE_TIMESTAMP),
+                },
+                "signature": match.regex(_SAMPLE_SIGNATURE, regex=_HMAC_HEX_PATTERN),
+            },
+            "application/json",
+        )
+        .with_metadata({"nats_subject": "broadcast.all"})
+    )
+    pact.verify(_ws_hub_handler, "Async")
+
+
+def test_heartbeat_timeout_contract(pact: Pact) -> None:
+    """Contract: Python backend expects heartbeat timeout notifications in this schema."""
+    (
+        pact.upon_receiving("a client heartbeat timeout event", "Async")
+        .with_body(
+            {
+                "data": {
+                    "user_id": match.regex(_SAMPLE_USER_ID, regex=_UUID_PATTERN),
+                    "reason": match.like("ping timeout after 30 seconds"),
+                    "timestamp": match.like(_SAMPLE_TIMESTAMP),
+                },
+                "signature": match.regex(_SAMPLE_SIGNATURE, regex=_HMAC_HEX_PATTERN),
+            },
+            "application/json",
+        )
+        .with_metadata({"nats_subject": "client.timeout"})
+    )
+    pact.verify(_ws_hub_handler, "Async")

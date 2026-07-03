@@ -53,3 +53,51 @@ def test_gateway_rest_contract(pact: Pact) -> None:
         .will_respond_with(200)
         .with_body({"status": match.like("ok")})
     )
+
+
+def test_gateway_rest_unauthorized_contract(pact: Pact) -> None:
+    """Contract: Gateway expects 401 Unauthorized for unauthenticated calls to protected routes."""
+    (
+        pact.upon_receiving("a request to a protected endpoint without auth header")
+        .given("Backend is running")
+        .with_request(method="GET", path="/api/v1/auth/me")
+        .will_respond_with(401)
+        .with_body({"detail": match.like("Not authenticated")})
+    )
+
+
+def test_gateway_rest_forbidden_contract(pact: Pact) -> None:
+    """Contract: Gateway expects 403 Forbidden when a student performs admin actions."""
+    (
+        pact.upon_receiving("a request to an admin route with student credentials")
+        .given("Backend is running")
+        .with_request(
+            method="POST",
+            path="/api/v1/admin/users",
+            headers={"Authorization": "Bearer student-token"},
+        )
+        .will_respond_with(403)
+        .with_body({"detail": match.like("Operation not permitted")})
+    )
+
+
+def test_gateway_rest_rate_limited_contract(pact: Pact) -> None:
+    """Contract: Gateway expects 429 Too Many Requests when rate limit threshold is crossed."""
+    (
+        pact.upon_receiving("too many requests to news endpoint")
+        .given("Backend is running")
+        .with_request(method="GET", path="/api/v1/news")
+        .will_respond_with(429)
+        .with_body({"detail": match.like("Rate limit exceeded")})
+    )
+
+
+def test_gateway_rest_service_unavailable_contract(pact: Pact) -> None:
+    """Contract: Gateway expects 503 Service Unavailable when backend is in maintenance."""
+    (
+        pact.upon_receiving("a request during backend database outage")
+        .given("Backend is database-down")
+        .with_request(method="GET", path="/api/v1/schedule")
+        .will_respond_with(503)
+        .with_body({"detail": match.like("Service temporarily unavailable")})
+    )
