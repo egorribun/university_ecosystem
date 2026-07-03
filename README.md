@@ -15,7 +15,7 @@
 
 **University Ecosystem** is a high-performance, polyglot microservices platform engineered to centralize and revolutionize student interactions. From real-time scheduling and interactive campus navigation to enterprise-grade security and automated workflows, we provide the digital foundation for the next generation of academic excellence.
 
-[Explore Docs](docs/README.md) • [Deployment Guide](docs/DEPLOY.md) • [Security Policy](SECURITY.md) • [Contributing](docs/CONTRIBUTING.md)
+[Explore Docs](docs/README.md) • [Deployment Guide](docs/DEPLOY.md) • [Testing Guide](TESTING.md) • [Security Policy](SECURITY.md) • [Contributing](docs/CONTRIBUTING.md)
 
 </div>
 
