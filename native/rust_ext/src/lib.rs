@@ -508,4 +508,126 @@ mod tests {
         let verified = verify_audit_signature(vec![key.to_string()], data.to_string(), sig_hex).unwrap();
         assert!(verified);
     }
+
+    #[test]
+    fn test_detect_conflicts() {
+        let target = ScheduleItem {
+            id: None,
+            weekday: "monday".to_string(),
+            start_time: 1000,
+            end_time: 2000,
+            parity: "both".to_string(),
+        };
+        let existing1 = ScheduleItem {
+            id: Some(1),
+            weekday: "monday".to_string(),
+            start_time: 1500,
+            end_time: 2500,
+            parity: "both".to_string(),
+        };
+        let existing2 = ScheduleItem {
+            id: Some(2),
+            weekday: "tuesday".to_string(),
+            start_time: 1000,
+            end_time: 2000,
+            parity: "both".to_string(),
+        };
+
+        let result = detect_conflicts(&target, vec![existing1.clone(), existing2.clone()]);
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].id, Some(1));
+    }
+
+    #[test]
+    fn test_batch_detect_conflicts() {
+        std::env::set_var("RUST_EXT_THREADS", "2");
+        let item1 = ScheduleItem {
+            id: Some(1),
+            weekday: "monday".to_string(),
+            start_time: 1000,
+            end_time: 2000,
+            parity: "both".to_string(),
+        };
+        let item2 = ScheduleItem {
+            id: Some(2),
+            weekday: "monday".to_string(),
+            start_time: 1500,
+            end_time: 2500,
+            parity: "both".to_string(),
+        };
+        let item3 = ScheduleItem {
+            id: Some(3),
+            weekday: "tuesday".to_string(),
+            start_time: 1000,
+            end_time: 2000,
+            parity: "both".to_string(),
+        };
+
+        let result = batch_detect_conflicts(vec![item1.clone(), item2.clone(), item3.clone()]).unwrap();
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].0.id, Some(1));
+        assert_eq!(result[0].1.id, Some(2));
+
+        // Test item size limit
+        let mut huge_items = Vec::new();
+        for _ in 0..2501 {
+            huge_items.push(item1.clone());
+        }
+        let err_result = batch_detect_conflicts(huge_items);
+        assert!(err_result.is_err());
+    }
+
+    #[test]
+    fn test_find_optimal_slot() {
+        let existing = vec![
+            ScheduleItem {
+                id: Some(1),
+                weekday: "monday".to_string(),
+                start_time: Utc::now().timestamp(), // conflicting block
+                end_time: Utc::now().timestamp() + 3600,
+                parity: "both".to_string(),
+            }
+        ];
+        
+        let available = vec![
+            ("invalid_day".to_string(), vec![10]),
+            ("monday".to_string(), vec![9, 10]),
+        ];
+
+        let slot = find_optimal_slot(60, existing, available);
+        assert!(slot.is_some());
+        let found = slot.unwrap();
+        assert_eq!(found.weekday, "monday");
+    }
+
+    #[test]
+    fn test_is_partition_expired_real() {
+        // Table name is "events"
+        // Target is "events_y2020m01" -> End date is 2020-02-01
+        // Cutoff is now - 1 day -> obviously expired
+        assert!(is_partition_expired("events_y2020m01".to_string(), "events".to_string(), 1));
+
+        // Cutoff is now - 100000 days -> obviously NOT expired
+        assert!(!is_partition_expired("events_y2999m01".to_string(), "events".to_string(), 100000));
+
+        // Wrong table prefix -> false
+        assert!(!is_partition_expired("other_y2020m01".to_string(), "events".to_string(), 1));
+    }
+
+    #[test]
+    fn test_next_weekday() {
+        let from = NaiveDate::from_ymd_opt(2026, 7, 3).unwrap(); // Friday
+        
+        // Target Friday -> should be today (2026-07-03)
+        let friday = next_weekday(from, Weekday::Fri);
+        assert_eq!(friday, from);
+
+        // Target Saturday -> should be tomorrow (2026-07-04)
+        let saturday = next_weekday(from, Weekday::Sat);
+        assert_eq!(saturday, NaiveDate::from_ymd_opt(2026, 7, 4).unwrap());
+
+        // Target Thursday -> should be next week (2026-07-09)
+        let thursday = next_weekday(from, Weekday::Thu);
+        assert_eq!(thursday, NaiveDate::from_ymd_opt(2026, 7, 9).unwrap());
+    }
 }

@@ -32,6 +32,7 @@ type RateLimiter struct {
 	fallbackCounters map[string]*fallbackEntry
 	fallbackLimit    int   // max requests per fallbackWindowSecs
 	fallbackWindow   int64 // window length in seconds
+	cleanupInterval  time.Duration
 	// RZ-W18-03 (audit 2026-03-23 Wave 18): ensure cleanup goroutine starts once.
 	cleanupOnce sync.Once
 }
@@ -63,6 +64,7 @@ func NewRateLimiter(ctx context.Context, redisURL string, rps, burst int) (*Rate
 		fallbackCounters: make(map[string]*fallbackEntry),
 		fallbackLimit:    3, // RZ-22-06: conservative per-instance limit (N instances × 3 = 9 effective, prevents brute-force during Redis outage)
 		fallbackWindow:   60,
+		cleanupInterval:  5 * time.Minute,
 	}, nil
 }
 
@@ -98,7 +100,11 @@ func (rl *RateLimiter) inMemoryAllow(key string) bool {
 func (rl *RateLimiter) startFallbackCleanup(ctx context.Context) {
 	rl.cleanupOnce.Do(func() {
 		go func() {
-			ticker := time.NewTicker(5 * time.Minute)
+			interval := rl.cleanupInterval
+			if interval == 0 {
+				interval = 5 * time.Minute
+			}
+			ticker := time.NewTicker(interval)
 			defer ticker.Stop()
 			for {
 				select {

@@ -238,3 +238,39 @@ func TestRateLimiter_GetClient_ReturnsUnderlyingClient(t *testing.T) {
 	rl := &RateLimiter{client: client}
 	assert.Same(t, client, rl.GetClient())
 }
+
+func TestRateLimiter_StartFallbackCleanup(t *testing.T) {
+	rl := &RateLimiter{
+		fallbackCounters: make(map[string]*fallbackEntry),
+		fallbackLimit:    2,
+		fallbackWindow:   1, // 1 second window
+		cleanupInterval:  10 * time.Millisecond,
+	}
+
+	rl.fallbackMu.Lock()
+	rl.fallbackCounters["expired-client"] = &fallbackEntry{
+		count:       1,
+		windowStart: time.Now().Unix() - 10, // 10s ago, definitely expired!
+	}
+	rl.fallbackCounters["fresh-client"] = &fallbackEntry{
+		count:       1,
+		windowStart: time.Now().Unix(), // fresh
+	}
+	rl.fallbackMu.Unlock()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	rl.startFallbackCleanup(ctx)
+
+	// Sleep to let ticker fire
+	time.Sleep(50 * time.Millisecond)
+	cancel() // Stop the loop
+
+	rl.fallbackMu.Lock()
+	defer rl.fallbackMu.Unlock()
+
+	_, expiredExists := rl.fallbackCounters["expired-client"]
+	_, freshExists := rl.fallbackCounters["fresh-client"]
+
+	assert.False(t, expiredExists, "expired entry should be cleaned up")
+	assert.True(t, freshExists, "fresh entry should remain")
+}

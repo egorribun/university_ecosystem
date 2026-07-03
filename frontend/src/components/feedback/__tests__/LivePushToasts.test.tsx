@@ -51,6 +51,7 @@ describe("LivePushToasts", () => {
   })
 
   afterEach(() => {
+    vi.clearAllTimers()
     vi.useRealTimers()
     window.localStorage.clear()
   })

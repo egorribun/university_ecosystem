@@ -312,6 +312,7 @@ line-ending = "auto"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+log_level = "INFO"
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "session"
 asyncio_default_test_loop_scope = "session"
@@ -321,6 +322,7 @@ filterwarnings = [
   "ignore::DeprecationWarning:passlib",       # passlib/bcrypt upstream noise
   "ignore::DeprecationWarning:pkg_resources", # setuptools legacy noise
   "ignore::DeprecationWarning:dishka",        # dishka 1.8+ starlette integration move
+  "ignore::DeprecationWarning:testcontainers", # testcontainers internal deprecations
   "ignore:The 'lia' package has been renamed:DeprecationWarning",  # lia→cross_web (strawberry dep, stacklevel=2)
   "ignore::PendingDeprecationWarning",        # third-party pending removals
   "ignore:DISTINCT ON is currently supported only:sqlalchemy.exc.SADeprecationWarning",  # SQLite test DB — chat repo uses DISTINCT ON

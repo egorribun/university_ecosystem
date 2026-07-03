@@ -1,8 +1,15 @@
 package workflow
 
 import (
+	"context"
 	"image"
+	"image/color"
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/minio/minio-go/v7"
 	"github.com/minio/minio-go/v7/pkg/credentials"
@@ -210,4 +217,81 @@ func TestBuildMinIOClient(t *testing.T) {
 	client, err := BuildMinIOClient(cfg)
 	require.NoError(t, err)
 	assert.NotNil(t, client)
+}
+
+func TestBuildMinIOClient_Error(t *testing.T) {
+	cfg := &config.Config{
+		MinioEndpoint: "  invalid-endpoint-with-spaces  ",
+	}
+	_, err := BuildMinIOClient(cfg)
+	assert.Error(t, err)
+}
+
+func decodePanic(r io.Reader) (image.Image, error) {
+	panic("mock panic in image decode")
+}
+func decodeConfigPanic(r io.Reader) (image.Config, error) {
+	return image.Config{ColorModel: color.RGBAModel, Width: 10, Height: 10}, nil
+}
+
+func TestFileActivities_DownloadAndDecodeImage_PanicRecovery(t *testing.T) {
+	// Register custom panic-format decoder
+	image.RegisterFormat("panic-format", "magic", decodePanic, decodeConfigPanic)
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "image/panic-format")
+		w.Header().Set("Last-Modified", time.Now().UTC().Format(http.TimeFormat))
+		w.Header().Set("Content-Length", "5")
+		w.Header().Set("ETag", `"123456"`)
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("magic"))
+	}))
+	defer server.Close()
+
+	endpoint := strings.TrimPrefix(server.URL, "http://")
+	minioClient, err := minio.New(endpoint, &minio.Options{
+		Creds:  credentials.NewStaticV4("access", "secret", ""),
+		Secure: false,
+		Region: "us-east-1",
+	})
+	require.NoError(t, err)
+
+	cfg := &config.Config{MinioBucket: "test-bucket"}
+	activities, err := NewFileActivities(cfg, minioClient)
+	require.NoError(t, err)
+
+	_, _, err = activities.downloadAndDecodeImage(context.Background(), "test.panic")
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "panic during image decode")
+}
+
+func TestFileActivities_DownloadAndDecodeImage_ContextCancelled(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "image/png")
+		w.Header().Set("Last-Modified", time.Now().UTC().Format(http.TimeFormat))
+		w.Header().Set("Content-Length", "5")
+		w.Header().Set("ETag", `"123456"`)
+		w.WriteHeader(http.StatusOK)
+		time.Sleep(100 * time.Millisecond)
+		_, _ = w.Write([]byte("magic"))
+	}))
+	defer server.Close()
+
+	endpoint := strings.TrimPrefix(server.URL, "http://")
+	minioClient, err := minio.New(endpoint, &minio.Options{
+		Creds:  credentials.NewStaticV4("access", "secret", ""),
+		Secure: false,
+		Region: "us-east-1",
+	})
+	require.NoError(t, err)
+
+	cfg := &config.Config{MinioBucket: "test-bucket"}
+	activities, err := NewFileActivities(cfg, minioClient)
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // cancel immediately
+
+	_, _, err = activities.downloadAndDecodeImage(ctx, "test.png")
+	assert.Error(t, err)
 }

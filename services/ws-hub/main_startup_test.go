@@ -1,16 +1,22 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
 	"context"
+	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"os/exec"
+	"strings"
 	"testing"
 
+	"github.com/alicebob/miniredis/v2"
 	"github.com/nats-io/nats.go"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"github.com/university-ecosystem/ws-hub/pkg/config"
 )
 
@@ -20,21 +26,38 @@ import (
 func TestMain_InvalidPortExitsCleanly(t *testing.T) {
 	http.DefaultServeMux = http.NewServeMux()
 
-	// Backup original initNats function
-	oldInitNats := initNats
-	defer func() { initNats = oldInitNats }()
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	defer l.Close()
 
-	// Mock NATS connect to return nil so it doesn't try to connect to a real broker
-	initNats = func(ctx context.Context, cfg *config.Config, logger *slog.Logger) *nats.Conn {
-		return nil
-	}
+	go func() {
+		conn, err := l.Accept()
+		if err != nil {
+			return
+		}
+		defer conn.Close()
+		_, _ = conn.Write([]byte(`INFO {"server_id":"MOCK","version":"2.0.0","host":"127.0.0.1","port":4222,"auth_required":false}` + "\r\n"))
+		
+		reader := bufio.NewReader(conn)
+		for {
+			line, err := reader.ReadString('\n')
+			if err != nil {
+				return
+			}
+			if strings.HasPrefix(line, "PING") {
+				_, _ = conn.Write([]byte("PONG\r\n"))
+			}
+		}
+	}()
 
-	// Setup environment config variables
+	mr := miniredis.RunT(t)
+
 	t.Setenv("WS_HUB_PORT", "-1")
 	t.Setenv("WS_HUB_INTERNAL_SECRET", "test-secret-at-least-32-characters-long")
 	t.Setenv("BACKEND_URL", "http://localhost:8080")
-	t.Setenv("REDIS_URL", "") // disable redis cache
-	t.Setenv("JWKS_URL", "")  // skip JWKS setup
+	t.Setenv("NATS_URL", "nats://"+l.Addr().String())
+	t.Setenv("REDIS_URL", mr.Addr())
+	t.Setenv("JWKS_URL", "http://127.0.0.1:1/jwks")
 
 	assert.NotPanics(t, func() {
 		main()
@@ -86,6 +109,64 @@ func TestMain_ExitOnJWKSFailure(t *testing.T) {
 
 	cmd := exec.Command(os.Args[0], "-test.run=TestMain_ExitOnJWKSFailure")
 	cmd.Env = append(os.Environ(), "RUN_CRASHING_MAIN=JWKS")
+	err := cmd.Run()
+	if e, ok := err.(*exec.ExitError); ok && !e.Success() {
+		assert.Equal(t, 1, e.ExitCode())
+		return
+	}
+	t.Fatalf("process ran without expected exit status 1: %v", err)
+}
+
+func TestInitNats_Success(t *testing.T) {
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	defer l.Close()
+
+	go func() {
+		conn, err := l.Accept()
+		if err != nil {
+			return
+		}
+		defer conn.Close()
+		_, _ = conn.Write([]byte(`INFO {"server_id":"MOCK","version":"2.0.0","host":"127.0.0.1","port":4222,"auth_required":false}` + "\r\n"))
+		
+		reader := bufio.NewReader(conn)
+		for {
+			line, err := reader.ReadString('\n')
+			if err != nil {
+				return
+			}
+			if strings.HasPrefix(line, "PING") {
+				_, _ = conn.Write([]byte("PONG\r\n"))
+			}
+		}
+	}()
+
+	cfg := &config.Config{
+		NatsURL:      "nats://" + l.Addr().String(),
+		NatsUser:     "test-user",
+		NatsPassword: "test-password",
+	}
+	ctx := context.Background()
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+
+	nc := initNats(ctx, cfg, logger)
+	require.NotNil(t, nc)
+	nc.Close()
+}
+
+func TestInitNats_ExitOnFailure(t *testing.T) {
+	if os.Getenv("RUN_CRASHING_NATS") == "1" {
+		cfg := &config.Config{
+			NatsURL: "nats://foo\x00bar", // control character causes parsing failure
+		}
+		logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+		initNats(context.Background(), cfg, logger)
+		return
+	}
+
+	cmd := exec.Command(os.Args[0], "-test.run=TestInitNats_ExitOnFailure")
+	cmd.Env = append(os.Environ(), "RUN_CRASHING_NATS=1")
 	err := cmd.Run()
 	if e, ok := err.(*exec.ExitError); ok && !e.Success() {
 		assert.Equal(t, 1, e.ExitCode())

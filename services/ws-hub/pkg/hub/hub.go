@@ -86,6 +86,7 @@ type Hub struct {
 	// redisClient is the shared Redis connection used for upgrade ticket validation.
 	// RZ-W14-01 (audit 2026-03-23 Wave 14): tickets replace JWT-in-Sec-WebSocket-Protocol.
 	redisClient *goredis.Client
+	limiterCleanupInterval time.Duration
 }
 
 // NewHub creates a new Hub instance.
@@ -108,6 +109,7 @@ func NewHub(nc *nats.Conn, logger *slog.Logger, authClient RoomAuthClient, cfg *
 		clientMsgRateLimit: cfg.ClientMsgRateLimit,
 		clientMsgRateBurst: cfg.ClientMsgRateBurst,
 		redisClient:        rdb,
+		limiterCleanupInterval: 5 * time.Minute,
 	}
 }
 
@@ -591,7 +593,11 @@ func (h *Hub) StartLimiterCleanup(ctx context.Context) {
 				h.Logger.ErrorContext(ctx, "CRITICAL: Panic in LimiterCleanup goroutine avoided ws-hub crash", "panic", r)
 			}
 		}()
-		ticker := time.NewTicker(5 * time.Minute)
+		interval := h.limiterCleanupInterval
+		if interval == 0 {
+			interval = 5 * time.Minute
+		}
+		ticker := time.NewTicker(interval)
 		defer ticker.Stop()
 		for {
 			select {

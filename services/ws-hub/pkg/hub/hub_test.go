@@ -15,6 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/university-ecosystem/ws-hub/pkg/config"
 	"go.opentelemetry.io/otel"
+	"golang.org/x/time/rate"
 )
 
 // mockAuthClient implements RoomAuthClient for testing.
@@ -441,4 +442,29 @@ func TestHub_HandleRegister_MaxClientsReject(t *testing.T) {
 	default:
 		t.Errorf("expected rejected client's Send channel to be closed (closeOnce ran), got open channel")
 	}
+}
+
+func TestHub_StartLimiterCleanup(t *testing.T) {
+	h := setupTestHub()
+	h.limiterCleanupInterval = 10 * time.Millisecond
+
+	// Put one active client and one orphaned limiter
+	h.Clients["active-client"] = &Client{ID: "active-client"}
+
+	// Add message limiters
+	h.msgLimiters.Store("active-client", rate.NewLimiter(1.0, 1))
+	h.msgLimiters.Store("orphaned-client", rate.NewLimiter(1.0, 1))
+
+	ctx, cancel := context.WithCancel(context.Background())
+	h.StartLimiterCleanup(ctx)
+
+	// Wait for ticker to run
+	time.Sleep(50 * time.Millisecond)
+	cancel()
+
+	_, activeExists := h.msgLimiters.Load("active-client")
+	_, orphanedExists := h.msgLimiters.Load("orphaned-client")
+
+	assert.True(t, activeExists, "active client limiter should remain")
+	assert.False(t, orphanedExists, "orphaned client limiter should be cleaned up")
 }
