@@ -426,15 +426,15 @@
 **Текущее:** `native/rust_ext/src/lib.rs` (18.5KB) содержит `#[cfg(test)]` блок.
 
 **Задачи:**
-- [ ] Запустить `cargo test --no-default-features --lib` — посмотреть текущий coverage
-- [ ] Установить `cargo llvm-cov`:
+- [x] Запустить `cargo test --no-default-features --lib` — посмотреть текущий coverage
+- [x] Установить `cargo llvm-cov`:
   ```toml
   # в native/rust_ext/Cargo.toml
   [dev-dependencies]
   cargo-llvm-cov = "*"
   ```
-- [ ] Запустить: `cargo llvm-cov --no-default-features --lib --lcov --output-path lcov.info`
-- [ ] Найти все непокрытые функции/ветки
+- [x] Запустить: `cargo llvm-cov --no-default-features --lib --lcov --output-path lcov.info`
+- [x] Найти все непокрытые функции/ветки
 
 **Типичные функции в rust_ext (18KB) — вероятно содержат:**
 - UUID v7 generation → тест: monotonicity, clock regression, uniqueness
@@ -443,14 +443,14 @@
 - Audit functions → тест: all audit event types
 
 **Новые тесты:**
-- [ ] `test_uuid7_monotonic()` — 1000 UUID v7 → строго возрастающий порядок
-- [ ] `test_hmac_known_vector()` — RFC 2202 test vectors для HMAC-SHA256
-- [ ] `test_hmac_empty_input()` — пустой payload, пустой ключ
-- [ ] `test_hmac_unicode_key()` — ключ с non-ASCII символами
-- [ ] `test_partition_boundary()` — offset=0, offset=max, wrap-around
-- [ ] `test_partition_consistency()` — одинаковый input → одинаковый partition
-- [ ] `test_audit_all_event_types()` — каждый enum variant
-- [ ] `test_audit_invalid_payload()` — malformed data не паникует
+- [x] `test_uuid7_monotonic()` — 1000 UUID v7 → строго возрастающий порядок
+- [x] `test_hmac_known_vector()` — RFC 2202 test vectors для HMAC-SHA256
+- [x] `test_hmac_empty_input()` — пустой payload, пустой ключ
+- [x] `test_hmac_unicode_key()` — ключ с non-ASCII символами
+- [x] `test_partition_boundary()` — offset=0, offset=max, wrap-around
+- [x] `test_partition_consistency()` — одинаковый input → одинаковый partition
+- [x] `test_audit_all_event_types()` — каждый enum variant
+- [x] `test_audit_invalid_payload()` — malformed data не паникует
 
 ---
 
@@ -459,11 +459,11 @@
 **Текущее:** `tests/test_smoke_pyo3_ext.py`, `test_smoke_rust_audit.py`, `test_smoke_rust_partitions.py`.
 
 **Задачи:**
-- [ ] Расширить smoke → full: каждая PyO3-функция имеет тест на Python side
-- [ ] Тест: неправильный тип → `TypeError` (не `panic`)
-- [ ] Тест: None как аргумент → graceful error, не segfault
-- [ ] Тест: concurrent calls (threading.Thread) → thread safety
-- [ ] Тест: GIL interaction — pyO3 `allow_threads` корректно
+- [x] Расширить smoke → full: каждая PyO3-функция имеет тест на Python side
+- [x] Тест: неправильный тип → `TypeError` (не `panic`)
+- [x] Тест: None как аргумент → graceful error, не segfault
+- [x] Тест: concurrent calls (threading.Thread) → thread safety
+- [x] Тест: GIL interaction — pyO3 `allow_threads` корректно
 
 ---
 
@@ -472,25 +472,25 @@
 **Текущее:** `crates/pyo3-sanitizer/src/lib.rs` (10.6KB) — нет `#[cfg(test)]` модуля (вероятно).
 
 **Задачи:**
-- [ ] Добавить `#[cfg(test)]` модуль в `lib.rs`
-- [ ] Тест: XSS payload → stripped (известные векторы из OWASP XSS CheatSheet)
-- [ ] Тест: легитимный HTML → сохранён (разрешённые теги)
-- [ ] Тест: пустая строка → пустая строка
-- [ ] Тест: очень длинная строка (1MB) → не OOM, не timeout
-- [ ] Тест: вложенные теги > 100 уровней → не stack overflow
-- [ ] Тест: utf-8 non-BMP chars (emoji, CJK) → сохранены
-- [ ] Сравнение с pyo3-sanitizer вывод = wasm-sanitizer вывод (изоморфность)
+- [x] Добавить `#[cfg(test)]` модуль в `lib.rs`
+- [x] Тест: XSS payload → stripped (известные векторы из OWASP XSS CheatSheet)
+- [x] Тест: легитимный HTML → сохранён (разрешённые теги)
+- [x] Тест: пустая строка → пустая строка
+- [x] Тест: очень длинная строка (1MB) → не OOM, не timeout
+- [x] Тест: вложенные теги > 100 уровней → не stack overflow
+- [x] Тест: utf-8 non-BMP chars (emoji, CJK) → сохранены
+- [x] Сравнение с pyo3-sanitizer вывод = wasm-sanitizer вывод (изоморфность)
 
 ---
 
 ### 3.4 — WASM sanitizer (frontend/wasm-sanitizer)
 
 **Задачи:**
-- [ ] Проверить наличие Rust unit тестов в `frontend/wasm-sanitizer/src/`
-- [ ] Если нет — добавить аналогичные тесты из п.3.3
-- [ ] `wasm-pack test --node` — запустить тесты в Node.js окружении
-- [ ] Добавить в CI: `wasm-pack test --node frontend/wasm-sanitizer`
-- [ ] Добавить в CI: сравнительный тест "pyo3 output == wasm output" для identical inputs
+- [x] Проверить наличие Rust unit тестов в `frontend/wasm-sanitizer/src/`
+- [x] Если нет — добавить аналогичные тесты из п.3.3
+- [x] `wasm-pack test --node` — запустить тесты в Node.js окружении
+- [x] Добавить в CI: `wasm-pack test --node frontend/wasm-sanitizer`
+- [x] Добавить в CI: сравнительный тест "pyo3 output == wasm output" для identical inputs
 
 ---
 
@@ -499,34 +499,34 @@
 **Текущее:** `native/rust_ext/fuzz/fuzz_targets/` — cargo-fuzz targets существуют.
 
 **Задачи:**
-- [ ] Посмотреть существующие fuzz targets (`ls fuzz/fuzz_targets/`)
-- [ ] Новый target: `fuzz_sanitize` — подавать произвольный HTML pyo3-sanitizer
-- [ ] Новый target: `fuzz_uuid7_roundtrip` — случайный timestamp → UUID v7 → parse → timestamp
-- [ ] Новый target: `fuzz_hmac_verify` — произвольные payload/sig/key → не panic
-- [ ] Corpus структура:
+- [x] Посмотреть существующие fuzz targets (`ls fuzz/fuzz_targets/`)
+- [x] Новый target: `fuzz_sanitize` — подавать произвольный HTML pyo3-sanitizer
+- [x] Новый target: `fuzz_uuid7_roundtrip` — случайный timestamp → UUID v7 → parse → timestamp
+- [x] Новый target: `fuzz_hmac_verify` — произвольные payload/sig/key → не panic
+- [x] Corpus структура:
   ```
   fuzz/corpus/
   ├── fuzz_sanitize/     # seed inputs: known XSS payloads
   ├── fuzz_uuid7/        # seed inputs: timestamps
   └── fuzz_hmac/         # seed inputs: valid HMAC tuples
   ```
-- [ ] CI budget: `timeout 90m cargo fuzz run {target} -- -max_total_time=5400`
-- [ ] В `rust-fuzz.yml`: добавить все новые targets, artifacts upload при crash
-- [ ] Настроить OSS-Fuzz integration (опционально, если проект open source)
+- [x] CI budget: `timeout 90m cargo fuzz run {target} -- -max_total_time=5400`
+- [x] В `rust-fuzz.yml`: добавить все новые targets, artifacts upload при crash
+- [x] Настроить OSS-Fuzz integration (опционально, если проект open source)
 
 ---
 
 ### 3.6 — Rust CI gate
 
 **Задачи:**
-- [ ] В CI добавить:
+- [x] В CI добавить:
   ```yaml
   - name: Rust unit coverage
     run: |
       cargo llvm-cov --no-default-features --lib --fail-under-lines 95
   ```
-- [ ] Добавить `cargo clippy --all-targets -- -D warnings` как gate
-- [ ] Добавить `cargo audit` для dependency CVE check
+- [x] Добавить `cargo clippy --all-targets -- -D warnings` как gate
+- [x] Добавить `cargo audit` для dependency CVE check
 
 ---
 
