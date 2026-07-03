@@ -36,8 +36,11 @@ jobs:
         with:
           results_file: scorecard-results.sarif
           results_format: sarif
-          # Publish to public Scorecard API (shows badge on README, requires public repo)
-          publish_results: true
+          # Disabled because this job post-processes SARIF with a `run:` step.
+          # The public Scorecard API only accepts workflows whose Scorecard job
+          # contains `uses:` steps exclusively; Code Scanning still receives the
+          # filtered SARIF via github/codeql-action/upload-sarif below.
+          publish_results: false
 
       - name: Filter policy-only Scorecard SARIF findings
         shell: python
