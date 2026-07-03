@@ -108,6 +108,47 @@ async def test_persisted_query_extension_prod_not_in_manifest():
             await gen.asend(None)
 
 
+def test_build_schema_extensions_production_adds_introspection_rule():
+    """Line 183: verify the AddValidationRules lambda is appended in production.
+
+    _build_schema_extensions() is normally called at import time with the
+    testing environment, so the production branch (lines 180-189) is never
+    reached during ordinary test runs.  We call the function directly after
+    patching settings so that _is_prod evaluates to True, then confirm that
+    one of the returned extension factories instantiates AddValidationRules
+    with NoSchemaIntrospectionCustomRule.
+    """
+    from graphql.validation import NoSchemaIntrospectionCustomRule
+    from strawberry.extensions import AddValidationRules
+
+    from app.graphql.schema import _build_schema_extensions
+
+    with patch("app.graphql.schema.settings") as mock_settings:
+        # Any value outside {"development", "testing", "local"} triggers prod branch.
+        mock_settings.environment = "production"
+
+        result = _build_schema_extensions()
+
+    # Collect all extension instances produced by the factory callables.
+    instantiated = [ext() if callable(ext) else ext for ext in result]
+
+    # QueryDepthLimiter is a subclass of AddValidationRules in this Strawberry version,
+    # so use an exact type check to isolate only the introspection-rule extension.
+    introspection_rules = [
+        inst for inst in instantiated if type(inst) is AddValidationRules
+    ]
+    assert introspection_rules, (
+        "Expected at least one AddValidationRules extension in production mode "
+        "(line 183 of schema.py must be covered)"
+    )
+
+    # Confirm the rule set contains NoSchemaIntrospectionCustomRule (not just any rule).
+    rule_ext = introspection_rules[0]
+    assert any(
+        rule is NoSchemaIntrospectionCustomRule for rule in rule_ext.validation_rules
+    ), "AddValidationRules must include NoSchemaIntrospectionCustomRule"
+
+
 @pytest.mark.asyncio
 async def test_persisted_query_extension_prod_no_query():
     ext = PersistedQueryExtension()
