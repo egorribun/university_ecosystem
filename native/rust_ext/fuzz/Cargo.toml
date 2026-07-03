@@ -8,14 +8,9 @@ edition = "2024"
 cargo-fuzz = true
 
 [dependencies]
+ammonia = "4.1.2"
+chrono = { version = "0.4", features = ["serde"] }
 libfuzzer-sys = "0.4"
-
-[dependencies.rust_ext]
-path = ".."
-default-features = false
-
-[dependencies.pyo3-sanitizer]
-path = "../../../crates/pyo3-sanitizer"
 
 [[bin]]
 name = "fuzz_target_1"
