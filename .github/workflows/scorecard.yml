@@ -55,6 +55,7 @@ jobs:
               "CIIBestPracticesID",
               "CodeReviewID",
               "PinnedDependenciesID",
+              "SASTID",
               "TokenPermissionsID",
               # Dependency CVEs are uploaded by Trivy with package context.
               "VulnerabilitiesID",
@@ -79,4 +80,3 @@ jobs:
         uses: github/codeql-action/upload-sarif@8aad20d150bbac5944a9f9d289da16a4b0d87c1e # v4.36.2
         with:
           sarif_file: scorecard-results.sarif
-
