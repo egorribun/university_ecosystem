@@ -1,4 +1,4 @@
-import { useEffect } from "react"
+import { useEffect, useRef } from "react"
 import { useURLState } from "@/hooks/useURLState"
 import { useScheduleUIStore } from "@/stores/scheduleUIStore"
 
@@ -37,6 +37,23 @@ export function useScheduleURLSync(): void {
   const weekOffset = useScheduleUIStore((state) => state.weekOffset)
   const setWeekOffset = useScheduleUIStore((state) => state.setWeekOffset)
 
+  // W179 SW10 (teardown-hang fix) — skip the very first store→URL write.
+  //
+  // On mount, both effects fire in the same React commit. Effect 1
+  // (URL→store) queues setWeekOffset, but the state update hasn't
+  // applied yet when Effect 2 (store→URL) runs in the same commit.
+  // If weekOffset=0 (Zustand default) and urlWeek="1", Effect 2 would
+  // call setParam("w", "") — a spurious router navigation that strips
+  // ?w=1 from the URL. This leaves a TanStack Router navigation
+  // (+ its loader) pending when the Playwright browser context closes,
+  // causing an infinite 90s teardown hang in url-state-persistence.spec.ts.
+  //
+  // Skipping the first run is safe: Effect 1 always fires before Effect 2
+  // in the same commit (React runs effects in declaration order), so
+  // setWeekOffset is already queued. On the second render the store and
+  // URL agree and both effects become no-ops.
+  const isFirstStoreToUrlRunRef = useRef(true)
+
   // URL → store. Parse the URL value and push into the store when they
   // disagree. The `next !== weekOffset` guard is what prevents the
   // ping-pong with the store→URL effect below: once URL and store align,
@@ -55,6 +72,12 @@ export function useScheduleURLSync(): void {
   // Use empty string to clear the param when offset is 0 (useURLState's
   // sentinel for removal); otherwise pass the number directly.
   useEffect(() => {
+    // Skip the first run — URL is authoritative on mount.
+    // See W179 SW10 comment on isFirstStoreToUrlRunRef above.
+    if (isFirstStoreToUrlRunRef.current) {
+      isFirstStoreToUrlRunRef.current = false
+      return
+    }
     const expected: number | "" = weekOffset === 0 ? "" : weekOffset
     const expectedURL = expected === "" ? "" : String(expected)
     if (expectedURL !== urlWeek) {
