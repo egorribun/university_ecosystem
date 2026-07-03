@@ -247,7 +247,7 @@ func TestValidate_CookieTokenExtraction(t *testing.T) {
 
 	token := createValidToken(testSecret, revocableClaims("jti-cookie"))
 	req := httptest.NewRequest(http.MethodGet, "/test", nil)
-	req.AddCookie(&http.Cookie{Name: AccessTokenCookieName, Value: token}) // BFF cookie path, no Authorization header
+	req.AddCookie(&http.Cookie{Name: AccessTokenCookieName, Value: token}) //nolint:gosec // G124: test-only cookie, Secure/HttpOnly not applicable in unit tests
 	rec := httptest.NewRecorder()
 	router.ServeHTTP(rec, req)
 

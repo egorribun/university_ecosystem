@@ -354,8 +354,8 @@ func TestHandleWebSocket_E2EUpgradeJoinAndDeliver(t *testing.T) {
 
 func TestHandleWebSocket_RejectsDisallowedOrigin(t *testing.T) {
 	origEnv := os.Getenv("ENVIRONMENT")
-	os.Setenv("ENVIRONMENT", "production")
-	defer os.Setenv("ENVIRONMENT", origEnv)
+	require.NoError(t, os.Setenv("ENVIRONMENT", "production"))
+	defer func() { require.NoError(t, os.Setenv("ENVIRONMENT", origEnv)) }()
 
 	SetAllowedOrigins([]string{"http://allowed.example"})
 	defer SetAllowedOrigins(nil)
@@ -524,32 +524,23 @@ func TestValidateRS256_EdgeCases(t *testing.T) {
 	require.NoError(t, err)
 	pub := &priv.PublicKey
 
-	// Setup JWKS server
-	jwksMap := map[string]interface{}{
-		"keys": []map[string]interface{}{
-			{
-				"kty": "RSA",
-				"kid": "kid-1",
-				"n":   jwt.NewNumericDate(time.Now()).String(), // mock placeholder n/e
-				"e":   "AQAB",
-			},
-		},
-	}
-	// Better yet, use real JWK format
+	// Build a real JWK set from the test public key so JWKS validation succeeds.
 	key, err := jwk.FromRaw(pub)
 	require.NoError(t, err)
-	_ = key.Set(jwk.KeyIDKey, "kid-1")
+	require.NoError(t, key.Set(jwk.KeyIDKey, "kid-1"))
 	buf, err := json.Marshal(key)
 	require.NoError(t, err)
 	var jwkKey map[string]interface{}
 	require.NoError(t, json.Unmarshal(buf, &jwkKey))
-	jwksMap = map[string]interface{}{
+	jwksMap := map[string]interface{}{
 		"keys": []map[string]interface{}{jwkKey},
 	}
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(jwksMap)
+		if err := json.NewEncoder(w).Encode(jwksMap); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
 	}))
 	defer server.Close()
 

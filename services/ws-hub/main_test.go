@@ -214,16 +214,16 @@ func TestSetupHubAndHandlers_ReadinessHealthy(t *testing.T) {
 
 	l, err := net.Listen("tcp", "127.0.0.1:0")
 	require.NoError(t, err)
-	defer l.Close()
+	defer func() { _ = l.Close() }() //nolint:errcheck // test listener cleanup
 
 	go func() {
 		conn, err := l.Accept()
 		if err != nil {
 			return
 		}
-		defer conn.Close()
+		defer func() { _ = conn.Close() }() //nolint:errcheck // test conn cleanup
 		_, _ = conn.Write([]byte(`INFO {"server_id":"MOCK","version":"2.0.0","host":"127.0.0.1","port":4222,"auth_required":false}` + "\r\n"))
-		
+
 		reader := bufio.NewReader(conn)
 		for {
 			line, err := reader.ReadString('\n')
@@ -242,7 +242,7 @@ func TestSetupHubAndHandlers_ReadinessHealthy(t *testing.T) {
 
 	mr := miniredis.RunT(t)
 	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
-	defer rdb.Close()
+	defer func() { _ = rdb.Close() }() //nolint:errcheck // test cleanup
 
 	cfg := &config.Config{
 		Port:           "8081",
@@ -267,7 +267,7 @@ func TestSetupHubAndHandlers_ReadinessRedisPingError(t *testing.T) {
 	http.DefaultServeMux = http.NewServeMux()
 
 	rdb := redis.NewClient(&redis.Options{Addr: "127.0.0.1:1"})
-	defer rdb.Close()
+	defer func() { _ = rdb.Close() }() //nolint:errcheck // test cleanup
 
 	cfg := &config.Config{
 		Port:           "8081",

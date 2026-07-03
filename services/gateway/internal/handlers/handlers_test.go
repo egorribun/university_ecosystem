@@ -48,7 +48,7 @@ func TestHealthHandler_ReturnsOKStatus(t *testing.T) {
 	router := gin.New()
 	router.GET("/health", HealthHandler)
 
-	request := httptest.NewRequest(http.MethodGet, "/health", nil)
+	request := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/health", nil)
 	recorder := httptest.NewRecorder()
 
 	router.ServeHTTP(recorder, request)
@@ -60,7 +60,7 @@ func TestHealthHandler_ReturnsCorrectJSON(t *testing.T) {
 	router := gin.New()
 	router.GET("/health", HealthHandler)
 
-	request := httptest.NewRequest(http.MethodGet, "/health", nil)
+	request := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/health", nil)
 	recorder := httptest.NewRecorder()
 
 	router.ServeHTTP(recorder, request)
@@ -82,7 +82,7 @@ func TestProxyHandler_SetsRequestIDHeader(t *testing.T) {
 	router := gin.New()
 	router.GET("/api/*path", ProxyHandler(proxy, nil))
 
-	request := httptest.NewRequest(http.MethodGet, "/api/test", nil)
+	request := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/api/test", nil)
 	recorder := newCloseNotifyingRecorder()
 
 	router.ServeHTTP(recorder, request)
@@ -105,7 +105,7 @@ func TestProxyHandler_PreservesExistingRequestID(t *testing.T) {
 	router := gin.New()
 	router.GET("/api/*path", ProxyHandler(proxy, nil))
 
-	request := httptest.NewRequest(http.MethodGet, "/api/test", nil)
+	request := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/api/test", nil)
 	request.Header.Set("X-Request-ID", existingID)
 	recorder := newCloseNotifyingRecorder()
 
@@ -130,7 +130,7 @@ func TestProxyHandler_AddsUserIDHeader(t *testing.T) {
 		c.Next()
 	}, ProxyHandler(proxy, nil))
 
-	request := httptest.NewRequest(http.MethodGet, "/api/test", nil)
+	request := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/api/test", nil)
 	recorder := newCloseNotifyingRecorder()
 
 	router.ServeHTTP(recorder, request)
@@ -167,7 +167,7 @@ func TestProxyHandler_SetsInternalSignature(t *testing.T) {
 	}, ProxyHandler(proxy, secret))
 
 	// Attempt to forge signature — must be replaced with the real one.
-	request := httptest.NewRequest(http.MethodGet, "/api/test", nil)
+	request := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/api/test", nil)
 	request.Header.Set("X-Internal-Signature", "forged-signature")
 	recorder := newCloseNotifyingRecorder()
 
@@ -202,7 +202,7 @@ func TestProxyHandler_NoSignatureWithoutSecret(t *testing.T) {
 		c.Next()
 	}, ProxyHandler(proxy, nil))
 
-	request := httptest.NewRequest(http.MethodGet, "/api/test", nil)
+	request := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/api/test", nil)
 	recorder := newCloseNotifyingRecorder()
 	router.ServeHTTP(recorder, request)
 
@@ -223,7 +223,7 @@ func TestProxyHandler_DropsForgedSignatureWhenNoSecret(t *testing.T) {
 	router := gin.New()
 	router.GET("/api/*path", ProxyHandler(proxy, nil))
 
-	request := httptest.NewRequest(http.MethodGet, "/api/test", nil)
+	request := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/api/test", nil)
 	request.Header.Set("X-Internal-Signature", "attacker-forged")
 	recorder := newCloseNotifyingRecorder()
 	router.ServeHTTP(recorder, request)
@@ -257,7 +257,7 @@ func TestFileProcessSyncHandler_Errors(t *testing.T) {
 		router.POST("/sync", FileProcessSyncHandler(ctx, nil, nil, logger))
 
 		w := httptest.NewRecorder()
-		req := httptest.NewRequest(http.MethodPost, "/sync", bytes.NewReader([]byte("{}")))
+		req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/sync", bytes.NewReader([]byte("{}")))
 		router.ServeHTTP(w, req)
 
 		assert.Equal(t, http.StatusServiceUnavailable, w.Code)
@@ -270,7 +270,7 @@ func TestFileProcessSyncHandler_Errors(t *testing.T) {
 		router.POST("/sync", FileProcessSyncHandler(ctx, dummyConn, nil, logger))
 
 		w := httptest.NewRecorder()
-		req := httptest.NewRequest(http.MethodPost, "/sync", bytes.NewReader([]byte("{invalid-json}")))
+		req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/sync", bytes.NewReader([]byte("{invalid-json}")))
 		router.ServeHTTP(w, req)
 
 		assert.Equal(t, http.StatusBadRequest, w.Code)
@@ -289,7 +289,7 @@ func TestFileProcessSyncHandler_Errors(t *testing.T) {
 
 		w := httptest.NewRecorder()
 		reqBody := `{"id":"550e8400-e29b-41d4-a716-446655440000","type":"resize","source_key":"in.png","dest_key":"out.png"}`
-		req := httptest.NewRequest(http.MethodPost, "/sync", bytes.NewReader([]byte(reqBody)))
+		req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/sync", bytes.NewReader([]byte(reqBody)))
 		req.Header.Set("Content-Type", "application/json")
 		router.ServeHTTP(w, req)
 
@@ -326,7 +326,7 @@ func TestFileProcessSyncHandler_Errors(t *testing.T) {
 
 				w := httptest.NewRecorder()
 				reqBody := `{"id":"550e8400-e29b-41d4-a716-446655440000","type":"resize","source_key":"in.png","dest_key":"out.png"}`
-				req := httptest.NewRequest(http.MethodPost, "/sync", bytes.NewReader([]byte(reqBody)))
+				req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/sync", bytes.NewReader([]byte(reqBody)))
 				req.Header.Set("Content-Type", "application/json")
 				router.ServeHTTP(w, req)
 
@@ -346,7 +346,7 @@ func TestFileProcessSyncHandler_Errors(t *testing.T) {
 
 		w := httptest.NewRecorder()
 		reqBody := `{"id":"550e8400-e29b-41d4-a716-446655440000","type":"resize","source_key":"in.png","dest_key":"out.png"}`
-		req := httptest.NewRequest(http.MethodPost, "/sync", bytes.NewReader([]byte(reqBody)))
+		req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/sync", bytes.NewReader([]byte(reqBody)))
 		req.Header.Set("Content-Type", "application/json")
 		router.ServeHTTP(w, req)
 
@@ -414,7 +414,7 @@ func TestProxyOrFileHandler_Dispatch(t *testing.T) {
 		router := newRouter(&proxyCalled, &grpcCalled)
 
 		w := newCloseNotifyingRecorder()
-		req := httptest.NewRequest(http.MethodGet, "/v1/files/process/sync", nil)
+		req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/v1/files/process/sync", nil)
 		router.ServeHTTP(w, req)
 
 		// Even on the file path, a GET fails the method guard → proxy branch.
@@ -429,7 +429,7 @@ func TestProxyOrFileHandler_Dispatch(t *testing.T) {
 		router := newRouter(&proxyCalled, &grpcCalled)
 
 		w := newCloseNotifyingRecorder()
-		req := httptest.NewRequest(http.MethodPost, "/v1/other/endpoint", bytes.NewReader([]byte("{}")))
+		req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/v1/other/endpoint", bytes.NewReader([]byte("{}")))
 		req.Header.Set("Content-Type", "application/json")
 		router.ServeHTTP(w, req)
 
@@ -446,7 +446,7 @@ func TestProxyOrFileHandler_Dispatch(t *testing.T) {
 
 		w := newCloseNotifyingRecorder()
 		reqBody := `{"id":"550e8400-e29b-41d4-a716-446655440000","type":"resize","source_key":"in.png","dest_key":"out.png"}`
-		req := httptest.NewRequest(http.MethodPost, "/v1/files/process/sync", bytes.NewReader([]byte(reqBody)))
+		req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/v1/files/process/sync", bytes.NewReader([]byte(reqBody)))
 		req.Header.Set("Content-Type", "application/json")
 		router.ServeHTTP(w, req)
 

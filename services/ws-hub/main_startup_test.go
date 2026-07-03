@@ -28,16 +28,16 @@ func TestMain_InvalidPortExitsCleanly(t *testing.T) {
 
 	l, err := net.Listen("tcp", "127.0.0.1:0")
 	require.NoError(t, err)
-	defer l.Close()
+	defer func() { _ = l.Close() }() //nolint:errcheck // test listener cleanup
 
 	go func() {
 		conn, err := l.Accept()
 		if err != nil {
 			return
 		}
-		defer conn.Close()
+		defer func() { _ = conn.Close() }() //nolint:errcheck // test conn cleanup
 		_, _ = conn.Write([]byte(`INFO {"server_id":"MOCK","version":"2.0.0","host":"127.0.0.1","port":4222,"auth_required":false}` + "\r\n"))
-		
+
 		reader := bufio.NewReader(conn)
 		for {
 			line, err := reader.ReadString('\n')
@@ -72,7 +72,7 @@ func TestMain_ExitOnMissingInternalSecret(t *testing.T) {
 		return
 	}
 
-	cmd := exec.Command(os.Args[0], "-test.run=TestMain_ExitOnMissingInternalSecret")
+	cmd := exec.Command(os.Args[0], "-test.run=TestMain_ExitOnMissingInternalSecret") //nolint:gosec // G204: intentional re-exec of test binary
 	cmd.Env = append(os.Environ(), "RUN_CRASHING_MAIN=SECRET")
 	var errStdout, errStderr bytes.Buffer
 	cmd.Stdout = &errStdout
@@ -107,7 +107,7 @@ func TestMain_ExitOnJWKSFailure(t *testing.T) {
 		return
 	}
 
-	cmd := exec.Command(os.Args[0], "-test.run=TestMain_ExitOnJWKSFailure")
+	cmd := exec.Command(os.Args[0], "-test.run=TestMain_ExitOnJWKSFailure") //nolint:gosec // G204: intentional re-exec of test binary
 	cmd.Env = append(os.Environ(), "RUN_CRASHING_MAIN=JWKS")
 	err := cmd.Run()
 	if e, ok := err.(*exec.ExitError); ok && !e.Success() {
@@ -120,16 +120,16 @@ func TestMain_ExitOnJWKSFailure(t *testing.T) {
 func TestInitNats_Success(t *testing.T) {
 	l, err := net.Listen("tcp", "127.0.0.1:0")
 	require.NoError(t, err)
-	defer l.Close()
+	defer func() { _ = l.Close() }() //nolint:errcheck // test listener cleanup
 
 	go func() {
 		conn, err := l.Accept()
 		if err != nil {
 			return
 		}
-		defer conn.Close()
+		defer func() { _ = conn.Close() }() //nolint:errcheck // test conn cleanup
 		_, _ = conn.Write([]byte(`INFO {"server_id":"MOCK","version":"2.0.0","host":"127.0.0.1","port":4222,"auth_required":false}` + "\r\n"))
-		
+
 		reader := bufio.NewReader(conn)
 		for {
 			line, err := reader.ReadString('\n')
@@ -165,7 +165,7 @@ func TestInitNats_ExitOnFailure(t *testing.T) {
 		return
 	}
 
-	cmd := exec.Command(os.Args[0], "-test.run=TestInitNats_ExitOnFailure")
+	cmd := exec.Command(os.Args[0], "-test.run=TestInitNats_ExitOnFailure") //nolint:gosec // G204: intentional re-exec of test binary
 	cmd.Env = append(os.Environ(), "RUN_CRASHING_NATS=1")
 	err := cmd.Run()
 	if e, ok := err.(*exec.ExitError); ok && !e.Success() {

@@ -46,7 +46,7 @@ func TestMain_ExitOnShortJWTSecret(t *testing.T) {
 		return
 	}
 
-	cmd := exec.Command(os.Args[0], "-test.run=TestMain_ExitOnShortJWTSecret")
+	cmd := exec.Command(os.Args[0], "-test.run=TestMain_ExitOnShortJWTSecret") //nolint:gosec // G204: intentional re-exec of test binary
 	cmd.Env = append(os.Environ(), "RUN_CRASHING_MAIN=JWT")
 	var errStdout, errStderr bytes.Buffer
 	cmd.Stdout = &errStdout
@@ -74,7 +74,7 @@ func TestMain_ExitOnInvalidBackendURL(t *testing.T) {
 		return
 	}
 
-	cmd := exec.Command(os.Args[0], "-test.run=TestMain_ExitOnInvalidBackendURL")
+	cmd := exec.Command(os.Args[0], "-test.run=TestMain_ExitOnInvalidBackendURL") //nolint:gosec // G204: intentional re-exec of test binary
 	cmd.Env = append(os.Environ(), "RUN_CRASHING_MAIN=BACKEND")
 	err := cmd.Run()
 	if e, ok := err.(*exec.ExitError); ok && !e.Success() {
@@ -95,7 +95,7 @@ func TestMain_ExitOnConfigLoadFailure(t *testing.T) {
 		return
 	}
 
-	cmd := exec.Command(os.Args[0], "-test.run=TestMain_ExitOnConfigLoadFailure")
+	cmd := exec.Command(os.Args[0], "-test.run=TestMain_ExitOnConfigLoadFailure") //nolint:gosec // G204: intentional re-exec of test binary
 	cmd.Env = append(os.Environ(), "RUN_CRASHING_MAIN=CONFIG")
 	err := cmd.Run()
 	if e, ok := err.(*exec.ExitError); ok && !e.Success() {
@@ -134,7 +134,9 @@ func TestInitGRPC_TLS(t *testing.T) {
 	conn, client := initGRPC(cfg, initLogger())
 	assert.NotNil(t, conn)
 	assert.NotNil(t, client)
-	_ = conn.Close()
+	if err := conn.Close(); err != nil {
+		t.Logf("gRPC conn close: %v", err)
+	}
 }
 
 func TestInitTracer_TLS(t *testing.T) {
@@ -145,7 +147,8 @@ func TestInitTracer_TLS(t *testing.T) {
 	tp, err := initTracer(context.Background(), cfg)
 	if err == nil {
 		assert.NotNil(t, tp)
-		_ = tp.Shutdown(context.Background())
+		if shutdownErr := tp.Shutdown(context.Background()); shutdownErr != nil {
+			t.Logf("tracer shutdown: %v", shutdownErr)
+		}
 	}
 }
-

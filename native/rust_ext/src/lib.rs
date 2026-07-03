@@ -327,6 +327,7 @@ fn rust_ext(m: &Bound<'_, PyModule>) -> PyResult<()> {
 // verification return errors or safe defaults — never panic across the FFI.
 // ---------------------------------------------------------------------------
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)] // test code legitimately uses unwrap/expect
 mod tests {
     use super::*;
 

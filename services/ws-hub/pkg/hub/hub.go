@@ -85,7 +85,7 @@ type Hub struct {
 	jwksMu    sync.Mutex
 	// redisClient is the shared Redis connection used for upgrade ticket validation.
 	// RZ-W14-01 (audit 2026-03-23 Wave 14): tickets replace JWT-in-Sec-WebSocket-Protocol.
-	redisClient *goredis.Client
+	redisClient            *goredis.Client
 	limiterCleanupInterval time.Duration
 }
 
@@ -101,14 +101,14 @@ func NewHub(nc *nats.Conn, logger *slog.Logger, authClient RoomAuthClient, cfg *
 		Logger:     logger,
 		authClient: authClient,
 		// 10 upgrade attempts per 60-second window per IP.
-		UpgradeLimiter:     NewWSUpgradeRateLimiter(10, 60),
-		jwksCache:          nil, // Initialised via SetupJWKS()
-		maxClients:         cfg.MaxClients,
-		broadcastWorkers:   cfg.BroadcastWorkers,
-		internalSecret:     cfg.InternalSecret,
-		clientMsgRateLimit: cfg.ClientMsgRateLimit,
-		clientMsgRateBurst: cfg.ClientMsgRateBurst,
-		redisClient:        rdb,
+		UpgradeLimiter:         NewWSUpgradeRateLimiter(10, 60),
+		jwksCache:              nil, // Initialised via SetupJWKS()
+		maxClients:             cfg.MaxClients,
+		broadcastWorkers:       cfg.BroadcastWorkers,
+		internalSecret:         cfg.InternalSecret,
+		clientMsgRateLimit:     cfg.ClientMsgRateLimit,
+		clientMsgRateBurst:     cfg.ClientMsgRateBurst,
+		redisClient:            rdb,
 		limiterCleanupInterval: 5 * time.Minute,
 	}
 }

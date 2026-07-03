@@ -54,7 +54,7 @@ func (s *mockNatsServer) run() {
 		s.conns = append(s.conns, conn)
 		s.mu.Unlock()
 		go func(c net.Conn) {
-			defer c.Close()
+			defer func() { _ = c.Close() }() //nolint:errcheck // test conn cleanup
 			info := `INFO {"server_id":"MOCK","version":"2.0.0","host":"127.0.0.1","port":4222,"auth_required":false}` + "\r\n"
 			_, _ = c.Write([]byte(info))
 

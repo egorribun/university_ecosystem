@@ -244,7 +244,9 @@ func TestFileActivities_DownloadAndDecodeImage_PanicRecovery(t *testing.T) {
 		w.Header().Set("Content-Length", "5")
 		w.Header().Set("ETag", `"123456"`)
 		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte("magic"))
+		if _, err := w.Write([]byte("magic")); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
 	}))
 	defer server.Close()
 
@@ -273,7 +275,9 @@ func TestFileActivities_DownloadAndDecodeImage_ContextCancelled(t *testing.T) {
 		w.Header().Set("ETag", `"123456"`)
 		w.WriteHeader(http.StatusOK)
 		time.Sleep(100 * time.Millisecond)
-		_, _ = w.Write([]byte("magic"))
+		if _, err := w.Write([]byte("magic")); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
 	}))
 	defer server.Close()
 
