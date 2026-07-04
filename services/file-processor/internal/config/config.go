@@ -99,5 +99,9 @@ func Load() (*Config, error) {
 		return nil, fmt.Errorf("MINIO_ACCESS_KEY and MINIO_SECRET_KEY are required")
 	}
 
+	if cfg.JWTSecret == "" && cfg.RSAPublicKeyPEM == "" {
+		return nil, fmt.Errorf("either FP_JWT_SECRET or FP_RSA_PUBLIC_KEY_PEM must be set")
+	}
+
 	return &cfg, nil
 }

@@ -25,7 +25,7 @@ lint-frontend:
 	npm run format:check --prefix $(FRONTEND_DIR)
 
 backend-test:
-	pytest --cov=app --cov-report=xml --cov-report=term-missing --cov-fail-under=89 --junitxml=pytest-report.xml
+	pytest --cov=app --cov-report=xml --cov-report=term-missing --cov-fail-under=91 --junitxml=pytest-report.xml
 
 backend-typecheck:
 	mypy
@@ -56,7 +56,7 @@ go-test:
 	cd services/ws-hub && go test ./...
 
 go-coverage:
-	powershell -ExecutionPolicy Bypass -File $(CURDIR)/scripts/go-coverage.ps1
+	powershell -ExecutionPolicy Bypass -File $(CURDIR)/scripts/go-coverage-report.ps1
 
 # Quick test without coverage (faster)
 test-quick:

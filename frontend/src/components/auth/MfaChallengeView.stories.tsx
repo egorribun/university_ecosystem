@@ -52,6 +52,9 @@ function buildMfa(
     setMfaErrorSource: () => {},
     handleOtpVerify: async () => {},
     handleWebAuthnVerify: async () => {},
+    showRecoveryInput: false,
+    setShowRecoveryInput: () => {},
+    handleRecoveryVerify: async () => {},
     ...overrides,
   }
 }

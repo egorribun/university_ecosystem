@@ -252,4 +252,34 @@ mod tests {
         assert!(out.contains("outer"), "outer text must survive");
         assert!(out.contains("inner"), "inner text must survive");
     }
+
+    #[test]
+    fn test_deep_nesting_stack_safety() {
+        let mut input = String::new();
+        for _ in 0..150 {
+            input.push_str("<div>");
+        }
+        input.push_str("deep-nesting-content");
+        for _ in 0..150 {
+            input.push_str("</div>");
+        }
+        let out = sanitize_rich_text(&input);
+        assert_eq!(out, "deep-nesting-content");
+    }
+
+    #[test]
+    fn test_unicode_and_emojis_preservation() {
+        let input = "<p>Привет, мир! こんにちは 🌟 Rocket 🚀</p>";
+        let out = sanitize_rich_text(input);
+        assert!(out.contains("Привет, мир!"), "Cyrillic must survive");
+        assert!(out.contains("こんにちは"), "Japanese must survive");
+        assert!(out.contains("🌟"), "Star emoji must survive");
+        assert!(out.contains("🚀"), "Rocket emoji must survive");
+
+        let basic_out = sanitize_html_basic("<b>Привет 👋</b>");
+        assert!(basic_out.contains("<b>Привет 👋</b>"));
+
+        let stripped = strip_html("Привет 🌍");
+        assert_eq!(stripped, "Привет 🌍");
+    }
 }

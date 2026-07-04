@@ -294,7 +294,7 @@ def test_get_sync_url_asyncpg_converts_to_psycopg():
 
     try:
         with patch("app.services.webpush.settings") as mock_settings:
-            mock_settings.database_url = "postgresql+asyncpg://user:pass@localhost/db"
+            mock_settings.database_url = "postgresql+asyncpg://user:pass@localhost/db"  # pragma: allowlist secret
             url = _get_sync_url()
             assert "asyncpg" not in url.drivername
             assert "psycopg" in url.drivername
@@ -334,3 +334,81 @@ def test_get_sync_url_caches_result():
             assert url1 is url2
     finally:
         webpush_mod._sync_url_cache = original_cache
+
+
+def test_cleanup_branches():
+    """Test all branches of engine/session cleanup."""
+    from app.services.webpush import cleanup
+
+    # 1. Both None
+    with (
+        patch("app.services.webpush._sync_engine", None),
+        patch("app.services.webpush._Session", None),
+    ):
+        cleanup()
+
+    # 2. _Session is not None, engine is None
+    mock_session = MagicMock()
+    with (
+        patch("app.services.webpush._sync_engine", None),
+        patch("app.services.webpush._Session", mock_session),
+    ):
+        cleanup()
+
+    # 3. _Session is None, engine is not None
+    mock_engine = MagicMock()
+    with (
+        patch("app.services.webpush._sync_engine", mock_engine),
+        patch("app.services.webpush._Session", None),
+    ):
+        cleanup()
+        mock_engine.dispose.assert_called_once()
+
+    # 4. Engine dispose raises error
+    mock_engine_err = MagicMock()
+    mock_engine_err.dispose.side_effect = OSError("dispose failed")
+    with (
+        patch("app.services.webpush._sync_engine", mock_engine_err),
+        patch("app.services.webpush._Session", None),
+        patch("app.services.webpush.logger") as mock_logger,
+    ):
+        cleanup()
+        mock_logger.exception.assert_called_once()
+
+
+def test_get_push_semaphore_cached():
+    """Test that _get_push_semaphore returns cached semaphore when not None."""
+    from app.services.webpush import _get_push_semaphore
+
+    mock_sem = MagicMock()
+    with patch("app.services.webpush._push_semaphore", mock_sem):
+        assert _get_push_semaphore() is mock_sem
+
+
+def test_log_event_branches():
+    """Test log event under various logger configurations and endpoints."""
+    from app.services.webpush import _log_event
+
+    # 1. Root logger is logger (same)
+    with (
+        patch("app.services.webpush.logger") as mock_logger,
+        patch("logging.getLogger", return_value=mock_logger),
+    ):
+        _log_event("test_event", level=10, key="val")
+        mock_logger.log.assert_called_once()
+
+    # 2. Endpoint missing from fields
+    with patch("app.services.webpush.logger") as mock_logger:
+        _log_event("test_event", key="val")
+        mock_logger.log.assert_called_once()
+
+
+def test_current_local_time_invalid_timezone():
+    """Test current local time using fallback UTC on invalid timezone."""
+    from app.services.webpush import _current_local_time
+
+    mock_user = MagicMock()
+    mock_user.preferences.timezone = "Invalid/Timezone"
+
+    result = _current_local_time(mock_user)
+    assert result is not None

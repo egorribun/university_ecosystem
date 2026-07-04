@@ -157,3 +157,32 @@ func TestProcessFile_TemporalError(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to start workflow")
 }
+
+func TestProcessFile_TemporalTimeout(t *testing.T) {
+	ctx := context.Background()
+
+	mockClient := &mockTemporalClient{
+		executeFunc: func(ctx context.Context, options client.StartWorkflowOptions, workflow interface{}, args ...interface{}) (client.WorkflowRun, error) {
+			return nil, context.DeadlineExceeded
+		},
+	}
+
+	s := &Server{
+		TemporalClient: mockClient,
+	}
+
+	req := &pb.ProcessFileRequest{
+		Id:        "job123",
+		Type:      "image_resize",
+		SourceKey: "input/image.png",
+		DestKey:   "output/resized.png",
+	}
+
+	_, err := s.ProcessFile(ctx, req)
+	require.Error(t, err)
+	st, ok := status.FromError(err)
+	require.True(t, ok)
+	assert.Equal(t, codes.DeadlineExceeded, st.Code())
+	assert.Contains(t, st.Message(), "temporal unavailable")
+}
+

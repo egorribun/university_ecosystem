@@ -117,6 +117,25 @@ def test_rust_ext_invalid_types_raise_type_error():
         # existing must be a list, not a string
         rust_ext.detect_conflicts(target, "not-a-list")  # type: ignore[arg-type]
 
+    # 3. Invalid offset range to get_partition_info
+    with pytest.raises(ValueError):
+        rust_ext.get_partition_info("events", 150)
+    with pytest.raises(ValueError):
+        rust_ext.get_partition_info("events", -150)
+
+    # 4. Invalid types to get_partition_info
+    with pytest.raises(TypeError):
+        rust_ext.get_partition_info(123, 0)  # type: ignore[arg-type]
+
+    # 5. Invalid types to verify_audit_signature
+    with pytest.raises(TypeError):
+        rust_ext.verify_audit_signature("not-a-list", "data", "sig")  # type: ignore[arg-type]
+
+    # 6. batch_detect_conflicts size limit error
+    huge_items = [rust_ext.ScheduleItem("monday", 0, 3600, "both") for _ in range(2501)]
+    with pytest.raises(ValueError):
+        rust_ext.batch_detect_conflicts(huge_items)
+
 
 @requires_rust_ext
 def test_rust_ext_multithreading_safety():
@@ -138,10 +157,46 @@ def test_rust_ext_multithreading_safety():
         except Exception as e:
             errors.append(e)
 
-    threads = [threading.Thread(target=run_fuzz) for _ in range(5)]
+    threads = [threading.Thread(target=run_fuzz) for _ in range(10)]
     for t in threads:
         t.start()
     for t in threads:
         t.join()
 
     assert not errors, f"Errors occurred during concurrent execution: {errors}"
+
+
+@requires_rust_ext
+def test_rust_ext_gil_release_heavy():
+    import threading
+    import time
+
+    # verify_audit_signature is an intensive operation that can be run concurrently
+    # to prove GIL release.
+    key = "secret-key"
+    log_data = "log_data_payload_to_verify"
+    import hashlib
+    import hmac
+
+    sig = hmac.new(key.encode(), log_data.encode(), hashlib.sha256).hexdigest()
+
+    errors = []
+
+    def run_signature_verifications():
+        try:
+            for _ in range(200):
+                res = rust_ext.verify_audit_signature([key], log_data, sig)
+                assert res is True
+        except Exception as e:
+            errors.append(e)
+
+    threads = [threading.Thread(target=run_signature_verifications) for _ in range(8)]
+    start = time.perf_counter()
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    duration = time.perf_counter() - start
+
+    assert not errors, f"Errors in GIL release tests: {errors}"
+    print(f"Executed concurrent signature verification in {duration:.4f}s")
