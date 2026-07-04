@@ -1,6 +1,7 @@
 import { useState, useRef, useActionState, useOptimistic, type ChangeEvent } from "react"
 import { useTranslation } from "react-i18next"
 import { Trash2 as DeleteIcon } from "lucide-react"
+import { isAxiosError } from "axios"
 import api from "@/api/client"
 import { logError } from "@/app/logger"
 import { Button } from "@/components/ui"
@@ -75,7 +76,12 @@ export function EventFileManager({
       } catch (err) {
         logError("[EventFileManager] Upload failed:", err)
         mutateFiles({ type: "remove", id: optimisticId })
-        onError(t("events:detail.messages.fileAddFailed"))
+        
+        let message = t("events:detail.messages.fileAddFailed")
+        if (isAxiosError(err) && err.response?.data?.detail) {
+          message = err.response.data.detail
+        }
+        onError(message)
         return { status: "error", error: t("events:detail.upload.errors.failed") }
       }
     },

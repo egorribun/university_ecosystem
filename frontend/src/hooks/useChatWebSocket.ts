@@ -51,7 +51,7 @@ const OUTGOING_RATE_LIMITS: Readonly<Record<string, number>> = {
 /**
  * Calculate reconnection delay with full-jitter exponential backoff.
  */
-function calculateReconnectDelay(attempt: number): number {
+export function calculateReconnectDelay(attempt: number): number {
   const base = Math.min(RECONNECT_BASE_DELAY_MS * Math.pow(2, attempt), RECONNECT_MAX_DELAY_MS)
   return Math.floor(Math.random() * base)
 }

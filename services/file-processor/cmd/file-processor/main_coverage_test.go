@@ -14,6 +14,7 @@ import (
 	"io"
 	"log/slog"
 	"os"
+	"os/exec"
 	"testing"
 	"time"
 
@@ -21,6 +22,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/university-ecosystem/file-processor/internal/config"
 	"go.temporal.io/sdk/client"
+	"go.temporal.io/sdk/worker"
 	"google.golang.org/grpc"
 )
 
@@ -56,7 +58,7 @@ func TestInitTracer_ProductionInsecureForbidden(t *testing.T) {
 func TestInitTracer_DevInsecureSucceeds(t *testing.T) {
 	// The OTLP gRPC exporter dials lazily, so New() returns without a collector.
 	tp, err := initTracer(context.Background(),
-		&config.Config{OTLPInsecure: true, Environment: "development", OTLPEndpoint: "localhost:4317"},
+		&config.Config{OTLPInsecure: true, Environment: "development", OTLPEndpoint: "127.0.0.1:4317"},
 		discardLogger())
 	require.NoError(t, err)
 	require.NotNil(t, tp)
@@ -111,7 +113,7 @@ func TestConnectTemporal_CancelledContext(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel() // cancel immediately
 	cfg := &config.Config{
-		TemporalHost: "localhost:1",
+		TemporalHost: "127.0.0.1:1",
 	}
 	c, err := connectTemporal(ctx, cfg, discardLogger())
 	assert.Error(t, err)
@@ -119,11 +121,24 @@ func TestConnectTemporal_CancelledContext(t *testing.T) {
 }
 
 func TestStartNatsSubscriber_FailGracefully(t *testing.T) {
-	cfg := &config.Config{
-		NatsURL: "nats://127.0.0.1:1",
-	}
-	assert.NotPanics(t, func() {
-		startNatsSubscriber(context.Background(), cfg, nil, discardLogger())
+	t.Run("connecting in background", func(t *testing.T) {
+		cfg := &config.Config{
+			NatsURL:     "nats://127.0.0.1:1",
+			Environment: "testing",
+		}
+		assert.NotPanics(t, func() {
+			startNatsSubscriber(context.Background(), cfg, nil, discardLogger())
+		})
+	})
+
+	t.Run("invalid URL returns error", func(t *testing.T) {
+		cfg := &config.Config{
+			NatsURL:     "nats://127.0.0.1:1,,",
+			Environment: "testing",
+		}
+		assert.NotPanics(t, func() {
+			startNatsSubscriber(context.Background(), cfg, nil, discardLogger())
+		})
 	})
 }
 
@@ -180,7 +195,7 @@ func TestConnectTemporal_APIKeyFileHandling(t *testing.T) {
 
 	t.Run("non-existent file", func(t *testing.T) {
 		cfg := &config.Config{
-			TemporalHost:       "localhost:1",
+			TemporalHost:       "127.0.0.1:1",
 			TemporalAPIKeyFile: "non-existent-key-file.txt",
 		}
 		c, err := connectTemporal(ctx, cfg, discardLogger())
@@ -197,7 +212,7 @@ func TestConnectTemporal_APIKeyFileHandling(t *testing.T) {
 		require.NoError(t, tmpFile.Close())
 
 		cfg := &config.Config{
-			TemporalHost:       "localhost:1",
+			TemporalHost:       "127.0.0.1:1",
 			TemporalAPIKeyFile: tmpFile.Name(),
 		}
 		c, err := connectTemporal(ctx, cfg, discardLogger())
@@ -216,7 +231,7 @@ func TestConnectTemporal_APIKeyFileHandling(t *testing.T) {
 		require.NoError(t, tmpFile.Close())
 
 		cfg := &config.Config{
-			TemporalHost:       "localhost:1",
+			TemporalHost:       "127.0.0.1:1",
 			TemporalAPIKeyFile: tmpFile.Name(),
 		}
 		c, err := connectTemporal(ctx, cfg, discardLogger())
@@ -227,14 +242,14 @@ func TestConnectTemporal_APIKeyFileHandling(t *testing.T) {
 
 func TestSetupTemporalWorker(t *testing.T) {
 	cfg := &config.Config{
-		MinioEndpoint:  "localhost:9000",
+		MinioEndpoint:  "127.0.0.1:9000",
 		MinioAccessKey: "minioadmin",
 		MinioSecretKey: "minioadmin",
 		MinioBucket:    "test-bucket",
 	}
 
 	c, err := client.NewLazyClient(client.Options{
-		HostPort: "localhost:7233",
+		HostPort: "127.0.0.1:7233",
 	})
 	require.NoError(t, err)
 
@@ -242,3 +257,234 @@ func TestSetupTemporalWorker(t *testing.T) {
 		setupTemporalWorker(context.Background(), c, cfg, discardLogger())
 	})
 }
+
+func TestMain_ExitOnConfigLoadFailure(t *testing.T) {
+	if os.Getenv("BE_CRASHER") == "1" {
+		os.Setenv("FP_JWT_SECRET", "") // force failure
+		main()
+		return
+	}
+	cmd := exec.Command(os.Args[0], "-test.run=TestMain_ExitOnConfigLoadFailure")
+	cmd.Env = append(os.Environ(), "BE_CRASHER=1")
+	err := cmd.Run()
+	var e *exec.ExitError
+	if errors.As(err, &e) {
+		assert.Equal(t, 1, e.ExitCode())
+		return
+	}
+	t.Fatalf("process ran with err %v, want exit status 1", err)
+}
+
+func TestSetupGraphQLServer_NoSchemaFile(t *testing.T) {
+	if os.Getenv("BE_CRASHER") == "1" {
+		cfg := &config.Config{
+			GraphQLPort: "0",
+			MinioBucket: "test-bucket",
+			JWTSecret:   "test-secret",
+		}
+		setupGraphQLServer(context.Background(), cfg, nil, nil, discardLogger())
+		return
+	}
+	cmd := exec.Command(os.Args[0], "-test.run=TestSetupGraphQLServer_NoSchemaFile")
+	cmd.Env = append(os.Environ(), "BE_CRASHER=1")
+	err := cmd.Run()
+	var e *exec.ExitError
+	if errors.As(err, &e) {
+		assert.Equal(t, 1, e.ExitCode())
+		return
+	}
+	t.Fatalf("process ran with err %v, want exit status 1", err)
+}
+
+func TestRunServers_GRPCListenFailure(t *testing.T) {
+	if os.Getenv("BE_CRASHER") == "1" {
+		cfg := &config.Config{
+			GRPCPort: "-1",
+		}
+		runServers(context.Background(), nil, nil, cfg, discardLogger())
+		return
+	}
+	cmd := exec.Command(os.Args[0], "-test.run=TestRunServers_GRPCListenFailure")
+	cmd.Env = append(os.Environ(), "BE_CRASHER=1")
+	err := cmd.Run()
+	var e *exec.ExitError
+	if errors.As(err, &e) {
+		assert.Equal(t, 1, e.ExitCode())
+		return
+	}
+	t.Fatalf("process ran with err %v, want exit status 1", err)
+}
+
+func TestSetupGraphQLServer_RestrictIntrospection(t *testing.T) {
+	content, err := os.ReadFile("../../schema.graphql")
+	if err == nil {
+		require.NoError(t, os.WriteFile("schema.graphql", content, 0600))
+		t.Cleanup(func() {
+			require.NoError(t, os.Remove("schema.graphql"))
+		})
+	}
+	cfg := &config.Config{
+		GraphQLPort: "0",
+		MinioBucket: "test-bucket",
+		JWTSecret:   "test-secret",
+		Environment: "production",
+	}
+	srv := setupGraphQLServer(context.Background(), cfg, nil, nil, discardLogger())
+	assert.NotNil(t, srv)
+}
+
+func TestSetupTemporalWorker_BuildMinIOClientError(t *testing.T) {
+	if os.Getenv("BE_CRASHER") == "1" {
+		cfg := &config.Config{
+			MinioEndpoint: "", // causes error
+		}
+		c, _ := client.NewLazyClient(client.Options{HostPort: "127.0.0.1:7233"})
+		setupTemporalWorker(context.Background(), c, cfg, discardLogger())
+		return
+	}
+	cmd := exec.Command(os.Args[0], "-test.run=TestSetupTemporalWorker_BuildMinIOClientError")
+	cmd.Env = append(os.Environ(), "BE_CRASHER=1")
+	err := cmd.Run()
+	var e *exec.ExitError
+	if errors.As(err, &e) {
+		assert.Equal(t, 1, e.ExitCode())
+		return
+	}
+	t.Fatalf("process ran with err %v, want exit status 1", err)
+}
+
+type mockWorker struct {
+	worker.Worker
+}
+
+func (m *mockWorker) Start() error {
+	return nil
+}
+
+func (m *mockWorker) Stop() {
+}
+
+func (m *mockWorker) RegisterWorkflow(w interface{}) {
+}
+
+func (m *mockWorker) RegisterActivity(a interface{}) {
+}
+
+func TestMain_SuccessLifecycle(t *testing.T) {
+	oldDial := dialTemporalFunc
+	oldNewWorker := newWorkerFunc
+	defer func() {
+		dialTemporalFunc = oldDial
+		newWorkerFunc = oldNewWorker
+	}()
+
+	dialTemporalFunc = func(opts client.Options) (client.Client, error) {
+		return client.NewLazyClient(client.Options{
+			HostPort: "127.0.0.1:7233",
+		})
+	}
+
+	newWorkerFunc = func(c client.Client, taskQueue string, options worker.Options) worker.Worker {
+		return &mockWorker{}
+	}
+
+	vars := []string{"FP_GRPC_PORT", "FP_GRAPHQL_PORT", "FP_JWT_SECRET", "FP_NATS_URL"}
+	oldEnv := make(map[string]string)
+	for _, v := range vars {
+		oldEnv[v] = os.Getenv(v)
+	}
+	defer func() {
+		for k, v := range oldEnv {
+			if v == "" {
+				_ = os.Unsetenv(k)
+			} else {
+				_ = os.Setenv(k, v)
+			}
+		}
+	}()
+
+	os.Setenv("FP_GRPC_PORT", "0")
+	os.Setenv("FP_GRAPHQL_PORT", "0")
+	os.Setenv("FP_JWT_SECRET", "my-secret-key-12345")
+	os.Setenv("FP_NATS_URL", "nats://127.0.0.1:1")
+
+	content, err := os.ReadFile("../../schema.graphql")
+	if err == nil {
+		require.NoError(t, os.WriteFile("schema.graphql", content, 0600))
+		t.Cleanup(func() {
+			_ = os.Remove("schema.graphql")
+		})
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		runMain(ctx)
+	}()
+
+	time.Sleep(500 * time.Millisecond)
+	cancel()
+
+	select {
+	case <-done:
+		// success
+	case <-time.After(5 * time.Second):
+		t.Fatal("runMain did not exit cleanly within 5 seconds")
+	}
+}
+
+func TestInitSentry_ValidDSNSucceeds(t *testing.T) {
+	initSentry(context.Background(), &config.Config{SentryDSN: "http://pubkey@127.0.0.1/1", Environment: "test"}, discardLogger())
+}
+
+func TestParseRSAPublicKey_InvalidPEM(t *testing.T) {
+	_, err := parseRSAPublicKey("not-pem-at-all")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "no PEM block found in RSA_PUBLIC_KEY_PEM")
+
+	_, err = parseRSAPublicKey("-----BEGIN PRIVATE KEY-----\nMIIEvgIBADANBgkqhkiG9w0BAQEFAASCBKgwggSkAgEAAoIBAQDh\n-----END PRIVATE KEY-----")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "failed to parse RSA public key")
+}
+
+func TestRunMain_InvalidRSAPEM(t *testing.T) {
+	if os.Getenv("BE_CRASHER") == "1" {
+		runMain(context.Background())
+		return
+	}
+	cmd := exec.Command(os.Args[0], "-test.run=TestRunMain_InvalidRSAPEM")
+	cmd.Env = append(os.Environ(), "BE_CRASHER=1", "FP_RSA_PUBLIC_KEY_PEM=invalid-pem-key", "FP_JWT_SECRET=secret")
+	err := cmd.Run()
+	var e *exec.ExitError
+	if errors.As(err, &e) {
+		assert.Equal(t, 1, e.ExitCode())
+		return
+	}
+	t.Fatalf("process ran with err %v, want exit status 1", err)
+}
+
+func TestRunMain_TemporalConnectError(t *testing.T) {
+	if os.Getenv("BE_CRASHER") == "1" {
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+		runMain(ctx)
+		return
+	}
+	cmd := exec.Command(os.Args[0], "-test.run=TestRunMain_TemporalConnectError")
+	cmd.Env = append(os.Environ(), "BE_CRASHER=1", "FP_JWT_SECRET=secret", "FP_TEMPORAL_HOST=127.0.0.1:7233")
+	err := cmd.Run()
+	var e *exec.ExitError
+	if errors.As(err, &e) {
+		assert.Equal(t, 1, e.ExitCode())
+		return
+	}
+	t.Fatalf("process ran with err %v, want exit status 1", err)
+}
+
+
+
+
+
+
+

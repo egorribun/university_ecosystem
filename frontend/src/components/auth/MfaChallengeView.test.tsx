@@ -33,7 +33,10 @@ const baseMfa = {
   setMfaErrorSource: vi.fn(),
   handleOtpVerify: vi.fn(),
   handleWebAuthnVerify: vi.fn(),
-} as const
+  showRecoveryInput: false,
+  setShowRecoveryInput: vi.fn(),
+  handleRecoveryVerify: vi.fn(),
+}
 
 const props = {
   activeEmail: "user@example.com",

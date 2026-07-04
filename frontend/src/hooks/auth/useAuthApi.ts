@@ -246,7 +246,7 @@ export const useAuthApi = (
           trust_device: trustDevice ?? false,
         }
 
-        if (method === "totp") {
+        if (method === "totp" || method === "recovery_code") {
           payload.code = code
         } else if (method === "webauthn") {
           payload.webauthn_response = webauthnResponse as { [key: string]: unknown }

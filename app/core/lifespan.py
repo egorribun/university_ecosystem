@@ -167,6 +167,7 @@ async def _handle_schema_and_extensions() -> None:
                             column.computed.sqltext
                         ):
                             column.computed = None
+                            column.nullable = True
 
             await conn.run_sync(Base.metadata.create_all)
     except Exception as exc:  # RZ-22-01-JUSTIFIED: re-raise-after-cleanup — re-raises in non-dev envs (reviewed TD-27-04)

@@ -351,6 +351,51 @@ export function useMfaFlow() {
     [loginChallenge, webauthnChallenge, navigate, submitMfaChallenge, t, redirectPath]
   )
 
+  const [showRecoveryInput, setShowRecoveryInput] = useState(false)
+
+  const handleRecoveryVerify = useCallback(
+    async (code: string, trustDevice: boolean) => {
+      const challengeToken = loginChallenge?.methods?.[0]?.challenge_token
+      if (!loginChallenge || !challengeToken) {
+        setMfaError(t("auth:mfa.errors.expired"))
+        setMfaErrorSource("general")
+        return
+      }
+
+      setMfaBusy(true)
+      setMfaError(null)
+      setMfaErrorSource(null)
+
+      try {
+        await submitMfaChallenge({
+          method: "recovery_code",
+          code,
+          challengeToken,
+          trustDevice,
+        })
+        navigate({ to: redirectPath, replace: true })
+      } catch (error) {
+        if (error instanceof ChallengeLockedError) {
+          setMfaError(error.message)
+          setMfaErrorSource("general")
+        } else {
+          let message = t("auth:mfa.errors.generic")
+          if (error instanceof Error && error.message) {
+            message = error.message
+          }
+          if (isAxiosError(error) && error.response?.data?.detail) {
+            message = error.response.data.detail
+          }
+          setMfaError(message)
+          setMfaErrorSource("general")
+        }
+      } finally {
+        setMfaBusy(false)
+      }
+    },
+    [loginChallenge, navigate, submitMfaChallenge, t, redirectPath]
+  )
+
   return {
     loginChallenge,
     otpChallenge,
@@ -363,5 +408,8 @@ export function useMfaFlow() {
     setMfaErrorSource,
     handleOtpVerify,
     handleWebAuthnVerify,
+    showRecoveryInput,
+    setShowRecoveryInput,
+    handleRecoveryVerify,
   } as const
 }

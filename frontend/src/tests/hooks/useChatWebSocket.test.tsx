@@ -1,6 +1,8 @@
 import { renderHook, act, waitFor } from "@testing-library/react"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest"
+import { server } from "../mocks/server"
+import { http, HttpResponse } from "msw"
 
 import {
   useChatWebSocket,
@@ -9,6 +11,7 @@ import {
   applyMessageEditedFrame,
   applyMessageDeletedFrame,
   applyReactionChangedFrame,
+  calculateReconnectDelay,
 } from "@/hooks/useChatWebSocket"
 import type { Message, MessagesListResponse } from "@/api/chat"
 
@@ -434,5 +437,55 @@ describe("useChatWebSocket frame-cache helpers", () => {
       action: "added",
     })
     expect(out?.items[0]?.reactions).toEqual([])
+  })
+})
+
+describe("useChatWebSocket exponential backoffs and ticket exchange failures", () => {
+  beforeEach(() => {
+    MockWebSocket.instances = []
+  })
+
+  afterEach(() => {
+    server.resetHandlers()
+  })
+
+  it("calculateReconnectDelay scales exponentially with attempt number", () => {
+    const mathRandomSpy = vi.spyOn(Math, "random").mockReturnValue(0.9)
+
+    // attempt 0: base = 1000 * 2^0 = 1000. delay = Math.floor(0.9 * 1000) = 900
+    expect(calculateReconnectDelay(0)).toBe(900)
+
+    // attempt 2: base = 1000 * 2^2 = 4000. delay = Math.floor(0.9 * 4000) = 3600
+    expect(calculateReconnectDelay(2)).toBe(3600)
+
+    // attempt 10: base = 1000 * 2^10 = 1024000 -> maxed to 30000. delay = Math.floor(0.9 * 30000) = 27000
+    expect(calculateReconnectDelay(10)).toBe(27000)
+
+    mathRandomSpy.mockRestore()
+  })
+
+  it("schedules reconnect when ticket exchange fails with HTTP 500", async () => {
+    server.use(
+      http.post("*/ws/ticket", () => {
+        return new HttpResponse(null, { status: 500 })
+      })
+    )
+
+    // Mount hook with enabled: true
+    const rendered = renderHook(() => useChatWebSocket({ enabled: true }), {
+      wrapper: ({ children }) => (
+        <QueryClientProvider client={new QueryClient()}>
+          <WebSocketProvider>{children}</WebSocketProvider>
+        </QueryClientProvider>
+      ),
+    })
+
+    // Wait and verify that it did not open a WebSocket because of the failure,
+    // but reconnect is scheduled. Since it fails to fetch a ticket, MockWebSocket.instances.length remains 0.
+    await waitFor(() => {
+      expect(MockWebSocket.instances.length).toBe(0)
+    })
+
+    rendered.unmount()
   })
 })

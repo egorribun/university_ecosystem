@@ -63,10 +63,21 @@ const (
 	userIDKey contextKey = "user_id"
 )
 
+var (
+	dialTemporalFunc = client.Dial
+	newWorkerFunc    = worker.New
+)
+
+
+
 func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
+	runMain(ctx)
+}
+
+func runMain(ctx context.Context) {
 	logger := initLogger()
 
 	cfg, err := config.Load()
@@ -204,7 +215,7 @@ func connectTemporal(ctx context.Context, cfg *config.Config, logger *slog.Logge
 	var err error
 	maxAttempts := 10
 	for attempt := 1; attempt <= maxAttempts; attempt++ {
-		c, err = client.Dial(opts)
+		c, err = dialTemporalFunc(opts)
 		if err == nil {
 			logger.InfoContext(ctx, "Connected to Temporal", "addr", cfg.TemporalHost)
 			return c, nil
@@ -224,7 +235,7 @@ func connectTemporal(ctx context.Context, cfg *config.Config, logger *slog.Logge
 }
 
 func setupTemporalWorker(ctx context.Context, c client.Client, cfg *config.Config, logger *slog.Logger) (worker.Worker, *workflow.FileActivities) {
-	w := worker.New(c, "FILE_PROCESSING_TASK_QUEUE", worker.Options{})
+	w := newWorkerFunc(c, "FILE_PROCESSING_TASK_QUEUE", worker.Options{})
 	w.RegisterWorkflow(workflow.FileProcessingWorkflow)
 
 	minioClient, err := workflow.BuildMinIOClient(cfg)
@@ -244,7 +255,14 @@ func setupTemporalWorker(ctx context.Context, c client.Client, cfg *config.Confi
 }
 
 func startNatsSubscriber(ctx context.Context, cfg *config.Config, c client.Client, logger *slog.Logger) {
-	nc, err := nats.Connect(cfg.NatsURL, nats.RetryOnFailedConnect(true), nats.MaxReconnects(-1))
+	var opts []nats.Option
+	if cfg.Environment == "testing" {
+		opts = append(opts, nats.Timeout(50*time.Millisecond))
+	} else {
+		opts = append(opts, nats.RetryOnFailedConnect(true), nats.MaxReconnects(-1))
+	}
+
+	nc, err := nats.Connect(cfg.NatsURL, opts...)
 	if err != nil {
 		logger.WarnContext(ctx, "Failed to connect to NATS (Legacy)", "err", err)
 		return

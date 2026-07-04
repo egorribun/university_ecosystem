@@ -173,3 +173,84 @@ func TestDownloadAndDecodeImage_ContextCancelledDuringFetch(t *testing.T) {
 	//nolint:errcheck // We explicitly don't care about the return value or error here
 	_, _, _ = a.downloadAndDecodeImage(ctx, "in/img.png")
 }
+
+func TestResizeImageActivity_InvalidSourceKey(t *testing.T) {
+	a := &FileActivities{MinioClient: nil, Bucket: "bucket"}
+	job := ProcessJob{
+		ID:        "job-bad-src",
+		SourceKey: "../invalid-src",
+		DestKey:   "out/img.png",
+	}
+	_, err := a.ResizeImageActivity(context.Background(), job)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "path traversal")
+}
+
+func TestResizeImageActivity_InvalidDestKey(t *testing.T) {
+	a := &FileActivities{MinioClient: nil, Bucket: "bucket"}
+	job := ProcessJob{
+		ID:        "job-bad-dst",
+		SourceKey: "in/img.png",
+		DestKey:   "../invalid-dst",
+	}
+	_, err := a.ResizeImageActivity(context.Background(), job)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "path traversal")
+}
+
+func TestGetValidatedDimension_ErrorCases(t *testing.T) {
+	// String parsing error
+	_, err := getValidatedDimension(map[string]interface{}{"width": "not-a-number"}, "width", 800)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "invalid string value")
+
+	// Invalid type
+	_, err = getValidatedDimension(map[string]interface{}{"width": map[string]string{}}, "width", 800)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "invalid type")
+}
+
+func TestResizeImageActivity_DownloadError(t *testing.T) {
+	fs := &fakeS3{getBody: nil} // triggers 404
+	srv := httptest.NewServer(fs.handler())
+	defer srv.Close()
+
+	a := &FileActivities{MinioClient: minioClientFor(t, srv.URL), Bucket: "bucket"}
+	job := ProcessJob{
+		ID:        "job-dl-err",
+		SourceKey: "in/missing.png",
+		DestKey:   "out/img.png",
+		Options:   map[string]interface{}{"width": 50, "height": 50},
+	}
+	_, err := a.ResizeImageActivity(context.Background(), job)
+	require.Error(t, err)
+}
+
+func TestResizeImageActivity_MIMETypeFallback(t *testing.T) {
+	fs := &fakeS3{getBody: makeRGBAPNG(t, 10, 10)}
+	srv := httptest.NewServer(fs.handler())
+	defer srv.Close()
+
+	a := &FileActivities{MinioClient: minioClientFor(t, srv.URL), Bucket: "bucket"}
+	job := ProcessJob{
+		ID:        "job-mime-fallback",
+		SourceKey: "in/img.png",
+		DestKey:   "out/img.png",
+		Options:   map[string]interface{}{"width": 5, "height": 5},
+	}
+	
+	// Temporarily delete png from imageMIMETypes
+	orig, exists := imageMIMETypes["png"]
+	if exists {
+		delete(imageMIMETypes, "png")
+		defer func() { imageMIMETypes["png"] = orig }()
+	}
+	
+	res, err := a.ResizeImageActivity(context.Background(), job)
+	require.NoError(t, err)
+	assert.True(t, res.Success)
+}
+
+
+
+

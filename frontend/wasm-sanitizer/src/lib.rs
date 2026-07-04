@@ -158,3 +158,28 @@ mod tests {
         assert_eq!(strip_html(""), "");
     }
 }
+
+#[cfg(all(test, target_arch = "wasm32"))]
+mod wasm_tests {
+    use super::*;
+    use wasm_bindgen_test::*;
+
+    #[wasm_bindgen_test]
+    fn test_rich_text() {
+        let out = sanitize_rich_text("<p>Hello <b>world</b></p>");
+        assert!(out.contains("<p>Hello <b>world</b></p>"), "wasm rich text: {}", out);
+    }
+
+    #[wasm_bindgen_test]
+    fn test_basic() {
+        let out = sanitize_html_basic("<b>bold</b> and <i>italic</i>");
+        assert!(out.contains("<b>bold</b>"), "wasm basic: {}", out);
+    }
+
+    #[wasm_bindgen_test]
+    fn test_strip() {
+        let out = strip_html("<p>Hello <b>world</b></p>");
+        assert_eq!(out, "Hello world", "wasm strip: {}", out);
+    }
+}
+

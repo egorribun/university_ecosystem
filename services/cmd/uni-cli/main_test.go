@@ -3,9 +3,11 @@ package main
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"os"
+	"os/exec"
 	"strings"
 	"testing"
 	"time"
@@ -389,3 +391,58 @@ func TestMain_Execute(t *testing.T) {
 		main()
 	})
 }
+
+func TestMain_ExitOnError(t *testing.T) {
+	if os.Getenv("BE_CRASHER") == "1" {
+		os.Args = []string{"uni-cli", "invalid-subcommand-name"}
+		main()
+		return
+	}
+	cmd := exec.Command(os.Args[0], "-test.run=TestMain_ExitOnError")
+	cmd.Env = append(os.Environ(), "BE_CRASHER=1")
+	err := cmd.Run()
+	var e *exec.ExitError
+	if errors.As(err, &e) {
+		assert.Equal(t, 1, e.ExitCode())
+		return
+	}
+	t.Fatalf("process ran with err %v, want exit status 1", err)
+}
+
+func TestCommandsFailOnConnectionError(t *testing.T) {
+	oldRedisFunc := newRedisClientFunc
+	defer func() { newRedisClientFunc = oldRedisFunc }()
+
+	newRedisClientFunc = func() (*redis.Client, error) {
+		return nil, fmt.Errorf("redis connection error")
+	}
+
+	cases := []struct {
+		name string
+		args []string
+	}{
+		{"cache clear", []string{"cache", "clear", "cache:*"}},
+		{"cache stats", []string{"cache", "stats"}},
+		{"metrics show", []string{"metrics", "show"}},
+		{"health", []string{"health"}},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			cmd := newRootCmd()
+			out, err := captureStdout(func() error {
+				cmd.SetArgs(tc.args)
+				return cmd.Execute()
+			})
+			assert.Error(t, err)
+			if tc.name == "health" {
+				assert.Contains(t, out, "redis connection error")
+				assert.Contains(t, err.Error(), "one or more health checks failed")
+			} else {
+				assert.Contains(t, err.Error(), "redis connection error")
+			}
+		})
+	}
+}
+
+

@@ -447,11 +447,7 @@ export async function useMockApi(page: Page) {
       // eslint-disable-next-line no-console
       console.log(`[mock] Simulating OFFLINE for ${normPath}`)
 
-      await route.fulfill({
-        status: 503,
-        contentType: "application/json",
-        body: JSON.stringify({ detail: "Offline" }),
-      })
+      await route.abort("failed")
       return
     }
 
@@ -592,6 +588,25 @@ export async function useMockApi(page: Page) {
 
     // --- Events ---
     if (normPath.includes("api/events")) {
+      const detailMatch = normPath.match(/api\/events\/(uuid-\d+)/)
+      if (detailMatch) {
+        const eventId = detailMatch[1]
+        const ev = mockEvents.find((e) => e.id === eventId)
+        if (ev) {
+          const locale = (request.headers()["accept-language"] || "").startsWith("en") ? "en" : "ru"
+          await route.fulfill({
+            status: 200,
+            contentType: "application/json",
+            body: JSON.stringify({
+              ...ev,
+              title: locale === "en" ? ev.title_en : ev.title,
+              description: locale === "en" ? ev.description_en : ev.description,
+            }),
+          })
+          return
+        }
+      }
+
       if (normPath.includes("api/events/my")) {
         await route.fulfill({ status: 200, body: JSON.stringify(mockEvents.slice(0, 3)) })
         return
@@ -695,15 +710,24 @@ export async function useMockApi(page: Page) {
     if (normPath.includes("auth/mfa/verify") || normPath.includes("auth/mfa/totp/confirm")) {
       const data = request.postDataJSON() ?? {}
       const code = data.code || data.otp_code
-      if (code === "000000") {
+      if (code === "000000" || code === "INVALID-RECOVERY") {
         await route.fulfill({
-          status: 401,
-          body: JSON.stringify({ detail: "Invalid verification code" }),
+          status: 400,
+          contentType: "application/json",
+          body: JSON.stringify({ detail: "Неверный код" }),
         })
         return
       }
       state.loggedIn = true
-      await route.fulfill({ status: 200, body: JSON.stringify({ status: "success" }) })
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          access_token: "mock-token",
+          token_type: "bearer",
+          user: state.profile,
+        }),
+      })
       return
     }
 
@@ -827,6 +851,9 @@ export async function useMockApi(page: Page) {
     async setOffline(p: Page, offline: boolean) {
       state.offline = offline
       await p.context().setOffline(offline)
+    },
+    async setApiOffline(offline: boolean) {
+      state.offline = offline
     },
   }
 }

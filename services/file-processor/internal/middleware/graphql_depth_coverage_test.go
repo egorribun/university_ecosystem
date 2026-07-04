@@ -6,6 +6,7 @@ package middleware
 // (strings with braces, escaped quotes, # comments, unbalanced braces).
 
 import (
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -92,3 +93,21 @@ func TestRequestTimeout_ContextDeadlineApplied(t *testing.T) {
 
 	assert.True(t, sawDeadline, "downstream context must carry a deadline")
 }
+
+type errorReader struct{}
+func (errorReader) Read(p []byte) (n int, err error) {
+	return 0, fmt.Errorf("read error")
+}
+
+func TestMaxQueryDepth_BodyReadError(t *testing.T) {
+	handler := MaxQueryDepthMiddleware(2, http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {
+		t.Fatal("downstream must not be called")
+	}))
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/graphql", errorReader{})
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	assert.Equal(t, http.StatusBadRequest, rec.Code)
+	assert.Contains(t, rec.Body.String(), "invalid request body")
+}
+

@@ -11,6 +11,10 @@ cargo-fuzz = true
 ammonia = "4.1.2"
 chrono = { version = "0.4", features = ["serde"] }
 libfuzzer-sys = "0.4"
+hmac = "0.12.1"
+sha2 = "0.10.9"
+hex = "0.4.3"
+uuid = { version = "1.8", features = ["v7"] }
 
 [[bin]]
 name = "fuzz_target_1"
@@ -22,6 +26,20 @@ bench = false
 [[bin]]
 name = "fuzz_sanitizer"
 path = "fuzz_targets/fuzz_sanitizer.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "fuzz_hmac"
+path = "fuzz_targets/fuzz_hmac.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "fuzz_uuid"
+path = "fuzz_targets/fuzz_uuid.rs"
 test = false
 doc = false
 bench = false
