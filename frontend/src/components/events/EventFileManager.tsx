@@ -76,7 +76,7 @@ export function EventFileManager({
       } catch (err) {
         logError("[EventFileManager] Upload failed:", err)
         mutateFiles({ type: "remove", id: optimisticId })
-        
+
         let message = t("events:detail.messages.fileAddFailed")
         if (isAxiosError(err) && err.response?.data?.detail) {
           message = err.response.data.detail

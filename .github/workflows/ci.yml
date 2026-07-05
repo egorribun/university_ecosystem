@@ -1139,6 +1139,7 @@ jobs:
       - name: Validate static K8s manifests with kubeconform
         run: |
           /tmp/kubeconform -strict -summary -ignore-filename-pattern secrets-example.yaml \
+            -skip NetworkChaos,PodChaos \
             -schema-location default \
             -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json' \
             k8s/

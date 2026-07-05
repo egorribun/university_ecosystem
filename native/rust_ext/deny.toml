@@ -7,8 +7,8 @@ targets = []
 db-path = "~/.cargo-deny-advisories"
 db-urls = ["https://github.com/rustsec/advisory-db"]
 vulnerability = "deny"
-unmaintained = "warn"
-unsound = "warn"
+unmaintained = "transitive"
+unsound = "transitive"
 yanked = "deny"
 notice = "warn"
 

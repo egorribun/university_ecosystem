@@ -114,6 +114,9 @@ func (s *Server) ProcessFile(ctx context.Context, req *pb.ProcessFileRequest) (*
 		}
 		return nil, fmt.Errorf("failed to start workflow: %w", err)
 	}
+	if we == nil {
+		return nil, fmt.Errorf("temporal client returned nil workflow run without error")
+	}
 
 	// Return immediately with the Job ID (RunID)
 	return &pb.ProcessFileResponse{

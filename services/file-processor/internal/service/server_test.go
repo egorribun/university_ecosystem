@@ -102,7 +102,7 @@ func (m *mockTemporalClient) ExecuteWorkflow(ctx context.Context, options client
 	if m.executeFunc != nil {
 		return m.executeFunc(ctx, options, workflow, args...)
 	}
-	return nil, nil
+	return &mockWorkflowRun{id: "default-run-id"}, nil
 }
 
 func TestProcessFile_Success(t *testing.T) {

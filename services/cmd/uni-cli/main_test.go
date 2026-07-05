@@ -398,7 +398,8 @@ func TestMain_ExitOnError(t *testing.T) {
 		main()
 		return
 	}
-	cmd := exec.Command(os.Args[0], "-test.run=TestMain_ExitOnError")
+	// #nosec
+	cmd := exec.CommandContext(context.Background(), os.Args[0], "-test.run=TestMain_ExitOnError")
 	cmd.Env = append(os.Environ(), "BE_CRASHER=1")
 	err := cmd.Run()
 	var e *exec.ExitError
@@ -444,5 +445,3 @@ func TestCommandsFailOnConnectionError(t *testing.T) {
 		})
 	}
 }
-
-

@@ -32,6 +32,7 @@ func TestLoad_ReturnsDefaultValues(t *testing.T) {
 		assert.NoError(t, os.Unsetenv(key))
 	}
 
+	t.Setenv("FP_JWT_SECRET", "dummy-secret-value-for-testing-purposes-only")
 	cfg, err := Load()
 	assert.NoError(t, err)
 
@@ -50,6 +51,7 @@ func TestLoad_ReturnsDefaultValues(t *testing.T) {
 func TestLoad_ReadsEnvironmentVariables(t *testing.T) {
 	t.Setenv("FP_GRPC_PORT", "9999")
 	t.Setenv("FP_NATS_URL", "nats://custom:4222")
+	t.Setenv("FP_JWT_SECRET", "dummy-secret-value-for-testing-purposes-only")
 
 	cfg, err := Load()
 	assert.NoError(t, err)

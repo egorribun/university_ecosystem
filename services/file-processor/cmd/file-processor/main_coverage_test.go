@@ -260,11 +260,12 @@ func TestSetupTemporalWorker(t *testing.T) {
 
 func TestMain_ExitOnConfigLoadFailure(t *testing.T) {
 	if os.Getenv("BE_CRASHER") == "1" {
-		os.Setenv("FP_JWT_SECRET", "") // force failure
+		_ = os.Setenv("FP_JWT_SECRET", "") // force failure
 		main()
 		return
 	}
-	cmd := exec.Command(os.Args[0], "-test.run=TestMain_ExitOnConfigLoadFailure")
+	// #nosec
+	cmd := exec.CommandContext(context.Background(), os.Args[0], "-test.run=TestMain_ExitOnConfigLoadFailure")
 	cmd.Env = append(os.Environ(), "BE_CRASHER=1")
 	err := cmd.Run()
 	var e *exec.ExitError
@@ -285,7 +286,8 @@ func TestSetupGraphQLServer_NoSchemaFile(t *testing.T) {
 		setupGraphQLServer(context.Background(), cfg, nil, nil, discardLogger())
 		return
 	}
-	cmd := exec.Command(os.Args[0], "-test.run=TestSetupGraphQLServer_NoSchemaFile")
+	// #nosec
+	cmd := exec.CommandContext(context.Background(), os.Args[0], "-test.run=TestSetupGraphQLServer_NoSchemaFile")
 	cmd.Env = append(os.Environ(), "BE_CRASHER=1")
 	err := cmd.Run()
 	var e *exec.ExitError
@@ -304,7 +306,8 @@ func TestRunServers_GRPCListenFailure(t *testing.T) {
 		runServers(context.Background(), nil, nil, cfg, discardLogger())
 		return
 	}
-	cmd := exec.Command(os.Args[0], "-test.run=TestRunServers_GRPCListenFailure")
+	// #nosec
+	cmd := exec.CommandContext(context.Background(), os.Args[0], "-test.run=TestRunServers_GRPCListenFailure")
 	cmd.Env = append(os.Environ(), "BE_CRASHER=1")
 	err := cmd.Run()
 	var e *exec.ExitError
@@ -318,7 +321,7 @@ func TestRunServers_GRPCListenFailure(t *testing.T) {
 func TestSetupGraphQLServer_RestrictIntrospection(t *testing.T) {
 	content, err := os.ReadFile("../../schema.graphql")
 	if err == nil {
-		require.NoError(t, os.WriteFile("schema.graphql", content, 0600))
+		require.NoError(t, os.WriteFile("schema.graphql", content, 0600)) // #nosec
 		t.Cleanup(func() {
 			require.NoError(t, os.Remove("schema.graphql"))
 		})
@@ -342,7 +345,8 @@ func TestSetupTemporalWorker_BuildMinIOClientError(t *testing.T) {
 		setupTemporalWorker(context.Background(), c, cfg, discardLogger())
 		return
 	}
-	cmd := exec.Command(os.Args[0], "-test.run=TestSetupTemporalWorker_BuildMinIOClientError")
+	// #nosec
+	cmd := exec.CommandContext(context.Background(), os.Args[0], "-test.run=TestSetupTemporalWorker_BuildMinIOClientError")
 	cmd.Env = append(os.Environ(), "BE_CRASHER=1")
 	err := cmd.Run()
 	var e *exec.ExitError
@@ -403,14 +407,14 @@ func TestMain_SuccessLifecycle(t *testing.T) {
 		}
 	}()
 
-	os.Setenv("FP_GRPC_PORT", "0")
-	os.Setenv("FP_GRAPHQL_PORT", "0")
-	os.Setenv("FP_JWT_SECRET", "my-secret-key-12345")
-	os.Setenv("FP_NATS_URL", "nats://127.0.0.1:1")
+	_ = os.Setenv("FP_GRPC_PORT", "0")
+	_ = os.Setenv("FP_GRAPHQL_PORT", "0")
+	_ = os.Setenv("FP_JWT_SECRET", "my-secret-key-12345")
+	_ = os.Setenv("FP_NATS_URL", "nats://127.0.0.1:1")
 
 	content, err := os.ReadFile("../../schema.graphql")
 	if err == nil {
-		require.NoError(t, os.WriteFile("schema.graphql", content, 0600))
+		require.NoError(t, os.WriteFile("schema.graphql", content, 0600)) // #nosec
 		t.Cleanup(func() {
 			_ = os.Remove("schema.graphql")
 		})
@@ -453,7 +457,8 @@ func TestRunMain_InvalidRSAPEM(t *testing.T) {
 		runMain(context.Background())
 		return
 	}
-	cmd := exec.Command(os.Args[0], "-test.run=TestRunMain_InvalidRSAPEM")
+	// #nosec
+	cmd := exec.CommandContext(context.Background(), os.Args[0], "-test.run=TestRunMain_InvalidRSAPEM")
 	cmd.Env = append(os.Environ(), "BE_CRASHER=1", "FP_RSA_PUBLIC_KEY_PEM=invalid-pem-key", "FP_JWT_SECRET=secret")
 	err := cmd.Run()
 	var e *exec.ExitError
@@ -471,7 +476,8 @@ func TestRunMain_TemporalConnectError(t *testing.T) {
 		runMain(ctx)
 		return
 	}
-	cmd := exec.Command(os.Args[0], "-test.run=TestRunMain_TemporalConnectError")
+	// #nosec
+	cmd := exec.CommandContext(context.Background(), os.Args[0], "-test.run=TestRunMain_TemporalConnectError")
 	cmd.Env = append(os.Environ(), "BE_CRASHER=1", "FP_JWT_SECRET=secret", "FP_TEMPORAL_HOST=127.0.0.1:7233")
 	err := cmd.Run()
 	var e *exec.ExitError

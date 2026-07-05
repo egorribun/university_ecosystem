@@ -4,7 +4,7 @@ import { useMockApi } from "./utils/mockApi"
 test.describe("Malicious upload rejection", () => {
   test("displays ClamAV warning message when scanner rejects infected file", async ({ page }) => {
     const mock = await useMockApi(page)
-    
+
     // Make user an admin so they can access the upload files section
     mock.state.profile.role = "admin"
     await mock.login(page)
@@ -37,6 +37,8 @@ test.describe("Malicious upload rejection", () => {
     await submitBtn.click()
 
     // Assert that the exact malware rejection error is shown in a toast/snackbar
-    await expect(page.getByText("Файл содержит вредоносное содержимое")).toBeVisible({ timeout: 10000 })
+    await expect(page.getByText("Файл содержит вредоносное содержимое")).toBeVisible({
+      timeout: 10000,
+    })
   })
 })

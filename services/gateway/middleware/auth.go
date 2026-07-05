@@ -262,6 +262,9 @@ func fetchJWKSPublicKey(ctx context.Context, client *http.Client, endpoint strin
 	if err != nil {
 		return nil, fmt.Errorf("jwks: fetch: %w", err)
 	}
+	if resp == nil {
+		return nil, fmt.Errorf("jwks: fetch: nil response")
+	}
 	defer resp.Body.Close() //nolint:errcheck // HTTP response body close
 
 	if resp.StatusCode != http.StatusOK {
