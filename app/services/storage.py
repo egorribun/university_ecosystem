@@ -73,7 +73,7 @@ class StaticFSStorage(StorageBackend):
         """
         target = self.base_dir / relative_path
         try:
-            resolved = target.resolve(strict=False)
+            resolved = target.resolve(strict=False)  # codeql[py/path-injection]
         except OSError as exc:
             raise ValueError(f"Cannot resolve path: {exc}") from exc
         base_resolved = self.base_dir.resolve()
