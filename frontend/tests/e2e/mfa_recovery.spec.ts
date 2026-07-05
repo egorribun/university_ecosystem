@@ -7,6 +7,7 @@ test.describe("MFA Lost Recovery Flows", () => {
 
     await page.goto("/login")
     await page.waitForURL(/\/login$/)
+    await page.waitForLoadState("networkidle")
 
     // Trigger MFA challenge by entering mfa@example.com
     await page.locator('input[name="email"]').fill("mfa@example.com")

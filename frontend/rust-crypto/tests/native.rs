@@ -10,7 +10,7 @@ const PBKDF2_PASSWD_SALT_C1: &str = "55ac046e56e3089fec1691c22544b605f94185216dd
 
 // RFC 4231 section 4.2 (TC1): key = 0x0b x20, data = "Hi There".
 const HMAC_TC1: &str = "b0344c61d8db38535ca8afceaf0bf12b881dc200c9833da726e9376c2e32cff7"; // pragma: allowlist secret
-// RFC 4231 section 4.3 (TC2): key = "Jefe", data = "what do ya want for nothing?".
+                                                                                           // RFC 4231 section 4.3 (TC2): key = "Jefe", data = "what do ya want for nothing?".
 const HMAC_TC2: &str = "5bdcc146bf60754e6a042426089575c75a003f089d2739839dec58b964ec3843"; // pragma: allowlist secret
 
 // RFC 7914 section 12: scrypt vectors. Pass the actual N; scrypt_derive takes ilog2.
@@ -20,7 +20,10 @@ const SCRYPT_V3: &str = "7023bdcb3afd7348461c06cd81fd38ebfda8fbba904f8e3ea9b543f
 
 #[test]
 fn pbkdf2_hmac_sha256_rfc7914_vector() {
-    assert_eq!(pbkdf2_derive("passwd", "salt", 1, 64), PBKDF2_PASSWD_SALT_C1);
+    assert_eq!(
+        pbkdf2_derive("passwd", "salt", 1, 64),
+        PBKDF2_PASSWD_SALT_C1
+    );
 }
 
 #[test]
@@ -64,8 +67,8 @@ fn scrypt_rfc7914_vector2() {
 
 #[test]
 fn scrypt_rfc7914_vector3() {
-    let out = scrypt_derive(b"pleaseletmein", b"SodiumChloride", 16384, 8, 1, 64)
-        .expect("valid params");
+    let out =
+        scrypt_derive(b"pleaseletmein", b"SodiumChloride", 16384, 8, 1, 64).expect("valid params");
     assert_eq!(hex::encode(out), SCRYPT_V3);
 }
 

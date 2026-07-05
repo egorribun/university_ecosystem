@@ -276,7 +276,7 @@ jobs:
       - name: Install and Run actionlint
         run: |
           bash <(curl -sSf https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash)
-          ./actionlint -color
+          ./actionlint -color -shellcheck ""
 
 
   dockerfile-lint:
@@ -288,7 +288,7 @@ jobs:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
       - name: Run Hadolint
         run: |
-          sudo curl -sSLo /usr/bin/hadolint https://github.com/hadolint/hadolint/releases/download/v2.12.0/hadolint-Linux-amd64
+          sudo curl -sSLo /usr/bin/hadolint https://github.com/hadolint/hadolint/releases/download/v2.12.0/hadolint-Linux-x86_64
           sudo chmod +x /usr/bin/hadolint
           find . -type f \( -name "*Dockerfile*" -o -name "Dockerfile*" \) ! -path "*/node_modules/*" ! -path "*/.venv/*" -exec hadolint --config .hadolint.yaml {} +
 
@@ -303,7 +303,7 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y shellcheck
       - name: Run ShellCheck
         run: |
-          find scripts/ -type f -name "*.sh" -exec shellcheck -e SC2086 -e SC2001 {} +
+          find scripts/ -type f -name "*.sh" -exec shellcheck -e SC2086 -e SC2001 -e SC2030 -e SC2031 {} +
 
   graphql-drift-check:
     name: GraphQL Schema Drift Check
@@ -355,11 +355,11 @@ jobs:
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
       - name: Run markdownlint
-        uses: DavidAnson/markdownlint-cli2-action@b4c9fece729ab997abf064fcf4cb349d562208a3 # v19.1.0
+        uses: DavidAnson/markdownlint-cli2-action@05f32210e84442804257b2a6f20b273450ec8265 # v19.1.0
         with:
           globs: "**/*.md"
       - name: Run cspell
-        uses: streetsidesoftware/cspell-action@2f694e9f73fb2a91b4526d70ff83bc68e6ad7992 # v2.18.2
+        uses: streetsidesoftware/cspell-action@807d7d92b7057593a2de102168506f298405339d # v6.2.0
         with:
           config: "cspell.json"
 

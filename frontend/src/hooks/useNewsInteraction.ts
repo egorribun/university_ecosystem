@@ -80,7 +80,16 @@ async function handleMutationError(
 ): Promise<{ isOfflineStore: true }> {
   if (isAxiosError(error) && error.response?.status === 401) throw error
 
-  if (!navigator.onLine || (error instanceof Error && error.message === "Network Error")) {
+  const isNetworkError =
+    !navigator.onLine ||
+    (error &&
+      typeof error === "object" &&
+      (("message" in error && (error as { message?: string }).message === "Network Error") ||
+        ("code" in error && (error as { code?: string }).code === "ERR_NETWORK") ||
+        (isAxiosError(error) &&
+          (error.message === "Network Error" || error.code === "ERR_NETWORK"))))
+
+  if (isNetworkError) {
     await queueInteraction(offlineUrl, offlinePayload, offlineMethod)
     return { isOfflineStore: true }
   }

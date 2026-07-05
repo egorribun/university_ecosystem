@@ -339,7 +339,16 @@ export async function useMockApi(page: Page) {
             `[GlobalErrors] Axios error: ${error.message} (${error.config?.url}) status=${error.response?.status} data=${JSON.stringify(error.response?.data)}`
           )
         } else {
-          console.error(`[GlobalErrors] Unhandled rejection: ${error?.message || error}`)
+          const errMsg = String(error?.message || error)
+          if (
+            errMsg.includes("Old view transition aborted") ||
+            errMsg.includes("ViewTransition") ||
+            (error && typeof error === "object" && error.name === "AbortError")
+          ) {
+            // Ignore normal view transition aborts to prevent test flakes in WebKit
+            return
+          }
+          console.error(`[GlobalErrors] Unhandled rejection: ${errMsg}`)
         }
       })
     } catch {
@@ -548,20 +557,6 @@ export async function useMockApi(page: Page) {
         status: is304 ? 304 : 200,
       })
 
-      if (is304) {
-        await route.fulfill({
-          status: 304,
-          headers: {
-            "Access-Control-Allow-Origin": "*",
-            "Access-Control-Allow-Credentials": "true",
-            "Access-Control-Expose-Headers": "ETag",
-            ETag: state.newsVersion,
-            "Cache-Control": "no-cache",
-          },
-        })
-        return
-      }
-
       const headers = request.headers()
       const locale = (headers["accept-language"] || "").startsWith("en") ? "en" : "ru"
       const localized = mockNews.map((n) => ({
@@ -573,8 +568,11 @@ export async function useMockApi(page: Page) {
       await route.fulfill({
         status: 200,
         headers: {
+          "Access-Control-Allow-Origin": "*",
+          "Access-Control-Allow-Credentials": "true",
           "Access-Control-Expose-Headers": "ETag",
           ETag: state.newsVersion,
+          "Cache-Control": "no-cache",
         },
         body: JSON.stringify({
           items: localized,

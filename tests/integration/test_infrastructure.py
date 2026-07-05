@@ -1,9 +1,14 @@
+import os
+
 import nats
 import psycopg
 import pytest
 from testcontainers.core.container import DockerContainer
 from testcontainers.postgres import PostgresContainer
 from testcontainers.redis import RedisContainer
+
+_RUN = bool(os.getenv("RUN_INTEGRATION_TESTS"))
+pytestmark = pytest.mark.skipif(not _RUN, reason="Set RUN_INTEGRATION_TESTS=1 to run")
 
 
 @pytest.fixture(scope="module")

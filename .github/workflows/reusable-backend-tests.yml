@@ -154,7 +154,7 @@ jobs:
                   if-no-files-found: warn
 
             - name: Upload coverage to Codecov
-              uses: codecov/codecov-action@0565863a3fe49c47e873a7a8940c74753068eed2 # v5.2.1
+              uses: codecov/codecov-action@0da7aa657d958d32c117fc47e1f977e7524753c7 # v5.3.0
               with:
                 token: ${{ secrets.CODECOV_TOKEN }}
                 files: ./coverage.xml
