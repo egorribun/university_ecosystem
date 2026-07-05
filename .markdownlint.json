@@ -24,5 +24,7 @@
   "MD056": false, // Allow any table column count
   "MD018": false, // Allow no space after hash on atx style heading
   "MD050": false, // Allow any strong style
-  "MD038": false  // Allow spaces inside code span elements
+  "MD038": false, // Allow spaces inside code span elements
+  "MD049": false, // Allow any emphasis style
+  "MD055": false  // Allow any table pipe style
 }
