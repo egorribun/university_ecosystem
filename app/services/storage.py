@@ -58,8 +58,13 @@ class StaticFSStorage(StorageBackend):
         cleaned = relative_path.strip().strip("/")
         if not cleaned:
             raise ValueError("Relative path must not be empty")
+        if "\x00" in cleaned or "\\" in cleaned:
+            raise ValueError("Relative path contains invalid characters")
         candidate = Path(cleaned)
-        if candidate.is_absolute() or any(part == ".." for part in candidate.parts):
+        if candidate.is_absolute():
+            raise ValueError("Relative path must not be absolute")
+        parts = candidate.parts
+        if not parts or any(part in {"", ".", ".."} for part in parts):
             raise ValueError("Relative path must not escape base directory")
         return candidate
 
