@@ -1,0 +1,65 @@
+name: SQLMap (DAST SQL Injection Scan)
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+permissions:
+  contents: read
+
+jobs:
+  sqlmap:
+    name: SQLMap Scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: "3.14"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
+        with:
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      - name: Sync dependencies
+        run: uv sync --frozen
+
+      - name: Install SQLMap
+        run: uv pip install sqlmap
+
+      - name: Start FastAPI Backend in Background
+        env:
+          DATABASE_URL: "sqlite+aiosqlite:///:memory:"
+          ENVIRONMENT: testing
+          SECRET_KEY: "sqlmap-ci-placeholder-key" # pragma: allowlist secret
+        run: |
+          uv run uvicorn app.main:app --host 127.0.0.1 --port 8000 &
+          # Wait for the server to spin up
+          for i in {1..30}; do
+            if curl -s http://127.0.0.1:8000/openapi.json > /dev/null; then
+              echo "Server is up!"
+              break
+            fi
+            echo "Waiting for server..."
+            sleep 1
+          done
+
+      - name: Run SQLMap Scan on API
+        run: |
+          # --batch: non-interactive mode
+          # --crawl=1: crawl from home/openapi links
+          # --risk=1 --level=1: lightweight scan for CI speed
+          uv run sqlmap --openapi="http://127.0.0.1:8000/openapi.json" \
+            --batch \
+            --crawl=1 \
+            --risk=1 \
+            --level=1 \
+            --threads=2 \
+            --flush-session
