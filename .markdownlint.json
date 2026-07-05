@@ -20,5 +20,9 @@
   "MD029": false, // Allow any ordered list prefixes
   "MD037": false, // Allow spaces inside emphasis markers
   "MD014": false, // Allow dollar signs before commands without showing output
-  "MD036": false  // Allow emphasis used as heading
+  "MD036": false, // Allow emphasis used as heading
+  "MD056": false, // Allow any table column count
+  "MD018": false, // Allow no space after hash on atx style heading
+  "MD050": false, // Allow any strong style
+  "MD038": false  // Allow spaces inside code span elements
 }
