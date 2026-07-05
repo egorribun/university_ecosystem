@@ -260,7 +260,9 @@ func TestSetupTemporalWorker(t *testing.T) {
 
 func TestMain_ExitOnConfigLoadFailure(t *testing.T) {
 	if os.Getenv("BE_CRASHER") == "1" {
-		_ = os.Setenv("FP_JWT_SECRET", "") // force failure
+		if err := os.Setenv("FP_JWT_SECRET", ""); err != nil {
+			t.Fatal(err)
+		} // force failure
 		main()
 		return
 	}
@@ -341,7 +343,10 @@ func TestSetupTemporalWorker_BuildMinIOClientError(t *testing.T) {
 		cfg := &config.Config{
 			MinioEndpoint: "", // causes error
 		}
-		c, _ := client.NewLazyClient(client.Options{HostPort: "127.0.0.1:7233"})
+		c, err := client.NewLazyClient(client.Options{HostPort: "127.0.0.1:7233"})
+		if err != nil {
+			t.Fatal(err)
+		}
 		setupTemporalWorker(context.Background(), c, cfg, discardLogger())
 		return
 	}
@@ -400,23 +405,29 @@ func TestMain_SuccessLifecycle(t *testing.T) {
 	defer func() {
 		for k, v := range oldEnv {
 			if v == "" {
-				_ = os.Unsetenv(k)
+				if err := os.Unsetenv(k); err != nil {
+					t.Log(err)
+				}
 			} else {
-				_ = os.Setenv(k, v)
+				if err := os.Setenv(k, v); err != nil {
+					t.Log(err)
+				}
 			}
 		}
 	}()
 
-	_ = os.Setenv("FP_GRPC_PORT", "0")
-	_ = os.Setenv("FP_GRAPHQL_PORT", "0")
-	_ = os.Setenv("FP_JWT_SECRET", "my-secret-key-12345")
-	_ = os.Setenv("FP_NATS_URL", "nats://127.0.0.1:1")
+	require.NoError(t, os.Setenv("FP_GRPC_PORT", "0"))
+	require.NoError(t, os.Setenv("FP_GRAPHQL_PORT", "0"))
+	require.NoError(t, os.Setenv("FP_JWT_SECRET", "my-secret-key-12345"))
+	require.NoError(t, os.Setenv("FP_NATS_URL", "nats://127.0.0.1:1"))
 
 	content, err := os.ReadFile("../../schema.graphql")
 	if err == nil {
 		require.NoError(t, os.WriteFile("schema.graphql", content, 0600)) // #nosec
 		t.Cleanup(func() {
-			_ = os.Remove("schema.graphql")
+			if err := os.Remove("schema.graphql"); err != nil {
+				t.Log(err)
+			}
 		})
 	}
 

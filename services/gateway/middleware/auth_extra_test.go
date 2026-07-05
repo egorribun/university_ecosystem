@@ -140,11 +140,13 @@ func TestStartJWKSRefresher_FailuresAndRetries(t *testing.T) {
 		calls++
 		if calls == 1 {
 			w.WriteHeader(http.StatusInternalServerError)
-			_, _ = w.Write([]byte("unexpected status 500"))
+			_, err := w.Write([]byte("unexpected status 500"))
+			require.NoError(t, err)
 			return
 		}
 		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(pubPEM))
+		_, err := w.Write([]byte(pubPEM))
+		require.NoError(t, err)
 	}))
 	defer srv.Close()
 

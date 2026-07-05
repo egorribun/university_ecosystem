@@ -16,8 +16,12 @@ func TestWritePump_WriteMessageError(t *testing.T) {
 	c := newClientOn(h, srv, "c-werr", "u-werr")
 
 	// Close both ends to trigger write error
-	_ = srv.Close()
-	_ = cli.Close()
+	if err := srv.Close(); err != nil {
+		t.Log(err)
+	}
+	if err := cli.Close(); err != nil {
+		t.Log(err)
+	}
 
 	// Put a message in Send
 	c.Send <- []byte("msg")
@@ -46,8 +50,12 @@ func TestWritePump_CloseMessageError(t *testing.T) {
 	c := newClientOn(h, srv, "c-close-err", "u-close-err")
 
 	// Close the connection to force close message write to fail
-	_ = srv.Close()
-	_ = cli.Close()
+	if err := srv.Close(); err != nil {
+		t.Log(err)
+	}
+	if err := cli.Close(); err != nil {
+		t.Log(err)
+	}
 
 	close(c.Send)
 
@@ -77,7 +85,9 @@ func TestClient_ReadPump_ErrorPaths(t *testing.T) {
 	h.Register <- c
 
 	// Close client connection immediately to trigger read error inside ReadPump
-	_ = cli.Close()
+	if err := cli.Close(); err != nil {
+		t.Log(err)
+	}
 
 	done := make(chan struct{})
 	go func() {
