@@ -84,9 +84,9 @@ describe("Footer", () => {
     }
 
     // Confirm hrefs target Telegram + Gmail
-    const hrefs = Array.from(socials).map((a) => a.getAttribute("href") ?? "")
-    expect(hrefs.some((h) => h.includes("t.me"))).toBe(true)
-    expect(hrefs.some((h) => h.includes("mail.google.com"))).toBe(true)
+    const hosts = Array.from(socials).map((a) => new URL((a as HTMLAnchorElement).href).hostname)
+    expect(hosts).toContain("t.me")
+    expect(hosts).toContain("mail.google.com")
   })
 
   it("marks decorative layers (FooterBackdrop, accent stripe) aria-hidden", async () => {

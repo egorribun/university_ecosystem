@@ -45,12 +45,11 @@ describe("sanitizeArticleHtml", () => {
   // ---------------------------------------------------------------------------
   // Dangerous tag stripping
   // ---------------------------------------------------------------------------
-  it("removes <script> tag markers but not inline text content", () => {
-    // DANGEROUS_TAGS regex strips the tags themselves, not text between them.
-    // The sentinel check below (line 30 in source) handles surviving patterns.
+  it("removes <script> elements", () => {
     const result = sanitizeArticleHtml("<p>Hello</p><script>xss_payload</script>")
     expect(result).not.toContain("<script")
     expect(result).not.toContain("</script>")
+    expect(result).not.toContain("xss_payload")
   })
 
   it("removes <style> tags", () => {
@@ -114,24 +113,18 @@ describe("sanitizeArticleHtml", () => {
   })
 
   it("preserves data: URLs for images (allowed by the regex)", () => {
-    // data:image/ is explicitly allowed by the DATA_URLS regex exception
+    // data:image/ is explicitly allowed for inline article images.
     const input = '<img src="data:image/png;base64,abc123">'
     const result = sanitizeArticleHtml(input)
     expect(result).toContain("data:image/png")
   })
 
   // ---------------------------------------------------------------------------
-  // Defense-in-depth: fallback to tag-stripping if script survives somehow
+  // Defense-in-depth: structural attribute removal is case-insensitive
   // ---------------------------------------------------------------------------
-  it("falls back to full tag stripping if a script pattern survives sentinel check", () => {
-    // <script > (with a space) matches DANGEROUS_TAGS → stripped to 'alert(1)' text
-    // but <script>\s check in the sentinel looks for the OUTPUT, which is now clean.
-    // To trigger the fallback path we need to craft input that SURVIVES the first regex
-    // but still matches the sentinel pattern /\bon\w+\s*=/i.
-    // This is done by injecting an event handler with unusual casing.
+  it("removes mixed-case event handler attributes", () => {
     const sneaky = "<p>text</p><img ONerror=evil()>"
     const result = sanitizeArticleHtml(sneaky)
-    // EVENT_HANDLERS regex should have already stripped 'ONerror=evil()'
     expect(result).not.toContain("ONerror")
     expect(result).not.toContain("onerror")
   })

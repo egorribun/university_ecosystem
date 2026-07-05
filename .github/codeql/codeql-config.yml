@@ -18,3 +18,17 @@ query-filters:
       id: py/path-injection
       path:
         - app/services/image_proxy.py
+
+  # Test-only URL assertions intentionally check exact sanitizer behavior with
+  # local/example URLs. Production URL handling remains scanned.
+  - exclude:
+      id: py/incomplete-url-substring-sanitization
+      path:
+        - tests/**
+
+  # RFC crypto known-answer vectors live in Rust integration tests. They are
+  # fixed public test vectors, not application secrets or production keys.
+  - exclude:
+      id: rust/hard-coded-cryptographic-value
+      path:
+        - frontend/rust-crypto/tests/**

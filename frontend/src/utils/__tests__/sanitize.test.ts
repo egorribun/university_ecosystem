@@ -2,7 +2,24 @@ import { describe, expect, it, vi, beforeEach } from "vitest"
 
 const mocks = vi.hoisted(() => ({
   sanitize_rich_text: vi.fn((s: string) => s),
-  strip_html: vi.fn((s: string) => s.replace(/<[^>]*>/g, "")),
+  strip_html: vi.fn((s: string) => {
+    let output = ""
+    let insideTag = false
+
+    for (const char of s) {
+      if (char === "<") {
+        insideTag = true
+        continue
+      }
+      if (char === ">") {
+        insideTag = false
+        continue
+      }
+      if (!insideTag) output += char
+    }
+
+    return output
+  }),
   logWarning: vi.fn(),
 }))
 

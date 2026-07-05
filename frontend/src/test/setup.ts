@@ -2,6 +2,25 @@ import { afterEach, beforeAll, vi } from "vitest"
 import { cleanup } from "@testing-library/react"
 import "@testing-library/jest-dom/vitest"
 
+const mockPlainText = vi.hoisted(() => (html: string | null | undefined): string => {
+  let output = ""
+  let insideTag = false
+
+  for (const char of html ?? "") {
+    if (char === "<") {
+      insideTag = true
+      continue
+    }
+    if (char === ">") {
+      insideTag = false
+      continue
+    }
+    if (!insideTag) output += char
+  }
+
+  return output
+})
+
 vi.mock("@/utils/cryptoWorker", () => ({
   cryptoWorker: {
     pbkdf2: vi.fn().mockResolvedValue("mocked_pbkdf2_hash"),
@@ -13,7 +32,7 @@ vi.mock("@/utils/cryptoWorker", () => ({
 vi.mock("wasm-sanitizer", () => ({
   sanitize_rich_text: vi.fn((html: string) => html),
   sanitize_html_basic: vi.fn((html: string) => html),
-  strip_html: vi.fn((html: string) => html?.replace(/<[^>]*>?/gm, "") || ""),
+  strip_html: vi.fn((html: string) => mockPlainText(html)),
 }))
 
 afterEach(() => {

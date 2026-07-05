@@ -1,3 +1,5 @@
+import { htmlToPlainText } from "@/utils/htmlText"
+
 /**
  * Generates a URL-safe slug from text.
  * Supports Unicode (Cyrillic headings produce valid slugs).
@@ -5,8 +7,7 @@
  * to guarantee matching IDs for ToC linking.
  */
 export function slugify(text: string): string {
-  return text
-    .replace(/<[^>]+>/g, "")
+  return htmlToPlainText(text)
     .trim()
     .toLowerCase()
     .replace(/[^\p{L}\p{N}\s-]/gu, "")

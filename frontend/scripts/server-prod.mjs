@@ -66,6 +66,7 @@ const handlerEntryUrl = pathToFileURL(handlerEntryPath).href
 // and are served by vite preview's built-in static server during dev.
 // Production needs the wrapper to handle that explicitly.
 const staticRoot = path.resolve(cwd, "dist", "client")
+const DEFAULT_REQUEST_HOST = `${HOST}:${PORT}`
 
 const handlerModule = await import(handlerEntryUrl)
 const handler = handlerModule.default ?? handlerModule
@@ -136,9 +137,18 @@ function serveStatic(req, res, urlPath) {
 }
 
 function buildWebRequest(req) {
-  const protocol = req.headers["x-forwarded-proto"] ?? "http"
-  const host = req.headers.host ?? `${HOST}:${PORT}`
-  const url = `${protocol}://${host}${req.url}`
+  const forwardedProto = Array.isArray(req.headers["x-forwarded-proto"])
+    ? req.headers["x-forwarded-proto"][0]
+    : req.headers["x-forwarded-proto"]
+  const protocol = forwardedProto === "https" ? "https:" : "http:"
+  const headerHost = Array.isArray(req.headers.host) ? req.headers.host[0] : req.headers.host
+  const url = new URL(req.url ?? "/", "http://localhost")
+  url.protocol = protocol
+  try {
+    url.host = headerHost || DEFAULT_REQUEST_HOST
+  } catch {
+    url.host = DEFAULT_REQUEST_HOST
+  }
   const method = req.method ?? "GET"
   const headers = new Headers()
   for (const [name, value] of Object.entries(req.headers)) {
