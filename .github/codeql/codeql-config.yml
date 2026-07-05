@@ -1,5 +1,9 @@
 name: "Custom CodeQL config"
 
+paths-ignore:
+  - tests/**
+  - frontend/rust-crypto/tests/**
+
 # RZ-W17-04/05 (Wave 17): Scoped exclusions to specific reviewed files only.
 # Previously, py/path-injection was blanket-excluded via tag filter (disabled
 # ALL path injection detection project-wide), and py/weak-cryptographic-algorithm

@@ -21,10 +21,8 @@ export const htmlToPlainText = (html: string | null | undefined): string => {
   const source = html ?? ""
   if (!source) return ""
 
-  if (typeof document !== "undefined") {
-    const template = document.createElement("template")
-    template.innerHTML = source
-    return template.content.textContent ?? ""
+  if (typeof DOMParser !== "undefined") {
+    return new DOMParser().parseFromString(source, "text/html").body.textContent ?? ""
   }
 
   return stripTagsByState(source)

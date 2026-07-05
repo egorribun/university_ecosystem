@@ -129,7 +129,7 @@ function serveStatic(req, res, urlPath) {
   }
   const stream = createReadStream(filePath)
   stream.on("error", (err) => {
-    console.error(`server-prod: read error for ${filePath}:`, err)
+    console.error("server-prod: read error for static file", filePath, err)
     if (!res.writableEnded) res.end()
   })
   stream.pipe(res)

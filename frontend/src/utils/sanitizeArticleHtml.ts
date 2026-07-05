@@ -23,11 +23,33 @@ const DANGEROUS_TAGS = new Set([
 
 const URL_ATTRIBUTES = new Set(["href", "src", "action"])
 
+const SAFE_DATA_IMAGE_URL_PATTERN =
+  /^data:image\/(?:avif|gif|jpeg|jpg|png|webp);base64,[a-z0-9+/=\s]+$/i
+
+const getUrlProtocol = (value: string): string | null => {
+  const compact = [...value.trim()]
+    .filter((char) => {
+      const code = char.charCodeAt(0)
+      return code > 0x1f && code !== 0x7f && !/\s/.test(char)
+    })
+    .join("")
+  if (!compact) return null
+
+  try {
+    return new URL(compact, "https://ue.local").protocol.toLowerCase()
+  } catch {
+    return null
+  }
+}
+
 const isUnsafeUrlAttribute = (name: string, value: string): boolean => {
-  const normalized = value.trim().toLowerCase()
-  if (normalized.startsWith("javascript:")) return true
-  if (name === "src" && normalized.startsWith("data:")) {
-    return !normalized.startsWith("data:image/")
+  const protocol = getUrlProtocol(value)
+  if (!protocol) return true
+  if (protocol === "javascript:" || protocol === "vbscript:" || protocol === "file:") {
+    return true
+  }
+  if (protocol === "data:") {
+    return name !== "src" || !SAFE_DATA_IMAGE_URL_PATTERN.test(value.trim())
   }
   return false
 }
