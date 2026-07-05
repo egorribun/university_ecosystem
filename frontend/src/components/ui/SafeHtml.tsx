@@ -1,5 +1,6 @@
 import { type ReactNode, useMemo } from "react"
 import { sanitize_rich_text } from "wasm-sanitizer"
+import { htmlToPlainText } from "@/utils/htmlText"
 
 interface SafeHtmlProps {
   html: string
@@ -26,8 +27,8 @@ export default function SafeHtml({ html, className, fallback }: SafeHtmlProps) {
 
   if (!sanitized) {
     if (fallback != null) return <>{fallback}</>
-    // RZ-24-04: text-only fallback — strip HTML tags rather than render nothing.
-    const textOnly = html.replace(/<[^>]*>/g, "")
+    // RZ-24-04: text-only fallback rather than rendering nothing.
+    const textOnly = htmlToPlainText(html)
     return <span className={className}>{textOnly}</span>
   }
 
@@ -35,7 +36,7 @@ export default function SafeHtml({ html, className, fallback }: SafeHtmlProps) {
   // script injection patterns (should never happen with ammonia, but protects
   // against hypothetical sanitizer bypass vulnerabilities).
   if (/<script[\s>]/i.test(sanitized) || /\bon\w+\s*=/i.test(sanitized)) {
-    const textOnly = html.replace(/<[^>]*>/g, "")
+    const textOnly = htmlToPlainText(html)
     return <span className={className}>{textOnly}</span>
   }
 

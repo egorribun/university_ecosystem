@@ -59,6 +59,7 @@ jobs:
               # source-code alerts where they cannot be remediated by a diff.
               "BranchProtectionID",
               "CIIBestPracticesID",
+              "CITestsID",
               "CodeReviewID",
               "PinnedDependenciesID",
               "SASTID",

@@ -1,5 +1,6 @@
 import type { TrustedHTML, TrustedTypePolicyFactory } from "trusted-types/lib"
 import { logWarning } from "@/app/logger"
+import { htmlToPlainText } from "@/utils/htmlText"
 
 import { sanitize_rich_text, strip_html } from "wasm-sanitizer"
 
@@ -46,8 +47,8 @@ export const sanitizeNewsHtml = async (
   try {
     return sanitize_rich_text(source)
   } catch {
-    // RZ-24-04: WASM fallback — strip tags when wasm-sanitizer unavailable
-    return source.replace(/<[^>]*>/g, "")
+    // RZ-24-04: WASM fallback — render text only when wasm-sanitizer unavailable.
+    return htmlToPlainText(source)
   }
 }
 
@@ -56,8 +57,8 @@ export const sanitizeNewsText = async (dirty: string | null | undefined): Promis
   try {
     return strip_html(source)
   } catch {
-    // RZ-24-04: WASM fallback — strip tags with regex when wasm-sanitizer unavailable
-    return source.replace(/<[^>]*>/g, "")
+    // RZ-24-04: WASM fallback — render text only when wasm-sanitizer unavailable.
+    return htmlToPlainText(source)
   }
 }
 

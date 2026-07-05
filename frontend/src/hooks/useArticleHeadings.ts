@@ -1,5 +1,6 @@
 import { useMemo } from "react"
 import { marked } from "marked"
+import { htmlToPlainText } from "@/utils/htmlText"
 import { slugify } from "@/utils/slugify"
 
 export interface TocEntry {
@@ -23,7 +24,7 @@ export function useArticleHeadings(content: string): TocEntry[] {
 
       for (const token of tokens) {
         if (token.type === "heading" && (token.depth === 2 || token.depth === 3)) {
-          const text = token.text.replace(/<[^>]+>/g, "").trim()
+          const text = htmlToPlainText(token.text).trim()
           if (!text) continue
           headings.push({ id: slugify(text), text, level: token.depth })
         }

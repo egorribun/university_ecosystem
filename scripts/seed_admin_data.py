@@ -8,7 +8,7 @@ Usage:
     python scripts/seed_admin_data.py
 
 Creates:
-- 1 admin user: admin@university.dev / Admin@2024test
+- 1 admin user: admin@university.dev with the dev seed password below
 - 6 additional users (mix of students + teachers across 3 groups) for AdminUsers
 - 12 audit log entries for AdminAudit (signed via SecureAuditService)
 - 4 dead-letter notification jobs for AdminNotifications
@@ -427,8 +427,8 @@ async def main() -> None:
             print("\n" + "=" * 60)
             print("Admin seed data committed successfully.")
             print("=" * 60)
-            print(f"\n  Admin login:    {ADMIN_EMAIL} / {ADMIN_PASSWORD}")
-            print("  Student login:  test@university.dev / TestPass@2024x")
+            print(f"\n  Admin login:    {ADMIN_EMAIL} / <dev seed password>")
+            print("  Student login:  test@university.dev / <dev seed password>")
             print(
                 f"  Other users:    {len(EXTRA_USERS)} created (mix of student/teacher)"
             )
