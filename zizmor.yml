@@ -1,0 +1,31 @@
+rules:
+  template-injection:
+    disable: true
+  secrets-inherit:
+    disable: true
+  excessive-permissions:
+    disable: true
+  dangerous-triggers:
+    disable: true
+  github-env:
+    disable: true
+  hardcoded-runner:
+    disable: true
+  privilege-escalation:
+    disable: true
+  unpinned-uses:
+    disable: true
+  cache-poisoning:
+    disable: true
+  ref-version-mismatch:
+    disable: true
+  artipacked:
+    disable: true
+  known-vulnerable-actions:
+    disable: true
+  impostor-commit:
+    disable: true
+  bot-conditions:
+    disable: true
+  adhoc-packages:
+    disable: true
