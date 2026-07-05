@@ -18,5 +18,7 @@
   "MD007": false, // Allow any list indentation
   "MD025": false, // Allow multiple h1 titles in a document
   "MD026": false, // Allow trailing punctuation in headings
-  "MD003": false  // Allow any heading style (atx, setext, etc.)
+  "MD003": false, // Allow any heading style (atx, setext, etc.)
+  "MD029": false, // Allow any ordered list prefixes
+  "MD037": false  // Allow spaces inside emphasis markers
 }
