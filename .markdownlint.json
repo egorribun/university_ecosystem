@@ -9,5 +9,10 @@
   "MD022": false, // Allow headings without blank lines
   "MD031": false, // Allow fenced code blocks without blank lines
   "MD032": false, // Allow lists without blank lines
-  "MD012": false  // Allow multiple consecutive blank lines
+  "MD012": false, // Allow multiple consecutive blank lines
+  "MD030": false, // Allow any spacing after list markers
+  "MD004": false, // Allow any unordered list style (dash, plus, star)
+  "MD009": false, // Allow trailing spaces
+  "MD058": false, // Allow tables without blank lines
+  "MD040": false  // Allow fenced code blocks without language specified
 }
