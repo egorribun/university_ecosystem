@@ -84,3 +84,18 @@ func TestGraphQLDepthAndTimeout(t *testing.T) {
 		require.Less(t, elapsed, 1*time.Second)
 	})
 }
+
+// FuzzEstimateQueryDepth tests the lightweight GraphQL query depth estimator
+// under extreme or malformed inputs to ensure no panics or overflows.
+func FuzzEstimateQueryDepth(f *testing.F) {
+	f.Add("{ a { b { c { d { e } } } } }")
+	f.Add(`{ a(name: "foo") { b } }`)
+	f.Add("# comment\n{ a }")
+	f.Add(`{ a(desc: "nested { braces } in string") }`)
+	f.Fuzz(func(t *testing.T, query string) {
+		depth := estimateQueryDepth(query)
+		if depth < 0 {
+			t.Errorf("depth estimated to negative number: %d", depth)
+		}
+	})
+}

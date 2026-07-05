@@ -126,7 +126,7 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y trivy
 
-      - name: Run Trivy vulnerability scanner
+      - name: Run Trivy vulnerability scanner (filesystem)
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           scan-type: "fs"
@@ -139,12 +139,30 @@ jobs:
           # fs scan feeds advisory SARIF; blocking is enforced by the image scan in build-and-sign
           exit-code: "0"
 
-      - name: Upload Trivy scan results
+      - name: Run Trivy configuration scanner (IaC)
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: "config"
+          scan-ref: "."
+          format: "sarif"
+          output: "trivy-config.sarif"
+          severity: "CRITICAL,HIGH"
+          skip-setup-trivy: true
+          exit-code: "0"
+
+      - name: Upload Trivy filesystem scan results
         uses: github/codeql-action/upload-sarif@8aad20d150bbac5944a9f9d289da16a4b0d87c1e # v4.36.2
         if: always()
         continue-on-error: true
         with:
           sarif_file: "trivy-fs.sarif"
+
+      - name: Upload Trivy config scan results
+        uses: github/codeql-action/upload-sarif@8aad20d150bbac5944a9f9d289da16a4b0d87c1e # v4.36.2
+        if: always()
+        continue-on-error: true
+        with:
+          sarif_file: "trivy-config.sarif"
 
   # ── Go vulnerability scanning ──────────────────────────────────────────────
   govulncheck:
