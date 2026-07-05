@@ -273,8 +273,11 @@ jobs:
     needs: pre-commit-check
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
-      - name: Run actionlint
-        uses: rhysd/actionlint-action@70a1a0f8bfaf565db5984ad6fa66f4370213b2c0 # v1.11.1
+      - name: Install and Run actionlint
+        run: |
+          bash <(curl -sSf https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash)
+          ./actionlint -color
+
 
   dockerfile-lint:
     name: Dockerfile Lint
