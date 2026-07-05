@@ -16,7 +16,9 @@
     "preview": "vite preview",
     "start": "node ./scripts/server-prod.mjs",
     "lint": "eslint --max-warnings=0 --ext .ts,.tsx \"src\" \"tests\"",
-    "lint:all": "npm run lint && npm run manifests:check && npm run tokens:sync",
+    "lint:deadcode": "ts-prune",
+    "lint:depcheck": "node scripts/lint-depcheck.mjs",
+    "lint:all": "npm run lint && npm run manifests:check && npm run tokens:sync && npm run lint:deadcode && npm run lint:depcheck",
     "lint:fix": "npm run lint -- --fix",
     "tokens:sync": "node ./scripts/sync-tokens.mjs",
     "format": "prettier --write \"src/**/*.{ts,tsx,js,jsx,json,css,scss,md}\" \"tests/**/*.{ts,tsx,js,jsx}\" vite.config.mts playwright.config.ts vitest.config.ts tsconfig.json pwa-maskable-icons.ts \"scripts/**/*.mjs\"",
@@ -183,7 +185,9 @@
     "workbox-routing": "^7.4.0",
     "workbox-strategies": "^7.4.0",
     "workbox-window": "^7.3.0",
-    "zod": "^3.25.76"
+    "zod": "^3.25.76",
+    "ts-prune": "^0.10.3",
+    "depcheck": "^1.4.7"
   },
   "description": "",
   "lint-staged": {

@@ -22,6 +22,11 @@ on:
         type: number
         default: 80
 
+    secrets:
+      CODECOV_TOKEN:
+        required: false
+        description: "Codecov upload token"
+
 jobs:
   test:
     name: Test Go Service (${{ inputs.service-directory }})
@@ -178,6 +183,16 @@ jobs:
           name: ${{ steps.artifact-name.outputs.name }}
           path: |
             ${{ inputs.service-directory }}/coverage.out
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@0565863a3fe49c47e873a7a8940c74753068eed2 # v5.2.1
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: ${{ inputs.service-directory }}/coverage.out
+          flags: go-${{ inputs.service-directory }}
+          name: go-coverage
+          fail_ci_if_error: false
+
 
   lint:
     name: Lint Go Service (${{ inputs.service-directory }})

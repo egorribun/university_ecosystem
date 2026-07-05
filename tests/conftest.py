@@ -451,3 +451,21 @@ async def cleanup_asyncio_tasks():
 
     # Reclaim memory to prevent OOM-killer termination in CI
     gc.collect()
+
+
+def pytest_addoption(parser):
+    parser.addoption(
+        "--run-quarantined",
+        action="store_true",
+        default=False,
+        help="run quarantined (flaky) tests",
+    )
+
+
+def pytest_configure(config):
+    config.addinivalue_line("markers", "quarantine: mark test as quarantined/flaky")
+
+
+def pytest_runtest_setup(item):
+    if "quarantine" in item.keywords and not item.config.getoption("--run-quarantined"):
+        pytest.skip("skipping quarantined flaky test (use --run-quarantined to run)")
