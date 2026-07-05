@@ -22,6 +22,7 @@ const DANGEROUS_TAGS = new Set([
 ])
 
 const URL_ATTRIBUTES = new Set(["href", "src", "action"])
+
 const SAFE_DATA_IMAGE_URL_PATTERN =
   /^data:image\/(?:avif|gif|jpeg|jpg|png|webp);base64,[a-z0-9+/=\s]+$/i
 
