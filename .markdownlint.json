@@ -5,5 +5,9 @@
     "siblings_only": true // Allow duplicate headings if they are under different parent headings
   },
   "MD033": false, // Allow HTML tags (alerts, etc.)
-  "MD034": false  // Allow bare URLs
+  "MD034": false,  // Allow bare URLs
+  "MD022": false, // Allow headings without blank lines
+  "MD031": false, // Allow fenced code blocks without blank lines
+  "MD032": false, // Allow lists without blank lines
+  "MD012": false  // Allow multiple consecutive blank lines
 }
