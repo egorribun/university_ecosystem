@@ -57,4 +57,3 @@ func TestIntegration_ClientHandleMessage_JetStreamFallback(t *testing.T) {
 		t.Errorf("Expected NATS payload %s, got %s", string(raw), string(receivedMsg.Data))
 	}
 }
-

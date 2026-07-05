@@ -91,7 +91,7 @@ func TestValidate_InactiveUserAccount(t *testing.T) {
 
 func TestValidate_RedisDownFailSecure(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	
+
 	url, stop := startMockRedis(t, mockRedisConfig{})
 	m := newRedisMiddleware(t, url)
 	stop() // close mockRedis to trigger connection refused/outage
@@ -113,7 +113,7 @@ func TestValidate_RedisDownFailSecure(t *testing.T) {
 
 func TestOptional_RedisDownFailSafe(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	
+
 	url, stop := startMockRedis(t, mockRedisConfig{})
 	m := newRedisMiddleware(t, url)
 	stop() // close mockRedis to trigger connection refused/outage
@@ -151,9 +151,9 @@ func TestStartJWKSRefresher_FailuresAndRetries(t *testing.T) {
 	m := NewJWTMiddleware(testSecret, nil)
 	ctx, cancel := context.WithCancel(context.Background())
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	
+
 	go m.StartJWKSRefresher(ctx, srv.URL, 10*time.Millisecond, logger)
-	
+
 	// Wait to let both calls happen
 	time.Sleep(50 * time.Millisecond)
 	cancel()

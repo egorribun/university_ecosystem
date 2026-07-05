@@ -217,7 +217,7 @@ pub fn get_partition_info(table_name: String, month_offset: i32) -> PyResult<Par
     // LOW-W19: reject month_offset values that would cause integer overflow or
     // produce a nonsensical date (e.g. offset going back before year 1 or
     // forward beyond year 9999).  Reasonable operational range is ±120 months (10 years).
-    if month_offset < -120 || month_offset > 120 {
+    if !(-120..=120).contains(&month_offset) {
         return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
             "month_offset {month_offset} is out of the allowed range [-120, 120]"
         )));

@@ -222,6 +222,9 @@ func (c *InternalAPIAuthClient) doRequest(ctx context.Context, userID, roomID st
 		// Network/DNS/timeout error — backend may be unavailable.
 		return false, err
 	}
+	if resp == nil || resp.Body == nil {
+		return false, fmt.Errorf("nil response from auth backend")
+	}
 	defer resp.Body.Close() //nolint:errcheck
 
 	// RZ-01 (audit 2026-03): CRITICAL FIX for socket exhaustion.

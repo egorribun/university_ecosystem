@@ -95,6 +95,7 @@ func TestRequestTimeout_ContextDeadlineApplied(t *testing.T) {
 }
 
 type errorReader struct{}
+
 func (errorReader) Read(p []byte) (n int, err error) {
 	return 0, fmt.Errorf("read error")
 }
@@ -110,4 +111,3 @@ func TestMaxQueryDepth_BodyReadError(t *testing.T) {
 	assert.Equal(t, http.StatusBadRequest, rec.Code)
 	assert.Contains(t, rec.Body.String(), "invalid request body")
 }
-

@@ -26,7 +26,7 @@ WORKDIR /build
 RUN --mount=type=cache,id=apt-lists-builder,target=/var/lib/apt/lists \
     --mount=type=cache,id=apt-cache-builder,target=/var/cache/apt \
     apt-get update \
-    && apt-get dist-upgrade -y --no-install-recommends \
+    && apt-get upgrade -y --no-install-recommends \
     && apt-get install -y --no-install-recommends \
     build-essential \
     curl \
@@ -72,7 +72,7 @@ WORKDIR /app
 RUN --mount=type=cache,id=apt-lists-runtime,target=/var/lib/apt/lists \
     --mount=type=cache,id=apt-cache-runtime,target=/var/cache/apt \
     apt-get update \
-    && apt-get dist-upgrade -y --no-install-recommends \
+    && apt-get upgrade -y --no-install-recommends \
     && apt-get install -y --no-install-recommends tini \
     && rm -rf /var/lib/apt/lists/* \
     && groupadd --system --gid 10001 app \

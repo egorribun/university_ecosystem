@@ -185,4 +185,3 @@ func TestProcessFile_TemporalTimeout(t *testing.T) {
 	assert.Equal(t, codes.DeadlineExceeded, st.Code())
 	assert.Contains(t, st.Message(), "temporal unavailable")
 }
-

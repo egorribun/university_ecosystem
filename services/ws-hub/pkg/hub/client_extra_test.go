@@ -14,21 +14,21 @@ func TestWritePump_WriteMessageError(t *testing.T) {
 
 	srv, cli := newConnPair(t)
 	c := newClientOn(h, srv, "c-werr", "u-werr")
-	
+
 	// Close both ends to trigger write error
 	_ = srv.Close()
 	_ = cli.Close()
-	
+
 	// Put a message in Send
 	c.Send <- []byte("msg")
-	
+
 	// Run WritePump, it should attempt to write and fail, returning immediately
 	done := make(chan struct{})
 	go func() {
 		c.WritePump()
 		close(done)
 	}()
-	
+
 	select {
 	case <-done:
 	case <-time.After(2 * time.Second):
@@ -44,19 +44,19 @@ func TestWritePump_CloseMessageError(t *testing.T) {
 
 	srv, cli := newConnPair(t)
 	c := newClientOn(h, srv, "c-close-err", "u-close-err")
-	
+
 	// Close the connection to force close message write to fail
 	_ = srv.Close()
 	_ = cli.Close()
-	
+
 	close(c.Send)
-	
+
 	done := make(chan struct{})
 	go func() {
 		c.WritePump()
 		close(done)
 	}()
-	
+
 	select {
 	case <-done:
 	case <-time.After(2 * time.Second):
@@ -72,19 +72,19 @@ func TestClient_ReadPump_ErrorPaths(t *testing.T) {
 
 	srv, cli := newConnPair(t)
 	c := newClientOn(h, srv, "c-read-err", "u-read-err")
-	
+
 	// Add to registered list so unregister works
 	h.Register <- c
-	
+
 	// Close client connection immediately to trigger read error inside ReadPump
 	_ = cli.Close()
-	
+
 	done := make(chan struct{})
 	go func() {
 		c.ReadPump()
 		close(done)
 	}()
-	
+
 	select {
 	case <-done:
 	case <-time.After(2 * time.Second):

@@ -8,7 +8,7 @@ const projectDir = path.resolve(__dirname, "..")
 const options = {
   ignoreBinPackage: false,
   skipMissing: true,
-  ignores: [
+  ignoreMatches: [
     // Storybook and documentation tools
     "@storybook/*",
     "storybook",
@@ -88,6 +88,12 @@ const options = {
     "vite-plugin-pwa",
     "workbox-build",
     "workbox-window",
+    "@zxcvbn-ts/core",
+    "@zxcvbn-ts/language-common",
+    "html-to-image",
+    "jspdf",
+    "qrcode",
+    "depcheck",
   ],
   parsers: {
     "**/*.ts": depcheck.parser.typescript,

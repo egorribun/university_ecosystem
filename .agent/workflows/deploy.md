@@ -1,10 +1,9 @@
 ---
 description: How to deploy the university ecosystem application
 ---
+# Deployment Workflow
 
 // turbo-all
-
-# Deployment Workflow
 
 This document outlines the steps to deploy the University Ecosystem application.
 
