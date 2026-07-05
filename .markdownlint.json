@@ -26,5 +26,7 @@
   "MD050": false, // Allow any strong style
   "MD038": false, // Allow spaces inside code span elements
   "MD049": false, // Allow any emphasis style
-  "MD055": false  // Allow any table pipe style
+  "MD055": false, // Allow any table pipe style
+  "MD010": false, // Allow hard tabs
+  "MD001": false  // Allow heading levels to increment by more than one at a time
 }
