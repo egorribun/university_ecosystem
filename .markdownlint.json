@@ -14,5 +14,9 @@
   "MD004": false, // Allow any unordered list style (dash, plus, star)
   "MD009": false, // Allow trailing spaces
   "MD058": false, // Allow tables without blank lines
-  "MD040": false  // Allow fenced code blocks without language specified
+  "MD040": false, // Allow fenced code blocks without language specified
+  "MD007": false, // Allow any list indentation
+  "MD025": false, // Allow multiple h1 titles in a document
+  "MD026": false, // Allow trailing punctuation in headings
+  "MD003": false  // Allow any heading style (atx, setext, etc.)
 }
