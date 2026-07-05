@@ -20,14 +20,14 @@ func newWorkflowEnv(t *testing.T) *testsuite.TestWorkflowEnvironment {
 	t.Helper()
 	ts := &testsuite.WorkflowTestSuite{}
 	env := ts.NewTestWorkflowEnvironment()
-	var a *FileActivities
+	a := &FileActivities{}
 	env.RegisterActivity(a.ResizeImageActivity)
 	return env
 }
 
 func TestFileProcessingWorkflow_Success(t *testing.T) {
 	env := newWorkflowEnv(t)
-	var a *FileActivities
+	a := &FileActivities{}
 	env.OnActivity(a.ResizeImageActivity, mock.Anything, mock.Anything).Return(
 		&ProcessResult{JobID: "job-1", Success: true, DestKey: "out/img.png"}, nil,
 	)
@@ -53,7 +53,7 @@ func TestFileProcessingWorkflow_Success(t *testing.T) {
 
 func TestFileProcessingWorkflow_ActivityErrorPropagates(t *testing.T) {
 	env := newWorkflowEnv(t)
-	var a *FileActivities
+	a := &FileActivities{}
 	env.OnActivity(a.ResizeImageActivity, mock.Anything, mock.Anything).Return(
 		nil, errors.New("resize exploded"),
 	)
