@@ -267,7 +267,7 @@
 - [ ] Поднять `fail_under = 95` в `pyproject.toml [tool.coverage.report]`
 - [ ] Синхронизировать Makefile: `--cov-fail-under=95`
 - [ ] В `reusable-backend-tests.yml` добавить branch coverage gate: `--cov-branch`
-
+- [ ] Добавить `coverage xml` + SonarCloud upload
 
 ---
 

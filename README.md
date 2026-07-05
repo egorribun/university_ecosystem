@@ -168,7 +168,7 @@ We don't just ship; we monitor. The ecosystem is fully instrumented with:
 - **OpenTelemetry**: Distributed tracing across all microservices.
 - **Sentry**: High-fidelity error tracking and performance profiling.
 - **Prometheus**: Real-time metrics for every system component.
-
+- **SonarCloud**: Continuous code quality and security analysis.
 
 ---
 
