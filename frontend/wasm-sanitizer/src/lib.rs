@@ -279,7 +279,6 @@ mod wasm_tests {
         let out = strip_html("<p>Hello <b>world</b></p>");
         assert_eq!(out, "Hello world", "wasm strip: {}", out);
     }
-
     #[wasm_bindgen_test]
     fn test_raw_pointer_wasm_oob() {
         // Test null pointer
