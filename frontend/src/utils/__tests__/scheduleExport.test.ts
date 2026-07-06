@@ -66,11 +66,11 @@ describe("scheduleExport", () => {
     })
 
     it("handles missing subject, teacher, times, and lesson_type", () => {
-      const emptyLesson: Lesson = {
+      const emptyLesson = {
         id: "2",
         weekday: "tue",
         parity: "even",
-      }
+      } as unknown as Lesson
       const url = generateGoogleCalendarUrl(emptyLesson, mockDate)
       expect(url).toContain("text=Lesson")
       expect(url).toContain("dates=20260425T090000%2F20260425T103000")
@@ -88,7 +88,8 @@ describe("scheduleExport", () => {
 
   describe("exportScheduleAsPng", () => {
     let mockElement: HTMLElement
-    let createElementSpy: ReturnType<typeof vi.spyOn>
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let createElementSpy: any
 
     beforeEach(() => {
       mockElement = document.createElement("div")
