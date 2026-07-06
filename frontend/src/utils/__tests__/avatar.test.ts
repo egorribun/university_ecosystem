@@ -57,6 +57,56 @@ describe("avatar utilities", () => {
       // Falls back to locationOrigin on URL parse error
       expect(result).toBe("https://example.com")
     })
+
+    it("works with default parameters", () => {
+      const result = resolveBackendOrigin()
+      // Should default to api.defaults.baseURL and window.location.origin
+      expect(result).toBe("http://localhost:3000")
+    })
+
+    it("handles window object missing or window.location throwing", () => {
+      const originalWindow = global.window
+      try {
+        // Temporarily delete window
+        Object.defineProperty(global, "window", {
+          value: undefined,
+          writable: true,
+          configurable: true,
+        })
+        const result = resolveBackendOrigin({ baseURL: "", locationOrigin: undefined })
+        expect(result).toBeUndefined()
+      } finally {
+        Object.defineProperty(global, "window", {
+          value: originalWindow,
+          writable: true,
+          configurable: true,
+        })
+      }
+    })
+
+    it("handles window.location throwing error when accessing origin", () => {
+      const originalWindow = global.window
+      try {
+        const fakeWindow = {
+          get location() {
+            throw new Error("inaccessible location")
+          },
+        }
+        Object.defineProperty(global, "window", {
+          value: fakeWindow,
+          writable: true,
+          configurable: true,
+        })
+        const result = resolveBackendOrigin({ baseURL: "", locationOrigin: undefined })
+        expect(result).toBeUndefined()
+      } finally {
+        Object.defineProperty(global, "window", {
+          value: originalWindow,
+          writable: true,
+          configurable: true,
+        })
+      }
+    })
   })
 
   describe("buildAvatarUrl", () => {
@@ -131,6 +181,27 @@ describe("avatar utilities", () => {
         locationOrigin: "https://example.com",
       })
       expect(result).toContain("uid=42")
+      expect(result).toContain("size=large")
+    })
+
+    it("handles relative URL appendUid parse failure", () => {
+      // Pass a malformed string that triggers URL parsing failure in new URL(..., DUMMY_ORIGIN)
+      // and triggers the catch block in appendUid.
+      // Space is usually handled/encoded by URL, so we can use invalid characters for URL parsing or backslash.
+      // An invalid URL template such as "http://invalid domain:::" or similar could fail.
+      const result = buildAvatarUrl(":::invalid-url-path", "123", {
+        baseURL: "/api",
+        locationOrigin: "https://example.com",
+      })
+      expect(result).toContain("uid=123")
+    })
+
+    it("handles relative URL appendUid parse failure with query parameters", () => {
+      const result = buildAvatarUrl(":::invalid-url-path?size=large", "123", {
+        baseURL: "/api",
+        locationOrigin: "https://example.com",
+      })
+      expect(result).toContain("uid=123")
       expect(result).toContain("size=large")
     })
   })

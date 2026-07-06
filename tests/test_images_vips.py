@@ -76,9 +76,11 @@ def test_get_image_dimensions_vips():
 
 
 def test_vips_not_available():
+    import app.utils.images_vips as local_iv
+
     with patch("app.utils.images_vips.VIPS_AVAILABLE", False):
         with pytest.raises(RuntimeError, match="pyvips is not available"):
-            iv.optimize_image_vips(b"input-data")
+            local_iv.optimize_image_vips(b"input-data")
 
         with pytest.raises(RuntimeError, match="pyvips is not available"):
-            iv.get_image_dimensions_vips(b"input-data")
+            local_iv.get_image_dimensions_vips(b"input-data")

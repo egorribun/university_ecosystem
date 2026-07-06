@@ -219,3 +219,15 @@ def test_disconnect_user_helper():
     assert user.spotify.access_token is None
     assert user.spotify.refresh_token is None
     assert user.spotify.display_name is None
+
+
+def test_legacy_spotify_auth_import_compat():
+    """Ensure the compatibility shim app.auth.spotify can be imported and re-exports symbols."""
+    import app.auth.spotify as legacy_spotify
+
+    assert legacy_spotify.disconnect is disconnect
+    assert legacy_spotify.now_playing is now_playing
+    assert legacy_spotify.list_playlists is list_playlists
+    assert legacy_spotify.sync_playlists is sync_playlists
+    assert legacy_spotify.spotify_auth_url is spotify_auth_url
+    assert legacy_spotify.spotify_callback is spotify_callback

@@ -57,7 +57,7 @@ jobs:
           python-version: "3.14"
 
       - name: Install uv
-        uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
+        uses: astral-sh/setup-uv@d31148d669074a8d0a63714ba94f3201e7020bc3 # v8.3.0
 
       - name: Verify uv.lock is up to date (MOD-W5-03)
         # MOD-03 (audit Wave 12): explicit error annotation in GitHub Actions UI panel.
@@ -317,7 +317,7 @@ jobs:
         with:
           python-version: "3.14"
       - name: Install uv
-        uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
+        uses: astral-sh/setup-uv@d31148d669074a8d0a63714ba94f3201e7020bc3 # v8.3.0
         with:
           enable-cache: true
           cache-dependency-glob: "uv.lock"
@@ -355,11 +355,11 @@ jobs:
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
       - name: Run markdownlint
-        uses: DavidAnson/markdownlint-cli2-action@05f32210e84442804257b2a6f20b273450ec8265 # v19.1.0
+        uses: DavidAnson/markdownlint-cli2-action@8de2aa07cae85fd17c0b35642db70cf5495f1d25 # v24.0.0
         with:
           globs: "**/*.md"
       - name: Run cspell
-        uses: streetsidesoftware/cspell-action@807d7d92b7057593a2de102168506f298405339d # v6.2.0
+        uses: streetsidesoftware/cspell-action@de2a73e963e7443969755b648a1008f77033c5b2 # v8.4.0
         with:
           config: "cspell.json"
 
@@ -471,7 +471,7 @@ jobs:
         run: echo "SECRET_KEY=$(openssl rand -hex 32)" >> "$GITHUB_ENV"
 
       - name: Install uv
-        uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
+        uses: astral-sh/setup-uv@d31148d669074a8d0a63714ba94f3201e7020bc3 # v8.3.0
         with:
           enable-cache: true
           cache-dependency-glob: "uv.lock"
@@ -754,7 +754,7 @@ jobs:
         run: echo "SECRET_KEY=$(openssl rand -hex 32)" >> "$GITHUB_ENV"
 
       - name: Install uv
-        uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
+        uses: astral-sh/setup-uv@d31148d669074a8d0a63714ba94f3201e7020bc3 # v8.3.0
         with:
           enable-cache: true
           cache-dependency-glob: "uv.lock"
@@ -864,7 +864,7 @@ jobs:
         run: echo "SECRET_KEY=$(openssl rand -hex 32)" >> "$GITHUB_ENV"
 
       - name: Install uv
-        uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
+        uses: astral-sh/setup-uv@d31148d669074a8d0a63714ba94f3201e7020bc3 # v8.3.0
         with:
           enable-cache: true
           cache-dependency-glob: "uv.lock"
@@ -943,7 +943,7 @@ jobs:
         run: echo "SECRET_KEY=$(openssl rand -hex 32)" >> "$GITHUB_ENV"
 
       - name: Install uv
-        uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
+        uses: astral-sh/setup-uv@d31148d669074a8d0a63714ba94f3201e7020bc3 # v8.3.0
         with:
           enable-cache: true
           cache-dependency-glob: "uv.lock"
@@ -1074,7 +1074,7 @@ jobs:
           ignore-unfixed: true
 
       - name: Upload Trivy results to GitHub Security tab
-        uses: github/codeql-action/upload-sarif@8aad20d150bbac5944a9f9d289da16a4b0d87c1e # v4.36.2
+        uses: github/codeql-action/upload-sarif@54f647b7e1bb85c95cddabcd46b0c578ec92bc1a # v4.36.3
         if: always()
         with:
           sarif_file: trivy-results.sarif
@@ -1171,7 +1171,7 @@ jobs:
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
 
-      - uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
+      - uses: astral-sh/setup-uv@d31148d669074a8d0a63714ba94f3201e7020bc3 # v8.3.0
 
       - name: Install dependencies
         run: uv sync --group dev
@@ -1211,7 +1211,7 @@ jobs:
           python-version: "3.14"
 
       - name: Install uv
-        uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
+        uses: astral-sh/setup-uv@d31148d669074a8d0a63714ba94f3201e7020bc3 # v8.3.0
         with:
           enable-cache: true
           cache-dependency-glob: "uv.lock"
@@ -1255,7 +1255,7 @@ jobs:
         run: echo "SECRET_KEY=$(openssl rand -hex 32)" >> "$GITHUB_ENV"
 
       - name: Install uv
-        uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
+        uses: astral-sh/setup-uv@d31148d669074a8d0a63714ba94f3201e7020bc3 # v8.3.0
         with:
           enable-cache: true
           cache-dependency-glob: "uv.lock"
@@ -1307,7 +1307,7 @@ jobs:
         run: echo "SECRET_KEY=$(openssl rand -hex 32)" >> "$GITHUB_ENV"
 
       - name: Install uv
-        uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
+        uses: astral-sh/setup-uv@d31148d669074a8d0a63714ba94f3201e7020bc3 # v8.3.0
         with:
           enable-cache: true
           cache-dependency-glob: "uv.lock"
@@ -1388,7 +1388,7 @@ jobs:
           python-version: "3.14"
 
       - name: Install uv
-        uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
+        uses: astral-sh/setup-uv@d31148d669074a8d0a63714ba94f3201e7020bc3 # v8.3.0
 
       - name: Install Python dependencies (with maturin)
         run: uv sync --group dev
@@ -1536,7 +1536,7 @@ jobs:
           python-version: "3.14"
 
       - name: Install uv
-        uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
+        uses: astral-sh/setup-uv@d31148d669074a8d0a63714ba94f3201e7020bc3 # v8.3.0
 
       - name: Install dependencies
         run: uv sync --group dev
@@ -1582,13 +1582,18 @@ jobs:
           if [ "$ec" -eq 0 ]; then
             echo "mutmut completed within the time-box."
           elif [ "$ec" -eq 124 ]; then
-            echo "::notice::Incremental mutation testing hit the 20-minute advisory time-box (generate + stats + clean-test + forced-fail all passed; ran real mutants until the box). Treating as pass."
+            echo "Incremental mutation testing hit the 20-minute advisory time-box."
           elif [ "$mutants_started" -eq 1 ]; then
-            echo "::notice::mutmut exited $ec (e.g. 137 OOM-SIGKILL / 143 SIGTERM / kill-after) AFTER the advisory mutant phase began ('Running mutation testing' printed -> generate + stats + clean-test + forced-fail ALL passed; they run first and exit non-zero on regression). The kill is in the advisory mutant-execution zone, same as the 20-min time-box. Treating as pass."
+            echo "mutmut exited $ec after the mutant phase began."
           else
-            echo "::error::mutmut exited $ec BEFORE the mutant phase began — a genuine clean-test / forced-fail / stats isolation regression. Failing the job (no masking)."
+            echo "::error::mutmut exited $ec BEFORE the mutant phase began — a genuine clean-test / forced-fail / stats isolation regression. Failing the job."
             exit "$ec"
           fi
+
+          # Verify mutation score (gate blocking at >= 80.0%)
+          echo "Verifying mutation score (gate blocking at >= 80.0%)..."
+          uv run python scripts/check_mutation_score.py --min-score 80.0
+
 
   load-and-chaos-tests:
     name: Load and Chaos Resilience Tests
@@ -1606,7 +1611,7 @@ jobs:
           python-version: "3.14"
 
       - name: Install uv
-        uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
+        uses: astral-sh/setup-uv@d31148d669074a8d0a63714ba94f3201e7020bc3 # v8.3.0
 
       - name: Install dependencies
         run: uv sync --group dev

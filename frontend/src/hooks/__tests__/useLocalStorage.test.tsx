@@ -2,14 +2,20 @@ import { renderHook, act } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { useLocalStorage } from "../useLocalStorage"
 
+// Suppress expected warning logs in error-path tests
+vi.mock("@/app/logger", () => ({
+  logWarning: vi.fn(),
+}))
+
 describe("useLocalStorage", () => {
   beforeEach(() => {
     localStorage.clear()
-    vi.spyOn(console, "warn").mockImplementation(() => {})
+    vi.restoreAllMocks()
+    vi.clearAllMocks()
   })
 
   afterEach(() => {
-    vi.restoreAllMocks()
+    localStorage.clear()
   })
 
   // ---------------------------------------------------------------------------
@@ -32,6 +38,14 @@ describe("useLocalStorage", () => {
     const { result } = renderHook(() => useLocalStorage("fn-key", () => "lazy"))
     const [value] = result.current
     expect(value).toBe("lazy")
+  })
+
+  it("skips localStorage read when initializeWithValue=false", () => {
+    localStorage.setItem("skip-key", JSON.stringify("stored"))
+    const { result } = renderHook(() =>
+      useLocalStorage("skip-key", "fallback", { initializeWithValue: false })
+    )
+    expect(result.current[0]).toBe("fallback")
   })
 
   // ---------------------------------------------------------------------------
@@ -175,5 +189,59 @@ describe("useLocalStorage", () => {
     expect(localStorage.getItem("custom-key")).toBe("1,2,3")
     const [value] = result.current
     expect(value).toEqual([1, 2, 3])
+  })
+
+  // ---------------------------------------------------------------------------
+  // Error handling branches
+  // ---------------------------------------------------------------------------
+  it("gracefully catches read errors and logs them", () => {
+    vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => {
+      throw new Error("Simulated localStorage read failure")
+    })
+    const { result } = renderHook(() => useLocalStorage("fail-read-key", "fallback"))
+    expect(result.current[0]).toBe("fallback")
+  })
+
+  it("gracefully catches write errors in setValue", () => {
+    vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw new Error("Simulated localStorage write failure")
+    })
+    const { result } = renderHook(() => useLocalStorage("fail-write-key", "initial"))
+    act(() => {
+      result.current[1]("updated")
+    })
+    // State should still be updated locally even if localStorage save fails
+    expect(result.current[0]).toBe("updated")
+  })
+
+  it("gracefully catches errors in removeValue", () => {
+    vi.spyOn(Storage.prototype, "removeItem").mockImplementation(() => {
+      throw new Error("Simulated localStorage remove failure")
+    })
+    const { result } = renderHook(() => useLocalStorage("fail-rm-key", "initial"))
+    act(() => {
+      result.current[2]()
+    })
+    expect(result.current[0]).toBe("initial")
+  })
+
+  it("handles deserialization undefined string", () => {
+    localStorage.setItem("undef-key", "undefined")
+    const { result } = renderHook(() => useLocalStorage("undef-key", "fallback"))
+    expect(result.current[0]).toBeUndefined()
+  })
+
+  it("logs sync error during storage event if JSON parsing fails", () => {
+    const { result } = renderHook(() => useLocalStorage<string | null>("sync-err-key", "initial"))
+    act(() => {
+      window.dispatchEvent(
+        new StorageEvent("storage", {
+          key: "sync-err-key",
+          newValue: "invalid { json",
+        })
+      )
+    })
+    // State remains unchanged on sync failure
+    expect(result.current[0]).toBe("initial")
   })
 })

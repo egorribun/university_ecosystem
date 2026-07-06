@@ -73,3 +73,58 @@ class TestGetJwks:
         assert "d" not in key
         assert "p" not in key
         assert "password" not in str(response.json())
+
+    async def test_non_rs256_algorithm(self, root_client) -> None:
+        """When algorithm is not RS256, return empty keys list."""
+        with patch("app.api.well_known.settings") as mock_settings:
+            mock_settings.algorithm = "HS256"
+            response = await root_client.get("/.well-known/jwks.json")
+        assert response.status_code == 200
+        assert response.json() == {"keys": []}
+
+    async def test_invalid_pem_structure(self, root_client) -> None:
+        """When PEM secret does not start with -----BEGIN, it is skipped."""
+        fake_registry = {"kid-a": "not-a-pem"}
+        with patch("app.api.well_known.settings") as mock_settings:
+            mock_settings.jwt_signing_key_registry = fake_registry
+            mock_settings.algorithm = "RS256"
+            response = await root_client.get("/.well-known/jwks.json")
+        assert response.status_code == 200
+        assert response.json() == {"keys": []}
+
+    async def test_not_rsa_private_key(self, root_client) -> None:
+        """When PEM is valid but loads as non-RSA key, it is skipped."""
+        pem_content = "-----BEGIN PRIVATE KEY-----"  # pragma: allowlist secret
+        fake_registry = {"kid-a": pem_content}
+        with (
+            patch("app.api.well_known.settings") as mock_settings,
+            patch(
+                "cryptography.hazmat.primitives.serialization.load_pem_private_key"
+            ) as mock_load,
+        ):
+            mock_settings.jwt_signing_key_registry = fake_registry
+            mock_settings.algorithm = "RS256"
+            # Return a non-RSA private key (e.g., mock object)
+            mock_load.return_value = "not-rsa-key"
+            response = await root_client.get("/.well-known/jwks.json")
+        assert response.status_code == 200
+        assert response.json() == {"keys": []}
+
+    async def test_jwk_generation_exception_logged(self, root_client) -> None:
+        """Exceptions in JWK generation are caught, logged, and the key is skipped."""
+        pem_content = "-----BEGIN PRIVATE KEY-----"  # pragma: allowlist secret
+        fake_registry = {"kid-a": pem_content}
+        with (
+            patch("app.api.well_known.settings") as mock_settings,
+            patch(
+                "cryptography.hazmat.primitives.serialization.load_pem_private_key"
+            ) as mock_load,
+            patch("app.api.well_known._logger") as mock_logger,
+        ):
+            mock_settings.jwt_signing_key_registry = fake_registry
+            mock_settings.algorithm = "RS256"
+            mock_load.side_effect = ValueError("Corrupt key format")
+            response = await root_client.get("/.well-known/jwks.json")
+        assert response.status_code == 200
+        assert response.json() == {"keys": []}
+        mock_logger.warning.assert_called_once()

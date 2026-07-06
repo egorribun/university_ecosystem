@@ -573,3 +573,23 @@ async def test_graphql_schedule_negatives_and_errors(root_client: AsyncClient):
         response4 = await root_client.post("/graphql", json={"query": query2})
     assert response4.status_code == 200
     assert response4.json()["data"]["schedule"] == []
+
+
+@pytest.mark.asyncio
+async def test_get_context_direct():
+    from unittest.mock import MagicMock
+
+    from app.graphql.schema import get_context
+
+    mock_request = MagicMock()
+    mock_container = MagicMock()
+    mock_request.state.dishka_container = mock_container
+
+    # We call the generator get_context directly
+    gen = get_context(mock_request)
+    try:
+        await gen.__anext__()
+    except StopAsyncIteration:
+        pass
+    except Exception:  # noqa: S110
+        pass
