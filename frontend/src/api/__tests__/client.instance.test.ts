@@ -172,3 +172,28 @@ describe("api/client — ensureCsrfCookie", () => {
     expect(fetchSpy).not.toHaveBeenCalled()
   })
 })
+
+describe("api/client — prefix normalization", () => {
+  it("normalizes relative doubled prefix", async () => {
+    const seen = installAdapter()
+    await api.get("/api/v1/api/v1/news")
+    expect(seen).toHaveLength(1)
+    expect(seen[0]!.url).toBe("/api/v1/news")
+  })
+
+  it("normalizes absolute doubled prefix during SSR", async () => {
+    const seen = installAdapter()
+    await api.get("http://localhost:8000/api/v1/api/v1/news")
+    expect(seen).toHaveLength(1)
+    expect(seen[0]!.url).toBe("http://localhost:8000/api/v1/news")
+  })
+
+  it("normalizes absolute single prefix if baseURL matches prefix", async () => {
+    const seen = installAdapter()
+    api.defaults.baseURL = "/api/v1"
+    await api.get("http://localhost:8000/api/v1/news")
+    expect(seen).toHaveLength(1)
+    expect(seen[0]!.url).toBe("http://localhost:8000/news")
+    api.defaults.baseURL = ""
+  })
+})

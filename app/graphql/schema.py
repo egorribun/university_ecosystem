@@ -157,10 +157,10 @@ def _build_schema_extensions() -> list[Any]:
         OpenTelemetryExtension,
         # Prevent deeply-nested query DoS (OWASP API8:2023).
         # max_depth=8 is generous for this read-heavy schema while blocking abuse.
-        lambda: QueryDepthLimiter(max_depth=8),
+        lambda *a, **kw: QueryDepthLimiter(max_depth=8),
         # Prevent query amplification via extremely wide selections.
         # 1000 tokens approx 50 medium-complexity fields with aliases.
-        lambda: MaxTokensLimiter(max_token_count=1000),
+        lambda *a, **kw: MaxTokensLimiter(max_token_count=1000),
         # RZ-21-01 (audit 2026-03-25 Wave 21): Per-query cost analysis blocks
         # list-field fan-out that evades depth and token limits.  The extension
         # weights list-returning fields (chats, messages, users, etc.) at 5×
@@ -180,7 +180,9 @@ def _build_schema_extensions() -> list[Any]:
     if _is_prod:
         from graphql.validation import NoSchemaIntrospectionCustomRule
 
-        extensions.append(lambda: AddValidationRules([NoSchemaIntrospectionCustomRule]))
+        extensions.append(
+            lambda *a, **kw: AddValidationRules([NoSchemaIntrospectionCustomRule])
+        )
 
         # MOD-21-02 (audit 2026-03-25 Wave 21): Persisted-query allowlist rejects
         # unknown queries in production.  Requires query-manifest.json alongside

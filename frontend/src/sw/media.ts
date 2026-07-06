@@ -25,9 +25,12 @@ export async function handleMediaRequest(input: RequestInfo | URL): Promise<Resp
 
   // 2. Try session-specific cache if authenticated
   if (sessionHash) {
-    const privateCache = await self.caches.open(`${MEDIA_PRIVATE_PREFIX}${sessionHash}`)
-    const privateMatch = await privateCache.match(request)
-    if (privateMatch) return privateMatch
+    const privateCacheName = `${MEDIA_PRIVATE_PREFIX}${sessionHash}`
+    if (await self.caches.has(privateCacheName)) {
+      const privateCache = await self.caches.open(privateCacheName)
+      const privateMatch = await privateCache.match(request)
+      if (privateMatch) return privateMatch
+    }
   }
 
   // 3. Network fetch

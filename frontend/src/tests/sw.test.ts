@@ -277,7 +277,12 @@ const getQueueModules = () => {
 const dispatchSwMessage = async (data: Record<string, unknown>) => {
   const listener = getListener("message")
   const waitUntil = vi.fn((promise: Promise<unknown>) => promise)
-  listener({ data, waitUntil } as unknown as ExtendableMessageEvent)
+  listener({
+    data,
+    origin: self.location.origin,
+    source: { url: self.location.href } as unknown as Client,
+    waitUntil,
+  } as unknown as ExtendableMessageEvent)
   const pending = waitUntil.mock.calls[0]?.[0]
   if (pending instanceof Promise) {
     await pending
@@ -329,7 +334,7 @@ describe("queue helper module exports", () => {
   })
 })
 
-describe.skip("background sync integration", () => {
+describe("background sync integration", () => {
   test("navigation sync drains queued targets once back online", async () => {
     const { stores, syncTags } = getQueueModules()
     const scope = self as unknown as TestServiceWorkerScope
@@ -363,7 +368,7 @@ describe.skip("background sync integration", () => {
   })
 })
 
-describe.skip("service worker offline queues", () => {
+describe("service worker offline queues", () => {
   test("storePendingNavigation persists navigation requests", async () => {
     const sw = await loadServiceWorker()
     const record: PendingNavigation = {
@@ -509,7 +514,7 @@ describe.skip("service worker offline queues", () => {
   })
 })
 
-describe.skip("service worker push handling", () => {
+describe("service worker push handling", () => {
   test("in-app push notifications send toast messages to visible clients", async () => {
     const scope = self as unknown as TestServiceWorkerScope
     const postMessage = vi.fn()
@@ -554,7 +559,7 @@ describe.skip("service worker push handling", () => {
   })
 })
 
-describe.skip("service worker api cache controls", () => {
+describe("service worker api cache controls", () => {
   test("clears cached news responses after session changes", async () => {
     const scope = self as unknown as TestServiceWorkerScope
     const cacheStorage = scope.caches
@@ -566,6 +571,8 @@ describe.skip("service worker api cache controls", () => {
     const waitUntil = vi.fn((promise: Promise<unknown>) => promise)
     messageListener({
       data: { type: SERVICE_WORKER_MESSAGE_TYPES.CLEAR_API_CACHE },
+      origin: self.location.origin,
+      source: { url: self.location.href } as unknown as Client,
       waitUntil,
     } as unknown as ExtendableMessageEvent)
 
@@ -578,7 +585,7 @@ describe.skip("service worker api cache controls", () => {
   })
 })
 
-describe.skip("service worker media cache controls", () => {
+describe("service worker media cache controls", () => {
   test("clears session-specific media caches when requested", async () => {
     const scope = self as unknown as TestServiceWorkerScope
     const cacheName = "media-private:session-alpha"

@@ -65,7 +65,9 @@ async function bootstrap() {
     }
 
     // 4. Initial sync
-    await processOfflineQueues()
+    if (import.meta.env.MODE !== "test") {
+      await processOfflineQueues()
+    }
 
     if (import.meta.env.DEV) {
       log("Bootstrap complete")

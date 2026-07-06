@@ -78,7 +78,7 @@ pub fn sanitize_rich_text_raw(ptr: *const u8, len: usize) -> Result<String, Stri
 
     #[cfg(target_arch = "wasm32")]
     {
-        let mem_size = core::arch::wasm32::memory_size() * 65536;
+        let mem_size = core::arch::wasm32::memory_size::<0>() * 65536;
         let start = ptr as usize;
         if start > mem_size || len > mem_size || start.saturating_add(len) > mem_size {
             return Err(String::from("Out of bounds pointer/length"));

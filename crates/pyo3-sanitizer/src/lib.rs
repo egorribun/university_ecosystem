@@ -12,13 +12,28 @@ use ammonia::Builder;
 use pyo3::prelude::*;
 use std::collections::{HashMap, HashSet};
 
+fn catch_unwind_to_pyerr<F, R>(f: F) -> PyResult<R>
+where
+    F: FnOnce() -> R + std::panic::UnwindSafe,
+{
+    std::panic::catch_unwind(f).map_err(|err| {
+        let msg = if let Some(s) = err.downcast_ref::<&str>() {
+            *s
+        } else if let Some(s) = err.downcast_ref::<String>() {
+            s.as_str()
+        } else {
+            "Rust panic occurred"
+        };
+        pyo3::exceptions::PyRuntimeError::new_err(msg.to_string())
+    })
+}
+
 /// Remove dangerous HTML while preserving rich-text formatting.
 ///
 /// Allowed elements: paragraphs, headings, lists, inline formatting,
 /// blockquotes, code/pre, and anchors (href/title/target only).
 /// All URLs must use http or https. Links automatically get
 /// `rel="noopener noreferrer"`.
-#[pyfunction]
 pub fn sanitize_rich_text(html: &str) -> String {
     let allowed_tags: HashSet<&str> = [
         "p",
@@ -62,22 +77,44 @@ pub fn sanitize_rich_text(html: &str) -> String {
         .to_string()
 }
 
+#[pyfunction]
+#[pyo3(name = "sanitize_rich_text")]
+pub fn py_sanitize_rich_text(html: &str) -> PyResult<String> {
+    catch_unwind_to_pyerr(std::panic::AssertUnwindSafe(|| {
+        sanitize_rich_text(html)
+    }))
+}
+
 /// Strip all HTML except basic inline formatting (bold, italic, emphasis).
 ///
 /// Use this for short user-supplied strings (e.g. display names, titles)
 /// where rich formatting is unwanted.
-#[pyfunction]
 pub fn sanitize_html_basic(html: &str) -> String {
     let allowed_tags: HashSet<&str> = ["b", "i", "em", "strong"].iter().copied().collect();
     Builder::new().tags(allowed_tags).clean(html).to_string()
 }
 
+#[pyfunction]
+#[pyo3(name = "sanitize_html_basic")]
+pub fn py_sanitize_html_basic(html: &str) -> PyResult<String> {
+    catch_unwind_to_pyerr(std::panic::AssertUnwindSafe(|| {
+        sanitize_html_basic(html)
+    }))
+}
+
 /// Remove all HTML tags, returning plain text.
 ///
 /// Use this when storing or indexing content where markup must be absent.
-#[pyfunction]
 pub fn strip_html(html: &str) -> String {
     Builder::new().tags(HashSet::new()).clean(html).to_string()
+}
+
+#[pyfunction]
+#[pyo3(name = "strip_html")]
+pub fn py_strip_html(html: &str) -> PyResult<String> {
+    catch_unwind_to_pyerr(std::panic::AssertUnwindSafe(|| {
+        strip_html(html)
+    }))
 }
 
 /// pyo3_sanitizer — native Python extension module.
@@ -87,9 +124,9 @@ pub fn strip_html(html: &str) -> String {
 /// (see `app/services/content_processing.py`).
 #[pymodule]
 fn pyo3_sanitizer(module: &Bound<'_, PyModule>) -> PyResult<()> {
-    module.add_function(wrap_pyfunction!(sanitize_rich_text, module)?)?;
-    module.add_function(wrap_pyfunction!(sanitize_html_basic, module)?)?;
-    module.add_function(wrap_pyfunction!(strip_html, module)?)?;
+    module.add_function(wrap_pyfunction!(py_sanitize_rich_text, module)?)?;
+    module.add_function(wrap_pyfunction!(py_sanitize_html_basic, module)?)?;
+    module.add_function(wrap_pyfunction!(py_strip_html, module)?)?;
     Ok(())
 }
 
@@ -369,5 +406,18 @@ mod tests {
         let stripped = strip_html(&repeated);
         // All markup removed; only text content remains
         assert!(!stripped.contains('<'), "no tags must remain after strip");
+    }
+
+    #[test]
+    fn test_panic_boundary_catches_rust_panic() {
+        Python::initialize();
+        let result = catch_unwind_to_pyerr(std::panic::AssertUnwindSafe(|| {
+            panic!("test panic string");
+        }));
+        assert!(result.is_err());
+        let py_err = result.unwrap_err();
+        Python::attach(|_py| {
+            assert!(py_err.to_string().contains("test panic string"));
+        });
     }
 }

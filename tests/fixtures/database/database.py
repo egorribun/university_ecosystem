@@ -24,6 +24,37 @@ async def prepare_database() -> AsyncIterator[None]:
     is_postgresql = database_url.startswith("postgresql")
 
     if is_postgresql:
+        # Create vector extension, all tables, and RLS policies for PostgreSQL
+        async with database.engine.begin() as conn:
+            await conn.exec_driver_sql("CREATE EXTENSION IF NOT EXISTS vector")
+            await conn.run_sync(Base.metadata.create_all)
+            await conn.exec_driver_sql("ALTER TABLE messages ENABLE ROW LEVEL SECURITY")
+            await conn.exec_driver_sql("ALTER TABLE messages FORCE ROW LEVEL SECURITY")
+            await conn.exec_driver_sql(
+                "DROP POLICY IF EXISTS messages_participant_isolation ON messages"
+            )
+            await conn.exec_driver_sql(
+                """
+                CREATE POLICY messages_participant_isolation ON messages
+                    AS PERMISSIVE
+                    FOR ALL
+                    TO PUBLIC
+                    USING (
+                        chat_id IN (
+                            SELECT chat_id
+                            FROM   chat_participants
+                            WHERE  user_id = (
+                                current_setting('app.current_user_id', TRUE)::uuid
+                            )
+                        )
+                    )
+                    WITH CHECK (
+                        current_setting('app.current_user_id', TRUE) IS NULL OR
+                        current_setting('app.current_user_id', TRUE) = '' OR
+                        sender_id = (current_setting('app.current_user_id', TRUE)::uuid)
+                    )
+                """
+            )
         # Safety-net: unconditionally ensure DEFAULT + prev/current/next-month
         # RANGE partitions exist for all partitioned tables.  Using
         # CREATE TABLE IF NOT EXISTS makes every statement idempotent.

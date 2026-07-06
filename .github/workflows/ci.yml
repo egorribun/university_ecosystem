@@ -1425,6 +1425,58 @@ jobs:
           path: "asan-report.*"
           if-no-files-found: ignore
 
+  rust-ffi-tsan:
+    # Phase V: Run PyO3 FFI tests under ThreadSanitizer.
+    # Data races that cross the Rust/Python FFI boundary are extremely hard to debug;
+    # TSan instruments every memory access and synchronization primitive to fail loudly.
+    name: "Rust FFI — TSan"
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    if: |
+      github.event_name == 'push' ||
+      github.event_name == 'pull_request' ||
+      github.event_name == 'workflow_dispatch'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: "3.14"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@d31148d669074a8d0a63714ba94f3201e7020bc3 # v8.3.0
+
+      - name: Install Python dependencies (with maturin)
+        run: uv sync --group dev
+
+      - name: Cache Cargo registry
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            native/rust_ext/target/
+            crates/pyo3-sanitizer/target/
+          key: ${{ runner.os }}-cargo-tsan-${{ hashFiles('native/rust_ext/Cargo.toml', 'crates/pyo3-sanitizer/Cargo.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-tsan-
+
+      - name: Install LLVM tools (required for TSan runtime)
+        run: |
+          rustup toolchain install nightly --component rust-src --component llvm-tools --allow-downgrade --no-self-update
+
+      - name: Run FFI tests under TSan
+        env:
+          ENVIRONMENT: testing
+          DATABASE_URL: "sqlite+aiosqlite:///./test_tsan.db"
+          SECRET_KEY: ${{ secrets.CI_TEST_SECRET_KEY || 'test-secret-key-1234567890abcdef' }}
+        run: bash scripts/run_tsan_tests.sh
+
   rust-tests:
     # Testing session 9, Stream D — the first `cargo test` job in CI (the prior
     # Rust coverage came only from the ASan job + the weekly fuzz run).
@@ -1432,7 +1484,7 @@ jobs:
     # browser-parity wasm-bindgen tests for rust-crypto. Deterministic, so it is
     # BLOCKING (in the ci-success results array), unlike the advisory mutation /
     # load-and-chaos jobs.
-    name: "Rust — cargo test (×3 crates) + wasm-pack"
+    name: "Rust — cargo test (×3 crates) + wasm-pack + coverage"
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
@@ -1454,10 +1506,11 @@ jobs:
         with:
           python-version: "3.14"
 
-      - name: Set up Rust (stable + wasm32 target)
+      - name: Set up Rust (stable + wasm32 target + llvm-tools)
         uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
         with:
           targets: wasm32-unknown-unknown
+          components: llvm-tools-preview
 
       - name: Cache Cargo registry + target dirs
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -1474,7 +1527,12 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-cargo-rust-tests-
 
-      - name: rust_ext — native unit tests (--no-default-features)
+      - name: Install cargo-llvm-cov
+        uses: taiki-e/install-action@54420ca6e3a4cab262aeabc1af4f52908ca28931 # cargo-llvm-cov
+        with:
+          tool: cargo-llvm-cov
+
+      - name: rust_ext — native unit tests + coverage (--no-default-features)
         # extension-module produces undefined Python symbols in a standalone test
         # binary on Linux; drop it and point the linker/loader at setup-python's
         # libpython via sysconfig LIBDIR.
@@ -1482,22 +1540,22 @@ jobs:
         run: |
           LIBDIR="$(python -c 'import sysconfig; print(sysconfig.get_config_var("LIBDIR"))')"
           export LD_LIBRARY_PATH="${LIBDIR}:${LD_LIBRARY_PATH}"
-          cargo test --no-default-features --lib
+          cargo llvm-cov --no-default-features --lib
 
-      - name: pyo3-sanitizer — native unit tests
+      - name: pyo3-sanitizer — native unit tests + coverage
         working-directory: crates/pyo3-sanitizer
         run: |
           LIBDIR="$(python -c 'import sysconfig; print(sysconfig.get_config_var("LIBDIR"))')"
           export LD_LIBRARY_PATH="${LIBDIR}:${LD_LIBRARY_PATH}"
-          cargo test --lib
+          cargo llvm-cov --lib
 
-      - name: wasm-sanitizer — native unit tests
+      - name: wasm-sanitizer — native unit tests + coverage
         working-directory: frontend/wasm-sanitizer
-        run: cargo test --lib
+        run: cargo llvm-cov --lib
 
-      - name: rust-crypto — native KAT tests
+      - name: rust-crypto — native KAT tests + coverage
         working-directory: frontend/rust-crypto
-        run: cargo test --lib
+        run: cargo llvm-cov --lib
 
       - name: Install wasm-pack
         # rustwasm canonical curl installer (W141 polish-v2 / W142 polish-v3:
@@ -1590,9 +1648,9 @@ jobs:
             exit "$ec"
           fi
 
-          # Verify mutation score (gate blocking at >= 80.0%)
-          echo "Verifying mutation score (gate blocking at >= 80.0%)..."
-          uv run python scripts/check_mutation_score.py --min-score 80.0
+          # Verify mutation score (gate blocking at >= 85.0% via mutmut_ci_gate.py)
+          echo "Verifying mutation score (gate blocking at >= 85.0%)..."
+          uv run python scripts/mutmut_ci_gate.py
 
 
   load-and-chaos-tests:
@@ -1852,6 +1910,7 @@ jobs:
       - provenance-check
       - e2e-tests
       - rust-ffi-asan
+      - rust-ffi-tsan
       - rust-tests
       - mutation-tests
       - load-and-chaos-tests
@@ -1912,6 +1971,7 @@ jobs:
             "${{ needs.provenance-check.result }}"
             "${{ needs.e2e-tests.result }}"
             "${{ needs.rust-ffi-asan.result }}"
+            "${{ needs.rust-ffi-tsan.result }}"
             "${{ needs.rust-tests.result }}"
             "${{ needs.mutation-tests.result }}"
             "${{ needs.load-and-chaos-tests.result }}"

@@ -264,6 +264,19 @@ export const useMessengerController = () => {
         showDateDivider ||
         prev.sender_id !== m.sender_id ||
         createdAt.getTime() - new Date(prev.created_at).getTime() > GROUP_GAP_MS
+
+      let seenByCount: number | undefined
+      let seenByTotal: number | undefined
+      if (activeChat?.chat_type === "group" && isMe) {
+        const others = activeChat.participants.filter((p) => p.id !== user?.id)
+        seenByTotal = others.length
+        seenByCount = others.filter((p) => {
+          const receipt = activeChat.read_receipts?.find((r) => r.user_id === p.id)
+          if (!receipt) return false
+          return new Date(receipt.last_read_at).getTime() >= new Date(m.created_at).getTime()
+        }).length
+      }
+
       return {
         id: m.id,
         senderId: String(m.sender_id),
@@ -276,6 +289,8 @@ export const useMessengerController = () => {
         readAt: m.read_at ?? null,
         readAtLabel: m.read_at ? formatMessageTime(m.read_at) : undefined,
         isLastRead: m.id === lastReadId,
+        seenByCount,
+        seenByTotal,
         // Wave 205 SW6 — edit/soft-delete UI fields. editedAtLabel feeds the
         // "(edited)" tooltip; deletedAt set => ChatWindow renders the tombstone.
         editedAt: m.edited_at ?? null,
@@ -318,7 +333,7 @@ export const useMessengerController = () => {
         isGroupStart,
       }
     })
-  }, [messages, user?.id, user?.full_name, user?.avatar_url, t, i18n.language])
+  }, [messages, user?.id, user?.full_name, user?.avatar_url, t, i18n.language, activeChat])
 
   // --- Optimistic UI ---
 
