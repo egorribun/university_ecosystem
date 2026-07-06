@@ -10,7 +10,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { useOnlineStatus } from "../useOnlineStatus"
 
 describe("useOnlineStatus", () => {
-  const listeners: Record<string, EventListener[]> = { online: [], offline: [] }
+  const listeners: { online: EventListener[]; offline: EventListener[] } = {
+    online: [],
+    offline: [],
+  }
 
   beforeEach(() => {
     listeners.online = []
@@ -18,17 +21,17 @@ describe("useOnlineStatus", () => {
 
     vi.spyOn(window, "addEventListener").mockImplementation(
       (type: string, listener: EventListenerOrEventListenerObject) => {
-        if (type === "online" || type === "offline") {
-          listeners[type].push(listener as EventListener)
-        }
+        if (type === "online") listeners.online.push(listener as EventListener)
+        else if (type === "offline") listeners.offline.push(listener as EventListener)
       }
     )
 
     vi.spyOn(window, "removeEventListener").mockImplementation(
       (type: string, listener: EventListenerOrEventListenerObject) => {
-        if (type === "online" || type === "offline") {
-          listeners[type] = listeners[type].filter((l) => l !== listener)
-        }
+        if (type === "online")
+          listeners.online = listeners.online.filter((l) => l !== listener)
+        else if (type === "offline")
+          listeners.offline = listeners.offline.filter((l) => l !== listener)
       }
     )
   })
