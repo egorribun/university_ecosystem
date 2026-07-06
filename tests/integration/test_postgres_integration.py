@@ -30,7 +30,7 @@ pytestmark = pytest.mark.integration
 
 def _unique_email(prefix: str = "integ") -> str:
     """Return a collision-free email address for a single test run."""
-    return f"{prefix}+{uuid.uuid4().hex[:8]}@university.test"
+    return f"{prefix}+{uuid.uuid4().hex[:8]}@university.edu"
 
 
 def _register_payload(email: str, password: str = "Integration#1") -> dict:  # noqa: S107
@@ -170,7 +170,7 @@ async def test_health_endpoint_returns_ok(async_client: AsyncClient) -> None:
     /health first.
     """
     resp = await async_client.get(
-        "/health",
+        "http://testserver/healthz",
         headers={"X-Disable-Query-Budget": "1"},
     )
     assert resp.status_code == 200, f"Health check failed: {resp.text}"

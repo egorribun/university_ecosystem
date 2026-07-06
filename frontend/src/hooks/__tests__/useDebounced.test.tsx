@@ -121,4 +121,25 @@ describe("useDebounced", () => {
     act(() => vi.advanceTimersByTime(100))
     expect(result.current).toBe(obj2)
   })
+
+  // ---------------------------------------------------------------------------
+  // Cleanup and edge cases
+  // ---------------------------------------------------------------------------
+  it("clears the timeout on unmount", () => {
+    const { rerender, unmount } = renderHook(({ value }) => useDebounced(value, 300), {
+      initialProps: { value: "initial" },
+    })
+    rerender({ value: "updated" })
+    unmount()
+    expect(() => act(() => vi.advanceTimersByTime(300))).not.toThrow()
+  })
+
+  it("works correctly with a delay of 0", () => {
+    const { result, rerender } = renderHook(({ value }) => useDebounced(value, 0), {
+      initialProps: { value: "x" },
+    })
+    rerender({ value: "y" })
+    act(() => vi.advanceTimersByTime(0))
+    expect(result.current).toBe("y")
+  })
 })

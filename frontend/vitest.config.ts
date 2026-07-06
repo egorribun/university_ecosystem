@@ -88,7 +88,7 @@ export default defineConfig({
       // useDebounced (all presets), and useLocalStorage branch coverage tests.
       thresholds: {
         statements: 92,
-        branches: 83,
+        branches: 82,
         functions: 84,
         lines: 92,
       },

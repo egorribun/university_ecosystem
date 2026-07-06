@@ -129,7 +129,7 @@ async def test_event_delete_image_oserror_is_non_fatal(caplog):
 
     with (
         patch(
-            "app.services.event_service.delete_static_file",
+            "app.utils.files.delete_static_file",
             side_effect=OSError("disk full"),
         ),
         caplog.at_level(logging.WARNING),
@@ -172,7 +172,7 @@ async def test_event_delete_file_urls_oserror_each_logged(caplog):
         raise FileNotFoundError(f"missing: {url}")
 
     with (
-        patch("app.services.event_service.delete_static_file", side_effect=_fail),
+        patch("app.utils.files.delete_static_file", side_effect=_fail),
         caplog.at_level(logging.WARNING),
     ):
         service = EventService(uow=uow, vector_service=vector_service)
@@ -267,7 +267,7 @@ def test_require_group_participant_non_participant_raises_forbidden():
     """
 
     # Import the class under test (it lives deep in command_service)
-    from app.services.chat.command_service import ChatGroupMemberService
+    from app.services.chat.command_service import ChatMaintenanceService
 
     chat = MagicMock()
     chat.participants = []  # empty — user can't be a member
@@ -278,11 +278,9 @@ def test_require_group_participant_non_participant_raises_forbidden():
 
     uow, repo = _make_mock_uow()  # noqa: RUF059
     attachment_service = MagicMock()
-    notification_service = MagicMock()
-    service = ChatGroupMemberService(
+    service = ChatMaintenanceService(
         uow=uow,
         attachment_service=attachment_service,
-        notification_service=notification_service,
     )
 
     with pytest.raises(Exception):  # noqa: B017 - raise_forbidden raises HTTPException which inherits from Exception
@@ -296,7 +294,7 @@ def test_require_group_participant_dm_chat_raises_validation_error():
     WHY: DM chats must not be mutated via the group-management endpoints; any
     attempt must return a descriptive 400 error rather than silently succeeding.
     """
-    from app.services.chat.command_service import ChatGroupMemberService
+    from app.services.chat.command_service import ChatMaintenanceService
 
     user_id = uuid.uuid4()
     participant = MagicMock()
@@ -311,11 +309,9 @@ def test_require_group_participant_dm_chat_raises_validation_error():
 
     uow, repo = _make_mock_uow()  # noqa: RUF059
     attachment_service = MagicMock()
-    notification_service = MagicMock()
-    service = ChatGroupMemberService(
+    service = ChatMaintenanceService(
         uow=uow,
         attachment_service=attachment_service,
-        notification_service=notification_service,
     )
 
     with pytest.raises(Exception):  # noqa: B017 - raise_forbidden raises HTTPException which inherits from Exception
@@ -330,7 +326,7 @@ def test_require_group_participant_happy_path_returns_id_set():
     cache invalidation — verifying the return value confirms the happy path
     executes without error and produces the correct data structure.
     """
-    from app.services.chat.command_service import ChatGroupMemberService
+    from app.services.chat.command_service import ChatMaintenanceService
 
     user_id = uuid.uuid4()
     other_id = uuid.uuid4()
@@ -348,10 +344,9 @@ def test_require_group_participant_happy_path_returns_id_set():
     user.id = user_id
 
     uow, repo = _make_mock_uow()  # noqa: RUF059
-    service = ChatGroupMemberService(
+    service = ChatMaintenanceService(
         uow=uow,
         attachment_service=MagicMock(),
-        notification_service=MagicMock(),
     )
 
     result = service._require_group_participant(chat, user, locale="ru")

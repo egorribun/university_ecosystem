@@ -37,7 +37,7 @@ def _make_token(
     kid: str = "test-kid",
     secret: str = "test-secret-key-32-characters-long-entropy",  # noqa: S107
     algorithm: str = "HS256",
-    audience: str = "university-ecosystem",
+    audience: str = "university-ecosystem-api",
     expires_minutes: int = 30,
     extra_claims: dict | None = None,
 ) -> str:
@@ -167,7 +167,9 @@ async def test_decode_token_empty_registry_returns_none(monkeypatch):
     from app.auth.security import decode_token
     from app.core.config import settings
 
-    monkeypatch.setattr(settings, "jwt_signing_key_registry", {})
+    monkeypatch.setattr(
+        type(settings), "jwt_signing_key_registry", property(lambda self: {})
+    )
     token = _make_token()
     result = decode_token(token)
     assert result is None, "Empty registry → immediate None (no keys to verify against)"
@@ -236,12 +238,16 @@ def test_verify_password_sync_argon2_unexpected_error_returns_false(monkeypatch)
     rather than propagating the internal error.
     """
 
+    from unittest.mock import MagicMock
+
     from app.auth import security as sec
 
     def _boom(hash_, plain):
         raise RuntimeError("argon2 internal error")
 
-    monkeypatch.setattr(sec.argon2_hasher, "verify", _boom)
+    mock_hasher = MagicMock()
+    mock_hasher.verify = _boom
+    monkeypatch.setattr(sec, "argon2_hasher", mock_hasher)
     result = sec.verify_password_sync("plaintext", "$argon2id$malformed")
     assert result is False, "Unexpected argon2 error MUST return False (fail-closed)"
 
