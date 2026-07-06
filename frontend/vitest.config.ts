@@ -84,9 +84,11 @@ export default defineConfig({
       // useProfileSync initFn cached-restore paths (unreachable — readCachedEnvelope()
       // source bug always returns undefined), useChatWebSocket ping/reconnect-cap 30s
       // timer paths, api/client 429-retry loop, etagCache/sanitize/sw long-tail.
+      // Wave 10: raised branches floor 81→83 after adding useOnlineStatus,
+      // useDebounced (all presets), and useLocalStorage branch coverage tests.
       thresholds: {
         statements: 92,
-        branches: 81,
+        branches: 83,
         functions: 84,
         lines: 92,
       },

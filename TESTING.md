@@ -65,14 +65,14 @@ npm run test:e2e --prefix frontend
 
 Each module has enforced coverage requirements that must be met in local testing and CI:
 
-| Module | Floor Requirement | Tool |
-|---|---|---|
-| **Python Backend** | $\ge 90\%$ statements | `coverage` |
-| **Go Gateway** | $\ge 90\%$ statements | `go tool cover` |
-| **Go WS-Hub** | $\ge 90\%$ statements | `go tool cover` |
-| **Go File-Processor** | $\ge 90\%$ statements | `go tool cover` |
-| **Rust Crates** | $\ge 95\%$ statements | `cargo-llvm-cov` |
-| **Frontend** | $\ge 92\%$ statements, $\ge 81\%$ branches | `vitest` |
+| Module | Floor Requirement | Tool | Last Updated |
+|---|---|---|---|
+| **Python Backend** | $\ge 93\%$ statements, $\ge 91\%$ branches | `coverage` | Wave 7 |
+| **Go Gateway** | $\ge 90\%$ statements | `go tool cover` | Wave 8 |
+| **Go WS-Hub** | $\ge 90\%$ statements | `go tool cover` | Wave 8 |
+| **Go File-Processor** | $\ge 90\%$ statements | `go tool cover` | Wave 8 |
+| **Rust Crates** | $\ge 95\%$ statements | `cargo-llvm-cov` | Wave 9 |
+| **Frontend** | $\ge 92\%$ statements, $\ge 83\%$ branches | `vitest` | Wave 10 |
 
 ---
 
@@ -83,12 +83,23 @@ Each module has enforced coverage requirements that must be met in local testing
 - [x] **Wave 4**: Frontend Unit & E2E Coverage Upgrade — **COMPLETED**
 - [x] **Wave 5**: Integration, Contract & Security Coverage Expansion — **COMPLETED**
 - [x] **Wave 6**: Observability, Documentation, Final CI Gate — **COMPLETED**
+- [x] **Wave 7**: Python Branch Coverage Ratchet (`fail_under` 91→93, mutation gate scripts) — **COMPLETED**
+- [x] **Wave 8**: Go Coverage Gate Enforcement (Makefile `go-test-gates` target) — **COMPLETED**
+- [x] **Wave 9**: Rust proptest + criterion benchmarks + fuzz targets — **COMPLETED**
+- [x] **Wave 10**: Frontend branches threshold raise (81→83) + new test files — **COMPLETED**
+- [x] **Wave 11**: E2E spec expansion (5 new spec files) — **COMPLETED**
+- [x] **Wave 12**: Integration test expansion (postgres + nats layers) — **COMPLETED**
+- [x] **Wave 13**: Contract test expansion (OpenAPI drift + NATS subjects) — **COMPLETED**
+- [x] **Wave 14**: Chaos + Fuzz corpus tests — **COMPLETED**
 
 ---
 
 ## 5. Adding New Tests
 
-1. **Python**: Place tests under `tests/` with the `test_` prefix. Ensure async tests are decorated with `@pytest.mark.asyncio`.
+1. **Python**: Place tests under `tests/` with the `test_` prefix. Async tests do **not** need `@pytest.mark.asyncio` — `asyncio_mode = 'auto'` is set in `pyproject.toml`.
 2. **Go**: Create a `*_test.go` file next to the source code being tested.
 3. **Rust**: Write unit tests in a `tests` module inside `src/lib.rs` decorated with `#[cfg(test)]`.
 4. **Frontend**: Add `.test.tsx` or `.test.ts` files under `__tests__` directories in components or hooks.
+5. **Integration tests**: Use `pytest.mark.integration` and gate with `RUN_INTEGRATION_TESTS=1` if they require Docker/PostgreSQL.
+6. **Chaos tests**: Use `pytest.mark.chaos` and `pytest.mark.slow`; no Docker required for in-process chaos tests.
+7. **Fuzz corpus**: Add new inputs to `tests/fuzz/test_fuzz_corpus.py` after a fuzzing session discovers a crash-triggering input.
