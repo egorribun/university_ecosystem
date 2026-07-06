@@ -30,6 +30,12 @@ cover.out
 coverage.out
 coverage.json
 coverage
+# Short-named coverage artifacts created by go-test-gates Makefile target
+services/gateway/cov
+services/gateway/mw
+services/ws-hub/cov
+services/ws-hub/tel
+services/file-processor/cov
 
 # Test databases
 test.db

@@ -9,12 +9,14 @@ cargo-fuzz = true
 
 [dependencies]
 ammonia = "4.1.3"
+arbitrary = { version = "1", features = ["derive"] }
 chrono = { version = "0.4", features = ["serde"] }
 libfuzzer-sys = "0.4"
 hmac = "0.12.1"
 sha2 = "0.10.9"
 hex = "0.4.3"
 uuid = { version = "1.8", features = ["v7"] }
+rust_ext = { path = "..", default-features = false }
 
 [[bin]]
 name = "fuzz_target_1"
@@ -40,6 +42,20 @@ bench = false
 [[bin]]
 name = "fuzz_uuid"
 path = "fuzz_targets/fuzz_uuid.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "fuzz_conflict_detection"
+path = "fuzz_targets/fuzz_conflict_detection.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "fuzz_schedule_item"
+path = "fuzz_targets/fuzz_schedule_item.rs"
 test = false
 doc = false
 bench = false

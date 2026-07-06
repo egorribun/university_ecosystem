@@ -28,6 +28,14 @@ hex = "=0.4.3"
 # lets the binary link libpython directly (CI exports LD_LIBRARY_PATH from
 # sysconfig LIBDIR). On Windows the python import lib is always linked, so a
 # default-features `cargo test` also works locally.
+[dev-dependencies]
+proptest = "1"
+criterion = { version = "0.5", features = ["html_reports"] }
+
+[[bench]]
+name = "conflict_bench"
+harness = false
+
 [features]
 default = ["extension-module"]
 extension-module = ["pyo3/extension-module"]

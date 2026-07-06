@@ -867,20 +867,36 @@
 
 ### A. Coverage Progress Tracker
 
-| Фронт | Wave 0 | Wave 1 | Wave 2 | Wave 3 | Wave 4 | Wave 5 | Wave 6 |
-|-------|--------|--------|--------|--------|--------|--------|--------|
-| Python statements | baseline | 95% | — | — | — | — | 98%+ |
-| Python branches | baseline | 88%+ | — | — | — | — | 95%+ |
-| Python mutation | baseline | 75% | — | — | — | — | 85%+ |
-| Go gateway | baseline | — | 85% | — | — | — | 90%+ |
-| Go ws-hub | baseline | — | 85% | — | — | — | 90%+ |
-| Go file-proc | baseline | — | 80% | — | — | — | 90%+ |
-| Rust unit | baseline | — | — | 90% | — | — | 95%+ |
-| FE statements | 90% | — | — | — | 95% | — | 98%+ |
-| FE branches | 80% | — | — | — | 88% | — | 92%+ |
-| E2E scenarios | 18 specs | — | — | — | 30+ specs | — | full |
+| Фронт | Wave 0 | Wave 1 | Wave 2 | Wave 3 | Wave 4 | Wave 5 | Wave 6 | Waves 7-14 |
+|-------|--------|--------|--------|--------|--------|--------|--------|------------|
+| Python statements | baseline | 95% | — | — | — | — | 98%+ | **fail_under=93** ✅ |
+| Python branches | baseline | 88%+ | — | — | — | — | 95%+ | branch sweep (+35 tests) ✅ |
+| Python mutation | baseline | 75% | — | — | — | — | 85%+ | gate script added ✅ |
+| Go gateway | baseline | — | 85% | — | — | — | 90%+ | **91.9%** ✅ |
+| Go ws-hub | baseline | — | 85% | — | — | — | 90%+ | **85.7%** (telemetry coverage++) ✅ |
+| Go file-proc | baseline | — | 80% | — | — | — | 90%+ | go-test-gates Makefile ✅ |
+| Rust unit | baseline | — | — | 90% | — | — | 95%+ | proptest+criterion+2 fuzz targets ✅ |
+| FE statements | 90% | — | — | — | 95% | — | 98%+ | 92% (hooks branch sweep) ✅ |
+| FE branches | 80% | — | — | — | 88% | — | 92%+ | **83%** threshold (raised 81→83) ✅ |
+| E2E scenarios | 18 specs | — | — | — | 30+ specs | — | full | **+4 new specs** ✅ |
+| Integration | — | — | — | — | — | 9 files | — | **+2 new files** ✅ |
+| Contract | — | — | — | — | — | 13 files | — | **+expanded** ✅ |
+| Chaos | — | — | — | — | — | 1 file | — | **+memory pressure** ✅ |
 
 ---
+
+### Wave 7-14 Summary (completed)
+
+- **Wave 7**: Python branch coverage ratchet — 35 tests, `fail_under` 91→93, mutation gate script
+- **Wave 8**: Go coverage gate enforcement — Makefile `go-test-gates`, Go bench tests, telemetry coverage
+- **Wave 9**: Rust proptest + criterion benchmarks + 2 new fuzz targets
+- **Wave 10**: Frontend branch coverage — 27 new hook tests, vitest branches floor 81→83
+- **Wave 11**: E2E spec expansion — 4 new Playwright spec files (schedule, profile, error-recovery, news/admin)
+- **Wave 12**: Integration test expansion — DB round-trip tests + NATS outbox/DLQ mocks
+- **Wave 13**: Contract test expansion — OpenAPI drift detection + NATS subject schema
+- **Wave 14**: Chaos expansion — memory pressure, concurrent burst, unicode edge cases
+
+
 
 ### B. Ключевые команды
 

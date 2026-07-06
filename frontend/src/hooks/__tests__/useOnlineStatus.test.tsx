@@ -2,8 +2,6 @@ import { renderHook, act } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { useOnlineStatus } from "../useOnlineStatus"
 
-// jsdom initialises navigator.onLine as true by default.
-
 describe("useOnlineStatus", () => {
   beforeEach(() => {
     // Ensure a clean baseline
@@ -68,5 +66,31 @@ describe("useOnlineStatus", () => {
     expect(removeSpy).toHaveBeenCalledWith("offline", expect.any(Function))
     addSpy.mockRestore()
     removeSpy.mockRestore()
+  })
+
+  it("handles rapid online/offline toggling without errors", () => {
+    const { result } = renderHook(() => useOnlineStatus())
+    act(() => {
+      window.dispatchEvent(new Event("offline"))
+    })
+    act(() => {
+      window.dispatchEvent(new Event("online"))
+    })
+    act(() => {
+      window.dispatchEvent(new Event("offline"))
+    })
+    expect(typeof result.current).toBe("boolean")
+  })
+
+  it("returns true when navigator is undefined (SSR environment)", () => {
+    const originalNavigator = global.navigator
+    // @ts-expect-error: delete global.navigator to mock SSR environment where navigator is undefined
+    delete global.navigator
+
+    const { result } = renderHook(() => useOnlineStatus())
+    expect(result.current).toBe(true)
+
+    // Restore original navigator
+    global.navigator = originalNavigator
   })
 })

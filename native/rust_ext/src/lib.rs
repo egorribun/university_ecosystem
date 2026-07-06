@@ -694,4 +694,67 @@ mod tests {
         let thursday = next_weekday(from, Weekday::Thu);
         assert_eq!(thursday, NaiveDate::from_ymd_opt(2026, 7, 9).unwrap());
     }
+
+    // --- Property-based tests (proptest) ---
+    // These verify algebraic properties that hold for ALL valid inputs,
+    // not just hand-picked examples.
+    use proptest::prelude::*;
+
+    proptest! {
+        /// check_conflict_proto is commutative: if A conflicts with B, B conflicts with A.
+        #[test]
+        fn prop_conflict_symmetry(
+            start_a in 0i64..86400i64,
+            end_a in 0i64..86400i64,
+            start_b in 0i64..86400i64,
+            end_b in 0i64..86400i64,
+        ) {
+            let a = ScheduleItem { id: None, weekday: "monday".to_string(),
+                start_time: start_a.min(end_a), end_time: start_a.max(end_a) + 1,
+                parity: "both".to_string() };
+            let b = ScheduleItem { id: None, weekday: "monday".to_string(),
+                start_time: start_b.min(end_b), end_time: start_b.max(end_b) + 1,
+                parity: "both".to_string() };
+            prop_assert_eq!(check_conflict_proto(&a, &b), check_conflict_proto(&b, &a));
+        }
+
+        /// Different weekdays NEVER conflict regardless of times.
+        #[test]
+        fn prop_different_weekday_no_conflict(
+            start_a in 0i64..86400i64, end_a in 1i64..86401i64,
+            start_b in 0i64..86400i64, end_b in 1i64..86401i64,
+        ) {
+            let a = ScheduleItem { id: None, weekday: "monday".to_string(),
+                start_time: start_a, end_time: start_a + end_a,
+                parity: "both".to_string() };
+            let b = ScheduleItem { id: None, weekday: "tuesday".to_string(),
+                start_time: start_b, end_time: start_b + end_b,
+                parity: "both".to_string() };
+            prop_assert!(!check_conflict_proto(&a, &b));
+        }
+
+        /// batch_detect_conflicts never panics for valid input sizes.
+        #[test]
+        fn prop_batch_no_panic(size in 0usize..100usize) {
+            let items: Vec<ScheduleItem> = (0..size).map(|i| ScheduleItem {
+                id: Some(i as i32),
+                weekday: "monday".to_string(),
+                start_time: (i as i64) * 100,
+                end_time: (i as i64) * 100 + 50,
+                parity: "both".to_string(),
+            }).collect();
+            let _ = batch_detect_conflicts(items); // must not panic
+        }
+
+        /// parse_weekday only returns Some for known weekday strings.
+        #[test]
+        fn prop_parse_weekday_unknown_returns_none(s in "[a-z]{1,12}") {
+            let known = ["monday","mon","tuesday","tue","wednesday","wed",
+                         "thursday","thu","friday","fri","saturday","sat",
+                         "sunday","sun"];
+            if !known.contains(&s.as_str()) {
+                prop_assert!(parse_weekday(&s).is_none());
+            }
+        }
+    }
 }

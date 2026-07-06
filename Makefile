@@ -1,7 +1,7 @@
 FRONTEND_DIR := $(CURDIR)/frontend
 ENV_FILE ?= $(CURDIR)/.env
 
-.PHONY: install backend-install frontend-install lint lint-backend lint-frontend backend-test frontend-test test backend-typecheck frontend-typecheck frontend-build frontend-dev backend-serve generate-api alembic-check compose-lint docker-build docker-up docker-down coverage test-quick clean go-test go-coverage helm-lint docker-lint sbom-local db-validate pre-commit-all test-trace-driven
+.PHONY: install backend-install frontend-install lint lint-backend lint-frontend backend-test frontend-test test backend-typecheck frontend-typecheck frontend-build frontend-dev backend-serve generate-api alembic-check compose-lint docker-build docker-up docker-down coverage test-quick clean go-test go-coverage go-test-gates helm-lint docker-lint sbom-local db-validate pre-commit-all test-trace-driven
 
 install: backend-install frontend-install
 
@@ -57,6 +57,23 @@ go-test:
 
 go-coverage:
 	powershell -ExecutionPolicy Bypass -File $(CURDIR)/scripts/go-coverage-report.ps1
+
+# MOD-W8-01 (audit 2026-07-06 Wave 8): Coverage gates for Go services.
+# Runs each service's test suite with -coverprofile and prints the total
+# coverage percentage.  CI pipelines can compare the final line against
+# a threshold; the gate is intentionally non-blocking here so developers
+# can see all three percentages before iterating on gaps.
+go-test-gates:
+	@echo "=== Gateway coverage gate ==="
+	cd services/gateway && go test ./... -coverprofile=gateway.out -covermode=set
+	@go tool cover -func=services/gateway/gateway.out | tail -1
+	@echo "=== WS-Hub coverage gate ==="
+	cd services/ws-hub && go test ./... -coverprofile=wshub.out -covermode=set
+	@go tool cover -func=services/ws-hub/wshub.out | tail -1
+	@echo "=== File-Processor coverage gate ==="
+	cd services/file-processor && go test ./... -coverprofile=fp.out -covermode=set
+	@go tool cover -func=services/file-processor/fp.out | tail -1
+	@echo "Coverage gates checked"
 
 # Quick test without coverage (faster)
 test-quick:

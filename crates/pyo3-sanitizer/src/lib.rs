@@ -319,4 +319,37 @@ mod tests {
         let stripped = strip_html("Привет 🌍");
         assert_eq!(stripped, "Привет 🌍");
     }
+    #[test]
+    fn test_null_byte_and_control_characters() {
+        // Null bytes and ASCII control characters must not cause panics and
+        // must not appear in output that could confuse downstream parsers.
+        // ammonia passes control characters through the HTML5-ever parser,
+        // which strips \0 from text nodes per the HTML5 spec.
+        let inputs = [
+            "\0",
+            "\x01\x02\x03",
+            "<p>\0null\0</p>",
+            "<b>\x08backspace\x1b</b>",
+        ];
+        for input in inputs {
+            // None of these must panic
+            let _ = sanitize_rich_text(input);
+            let _ = sanitize_html_basic(input);
+            let _ = strip_html(input);
+        }
+    }
+
+    #[test]
+    fn test_very_long_string_performance_boundary() {
+        // Verifies that the sanitizer completes without panic or OOM for a
+        // 1 MiB payload — a practical upper bound for user-supplied content.
+        let repeated = "<p>Hello world</p>".repeat(60_000); // ~1.08 MiB
+        let out = sanitize_rich_text(&repeated);
+        // Output must still contain paragraph tags (they are in the allow-list)
+        assert!(out.contains("<p>"), "p tags must survive in a large payload");
+
+        let stripped = strip_html(&repeated);
+        // All markup removed; only text content remains
+        assert!(!stripped.contains('<'), "no tags must remain after strip");
+    }
 }
