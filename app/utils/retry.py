@@ -99,7 +99,7 @@ async def retry_async[T](
             await asyncio.sleep(delay)
 
     # Should not reach here, but satisfy type checker
-    raise RetryExhausted(max_attempts, last_error)
+    raise RetryExhausted(max_attempts, last_error)  # pragma: no cover
 
 
 def with_retry[T, **P](

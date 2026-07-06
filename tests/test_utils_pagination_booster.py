@@ -316,3 +316,71 @@ async def test_paginate_cursor_with_cursor_value():
 
     stmt.where.assert_called()
     assert not result.has_more
+
+
+@pytest.mark.asyncio
+async def test_paginate_cursor_invalid_uuid_fallback():
+    session = AsyncMock()
+    stmt = MagicMock()
+    stmt.where.return_value = stmt
+    stmt.order_by.return_value = stmt
+    stmt.limit.return_value = stmt
+    cursor_column = MagicMock()
+    cursor_column.desc.return_value = cursor_column
+    cursor_column.key = "id"
+    cursor_column.__lt__ = MagicMock(return_value="lt_op")
+
+    encoded = encode_cursor("g" * 32)
+    mock_scalars = MagicMock()
+    mock_scalars.all.return_value = []
+    session.scalars.return_value = mock_scalars
+
+    params = CursorParams(cursor=encoded, limit=10)
+    await paginate_cursor(session, stmt, cursor_column, params, descending=True)
+    cursor_column.__lt__.assert_called_with("g" * 32)
+
+
+@pytest.mark.asyncio
+async def test_paginate_cursor_ascending_with_cursor():
+    session = AsyncMock()
+    stmt = MagicMock()
+    stmt.where.return_value = stmt
+    stmt.order_by.return_value = stmt
+    stmt.limit.return_value = stmt
+    cursor_column = MagicMock()
+    cursor_column.asc.return_value = cursor_column
+    cursor_column.key = "id"
+    cursor_column.__gt__ = MagicMock(return_value="gt_op")
+
+    encoded = encode_cursor("my_val")
+    mock_scalars = MagicMock()
+    mock_scalars.all.return_value = []
+    session.scalars.return_value = mock_scalars
+
+    params = CursorParams(cursor=encoded, limit=10)
+    await paginate_cursor(session, stmt, cursor_column, params, descending=False)
+    cursor_column.__gt__.assert_called_with("my_val")
+
+
+@pytest.mark.asyncio
+async def test_paginate_cursor_last_item_none_cursor():
+    session = AsyncMock()
+    stmt = MagicMock()
+    stmt.where.return_value = stmt
+    stmt.order_by.return_value = stmt
+    stmt.limit.return_value = stmt
+    cursor_column = MagicMock()
+    cursor_column.desc.return_value = cursor_column
+    cursor_column.key = "id"
+
+    class DummyItem:
+        id = None
+
+    mock_scalars = MagicMock()
+    mock_scalars.all.return_value = [DummyItem(), DummyItem()]
+    session.scalars.return_value = mock_scalars
+
+    params = CursorParams(limit=1)
+    result = await paginate_cursor(session, stmt, cursor_column, params)
+    assert result.has_more
+    assert result.next_cursor is None
