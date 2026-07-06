@@ -53,7 +53,7 @@ pub fn check_conflict_proto(a: &ScheduleItem, b: &ScheduleItem) -> bool {
     if a.parity != "both" && b.parity != "both" && a.parity != b.parity {
         return false;
     }
-    a.start_time < b.end_time && b.start_time < a.end_time
+    a.start_time < a.end_time && b.start_time < b.end_time && a.start_time < b.end_time && b.start_time < a.end_time
 }
 
 #[pyfunction]
@@ -754,6 +754,39 @@ mod tests {
                          "sunday","sun"];
             if !known.contains(&s.as_str()) {
                 prop_assert!(parse_weekday(&s).is_none());
+            }
+        }
+        /// Proptest for invalid or negative time intervals.
+        /// Ensures check_conflict_proto never panics and behaves correctly:
+        /// - commutativity holds even for negative/overflowing times or start_time > end_time.
+        #[test]
+        fn prop_invalid_times_never_panic_and_are_symmetric(
+            start_a in -100_000i64..200_000i64,
+            end_a in -100_000i64..200_000i64,
+            start_b in -100_000i64..200_000i64,
+            end_b in -100_000i64..200_000i64,
+        ) {
+            let a = ScheduleItem {
+                id: None,
+                weekday: "monday".to_string(),
+                start_time: start_a,
+                end_time: end_a,
+                parity: "both".to_string(),
+            };
+            let b = ScheduleItem {
+                id: None,
+                weekday: "monday".to_string(),
+                start_time: start_b,
+                end_time: end_b,
+                parity: "both".to_string(),
+            };
+            
+            // commutes
+            prop_assert_eq!(check_conflict_proto(&a, &b), check_conflict_proto(&b, &a));
+            
+            // if either has start >= end (invalid), there should be no conflict
+            if start_a >= end_a || start_b >= end_b {
+                prop_assert!(!check_conflict_proto(&a, &b));
             }
         }
     }

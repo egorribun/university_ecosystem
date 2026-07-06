@@ -772,3 +772,238 @@ async def test_shutdown_subsystems() -> None:
     ):
         await _shutdown_subsystems(app_empty)
         # Should complete without error when optional attrs are missing
+
+
+@pytest.mark.asyncio
+async def test_lifespan_edge_cases_coverage() -> None:
+    from unittest.mock import AsyncMock, MagicMock, patch
+
+    import pytest
+    from fastapi import FastAPI
+
+    from app.core.lifespan import (
+        _handle_schema_and_extensions,
+        _startup_background_workers,
+        _startup_database_and_di,
+        _validate_di_container,
+        _verify_database_readiness,
+        lifespan,
+    )
+
+    app = FastAPI()
+
+    # 1. SPOTIFY_TOKEN_SECRET missing in production env
+    with (
+        patch("app.core.lifespan.settings") as mock_settings,
+        patch("app.core.lifespan.init_database"),
+    ):
+        mock_settings.spotify_token_secret = ""
+        mock_settings.environment = "production"
+        with pytest.raises(RuntimeError, match="SPOTIFY_TOKEN_SECRET must be set"):
+            await _startup_database_and_di(app)
+
+    # 2. _verify_database_readiness wait_db timeout/failure in production env
+    with (
+        patch("app.core.lifespan.settings") as mock_settings,
+        patch("app.core.lifespan.wait_db", side_effect=TimeoutError("DB Timeout")),
+    ):
+        mock_settings.environment = "production"
+        with pytest.raises(TimeoutError):
+            await _verify_database_readiness()
+
+    # 3. _verify_database_readiness Alembic mismatch or error in production env
+    with (
+        patch("app.core.lifespan.settings") as mock_settings,
+        patch("app.core.lifespan.wait_db", new_callable=AsyncMock),
+        patch("app.core.lifespan.engine") as mock_engine,
+    ):
+        mock_settings.environment = "production"
+        mock_conn = AsyncMock()
+        mock_engine.connect.return_value.__aenter__.return_value = mock_conn
+        mock_conn.dialect.name = "postgresql"
+        mock_conn.run_sync.side_effect = Exception("Alembic error")
+
+        with (
+            patch("alembic.config.Config"),
+            patch("alembic.script.ScriptDirectory.from_config") as mock_dir,
+        ):
+            mock_dir.return_value.get_current_head.return_value = "head_rev"
+            with pytest.raises(Exception, match="Alembic error"):
+                await _verify_database_readiness()
+
+    # 4. _verify_database_readiness Alembic mismatch current != head
+    with (
+        patch("app.core.lifespan.settings") as mock_settings,
+        patch("app.core.lifespan.wait_db", new_callable=AsyncMock),
+        patch("app.core.lifespan.engine") as mock_engine,
+    ):
+        mock_settings.environment = "production"
+        mock_conn = AsyncMock()
+        mock_engine.connect.return_value.__aenter__.return_value = mock_conn
+        mock_conn.dialect.name = "postgresql"
+        mock_ctx = MagicMock()
+        mock_ctx.get_current_revision.return_value = "current_rev"
+        mock_conn.run_sync.return_value = mock_ctx
+
+        with (
+            patch("alembic.config.Config"),
+            patch("alembic.script.ScriptDirectory.from_config") as mock_dir,
+        ):
+            mock_dir.return_value.get_current_head.return_value = "head_rev"
+            with pytest.raises(RuntimeError, match="DB schema mismatch"):
+                await _verify_database_readiness()
+
+    # 5. pgvector creation failure OSError/ConnectionError in non-production (logs warning, disables semantic_search)
+    with (
+        patch("app.core.lifespan.settings") as mock_settings,
+        patch("app.core.lifespan.engine") as mock_engine,
+        patch("app.core.lifespan.runtime_flags") as mock_flags,
+    ):
+        mock_settings.auto_create_schema = True
+        mock_settings.environment = "development"
+        mock_conn = AsyncMock()
+        mock_engine.begin.return_value.__aenter__.return_value = mock_conn
+        mock_conn.dialect.name = "postgresql"
+        mock_conn.execute.side_effect = ConnectionError("pgvector connection failed")
+
+        await _handle_schema_and_extensions()
+        mock_flags.disable.assert_called_once_with("semantic_search_enabled")
+
+    # 6. auto_schema failed raises exception in production env
+    with (
+        patch("app.core.lifespan.settings") as mock_settings,
+        patch("app.core.lifespan.engine") as mock_engine,
+    ):
+        mock_settings.auto_create_schema = True
+        mock_settings.environment = "production"
+        mock_engine.begin.side_effect = Exception("DB fail")
+        with pytest.raises(Exception, match="DB fail"):
+            await _handle_schema_and_extensions()
+
+    # 7. DI container validation fail raises in production env
+    with patch("app.core.lifespan.settings") as mock_settings:
+        mock_settings.environment = "production"
+        mock_app = MagicMock()
+        mock_container = AsyncMock()
+        mock_app.state.dishka_container = mock_container
+        mock_container.get.side_effect = Exception("DI Failure")
+
+        with pytest.raises(RuntimeError, match="DI container smoke-test FAILED"):
+            await _validate_di_container(mock_app)
+
+    # 8. Partition management init fails warns in logs
+    class MockState:
+        def __init__(self):
+            self.background_tasks = set()
+
+    class MockApp:
+        state = MockState()
+
+    with (
+        patch("app.core.lifespan.settings") as mock_settings,
+        patch(
+            "app.core.lifespan.ensure_partitions_exist",
+            side_effect=Exception("Partition error"),
+        ),
+        patch("app.core.lifespan.setup_periodic_cleanups", new_callable=AsyncMock),
+    ):
+        mock_settings.environment = "testing"
+        mock_settings.partition_management_enabled = True
+        mock_app = MockApp()
+
+        await _startup_background_workers(mock_app)
+        assert not hasattr(mock_app.state, "partition_stopper")
+
+    # 9. lifespan catch error in _prewarm_jwt_public_key_cache
+    with (
+        patch("app.core.lifespan._startup_database_and_di", new_callable=AsyncMock),
+        patch("app.core.lifespan._startup_websocket_and_flags", new_callable=AsyncMock),
+        patch("app.core.lifespan._validate_di_container", new_callable=AsyncMock),
+        patch("app.core.lifespan._verify_database_readiness", new_callable=AsyncMock),
+        patch(
+            "app.core.lifespan._handle_schema_and_extensions", new_callable=AsyncMock
+        ),
+        patch("app.core.lifespan._startup_background_workers", new_callable=AsyncMock),
+        patch("app.core.ratelimit.start_memory_cleanup_task"),
+        patch("app.core.lifespan.warm_cache", new_callable=AsyncMock),
+        patch(
+            "app.core.lifespan._prewarm_jwt_public_key_cache",
+            side_effect=Exception("Prewarm fail"),
+        ),
+        patch("app.core.lifespan._shutdown_subsystems", new_callable=AsyncMock),
+        patch("app.core.lifespan.settings") as mock_settings,
+        patch("app.core.lifespan._logger") as mock_logger,
+    ):
+        mock_settings.environment = "production"
+        async with lifespan(app):
+            pass
+        mock_logger.warning.assert_called_with(
+            "JWT public key pre-warm failed: %s", mock_logger.warning.call_args[0][1]
+        )
+
+
+@pytest.mark.asyncio
+async def test_periodic_scheduler_loop_execution() -> None:
+    from unittest.mock import AsyncMock, MagicMock, patch
+
+    from app.core.lifespan import _SCHEDULER_STOP, _periodic_scheduler_loop
+
+    # Reset scheduler stop event
+    _SCHEDULER_STOP.clear()
+
+    # Create a mock task that raises an exception when kicked
+    mock_task = MagicMock()
+
+    # We want to set the stop event inside the kick so the loop terminates immediately
+    async def mock_kick():
+        _SCHEDULER_STOP.set()
+        raise Exception("Mock cleanup failure")
+
+    mock_task.kick = mock_kick
+
+    # Patch cleanups imported inside the function
+    with (
+        patch("random.uniform", return_value=0.0),
+        patch("app.tasks.cleanups.cleanup_stories_task", mock_task),
+        patch("app.tasks.cleanups.cleanup_password_reset_tokens_task", AsyncMock()),
+        patch("app.tasks.cleanups.cleanup_email_change_tokens_task", AsyncMock()),
+        patch("app.tasks.cleanups.cleanup_mfa_challenges_task", AsyncMock()),
+        patch("app.tasks.cleanups.cleanup_sessions_task", AsyncMock()),
+        patch("app.tasks.cleanups.cleanup_notifications_task", AsyncMock()),
+        patch("app.tasks.cleanups.cleanup_dead_letter_jobs_task", AsyncMock()),
+        patch("app.tasks.cleanups.cleanup_privacy_artifacts_task", AsyncMock()),
+        patch("app.tasks.cleanups.manage_partitions_task", AsyncMock()),
+        patch("app.core.metrics.record_background_task_error") as mock_record,
+    ):
+        await _periodic_scheduler_loop()
+        mock_record.assert_called_once_with("MagicMock")
+
+    # Test initial jitter stop requested branch
+    _SCHEDULER_STOP.clear()
+    with (
+        patch("random.uniform", return_value=10.0),
+        patch("app.core.lifespan._SCHEDULER_STOP.wait", new_callable=AsyncMock),
+    ):
+        # Trigger stop requested by setting event
+        _SCHEDULER_STOP.set()
+        await _periodic_scheduler_loop()
+
+
+@pytest.mark.asyncio
+async def test_prewarm_jwt_public_key_cache_error() -> None:
+    from unittest.mock import AsyncMock, patch
+
+    from app.core.lifespan import _prewarm_jwt_public_key_cache
+
+    with (
+        patch("app.core.lifespan.settings") as mock_settings,
+        patch("asyncio.get_running_loop") as mock_loop,
+        patch("app.core.lifespan._logger") as mock_logger,
+    ):
+        mock_settings.jwt_signing_key_registry = {"kid1": "PRIVATE KEY data"}
+        mock_loop.return_value.run_in_executor = AsyncMock(
+            side_effect=Exception("Prewarm executor error")
+        )
+
+        await _prewarm_jwt_public_key_cache()
+        mock_logger.warning.assert_called_once()

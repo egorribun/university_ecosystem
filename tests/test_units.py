@@ -358,6 +358,17 @@ def test_extract_user_id_from_has_id() -> None:
     assert extract_user_id(obj) == uid  # type: ignore[arg-type]
 
 
+def test_extract_user_id_invalid_string() -> None:
+    import pytest
+
+    from app.core.protocols import extract_user_id
+
+    with pytest.raises(
+        ValueError, match=r"extract_user_id: .* is not a valid UUID string"
+    ):
+        extract_user_id("invalid-uuid-string")
+
+
 # ---------------------------------------------------------------------------
 # app/core/timing.py
 # ---------------------------------------------------------------------------

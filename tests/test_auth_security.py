@@ -284,8 +284,15 @@ async def test_forgot_password_accepts_mixed_case_email(
     assert response.status_code == status.HTTP_200_OK
     assert response.json() == {"ok": True}
 
-    after = await db_session.execute(base_query)
-    after_count = len(after.scalars().all())
+    from app.core import database
+
+    async with database.async_session() as fresh_session:
+        after = await fresh_session.execute(
+            select(models.PasswordResetToken.id).where(
+                models.PasswordResetToken.user_id == user.id
+            )
+        )
+        after_count = len(after.scalars().all())
     assert after_count == before_count + 1
 
 
@@ -324,3 +331,95 @@ async def test_admin_update_normalizes_email(async_client, user_factory, db_sess
 
     await db_session.refresh(target_user)
     assert target_user.email == mixed_case_email.lower()
+
+
+def test_container_cpu_count_with_sched_getaffinity():
+    """Verify _container_cpu_count handles sched_getaffinity correctly when present."""
+    import sys
+    from unittest.mock import MagicMock, patch
+
+    orig = sys.modules.get("app.auth.security")
+    try:
+        if "app.auth.security" in sys.modules:
+            del sys.modules["app.auth.security"]
+
+        mock_sched = MagicMock(return_value=[1, 2, 3])
+        with patch("os.sched_getaffinity", mock_sched, create=True):
+            import app.auth.security as sec
+
+            assert sec._AUTH_EXECUTOR_WORKERS >= 2
+    finally:
+        if orig is not None:
+            sys.modules["app.auth.security"] = orig
+
+
+def test_container_cpu_count_with_cgroups_v1():
+    """Verify _container_cpu_count parses cpu.cfs_quota_us/cfs_period_us properly."""
+    import sys
+    from unittest.mock import mock_open, patch
+
+    orig = sys.modules.get("app.auth.security")
+    try:
+        if "app.auth.security" in sys.modules:
+            del sys.modules["app.auth.security"]
+
+        def mock_open_side_effect(path, *args, **kwargs):
+            if "cpu.cfs_quota_us" in str(path):
+                return mock_open(read_data="8").return_value
+            elif "cpu.cfs_period_us" in str(path):
+                return mock_open(read_data="2").return_value
+            raise FileNotFoundError()
+
+        with (
+            patch("os.sched_getaffinity", create=True) as mock_sched,
+            patch("builtins.open", side_effect=mock_open_side_effect),
+        ):
+            mock_sched.side_effect = AttributeError()
+
+            import app.auth.security as sec
+
+            # quota // period = 8 // 2 = 4
+            # Since _AUTH_EXECUTOR_WORKERS is set to max(2, _container_cpu_count()), it will be at least 4
+            assert sec._AUTH_EXECUTOR_WORKERS >= 4
+    finally:
+        if orig is not None:
+            sys.modules["app.auth.security"] = orig
+
+
+def test_container_cpu_count_cgroups_v1_capped():
+    """Verify _container_cpu_count caps the quota-based CPU count to 32."""
+    import sys
+    from unittest.mock import mock_open, patch
+
+    orig = sys.modules.get("app.auth.security")
+    try:
+        if "app.auth.security" in sys.modules:
+            del sys.modules["app.auth.security"]
+
+        def mock_open_side_effect(path, *args, **kwargs):
+            if "cpu.cfs_quota_us" in str(path):
+                return mock_open(read_data="100").return_value
+            elif "cpu.cfs_period_us" in str(path):
+                return mock_open(read_data="2").return_value
+            raise FileNotFoundError()
+
+        with (
+            patch("os.sched_getaffinity", create=True) as mock_sched,
+            patch("builtins.open", side_effect=mock_open_side_effect),
+        ):
+            mock_sched.side_effect = NotImplementedError()
+
+            import app.auth.security as sec
+
+            # 100 // 2 = 50, capped at 32
+            assert sec._AUTH_EXECUTOR_WORKERS <= 32
+    finally:
+        if orig is not None:
+            sys.modules["app.auth.security"] = orig
+
+
+def test_verify_legacy_bcrypt():
+    """Verify _verify_legacy_bcrypt warning and false return."""
+    from app.auth.security import _verify_legacy_bcrypt
+
+    assert _verify_legacy_bcrypt("password", "$2b$12$...") is False

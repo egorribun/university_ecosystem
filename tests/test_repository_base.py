@@ -420,3 +420,88 @@ async def test_readonly_repository_list_defaults(readonly_repository, mock_db):
 
     assert result == []
     mock_db.execute.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_repository_get_orm_for_update(repository, mock_db):
+    """Test get_orm_for_update returns record with for_update lock."""
+    mock_user = User(
+        id=1, email="test@example.com", _allow_system_managed_assignment=True
+    )
+    mock_result = MagicMock()
+    mock_result.scalars.return_value.first.return_value = mock_user
+    mock_db.execute.return_value = mock_result
+
+    result = await repository.get_orm_for_update(1)
+
+    assert result.id == 1
+    stmt = mock_db.execute.call_args[0][0]
+    assert stmt._for_update_arg is not None
+
+
+@pytest.mark.asyncio
+async def test_repository_get_by_ids_for_update(repository, mock_db):
+    """Test get_by_ids with with_for_update=True locks rows."""
+    mock_users = [User(id=1, email="u1@e.com", _allow_system_managed_assignment=True)]
+    mock_result = MagicMock()
+    mock_result.scalars.return_value.all.return_value = mock_users
+    mock_db.execute.return_value = mock_result
+
+    result = await repository.get_by_ids([1], with_for_update=True)
+    assert len(result) == 1
+    stmt = mock_db.execute.call_args[0][0]
+    assert stmt._for_update_arg is not None
+
+
+@pytest.mark.asyncio
+async def test_repository_list_after_no_cursor(repository, mock_db):
+    """Test list_after without after_id."""
+    mock_users = [User(id=1, email="u1@e.com", _allow_system_managed_assignment=True)]
+    mock_result = MagicMock()
+    mock_result.scalars.return_value = mock_users
+    mock_db.execute.return_value = mock_result
+
+    result = await repository.list_after()
+    assert len(result) == 1
+
+
+@pytest.mark.asyncio
+async def test_repository_list_after_with_cursor_valid(repository, mock_db):
+    """Test list_after with a valid after_id."""
+    mock_users = [User(id=2, email="u2@e.com", _allow_system_managed_assignment=True)]
+
+    mock_db.scalar.return_value = 1
+    mock_result = MagicMock()
+    mock_result.scalars.return_value = mock_users
+    mock_db.execute.return_value = mock_result
+
+    result = await repository.list_after(after_id=1)
+    assert len(result) == 1
+    mock_db.scalar.assert_called_once()
+    mock_db.execute.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_repository_list_after_with_cursor_invalid(repository, mock_db):
+    """Test list_after returns empty list when after_id does not exist."""
+    mock_db.scalar.return_value = None
+
+    result = await repository.list_after(after_id=999)
+    assert result == []
+    mock_db.scalar.assert_called_once()
+    mock_db.execute.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_repository_list_after_filters_and_order(repository, mock_db):
+    """Test list_after with custom order column and extra filters."""
+    mock_result = MagicMock()
+    mock_result.scalars.return_value = []
+    mock_db.execute.return_value = mock_result
+
+    filters = [User.email == "test@example.com"]
+    await repository.list_after(order_column=User.email, extra_filters=filters, limit=5)
+
+    mock_db.execute.assert_called_once()
+    stmt = mock_db.execute.call_args[0][0]
+    assert stmt._limit == 5

@@ -70,6 +70,28 @@ pub fn strip_html(html: &str) -> String {
     Builder::new().tags(HashSet::new()).clean(html).to_string()
 }
 
+#[wasm_bindgen]
+pub fn sanitize_rich_text_raw(ptr: *const u8, len: usize) -> Result<String, String> {
+    if ptr.is_null() {
+        return Err(String::from("Null pointer"));
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    {
+        let mem_size = core::arch::wasm32::memory_size() * 65536;
+        let start = ptr as usize;
+        if start > mem_size || len > mem_size || start.saturating_add(len) > mem_size {
+            return Err(String::from("Out of bounds pointer/length"));
+        }
+    }
+
+    let slice = unsafe { std::slice::from_raw_parts(ptr, len) };
+    let s = std::str::from_utf8(slice)
+        .map_err(|e| format!("Invalid UTF-8: {}", e))?;
+
+    Ok(sanitize_rich_text(s))
+}
+
 // Native unit tests (testing session 9). #[wasm_bindgen] leaves the functions
 // callable as plain Rust on a non-wasm target, and ammonia is a native crate,
 // so these exercise the exact sanitization code paths the browser runs. The
@@ -215,6 +237,20 @@ mod tests {
         assert_eq!(sanitize_html_basic(""), "");
         assert_eq!(strip_html(""), "");
     }
+
+    #[test]
+    fn test_raw_pointer_null_and_utf8() {
+        let res = sanitize_rich_text_raw(std::ptr::null(), 10);
+        assert!(res.is_err());
+        
+        let invalid_utf8 = vec![0, 159, 146, 150]; // invalid starting byte
+        let res = sanitize_rich_text_raw(invalid_utf8.as_ptr(), invalid_utf8.len());
+        assert!(res.is_err());
+        
+        let valid_utf8 = b"<p>hello</p>";
+        let res = sanitize_rich_text_raw(valid_utf8.as_ptr(), valid_utf8.len());
+        assert_eq!(res.unwrap(), "<p>hello</p>");
+    }
 }
 
 #[cfg(all(test, target_arch = "wasm32"))]
@@ -242,5 +278,17 @@ mod wasm_tests {
     fn test_strip() {
         let out = strip_html("<p>Hello <b>world</b></p>");
         assert_eq!(out, "Hello world", "wasm strip: {}", out);
+    }
+
+    #[wasm_bindgen_test]
+    fn test_raw_pointer_wasm_oob() {
+        // Test null pointer
+        let res = sanitize_rich_text_raw(std::ptr::null(), 10);
+        assert!(res.is_err());
+
+        // Test pointer out of bounds
+        let out_of_bounds_ptr = 999_999_999 as *const u8;
+        let res = sanitize_rich_text_raw(out_of_bounds_ptr, 100);
+        assert!(res.is_err());
     }
 }

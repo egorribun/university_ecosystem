@@ -88,6 +88,21 @@ class TestAbstractBaseClasses:
         with pytest.raises(TypeError):
             QueryHandler()  # type: ignore[abstract]
 
+    @pytest.mark.asyncio
+    async def test_base_handler_pass_coverage(self) -> None:
+        """Call super().handle to execute abstract base passes under coverage."""
+
+        class ConcreteQueryHandler(QueryHandler[_PingQuery, None]):
+            async def handle(self, query: _PingQuery) -> None:
+                await super().handle(query)
+
+        class ConcreteCommandHandler(CommandHandler[_PingCmd, None]):
+            async def handle(self, command: _PingCmd) -> None:
+                await super().handle(command)
+
+        await ConcreteQueryHandler().handle(_PingQuery())
+        await ConcreteCommandHandler().handle(_PingCmd(42))
+
     def test_command_subclass_can_be_instantiated(self) -> None:
         """``Command`` itself is not strict-abstract — subclasses work."""
         cmd = _PingCmd(payload=5)

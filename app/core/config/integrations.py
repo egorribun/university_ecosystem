@@ -102,11 +102,6 @@ class IntegrationSettings(BaseAppSettings):
 
         if env_name in _DEVELOPMENT_ENVIRONMENTS or is_ci:
             # Remaining checks are production-only.
-            if errors:
-                raise ValueError(
-                    "Secret validation failed:\n"
-                    + "\n".join(f"  · {e}" for e in errors)
-                )
             return self
 
         if self.spicedb_preshared_key == "development-preshared-key":

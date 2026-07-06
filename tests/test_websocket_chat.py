@@ -334,3 +334,45 @@ class TestMessageSerialization:
         assert result["read_status"] is False
         assert result["sender"] is not None
         assert "attachments" in result
+
+    @pytest.mark.asyncio
+    async def test_serialize_message_with_presence(self, db_session, user_factory):
+        """Test message serialization with sender presence info."""
+        from app.api.ws.serializers import serialize_message
+        from app.schemas.chat import PresenceStatus
+
+        user = await user_factory(full_name="Test User")
+
+        chat = Chat(id=uuid.uuid4())
+        db_session.add(chat)
+        await db_session.commit()
+
+        message = Message(
+            id=uuid.uuid4(),
+            chat_id=chat.id,
+            sender_id=user.id,
+            content="Hello!",
+            created_at=datetime.now(UTC),
+            read_status=False,
+        )
+        db_session.add(message)
+        await db_session.commit()
+        await db_session.refresh(message)
+
+        message.sender = user
+
+        # Test presence matching
+        status = PresenceStatus(active=True, last_seen_at=datetime.now(UTC))
+        presence = {user.id: status}
+        result = serialize_message(message, presence=presence)
+
+        assert result["sender_presence"] is not None
+        assert result["sender_presence"]["active"] is True
+        assert (
+            result["sender_presence"]["last_seen_at"] == status.last_seen_at.isoformat()
+        )
+
+        # Test presence missing matching user
+        presence_other = {uuid.uuid4(): status}
+        result_other = serialize_message(message, presence=presence_other)
+        assert result_other["sender_presence"] is None
