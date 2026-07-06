@@ -1,0 +1,10 @@
+# Ignore everything by default on gh-pages branch
+*
+
+# Allow the web assets
+!index.html
+!dev/
+!dev/bench/
+!dev/bench/data.js
+!dev/bench/index.html
+!.gitignore
