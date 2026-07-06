@@ -1,9 +1,0 @@
-mode: set
-github.com/university-ecosystem/ws-hub/internal/telemetry/telemetry.go:23.43,24.25 1 1
-github.com/university-ecosystem/ws-hub/internal/telemetry/telemetry.go:24.25,26.3 1 1
-github.com/university-ecosystem/ws-hub/internal/telemetry/telemetry.go:27.2,32.4 1 1
-github.com/university-ecosystem/ws-hub/internal/telemetry/telemetry.go:36.92,45.16 2 1
-github.com/university-ecosystem/ws-hub/internal/telemetry/telemetry.go:45.16,47.3 1 0
-github.com/university-ecosystem/ws-hub/internal/telemetry/telemetry.go:49.2,55.16 2 1
-github.com/university-ecosystem/ws-hub/internal/telemetry/telemetry.go:55.16,57.3 1 0
-github.com/university-ecosystem/ws-hub/internal/telemetry/telemetry.go:66.2,82.16 5 1
