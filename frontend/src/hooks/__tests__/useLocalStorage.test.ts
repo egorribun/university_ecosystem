@@ -127,7 +127,8 @@ describe("useLocalStorage", () => {
   it("uses a custom serializer when provided", () => {
     // Branch: options.serializer defined → use it instead of JSON.stringify
     const serializer = (v: string) => `PREFIX:${v}`
-    const { result } = renderHook(() => useLocalStorage("custom-key", "value", { serializer }))
+    // Explicit <string> prevents TypeScript from inferring the narrower literal "value"
+    const { result } = renderHook(() => useLocalStorage<string>("custom-key", "value", { serializer }))
     act(() => result.current[1]("hello"))
     expect(localStorage.getItem("custom-key")).toBe("PREFIX:hello")
   })
