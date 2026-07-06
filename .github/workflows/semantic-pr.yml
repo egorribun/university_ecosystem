@@ -15,7 +15,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Semantic Pull Request Title check
-        uses: amannn/action-semantic-pull-request@2d952a1bf90a6a7ab8f0293dc86f5fdf9acb1915 # v5.5.3
+        uses: amannn/action-semantic-pull-request@2c9480cf285c2ac02b52e26013f7d627b14a4f95 # v5.5.3
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
