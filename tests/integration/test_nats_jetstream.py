@@ -224,7 +224,7 @@ async def test_outbox_worker_process_batch_increments_error_count_on_failure() -
     OutboxWorker retry logic from infrastructure dependencies.
     """
     import uuid as _uuid
-    from unittest.mock import MagicMock, patch
+    from unittest.mock import MagicMock
 
     from app.workers.outbox import OutboxWorker
 
