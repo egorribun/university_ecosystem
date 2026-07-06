@@ -352,3 +352,166 @@ async def test_empty_body(client: AsyncClient):
     assert response.status_code == 200
     data = response.json()
     assert data["length"] == 0
+
+
+@pytest.mark.asyncio
+async def test_delete_with_chunked_body():
+    """DELETE request without Content-Length is read, replayed and limited."""
+    test_app = _build_test_app(max_bytes=100)
+    transport = ASGITransport(app=test_app)
+    async with AsyncClient(transport=transport, base_url="http://test") as ac:
+        response = await ac.request(
+            "DELETE",
+            "/delete-with-body",
+            content=b"x" * 50,
+            headers={"transfer-encoding": "chunked"},
+        )
+        assert response.status_code == 200
+        assert response.json() == {"length": 50}
+
+        response_too_large = await ac.request(
+            "DELETE",
+            "/delete-with-body",
+            content=b"x" * 150,
+            headers={"transfer-encoding": "chunked"},
+        )
+        assert response_too_large.status_code == 413
+
+
+@pytest.mark.asyncio
+async def test_fast_path_stream_exceeds_max_bytes():
+    """If cl_header is small but stream yields more than max_bytes, reject."""
+    test_app = _build_test_app(max_bytes=100)
+
+    scope = {
+        "type": "http",
+        "method": "POST",
+        "path": "/echo",
+        "query_string": b"",
+        "headers": [(b"content-length", b"50")],
+    }
+
+    chunks = [b"x" * 60, b"y" * 60]
+    chunk_index = 0
+
+    async def mock_receive():
+        nonlocal chunk_index
+        if chunk_index < len(chunks):
+            chunk = chunks[chunk_index]
+            chunk_index += 1
+            return {
+                "type": "http.request",
+                "body": chunk,
+                "more_body": chunk_index < len(chunks),
+            }
+        return {"type": "http.request", "body": b"", "more_body": False}
+
+    req = Request(scope, receive=mock_receive)
+
+    received_events = []
+
+    async def mock_send(msg):
+        received_events.append(msg)
+
+    middleware = ContentSizeLimitMiddleware(test_app, max_bytes=100)
+    new_req, rejected = await middleware._read_and_replay_body(req, mock_send)
+
+    assert rejected is True
+    assert new_req is None
+    assert any(
+        e.get("type") == "http.response.start" and e.get("status") == 413
+        for e in received_events
+    )
+
+
+@pytest.mark.asyncio
+async def test_slow_path_spill_to_disk_and_exceed_limit():
+    """Trigger slow-path tmpfile creation and subsequent size overflow rejection."""
+    test_app = _build_test_app(max_bytes=20)
+    middleware = ContentSizeLimitMiddleware(test_app, max_bytes=20)
+    from unittest.mock import patch
+
+    with patch.object(ContentSizeLimitMiddleware, "_MEM_BUFFER_THRESHOLD", 10):
+        scope = {
+            "type": "http",
+            "method": "POST",
+            "path": "/echo",
+            "query_string": b"",
+            "headers": [(b"transfer-encoding", b"chunked")],
+        }
+
+        chunks = [b"x" * 15, b"y" * 10]
+        chunk_index = 0
+
+        async def mock_receive():
+            nonlocal chunk_index
+            if chunk_index < len(chunks):
+                chunk = chunks[chunk_index]
+                chunk_index += 1
+                return {
+                    "type": "http.request",
+                    "body": chunk,
+                    "more_body": chunk_index < len(chunks),
+                }
+            return {"type": "http.request", "body": b"", "more_body": False}
+
+        req = Request(scope, receive=mock_receive)
+
+        received_events = []
+
+        async def mock_send(msg):
+            received_events.append(msg)
+
+        new_req, rejected = await middleware._read_and_replay_body(req, mock_send)
+
+        assert rejected is True
+        assert new_req is None
+        assert any(
+            e.get("type") == "http.response.start" and e.get("status") == 413
+            for e in received_events
+        )
+
+
+@pytest.mark.asyncio
+async def test_slow_path_spill_to_disk_success():
+    """Trigger slow-path tmpfile creation, successful write and replay."""
+    test_app = _build_test_app(max_bytes=30)
+    middleware = ContentSizeLimitMiddleware(test_app, max_bytes=30)
+    from unittest.mock import patch
+
+    with patch.object(ContentSizeLimitMiddleware, "_MEM_BUFFER_THRESHOLD", 10):
+        scope = {
+            "type": "http",
+            "method": "POST",
+            "path": "/echo",
+            "query_string": b"",
+            "headers": [(b"transfer-encoding", b"chunked")],
+        }
+
+        chunks = [b"a" * 12, b"b" * 10]
+        chunk_index = 0
+
+        async def mock_receive():
+            nonlocal chunk_index
+            if chunk_index < len(chunks):
+                chunk = chunks[chunk_index]
+                chunk_index += 1
+                return {
+                    "type": "http.request",
+                    "body": chunk,
+                    "more_body": chunk_index < len(chunks),
+                }
+            return {"type": "http.request", "body": b"", "more_body": False}
+
+        req = Request(scope, receive=mock_receive)
+
+        async def mock_send(msg):
+            pass
+
+        new_req, rejected = await middleware._read_and_replay_body(req, mock_send)
+
+        assert rejected is False
+        assert new_req is not None
+
+        body = await new_req.body()
+        assert body == b"a" * 12 + b"b" * 10

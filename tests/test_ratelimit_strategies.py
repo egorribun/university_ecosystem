@@ -475,3 +475,15 @@ class TestLoadScriptSha:
 
         assert load_count == 1
         assert all(r == results[0] for r in results)
+
+
+@pytest.mark.asyncio
+async def test_rate_limit_strategy_protocol_pass() -> None:
+    """Call super().check to execute the protocol ellipsis under coverage."""
+    from app.core.ratelimit.contract import RateLimitStrategy
+
+    class DummyStrategy(RateLimitStrategy):
+        async def check(self, key: str, limit: int, window_seconds: int):
+            return await super().check(key, limit, window_seconds)
+
+    await DummyStrategy().check("key", 10, 60)

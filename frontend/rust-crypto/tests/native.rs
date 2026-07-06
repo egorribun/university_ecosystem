@@ -77,3 +77,28 @@ fn scrypt_dk_len_is_honored() {
     let out = scrypt_derive(b"pw", b"salt", 16, 1, 1, 32).expect("valid params");
     assert_eq!(out.len(), 32);
 }
+
+#[test]
+fn hmac_sha256_sign_with_modified_key_fails_verification() {
+    let key1 = "my-secure-key";
+    let key2 = "my-secure-key-damaged"; // modified key
+    let message = "audit-log-payload";
+    
+    let sig1 = hmac_sha256_sign(key1, message);
+    let sig2 = hmac_sha256_sign(key2, message);
+    
+    assert_ne!(sig1, sig2, "signature with modified key must not match original signature");
+}
+
+#[test]
+fn hmac_sha256_sign_with_modified_message_fails_verification() {
+    let key = "my-secure-key";
+    let message1 = "audit-log-payload";
+    let message2 = "audit-log-payload-modified"; // modified message
+    
+    let sig1 = hmac_sha256_sign(key, message1);
+    let sig2 = hmac_sha256_sign(key, message2);
+    
+    assert_ne!(sig1, sig2, "signature of modified message must not match original signature");
+}
+

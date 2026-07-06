@@ -57,4 +57,34 @@ test.describe("Visual regression tests", () => {
       animations: "disabled",
     })
   })
+
+  test("messenger page matches snapshot", async ({ page }) => {
+    const { login } = await useMockApi(page)
+    await login(page)
+
+    await page.goto("/messenger")
+    await page.waitForURL(/\/messenger$/)
+    await page.waitForLoadState("networkidle")
+    await page.waitForTimeout(1500)
+
+    await expect(page).toHaveScreenshot("messenger.png", {
+      maxDiffPixelRatio: 0.005, // 0.5% threshold
+      animations: "disabled",
+    })
+  })
+
+  test("profile page matches snapshot", async ({ page }) => {
+    const { login } = await useMockApi(page)
+    await login(page)
+
+    await page.goto("/profile")
+    await page.waitForURL(/\/profile$/)
+    await page.waitForLoadState("networkidle")
+    await page.waitForTimeout(1500)
+
+    await expect(page).toHaveScreenshot("profile.png", {
+      maxDiffPixelRatio: 0.005, // 0.5% threshold
+      animations: "disabled",
+    })
+  })
 })

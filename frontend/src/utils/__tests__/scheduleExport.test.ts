@@ -1,10 +1,11 @@
-import { describe, it, expect, vi, beforeEach } from "vitest"
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
 import {
   generateGoogleCalendarUrl,
   exportScheduleAsPng,
   exportScheduleAsPdf,
 } from "../scheduleExport"
 import type { Lesson } from "@/components/schedule/scheduleUtils"
+import { toPng } from "html-to-image"
 
 // Mock dependencies
 vi.mock("html-to-image", () => ({
@@ -27,7 +28,9 @@ vi.mock("jspdf", () => ({
 }))
 
 vi.mock("@/app/logger", () => ({
-  logError: vi.fn(),
+  logError: vi.fn((...args) => {
+    console.error("LOGGED ERROR:", ...args)
+  }),
 }))
 
 describe("scheduleExport", () => {
@@ -61,19 +64,42 @@ describe("scheduleExport", () => {
       })
       expect(url).toContain("text=Untitled+Lesson+%28Newton%29")
     })
+
+    it("handles missing subject, teacher, times, and lesson_type", () => {
+      const emptyLesson: Lesson = {
+        id: "2",
+        weekday: "tue",
+        parity: "even",
+      }
+      const url = generateGoogleCalendarUrl(emptyLesson, mockDate)
+      expect(url).toContain("text=Lesson")
+      expect(url).toContain("dates=20260425T090000%2F20260425T103000")
+      expect(url).toContain("location=")
+      expect(url).toContain("details=")
+    })
+
+    it("handles custom typePrefix label replacement", () => {
+      const url = generateGoogleCalendarUrl(mockLesson, mockDate, {
+        typePrefix: "Type: {{type}}",
+      })
+      expect(url).toContain("details=Type%3A+Lecture")
+    })
   })
 
   describe("exportScheduleAsPng", () => {
     let mockElement: HTMLElement
+    let createElementSpy: ReturnType<typeof vi.spyOn>
 
     beforeEach(() => {
       mockElement = document.createElement("div")
-      vi.spyOn(document, "createElement")
+      createElementSpy = vi.spyOn(document, "createElement")
       // Mock click on anchor
       const mockAnchor = { click: vi.fn(), href: "", download: "" } as unknown as HTMLAnchorElement
-      vi.mocked(document.createElement).mockReturnValueOnce(
-        mockAnchor as unknown as HTMLAnchorElement
-      )
+      vi.mocked(document.createElement).mockReturnValue(mockAnchor as unknown as HTMLAnchorElement)
+    })
+
+    afterEach(() => {
+      createElementSpy.mockRestore()
     })
 
     it("successfully triggers a PNG download", async () => {
@@ -81,29 +107,122 @@ describe("scheduleExport", () => {
       expect(result.success).toBe(true)
       expect(document.createElement).toHaveBeenCalledWith("a")
     })
+
+    it("handles error during toPng import or generation", async () => {
+      vi.mocked(toPng).mockRejectedValueOnce(new Error("toPng error"))
+      const result = await exportScheduleAsPng(mockElement)
+      expect(result.success).toBe(false)
+      expect(result.error).toBe("toPng error")
+    })
+
+    it("handles non-Error rejection", async () => {
+      vi.mocked(toPng).mockRejectedValueOnce("some string error")
+      const result = await exportScheduleAsPng(mockElement)
+      expect(result.success).toBe(false)
+      expect(result.error).toBe("PNG export failed")
+    })
   })
 
   describe("exportScheduleAsPdf", () => {
     let mockElement: HTMLElement
+    let originalImage: typeof Image
 
     beforeEach(() => {
       mockElement = document.createElement("div")
-      // Mock Image and its events
+      originalImage = global.Image
+    })
+
+    afterEach(() => {
+      global.Image = originalImage
+    })
+
+    it("successfully triggers a PDF save (landscape)", async () => {
+      global.Image = class {
+        onload: (() => void) | null = null
+        onerror: (() => void) | null = null
+        _src: string = ""
+        width: number = 800
+        height: number = 600
+        set src(v: string) {
+          this._src = v
+          setTimeout(() => this.onload?.(), 10)
+        }
+        get src() {
+          return this._src
+        }
+      } as unknown as typeof Image
+
+      const result = await exportScheduleAsPdf(mockElement, "Test Schedule", "test.pdf")
+      expect(result.success).toBe(true)
+    })
+
+    it("successfully triggers a PDF save (portrait)", async () => {
+      global.Image = class {
+        onload: (() => void) | null = null
+        onerror: (() => void) | null = null
+        _src: string = ""
+        width: number = 400
+        height: number = 600
+        set src(v: string) {
+          this._src = v
+          setTimeout(() => this.onload?.(), 10)
+        }
+        get src() {
+          return this._src
+        }
+      } as unknown as typeof Image
+
+      const result = await exportScheduleAsPdf(mockElement, "Test Schedule", "test.pdf")
+      expect(result.success).toBe(true)
+    })
+
+    it("handles image load failure", async () => {
+      global.Image = class {
+        onload: (() => void) | null = null
+        onerror: (() => void) | null = null
+        _src: string = ""
+        width: number = 0
+        height: number = 0
+        set src(v: string) {
+          this._src = v
+          setTimeout(() => this.onerror?.(), 10)
+        }
+        get src() {
+          return this._src
+        }
+      } as unknown as typeof Image
+
+      const result = await exportScheduleAsPdf(mockElement, "Test Schedule", "test.pdf")
+      expect(result.success).toBe(false)
+      expect(result.error).toBe("Image load failed")
+    })
+
+    it("handles image load timeout", async () => {
+      vi.useFakeTimers()
       global.Image = class {
         onload: (() => void) | null = null
         onerror: (() => void) | null = null
         src: string = ""
         width: number = 800
         height: number = 600
-        constructor() {
-          setTimeout(() => this.onload?.(), 10)
-        }
       } as unknown as typeof Image
+
+      const promise = exportScheduleAsPdf(mockElement, "Test Schedule", "test.pdf")
+
+      // Fast-forward time to trigger timeout
+      await vi.advanceTimersByTimeAsync(11000)
+
+      const result = await promise
+      expect(result.success).toBe(false)
+      expect(result.error).toBe("Image load timed out")
+      vi.useRealTimers()
     })
 
-    it("successfully triggers a PDF save", async () => {
+    it("handles error during toPng or PDF generation", async () => {
+      vi.mocked(toPng).mockRejectedValueOnce(new Error("PDF generation error"))
       const result = await exportScheduleAsPdf(mockElement, "Test Schedule", "test.pdf")
-      expect(result.success).toBe(true)
+      expect(result.success).toBe(false)
+      expect(result.error).toBe("PDF generation error")
     })
   })
 })

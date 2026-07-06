@@ -293,11 +293,11 @@ mod tests {
     #[test]
     fn test_deep_nesting_stack_safety() {
         let mut input = String::new();
-        for _ in 0..150 {
+        for _ in 0..250 {
             input.push_str("<div>");
         }
         input.push_str("deep-nesting-content");
-        for _ in 0..150 {
+        for _ in 0..250 {
             input.push_str("</div>");
         }
         let out = sanitize_rich_text(&input);
@@ -333,6 +333,24 @@ mod tests {
         ];
         for input in inputs {
             // None of these must panic
+            let _ = sanitize_rich_text(input);
+            let _ = sanitize_html_basic(input);
+            let _ = strip_html(input);
+        }
+    }
+
+    #[test]
+    fn test_null_bytes_arbitrary_places() {
+        // Arbitrary places: inside tag name, attribute name, attribute value, text content, comments
+        let inputs = [
+            "<p\0>content</p>",
+            "<p class=\0evil>content</p>",
+            "<p class=evil\0>content</p>",
+            "<p>content\0here</p>",
+            "<!-- \0 comment \0 -->",
+            "<\0script>alert(1)</script>",
+        ];
+        for input in inputs {
             let _ = sanitize_rich_text(input);
             let _ = sanitize_html_basic(input);
             let _ = strip_html(input);

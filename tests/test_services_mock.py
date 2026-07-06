@@ -78,6 +78,48 @@ def test_content_processing_backend_label() -> None:
     assert isinstance(cp._BACKEND_LABEL, str)
 
 
+def test_content_processing_nh3_fallback() -> None:
+    import sys
+    from unittest.mock import patch
+
+    # Force fallback branch by deleting from sys.modules
+    if "app.services.content_processing" in sys.modules:
+        del sys.modules["app.services.content_processing"]
+
+    with patch.dict("sys.modules", {"pyo3_sanitizer": None}):
+        import app.services.content_processing as cp_fallback
+
+        # Verify backend label
+        assert cp_fallback._BACKEND_LABEL == "nh3 (fallback)"
+
+        # Verify sanitization modes using fallback
+        from app.services.content_processing import SanitizationMode
+
+        res_rich = cp_fallback.sanitize(
+            "<p>Hello <b>world</b></p><script>alert(1)</script>",
+            mode=SanitizationMode.RICH_TEXT,
+        )
+        assert "<script>" not in res_rich
+        assert "Hello" in res_rich
+
+        res_basic = cp_fallback.sanitize(
+            "<b>bold</b><script>alert(1)</script>", mode=SanitizationMode.BASIC
+        )
+        assert "<script>" not in res_basic
+        assert "bold" in res_basic
+
+        res_strip = cp_fallback.sanitize(
+            "<b>strip</b><script>alert(1)</script>", mode=SanitizationMode.STRIP
+        )
+        assert "<b>" not in res_strip
+        assert "<script>" not in res_strip
+        assert "strip" in res_strip
+
+    # Restore default backend state
+    if "app.services.content_processing" in sys.modules:
+        del sys.modules["app.services.content_processing"]
+
+
 # ---------------------------------------------------------------------------
 # app/services/ws_hub_client.py — WsHubClient.invalidate_cache
 # ---------------------------------------------------------------------------

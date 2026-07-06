@@ -1582,13 +1582,18 @@ jobs:
           if [ "$ec" -eq 0 ]; then
             echo "mutmut completed within the time-box."
           elif [ "$ec" -eq 124 ]; then
-            echo "::notice::Incremental mutation testing hit the 20-minute advisory time-box (generate + stats + clean-test + forced-fail all passed; ran real mutants until the box). Treating as pass."
+            echo "Incremental mutation testing hit the 20-minute advisory time-box."
           elif [ "$mutants_started" -eq 1 ]; then
-            echo "::notice::mutmut exited $ec (e.g. 137 OOM-SIGKILL / 143 SIGTERM / kill-after) AFTER the advisory mutant phase began ('Running mutation testing' printed -> generate + stats + clean-test + forced-fail ALL passed; they run first and exit non-zero on regression). The kill is in the advisory mutant-execution zone, same as the 20-min time-box. Treating as pass."
+            echo "mutmut exited $ec after the mutant phase began."
           else
-            echo "::error::mutmut exited $ec BEFORE the mutant phase began — a genuine clean-test / forced-fail / stats isolation regression. Failing the job (no masking)."
+            echo "::error::mutmut exited $ec BEFORE the mutant phase began — a genuine clean-test / forced-fail / stats isolation regression. Failing the job."
             exit "$ec"
           fi
+
+          # Verify mutation score (gate blocking at >= 80.0%)
+          echo "Verifying mutation score (gate blocking at >= 80.0%)..."
+          uv run python scripts/check_mutation_score.py --min-score 80.0
+
 
   load-and-chaos-tests:
     name: Load and Chaos Resilience Tests
