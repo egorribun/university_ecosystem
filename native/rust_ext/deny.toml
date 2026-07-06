@@ -1,0 +1,25 @@
+# cargo-deny configuration for native/rust_ext
+
+[graph]
+targets = []
+
+[advisories]
+db-path = "~/.cargo-deny-advisories"
+db-urls = ["https://github.com/rustsec/advisory-db"]
+
+[licenses]
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "BSD-3-Clause",
+    "ISC",
+    "CC0-1.0",
+    "0BSD",
+    "Unicode-DFS-2016",
+    "Apache-2.0 WITH LLVM-exception",
+    "Unicode-3.0",
+]
+confidence-threshold = 0.8
+
+[bans]
+multiple-versions = "warn"

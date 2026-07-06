@@ -42,13 +42,17 @@ test.describe("SPA Offline Banner & IndexedDB Queueing", () => {
     // Initially online: banner is hidden
     await expect(page.getByText(/Нет подключения к сети|You're offline/i).first()).not.toBeVisible()
 
+    await page.waitForLoadState("networkidle")
+
+    // Initially online: make sure the like button is visible first
+    const likeBtn = page.getByRole("button", { name: /Like|Лайк|Нравится/i }).first()
+    await expect(likeBtn).toBeVisible()
+
     // Trigger offline API state so the like request fails with a network error
     await mock.setApiOffline(true)
 
     // Click the like button on the first news card while navigator is still online
     // to bypass TanStack Query mutation pausing and trigger handleMutationError
-    const likeBtn = page.getByRole("button", { name: /Like|Лайк|Нравится/i }).first()
-    await expect(likeBtn).toBeVisible()
     await likeBtn.click()
 
     interface QueuedItem {
@@ -63,6 +67,21 @@ test.describe("SPA Offline Banner & IndexedDB Queueing", () => {
       queuedItems = await page.evaluate(async () => {
         return new Promise<QueuedItem[]>((resolve) => {
           const request = indexedDB.open("notification-interactions", 3)
+          request.onupgradeneeded = () => {
+            const db = request.result
+            if (!db.objectStoreNames.contains("pending-navigations")) {
+              db.createObjectStore("pending-navigations", { keyPath: "id", autoIncrement: true })
+            }
+            if (!db.objectStoreNames.contains("pending-reports")) {
+              db.createObjectStore("pending-reports", { keyPath: "id", autoIncrement: true })
+            }
+            if (!db.objectStoreNames.contains("pending-news-interactions")) {
+              db.createObjectStore("pending-news-interactions", {
+                keyPath: "id",
+                autoIncrement: true,
+              })
+            }
+          }
           request.onsuccess = () => {
             const db = request.result
             if (!db.objectStoreNames.contains("pending-news-interactions")) {

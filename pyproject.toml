@@ -5,7 +5,7 @@ description = "University Ecosystem Platform"
 # MOD-21-08 (audit 2026-03-25 Wave 21): Standardised on Python 3.14.
 # Python 3.14 benefits: deferred annotation evaluation (PEP 649), improved error
 # messages, faster startup, template strings (PEP 750), free-threading (PEP 703).
-requires-python = ">=3.14,<3.15"
+requires-python = ">=3.12,<3.15"
 dependencies = [
   "aiofiles>=25.1.0,<26",    # TD-06 (audit 2026-03-15): upper bound prevents silent breaking major upgrades
   "aiosqlite>=0.22.1,<1.0",  # TD-W9-06: upper bound — aiosqlite 1.0 may break API
@@ -543,5 +543,7 @@ pytest_add_cli_args = [
     # Schemathesis dynamically generates tests that pytest cannot collect individually by node ID,
     # causing exit code 4 / BadTestExecutionCommandsException. Ignore them under mutmut.
     "--ignore=tests/test_schemathesis_api.py",
+    # Lifespan tests check database readiness using alembic.ini which mutmut doesn't copy.
+    "--ignore=tests/test_lifespan.py",
 ]
 

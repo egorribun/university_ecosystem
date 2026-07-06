@@ -1,0 +1,33 @@
+{
+  "default": true,
+  "MD013": false, // Line length restriction disabled
+  "MD024": false, // Allow duplicate headings completely
+  "MD033": false, // Allow HTML tags (alerts, etc.)
+  "MD034": false,  // Allow bare URLs
+  "MD022": false, // Allow headings without blank lines
+  "MD031": false, // Allow fenced code blocks without blank lines
+  "MD032": false, // Allow lists without blank lines
+  "MD012": false, // Allow multiple consecutive blank lines
+  "MD030": false, // Allow any spacing after list markers
+  "MD004": false, // Allow any unordered list style (dash, plus, star)
+  "MD009": false, // Allow trailing spaces
+  "MD058": false, // Allow tables without blank lines
+  "MD040": false, // Allow fenced code blocks without language specified
+  "MD007": false, // Allow any list indentation
+  "MD025": false, // Allow multiple h1 titles in a document
+  "MD026": false, // Allow trailing punctuation in headings
+  "MD003": false, // Allow any heading style (atx, setext, etc.)
+  "MD029": false, // Allow any ordered list prefixes
+  "MD037": false, // Allow spaces inside emphasis markers
+  "MD014": false, // Allow dollar signs before commands without showing output
+  "MD036": false, // Allow emphasis used as heading
+  "MD056": false, // Allow any table column count
+  "MD018": false, // Allow no space after hash on atx style heading
+  "MD050": false, // Allow any strong style
+  "MD038": false, // Allow spaces inside code span elements
+  "MD049": false, // Allow any emphasis style
+  "MD055": false, // Allow any table pipe style
+  "MD010": false, // Allow hard tabs
+  "MD001": false, // Allow heading levels to increment by more than one at a time
+  "MD041": false  // Allow first line to not be a top-level heading
+}

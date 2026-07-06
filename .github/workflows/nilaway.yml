@@ -25,7 +25,7 @@ jobs:
 
       - name: Install Nilaway
         # Content-addressed via Sum DB (sum.golang.org)
-        run: go install github.com/uber-go/nilaway/cmd/nilaway@latest
+        run: go install go.uber.org/nilaway/cmd/nilaway@latest
 
       - name: Run Nilaway on Go services
         run: |

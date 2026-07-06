@@ -21,9 +21,28 @@ use std::collections::{HashMap, HashSet};
 #[pyfunction]
 pub fn sanitize_rich_text(html: &str) -> String {
     let allowed_tags: HashSet<&str> = [
-        "p", "br", "b", "i", "em", "strong", "u", "s", "strike",
-        "h1", "h2", "h3", "h4", "h5", "h6", "ul", "ol", "li",
-        "a", "blockquote", "code", "pre",
+        "p",
+        "br",
+        "b",
+        "i",
+        "em",
+        "strong",
+        "u",
+        "s",
+        "strike",
+        "h1",
+        "h2",
+        "h3",
+        "h4",
+        "h5",
+        "h6",
+        "ul",
+        "ol",
+        "li",
+        "a",
+        "blockquote",
+        "code",
+        "pre",
     ]
     .iter()
     .copied()
@@ -50,10 +69,7 @@ pub fn sanitize_rich_text(html: &str) -> String {
 #[pyfunction]
 pub fn sanitize_html_basic(html: &str) -> String {
     let allowed_tags: HashSet<&str> = ["b", "i", "em", "strong"].iter().copied().collect();
-    Builder::new()
-        .tags(allowed_tags)
-        .clean(html)
-        .to_string()
+    Builder::new().tags(allowed_tags).clean(html).to_string()
 }
 
 /// Remove all HTML tags, returning plain text.
@@ -61,10 +77,7 @@ pub fn sanitize_html_basic(html: &str) -> String {
 /// Use this when storing or indexing content where markup must be absent.
 #[pyfunction]
 pub fn strip_html(html: &str) -> String {
-    Builder::new()
-        .tags(HashSet::new())
-        .clean(html)
-        .to_string()
+    Builder::new().tags(HashSet::new()).clean(html).to_string()
 }
 
 /// pyo3_sanitizer — native Python extension module.
@@ -131,8 +144,14 @@ mod tests {
     fn rich_text_strips_onerror_attribute() {
         // XSS via event handler attribute
         let out = sanitize_rich_text("<img src=x onerror=alert(1)>");
-        assert!(!out.contains("onerror"), "onerror attribute must be stripped");
-        assert!(!out.contains("<img"), "img (not in allow-list) must be removed");
+        assert!(
+            !out.contains("onerror"),
+            "onerror attribute must be stripped"
+        );
+        assert!(
+            !out.contains("<img"),
+            "img (not in allow-list) must be removed"
+        );
     }
 
     #[test]
@@ -140,14 +159,23 @@ mod tests {
         // XSS via javascript: URI scheme
         let out = sanitize_rich_text("<a href='javascript:void(0)'>click</a>");
         // ammonia replaces disallowed URL schemes with '#' or removes href entirely.
-        assert!(!out.contains("javascript:"), "javascript: scheme must be stripped");
+        assert!(
+            !out.contains("javascript:"),
+            "javascript: scheme must be stripped"
+        );
     }
 
     #[test]
     fn rich_text_preserves_https_anchor() {
         let out = sanitize_rich_text("<a href='https://example.com' title='ex'>link</a>");
-        assert!(out.contains("href"), "href must be preserved for https links");
-        assert!(out.contains("https://example.com"), "https URL must survive");
+        assert!(
+            out.contains("href"),
+            "href must be preserved for https links"
+        );
+        assert!(
+            out.contains("https://example.com"),
+            "https URL must survive"
+        );
         // ammonia injects rel="noopener noreferrer" automatically
         assert!(out.contains("noopener"), "rel=noopener must be injected");
     }
@@ -202,7 +230,10 @@ mod tests {
         // Headings are NOT in the basic allow-list
         let out = sanitize_html_basic("<h1>Title</h1><b>bold</b>");
         assert!(!out.contains("<h1>"), "h1 must be stripped in basic mode");
-        assert!(out.contains("Title"), "heading text must survive as plain text");
+        assert!(
+            out.contains("Title"),
+            "heading text must survive as plain text"
+        );
         assert!(out.contains("<b>"), "b must survive");
     }
 
@@ -227,8 +258,14 @@ mod tests {
         // script elements is still passed through (it is CDATA, not markup).
         // We verify the <script…> delimiters are gone at minimum.
         let out = strip_html("<script>dangerous</script>safe");
-        assert!(!out.contains("<script"), "script opening tag must be removed");
-        assert!(!out.contains("</script>"), "script closing tag must be removed");
+        assert!(
+            !out.contains("<script"),
+            "script opening tag must be removed"
+        );
+        assert!(
+            !out.contains("</script>"),
+            "script closing tag must be removed"
+        );
         assert!(out.contains("safe"), "non-script text must survive");
     }
 

@@ -389,6 +389,9 @@ func TestHandleWebSocket_InvalidTicketRejected(t *testing.T) {
 
 	resp, err := http.Get(srv.URL + "?ticket=" + validTicket) //nolint:noctx // plain GET against local test server
 	require.NoError(t, err)
+	if resp == nil {
+		t.Fatal("expected non-nil response")
+	}
 	defer func() { _ = resp.Body.Close() }() //nolint:errcheck // test cleanup
 	assert.Equal(t, http.StatusUnauthorized, resp.StatusCode)
 }

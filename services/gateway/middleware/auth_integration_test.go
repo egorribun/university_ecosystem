@@ -204,4 +204,3 @@ func TestIntegration_ListenForRevocations(t *testing.T) {
 	_, ok = m.l1cache.Get(key)
 	assert.False(t, ok, "key should be evicted from L1 cache on revocation publication")
 }
-

@@ -1,0 +1,57 @@
+name: "Continuous Performance Benchmarking"
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    paths:
+      - "services/**/*.go"
+      - ".github/workflows/benchmark.yml"
+
+permissions:
+  contents: write # Required to push benchmark data to gh-pages or benchmark branch
+
+jobs:
+  benchmark:
+    name: Run Go Benchmarks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Set up Go
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version: "1.26.4"
+          cache: true
+
+      - name: Run Gateway Benchmarks
+        run: |
+          cd services/gateway
+          go test -bench=. -run=^$ ./... | tee ../../gateway-bench.txt
+
+      - name: Run WS-Hub Benchmarks
+        run: |
+          cd services/ws-hub
+          go test -bench=. -run=^$ ./... | tee ../../wshub-bench.txt
+
+      - name: Combine Benchmarks
+        run: |
+          cat gateway-bench.txt wshub-bench.txt > benchmarks.txt
+
+      # Compare and store benchmark results.
+      # If push to main, it updates the charts on the gh-pages / benchmarks branch.
+      # If PR, it runs the comparison and reports progress/status.
+      - name: Store Benchmark Results
+        uses: benchmark-action/github-action-benchmark@v1
+        with:
+          name: "Go Services Performance Benchmarks"
+          tool: "go"
+          output-file-path: "benchmarks.txt"
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          # Push to pages on push to main, otherwise just analyze (PR check)
+          auto-push: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+          # Alert if performance drops significantly (e.g. by 200%)
+          alert-threshold: "200%"
+          comment-on-alert: true
+          fail-on-alert: true

@@ -1,0 +1,91 @@
+"""Date with time (isoformat)"""
+scalar DateTime
+
+"""Event information"""
+type EventType {
+  id: ID!
+  title: String!
+  description: String
+  location: String
+  startTime: DateTime!
+  endTime: DateTime
+  isActive: Boolean!
+  imageUrl: String
+  organizer: UserType
+  attendeesCount: Int!
+  maxAttendees: Int
+  createdAt: DateTime!
+}
+
+"""Paginated events list"""
+type EventsConnection {
+  items: [EventType!]!
+  pageInfo: PageInfo!
+}
+
+"""Paginated news list"""
+type NewsConnection {
+  items: [NewsType!]!
+  pageInfo: PageInfo!
+}
+
+"""News article"""
+type NewsType {
+  id: ID!
+  title: String!
+  content: String!
+  summary: String
+  imageUrl: String
+  author: UserType
+  createdAt: DateTime!
+  updatedAt: DateTime
+  likesCount: Int!
+  commentsCount: Int!
+}
+
+"""Paginated list metadata"""
+type PageInfo {
+  hasNextPage: Boolean!
+  hasPreviousPage: Boolean!
+  totalCount: Int
+  cursor: String
+}
+
+"""Root Query type for the University Ecosystem API"""
+type Query {
+  """Get paginated list of news articles"""
+  news(limit: Int! = 20, after: String): NewsConnection!
+
+  """Get a single news article by ID"""
+  newsById(id: ID!): NewsType
+
+  """Get paginated list of events"""
+  events(limit: Int! = 25, after: String, activeOnly: Boolean! = true): EventsConnection!
+
+  """Get schedule entries for a group"""
+  schedule(groupId: ID!): [ScheduleEntryType!]!
+
+  """Get current authenticated user"""
+  me: UserType
+}
+
+"""Schedule entry"""
+type ScheduleEntryType {
+  id: ID!
+  dayOfWeek: String!
+  timeStart: String!
+  timeEnd: String!
+  subject: String!
+  teacher: String
+  room: String
+  type: String
+}
+
+"""User profile information"""
+type UserType {
+  id: ID!
+  email: String
+  fullName: String
+  isActive: Boolean!
+  createdAt: DateTime
+}

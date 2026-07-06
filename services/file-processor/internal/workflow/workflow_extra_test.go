@@ -238,19 +238,15 @@ func TestResizeImageActivity_MIMETypeFallback(t *testing.T) {
 		DestKey:   "out/img.png",
 		Options:   map[string]interface{}{"width": 5, "height": 5},
 	}
-	
+
 	// Temporarily delete png from imageMIMETypes
 	orig, exists := imageMIMETypes["png"]
 	if exists {
 		delete(imageMIMETypes, "png")
 		defer func() { imageMIMETypes["png"] = orig }()
 	}
-	
+
 	res, err := a.ResizeImageActivity(context.Background(), job)
 	require.NoError(t, err)
 	assert.True(t, res.Success)
 }
-
-
-
-

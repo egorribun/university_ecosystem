@@ -68,7 +68,10 @@ export function MfaChallengeView({
                   {t("auth:mfa.recovery.heading", { defaultValue: "Ввод резервного кода" })}
                 </h3>
                 <p className="text-sm text-center text-(--text-secondary) font-medium leading-relaxed">
-                  {t("auth:mfa.recovery.description", { defaultValue: "Введите один из ваших резервных кодов восстановления (19 символов)." })}
+                  {t("auth:mfa.recovery.description", {
+                    defaultValue:
+                      "Введите один из ваших резервных кодов восстановления (19 символов).",
+                  })}
                 </p>
                 <input
                   type="text"
@@ -87,7 +90,9 @@ export function MfaChallengeView({
                 <Button
                   type="button"
                   onClick={() => {
-                    const input = document.getElementById("mfa-recovery-code-input") as HTMLInputElement
+                    const input = document.getElementById(
+                      "mfa-recovery-code-input"
+                    ) as HTMLInputElement
                     const val = input?.value?.trim()
                     if (val) handleRecoveryVerify(val, trustDevice)
                   }}
@@ -183,7 +188,9 @@ export function MfaChallengeView({
                         onClick={() => setShowRecoveryInput(true)}
                         id="use-recovery-code-toggle"
                       >
-                        {t("auth:mfa.recovery.useRecovery", { defaultValue: "Войти с помощью резервного кода" })}
+                        {t("auth:mfa.recovery.useRecovery", {
+                          defaultValue: "Войти с помощью резервного кода",
+                        })}
                       </Button>
                     </div>
                   </>

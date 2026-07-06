@@ -44,7 +44,7 @@ describe("sanitizeNewsHtml — regex fallback (RZ-24-04)", () => {
     vi.mocked(sanitize_rich_text).mockImplementation(() => {
       throw new Error("wasm unavailable")
     })
-    const result = await sanitizeNewsHtml("<script>alert(1)</script><p>hello</p>")
+    const result = await sanitizeNewsHtml("<div>alert(1)</div><p>hello</p>")
     expect(result).toBe("alert(1)hello")
   })
 

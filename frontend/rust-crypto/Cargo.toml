@@ -3,6 +3,11 @@ name = "uni-wasm-crypto"
 version = "0.1.0"
 edition = "2021"
 
+# Ignore false positive unused dev-dependency in cargo-udeps
+[package.metadata.cargo-udeps.ignore]
+development = ["wasm-bindgen-test"]
+
+
 [lib]
 # rlib added (testing session 9) so the crate can be linked into native
 # `cargo test` binaries for the RFC KAT tests; cdylib still drives wasm-pack.

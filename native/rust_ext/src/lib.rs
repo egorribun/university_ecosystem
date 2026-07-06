@@ -1,8 +1,8 @@
 #![deny(clippy::unwrap_used)]
 #![deny(clippy::expect_used)] // LOW-W19: expect() panics just like unwrap(); deny it too
+use chrono::{Datelike, Duration, NaiveDate, TimeZone, Utc, Weekday};
 use pyo3::prelude::*;
 use rayon::prelude::*;
-use chrono::{Utc, TimeZone, Datelike, Duration, NaiveDate, Weekday};
 
 // pyo3 0.29 (RUSTSEC-2026-0176/-0177 bump): the automatic FromPyObject derive
 // for Clone #[pyclass] types is becoming opt-in. ScheduleItem is extracted from
@@ -19,7 +19,7 @@ pub struct ScheduleItem {
     #[pyo3(get, set)]
     pub start_time: i64, // timestamp in seconds
     #[pyo3(get, set)]
-    pub end_time: i64,   // timestamp in seconds
+    pub end_time: i64, // timestamp in seconds
     #[pyo3(get, set)]
     pub parity: String,
 }
@@ -28,7 +28,13 @@ pub struct ScheduleItem {
 impl ScheduleItem {
     #[new]
     #[pyo3(signature = (weekday, start_time, end_time, parity, id=None))]
-    fn new(weekday: String, start_time: i64, end_time: i64, parity: String, id: Option<i32>) -> Self {
+    fn new(
+        weekday: String,
+        start_time: i64,
+        end_time: i64,
+        parity: String,
+        id: Option<i32>,
+    ) -> Self {
         ScheduleItem {
             id,
             weekday,
@@ -41,8 +47,12 @@ impl ScheduleItem {
 
 // Helper for conflict detection
 pub fn check_conflict_proto(a: &ScheduleItem, b: &ScheduleItem) -> bool {
-    if a.weekday != b.weekday { return false; }
-    if a.parity != "both" && b.parity != "both" && a.parity != b.parity { return false; }
+    if a.weekday != b.weekday {
+        return false;
+    }
+    if a.parity != "both" && b.parity != "both" && a.parity != b.parity {
+        return false;
+    }
     a.start_time < b.end_time && b.start_time < a.end_time
 }
 
@@ -61,9 +71,9 @@ const MAX_CONFLICT_ITEMS: usize = 2500;
 #[pyfunction]
 fn batch_detect_conflicts(items: Vec<ScheduleItem>) -> PyResult<Vec<(ScheduleItem, ScheduleItem)>> {
     if items.len() > MAX_CONFLICT_ITEMS {
-        return Err(pyo3::exceptions::PyValueError::new_err(
-            format!("Input exceeds maximum allowed items ({MAX_CONFLICT_ITEMS}) for batch detection")
-        ));
+        return Err(pyo3::exceptions::PyValueError::new_err(format!(
+            "Input exceeds maximum allowed items ({MAX_CONFLICT_ITEMS}) for batch detection"
+        )));
     }
 
     // TD-W18-02 (audit 2026-03-23 Wave 18): use a bounded thread pool instead of
@@ -87,9 +97,11 @@ fn batch_detect_conflicts(items: Vec<ScheduleItem>) -> PyResult<Vec<(ScheduleIte
             let built = rayon::ThreadPoolBuilder::new()
                 .num_threads(threads)
                 .build()
-                .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(
-                    format!("Failed to build rayon thread pool: {e}")
-                ))?;
+                .map_err(|e| {
+                    pyo3::exceptions::PyRuntimeError::new_err(format!(
+                        "Failed to build rayon thread pool: {e}"
+                    ))
+                })?;
             // If another thread raced us, discard our pool and use theirs.
             POOL.get_or_init(|| built)
         }
@@ -149,7 +161,10 @@ fn find_optimal_slot(
                     parity: "both".to_string(),
                 };
 
-                if !existing_schedule.iter().any(|item| check_conflict_proto(&candidate, item)) {
+                if !existing_schedule
+                    .iter()
+                    .any(|item| check_conflict_proto(&candidate, item))
+                {
                     return Some(candidate);
                 }
             }
@@ -202,10 +217,10 @@ pub fn get_partition_info(table_name: String, month_offset: i32) -> PyResult<Par
     // LOW-W19: reject month_offset values that would cause integer overflow or
     // produce a nonsensical date (e.g. offset going back before year 1 or
     // forward beyond year 9999).  Reasonable operational range is ±120 months (10 years).
-    if month_offset < -120 || month_offset > 120 {
-        return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
-            format!("month_offset {month_offset} is out of the allowed range [-120, 120]")
-        ));
+    if !(-120..=120).contains(&month_offset) {
+        return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+            "month_offset {month_offset} is out of the allowed range [-120, 120]"
+        )));
     }
     let now = Utc::now();
     // RZ-33-24: Use div_euclid/rem_euclid for correct negative month_offset
@@ -216,7 +231,8 @@ pub fn get_partition_info(table_name: String, month_offset: i32) -> PyResult<Par
     let target_year = now.year() + zero_indexed.div_euclid(12);
     let target_month = (zero_indexed.rem_euclid(12) + 1) as u32;
 
-    let start_date = Utc.with_ymd_and_hms(target_year, target_month, 1, 0, 0, 0)
+    let start_date = Utc
+        .with_ymd_and_hms(target_year, target_month, 1, 0, 0, 0)
         .single()
         .ok_or_else(|| PyErr::new::<pyo3::exceptions::PyValueError, _>("Invalid date"))?;
 
@@ -226,9 +242,12 @@ pub fn get_partition_info(table_name: String, month_offset: i32) -> PyResult<Par
         (target_year, target_month + 1)
     };
 
-    let end_date = Utc.with_ymd_and_hms(next_year, next_month, 1, 0, 0, 0)
+    let end_date = Utc
+        .with_ymd_and_hms(next_year, next_month, 1, 0, 0, 0)
         .single()
-        .ok_or_else(|| PyErr::new::<pyo3::exceptions::PyValueError, _>("Invalid next month date"))?;
+        .ok_or_else(|| {
+            PyErr::new::<pyo3::exceptions::PyValueError, _>("Invalid next month date")
+        })?;
 
     Ok(PartitionInfo {
         name: format!("{}_y{}m{:02}", table_name, target_year, target_month),
@@ -238,7 +257,11 @@ pub fn get_partition_info(table_name: String, month_offset: i32) -> PyResult<Par
 }
 
 #[pyfunction]
-pub fn is_partition_expired(partition_name: String, table_name: String, retention_days: i64) -> bool {
+pub fn is_partition_expired(
+    partition_name: String,
+    table_name: String,
+    retention_days: i64,
+) -> bool {
     // LOW-W19: a negative retention_days would make the cutoff a future timestamp,
     // causing every partition to appear un-expired.  Reject it defensively.
     if retention_days < 0 {
@@ -249,7 +272,10 @@ pub fn is_partition_expired(partition_name: String, table_name: String, retentio
         return false;
     }
 
-    let parts: Vec<&str> = partition_name.trim_start_matches(&prefix).split('m').collect();
+    let parts: Vec<&str> = partition_name
+        .trim_start_matches(&prefix)
+        .split('m')
+        .collect();
     if parts.len() != 2 {
         return false;
     }
@@ -276,7 +302,10 @@ pub fn is_partition_expired(partition_name: String, table_name: String, retentio
         (p_year, p_month + 1)
     };
 
-    if let Some(p_end_date) = Utc.with_ymd_and_hms(next_year, next_month, 1, 0, 0, 0).single() {
+    if let Some(p_end_date) = Utc
+        .with_ymd_and_hms(next_year, next_month, 1, 0, 0, 0)
+        .single()
+    {
         let cutoff = Utc::now() - Duration::days(retention_days);
         return p_end_date < cutoff;
     }
@@ -288,7 +317,11 @@ use hmac::{Hmac, Mac};
 use sha2::Sha256;
 
 #[pyfunction]
-pub fn verify_audit_signature(signing_keys: Vec<String>, log_data: String, signature: String) -> PyResult<bool> {
+pub fn verify_audit_signature(
+    signing_keys: Vec<String>,
+    log_data: String,
+    signature: String,
+) -> PyResult<bool> {
     let sig_bytes = match hex::decode(&signature) {
         Ok(b) => b,
         Err(_) => return Ok(false),
@@ -380,35 +413,59 @@ mod tests {
     #[test]
     fn expired_malformed_no_month_separator() {
         // Missing 'm' separator → malformed → false.
-        assert!(!is_partition_expired("tbl_y2025".to_string(), "tbl".to_string(), 90));
+        assert!(!is_partition_expired(
+            "tbl_y2025".to_string(),
+            "tbl".to_string(),
+            90
+        ));
     }
 
     #[test]
     fn expired_malformed_non_numeric_year() {
-        assert!(!is_partition_expired("tbl_yABCDm01".to_string(), "tbl".to_string(), 90));
+        assert!(!is_partition_expired(
+            "tbl_yABCDm01".to_string(),
+            "tbl".to_string(),
+            90
+        ));
     }
 
     #[test]
     fn expired_malformed_non_numeric_month() {
-        assert!(!is_partition_expired("tbl_y2025mXX".to_string(), "tbl".to_string(), 90));
+        assert!(!is_partition_expired(
+            "tbl_y2025mXX".to_string(),
+            "tbl".to_string(),
+            90
+        ));
     }
 
     #[test]
     fn expired_month_zero() {
         // Month 0 is invalid — returns false.
-        assert!(!is_partition_expired("tbl_y2025m00".to_string(), "tbl".to_string(), 90));
+        assert!(!is_partition_expired(
+            "tbl_y2025m00".to_string(),
+            "tbl".to_string(),
+            90
+        ));
     }
 
     #[test]
     fn expired_month_13() {
         // Month 13 is invalid — returns false.
-        assert!(!is_partition_expired("tbl_y2025m13".to_string(), "tbl".to_string(), 90));
+        assert!(!is_partition_expired(
+            "tbl_y2025m13".to_string(),
+            "tbl".to_string(),
+            90
+        ));
     }
 
     #[test]
     fn expired_negative_retention() {
         // Negative retention_days → defensively returns false.
-        assert!(!is_partition_expired("tbl_y2020m01".to_string(), "tbl".to_string(), -1));
+        assert!(!is_partition_expired(
+            "tbl_y2020m01".to_string(),
+            "tbl".to_string(),
+            -1
+        ));
     }
 
     // -- verify_audit_signature edge cases --
@@ -424,11 +481,8 @@ mod tests {
     #[test]
     fn signature_empty_data() {
         // Empty data is valid input — HMAC of empty string is well-defined.
-        let result = verify_audit_signature(
-            vec!["key".to_string()],
-            "".to_string(),
-            "aabb".to_string(),
-        );
+        let result =
+            verify_audit_signature(vec!["key".to_string()], "".to_string(), "aabb".to_string());
         assert!(result.is_ok());
         // The signature won't match, but it must not panic.
         assert!(!result.ok().unwrap());
@@ -449,11 +503,8 @@ mod tests {
     #[test]
     fn signature_empty_signature() {
         // Empty signature string → hex::decode("") returns empty vec → verify fails.
-        let result = verify_audit_signature(
-            vec!["key".to_string()],
-            "data".to_string(),
-            "".to_string(),
-        );
+        let result =
+            verify_audit_signature(vec!["key".to_string()], "data".to_string(), "".to_string());
         assert!(result.is_ok());
         assert!(!result.ok().unwrap());
     }
@@ -500,13 +551,14 @@ mod tests {
     fn signature_verification_success() {
         let key = "my-secret-key";
         let data = "test-log-data";
-        
+
         let mut mac = Hmac::<Sha256>::new_from_slice(key.as_bytes()).unwrap();
         mac.update(data.as_bytes());
         let result_bytes = mac.finalize().into_bytes();
         let sig_hex = hex::encode(result_bytes);
-        
-        let verified = verify_audit_signature(vec![key.to_string()], data.to_string(), sig_hex).unwrap();
+
+        let verified =
+            verify_audit_signature(vec![key.to_string()], data.to_string(), sig_hex).unwrap();
         assert!(verified);
     }
 
@@ -564,7 +616,8 @@ mod tests {
             parity: "both".to_string(),
         };
 
-        let result = batch_detect_conflicts(vec![item1.clone(), item2.clone(), item3.clone()]).unwrap();
+        let result =
+            batch_detect_conflicts(vec![item1.clone(), item2.clone(), item3.clone()]).unwrap();
         assert_eq!(result.len(), 1);
         assert_eq!(result[0].0.id, Some(1));
         assert_eq!(result[0].1.id, Some(2));
@@ -580,16 +633,14 @@ mod tests {
 
     #[test]
     fn test_find_optimal_slot() {
-        let existing = vec![
-            ScheduleItem {
-                id: Some(1),
-                weekday: "monday".to_string(),
-                start_time: Utc::now().timestamp(), // conflicting block
-                end_time: Utc::now().timestamp() + 3600,
-                parity: "both".to_string(),
-            }
-        ];
-        
+        let existing = vec![ScheduleItem {
+            id: Some(1),
+            weekday: "monday".to_string(),
+            start_time: Utc::now().timestamp(), // conflicting block
+            end_time: Utc::now().timestamp() + 3600,
+            parity: "both".to_string(),
+        }];
+
         let available = vec![
             ("invalid_day".to_string(), vec![10]),
             ("monday".to_string(), vec![9, 10]),
@@ -606,19 +657,31 @@ mod tests {
         // Table name is "events"
         // Target is "events_y2020m01" -> End date is 2020-02-01
         // Cutoff is now - 1 day -> obviously expired
-        assert!(is_partition_expired("events_y2020m01".to_string(), "events".to_string(), 1));
+        assert!(is_partition_expired(
+            "events_y2020m01".to_string(),
+            "events".to_string(),
+            1
+        ));
 
         // Cutoff is now - 100000 days -> obviously NOT expired
-        assert!(!is_partition_expired("events_y2999m01".to_string(), "events".to_string(), 100000));
+        assert!(!is_partition_expired(
+            "events_y2999m01".to_string(),
+            "events".to_string(),
+            100000
+        ));
 
         // Wrong table prefix -> false
-        assert!(!is_partition_expired("other_y2020m01".to_string(), "events".to_string(), 1));
+        assert!(!is_partition_expired(
+            "other_y2020m01".to_string(),
+            "events".to_string(),
+            1
+        ));
     }
 
     #[test]
     fn test_next_weekday() {
         let from = NaiveDate::from_ymd_opt(2026, 7, 3).unwrap(); // Friday
-        
+
         // Target Friday -> should be today (2026-07-03)
         let friday = next_weekday(from, Weekday::Fri);
         assert_eq!(friday, from);

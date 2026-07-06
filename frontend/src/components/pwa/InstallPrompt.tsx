@@ -265,12 +265,12 @@ export default function InstallPrompt() {
             // DOWN into the reserved space, keeping the visual top edge rock-solid.
             // Increased to 600px (was 540) to accommodate potential Russian text
             // expansion in low-res viewports without breaching the reservation.
-            className="fixed bottom-24 right-4 left-4 sm:left-auto sm:right-6 z-toast w-auto max-w-[24rem] min-h-[600px] flex flex-col justify-start"
+            className="fixed bottom-24 right-4 left-4 sm:left-auto sm:right-6 z-toast w-auto max-w-[24rem] min-h-[600px] flex flex-col justify-start pointer-events-none"
           >
             <GlassCard
               intensity="high"
               radius="lg"
-              className="z-toast w-auto max-w-[24rem] border-glass-border shadow-2xl ring-1 ring-black/(--opacity-faint) p-6"
+              className="z-toast w-auto max-w-[24rem] border-glass-border shadow-2xl ring-1 ring-black/(--opacity-faint) p-6 pointer-events-auto"
             >
               <div
                 className={cn(

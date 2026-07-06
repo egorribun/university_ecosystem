@@ -91,7 +91,7 @@ func TestValidate_InactiveUserAccount(t *testing.T) {
 
 func TestValidate_RedisDownFailSecure(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	
+
 	url, stop := startMockRedis(t, mockRedisConfig{})
 	m := newRedisMiddleware(t, url)
 	stop() // close mockRedis to trigger connection refused/outage
@@ -113,7 +113,7 @@ func TestValidate_RedisDownFailSecure(t *testing.T) {
 
 func TestOptional_RedisDownFailSafe(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	
+
 	url, stop := startMockRedis(t, mockRedisConfig{})
 	m := newRedisMiddleware(t, url)
 	stop() // close mockRedis to trigger connection refused/outage
@@ -140,20 +140,22 @@ func TestStartJWKSRefresher_FailuresAndRetries(t *testing.T) {
 		calls++
 		if calls == 1 {
 			w.WriteHeader(http.StatusInternalServerError)
-			_, _ = w.Write([]byte("unexpected status 500"))
+			_, err := w.Write([]byte("unexpected status 500"))
+			require.NoError(t, err)
 			return
 		}
 		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(pubPEM))
+		_, err := w.Write([]byte(pubPEM))
+		require.NoError(t, err)
 	}))
 	defer srv.Close()
 
 	m := NewJWTMiddleware(testSecret, nil)
 	ctx, cancel := context.WithCancel(context.Background())
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	
+
 	go m.StartJWKSRefresher(ctx, srv.URL, 10*time.Millisecond, logger)
-	
+
 	// Wait to let both calls happen
 	time.Sleep(50 * time.Millisecond)
 	cancel()

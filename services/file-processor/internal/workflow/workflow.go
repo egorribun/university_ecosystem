@@ -95,7 +95,7 @@ func FileProcessingWorkflow(ctx workflow.Context, job ProcessJob) (*ProcessResul
 	var result ProcessResult
 
 	// Execute Activity
-	var a *FileActivities
+	a := &FileActivities{}
 	err := workflow.ExecuteActivity(ctx, a.ResizeImageActivity, job).Get(ctx, &result)
 
 	if err != nil {

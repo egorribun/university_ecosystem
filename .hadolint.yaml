@@ -1,0 +1,11 @@
+# Hadolint configuration file
+ignored:
+  - DL3008 # Pin versions in apt get install
+  - DL3018 # Pin versions in apk add
+  - DL3013 # Pin versions in pip install
+  - DL3015 # Avoid package installation recommendations
+  - DL3059 # Multiple consecutive RUN instructions
+  - SC2012 # Use find instead of ls
+  - DL3001 # Running service commands in container
+  - DL4006 # Set pipefail SHELL option
+

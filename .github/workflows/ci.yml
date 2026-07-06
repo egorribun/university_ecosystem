@@ -266,6 +266,163 @@ jobs:
           $env:WS_HUB_INTERNAL_SECRET = "dummy-ci-validate-secret"  # pragma: allowlist secret
           docker compose -f docker-compose.infra.yml -f docker-compose.go.yml -f docker-compose.yml -f docker-compose.ci-loadtest.yml config | Out-Null
 
+  actionlint:
+    name: Lint GitHub Actions Workflows
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs: pre-commit-check
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - name: Install and Run actionlint
+        run: |
+          bash <(curl -sSf https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash)
+          ./actionlint -color -shellcheck ""
+
+
+  dockerfile-lint:
+    name: Dockerfile Lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs: pre-commit-check
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - name: Run Hadolint
+        run: |
+          sudo curl -sSLo /usr/bin/hadolint https://github.com/hadolint/hadolint/releases/download/v2.12.0/hadolint-Linux-x86_64
+          sudo chmod +x /usr/bin/hadolint
+          find . -type f \( -name "*Dockerfile*" -o -name "Dockerfile*" \) ! -path "*/node_modules/*" ! -path "*/.venv/*" -exec hadolint --config .hadolint.yaml {} +
+
+  shellcheck:
+    name: ShellCheck Scripts
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs: pre-commit-check
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - name: Install shellcheck
+        run: sudo apt-get update && sudo apt-get install -y shellcheck
+      - name: Run ShellCheck
+        run: |
+          find scripts/ -type f -name "*.sh" -exec shellcheck -e SC2086 -e SC2001 -e SC2030 -e SC2031 {} +
+
+  graphql-drift-check:
+    name: GraphQL Schema Drift Check
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: pre-commit-check
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: "3.14"
+      - name: Install uv
+        uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
+        with:
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+      - name: Install dependencies
+        run: uv sync --frozen
+      - name: Generate current GraphQL Schema
+        env:
+          DATABASE_URL: "sqlite+aiosqlite:///:memory:"
+          SECRET_KEY: "dummy-key-for-graphql-generation"  # pragma: allowlist secret
+          ENVIRONMENT: testing
+        run: |
+          uv run python -c "
+          from app.graphql.schema import schema
+          import pathlib
+          pathlib.Path('schema.graphql').write_text(str(schema))
+          "
+      - name: Check drift against main branch
+        run: |
+          git fetch origin main
+          git show origin/main:schema.graphql > /tmp/schema_main.graphql || touch /tmp/schema_main.graphql
+          if [ -s /tmp/schema_main.graphql ]; then
+            diff -u /tmp/schema_main.graphql schema.graphql || {
+              echo "::error::GraphQL schema has changed! If this is intended, update schema.graphql on main or add the schema.graphql changes to this PR."
+              exit 1
+            }
+          else
+            echo "No schema.graphql found on main to compare against."
+          fi
+
+  quality:
+    name: Code Spell & Markdown Lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs: pre-commit-check
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - name: Run markdownlint
+        uses: DavidAnson/markdownlint-cli2-action@05f32210e84442804257b2a6f20b273450ec8265 # v19.1.0
+        with:
+          globs: "**/*.md"
+      - name: Run cspell
+        uses: streetsidesoftware/cspell-action@807d7d92b7057593a2de102168506f298405339d # v6.2.0
+        with:
+          config: "cspell.json"
+
+  rust-lint:
+    name: Rust Lint & Format
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: pre-commit-check
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: "3.14"
+      - name: Set up Rust (stable)
+        uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
+        with:
+          components: rustfmt, clippy
+      - name: Cache Cargo registry + target dirs
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            native/rust_ext/target/
+            crates/pyo3-sanitizer/target/
+            frontend/wasm-sanitizer/target/
+            frontend/rust-crypto/target/
+          key: ${{ runner.os }}-cargo-lint-${{ hashFiles('native/rust_ext/Cargo.toml', 'crates/pyo3-sanitizer/Cargo.toml', 'frontend/wasm-sanitizer/Cargo.toml', 'frontend/rust-crypto/Cargo.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-lint-
+      - name: Check Formatting (rustfmt)
+        run: |
+          cargo fmt --all --manifest-path native/rust_ext/Cargo.toml -- --check
+          cargo fmt --all --manifest-path crates/pyo3-sanitizer/Cargo.toml -- --check
+          cargo fmt --all --manifest-path frontend/wasm-sanitizer/Cargo.toml -- --check
+          cargo fmt --all --manifest-path frontend/rust-crypto/Cargo.toml -- --check
+      - name: Run Clippy (static analysis)
+        run: |
+          LIBDIR="$(python -c 'import sysconfig; print(sysconfig.get_config_var("LIBDIR"))')"
+          export LD_LIBRARY_PATH="${LIBDIR}:${LD_LIBRARY_PATH}"
+          cargo clippy --manifest-path native/rust_ext/Cargo.toml --all-targets --no-default-features -- -D warnings
+          cargo clippy --manifest-path crates/pyo3-sanitizer/Cargo.toml --all-targets -- -D warnings
+          cargo clippy --manifest-path frontend/wasm-sanitizer/Cargo.toml --all-targets -- -D warnings
+          cargo clippy --manifest-path frontend/rust-crypto/Cargo.toml --all-targets -- -D warnings
+
+      - name: Install cargo-udeps
+        run: |
+          curl -L --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/cargo-bins/cargo-binstall/main/install-from-binstall-release.sh | sh
+          cargo binstall -y cargo-udeps
+
+      - name: Run cargo-udeps (unused dependencies check)
+        run: |
+          LIBDIR="$(python -c 'import sysconfig; print(sysconfig.get_config_var("LIBDIR"))')"
+          export LD_LIBRARY_PATH="${LIBDIR}:${LD_LIBRARY_PATH}"
+          rustup toolchain install nightly
+          cargo +nightly udeps --manifest-path native/rust_ext/Cargo.toml --all-targets --no-default-features
+          cargo +nightly udeps --manifest-path crates/pyo3-sanitizer/Cargo.toml --all-targets
+          cargo +nightly udeps --manifest-path frontend/wasm-sanitizer/Cargo.toml --all-targets
+          cargo +nightly udeps --manifest-path frontend/rust-crypto/Cargo.toml --all-targets
+
+
   backend-tests:
     name: "Backend Tests (${{ matrix.name }})"
     strategy:
@@ -979,6 +1136,15 @@ jobs:
             -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json' \
             /tmp/backend-manifests.yaml
 
+      - name: Validate static K8s manifests with kubeconform
+        run: |
+          /tmp/kubeconform -strict -summary -ignore-filename-pattern secrets-example.yaml \
+            -skip NetworkChaos,PodChaos \
+            -schema-location default \
+            -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json' \
+            k8s/
+
+
   # MOD-W15-04 (audit 2026-03-23 Wave 15): Postgres migration gate.
   # Validates alembic upgrade head + downgrade base + upgrade head round-trip
   # on a real Postgres instance (not SQLite) to catch migration regressions.
@@ -1684,6 +1850,13 @@ jobs:
       - rust-tests
       - mutation-tests
       - load-and-chaos-tests
+      - actionlint
+      - dockerfile-lint
+      - shellcheck
+      - graphql-drift-check
+      - quality
+      - rust-lint
+
     steps:
       - name: Check all jobs passed
         shell: bash
@@ -1737,7 +1910,14 @@ jobs:
             "${{ needs.rust-tests.result }}"
             "${{ needs.mutation-tests.result }}"
             "${{ needs.load-and-chaos-tests.result }}"
+            "${{ needs.actionlint.result }}"
+            "${{ needs.dockerfile-lint.result }}"
+            "${{ needs.shellcheck.result }}"
+            "${{ needs.graphql-drift-check.result }}"
+            "${{ needs.quality.result }}"
+            "${{ needs.rust-lint.result }}"
           )
+
 
           failed=false
           for res in "${results[@]}"; do

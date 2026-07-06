@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 
 import psycopg
@@ -8,6 +9,13 @@ from testcontainers.postgres import PostgresContainer
 from alembic import command
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
+
+_RUN = bool(os.getenv("RUN_INTEGRATION_TESTS"))
+
+pytestmark = [
+    pytest.mark.integration,
+    pytest.mark.skipif(not _RUN, reason="Set RUN_INTEGRATION_TESTS=1 to run"),
+]
 
 
 @pytest.fixture(scope="module")

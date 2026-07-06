@@ -3,6 +3,9 @@ name = "wasm-sanitizer"
 version = "0.1.0"
 authors = ["Admin"]
 edition = "2021"
+# Ignore false positive unused dev-dependency in cargo-udeps
+[package.metadata.cargo-udeps.ignore]
+development = ["wasm-bindgen-test"]
 
 [lib]
 crate-type = ["cdylib", "rlib"]
@@ -12,7 +15,7 @@ default = []
 
 [dependencies]
 wasm-bindgen = "0.2.114"
-ammonia = "4.1.2"
+ammonia = "4.1.3"
 
 [dev-dependencies]
 wasm-bindgen-test = "0.3"
