@@ -412,3 +412,8 @@ memory/
 
 # Test runtime static files
 app/test-static/
+
+# Go services temporary coverage, middleware, and telemetry logs
+services/**/cov
+services/**/tel
+services/**/mw
