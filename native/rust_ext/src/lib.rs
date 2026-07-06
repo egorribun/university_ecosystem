@@ -756,7 +756,6 @@ mod tests {
                 prop_assert!(parse_weekday(&s).is_none());
             }
         }
-
         /// Proptest for invalid or negative time intervals.
         /// Ensures check_conflict_proto never panics and behaves correctly:
         /// - commutativity holds even for negative/overflowing times or start_time > end_time.
