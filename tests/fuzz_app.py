@@ -2,12 +2,14 @@ import sys
 
 try:
     import atheris
+
     # Instrument your code so Atheris can track coverage
     with atheris.instrument_imports():
         from app import process_user_data
     HAS_ATHERIS = True
 except (ImportError, RuntimeError):
     from app import process_user_data
+
     HAS_ATHERIS = False
 
 
