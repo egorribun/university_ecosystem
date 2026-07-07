@@ -49,11 +49,11 @@ const createMockIO = () => {
  *
  * Returns a restore function that puts back the no-op polyfill.
  */
-function installMockIO(MockIO: (new (...args: any[]) => any) | undefined): () => void {
-  const originalValue = (window as any).IntersectionObserver
-  ;(window as any).IntersectionObserver = MockIO
+function installMockIO(MockIO: (new (...args: unknown[]) => unknown) | undefined): () => void {
+  const originalValue = (window as Record<string, unknown>).IntersectionObserver
+  ;(window as Record<string, unknown>).IntersectionObserver = MockIO
   return () => {
-    ;(window as any).IntersectionObserver = originalValue
+    ;(window as Record<string, unknown>).IntersectionObserver = originalValue
   }
 }
 
@@ -148,9 +148,7 @@ describe("useIntersectionObserver", () => {
     const node = document.createElement("div")
     Object.defineProperty(ref, "current", { value: node, writable: false })
 
-    const { result } = renderHook(() =>
-      useIntersectionObserver(ref, { freezeOnceVisible: true })
-    )
+    const { result } = renderHook(() => useIntersectionObserver(ref, { freezeOnceVisible: true }))
 
     // First intersection fires
     act(() => {
@@ -173,9 +171,7 @@ describe("useIntersectionObserver", () => {
     const node = document.createElement("div")
     Object.defineProperty(ref, "current", { value: node, writable: false })
 
-    renderHook(() =>
-      useIntersectionObserver(ref, { threshold: 0.5, rootMargin: "10px" })
-    )
+    renderHook(() => useIntersectionObserver(ref, { threshold: 0.5, rootMargin: "10px" }))
 
     expect(lastObserverOptions?.threshold).toBe(0.5)
     expect(lastObserverOptions?.rootMargin).toBe("10px")
@@ -200,7 +196,7 @@ describe("useIntersectionObserver", () => {
   // ───────────────────────────────────────────────────────────────────────────
   it("returns undefined gracefully when window.IntersectionObserver is unavailable", () => {
     // Override within this specific test — restoreIO in afterEach restores the mock
-    ;(window as any).IntersectionObserver = undefined
+    ;(window as Record<string, unknown>).IntersectionObserver = undefined
 
     const ref = createRef<HTMLDivElement>()
     const node = document.createElement("div")
@@ -314,7 +310,7 @@ describe("useIsVisible", () => {
   })
 
   it("returns false when IntersectionObserver is unavailable (SSR)", () => {
-    ;(window as any).IntersectionObserver = undefined
+    ;(window as Record<string, unknown>).IntersectionObserver = undefined
     const ref = createRef<HTMLDivElement>()
     const node = document.createElement("div")
     Object.defineProperty(ref, "current", { value: node, writable: false })

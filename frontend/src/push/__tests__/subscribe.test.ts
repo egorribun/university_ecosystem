@@ -394,9 +394,7 @@ describe("subscribe", () => {
       vi.stubGlobal("Notification", { permission: "granted" })
 
       // Does NOT throw — 409 is treated as success internally
-      await expect(
-        mod.ensurePushSubscription({ requestPermission: false })
-      ).resolves.toBeDefined()
+      await expect(mod.ensurePushSubscription({ requestPermission: false })).resolves.toBeDefined()
     })
   })
 
@@ -436,7 +434,7 @@ describe("subscribe", () => {
       const { saveSubscription } = await import("@/api/notifications")
       vi.mocked(saveSubscription).mockResolvedValue({} as any)
 
-      const rawP256dh = "BNcRdreALRFXTkOOUHK1EtK2wtwe4Ou2BrqZNnq73Ps"
+      const rawP256dh = "BNcRdreALRFXTkOOUHK1EtK2wtwe4Ou2BrqZNnq73Ps" // pragma: allowlist secret
       const rawAuth = "tBHItJI5svbpez7KI4CCXg"
 
       const mockSub = {
