@@ -193,7 +193,7 @@ func TestListenForRevocations_PanicRecovery(t *testing.T) {
 func TestVerifySession_JTIEmpty(t *testing.T) {
 	mr := miniredis.RunT(t)
 	rClient := redis.NewClient(&redis.Options{Addr: mr.Addr()})
-	defer rClient.Close()
+	defer func() { _ = rClient.Close() }()
 
 	m := NewJWTMiddleware("secret", rClient)
 	isValid, shouldDeny, err := m.verifySession(context.Background(), "", true)
@@ -207,7 +207,7 @@ func TestVerifySession_JTIEmpty(t *testing.T) {
 func TestCheckSessionInRedis_Error(t *testing.T) {
 	mr := miniredis.RunT(t)
 	rClient := redis.NewClient(&redis.Options{Addr: mr.Addr()})
-	rClient.Close() // Close to trigger error
+	_ = rClient.Close() // Close to trigger error
 
 	m := NewJWTMiddleware("secret", rClient)
 	isValid, shouldDeny, err := m.verifySession(context.Background(), "some-jti", true)
@@ -223,7 +223,7 @@ func TestValidate_Optional_Gin(t *testing.T) {
 	t.Run("Validate with empty JTI", func(t *testing.T) {
 		mr := miniredis.RunT(t)
 		rClient := redis.NewClient(&redis.Options{Addr: mr.Addr()})
-		defer rClient.Close()
+		defer func() { _ = rClient.Close() }()
 
 		m := NewJWTMiddleware("secret", rClient)
 		router := gin.New()
@@ -254,7 +254,7 @@ func TestValidate_Optional_Gin(t *testing.T) {
 	t.Run("Validate JTI-less via Cookie", func(t *testing.T) {
 		mr := miniredis.RunT(t)
 		rClient := redis.NewClient(&redis.Options{Addr: mr.Addr()})
-		defer rClient.Close()
+		defer func() { _ = rClient.Close() }()
 
 		m := NewJWTMiddleware("secret", rClient)
 		router := gin.New()
@@ -284,7 +284,7 @@ func TestValidate_Optional_Gin(t *testing.T) {
 	t.Run("Optional with JTI-less via Cookie", func(t *testing.T) {
 		mr := miniredis.RunT(t)
 		rClient := redis.NewClient(&redis.Options{Addr: mr.Addr()})
-		defer rClient.Close()
+		defer func() { _ = rClient.Close() }()
 
 		m := NewJWTMiddleware("secret", rClient)
 		router := gin.New()

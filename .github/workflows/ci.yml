@@ -1924,6 +1924,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     needs: [alembic-migrations]
+    env:
+      SECRET_KEY: "dummy-secret-key-for-migrations-integration-test-12345678"
     services:
       postgres:
         image: postgres:17
