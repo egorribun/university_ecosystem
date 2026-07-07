@@ -300,7 +300,9 @@ jobs:
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
       - name: Install shellcheck
-        run: sudo apt-get update && sudo apt-get install -y shellcheck
+        run: |
+          wget -qO- "https://github.com/koalaman/shellcheck/releases/download/v0.10.0/shellcheck-v0.10.0.linux.x86_64.tar.xz" | tar -xJv
+          sudo cp shellcheck-v0.10.0/shellcheck /usr/local/bin/
       - name: Run ShellCheck
         run: |
           find scripts/ -type f -name "*.sh" -exec shellcheck -e SC2086 -e SC2001 -e SC2030 -e SC2031 {} +
