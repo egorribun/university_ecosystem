@@ -141,3 +141,31 @@ def test_optimize_image_invalid_data():
     with patch("app.utils.images.VIPS_AVAILABLE", False):
         with pytest.raises(ValueError, match="Invalid image data"):
             img_mod.optimize_image(b"not-an-image-payload")
+
+
+def test_optimize_image_negative_bounds():
+    from io import BytesIO
+
+    from PIL import Image as PILImage
+
+    img = PILImage.new("RGB", (2, 2), color="red")
+    buf = BytesIO()
+    img.save(buf, format="PNG")
+    png_data = buf.getvalue()
+    _, mime = img_mod.optimize_image(png_data, max_width=-10, max_height=-5)
+    assert mime == "image/webp"
+
+
+def test_optimize_image_with_exif_orientation():
+    from io import BytesIO
+
+    from PIL import Image as PILImage
+
+    img = PILImage.new("RGB", (10, 10), color="blue")
+    exif = img.getexif()
+    exif[274] = 3
+    buf = BytesIO()
+    img.save(buf, format="JPEG", exif=exif)
+    jpg_data = buf.getvalue()
+    _optimized, mime = img_mod.optimize_image(jpg_data)
+    assert mime == "image/webp"

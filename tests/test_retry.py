@@ -114,3 +114,17 @@ def test_retry_exhausted_exception():
     assert exc.attempts == 5
     assert exc.last_error is original
     assert "5 attempts" in str(exc)
+
+
+@pytest.mark.asyncio
+async def test_retry_async_no_jitter():
+    """Test retry_async when jitter is disabled."""
+    mock_fn = AsyncMock(side_effect=[ValueError("fail"), "success"])
+    result = await retry_async(
+        mock_fn,
+        max_attempts=3,
+        base_delay=0.01,
+        jitter=False,
+        retryable_exceptions=(ValueError,),
+    )
+    assert result == "success"

@@ -16,6 +16,16 @@ crate-type = ["cdylib", "rlib"]
 pyo3 = { version = "0.29", features = ["extension-module", "abi3-py311"] }  # RUSTSEC-2026-0176/-0177: patched in >=0.29.0
 ammonia = "4.1.2"
 
+[dev-dependencies]
+# Property-based testing: generates arbitrary inputs to find edge cases automatically.
+proptest = "1"
+# Micro-benchmarking framework for reliable, statistically-sound measurements.
+criterion = { version = "0.5", features = ["html_reports"] }
+
+[[bench]]
+name = "sanitizer_bench"
+harness = false
+
 [profile.release]
 # LTO produces significantly smaller binaries for cdylib targets at the cost of
 # a longer link step. Acceptable for the infrequent CI build cadence.

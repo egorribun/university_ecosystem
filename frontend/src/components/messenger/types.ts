@@ -36,6 +36,9 @@ export interface Message {
   readAt?: string | null
   readAtLabel?: string
   isLastRead?: boolean
+  // Wave 212 — Seen by N of M receipts for group chats
+  seenByCount?: number
+  seenByTotal?: number
   // Wave 205 — edit + soft-delete. editedAtLabel is the pre-formatted "(edited)"
   // time tooltip; deletedAt set => render the "Message deleted" tombstone (drops
   // the bubble content, attachments and the edit/delete affordance).

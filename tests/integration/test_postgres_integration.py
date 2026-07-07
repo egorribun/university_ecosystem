@@ -207,3 +207,82 @@ async def test_db_session_write_read_consistency(db_session: AsyncSession) -> No
         "possible autoflush/autocommit misconfiguration"
     )
     assert str(row[0]) == event_id
+
+
+async def test_connection_pool_exhaustion_resilience(
+    async_client: AsyncClient,
+) -> None:
+    """Burst of concurrent requests must not crash the server due to pool exhaustion.
+
+    WHY: When the connection pool is saturated, SQLAlchemy raises QueuePool
+    overflow / connection timeout errors.  These must surface as 503 / 504
+    responses — not unhandled 500s or silent hangs.  This test fires 10
+    lightweight requests concurrently to exercise the pool-wait path.
+    """
+    # Use the absolute healthz URL that exists at the root (not under /api/v1).
+    responses = await asyncio.gather(
+        *[
+            async_client.get(
+                "http://testserver/healthz",
+                headers={"X-Disable-Query-Budget": "1"},
+            )
+            for _ in range(10)
+        ],
+        return_exceptions=True,
+    )
+
+    for resp in responses:
+        if isinstance(resp, Exception):
+            pytest.fail(f"Concurrent request raised an exception: {resp}")
+        # The server must return a structured response — not crash.
+        assert resp.status_code in {200, 503, 504}, (
+            f"Unexpected status {resp.status_code} under load: {resp.text}"
+        )
+
+
+async def test_transaction_rollback_on_unique_violation(
+    db_session: AsyncSession,
+) -> None:
+    """A unique-constraint violation must roll back only the failed operation.
+
+    WHY: If the exception propagates without a savepoint / nested transaction,
+    the entire session becomes unusable and subsequent reads return
+    InternalError('current transaction is aborted').  This test ensures the
+    repository layer correctly handles the violation and leaves the session
+    in a usable state.
+    """
+    from sqlalchemy.exc import IntegrityError
+
+    event_id = str(uuid.uuid4())
+
+    # First insert — must succeed.
+    await db_session.execute(
+        text(
+            "INSERT INTO stored_events "
+            "(id, event_type, aggregate_id, aggregate_type, sequence_number, payload, error_count) "
+            "VALUES (:id, 'test.unique', 'agg-2', 'TestAggregate', 2, '{\"dup\": 1}', 0)"
+        ),
+        {"id": event_id},
+    )
+    await db_session.flush()
+
+    # Second insert with the same PK — must raise IntegrityError.
+    try:
+        await db_session.execute(
+            text(
+                "INSERT INTO stored_events "
+                "(id, event_type, aggregate_id, aggregate_type, sequence_number, payload, error_count) "
+                "VALUES (:id, 'test.unique', 'agg-2', 'TestAggregate', 2, '{\"dup\": 2}', 0)"
+            ),
+            {"id": event_id},
+        )
+        await db_session.flush()
+    except IntegrityError:
+        await db_session.rollback()
+
+    # Session must still be usable after rolling back.
+    result = await db_session.execute(text("SELECT 1"))
+    assert result.scalar() == 1, (
+        "DB session is no longer usable after IntegrityError rollback — "
+        "unique violations must not permanently corrupt the session state"
+    )

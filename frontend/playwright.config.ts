@@ -94,7 +94,7 @@ export default defineConfig({
             timeout: 360_000,
             cwd: __dirname,
             env: {
-              VITE_BACKEND_ORIGIN: "",
+              VITE_BACKEND_ORIGIN: process.env.VITE_BACKEND_ORIGIN ?? "",
               VITE_E2E_MODE: "1",
             },
           }
@@ -111,7 +111,7 @@ export default defineConfig({
             timeout: 360_000,
             cwd: __dirname,
             env: {
-              VITE_BACKEND_ORIGIN: "",
+              VITE_BACKEND_ORIGIN: process.env.VITE_BACKEND_ORIGIN ?? "",
               // Wave 115 SW1 — signal Playwright e2e context so ParticleAuthBackground
               // skips its 1000-particle canvas loop. See src/components/ui/
               // ParticleAuthBackground.tsx + tests/e2e/a11y-public.spec.ts for the

@@ -1,0 +1,38 @@
+rules:
+  - id: no-eval-exec-in-production
+    patterns:
+      - pattern: eval(...)
+      - pattern: exec(...)
+    message: "eval/exec usage detected - security risk"
+    languages: [python]
+    severity: ERROR
+    paths:
+      include:
+        - "app/**"
+      exclude:
+        - "tests/**"
+
+  - id: no-raw-sql-without-params
+    patterns:
+      - pattern: |
+          $CONN.execute(f"...")
+      - pattern: |
+          $CONN.execute("..." + $X)
+    message: "Raw SQL string interpolation detected - use parameterized queries"
+    languages: [python]
+    severity: ERROR
+
+  - id: no-pickle-loads-without-validation
+    pattern: pickle.loads($DATA)
+    message: "pickle.loads() is unsafe for untrusted data"
+    languages: [python]
+    severity: WARNING
+
+  - id: no-hardcoded-secrets
+    patterns:
+      - pattern: $X = "sk-..."
+      - pattern: $X = "ghp_..."
+      - pattern: $X = "AKIA..."
+    message: "Possible hardcoded secret detected"
+    languages: [python]
+    severity: ERROR

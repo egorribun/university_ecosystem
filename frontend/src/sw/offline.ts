@@ -167,7 +167,9 @@ export async function processPendingNavigations() {
   const records = await db.getAll(STORES.NAVIGATION)
   for (const record of records) {
     log("Processing navigation", record)
-    // In a real SW, this might involve clients.openWindow
+    if (self.clients && typeof self.clients.openWindow === "function") {
+      await self.clients.openWindow(record.url).catch(() => {})
+    }
     await db.delete(STORES.NAVIGATION, record.id)
   }
 }

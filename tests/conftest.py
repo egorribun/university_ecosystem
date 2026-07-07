@@ -20,13 +20,41 @@ from sqlalchemy.ext.compiler import compiles
 # Core settings for tests
 os.environ["ENVIRONMENT"] = "testing"
 worker_id = os.environ.get("PYTEST_XDIST_WORKER")
-if worker_id:
-    # Use unique database per worker for parallel testing
-    os.environ["DATABASE_URL"] = f"sqlite+aiosqlite:///./test_{worker_id}.db"
+
+# Wave 212 Phase II Step 1: Configure parallel Postgres fixtures via testcontainers
+_container = None
+_postgres_url = None
+if (
+    os.environ.get("USE_TESTCONTAINERS_POSTGRES") == "1"
+    or os.environ.get("RUN_INTEGRATION_TESTS") == "1"
+):
+    try:
+        import atexit
+
+        from testcontainers.postgres import PostgresContainer
+
+        # Start a lightweight Postgres container with pgvector support per worker process
+        _container = PostgresContainer("pgvector/pgvector:pg17")
+        _container.start()
+        atexit.register(_container.stop)
+        # Obtain connection url with asyncpg driver
+        _postgres_url = _container.get_connection_url(driver="asyncpg")
+    except Exception as e:
+        print(
+            f"Warning: Failed to start Postgres testcontainer, falling back to SQLite: {e}"
+        )
+
+if _postgres_url:
+    os.environ["DATABASE_URL"] = _postgres_url
+    os.environ["RUN_INTEGRATION_TESTS"] = "1"
 else:
-    os.environ["DATABASE_URL"] = os.environ.get(
-        "DATABASE_URL", "sqlite+aiosqlite:///./test.db"
-    )
+    if worker_id:
+        # Use unique database per worker for parallel testing
+        os.environ["DATABASE_URL"] = f"sqlite+aiosqlite:///./test_{worker_id}.db"
+    else:
+        os.environ["DATABASE_URL"] = os.environ.get(
+            "DATABASE_URL", "sqlite+aiosqlite:///./test.db"
+        )
 os.environ["SECRET_KEY"] = "test-secret-key-32-characters-long-entropy"
 os.environ["ALGORITHM"] = "HS256"
 os.environ["ACCESS_TOKEN_EXPIRE_MINUTES"] = "30"

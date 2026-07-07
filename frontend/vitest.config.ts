@@ -35,8 +35,6 @@ export default defineConfig({
         "src/routeTree.gen.ts",
         "src/api/generated/**/*",
         "**/*.d.ts",
-        "src/sw/**/*",
-        "src/sw.ts",
         "src/App.tsx",
         "src/AppProviders.tsx",
         "src/workers/**/*",

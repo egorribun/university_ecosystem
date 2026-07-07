@@ -259,4 +259,219 @@ describe("subscribe", () => {
       expect(await mod.getExistingPushSubscription()).toBeNull()
     })
   })
+
+  // ─── W16 extended coverage ──────────────────────────────────────────────────
+
+  describe("Notification permission denied → early return", () => {
+    it("returns null without touching pushManager when permission is denied", async () => {
+      const subscribeSpy = vi.fn()
+      const mockReg = {
+        pushManager: {
+          getSubscription: vi.fn().mockResolvedValue(null),
+          subscribe: subscribeSpy,
+        },
+      }
+      mockSWContainer.getRegistration.mockResolvedValue(mockReg)
+      vi.stubEnv("VITE_VAPID_PUBLIC_KEY", "abc")
+      vi.stubGlobal("Notification", {
+        permission: "denied",
+        requestPermission: vi.fn(),
+      })
+
+      const result = await mod.ensurePushSubscription({ requestPermission: true })
+
+      expect(result).toBeNull()
+      // Subscribe must NOT be called — we bail out before reaching pushManager
+      expect(subscribeSpy).not.toHaveBeenCalled()
+    })
+  })
+
+  describe("VAPID key missing / invalid → graceful null", () => {
+    it("returns null when both env var and API return empty/null VAPID key", async () => {
+      const mockReg = {
+        pushManager: {
+          getSubscription: vi.fn().mockResolvedValue(null),
+          subscribe: vi.fn(),
+        },
+      }
+      mockSWContainer.getRegistration.mockResolvedValue(mockReg)
+      // Empty env var
+      vi.stubEnv("VITE_VAPID_PUBLIC_KEY", "")
+      // API returns null
+      const { getVapidPublicKey } = await import("@/api/notifications")
+      vi.mocked(getVapidPublicKey).mockResolvedValue(null as any)
+
+      vi.stubGlobal("Notification", {
+        permission: "granted",
+        requestPermission: vi.fn(),
+      })
+
+      const result = await mod.ensurePushSubscription({ requestPermission: false })
+
+      expect(result).toBeNull()
+    })
+
+    it("returns null when vapidPublicKey option is an empty string", async () => {
+      const mockReg = {
+        pushManager: {
+          getSubscription: vi.fn().mockResolvedValue(null),
+          subscribe: vi.fn(),
+        },
+      }
+      mockSWContainer.getRegistration.mockResolvedValue(mockReg)
+      vi.stubGlobal("Notification", { permission: "granted" })
+
+      const result = await mod.ensurePushSubscription({
+        requestPermission: false,
+        vapidPublicKey: "   ", // whitespace-only — normalised to empty
+      })
+
+      expect(result).toBeNull()
+    })
+  })
+
+  describe("pushManager.subscribe throws → retry logic (persistSubscriptionWithBackoff)", () => {
+    it("retries saveSubscription up to PERSIST_MAX_ATTEMPTS before throwing", async () => {
+      const { saveSubscription } = await import("@/api/notifications")
+
+      const networkError = new Error("network error")
+      vi.mocked(saveSubscription)
+        .mockRejectedValueOnce(networkError)
+        .mockRejectedValueOnce(networkError)
+        .mockResolvedValue({} as any)
+
+      const mockSub = {
+        endpoint: "https://push.example.com/sub",
+        options: { applicationServerKey: mod.urlBase64ToUint8Array("validkey123").buffer },
+        toJSON: () => ({
+          endpoint: "https://push.example.com/sub",
+          keys: { p256dh: "pk", auth: "ak" },
+        }),
+      }
+      const mockReg = {
+        pushManager: {
+          getSubscription: vi.fn().mockResolvedValue(null),
+          subscribe: vi.fn().mockResolvedValue(mockSub),
+        },
+      }
+      mockSWContainer.getRegistration.mockResolvedValue(mockReg)
+      vi.stubEnv("VITE_VAPID_PUBLIC_KEY", "validkey123")
+      vi.stubGlobal("Notification", { permission: "granted" })
+
+      // Run timers so sleep(delay) resolves immediately
+      const result = await Promise.race([
+        mod.ensurePushSubscription({ requestPermission: false }),
+        // Fast-forward fake timers while awaiting
+        new Promise<null>((resolve) => {
+          vi.runAllTimersAsync().then(() => resolve(null))
+        }),
+      ])
+
+      // saveSubscription succeeded on third attempt; sub should be returned
+      expect(saveSubscription).toHaveBeenCalledTimes(3)
+      expect(result).toBe(mockSub)
+    })
+
+    it("handles 409 Conflict from saveSubscription as success (no throw)", async () => {
+      const { saveSubscription } = await import("@/api/notifications")
+
+      const conflictError = new Error("409 Conflict")
+      vi.mocked(saveSubscription).mockRejectedValue(conflictError)
+
+      const mockSub = {
+        endpoint: "https://push.example.com/sub",
+        options: { applicationServerKey: mod.urlBase64ToUint8Array("key").buffer },
+        toJSON: () => ({ endpoint: "https://push.example.com/sub" }),
+      }
+      const mockReg = {
+        pushManager: {
+          getSubscription: vi.fn().mockResolvedValue(null),
+          subscribe: vi.fn().mockResolvedValue(mockSub),
+        },
+      }
+      mockSWContainer.getRegistration.mockResolvedValue(mockReg)
+      vi.stubEnv("VITE_VAPID_PUBLIC_KEY", "key")
+      vi.stubGlobal("Notification", { permission: "granted" })
+
+      // Does NOT throw — 409 is treated as success internally
+      await expect(mod.ensurePushSubscription({ requestPermission: false })).resolves.toBeDefined()
+    })
+  })
+
+  describe("Browser missing Push API → graceful null", () => {
+    it("returns null from ensurePushSubscription when PushManager is absent", async () => {
+      vi.stubGlobal("PushManager", undefined)
+
+      const result = await mod.ensurePushSubscription()
+      expect(result).toBeNull()
+    })
+
+    it("returns null from ensurePushSubscription when navigator.serviceWorker absent", async () => {
+      vi.stubGlobal("navigator", {})
+
+      const result = await mod.ensurePushSubscription()
+      expect(result).toBeNull()
+    })
+
+    it("returns null from softSyncPushSubscription when PushManager is absent", async () => {
+      vi.stubGlobal("PushManager", undefined)
+
+      const result = await mod.softSyncPushSubscription()
+      expect(result).toBeNull()
+    })
+
+    it("returns null from softSyncPushSubscription when Notification permission is not granted", async () => {
+      vi.stubGlobal("PushManager", class {})
+      vi.stubGlobal("Notification", { permission: "default" })
+
+      const result = await mod.softSyncPushSubscription()
+      expect(result).toBeNull()
+    })
+  })
+
+  describe("Subscription serialization (endpoint, p256dh, auth)", () => {
+    it("passes serialized subscription fields to saveSubscription", async () => {
+      const { saveSubscription } = await import("@/api/notifications")
+      vi.mocked(saveSubscription).mockResolvedValue({} as any)
+
+      const rawP256dh = "BNcRdreALRFXTkOOUHK1EtK2wtwe4Ou2BrqZNnq73Ps" // pragma: allowlist secret
+      const rawAuth = "tBHItJI5svbpez7KI4CCXg"
+
+      const mockSub = {
+        endpoint: "https://fcm.googleapis.com/fcm/send/unique-token",
+        options: { applicationServerKey: mod.urlBase64ToUint8Array("testkey").buffer },
+        expirationTime: null,
+        toJSON: () => ({
+          endpoint: "https://fcm.googleapis.com/fcm/send/unique-token",
+          expirationTime: null,
+          keys: {
+            p256dh: rawP256dh,
+            auth: rawAuth,
+          },
+        }),
+      }
+      const mockReg = {
+        pushManager: {
+          getSubscription: vi.fn().mockResolvedValue(null),
+          subscribe: vi.fn().mockResolvedValue(mockSub),
+        },
+      }
+      mockSWContainer.getRegistration.mockResolvedValue(mockReg)
+      vi.stubEnv("VITE_VAPID_PUBLIC_KEY", "testkey")
+      vi.stubGlobal("Notification", { permission: "granted" })
+
+      await mod.ensurePushSubscription({ requestPermission: false })
+
+      expect(saveSubscription).toHaveBeenCalledWith(
+        expect.objectContaining({
+          endpoint: "https://fcm.googleapis.com/fcm/send/unique-token",
+          keys: expect.objectContaining({
+            p256dh: rawP256dh,
+            auth: rawAuth,
+          }),
+        }),
+        undefined
+      )
+    })
+  })
 })

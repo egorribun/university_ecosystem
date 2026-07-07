@@ -220,10 +220,25 @@ api.interceptors.request.use(async (config) => {
   // and prepends it to the SDK URL (also "/api/v1/..."), producing "/api/v1/api/v1/...".
   // It then passes `baseURL: ""` to axios, so we detect the doubled prefix in the URL itself.
   const _url = config.url ?? ""
-  if (_url.startsWith("/api/v1/api/v1/")) {
-    config.url = _url.slice("/api/v1".length)
-  } else if (_url.startsWith("/api/v1/") && config.baseURL?.includes("/api/v1")) {
-    config.url = _url.slice("/api/v1".length)
+  const isAbsolute = _url.startsWith("http://") || _url.startsWith("https://")
+  let urlPath = _url
+  let urlOrigin = ""
+  if (isAbsolute) {
+    try {
+      const parsed = new URL(_url)
+      urlPath = parsed.pathname + parsed.search
+      urlOrigin = parsed.origin
+    } catch {
+      // fallback if URL parsing fails
+    }
+  }
+
+  if (urlPath.startsWith("/api/v1/api/v1/")) {
+    urlPath = urlPath.slice("/api/v1".length)
+    config.url = urlOrigin + urlPath
+  } else if (urlPath.startsWith("/api/v1/") && config.baseURL?.includes("/api/v1")) {
+    urlPath = urlPath.slice("/api/v1".length)
+    config.url = urlOrigin + urlPath
   }
 
   // Mutation dedup: reject duplicate in-flight requests with the same Idempotency-Key.

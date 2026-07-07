@@ -867,21 +867,21 @@
 
 ### A. Coverage Progress Tracker
 
-| Фронт | Wave 0 | Wave 1 | Wave 2 | Wave 3 | Wave 4 | Wave 5 | Wave 6 | Waves 7-14 |
-|-------|--------|--------|--------|--------|--------|--------|--------|------------|
-| Python statements | baseline | 95% | — | — | — | — | 98%+ | **fail_under=93** ✅ |
-| Python branches | baseline | 88%+ | — | — | — | — | 95%+ | branch sweep (+35 tests) ✅ |
-| Python mutation | baseline | 75% | — | — | — | — | 85%+ | gate script added ✅ |
-| Go gateway | baseline | — | 85% | — | — | — | 90%+ | **91.9%** ✅ |
-| Go ws-hub | baseline | — | 85% | — | — | — | 90%+ | **85.7%** (telemetry coverage++) ✅ |
-| Go file-proc | baseline | — | 80% | — | — | — | 90%+ | go-test-gates Makefile ✅ |
-| Rust unit | baseline | — | — | 90% | — | — | 95%+ | proptest+criterion+2 fuzz targets ✅ |
-| FE statements | 90% | — | — | — | 95% | — | 98%+ | 92% (hooks branch sweep) ✅ |
-| FE branches | 80% | — | — | — | 88% | — | 92%+ | **83%** threshold (raised 81→83) ✅ |
-| E2E scenarios | 18 specs | — | — | — | 30+ specs | — | full | **+4 new specs** ✅ |
-| Integration | — | — | — | — | — | 9 files | — | **+2 new files** ✅ |
-| Contract | — | — | — | — | — | 13 files | — | **+expanded** ✅ |
-| Chaos | — | — | — | — | — | 1 file | — | **+memory pressure** ✅ |
+| Фронт | Wave 0 | Wave 1 | Wave 2 | Wave 3 | Wave 4 | Wave 5 | Wave 6 | Waves 7-14 | Phase I-VII (Proposed Target) |
+|-------|--------|--------|--------|--------|--------|--------|--------|------------|-------------------------------|
+| Python statements | baseline | 95% | — | — | — | — | 98%+ | **fail_under=93** ✅ | **98%+** |
+| Python branches | baseline | 88%+ | — | — | — | — | 95%+ | branch sweep (+35 tests) ✅ | **95%+** |
+| Python mutation | baseline | 75% | — | — | — | — | 85%+ | gate script added ✅ | **85%+ (kill rate)** |
+| Go gateway | baseline | — | 85% | — | — | — | 90%+ | **91.9%** ✅ | **95%+** |
+| Go ws-hub | baseline | — | 85% | — | — | — | 90%+ | **85.7%** (telemetry coverage++) ✅ | **95%+** |
+| Go file-proc | baseline | — | 80% | — | — | — | 90%+ | go-test-gates Makefile ✅ | **95%+** |
+| Rust unit | baseline | — | — | 90% | — | — | 95%+ | proptest+criterion+2 fuzz targets ✅ | **98%+** |
+| FE statements | 90% | — | — | — | 95% | — | 98%+ | 92% (hooks branch sweep) ✅ | **98%+** |
+| FE branches | 80% | — | — | — | 88% | — | 92%+ | **83%** threshold (raised 81→83) ✅ | **92%+** |
+| E2E scenarios | 18 specs | — | — | — | 30+ specs | — | full | **+4 new specs** ✅ | **Full Happy + Sad Paths** |
+| Integration | — | — | — | — | — | 9 files | — | **+2 new files** ✅ | **Multi-Service PG + NATS Integration** |
+| Contract | — | — | — | — | — | 13 files | — | **+expanded** ✅ | **OpenAPI Drift + Schema Blocking** |
+| Chaos | — | — | — | — | — | 1 file | — | **+memory pressure** ✅ | **Concurrency Burst & Load SLOs** |
 
 ---
 
@@ -895,6 +895,16 @@
 - **Wave 12**: Integration test expansion — DB round-trip tests + NATS outbox/DLQ mocks
 - **Wave 13**: Contract test expansion — OpenAPI drift detection + NATS subject schema
 - **Wave 14**: Chaos expansion — memory pressure, concurrent burst, unicode edge cases
+
+### Phase I-VII Summary (Proposed Roadmap)
+
+- **Phase I**: Seen-by-N Receipts & WebKit A11y Resolution (Seen-by-N read markers, E2E WebKit DOM size reduction, visual screenshot parity)
+- **Phase II**: Python Backend - Parallel PostgreSQL & RLS Validation (testcontainers, parallel PG runs, Row-Level Security checks, pgvector validation)
+- **Phase III**: Python Backend - Mutation Gates & Fuzz Seeding (blocking mutmut gate script, Atheris structured corpus seeding, CI automation)
+- **Phase IV**: Go Services - Multi-Service E2E Integration & Lock Checks (Gateway-WS-Hub integration suite, NATS testcontainer, Hub.mu vs Client.mu deadlock check)
+- **Phase V**: Rust Crates - ASAN/TSAN Sanitizer & FFI Panic Gates (ASAN/TSAN CI integrations, FFI panic boundary catches, proptest expansion)
+- **Phase VI**: Frontend - Vitest Route Loader & Service Worker Testing (route beforeLoad/search-param schemas coverage, PWA cache interceptor unit tests)
+- **Phase VII**: OpenAPI Drift & API Fuzzing Gates (PR-blocking schema drift checks, Schemathesis fuzzer auth integration)
 
 
 
