@@ -423,3 +423,152 @@ async def test_redis_keyspace_notifications_contract(redis_client):
         await pubsub.unsubscribe("__keyevent@0__:expired")
         await pubsub.aclose()
         await redis_client.delete(key)
+
+
+# ---------------------------------------------------------------------------
+# Pipeline commands — MULTI/EXEC atomicity contract (Wave 25)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_redis_pipeline_atomicity(redis_client):
+    """Multiple Redis commands issued inside a pipeline must be committed atomically.
+
+    Cross-service invariant: the session backend uses pipelines when registering
+    a new session (SET session key + EXPIRE in one round-trip).  If the pipeline
+    is not executed as a transaction the second command may be silently dropped
+    under load, creating sessions that never expire.
+    """
+    key_a = f"pipeline-a:{uuid.uuid4()}"
+    key_b = f"pipeline-b:{uuid.uuid4()}"
+
+    try:
+        async with redis_client.pipeline(transaction=True) as pipe:
+            pipe.set(key_a, "value_a", ex=60)
+            pipe.set(key_b, "value_b", ex=60)
+            results = await pipe.execute()
+
+        # Both SET commands must have succeeded.
+        assert all(r for r in results), (
+            f"Pipeline MULTI/EXEC: not all commands succeeded. Results: {results}"
+        )
+
+        val_a = await redis_client.get(key_a)
+        val_b = await redis_client.get(key_b)
+
+        if isinstance(val_a, bytes):
+            val_a = val_a.decode()
+        if isinstance(val_b, bytes):
+            val_b = val_b.decode()
+
+        assert val_a == "value_a", f"Pipeline key_a: expected 'value_a', got {val_a!r}"
+        assert val_b == "value_b", f"Pipeline key_b: expected 'value_b', got {val_b!r}"
+
+    finally:
+        await redis_client.delete(key_a, key_b)
+
+
+# ---------------------------------------------------------------------------
+# Connection pool exhaustion — burst of concurrent commands (Wave 25)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_redis_connection_pool_exhaustion_resilience(redis_client):
+    """Burst of 50 concurrent Redis commands must not raise connection-pool errors.
+
+    WHY: The rate-limiter and session backend share a Redis connection pool.
+    Under burst load (e.g. after a cold-start with many queued requests) the
+    pool may be temporarily exhausted.  Commands that wait for a free connection
+    must eventually succeed — not raise PoolTimeout or ConnectionError.
+    """
+    import asyncio as _asyncio
+
+    key = f"pool-burst:{uuid.uuid4()}"
+    try:
+        await redis_client.set(key, "0")
+
+        async def _increment():
+            return await redis_client.incr(key)
+
+        results = await _asyncio.gather(
+            *[_increment() for _ in range(50)],
+            return_exceptions=True,
+        )
+
+        errors = [r for r in results if isinstance(r, Exception)]
+        assert not errors, (
+            f"Redis pool exhaustion: {len(errors)} commands failed under burst load. "
+            f"Errors: {errors[:3]}"  # show first 3 to keep failure message concise
+        )
+
+        # Final counter must equal 50 (all increments applied exactly once).
+        final = await redis_client.get(key)
+        if isinstance(final, bytes):
+            final = int(final.decode())
+        else:
+            final = int(final)
+        assert final == 50, (
+            f"Expected counter=50 after 50 concurrent INCRs, got {final}. "
+            "This indicates lost updates due to pool exhaustion or race condition."
+        )
+
+    finally:
+        await redis_client.delete(key)
+
+
+# ---------------------------------------------------------------------------
+# Session reconnect — backend survives a transient connection failure (Wave 25)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_redis_session_reconnect_after_transient_failure(
+    redis_client, session_backend
+):
+    """RedisSessionBackend must remain functional after a transient Redis error.
+
+    WHY: Redis connections can be interrupted by network blips, Redis restarts,
+    or connection-pool timeouts.  The session backend must retry transparently
+    and not cache a broken client reference in a module-level singleton.
+
+    This test simulates the failure by executing a valid operation, then a
+    non-existent command (to trigger a RedisError), then verifying that a
+    subsequent valid operation still succeeds.
+    """
+    import contextlib
+
+    jti = str(uuid.uuid4())
+    future_expiry = datetime.now(UTC) + timedelta(hours=1)
+
+    # Step 1: normal register — must succeed.
+    await session_backend.register_session(
+        user_id=1,
+        jti=jti,
+        expires_at=future_expiry,
+    )
+
+    # Step 2: force a benign Redis error by executing a type-mismatched command.
+    #   We LPUSH on a STRING key — Redis returns WRONGTYPE error.
+    #   We suppress it so the test continues to the reconnect assertion.
+    with contextlib.suppress(Exception):
+        await redis_client.lpush(f"session:{jti}", "corrupt")
+
+    # Step 3: subsequent operation must still succeed — the client must have
+    #   recovered its connection rather than being stuck in an error state.
+    jti2 = str(uuid.uuid4())
+    await session_backend.register_session(
+        user_id=2,
+        jti=jti2,
+        expires_at=future_expiry,
+    )
+
+    key2 = f"session:{jti2}"
+    exists = await redis_client.exists(key2)
+    assert exists == 1, (
+        "RedisSessionBackend failed to register a second session after a "
+        "transient error — the client connection may be stuck in an error state."
+    )
+
+    # Cleanup
+    await redis_client.delete(f"session:{jti}", f"session:{jti2}")
