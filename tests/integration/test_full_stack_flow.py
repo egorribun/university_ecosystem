@@ -184,7 +184,7 @@ async def test_health_endpoint_reflects_db_connectivity(
     and breaks load-balancer rolling-restart safety checks.
     """
     response = await async_client.get(
-        "/health",
+        "/healthz",
         headers={"X-Disable-Query-Budget": "1"},
     )
     assert response.status_code == 200, (

@@ -108,7 +108,7 @@ async def test_concurrent_request_burst_no_data_corruption(
     responses = await asyncio.gather(
         *[
             async_client.get(
-                "/health",
+                "/healthz",
                 headers={"X-Disable-Query-Budget": "1"},
             )
             for _ in range(concurrent_count)
@@ -165,7 +165,7 @@ async def test_rapid_successive_requests_on_same_resource(
 
     for _ in range(burst_count):
         resp = await async_client.get(
-            "/health",
+            "/healthz",
             headers={"X-Disable-Query-Budget": "1"},
         )
         statuses.append(resp.status_code)
