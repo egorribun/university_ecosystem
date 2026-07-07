@@ -172,6 +172,85 @@ class TestCriticalQueryPlans:
                 f"Schedule query should be efficient, cost: {plan['estimated_cost']}"
             )
 
+    @pytest.mark.skipif(
+        "sqlite" in settings.database_url,
+        reason="Seq Scan gate requires PostgreSQL EXPLAIN ANALYZE",
+    )
+    async def test_events_by_date_no_seq_scan(self):
+        """Events lookup by date range must NOT use a Seq Scan.
+
+        WHY (W25 query-plan gate): events are queried on every page load;
+        a Seq Scan on a large table causes P99 latency spikes that cascade
+        into load-balancer timeouts.
+        """
+        async with async_session() as session:
+            # Force the planner to choose an index even on an empty table.
+            await session.execute(text("SET enable_seqscan = OFF"))
+            query = (
+                "SELECT * FROM events "
+                "WHERE start_time BETWEEN '2024-01-01' AND '2024-01-31' "
+                "AND is_published = true"
+            )
+            plan = await analyze_query_plan(session, query)
+
+            assert not plan["seq_scan"], (
+                f"events_by_date must not use Seq Scan — "
+                f"add an index on (start_time, is_published). "
+                f"Got node_type: {plan.get('node_type')}"
+            )
+
+    @pytest.mark.skipif(
+        "sqlite" in settings.database_url,
+        reason="Seq Scan gate requires PostgreSQL EXPLAIN ANALYZE",
+    )
+    async def test_user_sessions_no_seq_scan(self):
+        """Active session lookup by user_id must NOT use a Seq Scan.
+
+        WHY (W25 query-plan gate): every authenticated request checks for an
+        active session; a table scan on a large sessions table breaks SLOs.
+        """
+        async with async_session() as session:
+            await session.execute(text("SET enable_seqscan = OFF"))
+            query = (
+                "SELECT * FROM sessions "
+                "WHERE user_id = '00000000-0000-0000-0000-000000000000' "
+                "AND expires_at > now()"
+            )
+            plan = await analyze_query_plan(session, query)
+
+            assert not plan["seq_scan"], (
+                f"user_sessions must not use Seq Scan — "
+                f"ensure an index on (user_id, expires_at) exists. "
+                f"Got node_type: {plan.get('node_type')}"
+            )
+
+    @pytest.mark.skipif(
+        "sqlite" in settings.database_url,
+        reason="Seq Scan gate requires PostgreSQL EXPLAIN ANALYZE",
+    )
+    async def test_notifications_unread_count_no_seq_scan(self):
+        """Unread-notifications COUNT must NOT use a Seq Scan.
+
+        WHY (W25 query-plan gate): notification badge counts are fetched on
+        every page load for every authenticated user.  A Seq Scan on the
+        notifications table (which is partitioned and grows without bound)
+        would make badge updates unacceptably slow.
+        """
+        async with async_session() as session:
+            await session.execute(text("SET enable_seqscan = OFF"))
+            query = (
+                "SELECT COUNT(*) FROM notifications "
+                "WHERE user_id = '00000000-0000-0000-0000-000000000000' "
+                "AND is_read = false"
+            )
+            plan = await analyze_query_plan(session, query)
+
+            assert not plan["seq_scan"], (
+                f"notifications_unread must not use Seq Scan — "
+                f"ensure an index on (user_id, is_read) exists. "
+                f"Got node_type: {plan.get('node_type')}"
+            )
+
 
 class TestQueryPlanHelpers:
     """Test helper functions for query plan analysis."""

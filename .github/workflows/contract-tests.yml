@@ -22,6 +22,7 @@ on:
       - "services/ws-hub/pkg/hub/hub.go"
       - "tests/contracts/test_ws_hub_contract.py"
       - "services/ws-hub/internal/contract/**"
+      - "services/gateway/internal/contracts/**"
       - ".github/workflows/contract-tests.yml"
   pull_request:
     paths:
@@ -29,6 +30,7 @@ on:
       - "services/ws-hub/pkg/hub/hub.go"
       - "tests/contracts/test_ws_hub_contract.py"
       - "services/ws-hub/internal/contract/**"
+      - "services/gateway/internal/contracts/**"
       - ".github/workflows/contract-tests.yml"
   workflow_dispatch: {}
 
@@ -139,3 +141,17 @@ jobs:
           # not a specific HMAC value.  Real secrets never appear in CI logs.
           WS_HUB_INTERNAL_SECRET: "contract-test-placeholder-secret-not-for-production" # pragma: allowlist secret
           PACT_DO_NOT_TRACK: "true"
+
+      # ── W20 (audit 2026-07-07): Gateway contract tests ─────────────────────
+      # Run the gateway HTTP contract tests (internal/contracts) in the same job
+      # so failures are visible alongside the ws-hub pact verification.
+      # These tests use net/http/httptest (no CGO, no Pact FFI required) and
+      # verify the JSON schema contracts consumed by the frontend:
+      #   - GET  /health           → {status, service} fields
+      #   - POST /api/v1/ws/ticket → 401 {error} / 200 {ticket} shapes
+      #   - WebSocket message envelope → {type, payload} / {code, message}
+      #   - Internal header injection  → X-User-ID forwarded to backend
+      - name: Run gateway contract tests
+        run: go test ./internal/contracts/... -v -count=1
+        working-directory: services/gateway
+

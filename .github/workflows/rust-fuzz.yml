@@ -5,9 +5,11 @@ on:
     branches: [ main, master ]
     paths:
       - 'native/rust_ext/**'
+      - 'crates/pyo3-sanitizer/**'
   pull_request:
     paths:
       - 'native/rust_ext/**'
+      - 'crates/pyo3-sanitizer/**'
   schedule:
     # Run every Sunday at 00:00 UTC
     - cron: '0 0 * * 0'
@@ -74,3 +76,11 @@ jobs:
             native/rust_ext/fuzz/artifacts/
             native/rust_ext/fuzz/crash-*
           if-no-files-found: ignore
+
+      - name: Validate OSS-Fuzz config
+        # WHY: guard against accidental deletion of the OSS-Fuzz integration
+        # stub — these files are required for upstream OSS-Fuzz project setup.
+        run: |
+          test -f infra/oss-fuzz/project.yaml
+          test -f infra/oss-fuzz/build.sh
+          echo "OSS-Fuzz config present"

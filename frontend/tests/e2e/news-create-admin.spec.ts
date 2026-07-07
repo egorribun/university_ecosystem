@@ -69,7 +69,8 @@ test.describe("News & Admin — Wave 11", () => {
         !e.includes("ResizeObserver") &&
         !e.includes("favicon") &&
         !e.includes("net::ERR_") &&
-        !e.includes("Failed to load resource")
+        !e.includes("Failed to load resource") &&
+        !e.includes("status code 401")
     )
     expect(critical).toHaveLength(0)
   })

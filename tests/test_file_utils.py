@@ -435,3 +435,61 @@ async def test_save_attachment_fallback_extension():
             allowed_mime_types={"application/pdf"},
         )
         assert res == "http://test/file"
+
+
+def test_get_storage_backend_on_settings_change(monkeypatch):
+    from app.utils.files import _get_storage_backend, settings
+
+    monkeypatch.setattr(settings, "storage_backend", "s3")
+    with patch("app.utils.files.get_storage_backend") as mock_get:
+        _get_storage_backend()
+        assert mock_get.called
+
+
+@pytest.mark.asyncio
+async def test_prepare_local_storage_no_subdir():
+    from pathlib import Path
+
+    from app.services.storage import StaticFSStorage
+    from app.utils.files import _prepare_local_storage
+
+    backend = StaticFSStorage(base_dir=Path("/tmp/foo"), base_url="")  # noqa: S108
+    with patch("app.utils.files._ensure_dir") as mock_ensure:
+        await _prepare_local_storage(backend, "")
+        mock_ensure.assert_called_once_with(Path("/tmp/foo"))  # noqa: S108
+
+
+def test_looks_like_polyglot_general():
+    assert (
+        _looks_like_polyglot(b"<!doctype html><html><script>foo</script>", "text/plain")
+        is True
+    )
+
+
+@pytest.mark.asyncio
+async def test_save_attachment_zero_limit(monkeypatch):
+    import io
+
+    from fastapi import HTTPException, UploadFile
+
+    from app.utils.files import save_attachment, settings
+
+    upload = UploadFile(
+        filename="test.pdf",
+        file=io.BytesIO(b"%PDF-1.4"),
+        headers={"content-type": "application/pdf"},
+    )
+    mock_backend = AsyncMock()
+    mock_backend.save_file.return_value = "http://test/file.pdf"
+    monkeypatch.setattr(settings, "event_file_max_size_bytes", 0)
+    with patch("app.utils.files._get_storage_backend", return_value=mock_backend):
+        with pytest.raises(HTTPException) as exc:
+            await save_attachment(
+                upload,
+                "dir",
+                "prefix",
+                max_size_bytes=0,
+                allowed_mime_types={"application/pdf"},
+                allowed_extensions={".pdf"},
+            )
+        assert exc.value.status_code == 413

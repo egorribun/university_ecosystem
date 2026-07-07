@@ -1,0 +1,36 @@
+[package]
+name = "pyo3-sanitizer-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2021"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+
+[dependencies.pyo3-sanitizer]
+path = ".."
+
+# Prevent this from interfering with workspaces
+[workspace]
+members = [".", "fuzz_targets/*"]
+
+[[bin]]
+name = "fuzz_sanitize_rich_text"
+path = "fuzz_targets/fuzz_sanitize_rich_text.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "fuzz_sanitize_html_basic"
+path = "fuzz_targets/fuzz_sanitize_html_basic.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "fuzz_strip_html"
+path = "fuzz_targets/fuzz_strip_html.rs"
+test = false
+doc = false

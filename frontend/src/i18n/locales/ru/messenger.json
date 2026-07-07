@@ -15,6 +15,7 @@
   "typingMultiple": "{{count}} человек(а) печатают...",
   "isTyping": "Печатает",
   "seen": "Просмотрено · {{time}}",
+  "seenByGroup": "Просмотрено {{count}} из {{total}}",
   "edited": "(изменено)",
   "editMessage": "Изменить сообщение",
   "deleteMessage": "Удалить сообщение",

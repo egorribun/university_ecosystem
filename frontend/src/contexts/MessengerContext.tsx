@@ -2,7 +2,7 @@ import { createContext, useContext, useMemo, useState, useEffect, type ReactNode
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { useChatWebSocket } from "@/hooks/useChatWebSocket"
 import { useAuth } from "./AuthContext"
-import { chatApi, type PresenceStatus, type ChatsListResponse } from "@/api/chat"
+import { chatApi, type PresenceStatus, type ChatsListResponse, type Chat } from "@/api/chat"
 
 interface MessengerContextType {
   unreadCount: number
@@ -71,6 +71,43 @@ export function MessengerProvider({ children }: { children: ReactNode }) {
             return { ...chat, presence: nextPresence }
           })
 
+          return { ...old, items }
+        })
+      },
+      onRead: (chatId, userId, readAt) => {
+        if (!readAt) return
+
+        // Update single chat detail cache
+        queryClient.setQueryData<Chat | undefined>(["chats", chatId], (old) => {
+          if (!old) return old
+          const exists = old.read_receipts
+            ? old.read_receipts.some((r) => r.user_id === userId)
+            : false
+          const newReceipts =
+            exists && old.read_receipts
+              ? old.read_receipts.map((r) =>
+                  r.user_id === userId ? { ...r, last_read_at: readAt } : r
+                )
+              : [...(old.read_receipts || []), { user_id: userId, last_read_at: readAt }]
+          return { ...old, read_receipts: newReceipts }
+        })
+
+        // Update chats list cache
+        queryClient.setQueryData<ChatsListResponse | undefined>(["chats"], (old) => {
+          if (!old) return old
+          const items = old.items.map((chat) => {
+            if (chat.id !== chatId) return chat
+            const exists = chat.read_receipts
+              ? chat.read_receipts.some((r) => r.user_id === userId)
+              : false
+            const newReceipts =
+              exists && chat.read_receipts
+                ? chat.read_receipts.map((r) =>
+                    r.user_id === userId ? { ...r, last_read_at: readAt } : r
+                  )
+                : [...(chat.read_receipts || []), { user_id: userId, last_read_at: readAt }]
+            return { ...chat, read_receipts: newReceipts }
+          })
           return { ...old, items }
         })
       },

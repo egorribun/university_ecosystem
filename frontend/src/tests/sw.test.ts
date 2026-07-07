@@ -15,17 +15,40 @@ vi.mock("workbox-core", () => ({
   clientsClaim: vi.fn(),
 }))
 
-vi.mock("workbox-routing", () => ({
-  registerRoute: vi.fn(),
-  NavigationRoute: vi.fn(),
-}))
+vi.mock("workbox-routing", () => {
+  const registeredRoutes: any[] = []
+  ;(globalThis as any).__registeredRoutes = registeredRoutes
+  const NavigationRouteMock = vi.fn(function (this: any, strategy: any) {
+    this.strategy = strategy
+    this.handler = strategy
+    this.match = vi.fn(() => true)
+    ;(globalThis as any).__navigationRouteMockInstance = this
+  })
+  return {
+    registerRoute: vi.fn((match, handler) => {
+      if (typeof match === "object" && match !== null && !handler) {
+        registeredRoutes.push(match)
+      } else {
+        registeredRoutes.push({ match, handler })
+      }
+    }),
+    NavigationRoute: NavigationRouteMock,
+  }
+})
 
-vi.mock("workbox-strategies", () => ({
-  StaleWhileRevalidate: vi.fn(() => ({})),
-  CacheFirst: vi.fn(() => ({})),
-  NetworkFirst: vi.fn(() => ({})),
-  NetworkOnly: vi.fn(() => ({})),
-}))
+vi.mock("workbox-strategies", () => {
+  const mockHandle = vi.fn(async () => new Response("mocked strategy response"))
+  const MockStrategy = vi.fn(function (this: any, options: any) {
+    this.handle = mockHandle
+    this.plugins = options?.plugins
+  })
+  return {
+    StaleWhileRevalidate: MockStrategy,
+    CacheFirst: MockStrategy,
+    NetworkFirst: MockStrategy,
+    NetworkOnly: MockStrategy,
+  }
+})
 
 vi.mock("workbox-expiration", () => {
   const CacheExpiration = vi.fn(() => ({
@@ -277,7 +300,12 @@ const getQueueModules = () => {
 const dispatchSwMessage = async (data: Record<string, unknown>) => {
   const listener = getListener("message")
   const waitUntil = vi.fn((promise: Promise<unknown>) => promise)
-  listener({ data, waitUntil } as unknown as ExtendableMessageEvent)
+  listener({
+    data,
+    origin: self.location.origin,
+    source: { url: self.location.href } as unknown as Client,
+    waitUntil,
+  } as unknown as ExtendableMessageEvent)
   const pending = waitUntil.mock.calls[0]?.[0]
   if (pending instanceof Promise) {
     await pending
@@ -329,7 +357,7 @@ describe("queue helper module exports", () => {
   })
 })
 
-describe.skip("background sync integration", () => {
+describe("background sync integration", () => {
   test("navigation sync drains queued targets once back online", async () => {
     const { stores, syncTags } = getQueueModules()
     const scope = self as unknown as TestServiceWorkerScope
@@ -363,7 +391,7 @@ describe.skip("background sync integration", () => {
   })
 })
 
-describe.skip("service worker offline queues", () => {
+describe("service worker offline queues", () => {
   test("storePendingNavigation persists navigation requests", async () => {
     const sw = await loadServiceWorker()
     const record: PendingNavigation = {
@@ -509,7 +537,7 @@ describe.skip("service worker offline queues", () => {
   })
 })
 
-describe.skip("service worker push handling", () => {
+describe("service worker push handling", () => {
   test("in-app push notifications send toast messages to visible clients", async () => {
     const scope = self as unknown as TestServiceWorkerScope
     const postMessage = vi.fn()
@@ -554,7 +582,7 @@ describe.skip("service worker push handling", () => {
   })
 })
 
-describe.skip("service worker api cache controls", () => {
+describe("service worker api cache controls", () => {
   test("clears cached news responses after session changes", async () => {
     const scope = self as unknown as TestServiceWorkerScope
     const cacheStorage = scope.caches
@@ -566,6 +594,8 @@ describe.skip("service worker api cache controls", () => {
     const waitUntil = vi.fn((promise: Promise<unknown>) => promise)
     messageListener({
       data: { type: SERVICE_WORKER_MESSAGE_TYPES.CLEAR_API_CACHE },
+      origin: self.location.origin,
+      source: { url: self.location.href } as unknown as Client,
       waitUntil,
     } as unknown as ExtendableMessageEvent)
 
@@ -578,7 +608,7 @@ describe.skip("service worker api cache controls", () => {
   })
 })
 
-describe.skip("service worker media cache controls", () => {
+describe("service worker media cache controls", () => {
   test("clears session-specific media caches when requested", async () => {
     const scope = self as unknown as TestServiceWorkerScope
     const cacheName = "media-private:session-alpha"
@@ -690,5 +720,221 @@ describe.skip("service worker media cache controls", () => {
 
     const second = await sw.handleMediaRequest(mediaUrl)
     await expect(second.text()).resolves.toBe("signed-media")
+  })
+
+  test("private media cache hit returns match directly", async () => {
+    const sw = await loadServiceWorker()
+    const scope = self as unknown as TestServiceWorkerScope
+    const mediaUrl = "https://example.com/media/cached-private.png"
+
+    await dispatchSwMessage({
+      type: SERVICE_WORKER_MESSAGE_TYPES.SET_API_SESSION_CACHE_KEY,
+      sessionHash: "delta",
+    })
+
+    const cache = await scope.caches.open("media-private:delta")
+    await cache.put(mediaUrl, new Response("cached-delta-val"))
+
+    const response = await sw.handleMediaRequest(mediaUrl)
+    await expect(response.text()).resolves.toBe("cached-delta-val")
+  })
+
+  test("idempotent report deduplication skips duplicates", async () => {
+    const offline = await import("@/sw/offline")
+    const idb = await import("idb")
+    const db = await idb.openDB("notification-interactions", 4)
+    await db.clear(offline.STORES.REPORT)
+
+    await offline.storePendingReport({
+      url: "https://example.com/nav",
+      reportUrl: "https://example.com/api/report",
+      timestamp: Date.now(),
+      payload: { action: "click" },
+      method: "PUT",
+    })
+
+    const firstReports = await offline.readPendingReports()
+    expect(firstReports).toHaveLength(1)
+
+    await offline.storePendingReport({
+      url: "https://example.com/nav",
+      reportUrl: "https://example.com/api/report",
+      timestamp: Date.now(),
+      payload: { action: "click" },
+      method: "PUT",
+    })
+
+    const secondReports = await offline.readPendingReports()
+    expect(secondReports).toHaveLength(1)
+  })
+
+  test("processNewsInteractionQueue flushes items correctly on success/client errors", async () => {
+    const offline = await import("@/sw/offline")
+    const idb = await import("idb")
+    const db = await idb.openDB("notification-interactions", 4)
+    await db.clear(offline.STORES.NEWS_INTERACTION)
+
+    await db.add(offline.STORES.NEWS_INTERACTION, {
+      url: "https://example.com/api/news/1/like",
+      method: "POST",
+      payload: { value: true },
+    })
+    await db.add(offline.STORES.NEWS_INTERACTION, {
+      url: "https://example.com/api/news/2/like",
+      method: "POST",
+      payload: { value: true },
+    })
+
+    server.use(
+      http.post("https://example.com/api/news/1/like", () => HttpResponse.json({ ok: true })),
+      http.post("https://example.com/api/news/2/like", () =>
+        HttpResponse.json({ error: "bad" }, { status: 400 })
+      )
+    )
+
+    const scope = self as unknown as TestServiceWorkerScope
+    scope.navigator.setOnline(true)
+
+    // Clear navigation and reports to isolate news interaction queue test
+    await db.clear(offline.STORES.NAVIGATION)
+    await db.clear(offline.STORES.REPORT)
+
+    await offline.processOfflineQueues()
+
+    const remaining = await db.getAll(offline.STORES.NEWS_INTERACTION)
+    expect(remaining).toHaveLength(0)
+  })
+
+  test("push click handles fetch failure and offline states by enqueuing reports", async () => {
+    const scope = self as unknown as TestServiceWorkerScope
+    const clickListener = listeners.get("notificationclick")?.[0]
+    expect(clickListener).toBeDefined()
+
+    let resolvePromiseA: any
+    const waitPromiseA = new Promise((resolve) => {
+      resolvePromiseA = resolve
+    })
+
+    const event = {
+      notification: {
+        data: {
+          url: "/chat/1",
+          reportUrl: "https://example.com/api/report-click",
+          reportPayload: { test: true },
+          notificationId: "123",
+        },
+        close: vi.fn(),
+      },
+      waitUntil: vi.fn(async (promise) => {
+        try {
+          await promise
+        } finally {
+          resolvePromiseA()
+        }
+      }),
+    }
+
+    scope.navigator.setOnline(true)
+    server.use(http.post("https://example.com/api/report-click", () => HttpResponse.error()))
+
+    await clickListener!(event as any)
+    await waitPromiseA
+
+    const offline = await import("@/sw/offline")
+    const reportsA = await offline.readPendingReports()
+    expect(reportsA.length).toBeGreaterThan(0)
+
+    scope.navigator.setOnline(false)
+    const idb = await import("idb")
+    const db = await idb.openDB("notification-interactions", 4)
+    await db.clear(offline.STORES.REPORT)
+
+    let resolvePromiseB: any
+    const waitPromiseB = new Promise((resolve) => {
+      resolvePromiseB = resolve
+    })
+
+    const eventB = {
+      ...event,
+      waitUntil: vi.fn(async (promise) => {
+        try {
+          await promise
+        } finally {
+          resolvePromiseB()
+        }
+      }),
+    }
+
+    await clickListener!(eventB as any)
+    await waitPromiseB
+
+    const reportsB = await offline.readPendingReports()
+    expect(reportsB.length).toBeGreaterThan(0)
+  })
+
+  test("NavigationRoute error handler returns cached index.html or Response.error", async () => {
+    const instance = (globalThis as any).__navigationRouteMockInstance
+    expect(instance).toBeDefined()
+    expect(instance.strategy).toBeDefined()
+
+    const plugins = instance.strategy.plugins
+    const handlerPlugin = plugins.find((p: any) => p.handlerDidError)
+    expect(handlerPlugin).toBeDefined()
+
+    const scope = self as unknown as TestServiceWorkerScope
+    const cache = await scope.caches.open("index-cache")
+    await cache.put("index.html", new Response("cached-html"))
+
+    const originalMatch = scope.caches.match
+    scope.caches.match = vi.fn(async (req) => {
+      if (req === "index.html") return new Response("cached-html")
+      return undefined
+    })
+
+    const res1 = await handlerPlugin.handlerDidError()
+    await expect(res1.text()).resolves.toBe("cached-html")
+
+    scope.caches.match = vi.fn(async () => undefined)
+    const res2 = await handlerPlugin.handlerDidError()
+    expect(res2.type).toBe("error")
+
+    scope.caches.match = originalMatch
+  })
+
+  test("captured workbox routes match and handle requests correctly", async () => {
+    const registered = (globalThis as any).__registeredRoutes
+    expect(registered).toBeDefined()
+    expect(registered.length).toBeGreaterThan(0)
+
+    const newsListRoute = registered.find((r: any) => {
+      if (!r || typeof r.match !== "function") return false
+      const matchResult = r.match({
+        url: new URL("https://example.com/api/news"),
+        request: new Request("https://example.com/api/news", { method: "GET" }),
+      })
+      return !!matchResult
+    })
+    expect(newsListRoute).toBeDefined()
+
+    const privateApiRoute = registered.find((r: any) => {
+      if (!r || typeof r.match !== "function") return false
+      const url = new URL("https://example.com/api/chats")
+      const req = new Request(url, { method: "GET" })
+      const matchResult = r.match({ url, request: req })
+      return !!matchResult
+    })
+    expect(privateApiRoute).toBeDefined()
+
+    if (privateApiRoute && typeof privateApiRoute.handler === "function") {
+      const mockEvent = {
+        request: new Request("https://example.com/api/chats", {
+          method: "GET",
+          headers: { Cookie: "session=xyz123" },
+        }),
+        event: {},
+      }
+      const result = await privateApiRoute.handler(mockEvent)
+      expect(result).toBeDefined()
+    }
   })
 })

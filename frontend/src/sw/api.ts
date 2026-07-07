@@ -187,6 +187,7 @@ export async function clearSessionCaches() {
   const sessionCaches = cacheNames.filter(
     (name) =>
       name.startsWith(API_CACHE_SESSION_PREFIX) ||
+      name.startsWith("media-private:") ||
       name === "api-news-cache" ||
       name === "api-news-interactions" ||
       name === "api-events-cache"

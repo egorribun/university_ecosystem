@@ -1020,13 +1020,21 @@ export function ChatWindow({
                       </div>
                     ) : null}
                     {!message.deletedAt &&
-                    message.isMe &&
-                    message.isLastRead &&
-                    message.readAtLabel ? (
-                      <span className="px-1 text-micro font-medium text-text-secondary">
-                        {t("messenger:seen", { time: message.readAtLabel })}
-                      </span>
-                    ) : null}
+                      message.isMe &&
+                      (message.seenByCount !== undefined && message.seenByTotal !== undefined ? (
+                        message.seenByCount > 0 ? (
+                          <span className="px-1 text-micro font-medium text-text-secondary">
+                            {t("messenger:seenByGroup", {
+                              count: message.seenByCount,
+                              total: message.seenByTotal,
+                            })}
+                          </span>
+                        ) : null
+                      ) : message.isLastRead && message.readAtLabel ? (
+                        <span className="px-1 text-micro font-medium text-text-secondary">
+                          {t("messenger:seen", { time: message.readAtLabel })}
+                        </span>
+                      ) : null)}
                   </div>
                 </m.div>
               </div>

@@ -82,20 +82,21 @@ class RedisSessionBackend(SessionBackend):
         """
         try:
             await self._redis.eval(lua_script, 2, key, revoked_key)  # type: ignore[no-untyped-call]
-        except (
-            ConnectionError,
-            TimeoutError,
-            OSError,
-        ):  # RZ-22-01: narrowed — Redis errors
-            # RZ-25-06: Use pipeline to minimize TOCTOU window when Lua unavailable.
-            remaining_ttl = await self._redis.ttl(key)
-            if remaining_ttl > 0:
-                pipe = self._redis.pipeline(transaction=True)
-                pipe.delete(key)
-                pipe.set(revoked_key, "1", ex=remaining_ttl)
-                await pipe.execute()
+        except Exception as exc:
+            from redis.exceptions import ResponseError
+
+            if isinstance(exc, (ConnectionError, TimeoutError, OSError, ResponseError)):
+                # RZ-25-06: Use pipeline to minimize TOCTOU window when Lua unavailable.
+                remaining_ttl = await self._redis.ttl(key)
+                if remaining_ttl > 0:
+                    pipe = self._redis.pipeline(transaction=True)
+                    pipe.delete(key)
+                    pipe.set(revoked_key, "1", ex=remaining_ttl)
+                    await pipe.execute()
+                else:
+                    await self._redis.delete(key)
             else:
-                await self._redis.delete(key)
+                raise
         # Notify Gateway to invalidate its L1 cache
         try:
             await self._redis.publish("session:revocations", jti)

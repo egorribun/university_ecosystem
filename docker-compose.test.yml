@@ -25,6 +25,21 @@ services:
     networks:
       - test-net
 
+  toxiproxy:
+    image: ghcr.io/shopify/toxiproxy:2.9.0
+    ports:
+      - "8474:8474"   # HTTP API для управления toxics
+      - "5433:5433"   # PostgreSQL proxy
+      - "6380:6380"   # Redis proxy
+      - "4223:4223"   # NATS proxy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O-", "http://localhost:8474/version"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - test-net
+
   tests:
     build:
       context: .

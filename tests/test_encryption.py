@@ -114,3 +114,51 @@ def test_decrypt_invalid_token(monkeypatch, caplog):
         res = decrypt_string("invalid_token")
         assert res is None
         assert "Failed to decrypt" in caplog.text
+
+
+def test_empty_secret_entry():
+    from app.utils.encryption import _normalize_secret
+
+    with pytest.raises(SpotifyEncryptionError) as exc:
+        _normalize_secret("   ")
+    assert "SPOTIFY_TOKEN_SECRET contains an empty entry" in str(exc.value)
+
+
+def test_decrypt_string_bytes(monkeypatch):
+    key = Fernet.generate_key().decode()
+    monkeypatch.setattr(settings, "spotify_token_secret", key)
+    reset_cached_cipher()
+    encrypted = encrypt_string("hello")
+    decrypted = decrypt_string(encrypted.encode("utf-8"))
+    assert decrypted == "hello"
+
+
+def test_rotate_single_key(monkeypatch):
+    key = Fernet.generate_key().decode()
+    monkeypatch.setattr(settings, "spotify_token_secret", key)
+    reset_cached_cipher()
+    token_str = "some_token"
+    token_bytes = b"some_token"
+    assert rotate_encrypted_string(token_str) == "some_token"
+    assert rotate_encrypted_string(token_bytes) == "some_token"
+
+
+def test_encrypted_string_decorator(monkeypatch):
+    from app.utils.encryption import EncryptedString
+
+    key = Fernet.generate_key().decode()
+    monkeypatch.setattr(settings, "spotify_token_secret", key)
+    reset_cached_cipher()
+    decorator = EncryptedString()
+    encrypted = decorator.process_bind_param("hello", None)
+    assert encrypted != "hello"
+    decrypted = decorator.process_result_value(encrypted, None)
+    assert decrypted == "hello"
+
+
+def test_build_cipher_empty():
+    from app.utils.encryption import _build_cipher
+
+    with pytest.raises(SpotifyEncryptionError) as exc:
+        _build_cipher("")
+    assert "SPOTIFY_TOKEN_SECRET is not configured" in str(exc.value)
