@@ -25,7 +25,7 @@ lint-frontend:
 	npm run format:check --prefix $(FRONTEND_DIR)
 
 backend-test:
-	pytest --cov=app --cov-report=xml --cov-report=term-missing --cov-fail-under=91 --junitxml=pytest-report.xml
+	pytest --cov=app --cov-report=xml --cov-report=term-missing --cov-fail-under=98 --junitxml=pytest-report.xml
 
 backend-typecheck:
 	mypy
@@ -50,10 +50,10 @@ test-trace-driven:
 	RUN_INTEGRATION_TESTS=1 pytest tests/integration/test_trace_driven.py -v
 
 go-test:
-	@echo "Running all Go tests..."
-	cd services/gateway && go test ./...
-	cd services/file-processor && go test ./...
-	cd services/ws-hub && go test ./...
+	@echo "Running all Go tests with race detector..."
+	cd services/gateway && go test -race ./...
+	cd services/file-processor && go test -race ./...
+	cd services/ws-hub && go test -race ./...
 
 go-coverage:
 	powershell -ExecutionPolicy Bypass -File $(CURDIR)/scripts/go-coverage-report.ps1
@@ -65,13 +65,13 @@ go-coverage:
 # can see all three percentages before iterating on gaps.
 go-test-gates:
 	@echo "=== Gateway coverage gate ==="
-	cd services/gateway && go test ./... -coverprofile=gateway.out -covermode=set
+	cd services/gateway && go test -race ./... -coverprofile=gateway.out -covermode=atomic
 	@go tool cover -func=services/gateway/gateway.out | tail -1
 	@echo "=== WS-Hub coverage gate ==="
-	cd services/ws-hub && go test ./... -coverprofile=wshub.out -covermode=set
+	cd services/ws-hub && go test -race ./... -coverprofile=wshub.out -covermode=atomic
 	@go tool cover -func=services/ws-hub/wshub.out | tail -1
 	@echo "=== File-Processor coverage gate ==="
-	cd services/file-processor && go test ./... -coverprofile=fp.out -covermode=set
+	cd services/file-processor && go test -race ./... -coverprofile=fp.out -covermode=atomic
 	@go tool cover -func=services/file-processor/fp.out | tail -1
 	@echo "Coverage gates checked"
 

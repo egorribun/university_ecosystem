@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import UTC, datetime, timedelta
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from httpx import AsyncClient
@@ -531,3 +531,475 @@ class TestSessionRepository:
         repo = SessionRepository(db_session)
         # Should not raise even for nonexistent JTI
         await repo.touch_by_jti("nonexistent-jti")
+
+
+class TestGraphQLAdvancedCoverage:
+    def test_graphql_context_is_authenticated(self):
+        from app.graphql.context import GraphQLContext
+
+        ctx = GraphQLContext(
+            session=None, loaders=None, checker=None, current_user=None
+        )
+        assert ctx.is_authenticated is False
+        user = MagicMock()
+        ctx.current_user = user
+        assert ctx.is_authenticated is True
+
+    @pytest.mark.asyncio
+    async def test_graphql_permissions_coverage(self):
+        from app.auth.rbac import SpiceDBUnavailableError
+        from app.graphql.permissions import IsAdmin, IsAuthenticated
+
+        source = None
+        info = MagicMock()
+        info.context = MagicMock()
+
+        # IsAuthenticated
+        perm_auth = IsAuthenticated()
+        info.context.is_authenticated = True
+        assert perm_auth.has_permission(source, info) is True
+        info.context.is_authenticated = False
+        assert perm_auth.has_permission(source, info) is False
+
+        # IsAdmin
+        perm_admin = IsAdmin()
+
+        # 1. Unauthenticated
+        info.context.is_authenticated = False
+        info.context.current_user = None
+        assert await perm_admin.has_permission(source, info) is False
+
+        # 2. Authenticated but no checker in context
+        info.context.is_authenticated = True
+        info.context.current_user = MagicMock()
+        info.context.checker = None
+        assert await perm_admin.has_permission(source, info) is False
+
+        # 3. Checker check_admin returns True
+        mock_checker = AsyncMock()
+        mock_checker.check_admin.return_value = True
+        info.context.checker = mock_checker
+        assert await perm_admin.has_permission(source, info) is True
+        mock_checker.check_admin.assert_called_once_with(
+            str(info.context.current_user.id)
+        )
+
+        # 4. Checker check_admin returns False
+        mock_checker.check_admin.reset_mock()
+        mock_checker.check_admin.return_value = False
+        assert await perm_admin.has_permission(source, info) is False
+
+        # 5. SpiceDBUnavailableError
+        mock_checker.check_admin.side_effect = SpiceDBUnavailableError("SpiceDB down")
+        assert await perm_admin.has_permission(source, info) is False
+
+        # 6. Unexpected Exception (RZ-22-01)
+        mock_checker.check_admin.side_effect = RuntimeError("DB crash")
+        assert await perm_admin.has_permission(source, info) is False
+
+    @pytest.mark.asyncio
+    async def test_increment_user_cost_fallback(self):
+        from unittest.mock import patch
+
+        from app.graphql.extensions import _increment_user_cost, _user_cost_memory
+
+        with patch(
+            "app.deps.cache.get_cache_client", side_effect=ConnectionError("Redis down")
+        ):
+            # Clear memory cost first
+            _user_cost_memory.clear()
+            cost1 = await _increment_user_cost("user123", 10, 55555)
+            assert cost1 == 10
+            # Call again inside same window -> accumulates
+            cost2 = await _increment_user_cost("user123", 15, 55555)
+            assert cost2 == 25
+            # Call for a new window -> clears memory and starts new window
+            cost3 = await _increment_user_cost("user123", 5, 55556)
+            assert cost3 == 5
+
+            # Test evicting stale/large memory dict
+            _user_cost_memory.clear()
+            for i in range(10005):
+                _user_cost_memory[f"user_{i}"] = (10, 55555)
+            cost4 = await _increment_user_cost("user123", 10, 55555)
+            assert cost4 == 10
+            assert len(_user_cost_memory) == 1
+
+    @pytest.mark.asyncio
+    async def test_query_cost_limiter_edge_cases(self):
+        from unittest.mock import patch
+
+        from graphql import GraphQLError
+
+        from app.graphql.extensions import QueryCostExtension
+
+        # 1. pre_execution_errors
+        exec_ctx = MagicMock()
+        exec_ctx.pre_execution_errors = [GraphQLError("Previous error")]
+        ext = QueryCostExtension()
+        ext.execution_context = exec_ctx
+        async for _ in ext.on_validate():
+            pass  # should return immediately and not parse cost
+
+        # 2. document is None
+        exec_ctx = MagicMock()
+        exec_ctx.pre_execution_errors = []
+        exec_ctx.graphql_document = None
+        ext = QueryCostExtension()
+        ext.execution_context = exec_ctx
+        async for _ in ext.on_validate():
+            pass  # should return immediately and not parse cost
+
+        # 3. cost limit exceeded
+        exec_ctx = MagicMock()
+        exec_ctx.pre_execution_errors = []
+        exec_ctx.graphql_document = MagicMock()
+
+        ext = QueryCostExtension()
+        ext.execution_context = exec_ctx
+        with (
+            patch("app.graphql.extensions._CostVisitor") as mock_visitor_class,
+            patch("app.graphql.extensions.visit"),
+        ):
+            mock_visitor = MagicMock()
+            mock_visitor.cost = 300
+            mock_visitor_class.return_value = mock_visitor
+
+            with pytest.raises(GraphQLError, match="Query cost 300 exceeds"):
+                async for _ in ext.on_validate():
+                    pass
+
+        # 4. user rate limit exceeded
+        exec_ctx = MagicMock()
+        exec_ctx.pre_execution_errors = []
+        exec_ctx.graphql_document = MagicMock()
+        mock_context = MagicMock()
+        mock_user = MagicMock()
+        mock_user.id = uuid.uuid4()
+        mock_context.current_user = mock_user
+        exec_ctx.context = mock_context
+
+        ext = QueryCostExtension()
+        ext.execution_context = exec_ctx
+        with (
+            patch("app.graphql.extensions._CostVisitor") as mock_visitor_class,
+            patch("app.graphql.extensions.visit"),
+            patch("app.graphql.extensions._increment_user_cost", return_value=1200),
+        ):
+            mock_visitor = MagicMock()
+            mock_visitor.cost = 50
+            mock_visitor_class.return_value = mock_visitor
+
+            with pytest.raises(GraphQLError, match="GraphQL rate limit exceeded"):
+                async for _ in ext.on_validate():
+                    pass
+
+    @pytest.mark.asyncio
+    async def test_request_timeout_extension_timeout(self):
+        from unittest.mock import patch
+
+        from graphql import GraphQLError
+
+        from app.graphql.extensions import RequestTimeoutExtension
+
+        exec_ctx = MagicMock()
+        ext = RequestTimeoutExtension()
+        ext.execution_context = exec_ctx
+
+        class MockTimeout:
+            def __init__(self, delay):
+                pass
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, exc_type, exc_val, exc_tb):
+                raise TimeoutError()
+
+        with patch("app.graphql.extensions.asyncio.timeout", MockTimeout):
+            gen = ext.on_execute()
+            # Enters context manager and yields
+            await gen.__anext__()
+
+            # Resuming should trigger TimeoutError inside generator
+            with pytest.raises(
+                GraphQLError, match="Request exceeded the maximum execution time"
+            ):
+                await gen.__anext__()
+
+    @pytest.mark.asyncio
+    async def test_persisted_query_extension_coverage(self):
+        from unittest.mock import patch
+
+        from graphql import GraphQLError
+
+        import app.graphql.extensions as ext_module
+        from app.graphql.extensions import (
+            PersistedQueryExtension,
+            _hash_query,
+            _load_manifest,
+        )
+
+        # 1. dev env bypass
+        with patch("app.core.config.settings.environment", "development"):
+            exec_ctx = MagicMock()
+            ext = PersistedQueryExtension()
+            ext.execution_context = exec_ctx
+            async for _ in ext.on_validate():
+                pass  # returns immediately
+
+        # Force production environment for validation testing
+        with patch("app.core.config.settings.environment", "production"):
+            # 2. _load_manifest missing manifest file
+            with patch("app.graphql.extensions._MANIFEST_PATH") as mock_path:
+                mock_path.exists.return_value = False
+                ext_module._query_allowlist = None  # clear cache
+                manifest = _load_manifest()
+                assert manifest == {}
+
+            # 3. _load_manifest reading invalid json
+            with patch("app.graphql.extensions._MANIFEST_PATH") as mock_path:
+                mock_path.exists.return_value = True
+                mock_path.read_text.return_value = "invalid-json"
+                ext_module._query_allowlist = None
+                manifest = _load_manifest()
+                assert manifest == {}
+
+            # 4. _load_manifest successful JSON read (line 257)
+            with patch("app.graphql.extensions._MANIFEST_PATH") as mock_path:
+                mock_path.exists.return_value = True
+                mock_path.read_text.return_value = '{"hash123": "query { me }"}'
+                ext_module._query_allowlist = None
+                manifest = _load_manifest()
+                assert manifest == {"hash123": "query { me }"}
+
+            # 5. _load_manifest double-checked lock hit (line 253)
+            with patch("app.graphql.extensions._manifest_lock") as mock_lock:
+
+                def mock_enter(*args, **kwargs):
+                    ext_module._query_allowlist = {"foo": "bar"}
+                    return MagicMock()
+
+                mock_lock.__enter__ = mock_enter
+                ext_module._query_allowlist = None
+                manifest = _load_manifest()
+                assert manifest == {"foo": "bar"}
+
+            # 6. Allowlist lookup happy path
+            ext_module._query_allowlist = {"hash123": "query { me }"}
+            # Send query with valid hash in extensions
+            exec_ctx = MagicMock()
+            exec_ctx.query = "query { me }"
+            exec_ctx.extensions = {"persistedQuery": {"sha256Hash": "hash123"}}
+            ext = PersistedQueryExtension()
+            ext.execution_context = exec_ctx
+            async for _ in ext.on_validate():
+                pass  # passes
+
+            # 7. Allowlist lookup invalid hash -> raises GraphQLError
+            exec_ctx = MagicMock()
+            exec_ctx.query = "query { me }"
+            exec_ctx.extensions = {"persistedQuery": {"sha256Hash": "unknown_hash"}}
+            ext = PersistedQueryExtension()
+            ext.execution_context = exec_ctx
+            with pytest.raises(
+                GraphQLError, match="This query is not in the persisted-query allowlist"
+            ):
+                async for _ in ext.on_validate():
+                    pass
+
+            # 8. Check fallback to hashing query string if no client hash
+            query_str = "query { test }"
+            query_hash = _hash_query(query_str)
+            ext_module._query_allowlist = {query_hash: query_str}
+            exec_ctx = MagicMock()
+            exec_ctx.query = query_str
+            exec_ctx.extensions = None
+            ext = PersistedQueryExtension()
+            ext.execution_context = exec_ctx
+            async for _ in ext.on_validate():
+                pass  # passes
+
+            # 9. No manifest allow-all bypass (line 308)
+            ext_module._query_allowlist = {}
+            exec_ctx = MagicMock()
+            ext = PersistedQueryExtension()
+            ext.execution_context = exec_ctx
+            async for _ in ext.on_validate():
+                pass
+
+            # 10. No query return (line 312)
+            ext_module._query_allowlist = {"hash123": "query { me }"}
+            exec_ctx = MagicMock()
+            exec_ctx.query = None
+            ext = PersistedQueryExtension()
+            ext.execution_context = exec_ctx
+            async for _ in ext.on_validate():
+                pass
+
+    @pytest.mark.asyncio
+    async def test_graphql_schema_get_context_dependency_overrides(self):
+        from app.auth.rbac import PermissionChecker
+        from app.graphql.schema import get_context
+
+        request = MagicMock()
+        request.headers = {}
+        request.state.dishka_container = AsyncMock()
+        request.app.dependency_overrides = {PermissionChecker: lambda: "mocked_checker"}
+
+        async for context in get_context(request):
+            assert context.checker == "mocked_checker"
+
+    @pytest.mark.asyncio
+    async def test_graphql_schema_get_context_container_errors(self):
+        from fastapi import HTTPException
+
+        from app.graphql.schema import get_context
+
+        request = MagicMock()
+        request.headers = {}
+        request.state.dishka_container.get = AsyncMock(
+            side_effect=RuntimeError("DI failed")
+        )
+
+        # Database resolution fails -> returns 503
+        with pytest.raises(HTTPException) as excinfo:
+            async for _ in get_context(request):
+                pass
+        assert excinfo.value.status_code == 503
+
+    @pytest.mark.asyncio
+    async def test_graphql_schema_get_context_spicedb_missing(self):
+        from app.core.protocols import AsyncDatabaseSession
+        from app.graphql.schema import get_context
+
+        request = MagicMock()
+        request.headers = {}
+        request.app.dependency_overrides = {}
+
+        # database session succeeds, but PermissionChecker resolution fails
+        async def mock_get(protocol):
+            if protocol is AsyncDatabaseSession:
+                return MagicMock()
+            raise RuntimeError("SpiceDB unavailable")
+
+        request.state.dishka_container.get = mock_get
+
+        async for context in get_context(request):
+            assert context.checker is None
+
+    @pytest.mark.asyncio
+    async def test_graphql_schema_get_context_auth_validation_x_headers(self):
+        from app.graphql.schema import get_context
+
+        request = MagicMock()
+        request.app.dependency_overrides = {}
+        request.state.dishka_container.get = AsyncMock(return_value=MagicMock())
+        request.headers = {"X-User-ID": "user-123", "X-Session-ID": "session-456"}
+
+        mock_user = MagicMock()
+        with patch(
+            "app.services.auth.graphql_token_validator.GraphQLTokenValidator.validate",
+            return_value=mock_user,
+        ) as mock_val:
+            async for context in get_context(request):
+                assert context.current_user == mock_user
+                mock_val.assert_called_once_with("user-123", "session-456")
+
+    @pytest.mark.asyncio
+    async def test_graphql_schema_get_context_security_error_subclasses(self):
+        from unittest.mock import patch
+
+        from fastapi import HTTPException
+
+        from app.auth.security import SecurityError
+        from app.graphql.schema import get_context
+
+        class CustomSecurityError(SecurityError):
+            pass
+
+        request = MagicMock()
+        request.app.dependency_overrides = {}
+        request.state.dishka_container.get = AsyncMock(return_value=MagicMock())
+        request.headers = {"X-User-ID": "user-123", "X-Session-ID": "session-456"}
+
+        with patch(
+            "app.services.auth.graphql_token_validator.GraphQLTokenValidator.validate",
+            side_effect=CustomSecurityError("Account locked"),
+        ):
+            with pytest.raises(HTTPException) as excinfo:
+                async for _ in get_context(request):
+                    pass
+            assert excinfo.value.status_code == 503
+
+    @pytest.mark.asyncio
+    async def test_graphql_schema_get_context_exact_security_error(self):
+        from app.auth.security import SecurityError
+        from app.graphql.schema import get_context
+
+        request = MagicMock()
+        request.app.dependency_overrides = {}
+        request.state.dishka_container.get = AsyncMock(return_value=MagicMock())
+        request.headers = {"X-User-ID": "user-123", "X-Session-ID": "session-456"}
+
+        with patch(
+            "app.services.auth.graphql_token_validator.GraphQLTokenValidator.validate",
+            side_effect=SecurityError("Invalid session"),
+        ):
+            async for context in get_context(request):
+                assert context.current_user is None  # demoted to anonymous
+
+    @pytest.mark.asyncio
+    async def test_graphql_schema_get_context_non_security_error(self):
+        from unittest.mock import patch
+
+        from fastapi import HTTPException
+
+        from app.graphql.schema import get_context
+
+        request = MagicMock()
+        request.app.dependency_overrides = {}
+        request.state.dishka_container.get = AsyncMock(return_value=MagicMock())
+        request.headers = {"X-User-ID": "user-123", "X-Session-ID": "session-456"}
+
+        with patch(
+            "app.services.auth.graphql_token_validator.GraphQLTokenValidator.validate",
+            side_effect=RuntimeError("DB timeout"),
+        ):
+            with pytest.raises(HTTPException) as excinfo:
+                async for _ in get_context(request):
+                    pass
+            assert excinfo.value.status_code == 503
+
+    @pytest.mark.asyncio
+    async def test_graphql_schema_get_context_auth_validation_bearer_token(self):
+        from app.auth.security import _mint_pure_jwt
+        from app.graphql.schema import get_context
+
+        request = MagicMock()
+        request.app.dependency_overrides = {}
+        request.state.dishka_container.get = AsyncMock(return_value=MagicMock())
+
+        # Create a valid token
+        token = _mint_pure_jwt(subject="user-123", extra_claims={"jti": "jti-456"})
+        request.headers = {"Authorization": f"Bearer {token}"}
+
+        mock_user = MagicMock()
+        with patch(
+            "app.services.auth.graphql_token_validator.GraphQLTokenValidator.validate",
+            return_value=mock_user,
+        ) as mock_val:
+            async for context in get_context(request):
+                assert context.current_user == mock_user
+                mock_val.assert_called_once_with("user-123", "jti-456")
+
+    def test_graphql_build_schema_extensions_prod(self):
+        from unittest.mock import patch
+
+        from app.graphql.extensions import PersistedQueryExtension
+        from app.graphql.schema import _build_schema_extensions
+
+        with patch("app.core.config.settings.environment", "production"):
+            exts = _build_schema_extensions()
+            # PersistedQueryExtension is appended in production
+            assert PersistedQueryExtension in exts

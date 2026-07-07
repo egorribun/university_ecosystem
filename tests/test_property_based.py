@@ -236,3 +236,61 @@ def test_filename_sanitization_length_and_safe_chars(filename: str) -> None:
     assert "/" not in safe
     assert "\\" not in safe
     assert "\x00" not in safe
+
+
+# ── 8. Pagination Property Tests ──────────────────────────────────────────────
+
+
+@hypo_settings(max_examples=50)
+@given(limit=st.integers())
+def test_cursor_params_validation(limit: int) -> None:
+    """CursorParams restricts limit to 1 <= limit <= 100."""
+    from pydantic import ValidationError
+
+    from app.utils.pagination import CursorParams
+
+    if 1 <= limit <= 100:
+        params = CursorParams(limit=limit)
+        assert params.limit == limit
+    else:
+        with pytest.raises(ValidationError):
+            CursorParams(limit=limit)
+
+
+@hypo_settings(max_examples=50)
+@given(
+    val=st.one_of(
+        st.integers(min_value=-100000, max_value=100000), st.text(max_size=100)
+    )
+)
+def test_cursor_encoding_round_trip(val: int | str) -> None:
+    """Opaque cursor encoding is fully reversible."""
+    from app.utils.pagination import decode_cursor, encode_cursor
+
+    encoded = encode_cursor(val)
+    decoded = decode_cursor(encoded)
+    assert decoded == str(val)
+
+
+@hypo_settings(max_examples=50)
+@given(
+    dt=st.datetimes(min_value=datetime(1975, 1, 1), max_value=datetime(2035, 1, 1)),
+    secondary_id=st.one_of(
+        st.integers(min_value=1, max_value=100000),
+        st.text(
+            alphabet=st.characters(blacklist_characters=":\n"), min_size=1, max_size=50
+        ),
+    ),
+)
+def test_datetime_cursor_round_trip(dt: datetime, secondary_id: int | str) -> None:
+    """Composite datetime cursor encoding is fully reversible with microsecond precision."""
+    from app.utils.pagination import decode_datetime_cursor, encode_datetime_cursor
+
+    encoded = encode_datetime_cursor(dt, secondary_id)
+    decoded = decode_datetime_cursor(encoded)
+    assert decoded is not None
+    decoded_dt, decoded_id = decoded
+
+    assert decoded_dt.tzinfo is not None
+    assert abs((dt.replace(tzinfo=UTC) - decoded_dt).total_seconds()) == 0
+    assert decoded_id == str(secondary_id)

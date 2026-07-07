@@ -328,6 +328,23 @@ describe("queue helper module exports", () => {
     expect("invalid" in ((sanitized as any)?.nested as Record<string, unknown>)).toBe(false)
   })
 
+  test("truncates extremely deep report payloads to prevent stack overflow", () => {
+    const { sanitizers } = getQueueModules()
+    // Create an object nested 12 levels deep (MAX_SANITIZE_DEPTH = 10)
+    let payload: any = { value: "leaf" }
+    for (let i = 0; i < 12; i++) {
+      payload = { child: payload }
+    }
+
+    const sanitized = sanitizers.sanitizeReportPayload(payload) as any
+    // Verify that at level 11, it is replaced by "[truncated]"
+    let current = sanitized
+    for (let i = 0; i < 10; i++) {
+      current = current.child
+    }
+    expect(current.child).toBe("[truncated]")
+  })
+
   test("report queue waits for connectivity before flushing", async () => {
     const { stores, processors } = getQueueModules()
     const scope = self as unknown as TestServiceWorkerScope
@@ -764,6 +781,41 @@ describe("service worker media cache controls", () => {
     expect(secondReports).toHaveLength(1)
   })
 
+  test("IndexedDB upgrade from version 3 to 4 creates dedupeKey index", async () => {
+    const offline = await import("@/sw/offline")
+    const idb = await import("idb")
+
+    const testDbName = "notification-interactions-upgrade-test"
+
+    // Create the database at version 3 without the index
+    const db3 = await idb.openDB(testDbName, 3, {
+      upgrade(db) {
+        db.createObjectStore(offline.STORES.REPORT, { keyPath: "id", autoIncrement: true })
+      },
+    })
+    db3.close()
+
+    // Redirect indexedDB.open calls from "notification-interactions" to testDbName
+    const origOpen = globalThis.indexedDB.open
+    globalThis.indexedDB.open = function (name, version) {
+      const targetName = name === "notification-interactions" ? testDbName : name
+      return origOpen.call(globalThis.indexedDB, targetName, version)
+    }
+
+    // Call initOfflineQueue which upgrades the test database to version 4 and adds the index
+    await offline.initOfflineQueue()
+
+    // Reopen database and verify the index exists
+    const db4 = await idb.openDB(testDbName, 4)
+    const tx = db4.transaction(offline.STORES.REPORT, "readonly")
+    const store = tx.objectStore(offline.STORES.REPORT)
+    expect(store.indexNames.contains("dedupeKey")).toBe(true)
+    db4.close()
+
+    // Restore original open function
+    globalThis.indexedDB.open = origOpen
+  })
+
   test("processNewsInteractionQueue flushes items correctly on success/client errors", async () => {
     const offline = await import("@/sw/offline")
     const idb = await import("idb")
@@ -932,5 +984,57 @@ describe("service worker media cache controls", () => {
       const result = await privateApiRoute.handler(mockEvent)
       expect(result).toBeDefined()
     }
+  })
+
+  test("offline processors return early when offline", async () => {
+    const offline = await import("@/sw/offline")
+    const scope = self as unknown as TestServiceWorkerScope
+    scope.navigator.setOnline(false)
+
+    // Verify they do not throw and return early/do nothing when navigator.onLine is false
+    await expect(offline.processOfflineQueues()).resolves.toBeUndefined()
+    await expect(offline.processPendingNavigations()).resolves.toBeUndefined()
+    await expect(offline.processPendingReports()).resolves.toBeUndefined()
+  })
+
+  test("storePendingReport handles default POST method and GET/HEAD requests in news queue", async () => {
+    const offline = await import("@/sw/offline")
+    const idb = await import("idb")
+    const db = await idb.openDB("notification-interactions", 4)
+    await db.clear(offline.STORES.REPORT)
+    await db.clear(offline.STORES.NEWS_INTERACTION)
+
+    // Test default POST method when not specified
+    await offline.storePendingReport({
+      url: "https://example.com/url",
+      reportUrl: "https://example.com/api/report-default",
+      timestamp: Date.now(),
+    })
+    const reports = await offline.readPendingReports()
+    expect(reports[0]!.method).toBe("POST")
+
+    // Test GET / HEAD request processing in processNewsInteractionQueue
+    await db.add(offline.STORES.NEWS_INTERACTION, {
+      url: "https://example.com/api/news/get-test",
+      method: "GET",
+      payload: { value: true },
+    })
+
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue({ ok: true } as Response)
+    const scope = self as unknown as TestServiceWorkerScope
+    scope.navigator.setOnline(true)
+
+    // Clear navigation and reports to isolate
+    await db.clear(offline.STORES.NAVIGATION)
+    await db.clear(offline.STORES.REPORT)
+
+    await offline.processOfflineQueues()
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://example.com/api/news/get-test",
+      expect.not.objectContaining({ body: expect.any(String) })
+    )
+
+    fetchMock.mockRestore()
   })
 })

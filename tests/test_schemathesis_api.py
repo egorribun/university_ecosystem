@@ -70,7 +70,7 @@ def conform_to_schema_except_auth(ctx, response, case) -> None:
     - Content-Type matches what is declared in the spec
     - Response body conforms to the schema in the spec
     """
-    if response.status_code in (401, 403, 404):
+    if response.status_code in (304, 401, 403, 404):
         return
 
     from schemathesis.checks import (

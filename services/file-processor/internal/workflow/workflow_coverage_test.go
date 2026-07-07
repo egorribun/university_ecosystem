@@ -240,3 +240,39 @@ func TestGetValidatedDimension_ErrorsOnUnsupportedType(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "invalid type")
 }
+
+func TestDownloadAndDecodeImage_ContextCancelledMidDecode(t *testing.T) {
+	blockCh := make(chan struct{})
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "image/png")
+		w.Header().Set("ETag", `"deadbeef"`)
+		w.Header().Set("Last-Modified", time.Now().UTC().Format(http.TimeFormat))
+		w.Header().Set("Accept-Ranges", "bytes")
+		w.Header().Set("Content-Length", "1000")
+		w.WriteHeader(http.StatusOK)
+		
+		// Write PNG header
+		_, _ = w.Write([]byte{0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A})
+		w.(http.Flusher).Flush()
+		<-blockCh
+	}))
+	defer srv.Close()
+	defer close(blockCh)
+
+	a := &FileActivities{MinioClient: minioClientFor(t, srv.URL), Bucket: "bucket"}
+	ctx, cancel := context.WithCancel(context.Background())
+
+	errCh := make(chan error, 1)
+	go func() {
+		_, _, err := a.downloadAndDecodeImage(ctx, "in/slow.png")
+		errCh <- err
+	}()
+
+	time.Sleep(50 * time.Millisecond)
+	cancel()
+
+	err := <-errCh
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "context cancelled during image decode")
+}
+

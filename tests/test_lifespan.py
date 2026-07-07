@@ -262,8 +262,11 @@ async def test_handle_schema_and_extensions_sqlite_computed_patch() -> None:
     mock_column = MagicMock()
     mock_column.computed = mock_computed
 
+    mock_column2 = MagicMock()
+    mock_column2.computed = None
+
     mock_table = MagicMock()
-    mock_table.columns = [mock_column]
+    mock_table.columns = [mock_column, mock_column2]
 
     with (
         patch("app.core.lifespan.settings") as mock_settings,
@@ -1007,3 +1010,199 @@ async def test_prewarm_jwt_public_key_cache_error() -> None:
 
         await _prewarm_jwt_public_key_cache()
         mock_logger.warning.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_startup_background_workers_partition_disabled() -> None:
+    with (
+        patch("app.core.lifespan.settings") as mock_settings,
+        patch("app.core.lifespan.setup_periodic_cleanups", new_callable=AsyncMock),
+    ):
+        mock_settings.environment = "testing"
+        mock_settings.partition_management_enabled = False
+        mock_app = MagicMock()
+        mock_app.state = MagicMock()
+
+        await _startup_background_workers(mock_app)
+
+
+@pytest.mark.asyncio
+async def test_startup_background_workers_production_env() -> None:
+    with (
+        patch("app.core.lifespan.settings") as mock_settings,
+        patch("app.core.lifespan.setup_periodic_cleanups", new_callable=AsyncMock),
+        patch("app.core.lifespan.ensure_partitions_exist", new_callable=AsyncMock),
+        patch(
+            "app.core.lifespan.start_partition_management_scheduler",
+            new_callable=AsyncMock,
+        ) as mock_scheduler,
+    ):
+        mock_settings.environment = "production"
+        mock_settings.partition_management_enabled = True
+        mock_app = MagicMock()
+        mock_app.state = MagicMock()
+        mock_app.state.dishka_container = AsyncMock()
+        mock_stopper = AsyncMock()
+        mock_scheduler.return_value = mock_stopper
+
+        await _startup_background_workers(mock_app)
+        assert mock_app.state.partition_stopper == mock_stopper
+
+
+@pytest.mark.asyncio
+async def test_periodic_scheduler_loop_immediate_exit() -> None:
+    from app.core.lifespan import _SCHEDULER_STOP
+
+    _SCHEDULER_STOP.clear()
+
+    orig_wait_for = asyncio.wait_for
+
+    async def mock_wait_for(fut, timeout=None):
+        if timeout == 0.0:
+            raise TimeoutError()
+        return await orig_wait_for(fut, timeout)
+
+    with (
+        patch("random.uniform", return_value=0.0),
+        patch("asyncio.wait_for", mock_wait_for),
+    ):
+        _SCHEDULER_STOP.set()
+        await _periodic_scheduler_loop()
+
+
+@pytest.mark.asyncio
+async def test_periodic_scheduler_loop_all_hours() -> None:
+    from app.core.lifespan import _SCHEDULER_STOP
+
+    mock_task = MagicMock()
+
+    async def mock_kick():
+        _SCHEDULER_STOP.set()
+
+    mock_task.kick = mock_kick
+
+    mock_dt = MagicMock()
+    mock_dt.now.return_value = datetime.datetime(2026, 1, 1, 2, 0, tzinfo=datetime.UTC)
+
+    mock_dt_6 = MagicMock()
+    mock_dt_6.now.return_value = datetime.datetime(
+        2026, 1, 1, 6, 0, tzinfo=datetime.UTC
+    )
+
+    orig_wait_for = asyncio.wait_for
+
+    async def mock_wait_for(fut, timeout=None):
+        if timeout == 0.0 or timeout == 3600:
+            raise TimeoutError()
+        return await orig_wait_for(fut, timeout)
+
+    _SCHEDULER_STOP.clear()
+    with (
+        patch("random.uniform", return_value=0.0),
+        patch("asyncio.wait_for", mock_wait_for),
+        patch("datetime.datetime", mock_dt),
+        patch("app.tasks.cleanups.cleanup_stories_task", mock_task),
+        patch("app.tasks.cleanups.cleanup_password_reset_tokens_task", AsyncMock()),
+        patch("app.tasks.cleanups.cleanup_email_change_tokens_task", AsyncMock()),
+        patch("app.tasks.cleanups.cleanup_mfa_challenges_task", AsyncMock()),
+        patch("app.tasks.cleanups.cleanup_sessions_task", AsyncMock()),
+        patch("app.tasks.cleanups.cleanup_notifications_task", AsyncMock()),
+        patch("app.tasks.cleanups.cleanup_dead_letter_jobs_task", AsyncMock()),
+        patch("app.tasks.cleanups.cleanup_privacy_artifacts_task", AsyncMock()),
+        patch("app.tasks.cleanups.manage_partitions_task", AsyncMock()),
+    ):
+        await _periodic_scheduler_loop()
+
+    _SCHEDULER_STOP.clear()
+    with (
+        patch("random.uniform", return_value=0.0),
+        patch("asyncio.wait_for", mock_wait_for),
+        patch("datetime.datetime", mock_dt_6),
+        patch("app.tasks.cleanups.cleanup_stories_task", mock_task),
+        patch("app.tasks.cleanups.cleanup_password_reset_tokens_task", AsyncMock()),
+        patch("app.tasks.cleanups.cleanup_email_change_tokens_task", AsyncMock()),
+        patch("app.tasks.cleanups.cleanup_mfa_challenges_task", AsyncMock()),
+        patch("app.tasks.cleanups.cleanup_sessions_task", AsyncMock()),
+        patch("app.tasks.cleanups.cleanup_notifications_task", AsyncMock()),
+        patch("app.tasks.cleanups.cleanup_dead_letter_jobs_task", AsyncMock()),
+        patch("app.tasks.cleanups.cleanup_privacy_artifacts_task", AsyncMock()),
+        patch("app.tasks.cleanups.manage_partitions_task", AsyncMock()),
+    ):
+        await _periodic_scheduler_loop()
+
+
+@pytest.mark.asyncio
+async def test_lifespan_warm_cache_production() -> None:
+    with (
+        patch("app.core.lifespan._startup_database_and_di", new_callable=AsyncMock),
+        patch("app.core.lifespan._startup_websocket_and_flags", new_callable=AsyncMock),
+        patch("app.core.lifespan._validate_di_container", new_callable=AsyncMock),
+        patch("app.core.lifespan._verify_database_readiness", new_callable=AsyncMock),
+        patch(
+            "app.core.lifespan._handle_schema_and_extensions", new_callable=AsyncMock
+        ),
+        patch("app.core.lifespan._startup_background_workers", new_callable=AsyncMock),
+        patch("app.core.ratelimit.start_memory_cleanup_task"),
+        patch(
+            "app.core.lifespan._prewarm_jwt_public_key_cache", new_callable=AsyncMock
+        ),
+        patch("app.core.lifespan._shutdown_subsystems", new_callable=AsyncMock),
+        patch("app.core.lifespan.warm_cache", new_callable=AsyncMock) as mock_warm,
+        patch("app.core.lifespan.settings") as mock_settings,
+    ):
+        mock_settings.environment = "production"
+        app = FastAPI()
+        async with lifespan(app):
+            pass
+        mock_warm.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_lifespan_warm_cache_testing() -> None:
+    with (
+        patch("app.core.lifespan._startup_database_and_di", new_callable=AsyncMock),
+        patch("app.core.lifespan._startup_websocket_and_flags", new_callable=AsyncMock),
+        patch("app.core.lifespan._validate_di_container", new_callable=AsyncMock),
+        patch("app.core.lifespan._verify_database_readiness", new_callable=AsyncMock),
+        patch(
+            "app.core.lifespan._handle_schema_and_extensions", new_callable=AsyncMock
+        ),
+        patch("app.core.lifespan._startup_background_workers", new_callable=AsyncMock),
+        patch("app.core.ratelimit.start_memory_cleanup_task"),
+        patch(
+            "app.core.lifespan._prewarm_jwt_public_key_cache", new_callable=AsyncMock
+        ),
+        patch("app.core.lifespan._shutdown_subsystems", new_callable=AsyncMock),
+        patch("app.core.lifespan.warm_cache", new_callable=AsyncMock) as mock_warm,
+        patch("app.core.lifespan.settings") as mock_settings,
+    ):
+        mock_settings.environment = "testing"
+        app = FastAPI()
+        async with lifespan(app):
+            pass
+        mock_warm.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_startup_background_workers_partition_enabled_testing_env() -> None:
+    with (
+        patch("app.core.lifespan.settings") as mock_settings,
+        patch("app.core.lifespan.setup_periodic_cleanups", new_callable=AsyncMock),
+        patch("app.core.lifespan.ensure_partitions_exist", new_callable=AsyncMock),
+        patch(
+            "app.core.lifespan.start_partition_management_scheduler",
+            new_callable=AsyncMock,
+        ) as mock_scheduler,
+    ):
+        mock_settings.environment = "testing"
+        mock_settings.partition_management_enabled = True
+
+        class MockState:
+            pass
+
+        mock_app = MagicMock()
+        mock_app.state = MockState()
+
+        await _startup_background_workers(mock_app)
+        assert not hasattr(mock_app.state, "partition_stopper")
+        mock_scheduler.assert_not_called()

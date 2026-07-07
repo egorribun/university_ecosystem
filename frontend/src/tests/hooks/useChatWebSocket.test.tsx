@@ -443,10 +443,12 @@ describe("useChatWebSocket frame-cache helpers", () => {
 describe("useChatWebSocket exponential backoffs and ticket exchange failures", () => {
   beforeEach(() => {
     MockWebSocket.instances = []
+    vi.stubGlobal("WebSocket", MockWebSocket)
   })
 
   afterEach(() => {
     server.resetHandlers()
+    vi.unstubAllGlobals()
   })
 
   it("calculateReconnectDelay scales exponentially with attempt number", () => {
@@ -487,5 +489,38 @@ describe("useChatWebSocket exponential backoffs and ticket exchange failures", (
     })
 
     rendered.unmount()
+  })
+
+  it("stops reconnecting after reaching MAX_RECONNECT_ATTEMPTS", async () => {
+    const mathRandomSpy = vi.spyOn(Math, "random").mockReturnValue(0)
+
+    const { unmount } = await mountAndOpen({ enabled: true })
+    expect(MockWebSocket.instances.length).toBe(1)
+
+    // Trigger close and reconnect 10 times to reach MAX_RECONNECT_ATTEMPTS without opening (simulates persistent failure)
+    for (let i = 0; i < 10; i++) {
+      const currentSocket = MockWebSocket.instances[MockWebSocket.instances.length - 1]!
+      act(() => {
+        currentSocket.close(1006)
+      })
+      await waitFor(() => {
+        expect(MockWebSocket.instances.length).toBe(i + 2)
+      })
+      // Sleep 20ms to allow event loop & handles to drain on Windows
+      await new Promise((resolve) => setTimeout(resolve, 20))
+    }
+
+    // Now at 11 sockets. The next close should NOT trigger another reconnect attempt.
+    const lastSocket = MockWebSocket.instances[MockWebSocket.instances.length - 1]!
+    act(() => {
+      lastSocket.close(1006)
+    })
+
+    // Wait some time and verify no new socket is created
+    await new Promise((resolve) => setTimeout(resolve, 200))
+    expect(MockWebSocket.instances.length).toBe(11)
+
+    unmount()
+    mathRandomSpy.mockRestore()
   })
 })

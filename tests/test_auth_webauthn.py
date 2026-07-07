@@ -326,6 +326,17 @@ async def test_list_and_delete_credentials(
     fresh_token = fresh_verify.cookies.get("access_token_v2")
     fresh_headers = {"Authorization": f"Bearer {fresh_token}"}
 
+    # Test step-up (202)
+    step_up_resp = await async_client.post("/auth/mfa/step-up", headers=headers)
+    assert step_up_resp.status_code == status.HTTP_202_ACCEPTED
+
+    # Generate recovery codes (200)
+    codes_resp = await async_client.post(
+        "/auth/mfa/recovery-codes", headers=fresh_headers
+    )
+    assert codes_resp.status_code == status.HTTP_200_OK
+    assert "codes" in codes_resp.json()
+
     # Delete
     del_resp = await async_client.delete(
         f"/auth/mfa/webauthn/{cred_id}", headers=fresh_headers
@@ -338,3 +349,181 @@ async def test_list_and_delete_credentials(
     # Verify empty list
     list_resp = await async_client.get("/auth/mfa/webauthn", headers=headers)
     assert list_resp.json() == []
+
+
+@pytest.mark.asyncio
+async def test_webauthn_service_direct_coverage(db_session) -> None:
+    import uuid
+    from datetime import UTC, datetime
+    from unittest.mock import patch
+
+    from app.models import UserRole
+    from app.schemas.dtos import UserDTO
+    from app.services.webauthn import WebAuthnService
+
+    service = WebAuthnService(db_session)
+
+    assert service._get_origin() is not None
+
+    user_dto = UserDTO(
+        id=uuid.uuid4(),
+        email="dto@example.com",
+        role=UserRole.STUDENT,
+        group_id=None,
+        is_active=True,
+        mfa_required=False,
+        mfa_default_method=None,
+        mfa_last_verified_at=None,
+        created_at=datetime.now(UTC),
+        webauthn_id=None,
+    )
+    with (
+        patch("app.services.webauthn.generate_registration_options"),
+        patch("app.services.webauthn.options_to_json", return_value="{}"),
+    ):
+        options = await service.get_registration_options(user_dto)
+        assert options is not None
+
+    from app.models import User
+
+    class MockUser(User):
+        webauthn_id = property(lambda self: None, lambda self, val: None)
+
+    mock_user = MockUser()
+    mock_user.id = uuid.uuid4()
+    mock_user.email = "mock@example.com"
+    with pytest.raises(ValueError, match="WebAuthn ID missing"):
+        await service.get_registration_options(mock_user)
+
+    user_dto_2 = UserDTO(
+        id=uuid.uuid4(),
+        email="dto@example.com",
+        role=UserRole.STUDENT,
+        group_id=None,
+        is_active=True,
+        mfa_required=False,
+        mfa_default_method=None,
+        mfa_last_verified_at=None,
+        created_at=datetime.now(UTC),
+        webauthn_id="some_id",
+    )
+    with (
+        patch("app.services.webauthn.generate_registration_options"),
+        patch("app.services.webauthn.options_to_json", return_value="{}"),
+    ):
+        options2 = await service.get_registration_options(user_dto_2)
+        assert options2 is not None
+
+    with pytest.raises(ValueError, match="Credential not found"):
+        await service.verify_authentication(
+            user_dto_2, "challenge", {"id": "non-existent"}
+        )
+
+    dummy_options = service.get_dummy_authentication_options()
+    assert dummy_options is not None
+
+
+@pytest.mark.asyncio
+async def test_mfa_endpoints_edge_cases(
+    async_client, user_factory, db_session, mock_webauthn
+) -> None:
+    import uuid
+    from unittest.mock import MagicMock, patch
+
+    from fastapi import HTTPException
+
+    password = "MfaEdgePass123!"
+    user = await user_factory(
+        email="mfa-edge@example.com",
+        hashed_password=await get_password_hash(password),
+    )
+    token = await _login_for_token(async_client, user.email, password)
+    headers = {"Authorization": f"Bearer {token}"}
+
+    confirm_resp = await async_client.post(
+        "/auth/mfa/totp/confirm",
+        headers=headers,
+        json={"enrollment_id": str(uuid.uuid4()), "code": "123456"},
+    )
+    assert confirm_resp.status_code == status.HTTP_404_NOT_FOUND
+
+    start_resp = await async_client.post("/auth/mfa/totp/start", headers=headers)
+    enrollment_id = start_resp.json()["enrollment"]["id"]
+
+    with patch(
+        "app.auth.mfa.complete_totp_enrollment",
+        side_effect=HTTPException(400, "Bad code"),
+    ):
+        confirm_resp = await async_client.post(
+            "/auth/mfa/totp/confirm",
+            headers=headers,
+            json={"enrollment_id": enrollment_id, "code": "123456"},
+        )
+        assert confirm_resp.status_code == 400
+
+    del_resp = await async_client.delete(
+        f"/auth/mfa/totp/pending/{uuid.uuid4()}", headers=headers
+    )
+    assert del_resp.status_code == status.HTTP_404_NOT_FOUND
+
+    # Start webauthn registration to get a valid challenge token
+    start_webauthn = await async_client.post(
+        "/auth/mfa/webauthn/register/start", headers=headers
+    )
+    challenge_token = start_webauthn.json()["challenge_token"]
+
+    # verify_registration raises ValueError -> confirm endpoint returns 400
+    with patch(
+        "app.services.webauthn.WebAuthnService.verify_registration",
+        side_effect=ValueError("Unexpected"),
+    ):
+        confirm_resp = await async_client.post(
+            "/auth/mfa/webauthn/register/confirm",
+            headers=headers,
+            json={
+                "challenge": challenge_token,
+                "response": {"id": "mock_id", "response": {}},
+                "label": "Key",
+            },
+        )
+        assert confirm_resp.status_code == 400
+
+    # mfa.get_challenge returns challenge with payload = None -> confirm endpoint returns 400
+    mock_challenge = MagicMock()
+    mock_challenge.payload = None
+    with patch("app.auth.mfa.get_challenge", return_value=mock_challenge):
+        confirm_resp = await async_client.post(
+            "/auth/mfa/webauthn/register/confirm",
+            headers=headers,
+            json={
+                "challenge": "challenge_token_of_at_least_32_chars_length",
+                "response": {"id": "mock_id", "response": {}},
+                "label": "Key",
+            },
+        )
+        assert confirm_resp.status_code == 400
+
+    del_resp = await async_client.delete(
+        f"/auth/mfa/webauthn/{uuid.uuid4()}", headers=headers
+    )
+    assert del_resp.status_code == status.HTTP_404_NOT_FOUND
+
+    verify_resp = await async_client.post(
+        "/auth/mfa/verify",
+        json={
+            "method": "invalid_method",
+            "challenge_token": "challenge_token_of_at_least_32_chars_length",
+        },
+    )
+    assert verify_resp.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+
+    with patch("app.auth.mfa.consume_challenge", side_effect=HTTPException(400, "Err")):
+        verify_resp = await async_client.post(
+            "/auth/mfa/verify",
+            json={
+                "method": "totp",
+                "challenge_token": "challenge_token_of_at_least_32_chars_length",
+                "totp_code": "123456",
+            },
+        )
+        assert verify_resp.status_code == status.HTTP_400_BAD_REQUEST

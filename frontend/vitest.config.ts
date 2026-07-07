@@ -85,10 +85,10 @@ export default defineConfig({
       // Wave 10: raised branches floor 81→83 after adding useOnlineStatus,
       // useDebounced (all presets), and useLocalStorage branch coverage tests.
       thresholds: {
-        statements: 92,
-        branches: 82,
-        functions: 84,
-        lines: 92,
+        statements: 98,
+        branches: 92,
+        functions: 95,
+        lines: 98,
       },
     },
   },

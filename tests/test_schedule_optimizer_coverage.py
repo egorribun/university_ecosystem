@@ -1,4 +1,6 @@
-from datetime import UTC, datetime
+import uuid
+from datetime import UTC, datetime, time
+from unittest.mock import MagicMock, patch
 
 import pytest
 import pytest_asyncio
@@ -87,3 +89,107 @@ async def test_find_optimal_slot_success(optimizer_service, sample_item):
     assert result is not None
     assert result.weekday == "Tuesday"
     assert result.room == "Auto"
+
+
+@pytest.mark.asyncio
+async def test_uuid_id_conversion(optimizer_service) -> None:
+    # Verify UUID id mapping branch
+    u_id = uuid.uuid4()
+    item = ScheduleItemInternal(
+        id=u_id,
+        weekday="Monday",
+        start_time=datetime(2026, 1, 1, 9, 0, tzinfo=UTC),
+        end_time=datetime(2026, 1, 1, 10, 0, tzinfo=UTC),
+        parity="both",
+    )
+    rust_item = optimizer_service._to_rust_item(item)
+    expected_id = int.from_bytes(u_id.bytes[:4], "big") & 0x7FFFFFFF
+    assert rust_item.id == expected_id
+
+
+@pytest.mark.asyncio
+async def test_time_objects_conversion(optimizer_service) -> None:
+    # Verify st/et of type time mapping branch
+    item = ScheduleItemInternal(
+        id=1,
+        weekday="Monday",
+        start_time=time(9, 30),
+        end_time=time(11, 0),
+        parity="both",
+    )
+    rust_item = optimizer_service._to_rust_item(item)
+    expected_st = int(
+        datetime.combine(
+            datetime(1970, 1, 1).date(), time(9, 30), tzinfo=UTC
+        ).timestamp()
+    )
+    expected_et = int(
+        datetime.combine(
+            datetime(1970, 1, 1).date(), time(11, 0), tzinfo=UTC
+        ).timestamp()
+    )
+    assert rust_item.start_time == expected_st
+    assert rust_item.end_time == expected_et
+
+
+@pytest.mark.asyncio
+async def test_detect_conflicts_exception_handling(
+    optimizer_service, sample_item
+) -> None:
+    with patch("rust_ext.detect_conflicts", side_effect=RuntimeError("FFI failed")):
+        with pytest.raises(
+            RuntimeError, match="Schedule conflict detection unavailable"
+        ):
+            await optimizer_service.detect_conflicts(sample_item, [sample_item])
+
+
+@pytest.mark.asyncio
+async def test_batch_detect_conflicts_exception_handling(
+    optimizer_service, sample_item
+) -> None:
+    with patch(
+        "rust_ext.batch_detect_conflicts", side_effect=RuntimeError("FFI failed")
+    ):
+        with pytest.raises(
+            RuntimeError, match="Schedule batch conflict detection unavailable"
+        ):
+            await optimizer_service.batch_detect_conflicts([sample_item])
+
+
+@pytest.mark.asyncio
+async def test_find_optimal_slot_fallback_type_error(
+    optimizer_service, sample_item
+) -> None:
+    # Test fallback branch when find_optimal_slot first call raises TypeError
+    mock_find = MagicMock()
+    mock_find.side_effect = [TypeError("Wrong arguments"), None]
+
+    with patch("rust_ext.find_optimal_slot", mock_find):
+        result = await optimizer_service.find_optimal_slot(
+            60, [sample_item], ["Monday"]
+        )
+        assert result is None
+        assert mock_find.call_count == 2
+
+
+@pytest.mark.asyncio
+async def test_find_optimal_slot_exception_handling(
+    optimizer_service, sample_item
+) -> None:
+    # Test find_optimal_slot RuntimeError propagation
+    with patch("rust_ext.find_optimal_slot", side_effect=RuntimeError("FFI failed")):
+        with pytest.raises(RuntimeError, match="FFI failed"):
+            await optimizer_service.find_optimal_slot(60, [sample_item], ["Monday"])
+
+
+@pytest.mark.asyncio
+async def test_to_rust_item_other_id_type(optimizer_service) -> None:
+    item = ScheduleItemInternal(
+        id=None,
+        weekday="Monday",
+        start_time=datetime(2026, 1, 1, 9, 0, tzinfo=UTC),
+        end_time=datetime(2026, 1, 1, 10, 0, tzinfo=UTC),
+        parity="both",
+    )
+    rust_item = optimizer_service._to_rust_item(item)
+    assert rust_item.id is None
