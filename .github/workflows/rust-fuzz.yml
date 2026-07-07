@@ -5,9 +5,11 @@ on:
     branches: [ main, master ]
     paths:
       - 'native/rust_ext/**'
+      - 'crates/pyo3-sanitizer/**'
   pull_request:
     paths:
       - 'native/rust_ext/**'
+      - 'crates/pyo3-sanitizer/**'
   schedule:
     # Run every Sunday at 00:00 UTC
     - cron: '0 0 * * 0'

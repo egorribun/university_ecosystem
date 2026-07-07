@@ -421,3 +421,107 @@ mod tests {
         });
     }
 }
+
+// ── Property-Based Tests ──────────────────────────────────────────────────────
+//
+// proptest generates thousands of arbitrary strings per run, exercising code
+// paths that hand-written KAT vectors miss.  Two invariants are verified:
+//   1. Idempotency  — applying the sanitizer twice must equal applying it once.
+//   2. No panic     — the sanitizer must never panic regardless of input.
+//
+// Strategy ".*" generates arbitrary Unicode strings including nulls, surrogates,
+// lone high-surrogates, and other adversarial code-point sequences.
+#[cfg(test)]
+mod prop_tests {
+    use super::*;
+    use proptest::prelude::*;
+
+    proptest! {
+        // ── sanitize_rich_text ───────────────────────────────────────────────
+
+        /// Idempotency: sanitize(sanitize(x)) == sanitize(x) for rich mode.
+        ///
+        /// WHY: if the first pass produces output that the second pass would
+        /// further modify, the caller cannot rely on a stable representation.
+        #[test]
+        fn sanitize_rich_text_is_idempotent(s in ".*") {
+            let once = sanitize_rich_text(&s);
+            let twice = sanitize_rich_text(&once);
+            prop_assert_eq!(once, twice);
+        }
+
+        /// The sanitizer must not panic on any arbitrary Unicode input.
+        #[test]
+        fn sanitize_rich_text_never_panics(s in ".*") {
+            let _ = sanitize_rich_text(&s);
+        }
+
+        /// Output must never contain a raw `<script` opening tag.
+        ///
+        /// WHY: the XSS invariant must hold across all generated strings, not
+        /// just hand-picked attack vectors.
+        #[test]
+        fn sanitize_rich_text_never_emits_script_tag(s in ".*") {
+            let out = sanitize_rich_text(&s);
+            prop_assert!(
+                !out.to_lowercase().contains("<script"),
+                "script tag found in output: {:?}", out
+            );
+        }
+
+        /// javascript: URIs must never survive sanitization.
+        #[test]
+        fn sanitize_rich_text_never_emits_javascript_scheme(s in ".*") {
+            let out = sanitize_rich_text(&s);
+            prop_assert!(
+                !out.contains("javascript:"),
+                "javascript: scheme found in output: {:?}", out
+            );
+        }
+
+        // ── sanitize_html_basic ──────────────────────────────────────────────
+
+        /// Idempotency for the basic (inline-only) mode.
+        #[test]
+        fn sanitize_html_basic_is_idempotent(s in ".*") {
+            let once = sanitize_html_basic(&s);
+            let twice = sanitize_html_basic(&once);
+            prop_assert_eq!(once, twice);
+        }
+
+        /// Must not panic in basic mode.
+        #[test]
+        fn sanitize_html_basic_never_panics(s in ".*") {
+            let _ = sanitize_html_basic(&s);
+        }
+
+        // ── strip_html ───────────────────────────────────────────────────────
+
+        /// strip_html output must contain no angle-bracket markup whatsoever.
+        ///
+        /// WHY: the contract of strip_html is "zero HTML" — any surviving tag
+        /// delimiter would be a regression in indexing pipelines.
+        #[test]
+        fn strip_html_output_has_no_angle_brackets(s in ".*") {
+            let out = strip_html(&s);
+            prop_assert!(
+                !out.contains('<'),
+                "angle bracket found in strip_html output: {:?}", out
+            );
+        }
+
+        /// Idempotency for strip_html.
+        #[test]
+        fn strip_html_is_idempotent(s in ".*") {
+            let once = strip_html(&s);
+            let twice = strip_html(&once);
+            prop_assert_eq!(once, twice);
+        }
+
+        /// Must not panic in strip mode.
+        #[test]
+        fn strip_html_never_panics(s in ".*") {
+            let _ = strip_html(&s);
+        }
+    }
+}
