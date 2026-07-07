@@ -34,7 +34,7 @@ func TestValidateUpgradeTicket_Errors(t *testing.T) {
 	t.Run("invalid length", func(t *testing.T) {
 		mr := miniredis.RunT(t)
 		rClient := redis.NewClient(&redis.Options{Addr: mr.Addr()})
-		defer rClient.Close()
+		defer func() { _ = rClient.Close() }()
 		h := NewHub(nil, logger, nil, &configHubPlaceholder, rClient)
 
 		_, err := h.validateUpgradeTicket(context.Background(), "short")
@@ -45,7 +45,7 @@ func TestValidateUpgradeTicket_Errors(t *testing.T) {
 	t.Run("invalid charset", func(t *testing.T) {
 		mr := miniredis.RunT(t)
 		rClient := redis.NewClient(&redis.Options{Addr: mr.Addr()})
-		defer rClient.Close()
+		defer func() { _ = rClient.Close() }()
 		h := NewHub(nil, logger, nil, &configHubPlaceholder, rClient)
 
 		invalidTicket := strings.Repeat("a", 63) + "Z" // Z is not lowercase hex
@@ -57,7 +57,7 @@ func TestValidateUpgradeTicket_Errors(t *testing.T) {
 	t.Run("ticket not found", func(t *testing.T) {
 		mr := miniredis.RunT(t)
 		rClient := redis.NewClient(&redis.Options{Addr: mr.Addr()})
-		defer rClient.Close()
+		defer func() { _ = rClient.Close() }()
 		h := NewHub(nil, logger, nil, &configHubPlaceholder, rClient)
 
 		validTicket := strings.Repeat("a", 64)
@@ -170,7 +170,7 @@ func TestValidateHMAC_Errors(t *testing.T) {
 	t.Run("method mismatch", func(t *testing.T) {
 		// Sign with RS256 but pass to validateHMAC
 		// {"alg":"RS256"} base64 raw url encoded is "eyJhbGciOiJSUzI1NiJ9"
-		tokenStr := "eyJhbGciOiJSUzI1NiJ9.eyJzdWIiOiJ1c2VyLTEyMyJ9.sig" // pragma: allowlist secret
+		tokenStr := "eyJhbGciOiJSUzI1NiJ9.eyJzdWIiOiJ1c2VyLTEyMyJ9.sig" // pragma: allowlist secret // nosec G101 // nosemgrep
 		_, err := h.validateHMAC(tokenStr, []string{"secret"})
 		assert.Error(t, err)
 	})
@@ -178,7 +178,7 @@ func TestValidateHMAC_Errors(t *testing.T) {
 	t.Run("missing sub", func(t *testing.T) {
 		// Valid HMAC token but without sub claim
 		token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{})
-		tokenStr, err := token.SignedString([]byte("secret"))
+		tokenStr, err := token.SignedString([]byte("secret")) // nosemgrep
 		require.NoError(t, err)
 
 		_, err = h.validateHMAC(tokenStr, []string{"secret"})

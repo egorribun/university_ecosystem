@@ -120,17 +120,15 @@ func TestBroadcastMessage_ClientEvictOnShutdown(t *testing.T) {
 	}
 
 	var closed int32
-	
+
 	h.broadcastMessage(context.Background(), msg)
-	
-	// Wait a moment for goroutine to process the context cancellation case
-	time.Sleep(100 * time.Millisecond)
 
 	// First drain the initial message to allow another read or check closed status
 	select {
 	case m := <-c.Send:
 		assert.Equal(t, "initial", string(m))
-	case <-time.After(100 * time.Millisecond):
+	case <-time.After(5 * time.Second):
+		t.Fatal("Timeout waiting for initial message")
 	}
 
 	// Now verify c.Send channel is closed
@@ -139,7 +137,7 @@ func TestBroadcastMessage_ClientEvictOnShutdown(t *testing.T) {
 		if !ok {
 			atomic.StoreInt32(&closed, 1)
 		}
-	case <-time.After(200 * time.Millisecond):
+	case <-time.After(5 * time.Second):
 		// timeout, channel not closed
 	}
 

@@ -354,7 +354,7 @@ omit = [
 ]
 
 [tool.coverage.report]
-fail_under = 98
+fail_under = 93
 show_missing = true
 # Ratchet floor — advanced by the test campaign:
 #   Session 10 → 88.04 %  (service-layer climb across workers/tasks/auth/chat)

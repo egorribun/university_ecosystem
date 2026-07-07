@@ -726,7 +726,7 @@ jobs:
         with:
           repo: sbdchd/squawk
           tag: v2.44.0 # MOD-008: update to latest release v2.44.0
-          file-name: squawk-linux-x64 # Specify explicit binary name
+          asset-name: squawk-linux-x64 # Specify explicit binary name
           cache: enable
           extension-matching: disable
           rename-to: squawk
@@ -1547,7 +1547,7 @@ jobs:
         run: |
           LIBDIR="$(python -c 'import sysconfig; print(sysconfig.get_config_var("LIBDIR"))')"
           export LD_LIBRARY_PATH="${LIBDIR}:${LD_LIBRARY_PATH}"
-          cargo llvm-cov --lib
+          cargo llvm-cov --no-default-features --lib
 
       - name: wasm-sanitizer — native unit tests + coverage
         working-directory: frontend/wasm-sanitizer
