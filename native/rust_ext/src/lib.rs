@@ -72,7 +72,9 @@ fn detect_conflicts(target: &ScheduleItem, existing: Vec<ScheduleItem>) -> Vec<S
 const MAX_CONFLICT_ITEMS: usize = 2500;
 
 #[pyfunction]
-pub fn batch_detect_conflicts(items: Vec<ScheduleItem>) -> PyResult<Vec<(ScheduleItem, ScheduleItem)>> {
+pub fn batch_detect_conflicts(
+    items: Vec<ScheduleItem>,
+) -> PyResult<Vec<(ScheduleItem, ScheduleItem)>> {
     if items.len() > MAX_CONFLICT_ITEMS {
         return Err(pyo3::exceptions::PyValueError::new_err(format!(
             "Input exceeds maximum allowed items ({MAX_CONFLICT_ITEMS}) for batch detection"
