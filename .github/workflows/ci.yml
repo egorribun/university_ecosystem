@@ -1880,6 +1880,83 @@ jobs:
             -f docker-compose.ci-loadtest.yml \
             down -v
 
+  chaos-tests:
+    name: Chaos Engineering (ToxiProxy)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: [backend-tests]
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_DB: testdb
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres  # pragma: allowlist secret
+        ports: ["5432:5432"]
+      redis:
+        image: redis:7-alpine
+        ports: ["6379:6379"]
+      toxiproxy:
+        image: ghcr.io/shopify/toxiproxy:2.9.0
+        ports: ["8474:8474", "5433:5433", "6380:6380", "4223:4223"]
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: astral-sh/setup-uv@d31148d669074a8d0a63714ba94f3201e7020bc3 # v8.3.0
+      - name: Install dependencies
+        run: uv sync --frozen
+      - name: Configure ToxiProxy proxies
+        run: |
+          curl -s http://localhost:8474/version
+          curl -s -X POST http://localhost:8474/proxies \
+            -d '{"name":"postgres","listen":"0.0.0.0:5433","upstream":"localhost:5432"}'
+          curl -s -X POST http://localhost:8474/proxies \
+            -d '{"name":"redis","listen":"0.0.0.0:6380","upstream":"localhost:6379"}'
+      - name: Run chaos tests
+        env:
+          TOXIPROXY_URL: http://localhost:8474
+          DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/testdb  # pragma: allowlist secret
+        run: uv run pytest tests/chaos/ -v -m chaos --tb=short
+
+  db-migration-integrity:
+    name: DB Migration Rollback Integrity
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: [alembic-migrations]
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_DB: migtest
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres  # pragma: allowlist secret
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: astral-sh/setup-uv@d31148d669074a8d0a63714ba94f3201e7020bc3 # v8.3.0
+        with:
+          version: "0.7.x"
+      - name: Install dependencies
+        run: uv sync --frozen
+      - name: Apply all migrations
+        env:
+          DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/migtest # pragma: allowlist secret
+        run: uv run alembic upgrade head
+      - name: Rollback all migrations
+        env:
+          DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/migtest # pragma: allowlist secret
+        run: uv run alembic downgrade base
+      - name: Re-apply all migrations
+        env:
+          DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/migtest # pragma: allowlist secret
+        run: uv run alembic upgrade head
+      - name: Run migration integrity tests
+        run: uv run pytest tests/test_migrations_integrity.py -v --tb=short
+
   ci-success:
     name: CI Success
     runs-on: ubuntu-latest
@@ -1914,6 +1991,8 @@ jobs:
       - rust-tests
       - mutation-tests
       - load-and-chaos-tests
+      - chaos-tests
+      - db-migration-integrity
       - actionlint
       - dockerfile-lint
       - shellcheck
@@ -2009,6 +2088,8 @@ jobs:
           gw=${{ needs.go-integration-gateway.result }}
           chaos=${{ needs.load-and-chaos-tests.result }}
           mut=${{ needs.mutation-tests.result }}
+          toxi=${{ needs.chaos-tests.result }}
+          dbmig=${{ needs.db-migration-integrity.result }}
           {
             echo "## Go integration tests (advisory)";
             echo "";
@@ -2026,8 +2107,11 @@ jobs:
             echo "|-----|--------|";
             echo "| load-and-chaos-tests | $chaos |";
             echo "| mutation-tests | $mut |";
+            echo "| chaos-tests (ToxiProxy W19) | $toxi |";
+            echo "| db-migration-integrity (W21) | $dbmig |";
             echo "";
             echo "_load-and-chaos non-blocking until prod Temporal boots reliably in CI (W144-class)._";
             echo "_mutation-tests non-blocking until a curated unit-only mutation test selection exists._";
+            echo "_chaos-tests + db-migration-integrity advisory until ToxiProxy coverage baseline is established._";
           } >> "$GITHUB_STEP_SUMMARY"
-          echo "Advisory results — ws-hub: $ws, file-processor: $fp, gateway: $gw, chaos: $chaos, mutation: $mut"
+          echo "Advisory results — ws-hub: $ws, file-processor: $fp, gateway: $gw, chaos: $chaos, mutation: $mut, toxi: $toxi, dbmig: $dbmig"
