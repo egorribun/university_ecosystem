@@ -1,8 +1,9 @@
-homepage: "https://github.com/university-ecosystem"
+homepage: "https://github.com/egorribun/university_ecosystem"
 language: rust
-primary_contact: "security@university-ecosystem.local"
+primary_contact: "egorribun@gmail.com"  # замените на реальный email
+main_repo: "https://github.com/egorribun/university_ecosystem"
 auto_ccs:
-  - security@university-ecosystem.local
+  - egorribun@gmail.com
 fuzzing_engines:
   - libfuzzer
   - afl
@@ -10,5 +11,5 @@ fuzzing_engines:
 sanitizers:
   - address
   - undefined
-arcitectures:
+architectures:
   - x86_64
