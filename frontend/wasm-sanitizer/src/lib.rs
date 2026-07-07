@@ -71,6 +71,7 @@ pub fn strip_html(html: &str) -> String {
 }
 
 #[wasm_bindgen]
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
 pub fn sanitize_rich_text_raw(ptr: *const u8, len: usize) -> Result<String, String> {
     if ptr.is_null() {
         return Err(String::from("Null pointer"));
@@ -242,7 +243,7 @@ mod tests {
         let res = sanitize_rich_text_raw(std::ptr::null(), 10);
         assert!(res.is_err());
 
-        let invalid_utf8 = vec![0, 159, 146, 150]; // invalid starting byte
+        let invalid_utf8 = [0, 159, 146, 150]; // invalid starting byte
         let res = sanitize_rich_text_raw(invalid_utf8.as_ptr(), invalid_utf8.len());
         assert!(res.is_err());
 
