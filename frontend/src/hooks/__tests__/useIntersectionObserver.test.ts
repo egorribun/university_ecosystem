@@ -49,11 +49,12 @@ const createMockIO = () => {
  *
  * Returns a restore function that puts back the no-op polyfill.
  */
-function installMockIO(MockIO: (new (...args: unknown[]) => unknown) | undefined): () => void {
-  const originalValue = (window as Record<string, unknown>).IntersectionObserver
-  ;(window as Record<string, unknown>).IntersectionObserver = MockIO
+function installMockIO(MockIO: unknown): () => void {
+  const win = window as unknown as Record<string, unknown>
+  const originalValue = win.IntersectionObserver
+  win.IntersectionObserver = MockIO
   return () => {
-    ;(window as Record<string, unknown>).IntersectionObserver = originalValue
+    win.IntersectionObserver = originalValue
   }
 }
 
@@ -196,7 +197,7 @@ describe("useIntersectionObserver", () => {
   // ───────────────────────────────────────────────────────────────────────────
   it("returns undefined gracefully when window.IntersectionObserver is unavailable", () => {
     // Override within this specific test — restoreIO in afterEach restores the mock
-    ;(window as Record<string, unknown>).IntersectionObserver = undefined
+    ;(window as unknown as Record<string, unknown>).IntersectionObserver = undefined
 
     const ref = createRef<HTMLDivElement>()
     const node = document.createElement("div")
@@ -310,7 +311,7 @@ describe("useIsVisible", () => {
   })
 
   it("returns false when IntersectionObserver is unavailable (SSR)", () => {
-    ;(window as Record<string, unknown>).IntersectionObserver = undefined
+    ;(window as unknown as Record<string, unknown>).IntersectionObserver = undefined
     const ref = createRef<HTMLDivElement>()
     const node = document.createElement("div")
     Object.defineProperty(ref, "current", { value: node, writable: false })
