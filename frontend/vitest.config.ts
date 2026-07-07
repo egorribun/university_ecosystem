@@ -62,6 +62,7 @@ export default defineConfig({
         "**/routes/**/*",
         "**/pages/**/*",
         "src/test/**/*",
+        "src/types/**/*",
       ],
       // Ratchet floors at measured reality. SESSION-15 MAXIMAL whole-project sweep
       // (40 new test files / ~635 tests via Workflow orchestration: Lane F fresh
