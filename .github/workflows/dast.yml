@@ -12,6 +12,12 @@ name: DAST — Nuclei + ZAP Scan
 on:
   schedule:
     - cron: "0 2 * * 0"
+  # W23: Allow triggering DAST on PRs when the 'run-dast' label is applied.
+  # This lets security reviewers kick off a scan without waiting for Sunday.
+  # The workflow still requires a running DAST_TARGET_URL (staging environment).
+  pull_request:
+    branches: [main]
+    types: [labeled]
   workflow_dispatch:
     inputs:
       target_url:

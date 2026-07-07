@@ -7,6 +7,7 @@ on:
   pull_request:
     paths:
       - "services/**/*.go"
+      - "crates/**"
       - ".github/workflows/benchmark.yml"
 
 permissions:
@@ -55,4 +56,81 @@ jobs:
           alert-threshold: "200%"
           comment-on-alert: true
           fail-on-alert: true
-# Dummy comment to trigger CI run on main without skip-ci
+
+  # ── W22: WS-Hub regression gate ────────────────────────────────────────────
+  # Uses a dedicated -benchtime=1s -count=5 run against ws-hub only and gates
+  # the PR on a strict 110% threshold (fail at > 10% regression).
+  ws-hub-regression:
+    name: WS-Hub Go Benchmark Regression Gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Set up Go
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version: "1.26.4"
+          cache: true
+
+      - name: Run WS-Hub benchmarks (regression input)
+        # -benchmem surfaces allocations so the tool can track them separately.
+        # -count=5 gives the benchmark action enough samples for a stable mean.
+        # -benchtime=1s ensures consistent wall-clock budget per run.
+        run: |
+          go test -bench=./... -benchmem -count=5 -benchtime=1s ./services/ws-hub/...  2>&1 | tee ws-hub-regression.txt
+        working-directory: ${{ github.workspace }}
+
+      - name: Regression gate — fail on > 10% slowdown
+        uses: benchmark-action/github-action-benchmark@v1
+        with:
+          name: "WS-Hub Regression Gate"
+          tool: "go"
+          output-file-path: "ws-hub-regression.txt"
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          # Only push historical data when merging to main; PRs only compare.
+          auto-push: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+          # Gate: reject any benchmark that runs ≥ 110 % of the stored baseline.
+          alert-threshold: "110%"
+          fail-on-alert: true
+          comment-on-alert: true
+
+  # ── W22: Rust Criterion benchmarks (pyo3-sanitizer) ───────────────────────
+  # Criterion benches are present in crates/pyo3-sanitizer (see Cargo.toml
+  # [[bench]] section).  Run them for visibility; no regression gate yet.
+  rust-criterion:
+    name: Rust Criterion Benchmarks (pyo3-sanitizer)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Install stable Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Cargo registry and build artefacts
+        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            crates/pyo3-sanitizer/target
+          key: rust-criterion-${{ runner.os }}-${{ hashFiles('crates/pyo3-sanitizer/Cargo.toml') }}
+          restore-keys: rust-criterion-${{ runner.os }}-
+
+      - name: Run Criterion benchmarks
+        # Criterion writes HTML reports to target/criterion/ but we capture
+        # machine-readable stdout via 2>&1 for the benchmark action.
+        # pyo3 extension-module requires CGO-equivalent; pure --lib avoids that.
+        run: cargo bench -p pyo3-sanitizer 2>&1 | tee ../../../criterion-bench.txt
+        working-directory: crates/pyo3-sanitizer
+
+      - name: Store Criterion results
+        uses: benchmark-action/github-action-benchmark@v1
+        with:
+          name: "Rust Criterion Benchmarks (pyo3-sanitizer)"
+          tool: "cargo"
+          output-file-path: "criterion-bench.txt"
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          auto-push: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+          alert-threshold: "150%"
+          comment-on-alert: true
+          fail-on-alert: false
