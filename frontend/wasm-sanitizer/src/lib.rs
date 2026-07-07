@@ -86,8 +86,7 @@ pub fn sanitize_rich_text_raw(ptr: *const u8, len: usize) -> Result<String, Stri
     }
 
     let slice = unsafe { std::slice::from_raw_parts(ptr, len) };
-    let s = std::str::from_utf8(slice)
-        .map_err(|e| format!("Invalid UTF-8: {}", e))?;
+    let s = std::str::from_utf8(slice).map_err(|e| format!("Invalid UTF-8: {}", e))?;
 
     Ok(sanitize_rich_text(s))
 }
@@ -242,11 +241,11 @@ mod tests {
     fn test_raw_pointer_null_and_utf8() {
         let res = sanitize_rich_text_raw(std::ptr::null(), 10);
         assert!(res.is_err());
-        
+
         let invalid_utf8 = vec![0, 159, 146, 150]; // invalid starting byte
         let res = sanitize_rich_text_raw(invalid_utf8.as_ptr(), invalid_utf8.len());
         assert!(res.is_err());
-        
+
         let valid_utf8 = b"<p>hello</p>";
         let res = sanitize_rich_text_raw(valid_utf8.as_ptr(), valid_utf8.len());
         assert_eq!(res.unwrap(), "<p>hello</p>");
