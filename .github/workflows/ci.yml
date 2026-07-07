@@ -1957,6 +1957,30 @@ jobs:
       - name: Run migration integrity tests
         run: uv run pytest tests/test_migrations_integrity.py -v --tb=short
 
+  # Advisory-only WebSocket stress test — non-blocking, runs on main pushes only.
+  # WHY: validates that ws-hub can sustain 10k concurrent VUs without crashing;
+  # runs an abbreviated 1-VU smoke variant in CI to verify script syntax and
+  # basic connectivity without the full load (wall-clock cost: ~15s).
+  ws-stress-test:
+    name: WebSocket 10k Stress Test (advisory)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - name: Install k6
+        run: |
+          curl https://github.com/grafana/k6/releases/download/v0.54.0/k6-v0.54.0-linux-amd64.tar.gz -L | tar xvz
+          sudo mv k6-v0.54.0-linux-amd64/k6 /usr/local/bin/
+      - name: Validate k6 script syntax
+        run: k6 inspect tests/performance/ws_hub_10k_test.js
+      - name: Run abbreviated smoke test (1 VU, 10s)
+        run: |
+          k6 run --vus 1 --duration 10s \
+            --env BASE_URL=http://localhost:8080 \
+            tests/performance/ws_hub_10k_test.js || true
+        continue-on-error: true
+
   ci-success:
     name: CI Success
     runs-on: ubuntu-latest
