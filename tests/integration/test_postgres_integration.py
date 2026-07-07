@@ -191,8 +191,8 @@ async def test_db_session_write_read_consistency(db_session: AsyncSession) -> No
     await db_session.execute(
         text(
             "INSERT INTO stored_events "
-            "(id, event_type, aggregate_id, aggregate_type, sequence_number, payload, error_count) "
-            "VALUES (:id, 'test.event', 'agg-1', 'TestAggregate', 1, '{\"test\": true}', 0)"
+            "(id, event_type, aggregate_id, aggregate_type, sequence_number, payload, error_count, version) "
+            "VALUES (:id, 'test.event', 'agg-1', 'TestAggregate', 1, '{\"test\": true}', 0, 1)"
         ),
         {"id": event_id},
     )
