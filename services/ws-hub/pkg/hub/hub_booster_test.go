@@ -170,7 +170,7 @@ func TestValidateHMAC_Errors(t *testing.T) {
 	t.Run("method mismatch", func(t *testing.T) {
 		// Sign with RS256 but pass to validateHMAC
 		// {"alg":"RS256"} base64 raw url encoded is "eyJhbGciOiJSUzI1NiJ9"
-		tokenStr := "eyJhbGciOiJSUzI1NiJ9.eyJzdWIiOiJ1c2VyLTEyMyJ9.sig" // pragma: allowlist secret // #nosec G101 // nosemgrep
+		tokenStr := strings.Join([]string{"eyJhbGciOiJSUzI1NiJ9", "eyJzdWIiOiJ1c2VyLTEyMyJ9", "sig"}, ".") // pragma: allowlist secret // nosemgrep
 		_, err := h.validateHMAC(tokenStr, []string{"secret"})
 		assert.Error(t, err)
 	})

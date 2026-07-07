@@ -73,7 +73,7 @@ async def test_user_registration_and_login_flow(
     # Step 2: login
     login_response = await async_client.post(
         "/auth/login",
-        json={"email": email, "password": password},
+        data={"username": email, "password": password},
     )
     assert login_response.status_code == 200, (
         f"Login failed: {login_response.status_code} — {login_response.text}"
@@ -120,7 +120,7 @@ async def test_events_crud_flow(
     )
     login = await async_client.post(
         "/auth/login",
-        json={"email": email, "password": password},
+        data={"username": email, "password": password},
     )
     if login.status_code != 200:
         pytest.skip(f"Could not authenticate for events CRUD: {login.status_code}")

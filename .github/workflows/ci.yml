@@ -1889,7 +1889,7 @@ jobs:
     needs: [backend-tests]
     services:
       postgres:
-        image: postgres:17
+        image: pgvector/pgvector:pg17
         env:
           POSTGRES_DB: testdb
           POSTGRES_USER: postgres
@@ -1928,7 +1928,7 @@ jobs:
       SECRET_KEY: "dummy-secret-key-for-migrations-integration-test-12345678"
     services:
       postgres:
-        image: postgres:17
+        image: pgvector/pgvector:pg17
         env:
           POSTGRES_DB: migtest
           POSTGRES_USER: postgres
