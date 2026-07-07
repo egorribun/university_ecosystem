@@ -79,7 +79,11 @@ async def test_user_registration_and_login_flow(
         f"Login failed: {login_response.status_code} — {login_response.text}"
     )
     data = login_response.json()
-    token = data.get("access_token") or data.get("token") or login_response.cookies.get("access_token_v2")
+    token = (
+        data.get("access_token")
+        or data.get("token")
+        or login_response.cookies.get("access_token_v2")
+    )
     assert token, f"No JWT in login response: {data}"
 
     # Step 3: use the JWT for an authenticated request
@@ -124,7 +128,11 @@ async def test_events_crud_flow(
     if login.status_code != 200:
         pytest.skip(f"Could not authenticate for events CRUD: {login.status_code}")
 
-    token = login.json().get("access_token") or login.json().get("token") or login.cookies.get("access_token_v2")
+    token = (
+        login.json().get("access_token")
+        or login.json().get("token")
+        or login.cookies.get("access_token_v2")
+    )
     auth_header = {"Authorization": f"Bearer {token}"}
 
     # Step 1: create event
