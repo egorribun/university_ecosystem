@@ -235,7 +235,6 @@ const loadServiceWorker = async () => {
 
 let originalSelf: typeof globalThis
 let listeners: Map<string, ((event: Event) => void)[]>
-let originalCaches: CacheStorage | undefined
 let swModule: SwModule | undefined
 
 beforeEach(async () => {
@@ -243,12 +242,13 @@ beforeEach(async () => {
   const created = createServiceWorkerScope()
   listeners = created.listeners
   originalSelf = self
-  const globalWithCaches = globalThis as typeof globalThis & { caches?: CacheStorage }
-  originalCaches = globalWithCaches.caches
   Object.assign(globalThis as typeof globalThis & { self: TestServiceWorkerScope }, {
     self: created.scope,
   })
-  globalWithCaches.caches = created.scope.caches
+  // Use vi.stubGlobal so Vitest tracks the stub and vi.unstubAllGlobals() in
+  // afterEach restores the original value — prevents leaks into sibling workers
+  // that share the same process (fixes flaky api.test.ts clearSessionCaches).
+  vi.stubGlobal("caches", created.scope.caches)
   swModule = await import("@/sw")
   // Explicitly initialize offline queue to ensure IndexedDB stores exist
   // even if bootstrap fails due to mock issues
@@ -260,12 +260,8 @@ afterEach(async () => {
   // Note: deleteDatabase() removed to prevent hook timeouts with fake-indexeddb
   vi.restoreAllMocks()
   vi.clearAllMocks()
-  const globalWithCaches = globalThis as typeof globalThis & { caches?: CacheStorage }
-  if (originalCaches) {
-    globalWithCaches.caches = originalCaches
-  } else {
-    Reflect.deleteProperty(globalWithCaches, "caches")
-  }
+  // vi.stubGlobal("caches") in beforeEach is reverted here automatically.
+  vi.unstubAllGlobals()
   Object.assign(globalThis as typeof globalThis & { self: typeof originalSelf }, {
     self: originalSelf,
   })

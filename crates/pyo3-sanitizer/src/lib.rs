@@ -68,6 +68,11 @@ pub fn sanitize_rich_text(html: &str) -> String {
 
     let url_schemes: HashSet<&str> = ["http", "https"].iter().copied().collect();
 
+    // WHY: html5ever (used internally by ammonia) processes null bytes (\0)
+    // as part of text nodes rather than removing them outright.  When \0
+    // precedes U+FEFF, the tokeniser leaves FEFF in the first-pass output but
+    // removes it on the second pass — breaking idempotency.  Stripping both
+    // characters post-ammonia is the minimal correct fix.
     Builder::new()
         .tags(allowed_tags)
         .tag_attributes(attributes)
@@ -75,6 +80,8 @@ pub fn sanitize_rich_text(html: &str) -> String {
         .link_rel(Some("noopener noreferrer"))
         .clean(html)
         .to_string()
+        .replace('\0', "")
+        .replace('\u{feff}', "")
 }
 
 #[pyfunction]
@@ -91,7 +98,13 @@ pub fn py_sanitize_rich_text(html: &str) -> PyResult<String> {
 /// where rich formatting is unwanted.
 pub fn sanitize_html_basic(html: &str) -> String {
     let allowed_tags: HashSet<&str> = ["b", "i", "em", "strong"].iter().copied().collect();
-    Builder::new().tags(allowed_tags).clean(html).to_string()
+    // WHY: same html5ever null-byte + BOM idempotency issue as strip_html.
+    Builder::new()
+        .tags(allowed_tags)
+        .clean(html)
+        .to_string()
+        .replace('\0', "")
+        .replace('\u{feff}', "")
 }
 
 #[pyfunction]
@@ -106,7 +119,18 @@ pub fn py_sanitize_html_basic(html: &str) -> PyResult<String> {
 ///
 /// Use this when storing or indexing content where markup must be absent.
 pub fn strip_html(html: &str) -> String {
-    Builder::new().tags(HashSet::new()).clean(html).to_string()
+    // Run ammonia's tag-stripping pass first.
+    let cleaned = Builder::new().tags(HashSet::new()).clean(html).to_string();
+
+    // WHY: html5ever (used internally by ammonia) processes null bytes (\0)
+    // as part of text nodes rather than removing them outright.  When \0
+    // precedes a BOM/ZWNBSP (U+FEFF), the presence of \0 changes how the
+    // HTML5 tokeniser handles U+FEFF on the *first* call (leaving it in the
+    // output) while the *second* call (now without \0) removes it — breaking
+    // idempotency.  Stripping both characters after ammonia runs is the
+    // minimal, correct fix that restores the invariant:
+    //   strip_html(strip_html(x)) == strip_html(x)  for all x.
+    cleaned.replace('\0', "").replace('\u{feff}', "")
 }
 
 #[pyfunction]
@@ -325,6 +349,18 @@ mod tests {
         assert!(!out.contains('<'), "no tags must remain");
         assert!(out.contains("outer"), "outer text must survive");
         assert!(out.contains("inner"), "inner text must survive");
+    }
+
+    #[test]
+    fn test_strip_html_null_byte_and_bom_idempotent() {
+        // Regression: proptest found strip_html was not idempotent on null + BOM
+        let input = "\0\u{feff}";
+        let first = strip_html(input);
+        let second = strip_html(&first);
+        assert_eq!(first, second, "strip_html must be idempotent");
+        // Also verify the output contains no null bytes or BOM
+        assert!(!first.contains('\0'), "strip_html must remove null bytes");
+        assert!(!first.contains('\u{feff}'), "strip_html must remove BOM characters");
     }
 
     #[test]
