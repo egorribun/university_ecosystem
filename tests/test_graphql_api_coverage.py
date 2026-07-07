@@ -999,7 +999,7 @@ class TestGraphQLAdvancedCoverage:
         from app.graphql.extensions import PersistedQueryExtension
         from app.graphql.schema import _build_schema_extensions
 
-        with patch("app.core.config.settings.environment", "production"):
+        with patch("app.graphql.schema.settings.environment", "production"):
             exts = _build_schema_extensions()
             # PersistedQueryExtension is appended in production
             assert PersistedQueryExtension in exts
