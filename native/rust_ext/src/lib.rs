@@ -53,7 +53,10 @@ pub fn check_conflict_proto(a: &ScheduleItem, b: &ScheduleItem) -> bool {
     if a.parity != "both" && b.parity != "both" && a.parity != b.parity {
         return false;
     }
-    a.start_time < a.end_time && b.start_time < b.end_time && a.start_time < b.end_time && b.start_time < a.end_time
+    a.start_time < a.end_time
+        && b.start_time < b.end_time
+        && a.start_time < b.end_time
+        && b.start_time < a.end_time
 }
 
 #[pyfunction]
@@ -780,10 +783,10 @@ mod tests {
                 end_time: end_b,
                 parity: "both".to_string(),
             };
-            
+
             // commutes
             prop_assert_eq!(check_conflict_proto(&a, &b), check_conflict_proto(&b, &a));
-            
+
             // if either has start >= end (invalid), there should be no conflict
             if start_a >= end_a || start_b >= end_b {
                 prop_assert!(!check_conflict_proto(&a, &b));
