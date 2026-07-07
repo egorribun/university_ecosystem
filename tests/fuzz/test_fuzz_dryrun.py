@@ -13,7 +13,7 @@ import pytest
 
 try:
     import atheris
-except ImportError:
+except (ImportError, RuntimeError):
     atheris = None
 
 try:

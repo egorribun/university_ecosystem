@@ -95,6 +95,7 @@ class Event(Base, EventEmitterMixin, UUID7PrimaryKeyMixin):
             postgresql_with={"m": 16, "ef_construction": 64},
             postgresql_ops={"embedding": "vector_cosine_ops"},
         ),
+        Index("ix_events_starts_at_is_active", "starts_at", "is_active"),
     )
     # RZ-23-01 (audit 2026-03-25 Wave 23): Changed lazy="selectin" → lazy="noload".
     # lazy="selectin" fires unconditional secondary SELECTs on every Event load,

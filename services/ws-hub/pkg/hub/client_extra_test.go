@@ -57,7 +57,7 @@ func TestWritePump_CloseMessageError(t *testing.T) {
 		t.Log(err)
 	}
 
-	close(c.Send)
+	safeClose(c.Send)
 
 	done := make(chan struct{})
 	go func() {

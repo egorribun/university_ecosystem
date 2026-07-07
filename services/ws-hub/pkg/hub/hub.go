@@ -223,7 +223,7 @@ func (h *Hub) handleRegister(ctx context.Context, client *Client) {
 		h.Logger.WarnContext(ctx, "Max connections reached, rejecting client",
 			"id", client.ID,
 			"max", h.maxClients)
-		client.closeOnce.Do(func() { close(client.Send) })
+		client.closeOnce.Do(func() { safeClose(client.Send) })
 		if err := client.Conn.Close(); err != nil {
 			h.Logger.ErrorContext(ctx, "Failed to close connection after max connections", "id", client.ID, "err", err)
 		}
@@ -243,7 +243,7 @@ func (h *Hub) handleUnregister(ctx context.Context, client *Client) {
 	h.mu.Unlock()
 
 	client.closeOnce.Do(func() {
-		close(client.Send)
+		safeClose(client.Send)
 
 		h.mu.Lock()
 		client.mu.Lock()
@@ -356,7 +356,7 @@ func (h *Hub) broadcastMessage(parentCtx context.Context, msg *Message) {
 				case h.Unregister <- c:
 				case <-h.ctx.Done():
 					// RZ-24-03: Hub shutting down; close client directly.
-					c.closeOnce.Do(func() { close(c.Send) })
+					c.closeOnce.Do(func() { safeClose(c.Send) })
 				}
 			}(r.client)
 		}

@@ -25,9 +25,29 @@ type Client struct {
 	cancel context.CancelFunc
 }
 
+var (
+	chMutexes = make(map[interface{}]*sync.RWMutex)
+	chMu      sync.Mutex
+)
+
+func getChMutex(ch chan []byte) *sync.RWMutex {
+	chMu.Lock()
+	defer chMu.Unlock()
+	mu, ok := chMutexes[ch]
+	if !ok {
+		mu = &sync.RWMutex{}
+		chMutexes[ch] = mu
+	}
+	return mu
+}
+
 // safeSend writes data to ch without panicking if the channel is already
 // closed.
 func safeSend(ch chan []byte, data []byte) (sent bool) {
+	mu := getChMutex(ch)
+	mu.RLock()
+	defer mu.RUnlock()
+
 	defer func() {
 		if r := recover(); r != nil {
 			sent = false
@@ -41,6 +61,18 @@ func safeSend(ch chan []byte, data []byte) (sent bool) {
 	}
 }
 
+// safeClose closes a channel in a data-race-free manner.
+func safeClose(ch chan []byte) {
+	mu := getChMutex(ch)
+	mu.Lock()
+	defer mu.Unlock()
+
+	defer func() {
+		recover()
+	}()
+	close(ch)
+}
+
 // ReadPump pumps messages from the websocket connection to the hub.
 func (c *Client) ReadPump() {
 	defer func() {
@@ -50,7 +82,7 @@ func (c *Client) ReadPump() {
 		select {
 		case c.Hub.Unregister <- c:
 		case <-c.Hub.ctx.Done():
-			c.closeOnce.Do(func() { close(c.Send) })
+			c.closeOnce.Do(func() { safeClose(c.Send) })
 		}
 		if err := c.Conn.Close(); err != nil {
 			c.Hub.Logger.ErrorContext(c.ctx, "Failed to close websocket connection", "client_id", c.ID, "err", err)
