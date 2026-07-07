@@ -69,7 +69,7 @@ func TestValidateUpgradeTicket_Errors(t *testing.T) {
 	t.Run("redis error", func(t *testing.T) {
 		mr := miniredis.RunT(t)
 		rClient := redis.NewClient(&redis.Options{Addr: mr.Addr()})
-		rClient.Close() // Close to trigger error
+		_ = rClient.Close() // Close to trigger error
 		h := NewHub(nil, logger, nil, &configHubPlaceholder, rClient)
 
 		validTicket := strings.Repeat("a", 64)
@@ -81,7 +81,7 @@ func TestValidateUpgradeTicket_Errors(t *testing.T) {
 	t.Run("malformed ticket payload - no colon", func(t *testing.T) {
 		mr := miniredis.RunT(t)
 		rClient := redis.NewClient(&redis.Options{Addr: mr.Addr()})
-		defer rClient.Close()
+		defer func() { _ = rClient.Close() }()
 		h := NewHub(nil, logger, nil, &configHubPlaceholder, rClient)
 
 		ticket := strings.Repeat("a", 64)
@@ -95,7 +95,7 @@ func TestValidateUpgradeTicket_Errors(t *testing.T) {
 	t.Run("malformed ticket payload - colon at start", func(t *testing.T) {
 		mr := miniredis.RunT(t)
 		rClient := redis.NewClient(&redis.Options{Addr: mr.Addr()})
-		defer rClient.Close()
+		defer func() { _ = rClient.Close() }()
 		h := NewHub(nil, logger, nil, &configHubPlaceholder, rClient)
 
 		ticket := strings.Repeat("a", 64)
@@ -109,7 +109,7 @@ func TestValidateUpgradeTicket_Errors(t *testing.T) {
 	t.Run("malformed ticket payload - colon at end", func(t *testing.T) {
 		mr := miniredis.RunT(t)
 		rClient := redis.NewClient(&redis.Options{Addr: mr.Addr()})
-		defer rClient.Close()
+		defer func() { _ = rClient.Close() }()
 		h := NewHub(nil, logger, nil, &configHubPlaceholder, rClient)
 
 		ticket := strings.Repeat("a", 64)
@@ -170,7 +170,7 @@ func TestValidateHMAC_Errors(t *testing.T) {
 	t.Run("method mismatch", func(t *testing.T) {
 		// Sign with RS256 but pass to validateHMAC
 		// {"alg":"RS256"} base64 raw url encoded is "eyJhbGciOiJSUzI1NiJ9"
-		tokenStr := "eyJhbGciOiJSUzI1NiJ9.eyJzdWIiOiJ1c2VyLTEyMyJ9.sig" // pragma: allowlist secret // nosec G101 // nosemgrep
+		tokenStr := "eyJhbGciOiJSUzI1NiJ9.eyJzdWIiOiJ1c2VyLTEyMyJ9.sig" // pragma: allowlist secret // #nosec G101 // nosemgrep
 		_, err := h.validateHMAC(tokenStr, []string{"secret"})
 		assert.Error(t, err)
 	})
@@ -225,7 +225,7 @@ func TestInternalAPIAuthClient_DoRequest_Errors(t *testing.T) {
 func TestInternalAPIAuthClient_Invalidate_Booster(t *testing.T) {
 	mr := miniredis.RunT(t)
 	rClient := redis.NewClient(&redis.Options{Addr: mr.Addr()})
-	defer rClient.Close()
+	defer func() { _ = rClient.Close() }()
 
 	auth := NewInternalAPIAuthClient("http://localhost", rClient)
 

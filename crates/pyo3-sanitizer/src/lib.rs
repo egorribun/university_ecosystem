@@ -80,8 +80,7 @@ pub fn sanitize_rich_text(html: &str) -> String {
         .link_rel(Some("noopener noreferrer"))
         .clean(html)
         .to_string()
-        .replace('\0', "")
-        .replace('\u{feff}', "")
+        .replace(['\0', '\u{feff}'], "")
 }
 
 #[pyfunction]
@@ -101,8 +100,7 @@ pub fn sanitize_html_basic(html: &str) -> String {
         .tags(allowed_tags)
         .clean(html)
         .to_string()
-        .replace('\0', "")
-        .replace('\u{feff}', "")
+        .replace(['\0', '\u{feff}'], "")
 }
 
 #[pyfunction]
@@ -126,7 +124,7 @@ pub fn strip_html(html: &str) -> String {
     // idempotency.  Stripping both characters after ammonia runs is the
     // minimal, correct fix that restores the invariant:
     //   strip_html(strip_html(x)) == strip_html(x)  for all x.
-    cleaned.replace('\0', "").replace('\u{feff}', "")
+    cleaned.replace(['\0', '\u{feff}'], "")
 }
 
 #[pyfunction]

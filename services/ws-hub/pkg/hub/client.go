@@ -68,7 +68,7 @@ func safeClose(ch chan []byte) {
 	defer mu.Unlock()
 
 	defer func() {
-		recover()
+		_ = recover()
 	}()
 	close(ch)
 }
