@@ -49,7 +49,7 @@ func TestGatewayContract_HealthEndpoint(t *testing.T) {
 	provider := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(`{"status":"healthy","service":"gateway"}`))
+		_, _ = w.Write([]byte(`{"status":"healthy","service":"gateway"}`)) //nolint:errcheck // t not in scope in handler func
 	})
 	server := httptest.NewServer(provider)
 	defer server.Close()
@@ -57,7 +57,7 @@ func TestGatewayContract_HealthEndpoint(t *testing.T) {
 	t.Run("returns HTTP 200", func(t *testing.T) {
 		resp, err := http.Get(server.URL + "/health")
 		require.NoError(t, err)
-		defer func() { _ = resp.Body.Close() }()
+		defer func() { require.NoError(t, resp.Body.Close()) }()
 
 		assert.Equal(t, http.StatusOK, resp.StatusCode,
 			"Contract: GET /health must return 200")
@@ -66,7 +66,7 @@ func TestGatewayContract_HealthEndpoint(t *testing.T) {
 	t.Run("response Content-Type is application/json", func(t *testing.T) {
 		resp, err := http.Get(server.URL + "/health")
 		require.NoError(t, err)
-		defer func() { _ = resp.Body.Close() }()
+		defer func() { require.NoError(t, resp.Body.Close()) }()
 
 		ct := resp.Header.Get("Content-Type")
 		assert.True(t, strings.HasPrefix(ct, "application/json"),
@@ -76,7 +76,7 @@ func TestGatewayContract_HealthEndpoint(t *testing.T) {
 	t.Run("body contains required 'status' field", func(t *testing.T) {
 		resp, err := http.Get(server.URL + "/health")
 		require.NoError(t, err)
-		defer func() { _ = resp.Body.Close() }()
+		defer func() { require.NoError(t, resp.Body.Close()) }()
 
 		var body map[string]interface{}
 		err = json.NewDecoder(resp.Body).Decode(&body)
@@ -90,7 +90,7 @@ func TestGatewayContract_HealthEndpoint(t *testing.T) {
 	t.Run("body contains required 'service' field", func(t *testing.T) {
 		resp, err := http.Get(server.URL + "/health")
 		require.NoError(t, err)
-		defer func() { _ = resp.Body.Close() }()
+		defer func() { require.NoError(t, resp.Body.Close()) }()
 
 		var body map[string]interface{}
 		require.NoError(t, json.NewDecoder(resp.Body).Decode(&body))
@@ -103,7 +103,7 @@ func TestGatewayContract_HealthEndpoint(t *testing.T) {
 	t.Run("'service' field value is 'gateway'", func(t *testing.T) {
 		resp, err := http.Get(server.URL + "/health")
 		require.NoError(t, err)
-		defer func() { _ = resp.Body.Close() }()
+		defer func() { require.NoError(t, resp.Body.Close()) }()
 
 		var body map[string]interface{}
 		require.NoError(t, json.NewDecoder(resp.Body).Decode(&body))
@@ -138,24 +138,24 @@ func ticketHandler() http.Handler {
 		auth := r.Header.Get("Authorization")
 		if auth == "" {
 			w.WriteHeader(http.StatusUnauthorized)
-			_, _ = w.Write([]byte(`{"error":"missing authorization header"}`))
+			_, _ = w.Write([]byte(`{"error":"missing authorization header"}`)) //nolint:errcheck // t not in scope in handler func
 			return
 		}
 		if !strings.HasPrefix(auth, "Bearer ") {
 			w.WriteHeader(http.StatusUnauthorized)
-			_, _ = w.Write([]byte(`{"error":"invalid authorization format, expected Bearer token"}`))
+			_, _ = w.Write([]byte(`{"error":"invalid authorization format, expected Bearer token"}`)) //nolint:errcheck // t not in scope in handler func
 			return
 		}
 		token := strings.TrimPrefix(auth, "Bearer ")
 		if token == "" || token == "invalid" {
 			w.WriteHeader(http.StatusUnauthorized)
-			_, _ = w.Write([]byte(`{"error":"token validation failed"}`))
+			_, _ = w.Write([]byte(`{"error":"token validation failed"}`)) //nolint:errcheck // t not in scope in handler func
 			return
 		}
 
 		// Simulate a valid downstream ticket response.
 		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(`{"ticket":"a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2"}`))
+		_, _ = w.Write([]byte(`{"ticket":"a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2"}`)) //nolint:errcheck // t not in scope in handler func
 	})
 }
 
@@ -168,7 +168,7 @@ func TestGatewayContract_WSTicketEndpoint(t *testing.T) {
 	t.Run("missing Authorization header returns 401", func(t *testing.T) {
 		resp, err := http.Post(server.URL+"/api/v1/ws/ticket", "application/json", nil)
 		require.NoError(t, err)
-		defer func() { _ = resp.Body.Close() }()
+		defer func() { require.NoError(t, resp.Body.Close()) }()
 
 		assert.Equal(t, http.StatusUnauthorized, resp.StatusCode,
 			"Contract: no Authorization header must yield 401")
@@ -177,7 +177,7 @@ func TestGatewayContract_WSTicketEndpoint(t *testing.T) {
 	t.Run("401 response body contains 'error' field", func(t *testing.T) {
 		resp, err := http.Post(server.URL+"/api/v1/ws/ticket", "application/json", nil)
 		require.NoError(t, err)
-		defer func() { _ = resp.Body.Close() }()
+		defer func() { require.NoError(t, resp.Body.Close()) }()
 
 		var body map[string]interface{}
 		require.NoError(t, json.NewDecoder(resp.Body).Decode(&body))
@@ -194,7 +194,7 @@ func TestGatewayContract_WSTicketEndpoint(t *testing.T) {
 
 		resp, err := http.DefaultClient.Do(req)
 		require.NoError(t, err)
-		defer func() { _ = resp.Body.Close() }()
+		defer func() { require.NoError(t, resp.Body.Close()) }()
 
 		assert.Equal(t, http.StatusUnauthorized, resp.StatusCode,
 			"Contract: non-Bearer Authorization must yield 401")
@@ -207,7 +207,7 @@ func TestGatewayContract_WSTicketEndpoint(t *testing.T) {
 
 		resp, err := http.DefaultClient.Do(req)
 		require.NoError(t, err)
-		defer func() { _ = resp.Body.Close() }()
+		defer func() { require.NoError(t, resp.Body.Close()) }()
 
 		assert.Equal(t, http.StatusUnauthorized, resp.StatusCode,
 			"Contract: invalid token must yield 401")
@@ -220,7 +220,7 @@ func TestGatewayContract_WSTicketEndpoint(t *testing.T) {
 
 		resp, err := http.DefaultClient.Do(req)
 		require.NoError(t, err)
-		defer func() { _ = resp.Body.Close() }()
+		defer func() { require.NoError(t, resp.Body.Close()) }()
 
 		assert.Equal(t, http.StatusOK, resp.StatusCode,
 			"Contract: valid token must yield 200")
@@ -239,7 +239,7 @@ func TestGatewayContract_WSTicketEndpoint(t *testing.T) {
 
 		resp, err := http.DefaultClient.Do(req)
 		require.NoError(t, err)
-		defer func() { _ = resp.Body.Close() }()
+		defer func() { require.NoError(t, resp.Body.Close()) }()
 		require.Equal(t, http.StatusOK, resp.StatusCode)
 
 		var body map[string]interface{}
@@ -366,19 +366,19 @@ func proxyHeaderHandler() http.Handler {
 		userID := r.Header.Get("X-User-ID")
 		if userID == "" {
 			w.WriteHeader(http.StatusBadRequest)
-			_, _ = w.Write([]byte(`{"error":"X-User-ID header missing"}`))
+			_, _ = w.Write([]byte(`{"error":"X-User-ID header missing"}`)) //nolint:errcheck // t not in scope in handler func
 			return
 		}
 		// Contract: X-Request-ID must always be present.
 		requestID := r.Header.Get("X-Request-ID")
 		if requestID == "" {
 			w.WriteHeader(http.StatusBadRequest)
-			_, _ = w.Write([]byte(`{"error":"X-Request-ID header missing"}`))
+			_, _ = w.Write([]byte(`{"error":"X-Request-ID header missing"}`)) //nolint:errcheck // t not in scope in handler func
 			return
 		}
 
 		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(`{"received":true}`))
+		_, _ = w.Write([]byte(`{"received":true}`)) //nolint:errcheck // t not in scope in handler func
 	})
 }
 
@@ -397,7 +397,7 @@ func TestGatewayContract_HeaderInjection(t *testing.T) {
 
 		resp, err := http.DefaultClient.Do(req)
 		require.NoError(t, err)
-		defer func() { _ = resp.Body.Close() }()
+		defer func() { require.NoError(t, resp.Body.Close()) }()
 
 		assert.Equal(t, http.StatusOK, resp.StatusCode,
 			"Contract: backend must accept request with gateway-injected X-User-ID")
@@ -410,7 +410,7 @@ func TestGatewayContract_HeaderInjection(t *testing.T) {
 
 		resp, err := http.DefaultClient.Do(req)
 		require.NoError(t, err)
-		defer func() { _ = resp.Body.Close() }()
+		defer func() { require.NoError(t, resp.Body.Close()) }()
 
 		assert.Equal(t, http.StatusBadRequest, resp.StatusCode,
 			"Contract: backend must reject request missing X-User-ID")

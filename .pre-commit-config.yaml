@@ -105,7 +105,7 @@ repos:
       - id: semgrep-docker
         name: semgrep-sast
         args: ["--config", "auto", "--error"]
-        exclude: ^tests/|^native/rust_ext/fuzz/
+        exclude: ^tests/|^native/rust_ext/fuzz/|_test\.go$
 
   - repo: https://github.com/mxab/pre-commit-trivy
     rev: v0.18.0

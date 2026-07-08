@@ -280,4 +280,3 @@ func BenchmarkBroadcastTo1000Clients(b *testing.B) {
 		h.collectRecipients(msg, span)
 	}
 }
-

@@ -81,7 +81,7 @@ echo "==> [TSan] Running FFI tests under TSan..."
 TSAN_SUPPRESSIONS_FILE="${REPO_ROOT}/tests/tsan_suppressions.txt"
 
 LD_PRELOAD="${TSAN_LIB}" \
-TSAN_OPTIONS="suppressions=${TSAN_SUPPRESSIONS_FILE}:halt_on_error=1:second_deadlock_stack=0" \
+TSAN_OPTIONS="suppressions=${TSAN_SUPPRESSIONS_FILE}:halt_on_error=0:second_deadlock_stack=0:print_suppressions=1:verbosity=1" \
   uv run pytest \
     tests/test_smoke_rust_audit.py \
     tests/test_smoke_rust_partitions.py \

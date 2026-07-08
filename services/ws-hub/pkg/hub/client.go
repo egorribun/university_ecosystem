@@ -68,7 +68,7 @@ func safeClose(ch chan []byte) {
 	defer mu.Unlock()
 
 	defer func() {
-		_ = recover()
+		_ = recover() //nolint:errcheck // recover() returns interface{}; blank discard is the canonical pattern.
 	}()
 	close(ch)
 }

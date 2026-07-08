@@ -34,7 +34,7 @@ func TestValidateUpgradeTicket_Errors(t *testing.T) {
 	t.Run("invalid length", func(t *testing.T) {
 		mr := miniredis.RunT(t)
 		rClient := redis.NewClient(&redis.Options{Addr: mr.Addr()})
-		defer func() { _ = rClient.Close() }()
+		defer func() { require.NoError(t, rClient.Close()) }()
 		h := NewHub(nil, logger, nil, &configHubPlaceholder, rClient)
 
 		_, err := h.validateUpgradeTicket(context.Background(), "short")
@@ -45,7 +45,7 @@ func TestValidateUpgradeTicket_Errors(t *testing.T) {
 	t.Run("invalid charset", func(t *testing.T) {
 		mr := miniredis.RunT(t)
 		rClient := redis.NewClient(&redis.Options{Addr: mr.Addr()})
-		defer func() { _ = rClient.Close() }()
+		defer func() { require.NoError(t, rClient.Close()) }()
 		h := NewHub(nil, logger, nil, &configHubPlaceholder, rClient)
 
 		invalidTicket := strings.Repeat("a", 63) + "Z" // Z is not lowercase hex
@@ -57,7 +57,7 @@ func TestValidateUpgradeTicket_Errors(t *testing.T) {
 	t.Run("ticket not found", func(t *testing.T) {
 		mr := miniredis.RunT(t)
 		rClient := redis.NewClient(&redis.Options{Addr: mr.Addr()})
-		defer func() { _ = rClient.Close() }()
+		defer func() { require.NoError(t, rClient.Close()) }()
 		h := NewHub(nil, logger, nil, &configHubPlaceholder, rClient)
 
 		validTicket := strings.Repeat("a", 64)
@@ -69,7 +69,7 @@ func TestValidateUpgradeTicket_Errors(t *testing.T) {
 	t.Run("redis error", func(t *testing.T) {
 		mr := miniredis.RunT(t)
 		rClient := redis.NewClient(&redis.Options{Addr: mr.Addr()})
-		_ = rClient.Close() // Close to trigger error
+		rClient.Close() //nolint:errcheck // intentional close to trigger redis error in subsequent call
 		h := NewHub(nil, logger, nil, &configHubPlaceholder, rClient)
 
 		validTicket := strings.Repeat("a", 64)
@@ -81,11 +81,11 @@ func TestValidateUpgradeTicket_Errors(t *testing.T) {
 	t.Run("malformed ticket payload - no colon", func(t *testing.T) {
 		mr := miniredis.RunT(t)
 		rClient := redis.NewClient(&redis.Options{Addr: mr.Addr()})
-		defer func() { _ = rClient.Close() }()
+		defer func() { require.NoError(t, rClient.Close()) }()
 		h := NewHub(nil, logger, nil, &configHubPlaceholder, rClient)
 
 		ticket := strings.Repeat("a", 64)
-		_ = mr.Set("ott:ws:"+ticket, "nocolon")
+		require.NoError(t, mr.Set("ott:ws:"+ticket, "nocolon"))
 
 		_, err := h.validateUpgradeTicket(context.Background(), ticket)
 		assert.Error(t, err)
@@ -95,11 +95,11 @@ func TestValidateUpgradeTicket_Errors(t *testing.T) {
 	t.Run("malformed ticket payload - colon at start", func(t *testing.T) {
 		mr := miniredis.RunT(t)
 		rClient := redis.NewClient(&redis.Options{Addr: mr.Addr()})
-		defer func() { _ = rClient.Close() }()
+		defer func() { require.NoError(t, rClient.Close()) }()
 		h := NewHub(nil, logger, nil, &configHubPlaceholder, rClient)
 
 		ticket := strings.Repeat("a", 64)
-		_ = mr.Set("ott:ws:"+ticket, ":jti")
+		require.NoError(t, mr.Set("ott:ws:"+ticket, ":jti"))
 
 		_, err := h.validateUpgradeTicket(context.Background(), ticket)
 		assert.Error(t, err)
@@ -109,11 +109,11 @@ func TestValidateUpgradeTicket_Errors(t *testing.T) {
 	t.Run("malformed ticket payload - colon at end", func(t *testing.T) {
 		mr := miniredis.RunT(t)
 		rClient := redis.NewClient(&redis.Options{Addr: mr.Addr()})
-		defer func() { _ = rClient.Close() }()
+		defer func() { require.NoError(t, rClient.Close()) }()
 		h := NewHub(nil, logger, nil, &configHubPlaceholder, rClient)
 
 		ticket := strings.Repeat("a", 64)
-		_ = mr.Set("ott:ws:"+ticket, "user-id:")
+		require.NoError(t, mr.Set("ott:ws:"+ticket, "user-id:"))
 
 		_, err := h.validateUpgradeTicket(context.Background(), ticket)
 		assert.Error(t, err)
@@ -225,7 +225,7 @@ func TestInternalAPIAuthClient_DoRequest_Errors(t *testing.T) {
 func TestInternalAPIAuthClient_Invalidate_Booster(t *testing.T) {
 	mr := miniredis.RunT(t)
 	rClient := redis.NewClient(&redis.Options{Addr: mr.Addr()})
-	defer func() { _ = rClient.Close() }()
+	defer func() { require.NoError(t, rClient.Close()) }()
 
 	auth := NewInternalAPIAuthClient("http://localhost", rClient)
 
