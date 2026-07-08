@@ -274,4 +274,3 @@ func TestDownloadAndDecodeImage_ContextCancelledMidDecode(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "context cancelled during image decode")
 }
-

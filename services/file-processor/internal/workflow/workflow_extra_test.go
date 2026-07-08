@@ -31,7 +31,6 @@ func init() {
 	})
 }
 
-
 // ── encodeImage ───────────────────────────────────────────────────────────────
 
 func TestEncodeImage_JPEG(t *testing.T) {

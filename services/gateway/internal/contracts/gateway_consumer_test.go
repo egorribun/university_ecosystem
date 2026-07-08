@@ -55,7 +55,9 @@ func TestGatewayContract_HealthEndpoint(t *testing.T) {
 	defer server.Close()
 
 	t.Run("returns HTTP 200", func(t *testing.T) {
-		resp, err := http.Get(server.URL + "/health")
+		req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, server.URL+"/health", nil)
+		require.NoError(t, err)
+		resp, err := http.DefaultClient.Do(req)
 		require.NoError(t, err)
 		defer func() { require.NoError(t, resp.Body.Close()) }()
 
@@ -64,7 +66,9 @@ func TestGatewayContract_HealthEndpoint(t *testing.T) {
 	})
 
 	t.Run("response Content-Type is application/json", func(t *testing.T) {
-		resp, err := http.Get(server.URL + "/health")
+		req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, server.URL+"/health", nil)
+		require.NoError(t, err)
+		resp, err := http.DefaultClient.Do(req)
 		require.NoError(t, err)
 		defer func() { require.NoError(t, resp.Body.Close()) }()
 
@@ -74,7 +78,9 @@ func TestGatewayContract_HealthEndpoint(t *testing.T) {
 	})
 
 	t.Run("body contains required 'status' field", func(t *testing.T) {
-		resp, err := http.Get(server.URL + "/health")
+		req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, server.URL+"/health", nil)
+		require.NoError(t, err)
+		resp, err := http.DefaultClient.Do(req)
 		require.NoError(t, err)
 		defer func() { require.NoError(t, resp.Body.Close()) }()
 
@@ -88,7 +94,9 @@ func TestGatewayContract_HealthEndpoint(t *testing.T) {
 	})
 
 	t.Run("body contains required 'service' field", func(t *testing.T) {
-		resp, err := http.Get(server.URL + "/health")
+		req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, server.URL+"/health", nil)
+		require.NoError(t, err)
+		resp, err := http.DefaultClient.Do(req)
 		require.NoError(t, err)
 		defer func() { require.NoError(t, resp.Body.Close()) }()
 
@@ -101,7 +109,9 @@ func TestGatewayContract_HealthEndpoint(t *testing.T) {
 	})
 
 	t.Run("'service' field value is 'gateway'", func(t *testing.T) {
-		resp, err := http.Get(server.URL + "/health")
+		req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, server.URL+"/health", nil)
+		require.NoError(t, err)
+		resp, err := http.DefaultClient.Do(req)
 		require.NoError(t, err)
 		defer func() { require.NoError(t, resp.Body.Close()) }()
 
@@ -166,7 +176,9 @@ func TestGatewayContract_WSTicketEndpoint(t *testing.T) {
 	defer server.Close()
 
 	t.Run("missing Authorization header returns 401", func(t *testing.T) {
-		resp, err := http.Post(server.URL+"/api/v1/ws/ticket", "application/json", nil)
+		req, err := http.NewRequestWithContext(t.Context(), http.MethodPost, server.URL+"/api/v1/ws/ticket", nil)
+		require.NoError(t, err)
+		resp, err := http.DefaultClient.Do(req)
 		require.NoError(t, err)
 		defer func() { require.NoError(t, resp.Body.Close()) }()
 
@@ -175,7 +187,9 @@ func TestGatewayContract_WSTicketEndpoint(t *testing.T) {
 	})
 
 	t.Run("401 response body contains 'error' field", func(t *testing.T) {
-		resp, err := http.Post(server.URL+"/api/v1/ws/ticket", "application/json", nil)
+		req, err := http.NewRequestWithContext(t.Context(), http.MethodPost, server.URL+"/api/v1/ws/ticket", nil)
+		require.NoError(t, err)
+		resp, err := http.DefaultClient.Do(req)
 		require.NoError(t, err)
 		defer func() { require.NoError(t, resp.Body.Close()) }()
 
@@ -188,7 +202,7 @@ func TestGatewayContract_WSTicketEndpoint(t *testing.T) {
 	})
 
 	t.Run("non-Bearer Authorization format returns 401", func(t *testing.T) {
-		req, err := http.NewRequest(http.MethodPost, server.URL+"/api/v1/ws/ticket", nil)
+		req, err := http.NewRequestWithContext(t.Context(), http.MethodPost, server.URL+"/api/v1/ws/ticket", nil)
 		require.NoError(t, err)
 		req.Header.Set("Authorization", "Basic dXNlcjpwYXNz")
 
@@ -201,7 +215,7 @@ func TestGatewayContract_WSTicketEndpoint(t *testing.T) {
 	})
 
 	t.Run("invalid Bearer token returns 401", func(t *testing.T) {
-		req, err := http.NewRequest(http.MethodPost, server.URL+"/api/v1/ws/ticket", nil)
+		req, err := http.NewRequestWithContext(t.Context(), http.MethodPost, server.URL+"/api/v1/ws/ticket", nil)
 		require.NoError(t, err)
 		req.Header.Set("Authorization", "Bearer invalid")
 
@@ -214,7 +228,7 @@ func TestGatewayContract_WSTicketEndpoint(t *testing.T) {
 	})
 
 	t.Run("valid Bearer token returns 200 with 'ticket' field", func(t *testing.T) {
-		req, err := http.NewRequest(http.MethodPost, server.URL+"/api/v1/ws/ticket", nil)
+		req, err := http.NewRequestWithContext(t.Context(), http.MethodPost, server.URL+"/api/v1/ws/ticket", nil)
 		require.NoError(t, err)
 		req.Header.Set("Authorization", "Bearer valid-jwt-token")
 
@@ -233,7 +247,7 @@ func TestGatewayContract_WSTicketEndpoint(t *testing.T) {
 	})
 
 	t.Run("ticket value is a 64-character hex string", func(t *testing.T) {
-		req, err := http.NewRequest(http.MethodPost, server.URL+"/api/v1/ws/ticket", nil)
+		req, err := http.NewRequestWithContext(t.Context(), http.MethodPost, server.URL+"/api/v1/ws/ticket", nil)
 		require.NoError(t, err)
 		req.Header.Set("Authorization", "Bearer valid-jwt-token")
 
@@ -389,7 +403,7 @@ func TestGatewayContract_HeaderInjection(t *testing.T) {
 	defer server.Close()
 
 	t.Run("authenticated proxy request carries X-User-ID header", func(t *testing.T) {
-		req, err := http.NewRequest(http.MethodGet, server.URL+"/api/v1/courses", nil)
+		req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, server.URL+"/api/v1/courses", nil)
 		require.NoError(t, err)
 		// Gateway injects these after JWT validation; backend expects them.
 		req.Header.Set("X-User-ID", "550e8400-e29b-41d4-a716-446655440000")
@@ -404,7 +418,7 @@ func TestGatewayContract_HeaderInjection(t *testing.T) {
 	})
 
 	t.Run("request without X-User-ID is rejected by backend contract", func(t *testing.T) {
-		req, err := http.NewRequest(http.MethodGet, server.URL+"/api/v1/courses", nil)
+		req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, server.URL+"/api/v1/courses", nil)
 		require.NoError(t, err)
 		// Deliberately omit X-User-ID to verify backend contract enforcement.
 

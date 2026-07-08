@@ -57,7 +57,7 @@ func TestFetchJWKSPublicKey_EdgeCases(t *testing.T) {
 	t.Run("malformed keys JSON element", func(t *testing.T) {
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusOK)
-			_, _ = w.Write([]byte(`{"keys": [123]}`)) // 123 is not a json object element for keys
+			_, _ = w.Write([]byte(`{"keys": [123]}`)) //nolint:errcheck // t not in scope in handler func
 		}))
 		defer server.Close()
 
@@ -69,7 +69,7 @@ func TestFetchJWKSPublicKey_EdgeCases(t *testing.T) {
 	t.Run("no RSA key found", func(t *testing.T) {
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusOK)
-			_, _ = w.Write([]byte(`{"keys": [{"kty": "EC"}]}`))
+			_, _ = w.Write([]byte(`{"keys": [{"kty": "EC"}]}`)) //nolint:errcheck // t not in scope in handler func
 		}))
 		defer server.Close()
 

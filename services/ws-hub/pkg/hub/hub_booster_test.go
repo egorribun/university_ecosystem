@@ -69,7 +69,7 @@ func TestValidateUpgradeTicket_Errors(t *testing.T) {
 	t.Run("redis error", func(t *testing.T) {
 		mr := miniredis.RunT(t)
 		rClient := redis.NewClient(&redis.Options{Addr: mr.Addr()})
-		rClient.Close() //nolint:errcheck // intentional close to trigger redis error in subsequent call
+		rClient.Close() //nolint:errcheck,gosec // G104: intentional close to trigger redis error in next call
 		h := NewHub(nil, logger, nil, &configHubPlaceholder, rClient)
 
 		validTicket := strings.Repeat("a", 64)
