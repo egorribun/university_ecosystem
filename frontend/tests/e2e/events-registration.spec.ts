@@ -20,13 +20,16 @@ const MOCK_EVENT_OPEN = {
   id: "evt-open-1",
   title: "Open Registration Event",
   description: "A test event with open registration",
-  start_datetime: "2026-08-01T10:00:00Z",
-  end_datetime: "2026-08-01T12:00:00Z",
+  starts_at: "2026-08-01T10:00:00Z",
+  ends_at: "2026-08-01T12:00:00Z",
   location: "Main Hall",
   capacity: 100,
   registered_count: 50,
   is_registered: false,
   status: "published",
+  created_at: "2026-07-01T00:00:00Z",
+  created_by: "teacher-1",
+  is_active: true,
 }
 
 const MOCK_EVENT_FULL = {
@@ -57,8 +60,10 @@ async function setupEventsMock(page: Page) {
         body: JSON.stringify({
           items: [MOCK_EVENT_OPEN, MOCK_EVENT_FULL, MOCK_EVENT_REGISTERED],
           total: 3,
-          page: 1,
-          size: 20,
+          limit: 20,
+          cursor: null,
+          next_cursor: null,
+          has_more: false,
         }),
       })
       return
