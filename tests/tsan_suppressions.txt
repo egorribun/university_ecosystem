@@ -1,0 +1,59 @@
+# TSan suppressions file for Python FFI tests.
+#
+# WHY: TSan instruments every memory access. When our Rust extension is loaded
+# alongside CPython (which uses libuv as its asyncio event loop) and tokio
+# (which uses its own thread pool), TSan reports data races inside libuv's
+# internal pipe/signal dispatch code. These are NOT races in our code — they
+# are known, intentional patterns in libuv's design where two event-loop
+# threads share a pipe fd using separate read/write ends. Suppressing them
+# keeps the report focused on actual races in pyo3-sanitizer and rust_ext.
+#
+# Suppression format: race:<function-name-glob>
+# TSan matches by function name visible in the symbolized stack trace.
+
+# ── libuv internal data structures ──────────────────────────────────────────
+# libuv uses a self-pipe trick for wakeups: the write-end and read-end of a
+# pipe are touched by different threads. TSan sees this as a race on the
+# pipe's internal buffer, but it is safe by design (different fds, POSIX-safe).
+race:uv__io_poll
+race:uv__async_send
+race:uv__async_io
+race:uv__signal_handler
+race:uv__write
+race:uv__read
+race:uv_run
+race:uv__stream_io
+race:uv__pipe_connect
+race:uv__tcp_connect
+race:uv_pipe_open
+race:uv_async_send
+
+# ── CPython GIL and thread state ─────────────────────────────────────────────
+# CPython's GIL management touches thread-state fields from the signalling
+# thread without holding the GIL. This is an intentional design pattern
+# in CPython; suppressing these keeps the output clean.
+race:_PyEval_SignalAsyncExc
+race:_PyEval_SignalReceived
+race:PyEval_SaveThread
+race:PyEval_RestoreThread
+race:take_gil
+race:drop_gil
+race:_Py_atomic_load_relaxed_impl
+race:_PyRuntime
+
+# ── CPython thread bootstrap ─────────────────────────────────────────────────
+# The main CPython thread boot sequence does a non-synchronized write to
+# the thread's interp pointer before the thread is fully registered.
+race:t_bootstrap
+race:thread_PyThread_start_new_thread
+
+# ── tokio / Mio epoll wakeup pipe ───────────────────────────────────────────
+# tokio's mio backend uses the same self-pipe wakeup trick as libuv.
+# The wakeup write comes from a different thread than the epoll reader.
+race:mio::sys::unix::waker
+
+# ── memcpy in libtsan instrumented through uv ────────────────────────────────
+# TSan intercepts memcpy globally; when libuv copies data between pipe
+# buffers on two threads (designed this way), TSan flags the memcpy itself.
+# Suppressing by the caller frame inside uv avoids the catch-all memcpy supp.
+race:libuv

@@ -70,7 +70,7 @@ class InfrastructureProvider(Provider):
         async with session_factory() as session:
             yield session
 
-    @provide(scope=Scope.REQUEST)
+    @provide(scope=Scope.APP)
     def cache(self) -> BaseCache:
         return get_cache()
 

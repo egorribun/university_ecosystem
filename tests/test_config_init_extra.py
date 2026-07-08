@@ -165,7 +165,7 @@ def test_load_settings_fallbacks():
         patch("app.core.config.__init__._base_should_allow", return_value=True),
         patch("app.core.config.__init__._logger") as mock_logger,
         patch("app.core.config.__init__._PROJECT_ROOT") as mock_root,
-        patch.dict(os.environ, {}, clear=True),
+        patch.dict(os.environ, {"CI": "false", "GITHUB_ACTIONS": "false"}),
     ):
         mock_settings_class.side_effect = [exc, MagicMock()]
         mock_root.__truediv__.return_value.exists.return_value = False

@@ -71,7 +71,7 @@ async def test_get_async_spicedb_channel_secure():
             "grpc.aio.secure_channel", return_value=mock_channel
         ) as mock_secure_channel,
         patch("grpcutil.bearer_token_credentials") as mock_creds,
-        patch.dict(os.environ, {}, clear=True),
+        patch.dict(os.environ, {"SPICEDB_INSECURE": "false"}),
     ):
         mock_settings.spicedb_endpoint = "grpcs://localhost:443"
         mock_settings.spicedb_preshared_key = "test-token"

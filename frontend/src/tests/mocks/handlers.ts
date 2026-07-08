@@ -119,7 +119,7 @@ const createMfaChallenge = ({
     const attemptMeta = resolveAttemptMeta("totp", attempts)
     methods.push({
       method: "totp",
-      challenge_token: "totp-challenge-token",
+      challenge_token: "totp-challenge-token-32-characters-long",
       challenge_expires_at: createChallengeExpiresAt(),
       options: null,
       ...attemptMeta,
