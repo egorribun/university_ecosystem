@@ -358,7 +358,7 @@ func TestWritePump_DeliversThenCloses(t *testing.T) {
 	assert.JSONEq(t, `{"type":"hello"}`, string(data))
 
 	// Closing Send makes WritePump emit a CloseMessage and return.
-	close(c.Send)
+	safeClose(c.Send)
 	wg.Wait()
 }
 

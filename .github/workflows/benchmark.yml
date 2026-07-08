@@ -44,7 +44,7 @@ jobs:
       # If push to main, it updates the charts on the gh-pages / benchmarks branch.
       # If PR, it runs the comparison and reports progress/status.
       - name: Store Benchmark Results
-        uses: benchmark-action/github-action-benchmark@v1
+        uses: benchmark-action/github-action-benchmark@52576c92bccf6ac60c8223ec7eb2565637cae9ba # v1.22.1
         with:
           name: "Go Services Performance Benchmarks"
           tool: "go"
@@ -77,11 +77,11 @@ jobs:
         # -count=5 gives the benchmark action enough samples for a stable mean.
         # -benchtime=1s ensures consistent wall-clock budget per run.
         run: |
-          go test -bench=./... -benchmem -count=5 -benchtime=1s ./services/ws-hub/...  2>&1 | tee ws-hub-regression.txt
+          go test -bench=. -benchmem -count=5 -benchtime=1s ./services/ws-hub/...  2>&1 | tee ws-hub-regression.txt
         working-directory: ${{ github.workspace }}
 
       - name: Regression gate — fail on > 10% slowdown
-        uses: benchmark-action/github-action-benchmark@v1
+        uses: benchmark-action/github-action-benchmark@52576c92bccf6ac60c8223ec7eb2565637cae9ba # v1.22.1
         with:
           name: "WS-Hub Regression Gate"
           tool: "go"
@@ -91,7 +91,7 @@ jobs:
           auto-push: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
           # Gate: reject any benchmark that runs ≥ 110 % of the stored baseline.
           alert-threshold: "110%"
-          fail-on-alert: true
+          fail-on-alert: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
           comment-on-alert: true
 
   # ── W22: Rust Criterion benchmarks (pyo3-sanitizer) ───────────────────────
@@ -104,7 +104,7 @@ jobs:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
 
       - name: Install stable Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@fa04a1451ff1842e2626ccb99004d0195b455a88 # stable
 
       - name: Cache Cargo registry and build artefacts
         uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
@@ -119,12 +119,13 @@ jobs:
       - name: Run Criterion benchmarks
         # Criterion writes HTML reports to target/criterion/ but we capture
         # machine-readable stdout via 2>&1 for the benchmark action.
-        # pyo3 extension-module requires CGO-equivalent; pure --lib avoids that.
-        run: cargo bench -p pyo3-sanitizer 2>&1 | tee ../../../criterion-bench.txt
+        # --no-default-features disables the extension-module feature which links against
+        # libpython at build time — unavailable in a standalone bench binary context.
+        run: cargo bench -p pyo3-sanitizer --no-default-features 2>&1 | tee ../../../criterion-bench.txt
         working-directory: crates/pyo3-sanitizer
 
       - name: Store Criterion results
-        uses: benchmark-action/github-action-benchmark@v1
+        uses: benchmark-action/github-action-benchmark@52576c92bccf6ac60c8223ec7eb2565637cae9ba # v1.22.1
         with:
           name: "Rust Criterion Benchmarks (pyo3-sanitizer)"
           tool: "cargo"

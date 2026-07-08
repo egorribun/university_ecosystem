@@ -30,7 +30,7 @@ pytoxiproxy = pytest.mark.skipif(
 @pytest.mark.chaos
 @pytest.mark.integration
 @pytoxiproxy
-async def test_postgres_latency_triggers_timeout_response(client):
+async def test_postgres_latency_triggers_timeout_response(async_client):
     """PostgreSQL latency > threshold -> backend returns 503/504.
 
     WHY: verifies the backend emits a meaningful HTTP error rather than
@@ -47,7 +47,7 @@ async def test_postgres_latency_triggers_timeout_response(client):
             },
         )
     try:
-        response = await client.get("/api/v1/events")
+        response = await async_client.get("/api/v1/events")
         assert response.status_code in (503, 504, 408)
     finally:
         async with httpx.AsyncClient() as http:
@@ -57,7 +57,7 @@ async def test_postgres_latency_triggers_timeout_response(client):
 @pytest.mark.chaos
 @pytest.mark.integration
 @pytoxiproxy
-async def test_redis_down_cache_miss_uses_db(client):
+async def test_redis_down_cache_miss_uses_db(async_client):
     """Redis down -> cache miss -> backend serves from DB (degraded but functional).
 
     WHY: verifies the cache layer fails open — reads fall through to the DB
@@ -73,7 +73,7 @@ async def test_redis_down_cache_miss_uses_db(client):
             },
         )
     try:
-        response = await client.get("/api/v1/health")
+        response = await async_client.get("/api/v1/health")
         # Should still respond (circuit breaker / degraded mode)
         assert response.status_code in (200, 503)
     finally:
@@ -84,7 +84,7 @@ async def test_redis_down_cache_miss_uses_db(client):
 @pytest.mark.chaos
 @pytest.mark.integration
 @pytoxiproxy
-async def test_nats_packet_loss_outbox_retries(client):
+async def test_nats_packet_loss_outbox_retries(async_client):
     """Zero-bandwidth NATS toxic -> outbox worker eventually delivers messages.
 
     WHY: simulates NATS network saturation.  The transactional outbox pattern
@@ -102,7 +102,7 @@ async def test_nats_packet_loss_outbox_retries(client):
         )
     try:
         # Health endpoint should remain accessible even under NATS pressure
-        response = await client.get("/api/v1/health")
+        response = await async_client.get("/api/v1/health")
         assert response.status_code in (200, 503)
     finally:
         async with httpx.AsyncClient() as http:

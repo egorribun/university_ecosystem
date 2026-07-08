@@ -100,19 +100,25 @@ def test_optimize_image_pillow_resize_and_bounds():
 
     from PIL import Image as PILImage
 
-    # 10x10 red square
-    img = PILImage.new("RGB", (10, 10), color="red")
-    buf = BytesIO()
-    img.save(buf, format="PNG")
-    png_data = buf.getvalue()
+    # Force VIPS_AVAILABLE=False for this test
+    old_vips = img_mod.VIPS_AVAILABLE
+    img_mod.VIPS_AVAILABLE = False
+    try:
+        # 10x10 red square
+        img = PILImage.new("RGB", (10, 10), color="red")
+        buf = BytesIO()
+        img.save(buf, format="PNG")
+        png_data = buf.getvalue()
 
-    # Small bounds -> forces resizing branch
-    _, mime = img_mod.optimize_image(png_data, max_width=5, max_height=5)
-    assert mime == "image/webp"
+        # Small bounds -> forces resizing branch
+        _, mime = img_mod.optimize_image(png_data, max_width=5, max_height=5)
+        assert mime == "image/webp"
 
-    # Zero bounds -> sets to 1920 default
-    _, mime_defaults = img_mod.optimize_image(png_data, max_width=0, max_height=0)
-    assert mime_defaults == "image/webp"
+        # Zero bounds -> sets to 1920 default
+        _, mime_defaults = img_mod.optimize_image(png_data, max_width=0, max_height=0)
+        assert mime_defaults == "image/webp"
+    finally:
+        img_mod.VIPS_AVAILABLE = old_vips
 
 
 def test_optimize_image_vips_failure_fallback():
@@ -161,11 +167,37 @@ def test_optimize_image_with_exif_orientation():
 
     from PIL import Image as PILImage
 
-    img = PILImage.new("RGB", (10, 10), color="blue")
-    exif = img.getexif()
-    exif[274] = 3
-    buf = BytesIO()
-    img.save(buf, format="JPEG", exif=exif)
-    jpg_data = buf.getvalue()
-    _optimized, mime = img_mod.optimize_image(jpg_data)
-    assert mime == "image/webp"
+    old_vips = img_mod.VIPS_AVAILABLE
+    img_mod.VIPS_AVAILABLE = False
+    try:
+        img = PILImage.new("RGB", (10, 10), color="blue")
+        exif = img.getexif()
+        exif[274] = 3
+        buf = BytesIO()
+        img.save(buf, format="JPEG", exif=exif)
+        jpg_data = buf.getvalue()
+        _optimized, mime = img_mod.optimize_image(jpg_data)
+        assert mime == "image/webp"
+    finally:
+        img_mod.VIPS_AVAILABLE = old_vips
+
+
+def test_optimize_image_exif_transpose_none_coverage():
+    from io import BytesIO
+    from unittest.mock import patch
+
+    from PIL import Image as PILImage
+
+    old_vips = img_mod.VIPS_AVAILABLE
+    img_mod.VIPS_AVAILABLE = False
+    try:
+        img = PILImage.new("RGB", (10, 10), color="blue")
+        buf = BytesIO()
+        img.save(buf, format="JPEG")
+        jpg_data = buf.getvalue()
+
+        with patch("app.utils.images.ImageOps.exif_transpose", return_value=None):
+            _optimized, mime = img_mod.optimize_image(jpg_data)
+            assert mime == "image/webp"
+    finally:
+        img_mod.VIPS_AVAILABLE = old_vips

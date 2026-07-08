@@ -12,14 +12,24 @@ package workflow
 import (
 	"bytes"
 	"context"
+	"image"
+	"image/jpeg"
+	"io"
+	"net/http/httptest"
+	"testing"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/university-ecosystem/file-processor/internal/config"
-	"image"
-	"image/jpeg"
-	"net/http/httptest"
-	"testing"
 )
+
+func init() {
+	image.RegisterFormat("panickingformat", "PANIC", func(r io.Reader) (image.Image, error) {
+		panic("simulated panic in image decoder")
+	}, func(r io.Reader) (image.Config, error) {
+		return image.Config{}, nil
+	})
+}
 
 // ── encodeImage ───────────────────────────────────────────────────────────────
 
@@ -250,3 +260,15 @@ func TestResizeImageActivity_MIMETypeFallback(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, res.Success)
 }
+
+func TestDownloadAndDecodeImage_DecodePanic(t *testing.T) {
+	fs := &fakeS3{getBody: []byte("PANIC")}
+	srv := httptest.NewServer(fs.handler())
+	defer srv.Close()
+
+	a := &FileActivities{MinioClient: minioClientFor(t, srv.URL), Bucket: "bucket"}
+	_, _, err := a.downloadAndDecodeImage(context.Background(), "in/panic.png")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "panic during image decode")
+}
+

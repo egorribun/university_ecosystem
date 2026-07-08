@@ -75,6 +75,18 @@ def _nats_chat_message_handler(
     return payload
 
 
+def _nats_chat_message_sent_handler(
+    msg: str | bytes | None, context: dict[str, Any]
+) -> dict[str, Any]:
+    assert msg is not None
+    payload = json.loads(msg)
+    assert "chat_id" in payload
+    assert "message_id" in payload
+    assert "content_preview" in payload
+    assert "sender_id" in payload
+    return payload
+
+
 def _nats_chat_deleted_handler(
     msg: str | bytes | None, context: dict[str, Any]
 ) -> dict[str, Any]:
@@ -111,7 +123,6 @@ def _nats_files_process_handler(
 ) -> dict[str, Any]:
     assert msg is not None
     payload = json.loads(msg)
-    # Task envelope: must carry id, name; file-processor reads name to route.
     assert "id" in payload
     assert "name" in payload
     return payload
@@ -130,13 +141,38 @@ def _nats_task_envelope_handler(
     return payload
 
 
+def _nats_router_handler(
+    msg: str | bytes | None, context: dict[str, Any]
+) -> dict[str, Any]:
+    assert msg is not None
+    payload = json.loads(msg)
+    if "participant_id" in payload:
+        return _nats_chat_deleted_handler(msg, context)
+    elif "email" in payload:
+        return _nats_user_created_handler(msg, context)
+    elif "notification_type" in payload:
+        return _nats_notification_sent_handler(msg, context)
+    elif "args" in payload:
+        # Both files.process and tasks.* have args/kwargs
+        if "name" in payload and payload["name"] == "process_uploaded_file":
+            return _nats_files_process_handler(msg, context)
+        return _nats_task_envelope_handler(msg, context)
+    elif "chat_id" in payload:
+        if "content_preview" in payload:
+            return _nats_chat_message_sent_handler(msg, context)
+        return _nats_chat_message_handler(msg, context)
+    else:
+        raise ValueError(f"Unknown payload format: {payload}")
+
+
 # ---------------------------------------------------------------------------
-# Existing test (Wave 5/6 — preserved)
+# Contract interaction tests
 # ---------------------------------------------------------------------------
 
 
-def test_nats_direct_message_contract(pact: Pact) -> None:
-    """Contract: ws-hub expects direct message events in this schema."""
+def test_nats_message_contracts(pact: Pact) -> None:
+    """Contract: ws-hub and university-backend NATS messages schemas."""
+    # 1. chat.direct
     (
         pact.upon_receiving("a direct chat message event", "Async")
         .with_body(
@@ -150,21 +186,8 @@ def test_nats_direct_message_contract(pact: Pact) -> None:
         )
         .with_metadata({"nats_subject": "chat.direct"})
     )
-    pact.verify(_nats_chat_message_handler, "Async")
 
-
-# ---------------------------------------------------------------------------
-# Wave 13: Additional NATS subject contracts
-# ---------------------------------------------------------------------------
-
-
-def test_nats_chat_message_sent_contract(pact: Pact) -> None:
-    """Contract: ws-hub expects chat.message_sent domain events from the OutboxWorker.
-
-    WHY: The OutboxWorker publishes MessageSent domain events that ws-hub
-    subscribes to for live push notifications.  This schema is the authoritative
-    cross-service contract.
-    """
+    # 2. chat.message_sent
     (
         pact.upon_receiving("a chat message_sent domain event", "Async")
         .with_body(
@@ -178,16 +201,8 @@ def test_nats_chat_message_sent_contract(pact: Pact) -> None:
         )
         .with_metadata({"nats_subject": "chat.message_sent"})
     )
-    pact.verify(_nats_chat_message_handler, "Async")
 
-
-def test_nats_chat_deleted_contract(pact: Pact) -> None:
-    """Contract: ws-hub expects chat.deleted events to invalidate its cache.
-
-    WHY: RED-04 (audit 2026-03-14) — ws-hub must close any open WebSocket
-    connections for participants of a deleted chat and drop its cache entry
-    within one NATS delivery cycle.
-    """
+    # 3. chat.deleted
     (
         pact.upon_receiving("a chat deleted event", "Async")
         .with_body(
@@ -199,16 +214,8 @@ def test_nats_chat_deleted_contract(pact: Pact) -> None:
         )
         .with_metadata({"nats_subject": "chat.deleted"})
     )
-    pact.verify(_nats_chat_deleted_handler, "Async")
 
-
-def test_nats_user_created_contract(pact: Pact) -> None:
-    """Contract: downstream consumers expect user.created events in this schema.
-
-    WHY: ws-hub and notification services subscribe to user.created to provision
-    per-user data structures (presence slots, notification preferences).  A schema
-    break here silently prevents new user onboarding.
-    """
+    # 4. user.created
     (
         pact.upon_receiving("a user.created domain event", "Async")
         .with_body(
@@ -220,15 +227,8 @@ def test_nats_user_created_contract(pact: Pact) -> None:
         )
         .with_metadata({"nats_subject": "user.created"})
     )
-    pact.verify(_nats_user_created_handler, "Async")
 
-
-def test_nats_notification_sent_contract(pact: Pact) -> None:
-    """Contract: notification consumers expect notification.sent events.
-
-    WHY: The notification worker subscribes to notification.sent to persist
-    delivery receipts.  A missing field here silently loses delivery data.
-    """
+    # 5. notification.sent
     (
         pact.upon_receiving("a notification.sent event", "Async")
         .with_body(
@@ -241,15 +241,8 @@ def test_nats_notification_sent_contract(pact: Pact) -> None:
         )
         .with_metadata({"nats_subject": "notification.sent"})
     )
-    pact.verify(_nats_notification_sent_handler, "Async")
 
-
-def test_nats_files_process_task_contract(pact: Pact) -> None:
-    """Contract: file-processor expects files.process task envelope on JetStream.
-
-    WHY: W140 SW1 — file-processor subscribes to the FILES_PROCESS stream.
-    The task envelope must carry 'id' and 'name' for correct routing.
-    """
+    # 6. files.process
     (
         pact.upon_receiving("a files.process task envelope", "Async")
         .with_body(
@@ -264,16 +257,8 @@ def test_nats_files_process_task_contract(pact: Pact) -> None:
         )
         .with_metadata({"nats_subject": "files.process"})
     )
-    pact.verify(_nats_files_process_handler, "Async")
 
-
-def test_nats_generic_task_envelope_contract(pact: Pact) -> None:
-    """Contract: all NATS task messages must conform to the _NatsTaskPayload schema.
-
-    WHY: The worker uses _NatsTaskPayload to deserialize ALL task messages.
-    This contract ensures that any producer (service, CLI, test) that publishes
-    to 'tasks.*' uses the same envelope structure.
-    """
+    # 7. tasks.*
     (
         pact.upon_receiving("a generic NATS task envelope", "Async")
         .with_body(
@@ -288,4 +273,6 @@ def test_nats_generic_task_envelope_contract(pact: Pact) -> None:
         )
         .with_metadata({"nats_subject": "tasks.email.send_welcome"})
     )
-    pact.verify(_nats_task_envelope_handler, "Async")
+
+    # Verify all of them against our routing handler
+    pact.verify(_nats_router_handler, "Async")

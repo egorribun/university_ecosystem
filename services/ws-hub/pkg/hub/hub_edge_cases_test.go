@@ -192,7 +192,7 @@ func TestConcurrentClose_Send_NoDataRace(t *testing.T) {
 		defer wg.Done()
 		// Let senders start before we close.
 		time.Sleep(2 * time.Millisecond)
-		closeOnce.Do(func() { close(ch) })
+		closeOnce.Do(func() { safeClose(ch) })
 	}()
 
 	// Wait with a timeout so a deadlock fails the test rather than hanging CI.

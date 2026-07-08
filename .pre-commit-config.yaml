@@ -98,3 +98,19 @@ repos:
     rev: v1.7.12
     hooks:
       - id: actionlint
+
+  - repo: https://github.com/semgrep/pre-commit
+    rev: v1.168.0
+    hooks:
+      - id: semgrep-docker
+        name: semgrep-sast
+        args: ["--config", "auto", "--error"]
+        exclude: ^tests/|^native/rust_ext/fuzz/|_test\.go$
+
+  - repo: https://github.com/mxab/pre-commit-trivy
+    rev: v0.18.0
+    hooks:
+      - id: trivyfs-docker
+        name: trivy-fs-scan
+        args: ["--exit-code", "1", "--severity", "CRITICAL,HIGH", "--timeout", "15m", "--skip-dirs", ".venv,.venv313,.git,.claude,.gemini,.secrets,node_modules,frontend/node_modules,frontend/dist,services/gateway/gateway,services/file-processor/cover", "."]
+

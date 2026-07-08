@@ -48,6 +48,9 @@ def _generate_session_signing_key() -> str:
 
 class ActiveSession(Base, UUID7PrimaryKeyMixin, UserFK):
     __tablename__ = "active_sessions"
+    __table_args__ = (
+        Index("ix_active_sessions_user_id_expires_at", "user_id", "expires_at"),
+    )
 
     # DEBT-01 (RZ-W13): JTI is a UUID4 string — 36 chars. Explicit bound prevents
     # index bloat and storage-amplification via crafted JTI values.

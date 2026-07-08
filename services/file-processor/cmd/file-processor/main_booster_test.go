@@ -59,7 +59,7 @@ func (s *mockNatsServer) run() {
 		s.mu.Unlock()
 		go func(c net.Conn) {
 			defer func() {
-				_ = c.Close()
+				_ = c.Close() //nolint:errcheck // best-effort close in mock server goroutine; t not in scope
 			}()
 			info := `INFO {"server_id":"MOCK","version":"2.0.0","host":"127.0.0.1","port":4222,"auth_required":false}` + "\r\n"
 			if _, err := c.Write([]byte(info)); err != nil {

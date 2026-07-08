@@ -29,5 +29,6 @@
   "MD055": false, // Allow any table pipe style
   "MD010": false, // Allow hard tabs
   "MD001": false, // Allow heading levels to increment by more than one at a time
-  "MD041": false  // Allow first line to not be a top-level heading
+  "MD041": false,  // Allow first line to not be a top-level heading
+  "MD060": false  // Disable table column style restriction
 }

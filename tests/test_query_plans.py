@@ -188,14 +188,14 @@ class TestCriticalQueryPlans:
             await session.execute(text("SET enable_seqscan = OFF"))
             query = (
                 "SELECT * FROM events "
-                "WHERE start_time BETWEEN '2024-01-01' AND '2024-01-31' "
-                "AND is_published = true"
+                "WHERE starts_at BETWEEN '2024-01-01' AND '2024-01-31' "
+                "AND is_active = true"
             )
             plan = await analyze_query_plan(session, query)
 
             assert not plan["seq_scan"], (
                 f"events_by_date must not use Seq Scan — "
-                f"add an index on (start_time, is_published). "
+                f"add an index on (starts_at, is_active). "
                 f"Got node_type: {plan.get('node_type')}"
             )
 
@@ -207,12 +207,12 @@ class TestCriticalQueryPlans:
         """Active session lookup by user_id must NOT use a Seq Scan.
 
         WHY (W25 query-plan gate): every authenticated request checks for an
-        active session; a table scan on a large sessions table breaks SLOs.
+        active session; a table scan on a large active_sessions table breaks SLOs.
         """
         async with async_session() as session:
             await session.execute(text("SET enable_seqscan = OFF"))
             query = (
-                "SELECT * FROM sessions "
+                "SELECT * FROM active_sessions "
                 "WHERE user_id = '00000000-0000-0000-0000-000000000000' "
                 "AND expires_at > now()"
             )
@@ -241,13 +241,13 @@ class TestCriticalQueryPlans:
             query = (
                 "SELECT COUNT(*) FROM notifications "
                 "WHERE user_id = '00000000-0000-0000-0000-000000000000' "
-                "AND is_read = false"
+                "AND read = false"
             )
             plan = await analyze_query_plan(session, query)
 
             assert not plan["seq_scan"], (
                 f"notifications_unread must not use Seq Scan — "
-                f"ensure an index on (user_id, is_read) exists. "
+                f"ensure an index on (user_id, read) exists. "
                 f"Got node_type: {plan.get('node_type')}"
             )
 

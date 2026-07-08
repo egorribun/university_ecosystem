@@ -26,28 +26,28 @@ depends_on = None
 def upgrade() -> None:
     # Index for events_by_date query (test_events_by_date_no_seq_scan)
     op.create_index(
-        "ix_events_start_time_is_published",
+        "ix_events_starts_at_is_active",
         "events",
-        ["start_time", "is_published"],
+        ["starts_at", "is_active"],
         unique=False,
     )
     # Index for user_sessions query (test_user_sessions_no_seq_scan)
     op.create_index(
-        "ix_sessions_user_id_expires_at",
-        "sessions",
+        "ix_active_sessions_user_id_expires_at",
+        "active_sessions",
         ["user_id", "expires_at"],
         unique=False,
     )
     # Index for notifications_unread query (test_notifications_unread_count_no_seq_scan)
     op.create_index(
-        "ix_notifications_user_id_is_read",
+        "ix_notifications_user_id_read",
         "notifications",
-        ["user_id", "is_read"],
+        ["user_id", "read"],
         unique=False,
     )
 
 
 def downgrade() -> None:
-    op.drop_index("ix_notifications_user_id_is_read", table_name="notifications")
-    op.drop_index("ix_sessions_user_id_expires_at", table_name="sessions")
-    op.drop_index("ix_events_start_time_is_published", table_name="events")
+    op.drop_index("ix_notifications_user_id_read", table_name="notifications")
+    op.drop_index("ix_active_sessions_user_id_expires_at", table_name="active_sessions")
+    op.drop_index("ix_events_starts_at_is_active", table_name="events")

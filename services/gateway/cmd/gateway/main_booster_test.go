@@ -50,7 +50,9 @@ func TestInitTracer_CancelledContext(t *testing.T) {
 
 	tp, err := initTracer(ctx, cfg)
 	if err == nil && tp != nil {
-		_ = tp.Shutdown(context.Background())
+		if shutErr := tp.Shutdown(context.Background()); shutErr != nil {
+			t.Logf("tracer shutdown: %v", shutErr)
+		}
 	}
 }
 
@@ -66,6 +68,8 @@ func TestInitTracer_TLS_Booster(t *testing.T) {
 
 	tp, err := initTracer(ctx, cfg)
 	if err == nil && tp != nil {
-		_ = tp.Shutdown(context.Background())
+		if shutErr := tp.Shutdown(context.Background()); shutErr != nil {
+			t.Logf("tracer shutdown: %v", shutErr)
+		}
 	}
 }

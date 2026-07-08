@@ -73,14 +73,17 @@ async def test_user_registration_and_login_flow(
     # Step 2: login
     login_response = await async_client.post(
         "/auth/login",
-        json={"email": email, "password": password},
+        data={"username": email, "password": password},
     )
     assert login_response.status_code == 200, (
         f"Login failed: {login_response.status_code} — {login_response.text}"
     )
     data = login_response.json()
-    # The API may expose the token under "access_token" or "token".
-    token = data.get("access_token") or data.get("token")
+    token = (
+        data.get("access_token")
+        or data.get("token")
+        or login_response.cookies.get("access_token_v2")
+    )
     assert token, f"No JWT in login response: {data}"
 
     # Step 3: use the JWT for an authenticated request
@@ -120,12 +123,16 @@ async def test_events_crud_flow(
     )
     login = await async_client.post(
         "/auth/login",
-        json={"email": email, "password": password},
+        data={"username": email, "password": password},
     )
     if login.status_code != 200:
         pytest.skip(f"Could not authenticate for events CRUD: {login.status_code}")
 
-    token = login.json().get("access_token") or login.json().get("token")
+    token = (
+        login.json().get("access_token")
+        or login.json().get("token")
+        or login.cookies.get("access_token_v2")
+    )
     auth_header = {"Authorization": f"Bearer {token}"}
 
     # Step 1: create event
@@ -177,7 +184,7 @@ async def test_health_endpoint_reflects_db_connectivity(
     and breaks load-balancer rolling-restart safety checks.
     """
     response = await async_client.get(
-        "/health",
+        "http://testserver/healthz",
         headers={"X-Disable-Query-Budget": "1"},
     )
     assert response.status_code == 200, (

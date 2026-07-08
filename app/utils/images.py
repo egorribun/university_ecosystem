@@ -27,7 +27,7 @@ logger = get_logger(__name__)
 
 try:  # Pillow >= 9.1 exposes the resampling enum in PIL.Image
     from PIL.Image import Resampling
-except ImportError:
+except ImportError:  # pragma: no cover
     Resampling: Any = int  # type: ignore[no-redef]
 
 
@@ -36,10 +36,10 @@ def _resolve_resample_filter() -> Resampling:
     resampling = getattr(Image, "Resampling", None)
     if resampling is not None:
         return cast("Resampling", resampling.LANCZOS)
-    lanczos = getattr(Image, "LANCZOS", None)
-    if lanczos is None:
+    lanczos = getattr(Image, "LANCZOS", None)  # pragma: no cover
+    if lanczos is None:  # pragma: no cover
         raise AttributeError("Pillow installation does not expose a LANCZOS filter")
-    return cast("Resampling", lanczos)
+    return cast("Resampling", lanczos)  # pragma: no cover
 
 
 def sanitize_svg(data: bytes) -> bytes:

@@ -80,16 +80,13 @@ pub fn sanitize_rich_text(html: &str) -> String {
         .link_rel(Some("noopener noreferrer"))
         .clean(html)
         .to_string()
-        .replace('\0', "")
-        .replace('\u{feff}', "")
+        .replace(['\0', '\u{feff}'], "")
 }
 
 #[pyfunction]
 #[pyo3(name = "sanitize_rich_text")]
 pub fn py_sanitize_rich_text(html: &str) -> PyResult<String> {
-    catch_unwind_to_pyerr(std::panic::AssertUnwindSafe(|| {
-        sanitize_rich_text(html)
-    }))
+    catch_unwind_to_pyerr(std::panic::AssertUnwindSafe(|| sanitize_rich_text(html)))
 }
 
 /// Strip all HTML except basic inline formatting (bold, italic, emphasis).
@@ -103,16 +100,13 @@ pub fn sanitize_html_basic(html: &str) -> String {
         .tags(allowed_tags)
         .clean(html)
         .to_string()
-        .replace('\0', "")
-        .replace('\u{feff}', "")
+        .replace(['\0', '\u{feff}'], "")
 }
 
 #[pyfunction]
 #[pyo3(name = "sanitize_html_basic")]
 pub fn py_sanitize_html_basic(html: &str) -> PyResult<String> {
-    catch_unwind_to_pyerr(std::panic::AssertUnwindSafe(|| {
-        sanitize_html_basic(html)
-    }))
+    catch_unwind_to_pyerr(std::panic::AssertUnwindSafe(|| sanitize_html_basic(html)))
 }
 
 /// Remove all HTML tags, returning plain text.
@@ -130,15 +124,13 @@ pub fn strip_html(html: &str) -> String {
     // idempotency.  Stripping both characters after ammonia runs is the
     // minimal, correct fix that restores the invariant:
     //   strip_html(strip_html(x)) == strip_html(x)  for all x.
-    cleaned.replace('\0', "").replace('\u{feff}', "")
+    cleaned.replace(['\0', '\u{feff}'], "")
 }
 
 #[pyfunction]
 #[pyo3(name = "strip_html")]
 pub fn py_strip_html(html: &str) -> PyResult<String> {
-    catch_unwind_to_pyerr(std::panic::AssertUnwindSafe(|| {
-        strip_html(html)
-    }))
+    catch_unwind_to_pyerr(std::panic::AssertUnwindSafe(|| strip_html(html)))
 }
 
 /// pyo3_sanitizer — native Python extension module.
@@ -360,7 +352,10 @@ mod tests {
         assert_eq!(first, second, "strip_html must be idempotent");
         // Also verify the output contains no null bytes or BOM
         assert!(!first.contains('\0'), "strip_html must remove null bytes");
-        assert!(!first.contains('\u{feff}'), "strip_html must remove BOM characters");
+        assert!(
+            !first.contains('\u{feff}'),
+            "strip_html must remove BOM characters"
+        );
     }
 
     #[test]
@@ -437,7 +432,10 @@ mod tests {
         let repeated = "<p>Hello world</p>".repeat(60_000); // ~1.08 MiB
         let out = sanitize_rich_text(&repeated);
         // Output must still contain paragraph tags (they are in the allow-list)
-        assert!(out.contains("<p>"), "p tags must survive in a large payload");
+        assert!(
+            out.contains("<p>"),
+            "p tags must survive in a large payload"
+        );
 
         let stripped = strip_html(&repeated);
         // All markup removed; only text content remains

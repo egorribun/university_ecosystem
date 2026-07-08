@@ -56,6 +56,7 @@ class Notification(Base, UUID7PrimaryKeyMixin, UserFK):
         Index("ix_notifications_user_created", "user_id", "created_at"),
         Index("ix_notifications_dupe_check", "user_id", "title", "url", "created_at"),
         Index("ix_notifications_user_dedupe", "user_id", "dedupe_key"),
+        Index("ix_notifications_user_id_read", "user_id", "read"),
         {"postgresql_partition_by": "RANGE (created_at)"},
     )
 

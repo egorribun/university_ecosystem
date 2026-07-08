@@ -300,7 +300,9 @@ jobs:
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
       - name: Install shellcheck
-        run: sudo apt-get update && sudo apt-get install -y shellcheck
+        run: |
+          wget -qO- "https://github.com/koalaman/shellcheck/releases/download/v0.10.0/shellcheck-v0.10.0.linux.x86_64.tar.xz" | tar -xJv
+          sudo cp shellcheck-v0.10.0/shellcheck /usr/local/bin/
       - name: Run ShellCheck
         run: |
           find scripts/ -type f -name "*.sh" -exec shellcheck -e SC2086 -e SC2001 -e SC2030 -e SC2031 {} +
@@ -726,7 +728,7 @@ jobs:
         with:
           repo: sbdchd/squawk
           tag: v2.44.0 # MOD-008: update to latest release v2.44.0
-          file-name: squawk-linux-x64 # Specify explicit binary name
+          asset-name: squawk-linux-x64 # Specify explicit binary name
           cache: enable
           extension-matching: disable
           rename-to: squawk
@@ -1547,7 +1549,7 @@ jobs:
         run: |
           LIBDIR="$(python -c 'import sysconfig; print(sysconfig.get_config_var("LIBDIR"))')"
           export LD_LIBRARY_PATH="${LIBDIR}:${LD_LIBRARY_PATH}"
-          cargo llvm-cov --lib
+          cargo llvm-cov --no-default-features --lib
 
       - name: wasm-sanitizer — native unit tests + coverage
         working-directory: frontend/wasm-sanitizer
@@ -1887,7 +1889,7 @@ jobs:
     needs: [backend-tests]
     services:
       postgres:
-        image: postgres:17
+        image: pgvector/pgvector:pg17
         env:
           POSTGRES_DB: testdb
           POSTGRES_USER: postgres
@@ -1922,9 +1924,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     needs: [alembic-migrations]
+    env:
+      SECRET_KEY: "dummy-secret-key-for-migrations-integration-test-12345678"
     services:
       postgres:
-        image: postgres:17
+        image: pgvector/pgvector:pg17
         env:
           POSTGRES_DB: migtest
           POSTGRES_USER: postgres

@@ -71,8 +71,17 @@ echo "==> [TSan] Using TSan runtime: ${TSAN_LIB}"
 # ── Run tests under TSan ─────────────────────────────────────────────
 echo "==> [TSan] Running FFI tests under TSan..."
 
+# WHY suppressions: libuv (CPython's asyncio backend) and tokio's mio waker
+# use an intentional self-pipe design where two threads share opposite ends
+# of a pipe fd.  TSan flags these as races in memcpy, but they are safe by
+# POSIX design.  The suppressions file limits the report to actual races in
+# our Rust extension code.  abort_on_error is dropped because the TSan
+# deadlock-detector overflows when libuv holds >64 internal locks — that
+# overflow causes a CHECK-fail that kills the process before tests finish.
+TSAN_SUPPRESSIONS_FILE="${REPO_ROOT}/tests/tsan_suppressions.txt"
+
 LD_PRELOAD="${TSAN_LIB}" \
-TSAN_OPTIONS="abort_on_error=1" \
+TSAN_OPTIONS="suppressions=${TSAN_SUPPRESSIONS_FILE}:halt_on_error=0:second_deadlock_stack=0:print_suppressions=1:verbosity=1" \
   uv run pytest \
     tests/test_smoke_rust_audit.py \
     tests/test_smoke_rust_partitions.py \

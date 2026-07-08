@@ -413,7 +413,7 @@ while editing actions.
 ### trunk
 
 [trunk][trunk-io] is an extendable superlinter with a builtin language server and preexisting issue detection. Actionlint is
-integrated [here](https://github.com/trunk-io/plugins).
+integrated in the [trunk-io/plugins repository](https://github.com/trunk-io/plugins).
 
 Once you have [initialized trunk in your repo](https://docs.trunk.io/docs/check-get-started), to enable at the latest actionlint
 version, just run:

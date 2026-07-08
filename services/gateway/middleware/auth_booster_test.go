@@ -86,7 +86,7 @@ func TestFetchJWKSPublicKey_Errors(t *testing.T) {
 
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusOK)
-			_, _ = w.Write(pemBytes)
+			_, _ = w.Write(pemBytes) // nosemgrep
 		}))
 		defer server.Close()
 
@@ -98,7 +98,7 @@ func TestFetchJWKSPublicKey_Errors(t *testing.T) {
 	t.Run("jwks no rsa key found", func(t *testing.T) {
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusOK)
-			_, _ = w.Write([]byte(`{"keys":[{"kty":"EC"}]}`))
+			_, _ = w.Write([]byte(`{"keys":[{"kty":"EC"}]}`)) //nolint:errcheck // t not in scope in handler func
 		}))
 		defer server.Close()
 
@@ -110,7 +110,7 @@ func TestFetchJWKSPublicKey_Errors(t *testing.T) {
 	t.Run("jwks base64 decoding fails", func(t *testing.T) {
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusOK)
-			_, _ = w.Write([]byte(`{"keys":[{"kty":"RSA","n":"invalid base64 @@@","e":"AQAB"}]}`))
+			_, _ = w.Write([]byte(`{"keys":[{"kty":"RSA","n":"invalid base64 @@@","e":"AQAB"}]}`)) //nolint:errcheck // t not in scope in handler func
 		}))
 		defer server.Close()
 
@@ -121,7 +121,7 @@ func TestFetchJWKSPublicKey_Errors(t *testing.T) {
 	t.Run("jwks base64 decoding e fails", func(t *testing.T) {
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusOK)
-			_, _ = w.Write([]byte(`{"keys":[{"kty":"RSA","n":"somenbytes","e":"invalid base64 @@@"}]}`))
+			_, _ = w.Write([]byte(`{"keys":[{"kty":"RSA","n":"somenbytes","e":"invalid base64 @@@"}]}`)) //nolint:errcheck // t not in scope in handler func
 		}))
 		defer server.Close()
 
@@ -142,7 +142,7 @@ func TestWarmL1Cache_Coverage(t *testing.T) {
 	t.Run("redis scan success", func(t *testing.T) {
 		mr := miniredis.RunT(t)
 		rClient := redis.NewClient(&redis.Options{Addr: mr.Addr()})
-		defer rClient.Close()
+		defer func() { require.NoError(t, rClient.Close()) }()
 
 		// Add some keys to miniredis
 		err := mr.Set("revoked:jti:token1", "1")
@@ -164,7 +164,7 @@ func TestWarmL1Cache_Coverage(t *testing.T) {
 		mr := miniredis.RunT(t)
 		rClient := redis.NewClient(&redis.Options{Addr: mr.Addr()})
 		// Close client to force scanner error
-		rClient.Close()
+		rClient.Close() //nolint:errcheck,gosec // G104: intentional close to force redis scanner error
 
 		m := NewJWTMiddleware("secret", rClient)
 		assert.NotPanics(t, func() {
@@ -177,7 +177,7 @@ func TestWarmL1Cache_Coverage(t *testing.T) {
 func TestListenForRevocations_PanicRecovery(t *testing.T) {
 	mr := miniredis.RunT(t)
 	rClient := redis.NewClient(&redis.Options{Addr: mr.Addr()})
-	defer rClient.Close()
+	defer func() { require.NoError(t, rClient.Close()) }()
 
 	m := NewJWTMiddleware("secret", rClient)
 	ctx, cancel := context.WithCancel(context.Background())
@@ -193,7 +193,7 @@ func TestListenForRevocations_PanicRecovery(t *testing.T) {
 func TestVerifySession_JTIEmpty(t *testing.T) {
 	mr := miniredis.RunT(t)
 	rClient := redis.NewClient(&redis.Options{Addr: mr.Addr()})
-	defer rClient.Close()
+	defer func() { require.NoError(t, rClient.Close()) }()
 
 	m := NewJWTMiddleware("secret", rClient)
 	isValid, shouldDeny, err := m.verifySession(context.Background(), "", true)
@@ -207,7 +207,7 @@ func TestVerifySession_JTIEmpty(t *testing.T) {
 func TestCheckSessionInRedis_Error(t *testing.T) {
 	mr := miniredis.RunT(t)
 	rClient := redis.NewClient(&redis.Options{Addr: mr.Addr()})
-	rClient.Close() // Close to trigger error
+	rClient.Close() //nolint:errcheck,gosec // G104: intentional close to force redis error
 
 	m := NewJWTMiddleware("secret", rClient)
 	isValid, shouldDeny, err := m.verifySession(context.Background(), "some-jti", true)
@@ -223,7 +223,7 @@ func TestValidate_Optional_Gin(t *testing.T) {
 	t.Run("Validate with empty JTI", func(t *testing.T) {
 		mr := miniredis.RunT(t)
 		rClient := redis.NewClient(&redis.Options{Addr: mr.Addr()})
-		defer rClient.Close()
+		defer func() { require.NoError(t, rClient.Close()) }()
 
 		m := NewJWTMiddleware("secret", rClient)
 		router := gin.New()
@@ -240,11 +240,12 @@ func TestValidate_Optional_Gin(t *testing.T) {
 			},
 			UserID: "user-123",
 		})
-		tokenStr, err := token.SignedString([]byte("secret"))
+		tokenStr, err := token.SignedString([]byte("secret")) // nosemgrep
 		require.NoError(t, err)
 
 		rec := httptest.NewRecorder()
-		req, _ := http.NewRequest(http.MethodGet, "/test", nil)
+		req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, "/test", nil)
+		require.NoError(t, err)
 		req.Header.Set("Authorization", "Bearer "+tokenStr)
 
 		router.ServeHTTP(rec, req)
@@ -254,7 +255,7 @@ func TestValidate_Optional_Gin(t *testing.T) {
 	t.Run("Validate JTI-less via Cookie", func(t *testing.T) {
 		mr := miniredis.RunT(t)
 		rClient := redis.NewClient(&redis.Options{Addr: mr.Addr()})
-		defer rClient.Close()
+		defer func() { require.NoError(t, rClient.Close()) }()
 
 		m := NewJWTMiddleware("secret", rClient)
 		router := gin.New()
@@ -270,12 +271,13 @@ func TestValidate_Optional_Gin(t *testing.T) {
 			},
 			UserID: "user-123",
 		})
-		tokenStr, err := token.SignedString([]byte("secret"))
+		tokenStr, err := token.SignedString([]byte("secret")) // nosemgrep
 		require.NoError(t, err)
 
 		rec := httptest.NewRecorder()
-		req, _ := http.NewRequest(http.MethodGet, "/test", nil)
-		req.AddCookie(&http.Cookie{Name: AccessTokenCookieName, Value: tokenStr})
+		req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, "/test", nil)
+		require.NoError(t, err)
+		req.AddCookie(&http.Cookie{Name: AccessTokenCookieName, Value: tokenStr}) // nosemgrep
 
 		router.ServeHTTP(rec, req)
 		assert.Equal(t, http.StatusUnauthorized, rec.Code)
@@ -284,7 +286,7 @@ func TestValidate_Optional_Gin(t *testing.T) {
 	t.Run("Optional with JTI-less via Cookie", func(t *testing.T) {
 		mr := miniredis.RunT(t)
 		rClient := redis.NewClient(&redis.Options{Addr: mr.Addr()})
-		defer rClient.Close()
+		defer func() { require.NoError(t, rClient.Close()) }()
 
 		m := NewJWTMiddleware("secret", rClient)
 		router := gin.New()
@@ -301,16 +303,16 @@ func TestValidate_Optional_Gin(t *testing.T) {
 			},
 			UserID: "user-123",
 		})
-		tokenStr, err := token.SignedString([]byte("secret"))
+		tokenStr, err := token.SignedString([]byte("secret")) // nosemgrep
 		require.NoError(t, err)
 
 		rec := httptest.NewRecorder()
-		req, _ := http.NewRequest(http.MethodGet, "/test", nil)
-		req.AddCookie(&http.Cookie{Name: AccessTokenCookieName, Value: tokenStr})
+		req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, "/test", nil)
+		require.NoError(t, err)
+		req.AddCookie(&http.Cookie{Name: AccessTokenCookieName, Value: tokenStr}) // nosemgrep
 
 		router.ServeHTTP(rec, req)
 		assert.Equal(t, http.StatusOK, rec.Code)
 		assert.Contains(t, rec.Body.String(), `user_id":null`) // unauthenticated
 	})
 }
-

@@ -1,0 +1,75 @@
+# TSan suppressions file for Python FFI tests.
+#
+# WHY: TSan instruments every memory access. When our Rust extension is loaded
+# alongside CPython (which uses libuv as its asyncio event loop) and tokio
+# (which uses its own thread pool), TSan reports data races inside libuv's
+# internal pipe/signal dispatch code. These are NOT races in our code — they
+# are known, intentional patterns in libuv's design where two event-loop
+# threads share a pipe fd using separate read/write ends.
+#
+# IMPORTANT — why called_from_lib instead of race:<function>:
+#   On the CI runner, libuv is installed from the Ubuntu apt package without
+#   debug symbols. TSan therefore shows all libuv frames as:
+#       <null> <null> (uv+0x1234567)
+#   Function-name suppressions (race:uv__io_poll) never fire because TSan
+#   cannot resolve the symbol. The called_from_lib: pattern matches by the
+#   DSO path, which is always available regardless of symbol visibility.
+
+# ── Races triggered from inside the libuv DSO ───────────────────────────────
+# Covers ALL data races where at least one racing access originated from
+# within libuv — the self-pipe wakeup, async dispatch, signal handler, etc.
+called_from_lib:libuv.so
+called_from_lib:libuv.so.1
+called_from_lib:libuv.so.1.0.0
+called_from_lib:uv.so
+called_from_lib:uv.so.1
+
+# ── Races inside CPython's own runtime DSO ───────────────────────────────────
+# CPython's GIL management and eval-breaker mechanism do intentional
+# unsynchronized writes that TSan sees as races (known CPython behaviour).
+called_from_lib:libpython3
+called_from_lib:libpython3.so
+called_from_lib:libpython3.14
+called_from_lib:libpython3.13
+called_from_lib:libpython3.12
+
+# ── memcpy intercepted by TSan originating from uv or Python ────────────────
+# TSan intercepts memcpy globally via LD_PRELOAD. When libuv or CPython call
+# memcpy across the pipe buffer, TSan flags it. The called_from_lib rules
+# above should already cover this, but suppress memcpy explicitly as a
+# belt-and-suspenders measure for stripped binaries.
+race:memcpy
+
+# ── tokio / Mio epoll wakeup pipe ───────────────────────────────────────────
+# tokio's mio backend uses the same self-pipe wakeup trick as libuv.
+# Mio is statically linked into the Rust extension, so its symbols ARE
+# visible — function-name suppression works here.
+race:mio::sys::unix::waker
+race:mio::sys::unix::pipe
+
+# ── libuv function names (for runners that DO have debug symbols) ────────────
+# Belt-and-suspenders: if debug symbols are ever present, these fire instead.
+race:uv__io_poll
+race:uv__async_send
+race:uv__async_io
+race:uv__signal_handler
+race:uv__write
+race:uv__read
+race:uv_run
+race:uv__stream_io
+race:uv__pipe_connect
+race:uv__tcp_connect
+race:uv_pipe_open
+race:uv_async_send
+
+# ── CPython function names (for runners with Python debug symbols) ────────────
+race:_PyEval_SignalAsyncExc
+race:_PyEval_SignalReceived
+race:PyEval_SaveThread
+race:PyEval_RestoreThread
+race:take_gil
+race:drop_gil
+race:_Py_atomic_load_relaxed_impl
+race:_PyRuntime
+race:t_bootstrap
+race:thread_PyThread_start_new_thread

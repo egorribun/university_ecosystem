@@ -84,7 +84,9 @@ class TestNotificationsSettings:
 
     def test_has_vapid_keys_false(self):
         """Test has_vapid_keys without keys."""
-        with mock.patch.dict(os.environ, {}, clear=True):
+        with mock.patch.dict(
+            os.environ, {"VAPID_PRIVATE_KEY": "", "VAPID_PUBLIC_KEY": ""}
+        ):
             settings = NotificationsSettings()
             assert settings.has_vapid_keys is False
 

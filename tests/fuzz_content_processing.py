@@ -4,7 +4,7 @@ try:
     import atheris
 
     HAS_ATHERIS = True
-except ImportError:
+except (ImportError, RuntimeError):
     HAS_ATHERIS = False
 
 if HAS_ATHERIS:

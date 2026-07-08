@@ -252,7 +252,7 @@ const createMfaChallenge = ({
   if (includeTotp) {
     methods.push({
       method: "totp",
-      challenge_token: "totp-challenge-token",
+      challenge_token: "totp-challenge-token-32-characters-long",
       challenge_expires_at: challengeExpiresAt(),
       options: null,
     })
@@ -576,9 +576,8 @@ export async function useMockApi(page: Page) {
         },
         body: JSON.stringify({
           items: localized,
-          total: localized.length,
-          limit: 12,
           has_more: false,
+          next_cursor: null,
         }),
       })
       return
