@@ -192,7 +192,7 @@ async def test_db_session_write_read_consistency(db_session: AsyncSession) -> No
         text(
             "INSERT INTO stored_events "
             "(id, event_type, aggregate_id, aggregate_type, sequence_number, payload, error_count, version, status, created_at) "
-            "VALUES (:id, 'test.event', 'agg-1', 'TestAggregate', 1, '{\"test\": true}', 0, 1, 'pending', NOW())"
+            "VALUES (:id, 'test.event', 'agg-1', 'TestAggregate', 1, '{\"test\": true}', 0, 1, 'pending', CURRENT_TIMESTAMP)"
         ),
         {"id": event_id},
     )
@@ -260,7 +260,7 @@ async def test_transaction_rollback_on_unique_violation(
         text(
             "INSERT INTO stored_events "
             "(id, event_type, aggregate_id, aggregate_type, sequence_number, payload, error_count, version, status, created_at) "
-            "VALUES (:id, 'test.unique', 'agg-2', 'TestAggregate', 2, '{\"dup\": 1}', 0, 1, 'pending', NOW())"
+            "VALUES (:id, 'test.unique', 'agg-2', 'TestAggregate', 2, '{\"dup\": 1}', 0, 1, 'pending', CURRENT_TIMESTAMP)"
         ),
         {"id": event_id},
     )
@@ -272,7 +272,7 @@ async def test_transaction_rollback_on_unique_violation(
             text(
                 "INSERT INTO stored_events "
                 "(id, event_type, aggregate_id, aggregate_type, sequence_number, payload, error_count, version, status, created_at) "
-                "VALUES (:id, 'test.unique', 'agg-2', 'TestAggregate', 2, '{\"dup\": 2}', 0, 1, 'pending', NOW())"
+                "VALUES (:id, 'test.unique', 'agg-2', 'TestAggregate', 2, '{\"dup\": 2}', 0, 1, 'pending', CURRENT_TIMESTAMP)"
             ),
             {"id": event_id},
         )
