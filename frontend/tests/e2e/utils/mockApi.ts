@@ -576,9 +576,8 @@ export async function useMockApi(page: Page) {
         },
         body: JSON.stringify({
           items: localized,
-          total: localized.length,
-          limit: 12,
           has_more: false,
+          next_cursor: null,
         }),
       })
       return

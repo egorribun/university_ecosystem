@@ -32,7 +32,11 @@ test.describe("Rate limit UX", () => {
         void route.fulfill({
           status: 200,
           contentType: "application/json",
-          body: JSON.stringify({ items: [], total: 0 }),
+          body: JSON.stringify({
+            items: [],
+            has_more: false,
+            next_cursor: null,
+          }),
         })
       } else {
         void route.fulfill({
@@ -122,8 +126,16 @@ test.describe("Rate limit UX", () => {
   test("auto-retries request after rate limit window expires", async ({ page }) => {
     let callCount = 0
     const successPayload = {
-      items: [{ id: "auto-retry-news-1", title: "Auto-retry success" }],
-      total: 1,
+      items: [
+        {
+          id: "3e5a32b2-5f6c-48d9-a78b-d7be62512345",
+          title: "Auto-retry success",
+          content: "Auto-retry content",
+          created_at: "2026-06-27T10:00:00Z",
+        },
+      ],
+      has_more: false,
+      next_cursor: null,
     }
 
     await page.route("**/api/v1/news**", (route: Route) => {

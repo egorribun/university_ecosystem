@@ -41,18 +41,40 @@ async function setupSearchMock(page: Page, options: { returnResults: boolean }) 
       void route.fulfill({
         status: 200,
         contentType: "application/json",
-        body: JSON.stringify({ items: [], total: 0, page: 1, size: 20 }),
+        body: JSON.stringify({
+          query,
+          results: {
+            news: [],
+            events: [],
+          },
+        }),
       })
     } else {
+      const newsResults = SEARCH_RESULTS_MOCK.filter((r) => r.kind === "news").map((r) => ({
+        id: r.id,
+        type: "news",
+        title: r.title,
+        summary: r.excerpt,
+        url: r.url,
+        score: r.score,
+      }))
+      const eventsResults = SEARCH_RESULTS_MOCK.filter((r) => r.kind === "event").map((r) => ({
+        id: r.id,
+        type: "events",
+        title: r.title,
+        summary: r.excerpt,
+        url: r.url,
+        score: r.score,
+      }))
       void route.fulfill({
         status: 200,
         contentType: "application/json",
         body: JSON.stringify({
-          items: SEARCH_RESULTS_MOCK,
-          total: SEARCH_RESULTS_MOCK.length,
-          page: 1,
-          size: 20,
           query,
+          results: {
+            news: newsResults,
+            events: eventsResults,
+          },
         }),
       })
     }
