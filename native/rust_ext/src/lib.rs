@@ -663,7 +663,7 @@ mod tests {
             parity: "both".to_string(),
         };
 
-        let result = detect_conflicts(&target, vec![existing1.clone(), existing2.clone()]);
+        let result = detect_conflicts(&target, vec![existing1.clone(), existing2.clone()]).unwrap();
         assert_eq!(result.len(), 1);
         assert_eq!(result[0].id, Some(1));
     }
@@ -724,9 +724,9 @@ mod tests {
         ];
 
         let slot = find_optimal_slot(60, existing, available);
-        assert!(slot.is_some());
+        assert!(slot.is_ok());
         let found = slot.unwrap();
-        assert_eq!(found.weekday, "monday");
+        assert_eq!(found.unwrap().weekday, "monday");
     }
 
     #[test]
