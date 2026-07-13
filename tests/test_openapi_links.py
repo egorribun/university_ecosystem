@@ -7,6 +7,7 @@ of the links.
 from __future__ import annotations
 
 import os
+
 import pytest
 import schemathesis
 from fastapi.testclient import TestClient
@@ -43,21 +44,35 @@ def test_openapi_schema_contains_links() -> None:
         login_post = paths.get("/api/v1/auth/login", {}).get("post", {})
         login_links = login_post.get("responses", {}).get("200", {}).get("links", {})
         assert "GetCurrentUser" in login_links
-        assert login_links["GetCurrentUser"]["operationId"] == "get_me_api_v1_users_me_get"
+        assert (
+            login_links["GetCurrentUser"]["operationId"] == "get_me_api_v1_users_me_get"
+        )
 
         # 2. Create event links to get_event
         create_event = paths.get("/api/v1/events", {}).get("post", {})
         event_links = create_event.get("responses", {}).get("200", {}).get("links", {})
         assert "GetEventById" in event_links
-        assert event_links["GetEventById"]["operationId"] == "get_event_api_v1_events__event_id__get"
-        assert event_links["GetEventById"]["parameters"]["event_id"] == "$response.body#/id"
+        assert (
+            event_links["GetEventById"]["operationId"]
+            == "get_event_api_v1_events__event_id__get"
+        )
+        assert (
+            event_links["GetEventById"]["parameters"]["event_id"]
+            == "$response.body#/id"
+        )
 
         # 3. Create chat links to get_messages
         create_chat = paths.get("/api/v1/chats", {}).get("post", {})
         chat_links = create_chat.get("responses", {}).get("200", {}).get("links", {})
         assert "GetChatMessages" in chat_links
-        assert chat_links["GetChatMessages"]["operationId"] == "get_messages_api_v1_chats__chat_id__messages_get"
-        assert chat_links["GetChatMessages"]["parameters"]["chat_id"] == "$response.body#/id"
+        assert (
+            chat_links["GetChatMessages"]["operationId"]
+            == "get_messages_api_v1_chats__chat_id__messages_get"
+        )
+        assert (
+            chat_links["GetChatMessages"]["parameters"]["chat_id"]
+            == "$response.body#/id"
+        )
 
 
 def test_schemathesis_parses_openapi_with_links() -> None:

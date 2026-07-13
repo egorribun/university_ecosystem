@@ -7,6 +7,7 @@ import { webcrypto } from "node:crypto"
 import { afterAll, afterEach, beforeAll, expect, vi } from "vitest"
 import { toHaveNoViolations } from "jest-axe"
 import { server } from "./tests/mocks/server"
+import { configure } from "@testing-library/react"
 import {
   resetAdminDeadLetterJobs,
   resetTestEvents,
@@ -30,6 +31,8 @@ declare module "vitest" {
 
 expect.extend(toHaveNoViolations)
 
+configure({ asyncUtilTimeout: 15000 })
+
 if (!process.stdout.columns || process.stdout.columns === 0) {
   process.stdout.columns = 80
 }
@@ -41,6 +44,8 @@ if (!process.stderr.columns || process.stderr.columns === 0) {
 if (!globalThis.TextEncoder) (globalThis as any).TextEncoder = TextEncoder
 if (!globalThis.TextDecoder) (globalThis as any).TextDecoder = TextDecoder as any
 if (!globalThis.crypto) (globalThis as any).crypto = webcrypto
+
+const requestBodyMap = new WeakMap<Request, Promise<string>>()
 
 beforeAll(async () => {
   await i18n.changeLanguage("en")
@@ -56,6 +61,25 @@ beforeAll(async () => {
   // Set CONTRACT_VALIDATION_DISABLED=1 in your environment to bypass (e.g.
   // while generating new mock handlers before the schema is updated).
   if (process.env["CONTRACT_VALIDATION_DISABLED"] !== "1") {
+    server.events.on("request:start", ({ request }) => {
+      try {
+        const url = new URL(request.url)
+        const path = url.pathname
+        if (!path.startsWith("/api/") && !path.startsWith("/auth/")) return
+
+        if (["POST", "PUT", "PATCH"].includes(request.method.toUpperCase())) {
+          const contentType = request.headers.get("content-type") ?? ""
+          if (contentType.includes("application/json")) {
+            const bodyPromise = request.clone().text()
+            requestBodyMap.set(request, bodyPromise)
+            bodyPromise.catch(() => {}) // Silence unhandled rejection warnings
+          }
+        }
+      } catch (_e) {
+        /* ignore */
+      }
+    })
+
     server.events.on("response:mocked", ({ request, response }) => {
       try {
         const url = new URL(request.url)
@@ -92,18 +116,19 @@ beforeAll(async () => {
         if (["POST", "PUT", "PATCH"].includes(request.method.toUpperCase())) {
           const requestContentType = request.headers.get("content-type") ?? ""
           if (requestContentType.includes("application/json")) {
-            request
-              .clone()
-              .text()
-              .then((text: string) => {
-                if (!text.trim()) return
-                const body = JSON.parse(text)
-                validateRequestBody({ path, method: request.method, body })
-              })
-              .catch((error: unknown) => {
-                console.error("[ContractValidator]", error)
-                throw error
-              })
+            const bodyPromise = requestBodyMap.get(request)
+            if (bodyPromise) {
+              bodyPromise
+                .then((text: string) => {
+                  if (!text.trim()) return
+                  const body = JSON.parse(text)
+                  validateRequestBody({ path, method: request.method, body })
+                })
+                .catch((error: unknown) => {
+                  console.error("[ContractValidator]", error)
+                  throw error
+                })
+            }
           }
         }
       } catch (error) {
@@ -133,37 +158,62 @@ afterAll(() => server.close())
 // identically (typeof window === "object") and continue to receive the polyfills.
 if (typeof window !== "undefined") {
   // Polyfill/mock localStorage and sessionStorage for Node 22+ / JSDOM conflicts
-  const mockStorage = () => {
-    let store: Record<string, string> = {}
-    return {
-      getItem: vi.fn((key: string) => store[key] || null),
-      setItem: vi.fn((key: string, value: string) => {
-        store[key] = String(value)
-      }),
-      removeItem: vi.fn((key: string) => {
-        delete store[key]
-      }),
-      clear: vi.fn(() => {
+  const mockStorageMethods = () => {
+    const stores = new WeakMap<any, Record<string, string>>()
+    const getStore = (obj: any) => {
+      let store = stores.get(obj)
+      if (!store) {
         store = {}
-      }),
-      key: vi.fn((index: number) => Object.keys(store)[index] || null),
-      get length() {
-        return Object.keys(store).length
-      },
+        stores.set(obj, store)
+      }
+      return store
+    }
+
+    if (typeof window.Storage !== "undefined") {
+      window.Storage.prototype.getItem = vi.fn(function (this: any, key: string) {
+        const store = getStore(this)
+        return store[key] || null
+      })
+      window.Storage.prototype.setItem = vi.fn(function (this: any, key: string, value: string) {
+        const store = getStore(this)
+        store[key] = String(value)
+      })
+      window.Storage.prototype.removeItem = vi.fn(function (this: any, key: string) {
+        const store = getStore(this)
+        delete store[key]
+      })
+      window.Storage.prototype.clear = vi.fn(function (this: any) {
+        const store = getStore(this)
+        for (const k of Object.keys(store)) {
+          delete store[k]
+        }
+      })
+      window.Storage.prototype.key = vi.fn(function (this: any, index: number) {
+        const store = getStore(this)
+        return Object.keys(store)[index] || null
+      })
+      Object.defineProperty(window.Storage.prototype, "length", {
+        get(this: any) {
+          const store = getStore(this)
+          return Object.keys(store).length
+        },
+        configurable: true,
+      })
     }
   }
 
   try {
+    mockStorageMethods()
     if (!window.localStorage || typeof window.localStorage.clear !== "function") {
       Object.defineProperty(window, "localStorage", {
-        value: mockStorage(),
+        value: Object.create(window.Storage.prototype),
         writable: true,
         configurable: true,
       })
     }
     if (!window.sessionStorage || typeof window.sessionStorage.clear !== "function") {
       Object.defineProperty(window, "sessionStorage", {
-        value: mockStorage(),
+        value: Object.create(window.Storage.prototype),
         writable: true,
         configurable: true,
       })
@@ -181,6 +231,30 @@ if (typeof window !== "undefined") {
     })
   } catch (_e) {
     /* ignore */
+  }
+
+  // Wrap StorageEvent to support custom/mocked Storage objects in JSDOM
+  if (typeof window.StorageEvent !== "undefined") {
+    const NativeStorageEvent = window.StorageEvent
+    window.StorageEvent = function (type: string, eventInitDict?: any) {
+      if (eventInitDict && eventInitDict.storageArea) {
+        try {
+          new NativeStorageEvent(type, { storageArea: eventInitDict.storageArea })
+        } catch (_e) {
+          const { storageArea, ...rest } = eventInitDict
+          const event = new NativeStorageEvent(type, rest)
+          Object.defineProperty(event, "storageArea", {
+            value: storageArea,
+            configurable: true,
+            enumerable: true,
+            writable: false,
+          })
+          return event
+        }
+      }
+      return new NativeStorageEvent(type, eventInitDict)
+    } as any
+    window.StorageEvent.prototype = NativeStorageEvent.prototype
   }
 
   Object.defineProperty(window, "matchMedia", {

@@ -6,11 +6,9 @@ against a pure Python reference model using hypothesis.stateful.RuleBasedStateMa
 
 from __future__ import annotations
 
-import pytest
 import hypothesis.strategies as st
-from hypothesis.stateful import RuleBasedStateMachine, Bundle, rule, invariant
-
 import rust_ext
+from hypothesis.stateful import Bundle, RuleBasedStateMachine, invariant, rule
 
 
 def py_check_conflict(a: dict, b: dict) -> bool:
@@ -38,12 +36,16 @@ class ScheduleModelBasedTest(RuleBasedStateMachine):
 
     @rule(
         target=items_bundle,
-        weekday=st.sampled_from(["monday", "tuesday", "wednesday", "thursday", "friday"]),
+        weekday=st.sampled_from(
+            ["monday", "tuesday", "wednesday", "thursday", "friday"]
+        ),
         start_time=st.integers(min_value=0, max_value=86400),
         end_time=st.integers(min_value=0, max_value=86400),
         parity=st.sampled_from(["both", "even", "odd"]),
     )
-    def add_item(self, weekday: str, start_time: int, end_time: int, parity: str) -> dict:
+    def add_item(
+        self, weekday: str, start_time: int, end_time: int, parity: str
+    ) -> dict:
         item = {
             "id": self.next_id,
             "weekday": weekday,
@@ -62,12 +64,16 @@ class ScheduleModelBasedTest(RuleBasedStateMachine):
 
     @rule(
         item=items_bundle,
-        weekday=st.sampled_from(["monday", "tuesday", "wednesday", "thursday", "friday"]),
+        weekday=st.sampled_from(
+            ["monday", "tuesday", "wednesday", "thursday", "friday"]
+        ),
         start_time=st.integers(min_value=0, max_value=86400),
         end_time=st.integers(min_value=0, max_value=86400),
         parity=st.sampled_from(["both", "even", "odd"]),
     )
-    def update_item(self, item: dict, weekday: str, start_time: int, end_time: int, parity: str) -> None:
+    def update_item(
+        self, item: dict, weekday: str, start_time: int, end_time: int, parity: str
+    ) -> None:
         if item in self.items:
             item["weekday"] = weekday
             item["start_time"] = start_time
@@ -121,7 +127,7 @@ class ScheduleModelBasedTest(RuleBasedStateMachine):
         # Python reference batch conflicts (set of sorted ID tuples)
         py_batch: set[tuple[int, int]] = set()
         for i, a in enumerate(self.items):
-            for b in self.items[i + 1:]:
+            for b in self.items[i + 1 :]:
                 if py_check_conflict(a, b):
                     pair = tuple(sorted([a["id"], b["id"]]))
                     py_batch.add(pair)  # type: ignore[arg-type]
@@ -138,7 +144,9 @@ class ScheduleModelBasedTest(RuleBasedStateMachine):
             for item in self.items
         ]
         rust_batch_raw = rust_ext.batch_detect_conflicts(items_rust)
-        rust_batch = {tuple(sorted([pair[0].id, pair[1].id])) for pair in rust_batch_raw}
+        rust_batch = {
+            tuple(sorted([pair[0].id, pair[1].id])) for pair in rust_batch_raw
+        }
 
         assert py_batch == rust_batch, (
             f"Batch conflict mismatch.\n"
@@ -148,7 +156,9 @@ class ScheduleModelBasedTest(RuleBasedStateMachine):
 
     @rule(
         duration_minutes=st.integers(min_value=15, max_value=120),
-        weekday=st.sampled_from(["monday", "tuesday", "wednesday", "thursday", "friday"]),
+        weekday=st.sampled_from(
+            ["monday", "tuesday", "wednesday", "thursday", "friday"]
+        ),
     )
     def verify_find_optimal_slot(self, duration_minutes: int, weekday: str) -> None:
         """Verify find_optimal_slot results do not conflict with existing items."""
@@ -192,7 +202,7 @@ class ScheduleModelBasedTest(RuleBasedStateMachine):
             }
             for item in self.items:
                 assert not py_check_conflict(suggested_dict, item), (
-                     f"Suggested slot {suggested_dict} conflicts with existing item {item}"
+                    f"Suggested slot {suggested_dict} conflicts with existing item {item}"
                 )
 
 

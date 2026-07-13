@@ -9,12 +9,13 @@ from __future__ import annotations
 
 import os
 import uuid
+
 import pytest
 import pytest_asyncio
 from sqlalchemy import text
+from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker
-from sqlalchemy.exc import DBAPIError
 
 _RUN = bool(os.getenv("RUN_INTEGRATION_TESTS"))
 _PG_URL = os.getenv("DATABASE_URL", "")
@@ -51,10 +52,14 @@ async def setup_rls_role(pg_engine):
         """)
         )
         await conn.execute(
-            text("GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO rls_matrix_user")
+            text(
+                "GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO rls_matrix_user"
+            )
         )
         await conn.execute(
-            text("GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO rls_matrix_user")
+            text(
+                "GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO rls_matrix_user"
+            )
         )
         await conn.commit()
 
@@ -87,7 +92,7 @@ async def setup_matrix_users_and_chats(pg_session: AsyncSession):
     """Seed users with student, professor, and admin roles, and create chats."""
     roles = ["student", "professor", "admin"]
     users = {}
-    
+
     # 1. Create a user of each role
     for role in roles:
         uid = str(uuid.uuid4())
@@ -100,7 +105,9 @@ async def setup_matrix_users_and_chats(pg_session: AsyncSession):
             {"id": uid, "email": email, "role": role},
         )
         await pg_session.execute(
-            text("INSERT INTO user_profiles (user_id, full_name) VALUES (:uid, 'Test')"),
+            text(
+                "INSERT INTO user_profiles (user_id, full_name) VALUES (:uid, 'Test')"
+            ),
             {"uid": uid},
         )
         users[role] = uid
@@ -108,7 +115,9 @@ async def setup_matrix_users_and_chats(pg_session: AsyncSession):
     # 2. Create Chat A (contains student, professor, admin as participants)
     chat_a_id = str(uuid.uuid4())
     await pg_session.execute(
-        text("INSERT INTO chats (id, created_at, updated_at) VALUES (:id, NOW(), NOW())"),
+        text(
+            "INSERT INTO chats (id, created_at, updated_at) VALUES (:id, NOW(), NOW())"
+        ),
         {"id": chat_a_id},
     )
     for role in roles:
@@ -122,7 +131,9 @@ async def setup_matrix_users_and_chats(pg_session: AsyncSession):
     # 3. Create Chat B (empty / no participants from our main users)
     chat_b_id = str(uuid.uuid4())
     await pg_session.execute(
-        text("INSERT INTO chats (id, created_at, updated_at) VALUES (:id, NOW(), NOW())"),
+        text(
+            "INSERT INTO chats (id, created_at, updated_at) VALUES (:id, NOW(), NOW())"
+        ),
         {"id": chat_b_id},
     )
 
@@ -154,7 +165,8 @@ async def test_rls_matrix_read_write(
 
     # Switch RLS to student to insert in Chat A (since student is participant)
     await pg_session.execute(
-        text("SELECT set_config('app.current_user_id', :uid, true)"), {"uid": users["student"]}
+        text("SELECT set_config('app.current_user_id', :uid, true)"),
+        {"uid": users["student"]},
     )
     await pg_session.execute(
         text(
@@ -181,7 +193,9 @@ async def test_rls_matrix_read_write(
         {"id": msg_b_id, "chat_id": chat_b_id, "sender": users["student"]},
     )
     await pg_session.execute(
-        text("DELETE FROM chat_participants WHERE chat_id = :chat_id AND user_id = :user_id"),
+        text(
+            "DELETE FROM chat_participants WHERE chat_id = :chat_id AND user_id = :user_id"
+        ),
         {"chat_id": chat_b_id, "user_id": users["student"]},
     )
 
@@ -189,20 +203,25 @@ async def test_rls_matrix_read_write(
     # 1. Participants (student, professor, admin) must read msg_a, but NOT msg_b
     for role in ["student", "professor", "admin"]:
         await pg_session.execute(
-            text("SELECT set_config('app.current_user_id', :uid, true)"), {"uid": users[role]}
+            text("SELECT set_config('app.current_user_id', :uid, true)"),
+            {"uid": users[role]},
         )
-        
+
         # Read msg_a (Participant) -> SUCCESS
         res_a = await pg_session.execute(
             text("SELECT id FROM messages WHERE id = :id"), {"id": msg_a_id}
         )
-        assert res_a.fetchone() is not None, f"Role {role} (participant) must read msg_a"
+        assert res_a.fetchone() is not None, (
+            f"Role {role} (participant) must read msg_a"
+        )
 
         # Read msg_b (Non-participant) -> SILENT EMPTY
         res_b = await pg_session.execute(
             text("SELECT id FROM messages WHERE id = :id"), {"id": msg_b_id}
         )
-        assert res_b.fetchone() is None, f"Role {role} (non-participant) must not read msg_b"
+        assert res_b.fetchone() is None, (
+            f"Role {role} (non-participant) must not read msg_b"
+        )
 
         # Write to Chat A (Participant) -> SUCCESS
         new_msg_id = str(uuid.uuid4())
@@ -228,10 +247,8 @@ async def test_rls_matrix_read_write(
             await pg_session.flush()
 
     # 2. Anonymous / Unauthenticated context -> cannot read or write anything
-    await pg_session.execute(
-        text("SELECT set_config('app.current_user_id', '', true)")
-    )
-    
+    await pg_session.execute(text("SELECT set_config('app.current_user_id', '', true)"))
+
     # Read A -> Empty
     res_anon_a = await pg_session.execute(
         text("SELECT id FROM messages WHERE id = :id"), {"id": msg_a_id}
@@ -256,7 +273,7 @@ async def test_rls_matrix_update_delete(
     setup_matrix_users_and_chats,
 ):
     """Verify UPDATE and DELETE boundaries for participant and owner roles."""
-    users, chat_a_id, chat_b_id = setup_matrix_users_and_chats
+    users, chat_a_id, _chat_b_id = setup_matrix_users_and_chats
 
     # Seed messages
     msg_student_id = str(uuid.uuid4())
@@ -264,7 +281,8 @@ async def test_rls_matrix_update_delete(
 
     # Write student's message in Chat A
     await pg_session.execute(
-        text("SELECT set_config('app.current_user_id', :uid, true)"), {"uid": users["student"]}
+        text("SELECT set_config('app.current_user_id', :uid, true)"),
+        {"uid": users["student"]},
     )
     await pg_session.execute(
         text(
@@ -276,7 +294,8 @@ async def test_rls_matrix_update_delete(
 
     # Write professor's message in Chat A
     await pg_session.execute(
-        text("SELECT set_config('app.current_user_id', :uid, true)"), {"uid": users["professor"]}
+        text("SELECT set_config('app.current_user_id', :uid, true)"),
+        {"uid": users["professor"]},
     )
     await pg_session.execute(
         text(
@@ -288,7 +307,8 @@ async def test_rls_matrix_update_delete(
 
     # 1. Student edits/deletes their OWN message -> SUCCESS
     await pg_session.execute(
-        text("SELECT set_config('app.current_user_id', :uid, true)"), {"uid": users["student"]}
+        text("SELECT set_config('app.current_user_id', :uid, true)"),
+        {"uid": users["student"]},
     )
     await pg_session.execute(
         text("UPDATE messages SET content = 'student edited' WHERE id = :id"),
@@ -310,16 +330,20 @@ async def test_rls_matrix_update_delete(
     # 2. Student attempts to edit professor's message -> FAILURE (silent no-op due to RLS filter on update/delete)
     # Note: RLS makes the row invisible to UPDATE/DELETE, so the statement runs but affects 0 rows.
     await pg_session.execute(
-        text("SELECT set_config('app.current_user_id', :uid, true)"), {"uid": users["student"]}
+        text("SELECT set_config('app.current_user_id', :uid, true)"),
+        {"uid": users["student"]},
     )
     res_up_other = await pg_session.execute(
         text("UPDATE messages SET content = 'hacked' WHERE id = :id"),
         {"id": msg_prof_id},
     )
-    assert res_up_other.rowcount == 0, "Student must not be able to update professor's message"
+    assert res_up_other.rowcount == 0, (
+        "Student must not be able to update professor's message"
+    )
 
     res_del_other = await pg_session.execute(
         text("DELETE FROM messages WHERE id = :id"), {"id": msg_prof_id}
     )
-    assert res_del_other.rowcount == 0, "Student must not be able to delete professor's message"
-
+    assert res_del_other.rowcount == 0, (
+        "Student must not be able to delete professor's message"
+    )

@@ -6,13 +6,14 @@ proper 2xx/4xx/422 status codes and NEVER crash with 500.
 
 from __future__ import annotations
 
+import datetime
 import os
 import uuid
-import datetime
+
+import hypothesis.strategies as st
 import pytest
 from fastapi.testclient import TestClient
-from hypothesis import given, settings, HealthCheck
-import hypothesis.strategies as st
+from hypothesis import HealthCheck, given, settings
 
 # Set environment variables before importing app (but do NOT override DATABASE_URL)
 os.environ.setdefault("ENVIRONMENT", "testing")
@@ -25,8 +26,8 @@ for proxy_key in ["no_proxy", "NO_PROXY"]:
             item for item in os.environ[proxy_key].split(",") if ":" not in item
         )
 
-from app.main import app
 from app.auth.security import _mint_pure_jwt
+from app.main import app
 
 
 @pytest.fixture(scope="module")
@@ -77,7 +78,9 @@ def test_fuzz_create_event(
         "ends_at": ends_at.isoformat(),
         "max_participants": max_participants,
     }
-    response = client_with_lifespan.post("/api/v1/events", json=payload, headers=headers)
+    response = client_with_lifespan.post(
+        "/api/v1/events", json=payload, headers=headers
+    )
     assert response.status_code != 500
 
 
@@ -121,7 +124,9 @@ def test_fuzz_update_event(
         payload["ends_at"] = ends_at.isoformat()
 
     event_id = str(uuid.uuid4())
-    response = client_with_lifespan.patch(f"/api/v1/events/{event_id}", json=payload, headers=headers)
+    response = client_with_lifespan.patch(
+        f"/api/v1/events/{event_id}", json=payload, headers=headers
+    )
     assert response.status_code != 500
 
 
@@ -134,11 +139,15 @@ def test_fuzz_update_event(
 @given(
     event_id=st.uuids(),
 )
-def test_fuzz_event_attendance(client_with_lifespan, headers, event_id: uuid.UUID) -> None:
+def test_fuzz_event_attendance(
+    client_with_lifespan, headers, event_id: uuid.UUID
+) -> None:
     payload = {
         "event_id": str(event_id),
     }
-    response = client_with_lifespan.post("/api/v1/events/attendance", json=payload, headers=headers)
+    response = client_with_lifespan.post(
+        "/api/v1/events/attendance", json=payload, headers=headers
+    )
     assert response.status_code != 500
 
 
@@ -178,7 +187,9 @@ def test_fuzz_create_chat(
 @given(
     full_name=st.one_of(st.none(), st.text(max_size=100)),
     email=st.one_of(st.none(), st.emails()),
-    timezone=st.one_of(st.none(), st.sampled_from(["UTC", "Europe/London", "America/New_York"])),
+    timezone=st.one_of(
+        st.none(), st.sampled_from(["UTC", "Europe/London", "America/New_York"])
+    ),
     telegram=st.one_of(st.none(), st.text(max_size=50)),
     about=st.one_of(st.none(), st.text(max_size=1000)),
 )
@@ -203,7 +214,9 @@ def test_fuzz_update_profile(
     if about is not None:
         payload["about"] = about
 
-    response = client_with_lifespan.patch("/api/v1/users/me", json=payload, headers=headers)
+    response = client_with_lifespan.patch(
+        "/api/v1/users/me", json=payload, headers=headers
+    )
     assert response.status_code != 500
 
 
@@ -227,5 +240,7 @@ def test_fuzz_change_password(
         "current_password": current_password,
         "new_password": new_password,
     }
-    response = client_with_lifespan.put("/api/v1/users/me/password", json=payload, headers=headers)
+    response = client_with_lifespan.put(
+        "/api/v1/users/me/password", json=payload, headers=headers
+    )
     assert response.status_code != 500

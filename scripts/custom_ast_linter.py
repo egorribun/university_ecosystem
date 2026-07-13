@@ -35,7 +35,7 @@ def check_file(filepath: str) -> list[str]:
     """Parse python file and check for import violations of NotificationService."""
     normalized_path = os.path.relpath(filepath).replace("\\", "/")
 
-    with open(filepath, "r", encoding="utf-8") as f:
+    with open(filepath, encoding="utf-8") as f:
         try:
             tree = ast.parse(f.read(), filename=filepath)
         except SyntaxError as e:
@@ -91,7 +91,10 @@ def main() -> None:
                 all_violations.extend(violations)
 
     if all_violations:
-        print("AST Linter: Found import violations of NotificationService rule (TD-33-08):", file=sys.stderr)
+        print(
+            "AST Linter: Found import violations of NotificationService rule (TD-33-08):",
+            file=sys.stderr,
+        )
         for violation in all_violations:
             print(f"  {violation}", file=sys.stderr)
         sys.exit(1)

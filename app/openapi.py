@@ -141,7 +141,6 @@ def harden_openapi_schema(schema: dict[str, Any]) -> dict[str, Any]:
                                 }
                             }
 
-
     existing_tags = schema.get("tags", [])
     described_tags: dict[str, dict[str, str]] = {}
     if isinstance(existing_tags, list):

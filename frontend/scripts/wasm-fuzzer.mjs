@@ -81,7 +81,8 @@ async function runFuzzer() {
         strip_html(input)
       } catch (err) {
         console.error(
-          `Crash detected in wasm-sanitizer string functions with input: ${input.slice(0, 100)}`,
+          "Crash detected in wasm-sanitizer string functions with input: %s",
+          input.slice(0, 100),
           err
         )
         process.exit(1)
@@ -126,7 +127,8 @@ async function runFuzzer() {
         hmac_sha256_sign("key", input)
       } catch (err) {
         console.error(
-          `Crash detected in rust-crypto string functions with input: ${input.slice(0, 100)}`,
+          "Crash detected in rust-crypto string functions with input: %s",
+          input.slice(0, 100),
           err
         )
         process.exit(1)
