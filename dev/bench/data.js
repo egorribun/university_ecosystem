@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1783436547506,
+  "lastUpdate": 1783972037189,
   "repoUrl": "https://github.com/egorribun/university_ecosystem",
   "entries": {
     "Go Services Performance Benchmarks": [
@@ -600,6 +600,84 @@ window.BENCHMARK_DATA = {
             "value": 15741,
             "unit": "ns/op",
             "extra": "76726 times\n4 procs"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "egorribun2005@gmail.com",
+            "name": "Egor",
+            "username": "egorribun"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "cf66cebab3789eeb20c055ebb4fe402a70ac3359",
+          "message": "feat: maximum coverage roadmap implementation\n\n* feat(wave212): maximum coverage roadmap implementation\n\n* chore: update agents.md testing constraint rules\n\n---------\n\nCo-authored-by: Egor Ribun <egorribun@gmail.com>",
+          "timestamp": "2026-07-13T22:43:20+03:00",
+          "tree_id": "80a604c64e5d60a79a8bc236c61d9dcc3a9c8aa2",
+          "url": "https://github.com/egorribun/university_ecosystem/commit/cf66cebab3789eeb20c055ebb4fe402a70ac3359"
+        },
+        "date": 1783972036181,
+        "tool": "go",
+        "benches": [
+          {
+            "name": "BenchmarkJWKSValidation",
+            "value": 121770,
+            "unit": "ns/op",
+            "extra": "9520 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkRateLimitFallback",
+            "value": 111.8,
+            "unit": "ns/op",
+            "extra": "10727035 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkExtractAlgFromHeader",
+            "value": 876.6,
+            "unit": "ns/op",
+            "extra": "1383733 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkValidateIAT",
+            "value": 69.03,
+            "unit": "ns/op",
+            "extra": "17286730 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkCheckL1Cache_Hit",
+            "value": 150.8,
+            "unit": "ns/op",
+            "extra": "7958887 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkCheckL1Cache_Miss",
+            "value": 11.37,
+            "unit": "ns/op",
+            "extra": "100000000 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkJWKToRSAPublicKey",
+            "value": 553.6,
+            "unit": "ns/op",
+            "extra": "1846310 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkShouldRefreshProbabilistic",
+            "value": 65.94,
+            "unit": "ns/op",
+            "extra": "18209289 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkKeyFunc_HS256",
+            "value": 30.23,
+            "unit": "ns/op",
+            "extra": "37923006 times\n4 procs"
           }
         ]
       }
