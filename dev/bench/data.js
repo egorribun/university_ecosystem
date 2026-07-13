@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1783972091487,
+  "lastUpdate": 1783972220363,
   "repoUrl": "https://github.com/egorribun/university_ecosystem",
   "entries": {
     "Go Services Performance Benchmarks": [
@@ -756,6 +756,84 @@ window.BENCHMARK_DATA = {
             "value": 30.43,
             "unit": "ns/op",
             "extra": "38492582 times\n4 procs"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "49699333+dependabot[bot]@users.noreply.github.com",
+            "name": "dependabot[bot]",
+            "username": "dependabot[bot]"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "ecdd7e91f64cec8f9201df4280fe9514a8aa66c3",
+          "message": "build(deps-dev): Update mypy requirement from <2.2,>=1.20.1 to >=1.20.1,<2.3 in the pip-dependencies group\n\nUpdates the requirements on [mypy](https://github.com/python/mypy) to permit the latest version.\n\nUpdates `mypy` to 2.2.0\n- [Changelog](https://github.com/python/mypy/blob/master/CHANGELOG.md)\n- [Commits](https://github.com/python/mypy/compare/v1.20.1...v2.2.0)\n\n---\nupdated-dependencies:\n- dependency-name: mypy\n  dependency-version: 2.2.0\n  dependency-type: direct:development\n  dependency-group: pip-dependencies\n...\n\nSigned-off-by: dependabot[bot] <support@github.com>\nCo-authored-by: dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>",
+          "timestamp": "2026-07-13T22:43:54+03:00",
+          "tree_id": "fbc729bc609e7e9cace409865c738e2d55e49e52",
+          "url": "https://github.com/egorribun/university_ecosystem/commit/ecdd7e91f64cec8f9201df4280fe9514a8aa66c3"
+        },
+        "date": 1783972219689,
+        "tool": "go",
+        "benches": [
+          {
+            "name": "BenchmarkJWKSValidation",
+            "value": 98035,
+            "unit": "ns/op",
+            "extra": "12086 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkRateLimitFallback",
+            "value": 106.9,
+            "unit": "ns/op",
+            "extra": "10769394 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkExtractAlgFromHeader",
+            "value": 785.4,
+            "unit": "ns/op",
+            "extra": "1521699 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkValidateIAT",
+            "value": 73.6,
+            "unit": "ns/op",
+            "extra": "16454437 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkCheckL1Cache_Hit",
+            "value": 167.8,
+            "unit": "ns/op",
+            "extra": "7240312 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkCheckL1Cache_Miss",
+            "value": 10.95,
+            "unit": "ns/op",
+            "extra": "100000000 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkJWKToRSAPublicKey",
+            "value": 514.7,
+            "unit": "ns/op",
+            "extra": "2322836 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkShouldRefreshProbabilistic",
+            "value": 74.38,
+            "unit": "ns/op",
+            "extra": "15600986 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkKeyFunc_HS256",
+            "value": 28.48,
+            "unit": "ns/op",
+            "extra": "39671395 times\n4 procs"
           }
         ]
       }
