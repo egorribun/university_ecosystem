@@ -787,7 +787,7 @@ class EventBus:
                 chain_task.cancel()
                 try:
                     await chain_task
-                except (asyncio.CancelledError, Exception):  # noqa: S110  # RZ-27-01
+                except asyncio.CancelledError, Exception:  # noqa: S110  # RZ-27-01
                     pass
                 logger.error(
                     "Event production timed out (10s)",

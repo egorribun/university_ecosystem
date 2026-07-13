@@ -126,4 +126,40 @@ test.describe("Chat real-time behaviour", () => {
     const deliveredIndicator = page.locator('[data-testid="message-status-delivered"]')
     await expect(deliveredIndicator.last()).toBeVisible({ timeout: 10_000 })
   })
+
+  // ── 4. Message read confirmation & Seen-by-N ──────────────────────────
+  //
+  // Simulates a read confirmation event arriving from another user by
+  // injecting a synthetic WS read frame, then verifies the UI reflects the
+  // read status (either specific "Seen" / "Прочитано" label or group "seen by" status).
+  test("shows read confirmation after remote user reads the message", async ({ page }) => {
+    await page.goto("/messenger", { waitUntil: "networkidle" })
+    await page.getByRole("listitem").first().click()
+    await page.waitForTimeout(500)
+
+    const messageText = `e2e-read-${Date.now()}`
+    const input = page.getByRole("textbox", { name: /message|сообщение/i })
+    await input.fill(messageText)
+    await input.press("Enter")
+
+    const sentMessage = page.getByText(messageText)
+    await expect(sentMessage).toBeVisible({ timeout: 5000 })
+
+    // Dispatch a synthetic WebSocket read event from another user.
+    await page.evaluate(() => {
+      const event = new MessageEvent("message", {
+        data: JSON.stringify({
+          type: "read",
+          chat_id: "00000000-0000-4000-8000-000000000001",
+          user_id: "00000000-0000-4000-8000-000000000002",
+          read_at: new Date().toISOString(),
+        }),
+      })
+      window.dispatchEvent(event)
+    })
+
+    // Expect the read status text or label to appear in the message container.
+    const seenLabel = page.locator("span").filter({ hasText: /seen|прочитано|прочли/i })
+    await expect(seenLabel.last()).toBeVisible({ timeout: 10_000 })
+  })
 })

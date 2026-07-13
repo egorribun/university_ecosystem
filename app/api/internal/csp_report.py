@@ -121,7 +121,7 @@ async def receive_csp_report(request: Request) -> Response:
     # UnicodeDecodeError from body decode, TypeError/AttributeError from unexpected
     # dict shapes, and OSError from the underlying stream.  Retains the intent of
     # never propagating errors to the browser while making the guard auditable.
-    except (UnicodeDecodeError, TypeError, AttributeError, OSError, KeyError):
+    except UnicodeDecodeError, TypeError, AttributeError, OSError, KeyError:
         record_csp_report("error")
         # Silently ignore errors - don't disrupt user experience
         logger.debug("Failed to process CSP report", exc_info=True)

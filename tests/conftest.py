@@ -19,15 +19,22 @@ from sqlalchemy.ext.compiler import compiles
 
 # Core settings for tests
 os.environ["ENVIRONMENT"] = "testing"
+
+# Fix httpx crash with IPv6 no_proxy on Windows (Invalid port: ':1')
+for proxy_key in ["no_proxy", "NO_PROXY"]:
+    if proxy_key in os.environ:
+        os.environ[proxy_key] = ",".join(
+            item for item in os.environ[proxy_key].split(",") if ":" not in item
+        )
+
 worker_id = os.environ.get("PYTEST_XDIST_WORKER")
 
-# Wave 212 Phase II Step 1: Configure parallel Postgres fixtures via testcontainers
+# Wave 212 Phase II Step 1: Configure parallel Postgres fixtures via testcontainers/xdist
 _container = None
 _postgres_url = None
-if (
-    os.environ.get("USE_TESTCONTAINERS_POSTGRES") == "1"
-    or os.environ.get("RUN_INTEGRATION_TESTS") == "1"
-):
+
+# 1. Try testcontainers if explicitly requested
+if os.environ.get("USE_TESTCONTAINERS_POSTGRES") == "1":
     try:
         import atexit
 
@@ -41,20 +48,31 @@ if (
         _postgres_url = _container.get_connection_url(driver="asyncpg")
     except Exception as e:
         print(
-            f"Warning: Failed to start Postgres testcontainer, falling back to SQLite: {e}"
+            f"Warning: Failed to start Postgres testcontainer, falling back to other methods: {e}"
         )
 
+# 2. Assign DATABASE_URL based on availability and xdist environment
+env_db_url = os.environ.get("DATABASE_URL")
 if _postgres_url:
     os.environ["DATABASE_URL"] = _postgres_url
     os.environ["RUN_INTEGRATION_TESTS"] = "1"
+elif env_db_url and env_db_url.startswith("postgresql"):
+    if worker_id:
+        # Rewrite DATABASE_URL to target a unique database name per worker.
+        # Example: postgresql+asyncpg://test:test@localhost:5432/test -> postgresql+asyncpg://test:test@localhost:5432/test_gw0
+        from urllib.parse import urlparse, urlunparse
+
+        parsed = urlparse(env_db_url)
+        original_db = parsed.path.lstrip("/")
+        worker_db = f"{original_db}_{worker_id}"
+        os.environ["DATABASE_URL"] = urlunparse(parsed._replace(path=f"/{worker_db}"))
+    os.environ["RUN_INTEGRATION_TESTS"] = "1"
 else:
     if worker_id:
-        # Use unique database per worker for parallel testing
+        # Use unique database per worker for parallel testing with SQLite
         os.environ["DATABASE_URL"] = f"sqlite+aiosqlite:///./test_{worker_id}.db"
     else:
-        os.environ["DATABASE_URL"] = os.environ.get(
-            "DATABASE_URL", "sqlite+aiosqlite:///./test.db"
-        )
+        os.environ["DATABASE_URL"] = env_db_url or "sqlite+aiosqlite:///./test.db"
 os.environ["SECRET_KEY"] = "test-secret-key-32-characters-long-entropy"
 os.environ["ALGORITHM"] = "HS256"
 os.environ["ACCESS_TOKEN_EXPIRE_MINUTES"] = "30"

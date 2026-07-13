@@ -64,7 +64,7 @@ async def start_notifications_retention_scheduler(
                         run.observe_deleted((deleted_notifications, deleted_deliveries))
                 except asyncio.CancelledError:
                     raise
-                except (OSError, ConnectionError):
+                except OSError, ConnectionError:
                     # RZ-20-04: Narrowed — DB/network errors only.
                     logger.exception("Failed to cleanup stale notifications")
                 await asyncio.sleep(interval)

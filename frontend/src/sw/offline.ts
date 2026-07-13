@@ -134,7 +134,7 @@ export function sanitizeReportPayload(payload: unknown, _depth = 0): unknown {
     return payload.slice(0, MAX_ARRAY_LENGTH).map((item) => sanitizeReportPayload(item, _depth + 1))
   }
 
-  const result: Record<string, unknown> = {}
+  const result: Record<string, unknown> = Object.create(null)
   const source = payload as Record<string, unknown>
 
   // Object.keys only returns own enumerable properties, never prototype chain —

@@ -168,7 +168,7 @@ class Query:
 
                 try:
                     last_id = _uuid.UUID(last_id_str)
-                except (ValueError, AttributeError):  # RZ-28-01
+                except ValueError, AttributeError:  # RZ-28-01
                     last_id = None
                 if last_id is not None:
                     stmt = stmt.where(
@@ -216,7 +216,7 @@ class Query:
 
         try:
             uid = UUID(str(id))
-        except (ValueError, TypeError):  # RZ-28-01
+        except ValueError, TypeError:  # RZ-28-01
             return None
 
         result = await info.context.session.execute(
@@ -274,7 +274,7 @@ class Query:
 
                 try:
                     last_id = _uuid.UUID(last_id_str)
-                except (ValueError, AttributeError):  # RZ-28-01
+                except ValueError, AttributeError:  # RZ-28-01
                     last_id = None
                 if last_id is not None:
                     query = query.where(
@@ -322,7 +322,7 @@ class Query:
 
         try:
             uid = UUID(str(group_id))
-        except (ValueError, TypeError):  # RZ-28-01
+        except ValueError, TypeError:  # RZ-28-01
             return []
 
         # RZ-GQL-AUTH: Enforce ReBAC for group schedules.

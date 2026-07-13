@@ -7,7 +7,7 @@ try:
     with atheris.instrument_imports():
         from app import process_user_data
     HAS_ATHERIS = True
-except (ImportError, RuntimeError):
+except ImportError, RuntimeError:
     from app import process_user_data
 
     HAS_ATHERIS = False
@@ -20,7 +20,7 @@ def TestOneInput(data):
         # Generate a string from the random data
         input_str = fdp.ConsumeUnicodeNoSurrogates(100)
         process_user_data(input_str)
-    except (ValueError, UnicodeDecodeError):
+    except ValueError, UnicodeDecodeError:
         # Catch expected exceptions to let the fuzzer continue
         pass
 

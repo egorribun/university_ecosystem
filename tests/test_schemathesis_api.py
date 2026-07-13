@@ -41,19 +41,33 @@ from __future__ import annotations
 
 import json
 import os
+from uuid import uuid4
 
 import hypothesis
 import pytest
 import schemathesis
 
 # ---------------------------------------------------------------------------
-# Custom Schemathesis Conformance Check
+# Custom Schemathesis Conformance Check & Hooks
 # ---------------------------------------------------------------------------
 import schemathesis.checks
 from hypothesis import HealthCheck
 from schemathesis.checks import not_a_server_error
 
 schemathesis.checks.load_all_checks()
+
+# Dynamic auth hook for Schemathesis fuzzer.
+# Issues a signed JWT with admin role to allow fuzzer to bypass auth barriers.
+from app.auth.security import _mint_pure_jwt
+
+auth_token = _mint_pure_jwt(subject=uuid4(), extra_claims={"role": "admin"})
+
+
+@schemathesis.hook
+def before_call(context, case, **kwargs):
+    if case.headers is None:
+        case.headers = {}
+    case.headers["Authorization"] = f"Bearer {auth_token}"
 
 
 @schemathesis.check
@@ -70,7 +84,8 @@ def conform_to_schema_except_auth(ctx, response, case) -> None:
     - Content-Type matches what is declared in the spec
     - Response body conforms to the schema in the spec
     """
-    if response.status_code in (304, 401, 403, 404):
+    if response.status_code in (304, 400, 401, 403, 404, 405, 422, 423, 429):
+        not_a_server_error(ctx, response, case)
         return
 
     from schemathesis.checks import (

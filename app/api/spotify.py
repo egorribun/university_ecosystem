@@ -109,7 +109,7 @@ def _b64(s: str) -> str:
 def _coerce_expires(value: int | str | None) -> int:
     try:
         seconds = int(value) if value is not None else 3600
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         seconds = 3600
     # Spotify may technically return small values during testing; make sure
     # we always refresh slightly before the real expiry to avoid rapid loops.
@@ -456,7 +456,7 @@ async def now_playing(
             retry_after = (
                 max(1, int(float(retry_after_header))) if retry_after_header else 5
             )
-        except (TypeError, ValueError):
+        except TypeError, ValueError:
             retry_after = 5
         user.spotify.last_checked_at = _now_utc()
         await db.commit()

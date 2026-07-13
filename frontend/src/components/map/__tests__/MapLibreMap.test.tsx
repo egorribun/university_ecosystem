@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { render, screen, waitFor } from "@testing-library/react"
 import { describe, it, expect, vi } from "vitest"
 import type { MapRef } from "react-map-gl/maplibre"
@@ -61,6 +62,16 @@ const baseProps = {
 }
 
 describe("MapLibreMap", () => {
+  let originalMatchMedia: any
+
+  beforeEach(() => {
+    originalMatchMedia = window.matchMedia
+  })
+
+  afterEach(() => {
+    window.matchMedia = originalMatchMedia
+  })
+
   it("renders the map application container with the a11y keyboard hint", () => {
     render(<MapLibreMapComponent {...baseProps} mapRef={makeRef(makeMap())} />)
     expect(screen.getByRole("application", { name: "a11y.mapContainer" })).toBeInTheDocument()
@@ -68,6 +79,17 @@ describe("MapLibreMap", () => {
   })
 
   it("on map-ready resizes, sets the sky, and runs the cinematic flyTo intro", async () => {
+    window.matchMedia = vi.fn().mockImplementation((query) => ({
+      matches: false,
+      media: query,
+      onchange: null,
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    }))
+
     const map = makeMap()
     render(<MapLibreMapComponent {...baseProps} mapRef={makeRef(map)} isDark={false} />)
     await waitFor(() => expect(map.resize).toHaveBeenCalled())

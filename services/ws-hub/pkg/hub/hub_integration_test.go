@@ -17,6 +17,8 @@ package hub
 
 import (
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -26,6 +28,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -598,3 +601,100 @@ func connStrFromEnv() (string, bool) {
 	}
 	return "", false
 }
+
+type integrationRecordingAuthClient struct {
+	mu          sync.Mutex
+	invalidated [][2]string
+}
+
+func (r *integrationRecordingAuthClient) Invalidate(userID, room string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.invalidated = append(r.invalidated, [2]string{userID, room})
+}
+
+func (r *integrationRecordingAuthClient) CanJoinRoom(ctx context.Context, userID, roomID string) bool {
+	return true
+}
+
+func (r *integrationRecordingAuthClient) StartEviction(ctx context.Context) {}
+
+func (r *integrationRecordingAuthClient) calls() [][2]string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	out := make([][2]string, len(r.invalidated))
+	copy(out, r.invalidated)
+	return out
+}
+
+func TestIntegration_NATSCacheInvalidation(t *testing.T) {
+	nc, cleanup := startNATSContainer(t)
+	t.Cleanup(cleanup)
+
+	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelWarn}))
+	internalSecret := "integration-test-secret"
+	cfg := &config.Config{
+		MaxClients:          10,
+		BroadcastBufferSize: 4,
+		BroadcastWorkers:    1,
+		ClientMsgRateLimit:  10,
+		ClientMsgRateBurst:  10,
+		InternalSecret:      internalSecret,
+	}
+
+	auth := &integrationRecordingAuthClient{}
+	h := NewHub(nc, logger, auth, cfg, nil)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	h.SubscribeToNATS(ctx)
+	t.Cleanup(h.Stop)
+
+	// Build a valid cache.invalidate payload
+	userID := "00000000-0000-0000-0000-000000000001"
+	roomID := "00000000-0000-0000-0000-000000000002"
+	timestamp := uint64(time.Now().Unix())
+
+	// Data struct exactly matching handleCacheInvalidation unmarshal
+	type DataStruct struct {
+		RoomID    string `json:"room_id"`
+		Timestamp uint64 `json:"timestamp"`
+		UserID    string `json:"user_id"`
+	}
+	data := DataStruct{
+		RoomID:    roomID,
+		Timestamp: timestamp,
+		UserID:    userID,
+	}
+
+	dataBytes, err := json.Marshal(data)
+	require.NoError(t, err)
+
+	// HMAC signature
+	hFunc := hmac.New(sha256.New, []byte(internalSecret))
+	_, err = hFunc.Write(dataBytes)
+	require.NoError(t, err)
+	signature := hex.EncodeToString(hFunc.Sum(nil))
+
+	payload := struct {
+		Data      DataStruct `json:"data"`
+		Signature string     `json:"signature"`
+	}{
+		Data:      data,
+		Signature: signature,
+	}
+
+	body, err := json.Marshal(payload)
+	require.NoError(t, err)
+
+	// Publish to NATS
+	require.NoError(t, nc.Publish("cache.invalidate", body))
+	require.NoError(t, nc.Flush())
+
+	// Wait and verify Invalidate was called
+	require.Eventually(t, func() bool {
+		calls := auth.calls()
+		return len(calls) == 1 && calls[0][0] == userID && calls[0][1] == roomID
+	}, 3*time.Second, 50*time.Millisecond, "authClient.Invalidate was not called with expected userID and roomID")
+}
+

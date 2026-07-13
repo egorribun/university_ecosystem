@@ -1,4 +1,5 @@
-import { renderHook, waitFor } from "@testing-library/react"
+/* eslint-disable @typescript-eslint/no-explicit-any */
+import { renderHook, waitFor, act } from "@testing-library/react"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import type { ReactNode } from "react"
@@ -45,12 +46,14 @@ vi.mock("@/api/chat", () => ({
 
 import { MessengerProvider, useMessenger } from "@/contexts/MessengerContext"
 
+let currentQueryClient: QueryClient | null = null
+
 const wrapper = ({ children }: { children: ReactNode }) => {
-  const queryClient = new QueryClient({
+  currentQueryClient = new QueryClient({
     defaultOptions: { queries: { retry: false, gcTime: 0 } },
   })
   return (
-    <QueryClientProvider client={queryClient}>
+    <QueryClientProvider client={currentQueryClient}>
       <MessengerProvider>{children}</MessengerProvider>
     </QueryClientProvider>
   )
@@ -222,6 +225,60 @@ describe("MessengerContext", () => {
 
       const callArgs = mocks.useChatWebSocket.mock.calls[0]![0]
       expect(callArgs.onPresenceUpdate).toBeInstanceOf(Function)
+    })
+  })
+
+  describe("onRead cache updates", () => {
+    it("correctly updates read_receipts in both single chat and chats list caches", async () => {
+      renderHook(() => useMessenger(), { wrapper })
+      const queryClient = currentQueryClient!
+
+      const chatId = "chat-1"
+      const userId = "user-2"
+      const readAt = "2026-07-13T19:57:00Z"
+
+      // Initialize caches
+      const initialChat = {
+        id: chatId,
+        participants: [],
+        unread_count: 0,
+        created_at: "",
+        updated_at: "",
+        read_receipts: [{ user_id: "user-3", last_read_at: "2026-07-13T19:00:00Z" }],
+      }
+      queryClient.setQueryData(["chats", chatId], initialChat)
+
+      const initialChatsList = {
+        items: [initialChat],
+        has_more: false,
+        next_cursor: null,
+      }
+      queryClient.setQueryData(["chats"], initialChatsList)
+
+      const callArgs = mocks.useChatWebSocket.mock.calls[0]![0]
+      expect(callArgs.onRead).toBeInstanceOf(Function)
+
+      // Trigger read receipt update
+      act(() => {
+        callArgs.onRead(chatId, userId, readAt)
+      })
+
+      // Verify single chat cache update
+      const updatedChat = queryClient.getQueryData<any>(["chats", chatId])
+      expect(updatedChat).toBeDefined()
+      expect(updatedChat.read_receipts).toContainEqual({ user_id: userId, last_read_at: readAt })
+      expect(updatedChat.read_receipts).toContainEqual({
+        user_id: "user-3",
+        last_read_at: "2026-07-13T19:00:00Z",
+      })
+
+      // Verify chats list cache update
+      const updatedList = queryClient.getQueryData<any>(["chats"])
+      expect(updatedList).toBeDefined()
+      expect(updatedList.items[0].read_receipts).toContainEqual({
+        user_id: userId,
+        last_read_at: readAt,
+      })
     })
   })
 })

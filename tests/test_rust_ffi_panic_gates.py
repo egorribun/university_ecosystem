@@ -111,3 +111,19 @@ class TestRustFFIPanicGates:
             is False
         )
         assert rust_ext.verify_audit_signature(["key1"], "data", "") is False
+
+    def test_find_optimal_slot_boundaries(self) -> None:
+        # Invalid duration type
+        with pytest.raises(TypeError):
+            rust_ext.find_optimal_slot("one-hour", [], [])  # type: ignore[arg-type]
+
+        # Invalid existing schedule type
+        with pytest.raises(TypeError):
+            rust_ext.find_optimal_slot(60, "not-a-list", [])  # type: ignore[arg-type]
+
+        # Invalid available blocks type
+        with pytest.raises(TypeError):
+            rust_ext.find_optimal_slot(60, [], "not-a-list")  # type: ignore[arg-type]
+
+        # Valid inputs but empty: should return None without error
+        assert rust_ext.find_optimal_slot(60, [], []) is None

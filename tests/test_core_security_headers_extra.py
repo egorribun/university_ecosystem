@@ -15,9 +15,8 @@ def mock_settings():
     settings.environment = "production"
     settings.frontend_url = "https://example.com"
     settings.security_csp_report_only_effective = False
-    settings.build_csp_policy.side_effect = (
-        lambda nonce=None,
-        report_only=False: f"default-src 'self'; script-src 'nonce-{nonce}'"
+    settings.build_csp_policy.side_effect = lambda nonce=None, report_only=False: (
+        f"default-src 'self'; script-src 'nonce-{nonce}'"
         if nonce
         else "default-src 'self'"
     )

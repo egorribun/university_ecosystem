@@ -1,6 +1,9 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { describe, expect, it, vi, beforeEach } from "vitest"
 import { Route as EventsDetailRoute } from "../_auth/events.$id"
+import { Route as EventsIndexRoute } from "../_auth/events.index"
+import { Route as NewsIndexRoute } from "../_auth/news.index"
+import { Route as LoginRoute } from "../_public/login"
 import { Route as ScheduleRoute } from "../_auth/schedule"
 import { Route as SettingsRoute } from "../_auth/settings"
 import { SETTINGS_TAB } from "@/features/settings/schema"
@@ -11,6 +14,13 @@ vi.mock("@/api/hooks/events", () => ({
     queryKey: ["event", id],
     queryFn: () => Promise.resolve({ id }),
   })),
+  prefetchEventsListQuery: vi.fn().mockResolvedValue(undefined),
+  EVENTS_PAGE_SIZE: 10,
+}))
+
+vi.mock("@/api/hooks/news", () => ({
+  prefetchNewsListQuery: vi.fn().mockResolvedValue(undefined),
+  NEWS_PAGE_SIZE: 10,
 }))
 
 vi.mock("@/api/hooks/users", () => ({
@@ -195,6 +205,86 @@ describe("Route Loaders & validateSearch validation", () => {
       expect(mockQueryClient.ensureQueryData).toHaveBeenCalledWith(
         expect.objectContaining({ queryKey: ["sessions", "user-456"] })
       )
+    })
+  })
+
+  describe("events.index.tsx Route", () => {
+    it("validates search query parameters correctly", () => {
+      const validateSearch = EventsIndexRoute.options.validateSearch
+      expect(validateSearch).toBeTypeOf("function")
+
+      // Empty is valid
+      const parsedEmpty = (validateSearch as any)({})
+      expect(parsedEmpty).toEqual({})
+
+      // Valid parameters
+      const parsedValid = (validateSearch as any)({
+        tab: "upcoming",
+        q: "hackathon",
+        dr: "2026-07-13",
+        loc: "hall",
+        sort: "date",
+        cat: "study",
+      })
+      expect(parsedValid).toEqual({
+        tab: "upcoming",
+        q: "hackathon",
+        dr: "2026-07-13",
+        loc: "hall",
+        sort: "date",
+        cat: "study",
+      })
+    })
+
+    it("prefetches events list in loader", async () => {
+      const loader = EventsIndexRoute.options.loader
+      expect(loader).toBeTypeOf("function")
+
+      const context = { queryClient: mockQueryClient }
+      await (loader as any)({ context })
+
+      const { prefetchEventsListQuery } = await import("@/api/hooks/events")
+      expect(prefetchEventsListQuery).toHaveBeenCalledWith(
+        mockQueryClient,
+        expect.objectContaining({ limit: 10 })
+      )
+    })
+  })
+
+  describe("news.index.tsx Route", () => {
+    it("validates search query parameters correctly", () => {
+      const validateSearch = NewsIndexRoute.options.validateSearch
+      expect(validateSearch).toBeTypeOf("function")
+
+      const parsedEmpty = (validateSearch as any)({})
+      expect(parsedEmpty).toEqual({})
+    })
+
+    it("prefetches news list in loader", async () => {
+      const loader = NewsIndexRoute.options.loader
+      expect(loader).toBeTypeOf("function")
+
+      const context = { queryClient: mockQueryClient }
+      await (loader as any)({ context })
+
+      const { prefetchNewsListQuery } = await import("@/api/hooks/news")
+      expect(prefetchNewsListQuery).toHaveBeenCalledWith(
+        mockQueryClient,
+        expect.objectContaining({ limit: 10 })
+      )
+    })
+  })
+
+  describe("login.tsx Route", () => {
+    it("validates search query parameters correctly", () => {
+      const validateSearch = LoginRoute.options.validateSearch
+      expect(validateSearch).toBeTypeOf("function")
+
+      const parsedEmpty = (validateSearch as any)({})
+      expect(parsedEmpty).toEqual({})
+
+      const parsedValid = (validateSearch as any)({ redirect: "/dashboard" })
+      expect(parsedValid).toEqual({ redirect: "/dashboard" })
     })
   })
 })

@@ -233,8 +233,8 @@ def test_integration_settings_file_secrets():
 
     with patch("app.core.config.integrations._load_file_secret") as mock_load:
         loaded = "loaded-from-file"  # pragma: allowlist secret
-        mock_load.side_effect = (
-            lambda env_name, v: loaded
+        mock_load.side_effect = lambda env_name, v: (
+            loaded
             if env_name
             in [
                 "SPOTIFY_CLIENT_SECRET_FILE",

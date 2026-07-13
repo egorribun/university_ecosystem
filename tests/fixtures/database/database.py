@@ -19,9 +19,33 @@ def _compile_jsonb_sqlite(_element, _compiler, **_kwargs):
 
 @pytest_asyncio.fixture(scope="session", autouse=True)
 async def prepare_database() -> AsyncIterator[None]:
-    init_database()
     database_url = os.environ.get("DATABASE_URL", "")
     is_postgresql = database_url.startswith("postgresql")
+
+    if is_postgresql:
+        worker_id = os.environ.get("PYTEST_XDIST_WORKER")
+        if worker_id:
+            from urllib.parse import urlparse, urlunparse
+
+            import asyncpg
+
+            parsed = urlparse(database_url)
+            worker_db = parsed.path.lstrip("/")
+            # Connect to 'postgres' database to create the worker-specific DB
+            postgres_url = urlunparse(parsed._replace(path="/postgres"))
+            conn_url = postgres_url.replace("postgresql+asyncpg://", "postgresql://")
+            conn = await asyncpg.connect(conn_url)
+            try:
+                exists = await conn.fetchval(
+                    "SELECT 1 FROM pg_database WHERE datname = $1", worker_db
+                )
+                if not exists:
+                    # CREATE DATABASE must be executed outside a transaction block
+                    await conn.execute(f'CREATE DATABASE "{worker_db}"')
+            finally:
+                await conn.close()
+
+    init_database()
 
     if is_postgresql:
         # Create vector extension, all tables, and RLS policies for PostgreSQL

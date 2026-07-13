@@ -89,7 +89,6 @@ const renderNewsPage = async (queryClient?: QueryClient) => {
 // nor the News page mutate module state between runs) fixes the flake.
 describe("News page interaction", () => {
   beforeEach(() => {
-    vi.resetModules()
     server.resetHandlers()
     server.use(
       http.get("*/news/*/interactions", () => {
