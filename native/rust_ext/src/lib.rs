@@ -542,7 +542,7 @@ mod tests {
             "tbl_y2020m01".to_string(),
             "tbl".to_string(),
             -1
-        ));
+        ).unwrap());
     }
 
     // -- verify_audit_signature edge cases --
@@ -663,7 +663,7 @@ mod tests {
             parity: "both".to_string(),
         };
 
-        let result = detect_conflicts(&target, vec![existing1.clone(), existing2.clone()]).unwrap();
+        let result = detect_conflicts(target, vec![existing1.clone(), existing2.clone()]).unwrap();
         assert_eq!(result.len(), 1);
         assert_eq!(result[0].id, Some(1));
     }
