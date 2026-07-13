@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1783972037189,
+  "lastUpdate": 1783972091487,
   "repoUrl": "https://github.com/egorribun/university_ecosystem",
   "entries": {
     "Go Services Performance Benchmarks": [
@@ -678,6 +678,84 @@ window.BENCHMARK_DATA = {
             "value": 30.23,
             "unit": "ns/op",
             "extra": "37923006 times\n4 procs"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "49699333+dependabot[bot]@users.noreply.github.com",
+            "name": "dependabot[bot]",
+            "username": "dependabot[bot]"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "7e8215429e3ceea051bf51e9c0642a9b4e669e84",
+          "message": "ci(deps): Bump the github-actions group with 9 updates\n\n---\nupdated-dependencies:\n- dependency-name: astral-sh/setup-uv\n  dependency-version: 8.3.2\n  dependency-type: direct:production\n  update-type: version-update:semver-patch\n  dependency-group: github-actions\n- dependency-name: dtolnay/rust-toolchain\n  dependency-version: fa04a1451ff1842e2626ccb99004d0195b455a88\n  dependency-type: direct:production\n  dependency-group: github-actions\n- dependency-name: actions/cache\n  dependency-version: 6.1.0\n  dependency-type: direct:production\n  update-type: version-update:semver-major\n  dependency-group: github-actions\n- dependency-name: bridgecrewio/checkov-action\n  dependency-version: 12.3114.0\n  dependency-type: direct:production\n  update-type: version-update:semver-minor\n  dependency-group: github-actions\n- dependency-name: github/codeql-action/upload-sarif\n  dependency-version: 4.37.0\n  dependency-type: direct:production\n  update-type: version-update:semver-minor\n  dependency-group: github-actions\n- dependency-name: github/codeql-action/init\n  dependency-version: 4.37.0\n  dependency-type: direct:production\n  update-type: version-update:semver-minor\n  dependency-group: github-actions\n- dependency-name: github/codeql-action/analyze\n  dependency-version: 4.37.0\n  dependency-type: direct:production\n  update-type: version-update:semver-minor\n  dependency-group: github-actions\n- dependency-name: aws-actions/configure-aws-credentials\n  dependency-version: 6.2.2\n  dependency-type: direct:production\n  update-type: version-update:semver-patch\n  dependency-group: github-actions\n- dependency-name: trufflesecurity/trufflehog\n  dependency-version: 3.95.9\n  dependency-type: direct:production\n  update-type: version-update:semver-patch\n  dependency-group: github-actions\n...\n\nSigned-off-by: dependabot[bot] <support@github.com>\nCo-authored-by: dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>",
+          "timestamp": "2026-07-13T22:43:37+03:00",
+          "tree_id": "01308c2aa49e8873c0549849d5a2b47e6b6fb984",
+          "url": "https://github.com/egorribun/university_ecosystem/commit/7e8215429e3ceea051bf51e9c0642a9b4e669e84"
+        },
+        "date": 1783972090962,
+        "tool": "go",
+        "benches": [
+          {
+            "name": "BenchmarkJWKSValidation",
+            "value": 119546,
+            "unit": "ns/op",
+            "extra": "9436 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkRateLimitFallback",
+            "value": 111.4,
+            "unit": "ns/op",
+            "extra": "10666746 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkExtractAlgFromHeader",
+            "value": 869.5,
+            "unit": "ns/op",
+            "extra": "1343544 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkValidateIAT",
+            "value": 70.2,
+            "unit": "ns/op",
+            "extra": "17332734 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkCheckL1Cache_Hit",
+            "value": 152.6,
+            "unit": "ns/op",
+            "extra": "7690540 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkCheckL1Cache_Miss",
+            "value": 11.37,
+            "unit": "ns/op",
+            "extra": "100000000 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkJWKToRSAPublicKey",
+            "value": 552.1,
+            "unit": "ns/op",
+            "extra": "2164153 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkShouldRefreshProbabilistic",
+            "value": 65.98,
+            "unit": "ns/op",
+            "extra": "18189192 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkKeyFunc_HS256",
+            "value": 30.43,
+            "unit": "ns/op",
+            "extra": "38492582 times\n4 procs"
           }
         ]
       }
