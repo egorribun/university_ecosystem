@@ -12,9 +12,12 @@ test.describe("React Hydration Verification", () => {
       const text = msg.text()
       if (
         msg.type() === "error" ||
+        msg.type() === "warning" ||
         text.includes("hydration") ||
         text.includes("Hydration") ||
-        text.includes("did not match")
+        text.includes("did not match") ||
+        text.includes("Did not expect server HTML") ||
+        text.includes("Text content did not match")
       ) {
         hydrationErrors.push(`[Console ${msg.type()}] ${text}`)
       }

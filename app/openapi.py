@@ -102,6 +102,46 @@ def harden_openapi_schema(schema: dict[str, Any]) -> dict[str, Any]:
                         method, str(path), dict(operation)
                     )
 
+                # Inject OpenAPI Links
+                operation_id = operation.get("operationId")
+                if operation_id == "login_api_v1_auth_login_post":
+                    responses = operation.setdefault("responses", {})
+                    for status_code in ["200", "201"]:
+                        if status_code in responses:
+                            responses[status_code]["links"] = {
+                                "GetCurrentUser": {
+                                    "operationId": "get_me_api_v1_users_me_get",
+                                    "description": "Get current user profile after login",
+                                }
+                            }
+                elif operation_id == "create_event_api_v1_events_post":
+                    responses = operation.setdefault("responses", {})
+                    for status_code in ["200", "201"]:
+                        if status_code in responses:
+                            responses[status_code]["links"] = {
+                                "GetEventById": {
+                                    "operationId": "get_event_api_v1_events__event_id__get",
+                                    "parameters": {
+                                        "event_id": "$response.body#/id",
+                                    },
+                                    "description": "Retrieve the created event details",
+                                }
+                            }
+                elif operation_id == "create_chat_api_v1_chats_post":
+                    responses = operation.setdefault("responses", {})
+                    for status_code in ["200", "201"]:
+                        if status_code in responses:
+                            responses[status_code]["links"] = {
+                                "GetChatMessages": {
+                                    "operationId": "get_messages_api_v1_chats__chat_id__messages_get",
+                                    "parameters": {
+                                        "chat_id": "$response.body#/id",
+                                    },
+                                    "description": "Get messages for the created chat",
+                                }
+                            }
+
+
     existing_tags = schema.get("tags", [])
     described_tags: dict[str, dict[str, str]] = {}
     if isinstance(existing_tags, list):

@@ -904,3 +904,64 @@ mod tests {
         }
     }
 }
+
+#[cfg(kani)]
+mod verification {
+    use super::*;
+
+    #[kani::proof]
+    fn proof_check_conflict_proto() {
+        let weekday_val = String::from("monday");
+        let parity_val = String::from("both");
+        
+        let a_start: i64 = kani::any();
+        let a_end: i64 = kani::any();
+        let b_start: i64 = kani::any();
+        let b_end: i64 = kani::any();
+        
+        let a = ScheduleItem {
+            id: None,
+            weekday: weekday_val.clone(),
+            start_time: a_start,
+            end_time: a_end,
+            parity: parity_val.clone(),
+        };
+        
+        let b = ScheduleItem {
+            id: None,
+            weekday: weekday_val,
+            start_time: b_start,
+            end_time: b_end,
+            parity: parity_val,
+        };
+        
+        let _ = check_conflict_proto(&a, &b);
+    }
+
+    #[kani::proof]
+    fn proof_get_partition_info() {
+        let table_name = String::from("notifications");
+        let month_offset: i32 = kani::any();
+        let _ = get_partition_info(table_name, month_offset);
+    }
+
+    #[kani::proof]
+    fn proof_verify_audit_signature() {
+        let key_bytes: [u8; 8] = kani::any();
+        let log_bytes: [u8; 8] = kani::any();
+        let sig_bytes: [u8; 8] = kani::any();
+        
+        let key_str = match std::str::from_utf8(&key_bytes) {
+            Ok(s) => s.to_string(),
+            Err(_) => return,
+        };
+        let log_data = match std::str::from_utf8(&log_bytes) {
+            Ok(s) => s.to_string(),
+            Err(_) => return,
+        };
+        let signature = hex::encode(sig_bytes);
+        
+        let _ = verify_audit_signature(vec![key_str], log_data, signature);
+    }
+}
+

@@ -132,6 +132,57 @@ afterAll(() => server.close())
 // `window is not defined` when the setupFile loads. jsdom-env tests behave
 // identically (typeof window === "object") and continue to receive the polyfills.
 if (typeof window !== "undefined") {
+  // Polyfill/mock localStorage and sessionStorage for Node 22+ / JSDOM conflicts
+  const mockStorage = () => {
+    let store: Record<string, string> = {}
+    return {
+      getItem: vi.fn((key: string) => store[key] || null),
+      setItem: vi.fn((key: string, value: string) => {
+        store[key] = String(value)
+      }),
+      removeItem: vi.fn((key: string) => {
+        delete store[key]
+      }),
+      clear: vi.fn(() => {
+        store = {}
+      }),
+      key: vi.fn((index: number) => Object.keys(store)[index] || null),
+      get length() {
+        return Object.keys(store).length
+      },
+    }
+  }
+
+  try {
+    if (!window.localStorage || typeof window.localStorage.clear !== "function") {
+      Object.defineProperty(window, "localStorage", {
+        value: mockStorage(),
+        writable: true,
+        configurable: true,
+      })
+    }
+    if (!window.sessionStorage || typeof window.sessionStorage.clear !== "function") {
+      Object.defineProperty(window, "sessionStorage", {
+        value: mockStorage(),
+        writable: true,
+        configurable: true,
+      })
+    }
+    // Override globalThis as well to avoid node-level experimental conflicts
+    Object.defineProperty(globalThis, "localStorage", {
+      value: window.localStorage,
+      writable: true,
+      configurable: true,
+    })
+    Object.defineProperty(globalThis, "sessionStorage", {
+      value: window.sessionStorage,
+      writable: true,
+      configurable: true,
+    })
+  } catch (_e) {
+    /* ignore */
+  }
+
   Object.defineProperty(window, "matchMedia", {
     writable: true,
     value: vi.fn().mockImplementation((query) => ({
@@ -234,27 +285,89 @@ try {
 }
 
 if (typeof HTMLCanvasElement !== "undefined") {
-  HTMLCanvasElement.prototype.getContext = vi.fn(
-    () =>
-      ({
-        fillRect: vi.fn(),
-        clearRect: vi.fn(),
-        getImageData: vi.fn(() => ({ data: new Uint8ClampedArray() })),
-        putImageData: vi.fn(),
-        createImageData: vi.fn(),
-        setTransform: vi.fn(),
-        drawImage: vi.fn(),
-        save: vi.fn(),
-        restore: vi.fn(),
-        beginPath: vi.fn(),
-        moveTo: vi.fn(),
-        lineTo: vi.fn(),
-        stroke: vi.fn(),
-        fill: vi.fn(),
-        arc: vi.fn(),
-        closePath: vi.fn(),
-      }) as any
-  )
+  HTMLCanvasElement.prototype.getContext = vi.fn().mockImplementation(function (
+    this: HTMLCanvasElement,
+    contextId: string,
+    ..._args: any[]
+  ) {
+    if (contextId === "webgl" || contextId === "experimental-webgl") {
+      try {
+        // Try importing gl if available
+        // Note: import() is async, so we mock it synchronously if possible, or fall back to pure JS mock
+        const glMod = (globalThis as any).__headless_gl_module__
+        if (glMod) {
+          return glMod(1024, 768)
+        }
+      } catch (_e) {
+        /* ignore */
+      }
+
+      // Safe pure-JS mock fallback for WebGL context to prevent JSDOM test crashes
+      return {
+        canvas: this,
+        viewport: vi.fn(),
+        createShader: vi.fn(() => ({})),
+        shaderSource: vi.fn(),
+        compileShader: vi.fn(),
+        getShaderParameter: vi.fn(() => true),
+        getShaderInfoLog: vi.fn(() => ""),
+        createProgram: vi.fn(() => ({})),
+        attachShader: vi.fn(),
+        linkProgram: vi.fn(),
+        getProgramParameter: vi.fn(() => true),
+        useProgram: vi.fn(),
+        createBuffer: vi.fn(() => ({})),
+        bindBuffer: vi.fn(),
+        bufferData: vi.fn(),
+        enableVertexAttribArray: vi.fn(),
+        vertexAttribPointer: vi.fn(),
+        drawArrays: vi.fn(),
+        drawElements: vi.fn(),
+        clearColor: vi.fn(),
+        clear: vi.fn(),
+        enable: vi.fn(),
+        disable: vi.fn(),
+        blendFunc: vi.fn(),
+        depthFunc: vi.fn(),
+        createTexture: vi.fn(() => ({})),
+        bindTexture: vi.fn(),
+        texParameteri: vi.fn(),
+        texImage2D: vi.fn(),
+        uniform1i: vi.fn(),
+        uniform1f: vi.fn(),
+        uniform2f: vi.fn(),
+        uniform3f: vi.fn(),
+        uniform4f: vi.fn(),
+        uniformMatrix4fv: vi.fn(),
+        getUniformLocation: vi.fn(() => ({})),
+        getAttribLocation: vi.fn(() => 0),
+        getError: vi.fn(() => 0),
+        getExtension: vi.fn(() => null),
+        getParameter: vi.fn(() => 1024),
+        pixelStorei: vi.fn(),
+        activeTexture: vi.fn(),
+      } as any
+    }
+    return {
+      fillRect: vi.fn(),
+      clearRect: vi.fn(),
+      getImageData: vi.fn(() => ({ data: new Uint8ClampedArray() })),
+      putImageData: vi.fn(),
+      createImageData: vi.fn(),
+      setTransform: vi.fn(),
+      drawImage: vi.fn(),
+      save: vi.fn(),
+      restore: vi.fn(),
+      beginPath: vi.fn(),
+      moveTo: vi.fn(),
+      lineTo: vi.fn(),
+      stroke: vi.fn(),
+      fill: vi.fn(),
+      arc: vi.fn(),
+      closePath: vi.fn(),
+      canvas: this,
+    } as any
+  })
 }
 
 const IGNORED_WARNINGS = [
