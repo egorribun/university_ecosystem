@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"go.opentelemetry.io/otel/trace"
 	"github.com/university-ecosystem/ws-hub/pkg/config"
+	"go.opentelemetry.io/otel/trace"
 )
 
 func TestHub_MutexDeadlockConcurrency(t *testing.T) {

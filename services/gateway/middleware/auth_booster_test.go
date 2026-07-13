@@ -68,7 +68,9 @@ func TestFetchJWKSPublicKey_Errors(t *testing.T) {
 	t.Run("invalid json and pem", func(t *testing.T) {
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusOK)
-			_, _ = w.Write([]byte("not-json-nor-pem"))
+			if _, err := w.Write([]byte("not-json-nor-pem")); err != nil {
+				t.Logf("write failed: %v", err)
+			}
 		}))
 		defer server.Close()
 
@@ -86,7 +88,9 @@ func TestFetchJWKSPublicKey_Errors(t *testing.T) {
 
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusOK)
-			_, _ = w.Write(pemBytes) // nosemgrep
+			if _, err := w.Write(pemBytes); err != nil {
+				t.Logf("write failed: %v", err)
+			}
 		}))
 		defer server.Close()
 

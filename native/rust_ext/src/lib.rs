@@ -738,21 +738,21 @@ mod tests {
             "events_y2020m01".to_string(),
             "events".to_string(),
             1
-        ));
+        ).unwrap());
 
         // Cutoff is now - 100000 days -> obviously NOT expired
         assert!(!is_partition_expired(
             "events_y2999m01".to_string(),
             "events".to_string(),
             100000
-        ));
+        ).unwrap());
 
         // Wrong table prefix -> false
         assert!(!is_partition_expired(
             "other_y2020m01".to_string(),
             "events".to_string(),
             1
-        ));
+        ).unwrap());
     }
 
     #[test]
@@ -892,7 +892,7 @@ mod tests {
 
             let result = find_optimal_slot(duration, existing.clone(), available);
             if let Ok(Some(slot)) = result {
-                prop_assert_eq!(slot.parity, "both");
+                prop_assert_eq!(slot.parity.as_str(), "both");
                 prop_assert!(slot.weekday == "monday" || slot.weekday == "tuesday");
                 prop_assert_eq!(slot.end_time - slot.start_time, (duration * 60) as i64);
 

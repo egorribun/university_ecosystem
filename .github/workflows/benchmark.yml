@@ -123,7 +123,7 @@ jobs:
         # machine-readable stdout via 2>&1 for the benchmark action.
         # --no-default-features disables the extension-module feature which links against
         # libpython at build time — unavailable in a standalone bench binary context.
-        run: cargo bench -p pyo3-sanitizer --no-default-features 2>&1 | tee ../../../criterion-bench.txt
+        run: cargo bench -p pyo3-sanitizer --no-default-features 2>&1 | tee ../../criterion-bench.txt
         working-directory: crates/pyo3-sanitizer
 
       - name: Store Criterion results
