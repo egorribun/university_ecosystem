@@ -27,6 +27,8 @@ jobs:
 
       - name: Install Rust nightly
         uses: dtolnay/rust-toolchain@fa04a1451ff1842e2626ccb99004d0195b455a88 # nightly
+        with:
+          toolchain: nightly
 
       - name: Install Rust stable for cargo-fuzz bootstrap
         uses: dtolnay/rust-toolchain@fa04a1451ff1842e2626ccb99004d0195b455a88 # stable

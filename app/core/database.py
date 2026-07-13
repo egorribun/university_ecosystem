@@ -58,8 +58,9 @@ def set_sqlite_pragma(dbapi_connection: Any, connection_record: Any) -> None:
             pass
 
     # PRAGMAs can be executed on the wrapper connection object
-    if isinstance(dbapi_connection, sqlite3.Connection) or hasattr(
-        dbapi_connection, "cursor"
+    if (
+        isinstance(dbapi_connection, sqlite3.Connection)
+        or "sqlite" in type(dbapi_connection).__module__.lower()
     ):
         cursor = dbapi_connection.cursor()
         cursor.execute("PRAGMA journal_mode=WAL")

@@ -69,7 +69,7 @@ def TestOneInput(data):
             payload["dnd_end"] = fdp.ConsumeUnicodeNoSurrogates(20)
 
         UserPreferencesBase.model_validate(payload)
-    except ValidationError, ValueError:
+    except (ValidationError, ValueError):
         # Expected validation / domain logic errors
         pass
     except Exception as e:
@@ -82,7 +82,7 @@ def TestOneInput(data):
         password = fdp.ConsumeUnicodeNoSurrogates(300)
         payload = {"token": token, "password": password}
         ResetPasswordIn.model_validate(payload)
-    except ValidationError, ValueError:
+    except (ValidationError, ValueError):
         # Expected validation / domain logic errors
         pass
     except Exception as e:

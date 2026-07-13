@@ -3,11 +3,11 @@ package workflow
 import (
 	"errors"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
+	enumspb "go.temporal.io/api/enums/v1"
 	"go.temporal.io/sdk/temporal"
 	"go.temporal.io/sdk/testsuite"
 )
@@ -112,7 +112,7 @@ func TestFileProcessingWorkflow_ActivityTimeoutRetries(t *testing.T) {
 	a := &FileActivities{}
 
 	callCount := 0
-	timeoutErr := temporal.NewTimeoutError(temporal.TimeoutTypeStartToClose, errors.New("activity timeout"))
+	timeoutErr := temporal.NewTimeoutError(enumspb.TIMEOUT_TYPE_START_TO_CLOSE, errors.New("activity timeout"))
 
 	env.OnActivity(a.ResizeImageActivity, mock.Anything, mock.Anything).Return(
 		func(ctx interface{}, job ProcessJob) (*ProcessResult, error) {
