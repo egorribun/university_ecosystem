@@ -41,7 +41,7 @@ def TestOneInput(data):
 
     try:
         filename_input = fdp.ConsumeUnicodeNoSurrogates(500)
-        max_len = fdp.ConsumeIntegerInRange(1, 300)
+        max_len = fdp.ConsumeIntInRange(1, 300)
         sanitize_filename(filename_input, max_length=max_len)
     except Exception as e:
         print(f"CRASH in filename sanitization: {e}", file=sys.stderr)
