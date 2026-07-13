@@ -13,7 +13,7 @@ import pytest
 
 try:
     import atheris
-except ImportError, RuntimeError:
+except (ImportError, RuntimeError):
     atheris = None
 
 try:
@@ -38,7 +38,7 @@ def test_atheris_fuzz_dryrun() -> None:
 
         try:
             rust_ext.verify_audit_signature(["key1", "key2"], payload, sig)
-        except TypeError, ValueError:
+        except (TypeError, ValueError):
             pass
 
         # Fuzz is_partition_expired
@@ -48,7 +48,7 @@ def test_atheris_fuzz_dryrun() -> None:
 
         try:
             rust_ext.is_partition_expired(partition_name, table_name, retention_days)
-        except TypeError, ValueError:
+        except (TypeError, ValueError):
             pass
 
     # Configure Atheris to run for exactly 1 iteration for the dry-run gate

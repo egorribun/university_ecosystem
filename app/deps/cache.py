@@ -236,7 +236,7 @@ class RedisCache(BaseCache):
                 if inspect.isawaitable(res):
                     await res
             success = True
-        except RedisError, OSError, AttributeError:  # RZ-28-01
+        except (RedisError, OSError, AttributeError):  # RZ-28-01
             logger.debug("Failed to close Redis client", exc_info=True)
         finally:
             record_redis_command(
@@ -271,7 +271,7 @@ class RedisCache(BaseCache):
             logger.debug("Invalid cache payload for key %s, dropping", key)
             await self.invalidate(key)
             return None
-        except RedisError, OSError:  # RZ-28-01
+        except (RedisError, OSError):  # RZ-28-01
             logger.warning("Redis cache get failed for key %s", key, exc_info=True)
             return None
         finally:
@@ -301,7 +301,7 @@ class RedisCache(BaseCache):
             else:
                 await client.set(key, envelope)
             success = True
-        except RedisError, OSError:  # RZ-28-01
+        except (RedisError, OSError):  # RZ-28-01
             logger.warning("Redis cache set failed for key %s", key, exc_info=True)
         finally:
             record_redis_command(
@@ -348,7 +348,7 @@ class RedisCache(BaseCache):
                     if cursor == 0:
                         break
             success = True
-        except RedisError, OSError:  # RZ-28-01
+        except (RedisError, OSError):  # RZ-28-01
             logger.warning(
                 "Redis cache invalidate failed for keys %s", filtered, exc_info=True
             )
@@ -409,7 +409,7 @@ class RedisClusterCache(BaseCache):
             elif hasattr(client, "close"):
                 await client.close()
             success = True
-        except RedisError, OSError, AttributeError:  # RZ-28-01
+        except (RedisError, OSError, AttributeError):  # RZ-28-01
             logger.debug("Failed to close Redis cluster client", exc_info=True)
         finally:
             record_redis_command(
@@ -435,7 +435,7 @@ class RedisClusterCache(BaseCache):
         except orjson.JSONDecodeError:
             logger.debug("Invalid cache payload in cluster for key %s", key)
             return None
-        except RedisError, OSError:  # RZ-28-01
+        except (RedisError, OSError):  # RZ-28-01
             logger.warning("Redis cluster get failed for key %s", key, exc_info=True)
             return None
         finally:
@@ -465,7 +465,7 @@ class RedisClusterCache(BaseCache):
             else:
                 await client.set(key, envelope)
             success = True
-        except RedisError, OSError:  # RZ-28-01
+        except (RedisError, OSError):  # RZ-28-01
             logger.warning("Redis cluster set failed for key %s", key, exc_info=True)
         finally:
             record_redis_command(
@@ -511,7 +511,7 @@ class RedisClusterCache(BaseCache):
                     if cursor == 0:
                         break
             success = True
-        except RedisError, OSError:  # RZ-28-01
+        except (RedisError, OSError):  # RZ-28-01
             logger.warning(
                 "Redis cluster invalidate failed for keys %s", filtered, exc_info=True
             )

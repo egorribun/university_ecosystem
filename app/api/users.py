@@ -151,7 +151,7 @@ def _enforce_profile_cache_integrity(request: Request) -> None:
 
         if datetime.now(UTC) > expires_at:
             raise_validation_error("errors.profile_cache.envelope_expired", locale)
-    except ValueError, TypeError, OSError:
+    except (ValueError, TypeError, OSError):
         raise_validation_error("errors.profile_cache.invalid_expires_at", locale)
 
 

@@ -164,7 +164,7 @@ class SecurityHeadersMiddleware:
                             if "__CSP_NONCE__" in html_text and nonce is not None:
                                 html_text = html_text.replace("__CSP_NONCE__", nonce)
                                 full_body = html_text.encode("utf-8")
-                        except LookupError, UnicodeDecodeError:
+                        except (LookupError, UnicodeDecodeError):
                             pass
 
                         # Adjust content-length

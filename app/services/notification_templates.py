@@ -69,7 +69,7 @@ def _parse_datetime_like(value: Any) -> datetime | None:
     if isinstance(value, int | float):
         try:
             return datetime.fromtimestamp(float(value), UTC)
-        except OSError, OverflowError, ValueError:
+        except (OSError, OverflowError, ValueError):
             return None
     if isinstance(value, str):
         text = value.strip()

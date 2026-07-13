@@ -55,7 +55,7 @@ async def unified_search(
                     highlight=True,
                 )
                 results["news"] = _format_hits(raw, "news")
-            except OSError, ConnectionError:
+            except (OSError, ConnectionError):
                 results["news"] = []
 
         elif search_type == "events":
@@ -68,7 +68,7 @@ async def unified_search(
                     highlight=True,
                 )
                 results["events"] = _format_hits(raw, "events")
-            except OSError, ConnectionError:
+            except (OSError, ConnectionError):
                 results["events"] = []
 
     return {"query": q, "results": results}

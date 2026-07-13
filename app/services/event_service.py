@@ -258,14 +258,14 @@ class EventService:
         if image_url:
             try:
                 await delete_static_file(str(image_url))
-            except FileNotFoundError, OSError:
+            except (FileNotFoundError, OSError):
                 # RZ-20-04: Narrowed — file deletion is best-effort.
                 logger.warning("Failed to delete event image: %s", image_url)
 
         for url in file_urls:
             try:
                 await delete_static_file(url)
-            except FileNotFoundError, OSError:
+            except (FileNotFoundError, OSError):
                 # RZ-20-04: Narrowed — file deletion is best-effort.
                 logger.warning("Failed to delete event file: %s", url)
 

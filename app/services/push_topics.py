@@ -158,7 +158,7 @@ def subscription_supports_topic(
             state = orm_attributes.instance_state(user)
             if "push_topic_preferences" not in state.unloaded:
                 preferences = getattr(user, "push_topic_preferences", None)
-        except AttributeError, TypeError:
+        except (AttributeError, TypeError):
             # RZ-20-04: Narrowed — SQLAlchemy state inspection edge cases.
             preferences = getattr(user, "push_topic_preferences", None)
     allowed_by_user = True

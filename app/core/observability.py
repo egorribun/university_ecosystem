@@ -496,7 +496,7 @@ class PeriodicTaskRun:
 def _coerce_deleted_value(value: Any) -> int:
     try:
         number = int(value)
-    except TypeError, ValueError:  # RZ-28-01 + MOD-25-04
+    except (TypeError, ValueError):  # RZ-28-01 + MOD-25-04
         return 0
     return number if number > 0 else 0
 

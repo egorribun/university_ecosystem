@@ -60,7 +60,7 @@ class ProgressiveDelayTracker:
                 failures = int(results[0])
                 delay = self._calculate_delay(failures)
                 return ProgressiveDelayInfo(failures, delay, delay > 0)
-            except RedisError, OSError:
+            except (RedisError, OSError):
                 pass
 
         async with _delay_memory_lock:
@@ -100,7 +100,7 @@ class ProgressiveDelayTracker:
                     failures = int(val)
                 delay = self._calculate_delay(failures)
                 return ProgressiveDelayInfo(failures, delay, delay > 0)
-            except RedisError, OSError:
+            except (RedisError, OSError):
                 pass
 
         async with _delay_memory_lock:
@@ -118,7 +118,7 @@ class ProgressiveDelayTracker:
             try:
                 client = await get_shared_client(self._redis_url)
                 await client.delete(key)
-            except RedisError, OSError:
+            except (RedisError, OSError):
                 pass
         async with _delay_memory_lock:
             _delay_memory.pop(key, None)

@@ -119,7 +119,7 @@ async def ensure_mfa_relationships_loaded(
     # Mark as loaded to avoid redundant inspect() calls on subsequent invocations.
     try:
         object.__setattr__(user, "_mfa_loaded", True)
-    except TypeError, AttributeError:  # RZ-28-01
+    except (TypeError, AttributeError):  # RZ-28-01
         pass  # DTO with frozen config — skip silently, overhead is minimal
 
     return user

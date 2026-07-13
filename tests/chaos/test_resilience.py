@@ -88,7 +88,7 @@ def _gateway_reachable() -> bool:
     try:
         with httpx.Client(base_url=GATEWAY_URL, timeout=3.0) as client:
             return client.get("/health").status_code == 200
-    except httpx.HTTPError, OSError:
+    except (httpx.HTTPError, OSError):
         return False
 
 

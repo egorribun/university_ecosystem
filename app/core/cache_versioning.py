@@ -50,10 +50,10 @@ class CacheVersionManager:
                 if raw is not None:
                     try:
                         return str(int(raw))
-                    except TypeError, ValueError:
+                    except (TypeError, ValueError):
                         pass
                 return "0"
-            except RedisError, OSError:
+            except (RedisError, OSError):
                 logger.debug("Cache version read failed, returning zero")
         return "0"
 
@@ -75,7 +75,7 @@ class CacheVersionManager:
                     raw = await client.get(self.version_key)
                     val = int(raw) if raw is not None else 0
                     await client.set(self.version_key, str(val + 1))
-            except RedisError, OSError:
+            except (RedisError, OSError):
                 logger.warning("Failed to increment cache version")
 
     async def reset(self, cache: BaseCache | None = None) -> None:
@@ -90,7 +90,7 @@ class CacheVersionManager:
                 # MED-W19: use public get_cache_client() instead of private _get_client()
                 client = await get_cache_client()
                 await client.set(self.version_key, "0")
-            except RedisError, OSError:
+            except (RedisError, OSError):
                 logger.warning("Failed to reset cache version")
 
     def build_cache_key(self, *, locale: str, version: str, **params: Any) -> str:
