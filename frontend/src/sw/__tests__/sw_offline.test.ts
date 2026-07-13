@@ -1,5 +1,5 @@
 import { IDBFactory } from "fake-indexeddb"
-import { afterEach, beforeEach, describe, expect, it, vi, type SpyInstance } from "vitest"
+import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from "vitest"
 import {
   initOfflineQueue,
   storePendingNavigation,
@@ -32,7 +32,7 @@ vi.mock("idb", async (importOriginal) => {
 })
 
 describe("Service Worker — Offline / Database Failures & Network Outage", () => {
-  let onlineSpy: SpyInstance
+  let onlineSpy: MockInstance
 
   beforeEach(async () => {
     const { structuredClone } = globalThis
