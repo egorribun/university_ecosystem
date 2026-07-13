@@ -92,10 +92,11 @@ async def store_mfa_challenge_fingerprints(
             )
             await cache.setex(f"mfa:fp:{method.challenge_token}", remaining, fp)
     except (
+        RuntimeError,
         ConnectionError,
         TimeoutError,
         OSError,
-    ):  # RZ-25-01 + RZ-22-01: narrowed — Redis errors
+    ):  # RZ-22-01: narrowed — Redis/NullCache errors
         logger.warning(
             "Could not store MFA fingerprints in Redis — replay protection degraded",
             exc_info=True,
@@ -128,10 +129,11 @@ async def verify_mfa_fingerprint(
         cache = await get_cache_client()
         stored_raw = await cache.get(f"mfa:fp:{challenge_token}")
     except (
+        RuntimeError,
         ConnectionError,
         TimeoutError,
         OSError,
-    ):  # RZ-25-01 + RZ-22-01: narrowed — Redis errors
+    ):  # RZ-22-01: narrowed — Redis/NullCache errors
         # Redis unavailable — don't block auth, but log at WARNING so both store
         # and verify degradations appear at the same alert threshold.
         logger.warning(

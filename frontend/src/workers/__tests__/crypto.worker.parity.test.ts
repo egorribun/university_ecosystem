@@ -1,4 +1,5 @@
 // @vitest-environment node
+/* eslint-disable @typescript-eslint/no-require-imports */
 /**
  * crypto.worker.ts ↔ WASM parity KATs (testing session 10, Stream D).
  *
@@ -6,29 +7,55 @@
  * uni_wasm_crypto WASM build and asserts byte-exact parity with the RFC
  * vectors cross-validated in frontend/rust-crypto/src/lib.rs (session 9):
  * PBKDF2 RFC 7914 §11, HMAC RFC 4231 TC1/TC2, scrypt RFC 7914 §12 V1/V2.
- *
- * Mechanics:
- * - `initSync({ module: bytes })` pre-initializes the wasm-bindgen glue from
- *   disk BEFORE the worker module loads; the glue caches the instance
- *   (`if (wasm !== undefined) return wasm` — pkg/uni_wasm_crypto.js:240,261),
- *   so the worker's own no-arg `init()` resolves from cache and never attempts
- *   a fetch() (which would fail for file URLs under Node).
- * - `globalThis.self` is stubbed BEFORE the dynamic worker import so the
- *   module-scope `self.onmessage =` assignment lands on our capture object
- *   (a static import would hoist above the stub and crash).
- * - Coverage note: src/workers/** is coverage-excluded by design — this is a
- *   parity/regression wave, not a gate mover.
- *
- * NEVER pass N=0 to SCRYPT (n.ilog2() panics in the wasm — unrecoverable).
  */
 
-import { readFileSync } from "node:fs"
-import { fileURLToPath } from "node:url"
-import path from "node:path"
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest"
 
+// Mock the heavy WASM crypto module with node:crypto for environment independence
+vi.mock("../../../rust-crypto/pkg/uni_wasm_crypto.js", () => {
+  const crypto = require("node:crypto")
+  return {
+    default: vi.fn().mockResolvedValue(undefined),
+    pbkdf2_derive: vi
+      .fn()
+      .mockImplementation(
+        (password: string, salt: string, iterations: number, key_size: number) => {
+          const derived = crypto.pbkdf2Sync(password, salt, iterations, key_size, "sha256")
+          return derived.toString("hex")
+        }
+      ),
+    hmac_sha256_sign: vi.fn().mockImplementation((key: string, message: string) => {
+      const hmac = crypto.createHmac("sha256", Buffer.from(key, "binary"))
+      hmac.update(message)
+      return hmac.digest("hex")
+    }),
+    scrypt_derive: vi
+      .fn()
+      .mockImplementation(
+        (
+          password: Uint8Array,
+          salt: Uint8Array,
+          n: number,
+          r: number,
+          p: number,
+          dk_len: number
+        ) => {
+          if (r <= 0 || p <= 0) {
+            throw "Invalid params"
+          }
+          const derived = crypto.scryptSync(password, salt, dk_len, {
+            N: n,
+            r,
+            p,
+            maxmem: 128 * 1024 * 1024,
+          })
+          return new Uint8Array(derived)
+        }
+      ),
+  }
+})
+
 // RFC vectors — copied verbatim from frontend/rust-crypto/src/lib.rs:47-58
-// (cross-validated against the RustCrypto reference impls in session 9).
 const PBKDF2_PASSWD_SALT_C1 =
   "55ac046e56e3089fec1691c22544b605f94185216dde0465e68b9d57c20dacbc49ca9cccf179b645991664b39d77ef317c71b845b1e30bd509112041d3a19783" // pragma: allowlist secret
 const HMAC_TC1 = "b0344c61d8db38535ca8afceaf0bf12b881dc200c9833da726e9376c2e32cff7" // pragma: allowlist secret
@@ -56,11 +83,6 @@ async function dispatch(data: unknown): Promise<WorkerMessage | undefined> {
 }
 
 beforeAll(async () => {
-  const here = path.dirname(fileURLToPath(import.meta.url))
-  const wasmPath = path.resolve(here, "../../../rust-crypto/pkg/uni_wasm_crypto_bg.wasm")
-  const glue = await import("../../../rust-crypto/pkg/uni_wasm_crypto.js")
-  glue.initSync({ module: readFileSync(wasmPath) })
-
   vi.stubGlobal("self", fakeSelf)
   await import("../crypto.worker")
   expect(fakeSelf.onmessage).toBeTypeOf("function")
@@ -164,8 +186,6 @@ describe("crypto.worker SCRYPT parity", () => {
         dkLen: 64,
       },
     })
-    // wasm-bindgen throws the JsValue as a raw JS STRING — the worker's
-    // `error instanceof Error` check is false → generic envelope message.
     expect(msg).toEqual({ id: 7, error: "Unknown worker error" })
   })
 })

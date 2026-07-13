@@ -9,6 +9,7 @@ with atheris.instrument_imports():
     from fastapi import HTTPException
     from pydantic import ValidationError
 
+    from app.auth.security import decode_token
     from app.schemas.schemas import ResetPasswordIn, UserPreferencesBase
     from app.utils.sanitization import (
         sanitize_filename,
@@ -16,6 +17,7 @@ with atheris.instrument_imports():
         sanitize_rich_text,
         sanitize_url,
     )
+    from app.utils.uuid_v7 import extract_timestamp_from_uuid_v7
 
 
 def TestOneInput(data):
@@ -67,7 +69,7 @@ def TestOneInput(data):
             payload["dnd_end"] = fdp.ConsumeUnicodeNoSurrogates(20)
 
         UserPreferencesBase.model_validate(payload)
-    except (ValidationError, ValueError):
+    except ValidationError, ValueError:
         # Expected validation / domain logic errors
         pass
     except Exception as e:
@@ -80,11 +82,32 @@ def TestOneInput(data):
         password = fdp.ConsumeUnicodeNoSurrogates(300)
         payload = {"token": token, "password": password}
         ResetPasswordIn.model_validate(payload)
-    except (ValidationError, ValueError):
+    except ValidationError, ValueError:
         # Expected validation / domain logic errors
         pass
     except Exception as e:
         print(f"CRASH in ResetPasswordIn validation: {e}", file=sys.stderr)
+        raise
+
+    # 4. Fuzz JWT decoding
+    try:
+        jwt_token = fdp.ConsumeUnicodeNoSurrogates(500)
+        decode_token(jwt_token)
+    except Exception as e:
+        # Expected decode exceptions are caught inside decode_token and return None.
+        # Unhandled library exceptions (e.g. key errors, structure issues) must raise to crash.
+        print(f"CRASH in JWT decoding: {e}", file=sys.stderr)
+        raise
+
+    # 5. Fuzz UUID v7 extraction
+    try:
+        uuid_str = fdp.ConsumeUnicodeNoSurrogates(100)
+        extract_timestamp_from_uuid_v7(uuid_str)
+    except ValueError:
+        # Expected ValueError for malformed UUID format
+        pass
+    except Exception as e:
+        print(f"CRASH in UUID v7 extraction: {e}", file=sys.stderr)
         raise
 
 

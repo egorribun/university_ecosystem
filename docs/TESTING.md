@@ -906,7 +906,66 @@
 - **Phase VI**: Frontend - Vitest Route Loader & Service Worker Testing (route beforeLoad/search-param schemas coverage, PWA cache interceptor unit tests)
 - **Phase VII**: OpenAPI Drift & API Fuzzing Gates (PR-blocking schema drift checks, Schemathesis fuzzer auth integration)
 
+---
 
+### Phase I-VII Detailed Proposed Roadmap
+
+#### Phase I: Seen-by-N Receipts & WebKit A11y Resolution
+* **Description**: Внедрение реального E2E-мониторинга статусов доставки/прочтения и стабилизация WebKit a11y тестирования на CI-раннерах.
+* **Key Tasks**:
+  1. **Seen-by-N read markers**: Покрытие тестами алгоритма фиксации прочтения сообщений несколькими пользователями (Messenger). Интеграция в Vitest (`useChatWebSocket.test.tsx`) и Playwright (`chat-realtime.spec.ts`).
+  2. **WebKit DOM size reduction**: Оптимизация разметки страницы `/login` (включая облегчение компонента `ParticleAuthBackground` и анимаций Framer Motion). Устранение крэшей по памяти (OOM) при запуске `axe.run()` в WebKit-эмуляции.
+  3. **Visual screenshot parity**: Корректировка скриншотных тестов на WebKit после стабилизации рендеринга.
+* **CI Gates**: axe-core тесты на WebKit проходят без сбоев (exit code 0).
+
+#### Phase II: Python Backend — Parallel PostgreSQL & RLS Validation
+* **Description**: Переход на изолированные контейнеры для тестов БД и полное покрытие политик безопасности.
+* **Key Tasks**:
+  1. **Parallel PG runs с Testcontainers**: Конфигурация изолированных экземпляров Postgres в Docker с помощью `pytest-xdist`. Устранение конфликтов общего состояния БД.
+  2. **Row-Level Security (RLS) checks**: Покрытие тестами всех прав доступа ролей (student, teacher, admin, service_account) на уровне таблиц СУБД.
+  3. **pgvector validation**: Расширение тестов поиска по сходству (косинусное расстояние, пустые/шумные эмбеддинги, обработка ошибок pgvector).
+* **CI Gates**: `pytest -n auto` проходит без взаимных блокировок и утечек данных. RLS покрытие 100%.
+
+#### Phase III: Python Backend — Mutation Gates & Fuzz Seeding
+* **Description**: Контроль качества тест-ассертов через мутационное тестирование и накопление стабильного корпуса фаззинга.
+* **Key Tasks**:
+  1. **Blocking mutmut gate**: Интеграция блокирующего шага сборки, требующего Mutation Score $\ge 85\%$ для изменений в критических модулях (`app/auth/`, `app/services/`).
+  2. **Atheris structured corpus seeding**: Написание и фиксация в репозитории корпуса семян (seed inputs) для фаззинга очистки HTML (`fuzz_sanitize`), декодирования JWT и проверки UUID v7.
+  3. **Fuzzing automation**: Запуск Atheris в еженедельных CI cron пайплайнах с автоматической отправкой дампов при сбоях.
+* **CI Gates**: `mutmut` score $\ge 85\%$ для измененного Python-кода.
+
+#### Phase IV: Go Services — Multi-Service E2E Integration & Lock Checks
+* **Description**: Сквозная интеграция Go-сервисов и аудит многопоточных блокировок.
+* **Key Tasks**:
+  1. **Gateway-WS-Hub integration**: Реализация интеграционных сценариев, имитирующих полный цикл авторизации пользователя на Gateway, получение тикета и подключение к WS-Hub.
+  2. **NATS testcontainers**: Интеграция реального брокера NATS в пайплайны Go для проверки механики инвалидации кэша (`cache.invalidate`).
+  3. **Deadlock checks**: Полноценное тестирование блокировок мьютексов в WS-Hub (`Hub.mu` $\rightarrow$ `Client.mu`). Проверка на гонки в условиях высокой concurrency.
+* **CI Gates**: Успешное выполнение go интеграционных тестов с флагом `-race`.
+
+#### Phase V: Rust Crates — ASAN/TSAN Sanitizer & FFI Panic Gates
+* **Description**: Внедрение динамических санитайзеров и повышение отказоустойчивости FFI-границ.
+* **Key Tasks**:
+  1. **ASAN/TSAN integration**: Настройка сборки Rust-модулей с AddressSanitizer и ThreadSanitizer в CI.
+  2. **FFI panic boundary catches**: Добавление защитных барьеров `std::panic::catch_unwind` на всех FFI эндпоинтах `rust_ext` для превращения Rust-паник в Python `RuntimeError` (предотвращение аварийного завершения Python-процесса).
+  3. **Proptest expansion**: Генерирование случайных пограничных кейсов в оптимизаторе расписания.
+* **CI Gates**: Зеленые тесты `cargo test` под санитайзерами в CI-пайплайне.
+
+#### Phase VI: Frontend — Vitest Route Loader & Service Worker Testing
+* **Description**: Покрытие логики загрузки маршрутов и оффлайн-функций Service Worker.
+* **Key Tasks**:
+  1. **Route loader & validation coverage**: Модульное тестирование TanStack Router лоадеров (`loaderDeps`, `beforeLoad`) и Valibot-схем валидации параметров URL.
+  2. **Service Worker unit tests**: Мокирование и тестирование стратегий кэширования Workbox (`NetworkFirst`, `CacheFirst`), фонового обновления данных и перехвата push-уведомлений.
+  3. **Hydration checks**: Автоматическая валидация отсутствия ошибок гидратации React при первом рендере SSR страниц в Playwright.
+* **CI Gates**: Vitest statements $\ge 98\%$, branches $\ge 92\%$. Нулевой уровень hydration errors.
+
+#### Phase VII: OpenAPI Drift & API Fuzzing Gates
+* **Description**: Гарантия синхронизации контрактов фронтенда/бэкенда и автоматизированный фаззинг эндпоинтов.
+* **Key Tasks**:
+  1. **PR-blocking schema drift checks**: CI-шаг проверки изменений схемы API: сборка FastAPI генерирует `openapi.json`, сверяемый с TypeScript-интерфейсами. Блокировка PR при наличии расхождений.
+  2. **Schemathesis fuzzer auth integration**: Настройка Schemathesis для фаззинга эндпоинтов с динамической аутентификацией сессий.
+* **CI Gates**: Автоматическая валидация схем на каждом коммите (exit code 1 при расхождении).
+
+---
 
 ### B. Ключевые команды
 

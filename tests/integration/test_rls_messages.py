@@ -404,3 +404,88 @@ async def test_rls_blocks_writing_mismatched_sender_id(
             {"id": msg_id, "chat_id": chat_id, "sender": user_a_id},
         )
         await pg_session.flush()
+
+
+@pytest.mark.asyncio
+async def test_rls_applies_to_professors_and_admins(
+    pg_session: AsyncSession,
+):
+    """Verifies that RLS isolation works identically for professors and admins."""
+    prof_id = str(uuid.uuid4())
+    admin_id = str(uuid.uuid4())
+    student_id = str(uuid.uuid4())
+    chat_id = str(uuid.uuid4())
+    msg_id = str(uuid.uuid4())
+
+    # Insert users with different roles
+    for uid, email, role in [
+        (prof_id, "rls_prof@test.com", "professor"),
+        (admin_id, "rls_admin_user@test.com", "admin"),
+        (student_id, "rls_stud@test.com", "student"),
+    ]:
+        await pg_session.execute(
+            text(
+                "INSERT INTO users (id, email, hashed_password, role, is_active, mfa_required) "
+                "VALUES (:id, :email, 'x', :role, true, false)"
+            ),
+            {"id": uid, "email": email, "role": role},
+        )
+        await pg_session.execute(
+            text(
+                "INSERT INTO user_profiles (user_id, full_name) VALUES (:uid, 'Test')"
+            ),
+            {"uid": uid},
+        )
+
+    # Create chat with professor and admin
+    await pg_session.execute(
+        text(
+            "INSERT INTO chats (id, created_at, updated_at) VALUES (:id, NOW(), NOW())"
+        ),
+        {"id": chat_id},
+    )
+    for uid in (prof_id, admin_id):
+        await pg_session.execute(
+            text(
+                "INSERT INTO chat_participants (chat_id, user_id) "
+                "VALUES (:chat_id, :user_id)"
+            ),
+            {"chat_id": chat_id, "user_id": uid},
+        )
+
+    # Professor inserts message
+    await pg_session.execute(
+        text("SELECT set_config('app.current_user_id', :uid, true)"), {"uid": prof_id}
+    )
+    await pg_session.execute(
+        text(
+            "INSERT INTO messages (id, chat_id, sender_id, content, created_at, read_status) "
+            "VALUES (:id, :chat_id, :sender, 'hello from professor', NOW(), false)"
+        ),
+        {"id": msg_id, "chat_id": chat_id, "sender": prof_id},
+    )
+
+    # 1. Professor can read it
+    result = await pg_session.execute(
+        text("SELECT id FROM messages WHERE id = :id"), {"id": msg_id}
+    )
+    assert result.fetchone() is not None
+
+    # 2. Admin (who is a participant) can read it
+    await pg_session.execute(
+        text("SELECT set_config('app.current_user_id', :uid, true)"), {"uid": admin_id}
+    )
+    result = await pg_session.execute(
+        text("SELECT id FROM messages WHERE id = :id"), {"id": msg_id}
+    )
+    assert result.fetchone() is not None
+
+    # 3. Student (who is NOT a participant) cannot read it
+    await pg_session.execute(
+        text("SELECT set_config('app.current_user_id', :uid, true)"),
+        {"uid": student_id},
+    )
+    result = await pg_session.execute(
+        text("SELECT id FROM messages WHERE id = :id"), {"id": msg_id}
+    )
+    assert result.fetchone() is None

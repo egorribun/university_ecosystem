@@ -1,5 +1,6 @@
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import httpx
 import pytest
 
 from app.core.config import settings
@@ -184,3 +185,83 @@ async def test_vector_service_context_manager(mock_db):
             service._client.aclose = AsyncMock()
             assert service.db is mock_db
         service._client.aclose.assert_called_once()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "exception_cls",
+    [
+        ValueError("Invalid JSON response"),
+        TimeoutError("Request timed out"),
+        httpx.TransportError("Connection failed"),
+        httpx.HTTPStatusError(
+            "Status error",
+            request=MagicMock(),
+            response=MagicMock(status_code=500),
+        ),
+    ],
+)
+async def test_get_embedding_various_exceptions(vector_service, exception_cls):
+    """Test that all specified exceptions are caught and return a zero vector."""
+    with (
+        patch.object(settings, "semantic_search_enabled", True),
+        patch.object(settings, "embedding_api_key", "fake-key"),
+    ):
+        vector_service._client.post = AsyncMock(side_effect=exception_cls)
+
+        embedding = await vector_service.get_embedding("test")
+        assert len(embedding) == settings.embedding_dimensions
+        assert all(x == 0.0 for x in embedding)
+
+
+@pytest.mark.asyncio
+async def test_search_similar_with_scores_model_attributes(vector_service, mock_db):
+    """Test that is_active and deleted_at attributes on models are correctly query-filtered."""
+    with (
+        patch.object(settings, "semantic_search_enabled", True),
+        patch("app.services.vector_service.select") as mock_select,
+    ):
+
+        class RichModel:
+            is_active = True
+            deleted_at = MagicMock()
+            embedding = MagicMock()
+
+        mock_model = RichModel()
+        mock_distance = MagicMock()
+        mock_score_column = MagicMock()
+        mock_score_column.desc.return_value = mock_score_column
+        mock_score_column.__ge__ = MagicMock(return_value=MagicMock())
+
+        mock_sub_result = MagicMock()
+        mock_sub_result.label.return_value = mock_score_column
+        mock_distance.__rsub__ = MagicMock(return_value=mock_sub_result)
+        mock_model.embedding.cosine_distance.return_value = mock_distance
+
+        # Mock select statement builder chain
+        mock_stmt = MagicMock()
+        mock_select.return_value = mock_stmt
+        mock_stmt.where.return_value = mock_stmt
+        mock_stmt.order_by.return_value = mock_stmt
+        mock_stmt.limit.return_value = mock_stmt
+
+        mock_result = MagicMock()
+        mock_result.all.return_value = []
+        mock_db.execute.return_value = mock_result
+
+        await vector_service.search_similar_with_scores(mock_model, [0.1])
+
+        # Verify that select was called, and where clauses were applied
+        mock_select.assert_called_once()
+        assert mock_stmt.where.call_count >= 2
+
+
+def test_vector_service_ssrf_validation(mock_db):
+    """Test that VectorService initialization validates settings.embedding_api_base for SSRF."""
+    with patch(
+        "app.services.vector_service.validate_url_not_internal",
+        side_effect=ValueError("SSRF Blocked"),
+    ) as mock_validate:
+        with pytest.raises(ValueError, match="SSRF Blocked"):
+            VectorService(mock_db)
+        mock_validate.assert_called_once_with(settings.embedding_api_base)

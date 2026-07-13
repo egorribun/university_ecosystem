@@ -54,7 +54,7 @@ class NotificationService:
                 news_id,
                 locale=locale,
             )
-        except (RuntimeError, OSError):
+        except RuntimeError, OSError:
             # RZ-20-04: Narrowed — enqueue errors (queue full, I/O).
             logger.exception(
                 "Failed to enqueue news notification", extra={"news_id": news_id}
@@ -77,7 +77,7 @@ class NotificationService:
                 user_id,
                 locale=locale,
             )
-        except (RuntimeError, OSError):
+        except RuntimeError, OSError:
             logger.exception(
                 "Failed to enqueue comment notification",
                 extra={"news_id": news_id, "comment_id": comment_id},

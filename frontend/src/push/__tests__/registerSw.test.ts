@@ -5,21 +5,44 @@ import { PWA_REFRESH_EVENT } from "@/app/pwaEvents"
 import { SERVICE_WORKER_MESSAGE_TYPES } from "@/constants/serviceWorkerMessages"
 
 describe("registerServiceWorker", () => {
+  let addEventListenerSpy: any
+  let dispatchEventSpy: any
+  let originalLocation: any
+
   beforeEach(() => {
-    vi.stubGlobal("location", {
-      reload: vi.fn(),
+    addEventListenerSpy = vi.spyOn(window, "addEventListener")
+    dispatchEventSpy = vi.spyOn(window, "dispatchEvent")
+
+    originalLocation = window.location
+    const mockLocation = Object.create(originalLocation)
+    Object.defineProperty(mockLocation, "reload", {
+      value: vi.fn(),
+      writable: true,
+      configurable: true,
+      enumerable: true,
     })
-    vi.stubGlobal("window", {
-      ...globalThis.window,
-      dispatchEvent: vi.fn(),
-      addEventListener: vi.fn(),
-      location: { reload: vi.fn() },
+    Object.defineProperty(window, "location", {
+      value: mockLocation,
+      writable: true,
+      configurable: true,
     })
+
     vi.clearAllMocks()
   })
 
   afterEach(() => {
-    vi.unstubAllGlobals()
+    if (addEventListenerSpy && typeof addEventListenerSpy.mockRestore === "function") {
+      addEventListenerSpy.mockRestore()
+    }
+    if (dispatchEventSpy && typeof dispatchEventSpy.mockRestore === "function") {
+      dispatchEventSpy.mockRestore()
+    }
+    Object.defineProperty(window, "location", {
+      value: originalLocation,
+      writable: true,
+      configurable: true,
+    })
+    vi.restoreAllMocks()
     if (typeof window !== "undefined") {
       window.name = ""
     }

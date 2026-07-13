@@ -129,7 +129,7 @@ class _ScanResult:
 def _scanner_size_limit_bytes() -> int:
     try:
         configured = float(getattr(settings, "event_file_scanner_max_size_mb", 0) or 0)
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return 0
     if configured <= 0:
         return 0
@@ -141,7 +141,7 @@ def _scanner_duration_limit_seconds() -> float:
         configured = float(
             getattr(settings, "event_file_scanner_max_duration_sec", 0) or 0
         )
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return 0.0
     if configured <= 0:
         return 0.0

@@ -246,7 +246,7 @@ def _process_image(
             try:
                 img.save(buffer, format="AVIF", quality=60)
                 return buffer.getvalue(), "image/avif"
-            except (OSError, ValueError):
+            except OSError, ValueError:
                 # RZ-20-04: Narrowed — AVIF plugin missing or encoding error.
                 logger.warning("AVIF encoding failed, falling back to WebP")
                 format_pref = "webp"

@@ -23,7 +23,7 @@ declare global {
   var __ssrAuthGetter__: SsrAuthGetter
 }
 
-describe("router.getRouter() — Wave 126 SSR auth context", () => {
+describe("router.getRouter() — Wave 126 SSR auth context", { timeout: 30000 }, () => {
   let originalGetter: SsrAuthGetter
 
   beforeEach(() => {

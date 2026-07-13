@@ -41,8 +41,26 @@ def configure_database() -> None:
 
 @event.listens_for(Engine, "connect")
 def set_sqlite_pragma(dbapi_connection: Any, connection_record: Any) -> None:
-    """Enable WAL mode and foreign keys for SQLite."""
-    if isinstance(dbapi_connection, sqlite3.Connection):
+    """Enable WAL mode and foreign keys for SQLite, and mock PostgreSQL functions."""
+    # Unwrap SQLAlchemy/aiosqlite adaptors to find the raw sqlite3 connection
+    conn = dbapi_connection
+    if hasattr(conn, "dbapi_connection"):
+        conn = conn.dbapi_connection
+    if hasattr(conn, "_conn"):
+        conn = conn._conn
+
+    if hasattr(conn, "create_function"):
+        import time
+
+        try:
+            conn.create_function("pg_sleep", 1, time.sleep)
+        except Exception:  # RZ-22-01-JUSTIFIED: SQLite connection fallback when pg_sleep cannot be registered  # noqa: S110
+            pass
+
+    # PRAGMAs can be executed on the wrapper connection object
+    if isinstance(dbapi_connection, sqlite3.Connection) or hasattr(
+        dbapi_connection, "cursor"
+    ):
         cursor = dbapi_connection.cursor()
         cursor.execute("PRAGMA journal_mode=WAL")
         cursor.execute("PRAGMA synchronous=NORMAL")
