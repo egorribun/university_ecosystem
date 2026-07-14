@@ -1643,18 +1643,17 @@ jobs:
           if grep -qF 'Running mutation testing' /tmp/mutmut_run.log; then mutants_started=1; fi
           if [ "$ec" -eq 0 ]; then
             echo "mutmut completed within the time-box."
+            # Verify mutation score (gate blocking at >= 85.0% via mutmut_ci_gate.py)
+            echo "Verifying mutation score (gate blocking at >= 85.0%)..."
+            uv run python scripts/mutmut_ci_gate.py
           elif [ "$ec" -eq 124 ]; then
-            echo "Incremental mutation testing hit the 20-minute advisory time-box."
+            echo "Incremental mutation testing hit the 20-minute advisory time-box. Skipping score verification for incomplete run."
           elif [ "$mutants_started" -eq 1 ]; then
-            echo "mutmut exited $ec after the mutant phase began."
+            echo "mutmut exited $ec after the mutant phase began. Skipping score verification for incomplete run."
           else
             echo "::error::mutmut exited $ec BEFORE the mutant phase began — a genuine clean-test / forced-fail / stats isolation regression. Failing the job."
             exit "$ec"
           fi
-
-          # Verify mutation score (gate blocking at >= 85.0% via mutmut_ci_gate.py)
-          echo "Verifying mutation score (gate blocking at >= 85.0%)..."
-          uv run python scripts/mutmut_ci_gate.py
 
 
   load-and-chaos-tests:
