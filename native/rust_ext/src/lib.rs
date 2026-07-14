@@ -964,4 +964,3 @@ mod verification {
         let _ = verify_audit_signature(vec![key_str], log_data, signature);
     }
 }
-
