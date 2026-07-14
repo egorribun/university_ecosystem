@@ -119,7 +119,7 @@ jobs:
           restore-keys: rust-criterion-${{ runner.os }}-
 
       - name: Compile benchmarks
-        run: cargo bench -p pyo3-sanitizer --no-default-features --no-run
+        run: cargo bench -p pyo3-sanitizer --bench sanitizer_bench --no-default-features --no-run
         working-directory: crates/pyo3-sanitizer
 
       - name: Run Criterion benchmarks
@@ -127,7 +127,7 @@ jobs:
         # machine-readable stdout via tee for the benchmark action.
         # --no-default-features disables the extension-module feature which links against
         # libpython at build time — unavailable in a standalone bench binary context.
-        run: cargo bench -p pyo3-sanitizer --no-default-features -- --output-format bencher | tee ../../criterion-bench.txt
+        run: cargo bench -p pyo3-sanitizer --bench sanitizer_bench --no-default-features -- --output-format bencher | tee ../../criterion-bench.txt
         working-directory: crates/pyo3-sanitizer
 
       - name: Store Criterion results
