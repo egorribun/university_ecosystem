@@ -69,14 +69,6 @@ jobs:
           print(f'Generated spec: {len(spec[\"paths\"])} paths')
           "
 
-      - name: Set up Node.js (for Spectral CLI)
-        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
-        with:
-          node-version: "20"
-
-      - name: Install Spectral CLI
-        run: npm install --global @stoplight/spectral-cli@6.16.1
-
       - name: Run Spectral lint
         # Continue-on-error so SARIF is always uploaded, even on failures.
         # The actual gate is the upload-sarif step's check-name, which
@@ -84,7 +76,7 @@ jobs:
         id: spectral
         continue-on-error: true
         run: |
-          spectral lint /tmp/backend-openapi.json \
+          docker run --rm -v /tmp:/tmp -v $(pwd):/work -w /work stoplight/spectral lint /tmp/backend-openapi.json \
             --ruleset .spectral.yml \
             --format sarif \
             --output spectral-results.sarif
@@ -100,7 +92,7 @@ jobs:
         # Re-raise on errors (severity ERROR) but not warnings.
         # Spectral exit codes: 0=clean, 1=warnings, 2=errors.
         run: |
-          spectral lint /tmp/backend-openapi.json \
+          docker run --rm -v /tmp:/tmp -v $(pwd):/work -w /work stoplight/spectral lint /tmp/backend-openapi.json \
             --ruleset .spectral.yml \
             --format text \
             --fail-severity error
