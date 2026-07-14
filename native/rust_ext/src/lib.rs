@@ -191,7 +191,9 @@ pub fn batch_detect_conflicts(
 }
 
 #[pyfunction(name = "batch_detect_conflicts")]
-fn batch_detect_conflicts_py(items: Bound<'_, PyAny>) -> PyResult<Vec<(ScheduleItem, ScheduleItem)>> {
+fn batch_detect_conflicts_py(
+    items: Bound<'_, PyAny>,
+) -> PyResult<Vec<(ScheduleItem, ScheduleItem)>> {
     let _extract_guard = schedule_item_extract_guard()?;
     let items: Vec<ScheduleItem> = items.extract()?;
     drop(_extract_guard);
@@ -200,6 +202,7 @@ fn batch_detect_conflicts_py(items: Bound<'_, PyAny>) -> PyResult<Vec<(ScheduleI
 }
 
 #[pyfunction(name = "find_optimal_slot")]
+#[pyo3(signature = (duration_minutes, existing_schedule, available_blocks))]
 /// TD-W17-03 (Wave 17): Fixed to use the actual next occurrence of the
 /// requested weekday instead of always using Jan 1. Previously, timestamps
 /// were semantically wrong — conflict detection worked by coincidence (string
@@ -449,6 +452,7 @@ pub fn is_partition_expired(
 use hmac::{Hmac, Mac};
 use sha2::Sha256;
 
+#[pyfunction]
 pub fn verify_audit_signature(
     signing_keys: Vec<String>,
     log_data: String,
