@@ -204,7 +204,9 @@ async def healthz(
                             # Drift is always an error for the migration status itself
                             statuses["db_migrations"] = "error"
                             statuses["db_migrations_current"] = sorted(current_versions)
-                            statuses["db_migrations_expected"] = sorted(expected_versions)
+                            statuses["db_migrations_expected"] = sorted(
+                                expected_versions
+                            )
                             db_status = "error"
                         else:
                             statuses["db_migrations"] = "ok"
