@@ -991,6 +991,12 @@
     letter-spacing: var(--tracking-body);
   }
 
+  @media (prefers-reduced-motion: reduce) {
+    body {
+      transition: none;
+    }
+  }
+
   h1,
   h2,
   h3,

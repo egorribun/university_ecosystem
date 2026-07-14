@@ -110,14 +110,14 @@ test.describe("Admin moderation", () => {
     await login(page)
 
     // Navigate to the admin moderation page.
-    await page.goto("/admin/moderation", { waitUntil: "networkidle" })
+    await page.goto("/admin/moderation", { waitUntil: "domcontentloaded" })
 
     // The reports list might be at a different URL if the admin panel uses
     // a nested route. Try common paths.
     const currentUrl = page.url()
     if (!currentUrl.includes("/admin")) {
       // Admin area not accessible from this role — may need direct navigation.
-      await page.goto("/admin", { waitUntil: "networkidle" })
+      await page.goto("/admin", { waitUntil: "domcontentloaded" })
     }
 
     // Look for the report reason text or a "reports" heading.
@@ -140,7 +140,7 @@ test.describe("Admin moderation", () => {
     const { login } = await useMockApi(page)
     await login(page)
 
-    await page.goto("/admin/moderation", { waitUntil: "networkidle" })
+    await page.goto("/admin/moderation", { waitUntil: "domcontentloaded" })
 
     // Look for a dismiss / action button on the first report.
     const dismissButton = page.getByRole("button", {
@@ -174,7 +174,7 @@ test.describe("Admin moderation", () => {
     const { login } = await useMockApi(page)
     await login(page)
 
-    await page.goto("/admin/audit", { waitUntil: "networkidle" })
+    await page.goto("/admin/audit", { waitUntil: "domcontentloaded" })
 
     const auditEntry = page
       .locator("body")

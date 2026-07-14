@@ -836,13 +836,17 @@ export async function useMockApi(page: Page) {
     state,
     async login(p: Page) {
       state.loggedIn = true
-      await p.goto("/")
+      // The preview can keep non-critical assets pending while the app is
+      // bootstrapping. Login only needs the document shell before injecting
+      // the mock session, so waiting for DOMContentLoaded avoids coupling
+      // every test to unrelated asset/network completion.
+      await p.goto("/", { waitUntil: "domcontentloaded", timeout: 30_000 })
       await p.evaluate(() => {
         localStorage.setItem("access_token", "mock-token")
         localStorage.setItem("refresh_token", "mock-refresh")
         localStorage.setItem("ue:language", "ru")
       })
-      await p.goto("/dashboard")
+      await p.goto("/dashboard", { waitUntil: "domcontentloaded", timeout: 30_000 })
       await expect(p).toHaveURL(/\/dashboard$/)
     },
     async setOffline(p: Page, offline: boolean) {

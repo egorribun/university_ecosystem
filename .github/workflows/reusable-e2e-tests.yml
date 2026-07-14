@@ -49,10 +49,10 @@ jobs:
     name: E2E Tests (${{ inputs.browser }})
     runs-on: ubuntu-latest
     # The Chromium suite contains 114 tests, including expensive accessibility
-    # scans. The caller splits the default suite into two Playwright shards.
-    # Keep two workers per shard: four concurrent Chromium navigations
-    # overload the SSR preview under CI load and cascade into page.goto
-    # net::ERR_ABORTED timeouts; the two shards still run in parallel.
+    # scans. The caller splits the default suite into four Playwright shards.
+    # Keep one worker per shard: four concurrent Chromium navigations are the
+    # stable ceiling for the SSR preview; higher aggregate concurrency cascades
+    # into page.goto net::ERR_ABORTED timeouts.
     timeout-minutes: 45
     env:
       SECRET_KEY: "dummy_secret_key_for_ci_tests_at_least_32_chars"
@@ -169,7 +169,7 @@ jobs:
           npx playwright test "$TEST_PATTERN" \
             --project="$BROWSER" \
             --shard=${{ inputs.shard-index }}/${{ inputs.shard-total }} \
-            --workers=2 \
+            --workers=1 \
             --reporter=html
 
       # Wave 122 SW3: cross-env URL_STATE_E2E auto-managed mode.
