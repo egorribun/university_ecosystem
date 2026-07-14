@@ -438,6 +438,10 @@ async def prepare_database() -> AsyncIterator[None]:
 @pytest_asyncio.fixture
 async def db_session() -> AsyncIterator[AsyncSession]:
     """Get a fresh database session for each test."""
+    if database._engine is not None:
+        await database._engine.dispose()
+    if database._read_replica_engine is not None:
+        await database._read_replica_engine.dispose()
     async with database.async_session() as session:
         yield session
         await session.rollback()
