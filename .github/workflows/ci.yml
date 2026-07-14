@@ -1899,6 +1899,9 @@ jobs:
       redis:
         image: redis:7-alpine
         ports: ["6379:6379"]
+      nats:
+        image: nats:2.10.25-alpine
+        ports: ["4222:4222"]
       toxiproxy:
         image: ghcr.io/shopify/toxiproxy:2.9.0
         ports: ["8474:8474", "5433:5433", "6380:6380", "4223:4223"]
@@ -1911,14 +1914,17 @@ jobs:
         run: |
           curl -s http://localhost:8474/version
           curl -s -X POST http://localhost:8474/proxies \
-            -d '{"name":"postgres","listen":"0.0.0.0:5433","upstream":"localhost:5432"}'
+            -d '{"name":"postgres","listen":"0.0.0.0:5433","upstream":"postgres:5432"}'
           curl -s -X POST http://localhost:8474/proxies \
-            -d '{"name":"redis","listen":"0.0.0.0:6380","upstream":"localhost:6379"}'
+            -d '{"name":"redis","listen":"0.0.0.0:6380","upstream":"redis:6379"}'
+          curl -s -X POST http://localhost:8474/proxies \
+            -d '{"name":"nats","listen":"0.0.0.0:4223","upstream":"nats:4222"}'
       - name: Run chaos tests
         env:
           TOXIPROXY_URL: http://localhost:8474
           DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5433/testdb  # pragma: allowlist secret
           CACHE_REDIS_URL: redis://localhost:6380/0
+          NATS_URL: nats://localhost:4223
         run: uv run pytest tests/chaos/ -v -m chaos --tb=short
 
   db-migration-integrity:
