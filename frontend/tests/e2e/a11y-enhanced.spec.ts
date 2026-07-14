@@ -103,7 +103,9 @@ test.describe("@a11y enhanced WCAG 2.2 AA + tab-order + reduced-motion", () => {
     )
 
     await page.emulateMedia({ reducedMotion: "reduce" })
-    await page.goto("/login", { waitUntil: "domcontentloaded", timeout: 30_000 })
+    await page.goto("/login", { waitUntil: "commit", timeout: 30_000 })
+    await expect(page.locator('input[name="email"]')).toBeVisible({ timeout: 15_000 })
+    await expect(page.locator('input[name="password"]')).toBeVisible({ timeout: 15_000 })
     // Block subsequent network to prevent event-loop starvation (W147 SW1 root-cause fix).
     await page.route("**/*", (r) => r.abort())
     await page.waitForTimeout(1500)
@@ -127,7 +129,10 @@ test.describe("@a11y enhanced WCAG 2.2 AA + tab-order + reduced-motion", () => {
       "Tab-order test is Chromium-only for determinism"
     )
 
-    await page.goto("/login", { waitUntil: "domcontentloaded", timeout: 30_000 })
+    await page.goto("/login", { waitUntil: "commit", timeout: 30_000 })
+    await expect(page.locator('input[name="email"]')).toBeVisible({ timeout: 15_000 })
+    await expect(page.locator('input[name="password"]')).toBeVisible({ timeout: 15_000 })
+    await expect(page.locator('button[type="submit"]')).toBeVisible({ timeout: 15_000 })
     await page.route("**/*", (r) => r.abort())
     await page.waitForTimeout(1000)
 
@@ -171,7 +176,9 @@ test.describe("@a11y enhanced WCAG 2.2 AA + tab-order + reduced-motion", () => {
     )
 
     await page.emulateMedia({ reducedMotion: "reduce" })
-    await page.goto("/login", { waitUntil: "domcontentloaded", timeout: 30_000 })
+    await page.goto("/login", { waitUntil: "commit", timeout: 30_000 })
+    await expect(page.locator('input[name="email"]')).toBeVisible({ timeout: 15_000 })
+    await expect(page.locator('input[name="password"]')).toBeVisible({ timeout: 15_000 })
     await page.route("**/*", (r) => r.abort())
     await page.waitForTimeout(1500)
 
