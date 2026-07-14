@@ -4,6 +4,7 @@
 use chrono::{Datelike, Duration, NaiveDate, TimeZone, Utc, Weekday};
 use pyo3::prelude::*;
 use rayon::prelude::*;
+use std::sync::Mutex;
 
 // pyo3 0.29 (RUSTSEC-2026-0176/-0177 bump): the automatic FromPyObject derive
 // for Clone #[pyclass] types is becoming opt-in. ScheduleItem is extracted from
@@ -23,6 +24,22 @@ pub struct ScheduleItem {
     pub end_time: i64, // timestamp in seconds
     #[pyo3(get, set)]
     pub parity: String,
+}
+
+// Python 3.13+ free-threaded builds can enter the same PyO3 function from
+// multiple OS threads without a process-wide GIL.  PyO3's derived
+// `FromPyObject` implementation for a `#[pyclass]` therefore needs a small
+// serialization point while it borrows the Python object and clones its
+// fields.  After extraction, `ScheduleItem` is owned Rust data and all
+// conflict work remains fully parallel.
+static SCHEDULE_ITEM_EXTRACT_LOCK: Mutex<()> = Mutex::new(());
+
+fn schedule_item_extract_guard() -> PyResult<std::sync::MutexGuard<'static, ()>> {
+    SCHEDULE_ITEM_EXTRACT_LOCK.lock().map_err(|_| {
+        pyo3::exceptions::PyRuntimeError::new_err(
+            "ScheduleItem extraction lock is poisoned",
+        )
+    })
 }
 
 #[pymethods]
@@ -62,9 +79,14 @@ pub fn check_conflict_proto(a: &ScheduleItem, b: &ScheduleItem) -> bool {
 
 #[pyfunction]
 fn detect_conflicts(
-    target: ScheduleItem,
-    existing: Vec<ScheduleItem>,
+    target: Bound<'_, PyAny>,
+    existing: Bound<'_, PyAny>,
 ) -> PyResult<Vec<ScheduleItem>> {
+    let _extract_guard = schedule_item_extract_guard()?;
+    let target: ScheduleItem = target.extract()?;
+    let existing: Vec<ScheduleItem> = existing.extract()?;
+    drop(_extract_guard);
+
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         existing
             .into_iter()
@@ -92,8 +114,12 @@ const MAX_CONFLICT_ITEMS: usize = 2500;
 
 #[pyfunction]
 pub fn batch_detect_conflicts(
-    items: Vec<ScheduleItem>,
+    items: Bound<'_, PyAny>,
 ) -> PyResult<Vec<(ScheduleItem, ScheduleItem)>> {
+    let _extract_guard = schedule_item_extract_guard()?;
+    let items: Vec<ScheduleItem> = items.extract()?;
+    drop(_extract_guard);
+
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         if items.len() > MAX_CONFLICT_ITEMS {
             return Err(pyo3::exceptions::PyValueError::new_err(format!(
@@ -171,9 +197,14 @@ pub fn batch_detect_conflicts(
 /// end_time as real dates would get incorrect results.
 fn find_optimal_slot(
     duration_minutes: u32,
-    existing_schedule: Vec<ScheduleItem>,
-    available_blocks: Vec<(String, Vec<u32>)>,
+    existing_schedule: Bound<'_, PyAny>,
+    available_blocks: Bound<'_, PyAny>,
 ) -> PyResult<Option<ScheduleItem>> {
+    let _extract_guard = schedule_item_extract_guard()?;
+    let existing_schedule: Vec<ScheduleItem> = existing_schedule.extract()?;
+    let available_blocks: Vec<(String, Vec<u32>)> = available_blocks.extract()?;
+    drop(_extract_guard);
+
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         let today = Utc::now().date_naive();
 
