@@ -53,3 +53,4 @@ async def get_shared_client(redis_url: str) -> Redis[Any]:
 def set_rate_limit_client_factory(factory: _RedisFactory | None) -> None:
     global _redis_factory
     _redis_factory = _create_redis_pool if factory is None else factory
+    _shared_clients.clear()
