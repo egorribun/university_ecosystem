@@ -19,3 +19,11 @@ def test_tsan_suppresses_uvloop_embedded_libuv() -> None:
     suppressions = SCRIPT.parents[1] / "tests" / "tsan_suppressions.txt"
 
     assert "called_from_lib:uvloop" in suppressions.read_text(encoding="utf-8")
+
+
+def test_tsan_suppresses_only_known_pyo3_argument_adapters() -> None:
+    suppressions = SCRIPT.parents[1] / "tests" / "tsan_suppressions.txt"
+    content = suppressions.read_text(encoding="utf-8")
+
+    assert "race:__pyfunction_batch_detect_conflicts_py" in content
+    assert "race:__pyfunction_verify_audit_signature" in content

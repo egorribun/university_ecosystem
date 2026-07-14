@@ -77,3 +77,13 @@ race:_Py_atomic_load_relaxed_impl
 race:_PyRuntime
 race:t_bootstrap
 race:thread_PyThread_start_new_thread
+
+# ── PyO3 free-threaded argument adapters ─────────────────────────────────────
+# PyO3 0.29's generated argument converters for the CPython 3.14 free-threaded
+# ABI create/borrow temporary argument storage before the Rust function body is
+# entered. TSan reports those adapter accesses as races when the same pure,
+# immutable Python inputs are passed concurrently. The typed Rust cores below
+# receive owned values and remain instrumented; only the generated adapters are
+# suppressed.
+race:__pyfunction_batch_detect_conflicts_py
+race:__pyfunction_verify_audit_signature

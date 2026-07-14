@@ -3,7 +3,6 @@
 #![allow(unexpected_cfgs)]
 use chrono::{Datelike, Duration, NaiveDate, TimeZone, Utc, Weekday};
 use pyo3::prelude::*;
-use pyo3::types::PyTuple;
 use rayon::prelude::*;
 use std::sync::Mutex;
 
@@ -43,17 +42,6 @@ fn schedule_item_extract_guard() -> PyResult<std::sync::MutexGuard<'static, ()>>
     })
 }
 
-fn require_arg_count(args: &Bound<'_, PyTuple>, expected: usize) -> PyResult<()> {
-    if args.len() == expected {
-        Ok(())
-    } else {
-        Err(pyo3::exceptions::PyTypeError::new_err(format!(
-            "expected {expected} arguments, got {}",
-            args.len()
-        )))
-    }
-}
-
 #[pymethods]
 impl ScheduleItem {
     #[new]
@@ -90,12 +78,13 @@ pub fn check_conflict_proto(a: &ScheduleItem, b: &ScheduleItem) -> bool {
 }
 
 #[pyfunction(name = "detect_conflicts")]
-#[pyo3(signature = (*args))]
-fn detect_conflicts_py(args: &Bound<'_, PyTuple>) -> PyResult<Vec<ScheduleItem>> {
+fn detect_conflicts_py(
+    target: Bound<'_, PyAny>,
+    existing: Bound<'_, PyAny>,
+) -> PyResult<Vec<ScheduleItem>> {
     let _extract_guard = schedule_item_extract_guard()?;
-    require_arg_count(args, 2)?;
-    let target: ScheduleItem = args.get_item(0)?.extract()?;
-    let existing: Vec<ScheduleItem> = args.get_item(1)?.extract()?;
+    let target: ScheduleItem = target.extract()?;
+    let existing: Vec<ScheduleItem> = existing.extract()?;
     drop(_extract_guard);
 
     detect_conflicts(target, existing)
@@ -202,31 +191,28 @@ pub fn batch_detect_conflicts(
 }
 
 #[pyfunction(name = "batch_detect_conflicts")]
-#[pyo3(signature = (*args))]
-fn batch_detect_conflicts_py(
-    args: &Bound<'_, PyTuple>,
-) -> PyResult<Vec<(ScheduleItem, ScheduleItem)>> {
+fn batch_detect_conflicts_py(items: Bound<'_, PyAny>) -> PyResult<Vec<(ScheduleItem, ScheduleItem)>> {
     let _extract_guard = schedule_item_extract_guard()?;
-    require_arg_count(args, 1)?;
-    let items: Vec<ScheduleItem> = args.get_item(0)?.extract()?;
+    let items: Vec<ScheduleItem> = items.extract()?;
     drop(_extract_guard);
 
     batch_detect_conflicts(items)
 }
 
 #[pyfunction(name = "find_optimal_slot")]
-#[pyo3(signature = (*args))]
 /// TD-W17-03 (Wave 17): Fixed to use the actual next occurrence of the
 /// requested weekday instead of always using Jan 1. Previously, timestamps
 /// were semantically wrong — conflict detection worked by coincidence (string
 /// comparison of weekday + time overlap), but any caller using start_time/
 /// end_time as real dates would get incorrect results.
-fn find_optimal_slot_py(args: &Bound<'_, PyTuple>) -> PyResult<Option<ScheduleItem>> {
+fn find_optimal_slot_py(
+    duration_minutes: u32,
+    existing_schedule: Bound<'_, PyAny>,
+    available_blocks: Bound<'_, PyAny>,
+) -> PyResult<Option<ScheduleItem>> {
     let _extract_guard = schedule_item_extract_guard()?;
-    require_arg_count(args, 3)?;
-    let duration_minutes: u32 = args.get_item(0)?.extract()?;
-    let existing_schedule: Vec<ScheduleItem> = args.get_item(1)?.extract()?;
-    let available_blocks: Vec<(String, Vec<u32>)> = args.get_item(2)?.extract()?;
+    let existing_schedule: Vec<ScheduleItem> = existing_schedule.extract()?;
+    let available_blocks: Vec<(String, Vec<u32>)> = available_blocks.extract()?;
     drop(_extract_guard);
 
     find_optimal_slot(duration_minutes, existing_schedule, available_blocks)
@@ -499,19 +485,6 @@ pub fn verify_audit_signature(
     })?
 }
 
-#[pyfunction(name = "verify_audit_signature")]
-#[pyo3(signature = (*args))]
-fn verify_audit_signature_py(args: &Bound<'_, PyTuple>) -> PyResult<bool> {
-    let _extract_guard = schedule_item_extract_guard()?;
-    require_arg_count(args, 3)?;
-    let signing_keys: Vec<String> = args.get_item(0)?.extract()?;
-    let log_data: String = args.get_item(1)?.extract()?;
-    let signature: String = args.get_item(2)?.extract()?;
-    drop(_extract_guard);
-
-    verify_audit_signature(signing_keys, log_data, signature)
-}
-
 /// A Python module implemented in Rust.
 #[pymodule]
 fn rust_ext(m: &Bound<'_, PyModule>) -> PyResult<()> {
@@ -522,7 +495,7 @@ fn rust_ext(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(find_optimal_slot_py, m)?)?;
     m.add_function(wrap_pyfunction!(get_partition_info, m)?)?;
     m.add_function(wrap_pyfunction!(is_partition_expired, m)?)?;
-    m.add_function(wrap_pyfunction!(verify_audit_signature_py, m)?)?;
+    m.add_function(wrap_pyfunction!(verify_audit_signature, m)?)?;
     // PERF-05: expose limit so Python callers can validate before calling into Rust.
     m.add("MAX_CONFLICT_ITEMS", MAX_CONFLICT_ITEMS)?;
     Ok(())
