@@ -264,7 +264,11 @@ async def test_rls_matrix_read_write(
                     "INSERT INTO messages (id, chat_id, sender_id, content, created_at, read_status) "
                     "VALUES (:id, :chat_id, :sender, 'anon msg', NOW(), false)"
                 ),
-                {"id": str(uuid.uuid4()), "chat_id": chat_a_id, "sender": users["student"]},
+                {
+                    "id": str(uuid.uuid4()),
+                    "chat_id": chat_a_id,
+                    "sender": users["student"],
+                },
             )
             await pg_session.flush()
 
