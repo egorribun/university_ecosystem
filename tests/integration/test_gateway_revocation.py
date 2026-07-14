@@ -43,11 +43,28 @@ GATEWAY_URL = os.getenv("GATEWAY_URL", "http://localhost:8080")
 TEST_EMAIL = os.getenv("TEST_USER_EMAIL", "integration@example.com")
 TEST_PASSWORD = os.getenv("TEST_USER_PASSWORD", "IntegrationSecret1!")
 
-_RUN = bool(os.getenv("RUN_INTEGRATION_TESTS"))
+def _check_services() -> bool:
+    import socket
+    from urllib.parse import urlparse
+    for url in (BACKEND_URL, GATEWAY_URL):
+        parsed = urlparse(url)
+        host = parsed.hostname or "localhost"
+        port = parsed.port or (80 if parsed.scheme == "http" else 443)
+        try:
+            with socket.create_connection((host, port), timeout=0.5):
+                pass
+        except OSError:  # RZ-20-04
+            return False
+    return True
+
+_RUN = bool(os.getenv("RUN_INTEGRATION_TESTS")) and _check_services()
 
 pytestmark = [
     pytest.mark.integration,
-    pytest.mark.skipif(not _RUN, reason="Set RUN_INTEGRATION_TESTS=1 to run"),
+    pytest.mark.skipif(
+        not _RUN,
+        reason="Set RUN_INTEGRATION_TESTS=1 and ensure backend and gateway services are running to run"
+    ),
 ]
 
 
