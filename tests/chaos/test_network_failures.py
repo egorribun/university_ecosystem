@@ -42,7 +42,7 @@ async def test_postgres_latency_triggers_timeout_response(async_client):
             f"{TOXIPROXY_URL}/proxies/postgres/toxics",
             json={
                 "type": "latency",
-                "attributes": {"latency": 5000},
+                "attributes": {"latency": 8000},
                 "name": "pg_lag",
             },
         )
