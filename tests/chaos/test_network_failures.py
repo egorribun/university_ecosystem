@@ -47,6 +47,8 @@ async def test_postgres_latency_triggers_timeout_response(async_client):
             },
         )
     try:
+        from app.api.health import reset_health_cache
+        reset_health_cache()
         response = await async_client.get("http://testserver/healthz")
         assert response.status_code in (503, 504, 408)
     finally:
@@ -73,6 +75,8 @@ async def test_redis_down_cache_miss_uses_db(async_client):
             },
         )
     try:
+        from app.api.health import reset_health_cache
+        reset_health_cache()
         response = await async_client.get("http://testserver/healthz")
         # Should still respond (circuit breaker / degraded mode)
         assert response.status_code in (200, 503)
@@ -101,6 +105,8 @@ async def test_nats_packet_loss_outbox_retries(async_client):
             },
         )
     try:
+        from app.api.health import reset_health_cache
+        reset_health_cache()
         # Health endpoint should remain accessible even under NATS pressure
         response = await async_client.get("http://testserver/healthz")
         assert response.status_code in (200, 503)
