@@ -610,23 +610,24 @@ jobs:
 
   # Wave 122 polish A1 — wires up the Playwright E2E suite + the W122 SW3
   # cross-env URL_STATE_E2E step. The default Chromium suite is split into
-  # two isolated shards so all 114 tests finish within the job timeout.
+  # four isolated shards so all 114 tests finish within the job timeout
+  # without overloading the SSR preview.
   # Chromium-only by design (W120 SW7 + W121 SW3); add firefox/webkit
   # in a future wave if multi-browser e2e coverage warranted.
   e2e-tests:
-    name: E2E Tests (shard ${{ matrix.shard-index }}/2)
+    name: E2E Tests (shard ${{ matrix.shard-index }}/4)
     needs: pre-commit-check
     strategy:
       fail-fast: false
       matrix:
-        shard-index: [1, 2]
+        shard-index: [1, 2, 3, 4]
     uses: ./.github/workflows/reusable-e2e-tests.yml
     with:
       node-version: "22"
       python-version: "3.14"
       browser: chromium
       shard-index: ${{ matrix.shard-index }}
-      shard-total: 2
+      shard-total: 4
     secrets: inherit
 
   security-audit:
