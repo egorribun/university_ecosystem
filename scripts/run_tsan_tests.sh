@@ -80,6 +80,7 @@ echo "==> [TSan] Running FFI tests under TSan..."
 # overflow causes a CHECK-fail that kills the process before tests finish.
 TSAN_SUPPRESSIONS_FILE="${REPO_ROOT}/tests/tsan_suppressions.txt"
 PYTHON_BIN="${REPO_ROOT}/.venv/bin/python"
+TSAN_LOG_PREFIX="${REPO_ROOT}/tsan-report"
 
 if [[ ! -x "${PYTHON_BIN}" ]]; then
   echo "ERROR: Expected the uv-managed Python environment at '${PYTHON_BIN}'."
@@ -87,8 +88,9 @@ if [[ ! -x "${PYTHON_BIN}" ]]; then
   exit 1
 fi
 
+set +e
 LD_PRELOAD="${TSAN_LIB}" \
-TSAN_OPTIONS="suppressions=${TSAN_SUPPRESSIONS_FILE}:halt_on_error=0:second_deadlock_stack=0:print_suppressions=1:verbosity=1" \
+TSAN_OPTIONS="suppressions=${TSAN_SUPPRESSIONS_FILE}:halt_on_error=0:second_deadlock_stack=0:print_suppressions=1:verbosity=1:log_path=${TSAN_LOG_PREFIX}" \
   "${PYTHON_BIN}" -m pytest \
     tests/test_smoke_rust_audit.py \
     tests/test_smoke_rust_partitions.py \
@@ -97,5 +99,17 @@ TSAN_OPTIONS="suppressions=${TSAN_SUPPRESSIONS_FILE}:halt_on_error=0:second_dead
     tests/test_smoke_pyo3_ext.py \
     -v \
     --tb=short
+TEST_EXIT_CODE=$?
+set -e
+
+for report in "${TSAN_LOG_PREFIX}".*; do
+  if [[ -f "${report}" ]]; then
+    cat "${report}"
+  fi
+done
+
+if [[ "${TEST_EXIT_CODE}" -ne 0 ]]; then
+  exit "${TEST_EXIT_CODE}"
+fi
 
 echo "==> [TSan] All FFI tests passed — no data races detected."

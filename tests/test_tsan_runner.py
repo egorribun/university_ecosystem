@@ -10,6 +10,10 @@ def test_tsan_preloads_python_directly_instead_of_uv() -> None:
     assert '  "${PYTHON_BIN}" -m pytest \\' in script
     assert "  uv run pytest \\" not in script
 
+    assert 'TSAN_LOG_PREFIX="${REPO_ROOT}/tsan-report"' in script
+    assert "log_path=${TSAN_LOG_PREFIX}" in script
+    assert "TEST_EXIT_CODE=$?" in script
+
 
 def test_tsan_suppresses_uvloop_embedded_libuv() -> None:
     suppressions = SCRIPT.parents[1] / "tests" / "tsan_suppressions.txt"
