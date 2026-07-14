@@ -235,8 +235,8 @@ async def test_rls_matrix_read_write(
 
         # Write to Chat B (Non-participant) -> FAILURE
         bad_msg_id = str(uuid.uuid4())
-        async with pg_session.begin_nested():
-            with pytest.raises(DBAPIError):
+        with pytest.raises(DBAPIError):
+            async with pg_session.begin_nested():
                 await pg_session.execute(
                     text(
                         "INSERT INTO messages (id, chat_id, sender_id, content, created_at, read_status) "
@@ -257,8 +257,8 @@ async def test_rls_matrix_read_write(
     assert res_anon_a.fetchone() is None
 
     # Write A -> Fail
-    async with pg_session.begin_nested():
-        with pytest.raises(DBAPIError):
+    with pytest.raises(DBAPIError):
+        async with pg_session.begin_nested():
             await pg_session.execute(
                 text(
                     "INSERT INTO messages (id, chat_id, sender_id, content, created_at, read_status) "
