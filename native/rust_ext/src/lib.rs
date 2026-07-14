@@ -484,7 +484,7 @@ mod tests {
     #[test]
     fn expired_empty_partition_name() {
         // Empty name cannot match the expected prefix — returns false.
-        assert!(!is_partition_expired("".to_string(), "tbl".to_string(), 90));
+        assert!(!is_partition_expired("".to_string(), "tbl".to_string(), 90).unwrap());
     }
 
     #[test]
@@ -494,7 +494,7 @@ mod tests {
             "tbl_y2025".to_string(),
             "tbl".to_string(),
             90
-        ));
+        ).unwrap());
     }
 
     #[test]
@@ -503,7 +503,7 @@ mod tests {
             "tbl_yABCDm01".to_string(),
             "tbl".to_string(),
             90
-        ));
+        ).unwrap());
     }
 
     #[test]
@@ -512,7 +512,7 @@ mod tests {
             "tbl_y2025mXX".to_string(),
             "tbl".to_string(),
             90
-        ));
+        ).unwrap());
     }
 
     #[test]
@@ -522,7 +522,7 @@ mod tests {
             "tbl_y2025m00".to_string(),
             "tbl".to_string(),
             90
-        ));
+        ).unwrap());
     }
 
     #[test]
@@ -532,7 +532,7 @@ mod tests {
             "tbl_y2025m13".to_string(),
             "tbl".to_string(),
             90
-        ));
+        ).unwrap());
     }
 
     #[test]
