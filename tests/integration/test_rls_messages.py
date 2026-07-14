@@ -419,7 +419,7 @@ async def test_rls_applies_to_professors_and_admins(
 
     # Insert users with different roles
     for uid, email, role in [
-        (prof_id, "rls_prof@test.com", "professor"),
+        (prof_id, "rls_prof@test.com", "teacher"),
         (admin_id, "rls_admin_user@test.com", "admin"),
         (student_id, "rls_stud@test.com", "student"),
     ]:
