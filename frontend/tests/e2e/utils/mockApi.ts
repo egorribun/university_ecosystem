@@ -356,6 +356,71 @@ export async function useMockApi(page: Page) {
     }
   })
 
+  // Keep authenticated mock pages from opening a real socket against the
+  // preview server. The ticket endpoint is mocked below, but the preview has
+  // no WebSocket upgrade handler; a real socket therefore receives 403 and
+  // the client starts a reconnect loop that starves later page navigations.
+  await page.addInitScript(() => {
+    type Listener = (event: Event) => void
+
+    class MockWebSocket {
+      static readonly CONNECTING = 0
+      static readonly OPEN = 1
+      static readonly CLOSING = 2
+      static readonly CLOSED = 3
+
+      readonly url: string
+      readonly protocol = ""
+      readonly extensions = ""
+      readonly bufferedAmount = 0
+      readonly binaryType = "blob"
+      readyState = MockWebSocket.CONNECTING
+      onopen: (() => void) | null = null
+      onclose: ((event: Event) => void) | null = null
+      onerror: ((event: Event) => void) | null = null
+      onmessage: ((event: MessageEvent) => void) | null = null
+      private readonly listeners = new Map<string, Set<Listener>>()
+
+      constructor(url: string) {
+        this.url = url
+        setTimeout(() => {
+          if (this.readyState !== MockWebSocket.CONNECTING) return
+          this.readyState = MockWebSocket.OPEN
+          this.onopen?.()
+          this.dispatch("open", new Event("open"))
+        }, 0)
+      }
+
+      addEventListener(type: string, listener: Listener) {
+        const listeners = this.listeners.get(type) ?? new Set<Listener>()
+        listeners.add(listener)
+        this.listeners.set(type, listeners)
+      }
+
+      removeEventListener(type: string, listener: Listener) {
+        this.listeners.get(type)?.delete(listener)
+      }
+
+      send(_data: string) {
+        // The generic mock intentionally does not emulate server frames.
+      }
+
+      close() {
+        if (this.readyState === MockWebSocket.CLOSED) return
+        this.readyState = MockWebSocket.CLOSED
+        const event = new Event("close")
+        this.onclose?.(event)
+        this.dispatch("close", event)
+      }
+
+      private dispatch(type: string, event: Event) {
+        for (const listener of this.listeners.get(type) ?? []) listener(event)
+      }
+    }
+
+    ;(window as unknown as { WebSocket: typeof MockWebSocket }).WebSocket = MockWebSocket
+  })
+
   page.on("console", (msg) => {
     const location = msg.location()
     if (

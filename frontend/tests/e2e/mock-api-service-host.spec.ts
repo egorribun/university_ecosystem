@@ -14,3 +14,25 @@ test("mock API supports credentialed service-host requests", async ({ page }) =>
   expect(result.status).toBe(200)
   expect(result.body).toHaveProperty("items")
 })
+
+test("mock API provides a stable WebSocket for authenticated pages", async ({ page }) => {
+  await useMockApi(page)
+
+  const opened = await page.evaluate(
+    () =>
+      new Promise<boolean>((resolve) => {
+        const socket = new WebSocket("ws://api/ws/chat?ticket=mock-ws-ticket")
+        const finish = (value: boolean) => {
+          clearTimeout(timeout)
+          socket.close()
+          resolve(value)
+        }
+        const timeout = setTimeout(() => finish(false), 1000)
+
+        socket.addEventListener("open", () => finish(true), { once: true })
+        socket.addEventListener("error", () => finish(false), { once: true })
+      })
+  )
+
+  expect(opened).toBe(true)
+})
