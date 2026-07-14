@@ -433,10 +433,39 @@ export async function useMockApi(page: Page) {
     })
   }
 
-  await page.context().route("**/*", async (route) => {
-    const request = route.request()
+  await page.context().route("**/*", async (requestRoute) => {
+    const request = requestRoute.request()
     const url = new URL(request.url())
     const method = request.method().toUpperCase()
+    const requestOrigin = request.headers()["origin"]
+    const corsHeaders: Record<string, string> = requestOrigin
+      ? {
+          "Access-Control-Allow-Origin": requestOrigin,
+          "Access-Control-Allow-Credentials": "true",
+          "Access-Control-Allow-Headers":
+            request.headers()["access-control-request-headers"] ??
+            "Authorization, Content-Type, X-CSRF-Token, X-Requested-With, Traceparent, Tracestate, Baggage",
+          "Access-Control-Allow-Methods":
+            request.headers()["access-control-request-method"] ??
+            "GET, POST, PUT, PATCH, DELETE, OPTIONS",
+          Vary: "Origin",
+        }
+      : {}
+    const fulfill = async (options: Parameters<typeof requestRoute.fulfill>[0] = {}) =>
+      requestRoute.fulfill({
+        ...options,
+        headers: {
+          ...(options.headers ?? {}),
+          ...corsHeaders,
+        },
+      })
+    const route = {
+      request: () => request,
+      fulfill,
+      abort: (error?: Parameters<typeof requestRoute.abort>[0]) => requestRoute.abort(error),
+      continue: (options?: Parameters<typeof requestRoute.continue>[0]) =>
+        requestRoute.continue(options),
+    }
 
     // Handle external APIs
     if (url.hostname === "api.open-meteo.com") {
@@ -452,6 +481,11 @@ export async function useMockApi(page: Page) {
     // Normalize both the browser-relative `/api/v1/...` form and the CI
     // service-host `http://api/v1/...` form to the same mock path.
     const normPath = pathname.replace(/^api\/v1\//u, "api/").replace(/^v1\//u, "api/")
+
+    if (method === "OPTIONS" && (normPath.startsWith("api/") || normPath.startsWith("auth/"))) {
+      await route.fulfill({ status: 204 })
+      return
+    }
 
     if (state.offline && (normPath.startsWith("api/") || normPath.startsWith("auth/"))) {
       // eslint-disable-next-line no-console
