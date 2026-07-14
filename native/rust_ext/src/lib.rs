@@ -60,7 +60,10 @@ pub fn check_conflict_proto(a: &ScheduleItem, b: &ScheduleItem) -> bool {
 }
 
 #[pyfunction]
-fn detect_conflicts(target: ScheduleItem, existing: Vec<ScheduleItem>) -> PyResult<Vec<ScheduleItem>> {
+fn detect_conflicts(
+    target: ScheduleItem,
+    existing: Vec<ScheduleItem>,
+) -> PyResult<Vec<ScheduleItem>> {
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         existing
             .into_iter()
@@ -75,7 +78,10 @@ fn detect_conflicts(target: ScheduleItem, existing: Vec<ScheduleItem>) -> PyResu
         } else {
             "Unknown panic".to_string()
         };
-        pyo3::exceptions::PyRuntimeError::new_err(format!("Rust panic in detect_conflicts: {}", msg))
+        pyo3::exceptions::PyRuntimeError::new_err(format!(
+            "Rust panic in detect_conflicts: {}",
+            msg
+        ))
     })
 }
 
@@ -148,7 +154,10 @@ pub fn batch_detect_conflicts(
         } else {
             "Unknown panic".to_string()
         };
-        pyo3::exceptions::PyRuntimeError::new_err(format!("Rust panic in batch_detect_conflicts: {}", msg))
+        pyo3::exceptions::PyRuntimeError::new_err(format!(
+            "Rust panic in batch_detect_conflicts: {}",
+            msg
+        ))
     })?
 }
 
@@ -210,7 +219,10 @@ fn find_optimal_slot(
         } else {
             "Unknown panic".to_string()
         };
-        pyo3::exceptions::PyRuntimeError::new_err(format!("Rust panic in find_optimal_slot: {}", msg))
+        pyo3::exceptions::PyRuntimeError::new_err(format!(
+            "Rust panic in find_optimal_slot: {}",
+            msg
+        ))
     })
 }
 
@@ -305,7 +317,10 @@ pub fn get_partition_info(table_name: String, month_offset: i32) -> PyResult<Par
         } else {
             "Unknown panic".to_string()
         };
-        pyo3::exceptions::PyRuntimeError::new_err(format!("Rust panic in get_partition_info: {}", msg))
+        pyo3::exceptions::PyRuntimeError::new_err(format!(
+            "Rust panic in get_partition_info: {}",
+            msg
+        ))
     })?
 }
 
@@ -374,7 +389,10 @@ pub fn is_partition_expired(
         } else {
             "Unknown panic".to_string()
         };
-        pyo3::exceptions::PyRuntimeError::new_err(format!("Rust panic in is_partition_expired: {}", msg))
+        pyo3::exceptions::PyRuntimeError::new_err(format!(
+            "Rust panic in is_partition_expired: {}",
+            msg
+        ))
     })
 }
 
@@ -411,7 +429,10 @@ pub fn verify_audit_signature(
         } else {
             "Unknown panic".to_string()
         };
-        pyo3::exceptions::PyRuntimeError::new_err(format!("Rust panic in verify_audit_signature: {}", msg))
+        pyo3::exceptions::PyRuntimeError::new_err(format!(
+            "Rust panic in verify_audit_signature: {}",
+            msg
+        ))
     })?
 }
 
@@ -490,59 +511,35 @@ mod tests {
     #[test]
     fn expired_malformed_no_month_separator() {
         // Missing 'm' separator → malformed → false.
-        assert!(!is_partition_expired(
-            "tbl_y2025".to_string(),
-            "tbl".to_string(),
-            90
-        ).unwrap());
+        assert!(!is_partition_expired("tbl_y2025".to_string(), "tbl".to_string(), 90).unwrap());
     }
 
     #[test]
     fn expired_malformed_non_numeric_year() {
-        assert!(!is_partition_expired(
-            "tbl_yABCDm01".to_string(),
-            "tbl".to_string(),
-            90
-        ).unwrap());
+        assert!(!is_partition_expired("tbl_yABCDm01".to_string(), "tbl".to_string(), 90).unwrap());
     }
 
     #[test]
     fn expired_malformed_non_numeric_month() {
-        assert!(!is_partition_expired(
-            "tbl_y2025mXX".to_string(),
-            "tbl".to_string(),
-            90
-        ).unwrap());
+        assert!(!is_partition_expired("tbl_y2025mXX".to_string(), "tbl".to_string(), 90).unwrap());
     }
 
     #[test]
     fn expired_month_zero() {
         // Month 0 is invalid — returns false.
-        assert!(!is_partition_expired(
-            "tbl_y2025m00".to_string(),
-            "tbl".to_string(),
-            90
-        ).unwrap());
+        assert!(!is_partition_expired("tbl_y2025m00".to_string(), "tbl".to_string(), 90).unwrap());
     }
 
     #[test]
     fn expired_month_13() {
         // Month 13 is invalid — returns false.
-        assert!(!is_partition_expired(
-            "tbl_y2025m13".to_string(),
-            "tbl".to_string(),
-            90
-        ).unwrap());
+        assert!(!is_partition_expired("tbl_y2025m13".to_string(), "tbl".to_string(), 90).unwrap());
     }
 
     #[test]
     fn expired_negative_retention() {
         // Negative retention_days → defensively returns false.
-        assert!(!is_partition_expired(
-            "tbl_y2020m01".to_string(),
-            "tbl".to_string(),
-            -1
-        ).unwrap());
+        assert!(!is_partition_expired("tbl_y2020m01".to_string(), "tbl".to_string(), -1).unwrap());
     }
 
     // -- verify_audit_signature edge cases --
@@ -734,25 +731,20 @@ mod tests {
         // Table name is "events"
         // Target is "events_y2020m01" -> End date is 2020-02-01
         // Cutoff is now - 1 day -> obviously expired
-        assert!(is_partition_expired(
-            "events_y2020m01".to_string(),
-            "events".to_string(),
-            1
-        ).unwrap());
+        assert!(
+            is_partition_expired("events_y2020m01".to_string(), "events".to_string(), 1).unwrap()
+        );
 
         // Cutoff is now - 100000 days -> obviously NOT expired
-        assert!(!is_partition_expired(
-            "events_y2999m01".to_string(),
-            "events".to_string(),
-            100000
-        ).unwrap());
+        assert!(
+            !is_partition_expired("events_y2999m01".to_string(), "events".to_string(), 100000)
+                .unwrap()
+        );
 
         // Wrong table prefix -> false
-        assert!(!is_partition_expired(
-            "other_y2020m01".to_string(),
-            "events".to_string(),
-            1
-        ).unwrap());
+        assert!(
+            !is_partition_expired("other_y2020m01".to_string(), "events".to_string(), 1).unwrap()
+        );
     }
 
     #[test]
