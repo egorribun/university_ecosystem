@@ -608,19 +608,25 @@ jobs:
       run-lighthouse: true
     secrets: inherit
 
-  # Wave 122 polish A1 — wires up Playwright e2e suite + the W122 SW3
-  # cross-env URL_STATE_E2E step. Adds ~5-10 min wall-clock per run
-  # (backend setup + browser install + ~47 spec cases on chromium).
+  # Wave 122 polish A1 — wires up the Playwright E2E suite + the W122 SW3
+  # cross-env URL_STATE_E2E step. The default Chromium suite is split into
+  # two isolated shards so all 114 tests finish within the job timeout.
   # Chromium-only by design (W120 SW7 + W121 SW3); add firefox/webkit
   # in a future wave if multi-browser e2e coverage warranted.
   e2e-tests:
-    name: E2E Tests
+    name: E2E Tests (shard ${{ matrix.shard-index }}/2)
     needs: pre-commit-check
+    strategy:
+      fail-fast: false
+      matrix:
+        shard-index: [1, 2]
     uses: ./.github/workflows/reusable-e2e-tests.yml
     with:
       node-version: "22"
       python-version: "3.14"
       browser: chromium
+      shard-index: ${{ matrix.shard-index }}
+      shard-total: 2
     secrets: inherit
 
   security-audit:
