@@ -17,6 +17,7 @@ test("mock API supports credentialed service-host requests", async ({ page }) =>
 
 test("mock API provides a stable WebSocket for authenticated pages", async ({ page }) => {
   await useMockApi(page)
+  await page.goto("/login")
 
   const opened = await page.evaluate(
     () =>
