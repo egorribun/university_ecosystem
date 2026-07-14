@@ -2,7 +2,7 @@
 
 This test inspects the database schema metadata, verifies PostgreSQL RLS status,
 and asserts SELECT, INSERT, UPDATE, and DELETE operations across student,
-professor, admin, and anonymous roles under participant and non-participant scenarios.
+teacher, admin, and anonymous roles under participant and non-participant scenarios.
 """
 
 from __future__ import annotations
@@ -89,8 +89,8 @@ async def pg_session(non_superuser_engine) -> AsyncSession:
 
 @pytest_asyncio.fixture
 async def setup_matrix_users_and_chats(pg_session: AsyncSession):
-    """Seed users with student, professor, and admin roles, and create chats."""
-    roles = ["student", "professor", "admin"]
+    """Seed users with student, teacher, and admin roles, and create chats."""
+    roles = ["student", "teacher", "admin"]
     users = {}
 
     # 1. Create a user of each role
@@ -112,7 +112,7 @@ async def setup_matrix_users_and_chats(pg_session: AsyncSession):
         )
         users[role] = uid
 
-    # 2. Create Chat A (contains student, professor, admin as participants)
+    # 2. Create Chat A (contains student, teacher, admin as participants)
     chat_a_id = str(uuid.uuid4())
     await pg_session.execute(
         text(
@@ -156,7 +156,7 @@ async def test_rls_matrix_read_write(
     pg_session: AsyncSession,
     setup_matrix_users_and_chats,
 ):
-    """Verify CRUD matrix for student, professor, and admin roles."""
+    """Verify CRUD matrix for student, teacher, and admin roles."""
     users, chat_a_id, chat_b_id = setup_matrix_users_and_chats
 
     # Seed a message in Chat A and Chat B via Superuser bypass / raw insert
@@ -200,8 +200,8 @@ async def test_rls_matrix_read_write(
     )
 
     # Test Matrix:
-    # 1. Participants (student, professor, admin) must read msg_a, but NOT msg_b
-    for role in ["student", "professor", "admin"]:
+    # 1. Participants (student, teacher, admin) must read msg_a, but NOT msg_b
+    for role in ["student", "teacher", "admin"]:
         await pg_session.execute(
             text("SELECT set_config('app.current_user_id', :uid, true)"),
             {"uid": users[role]},
@@ -277,7 +277,7 @@ async def test_rls_matrix_update_delete(
 
     # Seed messages
     msg_student_id = str(uuid.uuid4())
-    msg_prof_id = str(uuid.uuid4())
+    msg_teacher_id = str(uuid.uuid4())
 
     # Write student's message in Chat A
     await pg_session.execute(
@@ -292,17 +292,17 @@ async def test_rls_matrix_update_delete(
         {"id": msg_student_id, "chat_id": chat_a_id, "sender": users["student"]},
     )
 
-    # Write professor's message in Chat A
+    # Write teacher's message in Chat A
     await pg_session.execute(
         text("SELECT set_config('app.current_user_id', :uid, true)"),
-        {"uid": users["professor"]},
+        {"uid": users["teacher"]},
     )
     await pg_session.execute(
         text(
             "INSERT INTO messages (id, chat_id, sender_id, content, created_at, read_status) "
-            "VALUES (:id, :chat_id, :sender, 'professor message', NOW(), false)"
+            "VALUES (:id, :chat_id, :sender, 'teacher message', NOW(), false)"
         ),
-        {"id": msg_prof_id, "chat_id": chat_a_id, "sender": users["professor"]},
+        {"id": msg_teacher_id, "chat_id": chat_a_id, "sender": users["teacher"]},
     )
 
     # 1. Student edits/deletes their OWN message -> SUCCESS
@@ -327,7 +327,7 @@ async def test_rls_matrix_update_delete(
     )
     assert res_delete.fetchone() is None
 
-    # 2. Student attempts to edit professor's message -> FAILURE (silent no-op due to RLS filter on update/delete)
+    # 2. Student attempts to edit teacher's message -> FAILURE (silent no-op due to RLS filter on update/delete)
     # Note: RLS makes the row invisible to UPDATE/DELETE, so the statement runs but affects 0 rows.
     await pg_session.execute(
         text("SELECT set_config('app.current_user_id', :uid, true)"),
@@ -335,15 +335,15 @@ async def test_rls_matrix_update_delete(
     )
     res_up_other = await pg_session.execute(
         text("UPDATE messages SET content = 'hacked' WHERE id = :id"),
-        {"id": msg_prof_id},
+        {"id": msg_teacher_id},
     )
     assert res_up_other.rowcount == 0, (
-        "Student must not be able to update professor's message"
+        "Student must not be able to update teacher's message"
     )
 
     res_del_other = await pg_session.execute(
-        text("DELETE FROM messages WHERE id = :id"), {"id": msg_prof_id}
+        text("DELETE FROM messages WHERE id = :id"), {"id": msg_teacher_id}
     )
     assert res_del_other.rowcount == 0, (
-        "Student must not be able to delete professor's message"
+        "Student must not be able to delete teacher's message"
     )
