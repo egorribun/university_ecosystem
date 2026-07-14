@@ -32,8 +32,7 @@ test.describe("React Hydration Verification", () => {
     const mock = await useMockApi(page)
 
     // 1. Test public /login first (does not require login token)
-    await page.goto("/login")
-    await page.waitForLoadState("networkidle")
+    await page.goto("/login", { waitUntil: "domcontentloaded", timeout: 30_000 })
     expect(hydrationErrors.filter((err) => err.toLowerCase().includes("hydration"))).toEqual([])
 
     // 2. Log in mock student to access protected pages
@@ -46,8 +45,7 @@ test.describe("React Hydration Verification", () => {
     const protectedUrls = ["/dashboard", "/events", "/news", "/schedule", "/settings"]
 
     for (const url of protectedUrls) {
-      await page.goto(url)
-      await page.waitForLoadState("networkidle")
+      await page.goto(url, { waitUntil: "domcontentloaded", timeout: 30_000 })
       // Assert no hydration-specific errors or mismatches
       const hydrationSpecific = hydrationErrors.filter(
         (err) =>

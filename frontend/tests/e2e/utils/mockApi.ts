@@ -784,6 +784,18 @@ export async function useMockApi(page: Page) {
       return
     }
 
+    // The chat hook requests its upgrade ticket outside the /api/v1 prefix.
+    // Keep the E2E session fully mocked so the preview's /ws proxy cannot
+    // answer with a 403 and trigger reconnect/auth-error side effects.
+    if (normPath === "ws/ticket") {
+      await route.fulfill({
+        status: 201,
+        contentType: "application/json",
+        body: JSON.stringify({ ticket: "mock-ws-ticket", expires_in: 15 }),
+      })
+      return
+    }
+
     // --- Stories ---
     if (normPath.includes("api/stories")) {
       await route.fulfill({
