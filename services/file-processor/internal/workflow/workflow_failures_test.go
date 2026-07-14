@@ -1,6 +1,7 @@
 package workflow
 
 import (
+	"context"
 	"errors"
 	"testing"
 
@@ -20,7 +21,7 @@ func TestFileProcessingWorkflow_RetriesOnRetryableError(t *testing.T) {
 	// Count number of times activity is called
 	callCount := 0
 	env.OnActivity(a.ResizeImageActivity, mock.Anything, mock.Anything).Return(
-		func(ctx interface{}, job ProcessJob) (*ProcessResult, error) {
+		func(ctx context.Context, job ProcessJob) (*ProcessResult, error) {
 			callCount++
 			if callCount < 3 {
 				// Return a retryable error
@@ -57,7 +58,7 @@ func TestFileProcessingWorkflow_FailsImmediatelyOnNonRetryableError(t *testing.T
 	nonRetryableErr := temporal.NewApplicationError("invalid dimensions", "InvalidInputError")
 
 	env.OnActivity(a.ResizeImageActivity, mock.Anything, mock.Anything).Return(
-		func(ctx interface{}, job ProcessJob) (*ProcessResult, error) {
+		func(ctx context.Context, job ProcessJob) (*ProcessResult, error) {
 			callCount++
 			return nil, nonRetryableErr
 		},
@@ -85,7 +86,7 @@ func TestFileProcessingWorkflow_ReachesMaxAttemptsAndFails(t *testing.T) {
 
 	callCount := 0
 	env.OnActivity(a.ResizeImageActivity, mock.Anything, mock.Anything).Return(
-		func(ctx interface{}, job ProcessJob) (*ProcessResult, error) {
+		func(ctx context.Context, job ProcessJob) (*ProcessResult, error) {
 			callCount++
 			return nil, errors.New("persistent error")
 		},
@@ -115,7 +116,7 @@ func TestFileProcessingWorkflow_ActivityTimeoutRetries(t *testing.T) {
 	timeoutErr := temporal.NewTimeoutError(enumspb.TIMEOUT_TYPE_START_TO_CLOSE, errors.New("activity timeout"))
 
 	env.OnActivity(a.ResizeImageActivity, mock.Anything, mock.Anything).Return(
-		func(ctx interface{}, job ProcessJob) (*ProcessResult, error) {
+		func(ctx context.Context, job ProcessJob) (*ProcessResult, error) {
 			callCount++
 			return nil, timeoutErr
 		},

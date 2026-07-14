@@ -913,12 +913,12 @@ mod verification {
     fn proof_check_conflict_proto() {
         let weekday_val = String::from("monday");
         let parity_val = String::from("both");
-        
+
         let a_start: i64 = kani::any();
         let a_end: i64 = kani::any();
         let b_start: i64 = kani::any();
         let b_end: i64 = kani::any();
-        
+
         let a = ScheduleItem {
             id: None,
             weekday: weekday_val.clone(),
@@ -926,7 +926,7 @@ mod verification {
             end_time: a_end,
             parity: parity_val.clone(),
         };
-        
+
         let b = ScheduleItem {
             id: None,
             weekday: weekday_val,
@@ -934,7 +934,7 @@ mod verification {
             end_time: b_end,
             parity: parity_val,
         };
-        
+
         let _ = check_conflict_proto(&a, &b);
     }
 
@@ -950,7 +950,7 @@ mod verification {
         let key_bytes: [u8; 8] = kani::any();
         let log_bytes: [u8; 8] = kani::any();
         let sig_bytes: [u8; 8] = kani::any();
-        
+
         let key_str = match std::str::from_utf8(&key_bytes) {
             Ok(s) => s.to_string(),
             Err(_) => return,
@@ -960,7 +960,7 @@ mod verification {
             Err(_) => return,
         };
         let signature = hex::encode(sig_bytes);
-        
+
         let _ = verify_audit_signature(vec![key_str], log_data, signature);
     }
 }

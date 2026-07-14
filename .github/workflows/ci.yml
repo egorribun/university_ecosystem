@@ -531,7 +531,7 @@ jobs:
     uses: ./.github/workflows/reusable-go-tests.yml
     with:
       service-directory: ${{ matrix.service }}
-      go-version: "1.26.4"
+      go-version: "1.26.5"
       coverage-threshold: ${{ matrix.coverage-threshold }}
     secrets: inherit
 
@@ -548,7 +548,7 @@ jobs:
 
       - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
         with:
-          go-version: "1.26.4"
+          go-version: "1.26.5"
           cache-dependency-path: services/ws-hub/go.sum
 
       # PERF-W18-04 (audit 2026-03-23 Wave 18): increased from 30s to 120s for
@@ -578,7 +578,7 @@ jobs:
     uses: ./.github/workflows/reusable-go-integration-tests.yml
     with:
       service-directory: services/ws-hub
-      go-version: "1.26.4"
+      go-version: "1.26.5"
     secrets: inherit
 
   go-integration-file-processor:
@@ -587,7 +587,7 @@ jobs:
     uses: ./.github/workflows/reusable-go-integration-tests.yml
     with:
       service-directory: services/file-processor
-      go-version: "1.26.4"
+      go-version: "1.26.5"
     secrets: inherit
 
   go-integration-gateway:
@@ -596,7 +596,7 @@ jobs:
     uses: ./.github/workflows/reusable-go-integration-tests.yml
     with:
       service-directory: services/gateway
-      go-version: "1.26.4"
+      go-version: "1.26.5"
     secrets: inherit
 
   frontend-tests:
