@@ -77,8 +77,8 @@ pub fn check_conflict_proto(a: &ScheduleItem, b: &ScheduleItem) -> bool {
         && b.start_time < a.end_time
 }
 
-#[pyfunction]
-fn detect_conflicts(
+#[pyfunction(name = "detect_conflicts")]
+fn detect_conflicts_py(
     target: Bound<'_, PyAny>,
     existing: Bound<'_, PyAny>,
 ) -> PyResult<Vec<ScheduleItem>> {
@@ -87,6 +87,13 @@ fn detect_conflicts(
     let existing: Vec<ScheduleItem> = existing.extract()?;
     drop(_extract_guard);
 
+    detect_conflicts(target, existing)
+}
+
+fn detect_conflicts(
+    target: ScheduleItem,
+    existing: Vec<ScheduleItem>,
+) -> PyResult<Vec<ScheduleItem>> {
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         existing
             .into_iter()
@@ -112,14 +119,9 @@ fn detect_conflicts(
 // so it can be found by grep and updated in one place.
 const MAX_CONFLICT_ITEMS: usize = 2500;
 
-#[pyfunction]
 pub fn batch_detect_conflicts(
-    items: Bound<'_, PyAny>,
+    items: Vec<ScheduleItem>,
 ) -> PyResult<Vec<(ScheduleItem, ScheduleItem)>> {
-    let _extract_guard = schedule_item_extract_guard()?;
-    let items: Vec<ScheduleItem> = items.extract()?;
-    drop(_extract_guard);
-
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         if items.len() > MAX_CONFLICT_ITEMS {
             return Err(pyo3::exceptions::PyValueError::new_err(format!(
@@ -188,14 +190,25 @@ pub fn batch_detect_conflicts(
     })?
 }
 
-#[pyfunction]
+#[pyfunction(name = "batch_detect_conflicts")]
+fn batch_detect_conflicts_py(
+    items: Bound<'_, PyAny>,
+) -> PyResult<Vec<(ScheduleItem, ScheduleItem)>> {
+    let _extract_guard = schedule_item_extract_guard()?;
+    let items: Vec<ScheduleItem> = items.extract()?;
+    drop(_extract_guard);
+
+    batch_detect_conflicts(items)
+}
+
+#[pyfunction(name = "find_optimal_slot")]
 #[pyo3(signature = (duration_minutes, existing_schedule, available_blocks))]
 /// TD-W17-03 (Wave 17): Fixed to use the actual next occurrence of the
 /// requested weekday instead of always using Jan 1. Previously, timestamps
 /// were semantically wrong — conflict detection worked by coincidence (string
 /// comparison of weekday + time overlap), but any caller using start_time/
 /// end_time as real dates would get incorrect results.
-fn find_optimal_slot(
+fn find_optimal_slot_py(
     duration_minutes: u32,
     existing_schedule: Bound<'_, PyAny>,
     available_blocks: Bound<'_, PyAny>,
@@ -205,6 +218,14 @@ fn find_optimal_slot(
     let available_blocks: Vec<(String, Vec<u32>)> = available_blocks.extract()?;
     drop(_extract_guard);
 
+    find_optimal_slot(duration_minutes, existing_schedule, available_blocks)
+}
+
+fn find_optimal_slot(
+    duration_minutes: u32,
+    existing_schedule: Vec<ScheduleItem>,
+    available_blocks: Vec<(String, Vec<u32>)>,
+) -> PyResult<Option<ScheduleItem>> {
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         let today = Utc::now().date_naive();
 
@@ -473,9 +494,9 @@ pub fn verify_audit_signature(
 fn rust_ext(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<ScheduleItem>()?;
     m.add_class::<PartitionInfo>()?;
-    m.add_function(wrap_pyfunction!(detect_conflicts, m)?)?;
-    m.add_function(wrap_pyfunction!(batch_detect_conflicts, m)?)?;
-    m.add_function(wrap_pyfunction!(find_optimal_slot, m)?)?;
+    m.add_function(wrap_pyfunction!(detect_conflicts_py, m)?)?;
+    m.add_function(wrap_pyfunction!(batch_detect_conflicts_py, m)?)?;
+    m.add_function(wrap_pyfunction!(find_optimal_slot_py, m)?)?;
     m.add_function(wrap_pyfunction!(get_partition_info, m)?)?;
     m.add_function(wrap_pyfunction!(is_partition_expired, m)?)?;
     m.add_function(wrap_pyfunction!(verify_audit_signature, m)?)?;
