@@ -39,8 +39,10 @@ DATABASE_URL = os.getenv(
     ),
 )
 
+
 def _check_services() -> bool:
     import socket
+
     for port in (8000, 8080):
         try:
             with socket.create_connection(("127.0.0.1", port), timeout=1.0):
