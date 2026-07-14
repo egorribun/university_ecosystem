@@ -47,7 +47,7 @@ async def test_postgres_latency_triggers_timeout_response(async_client):
             },
         )
     try:
-        response = await async_client.get("/api/v1/events")
+        response = await async_client.get("/news")
         assert response.status_code in (503, 504, 408)
     finally:
         async with httpx.AsyncClient() as http:
@@ -73,7 +73,7 @@ async def test_redis_down_cache_miss_uses_db(async_client):
             },
         )
     try:
-        response = await async_client.get("/api/v1/health")
+        response = await async_client.get("http://testserver/healthz")
         # Should still respond (circuit breaker / degraded mode)
         assert response.status_code in (200, 503)
     finally:
@@ -102,7 +102,7 @@ async def test_nats_packet_loss_outbox_retries(async_client):
         )
     try:
         # Health endpoint should remain accessible even under NATS pressure
-        response = await async_client.get("/api/v1/health")
+        response = await async_client.get("http://testserver/healthz")
         assert response.status_code in (200, 503)
     finally:
         async with httpx.AsyncClient() as http:
