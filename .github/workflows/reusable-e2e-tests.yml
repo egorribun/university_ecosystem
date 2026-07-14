@@ -38,7 +38,11 @@ jobs:
   e2e:
     name: E2E Tests (${{ inputs.browser }})
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # The Chromium suite contains 114 tests, including serial accessibility
+    # scans. Two workers can spend the entire job budget on the default suite
+    # before the dedicated URL-state checks run; use the runner's four cores
+    # and leave enough headroom for browser startup and retries.
+    timeout-minutes: 45
     env:
       SECRET_KEY: "dummy_secret_key_for_ci_tests_at_least_32_chars"
       ENVIRONMENT: testing
@@ -153,6 +157,7 @@ jobs:
 
           npx playwright test "$TEST_PATTERN" \
             --project="$BROWSER" \
+            --workers=4 \
             --reporter=html
 
       # Wave 122 SW3: cross-env URL_STATE_E2E auto-managed mode.
