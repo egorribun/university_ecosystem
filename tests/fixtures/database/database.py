@@ -58,10 +58,21 @@ async def prepare_database() -> AsyncIterator[None]:
                 "DROP POLICY IF EXISTS messages_participant_isolation ON messages"
             )
             await conn.exec_driver_sql(
+                "DROP POLICY IF EXISTS messages_select_policy ON messages"
+            )
+            await conn.exec_driver_sql(
+                "DROP POLICY IF EXISTS messages_insert_policy ON messages"
+            )
+            await conn.exec_driver_sql(
+                "DROP POLICY IF EXISTS messages_update_policy ON messages"
+            )
+            await conn.exec_driver_sql(
+                "DROP POLICY IF EXISTS messages_delete_policy ON messages"
+            )
+            await conn.exec_driver_sql(
                 """
-                CREATE POLICY messages_participant_isolation ON messages
-                    AS PERMISSIVE
-                    FOR ALL
+                CREATE POLICY messages_select_policy ON messages
+                    FOR SELECT
                     TO PUBLIC
                     USING (
                         chat_id IN (
@@ -70,6 +81,13 @@ async def prepare_database() -> AsyncIterator[None]:
                             WHERE  user_id = NULLIF(current_setting('app.current_user_id', TRUE), '')::uuid
                         )
                     )
+                """
+            )
+            await conn.exec_driver_sql(
+                """
+                CREATE POLICY messages_insert_policy ON messages
+                    FOR INSERT
+                    TO PUBLIC
                     WITH CHECK (
                         (
                             current_setting('app.current_user_id', TRUE) IS NULL OR
@@ -81,6 +99,26 @@ async def prepare_database() -> AsyncIterator[None]:
                             FROM   chat_participants
                             WHERE  user_id = NULLIF(current_setting('app.current_user_id', TRUE), '')::uuid
                         )
+                    )
+                """
+            )
+            await conn.exec_driver_sql(
+                """
+                CREATE POLICY messages_update_policy ON messages
+                    FOR UPDATE
+                    TO PUBLIC
+                    USING (
+                        sender_id = NULLIF(current_setting('app.current_user_id', TRUE), '')::uuid
+                    )
+                """
+            )
+            await conn.exec_driver_sql(
+                """
+                CREATE POLICY messages_delete_policy ON messages
+                    FOR DELETE
+                    TO PUBLIC
+                    USING (
+                        sender_id = NULLIF(current_setting('app.current_user_id', TRUE), '')::uuid
                     )
                 """
             )
