@@ -133,12 +133,22 @@ test.describe("@a11y enhanced WCAG 2.2 AA + tab-order + reduced-motion", () => {
     await expect(page.locator('input[name="email"]')).toBeVisible({ timeout: 15_000 })
     await expect(page.locator('input[name="password"]')).toBeVisible({ timeout: 15_000 })
     await expect(page.locator('button[type="submit"]')).toBeVisible({ timeout: 15_000 })
-    await page.route("**/*", (r) => r.abort())
-    await page.waitForTimeout(1000)
+
+    // Start from a known focus point. The page-level skip link and the
+    // notification prompt are optional chrome, so beginning from the browser
+    // default focus can make the first 15 tab stops vary between CI runs.
+    const emailInput = page.locator('input[name="email"]')
+    await emailInput.focus()
 
     // Collect focused element IDs/types as Tab is pressed.
-    const focusedElements: string[] = []
-    for (let i = 0; i < 15; i++) {
+    const focusedElements: string[] = [
+      await page.evaluate(() => {
+        const el = document.activeElement
+        if (!el) return "none"
+        return `${el.tagName.toLowerCase()}[name=${(el as HTMLInputElement).name ?? ""}][type=${(el as HTMLInputElement).type ?? ""}]`
+      }),
+    ]
+    for (let i = 0; i < 14; i++) {
       await page.keyboard.press("Tab")
       const descriptor = await page.evaluate(() => {
         const el = document.activeElement

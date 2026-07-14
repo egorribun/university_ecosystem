@@ -836,18 +836,13 @@ export async function useMockApi(page: Page) {
     state,
     async login(p: Page) {
       state.loggedIn = true
-      // The preview can keep non-critical assets pending while the app is
-      // bootstrapping. Login only needs the committed document before
-      // injecting the mock session, so do not couple every test to unrelated
-      // asset/network completion.
-      await p.goto("/", { waitUntil: "commit", timeout: 30_000 })
-      await p.evaluate(() => {
-        localStorage.setItem("access_token", "mock-token")
-        localStorage.setItem("refresh_token", "mock-refresh")
-        localStorage.setItem("ue:language", "ru")
-      })
-      await p.goto("/dashboard", { waitUntil: "commit", timeout: 30_000 })
-      await expect(p).toHaveURL(/\/dashboard$/)
+      // Start from the public route. The mock session is installed by the
+      // init script before navigation, so AuthProvider performs the normal
+      // client-side redirect to /dashboard without a second SSR navigation.
+      // Navigating / -> /dashboard directly can leave the preview's protected
+      // SSR request pending under CI load.
+      await p.goto("/login", { waitUntil: "commit", timeout: 30_000 })
+      await expect(p).toHaveURL(/\/dashboard$/, { timeout: 30_000 })
     },
     async setOffline(p: Page, offline: boolean) {
       state.offline = offline
