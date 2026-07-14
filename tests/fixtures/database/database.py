@@ -73,9 +73,18 @@ async def prepare_database() -> AsyncIterator[None]:
                         )
                     )
                     WITH CHECK (
-                        current_setting('app.current_user_id', TRUE) IS NULL OR
-                        current_setting('app.current_user_id', TRUE) = '' OR
-                        sender_id = (current_setting('app.current_user_id', TRUE)::uuid)
+                        (
+                            current_setting('app.current_user_id', TRUE) IS NULL OR
+                            current_setting('app.current_user_id', TRUE) = '' OR
+                            sender_id = (current_setting('app.current_user_id', TRUE)::uuid)
+                        ) AND
+                        chat_id IN (
+                            SELECT chat_id
+                            FROM   chat_participants
+                            WHERE  user_id = (
+                                current_setting('app.current_user_id', TRUE)::uuid
+                            )
+                        )
                     )
                 """
             )
