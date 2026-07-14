@@ -47,7 +47,7 @@ async def test_postgres_latency_triggers_timeout_response(async_client):
             },
         )
     try:
-        response = await async_client.get("/news")
+        response = await async_client.get("http://testserver/healthz")
         assert response.status_code in (503, 504, 408)
     finally:
         async with httpx.AsyncClient() as http:

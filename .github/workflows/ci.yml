@@ -1917,7 +1917,8 @@ jobs:
       - name: Run chaos tests
         env:
           TOXIPROXY_URL: http://localhost:8474
-          DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/testdb  # pragma: allowlist secret
+          DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5433/testdb  # pragma: allowlist secret
+          CACHE_REDIS_URL: redis://localhost:6380/0
         run: uv run pytest tests/chaos/ -v -m chaos --tb=short
 
   db-migration-integrity:
