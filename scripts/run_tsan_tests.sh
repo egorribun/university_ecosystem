@@ -79,10 +79,17 @@ echo "==> [TSan] Running FFI tests under TSan..."
 # deadlock-detector overflows when libuv holds >64 internal locks — that
 # overflow causes a CHECK-fail that kills the process before tests finish.
 TSAN_SUPPRESSIONS_FILE="${REPO_ROOT}/tests/tsan_suppressions.txt"
+PYTHON_BIN="${REPO_ROOT}/.venv/bin/python"
+
+if [[ ! -x "${PYTHON_BIN}" ]]; then
+  echo "ERROR: Expected the uv-managed Python environment at '${PYTHON_BIN}'."
+  echo "       Run 'uv sync --group dev' before running the TSan suite."
+  exit 1
+fi
 
 LD_PRELOAD="${TSAN_LIB}" \
 TSAN_OPTIONS="suppressions=${TSAN_SUPPRESSIONS_FILE}:halt_on_error=0:second_deadlock_stack=0:print_suppressions=1:verbosity=1" \
-  uv run pytest \
+  "${PYTHON_BIN}" -m pytest \
     tests/test_smoke_rust_audit.py \
     tests/test_smoke_rust_partitions.py \
     tests/test_property_based.py \
