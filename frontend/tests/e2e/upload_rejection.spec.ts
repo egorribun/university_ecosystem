@@ -10,7 +10,9 @@ test.describe("Malicious upload rejection", () => {
     await mock.login(page)
 
     // Intercept event files upload and simulate malware scanner failure
-    await page.context().route("**/api/v1/events/*/upload_file", async (route) => {
+    // The CI API base is `http://api`, while local runs may use `/api/v1` on
+    // the preview origin. Matching the shared `/v1/...` suffix supports both.
+    await page.context().route("**/v1/events/*/upload_file", async (route) => {
       await route.fulfill({
         status: 400,
         contentType: "application/json",

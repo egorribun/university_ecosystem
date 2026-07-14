@@ -449,8 +449,9 @@ export async function useMockApi(page: Page) {
     }
 
     const pathname = url.pathname.replace(/^\/+/u, "")
-    // Normalize v1 paths ONLY for matching, but keep it permissive
-    const normPath = pathname.replace(/^api\/v1\//u, "api/")
+    // Normalize both the browser-relative `/api/v1/...` form and the CI
+    // service-host `http://api/v1/...` form to the same mock path.
+    const normPath = pathname.replace(/^api\/v1\//u, "api/").replace(/^v1\//u, "api/")
 
     if (state.offline && (normPath.startsWith("api/") || normPath.startsWith("auth/"))) {
       // eslint-disable-next-line no-console
