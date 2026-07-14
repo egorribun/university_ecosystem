@@ -1,5 +1,6 @@
 #![deny(clippy::unwrap_used)]
 #![deny(clippy::expect_used)] // LOW-W19: expect() panics just like unwrap(); deny it too
+#![allow(unexpected_cfgs)]
 use chrono::{Datelike, Duration, NaiveDate, TimeZone, Utc, Weekday};
 use pyo3::prelude::*;
 use rayon::prelude::*;
