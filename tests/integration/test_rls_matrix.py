@@ -235,16 +235,17 @@ async def test_rls_matrix_read_write(
 
         # Write to Chat B (Non-participant) -> FAILURE
         bad_msg_id = str(uuid.uuid4())
-        with pytest.raises(DBAPIError):
-            await pg_session.execute(
-                text(
-                    "INSERT INTO messages (id, chat_id, sender_id, content, created_at, read_status) "
-                    "VALUES (:id, :chat_id, :sender, 'ping-bad', NOW(), false)"
-                ),
-                {"id": bad_msg_id, "chat_id": chat_b_id, "sender": users[role]},
-            )
-            # Flush is required to trigger constraint/RLS violation check in DB
-            await pg_session.flush()
+        async with pg_session.begin_nested():
+            with pytest.raises(DBAPIError):
+                await pg_session.execute(
+                    text(
+                        "INSERT INTO messages (id, chat_id, sender_id, content, created_at, read_status) "
+                        "VALUES (:id, :chat_id, :sender, 'ping-bad', NOW(), false)"
+                    ),
+                    {"id": bad_msg_id, "chat_id": chat_b_id, "sender": users[role]},
+                )
+                # Flush is required to trigger constraint/RLS violation check in DB
+                await pg_session.flush()
 
     # 2. Anonymous / Unauthenticated context -> cannot read or write anything
     await pg_session.execute(text("SELECT set_config('app.current_user_id', '', true)"))
@@ -256,15 +257,16 @@ async def test_rls_matrix_read_write(
     assert res_anon_a.fetchone() is None
 
     # Write A -> Fail
-    with pytest.raises(DBAPIError):
-        await pg_session.execute(
-            text(
-                "INSERT INTO messages (id, chat_id, sender_id, content, created_at, read_status) "
-                "VALUES (:id, :chat_id, :sender, 'anon msg', NOW(), false)"
-            ),
-            {"id": str(uuid.uuid4()), "chat_id": chat_a_id, "sender": users["student"]},
-        )
-        await pg_session.flush()
+    async with pg_session.begin_nested():
+        with pytest.raises(DBAPIError):
+            await pg_session.execute(
+                text(
+                    "INSERT INTO messages (id, chat_id, sender_id, content, created_at, read_status) "
+                    "VALUES (:id, :chat_id, :sender, 'anon msg', NOW(), false)"
+                ),
+                {"id": str(uuid.uuid4()), "chat_id": chat_a_id, "sender": users["student"]},
+            )
+            await pg_session.flush()
 
 
 @pytest.mark.asyncio
