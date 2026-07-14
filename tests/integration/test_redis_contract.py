@@ -91,7 +91,7 @@ async def redis_client(unmock_redis):
 
     import redis.asyncio
 
-    url = os.getenv("CACHE_REDIS_URL", "redis://redis:6379/0")
+    url = os.getenv("CACHE_REDIS_URL", os.getenv("REDIS_URL", "redis://localhost:6379/0"))
     client = redis.asyncio.Redis.from_url(url)
     yield client
     await client.aclose()
@@ -217,7 +217,7 @@ async def test_rate_limit_key_format(redis_client):
     from app.core.ratelimit.strategies.redis import RedisSlidingWindowStrategy
 
     strategy = RedisSlidingWindowStrategy(
-        redis_url=os.getenv("CACHE_REDIS_URL", "redis://localhost:6379/0")
+        redis_url=os.getenv("CACHE_REDIS_URL", os.getenv("REDIS_URL", "redis://localhost:6379/0"))
     )
 
     test_key = f"contract-test:{uuid.uuid4()}"
