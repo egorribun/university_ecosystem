@@ -36,9 +36,7 @@ static SCHEDULE_ITEM_EXTRACT_LOCK: Mutex<()> = Mutex::new(());
 
 fn schedule_item_extract_guard() -> PyResult<std::sync::MutexGuard<'static, ()>> {
     SCHEDULE_ITEM_EXTRACT_LOCK.lock().map_err(|_| {
-        pyo3::exceptions::PyRuntimeError::new_err(
-            "ScheduleItem extraction lock is poisoned",
-        )
+        pyo3::exceptions::PyRuntimeError::new_err("ScheduleItem extraction lock is poisoned")
     })
 }
 
