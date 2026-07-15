@@ -144,8 +144,9 @@ test.describe("i18n language switching", () => {
     await languageSection.click()
 
     const enOption = page.getByRole("radio", { name: /English|Английский/i })
-    await expect(enOption).toBeVisible({ timeout: 3000 })
-    await enOption.click()
+    const enOptionLabel = page.locator("label").filter({ has: enOption })
+    await expect(enOptionLabel).toBeVisible({ timeout: 3000 })
+    await enOptionLabel.click()
 
     // Accept either "en" or "en-US" / "en-GB".
     await expect(page.locator("html")).toHaveAttribute("lang", /^en/)

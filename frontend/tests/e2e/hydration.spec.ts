@@ -45,7 +45,8 @@ test.describe("React Hydration Verification", () => {
     const protectedUrls = ["/dashboard", "/events", "/news", "/schedule", "/settings"]
 
     for (const url of protectedUrls) {
-      await page.goto(url, { waitUntil: "domcontentloaded", timeout: 30_000 })
+      await page.goto(url, { waitUntil: "commit", timeout: 30_000 })
+      await page.waitForTimeout(250)
       // Assert no hydration-specific errors or mismatches
       const hydrationSpecific = hydrationErrors.filter(
         (err) =>
