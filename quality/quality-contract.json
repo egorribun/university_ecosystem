@@ -1,0 +1,32 @@
+{
+  "version": 1,
+  "policy": {
+    "patch_coverage": 100,
+    "viable_mutant_score": 100,
+    "required_pr_matrix": true
+  },
+  "coverage_minimums": {
+    "lines": 99,
+    "statements": 99,
+    "branches": 98,
+    "functions": 98,
+    "tier0": 100
+  },
+  "components": {
+    "python": {"coverage": {"lines": 99, "statements": 99, "branches": 98, "functions": 98}},
+    "frontend": {"coverage": {"lines": 99, "statements": 99, "branches": 98, "functions": 98}},
+    "go-gateway": {"coverage": {"lines": 99, "statements": 99, "branches": 98, "functions": 98}},
+    "go-ws-hub": {"coverage": {"lines": 99, "statements": 99, "branches": 98, "functions": 98}},
+    "go-file-processor": {"coverage": {"lines": 99, "statements": 99, "branches": 98, "functions": 98}},
+    "rust-native": {"coverage": {"lines": 99, "statements": 99, "branches": 98, "functions": 98}},
+    "rust-pyo3-sanitizer": {"coverage": {"lines": 99, "statements": 99, "branches": 98, "functions": 98}},
+    "rust-wasm-sanitizer": {"coverage": {"lines": 99, "statements": 99, "branches": 98, "functions": 98}},
+    "infrastructure": {"coverage": {"lines": 99, "statements": 99, "branches": 98, "functions": 98}},
+    "workflows": {"coverage": {"lines": 99, "statements": 99, "branches": 98, "functions": 98}},
+    "scripts": {"coverage": {"lines": 99, "statements": 99, "branches": 98, "functions": 98}}
+  },
+  "tier0": {"coverage": {"lines": 100, "statements": 100, "branches": 100, "functions": 100}},
+  "required_artifacts": ["coverage.xml", "frontend/coverage/lcov.info"],
+  "exclusions": [],
+  "quarantines": []
+}
