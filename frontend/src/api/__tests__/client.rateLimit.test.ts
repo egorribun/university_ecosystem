@@ -11,6 +11,7 @@ describe("API client rate limit queue", () => {
   })
 
   afterEach(() => {
+    vi.unstubAllGlobals()
     vi.unstubAllEnvs()
     vi.useRealTimers()
   })
@@ -66,5 +67,27 @@ describe("API client rate limit queue", () => {
     expect(relativeTimes[3]!).toBeGreaterThanOrEqual(60_000)
     expect(relativeTimes[4]!).toBeGreaterThanOrEqual(60_000)
     expect(relativeTimes[3]! - relativeTimes[2]!).toBeGreaterThanOrEqual(59_500)
+  })
+
+  it("does not queue SSR requests in the browser-only rate limiter", async () => {
+    vi.stubGlobal("window", undefined)
+
+    const { default: api } = await import("@/api/client")
+    const adapter = vi.fn(async (config): Promise<AxiosResponse<{ ok: boolean }>> => ({
+      config,
+      data: { ok: true },
+      status: 200,
+      statusText: "OK",
+      headers: {},
+      request: {},
+    }))
+    api.defaults.adapter = adapter
+
+    const requests = Array.from({ length: 5 }, () => api.get("/news"))
+
+    await vi.advanceTimersByTimeAsync(0)
+
+    expect(adapter).toHaveBeenCalledTimes(5)
+    await Promise.all(requests)
   })
 })
