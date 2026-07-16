@@ -42,8 +42,8 @@ SOURCE_ROOTS = {
     "rust-pyo3-sanitizer": ("crates/pyo3-sanitizer",),
     "rust-wasm-sanitizer": ("frontend/wasm-sanitizer",),
     "infrastructure": ("infra", "infrastructure", "k8s", "charts"),
-    "workflows": (),
-    "scripts": (),
+    "workflows": (".github/workflows",),
+    "scripts": ("scripts",),
 }
 SUPPORTED_REPORTS = {
     "python": ("cobertura-xml", "coverage.xml"),

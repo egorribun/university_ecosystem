@@ -131,8 +131,8 @@ def test_normalizes_native_reports_with_provenance_and_honest_metadata(
         "rust-native": ["native/rust_ext"],
         "rust-pyo3-sanitizer": ["crates/pyo3-sanitizer"],
         "rust-wasm-sanitizer": ["frontend/wasm-sanitizer"],
-        "scripts": [],
-        "workflows": [],
+        "scripts": ["scripts"],
+        "workflows": [".github/workflows"],
     }
 
     python_lines = _metric(manifest, "python", "lines")
