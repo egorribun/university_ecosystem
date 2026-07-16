@@ -1,0 +1,6 @@
+{
+  "totals": {
+    "functions": {"count": 2, "covered": 1},
+    "lines": {"count": 4, "covered": 3}
+  }
+}

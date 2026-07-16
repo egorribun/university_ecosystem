@@ -26,7 +26,19 @@
     "scripts": {"coverage": {"lines": 99, "statements": 99, "branches": 98, "functions": 98}}
   },
   "tier0": {"coverage": {"lines": 100, "statements": 100, "branches": 100, "functions": 100}},
-  "required_artifacts": ["coverage.xml", "frontend/coverage/lcov.info"],
+  "required_artifacts": [
+    "coverage.xml",
+    "artifacts/coverage/python/coverage.json",
+    "frontend/coverage/lcov.info",
+    "frontend/coverage/coverage-final.json",
+    "artifacts/coverage/go/gateway/coverage.out",
+    "artifacts/coverage/go/ws-hub/coverage.out",
+    "artifacts/coverage/go/file-processor/coverage.out",
+    "artifacts/coverage/rust/rust-native/llvm.json",
+    "artifacts/coverage/rust/rust-pyo3-sanitizer/llvm.json",
+    "artifacts/coverage/rust/rust-wasm-sanitizer/llvm.json",
+    "artifacts/coverage/quality-manifest.json"
+  ],
   "exclusions": [],
   "quarantines": []
 }
