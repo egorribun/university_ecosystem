@@ -9,8 +9,9 @@ import sys
 import tempfile
 from collections import defaultdict
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
+from decimal import ROUND_HALF_UP, Decimal, localcontext
 from pathlib import Path
 from typing import NoReturn
 from xml.etree import ElementTree
@@ -94,6 +95,8 @@ GO_RECORD_PATTERN = re.compile(
     r"(?P<end_line>\d+)\.(?P<end_column>\d+)\s+"
     r"(?P<statements>\d+)\s+(?P<count>\d+)\s*$"
 )
+# This quantization is display-only; strict floor checks use integer arithmetic.
+PERCENT_QUANTUM = Decimal("0.000001")
 
 
 class _InputError(ValueError):
@@ -129,6 +132,15 @@ class _ParsedReport:
     sha256: str
 
 
+@dataclass(frozen=True)
+class _RawReport:
+    component: str
+    report_format: str
+    path: Path
+    raw: bytes
+    sha256: str
+
+
 def _duplicate_key_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
     result: dict[str, object] = {}
     for key, value in pairs:
@@ -156,11 +168,21 @@ def _measured_metric(
         "status": status,
         "covered": covered,
         "total": total,
-        "percent": covered * 100 / total if total else 0.0,
+        "percent": _display_percent(covered, total),
     }
     if derivation is not None:
         metric["derivation"] = derivation
     return metric
+
+
+def _display_percent(covered: int, total: int) -> float:
+    """Return a six-decimal display value; policy gates retain integer arithmetic."""
+    if total == 0:
+        return 0.0
+    with localcontext() as context:
+        context.prec = max(28, len(str(covered)) + len(str(total)) + 8)
+        percentage = Decimal(covered) * Decimal(100) / Decimal(total)
+        return float(percentage.quantize(PERCENT_QUANTUM, rounding=ROUND_HALF_UP))
 
 
 def _unmeasured_metric(
@@ -223,6 +245,41 @@ def _counter_from_xml_attributes(
     return _measured_metric("native", covered, total)
 
 
+def _xml_local_name(element: ElementTree.Element) -> str:
+    return element.tag.rsplit("}", maxsplit=1)[-1]
+
+
+def _coverage_xml_source_lines(root: ElementTree.Element) -> list[ElementTree.Element]:
+    source_lines: list[ElementTree.Element] = []
+    seen_identities: set[tuple[str, int]] = set()
+    for class_element in root.iter():
+        if _xml_local_name(class_element) != "class":
+            continue
+        filename = class_element.get("filename")
+        if not filename:
+            raise _InputError("coverage XML class line is missing a filename")
+        for lines_element in class_element:
+            if _xml_local_name(lines_element) != "lines":
+                continue
+            for line in lines_element:
+                if _xml_local_name(line) != "line":
+                    continue
+                line_number = _parse_nonnegative_decimal(
+                    line.get("number"),
+                    "coverage XML line number",
+                )
+                if line_number == 0:
+                    raise _InputError("coverage XML line number must be positive")
+                identity = (filename, line_number)
+                if identity in seen_identities:
+                    raise _InputError(
+                        f"duplicate coverage XML source line {filename}:{line_number}"
+                    )
+                seen_identities.add(identity)
+                source_lines.append(line)
+    return source_lines
+
+
 def _parse_python_xml(raw: bytes) -> dict[str, dict[str, object]]:
     if b"<!doctype" in raw.lower() or b"<!entity" in raw.lower():
         raise _InputError("coverage XML must not contain DTD or entity declarations")
@@ -248,7 +305,7 @@ def _parse_python_xml(raw: bytes) -> dict[str, dict[str, object]]:
         "branches-valid",
         "branch",
     )
-    lines = list(root.iterfind(".//line"))
+    lines = _coverage_xml_source_lines(root)
 
     if line_metric is None:
         if lines:
@@ -312,35 +369,228 @@ def _parse_lcov_counter(value: str, field: str) -> int:
     return _parse_nonnegative_decimal(value, f"LCOV {field}")
 
 
+@dataclass
+class _LcovRecord:
+    source: str | None = None
+    summaries: dict[str, int] = field(default_factory=dict)
+    line_hits: dict[int, int] = field(default_factory=dict)
+    branch_hits: dict[tuple[int, str, str], int | None] = field(default_factory=dict)
+    function_declarations: dict[str, tuple[int, int | None]] = field(
+        default_factory=dict
+    )
+    function_hits: dict[str, int] = field(default_factory=dict)
+
+
+def _parse_lcov_positive_line(value: str, field: str) -> int:
+    line_number = _parse_lcov_counter(value, field)
+    if line_number == 0:
+        raise _InputError(f"LCOV {field} must be positive")
+    return line_number
+
+
+def _lcov_require_source(record: _LcovRecord, field: str, line_number: int) -> None:
+    if record.source is None:
+        raise _InputError(f"LCOV {field} at line {line_number} precedes SF")
+
+
+def _parse_lcov_da(
+    record: _LcovRecord,
+    value: str,
+    line_number: int,
+) -> None:
+    values = value.split(",")
+    if len(values) not in (2, 3) or (len(values) == 3 and not values[2]):
+        raise _InputError(f"LCOV DA at line {line_number} is malformed")
+    source_line = _parse_lcov_positive_line(values[0], "DA line")
+    hits = _parse_lcov_counter(values[1], "DA hits")
+    if source_line in record.line_hits:
+        raise _InputError(f"LCOV record has duplicate DA at line {line_number}")
+    record.line_hits[source_line] = hits
+
+
+def _parse_lcov_brda(
+    record: _LcovRecord,
+    value: str,
+    line_number: int,
+) -> None:
+    prefix, separator, taken_value = value.rpartition(",")
+    if not separator:
+        raise _InputError(f"LCOV BRDA at line {line_number} is malformed")
+    fields = prefix.split(",", maxsplit=2)
+    if len(fields) != 3 or not fields[1] or not fields[2]:
+        raise _InputError(f"LCOV BRDA at line {line_number} is malformed")
+    source_line = _parse_lcov_positive_line(fields[0], "BRDA line")
+    taken = (
+        None if taken_value == "-" else _parse_lcov_counter(taken_value, "BRDA taken")
+    )
+    identity = (source_line, fields[1], fields[2])
+    if identity in record.branch_hits:
+        raise _InputError(f"LCOV record has duplicate BRDA at line {line_number}")
+    record.branch_hits[identity] = taken
+
+
+def _parse_lcov_fn(
+    record: _LcovRecord,
+    value: str,
+    line_number: int,
+) -> None:
+    fields = value.split(",", maxsplit=2)
+    if len(fields) < 2:
+        raise _InputError(f"LCOV FN at line {line_number} is malformed")
+    start_line = _parse_lcov_positive_line(fields[0], "FN start line")
+    end_line: int | None = None
+    if len(fields) == 3 and fields[1].isdecimal():
+        end_line = _parse_lcov_positive_line(fields[1], "FN end line")
+        function_name = fields[2]
+        if end_line < start_line:
+            raise _InputError(f"LCOV FN at line {line_number} ends before it starts")
+    else:
+        function_name = value.split(",", maxsplit=1)[1]
+    if not function_name:
+        raise _InputError(f"LCOV FN at line {line_number} has an empty function name")
+    if function_name in record.function_declarations:
+        raise _InputError(f"LCOV record has duplicate FN at line {line_number}")
+    record.function_declarations[function_name] = (start_line, end_line)
+
+
+def _parse_lcov_fnda(
+    record: _LcovRecord,
+    value: str,
+    line_number: int,
+) -> None:
+    count_value, separator, function_name = value.partition(",")
+    if not separator or not function_name:
+        raise _InputError(f"LCOV FNDA at line {line_number} is malformed")
+    if function_name in record.function_hits:
+        raise _InputError(f"LCOV record has duplicate FNDA at line {line_number}")
+    record.function_hits[function_name] = _parse_lcov_counter(
+        count_value,
+        "FNDA hits",
+    )
+
+
+def _lcov_detail_pair(record: _LcovRecord, metric_name: str) -> tuple[int, int] | None:
+    if metric_name == "lines":
+        if not record.line_hits:
+            return None
+        return (
+            sum(hits > 0 for hits in record.line_hits.values()),
+            len(record.line_hits),
+        )
+    if metric_name == "branches":
+        if not record.branch_hits:
+            return None
+        return (
+            sum((taken or 0) > 0 for taken in record.branch_hits.values()),
+            len(record.branch_hits),
+        )
+
+    if not record.function_declarations and not record.function_hits:
+        return None
+    if not record.function_declarations:
+        raise _InputError("LCOV FNDA records have no matching FN declarations")
+    declaration_names = set(record.function_declarations)
+    hit_names = set(record.function_hits)
+    missing_hits = declaration_names - hit_names
+    unknown_hits = hit_names - declaration_names
+    if missing_hits or unknown_hits:
+        raise _InputError("LCOV FN and FNDA records do not describe the same functions")
+    return (
+        sum(hits > 0 for hits in record.function_hits.values()),
+        len(record.function_declarations),
+    )
+
+
+def _lcov_metric_pair(
+    record: _LcovRecord,
+    metric_name: str,
+    covered_name: str,
+    total_name: str,
+) -> tuple[int, int] | None:
+    detail_pair = _lcov_detail_pair(record, metric_name)
+    has_covered = covered_name in record.summaries
+    has_total = total_name in record.summaries
+    if has_covered != has_total:
+        raise _InputError(
+            f"LCOV {metric_name} counters must include both "
+            f"{covered_name} and {total_name}"
+        )
+    if not has_covered:
+        return detail_pair
+
+    summary_pair = (
+        record.summaries[covered_name],
+        record.summaries[total_name],
+    )
+    if summary_pair[0] > summary_pair[1]:
+        raise _InputError(f"LCOV {metric_name} covered counter exceeds total")
+    if detail_pair is not None and summary_pair != detail_pair:
+        raise _InputError(
+            f"LCOV {metric_name} summary counters disagree with detailed records"
+        )
+    return summary_pair
+
+
 def _parse_frontend_lcov(raw: bytes) -> dict[str, dict[str, object]]:
     text = _decode_report(raw, "LCOV report")
-    records: list[dict[str, str]] = []
-    current: dict[str, str] = {}
+    records: list[_LcovRecord] = []
+    current = _LcovRecord()
+    current_has_content = False
+    seen_sources: set[str] = set()
     counter_names = frozenset({"LF", "LH", "BRF", "BRH", "FNF", "FNH"})
 
     for line_number, line in enumerate(text.splitlines(), start=1):
         if not line:
             continue
         if line == "end_of_record":
-            if "SF" not in current:
+            if current.source is None:
                 raise _InputError(f"LCOV record ending at line {line_number} lacks SF")
+            if current.source in seen_sources:
+                raise _InputError(
+                    f"LCOV report has duplicate SF for {current.source} "
+                    f"at line {line_number}"
+                )
+            seen_sources.add(current.source)
             records.append(current)
-            current = {}
+            current = _LcovRecord()
+            current_has_content = False
             continue
         if ":" not in line:
             raise _InputError(f"LCOV line {line_number} is malformed")
         field, value = line.split(":", maxsplit=1)
-        if field == "SF" and "SF" in current:
-            raise _InputError(f"LCOV record has duplicate SF at line {line_number}")
+        current_has_content = True
+        if field == "SF":
+            if current.source is not None:
+                raise _InputError(f"LCOV record has duplicate SF at line {line_number}")
+            if not value:
+                raise _InputError(f"LCOV SF at line {line_number} is empty")
+            current.source = value
+            continue
         if field in counter_names:
-            if field in current:
+            _lcov_require_source(current, field, line_number)
+            if field in current.summaries:
                 raise _InputError(
                     f"LCOV record has duplicate {field} at line {line_number}"
                 )
-            _parse_lcov_counter(value, field)
-        current[field] = value
+            current.summaries[field] = _parse_lcov_counter(value, field)
+            continue
+        if field == "DA":
+            _lcov_require_source(current, field, line_number)
+            _parse_lcov_da(current, value, line_number)
+            continue
+        if field == "BRDA":
+            _lcov_require_source(current, field, line_number)
+            _parse_lcov_brda(current, value, line_number)
+            continue
+        if field == "FN":
+            _lcov_require_source(current, field, line_number)
+            _parse_lcov_fn(current, value, line_number)
+            continue
+        if field == "FNDA":
+            _lcov_require_source(current, field, line_number)
+            _parse_lcov_fnda(current, value, line_number)
 
-    if current:
+    if current_has_content:
         raise _InputError("LCOV report is missing end_of_record")
     if not records:
         raise _InputError("LCOV report contains no records")
@@ -356,28 +606,16 @@ def _parse_frontend_lcov(raw: bytes) -> dict[str, dict[str, object]]:
         ("branches", "BRH", "BRF"),
         ("functions", "FNH", "FNF"),
     ):
-        present = [
-            covered_name in record and total_name in record for record in records
+        pairs = [
+            _lcov_metric_pair(record, metric_name, covered_name, total_name)
+            for record in records
         ]
-        partial = [
-            (covered_name in record) != (total_name in record) for record in records
-        ]
-        if any(partial):
-            raise _InputError(
-                f"LCOV {metric_name} counters must include both "
-                f"{covered_name} and {total_name}"
-            )
-        if not all(present):
+        if any(pair is None for pair in pairs):
             metrics[metric_name] = _unmeasured_metric("missing")
             continue
-
-        covered = sum(
-            _parse_lcov_counter(record[covered_name], covered_name)
-            for record in records
-        )
-        total = sum(
-            _parse_lcov_counter(record[total_name], total_name) for record in records
-        )
+        measured_pairs = [pair for pair in pairs if pair is not None]
+        covered = sum(pair[0] for pair in measured_pairs)
+        total = sum(pair[1] for pair in measured_pairs)
         metrics[metric_name] = _measured_metric("native", covered, total)
 
     return {metric: metrics[metric] for metric in METRICS}
@@ -394,6 +632,7 @@ def _parse_go_coverprofile(raw: bytes) -> dict[str, dict[str, object]]:
     total_statements = 0
     covered_statements = 0
     source_lines: dict[tuple[str, int], bool] = {}
+    seen_blocks: set[tuple[str, int, int, int, int]] = set()
     for line_number, line in enumerate(lines[1:], start=2):
         match = GO_RECORD_PATTERN.fullmatch(line)
         if match is None:
@@ -417,10 +656,22 @@ def _parse_go_coverprofile(raw: bytes) -> dict[str, dict[str, object]]:
         if (end_line, end_column) < (start_line, start_column):
             raise _InputError("Go coverprofile range ends before it starts")
 
+        filename = match.group("filename")
+        block_identity = (
+            filename,
+            start_line,
+            start_column,
+            end_line,
+            end_column,
+        )
+        if block_identity in seen_blocks:
+            raise _InputError(
+                f"duplicate Go coverprofile block at record {line_number}"
+            )
+        seen_blocks.add(block_identity)
         total_statements += statements
         if count > 0:
             covered_statements += statements
-        filename = match.group("filename")
         for source_line in range(start_line, end_line + 1):
             identity = (filename, source_line)
             source_lines[identity] = source_lines.get(identity, False) or count > 0
@@ -486,12 +737,12 @@ def _parse_rust_llvm_json(raw: bytes) -> dict[str, dict[str, object]]:
     totals_entries: list[dict[str, object]] = []
     if "data" in document:
         data = document["data"]
-        if not isinstance(data, list) or not data:
-            raise _InputError("LLVM JSON data must be a non-empty list")
-        for index, entry in enumerate(data):
-            if not isinstance(entry, dict) or not isinstance(entry.get("totals"), dict):
-                raise _InputError(f"LLVM JSON data[{index}] lacks totals")
-            totals_entries.append(entry["totals"])
+        if not isinstance(data, list) or len(data) != 1:
+            raise _InputError("LLVM JSON data must contain exactly one entry")
+        entry = data[0]
+        if not isinstance(entry, dict) or not isinstance(entry.get("totals"), dict):
+            raise _InputError("LLVM JSON data[0] lacks totals")
+        totals_entries.append(entry["totals"])
     elif isinstance(document.get("totals"), dict):
         totals_entries.append(document["totals"])
     else:
@@ -680,24 +931,34 @@ def _collect_report_inputs(arguments: argparse.Namespace) -> list[_ReportInput]:
     return inputs
 
 
-def _parse_report(report_input: _ReportInput) -> _ParsedReport:
+def _read_raw_report(report_input: _ReportInput) -> _RawReport:
     raw = _read_report_bytes(report_input.path)
-    if report_input.report_format == "cobertura-xml":
-        metrics = _parse_python_xml(raw)
-    elif report_input.report_format == "lcov":
-        metrics = _parse_frontend_lcov(raw)
-    elif report_input.report_format == "go-coverprofile":
-        metrics = _parse_go_coverprofile(raw)
-    elif report_input.report_format == "llvm-cov-json":
-        metrics = _parse_rust_llvm_json(raw)
-    else:
-        raise _InputError(f"unsupported report format: {report_input.report_format}")
-    return _ParsedReport(
+    return _RawReport(
         component=report_input.component,
         report_format=report_input.report_format,
         path=report_input.path,
-        metrics=metrics,
+        raw=raw,
         sha256=hashlib.sha256(raw).hexdigest(),
+    )
+
+
+def _parse_report(raw_report: _RawReport) -> _ParsedReport:
+    if raw_report.report_format == "cobertura-xml":
+        metrics = _parse_python_xml(raw_report.raw)
+    elif raw_report.report_format == "lcov":
+        metrics = _parse_frontend_lcov(raw_report.raw)
+    elif raw_report.report_format == "go-coverprofile":
+        metrics = _parse_go_coverprofile(raw_report.raw)
+    elif raw_report.report_format == "llvm-cov-json":
+        metrics = _parse_rust_llvm_json(raw_report.raw)
+    else:
+        raise _InputError(f"unsupported report format: {raw_report.report_format}")
+    return _ParsedReport(
+        component=raw_report.component,
+        report_format=raw_report.report_format,
+        path=raw_report.path,
+        metrics=metrics,
+        sha256=raw_report.sha256,
     )
 
 
@@ -741,8 +1002,10 @@ def _component_entry(
     component: str,
     reports: list[_ParsedReport],
     floors: dict[str, int],
+    input_count: int,
+    parse_errors: list[str],
 ) -> tuple[dict[str, object], list[str], dict[str, object] | None]:
-    if not reports:
+    if input_count == 0:
         if component in SUPPORTED_REPORTS:
             _, expected_path = SUPPORTED_REPORTS[component]
             error = f"expected report for component {component} was not supplied"
@@ -764,21 +1027,23 @@ def _component_entry(
         }
         return entry, [error], missing_report
 
-    metrics = reports[0].metrics
-    errors = [
-        failure
-        for metric_name in METRICS
-        if (
-            failure := _metric_failure(
-                component,
-                metric_name,
-                metrics[metric_name],
-                floors[metric_name],
+    metrics = reports[0].metrics if reports else _missing_metrics()
+    errors = list(parse_errors)
+    if not parse_errors:
+        errors.extend(
+            failure
+            for metric_name in METRICS
+            if (
+                failure := _metric_failure(
+                    component,
+                    metric_name,
+                    metrics[metric_name],
+                    floors[metric_name],
+                )
             )
+            is not None
         )
-        is not None
-    ]
-    if len(reports) > 1:
+    if input_count > 1:
         errors.append(f"duplicate report input for component {component}")
     errors.sort()
     return (
@@ -794,7 +1059,7 @@ def _component_entry(
 
 def _build_manifest(
     arguments: argparse.Namespace,
-) -> tuple[dict[str, object], list[str], Path]:
+) -> tuple[dict[str, object], list[str], list[str], Path]:
     if SHA_PATTERN.fullmatch(arguments.commit_sha) is None:
         raise _InputError("commit-sha must be a 7-64 character hexadecimal Git SHA")
     generated_at = _parse_generated_at(arguments.generated_at)
@@ -813,11 +1078,24 @@ def _build_manifest(
 
     floors = _load_contract(contract_path, generated_at)
     reports_by_component: defaultdict[str, list[_ParsedReport]] = defaultdict(list)
-    parsed_reports: list[_ParsedReport] = []
+    report_input_counts: defaultdict[str, int] = defaultdict(int)
+    parse_errors_by_component: defaultdict[str, list[str]] = defaultdict(list)
+    raw_reports: list[_RawReport] = []
+    structural_errors: list[str] = []
     for report_input in report_inputs:
-        report = _parse_report(report_input)
-        parsed_reports.append(report)
-        reports_by_component[report.component].append(report)
+        report_input_counts[report_input.component] += 1
+        raw_report = _read_raw_report(report_input)
+        raw_reports.append(raw_report)
+        try:
+            report = _parse_report(raw_report)
+        except _InputError as error:
+            message = (
+                f"malformed report for component {report_input.component}: {error}"
+            )
+            parse_errors_by_component[report_input.component].append(message)
+            structural_errors.append(message)
+        else:
+            reports_by_component[report.component].append(report)
 
     components: dict[str, object] = {}
     missing_reports: list[dict[str, object]] = []
@@ -827,6 +1105,8 @@ def _build_manifest(
             component,
             reports_by_component[component],
             floors[component],
+            report_input_counts[component],
+            parse_errors_by_component[component],
         )
         components[component] = entry
         validation_errors.extend(errors)
@@ -834,6 +1114,7 @@ def _build_manifest(
             missing_reports.append(missing_report)
 
     validation_errors = sorted(set(validation_errors))
+    structural_errors = sorted(set(structural_errors))
     report_entries = [
         {
             "component": report.component,
@@ -841,7 +1122,7 @@ def _build_manifest(
             "path": _manifest_path(report.path),
             "sha256": report.sha256,
         }
-        for report in parsed_reports
+        for report in raw_reports
     ]
     report_entries.sort(
         key=lambda entry: (
@@ -869,7 +1150,7 @@ def _build_manifest(
             "errors": validation_errors,
         },
     }
-    return manifest, validation_errors, output_path
+    return manifest, validation_errors, structural_errors, output_path
 
 
 def _write_manifest(output_path: Path, manifest: dict[str, object]) -> None:
@@ -912,7 +1193,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         return error.code if isinstance(error.code, int) else 2
 
     try:
-        manifest, validation_errors, output_path = _build_manifest(arguments)
+        manifest, validation_errors, structural_errors, output_path = _build_manifest(
+            arguments
+        )
         _write_manifest(output_path, manifest)
     except _InputError as error:
         _print_error(str(error))
@@ -921,7 +1204,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     if validation_errors:
         for error in validation_errors:
             _print_error(error)
-        return 1
+        return 2 if structural_errors else 1
 
     print("Quality coverage artifacts are valid.")
     return 0

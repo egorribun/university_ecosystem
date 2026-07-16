@@ -109,18 +109,40 @@
         "derivation": {"type": "string", "minLength": 1},
         "reason_code": {"type": "string", "minLength": 1}
       },
-      "allOf": [
+      "oneOf": [
         {
-          "if": {"properties": {"status": {"const": "derived"}}},
-          "then": {"required": ["derivation"]}
+          "properties": {
+            "status": {"const": "native"},
+            "covered": {"type": "integer", "minimum": 0},
+            "total": {"type": "integer", "minimum": 0},
+            "percent": {"type": "number", "minimum": 0, "maximum": 100}
+          }
         },
         {
-          "if": {
-            "properties": {
-              "status": {"enum": ["experimental", "unsupported"]}
-            }
-          },
-          "then": {"required": ["reason_code"]}
+          "required": ["derivation"],
+          "properties": {
+            "status": {"const": "derived"},
+            "covered": {"type": "integer", "minimum": 0},
+            "total": {"type": "integer", "minimum": 0},
+            "percent": {"type": "number", "minimum": 0, "maximum": 100}
+          }
+        },
+        {
+          "required": ["reason_code"],
+          "properties": {
+            "status": {"enum": ["experimental", "unsupported"]},
+            "covered": {"type": "null"},
+            "total": {"type": "null"},
+            "percent": {"type": "null"}
+          }
+        },
+        {
+          "properties": {
+            "status": {"const": "missing"},
+            "covered": {"type": "null"},
+            "total": {"type": "null"},
+            "percent": {"type": "null"}
+          }
         }
       ]
     },

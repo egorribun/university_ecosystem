@@ -1,0 +1,13 @@
+TN:
+SF:frontend/src/branch-expression.ts
+FN:1,branch_expression
+FNDA:1,branch_expression
+FNF:1
+FNH:1
+DA:1,1
+LF:1
+LH:1
+BRDA:1,0,condition,with,comma,1
+BRF:1
+BRH:1
+end_of_record

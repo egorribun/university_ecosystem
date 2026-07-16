@@ -90,6 +90,25 @@ def _metric(
     return metric_entry
 
 
+def _assert_metric_schema_shape(metric: dict[str, object]) -> None:
+    assert set(metric) >= {"status", "covered", "total", "percent"}
+    status = metric["status"]
+    if status in {"native", "derived"}:
+        assert isinstance(metric["covered"], int)
+        assert isinstance(metric["total"], int)
+        assert isinstance(metric["percent"], float | int)
+        if status == "derived":
+            assert isinstance(metric["derivation"], str)
+        return
+
+    assert status in {"experimental", "unsupported", "missing"}
+    assert metric["covered"] is None
+    assert metric["total"] is None
+    assert metric["percent"] is None
+    if status in {"experimental", "unsupported"}:
+        assert isinstance(metric["reason_code"], str)
+
+
 def test_contract_declares_all_canonical_raw_coverage_artifacts() -> None:
     contract = json.loads(QUALITY_CONTRACT_PATH.read_text(encoding="utf-8"))
 
@@ -165,19 +184,19 @@ def test_normalizes_native_reports_with_provenance_and_honest_metadata(
 
     assert _metric(manifest, "frontend", "lines") == {
         "covered": 2,
-        "percent": 200 / 3,
+        "percent": 66.666667,
         "status": "native",
         "total": 3,
     }
     assert _metric(manifest, "frontend", "branches") == {
         "covered": 2,
-        "percent": 200 / 3,
+        "percent": 66.666667,
         "status": "native",
         "total": 3,
     }
     assert _metric(manifest, "frontend", "functions") == {
         "covered": 2,
-        "percent": 200 / 3,
+        "percent": 66.666667,
         "status": "native",
         "total": 3,
     }
@@ -194,7 +213,7 @@ def test_normalizes_native_reports_with_provenance_and_honest_metadata(
     assert go_lines == {
         "covered": 1,
         "derivation": "unique source lines in coverprofile blocks; covered when any overlapping block has count greater than zero",
-        "percent": 100 / 3,
+        "percent": 33.333333,
         "status": "derived",
         "total": 3,
     }
@@ -266,25 +285,154 @@ def test_rust_direct_totals_form_is_normalized(tmp_path: Path) -> None:
 
 
 @pytest.mark.parametrize(
-    ("argument", "value"),
+    ("component", "argument", "value"),
     [
-        ("--python-xml", str(FIXTURES / "python-malformed.xml")),
-        ("--python-xml", str(FIXTURES / "python-doctype.xml")),
-        ("--frontend-lcov", str(FIXTURES / "frontend-malformed.lcov")),
-        ("--go-report", f"go-gateway={FIXTURES / 'go-malformed.coverprofile'}"),
-        ("--rust-report", f"rust-native={FIXTURES / 'rust-malformed.json'}"),
+        ("python", "--python-xml", str(FIXTURES / "python-malformed.xml")),
+        ("python", "--python-xml", str(FIXTURES / "python-doctype.xml")),
+        ("python", "--python-xml", str(FIXTURES / "python-duplicate-line.xml")),
+        ("frontend", "--frontend-lcov", str(FIXTURES / "frontend-malformed.lcov")),
+        (
+            "frontend",
+            "--frontend-lcov",
+            str(FIXTURES / "frontend-conflicting-summary.lcov"),
+        ),
+        (
+            "frontend",
+            "--frontend-lcov",
+            str(FIXTURES / "frontend-conflicting-branch-summary.lcov"),
+        ),
+        (
+            "frontend",
+            "--frontend-lcov",
+            str(FIXTURES / "frontend-conflicting-function-summary.lcov"),
+        ),
+        (
+            "frontend",
+            "--frontend-lcov",
+            str(FIXTURES / "frontend-duplicate-source.lcov"),
+        ),
+        (
+            "frontend",
+            "--frontend-lcov",
+            str(FIXTURES / "frontend-duplicate-da.lcov"),
+        ),
+        (
+            "frontend",
+            "--frontend-lcov",
+            str(FIXTURES / "frontend-duplicate-brda.lcov"),
+        ),
+        (
+            "frontend",
+            "--frontend-lcov",
+            str(FIXTURES / "frontend-duplicate-fn.lcov"),
+        ),
+        (
+            "frontend",
+            "--frontend-lcov",
+            str(FIXTURES / "frontend-duplicate-fnda.lcov"),
+        ),
+        (
+            "frontend",
+            "--frontend-lcov",
+            str(FIXTURES / "frontend-malformed-detail.lcov"),
+        ),
+        (
+            "go-gateway",
+            "--go-report",
+            f"go-gateway={FIXTURES / 'go-malformed.coverprofile'}",
+        ),
+        (
+            "go-gateway",
+            "--go-report",
+            f"go-gateway={FIXTURES / 'go-duplicate-block.coverprofile'}",
+        ),
+        (
+            "rust-native",
+            "--rust-report",
+            f"rust-native={FIXTURES / 'rust-malformed.json'}",
+        ),
+        (
+            "rust-native",
+            "--rust-report",
+            f"rust-native={FIXTURES / 'rust-multiple-data.json'}",
+        ),
     ],
 )
 def test_malformed_native_report_returns_two_without_traceback(
     tmp_path: Path,
+    component: str,
     argument: str,
     value: str,
 ) -> None:
-    result = _run_normalizer(tmp_path / "quality-manifest.json", argument, value)
+    output = tmp_path / "quality-manifest.json"
+    result = _run_normalizer(output, argument, value)
 
     assert result.returncode == 2
     assert "Traceback" not in result.stderr
     assert result.stderr.startswith("ERROR:")
+    assert output.is_file()
+    manifest = json.loads(output.read_text(encoding="utf-8"))
+    assert manifest["validation"]["valid"] is False
+    assert manifest["validation"]["errors"]
+    assert manifest["components"][component]["status"] == "failed"
+    assert manifest["components"][component]["errors"]
+    assert any(report["component"] == component for report in manifest["reports"])
+    for metric in manifest["components"][component]["metrics"].values():
+        assert isinstance(metric, dict)
+        _assert_metric_schema_shape(metric)
+
+
+def test_python_same_line_in_distinct_source_files_is_not_a_duplicate(
+    tmp_path: Path,
+) -> None:
+    output = tmp_path / "quality-manifest.json"
+
+    result = _run_normalizer(
+        output,
+        "--python-xml",
+        str(FIXTURES / "python-same-line-different-sources.xml"),
+    )
+
+    assert result.returncode == 1
+    manifest = json.loads(output.read_text(encoding="utf-8"))
+    assert manifest["components"]["python"]["status"] == "failed"
+    assert all(
+        "duplicate coverage XML source line" not in error
+        for error in manifest["validation"]["errors"]
+    )
+
+
+def test_percent_display_rounds_half_up_to_six_decimal_places(tmp_path: Path) -> None:
+    output = tmp_path / "quality-manifest.json"
+
+    result = _run_normalizer(
+        output,
+        "--go-report",
+        f"go-gateway={FIXTURES / 'go-rounding.coverprofile'}",
+    )
+
+    assert result.returncode == 1
+    manifest = json.loads(output.read_text(encoding="utf-8"))
+    assert _metric(manifest, "go-gateway", "statements")["percent"] == 0.000001
+
+
+def test_lcov_branch_expression_may_contain_commas(tmp_path: Path) -> None:
+    output = tmp_path / "quality-manifest.json"
+
+    result = _run_normalizer(
+        output,
+        "--frontend-lcov",
+        str(FIXTURES / "frontend-branch-expression.lcov"),
+    )
+
+    assert result.returncode == 1
+    manifest = json.loads(output.read_text(encoding="utf-8"))
+    assert _metric(manifest, "frontend", "branches") == {
+        "covered": 1,
+        "percent": 100.0,
+        "status": "native",
+        "total": 1,
+    }
 
 
 def test_missing_expected_report_writes_failed_manifest(tmp_path: Path) -> None:
@@ -440,7 +588,56 @@ def test_coverage_manifest_schema_is_closed_and_versioned() -> None:
     assert schema["$schema"] == "https://json-schema.org/draft/2020-12/schema"
     assert schema["properties"]["schema_version"]["const"] == 1
     assert schema["additionalProperties"] is False
-    assert schema["$defs"]["metric"]["additionalProperties"] is False
+    metric_schema = schema["$defs"]["metric"]
+    assert metric_schema["additionalProperties"] is False
+    variants = metric_schema["oneOf"]
+    assert len(variants) == 4
+    statuses = {
+        variant["properties"]["status"].get("const")
+        or tuple(variant["properties"]["status"]["enum"])
+        for variant in variants
+    }
+    assert statuses == {
+        "native",
+        "derived",
+        ("experimental", "unsupported"),
+        "missing",
+    }
+    native = next(
+        variant
+        for variant in variants
+        if variant["properties"]["status"].get("const") == "native"
+    )
+    assert native["properties"]["covered"] == {"type": "integer", "minimum": 0}
+    assert native["properties"]["total"] == {"type": "integer", "minimum": 0}
+    assert native["properties"]["percent"]["type"] == "number"
+    derived = next(
+        variant
+        for variant in variants
+        if variant["properties"]["status"].get("const") == "derived"
+    )
+    assert "derivation" in derived["required"]
+    assert derived["properties"]["covered"]["type"] == "integer"
+    unmeasured = next(
+        variant
+        for variant in variants
+        if variant["properties"]["status"].get("enum")
+        == ["experimental", "unsupported"]
+    )
+    assert "reason_code" in unmeasured["required"]
+    assert {
+        field: unmeasured["properties"][field]["type"]
+        for field in ("covered", "total", "percent")
+    } == {"covered": "null", "total": "null", "percent": "null"}
+    missing = next(
+        variant
+        for variant in variants
+        if variant["properties"]["status"].get("const") == "missing"
+    )
+    assert {
+        field: missing["properties"][field]["type"]
+        for field in ("covered", "total", "percent")
+    } == {"covered": "null", "total": "null", "percent": "null"}
 
 
 def test_relative_report_path_is_resolved_from_repository_root(tmp_path: Path) -> None:

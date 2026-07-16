@@ -16,7 +16,9 @@ end_of_record
 TN:
 SF:frontend/src/two.ts
 FN:1,second
+FN:2,second_uncovered
 FNDA:1,second
+FNDA:0,second_uncovered
 FNF:2
 FNH:1
 DA:1,1
