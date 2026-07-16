@@ -23,7 +23,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
         with:
-          go-version: "1.26.4"
+          go-version: "1.26.5"
           cache: true
 
       - name: Run Gateway Benchmarks
@@ -69,7 +69,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
         with:
-          go-version: "1.26.4"
+          go-version: "1.26.5"
           cache: true
 
       - name: Run WS-Hub benchmarks (regression input)
@@ -105,6 +105,8 @@ jobs:
 
       - name: Install stable Rust toolchain
         uses: dtolnay/rust-toolchain@fa04a1451ff1842e2626ccb99004d0195b455a88 # stable
+        with:
+          toolchain: stable
 
       - name: Cache Cargo registry and build artefacts
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -116,12 +118,16 @@ jobs:
           key: rust-criterion-${{ runner.os }}-${{ hashFiles('crates/pyo3-sanitizer/Cargo.toml') }}
           restore-keys: rust-criterion-${{ runner.os }}-
 
+      - name: Compile benchmarks
+        run: cargo bench -p pyo3-sanitizer --bench sanitizer_bench --no-default-features --no-run
+        working-directory: crates/pyo3-sanitizer
+
       - name: Run Criterion benchmarks
         # Criterion writes HTML reports to target/criterion/ but we capture
-        # machine-readable stdout via 2>&1 for the benchmark action.
+        # machine-readable stdout via tee for the benchmark action.
         # --no-default-features disables the extension-module feature which links against
         # libpython at build time — unavailable in a standalone bench binary context.
-        run: cargo bench -p pyo3-sanitizer --no-default-features 2>&1 | tee ../../../criterion-bench.txt
+        run: cargo bench -p pyo3-sanitizer --bench sanitizer_bench --no-default-features -- --output-format bencher | tee ../../criterion-bench.txt
         working-directory: crates/pyo3-sanitizer
 
       - name: Store Criterion results

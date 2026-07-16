@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/require"
 	"github.com/university-ecosystem/ws-hub/pkg/config"
+	"go.opentelemetry.io/otel/trace"
 )
 
 func TestHub_MutexDeadlockConcurrency(t *testing.T) {
@@ -73,7 +73,7 @@ func TestHub_MutexDeadlockConcurrency(t *testing.T) {
 				time.Sleep(1 * time.Millisecond)
 
 				// Authorize and collect recipients
-				h.CollectRecipients("chat.message", room1)
+				h.collectRecipients(&Message{Room: room1}, trace.SpanFromContext(ctx))
 
 				// Unregister
 				h.handleUnregister(ctx, c)

@@ -232,7 +232,7 @@ async def _resolve_user_from_ids(
                 if await _redis.exists(f"revoked:jti:{jti}"):
                     logger.debug("WS ticket JTI %s is revoked (Redis fast-path)", jti)
                     return None, None
-            except ConnectionError, TimeoutError, OSError:  # nosec B110  # RZ-28-01 + RZ-22-01: narrowed — Redis errors
+            except (ConnectionError, TimeoutError, OSError):  # nosec B110  # RZ-28-01 + RZ-22-01: narrowed — Redis errors
                 pass  # fallback to DB revoked_at check below
 
             active_session = await session_repo.get_by_jti(jti)

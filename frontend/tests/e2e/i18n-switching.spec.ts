@@ -135,32 +135,20 @@ test.describe("i18n language switching", () => {
     const { login } = await useMockApi(page)
     await login(page)
 
-    await page.goto("/settings", { waitUntil: "networkidle" })
+    await page.goto("/settings", { waitUntil: "domcontentloaded", timeout: 30_000 })
 
-    // Try to find a language switcher control.
-    const langSwitcher = page
-      .getByRole("combobox", { name: /language|язык/i })
-      .or(page.getByRole("listbox", { name: /language|язык/i }))
-      .or(page.getByText(/Английский|English/i).first())
+    // Appearance settings use an accordion, not a combobox/listbox. Open the
+    // language section through its semantic button before locating the radio.
+    const languageSection = page.getByRole("button", { name: /language|язык/i }).first()
+    await expect(languageSection).toBeVisible({ timeout: 5000 })
+    await languageSection.click()
 
-    if (await langSwitcher.isVisible({ timeout: 5000 })) {
-      await langSwitcher.click()
-      await page.waitForTimeout(500)
+    const enOption = page.getByRole("radio", { name: /English|Английский/i })
+    const enOptionLabel = page.locator("label").filter({ has: enOption }).first()
+    await expect(enOptionLabel).toBeVisible({ timeout: 3000 })
+    await enOptionLabel.click()
 
-      // Select English option.
-      const enOption = page.getByRole("option", { name: /English|Английский/i })
-      if (await enOption.isVisible({ timeout: 3000 })) {
-        await enOption.click()
-        await page.waitForTimeout(500)
-        const htmlLang = await page.locator("html").getAttribute("lang")
-        // Accept either "en" or "en-US" / "en-GB".
-        expect(htmlLang).toMatch(/^en/)
-      }
-    } else {
-      test.info().annotations.push({
-        type: "info",
-        description: "Language switcher control not found in settings",
-      })
-    }
+    // Accept either "en" or "en-US" / "en-GB".
+    await expect(page.locator("html")).toHaveAttribute("lang", /^en/)
   })
 })

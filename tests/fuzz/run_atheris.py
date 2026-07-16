@@ -1,6 +1,10 @@
-#!/usr/bin/env python
-# tests/fuzz/run_atheris.py — coverage-guided Python API fuzzer
+import os
 import sys
+
+# Add repository root to sys.path
+sys.path.insert(
+    0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+)
 
 import atheris
 
@@ -39,7 +43,7 @@ def TestOneInput(data):
 
     try:
         filename_input = fdp.ConsumeUnicodeNoSurrogates(500)
-        max_len = fdp.ConsumeIntegerInRange(1, 300)
+        max_len = fdp.ConsumeIntInRange(1, 300)
         sanitize_filename(filename_input, max_length=max_len)
     except Exception as e:
         print(f"CRASH in filename sanitization: {e}", file=sys.stderr)
@@ -69,7 +73,7 @@ def TestOneInput(data):
             payload["dnd_end"] = fdp.ConsumeUnicodeNoSurrogates(20)
 
         UserPreferencesBase.model_validate(payload)
-    except ValidationError, ValueError:
+    except (ValidationError, ValueError):
         # Expected validation / domain logic errors
         pass
     except Exception as e:
@@ -82,7 +86,7 @@ def TestOneInput(data):
         password = fdp.ConsumeUnicodeNoSurrogates(300)
         payload = {"token": token, "password": password}
         ResetPasswordIn.model_validate(payload)
-    except ValidationError, ValueError:
+    except (ValidationError, ValueError):
         # Expected validation / domain logic errors
         pass
     except Exception as e:

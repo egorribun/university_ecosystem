@@ -44,7 +44,7 @@ def _current_local_time(user: User | None = None) -> dt.time:
             if candidate:
                 try:
                     tz = ZoneInfo(candidate)
-                except ZoneInfoNotFoundError, ValueError:
+                except (ZoneInfoNotFoundError, ValueError):
                     tz = UTC
     now = dt.datetime.now(tz)
     current = now.timetz()

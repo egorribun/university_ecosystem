@@ -58,24 +58,67 @@ async def prepare_database() -> AsyncIterator[None]:
                 "DROP POLICY IF EXISTS messages_participant_isolation ON messages"
             )
             await conn.exec_driver_sql(
+                "DROP POLICY IF EXISTS messages_select_policy ON messages"
+            )
+            await conn.exec_driver_sql(
+                "DROP POLICY IF EXISTS messages_insert_policy ON messages"
+            )
+            await conn.exec_driver_sql(
+                "DROP POLICY IF EXISTS messages_update_policy ON messages"
+            )
+            await conn.exec_driver_sql(
+                "DROP POLICY IF EXISTS messages_delete_policy ON messages"
+            )
+            await conn.exec_driver_sql(
                 """
-                CREATE POLICY messages_participant_isolation ON messages
-                    AS PERMISSIVE
-                    FOR ALL
+                CREATE POLICY messages_select_policy ON messages
+                    FOR SELECT
                     TO PUBLIC
                     USING (
                         chat_id IN (
                             SELECT chat_id
                             FROM   chat_participants
-                            WHERE  user_id = (
-                                current_setting('app.current_user_id', TRUE)::uuid
-                            )
+                            WHERE  user_id = NULLIF(current_setting('app.current_user_id', TRUE), '')::uuid
                         )
                     )
+                """
+            )
+            await conn.exec_driver_sql(
+                """
+                CREATE POLICY messages_insert_policy ON messages
+                    FOR INSERT
+                    TO PUBLIC
                     WITH CHECK (
-                        current_setting('app.current_user_id', TRUE) IS NULL OR
-                        current_setting('app.current_user_id', TRUE) = '' OR
-                        sender_id = (current_setting('app.current_user_id', TRUE)::uuid)
+                        (
+                            current_setting('app.current_user_id', TRUE) IS NULL OR
+                            current_setting('app.current_user_id', TRUE) = '' OR
+                            sender_id = NULLIF(current_setting('app.current_user_id', TRUE), '')::uuid
+                        ) AND
+                        chat_id IN (
+                            SELECT chat_id
+                            FROM   chat_participants
+                            WHERE  user_id = NULLIF(current_setting('app.current_user_id', TRUE), '')::uuid
+                        )
+                    )
+                """
+            )
+            await conn.exec_driver_sql(
+                """
+                CREATE POLICY messages_update_policy ON messages
+                    FOR UPDATE
+                    TO PUBLIC
+                    USING (
+                        sender_id = NULLIF(current_setting('app.current_user_id', TRUE), '')::uuid
+                    )
+                """
+            )
+            await conn.exec_driver_sql(
+                """
+                CREATE POLICY messages_delete_policy ON messages
+                    FOR DELETE
+                    TO PUBLIC
+                    USING (
+                        sender_id = NULLIF(current_setting('app.current_user_id', TRUE), '')::uuid
                     )
                 """
             )
@@ -395,6 +438,10 @@ async def prepare_database() -> AsyncIterator[None]:
 @pytest_asyncio.fixture
 async def db_session() -> AsyncIterator[AsyncSession]:
     """Get a fresh database session for each test."""
+    if database._engine is not None:
+        await database._engine.dispose()
+    if database._read_replica_engine is not None:
+        await database._read_replica_engine.dispose()
     async with database.async_session() as session:
         yield session
         await session.rollback()

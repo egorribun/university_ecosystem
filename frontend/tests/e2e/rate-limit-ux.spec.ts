@@ -53,7 +53,9 @@ test.describe("Rate limit UX", () => {
     const { login } = await useMockApi(page)
     await login(page)
 
-    await page.goto("/news", { waitUntil: "networkidle" })
+    // The endpoint intentionally stays rate-limited while the client retries;
+    // waiting for networkidle would consume the whole test timeout.
+    await page.goto("/news", { waitUntil: "domcontentloaded" })
 
     // Trigger multiple rapid requests by reloading or clicking refresh.
     for (let i = 0; i < 3; i++) {
@@ -66,8 +68,8 @@ test.describe("Rate limit UX", () => {
     }
 
     // Alternatively, reload the page twice to exhaust the mock budget.
-    await page.reload({ waitUntil: "networkidle" })
-    await page.reload({ waitUntil: "networkidle" })
+    await page.reload({ waitUntil: "domcontentloaded" })
+    await page.reload({ waitUntil: "domcontentloaded" })
 
     await page.waitForTimeout(500)
 
@@ -103,7 +105,7 @@ test.describe("Rate limit UX", () => {
     const { login } = await useMockApi(page)
     await login(page)
 
-    await page.goto("/news", { waitUntil: "networkidle" })
+    await page.goto("/news", { waitUntil: "domcontentloaded" })
     await page.waitForTimeout(500)
 
     // Look for a countdown element — the app may show "retry in 5s", "5 sec",
@@ -163,7 +165,7 @@ test.describe("Rate limit UX", () => {
     const { login } = await useMockApi(page)
     await login(page)
 
-    await page.goto("/news", { waitUntil: "networkidle" })
+    await page.goto("/news", { waitUntil: "domcontentloaded" })
 
     // Wait for the retry window (1 s) plus some buffer for the re-fetch.
     await page.waitForTimeout(3000)

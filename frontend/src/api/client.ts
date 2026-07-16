@@ -275,12 +275,14 @@ api.interceptors.request.use(async (config) => {
     }
   }
 
-  if (!candidate.skipRateLimitQueue) {
+  // The queue is process-global. Applying it during SSR combines requests
+  // from independent visitors and can delay the HTML response past its timeout.
+  if (!isSsrRuntime && !candidate.skipRateLimitQueue) {
     // @ts-expect-error - axios config bridge
     await waitForClientQueueSlot(candidate)
   }
 
-  if (isRateLimited()) {
+  if (!isSsrRuntime && isRateLimited()) {
     await waitForRateLimitWindow()
   }
 

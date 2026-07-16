@@ -131,7 +131,7 @@ test.describe("Events registration", () => {
     const { login } = await useMockApi(page)
     await login(page)
 
-    await page.goto("/events", { waitUntil: "networkidle" })
+    await page.goto("/events", { waitUntil: "commit", timeout: 30_000 })
     await page.waitForURL(/\/events$/)
 
     // Click into the open event.
@@ -183,7 +183,7 @@ test.describe("Events registration", () => {
     const { login } = await useMockApi(page)
     await login(page)
 
-    await page.goto("/events", { waitUntil: "networkidle" })
+    await page.goto("/events", { waitUntil: "commit", timeout: 30_000 })
 
     const fullEventLink = page
       .getByText(/Full Capacity Event/i)
@@ -223,7 +223,7 @@ test.describe("Events registration", () => {
     const { login } = await useMockApi(page)
     await login(page)
 
-    await page.goto("/events", { waitUntil: "networkidle" })
+    await page.goto("/events", { waitUntil: "commit", timeout: 30_000 })
 
     const registeredEventLink = page
       .getByText(/Already Registered Event/i)

@@ -1,6 +1,7 @@
 import { expect, type Page } from "@playwright/test"
 import type { MfaTotpEnrollment, PendingMfaResponse, TotpEnrollmentStart } from "@/types/Mfa"
 import type { User } from "@/types/User"
+import { SSR_E2E_AUTH_COOKIE } from "../../../src/ssrAuth"
 import { validateRequestBody, validateResponseBody } from "../../../src/tests/contractValidator"
 
 type NewsLogEntry = {
@@ -356,6 +357,28 @@ export async function useMockApi(page: Page) {
     }
   })
 
+  // SSR runs before browser init scripts, so mirror the mocked auth state with
+  // a test-only cookie for protected direct navigations.
+  const e2eBaseUrl =
+    process.env["PLAYWRIGHT_BASE_URL"] ||
+    process.env["URL_STATE_E2E_BASE"] ||
+    "http://127.0.0.1:5173"
+  await page.context().addCookies([
+    {
+      name: SSR_E2E_AUTH_COOKIE,
+      value: "mock",
+      url: new URL(e2eBaseUrl).origin,
+    },
+  ])
+
+  // Keep authenticated mock pages from opening a real socket against the
+  // preview server. The ticket endpoint is mocked below, but the preview has
+  // no WebSocket upgrade handler; a real socket therefore receives 403 or
+  // fails DNS resolution for the service host and starts a reconnect loop.
+  // Playwright's WebSocket routing applies to every document, including the
+  // initial about:blank page, so it also covers direct socket smoke tests.
+  await page.routeWebSocket("**/ws/**", () => {})
+
   page.on("console", (msg) => {
     const location = msg.location()
     if (
@@ -433,10 +456,39 @@ export async function useMockApi(page: Page) {
     })
   }
 
-  await page.context().route("**/*", async (route) => {
-    const request = route.request()
+  await page.context().route("**/*", async (requestRoute) => {
+    const request = requestRoute.request()
     const url = new URL(request.url())
     const method = request.method().toUpperCase()
+    const requestOrigin = request.headers()["origin"]
+    const corsHeaders: Record<string, string> = requestOrigin
+      ? {
+          "Access-Control-Allow-Origin": requestOrigin,
+          "Access-Control-Allow-Credentials": "true",
+          "Access-Control-Allow-Headers":
+            request.headers()["access-control-request-headers"] ??
+            "Authorization, Content-Type, X-CSRF-Token, X-Requested-With, Traceparent, Tracestate, Baggage",
+          "Access-Control-Allow-Methods":
+            request.headers()["access-control-request-method"] ??
+            "GET, POST, PUT, PATCH, DELETE, OPTIONS",
+          Vary: "Origin",
+        }
+      : {}
+    const fulfill = async (options: Parameters<typeof requestRoute.fulfill>[0] = {}) =>
+      requestRoute.fulfill({
+        ...options,
+        headers: {
+          ...(options.headers ?? {}),
+          ...corsHeaders,
+        },
+      })
+    const route = {
+      request: () => request,
+      fulfill,
+      abort: (error?: Parameters<typeof requestRoute.abort>[0]) => requestRoute.abort(error),
+      continue: (options?: Parameters<typeof requestRoute.continue>[0]) =>
+        requestRoute.continue(options),
+    }
 
     // Handle external APIs
     if (url.hostname === "api.open-meteo.com") {
@@ -449,8 +501,14 @@ export async function useMockApi(page: Page) {
     }
 
     const pathname = url.pathname.replace(/^\/+/u, "")
-    // Normalize v1 paths ONLY for matching, but keep it permissive
-    const normPath = pathname.replace(/^api\/v1\//u, "api/")
+    // Normalize both the browser-relative `/api/v1/...` form and the CI
+    // service-host `http://api/v1/...` form to the same mock path.
+    const normPath = pathname.replace(/^api\/v1\//u, "api/").replace(/^v1\//u, "api/")
+
+    if (method === "OPTIONS" && (normPath.startsWith("api/") || normPath.startsWith("auth/"))) {
+      await route.fulfill({ status: 204 })
+      return
+    }
 
     if (state.offline && (normPath.startsWith("api/") || normPath.startsWith("auth/"))) {
       // eslint-disable-next-line no-console
@@ -749,6 +807,18 @@ export async function useMockApi(page: Page) {
       return
     }
 
+    // The chat hook requests its upgrade ticket outside the /api/v1 prefix.
+    // Keep the E2E session fully mocked so the preview's /ws proxy cannot
+    // answer with a 403 and trigger reconnect/auth-error side effects.
+    if (normPath === "ws/ticket") {
+      await route.fulfill({
+        status: 201,
+        contentType: "application/json",
+        body: JSON.stringify({ ticket: "mock-ws-ticket", expires_in: 15 }),
+      })
+      return
+    }
+
     // --- Stories ---
     if (normPath.includes("api/stories")) {
       await route.fulfill({
@@ -836,14 +906,13 @@ export async function useMockApi(page: Page) {
     state,
     async login(p: Page) {
       state.loggedIn = true
-      await p.goto("/")
-      await p.evaluate(() => {
-        localStorage.setItem("access_token", "mock-token")
-        localStorage.setItem("refresh_token", "mock-refresh")
-        localStorage.setItem("ue:language", "ru")
-      })
-      await p.goto("/dashboard")
-      await expect(p).toHaveURL(/\/dashboard$/)
+      // Start from the public route. The mock session is installed by the
+      // init script before navigation, so AuthProvider performs the normal
+      // client-side redirect to /dashboard without a second SSR navigation.
+      // Navigating / -> /dashboard directly can leave the preview's protected
+      // SSR request pending under CI load.
+      await p.goto("/login", { waitUntil: "commit", timeout: 30_000 })
+      await expect(p).toHaveURL(/\/dashboard$/, { timeout: 30_000 })
     },
     async setOffline(p: Page, offline: boolean) {
       state.offline = offline

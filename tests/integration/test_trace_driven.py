@@ -39,11 +39,27 @@ DATABASE_URL = os.getenv(
     ),
 )
 
+
+def _check_services() -> bool:
+    import socket
+
+    for port in (8000, 8080):
+        try:
+            with socket.create_connection(("127.0.0.1", port), timeout=1.0):
+                pass
+        except (OSError, ConnectionError):  # RZ-20-04
+            return False
+    return True
+
+
 _RUN = bool(os.getenv("RUN_INTEGRATION_TESTS"))
 
 pytestmark = [
     pytest.mark.integration,
-    pytest.mark.skipif(not _RUN, reason="Set RUN_INTEGRATION_TESTS=1 to run"),
+    pytest.mark.skipif(
+        not (_RUN and _check_services()),
+        reason="Set RUN_INTEGRATION_TESTS=1 and ensure backend and gateway services are running to run",
+    ),
 ]
 
 

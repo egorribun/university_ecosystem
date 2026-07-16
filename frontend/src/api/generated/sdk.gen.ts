@@ -2,8 +2,10 @@
 
 import {
   type Client,
+  type ClientMeta,
   formDataBodySerializer,
   type Options as Options2,
+  type RequestResult,
   type TDataShape,
   urlSearchParamsBodySerializer,
 } from "./client"
@@ -390,7 +392,8 @@ import type {
 export type Options<
   TData extends TDataShape = TDataShape,
   ThrowOnError extends boolean = boolean,
-> = Options2<TData, ThrowOnError> & {
+  TResponse = unknown,
+> = Options2<TData, ThrowOnError, TResponse> & {
   /**
    * You can provide a client instance returned by `createClient()` instead of
    * individual options. This might be also useful if you want to implement a
@@ -401,7 +404,7 @@ export type Options<
    * You can pass arbitrary values through the `meta` object. This can be
    * used to access values that aren't defined as part of the SDK function.
    */
-  meta?: Record<string, unknown>
+  meta?: keyof ClientMeta extends never ? Record<string, unknown> : ClientMeta
 }
 
 /**
@@ -411,7 +414,7 @@ export type Options<
  */
 export const getRootGet = <ThrowOnError extends boolean = false>(
   options?: Options<GetRootGetData, ThrowOnError>
-) =>
+): RequestResult<GetRootGetResponses, unknown, ThrowOnError> =>
   (options?.client ?? client).get<GetRootGetResponses, unknown, ThrowOnError>({
     responseType: "json",
     url: "/",
@@ -425,7 +428,7 @@ export const getRootGet = <ThrowOnError extends boolean = false>(
  */
 export const livenessHealthLiveGet = <ThrowOnError extends boolean = false>(
   options?: Options<LivenessHealthLiveGetData, ThrowOnError>
-) =>
+): RequestResult<LivenessHealthLiveGetResponses, unknown, ThrowOnError> =>
   (options?.client ?? client).get<LivenessHealthLiveGetResponses, unknown, ThrowOnError>({
     responseType: "json",
     url: "/health/live",
@@ -439,7 +442,7 @@ export const livenessHealthLiveGet = <ThrowOnError extends boolean = false>(
  */
 export const healthzHealthzGet = <ThrowOnError extends boolean = false>(
   options?: Options<HealthzHealthzGetData, ThrowOnError>
-) =>
+): RequestResult<HealthzHealthzGetResponses, HealthzHealthzGetErrors, ThrowOnError> =>
   (options?.client ?? client).get<
     HealthzHealthzGetResponses,
     HealthzHealthzGetErrors,
@@ -457,7 +460,7 @@ export const healthzHealthzGet = <ThrowOnError extends boolean = false>(
  */
 export const readyHealthReadyGet = <ThrowOnError extends boolean = false>(
   options?: Options<ReadyHealthReadyGetData, ThrowOnError>
-) =>
+): RequestResult<ReadyHealthReadyGetResponses, unknown, ThrowOnError> =>
   (options?.client ?? client).get<ReadyHealthReadyGetResponses, unknown, ThrowOnError>({
     responseType: "json",
     url: "/health/ready",
@@ -471,7 +474,7 @@ export const readyHealthReadyGet = <ThrowOnError extends boolean = false>(
  */
 export const readyReadyGet = <ThrowOnError extends boolean = false>(
   options?: Options<ReadyReadyGetData, ThrowOnError>
-) =>
+): RequestResult<ReadyReadyGetResponses, unknown, ThrowOnError> =>
   (options?.client ?? client).get<ReadyReadyGetResponses, unknown, ThrowOnError>({
     responseType: "json",
     url: "/ready",
@@ -489,7 +492,7 @@ export const readyReadyGet = <ThrowOnError extends boolean = false>(
  */
 export const logoutApiV1AuthLogoutPost = <ThrowOnError extends boolean = false>(
   options?: Options<LogoutApiV1AuthLogoutPostData, ThrowOnError>
-) =>
+): RequestResult<LogoutApiV1AuthLogoutPostResponses, unknown, ThrowOnError> =>
   (options?.client ?? client).post<LogoutApiV1AuthLogoutPostResponses, unknown, ThrowOnError>({
     responseType: "json",
     url: "/api/v1/auth/logout",
@@ -505,7 +508,11 @@ export const loginPasskeyStartApiV1AuthLoginPasskeyStartPost = <
   ThrowOnError extends boolean = false,
 >(
   options: Options<LoginPasskeyStartApiV1AuthLoginPasskeyStartPostData, ThrowOnError>
-) =>
+): RequestResult<
+  LoginPasskeyStartApiV1AuthLoginPasskeyStartPostResponses,
+  LoginPasskeyStartApiV1AuthLoginPasskeyStartPostErrors,
+  ThrowOnError
+> =>
   (options.client ?? client).post<
     LoginPasskeyStartApiV1AuthLoginPasskeyStartPostResponses,
     LoginPasskeyStartApiV1AuthLoginPasskeyStartPostErrors,
@@ -529,7 +536,11 @@ export const loginPasskeyVerifyApiV1AuthLoginPasskeyVerifyPost = <
   ThrowOnError extends boolean = false,
 >(
   options: Options<LoginPasskeyVerifyApiV1AuthLoginPasskeyVerifyPostData, ThrowOnError>
-) =>
+): RequestResult<
+  LoginPasskeyVerifyApiV1AuthLoginPasskeyVerifyPostResponses,
+  LoginPasskeyVerifyApiV1AuthLoginPasskeyVerifyPostErrors,
+  ThrowOnError
+> =>
   (options.client ?? client).post<
     LoginPasskeyVerifyApiV1AuthLoginPasskeyVerifyPostResponses,
     LoginPasskeyVerifyApiV1AuthLoginPasskeyVerifyPostErrors,
@@ -551,7 +562,7 @@ export const loginPasskeyVerifyApiV1AuthLoginPasskeyVerifyPost = <
  */
 export const loginApiV1AuthLoginPost = <ThrowOnError extends boolean = false>(
   options: Options<LoginApiV1AuthLoginPostData, ThrowOnError>
-) =>
+): RequestResult<LoginApiV1AuthLoginPostResponses, LoginApiV1AuthLoginPostErrors, ThrowOnError> =>
   (options.client ?? client).post<
     LoginApiV1AuthLoginPostResponses,
     LoginApiV1AuthLoginPostErrors,
@@ -574,7 +585,11 @@ export const loginApiV1AuthLoginPost = <ThrowOnError extends boolean = false>(
  */
 export const loginJsonApiV1AuthLoginJsonPost = <ThrowOnError extends boolean = false>(
   options: Options<LoginJsonApiV1AuthLoginJsonPostData, ThrowOnError>
-) =>
+): RequestResult<
+  LoginJsonApiV1AuthLoginJsonPostResponses,
+  LoginJsonApiV1AuthLoginJsonPostErrors,
+  ThrowOnError
+> =>
   (options.client ?? client).post<
     LoginJsonApiV1AuthLoginJsonPostResponses,
     LoginJsonApiV1AuthLoginJsonPostErrors,
@@ -596,7 +611,11 @@ export const loginJsonApiV1AuthLoginJsonPost = <ThrowOnError extends boolean = f
  */
 export const verifyMfaChallengeApiV1AuthMfaVerifyPost = <ThrowOnError extends boolean = false>(
   options: Options<VerifyMfaChallengeApiV1AuthMfaVerifyPostData, ThrowOnError>
-) =>
+): RequestResult<
+  VerifyMfaChallengeApiV1AuthMfaVerifyPostResponses,
+  VerifyMfaChallengeApiV1AuthMfaVerifyPostErrors,
+  ThrowOnError
+> =>
   (options.client ?? client).post<
     VerifyMfaChallengeApiV1AuthMfaVerifyPostResponses,
     VerifyMfaChallengeApiV1AuthMfaVerifyPostErrors,
@@ -618,7 +637,7 @@ export const verifyMfaChallengeApiV1AuthMfaVerifyPost = <ThrowOnError extends bo
  */
 export const getCsrfCookieApiV1AuthCsrfCookieGet = <ThrowOnError extends boolean = false>(
   options?: Options<GetCsrfCookieApiV1AuthCsrfCookieGetData, ThrowOnError>
-) =>
+): RequestResult<GetCsrfCookieApiV1AuthCsrfCookieGetResponses, unknown, ThrowOnError> =>
   (options?.client ?? client).get<
     GetCsrfCookieApiV1AuthCsrfCookieGetResponses,
     unknown,
@@ -636,7 +655,11 @@ export const getCsrfCookieApiV1AuthCsrfCookieGet = <ThrowOnError extends boolean
  */
 export const registerApiV1AuthRegisterPost = <ThrowOnError extends boolean = false>(
   options: Options<RegisterApiV1AuthRegisterPostData, ThrowOnError>
-) =>
+): RequestResult<
+  RegisterApiV1AuthRegisterPostResponses,
+  RegisterApiV1AuthRegisterPostErrors,
+  ThrowOnError
+> =>
   (options.client ?? client).post<
     RegisterApiV1AuthRegisterPostResponses,
     RegisterApiV1AuthRegisterPostErrors,
@@ -660,7 +683,11 @@ export const getSessionSigningKeyApiV1AuthSessionSigningKeyGet = <
   ThrowOnError extends boolean = false,
 >(
   options?: Options<GetSessionSigningKeyApiV1AuthSessionSigningKeyGetData, ThrowOnError>
-) =>
+): RequestResult<
+  GetSessionSigningKeyApiV1AuthSessionSigningKeyGetResponses,
+  unknown,
+  ThrowOnError
+> =>
   (options?.client ?? client).get<
     GetSessionSigningKeyApiV1AuthSessionSigningKeyGetResponses,
     unknown,
@@ -681,7 +708,11 @@ export const startTotpEnrollmentEndpointApiV1AuthMfaTotpStartPost = <
   ThrowOnError extends boolean = false,
 >(
   options?: Options<StartTotpEnrollmentEndpointApiV1AuthMfaTotpStartPostData, ThrowOnError>
-) =>
+): RequestResult<
+  StartTotpEnrollmentEndpointApiV1AuthMfaTotpStartPostResponses,
+  StartTotpEnrollmentEndpointApiV1AuthMfaTotpStartPostErrors,
+  ThrowOnError
+> =>
   (options?.client ?? client).post<
     StartTotpEnrollmentEndpointApiV1AuthMfaTotpStartPostResponses,
     StartTotpEnrollmentEndpointApiV1AuthMfaTotpStartPostErrors,
@@ -706,7 +737,11 @@ export const confirmTotpEnrollmentApiV1AuthMfaTotpConfirmPost = <
   ThrowOnError extends boolean = false,
 >(
   options: Options<ConfirmTotpEnrollmentApiV1AuthMfaTotpConfirmPostData, ThrowOnError>
-) =>
+): RequestResult<
+  ConfirmTotpEnrollmentApiV1AuthMfaTotpConfirmPostResponses,
+  ConfirmTotpEnrollmentApiV1AuthMfaTotpConfirmPostErrors,
+  ThrowOnError
+> =>
   (options.client ?? client).post<
     ConfirmTotpEnrollmentApiV1AuthMfaTotpConfirmPostResponses,
     ConfirmTotpEnrollmentApiV1AuthMfaTotpConfirmPostErrors,
@@ -729,7 +764,7 @@ export const confirmTotpEnrollmentApiV1AuthMfaTotpConfirmPost = <
  */
 export const listTotpEnrollmentsApiV1AuthMfaTotpGet = <ThrowOnError extends boolean = false>(
   options?: Options<ListTotpEnrollmentsApiV1AuthMfaTotpGetData, ThrowOnError>
-) =>
+): RequestResult<ListTotpEnrollmentsApiV1AuthMfaTotpGetResponses, unknown, ThrowOnError> =>
   (options?.client ?? client).get<
     ListTotpEnrollmentsApiV1AuthMfaTotpGetResponses,
     unknown,
@@ -753,7 +788,11 @@ export const deletePendingTotpEnrollmentApiV1AuthMfaTotpPendingEnrollmentIdDelet
     DeletePendingTotpEnrollmentApiV1AuthMfaTotpPendingEnrollmentIdDeleteData,
     ThrowOnError
   >
-) =>
+): RequestResult<
+  DeletePendingTotpEnrollmentApiV1AuthMfaTotpPendingEnrollmentIdDeleteResponses,
+  DeletePendingTotpEnrollmentApiV1AuthMfaTotpPendingEnrollmentIdDeleteErrors,
+  ThrowOnError
+> =>
   (options.client ?? client).delete<
     DeletePendingTotpEnrollmentApiV1AuthMfaTotpPendingEnrollmentIdDeleteResponses,
     DeletePendingTotpEnrollmentApiV1AuthMfaTotpPendingEnrollmentIdDeleteErrors,
@@ -773,7 +812,11 @@ export const deleteTotpEnrollmentApiV1AuthMfaTotpEnrollmentIdDelete = <
   ThrowOnError extends boolean = false,
 >(
   options: Options<DeleteTotpEnrollmentApiV1AuthMfaTotpEnrollmentIdDeleteData, ThrowOnError>
-) =>
+): RequestResult<
+  DeleteTotpEnrollmentApiV1AuthMfaTotpEnrollmentIdDeleteResponses,
+  DeleteTotpEnrollmentApiV1AuthMfaTotpEnrollmentIdDeleteErrors,
+  ThrowOnError
+> =>
   (options.client ?? client).delete<
     DeleteTotpEnrollmentApiV1AuthMfaTotpEnrollmentIdDeleteResponses,
     DeleteTotpEnrollmentApiV1AuthMfaTotpEnrollmentIdDeleteErrors,
@@ -797,7 +840,11 @@ export const startWebauthnRegistrationApiV1AuthMfaWebauthnRegisterStartPost = <
     StartWebauthnRegistrationApiV1AuthMfaWebauthnRegisterStartPostData,
     ThrowOnError
   >
-) =>
+): RequestResult<
+  StartWebauthnRegistrationApiV1AuthMfaWebauthnRegisterStartPostResponses,
+  unknown,
+  ThrowOnError
+> =>
   (options?.client ?? client).post<
     StartWebauthnRegistrationApiV1AuthMfaWebauthnRegisterStartPostResponses,
     unknown,
@@ -821,7 +868,11 @@ export const confirmWebauthnRegistrationApiV1AuthMfaWebauthnRegisterConfirmPost 
     ConfirmWebauthnRegistrationApiV1AuthMfaWebauthnRegisterConfirmPostData,
     ThrowOnError
   >
-) =>
+): RequestResult<
+  ConfirmWebauthnRegistrationApiV1AuthMfaWebauthnRegisterConfirmPostResponses,
+  ConfirmWebauthnRegistrationApiV1AuthMfaWebauthnRegisterConfirmPostErrors,
+  ThrowOnError
+> =>
   (options.client ?? client).post<
     ConfirmWebauthnRegistrationApiV1AuthMfaWebauthnRegisterConfirmPostResponses,
     ConfirmWebauthnRegistrationApiV1AuthMfaWebauthnRegisterConfirmPostErrors,
@@ -846,7 +897,7 @@ export const listWebauthnCredentialsApiV1AuthMfaWebauthnGet = <
   ThrowOnError extends boolean = false,
 >(
   options?: Options<ListWebauthnCredentialsApiV1AuthMfaWebauthnGetData, ThrowOnError>
-) =>
+): RequestResult<ListWebauthnCredentialsApiV1AuthMfaWebauthnGetResponses, unknown, ThrowOnError> =>
   (options?.client ?? client).get<
     ListWebauthnCredentialsApiV1AuthMfaWebauthnGetResponses,
     unknown,
@@ -867,7 +918,11 @@ export const deleteWebauthnCredentialApiV1AuthMfaWebauthnCredentialIdDelete = <
   ThrowOnError extends boolean = false,
 >(
   options: Options<DeleteWebauthnCredentialApiV1AuthMfaWebauthnCredentialIdDeleteData, ThrowOnError>
-) =>
+): RequestResult<
+  DeleteWebauthnCredentialApiV1AuthMfaWebauthnCredentialIdDeleteResponses,
+  DeleteWebauthnCredentialApiV1AuthMfaWebauthnCredentialIdDeleteErrors,
+  ThrowOnError
+> =>
   (options.client ?? client).delete<
     DeleteWebauthnCredentialApiV1AuthMfaWebauthnCredentialIdDeleteResponses,
     DeleteWebauthnCredentialApiV1AuthMfaWebauthnCredentialIdDeleteErrors,
@@ -888,7 +943,11 @@ export const generateRecoveryCodesEndpointApiV1AuthMfaRecoveryCodesPost = <
   ThrowOnError extends boolean = false,
 >(
   options?: Options<GenerateRecoveryCodesEndpointApiV1AuthMfaRecoveryCodesPostData, ThrowOnError>
-) =>
+): RequestResult<
+  GenerateRecoveryCodesEndpointApiV1AuthMfaRecoveryCodesPostResponses,
+  unknown,
+  ThrowOnError
+> =>
   (options?.client ?? client).post<
     GenerateRecoveryCodesEndpointApiV1AuthMfaRecoveryCodesPostResponses,
     unknown,
@@ -907,7 +966,7 @@ export const generateRecoveryCodesEndpointApiV1AuthMfaRecoveryCodesPost = <
  */
 export const requestStepUpApiV1AuthMfaStepUpPost = <ThrowOnError extends boolean = false>(
   options?: Options<RequestStepUpApiV1AuthMfaStepUpPostData, ThrowOnError>
-) =>
+): RequestResult<RequestStepUpApiV1AuthMfaStepUpPostResponses, unknown, ThrowOnError> =>
   (options?.client ?? client).post<
     RequestStepUpApiV1AuthMfaStepUpPostResponses,
     unknown,
@@ -926,7 +985,7 @@ export const requestStepUpApiV1AuthMfaStepUpPost = <ThrowOnError extends boolean
  */
 export const spotifyAuthUrlApiV1SpotifyAuthUrlGet = <ThrowOnError extends boolean = false>(
   options?: Options<SpotifyAuthUrlApiV1SpotifyAuthUrlGetData, ThrowOnError>
-) =>
+): RequestResult<SpotifyAuthUrlApiV1SpotifyAuthUrlGetResponses, unknown, ThrowOnError> =>
   (options?.client ?? client).get<
     SpotifyAuthUrlApiV1SpotifyAuthUrlGetResponses,
     unknown,
@@ -945,7 +1004,11 @@ export const spotifyAuthUrlApiV1SpotifyAuthUrlGet = <ThrowOnError extends boolea
  */
 export const spotifyCallbackApiV1SpotifyCallbackGet = <ThrowOnError extends boolean = false>(
   options: Options<SpotifyCallbackApiV1SpotifyCallbackGetData, ThrowOnError>
-) =>
+): RequestResult<
+  SpotifyCallbackApiV1SpotifyCallbackGetResponses,
+  SpotifyCallbackApiV1SpotifyCallbackGetErrors,
+  ThrowOnError
+> =>
   (options.client ?? client).get<
     SpotifyCallbackApiV1SpotifyCallbackGetResponses,
     SpotifyCallbackApiV1SpotifyCallbackGetErrors,
@@ -963,7 +1026,7 @@ export const spotifyCallbackApiV1SpotifyCallbackGet = <ThrowOnError extends bool
  */
 export const nowPlayingApiV1SpotifyNowPlayingGet = <ThrowOnError extends boolean = false>(
   options?: Options<NowPlayingApiV1SpotifyNowPlayingGetData, ThrowOnError>
-) =>
+): RequestResult<NowPlayingApiV1SpotifyNowPlayingGetResponses, unknown, ThrowOnError> =>
   (options?.client ?? client).get<
     NowPlayingApiV1SpotifyNowPlayingGetResponses,
     unknown,
@@ -982,7 +1045,7 @@ export const nowPlayingApiV1SpotifyNowPlayingGet = <ThrowOnError extends boolean
  */
 export const disconnectApiV1SpotifyDisconnectPost = <ThrowOnError extends boolean = false>(
   options?: Options<DisconnectApiV1SpotifyDisconnectPostData, ThrowOnError>
-) =>
+): RequestResult<DisconnectApiV1SpotifyDisconnectPostResponses, unknown, ThrowOnError> =>
   (options?.client ?? client).post<
     DisconnectApiV1SpotifyDisconnectPostResponses,
     unknown,
@@ -1001,7 +1064,7 @@ export const disconnectApiV1SpotifyDisconnectPost = <ThrowOnError extends boolea
  */
 export const listPlaylistsApiV1SpotifyPlaylistsGet = <ThrowOnError extends boolean = false>(
   options?: Options<ListPlaylistsApiV1SpotifyPlaylistsGetData, ThrowOnError>
-) =>
+): RequestResult<ListPlaylistsApiV1SpotifyPlaylistsGetResponses, unknown, ThrowOnError> =>
   (options?.client ?? client).get<
     ListPlaylistsApiV1SpotifyPlaylistsGetResponses,
     unknown,
@@ -1020,7 +1083,7 @@ export const listPlaylistsApiV1SpotifyPlaylistsGet = <ThrowOnError extends boole
  */
 export const syncPlaylistsApiV1SpotifySyncPlaylistsPost = <ThrowOnError extends boolean = false>(
   options?: Options<SyncPlaylistsApiV1SpotifySyncPlaylistsPostData, ThrowOnError>
-) =>
+): RequestResult<SyncPlaylistsApiV1SpotifySyncPlaylistsPostResponses, unknown, ThrowOnError> =>
   (options?.client ?? client).post<
     SyncPlaylistsApiV1SpotifySyncPlaylistsPostResponses,
     unknown,
@@ -1039,7 +1102,11 @@ export const syncPlaylistsApiV1SpotifySyncPlaylistsPost = <ThrowOnError extends 
  */
 export const listSessionsApiV1AuthSessionsGet = <ThrowOnError extends boolean = false>(
   options?: Options<ListSessionsApiV1AuthSessionsGetData, ThrowOnError>
-) =>
+): RequestResult<
+  ListSessionsApiV1AuthSessionsGetResponses,
+  ListSessionsApiV1AuthSessionsGetErrors,
+  ThrowOnError
+> =>
   (options?.client ?? client).get<
     ListSessionsApiV1AuthSessionsGetResponses,
     ListSessionsApiV1AuthSessionsGetErrors,
@@ -1058,7 +1125,11 @@ export const listSessionsApiV1AuthSessionsGet = <ThrowOnError extends boolean = 
  */
 export const revokeSessionApiV1AuthSessionsSessionIdDelete = <ThrowOnError extends boolean = false>(
   options: Options<RevokeSessionApiV1AuthSessionsSessionIdDeleteData, ThrowOnError>
-) =>
+): RequestResult<
+  RevokeSessionApiV1AuthSessionsSessionIdDeleteResponses,
+  RevokeSessionApiV1AuthSessionsSessionIdDeleteErrors,
+  ThrowOnError
+> =>
   (options.client ?? client).delete<
     RevokeSessionApiV1AuthSessionsSessionIdDeleteResponses,
     RevokeSessionApiV1AuthSessionsSessionIdDeleteErrors,
@@ -1079,7 +1150,11 @@ export const revokeOtherSessionsApiV1AuthSessionsRevokeOthersPost = <
   ThrowOnError extends boolean = false,
 >(
   options?: Options<RevokeOtherSessionsApiV1AuthSessionsRevokeOthersPostData, ThrowOnError>
-) =>
+): RequestResult<
+  RevokeOtherSessionsApiV1AuthSessionsRevokeOthersPostResponses,
+  RevokeOtherSessionsApiV1AuthSessionsRevokeOthersPostErrors,
+  ThrowOnError
+> =>
   (options?.client ?? client).post<
     RevokeOtherSessionsApiV1AuthSessionsRevokeOthersPostResponses,
     RevokeOtherSessionsApiV1AuthSessionsRevokeOthersPostErrors,
@@ -1098,7 +1173,7 @@ export const revokeOtherSessionsApiV1AuthSessionsRevokeOthersPost = <
  */
 export const clearNotificationsApiV1NotificationsDelete = <ThrowOnError extends boolean = false>(
   options?: Options<ClearNotificationsApiV1NotificationsDeleteData, ThrowOnError>
-) =>
+): RequestResult<ClearNotificationsApiV1NotificationsDeleteResponses, unknown, ThrowOnError> =>
   (options?.client ?? client).delete<
     ClearNotificationsApiV1NotificationsDeleteResponses,
     unknown,
@@ -1117,7 +1192,11 @@ export const clearNotificationsApiV1NotificationsDelete = <ThrowOnError extends 
  */
 export const listNotificationsApiV1NotificationsGet = <ThrowOnError extends boolean = false>(
   options?: Options<ListNotificationsApiV1NotificationsGetData, ThrowOnError>
-) =>
+): RequestResult<
+  ListNotificationsApiV1NotificationsGetResponses,
+  ListNotificationsApiV1NotificationsGetErrors,
+  ThrowOnError
+> =>
   (options?.client ?? client).get<
     ListNotificationsApiV1NotificationsGetResponses,
     ListNotificationsApiV1NotificationsGetErrors,
@@ -1138,7 +1217,11 @@ export const markReadSingleApiV1NotificationsNotifIdReadPatch = <
   ThrowOnError extends boolean = false,
 >(
   options: Options<MarkReadSingleApiV1NotificationsNotifIdReadPatchData, ThrowOnError>
-) =>
+): RequestResult<
+  MarkReadSingleApiV1NotificationsNotifIdReadPatchResponses,
+  MarkReadSingleApiV1NotificationsNotifIdReadPatchErrors,
+  ThrowOnError
+> =>
   (options.client ?? client).patch<
     MarkReadSingleApiV1NotificationsNotifIdReadPatchResponses,
     MarkReadSingleApiV1NotificationsNotifIdReadPatchErrors,
@@ -1157,7 +1240,7 @@ export const markReadSingleApiV1NotificationsNotifIdReadPatch = <
  */
 export const markAllReadApiV1NotificationsReadAllPost = <ThrowOnError extends boolean = false>(
   options?: Options<MarkAllReadApiV1NotificationsReadAllPostData, ThrowOnError>
-) =>
+): RequestResult<MarkAllReadApiV1NotificationsReadAllPostResponses, unknown, ThrowOnError> =>
   (options?.client ?? client).post<
     MarkAllReadApiV1NotificationsReadAllPostResponses,
     unknown,
@@ -1178,7 +1261,11 @@ export const deleteNotificationApiV1NotificationsNotifIdDelete = <
   ThrowOnError extends boolean = false,
 >(
   options: Options<DeleteNotificationApiV1NotificationsNotifIdDeleteData, ThrowOnError>
-) =>
+): RequestResult<
+  DeleteNotificationApiV1NotificationsNotifIdDeleteResponses,
+  DeleteNotificationApiV1NotificationsNotifIdDeleteErrors,
+  ThrowOnError
+> =>
   (options.client ?? client).delete<
     DeleteNotificationApiV1NotificationsNotifIdDeleteResponses,
     DeleteNotificationApiV1NotificationsNotifIdDeleteErrors,
@@ -1199,7 +1286,11 @@ export const checkScheduleAndGenerateApiV1NotificationsCheckSchedulePost = <
   ThrowOnError extends boolean = false,
 >(
   options?: Options<CheckScheduleAndGenerateApiV1NotificationsCheckSchedulePostData, ThrowOnError>
-) =>
+): RequestResult<
+  CheckScheduleAndGenerateApiV1NotificationsCheckSchedulePostResponses,
+  CheckScheduleAndGenerateApiV1NotificationsCheckSchedulePostErrors,
+  ThrowOnError
+> =>
   (options?.client ?? client).post<
     CheckScheduleAndGenerateApiV1NotificationsCheckSchedulePostResponses,
     CheckScheduleAndGenerateApiV1NotificationsCheckSchedulePostErrors,
@@ -1218,7 +1309,7 @@ export const checkScheduleAndGenerateApiV1NotificationsCheckSchedulePost = <
  */
 export const getVapidPublicKeyApiV1PushVapidPublicKeyGet = <ThrowOnError extends boolean = false>(
   options?: Options<GetVapidPublicKeyApiV1PushVapidPublicKeyGetData, ThrowOnError>
-) =>
+): RequestResult<GetVapidPublicKeyApiV1PushVapidPublicKeyGetResponses, unknown, ThrowOnError> =>
   (options?.client ?? client).get<
     GetVapidPublicKeyApiV1PushVapidPublicKeyGetResponses,
     unknown,
@@ -1236,7 +1327,11 @@ export const getVapidPublicKeyApiV1PushVapidPublicKeyGet = <ThrowOnError extends
  */
 export const subscribeApiV1PushSubscribePost = <ThrowOnError extends boolean = false>(
   options: Options<SubscribeApiV1PushSubscribePostData, ThrowOnError>
-) =>
+): RequestResult<
+  SubscribeApiV1PushSubscribePostResponses,
+  SubscribeApiV1PushSubscribePostErrors,
+  ThrowOnError
+> =>
   (options.client ?? client).post<
     SubscribeApiV1PushSubscribePostResponses,
     SubscribeApiV1PushSubscribePostErrors,
@@ -1261,7 +1356,11 @@ export const updateSubscriptionTopicsApiV1PushSubscribeTopicsPatch = <
   ThrowOnError extends boolean = false,
 >(
   options: Options<UpdateSubscriptionTopicsApiV1PushSubscribeTopicsPatchData, ThrowOnError>
-) =>
+): RequestResult<
+  UpdateSubscriptionTopicsApiV1PushSubscribeTopicsPatchResponses,
+  UpdateSubscriptionTopicsApiV1PushSubscribeTopicsPatchErrors,
+  ThrowOnError
+> =>
   (options.client ?? client).patch<
     UpdateSubscriptionTopicsApiV1PushSubscribeTopicsPatchResponses,
     UpdateSubscriptionTopicsApiV1PushSubscribeTopicsPatchErrors,
@@ -1284,7 +1383,11 @@ export const updateSubscriptionTopicsApiV1PushSubscribeTopicsPatch = <
  */
 export const unsubscribeApiV1PushUnsubscribePost = <ThrowOnError extends boolean = false>(
   options: Options<UnsubscribeApiV1PushUnsubscribePostData, ThrowOnError>
-) =>
+): RequestResult<
+  UnsubscribeApiV1PushUnsubscribePostResponses,
+  UnsubscribeApiV1PushUnsubscribePostErrors,
+  ThrowOnError
+> =>
   (options.client ?? client).post<
     UnsubscribeApiV1PushUnsubscribePostResponses,
     UnsubscribeApiV1PushUnsubscribePostErrors,
@@ -1307,7 +1410,7 @@ export const unsubscribeApiV1PushUnsubscribePost = <ThrowOnError extends boolean
  */
 export const getPushTopicsApiV1PushTopicsGet = <ThrowOnError extends boolean = false>(
   options?: Options<GetPushTopicsApiV1PushTopicsGetData, ThrowOnError>
-) =>
+): RequestResult<GetPushTopicsApiV1PushTopicsGetResponses, unknown, ThrowOnError> =>
   (options?.client ?? client).get<GetPushTopicsApiV1PushTopicsGetResponses, unknown, ThrowOnError>({
     responseType: "json",
     security: [{ scheme: "bearer", type: "http" }],
@@ -1322,7 +1425,11 @@ export const getPushTopicsApiV1PushTopicsGet = <ThrowOnError extends boolean = f
  */
 export const sendTestApiV1PushTestPost = <ThrowOnError extends boolean = false>(
   options?: Options<SendTestApiV1PushTestPostData, ThrowOnError>
-) =>
+): RequestResult<
+  SendTestApiV1PushTestPostResponses,
+  SendTestApiV1PushTestPostErrors,
+  ThrowOnError
+> =>
   (options?.client ?? client).post<
     SendTestApiV1PushTestPostResponses,
     SendTestApiV1PushTestPostErrors,
@@ -1347,7 +1454,11 @@ export const adminGetUserTopicsApiV1PushAdminTopicsUserIdGet = <
   ThrowOnError extends boolean = false,
 >(
   options: Options<AdminGetUserTopicsApiV1PushAdminTopicsUserIdGetData, ThrowOnError>
-) =>
+): RequestResult<
+  AdminGetUserTopicsApiV1PushAdminTopicsUserIdGetResponses,
+  AdminGetUserTopicsApiV1PushAdminTopicsUserIdGetErrors,
+  ThrowOnError
+> =>
   (options.client ?? client).get<
     AdminGetUserTopicsApiV1PushAdminTopicsUserIdGetResponses,
     AdminGetUserTopicsApiV1PushAdminTopicsUserIdGetErrors,
@@ -1368,7 +1479,11 @@ export const adminUpdateUserTopicsApiV1PushAdminTopicsUserIdPut = <
   ThrowOnError extends boolean = false,
 >(
   options: Options<AdminUpdateUserTopicsApiV1PushAdminTopicsUserIdPutData, ThrowOnError>
-) =>
+): RequestResult<
+  AdminUpdateUserTopicsApiV1PushAdminTopicsUserIdPutResponses,
+  AdminUpdateUserTopicsApiV1PushAdminTopicsUserIdPutErrors,
+  ThrowOnError
+> =>
   (options.client ?? client).put<
     AdminUpdateUserTopicsApiV1PushAdminTopicsUserIdPutResponses,
     AdminUpdateUserTopicsApiV1PushAdminTopicsUserIdPutErrors,
@@ -1391,7 +1506,11 @@ export const adminUpdateUserTopicsApiV1PushAdminTopicsUserIdPut = <
  */
 export const disableUserPushApiV1PushAdminDisableUserPost = <ThrowOnError extends boolean = false>(
   options: Options<DisableUserPushApiV1PushAdminDisableUserPostData, ThrowOnError>
-) =>
+): RequestResult<
+  DisableUserPushApiV1PushAdminDisableUserPostResponses,
+  DisableUserPushApiV1PushAdminDisableUserPostErrors,
+  ThrowOnError
+> =>
   (options.client ?? client).post<
     DisableUserPushApiV1PushAdminDisableUserPostResponses,
     DisableUserPushApiV1PushAdminDisableUserPostErrors,
@@ -1414,7 +1533,11 @@ export const disableUserPushApiV1PushAdminDisableUserPost = <ThrowOnError extend
  */
 export const broadcastApiV1PushBroadcastPost = <ThrowOnError extends boolean = false>(
   options: Options<BroadcastApiV1PushBroadcastPostData, ThrowOnError>
-) =>
+): RequestResult<
+  BroadcastApiV1PushBroadcastPostResponses,
+  BroadcastApiV1PushBroadcastPostErrors,
+  ThrowOnError
+> =>
   (options.client ?? client).post<
     BroadcastApiV1PushBroadcastPostResponses,
     BroadcastApiV1PushBroadcastPostErrors,
@@ -1437,7 +1560,11 @@ export const broadcastApiV1PushBroadcastPost = <ThrowOnError extends boolean = f
  */
 export const downloadScheduleIcsApiV1ScheduleIcsGet = <ThrowOnError extends boolean = false>(
   options: Options<DownloadScheduleIcsApiV1ScheduleIcsGetData, ThrowOnError>
-) =>
+): RequestResult<
+  DownloadScheduleIcsApiV1ScheduleIcsGetResponses,
+  DownloadScheduleIcsApiV1ScheduleIcsGetErrors,
+  ThrowOnError
+> =>
   (options.client ?? client).get<
     DownloadScheduleIcsApiV1ScheduleIcsGetResponses,
     DownloadScheduleIcsApiV1ScheduleIcsGetErrors,
@@ -1451,7 +1578,7 @@ export const downloadScheduleIcsApiV1ScheduleIcsGet = <ThrowOnError extends bool
  */
 export const meApiV1UsersMeGet = <ThrowOnError extends boolean = false>(
   options?: Options<MeApiV1UsersMeGetData, ThrowOnError>
-) =>
+): RequestResult<MeApiV1UsersMeGetResponses, unknown, ThrowOnError> =>
   (options?.client ?? client).get<MeApiV1UsersMeGetResponses, unknown, ThrowOnError>({
     responseType: "json",
     security: [{ scheme: "bearer", type: "http" }],
@@ -1466,7 +1593,7 @@ export const meApiV1UsersMeGet = <ThrowOnError extends boolean = false>(
  */
 export const updateMeApiV1UsersMePut = <ThrowOnError extends boolean = false>(
   options: Options<UpdateMeApiV1UsersMePutData, ThrowOnError>
-) =>
+): RequestResult<UpdateMeApiV1UsersMePutResponses, UpdateMeApiV1UsersMePutErrors, ThrowOnError> =>
   (options.client ?? client).put<
     UpdateMeApiV1UsersMePutResponses,
     UpdateMeApiV1UsersMePutErrors,
@@ -1489,7 +1616,11 @@ export const updateMeApiV1UsersMePut = <ThrowOnError extends boolean = false>(
  */
 export const changeEmailApiV1UsersMeEmailPost = <ThrowOnError extends boolean = false>(
   options: Options<ChangeEmailApiV1UsersMeEmailPostData, ThrowOnError>
-) =>
+): RequestResult<
+  ChangeEmailApiV1UsersMeEmailPostResponses,
+  ChangeEmailApiV1UsersMeEmailPostErrors,
+  ThrowOnError
+> =>
   (options.client ?? client).post<
     ChangeEmailApiV1UsersMeEmailPostResponses,
     ChangeEmailApiV1UsersMeEmailPostErrors,
@@ -1512,7 +1643,11 @@ export const changeEmailApiV1UsersMeEmailPost = <ThrowOnError extends boolean = 
  */
 export const verifyEmailChangeApiV1UsersMeEmailConfirmPost = <ThrowOnError extends boolean = false>(
   options: Options<VerifyEmailChangeApiV1UsersMeEmailConfirmPostData, ThrowOnError>
-) =>
+): RequestResult<
+  VerifyEmailChangeApiV1UsersMeEmailConfirmPostResponses,
+  VerifyEmailChangeApiV1UsersMeEmailConfirmPostErrors,
+  ThrowOnError
+> =>
   (options.client ?? client).post<
     VerifyEmailChangeApiV1UsersMeEmailConfirmPostResponses,
     VerifyEmailChangeApiV1UsersMeEmailConfirmPostErrors,
@@ -1535,7 +1670,11 @@ export const verifyEmailChangeApiV1UsersMeEmailConfirmPost = <ThrowOnError exten
  */
 export const changePasswordApiV1UsersMePasswordPost = <ThrowOnError extends boolean = false>(
   options: Options<ChangePasswordApiV1UsersMePasswordPostData, ThrowOnError>
-) =>
+): RequestResult<
+  ChangePasswordApiV1UsersMePasswordPostResponses,
+  ChangePasswordApiV1UsersMePasswordPostErrors,
+  ThrowOnError
+> =>
   (options.client ?? client).post<
     ChangePasswordApiV1UsersMePasswordPostResponses,
     ChangePasswordApiV1UsersMePasswordPostErrors,
@@ -1558,7 +1697,7 @@ export const changePasswordApiV1UsersMePasswordPost = <ThrowOnError extends bool
  */
 export const exportCurrentUserDataApiV1UsersMeExportPost = <ThrowOnError extends boolean = false>(
   options?: Options<ExportCurrentUserDataApiV1UsersMeExportPostData, ThrowOnError>
-) =>
+): RequestResult<ExportCurrentUserDataApiV1UsersMeExportPostResponses, unknown, ThrowOnError> =>
   (options?.client ?? client).post<
     ExportCurrentUserDataApiV1UsersMeExportPostResponses,
     unknown,
@@ -1579,7 +1718,11 @@ export const deleteCurrentUserAccountApiV1UsersMeDeletePost = <
   ThrowOnError extends boolean = false,
 >(
   options: Options<DeleteCurrentUserAccountApiV1UsersMeDeletePostData, ThrowOnError>
-) =>
+): RequestResult<
+  DeleteCurrentUserAccountApiV1UsersMeDeletePostResponses,
+  DeleteCurrentUserAccountApiV1UsersMeDeletePostErrors,
+  ThrowOnError
+> =>
   (options.client ?? client).post<
     DeleteCurrentUserAccountApiV1UsersMeDeletePostResponses,
     DeleteCurrentUserAccountApiV1UsersMeDeletePostErrors,
@@ -1602,7 +1745,7 @@ export const deleteCurrentUserAccountApiV1UsersMeDeletePost = <
  */
 export const deleteAvatarApiV1UsersMeAvatarDelete = <ThrowOnError extends boolean = false>(
   options?: Options<DeleteAvatarApiV1UsersMeAvatarDeleteData, ThrowOnError>
-) =>
+): RequestResult<DeleteAvatarApiV1UsersMeAvatarDeleteResponses, unknown, ThrowOnError> =>
   (options?.client ?? client).delete<
     DeleteAvatarApiV1UsersMeAvatarDeleteResponses,
     unknown,
@@ -1621,7 +1764,11 @@ export const deleteAvatarApiV1UsersMeAvatarDelete = <ThrowOnError extends boolea
  */
 export const uploadAvatarApiV1UsersMeAvatarPost = <ThrowOnError extends boolean = false>(
   options: Options<UploadAvatarApiV1UsersMeAvatarPostData, ThrowOnError>
-) =>
+): RequestResult<
+  UploadAvatarApiV1UsersMeAvatarPostResponses,
+  UploadAvatarApiV1UsersMeAvatarPostErrors,
+  ThrowOnError
+> =>
   (options.client ?? client).post<
     UploadAvatarApiV1UsersMeAvatarPostResponses,
     UploadAvatarApiV1UsersMeAvatarPostErrors,
@@ -1645,7 +1792,7 @@ export const uploadAvatarApiV1UsersMeAvatarPost = <ThrowOnError extends boolean 
  */
 export const deleteCoverApiV1UsersMeCoverDelete = <ThrowOnError extends boolean = false>(
   options?: Options<DeleteCoverApiV1UsersMeCoverDeleteData, ThrowOnError>
-) =>
+): RequestResult<DeleteCoverApiV1UsersMeCoverDeleteResponses, unknown, ThrowOnError> =>
   (options?.client ?? client).delete<
     DeleteCoverApiV1UsersMeCoverDeleteResponses,
     unknown,
@@ -1664,7 +1811,11 @@ export const deleteCoverApiV1UsersMeCoverDelete = <ThrowOnError extends boolean 
  */
 export const uploadCoverApiV1UsersMeCoverPost = <ThrowOnError extends boolean = false>(
   options: Options<UploadCoverApiV1UsersMeCoverPostData, ThrowOnError>
-) =>
+): RequestResult<
+  UploadCoverApiV1UsersMeCoverPostResponses,
+  UploadCoverApiV1UsersMeCoverPostErrors,
+  ThrowOnError
+> =>
   (options.client ?? client).post<
     UploadCoverApiV1UsersMeCoverPostResponses,
     UploadCoverApiV1UsersMeCoverPostErrors,
@@ -1689,7 +1840,7 @@ export const uploadCoverApiV1UsersMeCoverPost = <ThrowOnError extends boolean = 
  */
 export const getUsersApiV1UsersGet = <ThrowOnError extends boolean = false>(
   options?: Options<GetUsersApiV1UsersGetData, ThrowOnError>
-) =>
+): RequestResult<GetUsersApiV1UsersGetResponses, GetUsersApiV1UsersGetErrors, ThrowOnError> =>
   (options?.client ?? client).get<
     GetUsersApiV1UsersGetResponses,
     GetUsersApiV1UsersGetErrors,
@@ -1708,7 +1859,7 @@ export const getUsersApiV1UsersGet = <ThrowOnError extends boolean = false>(
  */
 export const createUserApiV1UsersPost = <ThrowOnError extends boolean = false>(
   options: Options<CreateUserApiV1UsersPostData, ThrowOnError>
-) =>
+): RequestResult<CreateUserApiV1UsersPostResponses, CreateUserApiV1UsersPostErrors, ThrowOnError> =>
   (options.client ?? client).post<
     CreateUserApiV1UsersPostResponses,
     CreateUserApiV1UsersPostErrors,
@@ -1731,7 +1882,11 @@ export const createUserApiV1UsersPost = <ThrowOnError extends boolean = false>(
  */
 export const exportAccessAuditApiV1UsersAuditExportGet = <ThrowOnError extends boolean = false>(
   options?: Options<ExportAccessAuditApiV1UsersAuditExportGetData, ThrowOnError>
-) =>
+): RequestResult<
+  ExportAccessAuditApiV1UsersAuditExportGetResponses,
+  ExportAccessAuditApiV1UsersAuditExportGetErrors,
+  ThrowOnError
+> =>
   (options?.client ?? client).get<
     ExportAccessAuditApiV1UsersAuditExportGetResponses,
     ExportAccessAuditApiV1UsersAuditExportGetErrors,
@@ -1750,7 +1905,11 @@ export const exportAccessAuditApiV1UsersAuditExportGet = <ThrowOnError extends b
  */
 export const deleteUserAdminApiV1UsersUserIdDelete = <ThrowOnError extends boolean = false>(
   options: Options<DeleteUserAdminApiV1UsersUserIdDeleteData, ThrowOnError>
-) =>
+): RequestResult<
+  DeleteUserAdminApiV1UsersUserIdDeleteResponses,
+  DeleteUserAdminApiV1UsersUserIdDeleteErrors,
+  ThrowOnError
+> =>
   (options.client ?? client).delete<
     DeleteUserAdminApiV1UsersUserIdDeleteResponses,
     DeleteUserAdminApiV1UsersUserIdDeleteErrors,
@@ -1769,7 +1928,11 @@ export const deleteUserAdminApiV1UsersUserIdDelete = <ThrowOnError extends boole
  */
 export const updateUserAdminApiV1UsersUserIdPatch = <ThrowOnError extends boolean = false>(
   options: Options<UpdateUserAdminApiV1UsersUserIdPatchData, ThrowOnError>
-) =>
+): RequestResult<
+  UpdateUserAdminApiV1UsersUserIdPatchResponses,
+  UpdateUserAdminApiV1UsersUserIdPatchErrors,
+  ThrowOnError
+> =>
   (options.client ?? client).patch<
     UpdateUserAdminApiV1UsersUserIdPatchResponses,
     UpdateUserAdminApiV1UsersUserIdPatchErrors,
@@ -1792,7 +1955,11 @@ export const updateUserAdminApiV1UsersUserIdPatch = <ThrowOnError extends boolea
  */
 export const forgotPasswordApiV1PasswordForgotPost = <ThrowOnError extends boolean = false>(
   options: Options<ForgotPasswordApiV1PasswordForgotPostData, ThrowOnError>
-) =>
+): RequestResult<
+  ForgotPasswordApiV1PasswordForgotPostResponses,
+  ForgotPasswordApiV1PasswordForgotPostErrors,
+  ThrowOnError
+> =>
   (options.client ?? client).post<
     ForgotPasswordApiV1PasswordForgotPostResponses,
     ForgotPasswordApiV1PasswordForgotPostErrors,
@@ -1814,7 +1981,11 @@ export const forgotPasswordApiV1PasswordForgotPost = <ThrowOnError extends boole
  */
 export const resetPasswordApiV1PasswordResetPost = <ThrowOnError extends boolean = false>(
   options: Options<ResetPasswordApiV1PasswordResetPostData, ThrowOnError>
-) =>
+): RequestResult<
+  ResetPasswordApiV1PasswordResetPostResponses,
+  ResetPasswordApiV1PasswordResetPostErrors,
+  ThrowOnError
+> =>
   (options.client ?? client).post<
     ResetPasswordApiV1PasswordResetPostResponses,
     ResetPasswordApiV1PasswordResetPostErrors,
@@ -1836,7 +2007,7 @@ export const resetPasswordApiV1PasswordResetPost = <ThrowOnError extends boolean
  */
 export const getGroupsApiV1GroupsGet = <ThrowOnError extends boolean = false>(
   options?: Options<GetGroupsApiV1GroupsGetData, ThrowOnError>
-) =>
+): RequestResult<GetGroupsApiV1GroupsGetResponses, unknown, ThrowOnError> =>
   (options?.client ?? client).get<GetGroupsApiV1GroupsGetResponses, unknown, ThrowOnError>({
     responseType: "json",
     url: "/api/v1/groups",
@@ -1850,7 +2021,7 @@ export const getGroupsApiV1GroupsGet = <ThrowOnError extends boolean = false>(
  */
 export const allEventsApiV1EventsGet = <ThrowOnError extends boolean = false>(
   options?: Options<AllEventsApiV1EventsGetData, ThrowOnError>
-) =>
+): RequestResult<AllEventsApiV1EventsGetResponses, AllEventsApiV1EventsGetErrors, ThrowOnError> =>
   (options?.client ?? client).get<
     AllEventsApiV1EventsGetResponses,
     AllEventsApiV1EventsGetErrors,
@@ -1869,7 +2040,11 @@ export const allEventsApiV1EventsGet = <ThrowOnError extends boolean = false>(
  */
 export const createEventApiV1EventsPost = <ThrowOnError extends boolean = false>(
   options: Options<CreateEventApiV1EventsPostData, ThrowOnError>
-) =>
+): RequestResult<
+  CreateEventApiV1EventsPostResponses,
+  CreateEventApiV1EventsPostErrors,
+  ThrowOnError
+> =>
   (options.client ?? client).post<
     CreateEventApiV1EventsPostResponses,
     CreateEventApiV1EventsPostErrors,
@@ -1892,7 +2067,11 @@ export const createEventApiV1EventsPost = <ThrowOnError extends boolean = false>
  */
 export const unregisterEventApiV1EventsAttendanceDelete = <ThrowOnError extends boolean = false>(
   options: Options<UnregisterEventApiV1EventsAttendanceDeleteData, ThrowOnError>
-) =>
+): RequestResult<
+  UnregisterEventApiV1EventsAttendanceDeleteResponses,
+  UnregisterEventApiV1EventsAttendanceDeleteErrors,
+  ThrowOnError
+> =>
   (options.client ?? client).delete<
     UnregisterEventApiV1EventsAttendanceDeleteResponses,
     UnregisterEventApiV1EventsAttendanceDeleteErrors,
@@ -1915,7 +2094,11 @@ export const unregisterEventApiV1EventsAttendanceDelete = <ThrowOnError extends 
  */
 export const attendApiV1EventsAttendancePost = <ThrowOnError extends boolean = false>(
   options: Options<AttendApiV1EventsAttendancePostData, ThrowOnError>
-) =>
+): RequestResult<
+  AttendApiV1EventsAttendancePostResponses,
+  AttendApiV1EventsAttendancePostErrors,
+  ThrowOnError
+> =>
   (options.client ?? client).post<
     AttendApiV1EventsAttendancePostResponses,
     AttendApiV1EventsAttendancePostErrors,
@@ -1938,7 +2121,7 @@ export const attendApiV1EventsAttendancePost = <ThrowOnError extends boolean = f
  */
 export const myEventsApiV1EventsMyGet = <ThrowOnError extends boolean = false>(
   options?: Options<MyEventsApiV1EventsMyGetData, ThrowOnError>
-) =>
+): RequestResult<MyEventsApiV1EventsMyGetResponses, MyEventsApiV1EventsMyGetErrors, ThrowOnError> =>
   (options?.client ?? client).get<
     MyEventsApiV1EventsMyGetResponses,
     MyEventsApiV1EventsMyGetErrors,
@@ -1959,7 +2142,11 @@ export const uploadEventFileApiV1EventsEventIdUploadFilePost = <
   ThrowOnError extends boolean = false,
 >(
   options: Options<UploadEventFileApiV1EventsEventIdUploadFilePostData, ThrowOnError>
-) =>
+): RequestResult<
+  UploadEventFileApiV1EventsEventIdUploadFilePostResponses,
+  UploadEventFileApiV1EventsEventIdUploadFilePostErrors,
+  ThrowOnError
+> =>
   (options.client ?? client).post<
     UploadEventFileApiV1EventsEventIdUploadFilePostResponses,
     UploadEventFileApiV1EventsEventIdUploadFilePostErrors,
@@ -1983,7 +2170,11 @@ export const uploadEventFileApiV1EventsEventIdUploadFilePost = <
  */
 export const getEventFilesApiV1EventsEventIdFilesGet = <ThrowOnError extends boolean = false>(
   options: Options<GetEventFilesApiV1EventsEventIdFilesGetData, ThrowOnError>
-) =>
+): RequestResult<
+  GetEventFilesApiV1EventsEventIdFilesGetResponses,
+  GetEventFilesApiV1EventsEventIdFilesGetErrors,
+  ThrowOnError
+> =>
   (options.client ?? client).get<
     GetEventFilesApiV1EventsEventIdFilesGetResponses,
     GetEventFilesApiV1EventsEventIdFilesGetErrors,
@@ -2001,7 +2192,11 @@ export const getEventFilesApiV1EventsEventIdFilesGet = <ThrowOnError extends boo
  */
 export const uploadEventImageApiV1EventsUploadImagePost = <ThrowOnError extends boolean = false>(
   options: Options<UploadEventImageApiV1EventsUploadImagePostData, ThrowOnError>
-) =>
+): RequestResult<
+  UploadEventImageApiV1EventsUploadImagePostResponses,
+  UploadEventImageApiV1EventsUploadImagePostErrors,
+  ThrowOnError
+> =>
   (options.client ?? client).post<
     UploadEventImageApiV1EventsUploadImagePostResponses,
     UploadEventImageApiV1EventsUploadImagePostErrors,
@@ -2025,7 +2220,11 @@ export const uploadEventImageApiV1EventsUploadImagePost = <ThrowOnError extends 
  */
 export const deleteEventApiV1EventsEventIdDelete = <ThrowOnError extends boolean = false>(
   options: Options<DeleteEventApiV1EventsEventIdDeleteData, ThrowOnError>
-) =>
+): RequestResult<
+  DeleteEventApiV1EventsEventIdDeleteResponses,
+  DeleteEventApiV1EventsEventIdDeleteErrors,
+  ThrowOnError
+> =>
   (options.client ?? client).delete<
     DeleteEventApiV1EventsEventIdDeleteResponses,
     DeleteEventApiV1EventsEventIdDeleteErrors,
@@ -2044,7 +2243,11 @@ export const deleteEventApiV1EventsEventIdDelete = <ThrowOnError extends boolean
  */
 export const getEventApiV1EventsEventIdGet = <ThrowOnError extends boolean = false>(
   options: Options<GetEventApiV1EventsEventIdGetData, ThrowOnError>
-) =>
+): RequestResult<
+  GetEventApiV1EventsEventIdGetResponses,
+  GetEventApiV1EventsEventIdGetErrors,
+  ThrowOnError
+> =>
   (options.client ?? client).get<
     GetEventApiV1EventsEventIdGetResponses,
     GetEventApiV1EventsEventIdGetErrors,
@@ -2063,7 +2266,11 @@ export const getEventApiV1EventsEventIdGet = <ThrowOnError extends boolean = fal
  */
 export const updateEventApiV1EventsEventIdPatch = <ThrowOnError extends boolean = false>(
   options: Options<UpdateEventApiV1EventsEventIdPatchData, ThrowOnError>
-) =>
+): RequestResult<
+  UpdateEventApiV1EventsEventIdPatchResponses,
+  UpdateEventApiV1EventsEventIdPatchErrors,
+  ThrowOnError
+> =>
   (options.client ?? client).patch<
     UpdateEventApiV1EventsEventIdPatchResponses,
     UpdateEventApiV1EventsEventIdPatchErrors,
@@ -2086,7 +2293,11 @@ export const updateEventApiV1EventsEventIdPatch = <ThrowOnError extends boolean 
  */
 export const deleteEventFileApiV1EventsFileFileIdDelete = <ThrowOnError extends boolean = false>(
   options: Options<DeleteEventFileApiV1EventsFileFileIdDeleteData, ThrowOnError>
-) =>
+): RequestResult<
+  DeleteEventFileApiV1EventsFileFileIdDeleteResponses,
+  DeleteEventFileApiV1EventsFileFileIdDeleteErrors,
+  ThrowOnError
+> =>
   (options.client ?? client).delete<
     DeleteEventFileApiV1EventsFileFileIdDeleteResponses,
     DeleteEventFileApiV1EventsFileFileIdDeleteErrors,
@@ -2105,7 +2316,11 @@ export const deleteEventFileApiV1EventsFileFileIdDelete = <ThrowOnError extends 
  */
 export const semanticSearchApiV1EventsSearchSemanticGet = <ThrowOnError extends boolean = false>(
   options: Options<SemanticSearchApiV1EventsSearchSemanticGetData, ThrowOnError>
-) =>
+): RequestResult<
+  SemanticSearchApiV1EventsSearchSemanticGetResponses,
+  SemanticSearchApiV1EventsSearchSemanticGetErrors,
+  ThrowOnError
+> =>
   (options.client ?? client).get<
     SemanticSearchApiV1EventsSearchSemanticGetResponses,
     SemanticSearchApiV1EventsSearchSemanticGetErrors,
@@ -2124,7 +2339,7 @@ export const semanticSearchApiV1EventsSearchSemanticGet = <ThrowOnError extends 
  */
 export const newsListApiV1NewsGet = <ThrowOnError extends boolean = false>(
   options?: Options<NewsListApiV1NewsGetData, ThrowOnError>
-) =>
+): RequestResult<NewsListApiV1NewsGetResponses, NewsListApiV1NewsGetErrors, ThrowOnError> =>
   (options?.client ?? client).get<
     NewsListApiV1NewsGetResponses,
     NewsListApiV1NewsGetErrors,
@@ -2143,7 +2358,7 @@ export const newsListApiV1NewsGet = <ThrowOnError extends boolean = false>(
  */
 export const createNewsApiV1NewsPost = <ThrowOnError extends boolean = false>(
   options: Options<CreateNewsApiV1NewsPostData, ThrowOnError>
-) =>
+): RequestResult<CreateNewsApiV1NewsPostResponses, CreateNewsApiV1NewsPostErrors, ThrowOnError> =>
   (options.client ?? client).post<
     CreateNewsApiV1NewsPostResponses,
     CreateNewsApiV1NewsPostErrors,
@@ -2166,7 +2381,11 @@ export const createNewsApiV1NewsPost = <ThrowOnError extends boolean = false>(
  */
 export const deleteNewsApiV1NewsIdDelete = <ThrowOnError extends boolean = false>(
   options: Options<DeleteNewsApiV1NewsIdDeleteData, ThrowOnError>
-) =>
+): RequestResult<
+  DeleteNewsApiV1NewsIdDeleteResponses,
+  DeleteNewsApiV1NewsIdDeleteErrors,
+  ThrowOnError
+> =>
   (options.client ?? client).delete<
     DeleteNewsApiV1NewsIdDeleteResponses,
     DeleteNewsApiV1NewsIdDeleteErrors,
@@ -2185,7 +2404,7 @@ export const deleteNewsApiV1NewsIdDelete = <ThrowOnError extends boolean = false
  */
 export const getNewsApiV1NewsIdGet = <ThrowOnError extends boolean = false>(
   options: Options<GetNewsApiV1NewsIdGetData, ThrowOnError>
-) =>
+): RequestResult<GetNewsApiV1NewsIdGetResponses, GetNewsApiV1NewsIdGetErrors, ThrowOnError> =>
   (options.client ?? client).get<
     GetNewsApiV1NewsIdGetResponses,
     GetNewsApiV1NewsIdGetErrors,
@@ -2204,7 +2423,11 @@ export const getNewsApiV1NewsIdGet = <ThrowOnError extends boolean = false>(
  */
 export const updateNewsApiV1NewsIdPatch = <ThrowOnError extends boolean = false>(
   options: Options<UpdateNewsApiV1NewsIdPatchData, ThrowOnError>
-) =>
+): RequestResult<
+  UpdateNewsApiV1NewsIdPatchResponses,
+  UpdateNewsApiV1NewsIdPatchErrors,
+  ThrowOnError
+> =>
   (options.client ?? client).patch<
     UpdateNewsApiV1NewsIdPatchResponses,
     UpdateNewsApiV1NewsIdPatchErrors,
@@ -2227,7 +2450,11 @@ export const updateNewsApiV1NewsIdPatch = <ThrowOnError extends boolean = false>
  */
 export const likeNewsApiV1NewsIdLikePost = <ThrowOnError extends boolean = false>(
   options: Options<LikeNewsApiV1NewsIdLikePostData, ThrowOnError>
-) =>
+): RequestResult<
+  LikeNewsApiV1NewsIdLikePostResponses,
+  LikeNewsApiV1NewsIdLikePostErrors,
+  ThrowOnError
+> =>
   (options.client ?? client).post<
     LikeNewsApiV1NewsIdLikePostResponses,
     LikeNewsApiV1NewsIdLikePostErrors,
@@ -2246,7 +2473,11 @@ export const likeNewsApiV1NewsIdLikePost = <ThrowOnError extends boolean = false
  */
 export const commentOnNewsApiV1NewsIdCommentPost = <ThrowOnError extends boolean = false>(
   options: Options<CommentOnNewsApiV1NewsIdCommentPostData, ThrowOnError>
-) =>
+): RequestResult<
+  CommentOnNewsApiV1NewsIdCommentPostResponses,
+  CommentOnNewsApiV1NewsIdCommentPostErrors,
+  ThrowOnError
+> =>
   (options.client ?? client).post<
     CommentOnNewsApiV1NewsIdCommentPostResponses,
     CommentOnNewsApiV1NewsIdCommentPostErrors,
@@ -2269,7 +2500,11 @@ export const commentOnNewsApiV1NewsIdCommentPost = <ThrowOnError extends boolean
  */
 export const getNewsInteractApiV1NewsIdInteractionsGet = <ThrowOnError extends boolean = false>(
   options: Options<GetNewsInteractApiV1NewsIdInteractionsGetData, ThrowOnError>
-) =>
+): RequestResult<
+  GetNewsInteractApiV1NewsIdInteractionsGetResponses,
+  GetNewsInteractApiV1NewsIdInteractionsGetErrors,
+  ThrowOnError
+> =>
   (options.client ?? client).get<
     GetNewsInteractApiV1NewsIdInteractionsGetResponses,
     GetNewsInteractApiV1NewsIdInteractionsGetErrors,
@@ -2288,7 +2523,11 @@ export const getNewsInteractApiV1NewsIdInteractionsGet = <ThrowOnError extends b
  */
 export const deleteCommentApiV1NewsCommentsCommentIdDelete = <ThrowOnError extends boolean = false>(
   options: Options<DeleteCommentApiV1NewsCommentsCommentIdDeleteData, ThrowOnError>
-) =>
+): RequestResult<
+  DeleteCommentApiV1NewsCommentsCommentIdDeleteResponses,
+  DeleteCommentApiV1NewsCommentsCommentIdDeleteErrors,
+  ThrowOnError
+> =>
   (options.client ?? client).delete<
     DeleteCommentApiV1NewsCommentsCommentIdDeleteResponses,
     DeleteCommentApiV1NewsCommentsCommentIdDeleteErrors,
@@ -2307,7 +2546,11 @@ export const deleteCommentApiV1NewsCommentsCommentIdDelete = <ThrowOnError exten
  */
 export const updateCommentApiV1NewsCommentsCommentIdPatch = <ThrowOnError extends boolean = false>(
   options: Options<UpdateCommentApiV1NewsCommentsCommentIdPatchData, ThrowOnError>
-) =>
+): RequestResult<
+  UpdateCommentApiV1NewsCommentsCommentIdPatchResponses,
+  UpdateCommentApiV1NewsCommentsCommentIdPatchErrors,
+  ThrowOnError
+> =>
   (options.client ?? client).patch<
     UpdateCommentApiV1NewsCommentsCommentIdPatchResponses,
     UpdateCommentApiV1NewsCommentsCommentIdPatchErrors,
@@ -2330,7 +2573,11 @@ export const updateCommentApiV1NewsCommentsCommentIdPatch = <ThrowOnError extend
  */
 export const uploadNewsImageApiV1NewsUploadImagePost = <ThrowOnError extends boolean = false>(
   options: Options<UploadNewsImageApiV1NewsUploadImagePostData, ThrowOnError>
-) =>
+): RequestResult<
+  UploadNewsImageApiV1NewsUploadImagePostResponses,
+  UploadNewsImageApiV1NewsUploadImagePostErrors,
+  ThrowOnError
+> =>
   (options.client ?? client).post<
     UploadNewsImageApiV1NewsUploadImagePostResponses,
     UploadNewsImageApiV1NewsUploadImagePostErrors,
@@ -2354,7 +2601,11 @@ export const uploadNewsImageApiV1NewsUploadImagePost = <ThrowOnError extends boo
  */
 export const semanticSearchApiV1NewsSearchSemanticGet = <ThrowOnError extends boolean = false>(
   options: Options<SemanticSearchApiV1NewsSearchSemanticGetData, ThrowOnError>
-) =>
+): RequestResult<
+  SemanticSearchApiV1NewsSearchSemanticGetResponses,
+  SemanticSearchApiV1NewsSearchSemanticGetErrors,
+  ThrowOnError
+> =>
   (options.client ?? client).get<
     SemanticSearchApiV1NewsSearchSemanticGetResponses,
     SemanticSearchApiV1NewsSearchSemanticGetErrors,
@@ -2373,7 +2624,11 @@ export const semanticSearchApiV1NewsSearchSemanticGet = <ThrowOnError extends bo
  */
 export const listStoriesApiV1StoriesGet = <ThrowOnError extends boolean = false>(
   options?: Options<ListStoriesApiV1StoriesGetData, ThrowOnError>
-) =>
+): RequestResult<
+  ListStoriesApiV1StoriesGetResponses,
+  ListStoriesApiV1StoriesGetErrors,
+  ThrowOnError
+> =>
   (options?.client ?? client).get<
     ListStoriesApiV1StoriesGetResponses,
     ListStoriesApiV1StoriesGetErrors,
@@ -2391,7 +2646,11 @@ export const listStoriesApiV1StoriesGet = <ThrowOnError extends boolean = false>
  */
 export const createStoryApiV1StoriesPost = <ThrowOnError extends boolean = false>(
   options: Options<CreateStoryApiV1StoriesPostData, ThrowOnError>
-) =>
+): RequestResult<
+  CreateStoryApiV1StoriesPostResponses,
+  CreateStoryApiV1StoriesPostErrors,
+  ThrowOnError
+> =>
   (options.client ?? client).post<
     CreateStoryApiV1StoriesPostResponses,
     CreateStoryApiV1StoriesPostErrors,
@@ -2414,7 +2673,11 @@ export const createStoryApiV1StoriesPost = <ThrowOnError extends boolean = false
  */
 export const deleteStoryApiV1StoriesStoryIdDelete = <ThrowOnError extends boolean = false>(
   options: Options<DeleteStoryApiV1StoriesStoryIdDeleteData, ThrowOnError>
-) =>
+): RequestResult<
+  DeleteStoryApiV1StoriesStoryIdDeleteResponses,
+  DeleteStoryApiV1StoriesStoryIdDeleteErrors,
+  ThrowOnError
+> =>
   (options.client ?? client).delete<
     DeleteStoryApiV1StoriesStoryIdDeleteResponses,
     DeleteStoryApiV1StoriesStoryIdDeleteErrors,
@@ -2433,7 +2696,11 @@ export const deleteStoryApiV1StoriesStoryIdDelete = <ThrowOnError extends boolea
  */
 export const updateStoryApiV1StoriesStoryIdPatch = <ThrowOnError extends boolean = false>(
   options: Options<UpdateStoryApiV1StoriesStoryIdPatchData, ThrowOnError>
-) =>
+): RequestResult<
+  UpdateStoryApiV1StoriesStoryIdPatchResponses,
+  UpdateStoryApiV1StoriesStoryIdPatchErrors,
+  ThrowOnError
+> =>
   (options.client ?? client).patch<
     UpdateStoryApiV1StoriesStoryIdPatchResponses,
     UpdateStoryApiV1StoriesStoryIdPatchErrors,
@@ -2456,7 +2723,11 @@ export const updateStoryApiV1StoriesStoryIdPatch = <ThrowOnError extends boolean
  */
 export const uploadStoryCoverApiV1StoriesUploadCoverPost = <ThrowOnError extends boolean = false>(
   options: Options<UploadStoryCoverApiV1StoriesUploadCoverPostData, ThrowOnError>
-) =>
+): RequestResult<
+  UploadStoryCoverApiV1StoriesUploadCoverPostResponses,
+  UploadStoryCoverApiV1StoriesUploadCoverPostErrors,
+  ThrowOnError
+> =>
   (options.client ?? client).post<
     UploadStoryCoverApiV1StoriesUploadCoverPostResponses,
     UploadStoryCoverApiV1StoriesUploadCoverPostErrors,
@@ -2480,7 +2751,11 @@ export const uploadStoryCoverApiV1StoriesUploadCoverPost = <ThrowOnError extends
  */
 export const addScheduleApiV1SchedulePost = <ThrowOnError extends boolean = false>(
   options: Options<AddScheduleApiV1SchedulePostData, ThrowOnError>
-) =>
+): RequestResult<
+  AddScheduleApiV1SchedulePostResponses,
+  AddScheduleApiV1SchedulePostErrors,
+  ThrowOnError
+> =>
   (options.client ?? client).post<
     AddScheduleApiV1SchedulePostResponses,
     AddScheduleApiV1SchedulePostErrors,
@@ -2503,7 +2778,11 @@ export const addScheduleApiV1SchedulePost = <ThrowOnError extends boolean = fals
  */
 export const deleteScheduleApiV1ScheduleIdDelete = <ThrowOnError extends boolean = false>(
   options: Options<DeleteScheduleApiV1ScheduleIdDeleteData, ThrowOnError>
-) =>
+): RequestResult<
+  DeleteScheduleApiV1ScheduleIdDeleteResponses,
+  DeleteScheduleApiV1ScheduleIdDeleteErrors,
+  ThrowOnError
+> =>
   (options.client ?? client).delete<
     DeleteScheduleApiV1ScheduleIdDeleteResponses,
     DeleteScheduleApiV1ScheduleIdDeleteErrors,
@@ -2522,7 +2801,11 @@ export const deleteScheduleApiV1ScheduleIdDelete = <ThrowOnError extends boolean
  */
 export const getScheduleApiV1ScheduleIdGet = <ThrowOnError extends boolean = false>(
   options: Options<GetScheduleApiV1ScheduleIdGetData, ThrowOnError>
-) =>
+): RequestResult<
+  GetScheduleApiV1ScheduleIdGetResponses,
+  GetScheduleApiV1ScheduleIdGetErrors,
+  ThrowOnError
+> =>
   (options.client ?? client).get<
     GetScheduleApiV1ScheduleIdGetResponses,
     GetScheduleApiV1ScheduleIdGetErrors,
@@ -2541,7 +2824,11 @@ export const getScheduleApiV1ScheduleIdGet = <ThrowOnError extends boolean = fal
  */
 export const updateScheduleApiV1ScheduleIdPatch = <ThrowOnError extends boolean = false>(
   options: Options<UpdateScheduleApiV1ScheduleIdPatchData, ThrowOnError>
-) =>
+): RequestResult<
+  UpdateScheduleApiV1ScheduleIdPatchResponses,
+  UpdateScheduleApiV1ScheduleIdPatchErrors,
+  ThrowOnError
+> =>
   (options.client ?? client).patch<
     UpdateScheduleApiV1ScheduleIdPatchResponses,
     UpdateScheduleApiV1ScheduleIdPatchErrors,
@@ -2564,7 +2851,11 @@ export const updateScheduleApiV1ScheduleIdPatch = <ThrowOnError extends boolean 
  */
 export const attendanceSummaryApiV1StatsAttendanceGet = <ThrowOnError extends boolean = false>(
   options?: Options<AttendanceSummaryApiV1StatsAttendanceGetData, ThrowOnError>
-) =>
+): RequestResult<
+  AttendanceSummaryApiV1StatsAttendanceGetResponses,
+  AttendanceSummaryApiV1StatsAttendanceGetErrors,
+  ThrowOnError
+> =>
   (options?.client ?? client).get<
     AttendanceSummaryApiV1StatsAttendanceGetResponses,
     AttendanceSummaryApiV1StatsAttendanceGetErrors,
@@ -2583,7 +2874,11 @@ export const attendanceSummaryApiV1StatsAttendanceGet = <ThrowOnError extends bo
  */
 export const gradeSummaryApiV1StatsGradesGet = <ThrowOnError extends boolean = false>(
   options?: Options<GradeSummaryApiV1StatsGradesGetData, ThrowOnError>
-) =>
+): RequestResult<
+  GradeSummaryApiV1StatsGradesGetResponses,
+  GradeSummaryApiV1StatsGradesGetErrors,
+  ThrowOnError
+> =>
   (options?.client ?? client).get<
     GradeSummaryApiV1StatsGradesGetResponses,
     GradeSummaryApiV1StatsGradesGetErrors,
@@ -2604,7 +2899,11 @@ export const participationSummaryApiV1StatsParticipationGet = <
   ThrowOnError extends boolean = false,
 >(
   options?: Options<ParticipationSummaryApiV1StatsParticipationGetData, ThrowOnError>
-) =>
+): RequestResult<
+  ParticipationSummaryApiV1StatsParticipationGetResponses,
+  ParticipationSummaryApiV1StatsParticipationGetErrors,
+  ThrowOnError
+> =>
   (options?.client ?? client).get<
     ParticipationSummaryApiV1StatsParticipationGetResponses,
     ParticipationSummaryApiV1StatsParticipationGetErrors,
@@ -2627,7 +2926,11 @@ export const participationSummaryApiV1StatsParticipationGet = <
  */
 export const statsSummaryApiV1StatsSummaryGet = <ThrowOnError extends boolean = false>(
   options?: Options<StatsSummaryApiV1StatsSummaryGetData, ThrowOnError>
-) =>
+): RequestResult<
+  StatsSummaryApiV1StatsSummaryGetResponses,
+  StatsSummaryApiV1StatsSummaryGetErrors,
+  ThrowOnError
+> =>
   (options?.client ?? client).get<
     StatsSummaryApiV1StatsSummaryGetResponses,
     StatsSummaryApiV1StatsSummaryGetErrors,
@@ -2647,7 +2950,11 @@ export const statsSummaryApiV1StatsSummaryGet = <ThrowOnError extends boolean = 
  */
 export const creationAnalyticsApiV1StatsCreationGet = <ThrowOnError extends boolean = false>(
   options: Options<CreationAnalyticsApiV1StatsCreationGetData, ThrowOnError>
-) =>
+): RequestResult<
+  CreationAnalyticsApiV1StatsCreationGetResponses,
+  CreationAnalyticsApiV1StatsCreationGetErrors,
+  ThrowOnError
+> =>
   (options.client ?? client).get<
     CreationAnalyticsApiV1StatsCreationGetResponses,
     CreationAnalyticsApiV1StatsCreationGetErrors,
@@ -2666,7 +2973,7 @@ export const creationAnalyticsApiV1StatsCreationGet = <ThrowOnError extends bool
  */
 export const getChatsApiV1ChatsGet = <ThrowOnError extends boolean = false>(
   options?: Options<GetChatsApiV1ChatsGetData, ThrowOnError>
-) =>
+): RequestResult<GetChatsApiV1ChatsGetResponses, GetChatsApiV1ChatsGetErrors, ThrowOnError> =>
   (options?.client ?? client).get<
     GetChatsApiV1ChatsGetResponses,
     GetChatsApiV1ChatsGetErrors,
@@ -2685,7 +2992,7 @@ export const getChatsApiV1ChatsGet = <ThrowOnError extends boolean = false>(
  */
 export const createChatApiV1ChatsPost = <ThrowOnError extends boolean = false>(
   options: Options<CreateChatApiV1ChatsPostData, ThrowOnError>
-) =>
+): RequestResult<CreateChatApiV1ChatsPostResponses, CreateChatApiV1ChatsPostErrors, ThrowOnError> =>
   (options.client ?? client).post<
     CreateChatApiV1ChatsPostResponses,
     CreateChatApiV1ChatsPostErrors,
@@ -2712,7 +3019,11 @@ export const createChatApiV1ChatsPost = <ThrowOnError extends boolean = false>(
  */
 export const createGroupApiV1ChatsGroupsPost = <ThrowOnError extends boolean = false>(
   options: Options<CreateGroupApiV1ChatsGroupsPostData, ThrowOnError>
-) =>
+): RequestResult<
+  CreateGroupApiV1ChatsGroupsPostResponses,
+  CreateGroupApiV1ChatsGroupsPostErrors,
+  ThrowOnError
+> =>
   (options.client ?? client).post<
     CreateGroupApiV1ChatsGroupsPostResponses,
     CreateGroupApiV1ChatsGroupsPostErrors,
@@ -2735,7 +3046,11 @@ export const createGroupApiV1ChatsGroupsPost = <ThrowOnError extends boolean = f
  */
 export const deleteChatApiV1ChatsChatIdDelete = <ThrowOnError extends boolean = false>(
   options: Options<DeleteChatApiV1ChatsChatIdDeleteData, ThrowOnError>
-) =>
+): RequestResult<
+  DeleteChatApiV1ChatsChatIdDeleteResponses,
+  DeleteChatApiV1ChatsChatIdDeleteErrors,
+  ThrowOnError
+> =>
   (options.client ?? client).delete<
     DeleteChatApiV1ChatsChatIdDeleteResponses,
     DeleteChatApiV1ChatsChatIdDeleteErrors,
@@ -2754,7 +3069,11 @@ export const deleteChatApiV1ChatsChatIdDelete = <ThrowOnError extends boolean = 
  */
 export const getChatApiV1ChatsChatIdGet = <ThrowOnError extends boolean = false>(
   options: Options<GetChatApiV1ChatsChatIdGetData, ThrowOnError>
-) =>
+): RequestResult<
+  GetChatApiV1ChatsChatIdGetResponses,
+  GetChatApiV1ChatsChatIdGetErrors,
+  ThrowOnError
+> =>
   (options.client ?? client).get<
     GetChatApiV1ChatsChatIdGetResponses,
     GetChatApiV1ChatsChatIdGetErrors,
@@ -2776,7 +3095,11 @@ export const getChatApiV1ChatsChatIdGet = <ThrowOnError extends boolean = false>
  */
 export const renameChatApiV1ChatsChatIdPatch = <ThrowOnError extends boolean = false>(
   options: Options<RenameChatApiV1ChatsChatIdPatchData, ThrowOnError>
-) =>
+): RequestResult<
+  RenameChatApiV1ChatsChatIdPatchResponses,
+  RenameChatApiV1ChatsChatIdPatchErrors,
+  ThrowOnError
+> =>
   (options.client ?? client).patch<
     RenameChatApiV1ChatsChatIdPatchResponses,
     RenameChatApiV1ChatsChatIdPatchErrors,
@@ -2799,7 +3122,11 @@ export const renameChatApiV1ChatsChatIdPatch = <ThrowOnError extends boolean = f
  */
 export const getMessagesApiV1ChatsChatIdMessagesGet = <ThrowOnError extends boolean = false>(
   options: Options<GetMessagesApiV1ChatsChatIdMessagesGetData, ThrowOnError>
-) =>
+): RequestResult<
+  GetMessagesApiV1ChatsChatIdMessagesGetResponses,
+  GetMessagesApiV1ChatsChatIdMessagesGetErrors,
+  ThrowOnError
+> =>
   (options.client ?? client).get<
     GetMessagesApiV1ChatsChatIdMessagesGetResponses,
     GetMessagesApiV1ChatsChatIdMessagesGetErrors,
@@ -2818,7 +3145,11 @@ export const getMessagesApiV1ChatsChatIdMessagesGet = <ThrowOnError extends bool
  */
 export const sendMessageApiV1ChatsChatIdMessagesPost = <ThrowOnError extends boolean = false>(
   options: Options<SendMessageApiV1ChatsChatIdMessagesPostData, ThrowOnError>
-) =>
+): RequestResult<
+  SendMessageApiV1ChatsChatIdMessagesPostResponses,
+  SendMessageApiV1ChatsChatIdMessagesPostErrors,
+  ThrowOnError
+> =>
   (options.client ?? client).post<
     SendMessageApiV1ChatsChatIdMessagesPostResponses,
     SendMessageApiV1ChatsChatIdMessagesPostErrors,
@@ -2849,7 +3180,11 @@ export const forwardMessagesApiV1ChatsDestChatIdForwardPost = <
   ThrowOnError extends boolean = false,
 >(
   options: Options<ForwardMessagesApiV1ChatsDestChatIdForwardPostData, ThrowOnError>
-) =>
+): RequestResult<
+  ForwardMessagesApiV1ChatsDestChatIdForwardPostResponses,
+  ForwardMessagesApiV1ChatsDestChatIdForwardPostErrors,
+  ThrowOnError
+> =>
   (options.client ?? client).post<
     ForwardMessagesApiV1ChatsDestChatIdForwardPostResponses,
     ForwardMessagesApiV1ChatsDestChatIdForwardPostErrors,
@@ -2872,7 +3207,11 @@ export const forwardMessagesApiV1ChatsDestChatIdForwardPost = <
  */
 export const markReadApiV1ChatsChatIdReadPost = <ThrowOnError extends boolean = false>(
   options: Options<MarkReadApiV1ChatsChatIdReadPostData, ThrowOnError>
-) =>
+): RequestResult<
+  MarkReadApiV1ChatsChatIdReadPostResponses,
+  MarkReadApiV1ChatsChatIdReadPostErrors,
+  ThrowOnError
+> =>
   (options.client ?? client).post<
     MarkReadApiV1ChatsChatIdReadPostResponses,
     MarkReadApiV1ChatsChatIdReadPostErrors,
@@ -2893,7 +3232,11 @@ export const deleteMessageApiV1ChatsChatIdMessagesMessageIdDelete = <
   ThrowOnError extends boolean = false,
 >(
   options: Options<DeleteMessageApiV1ChatsChatIdMessagesMessageIdDeleteData, ThrowOnError>
-) =>
+): RequestResult<
+  DeleteMessageApiV1ChatsChatIdMessagesMessageIdDeleteResponses,
+  DeleteMessageApiV1ChatsChatIdMessagesMessageIdDeleteErrors,
+  ThrowOnError
+> =>
   (options.client ?? client).delete<
     DeleteMessageApiV1ChatsChatIdMessagesMessageIdDeleteResponses,
     DeleteMessageApiV1ChatsChatIdMessagesMessageIdDeleteErrors,
@@ -2914,7 +3257,11 @@ export const editMessageApiV1ChatsChatIdMessagesMessageIdPatch = <
   ThrowOnError extends boolean = false,
 >(
   options: Options<EditMessageApiV1ChatsChatIdMessagesMessageIdPatchData, ThrowOnError>
-) =>
+): RequestResult<
+  EditMessageApiV1ChatsChatIdMessagesMessageIdPatchResponses,
+  EditMessageApiV1ChatsChatIdMessagesMessageIdPatchErrors,
+  ThrowOnError
+> =>
   (options.client ?? client).patch<
     EditMessageApiV1ChatsChatIdMessagesMessageIdPatchResponses,
     EditMessageApiV1ChatsChatIdMessagesMessageIdPatchErrors,
@@ -2954,7 +3301,11 @@ export const removeReactionApiV1ChatsChatIdMessagesMessageIdReactionsDelete = <
   ThrowOnError extends boolean = false,
 >(
   options: Options<RemoveReactionApiV1ChatsChatIdMessagesMessageIdReactionsDeleteData, ThrowOnError>
-) =>
+): RequestResult<
+  RemoveReactionApiV1ChatsChatIdMessagesMessageIdReactionsDeleteResponses,
+  RemoveReactionApiV1ChatsChatIdMessagesMessageIdReactionsDeleteErrors,
+  ThrowOnError
+> =>
   (options.client ?? client).delete<
     RemoveReactionApiV1ChatsChatIdMessagesMessageIdReactionsDeleteResponses,
     RemoveReactionApiV1ChatsChatIdMessagesMessageIdReactionsDeleteErrors,
@@ -2982,7 +3333,11 @@ export const getReactorsApiV1ChatsChatIdMessagesMessageIdReactionsGet = <
   ThrowOnError extends boolean = false,
 >(
   options: Options<GetReactorsApiV1ChatsChatIdMessagesMessageIdReactionsGetData, ThrowOnError>
-) =>
+): RequestResult<
+  GetReactorsApiV1ChatsChatIdMessagesMessageIdReactionsGetResponses,
+  GetReactorsApiV1ChatsChatIdMessagesMessageIdReactionsGetErrors,
+  ThrowOnError
+> =>
   (options.client ?? client).get<
     GetReactorsApiV1ChatsChatIdMessagesMessageIdReactionsGetResponses,
     GetReactorsApiV1ChatsChatIdMessagesMessageIdReactionsGetErrors,
@@ -3005,7 +3360,11 @@ export const addReactionApiV1ChatsChatIdMessagesMessageIdReactionsPost = <
   ThrowOnError extends boolean = false,
 >(
   options: Options<AddReactionApiV1ChatsChatIdMessagesMessageIdReactionsPostData, ThrowOnError>
-) =>
+): RequestResult<
+  AddReactionApiV1ChatsChatIdMessagesMessageIdReactionsPostResponses,
+  AddReactionApiV1ChatsChatIdMessagesMessageIdReactionsPostErrors,
+  ThrowOnError
+> =>
   (options.client ?? client).post<
     AddReactionApiV1ChatsChatIdMessagesMessageIdReactionsPostResponses,
     AddReactionApiV1ChatsChatIdMessagesMessageIdReactionsPostErrors,
@@ -3036,7 +3395,11 @@ export const addReactionApiV1ChatsChatIdMessagesMessageIdReactionsPost = <
  */
 export const typingIndicatorApiV1ChatsChatIdTypingPost = <ThrowOnError extends boolean = false>(
   options: Options<TypingIndicatorApiV1ChatsChatIdTypingPostData, ThrowOnError>
-) =>
+): RequestResult<
+  TypingIndicatorApiV1ChatsChatIdTypingPostResponses,
+  TypingIndicatorApiV1ChatsChatIdTypingPostErrors,
+  ThrowOnError
+> =>
   (options.client ?? client).post<
     TypingIndicatorApiV1ChatsChatIdTypingPostResponses,
     TypingIndicatorApiV1ChatsChatIdTypingPostErrors,
@@ -3055,7 +3418,11 @@ export const typingIndicatorApiV1ChatsChatIdTypingPost = <ThrowOnError extends b
  */
 export const clearChatHistoryApiV1ChatsChatIdClearPost = <ThrowOnError extends boolean = false>(
   options: Options<ClearChatHistoryApiV1ChatsChatIdClearPostData, ThrowOnError>
-) =>
+): RequestResult<
+  ClearChatHistoryApiV1ChatsChatIdClearPostResponses,
+  ClearChatHistoryApiV1ChatsChatIdClearPostErrors,
+  ThrowOnError
+> =>
   (options.client ?? client).post<
     ClearChatHistoryApiV1ChatsChatIdClearPostResponses,
     ClearChatHistoryApiV1ChatsChatIdClearPostErrors,
@@ -3076,7 +3443,11 @@ export const addParticipantApiV1ChatsChatIdParticipantsPost = <
   ThrowOnError extends boolean = false,
 >(
   options: Options<AddParticipantApiV1ChatsChatIdParticipantsPostData, ThrowOnError>
-) =>
+): RequestResult<
+  AddParticipantApiV1ChatsChatIdParticipantsPostResponses,
+  AddParticipantApiV1ChatsChatIdParticipantsPostErrors,
+  ThrowOnError
+> =>
   (options.client ?? client).post<
     AddParticipantApiV1ChatsChatIdParticipantsPostResponses,
     AddParticipantApiV1ChatsChatIdParticipantsPostErrors,
@@ -3103,7 +3474,11 @@ export const removeParticipantApiV1ChatsChatIdParticipantsUserIdDelete = <
   ThrowOnError extends boolean = false,
 >(
   options: Options<RemoveParticipantApiV1ChatsChatIdParticipantsUserIdDeleteData, ThrowOnError>
-) =>
+): RequestResult<
+  RemoveParticipantApiV1ChatsChatIdParticipantsUserIdDeleteResponses,
+  RemoveParticipantApiV1ChatsChatIdParticipantsUserIdDeleteErrors,
+  ThrowOnError
+> =>
   (options.client ?? client).delete<
     RemoveParticipantApiV1ChatsChatIdParticipantsUserIdDeleteResponses,
     RemoveParticipantApiV1ChatsChatIdParticipantsUserIdDeleteErrors,
@@ -3124,7 +3499,11 @@ export const removeParticipantApiV1ChatsChatIdParticipantsUserIdDelete = <
  */
 export const proxyImageApiV1ImgPathGet = <ThrowOnError extends boolean = false>(
   options: Options<ProxyImageApiV1ImgPathGetData, ThrowOnError>
-) =>
+): RequestResult<
+  ProxyImageApiV1ImgPathGetResponses,
+  ProxyImageApiV1ImgPathGetErrors,
+  ThrowOnError
+> =>
   (options.client ?? client).get<
     ProxyImageApiV1ImgPathGetResponses,
     ProxyImageApiV1ImgPathGetErrors,
@@ -3145,7 +3524,7 @@ export const proxyImageApiV1ImgPathGet = <ThrowOnError extends boolean = false>(
  */
 export const receiveCspReportApiV1CspReportPost = <ThrowOnError extends boolean = false>(
   options?: Options<ReceiveCspReportApiV1CspReportPostData, ThrowOnError>
-) =>
+): RequestResult<ReceiveCspReportApiV1CspReportPostResponses, unknown, ThrowOnError> =>
   (options?.client ?? client).post<
     ReceiveCspReportApiV1CspReportPostResponses,
     unknown,
@@ -3162,7 +3541,11 @@ export const receiveCspReportApiV1CspReportPost = <ThrowOnError extends boolean 
  */
 export const unifiedSearchApiV1SearchGet = <ThrowOnError extends boolean = false>(
   options: Options<UnifiedSearchApiV1SearchGetData, ThrowOnError>
-) =>
+): RequestResult<
+  UnifiedSearchApiV1SearchGetResponses,
+  UnifiedSearchApiV1SearchGetErrors,
+  ThrowOnError
+> =>
   (options.client ?? client).get<
     UnifiedSearchApiV1SearchGetResponses,
     UnifiedSearchApiV1SearchGetErrors,
@@ -3181,7 +3564,7 @@ export const unifiedSearchApiV1SearchGet = <ThrowOnError extends boolean = false
  */
 export const listFeatureFlagsAdminFeatureFlagsGet = <ThrowOnError extends boolean = false>(
   options?: Options<ListFeatureFlagsAdminFeatureFlagsGetData, ThrowOnError>
-) =>
+): RequestResult<ListFeatureFlagsAdminFeatureFlagsGetResponses, unknown, ThrowOnError> =>
   (options?.client ?? client).get<
     ListFeatureFlagsAdminFeatureFlagsGetResponses,
     unknown,
@@ -3200,7 +3583,11 @@ export const listFeatureFlagsAdminFeatureFlagsGet = <ThrowOnError extends boolea
  */
 export const updateFeatureFlagAdminFeatureFlagsNamePatch = <ThrowOnError extends boolean = false>(
   options: Options<UpdateFeatureFlagAdminFeatureFlagsNamePatchData, ThrowOnError>
-) =>
+): RequestResult<
+  UpdateFeatureFlagAdminFeatureFlagsNamePatchResponses,
+  UpdateFeatureFlagAdminFeatureFlagsNamePatchErrors,
+  ThrowOnError
+> =>
   (options.client ?? client).patch<
     UpdateFeatureFlagAdminFeatureFlagsNamePatchResponses,
     UpdateFeatureFlagAdminFeatureFlagsNamePatchErrors,
@@ -3223,7 +3610,11 @@ export const updateFeatureFlagAdminFeatureFlagsNamePatch = <ThrowOnError extends
  */
 export const listAuditLogsAdminAuditGet = <ThrowOnError extends boolean = false>(
   options?: Options<ListAuditLogsAdminAuditGetData, ThrowOnError>
-) =>
+): RequestResult<
+  ListAuditLogsAdminAuditGetResponses,
+  ListAuditLogsAdminAuditGetErrors,
+  ThrowOnError
+> =>
   (options?.client ?? client).get<
     ListAuditLogsAdminAuditGetResponses,
     ListAuditLogsAdminAuditGetErrors,
@@ -3242,7 +3633,7 @@ export const listAuditLogsAdminAuditGet = <ThrowOnError extends boolean = false>
  */
 export const issueWsUpgradeTicketWsTicketPost = <ThrowOnError extends boolean = false>(
   options?: Options<IssueWsUpgradeTicketWsTicketPostData, ThrowOnError>
-) =>
+): RequestResult<IssueWsUpgradeTicketWsTicketPostResponses, unknown, ThrowOnError> =>
   (options?.client ?? client).post<
     IssueWsUpgradeTicketWsTicketPostResponses,
     unknown,

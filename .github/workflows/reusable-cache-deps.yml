@@ -22,7 +22,7 @@ on:
                 description: "Go version"
                 required: false
                 type: string
-                default: "1.26.4"
+                default: "1.26.5"
         outputs:
             python-cache-hit:
                 description: "Whether Python cache was hit"

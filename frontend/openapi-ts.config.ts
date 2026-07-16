@@ -2,6 +2,9 @@ import { defineConfig } from "@hey-api/openapi-ts"
 
 export default defineConfig({
   input: "./openapi.json",
-  output: "src/api/generated",
+  output: {
+    path: "src/api/generated",
+    postProcess: ["prettier"],
+  },
   plugins: ["@hey-api/client-axios"],
 })

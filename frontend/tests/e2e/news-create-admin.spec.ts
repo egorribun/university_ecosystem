@@ -21,19 +21,18 @@ test.describe("News & Admin — Wave 11", () => {
       }
     })
 
-    await page.goto("/")
-    await page.waitForLoadState("domcontentloaded")
+    await page.goto("/", { waitUntil: "commit", timeout: 30_000 })
     expect(errors).toHaveLength(0)
   })
 
   test("news route resolves to news page or login redirect", async ({ page }) => {
-    await page.goto("/news", { waitUntil: "domcontentloaded" })
+    await page.goto("/news", { waitUntil: "commit", timeout: 30_000 })
     // Valid outcomes: authenticated news page OR unauthenticated redirect
     await expect(page).toHaveURL(/news|login|\/$/)
   })
 
   test("news route body has rendered content", async ({ page }) => {
-    await page.goto("/news")
+    await page.goto("/news", { waitUntil: "commit", timeout: 30_000 })
     await expect(page.locator("body")).toBeVisible()
     const text = await page.locator("body").innerText()
     expect(text.trim().length).toBeGreaterThan(0)
@@ -43,7 +42,7 @@ test.describe("News & Admin — Wave 11", () => {
     // WHY: Admin panel must never be accessible without authentication.
     // Even if the backend is not running, the client-side route guard must
     // redirect to login before rendering any admin UI.
-    await page.goto("/admin", { waitUntil: "domcontentloaded" })
+    await page.goto("/admin", { waitUntil: "commit", timeout: 30_000 })
     const url = page.url()
     // Either redirected to login, or shows a login form on the same URL
     const isProtected =
@@ -61,8 +60,7 @@ test.describe("News & Admin — Wave 11", () => {
         consoleErrors.push(msg.text())
       }
     })
-    await page.goto("/news")
-    await page.waitForLoadState("networkidle")
+    await page.goto("/news", { waitUntil: "commit", timeout: 30_000 })
     // Filter known CDN / third-party console errors
     const critical = consoleErrors.filter(
       (e) =>

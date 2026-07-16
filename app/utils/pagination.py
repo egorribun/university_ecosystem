@@ -49,7 +49,7 @@ def decode_cursor(cursor: str) -> str:
     """Decode an opaque cursor string back to the original value."""
     try:
         return base64.urlsafe_b64decode(cursor.encode()).decode()
-    except ValueError, TypeError, UnicodeDecodeError:
+    except (ValueError, TypeError, UnicodeDecodeError):
         return ""
 
 
@@ -90,7 +90,7 @@ def decode_datetime_cursor(cursor: str | None) -> tuple[datetime, str] | None:
         # Use integer math to reconstruct datetime perfectly
         dt = datetime(1970, 1, 1, tzinfo=UTC) + timedelta(microseconds=timestamp_us)
         return dt, secondary_id
-    except ValueError, TypeError, OverflowError, OSError:
+    except (ValueError, TypeError, OverflowError, OSError):
         return None
 
 
@@ -136,7 +136,7 @@ async def paginate_cursor[T](
                 target_value = (
                     uuid.UUID(cursor_value) if len(cursor_value) >= 32 else cursor_value
                 )
-            except ValueError, TypeError:
+            except (ValueError, TypeError):
                 target_value = cursor_value
 
             if descending:

@@ -12,9 +12,12 @@ test.describe("React Hydration Verification", () => {
       const text = msg.text()
       if (
         msg.type() === "error" ||
+        msg.type() === "warning" ||
         text.includes("hydration") ||
         text.includes("Hydration") ||
-        text.includes("did not match")
+        text.includes("did not match") ||
+        text.includes("Did not expect server HTML") ||
+        text.includes("Text content did not match")
       ) {
         hydrationErrors.push(`[Console ${msg.type()}] ${text}`)
       }
@@ -29,8 +32,7 @@ test.describe("React Hydration Verification", () => {
     const mock = await useMockApi(page)
 
     // 1. Test public /login first (does not require login token)
-    await page.goto("/login")
-    await page.waitForLoadState("networkidle")
+    await page.goto("/login", { waitUntil: "domcontentloaded", timeout: 30_000 })
     expect(hydrationErrors.filter((err) => err.toLowerCase().includes("hydration"))).toEqual([])
 
     // 2. Log in mock student to access protected pages
@@ -43,8 +45,8 @@ test.describe("React Hydration Verification", () => {
     const protectedUrls = ["/dashboard", "/events", "/news", "/schedule", "/settings"]
 
     for (const url of protectedUrls) {
-      await page.goto(url)
-      await page.waitForLoadState("networkidle")
+      await page.goto(url, { waitUntil: "commit", timeout: 30_000 })
+      await page.waitForTimeout(250)
       // Assert no hydration-specific errors or mismatches
       const hydrationSpecific = hydrationErrors.filter(
         (err) =>

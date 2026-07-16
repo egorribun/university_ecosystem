@@ -1618,3 +1618,15 @@
     max-width: var(--layout-max-ultrawide);
   }
 }
+
+/* Keep the reduced-motion contract above component and utility transitions. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 0ms !important;
+  }
+}

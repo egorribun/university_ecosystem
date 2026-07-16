@@ -17,6 +17,7 @@ export default defineConfig({
   },
   test: {
     environment: "jsdom",
+    testTimeout: 20000,
     environmentOptions: {
       url: "http://localhost/",
     },

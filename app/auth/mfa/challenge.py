@@ -87,7 +87,7 @@ def _extract_attempt_limit(
         return None
     try:
         resolved = int(limit)
-    except TypeError, ValueError:  # RZ-28-01
+    except (TypeError, ValueError):  # RZ-28-01
         return None
     if resolved <= 0:
         return None

@@ -100,7 +100,7 @@ class StatsService:
             if not isinstance(data, dict):
                 return None
             payload = GradePayload.model_validate(data)
-        except json.JSONDecodeError, ValidationError, TypeError:
+        except (json.JSONDecodeError, ValidationError, TypeError):
             return None
 
         # Resolve fields with fallbacks

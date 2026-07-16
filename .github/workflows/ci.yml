@@ -379,6 +379,7 @@ jobs:
       - name: Set up Rust (stable)
         uses: dtolnay/rust-toolchain@fa04a1451ff1842e2626ccb99004d0195b455a88 # stable
         with:
+          toolchain: stable
           components: rustfmt, clippy
       - name: Cache Cargo registry + target dirs
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -530,7 +531,7 @@ jobs:
     uses: ./.github/workflows/reusable-go-tests.yml
     with:
       service-directory: ${{ matrix.service }}
-      go-version: "1.26.4"
+      go-version: "1.26.5"
       coverage-threshold: ${{ matrix.coverage-threshold }}
     secrets: inherit
 
@@ -547,7 +548,7 @@ jobs:
 
       - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
         with:
-          go-version: "1.26.4"
+          go-version: "1.26.5"
           cache-dependency-path: services/ws-hub/go.sum
 
       # PERF-W18-04 (audit 2026-03-23 Wave 18): increased from 30s to 120s for
@@ -577,7 +578,7 @@ jobs:
     uses: ./.github/workflows/reusable-go-integration-tests.yml
     with:
       service-directory: services/ws-hub
-      go-version: "1.26.4"
+      go-version: "1.26.5"
     secrets: inherit
 
   go-integration-file-processor:
@@ -586,7 +587,7 @@ jobs:
     uses: ./.github/workflows/reusable-go-integration-tests.yml
     with:
       service-directory: services/file-processor
-      go-version: "1.26.4"
+      go-version: "1.26.5"
     secrets: inherit
 
   go-integration-gateway:
@@ -595,7 +596,7 @@ jobs:
     uses: ./.github/workflows/reusable-go-integration-tests.yml
     with:
       service-directory: services/gateway
-      go-version: "1.26.4"
+      go-version: "1.26.5"
     secrets: inherit
 
   frontend-tests:
@@ -607,19 +608,26 @@ jobs:
       run-lighthouse: true
     secrets: inherit
 
-  # Wave 122 polish A1 — wires up Playwright e2e suite + the W122 SW3
-  # cross-env URL_STATE_E2E step. Adds ~5-10 min wall-clock per run
-  # (backend setup + browser install + ~47 spec cases on chromium).
+  # Wave 122 polish A1 — wires up the Playwright E2E suite + the W122 SW3
+  # cross-env URL_STATE_E2E step. The default Chromium suite is split into
+  # four isolated shards so all 114 tests finish within the job timeout
+  # without overloading the SSR preview.
   # Chromium-only by design (W120 SW7 + W121 SW3); add firefox/webkit
   # in a future wave if multi-browser e2e coverage warranted.
   e2e-tests:
-    name: E2E Tests
+    name: E2E Tests (shard ${{ matrix.shard-index }}/4)
     needs: pre-commit-check
+    strategy:
+      fail-fast: false
+      matrix:
+        shard-index: [1, 2, 3, 4]
     uses: ./.github/workflows/reusable-e2e-tests.yml
     with:
       node-version: "22"
       python-version: "3.14"
       browser: chromium
+      shard-index: ${{ matrix.shard-index }}
+      shard-total: 4
     secrets: inherit
 
   security-audit:
@@ -1511,6 +1519,7 @@ jobs:
       - name: Set up Rust (stable + wasm32 target + llvm-tools)
         uses: dtolnay/rust-toolchain@fa04a1451ff1842e2626ccb99004d0195b455a88 # stable
         with:
+          toolchain: stable
           targets: wasm32-unknown-unknown
           components: llvm-tools-preview
 
@@ -1641,18 +1650,17 @@ jobs:
           if grep -qF 'Running mutation testing' /tmp/mutmut_run.log; then mutants_started=1; fi
           if [ "$ec" -eq 0 ]; then
             echo "mutmut completed within the time-box."
+            # Verify mutation score (gate blocking at >= 85.0% via mutmut_ci_gate.py)
+            echo "Verifying mutation score (gate blocking at >= 85.0%)..."
+            uv run python scripts/mutmut_ci_gate.py
           elif [ "$ec" -eq 124 ]; then
-            echo "Incremental mutation testing hit the 20-minute advisory time-box."
+            echo "Incremental mutation testing hit the 20-minute advisory time-box. Skipping score verification for incomplete run."
           elif [ "$mutants_started" -eq 1 ]; then
-            echo "mutmut exited $ec after the mutant phase began."
+            echo "mutmut exited $ec after the mutant phase began. Skipping score verification for incomplete run."
           else
             echo "::error::mutmut exited $ec BEFORE the mutant phase began — a genuine clean-test / forced-fail / stats isolation regression. Failing the job."
             exit "$ec"
           fi
-
-          # Verify mutation score (gate blocking at >= 85.0% via mutmut_ci_gate.py)
-          echo "Verifying mutation score (gate blocking at >= 85.0%)..."
-          uv run python scripts/mutmut_ci_gate.py
 
 
   load-and-chaos-tests:
@@ -1898,6 +1906,9 @@ jobs:
       redis:
         image: redis:7-alpine
         ports: ["6379:6379"]
+      nats:
+        image: nats:2.10.25-alpine
+        ports: ["4222:4222"]
       toxiproxy:
         image: ghcr.io/shopify/toxiproxy:2.9.0
         ports: ["8474:8474", "5433:5433", "6380:6380", "4223:4223"]
@@ -1910,13 +1921,17 @@ jobs:
         run: |
           curl -s http://localhost:8474/version
           curl -s -X POST http://localhost:8474/proxies \
-            -d '{"name":"postgres","listen":"0.0.0.0:5433","upstream":"localhost:5432"}'
+            -d '{"name":"postgres","listen":"0.0.0.0:5433","upstream":"postgres:5432"}'
           curl -s -X POST http://localhost:8474/proxies \
-            -d '{"name":"redis","listen":"0.0.0.0:6380","upstream":"localhost:6379"}'
+            -d '{"name":"redis","listen":"0.0.0.0:6380","upstream":"redis:6379"}'
+          curl -s -X POST http://localhost:8474/proxies \
+            -d '{"name":"nats","listen":"0.0.0.0:4223","upstream":"nats:4222"}'
       - name: Run chaos tests
         env:
           TOXIPROXY_URL: http://localhost:8474
-          DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/testdb  # pragma: allowlist secret
+          DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5433/testdb  # pragma: allowlist secret
+          CACHE_REDIS_URL: redis://localhost:6380/0
+          NATS_URL: nats://localhost:4223
         run: uv run pytest tests/chaos/ -v -m chaos --tb=short
 
   db-migration-integrity:

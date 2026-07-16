@@ -34,7 +34,7 @@ readFileSync(AXE_SOURCE_PATH, "utf-8").slice(0, 1) // existence check only
 import { useMockApi } from "./utils/mockApi"
 
 const SNAPSHOT_OPTS = {
-  maxDiffPixelRatio: 0.005, // 0.5% pixel threshold
+  maxDiffPixelRatio: 0.0, // 0.0% pixel threshold (strict)
   animations: "disabled" as const,
 }
 

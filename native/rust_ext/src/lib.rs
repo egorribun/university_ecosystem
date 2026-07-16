@@ -1,8 +1,10 @@
 #![deny(clippy::unwrap_used)]
 #![deny(clippy::expect_used)] // LOW-W19: expect() panics just like unwrap(); deny it too
+#![allow(unexpected_cfgs)]
 use chrono::{Datelike, Duration, NaiveDate, TimeZone, Utc, Weekday};
 use pyo3::prelude::*;
 use rayon::prelude::*;
+use std::sync::Mutex;
 
 // pyo3 0.29 (RUSTSEC-2026-0176/-0177 bump): the automatic FromPyObject derive
 // for Clone #[pyclass] types is becoming opt-in. ScheduleItem is extracted from
@@ -22,6 +24,20 @@ pub struct ScheduleItem {
     pub end_time: i64, // timestamp in seconds
     #[pyo3(get, set)]
     pub parity: String,
+}
+
+// Python 3.13+ free-threaded builds can enter the same PyO3 function from
+// multiple OS threads without a process-wide GIL.  PyO3's derived
+// `FromPyObject` implementation for a `#[pyclass]` therefore needs a small
+// serialization point while it borrows the Python object and clones its
+// fields.  After extraction, `ScheduleItem` is owned Rust data and all
+// conflict work remains fully parallel.
+static SCHEDULE_ITEM_EXTRACT_LOCK: Mutex<()> = Mutex::new(());
+
+fn schedule_item_extract_guard() -> PyResult<std::sync::MutexGuard<'static, ()>> {
+    SCHEDULE_ITEM_EXTRACT_LOCK.lock().map_err(|_| {
+        pyo3::exceptions::PyRuntimeError::new_err("ScheduleItem extraction lock is poisoned")
+    })
 }
 
 #[pymethods]
@@ -59,8 +75,23 @@ pub fn check_conflict_proto(a: &ScheduleItem, b: &ScheduleItem) -> bool {
         && b.start_time < a.end_time
 }
 
-#[pyfunction]
-fn detect_conflicts(target: ScheduleItem, existing: Vec<ScheduleItem>) -> PyResult<Vec<ScheduleItem>> {
+#[pyfunction(name = "detect_conflicts")]
+fn detect_conflicts_py(
+    target: Bound<'_, PyAny>,
+    existing: Bound<'_, PyAny>,
+) -> PyResult<Vec<ScheduleItem>> {
+    let _extract_guard = schedule_item_extract_guard()?;
+    let target: ScheduleItem = target.extract()?;
+    let existing: Vec<ScheduleItem> = existing.extract()?;
+    drop(_extract_guard);
+
+    detect_conflicts(target, existing)
+}
+
+fn detect_conflicts(
+    target: ScheduleItem,
+    existing: Vec<ScheduleItem>,
+) -> PyResult<Vec<ScheduleItem>> {
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         existing
             .into_iter()
@@ -75,7 +106,10 @@ fn detect_conflicts(target: ScheduleItem, existing: Vec<ScheduleItem>) -> PyResu
         } else {
             "Unknown panic".to_string()
         };
-        pyo3::exceptions::PyRuntimeError::new_err(format!("Rust panic in detect_conflicts: {}", msg))
+        pyo3::exceptions::PyRuntimeError::new_err(format!(
+            "Rust panic in detect_conflicts: {}",
+            msg
+        ))
     })
 }
 
@@ -83,7 +117,6 @@ fn detect_conflicts(target: ScheduleItem, existing: Vec<ScheduleItem>) -> PyResu
 // so it can be found by grep and updated in one place.
 const MAX_CONFLICT_ITEMS: usize = 2500;
 
-#[pyfunction]
 pub fn batch_detect_conflicts(
     items: Vec<ScheduleItem>,
 ) -> PyResult<Vec<(ScheduleItem, ScheduleItem)>> {
@@ -148,17 +181,44 @@ pub fn batch_detect_conflicts(
         } else {
             "Unknown panic".to_string()
         };
-        pyo3::exceptions::PyRuntimeError::new_err(format!("Rust panic in batch_detect_conflicts: {}", msg))
+        pyo3::exceptions::PyRuntimeError::new_err(format!(
+            "Rust panic in batch_detect_conflicts: {}",
+            msg
+        ))
     })?
 }
 
-#[pyfunction]
+#[pyfunction(name = "batch_detect_conflicts")]
+fn batch_detect_conflicts_py(
+    items: Bound<'_, PyAny>,
+) -> PyResult<Vec<(ScheduleItem, ScheduleItem)>> {
+    let _extract_guard = schedule_item_extract_guard()?;
+    let items: Vec<ScheduleItem> = items.extract()?;
+    drop(_extract_guard);
+
+    batch_detect_conflicts(items)
+}
+
+#[pyfunction(name = "find_optimal_slot")]
 #[pyo3(signature = (duration_minutes, existing_schedule, available_blocks))]
 /// TD-W17-03 (Wave 17): Fixed to use the actual next occurrence of the
 /// requested weekday instead of always using Jan 1. Previously, timestamps
 /// were semantically wrong — conflict detection worked by coincidence (string
 /// comparison of weekday + time overlap), but any caller using start_time/
 /// end_time as real dates would get incorrect results.
+fn find_optimal_slot_py(
+    duration_minutes: u32,
+    existing_schedule: Bound<'_, PyAny>,
+    available_blocks: Bound<'_, PyAny>,
+) -> PyResult<Option<ScheduleItem>> {
+    let _extract_guard = schedule_item_extract_guard()?;
+    let existing_schedule: Vec<ScheduleItem> = existing_schedule.extract()?;
+    let available_blocks: Vec<(String, Vec<u32>)> = available_blocks.extract()?;
+    drop(_extract_guard);
+
+    find_optimal_slot(duration_minutes, existing_schedule, available_blocks)
+}
+
 fn find_optimal_slot(
     duration_minutes: u32,
     existing_schedule: Vec<ScheduleItem>,
@@ -210,7 +270,10 @@ fn find_optimal_slot(
         } else {
             "Unknown panic".to_string()
         };
-        pyo3::exceptions::PyRuntimeError::new_err(format!("Rust panic in find_optimal_slot: {}", msg))
+        pyo3::exceptions::PyRuntimeError::new_err(format!(
+            "Rust panic in find_optimal_slot: {}",
+            msg
+        ))
     })
 }
 
@@ -305,7 +368,10 @@ pub fn get_partition_info(table_name: String, month_offset: i32) -> PyResult<Par
         } else {
             "Unknown panic".to_string()
         };
-        pyo3::exceptions::PyRuntimeError::new_err(format!("Rust panic in get_partition_info: {}", msg))
+        pyo3::exceptions::PyRuntimeError::new_err(format!(
+            "Rust panic in get_partition_info: {}",
+            msg
+        ))
     })?
 }
 
@@ -374,7 +440,10 @@ pub fn is_partition_expired(
         } else {
             "Unknown panic".to_string()
         };
-        pyo3::exceptions::PyRuntimeError::new_err(format!("Rust panic in is_partition_expired: {}", msg))
+        pyo3::exceptions::PyRuntimeError::new_err(format!(
+            "Rust panic in is_partition_expired: {}",
+            msg
+        ))
     })
 }
 
@@ -411,7 +480,10 @@ pub fn verify_audit_signature(
         } else {
             "Unknown panic".to_string()
         };
-        pyo3::exceptions::PyRuntimeError::new_err(format!("Rust panic in verify_audit_signature: {}", msg))
+        pyo3::exceptions::PyRuntimeError::new_err(format!(
+            "Rust panic in verify_audit_signature: {}",
+            msg
+        ))
     })?
 }
 
@@ -420,9 +492,9 @@ pub fn verify_audit_signature(
 fn rust_ext(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<ScheduleItem>()?;
     m.add_class::<PartitionInfo>()?;
-    m.add_function(wrap_pyfunction!(detect_conflicts, m)?)?;
-    m.add_function(wrap_pyfunction!(batch_detect_conflicts, m)?)?;
-    m.add_function(wrap_pyfunction!(find_optimal_slot, m)?)?;
+    m.add_function(wrap_pyfunction!(detect_conflicts_py, m)?)?;
+    m.add_function(wrap_pyfunction!(batch_detect_conflicts_py, m)?)?;
+    m.add_function(wrap_pyfunction!(find_optimal_slot_py, m)?)?;
     m.add_function(wrap_pyfunction!(get_partition_info, m)?)?;
     m.add_function(wrap_pyfunction!(is_partition_expired, m)?)?;
     m.add_function(wrap_pyfunction!(verify_audit_signature, m)?)?;
@@ -484,65 +556,41 @@ mod tests {
     #[test]
     fn expired_empty_partition_name() {
         // Empty name cannot match the expected prefix — returns false.
-        assert!(!is_partition_expired("".to_string(), "tbl".to_string(), 90));
+        assert!(!is_partition_expired("".to_string(), "tbl".to_string(), 90).unwrap());
     }
 
     #[test]
     fn expired_malformed_no_month_separator() {
         // Missing 'm' separator → malformed → false.
-        assert!(!is_partition_expired(
-            "tbl_y2025".to_string(),
-            "tbl".to_string(),
-            90
-        ));
+        assert!(!is_partition_expired("tbl_y2025".to_string(), "tbl".to_string(), 90).unwrap());
     }
 
     #[test]
     fn expired_malformed_non_numeric_year() {
-        assert!(!is_partition_expired(
-            "tbl_yABCDm01".to_string(),
-            "tbl".to_string(),
-            90
-        ));
+        assert!(!is_partition_expired("tbl_yABCDm01".to_string(), "tbl".to_string(), 90).unwrap());
     }
 
     #[test]
     fn expired_malformed_non_numeric_month() {
-        assert!(!is_partition_expired(
-            "tbl_y2025mXX".to_string(),
-            "tbl".to_string(),
-            90
-        ));
+        assert!(!is_partition_expired("tbl_y2025mXX".to_string(), "tbl".to_string(), 90).unwrap());
     }
 
     #[test]
     fn expired_month_zero() {
         // Month 0 is invalid — returns false.
-        assert!(!is_partition_expired(
-            "tbl_y2025m00".to_string(),
-            "tbl".to_string(),
-            90
-        ));
+        assert!(!is_partition_expired("tbl_y2025m00".to_string(), "tbl".to_string(), 90).unwrap());
     }
 
     #[test]
     fn expired_month_13() {
         // Month 13 is invalid — returns false.
-        assert!(!is_partition_expired(
-            "tbl_y2025m13".to_string(),
-            "tbl".to_string(),
-            90
-        ));
+        assert!(!is_partition_expired("tbl_y2025m13".to_string(), "tbl".to_string(), 90).unwrap());
     }
 
     #[test]
     fn expired_negative_retention() {
         // Negative retention_days → defensively returns false.
-        assert!(!is_partition_expired(
-            "tbl_y2020m01".to_string(),
-            "tbl".to_string(),
-            -1
-        ));
+        assert!(!is_partition_expired("tbl_y2020m01".to_string(), "tbl".to_string(), -1).unwrap());
     }
 
     // -- verify_audit_signature edge cases --
@@ -663,7 +711,7 @@ mod tests {
             parity: "both".to_string(),
         };
 
-        let result = detect_conflicts(&target, vec![existing1.clone(), existing2.clone()]);
+        let result = detect_conflicts(target, vec![existing1.clone(), existing2.clone()]).unwrap();
         assert_eq!(result.len(), 1);
         assert_eq!(result[0].id, Some(1));
     }
@@ -724,9 +772,9 @@ mod tests {
         ];
 
         let slot = find_optimal_slot(60, existing, available);
-        assert!(slot.is_some());
+        assert!(slot.is_ok());
         let found = slot.unwrap();
-        assert_eq!(found.weekday, "monday");
+        assert_eq!(found.unwrap().weekday, "monday");
     }
 
     #[test]
@@ -734,25 +782,20 @@ mod tests {
         // Table name is "events"
         // Target is "events_y2020m01" -> End date is 2020-02-01
         // Cutoff is now - 1 day -> obviously expired
-        assert!(is_partition_expired(
-            "events_y2020m01".to_string(),
-            "events".to_string(),
-            1
-        ));
+        assert!(
+            is_partition_expired("events_y2020m01".to_string(), "events".to_string(), 1).unwrap()
+        );
 
         // Cutoff is now - 100000 days -> obviously NOT expired
-        assert!(!is_partition_expired(
-            "events_y2999m01".to_string(),
-            "events".to_string(),
-            100000
-        ));
+        assert!(
+            !is_partition_expired("events_y2999m01".to_string(), "events".to_string(), 100000)
+                .unwrap()
+        );
 
         // Wrong table prefix -> false
-        assert!(!is_partition_expired(
-            "other_y2020m01".to_string(),
-            "events".to_string(),
-            1
-        ));
+        assert!(
+            !is_partition_expired("other_y2020m01".to_string(), "events".to_string(), 1).unwrap()
+        );
     }
 
     #[test]
@@ -892,7 +935,7 @@ mod tests {
 
             let result = find_optimal_slot(duration, existing.clone(), available);
             if let Ok(Some(slot)) = result {
-                prop_assert_eq!(slot.parity, "both");
+                prop_assert_eq!(slot.parity.as_str(), "both");
                 prop_assert!(slot.weekday == "monday" || slot.weekday == "tuesday");
                 prop_assert_eq!(slot.end_time - slot.start_time, (duration * 60) as i64);
 
@@ -902,5 +945,65 @@ mod tests {
                 }
             }
         }
+    }
+}
+
+#[cfg(kani)]
+mod verification {
+    use super::*;
+
+    #[kani::proof]
+    fn proof_check_conflict_proto() {
+        let weekday_val = String::from("monday");
+        let parity_val = String::from("both");
+
+        let a_start: i64 = kani::any();
+        let a_end: i64 = kani::any();
+        let b_start: i64 = kani::any();
+        let b_end: i64 = kani::any();
+
+        let a = ScheduleItem {
+            id: None,
+            weekday: weekday_val.clone(),
+            start_time: a_start,
+            end_time: a_end,
+            parity: parity_val.clone(),
+        };
+
+        let b = ScheduleItem {
+            id: None,
+            weekday: weekday_val,
+            start_time: b_start,
+            end_time: b_end,
+            parity: parity_val,
+        };
+
+        let _ = check_conflict_proto(&a, &b);
+    }
+
+    #[kani::proof]
+    fn proof_get_partition_info() {
+        let table_name = String::from("notifications");
+        let month_offset: i32 = kani::any();
+        let _ = get_partition_info(table_name, month_offset);
+    }
+
+    #[kani::proof]
+    fn proof_verify_audit_signature() {
+        let key_bytes: [u8; 8] = kani::any();
+        let log_bytes: [u8; 8] = kani::any();
+        let sig_bytes: [u8; 8] = kani::any();
+
+        let key_str = match std::str::from_utf8(&key_bytes) {
+            Ok(s) => s.to_string(),
+            Err(_) => return,
+        };
+        let log_data = match std::str::from_utf8(&log_bytes) {
+            Ok(s) => s.to_string(),
+            Err(_) => return,
+        };
+        let signature = hex::encode(sig_bytes);
+
+        let _ = verify_audit_signature(vec![key_str], log_data, signature);
     }
 }

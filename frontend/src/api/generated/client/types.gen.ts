@@ -104,9 +104,14 @@ type MethodFn = <TData = unknown, TError = unknown, ThrowOnError extends boolean
   options: Omit<RequestOptions<TData, ThrowOnError>, "method">
 ) => RequestResult<TData, TError, ThrowOnError>
 
-type SseFn = <TData = unknown, TError = unknown, ThrowOnError extends boolean = false>(
-  options: Omit<RequestOptions<TData, ThrowOnError>, "method">
-) => Promise<ServerSentEventsResult<TData, TError>>
+type SseFn = <
+  TData = unknown,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  _TError = unknown,
+  ThrowOnError extends boolean = false,
+>(
+  options: Omit<RequestOptions<never, ThrowOnError>, "method">
+) => Promise<ServerSentEventsResult<TData>>
 
 type RequestFn = <TData = unknown, TError = unknown, ThrowOnError extends boolean = false>(
   options: Omit<RequestOptions<TData, ThrowOnError>, "method"> &
@@ -115,13 +120,16 @@ type RequestFn = <TData = unknown, TError = unknown, ThrowOnError extends boolea
 
 type BuildUrlFn = <
   TData extends {
-    body?: unknown
     path?: Record<string, unknown>
     query?: Record<string, unknown>
     url: string
   },
 >(
-  options: TData & Options<TData>
+  options: TData &
+    Pick<
+      RequestOptions<unknown, boolean>,
+      "axios" | "baseURL" | "paramsSerializer" | "querySerializer"
+    >
 ) => string
 
 export type Client = CoreClient<RequestFn, Config, MethodFn, BuildUrlFn, SseFn> & {
@@ -138,7 +146,7 @@ export type Client = CoreClient<RequestFn, Config, MethodFn, BuildUrlFn, SseFn> 
  */
 export type CreateClientConfig<T extends ClientOptions = ClientOptions> = (
   override?: Config<ClientOptions & T>
-) => Config<Required<ClientOptions> & T> | Promise<Config<Required<ClientOptions> & T>>
+) => Config<Required<ClientOptions> & T>
 
 export interface TDataShape {
   body?: unknown

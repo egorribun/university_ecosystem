@@ -190,32 +190,29 @@ async def healthz(
                 await conn.execute(text("SELECT 1"))
 
                 # 2. Migrations check
-                try:
-                    (
-                        migrations_current,
-                        current_versions,
-                        expected_versions,
-                    ) = await migrations_are_current(conn=conn)
-                    if not migrations_current:
-                        # Drift is always an error for the migration status itself
-                        statuses["db_migrations"] = "error"
-                        statuses["db_migrations_current"] = sorted(current_versions)
-                        statuses["db_migrations_expected"] = sorted(expected_versions)
-
-                        # But only trigger a global 503 if NOT in testing environment
-                        # (In tests, we often auto-create schema without migrations)
-                        is_test = settings.environment in ("testing", "test")
-                        if not is_test:
+                is_test = settings.environment in ("testing", "test")
+                if is_test:
+                    statuses["db_migrations"] = "skipped"
+                else:
+                    try:
+                        (
+                            migrations_current,
+                            current_versions,
+                            expected_versions,
+                        ) = await migrations_are_current(conn=conn)
+                        if not migrations_current:
+                            # Drift is always an error for the migration status itself
+                            statuses["db_migrations"] = "error"
+                            statuses["db_migrations_current"] = sorted(current_versions)
+                            statuses["db_migrations_expected"] = sorted(
+                                expected_versions
+                            )
                             db_status = "error"
-                    else:
-                        statuses["db_migrations"] = "ok"
-                except Exception:  # RZ-22-01-JUSTIFIED: health probe — migration check failure (reviewed TD-27-04)
-                    # If migrations check fails (e.g. table missing in SQLite),
-                    # only error out if not in testing.
-                    is_test = settings.environment in ("testing", "test")
-                    if not is_test:
+                        else:
+                            statuses["db_migrations"] = "ok"
+                    except Exception:  # RZ-22-01-JUSTIFIED: health probe — migration check failure (reviewed TD-27-04)
                         db_status = "error"
-                    statuses["db_migrations"] = "skipped" if is_test else "error"
+                        statuses["db_migrations"] = "error"
 
                 # 3. Queue status
                 queue_status = "ok"

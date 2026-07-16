@@ -271,4 +271,3 @@ func TestDownloadAndDecodeImage_DecodePanic(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "panic during image decode")
 }
-

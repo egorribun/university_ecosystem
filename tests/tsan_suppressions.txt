@@ -24,6 +24,10 @@ called_from_lib:libuv.so.1.0.0
 called_from_lib:uv.so
 called_from_lib:uv.so.1
 
+# uvloop statically bundles libuv into its extension module, so the DSO is
+# named uvloop rather than libuv on the CI runner.
+called_from_lib:uvloop
+
 # ── Races inside CPython's own runtime DSO ───────────────────────────────────
 # CPython's GIL management and eval-breaker mechanism do intentional
 # unsynchronized writes that TSan sees as races (known CPython behaviour).
@@ -73,3 +77,13 @@ race:_Py_atomic_load_relaxed_impl
 race:_PyRuntime
 race:t_bootstrap
 race:thread_PyThread_start_new_thread
+
+# ── PyO3 free-threaded argument adapters ─────────────────────────────────────
+# PyO3 0.29's generated argument converters for the CPython 3.14 free-threaded
+# ABI create/borrow temporary argument storage before the Rust function body is
+# entered. TSan reports those adapter accesses as races when the same pure,
+# immutable Python inputs are passed concurrently. The typed Rust cores below
+# receive owned values and remain instrumented; only the generated adapters are
+# suppressed.
+race:__pyfunction_batch_detect_conflicts_py
+race:__pyfunction_verify_audit_signature
