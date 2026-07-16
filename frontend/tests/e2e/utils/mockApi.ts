@@ -368,7 +368,6 @@ export async function useMockApi(page: Page) {
       name: SSR_E2E_AUTH_COOKIE,
       value: "mock",
       url: new URL(e2eBaseUrl).origin,
-      path: "/",
     },
   ])
 
