@@ -46,6 +46,19 @@ TOP_LEVEL_KEYS = frozenset(
     }
 )
 POLICY_KEYS = frozenset({"patch_coverage", "viable_mutant_score", "required_pr_matrix"})
+EXCLUSION_FIELDS = frozenset(
+    {
+        "id",
+        "path",
+        "reason",
+        "owner",
+        "issue",
+        "created_on",
+        "expires_on",
+        "evidence",
+    }
+)
+QUARANTINE_FIELDS = EXCLUSION_FIELDS | {"test"}
 DATE_PATTERN = re.compile(r"\d{4}-\d{2}-\d{2}")
 WILDCARD_CHARACTERS = "*?[]"
 
@@ -225,6 +238,7 @@ def _is_absolute_path(value: str) -> bool:
         or PurePosixPath(value).is_absolute()
         or windows_path.is_absolute()
         or bool(windows_path.drive)
+        or bool(windows_path.root)
     )
 
 
@@ -280,6 +294,11 @@ def _validate_register(
         if record is None:
             continue
 
+        expected_fields = (
+            QUARANTINE_FIELDS if register_name == "quarantines" else EXCLUSION_FIELDS
+        )
+        _validate_exact_keys(record, record_field, expected_fields, errors)
+
         record_id = _require_non_empty_string(
             record.get("id"), f"{record_field}.id", errors
         )
@@ -297,7 +316,7 @@ def _validate_register(
         path = _validate_repository_path(
             record.get("path"), f"{record_field}.path", errors
         )
-        if path is not None:
+        if path is not None and register_name == "exclusions":
             previous_path = seen_paths.get(path)
             if previous_path is None:
                 seen_paths[path] = index

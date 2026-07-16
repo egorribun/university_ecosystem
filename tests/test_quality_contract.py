@@ -3,47 +3,15 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
+from copy import deepcopy
+from datetime import date, timedelta
 from pathlib import Path
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 VALIDATOR_PATH = (
     REPOSITORY_ROOT / "scripts" / "quality" / "validate_quality_contract.py"
 )
-
-_CANONICAL_CONTRACT = """
-{
-  "version": 1,
-  "policy": {
-    "patch_coverage": 100,
-    "viable_mutant_score": 100,
-    "required_pr_matrix": true
-  },
-  "coverage_minimums": {
-    "lines": 99,
-    "statements": 99,
-    "branches": 98,
-    "functions": 98,
-    "tier0": 100
-  },
-  "components": {
-    "python": {"coverage": {"lines": 99, "statements": 99, "branches": 98, "functions": 98}},
-    "frontend": {"coverage": {"lines": 99, "statements": 99, "branches": 98, "functions": 98}},
-    "go-gateway": {"coverage": {"lines": 99, "statements": 99, "branches": 98, "functions": 98}},
-    "go-ws-hub": {"coverage": {"lines": 99, "statements": 99, "branches": 98, "functions": 98}},
-    "go-file-processor": {"coverage": {"lines": 99, "statements": 99, "branches": 98, "functions": 98}},
-    "rust-native": {"coverage": {"lines": 99, "statements": 99, "branches": 98, "functions": 98}},
-    "rust-pyo3-sanitizer": {"coverage": {"lines": 99, "statements": 99, "branches": 98, "functions": 98}},
-    "rust-wasm-sanitizer": {"coverage": {"lines": 99, "statements": 99, "branches": 98, "functions": 98}},
-    "infrastructure": {"coverage": {"lines": 99, "statements": 99, "branches": 98, "functions": 98}},
-    "workflows": {"coverage": {"lines": 99, "statements": 99, "branches": 98, "functions": 98}},
-    "scripts": {"coverage": {"lines": 99, "statements": 99, "branches": 98, "functions": 98}}
-  },
-  "tier0": {"coverage": {"lines": 100, "statements": 100, "branches": 100, "functions": 100}},
-  "required_artifacts": ["coverage.xml", "frontend/coverage/lcov.info"],
-  "exclusions": [],
-  "quarantines": []
-}
-"""
+QUALITY_CONTRACT_PATH = REPOSITORY_ROOT / "quality" / "quality-contract.json"
 
 
 def _run_validator(
@@ -65,7 +33,7 @@ def _run_validator(
 
 
 def _load_contract() -> dict[str, object]:
-    return json.loads(_CANONICAL_CONTRACT)
+    return deepcopy(json.loads(QUALITY_CONTRACT_PATH.read_text(encoding="utf-8")))
 
 
 def _run_contract(
@@ -82,18 +50,47 @@ def _exclusion(
     *,
     exclusion_id: str = "generated-client",
     path: str = "frontend/src/generated/client.ts",
-    created_on: str = "2026-07-01",
-    expires_on: str = "2026-07-30",
+    created_on: str | None = None,
+    expires_on: str | None = None,
 ) -> dict[str, str]:
+    created = created_on or date.today().isoformat()
+    expires = (
+        expires_on or (date.fromisoformat(created) + timedelta(days=29)).isoformat()
+    )
     return {
         "id": exclusion_id,
         "path": path,
         "reason": "generated source is verified by its generator contract",
         "owner": "platform-quality",
         "issue": "QUALITY-1",
-        "created_on": created_on,
-        "expires_on": expires_on,
+        "created_on": created,
+        "expires_on": expires,
         "evidence": "generator-contract.log",
+    }
+
+
+def _quarantine(
+    *,
+    quarantine_id: str,
+    test: str,
+    path: str = "frontend/src/routes/router.ts",
+    created_on: str | None = None,
+    expires_on: str | None = None,
+) -> dict[str, str]:
+    created = created_on or date.today().isoformat()
+    expires = (
+        expires_on or (date.fromisoformat(created) + timedelta(days=29)).isoformat()
+    )
+    return {
+        "id": quarantine_id,
+        "test": test,
+        "path": path,
+        "reason": "deterministic reproducer pending",
+        "owner": "platform-quality",
+        "issue": "QUALITY-1",
+        "created_on": created,
+        "expires_on": expires,
+        "evidence": "trace.zip",
     }
 
 
@@ -160,6 +157,87 @@ def test_rejects_wildcard_exclusion_paths(tmp_path: Path) -> None:
 
     assert result.returncode == 1
     assert "exclusions[0].path must not contain a wildcard" in result.stderr
+
+
+def test_rejects_windows_rooted_artifact_paths(tmp_path: Path) -> None:
+    contract = _load_contract()
+    contract["required_artifacts"] = [r"\outside-repo\coverage.xml"]
+
+    result = _run_contract(tmp_path, contract)
+
+    assert result.returncode == 1
+    assert "required_artifacts[0] must be a repository-relative path" in result.stderr
+
+
+def test_accepts_quarantines_with_shared_path_and_distinct_tests(
+    tmp_path: Path,
+) -> None:
+    contract = _load_contract()
+    contract["quarantines"] = [
+        _quarantine(
+            quarantine_id="frontend-router-flake",
+            test="frontend/src/__tests__/router.test.ts",
+        ),
+        _quarantine(
+            quarantine_id="frontend-router-a11y-flake",
+            test="frontend/src/__tests__/router-a11y.test.ts",
+        ),
+    ]
+
+    result = _run_contract(tmp_path, contract)
+
+    assert result.returncode == 0, result.stderr
+    assert result.stdout == "Quality contract is valid.\n"
+
+
+def test_rejects_duplicate_quarantine_test_path_pair(tmp_path: Path) -> None:
+    contract = _load_contract()
+    contract["quarantines"] = [
+        _quarantine(
+            quarantine_id="frontend-router-flake",
+            test="frontend/src/__tests__/router.test.ts",
+        ),
+        _quarantine(
+            quarantine_id="frontend-router-flake-duplicate",
+            test="frontend/src/__tests__/router.test.ts",
+        ),
+    ]
+
+    result = _run_contract(tmp_path, contract)
+
+    assert result.returncode == 1
+    assert (
+        "quarantines[1].test and path duplicate "
+        "quarantines[0].test and path" in result.stderr
+    )
+    assert "quarantines[1].path duplicates quarantines[0].path" not in result.stderr
+
+
+def test_rejects_unexpected_exclusion_fields(tmp_path: Path) -> None:
+    contract = _load_contract()
+    exclusion = _exclusion()
+    exclusion["test"] = "frontend/src/__tests__/generated.test.ts"
+    contract["exclusions"] = [exclusion]
+
+    result = _run_contract(tmp_path, contract)
+
+    assert result.returncode == 1
+    assert "exclusions[0] contains unsupported key: test" in result.stderr
+
+
+def test_rejects_unexpected_quarantine_fields(tmp_path: Path) -> None:
+    contract = _load_contract()
+    quarantine = _quarantine(
+        quarantine_id="frontend-router-flake",
+        test="frontend/src/__tests__/router.test.ts",
+    )
+    quarantine["unexpected"] = "value"
+    contract["quarantines"] = [quarantine]
+
+    result = _run_contract(tmp_path, contract)
+
+    assert result.returncode == 1
+    assert "quarantines[0] contains unsupported key: unexpected" in result.stderr
 
 
 def test_rejects_missing_required_components(tmp_path: Path) -> None:
