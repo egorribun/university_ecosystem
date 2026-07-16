@@ -144,7 +144,7 @@ test.describe("i18n language switching", () => {
     await languageSection.click()
 
     const enOption = page.getByRole("radio", { name: /English|Английский/i })
-    const enOptionLabel = page.locator("label").filter({ has: enOption })
+    const enOptionLabel = page.locator("label").filter({ has: enOption }).first()
     await expect(enOptionLabel).toBeVisible({ timeout: 3000 })
     await enOptionLabel.click()
 

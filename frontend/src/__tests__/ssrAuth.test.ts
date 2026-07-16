@@ -11,6 +11,7 @@ import {
   extractAuthFromRequest,
   SSR_AUTH_UNAUTH,
   SSR_AUTH_LHCI_MOCK,
+  SSR_E2E_AUTH_COOKIE,
   _setJwtVerifyOverrideForTests,
 } from "../ssrAuth"
 
@@ -134,6 +135,23 @@ describe("ssrAuth.extractAuthFromRequest", () => {
     const request = new Request("http://localhost/dashboard")
     const auth = await extractAuthFromRequest(request)
     expect(auth).toEqual(SSR_AUTH_LHCI_MOCK)
+  })
+
+  it("returns E2E mock user only for the explicit marker cookie", async () => {
+    vi.stubEnv("VITE_E2E_MODE", "1")
+    const request = new Request("http://localhost/dashboard", {
+      headers: { Cookie: `${SSR_E2E_AUTH_COOKIE}=mock` },
+    })
+    const auth = await extractAuthFromRequest(request)
+    expect(auth).toEqual(SSR_AUTH_LHCI_MOCK)
+  })
+
+  it("ignores the E2E marker cookie outside E2E mode", async () => {
+    const request = new Request("http://localhost/dashboard", {
+      headers: { Cookie: `${SSR_E2E_AUTH_COOKIE}=mock` },
+    })
+    const auth = await extractAuthFromRequest(request)
+    expect(auth).toEqual(SSR_AUTH_UNAUTH)
   })
 
   it("returns SSR_AUTH_UNAUTH when no cookie header", async () => {

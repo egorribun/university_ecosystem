@@ -1,6 +1,7 @@
 import { expect, type Page } from "@playwright/test"
 import type { MfaTotpEnrollment, PendingMfaResponse, TotpEnrollmentStart } from "@/types/Mfa"
 import type { User } from "@/types/User"
+import { SSR_E2E_AUTH_COOKIE } from "../../../src/ssrAuth"
 import { validateRequestBody, validateResponseBody } from "../../../src/tests/contractValidator"
 
 type NewsLogEntry = {
@@ -355,6 +356,21 @@ export async function useMockApi(page: Page) {
       // ignore
     }
   })
+
+  // SSR runs before browser init scripts, so mirror the mocked auth state with
+  // a test-only cookie for protected direct navigations.
+  const e2eBaseUrl =
+    process.env["PLAYWRIGHT_BASE_URL"] ||
+    process.env["URL_STATE_E2E_BASE"] ||
+    "http://127.0.0.1:5173"
+  await page.context().addCookies([
+    {
+      name: SSR_E2E_AUTH_COOKIE,
+      value: "mock",
+      url: new URL(e2eBaseUrl).origin,
+      path: "/",
+    },
+  ])
 
   // Keep authenticated mock pages from opening a real socket against the
   // preview server. The ticket endpoint is mocked below, but the preview has

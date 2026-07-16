@@ -32,6 +32,9 @@ export const SSR_AUTH_UNAUTH: SsrAuthState = {
   loading: false,
 }
 
+/** Explicit auth marker used by browser-mocked E2E sessions. */
+export const SSR_E2E_AUTH_COOKIE = "ue-e2e-auth"
+
 export const SSR_AUTH_LHCI_MOCK: SsrAuthState = {
   isAuth: true,
   user: { role: "student" },
@@ -149,6 +152,14 @@ export async function extractAuthFromRequest(request: Request): Promise<SsrAuthS
     return SSR_AUTH_LHCI_MOCK
   }
   const cookieHeader = request.headers.get("cookie")
+  // Browser-mocked E2E sessions cannot set the real HttpOnly auth cookie.
+  // Accept their explicit marker only in builds with the E2E feature flag.
+  if (
+    import.meta.env.VITE_E2E_MODE === "1" &&
+    parseCookie(cookieHeader, SSR_E2E_AUTH_COOKIE) === "mock"
+  ) {
+    return SSR_AUTH_LHCI_MOCK
+  }
   const token = parseCookie(cookieHeader, "access_token_v2")
   if (!token) return SSR_AUTH_UNAUTH
   return validateJwt(token)
