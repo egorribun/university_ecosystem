@@ -246,6 +246,10 @@ def _contains_parent_traversal(value: str) -> bool:
     return any(part == ".." for part in re.split(r"[\\/]+", value))
 
 
+def _is_repository_root_path(value: str) -> bool:
+    return str(PurePosixPath(value)) == "." or str(PureWindowsPath(value)) == "."
+
+
 def _validate_repository_path(
     value: object,
     field: str,
@@ -260,6 +264,8 @@ def _validate_repository_path(
         errors.append(f"{field} must be a repository-relative path")
     if _contains_parent_traversal(path):
         errors.append(f"{field} must not contain parent traversal")
+    if _is_repository_root_path(path):
+        errors.append(f"{field} must not refer to the repository root")
     return path
 
 

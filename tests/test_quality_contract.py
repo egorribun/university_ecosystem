@@ -7,6 +7,8 @@ from copy import deepcopy
 from datetime import date, timedelta
 from pathlib import Path
 
+import pytest
+
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 VALIDATOR_PATH = (
     REPOSITORY_ROOT / "scripts" / "quality" / "validate_quality_contract.py"
@@ -157,6 +159,36 @@ def test_rejects_wildcard_exclusion_paths(tmp_path: Path) -> None:
 
     assert result.returncode == 1
     assert "exclusions[0].path must not contain a wildcard" in result.stderr
+
+
+@pytest.mark.parametrize("root_path", (".", "./", ".\\"))
+def test_rejects_repository_root_artifact_paths(
+    tmp_path: Path,
+    root_path: str,
+) -> None:
+    contract = _load_contract()
+    contract["required_artifacts"] = [root_path]
+
+    result = _run_contract(tmp_path, contract)
+
+    assert result.returncode == 1
+    assert (
+        "required_artifacts[0] must not refer to the repository root" in result.stderr
+    )
+
+
+@pytest.mark.parametrize("root_path", (".", "./", ".\\"))
+def test_rejects_repository_root_exclusion_paths(
+    tmp_path: Path,
+    root_path: str,
+) -> None:
+    contract = _load_contract()
+    contract["exclusions"] = [_exclusion(path=root_path)]
+
+    result = _run_contract(tmp_path, contract)
+
+    assert result.returncode == 1
+    assert "exclusions[0].path must not refer to the repository root" in result.stderr
 
 
 def test_rejects_windows_rooted_artifact_paths(tmp_path: Path) -> None:
