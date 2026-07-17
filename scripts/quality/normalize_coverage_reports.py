@@ -307,9 +307,24 @@ def _source_path_is_within_component_root(
         root_parts = tuple(
             _source_path_key(part) for part in configured_root.split("/") if part
         )
-        if comparison_parts[: len(root_parts)] == root_parts:
+        if (
+            len(comparison_parts) > len(root_parts)
+            and comparison_parts[: len(root_parts)] == root_parts
+        ):
             return True
     return False
+
+
+def _source_path_is_component_root(
+    component: str,
+    source_parts: Sequence[str],
+) -> bool:
+    comparison_parts = tuple(_source_path_key(part) for part in source_parts)
+    return any(
+        comparison_parts
+        == tuple(_source_path_key(part) for part in root.split("/") if part)
+        for root in SOURCE_ROOTS[component]
+    )
 
 
 def _canonical_source_identity(component: str, raw_path: str) -> str:
@@ -352,6 +367,11 @@ def _canonical_source_identity(component: str, raw_path: str) -> str:
     source_parts = _normalize_relative_source_parts(relative_parts)
     _reject_source_symlink_parts(source_parts)
     if not _source_path_is_within_component_root(component, source_parts):
+        if _source_path_is_component_root(component, source_parts):
+            raise _InputError(
+                "source path must identify a file below configured roots "
+                f"for component {component}"
+            )
         raise _InputError(
             f"source path is outside configured roots for component {component}"
         )

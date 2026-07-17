@@ -441,6 +441,122 @@ def test_source_identity_accepts_in_root_relative_backslash_and_absolute_paths(
 
 
 @pytest.mark.parametrize(
+    ("component", "source_root"),
+    (
+        ("python", "app"),
+        ("frontend", "frontend/src"),
+        ("go-gateway", "services/gateway"),
+        ("go-ws-hub", "services/ws-hub"),
+        ("go-file-processor", "services/file-processor"),
+        ("rust-native", "native/rust_ext"),
+        ("rust-pyo3-sanitizer", "crates/pyo3-sanitizer"),
+        ("rust-wasm-sanitizer", "frontend/wasm-sanitizer"),
+        ("infrastructure", "infra"),
+        ("infrastructure", "infrastructure"),
+        ("infrastructure", "k8s"),
+        ("infrastructure", "charts"),
+        ("workflows", ".github/workflows"),
+        ("scripts", "scripts"),
+    ),
+)
+def test_canonical_source_identity_rejects_every_root_directory_itself(
+    component: str,
+    source_root: str,
+) -> None:
+    normalizer = _normalizer_module()
+    root_only_variants = (
+        source_root,
+        f"./{source_root}",
+        f"{source_root}/.",
+        f"{source_root}/child/..",
+        (REPOSITORY_ROOT / source_root).as_posix(),
+    )
+
+    for source_path in root_only_variants:
+        with pytest.raises(
+            normalizer._InputError,
+            match="must identify a file below configured roots",
+        ):
+            normalizer._canonical_source_identity(component, source_path)
+
+    assert (
+        normalizer._canonical_source_identity(
+            component, f"{source_root}/fictitious-source.ext"
+        )
+        == f"{source_root}/fictitious-source.ext"
+    )
+
+
+def test_xml_root_only_source_path_is_a_structural_evidence_error(
+    tmp_path: Path,
+) -> None:
+    report_path = _write_python_source_fixture(tmp_path, "python-root-only.xml", "app")
+
+    _assert_structural_source_evidence_failure(
+        tmp_path,
+        "python",
+        report_path,
+        "--python-xml",
+        str(report_path),
+    )
+
+
+def test_lcov_root_only_source_path_is_a_structural_evidence_error(
+    tmp_path: Path,
+) -> None:
+    report_path = _write_lcov_source_fixture(
+        tmp_path, "frontend-root-only.lcov", "frontend/src"
+    )
+
+    _assert_structural_source_evidence_failure(
+        tmp_path,
+        "frontend",
+        report_path,
+        "--frontend-lcov",
+        str(report_path),
+    )
+
+
+def test_go_root_only_source_path_is_a_structural_evidence_error(
+    tmp_path: Path,
+) -> None:
+    report_path = _write_go_source_fixture(
+        tmp_path, "gateway-root-only.coverprofile", "services/gateway"
+    )
+
+    _assert_structural_source_evidence_failure(
+        tmp_path,
+        "go-gateway",
+        report_path,
+        "--go-report",
+        f"go-gateway={report_path}",
+    )
+
+
+def test_rust_root_only_source_path_is_a_structural_evidence_error(
+    tmp_path: Path,
+) -> None:
+    report_path = tmp_path / "rust-root-only.json"
+    report_path.write_text(
+        json.dumps(
+            {
+                "totals": _rust_totals(),
+                "files": [{"path": "native/rust_ext"}],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    _assert_structural_source_evidence_failure(
+        tmp_path,
+        "rust-native",
+        report_path,
+        "--rust-report",
+        f"rust-native={report_path}",
+    )
+
+
+@pytest.mark.parametrize(
     "source_path",
     (
         "frontend/src/example.ts",
