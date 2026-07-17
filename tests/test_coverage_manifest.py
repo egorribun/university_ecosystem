@@ -7,6 +7,7 @@ import sys
 from pathlib import Path
 
 import pytest
+from jsonschema import Draft202012Validator, ValidationError
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 FIXTURES = REPOSITORY_ROOT / "tests" / "fixtures" / "quality"
@@ -290,7 +291,22 @@ def test_rust_direct_totals_form_is_normalized(tmp_path: Path) -> None:
         ("python", "--python-xml", str(FIXTURES / "python-malformed.xml")),
         ("python", "--python-xml", str(FIXTURES / "python-doctype.xml")),
         ("python", "--python-xml", str(FIXTURES / "python-duplicate-line.xml")),
+        (
+            "python",
+            "--python-xml",
+            str(FIXTURES / "python-impossible-condition.xml"),
+        ),
+        (
+            "python",
+            "--python-xml",
+            str(FIXTURES / "python-conflicting-root.xml"),
+        ),
         ("frontend", "--frontend-lcov", str(FIXTURES / "frontend-malformed.lcov")),
+        (
+            "frontend",
+            "--frontend-lcov",
+            str(FIXTURES / "frontend-summary-only.lcov"),
+        ),
         (
             "frontend",
             "--frontend-lcov",
@@ -561,25 +577,190 @@ def test_invalid_component_and_malformed_arguments_return_two(tmp_path: Path) ->
         assert result.stderr.startswith("ERROR:")
 
 
-def test_unreadable_report_and_malformed_contract_return_two(tmp_path: Path) -> None:
-    malformed_contract = tmp_path / "bad-contract.json"
-    malformed_contract.write_text("{not valid JSON", encoding="utf-8")
+def test_unreadable_report_replaces_writable_output_with_failed_manifest(
+    tmp_path: Path,
+) -> None:
+    output = tmp_path / "quality-manifest.json"
+    stale_output = b'{"stale": true}\n'
+    output.write_bytes(stale_output)
 
-    missing_report = _run_normalizer(
-        tmp_path / "missing-report.json",
+    result = _run_normalizer(
+        output,
         "--python-xml",
         str(tmp_path / "does-not-exist.xml"),
     )
+
+    assert result.returncode == 2
+    assert "Traceback" not in result.stderr
+    assert all(line.startswith("ERROR:") for line in result.stderr.splitlines())
+    assert output.read_bytes() != stale_output
+    manifest = json.loads(output.read_text(encoding="utf-8"))
+    schema = json.loads(QUALITY_MANIFEST_SCHEMA_PATH.read_text(encoding="utf-8"))
+    Draft202012Validator(schema).validate(manifest)
+    assert manifest["validation"]["valid"] is False
+    assert any(
+        "unable to read report" in error for error in manifest["validation"]["errors"]
+    )
+    assert manifest["components"]["python"]["status"] == "failed"
+    assert manifest["reports"] == []
+    for metric in manifest["components"]["python"]["metrics"].values():
+        assert isinstance(metric, dict)
+        _assert_metric_schema_shape(metric)
+
+
+@pytest.mark.parametrize(
+    (
+        "case_name",
+        "expected_returncode",
+        "expected_component",
+        "expected_status",
+        "expected_report_count",
+        "materializes_manifest",
+    ),
+    [
+        ("unreadable", 2, "python", "failed", 0, True),
+        ("readable-malformed", 2, "python", "failed", 1, True),
+        ("mixed-unreadable-readable", 2, "python", "failed", 1, True),
+        ("invalid-contract", 2, None, None, 0, False),
+        ("invalid-arguments", 2, None, None, 0, False),
+        ("output-alias", 2, None, None, 0, False),
+        ("missing-evidence", 1, "python", "missing", 0, True),
+        ("duplicate-component", 1, "go-gateway", "failed", 2, True),
+    ],
+)
+def test_coverage_evidence_lifecycle_is_fail_closed(
+    tmp_path: Path,
+    case_name: str,
+    expected_returncode: int,
+    expected_component: str | None,
+    expected_status: str | None,
+    expected_report_count: int,
+    materializes_manifest: bool,
+) -> None:
+    output = tmp_path / "quality-manifest.json"
+    stale_output = b'{"stale": true}\n'
+    output.write_bytes(stale_output)
+    arguments: list[str] = []
+
+    if case_name == "unreadable":
+        arguments = ["--python-xml", str(tmp_path / "does-not-exist.xml")]
+    elif case_name == "readable-malformed":
+        arguments = ["--python-xml", str(FIXTURES / "python-malformed.xml")]
+    elif case_name == "mixed-unreadable-readable":
+        arguments = [
+            "--python-xml",
+            str(tmp_path / "does-not-exist.xml"),
+            "--frontend-lcov",
+            str(FIXTURES / "frontend-valid.lcov"),
+        ]
+    elif case_name == "invalid-contract":
+        contract = tmp_path / "bad-contract.json"
+        contract.write_text("{not valid JSON", encoding="utf-8")
+        arguments = ["--contract", str(contract)]
+    elif case_name == "invalid-arguments":
+        arguments = []
+    elif case_name == "output-alias":
+        output = FIXTURES / "python-valid.xml"
+        stale_output = output.read_bytes()
+        arguments = ["--python-xml", str(output)]
+    elif case_name == "duplicate-component":
+        profile = FIXTURES / "go-valid.coverprofile"
+        arguments = [
+            "--go-report",
+            f"go-gateway={profile}",
+            "--go-report",
+            f"go-gateway={profile}",
+        ]
+
+    result = _run_normalizer(
+        output,
+        *arguments,
+        commit_sha="invalid-sha" if case_name == "invalid-arguments" else COMMIT_SHA,
+    )
+
+    assert result.returncode == expected_returncode
+    assert "Traceback" not in result.stderr
+    assert all(line.startswith("ERROR:") for line in result.stderr.splitlines())
+    if not materializes_manifest:
+        assert output.read_bytes() == stale_output
+        return
+
+    assert output.read_bytes() != stale_output
+    assert not list(output.parent.glob(f".{output.name}.*.tmp"))
+    manifest = json.loads(output.read_text(encoding="utf-8"))
+    schema = json.loads(QUALITY_MANIFEST_SCHEMA_PATH.read_text(encoding="utf-8"))
+    Draft202012Validator(schema).validate(manifest)
+    assert manifest["validation"]["valid"] is False
+    assert len(manifest["reports"]) == expected_report_count
+    assert expected_component is not None
+    assert expected_status is not None
+    assert manifest["components"][expected_component]["status"] == expected_status
+
+    if case_name == "readable-malformed":
+        assert manifest["reports"] == [
+            {
+                "component": "python",
+                "format": "cobertura-xml",
+                "path": "tests/fixtures/quality/python-malformed.xml",
+                "sha256": hashlib.sha256(
+                    (FIXTURES / "python-malformed.xml").read_bytes()
+                ).hexdigest(),
+            }
+        ]
+    if case_name == "mixed-unreadable-readable":
+        assert manifest["reports"] == [
+            {
+                "component": "frontend",
+                "format": "lcov",
+                "path": "tests/fixtures/quality/frontend-valid.lcov",
+                "sha256": hashlib.sha256(
+                    (FIXTURES / "frontend-valid.lcov").read_bytes()
+                ).hexdigest(),
+            }
+        ]
+    if case_name == "duplicate-component":
+        for metric in manifest["components"]["go-gateway"]["metrics"].values():
+            assert isinstance(metric, dict)
+            assert metric["status"] == "missing"
+
+
+def test_malformed_contract_returns_two(tmp_path: Path) -> None:
+    malformed_contract = tmp_path / "bad-contract.json"
+    malformed_contract.write_text("{not valid JSON", encoding="utf-8")
+
     invalid_contract = _run_normalizer(
         tmp_path / "invalid-contract.json",
         "--contract",
         str(malformed_contract),
     )
 
-    for result in (missing_report, invalid_contract):
-        assert result.returncode == 2
-        assert "Traceback" not in result.stderr
-        assert result.stderr.startswith("ERROR:")
+    assert invalid_contract.returncode == 2
+    assert "Traceback" not in invalid_contract.stderr
+    assert invalid_contract.stderr.startswith("ERROR:")
+
+
+def test_print_error_escapes_control_characters_to_one_prefixed_line() -> None:
+    result = subprocess.run(  # noqa: S603
+        [
+            sys.executable,
+            "-c",
+            (
+                "import sys; "
+                "sys.path.insert(0, sys.argv[1]); "
+                "import normalize_coverage_reports as normalizer; "
+                "normalizer._print_error(sys.stdin.buffer.read().decode('utf-8'))"
+            ),
+            str(NORMALIZER_PATH.parent),
+        ],
+        capture_output=True,
+        check=False,
+        input=b"unsafe-path\r\nforged-diagnostic",
+    )
+
+    assert result.returncode == 0
+    assert result.stderr.decode("utf-8").splitlines() == [
+        r"ERROR: unsafe-path\x0d\x0aforged-diagnostic"
+    ]
 
 
 def test_coverage_manifest_schema_is_closed_and_versioned() -> None:
@@ -638,6 +819,66 @@ def test_coverage_manifest_schema_is_closed_and_versioned() -> None:
         field: missing["properties"][field]["type"]
         for field in ("covered", "total", "percent")
     } == {"covered": "null", "total": "null", "percent": "null"}
+
+
+@pytest.mark.parametrize(
+    "metric",
+    [
+        {
+            "status": "native",
+            "covered": 1,
+            "total": 1,
+            "percent": 100.0,
+            "reason_code": "must_not_be_present",
+        },
+        {
+            "status": "native",
+            "covered": 1,
+            "total": 1,
+            "percent": 100.0,
+            "derivation": "must_not_be_present",
+        },
+        {
+            "status": "derived",
+            "covered": 1,
+            "total": 1,
+            "percent": 100.0,
+            "derivation": "valid derived provenance",
+            "reason_code": "must_not_be_present",
+        },
+        {
+            "status": "unsupported",
+            "covered": None,
+            "total": None,
+            "percent": None,
+            "reason_code": "valid unsupported reason",
+            "derivation": "must_not_be_present",
+        },
+        {
+            "status": "missing",
+            "covered": None,
+            "total": None,
+            "percent": None,
+            "reason_code": "must_not_be_present",
+        },
+        {
+            "status": "missing",
+            "covered": None,
+            "total": None,
+            "percent": None,
+            "derivation": "must_not_be_present",
+        },
+    ],
+)
+def test_metric_schema_rejects_incompatible_status_metadata(
+    metric: dict[str, object],
+) -> None:
+    schema = json.loads(QUALITY_MANIFEST_SCHEMA_PATH.read_text(encoding="utf-8"))
+    metric_schema = schema["$defs"]["metric"]
+    assert isinstance(metric_schema, dict)
+
+    with pytest.raises(ValidationError):
+        Draft202012Validator(metric_schema).validate(metric)
 
 
 def test_relative_report_path_is_resolved_from_repository_root(tmp_path: Path) -> None:

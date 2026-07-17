@@ -7,6 +7,7 @@ import os
 import re
 import sys
 import tempfile
+import unicodedata
 from collections import defaultdict
 from collections.abc import Sequence
 from dataclasses import dataclass, field
@@ -139,6 +140,14 @@ class _RawReport:
     path: Path
     raw: bytes
     sha256: str
+
+
+@dataclass(frozen=True)
+class _PreparedInvocation:
+    arguments: argparse.Namespace
+    output_path: Path
+    report_inputs: tuple[_ReportInput, ...]
+    floors: dict[str, dict[str, int]]
 
 
 def _duplicate_key_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
@@ -307,49 +316,59 @@ def _parse_python_xml(raw: bytes) -> dict[str, dict[str, object]]:
     )
     lines = _coverage_xml_source_lines(root)
 
-    if line_metric is None:
-        if lines:
-            covered = 0
-            for line in lines:
-                hits = _parse_nonnegative_decimal(
-                    line.get("hits"), "coverage XML line hits"
-                )
-                if hits > 0:
-                    covered += 1
-            line_metric = _measured_metric("native", covered, len(lines))
-        else:
-            line_metric = _unmeasured_metric("missing")
+    line_detail_metric: dict[str, object] | None = None
+    if lines:
+        covered = sum(
+            _parse_nonnegative_decimal(line.get("hits"), "coverage XML line hits") > 0
+            for line in lines
+        )
+        line_detail_metric = _measured_metric("native", covered, len(lines))
 
-    if branch_metric is None:
-        branch_pairs: list[tuple[int, int]] = []
-        for line in lines:
-            condition_coverage = line.get("condition-coverage")
-            branch = line.get("branch")
-            if condition_coverage is None:
-                if branch == "true":
-                    raise _InputError(
-                        "coverage XML branch line lacks condition-coverage counter"
-                    )
-                continue
-            match = CONDITION_COVERAGE_PATTERN.fullmatch(condition_coverage)
-            if match is None:
-                raise _InputError("coverage XML has malformed condition-coverage")
-            branch_pairs.append(
-                (
-                    _parse_nonnegative_decimal(
-                        match.group("covered"), "branch covered"
-                    ),
-                    _parse_nonnegative_decimal(match.group("total"), "branch total"),
+    if line_metric is None:
+        line_metric = line_detail_metric or _unmeasured_metric("missing")
+    elif line_detail_metric is not None and (
+        line_metric["covered"] != line_detail_metric["covered"]
+        or line_metric["total"] != line_detail_metric["total"]
+    ):
+        raise _InputError(
+            "coverage XML line root counters disagree with source line details"
+        )
+
+    branch_pairs: list[tuple[int, int]] = []
+    for line in lines:
+        condition_coverage = line.get("condition-coverage")
+        branch = line.get("branch")
+        if condition_coverage is None:
+            if branch == "true":
+                raise _InputError(
+                    "coverage XML branch line lacks condition-coverage counter"
                 )
-            )
-        if branch_pairs:
-            branch_metric = _measured_metric(
-                "native",
-                sum(covered for covered, _ in branch_pairs),
-                sum(total for _, total in branch_pairs),
-            )
-        else:
-            branch_metric = _unmeasured_metric("missing")
+            continue
+        match = CONDITION_COVERAGE_PATTERN.fullmatch(condition_coverage)
+        if match is None:
+            raise _InputError("coverage XML has malformed condition-coverage")
+        covered = _parse_nonnegative_decimal(match.group("covered"), "branch covered")
+        total = _parse_nonnegative_decimal(match.group("total"), "branch total")
+        if covered > total:
+            raise _InputError("coverage XML branch covered counter exceeds total")
+        branch_pairs.append((covered, total))
+
+    branch_detail_metric: dict[str, object] | None = None
+    if branch_pairs:
+        branch_detail_metric = _measured_metric(
+            "native",
+            sum(covered for covered, _ in branch_pairs),
+            sum(total for _, total in branch_pairs),
+        )
+    if branch_metric is None:
+        branch_metric = branch_detail_metric or _unmeasured_metric("missing")
+    elif branch_detail_metric is not None and (
+        branch_metric["covered"] != branch_detail_metric["covered"]
+        or branch_metric["total"] != branch_detail_metric["total"]
+    ):
+        raise _InputError(
+            "coverage XML branch root counters disagree with source line details"
+        )
 
     return {
         "lines": line_metric,
@@ -517,6 +536,11 @@ def _lcov_metric_pair(
         )
     if not has_covered:
         return detail_pair
+
+    if detail_pair is None:
+        raise _InputError(
+            f"LCOV {metric_name} summary counters require detailed records"
+        )
 
     summary_pair = (
         record.summaries[covered_name],
@@ -1003,7 +1027,7 @@ def _component_entry(
     reports: list[_ParsedReport],
     floors: dict[str, int],
     input_count: int,
-    parse_errors: list[str],
+    evidence_errors: list[str],
 ) -> tuple[dict[str, object], list[str], dict[str, object] | None]:
     if input_count == 0:
         if component in SUPPORTED_REPORTS:
@@ -1027,9 +1051,13 @@ def _component_entry(
         }
         return entry, [error], missing_report
 
-    metrics = reports[0].metrics if reports else _missing_metrics()
-    errors = list(parse_errors)
-    if not parse_errors:
+    errors = list(evidence_errors)
+    if input_count > 1:
+        errors.append(f"duplicate report input for component {component}")
+    if errors:
+        metrics = _missing_metrics()
+    else:
+        metrics = reports[0].metrics if reports else _missing_metrics()
         errors.extend(
             failure
             for metric_name in METRICS
@@ -1043,8 +1071,6 @@ def _component_entry(
             )
             is not None
         )
-    if input_count > 1:
-        errors.append(f"duplicate report input for component {component}")
     errors.sort()
     return (
         {
@@ -1057,9 +1083,7 @@ def _component_entry(
     )
 
 
-def _build_manifest(
-    arguments: argparse.Namespace,
-) -> tuple[dict[str, object], list[str], list[str], Path]:
+def _prepare_invocation(arguments: argparse.Namespace) -> _PreparedInvocation:
     if SHA_PATTERN.fullmatch(arguments.commit_sha) is None:
         raise _InputError("commit-sha must be a 7-64 character hexadecimal Git SHA")
     generated_at = _parse_generated_at(arguments.generated_at)
@@ -1077,14 +1101,35 @@ def _build_manifest(
             )
 
     floors = _load_contract(contract_path, generated_at)
+    return _PreparedInvocation(
+        arguments=arguments,
+        output_path=output_path,
+        report_inputs=tuple(report_inputs),
+        floors=floors,
+    )
+
+
+def _build_manifest(
+    invocation: _PreparedInvocation,
+) -> tuple[dict[str, object], list[str], list[str], Path]:
+    arguments = invocation.arguments
+    output_path = invocation.output_path
+    report_inputs = invocation.report_inputs
+    floors = invocation.floors
     reports_by_component: defaultdict[str, list[_ParsedReport]] = defaultdict(list)
     report_input_counts: defaultdict[str, int] = defaultdict(int)
-    parse_errors_by_component: defaultdict[str, list[str]] = defaultdict(list)
+    evidence_errors_by_component: defaultdict[str, list[str]] = defaultdict(list)
     raw_reports: list[_RawReport] = []
     structural_errors: list[str] = []
     for report_input in report_inputs:
         report_input_counts[report_input.component] += 1
-        raw_report = _read_raw_report(report_input)
+        try:
+            raw_report = _read_raw_report(report_input)
+        except _InputError as error:
+            message = str(error)
+            evidence_errors_by_component[report_input.component].append(message)
+            structural_errors.append(message)
+            continue
         raw_reports.append(raw_report)
         try:
             report = _parse_report(raw_report)
@@ -1092,7 +1137,7 @@ def _build_manifest(
             message = (
                 f"malformed report for component {report_input.component}: {error}"
             )
-            parse_errors_by_component[report_input.component].append(message)
+            evidence_errors_by_component[report_input.component].append(message)
             structural_errors.append(message)
         else:
             reports_by_component[report.component].append(report)
@@ -1106,7 +1151,7 @@ def _build_manifest(
             reports_by_component[component],
             floors[component],
             report_input_counts[component],
-            parse_errors_by_component[component],
+            evidence_errors_by_component[component],
         )
         components[component] = entry
         validation_errors.extend(errors)
@@ -1179,7 +1224,19 @@ def _write_manifest(output_path: Path, manifest: dict[str, object]) -> None:
 
 
 def _print_error(message: str) -> None:
-    print(f"ERROR: {message}", file=sys.stderr)
+    escaped = "".join(
+        (
+            f"\\x{ord(character):02x}"
+            if ord(character) <= 0xFF
+            else f"\\u{ord(character):04x}"
+            if ord(character) <= 0xFFFF
+            else f"\\U{ord(character):08x}"
+        )
+        if unicodedata.category(character) in {"Cc", "Cf", "Zl", "Zp"}
+        else character
+        for character in message
+    )
+    print(f"ERROR: {escaped}", file=sys.stderr)
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -1193,8 +1250,14 @@ def main(argv: Sequence[str] | None = None) -> int:
         return error.code if isinstance(error.code, int) else 2
 
     try:
+        invocation = _prepare_invocation(arguments)
+    except _InputError as error:
+        _print_error(str(error))
+        return 2
+
+    try:
         manifest, validation_errors, structural_errors, output_path = _build_manifest(
-            arguments
+            invocation
         )
         _write_manifest(output_path, manifest)
     except _InputError as error:

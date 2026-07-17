@@ -111,6 +111,12 @@
       },
       "oneOf": [
         {
+          "not": {
+            "anyOf": [
+              {"required": ["derivation"]},
+              {"required": ["reason_code"]}
+            ]
+          },
           "properties": {
             "status": {"const": "native"},
             "covered": {"type": "integer", "minimum": 0},
@@ -119,6 +125,7 @@
           }
         },
         {
+          "not": {"required": ["reason_code"]},
           "required": ["derivation"],
           "properties": {
             "status": {"const": "derived"},
@@ -128,6 +135,7 @@
           }
         },
         {
+          "not": {"required": ["derivation"]},
           "required": ["reason_code"],
           "properties": {
             "status": {"enum": ["experimental", "unsupported"]},
@@ -137,6 +145,12 @@
           }
         },
         {
+          "not": {
+            "anyOf": [
+              {"required": ["derivation"]},
+              {"required": ["reason_code"]}
+            ]
+          },
           "properties": {
             "status": {"const": "missing"},
             "covered": {"type": "null"},
