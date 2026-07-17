@@ -59,7 +59,7 @@ if _postgres_url:
 elif env_db_url and env_db_url.startswith("postgresql"):
     if worker_id:
         # Rewrite DATABASE_URL to target a unique database name per worker.
-        # Example: postgresql+asyncpg://test:test@localhost:5432/test -> postgresql+asyncpg://test:test@localhost:5432/test_gw0
+        # Example: postgresql+asyncpg://test:test@localhost:5432/test -> postgresql+asyncpg://test:test@localhost:5432/test_gw0  # pragma: allowlist secret
         from urllib.parse import urlparse, urlunparse
 
         parsed = urlparse(env_db_url)
@@ -207,6 +207,20 @@ async def clear_redis_between_tests(mock_global_redis):
     clear_memory_state()
     clear_delay_memory()
     yield
+
+
+@pytest.fixture(autouse=True)
+def seed_random_generators():
+    """Ensure random generators are deterministically seeded before each test."""
+    import random
+
+    random.seed(42)
+    try:
+        import numpy as np
+
+        np.random.seed(42)
+    except ImportError:
+        pass
 
 
 @pytest.fixture(autouse=True)
@@ -506,6 +520,18 @@ def pytest_addoption(parser):
         default=False,
         help="run quarantined (flaky) tests",
     )
+    parser.addoption(
+        "--shard-id",
+        type=int,
+        default=None,
+        help="0-based index of the current test shard to run",
+    )
+    parser.addoption(
+        "--num-shards",
+        type=int,
+        default=None,
+        help="Total number of test shards to split tests across",
+    )
 
 
 def pytest_configure(config):
@@ -515,3 +541,70 @@ def pytest_configure(config):
 def pytest_runtest_setup(item):
     if "quarantine" in item.keywords and not item.config.getoption("--run-quarantined"):
         pytest.skip("skipping quarantined flaky test (use --run-quarantined to run)")
+
+
+def pytest_collection_modifyitems(config, items):
+    shard_id = config.getoption("--shard-id")
+    num_shards = config.getoption("--num-shards")
+
+    if shard_id is not None or num_shards is not None:
+        if shard_id is None or num_shards is None:
+            raise pytest.UsageError(
+                "Both --shard-id and --num-shards must be specified together."
+            )
+        if shard_id < 0 or shard_id >= num_shards:
+            raise pytest.UsageError(
+                f"--shard-id must be between 0 and {num_shards - 1} inclusive."
+            )
+
+        import json
+        from collections import defaultdict
+
+        # 1. Group items by file
+        file_to_items = defaultdict(list)
+        for item in items:
+            rel_path = os.path.relpath(item.fspath, PROJECT_ROOT).replace("\\", "/")
+            file_to_items[rel_path].append(item)
+
+        # 2. Load durations
+        durations_path = PROJECT_ROOT / "quality" / "test-durations.json"
+        durations = {}
+        default_dur = 1.0
+        if durations_path.exists():
+            try:
+                data = json.loads(durations_path.read_text(encoding="utf-8"))
+                durations = data.get("durations", {})
+                default_dur = data.get("default_duration_seconds", 1.0)
+            except Exception:  # noqa: S110
+                pass
+
+        # 3. Estimate duration of each file
+        file_durations = []
+        for file_path, file_items in file_to_items.items():
+            file_dur = durations.get(file_path, None)
+            if file_dur is None:
+                file_dur = len(file_items) * default_dur
+            file_durations.append((file_path, file_dur))
+
+        # Sort files descending by duration for greedy sharding
+        file_durations.sort(key=lambda x: x[1], reverse=True)
+
+        # 4. Partition files greedily
+        shards = [[] for _ in range(num_shards)]
+        shard_sums = [0.0 for _ in range(num_shards)]
+
+        for file_path, duration in file_durations:
+            min_idx = shard_sums.index(min(shard_sums))
+            shards[min_idx].append(file_path)
+            shard_sums[min_idx] += duration
+
+        # 5. Filter items
+        allowed_files = set(shards[shard_id])
+        sharded_items = [
+            item
+            for item in items
+            if os.path.relpath(item.fspath, PROJECT_ROOT).replace("\\", "/")
+            in allowed_files
+        ]
+
+        items[:] = sharded_items

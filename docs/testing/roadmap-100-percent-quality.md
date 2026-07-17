@@ -85,12 +85,12 @@ The quality contract is the source of truth for thresholds, Tier 0 scope, report
 
 Exit gate: the same revision produces deterministic, schema-valid evidence locally and in CI; no report path, threshold or exclusion is aspirational.
 
-### Wave 1 — test-harness reliability and inventory
+### Wave 1 — test-harness reliability and inventory [COMPLETE]
 
-1. Build a generated inventory of handwritten source, generated code, tests, owners and Tier 0 classification for Python, TypeScript, Go, Rust, Bash/PowerShell and infrastructure.
-2. Detect orphan source, orphan tests, duplicate test IDs, unbounded retries/sleeps, dynamic skips and focused test markers.
-3. Make all fixtures hermetic: frozen time, seeded random generators, ports/temp roots, disposable databases/buckets/topics and failure diagnostics.
-4. Add test-sharding by historical duration without weakening ordering-sensitive or integration suites.
+1. [x] Build a generated inventory of handwritten source, generated code, tests, owners and Tier 0 classification for Python, TypeScript, Go, Rust, Bash/PowerShell and infrastructure.
+2. [x] Detect orphan source, orphan tests, duplicate test IDs, unbounded retries/sleeps, dynamic skips and focused test markers.
+3. [x] Make all fixtures hermetic: frozen time, seeded random generators, ports/temp roots, disposable databases/buckets/topics and failure diagnostics.
+4. [x] Add test-sharding by historical duration without weakening ordering-sensitive or integration suites.
 
 Exit gate: all executable handwritten paths have a classification and at least one named verification owner.
 

@@ -2087,6 +2087,27 @@ jobs:
           name: quality-manifest
           path: artifacts/coverage/quality-manifest.json
 
+  quality-inventory-check:
+    name: Source/Test Inventory & Anti-Pattern Check
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: "3.14"
+
+      - name: Generate Inventory Manifest
+        run: python scripts/quality/generate_test_inventory.py
+
+      - name: Verify Orphans and Anti-Patterns
+        run: python scripts/quality/check_orphans_and_anti_patterns.py
+
   ci-success:
     name: CI Success
     runs-on: ubuntu-latest
@@ -2130,6 +2151,7 @@ jobs:
       - quality
       - rust-lint
       - coverage-policy-gate
+      - quality-inventory-check
 
     steps:
       - name: Check all jobs passed
@@ -2192,6 +2214,7 @@ jobs:
             "${{ needs.quality.result }}"
             "${{ needs.rust-lint.result }}"
             "${{ needs.coverage-policy-gate.result }}"
+            "${{ needs.quality-inventory-check.result }}"
           )
 
 

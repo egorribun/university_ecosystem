@@ -86,3 +86,27 @@ def test_quality_policy_gate_is_properly_wired_in_ci() -> None:
     assert has_upload, (
         f"Job {policy_job_name} must upload quality-manifest.json as an artifact"
     )
+
+    # ── Verify quality-inventory-check job ──
+    inventory_job = jobs.get("quality-inventory-check")
+    assert inventory_job is not None, "quality-inventory-check job is missing in ci.yml"
+
+    # Assert no continue-on-error
+    assert inventory_job.get("continue-on-error") is not True, (
+        "quality-inventory-check must not have continue-on-error enabled"
+    )
+    for step in inventory_job.get("steps", []):
+        assert step.get("continue-on-error") is not True, (
+            "Steps in quality-inventory-check must not have continue-on-error enabled"
+        )
+
+    # Assert in needs of ci-success
+    assert "quality-inventory-check" in needs, (
+        "quality-inventory-check must be in the needs list of ci-success"
+    )
+
+    # Assert checked in results array
+    expected_inventory_check = "${{ needs.quality-inventory-check.result }}"
+    assert expected_inventory_check in run_script, (
+        "ci-success must assert the result of quality-inventory-check"
+    )

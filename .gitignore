@@ -427,3 +427,7 @@ services/**/mw
 # Trivy pre-commit hook cache
 .pre-commit-trivy-cache/
 
+# Quality contract and coverage artifacts
+artifacts/
+
+
