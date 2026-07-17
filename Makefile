@@ -25,7 +25,8 @@ lint-frontend:
 	npm run format:check --prefix $(FRONTEND_DIR)
 
 backend-test:
-	pytest --cov=app --cov-report=xml --cov-report=term-missing --cov-fail-under=98 --junitxml=pytest-report.xml
+	mkdir -p artifacts/coverage/python
+	pytest --cov=app --cov-report=xml:coverage.xml --cov-report=json:artifacts/coverage/python/coverage.json --cov-report=term-missing --junitxml=pytest-report.xml
 
 backend-typecheck:
 	mypy
@@ -81,7 +82,8 @@ test-quick:
 
 # Coverage report with HTML output
 coverage:
-	pytest --cov=app --cov-report=html --cov-report=term
+	mkdir -p artifacts/coverage/python
+	pytest --cov=app --cov-report=html --cov-report=term --cov-report=xml:coverage.xml --cov-report=json:artifacts/coverage/python/coverage.json
 	@echo "Coverage report: ./htmlcov/index.html"
 
 alembic-check:

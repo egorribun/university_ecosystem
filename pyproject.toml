@@ -354,15 +354,9 @@ omit = [
 ]
 
 [tool.coverage.report]
-fail_under = 93
+fail_under = 99
 show_missing = true
-# Ratchet floor — advanced by the test campaign:
-#   Session 10 → 88.04 %  (service-layer climb across workers/tasks/auth/chat)
-#   Session 12 → 90 %     (workers daemon loop branches + task harness + SpiceDB edge cases)
-# Aspirational target: 95 % (raise incrementally as CI validates each new tier).
-# CI (Linux + integration tier) measures ~0.7 pp higher than local hermetic.
-# Unified across pyproject / Makefile / ci.yml.
-# (Replaced fail_under = 95 with 89 above after cheat removal)
+# Mirrors the canonical floor in quality/quality-contract.json.
 exclude_lines = [
   "pragma: no cover",
   "def __repr__",
@@ -372,6 +366,12 @@ exclude_lines = [
   "raise NotImplementedError",
   "if TYPE_CHECKING:",
 ]
+
+[tool.coverage.xml]
+output = "coverage.xml"
+
+[tool.coverage.json]
+output = "artifacts/coverage/python/coverage.json"
 
 [dependency-groups]
 dev = [
@@ -427,6 +427,7 @@ security = ["bandit[toml]>=1.9.4", "semgrep>=1.159.0", "pip-audit>=2.10.0"]
 members = ["native/rust_ext", "crates/pyo3-sanitizer"]
 
 [tool.uv]
+exclude-newer = "7 days"
 environments = [
     "sys_platform == 'win32'",
     "sys_platform == 'linux'",
@@ -547,4 +548,3 @@ pytest_add_cli_args = [
     # Lifespan tests check database readiness using alembic.ini which mutmut doesn't copy.
     "--ignore=tests/test_lifespan.py",
 ]
-
