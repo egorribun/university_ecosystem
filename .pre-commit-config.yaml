@@ -107,10 +107,16 @@ repos:
         args: ["--config", "auto", "--error"]
         exclude: ^tests/|^native/rust_ext/fuzz/|_test\.go$
 
+  - repo: https://github.com/renovatebot/pre-commit-hooks
+    rev: 43.268.4 # ece9d8611e4e7da8cbcf7ea28039ec7928316032
+    hooks:
+      - id: renovate-config-validator
+        args: [--strict]
+        pass_filenames: false
+
   - repo: https://github.com/mxab/pre-commit-trivy
     rev: v0.18.0
     hooks:
       - id: trivyfs-docker
         name: trivy-fs-scan
-        args: ["--exit-code", "1", "--severity", "CRITICAL,HIGH", "--timeout", "15m", "--skip-dirs", ".venv,.venv313,.git,.claude,.gemini,.secrets,node_modules,frontend/node_modules,frontend/dist,services/gateway/gateway,services/file-processor/cover", "."]
-
+        args: ["--exit-code", "1", "--severity", "CRITICAL,HIGH", "--timeout", "15m", "--skip-dirs", ".venv,.venv313,.git,.claude,.gemini,.secrets,node_modules,frontend/node_modules,frontend/dist,services/gateway/gateway,services/file-processor/cover,.tmp", "."]

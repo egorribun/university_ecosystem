@@ -1,7 +1,7 @@
 FRONTEND_DIR := $(CURDIR)/frontend
 ENV_FILE ?= $(CURDIR)/.env
 
-.PHONY: install backend-install frontend-install lint lint-backend lint-frontend backend-test frontend-test test backend-typecheck frontend-typecheck frontend-build frontend-dev backend-serve generate-api alembic-check compose-lint docker-build docker-up docker-down coverage test-quick clean go-test go-coverage go-test-gates helm-lint docker-lint sbom-local db-validate pre-commit-all test-trace-driven
+.PHONY: install backend-install frontend-install lint lint-backend lint-frontend backend-test frontend-test test backend-typecheck frontend-typecheck frontend-build frontend-dev backend-serve generate-api alembic-check compose-lint docker-build docker-up docker-down coverage test-quick clean go-test go-coverage go-test-gates helm-lint docker-lint sbom-local db-validate pre-commit-all renovate-config-validate test-trace-driven
 
 install: backend-install frontend-install
 
@@ -190,6 +190,9 @@ db-validate:  ## Validate alembic migrations (up → down -1 → up) against tes
 
 pre-commit-all:  ## Run pre-commit on all files (slow but thorough)
 	pre-commit run --all-files
+
+renovate-config-validate:
+	pre-commit run renovate-config-validator --all-files
 
 # Development mode - run backend and frontend
 dev:

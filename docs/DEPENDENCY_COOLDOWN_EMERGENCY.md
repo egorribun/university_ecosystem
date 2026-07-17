@@ -5,9 +5,9 @@ procedure only when a confirmed advisory requires a fixed release sooner. It kee
 the security Renovate alert visible immediately, but the resulting PR must not
 automerge.
 
-Renovate expresses this sole immediate-security path with its explicit
-`minimumReleaseAge: false` exception; all routine package rules retain the
-seven-day maturity window.
+Renovate expresses this sole immediate-security path through
+`vulnerabilityAlerts` with `minimumReleaseAge: null` and `prCreation: immediate`;
+all routine package rules retain the seven-day maturity window.
 
 ## Required approval record
 

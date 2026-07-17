@@ -17,7 +17,10 @@
   "osvVulnerabilityAlerts": true,
   "vulnerabilityAlerts": {
     "enabled": true,
-    "labels": ["security"]
+    "labels": ["security", "manual-cooldown-override-required"],
+    "automerge": false,
+    "minimumReleaseAge": null,
+    "prCreation": "immediate"
   },
   "packageRules": [
     {
@@ -159,13 +162,6 @@
       "automerge": false,
       "minimumReleaseAge": "7 days",
       "labels": ["rust", "dependencies"]
-    },
-    {
-      "description": "Surface security updates immediately; require an audited targeted uv cooldown override",
-      "matchCategories": ["security"],
-      "automerge": false,
-      "minimumReleaseAge": false,
-      "labels": ["security", "manual-cooldown-override-required"]
     }
   ]
 }
