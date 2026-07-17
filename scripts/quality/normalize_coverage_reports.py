@@ -96,6 +96,7 @@ GO_RECORD_PATTERN = re.compile(
     r"(?P<end_line>\d+)\.(?P<end_column>\d+)\s+"
     r"(?P<statements>\d+)\s+(?P<count>\d+)\s*$"
 )
+WINDOWS_DRIVE_PATH_PATTERN = re.compile(r"^[A-Za-z]:")
 # This quantization is display-only; strict floor checks use integer arithmetic.
 PERCENT_QUANTUM = Decimal("0.000001")
 
@@ -236,6 +237,115 @@ def _decode_report(raw: bytes, report_name: str) -> str:
         raise _InputError(f"{report_name} must be UTF-8 encoded: {error}") from error
 
 
+def _source_path_key(value: str) -> str:
+    """Return a platform-aware comparison key without changing path syntax."""
+    return value.casefold() if os.name == "nt" else value
+
+
+def _reject_source_symlink_parts(parts: Sequence[str]) -> None:
+    """Reject existing link or junction ancestors without resolving untrusted paths."""
+    candidate = REPOSITORY_ROOT
+    for part in parts:
+        candidate /= part
+        try:
+            if candidate.is_symlink() or candidate.is_junction():
+                raise _InputError("source path traverses a symbolic link or junction")
+        except OSError as error:
+            raise _InputError("unable to inspect source path links") from error
+
+
+def _normalize_relative_source_parts(parts: Sequence[str]) -> tuple[str, ...]:
+    normalized: list[str] = []
+    for part in parts:
+        if part in {"", "."}:
+            continue
+        if part == "..":
+            if not normalized:
+                raise _InputError("source path escapes the repository")
+            _reject_source_symlink_parts(normalized)
+            normalized.pop()
+            continue
+        if os.name == "nt" and (part.endswith((" ", ".")) or ":" in part):
+            raise _InputError("source path contains an unsafe Windows path segment")
+        normalized.append(part)
+    if not normalized:
+        raise _InputError("source path must identify a repository-relative file")
+    return tuple(normalized)
+
+
+def _source_path_is_within_component_root(
+    component: str,
+    source_parts: Sequence[str],
+) -> bool:
+    comparison_parts = tuple(_source_path_key(part) for part in source_parts)
+    for configured_root in SOURCE_ROOTS[component]:
+        root_parts = tuple(
+            _source_path_key(part) for part in configured_root.split("/") if part
+        )
+        if comparison_parts[: len(root_parts)] == root_parts:
+            return True
+    return False
+
+
+def _canonical_source_identity(component: str, raw_path: str) -> str:
+    """Validate and normalize one report-embedded source path for a component."""
+    if not raw_path:
+        raise _InputError("source path is empty")
+    if any(unicodedata.category(character) == "Cc" for character in raw_path):
+        raise _InputError("source path contains a control character")
+
+    normalized_path = raw_path.replace("\\", "/")
+    if normalized_path.startswith("//"):
+        raise _InputError("source path must not use a UNC path")
+    if os.name == "nt" and normalized_path.startswith("/"):
+        raise _InputError("source path must not be root-relative on Windows")
+
+    if WINDOWS_DRIVE_PATH_PATTERN.match(normalized_path):
+        if len(normalized_path) < 3 or normalized_path[2] != "/":
+            raise _InputError("source path must not be drive-relative")
+        if os.name != "nt":
+            raise _InputError("source path uses a foreign Windows drive")
+        absolute_path = Path(normalized_path)
+        try:
+            relative_parts = absolute_path.relative_to(REPOSITORY_ROOT).parts
+        except ValueError as error:
+            raise _InputError("source path is outside the repository") from error
+    elif normalized_path.startswith("/"):
+        if os.name == "nt":
+            if not REPOSITORY_ROOT.drive:
+                raise _InputError("source path cannot be anchored to this repository")
+            absolute_path = Path(f"{REPOSITORY_ROOT.drive}{normalized_path}")
+        else:
+            absolute_path = Path(normalized_path)
+        try:
+            relative_parts = absolute_path.relative_to(REPOSITORY_ROOT).parts
+        except ValueError as error:
+            raise _InputError("source path is outside the repository") from error
+    else:
+        relative_parts = tuple(normalized_path.split("/"))
+
+    source_parts = _normalize_relative_source_parts(relative_parts)
+    _reject_source_symlink_parts(source_parts)
+    if not _source_path_is_within_component_root(component, source_parts):
+        raise _InputError(
+            f"source path is outside configured roots for component {component}"
+        )
+    return "/".join(_source_path_key(part) for part in source_parts)
+
+
+def _register_source_spelling(
+    spellings: dict[str, str],
+    source_identity: str,
+    raw_path: str,
+    report_name: str,
+) -> None:
+    existing = spellings.setdefault(source_identity, raw_path)
+    if existing != raw_path:
+        raise _InputError(
+            f"{report_name} has conflicting source spellings for {source_identity}"
+        )
+
+
 def _counter_from_xml_attributes(
     root: ElementTree.Element,
     covered_name: str,
@@ -258,15 +368,26 @@ def _xml_local_name(element: ElementTree.Element) -> str:
     return element.tag.rsplit("}", maxsplit=1)[-1]
 
 
-def _coverage_xml_source_lines(root: ElementTree.Element) -> list[ElementTree.Element]:
+def _coverage_xml_source_lines(
+    root: ElementTree.Element,
+    component: str,
+) -> list[ElementTree.Element]:
     source_lines: list[ElementTree.Element] = []
     seen_identities: set[tuple[str, int]] = set()
+    source_spellings: dict[str, str] = {}
     for class_element in root.iter():
         if _xml_local_name(class_element) != "class":
             continue
         filename = class_element.get("filename")
         if not filename:
             raise _InputError("coverage XML class line is missing a filename")
+        source_identity = _canonical_source_identity(component, filename)
+        _register_source_spelling(
+            source_spellings,
+            source_identity,
+            filename,
+            "coverage XML",
+        )
         for lines_element in class_element:
             if _xml_local_name(lines_element) != "lines":
                 continue
@@ -279,17 +400,21 @@ def _coverage_xml_source_lines(root: ElementTree.Element) -> list[ElementTree.El
                 )
                 if line_number == 0:
                     raise _InputError("coverage XML line number must be positive")
-                identity = (filename, line_number)
+                identity = (source_identity, line_number)
                 if identity in seen_identities:
                     raise _InputError(
-                        f"duplicate coverage XML source line {filename}:{line_number}"
+                        "duplicate coverage XML source line "
+                        f"{source_identity}:{line_number}"
                     )
                 seen_identities.add(identity)
                 source_lines.append(line)
     return source_lines
 
 
-def _parse_python_xml(raw: bytes) -> dict[str, dict[str, object]]:
+def _parse_python_xml(
+    raw: bytes,
+    component: str,
+) -> dict[str, dict[str, object]]:
     if b"<!doctype" in raw.lower() or b"<!entity" in raw.lower():
         raise _InputError("coverage XML must not contain DTD or entity declarations")
     try:
@@ -314,7 +439,7 @@ def _parse_python_xml(raw: bytes) -> dict[str, dict[str, object]]:
         "branches-valid",
         "branch",
     )
-    lines = _coverage_xml_source_lines(root)
+    lines = _coverage_xml_source_lines(root, component)
 
     line_detail_metric: dict[str, object] | None = None
     if lines:
@@ -555,12 +680,16 @@ def _lcov_metric_pair(
     return summary_pair
 
 
-def _parse_frontend_lcov(raw: bytes) -> dict[str, dict[str, object]]:
+def _parse_frontend_lcov(
+    raw: bytes,
+    component: str,
+) -> dict[str, dict[str, object]]:
     text = _decode_report(raw, "LCOV report")
     records: list[_LcovRecord] = []
     current = _LcovRecord()
     current_has_content = False
     seen_sources: set[str] = set()
+    source_spellings: dict[str, str] = {}
     counter_names = frozenset({"LF", "LH", "BRF", "BRH", "FNF", "FNH"})
 
     for line_number, line in enumerate(text.splitlines(), start=1):
@@ -588,7 +717,13 @@ def _parse_frontend_lcov(raw: bytes) -> dict[str, dict[str, object]]:
                 raise _InputError(f"LCOV record has duplicate SF at line {line_number}")
             if not value:
                 raise _InputError(f"LCOV SF at line {line_number} is empty")
-            current.source = value
+            current.source = _canonical_source_identity(component, value)
+            _register_source_spelling(
+                source_spellings,
+                current.source,
+                value,
+                "LCOV report",
+            )
             continue
         if field in counter_names:
             _lcov_require_source(current, field, line_number)
@@ -645,7 +780,10 @@ def _parse_frontend_lcov(raw: bytes) -> dict[str, dict[str, object]]:
     return {metric: metrics[metric] for metric in METRICS}
 
 
-def _parse_go_coverprofile(raw: bytes) -> dict[str, dict[str, object]]:
+def _parse_go_coverprofile(
+    raw: bytes,
+    component: str,
+) -> dict[str, dict[str, object]]:
     text = _decode_report(raw, "Go coverprofile")
     lines = [line for line in text.splitlines() if line.strip()]
     if not lines or GO_HEADER_PATTERN.fullmatch(lines[0]) is None:
@@ -657,6 +795,7 @@ def _parse_go_coverprofile(raw: bytes) -> dict[str, dict[str, object]]:
     covered_statements = 0
     source_lines: dict[tuple[str, int], bool] = {}
     seen_blocks: set[tuple[str, int, int, int, int]] = set()
+    source_spellings: dict[str, str] = {}
     for line_number, line in enumerate(lines[1:], start=2):
         match = GO_RECORD_PATTERN.fullmatch(line)
         if match is None:
@@ -680,7 +819,14 @@ def _parse_go_coverprofile(raw: bytes) -> dict[str, dict[str, object]]:
         if (end_line, end_column) < (start_line, start_column):
             raise _InputError("Go coverprofile range ends before it starts")
 
-        filename = match.group("filename")
+        raw_filename = match.group("filename")
+        filename = _canonical_source_identity(component, raw_filename)
+        _register_source_spelling(
+            source_spellings,
+            filename,
+            raw_filename,
+            "Go coverprofile",
+        )
         block_identity = (
             filename,
             start_line,
@@ -743,7 +889,51 @@ def _parse_rust_counter(
     return covered, count
 
 
-def _parse_rust_llvm_json(raw: bytes) -> dict[str, dict[str, object]]:
+def _validate_rust_file_identities(
+    component: str,
+    file_collections: Sequence[object],
+) -> None:
+    seen_identities: set[str] = set()
+    source_spellings: dict[str, str] = {}
+    for files in file_collections:
+        if not isinstance(files, list):
+            raise _InputError("LLVM JSON files must be a list")
+        for index, entry in enumerate(files):
+            if not isinstance(entry, dict):
+                raise _InputError(f"LLVM JSON files[{index}] must be an object")
+            identities: list[tuple[str, str]] = []
+            for field_name in ("filename", "path"):
+                if field_name not in entry:
+                    continue
+                value = entry[field_name]
+                if not isinstance(value, str):
+                    raise _InputError(
+                        f"LLVM JSON files[{index}].{field_name} must be a string"
+                    )
+                identities.append((_canonical_source_identity(component, value), value))
+            if not identities:
+                raise _InputError(f"LLVM JSON files[{index}] lacks a filename or path")
+            if len({identity for identity, _ in identities}) != 1:
+                raise _InputError(
+                    f"LLVM JSON files[{index}] has conflicting filename and path"
+                )
+            identity = identities[0][0]
+            for identity_value, raw_path in identities:
+                _register_source_spelling(
+                    source_spellings,
+                    identity_value,
+                    raw_path,
+                    "LLVM JSON files",
+                )
+            if identity in seen_identities:
+                raise _InputError(f"LLVM JSON files has duplicate source {identity}")
+            seen_identities.add(identity)
+
+
+def _parse_rust_llvm_json(
+    raw: bytes,
+    component: str,
+) -> dict[str, dict[str, object]]:
     text = _decode_report(raw, "LLVM JSON report")
     try:
         document = json.loads(
@@ -758,8 +948,16 @@ def _parse_rust_llvm_json(raw: bytes) -> dict[str, dict[str, object]]:
     if not isinstance(document, dict):
         raise _InputError("LLVM JSON root must be an object")
 
+    has_data = "data" in document
+    has_totals = "totals" in document
+    if has_data == has_totals:
+        raise _InputError("LLVM JSON must contain exactly one of data or totals")
+
     totals_entries: list[dict[str, object]] = []
-    if "data" in document:
+    file_collections: list[object] = []
+    if "files" in document:
+        file_collections.append(document["files"])
+    if has_data:
         data = document["data"]
         if not isinstance(data, list) or len(data) != 1:
             raise _InputError("LLVM JSON data must contain exactly one entry")
@@ -767,10 +965,14 @@ def _parse_rust_llvm_json(raw: bytes) -> dict[str, dict[str, object]]:
         if not isinstance(entry, dict) or not isinstance(entry.get("totals"), dict):
             raise _InputError("LLVM JSON data[0] lacks totals")
         totals_entries.append(entry["totals"])
-    elif isinstance(document.get("totals"), dict):
+        if "files" in entry:
+            file_collections.append(entry["files"])
+    elif isinstance(document["totals"], dict):
         totals_entries.append(document["totals"])
     else:
-        raise _InputError("LLVM JSON must contain data[].totals or totals")
+        raise _InputError("LLVM JSON totals must be an object")
+
+    _validate_rust_file_identities(component, file_collections)
 
     line_pairs = [_parse_rust_counter(totals, "lines") for totals in totals_entries]
     function_pairs = [
@@ -968,13 +1170,13 @@ def _read_raw_report(report_input: _ReportInput) -> _RawReport:
 
 def _parse_report(raw_report: _RawReport) -> _ParsedReport:
     if raw_report.report_format == "cobertura-xml":
-        metrics = _parse_python_xml(raw_report.raw)
+        metrics = _parse_python_xml(raw_report.raw, raw_report.component)
     elif raw_report.report_format == "lcov":
-        metrics = _parse_frontend_lcov(raw_report.raw)
+        metrics = _parse_frontend_lcov(raw_report.raw, raw_report.component)
     elif raw_report.report_format == "go-coverprofile":
-        metrics = _parse_go_coverprofile(raw_report.raw)
+        metrics = _parse_go_coverprofile(raw_report.raw, raw_report.component)
     elif raw_report.report_format == "llvm-cov-json":
-        metrics = _parse_rust_llvm_json(raw_report.raw)
+        metrics = _parse_rust_llvm_json(raw_report.raw, raw_report.component)
     else:
         raise _InputError(f"unsupported report format: {raw_report.report_format}")
     return _ParsedReport(

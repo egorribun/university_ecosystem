@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -53,7 +54,6 @@ def _run_normalizer(
 
 
 def _full_report_arguments() -> list[str]:
-    go_profile = FIXTURES / "go-valid.coverprofile"
     rust_report = FIXTURES / "rust-valid.json"
     return [
         "--python-xml",
@@ -61,11 +61,11 @@ def _full_report_arguments() -> list[str]:
         "--frontend-lcov",
         str(FIXTURES / "frontend-valid.lcov"),
         "--go-report",
-        f"go-gateway={go_profile}",
+        f"go-gateway={FIXTURES / 'go-valid.coverprofile'}",
         "--go-report",
-        f"go-ws-hub={go_profile}",
+        f"go-ws-hub={FIXTURES / 'go-ws-hub-valid.coverprofile'}",
         "--go-report",
-        f"go-file-processor={go_profile}",
+        f"go-file-processor={FIXTURES / 'go-file-processor-valid.coverprofile'}",
         "--rust-report",
         f"rust-native={rust_report}",
         "--rust-report",
@@ -73,6 +73,96 @@ def _full_report_arguments() -> list[str]:
         "--rust-report",
         f"rust-wasm-sanitizer={rust_report}",
     ]
+
+
+def _assert_structural_source_evidence_failure(
+    tmp_path: Path,
+    component: str,
+    report_path: Path,
+    *arguments: str,
+) -> dict[str, object]:
+    output = tmp_path / "quality-manifest.json"
+
+    result = _run_normalizer(output, *arguments)
+
+    assert result.returncode == 2
+    assert "Traceback" not in result.stderr
+    assert all(line.startswith("ERROR:") for line in result.stderr.splitlines())
+    manifest = json.loads(output.read_text(encoding="utf-8"))
+    schema = json.loads(QUALITY_MANIFEST_SCHEMA_PATH.read_text(encoding="utf-8"))
+    Draft202012Validator(schema).validate(manifest)
+    assert manifest["validation"]["valid"] is False
+    assert manifest["components"][component]["status"] == "failed"
+    assert (
+        next(
+            report for report in manifest["reports"] if report["component"] == component
+        )["sha256"]
+        == hashlib.sha256(report_path.read_bytes()).hexdigest()
+    )
+    return manifest
+
+
+def _write_python_source_fixture(
+    tmp_path: Path,
+    filename: str,
+    source_path: str,
+) -> Path:
+    report_path = tmp_path / filename
+    report_path.write_text(
+        (FIXTURES / "python-valid.xml")
+        .read_text(encoding="utf-8")
+        .replace('filename="app/example.py"', f'filename="{source_path}"'),
+        encoding="utf-8",
+    )
+    return report_path
+
+
+def _write_lcov_source_fixture(
+    tmp_path: Path,
+    filename: str,
+    source_path: str,
+) -> Path:
+    report_path = tmp_path / filename
+    report_path.write_text(
+        "\n".join(
+            (
+                f"SF:{source_path}",
+                "DA:1,1",
+                "LF:1",
+                "LH:1",
+                "end_of_record",
+                "",
+            )
+        ),
+        encoding="utf-8",
+    )
+    return report_path
+
+
+def _write_go_source_fixture(
+    tmp_path: Path,
+    filename: str,
+    source_path: str,
+) -> Path:
+    report_path = tmp_path / filename
+    report_path.write_text(
+        "\n".join(
+            (
+                "mode: count",
+                f"{source_path}:1.1,1.10 1 1",
+                "",
+            )
+        ),
+        encoding="utf-8",
+    )
+    return report_path
+
+
+def _rust_totals() -> dict[str, object]:
+    return {
+        "functions": {"count": 2, "covered": 1},
+        "lines": {"count": 4, "covered": 3},
+    }
 
 
 def _metric(
@@ -283,6 +373,401 @@ def test_rust_direct_totals_form_is_normalized(tmp_path: Path) -> None:
     manifest = json.loads(output.read_text(encoding="utf-8"))
     assert _metric(manifest, "rust-native", "lines")["percent"] == 75.0
     assert _metric(manifest, "rust-native", "functions")["percent"] == 50.0
+
+
+def test_source_identity_accepts_in_root_relative_backslash_and_absolute_paths(
+    tmp_path: Path,
+) -> None:
+    python_report = _write_python_source_fixture(
+        tmp_path,
+        "python-backslash.xml",
+        r".\app\example.py",
+    )
+    frontend_report = _write_lcov_source_fixture(
+        tmp_path,
+        "frontend-absolute.lcov",
+        (REPOSITORY_ROOT / "frontend" / "src" / "one.ts").as_posix(),
+    )
+    go_report = _write_go_source_fixture(
+        tmp_path,
+        "gateway-backslash.coverprofile",
+        r".\services\gateway\main.go",
+    )
+    rust_report = tmp_path / "rust-absolute-files.json"
+    rust_report.write_text(
+        json.dumps(
+            {
+                "totals": _rust_totals(),
+                "files": [
+                    {"path": str(REPOSITORY_ROOT / "native" / "rust_ext" / "lib.rs")}
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    output = tmp_path / "quality-manifest.json"
+
+    result = _run_normalizer(
+        output,
+        "--python-xml",
+        str(python_report),
+        "--frontend-lcov",
+        str(frontend_report),
+        "--go-report",
+        f"go-gateway={go_report}",
+        "--rust-report",
+        f"rust-native={rust_report}",
+    )
+
+    assert result.returncode == 1
+    assert all("source identity" not in error for error in result.stderr.splitlines())
+
+
+@pytest.mark.parametrize(
+    "source_path",
+    (
+        "frontend/src/example.ts",
+        "../outside.py",
+        "app/../../outside.py",
+        "C:app/example.py",
+        "D:/foreign/example.py",
+        r"\\server\share\example.py",
+    ),
+)
+def test_python_source_identity_rejects_unsafe_or_outside_paths(
+    tmp_path: Path,
+    source_path: str,
+) -> None:
+    report_path = _write_python_source_fixture(
+        tmp_path,
+        "python-unsafe.xml",
+        source_path,
+    )
+
+    _assert_structural_source_evidence_failure(
+        tmp_path,
+        "python",
+        report_path,
+        "--python-xml",
+        str(report_path),
+    )
+
+
+def test_frontend_source_identity_rejects_component_root_mismatch(
+    tmp_path: Path,
+) -> None:
+    report_path = _write_lcov_source_fixture(
+        tmp_path,
+        "frontend-wrong-root.lcov",
+        "app/example.py",
+    )
+
+    _assert_structural_source_evidence_failure(
+        tmp_path,
+        "frontend",
+        report_path,
+        "--frontend-lcov",
+        str(report_path),
+    )
+
+
+def test_frontend_source_identity_rejects_control_characters(
+    tmp_path: Path,
+) -> None:
+    report_path = _write_lcov_source_fixture(
+        tmp_path,
+        "frontend-control-character.lcov",
+        "frontend/src/unsafe\tname.ts",
+    )
+
+    _assert_structural_source_evidence_failure(
+        tmp_path,
+        "frontend",
+        report_path,
+        "--frontend-lcov",
+        str(report_path),
+    )
+
+
+@pytest.mark.parametrize(
+    ("component", "source_path"),
+    (
+        ("go-gateway", "services/ws-hub/main.go"),
+        ("go-ws-hub", "services/gateway/main.go"),
+        ("go-file-processor", "services/gateway/main.go"),
+    ),
+)
+def test_go_source_identity_rejects_selected_component_root_mismatch(
+    tmp_path: Path,
+    component: str,
+    source_path: str,
+) -> None:
+    report_path = _write_go_source_fixture(
+        tmp_path,
+        f"{component}-wrong-root.coverprofile",
+        source_path,
+    )
+
+    _assert_structural_source_evidence_failure(
+        tmp_path,
+        component,
+        report_path,
+        "--go-report",
+        f"{component}={report_path}",
+    )
+
+
+def test_xml_alias_source_lines_are_duplicate_evidence(tmp_path: Path) -> None:
+    report_path = tmp_path / "python-alias-lines.xml"
+    report_path.write_text(
+        """<coverage lines-covered=\"2\" lines-valid=\"2\">
+  <packages><package><classes>
+    <class filename=\"app/example.py\"><lines><line number=\"1\" hits=\"1\" /></lines></class>
+    <class filename=\".\\app\\example.py\"><lines><line number=\"1\" hits=\"1\" /></lines></class>
+  </classes></package></packages>
+</coverage>
+""",
+        encoding="utf-8",
+    )
+
+    _assert_structural_source_evidence_failure(
+        tmp_path,
+        "python",
+        report_path,
+        "--python-xml",
+        str(report_path),
+    )
+
+
+def test_xml_alias_source_spellings_conflict_across_distinct_lines(
+    tmp_path: Path,
+) -> None:
+    report_path = tmp_path / "python-alias-distinct-lines.xml"
+    report_path.write_text(
+        """<coverage lines-covered=\"2\" lines-valid=\"2\">
+  <packages><package><classes>
+    <class filename=\"app/example.py\"><lines><line number=\"1\" hits=\"1\" /></lines></class>
+    <class filename=\".\\app\\example.py\"><lines><line number=\"2\" hits=\"1\" /></lines></class>
+  </classes></package></packages>
+</coverage>
+""",
+        encoding="utf-8",
+    )
+
+    _assert_structural_source_evidence_failure(
+        tmp_path,
+        "python",
+        report_path,
+        "--python-xml",
+        str(report_path),
+    )
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows source paths are case-insensitive")
+def test_xml_case_only_alias_source_spellings_conflict(
+    tmp_path: Path,
+) -> None:
+    report_path = tmp_path / "python-case-alias-lines.xml"
+    report_path.write_text(
+        """<coverage lines-covered=\"2\" lines-valid=\"2\">
+  <packages><package><classes>
+    <class filename=\"app/Example.py\"><lines><line number=\"1\" hits=\"1\" /></lines></class>
+    <class filename=\"APP/example.py\"><lines><line number=\"2\" hits=\"1\" /></lines></class>
+  </classes></package></packages>
+</coverage>
+""",
+        encoding="utf-8",
+    )
+
+    _assert_structural_source_evidence_failure(
+        tmp_path,
+        "python",
+        report_path,
+        "--python-xml",
+        str(report_path),
+    )
+
+
+def test_lcov_alias_source_records_are_duplicate_evidence(tmp_path: Path) -> None:
+    report_path = tmp_path / "frontend-alias-records.lcov"
+    report_path.write_text(
+        """SF:frontend/src/example.ts
+DA:1,1
+LF:1
+LH:1
+end_of_record
+SF:.\\frontend\\src\\example.ts
+DA:1,1
+LF:1
+LH:1
+end_of_record
+""",
+        encoding="utf-8",
+    )
+
+    _assert_structural_source_evidence_failure(
+        tmp_path,
+        "frontend",
+        report_path,
+        "--frontend-lcov",
+        str(report_path),
+    )
+
+
+def test_go_alias_source_blocks_are_duplicate_evidence(tmp_path: Path) -> None:
+    report_path = tmp_path / "gateway-alias-blocks.coverprofile"
+    report_path.write_text(
+        """mode: count
+services/gateway/main.go:1.1,1.10 1 1
+.\\services\\gateway\\main.go:1.1,1.10 1 1
+""",
+        encoding="utf-8",
+    )
+
+    _assert_structural_source_evidence_failure(
+        tmp_path,
+        "go-gateway",
+        report_path,
+        "--go-report",
+        f"go-gateway={report_path}",
+    )
+
+
+def test_go_alias_source_spellings_conflict_across_distinct_blocks(
+    tmp_path: Path,
+) -> None:
+    report_path = tmp_path / "gateway-alias-distinct-blocks.coverprofile"
+    report_path.write_text(
+        """mode: count
+services/gateway/main.go:1.1,1.10 1 1
+.\\services\\gateway\\main.go:2.1,2.10 1 1
+""",
+        encoding="utf-8",
+    )
+
+    _assert_structural_source_evidence_failure(
+        tmp_path,
+        "go-gateway",
+        report_path,
+        "--go-report",
+        f"go-gateway={report_path}",
+    )
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows root-relative path semantics")
+def test_python_source_identity_rejects_root_relative_windows_path(
+    tmp_path: Path,
+) -> None:
+    assert REPOSITORY_ROOT.drive
+    source_path = str(REPOSITORY_ROOT / "app" / "example.py")[2:]
+    assert source_path.startswith("\\")
+    report_path = _write_python_source_fixture(
+        tmp_path,
+        "python-root-relative.xml",
+        source_path,
+    )
+
+    _assert_structural_source_evidence_failure(
+        tmp_path,
+        "python",
+        report_path,
+        "--python-xml",
+        str(report_path),
+    )
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows Win32 path alias semantics")
+@pytest.mark.parametrize(
+    "source_path",
+    (
+        "app/example.py.",
+        "app/example.py ",
+        "app/example:stream.py",
+    ),
+)
+def test_python_source_identity_rejects_windows_alias_segments(
+    tmp_path: Path,
+    source_path: str,
+) -> None:
+    report_path = _write_python_source_fixture(
+        tmp_path,
+        "python-windows-alias.xml",
+        source_path,
+    )
+
+    _assert_structural_source_evidence_failure(
+        tmp_path,
+        "python",
+        report_path,
+        "--python-xml",
+        str(report_path),
+    )
+
+
+@pytest.mark.parametrize(
+    "document",
+    (
+        {
+            "data": [{"totals": _rust_totals()}],
+            "totals": _rust_totals(),
+        },
+        {
+            "totals": _rust_totals(),
+            "files": [{}],
+        },
+        {
+            "totals": _rust_totals(),
+            "files": [{"filename": "app/foreign.py"}],
+        },
+        {
+            "data": [
+                {
+                    "files": [{"filename": "app/foreign.py"}],
+                    "totals": _rust_totals(),
+                }
+            ],
+        },
+        {
+            "data": [
+                {
+                    "files": [{"filename": "native/rust_ext/lib.rs"}],
+                    "totals": _rust_totals(),
+                }
+            ],
+            "files": [{"path": r".\native\rust_ext\lib.rs"}],
+        },
+        {
+            "totals": _rust_totals(),
+            "files": [
+                {"filename": "native/rust_ext/lib.rs"},
+                {"path": r".\native\rust_ext\lib.rs"},
+            ],
+        },
+        {
+            "totals": _rust_totals(),
+            "files": [
+                {
+                    "filename": "native/rust_ext/lib.rs",
+                    "path": r".\native\rust_ext\lib.rs",
+                }
+            ],
+        },
+    ),
+)
+def test_rust_source_identity_rejects_ambiguous_or_invalid_report_paths(
+    tmp_path: Path,
+    document: dict[str, object],
+) -> None:
+    report_path = tmp_path / "rust-invalid-source-identity.json"
+    report_path.write_text(json.dumps(document), encoding="utf-8")
+
+    _assert_structural_source_evidence_failure(
+        tmp_path,
+        "rust-native",
+        report_path,
+        "--rust-report",
+        f"rust-native={report_path}",
+    )
 
 
 @pytest.mark.parametrize(
