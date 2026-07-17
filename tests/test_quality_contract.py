@@ -312,6 +312,22 @@ def test_rejects_malformed_json_with_usage_error(tmp_path: Path) -> None:
     assert "ERROR: invalid JSON" in result.stderr
 
 
+def test_rejects_deeply_nested_json_with_usage_error(tmp_path: Path) -> None:
+    contract_path = tmp_path / "quality-contract.json"
+    depth = 20_000
+    contract_path.write_text(
+        '{"nested":' * depth + "0" + "}" * depth,
+        encoding="utf-8",
+    )
+
+    result = _run_validator(tmp_path, contract_path)
+
+    assert result.returncode == 2
+    assert result.stdout == ""
+    assert result.stderr == "ERROR: invalid JSON: nesting exceeds supported depth\n"
+    assert "Traceback" not in result.stderr
+
+
 def test_rejects_duplicate_json_keys_with_usage_error(tmp_path: Path) -> None:
     contract_path = tmp_path / "quality-contract.json"
     contract_path.write_text('{"version": 1, "version": 1}', encoding="utf-8")

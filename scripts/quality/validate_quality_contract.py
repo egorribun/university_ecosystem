@@ -494,6 +494,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     except _DuplicateKeyError as error:
         _print_error(str(error))
         return 2
+    except RecursionError:
+        _print_error("invalid JSON: nesting exceeds supported depth")
+        return 2
     except (json.JSONDecodeError, ValueError) as error:
         _print_error(f"invalid JSON: {error}")
         return 2
