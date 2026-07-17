@@ -87,18 +87,30 @@ RUST_COMPONENTS = frozenset(
 )
 SHA_PATTERN = re.compile(r"^[0-9A-Fa-f]{7,64}$")
 TIMESTAMP_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$")
+ASCII_DECIMAL_PATTERN = re.compile(r"^[0-9]+$")
 CONDITION_COVERAGE_PATTERN = re.compile(
-    r"^\s*\d+(?:\.\d+)?%\s+\((?P<covered>\d+)\s*/\s*(?P<total>\d+)\)\s*$"
+    r"^\s*[0-9]+(?:\.[0-9]+)?%\s+\((?P<covered>[0-9]+)\s*/\s*(?P<total>[0-9]+)\)\s*$"
 )
-GO_HEADER_PATTERN = re.compile(r"^mode:\s*(?:set|count|atomic)\s*$")
+GO_HEADER_PATTERN = re.compile(r"^mode: (?:set|count|atomic)$")
 GO_RECORD_PATTERN = re.compile(
-    r"^(?P<filename>.+):(?P<start_line>\d+)\.(?P<start_column>\d+),"
-    r"(?P<end_line>\d+)\.(?P<end_column>\d+)\s+"
-    r"(?P<statements>\d+)\s+(?P<count>\d+)\s*$"
+    r"^(?P<filename>.+):(?P<start_line>[0-9]+)\.(?P<start_column>[0-9]+),"
+    r"(?P<end_line>[0-9]+)\.(?P<end_column>[0-9]+) "
+    r"(?P<statements>[0-9]+) (?P<count>[0-9]+)$"
 )
 WINDOWS_DRIVE_PATH_PATTERN = re.compile(r"^[A-Za-z]:")
+# Go's profile parser uses signed int counters; use its portable 64-bit ceiling
+# consistently for every native parser and for post-aggregation metric totals.
+MAX_COVERAGE_COUNTER = (1 << 63) - 1
 # This quantization is display-only; strict floor checks use integer arithmetic.
 PERCENT_QUANTUM = Decimal("0.000001")
+XML_DECLARATION_PATTERN = re.compile(
+    r"^\s*<\?xml\b(?P<declaration>.*?)\?>",
+    flags=re.IGNORECASE | re.DOTALL,
+)
+XML_ENCODING_PATTERN = re.compile(
+    r"\bencoding\s*=\s*(?P<quote>['\"])(?P<encoding>[^'\"]+)(?P=quote)",
+    flags=re.IGNORECASE,
+)
 
 
 class _InputError(ValueError):
@@ -173,6 +185,8 @@ def _measured_metric(
 ) -> dict[str, object]:
     if covered < 0 or total < 0 or covered > total:
         raise _InputError("report counter has an invalid covered/total pair")
+    if covered > MAX_COVERAGE_COUNTER or total > MAX_COVERAGE_COUNTER:
+        raise _InputError("report counter exceeds the maximum coverage counter")
 
     metric: dict[str, object] = {
         "status": status,
@@ -214,13 +228,19 @@ def _unmeasured_metric(
 def _parse_nonnegative_integer(value: object, field: str) -> int:
     if isinstance(value, bool) or not isinstance(value, int) or value < 0:
         raise _InputError(f"{field} must be a non-negative integer")
+    if value > MAX_COVERAGE_COUNTER:
+        raise _InputError(f"{field} exceeds the maximum coverage counter")
     return value
 
 
 def _parse_nonnegative_decimal(value: str | None, field: str) -> int:
-    if value is None or not value.isdecimal():
+    if value is None or ASCII_DECIMAL_PATTERN.fullmatch(value) is None:
         raise _InputError(f"{field} must be a non-negative integer")
-    return int(value)
+    try:
+        parsed = int(value)
+    except ValueError as error:
+        raise _InputError(f"{field} must be a non-negative integer") from error
+    return _parse_nonnegative_integer(parsed, field)
 
 
 def _read_report_bytes(path: Path) -> bytes:
@@ -230,10 +250,15 @@ def _read_report_bytes(path: Path) -> bytes:
         raise _InputError(f"unable to read report {path}: {error}") from error
 
 
-def _decode_report(raw: bytes, report_name: str) -> str:
+def _decode_report(
+    raw: bytes,
+    report_name: str,
+    *,
+    encoding: str = "utf-8",
+) -> str:
     try:
-        return raw.decode("utf-8")
-    except UnicodeDecodeError as error:
+        return raw.decode(encoding)
+    except (LookupError, UnicodeDecodeError) as error:
         raise _InputError(f"{report_name} must be UTF-8 encoded: {error}") from error
 
 
@@ -415,13 +440,23 @@ def _parse_python_xml(
     raw: bytes,
     component: str,
 ) -> dict[str, dict[str, object]]:
-    if b"<!doctype" in raw.lower() or b"<!entity" in raw.lower():
+    text = _decode_report(raw, "coverage XML", encoding="utf-8-sig")
+    declaration = XML_DECLARATION_PATTERN.match(text)
+    if declaration is not None:
+        declared_encoding = XML_ENCODING_PATTERN.search(
+            declaration.group("declaration")
+        )
+        if declared_encoding is not None and declared_encoding.group(
+            "encoding"
+        ).casefold() not in {"utf-8", "utf8"}:
+            raise _InputError("coverage XML declaration must use UTF-8 encoding")
+    if "<!doctype" in text.casefold() or "<!entity" in text.casefold():
         raise _InputError("coverage XML must not contain DTD or entity declarations")
     try:
         # DTD and entity declarations are rejected before using the required
         # standard-library Cobertura parser.
-        root = ElementTree.fromstring(raw)  # noqa: S314
-    except ElementTree.ParseError as error:
+        root = ElementTree.fromstring(text)  # noqa: S314
+    except (ElementTree.ParseError, LookupError, ValueError) as error:
         raise _InputError(f"malformed coverage XML: {error}") from error
 
     if root.tag.rsplit("}", maxsplit=1)[-1] != "coverage":
@@ -780,6 +815,43 @@ def _parse_frontend_lcov(
     return {metric: metrics[metric] for metric in METRICS}
 
 
+def _inclusive_interval_union_length(intervals: Sequence[tuple[int, int]]) -> int:
+    """Return the inclusive union size without materializing individual lines."""
+    ordered = sorted(intervals)
+    if not ordered:
+        return 0
+
+    start, end = ordered[0]
+    if end < start:
+        raise _InputError("Go coverprofile line range ends before it starts")
+    length = 0
+    for next_start, next_end in ordered[1:]:
+        if next_end < next_start:
+            raise _InputError("Go coverprofile line range ends before it starts")
+        if next_start > end + 1:
+            length += end - start + 1
+            start, end = next_start, next_end
+            continue
+        end = max(end, next_end)
+    return length + end - start + 1
+
+
+def _go_line_coverage_counts(
+    source_intervals: dict[str, Sequence[tuple[int, int, bool]]],
+) -> tuple[int, int]:
+    """Return covered/total unique source lines from grouped Go block ranges."""
+    covered = 0
+    total = 0
+    for intervals in source_intervals.values():
+        total += _inclusive_interval_union_length(
+            [(start, end) for start, end, _ in intervals]
+        )
+        covered += _inclusive_interval_union_length(
+            [(start, end) for start, end, is_covered in intervals if is_covered]
+        )
+    return covered, total
+
+
 def _parse_go_coverprofile(
     raw: bytes,
     component: str,
@@ -793,7 +865,7 @@ def _parse_go_coverprofile(
 
     total_statements = 0
     covered_statements = 0
-    source_lines: dict[tuple[str, int], bool] = {}
+    source_intervals: defaultdict[str, list[tuple[int, int, bool]]] = defaultdict(list)
     seen_blocks: set[tuple[str, int, int, int, int]] = set()
     source_spellings: dict[str, str] = {}
     for line_number, line in enumerate(lines[1:], start=2):
@@ -814,11 +886,8 @@ def _parse_go_coverprofile(
             match.group("statements"), "Go numStatements"
         )
         count = _parse_nonnegative_decimal(match.group("count"), "Go execution count")
-        if start_line == 0 or end_line == 0:
-            raise _InputError("Go source line numbers must be positive")
-        if (end_line, end_column) < (start_line, start_column):
-            raise _InputError("Go coverprofile range ends before it starts")
-
+        if end_line < start_line:
+            raise _InputError("Go coverprofile line range ends before it starts")
         raw_filename = match.group("filename")
         filename = _canonical_source_identity(component, raw_filename)
         _register_source_spelling(
@@ -842,15 +911,15 @@ def _parse_go_coverprofile(
         total_statements += statements
         if count > 0:
             covered_statements += statements
-        for source_line in range(start_line, end_line + 1):
-            identity = (filename, source_line)
-            source_lines[identity] = source_lines.get(identity, False) or count > 0
+        source_intervals[filename].append((start_line, end_line, count > 0))
+
+    covered_lines, total_lines = _go_line_coverage_counts(source_intervals)
 
     return {
         "lines": _measured_metric(
             "derived",
-            sum(source_lines.values()),
-            len(source_lines),
+            covered_lines,
+            total_lines,
             derivation=(
                 "unique source lines in coverprofile blocks; covered when any "
                 "overlapping block has count greater than zero"
@@ -943,7 +1012,7 @@ def _parse_rust_llvm_json(
         )
     except _DuplicateKeyError as error:
         raise _InputError(str(error)) from error
-    except (json.JSONDecodeError, ValueError) as error:
+    except (json.JSONDecodeError, RecursionError, ValueError) as error:
         raise _InputError(f"malformed LLVM JSON: {error}") from error
     if not isinstance(document, dict):
         raise _InputError("LLVM JSON root must be an object")
@@ -1086,7 +1155,7 @@ def _load_contract(path: Path, generated_at: datetime) -> dict[str, dict[str, in
         )
     except _DuplicateKeyError as error:
         raise _InputError(f"malformed contract: {error}") from error
-    except (json.JSONDecodeError, ValueError) as error:
+    except (json.JSONDecodeError, RecursionError, ValueError) as error:
         raise _InputError(f"malformed contract: {error}") from error
     if not isinstance(contract, dict):
         raise _InputError("malformed contract: root must be an object")

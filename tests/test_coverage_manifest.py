@@ -21,6 +21,8 @@ QUALITY_MANIFEST_SCHEMA_PATH = (
 )
 COMMIT_SHA = "a1b2c3d"
 GENERATED_AT = "2026-07-17T00:00:00Z"
+MAX_COVERAGE_COUNTER = (1 << 63) - 1
+DEEP_JSON_DEPTH = 15_000
 
 
 def _run_normalizer(
@@ -51,6 +53,21 @@ def _run_normalizer(
         encoding="utf-8",
         text=True,
     )
+
+
+def _normalizer_module() -> object:
+    """Load the CLI module directly for bounded parser-helper tests."""
+    module_directory = str(NORMALIZER_PATH.parent)
+    sys.path.insert(0, module_directory)
+    try:
+        import normalize_coverage_reports as normalizer
+    finally:
+        sys.path.remove(module_directory)
+    return normalizer
+
+
+def _deeply_nested_json_object(depth: int = DEEP_JSON_DEPTH) -> str:
+    return ('{"nested":' * depth) + "0" + ("}" * depth)
 
 
 def _full_report_arguments() -> list[str]:
@@ -1439,3 +1456,328 @@ def test_contract_expiry_uses_the_caller_supplied_generated_at_date(
     assert before_expiry.returncode == 1
     assert after_expiry.returncode == 2
     assert "expires_on must be after validation day" in after_expiry.stderr
+
+
+@pytest.mark.parametrize(
+    "counter",
+    (
+        "9" * (sys.get_int_max_str_digits() + 1),
+        "\N{ARABIC-INDIC DIGIT ONE}",
+    ),
+)
+def test_parser_hardening_rejects_non_ascii_or_unrenderable_decimal_counters(
+    tmp_path: Path,
+    counter: str,
+) -> None:
+    report_path = tmp_path / "invalid-decimal.xml"
+    report_path.write_text(
+        (FIXTURES / "python-valid.xml")
+        .read_text(encoding="utf-8")
+        .replace('lines-covered="1"', f'lines-covered="{counter}"'),
+        encoding="utf-8",
+    )
+
+    _assert_structural_source_evidence_failure(
+        tmp_path,
+        "python",
+        report_path,
+        "--python-xml",
+        str(report_path),
+    )
+
+
+def test_parser_hardening_rejects_counter_above_the_documented_maximum(
+    tmp_path: Path,
+) -> None:
+    report_path = tmp_path / "counter-above-maximum.coverprofile"
+    report_path.write_text(
+        "\n".join(
+            (
+                "mode: count",
+                f"services/gateway/main.go:1.1,1.10 {MAX_COVERAGE_COUNTER + 1} 0",
+                "",
+            )
+        ),
+        encoding="utf-8",
+    )
+
+    _assert_structural_source_evidence_failure(
+        tmp_path,
+        "go-gateway",
+        report_path,
+        "--go-report",
+        f"go-gateway={report_path}",
+    )
+
+
+def test_parser_hardening_rejects_aggregation_above_the_documented_maximum(
+    tmp_path: Path,
+) -> None:
+    report_path = tmp_path / "aggregate-above-maximum.coverprofile"
+    report_path.write_text(
+        "\n".join(
+            (
+                "mode: count",
+                f"services/gateway/main.go:1.1,1.10 {MAX_COVERAGE_COUNTER} 1",
+                f"services/gateway/main.go:2.1,2.10 {MAX_COVERAGE_COUNTER} 1",
+                "",
+            )
+        ),
+        encoding="utf-8",
+    )
+
+    _assert_structural_source_evidence_failure(
+        tmp_path,
+        "go-gateway",
+        report_path,
+        "--go-report",
+        f"go-gateway={report_path}",
+    )
+
+
+@pytest.mark.parametrize(
+    "record",
+    (
+        "services/gateway/main.go:1.1,1.10\t1 1",
+        "services/gateway/main.go:\N{ARABIC-INDIC DIGIT ONE}.1,1.10 1 1",
+    ),
+)
+def test_parser_hardening_rejects_noncanonical_go_numeric_grammar(
+    tmp_path: Path,
+    record: str,
+) -> None:
+    report_path = tmp_path / "noncanonical-go.coverprofile"
+    report_path.write_text(
+        "\n".join(("mode: count", record, "")),
+        encoding="utf-8",
+    )
+
+    _assert_structural_source_evidence_failure(
+        tmp_path,
+        "go-gateway",
+        report_path,
+        "--go-report",
+        f"go-gateway={report_path}",
+    )
+
+
+@pytest.mark.parametrize(
+    "record",
+    (
+        "services/gateway/main.go:0.0,0.0 1 1",
+        "services/gateway/main.go:3.9,3.0 1 1",
+    ),
+)
+def test_parser_hardening_preserves_go_nonnegative_profile_positions(
+    tmp_path: Path,
+    record: str,
+) -> None:
+    report_path = tmp_path / "nonnegative-go-positions.coverprofile"
+    report_path.write_text(
+        "\n".join(("mode: count", record, "")),
+        encoding="utf-8",
+    )
+    output = tmp_path / "quality-manifest.json"
+
+    result = _run_normalizer(
+        output,
+        "--go-report",
+        f"go-gateway={report_path}",
+    )
+
+    assert result.returncode == 1
+    assert "Traceback" not in result.stderr
+    assert (
+        json.loads(output.read_text(encoding="utf-8"))["components"]["go-gateway"][
+            "status"
+        ]
+        == "failed"
+    )
+
+
+def test_parser_hardening_rejects_go_line_range_ending_before_it_starts(
+    tmp_path: Path,
+) -> None:
+    report_path = tmp_path / "reversed-go-lines.coverprofile"
+    report_path.write_text(
+        "mode: count\nservices/gateway/main.go:3.0,1.0 1 1\n",
+        encoding="utf-8",
+    )
+
+    _assert_structural_source_evidence_failure(
+        tmp_path,
+        "go-gateway",
+        report_path,
+        "--go-report",
+        f"go-gateway={report_path}",
+    )
+
+
+def test_parser_hardening_go_interval_helper_handles_a_huge_span_compactly() -> None:
+    normalizer = _normalizer_module()
+
+    assert normalizer._go_line_coverage_counts(
+        {
+            "services/gateway/main.go": [
+                (1, 3_000_000_000, False),
+                (2_000_000_000, 4_000_000_000, True),
+            ]
+        }
+    ) == (2_000_000_001, 4_000_000_000)
+
+
+def test_parser_hardening_go_interval_helper_rejects_a_reversed_line_span() -> None:
+    normalizer = _normalizer_module()
+
+    with pytest.raises(normalizer._InputError, match="ends before it starts"):
+        normalizer._go_line_coverage_counts(
+            {"services/gateway/main.go": [(3, 1, True)]}
+        )
+
+
+def test_parser_hardening_rejects_non_ascii_condition_coverage_decoration(
+    tmp_path: Path,
+) -> None:
+    report_path = tmp_path / "non-ascii-condition-coverage.xml"
+    report_path.write_text(
+        (FIXTURES / "python-valid.xml")
+        .read_text(encoding="utf-8")
+        .replace('condition-coverage="50% (1/2)"', 'condition-coverage="١% (1/2)"'),
+        encoding="utf-8",
+    )
+
+    _assert_structural_source_evidence_failure(
+        tmp_path,
+        "python",
+        report_path,
+        "--python-xml",
+        str(report_path),
+    )
+
+
+@pytest.mark.parametrize("has_xml_declaration", (False, True))
+def test_parser_hardening_accepts_utf8_xml_without_a_declared_encoding(
+    tmp_path: Path,
+    has_xml_declaration: bool,
+) -> None:
+    report_path = tmp_path / "xml-without-declared-encoding.xml"
+    fixture_bytes = (FIXTURES / "python-valid.xml").read_bytes()
+    body = fixture_bytes.split(b"?>", maxsplit=1)[1]
+    report_path.write_bytes(fixture_bytes if has_xml_declaration else body)
+    output = tmp_path / "quality-manifest.json"
+
+    result = _run_normalizer(output, "--python-xml", str(report_path))
+
+    assert result.returncode == 1
+    assert "Traceback" not in result.stderr
+    assert (
+        json.loads(output.read_text(encoding="utf-8"))["components"]["python"]["status"]
+        == "failed"
+    )
+
+
+@pytest.mark.parametrize("encoding", ("utf-16", "utf-32"))
+def test_parser_hardening_rejects_encoded_xml_dtd_payloads(
+    tmp_path: Path,
+    encoding: str,
+) -> None:
+    report_path = tmp_path / f"encoded-dtd-{encoding}.xml"
+    report_path.write_bytes(
+        (
+            f'<?xml version="1.0" encoding="{encoding.upper()}"?>'
+            '<!DOCTYPE coverage [<!ENTITY unsafe "payload">]>'
+            '<coverage lines-covered="0" lines-valid="0" />'
+        ).encode(encoding)
+    )
+
+    _assert_structural_source_evidence_failure(
+        tmp_path,
+        "python",
+        report_path,
+        "--python-xml",
+        str(report_path),
+    )
+
+
+def test_parser_hardening_rejects_unknown_xml_encoding_with_manifest_evidence(
+    tmp_path: Path,
+) -> None:
+    report_path = tmp_path / "unknown-encoding.xml"
+    body = (FIXTURES / "python-valid.xml").read_bytes().split(b"?>", maxsplit=1)[1]
+    report_path.write_bytes(
+        b'<?xml version="1.0" encoding="not-a-real-encoding"?>' + body
+    )
+
+    _assert_structural_source_evidence_failure(
+        tmp_path,
+        "python",
+        report_path,
+        "--python-xml",
+        str(report_path),
+    )
+
+
+def test_parser_hardening_accepts_utf8_bom_coverage_xml(tmp_path: Path) -> None:
+    report_path = tmp_path / "utf8-bom.xml"
+    body = (FIXTURES / "python-valid.xml").read_bytes().split(b"?>", maxsplit=1)[1]
+    report_path.write_bytes(
+        b'\xef\xbb\xbf<?xml version="1.0" encoding="UTF-8"?>' + body
+    )
+    output = tmp_path / "quality-manifest.json"
+
+    result = _run_normalizer(output, "--python-xml", str(report_path))
+
+    assert result.returncode == 1
+    assert "Traceback" not in result.stderr
+    assert (
+        json.loads(output.read_text(encoding="utf-8"))["components"]["python"]["status"]
+        == "failed"
+    )
+
+
+def test_parser_hardening_deeply_nested_rust_json_writes_failed_manifest(
+    tmp_path: Path,
+) -> None:
+    report_path = tmp_path / "deep-rust.json"
+    report_path.write_text(_deeply_nested_json_object(), encoding="utf-8")
+
+    _assert_structural_source_evidence_failure(
+        tmp_path,
+        "rust-native",
+        report_path,
+        "--rust-report",
+        f"rust-native={report_path}",
+    )
+
+
+def test_parser_hardening_deeply_nested_contract_leaves_output_untouched(
+    tmp_path: Path,
+) -> None:
+    contract_path = tmp_path / "deep-contract.json"
+    contract_path.write_text(_deeply_nested_json_object(), encoding="utf-8")
+    output = tmp_path / "quality-manifest.json"
+    stale_output = b'{"stale": true}\n'
+    output.write_bytes(stale_output)
+
+    result = _run_normalizer(output, "--contract", str(contract_path))
+
+    assert result.returncode == 2
+    assert "Traceback" not in result.stderr
+    assert output.read_bytes() == stale_output
+
+
+def test_parser_hardening_rejects_a_mocked_junction_ancestor(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    normalizer = _normalizer_module()
+
+    def _is_junction(path: Path) -> bool:
+        return path == REPOSITORY_ROOT / "app"
+
+    monkeypatch.setattr(normalizer.Path, "is_junction", _is_junction)
+
+    with pytest.raises(normalizer._InputError, match="symbolic link or junction"):
+        normalizer._parse_python_xml(
+            (FIXTURES / "python-valid.xml").read_bytes(),
+            "python",
+        )
