@@ -78,10 +78,10 @@ The quality contract is the source of truth for thresholds, Tier 0 scope, report
 
 ### Wave 0 — truthful measurement and policy foundation
 
-1. Add the versioned quality contract, validator and empty exclusion/quarantine registers.
-2. Produce a normalized manifest for Python XML, Vitest LCOV/JSON, Go profiles and Rust llvm-cov output; reject stale, absent or mismatched artifacts.
-3. Align local commands, native configuration, Sonar and CI so every declared report is actually emitted.
-4. Make a required policy job validate report freshness, thresholds, Tier 0 entries, diff coverage and expiry dates before uploads are accepted.
+- [x] 1. Add the versioned quality contract, validator and empty exclusion/quarantine registers.
+- [x] 2. Produce a normalized manifest for Python XML, Vitest LCOV/JSON, Go profiles and Rust llvm-cov output; reject stale, absent or mismatched artifacts.
+- [x] 3. Align local commands, native configuration, Sonar and CI so every declared report is actually emitted.
+- [x] 4. Make a required policy job validate report freshness, thresholds, Tier 0 entries, diff coverage and expiry dates before uploads are accepted.
 
 Exit gate: the same revision produces deterministic, schema-valid evidence locally and in CI; no report path, threshold or exclusion is aspirational.
 
