@@ -195,6 +195,13 @@ async def test_sensitive_login_rate_limit(async_client, user_factory, db_session
     headers = {
         "Content-Type": "application/x-www-form-urlencoded",
     }
+
+    # Reset in-memory rate limit state so that prior tests' requests to /auth/login
+    # (with IP 127.0.0.1) don't prematurely trigger the sensitive-route rate limiter
+    # and block our attempts with 429 before the lockout mechanism fires with 423.
+    ratelimit_module.clear_memory_state()
+    ratelimit_module.clear_delay_memory()
+
     # Mock AuditService.log to avoid SQLite lock contention during rapid-fire hits
     monkeypatch.setattr(
         "app.services.audit_service.AuditService.log", lambda *args, **kwargs: None
@@ -210,8 +217,6 @@ async def test_sensitive_login_rate_limit(async_client, user_factory, db_session
     for _ in range(4):
         response = await async_client.post("/auth/login", data=data, headers=headers)
         assert response.status_code == status.HTTP_401_UNAUTHORIZED
-        # Delay to avoid SQLite lock contention on concurrent writes
-        await asyncio.sleep(0.5)
 
     # The 5th attempt triggers lockout (or rate limit) — both 429 and 423 are valid
     blocked = await async_client.post("/auth/login", data=data, headers=headers)
