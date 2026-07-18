@@ -774,3 +774,147 @@ async def test_fastapi_ratelimit_additional_coverage(monkeypatch):
         resp = await client.get("/test-disabled-limit")
         assert resp.status_code == 200
 
+
+# ---------------------------------------------------------------------------
+# resolve_client_ip — trusted proxy paths (covers lines 100-116 in utils.py)
+# ---------------------------------------------------------------------------
+
+
+def test_resolve_client_ip_trusted_proxy_x_forwarded_for(monkeypatch):
+    """Lines 100-108: When client IP is in trusted_proxies_list, use X-Forwarded-For."""
+    from unittest.mock import MagicMock
+    from app.core.ratelimit.utils import resolve_client_ip
+
+    monkeypatch.setattr(settings, "trusted_proxies_list", ["10.0.0.1"])
+
+    request = MagicMock()
+    request.client.host = "10.0.0.1"
+    request.headers.get = lambda header, default=None: {
+        "X-Forwarded-For": "192.168.1.100, 10.0.0.1",
+        "Forwarded": None,
+    }.get(header)
+
+    ip = resolve_client_ip(request)
+    # Should use the first valid IP from X-Forwarded-For
+    assert ip == "192.168.1.100"
+
+
+def test_resolve_client_ip_trusted_proxy_forwarded_header(monkeypatch):
+    """Lines 111-114: When X-Forwarded-For is absent, use RFC 7239 Forwarded header."""
+    from unittest.mock import MagicMock
+    from app.core.ratelimit.utils import resolve_client_ip
+
+    monkeypatch.setattr(settings, "trusted_proxies_list", ["10.0.0.1"])
+
+    request = MagicMock()
+    request.client.host = "10.0.0.1"
+    request.headers.get = lambda header, default=None: {
+        "X-Forwarded-For": None,
+        "Forwarded": "for=203.0.113.10;proto=http",
+    }.get(header)
+
+    ip = resolve_client_ip(request)
+    assert ip == "203.0.113.10"
+
+
+def test_resolve_client_ip_trusted_proxy_invalid_x_forwarded_for(monkeypatch):
+    """Lines 103->111: X-Forwarded-For with no valid IPs falls through to Forwarded header."""
+    from unittest.mock import MagicMock
+    from app.core.ratelimit.utils import resolve_client_ip
+
+    monkeypatch.setattr(settings, "trusted_proxies_list", ["10.0.0.1"])
+
+    request = MagicMock()
+    request.client.host = "10.0.0.1"
+    # X-Forwarded-For has only invalid IPs
+    request.headers.get = lambda header, default=None: {
+        "X-Forwarded-For": "not-an-ip, also-invalid",
+        "Forwarded": "for=10.0.0.2",
+    }.get(header)
+
+    ip = resolve_client_ip(request)
+    # Falls through to Forwarded header
+    assert ip == "10.0.0.2"
+
+
+def test_resolve_client_ip_not_trusted(monkeypatch):
+    """Line 100: When client IP is NOT in trusted_proxies_list, use direct client IP."""
+    from unittest.mock import MagicMock
+    from app.core.ratelimit.utils import resolve_client_ip
+
+    monkeypatch.setattr(settings, "trusted_proxies_list", ["10.0.0.1"])
+
+    request = MagicMock()
+    request.client.host = "192.168.1.50"  # Not in trusted proxies
+    request.headers.get = lambda header, default=None: {
+        "X-Forwarded-For": "1.2.3.4",
+    }.get(header)
+
+    ip = resolve_client_ip(request)
+    # Should use the direct client IP, not X-Forwarded-For
+    assert ip == "192.168.1.50"
+
+
+def test_resolve_client_ip_no_client(monkeypatch):
+    """Line 94: When request.client is None, uses 'unknown' as client host."""
+    from unittest.mock import MagicMock
+    from app.core.ratelimit.utils import resolve_client_ip
+
+    monkeypatch.setattr(settings, "trusted_proxies_list", [])
+
+    request = MagicMock()
+    request.client = None
+    request.headers.get = lambda header, default=None: None
+
+    ip = resolve_client_ip(request)
+    assert ip == "unknown"
+
+
+def test_extract_user_id_for_ratelimit_exception_path(monkeypatch):
+    """Lines 154-155: Exception in decode_token returns None (fail-closed)."""
+    from unittest.mock import MagicMock
+    from app.core.ratelimit.utils import extract_user_id_for_ratelimit
+
+    request = MagicMock()
+    request.headers.get = lambda header, default="": "Bearer sometoken"
+    request.cookies.get = lambda header: None
+
+    def raise_exc(token):
+        raise Exception("JWT error")
+
+    # decode_token is a lazy import inside the try block; patch the source module
+    monkeypatch.setattr("app.auth.security.decode_token", raise_exc)
+
+    result = extract_user_id_for_ratelimit(request)
+    assert result is None
+
+
+def test_extract_user_id_for_ratelimit_from_cookie(monkeypatch):
+    """Lines 142-153: Falls back to cookie when no Authorization header."""
+    from unittest.mock import MagicMock
+    from app.core.ratelimit.utils import extract_user_id_for_ratelimit
+
+    request = MagicMock()
+    request.headers.get = lambda header, default="": ""  # No auth header
+    request.cookies.get = lambda header: "cookie_token"
+
+    monkeypatch.setattr("app.auth.security.decode_token", lambda token: {"sub": "user-123"})
+
+    result = extract_user_id_for_ratelimit(request)
+    assert result == "user-123"
+
+
+def test_extract_user_id_for_ratelimit_none_sub(monkeypatch):
+    """Line 153: When sub is None or empty, returns None."""
+    from unittest.mock import MagicMock
+    from app.core.ratelimit.utils import extract_user_id_for_ratelimit
+
+    request = MagicMock()
+    request.headers.get = lambda header, default="": "Bearer token"
+    request.cookies.get = lambda header: None
+
+    # Token decodes but sub is None
+    monkeypatch.setattr("app.auth.security.decode_token", lambda token: {"sub": None})
+
+    result = extract_user_id_for_ratelimit(request)
+    assert result is None
