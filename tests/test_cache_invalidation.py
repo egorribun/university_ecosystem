@@ -172,3 +172,30 @@ async def test_invalidates_cache_decorator_exception(monkeypatch):
     with pytest.raises(ValueError):
         await do_work()
     mock_invalidate.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_register_key_with_tags_connection_error(monkeypatch):
+    async def mock_get_client():
+        mock_redis = MagicMock()
+        mock_redis.pipeline.side_effect = ConnectionError("Connection refused")
+        return mock_redis
+
+    monkeypatch.setattr("app.deps.cache.get_cache_client", mock_get_client)
+
+    # Should handle ConnectionError gracefully
+    await register_key_with_tags("schedule:group:1", 3600)
+
+
+@pytest.mark.asyncio
+async def test_invalidate_by_tag_connection_error(monkeypatch):
+    async def mock_get_client():
+        mock_redis = MagicMock()
+        mock_redis.smembers = AsyncMock(side_effect=TimeoutError("Timeout"))
+        return mock_redis
+
+    monkeypatch.setattr("app.deps.cache.get_cache_client", mock_get_client)
+
+    # Should handle TimeoutError gracefully and return 0
+    res = await invalidate_by_tag(CacheTag.SCHEDULE)
+    assert res == 0
