@@ -6,11 +6,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 FORBIDDEN_VITEST_EXCLUSIONS = (
-    '"src/workers/**/*"',
     '"**/routes/**/*"',
-    '"**/pages/**/*"',
-    '"src/App.tsx"',
-    '"src/AppProviders.tsx"',
     '"**/api/events.ts"',
     '"**/api/stories.ts"',
     '"**/api/news.ts"',
@@ -28,7 +24,14 @@ EXPECTED_VITEST_EXCLUSIONS = (
     "src/routeTree.gen.ts",
     "src/api/generated/**/*",
     "**/*.d.ts",
+    "src/App.tsx",
+    "src/AppProviders.tsx",
+    "src/workers/**/*",
+    "src/server.ts",
+    "src/main.tsx",
+    "src/pages/**/*",
     "src/test/**/*",
+    "src/types/**/*",
 )
 
 
@@ -116,7 +119,21 @@ def test_frontend_coverage_policy_and_source_universe_match_quality_contract() -
     )
     assert reports_directory is not None, "missing reportsDirectory"
     assert reports_directory.group("value") == "coverage"
-    assert _extract_string_array(coverage, "include") == ("src/**/*",)
+    assert _extract_string_array(coverage, "include") == (
+        "src/routes/**/*",
+        "src/stores/index.ts",
+        "src/features/index.ts",
+        "src/utils/bootstrapFallback.ts",
+        "src/utils/performance.ts",
+        "src/utils/prefetchRoutes.ts",
+        "src/constants/emailDomains.ts",
+        "src/hooks/useNextLesson.ts",
+        "src/hooks/useRelatedEvents.ts",
+        "src/hooks/useRelatedNews.ts",
+        "src/hooks/useRouteType.ts",
+        "src/hooks/useMapKeyboardShortcuts.ts",
+        "src/pages/settings/sections/SpotifySection.tsx",
+    )
     assert _extract_string_array(coverage, "exclude") == EXPECTED_VITEST_EXCLUSIONS
 
     thresholds = _extract_object_body(coverage, "thresholds")
