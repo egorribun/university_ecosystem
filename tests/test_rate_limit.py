@@ -178,7 +178,7 @@ async def test_rate_limit_skips_static_paths():
 
 
 @pytest.mark.asyncio
-async def test_sensitive_login_rate_limit(async_client, user_factory, monkeypatch):
+async def test_sensitive_login_rate_limit(async_client, user_factory, db_session, monkeypatch):
     import uuid
 
     password = "ValidPass123!"
@@ -189,17 +189,29 @@ async def test_sensitive_login_rate_limit(async_client, user_factory, monkeypatc
         hashed_password=await get_password_hash(password),
     )
     data = {"username": user.email, "password": "wrong-password"}
-    # Bearer token bypasses CSRF middleware
+    # Only Content-Type header needed — the async_client fixture pre-configures CSRF.
+    # Do NOT use 'Authorization: Bearer dummy' as it causes JWT middleware to
+    # reject requests with 401 before the login handler can track failed attempts.
     headers = {
         "Content-Type": "application/x-www-form-urlencoded",
-        "Authorization": "Bearer dummy",
     }
+    # Use the default lockout threshold "5:30" — after 5 failures, the 6th gets 423.
+    # Set history_minutes=5 so attempts aren't pruned (same as test_auth_lockout.py).
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "auth_lockout_history_minutes", 5)
     # Mock AuditService.log to avoid SQLite lock contention during rapid-fire hits
     monkeypatch.setattr(
         "app.services.audit_service.AuditService.log", lambda *args, **kwargs: None
     )
+    # Mock the lockout alert email task (it tries to connect to SMTP in testing)
+    from unittest.mock import AsyncMock
 
-    for _ in range(4):
+    monkeypatch.setattr("app.tasks.email.send_lockout_alert.kick", AsyncMock())
+
+    # Send 5 failed attempts — default threshold is 5:30, so after 5 failures,
+    # the 6th request triggers the 423 Locked response.
+    for _ in range(5):
         response = await async_client.post("/auth/login", data=data, headers=headers)
         assert response.status_code == status.HTTP_401_UNAUTHORIZED
         # Delay to avoid SQLite lock contention on concurrent writes
