@@ -696,3 +696,81 @@ async def test_rate_limit_per_endpoint_limits():
             resp = await client.get("/other")
             assert resp.status_code == 200, f"Other request {i + 1} should succeed"
             assert resp.headers.get("X-RateLimit-Limit") == "10"
+
+
+@pytest.mark.asyncio
+async def test_fastapi_ratelimit_additional_coverage(monkeypatch):
+    from unittest.mock import patch
+    # 1. Test resolved_limit <= 0 or resolved_window <= 0
+    monkeypatch.setattr(settings, "rate_limit_enabled", True)
+    dependency = ratelimit_module.sensitive_route_limit(limit=0, window_sec=60)
+    app = FastAPI()
+    @app.get("/test-zero-limit", dependencies=[Depends(dependency)])
+    async def _test_zero():
+        return {"ok": True}
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        resp = await client.get("/test-zero-limit")
+        assert resp.status_code == 200
+
+    # 2. Test user_id extracted from JWT
+    with patch("app.core.ratelimit.fastapi.extract_user_id_for_ratelimit", return_value="user123"):
+        dependency = ratelimit_module.sensitive_route_limit(limit=1, window_sec=60)
+        app2 = FastAPI()
+        @app2.get("/test-user-limit", dependencies=[Depends(dependency)])
+        async def _test_user():
+            return {"ok": True}
+        transport2 = httpx.ASGITransport(app=app2)
+        async with httpx.AsyncClient(transport=transport2, base_url="http://testserver") as client:
+            resp1 = await client.get("/test-user-limit")
+            assert resp1.status_code == 200
+
+    # 3. Test RedisSlidingWindowStrategy configuration
+    from unittest.mock import AsyncMock, MagicMock
+    monkeypatch.setattr(settings, "rate_limit_storage_backend", "redis")
+    monkeypatch.setattr(settings, "rate_limit_storage_uri", "redis://localhost:6379/0")
+    with patch("app.core.ratelimit.fastapi.RedisSlidingWindowStrategy") as mock_redis_strategy:
+        mock_instance = MagicMock()
+        mock_instance.check = AsyncMock(return_value=ratelimit_module.RateLimitInfo(allowed=True, remaining=1, retry_after=0))
+        mock_redis_strategy.return_value = mock_instance
+        dependency = ratelimit_module.sensitive_route_limit(limit=1, window_sec=60)
+        app3 = FastAPI()
+        @app3.get("/test-redis-limit", dependencies=[Depends(dependency)])
+        async def _test_redis():
+            return {"ok": True}
+        transport3 = httpx.ASGITransport(app=app3)
+        async with httpx.AsyncClient(transport=transport3, base_url="http://testserver") as client:
+            await client.get("/test-redis-limit")
+            mock_redis_strategy.assert_called_once_with("redis://localhost:6379/0")
+
+    # 4. Test RateLimitStorageUnavailable propagation
+    from app.core.ratelimit.exceptions import RateLimitStorageUnavailable
+    monkeypatch.setattr(settings, "rate_limit_storage_backend", "memory")
+    with patch("app.core.ratelimit.fastapi.enforce_rate_limit", side_effect=RateLimitStorageUnavailable("Storage offline")):
+        dependency = ratelimit_module.sensitive_route_limit(limit=1, window_sec=60)
+        app4 = FastAPI()
+        @app4.get("/test-unavailable-limit", dependencies=[Depends(dependency)])
+        async def _test_unavailable():
+            return {"ok": True}
+        transport4 = httpx.ASGITransport(app=app4)
+        async with httpx.AsyncClient(transport=transport4, base_url="http://testserver") as client:
+            with pytest.raises(RateLimitStorageUnavailable):
+                await client.get("/test-unavailable-limit")
+
+    # 5. Test get_progressive_delay_tracker settings exception
+    with patch("app.core.ratelimit.fastapi.settings", new=None):
+        tracker = ratelimit_module.get_progressive_delay_tracker()
+        assert tracker._redis_url is None
+
+    # 6. Test rate limit disabled
+    monkeypatch.setattr(settings, "rate_limit_enabled", False)
+    dependency = ratelimit_module.sensitive_route_limit(limit=1, window_sec=60)
+    app5 = FastAPI()
+    @app5.get("/test-disabled-limit", dependencies=[Depends(dependency)])
+    async def _test_disabled():
+        return {"ok": True}
+    transport5 = httpx.ASGITransport(app=app5)
+    async with httpx.AsyncClient(transport=transport5, base_url="http://testserver") as client:
+        resp = await client.get("/test-disabled-limit")
+        assert resp.status_code == 200
+

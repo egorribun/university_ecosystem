@@ -82,3 +82,61 @@ class TestLegacyFeatureFlagsBridge:
             assert isinstance(d, dict)
             assert FLAG_NEW_CHAT_UI in d
             assert d[FLAG_NEW_CHAT_UI] is False
+
+
+@pytest.mark.asyncio
+async def test_feature_flags_additional_coverage():
+    # 1. Test bridge initialize/close
+    await feature_flags.initialize()
+    await feature_flags.close()
+
+    # 2. Test bridge update with invalid name
+    res = await feature_flags.update("non-existent-flag", enabled=True)
+    assert res is None
+
+    # 3. Test bridge update with enabled=None
+    res = await feature_flags.update(FLAG_NEW_CHAT_UI, enabled=None)
+    assert res["name"] == FLAG_NEW_CHAT_UI
+    assert res["enabled"] is False
+
+    # 4. Test is_enabled_sync exception handling
+    with patch("openfeature.api.get_client", side_effect=Exception("Sync error")):
+        assert is_enabled_sync("some-flag", default=True) is True
+
+    # 5. Test _ensure_provider fast path (already initialized)
+    from app.core.feature_flags import _ensure_provider
+    with patch("app.core.feature_flags._provider_initialized", True):
+        # Should return immediately
+        _ensure_provider()
+
+    # 6. Test _ensure_provider flagd initialization exception
+    import sys
+    mock_flagd = MagicMock()
+    mock_flagd.FlagdProvider = MagicMock(side_effect=ValueError("Flagd init error"))
+    with patch.dict(sys.modules, {"openfeature.contrib.provider.flagd": mock_flagd}):
+        with patch("app.core.feature_flags._provider_initialized", False):
+            _ensure_provider()
+
+    # 7. Test _ensure_provider ImportError fallback
+    import builtins
+    orig_import = builtins.__import__
+
+    def mock_import(name, *args, **kwargs):
+        if "openfeature" in name:
+            raise ImportError("Simulated import error")
+        return orig_import(name, *args, **kwargs)
+
+    with patch("builtins.__import__", side_effect=mock_import):
+        with patch("app.core.feature_flags._provider_initialized", False):
+            _ensure_provider()
+
+    # 8. Test is_enabled ImportError fallback
+    with patch("builtins.__import__", side_effect=mock_import):
+        res = await is_enabled("some-flag", default=True)
+        assert res is True
+
+    # 9. Test is_enabled_sync ImportError fallback
+    with patch("builtins.__import__", side_effect=mock_import):
+        res = is_enabled_sync("some-flag", default=True)
+        assert res is True
+
