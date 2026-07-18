@@ -70,3 +70,21 @@ func TestLoad_MissingCredentials(t *testing.T) {
 	_, err = Load()
 	assert.Error(t, err)
 }
+
+func TestLoad_MissingJWTSecretAndRSAPublicKey(t *testing.T) {
+	t.Setenv("FP_JWT_SECRET", "")
+	t.Setenv("FP_RSA_PUBLIC_KEY_PEM", "")
+	_, err := Load()
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "either FP_JWT_SECRET or FP_RSA_PUBLIC_KEY_PEM must be set")
+}
+
+func TestLoad_RSAPublicKeySetOnly(t *testing.T) {
+	t.Setenv("FP_JWT_SECRET", "")
+	t.Setenv("FP_RSA_PUBLIC_KEY_PEM", "dummy-rsa-key-pem")
+	cfg, err := Load()
+	assert.NoError(t, err)
+	assert.NotNil(t, cfg)
+	assert.Equal(t, "dummy-rsa-key-pem", cfg.RSAPublicKeyPEM)
+	assert.Empty(t, cfg.JWTSecret)
+}

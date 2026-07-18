@@ -140,14 +140,14 @@ func TestIntegration_GatewayToWSHubE2E(t *testing.T) {
 
 	// 3. Configure and start Gateway Gin engine
 	cfg := &config.Config{
-		Port:                 "8080",
-		BackendURL:           backendServer.URL,
-		RedisURL:             redisConnStr,
-		JWTSecret:            testJWTSecret,
-		InternalHMACSecret:   "internal-secret",
-		AllowedOrigins:       []string{"*"},
-		Environment:          "testing",
-		JWKSRefreshInterval:  3600,
+		Port:                "8080",
+		BackendURL:          backendServer.URL,
+		RedisURL:            redisConnStr,
+		JWTSecret:           testJWTSecret,
+		InternalHMACSecret:  "internal-secret",
+		AllowedOrigins:      []string{"*"},
+		Environment:         "testing",
+		JWKSRefreshInterval: 3600,
 	}
 
 	logger := initLogger()
