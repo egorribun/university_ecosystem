@@ -56,7 +56,7 @@ export function useMapKeyboardShortcuts(deps: MapKeyboardDeps): void {
       }
 
       // /: focus search bar
-      if (e.key === "/") {
+      if (e.key === "/" && !e.shiftKey) {
         e.preventDefault()
         onFocusSearch()
         return

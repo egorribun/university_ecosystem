@@ -10,6 +10,76 @@ from app.services.auth.redis_session import RedisSessionService
 
 
 @pytest.mark.asyncio
+async def test_redis_session_get_inactive_returns_none() -> None:
+    """Line 111: get_session returns None when is_active != '1'."""
+    backend = RedisSessionService(redis_url="redis://localhost:6379/0")
+    jti = "jti-inactive"
+
+    # Simulate a hash that exists but is_active = "0"
+    mock_client = AsyncMock()
+    mock_client.hgetall.return_value = {
+        b"user_id": b"some-user-id",
+        b"session_id": b"",
+        b"fingerprint_hash": b"",
+        b"mfa_verified_at": b"",
+        b"last_seen_at": b"2026-01-01T00:00:00+00:00",
+        b"created_at": b"2026-01-01T00:00:00+00:00",
+        b"is_active": b"0",  # <-- explicitly inactive
+    }
+
+    with patch(
+        "app.services.auth.redis_session._get_shared_client",
+        return_value=mock_client,
+    ):
+        result = await backend.get_session(jti)
+
+    assert result is None, "Inactive session should return None"
+
+
+@pytest.mark.asyncio
+async def test_redis_session_revoke_writes_blocklist_when_ttl_positive() -> None:
+    """Lines 166-175: revoke_session writes revoked:jti:<jti> when TTL > 0."""
+    backend = RedisSessionService(redis_url="redis://localhost:6379/0")
+    jti = "jti-to-revoke"
+
+    mock_client = AsyncMock()
+    mock_client.hset.return_value = 1
+    mock_client.ttl.return_value = 300  # positive TTL → blocklist path executed
+    mock_client.set.return_value = True
+    mock_client.delete.return_value = 1
+
+    with patch(
+        "app.services.auth.redis_session._get_shared_client",
+        return_value=mock_client,
+    ):
+        await backend.revoke_session(jti)
+
+    # Verify the blocklist key was written with the correct name and TTL
+    mock_client.set.assert_awaited_once_with(f"revoked:jti:{jti}", "1", ex=300)
+
+
+@pytest.mark.asyncio
+async def test_redis_session_revoke_no_blocklist_when_ttl_zero() -> None:
+    """Lines 166-175 FALSE path: when TTL <= 0, blocklist key is NOT written."""
+    backend = RedisSessionService(redis_url="redis://localhost:6379/0")
+    jti = "jti-expired"
+
+    mock_client = AsyncMock()
+    mock_client.hset.return_value = 1
+    mock_client.ttl.return_value = 0  # already expired → skip blocklist write
+    mock_client.delete.return_value = 1
+
+    with patch(
+        "app.services.auth.redis_session._get_shared_client",
+        return_value=mock_client,
+    ):
+        await backend.revoke_session(jti)
+
+    # Verify the blocklist set() was NOT called (TTL was 0)
+    mock_client.set.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_redis_session_backend_empty_url() -> None:
     # 1. Initialize backend and force empty URL
     backend = RedisSessionService()

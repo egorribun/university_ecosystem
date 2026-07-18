@@ -9,7 +9,6 @@ type PrefetchOptions = {
 const scheduled = new WeakSet<Loader>()
 
 function schedule(fn: () => void, timeoutMs = 1200) {
-  if (!hasWindow) return
   if (typeof window.requestIdleCallback === "function") {
     window.requestIdleCallback(fn, { timeout: timeoutMs })
     return

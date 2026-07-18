@@ -114,5 +114,17 @@ describe("__root.tsx components", () => {
       expect(screen.getByTestId("theme-provider")).toBeInTheDocument()
       expect(screen.getByTestId("app-providers")).toBeInTheDocument()
     })
+
+    it("evaluates head() function to return SEO metadata tags", () => {
+      const headFn = Route.options.head
+      expect(headFn).toBeDefined()
+      if (headFn) {
+        const headData = headFn({} as any)
+        expect(headData).toBeDefined()
+        expect(headData.meta).toBeDefined()
+        expect(headData.links).toBeDefined()
+        expect(headData.meta?.some((m: any) => m.title)).toBe(true)
+      }
+    })
   })
 })
