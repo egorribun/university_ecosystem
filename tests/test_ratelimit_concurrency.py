@@ -447,7 +447,6 @@ def test_circuit_breaker_reset_for_testing_clears_state() -> None:
     cb.reset_for_testing()
     assert cb.state == CircuitState.CLOSED
 
-
 def test_record_success_in_closed_state_resets_failure_count() -> None:
     """Lines 105-106: record_success() in CLOSED state resets failure_count to 0.
 
@@ -484,3 +483,10 @@ def test_transition_no_op_when_same_state() -> None:
     # State must still be CLOSED and failure count unchanged
     assert cb.state == CircuitState.CLOSED
     assert cb._failure_count == 0  # type: ignore[attr-defined]
+
+
+def test_circuit_breaker_transition_no_op() -> None:
+    """_transition returns early without changes if new state matches current state."""
+    cb = RedisCircuitBreaker(failure_threshold=2)
+    cb._transition(cb._state)
+    assert cb.state == CircuitState.CLOSED

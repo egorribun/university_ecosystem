@@ -1,0 +1,6 @@
+{
+  "name": "rust-crypto",
+  "version": "0.1.0",
+  "main": "uni_wasm_crypto.js",
+  "types": "uni_wasm_crypto.d.ts"
+}

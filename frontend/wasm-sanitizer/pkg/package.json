@@ -1,0 +1,6 @@
+{
+  "name": "wasm-sanitizer",
+  "version": "0.1.0",
+  "main": "wasm_sanitizer.js",
+  "types": "wasm_sanitizer.d.ts"
+}
