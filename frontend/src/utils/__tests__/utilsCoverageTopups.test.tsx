@@ -1,10 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
-import { render, waitFor } from "@testing-library/react"
+import { waitFor } from "@testing-library/react"
 import { getBootstrapFallbackCopy, renderBootstrapFallback } from "../bootstrapFallback"
 import { measureAsync, mark, measure, getWebVitals, reportMetric, timed, metricsBuffer } from "../performance"
 import { prefetchRouteModules } from "../prefetchRoutes"
 import { COMMON_EMAIL_DOMAINS } from "../../constants/emailDomains"
-import React from "react"
+
 
 describe("Utils Coverage Topups", () => {
   describe("emailDomains.ts", () => {
@@ -64,7 +64,7 @@ describe("Utils Coverage Topups", () => {
           const el = document.createElement(tag)
           if (tag === "button") {
             const orig = el.addEventListener
-            el.addEventListener = function (type, cb, options) {
+            el.addEventListener = function (type: any, cb: any, options?: any) {
               if (type === "click") clickListener = cb
               return orig.call(this, type, cb, options)
             }

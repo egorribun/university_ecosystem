@@ -119,7 +119,7 @@ describe("__root.tsx components", () => {
       const headFn = Route.options.head
       expect(headFn).toBeDefined()
       if (headFn) {
-        const headData = headFn({} as any)
+        const headData = headFn({} as any) as any
         expect(headData).toBeDefined()
         expect(headData.meta).toBeDefined()
         expect(headData.links).toBeDefined()

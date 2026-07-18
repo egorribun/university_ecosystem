@@ -61,7 +61,7 @@ describe("useMapKeyboardShortcuts hook", () => {
     deps.onSelectBuilding.mockClear()
     const addEventListenerSpy = vi.spyOn(window, "addEventListener")
     const { unmount: unmount2 } = renderHook(() => useMapKeyboardShortcuts(deps))
-    const handler = addEventListenerSpy.mock.calls.find(call => call[0] === "keydown")?.[1] as Function
+    const handler = addEventListenerSpy.mock.calls.find(call => (call[0] as string) === "keydown")?.[1] as Function
     expect(handler).toBeDefined()
     // Invoke handler with null target event structure
     handler({

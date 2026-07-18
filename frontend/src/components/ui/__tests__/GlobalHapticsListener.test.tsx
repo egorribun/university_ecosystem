@@ -1,7 +1,6 @@
 import { describe, expect, it, vi } from "vitest"
 import { render, fireEvent } from "@testing-library/react"
 import { GlobalHapticsListener } from "../GlobalHapticsListener"
-import React from "react"
 
 const mockTrigger = vi.fn()
 vi.mock("@/hooks/useHaptics", () => ({

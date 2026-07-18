@@ -4,7 +4,6 @@ import { useNextLesson } from "../useNextLesson"
 import { useRelatedEvents } from "../useRelatedEvents"
 import { useRelatedNews } from "../useRelatedNews"
 import { useRouteType } from "../useRouteType"
-import { QueryClient } from "@tanstack/react-query"
 
 // Mock dependencies
 const mockUseScheduleData = vi.fn()
@@ -123,8 +122,8 @@ describe("useNextLesson, useRelatedEvents, useRelatedNews, useRouteType hooks", 
       // Limit of 2: will return 2 sameCategory
       const { result } = renderHook(() => useRelatedEvents("1", "lecture", 2))
       expect(result.current).toHaveLength(2)
-      expect(result.current[0].id).toBe("2")
-      expect(result.current[1].id).toBe("4")
+      expect(result.current![0]!.id).toBe("2")
+      expect(result.current![1]!.id).toBe("4")
 
       // Limit of 4: will return all sameCategory + remaining
       const { result: res2 } = renderHook(() => useRelatedEvents("1", "lecture", 4))
@@ -147,8 +146,8 @@ describe("useNextLesson, useRelatedEvents, useRelatedNews, useRouteType hooks", 
       // Limit of 2: will return 2 sameCategory
       const { result } = renderHook(() => useRelatedNews("1", "education", 2))
       expect(result.current).toHaveLength(2)
-      expect(result.current[0].id).toBe("2")
-      expect(result.current[1].id).toBe("4")
+      expect(result.current![0]!.id).toBe("2")
+      expect(result.current![1]!.id).toBe("4")
 
       // Limit of 4: will return all sameCategory + remaining
       const { result: res2 } = renderHook(() => useRelatedNews("1", "education", 4))

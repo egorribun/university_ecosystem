@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest"
-import { render, screen, waitFor } from "@testing-library/react"
+import { render, screen } from "@testing-library/react"
 import { Route as IndexRoute } from "../index"
 import { Route as AdminRoute } from "../_admin"
 import { Route as AuthRoute } from "../_auth"
@@ -22,7 +22,7 @@ import { Route as ScheduleRoute } from "../_auth/schedule"
 import { Route as SettingsRoute } from "../_auth/settings"
 import { useAuthStore } from "@/stores/useAuthStore"
 import { QueryClient } from "@tanstack/react-query"
-import React from "react"
+
 
 vi.mock("@tanstack/react-router", async (importOriginal) => {
   const actual = await importOriginal<any>()
@@ -87,11 +87,11 @@ describe("Routes layouts and boilerplate", () => {
   it("ActivityRoute and MapRoute validateSearch coverage", () => {
     const activitySearch = ActivityRoute.options.validateSearch
     expect(activitySearch).toBeDefined()
-    expect(activitySearch!({ p: "30d" } as any)).toEqual({ p: "30d" })
+    expect((activitySearch as any)({ p: "30d" })).toEqual({ p: "30d" })
 
     const mapSearch = MapRoute.options.validateSearch
     expect(mapSearch).toBeDefined()
-    expect(mapSearch!({ z: 16 } as any)).toEqual({ z: 16 })
+    expect((mapSearch as any)({ z: 16 })).toEqual({ z: 16 })
   })
 
   it("AdminLayout rendering", () => {
@@ -167,9 +167,9 @@ describe("Routes layouts and boilerplate", () => {
     const mockQueryClient = new QueryClient()
     mockQueryClient.ensureQueryData = vi.fn().mockResolvedValue({})
     
-    await loader!({
+    await (loader as any)({
       context: { queryClient: mockQueryClient },
-    } as any)
+    })
     
     expect(mockQueryClient.ensureQueryData).toHaveBeenCalledTimes(2)
   })
@@ -180,10 +180,10 @@ describe("Routes layouts and boilerplate", () => {
     const mockQueryClient = new QueryClient()
     mockQueryClient.ensureQueryData = vi.fn().mockResolvedValue({})
 
-    await loader!({
+    await (loader as any)({
       context: { queryClient: mockQueryClient },
       params: { id: "1" },
-    } as any)
+    })
 
     expect(mockQueryClient.ensureQueryData).toHaveBeenCalledTimes(1)
   })
@@ -194,9 +194,9 @@ describe("Routes layouts and boilerplate", () => {
     const mockQueryClient = new QueryClient()
     mockQueryClient.ensureQueryData = vi.fn().mockResolvedValue({})
 
-    await loader!({
+    await (loader as any)({
       context: { queryClient: mockQueryClient },
-    } as any)
+    })
 
     expect(mockQueryClient.ensureQueryData).toHaveBeenCalledTimes(1)
   })

@@ -36,6 +36,10 @@ describe("Features Index re-exports", () => {
     expect(useScheduleUIStore).toBeDefined()
     expect(useWeekOffset).toBeDefined()
     expect(useViewMode).toBeDefined()
+    expect(ScheduleDesktopTable).toBeDefined()
+    expect(ScheduleMobileView).toBeDefined()
+    expect(ScheduleListView).toBeDefined()
+    expect(LessonCard).toBeDefined()
     expect(ScheduleSettingsPanel).toBeDefined()
   })
 

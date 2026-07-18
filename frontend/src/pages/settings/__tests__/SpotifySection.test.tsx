@@ -1,7 +1,6 @@
 import { describe, expect, it, vi } from "vitest"
 import { render, screen, fireEvent } from "@testing-library/react"
 import { SpotifySection } from "../sections/SpotifySection"
-import React from "react"
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({
@@ -30,6 +29,7 @@ describe("SpotifySection component", () => {
         displayName=""
         onConnect={onConnect}
         onDisconnect={onDisconnect}
+        setSnackbar={vi.fn()}
       />
     )
 
@@ -51,6 +51,7 @@ describe("SpotifySection component", () => {
         displayName="SpotifyUser123"
         onConnect={onConnect}
         onDisconnect={onDisconnect}
+        setSnackbar={vi.fn()}
       />
     )
 
