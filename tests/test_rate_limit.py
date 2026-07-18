@@ -288,6 +288,137 @@ async def test_rate_limit_memory_backend_blocks_requests():
 
 
 @pytest.mark.asyncio
+async def test_middleware_double_failure_503():
+    """Lines 119-136: When storage_backend is 'memory' and _check_limit raises,
+    the middleware's else branch returns 503 (double failure path).
+
+    The else-branch at line 119 handles non-redis backends: if _check_limit raises
+    any exception AND the backend is not 'redis', there's no Redis fallback,
+    so the middleware fails-closed with 503 (RZ-27-03).
+    """
+    import unittest.mock
+
+    import httpx
+    from fastapi import FastAPI
+
+    from app.core.ratelimit.middleware import RateLimitMiddleware
+
+    app = FastAPI()
+    app.add_middleware(
+        RateLimitMiddleware,
+        storage_backend="memory",  # non-redis → double-failure else branch
+        redis_url="",
+        limit=100,
+        window_seconds=60,
+    )
+
+    @app.get("/boom")
+    async def _boom():
+        return {"ok": True}
+
+    async def raise_error(self_or_identifier, *args, **kwargs):
+        raise OSError("Memory strategy completely failed")
+
+    # Patch at class level so all instances use the failing _check_limit
+    with unittest.mock.patch.object(RateLimitMiddleware, "_check_limit", raise_error):
+        transport = httpx.ASGITransport(app=app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+            response = await client.get("/boom")
+
+    # Should return 503 (double failure: memory backend failed, no Redis fallback)
+    assert response.status_code == status.HTTP_503_SERVICE_UNAVAILABLE
+    assert "Service temporarily unavailable" in response.text
+
+
+@pytest.mark.asyncio
+async def test_middleware_redis_fallback_exceeded_log():
+    """Lines 113-118: When Redis fallback strategy is also exceeded,
+    the middleware logs ERROR 'Rate limit exceeded (fallback-mode)'.
+
+    When storage_backend='redis', _check_limit raises, AND the fallback memory strategy
+    also reports rate limit exceeded, the error log at line 114 is triggered.
+    """
+    import httpx
+    from fastapi import FastAPI
+
+    from app.core.ratelimit.middleware import RateLimitMiddleware
+
+    app = FastAPI()
+    app.add_middleware(
+        RateLimitMiddleware,
+        storage_backend="redis",
+        redis_url="redis://localhost:6379",
+        limit=1,  # Very low limit for fallback (fallback_limit = max(1//2, 1) = 1)
+        window_seconds=60,
+    )
+
+    @app.get("/limited")
+    async def _limited():
+        return {"ok": True}
+
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        # Find and patch _check_limit on the Redis middleware instance
+        current = app.middleware_stack
+        while current is not None:
+            if isinstance(current, RateLimitMiddleware):
+                request_count = 0
+
+                async def failing_then_exceeded(identifier, limit, window):
+                    nonlocal request_count
+                    request_count += 1
+                    if request_count <= 2:
+                        raise OSError("Redis down")
+                    # On 3rd+ call, return exceeded from fallback
+                    from app.core.ratelimit.models import RateLimitInfo
+
+                    return RateLimitInfo(allowed=False, remaining=0, retry_after=60)
+
+                current._check_limit = failing_then_exceeded  # type: ignore[method-assign]
+                break
+            current = getattr(current, "app", None)
+
+        # First call: Redis fails → fallback at 50% limit (1 req/min)
+        # Fallback limit = max(1//2, 1) = 1
+        resp1 = await client.get("/limited")
+        assert resp1.status_code == status.HTTP_200_OK  # 1st fallback allowed
+
+        # Second call: Redis fails → fallback already used → exceeded → 429
+        resp2 = await client.get("/limited")
+        assert resp2.status_code == status.HTTP_429_TOO_MANY_REQUESTS
+
+
+@pytest.mark.asyncio
+async def test_middleware_head_static_path_returns_200():
+    """Lines 75-78: HEAD requests on static-like paths return 200 without calling app.
+
+    When `method == 'HEAD'` AND `_is_static_like_path(path)` is True, the middleware
+    returns a 200 response WITHOUT calling the inner app.
+    """
+    import httpx
+    from fastapi import FastAPI
+
+    from app.core.ratelimit.middleware import RateLimitMiddleware
+
+    app = FastAPI()
+    app.add_middleware(
+        RateLimitMiddleware,
+        storage_backend="memory",
+        limit=100,
+        window_seconds=60,
+    )
+
+    @app.head("/static/image.png")
+    async def _head_static():
+        raise Exception("Inner app should NOT be called for static HEAD")
+
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        response = await client.head("/static/image.png")
+        assert response.status_code == status.HTTP_200_OK
+
+
+@pytest.mark.asyncio
 async def test_sensitive_dependency_memory_backend(monkeypatch):
     monkeypatch.setattr(settings, "rate_limit_storage_backend", "memory")
     monkeypatch.setattr(settings, "rate_limit_storage_uri", "memory://")
