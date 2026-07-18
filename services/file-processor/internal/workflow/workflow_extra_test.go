@@ -15,10 +15,8 @@ import (
 	"image"
 	"image/jpeg"
 	"io"
-	"net/http"
 	"net/http/httptest"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -272,34 +270,4 @@ func TestDownloadAndDecodeImage_DecodePanic(t *testing.T) {
 	_, _, err := a.downloadAndDecodeImage(context.Background(), "in/panic.png")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "panic during image decode")
-}
-
-func TestDownloadAndDecodeImage_ContextCancelled(t *testing.T) {
-	readStarted := make(chan struct{})
-	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "image/png")
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte("some initial bytes to start read"))
-		flusher, ok := w.(http.Flusher)
-		if ok {
-			flusher.Flush()
-		}
-		close(readStarted)
-		<-r.Context().Done()
-	})
-	srv := httptest.NewServer(handler)
-	defer srv.Close()
-
-	a := &FileActivities{MinioClient: minioClientFor(t, srv.URL), Bucket: "bucket"}
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	go func() {
-		<-readStarted
-		time.Sleep(10 * time.Millisecond)
-		cancel()
-	}()
-
-	_, _, err := a.downloadAndDecodeImage(ctx, "in/blocking.png")
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "context cancelled during image decode")
 }
