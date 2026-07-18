@@ -22,6 +22,22 @@ pub fn hmac_sha256_sign(key: &str, message: &str) -> String {
     hex::encode(result.into_bytes())
 }
 
+#[cfg(target_arch = "wasm32")]
+type ErrorType = JsValue;
+
+#[cfg(not(target_arch = "wasm32"))]
+type ErrorType = String;
+
+#[cfg(target_arch = "wasm32")]
+fn make_err(msg: &str) -> JsValue {
+    JsValue::from_str(msg)
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn make_err(msg: &str) -> String {
+    msg.to_string()
+}
+
 #[wasm_bindgen]
 pub fn scrypt_derive(
     password: &[u8],
@@ -30,11 +46,10 @@ pub fn scrypt_derive(
     r: u32,
     p: u32,
     dk_len: usize,
-) -> Result<Vec<u8>, JsValue> {
+) -> Result<Vec<u8>, ErrorType> {
     let params = ScryptParams::new(n.ilog2() as u8, r, p, dk_len)
-        .map_err(|e| JsValue::from_str(&format!("Invalid scrypt params: {:?}", e)))?;
+        .map_err(|e| make_err(&format!("Invalid scrypt params: {:?}", e)))?;
     let mut res = vec![0u8; dk_len];
-    scrypt(password, salt, &params, &mut res)
-        .map_err(|e| JsValue::from_str(&format!("Scrypt failed: {:?}", e)))?;
+    scrypt(password, salt, &params, &mut res).expect("scrypt output length matches params");
     Ok(res)
 }

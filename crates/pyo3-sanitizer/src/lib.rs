@@ -454,6 +454,55 @@ mod tests {
             assert!(py_err.to_string().contains("test panic string"));
         });
     }
+
+    #[test]
+    fn test_panic_formatting_coverage() {
+        Python::initialize();
+        // Panic with a String
+        let result_string = catch_unwind_to_pyerr(std::panic::AssertUnwindSafe(|| {
+            panic!("{}", "panic String".to_string());
+        }));
+        assert!(result_string.is_err());
+        let py_err_string = result_string.unwrap_err();
+        Python::attach(|_py| {
+            assert!(py_err_string.to_string().contains("panic String"));
+        });
+
+        // Panic with an arbitrary type
+        let result_any = catch_unwind_to_pyerr(std::panic::AssertUnwindSafe(|| {
+            std::panic::panic_any(42u32);
+        }));
+        assert!(result_any.is_err());
+        let py_err_any = result_any.unwrap_err();
+        Python::attach(|_py| {
+            assert!(py_err_any.to_string().contains("Rust panic occurred"));
+        });
+    }
+
+    #[test]
+    fn test_pyo3_bindings_coverage() {
+        Python::initialize();
+        Python::attach(|py| {
+            let module = pyo3::types::PyModule::new(py, "pyo3_sanitizer").unwrap();
+            pyo3_sanitizer(&module).unwrap();
+
+            let py_rich = module.getattr("sanitize_rich_text").unwrap();
+            let res_rich: String = py_rich.call1(("<p>hello</p>",)).unwrap().extract().unwrap();
+            assert_eq!(res_rich, "<p>hello</p>");
+
+            let py_basic = module.getattr("sanitize_html_basic").unwrap();
+            let res_basic: String = py_basic.call1(("<b>bold</b>",)).unwrap().extract().unwrap();
+            assert_eq!(res_basic, "<b>bold</b>");
+
+            let py_strip = module.getattr("strip_html").unwrap();
+            let res_strip: String = py_strip
+                .call1(("<p>strip</p>",))
+                .unwrap()
+                .extract()
+                .unwrap();
+            assert_eq!(res_strip, "strip");
+        });
+    }
 }
 
 // ── Property-Based Tests ──────────────────────────────────────────────────────

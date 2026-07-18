@@ -107,3 +107,10 @@ fn hmac_sha256_sign_with_modified_message_fails_verification() {
         "signature of modified message must not match original signature"
     );
 }
+
+#[test]
+fn scrypt_invalid_params_and_output_len() {
+    assert!(scrypt_derive(b"pw", b"salt", 16, 0, 1, 64).is_err());
+    assert!(scrypt_derive(b"pw", b"salt", 16, 8, 0, 64).is_err());
+    assert!(scrypt_derive(b"pw", b"salt", 16, 8, 1, 0).is_err());
+}
