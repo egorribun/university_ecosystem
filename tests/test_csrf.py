@@ -512,22 +512,22 @@ async def test_csrf_cookie_secure_flag_set(monkeypatch) -> None:
 
     The CSRF token cookie AND the anonymous nonce cookie should contain 'Secure' when
     CSRFMiddleware is initialized with cookie_secure=True.
-    """
-    from app.core.config import settings
 
-    monkeypatch.setattr(settings, "environment", "testing")
+    Line 452 (_build_anon_nonce_cookie Secure append) requires SIGNED mode, because
+    _extract_session_id is only called during response when self._signed=True (line 392).
+    """
     app = _make_app()
-    # Use cookie_secure=True to trigger the `parts.append("Secure")` branches
+    # Use cookie_secure=True AND signed mode to trigger both Secure branches
     app.add_middleware(
         CSRFMiddleware,
-        csrf_hmac_secret="",
-        cookie_secure=True,  # Forces lines 431 and 452
+        csrf_hmac_secret="x" * 32,  # Signed mode so _extract_session_id runs (lines 392-393)
+        cookie_secure=True,  # Forces lines 431 (CSRF token) and 452 (anon nonce)
         cookie_samesite="strict",
     )
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="https://testserver") as client:
         response = await client.get("/safe")
-    # The CSRF Set-Cookie header should include 'Secure'
+    # Both CSRF and anon nonce Set-Cookie headers should include 'Secure'
     set_cookie_headers = [
         v for k, v in response.headers.multi_items() if k.lower() == "set-cookie"
     ]
@@ -536,6 +536,17 @@ async def test_csrf_cookie_secure_flag_set(monkeypatch) -> None:
     )
     assert csrf_cookie is not None, "CSRF cookie not set"
     assert "Secure" in csrf_cookie, f"Expected 'Secure' in CSRF cookie: {csrf_cookie!r}"
+
+    # Also verify the anon nonce cookie has 'Secure' flag (line 452 in _build_anon_nonce_cookie)
+    anon_nonce_cookie = next(
+        (h for h in set_cookie_headers if _ANON_NONCE_COOKIE_NAME in h), None
+    )
+    assert anon_nonce_cookie is not None, (
+        f"Anon nonce cookie not set. Cookies: {set_cookie_headers}"
+    )
+    assert "Secure" in anon_nonce_cookie, (
+        f"Expected 'Secure' in anon nonce cookie: {anon_nonce_cookie!r}"
+    )
 
 
 def test_extract_session_id_with_existing_session_id() -> None:
