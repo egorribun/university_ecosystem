@@ -572,3 +572,76 @@ def test_extract_session_id_with_existing_session_id() -> None:
     assert session_id == "existing-session-abc123"
     # The NEW_ANON_NONCE_STATE_KEY should NOT be set (no new nonce generated)
     assert not hasattr(mock_state, _NEW_ANON_NONCE_STATE_KEY)
+
+
+async def test_non_http_scope_bypasses() -> None:
+    """Non-HTTP scopes (like websocket or lifespan) bypass CSRF middleware."""
+    from unittest.mock import AsyncMock
+
+    app = AsyncMock()
+    middleware = CSRFMiddleware(app, csrf_hmac_secret="a" * 32)
+    scope = {"type": "websocket"}
+    receive = AsyncMock()
+    send = AsyncMock()
+    await middleware(scope, receive, send)
+    app.assert_called_once_with(scope, receive, send)
+
+
+@pytest.mark.asyncio
+async def test_secure_cookies_flag() -> None:
+    """CSRF and anon nonce cookies get the Secure flag when cookie_secure=True."""
+    app = _make_app()
+    app.add_middleware(CSRFMiddleware, csrf_hmac_secret="a" * 32, cookie_secure=True)
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(
+        transport=transport, base_url="https://testserver"
+    ) as client:
+        response = await client.get("/safe")
+        set_cookies = response.headers.get_list("set-cookie")
+        assert len(set_cookies) >= 2
+        csrf_cookie_header = next(c for c in set_cookies if CSRF_COOKIE_NAME in c)
+        anon_cookie_header = next(
+            c for c in set_cookies if _ANON_NONCE_COOKIE_NAME in c
+        )
+        assert "Secure" in csrf_cookie_header
+        assert "Secure" in anon_cookie_header
+
+
+@pytest.mark.asyncio
+async def test_csrf_with_authenticated_session() -> None:
+    """CSRF validates successfully when session_id is bound in request state."""
+    app = FastAPI()
+
+    @app.get("/safe")
+    async def safe():
+        return {"ok": True}
+
+    @app.post("/mut")
+    async def mut():
+        return {"ok": True}
+
+    # Custom raw ASGI middleware to set session_id
+    class SessionIdMiddleware:
+        def __init__(self, app_to_wrap):
+            self.app_to_wrap = app_to_wrap
+
+        async def __call__(self, scope, receive, send):
+            if scope["type"] == "http":
+                if "state" not in scope:
+                    scope["state"] = {}
+                scope["state"]["session_id"] = "user-123"
+            await self.app_to_wrap(scope, receive, send)
+
+    # Wrap the app: SessionIdMiddleware (outer) -> CSRFMiddleware (inner) -> FastAPI app
+    csrf_wrapped = CSRFMiddleware(app, csrf_hmac_secret="a" * 32, cookie_secure=False)
+    final_app = SessionIdMiddleware(csrf_wrapped)
+
+    transport = httpx.ASGITransport(app=final_app)
+    async with httpx.AsyncClient(
+        transport=transport, base_url="http://testserver"
+    ) as client:
+        await client.get("/safe")
+        cookie = client.cookies.get(CSRF_COOKIE_NAME)
+        assert cookie is not None
+        resp2 = await client.post("/mut", headers={CSRF_HEADER_NAME: cookie})
+        assert resp2.status_code == 200

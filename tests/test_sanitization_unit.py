@@ -131,3 +131,7 @@ def test_sanitize_url_edge_cases():
     assert sanitize_url("https://8.8.8.8") == "https://8.8.8.8"
     # Value/UnicodeError
     assert sanitize_url("https://[invalid-ipv6-port") is None
+    # Empty netloc branches
+    assert sanitize_url("https:///path") is None
+    assert sanitize_url("https:") is None
+
