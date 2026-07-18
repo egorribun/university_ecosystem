@@ -195,11 +195,6 @@ async def test_sensitive_login_rate_limit(async_client, user_factory, db_session
     headers = {
         "Content-Type": "application/x-www-form-urlencoded",
     }
-    # Use the default lockout threshold "5:30" — after 5 failures, the 6th gets 423.
-    # Set history_minutes=5 so attempts aren't pruned (same as test_auth_lockout.py).
-    from app.core.config import settings
-
-    monkeypatch.setattr(settings, "auth_lockout_history_minutes", 5)
     # Mock AuditService.log to avoid SQLite lock contention during rapid-fire hits
     monkeypatch.setattr(
         "app.services.audit_service.AuditService.log", lambda *args, **kwargs: None
@@ -209,14 +204,16 @@ async def test_sensitive_login_rate_limit(async_client, user_factory, db_session
 
     monkeypatch.setattr("app.tasks.email.send_lockout_alert.kick", AsyncMock())
 
-    # Send 5 failed attempts — default threshold is 5:30, so after 5 failures,
-    # the 6th request triggers the 423 Locked response.
-    for _ in range(5):
+    # Send 4 failed attempts — the default threshold is 5:30.
+    # On the 5th attempt, the login service registers it (now 5 total),
+    # triggers the lockout (triggered=True), and returns 423 Locked.
+    for _ in range(4):
         response = await async_client.post("/auth/login", data=data, headers=headers)
         assert response.status_code == status.HTTP_401_UNAUTHORIZED
         # Delay to avoid SQLite lock contention on concurrent writes
         await asyncio.sleep(0.5)
 
+    # The 5th attempt triggers lockout (or rate limit) — both 429 and 423 are valid
     blocked = await async_client.post("/auth/login", data=data, headers=headers)
     # Accept both rate limit (429) and account lockout (423) as valid blocking responses
     assert blocked.status_code in (
