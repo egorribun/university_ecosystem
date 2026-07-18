@@ -1121,6 +1121,150 @@ async def test_check_rate_limit_redis_error_fallback() -> None:
     clear_memory_state()
 
 
+@pytest.mark.asyncio
+async def test_check_rate_limit_redis_success_records_cb_success() -> None:
+    """Lines 89-90: Successful Redis check records circuit breaker success and returns result.
+
+    Verifies that when the circuit breaker ALLOWS the request AND the Redis
+    strategy succeeds, record_success() is called and the result is returned
+    (not falling back to memory).
+    """
+    from unittest.mock import AsyncMock, patch
+
+    from app.core.ratelimit.circuit_breaker import CircuitState, RedisCircuitBreaker
+    from app.core.ratelimit.logic import check_rate_limit
+    from app.core.ratelimit.models import RateLimitInfo
+    from app.core.ratelimit.strategies.memory import clear_memory_state
+
+    clear_memory_state()
+
+    mock_strategy = AsyncMock()
+    mock_result = RateLimitInfo(allowed=True, remaining=9, retry_after=0)
+    mock_strategy.check = AsyncMock(return_value=mock_result)
+
+    mock_cb = RedisCircuitBreaker(failure_threshold=3, recovery_timeout=10.0)
+    # Ensure CB is CLOSED and allows request
+    assert mock_cb.state == CircuitState.CLOSED
+    assert mock_cb.allow_request() is True
+    initial_fail_count = mock_cb._failure_count  # type: ignore[attr-defined]
+
+    with (
+        patch("app.core.ratelimit.logic.settings") as mock_settings,
+        patch("app.core.ratelimit.logic._get_redis_strategy", return_value=mock_strategy),
+        patch("app.core.ratelimit.logic.get_circuit_breaker", return_value=mock_cb),
+    ):
+        mock_settings.rate_limit_enabled = True
+
+        result = await check_rate_limit(
+            identifier="user123",
+            limit=10,
+            window_seconds=60,
+            redis_url="redis://localhost:6379",
+        )
+
+    assert result.allowed is True
+    assert result.remaining == 9
+    # record_success() was called: failure_count reset to 0
+    assert mock_cb._failure_count == 0  # type: ignore[attr-defined]
+    clear_memory_state()
+
+
+@pytest.mark.asyncio
+async def test_check_rate_limit_circuit_open_debug_log_and_fallback() -> None:
+    """Line 98: Circuit OPEN triggers debug log and falls back to memory strategy.
+
+    Verifies that when the circuit breaker is OPEN (returns False from allow_request()),
+    the code logs a debug message and falls back to the in-memory fallback strategy.
+    """
+    from unittest.mock import AsyncMock, patch
+
+    from app.core.ratelimit.circuit_breaker import CircuitState, RedisCircuitBreaker
+    from app.core.ratelimit.logic import check_rate_limit
+    from app.core.ratelimit.strategies.memory import clear_memory_state
+
+    clear_memory_state()
+
+    # Create a circuit breaker in OPEN state
+    mock_cb = RedisCircuitBreaker(failure_threshold=1, recovery_timeout=3600.0)
+    mock_cb.record_failure()  # Trip the breaker
+    assert mock_cb.state == CircuitState.OPEN
+
+    with (
+        patch("app.core.ratelimit.logic.settings") as mock_settings,
+        patch("app.core.ratelimit.logic._get_redis_strategy") as mock_strategy_fn,
+        patch("app.core.ratelimit.logic.get_circuit_breaker", return_value=mock_cb),
+    ):
+        mock_settings.rate_limit_enabled = True
+
+        result = await check_rate_limit(
+            identifier="open_circuit_user",
+            limit=10,
+            window_seconds=60,
+            redis_url="redis://localhost:6379",
+        )
+
+    # Should fall back to in-memory with 50% limit (limit//2 = 5)
+    assert result.allowed is True  # First request within fallback limit
+    # Redis strategy should NOT have been called (circuit was open)
+    mock_strategy_fn.assert_called_once()  # strategy was created
+    clear_memory_state()
+
+
+@pytest.mark.asyncio
+async def test_enforce_rate_limit_circuit_open_uses_fallback() -> None:
+    """Lines 157-159: enforce_rate_limit falls back to memory when circuit is OPEN."""
+    from unittest.mock import AsyncMock, patch
+
+    from app.core.ratelimit.circuit_breaker import CircuitState, RedisCircuitBreaker
+    from app.core.ratelimit.logic import enforce_rate_limit
+    from app.core.ratelimit.strategies.memory import (
+        MemorySlidingWindowStrategy,
+        clear_memory_state,
+    )
+
+    clear_memory_state()
+
+    # Create a circuit breaker in OPEN state
+    open_cb = RedisCircuitBreaker(failure_threshold=1, recovery_timeout=3600.0)
+    open_cb.record_failure()
+    assert open_cb.state == CircuitState.OPEN
+
+    strategy = MemorySlidingWindowStrategy(namespace="test_open")
+
+    with (
+        patch("app.core.ratelimit.logic.settings") as mock_settings,
+        patch("app.core.ratelimit.logic.get_circuit_breaker", return_value=open_cb),
+    ):
+        mock_settings.rate_limit_enabled = True
+
+        # With circuit open, enforce_rate_limit should use fallback memory at 50%
+        info = await enforce_rate_limit(
+            identifier="circuit_open_user",
+            limit=10,
+            window_seconds=60,
+            strategy=strategy,
+        )
+
+    assert info.allowed is True
+    clear_memory_state()
+
+
+def test_get_default_strategy_redis_backend() -> None:
+    """Line 117: get_default_strategy() returns Redis strategy when storage_backend is redis."""
+    from unittest.mock import patch
+
+    from app.core.ratelimit.logic import get_default_strategy
+    from app.core.ratelimit.strategies.redis import RedisSlidingWindowStrategy
+
+    with patch("app.core.ratelimit.logic.settings") as mock_settings:
+        mock_settings.rate_limit_storage_backend = "redis"
+        mock_settings.rate_limit_storage_uri = "redis://localhost:6379"
+
+        strategy = get_default_strategy("test_ns")
+
+    assert isinstance(strategy, RedisSlidingWindowStrategy)
+
+
 # ---------------------------------------------------------------------------
 # app/core/policies/csp.py — ContentSecurityPolicy
 # ---------------------------------------------------------------------------

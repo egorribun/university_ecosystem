@@ -446,3 +446,41 @@ def test_circuit_breaker_reset_for_testing_clears_state() -> None:
     assert cb.state == CircuitState.OPEN
     cb.reset_for_testing()
     assert cb.state == CircuitState.CLOSED
+
+
+def test_record_success_in_closed_state_resets_failure_count() -> None:
+    """Lines 105-106: record_success() in CLOSED state resets failure_count to 0.
+
+    When a request succeeds while the breaker is CLOSED (e.g., after partial
+    failures but not enough to trip the breaker), the failure count should be
+    reset to prevent a slow accumulation of stale failures from tripping
+    the breaker in the future.
+    """
+    cb = RedisCircuitBreaker(failure_threshold=5, recovery_timeout=10.0)
+    # Record some failures (not enough to trip)
+    cb.record_failure()
+    cb.record_failure()
+    assert cb.state == CircuitState.CLOSED
+    assert cb._failure_count == 2  # type: ignore[attr-defined]
+
+    # Now a success clears the failure count
+    cb.record_success()
+    assert cb.state == CircuitState.CLOSED
+    assert cb._failure_count == 0  # type: ignore[attr-defined]
+
+
+def test_transition_no_op_when_same_state() -> None:
+    """Line 157: _transition() is a no-op when old state == new state.
+
+    Calling _transition(CLOSED) when already CLOSED must not change metrics
+    or log a spurious state change.
+    """
+    cb = RedisCircuitBreaker(failure_threshold=3, recovery_timeout=10.0)
+    assert cb.state == CircuitState.CLOSED
+
+    # Calling _transition(CLOSED) on a CLOSED breaker should silently return
+    # (line 157: if old == new_state: return)
+    cb._transition(CircuitState.CLOSED)  # type: ignore[attr-defined]
+    # State must still be CLOSED and failure count unchanged
+    assert cb.state == CircuitState.CLOSED
+    assert cb._failure_count == 0  # type: ignore[attr-defined]

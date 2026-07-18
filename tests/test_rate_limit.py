@@ -179,9 +179,13 @@ async def test_rate_limit_skips_static_paths():
 
 @pytest.mark.asyncio
 async def test_sensitive_login_rate_limit(async_client, user_factory, monkeypatch):
+    import uuid
+
     password = "ValidPass123!"
+    # Use a unique email per test run to avoid rate limit state pollution from parallel tests
+    unique_email = f"login-rate-{uuid.uuid4().hex[:8]}@example.com"
     user = await user_factory(
-        email="login-rate@example.com",
+        email=unique_email,
         hashed_password=await get_password_hash(password),
     )
     data = {"username": user.email, "password": "wrong-password"}
