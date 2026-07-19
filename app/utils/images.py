@@ -19,7 +19,7 @@ from app.core.logging import get_logger
 # Catch ImportError (not installed) and OSError (libvips missing at runtime)
 try:
     from app.utils.images_vips import VIPS_AVAILABLE, optimize_image_vips
-except ImportError, OSError:  # RZ-28-01
+except (ImportError, OSError):# RZ-28-01
     VIPS_AVAILABLE = False
     optimize_image_vips = None  # type: ignore[assignment]
 

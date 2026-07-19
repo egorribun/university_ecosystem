@@ -237,7 +237,7 @@ class S3Storage(StorageBackend):
             async with asyncio.timeout(_S3_WRITE_TIMEOUT):  # RZ-29-01
                 async with self._build_aioboto3_client() as s3:
                     await s3.put_object(**args)
-        except ConnectionError, TimeoutError, OSError:  # RZ-28-01
+        except (ConnectionError, TimeoutError, OSError):# RZ-28-01
             # RZ-20-04: Narrowed — S3/MinIO upload failures are infra issues.
             logger.exception("Failed to upload %s to bucket %s", key, self.bucket)
             raise

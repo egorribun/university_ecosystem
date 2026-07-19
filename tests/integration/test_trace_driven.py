@@ -47,7 +47,7 @@ def _check_services() -> bool:
         try:
             with socket.create_connection(("127.0.0.1", port), timeout=1.0):
                 pass
-        except OSError, ConnectionError:  # RZ-20-04
+        except (OSError, ConnectionError):# RZ-20-04
             return False
     return True
 

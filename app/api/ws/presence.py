@@ -222,7 +222,7 @@ async def _handle_presence_pubsub(payload: dict[str, Any]) -> None:
         if not raw_user_id:
             return
         user_id = uuid.UUID(str(raw_user_id))
-    except ValueError, AttributeError:  # RZ-28-01
+    except (ValueError, AttributeError):# RZ-28-01
         logger.warning("presence pubsub: invalid user_id in payload")
         return
 

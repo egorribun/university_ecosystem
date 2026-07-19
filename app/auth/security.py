@@ -49,7 +49,7 @@ def _container_cpu_count() -> int:
         sched = getattr(os, "sched_getaffinity", None)
         if sched:
             return len(sched(0))  # Linux cgroups v2 — most accurate
-    except AttributeError, NotImplementedError:  # RZ-28-01
+    except (AttributeError, NotImplementedError):# RZ-28-01
         pass
     try:  # Fallback for cgroups v1 (Docker legacy)
         with open("/sys/fs/cgroup/cpu/cpu.cfs_quota_us") as _f:
@@ -60,7 +60,7 @@ def _container_cpu_count() -> int:
             # LOW-W19: cap at 32 to prevent runaway thread/memory usage on
             # hosts where cgroups v1 quota is set to an unreasonably high value.
             return min(max(1, quota // period), 32)
-    except FileNotFoundError, ValueError, OSError:  # RZ-28-01
+    except (FileNotFoundError, ValueError, OSError):# RZ-28-01
         pass
     return os.cpu_count() or 2
 
