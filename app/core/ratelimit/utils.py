@@ -150,12 +150,13 @@ def extract_user_id_for_ratelimit(request: Request) -> str | None:
 
         from app.auth.security import decode_token
 
+        mod = sys.modules.get("app.auth.security")
         print(
-            f"DEBUG UTILS: sys.modules['app.auth.security'] id={id(sys.modules.get('app.auth.security'))}",
+            f"DEBUG UTILS PRE-IMPORT: hasattr={hasattr(mod, 'decode_token')} val={getattr(mod, 'decode_token', None)} id={id(getattr(mod, 'decode_token', None))}",
             file=sys.stderr,
         )
         print(
-            f"DEBUG UTILS: decode_token={decode_token} id={id(decode_token)}",
+            f"DEBUG UTILS POST-IMPORT: val={decode_token} id={id(decode_token)}",
             file=sys.stderr,
         )
 
