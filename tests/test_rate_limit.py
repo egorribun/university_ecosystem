@@ -1080,8 +1080,14 @@ def test_extract_user_id_for_ratelimit_exception_path(monkeypatch):
     def raise_exc(token):
         raise Exception("JWT error")
 
-    # decode_token is a lazy import inside the try block; patch the source module
-    monkeypatch.setattr("app.auth.security.decode_token", raise_exc)
+    try:
+        monkeypatch.setattr("app.auth.security.decode_token", raise_exc)
+    except Exception:  # noqa: S110
+        pass
+    try:
+        monkeypatch.setattr("auth.security.decode_token", raise_exc)
+    except Exception:  # noqa: S110
+        pass
 
     result = extract_user_id_for_ratelimit(request)
     assert result is None
@@ -1097,24 +1103,44 @@ def test_extract_user_id_for_ratelimit_from_cookie(monkeypatch):
     request.headers.get = lambda header, default="": ""  # No auth header
     request.cookies.get = lambda header: "cookie_token"
 
-    monkeypatch.setattr(
-        "app.auth.security.decode_token", lambda token: {"sub": "user-123"}
-    )
+    try:
+        monkeypatch.setattr(
+            "app.auth.security.decode_token", lambda token: {"sub": "user-123"}
+        )
+    except Exception:  # noqa: S110
+        pass
+    try:
+        monkeypatch.setattr(
+            "auth.security.decode_token", lambda token: {"sub": "user-123"}
+        )
+    except Exception:  # noqa: S110
+        pass
 
     result = extract_user_id_for_ratelimit(request)
     if result is None:
         import sys
 
         print(f"DEBUG: token={request.cookies.get('access_token_v2')}", file=sys.stderr)
+        print(
+            f"DEBUG: app.auth.security in sys.modules={sys.modules.get('app.auth.security')}",
+            file=sys.stderr,
+        )
+        print(
+            f"DEBUG: auth.security in sys.modules={sys.modules.get('auth.security')}",
+            file=sys.stderr,
+        )
+        print(
+            f"DEBUG: matching modules={[k for k in sys.modules if 'security' in k]}",
+            file=sys.stderr,
+        )
         try:
             from app.auth.security import decode_token
 
             print(
-                f"DEBUG: decode_token returns {decode_token('cookie_token')}",
-                file=sys.stderr,
+                f"DEBUG: app.auth.security.decode_token={decode_token}", file=sys.stderr
             )
         except Exception as e:
-            print(f"DEBUG: decode_token raised {e}", file=sys.stderr)
+            print(f"DEBUG: decode_token import raised {e}", file=sys.stderr)
     assert result == "user-123"
 
 
@@ -1129,7 +1155,16 @@ def test_extract_user_id_for_ratelimit_none_sub(monkeypatch):
     request.cookies.get = lambda header: None
 
     # Token decodes but sub is None
-    monkeypatch.setattr("app.auth.security.decode_token", lambda token: {"sub": None})
+    try:
+        monkeypatch.setattr(
+            "app.auth.security.decode_token", lambda token: {"sub": None}
+        )
+    except Exception:  # noqa: S110
+        pass
+    try:
+        monkeypatch.setattr("auth.security.decode_token", lambda token: {"sub": None})
+    except Exception:  # noqa: S110
+        pass
 
     result = extract_user_id_for_ratelimit(request)
     assert result is None
