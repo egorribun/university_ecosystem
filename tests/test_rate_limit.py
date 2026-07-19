@@ -1082,12 +1082,16 @@ def test_extract_user_id_for_ratelimit_exception_path(monkeypatch):
 
     try:
         monkeypatch.setattr("app.auth.security.decode_token", raise_exc)
-    except Exception:  # noqa: S110
-        pass
+    except Exception as e:
+        import sys
+
+        print(f"DEBUG: monkeypatch 1 raised {type(e)}: {e}", file=sys.stderr)
     try:
         monkeypatch.setattr("auth.security.decode_token", raise_exc)
-    except Exception:  # noqa: S110
-        pass
+    except Exception as e:
+        import sys
+
+        print(f"DEBUG: monkeypatch 2 raised {type(e)}: {e}", file=sys.stderr)
 
     result = extract_user_id_for_ratelimit(request)
     assert result is None
@@ -1107,14 +1111,18 @@ def test_extract_user_id_for_ratelimit_from_cookie(monkeypatch):
         monkeypatch.setattr(
             "app.auth.security.decode_token", lambda token: {"sub": "user-123"}
         )
-    except Exception:  # noqa: S110
-        pass
+    except Exception as e:
+        import sys
+
+        print(f"DEBUG: monkeypatch 1 raised {type(e)}: {e}", file=sys.stderr)
     try:
         monkeypatch.setattr(
             "auth.security.decode_token", lambda token: {"sub": "user-123"}
         )
-    except Exception:  # noqa: S110
-        pass
+    except Exception as e:
+        import sys
+
+        print(f"DEBUG: monkeypatch 2 raised {type(e)}: {e}", file=sys.stderr)
 
     result = extract_user_id_for_ratelimit(request)
     if result is None:
@@ -1159,12 +1167,16 @@ def test_extract_user_id_for_ratelimit_none_sub(monkeypatch):
         monkeypatch.setattr(
             "app.auth.security.decode_token", lambda token: {"sub": None}
         )
-    except Exception:  # noqa: S110
-        pass
+    except Exception as e:
+        import sys
+
+        print(f"DEBUG: monkeypatch 1 raised {type(e)}: {e}", file=sys.stderr)
     try:
         monkeypatch.setattr("auth.security.decode_token", lambda token: {"sub": None})
-    except Exception:  # noqa: S110
-        pass
+    except Exception as e:
+        import sys
+
+        print(f"DEBUG: monkeypatch 2 raised {type(e)}: {e}", file=sys.stderr)
 
     result = extract_user_id_for_ratelimit(request)
     assert result is None
