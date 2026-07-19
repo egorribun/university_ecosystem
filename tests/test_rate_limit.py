@@ -1102,6 +1102,19 @@ def test_extract_user_id_for_ratelimit_from_cookie(monkeypatch):
     )
 
     result = extract_user_id_for_ratelimit(request)
+    if result is None:
+        import sys
+
+        print(f"DEBUG: token={request.cookies.get('access_token_v2')}", file=sys.stderr)
+        try:
+            from app.auth.security import decode_token
+
+            print(
+                f"DEBUG: decode_token returns {decode_token('cookie_token')}",
+                file=sys.stderr,
+            )
+        except Exception as e:
+            print(f"DEBUG: decode_token raised {e}", file=sys.stderr)
     assert result == "user-123"
 
 

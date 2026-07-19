@@ -345,8 +345,8 @@ async def test_lifecycle_extra_branches(db_session: AsyncSession, user_factory):
         WebAuthnCredential(
             id=uuid4(),
             user_id=user.id,
-            credential_id=b"123",
-            public_key=b"123",
+            credential_id="123",
+            public_key="123",
             sign_count=0,
         )
     ]
@@ -358,7 +358,7 @@ async def test_lifecycle_extra_branches(db_session: AsyncSession, user_factory):
     user.totp_enrollments = []
     e = MfaTotpEnrollment(
         user_id=user.id,
-        secret="secret",
+        secret="secret",  # pragma: allowlist secret
         confirmed_at=datetime.now(UTC),
         is_active=True,
     )
@@ -370,8 +370,8 @@ async def test_lifecycle_extra_branches(db_session: AsyncSession, user_factory):
         WebAuthnCredential(
             id=uuid4(),
             user_id=user.id,
-            credential_id=b"123",
-            public_key=b"123",
+            credential_id="123",
+            public_key="123",
             sign_count=0,
         )
     ]
@@ -380,8 +380,8 @@ async def test_lifecycle_extra_branches(db_session: AsyncSession, user_factory):
     wc = WebAuthnCredential(
         id=uuid4(),
         user_id=user.id,
-        credential_id=b"456",
-        public_key=b"456",
+        credential_id="456",
+        public_key="456",
         sign_count=0,
     )
     db_session.add(wc)
@@ -456,8 +456,8 @@ async def test_user_has_active_factor_webauthn_only(
     wc = WebAuthnCredential(
         id=uuid4(),
         user_id=user.id,
-        credential_id=b"test-webauthn-id",
-        public_key=b"test-webauthn-pk",
+        credential_id="test-webauthn-id",
+        public_key="test-webauthn-pk",
         sign_count=0,
     )
     db_session.add(wc)

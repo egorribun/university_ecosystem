@@ -314,7 +314,7 @@ def test_rejects_malformed_json_with_usage_error(tmp_path: Path) -> None:
 
 def test_rejects_deeply_nested_json_with_usage_error(tmp_path: Path) -> None:
     contract_path = tmp_path / "quality-contract.json"
-    depth = 20_000
+    depth = 100_000
     contract_path.write_text(
         '{"nested":' * depth + "0" + "}" * depth,
         encoding="utf-8",

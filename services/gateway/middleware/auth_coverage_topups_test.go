@@ -70,7 +70,7 @@ func TestStartJWKSRefresher_SuccessAndFailureAndCancel(t *testing.T) {
 	// 1. Success endpoint
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"keys": []}`)) // Empty but valid json to hit fallback / error
+		_, _ = w.Write([]byte(`{"keys": []}`)) //nolint:errcheck // Empty but valid json to hit fallback / error
 	}))
 	defer srv.Close()
 
@@ -113,7 +113,7 @@ func TestFetchJWKSPublicKey_ErrorsAndPEMFallback(t *testing.T) {
 
 	// Valid PEM Fallback (Not JWKS format)
 	srvPEM := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_, _ = w.Write([]byte(pemStr))
+		_, _ = w.Write([]byte(pemStr)) //nolint:errcheck // test server PEM write
 	}))
 	defer srvPEM.Close()
 	pubKey, err := fetchJWKSPublicKey(context.Background(), http.DefaultClient, srvPEM.URL)
@@ -122,7 +122,7 @@ func TestFetchJWKSPublicKey_ErrorsAndPEMFallback(t *testing.T) {
 
 	// Invalid JWKS JSON Structure (Non-RSA key)
 	srvInvalidJWKS := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_, _ = w.Write([]byte(`{"keys":[{"kty":"EC","crv":"P-256"}]}`))
+		_, _ = w.Write([]byte(`{"keys":[{"kty":"EC","crv":"P-256"}]}`)) //nolint:errcheck // test server invalid JWKS write
 	}))
 	defer srvInvalidJWKS.Close()
 	_, err = fetchJWKSPublicKey(context.Background(), http.DefaultClient, srvInvalidJWKS.URL)
@@ -137,7 +137,7 @@ func TestListenForRevocations_DisconnectionAndClose(t *testing.T) {
 	opt, err := redis.ParseURL(url)
 	require.NoError(t, err)
 	rdb := redis.NewClient(opt)
-	defer func() { _ = rdb.Close() }()
+	defer func() { _ = rdb.Close() }() //nolint:errcheck // ignore Redis client close error in test
 
 	middleware := NewJWTMiddleware("secret", rdb)
 	ctx, cancel := context.WithCancel(context.Background())

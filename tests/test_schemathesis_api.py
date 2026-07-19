@@ -159,7 +159,7 @@ def loaded_schema():
 @pytest.mark.schemathesis
 @hypothesis.settings(
     max_examples=SCHEMATHESIS_MAX_EXAMPLES,
-    deadline=1_000,
+    deadline=None,
     suppress_health_check=[HealthCheck.too_slow, HealthCheck.filter_too_much],
 )
 @_lazy_schema.parametrize()

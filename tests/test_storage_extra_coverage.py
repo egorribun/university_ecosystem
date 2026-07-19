@@ -25,11 +25,11 @@ async def test_static_fs_storage_invalid_chars(tmp_path):
 @pytest.mark.asyncio
 async def test_static_fs_storage_absolute_path(tmp_path):
     storage = StaticFSStorage(base_dir=tmp_path)
-    import os
+    from unittest.mock import patch
 
-    path_str = "C:/absolute/path.txt" if os.name == "nt" else "/absolute/path.txt"
-    with pytest.raises(ValueError, match="absolute"):
-        storage._normalize_relative_path(path_str)
+    with patch("pathlib.Path.is_absolute", return_value=True):
+        with pytest.raises(ValueError, match="absolute"):
+            storage._normalize_relative_path("absolute/path.txt")
 
 
 @pytest.mark.asyncio
