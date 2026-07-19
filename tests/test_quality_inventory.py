@@ -16,6 +16,7 @@ try:
 except ImportError:
     import pytest
 
+    # QUALITY-1207 @egorribun: Skip test when scripts module is not importable under mutmut isolation
     pytest.skip(
         "scripts module not available (e.g. under mutmut isolation)",
         allow_module_level=True,
