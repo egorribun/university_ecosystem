@@ -146,7 +146,18 @@ def extract_user_id_for_ratelimit(request: Request) -> str | None:
         return None
 
     try:
+        import sys
+
         from app.auth.security import decode_token
+
+        print(
+            f"DEBUG UTILS: sys.modules['app.auth.security'] id={id(sys.modules.get('app.auth.security'))}",
+            file=sys.stderr,
+        )
+        print(
+            f"DEBUG UTILS: decode_token={decode_token} id={id(decode_token)}",
+            file=sys.stderr,
+        )
 
         payload = decode_token(token)
         sub = payload.get("sub") if payload else None

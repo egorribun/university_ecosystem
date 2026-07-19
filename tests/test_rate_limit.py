@@ -1124,6 +1124,19 @@ def test_extract_user_id_for_ratelimit_from_cookie(monkeypatch):
 
         print(f"DEBUG: monkeypatch 2 raised {type(e)}: {e}", file=sys.stderr)
 
+    import sys
+
+    import app.auth.security
+
+    print(
+        f"DEBUG TEST BEFORE: sys.modules['app.auth.security'] id={id(sys.modules.get('app.auth.security'))}",
+        file=sys.stderr,
+    )
+    print(
+        f"DEBUG TEST BEFORE: app.auth.security.decode_token={app.auth.security.decode_token} id={id(app.auth.security.decode_token)}",
+        file=sys.stderr,
+    )
+
     result = extract_user_id_for_ratelimit(request)
     if result is None:
         import sys
