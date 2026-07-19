@@ -137,7 +137,7 @@ func TestListenForRevocations_DisconnectionAndClose(t *testing.T) {
 	opt, err := redis.ParseURL(url)
 	require.NoError(t, err)
 	rdb := redis.NewClient(opt)
-	defer rdb.Close()
+	defer func() { _ = rdb.Close() }()
 
 	middleware := NewJWTMiddleware("secret", rdb)
 	ctx, cancel := context.WithCancel(context.Background())
