@@ -36,7 +36,7 @@ def TestOneInput(data):
         # Generate a string from the random data
         input_str = fdp.ConsumeUnicodeNoSurrogates(100)
         process_user_data(input_str)
-    except ValueError, UnicodeDecodeError:
+    except (ValueError, UnicodeDecodeError):
         # Catch expected exceptions to let the fuzzer continue
         pass
 

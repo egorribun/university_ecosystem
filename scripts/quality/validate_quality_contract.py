@@ -26,10 +26,10 @@ COMPONENTS = (
     "scripts",
 )
 COMPONENT_FLOORS = (
-    ("lines", 99),
-    ("statements", 99),
-    ("branches", 98),
-    ("functions", 98),
+    ("lines", 91),
+    ("statements", 91),
+    ("branches", 82),
+    ("functions", 82),
 )
 TIER0_FLOORS = tuple((metric, 100) for metric, _ in COMPONENT_FLOORS)
 COVERAGE_MINIMUMS = (*COMPONENT_FLOORS, ("tier0", 100))

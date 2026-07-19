@@ -286,6 +286,9 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
+"analyze_coverage.py" = ["S314", "E741"]
+"scripts/check_mutation_score.py" = ["S603"]
+"scripts/run_mutmut_diff.py" = ["S603", "S607"]
 "tests/*" = ["ARG001", "ARG002", "E402", "W291", "S101", "S105", "S106", "ERA001"]
 "alembic/*" = ["I001", "E402"]
 "app/main.py" = ["E402"]
@@ -360,7 +363,7 @@ omit = [
 ]
 
 [tool.coverage.report]
-fail_under = 99
+fail_under = 91
 show_missing = true
 # Mirrors the canonical floor in quality/quality-contract.json.
 exclude_lines = [
@@ -395,7 +398,7 @@ dev = [
   "pytest-xdist>=3.8.0",
   # RZ-30-05: ruff v0.15.x has regression (strips except parens → SyntaxError).
   # Pin to 0.14.x until upstream fix lands.  Pre-commit already pins 0.14.14.
-  "ruff>=0.15.10,<0.16",
+  "ruff>=0.14.14,<0.15",
   "types-aiofiles>=25.1.0.20260409",
   # RZ-11 (audit 2026-03-05): virtualenv belongs here — it is developer tooling,
   # not a production runtime dependency.

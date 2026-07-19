@@ -790,7 +790,7 @@ class TestStaticFSStorageSymlinkDetection:
         symlink_path = tmp_path / "link.txt"
         try:
             os.symlink(str(real_file), str(symlink_path))
-        except OSError, NotImplementedError:
+        except (OSError, NotImplementedError):
             # QUALITY-100: @egorribun - Symlink creation requires elevated privileges on Windows
             pytest.skip(
                 "Symlink creation requires elevated privileges on this platform"

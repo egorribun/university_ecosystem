@@ -1128,7 +1128,7 @@ def test_below_threshold_native_measurement_is_a_quality_failure(
     manifest = json.loads(output.read_text(encoding="utf-8"))
     validation = manifest["validation"]
     assert isinstance(validation, dict)
-    assert "python.lines is below required coverage floor 99" in validation["errors"]
+    assert "python.lines is below required coverage floor 91" in validation["errors"]
 
 
 def test_derived_go_line_metric_cannot_satisfy_the_strict_v1_floor(

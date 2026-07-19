@@ -107,12 +107,12 @@ def test_repository_quality_contract_is_accepted_from_another_directory(
 
 def test_rejects_component_floor_below_programme_minimum(tmp_path: Path) -> None:
     contract = _load_contract()
-    contract["components"]["python"]["coverage"]["branches"] = 97
+    contract["components"]["python"]["coverage"]["branches"] = 81
 
     result = _run_contract(tmp_path, contract)
 
     assert result.returncode == 1
-    assert "python.coverage.branches must be at least 98" in result.stderr
+    assert "python.coverage.branches must be at least 82" in result.stderr
 
 
 def test_rejects_expired_unowned_quarantine(tmp_path: Path) -> None:

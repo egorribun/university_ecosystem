@@ -7,13 +7,10 @@ import (
 	"crypto/x509"
 	"encoding/pem"
 	"errors"
-	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
-	"strings"
-	"sync"
 	"testing"
 	"time"
 
@@ -24,7 +21,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// spyWriter is a helper to verify log outputs
+// spyWriter is a helper to verify log outputs - commented out to resolve unused check
+/*
 type spyWriter struct {
 	mu   sync.Mutex
 	logs []string
@@ -47,6 +45,7 @@ func (s *spyWriter) Contains(str string) bool {
 	}
 	return false
 }
+*/
 
 // Generate valid RSA keys for testing
 func generateRSAKeyPair() (*rsa.PrivateKey, *rsa.PublicKey, string) {
@@ -71,7 +70,7 @@ func TestStartJWKSRefresher_SuccessAndFailureAndCancel(t *testing.T) {
 	// 1. Success endpoint
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(fmt.Sprintf(`{"keys": []}`))) // Empty but valid json to hit fallback / error
+		_, _ = w.Write([]byte(`{"keys": []}`)) // Empty but valid json to hit fallback / error
 	}))
 	defer srv.Close()
 
@@ -161,6 +160,7 @@ func TestOptional_DowngradeAndServiceUnavailable(t *testing.T) {
 
 	// Configure RSA public key
 	block, _ := pem.Decode([]byte(pemStr))
+	require.NotNil(t, block)
 	pubKey, err := x509.ParsePKIXPublicKey(block.Bytes)
 	require.NoError(t, err)
 	middleware.rsaPublicKey.Store(pubKey.(*rsa.PublicKey))

@@ -124,7 +124,7 @@ def cleanup() -> None:
     if engine is not None:
         try:
             engine.dispose()
-        except OSError, ConnectionError:
+        except (OSError, ConnectionError):
             # RZ-20-04: Narrowed — engine dispose during shutdown.
             logger.exception("Failed to dispose webpush engine")
 

@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { render, screen, waitFor } from "@testing-library/react"
 import { describe, it, expect, vi } from "vitest"
 import type { MapRef } from "react-map-gl/maplibre"

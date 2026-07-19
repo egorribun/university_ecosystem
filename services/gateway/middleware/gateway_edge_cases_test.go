@@ -55,7 +55,7 @@ func TestValidate_MalformedAuthorizationHeader(t *testing.T) {
 		// Scheme present but no token value after the space.
 		{"bearer_space_only", "Bearer "},
 		// Completely absent scheme — raw token string.
-		{"no_scheme_raw_token", "eyJhbGciOiJIUzI1NiJ9.e30.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c"},
+		{"no_scheme_raw_token", "eyJhbGciOiJIUzI1NiJ9.e30.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c"}, // pragma: allowlist secret
 		// Wrong scheme (Basic).
 		{"basic_scheme", "Basic dXNlcjpwYXNz"},
 		// Token scheme (RFC 6750 alternative — not accepted).

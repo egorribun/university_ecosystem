@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { registerServiceWorker } from "../register-sw"
 import { PWA_REFRESH_EVENT } from "@/app/pwaEvents"

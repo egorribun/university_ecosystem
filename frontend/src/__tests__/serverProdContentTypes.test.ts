@@ -115,7 +115,6 @@ describe("W175 SW8 — CONTENT_TYPES map immutability", () => {
     // In strict mode this would throw; in non-strict it silently
     // no-ops. Either way, the map stays unchanged.
     try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       ;(CONTENT_TYPES as any)[".xyz"] = "test/test"
     } catch {
       // strict mode TypeError — expected, also fine

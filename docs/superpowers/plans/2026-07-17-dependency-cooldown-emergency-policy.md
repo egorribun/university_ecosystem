@@ -7,7 +7,7 @@
 > exception. The valid immediate path is `vulnerabilityAlerts` with
 > `minimumReleaseAge: null`, while every `packageRules` entry remains at
 > `minimumReleaseAge: "7 days"`.
-
+> 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Enforce a seven-day maturity window for routine dependency updates without delaying visibility of security advisories, while making every urgent cooldown exception targeted, reviewable, and reproducible.

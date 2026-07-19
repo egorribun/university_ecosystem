@@ -119,7 +119,7 @@ class RedisSessionService:
                 created_at=data.get("created_at", ""),
                 is_active=True,
             )
-        except RedisError, OSError:
+        except (RedisError, OSError):
             # Fail open (fallback to DB)
             return None
 
@@ -136,7 +136,7 @@ class RedisSessionService:
             await cast("Awaitable[Any]", client.hset(key, "last_seen_at", now_str))
             # Refresh TTL
             await cast("Awaitable[Any]", client.expire(key, self.ttl_seconds))
-        except RedisError, OSError:
+        except (RedisError, OSError):
             pass
 
     async def revoke_session(self, jti: str) -> None:
@@ -169,12 +169,12 @@ class RedisSessionService:
                         "Awaitable[Any]",
                         client.set(revoked_key, "1", ex=remaining_ttl),
                     )
-            except RedisError, OSError:
+            except (RedisError, OSError):
                 logger.warning("Failed to write revocation blocklist for %s", jti)
             # Step 2: Delete for cleanup (TTL would handle this anyway).
             try:
                 await cast("Awaitable[Any]", client.delete(key))
-            except RedisError, OSError:
+            except (RedisError, OSError):
                 logger.warning("Failed to delete session key %s", jti)
         except (RedisError, OSError) as e:
             logger.error(

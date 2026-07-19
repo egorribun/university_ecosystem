@@ -91,7 +91,7 @@ def _coerce_int_list(values: Iterable[str | int] | str | None) -> list[int]:
     for item in raw_items:
         try:
             converted.append(int(item))
-        except TypeError, ValueError:
+        except (TypeError, ValueError):
             continue
     return converted
 

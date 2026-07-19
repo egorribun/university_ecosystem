@@ -88,7 +88,7 @@ describe("scheduleExport", () => {
 
   describe("exportScheduleAsPng", () => {
     let mockElement: HTMLElement
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     let createElementSpy: any
 
     beforeEach(() => {

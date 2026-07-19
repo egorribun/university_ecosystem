@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import type { PropsWithChildren } from "react"
 import { renderHook, waitFor } from "@testing-library/react"
 import { QueryClientProvider } from "@tanstack/react-query"

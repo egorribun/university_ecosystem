@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import "fake-indexeddb/auto"
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest"
 import { http, HttpResponse } from "msw"

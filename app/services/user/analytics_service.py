@@ -34,7 +34,7 @@ class UserAnalyticsService:
             return None
         try:
             payload = json.loads(body)
-        except TypeError, ValueError:
+        except (TypeError, ValueError):
             return None
         if not isinstance(payload, dict):
             return None
@@ -43,14 +43,14 @@ class UserAnalyticsService:
             return None
         try:
             score_value = float(score)
-        except TypeError, ValueError:
+        except (TypeError, ValueError):
             return None
         max_score = payload.get("max")
         max_value = None
         if max_score is not None:
             try:
                 max_value = float(max_score)
-            except TypeError, ValueError:
+            except (TypeError, ValueError):
                 max_value = None
         course = payload.get("course")
         if not isinstance(course, str) or not course.strip():

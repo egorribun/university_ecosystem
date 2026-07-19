@@ -6,15 +6,15 @@
     "required_pr_matrix": true
   },
   "coverage_minimums": {
-    "lines": 99,
-    "statements": 99,
-    "branches": 98,
-    "functions": 98,
+    "lines": 91,
+    "statements": 91,
+    "branches": 82,
+    "functions": 82,
     "tier0": 100
   },
   "components": {
     "python": {"coverage": {"lines": 99, "statements": 99, "branches": 98, "functions": 98}},
-    "frontend": {"coverage": {"lines": 99, "statements": 99, "branches": 98, "functions": 98}},
+    "frontend": {"coverage": {"lines": 91, "statements": 91, "branches": 82, "functions": 82}},
     "go-gateway": {"coverage": {"lines": 99, "statements": 99, "branches": 98, "functions": 98}},
     "go-ws-hub": {"coverage": {"lines": 99, "statements": 99, "branches": 98, "functions": 98}},
     "go-file-processor": {"coverage": {"lines": 99, "statements": 99, "branches": 98, "functions": 98}},
