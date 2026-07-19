@@ -1,6 +1,18 @@
 {
   "name": "wasm-sanitizer",
+  "type": "module",
+  "collaborators": [
+    "Admin"
+  ],
   "version": "0.1.0",
+  "files": [
+    "wasm_sanitizer_bg.wasm",
+    "wasm_sanitizer.js",
+    "wasm_sanitizer.d.ts"
+  ],
   "main": "wasm_sanitizer.js",
-  "types": "wasm_sanitizer.d.ts"
+  "types": "wasm_sanitizer.d.ts",
+  "sideEffects": [
+    "./snippets/*"
+  ]
 }

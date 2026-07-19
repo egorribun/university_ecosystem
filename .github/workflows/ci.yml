@@ -1278,8 +1278,10 @@ jobs:
           DATABASE_URL: "sqlite+aiosqlite:///./test_schemathesis.db"
           ENVIRONMENT: testing
           OTEL_SDK_DISABLED: "true"
+          SCHEMATHESIS_MAX_EXAMPLES: "25"
         run: |
           uv run pytest tests/test_schemathesis_api.py -v \
+            -m schemathesis \
             --tb=short \
             -p no:cacheprovider
 

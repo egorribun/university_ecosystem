@@ -329,6 +329,7 @@ filterwarnings = [
 ]
 markers = [
   "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+  "schemathesis: marks the dedicated OpenAPI property-based conformance gate",
   "integration: marks as integration test requiring external services",
   "flaky: marks as potentially flaky test",
   "security: marks as security-related test",
@@ -336,6 +337,11 @@ markers = [
 ]
 addopts = [
   "--strict-markers",
+  "-m",
+  "not schemathesis",
+  # Keep pytest's transient files inside the repository worktree.  Some Windows
+  # environments expose C:\\Temp but deny creating pytest's numbered subdirectory.
+  "--basetemp=.pytest_tmp",
   "-ra",              # Show extra test summary for all except passed
 ]
 

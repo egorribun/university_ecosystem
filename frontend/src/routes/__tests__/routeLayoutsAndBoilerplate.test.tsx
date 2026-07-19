@@ -23,7 +23,6 @@ import { Route as SettingsRoute } from "../_auth/settings"
 import { useAuthStore } from "@/stores/useAuthStore"
 import { QueryClient } from "@tanstack/react-query"
 
-
 vi.mock("@tanstack/react-router", async (importOriginal) => {
   const actual = await importOriginal<any>()
   return {
@@ -111,12 +110,12 @@ describe("Routes layouts and boilerplate", () => {
   it("PublicLayout rendering", () => {
     const PublicComponent = PublicRoute.options.component as any
     expect(PublicComponent).toBeDefined()
-    
+
     // Simulate user state transition
     useAuthStore.setState({ user: { role: "student" } as any })
     render(<PublicComponent />)
     expect(screen.getByTestId("outlet")).toBeInTheDocument()
-    
+
     // Clear user state
     useAuthStore.setState({ user: null })
   })
@@ -126,7 +125,7 @@ describe("Routes layouts and boilerplate", () => {
     const FFComp = AdminFeatureFlagsRoute.options.component as any
     const NotifComp = AdminNotificationsRoute.options.component as any
     const UsersComp = AdminUsersRoute.options.component as any
-    
+
     render(<AuditComp />)
     render(<FFComp />)
     render(<NotifComp />)
@@ -166,11 +165,11 @@ describe("Routes layouts and boilerplate", () => {
     expect(loader).toBeDefined()
     const mockQueryClient = new QueryClient()
     mockQueryClient.ensureQueryData = vi.fn().mockResolvedValue({})
-    
+
     await (loader as any)({
       context: { queryClient: mockQueryClient },
     })
-    
+
     expect(mockQueryClient.ensureQueryData).toHaveBeenCalledTimes(2)
   })
 

@@ -115,9 +115,7 @@ describe("useNextLesson, useRelatedEvents, useRelatedNews, useRouteType hooks", 
         { id: "3", event_type: "seminar", title: "S1" },
         { id: "4", event_type: "lecture", title: "L3" },
       ]
-      mockGetQueriesData.mockReturnValue([
-        ["events-query-key", { pages: [{ items: mockEvents }] }],
-      ])
+      mockGetQueriesData.mockReturnValue([["events-query-key", { pages: [{ items: mockEvents }] }]])
 
       // Limit of 2: will return 2 sameCategory
       const { result } = renderHook(() => useRelatedEvents("1", "lecture", 2))
@@ -139,9 +137,7 @@ describe("useNextLesson, useRelatedEvents, useRelatedNews, useRouteType hooks", 
         { id: "3", title: "News 3", content: "sports content" },
         { id: "4", title: "News 4", content: "study exam info" },
       ]
-      mockGetQueriesData.mockReturnValue([
-        ["news-query-key", { pages: [{ items: mockNews }] }],
-      ])
+      mockGetQueriesData.mockReturnValue([["news-query-key", { pages: [{ items: mockNews }] }]])
 
       // Limit of 2: will return 2 sameCategory
       const { result } = renderHook(() => useRelatedNews("1", "education", 2))

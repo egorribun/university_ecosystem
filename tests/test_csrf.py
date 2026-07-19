@@ -520,20 +520,21 @@ async def test_csrf_cookie_secure_flag_set(monkeypatch) -> None:
     # Use cookie_secure=True AND signed mode to trigger both Secure branches
     app.add_middleware(
         CSRFMiddleware,
-        csrf_hmac_secret="x" * 32,  # Signed mode so _extract_session_id runs (lines 392-393)
+        csrf_hmac_secret="x"
+        * 32,  # Signed mode so _extract_session_id runs (lines 392-393)
         cookie_secure=True,  # Forces lines 431 (CSRF token) and 452 (anon nonce)
         cookie_samesite="strict",
     )
     transport = httpx.ASGITransport(app=app)
-    async with httpx.AsyncClient(transport=transport, base_url="https://testserver") as client:
+    async with httpx.AsyncClient(
+        transport=transport, base_url="https://testserver"
+    ) as client:
         response = await client.get("/safe")
     # Both CSRF and anon nonce Set-Cookie headers should include 'Secure'
     set_cookie_headers = [
         v for k, v in response.headers.multi_items() if k.lower() == "set-cookie"
     ]
-    csrf_cookie = next(
-        (h for h in set_cookie_headers if CSRF_COOKIE_NAME in h), None
-    )
+    csrf_cookie = next((h for h in set_cookie_headers if CSRF_COOKIE_NAME in h), None)
     assert csrf_cookie is not None, "CSRF cookie not set"
     assert "Secure" in csrf_cookie, f"Expected 'Secure' in CSRF cookie: {csrf_cookie!r}"
 
@@ -564,7 +565,9 @@ def test_extract_session_id_with_existing_session_id() -> None:
 
     class _FakeRequest:
         state = mock_state
-        cookies: dict = {}
+
+        def __init__(self) -> None:
+            self.cookies: dict[str, str] = {}
 
     session_id = _extract_session_id(_FakeRequest(), "dummy-cookie-token")  # type: ignore[arg-type]
 

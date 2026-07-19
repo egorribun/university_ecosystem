@@ -40,7 +40,7 @@ class AuthTokenService:
 
         try:
             user_id = UUID(str(sub))
-        except (TypeError, ValueError):
+        except TypeError, ValueError:
             fail_auth(locale)
 
         return user_id, str(jti)

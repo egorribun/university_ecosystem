@@ -1146,11 +1146,11 @@ async def test_check_rate_limit_redis_success_records_cb_success() -> None:
     # Ensure CB is CLOSED and allows request
     assert mock_cb.state == CircuitState.CLOSED
     assert mock_cb.allow_request() is True
-    initial_fail_count = mock_cb._failure_count  # type: ignore[attr-defined]
-
     with (
         patch("app.core.ratelimit.logic.settings") as mock_settings,
-        patch("app.core.ratelimit.logic._get_redis_strategy", return_value=mock_strategy),
+        patch(
+            "app.core.ratelimit.logic._get_redis_strategy", return_value=mock_strategy
+        ),
         patch("app.core.ratelimit.logic.get_circuit_breaker", return_value=mock_cb),
     ):
         mock_settings.rate_limit_enabled = True
@@ -1176,7 +1176,7 @@ async def test_check_rate_limit_circuit_open_debug_log_and_fallback() -> None:
     Verifies that when the circuit breaker is OPEN (returns False from allow_request()),
     the code logs a debug message and falls back to the in-memory fallback strategy.
     """
-    from unittest.mock import AsyncMock, patch
+    from unittest.mock import patch
 
     from app.core.ratelimit.circuit_breaker import CircuitState, RedisCircuitBreaker
     from app.core.ratelimit.logic import check_rate_limit
@@ -1213,7 +1213,7 @@ async def test_check_rate_limit_circuit_open_debug_log_and_fallback() -> None:
 @pytest.mark.asyncio
 async def test_enforce_rate_limit_circuit_open_uses_fallback() -> None:
     """Lines 157-159: enforce_rate_limit falls back to memory when circuit is OPEN."""
-    from unittest.mock import AsyncMock, patch
+    from unittest.mock import patch
 
     from app.core.ratelimit.circuit_breaker import CircuitState, RedisCircuitBreaker
     from app.core.ratelimit.logic import enforce_rate_limit
@@ -1293,7 +1293,6 @@ async def test_enforce_rate_limit_redis_error_fallback() -> None:
     from app.core.ratelimit.circuit_breaker import CircuitState, RedisCircuitBreaker
     from app.core.ratelimit.logic import enforce_rate_limit
     from app.core.ratelimit.strategies.memory import (
-        MemorySlidingWindowStrategy,
         clear_memory_state,
     )
 
@@ -1337,7 +1336,6 @@ async def test_enforce_rate_limit_redis_error_fallback_exceeded() -> None:
     from app.core.ratelimit.exceptions import RateLimitExceeded
     from app.core.ratelimit.logic import enforce_rate_limit
     from app.core.ratelimit.strategies.memory import (
-        MemorySlidingWindowStrategy,
         clear_memory_state,
     )
 

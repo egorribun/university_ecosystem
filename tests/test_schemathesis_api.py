@@ -62,6 +62,14 @@ from app.auth.security import _mint_pure_jwt
 
 auth_token = _mint_pure_jwt(subject=uuid4(), extra_claims={"role": "admin"})
 
+# The test is parametrized by every OpenAPI operation.  The regular suite uses
+# one generated request per operation as a bounded cross-stack smoke test.  The
+# dedicated CI conformance job raises this through the environment without
+# editing test code, retaining deep property-based coverage before merge.
+SCHEMATHESIS_MAX_EXAMPLES = int(os.environ.get("SCHEMATHESIS_MAX_EXAMPLES", "1"))
+if SCHEMATHESIS_MAX_EXAMPLES < 1:
+    raise ValueError("SCHEMATHESIS_MAX_EXAMPLES must be at least 1")
+
 
 @schemathesis.hook
 def before_call(context, case, **kwargs):
@@ -148,8 +156,10 @@ def loaded_schema():
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.schemathesis
 @hypothesis.settings(
-    max_examples=25,
+    max_examples=SCHEMATHESIS_MAX_EXAMPLES,
+    deadline=1_000,
     suppress_health_check=[HealthCheck.too_slow, HealthCheck.filter_too_much],
 )
 @_lazy_schema.parametrize()

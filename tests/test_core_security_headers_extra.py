@@ -1,12 +1,11 @@
 from __future__ import annotations
 
-import asyncio
 from unittest.mock import MagicMock
 
 import httpx
 import pytest
 from fastapi import FastAPI
-from fastapi.responses import HTMLResponse, Response, StreamingResponse
+from fastapi.responses import HTMLResponse, Response
 from fastapi.testclient import TestClient
 
 from app.core.config import Settings
@@ -340,8 +339,11 @@ def test_csp_report_only_mode(mock_settings):
     response = client.get("/")
 
     # In report-only mode, enforcing CSP should NOT be present
-    assert "content-security-policy" not in [k.lower() for k in response.headers.keys()
-                                               if k.lower() == "content-security-policy"]
+    assert "content-security-policy" not in [
+        k.lower()
+        for k in response.headers.keys()
+        if k.lower() == "content-security-policy"
+    ]
     # But CSP-RO should be present
     assert "content-security-policy-report-only" in response.headers
 
@@ -380,32 +382,38 @@ async def test_html_streaming_more_body_true(mock_settings):
     """Line 159->220 (more_body=True branch): Streaming HTML body chunks accumulate before final send."""
     mock_settings.should_inject_csp_nonce = True
 
-    html_part1 = b"<html><head><script nonce=\"__CSP_NONCE__\">hi</script></head>"
+    html_part1 = b'<html><head><script nonce="__CSP_NONCE__">hi</script></head>'
     html_part2 = b"<body>World</body></html>"
 
     sent_messages = []
 
     async def inner_app(scope, receive, send):
         # Send http.response.start with text/html content-type
-        await send({
-            "type": "http.response.start",
-            "status": 200,
-            "headers": [
-                (b"content-type", b"text/html; charset=utf-8"),
-            ],
-        })
+        await send(
+            {
+                "type": "http.response.start",
+                "status": 200,
+                "headers": [
+                    (b"content-type", b"text/html; charset=utf-8"),
+                ],
+            }
+        )
         # Send first chunk with more_body=True
-        await send({
-            "type": "http.response.body",
-            "body": html_part1,
-            "more_body": True,
-        })
+        await send(
+            {
+                "type": "http.response.body",
+                "body": html_part1,
+                "more_body": True,
+            }
+        )
         # Send second (final) chunk with more_body=False
-        await send({
-            "type": "http.response.body",
-            "body": html_part2,
-            "more_body": False,
-        })
+        await send(
+            {
+                "type": "http.response.body",
+                "body": html_part2,
+                "more_body": False,
+            }
+        )
 
     middleware = SecurityHeadersMiddleware(inner_app, settings=mock_settings)
 
@@ -448,18 +456,22 @@ async def test_html_decode_error_recovery(mock_settings):
     sent_messages = []
 
     async def inner_app(scope, receive, send):
-        await send({
-            "type": "http.response.start",
-            "status": 200,
-            "headers": [
-                (b"content-type", b"text/html; charset=utf-8"),
-            ],
-        })
-        await send({
-            "type": "http.response.body",
-            "body": invalid_utf8,
-            "more_body": False,
-        })
+        await send(
+            {
+                "type": "http.response.start",
+                "status": 200,
+                "headers": [
+                    (b"content-type", b"text/html; charset=utf-8"),
+                ],
+            }
+        )
+        await send(
+            {
+                "type": "http.response.body",
+                "body": invalid_utf8,
+                "more_body": False,
+            }
+        )
 
     middleware = SecurityHeadersMiddleware(inner_app, settings=mock_settings)
 
@@ -494,19 +506,21 @@ async def test_html_buffer_overflow_with_chunks(mock_settings):
     # Create chunks that together exceed 64KB
     chunk_size = 30 * 1024  # 30KB each
     chunk1 = b"<html>" + (b"a" * (chunk_size - 6))
-    chunk2 = b"b" * chunk_size   # Second chunk: total = 60KB (still within limit)
-    chunk3 = b"c" * chunk_size   # Third chunk: total = 90KB -> overflow
+    chunk2 = b"b" * chunk_size  # Second chunk: total = 60KB (still within limit)
+    chunk3 = b"c" * chunk_size  # Third chunk: total = 90KB -> overflow
 
     sent_messages = []
 
     async def inner_app(scope, receive, send):
-        await send({
-            "type": "http.response.start",
-            "status": 200,
-            "headers": [
-                (b"content-type", b"text/html; charset=utf-8"),
-            ],
-        })
+        await send(
+            {
+                "type": "http.response.start",
+                "status": 200,
+                "headers": [
+                    (b"content-type", b"text/html; charset=utf-8"),
+                ],
+            }
+        )
         await send({"type": "http.response.body", "body": chunk1, "more_body": True})
         await send({"type": "http.response.body", "body": chunk2, "more_body": True})
         await send({"type": "http.response.body", "body": chunk3, "more_body": False})
@@ -542,20 +556,26 @@ async def test_http_disconnect_passthrough(mock_settings):
     sent_messages = []
 
     async def inner_app(scope, receive, send):
-        await send({
-            "type": "http.response.start",
-            "status": 200,
-            "headers": [(b"content-type", b"application/json")],
-        })
-        await send({
-            "type": "http.response.body",
-            "body": b'{"ok": true}',
-            "more_body": False,
-        })
+        await send(
+            {
+                "type": "http.response.start",
+                "status": 200,
+                "headers": [(b"content-type", b"application/json")],
+            }
+        )
+        await send(
+            {
+                "type": "http.response.body",
+                "body": b'{"ok": true}',
+                "more_body": False,
+            }
+        )
         # Also send an unknown event type (simulates http.disconnect or similar)
-        await send({
-            "type": "http.disconnect",
-        })
+        await send(
+            {
+                "type": "http.disconnect",
+            }
+        )
 
     middleware = SecurityHeadersMiddleware(inner_app, settings=mock_settings)
 
@@ -589,16 +609,20 @@ async def test_nonce_injection_event_stream_path_excluded(mock_settings):
     sent_messages = []
 
     async def inner_app(scope, receive, send):
-        await send({
-            "type": "http.response.start",
-            "status": 200,
-            "headers": [(b"content-type", b"text/html; charset=utf-8")],
-        })
-        await send({
-            "type": "http.response.body",
-            "body": b"<html>data</html>",
-            "more_body": False,
-        })
+        await send(
+            {
+                "type": "http.response.start",
+                "status": 200,
+                "headers": [(b"content-type", b"text/html; charset=utf-8")],
+            }
+        )
+        await send(
+            {
+                "type": "http.response.body",
+                "body": b"<html>data</html>",
+                "more_body": False,
+            }
+        )
 
     middleware = SecurityHeadersMiddleware(inner_app, settings=mock_settings)
 

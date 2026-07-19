@@ -580,7 +580,9 @@ mod tests {
                 .call1((60u32, &existing_list, &avail))
                 .unwrap();
             let opt_item: Option<ScheduleItem> = opt_res.extract().unwrap();
-            assert!(opt_item.is_some() || opt_item.is_none());
+            let opt_item = opt_item.expect("an available Monday slot at 10:00 must be returned");
+            assert_eq!(opt_item.weekday, "monday");
+            assert_eq!(opt_item.end_time - opt_item.start_time, 60 * 60);
 
             // 5. get_partition_info
             let get_partition_info_py = m.getattr("get_partition_info").unwrap();

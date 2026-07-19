@@ -25,7 +25,7 @@ import {
   useDashboardStories,
   useWeather,
   useNowPlaying,
-  admin
+  admin,
 } from "../index"
 
 describe("Features Index re-exports", () => {

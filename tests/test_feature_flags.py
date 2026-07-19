@@ -105,12 +105,14 @@ async def test_feature_flags_additional_coverage():
 
     # 5. Test _ensure_provider fast path (already initialized)
     from app.core.feature_flags import _ensure_provider
+
     with patch("app.core.feature_flags._provider_initialized", True):
         # Should return immediately
         _ensure_provider()
 
     # 6. Test _ensure_provider flagd initialization exception
     import sys
+
     mock_flagd = MagicMock()
     mock_flagd.FlagdProvider = MagicMock(side_effect=ValueError("Flagd init error"))
     with patch.dict(sys.modules, {"openfeature.contrib.provider.flagd": mock_flagd}):
@@ -119,6 +121,7 @@ async def test_feature_flags_additional_coverage():
 
     # 7. Test _ensure_provider ImportError fallback
     import builtins
+
     orig_import = builtins.__import__
 
     def mock_import(name, *args, **kwargs):
@@ -139,4 +142,3 @@ async def test_feature_flags_additional_coverage():
     with patch("builtins.__import__", side_effect=mock_import):
         res = is_enabled_sync("some-flag", default=True)
         assert res is True
-

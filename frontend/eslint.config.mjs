@@ -21,6 +21,8 @@ export default tseslint.config(
       "vite.config.mts",
       ".storybook",
       "src/api/generated",
+      "rust-crypto/pkg",
+      "wasm-sanitizer/pkg",
     ],
   },
   js.configs.recommended,
@@ -222,6 +224,8 @@ export default tseslint.config(
     files: ["src/**/*.{test,spec}.{ts,tsx}", "src/tests/**/*.{ts,tsx}"],
     rules: {
       "i18next/no-literal-string": "off",
+      "@typescript-eslint/no-explicit-any": "off",
+      "@typescript-eslint/no-unsafe-function-type": "off",
     },
   },
   prettier,

@@ -70,12 +70,12 @@ class TestRustFFIPanicGates:
 
         # Exceeding bounds must raise ValueError
         with pytest.raises(
-            ValueError, match="month_offset .* is out of the allowed range"
+            ValueError, match=r"month_offset .* is out of the allowed range"
         ):
             rust_ext.get_partition_info("events", 121)
 
         with pytest.raises(
-            ValueError, match="month_offset .* is out of the allowed range"
+            ValueError, match=r"month_offset .* is out of the allowed range"
         ):
             rust_ext.get_partition_info("events", -121)
 

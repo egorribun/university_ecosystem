@@ -35,7 +35,7 @@ def _cgroup_aware_cpu_count() -> int:
         sched = getattr(os, "sched_getaffinity", None)
         if sched:
             return len(sched(0))
-    except (AttributeError, NotImplementedError):
+    except AttributeError, NotImplementedError:
         pass
     try:
         with open("/sys/fs/cgroup/cpu/cpu.cfs_quota_us") as f:
@@ -44,7 +44,7 @@ def _cgroup_aware_cpu_count() -> int:
             period = int(f.read().strip())
         if quota > 0 and period > 0:
             return min(max(1, quota // period), 32)
-    except (FileNotFoundError, ValueError, OSError):
+    except FileNotFoundError, ValueError, OSError:
         pass
     return os.cpu_count() or 2
 

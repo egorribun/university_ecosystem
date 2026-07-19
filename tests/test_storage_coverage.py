@@ -331,6 +331,7 @@ class TestStaticFSStorageSecurityPaths:
     def test_normalize_absolute_path_raises(self, tmp_path):
         """Line 65: Absolute path raises ValueError (using Windows-style C:/path)."""
         import sys
+
         from app.services.storage import StaticFSStorage
 
         storage = StaticFSStorage(base_dir=tmp_path)
@@ -342,6 +343,7 @@ class TestStaticFSStorageSecurityPaths:
             # On POSIX, stripping leading / removes absoluteness.
             # Test with a Windows-style drive path which is also rejected.
             import unittest
+
             raise unittest.SkipTest("Line 65 only testable on Windows")
 
     def test_resolve_validated_path_oserror_raises(self, tmp_path, monkeypatch):
@@ -351,6 +353,7 @@ class TestStaticFSStorageSecurityPaths:
         level so the target path's resolve call raises OSError.
         """
         from unittest.mock import patch
+
         from app.services.storage import StaticFSStorage
 
         storage = StaticFSStorage(base_dir=tmp_path)
@@ -385,6 +388,7 @@ class TestStaticFSStorageSecurityPaths:
     async def test_delete_file_oserror(self, tmp_path):
         """Lines 139-140: OSError in _unlink_ignore_missing is handled gracefully."""
         from unittest.mock import patch
+
         from app.services.storage import StaticFSStorage
 
         storage = StaticFSStorage(base_dir=tmp_path)
@@ -483,7 +487,9 @@ class TestS3StorageMissingBranches:
 
         mock_client = AsyncMock()
         mock_client.delete_object = AsyncMock(side_effect=ConnectionError("S3 down"))
-        s3 = S3Storage(bucket="test", client=mock_client, endpoint_url="http://minio:9000")
+        s3 = S3Storage(
+            bucket="test", client=mock_client, endpoint_url="http://minio:9000"
+        )
 
         # Should not raise - delete is best-effort
         await s3.delete_file("http://minio:9000/test/file.txt")
@@ -505,11 +511,14 @@ class TestS3StorageMissingBranches:
     async def test_exists_reraises_non_404_client_error(self):
         """Line 331: Non-404 ClientError is re-raised."""
         from botocore.exceptions import ClientError
+
         from app.services.storage import S3Storage
 
         mock_client = AsyncMock()
         mock_client.head_object = AsyncMock(
-            side_effect=ClientError({"Error": {"Code": "403", "Message": "Forbidden"}}, "HeadObject")
+            side_effect=ClientError(
+                {"Error": {"Code": "403", "Message": "Forbidden"}}, "HeadObject"
+            )
         )
         s3 = S3Storage(bucket="test", client=mock_client)
 
@@ -520,6 +529,7 @@ class TestS3StorageMissingBranches:
     async def test_read_file_empty_key_fallback(self):
         """Line 336: read_file() with empty key uses raw path."""
         from contextlib import asynccontextmanager
+
         from app.services.storage import S3Storage
 
         @asynccontextmanager
@@ -589,8 +599,9 @@ class TestS3StorageMissingBranches:
     @pytest.mark.asyncio
     async def test_exists_with_empty_url_hits_fallback_path(self):
         """Line 313: exists() with empty key from _extract_key falls through to raw path."""
-        from app.services.storage import S3Storage
         from botocore.exceptions import ClientError
+
+        from app.services.storage import S3Storage
 
         mock_client = AsyncMock()
         # Return 404 - file doesn't exist
@@ -611,6 +622,7 @@ class TestS3StorageMissingBranches:
     async def test_read_file_with_different_netloc_hits_fallback(self):
         """Line 336: read_file() with URL that has different netloc falls back to raw path."""
         from contextlib import asynccontextmanager
+
         from app.services.storage import S3Storage
 
         @asynccontextmanager
@@ -766,6 +778,7 @@ class TestStaticFSStorageSymlinkDetection:
         check raises ValueError before allowing the symlink to be followed.
         """
         import os
+
         from app.services.storage import StaticFSStorage
 
         storage = StaticFSStorage(base_dir=tmp_path)
@@ -777,9 +790,11 @@ class TestStaticFSStorageSymlinkDetection:
         symlink_path = tmp_path / "link.txt"
         try:
             os.symlink(str(real_file), str(symlink_path))
-        except (OSError, NotImplementedError):
+        except OSError, NotImplementedError:
             # QUALITY-100: @egorribun - Symlink creation requires elevated privileges on Windows
-            pytest.skip("Symlink creation requires elevated privileges on this platform")
+            pytest.skip(
+                "Symlink creation requires elevated privileges on this platform"
+            )
 
         # Now try to access via _resolve_validated_path
         # The symlink is within base_dir, so it should be detected at line 92

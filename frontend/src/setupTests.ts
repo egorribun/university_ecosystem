@@ -274,6 +274,7 @@ if (typeof window !== "undefined") {
   if (!("IntersectionObserver" in window)) {
     Object.defineProperty(window, "IntersectionObserver", {
       writable: true,
+      configurable: true,
       value: class {
         constructor() {}
         observe() {}

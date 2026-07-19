@@ -1,10 +1,17 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { waitFor } from "@testing-library/react"
 import { getBootstrapFallbackCopy, renderBootstrapFallback } from "../bootstrapFallback"
-import { measureAsync, mark, measure, getWebVitals, reportMetric, timed, metricsBuffer } from "../performance"
+import {
+  measureAsync,
+  mark,
+  measure,
+  getWebVitals,
+  reportMetric,
+  timed,
+  metricsBuffer,
+} from "../performance"
 import { prefetchRouteModules } from "../prefetchRoutes"
 import { COMMON_EMAIL_DOMAINS } from "../../constants/emailDomains"
-
 
 describe("Utils Coverage Topups", () => {
   describe("emailDomains.ts", () => {
@@ -70,7 +77,7 @@ describe("Utils Coverage Topups", () => {
             }
           }
           return el
-        }
+        },
       } as any
 
       const copy = getBootstrapFallbackCopy(customDoc)
@@ -117,7 +124,7 @@ describe("Utils Coverage Topups", () => {
         navigator: { serviceWorker: { getRegistrations: mockGetRegistrations } },
         caches: { keys: mockKeys, delete: mockDelete },
       }
-      
+
       const customDoc = {
         documentElement: { lang: "ru", getAttribute: () => "ru" },
         defaultView: fakeWindow,
@@ -194,9 +201,13 @@ describe("Utils Coverage Topups", () => {
   describe("performance.ts", () => {
     it("measureAsync measures execution time", async () => {
       const onComplete = vi.fn()
-      const res = await measureAsync("test-measure", async () => {
-        return "val"
-      }, onComplete)
+      const res = await measureAsync(
+        "test-measure",
+        async () => {
+          return "val"
+        },
+        onComplete
+      )
 
       expect(res).toBe("val")
       expect(onComplete).toHaveBeenCalled()
@@ -234,12 +245,12 @@ describe("Utils Coverage Topups", () => {
 
     it("getWebVitals returns structure and handles navigation entry ttfb and fcp", () => {
       // Mock navigation and FCP entries
-      const spyType = vi.spyOn(performance, "getEntriesByType").mockReturnValue([
-        { responseStart: 100, requestStart: 40 } as any
-      ])
-      const spyName = vi.spyOn(performance, "getEntriesByName").mockReturnValue([
-        { startTime: 80 } as any
-      ])
+      const spyType = vi
+        .spyOn(performance, "getEntriesByType")
+        .mockReturnValue([{ responseStart: 100, requestStart: 40 } as any])
+      const spyName = vi
+        .spyOn(performance, "getEntriesByName")
+        .mockReturnValue([{ startTime: 80 } as any])
 
       const vitals = getWebVitals()
       expect(vitals).toBeDefined()
@@ -260,7 +271,7 @@ describe("Utils Coverage Topups", () => {
     it("reportMetric log/otel", () => {
       const mockRecordMetric = vi.fn()
       vi.stubGlobal("otel", { recordMetric: mockRecordMetric })
-      
+
       reportMetric("test-metric", 100, { tag: "value" })
       expect(mockRecordMetric).toHaveBeenCalledWith("test-metric", 100, { tag: "value" })
 
@@ -269,7 +280,7 @@ describe("Utils Coverage Topups", () => {
 
     it("timed decorator timing check", async () => {
       const descriptor: TypedPropertyDescriptor<any> = {
-        value: async () => "ok"
+        value: async () => "ok",
       }
       const decorated = timed("decorator-test")({}, "run", descriptor)
       const res = await decorated.value()
@@ -277,7 +288,7 @@ describe("Utils Coverage Topups", () => {
 
       // Test default propertyKey name fallback
       const descriptor2: TypedPropertyDescriptor<any> = {
-        value: async () => "ok2"
+        value: async () => "ok2",
       }
       const decorated2 = (timed as any)()({}, "run_fallback", descriptor2)
       const res2 = await decorated2.value()
@@ -287,7 +298,7 @@ describe("Utils Coverage Topups", () => {
       const descriptor3: TypedPropertyDescriptor<any> = {
         value: async () => {
           throw "raw-error-string"
-        }
+        },
       }
       const decorated3 = timed("error-test")({}, "run_err", descriptor3)
       await expect(decorated3.value()).rejects.toBe("raw-error-string")
@@ -300,7 +311,7 @@ describe("Utils Coverage Topups", () => {
 
       metricsBuffer.record("buffered-metric", 42)
       metricsBuffer.record("buffered-metric", 58)
-      
+
       // Force flush
       metricsBuffer.flush()
       metricsBuffer.stop()
@@ -323,7 +334,7 @@ describe("Utils Coverage Topups", () => {
       vi.stubGlobal("requestIdleCallback", mockRequestIdleCallback)
 
       prefetchRouteModules([loader1, loader2], { timeoutMs: 100 })
-      
+
       await waitFor(() => {
         expect(loader1).toHaveBeenCalled()
         expect(loader2).toHaveBeenCalled()
@@ -342,7 +353,7 @@ describe("Utils Coverage Topups", () => {
 
       // Stub requestIdleCallback as undefined
       vi.stubGlobal("requestIdleCallback", undefined)
-      
+
       prefetchRouteModules([loader], { timeoutMs: 10 })
 
       await waitFor(() => {
@@ -354,12 +365,14 @@ describe("Utils Coverage Topups", () => {
 
     it("handles hasWindow fallback when window is undefined", async () => {
       vi.stubGlobal("window", undefined)
-      const { prefetchRouteModules: localPrefetch } = await import("../prefetchRoutes?nocache=" + Date.now())
-      
+      const { prefetchRouteModules: localPrefetch } = await import(
+        "../prefetchRoutes?nocache=" + Date.now()
+      )
+
       const loader = vi.fn().mockResolvedValue({})
       localPrefetch([loader])
       expect(loader).not.toHaveBeenCalled()
-      
+
       vi.unstubAllGlobals()
     })
   })

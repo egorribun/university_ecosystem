@@ -134,4 +134,3 @@ def test_sanitize_url_edge_cases():
     # Empty netloc branches
     assert sanitize_url("https:///path") is None
     assert sanitize_url("https:") is None
-

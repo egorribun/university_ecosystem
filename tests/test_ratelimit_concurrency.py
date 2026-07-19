@@ -447,6 +447,7 @@ def test_circuit_breaker_reset_for_testing_clears_state() -> None:
     cb.reset_for_testing()
     assert cb.state == CircuitState.CLOSED
 
+
 def test_record_success_in_closed_state_resets_failure_count() -> None:
     """Lines 105-106: record_success() in CLOSED state resets failure_count to 0.
 

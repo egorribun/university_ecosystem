@@ -165,6 +165,7 @@ class TestProgressiveDelayTrackerMemory:
             _delay_memory["test:stale"] = (1, time.time() - 10.0)
 
         from app.core.ratelimit import delay as delay_module
+
         with patch.object(delay_module, "_delay_memory_last_cleanup", 0.0):
             await tracker.record_failure("test:new_req")
 

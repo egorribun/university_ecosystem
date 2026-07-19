@@ -14,7 +14,9 @@ describe("GlobalHapticsListener component", () => {
     render(
       <>
         <GlobalHapticsListener />
-        <button data-testid="btn" data-haptic="light">Click me</button>
+        <button data-testid="btn" data-haptic="light">
+          Click me
+        </button>
         <button data-testid="btn-no-haptic">No haptic</button>
       </>
     )

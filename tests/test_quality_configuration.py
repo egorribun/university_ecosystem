@@ -15,6 +15,8 @@ FORBIDDEN_VITEST_EXCLUSIONS = (
     '"**/features/index.ts"',
 )
 
+EXPECTED_VITEST_INCLUDE = ("src/**/*.{ts,tsx}",)
+
 EXPECTED_VITEST_EXCLUSIONS = (
     "src/tests/**/*",
     "src/**/__tests__/**/*",
@@ -24,14 +26,11 @@ EXPECTED_VITEST_EXCLUSIONS = (
     "src/routeTree.gen.ts",
     "src/api/generated/**/*",
     "**/*.d.ts",
-    "src/App.tsx",
-    "src/AppProviders.tsx",
     "src/workers/**/*",
     "src/server.ts",
     "src/main.tsx",
-    "src/pages/**/*",
+    "src/sw.ts",
     "src/test/**/*",
-    "src/types/**/*",
 )
 
 
@@ -119,21 +118,7 @@ def test_frontend_coverage_policy_and_source_universe_match_quality_contract() -
     )
     assert reports_directory is not None, "missing reportsDirectory"
     assert reports_directory.group("value") == "coverage"
-    assert _extract_string_array(coverage, "include") == (
-        "src/routes/**/*",
-        "src/stores/index.ts",
-        "src/features/index.ts",
-        "src/utils/bootstrapFallback.ts",
-        "src/utils/performance.ts",
-        "src/utils/prefetchRoutes.ts",
-        "src/constants/emailDomains.ts",
-        "src/hooks/useNextLesson.ts",
-        "src/hooks/useRelatedEvents.ts",
-        "src/hooks/useRelatedNews.ts",
-        "src/hooks/useRouteType.ts",
-        "src/hooks/useMapKeyboardShortcuts.ts",
-        "src/pages/settings/sections/SpotifySection.tsx",
-    )
+    assert _extract_string_array(coverage, "include") == EXPECTED_VITEST_INCLUDE
     assert _extract_string_array(coverage, "exclude") == EXPECTED_VITEST_EXCLUSIONS
 
     thresholds = _extract_object_body(coverage, "thresholds")
@@ -169,4 +154,6 @@ def test_coverage_commands_and_sonar_paths_match_quality_contract() -> None:
     )
 
     package = json.loads(_read_text("frontend/package.json"))
-    assert package["scripts"]["test:ci"].startswith("vitest run --coverage")
+    assert package["scripts"]["test:ci"].startswith(
+        "npm run test:wasm && vitest run --coverage"
+    )

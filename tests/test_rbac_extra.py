@@ -171,4 +171,3 @@ async def test_rbac_cache_eviction_and_fallback():
             # 7. Outage fallback check (No cache entry at all)
             with pytest.raises(rbac_mod.SpiceDBUnavailableError):
                 await checker.check_permission("r", "999", "p", "u1")
-

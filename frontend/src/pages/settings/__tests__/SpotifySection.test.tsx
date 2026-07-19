@@ -33,9 +33,13 @@ describe("SpotifySection component", () => {
       />
     )
 
-    expect(screen.getByText("settings:integrations.spotify.status.disconnected")).toBeInTheDocument()
-    expect(screen.queryByText("settings:integrations.spotify.status.connected")).not.toBeInTheDocument()
-    
+    expect(
+      screen.getByText("settings:integrations.spotify.status.disconnected")
+    ).toBeInTheDocument()
+    expect(
+      screen.queryByText("settings:integrations.spotify.status.connected")
+    ).not.toBeInTheDocument()
+
     const connectBtn = screen.getByText("settings:integrations.spotify.connect")
     fireEvent.click(connectBtn)
     expect(onConnect).toHaveBeenCalled()
@@ -57,7 +61,7 @@ describe("SpotifySection component", () => {
 
     expect(screen.getByText("settings:integrations.spotify.status.connected")).toBeInTheDocument()
     expect(screen.getByText("SpotifyUser123")).toBeInTheDocument()
-    
+
     const disconnectBtn = screen.getByText("settings:integrations.spotify.disconnect")
     fireEvent.click(disconnectBtn)
     expect(onDisconnect).toHaveBeenCalled()

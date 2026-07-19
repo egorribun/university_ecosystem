@@ -117,7 +117,7 @@ async def start_email_change_cleanup_scheduler(
                         run.observe_deleted(cleaned)
                 except asyncio.CancelledError:
                     raise
-                except (OSError, ConnectionError):
+                except OSError, ConnectionError:
                     # RZ-20-04 (audit 2026-03-24): Narrowed — DB/network errors only.
                     # Logic bugs (TypeError, KeyError) now propagate to Sentry.
                     logger.exception("Failed to cleanup pending address-change records")
