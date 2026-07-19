@@ -391,12 +391,12 @@ async def save_attachment(
 
     try:
         limit = int(max_size_bytes if max_size_bytes is not None else 0)
-    except (TypeError, ValueError):# RZ-28-01
+    except (TypeError, ValueError):  # RZ-28-01
         limit = 0
     if limit <= 0:
         try:
             limit = int(settings.event_file_max_size_bytes)
-        except (TypeError, ValueError):# RZ-28-01
+        except (TypeError, ValueError):  # RZ-28-01
             limit = 0
     if limit <= 0:
         limit = 1

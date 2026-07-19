@@ -269,6 +269,6 @@ async def warm_cache() -> None:
                 _warm_news(cache, db),
                 _warm_events(cache, db),
             )
-        except (ConnectionError, TimeoutError, OSError):# RZ-28-01 + PERF-25-02
+        except (ConnectionError, TimeoutError, OSError):  # RZ-28-01 + PERF-25-02
             # RZ-20-04: Narrowed — cache warmup is best-effort.
             logger.exception("Cache warmup failed")

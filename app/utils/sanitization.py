@@ -195,7 +195,7 @@ def sanitize_path(path: str, base_dir: str | Path) -> Path | None:
         if base in user_path.parents or user_path == base:
             return user_path
         return None
-    except (ValueError, OSError):# RZ-28-01
+    except (ValueError, OSError):  # RZ-28-01
         return None
 
 

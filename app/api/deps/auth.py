@@ -159,7 +159,7 @@ async def get_current_user(
         if cached_sid:
             try:
                 session = await db.get(ActiveSession, _uuid_mod.UUID(cached_sid))
-            except (ValueError, TypeError):# RZ-28-01
+            except (ValueError, TypeError):  # RZ-28-01
                 session = None
         if not session or session.revoked_at:
             # session_id missing/stale in old cache entries — fall through to DB
