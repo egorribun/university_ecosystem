@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process"
+import process from "node:process"
 
 import { validateWasmArtifacts } from "./verify-wasm-artifacts.mjs"
 
@@ -25,6 +26,12 @@ function runWasmPack(command, args, { cwd }) {
 }
 
 export async function buildWasmArtifacts(frontendRoot, { runCommand = runWasmPack } = {}) {
+  if (process.env.SKIP_WASM_BUILD === "1") {
+    console.log("SKIP_WASM_BUILD=1: skipping wasm-pack build and validating existing artifacts")
+    await validateWasmArtifacts(frontendRoot)
+    return
+  }
+
   const buildArgs = (directory) => ["build", directory, "--target", "web", "--release"]
 
   await runCommand("wasm-pack", buildArgs("rust-crypto"), { cwd: frontendRoot })

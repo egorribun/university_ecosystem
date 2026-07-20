@@ -34,6 +34,7 @@ RUN --mount=type=cache,target=/root/.npm \
 
 # Stage 4: Builder
 FROM base AS builder
+ENV SKIP_WASM_BUILD=1
 ARG VITE_BACKEND_ORIGIN=""
 ENV VITE_BACKEND_ORIGIN=$VITE_BACKEND_ORIGIN
 # W150 polish-followup — pass DEV_NO_SSR_SHELL through to post-build-shell.mjs
