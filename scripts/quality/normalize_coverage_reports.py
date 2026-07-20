@@ -1383,15 +1383,25 @@ def _read_raw_report(report_input: _ReportInput) -> _RawReport:
     )
 
 
-def _parse_report(raw_report: _RawReport, ignore_outside_files: bool = False) -> _ParsedReport:
+def _parse_report(
+    raw_report: _RawReport, ignore_outside_files: bool = False
+) -> _ParsedReport:
     if raw_report.report_format == "cobertura-xml":
-        metrics = _parse_python_xml(raw_report.raw, raw_report.component, ignore_outside_files)
+        metrics = _parse_python_xml(
+            raw_report.raw, raw_report.component, ignore_outside_files
+        )
     elif raw_report.report_format == "lcov":
-        metrics = _parse_frontend_lcov(raw_report.raw, raw_report.component, ignore_outside_files)
+        metrics = _parse_frontend_lcov(
+            raw_report.raw, raw_report.component, ignore_outside_files
+        )
     elif raw_report.report_format == "go-coverprofile":
-        metrics = _parse_go_coverprofile(raw_report.raw, raw_report.component, ignore_outside_files)
+        metrics = _parse_go_coverprofile(
+            raw_report.raw, raw_report.component, ignore_outside_files
+        )
     elif raw_report.report_format == "llvm-cov-json":
-        metrics = _parse_rust_llvm_json(raw_report.raw, raw_report.component, ignore_outside_files)
+        metrics = _parse_rust_llvm_json(
+            raw_report.raw, raw_report.component, ignore_outside_files
+        )
     else:
         raise _InputError(f"unsupported report format: {raw_report.report_format}")
     return _ParsedReport(
@@ -1556,7 +1566,9 @@ def _build_manifest(
             continue
         raw_reports.append(raw_report)
         try:
-            report = _parse_report(raw_report, ignore_outside_files=arguments.ignore_outside_files)
+            report = _parse_report(
+                raw_report, ignore_outside_files=arguments.ignore_outside_files
+            )
         except _InputError as error:
             message = (
                 f"malformed report for component {report_input.component}: {error}"
