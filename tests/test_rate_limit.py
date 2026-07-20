@@ -1067,7 +1067,34 @@ def test_resolve_client_ip_no_client(monkeypatch):
     assert ip == "unknown"
 
 
-def test_extract_user_id_for_ratelimit_exception_path(monkeypatch):
+def _mock_security_module(decode_token_val):
+    import sys
+    from contextlib import contextmanager
+    from types import ModuleType
+
+    @contextmanager
+    def _inner():
+        original = sys.modules.get("app.auth.security")
+        mock_module = ModuleType("app.auth.security")
+        mock_module.decode_token = decode_token_val
+
+        class SecurityError(Exception):
+            pass
+
+        mock_module.SecurityError = SecurityError
+        sys.modules["app.auth.security"] = mock_module
+        try:
+            yield
+        finally:
+            if original is not None:
+                sys.modules["app.auth.security"] = original
+            else:
+                sys.modules.pop("app.auth.security", None)
+
+    return _inner()
+
+
+def test_extract_user_id_for_ratelimit_exception_path():
     """Lines 154-155: Exception in decode_token returns None (fail-closed)."""
     from unittest.mock import MagicMock
 
@@ -1080,24 +1107,12 @@ def test_extract_user_id_for_ratelimit_exception_path(monkeypatch):
     def raise_exc(token):
         raise Exception("JWT error")
 
-    try:
-        monkeypatch.setattr("app.auth.security.decode_token", raise_exc)
-    except Exception as e:
-        import sys
-
-        print(f"DEBUG: monkeypatch 1 raised {type(e)}: {e}", file=sys.stderr)
-    try:
-        monkeypatch.setattr("auth.security.decode_token", raise_exc)
-    except Exception as e:
-        import sys
-
-        print(f"DEBUG: monkeypatch 2 raised {type(e)}: {e}", file=sys.stderr)
-
-    result = extract_user_id_for_ratelimit(request)
+    with _mock_security_module(raise_exc):
+        result = extract_user_id_for_ratelimit(request)
     assert result is None
 
 
-def test_extract_user_id_for_ratelimit_from_cookie(monkeypatch):
+def test_extract_user_id_for_ratelimit_from_cookie():
     """Lines 142-153: Falls back to cookie when no Authorization header."""
     from unittest.mock import MagicMock
 
@@ -1107,65 +1122,12 @@ def test_extract_user_id_for_ratelimit_from_cookie(monkeypatch):
     request.headers.get = lambda header, default="": ""  # No auth header
     request.cookies.get = lambda header: "cookie_token"
 
-    try:
-        monkeypatch.setattr(
-            "app.auth.security.decode_token", lambda token: {"sub": "user-123"}
-        )
-    except Exception as e:
-        import sys
-
-        print(f"DEBUG: monkeypatch 1 raised {type(e)}: {e}", file=sys.stderr)
-    try:
-        monkeypatch.setattr(
-            "auth.security.decode_token", lambda token: {"sub": "user-123"}
-        )
-    except Exception as e:
-        import sys
-
-        print(f"DEBUG: monkeypatch 2 raised {type(e)}: {e}", file=sys.stderr)
-
-    import sys
-
-    import app.auth.security
-
-    print(
-        f"DEBUG TEST BEFORE: sys.modules['app.auth.security'] id={id(sys.modules.get('app.auth.security'))}",
-        file=sys.stderr,
-    )
-    print(
-        f"DEBUG TEST BEFORE: app.auth.security.decode_token={app.auth.security.decode_token} id={id(app.auth.security.decode_token)}",
-        file=sys.stderr,
-    )
-
-    result = extract_user_id_for_ratelimit(request)
-    if result is None:
-        import sys
-
-        print(f"DEBUG: token={request.cookies.get('access_token_v2')}", file=sys.stderr)
-        print(
-            f"DEBUG: app.auth.security in sys.modules={sys.modules.get('app.auth.security')}",
-            file=sys.stderr,
-        )
-        print(
-            f"DEBUG: auth.security in sys.modules={sys.modules.get('auth.security')}",
-            file=sys.stderr,
-        )
-        print(
-            f"DEBUG: matching modules={[k for k in sys.modules if 'security' in k]}",
-            file=sys.stderr,
-        )
-        try:
-            from app.auth.security import decode_token
-
-            print(
-                f"DEBUG: app.auth.security.decode_token={decode_token}", file=sys.stderr
-            )
-        except Exception as e:
-            print(f"DEBUG: decode_token import raised {e}", file=sys.stderr)
+    with _mock_security_module(lambda token: {"sub": "user-123"}):
+        result = extract_user_id_for_ratelimit(request)
     assert result == "user-123"
 
 
-def test_extract_user_id_for_ratelimit_none_sub(monkeypatch):
+def test_extract_user_id_for_ratelimit_none_sub():
     """Line 153: When sub is None or empty, returns None."""
     from unittest.mock import MagicMock
 
@@ -1175,21 +1137,6 @@ def test_extract_user_id_for_ratelimit_none_sub(monkeypatch):
     request.headers.get = lambda header, default="": "Bearer token"
     request.cookies.get = lambda header: None
 
-    # Token decodes but sub is None
-    try:
-        monkeypatch.setattr(
-            "app.auth.security.decode_token", lambda token: {"sub": None}
-        )
-    except Exception as e:
-        import sys
-
-        print(f"DEBUG: monkeypatch 1 raised {type(e)}: {e}", file=sys.stderr)
-    try:
-        monkeypatch.setattr("auth.security.decode_token", lambda token: {"sub": None})
-    except Exception as e:
-        import sys
-
-        print(f"DEBUG: monkeypatch 2 raised {type(e)}: {e}", file=sys.stderr)
-
-    result = extract_user_id_for_ratelimit(request)
+    with _mock_security_module(lambda token: {"sub": None}):
+        result = extract_user_id_for_ratelimit(request)
     assert result is None
