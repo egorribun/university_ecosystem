@@ -4,6 +4,9 @@ import tomllib
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+if not (ROOT / "renovate.json").exists() and (ROOT.parent / "renovate.json").exists():
+    ROOT = ROOT.parent
+
 TARGETED_EMERGENCY_COMMAND = (
     'uv lock --upgrade-package "<package>" --exclude-newer-package "<package>=false"'
 )
