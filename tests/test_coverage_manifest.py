@@ -18,6 +18,7 @@ NORMALIZER_PATH = (
 QUALITY_CONTRACT_PATH = REPOSITORY_ROOT / "quality" / "quality-contract.json"
 
 if not QUALITY_CONTRACT_PATH.exists():
+    # QUALITY-100 @egorribun: Skip when contract is absent under sandbox environments
     pytest.skip("Quality contract file not found", allow_module_level=True)
 QUALITY_MANIFEST_SCHEMA_PATH = (
     REPOSITORY_ROOT / "quality" / "coverage-manifest.schema.json"
@@ -361,6 +362,7 @@ def _assert_metric_schema_shape(metric: dict[str, object]) -> None:
 
 def test_contract_declares_all_canonical_raw_coverage_artifacts() -> None:
     if not QUALITY_CONTRACT_PATH.exists():
+        # QUALITY-100 @egorribun: Skip when contract is absent under sandbox environments
         pytest.skip("Quality contract file does not exist (e.g., under mutmut)")
     contract = json.loads(QUALITY_CONTRACT_PATH.read_text(encoding="utf-8"))
 

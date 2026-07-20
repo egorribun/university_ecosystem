@@ -16,6 +16,7 @@ VALIDATOR_PATH = (
 QUALITY_CONTRACT_PATH = REPOSITORY_ROOT / "quality" / "quality-contract.json"
 
 if not QUALITY_CONTRACT_PATH.exists():
+    # QUALITY-100 @egorribun: Skip when contract is absent under sandbox environments
     pytest.skip("Quality contract file not found", allow_module_level=True)
 
 

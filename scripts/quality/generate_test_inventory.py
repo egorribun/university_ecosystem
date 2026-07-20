@@ -109,16 +109,13 @@ def scan_repository(mapping_config: dict[str, object]) -> list[dict[str, object]
         # Fast ignore check for major dependency/git folders
         parts = relative_path.split("/")
         if any(
-            part
+            (part.startswith(".") and part != ".github")
+            or part
             in {
-                ".git",
-                ".venv",
                 "node_modules",
                 "dist",
                 "build",
                 "__pycache__",
-                ".pytest_cache",
-                ".tmp",
             }
             for part in parts
         ):
