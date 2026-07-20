@@ -1740,19 +1740,26 @@ jobs:
           # Pre-pull images sequentially to avoid network bottlenecks and pull timeouts
           echo "Listing images to pre-pull..."
           images=$(docker compose $CF_UP config --images | sort -u)
+          
+          # Add Dockerfile base images to the pre-pulling list
+          images="$images golang:1.26.4-alpine3.22@sha256:cff7cf3120cd74bf0960cfe19a3efb6631161148d8e070f76976f73a13b2e3d4 gcr.io/distroless/static-debian12:latest@sha256:20bc6c0bc4d625a22a8fde3e55f6515709b32055ef8fb9cfbddaa06d1760f838 rust:1.94.1-slim-bookworm@sha256:5ae2d2ef9875c9c2407bf9b5678e6375304f7ecf8ea46b23e403a5690ec357ec python:3.14-slim-bookworm@sha256:4ff4b92a68355dbdb52584ab3391dff8d371a61d4e063468bfd0130e3189c6d9 node:24-alpine@sha256:01743339035a5c3c11a373cd7c83aeab6ed1457b55da6a69e014a95ac4e4700b alpine:3.20@sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc golang:1.24-alpine@sha256:8bee1901f1e530bfb4a7850aa7a479d17ae3a18beb6e09064ed54cfd245b7191 caddy:2.9.1-alpine@sha256:b4e3952384eb9524a887633ce65c752dd7c71314d2c2acf98cd5c715aaa534f0 alpine/socat"
+
           for img in $images; do
             # Skip local build images (which lack a tag/colon) or contain project names
-            if [[ "$img" != *":"* ]] || [[ "$img" == "university_ecosystem"* ]] || [[ "$img" == "quality-roadmap"* ]]; then
+            if [[ "$img" != *":"* ]] && [[ "$img" != "alpine/socat" ]]; then
+              continue
+            fi
+            if [[ "$img" == "university_ecosystem"* ]] || [[ "$img" == "quality-roadmap"* ]]; then
               continue
             fi
             echo "Pre-pulling $img..."
-            for attempt in 1 2 3; do
+            for attempt in 1 2 3 4 5; do
               if docker pull "$img"; then
                 echo "$img pulled successfully"
                 break
               fi
-              echo "Warning: failed to pull $img (attempt $attempt), retrying in 5s..."
-              sleep 5
+              echo "Warning: failed to pull $img (attempt $attempt), retrying in 10s..."
+              sleep 10
             done
           done
 
