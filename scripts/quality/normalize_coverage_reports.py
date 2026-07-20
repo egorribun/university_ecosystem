@@ -588,9 +588,12 @@ def _parse_python_xml(
         line_metric["covered"] != line_detail_metric["covered"]
         or line_metric["total"] != line_detail_metric["total"]
     ):
-        raise _InputError(
-            "coverage XML line root counters disagree with source line details"
-        )
+        if ignore_outside_files:
+            line_metric = line_detail_metric
+        else:
+            raise _InputError(
+                "coverage XML line root counters disagree with source line details"
+            )
 
     branch_pairs: list[tuple[int, int]] = []
     for line in lines:
@@ -624,9 +627,12 @@ def _parse_python_xml(
         branch_metric["covered"] != branch_detail_metric["covered"]
         or branch_metric["total"] != branch_detail_metric["total"]
     ):
-        raise _InputError(
-            "coverage XML branch root counters disagree with source line details"
-        )
+        if ignore_outside_files:
+            branch_metric = branch_detail_metric
+        else:
+            raise _InputError(
+                "coverage XML branch root counters disagree with source line details"
+            )
 
     return {
         "lines": line_metric,
