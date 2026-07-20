@@ -1736,6 +1736,26 @@ jobs:
       - name: Spin up Docker Compose
         run: |
           CF_UP="-f docker-compose.infra.yml -f docker-compose.go.yml -f docker-compose.yml -f docker-compose.ci-loadtest.yml"
+          
+          # Pre-pull images sequentially to avoid network bottlenecks and pull timeouts
+          echo "Listing images to pre-pull..."
+          images=$(docker compose $CF_UP config --images | sort -u)
+          for img in $images; do
+            # Skip local build images (which lack a tag/colon) or contain project names
+            if [[ "$img" != *":"* ]] || [[ "$img" == "university_ecosystem"* ]] || [[ "$img" == "quality-roadmap"* ]]; then
+              continue
+            fi
+            echo "Pre-pulling $img..."
+            for attempt in 1 2 3; do
+              if docker pull "$img"; then
+                echo "$img pulled successfully"
+                break
+              fi
+              echo "Warning: failed to pull $img (attempt $attempt), retrying in 5s..."
+              sleep 5
+            done
+          done
+
           # ROUND-15: retry `up -d --build`. The full stack pulls many infra
           # images (tempo, temporal-ui, ...) from Docker Hub, which intermittently
           # times out on the CI runner ("net/http: request canceled ...
