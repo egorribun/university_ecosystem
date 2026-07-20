@@ -487,6 +487,7 @@ def _xml_local_name(element: ElementTree.Element) -> str:
 def _coverage_xml_source_lines(
     root: ElementTree.Element,
     component: str,
+    ignore_outside_files: bool = False,
 ) -> list[ElementTree.Element]:
     source_lines: list[ElementTree.Element] = []
     seen_identities: set[tuple[str, int]] = set()
@@ -497,7 +498,12 @@ def _coverage_xml_source_lines(
         filename = class_element.get("filename")
         if not filename:
             raise _InputError("coverage XML class line is missing a filename")
-        source_identity = _canonical_source_identity(component, filename)
+        try:
+            source_identity = _canonical_source_identity(component, filename)
+        except _InputError as error:
+            if ignore_outside_files and "configured roots" in str(error):
+                continue
+            raise
         _register_source_spelling(
             source_spellings,
             source_identity,
@@ -530,6 +536,7 @@ def _coverage_xml_source_lines(
 def _parse_python_xml(
     raw: bytes,
     component: str,
+    ignore_outside_files: bool = False,
 ) -> dict[str, dict[str, object]]:
     text = _decode_report(raw, "coverage XML", encoding="utf-8-sig")
     declaration = XML_DECLARATION_PATTERN.match(text)
@@ -565,7 +572,7 @@ def _parse_python_xml(
         "branches-valid",
         "branch",
     )
-    lines = _coverage_xml_source_lines(root, component)
+    lines = _coverage_xml_source_lines(root, component, ignore_outside_files)
 
     line_detail_metric: dict[str, object] | None = None
     if lines:
@@ -819,6 +826,7 @@ def _lcov_metric_pair(
 def _parse_frontend_lcov(
     raw: bytes,
     component: str,
+    ignore_outside_files: bool = False,
 ) -> dict[str, dict[str, object]]:
     text = _decode_report(raw, "LCOV report")
     records: list[_LcovRecord] = []
@@ -827,11 +835,17 @@ def _parse_frontend_lcov(
     seen_sources: set[str] = set()
     source_spellings: dict[str, str] = {}
     counter_names = frozenset({"LF", "LH", "BRF", "BRH", "FNF", "FNH"})
+    skip_record = False
 
     for line_number, line in enumerate(text.splitlines(), start=1):
         if not line:
             continue
         if line == "end_of_record":
+            if skip_record:
+                current = _LcovRecord()
+                skip_record = False
+                current_has_content = False
+                continue
             if current.source is None:
                 raise _InputError(f"LCOV record ending at line {line_number} lacks SF")
             if current.source in seen_sources:
@@ -844,6 +858,8 @@ def _parse_frontend_lcov(
             current = _LcovRecord()
             current_has_content = False
             continue
+        if skip_record:
+            continue
         if ":" not in line:
             raise _InputError(f"LCOV line {line_number} is malformed")
         field, value = line.split(":", maxsplit=1)
@@ -853,7 +869,13 @@ def _parse_frontend_lcov(
                 raise _InputError(f"LCOV record has duplicate SF at line {line_number}")
             if not value:
                 raise _InputError(f"LCOV SF at line {line_number} is empty")
-            current.source = _canonical_source_identity(component, value)
+            try:
+                current.source = _canonical_source_identity(component, value)
+            except _InputError as error:
+                if ignore_outside_files and "configured roots" in str(error):
+                    skip_record = True
+                    continue
+                raise
             _register_source_spelling(
                 source_spellings,
                 current.source,
@@ -956,6 +978,7 @@ def _go_line_coverage_counts(
 def _parse_go_coverprofile(
     raw: bytes,
     component: str,
+    ignore_outside_files: bool = False,
 ) -> dict[str, dict[str, object]]:
     text = _decode_report(raw, "Go coverprofile")
     lines = [line for line in text.splitlines() if line.strip()]
@@ -990,7 +1013,12 @@ def _parse_go_coverprofile(
         if end_line < start_line:
             raise _InputError("Go coverprofile line range ends before it starts")
         raw_filename = match.group("filename")
-        filename = _canonical_source_identity(component, raw_filename)
+        try:
+            filename = _canonical_source_identity(component, raw_filename)
+        except _InputError as error:
+            if ignore_outside_files and "configured roots" in str(error):
+                continue
+            raise
         _register_source_spelling(
             source_spellings,
             filename,
@@ -1062,6 +1090,7 @@ def _parse_rust_counter(
 def _validate_rust_file_identities(
     component: str,
     file_collections: Sequence[object],
+    ignore_outside_files: bool = False,
 ) -> None:
     seen_identities: set[str] = set()
     source_spellings: dict[str, str] = {}
@@ -1072,6 +1101,7 @@ def _validate_rust_file_identities(
             if not isinstance(entry, dict):
                 raise _InputError(f"LLVM JSON files[{index}] must be an object")
             identities: list[tuple[str, str]] = []
+            is_outside = False
             for field_name in ("filename", "path"):
                 if field_name not in entry:
                     continue
@@ -1080,7 +1110,16 @@ def _validate_rust_file_identities(
                     raise _InputError(
                         f"LLVM JSON files[{index}].{field_name} must be a string"
                     )
-                identities.append((_canonical_source_identity(component, value), value))
+                try:
+                    identity_val = _canonical_source_identity(component, value)
+                except _InputError as error:
+                    if ignore_outside_files and "configured roots" in str(error):
+                        is_outside = True
+                        break
+                    raise
+                identities.append((identity_val, value))
+            if is_outside:
+                continue
             if not identities:
                 raise _InputError(f"LLVM JSON files[{index}] lacks a filename or path")
             if len({identity for identity, _ in identities}) != 1:
@@ -1103,6 +1142,7 @@ def _validate_rust_file_identities(
 def _parse_rust_llvm_json(
     raw: bytes,
     component: str,
+    ignore_outside_files: bool = False,
 ) -> dict[str, dict[str, object]]:
     text = _decode_report(raw, "LLVM JSON report")
     try:
@@ -1142,7 +1182,7 @@ def _parse_rust_llvm_json(
     else:
         raise _InputError("LLVM JSON totals must be an object")
 
-    _validate_rust_file_identities(component, file_collections)
+    _validate_rust_file_identities(component, file_collections, ignore_outside_files)
 
     line_pairs = [_parse_rust_counter(totals, "lines") for totals in totals_entries]
     function_pairs = [
@@ -1213,6 +1253,11 @@ def _parse_arguments(argv: Sequence[str] | None) -> argparse.Namespace:
     parser.add_argument("--commit-sha", required=True, metavar="SHA")
     parser.add_argument("--generated-at", required=True, metavar="TIMESTAMP")
     parser.add_argument("--output", required=True, metavar="PATH")
+    parser.add_argument(
+        "--ignore-outside-files",
+        action="store_true",
+        help="Ignore files that are outside the component's configured roots instead of failing.",
+    )
     parser.add_argument("--python-xml", action="append", default=[], metavar="PATH")
     parser.add_argument(
         "--frontend-lcov",
@@ -1338,15 +1383,15 @@ def _read_raw_report(report_input: _ReportInput) -> _RawReport:
     )
 
 
-def _parse_report(raw_report: _RawReport) -> _ParsedReport:
+def _parse_report(raw_report: _RawReport, ignore_outside_files: bool = False) -> _ParsedReport:
     if raw_report.report_format == "cobertura-xml":
-        metrics = _parse_python_xml(raw_report.raw, raw_report.component)
+        metrics = _parse_python_xml(raw_report.raw, raw_report.component, ignore_outside_files)
     elif raw_report.report_format == "lcov":
-        metrics = _parse_frontend_lcov(raw_report.raw, raw_report.component)
+        metrics = _parse_frontend_lcov(raw_report.raw, raw_report.component, ignore_outside_files)
     elif raw_report.report_format == "go-coverprofile":
-        metrics = _parse_go_coverprofile(raw_report.raw, raw_report.component)
+        metrics = _parse_go_coverprofile(raw_report.raw, raw_report.component, ignore_outside_files)
     elif raw_report.report_format == "llvm-cov-json":
-        metrics = _parse_rust_llvm_json(raw_report.raw, raw_report.component)
+        metrics = _parse_rust_llvm_json(raw_report.raw, raw_report.component, ignore_outside_files)
     else:
         raise _InputError(f"unsupported report format: {raw_report.report_format}")
     return _ParsedReport(
@@ -1511,7 +1556,7 @@ def _build_manifest(
             continue
         raw_reports.append(raw_report)
         try:
-            report = _parse_report(raw_report)
+            report = _parse_report(raw_report, ignore_outside_files=arguments.ignore_outside_files)
         except _InputError as error:
             message = (
                 f"malformed report for component {report_input.component}: {error}"
