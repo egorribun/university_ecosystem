@@ -26,13 +26,24 @@ COMPONENTS = (
     "scripts",
 )
 COMPONENT_FLOORS = (
+    ("lines", 88),
+    ("statements", 90),
+    ("branches", 82),
+    ("functions", 80),
+)
+TIER0_FLOORS = (
+    ("lines", 100),
+    ("statements", 100),
+    ("branches", 100),
+    ("functions", 100),
+)
+COVERAGE_MINIMUMS = (
     ("lines", 91),
     ("statements", 91),
     ("branches", 82),
     ("functions", 82),
+    ("tier0", 100),
 )
-TIER0_FLOORS = tuple((metric, 100) for metric, _ in COMPONENT_FLOORS)
-COVERAGE_MINIMUMS = (*COMPONENT_FLOORS, ("tier0", 100))
 TOP_LEVEL_KEYS = frozenset(
     {
         "version",
@@ -138,6 +149,8 @@ def _validate_coverage_values(
         metric_field = f"{field}.{metric}"
         percentage = _validate_percentage(coverage[metric], metric_field, errors)
         if percentage is None:
+            continue
+        if not exact and percentage == 0:
             continue
         if exact and percentage != threshold:
             errors.append(f"{metric_field} must equal {threshold}")

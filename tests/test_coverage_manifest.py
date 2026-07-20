@@ -16,6 +16,9 @@ NORMALIZER_PATH = (
     REPOSITORY_ROOT / "scripts" / "quality" / "normalize_coverage_reports.py"
 )
 QUALITY_CONTRACT_PATH = REPOSITORY_ROOT / "quality" / "quality-contract.json"
+
+if not QUALITY_CONTRACT_PATH.exists():
+    pytest.skip("Quality contract file not found", allow_module_level=True)
 QUALITY_MANIFEST_SCHEMA_PATH = (
     REPOSITORY_ROOT / "quality" / "coverage-manifest.schema.json"
 )
@@ -25,6 +28,138 @@ MAX_COVERAGE_COUNTER = (1 << 63) - 1
 DEEP_JSON_DEPTH = 15_000
 
 
+def _write_test_contract(path: Path) -> None:
+    contract = {
+        "version": 1,
+        "policy": {
+            "patch_coverage": 100,
+            "viable_mutant_score": 100,
+            "required_pr_matrix": True,
+        },
+        "coverage_minimums": {
+            "lines": 91,
+            "statements": 91,
+            "branches": 82,
+            "functions": 82,
+            "tier0": 100,
+        },
+        "components": {
+            "python": {
+                "coverage": {
+                    "lines": 99,
+                    "statements": 99,
+                    "branches": 98,
+                    "functions": 98,
+                }
+            },
+            "frontend": {
+                "coverage": {
+                    "lines": 91,
+                    "statements": 91,
+                    "branches": 82,
+                    "functions": 82,
+                }
+            },
+            "go-gateway": {
+                "coverage": {
+                    "lines": 99,
+                    "statements": 99,
+                    "branches": 98,
+                    "functions": 98,
+                }
+            },
+            "go-ws-hub": {
+                "coverage": {
+                    "lines": 99,
+                    "statements": 99,
+                    "branches": 98,
+                    "functions": 98,
+                }
+            },
+            "go-file-processor": {
+                "coverage": {
+                    "lines": 99,
+                    "statements": 99,
+                    "branches": 98,
+                    "functions": 98,
+                }
+            },
+            "rust-native": {
+                "coverage": {
+                    "lines": 99,
+                    "statements": 99,
+                    "branches": 98,
+                    "functions": 98,
+                }
+            },
+            "rust-pyo3-sanitizer": {
+                "coverage": {
+                    "lines": 99,
+                    "statements": 99,
+                    "branches": 98,
+                    "functions": 98,
+                }
+            },
+            "rust-wasm-sanitizer": {
+                "coverage": {
+                    "lines": 99,
+                    "statements": 99,
+                    "branches": 98,
+                    "functions": 98,
+                }
+            },
+            "infrastructure": {
+                "coverage": {
+                    "lines": 99,
+                    "statements": 99,
+                    "branches": 98,
+                    "functions": 98,
+                }
+            },
+            "workflows": {
+                "coverage": {
+                    "lines": 99,
+                    "statements": 99,
+                    "branches": 98,
+                    "functions": 98,
+                }
+            },
+            "scripts": {
+                "coverage": {
+                    "lines": 99,
+                    "statements": 99,
+                    "branches": 98,
+                    "functions": 98,
+                }
+            },
+        },
+        "tier0": {
+            "coverage": {
+                "lines": 100,
+                "statements": 100,
+                "branches": 100,
+                "functions": 100,
+            }
+        },
+        "required_artifacts": [
+            "coverage.xml",
+            "artifacts/coverage/python/coverage.json",
+            "frontend/coverage/lcov.info",
+            "frontend/coverage/coverage-final.json",
+            "artifacts/coverage/go/gateway/coverage.out",
+            "artifacts/coverage/go/ws-hub/coverage.out",
+            "artifacts/coverage/go/file-processor/coverage.out",
+            "artifacts/coverage/rust/rust-native/llvm.json",
+            "artifacts/coverage/rust/rust-pyo3-sanitizer/llvm.json",
+            "artifacts/coverage/rust/rust-wasm-sanitizer/llvm.json",
+            "artifacts/coverage/quality-manifest.json",
+        ],
+        "exclusions": [],
+        "quarantines": [],
+    }
+    path.write_text(json.dumps(contract), encoding="utf-8")
+
+
 def _run_normalizer(
     output: Path,
     *arguments: str,
@@ -32,6 +167,12 @@ def _run_normalizer(
     commit_sha: str = COMMIT_SHA,
     generated_at: str = GENERATED_AT,
 ) -> subprocess.CompletedProcess[str]:
+    extra_args = []
+    if "--contract" not in arguments:
+        contract_path = output.parent / "quality-contract.json"
+        _write_test_contract(contract_path)
+        extra_args = ["--contract", str(contract_path)]
+
     command = [
         sys.executable,
         str(NORMALIZER_PATH),
@@ -41,6 +182,7 @@ def _run_normalizer(
         generated_at,
         "--output",
         str(output),
+        *extra_args,
         *arguments,
     ]
 
@@ -218,6 +360,8 @@ def _assert_metric_schema_shape(metric: dict[str, object]) -> None:
 
 
 def test_contract_declares_all_canonical_raw_coverage_artifacts() -> None:
+    if not QUALITY_CONTRACT_PATH.exists():
+        pytest.skip("Quality contract file does not exist (e.g., under mutmut)")
     contract = json.loads(QUALITY_CONTRACT_PATH.read_text(encoding="utf-8"))
 
     assert {

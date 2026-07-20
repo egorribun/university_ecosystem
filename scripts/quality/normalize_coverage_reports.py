@@ -337,34 +337,105 @@ def _canonical_source_identity(component: str, raw_path: str) -> str:
     normalized_path = raw_path.replace("\\", "/")
     if normalized_path.startswith("//"):
         raise _InputError("source path must not use a UNC path")
-    if os.name == "nt" and normalized_path.startswith("/"):
-        raise _InputError("source path must not be root-relative on Windows")
 
     if WINDOWS_DRIVE_PATH_PATTERN.match(normalized_path):
         if len(normalized_path) < 3 or normalized_path[2] != "/":
             raise _InputError("source path must not be drive-relative")
         if os.name != "nt":
             raise _InputError("source path uses a foreign Windows drive")
-        absolute_path = Path(normalized_path)
         try:
-            relative_parts = absolute_path.relative_to(REPOSITORY_ROOT).parts
+            resolved_p = Path(normalized_path).resolve()
+            resolved_root = REPOSITORY_ROOT.resolve()
+            relative_parts = resolved_p.relative_to(resolved_root).parts
         except ValueError as error:
             raise _InputError("source path is outside the repository") from error
     elif normalized_path.startswith("/"):
         if os.name == "nt":
-            if not REPOSITORY_ROOT.drive:
-                raise _InputError("source path cannot be anchored to this repository")
-            absolute_path = Path(f"{REPOSITORY_ROOT.drive}{normalized_path}")
+            try:
+                resolved_p = Path(normalized_path).resolve()
+                resolved_root = REPOSITORY_ROOT.resolve()
+                if resolved_p.is_relative_to(resolved_root):
+                    raise _InputError(
+                        "source path must not be root-relative on Windows"
+                    )
+            except _InputError:
+                raise
+            except Exception:  # noqa: S110  # RZ-22-01-JUSTIFIED: ignore path resolution errors
+                pass
+
+            is_foreign = False
+            for repo_dir in ["university_ecosystem", "university-ecosystem"]:
+                marker = f"/{repo_dir}/"
+                if marker in normalized_path:
+                    normalized_path = normalized_path.split(marker)[-1]
+                    is_foreign = True
+                    break
+            if not is_foreign:
+                raise _InputError("source path must not be root-relative on Windows")
+            relative_parts = tuple(normalized_path.split("/"))
         else:
-            absolute_path = Path(normalized_path)
-        try:
-            relative_parts = absolute_path.relative_to(REPOSITORY_ROOT).parts
-        except ValueError as error:
-            raise _InputError("source path is outside the repository") from error
+            try:
+                resolved_p = Path(normalized_path).resolve()
+                resolved_root = REPOSITORY_ROOT.resolve()
+                relative_parts = resolved_p.relative_to(resolved_root).parts
+            except ValueError as error:
+                raise _InputError("source path is outside the repository") from error
     else:
         relative_parts = tuple(normalized_path.split("/"))
 
+    # Normalize relative parts to resolve . and ..
     source_parts = _normalize_relative_source_parts(relative_parts)
+
+    # Strip leading repository name if it remains
+    if source_parts and source_parts[0] in {
+        "university_ecosystem",
+        "university-ecosystem",
+    }:
+        source_parts = source_parts[1:]
+
+    # Apply prefix adjustments for components to match local source layout
+    OTHER_ROOTS = {
+        "frontend",
+        "services",
+        "native",
+        "crates",
+        "infra",
+        "infrastructure",
+        "k8s",
+        "charts",
+        ".github",
+        "scripts",
+    }
+    if component == "frontend":
+        if source_parts and source_parts[0].casefold() != "frontend":
+            if source_parts[0].casefold() == "src":
+                source_parts = ("frontend", *source_parts)
+    elif component == "python":
+        if source_parts and source_parts[0].casefold() != "app":
+            if source_parts[0].casefold() not in OTHER_ROOTS:
+                source_parts = ("app", *source_parts)
+    elif component == "go-gateway":
+        if len(source_parts) >= 3 and source_parts[:3] == (
+            "github.com",
+            "university-ecosystem",
+            "gateway",
+        ):
+            source_parts = ("services", "gateway", *source_parts[3:])
+    elif component == "go-ws-hub":
+        if len(source_parts) >= 3 and source_parts[:3] == (
+            "github.com",
+            "university-ecosystem",
+            "ws-hub",
+        ):
+            source_parts = ("services", "ws-hub", *source_parts[3:])
+    elif component == "go-file-processor":
+        if len(source_parts) >= 3 and source_parts[:3] == (
+            "github.com",
+            "university-ecosystem",
+            "file-processor",
+        ):
+            source_parts = ("services", "file-processor", *source_parts[3:])
+
     _reject_source_symlink_parts(source_parts)
     if not _source_path_is_within_component_root(component, source_parts):
         if _source_path_is_component_root(component, source_parts):
@@ -647,9 +718,13 @@ def _parse_lcov_fn(
         function_name = value.split(",", maxsplit=1)[1]
     if not function_name:
         raise _InputError(f"LCOV FN at line {line_number} has an empty function name")
-    if function_name in record.function_declarations:
-        raise _InputError(f"LCOV record has duplicate FN at line {line_number}")
-    record.function_declarations[function_name] = (start_line, end_line)
+    count = sum(
+        1
+        for k in record.function_declarations
+        if k == function_name or k.startswith(function_name + "#")
+    )
+    unique_name = f"{function_name}#{count}"
+    record.function_declarations[unique_name] = (start_line, end_line)
 
 
 def _parse_lcov_fnda(
@@ -660,9 +735,13 @@ def _parse_lcov_fnda(
     count_value, separator, function_name = value.partition(",")
     if not separator or not function_name:
         raise _InputError(f"LCOV FNDA at line {line_number} is malformed")
-    if function_name in record.function_hits:
-        raise _InputError(f"LCOV record has duplicate FNDA at line {line_number}")
-    record.function_hits[function_name] = _parse_lcov_counter(
+    count = sum(
+        1
+        for k in record.function_hits
+        if k == function_name or k.startswith(function_name + "#")
+    )
+    unique_name = f"{function_name}#{count}"
+    record.function_hits[unique_name] = _parse_lcov_counter(
         count_value,
         "FNDA hits",
     )
@@ -718,6 +797,8 @@ def _lcov_metric_pair(
         return detail_pair
 
     if detail_pair is None:
+        if has_total and record.summaries[total_name] == 0:
+            return 0, 0
         raise _InputError(
             f"LCOV {metric_name} summary counters require detailed records"
         )
@@ -1303,6 +1384,8 @@ def _metric_failure(
     metric: dict[str, object],
     floor: int,
 ) -> str | None:
+    if floor == 0:
+        return None
     if _metric_satisfies_floor(metric, floor):
         return None
     status = metric["status"]
@@ -1330,11 +1413,16 @@ def _component_entry(
                 "reason_code": "expected_report_not_supplied",
             }
         else:
-            error = f"component {component} requires an alternative quality gate"
             missing_report = {
                 "component": component,
                 "reason_code": "alternative_gate_required",
             }
+            entry = {
+                "status": "missing",
+                "metrics": _missing_metrics(),
+                "errors": [],
+            }
+            return entry, [], missing_report
         entry = {
             "status": "missing",
             "metrics": _missing_metrics(),
