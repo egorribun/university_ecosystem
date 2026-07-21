@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1783972220363,
+  "lastUpdate": 1784638727441,
   "repoUrl": "https://github.com/egorribun/university_ecosystem",
   "entries": {
     "Go Services Performance Benchmarks": [
@@ -834,6 +834,122 @@ window.BENCHMARK_DATA = {
             "value": 28.48,
             "unit": "ns/op",
             "extra": "39671395 times\n4 procs"
+          }
+        ]
+      }
+    ],
+    "Rust Criterion Benchmarks (pyo3-sanitizer)": [
+      {
+        "commit": {
+          "author": {
+            "email": "49699333+dependabot[bot]@users.noreply.github.com",
+            "name": "dependabot[bot]",
+            "username": "dependabot[bot]"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "01f5225769cacda2c9a609e9100b5b74cf5e5990",
+          "message": "build(deps): Bump the pip-dependencies group with 2 updates\n\nUpdates the requirements on [strawberry-graphql](https://github.com/sponsors/strawberry-graphql) and [mypy](https://github.com/python/mypy) to permit the latest version.\n\nUpdates `strawberry-graphql` to 0.322.0\n- [Commits](https://github.com/sponsors/strawberry-graphql/commits)\n\nUpdates `mypy` to 2.3.0\n- [Changelog](https://github.com/python/mypy/blob/master/CHANGELOG.md)\n- [Commits](https://github.com/python/mypy/compare/v1.20.1...v2.3.0)\n\n---\nupdated-dependencies:\n- dependency-name: strawberry-graphql\n  dependency-version: 0.322.0\n  dependency-type: direct:production\n  dependency-group: pip-dependencies\n- dependency-name: mypy\n  dependency-version: 2.3.0\n  dependency-type: direct:development\n  dependency-group: pip-dependencies\n...\n\nSigned-off-by: dependabot[bot] <support@github.com>\nCo-authored-by: dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>",
+          "timestamp": "2026-07-21T15:53:21+03:00",
+          "tree_id": "d4c90f0e6becfd187a1204cb3e998d104cc53a8b",
+          "url": "https://github.com/egorribun/university_ecosystem/commit/01f5225769cacda2c9a609e9100b5b74cf5e5990"
+        },
+        "date": 1784638726411,
+        "tool": "cargo",
+        "benches": [
+          {
+            "name": "sanitize_rich_text/empty",
+            "value": 5647,
+            "range": "± 17",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_rich_text/plain_text",
+            "value": 6501,
+            "range": "± 28",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_rich_text/simple_html",
+            "value": 9211,
+            "range": "± 147",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_rich_text/xss_attempt",
+            "value": 9584,
+            "range": "± 45",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_rich_text/large",
+            "value": 92606,
+            "range": "± 221",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_html_basic/empty",
+            "value": 5128,
+            "range": "± 71",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_html_basic/plain_text",
+            "value": 5954,
+            "range": "± 74",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_html_basic/simple_html",
+            "value": 8503,
+            "range": "± 32",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_html_basic/xss_attempt",
+            "value": 8546,
+            "range": "± 20",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_html_basic/large",
+            "value": 87174,
+            "range": "± 214",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "strip_html/empty",
+            "value": 5026,
+            "range": "± 71",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "strip_html/plain_text",
+            "value": 5826,
+            "range": "± 9",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "strip_html/simple_html",
+            "value": 8072,
+            "range": "± 19",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "strip_html/xss_attempt",
+            "value": 8409,
+            "range": "± 22",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "strip_html/large",
+            "value": 85567,
+            "range": "± 412",
+            "unit": "ns/iter"
           }
         ]
       }
