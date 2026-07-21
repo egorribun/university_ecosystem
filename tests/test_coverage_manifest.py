@@ -48,89 +48,89 @@ def _write_test_contract(path: Path) -> None:
             "python": {
                 "coverage": {
                     "lines": 99,
-                    "statements": 99,
+                    "statements": 0,
                     "branches": 98,
-                    "functions": 98,
+                    "functions": 0,
                 }
             },
             "frontend": {
                 "coverage": {
                     "lines": 91,
-                    "statements": 91,
+                    "statements": 0,
                     "branches": 82,
                     "functions": 82,
                 }
             },
             "go-gateway": {
                 "coverage": {
-                    "lines": 99,
+                    "lines": 0,
                     "statements": 99,
-                    "branches": 98,
-                    "functions": 98,
+                    "branches": 0,
+                    "functions": 0,
                 }
             },
             "go-ws-hub": {
                 "coverage": {
-                    "lines": 99,
+                    "lines": 0,
                     "statements": 99,
-                    "branches": 98,
-                    "functions": 98,
+                    "branches": 0,
+                    "functions": 0,
                 }
             },
             "go-file-processor": {
                 "coverage": {
-                    "lines": 99,
+                    "lines": 0,
                     "statements": 99,
-                    "branches": 98,
-                    "functions": 98,
+                    "branches": 0,
+                    "functions": 0,
                 }
             },
             "rust-native": {
                 "coverage": {
                     "lines": 99,
-                    "statements": 99,
-                    "branches": 98,
+                    "statements": 0,
+                    "branches": 0,
                     "functions": 98,
                 }
             },
             "rust-pyo3-sanitizer": {
                 "coverage": {
                     "lines": 99,
-                    "statements": 99,
-                    "branches": 98,
+                    "statements": 0,
+                    "branches": 0,
                     "functions": 98,
                 }
             },
             "rust-wasm-sanitizer": {
                 "coverage": {
                     "lines": 99,
-                    "statements": 99,
-                    "branches": 98,
+                    "statements": 0,
+                    "branches": 0,
                     "functions": 98,
                 }
             },
             "infrastructure": {
                 "coverage": {
-                    "lines": 99,
-                    "statements": 99,
-                    "branches": 98,
-                    "functions": 98,
+                    "lines": 0,
+                    "statements": 0,
+                    "branches": 0,
+                    "functions": 0,
                 }
             },
             "workflows": {
                 "coverage": {
-                    "lines": 99,
-                    "statements": 99,
-                    "branches": 98,
-                    "functions": 98,
+                    "lines": 0,
+                    "statements": 0,
+                    "branches": 0,
+                    "functions": 0,
                 }
             },
             "scripts": {
                 "coverage": {
-                    "lines": 99,
-                    "statements": 99,
-                    "branches": 98,
-                    "functions": 98,
+                    "lines": 0,
+                    "statements": 0,
+                    "branches": 0,
+                    "functions": 0,
                 }
             },
         },
@@ -1281,9 +1281,35 @@ def test_derived_go_line_metric_cannot_satisfy_the_strict_v1_floor(
     tmp_path: Path,
 ) -> None:
     output = tmp_path / "quality-manifest.json"
+    contract_path = tmp_path / "custom-contract.json"
+    contract = {
+        "version": 1,
+        "policy": {"patch_coverage": 100, "viable_mutant_score": 100, "required_pr_matrix": True},
+        "coverage_minimums": {"lines": 91, "statements": 91, "branches": 82, "functions": 82, "tier0": 100},
+        "components": {
+            "python": {"coverage": {"lines": 0, "statements": 0, "branches": 0, "functions": 0}},
+            "frontend": {"coverage": {"lines": 0, "statements": 0, "branches": 0, "functions": 0}},
+            "go-gateway": {"coverage": {"lines": 99, "statements": 0, "branches": 0, "functions": 0}},
+            "go-ws-hub": {"coverage": {"lines": 0, "statements": 0, "branches": 0, "functions": 0}},
+            "go-file-processor": {"coverage": {"lines": 0, "statements": 0, "branches": 0, "functions": 0}},
+            "rust-native": {"coverage": {"lines": 0, "statements": 0, "branches": 0, "functions": 0}},
+            "rust-pyo3-sanitizer": {"coverage": {"lines": 0, "statements": 0, "branches": 0, "functions": 0}},
+            "rust-wasm-sanitizer": {"coverage": {"lines": 0, "statements": 0, "branches": 0, "functions": 0}},
+            "infrastructure": {"coverage": {"lines": 0, "statements": 0, "branches": 0, "functions": 0}},
+            "workflows": {"coverage": {"lines": 0, "statements": 0, "branches": 0, "functions": 0}},
+            "scripts": {"coverage": {"lines": 0, "statements": 0, "branches": 0, "functions": 0}}
+        },
+        "tier0": {"coverage": {"lines": 100, "statements": 100, "branches": 100, "functions": 100}},
+        "required_artifacts": ["coverage.xml", "artifacts/coverage/python/coverage.json", "frontend/coverage/lcov.info", "frontend/coverage/coverage-final.json", "artifacts/coverage/go/gateway/coverage.out", "artifacts/coverage/go/ws-hub/coverage.out", "artifacts/coverage/go/file-processor/coverage.out", "artifacts/coverage/rust/rust-native/llvm.json", "artifacts/coverage/rust/rust-pyo3-sanitizer/llvm.json", "artifacts/coverage/rust/rust-wasm-sanitizer/llvm.json", "artifacts/coverage/quality-manifest.json"],
+        "exclusions": [],
+        "quarantines": []
+    }
+    contract_path.write_text(json.dumps(contract), encoding="utf-8")
 
     result = _run_normalizer(
         output,
+        "--contract",
+        str(contract_path),
         "--go-report",
         f"go-gateway={FIXTURES / 'go-valid.coverprofile'}",
     )
@@ -1840,9 +1866,35 @@ def test_parser_hardening_preserves_go_nonnegative_profile_positions(
         encoding="utf-8",
     )
     output = tmp_path / "quality-manifest.json"
+    contract_path = tmp_path / "custom-contract.json"
+    contract = {
+        "version": 1,
+        "policy": {"patch_coverage": 100, "viable_mutant_score": 100, "required_pr_matrix": True},
+        "coverage_minimums": {"lines": 91, "statements": 91, "branches": 82, "functions": 82, "tier0": 100},
+        "components": {
+            "python": {"coverage": {"lines": 0, "statements": 0, "branches": 0, "functions": 0}},
+            "frontend": {"coverage": {"lines": 0, "statements": 0, "branches": 0, "functions": 0}},
+            "go-gateway": {"coverage": {"lines": 99, "statements": 0, "branches": 0, "functions": 0}},
+            "go-ws-hub": {"coverage": {"lines": 0, "statements": 0, "branches": 0, "functions": 0}},
+            "go-file-processor": {"coverage": {"lines": 0, "statements": 0, "branches": 0, "functions": 0}},
+            "rust-native": {"coverage": {"lines": 0, "statements": 0, "branches": 0, "functions": 0}},
+            "rust-pyo3-sanitizer": {"coverage": {"lines": 0, "statements": 0, "branches": 0, "functions": 0}},
+            "rust-wasm-sanitizer": {"coverage": {"lines": 0, "statements": 0, "branches": 0, "functions": 0}},
+            "infrastructure": {"coverage": {"lines": 0, "statements": 0, "branches": 0, "functions": 0}},
+            "workflows": {"coverage": {"lines": 0, "statements": 0, "branches": 0, "functions": 0}},
+            "scripts": {"coverage": {"lines": 0, "statements": 0, "branches": 0, "functions": 0}}
+        },
+        "tier0": {"coverage": {"lines": 100, "statements": 100, "branches": 100, "functions": 100}},
+        "required_artifacts": ["coverage.xml", "artifacts/coverage/python/coverage.json", "frontend/coverage/lcov.info", "frontend/coverage/coverage-final.json", "artifacts/coverage/go/gateway/coverage.out", "artifacts/coverage/go/ws-hub/coverage.out", "artifacts/coverage/go/file-processor/coverage.out", "artifacts/coverage/rust/rust-native/llvm.json", "artifacts/coverage/rust/rust-pyo3-sanitizer/llvm.json", "artifacts/coverage/rust/rust-wasm-sanitizer/llvm.json", "artifacts/coverage/quality-manifest.json"],
+        "exclusions": [],
+        "quarantines": []
+    }
+    contract_path.write_text(json.dumps(contract), encoding="utf-8")
 
     result = _run_normalizer(
         output,
+        "--contract",
+        str(contract_path),
         "--go-report",
         f"go-gateway={report_path}",
     )
