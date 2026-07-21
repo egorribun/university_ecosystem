@@ -153,6 +153,7 @@ coverage.json
 .hypothesis/
 .pytest_cache/
 .pytest_tmp/
+.tmp/
 cover/
 *.mo
 *.pot
