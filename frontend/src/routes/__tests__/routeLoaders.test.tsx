@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { describe, expect, it, vi, beforeEach } from "vitest"
 import { Route as EventsDetailRoute } from "../_auth/events.$id"
 import { Route as EventsIndexRoute } from "../_auth/events.index"

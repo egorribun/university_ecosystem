@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { screen, cleanup } from "@testing-library/react"
 import { QueryClient } from "@tanstack/react-query"
 import Schedule from "@/pages/Schedule"

@@ -513,6 +513,110 @@ fn rust_ext(m: &Bound<'_, PyModule>) -> PyResult<()> {
 mod tests {
     use super::*;
 
+    #[test]
+    fn test_pyo3_bindings_coverage() {
+        Python::initialize();
+        Python::attach(|py| {
+            let m = pyo3::types::PyModule::new(py, "rust_ext").unwrap();
+            rust_ext(&m).unwrap();
+
+            // 1. Check ScheduleItem class
+            let item_cls = m.getattr("ScheduleItem").unwrap();
+            let item = item_cls.call1(("monday", 0i64, 3600i64, "both")).unwrap();
+            assert_eq!(
+                item.getattr("weekday")
+                    .unwrap()
+                    .extract::<String>()
+                    .unwrap(),
+                "monday"
+            );
+            assert_eq!(
+                item.getattr("start_time")
+                    .unwrap()
+                    .extract::<i64>()
+                    .unwrap(),
+                0
+            );
+
+            // 2. detect_conflicts
+            let detect_conflicts = m.getattr("detect_conflicts").unwrap();
+            let target = item_cls
+                .call1(("monday", 1000i64, 2000i64, "both"))
+                .unwrap();
+            let existing_list = pyo3::types::PyList::new(
+                py,
+                vec![item_cls.call1(("monday", 0i64, 3600i64, "both")).unwrap()],
+            )
+            .unwrap();
+            let conflicts: Vec<ScheduleItem> = detect_conflicts
+                .call1((&target, &existing_list))
+                .unwrap()
+                .extract()
+                .unwrap();
+            assert_eq!(conflicts.len(), 1);
+
+            // 3. batch_detect_conflicts
+            let batch_detect_conflicts = m.getattr("batch_detect_conflicts").unwrap();
+            let batch: Vec<(ScheduleItem, ScheduleItem)> = batch_detect_conflicts
+                .call1((&existing_list,))
+                .unwrap()
+                .extract()
+                .unwrap();
+            assert!(batch.is_empty());
+
+            // 4. find_optimal_slot
+            let find_optimal_slot = m.getattr("find_optimal_slot").unwrap();
+            let hours = pyo3::types::PyList::new(py, vec![10u32, 11u32]).unwrap();
+            let tuple = pyo3::types::PyTuple::new(
+                py,
+                vec![
+                    "monday".into_pyobject(py).unwrap().into_any(),
+                    hours.into_any(),
+                ],
+            )
+            .unwrap();
+            let avail = pyo3::types::PyList::new(py, vec![tuple]).unwrap();
+            let opt_res = find_optimal_slot
+                .call1((60u32, &existing_list, &avail))
+                .unwrap();
+            let opt_item: Option<ScheduleItem> = opt_res.extract().unwrap();
+            let opt_item = opt_item.expect("an available Monday slot at 10:00 must be returned");
+            assert_eq!(opt_item.weekday, "monday");
+            assert_eq!(opt_item.end_time - opt_item.start_time, 60 * 60);
+
+            // 5. get_partition_info
+            let get_partition_info_py = m.getattr("get_partition_info").unwrap();
+            let part_info = get_partition_info_py
+                .call1(("notifications", 0i32))
+                .unwrap();
+            assert!(part_info
+                .getattr("name")
+                .unwrap()
+                .extract::<String>()
+                .unwrap()
+                .contains("notifications"));
+
+            // 6. is_partition_expired
+            let is_partition_expired_py = m.getattr("is_partition_expired").unwrap();
+            let expired: bool = is_partition_expired_py
+                .call1(("notifications_y2026_m03", "notifications", 30i64))
+                .unwrap()
+                .extract()
+                .unwrap();
+            assert!(!expired);
+
+            // 7. verify_audit_signature
+            let verify_sig = m.getattr("verify_audit_signature").unwrap();
+            let keys = pyo3::types::PyList::new(py, vec!["key1"]).unwrap();
+            let sig_ok: bool = verify_sig
+                .call1((&keys, "log_data", "deadbeef"))
+                .unwrap()
+                .extract()
+                .unwrap();
+            assert!(!sig_ok);
+        });
+    }
+
     // -- get_partition_info boundary tests --
 
     #[test]

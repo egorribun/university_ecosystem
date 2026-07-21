@@ -1,0 +1,15 @@
+{
+  "name": "uni-wasm-crypto",
+  "type": "module",
+  "version": "0.1.0",
+  "files": [
+    "uni_wasm_crypto_bg.wasm",
+    "uni_wasm_crypto.js",
+    "uni_wasm_crypto.d.ts"
+  ],
+  "main": "uni_wasm_crypto.js",
+  "types": "uni_wasm_crypto.d.ts",
+  "sideEffects": [
+    "./snippets/*"
+  ]
+}

@@ -328,3 +328,25 @@ func TestGetEnvSlice(t *testing.T) {
 		})
 	}
 }
+
+func TestLoad_JWKSRefreshIntervalFallback(t *testing.T) {
+	originalJWT := os.Getenv("JWT_SECRET")
+	originalBackend := os.Getenv("BACKEND_URL")
+	originalJWKSEnd := os.Getenv("JWKS_ENDPOINT")
+	originalJWKSRefresh := os.Getenv("JWKS_REFRESH_INTERVAL")
+	defer func() {
+		restoreEnv(t, "JWT_SECRET", originalJWT)
+		restoreEnv(t, "BACKEND_URL", originalBackend)
+		restoreEnv(t, "JWKS_ENDPOINT", originalJWKSEnd)
+		restoreEnv(t, "JWKS_REFRESH_INTERVAL", originalJWKSRefresh)
+	}()
+
+	t.Setenv("JWT_SECRET", "secret")
+	t.Setenv("JWKS_ENDPOINT", "http://auth/jwks")
+	t.Setenv("JWKS_REFRESH_INTERVAL", "-10")
+
+	cfg, err := Load()
+	assert.NoError(t, err)
+	assert.NotNil(t, cfg)
+	assert.Equal(t, 300, cfg.JWKSRefreshInterval)
+}

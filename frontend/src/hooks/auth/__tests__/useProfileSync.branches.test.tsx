@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import type { MutableRefObject, PropsWithChildren } from "react"
 import { useRef } from "react"
 import { renderHook, act, waitFor } from "@testing-library/react"

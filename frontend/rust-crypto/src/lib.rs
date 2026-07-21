@@ -22,6 +22,22 @@ pub fn hmac_sha256_sign(key: &str, message: &str) -> String {
     hex::encode(result.into_bytes())
 }
 
+#[cfg(target_arch = "wasm32")]
+type ErrorType = JsValue;
+
+#[cfg(not(target_arch = "wasm32"))]
+type ErrorType = String;
+
+#[cfg(target_arch = "wasm32")]
+fn make_err(msg: &str) -> JsValue {
+    JsValue::from_str(msg)
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn make_err(msg: &str) -> String {
+    msg.to_string()
+}
+
 #[wasm_bindgen]
 pub fn scrypt_derive(
     password: &[u8],
@@ -30,11 +46,30 @@ pub fn scrypt_derive(
     r: u32,
     p: u32,
     dk_len: usize,
-) -> Result<Vec<u8>, JsValue> {
-    let params = ScryptParams::new(n.ilog2() as u8, r, p, dk_len)
-        .map_err(|e| JsValue::from_str(&format!("Invalid scrypt params: {:?}", e)))?;
+) -> Result<Vec<u8>, ErrorType> {
+    let log_n = n
+        .checked_ilog2()
+        .filter(|_| n.is_power_of_two())
+        .ok_or_else(|| make_err("Invalid scrypt params: N must be a non-zero power of two"))?;
+    let params = ScryptParams::new(log_n as u8, r, p, dk_len)
+        .map_err(|e| make_err(&format!("Invalid scrypt params: {:?}", e)))?;
     let mut res = vec![0u8; dk_len];
     scrypt(password, salt, &params, &mut res)
-        .map_err(|e| JsValue::from_str(&format!("Scrypt failed: {:?}", e)))?;
+        .map_err(|e| make_err(&format!("Scrypt failed: {:?}", e)))?;
     Ok(res)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::scrypt_derive;
+
+    #[test]
+    fn scrypt_rejects_zero_cost_without_panicking() {
+        assert!(scrypt_derive(b"password", b"salt", 0, 8, 1, 64).is_err());
+    }
+
+    #[test]
+    fn scrypt_rejects_non_power_of_two_cost() {
+        assert!(scrypt_derive(b"password", b"salt", 3, 8, 1, 64).is_err());
+    }
 }

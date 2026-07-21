@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { render, screen } from "@testing-library/react"
 import { QueryClient } from "@tanstack/react-query"
@@ -113,6 +112,18 @@ describe("__root.tsx components", () => {
 
       expect(screen.getByTestId("theme-provider")).toBeInTheDocument()
       expect(screen.getByTestId("app-providers")).toBeInTheDocument()
+    })
+
+    it("evaluates head() function to return SEO metadata tags", () => {
+      const headFn = Route.options.head
+      expect(headFn).toBeDefined()
+      if (headFn) {
+        const headData = headFn({} as any) as any
+        expect(headData).toBeDefined()
+        expect(headData.meta).toBeDefined()
+        expect(headData.links).toBeDefined()
+        expect(headData.meta?.some((m: any) => m.title)).toBe(true)
+      }
     })
   })
 })

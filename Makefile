@@ -1,7 +1,7 @@
 FRONTEND_DIR := $(CURDIR)/frontend
 ENV_FILE ?= $(CURDIR)/.env
 
-.PHONY: install backend-install frontend-install lint lint-backend lint-frontend backend-test frontend-test test backend-typecheck frontend-typecheck frontend-build frontend-dev backend-serve generate-api alembic-check compose-lint docker-build docker-up docker-down coverage test-quick clean go-test go-coverage go-test-gates helm-lint docker-lint sbom-local db-validate pre-commit-all test-trace-driven
+.PHONY: install backend-install frontend-install lint lint-backend lint-frontend backend-test frontend-test test backend-typecheck frontend-typecheck frontend-build frontend-dev backend-serve generate-api alembic-check compose-lint docker-build docker-up docker-down coverage test-quick clean go-test go-coverage go-test-gates helm-lint docker-lint sbom-local db-validate pre-commit-all renovate-config-validate test-trace-driven
 
 install: backend-install frontend-install
 
@@ -25,7 +25,8 @@ lint-frontend:
 	npm run format:check --prefix $(FRONTEND_DIR)
 
 backend-test:
-	pytest --cov=app --cov-report=xml --cov-report=term-missing --cov-fail-under=98 --junitxml=pytest-report.xml
+	mkdir -p artifacts/coverage/python
+	pytest --cov=app --cov-report=xml:coverage.xml --cov-report=json:artifacts/coverage/python/coverage.json --cov-report=term-missing --junitxml=pytest-report.xml
 
 backend-typecheck:
 	mypy
@@ -81,7 +82,8 @@ test-quick:
 
 # Coverage report with HTML output
 coverage:
-	pytest --cov=app --cov-report=html --cov-report=term
+	mkdir -p artifacts/coverage/python
+	pytest --cov=app --cov-report=html --cov-report=term --cov-report=xml:coverage.xml --cov-report=json:artifacts/coverage/python/coverage.json
 	@echo "Coverage report: ./htmlcov/index.html"
 
 alembic-check:
@@ -188,6 +190,9 @@ db-validate:  ## Validate alembic migrations (up → down -1 → up) against tes
 
 pre-commit-all:  ## Run pre-commit on all files (slow but thorough)
 	pre-commit run --all-files
+
+renovate-config-validate:
+	pre-commit run renovate-config-validator --all-files
 
 # Development mode - run backend and frontend
 dev:

@@ -152,6 +152,9 @@ coverage.json
 *.py.cover
 .hypothesis/
 .pytest_cache/
+.pytest_tmp/
+.tmp/
+opencode.json
 cover/
 *.mo
 *.pot
@@ -426,4 +429,8 @@ services/**/mw
 
 # Trivy pre-commit hook cache
 .pre-commit-trivy-cache/
+.pre-commit-cache/
+
+# Quality contract and coverage artifacts
+artifacts/
 

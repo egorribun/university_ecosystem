@@ -1,0 +1,16 @@
+{
+  "data": [
+    {
+      "totals": {
+        "functions": {"count": 2, "covered": 1},
+        "lines": {"count": 4, "covered": 3}
+      }
+    },
+    {
+      "totals": {
+        "functions": {"count": 2, "covered": 1},
+        "lines": {"count": 4, "covered": 3}
+      }
+    }
+  ]
+}

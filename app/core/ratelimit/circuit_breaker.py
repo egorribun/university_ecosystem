@@ -102,7 +102,7 @@ class RedisCircuitBreaker:
                 self._failure_count = 0
                 self._half_open_probe_sent = False  # RZ-33-11: reset probe gate
                 self._current_recovery_timeout = self._base_recovery_timeout
-            elif self._state == CircuitState.CLOSED:
+            else:
                 self._failure_count = 0
 
     def record_failure(self) -> None:

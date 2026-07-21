@@ -1,5 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
-/* eslint-disable @typescript-eslint/no-unsafe-function-type */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { initPushHandlers } from "../push"
 import { storePendingNavigation, storePendingReport } from "../offline"

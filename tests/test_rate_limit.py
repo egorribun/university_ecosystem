@@ -178,29 +178,49 @@ async def test_rate_limit_skips_static_paths():
 
 
 @pytest.mark.asyncio
-async def test_sensitive_login_rate_limit(async_client, user_factory, monkeypatch):
+async def test_sensitive_login_rate_limit(
+    async_client, user_factory, db_session, monkeypatch
+):
+    import uuid
+
     password = "ValidPass123!"
+    # Use a unique email per test run to avoid rate limit state pollution from parallel tests
+    unique_email = f"login-rate-{uuid.uuid4().hex[:8]}@example.com"
     user = await user_factory(
-        email="login-rate@example.com",
+        email=unique_email,
         hashed_password=await get_password_hash(password),
     )
     data = {"username": user.email, "password": "wrong-password"}
-    # Bearer token bypasses CSRF middleware
+    # Only Content-Type header needed — the async_client fixture pre-configures CSRF.
+    # Do NOT use 'Authorization: Bearer dummy' as it causes JWT middleware to
+    # reject requests with 401 before the login handler can track failed attempts.
     headers = {
         "Content-Type": "application/x-www-form-urlencoded",
-        "Authorization": "Bearer dummy",
     }
+
+    # Reset in-memory rate limit state so that prior tests' requests to /auth/login
+    # (with IP 127.0.0.1) don't prematurely trigger the sensitive-route rate limiter
+    # and block our attempts with 429 before the lockout mechanism fires with 423.
+    ratelimit_module.clear_memory_state()
+    ratelimit_module.clear_delay_memory()
+
     # Mock AuditService.log to avoid SQLite lock contention during rapid-fire hits
     monkeypatch.setattr(
         "app.services.audit_service.AuditService.log", lambda *args, **kwargs: None
     )
+    # Mock the lockout alert email task (it tries to connect to SMTP in testing)
+    from unittest.mock import AsyncMock
 
+    monkeypatch.setattr("app.tasks.email.send_lockout_alert.kick", AsyncMock())
+
+    # Send 4 failed attempts — the default threshold is 5:30.
+    # On the 5th attempt, the login service registers it (now 5 total),
+    # triggers the lockout (triggered=True), and returns 423 Locked.
     for _ in range(4):
         response = await async_client.post("/auth/login", data=data, headers=headers)
         assert response.status_code == status.HTTP_401_UNAUTHORIZED
-        # Delay to avoid SQLite lock contention on concurrent writes
-        await asyncio.sleep(0.5)
 
+    # The 5th attempt triggers lockout (or rate limit) — both 429 and 423 are valid
     blocked = await async_client.post("/auth/login", data=data, headers=headers)
     # Accept both rate limit (429) and account lockout (423) as valid blocking responses
     assert blocked.status_code in (
@@ -272,6 +292,143 @@ async def test_rate_limit_memory_backend_blocks_requests():
     assert second.status_code == status.HTTP_200_OK
     assert third.status_code == status.HTTP_429_TOO_MANY_REQUESTS
     assert third.headers.get("Retry-After") is not None
+
+
+@pytest.mark.asyncio
+async def test_middleware_double_failure_503():
+    """Lines 119-136: When storage_backend is 'memory' and _check_limit raises,
+    the middleware's else branch returns 503 (double failure path).
+
+    The else-branch at line 119 handles non-redis backends: if _check_limit raises
+    any exception AND the backend is not 'redis', there's no Redis fallback,
+    so the middleware fails-closed with 503 (RZ-27-03).
+    """
+    import unittest.mock
+
+    import httpx
+    from fastapi import FastAPI
+
+    from app.core.ratelimit.middleware import RateLimitMiddleware
+
+    app = FastAPI()
+    app.add_middleware(
+        RateLimitMiddleware,
+        storage_backend="memory",  # non-redis → double-failure else branch
+        redis_url="",
+        limit=100,
+        window_seconds=60,
+    )
+
+    @app.get("/boom")
+    async def _boom():
+        return {"ok": True}
+
+    async def raise_error(self_or_identifier, *args, **kwargs):
+        raise OSError("Memory strategy completely failed")
+
+    # Patch at class level so all instances use the failing _check_limit
+    with unittest.mock.patch.object(RateLimitMiddleware, "_check_limit", raise_error):
+        transport = httpx.ASGITransport(app=app)
+        async with httpx.AsyncClient(
+            transport=transport, base_url="http://testserver"
+        ) as client:
+            response = await client.get("/boom")
+
+    # Should return 503 (double failure: memory backend failed, no Redis fallback)
+    assert response.status_code == status.HTTP_503_SERVICE_UNAVAILABLE
+    assert "Service temporarily unavailable" in response.text
+
+
+@pytest.mark.asyncio
+async def test_middleware_redis_fallback_exceeded_log():
+    """Lines 113-118: When Redis fallback strategy is also exceeded,
+    the middleware logs ERROR 'Rate limit exceeded (fallback-mode)'.
+
+    When storage_backend='redis', _check_limit raises, AND the fallback memory strategy
+    also reports rate limit exceeded, the error log at line 114 is triggered.
+    """
+    import httpx
+    from fastapi import FastAPI
+
+    from app.core.ratelimit.middleware import RateLimitMiddleware
+
+    app = FastAPI()
+    app.add_middleware(
+        RateLimitMiddleware,
+        storage_backend="redis",
+        redis_url="redis://localhost:6379",
+        limit=1,  # Very low limit for fallback (fallback_limit = max(1//2, 1) = 1)
+        window_seconds=60,
+    )
+
+    @app.get("/limited")
+    async def _limited():
+        return {"ok": True}
+
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(
+        transport=transport, base_url="http://testserver"
+    ) as client:
+        # Find and patch _check_limit on the Redis middleware instance
+        current = app.middleware_stack
+        while current is not None:
+            if isinstance(current, RateLimitMiddleware):
+                request_count = 0
+
+                async def failing_then_exceeded(identifier, limit, window):
+                    nonlocal request_count
+                    request_count += 1
+                    if request_count <= 2:
+                        raise OSError("Redis down")
+                    # On 3rd+ call, return exceeded from fallback
+                    from app.core.ratelimit.models import RateLimitInfo
+
+                    return RateLimitInfo(allowed=False, remaining=0, retry_after=60)
+
+                current._check_limit = failing_then_exceeded  # type: ignore[method-assign]
+                break
+            current = getattr(current, "app", None)
+
+        # First call: Redis fails → fallback at 50% limit (1 req/min)
+        # Fallback limit = max(1//2, 1) = 1
+        resp1 = await client.get("/limited")
+        assert resp1.status_code == status.HTTP_200_OK  # 1st fallback allowed
+
+        # Second call: Redis fails → fallback already used → exceeded → 429
+        resp2 = await client.get("/limited")
+        assert resp2.status_code == status.HTTP_429_TOO_MANY_REQUESTS
+
+
+@pytest.mark.asyncio
+async def test_middleware_head_static_path_returns_200():
+    """Lines 75-78: HEAD requests on static-like paths return 200 without calling app.
+
+    When `method == 'HEAD'` AND `_is_static_like_path(path)` is True, the middleware
+    returns a 200 response WITHOUT calling the inner app.
+    """
+    import httpx
+    from fastapi import FastAPI
+
+    from app.core.ratelimit.middleware import RateLimitMiddleware
+
+    app = FastAPI()
+    app.add_middleware(
+        RateLimitMiddleware,
+        storage_backend="memory",
+        limit=100,
+        window_seconds=60,
+    )
+
+    @app.head("/static/image.png")
+    async def _head_static():
+        raise Exception("Inner app should NOT be called for static HEAD")
+
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(
+        transport=transport, base_url="http://testserver"
+    ) as client:
+        response = await client.head("/static/image.png")
+        assert response.status_code == status.HTTP_200_OK
 
 
 @pytest.mark.asyncio
@@ -696,3 +853,290 @@ async def test_rate_limit_per_endpoint_limits():
             resp = await client.get("/other")
             assert resp.status_code == 200, f"Other request {i + 1} should succeed"
             assert resp.headers.get("X-RateLimit-Limit") == "10"
+
+
+@pytest.mark.asyncio
+async def test_fastapi_ratelimit_additional_coverage(monkeypatch):
+    from unittest.mock import patch
+
+    # 1. Test resolved_limit <= 0 or resolved_window <= 0
+    monkeypatch.setattr(settings, "rate_limit_enabled", True)
+    dependency = ratelimit_module.sensitive_route_limit(limit=0, window_sec=60)
+    app = FastAPI()
+
+    @app.get("/test-zero-limit", dependencies=[Depends(dependency)])
+    async def _test_zero():
+        return {"ok": True}
+
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(
+        transport=transport, base_url="http://testserver"
+    ) as client:
+        resp = await client.get("/test-zero-limit")
+        assert resp.status_code == 200
+
+    # 2. Test user_id extracted from JWT
+    with patch(
+        "app.core.ratelimit.fastapi.extract_user_id_for_ratelimit",
+        return_value="user123",
+    ):
+        dependency = ratelimit_module.sensitive_route_limit(limit=1, window_sec=60)
+        app2 = FastAPI()
+
+        @app2.get("/test-user-limit", dependencies=[Depends(dependency)])
+        async def _test_user():
+            return {"ok": True}
+
+        transport2 = httpx.ASGITransport(app=app2)
+        async with httpx.AsyncClient(
+            transport=transport2, base_url="http://testserver"
+        ) as client:
+            resp1 = await client.get("/test-user-limit")
+            assert resp1.status_code == 200
+
+    # 3. Test RedisSlidingWindowStrategy configuration
+    from unittest.mock import AsyncMock, MagicMock
+
+    monkeypatch.setattr(settings, "rate_limit_storage_backend", "redis")
+    monkeypatch.setattr(settings, "rate_limit_storage_uri", "redis://localhost:6379/0")
+    with patch(
+        "app.core.ratelimit.fastapi.RedisSlidingWindowStrategy"
+    ) as mock_redis_strategy:
+        mock_instance = MagicMock()
+        mock_instance.check = AsyncMock(
+            return_value=ratelimit_module.RateLimitInfo(
+                allowed=True, remaining=1, retry_after=0
+            )
+        )
+        mock_redis_strategy.return_value = mock_instance
+        dependency = ratelimit_module.sensitive_route_limit(limit=1, window_sec=60)
+        app3 = FastAPI()
+
+        @app3.get("/test-redis-limit", dependencies=[Depends(dependency)])
+        async def _test_redis():
+            return {"ok": True}
+
+        transport3 = httpx.ASGITransport(app=app3)
+        async with httpx.AsyncClient(
+            transport=transport3, base_url="http://testserver"
+        ) as client:
+            await client.get("/test-redis-limit")
+            mock_redis_strategy.assert_called_once_with("redis://localhost:6379/0")
+
+    # 4. Test RateLimitStorageUnavailable propagation
+    from app.core.ratelimit.exceptions import RateLimitStorageUnavailable
+
+    monkeypatch.setattr(settings, "rate_limit_storage_backend", "memory")
+    with patch(
+        "app.core.ratelimit.fastapi.enforce_rate_limit",
+        side_effect=RateLimitStorageUnavailable("Storage offline"),
+    ):
+        dependency = ratelimit_module.sensitive_route_limit(limit=1, window_sec=60)
+        app4 = FastAPI()
+
+        @app4.get("/test-unavailable-limit", dependencies=[Depends(dependency)])
+        async def _test_unavailable():
+            return {"ok": True}
+
+        transport4 = httpx.ASGITransport(app=app4)
+        async with httpx.AsyncClient(
+            transport=transport4, base_url="http://testserver"
+        ) as client:
+            with pytest.raises(RateLimitStorageUnavailable):
+                await client.get("/test-unavailable-limit")
+
+    # 5. Test get_progressive_delay_tracker settings exception
+    with patch("app.core.ratelimit.fastapi.settings", new=None):
+        tracker = ratelimit_module.get_progressive_delay_tracker()
+        assert tracker._redis_url is None
+
+    # 6. Test rate limit disabled
+    monkeypatch.setattr(settings, "rate_limit_enabled", False)
+    dependency = ratelimit_module.sensitive_route_limit(limit=1, window_sec=60)
+    app5 = FastAPI()
+
+    @app5.get("/test-disabled-limit", dependencies=[Depends(dependency)])
+    async def _test_disabled():
+        return {"ok": True}
+
+    transport5 = httpx.ASGITransport(app=app5)
+    async with httpx.AsyncClient(
+        transport=transport5, base_url="http://testserver"
+    ) as client:
+        resp = await client.get("/test-disabled-limit")
+        assert resp.status_code == 200
+
+
+# ---------------------------------------------------------------------------
+# resolve_client_ip — trusted proxy paths (covers lines 100-116 in utils.py)
+# ---------------------------------------------------------------------------
+
+
+def test_resolve_client_ip_trusted_proxy_x_forwarded_for(monkeypatch):
+    """Lines 100-108: When client IP is in trusted_proxies_list, use X-Forwarded-For."""
+    from unittest.mock import MagicMock
+
+    from app.core.ratelimit.utils import resolve_client_ip
+
+    monkeypatch.setattr(settings, "trusted_proxies_list", ["10.0.0.1"])
+
+    request = MagicMock()
+    request.client.host = "10.0.0.1"
+    request.headers.get = lambda header, default=None: {
+        "X-Forwarded-For": "192.168.1.100, 10.0.0.1",
+        "Forwarded": None,
+    }.get(header)
+
+    ip = resolve_client_ip(request)
+    # Should use the first valid IP from X-Forwarded-For
+    assert ip == "192.168.1.100"
+
+
+def test_resolve_client_ip_trusted_proxy_forwarded_header(monkeypatch):
+    """Lines 111-114: When X-Forwarded-For is absent, use RFC 7239 Forwarded header."""
+    from unittest.mock import MagicMock
+
+    from app.core.ratelimit.utils import resolve_client_ip
+
+    monkeypatch.setattr(settings, "trusted_proxies_list", ["10.0.0.1"])
+
+    request = MagicMock()
+    request.client.host = "10.0.0.1"
+    request.headers.get = lambda header, default=None: {
+        "X-Forwarded-For": None,
+        "Forwarded": "for=203.0.113.10;proto=http",
+    }.get(header)
+
+    ip = resolve_client_ip(request)
+    assert ip == "203.0.113.10"
+
+
+def test_resolve_client_ip_trusted_proxy_invalid_x_forwarded_for(monkeypatch):
+    """Lines 103->111: X-Forwarded-For with no valid IPs falls through to Forwarded header."""
+    from unittest.mock import MagicMock
+
+    from app.core.ratelimit.utils import resolve_client_ip
+
+    monkeypatch.setattr(settings, "trusted_proxies_list", ["10.0.0.1"])
+
+    request = MagicMock()
+    request.client.host = "10.0.0.1"
+    # X-Forwarded-For has only invalid IPs
+    request.headers.get = lambda header, default=None: {
+        "X-Forwarded-For": "not-an-ip, also-invalid",
+        "Forwarded": "for=10.0.0.2",
+    }.get(header)
+
+    ip = resolve_client_ip(request)
+    # Falls through to Forwarded header
+    assert ip == "10.0.0.2"
+
+
+def test_resolve_client_ip_not_trusted(monkeypatch):
+    """Line 100: When client IP is NOT in trusted_proxies_list, use direct client IP."""
+    from unittest.mock import MagicMock
+
+    from app.core.ratelimit.utils import resolve_client_ip
+
+    monkeypatch.setattr(settings, "trusted_proxies_list", ["10.0.0.1"])
+
+    request = MagicMock()
+    request.client.host = "192.168.1.50"  # Not in trusted proxies
+    request.headers.get = lambda header, default=None: {
+        "X-Forwarded-For": "1.2.3.4",
+    }.get(header)
+
+    ip = resolve_client_ip(request)
+    # Should use the direct client IP, not X-Forwarded-For
+    assert ip == "192.168.1.50"
+
+
+def test_resolve_client_ip_no_client(monkeypatch):
+    """Line 94: When request.client is None, uses 'unknown' as client host."""
+    from unittest.mock import MagicMock
+
+    from app.core.ratelimit.utils import resolve_client_ip
+
+    monkeypatch.setattr(settings, "trusted_proxies_list", [])
+
+    request = MagicMock()
+    request.client = None
+    request.headers.get = lambda header, default=None: None
+
+    ip = resolve_client_ip(request)
+    assert ip == "unknown"
+
+
+def _mock_security_module(decode_token_val):
+    import sys
+    from contextlib import contextmanager
+    from types import ModuleType
+
+    @contextmanager
+    def _inner():
+        original = sys.modules.get("app.auth.security")
+        mock_module = ModuleType("app.auth.security")
+        mock_module.decode_token = decode_token_val
+
+        class SecurityError(Exception):
+            pass
+
+        mock_module.SecurityError = SecurityError
+        sys.modules["app.auth.security"] = mock_module
+        try:
+            yield
+        finally:
+            if original is not None:
+                sys.modules["app.auth.security"] = original
+            else:
+                sys.modules.pop("app.auth.security", None)
+
+    return _inner()
+
+
+def test_extract_user_id_for_ratelimit_exception_path():
+    """Lines 154-155: Exception in decode_token returns None (fail-closed)."""
+    from unittest.mock import MagicMock
+
+    from app.core.ratelimit.utils import extract_user_id_for_ratelimit
+
+    request = MagicMock()
+    request.headers.get = lambda header, default="": "Bearer sometoken"
+    request.cookies.get = lambda header: None
+
+    def raise_exc(token):
+        raise Exception("JWT error")
+
+    with _mock_security_module(raise_exc):
+        result = extract_user_id_for_ratelimit(request)
+    assert result is None
+
+
+def test_extract_user_id_for_ratelimit_from_cookie():
+    """Lines 142-153: Falls back to cookie when no Authorization header."""
+    from unittest.mock import MagicMock
+
+    from app.core.ratelimit.utils import extract_user_id_for_ratelimit
+
+    request = MagicMock()
+    request.headers.get = lambda header, default="": ""  # No auth header
+    request.cookies.get = lambda header: "cookie_token"
+
+    with _mock_security_module(lambda token: {"sub": "user-123"}):
+        result = extract_user_id_for_ratelimit(request)
+    assert result == "user-123"
+
+
+def test_extract_user_id_for_ratelimit_none_sub():
+    """Line 153: When sub is None or empty, returns None."""
+    from unittest.mock import MagicMock
+
+    from app.core.ratelimit.utils import extract_user_id_for_ratelimit
+
+    request = MagicMock()
+    request.headers.get = lambda header, default="": "Bearer token"
+    request.cookies.get = lambda header: None
+
+    with _mock_security_module(lambda token: {"sub": None}):
+        result = extract_user_id_for_ratelimit(request)
+    assert result is None

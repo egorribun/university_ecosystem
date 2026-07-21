@@ -151,6 +151,7 @@ import type {
   ForwardMessagesApiV1ChatsDestChatIdForwardPostErrors,
   ForwardMessagesApiV1ChatsDestChatIdForwardPostResponses,
   GenerateRecoveryCodesEndpointApiV1AuthMfaRecoveryCodesPostData,
+  GenerateRecoveryCodesEndpointApiV1AuthMfaRecoveryCodesPostErrors,
   GenerateRecoveryCodesEndpointApiV1AuthMfaRecoveryCodesPostResponses,
   GetChatApiV1ChatsChatIdGetData,
   GetChatApiV1ChatsChatIdGetErrors,
@@ -159,6 +160,7 @@ import type {
   GetChatsApiV1ChatsGetErrors,
   GetChatsApiV1ChatsGetResponses,
   GetCsrfCookieApiV1AuthCsrfCookieGetData,
+  GetCsrfCookieApiV1AuthCsrfCookieGetErrors,
   GetCsrfCookieApiV1AuthCsrfCookieGetResponses,
   GetEventApiV1EventsEventIdGetData,
   GetEventApiV1EventsEventIdGetErrors,
@@ -188,6 +190,7 @@ import type {
   GetScheduleApiV1ScheduleIdGetErrors,
   GetScheduleApiV1ScheduleIdGetResponses,
   GetSessionSigningKeyApiV1AuthSessionSigningKeyGetData,
+  GetSessionSigningKeyApiV1AuthSessionSigningKeyGetErrors,
   GetSessionSigningKeyApiV1AuthSessionSigningKeyGetResponses,
   GetUsersApiV1UsersGetData,
   GetUsersApiV1UsersGetErrors,
@@ -222,8 +225,10 @@ import type {
   ListStoriesApiV1StoriesGetErrors,
   ListStoriesApiV1StoriesGetResponses,
   ListTotpEnrollmentsApiV1AuthMfaTotpGetData,
+  ListTotpEnrollmentsApiV1AuthMfaTotpGetErrors,
   ListTotpEnrollmentsApiV1AuthMfaTotpGetResponses,
   ListWebauthnCredentialsApiV1AuthMfaWebauthnGetData,
+  ListWebauthnCredentialsApiV1AuthMfaWebauthnGetErrors,
   ListWebauthnCredentialsApiV1AuthMfaWebauthnGetResponses,
   LivenessHealthLiveGetData,
   LivenessHealthLiveGetResponses,
@@ -240,6 +245,7 @@ import type {
   LoginPasskeyVerifyApiV1AuthLoginPasskeyVerifyPostErrors,
   LoginPasskeyVerifyApiV1AuthLoginPasskeyVerifyPostResponses,
   LogoutApiV1AuthLogoutPostData,
+  LogoutApiV1AuthLogoutPostErrors,
   LogoutApiV1AuthLogoutPostResponses,
   MarkAllReadApiV1NotificationsReadAllPostData,
   MarkAllReadApiV1NotificationsReadAllPostResponses,
@@ -284,6 +290,7 @@ import type {
   RenameChatApiV1ChatsChatIdPatchErrors,
   RenameChatApiV1ChatsChatIdPatchResponses,
   RequestStepUpApiV1AuthMfaStepUpPostData,
+  RequestStepUpApiV1AuthMfaStepUpPostErrors,
   RequestStepUpApiV1AuthMfaStepUpPostResponses,
   ResetPasswordApiV1PasswordResetPostData,
   ResetPasswordApiV1PasswordResetPostErrors,
@@ -315,6 +322,7 @@ import type {
   StartTotpEnrollmentEndpointApiV1AuthMfaTotpStartPostErrors,
   StartTotpEnrollmentEndpointApiV1AuthMfaTotpStartPostResponses,
   StartWebauthnRegistrationApiV1AuthMfaWebauthnRegisterStartPostData,
+  StartWebauthnRegistrationApiV1AuthMfaWebauthnRegisterStartPostErrors,
   StartWebauthnRegistrationApiV1AuthMfaWebauthnRegisterStartPostResponses,
   StatsSummaryApiV1StatsSummaryGetData,
   StatsSummaryApiV1StatsSummaryGetErrors,
@@ -492,8 +500,16 @@ export const readyReadyGet = <ThrowOnError extends boolean = false>(
  */
 export const logoutApiV1AuthLogoutPost = <ThrowOnError extends boolean = false>(
   options?: Options<LogoutApiV1AuthLogoutPostData, ThrowOnError>
-): RequestResult<LogoutApiV1AuthLogoutPostResponses, unknown, ThrowOnError> =>
-  (options?.client ?? client).post<LogoutApiV1AuthLogoutPostResponses, unknown, ThrowOnError>({
+): RequestResult<
+  LogoutApiV1AuthLogoutPostResponses,
+  LogoutApiV1AuthLogoutPostErrors,
+  ThrowOnError
+> =>
+  (options?.client ?? client).post<
+    LogoutApiV1AuthLogoutPostResponses,
+    LogoutApiV1AuthLogoutPostErrors,
+    ThrowOnError
+  >({
     responseType: "json",
     url: "/api/v1/auth/logout",
     ...options,
@@ -637,10 +653,14 @@ export const verifyMfaChallengeApiV1AuthMfaVerifyPost = <ThrowOnError extends bo
  */
 export const getCsrfCookieApiV1AuthCsrfCookieGet = <ThrowOnError extends boolean = false>(
   options?: Options<GetCsrfCookieApiV1AuthCsrfCookieGetData, ThrowOnError>
-): RequestResult<GetCsrfCookieApiV1AuthCsrfCookieGetResponses, unknown, ThrowOnError> =>
+): RequestResult<
+  GetCsrfCookieApiV1AuthCsrfCookieGetResponses,
+  GetCsrfCookieApiV1AuthCsrfCookieGetErrors,
+  ThrowOnError
+> =>
   (options?.client ?? client).get<
     GetCsrfCookieApiV1AuthCsrfCookieGetResponses,
-    unknown,
+    GetCsrfCookieApiV1AuthCsrfCookieGetErrors,
     ThrowOnError
   >({
     responseType: "json",
@@ -685,12 +705,12 @@ export const getSessionSigningKeyApiV1AuthSessionSigningKeyGet = <
   options?: Options<GetSessionSigningKeyApiV1AuthSessionSigningKeyGetData, ThrowOnError>
 ): RequestResult<
   GetSessionSigningKeyApiV1AuthSessionSigningKeyGetResponses,
-  unknown,
+  GetSessionSigningKeyApiV1AuthSessionSigningKeyGetErrors,
   ThrowOnError
 > =>
   (options?.client ?? client).get<
     GetSessionSigningKeyApiV1AuthSessionSigningKeyGetResponses,
-    unknown,
+    GetSessionSigningKeyApiV1AuthSessionSigningKeyGetErrors,
     ThrowOnError
   >({
     responseType: "json",
@@ -764,10 +784,14 @@ export const confirmTotpEnrollmentApiV1AuthMfaTotpConfirmPost = <
  */
 export const listTotpEnrollmentsApiV1AuthMfaTotpGet = <ThrowOnError extends boolean = false>(
   options?: Options<ListTotpEnrollmentsApiV1AuthMfaTotpGetData, ThrowOnError>
-): RequestResult<ListTotpEnrollmentsApiV1AuthMfaTotpGetResponses, unknown, ThrowOnError> =>
+): RequestResult<
+  ListTotpEnrollmentsApiV1AuthMfaTotpGetResponses,
+  ListTotpEnrollmentsApiV1AuthMfaTotpGetErrors,
+  ThrowOnError
+> =>
   (options?.client ?? client).get<
     ListTotpEnrollmentsApiV1AuthMfaTotpGetResponses,
-    unknown,
+    ListTotpEnrollmentsApiV1AuthMfaTotpGetErrors,
     ThrowOnError
   >({
     responseType: "json",
@@ -842,12 +866,12 @@ export const startWebauthnRegistrationApiV1AuthMfaWebauthnRegisterStartPost = <
   >
 ): RequestResult<
   StartWebauthnRegistrationApiV1AuthMfaWebauthnRegisterStartPostResponses,
-  unknown,
+  StartWebauthnRegistrationApiV1AuthMfaWebauthnRegisterStartPostErrors,
   ThrowOnError
 > =>
   (options?.client ?? client).post<
     StartWebauthnRegistrationApiV1AuthMfaWebauthnRegisterStartPostResponses,
-    unknown,
+    StartWebauthnRegistrationApiV1AuthMfaWebauthnRegisterStartPostErrors,
     ThrowOnError
   >({
     responseType: "json",
@@ -897,10 +921,14 @@ export const listWebauthnCredentialsApiV1AuthMfaWebauthnGet = <
   ThrowOnError extends boolean = false,
 >(
   options?: Options<ListWebauthnCredentialsApiV1AuthMfaWebauthnGetData, ThrowOnError>
-): RequestResult<ListWebauthnCredentialsApiV1AuthMfaWebauthnGetResponses, unknown, ThrowOnError> =>
+): RequestResult<
+  ListWebauthnCredentialsApiV1AuthMfaWebauthnGetResponses,
+  ListWebauthnCredentialsApiV1AuthMfaWebauthnGetErrors,
+  ThrowOnError
+> =>
   (options?.client ?? client).get<
     ListWebauthnCredentialsApiV1AuthMfaWebauthnGetResponses,
-    unknown,
+    ListWebauthnCredentialsApiV1AuthMfaWebauthnGetErrors,
     ThrowOnError
   >({
     responseType: "json",
@@ -945,12 +973,12 @@ export const generateRecoveryCodesEndpointApiV1AuthMfaRecoveryCodesPost = <
   options?: Options<GenerateRecoveryCodesEndpointApiV1AuthMfaRecoveryCodesPostData, ThrowOnError>
 ): RequestResult<
   GenerateRecoveryCodesEndpointApiV1AuthMfaRecoveryCodesPostResponses,
-  unknown,
+  GenerateRecoveryCodesEndpointApiV1AuthMfaRecoveryCodesPostErrors,
   ThrowOnError
 > =>
   (options?.client ?? client).post<
     GenerateRecoveryCodesEndpointApiV1AuthMfaRecoveryCodesPostResponses,
-    unknown,
+    GenerateRecoveryCodesEndpointApiV1AuthMfaRecoveryCodesPostErrors,
     ThrowOnError
   >({
     responseType: "json",
@@ -966,10 +994,14 @@ export const generateRecoveryCodesEndpointApiV1AuthMfaRecoveryCodesPost = <
  */
 export const requestStepUpApiV1AuthMfaStepUpPost = <ThrowOnError extends boolean = false>(
   options?: Options<RequestStepUpApiV1AuthMfaStepUpPostData, ThrowOnError>
-): RequestResult<RequestStepUpApiV1AuthMfaStepUpPostResponses, unknown, ThrowOnError> =>
+): RequestResult<
+  RequestStepUpApiV1AuthMfaStepUpPostResponses,
+  RequestStepUpApiV1AuthMfaStepUpPostErrors,
+  ThrowOnError
+> =>
   (options?.client ?? client).post<
     RequestStepUpApiV1AuthMfaStepUpPostResponses,
-    unknown,
+    RequestStepUpApiV1AuthMfaStepUpPostErrors,
     ThrowOnError
   >({
     responseType: "json",

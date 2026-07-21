@@ -157,6 +157,21 @@ class TestProgressiveDelayTrackerMemory:
             mock_sleep.assert_not_called()
             assert info.should_delay is False
 
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_memory_pruning_on_failure(self) -> None:
+        """Memory backend prunes stale items on failure recording."""
+        tracker = ProgressiveDelayTracker(ttl_seconds=1)
+        async with _delay_memory_lock:
+            _delay_memory["test:stale"] = (1, time.time() - 10.0)
+
+        from app.core.ratelimit import delay as delay_module
+
+        with patch.object(delay_module, "_delay_memory_last_cleanup", 0.0):
+            await tracker.record_failure("test:new_req")
+
+        async with _delay_memory_lock:
+            assert "test:stale" not in _delay_memory
+
 
 class TestProgressiveDelayTrackerRedis:
     """Tests for ProgressiveDelayTracker with Redis backend."""
@@ -241,6 +256,58 @@ class TestProgressiveDelayTrackerRedis:
         ):
             await tracker.reset("test:reset_redis")
             mock_redis_client.delete.assert_called_once()
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_get_delay_redis_none(self, mock_redis_client: MagicMock) -> None:
+        """Get delay when Redis returns None (no failures)."""
+        tracker = ProgressiveDelayTracker(redis_url="redis://localhost:6379")
+        mock_redis_client.get = AsyncMock(return_value=None)
+
+        with patch(
+            "app.core.ratelimit.delay.get_shared_client",
+            new_callable=AsyncMock,
+            return_value=mock_redis_client,
+        ):
+            info = await tracker.get_delay("test:get_redis_none")
+            assert info.failures == 0
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_get_delay_redis_error_fallback(self) -> None:
+        """Get delay falls back to memory on RedisError."""
+        tracker = ProgressiveDelayTracker(redis_url="redis://localhost:6379")
+        async with _delay_memory_lock:
+            _delay_memory[tracker._make_key("test:fb_get")] = (4, time.time())
+
+        async def failing_get(key):
+            raise RedisError("Connection failure")
+
+        with patch("app.core.ratelimit.delay.get_shared_client") as mock_get_client:
+            mock_client = MagicMock()
+            mock_client.get = failing_get
+            mock_get_client.return_value = mock_client
+
+            info = await tracker.get_delay("test:fb_get")
+            assert info.failures == 4
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_reset_redis_error_swallowed(self) -> None:
+        """Reset swallows RedisError/OSError and pops local memory."""
+        tracker = ProgressiveDelayTracker(redis_url="redis://localhost:6379")
+        async with _delay_memory_lock:
+            _delay_memory[tracker._make_key("test:fb_reset")] = (2, time.time())
+
+        async def failing_delete(key):
+            raise OSError("OS connection refused")
+
+        with patch("app.core.ratelimit.delay.get_shared_client") as mock_get_client:
+            mock_client = MagicMock()
+            mock_client.delete = failing_delete
+            mock_get_client.return_value = mock_client
+
+            await tracker.reset("test:fb_reset")
+            # should still pop local memory
+            async with _delay_memory_lock:
+                assert tracker._make_key("test:fb_reset") not in _delay_memory
 
 
 class TestProgressiveDelayTrackerConfig:

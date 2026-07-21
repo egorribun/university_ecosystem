@@ -17,6 +17,9 @@ RUN wasm-pack build rust-crypto --target web \
 FROM base AS deps
 COPY frontend/package.json frontend/package-lock.json ./
 COPY frontend/scripts ./scripts/
+# Copy built WASM packages so local file: dependencies exist and satisfy ensure-wasm preinstall check
+COPY --from=wasm-builder /wasm/rust-crypto/pkg ./rust-crypto/pkg
+COPY --from=wasm-builder /wasm/wasm-sanitizer/pkg ./wasm-sanitizer/pkg
 # Retry to tolerate transient ECONNRESET / "network aborted" from the npm
 # registry under bandwidth contention with parallel compose builds (npm does
 # not reliably retry a mid-stream socket reset). The /root/.npm cache mount
@@ -31,6 +34,7 @@ RUN --mount=type=cache,target=/root/.npm \
 
 # Stage 4: Builder
 FROM base AS builder
+ENV SKIP_WASM_BUILD=1
 ARG VITE_BACKEND_ORIGIN=""
 ENV VITE_BACKEND_ORIGIN=$VITE_BACKEND_ORIGIN
 # W150 polish-followup — pass DEV_NO_SSR_SHELL through to post-build-shell.mjs
@@ -130,6 +134,9 @@ RUN set -e; \
 FROM base AS prod-deps
 COPY frontend/package.json frontend/package-lock.json ./
 COPY frontend/scripts ./scripts/
+# Copy built WASM packages so local file: dependencies exist and satisfy ensure-wasm preinstall check
+COPY --from=wasm-builder /wasm/rust-crypto/pkg ./rust-crypto/pkg
+COPY --from=wasm-builder /wasm/wasm-sanitizer/pkg ./wasm-sanitizer/pkg
 # Drop dev-only lifecycle scripts before `npm ci`:
 #   - `prepare` runs `husky ../.husky` (Git hooks setup); husky lives in
 #     devDependencies so it's missing under `--omit=dev` → exit code 127.
@@ -174,6 +181,10 @@ COPY --from=prod-deps --chown=node:node /app/package.json ./package.json
 # Production-only node_modules — no devDependencies. ~150 MB → ~80 MB
 # vs full deps (saves Storybook/Playwright/Vitest/etc.).
 COPY --from=prod-deps --chown=node:node /app/node_modules ./node_modules
+
+# Copy built WASM packages to runtime so Node resolves the file: dependencies at runtime
+COPY --from=wasm-builder --chown=node:node /wasm/rust-crypto/pkg ./rust-crypto/pkg
+COPY --from=wasm-builder --chown=node:node /wasm/wasm-sanitizer/pkg ./wasm-sanitizer/pkg
 
 # server-prod.mjs Node wrapper (W131 SW1) — imports dist/server/server.js
 # default export, adapts Web Standards Request <-> Node IncomingMessage,

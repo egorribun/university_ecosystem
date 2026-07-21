@@ -148,14 +148,6 @@ def test_all_operations_have_response_definitions(openapi_schema: dict) -> None:
     )
 
 
-@pytest.mark.xfail(
-    strict=False,
-    reason=(
-        "Known documentation gap (TD-AUT-401): None of the /auth/** operations "
-        "currently document a 401 response in the OpenAPI spec.  This test tracks "
-        "the gap; remove xfail once the spec is updated."
-    ),
-)
 def test_auth_endpoints_document_401_response(openapi_schema: dict) -> None:
     """At least some /auth/** endpoints should document 401 Unauthorized.
 

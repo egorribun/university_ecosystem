@@ -83,6 +83,7 @@ import * as esbuild from "esbuild"
 // W136 SW6: shared Workbox config — single source of truth with
 // vite.config.mts (eliminates W135 §Honesty #5 drift risk).
 import { PWA_INJECT_CONFIG } from "./workbox-config.mjs"
+import { buildWasmArtifacts } from "./build-wasm.mjs"
 
 const cwd = process.cwd()
 const wantsReport = process.argv.includes("--report")
@@ -117,21 +118,7 @@ function run(command, args, options = {}) {
 
 async function step1_wasm() {
   console.log("== Step 1: wasm-pack ==")
-  try {
-    await run("wasm-pack", ["build", "rust-crypto", "--target", "web"], {
-      cwd: path.resolve(cwd),
-      shell: true,
-    })
-    await run("wasm-pack", ["build", "wasm-sanitizer", "--target", "web"], {
-      cwd: path.resolve(cwd),
-      shell: true,
-    })
-  } catch (error) {
-    console.warn(
-      "WASM build failed. If this is a non-rust environment, ensure rust-crypto/pkg and wasm-sanitizer/pkg exist."
-    )
-    console.warn(error.message)
-  }
+  await buildWasmArtifacts(path.resolve(cwd))
 }
 
 async function step2_syncTokens() {

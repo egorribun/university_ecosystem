@@ -97,10 +97,6 @@ func Load() (*Config, error) {
 		return nil, fmt.Errorf("JWT_SECRET environment variable is not set")
 	}
 
-	if cfg.BackendURL == "" {
-		return nil, fmt.Errorf("BACKEND_URL must be set")
-	}
-
 	// RZ-33-02: If JWKS hot-reload is enabled but refresh interval is invalid,
 	// fall back to the default (300s) to prevent tight-loop polling.
 	if cfg.JWKSEndpoint != "" && cfg.JWKSRefreshInterval <= 0 {

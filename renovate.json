@@ -17,7 +17,10 @@
   "osvVulnerabilityAlerts": true,
   "vulnerabilityAlerts": {
     "enabled": true,
-    "labels": ["security"]
+    "labels": ["security", "manual-cooldown-override-required"],
+    "automerge": false,
+    "minimumReleaseAge": null,
+    "prCreation": "immediate"
   },
   "packageRules": [
     {
@@ -25,18 +28,18 @@
       "matchUpdateTypes": ["patch"],
       "automerge": true,
       "automergeType": "pr",
-      "minimumReleaseAge": "3 days"
+      "minimumReleaseAge": "7 days"
     },
     {
-      "description": "Auto-merge security updates regardless of bump type",
-      "matchCategories": ["security"],
-      "automerge": true,
-      "minimumReleaseAge": "0 days"
+      "description": "Hold routine PyPI releases for a seven-day maturity window",
+      "matchDatasources": ["pypi"],
+      "minimumReleaseAge": "7 days"
     },
     {
       "description": "Major updates require manual review",
       "matchUpdateTypes": ["major"],
       "automerge": false,
+      "minimumReleaseAge": "7 days",
       "labels": ["dependencies", "breaking-change"]
     },
     {
@@ -44,6 +47,7 @@
       "matchDepTypes": ["action"],
       "pinDigests": true,
       "automerge": false,
+      "minimumReleaseAge": "7 days",
       "groupName": "GitHub Actions"
     },
     {
@@ -51,6 +55,7 @@
       "matchManagers": ["docker-compose", "dockerfile"],
       "pinDigests": true,
       "automerge": false,
+      "minimumReleaseAge": "7 days",
       "labels": ["security", "dependencies", "docker"]
     },
     {
@@ -63,6 +68,7 @@
         "temporalio/ui"
       ],
       "automerge": false,
+      "minimumReleaseAge": "7 days",
       "labels": ["security", "dependencies"]
     },
     {
@@ -79,19 +85,22 @@
         "python-jose"
       ],
       "automerge": false,
+      "minimumReleaseAge": "7 days",
       "labels": ["security", "manual-review-required"]
     },
     {
       "description": "Group Python dependency updates",
       "matchManagers": ["uv", "pep621", "pip_requirements"],
       "groupName": "python-deps",
-      "groupSlug": "python-deps"
+      "groupSlug": "python-deps",
+      "minimumReleaseAge": "7 days"
     },
     {
       "description": "Auto-merge patch updates for frontend npm packages",
       "matchManagers": ["npm"],
       "matchUpdateTypes": ["patch"],
       "automerge": true,
+      "minimumReleaseAge": "7 days",
       "groupName": "Frontend patch updates"
     },
     {
@@ -99,13 +108,15 @@
       "matchManagers": ["npm"],
       "matchUpdateTypes": ["minor", "patch"],
       "groupName": "frontend-deps",
-      "groupSlug": "frontend-deps"
+      "groupSlug": "frontend-deps",
+      "minimumReleaseAge": "7 days"
     },
     {
       "description": "Track Go toolchain minor versions (manual review)",
       "matchManagers": ["gomod"],
       "matchDepTypes": ["golang"],
       "automerge": false,
+      "minimumReleaseAge": "7 days",
       "labels": ["go-toolchain", "dependencies"]
     },
     {
@@ -117,6 +128,7 @@
       "automerge": true,
       "automergeType": "pr",
       "automergeStrategy": "squash",
+      "minimumReleaseAge": "7 days",
       "labels": ["go", "dependencies"]
     },
     {
@@ -126,6 +138,7 @@
       "groupName": "Go dependencies (minor/major)",
       "schedule": ["every weekend"],
       "automerge": false,
+      "minimumReleaseAge": "7 days",
       "labels": ["go", "dependencies"]
     },
     {
@@ -137,6 +150,7 @@
       "automerge": true,
       "automergeType": "pr",
       "automergeStrategy": "squash",
+      "minimumReleaseAge": "7 days",
       "labels": ["rust", "dependencies"]
     },
     {
@@ -146,6 +160,7 @@
       "groupName": "Rust dependencies (minor/major)",
       "schedule": ["every weekend"],
       "automerge": false,
+      "minimumReleaseAge": "7 days",
       "labels": ["rust", "dependencies"]
     }
   ]

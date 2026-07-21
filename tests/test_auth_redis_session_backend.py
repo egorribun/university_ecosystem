@@ -181,3 +181,33 @@ async def test_get_session_backend_redis_unavailable_in_testing_falls_through(
 
     backend = await rs.get_session_backend()  # dev/test env → no raise
     assert await backend.is_session_valid("any") is True
+
+
+@pytest.mark.asyncio
+async def test_session_backend_abstract_methods() -> None:
+    # Coverage for pass statements in SessionBackend abstract base class
+    class DummyBackend(rs.SessionBackend):
+        async def register_session(self, user_id, jti, expires_at, metadata=None):
+            await super().register_session(user_id, jti, expires_at, metadata)
+
+        async def is_session_valid(self, jti):
+            return await super().is_session_valid(jti)
+
+        async def revoke_session(self, jti):
+            await super().revoke_session(jti)
+
+    dummy = DummyBackend()
+    await dummy.register_session("user-1", "jti", datetime.now(UTC))
+    assert await dummy.is_session_valid("jti") is None
+    await dummy.revoke_session("jti")
+
+
+@pytest.mark.asyncio
+async def test_revoke_session_unexpected_error() -> None:
+    # Test line 99: unexpected error in eval (e.g. ValueError) is re-raised
+    mock_client = AsyncMock()
+    mock_client.eval = AsyncMock(side_effect=ValueError("unexpected"))
+    backend = rs.RedisSessionBackend(mock_client)
+
+    with pytest.raises(ValueError, match="unexpected"):
+        await backend.revoke_session("jti")

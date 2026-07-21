@@ -3276,6 +3276,13 @@ export type LogoutApiV1AuthLogoutPostData = {
   url: "/api/v1/auth/logout"
 }
 
+export type LogoutApiV1AuthLogoutPostErrors = {
+  /**
+   * Unauthorized
+   */
+  401: unknown
+}
+
 export type LogoutApiV1AuthLogoutPostResponses = {
   /**
    * Response Logout Api V1 Auth Logout Post
@@ -3298,6 +3305,10 @@ export type LoginPasskeyStartApiV1AuthLoginPasskeyStartPostData = {
 }
 
 export type LoginPasskeyStartApiV1AuthLoginPasskeyStartPostErrors = {
+  /**
+   * Unauthorized
+   */
+  401: unknown
   /**
    * Validation Error
    */
@@ -3325,6 +3336,10 @@ export type LoginPasskeyVerifyApiV1AuthLoginPasskeyVerifyPostData = {
 }
 
 export type LoginPasskeyVerifyApiV1AuthLoginPasskeyVerifyPostErrors = {
+  /**
+   * Unauthorized
+   */
+  401: unknown
   /**
    * Validation Error
    */
@@ -3355,6 +3370,10 @@ export type LoginApiV1AuthLoginPostData = {
 
 export type LoginApiV1AuthLoginPostErrors = {
   /**
+   * Unauthorized
+   */
+  401: unknown
+  /**
    * Validation Error
    */
   422: HttpValidationError
@@ -3383,6 +3402,10 @@ export type LoginJsonApiV1AuthLoginJsonPostData = {
 }
 
 export type LoginJsonApiV1AuthLoginJsonPostErrors = {
+  /**
+   * Unauthorized
+   */
+  401: unknown
   /**
    * Validation Error
    */
@@ -3413,6 +3436,10 @@ export type VerifyMfaChallengeApiV1AuthMfaVerifyPostData = {
 
 export type VerifyMfaChallengeApiV1AuthMfaVerifyPostErrors = {
   /**
+   * Unauthorized
+   */
+  401: unknown
+  /**
    * Validation Error
    */
   422: HttpValidationError
@@ -3438,6 +3465,13 @@ export type GetCsrfCookieApiV1AuthCsrfCookieGetData = {
   url: "/api/v1/auth/csrf-cookie"
 }
 
+export type GetCsrfCookieApiV1AuthCsrfCookieGetErrors = {
+  /**
+   * Unauthorized
+   */
+  401: unknown
+}
+
 export type GetCsrfCookieApiV1AuthCsrfCookieGetResponses = {
   /**
    * Response Get Csrf Cookie Api V1 Auth Csrf Cookie Get
@@ -3460,6 +3494,10 @@ export type RegisterApiV1AuthRegisterPostData = {
 }
 
 export type RegisterApiV1AuthRegisterPostErrors = {
+  /**
+   * Unauthorized
+   */
+  401: unknown
   /**
    * Validation Error
    */
@@ -3490,6 +3528,13 @@ export type GetSessionSigningKeyApiV1AuthSessionSigningKeyGetData = {
   url: "/api/v1/auth/session/signing-key"
 }
 
+export type GetSessionSigningKeyApiV1AuthSessionSigningKeyGetErrors = {
+  /**
+   * Unauthorized
+   */
+  401: unknown
+}
+
 export type GetSessionSigningKeyApiV1AuthSessionSigningKeyGetResponses = {
   /**
    * Successful Response
@@ -3511,6 +3556,10 @@ export type StartTotpEnrollmentEndpointApiV1AuthMfaTotpStartPostData = {
 }
 
 export type StartTotpEnrollmentEndpointApiV1AuthMfaTotpStartPostErrors = {
+  /**
+   * Unauthorized
+   */
+  401: unknown
   /**
    * Validation Error
    */
@@ -3539,6 +3588,10 @@ export type ConfirmTotpEnrollmentApiV1AuthMfaTotpConfirmPostData = {
 
 export type ConfirmTotpEnrollmentApiV1AuthMfaTotpConfirmPostErrors = {
   /**
+   * Unauthorized
+   */
+  401: unknown
+  /**
    * Validation Error
    */
   422: HttpValidationError
@@ -3562,6 +3615,13 @@ export type ListTotpEnrollmentsApiV1AuthMfaTotpGetData = {
   path?: never
   query?: never
   url: "/api/v1/auth/mfa/totp"
+}
+
+export type ListTotpEnrollmentsApiV1AuthMfaTotpGetErrors = {
+  /**
+   * Unauthorized
+   */
+  401: unknown
 }
 
 export type ListTotpEnrollmentsApiV1AuthMfaTotpGetResponses = {
@@ -3589,6 +3649,10 @@ export type DeletePendingTotpEnrollmentApiV1AuthMfaTotpPendingEnrollmentIdDelete
 }
 
 export type DeletePendingTotpEnrollmentApiV1AuthMfaTotpPendingEnrollmentIdDeleteErrors = {
+  /**
+   * Unauthorized
+   */
+  401: unknown
   /**
    * Validation Error
    */
@@ -3622,6 +3686,10 @@ export type DeleteTotpEnrollmentApiV1AuthMfaTotpEnrollmentIdDeleteData = {
 
 export type DeleteTotpEnrollmentApiV1AuthMfaTotpEnrollmentIdDeleteErrors = {
   /**
+   * Unauthorized
+   */
+  401: unknown
+  /**
    * Validation Error
    */
   422: HttpValidationError
@@ -3647,6 +3715,13 @@ export type StartWebauthnRegistrationApiV1AuthMfaWebauthnRegisterStartPostData =
   url: "/api/v1/auth/mfa/webauthn/register/start"
 }
 
+export type StartWebauthnRegistrationApiV1AuthMfaWebauthnRegisterStartPostErrors = {
+  /**
+   * Unauthorized
+   */
+  401: unknown
+}
+
 export type StartWebauthnRegistrationApiV1AuthMfaWebauthnRegisterStartPostResponses = {
   /**
    * Successful Response
@@ -3665,6 +3740,10 @@ export type ConfirmWebauthnRegistrationApiV1AuthMfaWebauthnRegisterConfirmPostDa
 }
 
 export type ConfirmWebauthnRegistrationApiV1AuthMfaWebauthnRegisterConfirmPostErrors = {
+  /**
+   * Unauthorized
+   */
+  401: unknown
   /**
    * Validation Error
    */
@@ -3689,6 +3768,13 @@ export type ListWebauthnCredentialsApiV1AuthMfaWebauthnGetData = {
   path?: never
   query?: never
   url: "/api/v1/auth/mfa/webauthn"
+}
+
+export type ListWebauthnCredentialsApiV1AuthMfaWebauthnGetErrors = {
+  /**
+   * Unauthorized
+   */
+  401: unknown
 }
 
 export type ListWebauthnCredentialsApiV1AuthMfaWebauthnGetResponses = {
@@ -3719,6 +3805,10 @@ export type DeleteWebauthnCredentialApiV1AuthMfaWebauthnCredentialIdDeleteData =
 
 export type DeleteWebauthnCredentialApiV1AuthMfaWebauthnCredentialIdDeleteErrors = {
   /**
+   * Unauthorized
+   */
+  401: unknown
+  /**
    * Validation Error
    */
   422: HttpValidationError
@@ -3744,6 +3834,13 @@ export type GenerateRecoveryCodesEndpointApiV1AuthMfaRecoveryCodesPostData = {
   url: "/api/v1/auth/mfa/recovery-codes"
 }
 
+export type GenerateRecoveryCodesEndpointApiV1AuthMfaRecoveryCodesPostErrors = {
+  /**
+   * Unauthorized
+   */
+  401: unknown
+}
+
 export type GenerateRecoveryCodesEndpointApiV1AuthMfaRecoveryCodesPostResponses = {
   /**
    * Successful Response
@@ -3759,6 +3856,13 @@ export type RequestStepUpApiV1AuthMfaStepUpPostData = {
   path?: never
   query?: never
   url: "/api/v1/auth/mfa/step-up"
+}
+
+export type RequestStepUpApiV1AuthMfaStepUpPostErrors = {
+  /**
+   * Unauthorized
+   */
+  401: unknown
 }
 
 export type RequestStepUpApiV1AuthMfaStepUpPostResponses = {

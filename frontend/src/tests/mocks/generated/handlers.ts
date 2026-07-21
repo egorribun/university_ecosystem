@@ -45,6 +45,7 @@ export const handlers = [
           await getConfirmWebauthnRegistrationApiV1AuthMfaWebauthnRegisterConfirmPost200Response(),
           { status: 200 },
         ],
+        [undefined, { status: 401 }],
         [
           await getConfirmWebauthnRegistrationApiV1AuthMfaWebauthnRegisterConfirmPost422Response(),
           { status: 422 },
@@ -81,6 +82,7 @@ export const handlers = [
           await getStartWebauthnRegistrationApiV1AuthMfaWebauthnRegisterStartPost200Response(),
           { status: 200 },
         ],
+        [undefined, { status: 401 }],
       ] as [any, { status: number }][];
 
       const [body, init] =
@@ -113,6 +115,7 @@ export const handlers = [
           await getLoginPasskeyStartApiV1AuthLoginPasskeyStartPost200Response(),
           { status: 200 },
         ],
+        [undefined, { status: 401 }],
         [
           await getLoginPasskeyStartApiV1AuthLoginPasskeyStartPost422Response(),
           { status: 422 },
@@ -148,6 +151,7 @@ export const handlers = [
           await getLoginPasskeyVerifyApiV1AuthLoginPasskeyVerifyPost200Response(),
           { status: 200 },
         ],
+        [undefined, { status: 401 }],
         [
           await getLoginPasskeyVerifyApiV1AuthLoginPasskeyVerifyPost422Response(),
           { status: 422 },
@@ -181,6 +185,7 @@ export const handlers = [
         await getConfirmTotpEnrollmentApiV1AuthMfaTotpConfirmPost200Response(),
         { status: 200 },
       ],
+      [undefined, { status: 401 }],
       [
         await getConfirmTotpEnrollmentApiV1AuthMfaTotpConfirmPost422Response(),
         { status: 422 },
@@ -213,6 +218,7 @@ export const handlers = [
         await getStartTotpEnrollmentEndpointApiV1AuthMfaTotpStartPost200Response(),
         { status: 200 },
       ],
+      [undefined, { status: 401 }],
       [
         await getStartTotpEnrollmentEndpointApiV1AuthMfaTotpStartPost422Response(),
         { status: 422 },
@@ -329,6 +335,7 @@ export const handlers = [
         await getListTotpEnrollmentsApiV1AuthMfaTotpGet200Response(),
         { status: 200 },
       ],
+      [undefined, { status: 401 }],
     ] as [any, { status: number }][];
 
     const [body, init] =
@@ -355,6 +362,7 @@ export const handlers = [
         await getListWebauthnCredentialsApiV1AuthMfaWebauthnGet200Response(),
         { status: 200 },
       ],
+      [undefined, { status: 401 }],
     ] as [any, { status: number }][];
 
     const [body, init] =
@@ -383,6 +391,7 @@ export const handlers = [
           await getGetSessionSigningKeyApiV1AuthSessionSigningKeyGet200Response(),
           { status: 200 },
         ],
+        [undefined, { status: 401 }],
       ] as [any, { status: number }][];
 
       const [body, init] =
@@ -535,6 +544,7 @@ export const handlers = [
 
     const resultArray = [
       [await getLoginJsonApiV1AuthLoginJsonPost200Response(), { status: 200 }],
+      [undefined, { status: 401 }],
       [await getLoginJsonApiV1AuthLoginJsonPost422Response(), { status: 422 }],
     ] as [any, { status: number }][];
 
@@ -564,6 +574,7 @@ export const handlers = [
           await getGenerateRecoveryCodesEndpointApiV1AuthMfaRecoveryCodesPost200Response(),
           { status: 200 },
         ],
+        [undefined, { status: 401 }],
       ] as [any, { status: number }][];
 
       const [body, init] =
@@ -593,6 +604,7 @@ export const handlers = [
         await getRequestStepUpApiV1AuthMfaStepUpPost202Response(),
         { status: 202 },
       ],
+      [undefined, { status: 401 }],
     ] as [any, { status: number }][];
 
     const [body, init] =
@@ -619,6 +631,7 @@ export const handlers = [
         await getVerifyMfaChallengeApiV1AuthMfaVerifyPost200Response(),
         { status: 200 },
       ],
+      [undefined, { status: 401 }],
       [
         await getVerifyMfaChallengeApiV1AuthMfaVerifyPost422Response(),
         { status: 422 },
@@ -915,6 +928,7 @@ export const handlers = [
         await getGetCsrfCookieApiV1AuthCsrfCookieGet200Response(),
         { status: 200 },
       ],
+      [undefined, { status: 401 }],
     ] as [any, { status: number }][];
 
     const [body, init] =
@@ -1335,6 +1349,7 @@ export const handlers = [
 
     const resultArray = [
       [await getLoginApiV1AuthLoginPost200Response(), { status: 200 }],
+      [undefined, { status: 401 }],
       [await getLoginApiV1AuthLoginPost422Response(), { status: 422 }],
     ] as [any, { status: number }][];
 
@@ -1359,6 +1374,7 @@ export const handlers = [
 
     const resultArray = [
       [await getLogoutApiV1AuthLogoutPost200Response(), { status: 200 }],
+      [undefined, { status: 401 }],
     ] as [any, { status: number }][];
 
     const [body, init] =
@@ -1382,6 +1398,7 @@ export const handlers = [
 
     const resultArray = [
       [await getRegisterApiV1AuthRegisterPost200Response(), { status: 200 }],
+      [undefined, { status: 401 }],
       [await getRegisterApiV1AuthRegisterPost422Response(), { status: 422 }],
     ] as [any, { status: number }][];
 
@@ -2433,6 +2450,7 @@ export const handlers = [
 
       const resultArray = [
         [undefined, { status: 204 }],
+        [undefined, { status: 401 }],
         [
           await getDeletePendingTotpEnrollmentApiV1AuthMfaTotpPendingEnrollmentIdDelete422Response(),
           { status: 422 },
@@ -2472,6 +2490,7 @@ export const handlers = [
           await getDeleteTotpEnrollmentApiV1AuthMfaTotpEnrollmentIdDelete200Response(),
           { status: 200 },
         ],
+        [undefined, { status: 401 }],
         [
           await getDeleteTotpEnrollmentApiV1AuthMfaTotpEnrollmentIdDelete422Response(),
           { status: 422 },
@@ -2511,6 +2530,7 @@ export const handlers = [
           await getDeleteWebauthnCredentialApiV1AuthMfaWebauthnCredentialIdDelete200Response(),
           { status: 200 },
         ],
+        [undefined, { status: 401 }],
         [
           await getDeleteWebauthnCredentialApiV1AuthMfaWebauthnCredentialIdDelete422Response(),
           { status: 422 },

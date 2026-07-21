@@ -1,0 +1,3 @@
+mode: count
+services/ws-hub/main.go:1.1,1.10 2 1
+services/ws-hub/main.go:2.1,3.10 3 0

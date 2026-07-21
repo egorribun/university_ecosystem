@@ -1,0 +1,15 @@
+<?xml version="1.0" ?>
+<coverage lines-covered="2" lines-valid="2">
+  <packages>
+    <package name="app">
+      <classes>
+        <class filename="app/first.py" name="first">
+          <lines><line hits="1" number="1" /></lines>
+        </class>
+        <class filename="app/second.py" name="second">
+          <lines><line hits="1" number="1" /></lines>
+        </class>
+      </classes>
+    </package>
+  </packages>
+</coverage>

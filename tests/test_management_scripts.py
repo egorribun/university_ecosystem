@@ -309,6 +309,32 @@ def test_squash_migrations_proceed(tmp_path) -> None:
         assert len(list(versions_dir.glob("*.py"))) == 21
 
 
+def test_squash_migrations_abort(tmp_path) -> None:
+    versions_dir = tmp_path / "alembic" / "versions"
+    versions_dir.mkdir(parents=True)
+
+    # Create 25 migrations
+    for i in range(25):
+        (versions_dir / f"{i:04d}_migration.py").write_text("content")
+
+    with (
+        patch("app.management.squash_migrations.VERSIONS_DIR", versions_dir),
+        patch(
+            "app.management.squash_migrations.ARCHIVE_DIR", versions_dir / "_archived"
+        ),
+        patch("builtins.input", return_value="n"),
+    ):
+        with pytest.raises(SystemExit) as exc:
+            squash_migrations_main()
+        assert exc.value.code == 0
+
+        # Archive directory should not exist or be empty
+        archived_dir = versions_dir / "_archived"
+        assert not archived_dir.exists()
+        # Original 25 migrations should remain unchanged
+        assert len(list(versions_dir.glob("*.py"))) == 25
+
+
 # ===========================================================================
 # stories_cleanup.py tests
 # ===========================================================================

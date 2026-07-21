@@ -450,3 +450,201 @@ async def test_unsigned_mode_accepts_matching_cookie_header(monkeypatch) -> None
         assert "." not in cookie
         response = await client.post("/mut", headers={CSRF_HEADER_NAME: cookie})
     assert response.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_csrf_websocket_scope_passthrough(monkeypatch) -> None:
+    """Lines 299-301: CSRFMiddleware passes WebSocket scopes directly to the inner app.
+
+    CSRF protection only applies to HTTP. WebSocket upgrades (scope['type'] == 'websocket')
+    must pass through without CSRF validation. We verify this by sending a raw ASGI
+    websocket scope through the middleware and confirming it reaches the inner app
+    (which would raise on HTTP-only CSRF validation).
+    """
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "environment", "testing")
+
+    # Create a minimal ASGI app to record what scope types pass through
+    received_scopes: list[str] = []
+
+    async def inner_app(scope, receive, send):
+        received_scopes.append(scope["type"])
+        # For WebSocket, we must at least respond with an accept
+        if scope["type"] == "websocket":
+            msg = await receive()
+            if msg["type"] == "websocket.connect":
+                await send({"type": "websocket.accept"})
+
+    from app.core.config import settings as _settings
+
+    monkeypatch.setattr(_settings, "environment", "testing")
+    csrf = CSRFMiddleware(
+        inner_app,
+        csrf_hmac_secret="",
+        cookie_secure=False,
+    )
+
+    async def receive():
+        return {"type": "websocket.connect"}
+
+    sent_messages: list[dict] = []
+
+    async def send(msg):
+        sent_messages.append(msg)
+
+    scope = {
+        "type": "websocket",
+        "path": "/ws",
+        "headers": [],
+        "query_string": b"",
+        "asgi": {"version": "3.0"},
+    }
+    await csrf(scope, receive, send)
+
+    # The WebSocket scope was passed to inner_app (no CSRF check applied)
+    assert "websocket" in received_scopes
+
+
+@pytest.mark.asyncio
+async def test_csrf_cookie_secure_flag_set(monkeypatch) -> None:
+    """Lines 431, 452: When cookie_secure=True, the 'Secure' flag is appended to both cookies.
+
+    The CSRF token cookie AND the anonymous nonce cookie should contain 'Secure' when
+    CSRFMiddleware is initialized with cookie_secure=True.
+
+    Line 452 (_build_anon_nonce_cookie Secure append) requires SIGNED mode, because
+    _extract_session_id is only called during response when self._signed=True (line 392).
+    """
+    app = _make_app()
+    # Use cookie_secure=True AND signed mode to trigger both Secure branches
+    app.add_middleware(
+        CSRFMiddleware,
+        csrf_hmac_secret="x"
+        * 32,  # Signed mode so _extract_session_id runs (lines 392-393)
+        cookie_secure=True,  # Forces lines 431 (CSRF token) and 452 (anon nonce)
+        cookie_samesite="strict",
+    )
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(
+        transport=transport, base_url="https://testserver"
+    ) as client:
+        response = await client.get("/safe")
+    # Both CSRF and anon nonce Set-Cookie headers should include 'Secure'
+    set_cookie_headers = [
+        v for k, v in response.headers.multi_items() if k.lower() == "set-cookie"
+    ]
+    csrf_cookie = next((h for h in set_cookie_headers if CSRF_COOKIE_NAME in h), None)
+    assert csrf_cookie is not None, "CSRF cookie not set"
+    assert "Secure" in csrf_cookie, f"Expected 'Secure' in CSRF cookie: {csrf_cookie!r}"
+
+    # Also verify the anon nonce cookie has 'Secure' flag (line 452 in _build_anon_nonce_cookie)
+    anon_nonce_cookie = next(
+        (h for h in set_cookie_headers if _ANON_NONCE_COOKIE_NAME in h), None
+    )
+    assert anon_nonce_cookie is not None, (
+        f"Anon nonce cookie not set. Cookies: {set_cookie_headers}"
+    )
+    assert "Secure" in anon_nonce_cookie, (
+        f"Expected 'Secure' in anon nonce cookie: {anon_nonce_cookie!r}"
+    )
+
+
+def test_extract_session_id_with_existing_session_id() -> None:
+    """Lines 169→184: _extract_session_id returns existing session_id without generating anon nonce.
+
+    When request.state already has a session_id (set by JWT middleware), the function
+    should return it directly, skipping the anonymous nonce generation path.
+    """
+    from types import SimpleNamespace
+
+    from app.core.csrf import _NEW_ANON_NONCE_STATE_KEY, _extract_session_id
+
+    # Use a real SimpleNamespace so hasattr() works correctly (MagicMock auto-creates attrs).
+    mock_state = SimpleNamespace(session_id="existing-session-abc123")
+
+    class _FakeRequest:
+        state = mock_state
+
+        def __init__(self) -> None:
+            self.cookies: dict[str, str] = {}
+
+    session_id = _extract_session_id(_FakeRequest(), "dummy-cookie-token")  # type: ignore[arg-type]
+
+    # Should return the existing session_id directly (branch at line 169 is False)
+    assert session_id == "existing-session-abc123"
+    # The NEW_ANON_NONCE_STATE_KEY should NOT be set (no new nonce generated)
+    assert not hasattr(mock_state, _NEW_ANON_NONCE_STATE_KEY)
+
+
+async def test_non_http_scope_bypasses() -> None:
+    """Non-HTTP scopes (like websocket or lifespan) bypass CSRF middleware."""
+    from unittest.mock import AsyncMock
+
+    app = AsyncMock()
+    middleware = CSRFMiddleware(app, csrf_hmac_secret="a" * 32)
+    scope = {"type": "websocket"}
+    receive = AsyncMock()
+    send = AsyncMock()
+    await middleware(scope, receive, send)
+    app.assert_called_once_with(scope, receive, send)
+
+
+@pytest.mark.asyncio
+async def test_secure_cookies_flag() -> None:
+    """CSRF and anon nonce cookies get the Secure flag when cookie_secure=True."""
+    app = _make_app()
+    app.add_middleware(CSRFMiddleware, csrf_hmac_secret="a" * 32, cookie_secure=True)
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(
+        transport=transport, base_url="https://testserver"
+    ) as client:
+        response = await client.get("/safe")
+        set_cookies = response.headers.get_list("set-cookie")
+        assert len(set_cookies) >= 2
+        csrf_cookie_header = next(c for c in set_cookies if CSRF_COOKIE_NAME in c)
+        anon_cookie_header = next(
+            c for c in set_cookies if _ANON_NONCE_COOKIE_NAME in c
+        )
+        assert "Secure" in csrf_cookie_header
+        assert "Secure" in anon_cookie_header
+
+
+@pytest.mark.asyncio
+async def test_csrf_with_authenticated_session() -> None:
+    """CSRF validates successfully when session_id is bound in request state."""
+    app = FastAPI()
+
+    @app.get("/safe")
+    async def safe():
+        return {"ok": True}
+
+    @app.post("/mut")
+    async def mut():
+        return {"ok": True}
+
+    # Custom raw ASGI middleware to set session_id
+    class SessionIdMiddleware:
+        def __init__(self, app_to_wrap):
+            self.app_to_wrap = app_to_wrap
+
+        async def __call__(self, scope, receive, send):
+            if scope["type"] == "http":
+                if "state" not in scope:
+                    scope["state"] = {}
+                scope["state"]["session_id"] = "user-123"
+            await self.app_to_wrap(scope, receive, send)
+
+    # Wrap the app: SessionIdMiddleware (outer) -> CSRFMiddleware (inner) -> FastAPI app
+    csrf_wrapped = CSRFMiddleware(app, csrf_hmac_secret="a" * 32, cookie_secure=False)
+    final_app = SessionIdMiddleware(csrf_wrapped)
+
+    transport = httpx.ASGITransport(app=final_app)
+    async with httpx.AsyncClient(
+        transport=transport, base_url="http://testserver"
+    ) as client:
+        await client.get("/safe")
+        cookie = client.cookies.get(CSRF_COOKIE_NAME)
+        assert cookie is not None
+        resp2 = await client.post("/mut", headers={CSRF_HEADER_NAME: cookie})
+        assert resp2.status_code == 200

@@ -21,8 +21,12 @@ from app.routers.schedule import router as schedule_router
 
 router = APIRouter(prefix=API_V1_PREFIX)
 
-router.include_router(login_router, prefix="/auth")
-router.include_router(mfa_router, prefix="/auth")
+router.include_router(
+    login_router, prefix="/auth", responses={401: {"description": "Unauthorized"}}
+)
+router.include_router(
+    mfa_router, prefix="/auth", responses={401: {"description": "Unauthorized"}}
+)
 router.include_router(spotify_router)
 router.include_router(sessions_router)
 router.include_router(notifications_router)

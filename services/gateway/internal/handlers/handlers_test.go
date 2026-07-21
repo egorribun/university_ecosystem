@@ -21,6 +21,7 @@ import (
 	pb "github.com/university-ecosystem/core/gen/go/file_processor/v1"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 )
 
@@ -463,4 +464,65 @@ func TestProxyOrFileHandler_Dispatch(t *testing.T) {
 		assert.Equal(t, http.StatusOK, w.Code)
 		assert.Contains(t, w.Body.String(), "out.png")
 	})
+}
+
+func TestFileProcessSyncHandler_ReturnsServiceUnavailableWhenGrpcConnNil(t *testing.T) {
+	router := gin.New()
+	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	router.POST("/sync", FileProcessSyncHandler(context.Background(), nil, nil, logger))
+
+	reqBody := `{"id":"550e8400-e29b-41d4-a716-446655440000","type":"resize","source_key":"in.png","dest_key":"out.png"}`
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/sync", bytes.NewReader([]byte(reqBody)))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusServiceUnavailable, w.Code)
+	assert.Contains(t, w.Body.String(), "File processor unavailable")
+}
+
+func TestFileProcessSyncHandler_PropagatesAuthorizationHeader(t *testing.T) {
+	var capturedCtx context.Context
+	mockClient := &mockFileProcessingServiceClient{
+		resp: &pb.ProcessFileResponse{JobId: "auth-job"},
+	}
+	router := gin.New()
+	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	dummyConn := &grpc.ClientConn{}
+
+	clientMock := &mockFileProcessingClientWithCtx{
+		mockClient: mockClient,
+		onCall: func(ctx context.Context) {
+			capturedCtx = ctx
+		},
+	}
+
+	router.POST("/sync", FileProcessSyncHandler(context.Background(), dummyConn, clientMock, logger))
+
+	reqBody := `{"id":"550e8400-e29b-41d4-a716-446655440000","type":"resize","source_key":"in.png","dest_key":"out.png"}`
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/sync", bytes.NewReader([]byte(reqBody)))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer test-token-123")
+	w := httptest.NewRecorder()
+
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.NotNil(t, capturedCtx)
+	md, ok := metadata.FromOutgoingContext(capturedCtx)
+	assert.True(t, ok)
+	authHeaders := md.Get("authorization")
+	assert.Len(t, authHeaders, 1)
+	assert.Equal(t, "Bearer test-token-123", authHeaders[0])
+}
+
+type mockFileProcessingClientWithCtx struct {
+	mockClient *mockFileProcessingServiceClient
+	onCall     func(context.Context)
+}
+
+func (m *mockFileProcessingClientWithCtx) ProcessFile(ctx context.Context, in *pb.ProcessFileRequest, opts ...grpc.CallOption) (*pb.ProcessFileResponse, error) {
+	m.onCall(ctx)
+	return m.mockClient.ProcessFile(ctx, in, opts...)
 }

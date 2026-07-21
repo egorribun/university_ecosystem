@@ -118,10 +118,15 @@ jobs:
                   $pytestArgs = @("${{ inputs.test-pattern }}")  # nosemgrep: yaml.github-actions.security.run-shell-injection.run-shell-injection
                   $pytestArgs += $parallelArgs
                   $pytestArgs += $failFastArgs
+                  
+                  # Ensure the artifact output folder exists
+                  New-Item -ItemType Directory -Force artifacts/coverage/python | Out-Null
+                  
                   $pytestArgs += @(
                     "--ignore=tests/test_schemathesis_api.py",
                     "--cov=app",
-                    "--cov-report=xml",
+                    "--cov-report=xml:coverage.xml",
+                    "--cov-report=json:artifacts/coverage/python/coverage.json",
                     "--cov-report=term-missing",
                     "--cov-fail-under=${{ inputs.coverage-threshold }}",  # nosemgrep: yaml.github-actions.security.run-shell-injection.run-shell-injection
                     "--junitxml=pytest-report.xml",
@@ -144,7 +149,9 @@ jobs:
               uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
               with:
                   name: backend-coverage-${{ inputs.test-group-name }}
-                  path: coverage.xml
+                  path: |
+                      coverage.xml
+                      artifacts/coverage/python/coverage.json
 
             - name: Upload pytest report
               uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

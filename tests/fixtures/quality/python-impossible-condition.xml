@@ -1,0 +1,15 @@
+<?xml version="1.0" ?>
+<coverage lines-covered="2" lines-valid="2">
+  <packages>
+    <package name="app">
+      <classes>
+        <class filename="app/impossible.py" name="impossible">
+          <lines>
+            <line branch="true" condition-coverage="150% (3/2)" hits="1" number="1" />
+            <line branch="true" condition-coverage="0% (0/2)" hits="1" number="2" />
+          </lines>
+        </class>
+      </classes>
+    </package>
+  </packages>
+</coverage>

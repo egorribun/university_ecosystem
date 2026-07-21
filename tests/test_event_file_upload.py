@@ -661,10 +661,9 @@ async def test_upload_event_file_allows_clean_payload_with_scanner(
     assert stored_path.read_bytes() == payload
 
 
-@pytest.mark.skip(reason="Pre-existing issue with event service fixture in update flow")
 @pytest.mark.asyncio
 async def test_update_event_replaces_image_removes_old_file(
-    tmp_path, monkeypatch, db_session, user_factory, event_service
+    tmp_path, monkeypatch, db_session, user_factory, event_service, mock_checker
 ):
     admin = await user_factory(role="admin")
     event = await _create_event(db_session, admin)
@@ -682,7 +681,13 @@ async def test_update_event_replaces_image_removes_old_file(
 
     payload = schemas.EventUpdate(image_url="/static/event_images/new.png")
     result = await events.update_event(
-        event.id, payload, request=None, db=db_session, user=admin, events=event_service
+        event.id,
+        payload,
+        request=None,
+        db=db_session,
+        user=admin,
+        events=event_service,
+        checker=mock_checker,
     )
 
     assert result.image_url == "/static/event_images/new.png"

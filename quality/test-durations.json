@@ -1,0 +1,28 @@
+{
+  "version": 1,
+  "default_duration_seconds": 1.0,
+  "durations": {
+    "tests/integration/test_full_stack_flow.py": 15.0,
+    "tests/integration/test_gateway_revocation.py": 5.0,
+    "tests/integration/test_infrastructure.py": 5.0,
+    "tests/integration/test_migration_data.py": 10.0,
+    "tests/integration/test_migration_roundtrip.py": 12.0,
+    "tests/integration/test_redis_contract.py": 4.0,
+    "tests/integration/test_rls_matrix.py": 8.0,
+    "tests/integration/test_rls_messages.py": 8.0,
+    "tests/integration/test_trace_driven.py": 6.0,
+    "tests/chaos/test_network_failures.py": 15.0,
+    "tests/chaos/test_resilience.py": 20.0,
+    "tests/contracts/test_file_processor_contract.py": 4.0,
+    "tests/contracts/test_file_processor_grpc_contract.py": 4.0,
+    "tests/contracts/test_files_process_contract.py": 4.0,
+    "tests/contracts/test_gateway_rest_contract.py": 4.0,
+    "tests/contracts/test_nats_message_contract.py": 4.0,
+    "tests/contracts/test_optimizer_grpc_contract.py": 4.0,
+    "tests/contracts/test_ws_hub_contract.py": 4.0,
+    "tests/test_quality_contract.py": 2.0,
+    "tests/test_quality_configuration.py": 1.0,
+    "tests/test_quality_workflow_contract.py": 1.0,
+    "tests/test_quality_inventory.py": 2.0
+  }
+}
