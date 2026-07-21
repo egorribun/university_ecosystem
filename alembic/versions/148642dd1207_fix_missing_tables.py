@@ -847,6 +847,12 @@ def upgrade() -> None:
             ["notification_id", "notification_created_at"],
             ["notifications.id", "notifications.created_at"],
             ondelete="CASCADE",
+        )
+        if is_postgresql
+        else sa.ForeignKeyConstraint(
+            ["notification_id"],
+            ["notifications.id"],
+            ondelete="CASCADE",
         ),
         sa.PrimaryKeyConstraint("id", "attempted_at")
         if is_postgresql
