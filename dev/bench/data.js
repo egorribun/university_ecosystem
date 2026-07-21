@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1784638943902,
+  "lastUpdate": 1784638953161,
   "repoUrl": "https://github.com/egorribun/university_ecosystem",
   "entries": {
     "Go Services Performance Benchmarks": [
@@ -1063,6 +1063,120 @@ window.BENCHMARK_DATA = {
             "name": "strip_html/large",
             "value": 87436,
             "range": "± 444",
+            "unit": "ns/iter"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "49699333+dependabot[bot]@users.noreply.github.com",
+            "name": "dependabot[bot]",
+            "username": "dependabot[bot]"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "2f2421224f4f6ba51efa5c48451477a282f20daa",
+          "message": "build(deps): Bump the go-ws-hub group in /services/ws-hub with 2 updates\n\nBumps the go-ws-hub group in /services/ws-hub with 2 updates: [github.com/getsentry/sentry-go](https://github.com/getsentry/sentry-go) and [github.com/prometheus/client_golang](https://github.com/prometheus/client_golang).\n\n\nUpdates `github.com/getsentry/sentry-go` from 0.47.0 to 0.48.0\n- [Release notes](https://github.com/getsentry/sentry-go/releases)\n- [Changelog](https://github.com/getsentry/sentry-go/blob/master/CHANGELOG.md)\n- [Commits](https://github.com/getsentry/sentry-go/compare/v0.47.0...v0.48.0)\n\nUpdates `github.com/prometheus/client_golang` from 1.23.2 to 1.24.0\n- [Release notes](https://github.com/prometheus/client_golang/releases)\n- [Changelog](https://github.com/prometheus/client_golang/blob/v1.24.0/CHANGELOG.md)\n- [Commits](https://github.com/prometheus/client_golang/compare/v1.23.2...v1.24.0)\n\n---\nupdated-dependencies:\n- dependency-name: github.com/getsentry/sentry-go\n  dependency-version: 0.48.0\n  dependency-type: direct:production\n  update-type: version-update:semver-minor\n  dependency-group: go-ws-hub\n- dependency-name: github.com/prometheus/client_golang\n  dependency-version: 1.24.0\n  dependency-type: direct:production\n  update-type: version-update:semver-minor\n  dependency-group: go-ws-hub\n...\n\nSigned-off-by: dependabot[bot] <support@github.com>\nCo-authored-by: dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>",
+          "timestamp": "2026-07-21T15:54:07+03:00",
+          "tree_id": "ee3394ee761ed3edd5bd8c118a69eca2a8fa096e",
+          "url": "https://github.com/egorribun/university_ecosystem/commit/2f2421224f4f6ba51efa5c48451477a282f20daa"
+        },
+        "date": 1784638952082,
+        "tool": "cargo",
+        "benches": [
+          {
+            "name": "sanitize_rich_text/empty",
+            "value": 5993,
+            "range": "± 44",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_rich_text/plain_text",
+            "value": 6946,
+            "range": "± 202",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_rich_text/simple_html",
+            "value": 9800,
+            "range": "± 195",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_rich_text/xss_attempt",
+            "value": 10647,
+            "range": "± 102",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_rich_text/large",
+            "value": 100400,
+            "range": "± 1046",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_html_basic/empty",
+            "value": 5410,
+            "range": "± 57",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_html_basic/plain_text",
+            "value": 6338,
+            "range": "± 17",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_html_basic/simple_html",
+            "value": 9048,
+            "range": "± 28",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_html_basic/xss_attempt",
+            "value": 9432,
+            "range": "± 147",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_html_basic/large",
+            "value": 92953,
+            "range": "± 885",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "strip_html/empty",
+            "value": 5277,
+            "range": "± 66",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "strip_html/plain_text",
+            "value": 6222,
+            "range": "± 19",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "strip_html/simple_html",
+            "value": 8712,
+            "range": "± 32",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "strip_html/xss_attempt",
+            "value": 9249,
+            "range": "± 175",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "strip_html/large",
+            "value": 91260,
+            "range": "± 1451",
             "unit": "ns/iter"
           }
         ]
