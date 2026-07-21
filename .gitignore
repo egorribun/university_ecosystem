@@ -154,6 +154,7 @@ coverage.json
 .pytest_cache/
 .pytest_tmp/
 .tmp/
+opencode.json
 cover/
 *.mo
 *.pot
