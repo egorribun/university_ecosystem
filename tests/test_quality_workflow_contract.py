@@ -188,6 +188,7 @@ def test_nightly_full_gate_contains_the_long_running_quality_suites() -> None:
     jobs = workflow["jobs"]
     assert {
         "mutation-tests-full",
+        "frontend-mutation-tests-full",
         "backend-full",
         "go-integration",
         "browser-matrix",
@@ -215,6 +216,7 @@ def test_nightly_full_gate_contains_the_long_running_quality_suites() -> None:
         "mobile-webkit",
     ]
     assert "always()" in jobs["notify-failure"]["if"]
+    assert "frontend-mutation-tests-full" in jobs["notify-failure"]["needs"]
     assert "issues" in workflow["permissions"]
 
 
@@ -232,3 +234,28 @@ def test_incremental_mutation_gate_is_blocking_and_fails_on_timeout() -> None:
     assert "exceeded its 25-minute budget" in mutation_text
     assert "Skipping score verification" not in mutation_text
     assert "needs.mutation-tests-incremental.result" in jobs["ci-success"]["steps"][0]["run"]
+
+
+def test_frontend_mutation_gate_is_blocking_and_reproducible() -> None:
+    ci_workflow = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    jobs = ci_workflow["jobs"]
+    mutation_job = jobs["stryker-incremental"]
+    assert mutation_job["if"] == "${{ github.event_name == 'pull_request' }}"
+    assert "stryker-incremental" in jobs["ci-success"]["needs"]
+    result_check = jobs["ci-success"]["steps"][0]["run"]
+    assert "needs.stryker-incremental.result" in result_check
+
+    frontend_workflow = yaml.safe_load(
+        (REPOSITORY_ROOT / ".github" / "workflows" / "reusable-frontend-tests.yml").read_text(
+            encoding="utf-8"
+        )
+    )
+    unit_steps = frontend_workflow["jobs"]["unit-tests"]["steps"]
+    diff_step = next(
+        step for step in unit_steps if step.get("name") == "Check differential frontend coverage"
+    )
+    assert "--fail-under=80" in diff_step["run"]
+    codecov_step = next(
+        step for step in unit_steps if step.get("name") == "Upload frontend coverage to Codecov"
+    )
+    assert codecov_step["with"]["flags"] == "frontend"

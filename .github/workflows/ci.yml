@@ -2233,6 +2233,7 @@ jobs:
       - rust-ffi-tsan
       - rust-tests
       - mutation-tests-incremental
+      - stryker-incremental
       - load-and-chaos-tests
       - chaos-tests
       - db-migration-integrity
@@ -2290,6 +2291,7 @@ jobs:
             "${{ needs.rust-ffi-tsan.result }}"
             "${{ needs.rust-tests.result }}"
             "${{ needs.mutation-tests-incremental.result }}"
+            "${{ needs.stryker-incremental.result }}"
             "${{ needs.load-and-chaos-tests.result }}"
             "${{ needs.actionlint.result }}"
             "${{ needs.dockerfile-lint.result }}"
@@ -2327,6 +2329,7 @@ jobs:
           gw=${{ needs.go-integration-gateway.result }}
           chaos=${{ needs.load-and-chaos-tests.result }}
           mut=${{ needs.mutation-tests-incremental.result }}
+          stryker=${{ needs.stryker-incremental.result }}
           toxi=${{ needs.chaos-tests.result }}
           dbmig=${{ needs.db-migration-integrity.result }}
           {
@@ -2345,6 +2348,7 @@ jobs:
             echo "| Job | Result |";
             echo "|-----|--------|";
             echo "| mutation-tests-incremental | $mut |";
+            echo "| stryker-incremental (frontend) | $stryker |";
             echo "";
             echo "## Load & chaos resilience (advisory)";
             echo "";
@@ -2357,4 +2361,4 @@ jobs:
             echo "_load-and-chaos non-blocking until prod Temporal boots reliably in CI (W144-class)._";
             echo "_chaos-tests + db-migration-integrity advisory until ToxiProxy coverage baseline is established._";
           } >> "$GITHUB_STEP_SUMMARY"
-          echo "Advisory results — ws-hub: $ws, file-processor: $fp, gateway: $gw, chaos: $chaos, mutation: $mut, toxi: $toxi, dbmig: $dbmig"
+          echo "Advisory results — ws-hub: $ws, file-processor: $fp, gateway: $gw, chaos: $chaos, mutation: $mut, stryker: $stryker, toxi: $toxi, dbmig: $dbmig"
