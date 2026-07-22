@@ -46,7 +46,7 @@
 name: Build Orchestrated Linux Validation
 
 on:
-  workflow_dispatch:
+  workflow_dispatch: # checkov:skip=CKV_GHA_7:manual input intentionally selects the reproducibility run count
     inputs:
       runs:
         description: "Number of consecutive builds to run for reproducibility check (default 3)."

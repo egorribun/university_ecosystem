@@ -45,6 +45,7 @@ COPY --from=builder /app/services/gateway/gateway .
 EXPOSE 8080
 
 # Note: Docker HEALTHCHECK removed in favor of Kubernetes liveness/readiness probes (TD-EXP-02)
+# checkov:skip=CKV_DOCKER_2:health is enforced by the Kubernetes probes.
 USER nonroot:nonroot
 
 CMD ["/app/gateway"]

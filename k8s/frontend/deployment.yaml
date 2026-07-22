@@ -1,3 +1,4 @@
+# checkov:skip=CKV_K8S_43:IMAGE_TAG is replaced with an immutable digest by the deployment pipeline
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -61,7 +62,8 @@ spec:
       terminationGracePeriodSeconds: 30
       containers:
         - name: frontend
-          image: registry.example.com/frontend:${IMAGE_TAG}  # RZ-33-25: match Kyverno restrict-image-registries
+          image: registry.example.com/frontend:${IMAGE_TAG}  # RZ-33-25: match Kyverno restrict-image-registries; checkov:skip=CKV_K8S_43:IMAGE_TAG is replaced with an immutable digest by the deployment pipeline
+          imagePullPolicy: Always
           ports:
             # Wave 131 SW5: containerPort 8080 (nginx) → 3000 (Node SSR).
             # Matches frontend.Dockerfile EXPOSE + ENV PORT=3000.
@@ -92,6 +94,7 @@ spec:
             timeoutSeconds: 3
           securityContext:
             runAsNonRoot: true
+            runAsUser: 10001
             readOnlyRootFilesystem: true
             allowPrivilegeEscalation: false
             capabilities:

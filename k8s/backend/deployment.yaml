@@ -1,3 +1,5 @@
+# checkov:skip=CKV_K8S_43:IMAGE_TAG is replaced with an immutable digest by the deployment pipeline
+# checkov:skip=CKV_K8S_35:the backend receives configuration through ExternalSecret-backed envFrom by design
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -53,7 +55,8 @@ spec:
           # The deploy workflow validates IMAGE_TAG is non-empty before calling kubectl.
           # Using :latest in production breaks reproducibility and risks pulling an
           # unstable image when the registry tag is force-pushed.
-          image: registry.example.com/backend:${IMAGE_TAG}  # RZ-33-25: match Kyverno restrict-image-registries
+          image: registry.example.com/backend:${IMAGE_TAG}  # RZ-33-25: match Kyverno restrict-image-registries; checkov:skip=CKV_K8S_43:IMAGE_TAG is replaced with an immutable digest by the deployment pipeline
+          imagePullPolicy: Always
           ports:
             - containerPort: 8000
               name: http
@@ -98,7 +101,7 @@ spec:
               memory: 1536Mi
           securityContext:
             runAsNonRoot: true
-            runAsUser: 1000
+            runAsUser: 10001
             readOnlyRootFilesystem: true
             allowPrivilegeEscalation: false
             capabilities:

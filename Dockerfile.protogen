@@ -30,3 +30,7 @@ RUN go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.5.1
 ENV PATH="/go/bin:${PATH}"
 
 WORKDIR /workspace
+
+# This is a short-lived code-generation tool image, never a deployed service.
+# checkov:skip=CKV_DOCKER_2:the image is not a long-running service.
+# checkov:skip=CKV_DOCKER_3:the image is a build tool and runs only in CI.

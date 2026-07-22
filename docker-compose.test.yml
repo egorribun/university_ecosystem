@@ -51,9 +51,9 @@ services:
       AUTO_CREATE_SCHEMA: "false"
       RUN_INTEGRATION_TESTS: "1"
       DATABASE_URL: postgresql+asyncpg://postgres:test@postgres:5432/test_db
-      INTEGRATION_DATABASE_URL: postgresql+asyncpg://postgres:DevSecurePass2024x@university_ecosystem-postgres-1:5432/university  # pragma: allowlist secret
+      INTEGRATION_DATABASE_URL: postgresql+asyncpg://postgres:DevSecurePass2024x@university_ecosystem-postgres-1:5432/university  # pragma: allowlist secret; checkov:skip=CKV_SECRET_4:disposable test-only credential for an isolated container
       TEST_USER_EMAIL: test@university.dev
-      TEST_USER_PASSWORD: TestPass@2024x  # pragma: allowlist secret
+      TEST_USER_PASSWORD: TestPass@2024x  # pragma: allowlist secret; checkov:skip=CKV_SECRET_4:disposable test-only credential for an isolated container
       CACHE_REDIS_URL: redis://redis:6379/0
       RATE_LIMIT_STORAGE_URI: redis://redis:6379/1
       NATS_URL: nats://test-nats:4222

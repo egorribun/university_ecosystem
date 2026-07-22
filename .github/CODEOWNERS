@@ -4,8 +4,8 @@
 # See: https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
 
 # AUDIT-INFRA-06 (audit 2026-03-15): .secrets.baseline is a detect-secrets
-# suppression list. Any change must be reviewed by the security team to prevent
-# contributors from hiding newly-committed secrets in the baseline.
+# suppression list. Any change must be reviewed by the repository owner to
+# prevent contributors from hiding newly-committed secrets in the baseline.
 .secrets.baseline @egorribun
 
 # CI/CD workflow changes affect the entire security posture of the project.
