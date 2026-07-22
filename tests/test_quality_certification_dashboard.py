@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import importlib.util
+import json
+import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -77,3 +79,41 @@ def test_dashboard_surfaces_missing_evidence_and_expiry(tmp_path: Path) -> None:
     assert "—" in output
     assert "expired" in output
     assert "never interpreted as a passing score" in output
+
+
+def test_certification_cli_hashes_every_file_in_report_directory(
+    tmp_path: Path, monkeypatch
+) -> None:
+    certification = _load_script("generate_certification")
+    contract = tmp_path / "contract.json"
+    checks = tmp_path / "checks.json"
+    reports = tmp_path / "reports"
+    reports.mkdir()
+    report = reports / "mutation.json"
+    output = tmp_path / "certification.json"
+    contract.write_text('{"exclusions": [], "quarantines": []}\n', encoding="utf-8")
+    checks.write_text('{"ci-success": "success"}\n', encoding="utf-8")
+    report.write_text('{"score": 1.0}\n', encoding="utf-8")
+
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "generate_certification.py",
+            "--commit-sha",
+            "c" * 40,
+            "--contract",
+            str(contract),
+            "--checks",
+            str(checks),
+            "--report-dir",
+            str(reports),
+            "--output",
+            str(output),
+        ],
+    )
+    monkeypatch.delenv("QUALITY_CERTIFICATION_KEY", raising=False)
+
+    assert certification.main() == 0
+    record = json.loads(output.read_text(encoding="utf-8"))
+    assert report.as_posix() in record["report_hashes"]

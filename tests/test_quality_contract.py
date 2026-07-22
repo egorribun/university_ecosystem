@@ -23,10 +23,13 @@ if not QUALITY_CONTRACT_PATH.exists():
 def _run_validator(
     cwd: Path,
     contract: Path | None = None,
+    manifest: Path | None = None,
 ) -> subprocess.CompletedProcess[str]:
     command = [sys.executable, str(VALIDATOR_PATH)]
     if contract is not None:
         command.extend(("--contract", str(contract)))
+    if manifest is not None:
+        command.extend(("--manifest", str(manifest)))
 
     # The executable and validator path are test-controlled absolute paths.
     return subprocess.run(  # noqa: S603
@@ -304,6 +307,70 @@ def test_rejects_tier0_coverage_below_100(tmp_path: Path) -> None:
 
     assert result.returncode == 1
     assert "tier0.coverage.functions must equal 100" in result.stderr
+
+
+def test_manifest_enforces_tier0_coverage_per_file(tmp_path: Path) -> None:
+    manifest_path = tmp_path / "quality-manifest.json"
+    manifest_path.write_text(
+        json.dumps(
+            {
+                "tier0": {
+                    "files": [
+                        {
+                            "path": "app/api/auth/login.py",
+                            "metrics": {
+                                "lines": {
+                                    "status": "native",
+                                    "percent": 100,
+                                },
+                                "branches": {
+                                    "status": "native",
+                                    "percent": 100,
+                                },
+                                "functions": {
+                                    "status": "native",
+                                    "percent": 99.0,
+                                },
+                            },
+                        }
+                    ]
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = _run_validator(tmp_path, manifest=manifest_path)
+
+    assert result.returncode == 1
+    assert "app/api/auth/login.py.functions must equal 100%" in result.stderr
+
+
+def test_manifest_accepts_fully_covered_tier0_files(tmp_path: Path) -> None:
+    manifest_path = tmp_path / "quality-manifest.json"
+    manifest_path.write_text(
+        json.dumps(
+            {
+                "tier0": {
+                    "files": [
+                        {
+                            "path": "app/api/auth/login.py",
+                            "metrics": {
+                                metric: {"status": "native", "percent": 100}
+                                for metric in ("lines", "branches", "functions")
+                            },
+                        }
+                    ]
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = _run_validator(tmp_path, manifest=manifest_path)
+
+    assert result.returncode == 0
+    assert "Quality contract is valid." in result.stdout
 
 
 def test_rejects_malformed_json_with_usage_error(tmp_path: Path) -> None:

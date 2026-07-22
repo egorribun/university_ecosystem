@@ -81,6 +81,13 @@ def main() -> int:
     )
     parser.add_argument("--report", type=Path, action="append", default=[])
     parser.add_argument(
+        "--report-dir",
+        type=Path,
+        action="append",
+        default=[],
+        help="Directory containing additional report evidence to hash recursively",
+    )
+    parser.add_argument(
         "--checks",
         type=Path,
         required=True,
@@ -93,8 +100,15 @@ def main() -> int:
     checks = _load_object(args.checks)
     if not checks:
         parser.error("--checks must contain the completed required-check matrix")
+    report_paths = list(args.report)
+    for report_dir in args.report_dir:
+        if not report_dir.is_dir():
+            parser.error(f"report directory does not exist: {report_dir}")
+        report_paths.extend(
+            path for path in report_dir.rglob("*") if path.is_file()
+        )
     missing = [
-        str(path) for path in [args.contract, *args.report] if not path.is_file()
+        str(path) for path in [args.contract, *report_paths] if not path.is_file()
     ]
     if missing:
         parser.error(f"missing evidence files: {', '.join(missing)}")
@@ -102,7 +116,7 @@ def main() -> int:
     record = build_record(
         commit_sha=args.commit_sha,
         contract_path=args.contract,
-        report_paths=args.report,
+        report_paths=report_paths,
         check_results=checks,
         known_limitations=args.limitation,
         signing_key=key_text.encode("utf-8") if key_text else None,

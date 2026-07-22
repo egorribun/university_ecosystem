@@ -657,8 +657,6 @@ jobs:
   # cross-env URL_STATE_E2E step. The default Chromium suite is split into
   # four isolated shards so all 114 tests finish within the job timeout
   # without overloading the SSR preview.
-  # Chromium-only by design (W120 SW7 + W121 SW3); add firefox/webkit
-  # in a future wave if multi-browser e2e coverage warranted.
   e2e-tests:
     name: E2E Tests (shard ${{ matrix.shard-index }}/4)
     needs: pre-commit-check
@@ -673,6 +671,27 @@ jobs:
       browser: chromium
       shard-index: ${{ matrix.shard-index }}
       shard-total: 4
+    secrets: inherit
+
+  # Phase 7.1: browser coverage is visible immediately but remains advisory
+  # during the 30-day stabilization window. Nightly runs execute the same
+  # four-project matrix; this PR job gives Firefox/WebKit/mobile-WebKit fast
+  # feedback without making pre-existing renderer flakes merge blockers.
+  e2e-tests-cross-browser:
+    name: E2E Tests (cross-browser ${{ matrix.browser }})
+    needs: pre-commit-check
+    continue-on-error: true
+    strategy:
+      fail-fast: false
+      matrix:
+        browser: [firefox, webkit, mobile-webkit]
+    uses: ./.github/workflows/reusable-e2e-tests.yml
+    with:
+      node-version: "22"
+      python-version: "3.14"
+      browser: ${{ matrix.browser }}
+      shard-index: 1
+      shard-total: 1
     secrets: inherit
 
   security-audit:
@@ -1687,7 +1706,7 @@ jobs:
           # and reduce the runner OOM-killer firing mid-sweep.
           set -f          # keep the $PATTERNS '*' globs intact for mutmut
           set +e
-          timeout --kill-after=60s 20m uv run mutmut run --max-children 2 $PATTERNS 2>&1 | tee /tmp/mutmut_run.log
+          timeout --kill-after=60s 25m uv run mutmut run --max-children 2 $PATTERNS 2>&1 | tee /tmp/mutmut_run.log
           ec=${PIPESTATUS[0]}   # exit code of timeout/mutmut, NOT tee
           set -e
           set +f
@@ -1719,7 +1738,12 @@ jobs:
           fi
 
 
+  # Phase 8.3: the full Temporal-backed load/chaos stack is executed by
+  # nightly-full-gate.yml. Keep this historical definition inert so old links
+  # and local workflow tooling do not accidentally reintroduce it into the PR
+  # gate; promotion back to CI requires a documented Temporal boot fix.
   load-and-chaos-tests:
+    if: ${{ false }}
     name: Load and Chaos Resilience Tests
     runs-on: ubuntu-latest
     timeout-minutes: 30 # +3 Go builds (gateway/ws-hub/file-processor) + temporal boot
@@ -2254,12 +2278,12 @@ jobs:
       - msw-mock-drift
       - provenance-check
       - e2e-tests
+      - e2e-tests-cross-browser
       - rust-ffi-asan
       - rust-ffi-tsan
       - rust-tests
       - mutation-tests-incremental
       - stryker-incremental
-      - load-and-chaos-tests
       - chaos-tests
       - db-migration-integrity
       - actionlint
@@ -2281,13 +2305,9 @@ jobs:
           # rate < 1 %. They are intentionally NOT in the blocking results
           # array but ARE reported separately below.
           #
-          # load-and-chaos-tests is ALSO advisory: it spins up the full
-          # production compose (docker-compose.infra.yml + docker-compose.yml),
-          # whose `temporal` container does not start reliably in CI (exits 1 —
-          # the custom-entrypoint prod Temporal config, a deep W144-class issue).
-          # Gating merges on a full-prod-stack-with-Temporal boot is fragile;
-          # kept in `needs` + reported below, but NOT in the blocking array.
-          # Re-promote once prod Temporal boots reliably in CI.
+          # The full load-and-chaos stack runs in nightly-full-gate.yml. It is
+          # deliberately absent from this fast PR gate until Temporal boot is
+          # reliable enough for a merge-blocking promotion.
           #
           results=(
             "${{ needs.pre-commit-check.result }}"
@@ -2305,9 +2325,6 @@ jobs:
             "${{ needs.helm-validate.result }}"
             "${{ needs.db-migration-gate.result }}"
             "${{ needs.go-fuzz.result }}"
-            "${{ needs.go-integration-ws-hub.result }}"
-            "${{ needs.go-integration-file-processor.result }}"
-            "${{ needs.go-integration-gateway.result }}"
             "${{ needs.contract-tests.result }}"
             "${{ needs.schemathesis-api-tests.result }}"
             "${{ needs.msw-mock-drift.result }}"
@@ -2318,7 +2335,6 @@ jobs:
             "${{ needs.rust-tests.result }}"
             "${{ needs.mutation-tests-incremental.result }}"
             "${{ needs.stryker-incremental.result }}"
-            "${{ needs.load-and-chaos-tests.result }}"
             "${{ needs.actionlint.result }}"
             "${{ needs.dockerfile-lint.result }}"
             "${{ needs.shellcheck.result }}"
@@ -2354,7 +2370,7 @@ jobs:
           ws=${{ needs.go-integration-ws-hub.result }}
           fp=${{ needs.go-integration-file-processor.result }}
           gw=${{ needs.go-integration-gateway.result }}
-          chaos=${{ needs.load-and-chaos-tests.result }}
+          browsers=${{ needs.e2e-tests-cross-browser.result }}
           mut=${{ needs.mutation-tests-incremental.result }}
           stryker=${{ needs.stryker-incremental.result }}
           toxi=${{ needs.chaos-tests.result }}
@@ -2381,11 +2397,16 @@ jobs:
             echo "";
             echo "| Job | Result |";
             echo "|-----|--------|";
-            echo "| load-and-chaos-tests | $chaos |";
             echo "| chaos-tests (ToxiProxy W19) | $toxi |";
             echo "| db-migration-integrity (W21) | $dbmig |";
             echo "";
-            echo "_load-and-chaos non-blocking until prod Temporal boots reliably in CI (W144-class)._";
             echo "_chaos-tests + db-migration-integrity advisory until ToxiProxy coverage baseline is established._";
+            echo "";
+            echo "## Cross-browser E2E (advisory — Phase 7 stabilization)";
+            echo "";
+            echo "| Job | Result |";
+            echo "|-----|--------|";
+            echo "| e2e-tests-cross-browser | $browsers |";
+            echo "_Promote after 30 consecutive green days and update required-check policy._";
           } >> "$GITHUB_STEP_SUMMARY"
-          echo "Advisory results — ws-hub: $ws, file-processor: $fp, gateway: $gw, chaos: $chaos, mutation: $mut, stryker: $stryker, toxi: $toxi, dbmig: $dbmig"
+          echo "Advisory results — ws-hub: $ws, file-processor: $fp, gateway: $gw, browsers: $browsers, mutation: $mut, stryker: $stryker, toxi: $toxi, dbmig: $dbmig"

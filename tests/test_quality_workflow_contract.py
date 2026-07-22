@@ -10,6 +10,9 @@ BACKEND_WORKFLOW_PATH = (
     REPOSITORY_ROOT / ".github" / "workflows" / "reusable-backend-tests.yml"
 )
 PACT_WORKFLOW_PATH = REPOSITORY_ROOT / ".github" / "workflows" / "contract-tests.yml"
+QUALITY_HISTORY_WORKFLOW_PATH = (
+    REPOSITORY_ROOT / ".github" / "workflows" / "quality-history.yml"
+)
 
 
 def _workflow_triggers(workflow: dict[str, object]) -> dict[str, object]:
@@ -176,6 +179,93 @@ def test_pact_workflow_replays_every_cross_process_boundary() -> None:
     assert "uvicorn app.main:app" in http_provider_text
 
 
+def test_cross_browser_e2e_is_advisory_during_stabilization() -> None:
+    workflow = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    jobs = workflow["jobs"]
+    cross_browser = jobs["e2e-tests-cross-browser"]
+
+    assert cross_browser["continue-on-error"] is True
+    assert cross_browser["strategy"]["matrix"]["browser"] == [
+        "firefox",
+        "webkit",
+        "mobile-webkit",
+    ]
+    assert "e2e-tests-cross-browser" in jobs["ci-success"]["needs"]
+    blocking_script = jobs["ci-success"]["steps"][0]["run"]
+    assert "needs.e2e-tests-cross-browser.result" not in blocking_script
+
+
+def test_advisory_integration_and_chaos_jobs_are_not_blocking() -> None:
+    workflow = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    blocking_script = workflow["jobs"]["ci-success"]["steps"][0]["run"]
+
+    for job_name in (
+        "go-integration-ws-hub",
+        "go-integration-file-processor",
+        "go-integration-gateway",
+        "load-and-chaos-tests",
+    ):
+        assert f"needs.{job_name}.result" not in blocking_script
+
+
+def test_incremental_mutation_budget_matches_declared_gate() -> None:
+    workflow = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    job = workflow["jobs"]["mutation-tests-incremental"]
+    run_step = next(
+        step
+        for step in job["steps"]
+        if step.get("name") == "Run incremental mutmut (blocking, 25-minute budget)"
+    )
+    assert "timeout --kill-after=60s 25m" in run_step["run"]
+
+
+def test_quality_history_archives_manifests_and_renders_dashboard() -> None:
+    workflow = yaml.safe_load(QUALITY_HISTORY_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    triggers = _workflow_triggers(workflow)
+    assert triggers["schedule"][0]["cron"] == "30 2 * * *"
+    assert workflow["permissions"]["actions"] == "read"
+    assert workflow["permissions"]["contents"] == "write"
+    assert workflow["permissions"]["pull-requests"] == "write"
+    text = "\n".join(
+        step.get("run", "")
+        for step in workflow["jobs"]["archive"]["steps"]
+        if isinstance(step, dict)
+    )
+    assert "gh run download" in text
+    assert "artifacts/quality/history" in text
+    assert "generate_dashboard.py" in text
+    assert "git push --set-upstream origin" in text
+    assert "gh pr create" in text
+
+
+def test_performance_workflow_has_blocking_native_and_ws_baselines() -> None:
+    workflow_path = REPOSITORY_ROOT / ".github" / "workflows" / "benchmark.yml"
+    workflow = yaml.safe_load(workflow_path.read_text(encoding="utf-8"))
+    jobs = workflow["jobs"]
+    assert "rust-native-regression" in jobs
+    native_text = "\n".join(
+        step.get("run", "")
+        for step in jobs["rust-native-regression"]["steps"]
+        if isinstance(step, dict)
+    )
+    assert "native/rust_ext/Cargo.toml" in native_text
+    native_store = next(
+        step
+        for step in jobs["rust-native-regression"]["steps"]
+        if "benchmark-action/github-action-benchmark" in step.get("uses", "")
+    )
+    assert native_store["with"]["alert-threshold"] == "110%"
+    assert native_store["with"]["fail-on-alert"] is True
+
+    ws_store = next(
+        step
+        for step in jobs["ws-hub-regression"]["steps"]
+        if "benchmark-action/github-action-benchmark" in step.get("uses", "")
+    )
+    assert ws_store["with"]["alert-threshold"] == "110%"
+    assert ws_store["with"]["fail-on-alert"] is True
+
+
 def test_backend_ci_uses_historical_duration_shards_and_aggregates_coverage() -> None:
     ci_workflow = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
     backend_job = ci_workflow["jobs"]["backend-tests"]
@@ -253,6 +343,7 @@ def test_nightly_full_gate_contains_the_long_running_quality_suites() -> None:
         "kyverno-test",
         "miri",
         "notify-failure",
+        "container-integration-cells",
     } <= set(jobs)
     mutation_steps = jobs["mutation-tests-full"]["steps"]
     export_step = next(
@@ -266,6 +357,16 @@ def test_nightly_full_gate_contains_the_long_running_quality_suites() -> None:
         "services/ws-hub",
         "services/file-processor",
     ]
+    cell_job = jobs["container-integration-cells"]
+    assert cell_job["env"]["USE_TESTCONTAINERS_MINIO"] == "1"
+    assert cell_job["env"]["USE_TESTCONTAINERS_SPICEDB"] == "1"
+    cell_text = "\n".join(
+        step.get("run", "")
+        for step in cell_job["steps"]
+        if isinstance(step, dict)
+    )
+    assert "test_minio_integration.py" in cell_text
+    assert "test_spicedb_integration.py" in cell_text
     assert jobs["browser-matrix"]["strategy"]["matrix"]["browser"] == [
         "chromium",
         "firefox",

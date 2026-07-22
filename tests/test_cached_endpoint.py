@@ -157,6 +157,34 @@ async def test_cache_enabled_miss_executes_then_hit_returns_cached_payload() -> 
 
 
 @pytest.mark.asyncio
+async def test_authenticated_identity_is_part_of_personalized_cache_key() -> None:
+    """A user-private response must never be served to another user."""
+    cache = MemoryCache()
+    set_cache_backend(cache)
+    calls = {"n": 0}
+
+    class _User:
+        def __init__(self, user_id: str) -> None:
+            self.id = user_id
+
+    @_decorate()
+    async def endpoint(*, user: _User, **_kwargs: Any) -> dict[str, str]:
+        calls["n"] += 1
+        return {"user_id": user.id}
+
+    user_a = _User("user-a")
+    user_b = _User("user-b")
+    first = await endpoint(request=_build_request(), response=Response(), user=user_a)
+    second = await endpoint(request=_build_request(), response=Response(), user=user_b)
+    third = await endpoint(request=_build_request(), response=Response(), user=user_a)
+
+    assert first.body == b'{"user_id":"user-a"}'
+    assert second.body == b'{"user_id":"user-b"}'
+    assert third == {"user_id": "user-a"}
+    assert calls["n"] == 2
+
+
+@pytest.mark.asyncio
 async def test_cache_enabled_hit_returns_304_on_match() -> None:
     cache = MemoryCache()
     set_cache_backend(cache)

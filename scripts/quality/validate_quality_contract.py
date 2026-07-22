@@ -473,11 +473,64 @@ def _parse_arguments(argv: Sequence[str] | None) -> argparse.Namespace:
         description="Validate a version 1 quality contract."
     )
     parser.add_argument("--contract", type=Path, metavar="PATH")
+    parser.add_argument(
+        "--manifest",
+        type=Path,
+        metavar="PATH",
+        help=(
+            "also enforce 100%% line/branch/function coverage for every "
+            "Tier0 file in a normalized coverage manifest"
+        ),
+    )
     return parser.parse_args(argv)
 
 
 def _print_error(message: str) -> None:
     print(f"ERROR: {message}", file=sys.stderr)
+
+
+def _validate_tier0_manifest(manifest: object) -> list[str]:
+    """Validate the per-file Tier0 enforcement contract.
+
+    The quality contract's aggregate Tier0 floor is necessary but not
+    sufficient: a single under-covered file can be hidden by another file's
+    surplus coverage.  This check is intentionally opt-in so the measurement
+    phase can land before the Tier0 backlog is closed (roadmap Phase 0.4).
+    """
+    if not isinstance(manifest, dict):
+        return ["coverage manifest root must be an object"]
+
+    tier0 = manifest.get("tier0")
+    if not isinstance(tier0, dict):
+        return ["coverage manifest tier0 must be an object"]
+
+    files = tier0.get("files")
+    if not isinstance(files, list) or not files:
+        return ["coverage manifest tier0.files must be a non-empty array"]
+
+    errors: list[str] = []
+    for index, file_record in enumerate(files):
+        if not isinstance(file_record, dict):
+            errors.append(f"tier0.files[{index}] must be an object")
+            continue
+        path = file_record.get("path", f"tier0.files[{index}]")
+        metrics = file_record.get("metrics")
+        if not isinstance(metrics, dict):
+            errors.append(f"{path}.metrics must be an object")
+            continue
+        for metric_name in ("lines", "branches", "functions"):
+            metric = metrics.get(metric_name)
+            if not isinstance(metric, dict):
+                errors.append(f"{path}.{metric_name} is not measured")
+                continue
+            status = metric.get("status")
+            percent = metric.get("percent")
+            if status not in {"native", "derived"} or percent != 100:
+                errors.append(
+                    f"{path}.{metric_name} must equal 100% "
+                    f"(status={status!r}, percent={percent!r})"
+                )
+    return errors
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -524,6 +577,33 @@ def main(argv: Sequence[str] | None = None) -> int:
         for error in errors:
             _print_error(error)
         return 1
+
+    if arguments.manifest is not None:
+        try:
+            manifest_text = arguments.manifest.read_text(encoding="utf-8")
+            manifest = json.loads(
+                manifest_text,
+                object_pairs_hook=_duplicate_key_object,
+                parse_constant=_reject_json_constant,
+            )
+        except _DuplicateKeyError as error:
+            _print_error(f"invalid coverage manifest: {error}")
+            return 1
+        except RecursionError:
+            _print_error("invalid coverage manifest: nesting exceeds supported depth")
+            return 1
+        except (OSError, UnicodeDecodeError) as error:
+            _print_error(f"unable to read coverage manifest: {error}")
+            return 2
+        except (json.JSONDecodeError, ValueError) as error:
+            _print_error(f"invalid coverage manifest: {error}")
+            return 1
+
+        manifest_errors = _validate_tier0_manifest(manifest)
+        if manifest_errors:
+            for error in manifest_errors:
+                _print_error(error)
+            return 1
 
     print("Quality contract is valid.")
     return 0

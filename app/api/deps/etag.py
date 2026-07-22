@@ -91,9 +91,12 @@ def cached_endpoint(
             if cache.enabled and request.method in ("GET", "HEAD"):
                 version = await version_resolver.get_version(cache)
 
-                # Reconstruct the cache key based on the dynamic endpoint arguments
-                # We filter out FastAPI internal objects (Request, Response, BackgroundTasks, etc)
-                # and complex objects (Session, User, Services) before hashing.
+                # Reconstruct the cache key based on the dynamic endpoint arguments.
+                # FastAPI internals and services are excluded below.  The user
+                # identity is reintroduced after filtering because some payloads
+                # contain private fields such as `is_registered` or `is_liked`.
+                # Omitting it would let one user's response populate a shared
+                # cache key for every other user (SEC-09).
                 cacheable_kwargs = {
                     k: v
                     for k, v in kwargs.items()
@@ -110,6 +113,11 @@ def cached_endpoint(
                         "notifications",
                     )
                 }
+
+                if user is not None:
+                    user_id = getattr(user, "id", None)
+                    if user_id is not None:
+                        cacheable_kwargs["__authenticated_user_id"] = str(user_id)
 
                 cache_key = generate_cache_key(
                     cache_prefix=cache_prefix,
