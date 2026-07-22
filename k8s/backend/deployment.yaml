@@ -5,6 +5,9 @@ kind: Deployment
 metadata:
   name: backend
   namespace: university-ecosystem
+  annotations:
+    checkov.io/skip1: CKV_K8S_43=IMAGE_TAG is replaced with an immutable digest by the deployment pipeline
+    checkov.io/skip2: CKV_K8S_35=configuration is intentionally delivered through ExternalSecret-backed envFrom
   labels:
     app.kubernetes.io/name: backend
     app.kubernetes.io/component: api

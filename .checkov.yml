@@ -9,15 +9,7 @@ skip-check:
   # Array bounds are enforced by Pydantic/Valibot schemas before generation;
   # this check cannot interpret those generated constraints reliably.
   - CKV_OPENAPI_21
-  # The remaining Kubernetes image references are deployment templates: the
-  # CD pipeline replaces them with immutable digests before apply, while the
-  # canary manifest is intentionally operator-substituted.
-  - CKV_K8S_43
-  - CKV_K8S_14
-  # Backend and the one-shot migration intentionally consume Secret/External
-  # Secret values as environment variables because the application config
-  # contract is environment based; secret values remain out of git.
-  - CKV_K8S_35
-  # CKV_SECRET_6 flags remote ExternalSecret property names, Secret key names,
-  # and documented example placeholders, not committed secret material.
+  # CKV_SECRET_6 scans ExternalSecret property names and documented example
+  # placeholders as if they were values; detect-secrets remains the canonical
+  # value scanner and no real secret values are committed in these files.
   - CKV_SECRET_6
