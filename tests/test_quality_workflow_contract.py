@@ -9,6 +9,7 @@ CI_WORKFLOW_PATH = REPOSITORY_ROOT / ".github" / "workflows" / "ci.yml"
 BACKEND_WORKFLOW_PATH = (
     REPOSITORY_ROOT / ".github" / "workflows" / "reusable-backend-tests.yml"
 )
+PACT_WORKFLOW_PATH = REPOSITORY_ROOT / ".github" / "workflows" / "contract-tests.yml"
 
 
 def _workflow_triggers(workflow: dict[str, object]) -> dict[str, object]:
@@ -132,6 +133,47 @@ def test_quality_policy_gate_is_properly_wired_in_ci() -> None:
     assert "kyverno test k8s/kyverno/tests/ --require-tests" in kyverno_text
     assert "kyverno-test" in needs
     assert "needs.kyverno-test.result" in run_script
+
+
+def test_pact_workflow_replays_every_cross_process_boundary() -> None:
+    workflow = yaml.safe_load(PACT_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    jobs = workflow["jobs"]
+
+    assert {"consumer", "message-provider-verify", "pact-provider-verify"} <= set(
+        jobs
+    )
+    assert jobs["message-provider-verify"]["needs"] == "consumer"
+    assert jobs["pact-provider-verify"]["needs"] == "consumer"
+
+    consumer_text = "\n".join(
+        str(step.get("run", ""))
+        for step in jobs["consumer"]["steps"]
+        if isinstance(step, dict)
+    )
+    artifact_path = str(jobs["consumer"]["steps"][-1]["with"]["path"])
+    assert "test_ws_hub_contract.py" in consumer_text
+    assert "test_gateway_rest_contract.py" in consumer_text
+    assert "test_file_processor_grpc_contract.py" in consumer_text
+    assert "ws-hub-university-backend.json" in artifact_path
+    assert "gateway-university-backend.json" in artifact_path
+    assert "university-backend-file-processor.json" in artifact_path
+
+    message_provider_text = "\n".join(
+        str(step.get("run", ""))
+        for step in jobs["message-provider-verify"]["steps"]
+        if isinstance(step, dict)
+    )
+    http_provider_text = "\n".join(
+        str(step.get("run", ""))
+        for step in jobs["pact-provider-verify"]["steps"]
+        if isinstance(step, dict)
+    )
+    assert "services/file-processor" in str(
+        jobs["message-provider-verify"]["steps"]
+    )
+    assert "go test -tags contract" in message_provider_text
+    assert "scripts/quality/verify_pact_provider.py" in http_provider_text
+    assert "uvicorn app.main:app" in http_provider_text
 
 
 def test_backend_ci_uses_historical_duration_shards_and_aggregates_coverage() -> None:
