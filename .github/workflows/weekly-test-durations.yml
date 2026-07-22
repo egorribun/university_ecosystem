@@ -1,0 +1,88 @@
+name: Weekly Test Duration Refresh
+
+on:
+  schedule:
+    - cron: "0 4 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: weekly-test-duration-refresh
+  cancel-in-progress: true
+
+jobs:
+  refresh:
+    name: Refresh pytest duration map
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      SECRET_KEY: dummy_secret_key_for_ci_tests_at_least_32_chars
+      ENVIRONMENT: testing
+      OTEL_SDK_DISABLED: "true"
+      REDIS_URL: redis://localhost:6379
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.14"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: Install dependencies
+        run: uv sync --frozen
+
+      - name: Run the measurable test suite
+        run: >-
+          uv run pytest tests/ --no-cov
+          --ignore=tests/performance
+          --ignore=tests/chaos
+          --ignore=tests/test_schemathesis_api.py
+          --junitxml=pytest-report.xml
+
+      - name: Rewrite duration map
+        run: >-
+          uv run python scripts/quality/update_test_durations.py pytest-report.xml
+          --output quality/test-durations.json --replace
+
+      - name: Open update pull request
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if git diff --quiet -- quality/test-durations.json; then
+            echo "Historical duration map is already current."
+            exit 0
+          fi
+          branch="automation/test-durations-${GITHUB_RUN_ID}"
+          git switch --create "$branch"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add quality/test-durations.json
+          git commit -m "chore(quality): refresh pytest duration map"
+          git push --set-upstream origin "$branch"
+          gh pr create \
+            --base main \
+            --head "$branch" \
+            --title "chore(quality): refresh pytest duration map" \
+            --body "Automated weekly refresh from pytest JUnit timings."

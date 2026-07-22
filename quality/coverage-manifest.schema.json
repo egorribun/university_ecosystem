@@ -10,6 +10,7 @@
     "source_roots",
     "reports",
     "components",
+    "tier0",
     "missing_reports",
     "validation"
   ],
@@ -26,6 +27,7 @@
       "items": {"$ref": "#/$defs/report"}
     },
     "components": {"$ref": "#/$defs/components"},
+    "tier0": {"$ref": "#/$defs/tier0"},
     "missing_reports": {
       "type": "array",
       "items": {"$ref": "#/$defs/missingReport"}
@@ -209,6 +211,37 @@
         "infrastructure": {"$ref": "#/$defs/component"},
         "workflows": {"$ref": "#/$defs/component"},
         "scripts": {"$ref": "#/$defs/component"}
+      }
+    },
+    "tier0File": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "component", "metrics"],
+      "properties": {
+        "path": {"type": "string", "minLength": 1},
+        "component": {"$ref": "#/$defs/componentName"},
+        "metrics": {"$ref": "#/$defs/metrics"}
+      }
+    },
+    "tier0": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "rules", "coverage", "files", "errors"],
+      "properties": {
+        "status": {"enum": ["not_observed", "measurement_only", "ready", "failed"]},
+        "rules": {
+          "type": "array",
+          "items": {"type": "string", "minLength": 1}
+        },
+        "coverage": {"$ref": "#/$defs/metrics"},
+        "files": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/tier0File"}
+        },
+        "errors": {
+          "type": "array",
+          "items": {"type": "string", "minLength": 1}
+        }
       }
     },
     "missingReport": {

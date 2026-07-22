@@ -521,11 +521,10 @@ pytest_add_cli_args_test_selection = ["tests/"]
 #   - test_migrations_runtime.py  → alembic/ ScriptDirectory (head convergence)
 #   - test_wave173_caddy_routing  → infrastructure/Caddyfile  (W173 routing)
 #   - test_wave173_ws_hub_env     → docker-compose.full.yml   (W173 ws-hub env)
-# Durable alternative (for the future "re-promote mutmut to blocking" roadmap
-# item): `also_copy = ["infrastructure", "docker-compose.full.yml"]` (+ alembic/)
-# keeps them running in the baseline by copying the files in. We use --ignore
-# here because it is deterministic + override-free (mutmut is POSIX-only — it
-# cannot run on the Windows dev box, so this is verified via CI only).
+# Copy the repository-contract paths into the isolated tree so the full nightly
+# run can measure them without a false collection failure. This also keeps the
+# incremental runner's clean-test baseline honest.
+also_copy = ["infrastructure", "alembic", "docker-compose.full.yml"]
 #
 # UPDATE (mutmut-green fix): the async cross-loop exclusions (test_spotify_fallback /
 # test_push_router_full / test_auth_mfa / test_notifications_api) have been REMOVED.
@@ -543,13 +542,6 @@ pytest_add_cli_args_test_selection = ["tests/"]
 # (Session-5's dispose-engine hook only MOVED the failure because the engine was not the
 # first leaker — periodic_scheduler's Task/Event was. No conftest hook is needed now.)
 pytest_add_cli_args = [
-    # 3 infra-contract tests: see the note above — mutmut's mutants/ copy contains ONLY
-    # app/+tests/, so these (which assert on-disk repo files OUTSIDE that tree + exercise
-    # ZERO app/ source) fail with "Path doesn't exist: mutants/<path>" + carry no
-    # mutation signal. Durable alternative: also_copy = ["infrastructure", "alembic", ...].
-    "--ignore=tests/test_migrations_runtime.py",
-    "--ignore=tests/test_wave173_caddy_routing.py",
-    "--ignore=tests/test_wave173_ws_hub_env.py",
     "--ignore=tests/integration/test_migration_data.py",
     # Schemathesis dynamically generates tests that pytest cannot collect individually by node ID,
     # causing exit code 4 / BadTestExecutionCommandsException. Ignore them under mutmut.

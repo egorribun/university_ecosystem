@@ -37,6 +37,16 @@ on:
                 required: false
                 type: number
                 default: 0
+            shard-id:
+                description: "0-based historical-duration shard index"
+                required: false
+                type: number
+                default: -1
+            num-shards:
+                description: "Total number of historical-duration shards"
+                required: false
+                type: number
+                default: 1
             fail-fast:
                 description: "Stop on first test failure"
                 required: false
@@ -115,9 +125,37 @@ jobs:
                     $failFastArgs = @("-x")
                   }
 
+                  $shardArgs = @()
+                  $shardSuffix = "full"
+                  $coverageXmlName = "coverage.xml"
+                  $coverageJsonName = "coverage.json"
+                  if ("${{ inputs.num-shards }}" -gt "1") {
+                    if ("${{ inputs.shard-id }}" -lt "0" -or "${{ inputs.shard-id }}" -ge "${{ inputs.num-shards }}") {
+                      throw "shard-id must be between 0 and num-shards - 1"
+                    }
+                    $shardArgs = @(
+                      "--shard-id=${{ inputs.shard-id }}",
+                      "--num-shards=${{ inputs.num-shards }}"
+                    )
+                    $shardSuffix = "shard-${{ inputs.shard-id }}"
+                    $coverageXmlName = "coverage-$shardSuffix.xml"
+                    $coverageJsonName = "coverage-$shardSuffix.json"
+                  }
+
                   $pytestArgs = @("${{ inputs.test-pattern }}")  # nosemgrep: yaml.github-actions.security.run-shell-injection.run-shell-injection
                   $pytestArgs += $parallelArgs
+                  $pytestArgs += $shardArgs
                   $pytestArgs += $failFastArgs
+
+                  # pytest-cov must not enforce a whole-suite floor on an
+                  # individual shard. The aggregate coverage-policy-gate
+                  # combines the raw data files below and enforces the floor
+                  # once all shards are present.
+                  $coverageDataFile = ".coverage"
+                  if ("${{ inputs.num-shards }}" -gt "1") {
+                    $coverageDataFile = ".coverage.${{ inputs.shard-id }}"
+                  }
+                  $env:COVERAGE_FILE = $coverageDataFile
                   
                   # Ensure the artifact output folder exists
                   New-Item -ItemType Directory -Force artifacts/coverage/python | Out-Null
@@ -125,13 +163,16 @@ jobs:
                   $pytestArgs += @(
                     "--ignore=tests/test_schemathesis_api.py",
                     "--cov=app",
-                    "--cov-report=xml:coverage.xml",
-                    "--cov-report=json:artifacts/coverage/python/coverage.json",
+                    "--cov-report=xml:$coverageXmlName",
+                    "--cov-report=json:artifacts/coverage/python/$coverageJsonName",
                     "--cov-report=term-missing",
-                    "--cov-fail-under=${{ inputs.coverage-threshold }}",  # nosemgrep: yaml.github-actions.security.run-shell-injection.run-shell-injection
                     "--junitxml=pytest-report.xml",
                     "--dist=loadgroup"
                   )
+
+                  if ("${{ inputs.num-shards }}" -le "1" -and "${{ inputs.coverage-threshold }}" -gt "0") {
+                    $pytestArgs += "--cov-fail-under=${{ inputs.coverage-threshold }}"  # nosemgrep: yaml.github-actions.security.run-shell-injection.run-shell-injection
+                  }
 
                   uv run pytest @pytestArgs
 
@@ -143,15 +184,23 @@ jobs:
               run: |
                 $compareBranch = $env:COMPARE_BRANCH
                 git fetch origin $compareBranch
-                uv run diff-cover coverage.xml --compare-branch=origin/$compareBranch --fail-under=80
+                uv run diff-cover coverage-full.xml --compare-branch=origin/$compareBranch --fail-under=80
 
             - name: Upload coverage artifact
               uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
               with:
                   name: backend-coverage-${{ inputs.test-group-name }}
                   path: |
-                      coverage.xml
-                      artifacts/coverage/python/coverage.json
+                      coverage-*.xml
+                      artifacts/coverage/python/coverage-*.json
+
+            - name: Upload raw coverage data for aggregation
+              if: ${{ inputs.num-shards > 1 }}
+              uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+              with:
+                  name: backend-coverage-data-${{ inputs.test-group-name }}
+                  path: .coverage.${{ inputs.shard-id }}
+                  include-hidden-files: true
 
             - name: Upload pytest report
               uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -160,13 +209,20 @@ jobs:
                   path: pytest-report.xml
                   if-no-files-found: warn
 
+            - name: Update historical test durations
+              if: always() && hashFiles('pytest-report.xml') != ''
+              shell: pwsh
+              run: |
+                  uv run python scripts/quality/update_test_durations.py pytest-report.xml `
+                    --output artifacts/quality/test-durations-${{ inputs.test-group-name }}.json
+
             - name: Upload coverage to Codecov
               uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0
               with:
                 token: ${{ secrets.CODECOV_TOKEN }}
-                files: ./coverage.xml
-                flags: backend-unit
-                name: backend-coverage
+                files: ./coverage-*.xml
+                flags: python
+                name: backend-coverage-${{ inputs.test-group-name }}
                 fail_ci_if_error: false
 
 

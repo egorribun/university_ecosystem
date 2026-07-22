@@ -6,6 +6,17 @@ import yaml
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 CI_WORKFLOW_PATH = REPOSITORY_ROOT / ".github" / "workflows" / "ci.yml"
+BACKEND_WORKFLOW_PATH = (
+    REPOSITORY_ROOT / ".github" / "workflows" / "reusable-backend-tests.yml"
+)
+
+
+def _workflow_triggers(workflow: dict[str, object]) -> dict[str, object]:
+    """PyYAML 5/6 parses the YAML 1.1 key ``on`` as boolean True."""
+
+    value = workflow.get("on", workflow.get(True))
+    assert isinstance(value, dict)
+    return value
 
 
 def test_quality_policy_gate_is_properly_wired_in_ci() -> None:
@@ -110,3 +121,98 @@ def test_quality_policy_gate_is_properly_wired_in_ci() -> None:
     assert expected_inventory_check in run_script, (
         "ci-success must assert the result of quality-inventory-check"
     )
+
+
+def test_backend_ci_uses_historical_duration_shards_and_aggregates_coverage() -> None:
+    ci_workflow = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    backend_job = ci_workflow["jobs"]["backend-tests"]
+    matrix = backend_job["strategy"]["matrix"]["include"]
+    assert [entry["shard"] for entry in matrix] == [0, 1, 2, 3]
+    assert all(entry["python-version"] == "3.14" for entry in matrix)
+    assert backend_job["with"]["shard-id"] == "${{ matrix.shard }}"
+    assert backend_job["with"]["num-shards"] == 4
+
+    policy_job = ci_workflow["jobs"]["coverage-policy-gate"]
+    policy_text = "\n".join(
+        step.get("run", "") for step in policy_job["steps"] if isinstance(step, dict)
+    )
+    download_steps = [
+        step
+        for step in policy_job["steps"]
+        if step.get("uses", "").startswith("actions/download-artifact")
+    ]
+    python_download = next(
+        step
+        for step in download_steps
+        if "backend-coverage-data" in str(step.get("with", {}))
+    )
+    assert python_download["with"]["merge-multiple"] is True
+    assert "coverage combine" in policy_text
+    assert "--python-xml coverage.xml" in policy_text
+
+    backend_workflow = yaml.safe_load(BACKEND_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    inputs = _workflow_triggers(backend_workflow)["workflow_call"]["inputs"]
+    assert inputs["shard-id"]["default"] == -1
+    assert inputs["num-shards"]["default"] == 1
+    run_step = next(
+        step
+        for step in backend_workflow["jobs"]["unit-tests"]["steps"]
+        if step.get("name") == "Run pytest"
+    )
+    assert "--shard-id=${{ inputs.shard-id }}" in run_step["run"]
+    assert "--num-shards=${{ inputs.num-shards }}" in run_step["run"]
+
+
+def test_weekly_duration_refresh_is_a_reviewable_bot_pr() -> None:
+    workflow_path = (
+        REPOSITORY_ROOT / ".github" / "workflows" / "weekly-test-durations.yml"
+    )
+    workflow = yaml.safe_load(workflow_path.read_text(encoding="utf-8"))
+    assert _workflow_triggers(workflow)["schedule"][0]["cron"] == "0 4 * * 1"
+    assert workflow["permissions"]["contents"] == "write"
+    assert workflow["permissions"]["pull-requests"] == "write"
+    step_text = "\n".join(
+        step.get("run", "")
+        for step in workflow["jobs"]["refresh"]["steps"]
+        if isinstance(step, dict)
+    )
+    assert "update_test_durations.py" in step_text
+    assert "gh pr create" in step_text
+
+
+def test_nightly_full_gate_contains_the_long_running_quality_suites() -> None:
+    workflow_path = REPOSITORY_ROOT / ".github" / "workflows" / "nightly-full-gate.yml"
+    workflow = yaml.safe_load(workflow_path.read_text(encoding="utf-8"))
+    triggers = _workflow_triggers(workflow)
+    assert triggers["schedule"][0]["cron"] == "0 1 * * *"
+    jobs = workflow["jobs"]
+    assert {
+        "mutation-tests-full",
+        "backend-full",
+        "go-integration",
+        "browser-matrix",
+        "load-and-chaos",
+        "kyverno-test",
+        "miri",
+        "notify-failure",
+    } <= set(jobs)
+    mutation_steps = jobs["mutation-tests-full"]["steps"]
+    export_step = next(
+        step
+        for step in mutation_steps
+        if step.get("name") == "Export and gate mutation statistics"
+    )
+    assert "export-cicd-stats" in export_step["run"]
+    assert jobs["go-integration"]["strategy"]["matrix"]["service-directory"] == [
+        "services/gateway",
+        "services/ws-hub",
+        "services/file-processor",
+    ]
+    assert jobs["browser-matrix"]["strategy"]["matrix"]["browser"] == [
+        "chromium",
+        "firefox",
+        "webkit",
+        "mobile-webkit",
+    ]
+    assert "always()" in jobs["notify-failure"]["if"]
+    assert "issues" in workflow["permissions"]

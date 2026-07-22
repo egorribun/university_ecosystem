@@ -512,6 +512,60 @@ def test_normalizes_native_reports_with_provenance_and_honest_metadata(
     assert manifest["validation"]["valid"] is False
 
 
+def test_tier0_measurement_contains_matched_file_evidence_before_enforcement(
+    tmp_path: Path,
+) -> None:
+    output = tmp_path / "quality-manifest.json"
+    report = _write_python_source_fixture(
+        tmp_path,
+        "tier0-python.xml",
+        "app/services/auth/lockout.py",
+    )
+
+    result = _run_normalizer(output, "--python-xml", str(report))
+
+    assert result.returncode == 1
+    manifest = json.loads(output.read_text(encoding="utf-8"))
+    tier0 = manifest["tier0"]
+    assert tier0["status"] == "measurement_only"
+    assert tier0["files"] == [
+        {
+            "component": "python",
+            "metrics": {
+                "branches": {
+                    "covered": 1,
+                    "percent": 50.0,
+                    "status": "native",
+                    "total": 2,
+                },
+                "functions": {
+                    "covered": None,
+                    "percent": None,
+                    "reason_code": "coverage_xml_has_no_method_breakdown",
+                    "status": "unsupported",
+                    "total": None,
+                },
+                "lines": {
+                    "covered": 1,
+                    "percent": 50.0,
+                    "status": "native",
+                    "total": 2,
+                },
+                "statements": {
+                    "covered": None,
+                    "percent": None,
+                    "reason_code": "coverage_xml_has_no_statement_counter",
+                    "status": "unsupported",
+                    "total": None,
+                },
+            },
+            "path": "app/services/auth/lockout.py",
+        }
+    ]
+    assert tier0["coverage"]["lines"]["percent"] == 50.0
+    assert any("functions" in error for error in tier0["errors"])
+
+
 def test_normalizer_output_is_byte_identical_for_fixed_inputs(tmp_path: Path) -> None:
     first_output = tmp_path / "first.json"
     second_output = tmp_path / "second.json"
@@ -1614,6 +1668,8 @@ def test_coverage_manifest_schema_is_closed_and_versioned() -> None:
 
     assert schema["$schema"] == "https://json-schema.org/draft/2020-12/schema"
     assert schema["properties"]["schema_version"]["const"] == 1
+    assert "tier0" in schema["required"]
+    assert schema["properties"]["tier0"]["$ref"] == "#/$defs/tier0"
     assert schema["additionalProperties"] is False
     metric_schema = schema["$defs"]["metric"]
     assert metric_schema["additionalProperties"] is False

@@ -1,0 +1,234 @@
+name: Nightly Full Quality Gate
+
+# Long-running suites are intentionally isolated from the fast PR gate. After
+# 30 consecutive green calendar days, their named checks can be promoted into
+# the main ruleset (the promotion decision is documented in the roadmap and is
+# not inferred from one successful run).
+on:
+  schedule:
+    - cron: "0 1 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: nightly-full-gate
+  cancel-in-progress: false
+
+jobs:
+  mutation-tests-full:
+    name: Full mutation score (mutmut)
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.14"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: Install dependencies
+        run: uv sync --group dev
+
+      - name: Run the complete mutation universe
+        run: |
+          rm -rf mutants
+          # mutmut 3.5.0 has no --CI flag; the CI/CD behavior is provided by
+          # the explicit export-cicd-stats command below.
+          uv run mutmut run
+
+      - name: Export and gate mutation statistics
+        run: |
+          uv run mutmut export-cicd-stats
+          test -s mutants/mutmut-cicd-stats.json
+          uv run python scripts/check_mutation_score.py --min-score 100
+
+      - name: Upload mutation evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: nightly-mutmut-${{ github.run_id }}
+          path: |
+            mutants/mutmut-cicd-stats.json
+            mutants/mutmut.db
+          if-no-files-found: ignore
+
+  backend-full:
+    name: Full backend suite
+    uses: ./.github/workflows/reusable-backend-tests.yml
+    with:
+      test-group-name: Nightly-Full
+      test-pattern: tests/
+      python-version: "3.14"
+      coverage-threshold: 0
+      run-integration-tests: true
+      parallel-workers: 0
+      num-shards: 1
+    secrets: inherit
+
+  go-integration:
+    name: Go integration (${{ matrix.service-directory }})
+    strategy:
+      fail-fast: false
+      matrix:
+        service-directory:
+          - services/gateway
+          - services/ws-hub
+          - services/file-processor
+    uses: ./.github/workflows/reusable-go-integration-tests.yml
+    with:
+      service-directory: ${{ matrix.service-directory }}
+    secrets: inherit
+
+  browser-matrix:
+    name: Browser matrix (${{ matrix.browser }})
+    strategy:
+      fail-fast: false
+      matrix:
+        browser:
+          - chromium
+          - firefox
+          - webkit
+          - mobile-webkit
+    uses: ./.github/workflows/reusable-e2e-tests.yml
+    with:
+      node-version: "22"
+      python-version: "3.14"
+      browser: ${{ matrix.browser }}
+      shard-index: 1
+      shard-total: 1
+    secrets: inherit
+
+  load-and-chaos:
+    name: Load and chaos resilience
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      SECRET_KEY: dummy_secret_key_for_ci_tests_at_least_32_chars
+      ENVIRONMENT: testing
+      OTEL_SDK_DISABLED: "true"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.14"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: Install dependencies
+        run: uv sync --group dev
+
+      - name: Validate the production compose contract
+        run: >-
+          docker compose -f docker-compose.infra.yml -f docker-compose.go.yml
+          -f docker-compose.yml -f docker-compose.ci-loadtest.yml config --quiet
+
+      - name: Run chaos and resilience tests
+        env:
+          CHAOS_TESTS: "1"
+        run: uv run pytest tests/chaos/ -v -m chaos --tb=short
+
+  kyverno-test:
+    name: Kyverno policy tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Detect Kyverno test fixtures
+        id: fixtures
+        shell: bash
+        run: |
+          if find k8s/kyverno/tests -name kyverno-test.yaml -print -quit 2>/dev/null | grep -q .; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "Kyverno fixtures are not landed yet; keeping the reserved nightly job green."
+          fi
+
+      - name: Install Kyverno CLI
+        if: steps.fixtures.outputs.present == 'true'
+        run: |
+          go install github.com/kyverno/kyverno/cmd/kyverno@v1.18.0
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+
+      - name: Run Kyverno tests
+        if: steps.fixtures.outputs.present == 'true'
+        run: kyverno test k8s/kyverno/tests/
+
+  miri:
+    name: Miri pure-Rust checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Install nightly Rust + Miri
+        uses: dtolnay/rust-toolchain@2c7215f132e9ebf062739d9130488b56d53c060c # nightly
+        with:
+          toolchain: nightly
+          components: miri
+
+      - name: Initialise Miri
+        run: cargo +nightly miri setup
+
+      - name: Test pyo3-sanitizer pure Rust library
+        run: cargo +nightly miri test --manifest-path crates/pyo3-sanitizer/Cargo.toml --lib
+
+      - name: Test rust-crypto pure Rust library
+        run: cargo +nightly miri test --manifest-path frontend/rust-crypto/Cargo.toml --lib
+
+  notify-failure:
+    name: Report nightly regression
+    if: ${{ always() && contains(needs.*.result, 'failure') }}
+    needs:
+      - mutation-tests-full
+      - backend-full
+      - go-integration
+      - browser-matrix
+      - load-and-chaos
+      - kyverno-test
+      - miri
+    runs-on: ubuntu-latest
+    env:
+      SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+    steps:
+      - name: Create or reuse a GitHub issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          title="Nightly full quality gate failed"
+          existing=$(gh issue list --state open --search "$title in:title" --json number --jq '.[0].number // empty')
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --body "Run $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID failed."
+          else
+            gh issue create --title "$title" --body "Run $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID failed. Inspect the nightly artifacts and promote checks only after the documented 30-day green window."
+          fi
+
+      - name: Send optional Slack notification
+        if: ${{ env.SLACK_WEBHOOK_URL != '' }}
+        run: >-
+          curl --fail-with-body --silent --show-error --request POST
+          --header 'Content-Type: application/json'
+          --data '{"text":"Nightly full quality gate failed: '${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}'"}'
+          "$SLACK_WEBHOOK_URL"
