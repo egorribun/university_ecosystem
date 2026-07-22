@@ -176,6 +176,18 @@ describe("sanitize utilities", () => {
     it("rejects email without TLD", () => {
       expect(sanitizeEmailAddress("user@example")).toBe("")
     })
+
+    it("rejects a valid address followed by trailing text", () => {
+      expect(sanitizeEmailAddress("user@example.com trailing")).toBe("")
+    })
+
+    it("rejects a valid address preceded by text", () => {
+      expect(sanitizeEmailAddress("prefix user@example.com")).toBe("")
+    })
+
+    it("coerces non-string runtime input before validation", () => {
+      expect(sanitizeEmailAddress(123 as unknown as string)).toBe("")
+    })
   })
 
   describe("sanitizeTelegramUrl", () => {
@@ -237,6 +249,19 @@ describe("sanitize utilities", () => {
 
     it("accepts username at exactly 5 characters", () => {
       expect(sanitizeTelegramUrl("@abcde")).toBe("https://t.me/abcde")
+    })
+
+    it("coerces non-string runtime input before validation", () => {
+      expect(sanitizeTelegramUrl(123 as unknown as string)).toBe("")
+    })
+
+    it("trims runtime string-like input before validating a username", () => {
+      const stringLike = { toString: () => "  @abcde  " }
+      expect(sanitizeTelegramUrl(stringLike as unknown as string)).toBe("https://t.me/abcde")
+    })
+
+    it("requires the Telegram prefix to occur at the beginning", () => {
+      expect(sanitizeTelegramUrl("prefix@@username")).toBe("")
     })
   })
 })

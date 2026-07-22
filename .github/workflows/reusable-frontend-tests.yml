@@ -27,6 +27,10 @@ on:
         required: false
         type: boolean
         default: false
+    secrets:
+      CODECOV_TOKEN:
+        required: false
+        description: "Codecov upload token"
 
 jobs:
   unit-tests:
@@ -69,6 +73,30 @@ jobs:
         env:
           CI: "true"
 
+      - name: Set up Python for differential coverage
+        if: ${{ github.event_name == 'pull_request' }}
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.14"
+
+      - name: Install uv for differential coverage
+        if: ${{ github.event_name == 'pull_request' }}
+        uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: Check differential frontend coverage
+        if: ${{ github.event_name == 'pull_request' }}
+        working-directory: ${{ github.workspace }}
+        shell: pwsh
+        env:
+          COMPARE_BRANCH: ${{ github.base_ref }}
+        run: |
+          uv sync --frozen
+          git fetch origin $env:COMPARE_BRANCH
+          uv run diff-cover frontend/coverage/lcov.info --compare-branch=origin/$env:COMPARE_BRANCH --fail-under=80
+
       - name: Upload vitest report
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
@@ -81,6 +109,15 @@ jobs:
         with:
           name: frontend-coverage
           path: ${{ inputs.working-directory }}/coverage/
+
+      - name: Upload frontend coverage to Codecov
+        uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: ./${{ inputs.working-directory }}/coverage/lcov.info
+          flags: frontend
+          name: frontend-coverage
+          fail_ci_if_error: false
 
   lint:
     name: Lint & Format
