@@ -1613,15 +1613,13 @@ jobs:
           fi
           wasm-pack test --headless --chrome frontend/rust-crypto
 
-  mutation-tests:
+  mutation-tests-incremental:
     name: Incremental Mutation Tests (mutmut)
     runs-on: ubuntu-latest
-    # 30 = outer safety net for the 20-min in-command soft time-box below
-    # (+ ~5 min setup/install/stats). The clean-test isolation bugs are fixed,
-    # so mutmut now runs REAL mutants; on a long-lived branch the diff spans many
-    # modules (tens of thousands of mutants = multi-hour full run), so the step
-    # time-boxes the advisory run rather than blocking CI on a complete pass.
-    timeout-minutes: 30
+    # 35 = outer safety net for the 25-min in-command gate below (+ setup/install).
+    # A time-box is a failed mutation gate: silently skipping score verification
+    # would turn a missing quality signal into a green required check.
+    timeout-minutes: 35
     needs: pre-commit-check
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -1639,7 +1637,7 @@ jobs:
       - name: Install dependencies
         run: uv sync --group dev
 
-      - name: Run incremental mutmut (time-boxed, advisory)
+      - name: Run incremental mutmut (blocking, 25-minute budget)
         run: |
           git diff --name-only origin/main...HEAD | grep '^app/.*\.py$' > /tmp/changed_py.txt || true
           if [ ! -s /tmp/changed_py.txt ]; then
@@ -1651,7 +1649,7 @@ jobs:
           # (source_paths in pyproject scopes the universe).
           PATTERNS=$(sed -E 's#/#.#g; s#\.py$#*#' /tmp/changed_py.txt | tr '\n' ' ')
           echo "Mutating modules: $PATTERNS"
-          # Soft time-box: mutmut 3.x mutates WHOLE changed modules (no line-level
+          # Time-box: mutmut 3.x mutates WHOLE changed modules (no line-level
           # scoping), so on a long-lived branch the diff spans many modules = tens of
           # thousands of mutants (multi-hour full run). This advisory job runs REAL
           # mutation for a bounded window. mutmut exits 0 on completion regardless of
@@ -1674,7 +1672,7 @@ jobs:
           # replays into this log on a FAILED gate) can never contain this
           # mutmut-specific phrase, so its presence PROVES the isolation gates passed.
           # Any kill AFTER it (124 time-box / 137 OOM-SIGKILL / 143 SIGTERM) is in the
-          # advisory mutant-execution zone — semantically identical to the 20-min box.
+          # mutation-execution zone. The gate fails if the signal is incomplete.
           mutants_started=0
           if grep -qF 'Running mutation testing' /tmp/mutmut_run.log; then mutants_started=1; fi
           if [ "$ec" -eq 0 ]; then
@@ -1683,9 +1681,11 @@ jobs:
             echo "Verifying mutation score (gate blocking at >= 85.0%)..."
             uv run python scripts/mutmut_ci_gate.py
           elif [ "$ec" -eq 124 ]; then
-            echo "Incremental mutation testing hit the 20-minute advisory time-box. Skipping score verification for incomplete run."
+            echo "::error::Incremental mutation testing exceeded its 25-minute budget; incomplete mutation evidence is not mergeable."
+            exit 124
           elif [ "$mutants_started" -eq 1 ]; then
-            echo "mutmut exited $ec after the mutant phase began. Skipping score verification for incomplete run."
+            echo "::error::mutmut exited $ec after the mutant phase began; incomplete mutation evidence is not mergeable."
+            exit "$ec"
           else
             echo "::error::mutmut exited $ec BEFORE the mutant phase began — a genuine clean-test / forced-fail / stats isolation regression. Failing the job."
             exit "$ec"
@@ -2205,7 +2205,7 @@ jobs:
       - rust-ffi-asan
       - rust-ffi-tsan
       - rust-tests
-      - mutation-tests
+      - mutation-tests-incremental
       - load-and-chaos-tests
       - chaos-tests
       - db-migration-integrity
@@ -2235,14 +2235,6 @@ jobs:
           # kept in `needs` + reported below, but NOT in the blocking array.
           # Re-promote once prod Temporal boots reliably in CI.
           #
-          # mutation-tests is ALSO advisory: the paths_to_mutate config is now
-          # correct (mutmut 3.5.0 runs), but mutmut copies ONLY app/ + tests/
-          # into its isolated mutants/ dir, while this suite has contract tests
-          # that assert on-disk repo files (infrastructure/Caddyfile, alembic/,
-          # compose, k8s) → the baseline stats run fails ("Path doesn't exist:
-          # mutants/<path>"). Gating on a baseline that needs the whole repo
-          # tree is fragile; re-promote once a curated unit-only mutation test
-          # selection exists (pytest_add_cli_args_test_selection). Reported below.
           results=(
             "${{ needs.pre-commit-check.result }}"
             "${{ needs.compose-validate.result }}"
@@ -2270,7 +2262,7 @@ jobs:
             "${{ needs.rust-ffi-asan.result }}"
             "${{ needs.rust-ffi-tsan.result }}"
             "${{ needs.rust-tests.result }}"
-            "${{ needs.mutation-tests.result }}"
+            "${{ needs.mutation-tests-incremental.result }}"
             "${{ needs.load-and-chaos-tests.result }}"
             "${{ needs.actionlint.result }}"
             "${{ needs.dockerfile-lint.result }}"
@@ -2307,7 +2299,7 @@ jobs:
           fp=${{ needs.go-integration-file-processor.result }}
           gw=${{ needs.go-integration-gateway.result }}
           chaos=${{ needs.load-and-chaos-tests.result }}
-          mut=${{ needs.mutation-tests.result }}
+          mut=${{ needs.mutation-tests-incremental.result }}
           toxi=${{ needs.chaos-tests.result }}
           dbmig=${{ needs.db-migration-integrity.result }}
           {
@@ -2321,17 +2313,21 @@ jobs:
             echo "";
             echo "_Initially non-blocking per ADR-022 §Migration step 5._";
             echo "";
+            echo "## Incremental mutation gate (blocking)";
+            echo "";
+            echo "| Job | Result |";
+            echo "|-----|--------|";
+            echo "| mutation-tests-incremental | $mut |";
+            echo "";
             echo "## Load & chaos resilience (advisory)";
             echo "";
             echo "| Job | Result |";
             echo "|-----|--------|";
             echo "| load-and-chaos-tests | $chaos |";
-            echo "| mutation-tests | $mut |";
             echo "| chaos-tests (ToxiProxy W19) | $toxi |";
             echo "| db-migration-integrity (W21) | $dbmig |";
             echo "";
             echo "_load-and-chaos non-blocking until prod Temporal boots reliably in CI (W144-class)._";
-            echo "_mutation-tests non-blocking until a curated unit-only mutation test selection exists._";
             echo "_chaos-tests + db-migration-integrity advisory until ToxiProxy coverage baseline is established._";
           } >> "$GITHUB_STEP_SUMMARY"
           echo "Advisory results — ws-hub: $ws, file-processor: $fp, gateway: $gw, chaos: $chaos, mutation: $mut, toxi: $toxi, dbmig: $dbmig"

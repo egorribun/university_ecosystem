@@ -216,3 +216,19 @@ def test_nightly_full_gate_contains_the_long_running_quality_suites() -> None:
     ]
     assert "always()" in jobs["notify-failure"]["if"]
     assert "issues" in workflow["permissions"]
+
+
+def test_incremental_mutation_gate_is_blocking_and_fails_on_timeout() -> None:
+    ci_workflow = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    jobs = ci_workflow["jobs"]
+    mutation_job = jobs["mutation-tests-incremental"]
+    assert mutation_job["timeout-minutes"] == 35
+    assert "mutation-tests-incremental" in jobs["ci-success"]["needs"]
+    mutation_text = "\n".join(
+        step.get("run", "")
+        for step in mutation_job["steps"]
+        if isinstance(step, dict)
+    )
+    assert "exceeded its 25-minute budget" in mutation_text
+    assert "Skipping score verification" not in mutation_text
+    assert "needs.mutation-tests-incremental.result" in jobs["ci-success"]["steps"][0]["run"]
