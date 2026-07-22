@@ -21,6 +21,7 @@ COMPONENTS = (
     "rust-native",
     "rust-pyo3-sanitizer",
     "rust-wasm-sanitizer",
+    "rust-crypto",
     "infrastructure",
     "workflows",
     "scripts",

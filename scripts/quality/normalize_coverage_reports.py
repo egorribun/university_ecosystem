@@ -30,6 +30,7 @@ COMPONENTS = (
     "rust-native",
     "rust-pyo3-sanitizer",
     "rust-wasm-sanitizer",
+    "rust-crypto",
     "infrastructure",
     "workflows",
     "scripts",
@@ -44,6 +45,7 @@ SOURCE_ROOTS = {
     "rust-native": ("native/rust_ext",),
     "rust-pyo3-sanitizer": ("crates/pyo3-sanitizer",),
     "rust-wasm-sanitizer": ("frontend/wasm-sanitizer",),
+    "rust-crypto": ("frontend/rust-crypto",),
     "infrastructure": ("infra", "infrastructure", "k8s", "charts"),
     "workflows": (".github/workflows",),
     "scripts": ("scripts",),
@@ -66,6 +68,10 @@ SUPPORTED_REPORTS = {
         "llvm-cov-json",
         "artifacts/coverage/rust/rust-wasm-sanitizer/llvm.json",
     ),
+    "rust-crypto": (
+        "llvm-cov-json",
+        "artifacts/coverage/rust/rust-crypto/llvm.json",
+    ),
 }
 CANONICAL_RAW_ARTIFACTS = frozenset(
     {
@@ -79,12 +85,13 @@ CANONICAL_RAW_ARTIFACTS = frozenset(
         "artifacts/coverage/rust/rust-native/llvm.json",
         "artifacts/coverage/rust/rust-pyo3-sanitizer/llvm.json",
         "artifacts/coverage/rust/rust-wasm-sanitizer/llvm.json",
+        "artifacts/coverage/rust/rust-crypto/llvm.json",
         "artifacts/coverage/quality-manifest.json",
     }
 )
 GO_COMPONENTS = frozenset({"go-gateway", "go-ws-hub", "go-file-processor"})
 RUST_COMPONENTS = frozenset(
-    {"rust-native", "rust-pyo3-sanitizer", "rust-wasm-sanitizer"}
+    {"rust-native", "rust-pyo3-sanitizer", "rust-wasm-sanitizer", "rust-crypto"}
 )
 SHA_PATTERN = re.compile(r"^[0-9A-Fa-f]{7,64}$")
 TIMESTAMP_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$")

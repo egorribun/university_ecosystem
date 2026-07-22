@@ -71,6 +71,7 @@ def test_governance_quality_configuration_matches_contract() -> None:
         "rust-native": "native/rust_ext/",
         "rust-pyo3-sanitizer": "crates/pyo3-sanitizer/",
         "rust-wasm-sanitizer": "frontend/wasm-sanitizer/",
+        "rust-crypto": "frontend/rust-crypto/",
     }
     assert set(codecov["flags"]) == set(expected_flags)
     for flag, path in expected_flags.items():

@@ -45,6 +45,7 @@
         "rust-native",
         "rust-pyo3-sanitizer",
         "rust-wasm-sanitizer",
+        "rust-crypto",
         "infrastructure",
         "workflows",
         "scripts"
@@ -62,6 +63,7 @@
         "rust-native",
         "rust-pyo3-sanitizer",
         "rust-wasm-sanitizer",
+        "rust-crypto",
         "infrastructure",
         "workflows",
         "scripts"
@@ -75,6 +77,7 @@
         "rust-native": {"$ref": "#/$defs/pathArray"},
         "rust-pyo3-sanitizer": {"$ref": "#/$defs/pathArray"},
         "rust-wasm-sanitizer": {"$ref": "#/$defs/pathArray"},
+        "rust-crypto": {"$ref": "#/$defs/pathArray"},
         "infrastructure": {"$ref": "#/$defs/pathArray"},
         "workflows": {"$ref": "#/$defs/pathArray"},
         "scripts": {"$ref": "#/$defs/pathArray"}
@@ -195,6 +198,7 @@
         "rust-native",
         "rust-pyo3-sanitizer",
         "rust-wasm-sanitizer",
+        "rust-crypto",
         "infrastructure",
         "workflows",
         "scripts"
@@ -208,6 +212,7 @@
         "rust-native": {"$ref": "#/$defs/component"},
         "rust-pyo3-sanitizer": {"$ref": "#/$defs/component"},
         "rust-wasm-sanitizer": {"$ref": "#/$defs/component"},
+        "rust-crypto": {"$ref": "#/$defs/component"},
         "infrastructure": {"$ref": "#/$defs/component"},
         "workflows": {"$ref": "#/$defs/component"},
         "scripts": {"$ref": "#/$defs/component"}

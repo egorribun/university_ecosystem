@@ -1591,7 +1591,7 @@ jobs:
           tool: cargo-llvm-cov
 
       - name: Create coverage output directories
-        run: mkdir -p artifacts/coverage/rust/rust-native artifacts/coverage/rust/rust-pyo3-sanitizer artifacts/coverage/rust/rust-wasm-sanitizer
+        run: mkdir -p artifacts/coverage/rust/rust-native artifacts/coverage/rust/rust-pyo3-sanitizer artifacts/coverage/rust/rust-wasm-sanitizer artifacts/coverage/rust/rust-crypto
 
       - name: rust_ext — native unit tests + coverage (--no-default-features)
         # extension-module produces undefined Python symbols in a standalone test
@@ -1616,7 +1616,7 @@ jobs:
 
       - name: rust-crypto — native KAT tests + coverage
         working-directory: frontend/rust-crypto
-        run: cargo llvm-cov --lib
+        run: cargo llvm-cov --lib --json --output-path ../../artifacts/coverage/rust/rust-crypto/llvm.json
 
       - name: Upload Rust coverage artifacts
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -2171,7 +2171,8 @@ jobs:
             --go-report go-file-processor=artifacts/coverage/go/file-processor/coverage.out \
             --rust-report rust-native=artifacts/coverage/rust/rust-native/llvm.json \
             --rust-report rust-pyo3-sanitizer=artifacts/coverage/rust/rust-pyo3-sanitizer/llvm.json \
-            --rust-report rust-wasm-sanitizer=artifacts/coverage/rust/rust-wasm-sanitizer/llvm.json
+            --rust-report rust-wasm-sanitizer=artifacts/coverage/rust/rust-wasm-sanitizer/llvm.json \
+            --rust-report rust-crypto=artifacts/coverage/rust/rust-crypto/llvm.json
 
       - name: Upload Quality Manifest
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

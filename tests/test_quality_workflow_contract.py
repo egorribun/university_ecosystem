@@ -149,6 +149,7 @@ def test_backend_ci_uses_historical_duration_shards_and_aggregates_coverage() ->
     assert python_download["with"]["merge-multiple"] is True
     assert "coverage combine" in policy_text
     assert "--python-xml coverage.xml" in policy_text
+    assert "--rust-report rust-crypto=artifacts/coverage/rust/rust-crypto/llvm.json" in policy_text
 
     backend_workflow = yaml.safe_load(BACKEND_WORKFLOW_PATH.read_text(encoding="utf-8"))
     inputs = _workflow_triggers(backend_workflow)["workflow_call"]["inputs"]

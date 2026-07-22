@@ -102,6 +102,7 @@ pub fn sanitize_rich_text_raw(ptr: *const u8, len: usize) -> Result<String, Stri
 #[cfg(all(test, not(target_arch = "wasm32")))]
 mod tests {
     use super::*;
+    use proptest::prelude::*;
 
     #[test]
     fn rich_text_strips_script_element_and_content() {
@@ -250,6 +251,20 @@ mod tests {
         let valid_utf8 = b"<p>hello</p>";
         let res = sanitize_rich_text_raw(valid_utf8.as_ptr(), valid_utf8.len());
         assert_eq!(res.unwrap(), "<p>hello</p>");
+    }
+
+    proptest! {
+        #[test]
+        fn rich_text_sanitization_is_idempotent(input in any::<String>()) {
+            let once = sanitize_rich_text(&input);
+            prop_assert_eq!(sanitize_rich_text(&once), once);
+        }
+
+        #[test]
+        fn strip_html_never_returns_tag_delimiters(input in any::<String>()) {
+            let output = strip_html(&input);
+            prop_assert!(!output.contains('<'));
+        }
     }
 }
 

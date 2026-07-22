@@ -1,0 +1,31 @@
+[package]
+name = "rust-crypto-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2021"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+
+[dependencies.uni-wasm-crypto]
+path = ".."
+
+[workspace]
+members = [".", "fuzz_targets/*"]
+
+[[bin]]
+name = "fuzz_hmac"
+path = "fuzz_targets/fuzz_hmac.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "fuzz_scrypt"
+path = "fuzz_targets/fuzz_scrypt.rs"
+test = false
+doc = false
+bench = false

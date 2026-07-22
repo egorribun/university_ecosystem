@@ -26,3 +26,4 @@ getrandom = { version = "0.2", features = ["js"] }
 # Exact pair for the locked wasm-bindgen 0.2.114 (TD-22-02 pin style). Drives
 # the browser-parity KATs in tests/wasm.rs under `wasm-pack test`.
 wasm-bindgen-test = "=0.3.64"
+proptest = "1"

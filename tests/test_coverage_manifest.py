@@ -109,6 +109,14 @@ def _write_test_contract(path: Path) -> None:
                     "functions": 98,
                 }
             },
+            "rust-crypto": {
+                "coverage": {
+                    "lines": 99,
+                    "statements": 0,
+                    "branches": 0,
+                    "functions": 98,
+                }
+            },
             "infrastructure": {
                 "coverage": {
                     "lines": 0,
@@ -153,6 +161,7 @@ def _write_test_contract(path: Path) -> None:
             "artifacts/coverage/rust/rust-native/llvm.json",
             "artifacts/coverage/rust/rust-pyo3-sanitizer/llvm.json",
             "artifacts/coverage/rust/rust-wasm-sanitizer/llvm.json",
+            "artifacts/coverage/rust/rust-crypto/llvm.json",
             "artifacts/coverage/quality-manifest.json",
         ],
         "exclusions": [],
@@ -232,6 +241,8 @@ def _full_report_arguments() -> list[str]:
         f"rust-pyo3-sanitizer={rust_report}",
         "--rust-report",
         f"rust-wasm-sanitizer={rust_report}",
+        "--rust-report",
+        f"rust-crypto={rust_report}",
     ]
 
 
@@ -377,6 +388,7 @@ def test_contract_declares_all_canonical_raw_coverage_artifacts() -> None:
         "artifacts/coverage/rust/rust-native/llvm.json",
         "artifacts/coverage/rust/rust-pyo3-sanitizer/llvm.json",
         "artifacts/coverage/rust/rust-wasm-sanitizer/llvm.json",
+        "artifacts/coverage/rust/rust-crypto/llvm.json",
         "artifacts/coverage/quality-manifest.json",
     }.issubset(contract["required_artifacts"])
 
@@ -404,6 +416,7 @@ def test_normalizes_native_reports_with_provenance_and_honest_metadata(
         "rust-native": ["native/rust_ext"],
         "rust-pyo3-sanitizer": ["crates/pyo3-sanitizer"],
         "rust-wasm-sanitizer": ["frontend/wasm-sanitizer"],
+        "rust-crypto": ["frontend/rust-crypto"],
         "scripts": ["scripts"],
         "workflows": [".github/workflows"],
     }
@@ -1380,6 +1393,9 @@ def test_derived_go_line_metric_cannot_satisfy_the_strict_v1_floor(
             "rust-wasm-sanitizer": {
                 "coverage": {"lines": 0, "statements": 0, "branches": 0, "functions": 0}
             },
+            "rust-crypto": {
+                "coverage": {"lines": 0, "statements": 0, "branches": 0, "functions": 0}
+            },
             "infrastructure": {
                 "coverage": {"lines": 0, "statements": 0, "branches": 0, "functions": 0}
             },
@@ -1409,6 +1425,7 @@ def test_derived_go_line_metric_cannot_satisfy_the_strict_v1_floor(
             "artifacts/coverage/rust/rust-native/llvm.json",
             "artifacts/coverage/rust/rust-pyo3-sanitizer/llvm.json",
             "artifacts/coverage/rust/rust-wasm-sanitizer/llvm.json",
+            "artifacts/coverage/rust/rust-crypto/llvm.json",
             "artifacts/coverage/quality-manifest.json",
         ],
         "exclusions": [],
@@ -2023,6 +2040,9 @@ def test_parser_hardening_preserves_go_nonnegative_profile_positions(
             "rust-wasm-sanitizer": {
                 "coverage": {"lines": 0, "statements": 0, "branches": 0, "functions": 0}
             },
+            "rust-crypto": {
+                "coverage": {"lines": 0, "statements": 0, "branches": 0, "functions": 0}
+            },
             "infrastructure": {
                 "coverage": {"lines": 0, "statements": 0, "branches": 0, "functions": 0}
             },
@@ -2052,6 +2072,7 @@ def test_parser_hardening_preserves_go_nonnegative_profile_positions(
             "artifacts/coverage/rust/rust-native/llvm.json",
             "artifacts/coverage/rust/rust-pyo3-sanitizer/llvm.json",
             "artifacts/coverage/rust/rust-wasm-sanitizer/llvm.json",
+            "artifacts/coverage/rust/rust-crypto/llvm.json",
             "artifacts/coverage/quality-manifest.json",
         ],
         "exclusions": [],

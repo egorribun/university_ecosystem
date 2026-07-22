@@ -54,6 +54,11 @@ coverage:
         threshold: 0%
         flags:
           - rust-wasm-sanitizer
+      rust-crypto:
+        target: 99%
+        threshold: 0%
+        flags:
+          - rust-crypto
 
 flags:
   python:
@@ -80,3 +85,6 @@ flags:
   rust-wasm-sanitizer:
     paths:
       - frontend/wasm-sanitizer/
+  rust-crypto:
+    paths:
+      - frontend/rust-crypto/

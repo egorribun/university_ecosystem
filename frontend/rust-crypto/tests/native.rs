@@ -1,3 +1,4 @@
+use proptest::prelude::*;
 use uni_wasm_crypto::{hmac_sha256_sign, pbkdf2_derive, scrypt_derive};
 
 // Native Known-Answer-Test (KAT) suite. The #[wasm_bindgen] functions are
@@ -113,4 +114,25 @@ fn scrypt_invalid_params_and_output_len() {
     assert!(scrypt_derive(b"pw", b"salt", 16, 0, 1, 64).is_err());
     assert!(scrypt_derive(b"pw", b"salt", 16, 8, 0, 64).is_err());
     assert!(scrypt_derive(b"pw", b"salt", 16, 8, 1, 0).is_err());
+}
+
+proptest! {
+    #[test]
+    fn hmac_always_emits_a_sha256_hex_digest(key in any::<String>(), message in any::<String>()) {
+        let digest = hmac_sha256_sign(&key, &message);
+        prop_assert_eq!(digest.len(), 64);
+        prop_assert!(digest.bytes().all(|byte| byte.is_ascii_hexdigit()));
+    }
+
+    #[test]
+    fn pbkdf2_output_size_is_exact(key_size in 0usize..=128) {
+        let digest = pbkdf2_derive("property-password", "property-salt", 1, key_size);
+        prop_assert_eq!(digest.len(), key_size * 2);
+    }
+
+    #[test]
+    fn scrypt_rejects_non_power_of_two_cost(cost in 3u32..=1023u32) {
+        prop_assume!(!cost.is_power_of_two());
+        prop_assert!(scrypt_derive(b"password", b"salt", cost, 1, 1, 16).is_err());
+    }
 }
