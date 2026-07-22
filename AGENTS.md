@@ -81,6 +81,13 @@
 - Pyroscope: `grafana/pyroscope:1.19.1` in docker-compose.observability.yml
 - Tests: S105/S106 (hardcoded password) suppressed in `tests/` via pyproject.toml per-file-ignores
 
+## Bypass policy
+
+GitHub admin bypass on the main-branch ruleset is intentionally left enabled for
+this single-maintainer repository. The accepted admin bypass risk is that a
+false-positive gate or third-party outage can be bypassed to avoid a deadlock.
+Any bypass merge must record a bypass reason in the PR description or merge commit message.
+
 ## Gotchas
 
 - Glob `**/alembic/versions/*.py` may not find files on Windows; use `**/*alembic*/**/*.py`

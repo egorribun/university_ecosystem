@@ -3,6 +3,8 @@ import re
 import tomllib
 from pathlib import Path
 
+import yaml
+
 ROOT = Path(__file__).resolve().parents[1]
 
 FORBIDDEN_VITEST_EXCLUSIONS = (
@@ -46,6 +48,39 @@ def _read_pyproject() -> dict[str, object]:
 
 def _read_text(relative_path: str) -> str:
     return (ROOT / relative_path).read_text(encoding="utf-8")
+
+
+def test_governance_quality_configuration_matches_contract() -> None:
+    contract = _read_contract()
+    ownership = json.loads(_read_text("quality/ownership-mapping.json"))
+    assert set(ownership["teams"].values()) == {"@egorribun"}
+
+    codeowners = _read_text(".github/CODEOWNERS")
+    assert "@security-team" not in codeowners
+    assert "@devops-team" not in codeowners
+
+    codecov = yaml.safe_load(_read_text("codecov.yml"))
+    expected_flags = {
+        "python": "app/",
+        "frontend": "frontend/src/",
+        "go-gateway": "services/gateway/",
+        "go-ws-hub": "services/ws-hub/",
+        "go-file-processor": "services/file-processor/",
+        "rust-native": "native/rust_ext/",
+        "rust-pyo3-sanitizer": "crates/pyo3-sanitizer/",
+        "rust-wasm-sanitizer": "frontend/wasm-sanitizer/",
+    }
+    assert set(codecov["flags"]) == set(expected_flags)
+    for flag, path in expected_flags.items():
+        assert codecov["flags"][flag]["paths"] == [path]
+        coverage = contract["components"][flag]["coverage"]
+        floor = next(value for value in coverage.values() if value)
+        assert codecov["coverage"]["status"]["project"][flag]["target"] == f"{floor}%"
+    assert codecov["comment"]["layout"] == "condensed_header, diff, flags, files"
+
+    checkov = yaml.safe_load(_read_text(".github/workflows/checkov.yml"))
+    checkov_with = checkov["jobs"]["checkov"]["steps"][1]["with"]
+    assert checkov_with.get("soft_fail") is not True
 
 
 def _extract_object_body(source: str, property_name: str) -> str:
