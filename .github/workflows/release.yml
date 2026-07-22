@@ -24,6 +24,34 @@ jobs:
           persist-credentials: false
           token: ${{ secrets.RELEASE_TOKEN }}
 
+      - name: Generate quality certification record
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_TOKEN }}
+          QUALITY_CERTIFICATION_KEY: ${{ secrets.QUALITY_CERTIFICATION_KEY }}
+        run: |
+          mkdir -p artifacts/quality
+          gh api "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/check-runs?per_page=100" > artifacts/quality/check-runs.json
+          python -c 'import json; raw=json.load(open("artifacts/quality/check-runs.json", encoding="utf-8")); checks={item["name"]: item.get("conclusion", "unknown") for item in raw.get("check_runs", [])}; assert checks, "no completed check runs found for release SHA"; json.dump({"check_runs": checks}, open("artifacts/quality/required-checks.json", "w", encoding="utf-8"), indent=2); print(f"collected {len(checks)} check runs")'
+          quality_run_id="$(gh run list --workflow ci.yml --commit "$GITHUB_SHA" --status success --limit 1 --json databaseId --jq '.[0].databaseId')"
+          test -n "$quality_run_id"
+          gh run download "$quality_run_id" --name quality-manifest --dir artifacts/quality/manifest
+          manifest_path="$(find artifacts/quality/manifest -name quality-manifest.json -print -quit)"
+          test -n "$manifest_path"
+          python scripts/quality/generate_certification.py \
+            --commit-sha "$GITHUB_SHA" \
+            --contract quality/quality-contract.json \
+            --checks artifacts/quality/required-checks.json \
+            --report "$manifest_path" \
+            --output artifacts/quality/certification.json \
+            --limitation "Per-tool raw reports remain in the CI run; this release record hashes the normalized quality manifest and contract."
+
+      - name: Upload quality certification
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0 # v7.0.1
+        with:
+          name: quality-certification-${{ github.sha }}
+          path: artifacts/quality/certification.json
+          if-no-files-found: error
+
       - name: Setup Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:

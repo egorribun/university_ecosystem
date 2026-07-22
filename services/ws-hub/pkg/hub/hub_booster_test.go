@@ -25,7 +25,7 @@ func TestValidateUpgradeTicket_Errors(t *testing.T) {
 	logger := newTestLogger()
 
 	t.Run("redis nil", func(t *testing.T) {
-		h := NewHub(nil, logger, nil, &configHubPlaceholder, nil)
+		h := trackTestHub(NewHub(nil, logger, nil, &configHubPlaceholder, nil))
 		_, err := h.validateUpgradeTicket(context.Background(), strings.Repeat("a", 64))
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "redis not available")
@@ -35,7 +35,7 @@ func TestValidateUpgradeTicket_Errors(t *testing.T) {
 		mr := miniredis.RunT(t)
 		rClient := redis.NewClient(&redis.Options{Addr: mr.Addr()})
 		defer func() { require.NoError(t, rClient.Close()) }()
-		h := NewHub(nil, logger, nil, &configHubPlaceholder, rClient)
+		h := trackTestHub(NewHub(nil, logger, nil, &configHubPlaceholder, rClient))
 
 		_, err := h.validateUpgradeTicket(context.Background(), "short")
 		assert.Error(t, err)
@@ -46,7 +46,7 @@ func TestValidateUpgradeTicket_Errors(t *testing.T) {
 		mr := miniredis.RunT(t)
 		rClient := redis.NewClient(&redis.Options{Addr: mr.Addr()})
 		defer func() { require.NoError(t, rClient.Close()) }()
-		h := NewHub(nil, logger, nil, &configHubPlaceholder, rClient)
+		h := trackTestHub(NewHub(nil, logger, nil, &configHubPlaceholder, rClient))
 
 		invalidTicket := strings.Repeat("a", 63) + "Z" // Z is not lowercase hex
 		_, err := h.validateUpgradeTicket(context.Background(), invalidTicket)
@@ -58,7 +58,7 @@ func TestValidateUpgradeTicket_Errors(t *testing.T) {
 		mr := miniredis.RunT(t)
 		rClient := redis.NewClient(&redis.Options{Addr: mr.Addr()})
 		defer func() { require.NoError(t, rClient.Close()) }()
-		h := NewHub(nil, logger, nil, &configHubPlaceholder, rClient)
+		h := trackTestHub(NewHub(nil, logger, nil, &configHubPlaceholder, rClient))
 
 		validTicket := strings.Repeat("a", 64)
 		_, err := h.validateUpgradeTicket(context.Background(), validTicket)
@@ -70,7 +70,7 @@ func TestValidateUpgradeTicket_Errors(t *testing.T) {
 		mr := miniredis.RunT(t)
 		rClient := redis.NewClient(&redis.Options{Addr: mr.Addr()})
 		rClient.Close() //nolint:errcheck,gosec // G104: intentional close to trigger redis error in next call
-		h := NewHub(nil, logger, nil, &configHubPlaceholder, rClient)
+		h := trackTestHub(NewHub(nil, logger, nil, &configHubPlaceholder, rClient))
 
 		validTicket := strings.Repeat("a", 64)
 		_, err := h.validateUpgradeTicket(context.Background(), validTicket)
@@ -82,7 +82,7 @@ func TestValidateUpgradeTicket_Errors(t *testing.T) {
 		mr := miniredis.RunT(t)
 		rClient := redis.NewClient(&redis.Options{Addr: mr.Addr()})
 		defer func() { require.NoError(t, rClient.Close()) }()
-		h := NewHub(nil, logger, nil, &configHubPlaceholder, rClient)
+		h := trackTestHub(NewHub(nil, logger, nil, &configHubPlaceholder, rClient))
 
 		ticket := strings.Repeat("a", 64)
 		require.NoError(t, mr.Set("ott:ws:"+ticket, "nocolon"))
@@ -96,7 +96,7 @@ func TestValidateUpgradeTicket_Errors(t *testing.T) {
 		mr := miniredis.RunT(t)
 		rClient := redis.NewClient(&redis.Options{Addr: mr.Addr()})
 		defer func() { require.NoError(t, rClient.Close()) }()
-		h := NewHub(nil, logger, nil, &configHubPlaceholder, rClient)
+		h := trackTestHub(NewHub(nil, logger, nil, &configHubPlaceholder, rClient))
 
 		ticket := strings.Repeat("a", 64)
 		require.NoError(t, mr.Set("ott:ws:"+ticket, ":jti"))
@@ -110,7 +110,7 @@ func TestValidateUpgradeTicket_Errors(t *testing.T) {
 		mr := miniredis.RunT(t)
 		rClient := redis.NewClient(&redis.Options{Addr: mr.Addr()})
 		defer func() { require.NoError(t, rClient.Close()) }()
-		h := NewHub(nil, logger, nil, &configHubPlaceholder, rClient)
+		h := trackTestHub(NewHub(nil, logger, nil, &configHubPlaceholder, rClient))
 
 		ticket := strings.Repeat("a", 64)
 		require.NoError(t, mr.Set("ott:ws:"+ticket, "user-id:"))
@@ -150,7 +150,7 @@ func TestExtractAlgFromHeader_Errors(t *testing.T) {
 
 // TestValidateToken_UnsupportedAlgorithm verifies ValidateToken returns error for unsupported algorithms.
 func TestValidateToken_UnsupportedAlgorithm(t *testing.T) {
-	h := NewHub(nil, newTestLogger(), nil, &configHubPlaceholder, nil)
+	h := trackTestHub(NewHub(nil, newTestLogger(), nil, &configHubPlaceholder, nil))
 	// {"alg":"none"} base64 raw url encoded is "eyJhbGciOiJub25lIn0"
 	_, err := h.ValidateToken(context.Background(), "eyJhbGciOiJub25lIn0.two.three", nil)
 	assert.Error(t, err)
@@ -159,7 +159,7 @@ func TestValidateToken_UnsupportedAlgorithm(t *testing.T) {
 
 // TestValidateHMAC_Errors verifies validateHMAC error paths.
 func TestValidateHMAC_Errors(t *testing.T) {
-	h := NewHub(nil, newTestLogger(), nil, &configHubPlaceholder, nil)
+	h := trackTestHub(NewHub(nil, newTestLogger(), nil, &configHubPlaceholder, nil))
 
 	t.Run("empty secrets", func(t *testing.T) {
 		_, err := h.validateHMAC("one.two.three", nil)

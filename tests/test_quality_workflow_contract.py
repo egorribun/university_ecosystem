@@ -160,7 +160,10 @@ def test_backend_ci_uses_historical_duration_shards_and_aggregates_coverage() ->
     assert python_download["with"]["merge-multiple"] is True
     assert "coverage combine" in policy_text
     assert "--python-xml coverage.xml" in policy_text
-    assert "--rust-report rust-crypto=artifacts/coverage/rust/rust-crypto/llvm.json" in policy_text
+    assert (
+        "--rust-report rust-crypto=artifacts/coverage/rust/rust-crypto/llvm.json"
+        in policy_text
+    )
 
     backend_workflow = yaml.safe_load(BACKEND_WORKFLOW_PATH.read_text(encoding="utf-8"))
     inputs = _workflow_triggers(backend_workflow)["workflow_call"]["inputs"]
@@ -232,6 +235,20 @@ def test_nightly_full_gate_contains_the_long_running_quality_suites() -> None:
     assert "issues" in workflow["permissions"]
 
 
+def test_go_fuzz_workflow_executes_all_service_fuzz_targets() -> None:
+    workflow_path = REPOSITORY_ROOT / ".github" / "workflows" / "go-fuzz.yml"
+    workflow = yaml.safe_load(workflow_path.read_text(encoding="utf-8"))
+    text = "\n".join(
+        step.get("run", "")
+        for step in workflow["jobs"]["fuzz"]["steps"]
+        if isinstance(step, dict)
+    )
+    assert "FuzzEstimateQueryDepth" in text
+    assert "FuzzJWTValidation" in text
+    assert "FuzzParseMessage" in text
+    assert "FuzzExtractAlgFromHeader" in text
+
+
 def test_incremental_mutation_gate_is_blocking_and_fails_on_timeout() -> None:
     ci_workflow = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
     jobs = ci_workflow["jobs"]
@@ -239,13 +256,14 @@ def test_incremental_mutation_gate_is_blocking_and_fails_on_timeout() -> None:
     assert mutation_job["timeout-minutes"] == 35
     assert "mutation-tests-incremental" in jobs["ci-success"]["needs"]
     mutation_text = "\n".join(
-        step.get("run", "")
-        for step in mutation_job["steps"]
-        if isinstance(step, dict)
+        step.get("run", "") for step in mutation_job["steps"] if isinstance(step, dict)
     )
     assert "exceeded its 25-minute budget" in mutation_text
     assert "Skipping score verification" not in mutation_text
-    assert "needs.mutation-tests-incremental.result" in jobs["ci-success"]["steps"][0]["run"]
+    assert (
+        "needs.mutation-tests-incremental.result"
+        in jobs["ci-success"]["steps"][0]["run"]
+    )
 
 
 def test_frontend_mutation_gate_is_blocking_and_reproducible() -> None:
@@ -258,16 +276,20 @@ def test_frontend_mutation_gate_is_blocking_and_reproducible() -> None:
     assert "needs.stryker-incremental.result" in result_check
 
     frontend_workflow = yaml.safe_load(
-        (REPOSITORY_ROOT / ".github" / "workflows" / "reusable-frontend-tests.yml").read_text(
-            encoding="utf-8"
-        )
+        (
+            REPOSITORY_ROOT / ".github" / "workflows" / "reusable-frontend-tests.yml"
+        ).read_text(encoding="utf-8")
     )
     unit_steps = frontend_workflow["jobs"]["unit-tests"]["steps"]
     diff_step = next(
-        step for step in unit_steps if step.get("name") == "Check differential frontend coverage"
+        step
+        for step in unit_steps
+        if step.get("name") == "Check differential frontend coverage"
     )
     assert "--fail-under=80" in diff_step["run"]
     codecov_step = next(
-        step for step in unit_steps if step.get("name") == "Upload frontend coverage to Codecov"
+        step
+        for step in unit_steps
+        if step.get("name") == "Upload frontend coverage to Codecov"
     )
     assert codecov_step["with"]["flags"] == "frontend"

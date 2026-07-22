@@ -25,7 +25,7 @@ func benchHub() *Hub {
 		ClientMsgRateLimit:  100,
 		ClientMsgRateBurst:  100,
 	}
-	return NewHub(nil, logger, &mockAuthClient{allowed: true}, cfg, nil)
+	return trackTestHub(NewHub(nil, logger, &mockAuthClient{allowed: true}, cfg, nil))
 }
 
 // benchClient builds a minimal Client with no WebSocket connection.

@@ -52,6 +52,8 @@ type WSUpgradeRateLimiter struct {
 	ratePerSec  float64       // steady-state refill rate
 	idleTimeout time.Duration // GC: remove buckets idle longer than this
 	stopGC      chan struct{}
+	stopOnce    sync.Once
+	gcDone      chan struct{}
 	gcInterval  time.Duration
 }
 
@@ -64,6 +66,7 @@ func NewWSUpgradeRateLimiter(capacity int, windowSec int) *WSUpgradeRateLimiter 
 		ratePerSec:  float64(capacity) / float64(windowSec),
 		idleTimeout: 5 * time.Minute,
 		stopGC:      make(chan struct{}),
+		gcDone:      make(chan struct{}),
 		gcInterval:  time.Minute,
 	}
 	go l.gcLoop()
@@ -81,11 +84,17 @@ func (l *WSUpgradeRateLimiter) Allow(ip string) bool {
 
 // Stop terminates the GC goroutine.  Call this during hub shutdown.
 func (l *WSUpgradeRateLimiter) Stop() {
-	close(l.stopGC)
+	l.stopOnce.Do(func() { close(l.stopGC) })
+	if l.gcDone != nil {
+		<-l.gcDone
+	}
 }
 
 // gcLoop removes stale buckets every minute to prevent unbounded memory growth.
 func (l *WSUpgradeRateLimiter) gcLoop() {
+	if l.gcDone != nil {
+		defer close(l.gcDone)
+	}
 	interval := l.gcInterval
 	if interval == 0 {
 		interval = time.Minute

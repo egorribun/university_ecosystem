@@ -90,6 +90,7 @@ func TestIntegration_RateLimiterRedisInMemoryFallback(t *testing.T) {
 	// ratelimit.go:64-65 and not configurable.
 	rl, err := NewRateLimiter(ctx, connStr, 100, 100)
 	require.NoError(t, err, "NewRateLimiter must connect successfully on container start")
+	t.Cleanup(func() { _ = rl.Close() })
 
 	gin.SetMode(gin.TestMode)
 	r := gin.New()

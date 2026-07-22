@@ -10,6 +10,7 @@ require (
 	github.com/hashicorp/golang-lru/v2 v2.0.7
 	github.com/lestrrat-go/jwx/v2 v2.1.7
 	github.com/nats-io/nats.go v1.52.0
+	go.uber.org/goleak v1.3.0
 	// MOD-07 (audit 2026-03-16 Wave 10): Pact V4 provider verification for the
 	// university-backend → ws-hub NATS message contract.  pact-go/v2 wraps the
 	// Pact Rust FFI library; requires CGO and the pact_ffi shared library.

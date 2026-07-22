@@ -14,6 +14,7 @@ require (
 	github.com/prometheus/client_golang v1.24.0
 	github.com/spf13/viper v1.21.0
 	github.com/stretchr/testify v1.11.1
+	go.uber.org/goleak v1.3.0
 	github.com/testcontainers/testcontainers-go v0.43.0
 	github.com/testcontainers/testcontainers-go/modules/minio v0.43.0
 	github.com/university-ecosystem/core/gen/go v0.0.0-00010101000000-000000000000

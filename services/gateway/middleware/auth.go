@@ -21,7 +21,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
-	"github.com/hashicorp/golang-lru/v2/expirable"
+	lru "github.com/hashicorp/golang-lru/v2"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/redis/go-redis/v9"
 )
@@ -66,7 +66,7 @@ type JWTMiddleware struct {
 	secret       []byte
 	rsaPublicKey atomic.Pointer[rsa.PublicKey] // RZ-33-19: atomic for JWKS hot-reload safety
 	redis        *redis.Client
-	l1cache      *expirable.LRU[string, cacheEntry]
+	l1cache      *lru.Cache[string, cacheEntry]
 	l1TTL        time.Duration // PERF-31-02: TTL for XFetch jitter calculation
 }
 
@@ -131,7 +131,10 @@ func NewJWTMiddlewareWithConfig(secret, rsaPublicKeyPEM string, redisClient *red
 		l1Evictions.Inc()
 	}
 
-	cache := expirable.NewLRU[string, cacheEntry](config.MaxSize, onEvict, config.TTL)
+	cache, err := lru.NewWithEvict[string, cacheEntry](config.MaxSize, onEvict)
+	if err != nil {
+		panic(fmt.Sprintf("gateway: invalid L1 cache configuration: %v", err))
+	}
 
 	m := &JWTMiddleware{
 		secret:  []byte(secret),
@@ -160,6 +163,7 @@ func NewJWTMiddlewareWithConfig(secret, rsaPublicKeyPEM string, redisClient *red
 // ---------------------------------------------------------------------------
 
 var (
+	jwksRefreshWG sync.WaitGroup
 	jwksRefreshes = prometheus.NewCounter(prometheus.CounterOpts{
 		Name: "gateway_jwks_refreshes_total",
 		Help: "Total JWKS fetch attempts",
@@ -194,7 +198,9 @@ func (m *JWTMiddleware) StartJWKSRefresher(ctx context.Context, endpoint string,
 		maxRetryInterval = interval
 	}
 
+	jwksRefreshWG.Add(1)
 	go func() {
+		defer jwksRefreshWG.Done()
 		var nextInterval time.Duration
 		var retryCount int
 
