@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Equivalent mutant exclusion register",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "exclusions"],
+  "properties": {
+    "version": {"const": 1},
+    "exclusions": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/exclusion"}
+    }
+  },
+  "$defs": {
+    "exclusion": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "path",
+        "reason",
+        "owner",
+        "issue",
+        "created_on",
+        "expires_on",
+        "evidence"
+      ],
+      "properties": {
+        "id": {"type": "string", "minLength": 1},
+        "path": {"type": "string", "minLength": 1},
+        "reason": {"type": "string", "minLength": 1},
+        "owner": {"type": "string", "minLength": 1},
+        "issue": {"type": "string", "minLength": 1},
+        "created_on": {"type": "string", "format": "date"},
+        "expires_on": {"type": "string", "format": "date"},
+        "evidence": {"type": "string", "minLength": 1}
+      }
+    }
+  }
+}

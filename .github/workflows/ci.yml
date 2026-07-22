@@ -2178,8 +2178,10 @@ jobs:
           name: rust-coverage
           path: artifacts/coverage/rust
 
-      - name: Validate quality policy contract
-        run: python scripts/quality/validate_quality_contract.py
+      - name: Validate quality policy contract and mutation registry
+        run: >-
+          python scripts/quality/validate_quality_contract.py
+          --mutation-registry quality/mutation-exclusions.json
 
       - name: Normalize coverage evidence
         run: |

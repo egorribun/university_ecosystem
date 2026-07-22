@@ -24,12 +24,15 @@ def _run_validator(
     cwd: Path,
     contract: Path | None = None,
     manifest: Path | None = None,
+    mutation_registry: Path | None = None,
 ) -> subprocess.CompletedProcess[str]:
     command = [sys.executable, str(VALIDATOR_PATH)]
     if contract is not None:
         command.extend(("--contract", str(contract)))
     if manifest is not None:
         command.extend(("--manifest", str(manifest)))
+    if mutation_registry is not None:
+        command.extend(("--mutation-registry", str(mutation_registry)))
 
     # The executable and validator path are test-controlled absolute paths.
     return subprocess.run(  # noqa: S603
@@ -103,6 +106,23 @@ def _quarantine(
     }
 
 
+def _mutation_exclusion(
+    *,
+    exclusion_id: str = "equivalent-log-message",
+    path: str = "app/core/logging.py",
+) -> dict[str, str]:
+    return {
+        "id": exclusion_id,
+        "path": path,
+        "reason": "mutant changes log text without changing observable behavior",
+        "owner": "@egorribun",
+        "issue": "QUALITY-2",
+        "created_on": date.today().isoformat(),
+        "expires_on": (date.today() + timedelta(days=29)).isoformat(),
+        "evidence": "tests/test_logging_contract.py",
+    }
+
+
 def test_repository_quality_contract_is_accepted_from_another_directory(
     tmp_path: Path,
 ) -> None:
@@ -110,6 +130,64 @@ def test_repository_quality_contract_is_accepted_from_another_directory(
 
     assert result.returncode == 0, result.stderr
     assert result.stdout == "Quality contract is valid.\n"
+
+
+def test_mutation_registry_is_validated_by_default(tmp_path: Path) -> None:
+    registry_path = tmp_path / "mutation-exclusions.json"
+    registry_path.write_text(
+        json.dumps({"version": 1, "exclusions": [_mutation_exclusion()]}),
+        encoding="utf-8",
+    )
+
+    result = _run_validator(tmp_path, mutation_registry=registry_path)
+
+    assert result.returncode == 0, result.stderr
+
+
+def test_mutation_registry_rejects_expired_or_incomplete_exclusion(
+    tmp_path: Path,
+) -> None:
+    registry_path = tmp_path / "mutation-exclusions.json"
+    exclusion = _mutation_exclusion()
+    exclusion["owner"] = ""
+    exclusion["expires_on"] = (date.today() - timedelta(days=1)).isoformat()
+    registry_path.write_text(
+        json.dumps({"version": 1, "exclusions": [exclusion]}),
+        encoding="utf-8",
+    )
+
+    result = _run_validator(tmp_path, mutation_registry=registry_path)
+
+    assert result.returncode == 1
+    assert "mutation_exclusions[0].owner must be a non-empty string" in result.stderr
+    assert (
+        "mutation_exclusions[0].expires_on must be after validation day"
+        in result.stderr
+    )
+
+
+def test_mutation_registry_rejects_duplicate_paths(tmp_path: Path) -> None:
+    registry_path = tmp_path / "mutation-exclusions.json"
+    registry_path.write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "exclusions": [
+                    _mutation_exclusion(),
+                    _mutation_exclusion(exclusion_id="equivalent-log-call"),
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = _run_validator(tmp_path, mutation_registry=registry_path)
+
+    assert result.returncode == 1
+    assert (
+        "mutation_exclusions[1].path duplicates mutation_exclusions[0].path"
+        in result.stderr
+    )
 
 
 def test_rejects_component_floor_below_programme_minimum(tmp_path: Path) -> None:

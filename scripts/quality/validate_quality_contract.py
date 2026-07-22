@@ -71,6 +71,7 @@ EXCLUSION_FIELDS = frozenset(
     }
 )
 QUARANTINE_FIELDS = EXCLUSION_FIELDS | {"test"}
+MUTATION_REGISTRY_FIELDS = frozenset({"version", "exclusions"})
 DATE_PATTERN = re.compile(r"\d{4}-\d{2}-\d{2}")
 WILDCARD_CHARACTERS = "*?[]"
 
@@ -336,7 +337,7 @@ def _validate_register(
         path = _validate_repository_path(
             record.get("path"), f"{record_field}.path", errors
         )
-        if path is not None and register_name == "exclusions":
+        if path is not None and register_name in {"exclusions", "mutation_exclusions"}:
             previous_path = seen_paths.get(path)
             if previous_path is None:
                 seen_paths[path] = index
@@ -455,6 +456,42 @@ def validate_contract(contract: dict[str, object], *, today: date) -> list[str]:
     return errors
 
 
+def _validate_mutation_registry(
+    value: object,
+    *,
+    today: date,
+) -> list[str]:
+    """Validate the separate equivalent-mutant register.
+
+    Mutation exclusions are deliberately kept outside the quality contract so
+    adding an equivalent mutant cannot alter coverage policy metadata.  They
+    still use the same short-lived, evidence-backed register discipline as
+    contract exclusions and quarantines.
+    """
+    errors: list[str] = []
+    registry = _require_object(value, "mutation registry", errors)
+    if registry is None:
+        return errors
+
+    _validate_exact_keys(
+        registry,
+        "mutation registry",
+        MUTATION_REGISTRY_FIELDS,
+        errors,
+    )
+    version = registry.get("version")
+    if not isinstance(version, int) or isinstance(version, bool) or version != 1:
+        errors.append("mutation registry.version must equal 1")
+
+    _validate_register(
+        registry.get("exclusions"),
+        "mutation_exclusions",
+        today=today,
+        errors=errors,
+    )
+    return errors
+
+
 def _duplicate_key_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
     object_value: dict[str, object] = {}
     for key, value in pairs:
@@ -481,6 +518,13 @@ def _parse_arguments(argv: Sequence[str] | None) -> argparse.Namespace:
             "also enforce 100%% line/branch/function coverage for every "
             "Tier0 file in a normalized coverage manifest"
         ),
+    )
+    parser.add_argument(
+        "--mutation-registry",
+        type=Path,
+        metavar="PATH",
+        default=REPOSITORY_ROOT / "quality" / "mutation-exclusions.json",
+        help="validate the equivalent-mutant exclusion register",
     )
     return parser.parse_args(argv)
 
@@ -575,6 +619,35 @@ def main(argv: Sequence[str] | None = None) -> int:
     errors = validate_contract(contract, today=date.today())
     if errors:
         for error in errors:
+            _print_error(error)
+        return 1
+
+    try:
+        mutation_registry_text = arguments.mutation_registry.read_text(encoding="utf-8")
+        mutation_registry = json.loads(
+            mutation_registry_text,
+            object_pairs_hook=_duplicate_key_object,
+            parse_constant=_reject_json_constant,
+        )
+    except _DuplicateKeyError as error:
+        _print_error(f"invalid mutation registry: {error}")
+        return 1
+    except RecursionError:
+        _print_error("invalid mutation registry: nesting exceeds supported depth")
+        return 1
+    except (OSError, UnicodeDecodeError) as error:
+        _print_error(f"unable to read mutation registry: {error}")
+        return 2
+    except (json.JSONDecodeError, ValueError) as error:
+        _print_error(f"invalid mutation registry: {error}")
+        return 1
+
+    registry_errors = _validate_mutation_registry(
+        mutation_registry,
+        today=date.today(),
+    )
+    if registry_errors:
+        for error in registry_errors:
             _print_error(error)
         return 1
 

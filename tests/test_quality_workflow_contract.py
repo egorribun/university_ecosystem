@@ -102,6 +102,13 @@ def test_quality_policy_gate_is_properly_wired_in_ci() -> None:
         f"Job {policy_job_name} must upload quality-manifest.json as an artifact"
     )
 
+    policy_commands = "\n".join(
+        str(step.get("run", ""))
+        for step in policy_job.get("steps", [])
+        if isinstance(step, dict)
+    )
+    assert "--mutation-registry quality/mutation-exclusions.json" in policy_commands
+
     # ── Verify quality-inventory-check job ──
     inventory_job = jobs.get("quality-inventory-check")
     assert inventory_job is not None, "quality-inventory-check job is missing in ci.yml"
@@ -142,9 +149,7 @@ def test_pact_workflow_replays_every_cross_process_boundary() -> None:
     workflow = yaml.safe_load(PACT_WORKFLOW_PATH.read_text(encoding="utf-8"))
     jobs = workflow["jobs"]
 
-    assert {"consumer", "message-provider-verify", "pact-provider-verify"} <= set(
-        jobs
-    )
+    assert {"consumer", "message-provider-verify", "pact-provider-verify"} <= set(jobs)
     assert jobs["message-provider-verify"]["needs"] == "consumer"
     assert jobs["pact-provider-verify"]["needs"] == "consumer"
 
@@ -171,9 +176,7 @@ def test_pact_workflow_replays_every_cross_process_boundary() -> None:
         for step in jobs["pact-provider-verify"]["steps"]
         if isinstance(step, dict)
     )
-    assert "services/file-processor" in str(
-        jobs["message-provider-verify"]["steps"]
-    )
+    assert "services/file-processor" in str(jobs["message-provider-verify"]["steps"])
     assert "go test -tags contract" in message_provider_text
     assert "scripts/quality/verify_pact_provider.py" in http_provider_text
     assert "uvicorn app.main:app" in http_provider_text
@@ -361,9 +364,7 @@ def test_nightly_full_gate_contains_the_long_running_quality_suites() -> None:
     assert cell_job["env"]["USE_TESTCONTAINERS_MINIO"] == "1"
     assert cell_job["env"]["USE_TESTCONTAINERS_SPICEDB"] == "1"
     cell_text = "\n".join(
-        step.get("run", "")
-        for step in cell_job["steps"]
-        if isinstance(step, dict)
+        step.get("run", "") for step in cell_job["steps"] if isinstance(step, dict)
     )
     assert "test_minio_integration.py" in cell_text
     assert "test_spicedb_integration.py" in cell_text
