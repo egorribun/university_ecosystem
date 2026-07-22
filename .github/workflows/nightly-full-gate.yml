@@ -185,26 +185,20 @@ jobs:
       - name: Checkout
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
 
-      - name: Detect Kyverno test fixtures
-        id: fixtures
+      - name: Install Kyverno CLI v1.18.0
         shell: bash
         run: |
-          if find k8s/kyverno/tests -name kyverno-test.yaml -print -quit 2>/dev/null | grep -q .; then
-            echo "present=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "present=false" >> "$GITHUB_OUTPUT"
-            echo "Kyverno fixtures are not landed yet; keeping the reserved nightly job green."
-          fi
-
-      - name: Install Kyverno CLI
-        if: steps.fixtures.outputs.present == 'true'
-        run: |
-          go install github.com/kyverno/kyverno/cmd/kyverno@v1.18.0
-          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+          version="v1.18.0"
+          archive="kyverno-cli_v1.18.0_linux_x86_64.tar.gz"
+          base="https://github.com/kyverno/kyverno/releases/download/${version}"
+          curl --fail --silent --show-error --location --output "$RUNNER_TEMP/$archive" "$base/$archive"
+          curl --fail --silent --show-error --location --output "$RUNNER_TEMP/checksums.txt" "$base/checksums.txt"
+          grep "$archive" "$RUNNER_TEMP/checksums.txt" | sha256sum --check -
+          tar --extract --gzip --file "$RUNNER_TEMP/$archive" --directory "$RUNNER_TEMP"
+          echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
 
       - name: Run Kyverno tests
-        if: steps.fixtures.outputs.present == 'true'
-        run: kyverno test k8s/kyverno/tests/
+        run: kyverno test k8s/kyverno/tests/ --require-tests
 
   miri:
     name: Miri pure-Rust checks

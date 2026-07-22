@@ -2201,6 +2201,30 @@ jobs:
       - name: Verify Orphans and Anti-Patterns
         run: python scripts/quality/check_orphans_and_anti_patterns.py
 
+  kyverno-test:
+    name: Kyverno policy tests
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Install Kyverno CLI v1.18.0
+        shell: bash
+        run: |
+          version="v1.18.0"
+          archive="kyverno-cli_v1.18.0_linux_x86_64.tar.gz"
+          base="https://github.com/kyverno/kyverno/releases/download/${version}"
+          curl --fail --silent --show-error --location --output "$RUNNER_TEMP/$archive" "$base/$archive"
+          curl --fail --silent --show-error --location --output "$RUNNER_TEMP/checksums.txt" "$base/checksums.txt"
+          grep "$archive" "$RUNNER_TEMP/checksums.txt" | sha256sum --check -
+          tar --extract --gzip --file "$RUNNER_TEMP/$archive" --directory "$RUNNER_TEMP"
+          echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
+
+      - name: Run Kyverno tests
+        run: kyverno test k8s/kyverno/tests/ --require-tests
+
   ci-success:
     name: CI Success
     runs-on: ubuntu-latest
@@ -2246,6 +2270,7 @@ jobs:
       - rust-lint
       - coverage-policy-gate
       - quality-inventory-check
+      - kyverno-test
 
     steps:
       - name: Check all jobs passed
@@ -2302,6 +2327,7 @@ jobs:
             "${{ needs.rust-lint.result }}"
             "${{ needs.coverage-policy-gate.result }}"
             "${{ needs.quality-inventory-check.result }}"
+            "${{ needs.kyverno-test.result }}"
           )
 
 

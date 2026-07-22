@@ -122,6 +122,17 @@ def test_quality_policy_gate_is_properly_wired_in_ci() -> None:
         "ci-success must assert the result of quality-inventory-check"
     )
 
+    kyverno_job = jobs.get("kyverno-test")
+    assert kyverno_job is not None, "kyverno-test job is missing in ci.yml"
+    kyverno_text = "\n".join(
+        step.get("run", "")
+        for step in kyverno_job.get("steps", [])
+        if isinstance(step, dict)
+    )
+    assert "kyverno test k8s/kyverno/tests/ --require-tests" in kyverno_text
+    assert "kyverno-test" in needs
+    assert "needs.kyverno-test.result" in run_script
+
 
 def test_backend_ci_uses_historical_duration_shards_and_aggregates_coverage() -> None:
     ci_workflow = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))

@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: capabilities-pod
+  namespace: university-ecosystem
+spec:
+  securityContext: {runAsNonRoot: true, seccompProfile: {type: RuntimeDefault}}
+  containers:
+    - name: app
+      image: ghcr.io/example/university-ecosystem:v1.0.0
+      imagePullPolicy: Always
+      securityContext:
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities: {drop: [NET_RAW]}
+      resources: {limits: {cpu: "100m", memory: "128Mi"}}
