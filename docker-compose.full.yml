@@ -881,7 +881,7 @@ services:
             echo "[temporal-namespace-init] Default namespace already exists."
             exit 0
           fi
-          echo "[temporal-namespace-init] attempt $i: waiting 3s for frontend RPC..."
+          echo "[temporal-namespace-init] attempt $$i: waiting 3s for frontend RPC..."
           sleep 3
         done
         echo "[temporal-namespace-init] FAILED to register default namespace after 10 attempts."

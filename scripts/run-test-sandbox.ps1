@@ -1,4 +1,4 @@
-# scripts/run-test-sandbox.ps1 — local full-suite test sandbox (testing-roadmap Wave 1.4).
+﻿# scripts/run-test-sandbox.ps1 - local full-suite test sandbox (testing-roadmap Wave 1.4).
 #
 # Brings up the four backing services (Postgres / Redis / NATS / MinIO) from
 # docker-compose.sandbox.yml on isolated host ports, runs DB migrations, compiles
@@ -57,7 +57,7 @@ function Invoke-Step {
   }
 }
 
-# ── Test-environment variables ──────────────────────────────────────────────
+# -- Test-environment variables ----------------------------------------------
 $env:ENVIRONMENT = "testing"
 $env:SECRET_KEY = "test-secret-key-32-characters-long-entropy"  # pragma: allowlist secret
 if ($useInfra) {
@@ -76,9 +76,9 @@ if ($useInfra) {
   Remove-Item Env:\RUN_INTEGRATION_TESTS -ErrorAction SilentlyContinue
 }
 
-# pyvips / clamd availability (informational — unit tests mock both).
+# pyvips / clamd availability (informational - unit tests mock both).
 if (-not (Get-Command vips -ErrorAction SilentlyContinue) -and -not $env:VIPS_HOME) {
-  Write-Warning "libvips (pyvips) not detected on PATH/VIPS_HOME — real image-optimization integration paths will be skipped; unit tests mock pyvips."
+  Write-Warning "libvips (pyvips) not detected on PATH/VIPS_HOME - real image-optimization integration paths will be skipped; unit tests mock pyvips."
 }
 
 try {
@@ -118,7 +118,7 @@ try {
   if ($Filter -in @("all", "go")) {
     $hasGcc = [bool](Get-Command gcc -ErrorAction SilentlyContinue)
     if (-not $hasGcc) {
-      Write-Warning "gcc not found — running Go tests WITHOUT -race (ADR-022; CI Linux runs -race)."
+      Write-Warning "gcc not found - running Go tests WITHOUT -race (ADR-022; CI Linux runs -race)."
     }
     foreach ($svc in @("services/gateway", "services/file-processor", "services/ws-hub", "services/cmd/uni-cli")) {
       Invoke-Step "Go test ($svc)" {

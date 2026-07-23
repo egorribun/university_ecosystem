@@ -1,4 +1,4 @@
-# scripts/dc.ps1 — Docker Compose wrapper that always resolves to the git repo
+﻿# scripts/dc.ps1 - Docker Compose wrapper that always resolves to the git repo
 # root regardless of caller cwd.
 #
 # Mitigates W169 (z) #1: `docker compose -f docker-compose.full.yml ...` is
@@ -19,7 +19,7 @@
 #
 # Cross-reference: CLAUDE.md ## Gotchas "Docker compose helper scripts" + the
 # pre-existing W169 SW6-followup entry "`docker compose` exit code NOT a
-# reliable success signal — cwd drift causes silent failure".
+# reliable success signal - cwd drift causes silent failure".
 
 $ErrorActionPreference = "Stop"
 
