@@ -155,11 +155,7 @@ def build_schedule_reminder_message(
             title_value = str(template.get("title") or default_title)
             body_value = str(template.get("body") or default_body)
             tag_value = str(template.get("tag") or default_tag)
-            template_data = (
-                template.get("data")
-                if isinstance(template.get("data"), Mapping)
-                else {}
-            )
+            template_data = template.get("data")
             merged_data = {**default_data}
             if isinstance(template_data, Mapping):
                 merged_data.update(template_data)
@@ -196,7 +192,7 @@ def build_schedule_reminder_message(
         localized_title, localized_body, _, _, _ = _render(locale_code)
         if localized_title:
             title_translations[locale_code] = localized_title
-        if localized_body:
+        if localized_body:  # pragma: no branch - body always includes the start line
             body_translations[locale_code] = localized_body
 
     return (
