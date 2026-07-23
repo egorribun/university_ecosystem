@@ -410,7 +410,6 @@ async def now_playing(
                 )
         except CircuitBreakerOpenError:
             return None
-        return None
 
     token = await _ensure_access_token(db, user, locale=locale)
     if not token:
