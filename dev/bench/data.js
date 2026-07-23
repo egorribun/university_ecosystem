@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1784639383860,
+  "lastUpdate": 1784817266386,
   "repoUrl": "https://github.com/egorribun/university_ecosystem",
   "entries": {
     "Go Services Performance Benchmarks": [
@@ -834,6 +834,150 @@ window.BENCHMARK_DATA = {
             "value": 28.48,
             "unit": "ns/op",
             "extra": "39671395 times\n4 procs"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "egorribun2005@gmail.com",
+            "name": "Egor",
+            "username": "egorribun"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "a9b871378c3e5d4413c7bb60c74890a9a97eca51",
+          "message": "update\n\n* feat(opencode): add 154 agent skills\n\n* fix(alembic): adjust notification_deliveries FK for SQLite compatibility\n\n* feat(wave100): harden quality governance gates\n\nCo-Authored-By: Codex <codex@openai.com>\n\n* fix(wave100): close checkov baseline findings\n\nCo-Authored-By: Codex <codex@openai.com>\n\n* fix(wave100): narrow checkov exceptions\n\nCo-Authored-By: Codex <codex@openai.com>\n\n* feat(wave100): add full quality gate and Tier0 evidence\n\nCo-Authored-By: Codex <codex@openai.com>\n\n* feat(wave100): enforce mutation gate and add stateful tests\n\nCo-Authored-By: Codex <codex@openai.com>\n\n* feat(wave100): add frontend property and mutation gates\n\nCo-Authored-By: OpenAI <noreply@openai.com>\n\n* test(wave100): lock frontend gate workflow contract\n\nCo-Authored-By: OpenAI <noreply@openai.com>\n\n* feat(wave100): close rust coverage and fuzz contracts\n\nCo-Authored-By: Codex <codex@openai.com>\n\n* feat(wave100): enforce kyverno policy tests\n\nCo-Authored-By: Codex <codex@openai.com>\n\n* feat(wave100): add lifecycle certification and fuzz gates\n\nCo-Authored-By: Codex <codex@openai.com>\n\n* feat(wave100): close rust native coverage contract\n\nCo-Authored-By: Codex <codex@openai.com>\n\n* feat(wave101): close contract replay and compatibility gates\n\n* feat(wave102): close quality evidence and integration gates\n\nCo-Authored-By: Codex <noreply@openai.com>\n\n* feat(wave103): validate equivalent mutation registry\n\nCo-Authored-By: Codex <codex@openai.com>\n\n* test(wave104): close GraphQL auth validator branches\n\nCo-Authored-By: Codex <codex@openai.com>\n\n* test(wave105): cover login session fallback branches\n\nCo-Authored-By: Codex <codex@openai.com>\n\n* test(wave106): close lockout policy branches\n\nCo-Authored-By: Codex <codex@openai.com>\n\n* test(wave107): close security tier0 branches\n\nCo-Authored-By: Codex <codex@openai.com>\n\n* test(wave108): close login route tier0 branches\n\nCo-Authored-By: Codex <codex@openai.com>\n\n* test(wave109): close metrics coverage branches\n\nCo-Authored-By: Codex <codex@openai.com>\n\n* test(wave110): close observability coverage branches\n\nCo-Authored-By: Codex <codex@openai.com>\n\n* test(wave111): close cache backend coverage branches\n\nCo-Authored-By: Codex <codex@openai.com>\n\n* test(wave112): close presence coverage branches\n\nCo-Authored-By: Codex <codex@openai.com>\n\n* test(wave113): close notification settings coverage\n\nCo-Authored-By: Codex <codex@openai.com>\n\n* test(wave114): close connection manager coverage\n\nCo-Authored-By: Codex <codex@openai.com>\n\n* test(wave115): close Spotify API coverage\n\nCo-Authored-By: Codex <codex@openai.com>\n\n* test(wave116): close notifications API coverage\n\nCo-Authored-By: OpenAI <noreply@openai.com>\n\n* test(wave117): close Events API coverage\n\nCo-Authored-By: OpenAI <noreply@openai.com>\n\n* test(wave118): close Users API coverage\n\nCo-Authored-By: OpenAI <noreply@openai.com>\n\n* test: add comprehensive test closure suite and quality roadmap plan\n\n* docs: align README, CONTRIBUTING, and SECURITY policies\n\n---------\n\nCo-authored-by: Egor Ribun <egorribun@gmail.com>\nCo-authored-by: Codex <codex@openai.com>\nCo-authored-by: OpenAI <noreply@openai.com>",
+          "timestamp": "2026-07-23T17:28:41+03:00",
+          "tree_id": "3496dd2331c34c7fe374a9b4fde4495d07a2aee6",
+          "url": "https://github.com/egorribun/university_ecosystem/commit/a9b871378c3e5d4413c7bb60c74890a9a97eca51"
+        },
+        "date": 1784817265712,
+        "tool": "go",
+        "benches": [
+          {
+            "name": "BenchmarkJWKSValidation (github.com/university-ecosystem/gateway/middleware)",
+            "value": 45364,
+            "unit": "ns/op",
+            "extra": "23020 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkRateLimitFallback (github.com/university-ecosystem/gateway/middleware)",
+            "value": 72.31,
+            "unit": "ns/op",
+            "extra": "16794429 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkExtractAlgFromHeader (github.com/university-ecosystem/gateway/middleware)",
+            "value": 523,
+            "unit": "ns/op",
+            "extra": "2097452 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkValidateIAT (github.com/university-ecosystem/gateway/middleware)",
+            "value": 45.03,
+            "unit": "ns/op",
+            "extra": "26591865 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkCheckL1Cache_Hit (github.com/university-ecosystem/gateway/middleware)",
+            "value": 82.45,
+            "unit": "ns/op",
+            "extra": "14707543 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkCheckL1Cache_Miss (github.com/university-ecosystem/gateway/middleware)",
+            "value": 26.93,
+            "unit": "ns/op",
+            "extra": "44604332 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkJWKToRSAPublicKey (github.com/university-ecosystem/gateway/middleware)",
+            "value": 361.5,
+            "unit": "ns/op",
+            "extra": "3336584 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkShouldRefreshProbabilistic (github.com/university-ecosystem/gateway/middleware)",
+            "value": 49.43,
+            "unit": "ns/op",
+            "extra": "24268316 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkKeyFunc_HS256 (github.com/university-ecosystem/gateway/middleware)",
+            "value": 18.06,
+            "unit": "ns/op",
+            "extra": "66259995 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkMessageMarshal (github.com/university-ecosystem/ws-hub/pkg/hub)",
+            "value": 349.5,
+            "unit": "ns/op",
+            "extra": "3435222 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkMessageUnmarshal (github.com/university-ecosystem/ws-hub/pkg/hub)",
+            "value": 963.6,
+            "unit": "ns/op",
+            "extra": "1249096 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkClientLookup (github.com/university-ecosystem/ws-hub/pkg/hub)",
+            "value": 15.85,
+            "unit": "ns/op",
+            "extra": "75540339 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkCollectRecipients_Room (github.com/university-ecosystem/ws-hub/pkg/hub)",
+            "value": 503.3,
+            "unit": "ns/op",
+            "extra": "2328672 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkCollectRecipients_DirectMessage (github.com/university-ecosystem/ws-hub/pkg/hub)",
+            "value": 67.68,
+            "unit": "ns/op",
+            "extra": "21312800 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkCollectRecipients_Broadcast (github.com/university-ecosystem/ws-hub/pkg/hub)",
+            "value": 890.7,
+            "unit": "ns/op",
+            "extra": "1378123 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkSafeSend (github.com/university-ecosystem/ws-hub/pkg/hub)",
+            "value": 50.19,
+            "unit": "ns/op",
+            "extra": "23457670 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkHandleRegister (github.com/university-ecosystem/ws-hub/pkg/hub)",
+            "value": 1595,
+            "unit": "ns/op",
+            "extra": "913264 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkNATSPublishSimulated (github.com/university-ecosystem/ws-hub/pkg/hub)",
+            "value": 58.67,
+            "unit": "ns/op",
+            "extra": "20337366 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkJWTVerify (github.com/university-ecosystem/ws-hub/pkg/hub)",
+            "value": 564.6,
+            "unit": "ns/op",
+            "extra": "2038251 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkBroadcastTo1000Clients (github.com/university-ecosystem/ws-hub/pkg/hub)",
+            "value": 12019,
+            "unit": "ns/op",
+            "extra": "123360 times\n4 procs"
           }
         ]
       }
