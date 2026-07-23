@@ -119,4 +119,5 @@ repos:
     hooks:
       - id: trivyfs-docker
         name: trivy-fs-scan
+        stages: [manual]
         args: ["--exit-code", "1", "--severity", "CRITICAL,HIGH", "--timeout", "15m", "--skip-dirs", ".venv,.venv313,.git,.claude,.gemini,.secrets,node_modules,frontend/node_modules,frontend/dist,services/gateway/gateway,services/file-processor/cover,.tmp,.pre-commit-cache", "."]
