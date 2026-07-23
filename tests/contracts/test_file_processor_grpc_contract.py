@@ -52,7 +52,7 @@ def test_process_file_grpc_contract(pact: Pact) -> None:
         .with_body(
             {
                 "id": match.like("uuid"),
-                "type": match.like("resize"),
+                "type": match.like("image_resize"),
                 "source_key": match.like("uploads/raw/img.jpg"),
                 "dest_key": match.like("uploads/processed/img.jpg"),
                 "options": {"width": "800"},
@@ -63,10 +63,13 @@ def test_process_file_grpc_contract(pact: Pact) -> None:
         .will_respond_with()
         .with_body(
             {
-                "job_id": match.like("uuid"),
+                "job_id": match.like("550e8400-e29b-41d4-a716-446655440002"),
                 "success": match.like(True),
-                "dest_key": match.like("uploads/processed/img.jpg"),
-                "duration_ms": match.like(100),
+                # ProcessFile starts the Temporal workflow and returns its run
+                # identifier immediately; processing output is delivered by the
+                # asynchronous callback contract, not this gRPC response.
+                "dest_key": match.like(""),
+                "duration_ms": match.like(0),
             },
             "application/grpc",
         )

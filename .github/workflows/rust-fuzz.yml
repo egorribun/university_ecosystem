@@ -6,10 +6,14 @@ on:
     paths:
       - 'native/rust_ext/**'
       - 'crates/pyo3-sanitizer/**'
+      - 'frontend/wasm-sanitizer/**'
+      - 'frontend/rust-crypto/**'
   pull_request:
     paths:
       - 'native/rust_ext/**'
       - 'crates/pyo3-sanitizer/**'
+      - 'frontend/wasm-sanitizer/**'
+      - 'frontend/rust-crypto/**'
   schedule:
     # Run every Sunday at 00:00 UTC
     - cron: '0 0 * * 0'
@@ -86,3 +90,55 @@ jobs:
           test -f infra/oss-fuzz/project.yaml
           test -f infra/oss-fuzz/build.sh
           echo "OSS-Fuzz config present"
+
+  fuzz-additional-rust-crates:
+    name: Fuzz ${{ matrix.directory }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - directory: frontend/wasm-sanitizer/fuzz
+            targets: "fuzz_sanitize_rich_text fuzz_strip_html"
+          - directory: frontend/rust-crypto/fuzz
+            targets: "fuzz_hmac fuzz_scrypt"
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Install Rust nightly
+        uses: dtolnay/rust-toolchain@2c7215f132e9ebf062739d9130488b56d53c060c # nightly
+        with:
+          toolchain: nightly
+
+      - name: Install Rust stable for cargo-fuzz bootstrap
+        uses: dtolnay/rust-toolchain@2c7215f132e9ebf062739d9130488b56d53c060c # stable
+        with:
+          toolchain: stable
+
+      - name: Install cargo-fuzz
+        run: cargo +stable install cargo-fuzz --version 0.12.0 --locked
+
+      - name: Run fuzz targets
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+        working-directory: ${{ matrix.directory }}
+        run: |
+          if [ "${EVENT_NAME}" = "schedule" ] || [ "${EVENT_NAME}" = "workflow_dispatch" ]; then
+            DURATION=300
+          else
+            DURATION=60
+          fi
+          for target in ${{ matrix.targets }}; do
+            cargo +nightly fuzz run "$target" -- -max_total_time="$DURATION"
+          done
+
+      - name: Archive additional fuzz crashes
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: fuzz-crashes-${{ matrix.directory }}
+          path: |
+            ${{ matrix.directory }}/artifacts/
+            ${{ matrix.directory }}/crash-*
+          if-no-files-found: ignore

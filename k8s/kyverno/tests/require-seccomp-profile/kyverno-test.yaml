@@ -1,0 +1,20 @@
+apiVersion: cli.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: require-seccomp-profile
+policies:
+  - ../../cluster-policies.yaml
+resources:
+  - ../compliant-pod.yaml
+  - bad.yaml
+results:
+  - policy: require-seccomp-profile
+    rule: check-seccomp-profile
+    resources: [university-ecosystem/compliant-pod]
+    kind: Pod
+    result: pass
+  - policy: require-seccomp-profile
+    rule: check-seccomp-profile
+    resources: [university-ecosystem/seccomp-pod]
+    kind: Pod
+    result: fail

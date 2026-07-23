@@ -60,7 +60,7 @@ func newNatsTestHub(auth RoomAuthClient, secret string, broadcastCap int) *Hub {
 		ClientMsgRateBurst:  10,
 		InternalSecret:      secret,
 	}
-	return NewHub(nil, logger, auth, cfg, nil)
+	return trackTestHub(NewHub(nil, logger, auth, cfg, nil))
 }
 
 func recvBroadcast(t *testing.T, h *Hub) *Message {

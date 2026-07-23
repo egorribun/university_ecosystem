@@ -23,7 +23,7 @@ func TestHub_MutexDeadlockConcurrency(t *testing.T) {
 		ClientMsgRateLimit:  100,
 		ClientMsgRateBurst:  100,
 	}
-	h := NewHub(nil, logger, &mockAuthClient{allowed: true}, cfg, nil)
+	h := trackTestHub(NewHub(nil, logger, &mockAuthClient{allowed: true}, cfg, nil))
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

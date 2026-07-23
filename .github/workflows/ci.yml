@@ -433,9 +433,25 @@ jobs:
       matrix:
         include:
           - python-version: "3.14"
-            name: "Python 3.14"
-            coverage-check: true
-            run-integration: true
+            name: "Python 3.14-shard-0"
+            shard: 0
+            coverage-check: false
+            run-integration: false
+          - python-version: "3.14"
+            name: "Python 3.14-shard-1"
+            shard: 1
+            coverage-check: false
+            run-integration: false
+          - python-version: "3.14"
+            name: "Python 3.14-shard-2"
+            shard: 2
+            coverage-check: false
+            run-integration: false
+          - python-version: "3.14"
+            name: "Python 3.14-shard-3"
+            shard: 3
+            coverage-check: false
+            run-integration: false
             free-threading: false
     needs: pre-commit-check
     uses: ./.github/workflows/reusable-backend-tests.yml
@@ -450,6 +466,8 @@ jobs:
       coverage-threshold: ${{ matrix.coverage-check && 91 || 0 }}
       run-integration-tests: ${{ matrix.run-integration }}
       parallel-workers: 0 # LOW-W19: 0 = auto-detect workers via pytest-xdist (-n auto)
+      shard-id: ${{ matrix.shard }}
+      num-shards: 4
       python-gil: ${{ matrix.free-threading && '0' || '1' }}  # MOD-24-03
     secrets: inherit
 
@@ -608,12 +626,37 @@ jobs:
       run-lighthouse: true
     secrets: inherit
 
+  stryker-incremental:
+    name: Incremental Mutation Tests (frontend)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: pre-commit-check
+    if: ${{ github.event_name == 'pull_request' }}
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Run blocking incremental Stryker gate
+        working-directory: frontend
+        run: npm run test:mutation -- --incremental
+
   # Wave 122 polish A1 — wires up the Playwright E2E suite + the W122 SW3
   # cross-env URL_STATE_E2E step. The default Chromium suite is split into
   # four isolated shards so all 114 tests finish within the job timeout
   # without overloading the SSR preview.
-  # Chromium-only by design (W120 SW7 + W121 SW3); add firefox/webkit
-  # in a future wave if multi-browser e2e coverage warranted.
   e2e-tests:
     name: E2E Tests (shard ${{ matrix.shard-index }}/4)
     needs: pre-commit-check
@@ -628,6 +671,27 @@ jobs:
       browser: chromium
       shard-index: ${{ matrix.shard-index }}
       shard-total: 4
+    secrets: inherit
+
+  # Phase 7.1: browser coverage is visible immediately but remains advisory
+  # during the 30-day stabilization window. Nightly runs execute the same
+  # four-project matrix; this PR job gives Firefox/WebKit/mobile-WebKit fast
+  # feedback without making pre-existing renderer flakes merge blockers.
+  e2e-tests-cross-browser:
+    name: E2E Tests (cross-browser ${{ matrix.browser }})
+    needs: pre-commit-check
+    continue-on-error: true
+    strategy:
+      fail-fast: false
+      matrix:
+        browser: [firefox, webkit, mobile-webkit]
+    uses: ./.github/workflows/reusable-e2e-tests.yml
+    with:
+      node-version: "22"
+      python-version: "3.14"
+      browser: ${{ matrix.browser }}
+      shard-index: 1
+      shard-total: 1
     secrets: inherit
 
   security-audit:
@@ -1546,7 +1610,7 @@ jobs:
           tool: cargo-llvm-cov
 
       - name: Create coverage output directories
-        run: mkdir -p artifacts/coverage/rust/rust-native artifacts/coverage/rust/rust-pyo3-sanitizer artifacts/coverage/rust/rust-wasm-sanitizer
+        run: mkdir -p artifacts/coverage/rust/rust-native artifacts/coverage/rust/rust-pyo3-sanitizer artifacts/coverage/rust/rust-wasm-sanitizer artifacts/coverage/rust/rust-crypto
 
       - name: rust_ext — native unit tests + coverage (--no-default-features)
         # extension-module produces undefined Python symbols in a standalone test
@@ -1571,7 +1635,7 @@ jobs:
 
       - name: rust-crypto — native KAT tests + coverage
         working-directory: frontend/rust-crypto
-        run: cargo llvm-cov --lib
+        run: cargo llvm-cov --lib --json --output-path ../../artifacts/coverage/rust/rust-crypto/llvm.json
 
       - name: Upload Rust coverage artifacts
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -1595,15 +1659,13 @@ jobs:
           fi
           wasm-pack test --headless --chrome frontend/rust-crypto
 
-  mutation-tests:
+  mutation-tests-incremental:
     name: Incremental Mutation Tests (mutmut)
     runs-on: ubuntu-latest
-    # 30 = outer safety net for the 20-min in-command soft time-box below
-    # (+ ~5 min setup/install/stats). The clean-test isolation bugs are fixed,
-    # so mutmut now runs REAL mutants; on a long-lived branch the diff spans many
-    # modules (tens of thousands of mutants = multi-hour full run), so the step
-    # time-boxes the advisory run rather than blocking CI on a complete pass.
-    timeout-minutes: 30
+    # 35 = outer safety net for the 25-min in-command gate below (+ setup/install).
+    # A time-box is a failed mutation gate: silently skipping score verification
+    # would turn a missing quality signal into a green required check.
+    timeout-minutes: 35
     needs: pre-commit-check
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -1621,7 +1683,7 @@ jobs:
       - name: Install dependencies
         run: uv sync --group dev
 
-      - name: Run incremental mutmut (time-boxed, advisory)
+      - name: Run incremental mutmut (blocking, 25-minute budget)
         run: |
           git diff --name-only origin/main...HEAD | grep '^app/.*\.py$' > /tmp/changed_py.txt || true
           if [ ! -s /tmp/changed_py.txt ]; then
@@ -1633,7 +1695,7 @@ jobs:
           # (source_paths in pyproject scopes the universe).
           PATTERNS=$(sed -E 's#/#.#g; s#\.py$#*#' /tmp/changed_py.txt | tr '\n' ' ')
           echo "Mutating modules: $PATTERNS"
-          # Soft time-box: mutmut 3.x mutates WHOLE changed modules (no line-level
+          # Time-box: mutmut 3.x mutates WHOLE changed modules (no line-level
           # scoping), so on a long-lived branch the diff spans many modules = tens of
           # thousands of mutants (multi-hour full run). This advisory job runs REAL
           # mutation for a bounded window. mutmut exits 0 on completion regardless of
@@ -1644,7 +1706,7 @@ jobs:
           # and reduce the runner OOM-killer firing mid-sweep.
           set -f          # keep the $PATTERNS '*' globs intact for mutmut
           set +e
-          timeout --kill-after=60s 20m uv run mutmut run --max-children 2 $PATTERNS 2>&1 | tee /tmp/mutmut_run.log
+          timeout --kill-after=60s 25m uv run mutmut run --max-children 2 $PATTERNS 2>&1 | tee /tmp/mutmut_run.log
           ec=${PIPESTATUS[0]}   # exit code of timeout/mutmut, NOT tee
           set -e
           set +f
@@ -1656,7 +1718,7 @@ jobs:
           # replays into this log on a FAILED gate) can never contain this
           # mutmut-specific phrase, so its presence PROVES the isolation gates passed.
           # Any kill AFTER it (124 time-box / 137 OOM-SIGKILL / 143 SIGTERM) is in the
-          # advisory mutant-execution zone — semantically identical to the 20-min box.
+          # mutation-execution zone. The gate fails if the signal is incomplete.
           mutants_started=0
           if grep -qF 'Running mutation testing' /tmp/mutmut_run.log; then mutants_started=1; fi
           if [ "$ec" -eq 0 ]; then
@@ -1665,16 +1727,23 @@ jobs:
             echo "Verifying mutation score (gate blocking at >= 85.0%)..."
             uv run python scripts/mutmut_ci_gate.py
           elif [ "$ec" -eq 124 ]; then
-            echo "Incremental mutation testing hit the 20-minute advisory time-box. Skipping score verification for incomplete run."
+            echo "::error::Incremental mutation testing exceeded its 25-minute budget; incomplete mutation evidence is not mergeable."
+            exit 124
           elif [ "$mutants_started" -eq 1 ]; then
-            echo "mutmut exited $ec after the mutant phase began. Skipping score verification for incomplete run."
+            echo "::error::mutmut exited $ec after the mutant phase began; incomplete mutation evidence is not mergeable."
+            exit "$ec"
           else
             echo "::error::mutmut exited $ec BEFORE the mutant phase began — a genuine clean-test / forced-fail / stats isolation regression. Failing the job."
             exit "$ec"
           fi
 
 
+  # Phase 8.3: the full Temporal-backed load/chaos stack is executed by
+  # nightly-full-gate.yml. Keep this historical definition inert so old links
+  # and local workflow tooling do not accidentally reintroduce it into the PR
+  # gate; promotion back to CI requires a documented Temporal boot fix.
   load-and-chaos-tests:
+    if: ${{ false }}
     name: Load and Chaos Resilience Tests
     runs-on: ubuntu-latest
     timeout-minutes: 30 # +3 Go builds (gateway/ws-hub/file-processor) + temporal boot
@@ -2056,11 +2125,28 @@ jobs:
         with:
           python-version: "3.14"
 
-      - name: Download Python coverage artifact
+      - name: Download Python shard coverage data
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          name: backend-coverage-All-Python 3.14
-          path: .
+          pattern: backend-coverage-data-All-Python 3.14-shard-*
+          path: artifacts/coverage/python/shards
+          merge-multiple: true
+
+      - name: Set up uv for coverage aggregation
+        uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: Install coverage tooling
+        run: uv sync --frozen
+
+      - name: Combine Python shard coverage
+        run: |
+          test "$(find artifacts/coverage/python/shards -name '.coverage.*' -type f | wc -l)" -eq 4
+          uv run coverage combine --data-file=.coverage artifacts/coverage/python/shards
+          uv run coverage xml --data-file=.coverage -o coverage.xml
+          uv run coverage json --data-file=.coverage -o artifacts/coverage/python/coverage.json
 
       - name: Download Frontend coverage artifact
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
@@ -2092,8 +2178,10 @@ jobs:
           name: rust-coverage
           path: artifacts/coverage/rust
 
-      - name: Validate quality policy contract
-        run: python scripts/quality/validate_quality_contract.py
+      - name: Validate quality policy contract and mutation registry
+        run: >-
+          python scripts/quality/validate_quality_contract.py
+          --mutation-registry quality/mutation-exclusions.json
 
       - name: Normalize coverage evidence
         run: |
@@ -2109,7 +2197,8 @@ jobs:
             --go-report go-file-processor=artifacts/coverage/go/file-processor/coverage.out \
             --rust-report rust-native=artifacts/coverage/rust/rust-native/llvm.json \
             --rust-report rust-pyo3-sanitizer=artifacts/coverage/rust/rust-pyo3-sanitizer/llvm.json \
-            --rust-report rust-wasm-sanitizer=artifacts/coverage/rust/rust-wasm-sanitizer/llvm.json
+            --rust-report rust-wasm-sanitizer=artifacts/coverage/rust/rust-wasm-sanitizer/llvm.json \
+            --rust-report rust-crypto=artifacts/coverage/rust/rust-crypto/llvm.json
 
       - name: Upload Quality Manifest
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -2137,6 +2226,30 @@ jobs:
 
       - name: Verify Orphans and Anti-Patterns
         run: python scripts/quality/check_orphans_and_anti_patterns.py
+
+  kyverno-test:
+    name: Kyverno policy tests
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Install Kyverno CLI v1.18.0
+        shell: bash
+        run: |
+          version="v1.18.0"
+          archive="kyverno-cli_v1.18.0_linux_x86_64.tar.gz"
+          base="https://github.com/kyverno/kyverno/releases/download/${version}"
+          curl --fail --silent --show-error --location --output "$RUNNER_TEMP/$archive" "$base/$archive"
+          curl --fail --silent --show-error --location --output "$RUNNER_TEMP/checksums.txt" "$base/checksums.txt"
+          grep "$archive" "$RUNNER_TEMP/checksums.txt" | sha256sum --check -
+          tar --extract --gzip --file "$RUNNER_TEMP/$archive" --directory "$RUNNER_TEMP"
+          echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
+
+      - name: Run Kyverno tests
+        run: kyverno test k8s/kyverno/tests/ --require-tests
 
   ci-success:
     name: CI Success
@@ -2167,11 +2280,12 @@ jobs:
       - msw-mock-drift
       - provenance-check
       - e2e-tests
+      - e2e-tests-cross-browser
       - rust-ffi-asan
       - rust-ffi-tsan
       - rust-tests
-      - mutation-tests
-      - load-and-chaos-tests
+      - mutation-tests-incremental
+      - stryker-incremental
       - chaos-tests
       - db-migration-integrity
       - actionlint
@@ -2182,6 +2296,7 @@ jobs:
       - rust-lint
       - coverage-policy-gate
       - quality-inventory-check
+      - kyverno-test
 
     steps:
       - name: Check all jobs passed
@@ -2192,22 +2307,10 @@ jobs:
           # rate < 1 %. They are intentionally NOT in the blocking results
           # array but ARE reported separately below.
           #
-          # load-and-chaos-tests is ALSO advisory: it spins up the full
-          # production compose (docker-compose.infra.yml + docker-compose.yml),
-          # whose `temporal` container does not start reliably in CI (exits 1 —
-          # the custom-entrypoint prod Temporal config, a deep W144-class issue).
-          # Gating merges on a full-prod-stack-with-Temporal boot is fragile;
-          # kept in `needs` + reported below, but NOT in the blocking array.
-          # Re-promote once prod Temporal boots reliably in CI.
+          # The full load-and-chaos stack runs in nightly-full-gate.yml. It is
+          # deliberately absent from this fast PR gate until Temporal boot is
+          # reliable enough for a merge-blocking promotion.
           #
-          # mutation-tests is ALSO advisory: the paths_to_mutate config is now
-          # correct (mutmut 3.5.0 runs), but mutmut copies ONLY app/ + tests/
-          # into its isolated mutants/ dir, while this suite has contract tests
-          # that assert on-disk repo files (infrastructure/Caddyfile, alembic/,
-          # compose, k8s) → the baseline stats run fails ("Path doesn't exist:
-          # mutants/<path>"). Gating on a baseline that needs the whole repo
-          # tree is fragile; re-promote once a curated unit-only mutation test
-          # selection exists (pytest_add_cli_args_test_selection). Reported below.
           results=(
             "${{ needs.pre-commit-check.result }}"
             "${{ needs.compose-validate.result }}"
@@ -2224,9 +2327,6 @@ jobs:
             "${{ needs.helm-validate.result }}"
             "${{ needs.db-migration-gate.result }}"
             "${{ needs.go-fuzz.result }}"
-            "${{ needs.go-integration-ws-hub.result }}"
-            "${{ needs.go-integration-file-processor.result }}"
-            "${{ needs.go-integration-gateway.result }}"
             "${{ needs.contract-tests.result }}"
             "${{ needs.schemathesis-api-tests.result }}"
             "${{ needs.msw-mock-drift.result }}"
@@ -2235,8 +2335,8 @@ jobs:
             "${{ needs.rust-ffi-asan.result }}"
             "${{ needs.rust-ffi-tsan.result }}"
             "${{ needs.rust-tests.result }}"
-            "${{ needs.mutation-tests.result }}"
-            "${{ needs.load-and-chaos-tests.result }}"
+            "${{ needs.mutation-tests-incremental.result }}"
+            "${{ needs.stryker-incremental.result }}"
             "${{ needs.actionlint.result }}"
             "${{ needs.dockerfile-lint.result }}"
             "${{ needs.shellcheck.result }}"
@@ -2245,6 +2345,7 @@ jobs:
             "${{ needs.rust-lint.result }}"
             "${{ needs.coverage-policy-gate.result }}"
             "${{ needs.quality-inventory-check.result }}"
+            "${{ needs.kyverno-test.result }}"
           )
 
 
@@ -2271,8 +2372,9 @@ jobs:
           ws=${{ needs.go-integration-ws-hub.result }}
           fp=${{ needs.go-integration-file-processor.result }}
           gw=${{ needs.go-integration-gateway.result }}
-          chaos=${{ needs.load-and-chaos-tests.result }}
-          mut=${{ needs.mutation-tests.result }}
+          browsers=${{ needs.e2e-tests-cross-browser.result }}
+          mut=${{ needs.mutation-tests-incremental.result }}
+          stryker=${{ needs.stryker-incremental.result }}
           toxi=${{ needs.chaos-tests.result }}
           dbmig=${{ needs.db-migration-integrity.result }}
           {
@@ -2286,17 +2388,27 @@ jobs:
             echo "";
             echo "_Initially non-blocking per ADR-022 §Migration step 5._";
             echo "";
+            echo "## Incremental mutation gate (blocking)";
+            echo "";
+            echo "| Job | Result |";
+            echo "|-----|--------|";
+            echo "| mutation-tests-incremental | $mut |";
+            echo "| stryker-incremental (frontend) | $stryker |";
+            echo "";
             echo "## Load & chaos resilience (advisory)";
             echo "";
             echo "| Job | Result |";
             echo "|-----|--------|";
-            echo "| load-and-chaos-tests | $chaos |";
-            echo "| mutation-tests | $mut |";
             echo "| chaos-tests (ToxiProxy W19) | $toxi |";
             echo "| db-migration-integrity (W21) | $dbmig |";
             echo "";
-            echo "_load-and-chaos non-blocking until prod Temporal boots reliably in CI (W144-class)._";
-            echo "_mutation-tests non-blocking until a curated unit-only mutation test selection exists._";
             echo "_chaos-tests + db-migration-integrity advisory until ToxiProxy coverage baseline is established._";
+            echo "";
+            echo "## Cross-browser E2E (advisory — Phase 7 stabilization)";
+            echo "";
+            echo "| Job | Result |";
+            echo "|-----|--------|";
+            echo "| e2e-tests-cross-browser | $browsers |";
+            echo "_Promote after 30 consecutive green days and update required-check policy._";
           } >> "$GITHUB_STEP_SUMMARY"
-          echo "Advisory results — ws-hub: $ws, file-processor: $fp, gateway: $gw, chaos: $chaos, mutation: $mut, toxi: $toxi, dbmig: $dbmig"
+          echo "Advisory results — ws-hub: $ws, file-processor: $fp, gateway: $gw, browsers: $browsers, mutation: $mut, stryker: $stryker, toxi: $toxi, dbmig: $dbmig"

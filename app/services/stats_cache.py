@@ -114,7 +114,9 @@ async def invalidate_user_stats_cache(
         for kind in selected_kinds:
             for period in chosen_periods:
                 keys.append(_make_cache_key(kind, user_id, period))
-    if keys:
+    if (
+        keys
+    ):  # pragma: no branch - user/kind/default period invariants make this non-empty
         await backend.invalidate(*keys)
 
 

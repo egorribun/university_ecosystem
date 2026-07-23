@@ -34,7 +34,10 @@ type RateLimiter struct {
 	fallbackWindow   int64 // window length in seconds
 	cleanupInterval  time.Duration
 	// RZ-W18-03 (audit 2026-03-23 Wave 18): ensure cleanup goroutine starts once.
-	cleanupOnce sync.Once
+	cleanupOnce     sync.Once
+	cleanupStopOnce sync.Once
+	cleanupCancel   context.CancelFunc
+	cleanupDone     chan struct{}
 }
 
 // NewRateLimiter creates a new rate limiter with Redis backend.
@@ -99,7 +102,11 @@ func (rl *RateLimiter) inMemoryAllow(key string) bool {
 // stop sending requests are never removed.
 func (rl *RateLimiter) startFallbackCleanup(ctx context.Context) {
 	rl.cleanupOnce.Do(func() {
+		cleanupCtx, cancel := context.WithCancel(ctx)
+		rl.cleanupCancel = cancel
+		rl.cleanupDone = make(chan struct{})
 		go func() {
+			defer close(rl.cleanupDone)
 			interval := rl.cleanupInterval
 			if interval == 0 {
 				interval = 5 * time.Minute
@@ -108,7 +115,7 @@ func (rl *RateLimiter) startFallbackCleanup(ctx context.Context) {
 			defer ticker.Stop()
 			for {
 				select {
-				case <-ctx.Done():
+				case <-cleanupCtx.Done():
 					return
 				case <-ticker.C:
 					rl.fallbackMu.Lock()
@@ -123,6 +130,24 @@ func (rl *RateLimiter) startFallbackCleanup(ctx context.Context) {
 			}
 		}()
 	})
+}
+
+// Close stops the fallback cleanup worker and releases the Redis client.
+// Callers should invoke it during service shutdown; tests use it to make the
+// lifecycle contract observable to goleak.
+func (rl *RateLimiter) Close() error {
+	rl.cleanupStopOnce.Do(func() {
+		if rl.cleanupCancel != nil {
+			rl.cleanupCancel()
+		}
+	})
+	if rl.cleanupDone != nil {
+		<-rl.cleanupDone
+	}
+	if rl.client != nil {
+		return rl.client.Close()
+	}
+	return nil
 }
 
 // Middleware returns a Gin middleware for rate limiting.

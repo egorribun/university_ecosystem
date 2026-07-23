@@ -2,6 +2,10 @@ import json
 import re
 import tomllib
 from pathlib import Path
+from tempfile import TemporaryDirectory
+from xml.etree import ElementTree
+
+import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -46,6 +50,97 @@ def _read_pyproject() -> dict[str, object]:
 
 def _read_text(relative_path: str) -> str:
     return (ROOT / relative_path).read_text(encoding="utf-8")
+
+
+def test_governance_quality_configuration_matches_contract() -> None:
+    contract = _read_contract()
+    ownership = json.loads(_read_text("quality/ownership-mapping.json"))
+    assert set(ownership["teams"].values()) == {"@egorribun"}
+
+    codeowners = _read_text(".github/CODEOWNERS")
+    assert "@security-team" not in codeowners
+    assert "@devops-team" not in codeowners
+
+    codecov = yaml.safe_load(_read_text("codecov.yml"))
+    expected_flags = {
+        "python": "app/",
+        "frontend": "frontend/src/",
+        "go-gateway": "services/gateway/",
+        "go-ws-hub": "services/ws-hub/",
+        "go-file-processor": "services/file-processor/",
+        "rust-native": "native/rust_ext/",
+        "rust-pyo3-sanitizer": "crates/pyo3-sanitizer/",
+        "rust-wasm-sanitizer": "frontend/wasm-sanitizer/",
+        "rust-crypto": "frontend/rust-crypto/",
+    }
+    assert set(codecov["flags"]) == set(expected_flags)
+    for flag, path in expected_flags.items():
+        assert codecov["flags"][flag]["paths"] == [path]
+        coverage = contract["components"][flag]["coverage"]
+        floor = next(value for value in coverage.values() if value)
+        assert codecov["coverage"]["status"]["project"][flag]["target"] == f"{floor}%"
+    assert codecov["comment"]["layout"] == "condensed_header, diff, flags, files"
+
+    checkov = yaml.safe_load(_read_text(".github/workflows/checkov.yml"))
+    checkov_with = checkov["jobs"]["checkov"]["steps"][1]["with"]
+    assert checkov_with.get("soft_fail") is not True
+
+    mutation_exclusions = json.loads(_read_text("quality/mutation-exclusions.json"))
+    assert mutation_exclusions == {"version": 1, "exclusions": []}
+
+
+def test_test_duration_updater_aggregates_junit_cases_and_preserves_schema() -> None:
+    from scripts.quality.update_test_durations import build_duration_payload
+
+    with TemporaryDirectory() as temporary_directory:
+        report_path = Path(temporary_directory) / "pytest-report.xml"
+        report_path.write_text(
+            """<?xml version='1.0' encoding='utf-8'?>
+            <testsuites>
+              <testsuite name='unit'>
+                <testcase file='tests/test_alpha.py' time='0.25' />
+                <testcase file='tests/test_alpha.py' time='0.75' />
+                <testcase classname='tests.test_beta' name='test_value' time='2.0' />
+                <testcase file='tests/test_skipped.py' time='0' />
+              </testsuite>
+            </testsuites>""",
+            encoding="utf-8",
+        )
+        existing = {
+            "version": 1,
+            "default_duration_seconds": 1.0,
+            "durations": {"tests/test_stale.py": 9.0},
+        }
+
+        payload = build_duration_payload(report_path, existing=existing)
+
+    assert payload["version"] == 1
+    assert payload["durations"] == {
+        "tests/test_alpha.py": 1.0,
+        "tests/test_beta.py": 2.0,
+        "tests/test_skipped.py": 0.0,
+        "tests/test_stale.py": 9.0,
+    }
+    assert payload["default_duration_seconds"] == 1.0
+
+
+def test_test_duration_updater_rejects_negative_or_non_numeric_times() -> None:
+    from scripts.quality.update_test_durations import build_duration_payload
+
+    root = ElementTree.Element("testsuite")
+    ElementTree.SubElement(root, "testcase", file="tests/test_bad.py", time="-1")
+    ElementTree.SubElement(root, "testcase", file="tests/test_worse.py", time="nan")
+
+    with TemporaryDirectory() as temporary_directory:
+        report_path = Path(temporary_directory) / "pytest-report.xml"
+        ElementTree.ElementTree(root).write(report_path, encoding="utf-8")
+
+        try:
+            build_duration_payload(report_path, existing={})
+        except ValueError as error:
+            assert "time" in str(error)
+        else:
+            raise AssertionError("invalid JUnit timing data must be rejected")
 
 
 def _extract_object_body(source: str, property_name: str) -> str:

@@ -18,7 +18,7 @@ on:
   pull_request:
     branches: [main]
     types: [labeled]
-  workflow_dispatch:
+  workflow_dispatch: # checkov:skip=CKV_GHA_7:manual input intentionally selects the DAST target
     inputs:
       target_url:
         description: "Target URL to scan (overrides DAST_TARGET_URL secret)"

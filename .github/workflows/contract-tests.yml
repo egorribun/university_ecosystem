@@ -1,11 +1,11 @@
 # MOD-07 (audit 2026-03-16 Wave 10): Consumer-Driven Contract Tests for the
 # Python backend → ws-hub NATS message boundary.
 #
-# Two-phase pipeline:
-#   1. consumer  — Python pytest generates the Pact V4 contract file and
-#                  uploads it as a workflow artifact.
-#   2. provider  — Go pact-go/v2 verifier reads the artifact and confirms
-#                  the ws-hub handler accepts messages matching the contract.
+# Three-stage pipeline:
+#   1. consumer — Python pytest generates the Pact V4 files and uploads them.
+#   2. message providers — Go pact-go/v2 replays ws-hub and file-processor pacts.
+#   3. pact-provider-verify — pact-python replays the gateway pact against the
+#      real FastAPI backend process.
 #
 # The boundary under test is WsHubClient.invalidate_cache() → NATS subject
 # "cache.invalidate" → hub.go NATS subscriber.  Any schema drift (renamed
@@ -13,24 +13,42 @@
 #
 # Trigger: any change to the producer, consumer, or their contract tests.
 
-name: Contract Tests — ws-hub NATS
+name: Contract Tests — cross-process Pact boundaries
 
 on:
   push:
     paths:
       - "app/services/ws_hub_client.py"
+      - "app/api/health.py"
+      - "app/main.py"
       - "services/ws-hub/pkg/hub/hub.go"
       - "tests/contracts/test_ws_hub_contract.py"
+      - "tests/contracts/test_gateway_rest_contract.py"
+      - "tests/contracts/test_file_processor_grpc_contract.py"
       - "services/ws-hub/internal/contract/**"
+      - "services/file-processor/internal/contract/**"
+      - "services/file-processor/internal/service/**"
+      - "services/file-processor/go.mod"
+      - "services/file-processor/go.sum"
       - "services/gateway/internal/contracts/**"
+      - "scripts/quality/verify_pact_provider.py"
       - ".github/workflows/contract-tests.yml"
   pull_request:
     paths:
       - "app/services/ws_hub_client.py"
+      - "app/api/health.py"
+      - "app/main.py"
       - "services/ws-hub/pkg/hub/hub.go"
       - "tests/contracts/test_ws_hub_contract.py"
+      - "tests/contracts/test_gateway_rest_contract.py"
+      - "tests/contracts/test_file_processor_grpc_contract.py"
       - "services/ws-hub/internal/contract/**"
+      - "services/file-processor/internal/contract/**"
+      - "services/file-processor/internal/service/**"
+      - "services/file-processor/go.mod"
+      - "services/file-processor/go.sum"
       - "services/gateway/internal/contracts/**"
+      - "scripts/quality/verify_pact_provider.py"
       - ".github/workflows/contract-tests.yml"
   workflow_dispatch: {}
 
@@ -69,10 +87,14 @@ jobs:
         # This provides all modules required by shared conftest.py/fixtures.
         run: uv sync --frozen
 
-      - name: Run consumer contract test
-        # Generates tests/contracts/pacts/ws-hub-university-backend.json
+      - name: Run consumer contract tests
+        # Generates all Pact files consumed by the provider jobs below.
         run: |
-          uv run pytest tests/contracts/test_ws_hub_contract.py -v \
+          uv run pytest \
+            tests/contracts/test_ws_hub_contract.py \
+            tests/contracts/test_gateway_rest_contract.py \
+            tests/contracts/test_file_processor_grpc_contract.py \
+            -v \
             --tb=short \
             -p no:cacheprovider
         env:
@@ -82,14 +104,17 @@ jobs:
       - name: Upload pact file artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: pact-ws-hub-${{ github.sha }}
-          path: tests/contracts/pacts/ws-hub-university-backend.json
+          name: pact-contracts-${{ github.sha }}
+          path: |
+            tests/contracts/pacts/ws-hub-university-backend.json
+            tests/contracts/pacts/gateway-university-backend.json
+            tests/contracts/pacts/university-backend-file-processor.json
           retention-days: 30
           if-no-files-found: error
 
   # ── Phase 2: Go provider — verify against pact ────────────────────────────
-  provider:
-    name: Go provider — verify pact
+  message-provider-verify:
+    name: Message providers — verify Pact
     runs-on: ubuntu-latest
     timeout-minutes: 15
     needs: consumer
@@ -107,7 +132,7 @@ jobs:
       - name: Download pact artifact
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          name: pact-ws-hub-${{ github.sha }}
+          name: pact-contracts-${{ github.sha }}
           path: tests/contracts/pacts
 
       - name: Download Go module dependencies
@@ -142,6 +167,20 @@ jobs:
           WS_HUB_INTERNAL_SECRET: "contract-test-placeholder-secret-not-for-production" # pragma: allowlist secret
           PACT_DO_NOT_TRACK: "true"
 
+      - name: Download file-processor Go module dependencies
+        run: go mod download
+        working-directory: services/file-processor
+
+      - name: Run file-processor provider contract test
+        run: |
+          go test -tags contract ./internal/contract/... -v -count=1 -timeout 5m
+        working-directory: services/file-processor
+        env:
+          PACT_DIR: ${{ github.workspace }}/tests/contracts/pacts
+          CGO_ENABLED: "1"
+          LD_LIBRARY_PATH: /usr/local/lib
+          PACT_DO_NOT_TRACK: "true"
+
       # ── W20 (audit 2026-07-07): Gateway contract tests ─────────────────────
       # Run the gateway HTTP contract tests (internal/contracts) in the same job
       # so failures are visible alongside the ws-hub pact verification.
@@ -155,3 +194,92 @@ jobs:
         run: go test ./internal/contracts/... -v -count=1
         working-directory: services/gateway
 
+  # Phase 6.1: HTTP provider replay against the real FastAPI application.
+  # The job deliberately starts app.main:app and uses pact-python's Verifier;
+  # an in-process hand-written response cannot make this job pass.
+  pact-provider-verify:
+    name: Pact provider — backend HTTP replay
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: consumer
+    services:
+      postgres:
+        image: pgvector/pgvector:pg17
+        env:
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: test
+        options: >-
+          --health-cmd "pg_isready -U test -d test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+      redis:
+        image: redis:7-alpine
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      ENVIRONMENT: testing
+      DATABASE_URL: postgresql+asyncpg://test:test@localhost:5432/test # pragma: allowlist secret
+      CACHE_REDIS_URL: redis://localhost:6379/0
+      RATE_LIMIT_STORAGE_URI: redis://localhost:6379/1
+      SECRET_KEY: pact-provider-test-secret-with-sufficient-entropy # pragma: allowlist secret
+      PACT_DO_NOT_TRACK: "true"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.14"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
+        with:
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      - name: Install dependencies
+        run: uv sync --frozen
+
+      - name: Download Pact artifacts
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: pact-contracts-${{ github.sha }}
+          path: tests/contracts/pacts
+
+      - name: Apply database migrations
+        run: uv run alembic upgrade head
+
+      - name: Start real backend provider
+        run: |
+          uv run uvicorn app.main:app --host 127.0.0.1 --port 8000 > /tmp/pact-backend.log 2>&1 &
+          echo $! > /tmp/pact-backend.pid
+
+      - name: Wait for backend liveness
+        run: |
+          for attempt in {1..60}; do
+            if curl --fail --silent http://127.0.0.1:8000/health/live > /dev/null; then
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "Backend did not become live"
+          cat /tmp/pact-backend.log
+          exit 1
+
+      - name: Replay gateway Pact against real backend
+        run: |
+          uv run python scripts/quality/verify_pact_provider.py \
+            --pact-file tests/contracts/pacts/gateway-university-backend.json \
+            --provider-url http://127.0.0.1:8000 \
+            --provider university-backend
+
+      - name: Dump backend log on failure
+        if: failure()
+        run: cat /tmp/pact-backend.log

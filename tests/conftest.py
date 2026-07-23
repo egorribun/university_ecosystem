@@ -117,6 +117,59 @@ def anyio_backend() -> str:
     return "asyncio"
 
 
+@pytest.fixture(scope="session")
+def minio_container() -> dict[str, str]:
+    """Start a disposable MinIO cell for opt-in integration tests."""
+    if os.environ.get("USE_TESTCONTAINERS_MINIO") != "1":
+        pytest.skip("Set USE_TESTCONTAINERS_MINIO=1 to run the MinIO cell")
+
+    try:
+        from testcontainers.core.container import DockerContainer
+    except ImportError as error:
+        pytest.skip(f"testcontainers is unavailable: {error}")
+
+    container = (
+        DockerContainer("minio/minio:RELEASE.2025-09-07T16-13-09Z")
+        .with_env("MINIO_ROOT_USER", "minioadmin")
+        .with_env("MINIO_ROOT_PASSWORD", "minioadminsecret")
+        .with_command("server /data")
+        .with_exposed_ports(9000)
+    )
+    with container as started:
+        host = started.get_container_host_ip()
+        port = started.get_exposed_port(9000)
+        yield {
+            "endpoint": f"{host}:{port}",
+            "access_key": "minioadmin",
+            "secret_key": "minioadminsecret",
+        }
+
+
+@pytest.fixture(scope="session")
+def spicedb_container() -> dict[str, str]:
+    """Start an in-memory SpiceDB cell for opt-in ReBAC integration tests."""
+    if os.environ.get("USE_TESTCONTAINERS_SPICEDB") != "1":
+        pytest.skip("Set USE_TESTCONTAINERS_SPICEDB=1 to run the SpiceDB cell")
+
+    try:
+        from testcontainers.core.container import DockerContainer
+    except ImportError as error:
+        pytest.skip(f"testcontainers is unavailable: {error}")
+
+    container = (
+        DockerContainer("authzed/spicedb:v1.49.1")
+        .with_command(
+            "serve --grpc-preshared-key test-spicedb-key "
+            "--datastore-engine memory --grpc-addr 0.0.0.0:50051"
+        )
+        .with_exposed_ports(50051)
+    )
+    with container as started:
+        host = started.get_container_host_ip()
+        port = started.get_exposed_port(50051)
+        yield {"endpoint": f"{host}:{port}", "token": "test-spicedb-key"}
+
+
 @pytest.fixture(scope="session", autouse=True)
 def initialize_database_for_tests():
     """

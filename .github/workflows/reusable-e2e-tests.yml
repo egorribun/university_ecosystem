@@ -176,9 +176,10 @@ jobs:
       # Playwright's webServer.command (per playwright.config.ts:73-110)
       # spins up its own VITE_LHCI=true preview on port 4175 via cross-env,
       # so this step is independent of the default preview started above.
-      # Chromium-only by design (W120 SW7 + W121 SW3 establishes the test
-      # set). The auth bypass active under VITE_LHCI lets the URL-state
-      # spec exercise authenticated routes without real auth.
+      # The URL-state suite remains Chromium-only because its auth bypass and
+      # route-specific diagnostics are intentionally separate from the
+      # cross-browser functional matrix. The regular E2E suite is invoked for
+      # all browser projects by the caller's advisory matrix job.
       #
       # Wave 147 SW5 + SW6 partial structural closure (was W146 polish-v7
       # `continue-on-error: true` honest defer).
@@ -238,6 +239,19 @@ jobs:
           VITE_BACKEND_ORIGIN: http://127.0.0.1:8000
         run: |
           npx playwright test wave179-login-flow.spec.ts \
+            --project=chromium \
+            --reporter=html
+
+      # Phase 7.4: exercise the production Node SSR wrapper and assert that
+      # hashed assets are immutable while the HTML shell is never shared.
+      - name: Run production SSR cache-control contract
+        if: inputs.browser == 'chromium' && inputs.shard-index == 1
+        working-directory: frontend
+        env:
+          PRODUCTION_SERVER_E2E: "true"
+          VITE_BACKEND_ORIGIN: http://127.0.0.1:8000
+        run: |
+          npx playwright test ssr-caching.spec.ts \
             --project=chromium \
             --reporter=html
 

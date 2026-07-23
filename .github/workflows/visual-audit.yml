@@ -58,7 +58,7 @@
 name: Visual Audit (Linux On-Demand)
 
 on:
-  workflow_dispatch:
+  workflow_dispatch: # checkov:skip=CKV_GHA_7:manual input intentionally selects the visual-audit route subset
     inputs:
       routes:
         description: "Comma-separated route subset (empty = full 8-SSR-route sweep). Example: `/dashboard` or `dashboard,events`."

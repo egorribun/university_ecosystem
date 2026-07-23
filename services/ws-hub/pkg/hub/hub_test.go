@@ -39,8 +39,7 @@ func setupTestHub() *Hub {
 		ClientMsgRateBurst:  10,
 	}
 	// We pass nil for nats.Conn and redis.Client to avoid external dependencies.
-	h := NewHub(nil, logger, &mockAuthClient{allowed: true}, cfg, nil)
-	return h
+	return trackTestHub(NewHub(nil, logger, &mockAuthClient{allowed: true}, cfg, nil))
 }
 
 func TestHub_RegisterUnregister(t *testing.T) {

@@ -8,12 +8,15 @@ from __future__ import annotations
 
 import re
 from datetime import UTC, datetime, timedelta
+from types import SimpleNamespace
+from unittest.mock import patch
 from uuid import uuid4
 
 import pytest
 from hypothesis import HealthCheck, given
 from hypothesis import settings as hypo_settings
 from hypothesis import strategies as st
+from hypothesis.stateful import RuleBasedStateMachine, initialize, invariant, rule
 
 # ── 1. Pydantic serialization round-trip ───────────────────────────────────────
 
@@ -255,6 +258,101 @@ def test_cursor_params_validation(limit: int) -> None:
     else:
         with pytest.raises(ValidationError):
             CursorParams(limit=limit)
+
+
+class CircuitBreakerStateMachine(RuleBasedStateMachine):
+    """Exercise circuit-breaker transitions against a deterministic clock."""
+
+    @initialize()
+    def initialize_breaker(self) -> None:
+        from app.core.circuit_breaker import CircuitBreaker, CircuitBreakerConfig
+
+        self.clock = 0.0
+        self.breaker = CircuitBreaker(
+            "hypothesis",
+            config=CircuitBreakerConfig(
+                failure_threshold=3,
+                recovery_timeout_seconds=10.0,
+                success_threshold=2,
+            ),
+        )
+        self.clock_patch = patch(
+            "app.core.circuit_breaker.time",
+            SimpleNamespace(monotonic=lambda: self.clock),
+        )
+        self.clock_patch.start()
+
+    @rule()
+    def record_failure(self) -> None:
+        from app.core.circuit_breaker import CircuitBreakerState
+
+        if self.breaker.state == CircuitBreakerState.OPEN:
+            if self.breaker._get_remaining_open_time() > 0:
+                assert self.breaker._should_allow_request() is False
+                return
+            assert self.breaker._should_allow_request() is True
+        self.breaker._record_failure(RuntimeError("synthetic failure"))
+
+    @rule()
+    def record_success(self) -> None:
+        self.breaker._record_success()
+
+    @rule(seconds=st.integers(min_value=0, max_value=20))
+    def time_advance(self, seconds: int) -> None:
+        self.clock += seconds
+
+    @invariant()
+    def open_breaker_rejects_before_recovery(self) -> None:
+        from app.core.circuit_breaker import CircuitBreakerState
+
+        if self.breaker.state == CircuitBreakerState.OPEN:
+            remaining = self.breaker._get_remaining_open_time()
+            if remaining > 0:
+                assert self.breaker._should_allow_request() is False
+
+    def teardown(self) -> None:
+        self.clock_patch.stop()
+
+
+TestCircuitBreakerStateMachine = CircuitBreakerStateMachine.TestCase
+
+
+class LockoutLifecycleStateMachine(RuleBasedStateMachine):
+    """Model lockout threshold and expiry using LockoutService's pure logic."""
+
+    @initialize()
+    def initialize_lockout(self) -> None:
+        from app.services.auth.lockout import LockoutService
+
+        self.service = LockoutService.__new__(LockoutService)
+        self.service._rules = [(3, 30)]
+        self.now = datetime(2026, 7, 22, tzinfo=UTC)
+        self.attempts: list[SimpleNamespace] = []
+
+    @rule()
+    def record_failed_attempt(self) -> None:
+        self.attempts.append(SimpleNamespace(attempted_at=self.now))
+        self.attempts = self.attempts[-3:]
+
+    @rule()
+    def record_successful_login(self) -> None:
+        self.attempts.clear()
+
+    @rule(seconds=st.integers(min_value=0, max_value=45))
+    def time_advance(self, seconds: int) -> None:
+        self.now += timedelta(seconds=seconds)
+
+    @invariant()
+    def threshold_and_expiry_are_bounded(self) -> None:
+        lock_until = self.service._calculate_lock_until(self.attempts, self.now)
+        if len(self.attempts) < 3:
+            assert lock_until is None
+        elif lock_until is not None:
+            assert lock_until >= self.attempts[0].attempted_at
+            assert lock_until <= self.attempts[0].attempted_at + timedelta(seconds=30)
+
+
+TestLockoutLifecycleStateMachine = LockoutLifecycleStateMachine.TestCase
 
 
 @hypo_settings(max_examples=50)

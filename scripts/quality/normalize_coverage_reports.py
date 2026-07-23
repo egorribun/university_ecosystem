@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import fnmatch
 import hashlib
 import json
 import os
@@ -13,7 +14,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass, field
 from datetime import datetime
 from decimal import ROUND_HALF_UP, Decimal, localcontext
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import NoReturn
 from xml.etree import ElementTree
 
@@ -29,6 +30,7 @@ COMPONENTS = (
     "rust-native",
     "rust-pyo3-sanitizer",
     "rust-wasm-sanitizer",
+    "rust-crypto",
     "infrastructure",
     "workflows",
     "scripts",
@@ -43,6 +45,7 @@ SOURCE_ROOTS = {
     "rust-native": ("native/rust_ext",),
     "rust-pyo3-sanitizer": ("crates/pyo3-sanitizer",),
     "rust-wasm-sanitizer": ("frontend/wasm-sanitizer",),
+    "rust-crypto": ("frontend/rust-crypto",),
     "infrastructure": ("infra", "infrastructure", "k8s", "charts"),
     "workflows": (".github/workflows",),
     "scripts": ("scripts",),
@@ -65,6 +68,10 @@ SUPPORTED_REPORTS = {
         "llvm-cov-json",
         "artifacts/coverage/rust/rust-wasm-sanitizer/llvm.json",
     ),
+    "rust-crypto": (
+        "llvm-cov-json",
+        "artifacts/coverage/rust/rust-crypto/llvm.json",
+    ),
 }
 CANONICAL_RAW_ARTIFACTS = frozenset(
     {
@@ -78,12 +85,13 @@ CANONICAL_RAW_ARTIFACTS = frozenset(
         "artifacts/coverage/rust/rust-native/llvm.json",
         "artifacts/coverage/rust/rust-pyo3-sanitizer/llvm.json",
         "artifacts/coverage/rust/rust-wasm-sanitizer/llvm.json",
+        "artifacts/coverage/rust/rust-crypto/llvm.json",
         "artifacts/coverage/quality-manifest.json",
     }
 )
 GO_COMPONENTS = frozenset({"go-gateway", "go-ws-hub", "go-file-processor"})
 RUST_COMPONENTS = frozenset(
-    {"rust-native", "rust-pyo3-sanitizer", "rust-wasm-sanitizer"}
+    {"rust-native", "rust-pyo3-sanitizer", "rust-wasm-sanitizer", "rust-crypto"}
 )
 SHA_PATTERN = re.compile(r"^[0-9A-Fa-f]{7,64}$")
 TIMESTAMP_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$")
@@ -143,6 +151,7 @@ class _ParsedReport:
     report_format: str
     path: Path
     metrics: dict[str, dict[str, object]]
+    file_metrics: dict[str, dict[str, dict[str, object]]]
     sha256: str
 
 
@@ -1216,6 +1225,311 @@ def _parse_rust_llvm_json(
     }
 
 
+def _parse_tier0_python_files(
+    raw: bytes,
+    component: str,
+    ignore_outside_files: bool = False,
+) -> dict[str, dict[str, dict[str, object]]]:
+    """Extract file-level Python line/branch/function evidence from Cobertura."""
+
+    text = _decode_report(raw, "coverage XML", encoding="utf-8-sig")
+    try:
+        root = ElementTree.fromstring(text)  # noqa: S314
+    except (ElementTree.ParseError, LookupError, ValueError) as error:
+        raise _InputError(f"malformed coverage XML: {error}") from error
+
+    result: dict[str, dict[str, dict[str, object]]] = {}
+    for class_element in root.iter():
+        if _xml_local_name(class_element) != "class":
+            continue
+        filename = class_element.get("filename")
+        if not filename:
+            continue
+        try:
+            source = _canonical_source_identity(component, filename)
+        except _InputError as error:
+            if ignore_outside_files and "configured roots" in str(error):
+                continue
+            raise
+        line_elements = [
+            line
+            for child in class_element
+            if _xml_local_name(child) == "lines"
+            for line in child
+            if _xml_local_name(line) == "line"
+        ]
+        line_hits = [
+            _parse_nonnegative_decimal(line.get("hits"), "Tier0 Python line hits") > 0
+            for line in line_elements
+        ]
+        branch_pairs: list[tuple[int, int]] = []
+        for line in line_elements:
+            condition = line.get("condition-coverage")
+            if condition is None:
+                continue
+            match = CONDITION_COVERAGE_PATTERN.fullmatch(condition)
+            if match is None:
+                raise _InputError("coverage XML has malformed condition-coverage")
+            branch_pairs.append(
+                (
+                    _parse_nonnegative_decimal(
+                        match.group("covered"), "Tier0 branch covered"
+                    ),
+                    _parse_nonnegative_decimal(
+                        match.group("total"), "Tier0 branch total"
+                    ),
+                )
+            )
+        methods = [
+            method
+            for child in class_element
+            if _xml_local_name(child) == "methods"
+            for method in child
+            if _xml_local_name(method) == "method"
+        ]
+        method_hits: list[bool] = []
+        for method in methods:
+            method_lines = [
+                line
+                for child in method
+                if _xml_local_name(child) == "lines"
+                for line in child
+                if _xml_local_name(line) == "line"
+            ]
+            method_hits.append(
+                any(
+                    _parse_nonnegative_decimal(line.get("hits"), "Tier0 method hits")
+                    > 0
+                    for line in method_lines
+                )
+            )
+        functions = (
+            _measured_metric("native", sum(method_hits), len(method_hits))
+            if methods
+            else _unmeasured_metric(
+                "unsupported", reason_code="coverage_xml_has_no_method_breakdown"
+            )
+        )
+        result[source] = {
+            "lines": _measured_metric("native", sum(line_hits), len(line_hits)),
+            "statements": _unmeasured_metric(
+                "unsupported", reason_code="coverage_xml_has_no_statement_counter"
+            ),
+            "branches": (
+                _measured_metric(
+                    "native",
+                    sum(covered for covered, _ in branch_pairs),
+                    sum(total for _, total in branch_pairs),
+                )
+                if branch_pairs
+                else _unmeasured_metric("missing")
+            ),
+            "functions": functions,
+        }
+    return result
+
+
+def _parse_tier0_frontend_files(
+    raw: bytes,
+    component: str,
+    ignore_outside_files: bool = False,
+) -> dict[str, dict[str, dict[str, object]]]:
+    """Extract file-level counters from the already-validated LCOV report."""
+
+    text = _decode_report(raw, "LCOV report")
+    result: dict[str, dict[str, dict[str, object]]] = {}
+    source: str | None = None
+    counters: dict[str, int] = {}
+    for line in (*text.splitlines(), "end_of_record"):
+        field, separator, value = line.partition(":")
+        if field == "SF":
+            try:
+                source = _canonical_source_identity(component, value)
+            except _InputError as error:
+                if ignore_outside_files and "configured roots" in str(error):
+                    source = None
+                    counters = {}
+                    continue
+                raise
+            counters = {}
+        elif field in {"LF", "LH", "BRF", "BRH", "FNF", "FNH"} and separator:
+            if source is not None:
+                counters[field] = _parse_lcov_counter(value, f"Tier0 {field}")
+        elif field == "end_of_record" and source is not None:
+            result[source] = {
+                "lines": _measured_metric(
+                    "native", counters.get("LH", 0), counters.get("LF", 0)
+                ),
+                "statements": _unmeasured_metric(
+                    "unsupported", reason_code="lcov_has_no_statement_counter"
+                ),
+                "branches": (
+                    _measured_metric("native", counters["BRH"], counters["BRF"])
+                    if "BRH" in counters and "BRF" in counters
+                    else _unmeasured_metric("missing")
+                ),
+                "functions": (
+                    _measured_metric("native", counters["FNH"], counters["FNF"])
+                    if "FNH" in counters and "FNF" in counters
+                    else _unmeasured_metric("missing")
+                ),
+            }
+            source = None
+            counters = {}
+    return result
+
+
+def _parse_tier0_go_files(
+    raw: bytes,
+    component: str,
+    ignore_outside_files: bool = False,
+) -> dict[str, dict[str, dict[str, object]]]:
+    """Extract per-file line and statement counters from Go coverprofile."""
+
+    text = _decode_report(raw, "Go coverprofile")
+    statements: defaultdict[str, list[tuple[int, bool]]] = defaultdict(list)
+    intervals: defaultdict[str, list[tuple[int, int, bool]]] = defaultdict(list)
+    for line_number, line in enumerate(text.splitlines()[1:], start=2):
+        if not line.strip():
+            continue
+        match = GO_RECORD_PATTERN.fullmatch(line)
+        if match is None:
+            raise _InputError(f"Go coverprofile record {line_number} is malformed")
+        raw_filename = match.group("filename")
+        try:
+            filename = _canonical_source_identity(component, raw_filename)
+        except _InputError as error:
+            if ignore_outside_files and "configured roots" in str(error):
+                continue
+            raise
+        start = _parse_nonnegative_decimal(
+            match.group("start_line"), "Tier0 Go start line"
+        )
+        end = _parse_nonnegative_decimal(match.group("end_line"), "Tier0 Go end line")
+        count = _parse_nonnegative_decimal(
+            match.group("count"), "Tier0 Go execution count"
+        )
+        statement_count = _parse_nonnegative_decimal(
+            match.group("statements"), "Tier0 Go statements"
+        )
+        statements[filename].append((statement_count, count > 0))
+        intervals[filename].append((start, end, count > 0))
+
+    result: dict[str, dict[str, dict[str, object]]] = {}
+    for filename, entries in statements.items():
+        covered_statements = sum(value for value, covered in entries if covered)
+        total_statements = sum(value for value, _ in entries)
+        covered_lines, total_lines = _go_line_coverage_counts(
+            {filename: intervals[filename]}
+        )
+        result[filename] = {
+            "lines": _measured_metric("derived", covered_lines, total_lines),
+            "statements": _measured_metric(
+                "native", covered_statements, total_statements
+            ),
+            "branches": _unmeasured_metric(
+                "unsupported", reason_code="go_coverprofile_has_no_branch_counter"
+            ),
+            "functions": _unmeasured_metric(
+                "unsupported", reason_code="go_coverprofile_has_no_function_counter"
+            ),
+        }
+    return result
+
+
+def _parse_tier0_rust_files(
+    raw: bytes,
+    component: str,
+    ignore_outside_files: bool = False,
+) -> dict[str, dict[str, dict[str, object]]]:
+    """Extract file summaries when llvm-cov JSON provides them."""
+
+    text = _decode_report(raw, "LLVM JSON report")
+    document = json.loads(
+        text,
+        object_pairs_hook=_duplicate_key_object,
+        parse_constant=_reject_json_constant,
+    )
+    if not isinstance(document, dict):
+        raise _InputError("LLVM JSON root must be an object")
+    entries: list[object] = []
+    if isinstance(document.get("files"), list):
+        entries.extend(document["files"])
+    data = document.get("data")
+    if (
+        isinstance(data, list)
+        and data
+        and isinstance(data[0], dict)
+        and isinstance(data[0].get("files"), list)
+    ):
+        entries.extend(data[0]["files"])
+    result: dict[str, dict[str, dict[str, object]]] = {}
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+        raw_path = entry.get("filename", entry.get("path"))
+        if not isinstance(raw_path, str):
+            continue
+        try:
+            filename = _canonical_source_identity(component, raw_path)
+        except _InputError as error:
+            if ignore_outside_files and "configured roots" in str(error):
+                continue
+            raise
+        summary = entry.get("summary")
+        if not isinstance(summary, dict):
+            summary = {}
+        file_metrics: dict[str, dict[str, object]] = {}
+        for metric_name in METRICS:
+            value = summary.get(metric_name)
+            if isinstance(value, dict):
+                try:
+                    covered = _parse_nonnegative_integer(
+                        value.get("covered"), f"Tier0 LLVM {metric_name} covered"
+                    )
+                    total = _parse_nonnegative_integer(
+                        value.get("count"), f"Tier0 LLVM {metric_name} count"
+                    )
+                except _InputError:
+                    file_metrics[metric_name] = _unmeasured_metric(
+                        "unsupported", reason_code="llvm_file_summary_malformed"
+                    )
+                else:
+                    file_metrics[metric_name] = _measured_metric(
+                        "native", covered, total
+                    )
+            else:
+                file_metrics[metric_name] = _unmeasured_metric(
+                    "unsupported", reason_code=f"llvm_file_has_no_{metric_name}_counter"
+                )
+        result[filename] = file_metrics
+    return result
+
+
+def _parse_tier0_files(
+    raw_report: _RawReport,
+    *,
+    ignore_outside_files: bool,
+) -> dict[str, dict[str, dict[str, object]]]:
+    if raw_report.report_format == "cobertura-xml":
+        return _parse_tier0_python_files(
+            raw_report.raw, raw_report.component, ignore_outside_files
+        )
+    if raw_report.report_format == "lcov":
+        return _parse_tier0_frontend_files(
+            raw_report.raw, raw_report.component, ignore_outside_files
+        )
+    if raw_report.report_format == "go-coverprofile":
+        return _parse_tier0_go_files(
+            raw_report.raw, raw_report.component, ignore_outside_files
+        )
+    if raw_report.report_format == "llvm-cov-json":
+        return _parse_tier0_rust_files(
+            raw_report.raw, raw_report.component, ignore_outside_files
+        )
+    raise _InputError(f"unsupported report format: {raw_report.report_format}")
+
+
 def _resolve_path(value: str) -> Path:
     candidate = Path(value)
     if not candidate.is_absolute():
@@ -1415,6 +1729,10 @@ def _parse_report(
         report_format=raw_report.report_format,
         path=raw_report.path,
         metrics=metrics,
+        file_metrics=_parse_tier0_files(
+            raw_report,
+            ignore_outside_files=ignore_outside_files,
+        ),
         sha256=raw_report.sha256,
     )
 
@@ -1521,6 +1839,92 @@ def _component_entry(
         errors,
         None,
     )
+
+
+def _load_tier0_rules() -> tuple[list[str], str | None]:
+    path = REPOSITORY_ROOT / "quality" / "ownership-mapping.json"
+    try:
+        document = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
+        return [], f"unable to read Tier0 ownership rules: {error}"
+    rules = document.get("tier0_rules") if isinstance(document, dict) else None
+    if not isinstance(rules, list) or not all(
+        isinstance(rule, str) and rule.strip() for rule in rules
+    ):
+        return [], "Tier0 ownership rules must be a non-empty string array"
+    return sorted(set(rule.strip().replace("\\", "/") for rule in rules)), None
+
+
+def _tier0_rule_matches(path: str, rule: str) -> bool:
+    normalized = path.replace("\\", "/")
+    return fnmatch.fnmatchcase(normalized, rule) or PurePosixPath(normalized).match(
+        rule
+    )
+
+
+def _aggregate_tier0(
+    reports_by_component: defaultdict[str, list[_ParsedReport]],
+) -> dict[str, object]:
+    rules, rules_error = _load_tier0_rules()
+    file_records: list[tuple[str, str, dict[str, dict[str, object]]]] = []
+    for component in COMPONENTS:
+        for report in reports_by_component[component]:
+            for path, metrics in report.file_metrics.items():
+                if any(_tier0_rule_matches(path, rule) for rule in rules):
+                    file_records.append((path, component, metrics))
+
+    deduplicated: dict[tuple[str, str], dict[str, dict[str, object]]] = {}
+    for path, component, metrics in file_records:
+        deduplicated[(path, component)] = metrics
+
+    files: list[dict[str, object]] = []
+    errors: list[str] = []
+    if rules_error:
+        errors.append(rules_error)
+    for (path, component), metrics in sorted(deduplicated.items()):
+        files.append({"path": path, "component": component, "metrics": metrics})
+        for metric_name in ("lines", "branches", "functions"):
+            if metrics[metric_name]["status"] not in {"native", "derived"}:
+                errors.append(
+                    f"{path} ({component}).{metric_name} is not natively measured"
+                )
+
+    aggregate: dict[str, dict[str, object]] = {}
+    for metric_name in METRICS:
+        entries = [metrics[metric_name] for _, _, metrics in file_records]
+        if not entries:
+            aggregate[metric_name] = _unmeasured_metric("missing")
+            continue
+        if any(
+            entry["status"] not in {"native", "derived"}
+            or not isinstance(entry["covered"], int)
+            or not isinstance(entry["total"], int)
+            for entry in entries
+        ):
+            aggregate[metric_name] = _unmeasured_metric(
+                "unsupported", reason_code="tier0_file_metric_not_measured"
+            )
+            continue
+        covered = sum(int(entry["covered"]) for entry in entries)
+        total = sum(int(entry["total"]) for entry in entries)
+        if any(entry["status"] == "derived" for entry in entries):
+            aggregate[metric_name] = _measured_metric(
+                "derived",
+                covered,
+                total,
+                derivation="sum of matched Tier0 file metrics",
+            )
+        else:
+            aggregate[metric_name] = _measured_metric("native", covered, total)
+
+    errors = sorted(set(errors))
+    return {
+        "status": "not_observed" if not files else "measurement_only",
+        "rules": rules,
+        "coverage": aggregate,
+        "files": files,
+        "errors": errors,
+    }
 
 
 def _prepare_invocation(arguments: argparse.Namespace) -> _PreparedInvocation:
@@ -1631,6 +2035,7 @@ def _build_manifest(
         },
         "reports": report_entries,
         "components": components,
+        "tier0": _aggregate_tier0(reports_by_component),
         "missing_reports": missing_reports,
         "validation": {
             "valid": not validation_errors,

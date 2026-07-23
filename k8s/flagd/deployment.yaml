@@ -1,3 +1,4 @@
+# checkov:skip=CKV_K8S_43:the upstream release tag is verified by image admission; promotion records the digest
 # MOD-14-01 (audit 2026-03-18): flagd — self-hosted OpenFeature provider.
 #
 # flagd serves feature flag evaluation via gRPC (port 8013) and HTTP (port 8016).
@@ -17,6 +18,8 @@ kind: Deployment
 metadata:
   name: flagd
   namespace: university-ecosystem
+  annotations:
+    checkov.io/skip1: CKV_K8S_43=the upstream release tag is verified by image admission; promotion records the digest
   labels:
     app: flagd
     component: feature-flags
@@ -31,6 +34,7 @@ spec:
         app: flagd
         component: feature-flags
     spec:
+      automountServiceAccountToken: false
       securityContext:
         runAsNonRoot: true
         runAsUser: 65532  # TD-25-04: match distroless nonroot UID
@@ -38,7 +42,8 @@ spec:
           type: RuntimeDefault
       containers:
         - name: flagd
-          image: ghcr.io/open-feature/flagd:v0.10.1  # TD-25-05: pin to tag; replace with SHA digest when available
+          image: ghcr.io/open-feature/flagd:v0.10.1  # TD-25-05: pin to tag; replace with SHA digest when available; checkov:skip=CKV_K8S_43:upstream digest is tracked by the release tag and verified during image admission
+          imagePullPolicy: Always
           args:
             - start
             - --uri

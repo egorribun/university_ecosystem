@@ -200,6 +200,27 @@ async function pipeWebResponse(webResponse, res, extraHeaders) {
   nodeStream.pipe(res)
 }
 
+function protectHtmlFromSharedCaching(webResponse) {
+  const contentType = webResponse.headers.get("content-type") ?? ""
+  if (
+    !contentType.toLowerCase().includes("text/html") ||
+    webResponse.headers.has("cache-control")
+  ) {
+    return webResponse
+  }
+
+  // SSR shells can vary by cookies (theme, locale, and authentication). A
+  // missing cache directive must fail closed: intermediaries must not turn an
+  // HTML response into a shared cache entry by default.
+  const headers = new Headers(webResponse.headers)
+  headers.set("cache-control", "no-store, private, max-age=0")
+  return new Response(webResponse.body, {
+    status: webResponse.status,
+    statusText: webResponse.statusText,
+    headers,
+  })
+}
+
 const server = createServer(async (req, res) => {
   const start = Date.now()
   try {
@@ -232,7 +253,7 @@ const server = createServer(async (req, res) => {
     // Skip for /healthz so the W131 SW2 fast-path response stays clean —
     // probes shouldn't be tagged as SSR-pool traffic.
     const ssrStart = performance.now()
-    const response = await handler.fetch(request)
+    const response = protectHtmlFromSharedCaching(await handler.fetch(request))
     const ssrDur = performance.now() - ssrStart
     // `urlPath` is already declared at the top of this try-block (used for
     // the static-first check). Reuse it for the /healthz Server-Timing

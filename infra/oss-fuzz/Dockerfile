@@ -8,3 +8,7 @@ WORKDIR $SRC/university_ecosystem
 
 COPY infra/oss-fuzz/build.sh $SRC/
 RUN chmod +x "$SRC/build.sh"
+
+# OSS-Fuzz controls this disposable builder image and its runtime isolation.
+# checkov:skip=CKV_DOCKER_2:the image is a fuzzing build container.
+# checkov:skip=CKV_DOCKER_3:the image is a fuzzing build container.

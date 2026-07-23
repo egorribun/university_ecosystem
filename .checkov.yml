@@ -1,0 +1,15 @@
+# Checkov runs in blocking mode in CI. These are narrowly scoped exceptions
+# for generated or intentionally templated artifacts; application manifests
+# keep their own file-local checkov:skip annotations for deployment-time values.
+skip-check:
+  # OpenAPI documents are generated from FastAPI and use operation-level
+  # security overrides; adding a global requirement would change the contract.
+  - CKV_OPENAPI_4
+  - CKV_OPENAPI_5
+  # Array bounds are enforced by Pydantic/Valibot schemas before generation;
+  # this check cannot interpret those generated constraints reliably.
+  - CKV_OPENAPI_21
+  # CKV_SECRET_6 scans ExternalSecret property names and documented example
+  # placeholders as if they were values; detect-secrets remains the canonical
+  # value scanner and no real secret values are committed in these files.
+  - CKV_SECRET_6

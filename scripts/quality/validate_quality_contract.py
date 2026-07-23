@@ -21,6 +21,7 @@ COMPONENTS = (
     "rust-native",
     "rust-pyo3-sanitizer",
     "rust-wasm-sanitizer",
+    "rust-crypto",
     "infrastructure",
     "workflows",
     "scripts",
@@ -70,6 +71,7 @@ EXCLUSION_FIELDS = frozenset(
     }
 )
 QUARANTINE_FIELDS = EXCLUSION_FIELDS | {"test"}
+MUTATION_REGISTRY_FIELDS = frozenset({"version", "exclusions"})
 DATE_PATTERN = re.compile(r"\d{4}-\d{2}-\d{2}")
 WILDCARD_CHARACTERS = "*?[]"
 
@@ -335,7 +337,7 @@ def _validate_register(
         path = _validate_repository_path(
             record.get("path"), f"{record_field}.path", errors
         )
-        if path is not None and register_name == "exclusions":
+        if path is not None and register_name in {"exclusions", "mutation_exclusions"}:
             previous_path = seen_paths.get(path)
             if previous_path is None:
                 seen_paths[path] = index
@@ -454,6 +456,42 @@ def validate_contract(contract: dict[str, object], *, today: date) -> list[str]:
     return errors
 
 
+def _validate_mutation_registry(
+    value: object,
+    *,
+    today: date,
+) -> list[str]:
+    """Validate the separate equivalent-mutant register.
+
+    Mutation exclusions are deliberately kept outside the quality contract so
+    adding an equivalent mutant cannot alter coverage policy metadata.  They
+    still use the same short-lived, evidence-backed register discipline as
+    contract exclusions and quarantines.
+    """
+    errors: list[str] = []
+    registry = _require_object(value, "mutation registry", errors)
+    if registry is None:
+        return errors
+
+    _validate_exact_keys(
+        registry,
+        "mutation registry",
+        MUTATION_REGISTRY_FIELDS,
+        errors,
+    )
+    version = registry.get("version")
+    if not isinstance(version, int) or isinstance(version, bool) or version != 1:
+        errors.append("mutation registry.version must equal 1")
+
+    _validate_register(
+        registry.get("exclusions"),
+        "mutation_exclusions",
+        today=today,
+        errors=errors,
+    )
+    return errors
+
+
 def _duplicate_key_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
     object_value: dict[str, object] = {}
     for key, value in pairs:
@@ -472,11 +510,71 @@ def _parse_arguments(argv: Sequence[str] | None) -> argparse.Namespace:
         description="Validate a version 1 quality contract."
     )
     parser.add_argument("--contract", type=Path, metavar="PATH")
+    parser.add_argument(
+        "--manifest",
+        type=Path,
+        metavar="PATH",
+        help=(
+            "also enforce 100%% line/branch/function coverage for every "
+            "Tier0 file in a normalized coverage manifest"
+        ),
+    )
+    parser.add_argument(
+        "--mutation-registry",
+        type=Path,
+        metavar="PATH",
+        default=REPOSITORY_ROOT / "quality" / "mutation-exclusions.json",
+        help="validate the equivalent-mutant exclusion register",
+    )
     return parser.parse_args(argv)
 
 
 def _print_error(message: str) -> None:
     print(f"ERROR: {message}", file=sys.stderr)
+
+
+def _validate_tier0_manifest(manifest: object) -> list[str]:
+    """Validate the per-file Tier0 enforcement contract.
+
+    The quality contract's aggregate Tier0 floor is necessary but not
+    sufficient: a single under-covered file can be hidden by another file's
+    surplus coverage.  This check is intentionally opt-in so the measurement
+    phase can land before the Tier0 backlog is closed (roadmap Phase 0.4).
+    """
+    if not isinstance(manifest, dict):
+        return ["coverage manifest root must be an object"]
+
+    tier0 = manifest.get("tier0")
+    if not isinstance(tier0, dict):
+        return ["coverage manifest tier0 must be an object"]
+
+    files = tier0.get("files")
+    if not isinstance(files, list) or not files:
+        return ["coverage manifest tier0.files must be a non-empty array"]
+
+    errors: list[str] = []
+    for index, file_record in enumerate(files):
+        if not isinstance(file_record, dict):
+            errors.append(f"tier0.files[{index}] must be an object")
+            continue
+        path = file_record.get("path", f"tier0.files[{index}]")
+        metrics = file_record.get("metrics")
+        if not isinstance(metrics, dict):
+            errors.append(f"{path}.metrics must be an object")
+            continue
+        for metric_name in ("lines", "branches", "functions"):
+            metric = metrics.get(metric_name)
+            if not isinstance(metric, dict):
+                errors.append(f"{path}.{metric_name} is not measured")
+                continue
+            status = metric.get("status")
+            percent = metric.get("percent")
+            if status not in {"native", "derived"} or percent != 100:
+                errors.append(
+                    f"{path}.{metric_name} must equal 100% "
+                    f"(status={status!r}, percent={percent!r})"
+                )
+    return errors
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -523,6 +621,62 @@ def main(argv: Sequence[str] | None = None) -> int:
         for error in errors:
             _print_error(error)
         return 1
+
+    try:
+        mutation_registry_text = arguments.mutation_registry.read_text(encoding="utf-8")
+        mutation_registry = json.loads(
+            mutation_registry_text,
+            object_pairs_hook=_duplicate_key_object,
+            parse_constant=_reject_json_constant,
+        )
+    except _DuplicateKeyError as error:
+        _print_error(f"invalid mutation registry: {error}")
+        return 1
+    except RecursionError:
+        _print_error("invalid mutation registry: nesting exceeds supported depth")
+        return 1
+    except (OSError, UnicodeDecodeError) as error:
+        _print_error(f"unable to read mutation registry: {error}")
+        return 2
+    except (json.JSONDecodeError, ValueError) as error:
+        _print_error(f"invalid mutation registry: {error}")
+        return 1
+
+    registry_errors = _validate_mutation_registry(
+        mutation_registry,
+        today=date.today(),
+    )
+    if registry_errors:
+        for error in registry_errors:
+            _print_error(error)
+        return 1
+
+    if arguments.manifest is not None:
+        try:
+            manifest_text = arguments.manifest.read_text(encoding="utf-8")
+            manifest = json.loads(
+                manifest_text,
+                object_pairs_hook=_duplicate_key_object,
+                parse_constant=_reject_json_constant,
+            )
+        except _DuplicateKeyError as error:
+            _print_error(f"invalid coverage manifest: {error}")
+            return 1
+        except RecursionError:
+            _print_error("invalid coverage manifest: nesting exceeds supported depth")
+            return 1
+        except (OSError, UnicodeDecodeError) as error:
+            _print_error(f"unable to read coverage manifest: {error}")
+            return 2
+        except (json.JSONDecodeError, ValueError) as error:
+            _print_error(f"invalid coverage manifest: {error}")
+            return 1
+
+        manifest_errors = _validate_tier0_manifest(manifest)
+        if manifest_errors:
+            for error in manifest_errors:
+                _print_error(error)
+            return 1
 
     print("Quality contract is valid.")
     return 0

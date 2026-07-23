@@ -74,4 +74,6 @@ COPY --from=builder /app/services/file-processor/schema.graphql ./schema.graphql
 
 USER nonroot:nonroot
 
+# checkov:skip=CKV_DOCKER_2:health is enforced by the Kubernetes probes and compose grpc-health-probe.
+
 CMD ["/app/file-processor"]

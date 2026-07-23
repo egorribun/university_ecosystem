@@ -434,3 +434,9 @@ services/**/mw
 # Quality contract and coverage artifacts
 artifacts/
 
+# Agent superpowers directory
+.superpowers/
+
+
+
+

@@ -1,0 +1,40 @@
+apiVersion: cli.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: disallow-latest-tag
+policies:
+  - ../../cluster-policies.yaml
+resources:
+  - ../compliant-pod.yaml
+  - bad.yaml
+results:
+  - policy: disallow-latest-tag
+    rule: validate-image-tag
+    resources: [university-ecosystem/compliant-pod]
+    kind: Pod
+    result: pass
+  - policy: disallow-latest-tag
+    rule: validate-image-tag
+    resources: [university-ecosystem/latest-image-pod]
+    kind: Pod
+    result: pass
+  - policy: disallow-latest-tag
+    rule: deny-latest-tag
+    resources: [university-ecosystem/compliant-pod]
+    kind: Pod
+    result: pass
+  - policy: disallow-latest-tag
+    rule: deny-latest-tag
+    resources: [university-ecosystem/latest-image-pod]
+    kind: Pod
+    result: fail
+  - policy: disallow-latest-tag
+    rule: validate-image-tag
+    resources: [university-ecosystem/empty-tag-pod]
+    kind: Pod
+    result: fail
+  - policy: disallow-latest-tag
+    rule: deny-latest-tag
+    resources: [university-ecosystem/empty-tag-pod]
+    kind: Pod
+    result: pass

@@ -198,6 +198,7 @@ func TestOptional_DowngradeAndServiceUnavailable(t *testing.T) {
 
 	// Set up Redis error for 503 path verification in verifySession
 	rdb := redis.NewClient(&redis.Options{Addr: "127.0.0.1:9999"}) // unavailable address
+	t.Cleanup(func() { _ = rdb.Close() })
 	middleware.redis = rdb
 
 	// Set L1 cache TTL to zero or empty L1 cache so it misses and hits the unavailable Redis

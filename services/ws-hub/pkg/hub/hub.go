@@ -79,10 +79,11 @@ type Hub struct {
 	clientMsgRateBurst int
 	// ctx is the lifecycle context for the Hub, cancelled when Run() exits.
 	// Used by ReadPump/WritePump goroutines to detect hub shutdown (RZ-24-02).
-	ctx       context.Context
-	ctxCancel context.CancelFunc
-	stopOnce  sync.Once
-	jwksMu    sync.Mutex
+	ctx         context.Context
+	ctxCancel   context.CancelFunc
+	lifecycleMu sync.Mutex
+	stopOnce    sync.Once
+	jwksMu      sync.Mutex
 	// redisClient is the shared Redis connection used for upgrade ticket validation.
 	// RZ-W14-01 (audit 2026-03-23 Wave 14): tickets replace JWT-in-Sec-WebSocket-Protocol.
 	redisClient            *goredis.Client
@@ -159,8 +160,16 @@ func (h *Hub) SetupJWKS(ctx context.Context, jwksURL string) error {
 // h.broadcastWorkers (set from cfg.BroadcastWorkers / WS_BROADCAST_WORKERS
 // env var, default 2×GOMAXPROCS) instead of the hard-coded constant 4.
 func (h *Hub) Run(ctx context.Context) {
-	h.ctx, h.ctxCancel = context.WithCancel(ctx)
-	defer h.ctxCancel()
+	runCtx, runCancel := context.WithCancel(ctx)
+	h.lifecycleMu.Lock()
+	h.ctx, h.ctxCancel = runCtx, runCancel
+	h.lifecycleMu.Unlock()
+	defer func() {
+		runCancel()
+		h.lifecycleMu.Lock()
+		h.ctx, h.ctxCancel = nil, nil
+		h.lifecycleMu.Unlock()
+	}()
 
 	workers := h.broadcastWorkers
 	if workers <= 0 {
@@ -177,7 +186,7 @@ func (h *Hub) Run(ctx context.Context) {
 			defer broadcastWg.Done()
 			defer ActiveGoroutines.Dec()
 			for msg := range broadcastCh {
-				h.broadcastMessage(ctx, msg)
+				h.broadcastMessage(runCtx, msg)
 			}
 		}()
 	}
@@ -188,8 +197,8 @@ func (h *Hub) Run(ctx context.Context) {
 
 	for {
 		select {
-		case <-ctx.Done():
-			h.Logger.InfoContext(ctx, "Hub.Run: context cancelled, stopping loop")
+		case <-runCtx.Done():
+			h.Logger.InfoContext(runCtx, "Hub.Run: context cancelled, stopping loop")
 			close(broadcastCh)
 			broadcastWg.Wait() // RZ-23-07: ensure all broadcast workers drained before return
 			return
@@ -631,6 +640,11 @@ func (h *Hub) StartLimiterCleanup(ctx context.Context) {
 // Stop drains all NATS subscriptions (flushing in-flight messages).
 func (h *Hub) Stop() {
 	h.stopOnce.Do(func() {
+		h.lifecycleMu.Lock()
+		if h.ctxCancel != nil {
+			h.ctxCancel()
+		}
+		h.lifecycleMu.Unlock()
 		for _, sub := range h.subs {
 			if err := sub.Drain(); err != nil {
 				h.Logger.WarnContext(context.Background(), "NATS subscription drain error", "err", err)

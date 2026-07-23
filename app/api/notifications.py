@@ -26,6 +26,7 @@ from app.api.validation import ensure_exists, raise_not_found, raise_validation_
 from app.core.database import get_db, get_read_db
 from app.core.localization import localized_text, resolve_locale, translate
 from app.core.logging import get_logger
+from app.core.middleware import _ensure_vary_header as ensure_vary_header
 from app.core.protocols import AsyncDatabaseSession
 from app.models import Notification, Schedule, User
 from app.schemas.schemas import (
@@ -57,9 +58,7 @@ def _is_missing_column_error(exc: SQLAlchemyError) -> bool:
 
 
 def _ensure_vary_header(response: Response, header_name: str) -> None:
-    from app.main import _ensure_vary_header as ensure_vary
-
-    ensure_vary(response, header_name)
+    ensure_vary_header(response, header_name)
 
 
 def _parse_datetime(value: Any) -> datetime | None:

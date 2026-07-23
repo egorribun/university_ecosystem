@@ -8,6 +8,7 @@ on:
     paths:
       - "services/**/*.go"
       - "crates/**"
+      - "native/rust_ext/**"
       - ".github/workflows/benchmark.yml"
 
 permissions:
@@ -89,9 +90,11 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           # Only push historical data when merging to main; PRs only compare.
           auto-push: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
-          # Gate: reject any benchmark that runs ≥ 110 % of the stored baseline.
+          # Gate: reject any benchmark that runs ≥ 110 % of the stored baseline
+          # on both pull requests and main. A report-only PR would allow a
+          # latency regression to merge before the baseline is updated.
           alert-threshold: "110%"
-          fail-on-alert: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+          fail-on-alert: true
           comment-on-alert: true
 
   # ── W22: Rust Criterion benchmarks (pyo3-sanitizer) ───────────────────────
@@ -141,3 +144,46 @@ jobs:
           alert-threshold: "150%"
           comment-on-alert: true
           fail-on-alert: false
+
+  # Phase 9.2: native optimizer regression baseline. The benchmark uses the
+  # same Criterion bencher output consumed by the existing sanitizer job, but
+  # runs against the actual PyO3/Rayon optimizer crate and has a blocking 10%
+  # slowdown threshold.
+  rust-native-regression:
+    name: Rust Native Optimizer Regression Gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Install stable Rust toolchain
+        uses: dtolnay/rust-toolchain@2c7215f132e9ebf062739d9130488b56d53c060c # stable
+        with:
+          toolchain: stable
+
+      - name: Cache native optimizer build artefacts
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            native/rust_ext/target
+          key: rust-native-bench-${{ runner.os }}-${{ hashFiles('native/rust_ext/Cargo.toml') }}
+          restore-keys: rust-native-bench-${{ runner.os }}-
+
+      - name: Compile native optimizer benchmarks
+        run: cargo bench --manifest-path native/rust_ext/Cargo.toml --bench conflict_bench --no-default-features --no-run
+
+      - name: Run native optimizer benchmarks
+        run: cargo bench --manifest-path native/rust_ext/Cargo.toml --bench conflict_bench --no-default-features -- --output-format bencher | tee rust-native-bench.txt
+
+      - name: Store native optimizer baseline and gate regressions
+        uses: benchmark-action/github-action-benchmark@52576c92bccf6ac60c8223ec7eb2565637cae9ba # v1.22.1
+        with:
+          name: "Rust Native Optimizer Regression Gate"
+          tool: "cargo"
+          output-file-path: "rust-native-bench.txt"
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          auto-push: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+          alert-threshold: "110%"
+          comment-on-alert: true
+          fail-on-alert: true

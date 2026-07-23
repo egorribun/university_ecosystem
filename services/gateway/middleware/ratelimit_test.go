@@ -191,17 +191,23 @@ func TestRateLimiter_Middleware_InMemoryFallbackOnRedisError(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	// Setup RateLimiter with invalid Redis client to trigger Redis connection error
+	redisClient := redis.NewClient(&redis.Options{Addr: "localhost:1"})
 	rl := &RateLimiter{
-		client:           nil,
-		limiter:          redis_rate.NewLimiter(redis.NewClient(&redis.Options{Addr: "localhost:1"})),
+		client:           redisClient,
+		limiter:          redis_rate.NewLimiter(redisClient),
 		rps:              5,
 		fallbackCounters: make(map[string]*fallbackEntry),
 		fallbackLimit:    2,
 		fallbackWindow:   60,
 	}
+	cleanupCtx, cleanupCancel := context.WithCancel(context.Background())
+	t.Cleanup(func() {
+		cleanupCancel()
+		_ = rl.Close()
+	})
 
 	router := gin.New()
-	router.GET("/test", rl.Middleware(context.Background()), func(c *gin.Context) {
+	router.GET("/test", rl.Middleware(cleanupCtx), func(c *gin.Context) {
 		c.Status(http.StatusOK)
 	})
 
@@ -235,6 +241,7 @@ func TestNewRateLimiter_InvalidURLReturnsError(t *testing.T) {
 func TestRateLimiter_GetClient_ReturnsUnderlyingClient(t *testing.T) {
 	// redis.NewClient does not dial, so a white-box struct literal is enough.
 	client := redis.NewClient(&redis.Options{Addr: "localhost:6379"})
+	t.Cleanup(func() { _ = client.Close() })
 	rl := &RateLimiter{client: client}
 	assert.Same(t, client, rl.GetClient())
 }

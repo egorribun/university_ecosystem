@@ -16,6 +16,7 @@ require (
 	github.com/redis/go-redis/extra/redisprometheus/v9 v9.21.0
 	github.com/redis/go-redis/v9 v9.21.0
 	github.com/stretchr/testify v1.11.1
+	go.uber.org/goleak v1.3.0
 	github.com/testcontainers/testcontainers-go v0.43.0
 	github.com/testcontainers/testcontainers-go/modules/redis v0.43.0
 	github.com/zsais/go-gin-prometheus v1.0.3

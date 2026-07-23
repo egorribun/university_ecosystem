@@ -15,6 +15,7 @@ from pydantic import (
 from pydantic_core import PydanticCustomError
 
 from app.core.localization import translate
+from app.models.auth import ChallengeState
 from app.models.enums import UserRole
 from app.schemas.base import SecureBaseModel
 from app.schemas.mappers.user_mapper import (
@@ -240,6 +241,10 @@ class MfaChallengeOut(OrmModel):
     created_at: datetime
     payload: dict[str, Any] | None = None
     attempt_count: int = 0
+    # TD-W5-01: Added after the original payload shape was persisted.  The
+    # default preserves deserialisation of pre-migration payloads that have no
+    # state field; ORM rows created after the migration expose the enum value.
+    state: ChallengeState = ChallengeState.PENDING
 
 
 class MfaFactorStatusOut(BaseModel):

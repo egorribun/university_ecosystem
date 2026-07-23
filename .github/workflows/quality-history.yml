@@ -1,0 +1,71 @@
+name: Quality History
+
+on:
+  schedule:
+    - cron: "30 2 * * *"
+  workflow_dispatch: {}
+
+permissions:
+  actions: read
+  contents: write
+  pull-requests: write
+
+jobs:
+  archive:
+    name: Archive quality manifest and render dashboard
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Install Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.14"
+
+      - name: Collect latest successful CI quality manifest
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          latest="$(gh run list --workflow ci.yml --branch main --status success --limit 1 --json databaseId,headSha --jq '.[0] // empty')"
+          test -n "$latest" || { echo "::error::No successful main CI run found"; exit 1; }
+          run_id="$(jq -r '.databaseId' <<< "$latest")"
+          head_sha="$(jq -r '.headSha' <<< "$latest")"
+          mkdir -p "$RUNNER_TEMP/quality-ci" artifacts/quality/history
+          gh run download "$run_id" --name quality-manifest --dir "$RUNNER_TEMP/quality-ci"
+          manifest_path="$(find "$RUNNER_TEMP/quality-ci" -name quality-manifest.json -print -quit)"
+          test -n "$manifest_path" || { echo "::error::quality-manifest.json missing"; exit 1; }
+          timestamp="$(date -u +%Y%m%dT%H%M%SZ)"
+          cp "$manifest_path" "artifacts/quality/history/${timestamp}-${head_sha}.json"
+
+      - name: Render deterministic dashboard
+        run: python scripts/quality/generate_dashboard.py --limit 30
+
+      - name: Commit quality history
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add artifacts/quality/history docs/testing/dashboard.md
+          if git diff --cached --quiet; then
+            echo "No new quality history to commit."
+            exit 0
+          fi
+          branch="automation/quality-history-$(date -u +%Y%m%dT%H%M%SZ)"
+          git switch -c "$branch"
+          git commit -m "chore(quality): archive quality history"
+          git push --set-upstream origin "$branch"
+          gh pr create \
+            --base main \
+            --head "$branch" \
+            --title "chore(quality): archive quality history" \
+            --body "Automated archive of the latest successful CI quality manifest and dashboard."

@@ -1,0 +1,20 @@
+apiVersion: cli.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: require-drop-all-capabilities
+policies:
+  - ../../cluster-policies.yaml
+resources:
+  - ../compliant-pod.yaml
+  - bad.yaml
+results:
+  - policy: require-drop-all-capabilities
+    rule: check-capabilities-drop-all
+    resources: [university-ecosystem/compliant-pod]
+    kind: Pod
+    result: pass
+  - policy: require-drop-all-capabilities
+    rule: check-capabilities-drop-all
+    resources: [university-ecosystem/capabilities-pod]
+    kind: Pod
+    result: fail

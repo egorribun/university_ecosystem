@@ -25,15 +25,13 @@ except ImportError:
 
 def test_resolve_owner() -> None:
     teams = {
-        "app/api/users": "@backend-team",
-        "app/": "@backend-team",
-        "frontend/src/": "@frontend-team",
+        "app/api/users": "@egorribun",
+        "app/": "@egorribun",
+        "frontend/src/": "@egorribun",
     }
-    assert resolve_owner("app/api/users/router.py", teams) == "@backend-team"
-    assert resolve_owner("app/core/config.py", teams) == "@backend-team"
-    assert (
-        resolve_owner("frontend/src/components/Button.tsx", teams) == "@frontend-team"
-    )
+    assert resolve_owner("app/api/users/router.py", teams) == "@egorribun"
+    assert resolve_owner("app/core/config.py", teams) == "@egorribun"
+    assert resolve_owner("frontend/src/components/Button.tsx", teams) == "@egorribun"
     assert resolve_owner("random_file.txt", teams) is None
 
 

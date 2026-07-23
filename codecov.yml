@@ -1,0 +1,90 @@
+codecov:
+  require_ci_to_pass: true
+
+comment:
+  layout: "condensed_header, diff, flags, files"
+  behavior: default
+  require_changes: false
+  require_base: false
+  require_head: true
+
+coverage:
+  status:
+    project:
+      default:
+        target: auto
+        threshold: 0%
+      python:
+        target: 99%
+        threshold: 0%
+        flags:
+          - python
+      frontend:
+        target: 91%
+        threshold: 0%
+        flags:
+          - frontend
+      go-gateway:
+        target: 99%
+        threshold: 0%
+        flags:
+          - go-gateway
+      go-ws-hub:
+        target: 99%
+        threshold: 0%
+        flags:
+          - go-ws-hub
+      go-file-processor:
+        target: 99%
+        threshold: 0%
+        flags:
+          - go-file-processor
+      rust-native:
+        target: 99%
+        threshold: 0%
+        flags:
+          - rust-native
+      rust-pyo3-sanitizer:
+        target: 99%
+        threshold: 0%
+        flags:
+          - rust-pyo3-sanitizer
+      rust-wasm-sanitizer:
+        target: 99%
+        threshold: 0%
+        flags:
+          - rust-wasm-sanitizer
+      rust-crypto:
+        target: 99%
+        threshold: 0%
+        flags:
+          - rust-crypto
+
+flags:
+  python:
+    paths:
+      - app/
+  frontend:
+    paths:
+      - frontend/src/
+  go-gateway:
+    paths:
+      - services/gateway/
+  go-ws-hub:
+    paths:
+      - services/ws-hub/
+  go-file-processor:
+    paths:
+      - services/file-processor/
+  rust-native:
+    paths:
+      - native/rust_ext/
+  rust-pyo3-sanitizer:
+    paths:
+      - crates/pyo3-sanitizer/
+  rust-wasm-sanitizer:
+    paths:
+      - frontend/wasm-sanitizer/
+  rust-crypto:
+    paths:
+      - frontend/rust-crypto/

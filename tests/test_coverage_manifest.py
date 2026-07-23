@@ -109,6 +109,14 @@ def _write_test_contract(path: Path) -> None:
                     "functions": 98,
                 }
             },
+            "rust-crypto": {
+                "coverage": {
+                    "lines": 99,
+                    "statements": 0,
+                    "branches": 0,
+                    "functions": 98,
+                }
+            },
             "infrastructure": {
                 "coverage": {
                     "lines": 0,
@@ -153,6 +161,7 @@ def _write_test_contract(path: Path) -> None:
             "artifacts/coverage/rust/rust-native/llvm.json",
             "artifacts/coverage/rust/rust-pyo3-sanitizer/llvm.json",
             "artifacts/coverage/rust/rust-wasm-sanitizer/llvm.json",
+            "artifacts/coverage/rust/rust-crypto/llvm.json",
             "artifacts/coverage/quality-manifest.json",
         ],
         "exclusions": [],
@@ -232,6 +241,8 @@ def _full_report_arguments() -> list[str]:
         f"rust-pyo3-sanitizer={rust_report}",
         "--rust-report",
         f"rust-wasm-sanitizer={rust_report}",
+        "--rust-report",
+        f"rust-crypto={rust_report}",
     ]
 
 
@@ -377,6 +388,7 @@ def test_contract_declares_all_canonical_raw_coverage_artifacts() -> None:
         "artifacts/coverage/rust/rust-native/llvm.json",
         "artifacts/coverage/rust/rust-pyo3-sanitizer/llvm.json",
         "artifacts/coverage/rust/rust-wasm-sanitizer/llvm.json",
+        "artifacts/coverage/rust/rust-crypto/llvm.json",
         "artifacts/coverage/quality-manifest.json",
     }.issubset(contract["required_artifacts"])
 
@@ -404,6 +416,7 @@ def test_normalizes_native_reports_with_provenance_and_honest_metadata(
         "rust-native": ["native/rust_ext"],
         "rust-pyo3-sanitizer": ["crates/pyo3-sanitizer"],
         "rust-wasm-sanitizer": ["frontend/wasm-sanitizer"],
+        "rust-crypto": ["frontend/rust-crypto"],
         "scripts": ["scripts"],
         "workflows": [".github/workflows"],
     }
@@ -510,6 +523,60 @@ def test_normalizes_native_reports_with_provenance_and_honest_metadata(
     assert manifest["components"]["python"]["status"] == "failed"
     assert manifest["components"]["infrastructure"]["status"] == "missing"
     assert manifest["validation"]["valid"] is False
+
+
+def test_tier0_measurement_contains_matched_file_evidence_before_enforcement(
+    tmp_path: Path,
+) -> None:
+    output = tmp_path / "quality-manifest.json"
+    report = _write_python_source_fixture(
+        tmp_path,
+        "tier0-python.xml",
+        "app/services/auth/lockout.py",
+    )
+
+    result = _run_normalizer(output, "--python-xml", str(report))
+
+    assert result.returncode == 1
+    manifest = json.loads(output.read_text(encoding="utf-8"))
+    tier0 = manifest["tier0"]
+    assert tier0["status"] == "measurement_only"
+    assert tier0["files"] == [
+        {
+            "component": "python",
+            "metrics": {
+                "branches": {
+                    "covered": 1,
+                    "percent": 50.0,
+                    "status": "native",
+                    "total": 2,
+                },
+                "functions": {
+                    "covered": None,
+                    "percent": None,
+                    "reason_code": "coverage_xml_has_no_method_breakdown",
+                    "status": "unsupported",
+                    "total": None,
+                },
+                "lines": {
+                    "covered": 1,
+                    "percent": 50.0,
+                    "status": "native",
+                    "total": 2,
+                },
+                "statements": {
+                    "covered": None,
+                    "percent": None,
+                    "reason_code": "coverage_xml_has_no_statement_counter",
+                    "status": "unsupported",
+                    "total": None,
+                },
+            },
+            "path": "app/services/auth/lockout.py",
+        }
+    ]
+    assert tier0["coverage"]["lines"]["percent"] == 50.0
+    assert any("functions" in error for error in tier0["errors"])
 
 
 def test_normalizer_output_is_byte_identical_for_fixed_inputs(tmp_path: Path) -> None:
@@ -1326,6 +1393,9 @@ def test_derived_go_line_metric_cannot_satisfy_the_strict_v1_floor(
             "rust-wasm-sanitizer": {
                 "coverage": {"lines": 0, "statements": 0, "branches": 0, "functions": 0}
             },
+            "rust-crypto": {
+                "coverage": {"lines": 0, "statements": 0, "branches": 0, "functions": 0}
+            },
             "infrastructure": {
                 "coverage": {"lines": 0, "statements": 0, "branches": 0, "functions": 0}
             },
@@ -1355,6 +1425,7 @@ def test_derived_go_line_metric_cannot_satisfy_the_strict_v1_floor(
             "artifacts/coverage/rust/rust-native/llvm.json",
             "artifacts/coverage/rust/rust-pyo3-sanitizer/llvm.json",
             "artifacts/coverage/rust/rust-wasm-sanitizer/llvm.json",
+            "artifacts/coverage/rust/rust-crypto/llvm.json",
             "artifacts/coverage/quality-manifest.json",
         ],
         "exclusions": [],
@@ -1614,6 +1685,8 @@ def test_coverage_manifest_schema_is_closed_and_versioned() -> None:
 
     assert schema["$schema"] == "https://json-schema.org/draft/2020-12/schema"
     assert schema["properties"]["schema_version"]["const"] == 1
+    assert "tier0" in schema["required"]
+    assert schema["properties"]["tier0"]["$ref"] == "#/$defs/tier0"
     assert schema["additionalProperties"] is False
     metric_schema = schema["$defs"]["metric"]
     assert metric_schema["additionalProperties"] is False
@@ -1967,6 +2040,9 @@ def test_parser_hardening_preserves_go_nonnegative_profile_positions(
             "rust-wasm-sanitizer": {
                 "coverage": {"lines": 0, "statements": 0, "branches": 0, "functions": 0}
             },
+            "rust-crypto": {
+                "coverage": {"lines": 0, "statements": 0, "branches": 0, "functions": 0}
+            },
             "infrastructure": {
                 "coverage": {"lines": 0, "statements": 0, "branches": 0, "functions": 0}
             },
@@ -1996,6 +2072,7 @@ def test_parser_hardening_preserves_go_nonnegative_profile_positions(
             "artifacts/coverage/rust/rust-native/llvm.json",
             "artifacts/coverage/rust/rust-pyo3-sanitizer/llvm.json",
             "artifacts/coverage/rust/rust-wasm-sanitizer/llvm.json",
+            "artifacts/coverage/rust/rust-crypto/llvm.json",
             "artifacts/coverage/quality-manifest.json",
         ],
         "exclusions": [],

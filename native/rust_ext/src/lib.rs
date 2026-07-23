@@ -4,14 +4,15 @@
 use chrono::{Datelike, Duration, NaiveDate, TimeZone, Utc, Weekday};
 use pyo3::prelude::*;
 use rayon::prelude::*;
-use std::sync::Mutex;
+use std::any::Any;
+use std::fmt::Display;
+use std::sync::{LockResult, Mutex, MutexGuard};
 
-// pyo3 0.29 (RUSTSEC-2026-0176/-0177 bump): the automatic FromPyObject derive
-// for Clone #[pyclass] types is becoming opt-in. ScheduleItem is extracted from
-// Python as Vec<ScheduleItem>/&ScheduleItem in the #[pyfunction]s below, so it
-// needs the derive — opt in explicitly (behavior-preserving + forward-compatible
-// with the pyo3 release that removes the auto-derive).
-#[pyclass(from_py_object)]
+// pyo3 0.29 (RUSTSEC-2026-0176/-0177 bump): the automatic FromPyObject
+// implementation for Clone #[pyclass] types is no longer implicit. The explicit
+// manual implementations below preserve extraction from Python while keeping the
+// conversion path directly testable and forward-compatible with future PyO3.
+#[pyclass(skip_from_py_object)]
 #[derive(Clone, Debug)]
 pub struct ScheduleItem {
     #[pyo3(get, set)]
@@ -26,18 +27,76 @@ pub struct ScheduleItem {
     pub parity: String,
 }
 
+impl<'py> FromPyObject<'_, 'py> for ScheduleItem {
+    type Error = PyErr;
+
+    fn extract(obj: pyo3::Borrowed<'_, 'py, PyAny>) -> Result<Self, Self::Error> {
+        Ok(obj.cast::<Self>()?.borrow().clone())
+    }
+}
+
 // Python 3.13+ free-threaded builds can enter the same PyO3 function from
-// multiple OS threads without a process-wide GIL.  PyO3's derived
-// `FromPyObject` implementation for a `#[pyclass]` therefore needs a small
-// serialization point while it borrows the Python object and clones its
-// fields.  After extraction, `ScheduleItem` is owned Rust data and all
-// conflict work remains fully parallel.
+// multiple OS threads without a process-wide GIL. The manual `FromPyObject`
+// implementation therefore needs a small serialization point while it borrows
+// the Python object and clones its fields. After extraction, `ScheduleItem` is
+// owned Rust data and all conflict work remains fully parallel.
 static SCHEDULE_ITEM_EXTRACT_LOCK: Mutex<()> = Mutex::new(());
 
-fn schedule_item_extract_guard() -> PyResult<std::sync::MutexGuard<'static, ()>> {
-    SCHEDULE_ITEM_EXTRACT_LOCK.lock().map_err(|_| {
+fn mutex_guard_or_py_err<'a>(
+    result: LockResult<MutexGuard<'a, ()>>,
+) -> PyResult<MutexGuard<'a, ()>> {
+    result.map_err(|_| {
         pyo3::exceptions::PyRuntimeError::new_err("ScheduleItem extraction lock is poisoned")
     })
+}
+
+fn schedule_item_extract_guard() -> PyResult<std::sync::MutexGuard<'static, ()>> {
+    mutex_guard_or_py_err(SCHEDULE_ITEM_EXTRACT_LOCK.lock())
+}
+
+fn panic_to_py_err(context: &str, panic: Box<dyn Any + Send>) -> PyErr {
+    let msg = if let Some(s) = panic.downcast_ref::<&str>() {
+        s.to_string()
+    } else if let Some(s) = panic.downcast_ref::<String>() {
+        s.clone()
+    } else {
+        "Unknown panic".to_string()
+    };
+    pyo3::exceptions::PyRuntimeError::new_err(format!("Rust panic in {context}: {msg}"))
+}
+
+fn catch_unwind_value<T, F>(context: &str, operation: F) -> PyResult<T>
+where
+    F: FnOnce() -> T + std::panic::UnwindSafe,
+{
+    std::panic::catch_unwind(operation).map_err(|panic| panic_to_py_err(context, panic))
+}
+
+fn catch_unwind_result<T, F>(context: &str, operation: F) -> PyResult<T>
+where
+    F: FnOnce() -> PyResult<T> + std::panic::UnwindSafe,
+{
+    catch_unwind_value(context, operation)?
+}
+
+fn build_rayon_pool(threads: usize) -> PyResult<rayon::ThreadPool> {
+    if threads == 0 {
+        return Err(pyo3::exceptions::PyValueError::new_err(
+            "RUST_EXT_THREADS must be greater than zero",
+        ));
+    }
+    rayon::ThreadPoolBuilder::new()
+        .num_threads(threads)
+        .build()
+        .map_err(rayon_pool_build_error)
+}
+
+fn rayon_pool_build_error<E: Display>(error: E) -> PyErr {
+    pyo3::exceptions::PyRuntimeError::new_err(format!("Failed to build rayon thread pool: {error}"))
+}
+
+fn hmac_key_error<E: Display>(_error: E) -> PyErr {
+    pyo3::exceptions::PyValueError::new_err("Invalid HMAC key length")
 }
 
 #[pymethods]
@@ -92,25 +151,15 @@ fn detect_conflicts(
     target: ScheduleItem,
     existing: Vec<ScheduleItem>,
 ) -> PyResult<Vec<ScheduleItem>> {
-    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        existing
-            .into_iter()
-            .filter(|item| check_conflict_proto(&target, item))
-            .collect()
-    }))
-    .map_err(|e| {
-        let msg = if let Some(s) = e.downcast_ref::<&str>() {
-            s.to_string()
-        } else if let Some(s) = e.downcast_ref::<String>() {
-            s.clone()
-        } else {
-            "Unknown panic".to_string()
-        };
-        pyo3::exceptions::PyRuntimeError::new_err(format!(
-            "Rust panic in detect_conflicts: {}",
-            msg
-        ))
-    })
+    catch_unwind_value(
+        "detect_conflicts",
+        std::panic::AssertUnwindSafe(|| {
+            existing
+                .into_iter()
+                .filter(|item| check_conflict_proto(&target, item))
+                .collect()
+        }),
+    )
 }
 
 // PERF-05 (audit Wave 13): explicit constant — centralises the DoS guard limit
@@ -120,72 +169,55 @@ const MAX_CONFLICT_ITEMS: usize = 2500;
 pub fn batch_detect_conflicts(
     items: Vec<ScheduleItem>,
 ) -> PyResult<Vec<(ScheduleItem, ScheduleItem)>> {
-    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        if items.len() > MAX_CONFLICT_ITEMS {
-            return Err(pyo3::exceptions::PyValueError::new_err(format!(
-                "Input exceeds maximum allowed items ({MAX_CONFLICT_ITEMS}) for batch detection"
-            )));
-        }
-
-        // TD-W18-02 (audit 2026-03-23 Wave 18): use a bounded thread pool instead of
-        // rayon's global pool (which defaults to logical CPU count). On a 64-core
-        // server this would spawn 64 threads; with Python free-threading (3.13+),
-        // concurrent calls could saturate all CPU cores.
-        //
-        // LOW-W19: replaced .expect() with map_err()+? so a rayon build failure
-        // surfaces as a Python RuntimeError instead of an unconditional panic.
-        // OnceLock::get_or_init cannot return an error, so we initialise outside
-        // the closure and cache only successfully-built pools.
-        use std::sync::OnceLock;
-        static POOL: OnceLock<rayon::ThreadPool> = OnceLock::new();
-        let pool = match POOL.get() {
-            Some(p) => p,
-            None => {
-                let threads = std::env::var("RUST_EXT_THREADS")
-                    .ok()
-                    .and_then(|v| v.parse().ok())
-                    .unwrap_or(4usize);
-                let built = rayon::ThreadPoolBuilder::new()
-                    .num_threads(threads)
-                    .build()
-                    .map_err(|e| {
-                        pyo3::exceptions::PyRuntimeError::new_err(format!(
-                            "Failed to build rayon thread pool: {e}"
-                        ))
-                    })?;
-                // If another thread raced us, discard our pool and use theirs.
-                POOL.get_or_init(|| built)
+    catch_unwind_result(
+        "batch_detect_conflicts",
+        std::panic::AssertUnwindSafe(|| {
+            if items.len() > MAX_CONFLICT_ITEMS {
+                return Err(pyo3::exceptions::PyValueError::new_err(format!(
+                    "Input exceeds maximum allowed items ({MAX_CONFLICT_ITEMS}) for batch detection"
+                )));
             }
-        };
 
-        let conflicts = pool.install(|| {
-            items
-                .par_iter()
-                .enumerate()
-                .flat_map_iter(|(i, a)| {
-                    items[i + 1..]
-                        .iter()
-                        .filter(move |b| check_conflict_proto(a, b))
-                        .map(move |b| (a.clone(), b.clone()))
-                })
-                .collect()
-        });
+            // TD-W18-02 (audit 2026-03-23 Wave 18): use a bounded thread pool instead of
+            // rayon's global pool (which defaults to logical CPU count). On a 64-core
+            // server this would spawn 64 threads; with Python free-threading (3.13+),
+            // concurrent calls could saturate all CPU cores.
+            //
+            // LOW-W19: replaced .expect() with map_err()+? so a rayon build failure
+            // surfaces as a Python RuntimeError instead of an unconditional panic.
+            // OnceLock::get_or_init cannot return an error, so we initialise outside
+            // the closure and cache only successfully-built pools.
+            use std::sync::OnceLock;
+            static POOL: OnceLock<rayon::ThreadPool> = OnceLock::new();
+            let pool = match POOL.get() {
+                Some(p) => p,
+                None => {
+                    let threads = std::env::var("RUST_EXT_THREADS")
+                        .ok()
+                        .and_then(|v| v.parse().ok())
+                        .unwrap_or(4usize);
+                    let built = build_rayon_pool(threads)?;
+                    // If another thread raced us, discard our pool and use theirs.
+                    POOL.get_or_init(|| built)
+                }
+            };
 
-        Ok(conflicts)
-    }))
-    .map_err(|e| {
-        let msg = if let Some(s) = e.downcast_ref::<&str>() {
-            s.to_string()
-        } else if let Some(s) = e.downcast_ref::<String>() {
-            s.clone()
-        } else {
-            "Unknown panic".to_string()
-        };
-        pyo3::exceptions::PyRuntimeError::new_err(format!(
-            "Rust panic in batch_detect_conflicts: {}",
-            msg
-        ))
-    })?
+            let conflicts = pool.install(|| {
+                items
+                    .par_iter()
+                    .enumerate()
+                    .flat_map_iter(|(i, a)| {
+                        items[i + 1..]
+                            .iter()
+                            .filter(move |b| check_conflict_proto(a, b))
+                            .map(move |b| (a.clone(), b.clone()))
+                    })
+                    .collect()
+            });
+
+            Ok(conflicts)
+        }),
+    )
 }
 
 #[pyfunction(name = "batch_detect_conflicts")]
@@ -224,23 +256,27 @@ fn find_optimal_slot(
     existing_schedule: Vec<ScheduleItem>,
     available_blocks: Vec<(String, Vec<u32>)>,
 ) -> PyResult<Option<ScheduleItem>> {
-    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        let today = Utc::now().date_naive();
+    catch_unwind_value(
+        "find_optimal_slot",
+        std::panic::AssertUnwindSafe(|| {
+            let today = Utc::now().date_naive();
 
-        for (day, hours) in available_blocks {
-            // TD-W17-03: Resolve the actual next date matching this weekday.
-            let target_wd = match parse_weekday(&day) {
-                Some(wd) => wd,
-                None => continue, // Skip unparseable weekday names.
-            };
-            let target_date = next_weekday(today, target_wd);
+            for (day, hours) in available_blocks {
+                // TD-W17-03: Resolve the actual next date matching this weekday.
+                let target_wd = match parse_weekday(&day) {
+                    Some(wd) => wd,
+                    None => continue, // Skip unparseable weekday names.
+                };
+                let target_date = next_weekday(today, target_wd);
 
-            for hour in hours {
-                let start_date_time = target_date
-                    .and_hms_opt(hour, 0, 0)
-                    .map(|ndt| Utc.from_utc_datetime(&ndt));
+                for hour in hours {
+                    let start_date_time = target_date
+                        .and_hms_opt(hour, 0, 0)
+                        .map(|ndt| Utc.from_utc_datetime(&ndt));
 
-                if let Some(start_dt) = start_date_time {
+                    let Some(start_dt) = start_date_time else {
+                        continue;
+                    };
                     let end_dt = start_dt + Duration::minutes(duration_minutes as i64);
 
                     let candidate = ScheduleItem {
@@ -259,22 +295,9 @@ fn find_optimal_slot(
                     }
                 }
             }
-        }
-        None
-    }))
-    .map_err(|e| {
-        let msg = if let Some(s) = e.downcast_ref::<&str>() {
-            s.to_string()
-        } else if let Some(s) = e.downcast_ref::<String>() {
-            s.clone()
-        } else {
-            "Unknown panic".to_string()
-        };
-        pyo3::exceptions::PyRuntimeError::new_err(format!(
-            "Rust panic in find_optimal_slot: {}",
-            msg
-        ))
-    })
+            None
+        }),
+    )
 }
 
 /// Find the next date (today or later) that falls on the given weekday.
@@ -300,12 +323,9 @@ pub fn parse_weekday(s: &str) -> Option<Weekday> {
     }
 }
 
-// pyo3 0.29 (RUSTSEC-2026-0176/-0177 bump): the automatic FromPyObject derive
-// for Clone #[pyclass] types is becoming opt-in. ScheduleItem is extracted from
-// Python as Vec<ScheduleItem>/&ScheduleItem in the #[pyfunction]s below, so it
-// needs the derive — opt in explicitly (behavior-preserving + forward-compatible
-// with the pyo3 release that removes the auto-derive).
-#[pyclass(from_py_object)]
+// See the ScheduleItem comment above: this class also uses an explicit
+// FromPyObject implementation so extraction behavior remains covered directly.
+#[pyclass(skip_from_py_object)]
 #[derive(Clone, Debug)]
 pub struct PartitionInfo {
     #[pyo3(get)]
@@ -316,63 +336,59 @@ pub struct PartitionInfo {
     pub end_date: String,
 }
 
+impl<'py> FromPyObject<'_, 'py> for PartitionInfo {
+    type Error = PyErr;
+
+    fn extract(obj: pyo3::Borrowed<'_, 'py, PyAny>) -> Result<Self, Self::Error> {
+        Ok(obj.cast::<Self>()?.borrow().clone())
+    }
+}
+
+fn utc_month_start(year: i32, month: u32, error_message: &str) -> PyResult<chrono::DateTime<Utc>> {
+    Utc.with_ymd_and_hms(year, month, 1, 0, 0, 0)
+        .single()
+        .ok_or_else(|| pyo3::exceptions::PyValueError::new_err(error_message.to_string()))
+}
+
 #[pyfunction]
 pub fn get_partition_info(table_name: String, month_offset: i32) -> PyResult<PartitionInfo> {
-    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        // LOW-W19: reject month_offset values that would cause integer overflow or
-        // produce a nonsensical date (e.g. offset going back before year 1 or
-        // forward beyond year 9999).  Reasonable operational range is ±120 months (10 years).
-        if !(-120..=120).contains(&month_offset) {
-            return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
-                "month_offset {month_offset} is out of the allowed range [-120, 120]"
-            )));
-        }
-        let now = Utc::now();
-        // RZ-33-24: Use div_euclid/rem_euclid for correct negative month_offset
-        // arithmetic.  Rust's `/` and `%` truncate toward zero, which produces
-        // wrong results when total_months is zero or negative (e.g., January with
-        // month_offset=-1 should yield December of the previous year, not month 0).
-        let zero_indexed = now.month() as i32 - 1 + month_offset;
-        let target_year = now.year() + zero_indexed.div_euclid(12);
-        let target_month = (zero_indexed.rem_euclid(12) + 1) as u32;
+    catch_unwind_result(
+        "get_partition_info",
+        std::panic::AssertUnwindSafe(|| {
+            // LOW-W19: reject month_offset values that would cause integer overflow or
+            // produce a nonsensical date (e.g. offset going back before year 1 or
+            // forward beyond year 9999).  Reasonable operational range is ±120 months (10 years).
+            if !(-120..=120).contains(&month_offset) {
+                return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+                    "month_offset {month_offset} is out of the allowed range [-120, 120]"
+                )));
+            }
+            let now = Utc::now();
+            // RZ-33-24: Use div_euclid/rem_euclid for correct negative month_offset
+            // arithmetic.  Rust's `/` and `%` truncate toward zero, which produces
+            // wrong results when total_months is zero or negative (e.g., January with
+            // month_offset=-1 should yield December of the previous year, not month 0).
+            let zero_indexed = now.month() as i32 - 1 + month_offset;
+            let target_year = now.year() + zero_indexed.div_euclid(12);
+            let target_month = (zero_indexed.rem_euclid(12) + 1) as u32;
 
-        let start_date = Utc
-            .with_ymd_and_hms(target_year, target_month, 1, 0, 0, 0)
-            .single()
-            .ok_or_else(|| PyErr::new::<pyo3::exceptions::PyValueError, _>("Invalid date"))?;
+            let start_date = utc_month_start(target_year, target_month, "Invalid date")?;
 
-        let (next_year, next_month) = if target_month == 12 {
-            (target_year + 1, 1)
-        } else {
-            (target_year, target_month + 1)
-        };
+            let (next_year, next_month) = if target_month == 12 {
+                (target_year + 1, 1)
+            } else {
+                (target_year, target_month + 1)
+            };
 
-        let end_date = Utc
-            .with_ymd_and_hms(next_year, next_month, 1, 0, 0, 0)
-            .single()
-            .ok_or_else(|| {
-                PyErr::new::<pyo3::exceptions::PyValueError, _>("Invalid next month date")
-            })?;
+            let end_date = utc_month_start(next_year, next_month, "Invalid next month date")?;
 
-        Ok(PartitionInfo {
-            name: format!("{}_y{}m{:02}", table_name, target_year, target_month),
-            start_date: start_date.to_rfc3339(),
-            end_date: end_date.to_rfc3339(),
-        })
-    }))
-    .map_err(|e| {
-        let msg = if let Some(s) = e.downcast_ref::<&str>() {
-            s.to_string()
-        } else if let Some(s) = e.downcast_ref::<String>() {
-            s.clone()
-        } else {
-            "Unknown panic".to_string()
-        };
-        pyo3::exceptions::PyRuntimeError::new_err(format!(
-            "Rust panic in get_partition_info: {}",
-            msg
-        ))
-    })?
+            Ok(PartitionInfo {
+                name: format!("{}_y{}m{:02}", table_name, target_year, target_month),
+                start_date: start_date.to_rfc3339(),
+                end_date: end_date.to_rfc3339(),
+            })
+        }),
+    )
 }
 
 #[pyfunction]
@@ -381,70 +397,60 @@ pub fn is_partition_expired(
     table_name: String,
     retention_days: i64,
 ) -> PyResult<bool> {
-    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        // LOW-W19: a negative retention_days would make the cutoff a future timestamp,
-        // causing every partition to appear un-expired.  Reject it defensively.
-        if retention_days < 0 {
-            return false;
-        }
-        let prefix = format!("{}_y", table_name);
-        if !partition_name.starts_with(&prefix) {
-            return false;
-        }
+    catch_unwind_value(
+        "is_partition_expired",
+        std::panic::AssertUnwindSafe(|| {
+            // LOW-W19: a negative retention_days would make the cutoff a future timestamp,
+            // causing every partition to appear un-expired.  Reject it defensively.
+            if retention_days < 0 {
+                return false;
+            }
+            let prefix = format!("{}_y", table_name);
+            if !partition_name.starts_with(&prefix) {
+                return false;
+            }
 
-        let parts: Vec<&str> = partition_name
-            .trim_start_matches(&prefix)
-            .split('m')
-            .collect();
-        if parts.len() != 2 {
-            return false;
-        }
+            let parts: Vec<&str> = partition_name
+                .trim_start_matches(&prefix)
+                .split('m')
+                .collect();
+            if parts.len() != 2 {
+                return false;
+            }
 
-        // TD-W17-04 (Wave 17): Explicit error handling instead of unwrap_or(0).
-        // The previous pattern hid parse errors; a future refactor removing the
-        // guard below would silently treat malformed partitions as valid.
-        let p_year: i32 = match parts[0].parse() {
-            Ok(v) => v,
-            Err(_) => return false,
-        };
-        let p_month: u32 = match parts[1].parse() {
-            Ok(v) => v,
-            Err(_) => return false,
-        };
+            // TD-W17-04 (Wave 17): Explicit error handling instead of unwrap_or(0).
+            // The previous pattern hid parse errors; a future refactor removing the
+            // guard below would silently treat malformed partitions as valid.
+            let p_year: i32 = match parts[0].parse() {
+                Ok(v) => v,
+                Err(_) => return false,
+            };
+            let p_month: u32 = match parts[1].parse() {
+                Ok(v) => v,
+                Err(_) => return false,
+            };
 
-        if p_year == 0 || p_month == 0 || p_month > 12 {
-            return false;
-        }
+            if p_year == 0 || p_month == 0 || p_month > 12 {
+                return false;
+            }
 
-        let (next_year, next_month) = if p_month == 12 {
-            (p_year + 1, 1)
-        } else {
-            (p_year, p_month + 1)
-        };
+            let (next_year, next_month) = if p_month == 12 {
+                (p_year + 1, 1)
+            } else {
+                (p_year, p_month + 1)
+            };
 
-        if let Some(p_end_date) = Utc
-            .with_ymd_and_hms(next_year, next_month, 1, 0, 0, 0)
-            .single()
-        {
-            let cutoff = Utc::now() - Duration::days(retention_days);
-            return p_end_date < cutoff;
-        }
+            if let Some(p_end_date) = Utc
+                .with_ymd_and_hms(next_year, next_month, 1, 0, 0, 0)
+                .single()
+            {
+                let cutoff = Utc::now() - Duration::days(retention_days);
+                return p_end_date < cutoff;
+            }
 
-        false
-    }))
-    .map_err(|e| {
-        let msg = if let Some(s) = e.downcast_ref::<&str>() {
-            s.to_string()
-        } else if let Some(s) = e.downcast_ref::<String>() {
-            s.clone()
-        } else {
-            "Unknown panic".to_string()
-        };
-        pyo3::exceptions::PyRuntimeError::new_err(format!(
-            "Rust panic in is_partition_expired: {}",
-            msg
-        ))
-    })
+            false
+        }),
+    )
 }
 
 use hmac::{Hmac, Mac};
@@ -456,35 +462,25 @@ pub fn verify_audit_signature(
     log_data: String,
     signature: String,
 ) -> PyResult<bool> {
-    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        let sig_bytes = match hex::decode(&signature) {
-            Ok(b) => b,
-            Err(_) => return Ok(false),
-        };
+    catch_unwind_result(
+        "verify_audit_signature",
+        std::panic::AssertUnwindSafe(|| {
+            let sig_bytes = match hex::decode(&signature) {
+                Ok(b) => b,
+                Err(_) => return Ok(false),
+            };
 
-        for key_str in signing_keys {
-            let mut mac = Hmac::<Sha256>::new_from_slice(key_str.as_bytes())
-                .map_err(|_| pyo3::exceptions::PyValueError::new_err("Invalid HMAC key length"))?;
-            mac.update(log_data.as_bytes());
-            if mac.verify_slice(&sig_bytes).is_ok() {
-                return Ok(true);
+            for key_str in signing_keys {
+                let mut mac =
+                    Hmac::<Sha256>::new_from_slice(key_str.as_bytes()).map_err(hmac_key_error)?;
+                mac.update(log_data.as_bytes());
+                if mac.verify_slice(&sig_bytes).is_ok() {
+                    return Ok(true);
+                }
             }
-        }
-        Ok(false)
-    }))
-    .map_err(|e| {
-        let msg = if let Some(s) = e.downcast_ref::<&str>() {
-            s.to_string()
-        } else if let Some(s) = e.downcast_ref::<String>() {
-            s.clone()
-        } else {
-            "Unknown panic".to_string()
-        };
-        pyo3::exceptions::PyRuntimeError::new_err(format!(
-            "Rust panic in verify_audit_signature: {}",
-            msg
-        ))
-    })?
+            Ok(false)
+        }),
+    )
 }
 
 /// A Python module implemented in Rust.
@@ -589,6 +585,10 @@ mod tests {
             let part_info = get_partition_info_py
                 .call1(("notifications", 0i32))
                 .unwrap();
+            let parsed_part_info: PartitionInfo = part_info.extract().unwrap();
+            assert!(parsed_part_info.name.contains("notifications"));
+            let invalid_part_info: PyResult<PartitionInfo> = py.None().extract(py);
+            assert!(invalid_part_info.is_err());
             assert!(part_info
                 .getattr("name")
                 .unwrap()
@@ -655,6 +655,23 @@ mod tests {
         assert!(info.name.starts_with("events_y"));
     }
 
+    #[test]
+    fn partition_info_december_rolls_into_january() {
+        let month = Utc::now().month() as i32;
+        let offset = 12 - month;
+        let info = get_partition_info("events".to_string(), offset).unwrap();
+        assert!(info.name.ends_with("m12"));
+        assert!(info.end_date.contains("-01-01T00:00:00+00:00"));
+    }
+
+    #[test]
+    fn invalid_month_start_is_reported_without_panic() {
+        Python::initialize();
+        let result = utc_month_start(2026, 13, "invalid month");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("invalid month"));
+    }
+
     // -- is_partition_expired edge cases --
 
     #[test]
@@ -695,6 +712,19 @@ mod tests {
     fn expired_negative_retention() {
         // Negative retention_days → defensively returns false.
         assert!(!is_partition_expired("tbl_y2020m01".to_string(), "tbl".to_string(), -1).unwrap());
+    }
+
+    #[test]
+    fn expired_december_partition_is_parsed() {
+        assert!(is_partition_expired("tbl_y2020m12".to_string(), "tbl".to_string(), 1).unwrap());
+    }
+
+    #[test]
+    fn expired_out_of_range_year_returns_false() {
+        assert!(
+            !is_partition_expired("tbl_y2147483647m01".to_string(), "tbl".to_string(), 90,)
+                .unwrap()
+        );
     }
 
     // -- verify_audit_signature edge cases --
@@ -774,6 +804,120 @@ mod tests {
         assert!(check_conflict_proto(&item1, &item2));
         // Not conflicting: different weekdays
         assert!(!check_conflict_proto(&item1, &item3));
+
+        let odd = ScheduleItem {
+            parity: "odd".to_string(),
+            ..item1.clone()
+        };
+        let even = ScheduleItem {
+            parity: "even".to_string(),
+            ..item2.clone()
+        };
+        assert!(!check_conflict_proto(&odd, &even));
+    }
+
+    #[test]
+    fn panic_mapping_covers_all_payload_shapes() {
+        Python::initialize();
+        let borrowed = catch_unwind_value::<(), _>(
+            "borrowed",
+            std::panic::AssertUnwindSafe(|| std::panic::panic_any("boom")),
+        )
+        .unwrap_err();
+        assert!(borrowed
+            .to_string()
+            .contains("Rust panic in borrowed: boom"));
+
+        let owned = catch_unwind_value::<(), _>(
+            "owned",
+            std::panic::AssertUnwindSafe(|| std::panic::panic_any(String::from("owned boom"))),
+        )
+        .unwrap_err();
+        assert!(owned
+            .to_string()
+            .contains("Rust panic in owned: owned boom"));
+
+        let unknown = catch_unwind_value::<(), _>(
+            "unknown",
+            std::panic::AssertUnwindSafe(|| std::panic::panic_any(42_u8)),
+        )
+        .unwrap_err();
+        assert!(unknown
+            .to_string()
+            .contains("Rust panic in unknown: Unknown panic"));
+
+        let success = catch_unwind_result("success", std::panic::AssertUnwindSafe(|| Ok(7_u8)));
+        assert_eq!(success.unwrap(), 7);
+    }
+
+    #[test]
+    fn poisoned_mutex_is_converted_to_python_error() {
+        Python::initialize();
+        let lock = std::sync::Arc::new(Mutex::new(()));
+        let worker_lock = std::sync::Arc::clone(&lock);
+        let worker = std::thread::spawn(move || {
+            let _guard = worker_lock.lock().unwrap();
+            panic!("poison test");
+        });
+        assert!(worker.join().is_err());
+
+        let result = mutex_guard_or_py_err(lock.lock());
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("ScheduleItem extraction lock is poisoned"));
+    }
+
+    #[test]
+    fn invalid_rayon_pool_is_reported_without_panic() {
+        Python::initialize();
+        let result = build_rayon_pool(0);
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("RUST_EXT_THREADS must be greater than zero"));
+    }
+
+    #[test]
+    fn error_mapping_helpers_preserve_context() {
+        Python::initialize();
+        let rayon_error = rayon_pool_build_error("synthetic failure");
+        assert!(rayon_error
+            .to_string()
+            .contains("Failed to build rayon thread pool: synthetic failure"));
+
+        let hmac_error = hmac_key_error("synthetic key failure");
+        assert!(hmac_error.to_string().contains("Invalid HMAC key length"));
+    }
+
+    #[test]
+    fn find_optimal_slot_returns_none_without_candidates() {
+        assert!(find_optimal_slot(60, Vec::new(), Vec::new())
+            .unwrap()
+            .is_none());
+    }
+
+    #[test]
+    fn find_optimal_slot_returns_none_when_all_candidates_conflict() {
+        let day = "monday".to_string();
+        let date = next_weekday(Utc::now().date_naive(), Weekday::Mon);
+        let start = Utc
+            .from_utc_datetime(&date.and_hms_opt(0, 0, 0).unwrap())
+            .timestamp();
+        let existing = vec![ScheduleItem {
+            id: Some(1),
+            weekday: day.clone(),
+            start_time: start,
+            end_time: start + 3600,
+            parity: "both".to_string(),
+        }];
+        let available = vec![(day, vec![0])];
+
+        assert!(find_optimal_slot(60, existing, available)
+            .unwrap()
+            .is_none());
     }
 
     #[test]

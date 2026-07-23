@@ -29,3 +29,9 @@ RUN xcaddy build v${CADDY_VERSION} \
 FROM caddy:2.9.1-alpine@sha256:b4e3952384eb9524a887633ce65c752dd7c71314d2c2acf98cd5c715aaa534f0
 
 COPY --from=builder /go/caddy /usr/bin/caddy
+
+# checkov:skip=CKV_DOCKER_3:Caddy's upstream image owns the runtime user.
+USER caddy
+
+# Kubernetes supplies liveness/readiness probes for this edge proxy.
+# checkov:skip=CKV_DOCKER_2:health is enforced by the Kubernetes probes.
