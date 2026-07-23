@@ -64,7 +64,7 @@ def _validate_id_type(id_val: uuid.UUID | int) -> None:
         # Prevent SQLite/Postgres 64-bit signed integer overflow
         if not (-9223372036854775808 <= id_val <= 9223372036854775807):
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail="ID out of 64-bit integer range.",
             )
 
@@ -347,25 +347,14 @@ async def upload_event_image(
 
     await scan_for_malware(file, locale=locale, size_bytes=file.size)
 
-    from contextlib import suppress
-
-    from app.utils.files import delete_static_file
-
-    url = ""
-    try:
-        # RZ-003: Upload to 'tmp/' prefix. A MinIO lifecycle policy will reap
-        # objects in this prefix that are older than 24h, mitigating storage DoS
-        # from abandoned uploads. A separate worker or client action must copy
-        # the file to permanent storage when the event is actually saved.
-        url = await save_upload(
-            file, "tmp/event_images", f"event_{event_id}", locale=locale
-        )
-        return {"url": url}
-    except Exception:  # RZ-22-01-JUSTIFIED: re-raise-after-cleanup — cleanup uploaded file then re-raise (reviewed TD-27-04)
-        if url:
-            with suppress(Exception):
-                await delete_static_file(str(url))
-        raise
+    # RZ-003: Upload to 'tmp/' prefix. A MinIO lifecycle policy will reap
+    # objects in this prefix that are older than 24h, mitigating storage DoS
+    # from abandoned uploads. A separate worker or client action must copy
+    # the file to permanent storage when the event is actually saved.
+    url = await save_upload(
+        file, "tmp/event_images", f"event_{event_id}", locale=locale
+    )
+    return {"url": url}
 
 
 @router.patch("/{event_id}", response_model=schemas.EventOut)
