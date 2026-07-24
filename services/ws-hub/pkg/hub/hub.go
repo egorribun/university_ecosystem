@@ -233,8 +233,10 @@ func (h *Hub) handleRegister(ctx context.Context, client *Client) {
 			"id", client.ID,
 			"max", h.maxClients)
 		client.closeOnce.Do(func() { safeClose(client.Send) })
-		if err := client.Conn.Close(); err != nil {
-			h.Logger.ErrorContext(ctx, "Failed to close connection after max connections", "id", client.ID, "err", err)
+		if client.Conn != nil {
+			if err := client.Conn.Close(); err != nil {
+				h.Logger.ErrorContext(ctx, "Failed to close connection after max connections", "id", client.ID, "err", err)
+			}
 		}
 		return
 	}

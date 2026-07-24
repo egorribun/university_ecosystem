@@ -18,6 +18,9 @@ package hub
 
 import (
 	"context"
+	"errors"
+	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -75,7 +78,7 @@ func newClientOn(h *Hub, serverConn *websocket.Conn, id, userID string) *Client 
 	return &Client{
 		ID:     id,
 		UserID: userID,
-		Conn:   serverConn,
+		Conn:   NewWebSocketSession(serverConn),
 		Rooms:  make(map[string]bool),
 		Send:   make(chan []byte, 8),
 		Hub:    h,
@@ -98,6 +101,41 @@ func TestSafeSend(t *testing.T) {
 	closed := make(chan []byte, 1)
 	close(closed)
 	assert.False(t, safeSend(closed, []byte("x")), "send on closed channel recovers to false")
+}
+
+func TestSafeClose_MapCleanup(t *testing.T) {
+	ch := make(chan []byte, 4)
+	assert.True(t, safeSend(ch, []byte("payload")))
+
+	chMu.Lock()
+	_, inMap := chMutexes[ch]
+	chMu.Unlock()
+	assert.True(t, inMap, "channel should be registered in chMutexes after safeSend")
+
+	safeClose(ch)
+
+	chMu.Lock()
+	_, inMapAfterClose := chMutexes[ch]
+	chMu.Unlock()
+	assert.False(t, inMapAfterClose, "channel should be removed from chMutexes after safeClose")
+
+	// safeSend on already closed channel should return false and not leak map entry
+	assert.False(t, safeSend(ch, []byte("late payload")))
+
+	chMu.Lock()
+	_, inMapLate := chMutexes[ch]
+	chMu.Unlock()
+	assert.False(t, inMapLate, "safeSend on closed channel should not leave entry in chMutexes")
+}
+
+func TestIsNormalCloseError(t *testing.T) {
+	assert.True(t, isNormalCloseError(nil))
+	assert.True(t, isNormalCloseError(io.EOF))
+	assert.True(t, isNormalCloseError(net.ErrClosed))
+	assert.True(t, isNormalCloseError(&websocket.CloseError{Code: websocket.CloseNormalClosure}))
+	assert.True(t, isNormalCloseError(&websocket.CloseError{Code: websocket.CloseGoingAway}))
+	assert.True(t, isNormalCloseError(errors.New("QUIC normal closure")))
+	assert.False(t, isNormalCloseError(errors.New("unexpected database connection drop")))
 }
 
 // ---------------------------------------------------------------------------

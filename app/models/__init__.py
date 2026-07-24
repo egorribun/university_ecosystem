@@ -65,6 +65,7 @@ from app.models.events import (
     EventFile as EventFile,
 )
 from app.models.failed_outbox_events import FailedOutboxEvent as FailedOutboxEvent
+from app.models.grade import Grade as Grade
 from app.models.logs import DataAccessLog as DataAccessLog
 from app.models.news import (
     News as News,

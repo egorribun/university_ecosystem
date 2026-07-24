@@ -13,6 +13,8 @@ import (
 
 	"github.com/nats-io/nats.go"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"github.com/quic-go/quic-go/http3"
+	"github.com/quic-go/webtransport-go"
 	"github.com/redis/go-redis/v9"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 
@@ -168,6 +170,10 @@ func setupHandlers(h *hub.Hub, cfg *config.Config, logger *slog.Logger, nc *nats
 		h.HandleWebSocket(w, r, cfg)
 	}), "websocket_upgrade"))
 
+	http.Handle("/wt", otelhttp.NewHandler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		h.HandleWebTransport(w, r, cfg)
+	}), "webtransport_upgrade"))
+
 	// MOD-W17-05 (Wave 17): Separated liveness from readiness.
 	// /health/live — always returns 200 if the process is running (K8s liveness).
 	// /health/ready — checks NATS, Redis, and JWKS (K8s readiness).
@@ -244,14 +250,42 @@ func runServer(cfg *config.Config, logger *slog.Logger, h *hub.Hub) {
 		MaxHeaderBytes:    1 << 13,
 	}
 
+	wtPort := cfg.WebTransportPort
+	if wtPort == "" {
+		wtPort = "8443"
+	}
+
+	wtServer := &webtransport.Server{
+		H3: &http3.Server{
+			Addr: ":" + wtPort,
+		},
+		CheckOrigin: func(r *http.Request) bool {
+			return true
+		},
+	}
+
 	// RZ-33-07: Use channel-based error propagation instead of os.Exit in
 	// goroutine — ensures deferred cleanup (NATS close, Redis close, tracer
 	// shutdown) always executes. Matches gateway pattern (RZ-31-01).
-	errChan := make(chan error, 1)
+	errChan := make(chan error, 2)
 	go func() {
-		logger.InfoContext(context.Background(), "Starting WebSocket Hub", "port", cfg.Port)
-		if err := server.ListenAndServe(); err != http.ErrServerClosed {
+		logger.InfoContext(context.Background(), "Starting WebSocket Hub (TCP)", "port", cfg.Port)
+		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			errChan <- err
+		}
+	}()
+
+	go func() {
+		logger.InfoContext(context.Background(), "Starting WebTransport Hub (UDP HTTP/3)", "port", wtPort)
+		var err error
+		if cfg.TLSCertFile != "" && cfg.TLSKeyFile != "" {
+			err = wtServer.ListenAndServeTLS(cfg.TLSCertFile, cfg.TLSKeyFile)
+		} else {
+			logger.WarnContext(context.Background(), "WebTransport TLS cert files not configured; attempting ListenAndServe fallback")
+			err = wtServer.ListenAndServe()
+		}
+		if err != nil && err != http.ErrServerClosed {
+			logger.WarnContext(context.Background(), "WebTransport HTTP/3 listener stopped", "err", err)
 		}
 	}()
 
@@ -269,6 +303,7 @@ func runServer(cfg *config.Config, logger *slog.Logger, h *hub.Hub) {
 	defer shutdownCancel()
 
 	h.Stop()
+	_ = wtServer.Close()
 	if err := server.Shutdown(shutdownCtx); err != nil {
 		logger.ErrorContext(context.Background(), "Server forced to shutdown", "err", err)
 	}

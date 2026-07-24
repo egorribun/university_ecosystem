@@ -483,6 +483,84 @@ pub fn verify_audit_signature(
     )
 }
 
+#[pyfunction]
+pub fn verify_event_chain(
+    signing_keys: Vec<String>,
+    initial_prev_hash: String,
+    chain_events: Vec<(String, String, String, String, String)>,
+) -> PyResult<(bool, usize, String)> {
+    catch_unwind_result(
+        "verify_event_chain",
+        std::panic::AssertUnwindSafe(|| {
+            if chain_events.is_empty() {
+                return Ok((true, 0, String::new()));
+            }
+
+            if signing_keys.is_empty() {
+                return Ok((false, 0, "No signing keys provided".to_string()));
+            }
+
+            let mut current_prev_hash = initial_prev_hash;
+
+            for (idx, (event_id, prev_hash, canonical_payload, timestamp_iso, stored_hash)) in
+                chain_events.into_iter().enumerate()
+            {
+                if prev_hash != current_prev_hash {
+                    return Ok((
+                        false,
+                        idx,
+                        format!(
+                            "Chain discontinuity at index {} (event {}): expected prev_hash {}, got {}",
+                            idx, event_id, current_prev_hash, prev_hash
+                        ),
+                    ));
+                }
+
+                let sig_bytes = match hex::decode(&stored_hash) {
+                    Ok(b) => b,
+                    Err(_) => {
+                        return Ok((
+                            false,
+                            idx,
+                            format!(
+                                "Payload or hash tampering detected at event {} (invalid hex hash)",
+                                event_id
+                            ),
+                        ));
+                    }
+                };
+
+                let data = format!("{}|{}|{}", prev_hash, canonical_payload, timestamp_iso);
+                let mut hash_valid = false;
+
+                for key_str in &signing_keys {
+                    let mut mac = match Hmac::<Sha256>::new_from_slice(key_str.as_bytes()) {
+                        Ok(m) => m,
+                        Err(_) => continue,
+                    };
+                    mac.update(data.as_bytes());
+                    if mac.verify_slice(&sig_bytes).is_ok() {
+                        hash_valid = true;
+                        break;
+                    }
+                }
+
+                if !hash_valid {
+                    return Ok((
+                        false,
+                        idx,
+                        format!("Payload or hash tampering detected at event {}", event_id),
+                    ));
+                }
+
+                current_prev_hash = stored_hash;
+            }
+
+            Ok((true, 0, String::new()))
+        }),
+    )
+}
+
 /// A Python module implemented in Rust.
 #[pymodule]
 fn rust_ext(m: &Bound<'_, PyModule>) -> PyResult<()> {
@@ -494,6 +572,7 @@ fn rust_ext(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(get_partition_info, m)?)?;
     m.add_function(wrap_pyfunction!(is_partition_expired, m)?)?;
     m.add_function(wrap_pyfunction!(verify_audit_signature, m)?)?;
+    m.add_function(wrap_pyfunction!(verify_event_chain, m)?)?;
     // PERF-05: expose limit so Python callers can validate before calling into Rust.
     m.add("MAX_CONFLICT_ITEMS", MAX_CONFLICT_ITEMS)?;
     Ok(())
@@ -766,6 +845,59 @@ mod tests {
             verify_audit_signature(vec!["key".to_string()], "data".to_string(), "".to_string());
         assert!(result.is_ok());
         assert!(!result.ok().unwrap());
+    }
+
+    #[test]
+    fn test_verify_event_chain_success() {
+        let key = "secret_key_12345678901234567890123";
+        let h0 = "0".repeat(64);
+
+        let p1 = r#"{"aggregate_id":"1","aggregate_type":"schedule","event_type":"SCHEDULE_CREATED","payload":{"room":"101"},"version":1}"#;
+        let t1 = "2026-07-24T12:00:00+00:00";
+        let d1 = format!("{}|{}|{}", h0, p1, t1);
+        let mut mac1 = Hmac::<Sha256>::new_from_slice(key.as_bytes()).unwrap();
+        mac1.update(d1.as_bytes());
+        let h1 = hex::encode(mac1.finalize().into_bytes());
+
+        let p2 = r#"{"aggregate_id":"1","aggregate_type":"schedule","event_type":"SCHEDULE_UPDATED","payload":{"room":"202"},"version":2}"#;
+        let t2 = "2026-07-24T12:05:00+00:00";
+        let d2 = format!("{}|{}|{}", h1, p2, t2);
+        let mut mac2 = Hmac::<Sha256>::new_from_slice(key.as_bytes()).unwrap();
+        mac2.update(d2.as_bytes());
+        let h2 = hex::encode(mac2.finalize().into_bytes());
+
+        let chain = vec![
+            ("evt-1".to_string(), h0.clone(), p1.to_string(), t1.to_string(), h1.clone()),
+            ("evt-2".to_string(), h1.clone(), p2.to_string(), t2.to_string(), h2.clone()),
+        ];
+
+        let res = verify_event_chain(vec![key.to_string()], h0, chain).unwrap();
+        assert!(res.0);
+        assert_eq!(res.1, 0);
+        assert_eq!(res.2, "");
+    }
+
+    #[test]
+    fn test_verify_event_chain_discontinuity() {
+        let key = "secret_key_12345678901234567890123";
+        let h0 = "0".repeat(64);
+
+        let p1 = r#"{"payload":"1"}"#;
+        let t1 = "2026-07-24T12:00:00+00:00";
+        let d1 = format!("{}|{}|{}", h0, p1, t1);
+        let mut mac1 = Hmac::<Sha256>::new_from_slice(key.as_bytes()).unwrap();
+        mac1.update(d1.as_bytes());
+        let h1 = hex::encode(mac1.finalize().into_bytes());
+
+        let chain = vec![
+            ("evt-1".to_string(), h0.clone(), p1.to_string(), t1.to_string(), h1.clone()),
+            ("evt-2".to_string(), "bad_prev_hash".to_string(), "p2".to_string(), "t2".to_string(), "h2".to_string()),
+        ];
+
+        let res = verify_event_chain(vec![key.to_string()], h0, chain).unwrap();
+        assert!(!res.0);
+        assert_eq!(res.1, 1);
+        assert!(res.2.contains("Chain discontinuity"));
     }
 
     #[test]

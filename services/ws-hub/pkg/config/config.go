@@ -80,6 +80,10 @@ type Config struct {
 	SpiffeTrustDomain    string
 	SpiffeMyID           string
 	BackendSpiffeID      string
+	// WebTransport UDP port and TLS cert paths
+	WebTransportPort string
+	TLSCertFile      string
+	TLSKeyFile       string
 }
 
 // LoadConfig initializes Config from environment variables.
@@ -117,20 +121,23 @@ func LoadConfig() *Config {
 		// PERF-21-04 (audit 2026-03-25 Wave 21): Cap at 12 to prevent NATS
 		// connection saturation on high-core nodes. Backpressure (drop + Nak)
 		// provides a safety net for bursts beyond worker capacity.
-		BroadcastWorkers:   min(getEnvInt("WS_BROADCAST_WORKERS", runtime.GOMAXPROCS(0)*2), 12),
-		InternalSecret:     os.Getenv("WS_HUB_INTERNAL_SECRET"), // no default — empty secret allows HMAC forgery
-		MaxClients:         getEnvInt("WS_HUB_MAX_CLIENTS", 10000),
-		ClientMsgRateLimit: getEnvFloat("WS_CLIENT_MSG_RATE_LIMIT", 10),
-		ClientMsgRateBurst: getEnvInt("WS_CLIENT_MSG_BURST", 20),
-		TicketTTLSeconds:   getEnvInt("WS_TICKET_TTL_SECONDS", 15),
-		RedisURL:           getEnv("REDIS_URL", "redis:6379"),
-		RedisPassword:      getEnv("REDIS_PASSWORD", ""),
-		RedisDB:            getEnvInt("REDIS_DB", 0),
+		BroadcastWorkers:     min(getEnvInt("WS_BROADCAST_WORKERS", runtime.GOMAXPROCS(0)*2), 12),
+		InternalSecret:       os.Getenv("WS_HUB_INTERNAL_SECRET"), // no default — empty secret allows HMAC forgery
+		MaxClients:           getEnvInt("WS_HUB_MAX_CLIENTS", 10000),
+		ClientMsgRateLimit:   getEnvFloat("WS_CLIENT_MSG_RATE_LIMIT", 10),
+		ClientMsgRateBurst:   getEnvInt("WS_CLIENT_MSG_BURST", 20),
+		TicketTTLSeconds:     getEnvInt("WS_TICKET_TTL_SECONDS", 15),
+		RedisURL:             getEnv("REDIS_URL", "redis:6379"),
+		RedisPassword:        getEnv("REDIS_PASSWORD", ""),
+		RedisDB:              getEnvInt("REDIS_DB", 0),
 		SpiffeEnabled:        os.Getenv("SPIFFE_ENABLED") == "true",
 		SpiffeEndpointSocket: getEnv("SPIFFE_ENDPOINT_SOCKET", "unix:///run/spire/sockets/agent.sock"),
 		SpiffeTrustDomain:    getEnv("SPIFFE_TRUST_DOMAIN", "university.ecosystem"),
 		SpiffeMyID:           getEnv("SPIFFE_MY_ID", "spiffe://university.ecosystem/ns/default/sa/ws-hub"),
 		BackendSpiffeID:      getEnv("BACKEND_SPIFFE_ID", "spiffe://university.ecosystem/ns/default/sa/app"),
+		WebTransportPort:     getEnv("WS_HUB_WT_PORT", getEnv("WT_PORT", "8443")),
+		TLSCertFile:          getEnv("TLS_CERT_FILE", ""),
+		TLSKeyFile:           getEnv("TLS_KEY_FILE", ""),
 	}
 }
 

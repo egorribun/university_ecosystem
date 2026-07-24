@@ -408,6 +408,8 @@ async def prepare_database() -> AsyncIterator[None]:
                 payload JSON NOT NULL,
                 metadata JSON,
                 version INTEGER NOT NULL DEFAULT 1,
+                prev_hash VARCHAR(64),
+                hash VARCHAR(64),
                 subject VARCHAR(255),
                 status VARCHAR(20) NOT NULL DEFAULT 'pending',
                 trace_context JSON,

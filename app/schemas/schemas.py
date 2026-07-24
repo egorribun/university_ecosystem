@@ -818,3 +818,14 @@ class AuditLogOut(BaseModel):
 class AuditLogListOut(BaseModel):
     items: list[AuditLogOut]
     total: int
+
+
+class TimeTravelResponse(BaseModel):
+    aggregate_type: str
+    aggregate_id: uuid.UUID
+    target_timestamp: datetime
+    state_at_timestamp: dict[str, Any] | None
+    version_at_timestamp: int | None = None
+    events_replayed: int
+    chain_integrity_valid: bool
+    tampered_event_id: str | None = None

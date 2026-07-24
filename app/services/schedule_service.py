@@ -63,6 +63,27 @@ class ScheduleService:
             )
 
         schedule = await self.repo.create(data, creator_id=creator_id)
+        payload = {
+            "group_id": str(schedule.group_id),
+            "subject": schedule.subject,
+            "teacher": schedule.teacher,
+            "room": schedule.room,
+            "weekday": schedule.weekday,
+            "start_time": schedule.start_time,
+            "end_time": schedule.end_time,
+            "parity": schedule.parity,
+            "lesson_type": schedule.lesson_type,
+        }
+        from app.services.audit_service import get_secure_audit_service
+
+        await get_secure_audit_service().record_domain_event(
+            self.uow.session,
+            event_type="SCHEDULE_CREATED",
+            aggregate_type="schedule",
+            aggregate_id=schedule.id,
+            payload=payload,
+            actor_id=creator_id,
+        )
         async with self.uow:
             await self.uow.commit()
 
@@ -84,6 +105,29 @@ class ScheduleService:
         updated = await self.repo.update(schedule_id, data)
         if updated is None:
             raise ValueError(translate("errors.schedule.not_found"))
+
+        payload = {
+            "current_state": {
+                "group_id": str(updated.group_id),
+                "subject": updated.subject,
+                "teacher": updated.teacher,
+                "room": updated.room,
+                "weekday": updated.weekday,
+                "start_time": updated.start_time,
+                "end_time": updated.end_time,
+                "parity": updated.parity,
+                "lesson_type": updated.lesson_type,
+            }
+        }
+        from app.services.audit_service import get_secure_audit_service
+
+        await get_secure_audit_service().record_domain_event(
+            self.uow.session,
+            event_type="SCHEDULE_UPDATED",
+            aggregate_type="schedule",
+            aggregate_id=updated.id,
+            payload=payload,
+        )
         async with self.uow:
             await self.uow.commit()
         return updated
@@ -92,6 +136,17 @@ class ScheduleService:
         sched = await self.repo.get(schedule_id)
         if not sched:
             return False
+
+        payload = {"deleted": True, "subject": sched.subject}
+        from app.services.audit_service import get_secure_audit_service
+
+        await get_secure_audit_service().record_domain_event(
+            self.uow.session,
+            event_type="SCHEDULE_DELETED",
+            aggregate_type="schedule",
+            aggregate_id=schedule_id,
+            payload=payload,
+        )
 
         await self.repo.delete(schedule_id)
         async with self.uow:

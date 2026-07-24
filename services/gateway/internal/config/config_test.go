@@ -350,3 +350,46 @@ func TestLoad_JWKSRefreshIntervalFallback(t *testing.T) {
 	assert.NotNil(t, cfg)
 	assert.Equal(t, 300, cfg.JWKSRefreshInterval)
 }
+
+func TestGetEnvBool(t *testing.T) {
+	const key = "TEST_BOOL_XYZ"
+
+	tests := []struct {
+		name     string
+		setEnv   bool
+		envValue string
+		def      bool
+		want     bool
+	}{
+		{name: "unset returns default true", setEnv: false, def: true, want: true},
+		{name: "unset returns default false", setEnv: false, def: false, want: false},
+		{name: "valid true string is parsed", setEnv: true, envValue: "true", def: false, want: true},
+		{name: "valid false string is parsed", setEnv: true, envValue: "false", def: true, want: false},
+		{name: "invalid boolean returns default", setEnv: true, envValue: "not_a_bool", def: true, want: true},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if tc.setEnv {
+				t.Setenv(key, tc.envValue)
+			} else {
+				_ = os.Unsetenv(key)
+			}
+
+			got := getEnvBool(key, tc.def)
+			assert.Equal(t, tc.want, got)
+		})
+	}
+}
+
+func TestLoad_H3AndWebTransportDefaults(t *testing.T) {
+	t.Setenv("JWT_SECRET", "test-secret-at-least-32-chars-long")
+
+	cfg, err := Load()
+	assert.NoError(t, err)
+	assert.True(t, cfg.H3Enabled)
+	assert.Equal(t, "8443", cfg.H3Port)
+	assert.Equal(t, 2592000, cfg.H3AltSvcMaxAge)
+	assert.Equal(t, "http://ws-hub:8081", cfg.WsHubURL)
+}
+

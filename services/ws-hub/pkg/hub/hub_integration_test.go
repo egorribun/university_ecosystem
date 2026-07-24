@@ -453,7 +453,7 @@ func TestIntegration_HandleRegisterMaxClients(t *testing.T) {
 		Send:  make(chan []byte, 1),
 		Hub:   h,
 		ctx:   ctx,
-		Conn:  serverSideConn,
+		Conn:  NewWebSocketSession(serverSideConn),
 	}
 	h.handleRegister(ctx, c3)
 
@@ -632,7 +632,7 @@ func TestIntegration_NATSCacheInvalidation(t *testing.T) {
 	t.Cleanup(cleanup)
 
 	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelWarn}))
-	internalSecret := "integration-test-secret"
+	internalSecret := "integration-test-secret" // pragma: allowlist secret
 	cfg := &config.Config{
 		MaxClients:          10,
 		BroadcastBufferSize: 4,

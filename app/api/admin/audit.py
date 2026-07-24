@@ -1,3 +1,4 @@
+from datetime import UTC, datetime
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -158,3 +159,70 @@ async def list_audit_logs(
         )
 
     return schemas.AuditLogListOut(items=items, total=total)
+
+
+@router.get("/time-travel", response_model=schemas.TimeTravelResponse)
+async def get_time_travel_state(
+    aggregate_type: str = Query(
+        ..., description="Aggregate type: 'schedule', 'grade', 'user', 'assessment'"
+    ),
+    aggregate_id: UUID = Query(..., description="UUID of the aggregate entity"),
+    target_timestamp: datetime | None = Query(
+        None, alias="target_timestamp", description="Target timestamp in ISO format"
+    ),
+    timestamp: datetime | None = Query(
+        None, alias="timestamp", description="Target timestamp alias"
+    ),
+    verify_chain: bool = Query(
+        True, description="Verify HMAC chain integrity up to target timestamp"
+    ),
+    db: AsyncSession = Depends(get_db),
+    secure_audit: SecureAuditService = Depends(get_secure_audit_service_dep),
+    _: models.User = Depends(get_current_admin_user),
+) -> schemas.TimeTravelResponse:
+    """Reconstruct state of an aggregate entity at a target timestamp in history."""
+    ts = target_timestamp or timestamp
+    if not ts:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Missing required query parameter: target_timestamp or timestamp",
+        )
+
+    allowed_types = {"schedule", "grade", "user", "assessment"}
+    if aggregate_type.lower() not in allowed_types:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "error": "invalid_aggregate_type",
+                "allowed": sorted(allowed_types),
+            },
+        )
+
+    if ts.tzinfo is None:
+        ts = ts.replace(tzinfo=UTC)
+
+    state, count, is_valid = await secure_audit.reconstruct_state(
+        db,
+        aggregate_type=aggregate_type.lower(),
+        aggregate_id=aggregate_id,
+        target_timestamp=ts,
+        verify_chain=verify_chain,
+    )
+
+    if state is None and count == 0:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"No event history found for {aggregate_type}:{aggregate_id} prior to {ts.isoformat()}",
+        )
+
+    version_at_t = state.get("_version") if isinstance(state, dict) else None
+
+    return schemas.TimeTravelResponse(
+        aggregate_type=aggregate_type,
+        aggregate_id=aggregate_id,
+        target_timestamp=ts,
+        state_at_timestamp=state,
+        version_at_timestamp=version_at_t,
+        events_replayed=count,
+        chain_integrity_valid=is_valid,
+    )

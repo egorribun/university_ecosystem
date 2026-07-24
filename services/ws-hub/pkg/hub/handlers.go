@@ -14,6 +14,7 @@ import (
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/gorilla/websocket"
+	"github.com/quic-go/webtransport-go"
 	goredis "github.com/redis/go-redis/v9"
 	"github.com/university-ecosystem/ws-hub/pkg/config"
 	"go.opentelemetry.io/otel/trace"
@@ -63,6 +64,31 @@ var (
 
 			// In non-production environments allow all origins to ease local development.
 			// In production this returns false so unrecognised origins are rejected.
+			env := os.Getenv("ENVIRONMENT")
+			return env != "production"
+		},
+	}
+	wtUpgrader = webtransport.Server{
+		CheckOrigin: func(r *http.Request) bool {
+			origin := r.Header.Get("Origin")
+			if origin == "" {
+				return true
+			}
+
+			originsMu.RLock()
+			defer originsMu.RUnlock()
+			for _, allowed := range allowedOrigins {
+				if allowed == origin {
+					return true
+				}
+			}
+
+			for _, allowed := range strings.Split(os.Getenv("WS_ALLOWED_ORIGINS"), ",") {
+				if strings.TrimSpace(allowed) == origin {
+					return true
+				}
+			}
+
 			env := os.Getenv("ENVIRONMENT")
 			return env != "production"
 		},
@@ -174,7 +200,84 @@ func (h *Hub) HandleWebSocket(w http.ResponseWriter, r *http.Request, cfg *confi
 		ID:       userID,
 		UserID:   userID,
 		TenantID: tenantID,
-		Conn:     conn,
+		Conn:     NewWebSocketSession(conn),
+		Rooms:    make(map[string]bool),
+		Send:     make(chan []byte, cfg.SendBufferSize),
+		Hub:      h,
+		ctx:      clientCtx,
+		cancel:   clientCancel,
+	}
+
+	h.Register <- client
+	go client.WritePump()
+	go client.ReadPump()
+}
+
+// HandleWebTransport upgrades HTTP/3 connections to WebTransport and registers clients.
+func (h *Hub) HandleWebTransport(w http.ResponseWriter, r *http.Request, cfg *config.Config) {
+	setupCtx, setupCancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer setupCancel()
+
+	clientIP := RealIP(r, cfg.TrustedProxiesSet, cfg.TrustedCIDRs)
+	if !h.UpgradeLimiter.Allow(clientIP) {
+		h.Logger.WarnContext(setupCtx, "WebTransport upgrade rate limit exceeded", "ip", clientIP)
+		http.Error(w, "Too Many Requests", http.StatusTooManyRequests)
+		return
+	}
+
+	ticket := r.URL.Query().Get("ticket")
+	if ticket == "" {
+		h.Logger.WarnContext(setupCtx, "WebTransport connection rejected: missing upgrade ticket")
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	userID, tenantID, err := h.validateUpgradeTicket(setupCtx, ticket)
+	if err != nil {
+		h.Logger.WarnContext(setupCtx, "WebTransport upgrade ticket invalid", "err", err)
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	if userID == "" {
+		h.Logger.WarnContext(setupCtx, "WebTransport rejected: empty user_id")
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	h.mu.RLock()
+	atCapacity := h.maxClients > 0 && len(h.Clients) >= h.maxClients
+	h.mu.RUnlock()
+	if atCapacity {
+		h.Logger.WarnContext(setupCtx, "WebTransport rejected: hub at capacity",
+			"max_clients", h.maxClients)
+		http.Error(w, "Service Unavailable", http.StatusServiceUnavailable)
+		return
+	}
+
+	if !checkOrigin(r) {
+		h.Logger.WarnContext(setupCtx, "WebTransport connection rejected: origin not allowed", "origin", r.Header.Get("Origin"))
+		http.Error(w, "Forbidden", http.StatusForbidden)
+		return
+	}
+
+	sess, err := upgradeWT(wtUpgrader, w, r)
+	if err != nil {
+		h.Logger.ErrorContext(setupCtx, "WebTransport upgrade failed", "err", err)
+		return
+	}
+
+	clientCtx, clientCancel := context.WithCancel(context.Background())
+	clientCtx = trace.ContextWithSpan(clientCtx, trace.SpanFromContext(r.Context()))
+	if tenantID != "" {
+		clientCtx = context.WithValue(clientCtx, "tenant_id", tenantID)
+	}
+
+	client := &Client{
+		ID:       userID,
+		UserID:   userID,
+		TenantID: tenantID,
+		Conn:     NewWebTransportSession(sess),
 		Rooms:    make(map[string]bool),
 		Send:     make(chan []byte, cfg.SendBufferSize),
 		Hub:      h,
@@ -401,4 +504,10 @@ func (h *Hub) validateHMAC(tokenStr string, secrets []string) (string, error) {
 		return "", lastErr
 	}
 	return "", jwt.ErrTokenInvalidClaims
+}
+
+// upgradeWT wraps WebTransport srv.Upgrade to differentiate from gorilla.websocket.Upgrader.
+func upgradeWT(srv *webtransport.Server, w http.ResponseWriter, r *http.Request) (*webtransport.Session, error) {
+	var upgradeFn = (*webtransport.Server).Upgrade
+	return upgradeFn(srv, w, r)
 }

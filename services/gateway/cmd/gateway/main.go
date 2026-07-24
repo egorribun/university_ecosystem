@@ -39,8 +39,10 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 
 	pb "github.com/university-ecosystem/core/gen/go/file_processor/v1"
+	"github.com/quic-go/quic-go/http3"
 	"github.com/university-ecosystem/gateway/internal/config"
 	"github.com/university-ecosystem/gateway/internal/handlers"
+	"github.com/university-ecosystem/gateway/internal/tlsutil"
 	"github.com/university-ecosystem/gateway/middleware"
 	"github.com/university-ecosystem/services/pkg/spiffe"
 )
@@ -214,6 +216,10 @@ func setupRouter(cfg *config.Config, logger *slog.Logger, grpcConn *grpc.ClientC
 	}
 	router.Use(otelgin.Middleware("gateway"))
 
+	if cfg.H3Enabled {
+		router.Use(middleware.AltSvcMiddleware(cfg.H3Port, cfg.H3AltSvcMaxAge))
+	}
+
 	router.Use(cors.New(cors.Config{
 		AllowOrigins:     cfg.AllowedOrigins,
 		AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
@@ -300,6 +306,25 @@ func setupRouter(cfg *config.Config, logger *slog.Logger, grpcConn *grpc.ClientC
 
 	internalSecret := []byte(cfg.InternalHMACSecret)
 
+	// ws-hub Reverse Proxy configuration (handles /ws, /ws/*, /webtransport)
+	wsHubURL, err := url.Parse(cfg.WsHubURL)
+	if err != nil {
+		logger.ErrorContext(ctx, "Invalid ws-hub URL", "err", err, "url", cfg.WsHubURL)
+		os.Exit(1)
+	}
+	wsProxy := httputil.NewSingleHostReverseProxy(wsHubURL)
+	wsProxy.Transport = proxyTransport
+	wsProxy.ErrorHandler = func(w http.ResponseWriter, r *http.Request, err error) {
+		logger.ErrorContext(ctx, "WS Hub Proxy error", "err", err, "path", r.URL.Path)
+		w.WriteHeader(http.StatusBadGateway)
+	}
+	wsProxyFn := handlers.ProxyHandler(wsProxy, internalSecret)
+
+	// Register WebSocket and WebTransport reverse proxy routes
+	router.Any("/ws", wsProxyFn)
+	router.Any("/ws/*path", wsProxyFn)
+	router.Any("/webtransport", wsProxyFn)
+
 	// All API routes under a single wildcard to avoid gin tree conflicts.
 	// Auth logic is handled inside the handler based on path prefix.
 	proxyFn := handlers.ProxyHandler(proxy, internalSecret)
@@ -374,6 +399,29 @@ func runServer(cfg *config.Config, router *gin.Engine, logger *slog.Logger) {
 		MaxHeaderBytes: 1 << 13,
 	}
 
+	// HTTP/3 QUIC Listener (UDP 8443)
+	var h3Server *http3.Server
+	if cfg.H3Enabled {
+		tlsConfig, err := prepareTLSConfig(cfg, logger)
+		if err != nil {
+			logger.ErrorContext(context.Background(), "Failed to prepare TLS config for HTTP/3 listener", "err", err)
+		} else {
+			h3Addr := ":" + cfg.H3Port
+			h3Server = &http3.Server{
+				Addr:            h3Addr,
+				Handler:         router,
+				TLSConfig:       http3.ConfigureTLSConfig(tlsConfig),
+				EnableDatagrams: true,
+			}
+			go func() {
+				logger.InfoContext(context.Background(), "Starting HTTP/3 QUIC listener", "addr", h3Addr)
+				if err := h3Server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+					logger.ErrorContext(context.Background(), "HTTP/3 QUIC listener error", "err", err)
+				}
+			}()
+		}
+	}
+
 	// RZ-31-01: Replace os.Exit(1) with channel-based error propagation so that
 	// all defers in main() execute (OTEL flush, gRPC close, Sentry drain).
 	// os.Exit bypasses defers in ALL goroutines — traces and error reports are lost.
@@ -399,11 +447,32 @@ func runServer(cfg *config.Config, router *gin.Engine, logger *slog.Logger) {
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer shutdownCancel()
 
+	if h3Server != nil {
+		if err := h3Server.Shutdown(shutdownCtx); err != nil {
+			logger.ErrorContext(context.Background(), "HTTP/3 server forced to shutdown", "err", err)
+		}
+	}
+
 	if err := srv.Shutdown(shutdownCtx); err != nil {
 		logger.ErrorContext(context.Background(), "Server forced to shutdown", "err", err)
 	}
 
 	logger.InfoContext(context.Background(), "Server exiting")
+}
+
+func prepareTLSConfig(cfg *config.Config, logger *slog.Logger) (*tls.Config, error) {
+	if cfg.TLSCertFile != "" && cfg.TLSKeyFile != "" {
+		cert, err := tls.LoadX509KeyPair(cfg.TLSCertFile, cfg.TLSKeyFile)
+		if err != nil {
+			return nil, err
+		}
+		return &tls.Config{
+			Certificates: []tls.Certificate{cert},
+			MinVersion:   tls.VersionTLS13,
+		}, nil
+	}
+	logger.InfoContext(context.Background(), "No TLS cert files provided; generating in-memory self-signed TLS 1.3 certificate for HTTP/3 listener")
+	return tlsutil.GenerateSelfSignedTLSCert()
 }
 
 func initTracer(ctx context.Context, cfg *config.Config) (*sdktrace.TracerProvider, error) {

@@ -28,6 +28,7 @@ require (
 	google.golang.org/grpc v1.82.1
 	github.com/spiffe/go-spiffe/v2 v2.6.0
 	github.com/university-ecosystem/services/pkg/spiffe v0.0.0
+	github.com/quic-go/quic-go v0.59.1
 )
 
 require (
@@ -77,7 +78,6 @@ require (
 	github.com/prometheus/common v0.70.0 // indirect
 	github.com/prometheus/procfs v0.21.1 // indirect
 	github.com/quic-go/qpack v0.6.0 // indirect
-	github.com/quic-go/quic-go v0.59.1 // indirect
 	github.com/shirou/gopsutil/v4 v4.26.5 // indirect
 	github.com/sirupsen/logrus v1.9.4 // indirect
 	github.com/tklauser/go-sysconf v0.3.16 // indirect

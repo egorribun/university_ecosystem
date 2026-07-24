@@ -3,19 +3,24 @@ package hub
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"io"
+	"net"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/gorilla/websocket"
+	"github.com/quic-go/webtransport-go"
 	"golang.org/x/time/rate"
 )
 
-// Client represents a connected WebSocket user.
+// Client represents a connected user session (WebSocket or WebTransport).
 type Client struct {
 	ID        string
 	UserID    string
 	TenantID  string
-	Conn      *websocket.Conn
+	Conn      Session
 	Rooms     map[string]bool
 	Send      chan []byte
 	Hub       *Hub
@@ -26,32 +31,40 @@ type Client struct {
 	cancel context.CancelFunc
 }
 
+type chEntry struct {
+	mu     sync.RWMutex
+	closed bool
+}
+
 var (
-	chMutexes = make(map[interface{}]*sync.RWMutex)
+	chMutexes = make(map[interface{}]*chEntry)
 	chMu      sync.Mutex
 )
-
-func getChMutex(ch chan []byte) *sync.RWMutex {
-	chMu.Lock()
-	defer chMu.Unlock()
-	mu, ok := chMutexes[ch]
-	if !ok {
-		mu = &sync.RWMutex{}
-		chMutexes[ch] = mu
-	}
-	return mu
-}
 
 // safeSend writes data to ch without panicking if the channel is already
 // closed.
 func safeSend(ch chan []byte, data []byte) (sent bool) {
-	mu := getChMutex(ch)
-	mu.RLock()
-	defer mu.RUnlock()
+	chMu.Lock()
+	entry, ok := chMutexes[ch]
+	if !ok {
+		entry = &chEntry{}
+		chMutexes[ch] = entry
+	}
+	if entry.closed {
+		chMu.Unlock()
+		return false
+	}
+	chMu.Unlock()
+
+	entry.mu.RLock()
+	defer entry.mu.RUnlock()
 
 	defer func() {
 		if r := recover(); r != nil {
 			sent = false
+			chMu.Lock()
+			delete(chMutexes, ch)
+			chMu.Unlock()
 		}
 	}()
 	select {
@@ -62,11 +75,20 @@ func safeSend(ch chan []byte, data []byte) (sent bool) {
 	}
 }
 
-// safeClose closes a channel in a data-race-free manner.
+// safeClose closes a channel in a data-race-free manner and cleans up channel map entry.
 func safeClose(ch chan []byte) {
-	mu := getChMutex(ch)
-	mu.Lock()
-	defer mu.Unlock()
+	chMu.Lock()
+	entry, ok := chMutexes[ch]
+	if !ok {
+		entry = &chEntry{}
+	} else {
+		delete(chMutexes, ch)
+	}
+	entry.closed = true
+	chMu.Unlock()
+
+	entry.mu.Lock()
+	defer entry.mu.Unlock()
 
 	defer func() {
 		_ = recover() //nolint:errcheck // recover() returns interface{}; blank discard is the canonical pattern.
@@ -74,7 +96,35 @@ func safeClose(ch chan []byte) {
 	close(ch)
 }
 
-// ReadPump pumps messages from the websocket connection to the hub.
+func isNormalCloseError(err error) bool {
+	if err == nil {
+		return true
+	}
+	if errors.Is(err, io.EOF) || errors.Is(err, net.ErrClosed) {
+		return true
+	}
+	if websocket.IsCloseError(err,
+		websocket.CloseNormalClosure,
+		websocket.CloseGoingAway,
+		websocket.CloseNoStatusReceived,
+		websocket.CloseAbnormalClosure) {
+		return true
+	}
+	errStr := err.Error()
+	if strings.Contains(errStr, "normal closure") ||
+		strings.Contains(errStr, "NO_ERROR") ||
+		strings.Contains(errStr, "application error 0x0") ||
+		strings.Contains(errStr, "Application error 0x0") {
+		return true
+	}
+	var sessErr *webtransport.SessionError
+	if errors.As(err, &sessErr) && (sessErr.ErrorCode == 0 || sessErr.ErrorCode == 268) {
+		return true
+	}
+	return false
+}
+
+// ReadPump pumps messages from the session connection to the hub.
 func (c *Client) ReadPump() {
 	defer func() {
 		c.cancel()
@@ -85,32 +135,36 @@ func (c *Client) ReadPump() {
 		case <-c.Hub.ctx.Done():
 			c.closeOnce.Do(func() { safeClose(c.Send) })
 		}
-		if err := c.Conn.Close(); err != nil {
-			c.Hub.Logger.ErrorContext(c.ctx, "Failed to close websocket connection", "client_id", c.ID, "err", err)
+		if c.Conn != nil {
+			if err := c.Conn.Close(); err != nil {
+				c.Hub.Logger.ErrorContext(c.ctx, "Failed to close session connection", "client_id", c.ID, "err", err)
+			}
 		}
 	}()
 
-	c.Conn.SetReadLimit(64 * 1024)
-	if err := c.Conn.SetReadDeadline(time.Now().Add(60 * time.Second)); err != nil {
-		c.Hub.Logger.ErrorContext(c.ctx, "Failed to set read deadline", "err", err)
-	}
-	c.Conn.SetPongHandler(func(string) error {
+	if c.Conn != nil {
+		c.Conn.SetReadLimit(64 * 1024)
 		if err := c.Conn.SetReadDeadline(time.Now().Add(60 * time.Second)); err != nil {
-			c.Hub.Logger.ErrorContext(c.ctx, "Failed to update read deadline in pong handler", "err", err)
+			c.Hub.Logger.ErrorContext(c.ctx, "Failed to set read deadline", "err", err)
 		}
-		return nil
-	})
+		c.Conn.SetPongHandler(func(string) error {
+			if err := c.Conn.SetReadDeadline(time.Now().Add(60 * time.Second)); err != nil {
+				c.Hub.Logger.ErrorContext(c.ctx, "Failed to update read deadline in pong handler", "err", err)
+			}
+			return nil
+		})
+	}
 
 	for {
+		if c.Conn == nil {
+			break
+		}
 		_, data, err := c.Conn.ReadMessage()
 		if err != nil {
-			if websocket.IsCloseError(err,
-				websocket.CloseNormalClosure,
-				websocket.CloseGoingAway,
-				websocket.CloseNoStatusReceived) {
-				c.Hub.Logger.DebugContext(c.ctx, "WebSocket closed normally", "client_id", c.ID)
+			if isNormalCloseError(err) {
+				c.Hub.Logger.DebugContext(c.ctx, "Session closed normally", "client_id", c.ID)
 			} else {
-				c.Hub.Logger.WarnContext(c.ctx, "WebSocket read error",
+				c.Hub.Logger.WarnContext(c.ctx, "Session read error",
 					"client_id", c.ID,
 					"err", err)
 			}
@@ -144,7 +198,7 @@ func (c *Client) handleIncomingMessage(msg Message, data []byte) {
 	default:
 		// RZ-27-05: Log unknown message types for protocol drift detection.
 		UnknownMsgTypeTotal.Inc()
-		c.Hub.Logger.WarnContext(c.ctx, "Unknown WS message type",
+		c.Hub.Logger.WarnContext(c.ctx, "Unknown message type",
 			"client_id", c.ID, "type", msg.Type)
 	}
 }
@@ -230,32 +284,40 @@ func (c *Client) handleMessage(msg Message, data []byte) {
 	}
 }
 
-// WritePump pumps messages from the hub to the websocket connection.
+// WritePump pumps messages from the hub to the session connection.
 func (c *Client) WritePump() {
 	ticker := time.NewTicker(30 * time.Second)
 	defer func() {
 		ticker.Stop()
 		c.Hub.msgLimiters.Delete(c.ID) // TD-24-05: clean limiter on WritePump exit too
-		if err := c.Conn.Close(); err != nil {
-			c.Hub.Logger.ErrorContext(c.ctx, "Failed to close websocket connection In WritePump", "err", err)
+		if c.Conn != nil {
+			if err := c.Conn.Close(); err != nil {
+				c.Hub.Logger.ErrorContext(c.ctx, "Failed to close session connection in WritePump", "err", err)
+			}
 		}
 	}()
 
 	for {
 		select {
 		case msg, ok := <-c.Send:
-			if err := c.Conn.SetWriteDeadline(time.Now().Add(10 * time.Second)); err != nil {
-				c.Hub.Logger.ErrorContext(c.ctx, "Failed to set write deadline", "err", err)
+			if c.Conn != nil {
+				if err := c.Conn.SetWriteDeadline(time.Now().Add(10 * time.Second)); err != nil {
+					c.Hub.Logger.ErrorContext(c.ctx, "Failed to set write deadline", "err", err)
+				}
 			}
 			if !ok {
-				if err := c.Conn.WriteMessage(websocket.CloseMessage, []byte{}); err != nil {
-					c.Hub.Logger.ErrorContext(c.ctx, "Failed to write close message", "err", err)
+				if c.Conn != nil {
+					if err := c.Conn.WriteMessage(websocket.CloseMessage, []byte{}); err != nil {
+						c.Hub.Logger.ErrorContext(c.ctx, "Failed to write close message", "err", err)
+					}
 				}
 				return
 			}
 
-			if err := c.Conn.WriteMessage(websocket.TextMessage, msg); err != nil {
-				return
+			if c.Conn != nil {
+				if err := c.Conn.WriteMessage(websocket.TextMessage, msg); err != nil {
+					return
+				}
 			}
 
 		case <-c.ctx.Done():
@@ -263,11 +325,13 @@ func (c *Client) WritePump() {
 			return
 
 		case <-ticker.C:
-			if err := c.Conn.SetWriteDeadline(time.Now().Add(10 * time.Second)); err != nil {
-				c.Hub.Logger.ErrorContext(c.ctx, "Failed to set write deadline for ping", "err", err)
-			}
-			if err := c.Conn.WriteMessage(websocket.PingMessage, nil); err != nil {
-				return
+			if c.Conn != nil {
+				if err := c.Conn.SetWriteDeadline(time.Now().Add(10 * time.Second)); err != nil {
+					c.Hub.Logger.ErrorContext(c.ctx, "Failed to set write deadline for ping", "err", err)
+				}
+				if err := c.Conn.WriteMessage(websocket.PingMessage, nil); err != nil {
+					return
+				}
 			}
 		}
 	}
