@@ -13,7 +13,7 @@ test.describe("Production SSR cache policy", () => {
     expect(shell.headers()["cache-control"]).toBe("no-store, private, max-age=0")
 
     const html = await shell.text()
-    const assetPath = html.match(/(?:src|href)="(\/assets\/[^\"]+)"/)?.[1]
+    const assetPath = html.match(/(?:src|href)="(\/assets\/[^"]+)"/)?.[1]
     expect(assetPath).toBeTruthy()
 
     const asset = await request.get(assetPath as string)
