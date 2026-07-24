@@ -173,17 +173,28 @@ export function sanitizeReportPayload(payload: unknown, _depth = 0): unknown {
 }
 
 export async function storePendingMutation(
-  record: Omit<PendingMutationRecord, "mutationId" | "idempotencyKey" | "timestamp" | "retryCount"> &
+  record: Omit<
+    PendingMutationRecord,
+    "mutationId" | "idempotencyKey" | "timestamp" | "retryCount"
+  > &
     Partial<PendingMutationRecord>
 ) {
   const fullRecord: PendingMutationRecord = {
-    mutationId: record.mutationId ?? (typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : String(Date.now() + Math.random())),
+    mutationId:
+      record.mutationId ??
+      (typeof crypto !== "undefined" && crypto.randomUUID
+        ? crypto.randomUUID()
+        : String(Date.now() + Math.random())),
     url: record.url,
     method: record.method ?? "POST",
     payload: sanitizeReportPayload(record.payload),
     headers: record.headers,
     timestamp: record.timestamp ?? Date.now(),
-    idempotencyKey: record.idempotencyKey ?? (typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : String(Date.now() + Math.random())),
+    idempotencyKey:
+      record.idempotencyKey ??
+      (typeof crypto !== "undefined" && crypto.randomUUID
+        ? crypto.randomUUID()
+        : String(Date.now() + Math.random())),
     retryCount: record.retryCount ?? 0,
     category: record.category ?? "general",
   }
@@ -203,7 +214,10 @@ export async function processPendingMutations() {
 
   records.sort((a, b) => a.timestamp - b.timestamp)
 
-  const broadcast = typeof BroadcastChannel !== "undefined" ? new BroadcastChannel("offline-mutation-sync-channel") : null
+  const broadcast =
+    typeof BroadcastChannel !== "undefined"
+      ? new BroadcastChannel("offline-mutation-sync-channel")
+      : null
   const notifyBroadcast = (msg: unknown) => {
     if (broadcast && typeof broadcast.postMessage === "function") {
       try {
@@ -245,7 +259,7 @@ export async function processPendingMutations() {
         record.retryCount += 1
         await db.put(STORES.MUTATION, record)
       }
-    } catch (err) {
+    } catch (_err) {
       record.retryCount += 1
       await db.put(STORES.MUTATION, record)
     }

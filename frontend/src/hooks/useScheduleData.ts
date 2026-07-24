@@ -54,7 +54,7 @@ export function useScheduleData() {
     if (activeGroupId && groupScheduleRaw.length > 0) {
       getDatabase()
         .then((db) => {
-          const docs = groupScheduleRaw.map((lesson: any) => ({
+          const docs = groupScheduleRaw.map((lesson: Record<string, unknown>) => ({
             id: String(lesson.id),
             group_id: activeGroupId,
             subject: lesson.subject || "",

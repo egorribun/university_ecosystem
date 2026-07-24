@@ -11,10 +11,12 @@ if (import.meta.env.DEV) {
   addRxPlugin(RxDBDevModePlugin)
 }
 
+import type { RxCollection } from "rxdb"
+
 export type AppCollections = {
-  schedule: any
-  notes: any
-  messages: any
+  schedule: RxCollection<ScheduleDoc>
+  notes: RxCollection<NoteDoc>
+  messages: RxCollection<MessageDoc>
 }
 
 export type AppDatabase = RxDatabase<AppCollections>

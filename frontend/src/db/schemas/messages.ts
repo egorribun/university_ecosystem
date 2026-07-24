@@ -10,8 +10,8 @@ export interface MessageDoc {
   read_at?: string | null
   edited_at?: string | null
   deleted_at?: string | null
-  attachments?: any[]
-  reactions?: any[]
+  attachments?: unknown[]
+  reactions?: unknown[]
   sync_status?: string
 }
 

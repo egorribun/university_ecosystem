@@ -56,7 +56,11 @@ export async function registerServiceWorker(path = "/sw.js") {
     const registerBackgroundSync = async () => {
       if ("sync" in registration) {
         try {
-          await (registration as any).sync.register("sync-offline-mutations")
+          await (
+            registration as ServiceWorkerRegistration & {
+              sync: { register: (tag: string) => Promise<void> }
+            }
+          ).sync.register("sync-offline-mutations")
         } catch (_e) {
           // ignore error, falls back to postMessage
         }

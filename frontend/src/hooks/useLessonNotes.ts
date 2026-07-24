@@ -149,7 +149,7 @@ export function useLessonNotesMap(lessonIds: string[]) {
       try {
         const db = await getDatabase()
         const rxNotes = await db.notes.find({ selector: { id: { $in: lessonIds } } }).exec()
-        rxNotes.forEach((n: any) => {
+        rxNotes.forEach((n) => {
           if (n.text?.trim()) map.set(n.id, true)
         })
       } catch {

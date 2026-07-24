@@ -1,7 +1,4 @@
-import {
-  storePendingMutation,
-  type PendingMutationRecord,
-} from "@/sw/offline"
+import { storePendingMutation, type PendingMutationRecord } from "@/sw/offline"
 import { SERVICE_WORKER_MESSAGE_TYPES } from "@/constants/serviceWorkerMessages"
 
 export async function enqueueOfflineMutation(mutation: {
@@ -24,11 +21,19 @@ export async function enqueueOfflineMutation(mutation: {
 
   await storePendingMutation(record)
 
-  if (typeof navigator !== "undefined" && "serviceWorker" in navigator && navigator.serviceWorker.controller) {
+  if (
+    typeof navigator !== "undefined" &&
+    "serviceWorker" in navigator &&
+    navigator.serviceWorker.controller
+  ) {
     try {
       const reg = await navigator.serviceWorker.ready
       if ("sync" in reg) {
-        await (reg as any).sync.register("sync-offline-mutations")
+        await (
+          reg as unknown as {
+            sync: { register: (tag: string) => Promise<void> }
+          }
+        ).sync.register("sync-offline-mutations")
       } else {
         navigator.serviceWorker.controller.postMessage({
           type: SERVICE_WORKER_MESSAGE_TYPES.PROCESS_OFFLINE_QUEUES,

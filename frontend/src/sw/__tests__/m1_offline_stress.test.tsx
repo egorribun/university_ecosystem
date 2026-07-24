@@ -102,7 +102,7 @@ describe("Milestone 1 — Offline-First & SyncStatus Adversarial Stress Tests", 
       })
 
       // Step B: Simulate Page Reload / Environment Reset (clear in-memory references)
-      let initialRecords = await readPendingMutations()
+      const initialRecords = await readPendingMutations()
       expect(initialRecords).toHaveLength(3)
 
       // Simulate re-running SW initialization sequence
@@ -111,7 +111,11 @@ describe("Milestone 1 — Offline-First & SyncStatus Adversarial Stress Tests", 
       // Step C: Verify all 3 records are unchanged after reset
       const reloadedRecords = await readPendingMutations()
       expect(reloadedRecords).toHaveLength(3)
-      expect(reloadedRecords.map((r) => r.category).sort()).toEqual(["messenger", "news", "schedule"])
+      expect(reloadedRecords.map((r) => r.category).sort()).toEqual([
+        "messenger",
+        "news",
+        "schedule",
+      ])
       expect(reloadedRecords[0].timestamp).toBeLessThanOrEqual(reloadedRecords[2].timestamp)
     })
 
@@ -133,16 +137,16 @@ describe("Milestone 1 — Offline-First & SyncStatus Adversarial Stress Tests", 
       await processPendingMutations()
 
       // Record should NOT be deleted, retryCount should be incremented to 1
-      let records = await readPendingMutations()
-      expect(records).toHaveLength(1)
-      expect(records[0].retryCount).toBe(1)
+      const records1 = await readPendingMutations()
+      expect(records1).toHaveLength(1)
+      expect(records1[0].retryCount).toBe(1)
 
       // Simulate SW process restart / re-init
       await initOfflineQueue()
 
-      records = await readPendingMutations()
-      expect(records).toHaveLength(1)
-      expect(records[0].retryCount).toBe(1)
+      const records2 = await readPendingMutations()
+      expect(records2).toHaveLength(1)
+      expect(records2[0].retryCount).toBe(1)
     })
 
     it("discards mutation after reaching max retries (5) and broadcasts PERMANENT_FAILURE", async () => {
@@ -160,7 +164,7 @@ describe("Milestone 1 — Offline-First & SyncStatus Adversarial Stress Tests", 
 
       // 1st processing: fetch fails, retryCount incremented from 4 to 5
       await processPendingMutations()
-      let records = await readPendingMutations()
+      const records = await readPendingMutations()
       expect(records[0].retryCount).toBe(5)
 
       // 2nd processing: loop detects retryCount >= 5, evicts record, broadcasts failure

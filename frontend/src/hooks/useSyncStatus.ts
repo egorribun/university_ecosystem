@@ -24,37 +24,27 @@ const NEWS_INTERACTION_STORE = "pending-news-interactions"
 const MUTATION_STORE = "pending-mutations"
 
 function useSafeQueryClient() {
-  try {
-    return useQueryClient()
-  } catch {
-    return null
-  }
+  return useQueryClient()
 }
 
 function useSafeIsFetching() {
-  try {
-    return useIsFetching()
-  } catch {
-    return 0
-  }
+  return useIsFetching()
 }
 
 function useSafePendingMutationsCount() {
-  try {
-    const pendingMutations = useMutationState({
-      filters: { status: "pending" },
-      select: (mutation) => mutation.state,
-    })
-    return pendingMutations.length
-  } catch {
-    return 0
-  }
+  const pendingMutations = useMutationState({
+    filters: { status: "pending" },
+    select: (mutation) => mutation.state,
+  })
+  return pendingMutations.length
 }
 
 export function useSyncStatus(): SyncStatusResult {
   const queryClient = useSafeQueryClient()
-  const [isOnline, setIsOnline] = useState(
-    () => (typeof navigator !== "undefined" && typeof navigator.onLine === "boolean" ? navigator.onLine : true)
+  const [isOnline, setIsOnline] = useState(() =>
+    typeof navigator !== "undefined" && typeof navigator.onLine === "boolean"
+      ? navigator.onLine
+      : true
   )
   const [idbPendingCount, setIdbPendingCount] = useState(0)
   const [justSynced, setJustSynced] = useState(false)
@@ -98,13 +88,19 @@ export function useSyncStatus(): SyncStatusResult {
           request.onupgradeneeded = () => {
             const database = request.result
             if (!database.objectStoreNames.contains("pending-navigations")) {
-              database.createObjectStore("pending-navigations", { keyPath: "id", autoIncrement: true })
+              database.createObjectStore("pending-navigations", {
+                keyPath: "id",
+                autoIncrement: true,
+              })
             }
             if (!database.objectStoreNames.contains("pending-reports")) {
               database.createObjectStore("pending-reports", { keyPath: "id", autoIncrement: true })
             }
             if (!database.objectStoreNames.contains(NEWS_INTERACTION_STORE)) {
-              database.createObjectStore(NEWS_INTERACTION_STORE, { keyPath: "id", autoIncrement: true })
+              database.createObjectStore(NEWS_INTERACTION_STORE, {
+                keyPath: "id",
+                autoIncrement: true,
+              })
             }
             if (!database.objectStoreNames.contains(MUTATION_STORE)) {
               database.createObjectStore(MUTATION_STORE, { keyPath: "id", autoIncrement: true })
@@ -189,7 +185,11 @@ export function useSyncStatus(): SyncStatusResult {
       try {
         const reg = await navigator.serviceWorker.ready
         if ("sync" in reg) {
-          await (reg as any).sync.register("sync-offline-mutations")
+          await (
+            reg as ServiceWorkerRegistration & {
+              sync: { register: (tag: string) => Promise<void> }
+            }
+          ).sync.register("sync-offline-mutations")
         } else if (navigator.serviceWorker.controller) {
           navigator.serviceWorker.controller.postMessage({
             type: SERVICE_WORKER_MESSAGE_TYPES.PROCESS_OFFLINE_QUEUES,
