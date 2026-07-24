@@ -42,6 +42,7 @@ import (
 	"github.com/university-ecosystem/gateway/internal/config"
 	"github.com/university-ecosystem/gateway/internal/handlers"
 	"github.com/university-ecosystem/gateway/middleware"
+	"github.com/university-ecosystem/services/pkg/spiffe"
 )
 
 func main() {
@@ -78,8 +79,27 @@ func main() {
 		logger.InfoContext(ctx, "OpenTelemetry initialized")
 	}
 
+	// 4.5 Initialize SPIFFE Workload API Client
+	spiffeClient, err := spiffe.NewClient(ctx, spiffe.Config{
+		Enabled:        cfg.SpiffeEnabled,
+		SocketPath:     cfg.SpiffeEndpointSocket,
+		TrustDomain:    cfg.SpiffeTrustDomain,
+		MySpiffeID:     cfg.SpiffeMyID,
+	}, logger)
+	if err != nil {
+		logger.ErrorContext(ctx, "SPIFFE initialization failed", "err", err)
+		if cfg.SpiffeEnabled {
+			os.Exit(1)
+		}
+	} else if cfg.SpiffeEnabled && spiffeClient == nil {
+		logger.ErrorContext(ctx, "SPIFFE is enabled but client initialization returned nil")
+		os.Exit(1)
+	} else if spiffeClient != nil {
+		defer spiffeClient.Close()
+	}
+
 	// 5. Initialize gRPC connection to File Processor
-	grpcConn, fileClient := initGRPC(cfg, logger)
+	grpcConn, fileClient := initGRPC(cfg, logger, spiffeClient)
 	defer func() {
 		if err := grpcConn.Close(); err != nil {
 			logger.ErrorContext(ctx, "Failed to close gRPC connection", "err", err)
@@ -87,7 +107,7 @@ func main() {
 	}()
 
 	// 6. Setup Router & Middleware
-	router := setupRouter(cfg, logger, grpcConn, fileClient, ctx)
+	router := setupRouter(cfg, logger, grpcConn, fileClient, spiffeClient, ctx)
 
 	// 7. Start Server
 	runServer(cfg, router, logger)
@@ -125,9 +145,24 @@ func initSentry(cfg *config.Config, logger *slog.Logger) {
 	logger.InfoContext(context.Background(), "Sentry initialized", "environment", cfg.Environment)
 }
 
-func initGRPC(cfg *config.Config, logger *slog.Logger) (*grpc.ClientConn, pb.FileProcessingServiceClient) {
+func initGRPC(cfg *config.Config, logger *slog.Logger, spiffeClients ...*spiffe.Client) (*grpc.ClientConn, pb.FileProcessingServiceClient) {
+	var spiffeClient *spiffe.Client
+	if len(spiffeClients) > 0 {
+		spiffeClient = spiffeClients[0]
+	}
 	var grpcCreds grpc.DialOption
-	if cfg.GrpcUseTLS {
+	if cfg.SpiffeEnabled {
+		if spiffeClient == nil {
+			logger.ErrorContext(context.Background(), "SPIFFE is enabled but spiffeClient is nil")
+			os.Exit(1)
+		}
+		creds, err := spiffeClient.GRPCClientCredentials(cfg.FileProcessorSpiffeID)
+		if err != nil {
+			logger.ErrorContext(context.Background(), "Failed to create SPIFFE gRPC credentials", "err", err)
+			os.Exit(1)
+		}
+		grpcCreds = grpc.WithTransportCredentials(creds)
+	} else if cfg.GrpcUseTLS {
 		grpcCreds = grpc.WithTransportCredentials(credentials.NewClientTLSFromCert(nil, ""))
 	} else {
 		grpcCreds = grpc.WithTransportCredentials(insecure.NewCredentials())
@@ -148,7 +183,19 @@ func initGRPC(cfg *config.Config, logger *slog.Logger) (*grpc.ClientConn, pb.Fil
 	return grpcConn, pb.NewFileProcessingServiceClient(grpcConn)
 }
 
-func setupRouter(cfg *config.Config, logger *slog.Logger, grpcConn *grpc.ClientConn, fileClient pb.FileProcessingServiceClient, ctx context.Context) *gin.Engine {
+func setupRouter(cfg *config.Config, logger *slog.Logger, grpcConn *grpc.ClientConn, fileClient pb.FileProcessingServiceClient, opts ...any) *gin.Engine {
+	ctx := context.Background()
+	var spiffeClient *spiffe.Client
+
+	for _, opt := range opts {
+		switch v := opt.(type) {
+		case context.Context:
+			ctx = v
+		case *spiffe.Client:
+			spiffeClient = v
+		}
+	}
+
 	gin.SetMode(gin.ReleaseMode)
 	router := gin.New()
 
@@ -183,7 +230,7 @@ func setupRouter(cfg *config.Config, logger *slog.Logger, grpcConn *grpc.ClientC
 		os.Exit(1)
 	}
 	proxy := httputil.NewSingleHostReverseProxy(backendURL)
-	proxy.Transport = &http.Transport{
+	proxyTransport := &http.Transport{
 		DialContext: (&net.Dialer{
 			Timeout:   5 * time.Second,
 			KeepAlive: 30 * time.Second,
@@ -194,6 +241,19 @@ func setupRouter(cfg *config.Config, logger *slog.Logger, grpcConn *grpc.ClientC
 		MaxIdleConnsPerHost:   50,
 		TLSHandshakeTimeout:   10 * time.Second,
 	}
+	if cfg.SpiffeEnabled {
+		if spiffeClient == nil {
+			logger.ErrorContext(ctx, "SPIFFE is enabled but spiffeClient is nil")
+			os.Exit(1)
+		}
+		tlsCfg, err := spiffeClient.ClientTLSConfig(cfg.BackendSpiffeID)
+		if err != nil {
+			logger.ErrorContext(ctx, "Failed to build SPIFFE client TLS config for backend proxy", "err", err)
+			os.Exit(1)
+		}
+		proxyTransport.TLSClientConfig = tlsCfg
+	}
+	proxy.Transport = proxyTransport
 	proxy.ErrorHandler = func(w http.ResponseWriter, r *http.Request, err error) {
 		logger.ErrorContext(ctx, "Proxy error", "err", err, "path", r.URL.Path)
 		w.WriteHeader(http.StatusBadGateway)

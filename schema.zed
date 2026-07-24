@@ -1,50 +1,96 @@
 definition user {}
 
-definition semester {
+definition tenant {
     relation admin: user
+    relation member: user
+    relation auditor: user
+
+    permission manage = admin
+    permission view = admin + member + auditor
+}
+
+definition campus {
+    relation tenant: tenant
+    relation admin: user
+    relation faculty: user
+    relation student: user
+    relation member: user
+
+    permission manage = admin + tenant->manage
+    permission view = member + student + faculty + admin + tenant->view
+}
+
+definition semester {
+    relation campus: campus
+    relation admin: user
+
+    permission view = admin + campus->view
+    permission manage = admin + campus->manage
 }
 
 definition course {
+    relation campus: campus
     relation semester: semester
     relation teacher: user
     relation student: user
 
-    permission view = student + teacher + semester->admin
-    permission manage = teacher + semester->admin
+    permission view = student + teacher + semester->admin + campus->admin
+    permission manage = teacher + semester->admin + campus->manage
 }
 
 definition group {
     relation course: course
+    relation campus: campus
     relation participant: user
 
-    permission view = participant + course->view
+    permission view = participant + course->view + campus->admin
+    permission manage = course->manage + campus->manage
+}
+
+definition folder {
+    relation tenant: tenant
+    relation campus: campus
+    relation parent: folder
+    relation viewer: user
+    relation editor: user
+
+    permission view = viewer + editor + parent->view + campus->view + tenant->view
+    permission edit = editor + campus->admin + tenant->manage
 }
 
 definition document {
+    relation tenant: tenant
+    relation campus: campus
     relation folder: folder
     relation viewer: user
     relation editor: user
     relation owner: user
 
-    permission view = viewer + editor + owner + folder->view
-    permission edit = editor + owner
-    permission delete = owner
-}
-
-definition folder {
-    relation parent: folder
-    relation viewer: user
-    relation editor: user
-
-    permission view = viewer + editor + parent->view
+    permission view = viewer + editor + owner + folder->view + campus->view + tenant->view
+    permission edit = editor + owner + campus->admin + tenant->manage
+    permission delete = owner + campus->admin + tenant->manage
 }
 
 definition event {
-    relation creator: user
+    relation tenant: tenant
+    relation campus: campus
     relation semester: semester
+    relation creator: user
     relation attendee: user
 
-    permission view = attendee + creator + semester->admin
-    permission edit = creator + semester->admin
-    permission delete = creator + semester->admin
+    permission view = attendee + creator + semester->admin + campus->view + tenant->view
+    permission edit = creator + semester->admin + campus->manage + tenant->manage
+    permission delete = creator + semester->admin + campus->manage + tenant->manage
+}
+
+definition resource {
+    relation tenant: tenant
+    relation campus: campus
+    relation owner: user
+    relation editor: user
+    relation viewer: user
+
+    permission view = viewer + editor + owner + campus->view + tenant->view
+    permission edit = editor + owner + campus->admin + tenant->manage
+    permission delete = owner + campus->admin + tenant->manage
 }

@@ -14,7 +14,7 @@ vi.mock("react-i18next", () => ({
 import { SyncStatus } from "@/components/feedback/SyncStatus"
 
 const CLICK_DB_NAME = "notification-interactions"
-const CLICK_DB_VERSION = 3
+const CLICK_DB_VERSION = 4
 const NEWS_INTERACTION_STORE = "pending-news-interactions"
 
 function setOnline(value: boolean) {

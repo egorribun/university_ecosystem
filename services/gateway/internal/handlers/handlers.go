@@ -49,28 +49,38 @@ func ProxyHandler(proxy *httputil.ReverseProxy, internalSecret []byte) gin.Handl
 		// headers (verified below) are forwarded.
 		c.Request.Header.Del("X-User-ID")
 		c.Request.Header.Del("X-Session-ID")
+		c.Request.Header.Del("X-Tenant-ID")
 		c.Request.Header.Del("X-Internal-Signature") // RZ-14-05: prevent client forgery
 
 		// Inject verified identity headers from validated JWT claims.
 		userIDVal, hasUser := c.Get("user_id")
 		sessionIDVal, hasSession := c.Get("session_id")
+		tenantIDVal, _ := c.Get("tenant_id")
 
 		// RZ-33-23: Use two-value type assertion to avoid panic on non-string ctx values.
 		userID, userOK := userIDVal.(string)
 		sessionID, sessionOK := sessionIDVal.(string)
+		tenantID, _ := tenantIDVal.(string)
 		if hasUser && userOK {
 			c.Request.Header.Set("X-User-ID", userID)
 		}
 		if hasSession && sessionOK {
 			c.Request.Header.Set("X-Session-ID", sessionID)
 		}
+		if tenantID != "" {
+			c.Request.Header.Set("X-Tenant-ID", tenantID)
+		}
 
 		// RZ-14-05: Sign identity headers with HMAC-SHA256 so the backend can
 		// cryptographically verify that this request passed through the gateway.
-		// Signature covers "{user_id}:{session_id}" — both fields must be present.
+		// Signature covers "{user_id}:{session_id}:{tenant_id}" (or "{user_id}:{session_id}").
 		if len(internalSecret) > 0 && hasUser && userOK && hasSession && sessionOK {
 			mac := hmac.New(sha256.New, internalSecret)
-			mac.Write([]byte(userID + ":" + sessionID))
+			if tenantID != "" {
+				mac.Write([]byte(userID + ":" + sessionID + ":" + tenantID))
+			} else {
+				mac.Write([]byte(userID + ":" + sessionID))
+			}
 			c.Request.Header.Set("X-Internal-Signature", hex.EncodeToString(mac.Sum(nil)))
 		}
 
@@ -134,6 +144,12 @@ func FileProcessSyncHandler(ctx context.Context, grpcConn *grpc.ClientConn, file
 		// Propagate Authorization header to gRPC metadata
 		if authHeader := c.GetHeader("Authorization"); authHeader != "" {
 			rpcCtx = metadata.AppendToOutgoingContext(rpcCtx, "authorization", authHeader)
+		}
+		tenantIDVal, _ := c.Get("tenant_id")
+		if tenantID, ok := tenantIDVal.(string); ok && tenantID != "" {
+			rpcCtx = metadata.AppendToOutgoingContext(rpcCtx, "x-tenant-id", tenantID)
+		} else if tenantHeader := c.GetHeader("X-Tenant-ID"); tenantHeader != "" {
+			rpcCtx = metadata.AppendToOutgoingContext(rpcCtx, "x-tenant-id", tenantHeader)
 		}
 
 		resp, err := fileClient.ProcessFile(rpcCtx, &pb.ProcessFileRequest{

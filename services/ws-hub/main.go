@@ -16,6 +16,7 @@ import (
 	"github.com/redis/go-redis/v9"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 
+	"github.com/university-ecosystem/services/pkg/spiffe"
 	"github.com/university-ecosystem/ws-hub/internal/telemetry"
 	"github.com/university-ecosystem/ws-hub/pkg/config"
 	"github.com/university-ecosystem/ws-hub/pkg/hub"
@@ -62,7 +63,25 @@ func main() {
 		}()
 	}
 
-	h := setupHub(ctx, cfg, logger, nc, rdb)
+	spiffeClient, err := spiffe.NewClient(ctx, spiffe.Config{
+		Enabled:        cfg.SpiffeEnabled,
+		SocketPath:     cfg.SpiffeEndpointSocket,
+		TrustDomain:    cfg.SpiffeTrustDomain,
+		MySpiffeID:     cfg.SpiffeMyID,
+	}, logger)
+	if err != nil {
+		logger.ErrorContext(ctx, "SPIFFE initialization failed", "err", err)
+		if cfg.SpiffeEnabled {
+			os.Exit(1)
+		}
+	} else if cfg.SpiffeEnabled && spiffeClient == nil {
+		logger.ErrorContext(ctx, "SPIFFE is enabled but client initialization returned nil")
+		os.Exit(1)
+	} else if spiffeClient != nil {
+		defer spiffeClient.Close()
+	}
+
+	h := setupHub(ctx, cfg, logger, nc, rdb, spiffeClient)
 	setupHandlers(h, cfg, logger, nc, rdb)
 	runServer(cfg, logger, h)
 }
@@ -111,8 +130,19 @@ func initRedis(ctx context.Context, cfg *config.Config, logger *slog.Logger) *re
 	return rdb
 }
 
-func setupHub(ctx context.Context, cfg *config.Config, logger *slog.Logger, nc *nats.Conn, rdb *redis.Client) *hub.Hub {
+func setupHub(ctx context.Context, cfg *config.Config, logger *slog.Logger, nc *nats.Conn, rdb *redis.Client, spiffeClients ...*spiffe.Client) *hub.Hub {
+	var spiffeClient *spiffe.Client
+	if len(spiffeClients) > 0 {
+		spiffeClient = spiffeClients[0]
+	}
 	authClient := hub.NewInternalAPIAuthClient(cfg.BackendURL, rdb)
+	if cfg.SpiffeEnabled {
+		if spiffeClient == nil {
+			logger.ErrorContext(ctx, "SPIFFE is enabled but spiffeClient is nil")
+			os.Exit(1)
+		}
+		authClient.WithSPIFFE(spiffeClient, cfg.BackendSpiffeID)
+	}
 	authClient.StartEviction(ctx)
 	// RZ-W14-01: pass rdb so the Hub can validate one-time WS upgrade tickets
 	h := hub.NewHub(nc, logger, authClient, cfg, rdb)

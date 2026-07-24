@@ -87,6 +87,14 @@ async def _startup_database_and_di(app: FastAPI) -> None:
             "Fernet key to decouple the two secrets. (dev/local/testing mode only)"
         )
 
+    # Initialize SPIFFE SVIDManager
+    from app.core.security.spiffe import svid_manager
+
+    svid_manager.socket_path = settings.security.spiffe_socket_path
+    svid_manager.spiffe_id_str = settings.security.spiffe_app_id
+    svid_manager.enabled = settings.security.spiffe_enabled
+    svid_manager.start()
+
 
 async def _startup_websocket_and_flags(app: FastAPI) -> None:
     """Stage 2: WebSocket management and feature flag recovery."""
@@ -500,3 +508,7 @@ async def _shutdown_subsystems(app: FastAPI) -> None:
     shutdown_observability()
     shutdown_geolocation_service()
     await close_hibp_client()
+
+    from app.core.security.spiffe import svid_manager
+
+    svid_manager.stop()

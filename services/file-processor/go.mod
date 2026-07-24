@@ -28,6 +28,8 @@ require (
 	go.uber.org/goleak v1.3.0
 	golang.org/x/image v0.44.0
 	google.golang.org/grpc v1.82.1
+	github.com/spiffe/go-spiffe/v2 v2.6.0
+	github.com/university-ecosystem/services/pkg/spiffe v0.0.0
 )
 
 require (
@@ -132,3 +134,4 @@ require (
 )
 
 replace github.com/university-ecosystem/core/gen/go => ../../gen/go
+replace github.com/university-ecosystem/services/pkg/spiffe => ../pkg/spiffe

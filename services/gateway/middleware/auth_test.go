@@ -579,3 +579,65 @@ func TestJWTMiddleware_CheckL1Cache(t *testing.T) {
 		assert.False(t, exists)
 	})
 }
+
+func TestValidate_TenantSpoofingDefense(t *testing.T) {
+	middleware := NewJWTMiddleware(testSecret, nil)
+
+	var capturedTenantID interface{}
+	router := gin.New()
+	router.GET("/test-tenant-defense", middleware.Validate(context.Background()), func(c *gin.Context) {
+		capturedTenantID, _ = c.Get("tenant_id")
+		c.Status(http.StatusOK)
+	})
+
+	t.Run("claims.TenantID takes precedence over client header", func(t *testing.T) {
+		claims := Claims{
+			RegisteredClaims: jwt.RegisteredClaims{
+				ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour)),
+				IssuedAt:  jwt.NewNumericDate(time.Now()),
+				ID:        "session-valid-tenant",
+			},
+			UserID:   "user-legit",
+			Role:     "student",
+			IsActive: true,
+			TenantID: "tenant-legit-from-claims",
+		}
+		token := createValidToken(testSecret, claims)
+
+		request := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/test-tenant-defense", nil)
+		request.Header.Set("Authorization", "Bearer "+token)
+		request.Header.Set("X-Tenant-ID", "tenant-spoofed-by-client")
+		recorder := httptest.NewRecorder()
+
+		router.ServeHTTP(recorder, request)
+
+		assert.Equal(t, http.StatusOK, recorder.Code)
+		assert.Equal(t, "tenant-legit-from-claims", capturedTenantID)
+	})
+
+	t.Run("client header used when claims.TenantID is empty", func(t *testing.T) {
+		claims := Claims{
+			RegisteredClaims: jwt.RegisteredClaims{
+				ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour)),
+				IssuedAt:  jwt.NewNumericDate(time.Now()),
+				ID:        "session-empty-tenant",
+			},
+			UserID:   "user-no-tenant",
+			Role:     "student",
+			IsActive: true,
+			TenantID: "",
+		}
+		token := createValidToken(testSecret, claims)
+
+		request := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/test-tenant-defense", nil)
+		request.Header.Set("Authorization", "Bearer "+token)
+		request.Header.Set("X-Tenant-ID", "tenant-fallback-header")
+		recorder := httptest.NewRecorder()
+
+		router.ServeHTTP(recorder, request)
+
+		assert.Equal(t, http.StatusOK, recorder.Code)
+		assert.Equal(t, "tenant-fallback-header", capturedTenantID)
+	})
+}
+

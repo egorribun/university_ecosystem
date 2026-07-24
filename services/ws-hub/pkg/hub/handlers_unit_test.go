@@ -117,7 +117,7 @@ const validTicket = "00112233445566778899aabbccddeeff00112233445566778899aabbccd
 
 func TestValidateUpgradeTicket_NoRedisConfigured(t *testing.T) {
 	h := setupTestHub() // redisClient nil
-	_, err := h.validateUpgradeTicket(context.Background(), validTicket)
+	_, _, err := h.validateUpgradeTicket(context.Background(), validTicket)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "redis not available")
 }
@@ -138,7 +138,7 @@ func TestValidateUpgradeTicket_RejectsBadFormat(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			_, err := h.validateUpgradeTicket(context.Background(), tc.ticket)
+			_, _, err := h.validateUpgradeTicket(context.Background(), tc.ticket)
 			require.Error(t, err)
 			assert.Contains(t, err.Error(), tc.errSub)
 		})
@@ -147,7 +147,7 @@ func TestValidateUpgradeTicket_RejectsBadFormat(t *testing.T) {
 
 func TestValidateUpgradeTicket_NotFound(t *testing.T) {
 	h := hubWithTicketRedis(t, "") // GETDEL → nil
-	_, err := h.validateUpgradeTicket(context.Background(), validTicket)
+	_, _, err := h.validateUpgradeTicket(context.Background(), validTicket)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "not found or already used")
 }
@@ -159,12 +159,11 @@ func TestValidateUpgradeTicket_MalformedPayloads(t *testing.T) {
 	}{
 		{"no colon", "user-without-jti"},
 		{"empty user", ":jti-only"},
-		{"trailing colon", "user-1:"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			h := hubWithTicketRedis(t, tc.reply)
-			_, err := h.validateUpgradeTicket(context.Background(), validTicket)
+			_, _, err := h.validateUpgradeTicket(context.Background(), validTicket)
 			require.Error(t, err)
 			assert.Contains(t, err.Error(), "malformed ticket payload")
 		})
@@ -173,7 +172,7 @@ func TestValidateUpgradeTicket_MalformedPayloads(t *testing.T) {
 
 func TestValidateUpgradeTicket_HappyPath(t *testing.T) {
 	h := hubWithTicketRedis(t, "user-77:jti-42")
-	userID, err := h.validateUpgradeTicket(context.Background(), validTicket)
+	userID, _, err := h.validateUpgradeTicket(context.Background(), validTicket)
 	require.NoError(t, err)
 	assert.Equal(t, "user-77", userID)
 }

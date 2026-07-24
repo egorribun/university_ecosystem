@@ -14,6 +14,7 @@ import (
 type Client struct {
 	ID        string
 	UserID    string
+	TenantID  string
 	Conn      *websocket.Conn
 	Rooms     map[string]bool
 	Send      chan []byte

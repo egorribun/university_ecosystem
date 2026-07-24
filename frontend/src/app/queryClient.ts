@@ -21,6 +21,8 @@ const parseDuration = (value: string | number | undefined, fallback: number) => 
 const staleTime = parseDuration(import.meta.env.VITE_QUERY_STALE_TIME_MS, DEFAULT_STALE_MS)
 const gcTime = parseDuration(import.meta.env.VITE_QUERY_CACHE_TTL_MS, DEFAULT_CACHE_MS)
 
+import type { PersistQueryClientOptions } from "@tanstack/react-query-persist-client"
+
 const defaultOptions = {
   queries: {
     staleTime,
@@ -28,8 +30,13 @@ const defaultOptions = {
     retry: 1,
     refetchOnWindowFocus: true, // Refresh when user returns to tab
     refetchOnReconnect: "always",
+    networkMode: "offlineFirst" as const,
   },
-  mutations: { retry: 0, gcTime: 0 },
+  mutations: {
+    retry: 0,
+    gcTime: 0,
+    networkMode: "offlineFirst" as const,
+  },
 } as const
 
 export const createQueryClient = () =>
@@ -107,3 +114,17 @@ export function createIDBPersister(idbValidKey: IDBValidKey = "reactQuery") {
 }
 
 export const idbPersister = createIDBPersister()
+
+const PERSIST_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000 // 7 days
+const APP_VERSION_BUSTER = (import.meta.env.VITE_APP_VERSION as string) || "1.0.0"
+
+export const persistOptions: Omit<PersistQueryClientOptions, "queryClient"> = {
+  persister: idbPersister,
+  maxAge: PERSIST_MAX_AGE_MS,
+  buster: APP_VERSION_BUSTER,
+  dehydrateOptions: {
+    shouldDehydrateQuery: (query) => query.state.status === "success",
+    shouldDehydrateMutation: (mutation) =>
+      mutation.state.isPaused || mutation.state.status === "pending",
+  },
+}

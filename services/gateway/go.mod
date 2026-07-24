@@ -26,6 +26,8 @@ require (
 	go.opentelemetry.io/otel/sdk v1.44.0
 	go.opentelemetry.io/otel/trace v1.44.0
 	google.golang.org/grpc v1.82.1
+	github.com/spiffe/go-spiffe/v2 v2.6.0
+	github.com/university-ecosystem/services/pkg/spiffe v0.0.0
 )
 
 require (
@@ -127,3 +129,4 @@ require (
 // for better tool compatibility in CI/CD environments where go.sum
 // entries for local modules are missing.
 replace github.com/university-ecosystem/core/gen/go => ../../gen/go
+replace github.com/university-ecosystem/services/pkg/spiffe => ../pkg/spiffe

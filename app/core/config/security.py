@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import os
 
-from pydantic import ValidationInfo, field_validator
+from pydantic import Field, ValidationInfo, field_validator
 
 from app.core.logging import get_logger
 
@@ -106,6 +106,19 @@ class SecuritySettings(
     # In production: set INTERNAL_HMAC_SECRET to an independent ≥32-byte random
     # value (e.g. `openssl rand -hex 32`) and set it on BOTH gateway and backend.
     internal_hmac_secret: str = ""
+
+    # ── SPIFFE Workload API & mTLS ──────────────────────────────────────────
+    spiffe_enabled: bool = False
+    spiffe_socket_path: str = Field(default="/tmp/spire-agent/public/api.sock")  # noqa: S108
+    spiffe_trust_domain: str = "university.ecosystem"
+    spiffe_app_id: str = "spiffe://university.ecosystem/ns/default/sa/app"
+    spiffe_allowed_clients: list[str] = Field(
+        default_factory=lambda: [
+            "spiffe://university.ecosystem/ns/default/sa/gateway",
+            "spiffe://university.ecosystem/ns/default/sa/ws-hub",
+            "spiffe://university.ecosystem/ns/default/sa/file-processor",
+        ]
+    )
 
     @field_validator("audit_log_secret")
     @classmethod

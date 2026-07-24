@@ -430,6 +430,25 @@ async def prepare_database() -> AsyncIterator[None]:
             "CREATE INDEX IF NOT EXISTS ix_stored_events_pending ON stored_events(status, created_at)"
         )
 
+        # dead_letter_jobs table
+        await conn.exec_driver_sql(
+            """
+            CREATE TABLE IF NOT EXISTS dead_letter_jobs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                job_type VARCHAR(100) NOT NULL,
+                job_hash VARCHAR(64) NOT NULL UNIQUE,
+                payload TEXT NOT NULL,
+                error_message TEXT,
+                retry_count INTEGER NOT NULL DEFAULT 0,
+                max_retries INTEGER NOT NULL DEFAULT 3,
+                status VARCHAR(20) NOT NULL DEFAULT 'pending',
+                next_retry_at DATETIME,
+                created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+        """
+        )
+
     yield
     async with database.engine.begin() as conn:
         await conn.run_sync(Base.metadata.drop_all)

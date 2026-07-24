@@ -31,3 +31,16 @@ class UserFK:
         index=True,
         nullable=False,
     )
+
+
+class TenantMixin:
+    """
+    Tenant isolation mixin for multi-tenant entity tables.
+    """
+
+    tenant_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("tenants.id", ondelete="CASCADE"),
+        index=True,
+        nullable=True,
+    )

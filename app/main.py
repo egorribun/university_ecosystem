@@ -125,6 +125,15 @@ configure_metrics(app)
 # Middlewares
 configure_middleware(app, settings=settings)
 
+from app.core.security.spiffe import SPIFFEAuthMiddleware
+
+app.add_middleware(
+    SPIFFEAuthMiddleware,
+    allowed_spiffe_ids=settings.security.spiffe_allowed_clients,
+    protected_prefixes=("/api/internal", "/api/v1/chat/check-participant"),
+    enabled=settings.security.spiffe_enabled,
+)
+
 from dishka.integrations.fastapi import setup_dishka
 
 from app.core.di_provider import create_dishka_container

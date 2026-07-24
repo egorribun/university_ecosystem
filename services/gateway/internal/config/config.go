@@ -60,6 +60,13 @@ type Config struct {
 	// SentryTracesSampleRate controls Sentry performance monitoring sample rate.
 	// Default 1.0 (100%) for dev; recommend 0.1 (10%) for production.
 	SentryTracesSampleRate float64
+	// SPIFFE Workload API & mTLS configuration
+	SpiffeEnabled         bool
+	SpiffeEndpointSocket  string
+	SpiffeTrustDomain     string
+	SpiffeMyID            string
+	FileProcessorSpiffeID string
+	BackendSpiffeID       string
 }
 
 // Load loads the configuration from environment variables
@@ -90,6 +97,12 @@ func Load() (*Config, error) {
 		// RZ-33-02: Configurable Sentry sample rate. Default 1.0 for dev;
 		// recommend 0.1 for production (set SENTRY_TRACES_SAMPLE_RATE=0.1).
 		SentryTracesSampleRate: getEnvFloat64("SENTRY_TRACES_SAMPLE_RATE", 1.0),
+		SpiffeEnabled:         os.Getenv("SPIFFE_ENABLED") == "true",
+		SpiffeEndpointSocket:  getEnv("SPIFFE_ENDPOINT_SOCKET", "unix:///run/spire/sockets/agent.sock"),
+		SpiffeTrustDomain:     getEnv("SPIFFE_TRUST_DOMAIN", "university.ecosystem"),
+		SpiffeMyID:            getEnv("SPIFFE_MY_ID", "spiffe://university.ecosystem/ns/default/sa/gateway"),
+		FileProcessorSpiffeID: getEnv("FILE_PROCESSOR_SPIFFE_ID", "spiffe://university.ecosystem/ns/default/sa/file-processor"),
+		BackendSpiffeID:       getEnv("BACKEND_SPIFFE_ID", "spiffe://university.ecosystem/ns/default/sa/app"),
 	}
 
 	if cfg.JWTSecret == "" {

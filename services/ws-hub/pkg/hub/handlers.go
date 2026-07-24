@@ -124,7 +124,7 @@ func (h *Hub) HandleWebSocket(w http.ResponseWriter, r *http.Request, cfg *confi
 		return
 	}
 
-	userID, err := h.validateUpgradeTicket(setupCtx, ticket)
+	userID, tenantID, err := h.validateUpgradeTicket(setupCtx, ticket)
 	if err != nil {
 		h.Logger.WarnContext(setupCtx, "WebSocket upgrade ticket invalid", "err", err)
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
@@ -166,16 +166,20 @@ func (h *Hub) HandleWebSocket(w http.ResponseWriter, r *http.Request, cfg *confi
 	// but with the OTel span propagated for distributed trace correlation.
 	clientCtx, clientCancel := context.WithCancel(context.Background())
 	clientCtx = trace.ContextWithSpan(clientCtx, trace.SpanFromContext(r.Context()))
+	if tenantID != "" {
+		clientCtx = context.WithValue(clientCtx, "tenant_id", tenantID)
+	}
 
 	client := &Client{
-		ID:     userID,
-		UserID: userID,
-		Conn:   conn,
-		Rooms:  make(map[string]bool),
-		Send:   make(chan []byte, cfg.SendBufferSize),
-		Hub:    h,
-		ctx:    clientCtx,
-		cancel: clientCancel,
+		ID:       userID,
+		UserID:   userID,
+		TenantID: tenantID,
+		Conn:     conn,
+		Rooms:    make(map[string]bool),
+		Send:     make(chan []byte, cfg.SendBufferSize),
+		Hub:      h,
+		ctx:      clientCtx,
+		cancel:   clientCancel,
 	}
 
 	h.Register <- client
@@ -184,53 +188,55 @@ func (h *Hub) HandleWebSocket(w http.ResponseWriter, r *http.Request, cfg *confi
 }
 
 // validateUpgradeTicket atomically consumes a one-time WS upgrade ticket from
-// Redis and returns the associated userID.
+// Redis and returns the associated userID and tenantID.
 //
 // The ticket was issued by the Python backend (POST /ws/ticket) and stored as:
 //
 //	Key  : "ott:ws:{ticket}"
-//	Value: "{user_id}:{jti}"  (colon-joined UUIDs)
+//	Value: "{user_id}:{jti}:{tenant_id}" or "{user_id}:{jti}"
 //	TTL  : WS_TICKET_TTL_SECONDS (default 15s, configurable via Config.TicketTTLSeconds)
 //
 // GETDEL makes the ticket single-use: if two concurrent upgrade requests race
 // with the same ticket, only the first succeeds.
-func (h *Hub) validateUpgradeTicket(ctx context.Context, ticket string) (string, error) {
+func (h *Hub) validateUpgradeTicket(ctx context.Context, ticket string) (string, string, error) {
 	if h.redisClient == nil {
-		return "", fmt.Errorf("redis not available for ticket validation")
+		return "", "", fmt.Errorf("redis not available for ticket validation")
 	}
 	if len(ticket) != 64 {
 		// tickets are always 64-char hex strings (secrets.token_hex(32))
-		return "", fmt.Errorf("invalid ticket length: %d", len(ticket))
+		return "", "", fmt.Errorf("invalid ticket length: %d", len(ticket))
 	}
 	// RZ-W16-06: Validate hex charset — tickets are secrets.token_hex(32) = 64 lowercase hex chars.
 	for _, c := range ticket {
 		if (c < '0' || c > '9') && (c < 'a' || c > 'f') {
-			return "", fmt.Errorf("invalid ticket charset")
+			return "", "", fmt.Errorf("invalid ticket charset")
 		}
 	}
 
 	key := wsTicketKeyPrefix + ticket
 	raw, err := h.redisClient.GetDel(ctx, key).Result()
 	if err == goredis.Nil {
-		return "", fmt.Errorf("ticket not found or already used")
+		return "", "", fmt.Errorf("ticket not found or already used")
 	}
 	if err != nil {
-		return "", fmt.Errorf("redis error during ticket validation: %w", err)
+		return "", "", fmt.Errorf("redis error during ticket validation: %w", err)
 	}
 
-	// Format: "{user_id}:{jti}" — split on first colon
-	sep := strings.Index(raw, ":")
-	if sep <= 0 || sep == len(raw)-1 {
-		return "", fmt.Errorf("malformed ticket payload")
+	// Format: "{user_id}:{jti}:{tenant_id}" or "{user_id}:{jti}"
+	parts := strings.Split(raw, ":")
+	if len(parts) < 2 || parts[0] == "" {
+		return "", "", fmt.Errorf("malformed ticket payload")
 	}
-	userID := raw[:sep]
-	// jti is raw[sep+1:] — available for audit logging if needed
-	_ = raw[sep+1:]
+	userID := parts[0]
+	tenantID := ""
+	if len(parts) >= 3 {
+		tenantID = parts[2]
+	}
 
 	if userID == "" {
-		return "", fmt.Errorf("empty user_id in ticket payload")
+		return "", "", fmt.Errorf("empty user_id in ticket payload")
 	}
-	return userID, nil
+	return userID, tenantID, nil
 }
 
 // extractAlgFromHeader reads the "alg" field from a JWT's base64url-encoded

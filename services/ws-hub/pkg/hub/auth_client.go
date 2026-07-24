@@ -15,6 +15,7 @@ import (
 	lru "github.com/hashicorp/golang-lru/v2"
 	"github.com/redis/go-redis/v9"
 	"github.com/sony/gobreaker"
+	"github.com/university-ecosystem/services/pkg/spiffe"
 )
 
 // authClientMaxConnsPerHost reads AUTH_CLIENT_MAX_CONNS_PER_HOST from the environment.
@@ -122,6 +123,20 @@ func NewInternalAPIAuthClient(baseURL string, redisClient *redis.Client) *Intern
 		calls: make(map[string]*call),
 		cb:    cb,
 	}
+}
+
+// WithSPIFFE configures the client's HTTP transport to use SPIFFE mTLS when communicating with the backend.
+func (c *InternalAPIAuthClient) WithSPIFFE(spiffeClient *spiffe.Client, backendSpiffeID string) *InternalAPIAuthClient {
+	if spiffeClient != nil && backendSpiffeID != "" {
+		tlsCfg, err := spiffeClient.ClientTLSConfig(backendSpiffeID)
+		if err != nil {
+			panic(fmt.Sprintf("failed to create SPIFFE client TLS config for auth client: %v", err))
+		}
+		if tr, ok := c.httpClient.Transport.(*http.Transport); ok {
+			tr.TLSClientConfig = tlsCfg
+		}
+	}
+	return c
 }
 
 // StartEviction is no longer needed since lru.Cache manages its own memory bound.

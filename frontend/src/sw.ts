@@ -19,11 +19,14 @@ export const queueStores = {
   readPendingNavigations: offline.readPendingNavigations,
   storePendingReport: offline.storePendingReport,
   readPendingReports: offline.readPendingReports,
+  storePendingMutation: offline.storePendingMutation,
+  readPendingMutations: offline.readPendingMutations,
 }
 
 export const queueProcessors = {
   processPendingNavigations: offline.processPendingNavigations,
   processPendingReports: offline.processPendingReports,
+  processPendingMutations: offline.processPendingMutations,
   processAllQueues: offline.processOfflineQueues,
 }
 
@@ -34,6 +37,7 @@ export const queueSanitizers = {
 export const queueSyncTags = {
   navigation: "navigation-sync",
   newsInteraction: "news-interaction:sync",
+  offlineMutations: "sync-offline-mutations",
 }
 
 /**
@@ -131,7 +135,10 @@ self.addEventListener("sync", (event) => {
   const syncEvent = event as ExtendableEvent & { tag: string }
   if (
     syncEvent.tag === queueSyncTags.newsInteraction ||
-    syncEvent.tag === queueSyncTags.navigation
+    syncEvent.tag === queueSyncTags.navigation ||
+    syncEvent.tag === queueSyncTags.offlineMutations ||
+    syncEvent.tag === "sync-offline-mutations" ||
+    syncEvent.tag === "offline-mutations-sync"
   ) {
     syncEvent.waitUntil(processOfflineQueues())
   }

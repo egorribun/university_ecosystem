@@ -16,6 +16,7 @@ import {
   getTimeStr,
 } from "@/components/schedule/scheduleUtils"
 import { detectConflicts } from "@/utils/scheduleConflicts"
+import { getDatabase } from "@/db"
 import { useScheduleConfig } from "./useScheduleConfig"
 import { useScheduleTime } from "./useScheduleTime"
 
@@ -47,6 +48,31 @@ export function useScheduleData() {
     () => normalizeLessons(groupScheduleRaw),
     [groupScheduleRaw, normalizeLessons]
   )
+
+  // ── Persist Schedule to RxDB for Offline Access ─────
+  useEffect(() => {
+    if (activeGroupId && groupScheduleRaw.length > 0) {
+      getDatabase()
+        .then((db) => {
+          const docs = groupScheduleRaw.map((lesson: any) => ({
+            id: String(lesson.id),
+            group_id: activeGroupId,
+            subject: lesson.subject || "",
+            teacher: lesson.teacher || "",
+            room: lesson.room || "",
+            building: lesson.building || "",
+            weekday: lesson.weekday || "",
+            start_time: lesson.start_time || "",
+            end_time: lesson.end_time || "",
+            parity: lesson.parity || "both",
+            lesson_type: lesson.lesson_type || "lecture",
+            updated_at: new Date().toISOString(),
+          }))
+          db.schedule.bulkUpsert(docs).catch(() => {})
+        })
+        .catch(() => {})
+    }
+  }, [activeGroupId, groupScheduleRaw])
 
   // ── Auto-select group based on user role ───────────
   useEffect(() => {

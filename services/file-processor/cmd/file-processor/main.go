@@ -35,6 +35,7 @@ import (
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/health"
 	"google.golang.org/grpc/health/grpc_health_v1"
+	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/reflection"
 	"google.golang.org/grpc/status"
 
@@ -55,12 +56,14 @@ import (
 	"github.com/university-ecosystem/file-processor/internal/middleware"
 	"github.com/university-ecosystem/file-processor/internal/service"
 	"github.com/university-ecosystem/file-processor/internal/workflow"
+	"github.com/university-ecosystem/services/pkg/spiffe"
 )
 
 type contextKey string
 
 const (
-	userIDKey contextKey = "user_id"
+	userIDKey   contextKey = "user_id"
+	tenantIDKey contextKey = "tenant_id"
 )
 
 var (
@@ -124,7 +127,25 @@ func runMain(ctx context.Context) {
 
 	startNatsSubscriber(ctx, cfg, c, logger)
 
-	grpcSrv := setupGRPCServer(ctx, cfg, rsaPublicKey, c, logger)
+	spiffeClient, err := spiffe.NewClient(ctx, spiffe.Config{
+		Enabled:        cfg.SpiffeEnabled,
+		SocketPath:     cfg.SpiffeEndpointSocket,
+		TrustDomain:    cfg.SpiffeTrustDomain,
+		MySpiffeID:     cfg.SpiffeMyID,
+	}, logger)
+	if err != nil {
+		logger.ErrorContext(ctx, "SPIFFE initialization failed", "err", err)
+		if cfg.SpiffeEnabled {
+			os.Exit(1)
+		}
+	} else if cfg.SpiffeEnabled && spiffeClient == nil {
+		logger.ErrorContext(ctx, "SPIFFE is enabled but client initialization returned nil")
+		os.Exit(1)
+	} else if spiffeClient != nil {
+		defer spiffeClient.Close()
+	}
+
+	grpcSrv := setupGRPCServer(ctx, cfg, rsaPublicKey, c, spiffeClient, logger)
 	graphqlSrv := setupGraphQLServer(ctx, cfg, rsaPublicKey, c, logger)
 
 	runServers(ctx, grpcSrv, graphqlSrv, cfg, logger)
@@ -362,9 +383,21 @@ type authedServerStream struct {
 
 func (s *authedServerStream) Context() context.Context { return s.ctx }
 
-func setupGRPCServer(ctx context.Context, cfg *config.Config, rsaPub *rsa.PublicKey, c client.Client, logger *slog.Logger) *grpc.Server {
+func setupGRPCServer(ctx context.Context, cfg *config.Config, rsaPub *rsa.PublicKey, c client.Client, opts ...any) *grpc.Server {
+	var spiffeClient *spiffe.Client
+	logger := slog.Default()
+
+	for _, opt := range opts {
+		switch v := opt.(type) {
+		case *slog.Logger:
+			logger = v
+		case *spiffe.Client:
+			spiffeClient = v
+		}
+	}
+
 	authFn := authFunc(cfg.JWTSecret, rsaPub, logger)
-	grpcServer := grpc.NewServer(
+	serverOpts := []grpc.ServerOption{
 		grpc.StatsHandler(otelgrpc.NewServerHandler()),
 		grpc.ChainStreamInterceptor(
 			grpc_prometheus.StreamServerInterceptor,
@@ -374,7 +407,22 @@ func setupGRPCServer(ctx context.Context, cfg *config.Config, rsaPub *rsa.Public
 			grpc_prometheus.UnaryServerInterceptor,
 			selectiveUnaryAuth(authFn),
 		),
-	)
+	}
+
+	if cfg.SpiffeEnabled {
+		if spiffeClient == nil {
+			logger.ErrorContext(ctx, "SPIFFE is enabled but spiffeClient is nil")
+			os.Exit(1)
+		}
+		creds, err := spiffeClient.GRPCCerverCredentials(cfg.AllowedClientSpiffeIDs...)
+		if err != nil {
+			logger.ErrorContext(ctx, "Failed to create SPIFFE gRPC server credentials", "err", err)
+			os.Exit(1)
+		}
+		serverOpts = append(serverOpts, grpc.Creds(creds))
+	}
+
+	grpcServer := grpc.NewServer(serverOpts...)
 
 	pb.RegisterFileProcessingServiceServer(grpcServer, &service.Server{TemporalClient: c})
 	reflection.Register(grpcServer)
@@ -389,7 +437,14 @@ func setupGRPCServer(ctx context.Context, cfg *config.Config, rsaPub *rsa.Public
 }
 
 func setupGraphQLServer(ctx context.Context, cfg *config.Config, rsaPub *rsa.PublicKey, c client.Client, logger *slog.Logger) *http.Server {
-	s, err := os.ReadFile("schema.graphql")
+	schemaPath := "schema.graphql"
+	if p := os.Getenv("FP_SCHEMA_PATH"); p != "" {
+		schemaPath = p
+	}
+	s, err := os.ReadFile(schemaPath)
+	if err != nil && schemaPath == "schema.graphql" {
+		s, err = os.ReadFile("../schema.graphql")
+	}
 	if err != nil {
 		logger.ErrorContext(ctx, "schema.graphql not found", "err", err)
 		os.Exit(1)
@@ -566,10 +621,20 @@ func httpJWTMiddleware(secret string, rsaPub *rsa.PublicKey, log *slog.Logger, n
 			http.Error(w, "Unauthorized", http.StatusUnauthorized)
 			return
 		}
+		ctx := r.Context()
 		if sub, ok := claims["sub"].(string); ok {
-			ctx := context.WithValue(r.Context(), userIDKey, sub)
-			r = r.WithContext(ctx)
+			ctx = context.WithValue(ctx, userIDKey, sub)
 		}
+		tenantID := r.Header.Get("X-Tenant-ID")
+		if tenantID == "" {
+			if t, ok := claims["tenant_id"].(string); ok {
+				tenantID = t
+			}
+		}
+		if tenantID != "" {
+			ctx = context.WithValue(ctx, tenantIDKey, tenantID)
+		}
+		r = r.WithContext(ctx)
 
 		next.ServeHTTP(w, r)
 	})
@@ -591,10 +656,26 @@ func authFunc(secret string, rsaPub *rsa.PublicKey, logger *slog.Logger) auth.Au
 		}
 
 		if claims, ok := token.Claims.(jwt.MapClaims); ok && token.Valid {
-			if sub, ok := claims["sub"].(string); ok {
-				newCtx := context.WithValue(ctx, userIDKey, sub)
-				return newCtx, nil
+			sub, ok := claims["sub"].(string)
+			if !ok || sub == "" {
+				return nil, status.Errorf(codes.Unauthenticated, "invalid token claims: missing sub")
 			}
+			newCtx := context.WithValue(ctx, userIDKey, sub)
+			var tenantID string
+			if md, ok := metadata.FromIncomingContext(ctx); ok {
+				if vals := md.Get("x-tenant-id"); len(vals) > 0 {
+					tenantID = vals[0]
+				}
+			}
+			if tenantID == "" {
+				if t, ok := claims["tenant_id"].(string); ok {
+					tenantID = t
+				}
+			}
+			if tenantID != "" {
+				newCtx = context.WithValue(newCtx, tenantIDKey, tenantID)
+			}
+			return newCtx, nil
 		}
 
 		return nil, status.Errorf(codes.Unauthenticated, "invalid token claims")

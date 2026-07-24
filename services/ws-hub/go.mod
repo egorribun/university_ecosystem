@@ -25,6 +25,8 @@ require (
 	go.opentelemetry.io/otel/sdk v1.44.0
 	go.opentelemetry.io/otel/trace v1.44.0
 	golang.org/x/time v0.15.0
+	github.com/spiffe/go-spiffe/v2 v2.6.0
+	github.com/university-ecosystem/services/pkg/spiffe v0.0.0
 )
 
 require (
@@ -123,3 +125,4 @@ require (
 )
 
 replace github.com/university-ecosystem/core/gen/go => ../../gen/go
+replace github.com/university-ecosystem/services/pkg/spiffe => ../pkg/spiffe

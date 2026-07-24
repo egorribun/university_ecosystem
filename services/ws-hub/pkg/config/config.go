@@ -74,6 +74,12 @@ type Config struct {
 	RedisURL      string
 	RedisPassword string
 	RedisDB       int
+	// SPIFFE Workload API & mTLS configuration
+	SpiffeEnabled        bool
+	SpiffeEndpointSocket string
+	SpiffeTrustDomain    string
+	SpiffeMyID           string
+	BackendSpiffeID      string
 }
 
 // LoadConfig initializes Config from environment variables.
@@ -120,6 +126,11 @@ func LoadConfig() *Config {
 		RedisURL:           getEnv("REDIS_URL", "redis:6379"),
 		RedisPassword:      getEnv("REDIS_PASSWORD", ""),
 		RedisDB:            getEnvInt("REDIS_DB", 0),
+		SpiffeEnabled:        os.Getenv("SPIFFE_ENABLED") == "true",
+		SpiffeEndpointSocket: getEnv("SPIFFE_ENDPOINT_SOCKET", "unix:///run/spire/sockets/agent.sock"),
+		SpiffeTrustDomain:    getEnv("SPIFFE_TRUST_DOMAIN", "university.ecosystem"),
+		SpiffeMyID:           getEnv("SPIFFE_MY_ID", "spiffe://university.ecosystem/ns/default/sa/ws-hub"),
+		BackendSpiffeID:      getEnv("BACKEND_SPIFFE_ID", "spiffe://university.ecosystem/ns/default/sa/app"),
 	}
 }
 

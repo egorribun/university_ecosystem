@@ -290,7 +290,7 @@ func TestSetupGraphQLServer_NoSchemaFile(t *testing.T) {
 	}
 	// #nosec
 	cmd := exec.CommandContext(context.Background(), os.Args[0], "-test.run=TestSetupGraphQLServer_NoSchemaFile")
-	cmd.Env = append(os.Environ(), "BE_CRASHER=1")
+	cmd.Env = append(os.Environ(), "BE_CRASHER=1", "FP_SCHEMA_PATH=/nonexistent/schema.graphql")
 	err := cmd.Run()
 	var e *exec.ExitError
 	if errors.As(err, &e) {

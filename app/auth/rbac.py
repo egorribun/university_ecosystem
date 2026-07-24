@@ -109,13 +109,13 @@ _PERMISSION_CACHE_MAX_SIZE: int = 10_000
 
 
 # OrderedDict provides O(1) LRU eviction via move_to_end + popitem(last=False).
-# {(user_id, resource_type, resource_id, permission): (result: bool, cached_at: float)}
-def _make_fresh_cache() -> OrderedDict[tuple[str, str, str, str], tuple[bool, float]]:
+# {(user_id, resource_type, resource_id, permission, tenant_id, campus_id): (result: bool, cached_at: float)}
+def _make_fresh_cache() -> OrderedDict[tuple[str, str, str, str, str, str], tuple[bool, float]]:
     """Return a new empty cache. Called once per process after fork (RZ-14-02)."""
     return OrderedDict()
 
 
-_permission_cache: OrderedDict[tuple[str, str, str, str], tuple[bool, float]] = (
+_permission_cache: OrderedDict[tuple[str, str, str, str, str, str], tuple[bool, float]] = (
     _make_fresh_cache()
 )
 
@@ -181,12 +181,46 @@ class PermissionChecker:
             user_id=user_id,
         )
 
+    async def check_tenant_permission(
+        self,
+        tenant_id: str,
+        permission: str,
+        user_id: str,
+    ) -> bool:
+        """Check tenant-level permission against SpiceDB."""
+        return await self.check_permission(
+            resource_type="tenant",
+            resource_id=tenant_id,
+            permission=permission,
+            user_id=user_id,
+            tenant_id=tenant_id,
+        )
+
+    async def check_campus_permission(
+        self,
+        campus_id: str,
+        permission: str,
+        user_id: str,
+        tenant_id: str | None = None,
+    ) -> bool:
+        """Check campus-level permission against SpiceDB."""
+        return await self.check_permission(
+            resource_type="campus",
+            resource_id=campus_id,
+            permission=permission,
+            user_id=user_id,
+            tenant_id=tenant_id,
+            campus_id=campus_id,
+        )
+
     async def check_permission(
         self,
         resource_type: str,
         resource_id: str,
         permission: str,
         user_id: str,
+        tenant_id: str | None = None,
+        campus_id: str | None = None,
     ) -> bool:
         """Check a permission against SpiceDB via async gRPC.
 
@@ -197,6 +231,14 @@ class PermissionChecker:
                 callers can distinguish "SpiceDB said no" (returns False) from
                 "SpiceDB is unreachable" (raises).
         """
+        cache_key = (
+            user_id,
+            resource_type,
+            resource_id,
+            permission,
+            tenant_id or "",
+            campus_id or "",
+        )
         try:
             # Lazy import keeps the module loadable when grpclib is absent
             import grpc.aio  # noqa: F401
@@ -242,7 +284,6 @@ class PermissionChecker:
             )
             # Populate grace-period cache on every successful check.
             # RZ-W13-02: LRU eviction keeps the dict bounded.
-            cache_key = (user_id, resource_type, resource_id, permission)
             _permission_cache[cache_key] = (result, time.monotonic())
             _permission_cache.move_to_end(cache_key)
             if len(_permission_cache) > _PERMISSION_CACHE_MAX_SIZE:
@@ -264,7 +305,6 @@ class PermissionChecker:
             )
             # TD-W5-08: Grace-period fallback — serve stale cached result when
             # SpiceDB is temporarily unreachable instead of failing the request.
-            cache_key = (user_id, resource_type, resource_id, permission)
             cached = _permission_cache.get(cache_key)
             if cached is not None:
                 cached_result, cached_at = cached

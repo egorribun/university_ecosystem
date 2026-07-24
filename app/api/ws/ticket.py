@@ -80,12 +80,15 @@ async def issue_ws_upgrade_ticket(
     The WS handler then performs an atomic GETDEL to authenticate the upgrade
     without any JWT ever appearing in WebSocket protocol headers or proxy logs.
     """
+    from app.core.tenant import get_current_tenant
+
     locale = resolve_locale(request=request)
     payload = AuthTokenService.extract_and_decode_token(request, token, locale)
     user_id, jti = AuthTokenService.validate_payload(payload, locale)
 
+    tenant_id = get_current_tenant() or request.headers.get("X-Tenant-ID", "")
     ticket = secrets.token_hex(32)  # 64-char hex, 256 bits of entropy
-    redis_value = f"{user_id}:{jti}"
+    redis_value = f"{user_id}:{jti}:{tenant_id}" if tenant_id else f"{user_id}:{jti}"
     ttl = _get_ticket_ttl()
 
     try:
