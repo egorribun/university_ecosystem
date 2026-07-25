@@ -1,0 +1,27 @@
+apiVersion: chaos-mesh.org/v1alpha1
+kind: PodChaos
+metadata:
+  name: redis-pod-failure
+spec:
+  action: pod-failure
+  mode: one
+  selector:
+    labelSelectors:
+      app.kubernetes.io/name: redis
+  duration: "30s"
+---
+apiVersion: chaos-mesh.org/v1alpha1
+kind: NetworkChaos
+metadata:
+  name: redis-network-delay
+spec:
+  action: delay
+  mode: all
+  selector:
+    labelSelectors:
+      app.kubernetes.io/name: redis
+  delay:
+    latency: "100ms"
+    jitter: "10ms"
+    correlation: "50"
+  duration: "30s"

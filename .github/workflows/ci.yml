@@ -680,7 +680,6 @@ jobs:
   e2e-tests-cross-browser:
     name: E2E Tests (cross-browser ${{ matrix.browser }})
     needs: pre-commit-check
-    continue-on-error: true
     strategy:
       fail-fast: false
       matrix:
@@ -2041,6 +2040,24 @@ jobs:
           NATS_URL: nats://localhost:4223
         run: uv run pytest tests/chaos/ -v -m chaos --tb=short
 
+  chaos-loadtest-orchestrator:
+    name: Chaos Loadtest Orchestrator
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: pre-commit-check
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.14"
+      - name: Run chaos loadtest dry-run (Redis chaos)
+        run: python scripts/chaos/run_chaos_loadtest.py --dry-run --manifest k8s/chaos/redis-chaos.yaml --duration 5 --verbose
+      - name: Run chaos loadtest dry-run (NATS chaos)
+        run: python scripts/chaos/run_chaos_loadtest.py --dry-run --manifest k8s/chaos/nats-chaos.yaml --duration 5
+      - name: Run chaos loadtest dry-run (Gateway-Backend disconnect)
+        run: python scripts/chaos/run_chaos_loadtest.py --dry-run --manifest k8s/chaos/gateway-backend-disconnect.yaml --duration 5
+
   db-migration-integrity:
     name: DB Migration Rollback Integrity
     runs-on: ubuntu-latest
@@ -2287,6 +2304,7 @@ jobs:
       - mutation-tests-incremental
       - stryker-incremental
       - chaos-tests
+      - chaos-loadtest-orchestrator
       - db-migration-integrity
       - actionlint
       - dockerfile-lint
@@ -2337,6 +2355,7 @@ jobs:
             "${{ needs.rust-tests.result }}"
             "${{ needs.mutation-tests-incremental.result }}"
             "${{ needs.stryker-incremental.result }}"
+            "${{ needs.chaos-loadtest-orchestrator.result }}"
             "${{ needs.actionlint.result }}"
             "${{ needs.dockerfile-lint.result }}"
             "${{ needs.shellcheck.result }}"

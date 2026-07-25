@@ -16,6 +16,8 @@ from pydantic import BaseModel
 from app.api.deps import get_current_admin_user, get_locale
 from app.api.validation import raise_not_found, raise_validation_error
 from app.core.database import get_db, get_read_db
+from app.core.event_dlq import dead_letter_queue as in_memory_dlq
+from app.core.ratelimit.circuit_breaker import get_circuit_breaker
 from app.models import DeadLetterJob, JobStatus
 from app.workers.dead_letter_queue import DeadLetterQueue
 
@@ -35,6 +37,42 @@ class DLQStatsResponse(BaseModel):
     failed: int
     completed: int
     total_active: int
+
+
+class DLQStatusResponse(BaseModel):
+    """Response model for detailed DLQ & Circuit Breaker status."""
+
+    in_memory_queue_depth: int
+    in_memory_max_size: int
+    in_memory_is_replaying: bool
+    db_pending: int
+    db_retrying: int
+    db_failed: int
+    db_completed: int
+    db_total_active: int
+    circuit_breaker_state: str
+    circuit_breaker_failures: int
+    is_replaying: bool
+
+
+class DLQReplayRequest(BaseModel):
+    """Request model for manual DLQ replay trigger."""
+
+    batch_size: int = 20
+    force: bool = False
+    target: str = "all"  # "all", "in_memory", or "db"
+
+
+class DLQReplayResponse(BaseModel):
+    """Response model for DLQ replay execution."""
+
+    success: bool
+    target: str
+    in_memory_replayed: int
+    in_memory_failed: int
+    db_replayed: int
+    db_failed: int
+    message: str
 
 
 class DLQJobResponse(BaseModel):
@@ -57,6 +95,108 @@ class DLQJobsListResponse(BaseModel):
 
     jobs: list[DLQJobResponse]
     total: int
+
+
+@router.get(
+    "/status",
+    response_model=DLQStatusResponse,
+    summary="Get Detailed DLQ Status & Circuit Breaker Metrics",
+    description=(
+        "Returns comprehensive metrics on in-memory event DLQ queue depth, "
+        "DB-backed dead letter jobs, circuit breaker state, and replay status."
+    ),
+)
+async def get_dlq_status(
+    db: AsyncSession = Depends(get_read_db),
+    _: models.User = Depends(get_current_admin_user),
+) -> DLQStatusResponse:
+    """Get comprehensive DLQ status and circuit breaker metrics."""
+    db_dlq = DeadLetterQueue(db)
+    db_stats = await db_dlq.get_queue_stats()
+
+    in_mem_status = await in_memory_dlq.get_replay_status()
+    cb = get_circuit_breaker()
+    cb_state = cb.state.name
+
+    db_pending = db_stats.get(JobStatus.PENDING.value, 0)
+    db_retrying = db_stats.get(JobStatus.RETRYING.value, 0)
+    db_failed = db_stats.get(JobStatus.FAILED.value, 0)
+    db_completed = db_stats.get(JobStatus.COMPLETED.value, 0)
+    db_active = db_pending + db_retrying
+
+    is_replaying = bool(in_mem_status.get("is_replaying", False)) or bool(
+        getattr(DeadLetterQueue, "_is_replaying", False)
+    )
+
+    return DLQStatusResponse(
+        in_memory_queue_depth=in_mem_status.get("size", 0),
+        in_memory_max_size=in_mem_status.get("max_size", 1000),
+        in_memory_is_replaying=bool(in_mem_status.get("is_replaying", False)),
+        db_pending=db_pending,
+        db_retrying=db_retrying,
+        db_failed=db_failed,
+        db_completed=db_completed,
+        db_total_active=db_active,
+        circuit_breaker_state=cb_state,
+        circuit_breaker_failures=getattr(cb, "_failure_count", 0),
+        is_replaying=is_replaying,
+    )
+
+
+@router.post(
+    "/replay",
+    response_model=DLQReplayResponse,
+    summary="Trigger Manual DLQ Replay",
+    description=(
+        "Manually triggers DLQ replay for in-memory events, DB dead letter jobs, "
+        "or both, with options for batch size and forcing execution regardless of circuit breaker state."
+    ),
+)
+async def trigger_dlq_replay(
+    request: DLQReplayRequest = DLQReplayRequest(),
+    db: AsyncSession = Depends(get_db),
+    locale: str = Depends(get_locale),
+    _: models.User = Depends(get_current_admin_user),
+) -> DLQReplayResponse:
+    """Manually trigger DLQ replay for in-memory domain events and/or DB jobs."""
+    if request.target not in ("all", "in_memory", "db"):
+        raise_validation_error(
+            "errors.dlq.invalid_target",
+            locale,
+            targets="all, in_memory, db",
+        )
+
+    in_mem_success, in_mem_failed = 0, 0
+    db_success, db_failed = 0, 0
+
+    if request.target in ("all", "in_memory"):
+        in_mem_success, in_mem_failed = await in_memory_dlq.auto_replay(
+            batch_size=request.batch_size,
+            force=request.force,
+        )
+
+    if request.target in ("all", "db"):
+        db_dlq = DeadLetterQueue(db)
+        cb = get_circuit_breaker()
+        db_success, db_failed = await db_dlq.auto_replay_jobs(
+            batch_size=request.batch_size,
+            circuit_breaker=cb,
+            force=request.force,
+        )
+        await db.commit()
+
+    total_replayed = in_mem_success + db_success
+    total_failed = in_mem_failed + db_failed
+
+    return DLQReplayResponse(
+        success=total_failed == 0,
+        target=request.target,
+        in_memory_replayed=in_mem_success,
+        in_memory_failed=in_mem_failed,
+        db_replayed=db_success,
+        db_failed=db_failed,
+        message=f"Replayed {total_replayed} items ({total_failed} failures)",
+    )
 
 
 @router.get(

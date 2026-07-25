@@ -8,17 +8,21 @@ Three-state machine preventing cascading failures when Redis is unresponsive:
 Thread-safe under Python 3.13+ free-threading via threading.Lock.
 """
 
-from __future__ import annotations
-
+import asyncio
 import enum
 import functools
+import inspect
 import logging
 import threading
 import time
+import typing
+from collections.abc import Awaitable, Callable
+from typing import Any
 
 from prometheus_client import Counter, Gauge
 
 _log = logging.getLogger(__name__)
+_background_tasks: set[asyncio.Task[Any]] = set()
 
 # ---------------------------------------------------------------------------
 # Prometheus metrics
@@ -67,11 +71,23 @@ class RedisCircuitBreaker:
         self._last_failure_time = 0.0
         self._current_recovery_timeout = recovery_timeout
         self._half_open_probe_sent = False  # RZ-33-11: single-probe gate
-        self._lock = threading.Lock()
+        self._lock = threading.RLock()
+        self._state_listeners: list[
+            Callable[[CircuitState, CircuitState], Awaitable[None] | None]
+        ] = []
 
         circuit_state_gauge.set(CircuitState.CLOSED)
 
     # -- Public API --------------------------------------------------------
+
+    def add_state_listener(
+        self,
+        listener: Callable[[CircuitState, CircuitState], Awaitable[None] | None],
+    ) -> None:
+        """Register a callback for circuit state transitions (old_state, new_state)."""
+        with self._lock:
+            if listener not in self._state_listeners:
+                self._state_listeners.append(listener)
 
     @property
     def state(self) -> CircuitState:
@@ -98,7 +114,7 @@ class RedisCircuitBreaker:
         """Record a successful Redis operation."""
         with self._lock:
             if self._state in (CircuitState.HALF_OPEN, CircuitState.OPEN):
-                self._transition(CircuitState.CLOSED)
+                self._transition(self._state, CircuitState.CLOSED)
                 self._failure_count = 0
                 self._half_open_probe_sent = False  # RZ-33-11: reset probe gate
                 self._current_recovery_timeout = self._base_recovery_timeout
@@ -118,12 +134,12 @@ class RedisCircuitBreaker:
                     self._current_recovery_timeout * 2,
                     self._max_recovery_timeout,
                 )
-                self._transition(CircuitState.OPEN)
+                self._transition(self._state, CircuitState.OPEN)
             elif (
                 self._state == CircuitState.CLOSED
                 and self._failure_count >= self._failure_threshold
             ):
-                self._transition(CircuitState.OPEN)
+                self._transition(self._state, CircuitState.OPEN)
 
     def reset_for_testing(self) -> None:
         """Reset to initial state for unit tests."""
@@ -145,30 +161,51 @@ class RedisCircuitBreaker:
             return
         elapsed = time.monotonic() - self._last_failure_time
         if elapsed >= self._current_recovery_timeout:
-            self._transition(CircuitState.HALF_OPEN)
+            self._transition(self._state, CircuitState.HALF_OPEN)
 
-    def _transition(self, new_state: CircuitState) -> None:
-        """Perform state transition with logging and metrics.
+    def _transition(self, old_state: CircuitState, new_state: CircuitState) -> None:
+        """Perform state transition with logging, metrics, and listener callbacks.
 
         Must be called under self._lock.
         """
-        old = self._state
-        if old == new_state:
+        if old_state == new_state:
             return
         self._state = new_state
         circuit_state_gauge.set(new_state)
         circuit_transitions_total.labels(
-            from_state=old.name, to_state=new_state.name
+            from_state=old_state.name, to_state=new_state.name
         ).inc()
         _log.info(
             "rate_limit_circuit_breaker_transition",
             extra={
-                "from_state": old.name,
+                "from_state": old_state.name,
                 "to_state": new_state.name,
                 "failure_count": self._failure_count,
                 "recovery_timeout": self._current_recovery_timeout,
             },
         )
+
+        listeners = list(self._state_listeners)
+        for listener in listeners:
+            try:
+                res = listener(old_state, new_state)
+                if inspect.isawaitable(res):
+                    coro = typing.cast(
+                        "typing.Coroutine[typing.Any, typing.Any, typing.Any]", res
+                    )
+                    try:
+                        loop = asyncio.get_running_loop()
+                        task: asyncio.Task[Any] = loop.create_task(coro)
+                        _background_tasks.add(task)
+                        task.add_done_callback(_background_tasks.discard)
+                    except RuntimeError:
+                        asyncio.run(coro)
+            except Exception as exc:  # RZ-22-01-JUSTIFIED: Circuit breaker listener notification must not disrupt state transition
+                _log.error(
+                    "Error executing circuit breaker state listener: %s",
+                    exc,
+                    exc_info=True,
+                )
 
 
 # Module-level singleton — shared across all rate-limit checks in a worker.
