@@ -7,13 +7,15 @@ Tests cover:
   - Persisted query bypass attempts
 """
 
-from __future__ import annotations
-
 import hashlib
+import uuid
+from unittest.mock import AsyncMock, MagicMock, patch
 
-from graphql import parse
+import pytest
+from graphql import GraphQLError, parse
 from graphql.language.visitor import visit
 
+import app.graphql.extensions as ext_module
 from app.graphql.extensions import (
     _MAX_QUERY_COST,
     _CostVisitor,
@@ -191,3 +193,238 @@ class TestPersistedQueryBypass:
         arbitrary = "{ __schema { types { name } } }"
         arbitrary_hash = _hash_query(arbitrary)
         assert arbitrary_hash not in manifest
+
+
+class TestAPQRequirementR1:
+    """Requirement R1 APQ test suite covering strict production & development modes."""
+
+    @pytest.mark.asyncio
+    async def test_prod_missing_or_empty_manifest_raises(self) -> None:
+        from unittest.mock import MagicMock, patch
+
+        from graphql import GraphQLError
+
+        import app.graphql.extensions as ext_module
+        from app.graphql.extensions import PersistedQueryExtension
+
+        ext = PersistedQueryExtension()
+        ext.execution_context = MagicMock()
+        ext.execution_context.query = "query { me }"
+
+        with (
+            patch("app.core.config.settings.environment", "production"),
+            patch.object(ext_module, "_query_allowlist", {}),
+        ):
+            with pytest.raises(
+                GraphQLError, match="Persisted query manifest missing or unreadable"
+            ):
+                async for _ in ext.on_validate():
+                    pass
+
+    @pytest.mark.asyncio
+    async def test_prod_apq_hash_only_resolution(self) -> None:
+        from unittest.mock import MagicMock, patch
+
+        import app.graphql.extensions as ext_module
+        from app.graphql.extensions import PersistedQueryExtension, _hash_query
+
+        query_str = "query { me { id name } }"
+        query_hash = _hash_query(query_str)
+
+        ext = PersistedQueryExtension()
+        ext.execution_context = MagicMock()
+        ext.execution_context.query = None
+        ext.execution_context.graphql_document = None
+        ext.execution_context.extensions = {
+            "persistedQuery": {"sha256Hash": query_hash}
+        }
+
+        with (
+            patch("app.core.config.settings.environment", "production"),
+            patch.object(ext_module, "_query_allowlist", {query_hash: query_str}),
+        ):
+            async for _ in ext.on_validate():
+                pass
+            assert ext.execution_context.query == query_str
+            assert ext.execution_context.graphql_document is not None
+
+    @pytest.mark.asyncio
+    async def test_prod_apq_hash_only_absent_raises(self) -> None:
+        from unittest.mock import MagicMock, patch
+
+        from graphql import GraphQLError
+
+        import app.graphql.extensions as ext_module
+        from app.graphql.extensions import PersistedQueryExtension
+
+        ext = PersistedQueryExtension()
+        ext.execution_context = MagicMock()
+        ext.execution_context.query = None
+        ext.execution_context.extensions = {
+            "persistedQuery": {"sha256Hash": "unknown_hash"}
+        }
+
+        with (
+            patch("app.core.config.settings.environment", "production"),
+            patch.object(ext_module, "_query_allowlist", {"hash123": "query { me }"}),
+        ):
+            with pytest.raises(
+                GraphQLError, match="Persisted query not found in allowlist"
+            ):
+                async for _ in ext.on_validate():
+                    pass
+
+    @pytest.mark.asyncio
+    async def test_prod_raw_query_uncompiled_introspection_raises(self) -> None:
+        from unittest.mock import MagicMock, patch
+
+        from graphql import GraphQLError
+
+        import app.graphql.extensions as ext_module
+        from app.graphql.extensions import PersistedQueryExtension
+
+        ext = PersistedQueryExtension()
+        ext.execution_context = MagicMock()
+        ext.execution_context.query = "query { __schema { types { name } } }"
+        ext.execution_context.extensions = None
+
+        with (
+            patch("app.core.config.settings.environment", "production"),
+            patch.object(ext_module, "_query_allowlist", {"hash123": "query { me }"}),
+        ):
+            with pytest.raises(
+                GraphQLError, match="Query not found in persisted query allowlist"
+            ):
+                async for _ in ext.on_validate():
+                    pass
+
+    @pytest.mark.asyncio
+    async def test_dev_mode_allows_unpersisted_query(self) -> None:
+        from unittest.mock import MagicMock, patch
+
+        from app.graphql.extensions import PersistedQueryExtension
+
+        ext = PersistedQueryExtension()
+        ext.execution_context = MagicMock()
+        ext.execution_context.query = "query { unpersisted }"
+        ext.execution_context.extensions = None
+
+        with patch("app.core.config.settings.environment", "development"):
+            async for _ in ext.on_validate():
+                pass
+
+
+# ---------------------------------------------------------------------------
+# Requirements R2 & R3 Test Suites
+# ---------------------------------------------------------------------------
+
+
+class TestDataLoaderCosting:
+    """Requirement R2: DataLoader AST costing multiplier unit tests."""
+
+    def test_dataloader_fields_cost_5x(self) -> None:
+        """Fields invoking DataLoaders (users, news, events, author, organizer) cost 5 each."""
+        query = parse(
+            "{ news { title author { name } } events { title organizer { name } } }"
+        )
+        visitor = _CostVisitor()
+        visit(query, visitor)
+        # news(5) + title(1) + author(5) + name(1) + events(5) + title(1) + organizer(5) + name(1) = 24
+        assert visitor.cost == 24
+
+    def test_dataloader_fields_from_registry(self) -> None:
+        """DataLoaderRegistry fields (users, news, events) are recognized and receive 5x multiplier."""
+        query = parse("{ users { id } news { id } events { id } }")
+        visitor = _CostVisitor()
+        visit(query, visitor)
+        # users(5) + id(1) + news(5) + id(1) + events(5) + id(1) = 18
+        assert visitor.cost == 18
+
+
+class TestTokenBucketRateLimiting:
+    """Requirement R3: Predictive Redis Token Bucket rate limiting tests."""
+
+    @pytest.mark.asyncio
+    async def test_token_bucket_key_authenticated_user(self) -> None:
+        ext = ext_module.QueryCostExtension()
+        ext.execution_context = MagicMock()
+        ext.execution_context.pre_execution_errors = None
+        ext.execution_context.graphql_document = parse("{ me { id name } }")
+
+        user_id = str(uuid.uuid4())
+        mock_user = MagicMock()
+        mock_user.id = user_id
+        ext.execution_context.context = MagicMock()
+        ext.execution_context.context.current_user = mock_user
+
+        mock_consume = AsyncMock(return_value=(True, 950))
+        with (
+            patch.object(ext_module, "_consume_token_bucket", mock_consume),
+            patch.object(
+                ext_module, "_increment_user_cost", AsyncMock(return_value=10)
+            ),
+        ):
+            async for _ in ext.on_validate():
+                pass
+            mock_consume.assert_called_once()
+            key_arg = (
+                mock_consume.call_args[1].get("key") or mock_consume.call_args[0][0]
+            )
+            assert key_arg == f"gql:token_bucket:{user_id}"
+
+    @pytest.mark.asyncio
+    async def test_token_bucket_key_anonymous_user(self) -> None:
+        ext = ext_module.QueryCostExtension()
+        ext.execution_context = MagicMock()
+        ext.execution_context.pre_execution_errors = None
+        ext.execution_context.graphql_document = parse("{ news { title } }")
+
+        ext.execution_context.context = MagicMock()
+        ext.execution_context.context.current_user = None
+        mock_request = MagicMock()
+        mock_request.client.host = "192.168.1.100"
+        ext.execution_context.context.request = mock_request
+
+        mock_consume = AsyncMock(return_value=(True, 990))
+        with patch.object(ext_module, "_consume_token_bucket", mock_consume):
+            async for _ in ext.on_validate():
+                pass
+            mock_consume.assert_called_once()
+            key_arg = (
+                mock_consume.call_args[1].get("key") or mock_consume.call_args[0][0]
+            )
+            assert key_arg == "gql:token_bucket:ip:192.168.1.100"
+
+    @pytest.mark.asyncio
+    async def test_token_bucket_rejection_429(self) -> None:
+        ext = ext_module.QueryCostExtension()
+        ext.execution_context = MagicMock()
+        ext.execution_context.pre_execution_errors = None
+        ext.execution_context.graphql_document = parse("{ news { title } }")
+        ext.execution_context.context = MagicMock()
+        ext.execution_context.context.current_user = None
+
+        # Simulate insufficient token bucket balance
+        mock_consume = AsyncMock(return_value=(False, 2))
+        with patch.object(ext_module, "_consume_token_bucket", mock_consume):
+            with pytest.raises(GraphQLError) as exc_info:
+                async for _ in ext.on_validate():
+                    pass
+            err = exc_info.value
+            assert "rate limit exceeded" in str(err).lower()
+            assert err.extensions.get("status_code") == 429
+            assert err.extensions.get("http", {}).get("status_code") == 429
+
+    @pytest.mark.asyncio
+    async def test_token_bucket_redis_fallback_to_memory(self) -> None:
+        # Mock Redis get_cache_client to raise ConnectionError
+        with patch(
+            "app.deps.cache.get_cache_client",
+            AsyncMock(side_effect=ConnectionError("Redis down")),
+        ):
+            ext_module._memory_token_buckets.clear()
+            allowed, remaining = await ext_module._consume_token_bucket(
+                "gql:token_bucket:test_fallback", 10, capacity=100
+            )
+            assert allowed is True
+            assert remaining == 90

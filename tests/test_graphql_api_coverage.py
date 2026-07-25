@@ -802,9 +802,7 @@ class TestGraphQLAdvancedCoverage:
             exec_ctx.extensions = {"persistedQuery": {"sha256Hash": "unknown_hash"}}
             ext = PersistedQueryExtension()
             ext.execution_context = exec_ctx
-            with pytest.raises(
-                GraphQLError, match="This query is not in the persisted-query allowlist"
-            ):
+            with pytest.raises(GraphQLError, match="allowlist"):
                 async for _ in ext.on_validate():
                     pass
 
@@ -820,22 +818,29 @@ class TestGraphQLAdvancedCoverage:
             async for _ in ext.on_validate():
                 pass  # passes
 
-            # 9. No manifest allow-all bypass (line 308)
+            # 9. Empty manifest fail-closed in production
             ext_module._query_allowlist = {}
             exec_ctx = MagicMock()
             ext = PersistedQueryExtension()
             ext.execution_context = exec_ctx
-            async for _ in ext.on_validate():
-                pass
+            with pytest.raises(
+                GraphQLError, match="Persisted query manifest missing or unreadable"
+            ):
+                async for _ in ext.on_validate():
+                    pass
 
-            # 10. No query return (line 312)
+            # 10. No query or sha256Hash in production raises GraphQLError
             ext_module._query_allowlist = {"hash123": "query { me }"}
             exec_ctx = MagicMock()
             exec_ctx.query = None
+            exec_ctx.extensions = None
             ext = PersistedQueryExtension()
             ext.execution_context = exec_ctx
-            async for _ in ext.on_validate():
-                pass
+            with pytest.raises(
+                GraphQLError, match="Persisted query not found in allowlist"
+            ):
+                async for _ in ext.on_validate():
+                    pass
 
     @pytest.mark.asyncio
     async def test_graphql_schema_get_context_dependency_overrides(self):

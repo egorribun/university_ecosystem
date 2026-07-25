@@ -110,14 +110,16 @@ _PERMISSION_CACHE_MAX_SIZE: int = 10_000
 
 # OrderedDict provides O(1) LRU eviction via move_to_end + popitem(last=False).
 # {(user_id, resource_type, resource_id, permission, tenant_id, campus_id): (result: bool, cached_at: float)}
-def _make_fresh_cache() -> OrderedDict[tuple[str, str, str, str, str, str], tuple[bool, float]]:
+def _make_fresh_cache() -> OrderedDict[
+    tuple[str, str, str, str, str, str], tuple[bool, float]
+]:
     """Return a new empty cache. Called once per process after fork (RZ-14-02)."""
     return OrderedDict()
 
 
-_permission_cache: OrderedDict[tuple[str, str, str, str, str, str], tuple[bool, float]] = (
-    _make_fresh_cache()
-)
+_permission_cache: OrderedDict[
+    tuple[str, str, str, str, str, str], tuple[bool, float]
+] = _make_fresh_cache()
 
 
 def _reset_cache_after_fork() -> None:

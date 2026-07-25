@@ -84,7 +84,7 @@ class SVIDManager:
 
     def __init__(
         self,
-        socket_path: str = "/tmp/spire-agent/public/api.sock",  # noqa: S108
+        socket_path: str = "/tmp/spire-agent/public/api.sock",  # nosec B108  # noqa: S108
         spiffe_id: str = "spiffe://university.ecosystem/ns/default/sa/app",
         enabled: bool = False,
     ) -> None:
@@ -107,7 +107,11 @@ class SVIDManager:
     def close(self) -> None:
         """Clean up managed temporary directory and resources."""
         with self._lock:
-            if hasattr(self, "_temp_dir") and self._temp_dir and os.path.exists(self._temp_dir):
+            if (
+                hasattr(self, "_temp_dir")
+                and self._temp_dir
+                and os.path.exists(self._temp_dir)
+            ):
                 try:
                     shutil.rmtree(self._temp_dir, ignore_errors=True)
                 except Exception as exc:  # RZ-22-01-JUSTIFIED: temp dir cleanup error ignored during shutdown
@@ -117,7 +121,7 @@ class SVIDManager:
     def __del__(self) -> None:
         try:
             self.close()
-        except Exception:  # noqa: S110 # RZ-22-01-JUSTIFIED: destructor exception suppressed
+        except Exception:  # nosec B110  # noqa: S110 # RZ-22-01-JUSTIFIED: destructor exception suppressed
             pass
 
     def _write_active_files(self, pair: tuple[bytes, bytes]) -> tuple[str, str]:
@@ -130,7 +134,8 @@ class SVIDManager:
                 self._last_written_pair = None
 
             if pair != self._last_written_pair or not (
-                os.path.exists(self._active_cert_file) and os.path.exists(self._active_key_file)
+                os.path.exists(self._active_cert_file)
+                and os.path.exists(self._active_key_file)
             ):
                 cert_pem, key_pem = pair
                 with open(self._active_cert_file, "wb") as f_cert:
@@ -162,7 +167,9 @@ class SVIDManager:
                 self.socket_path,
                 self.spiffe_id_str,
             )
-        except Exception as exc:  # RZ-22-01-JUSTIFIED: SPIFFE watcher init failure logged & handled
+        except (
+            Exception
+        ) as exc:  # RZ-22-01-JUSTIFIED: SPIFFE watcher init failure logged & handled
             _logger.error("Failed to start SPIFFE SVIDManager watcher: %s", exc)
 
     def stop(self) -> None:
@@ -171,7 +178,9 @@ class SVIDManager:
             if self._source:
                 try:
                     self._source.close()
-                except Exception as exc:  # RZ-22-01-JUSTIFIED: SPIFFE watcher close failure logged
+                except (
+                    Exception
+                ) as exc:  # RZ-22-01-JUSTIFIED: SPIFFE watcher close failure logged
                     _logger.warning("Error closing SPIFFE X509Source: %s", exc)
                 self._source = None
                 _logger.info("SPIFFE SVIDManager stopped.")
@@ -243,8 +252,12 @@ class SVIDManager:
                         and isinstance(bundle.x509_certs_bytes, bytes)
                     ):
                         return bundle.x509_certs_bytes
-            except Exception as exc:  # RZ-22-01-JUSTIFIED: Trust bundle retrieval error handled
-                _logger.warning("Error retrieving trust bundle from X509Source: %s", exc)
+            except (
+                Exception
+            ) as exc:  # RZ-22-01-JUSTIFIED: Trust bundle retrieval error handled
+                _logger.warning(
+                    "Error retrieving trust bundle from X509Source: %s", exc
+                )
                 return None
             return None
 
@@ -299,10 +312,14 @@ def create_spiffe_server_ssl_context(
 
     if pair:
         cert_pem, key_pem = pair
-        _load_cert_chain_from_pem(context, cert_pem, key_pem, lock=lock, svid_manager=svid_manager)
+        _load_cert_chain_from_pem(
+            context, cert_pem, key_pem, lock=lock, svid_manager=svid_manager
+        )
         context._loaded_pair = pair  # type: ignore[attr-defined]
 
-    def _reload_on_sni(ssl_obj: Any, server_name: str | None, ctx: ssl.SSLContext) -> None:
+    def _reload_on_sni(
+        ssl_obj: Any, server_name: str | None, ctx: ssl.SSLContext
+    ) -> None:
         def _do_reload() -> None:
             current_pair = svid_manager.get_active_svid()
             if current_pair and current_pair != getattr(ctx, "_loaded_pair", None):
@@ -315,7 +332,9 @@ def create_spiffe_server_ssl_context(
                             ssl_obj.context = fresh_ctx
                         except (AttributeError, TypeError):
                             pass
-                except Exception as exc:  # RZ-22-01-JUSTIFIED: SNI cert reload failure handled
+                except (
+                    Exception
+                ) as exc:  # RZ-22-01-JUSTIFIED: SNI cert reload failure handled
                     _logger.warning(
                         "Failed to dynamically reload SVID cert chain in SNI callback: %s",
                         exc,
@@ -328,7 +347,7 @@ def create_spiffe_server_ssl_context(
             _do_reload()
 
     try:
-        context.sni_callback = _reload_on_sni  # type: ignore[assignment]
+        context.sni_callback = _reload_on_sni
     except (AttributeError, ValueError):
         pass
 
@@ -353,7 +372,9 @@ def create_spiffe_client_ssl_context(
 
     if pair:
         cert_pem, key_pem = pair
-        _load_cert_chain_from_pem(context, cert_pem, key_pem, lock=lock, svid_manager=svid_manager)
+        _load_cert_chain_from_pem(
+            context, cert_pem, key_pem, lock=lock, svid_manager=svid_manager
+        )
         context._loaded_pair = pair  # type: ignore[attr-defined]
 
     return context
@@ -423,9 +444,13 @@ class SPIFFEAuthMiddleware:
                     cert_dict = ssl_obj.getpeercert()
                     if cert_dict and "subjectAltName" in cert_dict:
                         for san_type, san_val in cert_dict["subjectAltName"]:
-                            if san_type == "URI" and str(san_val).startswith("spiffe://"):
+                            if san_type == "URI" and str(san_val).startswith(
+                                "spiffe://"
+                            ):
                                 return str(san_val)
-            except Exception as exc:  # RZ-22-01-JUSTIFIED: transport info extraction failure handled
+            except (
+                Exception
+            ) as exc:  # RZ-22-01-JUSTIFIED: transport info extraction failure handled
                 _logger.debug("Failed to extract peercert from transport: %s", exc)
 
         return None
