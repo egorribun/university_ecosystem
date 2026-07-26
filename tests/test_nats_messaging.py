@@ -69,6 +69,12 @@ async def test_nats_service_ensure_stream():
     assert kwargs["config"].name == "test-stream"
     assert kwargs["config"].subjects == ["test.>"]
 
+    # Test nats.errors.Error handling
+    import nats.errors
+
+    mock_js.add_stream.side_effect = nats.errors.Error("Jetstream error")
+    await service.ensure_stream(name="test-stream", subjects=["test.>"])
+
     # Test error handling when not connected
     service._js = None
     with pytest.raises(RuntimeError, match="Not connected to NATS"):
@@ -85,7 +91,11 @@ async def test_nats_service_publish_and_jetstream():
 
     # Test Core NATS publish bytes
     await service.publish("test.sub", b"raw-bytes")
-    mock_client.publish.assert_called_once_with("test.sub", b"raw-bytes", headers=None)
+    mock_client.publish.assert_called_once()
+    args, kwargs = mock_client.publish.call_args
+    assert args[0] == "test.sub"
+    assert args[1] == b"raw-bytes"
+    assert "Nats-Msg-Id" in kwargs["headers"]
 
     # Test Core NATS publish dict
     mock_client.publish.reset_mock()
@@ -136,10 +146,12 @@ async def test_nats_service_subscribe_jetstream():
     service._js = mock_js
 
     handler_called = None
+    received_msgs: list[NatsMessage] = []
 
     async def my_handler(msg: NatsMessage):
         nonlocal handler_called
         handler_called = msg.subject
+        received_msgs.append(msg)
         if msg.subject == "error":
             raise ValueError("handler failed")
 
@@ -148,6 +160,8 @@ async def test_nats_service_subscribe_jetstream():
         mock_msg1 = AsyncMock()
         mock_msg1.subject = "success"
         mock_msg1.data = b"ok"
+        mock_msg1.header = {"X-Header": "val"}
+        mock_msg1.reply = "reply.topic"
         await cb(mock_msg1)
         mock_msg1.ack.assert_called_once()
 
@@ -155,6 +169,8 @@ async def test_nats_service_subscribe_jetstream():
         mock_msg2 = AsyncMock()
         mock_msg2.subject = "error"
         mock_msg2.data = b"err"
+        mock_msg2.header = None
+        mock_msg2.reply = None
         await cb(mock_msg2)
         mock_msg2.nak.assert_called_once()
 
@@ -170,6 +186,10 @@ async def test_nats_service_subscribe_jetstream():
     )
     assert len(service._subscriptions) == 1
     assert handler_called == "error"
+    assert received_msgs[0].headers == {"X-Header": "val"}
+    assert received_msgs[0].reply == "reply.topic"
+    assert received_msgs[1].headers is None
+    assert received_msgs[1].reply is None
 
 
 def test_get_nats_service():

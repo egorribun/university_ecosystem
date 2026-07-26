@@ -259,6 +259,72 @@ services:
         max-file: "3"
     restart: unless-stopped
 
+  cdc-outbox-worker:
+    build:
+      context: .
+      dockerfile: backend.Dockerfile
+      target: runtime
+    command: python -m app.workers.cdc_outbox
+    environment:
+      DATABASE_URL: "postgresql+asyncpg://postgres:${POSTGRES_PASSWORD}@postgres:5432/university"
+      NATS_URL: "nats://${NATS_USER}:${NATS_PASSWORD}@nats:4222"
+      ENABLE_CDC_OUTBOX: "true"
+      POSTGRES_REPLICATION_SLOT: "outbox_cdc_slot"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+    networks:
+      - internal
+    healthcheck:
+      test: ["CMD-SHELL", "python -c 'import sys; sys.exit(0)'"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          cpus: '0.30'
+          memory: 512M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    restart: unless-stopped
+
+  debezium:
+    image: debezium/server:2.7.3.Final
+    environment:
+      DEBEZIUM_SINK_TYPE: nats
+      DEBEZIUM_SINK_NATS_URL: "nats://${NATS_USER}:${NATS_PASSWORD}@nats:4222"
+      DEBEZIUM_SOURCE_CONNECTOR_CLASS: io.debezium.connector.postgresql.PostgresConnector
+      DEBEZIUM_SOURCE_DATABASE_HOSTNAME: postgres
+      DEBEZIUM_SOURCE_DATABASE_PORT: 5432
+      DEBEZIUM_SOURCE_DATABASE_USER: ${POSTGRES_USER:-postgres}
+      DEBEZIUM_SOURCE_DATABASE_PASSWORD: ${POSTGRES_PASSWORD}
+      DEBEZIUM_SOURCE_DATABASE_DBNAME: ${POSTGRES_DB:-university}
+      DEBEZIUM_SOURCE_DATABASE_SERVER_NAME: university
+      DEBEZIUM_SOURCE_SLOT_NAME: outbox_cdc_slot
+      DEBEZIUM_SOURCE_TOPIC_PREFIX: university
+      DEBEZIUM_SOURCE_PLUGIN_NAME: pgoutput
+      DEBEZIUM_SOURCE_TABLE_INCLUDE_LIST: public.outbox_events
+    depends_on:
+      postgres:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+    networks:
+      - internal
+    deploy:
+      resources:
+        limits:
+          cpus: '0.50'
+          memory: 512M
+    restart: unless-stopped
+
   # ============================================================================
   # Infrastructure Services
   # ============================================================================
@@ -267,7 +333,7 @@ services:
     # Major version (pg17) floats within the same PostgreSQL release; to pin to a
     # patch update check https://hub.docker.com/r/pgvector/pgvector/tags
     image: pgvector/pgvector:pg17
-    command: ["postgres", "-c", "max_connections=500"]
+    command: ["postgres", "-c", "max_connections=500", "-c", "wal_level=logical", "-c", "max_replication_slots=5", "-c", "max_wal_senders=5"]
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
@@ -410,7 +476,7 @@ services:
       resources:
         limits:
           cpus: '0.25'
-          memory: 128M
+          memory: 1G
     restart: unless-stopped
 
   gateway:
@@ -514,11 +580,11 @@ services:
       context: .
       dockerfile: services/file-processor/Dockerfile
     environment:
-      NATS_URL: "nats://${NATS_USER}:${NATS_PASSWORD}@nats:4222"
-      MINIO_ENDPOINT: minio:9000
-      MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:?MINIO_ROOT_USER is required - set in .env file}
-      MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:?MINIO_ROOT_PASSWORD is required - set in .env file}
-      MINIO_BUCKET: uploads
+      FP_NATS_URL: "nats://${NATS_USER}:${NATS_PASSWORD}@nats:4222"
+      FP_MINIO_ENDPOINT: minio:9000
+      FP_MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:?MINIO_ROOT_USER is required - set in .env file}
+      FP_MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:?MINIO_ROOT_PASSWORD is required - set in .env file}
+      FP_MINIO_BUCKET: uploads
       # Wave 144 SW2 Step 3 — Path (a-auth) full ACTIVATION.
       # W141 SW5 Go credentials chain (config.go TemporalAPIKeyFile field +
       # main.go connectTemporal reading token from this path then attaching

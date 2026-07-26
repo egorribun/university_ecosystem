@@ -29,13 +29,14 @@ export function useLessonNotes(lessonId: string | null | undefined) {
       setNoteState(null)
       return
     }
+    const currentLessonId = lessonId
     setIsLoading(true)
 
     let isMounted = true
     async function fetchNote() {
       try {
         const db = await getDatabase()
-        const rxNote = await db.notes.findOne(lessonId).exec()
+        const rxNote = await db.notes.findOne(currentLessonId).exec()
         if (rxNote) {
           if (isMounted) setNoteState({ text: rxNote.text, updatedAt: rxNote.updated_at })
           return
@@ -46,7 +47,7 @@ export function useLessonNotes(lessonId: string | null | undefined) {
 
       // Fallback to idb-keyval
       try {
-        const stored = await get<LessonNote>(`${KEY_PREFIX}${lessonId}`)
+        const stored = await get<LessonNote>(`${KEY_PREFIX}${currentLessonId}`)
         if (isMounted) setNoteState(stored ?? null)
       } catch {
         if (isMounted) setNoteState(null)
@@ -66,6 +67,7 @@ export function useLessonNotes(lessonId: string | null | undefined) {
   const setNote = useCallback(
     (text: string) => {
       if (!lessonId) return
+      const currentLessonId = lessonId
       const updated: LessonNote = { text, updatedAt: Date.now() }
       setNoteState(updated)
 
@@ -76,8 +78,8 @@ export function useLessonNotes(lessonId: string | null | undefined) {
           getDatabase()
             .then((db) =>
               db.notes.upsert({
-                id: lessonId,
-                lesson_id: lessonId,
+                id: currentLessonId,
+                lesson_id: currentLessonId,
                 text,
                 updated_at: updated.updatedAt,
                 is_synced: false,
@@ -85,16 +87,18 @@ export function useLessonNotes(lessonId: string | null | undefined) {
             )
             .catch(() => {})
 
-          set(`${KEY_PREFIX}${lessonId}`, updated).catch((err) => logError("[schedule:notes]", err))
+          set(`${KEY_PREFIX}${currentLessonId}`, updated).catch((err) =>
+            logError("[schedule:notes]", err)
+          )
         } else {
           getDatabase()
             .then(async (db) => {
-              const rxNote = await db.notes.findOne(lessonId).exec()
+              const rxNote = await db.notes.findOne(currentLessonId).exec()
               if (rxNote) await rxNote.remove()
             })
             .catch(() => {})
 
-          del(`${KEY_PREFIX}${lessonId}`).catch((err) => logError("[schedule:notes]", err))
+          del(`${KEY_PREFIX}${currentLessonId}`).catch((err) => logError("[schedule:notes]", err))
         }
       }, 300)
     },
@@ -104,14 +108,15 @@ export function useLessonNotes(lessonId: string | null | undefined) {
   // Clear note
   const clearNote = useCallback(() => {
     if (!lessonId) return
+    const currentLessonId = lessonId
     setNoteState(null)
     getDatabase()
       .then(async (db) => {
-        const rxNote = await db.notes.findOne(lessonId).exec()
+        const rxNote = await db.notes.findOne(currentLessonId).exec()
         if (rxNote) await rxNote.remove()
       })
       .catch((err) => logError("[schedule:notes:rxdb]", err))
-    del(`${KEY_PREFIX}${lessonId}`).catch((err) => logError("[schedule:notes]", err))
+    del(`${KEY_PREFIX}${currentLessonId}`).catch((err) => logError("[schedule:notes]", err))
   }, [lessonId])
 
   // Cleanup debounce timer

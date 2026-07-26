@@ -106,6 +106,28 @@ rustOptimizer:
       cpu: 500m
       memory: 512Mi
 
+# CDC Worker
+cdcWorker:
+  replicaCount: 1
+  image:
+    repository: university-backend
+    pullPolicy: IfNotPresent
+    tag: ""
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+  env:
+    DATABASE_URL: ""
+    NATS_URL: ""
+    ENABLE_CDC_OUTBOX: "true"
+    POSTGRES_REPLICATION_SLOT: "outbox_cdc_slot"
+    CDC_SLOT_NAME: "outbox_cdc_slot"
+    CDC_PUBLICATION_NAME: "outbox_pub"
+
 # Ingress (MOD-30-04: fully parameterized)
 ingress:
   enabled: false
@@ -162,6 +184,23 @@ networkPolicy:
 # Run `helm dependency update` after modifying.
 postgres:
   enabled: true  # External — managed by CloudNativePG or external RDS
+  wal_level: logical
+  max_replication_slots: 5
+  max_wal_senders: 5
+  config:
+    wal_level: logical
+    max_replication_slots: 5
+    max_wal_senders: 5
+
+postgresql:
+  enabled: true
+  wal_level: logical
+  max_replication_slots: 5
+  max_wal_senders: 5
+  config:
+    wal_level: logical
+    max_replication_slots: 5
+    max_wal_senders: 5
 
 # bitnami/redis subchart configuration.
 # Docs: https://github.com/bitnami/charts/tree/main/bitnami/redis
@@ -227,10 +266,10 @@ nats:
       enabled: true
       memStorage:
         enabled: true
-        size: 256Mi
+        size: 512Mi
       fileStorage:
         enabled: true
-        size: 2Gi
+        size: 10Gi
   # Pod security hardening
   podSecurityContext:
     runAsNonRoot: true

@@ -6,11 +6,14 @@ import (
 	"errors"
 	"io"
 	"net"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
+	"github.com/nats-io/nats.go"
 	"github.com/quic-go/webtransport-go"
 	"golang.org/x/time/rate"
 )
@@ -203,6 +206,11 @@ func (c *Client) handleIncomingMessage(msg Message, data []byte) {
 	}
 }
 
+type joinPayload struct {
+	LastSeq   uint64 `json:"last_seq,omitempty"`
+	LastMsgID string `json:"last_msg_id,omitempty"`
+}
+
 func (c *Client) handleJoin(msg Message) {
 	if msg.Room == "" {
 		return
@@ -215,6 +223,103 @@ func (c *Client) handleJoin(msg Message) {
 		return
 	}
 	c.JoinRoom(msg.Room)
+
+	lastSeq := msg.LastSeq
+	lastMsgID := msg.LastMsgID
+	if len(msg.Payload) > 0 {
+		var jp joinPayload
+		if err := json.Unmarshal(msg.Payload, &jp); err == nil {
+			if lastSeq == 0 {
+				lastSeq = jp.LastSeq
+			}
+			if lastMsgID == "" {
+				lastMsgID = jp.LastMsgID
+			}
+		}
+	}
+
+	if (lastSeq > 0 || lastMsgID != "") && c.Hub != nil && c.Hub.js != nil {
+		go c.replayOfflineMessages(msg.Room, lastSeq, lastMsgID)
+	}
+}
+
+func (c *Client) replayOfflineMessages(room string, lastSeq uint64, lastMsgID string) {
+	if c.Hub == nil || c.Hub.js == nil {
+		return
+	}
+	js := c.Hub.js
+
+	var opts []nats.SubOpt
+	streamName := c.Hub.streamChat
+	if streamName == "" {
+		streamName = "CHAT_EVENTS"
+	}
+	opts = append(opts, nats.BindStream(streamName))
+
+	if lastSeq > 0 {
+		opts = append(opts, nats.StartSequence(lastSeq+1))
+	} else if lastMsgID != "" {
+		if parsedSeq, err := strconv.ParseUint(lastMsgID, 10, 64); err == nil && parsedSeq > 0 {
+			opts = append(opts, nats.StartSequence(parsedSeq+1))
+		} else {
+			opts = append(opts, nats.DeliverAll())
+		}
+	}
+
+	sub, err := js.PullSubscribe("chat."+room, "", opts...)
+	if err != nil {
+		c.Hub.Logger.DebugContext(c.ctx, "Failed to create pull subscription for offline replay",
+			"room", room, "err", err)
+		return
+	}
+	defer func() {
+		_ = sub.Unsubscribe()
+	}()
+
+	msgs, err := sub.Fetch(100, nats.MaxWait(1*time.Second))
+	if err != nil {
+		if !errors.Is(err, nats.ErrTimeout) {
+			c.Hub.Logger.DebugContext(c.ctx, "Pull fetch for offline replay returned error",
+				"room", room, "err", err)
+		}
+		return
+	}
+
+	foundLastMsgID := (lastMsgID == "" || lastSeq > 0)
+	for _, m := range msgs {
+		select {
+		case <-c.ctx.Done():
+			return
+		default:
+		}
+
+		_ = m.Ack()
+		msgID := ""
+		if m.Header != nil {
+			msgID = m.Header.Get("Nats-Msg-Id")
+		}
+		if !foundLastMsgID {
+			if msgID == lastMsgID {
+				foundLastMsgID = true
+			}
+			continue
+		}
+
+		JetStreamReplayedTotal.Inc()
+
+		var raw map[string]any
+		if err := json.Unmarshal(m.Data, &raw); err == nil {
+			if meta, err := m.Metadata(); err == nil {
+				raw["seq"] = meta.Sequence.Stream
+			}
+			raw["replayed"] = true
+			if data, err := json.Marshal(raw); err == nil {
+				safeSend(c.Send, data)
+				continue
+			}
+		}
+		safeSend(c.Send, m.Data)
+	}
 }
 
 func (c *Client) handleLeave(msg Message) {
@@ -272,14 +377,29 @@ func (c *Client) handleMessage(msg Message, data []byte) {
 		return
 	}
 
-	if js, err := c.Hub.Nats.JetStream(); err == nil {
-		if _, err := js.PublishAsync("chat."+msg.Room, data); err != nil {
-			c.Hub.Logger.ErrorContext(c.ctx, "Failed to publish async to JetStream", "err", err)
+	if c.Hub == nil || c.Hub.Nats == nil {
+		return
+	}
+
+	msgID := uuid.New().String()
+	natsMsg := &nats.Msg{
+		Subject: "chat." + msg.Room,
+		Data:    data,
+		Header:  make(nats.Header),
+	}
+	natsMsg.Header.Set("Nats-Msg-Id", msgID)
+
+	if c.Hub.enableJetStream && c.Hub.js != nil {
+		if _, err := c.Hub.js.PublishMsgAsync(natsMsg); err != nil {
+			if c.Hub.Logger != nil {
+				c.Hub.Logger.ErrorContext(c.ctx, "Failed to publish async to JetStream", "err", err)
+			}
 		}
 	} else {
-		c.Hub.Logger.ErrorContext(c.ctx, "Failed to init JetStream, falling back to core NATS", "err", err)
-		if err := c.Hub.Nats.Publish("chat."+msg.Room, data); err != nil {
-			c.Hub.Logger.ErrorContext(c.ctx, "Failed to publish to NATS", "err", err)
+		if err := c.Hub.Nats.PublishMsg(natsMsg); err != nil {
+			if c.Hub.Logger != nil {
+				c.Hub.Logger.ErrorContext(c.ctx, "Failed to publish to NATS", "err", err)
+			}
 		}
 	}
 }

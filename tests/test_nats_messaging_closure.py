@@ -39,7 +39,10 @@ async def test_nats_jetstream_publish_accepts_bytes():
     ack = MagicMock(seq=7)
     service._js.publish.return_value = ack
     await service.publish_jetstream("subject", b"raw")
-    service._js.publish.assert_awaited_once_with("subject", b"raw")
+    service._js.publish.assert_awaited_once()
+    args, kwargs = service._js.publish.call_args
+    assert args == ("subject", b"raw")
+    assert "Nats-Msg-Id" in kwargs["headers"]
 
 
 def test_nats_singleton_double_check_handles_race_inside_lock():

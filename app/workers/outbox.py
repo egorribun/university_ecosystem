@@ -15,7 +15,7 @@ if TYPE_CHECKING:
 
 import asyncpg
 from opentelemetry import trace
-from prometheus_client import Counter, Gauge, Histogram
+from prometheus_client import REGISTRY, Counter, Gauge, Histogram
 from sqlalchemy import func, select
 
 from app.core.config import settings
@@ -29,22 +29,50 @@ tracer = trace.get_tracer(__name__)
 # ── MOD-04 (audit 2026-03-14): Prometheus metrics for outbox observability ─────
 # Module-level singletons; Prometheus scrapes /metrics on each poll cycle.
 
-OUTBOX_EVENTS_PROCESSED = Counter(
+
+def _get_or_create_metric(
+    cls: type, name: str, documentation: str, **kwargs: Any
+) -> Any:
+    if cls is None:
+        return None
+    if (
+        REGISTRY
+        and hasattr(REGISTRY, "_names_to_collectors")
+        and name in REGISTRY._names_to_collectors
+    ):
+        return REGISTRY._names_to_collectors[name]
+    try:
+        return cls(name, documentation, **kwargs)
+    except ValueError:
+        if (
+            REGISTRY
+            and hasattr(REGISTRY, "_names_to_collectors")
+            and name in REGISTRY._names_to_collectors
+        ):
+            return REGISTRY._names_to_collectors[name]
+        raise
+
+
+OUTBOX_EVENTS_PROCESSED = _get_or_create_metric(
+    Counter,
     "outbox_events_processed_total",
     "Total outbox events processed",
     labelnames=["event_type", "status"],  # status: success | failed | dead_lettered
 )
-OUTBOX_PROCESSING_DURATION = Histogram(
+OUTBOX_PROCESSING_DURATION = _get_or_create_metric(
+    Histogram,
     "outbox_event_processing_duration_seconds",
     "Wall-clock time to dispatch a single outbox event",
     labelnames=["event_type"],
     buckets=(0.005, 0.01, 0.05, 0.1, 0.5, 1.0, 5.0, 10.0),
 )
-OUTBOX_PENDING_EVENTS = Gauge(
+OUTBOX_PENDING_EVENTS = _get_or_create_metric(
+    Gauge,
     "outbox_pending_events_total",
     "Current number of pending (unprocessed) outbox events — updated each poll cycle",
 )
-OUTBOX_DLQ_TOTAL = Counter(
+OUTBOX_DLQ_TOTAL = _get_or_create_metric(
+    Counter,
     "outbox_dlq_events_total",
     "Total events permanently moved to the Dead Letter Queue",
     labelnames=["event_type"],
@@ -335,6 +363,8 @@ async def _wait_for_signals(stop_event: asyncio.Event) -> None:
 
 
 async def main() -> None:
+    import os
+
     from app.core.config import settings
     from app.core.database import init_database, wait_db
     from app.core.events import register_event_listeners
@@ -346,10 +376,33 @@ async def main() -> None:
     await register_event_listeners()
     configure_event_handlers()
 
-    worker = OutboxWorker(
-        poll_interval=settings.outbox_poll_interval_seconds,
-        batch_size=settings.outbox_batch_size,
+    use_cdc = os.environ.get("ENABLE_CDC_OUTBOX", "false").lower() in (
+        "true",
+        "1",
+        "yes",
     )
+
+    worker: OutboxWorker | Any
+    if use_cdc:
+        try:
+            from app.workers.cdc_outbox import CdcOutboxWorker
+
+            worker = CdcOutboxWorker()
+            logger.info("Starting outbox worker in CDC mode (PostgreSQL pgoutput)")
+        except Exception as exc:  # RZ-22-01-JUSTIFIED: handler-nak — fallback worker mode selection (reviewed TD-27-04)
+            logger.warning(
+                "CDC outbox worker initialization failed (%s); falling back to OutboxWorker",
+                exc,
+            )
+            worker = OutboxWorker(
+                poll_interval=settings.outbox_poll_interval_seconds,
+                batch_size=settings.outbox_batch_size,
+            )
+    else:
+        worker = OutboxWorker(
+            poll_interval=settings.outbox_poll_interval_seconds,
+            batch_size=settings.outbox_batch_size,
+        )
 
     stop_event = asyncio.Event()
 

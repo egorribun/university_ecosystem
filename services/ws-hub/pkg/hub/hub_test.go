@@ -254,29 +254,17 @@ func TestClient_HandleMessage_RateLimiter(t *testing.T) {
 		ctx:    ctx,
 	}
 
-	// Helper to call handleMessage and recover from NATS publish panic (since NATS is nil)
-	callHandleMessage := func() (panicked bool) {
-		defer func() {
-			if r := recover(); r != nil {
-				panicked = true
-			}
-		}()
+	// Helper to call handleMessage
+	callHandleMessage := func() {
 		msg := Message{Type: "message", Room: "room1"}
 		client.handleMessage(msg, []byte(`{"type":"message","room":"room1","payload":{"text":"hello"}}`))
-		return false
 	}
 
-	// First message: should pass rate limit and try to publish to NATS (causing a panic)
-	panicked := callHandleMessage()
-	if !panicked {
-		t.Errorf("Expected first message to pass rate limiter and panic on nil NATS")
-	}
+	// First message: should pass rate limit (and safely return due to nil NATS guard)
+	callHandleMessage()
 
-	// Second message immediately after: should trigger rate limiter (returns early without NATS and writes to Send channel)
-	panicked = callHandleMessage()
-	if panicked {
-		t.Errorf("Expected second message to be rate limited and not panic")
-	}
+	// Second message immediately after: should trigger rate limiter (writes to Send channel)
+	callHandleMessage()
 
 	// Assert rate_limit_exceeded notification was written to Send channel
 	select {

@@ -125,6 +125,12 @@ async def test_nats_broker_publish_core():
     assert args[0] == "chat.message"
     assert b"hello" in args[1]
 
+    # Test nats.errors.Error (e.g., ConnectionClosedError) is caught gracefully
+    import nats.errors
+
+    mock_nc.publish.side_effect = nats.errors.ConnectionClosedError()
+    await broker.publish_core("chat.message", {"msg": "hello"})  # Should not raise
+
 
 @pytest.mark.anyio
 async def test_nats_broker_run_worker():

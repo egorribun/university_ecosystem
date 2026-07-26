@@ -70,7 +70,7 @@ spec:
             periodSeconds: 5
           livenessProbe:
             httpGet:
-              path: /healthz
+              path: /health/live
               port: http
             initialDelaySeconds: 10
             periodSeconds: 15
