@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ipaddress
+from collections.abc import Sequence
 from typing import TYPE_CHECKING
 
 from app.core.config import settings
@@ -68,9 +69,6 @@ def parse_rate_limit(
         return fallback
 
     return count, seconds
-
-
-from collections.abc import Sequence
 
 
 def _parse_trusted_proxies(
