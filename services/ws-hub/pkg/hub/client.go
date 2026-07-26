@@ -378,3 +378,36 @@ func (c *Client) LeaveRoom(room string) {
 		}
 	}
 }
+
+// Disconnect sends a WebSocket close control frame with the specified close code and reason,
+// then enqueues the client into Hub.Unregister for clean channel/room teardown.
+func (c *Client) Disconnect(closeCode int, reason string) {
+	if c.Conn != nil {
+		closeMsg := websocket.FormatCloseMessage(closeCode, reason)
+		_ = c.Conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+		if err := c.Conn.WriteMessage(websocket.CloseMessage, closeMsg); err != nil {
+			if c.Hub != nil && c.Hub.Logger != nil {
+				c.Hub.Logger.WarnContext(c.ctx, "Failed to write close control frame to client",
+					"client_id", c.ID, "user_id", c.UserID, "err", err)
+			}
+		}
+	}
+
+	if c.Hub != nil {
+		hCtx := c.Hub.ctx
+		if hCtx != nil {
+			select {
+			case c.Hub.Unregister <- c:
+			case <-hCtx.Done():
+				c.closeOnce.Do(func() { safeClose(c.Send) })
+			}
+		} else {
+			select {
+			case c.Hub.Unregister <- c:
+			default:
+				c.closeOnce.Do(func() { safeClose(c.Send) })
+			}
+		}
+	}
+}
+

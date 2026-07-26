@@ -70,50 +70,146 @@ def parse_rate_limit(
     return count, seconds
 
 
+from collections.abc import Sequence
+
+
+def _parse_trusted_proxies(
+    proxies: Sequence[
+        str
+        | ipaddress.IPv4Network
+        | ipaddress.IPv6Network
+        | ipaddress.IPv4Address
+        | ipaddress.IPv6Address
+    ],
+) -> list[ipaddress.IPv4Network | ipaddress.IPv6Network]:
+    """Parse trusted proxy definitions into ipaddress network objects."""
+    networks: list[ipaddress.IPv4Network | ipaddress.IPv6Network] = []
+    for item in proxies:
+        if isinstance(item, (ipaddress.IPv4Network, ipaddress.IPv6Network)):
+            networks.append(item)
+            continue
+        if isinstance(item, (ipaddress.IPv4Address, ipaddress.IPv6Address)):
+            networks.append(ipaddress.ip_network(str(item), strict=False))
+            continue
+        raw = str(item).strip()
+        if not raw:
+            continue
+        try:
+            networks.append(ipaddress.ip_network(raw, strict=False))
+        except (
+            ValueError,
+            TypeError,
+        ):  # RZ-22-01: invalid IP network or address format
+            try:
+                ip_addr = ipaddress.ip_address(raw)
+                networks.append(ipaddress.ip_network(str(ip_addr), strict=False))
+            except (ValueError, TypeError):  # RZ-22-01: invalid IP string
+                pass
+    return networks
+
+
 def _normalize_ip(ip: str | None) -> str | None:
     if not ip:
         return None
     try:
         return str(ipaddress.ip_address(ip.strip()))
-    except ValueError:
+    except (ValueError, TypeError):  # RZ-22-01: invalid IP format
         return None
 
 
+def _normalize_ip_obj(
+    ip: str | None,
+) -> ipaddress.IPv4Address | ipaddress.IPv6Address | None:
+    if not ip:
+        return None
+    try:
+        return ipaddress.ip_address(ip.strip())
+    except (ValueError, TypeError):  # RZ-22-01: invalid IP format
+        return None
+
+
+def _is_ip_trusted(
+    ip_obj: ipaddress.IPv4Address | ipaddress.IPv6Address,
+    trusted_networks: list[ipaddress.IPv4Network | ipaddress.IPv6Network],
+) -> bool:
+    """Check if an IP object matches any trusted proxy network."""
+    for net in trusted_networks:
+        if ip_obj.version == net.version and ip_obj in net:
+            return True
+    return False
+
+
+def _extract_ips_from_forwarded(forwarded: str) -> list[str]:
+    """Extract 'for' parameters from RFC 7239 Forwarded header."""
+    ips: list[str] = []
+    for element in forwarded.split(","):
+        for part in element.split(";"):
+            part = part.strip()
+            if part.lower().startswith("for="):
+                ip = part[4:].strip('"[]')
+                ips.append(ip)
+    return ips
+
+
 def _extract_ip_from_forwarded(forwarded: str) -> str | None:
-    """Extract 'for' parameter from RFC 7239 Forwarded header."""
-    for part in forwarded.split(";"):
-        part = part.strip()
-        if part.lower().startswith("for="):
-            ip = part[4:].strip('"[]')
-            return ip
-    return None
+    """Extract first 'for' parameter from RFC 7239 Forwarded header."""
+    ips = _extract_ips_from_forwarded(forwarded)
+    return ips[0] if ips else None
 
 
 def resolve_client_ip(request: Request) -> str:
-    """Resolve the real client IP, respecting trusted proxies."""
+    """Resolve the real client IP, respecting trusted proxies.
+
+    Traverses X-Forwarded-For / Forwarded headers from right to left (from the
+    trusted proxy boundary backwards) to locate the first untrusted IP.
+    """
     client_host = request.client.host if request.client else "unknown"
-    normalized_client = _normalize_ip(client_host) or "unknown"
-    trusted = {_normalize_ip(proxy) for proxy in settings.trusted_proxies_list}
-    trusted.discard(None)
+    client_ip_obj = _normalize_ip_obj(client_host)
+    normalized_client = str(client_ip_obj) if client_ip_obj else client_host
 
-    ip: str | None = None
-    if normalized_client in trusted:
-        # Check X-Forwarded-For
-        xfwd = request.headers.get("X-Forwarded-For")
-        if xfwd:
-            for part in xfwd.split(","):
-                candidate = _normalize_ip(part)
-                if candidate:
-                    ip = candidate
-                    break
+    trusted_networks = _parse_trusted_proxies(settings.trusted_proxies_list)
 
-        # Check RFC 7239 Forwarded
-        if not ip:
-            fwd = request.headers.get("Forwarded")
-            if fwd:
-                ip = _normalize_ip(_extract_ip_from_forwarded(fwd))
+    if not client_ip_obj or not _is_ip_trusted(client_ip_obj, trusted_networks):
+        return normalized_client
 
-    return ip or normalized_client
+    # Immediate socket peer is a trusted proxy. Check X-Forwarded-For
+    xfwd = request.headers.get("X-Forwarded-For")
+    if xfwd:
+        cleaned_ips: list[
+            tuple[str, ipaddress.IPv4Address | ipaddress.IPv6Address]
+        ] = []
+        for part in xfwd.split(","):
+            obj = _normalize_ip_obj(part)
+            if obj is not None:
+                cleaned_ips.append((str(obj), obj))
+
+        if cleaned_ips:
+            # Traverse right to left (from the trusted proxy boundary backwards)
+            for ip_str, obj in reversed(cleaned_ips):
+                if not _is_ip_trusted(obj, trusted_networks):
+                    return ip_str
+            # All valid IPs in header are trusted proxies -> return left-most valid IP
+            return cleaned_ips[0][0]
+
+    # Check RFC 7239 Forwarded header
+    fwd = request.headers.get("Forwarded")
+    if fwd:
+        extracted_ips = _extract_ips_from_forwarded(fwd)
+        fwd_cleaned: list[
+            tuple[str, ipaddress.IPv4Address | ipaddress.IPv6Address]
+        ] = []
+        for raw_ip in extracted_ips:
+            obj = _normalize_ip_obj(raw_ip)
+            if obj is not None:
+                fwd_cleaned.append((str(obj), obj))
+
+        if fwd_cleaned:
+            for ip_str, obj in reversed(fwd_cleaned):
+                if not _is_ip_trusted(obj, trusted_networks):
+                    return ip_str
+            return fwd_cleaned[0][0]
+
+    return normalized_client
 
 
 def compose_identifier(namespace: str, identifier: str) -> str:

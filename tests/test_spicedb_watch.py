@@ -12,13 +12,26 @@ from app.core.spicedb_watch import (
 )
 
 
-def test_invalidate_for_update():
-    # Cache format: (user_id, resource_type, resource_id, permission) -> (result, timestamp)
+@pytest.mark.anyio
+async def test_invalidate_for_update_full_pipeline():
+    # Cache format: (user_id, resource_type, resource_id, permission, ...) -> (result, timestamp)
     cache = {
-        ("user-1", "document", "doc-123", "read"): (True, time.monotonic()),
-        ("user-1", "document", "doc-123", "write"): (False, time.monotonic()),
-        ("user-2", "document", "doc-123", "read"): (True, time.monotonic()),
-        ("user-1", "folder", "fold-456", "read"): (True, time.monotonic()),
+        ("user-1", "document", "doc-123", "read", "tenant-1", "campus-1"): (
+            True,
+            time.monotonic(),
+        ),
+        ("user-1", "document", "doc-123", "write", "tenant-1", "campus-1"): (
+            False,
+            time.monotonic(),
+        ),
+        ("user-2", "document", "doc-123", "read", "tenant-1", "campus-1"): (
+            True,
+            time.monotonic(),
+        ),
+        ("user-1", "folder", "fold-456", "read", "tenant-1", "campus-1"): (
+            True,
+            time.monotonic(),
+        ),
     }
 
     # Mock relationship update object
@@ -27,21 +40,67 @@ def test_invalidate_for_update():
     mock_update.relationship.resource.object_id = "doc-123"
     mock_update.relationship.subject.object.object_id = "user-1"
 
-    _invalidate_for_update(mock_update, cache)
+    mock_redis_cache = AsyncMock()
+    mock_ws_client = AsyncMock()
 
-    # Should evict matching entries for user-1 + document + doc-123
-    assert ("user-1", "document", "doc-123", "read") not in cache
-    assert ("user-1", "document", "doc-123", "write") not in cache
-    # Should NOT evict user-2
-    assert ("user-2", "document", "doc-123", "read") in cache
-    # Should NOT evict other resources for user-1
-    assert ("user-1", "folder", "fold-456", "read") in cache
+    with (
+        patch("app.deps.cache.get_cache", return_value=mock_redis_cache),
+        patch("app.services.ws_hub_client._get_client", return_value=mock_ws_client),
+        patch("app.core.metrics.record_spicedb_watch_event") as mock_record_watch,
+        patch(
+            "app.core.metrics.record_ws_hub_session_revoked"
+        ) as mock_record_revocation,
+    ):
+        await _invalidate_for_update(mock_update, cache)
+
+        # 1. Local cache check
+        assert (
+            "user-1",
+            "document",
+            "doc-123",
+            "read",
+            "tenant-1",
+            "campus-1",
+        ) not in cache
+        assert (
+            "user-1",
+            "document",
+            "doc-123",
+            "write",
+            "tenant-1",
+            "campus-1",
+        ) not in cache
+        assert (
+            "user-2",
+            "document",
+            "doc-123",
+            "read",
+            "tenant-1",
+            "campus-1",
+        ) in cache
+        assert ("user-1", "folder", "fold-456", "read", "tenant-1", "campus-1") in cache
+
+        # 2. Redis cache invalidation check
+        mock_redis_cache.invalidate.assert_called_once_with(
+            "auth:perms:user-1*", "auth:perms:user-1"
+        )
+
+        # 3. NATS disconnect control event check
+        mock_ws_client.publish_control_event.assert_called_once_with(
+            user_id="user-1",
+            action="disconnect",
+            reason="access_revoked",
+        )
+
+        # 4. Metrics recording check
+        mock_record_watch.assert_called_once_with(event_type="update")
+        mock_record_revocation.assert_called_once_with(reason="access_revoked")
 
     # Should handle malformed update shapes gracefully
     malformed_update = MagicMock()
     del malformed_update.relationship
     # Should not raise exception
-    _invalidate_for_update(malformed_update, cache)
+    await _invalidate_for_update(malformed_update, cache)
 
 
 @pytest.mark.anyio

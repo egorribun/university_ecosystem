@@ -406,12 +406,14 @@ func (h *Hub) SubscribeToNATS(appCtx context.Context) {
 	}
 	h.subs = append(h.subs, invSub)
 
+	ctrlSub, err := h.Nats.Subscribe("ws_hub.control", h.handleControlMessage(appCtx))
+	if err != nil {
+		h.Logger.ErrorContext(appCtx, "NATS control subscription failed — hub cannot receive session control events", "err", err)
+		os.Exit(1)
+	}
+	h.subs = append(h.subs, ctrlSub)
+
 	// RZ-21-05 (audit 2026-03-25 Wave 21): Pre-warm JWKS cache on key rotation.
-	// The Python backend publishes to "keys.rotated" before issuing tokens with
-	// a new kid.  This eliminates the 30 s force-refresh cooldown window where
-	// valid tokens could be rejected during key rotation.
-	// Non-fatal: if the subscription fails, the existing force-refresh-on-kid-miss
-	// mechanism still works (just with the 30 s cooldown).
 	jwksSub, err := h.Nats.Subscribe("keys.rotated", func(msg *nats.Msg) {
 		h.Logger.InfoContext(appCtx, "JWKS rotation event received — pre-warming cache")
 		h.tryForceRefreshJWKS(appCtx)
@@ -592,6 +594,127 @@ func (h *Hub) handleCacheInvalidation(appCtx context.Context) nats.MsgHandler {
 		if h.authClient != nil {
 			h.authClient.Invalidate(payload.Data.UserID, payload.Data.RoomID)
 		}
+	}
+}
+
+type controlPayload struct {
+	Data struct {
+		Action    string `json:"action"`
+		Reason    string `json:"reason"`
+		Timestamp uint64 `json:"timestamp"`
+		UserID    string `json:"user_id"`
+	} `json:"data"`
+	Signature string `json:"signature"`
+}
+
+func (h *Hub) handleControlMessage(appCtx context.Context) nats.MsgHandler {
+	const natsCallbackTimeout = 30 * time.Second
+	return func(msg *nats.Msg) {
+		defer func() {
+			if r := recover(); r != nil {
+				h.Logger.ErrorContext(appCtx, "NATS control callback panic recovered",
+					"panic", r, "subject", msg.Subject)
+			}
+		}()
+
+		select {
+		case <-appCtx.Done():
+			return
+		default:
+		}
+
+		msgCtx, cancel := context.WithTimeout(appCtx, natsCallbackTimeout)
+		defer cancel()
+		msgCtx = otel.GetTextMapPropagator().Extract(msgCtx, propagation.HeaderCarrier(msg.Header))
+		_, span := otel.Tracer("hub").Start(msgCtx, "NATS.Subscribe.Control",
+			trace.WithAttributes(
+				semconv.MessagingSystemKey.String("nats"),
+				semconv.MessagingOperationTypeKey.String("receive"),
+				semconv.MessagingDestinationNameKey.String("ws_hub.control"),
+			),
+		)
+		defer span.End()
+
+		var payload controlPayload
+		if err := json.Unmarshal(msg.Data, &payload); err != nil {
+			h.Logger.WarnContext(msgCtx, "ws-hub: malformed NATS control message dropped",
+				"subject", msg.Subject, "size", len(msg.Data), "err", err)
+			return
+		}
+
+		if h.internalSecret == "" {
+			h.Logger.WarnContext(msgCtx, "ws-hub: internalSecret empty, dropping control event",
+				"user_id", payload.Data.UserID)
+			return
+		}
+
+		dataBytes, err := json.Marshal(payload.Data)
+		if err != nil {
+			h.Logger.ErrorContext(msgCtx, "Failed to marshal control payload data for HMAC verification", "err", err)
+			return
+		}
+
+		hFunc := hmac.New(sha256.New, []byte(h.internalSecret))
+		if _, err := hFunc.Write(dataBytes); err != nil {
+			h.Logger.ErrorContext(msgCtx, "Failed to write data to HMAC", "err", err)
+			return
+		}
+		expectedSigBytes := hFunc.Sum(nil)
+
+		payloadSigBytes, decodeErr := hex.DecodeString(payload.Signature)
+		if decodeErr != nil || !hmac.Equal(payloadSigBytes, expectedSigBytes) {
+			h.Logger.WarnContext(msgCtx, "Invalid internal NATS control signature — dropping event",
+				"action", payload.Data.Action, "user_id", payload.Data.UserID)
+			return
+		}
+
+		h.Logger.InfoContext(msgCtx, "Received valid NATS control event",
+			"action", payload.Data.Action, "user_id", payload.Data.UserID, "reason", payload.Data.Reason)
+
+		if h.authClient != nil {
+			h.authClient.Invalidate(payload.Data.UserID, "")
+		}
+
+		if payload.Data.Action == "disconnect" || payload.Data.Reason == "access_revoked" {
+			reason := payload.Data.Reason
+			if reason == "" || reason == "access_revoked" {
+				reason = "Access Revoked"
+			}
+			h.DisconnectUser(payload.Data.UserID, 4401, reason)
+			SessionsRevokedTotal.Inc()
+		} else {
+			h.Logger.WarnContext(msgCtx, "Unknown control action ignored", "action", payload.Data.Action)
+		}
+	}
+}
+
+// DisconnectUser finds active client(s) for the given userID under a read lock (Hub.mu.RLock),
+// then writes a WebSocket close control frame (code 4401, reason) and triggers unregistration.
+// Adheres strictly to RZ-22-04: Hub.mu is released BEFORE calling client.Disconnect.
+func (h *Hub) DisconnectUser(userID string, closeCode int, reason string) {
+	if userID == "" {
+		return
+	}
+
+	h.mu.RLock()
+	var targets []*Client
+	for _, client := range h.Clients {
+		if client.UserID == userID || client.ID == userID {
+			targets = append(targets, client)
+		}
+	}
+	h.mu.RUnlock()
+
+	if len(targets) == 0 {
+		h.Logger.DebugContext(context.Background(), "DisconnectUser: no active connections found", "user_id", userID)
+		return
+	}
+
+	h.Logger.InfoContext(context.Background(), "Disconnecting active user sessions",
+		"user_id", userID, "count", len(targets), "code", closeCode, "reason", reason)
+
+	for _, client := range targets {
+		client.Disconnect(closeCode, reason)
 	}
 }
 

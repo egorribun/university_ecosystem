@@ -73,4 +73,10 @@ var (
 		Name: "ws_hub_unknown_msg_type_total",
 		Help: "Unknown WS message types received (RZ-27-05)",
 	})
+
+	// SessionsRevokedTotal counts user session evictions triggered by NATS control events.
+	SessionsRevokedTotal = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "ws_hub_sessions_revoked_total",
+		Help: "Total number of WebSocket sessions revoked via control events.",
+	})
 )

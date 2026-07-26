@@ -444,6 +444,40 @@ _BACKGROUND_TASK_ERRORS = (
     else None
 )
 
+# ── Revocation & ABAC Metrics ──────────────────────────────────────────────
+_SPICEDB_WATCH_EVENTS = (
+    Counter(
+        "spicedb_watch_events_total",
+        "Total SpiceDB Watch stream relationship events received",
+        ("event_type",),
+        registry=REGISTRY,
+    )
+    if Counter is not None
+    else None
+)
+
+_WS_HUB_SESSIONS_REVOKED = (
+    Counter(
+        "ws_hub_sessions_revoked_total",
+        "Total WebSocket hub user sessions revoked due to permission updates",
+        ("reason",),
+        registry=REGISTRY,
+    )
+    if Counter is not None
+    else None
+)
+
+_ABAC_ACCESS_DENIED = (
+    Counter(
+        "abac_access_denied_total",
+        "Total ABAC access denials by policy rule",
+        ("rule",),
+        registry=REGISTRY,
+    )
+    if Counter is not None
+    else None
+)
+
 
 def record_background_task_error(task_name: str) -> None:
     """Increment the background task error counter.
@@ -568,6 +602,33 @@ def record_circuit_breaker_trip(service: str) -> None:
     """Record a circuit breaker trip (transition to open state)."""
     if _CIRCUIT_BREAKER_TRIPS is not None:
         _CIRCUIT_BREAKER_TRIPS.labels(service=service).inc()
+
+
+def record_spicedb_watch_event(event_type: str = "update") -> None:
+    """Record a SpiceDB watch stream event."""
+    if _SPICEDB_WATCH_EVENTS is not None:
+        try:
+            _SPICEDB_WATCH_EVENTS.labels(event_type=event_type).inc()
+        except Exception:  # RZ-22-01-JUSTIFIED: metrics guard
+            logger.debug("Failed to record SpiceDB watch event", exc_info=True)
+
+
+def record_ws_hub_session_revoked(reason: str = "access_revoked") -> None:
+    """Record a WebSocket hub session revocation event."""
+    if _WS_HUB_SESSIONS_REVOKED is not None:
+        try:
+            _WS_HUB_SESSIONS_REVOKED.labels(reason=reason).inc()
+        except Exception:  # RZ-22-01-JUSTIFIED: metrics guard
+            logger.debug("Failed to record ws_hub session revoked", exc_info=True)
+
+
+def record_abac_access_denied(rule: str = "unknown") -> None:
+    """Record an ABAC access denial event by rule (e.g. 'subnet', 'schedule')."""
+    if _ABAC_ACCESS_DENIED is not None:
+        try:
+            _ABAC_ACCESS_DENIED.labels(rule=rule).inc()
+        except Exception:  # RZ-22-01-JUSTIFIED: metrics guard
+            logger.debug("Failed to record ABAC access denied", exc_info=True)
 
 
 _CONFIGURED_ATTR = "_metrics_configured"

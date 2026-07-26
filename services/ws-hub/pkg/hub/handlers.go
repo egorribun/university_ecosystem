@@ -255,13 +255,13 @@ func (h *Hub) HandleWebTransport(w http.ResponseWriter, r *http.Request, cfg *co
 		return
 	}
 
-	if !checkOrigin(r) {
+	if wtUpgrader.CheckOrigin != nil && !wtUpgrader.CheckOrigin(r) {
 		h.Logger.WarnContext(setupCtx, "WebTransport connection rejected: origin not allowed", "origin", r.Header.Get("Origin"))
 		http.Error(w, "Forbidden", http.StatusForbidden)
 		return
 	}
 
-	sess, err := upgradeWT(wtUpgrader, w, r)
+	sess, err := upgradeWT(&wtUpgrader, w, r)
 	if err != nil {
 		h.Logger.ErrorContext(setupCtx, "WebTransport upgrade failed", "err", err)
 		return

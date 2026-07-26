@@ -121,6 +121,60 @@ class WsHubClient:
             exc_info=last_exc,
         )
 
+    async def publish_control_event(
+        self,
+        user_id: str | uuid.UUID,
+        action: str = "disconnect",
+        reason: str = "access_revoked",
+    ) -> None:
+        """Publish a signed control event to NATS JetStream subject 'ws_hub.control'.
+
+        The ws-hub listens on 'ws_hub.control', verifies the signature using
+        ws_hub_internal_secret, and disconnects all active WebSocket connections for user_id.
+        """
+        payload_content = {
+            "user_id": str(user_id),
+            "action": action,
+            "reason": reason,
+            "timestamp": time.time_ns(),
+        }
+
+        json_payload = json.dumps(
+            payload_content, sort_keys=True, separators=(",", ":")
+        )
+        signature = hmac.new(
+            self._secret.encode(),
+            json_payload.encode(),
+            hashlib.sha256,
+        ).hexdigest()
+
+        full_payload = {
+            "data": payload_content,
+            "signature": signature,
+        }
+
+        last_exc: Exception | None = None
+        for attempt in range(_MAX_PUBLISH_ATTEMPTS):
+            try:
+                await self._broker.publish("ws_hub.control", full_payload)
+                return
+            except (ConnectionError, TimeoutError, OSError) as exc:
+                last_exc = exc
+                if attempt < _MAX_PUBLISH_ATTEMPTS - 1:
+                    backoff = _RETRY_BACKOFF_SECONDS * (2**attempt)
+                    jitter = random.uniform(0, backoff * 0.5)  # noqa: S311 — not security-sensitive  # nosec B311
+                    await asyncio.sleep(backoff + jitter)
+
+        _INVALIDATION_FAILURES.inc()
+        logger.error(
+            "ws_hub_control_publish_failed",
+            user_id=str(user_id),
+            action=action,
+            reason=reason,
+            attempts=_MAX_PUBLISH_ATTEMPTS,
+            exc_info=last_exc,
+        )
+
 
 # RZ-14-01 (audit Wave 14): Lazy singleton.  The previous code instantiated
 # WsHubClient() at module import time, which triggered `settings` and `broker`
@@ -152,3 +206,14 @@ async def invalidate_ws_hub_cache(
 ) -> None:
     """Module-level convenience wrapper around the shared WsHubClient."""
     await _get_client().invalidate_cache(user_id=user_id, room_id=room_id)
+
+
+async def publish_ws_hub_control(
+    user_id: str | uuid.UUID,
+    action: str = "disconnect",
+    reason: str = "access_revoked",
+) -> None:
+    """Convenience function to publish a ws-hub control disconnect event."""
+    await _get_client().publish_control_event(
+        user_id=user_id, action=action, reason=reason
+    )
