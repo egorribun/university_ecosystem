@@ -1,9 +1,13 @@
 # MOD-05 (audit 2026-03-14): Horizontal Pod Autoscaler for the outbox-worker.
 #
-# Scales based on the outbox_pending_events_total Prometheus gauge published by
-# each worker pod.  The Prometheus Adapter must be configured to expose this
-# metric to the Kubernetes custom-metrics API.  See:
-#   k8s/outbox-worker/prometheus-adapter-rule.yaml (companion config)
+# KEDA ADOPTION NOTICE (Vector 17 FinOps):
+# When KEDA is enabled in the cluster, the ScaledObject defined in
+# k8s/outbox-worker/scaledobject.yaml automatically manages and adopts this HPA
+# via advanced.horizontalPodAutoscalerConfig.name: outbox-worker-hpa.
+#
+# For non-KEDA legacy clusters, this standalone HPA scales based on the
+# outbox_pending_events_total Prometheus gauge published by each worker pod.
+# See: k8s/outbox-worker/prometheus-adapter-rule.yaml (companion config)
 #
 # Tuning:
 #   averageValue: "100" — each replica should handle ≤100 pending events.

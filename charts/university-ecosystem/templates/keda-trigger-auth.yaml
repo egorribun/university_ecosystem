@@ -1,0 +1,33 @@
+{{- if .Values.keda.enabled -}}
+{{- if .Values.keda.redisAuth.enabled -}}
+apiVersion: keda.sh/v1alpha1
+kind: TriggerAuthentication
+metadata:
+  name: {{ include "university-ecosystem.fullname" . }}-trigger-auth-redis
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "university-ecosystem.labels" . | nindent 4 }}
+spec:
+  secretTargetRef:
+    - parameter: password
+      name: {{ .Values.keda.redisAuth.secretName | default (printf "%s-redis-credentials" .Release.Name) }}
+      key: {{ .Values.keda.redisAuth.secretPasswordKey | default "redis-password" }}
+{{- end }}
+{{- if and .Values.keda.redisAuth.enabled .Values.keda.natsAuth.enabled }}
+---
+{{- end }}
+{{- if .Values.keda.natsAuth.enabled }}
+apiVersion: keda.sh/v1alpha1
+kind: TriggerAuthentication
+metadata:
+  name: {{ include "university-ecosystem.fullname" . }}-trigger-auth-nats
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "university-ecosystem.labels" . | nindent 4 }}
+spec:
+  secretTargetRef:
+    - parameter: natsToken
+      name: {{ .Values.keda.natsAuth.secretName | default (printf "%s-nats-credentials" .Release.Name) }}
+      key: {{ .Values.keda.natsAuth.secretTokenKey | default "nats-token" }}
+{{- end }}
+{{- end }}

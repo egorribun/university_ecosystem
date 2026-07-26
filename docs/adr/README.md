@@ -25,3 +25,5 @@ This directory contains architectural decision records (ADRs) for the University
 19. [ADR-019: Client-side Caching Strategy](ADR-019-client-caching-strategy.md)
 20. [ADR-020: SpiceDB Watch API for Real-time Permissions](ADR-020-spicedb-watch-api.md)
 21. [ADR-021: Go Circuit Breaker Pattern](ADR-021-go-circuit-breaker.md)
+22. [ADR-022: Go Services Integration Testing with Testcontainers](ADR-022-go-services-integration-testing-with-testcontainers.md)
+32. [ADR-032: KEDA Event-Driven Auto-Scaling and Off-Peak Resource Hibernation](ADR-032-keda-autoscale-and-hibernation.md)

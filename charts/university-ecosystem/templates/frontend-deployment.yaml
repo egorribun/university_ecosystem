@@ -6,7 +6,9 @@ metadata:
     {{- include "university-ecosystem.labels" . | nindent 4 }}
     app.kubernetes.io/component: frontend
 spec:
+  {{- if not (and .Values.keda.enabled (and .Values.hibernation.enabled .Values.hibernation.workloads.frontend.enabled)) }}
   replicas: {{ .Values.frontend.replicaCount }}
+  {{- end }}
   selector:
     matchLabels:
       {{- include "university-ecosystem.selectorLabels" . | nindent 6 }}

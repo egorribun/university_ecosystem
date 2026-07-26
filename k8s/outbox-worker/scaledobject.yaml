@@ -1,0 +1,63 @@
+# KEDA ScaledObject for standalone outbox-worker deployment (Vector 17 FinOps).
+# Automatically manages HorizontalPodAutoscaler (HPA) scaling for outbox-worker
+# based on NATS JetStream stream lag on the OUTBOX_EVENTS stream.
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: outbox-worker-scaledobject
+  namespace: university-ecosystem
+  labels:
+    app.kubernetes.io/name: outbox-worker
+    app.kubernetes.io/component: event-processing
+    app.kubernetes.io/part-of: university-ecosystem
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: outbox-worker
+  minReplicaCount: 2
+  maxReplicaCount: 10
+  cooldownPeriod: 300
+  pollingInterval: 15
+  advanced:
+    horizontalPodAutoscalerConfig:
+      name: outbox-worker-hpa
+      behavior:
+        scaleUp:
+          stabilizationWindowSeconds: 30
+          policies:
+            - type: Pods
+              value: 2
+              periodSeconds: 60
+        scaleDown:
+          stabilizationWindowSeconds: 300
+          policies:
+            - type: Pods
+              value: 1
+              periodSeconds: 120
+  triggers:
+    - type: nats-jetstream
+      metadata:
+        natsServerMonitoringEndpoint: "http://nats.university-ecosystem.svc.cluster.local:8222"
+        account: "$SYS"
+        stream: "OUTBOX_EVENTS"
+        consumer: "outbox-cdc-worker"
+        lagThreshold: "50"
+        activationLagThreshold: "0"
+      authenticationRef:
+        name: outbox-worker-trigger-auth-nats
+---
+# TriggerAuthentication referencing backend-secrets for NATS token.
+apiVersion: keda.sh/v1alpha1
+kind: TriggerAuthentication
+metadata:
+  name: outbox-worker-trigger-auth-nats
+  namespace: university-ecosystem
+  labels:
+    app.kubernetes.io/name: outbox-worker
+    app.kubernetes.io/component: event-processing
+spec:
+  secretTargetRef:
+    - parameter: natsToken
+      name: backend-secrets
+      key: NATS_AUTH_TOKEN
