@@ -29,7 +29,8 @@
 
 ## Code Conventions
 
-- Commit style: `feat(waveXX): description` with `Co-Authored-By` trailer
+- Commit style: `feat(waveXX): description` — NEVER include `Co-Authored-By` trailer under any circumstances
+- Testing & Waves Association: Testing coverage/roadmaps do NOT belong to waves (waves are strictly for main business features). Do not associate testing work with waves in logs or commits
 - Branch: `egorribun`
 - Exception handling: narrowed to specific types with `# RZ-20-04` / `# RZ-22-01` audit comments
   - DB/network: `(OSError, ConnectionError)`
