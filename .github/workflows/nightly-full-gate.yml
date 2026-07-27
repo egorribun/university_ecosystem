@@ -230,7 +230,7 @@ jobs:
           base="https://github.com/kyverno/kyverno/releases/download/${version}"
           curl --fail --silent --show-error --location --output "$RUNNER_TEMP/$archive" "$base/$archive"
           curl --fail --silent --show-error --location --output "$RUNNER_TEMP/checksums.txt" "$base/checksums.txt"
-          grep "$archive" "$RUNNER_TEMP/checksums.txt" | sha256sum --check -
+          (cd "$RUNNER_TEMP" && grep "$archive" checksums.txt | sha256sum --check -)
           tar --extract --gzip --file "$RUNNER_TEMP/$archive" --directory "$RUNNER_TEMP"
           echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
 
