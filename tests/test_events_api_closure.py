@@ -110,6 +110,16 @@ async def test_create_event_success_and_role_guard() -> None:
     bump.assert_awaited_once()
     notifications.dispatch_event_created.assert_awaited_once()
 
+    with (
+        patch.object(api, "resolve_locale", return_value="en"),
+        patch.object(api, "_increment_events_list_version", AsyncMock()) as no_bump,
+    ):
+        result = await api.create_event(
+            _event_create(), None, MagicMock(), user, notifications, service
+        )
+    assert result == {"id": str(record.id)}
+    no_bump.assert_not_awaited()
+
     with patch.object(api, "resolve_locale", return_value="en"):
         with pytest.raises(HTTPException) as exc:
             await api.create_event(

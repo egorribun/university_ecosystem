@@ -95,10 +95,6 @@ fn rayon_pool_build_error<E: Display>(error: E) -> PyErr {
     pyo3::exceptions::PyRuntimeError::new_err(format!("Failed to build rayon thread pool: {error}"))
 }
 
-fn hmac_key_error<E: Display>(_error: E) -> PyErr {
-    pyo3::exceptions::PyValueError::new_err("Invalid HMAC key length")
-}
-
 #[pymethods]
 impl ScheduleItem {
     #[new]
@@ -471,8 +467,10 @@ pub fn verify_audit_signature(
             };
 
             for key_str in signing_keys {
-                let mut mac =
-                    Hmac::<Sha256>::new_from_slice(key_str.as_bytes()).map_err(hmac_key_error)?;
+                // HMAC-SHA256 hashes oversized keys, so every byte-slice length
+                // is valid for this concrete digest implementation.
+                let mut mac = Hmac::<Sha256>::new_from_slice(key_str.as_bytes())
+                    .expect("HMAC-SHA256 accepts keys of every length");
                 mac.update(log_data.as_bytes());
                 if mac.verify_slice(&sig_bytes).is_ok() {
                     return Ok(true);
@@ -534,10 +532,10 @@ pub fn verify_event_chain(
                 let mut hash_valid = false;
 
                 for key_str in &signing_keys {
-                    let mut mac = match Hmac::<Sha256>::new_from_slice(key_str.as_bytes()) {
-                        Ok(m) => m,
-                        Err(_) => continue,
-                    };
+                    // HMAC-SHA256 accepts arbitrary key lengths; see the
+                    // invariant documented in verify_audit_signature above.
+                    let mut mac = Hmac::<Sha256>::new_from_slice(key_str.as_bytes())
+                        .expect("HMAC-SHA256 accepts keys of every length");
                     mac.update(data.as_bytes());
                     if mac.verify_slice(&sig_bytes).is_ok() {
                         hash_valid = true;
@@ -867,8 +865,20 @@ mod tests {
         let h2 = hex::encode(mac2.finalize().into_bytes());
 
         let chain = vec![
-            ("evt-1".to_string(), h0.clone(), p1.to_string(), t1.to_string(), h1.clone()),
-            ("evt-2".to_string(), h1.clone(), p2.to_string(), t2.to_string(), h2.clone()),
+            (
+                "evt-1".to_string(),
+                h0.clone(),
+                p1.to_string(),
+                t1.to_string(),
+                h1.clone(),
+            ),
+            (
+                "evt-2".to_string(),
+                h1.clone(),
+                p2.to_string(),
+                t2.to_string(),
+                h2.clone(),
+            ),
         ];
 
         let res = verify_event_chain(vec![key.to_string()], h0, chain).unwrap();
@@ -890,14 +900,92 @@ mod tests {
         let h1 = hex::encode(mac1.finalize().into_bytes());
 
         let chain = vec![
-            ("evt-1".to_string(), h0.clone(), p1.to_string(), t1.to_string(), h1.clone()),
-            ("evt-2".to_string(), "bad_prev_hash".to_string(), "p2".to_string(), "t2".to_string(), "h2".to_string()),
+            (
+                "evt-1".to_string(),
+                h0.clone(),
+                p1.to_string(),
+                t1.to_string(),
+                h1.clone(),
+            ),
+            (
+                "evt-2".to_string(),
+                "bad_prev_hash".to_string(),
+                "p2".to_string(),
+                "t2".to_string(),
+                "h2".to_string(),
+            ),
         ];
 
         let res = verify_event_chain(vec![key.to_string()], h0, chain).unwrap();
         assert!(!res.0);
         assert_eq!(res.1, 1);
         assert!(res.2.contains("Chain discontinuity"));
+    }
+
+    #[test]
+    fn verify_event_chain_accepts_empty_chain() {
+        let result =
+            verify_event_chain(vec!["key".to_string()], "prev".to_string(), vec![]).unwrap();
+
+        assert_eq!(result, (true, 0, String::new()));
+    }
+
+    #[test]
+    fn verify_event_chain_rejects_missing_signing_keys() {
+        let result = verify_event_chain(
+            vec![],
+            "prev".to_string(),
+            vec![(
+                "event-1".to_string(),
+                "prev".to_string(),
+                "payload".to_string(),
+                "timestamp".to_string(),
+                "00".to_string(),
+            )],
+        )
+        .unwrap();
+
+        assert_eq!(result, (false, 0, "No signing keys provided".to_string()));
+    }
+
+    #[test]
+    fn verify_event_chain_rejects_invalid_hex_hash() {
+        let result = verify_event_chain(
+            vec!["key".to_string()],
+            "prev".to_string(),
+            vec![(
+                "event-1".to_string(),
+                "prev".to_string(),
+                "payload".to_string(),
+                "timestamp".to_string(),
+                "not-hex".to_string(),
+            )],
+        )
+        .unwrap();
+
+        assert!(!result.0);
+        assert_eq!(result.1, 0);
+        assert!(result.2.contains("invalid hex hash"));
+    }
+
+    #[test]
+    fn verify_event_chain_rejects_invalid_signature() {
+        let result = verify_event_chain(
+            vec!["key".to_string()],
+            "prev".to_string(),
+            vec![(
+                "event-1".to_string(),
+                "prev".to_string(),
+                "payload".to_string(),
+                "timestamp".to_string(),
+                "00".to_string(),
+            )],
+        )
+        .unwrap();
+
+        assert!(!result.0);
+        assert_eq!(result.1, 0);
+        assert!(result.2.contains("tampering detected"));
     }
 
     #[test]
@@ -1019,9 +1107,6 @@ mod tests {
         assert!(rayon_error
             .to_string()
             .contains("Failed to build rayon thread pool: synthetic failure"));
-
-        let hmac_error = hmac_key_error("synthetic key failure");
-        assert!(hmac_error.to_string().contains("Invalid HMAC key length"));
     }
 
     #[test]
@@ -1048,6 +1133,15 @@ mod tests {
         let available = vec![(day, vec![0])];
 
         assert!(find_optimal_slot(60, existing, available)
+            .unwrap()
+            .is_none());
+    }
+
+    #[test]
+    fn find_optimal_slot_skips_invalid_hour_candidates() {
+        let available = vec![("monday".to_string(), vec![24])];
+
+        assert!(find_optimal_slot(60, Vec::new(), available)
             .unwrap()
             .is_none());
     }

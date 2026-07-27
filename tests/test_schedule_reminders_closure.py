@@ -165,6 +165,13 @@ async def test_generate_reminders_no_users_and_no_dedupe_query(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_generate_reminders_returns_zero_when_schedule_window_is_empty():
+    db = _Db([_ScalarResult(schedules=[])])
+
+    assert await reminders.generate_schedule_reminders(db) == 0
+
+
+@pytest.mark.asyncio
 async def test_generate_reminders_defensive_empty_group_ids(monkeypatch):
     class _NoKeysDict(dict):
         def __missing__(self, key):

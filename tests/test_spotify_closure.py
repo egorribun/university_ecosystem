@@ -67,9 +67,7 @@ def test_spotify_token_helpers_cover_success_and_utc_normalization() -> None:
         assert spotify._mint_state_token("user", expires_minutes=10) == "state-token"
     encode.assert_called_once()
 
-    with patch.object(
-        spotify, "settings", _settings(spotify_oauth_state_secret="")
-    ):
+    with patch.object(spotify, "settings", _settings(spotify_oauth_state_secret="")):
         with pytest.raises(ValueError, match="must be set"):
             spotify._mint_state_token("user", expires_minutes=10)
 
@@ -85,6 +83,7 @@ def test_spotify_disconnect_and_fallback_payload_edges() -> None:
 
     no_spotify = _user(spotify=False)
     spotify._disconnect_user(no_spotify)
+    assert spotify._fallback_now_playing(no_spotify).is_playing is False
     empty = _user()
     result = spotify._fallback_now_playing(empty)
     assert result.is_playing is False
@@ -101,16 +100,15 @@ def test_spotify_disconnect_and_fallback_payload_edges() -> None:
 
 
 @pytest.mark.asyncio
-async def test_save_tokens_creates_integration_and_preserves_refresh_when_omitted(
-) -> None:
+async def test_save_tokens_creates_integration_and_preserves_refresh_when_omitted() -> (
+    None
+):
     from app.api import spotify
 
     user = _user(spotify=False)
     db = AsyncMock()
     with patch.object(spotify, "_now_utc", return_value=datetime.now(UTC)):
-        await spotify._save_tokens(
-            db, user, "access", None, None, "not-an-int"
-        )
+        await spotify._save_tokens(db, user, "access", None, None, "not-an-int")
     assert user.spotify.access_token == "access"
     assert user.spotify.refresh_token is None
     assert user.spotify.scope == ""
@@ -200,15 +198,63 @@ async def test_ensure_access_token_refresh_success_and_circuit_open() -> None:
 
 
 @pytest.mark.asyncio
-async def test_spotify_callback_rejects_missing_secret_invalid_state_and_missing_user(
-) -> None:
+async def test_ensure_access_token_rejects_missing_token_and_scope_downgrade() -> None:
+    from app.api import spotify
+
+    db = AsyncMock()
+    missing_token_response = MagicMock(status_code=200)
+    missing_token_response.json.return_value = {"expires_in": 120}
+    missing_token_user = _user()
+    with (
+        patch.object(
+            spotify,
+            "_spotify_http_client",
+            SimpleNamespace(post=AsyncMock(return_value=missing_token_response)),
+        ),
+        patch.object(spotify, "_spotify_circuit_breaker", _breaker()),
+    ):
+        with pytest.raises(HTTPException) as exc:
+            await spotify._ensure_access_token(db, missing_token_user, locale="ru")
+    assert exc.value.status_code == 401
+    assert missing_token_user.spotify.access_token is None
+    assert missing_token_user.spotify.refresh_token is None
+    db.commit.assert_awaited_once()
+
+    db.reset_mock()
+    downgraded_response = MagicMock(status_code=200)
+    downgraded_response.json.return_value = {
+        "access_token": "new-token",
+        "scope": "user-read-playback-state",
+        "expires_in": 120,
+    }
+    downgraded_user = _user()
+    downgraded_user.spotify.scope = "user-read-playback-state user-read-email"
+    with (
+        patch.object(
+            spotify,
+            "_spotify_http_client",
+            SimpleNamespace(post=AsyncMock(return_value=downgraded_response)),
+        ),
+        patch.object(spotify, "_spotify_circuit_breaker", _breaker()),
+        patch.object(spotify, "_save_tokens", new=AsyncMock()),
+    ):
+        with pytest.raises(HTTPException) as exc:
+            await spotify._ensure_access_token(db, downgraded_user, locale="ru")
+    assert exc.value.status_code == 401
+    assert downgraded_user.spotify.access_token is None
+    assert downgraded_user.spotify.refresh_token is None
+    db.commit.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_spotify_callback_rejects_missing_secret_invalid_state_and_missing_user() -> (
+    None
+):
     from app.api import spotify
 
     request = _request()
     db = AsyncMock()
-    with patch.object(
-        spotify, "settings", _settings(spotify_oauth_state_secret="")
-    ):
+    with patch.object(spotify, "settings", _settings(spotify_oauth_state_secret="")):
         with pytest.raises(HTTPException) as exc:
             await spotify.spotify_callback(request, code="code", state="state", db=db)
         assert exc.value.status_code == 503
@@ -280,7 +326,7 @@ async def test_spotify_callback_handles_exchange_and_profile_circuit_branches() 
                 post=AsyncMock(return_value=post), get=AsyncMock(return_value=me)
             ),
         ),
-            patch.object(spotify, "_spotify_circuit_breaker", _breaker(None, None)),
+        patch.object(spotify, "_spotify_circuit_breaker", _breaker(None, None)),
         patch.object(
             post,
             "json",
@@ -449,9 +495,7 @@ async def test_now_playing_retry_error_fallback_and_circuit_paths() -> None:
             SimpleNamespace(get=AsyncMock(return_value=Response(401))),
         ),
     ):
-        response = await spotify.now_playing(
-            _request(), db=db, user=fallback_user
-        )
+        response = await spotify.now_playing(_request(), db=db, user=fallback_user)
     assert response.status_code == 204
 
     circuit_user = _user()
@@ -472,9 +516,7 @@ async def test_now_playing_retry_error_fallback_and_circuit_paths() -> None:
         ),
         patch.object(spotify, "_spotify_circuit_breaker", breaker),
     ):
-        response = await spotify.now_playing(
-            _request(), db=db, user=circuit_user
-        )
+        response = await spotify.now_playing(_request(), db=db, user=circuit_user)
     assert response.status_code == 204
 
 

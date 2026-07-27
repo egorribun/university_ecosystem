@@ -167,7 +167,15 @@ def spicedb_container() -> dict[str, str]:
     with container as started:
         host = started.get_container_host_ip()
         port = started.get_exposed_port(50051)
-        yield {"endpoint": f"{host}:{port}", "token": "test-spicedb-key"}
+        endpoint = f"{host}:{port}"
+        import grpc
+
+        channel = grpc.insecure_channel(endpoint)
+        try:
+            grpc.channel_ready_future(channel).result(timeout=30)
+        finally:
+            channel.close()
+        yield {"endpoint": endpoint, "token": "test-spicedb-key"}
 
 
 @pytest.fixture(scope="session", autouse=True)

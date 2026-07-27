@@ -55,6 +55,12 @@ def test_profile_cache_integrity_environment_and_validation_paths() -> None:
 
     with patch.object(api, "settings") as settings:
         settings.environment = "production"
+        with pytest.raises(HTTPException) as exc:
+            api._enforce_profile_cache_integrity(_request())
+    assert exc.value.status_code == 400
+
+    with patch.object(api, "settings") as settings:
+        settings.environment = "production"
         request = _request({api.PROFILE_CACHE_HEADER: "{}"})
         request.state.active_session.signing_key = ""
         with pytest.raises(HTTPException) as exc:
@@ -65,6 +71,8 @@ def test_profile_cache_integrity_environment_and_validation_paths() -> None:
         "[]",
         json.dumps({"version": 1, "expiresAt": 1, "data": {}}),
         json.dumps({"version": 1, "expiresAt": 1, "data": {}, "signature": ""}),
+        "{",
+        json.dumps({"version": 1, "expiresAt": 1, "data": None, "signature": "bad"}),
     ]
     for raw in cases:
         request = _request({api.PROFILE_CACHE_HEADER: raw})
@@ -73,6 +81,30 @@ def test_profile_cache_integrity_environment_and_validation_paths() -> None:
             with pytest.raises(HTTPException) as exc:
                 api._enforce_profile_cache_integrity(request)
         assert exc.value.status_code == 400
+
+    oversized = _request({api.PROFILE_CACHE_HEADER: "x" * 8_193})
+    with patch.object(api, "settings") as settings:
+        settings.environment = "production"
+        with pytest.raises(HTTPException) as exc:
+            api._enforce_profile_cache_integrity(oversized)
+    assert exc.value.status_code == 400
+
+    invalid_signature = json.loads(
+        _signed_envelope(
+            expires_at=int(
+                (datetime.now(UTC) + timedelta(minutes=5)).timestamp() * 1000
+            ),
+            data={},
+        )
+    )
+    invalid_signature["signature"] = "invalid"
+    with patch.object(api, "settings") as settings:
+        settings.environment = "production"
+        with pytest.raises(HTTPException) as exc:
+            api._enforce_profile_cache_integrity(
+                _request({api.PROFILE_CACHE_HEADER: json.dumps(invalid_signature)})
+            )
+    assert exc.value.status_code == 400
 
 
 def test_profile_cache_integrity_signed_expiry_variants() -> None:

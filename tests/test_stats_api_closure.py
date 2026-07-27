@@ -9,6 +9,18 @@ from fastapi import HTTPException, status
 from starlette.requests import Request
 from starlette.responses import Response
 
+_MISSING = object()
+_STUBBED_MODULE_NAMES = (
+    "app.api.deps",
+    "app.core.container",
+    "app.core.middleware",
+    "app.core.ratelimit",
+    "app.cqrs.queries",
+)
+_ORIGINAL_MODULES = {
+    name: sys.modules.get(name, _MISSING) for name in _STUBBED_MODULE_NAMES
+}
+
 
 def _install_lightweight_imports() -> None:
     deps = ModuleType("app.api.deps")
@@ -55,6 +67,12 @@ def _install_lightweight_imports() -> None:
 _install_lightweight_imports()
 
 from app.api import stats
+
+for _name, _original in _ORIGINAL_MODULES.items():
+    if _original is _MISSING:
+        sys.modules.pop(_name, None)
+    else:
+        sys.modules[_name] = _original
 
 
 class _Handler:

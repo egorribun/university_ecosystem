@@ -440,13 +440,6 @@ async def save_attachment(
             reason="blocked-mime",
         )
 
-    if declared_type and allowed_types and declared_type not in allowed_types:
-        await _quarantine_and_raise(
-            "errors.files.unsupported_type",
-            status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
-            reason="blocked-declared-mime",
-        )
-
     if declared_type and declared_type != detected_type:
         await _quarantine_and_raise(
             "errors.files.content_type_mismatch",

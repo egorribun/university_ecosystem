@@ -40,12 +40,19 @@ def _object(object_type: str, object_id: str) -> core_pb2.ObjectReference:
     return core_pb2.ObjectReference(object_type=object_type, object_id=object_id)
 
 
-def _check_request(user_id: str) -> permission_service_pb2.CheckPermissionRequest:
-    return permission_service_pb2.CheckPermissionRequest(
+def _check_request(
+    user_id: str,
+    *,
+    freshness: core_pb2.ZedToken | None = None,
+) -> permission_service_pb2.CheckPermissionRequest:
+    request = permission_service_pb2.CheckPermissionRequest(
         resource=_object("document", "doc-1"),
         permission="view",
         subject=core_pb2.SubjectReference(object=_object("user", user_id)),
     )
+    if freshness is not None:
+        request.consistency.at_least_as_fresh.CopyFrom(freshness)
+    return request
 
 
 def test_spicedb_schema_relationship_check_and_revoke(
@@ -62,7 +69,7 @@ def test_spicedb_schema_relationship_check_and_revoke(
             schema_service_pb2.WriteSchemaRequest(schema=_SCHEMA),
             metadata=metadata,
         )
-        permissions.WriteRelationships(
+        write_response = permissions.WriteRelationships(
             permission_service_pb2.WriteRelationshipsRequest(
                 updates=[
                     core_pb2.RelationshipUpdate(
@@ -81,9 +88,13 @@ def test_spicedb_schema_relationship_check_and_revoke(
         )
 
         allowed = permissions.CheckPermission(
-            _check_request("alice"), metadata=metadata
+            _check_request("alice", freshness=write_response.written_at),
+            metadata=metadata,
         )
-        denied = permissions.CheckPermission(_check_request("bob"), metadata=metadata)
+        denied = permissions.CheckPermission(
+            _check_request("bob", freshness=write_response.written_at),
+            metadata=metadata,
+        )
         assert (
             allowed.permissionship
             == permission_service_pb2.CheckPermissionResponse.Permissionship.Value(
@@ -97,7 +108,7 @@ def test_spicedb_schema_relationship_check_and_revoke(
             )
         )
 
-        permissions.DeleteRelationships(
+        delete_response = permissions.DeleteRelationships(
             permission_service_pb2.DeleteRelationshipsRequest(
                 relationship_filter=permission_service_pb2.RelationshipFilter(
                     resource_type="document",
@@ -111,7 +122,8 @@ def test_spicedb_schema_relationship_check_and_revoke(
             metadata=metadata,
         )
         revoked = permissions.CheckPermission(
-            _check_request("alice"), metadata=metadata
+            _check_request("alice", freshness=delete_response.deleted_at),
+            metadata=metadata,
         )
         assert (
             revoked.permissionship

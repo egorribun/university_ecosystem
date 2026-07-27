@@ -8,15 +8,26 @@ from types import ModuleType, SimpleNamespace
 from typing import ClassVar
 from unittest.mock import AsyncMock
 
+import dishka.integrations.fastapi as _dishka_fastapi
 import pytest
 from fastapi import HTTPException, status
 from starlette.responses import Response
 
+_MISSING = object()
+_STUBBED_MODULE_NAMES = (
+    "app.api.deps",
+    "app.cqrs.bus",
+    "app.cqrs.commands.schedule",
+    "app.cqrs.queries",
+)
+_ORIGINAL_MODULES = {
+    name: sys.modules.get(name, _MISSING) for name in _STUBBED_MODULE_NAMES
+}
+_ORIGINAL_INJECT = _dishka_fastapi.inject
+
 
 def _install_import_stubs() -> None:
-    import dishka.integrations.fastapi as dishka_fastapi
-
-    dishka_fastapi.inject = lambda function: function
+    _dishka_fastapi.inject = lambda function: function
 
     deps = ModuleType("app.api.deps")
     deps.get_current_user = lambda: None
@@ -70,6 +81,23 @@ from app.api import schedule, validation
 from app.core.exceptions.domain import BusinessRuleViolation
 from app.models.enums import UserRole
 from app.schemas import schemas
+
+# ``app.api.schedule`` may have been imported by another test during
+# collection.  Dishka keeps the original callable on the generated wrapper;
+# use that callable directly so endpoint tests do not depend on a process-wide
+# ``inject`` monkeypatch or on collection order.
+for _name in ("add_schedule", "get_schedule", "update_schedule", "delete_schedule"):
+    _endpoint = getattr(schedule, _name)
+    _original_endpoint = getattr(_endpoint, "__dishka_orig_func__", None)
+    if _original_endpoint is not None:
+        setattr(schedule, _name, _original_endpoint)
+
+_dishka_fastapi.inject = _ORIGINAL_INJECT
+for _name, _original in _ORIGINAL_MODULES.items():
+    if _original is _MISSING:
+        sys.modules.pop(_name, None)
+    else:
+        sys.modules[_name] = _original
 
 
 class _Request:

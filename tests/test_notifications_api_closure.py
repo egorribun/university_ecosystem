@@ -80,18 +80,16 @@ def test_notification_helpers_cover_edge_inputs() -> None:
 
 def test_localized_field_required_and_fallback_paths() -> None:
     with patch("app.api.notifications.localized_text", return_value=None):
-        assert api._localized_notification_field(
-            "en", "RU", None, required=True
-        ) == "RU"
-        assert api._localized_notification_field(
-            "en", "  ", "EN", required=True
-        ) == "EN"
-        assert api._localized_notification_field(
-            "en", None, None, required=True
-        ) == ""
-        assert api._localized_notification_field(
-            "en", "RU", None, required=False
-        ) == "RU"
+        assert (
+            api._localized_notification_field("en", "RU", None, required=True) == "RU"
+        )
+        assert (
+            api._localized_notification_field("en", "  ", "EN", required=True) == "EN"
+        )
+        assert api._localized_notification_field("en", None, None, required=True) == ""
+        assert (
+            api._localized_notification_field("en", "RU", None, required=False) == "RU"
+        )
 
 
 def test_serialize_notification_mapping_and_orm_fallback() -> None:
@@ -131,9 +129,7 @@ async def test_existing_columns_bind_and_table_paths() -> None:
 
     async def run_sync_no_table(fn):
         with patch("app.api.notifications.inspect") as inspector:
-            inspector.return_value.get_columns.side_effect = NoSuchTableError(
-                "missing"
-            )
+            inspector.return_value.get_columns.side_effect = NoSuchTableError("missing")
             return fn(sync_session)
 
     db.run_sync = run_sync_no_table
@@ -158,16 +154,12 @@ async def test_fetch_rows_primary_success_and_error_paths() -> None:
     result.mappings.return_value.all.return_value = [{"id": 1}]
     db.execute.return_value = result
 
-    rows, columns = await api._fetch_notification_rows(
-        db, uuid.uuid4(), 5, None
-    )
+    rows, columns = await api._fetch_notification_rows(db, uuid.uuid4(), 5, None)
     assert rows == [{"id": 1}]
     assert columns is None
 
     cursor = (datetime(2026, 1, 1, tzinfo=UTC), str(uuid.uuid4()))
-    rows, columns = await api._fetch_notification_rows(
-        db, uuid.uuid4(), 5, cursor
-    )
+    rows, columns = await api._fetch_notification_rows(db, uuid.uuid4(), 5, cursor)
     assert rows == [{"id": 1}]
     assert columns is None
 
@@ -187,6 +179,18 @@ async def test_fetch_rows_primary_success_and_error_paths() -> None:
     with pytest.raises(SQLAlchemyError):
         await api._fetch_notification_rows(db, uuid.uuid4(), 5, None)
 
+    db.execute.side_effect = SQLAlchemyError("no such column: notification.body_en")
+    with patch.object(
+        api,
+        "_fetch_notification_rows_fallback",
+        AsyncMock(return_value=([], {"id", "user_id"})),
+    ) as fallback:
+        assert await api._fetch_notification_rows(db, uuid.uuid4(), 5, None) == (
+            [],
+            {"id", "user_id"},
+        )
+        fallback.assert_awaited_once()
+
 
 @pytest.mark.asyncio
 async def test_fetch_rows_fallback_schema_variants() -> None:
@@ -204,6 +208,17 @@ async def test_fetch_rows_fallback_schema_variants() -> None:
             [],
             set(),
         )
+
+    with patch.object(
+        api,
+        "_existing_notification_columns",
+        AsyncMock(return_value={"id", "user_id"}),
+    ):
+        rows, columns = await api._fetch_notification_rows_fallback(
+            db, user_id, 5, None
+        )
+        assert rows == [{"id": 1}]
+        assert columns == {"id", "user_id"}
 
     with patch.object(
         api,
@@ -494,9 +509,7 @@ async def test_check_schedule_skips_duplicate_and_creates_new() -> None:
             "build_schedule_reminder_message",
             side_effect=[message_one, message_two],
         ),
-        patch.object(
-            api, "create_notifications_for_users", AsyncMock()
-        ) as create,
+        patch.object(api, "create_notifications_for_users", AsyncMock()) as create,
         patch.object(api, "translate", return_value="Open schedule"),
         patch.object(api, "list_notifications", AsyncMock(return_value=expected)),
     ):

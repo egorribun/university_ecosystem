@@ -17,9 +17,7 @@ def test_orjson_compatibility_fallback_is_usable() -> None:
     from app.deps import cache
 
     with patch.dict(sys.modules, {"orjson": None}):
-        namespace = runpy.run_path(
-            str(cache.__file__), run_name="cache_without_orjson"
-        )
+        namespace = runpy.run_path(str(cache.__file__), run_name="cache_without_orjson")
     compat = namespace["orjson"]
     assert compat.OPT_SORT_KEYS == 0
     assert compat.OPT_UTC_Z == 0
@@ -106,8 +104,23 @@ async def test_redis_get_invalid_etag_and_scan_empty_then_cursor() -> None:
 
 
 @pytest.mark.asyncio
+async def test_redis_invalidate_swallow_redis_error() -> None:
+    from app.deps.cache import RedisCache
+
+    redis_cache = RedisCache("redis://localhost", default_ttl=10)
+    redis_client = AsyncMock()
+    redis_client.delete.side_effect = RedisError("redis unavailable")
+    redis_cache._client = redis_client
+
+    with patch("app.deps.cache.record_redis_command") as record_command:
+        await redis_cache.invalidate("cache:key")
+
+    record_command.assert_called_once()
+    assert record_command.call_args.kwargs["success"] is False
+
+
+@pytest.mark.asyncio
 async def test_redis_cluster_normal_client_cached_and_async_close_fallback() -> None:
-    from app.deps import cache as cache_module
     from app.deps.cache import RedisClusterCache
 
     cluster_class = MagicMock()

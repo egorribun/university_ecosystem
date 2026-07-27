@@ -11,7 +11,7 @@ import nats
 import pytest
 
 import app.core.nats_broker as nats_broker_module
-from app.core.nats_broker import NatsTaskBroker, Task, set_app
+from app.core.nats_broker import NatsTaskBroker, Task, _NatsTaskPayload, set_app
 
 
 def _message(payload: dict) -> AsyncMock:
@@ -101,6 +101,11 @@ async def test_task_kick_enqueues_registered_task() -> None:
 async def test_task_protocol_stubs_are_executable_type_contracts() -> None:
     assert await Task.__call__(object()) is None
     assert await Task.kick(object()) is None
+
+
+def test_task_payload_rejects_blank_names() -> None:
+    with pytest.raises(ValueError, match="task name must not be empty"):
+        _NatsTaskPayload(id="task-id", name=" ")
 
 
 @pytest.mark.parametrize("method_name", ["publish", "enqueue"])

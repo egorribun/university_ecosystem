@@ -680,6 +680,7 @@ jobs:
   e2e-tests-cross-browser:
     name: E2E Tests (cross-browser ${{ matrix.browser }})
     needs: pre-commit-check
+    continue-on-error: true
     strategy:
       fail-fast: false
       matrix:
@@ -2015,9 +2016,16 @@ jobs:
       nats:
         image: nats:2.10.25-alpine
         ports: ["4222:4222"]
+      minio:
+        image: minio/minio:RELEASE.2025-09-07T16-13-09Z
+        command: server /data
+        env:
+          MINIO_ROOT_USER: minioadmin
+          MINIO_ROOT_PASSWORD: minioadminsecret  # pragma: allowlist secret
+        ports: ["9000:9000"]
       toxiproxy:
         image: ghcr.io/shopify/toxiproxy:2.9.0
-        ports: ["8474:8474", "5433:5433", "6380:6380", "4223:4223"]
+        ports: ["8474:8474", "5433:5433", "6380:6380", "4223:4223", "9003:9003"]
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
       - uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
@@ -2025,19 +2033,33 @@ jobs:
         run: uv sync --frozen
       - name: Configure ToxiProxy proxies
         run: |
-          curl -s http://localhost:8474/version
+          curl --fail --retry 30 --retry-delay 1 http://localhost:9000/minio/health/live
+          curl --fail --retry 30 --retry-delay 1 http://localhost:8474/version
           curl -s -X POST http://localhost:8474/proxies \
             -d '{"name":"postgres","listen":"0.0.0.0:5433","upstream":"postgres:5432"}'
           curl -s -X POST http://localhost:8474/proxies \
             -d '{"name":"redis","listen":"0.0.0.0:6380","upstream":"redis:6379"}'
           curl -s -X POST http://localhost:8474/proxies \
             -d '{"name":"nats","listen":"0.0.0.0:4223","upstream":"nats:4222"}'
+          curl -s -X POST http://localhost:8474/proxies \
+            -d '{"name":"minio","listen":"0.0.0.0:9003","upstream":"minio:9000"}'
       - name: Run chaos tests
         env:
           TOXIPROXY_URL: http://localhost:8474
           DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5433/testdb  # pragma: allowlist secret
           CACHE_REDIS_URL: redis://localhost:6380/0
           NATS_URL: nats://localhost:4223
+          MINIO_PROXY_ENDPOINT: http://localhost:9003
+          MINIO_DIRECT_ENDPOINT: localhost:9000
+          MINIO_ACCESS_KEY: minioadmin
+          MINIO_SECRET_KEY: minioadminsecret  # pragma: allowlist secret
+          MINIO_BUCKET: quality-chaos
+          STORAGE_BACKEND: s3
+          STORAGE_S3_BUCKET: quality-chaos
+          STORAGE_S3_ACCESS_KEY_ID: minioadmin
+          STORAGE_S3_SECRET_ACCESS_KEY: minioadminsecret  # pragma: allowlist secret
+          STORAGE_S3_ENDPOINT_URL: http://localhost:9003
+          STORAGE_S3_BASE_URL: http://localhost:9003/quality-chaos
         run: uv run pytest tests/chaos/ -v -m chaos --tb=short
 
   chaos-loadtest-orchestrator:

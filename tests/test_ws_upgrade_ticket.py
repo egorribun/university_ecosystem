@@ -92,6 +92,7 @@ class TestIssueWsUpgradeTicket:
         jti = str(uuid.uuid4())
 
         mock_request = MagicMock()
+        mock_request.headers = {}
         mock_redis = AsyncMock()
         mock_redis.set = AsyncMock()
 

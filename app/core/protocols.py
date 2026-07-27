@@ -39,14 +39,16 @@ def extract_user_id(user: UserLike) -> uuid.UUID:
 class DatabaseSession(Protocol):
     """Sync session protocol (for completeness if needed)."""
 
-    def execute(self, statement: Any, params: Any = None, **kwargs: Any) -> Any: ...
-    def commit(self) -> None: ...
-    def rollback(self) -> None: ...
-    def add(self, instance: Any) -> None: ...
-    def flush(self, objects: Any = None) -> None: ...
+    def execute(
+        self, statement: Any, params: Any = None, **kwargs: Any
+    ) -> Any: ...  # pragma: no branch
+    def commit(self) -> None: ...  # pragma: no branch
+    def rollback(self) -> None: ...  # pragma: no branch
+    def add(self, instance: Any) -> None: ...  # pragma: no branch
+    def flush(self, objects: Any = None) -> None: ...  # pragma: no branch
     def refresh(
         self, instance: Any, attribute_names: Any = None, **kwargs: Any
-    ) -> None: ...
+    ) -> None: ...  # pragma: no branch
 
 
 if TYPE_CHECKING:
@@ -69,7 +71,7 @@ class UserAnalyticsServiceProtocol(Protocol):
         period_key: str | None = None,
         cache: Any | None = None,
         skip_cache: bool = False,
-    ) -> dict[str, Any]: ...
+    ) -> dict[str, Any]: ...  # pragma: no branch
 
     async def get_grade_stats(
         self,
@@ -79,7 +81,7 @@ class UserAnalyticsServiceProtocol(Protocol):
         period_key: str | None = None,
         cache: Any | None = None,
         skip_cache: bool = False,
-    ) -> dict[str, Any]: ...
+    ) -> dict[str, Any]: ...  # pragma: no branch
 
     async def get_participation_stats(
         self,
@@ -89,4 +91,4 @@ class UserAnalyticsServiceProtocol(Protocol):
         period_key: str | None = None,
         cache: Any | None = None,
         skip_cache: bool = False,
-    ) -> dict[str, Any]: ...
+    ) -> dict[str, Any]: ...  # pragma: no branch

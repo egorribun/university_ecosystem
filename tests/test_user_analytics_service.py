@@ -262,6 +262,21 @@ async def test_grade_stats_empty(svc, user_factory):
 
 
 @pytest.mark.asyncio
+async def test_grade_stats_handles_zero_score(svc, db_session, user_factory):
+    user = await user_factory()
+    await _add_grade_notification(
+        db_session,
+        user.id,
+        payload={"score": 0, "max": 5, "course": "Math"},
+    )
+
+    result = await svc.get_grade_stats(user_id=user.id, period_days=30, skip_cache=True)
+
+    assert result["total_grades"] == 1
+    assert result["average"] == 0.0
+
+
+@pytest.mark.asyncio
 async def test_grade_stats_returns_cached_payload(svc, user_factory, monkeypatch):
     user = await user_factory()
     sentinel = {"average": 5.0, "cached": True}

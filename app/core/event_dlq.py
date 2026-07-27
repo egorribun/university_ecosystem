@@ -219,10 +219,12 @@ class DeadLetterQueue:
 
                     batch_success = 0
                     batch_failed = 0
+                    circuit_paused = False
 
                     for failed in batch:
                         if self._circuit_breaker and not force:
                             if not self._circuit_breaker.allow_request():
+                                circuit_paused = True
                                 break
 
                         try:
@@ -262,6 +264,11 @@ class DeadLetterQueue:
 
                     total_success += batch_success
                     total_failed += batch_failed
+
+                    if circuit_paused:
+                        # The queue is unchanged when the breaker rejects a
+                        # request; leave the outer loop or it will spin forever.
+                        break
 
                     if batch_failed > 0 and not force:
                         # Pause replay run on batch failure to allow backoff

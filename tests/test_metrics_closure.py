@@ -35,6 +35,70 @@ def _request(
     return Request(scope)
 
 
+def test_metric_factory_reuses_existing_collectors_and_reraises_unknown_duplicates() -> (
+    None
+):
+    from app.core import metrics
+
+    existing = object()
+    registry = SimpleNamespace(_names_to_collectors={"existing_metric": existing})
+    with patch.object(metrics, "REGISTRY", registry):
+        assert (
+            metrics._get_or_create_metric(MagicMock(), "existing_metric", "doc")
+            is existing
+        )
+
+        class DuplicateMetric:
+            def __init__(self, *_args, **_kwargs):
+                raise ValueError("duplicate metric")
+
+        assert (
+            metrics._get_or_create_metric(DuplicateMetric, "existing_metric", "doc")
+            is existing
+        )
+
+        with pytest.raises(ValueError, match="duplicate metric"):
+            metrics._get_or_create_metric(DuplicateMetric, "unknown_metric", "doc")
+
+        class RegisterThenDuplicate:
+            def __init__(self, name, *_args, **_kwargs):
+                registry._names_to_collectors[name] = existing
+                raise ValueError("registered duplicate metric")
+
+        assert (
+            metrics._get_or_create_metric(
+                RegisterThenDuplicate, "registered_metric", "doc"
+            )
+            is existing
+        )
+
+    assert metrics._get_or_create_metric(None, "disabled_metric", "doc") is None
+
+
+def test_optional_event_metric_recorders_swallow_backend_errors() -> None:
+    from app.core import metrics
+
+    failing = MagicMock()
+    failing.labels.side_effect = RuntimeError("metric backend unavailable")
+    with (
+        patch.object(metrics, "_SPICEDB_WATCH_EVENTS", failing),
+        patch.object(metrics, "_WS_HUB_SESSIONS_REVOKED", failing),
+        patch.object(metrics, "_ABAC_ACCESS_DENIED", failing),
+    ):
+        metrics.record_spicedb_watch_event()
+        metrics.record_ws_hub_session_revoked()
+        metrics.record_abac_access_denied()
+
+    with (
+        patch.object(metrics, "_SPICEDB_WATCH_EVENTS", None),
+        patch.object(metrics, "_WS_HUB_SESSIONS_REVOKED", None),
+        patch.object(metrics, "_ABAC_ACCESS_DENIED", None),
+    ):
+        metrics.record_spicedb_watch_event()
+        metrics.record_ws_hub_session_revoked()
+        metrics.record_abac_access_denied()
+
+
 def test_metric_recorders_fail_closed_when_prometheus_is_unavailable() -> None:
     from app.core import metrics
 
@@ -102,16 +166,12 @@ def test_metrics_authorization_rejects_malformed_and_wrong_credentials(
     )
     wrong = base64.b64encode(b"metrics-user:wrong").decode()
     assert (
-        metrics._is_authorized(
-            _request(headers={"Authorization": f"Basic {wrong}"})
-        )
+        metrics._is_authorized(_request(headers={"Authorization": f"Basic {wrong}"}))
         is False
     )
     valid = base64.b64encode(b"metrics-user:metrics-pass").decode()
     assert (
-        metrics._is_authorized(
-            _request(headers={"Authorization": f"Basic {valid}"})
-        )
+        metrics._is_authorized(_request(headers={"Authorization": f"Basic {valid}"}))
         is True
     )
 
@@ -194,9 +254,9 @@ async def test_request_metrics_middleware_records_success_error_and_noop() -> No
         patch.object(metrics, "_ROUTER_ERRORS", router_errors),
         patch.object(metrics.time, "perf_counter", side_effect=[1.0, 1.2]),
     ):
-        result = await metrics.PrometheusRequestMetricsMiddleware(
-            MagicMock()
-        ).dispatch(request, call_next)
+        result = await metrics.PrometheusRequestMetricsMiddleware(MagicMock()).dispatch(
+            request, call_next
+        )
 
     assert result is response
     counter.labels.assert_called_once()
@@ -222,8 +282,9 @@ async def test_request_metrics_middleware_records_success_error_and_noop() -> No
     router_errors.labels.assert_called()
 
     no_count = AsyncMock(return_value=response)
-    with patch.object(metrics, "_REQUEST_COUNT", None), patch.object(
-        metrics, "_REQUEST_DURATION", None
+    with (
+        patch.object(metrics, "_REQUEST_COUNT", None),
+        patch.object(metrics, "_REQUEST_DURATION", None),
     ):
         assert (
             await metrics.PrometheusRequestMetricsMiddleware(MagicMock()).dispatch(
@@ -441,14 +502,17 @@ def test_load_gputil_handles_missing_loader_and_loaded_module() -> None:
     with patch.object(metrics.importlib.util, "find_spec", return_value=None):
         assert metrics._load_gputil() is None
 
-    with patch.object(
-        metrics.importlib.util,
-        "find_spec",
-        return_value=SimpleNamespace(name="GPUtil", loader=None),
-    ), patch.object(
-        metrics.importlib.util,
-        "module_from_spec",
-        return_value=SimpleNamespace(),
+    with (
+        patch.object(
+            metrics.importlib.util,
+            "find_spec",
+            return_value=SimpleNamespace(name="GPUtil", loader=None),
+        ),
+        patch.object(
+            metrics.importlib.util,
+            "module_from_spec",
+            return_value=SimpleNamespace(),
+        ),
     ):
         assert metrics._load_gputil() is None
 
@@ -592,8 +656,11 @@ def test_metrics_branch_matrix_for_optional_guards(monkeypatch) -> None:
     ):
         assert list(metrics._iter_allowlist()) == ["127.0.0.1"]
 
-    with patch.object(metrics, "ip_network", side_effect=ValueError), patch.object(
-        metrics, "ip_address", return_value=SimpleNamespace(is_loopback=True)
+    with (
+        patch.object(metrics, "ip_network", side_effect=ValueError),
+        patch.object(
+            metrics, "ip_address", return_value=SimpleNamespace(is_loopback=True)
+        ),
     ):
         assert metrics._is_loopback_value("loopback-with-scope") is True
 
@@ -604,21 +671,25 @@ def test_metrics_branch_matrix_for_optional_guards(monkeypatch) -> None:
     request.scope["route"] = route
     assert metrics._resolve_router_label(request) == "/owner"
 
-    with patch.object(metrics, "_HEALTH_CHECK_DURATION", MagicMock()), patch.object(
-        metrics, "_HEALTH_CHECK_STATUS", None
+    with (
+        patch.object(metrics, "_HEALTH_CHECK_DURATION", MagicMock()),
+        patch.object(metrics, "_HEALTH_CHECK_STATUS", None),
     ):
         metrics.record_health_probe("db", "ok", 0.1)
-    with patch.object(metrics, "_HEALTH_CHECK_DURATION", None), patch.object(
-        metrics, "_HEALTH_CHECK_STATUS", MagicMock()
+    with (
+        patch.object(metrics, "_HEALTH_CHECK_DURATION", None),
+        patch.object(metrics, "_HEALTH_CHECK_STATUS", MagicMock()),
     ):
         metrics.record_health_probe("db", "ok", 0.1)
 
-    with patch.object(metrics, "_REDIS_COMMAND_DURATION", None), patch.object(
-        metrics, "_REDIS_COMMAND_ERRORS", MagicMock()
+    with (
+        patch.object(metrics, "_REDIS_COMMAND_DURATION", None),
+        patch.object(metrics, "_REDIS_COMMAND_ERRORS", MagicMock()),
     ):
         metrics.record_redis_command("GET", 0.1, success=False)
-    with patch.object(metrics, "_DB_OPERATION_DURATION", None), patch.object(
-        metrics, "_DB_OPERATION_ERRORS", MagicMock()
+    with (
+        patch.object(metrics, "_DB_OPERATION_DURATION", None),
+        patch.object(metrics, "_DB_OPERATION_ERRORS", MagicMock()),
     ):
         metrics.record_db_operation("select", 0.1, success=False)
 
@@ -699,8 +770,7 @@ async def test_cache_and_pool_optional_metric_combinations() -> None:
 
 @pytest.mark.asyncio
 async def test_db_system_and_registry_guard_branches(monkeypatch) -> None:
-    from app.core import metrics
-    from app.core import observability
+    from app.core import metrics, observability
     from app.core.config import settings
 
     with (
@@ -764,11 +834,11 @@ async def test_db_system_and_registry_guard_branches(monkeypatch) -> None:
 
 
 def test_configure_metrics_credential_and_otel_branches(monkeypatch) -> None:
-    from app.core import metrics
-    from app.core import observability
-    from app.core.config import settings
     from opentelemetry.sdk import metrics as otel_sdk_metrics
     from opentelemetry.sdk import resources as otel_resources
+
+    from app.core import metrics, observability
+    from app.core.config import settings
 
     monkeypatch.setattr(settings, "enable_metrics_endpoint", True)
     monkeypatch.setattr(settings, "metrics_allowlist", "")
@@ -792,33 +862,39 @@ def test_configure_metrics_credential_and_otel_branches(monkeypatch) -> None:
     monkeypatch.setattr(settings, "metrics_basic_auth_username", "operator")
     monkeypatch.setattr(settings, "metrics_basic_auth_password", "different-secret")
     app = FastAPI()
-    with patch.dict(
-        sys.modules,
-        {
-            "opentelemetry.exporter.prometheus": SimpleNamespace(
-                PrometheusMetricReader=MagicMock(return_value=MagicMock())
-            )
-        },
-    ), patch.object(
-        otel_sdk_metrics,
-        "MeterProvider",
-        MagicMock(return_value=MagicMock()),
-    ), patch.object(
-        otel_resources.Resource, "create", return_value=MagicMock()
-    ), patch("opentelemetry.metrics.set_meter_provider"):
+    with (
+        patch.dict(
+            sys.modules,
+            {
+                "opentelemetry.exporter.prometheus": SimpleNamespace(
+                    PrometheusMetricReader=MagicMock(return_value=MagicMock())
+                )
+            },
+        ),
+        patch.object(
+            otel_sdk_metrics,
+            "MeterProvider",
+            MagicMock(return_value=MagicMock()),
+        ),
+        patch.object(otel_resources.Resource, "create", return_value=MagicMock()),
+        patch("opentelemetry.metrics.set_meter_provider"),
+    ):
         metrics.configure_metrics(app)
     assert app.state._metrics_configured is True
 
     app = FastAPI()
-    with patch.dict(
-        sys.modules,
-        {
-            "opentelemetry.exporter.prometheus": SimpleNamespace(
-                PrometheusMetricReader=MagicMock(return_value=MagicMock())
-            )
-        },
-    ), patch.object(
-        otel_resources.Resource, "create", side_effect=RuntimeError("otel")
+    with (
+        patch.dict(
+            sys.modules,
+            {
+                "opentelemetry.exporter.prometheus": SimpleNamespace(
+                    PrometheusMetricReader=MagicMock(return_value=MagicMock())
+                )
+            },
+        ),
+        patch.object(
+            otel_resources.Resource, "create", side_effect=RuntimeError("otel")
+        ),
     ):
         metrics.configure_metrics(app)
     assert app.state._metrics_configured is True
