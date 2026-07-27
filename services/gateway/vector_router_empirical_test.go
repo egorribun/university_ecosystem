@@ -294,9 +294,7 @@ func TestEmpirical_ScatterGather_LargeScaleMergingCorrectness(t *testing.T) {
 	topK := 25
 
 	shardResults := make([][]QueryResult, numShards)
-	var allItems []QueryResult
-
-	rand.Seed(42)
+	allItems := make([]QueryResult, 0, numShards*itemsPerShard)
 
 	for s := 0; s < numShards; s++ {
 		shardResults[s] = make([]QueryResult, itemsPerShard)

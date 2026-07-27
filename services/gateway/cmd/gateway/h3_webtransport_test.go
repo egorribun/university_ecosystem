@@ -68,6 +68,7 @@ func TestGateway_AltSvcHeaderAndWSWebTransportRoutes(t *testing.T) {
 	// 3. Test Alt-Svc header on /health endpoint
 	resp, err := http.Get(gatewayServer.URL + "/health")
 	require.NoError(t, err)
+	require.NotNil(t, resp)
 	defer resp.Body.Close()
 
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
@@ -79,6 +80,7 @@ func TestGateway_AltSvcHeaderAndWSWebTransportRoutes(t *testing.T) {
 
 	resp, err = http.DefaultClient.Do(req)
 	require.NoError(t, err)
+	require.NotNil(t, resp)
 	defer resp.Body.Close()
 
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
@@ -89,6 +91,7 @@ func TestGateway_AltSvcHeaderAndWSWebTransportRoutes(t *testing.T) {
 
 	resp, err = http.DefaultClient.Do(req)
 	require.NoError(t, err)
+	require.NotNil(t, resp)
 	defer resp.Body.Close()
 
 	assert.Equal(t, http.StatusOK, resp.StatusCode)

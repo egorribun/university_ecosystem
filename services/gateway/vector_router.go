@@ -57,8 +57,11 @@ type VectorQueryExecutor func(ctx context.Context, targetNode string) ([]QueryRe
 type NodeState int32
 
 const (
+	// StateHealthy indicates the node is operating normally.
 	StateHealthy NodeState = iota
+	// StateDegraded indicates the node is experiencing elevated latency.
 	StateDegraded
+	// StateFailed indicates the node has exceeded the error threshold.
 	StateFailed
 )
 
@@ -189,10 +192,12 @@ func (h ResultMinHeap) Len() int           { return len(h) }
 func (h ResultMinHeap) Less(i, j int) bool { return h[i].Score < h[j].Score }
 func (h ResultMinHeap) Swap(i, j int)      { h[i], h[j] = h[j], h[i] }
 
+// Push appends an item to the ResultMinHeap for heap.Interface.
 func (h *ResultMinHeap) Push(x interface{}) {
 	*h = append(*h, x.(QueryResult))
 }
 
+// Pop removes and returns the min item from the ResultMinHeap for heap.Interface.
 func (h *ResultMinHeap) Pop() interface{} {
 	old := *h
 	n := len(old)
@@ -258,12 +263,14 @@ func NewNodeHealthTracker(errorThreshold int32, latencySLA time.Duration, fallba
 	}
 }
 
+// GetState returns the current NodeState of the tracked node.
 func (t *NodeHealthTracker) GetState() NodeState {
 	t.mu.RLock()
 	defer t.mu.RUnlock()
 	return t.state
 }
 
+// RecordSuccess records a successful query invocation and updates node state based on latency SLA.
 func (t *NodeHealthTracker) RecordSuccess(latency time.Duration) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
@@ -281,6 +288,7 @@ func (t *NodeHealthTracker) RecordSuccess(latency time.Duration) {
 	}
 }
 
+// RecordError records a query failure and transitions state to degraded or failed.
 func (t *NodeHealthTracker) RecordError() {
 	t.mu.Lock()
 	defer t.mu.Unlock()
@@ -298,6 +306,7 @@ func (t *NodeHealthTracker) RecordError() {
 	}
 }
 
+// ShouldFallback returns true if the node is failed or exceeding SLA boundaries.
 func (t *NodeHealthTracker) ShouldFallback() bool {
 	t.mu.RLock()
 	defer t.mu.RUnlock()

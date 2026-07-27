@@ -128,10 +128,10 @@ func runMain(ctx context.Context) {
 	startNatsSubscriber(ctx, cfg, c, logger)
 
 	spiffeClient, err := spiffe.NewClient(ctx, spiffe.Config{
-		Enabled:        cfg.SpiffeEnabled,
-		SocketPath:     cfg.SpiffeEndpointSocket,
-		TrustDomain:    cfg.SpiffeTrustDomain,
-		MySpiffeID:     cfg.SpiffeMyID,
+		Enabled:    cfg.SpiffeEnabled,
+		SocketPath: cfg.SpiffeEndpointSocket,
+		TrustDomain: cfg.SpiffeTrustDomain,
+		MySpiffeID: cfg.SpiffeMyID,
 	}, logger)
 	if err != nil {
 		logger.ErrorContext(ctx, "SPIFFE initialization failed", "err", err)
@@ -142,7 +142,7 @@ func runMain(ctx context.Context) {
 		logger.ErrorContext(ctx, "SPIFFE is enabled but client initialization returned nil")
 		os.Exit(1)
 	} else if spiffeClient != nil {
-		defer spiffeClient.Close()
+		defer func() { _ = spiffeClient.Close() }()
 	}
 
 	grpcSrv := setupGRPCServer(ctx, cfg, rsaPublicKey, c, spiffeClient, logger)
@@ -567,6 +567,28 @@ func jwtKeyFunc(secret string, rsaPub *rsa.PublicKey) jwt.Keyfunc {
 	}
 }
 
+func checkJWTAlgHeader(tokenStr string, rsaPub *rsa.PublicKey, log *slog.Logger, r *http.Request) bool {
+	if rsaPub == nil {
+		return true
+	}
+	parts := strings.SplitN(tokenStr, ".", 3)
+	if len(parts) == 3 {
+		if headerBytes, decErr := base64.RawURLEncoding.DecodeString(parts[0]); decErr == nil {
+			var hdr struct {
+				Alg string `json:"alg"`
+			}
+			if jsonErr := json.Unmarshal(headerBytes, &hdr); jsonErr == nil && hdr.Alg != "RS256" {
+				log.WarnContext(r.Context(), "GraphQL HTTP JWT algorithm downgrade attempt rejected",
+					"alg", hdr.Alg, "remote", r.RemoteAddr,
+					"event", "jwt_alg_downgrade",
+				)
+				return false
+			}
+		}
+	}
+	return true
+}
+
 func httpJWTMiddleware(secret string, rsaPub *rsa.PublicKey, log *slog.Logger, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		authHeader := r.Header.Get("Authorization")
@@ -580,29 +602,9 @@ func httpJWTMiddleware(secret string, rsaPub *rsa.PublicKey, log *slog.Logger, n
 		}
 		tokenStr := authHeader[len(prefix):]
 
-		// FIX-ALG-02: Pre-check the algorithm from the JWT header before calling
-		// jwt.Parse. This prevents algorithm-confusion attacks where a crafted token
-		// header selects a weaker algorithm (e.g. HS256 when RS256 is expected, or
-		// "none"). The check is intentionally done before any cryptographic work so
-		// that downgrade attempts are caught and logged immediately.
-		// Mirrors the pattern used in gateway/middleware/auth.go (RZ-W15-01).
-		if rsaPub != nil {
-			parts := strings.SplitN(tokenStr, ".", 3)
-			if len(parts) == 3 {
-				if headerBytes, decErr := base64.RawURLEncoding.DecodeString(parts[0]); decErr == nil {
-					var hdr struct {
-						Alg string `json:"alg"`
-					}
-					if jsonErr := json.Unmarshal(headerBytes, &hdr); jsonErr == nil && hdr.Alg != "RS256" {
-						log.WarnContext(r.Context(), "GraphQL HTTP JWT algorithm downgrade attempt rejected",
-							"alg", hdr.Alg, "remote", r.RemoteAddr,
-							"event", "jwt_alg_downgrade",
-						)
-						http.Error(w, "Unauthorized", http.StatusUnauthorized)
-						return
-					}
-				}
-			}
+		if !checkJWTAlgHeader(tokenStr, rsaPub, log, r) {
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			return
 		}
 
 		// TD-W18-01: use unified keyFunc supporting both RS256 and HS256.
