@@ -497,9 +497,7 @@ func (vr *VectorRouter) ScatterGatherQuery(
 		})
 	}
 
-	if err := g.Wait(); err != nil && vr.logger != nil {
-		vr.logger.DebugContext(ctx, "ScatterGatherQuery errgroup finished with error", "err", err)
-	}
+	_ = g.Wait() //nolint:errcheck
 	close(resultsChan)
 
 	var allResults [][]QueryResult
