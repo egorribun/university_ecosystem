@@ -52,7 +52,9 @@ func TestEmpirical_Gateway_AltSvcAndIngress(t *testing.T) {
 		defer server.Close()
 
 		// Request health endpoint
-		resp, err := http.Get(server.URL + "/health")
+		req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, server.URL+"/health", nil)
+		require.NoError(t, err)
+		resp, err := http.DefaultClient.Do(req)
 		require.NoError(t, err)
 		//nolint:errcheck
 		defer resp.Body.Close()
@@ -61,7 +63,9 @@ func TestEmpirical_Gateway_AltSvcAndIngress(t *testing.T) {
 		assert.Equal(t, `h3=":8443"; ma=2592000`, resp.Header.Get("Alt-Svc"))
 
 		// Request API endpoint
-		respAPI, err := http.Get(server.URL + "/api/v1/health")
+		reqAPI, err := http.NewRequestWithContext(context.Background(), http.MethodGet, server.URL+"/api/v1/health", nil)
+		require.NoError(t, err)
+		respAPI, err := http.DefaultClient.Do(reqAPI)
 		require.NoError(t, err)
 		//nolint:errcheck
 		defer respAPI.Body.Close()
@@ -86,7 +90,9 @@ func TestEmpirical_Gateway_AltSvcAndIngress(t *testing.T) {
 		server := httptest.NewServer(router)
 		defer server.Close()
 
-		resp, err := http.Get(server.URL + "/health")
+		req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, server.URL+"/health", nil)
+		require.NoError(t, err)
+		resp, err := http.DefaultClient.Do(req)
 		require.NoError(t, err)
 		//nolint:errcheck
 		defer resp.Body.Close()
@@ -115,14 +121,18 @@ func TestEmpirical_Gateway_AltSvcAndIngress(t *testing.T) {
 		defer server.Close()
 
 		// /ws route proxy check
-		resWS, err := http.Get(server.URL + "/ws?ticket=aabbcc")
+		reqWS, err := http.NewRequestWithContext(context.Background(), http.MethodGet, server.URL+"/ws?ticket=aabbcc", nil)
+		require.NoError(t, err)
+		resWS, err := http.DefaultClient.Do(reqWS)
 		require.NoError(t, err)
 		//nolint:errcheck
 		defer resWS.Body.Close()
 		assert.Equal(t, http.StatusOK, resWS.StatusCode)
 
 		// /webtransport route proxy check
-		resWT, err := http.Get(server.URL + "/webtransport?ticket=aabbcc")
+		reqWT, err := http.NewRequestWithContext(context.Background(), http.MethodGet, server.URL+"/webtransport?ticket=aabbcc", nil)
+		require.NoError(t, err)
+		resWT, err := http.DefaultClient.Do(reqWT)
 		require.NoError(t, err)
 		//nolint:errcheck
 		defer resWT.Body.Close()
