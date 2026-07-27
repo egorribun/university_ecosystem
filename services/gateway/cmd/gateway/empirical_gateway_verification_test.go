@@ -19,9 +19,11 @@ func TestEmpirical_Gateway_AltSvcAndIngress(t *testing.T) {
 		switch r.URL.Path {
 		case "/ws":
 			w.WriteHeader(http.StatusOK)
+			//nolint:errcheck
 			_, _ = w.Write([]byte("ws-upgraded"))
 		case "/webtransport":
 			w.WriteHeader(http.StatusOK)
+			//nolint:errcheck
 			_, _ = w.Write([]byte("wt-upgraded"))
 		default:
 			http.NotFound(w, r)
@@ -52,6 +54,7 @@ func TestEmpirical_Gateway_AltSvcAndIngress(t *testing.T) {
 		// Request health endpoint
 		resp, err := http.Get(server.URL + "/health")
 		require.NoError(t, err)
+		//nolint:errcheck
 		defer resp.Body.Close()
 
 		assert.Equal(t, http.StatusOK, resp.StatusCode)
@@ -60,6 +63,7 @@ func TestEmpirical_Gateway_AltSvcAndIngress(t *testing.T) {
 		// Request API endpoint
 		respAPI, err := http.Get(server.URL + "/api/v1/health")
 		require.NoError(t, err)
+		//nolint:errcheck
 		defer respAPI.Body.Close()
 
 		assert.Equal(t, `h3=":8443"; ma=2592000`, respAPI.Header.Get("Alt-Svc"))
@@ -84,6 +88,7 @@ func TestEmpirical_Gateway_AltSvcAndIngress(t *testing.T) {
 
 		resp, err := http.Get(server.URL + "/health")
 		require.NoError(t, err)
+		//nolint:errcheck
 		defer resp.Body.Close()
 
 		assert.Equal(t, http.StatusOK, resp.StatusCode)
@@ -112,12 +117,14 @@ func TestEmpirical_Gateway_AltSvcAndIngress(t *testing.T) {
 		// /ws route proxy check
 		resWS, err := http.Get(server.URL + "/ws?ticket=aabbcc")
 		require.NoError(t, err)
+		//nolint:errcheck
 		defer resWS.Body.Close()
 		assert.Equal(t, http.StatusOK, resWS.StatusCode)
 
 		// /webtransport route proxy check
 		resWT, err := http.Get(server.URL + "/webtransport?ticket=aabbcc")
 		require.NoError(t, err)
+		//nolint:errcheck
 		defer resWT.Body.Close()
 		assert.Equal(t, http.StatusOK, resWT.StatusCode)
 	})

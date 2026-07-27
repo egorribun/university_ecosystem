@@ -39,6 +39,7 @@ func TestGateway_AltSvcHeaderAndWSWebTransportRoutes(t *testing.T) {
 		}
 		if strings.HasPrefix(r.URL.Path, "/ws") || r.URL.Path == "/webtransport" {
 			w.WriteHeader(http.StatusOK)
+			//nolint:errcheck
 			_, _ = w.Write([]byte("ws-hub response"))
 			return
 		}

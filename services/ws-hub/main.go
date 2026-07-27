@@ -80,7 +80,7 @@ func main() {
 		logger.ErrorContext(ctx, "SPIFFE is enabled but client initialization returned nil")
 		os.Exit(1)
 	} else if spiffeClient != nil {
-		defer spiffeClient.Close()
+		defer func() { _ = spiffeClient.Close() }()
 	}
 
 	h := setupHub(ctx, cfg, logger, nc, rdb, spiffeClient)
@@ -303,6 +303,7 @@ func runServer(cfg *config.Config, logger *slog.Logger, h *hub.Hub) {
 	defer shutdownCancel()
 
 	h.Stop()
+	//nolint:errcheck
 	_ = wtServer.Close()
 	if err := server.Shutdown(shutdownCtx); err != nil {
 		logger.ErrorContext(context.Background(), "Server forced to shutdown", "err", err)

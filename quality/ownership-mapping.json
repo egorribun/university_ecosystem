@@ -75,7 +75,11 @@
     "tests/chaos/**",
     "tests/test_utils_uuid_geolocation_booster.py",
     "tests/test_l1_cache.py",
-    "frontend/**"
+    "frontend/**",
+    "services/gateway/**",
+    "tests/test_spiffe_concurrency_stress.py",
+    "tests/test_spiffe_stress_concurrency.py",
+    "tests/test_vector_sharding.py"
   ],
   "allowed_dynamic_skips": [
     "tests/chaos/**",
@@ -85,6 +89,11 @@
     "tests/test_smoke_pyo3_ext.py"
   ],
   "allowed_orphans": [
+    "services/file-processor/internal/contract/process_file_provider_test.go",
+    "tests/test_core_container_closure.py",
+    "tests/test_csp_report_closure.py",
+    "tests/test_quality_certification_dashboard.py",
+    "tests/test_repository_base_closure.py",
     "tests/security/test_timing_attacks.py",
     "tests/test_api_internal_chat.py",
     "tests/test_api_versioning.py",

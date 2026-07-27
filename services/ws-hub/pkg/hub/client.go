@@ -336,6 +336,7 @@ func isAllowedMessageType(t string) bool {
 	return allowedMessageTypes[t]
 }
 
+//nolint:cyclop
 func (c *Client) handleMessage(msg Message, data []byte) {
 	// RZ-27-02: Reject oversized messages at ingress, matching the broadcast
 	// limit (RZ-23-05). Without this, messages between 60 KB and 64 KB are

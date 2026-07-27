@@ -99,6 +99,7 @@ func TestHandleControlMessage_ValidSignature_DisconnectsClient(t *testing.T) {
 	})
 
 	// Client socket should receive close frame 4401 with reason "Access Revoked"
+	//nolint:errcheck
 	_ = clientConn.SetReadDeadline(time.Now().Add(2 * time.Second))
 	_, _, err := clientConn.ReadMessage()
 	require.Error(t, err)
@@ -175,6 +176,7 @@ func TestHandleControlMessage_InvalidSignature_MessageRejected(t *testing.T) {
 	err := serverConn.WriteMessage(websocket.TextMessage, []byte(`{"type":"ping"}`))
 	assert.NoError(t, err)
 
+	//nolint:errcheck
 	_ = clientConn.SetReadDeadline(time.Now().Add(1 * time.Second))
 	msgType, data, err := clientConn.ReadMessage()
 	assert.NoError(t, err)

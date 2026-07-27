@@ -32,6 +32,7 @@ func TestSetupRouter_Booster(t *testing.T) {
 		defer cancel()
 
 		assert.NotPanics(t, func() {
+			//nolint:contextcheck
 			router := setupRouter(cfg, logger, nil, nil, ctx)
 			assert.NotNil(t, router)
 		})

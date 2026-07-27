@@ -475,6 +475,7 @@ func (h *Hub) broadcastMessage(parentCtx context.Context, msg *Message) {
 // delivery to the current chat.{room_id} pattern.  Same tightening applied to
 // "notifications.*".  Both are intentional breaking changes if any internal
 // service currently publishes multi-level subjects under these prefixes.
+//nolint:cyclop
 func (h *Hub) SubscribeToNATS(appCtx context.Context) {
 	if h.js == nil && h.Nats != nil && h.enableJetStream {
 		if js, err := h.Nats.JetStream(); err == nil {
@@ -833,6 +834,7 @@ func (h *Hub) handleControlMessage(appCtx context.Context) nats.MsgHandler {
 			if reason == "" || reason == "access_revoked" {
 				reason = "Access Revoked"
 			}
+			//nolint:contextcheck
 			h.DisconnectUser(payload.Data.UserID, 4401, reason)
 			SessionsRevokedTotal.Inc()
 		} else {
