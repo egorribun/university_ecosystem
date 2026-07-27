@@ -44,7 +44,7 @@ func setupEmpiricalHub(t *testing.T, rdb *goredis.Client) *Hub {
 func TestEmpirical_SingleUseTicket_ConcurrentRace(t *testing.T) {
 	mr := miniredis.RunT(t)
 	rdb := goredis.NewClient(&goredis.Options{Addr: mr.Addr()})
-	defer rdb.Close()
+	t.Cleanup(func() { assert.NoError(t, rdb.Close()) })
 	ctx := context.Background()
 
 	// Seed ticket in Redis
@@ -94,7 +94,7 @@ func TestEmpirical_SingleUseTicket_ConcurrentRace(t *testing.T) {
 func TestEmpirical_SingleUseTicket_ValidationRules(t *testing.T) {
 	mr := miniredis.RunT(t)
 	rdb := goredis.NewClient(&goredis.Options{Addr: mr.Addr()})
-	defer rdb.Close()
+	t.Cleanup(func() { assert.NoError(t, rdb.Close()) })
 
 	h := setupEmpiricalHub(t, rdb)
 	ctx := context.Background()
@@ -173,7 +173,7 @@ func TestEmpirical_RateLimitingEnforcement(t *testing.T) {
 func TestEmpirical_DualStack_MessageDispatch(t *testing.T) {
 	mr := miniredis.RunT(t)
 	rdb := goredis.NewClient(&goredis.Options{Addr: mr.Addr()})
-	defer rdb.Close()
+	t.Cleanup(func() { assert.NoError(t, rdb.Close()) })
 
 	h := setupEmpiricalHub(t, rdb)
 	ctx, cancel := context.WithCancel(context.Background())

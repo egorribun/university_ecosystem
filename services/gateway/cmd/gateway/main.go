@@ -97,7 +97,11 @@ func main() {
 		logger.ErrorContext(ctx, "SPIFFE is enabled but client initialization returned nil")
 		os.Exit(1)
 	} else if spiffeClient != nil {
-		defer spiffeClient.Close()
+		defer func() {
+			if err := spiffeClient.Close(); err != nil {
+				logger.WarnContext(ctx, "Failed to close SPIFFE client", "err", err)
+			}
+		}()
 	}
 
 	// 5. Initialize gRPC connection to File Processor

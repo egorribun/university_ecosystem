@@ -273,7 +273,9 @@ func (c *Client) replayOfflineMessages(room string, lastSeq uint64, lastMsgID st
 		return
 	}
 	defer func() {
-		_ = sub.Unsubscribe()
+		if err := sub.Unsubscribe(); err != nil && c.Hub != nil && c.Hub.Logger != nil {
+			c.Hub.Logger.DebugContext(c.ctx, "Failed to unsubscribe NATS pull sub", "err", err)
+		}
 	}()
 
 	msgs, err := sub.Fetch(100, nats.MaxWait(1*time.Second))
@@ -293,7 +295,9 @@ func (c *Client) replayOfflineMessages(room string, lastSeq uint64, lastMsgID st
 		default:
 		}
 
-		_ = m.Ack()
+		if err := m.Ack(); err != nil && c.Hub != nil && c.Hub.Logger != nil {
+			c.Hub.Logger.DebugContext(c.ctx, "Failed to ack NATS message", "err", err)
+		}
 		msgID := ""
 		if m.Header != nil {
 			msgID = m.Header.Get("Nats-Msg-Id")
@@ -505,7 +509,9 @@ func (c *Client) LeaveRoom(room string) {
 func (c *Client) Disconnect(closeCode int, reason string) {
 	if c.Conn != nil {
 		closeMsg := websocket.FormatCloseMessage(closeCode, reason)
-		_ = c.Conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+		if err := c.Conn.SetWriteDeadline(time.Now().Add(5 * time.Second)); err != nil && c.Hub != nil && c.Hub.Logger != nil {
+			c.Hub.Logger.DebugContext(c.ctx, "Failed to set write deadline on disconnect", "err", err)
+		}
 		if err := c.Conn.WriteMessage(websocket.CloseMessage, closeMsg); err != nil {
 			if c.Hub != nil && c.Hub.Logger != nil {
 				c.Hub.Logger.WarnContext(c.ctx, "Failed to write close control frame to client",

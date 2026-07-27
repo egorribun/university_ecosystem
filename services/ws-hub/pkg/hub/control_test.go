@@ -204,7 +204,7 @@ func TestHandleControlMessage_MalformedJSON_NoPanic(t *testing.T) {
 	})
 
 	// Should not panic on bad hex signature
-	badHexPayload, _ := json.Marshal(map[string]any{
+	badHexPayload, err := json.Marshal(map[string]any{
 		"data": testControlData{
 			Action:    "disconnect",
 			Reason:    "access_revoked",
@@ -213,6 +213,7 @@ func TestHandleControlMessage_MalformedJSON_NoPanic(t *testing.T) {
 		},
 		"signature": "NOT-HEX-GGGG",
 	})
+	require.NoError(t, err)
 	assert.NotPanics(t, func() {
 		handler(&nats.Msg{
 			Subject: "ws_hub.control",
@@ -274,14 +275,14 @@ func TestDisconnectUser_MultipleSessionsForUser(t *testing.T) {
 	h.DisconnectUser("user-301", 4401, "Access Revoked")
 
 	// Both client sockets should receive close frame 4401
-	_ = cli1.SetReadDeadline(time.Now().Add(2 * time.Second))
+	assert.NoError(t, cli1.SetReadDeadline(time.Now().Add(2*time.Second)))
 	_, _, err1 := cli1.ReadMessage()
 	require.Error(t, err1)
 	closeErr1, ok1 := err1.(*websocket.CloseError)
 	require.True(t, ok1)
 	assert.Equal(t, 4401, closeErr1.Code)
 
-	_ = cli2.SetReadDeadline(time.Now().Add(2 * time.Second))
+	assert.NoError(t, cli2.SetReadDeadline(time.Now().Add(2*time.Second)))
 	_, _, err2 := cli2.ReadMessage()
 	require.Error(t, err2)
 	closeErr2, ok2 := err2.(*websocket.CloseError)

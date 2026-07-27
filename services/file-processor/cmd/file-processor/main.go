@@ -142,7 +142,11 @@ func runMain(ctx context.Context) {
 		logger.ErrorContext(ctx, "SPIFFE is enabled but client initialization returned nil")
 		os.Exit(1)
 	} else if spiffeClient != nil {
-		defer func() { _ = spiffeClient.Close() }()
+		defer func() {
+			if err := spiffeClient.Close(); err != nil {
+				logger.WarnContext(ctx, "Failed to close SPIFFE client", "err", err)
+			}
+		}()
 	}
 
 	grpcSrv := setupGRPCServer(ctx, cfg, rsaPublicKey, c, spiffeClient, logger)

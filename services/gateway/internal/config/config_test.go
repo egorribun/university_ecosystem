@@ -373,7 +373,7 @@ func TestGetEnvBool(t *testing.T) {
 			if tc.setEnv {
 				t.Setenv(key, tc.envValue)
 			} else {
-				_ = os.Unsetenv(key)
+				assert.NoError(t, os.Unsetenv(key))
 			}
 
 			got := getEnvBool(key, tc.def)
