@@ -234,7 +234,7 @@ func ScatterGatherMerger(shardResults [][]QueryResult, topK int) []QueryResult {
 	return merged
 }
 
-// NodeHealthTracker monitors single node error rates & response latency
+// NodeHealthTracker monitors single node error rates & response latency.
 type NodeHealthTracker struct {
 	mu                sync.RWMutex
 	state             NodeState
@@ -247,7 +247,7 @@ type NodeHealthTracker struct {
 	totalFailovers    int64
 }
 
-// NewNodeHealthTracker constructs a health tracker
+// NewNodeHealthTracker constructs a health tracker.
 func NewNodeHealthTracker(errorThreshold int32, latencySLA time.Duration, fallbackTarget string) *NodeHealthTracker {
 	if errorThreshold <= 0 {
 		errorThreshold = 3
@@ -320,7 +320,7 @@ func (t *NodeHealthTracker) ShouldFallback() bool {
 	return false
 }
 
-// VectorRouter manages hash ring, node health state, and scatter-gather operations
+// VectorRouter manages hash ring, node health state, and scatter-gather operations.
 type VectorRouter struct {
 	mu             sync.RWMutex
 	ring           *HashRing
@@ -330,7 +330,7 @@ type VectorRouter struct {
 	latencySLA     time.Duration
 }
 
-// NewVectorRouter creates a VectorRouter instance
+// NewVectorRouter creates a VectorRouter instance.
 func NewVectorRouter(vnodes int, pgvectorBackup string) *VectorRouter {
 	if pgvectorBackup == "" {
 		pgvectorBackup = "pgvector_backup"
@@ -344,7 +344,7 @@ func NewVectorRouter(vnodes int, pgvectorBackup string) *VectorRouter {
 	}
 }
 
-// AddNode adds a shard node to router
+// AddNode adds a shard node to router.
 func (vr *VectorRouter) AddNode(node string) {
 	vr.mu.Lock()
 	defer vr.mu.Unlock()
@@ -355,7 +355,7 @@ func (vr *VectorRouter) AddNode(node string) {
 	}
 }
 
-// RemoveNode removes node from router
+// RemoveNode removes node from router.
 func (vr *VectorRouter) RemoveNode(node string) {
 	vr.mu.Lock()
 	defer vr.mu.Unlock()
@@ -364,7 +364,7 @@ func (vr *VectorRouter) RemoveNode(node string) {
 	delete(vr.trackers, node)
 }
 
-// GetTracker returns health tracker for node
+// GetTracker returns health tracker for node.
 func (vr *VectorRouter) GetTracker(node string) (*NodeHealthTracker, error) {
 	vr.mu.RLock()
 	defer vr.mu.RUnlock()
@@ -376,7 +376,7 @@ func (vr *VectorRouter) GetTracker(node string) (*NodeHealthTracker, error) {
 	return tracker, nil
 }
 
-// Route resolves tenantID to node and determines if pgvector fallback is required
+// Route resolves tenantID to node and determines if pgvector fallback is required.
 func (vr *VectorRouter) Route(tenantID string) (targetNode string, isFallback bool, err error) {
 	if tenantID == "" {
 		return vr.pgvectorBackup, true, nil
@@ -395,7 +395,7 @@ func (vr *VectorRouter) Route(tenantID string) (targetNode string, isFallback bo
 	return primaryNode, false, nil
 }
 
-// RouteWithKey resolves either tenantID or courseID partition key to node
+// RouteWithKey resolves either tenantID or courseID partition key to node.
 func (vr *VectorRouter) RouteWithKey(tenantID, courseID string) (targetNode string, isFallback bool, err error) {
 	partitionKey := tenantID
 	if partitionKey == "" {
@@ -404,7 +404,7 @@ func (vr *VectorRouter) RouteWithKey(tenantID, courseID string) (targetNode stri
 	return vr.Route(partitionKey)
 }
 
-// ExecuteVectorQuery routes the request and executes it with context SLA (50ms limit), seamlessly falling back to pgvector on failure
+// ExecuteVectorQuery routes the request and executes it with context SLA (50ms limit), seamlessly falling back to pgvector on failure.
 func (vr *VectorRouter) ExecuteVectorQuery(
 	ctx context.Context,
 	tenantID string,

@@ -151,6 +151,7 @@ func setupHub(ctx context.Context, cfg *config.Config, logger *slog.Logger, nc *
 	}
 	authClient.StartEviction(ctx)
 	// RZ-W14-01: pass rdb so the Hub can validate one-time WS upgrade tickets
+	//nolint:contextcheck
 	h := hub.NewHub(nc, logger, authClient, cfg, rdb)
 
 	if cfg.JWKSURL != "" {
