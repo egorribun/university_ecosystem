@@ -189,7 +189,7 @@ func initGRPC(cfg *config.Config, logger *slog.Logger, spiffeClients ...*spiffe.
 	return grpcConn, pb.NewFileProcessingServiceClient(grpcConn)
 }
 
-//nolint:gocognit
+//nolint:gocognit,cyclop
 func setupRouter(cfg *config.Config, logger *slog.Logger, grpcConn *grpc.ClientConn, fileClient pb.FileProcessingServiceClient, opts ...any) *gin.Engine {
 	ctx := context.Background()
 	var spiffeClient *spiffe.Client

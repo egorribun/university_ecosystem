@@ -53,7 +53,7 @@ type VectorSearchResponse struct {
 // VectorQueryExecutor is a function type for querying a vector node.
 type VectorQueryExecutor func(ctx context.Context, targetNode string) ([]QueryResult, error)
 
-// NodeState indicates the health status of a vector shard node
+// NodeState indicates the health status of a vector shard node.
 type NodeState int32
 
 const (
