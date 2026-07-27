@@ -44,7 +44,7 @@ func signedControlPayload(t *testing.T, secret string, data testControlData) []b
 }
 
 func TestHandleControlMessage_ValidSignature_DisconnectsClient(t *testing.T) {
-	secret := "control-test-secret-32-bytes-long!!"
+	secret := "control-test-secret-32-bytes-long!!" // pragma: allowlist secret
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
 	cfg := &config.Config{
 		MaxClients:          10,
@@ -119,7 +119,7 @@ func TestHandleControlMessage_ValidSignature_DisconnectsClient(t *testing.T) {
 }
 
 func TestHandleControlMessage_InvalidSignature_MessageRejected(t *testing.T) {
-	secret := "correct-internal-secret"
+	secret := "correct-internal-secret" // pragma: allowlist secret
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
 	cfg := &config.Config{
 		MaxClients:          10,
@@ -185,7 +185,7 @@ func TestHandleControlMessage_InvalidSignature_MessageRejected(t *testing.T) {
 }
 
 func TestHandleControlMessage_MalformedJSON_NoPanic(t *testing.T) {
-	secret := "control-test-secret"
+	secret := "control-test-secret" // pragma: allowlist secret
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
 	cfg := &config.Config{
 		InternalSecret: secret,
