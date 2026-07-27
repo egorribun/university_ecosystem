@@ -12,8 +12,8 @@ import (
 
 func TestWebSocketSession_Methods(t *testing.T) {
 	srv, cli := newConnPair(t)
-	defer srv.Close()
-	defer cli.Close()
+	t.Cleanup(func() { assert.NoError(t, srv.Close()) })
+	t.Cleanup(func() { assert.NoError(t, cli.Close()) })
 
 	sess := NewWebSocketSession(srv)
 	assert.Equal(t, "websocket", sess.TransportType())

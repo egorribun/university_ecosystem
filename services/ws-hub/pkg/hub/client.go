@@ -240,6 +240,7 @@ func (c *Client) handleJoin(msg Message) {
 	}
 }
 
+//nolint:gocognit
 func (c *Client) replayOfflineMessages(room string, lastSeq uint64, lastMsgID string) {
 	if c.Hub == nil || c.Hub.js == nil {
 		return
@@ -407,6 +408,8 @@ func (c *Client) handleMessage(msg Message, data []byte) {
 }
 
 // WritePump pumps messages from the hub to the session connection.
+//
+//nolint:gocognit
 func (c *Client) WritePump() {
 	ticker := time.NewTicker(30 * time.Second)
 	defer func() {

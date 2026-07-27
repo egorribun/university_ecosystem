@@ -293,5 +293,5 @@ func TestEmpirical_UDPUnavailable_FallbackToTCP(t *testing.T) {
 		// Success: UDP failure degraded gracefully without stopping main process
 	}
 
-	_ = wtServer.Close()
+	assert.NoError(t, wtServer.Close())
 }

@@ -29,6 +29,10 @@ var _lastJWKSForceRefreshUnix atomic.Int64 // unix seconds, zero = never refresh
 
 const _jwksForceRefreshCooldown = 30 * time.Second
 
+type contextKey string
+
+const tenantIDKey contextKey = "tenant_id"
+
 // wsTicketKeyPrefix matches the Python backend's TICKET_KEY_PREFIX in app/api/ws/ticket.py.
 // Both services must use the same prefix — see contracts/redis-keys.md.
 const wsTicketKeyPrefix = "ott:ws:"
@@ -193,7 +197,7 @@ func (h *Hub) HandleWebSocket(w http.ResponseWriter, r *http.Request, cfg *confi
 	clientCtx, clientCancel := context.WithCancel(context.Background())
 	clientCtx = trace.ContextWithSpan(clientCtx, trace.SpanFromContext(r.Context()))
 	if tenantID != "" {
-		clientCtx = context.WithValue(clientCtx, "tenant_id", tenantID)
+		clientCtx = context.WithValue(clientCtx, tenantIDKey, tenantID)
 	}
 
 	client := &Client{
@@ -270,7 +274,7 @@ func (h *Hub) HandleWebTransport(w http.ResponseWriter, r *http.Request, cfg *co
 	clientCtx, clientCancel := context.WithCancel(context.Background())
 	clientCtx = trace.ContextWithSpan(clientCtx, trace.SpanFromContext(r.Context()))
 	if tenantID != "" {
-		clientCtx = context.WithValue(clientCtx, "tenant_id", tenantID)
+		clientCtx = context.WithValue(clientCtx, tenantIDKey, tenantID)
 	}
 
 	client := &Client{
