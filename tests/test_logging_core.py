@@ -115,6 +115,17 @@ def test_configure_logging_first_time_console_no_otel():
         mock_structlog_conf.assert_called_once()
 
 
+def test_console_logging_formats_positional_arguments(monkeypatch, caplog):
+    """Console/testing logging must accept stdlib-style ``%s`` arguments."""
+    monkeypatch.setattr(logging_mod, "_configured", False)
+    configure_logging(json_output=False)
+
+    with caplog.at_level(logging.INFO):
+        get_logger("logging-regression").info("pool size=%s", 7)
+
+    assert "pool size=7" in caplog.text
+
+
 def test_orjson_serializer():
     """Verify _orjson_serializer correctly encodes dictionaries using orjson."""
     res = _orjson_serializer({"hello": "world"})

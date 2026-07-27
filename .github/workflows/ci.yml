@@ -680,7 +680,6 @@ jobs:
   e2e-tests-cross-browser:
     name: E2E Tests (cross-browser ${{ matrix.browser }})
     needs: pre-commit-check
-    continue-on-error: true
     strategy:
       fail-fast: false
       matrix:
@@ -692,6 +691,7 @@ jobs:
       browser: ${{ matrix.browser }}
       shard-index: 1
       shard-total: 1
+      advisory: true
     secrets: inherit
 
   security-audit:
@@ -1741,9 +1741,12 @@ jobs:
   # Phase 8.3: the full Temporal-backed load/chaos stack is executed by
   # nightly-full-gate.yml. Keep this historical definition inert so old links
   # and local workflow tooling do not accidentally reintroduce it into the PR
-  # gate; promotion back to CI requires a documented Temporal boot fix.
+  # gate; promotion back to CI requires a documented Temporal boot fix. The
+  # repository variable is intentionally unset (false) by default and gives
+  # maintainers an explicit opt-in for a diagnostic run without a constant
+  # `if: false` expression that actionlint rejects.
   load-and-chaos-tests:
-    if: ${{ false }}
+    if: ${{ github.event_name == 'workflow_dispatch' && vars.ENABLE_LOAD_CHAOS == 'true' }}
     name: Load and Chaos Resilience Tests
     runs-on: ubuntu-latest
     timeout-minutes: 30 # +3 Go builds (gateway/ws-hub/file-processor) + temporal boot
@@ -2018,7 +2021,6 @@ jobs:
         ports: ["4222:4222"]
       minio:
         image: minio/minio:RELEASE.2025-09-07T16-13-09Z
-        command: server /data
         env:
           MINIO_ROOT_USER: minioadmin
           MINIO_ROOT_PASSWORD: minioadminsecret  # pragma: allowlist secret

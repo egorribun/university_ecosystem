@@ -58,7 +58,10 @@ def test_process_file_grpc_contract(pact: Pact) -> None:
                 "options": {"width": "800"},
                 "callback_url": match.like("http://backend/callback"),
             },
-            "application/grpc",
+            # Pact V4 message bodies are JSON-encoded representations of the
+            # protobuf payload. `application/grpc` makes the verifier compare
+            # matcher JSON as opaque bytes instead of applying the matchers.
+            "application/json",
         )
         .will_respond_with()
         .with_body(
@@ -71,6 +74,6 @@ def test_process_file_grpc_contract(pact: Pact) -> None:
                 "dest_key": match.like(""),
                 "duration_ms": match.like(0),
             },
-            "application/grpc",
+            "application/json",
         )
     )

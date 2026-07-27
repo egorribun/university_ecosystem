@@ -38,6 +38,14 @@ class TestCorsSettingsClosure:
 
         assert settings.cors_allow_origins_list == ["https://A.example"]
 
+    def test_strict_cors_origins_skip_non_https_external_origins(self):
+        settings = _settings(
+            frontend_origins_list=["http://external.example", "https://secure.example"],
+            strict_security_headers_enabled=True,
+        )
+
+        assert settings.cors_allow_origins_list == ["https://secure.example"]
+
     def test_credentials_effective_allows_non_strict_origins(self):
         settings = _settings(
             cors_allow_credentials=True,
@@ -48,6 +56,24 @@ class TestCorsSettingsClosure:
         )
 
         assert settings.cors_allow_credentials_effective is True
+
+    def test_credentials_effective_disables_when_credentials_are_false_or_origins_empty(
+        self,
+    ):
+        assert (
+            _settings(
+                cors_allow_credentials=False,
+                cors_allow_origins_list=["https://example.com"],
+            ).cors_allow_credentials_effective
+            is False
+        )
+        assert (
+            _settings(
+                cors_allow_credentials=True,
+                cors_allow_origins_list=[],
+            ).cors_allow_credentials_effective
+            is False
+        )
 
     def test_credentials_effective_rejects_non_https_in_direct_allow_list(self):
         settings = _settings(
@@ -75,6 +101,11 @@ class TestCorsSettingsClosure:
 
         assert settings.trusted_hosts_list == ["a.example", "b.example"]
         assert settings.allowed_hosts_list == ["c.example"]
+
+    def test_trusted_hosts_accepts_comma_delimited_strings(self):
+        settings = _settings(trusted_hosts=" a.example, ,b.example ")
+
+        assert settings.trusted_hosts_list == ["a.example", "b.example"]
 
     def test_allowed_hosts_use_development_defaults_when_empty(self):
         settings = _settings(allowed_hosts="", is_development=True)

@@ -50,3 +50,34 @@ async def test_privacy_cleanup_scheduler_handles_cancellation_from_cleanup():
         )
         await asyncio.sleep(0.01)
         await stop()
+
+
+@pytest.mark.asyncio
+async def test_privacy_cleanup_scheduler_continues_after_database_error():
+    calls = 0
+
+    async def cleanup(**kwargs):
+        del kwargs
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            raise OSError("database unavailable")
+        await asyncio.Event().wait()
+        return {}
+
+    real_sleep = asyncio.sleep
+
+    async def fast_sleep(_interval):
+        await real_sleep(0)
+
+    with (
+        patch("app.services.privacy_cleanup.cleanup_privacy_artifacts", new=cleanup),
+        patch("app.services.privacy_cleanup.asyncio.sleep", new=fast_sleep),
+    ):
+        stop = await start_privacy_cleanup_scheduler(
+            config=PrivacyCleanupConfig(interval_seconds=60)
+        )
+        await real_sleep(0.01)
+        await stop()
+
+    assert calls >= 2

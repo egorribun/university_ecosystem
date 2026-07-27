@@ -371,6 +371,17 @@ export type BodyUploadStoryCoverApiV1StoriesUploadCoverPost = {
 }
 
 /**
+ * ChallengeState
+ *
+ * TD-W5-01: Explicit state machine for MFA challenges.
+ *
+ * Replaces the implicit dual-null convention (consumed_at=None, locked_at=None →
+ * active; consumed_at set → done; locked_at set → locked) with a single
+ * auditable column that is impossible to misread.
+ */
+export type ChallengeState = "pending" | "consumed" | "locked" | "expired"
+
+/**
  * ChatCreate
  */
 export type ChatCreate = {
@@ -1184,6 +1195,7 @@ export type MfaChallengeOut = {
    * Attempt Count
    */
   attempt_count?: number
+  state?: ChallengeState
 }
 
 /**
@@ -2439,6 +2451,46 @@ export type StoryUpdate = {
    * Is Active
    */
   is_active?: boolean | null
+}
+
+/**
+ * TimeTravelResponse
+ */
+export type TimeTravelResponse = {
+  /**
+   * Aggregate Type
+   */
+  aggregate_type: string
+  /**
+   * Aggregate Id
+   */
+  aggregate_id: string
+  /**
+   * Target Timestamp
+   */
+  target_timestamp: string
+  /**
+   * State At Timestamp
+   */
+  state_at_timestamp: {
+    [key: string]: unknown
+  } | null
+  /**
+   * Version At Timestamp
+   */
+  version_at_timestamp?: number | null
+  /**
+   * Events Replayed
+   */
+  events_replayed: number
+  /**
+   * Chain Integrity Valid
+   */
+  chain_integrity_valid: boolean
+  /**
+   * Tampered Event Id
+   */
+  tampered_event_id?: string | null
 }
 
 /**
@@ -7426,6 +7478,64 @@ export type ListAuditLogsAdminAuditGetResponses = {
 
 export type ListAuditLogsAdminAuditGetResponse =
   ListAuditLogsAdminAuditGetResponses[keyof ListAuditLogsAdminAuditGetResponses]
+
+export type GetTimeTravelStateAdminAuditTimeTravelGetData = {
+  body?: never
+  path?: never
+  query: {
+    /**
+     * Aggregate Type
+     *
+     * Aggregate type: 'schedule', 'grade', 'user', 'assessment'
+     */
+    aggregate_type: string
+    /**
+     * Aggregate Id
+     *
+     * UUID of the aggregate entity
+     */
+    aggregate_id: string
+    /**
+     * Target Timestamp
+     *
+     * Target timestamp in ISO format
+     */
+    target_timestamp?: string | null
+    /**
+     * Timestamp
+     *
+     * Target timestamp alias
+     */
+    timestamp?: string | null
+    /**
+     * Verify Chain
+     *
+     * Verify HMAC chain integrity up to target timestamp
+     */
+    verify_chain?: boolean
+  }
+  url: "/admin/audit/time-travel"
+}
+
+export type GetTimeTravelStateAdminAuditTimeTravelGetErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type GetTimeTravelStateAdminAuditTimeTravelGetError =
+  GetTimeTravelStateAdminAuditTimeTravelGetErrors[keyof GetTimeTravelStateAdminAuditTimeTravelGetErrors]
+
+export type GetTimeTravelStateAdminAuditTimeTravelGetResponses = {
+  /**
+   * Successful Response
+   */
+  200: TimeTravelResponse
+}
+
+export type GetTimeTravelStateAdminAuditTimeTravelGetResponse =
+  GetTimeTravelStateAdminAuditTimeTravelGetResponses[keyof GetTimeTravelStateAdminAuditTimeTravelGetResponses]
 
 export type IssueWsUpgradeTicketWsTicketPostData = {
   body?: never

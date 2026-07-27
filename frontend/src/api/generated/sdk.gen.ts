@@ -192,6 +192,9 @@ import type {
   GetSessionSigningKeyApiV1AuthSessionSigningKeyGetData,
   GetSessionSigningKeyApiV1AuthSessionSigningKeyGetErrors,
   GetSessionSigningKeyApiV1AuthSessionSigningKeyGetResponses,
+  GetTimeTravelStateAdminAuditTimeTravelGetData,
+  GetTimeTravelStateAdminAuditTimeTravelGetErrors,
+  GetTimeTravelStateAdminAuditTimeTravelGetResponses,
   GetUsersApiV1UsersGetData,
   GetUsersApiV1UsersGetErrors,
   GetUsersApiV1UsersGetResponses,
@@ -3655,6 +3658,29 @@ export const listAuditLogsAdminAuditGet = <ThrowOnError extends boolean = false>
     responseType: "json",
     security: [{ scheme: "bearer", type: "http" }],
     url: "/admin/audit",
+    ...options,
+  })
+
+/**
+ * Get Time Travel State
+ *
+ * Reconstruct state of an aggregate entity at a target timestamp in history.
+ */
+export const getTimeTravelStateAdminAuditTimeTravelGet = <ThrowOnError extends boolean = false>(
+  options: Options<GetTimeTravelStateAdminAuditTimeTravelGetData, ThrowOnError>
+): RequestResult<
+  GetTimeTravelStateAdminAuditTimeTravelGetResponses,
+  GetTimeTravelStateAdminAuditTimeTravelGetErrors,
+  ThrowOnError
+> =>
+  (options.client ?? client).get<
+    GetTimeTravelStateAdminAuditTimeTravelGetResponses,
+    GetTimeTravelStateAdminAuditTimeTravelGetErrors,
+    ThrowOnError
+  >({
+    responseType: "json",
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/admin/audit/time-travel",
     ...options,
   })
 

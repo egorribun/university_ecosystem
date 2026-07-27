@@ -155,6 +155,10 @@ def configure_logging(
         structlog.processors.StackInfoRenderer(),
         structlog.processors.format_exc_info,
         structlog.processors.UnicodeDecoder(),
+        # Format stdlib-style positional arguments before EventRenamer moves
+        # the event field to `message`. Without this, console/testing output
+        # raises KeyError("event") for calls such as logger.info("size=%s", n).
+        structlog.stdlib.PositionalArgumentsFormatter(),
         structlog.processors.EventRenamer("message"),
         # MED-W19: named processor instead of lambda with side-effect
         _add_service_context,
@@ -166,7 +170,6 @@ def configure_logging(
         processors = [
             structlog.stdlib.filter_by_level,
             *shared_processors,
-            structlog.stdlib.PositionalArgumentsFormatter(),
             structlog.processors.JSONRenderer(serializer=_orjson_serializer),
         ]
         factory: Any = structlog.stdlib.LoggerFactory()

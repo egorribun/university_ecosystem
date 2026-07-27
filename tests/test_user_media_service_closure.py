@@ -156,3 +156,27 @@ async def test_delete_avatar_and_cover_without_existing_files():
         await UserMediaService(uow).delete_cover(user.id)
 
     delete.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_avatar_paths_handle_missing_and_existing_avatar_files():
+    missing_uow = _uow(None)
+    with pytest.raises(EntityNotFound):
+        await UserMediaService(missing_uow).upload_avatar(uuid4(), _upload())
+
+    user = SimpleNamespace(id=uuid4(), profile=SimpleNamespace(avatar_url="old-avatar"))
+    uow = _uow(user)
+    delete = AsyncMock()
+    with (
+        patch(
+            "app.services.user.media_service.save_upload",
+            new=AsyncMock(return_value="new-avatar"),
+        ),
+        patch("app.services.user.media_service.delete_static_file", new=delete),
+        patch("app.services.user.media_service.update_user_attributes"),
+    ):
+        await UserMediaService(uow).upload_avatar(user.id, _upload())
+        await UserMediaService(uow).delete_avatar(user.id)
+
+    assert delete.await_args_list[0].args == ("old-avatar",)
+    assert delete.await_args_list[1].args == ("old-avatar",)

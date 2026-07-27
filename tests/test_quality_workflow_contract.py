@@ -187,7 +187,11 @@ def test_cross_browser_e2e_is_advisory_during_stabilization() -> None:
     jobs = workflow["jobs"]
     cross_browser = jobs["e2e-tests-cross-browser"]
 
-    assert cross_browser["continue-on-error"] is True
+    # Reusable-workflow callers cannot use continue-on-error directly. The
+    # reusable job receives an explicit advisory input and applies the policy
+    # at the executable job level.
+    assert cross_browser.get("continue-on-error") is not True
+    assert cross_browser["with"]["advisory"] is True
     assert cross_browser["strategy"]["matrix"]["browser"] == [
         "firefox",
         "webkit",

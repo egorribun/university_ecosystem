@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from app.core.config.mixins.csp_settings import CspSettingsMixin
 
 
@@ -102,3 +104,87 @@ def test_build_csp_policy_uses_policy_engine_wrapper():
 
     assert "connect-src" in policy
     assert "nonce-value" in policy
+
+
+def test_csp_validators_reject_unsupported_security_header_values():
+    with pytest.raises(ValueError, match="COEP_VALUE"):
+        CspSettingsMixin._validate_coep_value("unsafe")
+    with pytest.raises(ValueError, match="CORP_VALUE"):
+        CspSettingsMixin._validate_corp_value("unsafe")
+    with pytest.raises(ValueError, match="SECURITY_COOKIE_SAMESITE_OVERRIDE"):
+        CspSettingsMixin._validate_cookie_samesite_override("invalid")
+
+    assert CspSettingsMixin._validate_coep_value(" Credentialless ") == "credentialless"
+    assert CspSettingsMixin._validate_corp_value(" Cross-Origin ") == "cross-origin"
+    assert CspSettingsMixin._validate_cookie_samesite_override(" Strict ") == "strict"
+    assert CspSettingsMixin._validate_cookie_samesite_override(" ") == ""
+
+
+def test_csp_properties_cover_overrides_and_deduplicate_connect_sources():
+    settings = _settings(
+        is_development=False,
+        security_connect_src_extra=[
+            "https://api.example",
+            "HTTPS://API.EXAMPLE",
+            " https://other.example wss://socket.example ",
+        ],
+        security_csp_report_only=True,
+        enable_strict_security_headers=False,
+        security_cookie_samesite_override="strict",
+        enable_coep=True,
+        coep_value="credentialless",
+        enable_corp=False,
+        corp_value="cross-origin",
+    )
+
+    assert settings.security_connect_src_values == [
+        "'self'",
+        "https://api.example",
+        "https://other.example",
+        "wss://socket.example",
+    ]
+    assert settings._development_connect_overrides() == []
+    assert settings.strict_security_headers_enabled is False
+    assert settings.cookie_secure is False
+    assert settings.cookie_samesite == "strict"
+    assert settings.security_csp_report_only_effective is True
+    assert settings.should_inject_csp_nonce is False
+    assert settings.coep_header_value == "credentialless"
+    assert settings.corp_header_value == "cross-origin"
+    assert settings.coep_enabled is True
+    assert settings.corp_enabled is False
+
+
+def test_csp_effective_flags_and_strict_policy_cover_remaining_paths():
+    explicit = _settings(
+        is_development=False,
+        security_csp_report_only=False,
+        enable_strict_security_headers=True,
+        security_hsts_enabled=True,
+        security_hsts_behind_proxy=False,
+        app_base_url_clean="https://example.com",
+        security_connect_src_extra="https://api.example",
+        security_csp_report_uri="/csp-report",
+        security_csp="",
+    )
+    assert explicit.security_csp_report_only_effective is False
+    assert explicit.should_inject_csp_nonce is True
+    assert "nonce-{nonce}" in explicit.strict_security_csp
+
+    development_default = _settings(
+        is_development=True,
+        enable_strict_security_headers=None,
+        security_csp_report_only=None,
+        security_connect_src_extra="",
+    )
+    assert development_default.strict_security_headers_enabled is False
+    assert development_default.security_csp_report_only_effective is True
+    assert development_default.should_inject_csp_nonce is False
+
+    forced_strict = _settings(
+        is_development=True,
+        enable_strict_security_headers=True,
+        security_csp_report_only=None,
+        security_connect_src_extra="",
+    )
+    assert forced_strict.security_csp_report_only_effective is False

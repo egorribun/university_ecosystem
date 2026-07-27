@@ -90,3 +90,17 @@ async def test_record_failure_survives_metric_errors_and_state_can_reset():
     assert (await queue.get_failed_enqueue_records())[-1].error == "disk"
     await queue.reset_testing_state()
     assert await queue.get_failed_enqueue_records() == []
+
+
+@pytest.mark.asyncio
+async def test_record_failure_without_optional_queue_metrics():
+    job = queue.NotificationJob(kind="event", record_id=uuid.uuid4())
+
+    with (
+        patch.object(queue.metrics, "record_notification_failed"),
+        patch.object(queue, "_queue_metrics", None),
+    ):
+        await queue.record_enqueue_failure(job, RuntimeError("offline"), "test")
+
+    assert (await queue.get_failed_enqueue_records())[-1].error == "offline"
+    await queue.reset_testing_state()

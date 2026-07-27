@@ -43,11 +43,21 @@ on:
         required: false
         type: number
         default: 1
+      advisory:
+        description: "Allow this E2E invocation to report without blocking its caller"
+        required: false
+        type: boolean
+        default: false
 
 jobs:
   e2e:
     name: E2E Tests (${{ inputs.browser }})
     runs-on: ubuntu-latest
+    # Reusable-workflow callers cannot set continue-on-error on the caller job.
+    # Keep the advisory policy inside the reusable workflow so the same workflow
+    # remains blocking by default for Chromium and opt-in advisory for the
+    # stabilization matrix.
+    continue-on-error: ${{ inputs.advisory }}
     # The Chromium suite contains 114 tests, including expensive accessibility
     # scans. The caller splits the default suite into four Playwright shards.
     # Keep one worker per shard: four concurrent Chromium navigations are the

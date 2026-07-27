@@ -88,3 +88,38 @@ async def test_process_upload_rejects_missing_metadata():
             await ChatAttachmentService().process_upload(upload, uuid4(), locale="en")
 
     assert exc_info.value.status_code == 500
+
+
+@pytest.mark.asyncio
+async def test_cleanup_files_skips_empty_urls_and_collects_nested_attachments():
+    service = ChatAttachmentService()
+    delete = AsyncMock()
+    with patch("app.services.chat.attachment_service.delete_static_file", new=delete):
+        await service.cleanup_files(["/one", "", "/two"])
+
+    assert delete.await_count == 2
+    delete.assert_any_await("/one")
+    delete.assert_any_await("/two")
+
+    chat = SimpleNamespace(
+        messages=[
+            SimpleNamespace(
+                attachments=[
+                    SimpleNamespace(url="/one"),
+                    SimpleNamespace(url=""),
+                ]
+            ),
+            SimpleNamespace(attachments=[SimpleNamespace(url="/two")]),
+        ]
+    )
+    assert await service.collect_urls(chat) == ["/one", "/two"]
+
+
+@pytest.mark.asyncio
+async def test_cleanup_files_with_no_urls_is_a_noop():
+    with patch(
+        "app.services.chat.attachment_service.delete_static_file", new=AsyncMock()
+    ) as delete:
+        await ChatAttachmentService().cleanup_files(["", ""])
+
+    delete.assert_not_awaited()

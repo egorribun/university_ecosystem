@@ -4,7 +4,97 @@
 **Audit baseline commit:** `ce588bb0a1c08eb66ff2e5558349096a51d3ed4a` (the "finalize quality-roadmap" merge)
 **Repository HEAD at audit time:** `0becc3e1ff130392dbc4166d04e6aa63495053bb`
 **Audit date:** 2026-07-22
-**Status:** draft — not started
+**Status:** execution in progress — baseline remains historical; see the uncommitted execution ledger below
+
+## Execution ledger — 2026-07-27 (uncommitted)
+
+This section records only independently verified results from the current closure
+work. The historical measurements below remain unchanged so that the original
+audit baseline is reproducible. Python reports were collected with `uv run` and
+checked one file at a time after bounded test runs; no `.md` or `.diff` file is
+intended for the checkpoint commit.
+
+### Verified closures
+
+- Python Tier0/auth, metrics/observability, cache, database, NATS, and the
+  previously closed long-tail modules remain verified from the earlier
+  checkpoint.
+- `app/core/config/mixins/jwt_settings.py`: 133/133 statements, 48/48 branch
+  pairs.
+- `app/core/config/mixins/csp_settings.py`: 155/155 statements, 48/48 branch
+  pairs.
+- `app/api/ws/presence.py`: 159/159 statements, 50/50 branch pairs.
+- `app/api/ws/connection_manager.py`: 209/209 statements, 64/64 branch pairs.
+- `app/api/spotify.py`: 261/261 statements, 72/72 branch pairs.
+- `app/api/notifications.py`: 297/297 statements, 90/90 branch pairs.
+- `app/services/notifications/news_events.py`: 147/147 statements, 52/52
+  branch pairs.
+- `app/services/notification_templates.py`: 362/362 statements, 196/196
+  branch pairs.
+- `app/services/privacy_cleanup.py`: 91/91 statements, 4/4 branch pairs.
+- `app/utils/request_coalescing.py`: 72/72 statements, 14/14 branch pairs.
+- Notification model/repository and cleanup closures added during this session
+  are also verified at 100% in their isolated reports.
+- Go bounded verification on 2026-07-27: `go test ./... -count=1 -timeout=90s`
+  passed for gateway (7 packages, 34s), ws-hub (4 packages, 9s), and
+  file-processor (6 packages, 11s). Their fresh local statement profiles are
+  87.9%, 81.9%, and 88.0%, respectively; these are measurements, not closure
+  claims. Existing ws-hub and gateway `TestMain` goleak checks completed as
+  part of the passing package runs. Local `-race` is blocked by the Windows
+  environment lacking a C compiler (`go test -race` requires CGO).
+- Additional Go modules `services/cmd/uni-cli` and `services/pkg/spiffe` also
+  passed their bounded `go test ./...` runs.
+- Frontend bounded verification: `npm run typecheck` passed and a one-worker
+  Vitest smoke selection passed 24/24 tests. The full Vitest suite was not
+  allowed to run unbounded on this host after its 120-second guard expired.
+- Frontend property-based verification: the fast-check utility contract suite
+  passed 5/5 in one worker. The scoped Stryker run mutated one pure utility file
+  with 33 mutants and killed all 33 (100.00% mutation score) under
+  `--concurrency 1`; generated reports remain temporary and uncommitted.
+- CI wiring fixes verified by contract tests/static inspection: cross-browser
+  advisory mode is now passed as an explicit reusable-workflow input (so the
+  caller has no invalid job-level `continue-on-error`), the opt-in load/chaos
+  job no longer uses a constant-false condition, and the GitHub Actions MinIO
+  service no longer uses an unsupported `command` key. Full actionlint and
+  remote CI verification remain open.
+- Targeted Ruff is clean for all closure/contract test files changed in this
+  session. A full `uv run ruff check tests` still reports 34 pre-existing
+  findings in unrelated stress/security/tenant tests; those were not silently
+  rewritten as part of this closure batch.
+- Fixed a real testing-mode observability defect in
+  `app/core/logging.py`: console structlog now formats positional `%s`
+  arguments before event renaming. The logging regression suite passes 11/11.
+- Regenerated frontend API SDK/types and MSW mocks from a freshly generated
+  FastAPI OpenAPI document. The generated diff now includes `ChallengeState`,
+  `MfaChallengeOut.state`, and the audit time-travel endpoint; frontend
+  `npm run typecheck` passes, followed by a bounded one-worker API smoke of
+  24/24 tests. Remote drift rerun remains pending.
+- Fixed the Pact provider workflow's localhost service wiring by publishing
+  Postgres/Redis ports; its workflow contract suite passes 14/14. A remote
+  provider rerun remains pending.
+- Fixed the file-processor Pact body mismatch at its source: the consumer and
+  provider now declare the JSON-encoded protobuf representation as
+  `application/json`, allowing Pact V4 structural matchers to run instead of
+  comparing matcher documents as opaque `application/grpc` bytes. File-
+  processor Go tests pass; remote Pact verification remains pending.
+
+### Still open
+
+The roadmap is not complete. The remaining workstreams are the frontend 99/98/98
+closure plus broader Stryker/property/diff coverage beyond the verified utility
+slice; Go low-coverage bootstrap and
+goroutine/fuzz/integration hardening; Rust crypto/WASM fuzz+proptest+Miri and
+remote coverage execution; remote Pact provider replay; browser-matrix
+stabilization; Checkov/Kyverno and nightly-full-gate evidence; negative-security
+and performance baselines; durable dashboard/certification evidence; and the
+manual Codecov token action. The latest remote evidence also contains separate
+failures in Checkov (72 findings on the historical PR merge), continuous
+performance baselines, DAST, and a file-processor Pact body mismatch (fix
+prepared locally); these remain actionable until a fresh remote verification. The
+repository wiring for several workstreams
+already exists and is locally contract-tested, but it must not be marked
+complete from backend unit-coverage evidence alone or from YAML presence
+without green remote runs and the roadmap's stabilization windows.
 
 ## 0. Why this document exists
 

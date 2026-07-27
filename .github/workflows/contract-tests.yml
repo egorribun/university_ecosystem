@@ -209,6 +209,8 @@ jobs:
           POSTGRES_USER: test
           POSTGRES_PASSWORD: test
           POSTGRES_DB: test
+        ports:
+          - 5432:5432
         options: >-
           --health-cmd "pg_isready -U test -d test"
           --health-interval 5s
@@ -216,6 +218,8 @@ jobs:
           --health-retries 12
       redis:
         image: redis:7-alpine
+        ports:
+          - 6379:6379
         options: >-
           --health-cmd "redis-cli ping"
           --health-interval 5s

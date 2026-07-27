@@ -74,3 +74,39 @@ async def test_retention_cleanup_cancellation_is_safe_to_stop():
         )
         await asyncio.sleep(0.01)
         await stop()
+
+
+@pytest.mark.asyncio
+async def test_retention_scheduler_can_be_disabled():
+    stop = await start_notifications_retention_scheduler(
+        config=NotificationsRetentionConfig(retention_days=0)
+    )
+
+    assert await stop() is None
+
+
+@pytest.mark.asyncio
+async def test_retention_scheduler_logs_oserror_before_cancellation():
+    original_sleep = asyncio.sleep
+
+    async def fail_cleanup(*, retention_days: int) -> tuple[int, int]:
+        raise OSError("database unavailable")
+
+    async def cancel_after_failure(_interval: int) -> None:
+        raise asyncio.CancelledError
+
+    with (
+        patch(
+            "app.services.notifications_retention.cleanup_stale_notifications",
+            side_effect=fail_cleanup,
+        ),
+        patch(
+            "app.services.notifications_retention.asyncio.sleep",
+            side_effect=cancel_after_failure,
+        ),
+    ):
+        stop = await start_notifications_retention_scheduler(
+            config=NotificationsRetentionConfig(retention_days=7)
+        )
+        await original_sleep(0)
+        await stop()
