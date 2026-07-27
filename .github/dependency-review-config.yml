@@ -85,6 +85,21 @@ allow-dependencies-licenses:
   - "pkg:cargo/cc"
   - "pkg:cargo/chrono"
   - "pkg:pypi/harfile"
+  - "pkg:npm/is-my-json-valid"
+  - "pkg:npm/is-my-ip-valid"
+  - "pkg:npm/ieee754"
+  - "pkg:npm/fast-deep-equal"
+  - "pkg:npm/err-code"
+  - "pkg:npm/custom-idle-queue"
+  - "pkg:npm/crypto-js"
+  - "pkg:npm/common-tags"
+  - "pkg:npm/base64-js"
+  - "pkg:npm/as-typed"
+  - "pkg:npm/safe-regex2"
+  - "pkg:npm/z-schema"
+  - "pkg:npm/mingo"
+  - "pkg:npm/rxdb"
+  - "pkg:npm/get-graphql-from-jsonschema"
 
 vulnerability-check: true
 license-check: true
