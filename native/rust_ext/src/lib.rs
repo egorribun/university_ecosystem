@@ -95,6 +95,10 @@ fn rayon_pool_build_error<E: Display>(error: E) -> PyErr {
     pyo3::exceptions::PyRuntimeError::new_err(format!("Failed to build rayon thread pool: {error}"))
 }
 
+fn hmac_key_error<E: Display>(_error: E) -> PyErr {
+    pyo3::exceptions::PyValueError::new_err("Invalid HMAC key length")
+}
+
 #[pymethods]
 impl ScheduleItem {
     #[new]
@@ -467,6 +471,8 @@ pub fn verify_audit_signature(
             };
 
             for key_str in signing_keys {
+                let mut mac =
+                    Hmac::<Sha256>::new_from_slice(key_str.as_bytes()).map_err(hmac_key_error)?;
                 // HMAC-SHA256 hashes oversized keys, so every byte-slice length
                 // is valid for this concrete digest implementation.
                 let mut mac = Hmac::<Sha256>::new_from_slice(key_str.as_bytes())
@@ -1107,6 +1113,9 @@ mod tests {
         assert!(rayon_error
             .to_string()
             .contains("Failed to build rayon thread pool: synthetic failure"));
+
+        let hmac_error = hmac_key_error("synthetic key failure");
+        assert!(hmac_error.to_string().contains("Invalid HMAC key length"));
     }
 
     #[test]
