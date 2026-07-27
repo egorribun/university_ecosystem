@@ -8,7 +8,7 @@ import (
 
 // AltSvcMiddleware returns a Gin middleware that injects the Alt-Svc header
 // into all outgoing HTTP responses to advertise HTTP/3 availability over UDP.
-// Header format: Alt-Svc: h3=":8443"; ma=2592000
+// Header format: Alt-Svc: h3=":8443"; ma=2592000.
 func AltSvcMiddleware(h3Port string, maxAge int) gin.HandlerFunc {
 	if h3Port == "" {
 		h3Port = "8443"

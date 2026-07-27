@@ -16,14 +16,14 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
-// Common errors
+// Common errors.
 var (
 	ErrEmptyRing     = errors.New("hash ring is empty")
 	ErrNodeNotFound  = errors.New("node not found in ring")
 	ErrInvalidParams = errors.New("invalid parameters for vector query")
 )
 
-// QueryResult represents a single vector search match
+// QueryResult represents a single vector search match.
 type QueryResult struct {
 	VectorID string                 `json:"vector_id"`
 	TenantID string                 `json:"tenant_id"`
@@ -31,7 +31,7 @@ type QueryResult struct {
 	Payload  map[string]interface{} `json:"payload"`
 }
 
-// VectorSearchRequest represents the incoming HTTP/gRPC vector search payload
+// VectorSearchRequest represents the incoming HTTP/gRPC vector search payload.
 type VectorSearchRequest struct {
 	TenantID       string    `json:"tenant_id"`
 	CourseID       string    `json:"course_id"`
@@ -41,7 +41,7 @@ type VectorSearchRequest struct {
 	MultiShard     bool      `json:"multi_shard"`
 }
 
-// VectorSearchResponse represents the outbound vector search HTTP response
+// VectorSearchResponse represents the outbound vector search HTTP response.
 type VectorSearchResponse struct {
 	TargetNode string        `json:"target_node"`
 	IsFallback bool          `json:"is_fallback"`
@@ -50,7 +50,7 @@ type VectorSearchResponse struct {
 	LatencyMs  int64         `json:"latency_ms"`
 }
 
-// VectorQueryExecutor is a function type for querying a vector node
+// VectorQueryExecutor is a function type for querying a vector node.
 type VectorQueryExecutor func(ctx context.Context, targetNode string) ([]QueryResult, error)
 
 // NodeState indicates the health status of a vector shard node
@@ -497,7 +497,9 @@ func (vr *VectorRouter) ScatterGatherQuery(
 		})
 	}
 
-	_ = g.Wait()
+	if err := g.Wait(); err != nil && vr.logger != nil {
+		vr.logger.DebugContext(ctx, "ScatterGatherQuery errgroup finished with error", "err", err)
+	}
 	close(resultsChan)
 
 	var allResults [][]QueryResult
