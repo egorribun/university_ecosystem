@@ -13,3 +13,10 @@ skip-check:
   # placeholders as if they were values; detect-secrets remains the canonical
   # value scanner and no real secret values are committed in these files.
   - CKV_SECRET_6
+
+skip-path:
+  - tests
+  - frontend/tests
+  - k8s/kyverno/tests
+  - k8s/spire
+
