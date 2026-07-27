@@ -71,4 +71,3 @@ func TestWebTransportSession_EOF_And_Closed(t *testing.T) {
 	_, err = wtSess.getOrAcceptStream()
 	assert.Equal(t, io.EOF, err)
 }
-

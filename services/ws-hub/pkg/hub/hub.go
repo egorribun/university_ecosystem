@@ -92,13 +92,13 @@ type Hub struct {
 	limiterCleanupInterval time.Duration
 
 	// JetStream R1 fields
-	js                       nats.JetStreamContext
-	dedupCache               *lru.Cache[string, time.Time]
-	streamChat               string
-	streamNotif              string
-	durableChat              string
-	durableNotif             string
-	enableJetStream          bool
+	js              nats.JetStreamContext
+	dedupCache      *lru.Cache[string, time.Time]
+	streamChat      string
+	streamNotif     string
+	durableChat     string
+	durableNotif    string
+	enableJetStream bool
 }
 
 // safeAck attempts to ACK a NATS message, suppressing nats.ErrNotJS for core/synthetic NATS messages.
@@ -475,6 +475,7 @@ func (h *Hub) broadcastMessage(parentCtx context.Context, msg *Message) {
 // delivery to the current chat.{room_id} pattern.  Same tightening applied to
 // "notifications.*".  Both are intentional breaking changes if any internal
 // service currently publishes multi-level subjects under these prefixes.
+//
 //nolint:cyclop
 func (h *Hub) SubscribeToNATS(appCtx context.Context) {
 	if h.js == nil && h.Nats != nil && h.enableJetStream {

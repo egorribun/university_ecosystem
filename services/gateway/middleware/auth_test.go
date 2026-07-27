@@ -640,4 +640,3 @@ func TestValidate_TenantSpoofingDefense(t *testing.T) {
 		assert.Equal(t, "tenant-fallback-header", capturedTenantID)
 	})
 }
-

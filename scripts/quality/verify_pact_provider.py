@@ -27,18 +27,21 @@ def main() -> None:
 
     # Import only when invoked: Windows developers can still run the rest of
     # the contract suite even though pact_ffi is Linux CI infrastructure here.
+    from urllib.parse import urlparse
+
     from pact import Verifier
 
+    parsed_url = urlparse(args.provider_url)
+    host = parsed_url.hostname or "localhost"
+
     (
-        Verifier(args.provider)
+        Verifier(args.provider, host=host)
         .add_transport(url=args.provider_url)
         .add_source(pact_file)
         .set_request_timeout(10_000)
         .verify()
     )
-    print(
-        f"Pact provider verification passed: {args.provider} <- {pact_file.name}"
-    )
+    print(f"Pact provider verification passed: {args.provider} <- {pact_file.name}")
 
 
 if __name__ == "__main__":

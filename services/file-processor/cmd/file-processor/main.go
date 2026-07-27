@@ -128,10 +128,10 @@ func runMain(ctx context.Context) {
 	startNatsSubscriber(ctx, cfg, c, logger)
 
 	spiffeClient, err := spiffe.NewClient(ctx, spiffe.Config{
-		Enabled:    cfg.SpiffeEnabled,
-		SocketPath: cfg.SpiffeEndpointSocket,
+		Enabled:     cfg.SpiffeEnabled,
+		SocketPath:  cfg.SpiffeEndpointSocket,
 		TrustDomain: cfg.SpiffeTrustDomain,
-		MySpiffeID: cfg.SpiffeMyID,
+		MySpiffeID:  cfg.SpiffeMyID,
 	}, logger)
 	if err != nil {
 		logger.ErrorContext(ctx, "SPIFFE initialization failed", "err", err)

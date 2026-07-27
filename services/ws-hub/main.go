@@ -66,10 +66,10 @@ func main() {
 	}
 
 	spiffeClient, err := spiffe.NewClient(ctx, spiffe.Config{
-		Enabled:        cfg.SpiffeEnabled,
-		SocketPath:     cfg.SpiffeEndpointSocket,
-		TrustDomain:    cfg.SpiffeTrustDomain,
-		MySpiffeID:     cfg.SpiffeMyID,
+		Enabled:     cfg.SpiffeEnabled,
+		SocketPath:  cfg.SpiffeEndpointSocket,
+		TrustDomain: cfg.SpiffeTrustDomain,
+		MySpiffeID:  cfg.SpiffeMyID,
 	}, logger)
 	if err != nil {
 		logger.ErrorContext(ctx, "SPIFFE initialization failed", "err", err)

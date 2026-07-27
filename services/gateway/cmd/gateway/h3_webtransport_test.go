@@ -29,7 +29,7 @@ func generateUnitTestJWT(t *testing.T, secret []byte, userID, role, jti string) 
 }
 
 func TestGateway_AltSvcHeaderAndWSWebTransportRoutes(t *testing.T) {
-	const testJWTSecret = "my-secret-key-that-is-at-least-32-chars-long" // pragma: allowlist secret
+	const testJWTSecret = "my-secret-key-that-is-at-least-32-chars-long" // #nosec G101 // pragma: allowlist secret
 
 	// 1. Mock ws-hub backend server
 	capturedHeaders := make(http.Header)

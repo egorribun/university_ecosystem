@@ -267,4 +267,3 @@ func TestOptional_ProxyHandler_Integration(t *testing.T) {
 		assert.Empty(t, forwardedHeaders.Get("X-Internal-Signature"))
 	})
 }
-

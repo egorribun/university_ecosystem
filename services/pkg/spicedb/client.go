@@ -16,9 +16,9 @@ type Client interface {
 
 // MemoryClient implements Client for local evaluation and caching in Go services.
 type MemoryClient struct {
-	mu            sync.RWMutex
-	permissions   map[string]bool
-	tenantMap     map[string]string // campusID -> tenantID mapping
+	mu          sync.RWMutex
+	permissions map[string]bool
+	tenantMap   map[string]string // campusID -> tenantID mapping
 }
 
 // NewMemoryClient initializes an in-memory SpiceDB client for Go services.

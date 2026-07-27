@@ -248,4 +248,3 @@ func TestClient_ReplayOfflineMessages_ContextCancelled(t *testing.T) {
 		c.replayOfflineMessages("room-cancel", 0, "msg-1")
 	})
 }
-

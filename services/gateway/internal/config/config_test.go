@@ -392,4 +392,3 @@ func TestLoad_H3AndWebTransportDefaults(t *testing.T) {
 	assert.Equal(t, 2592000, cfg.H3AltSvcMaxAge)
 	assert.Equal(t, "http://ws-hub:8081", cfg.WsHubURL)
 }
-

@@ -624,4 +624,3 @@ func VectorSearchGRPCHandler(
 		LatencyMs:  time.Since(start).Milliseconds(),
 	}, nil
 }
-

@@ -38,8 +38,8 @@ import (
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
 
-	pb "github.com/university-ecosystem/core/gen/go/file_processor/v1"
 	"github.com/quic-go/quic-go/http3"
+	pb "github.com/university-ecosystem/core/gen/go/file_processor/v1"
 	"github.com/university-ecosystem/gateway/internal/config"
 	"github.com/university-ecosystem/gateway/internal/handlers"
 	"github.com/university-ecosystem/gateway/internal/tlsutil"
@@ -83,10 +83,10 @@ func main() {
 
 	// 4.5 Initialize SPIFFE Workload API Client
 	spiffeClient, err := spiffe.NewClient(ctx, spiffe.Config{
-		Enabled:        cfg.SpiffeEnabled,
-		SocketPath:     cfg.SpiffeEndpointSocket,
-		TrustDomain:    cfg.SpiffeTrustDomain,
-		MySpiffeID:     cfg.SpiffeMyID,
+		Enabled:     cfg.SpiffeEnabled,
+		SocketPath:  cfg.SpiffeEndpointSocket,
+		TrustDomain: cfg.SpiffeTrustDomain,
+		MySpiffeID:  cfg.SpiffeMyID,
 	}, logger)
 	if err != nil {
 		logger.ErrorContext(ctx, "SPIFFE initialization failed", "err", err)

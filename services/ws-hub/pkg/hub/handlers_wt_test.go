@@ -23,7 +23,7 @@ func newWTTestHub() *Hub {
 	cfg := &config.Config{
 		SendBufferSize:      256,
 		BroadcastBufferSize: 4096,
-		BroadcastWorkers:   2,
+		BroadcastWorkers:    2,
 		ClientMsgRateLimit:  10,
 		ClientMsgRateBurst:  20,
 	}

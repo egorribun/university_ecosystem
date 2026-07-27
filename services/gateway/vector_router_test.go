@@ -209,7 +209,7 @@ func TestVectorRouter_ScatterGatherQueryParallelExecution(t *testing.T) {
 		// Simulate network latency
 		time.Sleep(10 * time.Millisecond)
 		return []QueryResult{
-			{VectorID: fmt.Sprintf("vec-%s", node), Score: rand.Float32()},
+			{VectorID: fmt.Sprintf("vec-%s", node), Score: rand.Float32()}, // #nosec G404
 		}, nil
 	}
 
@@ -472,4 +472,3 @@ func TestVectorSearchGRPCHandler(t *testing.T) {
 	require.Len(t, resp.Results, 1)
 	assert.Equal(t, "grpc-v1", resp.Results[0].VectorID)
 }
-

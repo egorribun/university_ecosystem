@@ -531,4 +531,3 @@ func (c *Client) Disconnect(closeCode int, reason string) {
 		}
 	}
 }
-

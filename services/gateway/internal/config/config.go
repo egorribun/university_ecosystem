@@ -104,18 +104,18 @@ func Load() (*Config, error) {
 		// RZ-33-02: Configurable Sentry sample rate. Default 1.0 for dev;
 		// recommend 0.1 for production (set SENTRY_TRACES_SAMPLE_RATE=0.1).
 		SentryTracesSampleRate: getEnvFloat64("SENTRY_TRACES_SAMPLE_RATE", 1.0),
-		SpiffeEnabled:         os.Getenv("SPIFFE_ENABLED") == "true",
-		SpiffeEndpointSocket:  getEnv("SPIFFE_ENDPOINT_SOCKET", "unix:///run/spire/sockets/agent.sock"),
-		SpiffeTrustDomain:     getEnv("SPIFFE_TRUST_DOMAIN", "university.ecosystem"),
-		SpiffeMyID:            getEnv("SPIFFE_MY_ID", "spiffe://university.ecosystem/ns/default/sa/gateway"),
-		FileProcessorSpiffeID: getEnv("FILE_PROCESSOR_SPIFFE_ID", "spiffe://university.ecosystem/ns/default/sa/file-processor"),
-		BackendSpiffeID:       getEnv("BACKEND_SPIFFE_ID", "spiffe://university.ecosystem/ns/default/sa/app"),
-		H3Enabled:             getEnvBool("GATEWAY_H3_ENABLED", true),
-		H3Port:                getEnv("GATEWAY_H3_PORT", "8443"),
-		H3AltSvcMaxAge:        getEnvInt("GATEWAY_H3_ALT_SVC_MAX_AGE", 2592000),
-		TLSCertFile:           os.Getenv("TLS_CERT_FILE"),
-		TLSKeyFile:            os.Getenv("TLS_KEY_FILE"),
-		WsHubURL:              getEnv("WSHUB_URL", "http://ws-hub:8081"),
+		SpiffeEnabled:          os.Getenv("SPIFFE_ENABLED") == "true",
+		SpiffeEndpointSocket:   getEnv("SPIFFE_ENDPOINT_SOCKET", "unix:///run/spire/sockets/agent.sock"),
+		SpiffeTrustDomain:      getEnv("SPIFFE_TRUST_DOMAIN", "university.ecosystem"),
+		SpiffeMyID:             getEnv("SPIFFE_MY_ID", "spiffe://university.ecosystem/ns/default/sa/gateway"),
+		FileProcessorSpiffeID:  getEnv("FILE_PROCESSOR_SPIFFE_ID", "spiffe://university.ecosystem/ns/default/sa/file-processor"),
+		BackendSpiffeID:        getEnv("BACKEND_SPIFFE_ID", "spiffe://university.ecosystem/ns/default/sa/app"),
+		H3Enabled:              getEnvBool("GATEWAY_H3_ENABLED", true),
+		H3Port:                 getEnv("GATEWAY_H3_PORT", "8443"),
+		H3AltSvcMaxAge:         getEnvInt("GATEWAY_H3_ALT_SVC_MAX_AGE", 2592000),
+		TLSCertFile:            os.Getenv("TLS_CERT_FILE"),
+		TLSKeyFile:             os.Getenv("TLS_KEY_FILE"),
+		WsHubURL:               getEnv("WSHUB_URL", "http://ws-hub:8081"),
 	}
 
 	if cfg.JWTSecret == "" {

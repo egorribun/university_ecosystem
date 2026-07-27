@@ -111,6 +111,7 @@ func ProxyOrFileHandler(proxy *httputil.ReverseProxy, internalSecret []byte, ctx
 }
 
 // FileProcessSyncHandler proximales a synchronous file processing request to the file-processor service over gRPC.
+//
 //nolint:cyclop
 func FileProcessSyncHandler(ctx context.Context, grpcConn *grpc.ClientConn, fileClient pb.FileProcessingServiceClient, logger *slog.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) { //nolint:contextcheck // uses c.Request.Context() for gRPC calls

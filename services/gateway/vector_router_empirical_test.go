@@ -245,7 +245,7 @@ func TestEmpirical_Failover_ConcurrentFlappingStress(t *testing.T) {
 	executor := func(ctx context.Context, target string) ([]QueryResult, error) {
 		if target == "qdrant-flapping" {
 			atomic.AddInt64(&primaryQueryCount, 1)
-			if rand.Float32() < 0.4 { // 40% error rate
+			if rand.Float32() < 0.4 { // #nosec G404 // 40% error rate
 				return nil, fmt.Errorf("transient i/o error")
 			}
 			return []QueryResult{{VectorID: "qdrant-vec", Score: 0.88}}, nil
@@ -299,7 +299,7 @@ func TestEmpirical_ScatterGather_LargeScaleMergingCorrectness(t *testing.T) {
 	for s := 0; s < numShards; s++ {
 		shardResults[s] = make([]QueryResult, itemsPerShard)
 		for i := 0; i < itemsPerShard; i++ {
-			score := rand.Float32()
+			score := rand.Float32() // #nosec G404
 			res := QueryResult{
 				VectorID: fmt.Sprintf("s%d-v%d", s, i),
 				TenantID: fmt.Sprintf("tenant-%d", s),
@@ -386,7 +386,7 @@ func TestEmpirical_ScatterGatherQuery_ParallelPerformance(t *testing.T) {
 		select {
 		case <-time.After(simulatedLatency):
 			return []QueryResult{
-				{VectorID: fmt.Sprintf("vec-%s", target), Score: rand.Float32()},
+				{VectorID: fmt.Sprintf("vec-%s", target), Score: rand.Float32()}, // #nosec G404
 			}, nil
 		case <-ctx.Done():
 			return nil, ctx.Err()
