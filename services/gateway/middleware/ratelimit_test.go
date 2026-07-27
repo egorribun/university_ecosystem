@@ -203,7 +203,7 @@ func TestRateLimiter_Middleware_InMemoryFallbackOnRedisError(t *testing.T) {
 	cleanupCtx, cleanupCancel := context.WithCancel(context.Background())
 	t.Cleanup(func() {
 		cleanupCancel()
-		_ = rl.Close()
+		assert.NoError(t, rl.Close())
 	})
 
 	router := gin.New()
@@ -241,7 +241,7 @@ func TestNewRateLimiter_InvalidURLReturnsError(t *testing.T) {
 func TestRateLimiter_GetClient_ReturnsUnderlyingClient(t *testing.T) {
 	// redis.NewClient does not dial, so a white-box struct literal is enough.
 	client := redis.NewClient(&redis.Options{Addr: "localhost:6379"})
-	t.Cleanup(func() { _ = client.Close() })
+	t.Cleanup(func() { assert.NoError(t, client.Close()) })
 	rl := &RateLimiter{client: client}
 	assert.Same(t, client, rl.GetClient())
 }

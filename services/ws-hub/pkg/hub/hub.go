@@ -167,7 +167,7 @@ func NewHub(nc *nats.Conn, logger *slog.Logger, authClient RoomAuthClient, cfg *
 
 	dedupCache, err := lru.New[string, time.Time](10000)
 	if err != nil && logger != nil {
-		logger.Error("Failed to initialize dedup LRU cache", "err", err)
+		logger.ErrorContext(ctx, "Failed to initialize dedup LRU cache", "err", err)
 	}
 
 	var js nats.JetStreamContext

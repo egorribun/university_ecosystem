@@ -18,7 +18,6 @@ type WebTransportSession struct {
 	stream    *webtransport.Stream
 	streamMu  sync.Mutex
 	readLimit int64
-	readOnce  sync.Once
 	closed    bool
 	closeMu   sync.Mutex
 }
@@ -31,10 +30,12 @@ func NewWebTransportSession(sess *webtransport.Session) *WebTransportSession {
 	}
 }
 
+// TransportType returns the transport type identifier string ("webtransport").
 func (s *WebTransportSession) TransportType() string {
 	return "webtransport"
 }
 
+// RemoteAddr returns the remote network address of the WebTransport session.
 func (s *WebTransportSession) RemoteAddr() net.Addr {
 	if s.sess != nil {
 		return s.sess.RemoteAddr()
@@ -47,6 +48,7 @@ type dummyAddr struct{}
 func (dummyAddr) Network() string { return "udp" }
 func (dummyAddr) String() string  { return "127.0.0.1:0" }
 
+// Close closes the underlying WebTransport session and stream.
 func (s *WebTransportSession) Close() error {
 	s.closeMu.Lock()
 	defer s.closeMu.Unlock()
@@ -60,16 +62,20 @@ func (s *WebTransportSession) Close() error {
 	}
 	s.streamMu.Lock()
 	if s.stream != nil {
-		_ = s.stream.Close()
+		if err := s.stream.Close(); err != nil && closeErr == nil {
+			closeErr = err
+		}
 	}
 	s.streamMu.Unlock()
 	return closeErr
 }
 
+// SetReadLimit sets the maximum size in bytes for a read operation.
 func (s *WebTransportSession) SetReadLimit(limit int64) {
 	s.readLimit = limit
 }
 
+// SetReadDeadline sets the read deadline on the underlying stream.
 func (s *WebTransportSession) SetReadDeadline(t time.Time) error {
 	s.streamMu.Lock()
 	defer s.streamMu.Unlock()
@@ -79,6 +85,7 @@ func (s *WebTransportSession) SetReadDeadline(t time.Time) error {
 	return nil
 }
 
+// SetWriteDeadline sets the write deadline on the underlying stream.
 func (s *WebTransportSession) SetWriteDeadline(t time.Time) error {
 	s.streamMu.Lock()
 	defer s.streamMu.Unlock()
@@ -88,6 +95,7 @@ func (s *WebTransportSession) SetWriteDeadline(t time.Time) error {
 	return nil
 }
 
+// SetPongHandler sets the handler for pong messages (no-op for WebTransport).
 func (s *WebTransportSession) SetPongHandler(h func(appData string) error) {
 	// WebTransport runs over QUIC which natively handles keep-alives at transport level.
 	// Pong handler is a no-op for WebTransport.
@@ -118,6 +126,7 @@ func (s *WebTransportSession) getOrAcceptStream() (*webtransport.Stream, error) 
 	return st, nil
 }
 
+// ReadMessage reads a message payload from the stream.
 func (s *WebTransportSession) ReadMessage() (int, []byte, error) {
 	st, err := s.getOrAcceptStream()
 	if err != nil {
@@ -132,6 +141,7 @@ func (s *WebTransportSession) ReadMessage() (int, []byte, error) {
 	return websocket.TextMessage, buf[:n], nil
 }
 
+// WriteMessage writes a message payload to the stream or datagram.
 func (s *WebTransportSession) WriteMessage(messageType int, data []byte) error {
 	if messageType == websocket.PingMessage || messageType == websocket.PongMessage {
 		// QUIC handles keep-alives natively.

@@ -158,10 +158,7 @@ func (c *Client) ReadPump() {
 		})
 	}
 
-	for {
-		if c.Conn == nil {
-			break
-		}
+	for c.Conn != nil {
 		_, data, err := c.Conn.ReadMessage()
 		if err != nil {
 			if isNormalCloseError(err) {
