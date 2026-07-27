@@ -78,7 +78,7 @@ func (s NodeState) String() string {
 	}
 }
 
-// HashRing implements virtual node consistent hashing using xxhash
+// HashRing implements virtual node consistent hashing using xxhash.
 type HashRing struct {
 	mu          sync.RWMutex
 	vnodes      int
@@ -87,7 +87,7 @@ type HashRing struct {
 	nodes       map[string]bool
 }
 
-// NewHashRing constructs a HashRing with specified vnodes per physical node
+// NewHashRing constructs a HashRing with specified vnodes per physical node.
 func NewHashRing(vnodes int) *HashRing {
 	if vnodes <= 0 {
 		vnodes = 128
@@ -100,7 +100,7 @@ func NewHashRing(vnodes int) *HashRing {
 	}
 }
 
-// AddNode adds a physical node to the ring with virtual nodes
+// AddNode adds a physical node to the ring with virtual nodes.
 func (h *HashRing) AddNode(node string) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
@@ -128,7 +128,7 @@ func (h *HashRing) AddNode(node string) {
 	})
 }
 
-// RemoveNode removes a physical node and its virtual nodes from the ring
+// RemoveNode removes a physical node and its virtual nodes from the ring.
 func (h *HashRing) RemoveNode(node string) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
@@ -151,7 +151,7 @@ func (h *HashRing) RemoveNode(node string) {
 	h.ring = newRing
 }
 
-// GetNode returns the physical node mapped to key/tenant_id via consistent hashing
+// GetNode returns the physical node mapped to key/tenant_id via consistent hashing.
 func (h *HashRing) GetNode(key string) (string, error) {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
@@ -172,7 +172,7 @@ func (h *HashRing) GetNode(key string) (string, error) {
 	return h.vnodeToNode[h.ring[idx]], nil
 }
 
-// GetNodes returns all physical nodes in the ring
+// GetNodes returns all physical nodes in the ring.
 func (h *HashRing) GetNodes() []string {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
@@ -185,7 +185,7 @@ func (h *HashRing) GetNodes() []string {
 	return nodes
 }
 
-// ResultMinHeap implements container/heap.Interface for bounded top-K min-heap
+// ResultMinHeap implements container/heap.Interface for bounded top-K min-heap.
 type ResultMinHeap []QueryResult
 
 func (h ResultMinHeap) Len() int           { return len(h) }
@@ -206,7 +206,7 @@ func (h *ResultMinHeap) Pop() interface{} {
 	return item
 }
 
-// ScatterGatherMerger merges multi-shard results into a bounded top-K slice ordered by score descending
+// ScatterGatherMerger merges multi-shard results into a bounded top-K slice ordered by score descending.
 func ScatterGatherMerger(shardResults [][]QueryResult, topK int) []QueryResult {
 	if topK <= 0 {
 		return []QueryResult{}
