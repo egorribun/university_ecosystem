@@ -13,6 +13,7 @@ on:
 
 permissions:
   contents: write # Required to push benchmark data to gh-pages or benchmark branch
+  pull-requests: write
 
 jobs:
   benchmark:

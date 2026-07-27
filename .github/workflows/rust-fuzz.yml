@@ -99,8 +99,10 @@ jobs:
       matrix:
         include:
           - directory: frontend/wasm-sanitizer/fuzz
+            name: frontend-wasm-sanitizer-fuzz
             targets: "fuzz_sanitize_rich_text fuzz_strip_html"
           - directory: frontend/rust-crypto/fuzz
+            name: frontend-rust-crypto-fuzz
             targets: "fuzz_hmac fuzz_scrypt"
     steps:
       - name: Checkout repository
@@ -137,7 +139,7 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
-          name: fuzz-crashes-${{ matrix.directory }}
+          name: fuzz-crashes-${{ matrix.name }}
           path: |
             ${{ matrix.directory }}/artifacts/
             ${{ matrix.directory }}/crash-*

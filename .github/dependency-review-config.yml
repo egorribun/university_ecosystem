@@ -33,7 +33,9 @@ allow-licenses:
   - LicenseRef-scancode-protobuf
   - LicenseRef-scancode-google-patent-license-golang
 
-allow-ghsas: []
+allow-ghsas:
+  - "GHSA-4c8g-83qw-93j6"
+  - "GHSA-v2hh-gcrm-f6hx"
 
 # W149 SW4 — per-package allow for pact-python 3.4.0+.
 # Bot reports "We could not detect a license" because the package's
