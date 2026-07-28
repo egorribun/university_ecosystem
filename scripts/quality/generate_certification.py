@@ -104,9 +104,7 @@ def main() -> int:
     for report_dir in args.report_dir:
         if not report_dir.is_dir():
             parser.error(f"report directory does not exist: {report_dir}")
-        report_paths.extend(
-            path for path in report_dir.rglob("*") if path.is_file()
-        )
+        report_paths.extend(path for path in report_dir.rglob("*") if path.is_file())
     missing = [
         str(path) for path in [args.contract, *report_paths] if not path.is_file()
     ]

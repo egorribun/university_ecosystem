@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -122,16 +122,12 @@ async def test_fetch_recent_attempts_clamps_limit_and_reverses_db_order(
     attempts = await service._fetch_recent_attempts("ordered@example.com", 0)
 
     assert attempts == [second, first]
-    service.repo.get_failed_attempts.assert_awaited_once_with(
-        "ordered@example.com", 1
-    )
+    service.repo.get_failed_attempts.assert_awaited_once_with("ordered@example.com", 1)
     service.repo.get_failed_attempts.reset_mock()
 
     await service._fetch_recent_attempts("ordered@example.com", 2)
 
-    service.repo.get_failed_attempts.assert_awaited_once_with(
-        "ordered@example.com", 2
-    )
+    service.repo.get_failed_attempts.assert_awaited_once_with("ordered@example.com", 2)
 
 
 @pytest.mark.asyncio
@@ -230,7 +226,9 @@ async def test_register_failed_attempt_uses_postgres_advisory_lock(monkeypatch) 
 
 
 @pytest.mark.asyncio
-async def test_register_failed_attempt_skips_postgres_lock_for_sqlite(monkeypatch) -> None:
+async def test_register_failed_attempt_skips_postgres_lock_for_sqlite(
+    monkeypatch,
+) -> None:
     from app.core.config import settings
     from app.services.auth.lockout import LockoutService
 

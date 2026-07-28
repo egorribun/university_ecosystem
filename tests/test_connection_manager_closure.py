@@ -324,8 +324,7 @@ async def test_broadcast_presence_throttle_and_empty_audience() -> None:
         ),
     ):
         assert (
-            await manager.broadcast_presence(user_id, False, None, source="test")
-            == 0
+            await manager.broadcast_presence(user_id, False, None, source="test") == 0
         )
 
 
@@ -362,9 +361,7 @@ def test_connection_manager_dependency_prefers_app_state_then_global() -> None:
 
     app_manager = object()
     request = SimpleNamespace(
-        app=SimpleNamespace(
-            state=SimpleNamespace(connection_manager=app_manager)
-        )
+        app=SimpleNamespace(state=SimpleNamespace(connection_manager=app_manager))
     )
     assert module.get_connection_manager(request) is app_manager
     fallback_request = SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace()))

@@ -139,7 +139,9 @@ async def test_login_json_returns_completed_login_without_fingerprint_storage() 
     result = MagicMock()
     login_service.perform_login.return_value = result
     request = _request_with_services(login_service=login_service)
-    payload = MagicMock(email="user@example.com", password="Password1!", trust_device=False)
+    payload = MagicMock(
+        email="user@example.com", password="Password1!", trust_device=False
+    )
 
     with patch(
         "app.api.auth.login.store_mfa_challenge_fingerprints",

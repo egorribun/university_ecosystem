@@ -90,7 +90,9 @@ def upgrade() -> None:
         if bind.dialect.name == "postgresql":
             op.execute(f"ALTER TABLE {table_name} ENABLE ROW LEVEL SECURITY;")
             op.execute(f"ALTER TABLE {table_name} FORCE ROW LEVEL SECURITY;")
-            op.execute(f"DROP POLICY IF EXISTS tenant_isolation_policy ON {table_name};")
+            op.execute(
+                f"DROP POLICY IF EXISTS tenant_isolation_policy ON {table_name};"
+            )
             op.execute(
                 f"CREATE POLICY tenant_isolation_policy ON {table_name} AS RESTRICTIVE "
                 f"USING (current_setting('app.bypass_rls', true) = 'on' "
@@ -109,7 +111,9 @@ def downgrade() -> None:
             continue
 
         if bind.dialect.name == "postgresql":
-            op.execute(f"DROP POLICY IF EXISTS tenant_isolation_policy ON {table_name};")
+            op.execute(
+                f"DROP POLICY IF EXISTS tenant_isolation_policy ON {table_name};"
+            )
             op.execute(f"ALTER TABLE {table_name} DISABLE ROW LEVEL SECURITY;")
 
         columns = [col["name"] for col in inspector.get_columns(table_name)]

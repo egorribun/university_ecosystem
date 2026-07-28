@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import time
 import uuid
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -11,16 +10,12 @@ import pytest
 from authzed.api.v1 import CheckPermissionResponse
 
 from app.auth.rbac import (
-    _GRACE_TTL_SECONDS,
-    _PERMISSION_CACHE_MAX_SIZE,
-    _PERMISSION_POSITIVE_TTL_SECONDS,
     PermissionChecker,
     SpiceDBUnavailableError,
     _permission_cache,
     _spicedb_breaker,
 )
 from app.core.circuit_breaker import CircuitBreakerState
-
 
 
 @pytest.fixture(autouse=True)
@@ -33,7 +28,6 @@ def reset_spicedb_state():
     _spicedb_breaker._internal_state.last_state_change_time = time.monotonic()
     yield
     _permission_cache.clear()
-
 
 
 @pytest.mark.asyncio
@@ -55,7 +49,9 @@ async def test_spicedb_cache_key_tenant_and_campus_isolation():
                 permissionship=CheckPermissionResponse.PERMISSIONSHIP_HAS_PERMISSION
             )
         )
-        res1 = await checker.check_campus_permission(campus_id, "view", user_id, tenant_id=tenant1)
+        res1 = await checker.check_campus_permission(
+            campus_id, "view", user_id, tenant_id=tenant1
+        )
         assert res1 is True
 
         # Tenant 2 denied permission
@@ -64,7 +60,9 @@ async def test_spicedb_cache_key_tenant_and_campus_isolation():
                 permissionship=CheckPermissionResponse.PERMISSIONSHIP_NO_PERMISSION
             )
         )
-        res2 = await checker.check_campus_permission(campus_id, "view", user_id, tenant_id=tenant2)
+        res2 = await checker.check_campus_permission(
+            campus_id, "view", user_id, tenant_id=tenant2
+        )
         assert res2 is False
 
         # Verify cache has two distinct entries
@@ -92,17 +90,23 @@ async def test_spicedb_two_tier_grace_period_cache():
                 permissionship=CheckPermissionResponse.PERMISSIONSHIP_HAS_PERMISSION
             )
         )
-        assert await checker.check_permission("document", res_id, "read", user_id) is True
+        assert (
+            await checker.check_permission("document", res_id, "read", user_id) is True
+        )
 
         # Now simulate SpiceDB outage
-        mock_stub.CheckPermission = AsyncMock(side_effect=Exception("gRPC Connection Refused"))
+        mock_stub.CheckPermission = AsyncMock(
+            side_effect=Exception("gRPC Connection Refused")
+        )
 
         # Case A: Within 45s positive TTL -> served from grace cache
         with patch("time.monotonic") as mock_time:
             # Assume 10 seconds elapsed since cache population
             cached_entry = list(_permission_cache.values())[0]
             mock_time.return_value = cached_entry[1] + 10.0
-            stale_res = await checker.check_permission("document", res_id, "read", user_id)
+            stale_res = await checker.check_permission(
+                "document", res_id, "read", user_id
+            )
             assert stale_res is True
 
         # Case B: Exceeds 45s positive TTL (e.g. 50s elapsed) -> raises SpiceDBUnavailableError (fail closed)
@@ -121,7 +125,10 @@ async def test_spicedb_two_tier_grace_period_cache():
                 permissionship=CheckPermissionResponse.PERMISSIONSHIP_NO_PERMISSION
             )
         )
-        assert await checker.check_permission("document", res_id, "write", user_id) is False
+        assert (
+            await checker.check_permission("document", res_id, "write", user_id)
+            is False
+        )
 
         mock_stub.CheckPermission = AsyncMock(side_effect=Exception("gRPC Timeout"))
 
@@ -129,7 +136,9 @@ async def test_spicedb_two_tier_grace_period_cache():
         with patch("time.monotonic") as mock_time:
             cached_entry = list(_permission_cache.values())[0]
             mock_time.return_value = cached_entry[1] + 55.0
-            stale_deny = await checker.check_permission("document", res_id, "write", user_id)
+            stale_deny = await checker.check_permission(
+                "document", res_id, "write", user_id
+            )
             assert stale_deny is False
 
         # Exceeds 60s DENY TTL (e.g. 65s elapsed) -> raises SpiceDBUnavailableError

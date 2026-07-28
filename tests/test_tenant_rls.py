@@ -57,7 +57,9 @@ def test_tenant_context_middleware() -> None:
     assert response.json()["state_tenant_id"] == valid_uuid
     assert response.headers.get("x-tenant-id") == valid_uuid
 
-    response_invalid = client.get("/test-tenant", headers={"X-Tenant-ID": "non-uuid-tenant-slug"})
+    response_invalid = client.get(
+        "/test-tenant", headers={"X-Tenant-ID": "non-uuid-tenant-slug"}
+    )
     assert response_invalid.status_code == 200
     assert response_invalid.json()["tenant_id"] == ""
     assert response_invalid.json()["state_tenant_id"] == ""
@@ -98,7 +100,9 @@ def test_pg_tenant_context_listener_postgresql() -> None:
         set_pg_tenant_context(None, None, mock_conn)
         assert mock_conn.execute.call_count == 1
         call_args = mock_conn.execute.call_args
-        assert "SELECT set_config('app.current_tenant', :tenant_id, true);" in str(call_args[0][0])
+        assert "SELECT set_config('app.current_tenant', :tenant_id, true);" in str(
+            call_args[0][0]
+        )
         assert call_args[0][1] == {"tenant_id": "tenant-guu-789"}
     finally:
         set_current_tenant(None)
@@ -110,7 +114,9 @@ def test_pg_tenant_context_listener_postgresql() -> None:
         set_pg_tenant_context(None, None, mock_conn)
         assert mock_conn.execute.call_count == 1
         call_args = mock_conn.execute.call_args
-        assert "SELECT set_config('app.bypass_rls', :bypass_rls, true);" in str(call_args[0][0])
+        assert "SELECT set_config('app.bypass_rls', :bypass_rls, true);" in str(
+            call_args[0][0]
+        )
         assert call_args[0][1] == {"bypass_rls": "on"}
     finally:
         set_bypass_rls(False)
@@ -149,7 +155,9 @@ async def test_spicedb_permission_checker_tenant_campus() -> None:
             )
         )
 
-        has_tenant_perm = await checker.check_tenant_permission(tenant_id, "view", user_id)
+        has_tenant_perm = await checker.check_tenant_permission(
+            tenant_id, "view", user_id
+        )
         assert has_tenant_perm is True
         mock_stub.CheckPermission.assert_called_once()
         req = mock_stub.CheckPermission.call_args[0][0]
@@ -161,7 +169,9 @@ async def test_spicedb_permission_checker_tenant_campus() -> None:
 
         mock_stub.CheckPermission.reset_mock()
 
-        has_campus_perm = await checker.check_campus_permission(campus_id, "view", user_id, tenant_id=tenant_id)
+        has_campus_perm = await checker.check_campus_permission(
+            campus_id, "view", user_id, tenant_id=tenant_id
+        )
         assert has_campus_perm is True
         mock_stub.CheckPermission.assert_called_once()
         req_campus = mock_stub.CheckPermission.call_args[0][0]
@@ -176,9 +186,12 @@ async def test_spicedb_permission_checker_tenant_campus() -> None:
             )
         )
 
-        has_tenant_perm_denied = await checker.check_tenant_permission(tenant_id, "edit", user_id)
+        has_tenant_perm_denied = await checker.check_tenant_permission(
+            tenant_id, "edit", user_id
+        )
         assert has_tenant_perm_denied is False
 
-        has_campus_perm_denied = await checker.check_campus_permission(campus_id, "edit", user_id)
+        has_campus_perm_denied = await checker.check_campus_permission(
+            campus_id, "edit", user_id
+        )
         assert has_campus_perm_denied is False
-

@@ -35,9 +35,11 @@ def generate_self_signed_pem() -> tuple[bytes, bytes]:
     from cryptography.x509.oid import NameOID
 
     key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
-    subject = issuer = x509.Name([
-        x509.NameAttribute(NameOID.COMMON_NAME, "university.ecosystem"),
-    ])
+    subject = issuer = x509.Name(
+        [
+            x509.NameAttribute(NameOID.COMMON_NAME, "university.ecosystem"),
+        ]
+    )
     cert = (
         x509.CertificateBuilder()
         .subject_name(subject)
@@ -60,6 +62,7 @@ def generate_self_signed_pem() -> tuple[bytes, bytes]:
 @pytest.mark.asyncio
 async def test_header_spoofing_vulnerability_in_spiffe_middleware():
     """Vulnerability Test 1: Verify whether SPIFFEAuthMiddleware accepts x-spiffe-id from unauthenticated client headers."""
+
     async def dummy_app(scope, receive, send):
         response = PlainTextResponse("Secret Internal Data")
         await response(scope, receive, send)
@@ -79,6 +82,7 @@ async def test_header_spoofing_vulnerability_in_spiffe_middleware():
         "headers": [],
     }
     sent_messages_a = []
+
     async def send_a(message):
         sent_messages_a.append(message)
 
@@ -95,6 +99,7 @@ async def test_header_spoofing_vulnerability_in_spiffe_middleware():
         ],
     }
     sent_messages_b = []
+
     async def send_b(message):
         sent_messages_b.append(message)
 
@@ -102,8 +107,10 @@ async def test_header_spoofing_vulnerability_in_spiffe_middleware():
 
     # IF the middleware accepts header spoofing, sent_messages_b will be 200 (dummy_app response)
     # FOR SECURE ZERO TRUST: Header spoofing MUST BE REJECTED (status 403).
-    is_vulnerable_to_spoofing = (sent_messages_b[0]["status"] == 200)
-    print(f"\n[EMPIRICAL TEST] Header Spoofing Vulnerability Present: {is_vulnerable_to_spoofing}")
+    is_vulnerable_to_spoofing = sent_messages_b[0]["status"] == 200
+    print(
+        f"\n[EMPIRICAL TEST] Header Spoofing Vulnerability Present: {is_vulnerable_to_spoofing}"
+    )
 
     # Assert status is 403 (this will fail if vulnerable, empirically confirming the bug)
     assert sent_messages_b[0]["status"] == 403, (
@@ -114,6 +121,7 @@ async def test_header_spoofing_vulnerability_in_spiffe_middleware():
 @pytest.mark.asyncio
 async def test_untrusted_spiffe_id_rejection():
     """Verify that SPIFFEAuthMiddleware rejects untrusted SPIFFE IDs from peercert."""
+
     async def dummy_app(scope, receive, send):
         response = PlainTextResponse("Secret Internal Data")
         await response(scope, receive, send)
@@ -128,7 +136,9 @@ async def test_untrusted_spiffe_id_rejection():
     # Mock transport with untrusted peer cert
     mock_transport = MagicMock()
     mock_transport.get_extra_info.return_value = {
-        "subjectAltName": [("URI", "spiffe://university.ecosystem/ns/default/sa/attacker")]
+        "subjectAltName": [
+            ("URI", "spiffe://university.ecosystem/ns/default/sa/attacker")
+        ]
     }
 
     scope_untrusted = {
@@ -139,6 +149,7 @@ async def test_untrusted_spiffe_id_rejection():
         "transport": mock_transport,
     }
     sent_messages = []
+
     async def send(message):
         sent_messages.append(message)
 
@@ -205,7 +216,9 @@ def test_ssl_context_staleness_on_svid_rotation():
         # Verify that existing `ctx` (SSLContext) still retains initial loaded_certs[0]
         # and create_spiffe_server_ssl_context returns a static SSLContext without SNI/cert reload callbacks.
         print(f"\n[EMPIRICAL TEST] Initial SSLContext loaded cert: {loaded_certs[0]}")
-        print(f"\n[EMPIRICAL TEST] Active SVID in SVIDManager updated: cert_bytes={manager.get_svid_pem_pair()[0]}")
+        print(
+            f"\n[EMPIRICAL TEST] Active SVID in SVIDManager updated: cert_bytes={manager.get_svid_pem_pair()[0]}"
+        )
 
         # Verify that existing SSLContext `ctx` was NOT automatically updated upon SVID rotation
         assert len(loaded_certs) == 1, (
@@ -343,5 +356,3 @@ def test_get_server_and_client_ssl_context_dynamic_reload():
         _ = manager.get_server_ssl_context()
         assert len(loaded_certs) == 2
         assert loaded_certs[1] == ("CERT_2_ROTATED", "KEY_2_ROTATED")
-
-

@@ -21,7 +21,6 @@ import pytest
 
 from app.core.security.spiffe import (
     SVIDManager,
-    create_spiffe_client_ssl_context,
     create_spiffe_server_ssl_context,
 )
 
@@ -69,7 +68,9 @@ def generate_ca() -> tuple[Any, Any, bytes]:
     return ca_cert, ca_key, ca_pem
 
 
-def generate_svid(ca_cert: Any, ca_key: Any, common_name: str, spiffe_id: str) -> tuple[bytes, bytes]:
+def generate_svid(
+    ca_cert: Any, ca_key: Any, common_name: str, spiffe_id: str
+) -> tuple[bytes, bytes]:
     """Generate a new workload SVID leaf cert and private key PEM signed by the given CA."""
     from cryptography import x509
     from cryptography.hazmat.primitives import hashes, serialization
@@ -87,10 +88,12 @@ def generate_svid(ca_cert: Any, ca_key: Any, common_name: str, spiffe_id: str) -
         .not_valid_before(datetime.now(UTC) - timedelta(minutes=5))
         .not_valid_after(datetime.now(UTC) + timedelta(hours=1))
         .add_extension(
-            x509.SubjectAlternativeName([
-                x509.UniformResourceIdentifier(spiffe_id),
-                x509.DNSName(common_name),
-            ]),
+            x509.SubjectAlternativeName(
+                [
+                    x509.UniformResourceIdentifier(spiffe_id),
+                    x509.DNSName(common_name),
+                ]
+            ),
             critical=False,
         )
         .add_extension(
@@ -98,10 +101,12 @@ def generate_svid(ca_cert: Any, ca_key: Any, common_name: str, spiffe_id: str) -
             critical=False,
         )
         .add_extension(
-            x509.ExtendedKeyUsage([
-                ExtendedKeyUsageOID.SERVER_AUTH,
-                ExtendedKeyUsageOID.CLIENT_AUTH,
-            ]),
+            x509.ExtendedKeyUsage(
+                [
+                    ExtendedKeyUsageOID.SERVER_AUTH,
+                    ExtendedKeyUsageOID.CLIENT_AUTH,
+                ]
+            ),
             critical=False,
         )
         .sign(ca_key, hashes.SHA256())
@@ -115,7 +120,9 @@ def generate_svid(ca_cert: Any, ca_key: Any, common_name: str, spiffe_id: str) -
     return svid_pem, key_pem
 
 
-def generate_ca_and_svid_pem(common_name: str, spiffe_id: str) -> tuple[bytes, bytes, bytes]:
+def generate_ca_and_svid_pem(
+    common_name: str, spiffe_id: str
+) -> tuple[bytes, bytes, bytes]:
     ca_cert, ca_key, ca_pem = generate_ca()
     svid_pem, key_pem = generate_svid(ca_cert, ca_key, common_name, spiffe_id)
     return ca_pem, svid_pem, key_pem
@@ -154,7 +161,10 @@ async def test_high_concurrency_mtls_with_dynamic_svid_rotations():
     """Stress test: 100 concurrent mTLS handshakes while SVID certs rotate dynamically."""
     ca_cert, ca_key, ca_pem = generate_ca()
     svid_pem_1, key_pem_1 = generate_svid(
-        ca_cert, ca_key, "server.ecosystem", "spiffe://university.ecosystem/ns/default/sa/app"
+        ca_cert,
+        ca_key,
+        "server.ecosystem",
+        "spiffe://university.ecosystem/ns/default/sa/app",
     )
 
     import app.core.security.spiffe as spiffe_mod
@@ -170,7 +180,9 @@ async def test_high_concurrency_mtls_with_dynamic_svid_rotations():
     server_ctx = manager.get_server_ssl_context()
 
     # Echo server handler
-    async def handle_echo(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
+    async def handle_echo(
+        reader: asyncio.StreamReader, writer: asyncio.StreamWriter
+    ) -> None:
         try:
             data = await reader.read(100)
             if data:
@@ -199,7 +211,10 @@ async def test_high_concurrency_mtls_with_dynamic_svid_rotations():
             time.sleep(0.05)
             # Generate new rotated SVID signed by SAME CA
             new_svid, new_key = generate_svid(
-                ca_cert, ca_key, "server.ecosystem", "spiffe://university.ecosystem/ns/default/sa/app"
+                ca_cert,
+                ca_key,
+                "server.ecosystem",
+                "spiffe://university.ecosystem/ns/default/sa/app",
             )
             source.update_svid(new_svid, new_key)
             rotation_count += 1
@@ -223,7 +238,7 @@ async def test_high_concurrency_mtls_with_dynamic_svid_rotations():
                     ssl=c_ctx,
                     server_hostname="server.ecosystem",
                 )
-                msg = f"HELLO_{client_id}".encode("utf-8")
+                msg = f"HELLO_{client_id}".encode()
                 writer.write(msg)
                 await writer.drain()
                 resp = await reader.read(100)
@@ -255,8 +270,12 @@ async def test_high_concurrency_mtls_with_dynamic_svid_rotations():
         f"Handshake Failures: {failures}\n"
     )
 
-    assert failures == 0, f"Expected 0 failures during dynamic SVID rotation under concurrency, got {failures}"
-    assert successes == 250, f"Expected 250 total successful handshakes, got {successes}"
+    assert failures == 0, (
+        f"Expected 0 failures during dynamic SVID rotation under concurrency, got {failures}"
+    )
+    assert successes == 250, (
+        f"Expected 250 total successful handshakes, got {successes}"
+    )
 
 
 def test_concurrent_ssl_context_building_and_temp_file_cleanup():
@@ -294,7 +313,9 @@ def test_concurrent_ssl_context_building_and_temp_file_cleanup():
     leaked_files = final_tmp_files - initial_tmp_files
 
     print(f"\n[EMPIRICAL TEMP FILE LEAK TEST] Leaked temp files: {len(leaked_files)}")
-    assert len(leaked_files) == 0, f"Detected {len(leaked_files)} leaked temporary files during concurrent SSLContext generation"
+    assert len(leaked_files) == 0, (
+        f"Detected {len(leaked_files)} leaked temporary files during concurrent SSLContext generation"
+    )
 
 
 def test_sni_callback_concurrency_stress():
@@ -307,7 +328,10 @@ def test_sni_callback_concurrency_stress():
 
     ca_cert, ca_key, ca_pem = generate_ca()
     svid_pem, key_pem = generate_svid(
-        ca_cert, ca_key, "server.ecosystem", "spiffe://university.ecosystem/ns/default/sa/app"
+        ca_cert,
+        ca_key,
+        "server.ecosystem",
+        "spiffe://university.ecosystem/ns/default/sa/app",
     )
     source = MockX509Source(ca_pem, svid_pem, key_pem)
     manager = SVIDManager(enabled=True)
@@ -322,7 +346,10 @@ def test_sni_callback_concurrency_stress():
             try:
                 # Update SVID
                 new_svid, new_key = generate_svid(
-                    ca_cert, ca_key, "server.ecosystem", "spiffe://university.ecosystem/ns/default/sa/app"
+                    ca_cert,
+                    ca_key,
+                    "server.ecosystem",
+                    "spiffe://university.ecosystem/ns/default/sa/app",
                 )
                 source.update_svid(new_svid, new_key)
 

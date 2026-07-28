@@ -327,8 +327,9 @@ def test_create_worker_metrics_requires_prometheus() -> None:
 
 
 @pytest.mark.asyncio
-async def test_periodic_task_tracking_records_success_failure_cancel_and_values(
-) -> None:
+async def test_periodic_task_tracking_records_success_failure_cancel_and_values() -> (
+    None
+):
     from app.core import observability
 
     metrics = observability.get_periodic_task_metrics(
@@ -376,8 +377,9 @@ async def test_worker_monitoring_app_exposes_health_and_metrics() -> None:
 
 
 @pytest.mark.asyncio
-async def test_worker_monitoring_server_validates_port_and_handles_bool_started(
-) -> None:
+async def test_worker_monitoring_server_validates_port_and_handles_bool_started() -> (
+    None
+):
     from app.core import observability
 
     with pytest.raises(ValueError, match="positive"):

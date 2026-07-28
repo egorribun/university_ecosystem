@@ -137,9 +137,7 @@ async def test_presence_pubsub_initialize_from_shared_redis_and_fallback() -> No
     )
     with (
         patch.object(presence, "settings", settings),
-        patch(
-            "app.deps.cache.get_cache_client", new=AsyncMock(return_value=redis)
-        ),
+        patch("app.deps.cache.get_cache_client", new=AsyncMock(return_value=redis)),
         patch.object(
             presence.asyncio,
             "create_task",
@@ -176,8 +174,9 @@ async def test_presence_pubsub_initialize_from_shared_redis_and_fallback() -> No
 
 
 @pytest.mark.asyncio
-async def test_presence_pubsub_initialize_without_redis_does_not_start_listener(
-) -> None:
+async def test_presence_pubsub_initialize_without_redis_does_not_start_listener() -> (
+    None
+):
     from app.api.ws import presence
 
     settings = SimpleNamespace(

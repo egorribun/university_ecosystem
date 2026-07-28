@@ -6,7 +6,6 @@ Verifies zero `KEY_VALUES_MISMATCH` or `NO_PRIVATE_KEY_ASSIGNED` errors under hi
 
 from __future__ import annotations
 
-import os
 import socket
 import ssl
 import sys
@@ -30,10 +29,14 @@ from app.core.security.spiffe import (
 )
 
 
-def generate_ca_and_cert_key_pairs(num_pairs: int = 5) -> tuple[bytes, list[tuple[bytes, bytes]]]:
+def generate_ca_and_cert_key_pairs(
+    num_pairs: int = 5,
+) -> tuple[bytes, list[tuple[bytes, bytes]]]:
     """Generate a shared self-signed CA certificate and N child cert/key pairs signed by that CA."""
     ca_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
-    ca_name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "university.ecosystem CA")])
+    ca_name = x509.Name(
+        [x509.NameAttribute(NameOID.COMMON_NAME, "university.ecosystem CA")]
+    )
     ski = x509.SubjectKeyIdentifier.from_public_key(ca_key.public_key())
     ca_cert = (
         x509.CertificateBuilder()
@@ -52,8 +55,16 @@ def generate_ca_and_cert_key_pairs(num_pairs: int = 5) -> tuple[bytes, list[tupl
     pairs = []
     for _ in range(num_pairs):
         leaf_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
-        leaf_name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "university.ecosystem")])
-        san = x509.SubjectAlternativeName([x509.UniformResourceIdentifier("spiffe://university.ecosystem/ns/default/sa/app")])
+        leaf_name = x509.Name(
+            [x509.NameAttribute(NameOID.COMMON_NAME, "university.ecosystem")]
+        )
+        san = x509.SubjectAlternativeName(
+            [
+                x509.UniformResourceIdentifier(
+                    "spiffe://university.ecosystem/ns/default/sa/app"
+                )
+            ]
+        )
         aki = x509.AuthorityKeyIdentifier.from_issuer_public_key(ca_key.public_key())
         leaf_cert = (
             x509.CertificateBuilder()
@@ -112,11 +123,13 @@ def run_mtls_concurrency_stress_test(
 ) -> dict:
     """Execute high-concurrency mTLS handshakes during continuous SVID cert rotation."""
     total_attempted = num_threads * handshakes_per_thread
-    print(f"\n=======================================================")
-    print(f"STARTING SPIFFE mTLS CONCURRENCY STRESS TEST")
-    print(f"Threads: {num_threads}, Handshakes/thread: {handshakes_per_thread}, Total: {total_attempted}")
+    print("\n=======================================================")
+    print("STARTING SPIFFE mTLS CONCURRENCY STRESS TEST")
+    print(
+        f"Threads: {num_threads}, Handshakes/thread: {handshakes_per_thread}, Total: {total_attempted}"
+    )
     print(f"SVID rotation interval: {rotation_interval_sec * 1000:.1f}ms")
-    print(f"=======================================================")
+    print("=======================================================")
 
     ca_pem, pairs = generate_ca_and_cert_key_pairs(num_pairs=5)
     source = MockX509Source(ca_pem, pairs)
@@ -177,9 +190,11 @@ def run_mtls_concurrency_stress_test(
             try:
                 server_sock.settimeout(0.1)
                 client_conn, _ = server_sock.accept()
-                t = threading.Thread(target=server_worker, args=(client_conn,), daemon=True)
+                t = threading.Thread(
+                    target=server_worker, args=(client_conn,), daemon=True
+                )
                 t.start()
-            except socket.timeout:
+            except TimeoutError:
                 continue
             except OSError:
                 break
@@ -226,10 +241,12 @@ def run_mtls_concurrency_stress_test(
     rot_t.join(timeout=1.0)
     list_t.join(timeout=1.0)
 
-    print(f"\n--- STRESS TEST SUMMARY ---")
+    print("\n--- STRESS TEST SUMMARY ---")
     print(f"Duration: {duration:.2f}s")
     print(f"Handshakes attempted: {total_attempted}")
-    print(f"Handshakes succeeded: {success_count} ({success_count / total_attempted * 100:.1f}%)")
+    print(
+        f"Handshakes succeeded: {success_count} ({success_count / total_attempted * 100:.1f}%)"
+    )
     print(f"Error count total: {sum(error_counter.values())}")
     for err, count in error_counter.items():
         print(f"  [{count}x] {err}")
@@ -238,7 +255,12 @@ def run_mtls_concurrency_stress_test(
     target_errors = []
     for err in error_counter:
         err_upper = err.upper()
-        if "KEY_VALUES_MISMATCH" in err_upper or "NO_PRIVATE_KEY_ASSIGNED" in err_upper or "KEY VALUES MISMATCH" in err_upper or "NO PRIVATE KEY ASSIGNED" in err_upper:
+        if (
+            "KEY_VALUES_MISMATCH" in err_upper
+            or "NO_PRIVATE_KEY_ASSIGNED" in err_upper
+            or "KEY VALUES MISMATCH" in err_upper
+            or "NO PRIVATE KEY ASSIGNED" in err_upper
+        ):
             target_errors.append(err)
 
     print(f"\nTarget fatal key mismatch errors: {target_errors}")
@@ -252,12 +274,14 @@ def run_mtls_concurrency_stress_test(
     }
 
 
-def run_parallel_ssl_context_factory_stress(num_threads: int = 20, iterations_per_thread: int = 50) -> dict:
+def run_parallel_ssl_context_factory_stress(
+    num_threads: int = 20, iterations_per_thread: int = 50
+) -> dict:
     """Stress test parallel calls to manager.get_server_ssl_context() and manager.get_client_ssl_context()."""
-    print(f"\n=======================================================")
-    print(f"STARTING PARALLEL SSL CONTEXT FACTORY STRESS TEST")
+    print("\n=======================================================")
+    print("STARTING PARALLEL SSL CONTEXT FACTORY STRESS TEST")
     print(f"Threads: {num_threads}, Iterations/thread: {iterations_per_thread}")
-    print(f"=======================================================")
+    print("=======================================================")
 
     ca_pem, pairs = generate_ca_and_cert_key_pairs(num_pairs=5)
     source = MockX509Source(ca_pem, pairs)
@@ -306,7 +330,13 @@ def run_parallel_ssl_context_factory_stress(num_threads: int = 20, iterations_pe
     print(f"Factory stress completed in {dur:.2f}s ({total_ops} context creations)")
     print(f"Errors: {dict(error_counter)}")
 
-    target_errors = [err for err in error_counter if any(k in err.upper() for k in ["KEY_VALUES_MISMATCH", "NO_PRIVATE_KEY_ASSIGNED"])]
+    target_errors = [
+        err
+        for err in error_counter
+        if any(
+            k in err.upper() for k in ["KEY_VALUES_MISMATCH", "NO_PRIVATE_KEY_ASSIGNED"]
+        )
+    ]
     return {
         "total_ops": total_ops,
         "errors": dict(error_counter),
@@ -318,24 +348,34 @@ def test_mtls_concurrency_stress():
     """Pytest test case for mTLS concurrency stress."""
     res = run_mtls_concurrency_stress_test(num_threads=20, handshakes_per_thread=40)
     ssl_handshake_errors = [
-        err for err in res["errors"]
+        err
+        for err in res["errors"]
         if "SSLV3_ALERT_HANDSHAKE_FAILURE" in err.upper()
         or "NO_SUITABLE_SIGNATURE_ALGORITHM" in err.upper()
         or "KEY_VALUES_MISMATCH" in err.upper()
         or "NO_PRIVATE_KEY_ASSIGNED" in err.upper()
     ]
-    assert not ssl_handshake_errors, f"SSL handshake failures detected: {ssl_handshake_errors}"
+    assert not ssl_handshake_errors, (
+        f"SSL handshake failures detected: {ssl_handshake_errors}"
+    )
     assert res["target_errors"] == []
 
 
 def test_parallel_ssl_context_factory_stress():
     """Pytest test case for parallel SSLContext factory stress."""
-    res = run_parallel_ssl_context_factory_stress(num_threads=20, iterations_per_thread=50)
+    res = run_parallel_ssl_context_factory_stress(
+        num_threads=20, iterations_per_thread=50
+    )
     assert res["target_errors"] == []
-    assert not res["errors"], f"Unexpected errors during factory stress: {res['errors']}"
+    assert not res["errors"], (
+        f"Unexpected errors during factory stress: {res['errors']}"
+    )
 
 
 if __name__ == "__main__":
-    res_mtls = run_mtls_concurrency_stress_test(num_threads=20, handshakes_per_thread=40)
-    res_factory = run_parallel_ssl_context_factory_stress(num_threads=20, iterations_per_thread=50)
-
+    res_mtls = run_mtls_concurrency_stress_test(
+        num_threads=20, handshakes_per_thread=40
+    )
+    res_factory = run_parallel_ssl_context_factory_stress(
+        num_threads=20, iterations_per_thread=50
+    )

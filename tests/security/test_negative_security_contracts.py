@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 from types import SimpleNamespace
-from uuid import uuid4
 from unittest.mock import AsyncMock
+from uuid import uuid4
 
 import pytest
 from fastapi import HTTPException, Request
