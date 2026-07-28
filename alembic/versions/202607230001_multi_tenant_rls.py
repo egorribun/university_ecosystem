@@ -123,17 +123,18 @@ def upgrade() -> None:
                     f"ALTER TABLE {table_name} FORCE ROW LEVEL SECURITY;"
                 )
             )
-            op.execute(  # nosemgrep
-                sa.text(  # nosemgrep
-                    f"DROP POLICY IF EXISTS default_permissive_policy ON {table_name};"
+            if table_name != "messages":
+                op.execute(  # nosemgrep
+                    sa.text(  # nosemgrep
+                        f"DROP POLICY IF EXISTS default_permissive_policy ON {table_name};"
+                    )
                 )
-            )
-            op.execute(  # nosemgrep
-                sa.text(  # nosemgrep
-                    f"CREATE POLICY default_permissive_policy ON {table_name} AS PERMISSIVE "
-                    f"USING (true) WITH CHECK (true);"
+                op.execute(  # nosemgrep
+                    sa.text(  # nosemgrep
+                        f"CREATE POLICY default_permissive_policy ON {table_name} AS PERMISSIVE "
+                        f"USING (true) WITH CHECK (true);"
+                    )
                 )
-            )
             op.execute(  # nosemgrep
                 sa.text(  # nosemgrep
                     f"DROP POLICY IF EXISTS tenant_isolation_policy ON {table_name};"
