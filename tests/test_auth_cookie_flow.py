@@ -16,6 +16,11 @@ from app.models import ActiveSession
 pytestmark = pytest.mark.asyncio(loop_scope="session")
 
 
+@pytest.fixture(autouse=True)
+def _set_query_budget(async_client):
+    async_client.headers["X-Query-Budget"] = "15"
+
+
 async def _create_active_user(user_factory, password: str):
     hashed = await get_password_hash(password)
     return await user_factory(hashed_password=hashed, is_active=True)
