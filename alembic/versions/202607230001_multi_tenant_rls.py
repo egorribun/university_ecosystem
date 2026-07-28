@@ -125,6 +125,17 @@ def upgrade() -> None:
             )
             op.execute(  # nosemgrep
                 sa.text(  # nosemgrep
+                    f"DROP POLICY IF EXISTS default_permissive_policy ON {table_name};"
+                )
+            )
+            op.execute(  # nosemgrep
+                sa.text(  # nosemgrep
+                    f"CREATE POLICY default_permissive_policy ON {table_name} AS PERMISSIVE "
+                    f"USING (true) WITH CHECK (true);"
+                )
+            )
+            op.execute(  # nosemgrep
+                sa.text(  # nosemgrep
                     f"DROP POLICY IF EXISTS tenant_isolation_policy ON {table_name};"
                 )
             )
@@ -148,6 +159,11 @@ def downgrade() -> None:
             continue
 
         if bind.dialect.name == "postgresql":
+            op.execute(  # nosemgrep
+                sa.text(  # nosemgrep
+                    f"DROP POLICY IF EXISTS default_permissive_policy ON {table_name};"
+                )
+            )
             op.execute(  # nosemgrep
                 sa.text(  # nosemgrep
                     f"DROP POLICY IF EXISTS tenant_isolation_policy ON {table_name};"
