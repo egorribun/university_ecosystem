@@ -60,8 +60,16 @@ CVE-2026-27178
 CVE-2026-27179
 CVE-2026-27180
 
-# Accepted SPIRE daemonset node-attestation rules
+# Accepted SPIRE daemonset node-attestation & architectural rules
+# SPIRE agent/server require hostNetwork, hostPID, root filesystem access, privileged container capabilities,
+# and node proxy privileges by design for node attestation and SPIFFE workload identity issuing.
 KSV-0012
 KSV-0104
 KSV-0023
 KSV-0001
+KSV-0118
+KSV-0014
+KSV-0047
+KSV-0017
+KSV-0009
+KSV-0010

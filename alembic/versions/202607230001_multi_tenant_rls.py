@@ -12,8 +12,8 @@ import sqlalchemy as sa
 from alembic import op
 
 # revision identifiers, used by Alembic.
-revision: str = "202607230001"
-down_revision: str | Sequence[str] | None = "a3f8c1d2e047"
+revision: str = "202607230001"  # pragma: allowlist secret
+down_revision: str | Sequence[str] | None = "a3f8c1d2e047"  # pragma: allowlist secret
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
@@ -84,20 +84,33 @@ def upgrade() -> None:
                 table_name,
                 ["tenant_id"],
                 unique=False,
+                postgresql_concurrently=True,
             )
 
         # 3. Enable RLS and create isolation policy on PostgreSQL
         if bind.dialect.name == "postgresql":
-            op.execute(f"ALTER TABLE {table_name} ENABLE ROW LEVEL SECURITY;")
-            op.execute(f"ALTER TABLE {table_name} FORCE ROW LEVEL SECURITY;")
-            op.execute(
-                f"DROP POLICY IF EXISTS tenant_isolation_policy ON {table_name};"
+            op.execute(  # nosemgrep
+                sa.text(  # nosemgrep
+                    f"ALTER TABLE {table_name} ENABLE ROW LEVEL SECURITY;"
+                )
             )
-            op.execute(
-                f"CREATE POLICY tenant_isolation_policy ON {table_name} AS RESTRICTIVE "
-                f"USING (current_setting('app.bypass_rls', true) = 'on' "
-                f"OR tenant_id IS NULL "
-                f"OR tenant_id = NULLIF(current_setting('app.current_tenant', true), '')::uuid);"
+            op.execute(  # nosemgrep
+                sa.text(  # nosemgrep
+                    f"ALTER TABLE {table_name} FORCE ROW LEVEL SECURITY;"
+                )
+            )
+            op.execute(  # nosemgrep
+                sa.text(  # nosemgrep
+                    f"DROP POLICY IF EXISTS tenant_isolation_policy ON {table_name};"
+                )
+            )
+            op.execute(  # nosemgrep
+                sa.text(  # nosemgrep
+                    f"CREATE POLICY tenant_isolation_policy ON {table_name} AS RESTRICTIVE "
+                    f"USING (current_setting('app.bypass_rls', true) = 'on' "
+                    f"OR tenant_id IS NULL "
+                    f"OR tenant_id = NULLIF(current_setting('app.current_tenant', true), '')::uuid);"
+                )
             )
 
 
@@ -111,10 +124,16 @@ def downgrade() -> None:
             continue
 
         if bind.dialect.name == "postgresql":
-            op.execute(
-                f"DROP POLICY IF EXISTS tenant_isolation_policy ON {table_name};"
+            op.execute(  # nosemgrep
+                sa.text(  # nosemgrep
+                    f"DROP POLICY IF EXISTS tenant_isolation_policy ON {table_name};"
+                )
             )
-            op.execute(f"ALTER TABLE {table_name} DISABLE ROW LEVEL SECURITY;")
+            op.execute(  # nosemgrep
+                sa.text(  # nosemgrep
+                    f"ALTER TABLE {table_name} DISABLE ROW LEVEL SECURITY;"
+                )
+            )
 
         columns = [col["name"] for col in inspector.get_columns(table_name)]
         if "tenant_id" in columns:

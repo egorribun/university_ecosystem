@@ -60,7 +60,7 @@ dependencies = [
   "protobuf>=7.34.1",
   "psutil>=7.2.2",
   "psycopg[binary]>=3.3.3",
-  "pyasn1>=0.6.3,<1",  # TD-26-04: upper bound
+  "pyasn1>=0.6.4,<1",  # TD-26-04: upper bound
   "pydantic>=2.12.0,<2.14.0",  # FIX-41-01: Python 3.14 Field.__init__(doc=) support requires 2.13+, but strawberry-graphql incompatible with 2.13.0+
   "pydantic-settings>=2.13.1,<3",
   "pyjwt>=2.12.1",
