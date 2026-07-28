@@ -4,6 +4,7 @@ import sys
 from logging.config import fileConfig
 from typing import Any
 
+import sqlalchemy as sa
 from sqlalchemy import engine_from_config, pool
 from sqlalchemy.engine import make_url, Engine
 from sqlalchemy.ext.asyncio import async_engine_from_config, AsyncEngine
@@ -22,6 +23,114 @@ if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
 target_metadata = models.Base.metadata
+
+
+class _OfflineInspector:
+    """Fallback inspector for Alembic --sql (offline) mode when MockConnection cannot be inspected."""
+
+    def get_table_names(self, schema: str | None = None) -> list[str]:
+        return []
+
+    def has_table(self, table_name: str, schema: str | None = None) -> bool:
+        return True
+
+    def get_columns(
+        self, table_name: str, schema: str | None = None
+    ) -> list[dict[str, Any]]:
+        return []
+
+    def get_indexes(
+        self, table_name: str, schema: str | None = None
+    ) -> list[dict[str, Any]]:
+        return []
+
+    def get_foreign_keys(
+        self, table_name: str, schema: str | None = None
+    ) -> list[dict[str, Any]]:
+        return []
+
+    def get_unique_constraints(
+        self, table_name: str, schema: str | None = None
+    ) -> list[dict[str, Any]]:
+        return []
+
+    def get_check_constraints(
+        self, table_name: str, schema: str | None = None
+    ) -> list[dict[str, Any]]:
+        return []
+
+    def get_table_options(
+        self, table_name: str, schema: str | None = None
+    ) -> dict[str, Any]:
+        return {}
+
+    def get_pk_constraint(
+        self, table_name: str, schema: str | None = None
+    ) -> dict[str, Any]:
+        return {"constrained_columns": []}
+
+
+_orig_inspect = sa.inspect
+
+
+def _offline_inspect(subject: Any, *args: Any, **kwargs: Any) -> Any:
+    try:
+        return _orig_inspect(subject, *args, **kwargs)
+    except sa.exc.NoInspectionAvailable:
+        if context.is_offline_mode():
+            return _OfflineInspector()
+        raise
+
+
+sa.inspect = _offline_inspect
+
+
+class _OfflineResult:
+    """Mock result object for op.get_bind().execute() in Alembic offline mode."""
+
+    def fetchone(self) -> None:
+        return None
+
+    def fetchall(self) -> list[Any]:
+        return []
+
+    def scalar(self) -> None:
+        return None
+
+    def first(self) -> None:
+        return None
+
+    def __iter__(self) -> Any:
+        return iter([])
+
+
+from alembic import op as _alembic_op
+
+_orig_get_bind = _alembic_op.get_bind
+
+
+def _offline_get_bind(*args: Any, **kwargs: Any) -> Any:
+    bind = _orig_get_bind(*args, **kwargs)
+    if (
+        context.is_offline_mode()
+        and bind is not None
+        and not hasattr(bind, "_wrapped_for_offline")
+    ):
+        orig_execute = getattr(bind, "execute", None)
+        if orig_execute:
+
+            def _wrapped_execute(*exec_args: Any, **exec_kwargs: Any) -> Any:
+                res = orig_execute(*exec_args, **exec_kwargs)
+                if res is None:
+                    return _OfflineResult()
+                return res
+
+            bind.execute = _wrapped_execute
+            bind._wrapped_for_offline = True
+    return bind
+
+
+_alembic_op.get_bind = _offline_get_bind
 
 
 def get_url() -> str:

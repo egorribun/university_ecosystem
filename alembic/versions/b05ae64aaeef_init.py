@@ -11,7 +11,7 @@ from collections.abc import Sequence
 import sqlalchemy as sa
 from sqlalchemy import inspect
 
-from alembic import op
+from alembic import context, op
 
 # revision identifiers, used by Alembic.
 revision: str = "b05ae64aaeef"
@@ -23,6 +23,8 @@ depends_on: str | Sequence[str] | None = None
 def upgrade() -> None:
     """Upgrade schema."""
 
+    if context.is_offline_mode():
+        return
     bind = op.get_bind()
     inspector = inspect(bind)
     if not inspector.has_table("event_attendance"):
@@ -37,6 +39,8 @@ def upgrade() -> None:
 def downgrade() -> None:
     """Downgrade schema."""
 
+    if context.is_offline_mode():
+        return
     bind = op.get_bind()
     inspector = inspect(bind)
     if not inspector.has_table("event_attendance"):

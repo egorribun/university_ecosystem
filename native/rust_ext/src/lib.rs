@@ -473,10 +473,6 @@ pub fn verify_audit_signature(
             for key_str in signing_keys {
                 let mut mac =
                     Hmac::<Sha256>::new_from_slice(key_str.as_bytes()).map_err(hmac_key_error)?;
-                // HMAC-SHA256 hashes oversized keys, so every byte-slice length
-                // is valid for this concrete digest implementation.
-                let mut mac = Hmac::<Sha256>::new_from_slice(key_str.as_bytes())
-                    .expect("HMAC-SHA256 accepts keys of every length");
                 mac.update(log_data.as_bytes());
                 if mac.verify_slice(&sig_bytes).is_ok() {
                     return Ok(true);
@@ -538,10 +534,8 @@ pub fn verify_event_chain(
                 let mut hash_valid = false;
 
                 for key_str in &signing_keys {
-                    // HMAC-SHA256 accepts arbitrary key lengths; see the
-                    // invariant documented in verify_audit_signature above.
                     let mut mac = Hmac::<Sha256>::new_from_slice(key_str.as_bytes())
-                        .expect("HMAC-SHA256 accepts keys of every length");
+                        .map_err(hmac_key_error)?;
                     mac.update(data.as_bytes());
                     if mac.verify_slice(&sig_bytes).is_ok() {
                         hash_valid = true;
