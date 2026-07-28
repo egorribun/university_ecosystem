@@ -16,6 +16,11 @@ from app.core.config import settings
 from app.models import ActiveSession
 
 
+@pytest.fixture(autouse=True)
+def _set_query_budget(async_client):
+    async_client.headers["X-Query-Budget"] = "15"
+
+
 async def _login(
     async_client: AsyncClient,
     *,

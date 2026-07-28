@@ -18,6 +18,11 @@ from app.core.localization import translate
 from app.management import reset_mfa
 
 
+@pytest.fixture(autouse=True)
+def _set_query_budget(async_client):
+    async_client.headers["X-Query-Budget"] = "15"
+
+
 def _base64url(data: bytes) -> str:
     return base64.urlsafe_b64encode(data).decode("utf-8").rstrip("=")
 
