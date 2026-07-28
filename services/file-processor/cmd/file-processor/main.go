@@ -179,7 +179,7 @@ func initSentry(ctx context.Context, cfg *config.Config, logger *slog.Logger) {
 		TracesSampleRate: 1.0,
 	})
 	if err != nil {
-		logger.ErrorContext(ctx, "Sentry initialization failed", "err", err)
+		logger.ErrorContext(ctx, "Sentry initialization failed")
 	} else {
 		logger.InfoContext(ctx, "Sentry initialized", "environment", cfg.Environment)
 	}
@@ -197,16 +197,11 @@ func connectTemporal(ctx context.Context, cfg *config.Config, logger *slog.Logge
 	if cfg.TemporalAPIKeyFile != "" {
 		data, err := os.ReadFile(cfg.TemporalAPIKeyFile)
 		if err != nil {
-			logger.WarnContext(ctx, "Failed to read Temporal API key file; connecting without auth",
-				"path", cfg.TemporalAPIKeyFile,
-				"err", err,
-			)
+			logger.WarnContext(ctx, "Failed to read Temporal API key file; connecting without auth")
 		} else {
 			token := strings.TrimSpace(string(data))
 			if token == "" {
-				logger.WarnContext(ctx, "Temporal API key file is empty; connecting without auth",
-					"path", cfg.TemporalAPIKeyFile,
-				)
+				logger.WarnContext(ctx, "Temporal API key file is empty; connecting without auth")
 			} else {
 				// W141 SW5 critical detail: client.NewAPIKeyStaticCredentials AUTO-ENABLES
 				// TLS unless ConnectionOptions.TLSDisabled is true (verified at
@@ -225,7 +220,6 @@ func connectTemporal(ctx context.Context, cfg *config.Config, logger *slog.Logge
 					TLSDisabled: true,
 				}
 				logger.InfoContext(ctx, "Attached Temporal service token (TLS disabled for plaintext dev gRPC)",
-					"path", cfg.TemporalAPIKeyFile,
 					"token_chars", len(token),
 				)
 			}
