@@ -1,5 +1,8 @@
+#![cfg(not(target_arch = "wasm32"))]
+
 use proptest::prelude::*;
 use uni_wasm_crypto::{hmac_sha256_sign, pbkdf2_derive, scrypt_derive};
+
 
 // Native Known-Answer-Test (KAT) suite. The #[wasm_bindgen] functions are
 // callable as plain Rust on a non-wasm target; PBKDF2/HMAC return hex Strings
