@@ -163,7 +163,8 @@ class LoginSessionManager:
 
     def _set_access_token_cookie(self, response: Response, token: str) -> None:
         try:
-            minutes = int(settings.access_token_expire_minutes)
+            raw_minutes = getattr(settings, "access_token_expire_minutes", getattr(settings.security, "access_token_expire_minutes", 60))
+            minutes = int(raw_minutes)
         except (TypeError, ValueError):
             minutes = 60
         max_age = minutes * 60

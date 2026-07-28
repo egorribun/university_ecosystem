@@ -33,7 +33,9 @@ class LockoutService:
 
     def _parse_lockout_rules(self) -> list[tuple[int, int]]:
         """Parse lockout thresholds from settings. Called once at construction."""
-        raw = settings.security.auth_lockout_thresholds
+        raw = getattr(settings, "auth_lockout_thresholds", None)
+        if raw is None:
+            raw = settings.security.auth_lockout_thresholds
         tokens: list[str]
         if isinstance(raw, str):
             tokens = [token.strip() for token in raw.split(",")]
