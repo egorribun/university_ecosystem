@@ -813,6 +813,7 @@ app.post('/api/users', async (req, res) => {
   }
 });
 
+```javascript
 // ✅ Good: Generic error message
 app.post('/api/users', async (req, res) => {
   try {
