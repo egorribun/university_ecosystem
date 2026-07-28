@@ -82,9 +82,7 @@ def test_set_access_token_cookie_uses_safe_ttl_fallback(monkeypatch) -> None:
 
     manager = LoginSessionManager(MagicMock(), MagicMock(), MagicMock(), MagicMock())
     response = MagicMock()
-    monkeypatch.setattr(
-        settings, "security_access_token_expire_minutes", "not-an-integer"
-    )
+    monkeypatch.setattr(settings, "access_token_expire_minutes", "not-an-integer")
 
     manager._set_access_token_cookie(response, "token")
 

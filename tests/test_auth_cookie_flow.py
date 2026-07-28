@@ -25,7 +25,10 @@ async def _login(async_client, email: str, password: str):
     response = await async_client.post(
         "/auth/login",
         data={"username": email, "password": password},
-        headers={"Content-Type": "application/x-www-form-urlencoded"},
+        headers={
+            "Content-Type": "application/x-www-form-urlencoded",
+            "X-Query-Budget": "15",
+        },
     )
     # The login process forcibly rotates the CSRF token (RZ-5).
     # Update the test client's headers so subsequent mutating requests
