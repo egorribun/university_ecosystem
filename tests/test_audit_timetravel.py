@@ -287,7 +287,7 @@ async def test_admin_time_travel_api_endpoint(root_client, user_factory, db_sess
             "aggregate_id": str(agg_id),
             "target_timestamp": target_iso,
         },
-        headers={"Authorization": f"Bearer {token}"},
+        headers={"Authorization": f"Bearer {token}", "X-Query-Budget": "15"},
     )
     assert resp.status_code == 200
     res_data = resp.json()
@@ -306,7 +306,7 @@ async def test_admin_time_travel_api_endpoint(root_client, user_factory, db_sess
             "aggregate_id": str(agg_id),
             "target_timestamp": t1_iso,
         },
-        headers={"Authorization": f"Bearer {token}"},
+        headers={"Authorization": f"Bearer {token}", "X-Query-Budget": "15"},
     )
     assert resp_t1.status_code == 200
     res_t1_data = resp_t1.json()
@@ -334,7 +334,7 @@ async def test_admin_time_travel_api_endpoint(root_client, user_factory, db_sess
             "aggregate_id": str(agg_id),
             "target_timestamp": target_iso,
         },
-        headers={"Authorization": f"Bearer {stu_token}"},
+        headers={"Authorization": f"Bearer {stu_token}", "X-Query-Budget": "15"},
     )
     assert resp_forbidden.status_code == 403
 
@@ -346,7 +346,7 @@ async def test_admin_time_travel_api_endpoint(root_client, user_factory, db_sess
             "aggregate_id": str(agg_id),
             "target_timestamp": target_iso,
         },
-        headers={"Authorization": f"Bearer {token}"},
+        headers={"Authorization": f"Bearer {token}", "X-Query-Budget": "15"},
     )
     assert resp_bad.status_code == 400
 
@@ -359,7 +359,7 @@ async def test_admin_time_travel_api_endpoint(root_client, user_factory, db_sess
             "aggregate_id": str(random_id),
             "target_timestamp": target_iso,
         },
-        headers={"Authorization": f"Bearer {token}"},
+        headers={"Authorization": f"Bearer {token}", "X-Query-Budget": "15"},
     )
     assert resp_404.status_code == 404
 
@@ -372,7 +372,7 @@ async def test_admin_time_travel_api_endpoint(root_client, user_factory, db_sess
             "target_timestamp": target_iso,
             "verify_chain": "false",
         },
-        headers={"Authorization": f"Bearer {token}"},
+        headers={"Authorization": f"Bearer {token}", "X-Query-Budget": "15"},
     )
     assert resp_no_verify.status_code == 200
     assert resp_no_verify.json()["chain_integrity_valid"] is True
