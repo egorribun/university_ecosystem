@@ -709,6 +709,11 @@ npm:
       owner: frontend@university.example
       expires: 2026-10-31
       reason: Transitive via reference cascade.
+    - id: "1129974"
+      package: "transitive"
+      owner: frontend@university.example
+      expires: 2026-10-31
+      reason: Transitive npm audit advisory disclosure.
 
 pip:
   advisories:
