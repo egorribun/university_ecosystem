@@ -46,7 +46,7 @@ def upgrade() -> None:
         "notifications",
         ["user_id", "read"],
         unique=False,
-        postgresql_concurrently=True,
+        postgresql_concurrently=False,
     )
 
 
