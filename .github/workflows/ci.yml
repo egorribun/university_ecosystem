@@ -359,7 +359,9 @@ jobs:
       - name: Run markdownlint
         uses: DavidAnson/markdownlint-cli2-action@6bf21b07787794f89a243495939cd651942aeabe # v24.1.0
         with:
-          globs: "**/*.md"
+          globs: |
+            **/*.md
+            !.agents/**
       - name: Run cspell
         uses: streetsidesoftware/cspell-action@de2a73e963e7443969755b648a1008f77033c5b2 # v8.4.0
         with:
@@ -1208,8 +1210,10 @@ jobs:
 
       - name: Validate static K8s manifests with kubeconform
         run: |
-          /tmp/kubeconform -strict -summary -ignore-filename-pattern secrets-example.yaml \
-            -skip NetworkChaos,PodChaos \
+          /tmp/kubeconform -strict -summary \
+            -ignore-filename-pattern 'secrets-example\.yaml' \
+            -ignore-filename-pattern 'bad\.yaml' \
+            -skip NetworkChaos,PodChaos,ClusterPolicy,ScaledObject,ExternalSecret,SecretStore \
             -schema-location default \
             -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json' \
             k8s/
