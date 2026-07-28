@@ -1654,9 +1654,12 @@ jobs:
         # ubuntu-latest preinstalls Chrome + sets CHROMEWEBDRIVER; fall back to
         # wasm-pack's auto-download if the env var is unset.
         run: |
-          if [ -n "${CHROMEWEBDRIVER:-}" ] && [ -x "${CHROMEWEBDRIVER}/chromedriver" ]; then
+          if command -v chromedriver >/dev/null 2>&1; then
+            export CHROMEDRIVER="$(command -v chromedriver)"
+          elif [ -n "${CHROMEWEBDRIVER:-}" ] && [ -x "${CHROMEWEBDRIVER}/chromedriver" ]; then
             export CHROMEDRIVER="${CHROMEWEBDRIVER}/chromedriver"
           fi
+          export CHROMEDRIVER_ARGS="--headless=new --no-sandbox --disable-gpu"
           wasm-pack test --headless --chrome frontend/rust-crypto
 
   mutation-tests-incremental:

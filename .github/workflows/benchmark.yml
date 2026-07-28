@@ -41,6 +41,8 @@ jobs:
       - name: Combine Benchmarks
         run: |
           cat gateway-bench.txt wshub-bench.txt > benchmarks.txt
+          git checkout -- . || true
+
 
       # Compare and store benchmark results.
       # If push to main, it updates the charts on the gh-pages / benchmarks branch.
@@ -82,6 +84,8 @@ jobs:
           cd services/ws-hub
           go mod download
           go test -bench=. -benchmem -count=5 -benchtime=1s ./... 2>&1 | grep -E '^(pkg:|goos:|goarch:|Benchmark|PASS|ok)' | tee ../../ws-hub-regression.txt
+          cd ../.. && git checkout -- . && rm -f go.work.sum || true
+
 
       - name: Regression gate — fail on > 10% slowdown
         uses: benchmark-action/github-action-benchmark@52576c92bccf6ac60c8223ec7eb2565637cae9ba # v1.22.1
