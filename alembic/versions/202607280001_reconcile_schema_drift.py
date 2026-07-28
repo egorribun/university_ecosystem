@@ -44,12 +44,14 @@ def upgrade() -> None:
             ),
             sa.Column("id", sa.UUID(), primary_key=True, nullable=False),
         )
-        op.create_index("ix_tenants_domain", "tenants", ["domain"])
+        op.create_index("ix_tenants_domain", "tenants", ["domain"], unique=True)
         op.create_index("ix_tenants_is_active", "tenants", ["is_active"])
-        op.create_index("ix_tenants_slug", "tenants", ["slug"])
+        op.create_index("ix_tenants_slug", "tenants", ["slug"], unique=True)
 
-    op.execute("ALTER TABLE tenants ADD CONSTRAINT tenants_slug_key UNIQUE (slug)")
-    op.execute("ALTER TABLE tenants ADD CONSTRAINT tenants_domain_key UNIQUE (domain)")
+    op.execute("ALTER TABLE tenants DROP CONSTRAINT IF EXISTS tenants_slug_key CASCADE")
+    op.execute(
+        "ALTER TABLE tenants DROP CONSTRAINT IF EXISTS tenants_domain_key CASCADE"
+    )
 
     if "vector_chunks" not in tables:
         op.create_table(
