@@ -44,16 +44,23 @@ var (
 	chMu      sync.Mutex
 )
 
-// safeSend writes data to ch without panicking if the channel is already
-// closed.
-func safeSend(ch chan []byte, data []byte) (sent bool) {
+func getOrCreateChEntry(ch chan []byte) *chEntry {
 	chMu.Lock()
+	defer chMu.Unlock()
 	entry, ok := chMutexes[ch]
 	if !ok {
 		entry = &chEntry{}
 		chMutexes[ch] = entry
 	}
-	chMu.Unlock()
+	return entry
+}
+
+// safeSend writes data to ch without panicking if the channel is already closed.
+func safeSend(ch chan []byte, data []byte) (sent bool) {
+	if ch == nil {
+		return false
+	}
+	entry := getOrCreateChEntry(ch)
 
 	entry.mu.Lock()
 	defer entry.mu.Unlock()
@@ -80,6 +87,9 @@ func safeSend(ch chan []byte, data []byte) (sent bool) {
 
 // safeClose closes a channel in a data-race-free manner and cleans up channel map entry.
 func safeClose(ch chan []byte) {
+	if ch == nil {
+		return
+	}
 	chMu.Lock()
 	entry, ok := chMutexes[ch]
 	if !ok {
