@@ -173,37 +173,44 @@ func (c *Client) setupConnection() {
 	})
 }
 
+func (c *Client) processNextMessage() bool {
+	_, data, err := c.Conn.ReadMessage()
+	if err != nil {
+		if isNormalCloseError(err) {
+			c.Hub.Logger.DebugContext(c.ctx, "Session closed normally", "client_id", c.ID)
+		} else {
+			c.Hub.Logger.WarnContext(c.ctx, "Session read error",
+				"client_id", c.ID,
+				"err", err)
+		}
+		return false
+	}
+
+	var msg Message
+	if err := json.Unmarshal(data, &msg); err != nil {
+		return true
+	}
+
+	// MOD-27-02: Validate message type at parse boundary
+	if !isAllowedMessageType(msg.Type) {
+		UnknownMsgTypeTotal.Inc()
+		return true
+	}
+
+	msg.From = c.ID
+	c.handleIncomingMessage(msg, data)
+	return true
+}
+
 // ReadPump pumps messages from the session connection to the hub.
 func (c *Client) ReadPump() {
 	defer c.cleanupReadPump()
 	c.setupConnection()
 
 	for c.Conn != nil {
-		_, data, err := c.Conn.ReadMessage()
-		if err != nil {
-			if isNormalCloseError(err) {
-				c.Hub.Logger.DebugContext(c.ctx, "Session closed normally", "client_id", c.ID)
-			} else {
-				c.Hub.Logger.WarnContext(c.ctx, "Session read error",
-					"client_id", c.ID,
-					"err", err)
-			}
+		if !c.processNextMessage() {
 			break
 		}
-
-		var msg Message
-		if err := json.Unmarshal(data, &msg); err != nil {
-			continue
-		}
-
-		// MOD-27-02: Validate message type at parse boundary
-		if !isAllowedMessageType(msg.Type) {
-			UnknownMsgTypeTotal.Inc()
-			continue
-		}
-
-		msg.From = c.ID
-		c.handleIncomingMessage(msg, data)
 	}
 }
 
