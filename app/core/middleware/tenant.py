@@ -10,7 +10,7 @@ from fastapi import Request
 try:
     from structlog.contextvars import clear_contextvars
 except ImportError:
-    clear_contextvars = None
+    clear_contextvars = None  # type: ignore[assignment]
 
 from app.core.logging import bind_context
 from app.core.tenant import bypass_rls_ctx, tenant_id_ctx

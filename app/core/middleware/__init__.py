@@ -9,6 +9,8 @@ on demand.
 
 from __future__ import annotations
 
+from typing import Any
+
 from .request_id import RequestIDMiddleware, request_id_ctx
 
 __all__ = [
@@ -21,7 +23,7 @@ __all__ = [
 ]
 
 
-def __getattr__(name: str) -> object:
+def __getattr__(name: str) -> Any:
     if name == "ContentSizeLimitMiddleware":
         from .content_size import ContentSizeLimitMiddleware
 

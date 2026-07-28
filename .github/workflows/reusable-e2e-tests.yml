@@ -139,7 +139,12 @@ jobs:
         working-directory: frontend
         env:
           BROWSER: ${{ inputs.browser }}
-        run: npx playwright install --with-deps "$BROWSER"
+        run: |
+          INSTALL_BROWSER="$BROWSER"
+          if [[ "$INSTALL_BROWSER" == "mobile-webkit" ]]; then
+            INSTALL_BROWSER="webkit"
+          fi
+          npx playwright install --with-deps "$INSTALL_BROWSER"
 
       - name: Run database migrations
         run: uv run alembic upgrade head

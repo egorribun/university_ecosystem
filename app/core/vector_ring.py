@@ -18,8 +18,8 @@ try:
     HAS_QDRANT_CLIENT = True
 except (ImportError, ModuleNotFoundError):  # RZ-20-04
     HAS_QDRANT_CLIENT = False
-    QdrantClient = Any
-    qdrant_models = Any
+    QdrantClient = Any  # type: ignore[misc,assignment]
+    qdrant_models = Any  # type: ignore[assignment]
 
 
 class NodeStatus(str, enum.Enum):

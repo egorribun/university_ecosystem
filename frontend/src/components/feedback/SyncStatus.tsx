@@ -6,12 +6,7 @@ import { useSyncStatus } from "@/hooks/useSyncStatus"
 
 export function SyncStatus() {
   const { t } = useTranslation(["common"])
-  const {
-    isOnline,
-    syncState,
-    totalPendingCount,
-    triggerManualSync,
-  } = useSyncStatus()
+  const { isOnline, syncState, totalPendingCount, triggerManualSync } = useSyncStatus()
 
   if (!isOnline && totalPendingCount === 0) return null
 

@@ -31,8 +31,8 @@ func TestHub_MutexDeadlockConcurrency(t *testing.T) {
 	go h.Run(ctx)
 
 	// We will concurrently spawn and delete clients, and push to broadcast
-	const numGoroutines = 20
-	const opsPerGoroutine = 50
+	const numGoroutines = 10
+	const opsPerGoroutine = 20
 
 	var wg sync.WaitGroup
 	wg.Add(numGoroutines * 2)

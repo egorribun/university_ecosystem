@@ -3,7 +3,6 @@
 use proptest::prelude::*;
 use uni_wasm_crypto::{hmac_sha256_sign, pbkdf2_derive, scrypt_derive};
 
-
 // Native Known-Answer-Test (KAT) suite. The #[wasm_bindgen] functions are
 // callable as plain Rust on a non-wasm target; PBKDF2/HMAC return hex Strings
 // and scrypt returns Ok(Vec<u8>) on valid params. All vectors are canonical RFC

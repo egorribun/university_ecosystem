@@ -11,7 +11,20 @@ vi.mock("react-i18next", () => ({
   }),
 }))
 
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
+
 import { SyncStatus } from "@/components/feedback/SyncStatus"
+
+function renderSyncStatus() {
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  })
+  return render(
+    <QueryClientProvider client={queryClient}>
+      <SyncStatus />
+    </QueryClientProvider>
+  )
+}
 
 const CLICK_DB_NAME = "notification-interactions"
 const CLICK_DB_VERSION = 4
@@ -86,7 +99,7 @@ describe("SyncStatus", () => {
 
   it("renders the online status badge when online (Cloud icon, no count)", async () => {
     setOnline(true)
-    render(<SyncStatus />)
+    renderSyncStatus()
     const status = await screen.findByRole("status")
     expect(status).toBeInTheDocument()
     expect(status).toHaveAttribute("title", "common:sync.online")
@@ -96,7 +109,7 @@ describe("SyncStatus", () => {
 
   it("renders nothing when offline with an empty queue", async () => {
     setOnline(false)
-    render(<SyncStatus />)
+    renderSyncStatus()
     await flushQueue()
 
     expect(screen.queryByRole("status")).not.toBeInTheDocument()
@@ -105,7 +118,7 @@ describe("SyncStatus", () => {
   it("renders the offline badge with a pending count when offline + queued items", async () => {
     await seedPendingInteractions(3)
     setOnline(false)
-    render(<SyncStatus />)
+    renderSyncStatus()
 
     const status = await screen.findByRole("status")
     expect(status).toBeInTheDocument()
@@ -116,7 +129,7 @@ describe("SyncStatus", () => {
   it("renders the online badge with a pending count when online + queued items", async () => {
     await seedPendingInteractions(2)
     setOnline(true)
-    render(<SyncStatus />)
+    renderSyncStatus()
 
     const status = await screen.findByRole("status")
     expect(status).toHaveAttribute("title", "common:sync.online")
@@ -127,7 +140,7 @@ describe("SyncStatus", () => {
     // Real timers: fake-indexeddb runs its async work off real microtasks/timers,
     // which vi.advanceTimersByTimeAsync does not drive reliably.
     setOnline(true)
-    render(<SyncStatus />)
+    renderSyncStatus()
     const status = await screen.findByRole("status")
     expect(status).toHaveAttribute("title", "common:sync.online")
     expect(screen.queryByText("1")).not.toBeInTheDocument()
@@ -143,7 +156,7 @@ describe("SyncStatus", () => {
 
   it("reacts to the window offline event (hides when the queue is empty)", async () => {
     setOnline(true)
-    render(<SyncStatus />)
+    renderSyncStatus()
     const status = await screen.findByRole("status")
     expect(status).toBeInTheDocument()
 

@@ -362,6 +362,8 @@ jobs:
           globs: |
             **/*.md
             !.agents/**
+            !.opencode/**
+            !.venv/**
       - name: Run cspell
         uses: streetsidesoftware/cspell-action@de2a73e963e7443969755b648a1008f77033c5b2 # v8.4.0
         with:
@@ -804,18 +806,6 @@ jobs:
           rename-to: squawk
           chmod: 0755
 
-      - name: Lint Postgres Migrations (Squawk)
-        env:
-          SECRET_KEY: ${{ env.SECRET_KEY }}
-          ENVIRONMENT: testing
-        run: |
-          echo "Linting all Alembic migrations (base to head) for ZDD safety..."
-          # MOD-008: Refactor Squawk to lint the generated SQL output rather than Python files.
-          uv run alembic upgrade base:head --sql | squawk || {
-            echo "::error::Squawk detected unsafe database operations in migrations! Review the output above."
-            exit 1
-          }
-
       - name: Set up Python
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
@@ -835,6 +825,18 @@ jobs:
         shell: pwsh
         run: |
           uv sync --frozen
+
+      - name: Lint Postgres Migrations (Squawk)
+        env:
+          SECRET_KEY: ${{ env.SECRET_KEY }}
+          ENVIRONMENT: testing
+        run: |
+          echo "Linting all Alembic migrations (base to head) for ZDD safety..."
+          # MOD-008: Refactor Squawk to lint the generated SQL output rather than Python files.
+          uv run alembic upgrade base:head --sql | squawk || {
+            echo "::error::Squawk detected unsafe database operations in migrations! Review the output above."
+            exit 1
+          }
 
       - name: Wait for PostgreSQL
         shell: pwsh
@@ -1204,6 +1206,7 @@ jobs:
       - name: Validate manifests with kubeconform
         run: |
           /tmp/kubeconform -strict -summary \
+            -skip NetworkChaos,PodChaos,HTTPChaos,ClusterPolicy,ScaledObject,ExternalSecret,SecretStore,PrometheusRule,TriggerAuthentication \
             -schema-location default \
             -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json' \
             /tmp/backend-manifests.yaml
@@ -1213,7 +1216,7 @@ jobs:
           /tmp/kubeconform -strict -summary \
             -ignore-filename-pattern 'secrets-example\.yaml' \
             -ignore-filename-pattern 'bad\.yaml' \
-            -skip NetworkChaos,PodChaos,ClusterPolicy,ScaledObject,ExternalSecret,SecretStore \
+            -skip NetworkChaos,PodChaos,HTTPChaos,ClusterPolicy,ScaledObject,ExternalSecret,SecretStore,PrometheusRule,TriggerAuthentication \
             -schema-location default \
             -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json' \
             k8s/

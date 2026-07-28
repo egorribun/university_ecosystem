@@ -71,9 +71,19 @@ describe("Milestone 1 — Adversarial Offline-First & Stress Test Suite", () => 
 
   describe("2. Service Worker Offline Mutation Queue — Edge Cases", () => {
     it("preserves ordering by timestamp during replay", async () => {
-      const m1 = { url: "/api/test", method: "POST" as const, payload: { step: 1 }, timestamp: 1000 }
+      const m1 = {
+        url: "/api/test",
+        method: "POST" as const,
+        payload: { step: 1 },
+        timestamp: 1000,
+      }
       const m2 = { url: "/api/test", method: "POST" as const, payload: { step: 2 }, timestamp: 500 }
-      const m3 = { url: "/api/test", method: "POST" as const, payload: { step: 3 }, timestamp: 1500 }
+      const m3 = {
+        url: "/api/test",
+        method: "POST" as const,
+        payload: { step: 3 },
+        timestamp: 1500,
+      }
 
       await storePendingMutation(m1)
       await storePendingMutation(m2)
@@ -226,7 +236,9 @@ describe("Milestone 1 — Adversarial Offline-First & Stress Test Suite", () => 
 
     it("createIDBPersister handles QuotaExceededError by clearing cache gracefully", async () => {
       const mockDel = vi.fn().mockResolvedValue(undefined)
-      const mockSet = vi.fn().mockRejectedValue(new DOMException("Quota exceeded", "QuotaExceededError"))
+      const mockSet = vi
+        .fn()
+        .mockRejectedValue(new DOMException("Quota exceeded", "QuotaExceededError"))
 
       vi.doMock("idb-keyval", () => ({
         get: vi.fn(),
@@ -235,7 +247,13 @@ describe("Milestone 1 — Adversarial Offline-First & Stress Test Suite", () => 
       }))
 
       const persister = createIDBPersister("test-key")
-      await expect(persister.persistClient({ timestamp: Date.now(), buster: "v1", clientState: { queries: [], mutations: [] } } as any)).resolves.not.toThrow()
+      await expect(
+        persister.persistClient({
+          timestamp: Date.now(),
+          buster: "v1",
+          clientState: { queries: [], mutations: [] },
+        } as any)
+      ).resolves.not.toThrow()
     })
   })
 

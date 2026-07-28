@@ -31,7 +31,7 @@ tracer = trace.get_tracer(__name__)
 
 
 def _get_or_create_metric(
-    cls: type, name: str, documentation: str, **kwargs: Any
+    cls: Any, name: str, documentation: str, **kwargs: Any
 ) -> Any:
     if cls is None:
         return None
