@@ -60,50 +60,17 @@ def upgrade() -> None:
         )
         op.create_index("ix_grades_subject", "grades", ["subject"])
 
-    if "chats" in tables and "tenant_id" in [
-        c["name"] for c in inspector.get_columns("chats")
-    ]:
-        op.drop_column("chats", "tenant_id")
-    if "events" in tables and "tenant_id" in [
-        c["name"] for c in inspector.get_columns("events")
-    ]:
-        op.drop_column("events", "tenant_id")
-    if "groups" in tables and "tenant_id" in [
-        c["name"] for c in inspector.get_columns("groups")
-    ]:
-        op.drop_column("groups", "tenant_id")
-    if "messages" in tables and "tenant_id" in [
-        c["name"] for c in inspector.get_columns("messages")
-    ]:
-        op.drop_column("messages", "tenant_id")
-    if "news" in tables and "tenant_id" in [
-        c["name"] for c in inspector.get_columns("news")
-    ]:
-        op.drop_column("news", "tenant_id")
-    if "notifications" in tables and "tenant_id" in [
-        c["name"] for c in inspector.get_columns("notifications")
-    ]:
-        op.drop_column("notifications", "tenant_id")
-    if "schedule" in tables and "tenant_id" in [
-        c["name"] for c in inspector.get_columns("schedule")
-    ]:
-        op.drop_column("schedule", "tenant_id")
-    if "stories" in tables and "tenant_id" in [
-        c["name"] for c in inspector.get_columns("stories")
-    ]:
-        op.drop_column("stories", "tenant_id")
-    if "users" in tables and "tenant_id" in [
-        c["name"] for c in inspector.get_columns("users")
-    ]:
-        op.drop_column("users", "tenant_id")
-
-    if "tenants" in tables:
-        op.drop_table("tenants")
+    op.execute("ALTER TABLE chats DROP COLUMN IF EXISTS tenant_id CASCADE")
+    op.execute("ALTER TABLE events DROP COLUMN IF EXISTS tenant_id CASCADE")
+    op.execute("ALTER TABLE groups DROP COLUMN IF EXISTS tenant_id CASCADE")
+    op.execute("ALTER TABLE messages DROP COLUMN IF EXISTS tenant_id CASCADE")
+    op.execute("ALTER TABLE news DROP COLUMN IF EXISTS tenant_id CASCADE")
+    op.execute("ALTER TABLE notifications DROP COLUMN IF EXISTS tenant_id CASCADE")
+    op.execute("ALTER TABLE schedule DROP COLUMN IF EXISTS tenant_id CASCADE")
+    op.execute("ALTER TABLE stories DROP COLUMN IF EXISTS tenant_id CASCADE")
+    op.execute("ALTER TABLE users DROP COLUMN IF EXISTS tenant_id CASCADE")
+    op.execute("DROP TABLE IF EXISTS tenants CASCADE")
 
 
 def downgrade() -> None:
-    bind = op.get_bind()
-    inspector = sa.inspect(bind)
-    tables = inspector.get_table_names()
-    if "grades" in tables:
-        op.drop_table("grades")
+    op.execute("DROP TABLE IF EXISTS grades CASCADE")
