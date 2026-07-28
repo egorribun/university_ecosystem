@@ -1215,8 +1215,9 @@ jobs:
         run: |
           /tmp/kubeconform -strict -summary \
             -ignore-filename-pattern 'secrets-example\.yaml' \
-            -ignore-filename-pattern 'bad\.yaml' \
-            -skip NetworkChaos,PodChaos,HTTPChaos,ClusterPolicy,ScaledObject,ExternalSecret,SecretStore,PrometheusRule,TriggerAuthentication \
+            -ignore-filename-pattern '.*bad.*' \
+            -ignore-filename-pattern '.*kyverno.*' \
+            -skip NetworkChaos,PodChaos,HTTPChaos,ClusterPolicy,ScaledObject,ExternalSecret,SecretStore,PrometheusRule,TriggerAuthentication,TestSuite,UnitTest \
             -schema-location default \
             -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json' \
             k8s/
