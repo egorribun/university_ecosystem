@@ -240,6 +240,16 @@ func (h *Hub) SetupJWKS(ctx context.Context, jwksURL string) error {
 	return nil
 }
 
+// Context returns the hub's lifecycle context in a thread-safe manner.
+func (h *Hub) Context() context.Context {
+	if h == nil {
+		return nil
+	}
+	h.lifecycleMu.Lock()
+	defer h.lifecycleMu.Unlock()
+	return h.ctx
+}
+
 // Run starts the hub's main select loop.
 //
 // PERF-14-04 (audit Wave 14): Broadcast messages are dispatched to a worker

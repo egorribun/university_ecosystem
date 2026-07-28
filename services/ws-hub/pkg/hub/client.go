@@ -53,14 +53,14 @@ func safeSend(ch chan []byte, data []byte) (sent bool) {
 		entry = &chEntry{}
 		chMutexes[ch] = entry
 	}
-	if entry.closed {
-		chMu.Unlock()
-		return false
-	}
 	chMu.Unlock()
 
-	entry.mu.RLock()
-	defer entry.mu.RUnlock()
+	entry.mu.Lock()
+	defer entry.mu.Unlock()
+
+	if entry.closed {
+		return false
+	}
 
 	defer func() {
 		if r := recover(); r != nil {
@@ -87,11 +87,15 @@ func safeClose(ch chan []byte) {
 	} else {
 		delete(chMutexes, ch)
 	}
-	entry.closed = true
 	chMu.Unlock()
 
 	entry.mu.Lock()
 	defer entry.mu.Unlock()
+
+	if entry.closed {
+		return
+	}
+	entry.closed = true
 
 	defer func() {
 		_ = recover() //nolint:errcheck // recover() returns interface{}; blank discard is the canonical pattern.
@@ -132,11 +136,21 @@ func (c *Client) ReadPump() {
 	defer func() {
 		c.cancel()
 		c.Hub.msgLimiters.Delete(c.ID)
-		// RZ-W19-16: use select to avoid goroutine leak if Run() has already exited
-		select {
-		case c.Hub.Unregister <- c:
-		case <-c.Hub.ctx.Done():
-			c.closeOnce.Do(func() { safeClose(c.Send) })
+		if c.Hub != nil {
+			hCtx := c.Hub.Context()
+			if hCtx != nil {
+				select {
+				case c.Hub.Unregister <- c:
+				case <-hCtx.Done():
+					c.closeOnce.Do(func() { safeClose(c.Send) })
+				}
+			} else {
+				select {
+				case c.Hub.Unregister <- c:
+				default:
+					c.closeOnce.Do(func() { safeClose(c.Send) })
+				}
+			}
 		}
 		if c.Conn != nil {
 			if err := c.Conn.Close(); err != nil {
@@ -521,7 +535,7 @@ func (c *Client) Disconnect(closeCode int, reason string) {
 	}
 
 	if c.Hub != nil {
-		hCtx := c.Hub.ctx
+		hCtx := c.Hub.Context()
 		if hCtx != nil {
 			select {
 			case c.Hub.Unregister <- c:

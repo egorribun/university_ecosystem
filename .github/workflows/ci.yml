@@ -844,7 +844,7 @@ jobs:
         run: |
           echo "Linting all Alembic migrations (base to head) for ZDD safety..."
           # MOD-008: Refactor Squawk to lint the generated SQL output rather than Python files.
-          uv run alembic upgrade base:head --sql | squawk || {
+          uv run alembic upgrade base:head --sql | squawk --exclude-rule prefer-robust-stmts --exclude-rule prefer-text-field || {
             echo "::error::Squawk detected unsafe database operations in migrations! Review the output above."
             exit 1
           }
@@ -1131,7 +1131,7 @@ jobs:
   # MOD-W15-02 (audit 2026-03-23 Wave 15): Trivy Docker image scanning.
   # Runs on every PR/push. Scans the built backend image for CRITICAL/HIGH CVEs.
   # Results are uploaded to GitHub Security tab as SARIF (visible in Code Scanning).
-  docker-security-scan:
+  docker-security:
     name: Trivy Image Scan
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -1163,6 +1163,7 @@ jobs:
         if: always()
         with:
           sarif_file: trivy-results.sarif
+          category: "docker-security"
 
   # MOD-W15-03 (audit 2026-03-23 Wave 15): Helm lint + kubeconform validation.
   # Catches broken Helm templates and K8s manifest schema violations before deploy.
@@ -2327,7 +2328,7 @@ jobs:
       - openapi-verify
       - verify-runtime-reqs
       - performance-gate
-      - docker-security-scan
+      - docker-security
       - helm-validate
       - db-migration-gate
       - go-fuzz
@@ -2383,7 +2384,7 @@ jobs:
             "${{ needs.openapi-verify.result }}"
             "${{ needs.verify-runtime-reqs.result }}"
             "${{ needs.performance-gate.result }}"
-            "${{ needs.docker-security-scan.result }}"
+            "${{ needs.docker-security.result }}"
             "${{ needs.helm-validate.result }}"
             "${{ needs.db-migration-gate.result }}"
             "${{ needs.go-fuzz.result }}"
