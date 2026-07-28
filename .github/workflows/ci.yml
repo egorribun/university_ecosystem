@@ -844,7 +844,7 @@ jobs:
         run: |
           echo "Linting all Alembic migrations (base to head) for ZDD safety..."
           # MOD-008: Refactor Squawk to lint the generated SQL output rather than Python files.
-          uv run alembic upgrade base:head --sql | squawk --ignore-rule require-if-not-exists --ignore-rule prefer-text-to-varchar --ignore-rule require-lock-timeout || {
+          uv run alembic upgrade base:head --sql | squawk || {
             echo "::error::Squawk detected unsafe database operations in migrations! Review the output above."
             exit 1
           }

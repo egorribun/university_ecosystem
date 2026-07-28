@@ -1,0 +1,7 @@
+exclude = [
+  "prefer-robust-stmts",
+  "prefer-text-field",
+  "require-lock-timeout",
+  "prefer-text-to-varchar",
+  "require-if-not-exists",
+]
