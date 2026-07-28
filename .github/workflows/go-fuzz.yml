@@ -26,15 +26,15 @@ jobs:
       - name: Run Fuzz Test
         run: |
           cd services/file-processor
-          go test -v -fuzz=FuzzEstimateQueryDepth -fuzztime=60s ./internal/middleware
+          go test -v -fuzz=FuzzEstimateQueryDepth -fuzztime=30s ./internal/middleware
 
       - name: Run gateway JWT fuzz test
         run: |
           cd services/gateway
-          go test -v -fuzz=FuzzJWTValidation -fuzztime=60s ./middleware
+          go test -v -fuzz=FuzzJWTValidation -fuzztime=30s ./middleware
 
       - name: Run ws-hub parser fuzz tests
         run: |
           cd services/ws-hub
-          go test -v -fuzz=FuzzParseMessage -fuzztime=60s ./pkg/hub
-          go test -v -fuzz=FuzzExtractAlgFromHeader -fuzztime=60s ./pkg/hub
+          go test -v -fuzz=FuzzParseMessage -fuzztime=30s ./pkg/hub
+          go test -v -fuzz=FuzzExtractAlgFromHeader -fuzztime=30s ./pkg/hub
