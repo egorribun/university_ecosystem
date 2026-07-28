@@ -90,6 +90,7 @@ async def pg_session(non_superuser_engine) -> AsyncSession:
 @pytest_asyncio.fixture
 async def setup_matrix_users_and_chats(pg_session: AsyncSession):
     """Seed users with student, teacher, and admin roles, and create chats."""
+    await pg_session.execute(text("SELECT set_config('app.bypass_rls', 'on', true)"))
     roles = ["student", "teacher", "admin"]
     users = {}
 
