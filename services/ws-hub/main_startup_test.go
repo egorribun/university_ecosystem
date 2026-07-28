@@ -96,11 +96,17 @@ func TestMain_ExitOnMissingInternalSecret(t *testing.T) {
 // TestMain_ExitOnJWKSFailure verifies that main() exits with 1 when the JWKS setup fails.
 func TestMain_ExitOnJWKSFailure(t *testing.T) {
 	if os.Getenv("RUN_CRASHING_MAIN") == "JWKS" {
+		initNatsMu.Lock()
 		oldInitNats := initNats
-		defer func() { initNats = oldInitNats }()
 		initNats = func(ctx context.Context, cfg *config.Config, logger *slog.Logger) *nats.Conn {
 			return nil
 		}
+		initNatsMu.Unlock()
+		defer func() {
+			initNatsMu.Lock()
+			initNats = oldInitNats
+			initNatsMu.Unlock()
+		}()
 
 		http.DefaultServeMux = http.NewServeMux()
 

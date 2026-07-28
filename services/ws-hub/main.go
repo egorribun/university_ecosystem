@@ -51,7 +51,7 @@ func main() {
 		logger.ErrorContext(ctx, "OpenTelemetry initialization failed", "err", err)
 	}
 
-	nc := initNats(ctx, cfg, logger)
+	nc := getInitNats()(ctx, cfg, logger)
 	if nc != nil {
 		defer nc.Close()
 	}
@@ -106,7 +106,18 @@ func initLogger() *slog.Logger {
 	return slog.New(handler)
 }
 
-var initNats = func(ctx context.Context, cfg *config.Config, logger *slog.Logger) *nats.Conn {
+var (
+	initNatsMu sync.RWMutex
+	initNats   = defaultInitNats
+)
+
+func getInitNats() func(context.Context, *config.Config, *slog.Logger) *nats.Conn {
+	initNatsMu.RLock()
+	defer initNatsMu.RUnlock()
+	return initNats
+}
+
+func defaultInitNats(ctx context.Context, cfg *config.Config, logger *slog.Logger) *nats.Conn {
 	natsOpts := []nats.Option{
 		nats.RetryOnFailedConnect(true),
 		nats.MaxReconnects(-1),
