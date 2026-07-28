@@ -172,6 +172,8 @@ jobs:
 
                   if ("${{ inputs.num-shards }}" -le "1" -and "${{ inputs.coverage-threshold }}" -gt "0") {
                     $pytestArgs += "--cov-fail-under=${{ inputs.coverage-threshold }}"  # nosemgrep: yaml.github-actions.security.run-shell-injection.run-shell-injection
+                  } else {
+                    $pytestArgs += "--cov-fail-under=0"
                   }
 
                   uv run pytest @pytestArgs
