@@ -131,46 +131,52 @@ func isNormalCloseError(err error) bool {
 	return false
 }
 
+func (c *Client) cleanupReadPump() {
+	c.cancel()
+	c.Hub.msgLimiters.Delete(c.ID)
+	if c.Hub != nil {
+		hCtx := c.Hub.Context()
+		if hCtx != nil {
+			select {
+			case c.Hub.Unregister <- c:
+			case <-hCtx.Done():
+				c.closeOnce.Do(func() { safeClose(c.Send) })
+			}
+		} else {
+			select {
+			case c.Hub.Unregister <- c:
+			default:
+				c.closeOnce.Do(func() { safeClose(c.Send) })
+			}
+		}
+	}
+	if c.Conn != nil {
+		if err := c.Conn.Close(); err != nil {
+			c.Hub.Logger.ErrorContext(c.ctx, "Failed to close session connection", "client_id", c.ID, "err", err)
+		}
+	}
+}
+
+func (c *Client) setupConnection() {
+	if c.Conn == nil {
+		return
+	}
+	c.Conn.SetReadLimit(64 * 1024)
+	if err := c.Conn.SetReadDeadline(time.Now().Add(60 * time.Second)); err != nil {
+		c.Hub.Logger.ErrorContext(c.ctx, "Failed to set read deadline", "err", err)
+	}
+	c.Conn.SetPongHandler(func(string) error {
+		if err := c.Conn.SetReadDeadline(time.Now().Add(60 * time.Second)); err != nil {
+			c.Hub.Logger.ErrorContext(c.ctx, "Failed to update read deadline in pong handler", "err", err)
+		}
+		return nil
+	})
+}
+
 // ReadPump pumps messages from the session connection to the hub.
 func (c *Client) ReadPump() {
-	defer func() {
-		c.cancel()
-		c.Hub.msgLimiters.Delete(c.ID)
-		if c.Hub != nil {
-			hCtx := c.Hub.Context()
-			if hCtx != nil {
-				select {
-				case c.Hub.Unregister <- c:
-				case <-hCtx.Done():
-					c.closeOnce.Do(func() { safeClose(c.Send) })
-				}
-			} else {
-				select {
-				case c.Hub.Unregister <- c:
-				default:
-					c.closeOnce.Do(func() { safeClose(c.Send) })
-				}
-			}
-		}
-		if c.Conn != nil {
-			if err := c.Conn.Close(); err != nil {
-				c.Hub.Logger.ErrorContext(c.ctx, "Failed to close session connection", "client_id", c.ID, "err", err)
-			}
-		}
-	}()
-
-	if c.Conn != nil {
-		c.Conn.SetReadLimit(64 * 1024)
-		if err := c.Conn.SetReadDeadline(time.Now().Add(60 * time.Second)); err != nil {
-			c.Hub.Logger.ErrorContext(c.ctx, "Failed to set read deadline", "err", err)
-		}
-		c.Conn.SetPongHandler(func(string) error {
-			if err := c.Conn.SetReadDeadline(time.Now().Add(60 * time.Second)); err != nil {
-				c.Hub.Logger.ErrorContext(c.ctx, "Failed to update read deadline in pong handler", "err", err)
-			}
-			return nil
-		})
-	}
+	defer c.cleanupReadPump()
+	c.setupConnection()
 
 	for c.Conn != nil {
 		_, data, err := c.Conn.ReadMessage()
