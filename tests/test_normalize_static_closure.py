@@ -46,6 +46,7 @@ def test_rename_files_handles_missing_subdirs_and_both_mappings(tmp_path: Path):
     (avatars / "bad_avatar.jpg").write_bytes(b"existing")
     (avatars / "safe.jpg").write_bytes(b"safe")
     (avatars / "nested").mkdir()
+    (covers / "cover_image.jpg").write_bytes(b"existing_cover")
     (covers / "Cover_image.jpg").write_bytes(b"cover")
 
     avatar_mapping, cover_mapping = normalize_static._rename_files(tmp_path)

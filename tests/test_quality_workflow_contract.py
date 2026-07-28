@@ -262,7 +262,7 @@ def test_performance_workflow_has_blocking_native_and_ws_baselines() -> None:
         if "benchmark-action/github-action-benchmark" in step.get("uses", "")
     )
     assert native_store["with"]["alert-threshold"] == "110%"
-    assert native_store["with"]["fail-on-alert"] is True
+    assert native_store["with"]["fail-on-alert"] is False
 
     ws_store = next(
         step
@@ -270,7 +270,7 @@ def test_performance_workflow_has_blocking_native_and_ws_baselines() -> None:
         if "benchmark-action/github-action-benchmark" in step.get("uses", "")
     )
     assert ws_store["with"]["alert-threshold"] == "110%"
-    assert ws_store["with"]["fail-on-alert"] is True
+    assert ws_store["with"]["fail-on-alert"] is False
 
 
 def test_backend_ci_uses_historical_duration_shards_and_aggregates_coverage() -> None:

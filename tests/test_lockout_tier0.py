@@ -18,7 +18,7 @@ def test_lockout_rules_discard_invalid_entries_and_sort_thresholds(monkeypatch) 
     from app.services.auth.lockout import LockoutService
 
     monkeypatch.setattr(
-        settings,
+        settings.security,
         "auth_lockout_thresholds",
         "bad, 5:20, 2:x, 0:3, 2:10, :4",
     )
@@ -33,7 +33,7 @@ def test_lockout_rules_accept_sequence_settings(monkeypatch) -> None:
     from app.core.config import settings
     from app.services.auth.lockout import LockoutService
 
-    monkeypatch.setattr(settings, "auth_lockout_thresholds", ["", 3, "4:8"])
+    monkeypatch.setattr(settings.security, "auth_lockout_thresholds", ["", 3, "4:8"])
 
     service = LockoutService(AsyncMock())
 
@@ -46,7 +46,7 @@ def test_calculate_lock_until_normalizes_naive_time_and_keeps_longest_window(
     from app.core.config import settings
     from app.services.auth.lockout import LockoutService
 
-    monkeypatch.setattr(settings, "auth_lockout_thresholds", "2:10,3:20")
+    monkeypatch.setattr(settings.security, "auth_lockout_thresholds", "2:10,3:20")
     service = LockoutService(AsyncMock())
     now = datetime(2026, 7, 23, 12, tzinfo=UTC)
 
@@ -66,7 +66,7 @@ def test_calculate_lock_until_skips_unmet_and_expired_rules(monkeypatch) -> None
     from app.core.config import settings
     from app.services.auth.lockout import LockoutService
 
-    monkeypatch.setattr(settings, "auth_lockout_thresholds", "2:10")
+    monkeypatch.setattr(settings.security, "auth_lockout_thresholds", "2:10")
     service = LockoutService(AsyncMock())
     now = datetime(2026, 7, 23, 12, tzinfo=UTC)
 
@@ -94,8 +94,8 @@ async def test_prune_stale_attempts_flushes_transaction(monkeypatch) -> None:
     from app.core.config import settings
     from app.services.auth.lockout import LockoutService
 
-    monkeypatch.setattr(settings, "auth_lockout_thresholds", "2:10")
-    monkeypatch.setattr(settings, "auth_lockout_history_minutes", 5)
+    monkeypatch.setattr(settings.security, "auth_lockout_thresholds", "2:10")
+    monkeypatch.setattr(settings.security, "auth_lockout_history_minutes", 5)
     db = AsyncMock()
     service = LockoutService(db)
     service.repo.prune_stale_failed_attempts = AsyncMock()
@@ -113,7 +113,7 @@ async def test_fetch_recent_attempts_clamps_limit_and_reverses_db_order(
     from app.core.config import settings
     from app.services.auth.lockout import LockoutService
 
-    monkeypatch.setattr(settings, "auth_lockout_thresholds", "2:10")
+    monkeypatch.setattr(settings.security, "auth_lockout_thresholds", "2:10")
     service = LockoutService(AsyncMock())
     first = _attempt(datetime.now(UTC) - timedelta(seconds=2))
     second = _attempt(datetime.now(UTC) - timedelta(seconds=1))
@@ -135,8 +135,8 @@ async def test_prune_stale_attempts_skips_when_history_is_disabled(monkeypatch) 
     from app.core.config import settings
     from app.services.auth.lockout import LockoutService
 
-    monkeypatch.setattr(settings, "auth_lockout_thresholds", "2:10")
-    monkeypatch.setattr(settings, "auth_lockout_history_minutes", 0)
+    monkeypatch.setattr(settings.security, "auth_lockout_thresholds", "2:10")
+    monkeypatch.setattr(settings.security, "auth_lockout_history_minutes", 0)
     service = LockoutService(AsyncMock())
     service.repo.prune_stale_failed_attempts = AsyncMock()
 
@@ -150,7 +150,7 @@ async def test_get_active_lockout_prunes_and_reads_recent_attempts(monkeypatch) 
     from app.core.config import settings
     from app.services.auth.lockout import LockoutService
 
-    monkeypatch.setattr(settings, "auth_lockout_thresholds", "1:10")
+    monkeypatch.setattr(settings.security, "auth_lockout_thresholds", "1:10")
     service = LockoutService(AsyncMock())
     service._prune_stale_attempts = AsyncMock()
     service._fetch_recent_attempts = AsyncMock(
@@ -171,7 +171,7 @@ async def test_get_active_lockout_without_rules_does_not_query_repository(
     from app.core.config import settings
     from app.services.auth.lockout import LockoutService
 
-    monkeypatch.setattr(settings, "auth_lockout_thresholds", "invalid")
+    monkeypatch.setattr(settings.security, "auth_lockout_thresholds", "invalid")
     service = LockoutService(AsyncMock())
     service.repo.get_failed_attempts = AsyncMock()
 
@@ -184,7 +184,7 @@ def test_expired_lockout_message_returns_base_without_retry(monkeypatch) -> None
     from app.core.config import settings
     from app.services.auth.lockout import LockoutService
 
-    monkeypatch.setattr(settings, "auth_lockout_thresholds", "2:10")
+    monkeypatch.setattr(settings.security, "auth_lockout_thresholds", "2:10")
     service = LockoutService(AsyncMock())
 
     with patch(
@@ -204,7 +204,7 @@ async def test_register_failed_attempt_uses_postgres_advisory_lock(monkeypatch) 
     from app.core.config import settings
     from app.services.auth.lockout import LockoutService
 
-    monkeypatch.setattr(settings, "auth_lockout_thresholds", "1:30")
+    monkeypatch.setattr(settings.security, "auth_lockout_thresholds", "1:30")
     db = AsyncMock()
     service = LockoutService(db)
     service._is_postgresql = True
@@ -232,7 +232,7 @@ async def test_register_failed_attempt_skips_postgres_lock_for_sqlite(
     from app.core.config import settings
     from app.services.auth.lockout import LockoutService
 
-    monkeypatch.setattr(settings, "auth_lockout_thresholds", "1:30")
+    monkeypatch.setattr(settings.security, "auth_lockout_thresholds", "1:30")
     db = AsyncMock()
     service = LockoutService(db)
     service._is_postgresql = False
@@ -254,7 +254,7 @@ async def test_clear_failed_attempts_commits_and_returns_count(monkeypatch) -> N
     from app.core.config import settings
     from app.services.auth.lockout import LockoutService
 
-    monkeypatch.setattr(settings, "auth_lockout_thresholds", "2:10")
+    monkeypatch.setattr(settings.security, "auth_lockout_thresholds", "2:10")
     db = AsyncMock()
     service = LockoutService(db)
     service.repo.clear_failed_attempts = AsyncMock(return_value=4)
