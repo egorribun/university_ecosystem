@@ -245,7 +245,7 @@ func TestEmpirical_Failover_ConcurrentFlappingStress(t *testing.T) {
 	executor := func(ctx context.Context, target string) ([]QueryResult, error) {
 		if target == "qdrant-flapping" {
 			atomic.AddInt64(&primaryQueryCount, 1)
-			if rand.Float32() < 0.4 { // #nosec G404 // 40% error rate
+			if rand.Float32() < 0.4 { // #nosec G404 // 40% error rate for test simulation
 				return nil, fmt.Errorf("transient i/o error")
 			}
 			return []QueryResult{{VectorID: "qdrant-vec", Score: 0.88}}, nil

@@ -454,7 +454,7 @@ func (vr *VectorRouter) ExecuteVectorQuery(
 	return res, targetNode, isFallback, nil
 }
 
-// ScatterGatherQuery executes parallel search queries across nodes using errgroup and merges top-K results
+// ScatterGatherQuery executes parallel search queries across nodes using errgroup and merges top-K results.
 func (vr *VectorRouter) ScatterGatherQuery(
 	ctx context.Context,
 	nodes []string,
@@ -508,7 +508,7 @@ func (vr *VectorRouter) ScatterGatherQuery(
 	return ScatterGatherMerger(allResults, topK), nil
 }
 
-// VectorSearchHandler returns a Gin HandlerFunc for processing HTTP vector search requests
+// VectorSearchHandler returns a Gin HandlerFunc for processing HTTP vector search requests.
 func VectorSearchHandler(router *VectorRouter, executor VectorQueryExecutor) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req VectorSearchRequest
@@ -567,7 +567,7 @@ func VectorSearchHandler(router *VectorRouter, executor VectorQueryExecutor) gin
 	}
 }
 
-// VectorSearchGRPCHandler handles gRPC vector search request logic
+// VectorSearchGRPCHandler handles gRPC vector search request logic.
 func VectorSearchGRPCHandler(
 	ctx context.Context,
 	router *VectorRouter,
