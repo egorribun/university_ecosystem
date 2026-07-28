@@ -313,10 +313,19 @@ func TestEmpirical_ScatterGather_LargeScaleMergingCorrectness(t *testing.T) {
 			shardResults[s][i] = res
 			allItems = append(allItems, res)
 		}
+		sort.Slice(shardResults[s], func(i, j int) bool {
+			if shardResults[s][i].Score == shardResults[s][j].Score {
+				return shardResults[s][i].VectorID < shardResults[s][j].VectorID
+			}
+			return shardResults[s][i].Score > shardResults[s][j].Score
+		})
 	}
 
 	// Calculate ground truth global top-K by sorting all items
 	sort.Slice(allItems, func(i, j int) bool {
+		if allItems[i].Score == allItems[j].Score {
+			return allItems[i].VectorID < allItems[j].VectorID
+		}
 		return allItems[i].Score > allItems[j].Score
 	})
 	groundTruthTopK := allItems[:topK]

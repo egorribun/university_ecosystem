@@ -202,7 +202,8 @@ func TestSetupHub_JWKS(t *testing.T) {
 
 func TestRunServer_Error(t *testing.T) {
 	cfg := &config.Config{
-		Port: "-1",
+		Port:             "-1",
+		WebTransportPort: "-1",
 	}
 	logger := initLogger()
 	h := hub.NewHub(nil, logger, nil, cfg, nil)
