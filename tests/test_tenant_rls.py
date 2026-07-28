@@ -24,10 +24,10 @@ from app.models.tenant import Tenant
 
 def test_tenant_context_vars() -> None:
     """Test tenant_id_ctx and bypass_rls_ctx setting and getting."""
-    token = set_current_tenant("tenant-123")
+    set_current_tenant("tenant-123")
     assert get_current_tenant() == "tenant-123"
 
-    b_token = set_bypass_rls(True)
+    set_bypass_rls(True)
     assert get_bypass_rls() is True
 
     set_bypass_rls(False)
@@ -95,7 +95,7 @@ def test_pg_tenant_context_listener_postgresql() -> None:
 
     # 2. Test active tenant ID context
     mock_conn.reset_mock()
-    token = set_current_tenant("tenant-guu-789")
+    set_current_tenant("tenant-guu-789")
     try:
         set_pg_tenant_context(None, None, mock_conn)
         assert mock_conn.execute.call_count == 1
@@ -109,7 +109,7 @@ def test_pg_tenant_context_listener_postgresql() -> None:
 
     # 3. Test bypass RLS context
     mock_conn.reset_mock()
-    b_token = set_bypass_rls(True)
+    set_bypass_rls(True)
     try:
         set_pg_tenant_context(None, None, mock_conn)
         assert mock_conn.execute.call_count == 1
