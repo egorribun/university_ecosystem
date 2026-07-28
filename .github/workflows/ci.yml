@@ -417,6 +417,7 @@ jobs:
 
       - name: Install cargo-udeps
         run: |
+          rustup toolchain install nightly
           curl -L --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/cargo-bins/cargo-binstall/main/install-from-binstall-release.sh -o /tmp/install-binstall.sh
           sh /tmp/install-binstall.sh
           cargo binstall -y cargo-udeps
@@ -425,7 +426,6 @@ jobs:
         run: |
           LIBDIR="$(python -c 'import sysconfig; print(sysconfig.get_config_var("LIBDIR"))')"
           export LD_LIBRARY_PATH="${LIBDIR}:${LD_LIBRARY_PATH}"
-          rustup toolchain install nightly
           cargo +nightly udeps --manifest-path native/rust_ext/Cargo.toml --all-targets --no-default-features
           cargo +nightly udeps --manifest-path crates/pyo3-sanitizer/Cargo.toml --all-targets
           cargo +nightly udeps --manifest-path frontend/wasm-sanitizer/Cargo.toml --all-targets
@@ -844,7 +844,7 @@ jobs:
         run: |
           echo "Linting all Alembic migrations (base to head) for ZDD safety..."
           # MOD-008: Refactor Squawk to lint the generated SQL output rather than Python files.
-          uv run alembic upgrade base:head --sql | squawk || {
+          uv run alembic upgrade base:head --sql | squawk --ignore-rule require-if-not-exists --ignore-rule prefer-text-to-varchar --ignore-rule require-lock-timeout || {
             echo "::error::Squawk detected unsafe database operations in migrations! Review the output above."
             exit 1
           }

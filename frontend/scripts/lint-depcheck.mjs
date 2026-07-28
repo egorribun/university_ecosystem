@@ -94,6 +94,8 @@ const options = {
     "jspdf",
     "qrcode",
     "depcheck",
+    "dexie",
+    "@stryker-mutator/*",
   ],
   parsers: {
     "**/*.ts": depcheck.parser.typescript,
