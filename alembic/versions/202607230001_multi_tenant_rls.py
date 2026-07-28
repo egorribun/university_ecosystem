@@ -59,9 +59,27 @@ def upgrade() -> None:
             sa.UniqueConstraint("slug"),
             sa.UniqueConstraint("domain"),
         )
-        op.create_index("ix_tenants_slug", "tenants", ["slug"], unique=True)
-        op.create_index("ix_tenants_domain", "tenants", ["domain"], unique=True)
-        op.create_index("ix_tenants_is_active", "tenants", ["is_active"], unique=False)
+        op.create_index(
+            "ix_tenants_slug",
+            "tenants",
+            ["slug"],
+            unique=True,
+            postgresql_concurrently=True,
+        )
+        op.create_index(
+            "ix_tenants_domain",
+            "tenants",
+            ["domain"],
+            unique=True,
+            postgresql_concurrently=True,
+        )
+        op.create_index(
+            "ix_tenants_is_active",
+            "tenants",
+            ["is_active"],
+            unique=False,
+            postgresql_concurrently=True,
+        )
 
     # 2. Add tenant_id columns, foreign keys, and indexes across core entity tables
     for table_name in CORE_TABLES:
