@@ -58,8 +58,8 @@ class LockoutService:
         return rules
 
     def _lockout_rules(self) -> list[tuple[int, int]]:
-        """Return cached lockout rules. Parsing done once in __init__."""
-        return self._rules
+        """Return lockout rules parsed from settings."""
+        return self._parse_lockout_rules()
 
     def _max_lockout_threshold(self) -> int:
         rules = self._lockout_rules()

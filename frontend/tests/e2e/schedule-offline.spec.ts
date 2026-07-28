@@ -35,27 +35,26 @@ async function isServiceWorkerControlled(page: Page): Promise<boolean> {
 }
 
 async function ensureServiceWorkerReady(page: Page): Promise<boolean> {
-  await page.waitForLoadState("networkidle")
   try {
-    await page.evaluate(async () => {
-      await navigator.serviceWorker?.ready
+    await page.waitForLoadState("networkidle")
+    const swReady = await page.evaluate(async () => {
+      if (!navigator.serviceWorker) return false
+      return Promise.race([
+        navigator.serviceWorker.ready.then(() => true),
+        new Promise<boolean>((resolve) => setTimeout(() => resolve(false), 1500)),
+      ])
     })
+    if (!swReady) return false
+
+    let controlled = await isServiceWorkerControlled(page)
+    if (!controlled) {
+      await page.reload({ waitUntil: "networkidle" })
+      controlled = await isServiceWorkerControlled(page)
+    }
+    return controlled
   } catch {
     return false
   }
-  let controlled = await isServiceWorkerControlled(page)
-  if (!controlled) {
-    await page.reload({ waitUntil: "networkidle" })
-    try {
-      await page.evaluate(async () => {
-        await navigator.serviceWorker?.ready
-      })
-    } catch {
-      return false
-    }
-    controlled = await isServiceWorkerControlled(page)
-  }
-  return controlled
 }
 
 test.describe("Schedule offline behaviour", () => {
