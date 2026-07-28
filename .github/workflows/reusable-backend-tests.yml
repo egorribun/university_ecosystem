@@ -110,7 +110,7 @@ jobs:
 
             - name: Run pytest
               shell: pwsh
-              run: |
+              run: |  # nosemgrep: yaml.github-actions.security.run-shell-injection.run-shell-injection
                   $parallelArgs = @()
                   if ("${{ inputs.parallel-workers }}" -ne "-1") {
                     if ("${{ inputs.parallel-workers }}" -eq "0") {
@@ -212,9 +212,11 @@ jobs:
             - name: Update historical test durations
               if: always() && hashFiles('pytest-report.xml') != ''
               shell: pwsh
+              env:
+                TEST_GROUP_NAME: ${{ inputs.test-group-name }}
               run: |
                   uv run python scripts/quality/update_test_durations.py pytest-report.xml `
-                    --output artifacts/quality/test-durations-${{ inputs.test-group-name }}.json
+                    --output "artifacts/quality/test-durations-$env:TEST_GROUP_NAME.json"
 
             - name: Upload coverage to Codecov
               uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0

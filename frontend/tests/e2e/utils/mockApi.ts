@@ -316,6 +316,16 @@ export async function useMockApi(page: Page) {
           keys.forEach((key) => caches.delete(key))
         })
       }
+      if ("indexedDB" in window && indexedDB.databases) {
+        indexedDB
+          .databases()
+          .then((dbs) => {
+            dbs.forEach((db) => {
+              if (db.name) indexedDB.deleteDatabase(db.name)
+            })
+          })
+          .catch(() => {})
+      }
       /*
       // Clear all caches
       if ("caches" in window) {

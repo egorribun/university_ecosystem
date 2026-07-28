@@ -233,6 +233,9 @@ def run_migrations_online() -> None:
 
 
 if context.is_offline_mode():
-    run_migrations_offline()
+    try:
+        run_migrations_offline()
+    except BrokenPipeError:
+        pass
 else:
     run_migrations_online()
