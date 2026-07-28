@@ -280,7 +280,10 @@ func runServer(cfg *config.Config, logger *slog.Logger, h *hub.Hub) {
 		}
 	}()
 
+	var wtWg sync.WaitGroup
+	wtWg.Add(1)
 	go func() {
+		defer wtWg.Done()
 		logger.InfoContext(context.Background(), "Starting WebTransport Hub (UDP HTTP/3)", "port", wtPort)
 		var err error
 		if cfg.TLSCertFile != "" && cfg.TLSKeyFile != "" {
@@ -310,6 +313,7 @@ func runServer(cfg *config.Config, logger *slog.Logger, h *hub.Hub) {
 	h.Stop()
 	//nolint:errcheck
 	_ = wtServer.Close()
+	wtWg.Wait()
 	if err := server.Shutdown(shutdownCtx); err != nil {
 		logger.ErrorContext(context.Background(), "Server forced to shutdown", "err", err)
 	}

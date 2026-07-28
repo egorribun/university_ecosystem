@@ -35,7 +35,6 @@ type Client struct {
 }
 
 type chEntry struct {
-	mu     sync.RWMutex
 	closed bool
 }
 
@@ -44,30 +43,23 @@ var (
 	chMu      sync.Mutex
 )
 
-func getOrCreateChEntry(ch chan []byte) *chEntry {
-	chMu.Lock()
-	defer chMu.Unlock()
-	entry, ok := chMutexes[ch]
-	if !ok {
-		entry = &chEntry{}
-		chMutexes[ch] = entry
-	}
-	return entry
-}
-
 // safeSend writes data to ch without panicking if the channel is already closed.
 func safeSend(ch chan []byte, data []byte) (sent bool) {
 	if ch == nil {
 		return false
 	}
-	entry := getOrCreateChEntry(ch)
-
-	entry.mu.Lock()
-	defer entry.mu.Unlock()
-
+	chMu.Lock()
+	entry, ok := chMutexes[ch]
+	if !ok {
+		entry = &chEntry{}
+		chMutexes[ch] = entry
+	}
 	if entry.closed {
+		delete(chMutexes, ch)
+		chMu.Unlock()
 		return false
 	}
+	chMu.Unlock()
 
 	defer func() {
 		if r := recover(); r != nil {
@@ -98,9 +90,6 @@ func safeClose(ch chan []byte) {
 		delete(chMutexes, ch)
 	}
 	chMu.Unlock()
-
-	entry.mu.Lock()
-	defer entry.mu.Unlock()
 
 	if entry.closed {
 		return
