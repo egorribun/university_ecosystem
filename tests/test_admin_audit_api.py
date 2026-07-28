@@ -39,7 +39,11 @@ async def test_list_audit_logs_as_admin(root_client, user_factory, db_session):
 
     # Test GET /admin/audit
     response = await root_client.get(
-        "/admin/audit", headers={"Authorization": f"Bearer {token}"}
+        "/admin/audit",
+        headers={
+            "Authorization": f"Bearer {token}",
+            "X-Query-Budget": "15",
+        },
     )
 
     assert response.status_code == 200
@@ -107,7 +111,10 @@ async def test_list_audit_logs_filtering(root_client, user_factory, db_session):
     # Filter by action
     response = await root_client.get(
         "/admin/audit?action=data.view",
-        headers={"Authorization": f"Bearer {token}"},
+        headers={
+            "Authorization": f"Bearer {token}",
+            "X-Query-Budget": "15",
+        },
     )
     assert response.status_code == 200
     assert all(item["action"] == "data.view" for item in response.json()["items"])
@@ -115,7 +122,10 @@ async def test_list_audit_logs_filtering(root_client, user_factory, db_session):
     # Filter by subject_id
     response = await root_client.get(
         f"/admin/audit?subject_id={user_subject.id}",
-        headers={"Authorization": f"Bearer {token}"},
+        headers={
+            "Authorization": f"Bearer {token}",
+            "X-Query-Budget": "15",
+        },
     )
     assert response.status_code == 200
     assert all(
@@ -153,7 +163,10 @@ async def test_list_audit_logs_pagination(root_client, user_factory, db_session)
     # Test limit
     response = await root_client.get(
         "/admin/audit?limit=2&resource_type=profile",
-        headers={"Authorization": f"Bearer {token}"},
+        headers={
+            "Authorization": f"Bearer {token}",
+            "X-Query-Budget": "15",
+        },
     )
     assert response.status_code == 200
     assert len(response.json()["items"]) == 2
@@ -161,7 +174,10 @@ async def test_list_audit_logs_pagination(root_client, user_factory, db_session)
     # Test offset
     response = await root_client.get(
         "/admin/audit?offset=3&resource_type=profile",
-        headers={"Authorization": f"Bearer {token}"},
+        headers={
+            "Authorization": f"Bearer {token}",
+            "X-Query-Budget": "15",
+        },
     )
     assert response.status_code == 200
     # There should be exactly 2 logs left if total is 5 and offset is 3
@@ -196,7 +212,10 @@ async def test_list_audit_logs_actor_filtering(root_client, user_factory, db_ses
     # Filter by actor_id
     response = await root_client.get(
         f"/admin/audit?actor_id={actor_user.id}",
-        headers={"Authorization": f"Bearer {token}"},
+        headers={
+            "Authorization": f"Bearer {token}",
+            "X-Query-Budget": "15",
+        },
     )
     assert response.status_code == 200
     data = response.json()
