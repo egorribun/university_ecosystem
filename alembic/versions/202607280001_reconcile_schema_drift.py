@@ -43,6 +43,8 @@ def upgrade() -> None:
                 server_default=sa.text("now()"),
             ),
             sa.Column("id", sa.UUID(), primary_key=True, nullable=False),
+            sa.UniqueConstraint("slug", name="tenants_slug_key"),
+            sa.UniqueConstraint("domain", name="tenants_domain_key"),
         )
         op.create_index("ix_tenants_domain", "tenants", ["domain"], unique=True)
         op.create_index("ix_tenants_is_active", "tenants", ["is_active"])
