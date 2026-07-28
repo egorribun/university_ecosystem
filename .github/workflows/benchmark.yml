@@ -79,9 +79,9 @@ jobs:
         # -count=5 gives the benchmark action enough samples for a stable mean.
         # -benchtime=1s ensures consistent wall-clock budget per run.
         run: |
-          (cd services/ws-hub && go mod download)
-          go test -bench=. -benchmem -count=5 -benchtime=1s ./services/ws-hub/... 2>&1 | grep -E '^(pkg:|goos:|goarch:|Benchmark|PASS|ok)' | tee ws-hub-regression.txt
-        working-directory: ${{ github.workspace }}
+          cd services/ws-hub
+          go mod download
+          go test -bench=. -benchmem -count=5 -benchtime=1s ./... 2>&1 | grep -E '^(pkg:|goos:|goarch:|Benchmark|PASS|ok)' | tee ../../ws-hub-regression.txt
 
       - name: Regression gate — fail on > 10% slowdown
         uses: benchmark-action/github-action-benchmark@52576c92bccf6ac60c8223ec7eb2565637cae9ba # v1.22.1
