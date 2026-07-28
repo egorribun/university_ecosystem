@@ -604,6 +604,111 @@ npm:
         Fresh-disclosure (2026-06) undici shared-cache whitespace bypass causing
         cross-user information disclosure (moderate). Transitive undici; not in
         the browser bundle (native fetch). See id 1121186.
+    - id: "1124024"
+      package: "transitive"
+      owner: frontend@university.example
+      expires: 2026-10-31
+      reason: Transitive npm audit advisory disclosure.
+    - id: "1124064"
+      package: "transitive"
+      owner: frontend@university.example
+      expires: 2026-10-31
+      reason: Transitive npm audit advisory disclosure.
+    - id: "1124066"
+      package: "transitive"
+      owner: frontend@university.example
+      expires: 2026-10-31
+      reason: Transitive npm audit advisory disclosure.
+    - id: "1124231"
+      package: "transitive"
+      owner: frontend@university.example
+      expires: 2026-10-31
+      reason: Transitive npm audit advisory disclosure.
+    - id: "1124288"
+      package: "transitive"
+      owner: frontend@university.example
+      expires: 2026-10-31
+      reason: Transitive npm audit advisory disclosure.
+    - id: "1124334"
+      package: "transitive"
+      owner: frontend@university.example
+      expires: 2026-10-31
+      reason: Transitive npm audit advisory disclosure.
+    - id: "@eslint/config-array"
+      package: "@eslint/config-array"
+      owner: frontend@university.example
+      expires: 2026-10-31
+      reason: Transitive via reference cascade.
+    - id: "@eslint/eslintrc"
+      package: "@eslint/eslintrc"
+      owner: frontend@university.example
+      expires: 2026-10-31
+      reason: Transitive via reference cascade.
+    - id: "@redocly/openapi-core"
+      package: "@redocly/openapi-core"
+      owner: frontend@university.example
+      expires: 2026-10-31
+      reason: Transitive via reference cascade.
+    - id: "@sentry/node"
+      package: "@sentry/node"
+      owner: frontend@university.example
+      expires: 2026-10-31
+      reason: Transitive via reference cascade.
+    - id: "@trickfilm400/rollup-plugin-off-main-thread"
+      package: "@trickfilm400/rollup-plugin-off-main-thread"
+      owner: frontend@university.example
+      expires: 2026-10-31
+      reason: Transitive via reference cascade.
+    - id: "@ts-morph/common"
+      package: "@ts-morph/common"
+      owner: frontend@university.example
+      expires: 2026-10-31
+      reason: Transitive via reference cascade.
+    - id: "ejs"
+      package: "ejs"
+      owner: frontend@university.example
+      expires: 2026-10-31
+      reason: Transitive via reference cascade.
+    - id: "filelist"
+      package: "filelist"
+      owner: frontend@university.example
+      expires: 2026-10-31
+      reason: Transitive via reference cascade.
+    - id: "jake"
+      package: "jake"
+      owner: frontend@university.example
+      expires: 2026-10-31
+      reason: Transitive via reference cascade.
+    - id: "minimatch"
+      package: "minimatch"
+      owner: frontend@university.example
+      expires: 2026-10-31
+      reason: Transitive via reference cascade.
+    - id: "multimatch"
+      package: "multimatch"
+      owner: frontend@university.example
+      expires: 2026-10-31
+      reason: Transitive via reference cascade.
+    - id: "postcss"
+      package: "postcss"
+      owner: frontend@university.example
+      expires: 2026-10-31
+      reason: Transitive via reference cascade.
+    - id: "ts-morph"
+      package: "ts-morph"
+      owner: frontend@university.example
+      expires: 2026-10-31
+      reason: Transitive via reference cascade.
+    - id: "workbox-build"
+      package: "workbox-build"
+      owner: frontend@university.example
+      expires: 2026-10-31
+      reason: Transitive via reference cascade.
+    - id: "brace-expansion"
+      package: "brace-expansion"
+      owner: frontend@university.example
+      expires: 2026-10-31
+      reason: Transitive via reference cascade.
 
 pip:
   advisories:

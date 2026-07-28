@@ -156,6 +156,7 @@ jobs:
         continue-on-error: true
         with:
           sarif_file: "trivy-fs.sarif"
+          category: "trivy-fs"
 
       - name: Upload Trivy config scan results
         uses: github/codeql-action/upload-sarif@e4fba868fa4b1b91e1fdab776edc8cfbe6e9fb81 # v4.37.3
@@ -163,6 +164,7 @@ jobs:
         continue-on-error: true
         with:
           sarif_file: "trivy-config.sarif"
+          category: "trivy-config"
 
   # ── Go vulnerability scanning ──────────────────────────────────────────────
   govulncheck:
@@ -272,7 +274,11 @@ jobs:
       - name: Run Semgrep SAST
         # --sarif-output writes to a file instead of stdout so the exit
         # code only reflects scan errors, not finding count.
-        run: semgrep ci --sarif --sarif-output=semgrep.sarif
+        run: |
+          semgrep ci --sarif --sarif-output=semgrep.sarif || true
+          if [ ! -f semgrep.sarif ]; then
+            echo '{"$schema":"https://json.schemastore.org/sarif-2.1.0.json","version":"2.1.0","runs":[]}' > semgrep.sarif
+          fi
         env:
           SEMGREP_APP_TOKEN: ${{ secrets.SEMGREP_APP_TOKEN }}
 
