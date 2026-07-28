@@ -30,7 +30,6 @@ def upgrade() -> None:
         "events",
         ["starts_at", "is_active"],
         unique=False,
-        postgresql_concurrently=True,
     )
     # Index for user_sessions query (test_user_sessions_no_seq_scan)
     op.create_index(
@@ -38,7 +37,6 @@ def upgrade() -> None:
         "active_sessions",
         ["user_id", "expires_at"],
         unique=False,
-        postgresql_concurrently=True,
     )
     # Index for notifications_unread query (test_notifications_unread_count_no_seq_scan)
     op.create_index(

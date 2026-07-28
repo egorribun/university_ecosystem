@@ -84,7 +84,6 @@ def upgrade() -> None:
                 table_name,
                 ["tenant_id"],
                 unique=False,
-                postgresql_concurrently=True,
             )
 
         # 3. Enable RLS and create isolation policy on PostgreSQL

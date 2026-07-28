@@ -40,7 +40,6 @@ def upgrade() -> None:
                 "stored_events",
                 ["hash"],
                 unique=False,
-                postgresql_concurrently=True,
             )
 
 
