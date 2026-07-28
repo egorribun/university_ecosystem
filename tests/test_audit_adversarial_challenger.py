@@ -401,7 +401,10 @@ async def test_empirical_time_travel_api_endpoint_full_flow(
             "aggregate_id": str(agg_id),
             "target_timestamp": now_iso,
         },
-        headers={"Authorization": f"Bearer {token}"},
+        headers={
+            "Authorization": f"Bearer {token}",
+            "X-Query-Budget": "15",
+        },
     )
     assert res.status_code == 200
     data = res.json()
