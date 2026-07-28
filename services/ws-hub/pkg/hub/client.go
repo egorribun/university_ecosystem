@@ -49,28 +49,25 @@ func safeSend(ch chan []byte, data []byte) (sent bool) {
 		return false
 	}
 	chMu.Lock()
+	defer chMu.Unlock()
+
 	entry, ok := chMutexes[ch]
-	if !ok {
-		entry = &chEntry{}
-		chMutexes[ch] = entry
-	}
-	if entry.closed {
-		delete(chMutexes, ch)
-		chMu.Unlock()
+	if ok && entry.closed {
 		return false
 	}
-	chMu.Unlock()
 
 	defer func() {
 		if r := recover(); r != nil {
 			sent = false
-			chMu.Lock()
 			delete(chMutexes, ch)
-			chMu.Unlock()
 		}
 	}()
+
 	select {
 	case ch <- data:
+		if !ok {
+			chMutexes[ch] = &chEntry{}
+		}
 		return true
 	default:
 		return false
@@ -83,18 +80,16 @@ func safeClose(ch chan []byte) {
 		return
 	}
 	chMu.Lock()
-	entry, ok := chMutexes[ch]
-	if !ok {
-		entry = &chEntry{}
-	} else {
-		delete(chMutexes, ch)
-	}
-	chMu.Unlock()
+	defer chMu.Unlock()
 
-	if entry.closed {
+	entry, ok := chMutexes[ch]
+	if ok && entry.closed {
 		return
 	}
-	entry.closed = true
+	if ok {
+		entry.closed = true
+	}
+	delete(chMutexes, ch)
 
 	defer func() {
 		_ = recover() //nolint:errcheck // recover() returns interface{}; blank discard is the canonical pattern.
