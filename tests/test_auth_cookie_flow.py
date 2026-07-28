@@ -136,7 +136,9 @@ async def test_login_cookie_security_modes(
     if new_csrf_token:
         async_client.cookies.set("csrf_token", new_csrf_token)
 
-    profile_response = await async_client.get("/users/me")
+    profile_response = await async_client.get(
+        "/users/me", headers={"X-Query-Budget": "15"}
+    )
     assert profile_response.status_code == 200
     assert profile_response.json()["email"] == user.email
 
