@@ -67,7 +67,11 @@ async def test_get_dlq_stats_empty(async_client, user_factory):
 
     response = await async_client.get(
         "/admin/dlq/stats",
-        headers={"Authorization": f"Bearer {token}", "X-Internal-Token": "secret"},
+        headers={
+            "Authorization": f"Bearer {token}",
+            "X-Internal-Token": "secret",
+            "X-Query-Budget": "15",
+        },
     )
     assert response.status_code == 200
     data = response.json()
@@ -90,7 +94,11 @@ async def test_get_dlq_stats_with_data(async_client, user_factory, job_factory):
 
     response = await async_client.get(
         "/admin/dlq/stats",
-        headers={"Authorization": f"Bearer {token}", "X-Internal-Token": "secret"},
+        headers={
+            "Authorization": f"Bearer {token}",
+            "X-Internal-Token": "secret",
+            "X-Query-Budget": "15",
+        },
     )
     assert response.status_code == 200
     data = response.json()
@@ -110,7 +118,11 @@ async def test_list_dlq_jobs_no_filter(async_client, user_factory, job_factory):
 
     response = await async_client.get(
         "/admin/dlq/jobs",
-        headers={"Authorization": f"Bearer {token}", "X-Internal-Token": "secret"},
+        headers={
+            "Authorization": f"Bearer {token}",
+            "X-Internal-Token": "secret",
+            "X-Query-Budget": "15",
+        },
     )
     assert response.status_code == 200
     data = response.json()
@@ -136,7 +148,11 @@ async def test_list_dlq_jobs_with_filter(async_client, user_factory, job_factory
     response = await async_client.get(
         "/admin/dlq/jobs",
         params={"status": "pending"},
-        headers={"Authorization": f"Bearer {token}", "X-Internal-Token": "secret"},
+        headers={
+            "Authorization": f"Bearer {token}",
+            "X-Internal-Token": "secret",
+            "X-Query-Budget": "15",
+        },
     )
     assert response.status_code == 200
     data = response.json()
@@ -148,7 +164,11 @@ async def test_list_dlq_jobs_with_filter(async_client, user_factory, job_factory
     response = await async_client.get(
         "/admin/dlq/jobs",
         params={"status": "failed"},
-        headers={"Authorization": f"Bearer {token}", "X-Internal-Token": "secret"},
+        headers={
+            "Authorization": f"Bearer {token}",
+            "X-Internal-Token": "secret",
+            "X-Query-Budget": "15",
+        },
     )
     assert response.status_code == 200
     data = response.json()
@@ -168,6 +188,7 @@ async def test_list_dlq_jobs_invalid_status(async_client, user_factory):
             "Authorization": f"Bearer {token}",
             "Accept-Language": "en",
             "X-Internal-Token": "secret",
+            "X-Query-Budget": "15",
         },
     )
     assert response.status_code == 400
@@ -187,6 +208,7 @@ async def test_retry_dlq_job_success(
             "Authorization": f"Bearer {token}",
             "Accept-Language": "en",
             "X-Internal-Token": "secret",
+            "X-Query-Budget": "15",
         },
     )
     assert response.status_code == 200
@@ -204,7 +226,11 @@ async def test_retry_dlq_job_not_found(async_client, user_factory):
 
     response = await async_client.post(
         "/admin/dlq/retry/9999",
-        headers={"Authorization": f"Bearer {token}", "X-Internal-Token": "secret"},
+        headers={
+            "Authorization": f"Bearer {token}",
+            "X-Internal-Token": "secret",
+            "X-Query-Budget": "15",
+        },
     )
     assert response.status_code == 404
 
@@ -229,7 +255,11 @@ async def test_cleanup_dlq(async_client, user_factory, job_factory, db_session):
     response = await async_client.delete(
         "/admin/dlq/cleanup",
         params={"older_than_days": 7},
-        headers={"Authorization": f"Bearer {token}", "X-Internal-Token": "secret"},
+        headers={
+            "Authorization": f"Bearer {token}",
+            "X-Internal-Token": "secret",
+            "X-Query-Budget": "15",
+        },
     )
     assert response.status_code == 200
     assert response.json()["deleted_count"] == 1
