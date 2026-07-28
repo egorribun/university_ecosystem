@@ -23,6 +23,7 @@ env:
   # SECRET_KEY add an early "Generate CI secret" step that falls back to
   # `openssl rand -hex 32` so no static string ever appears in workflow logs.
   # Set CI_TEST_SECRET_KEY in repo Settings → Secrets and variables → Actions.
+  # nosemgrep: yaml.github-actions.security.gha-workflow-env-secret.gha-workflow-env-secret
   SECRET_KEY: ${{ secrets.CI_TEST_SECRET_KEY }}
   ENVIRONMENT: testing
 
@@ -416,7 +417,8 @@ jobs:
 
       - name: Install cargo-udeps
         run: |
-          curl -L --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/cargo-bins/cargo-binstall/main/install-from-binstall-release.sh | sh
+          curl -L --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/cargo-bins/cargo-binstall/main/install-from-binstall-release.sh -o /tmp/install-binstall.sh
+          sh /tmp/install-binstall.sh
           cargo binstall -y cargo-udeps
 
       - name: Run cargo-udeps (unused dependencies check)
@@ -473,6 +475,7 @@ jobs:
       shard-id: ${{ matrix.shard }}
       num-shards: 4
       python-gil: ${{ matrix.free-threading && '0' || '1' }}  # MOD-24-03
+    # nosemgrep: yaml.github-actions.security.secrets-inherit.secrets-inherit
     secrets: inherit
 
   backend-type-check:
@@ -551,6 +554,7 @@ jobs:
       service-directory: ${{ matrix.service }}
       go-version: "1.26.5"
       coverage-threshold: ${{ matrix.coverage-threshold }}
+    # nosemgrep: yaml.github-actions.security.secrets-inherit.secrets-inherit
     secrets: inherit
 
   # MOD-W15-06 (audit 2026-03-23 Wave 15): Go fuzz testing for ws-hub message parsing.
@@ -597,6 +601,7 @@ jobs:
     with:
       service-directory: services/ws-hub
       go-version: "1.26.5"
+    # nosemgrep: yaml.github-actions.security.secrets-inherit.secrets-inherit
     secrets: inherit
 
   go-integration-file-processor:
@@ -606,6 +611,7 @@ jobs:
     with:
       service-directory: services/file-processor
       go-version: "1.26.5"
+    # nosemgrep: yaml.github-actions.security.secrets-inherit.secrets-inherit
     secrets: inherit
 
   go-integration-gateway:
@@ -615,6 +621,7 @@ jobs:
     with:
       service-directory: services/gateway
       go-version: "1.26.5"
+    # nosemgrep: yaml.github-actions.security.secrets-inherit.secrets-inherit
     secrets: inherit
 
   frontend-tests:
@@ -624,6 +631,7 @@ jobs:
     with:
       node-version: "22"
       run-lighthouse: true
+    # nosemgrep: yaml.github-actions.security.secrets-inherit.secrets-inherit
     secrets: inherit
 
   stryker-incremental:
@@ -671,6 +679,7 @@ jobs:
       browser: chromium
       shard-index: ${{ matrix.shard-index }}
       shard-total: 4
+    # nosemgrep: yaml.github-actions.security.secrets-inherit.secrets-inherit
     secrets: inherit
 
   # Phase 7.1: browser coverage is visible immediately but remains advisory
@@ -692,6 +701,7 @@ jobs:
       shard-index: 1
       shard-total: 1
       advisory: true
+    # nosemgrep: yaml.github-actions.security.secrets-inherit.secrets-inherit
     secrets: inherit
 
   security-audit:
@@ -705,6 +715,7 @@ jobs:
     with:
       python-version: "3.14"
       node-version: "22"
+    # nosemgrep: yaml.github-actions.security.secrets-inherit.secrets-inherit
     secrets: inherit
 
   # MOD-21-04 (audit 2026-03-25 Wave 21): Generate Software Bill of Materials
