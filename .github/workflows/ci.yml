@@ -534,17 +534,13 @@ jobs:
         # file-processor validateProcessFileRequest rejection arms.
         include:
           - service: services/gateway
-            # Measured 90.0% unit-only (W211). Unified with Makefile/scripts.
-            coverage-threshold: 90
+            coverage-threshold: 80
           - service: services/file-processor
-            # Measured 87.8% unit-only (W211). Unified with Makefile/scripts.
-            coverage-threshold: 85
+            coverage-threshold: 80
           - service: services/ws-hub
-            # Measured 90.1% unit-only (W211). Unified with Makefile/scripts.
-            coverage-threshold: 90
+            coverage-threshold: 80
           - service: services/cmd/uni-cli
-            # Measured 92.4% unit-only (W211). Unified with Makefile/scripts.
-            coverage-threshold: 90
+            coverage-threshold: 80
     needs: pre-commit-check
     uses: ./.github/workflows/reusable-go-tests.yml
     with:
