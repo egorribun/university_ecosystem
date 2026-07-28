@@ -113,7 +113,7 @@ def upgrade():
             logger.info(f"Skipping drop for missing table {table}")
             continue
 
-        print(f"Cleaning legacy_id {table}...")
+        logger.info(f"Cleaning legacy_id {table}...")
         try:
             if dialect == "postgresql":
                 # Drop constraint if exists (CASCADE handles it usually)
@@ -144,7 +144,7 @@ def upgrade():
         if not sa.inspect(op.get_bind()).has_table(table):
             continue
 
-        print(f"Cleaning FK {legacy_col} in {table}...")
+        logger.info(f"Cleaning FK {legacy_col} in {table}...")
         try:
             if dialect == "postgresql":
                 op.execute(  # nosemgrep
