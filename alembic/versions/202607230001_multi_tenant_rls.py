@@ -79,11 +79,18 @@ def upgrade() -> None:
                     nullable=True,
                 ),
             )
+            is_partitioned = table_name in (
+                "notifications",
+                "data_access_logs",
+                "notification_deliveries",
+                "failed_login_attempts",
+            )
             op.create_index(
                 f"ix_{table_name}_tenant_id",
                 table_name,
                 ["tenant_id"],
                 unique=False,
+                postgresql_concurrently=not is_partitioned,
             )
 
         # 3. Enable RLS and create isolation policy on PostgreSQL
