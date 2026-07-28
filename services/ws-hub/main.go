@@ -88,8 +88,9 @@ func main() {
 	}
 
 	h := setupHub(ctx, cfg, logger, nc, rdb, spiffeClient)
-	setupHandlers(h, cfg, logger, nc, rdb)
-	runServer(cfg, logger, h)
+	mux := http.NewServeMux()
+	setupHandlers(mux, h, cfg, logger, nc, rdb)
+	runServer(cfg, logger, h, mux)
 }
 
 func initLogger() *slog.Logger {
@@ -170,12 +171,12 @@ func setupHub(ctx context.Context, cfg *config.Config, logger *slog.Logger, nc *
 	return h
 }
 
-func setupHandlers(h *hub.Hub, cfg *config.Config, logger *slog.Logger, nc *nats.Conn, rdb *redis.Client) {
-	http.Handle("/ws", otelhttp.NewHandler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+func setupHandlers(mux *http.ServeMux, h *hub.Hub, cfg *config.Config, logger *slog.Logger, nc *nats.Conn, rdb *redis.Client) {
+	mux.Handle("/ws", otelhttp.NewHandler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		h.HandleWebSocket(w, r, cfg)
 	}), "websocket_upgrade"))
 
-	http.Handle("/wt", otelhttp.NewHandler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	mux.Handle("/wt", otelhttp.NewHandler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		h.HandleWebTransport(w, r, cfg)
 	}), "webtransport_upgrade"))
 
@@ -183,7 +184,7 @@ func setupHandlers(h *hub.Hub, cfg *config.Config, logger *slog.Logger, nc *nats
 	// /health/live — always returns 200 if the process is running (K8s liveness).
 	// /health/ready — checks NATS, Redis, and JWKS (K8s readiness).
 	// /health — backward-compatible alias for /health/live.
-	http.Handle("/health/live", otelhttp.NewHandler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	mux.Handle("/health/live", otelhttp.NewHandler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if err := json.NewEncoder(w).Encode(map[string]string{"status": "alive"}); err != nil {
 			logger.ErrorContext(r.Context(), "Failed to encode liveness response", "err", err)
 		}
@@ -199,7 +200,7 @@ func setupHandlers(h *hub.Hub, cfg *config.Config, logger *slog.Logger, nc *nats
 	)
 	const redisCacheTTL = 5 * time.Second
 
-	http.Handle("/health/ready", otelhttp.NewHandler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	mux.Handle("/health/ready", otelhttp.NewHandler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		checks := map[string]string{}
 		if nc == nil || !nc.IsConnected() {
 			checks["nats"] = "disconnected"
@@ -236,18 +237,19 @@ func setupHandlers(h *hub.Hub, cfg *config.Config, logger *slog.Logger, nc *nats
 	}), "health_ready"))
 
 	// Backward-compatible /health (alias for /health/live).
-	http.Handle("/health", otelhttp.NewHandler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	mux.Handle("/health", otelhttp.NewHandler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if err := json.NewEncoder(w).Encode(map[string]string{"status": "healthy"}); err != nil {
 			logger.ErrorContext(r.Context(), "Failed to encode health check response", "err", err)
 		}
 	}), "health_check"))
 
-	http.Handle("/metrics", promhttp.Handler())
+	mux.Handle("/metrics", promhttp.Handler())
 }
 
-func runServer(cfg *config.Config, logger *slog.Logger, h *hub.Hub) {
+func runServer(cfg *config.Config, logger *slog.Logger, h *hub.Hub, mux *http.ServeMux) {
 	server := &http.Server{
 		Addr:              ":" + cfg.Port,
+		Handler:           mux,
 		ReadTimeout:       10 * time.Second,
 		WriteTimeout:      10 * time.Second,
 		IdleTimeout:       120 * time.Second,
