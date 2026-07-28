@@ -28,8 +28,8 @@ def upgrade() -> None:
         op.create_table(
             "tenants",
             sa.Column("name", sa.String(length=256), nullable=False),
-            sa.Column("slug", sa.String(length=64), unique=True, nullable=False),
-            sa.Column("domain", sa.String(length=256), unique=True, nullable=True),
+            sa.Column("slug", sa.String(length=64), nullable=False),
+            sa.Column("domain", sa.String(length=256), nullable=True),
             sa.Column(
                 "is_active",
                 sa.Boolean(),
@@ -43,10 +43,12 @@ def upgrade() -> None:
                 server_default=sa.text("now()"),
             ),
             sa.Column("id", sa.UUID(), primary_key=True, nullable=False),
+            sa.UniqueConstraint("slug", name="tenants_slug_key"),
+            sa.UniqueConstraint("domain", name="tenants_domain_key"),
         )
-        op.create_index("ix_tenants_domain", "tenants", ["domain"], unique=True)
+        op.create_index("ix_tenants_domain", "tenants", ["domain"])
         op.create_index("ix_tenants_is_active", "tenants", ["is_active"])
-        op.create_index("ix_tenants_slug", "tenants", ["slug"], unique=True)
+        op.create_index("ix_tenants_slug", "tenants", ["slug"])
 
     if "vector_chunks" not in tables:
         op.create_table(
