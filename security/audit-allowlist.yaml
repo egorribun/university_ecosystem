@@ -9,6 +9,12 @@ npm:
       reason: |
         Tailwind CSS 3.x pulls in sucrase's glob CLI; pinning ensures we stay on the patched release until the Tailwind 4 upgrade.
   advisories:
+    - id: "1130129"
+      package: fast-uri
+      owner: frontend@university.example
+      expires: 2026-12-31
+      reason: |
+        ReDoS vulnerability in fast-uri. Transitive dependency from ajv / dev toolchain.
     - id: "1115382"
       package: picomatch
       owner: frontend@university.example
