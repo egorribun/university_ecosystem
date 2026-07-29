@@ -70,7 +70,9 @@ class _NamespaceView[T]:
         if name in object.__getattribute__(self, "__slots__"):
             object.__delattr__(self, name)
         else:
-            delattr(object.__getattribute__(self, "_parent"), name)
+            parent = object.__getattribute__(self, "_parent")
+            if name in parent.__dict__:
+                delattr(parent, name)
 
     def __repr__(self) -> str:
         cls_name = object.__getattribute__(self, "_mixin_cls").__name__
