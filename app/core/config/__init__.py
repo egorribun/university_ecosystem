@@ -69,8 +69,10 @@ class _NamespaceView[T]:
             object.__delattr__(self, name)
         else:
             parent = object.__getattribute__(self, "_parent")
-            if name in parent.__dict__:
+            try:
                 delattr(parent, name)
+            except AttributeError:
+                pass
 
     def __repr__(self) -> str:
         cls_name = object.__getattribute__(self, "_mixin_cls").__name__
