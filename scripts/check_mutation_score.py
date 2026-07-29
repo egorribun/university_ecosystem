@@ -88,17 +88,28 @@ def _parse_mutmut_output(output: str) -> MutationSummary:
     killed_match = _KILLED_PATTERN.search(output)
     survived_match = _SURVIVED_PATTERN.search(output)
 
-    if killed_match is None or survived_match is None:
-        raise ValueError(
-            "Could not parse 'Killed' or 'Survived' counts from mutmut output.\n"
-            f"Raw output:\n{output}"
-        )
+    if killed_match is not None and survived_match is not None:
+        killed = int(killed_match.group(1))
+        survived = int(survived_match.group(1))
+        timeout = _extract(_TIMEOUT_PATTERN, output)
+        suspicious = _extract(_SUSPICIOUS_PATTERN, output)
+    else:
+        # Fallback for mutmut 3.x per-mutant output lines (e.g., "...: killed", "...: survived")
+        killed = len(re.findall(r":\s*killed\b", output, re.IGNORECASE))
+        survived = len(re.findall(r":\s*survived\b", output, re.IGNORECASE))
+        timeout = len(re.findall(r":\s*timed out\b", output, re.IGNORECASE))
+        suspicious = len(re.findall(r":\s*suspicious\b", output, re.IGNORECASE))
+        if killed == 0 and survived == 0:
+            raise ValueError(
+                "Could not parse 'Killed' or 'Survived' counts from mutmut output.\n"
+                f"Raw output:\n{output}"
+            )
 
     return MutationSummary(
-        killed=int(killed_match.group(1)),
-        survived=int(survived_match.group(1)),
-        timeout=_extract(_TIMEOUT_PATTERN, output),
-        suspicious=_extract(_SUSPICIOUS_PATTERN, output),
+        killed=killed,
+        survived=survived,
+        timeout=timeout,
+        suspicious=suspicious,
     )
 
 
