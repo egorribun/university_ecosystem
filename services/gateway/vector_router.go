@@ -188,9 +188,14 @@ func (h *HashRing) GetNodes() []string {
 // ResultMinHeap implements container/heap.Interface for bounded top-K min-heap.
 type ResultMinHeap []QueryResult
 
-func (h ResultMinHeap) Len() int           { return len(h) }
-func (h ResultMinHeap) Less(i, j int) bool { return h[i].Score < h[j].Score }
-func (h ResultMinHeap) Swap(i, j int)      { h[i], h[j] = h[j], h[i] }
+func (h ResultMinHeap) Len() int { return len(h) }
+func (h ResultMinHeap) Less(i, j int) bool {
+	if h[i].Score == h[j].Score {
+		return h[i].VectorID > h[j].VectorID
+	}
+	return h[i].Score < h[j].Score
+}
+func (h ResultMinHeap) Swap(i, j int) { h[i], h[j] = h[j], h[i] }
 
 // Push appends an item to the ResultMinHeap for heap.Interface.
 func (h *ResultMinHeap) Push(x interface{}) {
@@ -219,7 +224,7 @@ func ScatterGatherMerger(shardResults [][]QueryResult, topK int) []QueryResult {
 		for _, res := range results {
 			if h.Len() < topK {
 				heap.Push(h, res)
-			} else if (*h)[0].Score < res.Score {
+			} else if res.Score > (*h)[0].Score || (res.Score == (*h)[0].Score && res.VectorID < (*h)[0].VectorID) {
 				heap.Pop(h)
 				heap.Push(h, res)
 			}
@@ -230,6 +235,13 @@ func ScatterGatherMerger(shardResults [][]QueryResult, topK int) []QueryResult {
 	for i := len(merged) - 1; i >= 0; i-- {
 		merged[i] = heap.Pop(h).(QueryResult)
 	}
+
+	sort.Slice(merged, func(i, j int) bool {
+		if merged[i].Score == merged[j].Score {
+			return merged[i].VectorID < merged[j].VectorID
+		}
+		return merged[i].Score > merged[j].Score
+	})
 
 	return merged
 }
