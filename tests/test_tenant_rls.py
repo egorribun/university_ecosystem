@@ -139,6 +139,9 @@ def test_tenant_model_creation() -> None:
 @pytest.mark.asyncio
 async def test_spicedb_permission_checker_tenant_campus() -> None:
     """Test SpiceDB PermissionChecker check_tenant_permission and check_campus_permission with genuine mocks."""
+    from app.auth.rbac import _spicedb_breaker
+
+    await _spicedb_breaker.reset()
     mock_channel = MagicMock()
     checker = PermissionChecker(mock_channel)
 
