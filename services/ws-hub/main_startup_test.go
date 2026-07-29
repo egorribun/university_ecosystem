@@ -39,7 +39,6 @@ func TestMain_InvalidPortExitsCleanly(t *testing.T) {
 			}
 			defer func() { _ = conn.Close() }() //nolint:errcheck // test conn cleanup
 			if _, writeErr := conn.Write([]byte(`INFO {"server_id":"MOCK","version":"2.0.0","host":"127.0.0.1","port":4222,"auth_required":false}` + "\r\n")); writeErr != nil {
-				t.Logf("mock NATS INFO write failed: %v", writeErr)
 				return
 			}
 
@@ -51,7 +50,6 @@ func TestMain_InvalidPortExitsCleanly(t *testing.T) {
 				}
 				if strings.HasPrefix(line, "PING") {
 					if _, writeErr := conn.Write([]byte("PONG\r\n")); writeErr != nil {
-						t.Logf("mock NATS PONG write failed: %v", writeErr)
 						return
 					}
 				}
@@ -151,7 +149,6 @@ func TestInitNats_Success(t *testing.T) {
 		}
 		defer func() { _ = conn.Close() }() //nolint:errcheck // test conn cleanup
 		if _, writeErr := conn.Write([]byte(`INFO {"server_id":"MOCK","version":"2.0.0","host":"127.0.0.1","port":4222,"auth_required":false}` + "\r\n")); writeErr != nil {
-			t.Logf("mock NATS INFO write failed: %v", writeErr)
 			return
 		}
 
@@ -163,7 +160,6 @@ func TestInitNats_Success(t *testing.T) {
 			}
 			if strings.HasPrefix(line, "PING") {
 				if _, writeErr := conn.Write([]byte("PONG\r\n")); writeErr != nil {
-					t.Logf("mock NATS PONG write failed: %v", writeErr)
 					return
 				}
 			}
