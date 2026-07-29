@@ -1712,6 +1712,7 @@ jobs:
           # (source_paths in pyproject scopes the universe).
           PATTERNS=$(sed -E 's#/#.#g; s#\.py$#*#' /tmp/changed_py.txt | tr '\n' ' ')
           echo "Mutating modules: $PATTERNS"
+          rm -f .mutmut-cache
           # Time-box: mutmut 3.x mutates WHOLE changed modules (no line-level
           # scoping), so on a long-lived branch the diff spans many modules = tens of
           # thousands of mutants (multi-hour full run). This advisory job runs REAL
