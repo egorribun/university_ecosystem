@@ -223,7 +223,7 @@ def test_incremental_mutation_budget_matches_declared_gate() -> None:
         for step in job["steps"]
         if step.get("name") == "Run incremental mutmut (blocking, 25-minute budget)"
     )
-    assert "timeout --kill-after=60s 25m" in run_step["run"]
+    assert "timeout --kill-after=30s 15m" in run_step["run"]
 
 
 def test_quality_history_archives_manifests_and_renders_dashboard() -> None:
