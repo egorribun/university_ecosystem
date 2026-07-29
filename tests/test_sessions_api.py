@@ -46,7 +46,11 @@ async def _login(
         )
     assert response.status_code == 200
     token = response.cookies.get("access_token_v2")
-    return {"Authorization": f"Bearer {token}", "User-Agent": user_agent}
+    return {
+        "Authorization": f"Bearer {token}",
+        "User-Agent": user_agent,
+        "X-Query-Budget": "15",
+    }
 
 
 async def _enable_totp(async_client: AsyncClient, headers: dict[str, str]) -> str:

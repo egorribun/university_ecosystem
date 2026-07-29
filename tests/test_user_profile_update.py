@@ -34,7 +34,7 @@ async def _login(
     )
     assert response.status_code == 200
     token = response.cookies.get("access_token_v2")
-    return {"Authorization": f"Bearer {token}"}
+    return {"Authorization": f"Bearer {token}", "X-Query-Budget": "15"}
 
 
 @pytest.mark.asyncio

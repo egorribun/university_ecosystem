@@ -16,7 +16,7 @@ async def _login(client: AsyncClient, email: str) -> dict[str, str]:
     )
     assert resp.status_code == 200, f"Login failed: {resp.status_code} {resp.text}"
     token = resp.cookies.get("access_token_v2") or client.cookies.get("access_token_v2")
-    return {"Authorization": f"Bearer {token}"}
+    return {"Authorization": f"Bearer {token}", "X-Query-Budget": "15"}
 
 
 @pytest.mark.asyncio

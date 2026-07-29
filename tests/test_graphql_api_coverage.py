@@ -25,7 +25,7 @@ async def _login(client: AsyncClient, email: str) -> dict[str, str]:
         headers={"Content-Type": "application/x-www-form-urlencoded"},
     )
     token = resp.cookies.get("access_token_v2") or ""
-    return {"Authorization": f"Bearer {token}"}
+    return {"Authorization": f"Bearer {token}", "X-Query-Budget": "15"}
 
 
 # ===========================================================================
