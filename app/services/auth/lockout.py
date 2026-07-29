@@ -33,9 +33,7 @@ class LockoutService:
 
     def _parse_lockout_rules(self) -> list[tuple[int, int]]:
         """Parse lockout thresholds from settings. Called once at construction."""
-        raw = getattr(settings, "auth_lockout_thresholds", None)
-        if raw is None:
-            raw = settings.security.auth_lockout_thresholds
+        raw = settings.security.auth_lockout_thresholds
         tokens: list[str]
         if isinstance(raw, str):
             tokens = [token.strip() for token in raw.split(",")]
@@ -70,11 +68,7 @@ class LockoutService:
         return max(threshold for threshold, _ in rules)
 
     async def _prune_stale_attempts(self, email: str) -> None:
-        history_minutes = getattr(
-            settings,
-            "auth_lockout_history_minutes",
-            getattr(settings.security, "auth_lockout_history_minutes", 0),
-        )
+        history_minutes = settings.security.auth_lockout_history_minutes
         if history_minutes <= 0:
             return
         cutoff = datetime.now(UTC) - timedelta(minutes=history_minutes)
