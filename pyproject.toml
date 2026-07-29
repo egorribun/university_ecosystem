@@ -544,6 +544,8 @@ also_copy = ["infrastructure", "alembic", "docker-compose.full.yml"]
 # (Session-5's dispose-engine hook only MOVED the failure because the engine was not the
 # first leaker — periodic_scheduler's Task/Event was. No conftest hook is needed now.)
 pytest_add_cli_args = [
+    "-x",
+    "-q",
     "--ignore=tests/integration/test_migration_data.py",
     # Schemathesis dynamically generates tests that pytest cannot collect individually by node ID,
     # causing exit code 4 / BadTestExecutionCommandsException. Ignore them under mutmut.

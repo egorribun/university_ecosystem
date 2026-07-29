@@ -1723,7 +1723,7 @@ jobs:
           # and reduce the runner OOM-killer firing mid-sweep.
           set -f          # keep the $PATTERNS '*' globs intact for mutmut
           set +e
-          timeout --kill-after=30s 15m uv run mutmut run --runner "pytest -x -q" --max-children 2 $PATTERNS 2>&1 | tee /tmp/mutmut_run.log
+          timeout --kill-after=30s 15m uv run mutmut run --max-children 2 $PATTERNS 2>&1 | tee /tmp/mutmut_run.log
           ec=${PIPESTATUS[0]}   # exit code of timeout/mutmut, NOT tee
           set -e
           set +f
