@@ -699,7 +699,7 @@ def _authorization_header(request: Request) -> str:
 
 def _is_authorized(request: Request) -> bool:
     username = settings.metrics_basic_auth_username.strip()
-    password = settings.metrics_basic_auth_password
+    password = settings.metrics_basic_auth_password.strip()
     if not username and not password:
         # LOW-W19: Intentional behaviour — when no credentials are configured,
         # access is granted only when the entire allowlist consists of loopback

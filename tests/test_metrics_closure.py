@@ -151,6 +151,8 @@ def test_metrics_authorization_rejects_malformed_and_wrong_credentials(
 
     monkeypatch.setattr(settings, "metrics_basic_auth_username", "metrics-user")
     monkeypatch.setattr(settings, "metrics_basic_auth_password", "metrics-pass")
+    monkeypatch.setattr(settings.app, "metrics_basic_auth_username", "metrics-user")
+    monkeypatch.setattr(settings.app, "metrics_basic_auth_password", "metrics-pass")
 
     assert metrics._is_authorized(_request()) is False
     assert (
