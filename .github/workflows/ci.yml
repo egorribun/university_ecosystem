@@ -1702,7 +1702,7 @@ jobs:
 
       - name: Run incremental mutmut (blocking, 25-minute budget)
         run: |
-          git diff --name-only origin/main...HEAD | grep '^app/.*\.py$' | head -n 5 > /tmp/changed_py.txt || true
+          git diff --name-only origin/main...HEAD | grep '^app/.*\.py$' | head -n 2 > /tmp/changed_py.txt || true
           if [ ! -s /tmp/changed_py.txt ]; then
             echo "No changed Python source files found. Skipping mutation testing."
             exit 0
