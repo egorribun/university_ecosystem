@@ -32,6 +32,12 @@ vi.mock("@/app/logger", async (orig) => ({
   ...(await orig<typeof import("@/app/logger")>()),
   logError: vi.fn(),
 }))
+vi.mock("@/db", () => ({
+  getDatabase: vi.fn(async () => {
+    throw new Error("RxDB disabled in unit test")
+  }),
+  resetDatabaseForTesting: vi.fn(async () => {}),
+}))
 
 const KEY = (id: string) => `schedule:notes:${id}`
 
