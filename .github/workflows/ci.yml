@@ -1702,7 +1702,7 @@ jobs:
 
       - name: Run incremental mutmut (blocking, 25-minute budget)
         run: |
-          git diff --name-only origin/main...HEAD | grep '^app/models/tenant\.py$' | head -n 1 > /tmp/changed_py.txt || true
+          git diff --name-only origin/main...HEAD | grep '^app/auth/abac\.py$' | head -n 1 > /tmp/changed_py.txt || true
           if [ ! -s /tmp/changed_py.txt ]; then
             echo "No changed Python source files found. Skipping mutation testing."
             exit 0
