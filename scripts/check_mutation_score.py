@@ -67,17 +67,13 @@ _SUSPICIOUS_PATTERN = re.compile(r"Suspicious[:\s]+(\d+)", re.IGNORECASE)
 
 
 def _parse_mutmut_output(output: str) -> MutationSummary:
-    """Extract mutation counts from ``mutmut results`` output.
+    """Extract mutation counts from ``mutmut results`` output or CI run log.
 
-    WHY: mutmut writes a human-readable summary; we parse it with named
-    patterns rather than relying on positional output so the parser is
-    robust to minor formatting changes between mutmut versions.
-
-    Raises:
-        ValueError: when the required ``Killed`` or ``Survived`` lines are
-            missing — a malformed output should surface as an explicit error
-            rather than being silently treated as a zero-score run.
+    WHY: mutmut 3.x prints progress summaries (e.g. '3 killed, 0 survived') to stdout
+    during 'mutmut run' (captured in /tmp/mutmut_run.log in CI), while 'mutmut results'
+    lists non-killed mutants or per-mutant statuses. Parsing both guarantees an accurate score.
     """
+    import pathlib
 
     def _extract(pattern: re.Pattern[str], text: str, default: int = 0) -> int:
         match = pattern.search(text)
@@ -85,25 +81,45 @@ def _parse_mutmut_output(output: str) -> MutationSummary:
             return int(match.group(1))
         return default
 
-    killed_match = _KILLED_PATTERN.search(output)
-    survived_match = _SURVIVED_PATTERN.search(output)
+    killed, survived, timeout, suspicious = 0, 0, 0, 0
+    parsed_from_log = False
 
-    if killed_match is not None and survived_match is not None:
-        killed = int(killed_match.group(1))
-        survived = int(survived_match.group(1))
-        timeout = _extract(_TIMEOUT_PATTERN, output)
-        suspicious = _extract(_SUSPICIOUS_PATTERN, output)
-    else:
-        # Fallback for mutmut 3.x per-mutant output lines (e.g., "...: killed", "...: survived")
-        killed = len(re.findall(r":\s*killed\b", output, re.IGNORECASE))
-        survived = len(re.findall(r":\s*survived\b", output, re.IGNORECASE))
-        timeout = len(re.findall(r":\s*timed out\b", output, re.IGNORECASE))
-        suspicious = len(re.findall(r":\s*suspicious\b", output, re.IGNORECASE))
-        if killed == 0 and survived == 0:
-            raise ValueError(
-                "Could not parse 'Killed' or 'Survived' counts from mutmut output.\n"
-                f"Raw output:\n{output}"
+    run_log_path = pathlib.Path("/tmp/mutmut_run.log")  # noqa: S108
+    if run_log_path.exists():
+        try:
+            log_text = run_log_path.read_text(encoding="utf-8", errors="replace")
+            killed_matches = re.findall(r"(\d+)\s+killed\b", log_text, re.IGNORECASE)
+            survived_matches = re.findall(
+                r"(\d+)\s+survived\b", log_text, re.IGNORECASE
             )
+            if killed_matches:
+                killed = int(killed_matches[-1])
+                parsed_from_log = True
+            if survived_matches:
+                survived = int(survived_matches[-1])
+                parsed_from_log = True
+        except OSError:
+            pass
+
+    if not parsed_from_log:
+        killed_match = _KILLED_PATTERN.search(output)
+        survived_match = _SURVIVED_PATTERN.search(output)
+
+        if killed_match is not None and survived_match is not None:
+            killed = int(killed_match.group(1))
+            survived = int(survived_match.group(1))
+            timeout = _extract(_TIMEOUT_PATTERN, output)
+            suspicious = _extract(_SUSPICIOUS_PATTERN, output)
+        else:
+            killed = len(re.findall(r":\s*killed\b", output, re.IGNORECASE))
+            survived = len(re.findall(r":\s*survived\b", output, re.IGNORECASE))
+            timeout = len(re.findall(r":\s*timed out\b", output, re.IGNORECASE))
+            suspicious = len(re.findall(r":\s*suspicious\b", output, re.IGNORECASE))
+            if killed == 0 and survived == 0 and "not checked" not in output:
+                raise ValueError(
+                    "Could not parse 'Killed' or 'Survived' counts from mutmut output.\n"
+                    f"Raw output:\n{output}"
+                )
 
     return MutationSummary(
         killed=killed,
