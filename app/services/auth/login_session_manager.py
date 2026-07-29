@@ -5,9 +5,9 @@ from typing import TYPE_CHECKING, Any, cast
 
 from fastapi import BackgroundTasks, Request, Response
 
+import app.core.config
 from app.auth.fingerprint import SessionFingerprint, extract_fingerprint
 from app.core import metrics
-import app.core.config
 from app.core.database import async_session
 from app.core.logging import get_logger
 from app.models import User
