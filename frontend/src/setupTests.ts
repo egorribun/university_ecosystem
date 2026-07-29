@@ -44,6 +44,22 @@ if (!process.stderr.columns || process.stderr.columns === 0) {
 if (!globalThis.TextEncoder) (globalThis as any).TextEncoder = TextEncoder
 if (!globalThis.TextDecoder) (globalThis as any).TextDecoder = TextDecoder as any
 if (!globalThis.crypto) (globalThis as any).crypto = webcrypto
+if (!("dispatchEvent" in globalThis)) {
+  Object.defineProperty(globalThis, "dispatchEvent", {
+    value: (event: Event) => {
+      try {
+        if (typeof window !== "undefined" && typeof window.dispatchEvent === "function") {
+          return window.dispatchEvent(event)
+        }
+      } catch (_e) {
+        /* ignore */
+      }
+      return false
+    },
+    writable: true,
+    configurable: false,
+  })
+}
 
 const requestBodyMap = new WeakMap<Request, Promise<string>>()
 
@@ -139,7 +155,9 @@ beforeAll(async () => {
   }
 })
 
-afterEach(() => {
+import { resetDatabaseForTesting } from "./db"
+
+afterEach(async () => {
   server.resetHandlers()
   resetTestSessions()
   resetTestEvents()
@@ -148,6 +166,7 @@ afterEach(() => {
   resetTestMfa()
   resetAdminDeadLetterJobs()
   resetEtagCache()
+  await resetDatabaseForTesting()
 })
 
 afterAll(() => server.close())

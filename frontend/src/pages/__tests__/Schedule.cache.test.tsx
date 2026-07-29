@@ -174,7 +174,7 @@ describe("Schedule cache handling", () => {
       throw new Error(`Unhandled GET ${url}`)
     })
 
-    const { client } = await renderSchedule()
+    const { client, unmount } = await renderSchedule()
 
     try {
       await waitFor(() => {
@@ -189,6 +189,7 @@ describe("Schedule cache handling", () => {
       expect((await screen.findAllByText("Fresh Subject"))[0]).toBeInTheDocument()
       expect(screen.queryByText("Stale Subject")).not.toBeInTheDocument()
     } finally {
+      unmount()
       client.clear()
     }
   })

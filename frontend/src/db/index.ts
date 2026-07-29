@@ -41,4 +41,21 @@ export async function getDatabase(): Promise<AppDatabase> {
   return dbPromise
 }
 
+export async function resetDatabaseForTesting(): Promise<void> {
+  if (dbPromise) {
+    try {
+      const db = await dbPromise
+      dbPromise = null
+      const dbObj = db as unknown as Record<string, unknown>
+      if (typeof dbObj["remove"] === "function") {
+        await (dbObj["remove"] as () => Promise<void>)()
+      } else if (typeof dbObj["close"] === "function") {
+        await (dbObj["close"] as () => Promise<void>)()
+      }
+    } catch (_e) {
+      dbPromise = null
+    }
+  }
+}
+
 export type { ScheduleDoc, NoteDoc, MessageDoc }
