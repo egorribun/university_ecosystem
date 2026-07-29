@@ -46,7 +46,7 @@ async def _login(async_client, email: str, password: str) -> dict[str, str]:
     )
     assert response.status_code == 200
     token = response.cookies.get("access_token_v2")
-    return {"Authorization": f"Bearer {token}"}
+    return {"Authorization": f"Bearer {token}", "X-Query-Budget": "15"}
 
 
 async def test_create_event_guard(db_session, user_factory):
