@@ -506,7 +506,7 @@ skips = [
 # selection is done positionally via dotted-module glob patterns at the CLI
 # (see .github/workflows/ci.yml mutation-tests job) — those filter within this universe.
 paths_to_mutate = ["app/"]
-pytest_add_cli_args_test_selection = ["tests/test_abac.py"]
+pytest_add_cli_args_test_selection = ["tests/test_tenant_rls.py"]
 # mutmut runs the baseline/stats suite inside an isolated `mutants/` copy whose
 # tree is built by copy_src_dir() (walk_all_files copies ONLY paths_to_mutate =
 # app/) plus copy_also_copy_files() (the user-config `also_copy` paths). tests/
@@ -546,7 +546,7 @@ also_copy = ["infrastructure", "alembic", "docker-compose.full.yml"]
 pytest_add_cli_args = [
     "-x",
     "-q",
-    "tests/test_abac.py",
+    "tests/test_tenant_rls.py",
     "--ignore=tests/integration/test_migration_data.py",
     # Schemathesis dynamically generates tests that pytest cannot collect individually by node ID,
     # causing exit code 4 / BadTestExecutionCommandsException. Ignore them under mutmut.
