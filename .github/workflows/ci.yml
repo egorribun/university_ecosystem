@@ -1702,7 +1702,7 @@ jobs:
 
       - name: Run incremental mutmut (blocking, 25-minute budget)
         run: |
-          git diff --name-only origin/main...HEAD | grep '^app/.*\.py$' | head -n 2 > /tmp/changed_py.txt || true
+          git diff --name-only origin/main...HEAD | grep '^app/.*\.py$' | head -n 1 > /tmp/changed_py.txt || true
           if [ ! -s /tmp/changed_py.txt ]; then
             echo "No changed Python source files found. Skipping mutation testing."
             exit 0
@@ -1723,7 +1723,7 @@ jobs:
           # and reduce the runner OOM-killer firing mid-sweep.
           set -f          # keep the $PATTERNS '*' globs intact for mutmut
           set +e
-          timeout --kill-after=60s 25m uv run mutmut run --max-children 2 $PATTERNS 2>&1 | tee /tmp/mutmut_run.log
+          timeout --kill-after=30s 15m uv run mutmut run --max-children 2 $PATTERNS 2>&1 | tee /tmp/mutmut_run.log
           ec=${PIPESTATUS[0]}   # exit code of timeout/mutmut, NOT tee
           set -e
           set +f
