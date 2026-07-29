@@ -56,8 +56,6 @@ class _NamespaceView[T]:
 
     def __getattr__(self, name: str) -> typing.Any:
         parent = object.__getattribute__(self, "_parent")
-        if name in parent.__dict__:
-            return parent.__dict__[name]
         return getattr(parent, name)
 
     def __setattr__(self, name: str, value: typing.Any) -> None:
