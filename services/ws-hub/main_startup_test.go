@@ -75,11 +75,8 @@ func TestMain_InvalidPortExitsCleanly(t *testing.T) {
 	cmd := exec.CommandContext(t.Context(), os.Args[0], "-test.run=TestMain_InvalidPortExitsCleanly") //nolint:gosec // G204: intentional re-exec of test binary
 	cmd.Env = append(os.Environ(), "RUN_INVALID_PORT=1")
 	out, err := cmd.CombinedOutput()
-	if e, ok := err.(*exec.ExitError); ok && !e.Success() {
-		assert.Equal(t, 1, e.ExitCode())
-		return
-	}
 	require.NoError(t, err, "subprocess failed: %s", string(out))
+	require.Contains(t, string(out), "invalid port")
 }
 
 // TestMain_ExitOnMissingInternalSecret verifies that main() exits with 1 when the internal secret is empty.
