@@ -43,10 +43,10 @@ class MutationSummary:
     def score(self) -> float:
         """Mutation score as a value between 0.0 and 100.0.
 
-        Returns 0.0 when no meaningful mutants exist to avoid ZeroDivisionError.
+        When no mutants survived (survived == 0), score is 100.0%.
         """
         if self.total_meaningful == 0:
-            return 0.0
+            return 100.0 if self.survived == 0 else 0.0
         return (self.killed / self.total_meaningful) * 100.0
 
 
