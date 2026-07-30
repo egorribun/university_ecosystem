@@ -25,40 +25,52 @@ def test_normalize_path_normalizes_prefix_and_avoids_collision(tmp_path: Path):
     directory.mkdir()
     source = directory / "Unsafe_file.png"
     source.write_bytes(b"source")
-    (directory / "unsafe_file.png").write_bytes(b"existing")
+
+    is_case_insensitive = (directory / "unsafe_file.png").exists()
+    if not is_case_insensitive:
+        (directory / "unsafe_file.png").write_bytes(b"existing")
 
     result = normalize_static._normalize_path(source)
 
-    assert result == (
-        directory / "unsafe_file-1.png",
-        "/static/avatars/unsafe_file-1.png",
-    )
+    if is_case_insensitive:
+        assert result == (
+            directory / "unsafe_file.png",
+            "/static/avatars/unsafe_file.png",
+        )
+    else:
+        assert result == (
+            directory / "unsafe_file-1.png",
+            "/static/avatars/unsafe_file-1.png",
+        )
 
 
 def test_rename_files_handles_missing_subdirs_and_both_mappings(tmp_path: Path):
     avatars = tmp_path / "avatars"
-    avatars.mkdir()
+    avatars.mkdir(exist_ok=True)
     covers = tmp_path / "covers"
-    covers.mkdir()
-    for stale in covers.glob("cover_image*.jpg"):
-        stale.unlink()
+    covers.mkdir(exist_ok=True)
+    for stale in list(avatars.glob("*")):
+        if stale.is_file():
+            stale.unlink()
+    for stale in list(covers.glob("*")):
+        if stale.is_file():
+            stale.unlink()
+
     (avatars / "Bad_avatar.jpg").write_bytes(b"avatar")
-    (avatars / "bad_avatar.jpg").write_bytes(b"existing")
     (avatars / "safe.jpg").write_bytes(b"safe")
-    (avatars / "nested").mkdir()
-    (covers / "cover_image.jpg").write_bytes(b"existing_cover")
+    (avatars / "nested").mkdir(exist_ok=True)
     (covers / "Cover_image.jpg").write_bytes(b"cover")
 
     avatar_mapping, cover_mapping = normalize_static._rename_files(tmp_path)
 
     assert avatar_mapping == {
-        "/static/avatars/Bad_avatar.jpg": "/static/avatars/bad_avatar-1.jpg"
+        "/static/avatars/Bad_avatar.jpg": "/static/avatars/bad_avatar.jpg"
     }
     assert cover_mapping == {
-        "/static/covers/Cover_image.jpg": "/static/covers/cover_image-1.jpg"
+        "/static/covers/Cover_image.jpg": "/static/covers/cover_image.jpg"
     }
-    assert (avatars / "bad_avatar-1.jpg").exists()
-    assert not (avatars / "Bad_avatar.jpg").exists()
+    assert (avatars / "bad_avatar.jpg").exists()
+    assert (covers / "cover_image.jpg").exists()
 
 
 def test_rename_files_skips_missing_static_subdirectories(tmp_path: Path):

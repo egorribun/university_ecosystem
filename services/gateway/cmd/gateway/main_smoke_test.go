@@ -46,8 +46,10 @@ func TestSetupRouter_WiresRoutesAndProbes(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	var router *gin.Engine
+	var err error
 	assert.NotPanics(t, func() {
-		router = setupRouter(cfg, logger, nil, nil, context.Background())
+		router, err = setupRouter(cfg, logger, nil, nil, context.Background())
+		require.NoError(t, err)
 	}, "setupRouter must wire a valid config without panicking or exiting")
 	if router == nil {
 		t.Fatal("setupRouter returned nil")
@@ -103,7 +105,8 @@ func TestInitGRPC(t *testing.T) {
 		FileProcessorAddr: "localhost:50051",
 		GrpcUseTLS:        false,
 	}
-	conn, client := initGRPC(cfg, logger)
+	conn, client, err := initGRPC(cfg, logger)
+	require.NoError(t, err)
 	assert.NotNil(t, conn)
 	assert.NotNil(t, client)
 	require.NoError(t, conn.Close())

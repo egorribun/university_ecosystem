@@ -38,6 +38,10 @@ const MessageSchema = v.object({
   // stripped as unknown keys.
   edited_at: v.optional(v.nullable(v.string())),
   deleted_at: v.optional(v.nullable(v.string())),
+  // Wave 211 — forwarded message attribution name. optional+nullable so real-time
+  // new_message frames for forwarded messages preserve forwarded_from_name upon
+  // parsing without being stripped.
+  forwarded_from_name: v.optional(v.nullable(v.string())),
   // Optional attachment list — just validate shape, not individual entries
   attachments: v.optional(v.array(v.record(v.string(), v.unknown()))),
   // Wave 205 SW9 — serialize_message emits sender:null when the Message.sender

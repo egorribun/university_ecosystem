@@ -87,3 +87,33 @@ async def test_cached_decorator_covers_multilayer_set_and_hit():
     redis.get.return_value = orjson.dumps({"value": "from-l2"})
     l2_cache = MultiLayerCache(redis_client=redis)
     assert await l2_cache.get("l2") == {"value": "from-l2"}
+
+
+@pytest.mark.asyncio
+async def test_cached_decorator_with_l1_ttl():
+    cache = MultiLayerCache()
+    calls = 0
+
+    @cached(cache, lambda value: f"l1_ttl:{value}", ttl=300, _l1_ttl=60)
+    async def load(value: str) -> dict[str, str]:
+        nonlocal calls
+        calls += 1
+        return {"value": value}
+
+    assert await load("b") == {"value": "b"}
+    assert await load("b") == {"value": "b"}
+    assert calls == 1
+
+    # Also test LRUCache with _l1_ttl
+    lru = LRUCache[dict[str, str]]()
+    lru_calls = 0
+
+    @cached(lru, lambda value: f"lru:{value}", _l1_ttl=30)
+    async def load_lru(value: str) -> dict[str, str]:
+        nonlocal lru_calls
+        lru_calls += 1
+        return {"value": value}
+
+    assert await load_lru("c") == {"value": "c"}
+    assert await load_lru("c") == {"value": "c"}
+    assert lru_calls == 1

@@ -22,6 +22,13 @@ logger = get_logger(__name__)
 _STATIC_SUBDIRS = ("avatars", "covers")
 
 
+def _is_same_file(p1: Path, p2: Path) -> bool:
+    try:
+        return p1.samefile(p2)
+    except (OSError, ValueError):
+        return False
+
+
 def _normalize_path(path: Path) -> tuple[Path, str] | None:
     """Return new path and URL if the file name needs normalization."""
 
@@ -40,7 +47,7 @@ def _normalize_path(path: Path) -> tuple[Path, str] | None:
         return None
     target = path.with_name(new_name)
     counter = 1
-    while target.exists():
+    while target.exists() and not _is_same_file(target, path):
         target = path.with_name(f"{new_stem}-{counter}{suffix}")
         counter += 1
     public_url = f"/static/{path.parent.name}/{target.name}"

@@ -349,6 +349,7 @@ def cached(
     cache_instance: LRUCache[Any] | MultiLayerCache,
     key_builder: Callable[..., str],
     ttl: float | None = None,
+    _l1_ttl: float | None = None,
 ) -> Callable[
     [Callable[..., Coroutine[Any, Any, Any]]], Callable[..., Coroutine[Any, Any, Any]]
 ]:
@@ -372,10 +373,11 @@ def cached(
 
             result = await func(*args, **kwargs)
             if result is not None:
+                l1_ttl_val = _l1_ttl if _l1_ttl is not None else ttl
                 if isinstance(cache_instance, MultiLayerCache):
-                    await cache_instance.set(key, result, l1_ttl=ttl)
+                    await cache_instance.set(key, result, l1_ttl=l1_ttl_val)
                 else:
-                    cache_instance.set(key, result, ttl=ttl)
+                    cache_instance.set(key, result, ttl=l1_ttl_val)
             return result
 
         return wrapper

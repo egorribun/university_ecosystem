@@ -62,7 +62,8 @@ func TestGateway_AltSvcHeaderAndWSWebTransportRoutes(t *testing.T) {
 	}
 
 	logger := initLogger()
-	router := setupRouter(cfg, logger, nil, nil, context.Background())
+	router, err := setupRouter(cfg, logger, nil, nil, context.Background())
+	require.NoError(t, err)
 	gatewayServer := httptest.NewServer(router)
 	defer gatewayServer.Close()
 

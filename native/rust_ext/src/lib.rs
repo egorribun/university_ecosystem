@@ -444,8 +444,10 @@ pub fn is_partition_expired(
                 .with_ymd_and_hms(next_year, next_month, 1, 0, 0, 0)
                 .single()
             {
-                let cutoff = Utc::now() - Duration::days(retention_days);
-                return p_end_date < cutoff;
+                if let Some(dur) = Duration::try_days(retention_days) {
+                    let cutoff = Utc::now() - dur;
+                    return p_end_date < cutoff;
+                }
             }
 
             false

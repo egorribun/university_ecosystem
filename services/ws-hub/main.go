@@ -51,7 +51,11 @@ func main() {
 		logger.ErrorContext(ctx, "OpenTelemetry initialization failed", "err", err)
 	}
 
-	nc := getInitNats()(ctx, cfg, logger)
+	nc, err := getInitNats()(ctx, cfg, logger)
+	if err != nil {
+		logger.ErrorContext(ctx, "NATS initialization returned error", "err", err)
+		os.Exit(1)
+	}
 	if nc != nil {
 		defer nc.Close()
 	}
@@ -87,7 +91,11 @@ func main() {
 		}()
 	}
 
-	h := setupHub(ctx, cfg, logger, nc, rdb, spiffeClient)
+	h, err := setupHub(ctx, cfg, logger, nc, rdb, spiffeClient)
+	if err != nil {
+		logger.ErrorContext(ctx, "Hub setup failed", "err", err)
+		os.Exit(1)
+	}
 	mux := http.NewServeMux()
 	setupHandlers(mux, h, cfg, logger, nc, rdb)
 	runServer(cfg, logger, h, mux)
@@ -111,13 +119,13 @@ var (
 	initNats   = defaultInitNats
 )
 
-func getInitNats() func(context.Context, *config.Config, *slog.Logger) *nats.Conn {
+func getInitNats() func(context.Context, *config.Config, *slog.Logger) (*nats.Conn, error) {
 	initNatsMu.RLock()
 	defer initNatsMu.RUnlock()
 	return initNats
 }
 
-func defaultInitNats(ctx context.Context, cfg *config.Config, logger *slog.Logger) *nats.Conn {
+func defaultInitNats(ctx context.Context, cfg *config.Config, logger *slog.Logger) (*nats.Conn, error) {
 	natsOpts := []nats.Option{
 		nats.RetryOnFailedConnect(true),
 		nats.MaxReconnects(-1),
@@ -129,9 +137,9 @@ func defaultInitNats(ctx context.Context, cfg *config.Config, logger *slog.Logge
 	nc, err := nats.Connect(cfg.NatsURL, natsOpts...)
 	if err != nil {
 		logger.ErrorContext(ctx, "Failed to connect to NATS", "err", err)
-		os.Exit(1)
+		return nil, err
 	}
-	return nc
+	return nc, nil
 }
 
 func initRedis(ctx context.Context, cfg *config.Config, logger *slog.Logger) *redis.Client {
@@ -148,7 +156,7 @@ func initRedis(ctx context.Context, cfg *config.Config, logger *slog.Logger) *re
 	return rdb
 }
 
-func setupHub(ctx context.Context, cfg *config.Config, logger *slog.Logger, nc *nats.Conn, rdb *redis.Client, spiffeClients ...*spiffe.Client) *hub.Hub {
+func setupHub(ctx context.Context, cfg *config.Config, logger *slog.Logger, nc *nats.Conn, rdb *redis.Client, spiffeClients ...*spiffe.Client) (*hub.Hub, error) {
 	var spiffeClient *spiffe.Client
 	if len(spiffeClients) > 0 {
 		spiffeClient = spiffeClients[0]
@@ -157,7 +165,7 @@ func setupHub(ctx context.Context, cfg *config.Config, logger *slog.Logger, nc *
 	if cfg.SpiffeEnabled {
 		if spiffeClient == nil {
 			logger.ErrorContext(ctx, "SPIFFE is enabled but spiffeClient is nil")
-			os.Exit(1)
+			return nil, http.ErrServerClosed
 		}
 		authClient.WithSPIFFE(spiffeClient, cfg.BackendSpiffeID)
 	}
@@ -169,17 +177,19 @@ func setupHub(ctx context.Context, cfg *config.Config, logger *slog.Logger, nc *
 	if cfg.JWKSURL != "" {
 		if err := h.SetupJWKS(ctx, cfg.JWKSURL); err != nil {
 			logger.ErrorContext(ctx, "Failed to setup JWKS", "err", err)
-			os.Exit(1)
+			return nil, err
 		}
 	}
 
 	h.StartLimiterCleanup(ctx)
 	go h.Run(ctx)
 	if nc != nil {
-		h.SubscribeToNATS(ctx)
+		if err := h.SubscribeToNATS(ctx); err != nil {
+			return nil, err
+		}
 	}
 	hub.SetAllowedOrigins(cfg.AllowedOrigins)
-	return h
+	return h, nil
 }
 
 func setupHandlers(mux *http.ServeMux, h *hub.Hub, cfg *config.Config, logger *slog.Logger, nc *nats.Conn, rdb *redis.Client) {

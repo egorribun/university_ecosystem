@@ -317,3 +317,43 @@ describe("parseWsMessage — new_message with sender:null (Wave 205 SW9 live-new
     }
   })
 })
+
+describe("parseWsMessage — new_message with forwarded_from_name (Wave 211)", () => {
+  const baseMessage = {
+    id: MSG_ID,
+    chat_id: CHAT_ID,
+    sender_id: SENDER_ID,
+    content: "forwarded message content",
+    created_at: "2026-05-30T22:48:00+00:00",
+    read_status: false,
+    read_at: null,
+  }
+
+  it("preserves forwarded_from_name string when present on new_message", () => {
+    const frame = parseWsMessage(
+      JSON.stringify({
+        type: "new_message",
+        chat_id: CHAT_ID,
+        message: { ...baseMessage, forwarded_from_name: "Alice Sender" },
+      })
+    )
+    expect(frame).not.toBeNull()
+    if (frame?.type === "new_message") {
+      expect(frame.message.forwarded_from_name).toBe("Alice Sender")
+    }
+  })
+
+  it("accepts forwarded_from_name: null when present on non-forwarded or reset message", () => {
+    const frame = parseWsMessage(
+      JSON.stringify({
+        type: "new_message",
+        chat_id: CHAT_ID,
+        message: { ...baseMessage, forwarded_from_name: null },
+      })
+    )
+    expect(frame).not.toBeNull()
+    if (frame?.type === "new_message") {
+      expect(frame.message.forwarded_from_name).toBeNull()
+    }
+  })
+})

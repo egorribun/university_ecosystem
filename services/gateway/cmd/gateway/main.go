@@ -105,7 +105,11 @@ func main() {
 	}
 
 	// 5. Initialize gRPC connection to File Processor
-	grpcConn, fileClient := initGRPC(cfg, logger, spiffeClient)
+	grpcConn, fileClient, err := initGRPC(cfg, logger, spiffeClient)
+	if err != nil {
+		logger.ErrorContext(ctx, "gRPC initialization failed", "err", err)
+		os.Exit(1)
+	}
 	defer func() {
 		if err := grpcConn.Close(); err != nil {
 			logger.ErrorContext(ctx, "Failed to close gRPC connection", "err", err)
@@ -113,7 +117,11 @@ func main() {
 	}()
 
 	// 6. Setup Router & Middleware
-	router := setupRouter(cfg, logger, grpcConn, fileClient, spiffeClient, ctx)
+	router, err := setupRouter(cfg, logger, grpcConn, fileClient, spiffeClient, ctx)
+	if err != nil {
+		logger.ErrorContext(ctx, "Router setup failed", "err", err)
+		os.Exit(1)
+	}
 
 	// 7. Start Server
 	runServer(cfg, router, logger)
@@ -151,7 +159,7 @@ func initSentry(cfg *config.Config, logger *slog.Logger) {
 	logger.InfoContext(context.Background(), "Sentry initialized", "environment", cfg.Environment)
 }
 
-func initGRPC(cfg *config.Config, logger *slog.Logger, spiffeClients ...*spiffe.Client) (*grpc.ClientConn, pb.FileProcessingServiceClient) {
+func initGRPC(cfg *config.Config, logger *slog.Logger, spiffeClients ...*spiffe.Client) (*grpc.ClientConn, pb.FileProcessingServiceClient, error) {
 	var spiffeClient *spiffe.Client
 	if len(spiffeClients) > 0 {
 		spiffeClient = spiffeClients[0]
@@ -160,12 +168,12 @@ func initGRPC(cfg *config.Config, logger *slog.Logger, spiffeClients ...*spiffe.
 	if cfg.SpiffeEnabled {
 		if spiffeClient == nil {
 			logger.ErrorContext(context.Background(), "SPIFFE is enabled but spiffeClient is nil")
-			os.Exit(1)
+			return nil, nil, http.ErrServerClosed
 		}
 		creds, err := spiffeClient.GRPCClientCredentials(cfg.FileProcessorSpiffeID)
 		if err != nil {
 			logger.ErrorContext(context.Background(), "Failed to create SPIFFE gRPC credentials", "err", err)
-			os.Exit(1)
+			return nil, nil, err
 		}
 		grpcCreds = grpc.WithTransportCredentials(creds)
 	} else if cfg.GrpcUseTLS {
@@ -182,15 +190,15 @@ func initGRPC(cfg *config.Config, logger *slog.Logger, spiffeClients ...*spiffe.
 	)
 	if err != nil {
 		logger.ErrorContext(context.Background(), "Failed to initialize File Processor gRPC transport", "err", err)
-		os.Exit(1)
+		return nil, nil, err
 	}
 	logger.InfoContext(context.Background(), "Connected to File Processor gRPC", "addr", cfg.FileProcessorAddr)
 
-	return grpcConn, pb.NewFileProcessingServiceClient(grpcConn)
+	return grpcConn, pb.NewFileProcessingServiceClient(grpcConn), nil
 }
 
 //nolint:gocognit,cyclop
-func setupRouter(cfg *config.Config, logger *slog.Logger, grpcConn *grpc.ClientConn, fileClient pb.FileProcessingServiceClient, opts ...any) *gin.Engine {
+func setupRouter(cfg *config.Config, logger *slog.Logger, grpcConn *grpc.ClientConn, fileClient pb.FileProcessingServiceClient, opts ...any) (*gin.Engine, error) {
 	ctx := context.Background()
 	var spiffeClient *spiffe.Client
 
@@ -238,7 +246,7 @@ func setupRouter(cfg *config.Config, logger *slog.Logger, grpcConn *grpc.ClientC
 	backendURL, err := url.Parse(cfg.BackendURL)
 	if err != nil {
 		logger.ErrorContext(ctx, "Invalid backend URL", "err", err, "url", cfg.BackendURL)
-		os.Exit(1)
+		return nil, err
 	}
 	proxy := httputil.NewSingleHostReverseProxy(backendURL)
 	proxyTransport := &http.Transport{
@@ -255,12 +263,12 @@ func setupRouter(cfg *config.Config, logger *slog.Logger, grpcConn *grpc.ClientC
 	if cfg.SpiffeEnabled {
 		if spiffeClient == nil {
 			logger.ErrorContext(ctx, "SPIFFE is enabled but spiffeClient is nil")
-			os.Exit(1)
+			return nil, http.ErrServerClosed
 		}
 		tlsCfg, err := spiffeClient.ClientTLSConfig(cfg.BackendSpiffeID)
 		if err != nil {
 			logger.ErrorContext(ctx, "Failed to build SPIFFE client TLS config for backend proxy", "err", err)
-			os.Exit(1)
+			return nil, err
 		}
 		proxyTransport.TLSClientConfig = tlsCfg
 	}
@@ -296,7 +304,7 @@ func setupRouter(cfg *config.Config, logger *slog.Logger, grpcConn *grpc.ClientC
 	// JWT
 	if len(strings.TrimSpace(cfg.JWTSecret)) < 32 {
 		logger.ErrorContext(ctx, "JWT_SECRET must be set and at least 32 characters.")
-		os.Exit(1)
+		return nil, http.ErrServerClosed
 	}
 	jwtMiddleware := middleware.NewJWTMiddlewareWithConfig(cfg.JWTSecret, cfg.JWKSPublicKeyPEM, redisClient, middleware.DefaultL1CacheConfig())
 	// PERF-W17-02: Pre-populate L1 cache from Redis to avoid cold-start thundering herd.
@@ -315,7 +323,7 @@ func setupRouter(cfg *config.Config, logger *slog.Logger, grpcConn *grpc.ClientC
 	wsHubURL, err := url.Parse(cfg.WsHubURL)
 	if err != nil {
 		logger.ErrorContext(ctx, "Invalid ws-hub URL", "err", err, "url", cfg.WsHubURL)
-		os.Exit(1)
+		return nil, err
 	}
 	wsProxy := httputil.NewSingleHostReverseProxy(wsHubURL)
 	wsProxy.Transport = proxyTransport
@@ -383,7 +391,7 @@ func setupRouter(cfg *config.Config, logger *slog.Logger, grpcConn *grpc.ClientC
 		handlers.ProxyHandler(proxy, internalSecret)(c)
 	})
 
-	return router
+	return router, nil
 }
 
 func runServer(cfg *config.Config, router *gin.Engine, logger *slog.Logger) {

@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"log/slog"
-	"os"
 
 	lru "github.com/hashicorp/golang-lru/v2"
 	"github.com/lestrrat-go/jwx/v2/jwk"
@@ -487,7 +486,7 @@ func (h *Hub) broadcastMessage(parentCtx context.Context, msg *Message) {
 // service currently publishes multi-level subjects under these prefixes.
 //
 //nolint:cyclop
-func (h *Hub) SubscribeToNATS(appCtx context.Context) {
+func (h *Hub) SubscribeToNATS(appCtx context.Context) error {
 	if h.js == nil && h.Nats != nil && h.enableJetStream {
 		if js, err := h.Nats.JetStream(); err == nil {
 			h.js = js
@@ -512,7 +511,7 @@ func (h *Hub) SubscribeToNATS(appCtx context.Context) {
 	}
 	if err != nil {
 		h.Logger.ErrorContext(appCtx, "NATS chat subscription failed — hub cannot deliver messages", "err", err)
-		os.Exit(1)
+		return err
 	}
 	h.subs = append(h.subs, chatSub)
 
@@ -532,21 +531,21 @@ func (h *Hub) SubscribeToNATS(appCtx context.Context) {
 	}
 	if err != nil {
 		h.Logger.ErrorContext(appCtx, "NATS notifications subscription failed — hub cannot deliver messages", "err", err)
-		os.Exit(1)
+		return err
 	}
 	h.subs = append(h.subs, notifSub)
 
 	invSub, err := h.Nats.Subscribe("cache.invalidate", h.handleCacheInvalidation(appCtx))
 	if err != nil {
 		h.Logger.ErrorContext(appCtx, "NATS cache invalidation subscription failed", "err", err)
-		os.Exit(1)
+		return err
 	}
 	h.subs = append(h.subs, invSub)
 
 	ctrlSub, err := h.Nats.Subscribe("ws_hub.control", h.handleControlMessage(appCtx))
 	if err != nil {
 		h.Logger.ErrorContext(appCtx, "NATS control subscription failed — hub cannot receive session control events", "err", err)
-		os.Exit(1)
+		return err
 	}
 	h.subs = append(h.subs, ctrlSub)
 
@@ -566,6 +565,7 @@ func (h *Hub) SubscribeToNATS(appCtx context.Context) {
 	} else {
 		h.Logger.InfoContext(appCtx, "Subscribed to NATS topics")
 	}
+	return nil
 }
 
 func (h *Hub) handleChat(appCtx context.Context) nats.MsgHandler {

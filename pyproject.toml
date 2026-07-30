@@ -128,7 +128,7 @@ explicit_package_bases = true
 implicit_reexport = false    # Catches accidental re-exports from __init__.py modules
 warn_no_return = true        # Detects functions with missing return in non-void branches
 exclude = [
-    "alembic/versions/",     # Auto-generated migrations
+    "alembic/**/*.py",     # Auto-generated migrations
     "app/api/generated/",    # Auto-generated OpenAPI client
 ]
 
@@ -292,7 +292,7 @@ ignore = [
 "scripts/check_mutation_score.py" = ["S603"]
 "scripts/run_mutmut_diff.py" = ["S603", "S607"]
 "tests/*" = ["ARG001", "ARG002", "E402", "W291", "S101", "S105", "S106", "ERA001"]
-"alembic/*" = ["I001", "E402"]
+"alembic/**/*.py" = ["I001", "E402"]
 "app/main.py" = ["E402"]
 # Wave-20 (audit 2026-03-24): suppress pre-existing false positives on field
 # names containing "password"/"auth" that trigger S104/S105 heuristics.

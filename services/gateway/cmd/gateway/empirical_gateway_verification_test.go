@@ -47,7 +47,8 @@ func TestEmpirical_Gateway_AltSvcAndIngress(t *testing.T) {
 		}
 
 		logger := initLogger()
-		router := setupRouter(cfg, logger, nil, nil, context.Background())
+		router, err := setupRouter(cfg, logger, nil, nil, context.Background())
+		require.NoError(t, err)
 		server := httptest.NewServer(router)
 		defer server.Close()
 
@@ -86,7 +87,8 @@ func TestEmpirical_Gateway_AltSvcAndIngress(t *testing.T) {
 		}
 
 		logger := initLogger()
-		router := setupRouter(cfg, logger, nil, nil, context.Background())
+		router, err := setupRouter(cfg, logger, nil, nil, context.Background())
+		require.NoError(t, err)
 		server := httptest.NewServer(router)
 		defer server.Close()
 
@@ -116,7 +118,8 @@ func TestEmpirical_Gateway_AltSvcAndIngress(t *testing.T) {
 		}
 
 		logger := initLogger()
-		router := setupRouter(cfg, logger, nil, nil, context.Background())
+		router, err := setupRouter(cfg, logger, nil, nil, context.Background())
+		require.NoError(t, err)
 		server := httptest.NewServer(router)
 		defer server.Close()
 

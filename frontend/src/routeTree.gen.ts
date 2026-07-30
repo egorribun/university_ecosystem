@@ -9,93 +9,53 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from "./routes/__root"
-import { Route as PublicRouteImport } from "./routes/_public"
-import { Route as AuthRouteImport } from "./routes/_auth"
-import { Route as AdminRouteImport } from "./routes/_admin"
 import { Route as IndexRouteImport } from "./routes/index"
-import { Route as PublicResetPasswordRouteImport } from "./routes/_public/reset-password"
-import { Route as PublicRegisterRouteImport } from "./routes/_public/register"
-import { Route as PublicLoginRouteImport } from "./routes/_public/login"
-import { Route as PublicForgotPasswordRouteImport } from "./routes/_public/forgot-password"
-import { Route as AuthSettingsRouteImport } from "./routes/_auth/settings"
-import { Route as AuthScheduleRouteImport } from "./routes/_auth/schedule"
-import { Route as AuthProfileRouteImport } from "./routes/_auth/profile"
-import { Route as AuthMessengerRouteImport } from "./routes/_auth/messenger"
-import { Route as AuthMapRouteImport } from "./routes/_auth/map"
-import { Route as AuthDashboardRouteImport } from "./routes/_auth/dashboard"
+import { Route as AdminRouteImport } from "./routes/_admin"
+import { Route as AuthRouteImport } from "./routes/_auth"
+import { Route as PublicRouteImport } from "./routes/_public"
 import { Route as AuthActivityRouteImport } from "./routes/_auth/activity"
-import { Route as AuthNewsIndexRouteImport } from "./routes/_auth/news.index"
-import { Route as AuthEventsIndexRouteImport } from "./routes/_auth/events.index"
-import { Route as PublicResetPasswordTokenRouteImport } from "./routes/_public/reset-password.$token"
-import { Route as AuthNewsIdRouteImport } from "./routes/_auth/news.$id"
-import { Route as AuthMessengerChatIdRouteImport } from "./routes/_auth/messenger.$chatId"
-import { Route as AuthEventsIdRouteImport } from "./routes/_auth/events.$id"
-import { Route as AdminAdminUsersRouteImport } from "./routes/_admin/admin.users"
-import { Route as AdminAdminStoriesRouteImport } from "./routes/_admin/admin.stories"
-import { Route as AdminAdminNotificationsRouteImport } from "./routes/_admin/admin.notifications"
-import { Route as AdminAdminFeatureFlagsRouteImport } from "./routes/_admin/admin.feature-flags"
+import { Route as AuthDashboardRouteImport } from "./routes/_auth/dashboard"
+import { Route as AuthMapRouteImport } from "./routes/_auth/map"
+import { Route as AuthMessengerRouteImport } from "./routes/_auth/messenger"
+import { Route as AuthProfileRouteImport } from "./routes/_auth/profile"
+import { Route as AuthScheduleRouteImport } from "./routes/_auth/schedule"
+import { Route as AuthSettingsRouteImport } from "./routes/_auth/settings"
+import { Route as PublicForgotPasswordRouteImport } from "./routes/_public/forgot-password"
+import { Route as PublicLoginRouteImport } from "./routes/_public/login"
+import { Route as PublicRegisterRouteImport } from "./routes/_public/register"
+import { Route as PublicResetPasswordRouteImport } from "./routes/_public/reset-password"
 import { Route as AdminAdminAuditRouteImport } from "./routes/_admin/admin.audit"
+import { Route as AdminAdminFeatureFlagsRouteImport } from "./routes/_admin/admin.feature-flags"
+import { Route as AdminAdminNotificationsRouteImport } from "./routes/_admin/admin.notifications"
+import { Route as AdminAdminStoriesRouteImport } from "./routes/_admin/admin.stories"
+import { Route as AdminAdminUsersRouteImport } from "./routes/_admin/admin.users"
+import { Route as AuthEventsIndexRouteImport } from "./routes/_auth/events.index"
+import { Route as AuthEventsIdRouteImport } from "./routes/_auth/events.$id"
+import { Route as AuthMessengerChatIdRouteImport } from "./routes/_auth/messenger.$chatId"
+import { Route as AuthNewsIndexRouteImport } from "./routes/_auth/news.index"
+import { Route as AuthNewsIdRouteImport } from "./routes/_auth/news.$id"
+import { Route as PublicResetPasswordTokenRouteImport } from "./routes/_public/reset-password.$token"
 
-const PublicRoute = PublicRouteImport.update({
-  id: "/_public",
-  getParentRoute: () => rootRouteImport,
-} as any)
-const AuthRoute = AuthRouteImport.update({
-  id: "/_auth",
+const IndexRoute = IndexRouteImport.update({
+  id: "/",
+  path: "/",
   getParentRoute: () => rootRouteImport,
 } as any)
 const AdminRoute = AdminRouteImport.update({
   id: "/_admin",
   getParentRoute: () => rootRouteImport,
 } as any)
-const IndexRoute = IndexRouteImport.update({
-  id: "/",
-  path: "/",
+const AuthRoute = AuthRouteImport.update({
+  id: "/_auth",
   getParentRoute: () => rootRouteImport,
 } as any)
-const PublicResetPasswordRoute = PublicResetPasswordRouteImport.update({
-  id: "/reset-password",
-  path: "/reset-password",
-  getParentRoute: () => PublicRoute,
+const PublicRoute = PublicRouteImport.update({
+  id: "/_public",
+  getParentRoute: () => rootRouteImport,
 } as any)
-const PublicRegisterRoute = PublicRegisterRouteImport.update({
-  id: "/register",
-  path: "/register",
-  getParentRoute: () => PublicRoute,
-} as any)
-const PublicLoginRoute = PublicLoginRouteImport.update({
-  id: "/login",
-  path: "/login",
-  getParentRoute: () => PublicRoute,
-} as any)
-const PublicForgotPasswordRoute = PublicForgotPasswordRouteImport.update({
-  id: "/forgot-password",
-  path: "/forgot-password",
-  getParentRoute: () => PublicRoute,
-} as any)
-const AuthSettingsRoute = AuthSettingsRouteImport.update({
-  id: "/settings",
-  path: "/settings",
-  getParentRoute: () => AuthRoute,
-} as any)
-const AuthScheduleRoute = AuthScheduleRouteImport.update({
-  id: "/schedule",
-  path: "/schedule",
-  getParentRoute: () => AuthRoute,
-} as any)
-const AuthProfileRoute = AuthProfileRouteImport.update({
-  id: "/profile",
-  path: "/profile",
-  getParentRoute: () => AuthRoute,
-} as any)
-const AuthMessengerRoute = AuthMessengerRouteImport.update({
-  id: "/messenger",
-  path: "/messenger",
-  getParentRoute: () => AuthRoute,
-} as any)
-const AuthMapRoute = AuthMapRouteImport.update({
-  id: "/map",
-  path: "/map",
+const AuthActivityRoute = AuthActivityRouteImport.update({
+  id: "/activity",
+  path: "/activity",
   getParentRoute: () => AuthRoute,
 } as any)
 const AuthDashboardRoute = AuthDashboardRouteImport.update({
@@ -103,19 +63,99 @@ const AuthDashboardRoute = AuthDashboardRouteImport.update({
   path: "/dashboard",
   getParentRoute: () => AuthRoute,
 } as any)
-const AuthActivityRoute = AuthActivityRouteImport.update({
-  id: "/activity",
-  path: "/activity",
+const AuthMapRoute = AuthMapRouteImport.update({
+  id: "/map",
+  path: "/map",
   getParentRoute: () => AuthRoute,
+} as any)
+const AuthMessengerRoute = AuthMessengerRouteImport.update({
+  id: "/messenger",
+  path: "/messenger",
+  getParentRoute: () => AuthRoute,
+} as any)
+const AuthProfileRoute = AuthProfileRouteImport.update({
+  id: "/profile",
+  path: "/profile",
+  getParentRoute: () => AuthRoute,
+} as any)
+const AuthScheduleRoute = AuthScheduleRouteImport.update({
+  id: "/schedule",
+  path: "/schedule",
+  getParentRoute: () => AuthRoute,
+} as any)
+const AuthSettingsRoute = AuthSettingsRouteImport.update({
+  id: "/settings",
+  path: "/settings",
+  getParentRoute: () => AuthRoute,
+} as any)
+const PublicForgotPasswordRoute = PublicForgotPasswordRouteImport.update({
+  id: "/forgot-password",
+  path: "/forgot-password",
+  getParentRoute: () => PublicRoute,
+} as any)
+const PublicLoginRoute = PublicLoginRouteImport.update({
+  id: "/login",
+  path: "/login",
+  getParentRoute: () => PublicRoute,
+} as any)
+const PublicRegisterRoute = PublicRegisterRouteImport.update({
+  id: "/register",
+  path: "/register",
+  getParentRoute: () => PublicRoute,
+} as any)
+const PublicResetPasswordRoute = PublicResetPasswordRouteImport.update({
+  id: "/reset-password",
+  path: "/reset-password",
+  getParentRoute: () => PublicRoute,
+} as any)
+const AdminAdminAuditRoute = AdminAdminAuditRouteImport.update({
+  id: "/admin/audit",
+  path: "/admin/audit",
+  getParentRoute: () => AdminRoute,
+} as any)
+const AdminAdminFeatureFlagsRoute = AdminAdminFeatureFlagsRouteImport.update({
+  id: "/admin/feature-flags",
+  path: "/admin/feature-flags",
+  getParentRoute: () => AdminRoute,
+} as any)
+const AdminAdminNotificationsRoute = AdminAdminNotificationsRouteImport.update({
+  id: "/admin/notifications",
+  path: "/admin/notifications",
+  getParentRoute: () => AdminRoute,
+} as any)
+const AdminAdminStoriesRoute = AdminAdminStoriesRouteImport.update({
+  id: "/admin/stories",
+  path: "/admin/stories",
+  getParentRoute: () => AdminRoute,
+} as any)
+const AdminAdminUsersRoute = AdminAdminUsersRouteImport.update({
+  id: "/admin/users",
+  path: "/admin/users",
+  getParentRoute: () => AdminRoute,
+} as any)
+const AuthEventsIndexRoute = AuthEventsIndexRouteImport.update({
+  id: "/events/",
+  path: "/events/",
+  getParentRoute: () => AuthRoute,
+} as any)
+const AuthEventsIdRoute = AuthEventsIdRouteImport.update({
+  id: "/events/$id",
+  path: "/events/$id",
+  getParentRoute: () => AuthRoute,
+} as any)
+const AuthMessengerChatIdRoute = AuthMessengerChatIdRouteImport.update({
+  id: "/$chatId",
+  path: "/$chatId",
+  getParentRoute: () => AuthMessengerRoute,
 } as any)
 const AuthNewsIndexRoute = AuthNewsIndexRouteImport.update({
   id: "/news/",
   path: "/news/",
   getParentRoute: () => AuthRoute,
 } as any)
-const AuthEventsIndexRoute = AuthEventsIndexRouteImport.update({
-  id: "/events/",
-  path: "/events/",
+const AuthNewsIdRoute = AuthNewsIdRouteImport.update({
+  id: "/news/$id",
+  path: "/news/$id",
   getParentRoute: () => AuthRoute,
 } as any)
 const PublicResetPasswordTokenRoute =
@@ -124,46 +164,6 @@ const PublicResetPasswordTokenRoute =
     path: "/$token",
     getParentRoute: () => PublicResetPasswordRoute,
   } as any)
-const AuthNewsIdRoute = AuthNewsIdRouteImport.update({
-  id: "/news/$id",
-  path: "/news/$id",
-  getParentRoute: () => AuthRoute,
-} as any)
-const AuthMessengerChatIdRoute = AuthMessengerChatIdRouteImport.update({
-  id: "/$chatId",
-  path: "/$chatId",
-  getParentRoute: () => AuthMessengerRoute,
-} as any)
-const AuthEventsIdRoute = AuthEventsIdRouteImport.update({
-  id: "/events/$id",
-  path: "/events/$id",
-  getParentRoute: () => AuthRoute,
-} as any)
-const AdminAdminUsersRoute = AdminAdminUsersRouteImport.update({
-  id: "/admin/users",
-  path: "/admin/users",
-  getParentRoute: () => AdminRoute,
-} as any)
-const AdminAdminStoriesRoute = AdminAdminStoriesRouteImport.update({
-  id: "/admin/stories",
-  path: "/admin/stories",
-  getParentRoute: () => AdminRoute,
-} as any)
-const AdminAdminNotificationsRoute = AdminAdminNotificationsRouteImport.update({
-  id: "/admin/notifications",
-  path: "/admin/notifications",
-  getParentRoute: () => AdminRoute,
-} as any)
-const AdminAdminFeatureFlagsRoute = AdminAdminFeatureFlagsRouteImport.update({
-  id: "/admin/feature-flags",
-  path: "/admin/feature-flags",
-  getParentRoute: () => AdminRoute,
-} as any)
-const AdminAdminAuditRoute = AdminAdminAuditRouteImport.update({
-  id: "/admin/audit",
-  path: "/admin/audit",
-  getParentRoute: () => AdminRoute,
-} as any)
 
 export interface FileRoutesByFullPath {
   "/": typeof IndexRoute
@@ -334,18 +334,11 @@ export interface RootRouteChildren {
 
 declare module "@tanstack/react-router" {
   interface FileRoutesByPath {
-    "/_public": {
-      id: "/_public"
-      path: ""
+    "/": {
+      id: "/"
+      path: "/"
       fullPath: "/"
-      preLoaderRoute: typeof PublicRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    "/_auth": {
-      id: "/_auth"
-      path: ""
-      fullPath: "/"
-      preLoaderRoute: typeof AuthRouteImport
+      preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     "/_admin": {
@@ -355,74 +348,25 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof AdminRouteImport
       parentRoute: typeof rootRouteImport
     }
-    "/": {
-      id: "/"
-      path: "/"
+    "/_auth": {
+      id: "/_auth"
+      path: ""
       fullPath: "/"
-      preLoaderRoute: typeof IndexRouteImport
+      preLoaderRoute: typeof AuthRouteImport
       parentRoute: typeof rootRouteImport
     }
-    "/_public/reset-password": {
-      id: "/_public/reset-password"
-      path: "/reset-password"
-      fullPath: "/reset-password"
-      preLoaderRoute: typeof PublicResetPasswordRouteImport
-      parentRoute: typeof PublicRoute
+    "/_public": {
+      id: "/_public"
+      path: ""
+      fullPath: "/"
+      preLoaderRoute: typeof PublicRouteImport
+      parentRoute: typeof rootRouteImport
     }
-    "/_public/register": {
-      id: "/_public/register"
-      path: "/register"
-      fullPath: "/register"
-      preLoaderRoute: typeof PublicRegisterRouteImport
-      parentRoute: typeof PublicRoute
-    }
-    "/_public/login": {
-      id: "/_public/login"
-      path: "/login"
-      fullPath: "/login"
-      preLoaderRoute: typeof PublicLoginRouteImport
-      parentRoute: typeof PublicRoute
-    }
-    "/_public/forgot-password": {
-      id: "/_public/forgot-password"
-      path: "/forgot-password"
-      fullPath: "/forgot-password"
-      preLoaderRoute: typeof PublicForgotPasswordRouteImport
-      parentRoute: typeof PublicRoute
-    }
-    "/_auth/settings": {
-      id: "/_auth/settings"
-      path: "/settings"
-      fullPath: "/settings"
-      preLoaderRoute: typeof AuthSettingsRouteImport
-      parentRoute: typeof AuthRoute
-    }
-    "/_auth/schedule": {
-      id: "/_auth/schedule"
-      path: "/schedule"
-      fullPath: "/schedule"
-      preLoaderRoute: typeof AuthScheduleRouteImport
-      parentRoute: typeof AuthRoute
-    }
-    "/_auth/profile": {
-      id: "/_auth/profile"
-      path: "/profile"
-      fullPath: "/profile"
-      preLoaderRoute: typeof AuthProfileRouteImport
-      parentRoute: typeof AuthRoute
-    }
-    "/_auth/messenger": {
-      id: "/_auth/messenger"
-      path: "/messenger"
-      fullPath: "/messenger"
-      preLoaderRoute: typeof AuthMessengerRouteImport
-      parentRoute: typeof AuthRoute
-    }
-    "/_auth/map": {
-      id: "/_auth/map"
-      path: "/map"
-      fullPath: "/map"
-      preLoaderRoute: typeof AuthMapRouteImport
+    "/_auth/activity": {
+      id: "/_auth/activity"
+      path: "/activity"
+      fullPath: "/activity"
+      preLoaderRoute: typeof AuthActivityRouteImport
       parentRoute: typeof AuthRoute
     }
     "/_auth/dashboard": {
@@ -432,74 +376,74 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof AuthDashboardRouteImport
       parentRoute: typeof AuthRoute
     }
-    "/_auth/activity": {
-      id: "/_auth/activity"
-      path: "/activity"
-      fullPath: "/activity"
-      preLoaderRoute: typeof AuthActivityRouteImport
+    "/_auth/map": {
+      id: "/_auth/map"
+      path: "/map"
+      fullPath: "/map"
+      preLoaderRoute: typeof AuthMapRouteImport
       parentRoute: typeof AuthRoute
     }
-    "/_auth/news/": {
-      id: "/_auth/news/"
-      path: "/news"
-      fullPath: "/news/"
-      preLoaderRoute: typeof AuthNewsIndexRouteImport
+    "/_auth/messenger": {
+      id: "/_auth/messenger"
+      path: "/messenger"
+      fullPath: "/messenger"
+      preLoaderRoute: typeof AuthMessengerRouteImport
       parentRoute: typeof AuthRoute
     }
-    "/_auth/events/": {
-      id: "/_auth/events/"
-      path: "/events"
-      fullPath: "/events/"
-      preLoaderRoute: typeof AuthEventsIndexRouteImport
+    "/_auth/profile": {
+      id: "/_auth/profile"
+      path: "/profile"
+      fullPath: "/profile"
+      preLoaderRoute: typeof AuthProfileRouteImport
       parentRoute: typeof AuthRoute
     }
-    "/_public/reset-password/$token": {
-      id: "/_public/reset-password/$token"
-      path: "/$token"
-      fullPath: "/reset-password/$token"
-      preLoaderRoute: typeof PublicResetPasswordTokenRouteImport
-      parentRoute: typeof PublicResetPasswordRoute
-    }
-    "/_auth/news/$id": {
-      id: "/_auth/news/$id"
-      path: "/news/$id"
-      fullPath: "/news/$id"
-      preLoaderRoute: typeof AuthNewsIdRouteImport
+    "/_auth/schedule": {
+      id: "/_auth/schedule"
+      path: "/schedule"
+      fullPath: "/schedule"
+      preLoaderRoute: typeof AuthScheduleRouteImport
       parentRoute: typeof AuthRoute
     }
-    "/_auth/messenger/$chatId": {
-      id: "/_auth/messenger/$chatId"
-      path: "/$chatId"
-      fullPath: "/messenger/$chatId"
-      preLoaderRoute: typeof AuthMessengerChatIdRouteImport
-      parentRoute: typeof AuthMessengerRoute
-    }
-    "/_auth/events/$id": {
-      id: "/_auth/events/$id"
-      path: "/events/$id"
-      fullPath: "/events/$id"
-      preLoaderRoute: typeof AuthEventsIdRouteImport
+    "/_auth/settings": {
+      id: "/_auth/settings"
+      path: "/settings"
+      fullPath: "/settings"
+      preLoaderRoute: typeof AuthSettingsRouteImport
       parentRoute: typeof AuthRoute
     }
-    "/_admin/admin/users": {
-      id: "/_admin/admin/users"
-      path: "/admin/users"
-      fullPath: "/admin/users"
-      preLoaderRoute: typeof AdminAdminUsersRouteImport
-      parentRoute: typeof AdminRoute
+    "/_public/forgot-password": {
+      id: "/_public/forgot-password"
+      path: "/forgot-password"
+      fullPath: "/forgot-password"
+      preLoaderRoute: typeof PublicForgotPasswordRouteImport
+      parentRoute: typeof PublicRoute
     }
-    "/_admin/admin/stories": {
-      id: "/_admin/admin/stories"
-      path: "/admin/stories"
-      fullPath: "/admin/stories"
-      preLoaderRoute: typeof AdminAdminStoriesRouteImport
-      parentRoute: typeof AdminRoute
+    "/_public/login": {
+      id: "/_public/login"
+      path: "/login"
+      fullPath: "/login"
+      preLoaderRoute: typeof PublicLoginRouteImport
+      parentRoute: typeof PublicRoute
     }
-    "/_admin/admin/notifications": {
-      id: "/_admin/admin/notifications"
-      path: "/admin/notifications"
-      fullPath: "/admin/notifications"
-      preLoaderRoute: typeof AdminAdminNotificationsRouteImport
+    "/_public/register": {
+      id: "/_public/register"
+      path: "/register"
+      fullPath: "/register"
+      preLoaderRoute: typeof PublicRegisterRouteImport
+      parentRoute: typeof PublicRoute
+    }
+    "/_public/reset-password": {
+      id: "/_public/reset-password"
+      path: "/reset-password"
+      fullPath: "/reset-password"
+      preLoaderRoute: typeof PublicResetPasswordRouteImport
+      parentRoute: typeof PublicRoute
+    }
+    "/_admin/admin/audit": {
+      id: "/_admin/admin/audit"
+      path: "/admin/audit"
+      fullPath: "/admin/audit"
+      preLoaderRoute: typeof AdminAdminAuditRouteImport
       parentRoute: typeof AdminRoute
     }
     "/_admin/admin/feature-flags": {
@@ -509,12 +453,68 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof AdminAdminFeatureFlagsRouteImport
       parentRoute: typeof AdminRoute
     }
-    "/_admin/admin/audit": {
-      id: "/_admin/admin/audit"
-      path: "/admin/audit"
-      fullPath: "/admin/audit"
-      preLoaderRoute: typeof AdminAdminAuditRouteImport
+    "/_admin/admin/notifications": {
+      id: "/_admin/admin/notifications"
+      path: "/admin/notifications"
+      fullPath: "/admin/notifications"
+      preLoaderRoute: typeof AdminAdminNotificationsRouteImport
       parentRoute: typeof AdminRoute
+    }
+    "/_admin/admin/stories": {
+      id: "/_admin/admin/stories"
+      path: "/admin/stories"
+      fullPath: "/admin/stories"
+      preLoaderRoute: typeof AdminAdminStoriesRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    "/_admin/admin/users": {
+      id: "/_admin/admin/users"
+      path: "/admin/users"
+      fullPath: "/admin/users"
+      preLoaderRoute: typeof AdminAdminUsersRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    "/_auth/events/": {
+      id: "/_auth/events/"
+      path: "/events"
+      fullPath: "/events/"
+      preLoaderRoute: typeof AuthEventsIndexRouteImport
+      parentRoute: typeof AuthRoute
+    }
+    "/_auth/events/$id": {
+      id: "/_auth/events/$id"
+      path: "/events/$id"
+      fullPath: "/events/$id"
+      preLoaderRoute: typeof AuthEventsIdRouteImport
+      parentRoute: typeof AuthRoute
+    }
+    "/_auth/messenger/$chatId": {
+      id: "/_auth/messenger/$chatId"
+      path: "/$chatId"
+      fullPath: "/messenger/$chatId"
+      preLoaderRoute: typeof AuthMessengerChatIdRouteImport
+      parentRoute: typeof AuthMessengerRoute
+    }
+    "/_auth/news/": {
+      id: "/_auth/news/"
+      path: "/news"
+      fullPath: "/news/"
+      preLoaderRoute: typeof AuthNewsIndexRouteImport
+      parentRoute: typeof AuthRoute
+    }
+    "/_auth/news/$id": {
+      id: "/_auth/news/$id"
+      path: "/news/$id"
+      fullPath: "/news/$id"
+      preLoaderRoute: typeof AuthNewsIdRouteImport
+      parentRoute: typeof AuthRoute
+    }
+    "/_public/reset-password/$token": {
+      id: "/_public/reset-password/$token"
+      path: "/$token"
+      fullPath: "/reset-password/$token"
+      preLoaderRoute: typeof PublicResetPasswordTokenRouteImport
+      parentRoute: typeof PublicResetPasswordRoute
     }
   }
 }

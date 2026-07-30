@@ -121,7 +121,8 @@ func TestSetupRouter_FullFeatures(t *testing.T) {
 	}
 
 	assert.NotPanics(t, func() {
-		router := setupRouter(cfg, initLogger(), nil, nil, context.Background())
+		router, err := setupRouter(cfg, initLogger(), nil, nil, context.Background())
+		assert.NoError(t, err)
 		assert.NotNil(t, router)
 	})
 }
@@ -131,7 +132,8 @@ func TestInitGRPC_TLS(t *testing.T) {
 		FileProcessorAddr: "localhost:50051",
 		GrpcUseTLS:        true,
 	}
-	conn, client := initGRPC(cfg, initLogger())
+	conn, client, err := initGRPC(cfg, initLogger())
+	assert.NoError(t, err)
 	assert.NotNil(t, conn)
 	assert.NotNil(t, client)
 	if err := conn.Close(); err != nil {

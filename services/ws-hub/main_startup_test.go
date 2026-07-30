@@ -104,8 +104,8 @@ func TestMain_ExitOnJWKSFailure(t *testing.T) {
 	if os.Getenv("RUN_CRASHING_MAIN") == "JWKS" {
 		initNatsMu.Lock()
 		oldInitNats := initNats
-		initNats = func(ctx context.Context, cfg *config.Config, logger *slog.Logger) *nats.Conn {
-			return nil
+		initNats = func(ctx context.Context, cfg *config.Config, logger *slog.Logger) (*nats.Conn, error) {
+			return nil, nil
 		}
 		initNatsMu.Unlock()
 		defer func() {
@@ -174,7 +174,8 @@ func TestInitNats_Success(t *testing.T) {
 	ctx := context.Background()
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
-	nc := initNats(ctx, cfg, logger)
+	nc, err := initNats(ctx, cfg, logger)
+	require.NoError(t, err)
 	require.NotNil(t, nc)
 	nc.Close()
 }
@@ -185,7 +186,9 @@ func TestInitNats_ExitOnFailure(t *testing.T) {
 			NatsURL: "nats://foo\x00bar", // control character causes parsing failure
 		}
 		logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-		initNats(context.Background(), cfg, logger)
+		if _, err := initNats(context.Background(), cfg, logger); err != nil {
+			os.Exit(1)
+		}
 		return
 	}
 

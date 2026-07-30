@@ -152,7 +152,8 @@ func TestIntegration_GatewayToWSHubE2E(t *testing.T) {
 	}
 
 	logger := initLogger()
-	router := setupRouter(cfg, logger, nil, nil, context.Background())
+	router, err := setupRouter(cfg, logger, nil, nil, context.Background())
+	require.NoError(t, err)
 	gatewayServer := httptest.NewServer(router)
 	t.Cleanup(gatewayServer.Close)
 
