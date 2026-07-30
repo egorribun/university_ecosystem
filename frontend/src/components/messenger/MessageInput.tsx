@@ -369,3 +369,5 @@ export function MessageInput({ onSend, replyingTo, onCancelReply, onTyping }: Me
     </div>
   )
 }
+
+export default MessageInput

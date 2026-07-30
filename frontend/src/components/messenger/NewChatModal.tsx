@@ -53,7 +53,7 @@ export function NewChatModal({
   const isGroupMode = canCreateGroup && mode === "group"
   const titleId = useId()
   // PERF-20-05: Debounce to prevent API call on every keystroke.
-  const debouncedSearch = useDebounced(search, "default") // PERF-23-04: messenger search uses default preset (300ms)
+  const debouncedSearch = useDebounced(search, "search") // PERF-23-04: search preset (200ms)
   // Wave 181 SW5 — explicit useReducedMotion guards on DRAMATIC animations
   // (dialog entrance scale:0.95+y:20 and per-row whileHover x:4). Subtle
   // scale-on-hover/tap motions are handled globally by AppProviders

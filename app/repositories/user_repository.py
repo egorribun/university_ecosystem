@@ -720,6 +720,14 @@ class UserRepository(BaseRepository[User, UserDTO, schemas.UserCreate, dict[str,
         result = await self.db.execute(stmt)
         return list(result.scalars().all())
 
+    async def get_users_by_ids(self, user_ids: list[uuid.UUID]) -> list[User]:
+        """Fetch multiple User ORM entities by IDs in a single query."""
+        if not user_ids:
+            return []
+        stmt = select(User).where(User.id.in_(user_ids))
+        result = await self.db.execute(stmt)
+        return list(result.scalars().all())
+
 
 def get_user_repository(db: AsyncDatabaseSession) -> UserRepository:
     """Factory function for dependency injection."""

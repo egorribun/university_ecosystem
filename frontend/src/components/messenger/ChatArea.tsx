@@ -18,7 +18,7 @@ import {
   User,
   X,
 } from "lucide-react"
-import { Dispatch, SetStateAction, useEffect, useRef } from "react"
+import { memo, Dispatch, SetStateAction, useEffect, useRef } from "react"
 import { useTranslation } from "react-i18next"
 import { useNavigate } from "@tanstack/react-router"
 
@@ -110,7 +110,7 @@ interface ChatAreaProps {
   onForward?: (messageId: string) => void
 }
 
-export function ChatArea({
+export const ChatArea = memo(function ChatArea({
   isMobile,
   selectedChatId,
   activeChat,
@@ -499,4 +499,7 @@ export function ChatArea({
       )}
     </m.div>
   )
-}
+})
+
+export default ChatArea
+

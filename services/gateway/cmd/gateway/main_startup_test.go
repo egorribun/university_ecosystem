@@ -25,11 +25,12 @@ func TestMain_InvalidPortExitsCleanly(t *testing.T) {
 	t.Setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "")
 	t.Setenv("SENTRY_DSN", "")
 
-	// We run main() directly in the test context.
-	// Since port is -1, ListenAndServe fails immediately, runServer handles the error
-	// and exits. The main() function will execute all its defers and exit cleanly.
+	// We run run() directly in the test context.
+	// Since port is -1, ListenAndServe fails immediately, runServer handles the error,
+	// performs orderly shutdown, and returns an error. run() executes all defers and returns the error.
 	assert.NotPanics(t, func() {
-		main()
+		err := run()
+		assert.Error(t, err)
 	})
 }
 

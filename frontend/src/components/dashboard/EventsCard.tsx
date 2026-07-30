@@ -1,4 +1,4 @@
-import { useMemo, useState, useCallback, type CSSProperties, type KeyboardEvent } from "react"
+import { memo, useMemo, useState, useCallback, type CSSProperties, type KeyboardEvent } from "react"
 
 import { Link, useNavigate } from "@tanstack/react-router"
 import { useTranslation } from "react-i18next"
@@ -23,8 +23,7 @@ interface EventsCardProps {
   "data-pop"?: string
 }
 
-// PERF-27-02: Removed React.memo() — React Compiler "infer" mode handles memoization
-export function EventsCard({ className, style, ...props }: EventsCardProps) {
+export const EventsCard = memo(function EventsCard({ className, style, ...props }: EventsCardProps) {
   const { t } = useTranslation(["dashboard", "common"])
   const navigate = useNavigate()
   const { language } = useLanguage()
@@ -267,4 +266,6 @@ export function EventsCard({ className, style, ...props }: EventsCardProps) {
       />
     </Card>
   )
-}
+})
+
+export default EventsCard

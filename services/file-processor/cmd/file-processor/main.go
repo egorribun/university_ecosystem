@@ -75,16 +75,18 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	runMain(ctx)
+	if err := runMain(ctx); err != nil {
+		os.Exit(1)
+	}
 }
 
-func runMain(ctx context.Context) {
+func runMain(ctx context.Context) error {
 	logger := initLogger()
 
 	cfg, err := config.Load()
 	if err != nil {
 		logger.ErrorContext(ctx, "Failed to load configuration", "err", err)
-		os.Exit(1)
+		return err
 	}
 
 	// TD-W18-01 (audit 2026-03-23 Wave 18): parse RSA public key for RS256 support.
@@ -93,7 +95,7 @@ func runMain(ctx context.Context) {
 		rsaPublicKey, err = parseRSAPublicKey(cfg.RSAPublicKeyPEM)
 		if err != nil {
 			logger.ErrorContext(ctx, "Failed to parse RSA_PUBLIC_KEY_PEM", "err", err)
-			os.Exit(1)
+			return err
 		}
 		logger.InfoContext(ctx, "RS256 token verification enabled")
 	}
@@ -113,14 +115,18 @@ func runMain(ctx context.Context) {
 	c, err := connectTemporal(ctx, cfg, logger)
 	if err != nil {
 		logger.ErrorContext(ctx, "Failed to connect to Temporal", "err", err)
-		os.Exit(1)
+		return err
 	}
 	defer c.Close()
 
-	w, _ := setupTemporalWorker(ctx, c, cfg, logger)
+	w, _, err := setupTemporalWorker(ctx, c, cfg, logger)
+	if err != nil {
+		logger.ErrorContext(ctx, "Failed to setup Temporal worker", "err", err)
+		return err
+	}
 	if err := w.Start(); err != nil {
 		logger.ErrorContext(ctx, "Unable to start Temporal worker", "err", err)
-		os.Exit(1)
+		return err
 	}
 	defer w.Stop()
 	logger.InfoContext(ctx, "Temporal Worker started", "queue", "FILE_PROCESSING_TASK_QUEUE")
@@ -136,11 +142,11 @@ func runMain(ctx context.Context) {
 	if err != nil {
 		logger.ErrorContext(ctx, "SPIFFE initialization failed", "err", err)
 		if cfg.SpiffeEnabled {
-			os.Exit(1)
+			return err
 		}
 	} else if cfg.SpiffeEnabled && spiffeClient == nil {
 		logger.ErrorContext(ctx, "SPIFFE is enabled but client initialization returned nil")
-		os.Exit(1)
+		return errors.New("SPIFFE is enabled but client initialization returned nil")
 	} else if spiffeClient != nil {
 		defer func() {
 			if err := spiffeClient.Close(); err != nil {
@@ -149,10 +155,19 @@ func runMain(ctx context.Context) {
 		}()
 	}
 
-	grpcSrv := setupGRPCServer(ctx, cfg, rsaPublicKey, c, spiffeClient, logger)
-	graphqlSrv := setupGraphQLServer(ctx, cfg, rsaPublicKey, c, logger)
+	grpcSrv, err := setupGRPCServer(ctx, cfg, rsaPublicKey, c, spiffeClient, logger)
+	if err != nil {
+		logger.ErrorContext(ctx, "Failed to setup gRPC server", "err", err)
+		return err
+	}
 
-	runServers(ctx, grpcSrv, graphqlSrv, cfg, logger)
+	graphqlSrv, err := setupGraphQLServer(ctx, cfg, rsaPublicKey, c, logger)
+	if err != nil {
+		logger.ErrorContext(ctx, "Failed to setup GraphQL server", "err", err)
+		return err
+	}
+
+	return runServers(ctx, grpcSrv, graphqlSrv, cfg, logger)
 }
 
 func initLogger() *slog.Logger {
@@ -251,24 +266,24 @@ func connectTemporal(ctx context.Context, cfg *config.Config, logger *slog.Logge
 	return nil, fmt.Errorf("unable to create Temporal client after multiple attempts: %w", err)
 }
 
-func setupTemporalWorker(ctx context.Context, c client.Client, cfg *config.Config, logger *slog.Logger) (worker.Worker, *workflow.FileActivities) {
+func setupTemporalWorker(ctx context.Context, c client.Client, cfg *config.Config, logger *slog.Logger) (worker.Worker, *workflow.FileActivities, error) {
 	w := newWorkerFunc(c, "FILE_PROCESSING_TASK_QUEUE", worker.Options{})
 	w.RegisterWorkflow(workflow.FileProcessingWorkflow)
 
 	minioClient, err := workflow.BuildMinIOClient(cfg)
 	if err != nil {
 		logger.ErrorContext(ctx, "Failed to initialize MinIO client", "err", err)
-		os.Exit(1)
+		return nil, nil, fmt.Errorf("failed to initialize MinIO client: %w", err)
 	}
 
 	activities, err := workflow.NewFileActivities(cfg, minioClient)
 	if err != nil {
 		logger.ErrorContext(ctx, "Failed to initialize file activities", "err", err)
-		os.Exit(1)
+		return nil, nil, fmt.Errorf("failed to initialize file activities: %w", err)
 	}
 	w.RegisterActivity(activities.ResizeImageActivity)
 
-	return w, activities
+	return w, activities, nil
 }
 
 func startNatsSubscriber(ctx context.Context, cfg *config.Config, c client.Client, logger *slog.Logger) {
@@ -381,7 +396,7 @@ type authedServerStream struct {
 
 func (s *authedServerStream) Context() context.Context { return s.ctx }
 
-func setupGRPCServer(ctx context.Context, cfg *config.Config, rsaPub *rsa.PublicKey, c client.Client, opts ...any) *grpc.Server {
+func setupGRPCServer(ctx context.Context, cfg *config.Config, rsaPub *rsa.PublicKey, c client.Client, opts ...any) (*grpc.Server, error) {
 	var spiffeClient *spiffe.Client
 	logger := slog.Default()
 
@@ -410,12 +425,12 @@ func setupGRPCServer(ctx context.Context, cfg *config.Config, rsaPub *rsa.Public
 	if cfg.SpiffeEnabled {
 		if spiffeClient == nil {
 			logger.ErrorContext(ctx, "SPIFFE is enabled but spiffeClient is nil")
-			os.Exit(1)
+			return nil, errors.New("SPIFFE is enabled but spiffeClient is nil")
 		}
 		creds, err := spiffeClient.GRPCCerverCredentials(cfg.AllowedClientSpiffeIDs...)
 		if err != nil {
 			logger.ErrorContext(ctx, "Failed to create SPIFFE gRPC server credentials", "err", err)
-			os.Exit(1)
+			return nil, fmt.Errorf("failed to create SPIFFE gRPC server credentials: %w", err)
 		}
 		serverOpts = append(serverOpts, grpc.Creds(creds))
 	}
@@ -431,21 +446,28 @@ func setupGRPCServer(ctx context.Context, cfg *config.Config, rsaPub *rsa.Public
 	healthServer.SetServingStatus("", grpc_health_v1.HealthCheckResponse_SERVING)
 	healthServer.SetServingStatus("file_processor.v1.FileProcessingService", grpc_health_v1.HealthCheckResponse_SERVING)
 
-	return grpcServer
+	return grpcServer, nil
 }
 
-func setupGraphQLServer(ctx context.Context, cfg *config.Config, rsaPub *rsa.PublicKey, c client.Client, logger *slog.Logger) *http.Server {
+func setupGraphQLServer(ctx context.Context, cfg *config.Config, rsaPub *rsa.PublicKey, c client.Client, logger *slog.Logger) (srv *http.Server, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			logger.ErrorContext(ctx, "GraphQL schema parsing panicked", "panic", r)
+			err = fmt.Errorf("graphql schema parse panic: %v", r)
+		}
+	}()
+
 	schemaPath := "schema.graphql"
 	if p := os.Getenv("FP_SCHEMA_PATH"); p != "" {
 		schemaPath = p
 	}
-	s, err := os.ReadFile(schemaPath)
-	if err != nil && schemaPath == "schema.graphql" {
-		s, err = os.ReadFile("../schema.graphql")
+	s, readErr := os.ReadFile(schemaPath)
+	if readErr != nil && schemaPath == "schema.graphql" {
+		s, readErr = os.ReadFile("../schema.graphql")
 	}
-	if err != nil {
-		logger.ErrorContext(ctx, "schema.graphql not found", "err", err)
-		os.Exit(1)
+	if readErr != nil {
+		logger.ErrorContext(ctx, "schema.graphql not found", "err", readErr)
+		return nil, readErr
 	}
 
 	resolver := &gql.Resolver{
@@ -461,7 +483,11 @@ func setupGraphQLServer(ctx context.Context, cfg *config.Config, rsaPub *rsa.Pub
 		}))
 	}
 
-	schema := graphql.MustParseSchema(string(s), resolver, schemaOpts...)
+	schema, parseErr := graphql.ParseSchema(string(s), resolver, schemaOpts...)
+	if parseErr != nil {
+		logger.ErrorContext(ctx, "Failed to parse GraphQL schema", "err", parseErr)
+		return nil, parseErr
+	}
 	mux := http.NewServeMux()
 	graphqlHandler := httpJWTMiddleware(cfg.JWTSecret, rsaPub, logger,
 		middleware.MaxQueryDepthMiddleware(10,
@@ -477,21 +503,24 @@ func setupGraphQLServer(ctx context.Context, cfg *config.Config, rsaPub *rsa.Pub
 		Addr:              ":" + cfg.GraphQLPort,
 		Handler:           otelhttp.NewHandler(mux, "graphql_metrics"),
 		ReadHeaderTimeout: 5 * time.Second,
-	}
+	}, nil
 }
 
-func runServers(ctx context.Context, grpcSrv *grpc.Server, graphqlSrv *http.Server, cfg *config.Config, logger *slog.Logger) {
+func runServers(ctx context.Context, grpcSrv *grpc.Server, graphqlSrv *http.Server, cfg *config.Config, logger *slog.Logger) error {
 	lc := net.ListenConfig{}
 	lis, err := lc.Listen(ctx, "tcp", ":"+cfg.GRPCPort)
 	if err != nil {
 		logger.ErrorContext(ctx, "Failed to listen for gRPC", "err", err)
-		os.Exit(1)
+		return err
 	}
+
+	errChan := make(chan error, 2)
 
 	go func() {
 		logger.InfoContext(ctx, "gRPC Server listening", "addr", ":"+cfg.GRPCPort)
 		if err := grpcSrv.Serve(lis); err != nil && !errors.Is(err, grpc.ErrServerStopped) {
 			logger.ErrorContext(ctx, "failed to serve gRPC", "err", err)
+			errChan <- err
 		}
 	}()
 
@@ -499,10 +528,18 @@ func runServers(ctx context.Context, grpcSrv *grpc.Server, graphqlSrv *http.Serv
 		logger.InfoContext(ctx, "GraphQL & Metrics Server listening", "addr", ":"+cfg.GraphQLPort)
 		if err := graphqlSrv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			logger.ErrorContext(ctx, "Failed to serve HTTP", "err", err)
+			errChan <- err
 		}
 	}()
 
-	<-ctx.Done()
+	var runErr error
+	select {
+	case <-ctx.Done():
+	case err := <-errChan:
+		logger.ErrorContext(ctx, "Server error, shutting down", "err", err)
+		runErr = err
+	}
+
 	logger.InfoContext(ctx, "Shutting down servers...")
 
 	grpcSrv.GracefulStop()
@@ -512,6 +549,8 @@ func runServers(ctx context.Context, grpcSrv *grpc.Server, graphqlSrv *http.Serv
 	if err := graphqlSrv.Shutdown(shutdownCtx); err != nil { //nolint:contextcheck // RZ-33-21: uses fresh context because parent is cancelled
 		logger.ErrorContext(ctx, "HTTP Server forced to shutdown", "err", err)
 	}
+
+	return runErr
 }
 
 // parseRSAPublicKey parses a PEM-encoded RSA public key.

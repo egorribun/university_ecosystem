@@ -2,6 +2,7 @@
  * DraggableLessonCard — @dnd-kit wrapper for admin drag-and-drop.
  * Wave 66 (Idea #18). Only renders drag handle when canEdit is true.
  */
+import { memo } from "react"
 import { useSortable } from "@dnd-kit/sortable"
 import { CSS } from "@dnd-kit/utilities"
 import { GripVertical } from "lucide-react"
@@ -16,7 +17,7 @@ interface DraggableLessonCardProps extends LessonCardProps {
   dragEnabled?: boolean
 }
 
-export function DraggableLessonCard({
+export const DraggableLessonCard = memo(function DraggableLessonCard({
   dragId,
   dragEnabled = false,
   ...cardProps
@@ -53,4 +54,7 @@ export function DraggableLessonCard({
       <LessonCard {...cardProps} />
     </div>
   )
-}
+})
+
+export default DraggableLessonCard
+

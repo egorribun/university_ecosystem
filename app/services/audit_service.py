@@ -400,8 +400,6 @@ class SecureAuditService:
         if not log.signature:
             return None
 
-        import rust_ext
-
         data_parts = [
             str(log.id or ""),
             str(log.actor_user_id or ""),
@@ -418,17 +416,30 @@ class SecureAuditService:
         ]
         data = "|".join(data_parts)
 
-        # Convert bytes keys to strings for the Rust extension
-        keys_str = [k.decode("utf-8") for k in self._signing_keys]
+        try:
+            import rust_ext
 
-        if rust_ext.verify_audit_signature(keys_str, data, str(log.signature)):
-            # Find which exact key matched (needed for re-signing logic)
-            # In a high-performance scenario, Rust handles the bulk check.
-            # We only re-check manually if we need the specific key index.
-            for signing_key in self._signing_keys:
-                expected = self._compute_signature(log, key=signing_key)
-                if hmac.compare_digest(str(log.signature), expected):
-                    return signing_key
+            # Convert bytes keys to strings for the Rust extension
+            keys_str = [k.decode("utf-8") for k in self._signing_keys]
+
+            if rust_ext.verify_audit_signature(keys_str, data, str(log.signature)):
+                # Find which exact key matched (needed for re-signing logic)
+                # In a high-performance scenario, Rust handles the bulk check.
+                # We only re-check manually if we need the specific key index.
+                for signing_key in self._signing_keys:
+                    expected = self._compute_signature(log, key=signing_key)
+                    if hmac.compare_digest(str(log.signature), expected):
+                        return signing_key
+                return None
+        except (RuntimeError, ImportError, OSError):
+            pass
+
+        # Fallback pure-Python HMAC verification routine if rust_ext is unavailable or fails
+        for signing_key in self._signing_keys:
+            expected = self._compute_signature(log, key=signing_key)
+            if hmac.compare_digest(str(log.signature), expected):
+                return signing_key
+
         return None
 
     async def create_log(

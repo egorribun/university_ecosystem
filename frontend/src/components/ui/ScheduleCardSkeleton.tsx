@@ -1,3 +1,4 @@
+import { memo } from "react"
 import { useTranslation } from "react-i18next"
 import { Skeleton } from "@/components/ui/Skeleton"
 
@@ -12,7 +13,7 @@ interface ScheduleCardSkeletonProps {
  * ScheduleCardSkeleton - Loading state for ScheduleCard component.
  * Displays placeholder lesson items matching the real component structure.
  */
-export function ScheduleCardSkeleton({ items = 3, className = "" }: ScheduleCardSkeletonProps) {
+function ScheduleCardSkeletonInner({ items = 3, className = "" }: ScheduleCardSkeletonProps) {
   const { t } = useTranslation()
   return (
     <div
@@ -61,5 +62,6 @@ export function ScheduleCardSkeleton({ items = 3, className = "" }: ScheduleCard
   )
 }
 
-// PERF-27-02: Removed React.memo() — React Compiler "infer" mode handles memoization
+export const ScheduleCardSkeleton = memo(ScheduleCardSkeletonInner)
+
 export default ScheduleCardSkeleton

@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"crypto/tls"
+	"errors"
 	"net"
 	"net/http"
 	"net/http/httputil"
@@ -48,6 +49,12 @@ import (
 )
 
 func main() {
+	if err := run(); err != nil {
+		os.Exit(1)
+	}
+}
+
+func run() error {
 	// 1. Initialize Logger
 	// TD-W17-02 (Wave 17): Migrated from uber-go/zap to log/slog, matching
 	// ws-hub and file-processor. Eliminates the EINVAL-on-Sync workaround
@@ -59,7 +66,7 @@ func main() {
 	cfg, err := config.Load()
 	if err != nil {
 		logger.ErrorContext(context.Background(), "Failed to load configuration", "err", err)
-		os.Exit(1)
+		return err
 	}
 
 	// 3. Initialize Sentry
@@ -91,11 +98,11 @@ func main() {
 	if err != nil {
 		logger.ErrorContext(ctx, "SPIFFE initialization failed", "err", err)
 		if cfg.SpiffeEnabled {
-			os.Exit(1)
+			return err
 		}
 	} else if cfg.SpiffeEnabled && spiffeClient == nil {
 		logger.ErrorContext(ctx, "SPIFFE is enabled but client initialization returned nil")
-		os.Exit(1)
+		return errors.New("SPIFFE is enabled but client initialization returned nil")
 	} else if spiffeClient != nil {
 		defer func() {
 			if err := spiffeClient.Close(); err != nil {
@@ -108,7 +115,7 @@ func main() {
 	grpcConn, fileClient, err := initGRPC(cfg, logger, spiffeClient)
 	if err != nil {
 		logger.ErrorContext(ctx, "gRPC initialization failed", "err", err)
-		os.Exit(1)
+		return err
 	}
 	defer func() {
 		if err := grpcConn.Close(); err != nil {
@@ -120,11 +127,11 @@ func main() {
 	router, err := setupRouter(cfg, logger, grpcConn, fileClient, spiffeClient, ctx)
 	if err != nil {
 		logger.ErrorContext(ctx, "Router setup failed", "err", err)
-		os.Exit(1)
+		return err
 	}
 
 	// 7. Start Server
-	runServer(cfg, router, logger)
+	return runServer(cfg, router, logger)
 }
 
 func initLogger() *slog.Logger {
@@ -394,7 +401,7 @@ func setupRouter(cfg *config.Config, logger *slog.Logger, grpcConn *grpc.ClientC
 	return router, nil
 }
 
-func runServer(cfg *config.Config, router *gin.Engine, logger *slog.Logger) {
+func runServer(cfg *config.Config, router *gin.Engine, logger *slog.Logger) error {
 	addr := ":" + cfg.Port
 	srv := &http.Server{
 		Addr:              addr,
@@ -449,10 +456,12 @@ func runServer(cfg *config.Config, router *gin.Engine, logger *slog.Logger) {
 
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	var runErr error
 	select {
 	case <-quit:
 	case err := <-serverErr:
 		logger.ErrorContext(context.Background(), "Server startup failed, initiating orderly shutdown", "err", err)
+		runErr = err
 	}
 
 	logger.InfoContext(context.Background(), "Shutting down server...")
@@ -471,6 +480,7 @@ func runServer(cfg *config.Config, router *gin.Engine, logger *slog.Logger) {
 	}
 
 	logger.InfoContext(context.Background(), "Server exiting")
+	return runErr
 }
 
 func prepareTLSConfig(cfg *config.Config, logger *slog.Logger) (*tls.Config, error) {

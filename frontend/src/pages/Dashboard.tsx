@@ -154,9 +154,7 @@ function EventsCardSkeleton() {
   )
 }
 
-/* eslint-disable react-compiler/react-compiler -- useTilt reads refs during render; directive needed for prod build */
 export default function Dashboard() {
-  "use no memo"
   const { t } = useTranslation(["dashboard", "common"])
   const { user, loading: authLoading } = useAuth()
   const isNarrow = useMediaQuery(`(max-width: ${breakpoints.dashboard})`)

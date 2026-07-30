@@ -8,6 +8,7 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.ext.compiler import compiles
 
+import app.models  # noqa: F401
 from app.core import database
 from app.core.database import Base, init_database
 

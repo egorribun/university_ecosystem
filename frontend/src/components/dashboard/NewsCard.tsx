@@ -1,4 +1,4 @@
-import { type CSSProperties, type KeyboardEvent, useCallback } from "react"
+import { memo, type CSSProperties, type KeyboardEvent, useCallback } from "react"
 import { Link } from "@tanstack/react-router"
 import { useTranslation } from "react-i18next"
 
@@ -19,8 +19,7 @@ interface NewsCardProps {
   "data-pop"?: string
 }
 
-// PERF-27-02: Removed React.memo() — React Compiler "infer" mode handles memoization
-export function NewsCard({ locale, className, style, ...props }: NewsCardProps) {
+export const NewsCard = memo(function NewsCard({ locale, className, style, ...props }: NewsCardProps) {
   const { t } = useTranslation(["dashboard", "common"])
   const { language } = useLanguage()
   const queryClient = useQueryClient()
@@ -85,4 +84,6 @@ export function NewsCard({ locale, className, style, ...props }: NewsCardProps) 
       <NewsCardBackground />
     </Card>
   )
-}
+})
+
+export default NewsCard

@@ -1,4 +1,4 @@
-import { CSSProperties, useCallback, useEffect, useRef, useState } from "react"
+import { memo, CSSProperties, useCallback, useEffect, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { cn } from "@/utils/cn"
 import { Skeleton, StoryCircle } from "@/components/ui"
@@ -22,13 +22,13 @@ interface StoryListProps {
   activeStoryId?: string
 }
 
-export const StoryList = ({
+export const StoryList = memo(function StoryList({
   stories,
   loading = false,
   onPrefetch,
   onOpenStory,
   activeStoryId,
-}: StoryListProps) => {
+}: StoryListProps) {
   const { t } = useTranslation("dashboard")
   const listLabel = t("aria.storiesList")
 
@@ -293,4 +293,7 @@ export const StoryList = ({
       )}
     </div>
   )
-}
+})
+
+export default StoryList
+

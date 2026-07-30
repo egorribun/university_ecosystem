@@ -1,4 +1,4 @@
-import { useRef, useEffect, useMemo, useState } from "react"
+import { memo, useRef, useEffect, useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { cn } from "@/utils/cn"
 import { fmtTime, parseMinutes } from "@/utils/scheduleUtils"
@@ -30,7 +30,7 @@ function minutesToPercent(minutes: number): number {
  * Renders a proportional time axis (8:00–20:00) with lesson blocks, current time
  * indicator, and hover tooltips. Auto-scrolls to "now" on mount.
  */
-export function ScheduleTimeline({
+export const ScheduleTimeline = memo(function ScheduleTimeline({
   lessons,
   minutesNow,
   currentLesson,
@@ -228,7 +228,7 @@ export function ScheduleTimeline({
       <LessonCountLegend count={positionedLessons.length} />
     </div>
   )
-}
+})
 
 /** Extracted legend with animated counter */
 function LessonCountLegend({ count }: { count: number }) {
@@ -249,3 +249,6 @@ function LessonCountLegend({ count }: { count: number }) {
     </div>
   )
 }
+
+export default ScheduleTimeline
+

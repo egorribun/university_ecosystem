@@ -1,4 +1,4 @@
-import { useRef, useEffect, useMemo, useState } from "react"
+import { memo, useRef, useEffect, useMemo, useState } from "react"
 import { m } from "framer-motion" // Removed AnimatePresence, LayoutGroup as they are not used
 import useMediaQuery from "@/hooks/useMediaQuery"
 import {
@@ -129,8 +129,7 @@ const SKELETON_BUBBLE_COUNT = 6
 // many px up from the bottom. Module-level per W202 SW1 hoist convention.
 const SCROLL_FAB_THRESHOLD = 240
 
-// PERF-27-02: Removed React.memo() — React Compiler "infer" mode handles memoization
-export function ChatWindow({
+export const ChatWindow = memo(function ChatWindow({
   messages,
   searchQuery = "",
   onClearSearch,
@@ -1068,4 +1067,7 @@ export function ChatWindow({
       ) : null}
     </div>
   )
-}
+})
+
+export default ChatWindow
+

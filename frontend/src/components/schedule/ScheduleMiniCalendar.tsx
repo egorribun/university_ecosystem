@@ -1,4 +1,4 @@
-import { useMemo, useState, useCallback, useRef } from "react"
+import { useMemo, useState, useCallback } from "react"
 import { useTranslation } from "react-i18next"
 import { ChevronLeft, ChevronRight } from "lucide-react"
 import { cn } from "@/utils/cn"
@@ -26,8 +26,7 @@ export function ScheduleMiniCalendar({
 }: ScheduleMiniCalendarProps) {
   const { t, i18n } = useTranslation(["common"])
   // CQ-71-04: stable reference — avoid new Date() on every render
-  const nowRef = useRef(new Date())
-  const now = nowRef.current
+  const [now] = useState(() => new Date())
 
   // Controlled + uncontrolled month support
   const [internalMonth, setInternalMonth] = useState(() => month ?? now)

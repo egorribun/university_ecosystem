@@ -101,16 +101,24 @@ export interface ChatMaintenanceResult {
 }
 
 export const chatApi = {
-  getChats: async (cursor?: string, limit: number = 20): Promise<ChatsListResponse> => {
+  getChats: async (
+    cursor?: string,
+    limit: number = 20,
+    signal?: AbortSignal
+  ): Promise<ChatsListResponse> => {
     const params = new URLSearchParams()
     if (cursor) params.append("cursor", cursor)
     params.append("limit", String(limit))
-    const response = await client.get<ChatsListResponse>(`/chats?${params.toString()}`)
+    const url = `/chats?${params.toString()}`
+    const options = signal ? [{ signal }] : []
+    const response = await client.get<ChatsListResponse>(url, ...options)
     return response.data
   },
 
-  getChat: async (chatId: string): Promise<Chat> => {
-    const response = await client.get<Chat>(`/chats/${chatId}`)
+  getChat: async (chatId: string, signal?: AbortSignal): Promise<Chat> => {
+    const url = `/chats/${chatId}`
+    const options = signal ? [{ signal }] : []
+    const response = await client.get<Chat>(url, ...options)
     return response.data
   },
 
@@ -149,14 +157,15 @@ export const chatApi = {
   getMessages: async (
     chatId: string,
     cursor?: string,
-    limit: number = 50
+    limit: number = 50,
+    signal?: AbortSignal
   ): Promise<MessagesListResponse> => {
     const params = new URLSearchParams()
     if (cursor) params.append("cursor", cursor)
     params.append("limit", String(limit))
-    const response = await client.get<MessagesListResponse>(
-      `/chats/${chatId}/messages?${params.toString()}`
-    )
+    const url = `/chats/${chatId}/messages?${params.toString()}`
+    const options = signal ? [{ signal }] : []
+    const response = await client.get<MessagesListResponse>(url, ...options)
     return response.data
   },
 
@@ -258,10 +267,15 @@ export const chatApi = {
   // reactor-list "who reacted" popover). On-demand; emoji as a query param,
   // matching the DELETE route shape (W206 SW7). GET coexists with POST + DELETE
   // at this path (backend routes by method).
-  getReactors: async (chatId: string, messageId: string, emoji: string): Promise<Reactor[]> => {
-    const response = await client.get<Reactor[]>(
-      `/chats/${chatId}/messages/${messageId}/reactions?emoji=${encodeURIComponent(emoji)}`
-    )
+  getReactors: async (
+    chatId: string,
+    messageId: string,
+    emoji: string,
+    signal?: AbortSignal
+  ): Promise<Reactor[]> => {
+    const url = `/chats/${chatId}/messages/${messageId}/reactions?emoji=${encodeURIComponent(emoji)}`
+    const options = signal ? [{ signal }] : []
+    const response = await client.get<Reactor[]>(url, ...options)
     return response.data
   },
 

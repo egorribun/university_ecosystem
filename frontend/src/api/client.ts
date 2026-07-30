@@ -283,7 +283,7 @@ api.interceptors.request.use(async (config) => {
   }
 
   if (!isSsrRuntime && isRateLimited()) {
-    await waitForRateLimitWindow()
+    await waitForRateLimitWindow(config.signal as AbortSignal | undefined)
   }
 
   applyLanguageHeader(config)

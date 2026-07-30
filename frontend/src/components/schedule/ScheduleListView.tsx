@@ -1,4 +1,4 @@
-import { useMemo, useCallback } from "react"
+import { memo, useMemo, useCallback } from "react"
 import { useTranslation } from "react-i18next"
 import { Calendar as TodayIcon, Plus as AddIcon } from "lucide-react"
 import { Badge } from "@/components/ui"
@@ -33,7 +33,7 @@ type ScheduleListViewProps = Pick<
   notesMap: Map<string, boolean>
 }
 
-export function ScheduleListView({
+export const ScheduleListView = memo(function ScheduleListView({
   schedule,
   weekdayBackend,
   weekdayLabels,
@@ -220,4 +220,7 @@ export function ScheduleListView({
       })}
     </div>
   )
-}
+})
+
+export default ScheduleListView
+

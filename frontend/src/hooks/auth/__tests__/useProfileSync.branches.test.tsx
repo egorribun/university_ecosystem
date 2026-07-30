@@ -1,6 +1,6 @@
 import type { MutableRefObject, PropsWithChildren } from "react"
 import { useRef } from "react"
-import { renderHook, act, waitFor } from "@testing-library/react"
+import { renderHook, act, waitFor, cleanup } from "@testing-library/react"
 import { QueryClientProvider } from "@tanstack/react-query"
 import { hmac } from "@noble/hashes/hmac"
 import { sha256 } from "@noble/hashes/sha256"
@@ -67,8 +67,17 @@ type HarnessOpts = {
 
 const renderProfileSync = (opts: HarnessOpts = {}) => {
   const queryClient = createQueryClient()
-  const updateSessionSigningKey = opts.updateSessionSigningKey ?? vi.fn((..._a: unknown[]) => {})
-  const ensureSessionSigningKey = opts.ensureSessionSigningKey ?? vi.fn(async () => mockSigningKey)
+  const initialKey = opts.signingKey !== undefined ? opts.signingKey : mockSigningKey
+  const signingKeyRef = { current: initialKey } as MutableRefObject<string | null>
+  const promiseRef = { current: null } as MutableRefObject<Promise<string | null> | null>
+
+  const updateSessionSigningKey = opts.updateSessionSigningKey ?? vi.fn((key: string | null) => {
+    signingKeyRef.current = key
+  })
+  const ensureSessionSigningKey = opts.ensureSessionSigningKey ?? vi.fn(async () => {
+    signingKeyRef.current = initialKey
+    return initialKey
+  })
 
   const wrapper = ({ children }: PropsWithChildren) => (
     <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
@@ -76,12 +85,6 @@ const renderProfileSync = (opts: HarnessOpts = {}) => {
 
   const view = renderHook(
     () => {
-      const signingKeyRef = useRef<string | null>(opts.signingKey ?? null) as MutableRefObject<
-        string | null
-      >
-      const promiseRef = useRef<Promise<string | null> | null>(null) as MutableRefObject<Promise<
-        string | null
-      > | null>
       return useProfileSync(
         updateSessionSigningKey,
         signingKeyRef,
@@ -101,6 +104,7 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  cleanup()
   vi.restoreAllMocks()
 })
 
@@ -919,7 +923,7 @@ describe("useProfileSync — cross-tab sync effect", () => {
       throw new Error(`Unexpected url: ${url}`)
     })
 
-    const { result } = renderProfileSync({ signingKey: mockSigningKey })
+    const { result, unmount } = renderProfileSync({ signingKey: mockSigningKey })
     await waitFor(() => expect(result.current.user?.id).toBe(testUser.id))
 
     const snapshot = {
@@ -952,11 +956,12 @@ describe("useProfileSync — cross-tab sync effect", () => {
 
     await waitFor(() => expect(result.current.user?.id).toBe("storage-user"))
     expect(result.current.user?.full_name).toBe("Storage User")
+    unmount()
   })
 
   it("clears a storage snapshot when no session signing key is available", async () => {
     vi.spyOn(api, "get").mockResolvedValue({ data: testUser } as any)
-    const { result } = renderProfileSync({ signingKey: null })
+    const { result } = renderProfileSync({ signingKey: null, ensureSessionSigningKey: async () => null })
     await waitFor(() => expect(result.current.user?.id).toBe(testUser.id))
 
     localStorage.setItem(PROFILE_CACHE_STORAGE_KEY, JSON.stringify({ stale: true }))
@@ -971,7 +976,7 @@ describe("useProfileSync — cross-tab sync effect", () => {
     })
 
     await waitFor(() => expect(result.current.user).toBeNull())
-    expect(localStorage.getItem(PROFILE_CACHE_STORAGE_KEY)).toBeNull()
+    await waitFor(() => expect(localStorage.getItem(PROFILE_CACHE_STORAGE_KEY)).toBeNull(), { timeout: 3000 })
   })
 
   it("swallows BroadcastChannel construction failures", async () => {

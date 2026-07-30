@@ -1,3 +1,4 @@
+import { memo } from "react"
 import { m } from "framer-motion"
 import {
   MessageCirclePlus,
@@ -61,9 +62,7 @@ interface ContactListProps {
 // sidebar viewport on most screens without being visually overwhelming.
 const SKELETON_ROW_COUNT = 6
 
-// PERF-24-02: Removed React.memo() — React Compiler "infer" mode handles
-// memoization automatically. Manual memo() caused redundant double-wrapping.
-//
+
 // Wave 124 SW1 — Removed LayoutGroup + `layout` prop (require domMax). Items
 // snap-reorder when contacts list is re-sorted (e.g., new message moves
 // contact to top). Per plan: messenger contact reorder is rare and snap is
@@ -93,7 +92,7 @@ const SKELETON_ROW_COUNT = 6
 // parity (Activity/Events polish arcs) with matte icon container + violet
 // accent CTA. NEW i18n keys: messenger:noChats.{title, description, cta,
 // searchEmpty.{title, description, clearSearch}} in EN + RU.
-export function ContactList({
+export const ContactList = memo(function ContactList({
   contacts,
   selectedId,
   onSelect,
@@ -388,4 +387,7 @@ export function ContactList({
       })}
     </div>
   )
-}
+})
+
+export default ContactList
+

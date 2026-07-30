@@ -253,7 +253,8 @@ func TestAuthFunc_MissingMetadataErrors(t *testing.T) {
 
 func TestSetupGRPCServer_BuildsServer(t *testing.T) {
 	cfg := &config.Config{JWTSecret: "smoke-secret"} // pragma: allowlist secret
-	srv := setupGRPCServer(context.Background(), cfg, nil, nil, testLogger())
+	srv, err := setupGRPCServer(context.Background(), cfg, nil, nil, testLogger())
+	require.NoError(t, err)
 	require.NotNil(t, srv)
 	info := srv.GetServiceInfo()
 	assert.Contains(t, info, "grpc.health.v1.Health")

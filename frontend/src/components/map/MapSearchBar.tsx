@@ -30,7 +30,6 @@ export function MapSearchBar({
   onSelectRoom,
   searchInputRef,
 }: MapSearchBarProps) {
-  "use no memo" // RC-109-01: ref callback merges inputRef + searchInputRef — React Compiler forbids ref mutations in render
   const { t } = useTranslation("map")
   const baseId = useId()
   const listboxId = `${baseId}-listbox`
@@ -138,20 +137,12 @@ export function MapSearchBar({
     [isOpen, results, activeIdx, handleSelect]
   )
 
-  // Merge internal + external input refs (React Compiler safe — extracted from render)
-  // RC-109-01: ref-callback pattern requires mutating both refs. Component
-  // already opts out via "use no memo" directive at top. eslint-disable
-  // covers the lint plugin which doesn't recognize the directive.
-  const mergedInputRef = useCallback(
-    (node: HTMLInputElement | null) => {
-      ;(inputRef as React.MutableRefObject<HTMLInputElement | null>).current = node
-      if (searchInputRef && "current" in searchInputRef) {
-        // eslint-disable-next-line react-compiler/react-compiler -- legitimate ref-callback prop merge; see RC-109-01
-        ;(searchInputRef as React.MutableRefObject<HTMLInputElement | null>).current = node
-      }
-    },
-    [searchInputRef]
-  )
+  // Sync external input ref via useEffect without mutating props in render callbacks
+  useEffect(() => {
+    if (searchInputRef && "current" in searchInputRef) {
+      ;(searchInputRef as React.MutableRefObject<HTMLInputElement | null>).current = inputRef.current
+    }
+  }, [searchInputRef])
 
   // Group results
   const buildingResults = results.filter((r) => r.type === "building")
@@ -162,7 +153,7 @@ export function MapSearchBar({
       <div className="map-card-matte flex items-center gap-2 px-3 py-2 focus-within:ring-2 focus-within:ring-[var(--color-teal-500)]/40 transition-shadow">
         <Search className="h-4 w-4 text-[var(--text-tertiary)] shrink-0" />
         <input
-          ref={mergedInputRef}
+          ref={inputRef}
           type="text"
           role="combobox"
           aria-expanded={isOpen && results.length > 0}

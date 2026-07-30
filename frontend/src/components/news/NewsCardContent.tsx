@@ -7,7 +7,7 @@ import {
   MessageCircle as CommentIcon,
   Heart as HeartIcon,
 } from "lucide-react"
-import { useCallback, useState } from "react"
+import { memo, useCallback, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { Link } from "@tanstack/react-router"
 
@@ -148,5 +148,4 @@ const NewsCardContent = ({
   )
 }
 
-// PERF-27-02: Removed React.memo() — React Compiler "infer" mode handles memoization
-export default NewsCardContent
+export default memo(NewsCardContent)

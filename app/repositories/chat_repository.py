@@ -794,6 +794,14 @@ class ChatRepository(BaseRepository[Chat, ChatDTO, dict[str, Any], dict[str, Any
         """Fetch a User by primary key — used by ChatService to resolve participants."""
         return await self.db.get(User, user_id)
 
+    async def get_users_by_ids(self, user_ids: list[uuid.UUID]) -> list[User]:
+        """Fetch multiple User entities by primary keys in a single query."""
+        if not user_ids:
+            return []
+        stmt = select(User).where(User.id.in_(user_ids))
+        result = await self.db.execute(stmt)
+        return list(result.scalars().all())
+
     async def check_participant(self, chat_id: uuid.UUID, user_id: uuid.UUID) -> bool:
         """Return True iff user_id is a participant of chat_id.
 

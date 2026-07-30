@@ -118,7 +118,7 @@ async def _verify_database_readiness() -> None:
         # cancelled long before it exhausted its own retry budget, making the
         # retry config misleading.  Raised to 35 s to give wait_db enough room.
         await asyncio.wait_for(wait_db(max_attempts=10, base_delay=0.5), timeout=35.0)
-    except (TimeoutError, Exception) as exc:
+    except Exception as exc:  # RZ-22-01-JUSTIFIED: startup db readiness check re-raises in prod, allows degraded mode in dev
         if settings.environment not in {"development", "local", "testing"}:
             raise
         _logger.warning("Database unavailable: %s. Continuing (degraded mode).", exc)

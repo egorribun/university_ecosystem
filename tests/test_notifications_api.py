@@ -44,6 +44,7 @@ async def test_clear_notifications_removes_only_current_user(
     hashed = await get_password_hash(password)
     user = await user_factory(hashed_password=hashed, is_active=True)
     other = await user_factory(hashed_password=hashed, is_active=True)
+    await db_session.commit()
 
     headers = await _login(async_client, user.email, password)
 
@@ -233,6 +234,7 @@ async def test_notifications_list_returns_bilingual_fields(
     password = "Bilingual123!"
     hashed = await get_password_hash(password)
     user = await user_factory(hashed_password=hashed, is_active=True)
+    await db_session.commit()
 
     await create_notifications_for_users(
         db_session,

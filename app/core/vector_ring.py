@@ -18,8 +18,8 @@ try:
     HAS_QDRANT_CLIENT = True
 except (ImportError, ModuleNotFoundError):  # RZ-20-04
     HAS_QDRANT_CLIENT = False
-    QdrantClient = Any  # type: ignore[misc,assignment]
-    qdrant_models = Any  # type: ignore[assignment]
+    QdrantClient = Any
+    qdrant_models = Any
 
 
 class NodeStatus(str, enum.Enum):
@@ -313,7 +313,7 @@ class VectorStorageEngine:
                 )
                 if results is not None:
                     return results
-            except (ConnectionError, TimeoutError, OSError, Exception) as e:
+            except (ConnectionError, TimeoutError, OSError) as e:
                 # RZ-20-04 / RZ-22-01: Log and trip to pgvector fallback
                 logger.warning(
                     "Qdrant node %s failed (%s), failing over to pgvector",
@@ -361,7 +361,7 @@ class VectorStorageEngine:
                     )
                     for hit in q_res
                 ]
-        except (ConnectionError, TimeoutError, OSError, Exception) as e:
+        except (ConnectionError, TimeoutError, OSError) as e:
             # RZ-20-04
             logger.error("Qdrant query error on %s: %s", node.node_id, e)
             raise
@@ -410,7 +410,7 @@ class VectorStorageEngine:
                 )
                 for row in rows
             ]
-        except (ConnectionError, TimeoutError, OSError, Exception) as e:
+        except (ConnectionError, TimeoutError, OSError) as e:
             # RZ-20-04
             logger.exception("pgvector fallback query error: %s", e)
             return []
@@ -461,7 +461,7 @@ class VectorStorageEngine:
                     )
                     for r in rows
                 ]
-            except (ConnectionError, TimeoutError, OSError, Exception) as e:
+            except (ConnectionError, TimeoutError, OSError) as e:
                 # RZ-20-04
                 logger.exception("Scatter-gather pgvector error: %s", e)
                 return []
@@ -484,7 +484,7 @@ class VectorStorageEngine:
                             heapq.heappush(heap, (item.score, idx, item))
                         elif item.score > heap[0][0]:
                             heapq.heapreplace(heap, (item.score, idx, item))
-            except (ConnectionError, TimeoutError, OSError, Exception) as e:
+            except (ConnectionError, TimeoutError, OSError) as e:
                 # RZ-20-04
                 logger.warning("Scatter-gather failed for node %s: %s", node.node_id, e)
 

@@ -140,8 +140,9 @@ describe("ReactionPill", () => {
     getReactors.mockResolvedValueOnce([{ user_id: "u1", name: "Bob", avatar_url: null }])
     const opts = reactorsQueryOptions("c", "m", "😮")
     const queryFn = opts.queryFn as (ctx: { signal: AbortSignal }) => Promise<unknown>
-    const result = await queryFn({ signal: new AbortController().signal })
-    expect(getReactors).toHaveBeenCalledWith("c", "m", "😮")
+    const signal = new AbortController().signal
+    const result = await queryFn({ signal })
+    expect(getReactors).toHaveBeenCalledWith("c", "m", "😮", signal)
     expect(result).toEqual([{ user_id: "u1", name: "Bob", avatar_url: null }])
   })
 })

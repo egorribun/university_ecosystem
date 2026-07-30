@@ -140,7 +140,7 @@ class VectorShardingService:
                     and any(x != 0.0 for x in emb)
                 ):
                     return cast(list[float], emb)
-            except (ConnectionError, TimeoutError, OSError, ValueError, Exception) as e:
+            except (ConnectionError, TimeoutError, OSError, ValueError) as e:
                 # RZ-20-04 / RZ-22-01
                 logger.warning(
                     "VectorService get_embedding failed, using fallback embedding: %s",
@@ -243,7 +243,7 @@ class VectorShardingService:
                                 }
                             ],
                         )
-                except (ConnectionError, TimeoutError, OSError, Exception) as e:
+                except (ConnectionError, TimeoutError, OSError) as e:
                     # RZ-20-04
                     logger.warning(
                         "Failed dual-write to Qdrant node %s: %s",
@@ -291,7 +291,7 @@ class VectorShardingService:
                     res = self.redis_client.set(redis_key, orjson.dumps(data))
                     if asyncio.iscoroutine(res):
                         await res
-            except (ConnectionError, TimeoutError, OSError, Exception) as e:
+            except (ConnectionError, TimeoutError, OSError) as e:
                 # RZ-22-01: narrowed — Redis error
                 logger.warning("Failed to save rebalance progress to Redis: %s", e)
 
@@ -316,7 +316,7 @@ class VectorShardingService:
                         return cast(dict[str, Any], orjson.loads(raw))
                     if isinstance(raw, dict):
                         return raw
-            except (ConnectionError, TimeoutError, OSError, Exception) as e:
+            except (ConnectionError, TimeoutError, OSError) as e:
                 # RZ-22-01
                 logger.warning("Failed to fetch rebalance progress from Redis: %s", e)
 
@@ -339,7 +339,7 @@ class VectorShardingService:
                     res = self.nats_client.js().publish(subject, data)
                     if asyncio.iscoroutine(res):
                         await res
-            except (ConnectionError, TimeoutError, OSError, Exception) as e:
+            except (ConnectionError, TimeoutError, OSError) as e:
                 # RZ-20-04
                 logger.warning("NATS JetStream publish error for %s: %s", subject, e)
 
@@ -426,7 +426,7 @@ class VectorShardingService:
                                 }
                             ],
                         )
-                except (ConnectionError, TimeoutError, OSError, Exception) as e:
+                except (ConnectionError, TimeoutError, OSError) as e:
                     # RZ-20-04
                     logger.warning(
                         "Error migrating chunk %s to node %s: %s",

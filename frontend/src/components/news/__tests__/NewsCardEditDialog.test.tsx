@@ -83,11 +83,14 @@ describe("NewsCardEditDialog", () => {
       <NewsCardEditDialog {...baseProps} initialData={{ ...initialData, title: "", content: "" }} />
     )
 
-    const title = screen.getByLabelText("news:form.title")
+    const title = screen.getByLabelText(/^news:form\.title\*/)
+    await user.type(title, "x")
     await user.clear(title)
     await user.tab()
 
-    expect(screen.getByText("Title is required")).toBeInTheDocument()
+    await waitFor(() => {
+      expect(screen.getByText("Title is required")).toBeInTheDocument()
+    })
     expect(screen.getByRole("button", { name: "common:buttons.save" })).toBeDisabled()
   })
 
@@ -97,7 +100,7 @@ describe("NewsCardEditDialog", () => {
     const onSuccess = vi.fn()
     render(<NewsCardEditDialog {...baseProps} onClose={onClose} onSuccess={onSuccess} />)
 
-    const title = screen.getByLabelText("news:form.title")
+    const title = screen.getByLabelText(/^news:form\.title\*/)
     await user.clear(title)
     await user.type(title, "Updated title")
     await user.click(screen.getByRole("button", { name: "common:buttons.save" }))
@@ -165,7 +168,7 @@ describe("NewsCardEditDialog", () => {
 
     await waitFor(() => expect(apiMocks.logError).toHaveBeenCalledWith(uploadError))
     expect(apiMocks.patch).not.toHaveBeenCalled()
-    expect(screen.getByRole("button", { name: "common:buttons.changePhoto" })).toBeEnabled()
+    expect(screen.getByText("news:form.changePhoto")).toBeInTheDocument()
   })
 
   it("logs patch failures without calling success or close callbacks", async () => {

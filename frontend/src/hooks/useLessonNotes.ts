@@ -6,6 +6,7 @@ import { useState, useEffect, useCallback, useRef } from "react"
 import { get, set, del } from "idb-keyval"
 import { logError } from "@/app/logger"
 import { getDatabase } from "@/db"
+import { useDebounced } from "./useDebounced"
 
 const KEY_PREFIX = "schedule:notes:"
 
@@ -21,12 +22,14 @@ export interface LessonNote {
 export function useLessonNotes(lessonId: string | null | undefined) {
   const [note, setNoteState] = useState<LessonNote | null>(null)
   const [isLoading, setIsLoading] = useState(false)
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+  const debouncedNote = useDebounced(note, 300)
+  const lastSavedRef = useRef<LessonNote | null>(null)
 
   // Load note from RxDB / IndexedDB
   useEffect(() => {
     if (!lessonId) {
       setNoteState(null)
+      lastSavedRef.current = null
       return
     }
     const currentLessonId = lessonId
@@ -38,7 +41,11 @@ export function useLessonNotes(lessonId: string | null | undefined) {
         const db = await getDatabase()
         const rxNote = await db.notes.findOne(currentLessonId).exec()
         if (rxNote) {
-          if (isMounted) setNoteState({ text: rxNote.text, updatedAt: rxNote.updated_at })
+          if (isMounted) {
+            const loaded = { text: rxNote.text, updatedAt: rxNote.updated_at }
+            setNoteState(loaded)
+            lastSavedRef.current = loaded
+          }
           return
         }
       } catch {
@@ -48,9 +55,16 @@ export function useLessonNotes(lessonId: string | null | undefined) {
       // Fallback to idb-keyval
       try {
         const stored = await get<LessonNote>(`${KEY_PREFIX}${currentLessonId}`)
-        if (isMounted) setNoteState(stored ?? null)
+        if (isMounted) {
+          const loaded = stored ?? null
+          setNoteState(loaded)
+          lastSavedRef.current = loaded
+        }
       } catch {
-        if (isMounted) setNoteState(null)
+        if (isMounted) {
+          setNoteState(null)
+          lastSavedRef.current = null
+        }
       }
     }
 
@@ -63,44 +77,46 @@ export function useLessonNotes(lessonId: string | null | undefined) {
     }
   }, [lessonId])
 
-  // Set note with debounced save to RxDB & IndexedDB
+  // Save debounced note changes to RxDB & IndexedDB
+  useEffect(() => {
+    if (!lessonId || debouncedNote === lastSavedRef.current) return
+    lastSavedRef.current = debouncedNote
+    const currentLessonId = lessonId
+
+    if (debouncedNote && debouncedNote.text.trim()) {
+      getDatabase()
+        .then((db) =>
+          db.notes.upsert({
+            id: currentLessonId,
+            lesson_id: currentLessonId,
+            text: debouncedNote.text,
+            updated_at: debouncedNote.updatedAt,
+            is_synced: false,
+          })
+        )
+        .catch(() => {})
+
+      set(`${KEY_PREFIX}${currentLessonId}`, debouncedNote).catch((err) =>
+        logError("[schedule:notes]", err)
+      )
+    } else {
+      getDatabase()
+        .then(async (db) => {
+          const rxNote = await db.notes.findOne(currentLessonId).exec()
+          if (rxNote) await rxNote.remove()
+        })
+        .catch(() => {})
+
+      del(`${KEY_PREFIX}${currentLessonId}`).catch((err) => logError("[schedule:notes]", err))
+    }
+  }, [debouncedNote, lessonId])
+
+  // Set note with state update
   const setNote = useCallback(
     (text: string) => {
       if (!lessonId) return
-      const currentLessonId = lessonId
       const updated: LessonNote = { text, updatedAt: Date.now() }
       setNoteState(updated)
-
-      // Debounce writes
-      if (debounceRef.current) clearTimeout(debounceRef.current)
-      debounceRef.current = setTimeout(() => {
-        if (text.trim()) {
-          getDatabase()
-            .then((db) =>
-              db.notes.upsert({
-                id: currentLessonId,
-                lesson_id: currentLessonId,
-                text,
-                updated_at: updated.updatedAt,
-                is_synced: false,
-              })
-            )
-            .catch(() => {})
-
-          set(`${KEY_PREFIX}${currentLessonId}`, updated).catch((err) =>
-            logError("[schedule:notes]", err)
-          )
-        } else {
-          getDatabase()
-            .then(async (db) => {
-              const rxNote = await db.notes.findOne(currentLessonId).exec()
-              if (rxNote) await rxNote.remove()
-            })
-            .catch(() => {})
-
-          del(`${KEY_PREFIX}${currentLessonId}`).catch((err) => logError("[schedule:notes]", err))
-        }
-      }, 300)
     },
     [lessonId]
   )
@@ -109,6 +125,7 @@ export function useLessonNotes(lessonId: string | null | undefined) {
   const clearNote = useCallback(() => {
     if (!lessonId) return
     const currentLessonId = lessonId
+    lastSavedRef.current = null
     setNoteState(null)
     getDatabase()
       .then(async (db) => {
@@ -118,13 +135,6 @@ export function useLessonNotes(lessonId: string | null | undefined) {
       .catch((err) => logError("[schedule:notes:rxdb]", err))
     del(`${KEY_PREFIX}${currentLessonId}`).catch((err) => logError("[schedule:notes]", err))
   }, [lessonId])
-
-  // Cleanup debounce timer
-  useEffect(() => {
-    return () => {
-      if (debounceRef.current) clearTimeout(debounceRef.current)
-    }
-  }, [])
 
   return {
     note,

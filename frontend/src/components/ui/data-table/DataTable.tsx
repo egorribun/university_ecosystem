@@ -25,12 +25,12 @@ import {
 } from "@/components/ui/table"
 import { DataTablePagination } from "./DataTablePagination"
 
-interface DataTableProps<TData, TValue> {
+export interface DataTableProps<TData, TValue = unknown> {
   columns: ColumnDef<TData, TValue>[]
   data: TData[]
 }
 
-export function DataTable<TData, TValue>({ columns, data }: DataTableProps<TData, TValue>) {
+function DataTableInner<TData, TValue>({ columns, data }: DataTableProps<TData, TValue>) {
   const { t } = useTranslation()
   const [rowSelection, setRowSelection] = React.useState({})
   const [columnVisibility, setColumnVisibility] = React.useState<VisibilityState>({})
@@ -115,3 +115,10 @@ export function DataTable<TData, TValue>({ columns, data }: DataTableProps<TData
     </div>
   )
 }
+
+export const DataTable = React.memo(DataTableInner) as <TData, TValue = unknown>(
+  props: DataTableProps<TData, TValue>
+) => React.ReactElement
+
+export default DataTable
+

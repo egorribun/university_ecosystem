@@ -55,16 +55,6 @@ export function ReactionPill({
   reactedByMe,
   onToggle,
 }: ReactionPillProps) {
-  // React Compiler opt-out (FIX-54-01 / RC-91-01 precedent): the imperative
-  // long-press refs (longPressFiredRef / longPressTimerRef) + floating-ui's
-  // ref-merging via getReferenceProps({onClick,...}) trip the Babel transform's
-  // validateNoRefAccessInRender ("Cannot access refs during render"), even though
-  // the refs are only touched in event handlers — a false positive. The Babel
-  // transform FLAGS it (the build fails without this directive) but the eslint
-  // plugin does NOT, so it calls the directive "unused" (W199 plugin-vs-transform
-  // mismatch) — hence the paired disable, same as Dashboard.tsx FIX-54-01.
-  // eslint-disable-next-line react-compiler/react-compiler -- Babel needs it; eslint thinks it unused
-  "use no memo"
   const { t } = useTranslation(["messenger"])
   const [isOpen, setIsOpen] = useState(false)
   const longPressFiredRef = useRef(false)

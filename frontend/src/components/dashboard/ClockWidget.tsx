@@ -1,7 +1,7 @@
-import { useEffect, useState } from "react"
+import { memo, useEffect, useState } from "react"
 import { cn } from "@/utils/cn"
 
-export function ClockWidget() {
+export const ClockWidget = memo(function ClockWidget() {
   const [time, setTime] = useState(new Date())
 
   useEffect(() => {
@@ -29,4 +29,7 @@ export function ClockWidget() {
       </div>
     </div>
   )
-}
+})
+
+export default ClockWidget
+

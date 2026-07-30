@@ -419,7 +419,11 @@ const readCachedUserAsync = async (signingKey: string | null): Promise<User | un
   return createOptimisticUser(snapshotData)
 }
 
-const persistUserToCacheAsync = async (value: User | null, signingKey: string | null) => {
+const persistUserToCacheAsync = async (
+  value: User | null,
+  signingKey: string | null,
+  isMounted?: () => boolean
+) => {
   if (typeof localStorage === "undefined") return
   try {
     if (value != null && signingKey) {
@@ -443,6 +447,7 @@ const persistUserToCacheAsync = async (value: User | null, signingKey: string | 
 
       const encryptedData = await encryptData(snapshot, signingKey)
       if (!encryptedData) return
+      if (isMounted && !isMounted()) return
 
       const payload: CacheSignaturePayload = {
         version: PROFILE_CACHE_SCHEMA_VERSION,
@@ -451,6 +456,7 @@ const persistUserToCacheAsync = async (value: User | null, signingKey: string | 
       }
 
       const signature = await signPayload(payload, signingKey)
+      if (isMounted && !isMounted()) return
 
       const envelope: CachedProfileEnvelope = {
         ...payload,
@@ -729,6 +735,14 @@ export const useProfileSync = (
   // Closes W134 §Honesty #3.
   const autoFetchAttemptedRef = useRef(false)
   const initializingRef = useRef(initializing)
+  const mountedRef = useRef(true)
+
+  useEffect(() => {
+    mountedRef.current = true
+    return () => {
+      mountedRef.current = false
+    }
+  }, [])
 
   useEffect(() => {
     let mounted = true
@@ -798,7 +812,7 @@ export const useProfileSync = (
         userStateRef.current = normalized
         if (persist) {
           const key = sessionSigningKeyRef.current
-          persistUserToCacheAsync(normalized, key)
+          persistUserToCacheAsync(normalized, key, () => mountedRef.current)
         }
         queryClient.setQueryData<UserState>(currentUserQueryKey, normalized)
         return normalized

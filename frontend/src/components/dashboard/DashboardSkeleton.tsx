@@ -1,3 +1,4 @@
+import { memo } from "react"
 import { Skeleton, Card } from "@/components/ui"
 import useMediaQuery from "@/hooks/useMediaQuery"
 import { breakpoints } from "@/theme/tokens"
@@ -7,7 +8,7 @@ import { breakpoints } from "@/theme/tokens"
  * Wave 45: Matte glass skeleton matching the real dashboard aesthetic.
  * Wave 118 (FIX-118-01): Aligned paddings with DashboardHero and grid to zero out CLS.
  */
-export function DashboardSkeleton() {
+export const DashboardSkeleton = memo(function DashboardSkeleton() {
   const isStoriesInHero = useMediaQuery(`(min-width: ${breakpoints.storiesInHero})`)
 
   return (
@@ -132,6 +133,6 @@ export function DashboardSkeleton() {
       </div>
     </div>
   )
-}
+})
 
 export default DashboardSkeleton

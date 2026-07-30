@@ -5,6 +5,7 @@
  * Pattern source: components/news/NewsCardContent.tsx
  */
 
+import { memo } from "react"
 import { Link } from "@tanstack/react-router"
 import { Calendar, MapPin, Users, Mic2 } from "lucide-react"
 import { useTranslation } from "react-i18next"
@@ -130,5 +131,4 @@ const EventCardContent = ({
   )
 }
 
-// PERF-27-02: Removed React.memo() — React Compiler "infer" mode handles memoization
-export default EventCardContent
+export default memo(EventCardContent)

@@ -4,13 +4,13 @@
  * Pattern source: components/news/NewsCardHero.tsx
  */
 
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
 import SmartImage from "@/components/media/SmartImage"
 import { useOnlineStatus } from "@/hooks/useOnlineStatus"
 import { cn } from "@/utils/cn"
 import { formatDate, formatRelativeTime } from "@/utils/date"
 import { getEventsHeroId, clearEventsHeroId } from "@/utils/eventsTransition"
 import { Calendar, Cloud, CalendarDays } from "lucide-react"
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
 
 interface EventCardHeroProps {
@@ -198,5 +198,4 @@ const EventCardHero = ({
   )
 }
 
-// PERF-27-02: Removed React.memo() — React Compiler "infer" mode handles memoization
-export default EventCardHero
+export default memo(EventCardHero)

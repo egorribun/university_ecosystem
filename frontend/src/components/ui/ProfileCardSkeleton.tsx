@@ -1,4 +1,5 @@
 import { useTranslation } from "react-i18next"
+import { memo } from "react"
 import { Skeleton } from "@/components/ui/Skeleton"
 
 interface ProfileCardSkeletonProps {
@@ -12,7 +13,7 @@ interface ProfileCardSkeletonProps {
  * ProfileCardSkeleton - Loading state for Profile page header.
  * Displays placeholders for avatar, name, bio, and stats.
  */
-export function ProfileCardSkeleton({
+function ProfileCardSkeletonInner({
   showCover = true,
   className = "",
 }: ProfileCardSkeletonProps) {
@@ -70,5 +71,6 @@ export function ProfileCardSkeleton({
   )
 }
 
-// PERF-27-02: Removed React.memo() — React Compiler "infer" mode handles memoization
+export const ProfileCardSkeleton = memo(ProfileCardSkeletonInner)
+
 export default ProfileCardSkeleton

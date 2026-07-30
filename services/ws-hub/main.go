@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"net/http"
 	"os"
@@ -25,12 +26,18 @@ import (
 )
 
 func main() {
+	if err := run(); err != nil {
+		os.Exit(1)
+	}
+}
+
+func run() error {
 	logger := initLogger()
 
 	cfg := config.LoadConfig()
 	if cfg.InternalSecret == "" {
 		logger.ErrorContext(context.Background(), "WS_HUB_INTERNAL_SECRET is not set — generate with: openssl rand -hex 32")
-		os.Exit(1)
+		return errors.New("WS_HUB_INTERNAL_SECRET is not set")
 	}
 
 	if err := telemetry.InitSentry(cfg); err != nil {
@@ -54,7 +61,7 @@ func main() {
 	nc, err := getInitNats()(ctx, cfg, logger)
 	if err != nil {
 		logger.ErrorContext(ctx, "NATS initialization returned error", "err", err)
-		os.Exit(1)
+		return err
 	}
 	if nc != nil {
 		defer nc.Close()
@@ -78,11 +85,11 @@ func main() {
 	if err != nil {
 		logger.ErrorContext(ctx, "SPIFFE initialization failed", "err", err)
 		if cfg.SpiffeEnabled {
-			os.Exit(1)
+			return err
 		}
 	} else if cfg.SpiffeEnabled && spiffeClient == nil {
 		logger.ErrorContext(ctx, "SPIFFE is enabled but client initialization returned nil")
-		os.Exit(1)
+		return errors.New("SPIFFE is enabled but client initialization returned nil")
 	} else if spiffeClient != nil {
 		defer func() {
 			if err := spiffeClient.Close(); err != nil {
@@ -94,11 +101,11 @@ func main() {
 	h, err := setupHub(ctx, cfg, logger, nc, rdb, spiffeClient)
 	if err != nil {
 		logger.ErrorContext(ctx, "Hub setup failed", "err", err)
-		os.Exit(1)
+		return err
 	}
 	mux := http.NewServeMux()
 	setupHandlers(mux, h, cfg, logger, nc, rdb)
-	runServer(cfg, logger, h, mux)
+	return runServer(cfg, logger, h, mux)
 }
 
 func initLogger() *slog.Logger {
@@ -267,7 +274,7 @@ func setupHandlers(mux *http.ServeMux, h *hub.Hub, cfg *config.Config, logger *s
 	mux.Handle("/metrics", promhttp.Handler())
 }
 
-func runServer(cfg *config.Config, logger *slog.Logger, h *hub.Hub, mux *http.ServeMux) {
+func runServer(cfg *config.Config, logger *slog.Logger, h *hub.Hub, mux *http.ServeMux) error {
 	server := &http.Server{
 		Addr:              ":" + cfg.Port,
 		Handler:           mux,
@@ -323,9 +330,11 @@ func runServer(cfg *config.Config, logger *slog.Logger, h *hub.Hub, mux *http.Se
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 
+	var runErr error
 	select {
 	case err := <-errChan:
 		logger.ErrorContext(context.Background(), "Server error", "err", err)
+		runErr = err
 	case <-quit:
 	}
 
@@ -340,4 +349,5 @@ func runServer(cfg *config.Config, logger *slog.Logger, h *hub.Hub, mux *http.Se
 	if err := server.Shutdown(shutdownCtx); err != nil {
 		logger.ErrorContext(context.Background(), "Server forced to shutdown", "err", err)
 	}
+	return runErr
 }

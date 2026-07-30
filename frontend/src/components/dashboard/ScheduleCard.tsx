@@ -1,4 +1,4 @@
-import { useMemo, useCallback, type KeyboardEvent, type CSSProperties } from "react"
+import { memo, useMemo, useCallback, type KeyboardEvent, type CSSProperties } from "react"
 
 import { Link } from "@tanstack/react-router"
 import { useTranslation } from "react-i18next"
@@ -17,8 +17,7 @@ interface ScheduleCardProps {
   "data-pop"?: string
 }
 
-// PERF-27-02: Removed React.memo() — React Compiler "infer" mode handles memoization
-export function ScheduleCard({
+export const ScheduleCard = memo(function ScheduleCard({
   userRole,
   userGroupId,
   time,
@@ -273,4 +272,6 @@ export function ScheduleCard({
       />
     </Card>
   )
-}
+})
+
+export default ScheduleCard

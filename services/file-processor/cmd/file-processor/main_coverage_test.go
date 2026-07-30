@@ -156,7 +156,8 @@ func TestSetupGraphQLServer(t *testing.T) {
 		MinioBucket: "test-bucket",
 		JWTSecret:   "test-secret",
 	}
-	srv := setupGraphQLServer(context.Background(), cfg, nil, nil, discardLogger())
+	srv, err := setupGraphQLServer(context.Background(), cfg, nil, nil, discardLogger())
+	require.NoError(t, err)
 	assert.NotNil(t, srv)
 }
 
@@ -175,8 +176,10 @@ func TestRunServers_CleanShutdown(t *testing.T) {
 		MinioBucket: "test-bucket",
 		JWTSecret:   "test-secret",
 	}
-	grpcSrv := setupGRPCServer(context.Background(), cfg, nil, nil, discardLogger())
-	graphqlSrv := setupGraphQLServer(context.Background(), cfg, nil, nil, discardLogger())
+	grpcSrv, err := setupGRPCServer(context.Background(), cfg, nil, nil, discardLogger())
+	require.NoError(t, err)
+	graphqlSrv, err := setupGraphQLServer(context.Background(), cfg, nil, nil, discardLogger())
+	require.NoError(t, err)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	go func() {
@@ -253,9 +256,8 @@ func TestSetupTemporalWorker(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	assert.NotPanics(t, func() {
-		setupTemporalWorker(context.Background(), c, cfg, discardLogger())
-	})
+	_, _, err = setupTemporalWorker(context.Background(), c, cfg, discardLogger())
+	require.NoError(t, err)
 }
 
 func TestMain_ExitOnConfigLoadFailure(t *testing.T) {
@@ -279,25 +281,14 @@ func TestMain_ExitOnConfigLoadFailure(t *testing.T) {
 }
 
 func TestSetupGraphQLServer_NoSchemaFile(t *testing.T) {
-	if os.Getenv("BE_CRASHER") == "1" {
-		cfg := &config.Config{
-			GraphQLPort: "0",
-			MinioBucket: "test-bucket",
-			JWTSecret:   "test-secret",
-		}
-		setupGraphQLServer(context.Background(), cfg, nil, nil, discardLogger())
-		return
+	t.Setenv("FP_SCHEMA_PATH", "/nonexistent/schema.graphql")
+	cfg := &config.Config{
+		GraphQLPort: "0",
+		MinioBucket: "test-bucket",
+		JWTSecret:   "test-secret",
 	}
-	// #nosec
-	cmd := exec.CommandContext(context.Background(), os.Args[0], "-test.run=TestSetupGraphQLServer_NoSchemaFile")
-	cmd.Env = append(os.Environ(), "BE_CRASHER=1", "FP_SCHEMA_PATH=/nonexistent/schema.graphql")
-	err := cmd.Run()
-	var e *exec.ExitError
-	if errors.As(err, &e) {
-		assert.Equal(t, 1, e.ExitCode())
-		return
-	}
-	t.Fatalf("process ran with err %v, want exit status 1", err)
+	_, err := setupGraphQLServer(context.Background(), cfg, nil, nil, discardLogger())
+	require.Error(t, err)
 }
 
 func TestRunServers_GRPCListenFailure(t *testing.T) {
@@ -305,7 +296,9 @@ func TestRunServers_GRPCListenFailure(t *testing.T) {
 		cfg := &config.Config{
 			GRPCPort: "-1",
 		}
-		runServers(context.Background(), nil, nil, cfg, discardLogger())
+		if err := runServers(context.Background(), nil, nil, cfg, discardLogger()); err != nil {
+			os.Exit(1)
+		}
 		return
 	}
 	// #nosec
@@ -334,32 +327,19 @@ func TestSetupGraphQLServer_RestrictIntrospection(t *testing.T) {
 		JWTSecret:   "test-secret",
 		Environment: "production",
 	}
-	srv := setupGraphQLServer(context.Background(), cfg, nil, nil, discardLogger())
+	srv, err := setupGraphQLServer(context.Background(), cfg, nil, nil, discardLogger())
+	require.NoError(t, err)
 	assert.NotNil(t, srv)
 }
 
 func TestSetupTemporalWorker_BuildMinIOClientError(t *testing.T) {
-	if os.Getenv("BE_CRASHER") == "1" {
-		cfg := &config.Config{
-			MinioEndpoint: "", // causes error
-		}
-		c, err := client.NewLazyClient(client.Options{HostPort: "127.0.0.1:7233"})
-		if err != nil {
-			t.Fatal(err)
-		}
-		setupTemporalWorker(context.Background(), c, cfg, discardLogger())
-		return
+	cfg := &config.Config{
+		MinioEndpoint: "", // causes error
 	}
-	// #nosec
-	cmd := exec.CommandContext(context.Background(), os.Args[0], "-test.run=TestSetupTemporalWorker_BuildMinIOClientError")
-	cmd.Env = append(os.Environ(), "BE_CRASHER=1")
-	err := cmd.Run()
-	var e *exec.ExitError
-	if errors.As(err, &e) {
-		assert.Equal(t, 1, e.ExitCode())
-		return
-	}
-	t.Fatalf("process ran with err %v, want exit status 1", err)
+	c, err := client.NewLazyClient(client.Options{HostPort: "127.0.0.1:7233"})
+	require.NoError(t, err)
+	_, _, err = setupTemporalWorker(context.Background(), c, cfg, discardLogger())
+	require.Error(t, err)
 }
 
 type mockWorker struct {
@@ -435,7 +415,7 @@ func TestMain_SuccessLifecycle(t *testing.T) {
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		runMain(ctx)
+		_ = runMain(ctx)
 	}()
 
 	time.Sleep(500 * time.Millisecond)
@@ -465,7 +445,9 @@ func TestParseRSAPublicKey_InvalidPEM(t *testing.T) {
 
 func TestRunMain_InvalidRSAPEM(t *testing.T) {
 	if os.Getenv("BE_CRASHER") == "1" {
-		runMain(context.Background())
+		if err := runMain(context.Background()); err != nil {
+			os.Exit(1)
+		}
 		return
 	}
 	// #nosec
@@ -484,7 +466,9 @@ func TestRunMain_TemporalConnectError(t *testing.T) {
 	if os.Getenv("BE_CRASHER") == "1" {
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel()
-		runMain(ctx)
+		if err := runMain(ctx); err != nil {
+			os.Exit(1)
+		}
 		return
 	}
 	// #nosec
@@ -497,4 +481,34 @@ func TestRunMain_TemporalConnectError(t *testing.T) {
 		return
 	}
 	t.Fatalf("process ran with err %v, want exit status 1", err)
+}
+
+func TestSetupGRPCServer_SpiffeNilClientError(t *testing.T) {
+	cfg := &config.Config{
+		JWTSecret:     "secret",
+		SpiffeEnabled: true,
+	}
+	_, err := setupGRPCServer(context.Background(), cfg, nil, nil, discardLogger())
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "SPIFFE is enabled but spiffeClient is nil")
+}
+
+func TestSetupGraphQLServer_InvalidSchemaError(t *testing.T) {
+	tmpFile, err := os.CreateTemp("", "invalid_schema_*.graphql")
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		_ = os.Remove(tmpFile.Name())
+	})
+	_, err = tmpFile.WriteString("invalid graphql schema syntax {{{")
+	require.NoError(t, err)
+	require.NoError(t, tmpFile.Close())
+
+	t.Setenv("FP_SCHEMA_PATH", tmpFile.Name())
+	cfg := &config.Config{
+		GraphQLPort: "0",
+		MinioBucket: "test-bucket",
+		JWTSecret:   "test-secret",
+	}
+	_, err = setupGraphQLServer(context.Background(), cfg, nil, nil, discardLogger())
+	require.Error(t, err)
 }
