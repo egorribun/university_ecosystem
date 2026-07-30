@@ -15,6 +15,7 @@ import app.models as models
 from app.core.cache import cached, news_cache
 from app.core.config import settings
 from app.core.protocols import AsyncDatabaseSession
+from app.core.tenant import get_current_tenant
 from app.models.news import News
 from app.repositories.base import BaseRepository
 from app.schemas.dtos import (
@@ -32,7 +33,8 @@ if TYPE_CHECKING:
 
 
 def build_news_cache_key(self: Any, *, skip: int = 0, limit: int = 20) -> str:
-    return f"news:published:{skip}:{limit}"
+    tenant_id = get_current_tenant() or "public"
+    return f"news:published:{tenant_id}:{skip}:{limit}"
 
 
 class NewsRepository(BaseRepository[News, NewsDTO, dict[str, Any], dict[str, Any]]):

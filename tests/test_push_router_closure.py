@@ -129,7 +129,9 @@ async def test_unsubscribe_and_send_test_cover_missing_client_and_optional_paylo
     ]
     db.execute = AsyncMock(return_value=subscriptions_result)
     settings = MagicMock(
-        VAPID_PRIVATE_KEY="private", VAPID_PUBLIC_KEY="public", environment="test"
+        VAPID_PRIVATE_KEY="private",  # pragma: allowlist secret
+        VAPID_PUBLIC_KEY="public",
+        environment="test",
     )
     with (
         patch.object(notifications, "resolve_locale", return_value="en"),
@@ -145,3 +147,33 @@ async def test_unsubscribe_and_send_test_cover_missing_client_and_optional_paylo
 
     assert result.total == 0
     assert result.sent == 0
+
+
+@pytest.mark.asyncio
+async def test_unsubscribe_rate_limit_returns_retry_after():
+    from app.core.ratelimit import RateLimitExceeded, RateLimitInfo
+    from app.routers import notifications
+    from app.schemas.notifications import PushSubscriptionDelete
+
+    request = MagicMock()
+    request.client = SimpleNamespace(host="127.0.0.1")
+    user = SimpleNamespace(id=uuid.uuid4())
+
+    with (
+        patch.object(notifications, "resolve_locale", return_value="en"),
+        patch.object(
+            notifications,
+            "enforce_rate_limit",
+            new=AsyncMock(side_effect=RateLimitExceeded(RateLimitInfo(False, 0, 17))),
+        ),
+    ):
+        with pytest.raises(notifications.HTTPException) as exc:
+            await notifications.unsubscribe(
+                PushSubscriptionDelete(endpoint="https://push.example/sub"),
+                request,
+                AsyncMock(),
+                user,
+            )
+
+    assert exc.value.status_code == 429
+    assert exc.value.detail["retry_after"] == 17

@@ -27,6 +27,16 @@ def _request(headers: list[tuple[bytes, bytes]] | None = None):
 
 def test_token_and_jti_extraction_defensive_paths(monkeypatch):
     assert sessions._extract_token(_request()) is None
+    cookie_request = sessions.Request(
+        {
+            "type": "http",
+            "method": "GET",
+            "path": "/auth/sessions",
+            "headers": [(b"cookie", b"access_token_v2=cookie-token")],
+            "client": ("127.0.0.1", 1234),
+        }
+    )
+    assert sessions._extract_token(cookie_request) == "cookie-token"
     assert (
         sessions._extract_token(_request(headers=[(b"authorization", b"Bearer ")]))
         is None

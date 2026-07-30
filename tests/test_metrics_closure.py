@@ -147,12 +147,20 @@ def test_metrics_authorization_rejects_malformed_and_wrong_credentials(
     monkeypatch,
 ) -> None:
     from app.core import metrics
-    from app.core.config import settings
 
-    monkeypatch.setattr(settings, "metrics_basic_auth_username", "metrics-user")
-    monkeypatch.setattr(settings, "metrics_basic_auth_password", "metrics-pass")
-    monkeypatch.setattr(settings.app, "metrics_basic_auth_username", "metrics-user")
-    monkeypatch.setattr(settings.app, "metrics_basic_auth_password", "metrics-pass")
+    # Patch the dependency where the module under test looks it up.  A separate
+    # config reload test may legitimately replace ``app.core.config.settings``
+    # during the same process, while ``metrics.settings`` remains its imported
+    # singleton.  Patching the lookup site keeps this authorization contract
+    # independent from module reload order.
+    monkeypatch.setattr(
+        metrics,
+        "settings",
+        SimpleNamespace(
+            metrics_basic_auth_username="metrics-user",
+            metrics_basic_auth_password="metrics-pass",  # pragma: allowlist secret
+        ),
+    )
 
     assert metrics._is_authorized(_request()) is False
     assert (

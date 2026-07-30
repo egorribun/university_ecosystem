@@ -25,6 +25,9 @@ const mocks = vi.hoisted(() => ({
   toggleLike: vi.fn(),
   toggleBookmark: vi.fn(),
   setNewsHeroId: vi.fn(),
+  articleNavigation: {} as Record<string, unknown>,
+  swipe: {} as Record<string, unknown>,
+  share: {} as Record<string, unknown>,
   t: (key: string) => key,
 }))
 
@@ -73,16 +76,7 @@ vi.mock("@/hooks/useNewsInteraction", () => ({
 }))
 
 vi.mock("@/hooks/useShare", () => ({
-  useShare: () => ({
-    sharing: false,
-    shareDialogOpen: false,
-    setShareDialogOpen: vi.fn(),
-    copyingLink: false,
-    copiedLink: false,
-    shareOptions: [],
-    handleShare: vi.fn(),
-    handleCopyLink: vi.fn(),
-  }),
+  useShare: () => mocks.share,
 }))
 
 vi.mock("@/hooks/useBookmarks", () => ({
@@ -94,14 +88,14 @@ vi.mock("@/hooks/useBookmarks", () => ({
 
 vi.mock("@/hooks/useRelatedNews", () => ({ useRelatedNews: () => [] }))
 vi.mock("@/hooks/useArticleNavigation", () => ({
-  useArticleNavigation: () => ({
-    prevId: null,
-    nextId: null,
-    prevTitle: null,
-    nextTitle: null,
-  }),
+  useArticleNavigation: () => mocks.articleNavigation,
 }))
-vi.mock("@/hooks/useSwipe", () => ({ useSwipe: () => ({}) }))
+vi.mock("@/hooks/useSwipe", () => ({
+  useSwipe: (options: Record<string, unknown>) => {
+    mocks.swipe = options
+    return {}
+  },
+}))
 vi.mock("@/hooks/useMediaQuery", () => ({ default: () => false }))
 vi.mock("@/utils/newsTransition", () => ({ setNewsHeroId: mocks.setNewsHeroId }))
 
@@ -177,12 +171,14 @@ vi.mock("@/components/news/NewsDetailHeader", () => ({
     displayTitle,
     onToggleLike,
     onToggleBookmark,
+    onShare,
     onEditOpen,
     onDeleteOpen,
   }: {
     displayTitle: string
     onToggleLike: () => void
     onToggleBookmark: () => void
+    onShare: () => void
     onEditOpen: () => void
     onDeleteOpen: () => void
   }) => (
@@ -190,6 +186,7 @@ vi.mock("@/components/news/NewsDetailHeader", () => ({
       <h1>{displayTitle}</h1>
       <button onClick={onToggleLike}>like</button>
       <button onClick={onToggleBookmark}>bookmark</button>
+      <button onClick={onShare}>share</button>
       <button onClick={onEditOpen}>edit</button>
       <button onClick={onDeleteOpen}>delete</button>
     </header>
@@ -206,6 +203,23 @@ describe("NewsDetail", () => {
     mocks.toggleLike.mockReset()
     mocks.toggleBookmark.mockReset()
     mocks.setNewsHeroId.mockReset()
+    mocks.articleNavigation = {
+      prevId: null,
+      nextId: null,
+      prevTitle: null,
+      nextTitle: null,
+    }
+    mocks.swipe = {}
+    mocks.share = {
+      sharing: false,
+      shareDialogOpen: false,
+      setShareDialogOpen: vi.fn(),
+      copyingLink: false,
+      copiedLink: false,
+      shareOptions: [],
+      handleShare: vi.fn(),
+      handleCopyLink: vi.fn(),
+    }
   })
 
   it("renders the loading skeleton without attempting the article layout", () => {
@@ -223,10 +237,71 @@ describe("NewsDetail", () => {
     render(<NewsDetail />)
 
     expect(screen.getByText("news:states.loadError")).toBeInTheDocument()
-    expect(screen.getByRole("button", { name: "common:buttons.back" })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: "common:buttons.back" }))
+    expect(mocks.navigate).toHaveBeenCalledWith({ to: "/news" })
+  })
+
+  it("uses browser history when a previous page exists", () => {
+    const back = vi.spyOn(window.history, "back").mockImplementation(() => undefined)
+    window.history.pushState({}, "", "/news/news-1")
+    mocks.query = { isLoading: false, isError: true, data: undefined }
+
+    render(<NewsDetail />)
+
+    fireEvent.click(screen.getByRole("button", { name: "common:buttons.back" }))
+
+    expect(back).toHaveBeenCalledOnce()
+    back.mockRestore()
+  })
+
+  it("navigates through swipe callbacks and updates the reading progress fallback", () => {
+    const scrollTo = vi.spyOn(window, "scrollTo").mockImplementation(() => undefined)
+    const animationFrames: FrameRequestCallback[] = []
+    const requestAnimationFrame = vi
+      .spyOn(window, "requestAnimationFrame")
+      .mockImplementation((callback) => {
+        animationFrames.push(callback)
+        return animationFrames.length
+      })
+    mocks.articleNavigation = {
+      prevId: "news-0",
+      nextId: "news-2",
+      prevTitle: "Previous",
+      nextTitle: "Next",
+    }
+
+    render(<NewsDetail />)
+
+    const swipe = mocks.swipe as {
+      onSwipeLeft: () => void
+      onSwipeRight: () => void
+    }
+    swipe.onSwipeLeft()
+    swipe.onSwipeRight()
+    expect(scrollTo).toHaveBeenCalledTimes(2)
+    expect(mocks.navigate).toHaveBeenNthCalledWith(1, {
+      to: "/news/$id",
+      params: { id: "news-2" },
+    })
+    expect(mocks.navigate).toHaveBeenNthCalledWith(2, {
+      to: "/news/$id",
+      params: { id: "news-0" },
+    })
+
+    const progress = document.querySelector<HTMLDivElement>(".news-reading-progress")
+    expect(progress).not.toBeNull()
+    window.dispatchEvent(new Event("scroll"))
+    window.dispatchEvent(new Event("scroll"))
+    expect(requestAnimationFrame).toHaveBeenCalledOnce()
+    animationFrames[0]?.(0)
+    expect(progress?.style.transform).toBe("scaleX(0)")
+
+    requestAnimationFrame.mockRestore()
+    scrollTo.mockRestore()
   })
 
   it("localizes article content and wires interaction, edit, and delete flows", async () => {
+    const historyLength = vi.spyOn(window.history, "length", "get").mockReturnValue(1)
     render(<NewsDetail />)
 
     expect(screen.getByRole("heading", { name: "English title" })).toBeInTheDocument()
@@ -235,6 +310,7 @@ describe("NewsDetail", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "like" }))
     fireEvent.click(screen.getByRole("button", { name: "bookmark" }))
+    fireEvent.click(screen.getByRole("button", { name: "share" }))
     expect(mocks.toggleLike).toHaveBeenCalledOnce()
     expect(mocks.toggleBookmark).toHaveBeenCalledWith("news-1")
 
@@ -248,6 +324,57 @@ describe("NewsDetail", () => {
       expect(mocks.deleteNews).toHaveBeenCalledWith("news-1")
       expect(mocks.removeQueries).toHaveBeenCalledWith({ queryKey: ["news", "news-1"] })
       expect(mocks.invalidateQueries).toHaveBeenCalledWith({ queryKey: ["news", "list"] })
+      expect(mocks.navigate).toHaveBeenCalledWith({ to: "/news" })
+    })
+    historyLength.mockRestore()
+  })
+
+  it("renders share options and invokes copy/link-close actions", async () => {
+    const setShareDialogOpen = vi.fn()
+    const handleCopyLink = vi.fn()
+    mocks.share = {
+      sharing: false,
+      shareDialogOpen: true,
+      setShareDialogOpen,
+      copyingLink: false,
+      copiedLink: false,
+      shareOptions: [
+        {
+          id: "telegram",
+          href: "https://t.me/share",
+          label: "Telegram",
+          accent: "text-brand",
+          icon: () => <span data-testid="telegram-icon" />,
+        },
+      ],
+      handleShare: vi.fn(),
+      handleCopyLink,
+    }
+
+    render(<NewsDetail />)
+
+    expect(screen.getByRole("dialog")).toBeInTheDocument()
+    expect(screen.getByRole("link", { name: "Telegram" })).toHaveAttribute(
+      "href",
+      "https://t.me/share"
+    )
+    fireEvent.click(screen.getByRole("link", { name: "Telegram" }))
+    expect(setShareDialogOpen).toHaveBeenCalledWith(false)
+
+    fireEvent.click(screen.getByRole("button", { name: "news:shareDialog.copy" }))
+    expect(handleCopyLink).toHaveBeenCalledOnce()
+  })
+
+  it("shows a snackbar when deleting the article fails", async () => {
+    mocks.deleteNews.mockRejectedValueOnce(new Error("delete failed"))
+
+    render(<NewsDetail />)
+
+    fireEvent.click(screen.getByRole("button", { name: "delete" }))
+    fireEvent.click(screen.getByRole("button", { name: "common:buttons.delete" }))
+
+    await waitFor(() => {
+      expect(screen.getByText("news:notifications.deleteError")).toBeInTheDocument()
     })
   })
 })

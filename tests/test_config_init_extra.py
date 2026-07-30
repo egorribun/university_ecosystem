@@ -178,17 +178,32 @@ def test_force_reload_security_config() -> None:
     """Force re-importing app.core.config.security under coverage to execute class-level declarations."""
     import importlib
 
+    import app.core as app_core
+
     modules_to_delete = [
         "app.core.config.security",
         "app.core.config",
     ]
-    for mod in modules_to_delete:
-        if mod in sys.modules:
-            del sys.modules[mod]
+    original_modules = {mod: sys.modules.get(mod) for mod in modules_to_delete}
+    missing = object()
+    original_config_attr = getattr(app_core, "config", missing)
+    try:
+        for mod in modules_to_delete:
+            sys.modules.pop(mod, None)
 
-    import app.core.config.security as sec
+        import app.core.config.security as sec
 
-    importlib.reload(sec)
+        importlib.reload(sec)
+    finally:
+        for mod, original_module in original_modules.items():
+            if original_module is None:
+                sys.modules.pop(mod, None)
+            else:
+                sys.modules[mod] = original_module
+        if original_config_attr is missing:
+            delattr(app_core, "config")
+        else:
+            app_core.config = original_config_attr
 
 
 def test_audit_log_secret_validation(caplog):

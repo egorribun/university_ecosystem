@@ -3,7 +3,7 @@ import { renderHook, waitFor, act } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import type { ReactNode } from "react"
 import { createQueryClient } from "@/app/queryClient"
-import api from "@/api/client"
+import api, { SKIP_UNAUTHORIZED_HEADER } from "@/api/client"
 import {
   fetchNowPlaying,
   useNowPlaying,
@@ -74,6 +74,49 @@ describe("fetchNowPlaying", () => {
     expect(result).toBeNull()
   })
 
+  it("passes the unauthorized-skip header and validates accepted statuses", async () => {
+    let requestConfig: any
+    vi.spyOn(api, "get").mockImplementation(async (_url, config) => {
+      requestConfig = config
+      return { status: 200, data: { track_name: "Valid" } } as any
+    })
+
+    await fetchNowPlaying()
+
+    expect(requestConfig.headers[SKIP_UNAUTHORIZED_HEADER]).toBe("1")
+    expect(requestConfig.validateStatus(204)).toBe(true)
+    expect(requestConfig.validateStatus(200)).toBe(true)
+    expect(requestConfig.validateStatus(299)).toBe(true)
+    expect(requestConfig.validateStatus(199)).toBe(false)
+    expect(requestConfig.validateStatus(300)).toBe(false)
+  })
+
+  it("normalizes malformed optional fields and empty payloads safely", async () => {
+    vi.spyOn(api, "get")
+      .mockResolvedValueOnce({
+        status: 200,
+        data: {
+          track_name: " Edge ",
+          artists: "not-an-array",
+          duration_ms: -50,
+          progress_ms: "not-a-number",
+          fetched_at: "",
+        },
+      } as any)
+      .mockResolvedValueOnce({ status: 200, data: { artists: [] } } as any)
+      .mockResolvedValueOnce({ status: 200, data: null } as any)
+
+    await expect(fetchNowPlaying()).resolves.toMatchObject({
+      track_name: "Edge",
+      artists: [],
+      duration_ms: 0,
+      progress_ms: null,
+      fetched_at: "",
+    })
+    await expect(fetchNowPlaying()).resolves.toBeNull()
+    await expect(fetchNowPlaying()).resolves.toBeNull()
+  })
+
   it("records rate limit window on 429 errors", async () => {
     vi.useFakeTimers()
     vi.setSystemTime(new Date("2024-01-01T00:00:00Z"))
@@ -92,6 +135,42 @@ describe("fetchNowPlaying", () => {
     const limit = nowPlayingTesting.getRateLimitedUntil()
     expect(limit).toBeGreaterThan(Date.now())
     expect(limit).toBe(Date.now() + 3_250)
+  })
+
+  it("uses array and invalid retry-after headers with the safe fallback", async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date("2024-01-01T00:00:00Z"))
+    const get = vi.spyOn(api, "get")
+    const first = Object.assign(new Error("array limit"), {
+      isAxiosError: true,
+      response: { status: 429, headers: { "retry-after": ["2", "3"] } },
+    })
+    const second = Object.assign(new Error("fallback limit"), {
+      isAxiosError: true,
+      response: { status: 429, headers: {} },
+    })
+    get.mockRejectedValueOnce(first).mockRejectedValueOnce(second)
+
+    await expect(fetchNowPlaying()).rejects.toThrow("array limit")
+    expect(nowPlayingTesting.getRateLimitedUntil()).toBe(Date.now() + 2_250)
+    await expect(fetchNowPlaying()).rejects.toThrow("fallback limit")
+    expect(nowPlayingTesting.getRateLimitedUntil()).toBe(Date.now() + 5_250)
+  })
+
+  it("dispatches reauth for 401 and rethrows non-Axios failures", async () => {
+    const reauth = vi.fn()
+    window.addEventListener("spotify:reauth-required", reauth)
+    const get = vi.spyOn(api, "get")
+    const unauthorized = Object.assign(new Error("expired"), {
+      isAxiosError: true,
+      response: { status: 401, headers: {} },
+    })
+    get.mockRejectedValueOnce(unauthorized).mockRejectedValueOnce(new Error("offline"))
+
+    await expect(fetchNowPlaying()).resolves.toBeNull()
+    expect(reauth).toHaveBeenCalledOnce()
+    await expect(fetchNowPlaying()).rejects.toThrow("offline")
+    window.removeEventListener("spotify:reauth-required", reauth)
   })
 })
 
@@ -166,5 +245,45 @@ describe("useNowPlaying", () => {
     })
 
     await waitFor(() => expect(result.current.data).toBeNull())
+  })
+
+  it("ignores malformed cache and tolerates persistence failures", async () => {
+    localStorage.setItem(STORAGE_KEY, "{")
+    const setItem = vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw new Error("storage unavailable")
+    })
+    vi.spyOn(api, "get").mockResolvedValue({
+      status: 200,
+      data: { track_id: "fresh", track_name: "Fresh" },
+    } as any)
+
+    const { result } = renderHook(() => useNowPlaying(true), { wrapper })
+    await waitFor(() => expect(result.current.data?.track_id).toBe("fresh"))
+    expect(setItem).toHaveBeenCalled()
+  })
+
+  it("refetches when the document becomes visible and stays quiet while hidden", async () => {
+    const get = vi.spyOn(api, "get").mockResolvedValue({
+      status: 200,
+      data: { track_id: "visible", track_name: "Visible" },
+    } as any)
+    const { result } = renderHook(() => useNowPlaying(true), { wrapper })
+    await waitFor(() => expect(result.current.data?.track_id).toBe("visible"))
+    expect(get).toHaveBeenCalledOnce()
+
+    Object.defineProperty(document, "visibilityState", {
+      configurable: true,
+      get: () => "hidden",
+    })
+    document.dispatchEvent(new Event("visibilitychange"))
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(get).toHaveBeenCalledOnce()
+
+    Object.defineProperty(document, "visibilityState", {
+      configurable: true,
+      get: () => "visible",
+    })
+    document.dispatchEvent(new Event("visibilitychange"))
+    await waitFor(() => expect(get).toHaveBeenCalledTimes(2))
   })
 })

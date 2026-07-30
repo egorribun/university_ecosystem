@@ -1,6 +1,7 @@
 import type { ChangeEvent, FocusEvent } from "react"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import { act, renderHook } from "@testing-library/react"
+import { AxiosError } from "axios"
 import { useDndSettings } from "../useDndSettings"
 
 const mocks = vi.hoisted(() => ({
@@ -113,5 +114,135 @@ describe("useDndSettings", () => {
       expect(setSnackbar).toHaveBeenCalledWith({ text: "Policy denied", severity: "error" })
     })
     expect(result.current.dndEnabled).toBe(false)
+  })
+
+  it("disables DND with null server times and reports the disabled state", async () => {
+    const setSnackbar = vi.fn()
+    mocks.user = {
+      ...mocks.user,
+      preferences: { dnd_enabled: true, dnd_start: "22:00:00", dnd_end: "07:00:00" },
+    }
+    const updatedUser = {
+      ...mocks.user,
+      preferences: { dnd_enabled: false, dnd_start: null, dnd_end: null },
+    }
+    mocks.put.mockResolvedValue({ data: updatedUser })
+    const { result } = renderHook(() => useDndSettings(setSnackbar))
+
+    act(() => {
+      result.current.handleDndToggle({} as ChangeEvent<HTMLInputElement>, false)
+    })
+
+    await vi.waitFor(() => expect(mocks.put).toHaveBeenCalled())
+    expect(mocks.put).toHaveBeenCalledWith("/users/me", {
+      preferences: { dnd_enabled: false, dnd_start: null, dnd_end: null },
+    })
+    expect(setSnackbar).toHaveBeenCalledWith({
+      text: "settings:dnd.snackbar.disabled",
+      severity: "success",
+    })
+  })
+
+  it("updates an enabled range and preserves explicit seconds", async () => {
+    const setSnackbar = vi.fn()
+    mocks.user = {
+      ...mocks.user,
+      preferences: { dnd_enabled: true, dnd_start: "22:00:00", dnd_end: "07:00:00" },
+    }
+    const updatedUser = {
+      ...mocks.user,
+      preferences: { dnd_enabled: true, dnd_start: "23:45:30", dnd_end: "08:00:00" },
+    }
+    mocks.put.mockResolvedValue({ data: updatedUser })
+    const { result } = renderHook(() => useDndSettings(setSnackbar))
+
+    act(() => {
+      result.current.handleDndStartChange(changeEvent("23:45:30"))
+      result.current.handleDndStartBlur(blurEvent("23:45:30"))
+    })
+
+    await vi.waitFor(() => expect(mocks.put).toHaveBeenCalled())
+    expect(mocks.put).toHaveBeenCalledWith("/users/me", {
+      preferences: { dnd_enabled: true, dnd_start: "23:45:30", dnd_end: "07:00:00" },
+    })
+    expect(setSnackbar).toHaveBeenCalledWith({
+      text: "settings:dnd.snackbar.updated",
+      severity: "success",
+    })
+  })
+
+  it("handles end-time blur and keeps non-standard input values unchanged", async () => {
+    const setSnackbar = vi.fn()
+    mocks.user = {
+      ...mocks.user,
+      preferences: { dnd_enabled: true, dnd_start: "22:00:00", dnd_end: "07:00:00" },
+    }
+    mocks.put.mockResolvedValue({
+      data: {
+        ...mocks.user,
+        preferences: { dnd_enabled: true, dnd_start: "22:00:00", dnd_end: "invalid" },
+      },
+    })
+    const { result } = renderHook(() => useDndSettings(setSnackbar))
+
+    act(() => {
+      result.current.handleDndEndChange(changeEvent("invalid"))
+      result.current.handleDndEndBlur(blurEvent("invalid"))
+    })
+
+    await vi.waitFor(() => expect(mocks.put).toHaveBeenCalled())
+    expect(mocks.put).toHaveBeenCalledWith("/users/me", {
+      preferences: { dnd_enabled: true, dnd_start: "22:00:00", dnd_end: "invalid" },
+    })
+  })
+
+  it("skips an unchanged disabled state and ignores duplicate writes while saving", async () => {
+    const setSnackbar = vi.fn()
+    const { result } = renderHook(() => useDndSettings(setSnackbar))
+
+    act(() => {
+      result.current.handleDndToggle({} as ChangeEvent<HTMLInputElement>, false)
+    })
+    expect(mocks.put).not.toHaveBeenCalled()
+
+    let resolvePut!: (value: unknown) => void
+    mocks.put.mockReturnValueOnce(new Promise((resolve) => (resolvePut = resolve)))
+    act(() => {
+      result.current.handleDndToggle({} as ChangeEvent<HTMLInputElement>, true)
+    })
+    await vi.waitFor(() => expect(mocks.put).toHaveBeenCalledTimes(1))
+
+    act(() => {
+      result.current.handleDndToggle({} as ChangeEvent<HTMLInputElement>, false)
+    })
+    expect(mocks.put).toHaveBeenCalledTimes(1)
+    resolvePut({ data: mocks.user })
+    await vi.waitFor(() => expect(result.current.dndSaving).toBe(false))
+  })
+
+  it("joins validation-array messages from an Axios error", async () => {
+    const setSnackbar = vi.fn()
+    const error = new AxiosError("validation")
+    error.response = {
+      status: 422,
+      headers: {},
+      data: { detail: [{ msg: "Start is invalid" }, { ignored: true }, { msg: "End is invalid" }] },
+      statusText: "",
+      config: {} as never,
+    }
+    mocks.put.mockRejectedValue(error)
+    const { result } = renderHook(() => useDndSettings(setSnackbar))
+
+    act(() => {
+      result.current.handleDndToggle({} as ChangeEvent<HTMLInputElement>, true)
+    })
+
+    await vi.waitFor(() =>
+      expect(setSnackbar).toHaveBeenCalledWith({
+        text: "Start is invalid; End is invalid",
+        severity: "error",
+      })
+    )
+    expect(result.current.dndSaving).toBe(false)
   })
 })

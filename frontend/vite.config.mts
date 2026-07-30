@@ -617,6 +617,37 @@ export default defineConfig(({ mode }) => {
               return "vendor-i18n"
             if (id.includes("node_modules/axios")) return "vendor-http"
             if (id.includes("node_modules/@simplewebauthn/browser")) return "vendor-security"
+            // Keep the offline database implementation out of the application
+            // entry chunk. RxDB pulls Dexie, AJV and its query/storage helpers
+            // into the provider tree even though database access is lazy at
+            // runtime. The provider still loads this vendor chunk eagerly when
+            // the app starts; the split is only for the entry-size budget.
+            if (id.includes("node_modules/rxdb") || id.includes("node_modules/dexie"))
+              return "vendor-rxdb"
+            // focus-trap is used by modal components but is imported through a
+            // shared hook. Isolate it together with tabbable so those helpers
+            // do not inflate the application entry chunk.
+            if (id.includes("node_modules/focus-trap") || id.includes("node_modules/tabbable"))
+              return "vendor-a11y"
+            // TanStack Router core is shared by every route, but it is still a
+            // separate cacheable dependency and should not count as app code.
+            if (
+              id.includes("node_modules/@tanstack/router-core") ||
+              id.includes("node_modules/@tanstack/history")
+            )
+              return "vendor-router"
+            // RxDB's validation path and other shared schemas use AJV. Keep
+            // the validator and its URI helper together for stable caching.
+            if (
+              id.includes("node_modules/ajv") ||
+              id.includes("node_modules/ajv-formats") ||
+              id.includes("node_modules/fast-uri")
+            )
+              return "vendor-validation"
+            // Seroval is required by TanStack Start's client runtime. It is
+            // stable framework code and should not be charged to index.js.
+            if (id.includes("node_modules/seroval") || id.includes("node_modules/seroval-plugins"))
+              return "vendor-start"
             // Address large chunks identified in LHCI build warnings
             if (id.includes("node_modules/maplibre-gl")) return "vendor-map"
             // Wave 122 SW2: vendor-pdf manualChunks rule REMOVED. The original

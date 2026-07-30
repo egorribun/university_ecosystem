@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cespare/xxhash/v2"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -19,6 +20,74 @@ import (
 // ---------------------------------------------------------
 // 1. Hash Ring Deterministic Routing Tests
 // ---------------------------------------------------------
+
+func TestNodeStateString_CoversAllStates(t *testing.T) {
+	tests := []struct {
+		name  string
+		state NodeState
+		want  string
+	}{
+		{name: "healthy", state: StateHealthy, want: "HEALTHY"},
+		{name: "degraded", state: StateDegraded, want: "DEGRADED"},
+		{name: "failed", state: StateFailed, want: "FAILED"},
+		{name: "unknown", state: NodeState(99), want: "UNKNOWN"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, tt.state.String())
+		})
+	}
+}
+
+func TestNodeHealthTracker_Defaults(t *testing.T) {
+	tracker := NewNodeHealthTracker(0, 0, "pgvector_backup")
+
+	assert.Equal(t, StateHealthy, tracker.GetState())
+	tracker.RecordError()
+	tracker.RecordError()
+	assert.Equal(t, StateDegraded, tracker.GetState())
+	assert.False(t, tracker.ShouldFallback())
+
+	tracker.RecordError()
+	assert.Equal(t, StateFailed, tracker.GetState())
+	assert.True(t, tracker.ShouldFallback())
+}
+
+func TestHashRingAndVectorRouter_DefaultsAndRemoval(t *testing.T) {
+	ring := NewHashRing(0)
+	ring.AddNode("node-default")
+	ring.AddNode("node-default")
+	node, err := ring.GetNode("tenant-default")
+	require.NoError(t, err)
+	assert.Equal(t, "node-default", node)
+	assert.Equal(t, []string{"node-default"}, ring.GetNodes())
+
+	router := NewVectorRouter(0, "")
+	router.AddNode("node-remove")
+	router.AddNode("node-remove")
+	tracker, err := router.GetTracker("node-remove")
+	require.NoError(t, err)
+	assert.Equal(t, StateHealthy, tracker.GetState())
+
+	router.RemoveNode("node-remove")
+	_, err = router.GetTracker("node-remove")
+	assert.ErrorIs(t, err, ErrNodeNotFound)
+	assert.NotPanics(t, func() { router.RemoveNode("missing-node") })
+}
+
+func TestHashRing_AddNodeHandlesVirtualNodeHashCollision(t *testing.T) {
+	ring := NewHashRing(1)
+	collisionHash := xxhash.Sum64String("node-collision#vnode0")
+	ring.ring = append(ring.ring, collisionHash)
+	ring.vnodeToNode[collisionHash] = "existing-node"
+
+	ring.AddNode("node-collision")
+
+	assert.Len(t, ring.ring, 2)
+	assert.Contains(t, ring.vnodeToNode, collisionHash+1)
+	assert.Equal(t, "node-collision", ring.vnodeToNode[collisionHash+1])
+}
 
 func TestHashRing_DeterministicRouting(t *testing.T) {
 	ring := NewHashRing(128)
@@ -223,6 +292,14 @@ func TestVectorRouter_ScatterGatherQueryParallelExecution(t *testing.T) {
 
 	// Since queries run in parallel, total duration should be close to 10ms (much less than 3 * 10ms = 30ms)
 	assert.Less(t, elapsed, 25*time.Millisecond, "Scatter-gather queries must execute concurrently")
+
+	emptyResults, err := router.ScatterGatherQuery(context.Background(), nil, 3, queryFunc)
+	require.NoError(t, err)
+	assert.Empty(t, emptyResults)
+
+	zeroResults, err := router.ScatterGatherQuery(context.Background(), nodes, 0, queryFunc)
+	require.NoError(t, err)
+	assert.Empty(t, zeroResults)
 }
 
 // ---------------------------------------------------------
@@ -343,6 +420,18 @@ func TestVectorRouter_RouteWithKey_CourseID(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "pgvector_backup", targetFallback)
 	assert.True(t, isFallback)
+
+	noNodes := NewVectorRouter(128, "pgvector_backup")
+	targetEmpty, isFallback, err := noNodes.Route("tenant-without-nodes")
+	require.NoError(t, err)
+	assert.Equal(t, "pgvector_backup", targetEmpty)
+	assert.True(t, isFallback)
+
+	delete(router.trackers, "node1")
+	targetMissingTracker, isFallback, err := router.Route("tenant-42")
+	require.NoError(t, err)
+	assert.Equal(t, "pgvector_backup", targetMissingTracker)
+	assert.True(t, isFallback)
 }
 
 func TestVectorRouter_ExecuteVectorQuery_TimeoutAndFailover(t *testing.T) {
@@ -376,6 +465,18 @@ func TestVectorRouter_ExecuteVectorQuery_TimeoutAndFailover(t *testing.T) {
 	assert.Equal(t, "fallback-vec-1", results[0].VectorID)
 	// Failover switch SLA total switch latency test
 	assert.Less(t, elapsed, 100*time.Millisecond, "Seamless failover switch must take <100ms total")
+
+	_, target, isFallback, err = router.ExecuteVectorQuery(
+		context.Background(),
+		"",
+		"",
+		func(context.Context, string) ([]QueryResult, error) {
+			return nil, fmt.Errorf("fallback unavailable")
+		},
+	)
+	assert.True(t, isFallback)
+	assert.Equal(t, "pgvector_backup", target)
+	assert.EqualError(t, err, "fallback unavailable")
 }
 
 // ---------------------------------------------------------
@@ -448,6 +549,37 @@ func TestVectorSearchHandler_HTTPIntegration(t *testing.T) {
 		assert.Equal(t, "scatter_gather_all", resp.TargetNode)
 		assert.NotEmpty(t, resp.Results)
 	})
+
+	t.Run("Invalid JSON returns bad request", func(t *testing.T) {
+		w := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(w)
+		c.Request = httptest.NewRequest("POST", "/v1/vector/search", bytes.NewBufferString("{"))
+		c.Request.Header.Set("Content-Type", "application/json")
+
+		handler(c)
+
+		assert.Equal(t, http.StatusBadRequest, w.Code)
+		assert.Contains(t, w.Body.String(), ErrInvalidParams.Error())
+	})
+
+	t.Run("Executor error returns internal server error", func(t *testing.T) {
+		failingHandler := VectorSearchHandler(router, func(context.Context, string) ([]QueryResult, error) {
+			return nil, fmt.Errorf("vector backend unavailable")
+		})
+		w := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(w)
+		c.Request = httptest.NewRequest(
+			"POST",
+			"/v1/vector/search",
+			bytes.NewBufferString(`{"tenant_id":"tenant-abc"}`),
+		)
+		c.Request.Header.Set("Content-Type", "application/json")
+
+		failingHandler(c)
+
+		assert.Equal(t, http.StatusInternalServerError, w.Code)
+		assert.Contains(t, w.Body.String(), "vector backend unavailable")
+	})
 }
 
 func TestVectorSearchGRPCHandler(t *testing.T) {
@@ -471,4 +603,60 @@ func TestVectorSearchGRPCHandler(t *testing.T) {
 	assert.False(t, resp.IsFallback)
 	require.Len(t, resp.Results, 1)
 	assert.Equal(t, "grpc-v1", resp.Results[0].VectorID)
+
+	t.Run("nil request is rejected", func(t *testing.T) {
+		resp, err := VectorSearchGRPCHandler(context.Background(), router, nil, executor)
+		assert.Nil(t, resp)
+		assert.ErrorIs(t, err, ErrInvalidParams)
+	})
+
+	t.Run("executor errors are returned", func(t *testing.T) {
+		resp, err := VectorSearchGRPCHandler(
+			context.Background(),
+			router,
+			&VectorSearchRequest{TenantID: "tenant-grpc"},
+			func(context.Context, string) ([]QueryResult, error) {
+				return nil, fmt.Errorf("query failed")
+			},
+		)
+		assert.Nil(t, resp)
+		assert.ErrorContains(t, err, "primary query failed: query failed")
+		assert.ErrorContains(t, err, "fallback query failed: query failed")
+	})
+
+	t.Run("defaults topK and applies score threshold", func(t *testing.T) {
+		resp, err := VectorSearchGRPCHandler(
+			context.Background(),
+			router,
+			&VectorSearchRequest{TenantID: "tenant-grpc", ScoreThreshold: 0.9},
+			func(context.Context, string) ([]QueryResult, error) {
+				return []QueryResult{
+					{VectorID: "above", Score: 0.95},
+					{VectorID: "below", Score: 0.5},
+				}, nil
+			},
+		)
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+		assert.Equal(t, 1, resp.Count)
+		assert.Equal(t, "above", resp.Results[0].VectorID)
+	})
+
+	t.Run("multi-shard requests use scatter-gather", func(t *testing.T) {
+		multiRouter := NewVectorRouter(128, "pgvector_backup")
+		multiRouter.AddNode("node-alpha")
+		multiRouter.AddNode("node-beta")
+		resp, err := VectorSearchGRPCHandler(
+			context.Background(),
+			multiRouter,
+			&VectorSearchRequest{MultiShard: true, TopK: 1},
+			func(_ context.Context, target string) ([]QueryResult, error) {
+				return []QueryResult{{VectorID: target, Score: 0.9}}, nil
+			},
+		)
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+		assert.Equal(t, "scatter_gather_all", resp.TargetNode)
+		assert.Len(t, resp.Results, 1)
+	})
 }

@@ -16,6 +16,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 // ─── Workbox mocks ────────────────────────────────────────────────────────────
 
 const registeredRoutes: Array<{ matchFn: (...args: any[]) => boolean; handler: any }> = []
+const networkFirstOptions: Array<Record<string, unknown>> = []
+let networkFirstHandleResult: Response | Promise<Response> = new Response(
+  JSON.stringify({ ok: true }),
+  { status: 200, headers: { "Content-Type": "application/json" } }
+)
 
 vi.mock("workbox-routing", () => ({
   registerRoute: vi.fn((matchFn: any, handler: any) => {
@@ -24,7 +29,14 @@ vi.mock("workbox-routing", () => ({
 }))
 
 vi.mock("workbox-strategies", () => ({
-  NetworkFirst: vi.fn().mockImplementation((opts: any) => ({ type: "NetworkFirst", opts })),
+  NetworkFirst: vi.fn().mockImplementation((opts: Record<string, unknown>) => {
+    networkFirstOptions.push(opts)
+    return {
+      type: "NetworkFirst",
+      opts,
+      handle: vi.fn(() => networkFirstHandleResult),
+    }
+  }),
   StaleWhileRevalidate: vi
     .fn()
     .mockImplementation((opts: any) => ({ type: "StaleWhileRevalidate", opts })),
@@ -86,6 +98,8 @@ let mod: typeof import("../api")
 
 beforeEach(async () => {
   registeredRoutes.length = 0
+  networkFirstOptions.length = 0
+  networkFirstHandleResult = new Response(JSON.stringify({ ok: true }), { status: 200 })
   vi.resetModules()
   // Fresh import so initApiCaching re-registers all routes cleanly
   mod = await import("../api")
@@ -93,7 +107,8 @@ beforeEach(async () => {
 
 afterEach(() => {
   vi.unstubAllGlobals()
-  vi.restoreAllMocks()
+  vi.clearAllMocks()
+  vi.useRealTimers()
 })
 
 // =============================================================================
@@ -195,6 +210,17 @@ describe("initApiCaching — route matching", () => {
     return registeredRoutes.some(({ matchFn }) => matchFn(ctx))
   }
 
+  function privateRouteHandler() {
+    const route = registeredRoutes.at(-1)
+    expect(route).toBeDefined()
+    return route!.handler as (context: { request: Request; event: unknown }) => Promise<Response>
+  }
+
+  function privateRouteContext(pathname: string, cookie = "") {
+    const context = makeRouteContext(pathname, "GET", cookie)
+    return { request: context.request, event: context.event }
+  }
+
   // ── News interactions (NetworkFirst) ──────────────────────────────────────
 
   describe("news interactions route (NetworkFirst)", () => {
@@ -286,6 +312,35 @@ describe("initApiCaching — route matching", () => {
 
     it("does NOT match a non-API path", () => {
       expect(isRouteMatched("/assets/logo.svg")).toBe(false)
+    })
+
+    it("uses the session cookie to isolate the NetworkFirst cache", async () => {
+      const response = await privateRouteHandler()(
+        privateRouteContext("/api/schedule", "session=session-alpha; theme=dark")
+      )
+
+      expect(response.status).toBe(200)
+      expect(networkFirstOptions.at(-1)?.cacheName).toBe("api-cache:session-alpha")
+    })
+
+    it("uses the shared API cache when no session cookie is present", async () => {
+      const response = await privateRouteHandler()(privateRouteContext("/api/schedule"))
+
+      expect(response.status).toBe(200)
+      expect(networkFirstOptions.at(-1)?.cacheName).toBe("api-cache")
+    })
+
+    it("returns a synthetic 504 when the strategy does not resolve in six seconds", async () => {
+      vi.useFakeTimers()
+      networkFirstHandleResult = new Promise<Response>(() => undefined)
+
+      const responsePromise = privateRouteHandler()(privateRouteContext("/api/schedule"))
+      await vi.advanceTimersByTimeAsync(6000)
+      const response = await responsePromise
+
+      expect(response.status).toBe(504)
+      await expect(response.json()).resolves.toEqual({ error: "sw_timeout" })
+      vi.useRealTimers()
     })
   })
 

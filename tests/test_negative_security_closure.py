@@ -8,6 +8,8 @@ import pytest
 from app.auth.security import decode_token
 from app.core.cache_versioning import CacheVersionManager
 from app.core.config import settings
+from app.core.tenant import set_current_tenant, tenant_id_ctx
+from app.repositories.news_repository import build_news_cache_key
 
 
 @pytest.mark.security
@@ -17,7 +19,7 @@ async def test_forged_admin_role_claim_cannot_elevate_student(
 ) -> None:
     """The server-side role/permission source must defeat a forged JWT role."""
 
-    password = "NegativeSecurityPass123!"
+    password = "NegativeSecurityPass123!"  # pragma: allowlist secret
     from app.auth.security import get_password_hash
 
     student = await user_factory(
@@ -63,5 +65,23 @@ def test_cache_version_key_separates_tenants() -> None:
     tenant_b_key = manager.build_cache_key(
         locale="en", version="1", tenant_id="tenant-b", page=1
     )
+
+    assert tenant_a_key != tenant_b_key
+
+
+@pytest.mark.security
+def test_news_repository_cache_key_separates_tenants() -> None:
+    """The repository-level news cache must not cross RLS tenant boundaries."""
+    tenant_a = set_current_tenant("tenant-a")
+    try:
+        tenant_a_key = build_news_cache_key(None, skip=0, limit=20)
+    finally:
+        tenant_id_ctx.reset(tenant_a)
+
+    tenant_b = set_current_tenant("tenant-b")
+    try:
+        tenant_b_key = build_news_cache_key(None, skip=0, limit=20)
+    finally:
+        tenant_id_ctx.reset(tenant_b)
 
     assert tenant_a_key != tenant_b_key

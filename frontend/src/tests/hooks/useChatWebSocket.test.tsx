@@ -13,7 +13,16 @@ import {
   applyReactionChangedFrame,
   calculateReconnectDelay,
 } from "@/hooks/useChatWebSocket"
-import type { Message, MessagesListResponse } from "@/api/chat"
+import { chatApi, type Message, type MessagesListResponse } from "@/api/chat"
+import * as wsMessageSchema from "@/api/schemas/wsMessage"
+
+const mocks = vi.hoisted(() => ({
+  getDatabase: vi.fn(),
+}))
+
+vi.mock("@/db", () => ({
+  getDatabase: mocks.getDatabase,
+}))
 
 // Fixed valid-format UUIDs for frame fixtures (parseWsMessage validates v.uuid()).
 const USER_A = "11111111-1111-4111-8111-111111111111"
@@ -101,6 +110,9 @@ class MockWebSocket {
 describe("useChatWebSocket", () => {
   beforeEach(() => {
     MockWebSocket.instances = []
+    mocks.getDatabase.mockResolvedValue({
+      messages: { upsert: vi.fn().mockResolvedValue(undefined) },
+    })
     vi.stubGlobal("WebSocket", MockWebSocket)
   })
 
@@ -255,7 +267,13 @@ describe("useChatWebSocket", () => {
 
   it("applies a message_edited frame to the cache", async () => {
     const queryClient = new QueryClient()
-    queryClient.setQueryData(["messages", CHAT_ID], makeList([makeMessage({ content: "old" })]))
+    queryClient.setQueryData(
+      ["messages", CHAT_ID],
+      makeList([
+        makeMessage({ content: "old" }),
+        makeMessage({ id: "55555555-5555-4555-8555-555555555555", content: "untouched" }),
+      ])
+    )
     const { socket, unmount } = await mountAndOpen({ enabled: true }, queryClient)
     act(() => {
       socket.receive({
@@ -268,12 +286,19 @@ describe("useChatWebSocket", () => {
     })
     const cached = queryClient.getQueryData<MessagesListResponse>(["messages", CHAT_ID])
     expect(cached?.items[0]?.content).toBe("edited!")
+    expect(cached?.items[1]?.content).toBe("untouched")
     unmount()
   })
 
   it("applies a message_deleted frame to the cache (tombstone)", async () => {
     const queryClient = new QueryClient()
-    queryClient.setQueryData(["messages", CHAT_ID], makeList([makeMessage({ content: "doomed" })]))
+    queryClient.setQueryData(
+      ["messages", CHAT_ID],
+      makeList([
+        makeMessage({ content: "doomed" }),
+        makeMessage({ id: "55555555-5555-4555-8555-555555555555", content: "untouched" }),
+      ])
+    )
     const { socket, unmount } = await mountAndOpen({ enabled: true }, queryClient)
     act(() => {
       socket.receive({
@@ -286,6 +311,7 @@ describe("useChatWebSocket", () => {
     const cached = queryClient.getQueryData<MessagesListResponse>(["messages", CHAT_ID])
     expect(cached?.items[0]?.content).toBe("")
     expect(cached?.items[0]?.deleted_at).toBe("2026-01-15T12:30:00Z")
+    expect(cached?.items[1]?.content).toBe("untouched")
     unmount()
   })
 
@@ -308,6 +334,20 @@ describe("useChatWebSocket", () => {
     })
     const cached = queryClient.getQueryData<MessagesListResponse>(["messages", CHAT_ID])
     expect(cached?.items[0]?.reactions?.[0]).toMatchObject({ emoji: "👍", count: 1 })
+    act(() => {
+      socket.receive({
+        type: "reaction_changed",
+        chat_id: CHAT_ID,
+        message_id: MSG_ID,
+        user_id: USER_A,
+        emoji: "👍",
+        action: "added",
+      })
+    })
+    expect(
+      queryClient.getQueryData<MessagesListResponse>(["messages", CHAT_ID])?.items[0]
+        ?.reactions?.[0]?.count
+    ).toBe(1)
     unmount()
   })
 
@@ -364,7 +404,10 @@ describe("useChatWebSocket frame-cache helpers", () => {
   })
 
   it("applyMessageEditedFrame: replaces content + edited_at on the matched id only", () => {
-    const list = makeList([makeMessage({ id: MSG_ID, content: "old" })])
+    const list = makeList([
+      makeMessage({ id: MSG_ID, content: "old" }),
+      makeMessage({ id: "55555555-5555-4555-8555-555555555555", content: "untouched" }),
+    ])
     const out = applyMessageEditedFrame(list, {
       message_id: MSG_ID,
       content: "new",
@@ -372,6 +415,7 @@ describe("useChatWebSocket frame-cache helpers", () => {
     })
     expect(out?.items[0]?.content).toBe("new")
     expect(out?.items[0]?.edited_at).toBe("t")
+    expect(out?.items[1]?.content).toBe("untouched")
     expect(
       applyMessageEditedFrame(undefined, { message_id: MSG_ID, content: "n", edited_at: "t" })
     ).toBeUndefined()
@@ -385,10 +429,13 @@ describe("useChatWebSocket frame-cache helpers", () => {
     expect(out?.items[0]?.content).toBe("")
     expect(out?.items[0]?.deleted_at).toBe("d")
     expect(out?.items[0]?.attachments).toEqual([])
+    expect(
+      applyMessageDeletedFrame(undefined, { message_id: MSG_ID, deleted_at: "d" })
+    ).toBeUndefined()
   })
 
   it("applyReactionChangedFrame: added pushes new, added increments existing", () => {
-    const base = makeList([makeMessage({ id: MSG_ID, reactions: [] })])
+    const base = makeList([makeMessage({ id: MSG_ID, reactions: undefined as never })])
     const added = applyReactionChangedFrame(base, {
       message_id: MSG_ID,
       emoji: "👍",
@@ -491,6 +538,28 @@ describe("useChatWebSocket exponential backoffs and ticket exchange failures", (
     rendered.unmount()
   })
 
+  it.each([401, 403])(
+    "calls the auth-error hook and does not reconnect for HTTP %s",
+    async (status) => {
+      server.use(
+        http.post("*/ws/ticket", () => {
+          return new HttpResponse(null, { status })
+        })
+      )
+      const onAuthError = vi.fn()
+      const rendered = renderHook(() => useChatWebSocket({ enabled: true, onAuthError }), {
+        wrapper: ({ children }) => (
+          <QueryClientProvider client={new QueryClient()}>
+            <WebSocketProvider>{children}</WebSocketProvider>
+          </QueryClientProvider>
+        ),
+      })
+      await waitFor(() => expect(onAuthError).toHaveBeenCalledTimes(1))
+      expect(MockWebSocket.instances).toHaveLength(0)
+      rendered.unmount()
+    }
+  )
+
   it("stops reconnecting after reaching MAX_RECONNECT_ATTEMPTS", async () => {
     const mathRandomSpy = vi.spyOn(Math, "random").mockReturnValue(0)
 
@@ -522,5 +591,341 @@ describe("useChatWebSocket exponential backoffs and ticket exchange failures", (
 
     unmount()
     mathRandomSpy.mockRestore()
+  })
+})
+
+describe("useChatWebSocket outgoing controls and lifecycle edges", () => {
+  beforeEach(() => {
+    MockWebSocket.instances = []
+    mocks.getDatabase.mockResolvedValue({
+      messages: { upsert: vi.fn().mockResolvedValue(undefined) },
+    })
+    vi.stubGlobal("WebSocket", MockWebSocket)
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    vi.useRealTimers()
+  })
+
+  it("throttles REST typing and swallows transient failures", async () => {
+    const sendTypingSpy = vi.spyOn(chatApi, "sendTyping").mockResolvedValue(undefined)
+    const { result, unmount } = renderHook(() => useChatWebSocket({ enabled: false }), {
+      wrapper: ({ children }) => (
+        <QueryClientProvider client={new QueryClient()}>
+          <WebSocketProvider>{children}</WebSocketProvider>
+        </QueryClientProvider>
+      ),
+    })
+
+    act(() => {
+      result.current.sendTyping(CHAT_ID)
+      result.current.sendTyping(CHAT_ID)
+    })
+    await waitFor(() => expect(sendTypingSpy).toHaveBeenCalledTimes(1))
+
+    sendTypingSpy.mockRejectedValueOnce(new Error("offline"))
+    await act(async () => {
+      result.current.sendTyping("55555555-5555-4555-8555-555555555555")
+      await Promise.resolve()
+    })
+    expect(sendTypingSpy).toHaveBeenCalledTimes(2)
+
+    unmount()
+    sendTypingSpy.mockRestore()
+  })
+
+  it("sends read receipts only while open and protects the TOCTOU send", async () => {
+    const { socket, result, unmount } = await mountAndOpen({ enabled: true })
+
+    act(() => {
+      result.current.sendRead(CHAT_ID)
+      result.current.sendRead(CHAT_ID)
+    })
+    expect(socket.sentMessages).toEqual([
+      '{"type":"read","chat_id":"33333333-3333-4333-8333-333333333333"}',
+    ])
+
+    socket.send = () => {
+      throw new Error("socket closed between readyState check and send")
+    }
+    expect(() => {
+      act(() => result.current.sendRead("55555555-5555-4555-8555-555555555555"))
+    }).not.toThrow()
+    unmount()
+  })
+
+  it("queues a room join before open, rejoins on open, and leaves safely", async () => {
+    const queryClient = new QueryClient()
+    const rendered = renderHook(() => useChatWebSocket({ enabled: true }), {
+      wrapper: ({ children }) => (
+        <QueryClientProvider client={queryClient}>
+          <WebSocketProvider>{children}</WebSocketProvider>
+        </QueryClientProvider>
+      ),
+    })
+    await waitFor(() => expect(MockWebSocket.instances.length).toBe(1))
+    const socket = MockWebSocket.instances[0]!
+
+    act(() => rendered.result.current.sendJoin(CHAT_ID))
+    expect(socket.sentMessages).toEqual([])
+    act(() => socket.open())
+    expect(socket.sentMessages).toContain(`{"type":"join","room":"${CHAT_ID}"}`)
+
+    act(() => rendered.result.current.sendLeave("55555555-5555-4555-8555-555555555555"))
+    expect(socket.sentMessages).toContain(
+      '{"type":"leave","room":"55555555-5555-4555-8555-555555555555"}'
+    )
+    act(() => rendered.result.current.sendLeave(CHAT_ID))
+    expect(socket.sentMessages).toContain(`{"type":"leave","room":"${CHAT_ID}"}`)
+    rendered.unmount()
+  })
+
+  it("swallows join/leave races and emits the heartbeat", async () => {
+    const queryClient = new QueryClient()
+    const rendered = renderHook(() => useChatWebSocket({ enabled: true }), {
+      wrapper: ({ children }) => (
+        <QueryClientProvider client={queryClient}>
+          <WebSocketProvider>{children}</WebSocketProvider>
+        </QueryClientProvider>
+      ),
+    })
+    await waitFor(() => expect(MockWebSocket.instances.length).toBe(1))
+    const socket = MockWebSocket.instances[0]!
+    act(() => rendered.result.current.sendJoin(CHAT_ID))
+    vi.useFakeTimers()
+    socket.send = () => {
+      throw new Error("socket closed")
+    }
+    expect(() => act(() => socket.open())).not.toThrow()
+    expect(() => act(() => rendered.result.current.sendLeave(CHAT_ID))).not.toThrow()
+
+    socket.send = (data: string) => socket.sentMessages.push(data)
+    act(() => socket.open())
+    act(() => vi.advanceTimersByTime(30_000))
+    expect(socket.sentMessages).toContain('{"type":"ping"}')
+    rendered.unmount()
+  })
+
+  it("does not connect when disabled reconnect is requested explicitly", () => {
+    const { result, unmount } = renderHook(() => useChatWebSocket({ enabled: false }), {
+      wrapper: ({ children }) => (
+        <QueryClientProvider client={new QueryClient()}>
+          <WebSocketProvider>{children}</WebSocketProvider>
+        </QueryClientProvider>
+      ),
+    })
+    act(() => result.current.reconnect())
+    expect(MockWebSocket.instances).toHaveLength(0)
+    unmount()
+  })
+
+  it("swallows direct join races and reports socket errors", async () => {
+    const { socket, result, unmount } = await mountAndOpen({ enabled: true })
+    socket.send = () => {
+      throw new Error("socket closed")
+    }
+    expect(() => {
+      act(() => result.current.sendJoin("55555555-5555-4555-8555-555555555555"))
+      socket.onerror?.(new Event("error"))
+    }).not.toThrow()
+    unmount()
+  })
+
+  it("swallows a WebSocket constructor failure after ticket exchange", async () => {
+    class ThrowingWebSocket {
+      constructor() {
+        throw new Error("WebSocket unavailable")
+      }
+    }
+    vi.stubGlobal("WebSocket", ThrowingWebSocket)
+    const rendered = renderHook(() => useChatWebSocket({ enabled: true }), {
+      wrapper: ({ children }) => (
+        <QueryClientProvider client={new QueryClient()}>
+          <WebSocketProvider>{children}</WebSocketProvider>
+        </QueryClientProvider>
+      ),
+    })
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    rendered.unmount()
+  })
+
+  it("does not open a second socket when reconnect is requested while open", async () => {
+    const { result, unmount } = await mountAndOpen({ enabled: true })
+    act(() => result.current.reconnect())
+    await new Promise((resolve) => setTimeout(resolve, 25))
+    expect(MockWebSocket.instances).toHaveLength(1)
+    unmount()
+  })
+
+  it("logs and drops a frame when validation throws", async () => {
+    const parseSpy = vi.spyOn(wsMessageSchema, "parseWsMessage").mockImplementation(() => {
+      throw new Error("validator failure")
+    })
+    const { socket, unmount } = await mountAndOpen({ enabled: true })
+    expect(() => {
+      act(() => socket.receive({ type: "pong" }))
+    }).not.toThrow()
+    parseSpy.mockRestore()
+    unmount()
+  })
+
+  it.each([1000, 4001, 4003])("does not reconnect after terminal close code %s", async (code) => {
+    const { socket, unmount } = await mountAndOpen({ enabled: true })
+    expect(MockWebSocket.instances).toHaveLength(1)
+    act(() => socket.close(code))
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    expect(MockWebSocket.instances).toHaveLength(1)
+    unmount()
+  })
+
+  it("expires typing entries and rejects a per-chat overflow", async () => {
+    const onTyping = vi.fn()
+    const { socket, result, unmount } = await mountAndOpen({ enabled: true, onTyping })
+
+    vi.useFakeTimers()
+    act(() =>
+      socket.receive({
+        type: "typing",
+        chat_id: CHAT_ID,
+        user_id: "00000000-0000-4000-8000-000000000001",
+        user_name: "First",
+      })
+    )
+    act(() =>
+      socket.receive({
+        type: "typing",
+        chat_id: CHAT_ID,
+        user_id: "00000000-0000-4000-8000-000000000001",
+        user_name: "Updated",
+      })
+    )
+    expect(result.current.getTypingUsersForChat(CHAT_ID)[0]?.userName).toBe("Updated")
+    for (let index = 0; index < 21; index += 1) {
+      const userId = `00000000-0000-4000-8000-${String(index + 1).padStart(12, "0")}`
+      act(() =>
+        socket.receive({
+          type: "typing",
+          chat_id: CHAT_ID,
+          user_id: userId,
+          user_name: `User ${index}`,
+        })
+      )
+    }
+    expect(result.current.getTypingUsersForChat(CHAT_ID)).toHaveLength(20)
+
+    act(() => vi.advanceTimersByTime(3_000))
+    expect(result.current.getTypingUsersForChat(CHAT_ID)).toEqual([])
+    expect(onTyping).toHaveBeenCalledTimes(23)
+    unmount()
+  })
+
+  it("persists incoming messages, trims the cache, and ignores duplicates", async () => {
+    const upsert = vi.fn().mockResolvedValue(undefined)
+    mocks.getDatabase.mockResolvedValue({ messages: { upsert } })
+    const queryClient = new QueryClient()
+    const initial = Array.from({ length: 200 }, (_, index) =>
+      makeMessage({
+        id: `00000000-0000-4000-8000-${String(index + 1).padStart(12, "0")}`,
+      })
+    )
+    queryClient.setQueryData(["messages", CHAT_ID], makeList(initial))
+    queryClient.setQueryData(["chats"], {
+      items: [
+        { id: CHAT_ID, unread_count: 2 },
+        { id: "55555555-5555-4555-8555-555555555555", unread_count: 4 },
+      ],
+    })
+    const { socket, unmount } = await mountAndOpen({ enabled: true }, queryClient)
+
+    act(() => {
+      socket.receive({
+        type: "new_message",
+        chat_id: CHAT_ID,
+        message: makeMessage({ id: MSG_ID, sender_id: USER_B }),
+      })
+    })
+    await waitFor(() => expect(upsert).toHaveBeenCalledTimes(1))
+    const afterAppend = queryClient.getQueryData<MessagesListResponse>(["messages", CHAT_ID])
+    expect(afterAppend?.items).toHaveLength(200)
+    expect(afterAppend?.items.at(-1)?.id).toBe(MSG_ID)
+    expect(
+      queryClient.getQueryData<{ items: Array<{ unread_count: number }> }>(["chats"])?.items[0]
+        ?.unread_count
+    ).toBe(3)
+
+    act(() => {
+      socket.receive({
+        type: "new_message",
+        chat_id: CHAT_ID,
+        message: makeMessage({ id: MSG_ID, sender_id: USER_B }),
+      })
+    })
+    const afterDuplicate = queryClient.getQueryData<MessagesListResponse>(["messages", CHAT_ID])
+    expect(afterDuplicate?.items).toHaveLength(200)
+    expect(afterDuplicate?.items.at(-1)?.id).toBe(MSG_ID)
+    unmount()
+  })
+
+  it("swallows RxDB open and upsert failures from an incoming message", async () => {
+    const { socket, unmount } = await mountAndOpen({ enabled: true })
+    mocks.getDatabase.mockRejectedValueOnce(new Error("IndexedDB unavailable"))
+    act(() => {
+      socket.receive({
+        type: "new_message",
+        chat_id: CHAT_ID,
+        message: makeMessage({ sender_id: USER_B }),
+      })
+    })
+    await Promise.resolve()
+
+    const upsert = vi.fn().mockRejectedValue(new Error("write failed"))
+    mocks.getDatabase.mockResolvedValueOnce({ messages: { upsert } })
+    act(() => {
+      socket.receive({
+        type: "new_message",
+        chat_id: CHAT_ID,
+        message: makeMessage({ id: "55555555-5555-4555-8555-555555555555", sender_id: USER_B }),
+      })
+    })
+    await waitFor(() => expect(upsert).toHaveBeenCalledTimes(1))
+    unmount()
+  })
+
+  it("applies defensive RxDB defaults to a malformed validated payload", async () => {
+    const upsert = vi.fn().mockResolvedValue(undefined)
+    mocks.getDatabase.mockResolvedValue({ messages: { upsert } })
+    const parseSpy = vi.spyOn(wsMessageSchema, "parseWsMessage").mockReturnValueOnce({
+      type: "new_message",
+      chat_id: CHAT_ID,
+      message: {
+        id: MSG_ID,
+        chat_id: CHAT_ID,
+        sender_id: USER_B,
+        content: "",
+        created_at: "",
+        read_status: undefined,
+        read_at: undefined,
+        edited_at: undefined,
+        deleted_at: undefined,
+        attachments: undefined,
+      },
+    } as never)
+    const { socket, unmount } = await mountAndOpen({ enabled: true })
+    act(() => socket.receive({ type: "new_message" }))
+    await waitFor(() => expect(upsert).toHaveBeenCalledTimes(1))
+    expect(upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        content: "",
+        read_status: false,
+        read_at: null,
+        edited_at: null,
+        deleted_at: null,
+        attachments: [],
+        reactions: [],
+      })
+    )
+    parseSpy.mockRestore()
+    unmount()
   })
 })

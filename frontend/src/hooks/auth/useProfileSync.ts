@@ -166,6 +166,12 @@ const readCachedEnvelope = (): CachedProfileEnvelope | undefined => {
   try {
     const raw = localStorage.getItem(PROFILE_CACHE_STORAGE_KEY)
     if (!raw) return undefined
+    const parsed: unknown = JSON.parse(raw)
+    if (!parsed || typeof parsed !== "object") {
+      clearProfileCacheStorage("parse_error")
+      return undefined
+    }
+    return parsed as CachedProfileEnvelope
   } catch (_e) {
     clearProfileCacheStorage("parse_error")
     return undefined
@@ -860,8 +866,15 @@ export const useProfileSync = (
   )
 
   useEffect(() => {
-    if (cachedUserRef.current !== null) {
-      queryClient.setQueryData<UserState>(currentUserQueryKey, cachedUserRef.current)
+    const cachedUser = cachedUserRef.current
+    if (cachedUser !== null) {
+      // The encrypted-cache bootstrap uses id "-1" as a render-only
+      // placeholder. It must not become fresh authoritative /users/me data,
+      // otherwise fetchQuery() returns the placeholder and never reaches the
+      // backend for the real profile.
+      if (cachedUser.id !== "-1") {
+        queryClient.setQueryData<UserState>(currentUserQueryKey, cachedUser)
+      }
       cachedUserRef.current = null
     }
   }, [queryClient])

@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react"
+import { fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { describe, it, expect, vi } from "vitest"
 
 vi.mock("framer-motion", async () =>
@@ -78,6 +78,28 @@ describe("NowPlayingCard", () => {
     const img = screen.getByRole("img")
     expect(img).toHaveAttribute("src", "https://example.com/cover.jpg")
     expect(img).toHaveAttribute("alt", "A Night at the Opera")
+  })
+
+  it("handles image load, hover transitions, errors, and track changes", async () => {
+    const { rerender } = render(<NowPlayingCard data={makeData()} />)
+    const image = screen.getByRole("img")
+
+    expect(image.className).toContain("opacity-0")
+    fireEvent.load(image)
+    expect(image.className).toContain("opacity-100")
+
+    fireEvent.mouseEnter(image)
+    expect(image).toHaveStyle({ transform: "scale(1.02)" })
+    fireEvent.mouseLeave(image)
+    expect(image).toHaveStyle({ transform: "scale(1.012)" })
+
+    fireEvent.error(image)
+    expect(screen.queryByRole("img")).not.toBeInTheDocument()
+    expect(screen.getByText("♪")).toBeInTheDocument()
+
+    rerender(<NowPlayingCard data={makeData({ track_id: "track-2" })} />)
+    await waitFor(() => expect(screen.getByRole("img")).toBeInTheDocument())
+    expect(screen.getByRole("img").className).toContain("opacity-0")
   })
 
   it("treats zero duration as 0% progress without crashing", () => {
