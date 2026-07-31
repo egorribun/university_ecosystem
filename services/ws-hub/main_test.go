@@ -210,7 +210,7 @@ func TestRunServer_Error(t *testing.T) {
 	logger := initLogger()
 	h := hub.NewHub(nil, logger, nil, cfg, nil)
 	mux := http.NewServeMux()
-	runServer(cfg, logger, h, mux)
+	require.Error(t, runServer(cfg, logger, h, mux))
 }
 
 func TestSetupHubAndHandlers_ReadinessHealthy(t *testing.T) {

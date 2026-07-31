@@ -283,6 +283,47 @@ describe("MfaChallengeView — start over", () => {
     expect(screen.getByRole("button", { name: /different account/i })).toBeInTheDocument()
     unmount()
   })
+
+  it("reloads the page when start-over is activated", () => {
+    const originalLocation = window.location
+    const reload = vi.fn()
+    const mockLocation = Object.create(originalLocation)
+    Object.defineProperty(mockLocation, "reload", {
+      value: reload,
+      configurable: true,
+    })
+    Object.defineProperty(window, "location", {
+      value: mockLocation,
+      configurable: true,
+    })
+
+    try {
+      render(<MfaChallengeView {...props} />)
+      fireEvent.click(screen.getByRole("button", { name: /different account/i }))
+      expect(reload).toHaveBeenCalledTimes(1)
+    } finally {
+      Object.defineProperty(window, "location", {
+        value: originalLocation,
+        configurable: true,
+      })
+    }
+  })
+})
+
+describe("MfaChallengeView — recovery toggle", () => {
+  it("opens the recovery-code input from the TOTP view", () => {
+    const setShowRecoveryInput = vi.fn()
+    const otpChallenge = {
+      method: "totp" as const,
+      challenge_token: "abc",
+      challenge_expires_at: "2099-01-01T00:00:00Z",
+    }
+
+    render(<MfaChallengeView {...props} mfa={{ ...baseMfa, otpChallenge, setShowRecoveryInput }} />)
+
+    fireEvent.click(document.getElementById("use-recovery-code-toggle") as HTMLElement)
+    expect(setShowRecoveryInput).toHaveBeenCalledWith(true)
+  })
 })
 
 describe("MfaChallengeView — error display", () => {

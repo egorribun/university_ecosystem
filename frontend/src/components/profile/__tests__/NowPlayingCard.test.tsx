@@ -1,5 +1,7 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react"
-import { describe, it, expect, vi } from "vitest"
+import { beforeEach, describe, it, expect, vi } from "vitest"
+
+const mediaState = vi.hoisted(() => ({ reduced: false }))
 
 vi.mock("framer-motion", async () =>
   (await import("@/tests/helpers/framerMotionMock")).framerMotionMock()
@@ -10,7 +12,7 @@ vi.mock("react-i18next", () => ({
     i18n: { language: "en", changeLanguage: () => Promise.resolve() },
   }),
 }))
-vi.mock("@/hooks/useMediaQuery", () => ({ default: () => false }))
+vi.mock("@/hooks/useMediaQuery", () => ({ default: () => mediaState.reduced }))
 
 import { NowPlayingCard } from "@/components/profile/NowPlayingCard"
 import type { NowPlaying } from "@/types/spotify"
@@ -31,6 +33,10 @@ function makeData(overrides: Partial<NowPlaying> = {}): NowPlaying {
 }
 
 describe("NowPlayingCard", () => {
+  beforeEach(() => {
+    mediaState.reduced = false
+  })
+
   it("renders the playing track with name, artists and a track-aware aria label", () => {
     render(<NowPlayingCard data={makeData()} />)
     expect(screen.getByText("Bohemian Rhapsody")).toBeInTheDocument()
@@ -58,6 +64,18 @@ describe("NowPlayingCard", () => {
     expect(bar).toHaveAttribute("aria-valuenow", "180000")
   })
 
+  it("normalizes null, non-finite, and negative progress safely", () => {
+    const { rerender } = render(
+      <NowPlayingCard data={makeData({ is_playing: false, progress_ms: Number.NaN })} />
+    )
+    expect(screen.getByRole("progressbar")).toHaveAttribute("aria-valuenow", "0")
+
+    rerender(
+      <NowPlayingCard data={makeData({ is_playing: false, duration_ms: -1, progress_ms: -5 })} />
+    )
+    expect(screen.getByRole("progressbar")).toHaveAttribute("aria-valuenow", "0")
+  })
+
   it("uses the generic spotify aria label and fallback href when track info is missing", () => {
     render(<NowPlayingCard data={makeData({ track_name: null, track_url: null, artists: [] })} />)
     const link = screen.getByRole("link")
@@ -78,6 +96,53 @@ describe("NowPlayingCard", () => {
     const img = screen.getByRole("img")
     expect(img).toHaveAttribute("src", "https://example.com/cover.jpg")
     expect(img).toHaveAttribute("alt", "A Night at the Opera")
+  })
+
+  it("uses the track and translation fallbacks for missing album metadata", () => {
+    const { rerender } = render(
+      <NowPlayingCard data={makeData({ album_name: null, track_name: "Track fallback" })} />
+    )
+    expect(screen.getByRole("img")).toHaveAttribute("alt", "Track fallback")
+
+    rerender(<NowPlayingCard data={makeData({ album_name: null, track_name: null })} />)
+    expect(screen.getByRole("img")).toHaveAttribute("alt", "profile:nowPlaying.albumFallback")
+  })
+
+  it("marks an already-complete image loaded during the preload effect", () => {
+    vi.stubGlobal(
+      "Image",
+      class {
+        complete = true
+        src = ""
+      }
+    )
+
+    render(<NowPlayingCard data={makeData()} />)
+    expect(screen.getByRole("img").className).toContain("opacity-100")
+    vi.unstubAllGlobals()
+  })
+
+  it("resets progress on changed data and resumes playback", () => {
+    const { rerender } = render(
+      <NowPlayingCard data={makeData({ is_playing: false, progress_ms: 30_000 })} />
+    )
+
+    rerender(<NowPlayingCard data={makeData({ is_playing: false, progress_ms: 90_000 })} />)
+    expect(screen.getByRole("progressbar")).toHaveAttribute("aria-valuenow", "90000")
+
+    rerender(<NowPlayingCard data={makeData({ is_playing: true, progress_ms: 90_000 })} />)
+    expect(screen.getByRole("progressbar")).toHaveAttribute("aria-valuenow", "90000")
+  })
+
+  it("disables image hover styling when reduced motion is preferred", () => {
+    mediaState.reduced = true
+    render(<NowPlayingCard data={makeData()} />)
+    const image = screen.getByRole("img")
+
+    expect(image).not.toHaveStyle({ transform: "scale(1.012)" })
+    fireEvent.mouseEnter(image)
+    fireEvent.mouseLeave(image)
+    expect(image).not.toHaveStyle({ transform: "scale(1.02)" })
   })
 
   it("handles image load, hover transitions, errors, and track changes", async () => {

@@ -101,7 +101,7 @@ func TestSubscribeToNATS_SuccessAndStop(t *testing.T) {
 	defer cancel()
 
 	assert.NotPanics(t, func() {
-		h.SubscribeToNATS(ctx)
+		require.NoError(t, h.SubscribeToNATS(ctx))
 	})
 
 	assert.NotEmpty(t, h.subs)
@@ -124,7 +124,7 @@ func TestStop_DrainErrorLogging(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	h.SubscribeToNATS(ctx)
+	require.NoError(t, h.SubscribeToNATS(ctx))
 
 	// Close NATS connection before Stop to cause Drain to return error
 	nc.Close()

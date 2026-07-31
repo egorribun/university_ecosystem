@@ -146,6 +146,29 @@ const computeInterval = (data: NowPlaying | null) => {
   return POLLING_ACTIVE_MS
 }
 
+type RefetchIntervalOptions = {
+  enabled: boolean
+  data: NowPlaying | null
+  isTestEnvironment?: boolean
+  visibilityState?: DocumentVisibilityState
+}
+
+const computeRefetchInterval = ({
+  enabled,
+  data,
+  isTestEnvironment = isTestEnv,
+  visibilityState = typeof document === "undefined" ? undefined : document.visibilityState,
+}: RefetchIntervalOptions): number | false => {
+  if (!enabled || isTestEnvironment) return false
+  if (visibilityState === "hidden") return false
+  const interval = computeInterval(data)
+  const rateLimitWait = rateLimitDelay()
+  if (rateLimitWait > 0) {
+    return Math.max(interval, rateLimitWait)
+  }
+  return interval
+}
+
 export const useNowPlaying = (enabled: boolean) => {
   const cached = useMemo(() => readCachedNowPlaying(), [])
 
@@ -168,16 +191,7 @@ export const useNowPlaying = (enabled: boolean) => {
       return failureCount < 1
     },
     refetchOnWindowFocus: false,
-    refetchInterval: ({ state }) => {
-      if (!enabled || isTestEnv) return false
-      if (typeof document !== "undefined" && document.visibilityState === "hidden") return false
-      const interval = computeInterval(state.data ?? null)
-      const rateLimitWait = rateLimitDelay()
-      if (rateLimitWait > 0) {
-        return Math.max(interval, rateLimitWait)
-      }
-      return interval
-    },
+    refetchInterval: ({ state }) => computeRefetchInterval({ enabled, data: state.data ?? null }),
     refetchIntervalInBackground: false,
   })
 
@@ -205,4 +219,7 @@ export const useNowPlaying = (enabled: boolean) => {
 export const __testing = {
   clearRateLimit,
   getRateLimitedUntil: () => rateLimit.until,
+  scheduleRateLimit,
+  computeInterval,
+  computeRefetchInterval,
 }

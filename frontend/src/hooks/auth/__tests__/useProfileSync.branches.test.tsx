@@ -71,13 +71,17 @@ const renderProfileSync = (opts: HarnessOpts = {}) => {
   const signingKeyRef = { current: initialKey } as MutableRefObject<string | null>
   const promiseRef = { current: null } as MutableRefObject<Promise<string | null> | null>
 
-  const updateSessionSigningKey = opts.updateSessionSigningKey ?? vi.fn((key: string | null) => {
-    signingKeyRef.current = key
-  })
-  const ensureSessionSigningKey = opts.ensureSessionSigningKey ?? vi.fn(async () => {
-    signingKeyRef.current = initialKey
-    return initialKey
-  })
+  const updateSessionSigningKey =
+    opts.updateSessionSigningKey ??
+    vi.fn((key: string | null) => {
+      signingKeyRef.current = key
+    })
+  const ensureSessionSigningKey =
+    opts.ensureSessionSigningKey ??
+    vi.fn(async () => {
+      signingKeyRef.current = initialKey
+      return initialKey
+    })
 
   const wrapper = ({ children }: PropsWithChildren) => (
     <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
@@ -96,6 +100,31 @@ const renderProfileSync = (opts: HarnessOpts = {}) => {
   )
 
   return { ...view, queryClient, updateSessionSigningKey, ensureSessionSigningKey }
+}
+
+const renderProfileSyncWithPendingQuery = () => {
+  let resolveFetch!: (value: unknown) => void
+  const pendingFetch = new Promise<unknown>((resolve) => {
+    resolveFetch = resolve
+  })
+  const queryClient = createQueryClient()
+  vi.spyOn(queryClient, "fetchQuery").mockReturnValue(pendingFetch as never)
+  const signingKeyRef = { current: mockSigningKey } as MutableRefObject<string | null>
+  const promiseRef = { current: null } as MutableRefObject<Promise<string | null> | null>
+  const wrapper = ({ children }: PropsWithChildren) => (
+    <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+  )
+  const view = renderHook(
+    () =>
+      useProfileSync(
+        vi.fn(),
+        signingKeyRef,
+        promiseRef,
+        vi.fn(async () => mockSigningKey)
+      ),
+    { wrapper }
+  )
+  return { ...view, resolveFetch }
 }
 
 beforeEach(() => {
@@ -418,6 +447,40 @@ describe("useProfileSync — synchronous bootstrap (useState initFn)", () => {
     expect(removeSpy).toHaveBeenCalledWith(PROFILE_CACHE_STORAGE_KEY)
   })
 
+  it("clears a cache when async HMAC decoding throws", async () => {
+    const payload: CacheSignaturePayload = {
+      version: PROFILE_CACHE_SCHEMA_VERSION,
+      expiresAt: Date.now() + 60_000,
+      data: { id: testUser.id } as unknown as CachedUserSnapshot,
+    }
+    localStorage.setItem(PROFILE_CACHE_STORAGE_KEY, JSON.stringify({ ...payload, signature: "%" }))
+    markCurrentCacheVersion()
+    vi.spyOn(api, "get").mockResolvedValue({ data: testUser } as any)
+    const removeSpy = vi.spyOn(Storage.prototype, "removeItem")
+
+    const { result } = renderProfileSync({ signingKey: mockSigningKey })
+
+    await waitFor(() => expect(result.current.loading).toBe(false))
+    expect(removeSpy).toHaveBeenCalledWith(PROFILE_CACHE_STORAGE_KEY)
+  })
+
+  it("handles a non-string signature in synchronous bootstrap", async () => {
+    const payload: CacheSignaturePayload = {
+      version: PROFILE_CACHE_SCHEMA_VERSION,
+      expiresAt: Date.now() + 60_000,
+      data: { id: testUser.id } as unknown as CachedUserSnapshot,
+    }
+    localStorage.setItem(PROFILE_CACHE_STORAGE_KEY, JSON.stringify({ ...payload, signature: null }))
+    markCurrentCacheVersion()
+    vi.spyOn(api, "get").mockResolvedValue({ data: testUser } as any)
+    const removeSpy = vi.spyOn(Storage.prototype, "removeItem")
+
+    const { result } = renderProfileSync({ signingKey: mockSigningKey })
+
+    await waitFor(() => expect(result.current.loading).toBe(false))
+    expect(removeSpy).toHaveBeenCalledWith(PROFILE_CACHE_STORAGE_KEY)
+  })
+
   it("handles a decryption exception as invalid cache data", async () => {
     const payload: CacheSignaturePayload = {
       version: PROFILE_CACHE_SCHEMA_VERSION,
@@ -517,6 +580,26 @@ describe("useProfileSync — synchronous bootstrap (useState initFn)", () => {
     await waitFor(() => expect(result.current.user?.id).toBe(testUser.id))
     expect(removeSpy).toHaveBeenCalledWith(PROFILE_CACHE_STORAGE_KEY)
   })
+
+  it("rejects envelopes with invalid metadata before signature verification", async () => {
+    localStorage.setItem(
+      PROFILE_CACHE_STORAGE_KEY,
+      JSON.stringify({
+        version: PROFILE_CACHE_SCHEMA_VERSION,
+        expiresAt: "not-a-timestamp",
+        data: { id: testUser.id },
+        signature: 123,
+      })
+    )
+    markCurrentCacheVersion()
+    vi.spyOn(api, "get").mockResolvedValue({ data: testUser } as any)
+    const removeSpy = vi.spyOn(Storage.prototype, "removeItem")
+
+    const { result } = renderProfileSync({ signingKey: mockSigningKey })
+
+    await waitFor(() => expect(result.current.loading).toBe(false))
+    expect(removeSpy).toHaveBeenCalledWith(PROFILE_CACHE_STORAGE_KEY)
+  })
 })
 
 // ===========================================================================
@@ -603,6 +686,45 @@ describe("useProfileSync — auto-fetch effect", () => {
 
     await waitFor(() => expect(result.current.loading).toBe(false))
     expect(result.current.user).toEqual(testUser)
+  })
+
+  it("walks nested equal snapshots before leaving the current user intact", async () => {
+    const { result, resolveFetch } = renderProfileSyncWithPendingQuery()
+    const cached = { ...testUser, preferences: { dnd_enabled: false } } as any
+
+    await act(async () => {
+      result.current.setUser(cached)
+    })
+    resolveFetch({ ...cached, preferences: { dnd_enabled: false } })
+
+    await waitFor(() => expect(result.current.loading).toBe(false))
+    expect(result.current.user).toEqual(cached)
+  })
+
+  it("replaces the profile when a nested value changes", async () => {
+    const { result, resolveFetch } = renderProfileSyncWithPendingQuery()
+
+    await act(async () => {
+      result.current.setUser(testUser)
+    })
+    resolveFetch({ ...testUser, full_name: "Changed by server" })
+
+    await waitFor(() => expect(result.current.user?.full_name).toBe("Changed by server"))
+  })
+
+  it("replaces the profile when an object key is exchanged", async () => {
+    const { result, resolveFetch } = renderProfileSyncWithPendingQuery()
+    const fetched = { ...testUser, cache_marker: "server" } as Record<string, unknown>
+    delete fetched.email
+
+    await act(async () => {
+      result.current.setUser(testUser)
+    })
+    resolveFetch(fetched)
+
+    await waitFor(() =>
+      expect((result.current.user as Record<string, unknown>)?.cache_marker).toBe("server")
+    )
   })
 
   it("fetches the profile when the auto-fetch cache probe throws", async () => {
@@ -961,7 +1083,10 @@ describe("useProfileSync — cross-tab sync effect", () => {
 
   it("clears a storage snapshot when no session signing key is available", async () => {
     vi.spyOn(api, "get").mockResolvedValue({ data: testUser } as any)
-    const { result } = renderProfileSync({ signingKey: null, ensureSessionSigningKey: async () => null })
+    const { result } = renderProfileSync({
+      signingKey: null,
+      ensureSessionSigningKey: async () => null,
+    })
     await waitFor(() => expect(result.current.user?.id).toBe(testUser.id))
 
     localStorage.setItem(PROFILE_CACHE_STORAGE_KEY, JSON.stringify({ stale: true }))
@@ -976,7 +1101,9 @@ describe("useProfileSync — cross-tab sync effect", () => {
     })
 
     await waitFor(() => expect(result.current.user).toBeNull())
-    await waitFor(() => expect(localStorage.getItem(PROFILE_CACHE_STORAGE_KEY)).toBeNull(), { timeout: 3000 })
+    await waitFor(() => expect(localStorage.getItem(PROFILE_CACHE_STORAGE_KEY)).toBeNull(), {
+      timeout: 3000,
+    })
   })
 
   it("swallows BroadcastChannel construction failures", async () => {

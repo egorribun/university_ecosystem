@@ -128,8 +128,8 @@ explicit_package_bases = true
 implicit_reexport = false    # Catches accidental re-exports from __init__.py modules
 warn_no_return = true        # Detects functions with missing return in non-void branches
 exclude = [
-    "alembic/**/*.py",     # Auto-generated migrations
-    "app/api/generated/",    # Auto-generated OpenAPI client
+    '^alembic/.*\.py$',     # Auto-generated migrations
+    '^app/api/generated/',   # Auto-generated OpenAPI client
 ]
 
 # TD-W15-01 (audit 2026-03-23 Wave 15): Strict mypy for app/repositories/.

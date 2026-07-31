@@ -331,7 +331,6 @@ async def retry_dlq_job(
         raise_not_found(
             "dlq_job", locale, resource_id=job_id, exact_key="errors.events.not_found"
         )
-        raise ValueError("Unreachable")
 
     # Reset for retry
     job.status = JobStatus.PENDING.value

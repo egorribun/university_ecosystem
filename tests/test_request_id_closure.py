@@ -37,6 +37,54 @@ async def test_request_id_middleware_works_without_structlog_contextvars():
     assert any((key == b"x-request-id" and value) for key, value in sent[0]["headers"])
 
 
+@pytest.mark.asyncio
+async def test_request_id_middleware_forwards_non_http_scopes_unchanged():
+    called = []
+
+    async def inner(scope, receive, send):
+        called.append((scope, receive, send))
+
+    scope = {"type": "websocket"}
+    receive = object()
+    send = object()
+
+    await RequestIDMiddleware(inner)(scope, receive, send)
+
+    assert called == [(scope, receive, send)]
+
+
+@pytest.mark.asyncio
+async def test_request_id_middleware_sanitizes_truncates_and_clears_context():
+    scope = {
+        "type": "http",
+        "method": "GET",
+        "path": "/",
+        "query_string": b"",
+        "headers": [(b"x-request-id", b"a!" + b"b" * 80)],
+        "state": {},
+    }
+    sent = []
+
+    async def receive():
+        return {"type": "http.request", "body": b"", "more_body": False}
+
+    async def send(message):
+        sent.append(message)
+
+    async def inner(scope, receive, send):
+        await send({"type": "http.response.start", "status": 200, "headers": []})
+        await send({"type": "http.response.body", "body": b"ok"})
+
+    with patch.object(request_id_module, "clear_contextvars") as clear:
+        await RequestIDMiddleware(inner)(scope, receive, send)
+
+    request_id = scope["state"]["request_id"]
+    assert request_id == "ab" + "b" * 62
+    assert (b"x-request-id", request_id.encode("ascii")) in sent[0]["headers"]
+    assert sent[1]["type"] == "http.response.body"
+    clear.assert_called_once_with()
+
+
 def test_request_id_module_handles_missing_structlog_contextvars_import():
     real_import = builtins.__import__
 

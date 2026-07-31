@@ -69,6 +69,12 @@ describe("NewsCardEditDialog", () => {
     expect(screen.queryByText("news:dialogs.edit.title")).not.toBeInTheDocument()
   })
 
+  it("renders the form without an image preview when no image is available", () => {
+    render(<NewsCardEditDialog {...baseProps} initialData={{ ...initialData, image_url: "" }} />)
+
+    expect(screen.queryByRole("img")).not.toBeInTheDocument()
+  })
+
   it("fires onClose from the cancel button", async () => {
     const user = userEvent.setup()
     const onClose = vi.fn()
@@ -152,6 +158,24 @@ describe("NewsCardEditDialog", () => {
 
     createObjectURL.mockRestore()
     revokeObjectURL.mockRestore()
+  })
+
+  it("shows the image validation error for an unsupported file type", async () => {
+    const user = userEvent.setup()
+    render(<NewsCardEditDialog {...baseProps} />)
+
+    const fileInput = document.querySelector<HTMLInputElement>('input[type="file"]')
+    fireEvent.change(fileInput as HTMLInputElement, {
+      target: { files: [new File(["not-an-image"], "notes.txt", { type: "text/plain" })] },
+    })
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Only .jpg, .jpeg, .png and .webp formats are supported.")
+      ).toBeInTheDocument()
+    })
+    expect(screen.getByRole("button", { name: "common:buttons.save" })).toBeDisabled()
+    await user.click(screen.getByRole("button", { name: "common:buttons.cancel" }))
   })
 
   it("logs API failures and still clears image-loading state after upload failure", async () => {

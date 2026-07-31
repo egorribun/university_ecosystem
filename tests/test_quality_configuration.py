@@ -198,6 +198,15 @@ def test_python_coverage_policy_and_output_paths_match_quality_contract() -> Non
     assert coverage["json"]["output"] == "artifacts/coverage/python/coverage.json"
 
 
+def test_mypy_excludes_are_valid_regular_expressions() -> None:
+    excludes = _read_pyproject()["tool"]["mypy"]["exclude"]
+
+    assert isinstance(excludes, list)
+    for pattern in excludes:
+        assert isinstance(pattern, str)
+        re.compile(pattern)
+
+
 def test_frontend_coverage_policy_and_source_universe_match_quality_contract() -> None:
     contract = _read_contract()
     coverage = _extract_object_body(_read_text("frontend/vitest.config.ts"), "coverage")

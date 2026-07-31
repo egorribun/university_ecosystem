@@ -56,3 +56,39 @@ async def test_spicedb_health_returns_ok_when_channel_is_ready():
 
     assert status == "ok"
     assert latency >= 0
+
+
+@pytest.mark.asyncio
+async def test_spicedb_health_reports_disabled_when_channel_is_none():
+    async def channel_source():
+        yield None
+
+    with patch("app.core.spicedb.get_async_spicedb_channel", channel_source):
+        assert await check_spicedb_health() == ("disabled", 0.0)
+
+
+@pytest.mark.asyncio
+async def test_spicedb_health_reports_error_on_channel_timeout():
+    channel = SimpleNamespace(channel_ready=AsyncMock(side_effect=TimeoutError))
+
+    async def channel_source():
+        yield channel
+
+    with patch("app.core.spicedb.get_async_spicedb_channel", channel_source):
+        status, latency = await check_spicedb_health()
+
+    assert status == "error"
+    assert latency >= 0
+
+
+@pytest.mark.asyncio
+async def test_spicedb_health_reports_error_when_channel_source_fails():
+    async def channel_source():
+        raise RuntimeError("spicedb unavailable")
+        yield None
+
+    with patch("app.core.spicedb.get_async_spicedb_channel", channel_source):
+        status, latency = await check_spicedb_health()
+
+    assert status == "error"
+    assert latency >= 0

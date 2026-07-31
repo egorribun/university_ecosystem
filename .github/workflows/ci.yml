@@ -2237,11 +2237,6 @@ jobs:
           name: rust-coverage
           path: artifacts/coverage/rust
 
-      - name: Validate quality policy contract and mutation registry
-        run: >-
-          python scripts/quality/validate_quality_contract.py
-          --mutation-registry quality/mutation-exclusions.json
-
       - name: Normalize coverage evidence
         run: |
           python scripts/quality/normalize_coverage_reports.py \
@@ -2258,6 +2253,12 @@ jobs:
             --rust-report rust-pyo3-sanitizer=artifacts/coverage/rust/rust-pyo3-sanitizer/llvm.json \
             --rust-report rust-wasm-sanitizer=artifacts/coverage/rust/rust-wasm-sanitizer/llvm.json \
             --rust-report rust-crypto=artifacts/coverage/rust/rust-crypto/llvm.json
+
+      - name: Validate quality policy, mutation registry, and Tier0 manifest
+        run: >-
+          python scripts/quality/validate_quality_contract.py
+          --mutation-registry quality/mutation-exclusions.json
+          --manifest artifacts/coverage/quality-manifest.json
 
       - name: Upload Quality Manifest
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

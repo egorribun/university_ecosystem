@@ -191,7 +191,10 @@ async def _save_tokens(
     user.spotify.scope = scope or ""
     user.spotify.is_connected = True
     await db.commit()
-    await db.refresh(user)
+    # The session factory keeps ``expire_on_commit=False`` and all values above
+    # are already assigned to the managed ORM instance. A full User refresh
+    # here re-loads the auth relationship graph on every token refresh and can
+    # turn the Spotify GET hot path into an avoidable N+1-style query burst.
 
 
 async def _ensure_access_token(
@@ -401,16 +404,17 @@ async def now_playing(
         return Response(status_code=204)
 
     async def _request(access_token: str) -> httpx.Response | None:
+        response: httpx.Response | None = None
         try:
             async with _spotify_circuit_breaker:
                 # TD-W16-07: Reuse module-level HTTP/2 client.
-                return await _spotify_http_client.get(
+                response = await _spotify_http_client.get(
                     "https://api.spotify.com/v1/me/player/currently-playing",
                     headers={"Authorization": f"Bearer {access_token}"},
                 )
         except CircuitBreakerOpenError:
             return None
-        return None
+        return response
 
     token = await _ensure_access_token(db, user, locale=locale)
     if not token:

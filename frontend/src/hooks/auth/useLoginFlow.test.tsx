@@ -207,6 +207,35 @@ describe("useLoginForm suggestion + trustDevice setter", () => {
     expect(result.current.emailSuggestion).toBeNull()
   })
 
+  it("does not ask for a domain suggestion when the trimmed email is empty", async () => {
+    const { result } = renderHook(() => useLoginForm())
+    act(() => {
+      result.current.form.setValue("email", "   ")
+    })
+
+    await act(async () => {
+      await result.current.handleEmailBlur()
+    })
+
+    expect(mocks.suggestEmailDomain).not.toHaveBeenCalled()
+    expect(result.current.emailSuggestion).toBeNull()
+  })
+
+  it("clears the suggestion when the helper returns the same email", async () => {
+    mocks.suggestEmailDomain.mockReturnValue("same@example.com")
+    const { result } = renderHook(() => useLoginForm())
+    act(() => {
+      result.current.form.setValue("email", "same@example.com")
+    })
+
+    await act(async () => {
+      await result.current.handleEmailBlur()
+    })
+
+    expect(mocks.suggestEmailDomain).toHaveBeenCalledWith("same@example.com")
+    expect(result.current.emailSuggestion).toBeNull()
+  })
+
   it("setTrustDevice updates the form value (lines 188-190)", () => {
     const { result } = renderHook(() => useLoginForm())
     act(() => {

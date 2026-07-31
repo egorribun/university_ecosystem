@@ -679,6 +679,10 @@ export const useProfileSync = (
 
     if (verifySignatureSync(payload, candidate.signature, signingKey)) {
       if (typeof candidate.data !== "string") {
+        if (!candidate.data || typeof candidate.data.id !== "string") {
+          clearProfileCacheStorage("invalid_data")
+          return null
+        }
         // Legacy v3 format with unencrypted object data
         return createOptimisticUser(candidate.data)
       }

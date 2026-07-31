@@ -120,6 +120,12 @@ describe("useChatWebSocket", () => {
     vi.unstubAllGlobals()
   })
 
+  it("rejects usage outside WebSocketProvider", () => {
+    expect(() => renderHook(() => useChatWebSocket({ enabled: false }))).toThrow(
+      "useChatWebSocket must be used within a WebSocketProvider"
+    )
+  })
+
   it("emits presence updates with last seen information", async () => {
     const presenceSpy = vi.fn()
     const onlineSpy = vi.fn()
@@ -655,6 +661,19 @@ describe("useChatWebSocket outgoing controls and lifecycle edges", () => {
     unmount()
   })
 
+  it("ignores read receipts before the socket opens", () => {
+    const rendered = renderHook(() => useChatWebSocket({ enabled: false }), {
+      wrapper: ({ children }) => (
+        <QueryClientProvider client={new QueryClient()}>
+          <WebSocketProvider>{children}</WebSocketProvider>
+        </QueryClientProvider>
+      ),
+    })
+
+    expect(() => act(() => rendered.result.current.sendRead(CHAT_ID))).not.toThrow()
+    rendered.unmount()
+  })
+
   it("queues a room join before open, rejoins on open, and leaves safely", async () => {
     const queryClient = new QueryClient()
     const rendered = renderHook(() => useChatWebSocket({ enabled: true }), {
@@ -667,6 +686,8 @@ describe("useChatWebSocket outgoing controls and lifecycle edges", () => {
     await waitFor(() => expect(MockWebSocket.instances.length).toBe(1))
     const socket = MockWebSocket.instances[0]!
 
+    act(() => rendered.result.current.sendLeave("55555555-5555-4555-8555-555555555555"))
+    expect(socket.sentMessages).toEqual([])
     act(() => rendered.result.current.sendJoin(CHAT_ID))
     expect(socket.sentMessages).toEqual([])
     act(() => socket.open())
@@ -679,6 +700,29 @@ describe("useChatWebSocket outgoing controls and lifecycle edges", () => {
     act(() => rendered.result.current.sendLeave(CHAT_ID))
     expect(socket.sentMessages).toContain(`{"type":"leave","room":"${CHAT_ID}"}`)
     rendered.unmount()
+  })
+
+  it("uses the secure websocket scheme on HTTPS pages", async () => {
+    const originalWindow = window
+    const secureLocation = new Proxy(originalWindow.location, {
+      get(target, property, receiver) {
+        if (property === "protocol") return "https:"
+        return Reflect.get(target, property, receiver)
+      },
+    })
+    vi.stubGlobal(
+      "window",
+      new Proxy(originalWindow, {
+        get(target, property) {
+          if (property === "location") return secureLocation
+          return Reflect.get(target, property, target)
+        },
+      })
+    )
+
+    const { socket, unmount } = await mountAndOpen({ enabled: true })
+    expect(socket.url).toMatch(/^wss:\/\//)
+    unmount()
   })
 
   it("swallows join/leave races and emits the heartbeat", async () => {
@@ -817,6 +861,26 @@ describe("useChatWebSocket outgoing controls and lifecycle edges", () => {
     act(() => vi.advanceTimersByTime(3_000))
     expect(result.current.getTypingUsersForChat(CHAT_ID)).toEqual([])
     expect(onTyping).toHaveBeenCalledTimes(23)
+    unmount()
+  })
+
+  it("handles a typing timeout that races with cleanup", async () => {
+    const { socket, unmount } = await mountAndOpen({ enabled: true })
+
+    vi.useFakeTimers()
+    act(() =>
+      socket.receive({
+        type: "typing",
+        chat_id: CHAT_ID,
+        user_id: "00000000-0000-4000-8000-000000000099",
+        user_name: "Racer",
+      })
+    )
+
+    const clearTimeoutSpy = vi.spyOn(globalThis, "clearTimeout").mockImplementation(() => {})
+    act(() => socket.close(1000))
+    act(() => vi.advanceTimersByTime(3_000))
+    clearTimeoutSpy.mockRestore()
     unmount()
   })
 

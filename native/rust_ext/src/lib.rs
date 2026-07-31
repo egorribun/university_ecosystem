@@ -252,7 +252,8 @@ pub fn batch_detect_conflicts(
                                 if pair_count.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
                                     >= MAX_CONFLICT_PAIRS
                                 {
-                                    limit_exceeded.store(true, std::sync::atomic::Ordering::Relaxed);
+                                    limit_exceeded
+                                        .store(true, std::sync::atomic::Ordering::Relaxed);
                                     None
                                 } else {
                                     Some((a.clone(), b.clone()))
@@ -601,8 +602,7 @@ pub fn verify_audit_signature(
                 if key_bytes.is_empty() {
                     return Err(hmac_key_error("HMAC key cannot be empty"));
                 }
-                let mut mac =
-                    Hmac::<Sha256>::new_from_slice(&key_bytes).map_err(hmac_key_error)?;
+                let mut mac = Hmac::<Sha256>::new_from_slice(&key_bytes).map_err(hmac_key_error)?;
                 mac.update(log_data.as_bytes());
                 let computed = mac.finalize().into_bytes();
 
@@ -672,8 +672,8 @@ pub fn verify_event_chain(
 
                 for key_str in &signing_keys {
                     let key_bytes = Zeroizing::new(key_str.as_bytes().to_vec());
-                    let mut mac = Hmac::<Sha256>::new_from_slice(&key_bytes)
-                        .map_err(hmac_key_error)?;
+                    let mut mac =
+                        Hmac::<Sha256>::new_from_slice(&key_bytes).map_err(hmac_key_error)?;
                     mac.update(data.as_bytes());
                     let computed = mac.finalize().into_bytes();
 
@@ -1484,7 +1484,10 @@ mod tests {
         }
 
         let result = batch_detect_conflicts(items);
-        assert!(result.is_err(), "Should return error when conflict pairs exceed 50,000");
+        assert!(
+            result.is_err(),
+            "Should return error when conflict pairs exceed 50,000"
+        );
         let err_msg = result.unwrap_err().to_string();
         assert!(err_msg.contains("Detected conflict pairs exceed maximum allowed cap (50000)"));
     }
@@ -1505,10 +1508,17 @@ mod tests {
     #[test]
     fn test_is_partition_expired_strip_prefix() {
         // Single prefix matching
-        assert!(is_partition_expired("events_y2020m01".to_string(), "events".to_string(), 1).unwrap());
+        assert!(
+            is_partition_expired("events_y2020m01".to_string(), "events".to_string(), 1).unwrap()
+        );
 
         // Repeated prefix pattern — strip_prefix must only strip one instance
-        assert!(!is_partition_expired("events_yevents_y2026m03".to_string(), "events".to_string(), 30).unwrap());
+        assert!(!is_partition_expired(
+            "events_yevents_y2026m03".to_string(),
+            "events".to_string(),
+            30
+        )
+        .unwrap());
     }
 
     #[test]
@@ -1687,14 +1697,19 @@ mod tests {
         assert!(ok, "Signature matching second key in key ring must succeed");
 
         let bad_ring = vec![key1.to_string(), key3.to_string()];
-        let fail = verify_audit_signature(bad_ring, data.to_string(), hex::encode("wrong")).unwrap();
+        let fail =
+            verify_audit_signature(bad_ring, data.to_string(), hex::encode("wrong")).unwrap();
         assert!(!fail, "Signature matching no key in ring must fail");
     }
 
     #[test]
     fn test_hmac_empty_key_validation() {
-        let err1 = verify_audit_signature(vec!["".to_string()], "data".to_string(), "0000".to_string());
-        assert!(err1.is_err(), "Empty key in verify_audit_signature must return error");
+        let err1 =
+            verify_audit_signature(vec!["".to_string()], "data".to_string(), "0000".to_string());
+        assert!(
+            err1.is_err(),
+            "Empty key in verify_audit_signature must return error"
+        );
 
         let chain = vec![(
             "e1".to_string(),
@@ -1704,7 +1719,10 @@ mod tests {
             "00".to_string(),
         )];
         let err2 = verify_event_chain(vec!["".to_string()], "00".to_string(), chain);
-        assert!(err2.is_err(), "Empty key in verify_event_chain must return error");
+        assert!(
+            err2.is_err(),
+            "Empty key in verify_event_chain must return error"
+        );
     }
 
     #[test]
@@ -1811,11 +1829,15 @@ mod tests {
 
         let start_inv = std::time::Instant::now();
         for _ in 0..5_000 {
-            let _ = verify_audit_signature(keys.clone(), data.to_string(), sig_invalid.clone()).unwrap();
+            let _ = verify_audit_signature(keys.clone(), data.to_string(), sig_invalid.clone())
+                .unwrap();
         }
         let elapsed_inv = start_inv.elapsed();
 
-        println!("Empirical Timing: Key 0 match: {:?}, Key 4 match: {:?}, Invalid match: {:?}", elapsed0, elapsed4, elapsed_inv);
+        println!(
+            "Empirical Timing: Key 0 match: {:?}, Key 4 match: {:?}, Invalid match: {:?}",
+            elapsed0, elapsed4, elapsed_inv
+        );
         // All key positions iterate through all N keys in constant time (no break on match)
     }
 
@@ -1845,7 +1867,11 @@ mod tests {
         )];
 
         let (ok, err_idx, err_msg) = verify_event_chain(keys.clone(), h0, chain).unwrap();
-        assert!(ok, "Event chain signed by last key in ring must be valid: {}", err_msg);
+        assert!(
+            ok,
+            "Event chain signed by last key in ring must be valid: {}",
+            err_msg
+        );
         assert_eq!(err_idx, 0);
 
         // Test timing for key index 0 vs key index 2
@@ -1884,7 +1910,10 @@ mod tests {
         }
         let elapsed2 = start2.elapsed();
 
-        println!("Event Chain Empirical Timing: Key 0: {:?}, Key 2: {:?}", elapsed0, elapsed2);
+        println!(
+            "Event Chain Empirical Timing: Key 0: {:?}, Key 2: {:?}",
+            elapsed0, elapsed2
+        );
     }
 
     #[test]
@@ -1912,8 +1941,14 @@ mod tests {
                 }
             }
         }
-        println!("Zeroized memory check: {} out of {} bytes are zero", zero_count, len);
-        assert_eq!(zero_count, len, "Zeroizing must clear all bytes of vector buffer to 0");
+        println!(
+            "Zeroized memory check: {} out of {} bytes are zero",
+            zero_count, len
+        );
+        assert_eq!(
+            zero_count, len,
+            "Zeroizing must clear all bytes of vector buffer to 0"
+        );
     }
 
     #[test]
@@ -2000,19 +2035,35 @@ mod tests {
         };
 
         // Abutting interval (starts exactly at end_time): should NOT conflict
-        let abutting = ScheduleItem { start_time: 2000, end_time: 3000, ..base.clone() };
+        let abutting = ScheduleItem {
+            start_time: 2000,
+            end_time: 3000,
+            ..base.clone()
+        };
         assert!(!check_conflict_proto(&base, &abutting));
 
         // Zero-length interval: should NOT conflict
-        let zero_length = ScheduleItem { start_time: 1500, end_time: 1500, ..base.clone() };
+        let zero_length = ScheduleItem {
+            start_time: 1500,
+            end_time: 1500,
+            ..base.clone()
+        };
         assert!(!check_conflict_proto(&base, &zero_length));
 
         // Inverted interval: should NOT conflict
-        let inverted = ScheduleItem { start_time: 2500, end_time: 1500, ..base.clone() };
+        let inverted = ScheduleItem {
+            start_time: 2500,
+            end_time: 1500,
+            ..base.clone()
+        };
         assert!(!check_conflict_proto(&base, &inverted));
 
         // Partial overlap: MUST conflict
-        let overlap = ScheduleItem { start_time: 1999, end_time: 3000, ..base.clone() };
+        let overlap = ScheduleItem {
+            start_time: 1999,
+            end_time: 3000,
+            ..base.clone()
+        };
         assert!(check_conflict_proto(&base, &overlap));
     }
 
@@ -2033,7 +2084,11 @@ mod tests {
             .unwrap()
             .expect("Must find slot for hour 1");
         let dt_mid = DateTime::<Utc>::from_timestamp(slot_mid.start_time, 0).unwrap();
-        assert_eq!(dt_mid.time().hour(), 1, "Hour 0 conflicts with 1970 00:00-01:00 item");
+        assert_eq!(
+            dt_mid.time().hour(),
+            1,
+            "Hour 0 conflicts with 1970 00:00-01:00 item"
+        );
 
         // 2. Late night 1970 item (82800..86400 seconds = 23:00-24:00)
         let existing_night = vec![ScheduleItem {
@@ -2048,7 +2103,11 @@ mod tests {
             .unwrap()
             .expect("Must find slot for hour 22");
         let dt_night = DateTime::<Utc>::from_timestamp(slot_night.start_time, 0).unwrap();
-        assert_eq!(dt_night.time().hour(), 22, "Hour 23 conflicts with 1970 23:00-24:00 item");
+        assert_eq!(
+            dt_night.time().hour(),
+            22,
+            "Hour 23 conflicts with 1970 23:00-24:00 item"
+        );
 
         // 3. Spanning candidate with 1970 baseline item on Day 2
         // Existing 1970 item on Tuesday 00:30-01:30 (1800..5400)
@@ -2068,7 +2127,6 @@ mod tests {
         );
     }
 }
-
 
 #[cfg(kani)]
 mod verification {

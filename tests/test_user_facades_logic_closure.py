@@ -45,6 +45,66 @@ async def test_user_service_delegates_remaining_profile_and_compliance_calls():
     assert await service.delete_user_data("user", request, confirm=True) == "deleted"
 
 
+@pytest.mark.asyncio
+async def test_user_service_delegates_admin_media_and_registration_calls():
+    service = _facade()
+    request = MagicMock()
+    current_user = MagicMock()
+    data = MagicMock()
+    file = MagicMock()
+
+    service.profile_service.get_users = AsyncMock(return_value=["listed"])
+    service.profile_service.admin_update_user = AsyncMock(return_value="admin-updated")
+    service.compliance_service.admin_delete_user = AsyncMock(
+        return_value={"deleted": True}
+    )
+    service.compliance_service.export_user_data = AsyncMock(return_value="export")
+    service.compliance_service.register_user = AsyncMock(return_value="registered")
+    service.compliance_service.create_user = AsyncMock(return_value="created")
+    service.media_service.delete_avatar = AsyncMock(return_value="avatar-deleted")
+    service.media_service.delete_cover = AsyncMock(return_value="cover-deleted")
+    service.media_service.upload_avatar = AsyncMock(return_value="avatar-uploaded")
+    service.media_service.upload_cover = AsyncMock(return_value="cover-uploaded")
+
+    user_id = uuid4()
+    assert await service.get_users(request, current_user, data) == ["listed"]
+    assert (
+        await service.admin_update_user(user_id, data, request, current_user)
+        == "admin-updated"
+    )
+    assert await service.admin_delete_user(user_id, request, current_user) == {
+        "deleted": True
+    }
+    assert await service.delete_avatar(current_user) == "avatar-deleted"
+    assert await service.delete_cover(current_user) == "cover-deleted"
+    assert await service.export_user_data(current_user, request) == "export"
+    assert await service.register_user(data) == "registered"
+    assert await service.create_user(data, request, current_user) == "created"
+    assert await service.upload_avatar(current_user, file) == "avatar-uploaded"
+    assert await service.upload_cover(current_user, file) == "cover-uploaded"
+
+    service.profile_service.get_users.assert_awaited_once_with(
+        request, current_user, data
+    )
+    service.profile_service.admin_update_user.assert_awaited_once_with(
+        user_id, data, request, current_user
+    )
+    service.compliance_service.admin_delete_user.assert_awaited_once_with(
+        user_id, request, current_user
+    )
+    service.compliance_service.export_user_data.assert_awaited_once_with(
+        current_user, request
+    )
+    service.compliance_service.register_user.assert_awaited_once_with(data)
+    service.compliance_service.create_user.assert_awaited_once_with(
+        data, request, current_user
+    )
+    service.media_service.delete_avatar.assert_awaited_once_with(current_user)
+    service.media_service.delete_cover.assert_awaited_once_with(current_user)
+    service.media_service.upload_avatar.assert_awaited_once_with(current_user, file)
+    service.media_service.upload_cover.assert_awaited_once_with(current_user, file)
+
+
 def test_update_user_attributes_creates_all_nested_relations_and_handles_direct_fields():
     user = SimpleNamespace(
         id=uuid4(), preferences=None, profile=None, education_path=None
@@ -112,7 +172,7 @@ async def test_anonymize_user_data_cleans_existing_relations_and_files():
     user = SimpleNamespace(
         id=uuid4(),
         email="user@example.com",
-        hashed_password="hash",
+        hashed_password="hash",  # pragma: allowlist secret
         is_active=True,
         mfa_required=True,
         mfa_default_method="totp",
@@ -211,7 +271,7 @@ async def test_anonymize_user_data_handles_profile_without_media_urls():
     user = SimpleNamespace(
         id=uuid4(),
         email="user@example.com",
-        hashed_password="hash",
+        hashed_password="hash",  # pragma: allowlist secret
         is_active=True,
         mfa_required=True,
         mfa_default_method=None,

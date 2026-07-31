@@ -402,7 +402,7 @@ export const ChatArea = memo(function ChatArea({
               new query immediately — matches W183 SW1 ContactList pattern. */}
           <ChatWindow
             key={selectedChatId}
-            chatId={selectedChatId ?? undefined}
+            chatId={selectedChatId}
             messages={messages}
             isLoading={messagesLoading}
             isError={messagesError}
@@ -502,4 +502,3 @@ export const ChatArea = memo(function ChatArea({
 })
 
 export default ChatArea
-

@@ -83,6 +83,26 @@ describe("rateLimit interceptor — queue/window closure", () => {
     releaseClientQueueSlot(fourth)
   })
 
+  it("does not resolve a queued request while all concurrent slots remain busy", async () => {
+    const { releaseClientQueueSlot, waitForClientQueueSlot } = await import("../rateLimit")
+    const first = config()
+    const second = config()
+    const third = config()
+
+    await Promise.all([waitForClientQueueSlot(first), waitForClientQueueSlot(second)])
+    const thirdWait = waitForClientQueueSlot(third)
+    await Promise.resolve()
+
+    await vi.advanceTimersByTimeAsync(60_000)
+    expect(third.__clientRateLimitAcquired).toBeUndefined()
+
+    releaseClientQueueSlot(first)
+    await thirdWait
+    expect(third.__clientRateLimitAcquired).toBe(true)
+    releaseClientQueueSlot(second)
+    releaseClientQueueSlot(third)
+  })
+
   it("replaces a pending server-rate-limit timer when a later target is scheduled", async () => {
     const { isRateLimited, scheduleRateLimitWindow } = await import("../rateLimit")
 

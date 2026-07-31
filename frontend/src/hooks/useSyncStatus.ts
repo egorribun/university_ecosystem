@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, useRef } from "react"
 import {
   useIsFetching,
   useMutationState,
@@ -48,6 +48,7 @@ export function useSyncStatus(): SyncStatusResult {
   )
   const [idbPendingCount, setIdbPendingCount] = useState(0)
   const [justSynced, setJustSynced] = useState(false)
+  const wasSyncingRef = useRef(false)
 
   // 1. Reactive network status
   useEffect(() => {
@@ -162,12 +163,24 @@ export function useSyncStatus(): SyncStatusResult {
 
   // Transient "synced" status transition
   useEffect(() => {
-    if (isOnline && isFetchingCount === 0 && totalPendingCount === 0 && syncState === "syncing") {
-      setJustSynced(true)
-      const timer = setTimeout(() => setJustSynced(false), 3000)
-      return () => clearTimeout(timer)
+    if (!isOnline) {
+      wasSyncingRef.current = false
+      return
     }
-  }, [isOnline, isFetchingCount, totalPendingCount, syncState])
+
+    const hasPendingWork = isFetchingCount > 0 || totalPendingCount > 0
+    if (hasPendingWork) {
+      wasSyncingRef.current = true
+      return
+    }
+
+    if (!wasSyncingRef.current) return
+
+    wasSyncingRef.current = false
+    setJustSynced(true)
+    const timer = setTimeout(() => setJustSynced(false), 3000)
+    return () => clearTimeout(timer)
+  }, [isOnline, isFetchingCount, totalPendingCount])
 
   // 5. Manual force sync trigger
   const triggerManualSync = useCallback(async () => {

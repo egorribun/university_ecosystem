@@ -125,6 +125,12 @@ async def test_message_and_user_lookup_helpers() -> None:
         OTHER_ID: ("message-dto", message_b),
     }
 
+    user_a = SimpleNamespace(id=USER_ID)
+    user_b = SimpleNamespace(id=OTHER_ID)
+    assert await repo.get_users_by_ids([]) == []
+    db.execute.return_value = _result(rows=[user_a, user_b])
+    assert await repo.get_users_by_ids([USER_ID, OTHER_ID]) == [user_a, user_b]
+
     assert await repo.get_user_display_names([]) == {}
     users = [
         SimpleNamespace(id=USER_ID, profile=SimpleNamespace(full_name="Alice")),

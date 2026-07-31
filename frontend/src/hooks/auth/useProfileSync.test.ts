@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest"
+import { describe, expect, it, vi } from "vitest"
 
 import {
   PROFILE_CACHE_SCHEMA_VERSION,
@@ -124,5 +124,15 @@ describe("useProfileSync — encryptData (AES-GCM)", () => {
     // But the format invariant holds.
     expect(a!.split(":")).toHaveLength(3)
     expect(b!.split(":")).toHaveLength(3)
+  })
+
+  it("returns null when Web Crypto is unavailable", async () => {
+    const originalWindow = window
+    vi.stubGlobal("window", undefined)
+    try {
+      await expect(encryptData(SNAPSHOT, "the-key")).resolves.toBeNull()
+    } finally {
+      vi.stubGlobal("window", originalWindow)
+    }
   })
 })

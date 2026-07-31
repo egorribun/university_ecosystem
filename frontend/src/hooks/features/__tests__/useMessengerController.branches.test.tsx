@@ -608,6 +608,12 @@ describe("useMessengerController — branch top-up", () => {
             unread_count: 3,
             last_message: { content: "last", created_at: new Date().toISOString() },
           },
+          {
+            id: "chat-2",
+            participants: [{ id: "current-user-id" }, { id: "peer-2" }],
+            unread_count: 1,
+            last_message: { content: "keep", created_at: new Date().toISOString() },
+          },
         ],
         has_more: false,
         next_cursor: null,

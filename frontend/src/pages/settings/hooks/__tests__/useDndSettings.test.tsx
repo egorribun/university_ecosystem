@@ -50,6 +50,30 @@ describe("useDndSettings", () => {
     expect(result.current.dndEnd).toBe("06:15")
   })
 
+  it("hydrates enabled defaults when the server omits the time range", () => {
+    mocks.user = {
+      ...mocks.user,
+      preferences: { dnd_enabled: true, dnd_start: null, dnd_end: null },
+    }
+
+    const { result } = renderHook(() => useDndSettings(vi.fn()))
+
+    expect(result.current.dndEnabled).toBe(true)
+    expect(result.current.dndStart).toBe("22:00")
+    expect(result.current.dndEnd).toBe("07:00")
+  })
+
+  it("ignores time blurs while DND is disabled", () => {
+    const { result } = renderHook(() => useDndSettings(vi.fn()))
+
+    act(() => {
+      result.current.handleDndStartBlur(blurEvent("20:00"))
+      result.current.handleDndEndBlur(blurEvent("06:00"))
+    })
+
+    expect(mocks.put).not.toHaveBeenCalled()
+  })
+
   it("enables DND with defaults and persists normalized server values", async () => {
     const setSnackbar = vi.fn()
     const updatedUser = {
@@ -196,6 +220,52 @@ describe("useDndSettings", () => {
     })
   })
 
+  it("validates an empty end-time blur without issuing a write", async () => {
+    const setSnackbar = vi.fn()
+    mocks.user = {
+      ...mocks.user,
+      preferences: { dnd_enabled: true, dnd_start: "22:00:00", dnd_end: "07:00:00" },
+    }
+    const { result } = renderHook(() => useDndSettings(setSnackbar))
+
+    act(() => {
+      result.current.handleDndEndChange(changeEvent(""))
+      result.current.handleDndEndBlur(blurEvent(""))
+    })
+
+    await vi.waitFor(() =>
+      expect(setSnackbar).toHaveBeenCalledWith({
+        text: "settings:dnd.validation.missingRange",
+        severity: "warning",
+      })
+    )
+    expect(mocks.put).not.toHaveBeenCalled()
+  })
+
+  it("passes missing sibling times through the validation guard", async () => {
+    const setSnackbar = vi.fn()
+    mocks.user = {
+      ...mocks.user,
+      preferences: { dnd_enabled: true, dnd_start: "22:00:00", dnd_end: "07:00:00" },
+    }
+    const { result } = renderHook(() => useDndSettings(setSnackbar))
+
+    act(() => {
+      result.current.handleDndEndChange(changeEvent(""))
+    })
+    await vi.waitFor(() => expect(result.current.dndEnd).toBe(""))
+    act(() => result.current.handleDndStartBlur(blurEvent("20:00")))
+    await vi.waitFor(() => expect(setSnackbar).toHaveBeenCalledTimes(1))
+
+    act(() => {
+      result.current.handleDndStartChange(changeEvent(""))
+    })
+    await vi.waitFor(() => expect(result.current.dndStart).toBe(""))
+    act(() => result.current.handleDndEndBlur(blurEvent("06:00")))
+    await vi.waitFor(() => expect(setSnackbar).toHaveBeenCalledTimes(2))
+    expect(mocks.put).not.toHaveBeenCalled()
+  })
+
   it("skips an unchanged disabled state and ignores duplicate writes while saving", async () => {
     const setSnackbar = vi.fn()
     const { result } = renderHook(() => useDndSettings(setSnackbar))
@@ -244,5 +314,22 @@ describe("useDndSettings", () => {
       })
     )
     expect(result.current.dndSaving).toBe(false)
+  })
+
+  it("uses the generic fallback for a non-Axios persistence failure", async () => {
+    const setSnackbar = vi.fn()
+    mocks.put.mockRejectedValue({ reason: "offline" })
+    const { result } = renderHook(() => useDndSettings(setSnackbar))
+
+    act(() => {
+      result.current.handleDndToggle({} as ChangeEvent<HTMLInputElement>, true)
+    })
+
+    await vi.waitFor(() =>
+      expect(setSnackbar).toHaveBeenCalledWith({
+        text: "settings:dnd.snackbar.updateFailed",
+        severity: "error",
+      })
+    )
   })
 })

@@ -134,6 +134,25 @@ describe("useTotpEnrollment — derived state", () => {
     expect(result.current.defaultMethodText).toBe("settings:security.status.noDefault")
     expect(result.current.lastVerifiedText).toBe("settings:security.status.notVerified")
   })
+
+  it("handles a missing authenticated user with the safe derived defaults", () => {
+    mocks.user = null as never
+    const { result } = renderTotpHook()
+
+    expect(result.current.activeTotp).toEqual([])
+    expect(result.current.pendingTotpEnrollment).toBeNull()
+    expect(result.current.mfaDisabledMessage).toBe("settings:security.status.mfaDisabled")
+    expect(result.current.defaultMethodText).toBe("settings:security.status.noDefault")
+    expect(result.current.lastVerifiedText).toBe("settings:security.status.notVerified")
+  })
+
+  it("falls back when the last-verified date cannot be formatted", () => {
+    mocks.user.mfa_last_verified_at = "2026-07-30T10:00:00Z"
+    mocks.formatDate.mockReturnValueOnce("")
+    const { result } = renderTotpHook()
+
+    expect(result.current.lastVerifiedText).toBe("settings:security.status.notVerified")
+  })
 })
 
 describe("useTotpEnrollment — start and confirm", () => {
@@ -197,6 +216,21 @@ describe("useTotpEnrollment — start and confirm", () => {
       await limited.result.current.handleStartTotp()
     })
     expect(mocks.startTotpEnrollment).toHaveBeenCalledTimes(1)
+  })
+
+  it("uses the translated fallback for an error without an API status", async () => {
+    mocks.startTotpEnrollment.mockRejectedValueOnce({ reason: "offline" })
+    const { result, setSnackbar } = renderTotpHook()
+
+    await act(async () => {
+      await result.current.handleStartTotp()
+    })
+
+    expect(result.current.totpError).toBe("settings:security.snackbar.totpStartFailed")
+    expect(setSnackbar).toHaveBeenCalledWith({
+      text: "settings:security.snackbar.totpStartFailed",
+      severity: "error",
+    })
   })
 
   it("confirms a draft, refreshes the user, and handles missing enrollment safely", async () => {
@@ -301,5 +335,19 @@ describe("useTotpEnrollment — cancel and disable", () => {
       await action?.()
     })
     expect(setSnackbar).toHaveBeenLastCalledWith({ text: "Disable failed", severity: "error" })
+
+    mocks.deleteTotpEnrollment.mockResolvedValueOnce(undefined)
+    result.current.handleDisableTotp("totp-1")
+    await act(async () => {
+      await action?.()
+    })
+    const updateUser = mocks.setUser.mock.calls.find(
+      ([value]) => typeof value === "function"
+    )?.[0] as ((previous: typeof mocks.user | null) => unknown) | undefined
+    expect(updateUser?.(mocks.user)).toMatchObject({
+      mfa_default_method: null,
+      mfa_required: false,
+    })
+    expect(updateUser?.(null)).toBeNull()
   })
 })

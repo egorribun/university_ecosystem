@@ -24,6 +24,7 @@ describe("subscribe", () => {
     vi.resetModules()
     vi.useFakeTimers()
     vi.clearAllMocks()
+    vi.mocked(saveSubscription).mockResolvedValue({} as any)
 
     mockSWContainer = {
       getRegistration: vi.fn().mockResolvedValue(null),
@@ -83,6 +84,215 @@ describe("subscribe", () => {
       mod.setPersistedTopics(null)
       expect(mod.getPersistedTopics()).toBeUndefined()
     })
+
+    it("handles malformed payloads and invalid user identifiers safely", () => {
+      vi.spyOn(storageMod.profileCacheStorage, "get").mockReturnValue({ data: { id: {} } })
+
+      expect(mod.parseStoredTopics(null)).toBeUndefined()
+      expect(mod.parseStoredTopics("{")).toBeUndefined()
+      expect(
+        mod.parseStoredTopics({ shared: undefined, topics: [" legacy ", "legacy", ""] })
+      ).toEqual(["legacy"])
+      expect(mod.parseStoredTopics([" topic ", null, "", "topic"])).toEqual(["topic"])
+      expect(mod.parseStoredTopics(42)).toBeUndefined()
+      expect(mod.parseStoredTopics({ shared: ["fallback"] }, { userId: " " })).toEqual(["fallback"])
+      expect(mod.parseStoredTopics({}, { userId: {} as any })).toBeUndefined()
+      expect(mod.parseStoredTopics({ topics: ["legacy"] })).toEqual(["legacy"])
+    })
+
+    it("normalizes valid per-user topics while clearing shared topics", () => {
+      vi.spyOn(storageMod.profileCacheStorage, "get").mockReturnValue(null)
+      localStorage.setItem(
+        "push:last_topics",
+        JSON.stringify({
+          version: 1,
+          perUser: {
+            "user-a": [" b ", "a", "a"],
+            invalid: "not-an-array",
+          },
+        })
+      )
+
+      mod.setPersistedTopics(null)
+
+      expect(JSON.parse(localStorage.getItem("push:last_topics") ?? "null")).toEqual({
+        version: 2,
+        perUser: { "user-a": ["a", "b"] },
+      })
+
+      localStorage.setItem("push:last_topics", JSON.stringify({ shared: ["orphaned"] }))
+      mod.setPersistedTopics(null)
+      expect(localStorage.getItem("push:last_topics")).toBeNull()
+
+      localStorage.setItem("push:last_topics", JSON.stringify(["legacy"]))
+      mod.setPersistedTopics(null)
+      expect(localStorage.getItem("push:last_topics")).toBeNull()
+    })
+
+    it("removes unusable per-user payloads and malformed raw values", () => {
+      vi.spyOn(storageMod.profileCacheStorage, "get").mockReturnValue(null)
+
+      localStorage.setItem("push:last_topics", JSON.stringify({ perUser: { invalid: "nope" } }))
+      mod.setPersistedTopics(null)
+      expect(localStorage.getItem("push:last_topics")).toBeNull()
+
+      localStorage.setItem("push:last_topics", "{")
+      mod.setPersistedTopics(null)
+      expect(localStorage.getItem("push:last_topics")).toBeNull()
+
+      localStorage.clear()
+      mod.setPersistedTopics(null, { userId: "missing" })
+      expect(localStorage.getItem("push:last_topics")).toBeNull()
+
+      localStorage.setItem("push:last_topics", JSON.stringify(["legacy"]))
+      mod.setPersistedTopics(null, { userId: "missing" })
+      expect(localStorage.getItem("push:last_topics")).toBeNull()
+
+      localStorage.setItem("push:last_topics", JSON.stringify(42))
+      mod.setPersistedTopics(null, { userId: "missing" })
+      expect(localStorage.getItem("push:last_topics")).toBeNull()
+
+      localStorage.setItem("push:last_topics", JSON.stringify({ perUser: { invalid: "nope" } }))
+      mod.setPersistedTopics(null, { userId: "missing" })
+      expect(localStorage.getItem("push:last_topics")).toBeNull()
+
+      localStorage.setItem("push:last_topics", "{")
+      mod.setPersistedTopics(null, { userId: "missing" })
+      expect(localStorage.getItem("push:last_topics")).toBeNull()
+    })
+
+    it("removes only the selected user while preserving shared and other topics", () => {
+      localStorage.setItem(
+        "push:last_topics",
+        JSON.stringify({
+          version: 1,
+          shared: ["topicB", "topicA", "topicA"],
+          perUser: {
+            keep: ["b", "a"],
+            remove: ["private"],
+            invalid: "not-an-array",
+          },
+        })
+      )
+
+      mod.setPersistedTopics(null, { userId: "remove" })
+
+      expect(JSON.parse(localStorage.getItem("push:last_topics") ?? "null")).toEqual({
+        version: 2,
+        perUser: { keep: ["a", "b"] },
+        shared: ["topicA", "topicB"],
+      })
+    })
+
+    it("merges versioned, legacy, malformed, and shared topic payloads", () => {
+      localStorage.setItem(
+        "push:last_topics",
+        JSON.stringify({
+          perUser: { keep: ["b"], selected: ["old"] },
+          topics: ["legacyB", "legacyA"],
+        })
+      )
+
+      mod.setPersistedTopics(["z", "z", " y "], { userId: "selected" })
+      expect(JSON.parse(localStorage.getItem("push:last_topics") ?? "null")).toEqual({
+        version: 2,
+        perUser: { keep: ["b"], selected: ["y", "z"] },
+        shared: ["legacyA", "legacyB"],
+      })
+
+      localStorage.setItem("push:last_topics", JSON.stringify(["oldShared"]))
+      mod.setPersistedTopics(["new"], { userId: "selected" })
+      expect(JSON.parse(localStorage.getItem("push:last_topics") ?? "null")).toEqual({
+        version: 2,
+        perUser: { selected: ["new"] },
+        shared: ["oldShared"],
+      })
+
+      localStorage.setItem("push:last_topics", "{")
+      mod.setPersistedTopics(["after"], { userId: "selected" })
+      expect(JSON.parse(localStorage.getItem("push:last_topics") ?? "null")).toEqual({
+        version: 2,
+        perUser: { selected: ["after"] },
+      })
+
+      localStorage.setItem("push:last_topics", JSON.stringify({ shared: ["explicit"] }))
+      mod.setPersistedTopics(["next"], { userId: "selected" })
+      expect(JSON.parse(localStorage.getItem("push:last_topics") ?? "null")).toEqual({
+        version: 2,
+        perUser: { selected: ["next"] },
+        shared: ["explicit"],
+      })
+
+      localStorage.setItem("push:last_topics", JSON.stringify({ perUser: { keep: ["b"] } }))
+      mod.setPersistedTopics(["shared"], { userId: null })
+      expect(JSON.parse(localStorage.getItem("push:last_topics") ?? "null")).toEqual({
+        version: 2,
+        perUser: { keep: ["b"] },
+        shared: ["shared"],
+      })
+
+      localStorage.setItem("push:last_topics", "{")
+      mod.setPersistedTopics(["after-malformed"], { userId: null })
+      expect(JSON.parse(localStorage.getItem("push:last_topics") ?? "null")).toEqual({
+        version: 2,
+        shared: ["after-malformed"],
+      })
+    })
+
+    it("handles parser failures while normalizing stored payloads", () => {
+      const withSecondParseFailure = (callback: () => void) => {
+        const originalParse = JSON.parse
+        let parseCount = 0
+        const parseSpy = vi.spyOn(JSON, "parse").mockImplementation(((raw: string) => {
+          parseCount += 1
+          if (parseCount === 2) {
+            throw new SyntaxError("simulated parser failure")
+          }
+          return originalParse(raw)
+        }) as typeof JSON.parse)
+
+        try {
+          callback()
+        } finally {
+          parseSpy.mockRestore()
+        }
+      }
+
+      localStorage.setItem("push:last_topics", JSON.stringify({ perUser: { keep: ["a"] } }))
+      withSecondParseFailure(() => mod.setPersistedTopics(null, { userId: null }))
+      expect(localStorage.getItem("push:last_topics")).toBeNull()
+
+      localStorage.setItem("push:last_topics", JSON.stringify({ perUser: { keep: ["a"] } }))
+      withSecondParseFailure(() => mod.setPersistedTopics(null, { userId: "remove" }))
+      expect(localStorage.getItem("push:last_topics")).toBeNull()
+
+      localStorage.setItem("push:last_topics", JSON.stringify({ perUser: { keep: ["a"] } }))
+      withSecondParseFailure(() => mod.setPersistedTopics(["selected"], { userId: "selected" }))
+      expect(JSON.parse(localStorage.getItem("push:last_topics") ?? "null")).toEqual({
+        version: 2,
+        perUser: { selected: ["selected"] },
+      })
+
+      localStorage.setItem("push:last_topics", JSON.stringify({ perUser: { keep: ["a"] } }))
+      withSecondParseFailure(() => mod.setPersistedTopics(["shared"], { userId: null }))
+      expect(JSON.parse(localStorage.getItem("push:last_topics") ?? "null")).toEqual({
+        version: 2,
+        shared: ["shared"],
+      })
+    })
+
+    it("swallows a storage write failure when persisting topics", () => {
+      const setSpy = vi.spyOn(storageMod.StorageItem.prototype, "set").mockImplementation(() => {
+        throw new Error("storage quota exceeded")
+      })
+
+      try {
+        expect(() => mod.setPersistedTopics(["topic"], { userId: "user-1" })).not.toThrow()
+        expect(setSpy).toHaveBeenCalled()
+      } finally {
+        setSpy.mockRestore()
+      }
+    })
   })
 
   describe("Consent and Browser recovery", () => {
@@ -127,6 +337,93 @@ describe("subscribe", () => {
 
       await expect(mod.recoverPushConsentFromBrowser()).resolves.toBe(true)
       expect(mod.hasPushConsent()).toBe(true)
+    })
+
+    it("keeps recovered consent when resync permanently fails", async () => {
+      const mockSubscription = {
+        toJSON: () => ({ endpoint: "https://push.example.com/recovered-failure" }),
+      }
+      const mockReg = {
+        pushManager: {
+          getSubscription: vi.fn().mockResolvedValue(mockSubscription),
+        },
+      }
+      mockSWContainer.getRegistration.mockResolvedValue(mockReg)
+      vi.mocked(saveSubscription).mockRejectedValue(new Error("server unavailable"))
+      vi.stubGlobal("Notification", { permission: "granted" })
+
+      const promise = mod.recoverPushConsentFromBrowser()
+      await vi.runAllTimersAsync()
+
+      await expect(promise).resolves.toBe(true)
+      expect(mod.hasPushConsent()).toBe(true)
+      expect(saveSubscription).toHaveBeenCalledTimes(3)
+    })
+
+    it("returns false until browser recovery prerequisites are satisfied", async () => {
+      vi.stubGlobal("Notification", { permission: "granted" })
+      mod.setPushConsent(true)
+      await expect(mod.recoverPushConsentFromBrowser()).resolves.toBe(false)
+
+      mod.setPushConsent(false)
+      vi.stubGlobal("Notification", { permission: "default" })
+      await expect(mod.recoverPushConsentFromBrowser()).resolves.toBe(false)
+
+      vi.stubGlobal("Notification", { permission: "granted" })
+      mockSWContainer.getRegistration.mockResolvedValue(null)
+      await expect(mod.recoverPushConsentFromBrowser()).resolves.toBe(false)
+
+      const emptyReg = {
+        pushManager: { getSubscription: vi.fn().mockResolvedValue(null) },
+      }
+      mockSWContainer.getRegistration.mockResolvedValue(emptyReg)
+      await expect(mod.recoverPushConsentFromBrowser()).resolves.toBe(false)
+
+      vi.stubGlobal("navigator", {})
+      await expect(mod.recoverPushConsentFromBrowser()).resolves.toBe(false)
+    })
+
+    it("skips a concurrent recovery sync while another persistence is active", async () => {
+      let releaseSave!: () => void
+      let markSaveStarted!: () => void
+      const saveStarted = new Promise<void>((resolve) => {
+        markSaveStarted = resolve
+      })
+      const saveRelease = new Promise<void>((resolve) => {
+        releaseSave = resolve
+      })
+      vi.mocked(saveSubscription).mockImplementation(async () => {
+        markSaveStarted()
+        await saveRelease
+        return {} as any
+      })
+
+      const mockSub = {
+        endpoint: "https://push.example.com/concurrent",
+        options: { applicationServerKey: mod.urlBase64ToUint8Array("concurrent-key").buffer },
+        toJSON: () => ({ endpoint: "https://push.example.com/concurrent" }),
+      }
+      const mockReg = {
+        pushManager: {
+          getSubscription: vi.fn().mockResolvedValueOnce(null).mockResolvedValue(mockSub),
+          subscribe: vi.fn().mockResolvedValue(mockSub),
+        },
+      }
+      mockSWContainer.getRegistration.mockResolvedValue(mockReg)
+      vi.stubGlobal("Notification", { permission: "granted" })
+
+      const firstSync = mod.ensurePushSubscription({
+        registration: mockReg,
+        vapidPublicKey: "concurrent-key",
+        requestPermission: false,
+      })
+      await saveStarted
+
+      await expect(mod.recoverPushConsentFromBrowser()).resolves.toBe(true)
+      expect(saveSubscription).toHaveBeenCalledOnce()
+
+      releaseSave()
+      await expect(firstSync).resolves.toBe(mockSub)
     })
 
     it("returns false when browser subscription lookup throws during recovery", async () => {
@@ -261,6 +558,7 @@ describe("subscribe", () => {
       }
       mockSWContainer.getRegistration.mockResolvedValue(mockReg)
       vi.stubEnv("VITE_VAPID_PUBLIC_KEY", "abc")
+      vi.mocked(saveSubscription).mockResolvedValue({ topics: ["topicB", "topicA"] } as any)
 
       const sub = await mod.ensurePushSubscription({ requestPermission: true })
       expect(sub).toBe(mockSub)
@@ -291,6 +589,36 @@ describe("subscribe", () => {
 
       await mod.ensurePushSubscription({ requestPermission: true })
       expect(unsubscribeSpy).toHaveBeenCalled()
+    })
+
+    it("replaces an existing subscription when its application key is missing", async () => {
+      const unsubscribeSpy = vi.fn().mockResolvedValue(true)
+      const staleSub = {
+        endpoint: "https://push.example.com/missing-key",
+        unsubscribe: unsubscribeSpy,
+        toJSON: () => ({ endpoint: "https://push.example.com/missing-key" }),
+      }
+      const freshSub = {
+        endpoint: "https://push.example.com/fresh-key",
+        options: { applicationServerKey: mod.urlBase64ToUint8Array("ZnJlc2g").buffer },
+        toJSON: () => ({ endpoint: "https://push.example.com/fresh-key" }),
+      }
+      const mockReg = {
+        pushManager: {
+          getSubscription: vi.fn().mockResolvedValue(staleSub),
+          subscribe: vi.fn().mockResolvedValue(freshSub),
+        },
+      }
+      vi.stubGlobal("Notification", { permission: "granted" })
+
+      await expect(
+        mod.ensurePushSubscription({
+          registration: mockReg,
+          vapidPublicKey: "ZnJlc2g",
+          requestPermission: false,
+        })
+      ).resolves.toBe(freshSub)
+      expect(unsubscribeSpy).toHaveBeenCalledOnce()
     })
 
     it("returns null when the user declines the default permission prompt", async () => {
@@ -393,7 +721,10 @@ describe("subscribe", () => {
     })
 
     it("does not retry persistence after a 429 response", async () => {
-      vi.mocked(saveSubscription).mockRejectedValue({ response: { status: 429 } })
+      vi.mocked(saveSubscription).mockRejectedValue({
+        isAxiosError: true,
+        response: { status: 429 },
+      })
       const mockSub = {
         endpoint: "https://push.example.com/rate-limited",
         options: { applicationServerKey: mod.urlBase64ToUint8Array("rate-key").buffer },
@@ -517,6 +848,11 @@ describe("subscribe", () => {
 
       await expect(mod.unsubscribePush({ registration: mockReg })).resolves.toBe(true)
     })
+
+    it("clears local state and returns false when registration cannot be resolved", async () => {
+      mockSWContainer.getRegistration.mockResolvedValue(null)
+      await expect(mod.unsubscribePush()).resolves.toBe(false)
+    })
   })
 
   describe("softSyncPushSubscription", () => {
@@ -548,7 +884,7 @@ describe("subscribe", () => {
 
   describe("getExistingPushSubscription", () => {
     it("returns null if not supported", async () => {
-      vi.stubGlobal("PushManager", undefined)
+      vi.stubGlobal("navigator", {})
       expect(await mod.getExistingPushSubscription()).toBeNull()
     })
 
@@ -572,6 +908,11 @@ describe("subscribe", () => {
       }
 
       await expect(mod.getExistingPushSubscription(mockReg)).resolves.toBe(mockSub)
+    })
+
+    it("returns null when service worker registration cannot be resolved", async () => {
+      mockSWContainer.getRegistration.mockResolvedValue(null)
+      await expect(mod.getExistingPushSubscription()).resolves.toBeNull()
     })
   })
 
@@ -701,7 +1042,7 @@ describe("subscribe", () => {
     it("handles 409 Conflict from saveSubscription as success (no throw)", async () => {
       const { saveSubscription } = await import("@/api/notifications")
 
-      const conflictError = new Error("409 Conflict")
+      const conflictError = { response: { status: 409 } }
       vi.mocked(saveSubscription).mockRejectedValue(conflictError)
 
       const mockSub = {
@@ -724,6 +1065,58 @@ describe("subscribe", () => {
         mod.ensurePushSubscription({ requestPermission: false, topics: ["news"] })
       ).resolves.toBeDefined()
     })
+
+    it("handles an Axios-marked 409 conflict as success", async () => {
+      vi.mocked(saveSubscription).mockRejectedValue({
+        isAxiosError: true,
+        response: { status: 409 },
+      })
+      const mockSub = {
+        endpoint: "https://push.example.com/axios-conflict",
+        options: { applicationServerKey: mod.urlBase64ToUint8Array("YXhpb3g").buffer },
+        toJSON: () => ({ endpoint: "https://push.example.com/axios-conflict" }),
+      }
+      const mockReg = {
+        pushManager: {
+          getSubscription: vi.fn().mockResolvedValue(null),
+          subscribe: vi.fn().mockResolvedValue(mockSub),
+        },
+      }
+      vi.stubGlobal("Notification", { permission: "granted" })
+
+      await expect(
+        mod.ensurePushSubscription({
+          registration: mockReg,
+          vapidPublicKey: "YXhpb3g",
+          requestPermission: false,
+        })
+      ).resolves.toBe(mockSub)
+    })
+
+    it("uses requested topics when the server response is null", async () => {
+      vi.mocked(saveSubscription).mockResolvedValue(null as any)
+      const mockSub = {
+        endpoint: "https://push.example.com/null-response",
+        options: { applicationServerKey: mod.urlBase64ToUint8Array("bnVsbA").buffer },
+        toJSON: () => ({ endpoint: "https://push.example.com/null-response" }),
+      }
+      const mockReg = {
+        pushManager: {
+          getSubscription: vi.fn().mockResolvedValue(null),
+          subscribe: vi.fn().mockResolvedValue(mockSub),
+        },
+      }
+      vi.stubGlobal("Notification", { permission: "granted" })
+
+      await expect(
+        mod.ensurePushSubscription({
+          registration: mockReg,
+          vapidPublicKey: "bnVsbA",
+          topics: ["topic"],
+          requestPermission: false,
+        })
+      ).resolves.toBe(mockSub)
+    })
   })
 
   describe("Browser missing Push API → graceful null", () => {
@@ -742,7 +1135,7 @@ describe("subscribe", () => {
     })
 
     it("returns null from softSyncPushSubscription when PushManager is absent", async () => {
-      vi.stubGlobal("PushManager", undefined)
+      vi.stubGlobal("navigator", {})
 
       const result = await mod.softSyncPushSubscription()
       expect(result).toBeNull()

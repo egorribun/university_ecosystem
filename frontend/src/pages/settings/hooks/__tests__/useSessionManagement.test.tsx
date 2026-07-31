@@ -83,6 +83,7 @@ const renderSessionHook = (options: Partial<Parameters<typeof useSessionManageme
 
 beforeEach(() => {
   vi.clearAllMocks()
+  mocks.user = { id: "user-1" }
   mocks.fetchSessions.mockResolvedValue([])
   mocks.deleteSession.mockReset()
   mocks.postRevokeAll.mockReset()
@@ -120,6 +121,31 @@ describe("useSessionManagement — query and sorting", () => {
       "older",
       "revoked",
     ])
+  })
+
+  it("handles a session with no timestamps and a non-array response", async () => {
+    const untimed = baseSession({ id: "untimed", created_at: null, last_seen_at: null } as never)
+    mocks.fetchSessions.mockResolvedValueOnce([untimed, baseSession({ id: "timed" })])
+    const { result } = renderSessionHook()
+
+    await waitFor(() => expect(result.current.sessions).toHaveLength(2))
+    expect(result.current.sortedSessions.map((session) => session.id)).toEqual(["timed", "untimed"])
+
+    mocks.fetchSessions.mockResolvedValueOnce({ items: [] } as never)
+    const rerendered = renderSessionHook()
+    await waitFor(() => expect(rerendered.result.current.sessions).toEqual([]))
+  })
+
+  it("uses the me query key and safe formatting fallback when the user is absent", () => {
+    mocks.user = null as never
+    mocks.formatDate.mockReturnValueOnce("")
+    const { result } = renderSessionHook({ tabActive: true })
+
+    expect(result.current.sessions).toEqual([])
+    expect(result.current.formatSessionTimestamp("2026-07-30T00:00:00Z")).toBe(
+      "settings:sessions.lastSeen.never"
+    )
+    expect(mocks.fetchSessions).not.toHaveBeenCalled()
   })
 
   it("exposes query error state when the sessions request fails", async () => {
@@ -210,6 +236,29 @@ describe("useSessionManagement — single-session revoke", () => {
       await result.current.handleRevokeSession("session-1")
     })
     expect(setSnackbar).toHaveBeenLastCalledWith({ text: "offline", severity: "error" })
+
+    mocks.deleteSession.mockRejectedValueOnce({ reason: "unknown" })
+    await act(async () => {
+      await result.current.handleRevokeSession("session-1")
+    })
+    expect(setSnackbar).toHaveBeenLastCalledWith({
+      text: "settings:sessions.snackbar.failed",
+      severity: "error",
+    })
+  })
+
+  it("does not reopen step-up when a retry is explicitly marked as resumed", async () => {
+    const setSnackbar = vi.fn()
+    const error = new AxiosError("step-up")
+    error.response = { status: 428 } as AxiosError["response"]
+    mocks.deleteSession.mockRejectedValue(error)
+    const { result } = renderSessionHook({ setSnackbar })
+
+    await act(async () => {
+      await result.current.handleRevokeSession("session-1", { skipStepUp: true })
+    })
+
+    expect(setSnackbar).toHaveBeenCalledWith({ text: "step-up", severity: "error" })
   })
 })
 
@@ -247,6 +296,29 @@ describe("useSessionManagement — revoke all and formatting", () => {
       await retry?.()
     })
     expect(mocks.postRevokeAll).toHaveBeenCalledTimes(2)
+  })
+
+  it("uses the zero count fallback and does not reopen a resumed step-up", async () => {
+    const setSnackbar = vi.fn()
+    const error = new AxiosError("step-up")
+    error.response = { status: 428 } as AxiosError["response"]
+    mocks.postRevokeAll.mockResolvedValueOnce({ data: {} }).mockRejectedValueOnce(error)
+    const openStepUpFor = vi.fn()
+    const { result } = renderSessionHook({ setSnackbar, openStepUpFor })
+
+    await act(async () => {
+      await result.current.handleRevokeAllSessions()
+    })
+    expect(setSnackbar).toHaveBeenCalledWith({
+      text: "settings:sessions.snackbar.revokedAll:0",
+      severity: "success",
+    })
+
+    await act(async () => {
+      await result.current.handleRevokeAllSessions({ skipStepUp: true })
+    })
+    expect(openStepUpFor).not.toHaveBeenCalled()
+    expect(setSnackbar).toHaveBeenLastCalledWith({ text: "step-up", severity: "error" })
   })
 
   it("reports revoke-all failures and formats missing/invalid timestamps safely", async () => {

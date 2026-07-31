@@ -131,6 +131,6 @@ func TestRunServer_Error(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	router := gin.New()
 	assert.NotPanics(t, func() {
-		runServer(cfg, router, logger)
+		require.Error(t, runServer(cfg, router, logger))
 	})
 }

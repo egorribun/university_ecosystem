@@ -2,12 +2,18 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
 import pytest
 
+from app.core.exceptions.domain import (
+    BusinessRuleViolation,
+    EntityNotFound,
+    PermissionDenied,
+)
 from app.schemas import schemas
 from app.services.user.compliance_service import UserComplianceService
 
@@ -132,3 +138,123 @@ async def test_create_user_accepts_valid_invite_and_runs_hibp_check():
 
     repo.get_invite_code.assert_awaited_once_with("INVITE")
     hibp.assert_awaited_once_with("Password-123!")
+
+
+@pytest.mark.asyncio
+async def test_export_user_data_serializes_all_sections_and_audits_access():
+    repo = _repo()
+    user_id = uuid4()
+    now = datetime.now(UTC)
+    session_id = uuid4()
+    notification_id = uuid4()
+    challenge_id = uuid4()
+    enrollment_id = uuid4()
+    access_log_id = uuid4()
+    db_user = SimpleNamespace(
+        model_dump=lambda: {"id": user_id, "email": "student@example.com"},
+        mfa_challenges=[
+            SimpleNamespace(
+                id=challenge_id,
+                challenge_type="totp",
+                expires_at=now,
+                consumed_at=None,
+                created_at=now,
+            )
+        ],
+        totp_enrollments=[
+            SimpleNamespace(
+                id=enrollment_id,
+                label="phone",
+                is_active=True,
+                confirmed_at=now,
+                revoked_at=None,
+                created_at=now,
+            )
+        ],
+    )
+    repo.get.return_value = db_user
+    repo.get_user_sessions.return_value = [
+        SimpleNamespace(
+            id=session_id,
+            created_at=now,
+            expires_at=now,
+            revoked_at=None,
+            ip_address="127.0.0.1",
+            user_agent="pytest",
+            last_seen_at=now,
+            mfa_completed_at=now,
+        )
+    ]
+    repo.get_user_notifications.return_value = [
+        SimpleNamespace(
+            id=notification_id,
+            title="Notice",
+            body="Body",
+            type="info",
+            created_at=now,
+            read_at=None,
+        )
+    ]
+    repo.get_user_access_logs.return_value = [
+        SimpleNamespace(
+            id=access_log_id,
+            resource_type="profile",
+            resource_id=str(user_id),
+            action="read",
+            created_at=now,
+            ip_address="127.0.0.1",
+            user_agent="pytest",
+            context={"source": "test"},
+        )
+    ]
+    service = UserComplianceService(_Uow(repo), audit=MagicMock())
+
+    with patch(
+        "app.services.user.compliance_service.log_data_access", new=AsyncMock()
+    ) as log:
+        result = await service.export_user_data(SimpleNamespace(id=user_id), _request())
+
+    assert result.profile["email"] == "student@example.com"
+    assert result.sessions[0]["id"] == session_id
+    assert result.notifications[0]["id"] == notification_id
+    assert result.mfa_challenges[0]["type"] == "totp"
+    assert result.mfa_enrollments[0]["label"] == "phone"
+    assert result.access_logs[0]["resource_type"] == "profile"
+    repo.get_user_access_logs.assert_awaited_once_with(user_id, limit=2000)
+    log.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_admin_delete_user_rejects_non_admin():
+    repo = _repo()
+    service = UserComplianceService(_Uow(repo), audit=MagicMock())
+
+    with pytest.raises(PermissionDenied):
+        await service.admin_delete_user(
+            uuid4(), _request(), SimpleNamespace(id=uuid4(), role="student")
+        )
+
+
+@pytest.mark.asyncio
+async def test_admin_delete_user_rejects_missing_target():
+    repo = _repo()
+    repo._get_orm.return_value = None
+    service = UserComplianceService(_Uow(repo), audit=MagicMock())
+
+    with pytest.raises(EntityNotFound):
+        await service.admin_delete_user(
+            uuid4(), _request(), SimpleNamespace(id=uuid4(), role="admin")
+        )
+
+
+@pytest.mark.asyncio
+async def test_admin_delete_user_rejects_self_delete():
+    repo = _repo()
+    user_id = uuid4()
+    repo._get_orm.return_value = SimpleNamespace(id=user_id)
+    service = UserComplianceService(_Uow(repo), audit=MagicMock())
+
+    with pytest.raises(BusinessRuleViolation):
+        await service.admin_delete_user(
+            user_id, _request(), SimpleNamespace(id=user_id, role="admin")
+        )

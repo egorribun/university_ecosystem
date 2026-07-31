@@ -60,11 +60,13 @@ const wrapper = ({ children }: { children: ReactNode }) => {
 
 beforeEach(() => {
   vi.clearAllMocks()
-  mocks.useAuth.mockReturnValue({ isAuth: true })
+  mocks.useAuth.mockReturnValue({ isAuth: true, user: undefined })
   mocks.useChatWebSocket.mockReturnValue({
     isConnected: true,
     sendTyping: vi.fn(),
     sendRead: vi.fn(),
+    sendJoin: vi.fn(),
+    sendLeave: vi.fn(),
     getTypingUsersForChat: vi.fn().mockReturnValue([]),
   })
   mocks.chatApi.getChats.mockResolvedValue({
@@ -104,6 +106,8 @@ describe("MessengerContext", () => {
         isConnected: expect.any(Boolean),
         sendTyping: expect.any(Function),
         sendRead: expect.any(Function),
+        sendJoin: expect.any(Function),
+        sendLeave: expect.any(Function),
         getTypingUsersForChat: expect.any(Function),
       })
     })
@@ -183,6 +187,8 @@ describe("MessengerContext", () => {
         isConnected: false,
         sendTyping: vi.fn(),
         sendRead: vi.fn(),
+        sendJoin: vi.fn(),
+        sendLeave: vi.fn(),
         getTypingUsersForChat: vi.fn(() => []),
       })
 
@@ -196,6 +202,8 @@ describe("MessengerContext", () => {
         isConnected: true,
         sendTyping: sendTypingSpy,
         sendRead: vi.fn(),
+        sendJoin: vi.fn(),
+        sendLeave: vi.fn(),
         getTypingUsersForChat: vi.fn(() => []),
       })
 
@@ -210,11 +218,46 @@ describe("MessengerContext", () => {
         isConnected: true,
         sendTyping: vi.fn(),
         sendRead: vi.fn(),
+        sendJoin: vi.fn(),
+        sendLeave: vi.fn(),
         getTypingUsersForChat: vi.fn(() => typing),
       })
 
       const { result } = renderHook(() => useMessenger(), { wrapper })
       expect(result.current.getTypingUsersForChat("chat-1")).toEqual(typing)
+    })
+
+    it("delegates read and room lifecycle actions", () => {
+      const sendRead = vi.fn()
+      const sendJoin = vi.fn()
+      const sendLeave = vi.fn()
+      mocks.useChatWebSocket.mockReturnValue({
+        isConnected: true,
+        sendTyping: vi.fn(),
+        sendRead,
+        sendJoin,
+        sendLeave,
+        getTypingUsersForChat: vi.fn(() => []),
+      })
+
+      const { result } = renderHook(() => useMessenger(), { wrapper })
+      result.current.sendRead("chat-1")
+      result.current.sendJoin("chat-1")
+      result.current.sendLeave("chat-1")
+
+      expect(sendRead).toHaveBeenCalledWith("chat-1")
+      expect(sendJoin).toHaveBeenCalledWith("chat-1")
+      expect(sendLeave).toHaveBeenCalledWith("chat-1")
+    })
+
+    it("passes the authenticated user id to the websocket self-echo guard", () => {
+      mocks.useAuth.mockReturnValue({ isAuth: true, user: { id: "current-user" } })
+
+      renderHook(() => useMessenger(), { wrapper })
+
+      expect(mocks.useChatWebSocket).toHaveBeenCalledWith(
+        expect.objectContaining({ enabled: true, currentUserId: "current-user" })
+      )
     })
   })
 
@@ -224,6 +267,75 @@ describe("MessengerContext", () => {
 
       const callArgs = mocks.useChatWebSocket.mock.calls[0]![0]
       expect(callArgs.onPresenceUpdate).toBeInstanceOf(Function)
+    })
+
+    it("rejects malformed payloads and syncs valid presence to context and chat cache", async () => {
+      mocks.chatApi.getChats.mockResolvedValue({
+        items: [
+          {
+            id: "chat-1",
+            participants: [{ id: "peer" }],
+            unread_count: 0,
+          },
+          {
+            id: "chat-2",
+            participants: [{ id: "other" }],
+            unread_count: 0,
+            presence: { existing: { active: false, last_seen_at: null } },
+          },
+        ],
+        has_more: false,
+        next_cursor: null,
+      })
+
+      const { result } = renderHook(() => useMessenger(), { wrapper })
+      await waitFor(() =>
+        expect(result.current.presenceMap.existing).toEqual({ active: false, last_seen_at: null })
+      )
+
+      const callArgs = mocks.useChatWebSocket.mock.calls[0]![0]
+      const onPresenceUpdate = callArgs.onPresenceUpdate as (
+        userId: unknown,
+        active: unknown,
+        lastSeen: unknown
+      ) => void
+
+      act(() => {
+        onPresenceUpdate("", true, null)
+        onPresenceUpdate("u".repeat(40), true, null)
+        onPresenceUpdate("peer", "yes", null)
+        onPresenceUpdate("peer", true, 42)
+        onPresenceUpdate("peer", true, "x".repeat(50))
+      })
+      expect(result.current.presenceMap.peer).toBeUndefined()
+
+      act(() => {
+        onPresenceUpdate("peer", true, "2026-07-31T10:00:00Z")
+      })
+
+      await waitFor(() =>
+        expect(result.current.presenceMap.peer).toEqual({
+          active: true,
+          last_seen_at: "2026-07-31T10:00:00Z",
+        })
+      )
+      const cached = currentQueryClient!.getQueryData<any>(["chats"])
+      expect(cached.items[0].presence.peer).toEqual({
+        active: true,
+        last_seen_at: "2026-07-31T10:00:00Z",
+      })
+      expect(cached.items[1].presence.existing).toEqual({ active: false, last_seen_at: null })
+
+      currentQueryClient!.removeQueries({ queryKey: ["chats"] })
+      act(() => {
+        onPresenceUpdate("peer-2", false, null)
+      })
+      await waitFor(() =>
+        expect(result.current.presenceMap["peer-2"]).toEqual({
+          active: false,
+          last_seen_at: null,
+        })
+      )
     })
   })
 
@@ -277,6 +389,63 @@ describe("MessengerContext", () => {
       expect(updatedList.items[0].read_receipts).toContainEqual({
         user_id: userId,
         last_read_at: readAt,
+      })
+    })
+
+    it("updates existing receipts, preserves unrelated chats, and ignores blank read times", () => {
+      renderHook(() => useMessenger(), { wrapper })
+      const queryClient = currentQueryClient!
+      const callArgs = mocks.useChatWebSocket.mock.calls[0]![0]
+
+      const existingReceipt = { user_id: "user-2", last_read_at: "old" }
+      const initialChat = {
+        id: "chat-1",
+        participants: [],
+        unread_count: 0,
+        read_receipts: [existingReceipt, { user_id: "user-3", last_read_at: "keep" }],
+      }
+      const unrelatedChat = { id: "chat-2", participants: [], unread_count: 0 }
+      const chatWithoutReceipts = { id: "chat-3", participants: [], unread_count: 0 }
+      queryClient.setQueryData(["chats", "chat-1"], initialChat)
+      queryClient.setQueryData(["chats", "chat-3"], chatWithoutReceipts)
+      queryClient.setQueryData(["chats"], {
+        items: [initialChat, unrelatedChat, chatWithoutReceipts],
+        has_more: false,
+        next_cursor: null,
+      })
+
+      act(() => {
+        callArgs.onRead("chat-1", "user-2", "new")
+      })
+
+      expect(queryClient.getQueryData<any>(["chats", "chat-1"]).read_receipts).toContainEqual({
+        user_id: "user-2",
+        last_read_at: "new",
+      })
+      expect(queryClient.getQueryData<any>(["chats"]).items[1]).toEqual(unrelatedChat)
+
+      act(() => {
+        callArgs.onRead("chat-3", "user-2", "new")
+      })
+      expect(queryClient.getQueryData<any>(["chats", "chat-3"]).read_receipts).toEqual([
+        { user_id: "user-2", last_read_at: "new" },
+      ])
+
+      act(() => {
+        callArgs.onRead("chat-1", "user-2", "")
+      })
+      expect(queryClient.getQueryData<any>(["chats", "chat-1"]).read_receipts).toContainEqual({
+        user_id: "user-2",
+        last_read_at: "new",
+      })
+
+      act(() => {
+        callArgs.onRead("chat-without-cache", "user-2", "new")
+      })
+
+      queryClient.removeQueries({ queryKey: ["chats"] })
+      act(() => {
+        callArgs.onRead("chat-without-cache", "user-2", "newer")
       })
     })
   })

@@ -1,4 +1,4 @@
-import { render } from "@testing-library/react"
+import { act, render } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 const hoisted = vi.hoisted(() => ({ reducedMotion: false }))
@@ -9,9 +9,25 @@ import { WeatherParticles } from "@/components/map/WeatherParticles"
 
 const DRAWING_CONDITIONS = ["rain", "snow", "storm", "fog"] as const
 
+const canvasContext = {
+  clearRect: vi.fn(),
+  fillRect: vi.fn(),
+  beginPath: vi.fn(),
+  arc: vi.fn(),
+  fill: vi.fn(),
+  moveTo: vi.fn(),
+  lineTo: vi.fn(),
+  stroke: vi.fn(),
+  fillStyle: "",
+  strokeStyle: "",
+  lineWidth: 1,
+  globalAlpha: 1,
+} as unknown as CanvasRenderingContext2D
+
 describe("WeatherParticles", () => {
   beforeEach(() => {
     hoisted.reducedMotion = false
+    vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue(canvasContext)
     let n = 0
     vi.spyOn(window, "requestAnimationFrame").mockImplementation((cb) => {
       if (n++ < 2) {
@@ -78,6 +94,75 @@ describe("WeatherParticles", () => {
       expect(container.querySelector("canvas")).not.toBeNull()
     } finally {
       randomSpy.mockRestore()
+    }
+  })
+
+  it("pauses while the document is hidden and eventually renders a storm flash", () => {
+    const callbacks: FrameRequestCallback[] = []
+    vi.mocked(window.requestAnimationFrame).mockImplementation((callback) => {
+      callbacks.push(callback)
+      return callbacks.length
+    })
+    const hidden = vi.spyOn(document, "hidden", "get").mockReturnValue(false)
+    const randomSpy = vi.spyOn(Math, "random").mockReturnValue(0)
+
+    render(<WeatherParticles condition="storm" isDark={false} />)
+    expect(callbacks).toHaveLength(1)
+
+    hidden.mockReturnValue(true)
+    act(() => {
+      document.dispatchEvent(new Event("visibilitychange"))
+      callbacks.shift()?.(1000)
+    })
+
+    hidden.mockReturnValue(false)
+    act(() => {
+      document.dispatchEvent(new Event("visibilitychange"))
+      for (let index = 0; index < 80; index += 1) {
+        callbacks.shift()?.(2000 + index * 100)
+      }
+    })
+
+    expect(canvasContext.fillRect).toHaveBeenCalled()
+    randomSpy.mockRestore()
+    hidden.mockRestore()
+  })
+
+  it("returns null for an unknown defensive condition", () => {
+    const { container } = render(<WeatherParticles condition={"unknown" as never} isDark={false} />)
+    expect(container.querySelector("canvas")).toBeNull()
+  })
+
+  it("keeps the canvas shell usable when a 2D context is unavailable", () => {
+    vi.mocked(HTMLCanvasElement.prototype.getContext).mockReturnValueOnce(null)
+
+    const { container } = render(<WeatherParticles condition="rain" isDark={false} />)
+
+    expect(container.querySelector("canvas")).not.toBeNull()
+  })
+
+  it("reinitializes particles when ResizeObserver reports a resize", () => {
+    let notifyResize: (() => void) | undefined
+    class ResizeObserverStub {
+      constructor(callback: ResizeObserverCallback) {
+        notifyResize = () => callback([], this as unknown as ResizeObserver)
+      }
+
+      observe() {
+        notifyResize?.()
+      }
+
+      disconnect() {}
+    }
+
+    vi.stubGlobal("ResizeObserver", ResizeObserverStub)
+    try {
+      const { container } = render(<WeatherParticles condition="rain" isDark={false} />)
+
+      expect(container.querySelector("canvas")).not.toBeNull()
+      expect(notifyResize).toBeDefined()
+    } finally {
+      vi.unstubAllGlobals()
     }
   })
 

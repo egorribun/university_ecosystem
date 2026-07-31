@@ -243,10 +243,8 @@ api.interceptors.request.use(async (config) => {
 
   // Mutation dedup: reject duplicate in-flight requests with the same Idempotency-Key.
   if (config.method && ["post", "put", "patch", "delete"].includes(config.method)) {
-    const idempotencyKey =
-      config.headers instanceof AxiosHeaders
-        ? (config.headers.get("Idempotency-Key") as string | undefined)
-        : undefined
+    const requestHeaders = AxiosHeaders.from(config.headers ?? {})
+    const idempotencyKey = requestHeaders.get("Idempotency-Key") as string | undefined
     if (idempotencyKey && _inflightIdempotencyKeys.has(idempotencyKey)) {
       return Promise.reject(new axios.Cancel("Duplicate mutation suppressed (client-side dedup)"))
     }

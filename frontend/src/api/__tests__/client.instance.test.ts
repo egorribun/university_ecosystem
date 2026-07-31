@@ -235,6 +235,22 @@ describe("api/client — defensive response cleanup", () => {
     expect(AxiosHeaders.from(seen[1]!.headers).get("if-none-match")).toBe('"stale-tag"')
     expect(AxiosHeaders.from(seen[2]!.headers).get("if-none-match")).toBeUndefined()
   })
+
+  it("tolerates a plain headers object in the response config cleanup path", async () => {
+    api.defaults.adapter = async (config): Promise<AxiosResponse> => {
+      const responseConfig = { ...config, headers: { Accept: "application/json" } }
+      return {
+        data: { ok: true },
+        status: 200,
+        statusText: "OK",
+        headers: new AxiosHeaders(),
+        config: responseConfig as InternalAxiosRequestConfig,
+        request: {},
+      }
+    }
+
+    await expect(api.get("/events")).resolves.toMatchObject({ status: 200 })
+  })
 })
 
 describe("api/client — rate-limit bypass guard", () => {
@@ -284,5 +300,12 @@ describe("api/client — prefix normalization", () => {
     expect(seen).toHaveLength(1)
     expect(seen[0]!.url).toBe("http://localhost:8000/news")
     api.defaults.baseURL = ""
+  })
+
+  it("keeps the request alive when an absolute URL cannot be parsed", async () => {
+    const seen = installAdapter()
+
+    await expect(api.get("http://%")).resolves.toMatchObject({ status: 200 })
+    expect(seen).toHaveLength(1)
   })
 })

@@ -519,3 +519,41 @@ async def test_check_schedule_skips_duplicate_and_creates_new() -> None:
     assert result is expected
     create.assert_awaited_once()
     assert create.await_args.kwargs["dedupe_key"] == ""
+
+
+@pytest.mark.asyncio
+async def test_check_schedule_uses_scalar_one_legacy_count_fallback() -> None:
+    user = _user(group_id=uuid.uuid4())
+    response = Response()
+    lesson = SimpleNamespace(id=uuid.uuid4())
+    lessons_result = MagicMock()
+    lessons_result.scalars.return_value.all.return_value = [lesson]
+    legacy_count = MagicMock()
+    legacy_count.scalar_one_or_none.return_value = None
+    legacy_count.scalar_one.return_value = 0
+    expected = object()
+    message = (
+        "Title",
+        "Body",
+        "tag",
+        {"kind": "schedule"},
+        {"en": "Title"},
+        {"en": "Body"},
+        "dedupe",
+    )
+    db = AsyncMock()
+    db.execute.side_effect = [lessons_result, legacy_count]
+
+    with (
+        patch.object(api, "resolve_locale", return_value="en"),
+        patch.object(api, "build_schedule_reminder_message", return_value=message),
+        patch.object(api, "create_notifications_for_users", AsyncMock()) as create,
+        patch.object(api, "translate", return_value="Open schedule"),
+        patch.object(api, "list_notifications", AsyncMock(return_value=expected)),
+    ):
+        result = await api.check_schedule_and_generate(
+            _request(), response, db=db, user=user, lookahead_minutes=15
+        )
+
+    assert result is expected
+    create.assert_awaited_once()

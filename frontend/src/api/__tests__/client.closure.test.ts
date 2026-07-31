@@ -88,6 +88,21 @@ describe("api/client — LHCI safe adapter", () => {
 
     expect(response.data.items[0]).toMatchObject({ id: "chat-1", participants: [] })
   })
+
+  it("resolves both relative and absolute paths before applying the safe fallback", async () => {
+    const { default: lhciApi } = await import("@/api/client")
+
+    ;(window as Window & { __E2E_NETWORK_API_MOCKS__?: boolean }).__E2E_NETWORK_API_MOCKS__ = true
+
+    await expect(lhciApi.get("/other")).resolves.toMatchObject({
+      status: 200,
+      data: { items: [] },
+    })
+    await expect(lhciApi.get("https://example.test/other")).resolves.toMatchObject({
+      status: 200,
+      data: { items: [] },
+    })
+  })
 })
 
 describe("api/client — BroadcastChannel idempotency coordination", () => {
@@ -191,5 +206,60 @@ describe("api/client — abort-aware 429 handling", () => {
 
     expect(result).toMatchObject({ response: { status: 429 } })
     expect(adapter).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe("api/client — SSR request branches", () => {
+  beforeEach(() => {
+    vi.resetModules()
+    vi.stubGlobal("window", undefined)
+    vi.stubGlobal(
+      "__ssrCookieGetter__",
+      vi.fn(() => "access_token_v2=server-token")
+    )
+    vi.stubEnv("VITE_BACKEND_ORIGIN", "")
+  })
+
+  it("forwards the incoming cookie and uses the SSR fallback base configuration", async () => {
+    const { default: ssrApi } = await import("@/api/client")
+    const seen: InternalAxiosRequestConfig[] = []
+    ssrApi.defaults.adapter = async (config): Promise<AxiosResponse> => {
+      seen.push(config)
+      return {
+        config,
+        data: { ok: true },
+        status: 200,
+        statusText: "OK",
+        headers: new AxiosHeaders(),
+        request: {},
+      }
+    }
+
+    await ssrApi.get("/news")
+
+    expect(AxiosHeaders.from(seen[0]!.headers).get("Cookie")).toBe("access_token_v2=server-token")
+  })
+
+  it("does not add an empty SSR cookie header", async () => {
+    const cookieGetter = vi.fn(() => "")
+    vi.stubGlobal("__ssrCookieGetter__", cookieGetter)
+    const { default: ssrApi } = await import("@/api/client")
+    const seen: InternalAxiosRequestConfig[] = []
+    ssrApi.defaults.adapter = async (config): Promise<AxiosResponse> => {
+      seen.push(config)
+      return {
+        config,
+        data: { ok: true },
+        status: 200,
+        statusText: "OK",
+        headers: new AxiosHeaders(),
+        request: {},
+      }
+    }
+
+    await ssrApi.get("/news")
+
+    expect(cookieGetter).toHaveBeenCalledOnce()
+    expect(AxiosHeaders.from(seen[0]!.headers).get("Cookie")).toBeUndefined()
   })
 })

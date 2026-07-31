@@ -12,14 +12,10 @@ logger = get_logger(__name__)
 
 try:
     import qdrant_client  # noqa: F401
-    from qdrant_client import QdrantClient
-    from qdrant_client.http import models as qdrant_models
 
     HAS_QDRANT_CLIENT = True
 except (ImportError, ModuleNotFoundError):  # RZ-20-04
     HAS_QDRANT_CLIENT = False
-    QdrantClient = Any
-    qdrant_models = Any
 
 
 class NodeStatus(str, enum.Enum):

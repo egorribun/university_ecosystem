@@ -324,6 +324,7 @@ if (typeof window !== "undefined") {
   if (!("ResizeObserver" in window)) {
     Object.defineProperty(window, "ResizeObserver", {
       writable: true,
+      configurable: true,
       value: class {
         constructor() {}
         observe() {}

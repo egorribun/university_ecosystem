@@ -84,7 +84,7 @@ func TestSubscribeToNATS_KeysRotated(t *testing.T) {
 	h.jwksURL = "http://127.0.0.1:1/invalid"
 
 	assert.NotPanics(t, func() {
-		h.SubscribeToNATS(ctx)
+		require.NoError(t, h.SubscribeToNATS(ctx))
 	})
 }
 

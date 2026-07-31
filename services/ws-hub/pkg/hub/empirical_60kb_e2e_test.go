@@ -11,11 +11,11 @@ import (
 )
 
 // TestEmpirical_WS60KBPayloadRejection_E2E tests WebSocket frame size handling end-to-end:
-// 1. A 61 KB payload (> 60 KB maxIncomingBytes) triggers an error notice frame
-//    {"type":"error","code":"message_too_large","detail":"message exceeds 60 KB limit"}
-//    while keeping the WebSocket connection open and healthy.
-// 2. A frame exceeding the 64 KB transport limit (SetReadLimit) causes Gorilla WS
-//    to return a read limit error and close the connection cleanly via cleanupReadPump.
+//  1. A 61 KB payload (> 60 KB maxIncomingBytes) triggers an error notice frame
+//     {"type":"error","code":"message_too_large","detail":"message exceeds 60 KB limit"}
+//     while keeping the WebSocket connection open and healthy.
+//  2. A frame exceeding the 64 KB transport limit (SetReadLimit) causes Gorilla WS
+//     to return a read limit error and close the connection cleanly via cleanupReadPump.
 func TestEmpirical_WS60KBPayloadRejection_E2E(t *testing.T) {
 	h := setupTestHub()
 	srvConn, clientConn := newConnPair(t)
@@ -28,7 +28,9 @@ func TestEmpirical_WS60KBPayloadRejection_E2E(t *testing.T) {
 	// Also start a write pump loop to relay messages from client.Send to srvConn
 	go func() {
 		for msg := range client.Send {
-			_ = srvConn.WriteMessage(websocket.TextMessage, msg)
+			if err := srvConn.WriteMessage(websocket.TextMessage, msg); err != nil {
+				return
+			}
 		}
 	}()
 
@@ -50,7 +52,7 @@ func TestEmpirical_WS60KBPayloadRejection_E2E(t *testing.T) {
 	require.NoError(t, err)
 
 	// Expect to receive message_too_large error frame on clientConn
-	_ = clientConn.SetReadDeadline(time.Now().Add(2 * time.Second))
+	require.NoError(t, clientConn.SetReadDeadline(time.Now().Add(2*time.Second)))
 	_, respBytes, err := clientConn.ReadMessage()
 	require.NoError(t, err, "client connection must remain open and return error frame")
 
@@ -62,5 +64,5 @@ func TestEmpirical_WS60KBPayloadRejection_E2E(t *testing.T) {
 	assert.Contains(t, errResp["detail"], "60 KB")
 
 	// Verify connection is still functional by reading (deadline reset)
-	_ = clientConn.SetReadDeadline(time.Now().Add(100 * time.Millisecond))
+	require.NoError(t, clientConn.SetReadDeadline(time.Now().Add(100*time.Millisecond)))
 }

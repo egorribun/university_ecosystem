@@ -24,10 +24,12 @@ const mocks = vi.hoisted(() => ({
   deleteNews: vi.fn(),
   toggleLike: vi.fn(),
   toggleBookmark: vi.fn(),
+  interactions: {} as Record<string, unknown> | undefined,
   setNewsHeroId: vi.fn(),
   articleNavigation: {} as Record<string, unknown>,
   swipe: {} as Record<string, unknown>,
   share: {} as Record<string, unknown>,
+  relatedArticles: [] as unknown[],
   t: (key: string) => key,
 }))
 
@@ -66,7 +68,7 @@ vi.mock("@/api/hooks/news", () => ({
 
 vi.mock("@/hooks/useNewsInteraction", () => ({
   useNewsInteraction: () => ({
-    interactions: { is_liked: false, likes_count: 4, comments: [] },
+    interactions: mocks.interactions,
     toggleLike: mocks.toggleLike,
     addComment: vi.fn(),
     isCommenting: false,
@@ -86,7 +88,7 @@ vi.mock("@/hooks/useBookmarks", () => ({
   }),
 }))
 
-vi.mock("@/hooks/useRelatedNews", () => ({ useRelatedNews: () => [] }))
+vi.mock("@/hooks/useRelatedNews", () => ({ useRelatedNews: () => mocks.relatedArticles }))
 vi.mock("@/hooks/useArticleNavigation", () => ({
   useArticleNavigation: () => mocks.articleNavigation,
 }))
@@ -161,7 +163,11 @@ vi.mock("@/components/news/NewsDetailBody", () => ({
   NewsDetailBody: ({ content }: { content: string }) => <div>{`body:${content}`}</div>,
 }))
 vi.mock("@/components/news/NewsComments", () => ({ NewsComments: () => <div /> }))
-vi.mock("@/components/news/RelatedNews", () => ({ RelatedNews: () => <div /> }))
+vi.mock("@/components/news/RelatedNews", () => ({
+  RelatedNews: ({ items }: { items: unknown[] }) => (
+    <div data-testid="related-news">{items.length}</div>
+  ),
+}))
 vi.mock("@/components/news/NewsDetailNavigation", () => ({ NewsDetailNavigation: () => <div /> }))
 vi.mock("@/components/news/NewsDetailEditDialog", () => ({
   NewsDetailEditDialog: ({ open }: { open: boolean }) => (open ? <div>edit-dialog</div> : null),
@@ -202,6 +208,7 @@ describe("NewsDetail", () => {
     mocks.deleteNews.mockReset().mockResolvedValue(undefined)
     mocks.toggleLike.mockReset()
     mocks.toggleBookmark.mockReset()
+    mocks.interactions = { is_liked: false, likes_count: 4, comments: [] }
     mocks.setNewsHeroId.mockReset()
     mocks.articleNavigation = {
       prevId: null,
@@ -209,6 +216,7 @@ describe("NewsDetail", () => {
       prevTitle: null,
       nextTitle: null,
     }
+    mocks.relatedArticles = []
     mocks.swipe = {}
     mocks.share = {
       sharing: false,
@@ -263,6 +271,11 @@ describe("NewsDetail", () => {
         animationFrames.push(callback)
         return animationFrames.length
       })
+    const scrollHeight = vi
+      .spyOn(document.documentElement, "scrollHeight", "get")
+      .mockReturnValue(1000)
+    const innerHeight = vi.spyOn(window, "innerHeight", "get").mockReturnValue(100)
+    const scrollY = vi.spyOn(window, "scrollY", "get").mockReturnValue(450)
     mocks.articleNavigation = {
       prevId: "news-0",
       nextId: "news-2",
@@ -294,10 +307,31 @@ describe("NewsDetail", () => {
     window.dispatchEvent(new Event("scroll"))
     expect(requestAnimationFrame).toHaveBeenCalledOnce()
     animationFrames[0]?.(0)
-    expect(progress?.style.transform).toBe("scaleX(0)")
+    expect(progress?.style.transform).toBe("scaleX(0.5)")
 
     requestAnimationFrame.mockRestore()
     scrollTo.mockRestore()
+    scrollHeight.mockRestore()
+    innerHeight.mockRestore()
+    scrollY.mockRestore()
+  })
+
+  it("keeps the reading progress at zero when the document has no scrollable range", () => {
+    const animationFrames: FrameRequestCallback[] = []
+    const requestAnimationFrame = vi
+      .spyOn(window, "requestAnimationFrame")
+      .mockImplementation((callback) => {
+        animationFrames.push(callback)
+        return animationFrames.length
+      })
+
+    render(<NewsDetail />)
+    const progress = document.querySelector<HTMLDivElement>(".news-reading-progress")
+    window.dispatchEvent(new Event("scroll"))
+    animationFrames[0]?.(0)
+
+    expect(progress?.style.transform).toBe("scaleX(0)")
+    requestAnimationFrame.mockRestore()
   })
 
   it("localizes article content and wires interaction, edit, and delete flows", async () => {
@@ -365,6 +399,42 @@ describe("NewsDetail", () => {
     expect(handleCopyLink).toHaveBeenCalledOnce()
   })
 
+  it("renders related articles, shows copied-link state, and ignores missing neighbors", () => {
+    mocks.articleNavigation = {
+      prevId: null,
+      nextId: null,
+      prevTitle: null,
+      nextTitle: null,
+    }
+    mocks.relatedArticles = [{ id: "related-1" }]
+    const handleCopyLink = vi.fn()
+    mocks.share = {
+      sharing: false,
+      shareDialogOpen: true,
+      setShareDialogOpen: vi.fn(),
+      copyingLink: false,
+      copiedLink: true,
+      shareOptions: [],
+      handleShare: vi.fn(),
+      handleCopyLink,
+    }
+
+    render(<NewsDetail />)
+
+    expect(screen.getByTestId("related-news")).toHaveTextContent("1")
+    expect(screen.getByRole("button", { name: "news:shareDialog.copySuccess" })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: "news:shareDialog.copySuccess" }))
+    expect(handleCopyLink).toHaveBeenCalledOnce()
+
+    const swipe = mocks.swipe as {
+      onSwipeLeft: () => void
+      onSwipeRight: () => void
+    }
+    swipe.onSwipeLeft()
+    swipe.onSwipeRight()
+    expect(mocks.navigate).not.toHaveBeenCalled()
+  })
+
   it("shows a snackbar when deleting the article fails", async () => {
     mocks.deleteNews.mockRejectedValueOnce(new Error("delete failed"))
 
@@ -376,5 +446,27 @@ describe("NewsDetail", () => {
     await waitFor(() => {
       expect(screen.getByText("news:notifications.deleteError")).toBeInTheDocument()
     })
+  })
+
+  it("uses browser history after a successful delete when a previous page exists", async () => {
+    const back = vi.spyOn(window.history, "back").mockImplementation(() => undefined)
+    const historyLength = vi.spyOn(window.history, "length", "get").mockReturnValue(2)
+
+    render(<NewsDetail />)
+
+    fireEvent.click(screen.getByRole("button", { name: "delete" }))
+    fireEvent.click(screen.getByRole("button", { name: "common:buttons.delete" }))
+
+    await waitFor(() => expect(back).toHaveBeenCalledOnce())
+    historyLength.mockRestore()
+    back.mockRestore()
+  })
+
+  it("falls back to empty interaction values when the interaction snapshot is absent", () => {
+    mocks.interactions = undefined
+
+    render(<NewsDetail />)
+
+    expect(screen.getByRole("button", { name: "like" })).toBeInTheDocument()
   })
 })

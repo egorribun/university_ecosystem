@@ -1,4 +1,13 @@
-import { useState, useMemo, useCallback, useRef, useId, useEffect, type KeyboardEvent } from "react"
+import {
+  useState,
+  useMemo,
+  useCallback,
+  useRef,
+  useId,
+  useEffect,
+  useImperativeHandle,
+  type KeyboardEvent,
+} from "react"
 import { useTranslation } from "react-i18next"
 import { Search, X } from "lucide-react"
 import type { CampusBuilding, BuildingId } from "@/data/campusBuildings"
@@ -137,12 +146,9 @@ export function MapSearchBar({
     [isOpen, results, activeIdx, handleSelect]
   )
 
-  // Sync external input ref via useEffect without mutating props in render callbacks
-  useEffect(() => {
-    if (searchInputRef && "current" in searchInputRef) {
-      ;(searchInputRef as React.MutableRefObject<HTMLInputElement | null>).current = inputRef.current
-    }
-  }, [searchInputRef])
+  // useImperativeHandle runs after the input is committed, so the local DOM
+  // ref is populated even though it is nullable during render.
+  useImperativeHandle(searchInputRef, () => inputRef.current!, [])
 
   // Group results
   const buildingResults = results.filter((r) => r.type === "building")

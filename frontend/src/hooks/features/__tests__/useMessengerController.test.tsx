@@ -432,6 +432,45 @@ describe("useMessengerController", () => {
       expect(contact.avatar).toBe("") // GroupAvatar renders the glyph, no photo
       expect(contact.online).toBe(false) // no per-user presence dot for a group
     })
+
+    it("maps read receipts into seen-by counts for the current user's group message", async () => {
+      const messageAt = new Date().toISOString()
+      const receiptAt = new Date(Date.parse(messageAt) + 1_000).toISOString()
+      mocks.paramsRef.current = { chatId: "group-1" }
+      mocks.chatApi.getChats.mockResolvedValue({
+        items: [
+          {
+            id: "group-1",
+            chat_type: "group",
+            name: "Project Alpha",
+            participants: [{ id: "current-user-id" }, { id: "peer-a" }, { id: "peer-b" }],
+            read_receipts: [{ user_id: "peer-a", last_read_at: receiptAt }],
+            unread_count: 0,
+          },
+        ],
+        has_more: false,
+        next_cursor: null,
+      })
+      mocks.chatApi.getMessages.mockResolvedValue({
+        items: [
+          {
+            id: "group-msg-1",
+            chat_id: "group-1",
+            sender_id: "current-user-id",
+            content: "hello group",
+            created_at: messageAt,
+            read_status: true,
+          },
+        ],
+        has_more: false,
+        next_cursor: null,
+      })
+
+      const { result } = renderHook(() => useMessengerController(), { wrapper })
+      await waitFor(() => expect(result.current.messages[0]?.id).toBe("group-msg-1"))
+
+      expect(result.current.messages[0]).toMatchObject({ seenByTotal: 2, seenByCount: 1 })
+    })
   })
 
   describe("confirmDialog state machine", () => {
@@ -675,6 +714,46 @@ describe("useMessengerController", () => {
       expect(mocks.chatApi.deleteMessage).toHaveBeenCalledWith("chat-1", "msg-1")
     })
 
+    it("leaves non-target messages unchanged during the optimistic delete", async () => {
+      seedChatWithMessage()
+      mocks.chatApi.getMessages.mockResolvedValue({
+        items: [
+          {
+            id: "msg-1",
+            chat_id: "chat-1",
+            sender_id: "current-user-id",
+            content: "target",
+            created_at: new Date().toISOString(),
+            read_status: false,
+          },
+          {
+            id: "msg-2",
+            chat_id: "chat-1",
+            sender_id: "peer",
+            content: "keep me",
+            created_at: new Date().toISOString(),
+            read_status: false,
+          },
+        ],
+        has_more: false,
+        next_cursor: null,
+      })
+      const { result } = renderHook(() => useMessengerController(), { wrapper })
+      await waitFor(() => expect(result.current.messages).toHaveLength(2))
+
+      act(() => result.current.handleDeleteMessage("msg-1"))
+      await act(async () => {
+        result.current.confirmDialog?.onConfirm()
+      })
+
+      await waitFor(() => {
+        expect(result.current.messages.find((message) => message.id === "msg-1")?.text).toBe("")
+        expect(result.current.messages.find((message) => message.id === "msg-2")?.text).toBe(
+          "keep me"
+        )
+      })
+    })
+
     it("rolls back the tombstone on delete mutation error", async () => {
       seedChatWithMessage()
       mocks.chatApi.deleteMessage.mockRejectedValue(new Error("fail"))
@@ -772,6 +851,86 @@ describe("useMessengerController", () => {
       })
       expect(mocks.chatApi.removeReaction).toHaveBeenCalledWith("chat-1", "msg-1", "👍")
       expect(mocks.chatApi.addReaction).not.toHaveBeenCalled()
+    })
+
+    it("decrements an existing multi-count reaction without removing it", async () => {
+      seedChatWithReactions([{ emoji: "👍", count: 2, reacted_by_me: true }])
+      const { result } = renderHook(() => useMessengerController(), { wrapper })
+      await waitFor(() =>
+        expect(result.current.messages.find((m) => m.id === "msg-1")?.reactions).toEqual([
+          { emoji: "👍", count: 2, reactedByMe: true },
+        ])
+      )
+
+      await act(async () => {
+        result.current.handleToggleReaction("msg-1", "👍")
+      })
+
+      await waitFor(() => {
+        expect(result.current.messages.find((m) => m.id === "msg-1")?.reactions).toEqual([
+          { emoji: "👍", count: 1, reactedByMe: false },
+        ])
+      })
+    })
+
+    it("increments an existing reaction owned by another user", async () => {
+      seedChatWithReactions([{ emoji: "👍", count: 2, reacted_by_me: false }])
+      const { result } = renderHook(() => useMessengerController(), { wrapper })
+      await waitFor(() =>
+        expect(result.current.messages.find((m) => m.id === "msg-1")?.reactions).toEqual([
+          { emoji: "👍", count: 2, reactedByMe: false },
+        ])
+      )
+
+      await act(async () => {
+        result.current.handleToggleReaction("msg-1", "👍")
+      })
+
+      await waitFor(() => {
+        expect(result.current.messages.find((m) => m.id === "msg-1")?.reactions).toEqual([
+          { emoji: "👍", count: 3, reactedByMe: true },
+        ])
+      })
+    })
+
+    it("does not alter a non-target message during the optimistic reaction update", async () => {
+      seedChatWithReactions([])
+      mocks.chatApi.getMessages.mockResolvedValue({
+        items: [
+          {
+            id: "msg-1",
+            chat_id: "chat-1",
+            sender_id: "current-user-id",
+            content: "target",
+            created_at: new Date().toISOString(),
+            read_status: false,
+            reactions: [],
+          },
+          {
+            id: "msg-2",
+            chat_id: "chat-1",
+            sender_id: "peer",
+            content: "other",
+            created_at: new Date().toISOString(),
+            read_status: false,
+            reactions: [{ emoji: "❤️", count: 2, reacted_by_me: false }],
+          },
+        ],
+        has_more: false,
+        next_cursor: null,
+      })
+      const { result } = renderHook(() => useMessengerController(), { wrapper })
+      await waitFor(() => expect(result.current.messages).toHaveLength(2))
+
+      await act(async () => {
+        result.current.handleToggleReaction("msg-1", "👍")
+      })
+
+      await waitFor(() => {
+        expect(
+          result.current.messages.find((message) => message.id === "msg-2")?.reactions
+        ).toEqual([{ emoji: "❤️", count: 2, reactedByMe: false }])
+      })
     })
 
     it("rolls back the optimistic reaction on mutation error", async () => {

@@ -5,7 +5,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 import { useWebAuthn } from "./useWebAuthn"
 
 type RegistrationStartResponse = {
-  publicKey: { challenge: unknown; pubKeyCredParams: unknown }
+  publicKey: unknown
   challenge_token: string
 }
 
@@ -177,7 +177,7 @@ describe("useWebAuthn — registration", () => {
   it("rejects malformed server options with the registration error fallback", async () => {
     const setSnackbar = vi.fn()
     mocks.startWebAuthnRegistration.mockResolvedValueOnce({
-      publicKey: { challenge: 123, pubKeyCredParams: "invalid" },
+      publicKey: null,
       challenge_token: "bad-token",
     })
     const { result } = renderHook(() => useWebAuthn({ setSnackbar }))
@@ -236,6 +236,32 @@ describe("useWebAuthn — registration", () => {
     })
     expect(setSnackbar).toHaveBeenLastCalledWith({
       text: "settings:security.webauthn.snackbar.registrationFailed",
+      severity: "error",
+    })
+  })
+
+  it("reports a second step-up failure without reopening the step-up flow", async () => {
+    const setSnackbar = vi.fn()
+    let retry: (() => Promise<void>) | undefined
+    const openStepUpFor = vi.fn((action: () => Promise<void>) => {
+      retry = action
+    })
+    mocks.startWebAuthnRegistration.mockRejectedValueOnce(makeAxiosError(428))
+    const { result } = renderHook(() => useWebAuthn({ setSnackbar, openStepUpFor }))
+    act(() => result.current.setLabel("Key"))
+
+    await act(async () => {
+      await result.current.handleRegister()
+    })
+    mocks.startWebAuthnRegistration.mockRejectedValueOnce(makeAxiosError(428))
+
+    await act(async () => {
+      await retry?.()
+    })
+
+    expect(openStepUpFor).toHaveBeenCalledTimes(1)
+    expect(setSnackbar).toHaveBeenCalledWith({
+      text: "request failed",
       severity: "error",
     })
   })

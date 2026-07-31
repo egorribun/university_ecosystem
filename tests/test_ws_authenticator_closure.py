@@ -83,3 +83,43 @@ async def test_invalid_cookie_returns_anonymous():
 
     assert result == (None, None, None)
     get_cookie.assert_awaited_once_with("invalid")
+
+
+@pytest.mark.asyncio
+async def test_successful_ticket_auth_skips_cookie_fallback():
+    websocket = _websocket(ticket="ticket", cookie="stale-cookie")
+    user = SimpleNamespace(id="user-1")
+
+    with (
+        patch("app.api.ws.authenticator._ALLOWED_WS_ORIGINS", frozenset()),
+        patch(
+            "app.api.ws.authenticator.get_user_from_ticket",
+            new=AsyncMock(return_value=(user, "ticket-jti")),
+        ) as get_ticket,
+        patch(
+            "app.api.ws.authenticator.get_user_from_cookie", new=AsyncMock()
+        ) as get_cookie,
+    ):
+        result = await WsAuthenticator().authenticate_upgrade(websocket)
+
+    assert result == (user, "ticket-jti", None)
+    get_ticket.assert_awaited_once_with("ticket")
+    get_cookie.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_successful_cookie_auth_is_returned_when_ticket_is_absent():
+    websocket = _websocket(cookie="access-token")
+    user = SimpleNamespace(id="user-2")
+
+    with (
+        patch("app.api.ws.authenticator._ALLOWED_WS_ORIGINS", frozenset()),
+        patch(
+            "app.api.ws.authenticator.get_user_from_cookie",
+            new=AsyncMock(return_value=(user, "cookie-jti")),
+        ) as get_cookie,
+    ):
+        result = await WsAuthenticator().authenticate_upgrade(websocket)
+
+    assert result == (user, "cookie-jti", None)
+    get_cookie.assert_awaited_once_with("access-token")

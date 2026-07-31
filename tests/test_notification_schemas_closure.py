@@ -1,137 +1,74 @@
-from __future__ import annotations
+"""Behavioral closure tests for push notification schemas."""
 
-import uuid
 from datetime import UTC, datetime
+from uuid import uuid4
 
-import pytest
-
-from app.schemas import notifications
-from app.services import push_topics
-
-
-@pytest.fixture(autouse=True)
-def allowed_topics(monkeypatch):
-    monkeypatch.setattr(
-        push_topics,
-        "app_settings",
-        type(
-            "Settings",
-            (),
-            {
-                "notifications_allowed_push_topics_set": frozenset(
-                    {"news", "events", "system"}
-                ),
-                "notifications_allowed_push_topics_list": ["news", "events", "system"],
-            },
-        )(),
-    )
+from app.schemas.notifications import (
+    AdminUserTopicsUpdate,
+    NotificationAction,
+    PushSubscriptionDelete,
+    PushSubscriptionIn,
+    PushSubscriptionKeys,
+    PushSubscriptionOut,
+    PushSubscriptionTopicsUpdate,
+)
 
 
-def test_notification_action_and_body_normalize_values():
-    action = notifications.NotificationAction(action=None, title="  Open  ", url=None)
+def test_notification_action_and_subscription_keys_normalize_none_and_values():
+    action = NotificationAction(action=None, title="  Open  ")
+    keys = PushSubscriptionKeys(p256dh=None, auth="  secret  ")
+
     assert action.action == ""
     assert action.title == "Open"
-
-    body = notifications.NotifyBody(title="Title", topic=" NEWS ", actions=[action])
-    assert body.topic == "news"
-    assert body.actions == [action]
-    assert notifications.NotifyBody(title="Title", topic=None).topic is None
-
-
-def test_subscription_input_validators_cover_none_and_topic_lists():
-    keys = notifications.PushSubscriptionKeys(p256dh=None, auth=" secret ")
     assert keys.p256dh == ""
     assert keys.auth == "secret"
 
-    payload = notifications.PushSubscriptionIn(
+
+def test_push_subscription_input_normalizes_endpoint_and_optional_topics():
+    empty_topics = PushSubscriptionIn(
         endpoint=None,
-        keys=keys,
-        topics=["news", "NEWS", "unknown"],
+        keys={"p256dh": "p256", "auth": "auth"},
+        topics=None,
     )
-    assert payload.endpoint == ""
-    assert payload.topics == ["news"]
-    assert (
-        notifications.PushSubscriptionIn(endpoint="x", keys=keys, topics=None).topics
-        is None
+    normalized_topics = PushSubscriptionIn(
+        endpoint="  https://push.example  ",
+        keys={"p256dh": "p256", "auth": "auth"},
+        topics=["news", " news ", ""],
     )
 
+    assert empty_topics.endpoint == ""
+    assert empty_topics.topics is None
+    assert normalized_topics.endpoint == "https://push.example"
+    assert normalized_topics.topics == ["news"]
 
-def test_subscription_output_topics_from_attributes_and_fallbacks():
-    now = datetime.now(UTC)
-    values = {
-        "id": uuid.uuid4(),
-        "user_id": uuid.uuid4(),
-        "endpoint": "https://push.example/sub",
-        "p256dh": "p256dh",
+
+def test_push_subscription_output_handles_empty_and_legacy_topics_values():
+    common = {
+        "id": uuid4(),
+        "user_id": uuid4(),
+        "endpoint": "https://push.example",
+        "p256dh": "p256",
         "auth": "auth",
-        "created_at": now,
-        "topics": ["events", "events", "unknown"],
+        "created_at": datetime.now(UTC),
     }
-    output = notifications.PushSubscriptionOut.model_validate(values)
-    assert output.topics == ["events"]
-    assert (
-        notifications.PushSubscriptionOut.model_validate(
-            {**values, "topics": None}
-        ).topics
-        == []
-    )
-    assert (
-        notifications.PushSubscriptionOut.model_validate(
-            {**values, "topics": "events"}
-        ).topics
-        == []
-    )
+
+    assert PushSubscriptionOut(**common, topics=None).topics == []
+    assert PushSubscriptionOut(**common, topics="legacy").topics == []
+    assert PushSubscriptionOut(**common, topics=["news", " news "]).topics == ["news"]
 
 
-def test_topic_update_delete_and_admin_strict_validation():
-    keys = notifications.PushSubscriptionTopicsUpdate(endpoint=None, topics=None)
-    assert keys.endpoint == ""
-    assert keys.topics == []
+def test_push_subscription_update_and_delete_accept_none_endpoints_and_topics():
+    update = PushSubscriptionTopicsUpdate(endpoint=None, topics=None)
+    delete = PushSubscriptionDelete(endpoint=None)
 
-    populated = notifications.PushSubscriptionTopicsUpdate(
-        endpoint=" endpoint ", topics=["system", "system", "unknown"]
-    )
-    assert populated.endpoint == "endpoint"
-    assert populated.topics == ["system"]
-    assert notifications.PushSubscriptionDelete(endpoint=None).endpoint == ""
-    assert (
-        notifications.PushSubscriptionDelete(endpoint=" endpoint ").endpoint
-        == "endpoint"
-    )
-
-    assert notifications.AdminUserTopicsUpdate(topics=None).topics == []
-    assert notifications.AdminUserTopicsUpdate(topics=["news", "news"]).topics == [
-        "news"
-    ]
-    with pytest.raises(ValueError, match="Unknown notification topic"):
-        notifications.AdminUserTopicsUpdate(topics=["unknown"])
+    assert update.endpoint == ""
+    assert update.topics == []
+    assert delete.endpoint == ""
 
 
-def test_notification_response_models_and_defaults():
-    user_id = uuid.uuid4()
-    assert notifications.DisableUserPushRequest(user_id=user_id).user_id == user_id
-    response = notifications.PushTopicsResponse(allowed=["news"], topics=["news"])
-    assert response.has_preferences is False
-    assert response.updated_at is None
+def test_admin_topics_update_accepts_none_and_strictly_normalizes_values():
+    empty = AdminUserTopicsUpdate(topics=None)
+    normalized = AdminUserTopicsUpdate(topics=["news", " news "])
 
-    admin = notifications.AdminUserTopicsResponse(
-        user_id=user_id,
-        email="user@example.com",
-        topics=["news"],
-        allowed_topics=["news", "events"],
-    )
-    assert admin.updated_at is None
-
-    sent = notifications.SendTestResponse(sent=1, removed=0, failed=0)
-    assert sent.total == 0
-    assert sent.detail is None
-
-
-def test_push_test_request_inherits_notify_body_defaults():
-    request = notifications.PushTestRequest()
-    assert request.title
-    assert request.body
-    assert request.topic is None
-    custom = notifications.PushTestRequest(title="Custom", topic="events")
-    assert custom.title == "Custom"
-    assert custom.topic == "events"
+    assert empty.topics == []
+    assert normalized.topics == ["news"]

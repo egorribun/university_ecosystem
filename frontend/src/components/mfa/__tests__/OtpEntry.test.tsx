@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react"
+import { fireEvent, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { describe, expect, it, vi } from "vitest"
 import OtpEntry from "../OtpEntry"
@@ -48,5 +48,106 @@ describe("OtpEntry", () => {
     // Wait a bit to ensure it doesn't fire
     await new Promise((r) => setTimeout(r, 100))
     expect(onSubmit).not.toHaveBeenCalled()
+  })
+
+  it("sanitizes single-digit input, advances focus, and supports clearing", async () => {
+    const user = userEvent.setup()
+    render(<OtpEntry onSubmit={vi.fn()} />)
+    const inputs = screen.getAllByRole("textbox")
+
+    await user.type(inputs[0]!, "a1")
+    expect(inputs[0]).toHaveValue("1")
+    expect(document.activeElement).toBe(inputs[1])
+
+    await user.clear(inputs[0]!)
+    expect(inputs[0]).toHaveValue("")
+  })
+
+  it("distributes multi-digit changes across fields and focuses the end", () => {
+    render(<OtpEntry onSubmit={vi.fn()} />)
+    const inputs = screen.getAllByRole("textbox")
+
+    fireEvent.change(inputs[2]!, { target: { value: "98x7" } })
+
+    expect(inputs.map((input) => (input as HTMLInputElement).value)).toEqual([
+      "",
+      "",
+      "9",
+      "8",
+      "7",
+      "",
+    ])
+    expect(document.activeElement).toBe(inputs[5])
+  })
+
+  it("handles backspace and arrow navigation at interior and boundary fields", () => {
+    render(<OtpEntry onSubmit={vi.fn()} />)
+    const inputs = screen.getAllByRole("textbox")
+
+    inputs[2]!.focus()
+    fireEvent.keyDown(inputs[2]!, { key: "Backspace" })
+    expect(document.activeElement).toBe(inputs[1])
+
+    inputs[2]!.focus()
+    fireEvent.keyDown(inputs[2]!, { key: "ArrowLeft" })
+    expect(document.activeElement).toBe(inputs[1])
+
+    fireEvent.keyDown(inputs[1]!, { key: "ArrowRight" })
+    expect(document.activeElement).toBe(inputs[2])
+
+    inputs[0]!.focus()
+    fireEvent.keyDown(inputs[0]!, { key: "Backspace" })
+    fireEvent.keyDown(inputs[5]!, { key: "ArrowRight" })
+    expect(document.activeElement).toBe(inputs[0])
+  })
+
+  it("handles sanitized paste and ignores an empty paste", () => {
+    render(<OtpEntry onSubmit={vi.fn()} />)
+    const inputs = screen.getAllByRole("textbox")
+    const clipboardData = { getData: () => "a12-3" }
+
+    fireEvent.paste(inputs[0]!, { clipboardData })
+    expect(inputs.slice(0, 4).map((input) => (input as HTMLInputElement).value)).toEqual([
+      "1",
+      "2",
+      "3",
+      "",
+    ])
+    expect(document.activeElement).toBe(inputs[2])
+
+    fireEvent.paste(inputs[0]!, { clipboardData: { getData: () => "---" } })
+    expect(inputs[0]).toHaveValue("1")
+  })
+
+  it("renders helper/error accessibility states and loading affordance", () => {
+    const { rerender } = render(
+      <OtpEntry onSubmit={vi.fn()} helperText="Use the code from your app" />
+    )
+    const group = screen.getByRole("group")
+    expect(screen.getByText("Use the code from your app")).toBeInTheDocument()
+    expect(group).toHaveAttribute("aria-describedby")
+    expect(screen.getAllByRole("textbox")[0]).toHaveAttribute("aria-invalid", "false")
+
+    rerender(<OtpEntry onSubmit={vi.fn()} error="Invalid code" />)
+    expect(screen.getByText("Invalid code")).toBeInTheDocument()
+    expect(screen.getAllByRole("textbox")[0]).toHaveAttribute("aria-invalid", "true")
+
+    rerender(<OtpEntry onSubmit={vi.fn()} loading />)
+    expect(document.querySelector(".animate-spin")).toBeInTheDocument()
+    expect(screen.getAllByRole("textbox").every((input) => input.hasAttribute("disabled"))).toBe(
+      true
+    )
+  })
+
+  it("supports the explicit submit button after a complete code", async () => {
+    const onSubmit = vi.fn()
+    const user = userEvent.setup()
+    render(<OtpEntry onSubmit={onSubmit} />)
+
+    await user.paste("654321")
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledWith("654321"))
+    await user.click(screen.getByRole("button", { name: "mfa.otp.submit" }))
+
+    expect(onSubmit).toHaveBeenCalledTimes(2)
   })
 })

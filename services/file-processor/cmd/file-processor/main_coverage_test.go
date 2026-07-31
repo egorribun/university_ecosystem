@@ -188,7 +188,7 @@ func TestRunServers_CleanShutdown(t *testing.T) {
 	}()
 
 	assert.NotPanics(t, func() {
-		runServers(ctx, grpcSrv, graphqlSrv, cfg, discardLogger())
+		require.NoError(t, runServers(ctx, grpcSrv, graphqlSrv, cfg, discardLogger()))
 	})
 }
 
@@ -415,7 +415,9 @@ func TestMain_SuccessLifecycle(t *testing.T) {
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		_ = runMain(ctx)
+		if runErr := runMain(ctx); runErr != nil {
+			t.Logf("runMain stopped with error: %v", runErr)
+		}
 	}()
 
 	time.Sleep(500 * time.Millisecond)
@@ -497,7 +499,7 @@ func TestSetupGraphQLServer_InvalidSchemaError(t *testing.T) {
 	tmpFile, err := os.CreateTemp("", "invalid_schema_*.graphql")
 	require.NoError(t, err)
 	t.Cleanup(func() {
-		_ = os.Remove(tmpFile.Name())
+		require.NoError(t, os.Remove(tmpFile.Name()))
 	})
 	_, err = tmpFile.WriteString("invalid graphql schema syntax {{{")
 	require.NoError(t, err)

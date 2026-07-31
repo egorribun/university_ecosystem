@@ -280,6 +280,15 @@ def matches_source(
 
         base_name_ts = name.replace(".test.ts", ".ts").replace(".test.tsx", ".ts")
         base_name_tsx = name.replace(".test.ts", ".tsx").replace(".test.tsx", ".tsx")
+        # Coverage-closure suites use a descriptive segment before the test
+        # suffix (for example ``rateLimit.closure.test.ts``). Normalize that
+        # segment before matching the test against its production module.
+        base_name_ts = re.sub(
+            r"\.(?:branches|booster|closure|edge)(?=\.tsx?$)", "", base_name_ts
+        )
+        base_name_tsx = re.sub(
+            r"\.(?:branches|booster|closure|edge)(?=\.tsx?$)", "", base_name_tsx
+        )
 
         # Check local folder
         local_src_ts = str(path_obj.parent / base_name_ts).replace("\\", "/")

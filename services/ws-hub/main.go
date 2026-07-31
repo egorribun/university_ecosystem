@@ -76,21 +76,11 @@ func run() error {
 		}()
 	}
 
-	spiffeClient, err := spiffe.NewClient(ctx, spiffe.Config{
-		Enabled:     cfg.SpiffeEnabled,
-		SocketPath:  cfg.SpiffeEndpointSocket,
-		TrustDomain: cfg.SpiffeTrustDomain,
-		MySpiffeID:  cfg.SpiffeMyID,
-	}, logger)
+	spiffeClient, err := initSpiffeClient(ctx, cfg, logger)
 	if err != nil {
-		logger.ErrorContext(ctx, "SPIFFE initialization failed", "err", err)
-		if cfg.SpiffeEnabled {
-			return err
-		}
-	} else if cfg.SpiffeEnabled && spiffeClient == nil {
-		logger.ErrorContext(ctx, "SPIFFE is enabled but client initialization returned nil")
-		return errors.New("SPIFFE is enabled but client initialization returned nil")
-	} else if spiffeClient != nil {
+		return err
+	}
+	if spiffeClient != nil {
 		defer func() {
 			if err := spiffeClient.Close(); err != nil {
 				logger.WarnContext(ctx, "Failed to close SPIFFE client", "err", err)
@@ -106,6 +96,27 @@ func run() error {
 	mux := http.NewServeMux()
 	setupHandlers(mux, h, cfg, logger, nc, rdb)
 	return runServer(cfg, logger, h, mux)
+}
+
+func initSpiffeClient(ctx context.Context, cfg *config.Config, logger *slog.Logger) (*spiffe.Client, error) {
+	client, err := spiffe.NewClient(ctx, spiffe.Config{
+		Enabled:     cfg.SpiffeEnabled,
+		SocketPath:  cfg.SpiffeEndpointSocket,
+		TrustDomain: cfg.SpiffeTrustDomain,
+		MySpiffeID:  cfg.SpiffeMyID,
+	}, logger)
+	if err != nil {
+		logger.ErrorContext(ctx, "SPIFFE initialization failed", "err", err)
+		if cfg.SpiffeEnabled {
+			return nil, err
+		}
+		return nil, nil
+	}
+	if cfg.SpiffeEnabled && client == nil {
+		logger.ErrorContext(ctx, "SPIFFE is enabled but client initialization returned nil")
+		return nil, errors.New("SPIFFE is enabled but client initialization returned nil")
+	}
+	return client, nil
 }
 
 func initLogger() *slog.Logger {

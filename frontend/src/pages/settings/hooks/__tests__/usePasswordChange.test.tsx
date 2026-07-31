@@ -136,6 +136,21 @@ describe("usePasswordChange", () => {
     expect(result.current.currentPasswordValue).toBe("")
   })
 
+  it("uses zero as the revoked-session count when the success payload omits it", async () => {
+    mocks.post.mockResolvedValue({ data: { ok: true } })
+    const { result, setSnackbar } = renderPasswordChange()
+    setValidPasswords(result)
+
+    await act(async () => {
+      await result.current.handlePasswordSubmit()
+    })
+
+    expect(setSnackbar).toHaveBeenCalledWith({
+      text: "settings:security.password.updated:0",
+      severity: "success",
+    })
+  })
+
   it("delegates a required step-up challenge without showing a generic error", async () => {
     let retry: (() => Promise<void>) | undefined
     const openStepUpFor = vi.fn((action: () => Promise<void>) => {
@@ -164,6 +179,40 @@ describe("usePasswordChange", () => {
       text: "settings:security.password.updated:1",
       severity: "success",
     })
+  })
+
+  it("falls back to the generic error when step-up is unavailable", async () => {
+    const error = new AxiosError("step up required")
+    error.response = { status: 428 } as AxiosError["response"]
+    mocks.post.mockRejectedValue(error)
+    const { result, setSnackbar } = renderPasswordChange()
+    setValidPasswords(result)
+
+    await act(async () => {
+      await result.current.handlePasswordSubmit()
+    })
+
+    expect(result.current.passwordError).toBe("settings:security.password.failed")
+    expect(setSnackbar).toHaveBeenCalledWith({
+      text: "settings:security.password.failed",
+      severity: "error",
+    })
+  })
+
+  it("does not reopen step-up when a retry explicitly skips it", async () => {
+    const error = new AxiosError("step up required")
+    error.response = { status: 428 } as AxiosError["response"]
+    const openStepUpFor = vi.fn()
+    mocks.post.mockRejectedValue(error)
+    const { result } = renderPasswordChange(openStepUpFor)
+    setValidPasswords(result)
+
+    await act(async () => {
+      await result.current.handlePasswordSubmit({ skipStepUp: true })
+    })
+
+    expect(openStepUpFor).not.toHaveBeenCalled()
+    expect(result.current.passwordError).toBe("settings:security.password.failed")
   })
 
   it("handles classified Axios details without a generic snackbar", async () => {

@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react"
+import { fireEvent, render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { describe, it, expect, vi } from "vitest"
 
@@ -24,7 +24,15 @@ const BUILDING: CampusBuilding = {
   colorVar: "var(--color-blue-500)",
   colorHex: "#3b82f6",
   floorCount: 1,
-  floors: [{ floor: 1, rooms: [{ id: "ГУК-101", number: "101", type: "lecture" }] }],
+  floors: [
+    {
+      floor: 1,
+      rooms: [
+        { id: "ГУК-101", number: "101", name: "Большая аудитория", type: "lecture" },
+        { id: "ГУК-102", number: "102", type: "seminar" },
+      ],
+    },
+  ],
   geoCoords: [55.71, 37.81],
 }
 
@@ -60,5 +68,61 @@ describe("MapSearchBar", () => {
     await user.type(screen.getByRole("combobox"), "Главный")
     await user.click(screen.getByRole("option", { name: /Главный учебный корпус/ }))
     expect(onSelectBuilding).toHaveBeenCalledWith("ГУК")
+  })
+
+  it("selects a matching room and renders its sublabel", async () => {
+    const user = userEvent.setup()
+    const onSelectRoom = vi.fn()
+    render(<MapSearchBar {...baseProps} onSelectRoom={onSelectRoom} />)
+    await user.type(screen.getByRole("combobox"), "101")
+
+    const roomOption = screen.getByRole("option", { name: /ГУК-101.*Большая аудитория/ })
+    expect(roomOption).toBeInTheDocument()
+    fireEvent.pointerEnter(roomOption)
+    expect(roomOption).toHaveAttribute("aria-selected", "true")
+    await user.click(roomOption)
+
+    expect(onSelectRoom).toHaveBeenCalledWith("ГУК", 1, "ГУК-101")
+    expect(screen.getByRole("combobox")).toHaveValue("")
+  })
+
+  it("handles a room without an optional display name", async () => {
+    const user = userEvent.setup()
+    const onSelectRoom = vi.fn()
+    render(<MapSearchBar {...baseProps} onSelectRoom={onSelectRoom} />)
+    await user.type(screen.getByRole("combobox"), "102")
+
+    const roomOption = screen.getByRole("option", { name: "ГУК-102" })
+    expect(roomOption).toBeInTheDocument()
+    await user.click(roomOption)
+    expect(onSelectRoom).toHaveBeenCalledWith("ГУК", 1, "ГУК-102")
+  })
+
+  it("clears a query through the clear button after input blur", async () => {
+    const user = userEvent.setup()
+    render(<MapSearchBar {...baseProps} />)
+    const input = screen.getByRole("combobox")
+    await user.type(input, "Главный")
+    await user.click(screen.getByRole("button", { name: "search.clear" }))
+
+    expect(input).toHaveValue("")
+    expect(input).toHaveFocus()
+    expect(screen.queryByRole("listbox")).not.toBeInTheDocument()
+  })
+
+  it("supports keyboard selection and Escape dismissal", async () => {
+    const user = userEvent.setup()
+    const onSelectBuilding = vi.fn()
+    render(<MapSearchBar {...baseProps} onSelectBuilding={onSelectBuilding} />)
+    const input = screen.getByRole("combobox")
+
+    await user.type(input, "Главный")
+    await user.keyboard("{ArrowDown}{Enter}")
+    expect(onSelectBuilding).toHaveBeenCalledWith("ГУК")
+
+    await user.type(input, "ГУК")
+    await user.keyboard("{ArrowDown}{ArrowUp}{Escape}")
+    expect(input).toHaveValue("")
+    expect(screen.queryByRole("listbox")).not.toBeInTheDocument()
   })
 })

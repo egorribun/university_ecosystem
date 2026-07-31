@@ -60,4 +60,3 @@ func TestEmpirical_FP_EnvPrefixEnforcement(t *testing.T) {
 		assert.Equal(t, "2222", cfg.GRPCPort, "FP_GRPC_PORT must take precedence over GRPC_PORT")
 	})
 }
-

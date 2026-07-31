@@ -89,3 +89,59 @@ def test_set_access_token_cookie_uses_safe_ttl_fallback(monkeypatch) -> None:
     manager._set_access_token_cookie(response, "token")
 
     assert response.set_cookie.call_args.kwargs["max_age"] == 3600
+
+
+@pytest.mark.asyncio
+async def test_record_login_history_bg_persists_bounded_metadata() -> None:
+    from app.services.auth.login_session_manager import LoginSessionManager
+
+    db = MagicMock()
+    db.commit = AsyncMock()
+    db_context = MagicMock()
+    db_context.__aenter__ = AsyncMock(return_value=db)
+    db_context.__aexit__ = AsyncMock(return_value=None)
+    location = SimpleNamespace(
+        country="RU", city="Moscow", latitude=55.75, longitude=37.62
+    )
+    repository = MagicMock()
+    repository.record_login_history = AsyncMock()
+    user_id = uuid4()
+    manager = LoginSessionManager(
+        MagicMock(),
+        MagicMock(),
+        MagicMock(),
+        MagicMock(),
+    )
+
+    with (
+        patch(
+            "app.services.auth.login_session_manager.async_session",
+            MagicMock(return_value=db_context),
+        ),
+        patch("asyncio.to_thread", AsyncMock(return_value=location)),
+        patch(
+            "app.repositories.auth_repository.AuthRepository",
+            MagicMock(return_value=repository),
+        ) as repository_cls,
+    ):
+        await manager.record_login_history_bg(
+            user_id,
+            "127.0.0.1",
+            "u" * 600,
+            "success",
+            is_suspicious=True,
+        )
+
+    repository_cls.assert_called_once_with(db)
+    repository.record_login_history.assert_awaited_once_with(
+        user_id=user_id,
+        ip_address="127.0.0.1",
+        user_agent="u" * 512,
+        country="RU",
+        city="Moscow",
+        latitude=55.75,
+        longitude=37.62,
+        status="success",
+        is_suspicious=True,
+    )
+    db.commit.assert_awaited_once()

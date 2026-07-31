@@ -58,11 +58,19 @@ func TestEmpirical_GRPCDefaultTimeoutConfig(t *testing.T) {
 		var lc net.ListenConfig
 		lis, err := lc.Listen(context.Background(), "tcp", "127.0.0.1:0")
 		require.NoError(t, err)
-		t.Cleanup(func() { _ = lis.Close() })
+		t.Cleanup(func() {
+			if closeErr := lis.Close(); closeErr != nil {
+				t.Logf("test listener already closed: %v", closeErr)
+			}
+		})
 
 		srv := grpc.NewServer()
 		pb.RegisterFileProcessingServiceServer(srv, &empiricalSlowServer{delay: 500 * time.Millisecond})
-		go func() { _ = srv.Serve(lis) }()
+		go func() {
+			if serveErr := srv.Serve(lis); serveErr != nil {
+				t.Logf("gRPC test server stopped: %v", serveErr)
+			}
+		}()
 		t.Cleanup(srv.Stop)
 
 		// Dial using default service config with 150ms timeout for fast empirical verification
@@ -73,7 +81,7 @@ func TestEmpirical_GRPCDefaultTimeoutConfig(t *testing.T) {
 			grpc.WithDefaultServiceConfig(testServiceConfigJSON),
 		)
 		require.NoError(t, err)
-		t.Cleanup(func() { _ = conn.Close() })
+		t.Cleanup(func() { require.NoError(t, conn.Close()) })
 
 		client := pb.NewFileProcessingServiceClient(conn)
 

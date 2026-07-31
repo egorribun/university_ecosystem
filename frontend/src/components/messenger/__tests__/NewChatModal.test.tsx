@@ -25,6 +25,7 @@ import type { ReactNode } from "react"
 
 const mocks = vi.hoisted(() => ({
   apiGet: vi.fn(),
+  prefersReducedMotion: false,
 }))
 
 vi.mock("react-i18next", () => ({
@@ -41,6 +42,10 @@ vi.mock("@/components/media/SmartImage", () => ({
 
 vi.mock("@/hooks/useFocusTrap", () => ({
   default: () => ({ current: null }),
+}))
+
+vi.mock("@/hooks/useMediaQuery", () => ({
+  default: () => mocks.prefersReducedMotion,
 }))
 
 vi.mock("@/api/client", async (importOriginal) => {
@@ -63,6 +68,7 @@ const wrapper = ({ children }: { children: ReactNode }) => {
 beforeEach(() => {
   vi.clearAllMocks()
   mocks.apiGet.mockResolvedValue({ data: [] })
+  mocks.prefersReducedMotion = false
 })
 
 afterEach(() => {
@@ -171,6 +177,9 @@ describe("NewChatModal", () => {
       const createBtn = screen.getByRole("button", { name: "messenger:createGroup" })
       // Disabled until a name + ≥2 members are chosen.
       expect((createBtn as HTMLButtonElement).disabled).toBe(true)
+
+      fireEvent.click(screen.getByRole("tab", { name: "messenger:modeDirect" }))
+      expect(screen.getByRole("heading", { name: "messenger:newChat" })).toBeInTheDocument()
     })
 
     it("creates a group with the name + selected member ids, ≥2 required", async () => {
@@ -208,11 +217,77 @@ describe("NewChatModal", () => {
       // One member selected — still under the ≥2 minimum.
       expect((createBtn as HTMLButtonElement).disabled).toBe(true)
 
+      fireEvent.click(screen.getByRole("button", { name: "messenger:removeMember" }))
+      expect(screen.queryByRole("button", { name: "messenger:removeMember" })).toBeNull()
+
+      // Add the removed member back through the row before selecting the second
+      // member; the chip click above already covered the remove side.
+      fireEvent.click(screen.getByRole("option", { name: /User One/ }))
+
       fireEvent.click(screen.getByText("User Two"))
       await waitFor(() => expect((createBtn as HTMLButtonElement).disabled).toBe(false))
 
       fireEvent.click(createBtn)
       expect(onCreateGroup).toHaveBeenCalledWith("Project Alpha", ["u1", "u2"])
+    })
+
+    it("selects a user in DM mode and handles the no-results state", async () => {
+      const onSelect = vi.fn()
+      mocks.apiGet.mockResolvedValue({
+        data: [{ id: "u9", full_name: "User Nine", email: "u9@x.com", avatar_url: null }],
+      })
+      render(<NewChatModal open={true} onClose={() => {}} onSelect={onSelect} />, { wrapper })
+      fireEvent.change(screen.getByRole("textbox", { name: "messenger:searchUsers" }), {
+        target: { value: "nine" },
+      })
+      fireEvent.click(await screen.findByRole("option", { name: /User Nine/ }))
+      expect(onSelect).toHaveBeenCalledWith("u9")
+
+      mocks.apiGet.mockResolvedValue({ data: [] })
+      fireEvent.change(screen.getByRole("textbox", { name: "messenger:searchUsers" }), {
+        target: { value: "missing" },
+      })
+      expect(await screen.findByText("messenger:noUsersFound")).toBeInTheDocument()
+    })
+
+    it("renders the fetch-error state and retries the user search", async () => {
+      mocks.apiGet.mockRejectedValueOnce(new Error("offline"))
+      render(<NewChatModal open={true} onClose={() => {}} onSelect={() => {}} />, { wrapper })
+      fireEvent.change(screen.getByRole("textbox", { name: "messenger:searchUsers" }), {
+        target: { value: "error" },
+      })
+      expect(await screen.findByRole("alert")).toHaveTextContent(
+        "messenger:error.failedToLoadUsers"
+      )
+
+      mocks.apiGet.mockResolvedValueOnce({ data: [] })
+      fireEvent.click(screen.getByRole("button", { name: "messenger:error.retry" }))
+      expect(await screen.findByText("messenger:noUsersFound")).toBeInTheDocument()
+    })
+
+    it("shows reduced-motion settings and the in-flight create state", async () => {
+      mocks.prefersReducedMotion = true
+      mocks.apiGet.mockResolvedValue({
+        data: [{ id: "u-reduced", full_name: "Reduced User", email: "reduced@x.com" }],
+      })
+      render(
+        <NewChatModal
+          open={true}
+          onClose={() => {}}
+          onSelect={() => {}}
+          onCreateGroup={() => {}}
+          isCreatingGroup
+        />,
+        { wrapper }
+      )
+      fireEvent.click(screen.getByRole("tab", { name: "messenger:modeGroup" }))
+      fireEvent.change(screen.getByRole("textbox", { name: "messenger:searchUsers" }), {
+        target: { value: "reduced" },
+      })
+      const createBtn = screen.getByRole("button", { name: "messenger:creatingGroup" })
+      expect(createBtn).toBeDisabled()
+      expect(screen.getByText("messenger:error.minMembers")).toBeInTheDocument()
+      expect(await screen.findByRole("option", { name: /Reduced User/ })).toBeInTheDocument()
     })
   })
 })

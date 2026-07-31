@@ -159,6 +159,20 @@ async def test_profile_and_locking_getters_and_not_found():
 
 
 @pytest.mark.asyncio
+async def test_get_users_by_ids_handles_empty_and_bulk_lookup():
+    user = _user()
+    db = _DB([_Result(objects=[user])])
+    repo = UserRepository(db)
+
+    assert await repo.get_users_by_ids([]) == []
+    assert db.executed == []
+
+    result = await repo.get_users_by_ids([user.id])
+    assert result == [user]
+    assert len(db.executed) == 1
+
+
+@pytest.mark.asyncio
 async def test_listing_counts_and_name_search():
     user = _user()
     rows = _Result(objects=[user])

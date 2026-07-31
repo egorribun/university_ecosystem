@@ -78,6 +78,27 @@ def test_find_valid_key_returns_none_when_rust_matches_but_key_recheck_fails():
         assert service._find_valid_key(log) is None
 
 
+def test_find_valid_key_falls_back_to_python_when_rust_is_unavailable():
+    service = SecureAuditService(signing_keys=[b"old", b"new"])
+    log = SimpleNamespace(
+        id=uuid4(),
+        actor_user_id=None,
+        subject_user_id=None,
+        resource_type="user",
+        resource_id="42",
+        action="read",
+        ip_address=None,
+        created_at=datetime.now(UTC),
+        signature=None,
+    )
+    log.signature = service._compute_signature(log, key=b"new")
+    rust = MagicMock()
+    rust.verify_audit_signature.side_effect = RuntimeError("ffi unavailable")
+
+    with patch.dict(sys.modules, {"rust_ext": rust}):
+        assert service._find_valid_key(log) == b"new"
+
+
 def test_resign_log_updates_mutable_orm_log():
     service = SecureAuditService(signing_key=b"primary")
     log = DataAccessLog(

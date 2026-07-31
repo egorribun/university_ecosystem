@@ -1,5 +1,5 @@
 import { render, screen, fireEvent } from "@testing-library/react"
-import { describe, it, expect, vi } from "vitest"
+import { afterEach, describe, it, expect, vi } from "vitest"
 import type { ComponentProps, ReactNode } from "react"
 
 import { ChatArea } from "@/components/messenger/ChatArea"
@@ -55,6 +55,16 @@ vi.mock("@/components/media/SmartImage", () => ({
   ),
 }))
 
+const sendTypingMock = vi.hoisted(() => vi.fn())
+const prefersReducedMotionMock = vi.hoisted(() => vi.fn(() => false))
+
+vi.mock("@/hooks/useMediaQuery", () => ({
+  default: (query: string) => {
+    expect(query).toBe("(prefers-reduced-motion: reduce)")
+    return prefersReducedMotionMock()
+  },
+}))
+
 // W190 SW1 migrated ChatArea + sibling messenger components from framer-motion's
 // jsdom-incompat `useReducedMotion()` hook to project's `useMediaQuery
 // ("(prefers-reduced-motion: reduce)")` DEFAULT export (jsdom-polyfilled at
@@ -69,6 +79,7 @@ vi.mock("@/components/media/SmartImage", () => ({
 vi.mock("@/contexts/MessengerContext", () => ({
   useMessenger: () => ({
     getTypingUsersForChat: () => [],
+    sendTyping: sendTypingMock,
   }),
 }))
 
@@ -88,12 +99,41 @@ vi.mock("@/components/messenger", async () => {
     await vi.importActual<typeof import("@/components/messenger")>("@/components/messenger")
   return {
     ...actual,
-    ChatWindow: (props: { messages?: unknown[]; isError?: boolean }) => (
-      <div data-testid="mock-chat-window" data-message-count={props.messages?.length ?? 0} />
+    ChatWindow: (props: {
+      messages?: unknown[]
+      isError?: boolean
+      onClearSearch?: () => void
+    }) => (
+      <div data-testid="mock-chat-window" data-message-count={props.messages?.length ?? 0}>
+        {props.onClearSearch && (
+          <button
+            type="button"
+            data-testid="mock-chat-window-clear-search"
+            onClick={props.onClearSearch}
+          />
+        )}
+      </div>
     ),
-    MessageInput: () => <div data-testid="mock-message-input" />,
+    MessageInput: (props: { onTyping?: () => void; onCancelReply?: () => void }) => (
+      <div data-testid="mock-message-input">
+        <button type="button" data-testid="mock-message-input-typing" onClick={props.onTyping} />
+        {props.onCancelReply && (
+          <button
+            type="button"
+            data-testid="mock-message-input-cancel-reply"
+            onClick={props.onCancelReply}
+          />
+        )}
+      </div>
+    ),
     TypingIndicator: () => <div data-testid="mock-typing-indicator" />,
   }
+})
+
+afterEach(() => {
+  sendTypingMock.mockReset()
+  prefersReducedMotionMock.mockReturnValue(false)
+  navigateMock.mockReset()
 })
 
 const queryClient = new QueryClient()
@@ -207,6 +247,25 @@ describe("ChatArea — normal header rendering (chat selected)", () => {
     expect(heading).toBeTruthy()
   })
 
+  it("opens the direct-chat profile from the header", () => {
+    const handleViewProfile = vi.fn()
+    const chat = makeChat()
+    render(
+      <ChatArea
+        {...baseProps}
+        selectedChatId={chat.id}
+        activeChat={chat}
+        handleViewProfile={handleViewProfile}
+      />,
+      { wrapper }
+    )
+
+    fireEvent.click(
+      screen.getByRole("heading", { name: "Alice Anderson", level: 2 }).closest("button")!
+    )
+    expect(handleViewProfile).toHaveBeenCalledTimes(1)
+  })
+
   it("renders offline status when participant NOT in presenceMap as active", () => {
     const chat = makeChat()
     render(
@@ -282,6 +341,44 @@ describe("ChatArea — search interaction", () => {
     expect(searchInput!.value).toBe("hello")
     expect(searchInput!.placeholder).toBe("messenger:searchMessages")
   })
+
+  it("uses reduced-motion transitions for the search header", () => {
+    prefersReducedMotionMock.mockReturnValue(true)
+    const chat = makeChat()
+    render(
+      <ChatArea {...baseProps} selectedChatId={chat.id} activeChat={chat} showSearchInChat />,
+      { wrapper }
+    )
+
+    expect(screen.getByRole("textbox", { name: "messenger:searchMessages" })).toBeTruthy()
+  })
+
+  it("updates the query and closes search with a full reset", () => {
+    const setShowSearchInChat = vi.fn()
+    const setSearchQuery = vi.fn()
+    const chat = makeChat()
+    const { container } = render(
+      <ChatArea
+        {...baseProps}
+        selectedChatId={chat.id}
+        activeChat={chat}
+        showSearchInChat
+        searchQuery="hello"
+        setShowSearchInChat={setShowSearchInChat}
+        setSearchQuery={setSearchQuery}
+      />,
+      { wrapper }
+    )
+
+    const searchInput = screen.getByRole("textbox", { name: "messenger:searchMessages" })
+    fireEvent.change(searchInput, { target: { value: "hello world" } })
+    expect(setSearchQuery).toHaveBeenCalledWith("hello world")
+
+    fireEvent.click(screen.getByRole("button", { name: "common:buttons.close" }))
+    expect(setShowSearchInChat).toHaveBeenCalledWith(false)
+    expect(setSearchQuery).toHaveBeenCalledWith("")
+    expect(container.querySelector("#chat-search-input")).toBeTruthy()
+  })
 })
 
 describe("ChatArea — chat menu interactions", () => {
@@ -337,6 +434,112 @@ describe("ChatArea — chat menu interactions", () => {
     fireEvent.click(clearBtn!)
     expect(handleClearChat).toHaveBeenCalledTimes(1)
   })
+
+  it("routes view-profile and delete actions to their callbacks", () => {
+    const handleViewProfile = vi.fn()
+    const handleDeleteChat = vi.fn()
+    const chat = makeChat()
+    const { container } = render(
+      <ChatArea
+        {...baseProps}
+        selectedChatId={chat.id}
+        activeChat={chat}
+        showChatMenu
+        handleViewProfile={handleViewProfile}
+        handleDeleteChat={handleDeleteChat}
+      />,
+      { wrapper }
+    )
+
+    fireEvent.click(container.querySelector("#chat-action-view-profile")!)
+    fireEvent.click(container.querySelector("#chat-action-delete-chat")!)
+    expect(handleViewProfile).toHaveBeenCalledTimes(1)
+    expect(handleDeleteChat).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe("ChatArea — group header and typing delegation", () => {
+  it("opens group info and renders the resolved member count", () => {
+    const onOpenGroupInfo = vi.fn()
+    const chat = makeChat()
+    render(
+      <ChatArea
+        {...baseProps}
+        selectedChatId={chat.id}
+        activeChat={chat}
+        activeChatDisplay={{ isGroup: true, name: "Study group", avatar: "", memberCount: 4 }}
+        onOpenGroupInfo={onOpenGroupInfo}
+      />,
+      { wrapper }
+    )
+
+    expect(screen.getByRole("heading", { name: "Study group", level: 2 })).toBeTruthy()
+    expect(screen.getByText('messenger:group.members|{"count":4}')).toBeTruthy()
+    fireEvent.click(screen.getByRole("heading", { name: "Study group", level: 2 }))
+    expect(onOpenGroupInfo).toHaveBeenCalledTimes(1)
+    expect(screen.queryByText("messenger:online")).toBeFalsy()
+    expect(screen.queryByText("messenger:offline")).toBeFalsy()
+  })
+
+  it("does not call a profile handler when group info has no callback", () => {
+    const handleViewProfile = vi.fn()
+    const chat = makeChat()
+    render(
+      <ChatArea
+        {...baseProps}
+        selectedChatId={chat.id}
+        activeChat={chat}
+        activeChatDisplay={{ isGroup: true, name: "Study group", avatar: "", memberCount: 4 }}
+        onOpenGroupInfo={undefined}
+        handleViewProfile={handleViewProfile}
+      />,
+      { wrapper }
+    )
+
+    fireEvent.click(screen.getByRole("button", { name: /Study group/ }))
+    expect(handleViewProfile).not.toHaveBeenCalled()
+  })
+
+  it("falls back safely when a direct chat has no other participant", () => {
+    const chat = makeChat({ participants: [makeUser({ id: "user-me" })] })
+    render(
+      <ChatArea
+        {...baseProps}
+        selectedChatId={chat.id}
+        activeChat={chat}
+        getOtherParticipant={() => undefined}
+        presenceMap={{ "": { active: true, last_seen_at: null } }}
+      />,
+      { wrapper }
+    )
+
+    expect(document.querySelector("h2")?.textContent).toBe("")
+    expect(screen.getByText("messenger:online")).toBeTruthy()
+    expect(document.querySelector(".messenger-online-pulse")).toBeTruthy()
+  })
+
+  it("delegates typing to the selected chat and renders reduced-motion transitions", () => {
+    prefersReducedMotionMock.mockReturnValue(true)
+    const chat = makeChat()
+    const { rerender } = render(
+      <ChatArea
+        {...baseProps}
+        selectedChatId={chat.id}
+        activeChat={chat}
+        showChatMenu
+        replyingTo={{ senderName: "Alice", isMe: false, text: "Hello" }}
+        onCancelReply={vi.fn()}
+      />,
+      { wrapper }
+    )
+
+    fireEvent.click(screen.getByTestId("mock-message-input-typing"))
+    expect(sendTypingMock).toHaveBeenCalledWith(chat.id)
+    expect(screen.getByTestId("mock-message-input-cancel-reply")).toBeTruthy()
+
+    rerender(<ChatArea {...baseProps} />)
+    expect(screen.getByRole("status", { name: "messenger:selectChat" })).toBeTruthy()
+  })
 })
 
 describe("ChatArea — mobile vs desktop", () => {
@@ -356,6 +559,16 @@ describe("ChatArea — mobile vs desktop", () => {
     rerender(<ChatArea {...baseProps} selectedChatId={chat.id} activeChat={chat} isMobile />)
     const lucideChevronMobile = container.querySelector(".lucide-chevron-left")
     expect(lucideChevronMobile).toBeTruthy()
+
+    fireEvent.click(lucideChevronMobile!.parentElement!)
+    expect(navigateMock).toHaveBeenCalledWith({ to: "/messenger" })
+
+    prefersReducedMotionMock.mockReturnValue(true)
+    rerender(
+      <ChatArea {...baseProps} selectedChatId={chat.id} activeChat={chat} isMobile={false} />
+    )
+    rerender(<ChatArea {...baseProps} selectedChatId={chat.id} activeChat={chat} isMobile />)
+    expect(container.querySelector(".lucide-chevron-left")).toBeTruthy()
   })
 })
 
@@ -381,5 +594,23 @@ describe("ChatArea — child component integration", () => {
 
     expect(screen.getByTestId("mock-typing-indicator")).toBeTruthy()
     expect(screen.getByTestId("mock-message-input")).toBeTruthy()
+  })
+
+  it("forwards ChatWindow's clear-search action", () => {
+    const setSearchQuery = vi.fn()
+    const chat = makeChat()
+    render(
+      <ChatArea
+        {...baseProps}
+        selectedChatId={chat.id}
+        activeChat={chat}
+        searchQuery="needle"
+        setSearchQuery={setSearchQuery}
+      />,
+      { wrapper }
+    )
+
+    fireEvent.click(screen.getByTestId("mock-chat-window-clear-search"))
+    expect(setSearchQuery).toHaveBeenCalledWith("")
   })
 })

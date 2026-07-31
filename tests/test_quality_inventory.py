@@ -6,6 +6,7 @@ try:
     from scripts.quality.check_orphans_and_anti_patterns import (
         check_anti_patterns,
         check_python_duplicates_and_imports,
+        matches_source,
     )
     from scripts.quality.generate_test_inventory import (
         classify_file,
@@ -160,3 +161,10 @@ class TestA:
     check_python_duplicates_and_imports(test_file_dup, errors)
     assert len(errors) == 1
     assert "duplicate test function 'test_foo'" in errors[0]
+
+
+def test_matches_source_normalizes_frontend_closure_test_suffix() -> None:
+    test_path = "frontend/src/api/interceptors/__tests__/rateLimit.closure.test.ts"
+    source_paths = {"frontend/src/api/interceptors/rateLimit.ts"}
+
+    assert matches_source(test_path, source_paths, []) is True

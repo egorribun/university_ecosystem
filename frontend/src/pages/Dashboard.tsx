@@ -258,9 +258,24 @@ export default function Dashboard() {
   // (useTilt reads refs during render per FIX-54-01; under E2E_MODE we
   // suppress the tilt entirely so the test build's a11y tree mirrors what
   // a non-motion-enabled user sees).
-  const tiltSchedule = useTilt({ max: 5, disabled: prefersReducedMotion || isNarrow || E2E_MODE })
-  const tiltNews = useTilt({ max: 5, disabled: prefersReducedMotion || isNarrow || E2E_MODE })
-  const tiltEvents = useTilt({ max: 5, disabled: prefersReducedMotion || isNarrow || E2E_MODE })
+  const {
+    ref: tiltScheduleRef,
+    style: tiltScheduleStyle,
+    onMouseMove: tiltScheduleOnMouseMove,
+    onMouseLeave: tiltScheduleOnMouseLeave,
+  } = useTilt({ max: 5, disabled: prefersReducedMotion || isNarrow || E2E_MODE })
+  const {
+    ref: tiltNewsRef,
+    style: tiltNewsStyle,
+    onMouseMove: tiltNewsOnMouseMove,
+    onMouseLeave: tiltNewsOnMouseLeave,
+  } = useTilt({ max: 5, disabled: prefersReducedMotion || isNarrow || E2E_MODE })
+  const {
+    ref: tiltEventsRef,
+    style: tiltEventsStyle,
+    onMouseMove: tiltEventsOnMouseMove,
+    onMouseLeave: tiltEventsOnMouseLeave,
+  } = useTilt({ max: 5, disabled: prefersReducedMotion || isNarrow || E2E_MODE })
 
   const queryClient = useQueryClient()
 
@@ -402,11 +417,11 @@ export default function Dashboard() {
               {...cascadeProps(0.1, showCascade, prefersReducedMotion)}
             >
               <div
-                ref={tiltSchedule.ref}
-                style={tiltSchedule.style}
+                ref={tiltScheduleRef}
+                style={tiltScheduleStyle}
                 className="dash-tilt-card vt-dash-schedule min-h-[400px]"
-                onMouseMove={tiltSchedule.onMouseMove}
-                onMouseLeave={tiltSchedule.onMouseLeave}
+                onMouseMove={tiltScheduleOnMouseMove}
+                onMouseLeave={tiltScheduleOnMouseLeave}
               >
                 <WidgetErrorBoundary widgetName="ScheduleCard" showFallback>
                   <SkeletonMorph loaded={scheduleLoaded} skeleton={<ScheduleCardSkeleton />}>
@@ -422,11 +437,11 @@ export default function Dashboard() {
               {...cascadeProps(0.2, showCascade, prefersReducedMotion)}
             >
               <div
-                ref={tiltNews.ref}
-                style={tiltNews.style}
+                ref={tiltNewsRef}
+                style={tiltNewsStyle}
                 className="dash-tilt-card vt-dash-news min-h-[400px]"
-                onMouseMove={tiltNews.onMouseMove}
-                onMouseLeave={tiltNews.onMouseLeave}
+                onMouseMove={tiltNewsOnMouseMove}
+                onMouseLeave={tiltNewsOnMouseLeave}
               >
                 <WidgetErrorBoundary widgetName="NewsCard" showFallback>
                   <SkeletonMorph loaded={newsLoaded} skeleton={<NewsCardSkeleton />}>
@@ -442,11 +457,11 @@ export default function Dashboard() {
               {...cascadeProps(0.3, showCascade, prefersReducedMotion)}
             >
               <div
-                ref={tiltEvents.ref}
-                style={tiltEvents.style}
+                ref={tiltEventsRef}
+                style={tiltEventsStyle}
                 className="dash-tilt-card vt-dash-events min-h-[400px]"
-                onMouseMove={tiltEvents.onMouseMove}
-                onMouseLeave={tiltEvents.onMouseLeave}
+                onMouseMove={tiltEventsOnMouseMove}
+                onMouseLeave={tiltEventsOnMouseLeave}
               >
                 <WidgetErrorBoundary widgetName="EventsCard" showFallback>
                   <SkeletonMorph loaded={eventsLoaded} skeleton={<EventsCardSkeleton />}>

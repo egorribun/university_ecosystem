@@ -44,6 +44,29 @@ def test_normalize_path_normalizes_prefix_and_avoids_collision(tmp_path: Path):
         )
 
 
+def test_is_same_file_returns_false_for_filesystem_errors():
+    source = MagicMock()
+    source.samefile.side_effect = OSError("filesystem race")
+    assert normalize_static._is_same_file(source, MagicMock()) is False
+
+
+def test_normalize_path_advances_through_multiple_collisions(tmp_path: Path):
+    directory = tmp_path / "avatars"
+    directory.mkdir()
+    source = directory / "Unsafe_file.png"
+    source.write_bytes(b"source")
+    (directory / "unsafe_file.png").write_bytes(b"first")
+    (directory / "unsafe_file-1.png").write_bytes(b"second")
+
+    with patch.object(normalize_static, "_is_same_file", return_value=False):
+        result = normalize_static._normalize_path(source)
+
+    assert result == (
+        directory / "unsafe_file-2.png",
+        "/static/avatars/unsafe_file-2.png",
+    )
+
+
 def test_rename_files_handles_missing_subdirs_and_both_mappings(tmp_path: Path):
     avatars = tmp_path / "avatars"
     avatars.mkdir(exist_ok=True)

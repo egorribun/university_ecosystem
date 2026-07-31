@@ -1,6 +1,7 @@
 import { act, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { type ReactNode } from "react"
+import { renderToString } from "react-dom/server"
 import InstallPrompt from "@/components/pwa/InstallPrompt"
 import { PWA_REFRESH_EVENT } from "@/app/pwaEvents"
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest"
@@ -247,5 +248,58 @@ describe("InstallPrompt — branches", () => {
     await waitFor(() => {
       expect(screen.queryByText("system:installPrompt.updateAvailable")).not.toBeInTheDocument()
     })
+  })
+
+  it("ignores an update-toast reload event without an update callback", async () => {
+    render(<InstallPrompt />)
+
+    act(() => {
+      window.dispatchEvent(new CustomEvent(PWA_REFRESH_EVENT, { detail: {} }))
+    })
+
+    const user = userEvent.setup()
+    await user.click(await screen.findByText("system:installPrompt.reload"))
+    expect(screen.getByText("system:installPrompt.updateAvailable")).toBeInTheDocument()
+  })
+
+  it("skips install lifecycle listeners when the app is already standalone", () => {
+    const previousMatchMedia = window.matchMedia
+    Object.defineProperty(window, "matchMedia", {
+      configurable: true,
+      writable: true,
+      value: vi.fn().mockImplementation((query: string) => ({
+        matches: true,
+        media: query,
+        onchange: null,
+        addListener: vi.fn(),
+        removeListener: vi.fn(),
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+        dispatchEvent: vi.fn(),
+      })),
+    })
+
+    const { unmount } = render(<InstallPrompt />)
+    act(() => window.dispatchEvent(new Event("beforeinstallprompt")))
+    expect(
+      screen.queryByText("system:installPrompt.installTitle navigation:brandName")
+    ).not.toBeInTheDocument()
+
+    unmount()
+    Object.defineProperty(window, "matchMedia", {
+      configurable: true,
+      writable: true,
+      value: previousMatchMedia,
+    })
+  })
+
+  it("uses the safe non-browser eligibility fallback during SSR", () => {
+    const browserWindow = window
+    vi.stubGlobal("window", undefined)
+    try {
+      expect(renderToString(<InstallPrompt />)).toBe("")
+    } finally {
+      vi.stubGlobal("window", browserWindow)
+    }
   })
 })

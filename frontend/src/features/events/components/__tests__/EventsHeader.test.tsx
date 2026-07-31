@@ -1,6 +1,13 @@
-import { render, screen, fireEvent } from "@testing-library/react"
+import { act, fireEvent, render, screen } from "@testing-library/react"
 import { describe, expect, it, vi, beforeEach } from "vitest"
 import { EventsHeader } from "../EventsHeader"
+import useMediaQuery from "@/hooks/useMediaQuery"
+import { useSlidingIndicator } from "@/hooks/ui/useSlidingIndicator"
+
+vi.mock("@/hooks/useMediaQuery", () => ({ default: vi.fn(() => false) }))
+vi.mock("@/hooks/ui/useSlidingIndicator", () => ({
+  useSlidingIndicator: vi.fn(() => null),
+}))
 
 // Mock Framer Motion to avoid animation issues in jsdom
 vi.mock("framer-motion", async () => {
@@ -12,6 +19,8 @@ vi.mock("framer-motion", async () => {
 })
 
 describe("EventsHeader", () => {
+  let intersectionCallback: IntersectionObserverCallback | undefined
+
   const defaultProps = {
     onAddClick: vi.fn(),
     isAdmin: false,
@@ -32,15 +41,19 @@ describe("EventsHeader", () => {
 
   beforeEach(() => {
     vi.clearAllMocks()
+    vi.mocked(useMediaQuery).mockReturnValue(false)
+    vi.mocked(useSlidingIndicator).mockReturnValue(null)
 
     // Mock IntersectionObserver
-    const mockIntersectionObserver = vi.fn()
-    mockIntersectionObserver.mockReturnValue({
-      observe: () => null,
-      unobserve: () => null,
-      disconnect: () => null,
+    const mockIntersectionObserver = vi.fn((callback: IntersectionObserverCallback) => {
+      intersectionCallback = callback
+      return {
+        observe: () => null,
+        unobserve: () => null,
+        disconnect: () => null,
+      }
     })
-    window.IntersectionObserver = mockIntersectionObserver
+    window.IntersectionObserver = mockIntersectionObserver as unknown as typeof IntersectionObserver
   })
 
   it("renders correctly", () => {
@@ -101,5 +114,126 @@ describe("EventsHeader", () => {
     const sortBtn = screen.getByRole("button", { name: /Sort: Newest/i })
     fireEvent.click(sortBtn)
     expect(defaultProps.onSortChange).toHaveBeenCalledWith("popular")
+  })
+
+  it("covers the remaining sort cycle states", () => {
+    const { rerender } = render(<EventsHeader {...defaultProps} sortMode="popular" />)
+    const sortBtn = screen.getByRole("button", { name: /Sort: Popular/i })
+    fireEvent.click(sortBtn)
+    expect(defaultProps.onSortChange).toHaveBeenCalledWith("upcoming")
+
+    rerender(<EventsHeader {...defaultProps} sortMode="upcoming" />)
+    fireEvent.click(screen.getByRole("button", { name: /Sort: Upcoming/i }))
+    expect(defaultProps.onSortChange).toHaveBeenCalledWith("newest")
+  })
+
+  it("opens the filter popover, updates values, and resets them", () => {
+    render(<EventsHeader {...defaultProps} />)
+    fireEvent.click(screen.getByRole("button", { name: /Open filters/i }))
+
+    expect(screen.getByRole("dialog")).toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: /This week/i }))
+    fireEvent.change(screen.getByLabelText(/Location/i), { target: { value: "Main hall" } })
+    expect(defaultProps.onDateRangeChange).toHaveBeenCalledWith("week")
+    expect(defaultProps.onLocationChange).toHaveBeenCalledWith("Main hall")
+
+    fireEvent.click(screen.getByRole("button", { name: /Reset/i }))
+    expect(defaultProps.onDateRangeChange).toHaveBeenCalledWith("")
+    expect(defaultProps.onLocationChange).toHaveBeenCalledWith("")
+  })
+
+  it("shows active filter state and closes the popover with Done", () => {
+    render(<EventsHeader {...defaultProps} dateRange="today" locationFilter="Library" />)
+    const filterButton = screen.getByRole("button", { name: /Open filters/i })
+    expect(filterButton.className).toContain("text-brand")
+    expect(filterButton.querySelector('[aria-hidden="true"]')).toBeInTheDocument()
+
+    fireEvent.click(filterButton)
+    expect(screen.getByRole("dialog")).toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: /Done/i }))
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
+  })
+
+  it("updates sticky state from IntersectionObserver and disconnects on unmount", () => {
+    const { container, unmount } = render(<EventsHeader {...defaultProps} />)
+    expect(container.querySelector(".events-sticky-categories")).toHaveAttribute(
+      "data-stuck",
+      "false"
+    )
+
+    act(() => {
+      intersectionCallback?.(
+        [{ isIntersecting: false } as IntersectionObserverEntry],
+        {} as IntersectionObserver
+      )
+    })
+    expect(container.querySelector(".events-sticky-categories")).toHaveAttribute(
+      "data-stuck",
+      "true"
+    )
+
+    act(() => {
+      intersectionCallback?.(
+        [{ isIntersecting: true } as IntersectionObserverEntry],
+        {} as IntersectionObserver
+      )
+    })
+    expect(container.querySelector(".events-sticky-categories")).toHaveAttribute(
+      "data-stuck",
+      "false"
+    )
+    unmount()
+  })
+
+  it("renders the sliding tab indicator with and without reduced motion", () => {
+    vi.mocked(useSlidingIndicator).mockReturnValue({ left: 4, top: 2, width: 80, height: 32 })
+    const { container, rerender } = render(<EventsHeader {...defaultProps} />)
+    const indicator = container.querySelector('[aria-hidden="true"].z-negative')
+    expect(indicator).toHaveStyle({
+      transform: "translate3d(4px, 2px, 0)",
+      width: "80px",
+      height: "32px",
+    })
+    expect(indicator?.getAttribute("style")).toContain("250ms")
+
+    vi.mocked(useMediaQuery).mockReturnValue(true)
+    rerender(<EventsHeader {...defaultProps} tab="archive" />)
+    expect(container.querySelector('[aria-hidden="true"].z-negative')).toHaveStyle({
+      transition: "none",
+    })
+  })
+
+  it("supports category selection and arrow-key wrapping", () => {
+    const onCategoryChange = vi.fn()
+    render(
+      <EventsHeader
+        {...defaultProps}
+        activeCategory="lecture"
+        onCategoryChange={onCategoryChange}
+      />
+    )
+    const toolbar = screen.getByRole("toolbar")
+    const buttons = toolbar.querySelectorAll("button")
+    const allButton = buttons[0]!
+    const lectureButton = buttons[1]!
+    const sortButton = buttons[buttons.length - 1]!
+
+    expect(lectureButton).toHaveAttribute("aria-current", "page")
+    fireEvent.click(lectureButton)
+    expect(onCategoryChange).toHaveBeenCalledWith("lecture")
+
+    allButton.focus()
+    fireEvent.keyDown(toolbar, { key: "ArrowLeft" })
+    expect(sortButton).toHaveFocus()
+    fireEvent.keyDown(toolbar, { key: "ArrowRight" })
+    expect(allButton).toHaveFocus()
+
+    fireEvent.keyDown(toolbar, { key: "Enter" })
+    const outsideButton = document.createElement("button")
+    document.body.appendChild(outsideButton)
+    outsideButton.focus()
+    fireEvent.keyDown(toolbar, { key: "ArrowRight" })
+    expect(outsideButton).toHaveFocus()
+    outsideButton.remove()
   })
 })
