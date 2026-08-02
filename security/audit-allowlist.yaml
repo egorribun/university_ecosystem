@@ -179,55 +179,6 @@ npm:
       reason: |
         Transitive via reference from @boundaries/elements.
         Dev-only dep; not in production bundle.
-    - id: "1115588"
-      package: "transitive"
-      owner: frontend@university.example
-      expires: 2026-07-31
-      reason: |
-        Shai-Hulud supply chain incident (GHSA-57r3-3mx6-8xww).
-        Allowing temporarily to unblock CI while maintainers investigate impact on transitive deps.
-    - id: "1115589"
-      package: "transitive"
-      owner: frontend@university.example
-      expires: 2026-07-31
-      reason: |
-        Shai-Hulud supply chain incident; alternate source ID.
-    - id: "1115692"
-      package: "transitive"
-      owner: frontend@university.example
-      expires: 2026-07-31
-      reason: |
-        Shai-Hulud supply chain incident; transitive dependency advisory.
-    - id: "1115693"
-      package: "transitive"
-      owner: frontend@university.example
-      expires: 2026-07-31
-      reason: |
-        Shai-Hulud supply chain incident; transitive dependency advisory.
-    - id: "1115694"
-      package: "transitive"
-      owner: frontend@university.example
-      expires: 2026-07-31
-      reason: |
-        Shai-Hulud supply chain incident; transitive dependency advisory.
-    - id: "1116454"
-      package: "transitive"
-      owner: frontend@university.example
-      expires: 2026-07-31
-      reason: |
-        Shai-Hulud supply chain incident; transitive dependency advisory.
-    - id: "1116478"
-      package: "transitive"
-      owner: frontend@university.example
-      expires: 2026-07-31
-      reason: |
-        Shai-Hulud supply chain incident; transitive dependency advisory.
-    - id: "1116720"
-      package: "transitive"
-      owner: frontend@university.example
-      expires: 2026-07-31
-      reason: |
-        Shai-Hulud supply chain incident; transitive dependency advisory.
     # @tanstack supply-chain advisory (GHSA-rmmr-r34h-pfm5) — published
     # 2026-05-11. The specifically named malware versions are
     # @tanstack/history 1.161.9 + 1.161.12; the advisory `>= 0` range
