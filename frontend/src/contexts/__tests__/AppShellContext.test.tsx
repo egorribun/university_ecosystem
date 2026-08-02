@@ -195,6 +195,36 @@ describe("AppShellContext", () => {
       document.body.removeChild(scrollRoot)
     })
 
+    it("uses auto behavior when reduced motion is preferred", () => {
+      const scrollRoot = document.createElement("div")
+      scrollRoot.setAttribute("data-scroll-root", "")
+      Object.defineProperty(scrollRoot, "scrollHeight", { value: 2000, configurable: true })
+      Object.defineProperty(scrollRoot, "clientHeight", { value: 500, configurable: true })
+      vi.spyOn(window, "getComputedStyle").mockReturnValue({
+        overflowY: "auto",
+      } as CSSStyleDeclaration)
+
+      scrollRoot.scrollTo = vi.fn()
+      document.body.appendChild(scrollRoot)
+
+      vi.spyOn(window, "matchMedia").mockReturnValue({
+        matches: true,
+        media: "(prefers-reduced-motion: reduce)",
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+      } as unknown as MediaQueryList)
+
+      const { result } = renderHook(() => useAppShell(), { wrapper })
+
+      act(() => {
+        result.current.scrollToTop()
+      })
+
+      expect(scrollRoot.scrollTo).toHaveBeenCalledWith({ top: 0, behavior: "auto" })
+
+      document.body.removeChild(scrollRoot)
+    })
+
     it("defaults to smooth behavior when matchMedia throws", () => {
       const scrollRoot = document.createElement("div")
       scrollRoot.setAttribute("data-scroll-root", "")
