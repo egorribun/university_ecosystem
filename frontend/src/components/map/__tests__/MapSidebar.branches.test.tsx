@@ -1,4 +1,4 @@
-import { render, screen, act } from "@testing-library/react"
+import { fireEvent, render, screen, act } from "@testing-library/react"
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
 
 vi.mock("react-i18next", () => ({
@@ -89,6 +89,27 @@ describe("MapSidebar branches", () => {
     act(() => {
       vi.advanceTimersByTime(300)
     })
+  })
+
+  it("tracks mobile pointer drag and ignores move/up events before dragging", () => {
+    render(<MapSidebar {...baseProps} isMobile />)
+    const handle = screen.getByLabelText("sidebar.dragToResize")
+    const setPointerCapture = vi.fn()
+    const releasePointerCapture = vi.fn()
+    Object.defineProperty(handle, "setPointerCapture", { value: setPointerCapture })
+    Object.defineProperty(handle, "releasePointerCapture", { value: releasePointerCapture })
+
+    fireEvent.pointerMove(handle, { pointerId: 7, clientY: 420 })
+    fireEvent.pointerUp(handle, { pointerId: 7, clientY: 420 })
+    fireEvent.pointerDown(handle, { pointerId: 7, clientY: 520 })
+    fireEvent.pointerMove(handle, { pointerId: 7, clientY: 240 })
+    fireEvent.pointerUp(handle, { pointerId: 7, clientY: 240 })
+    fireEvent.pointerDown(handle, { pointerId: 8, clientY: 240 })
+    fireEvent.pointerMove(handle, { pointerId: 8, clientY: 800 })
+    fireEvent.pointerUp(handle, { pointerId: 8, clientY: 800 })
+
+    expect(setPointerCapture).toHaveBeenCalledWith(7)
+    expect(releasePointerCapture).toHaveBeenCalledWith(7)
   })
 
   it("renders the amenities section when building.amenities is non-empty", () => {
