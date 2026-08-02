@@ -122,32 +122,68 @@ impl ScheduleItem {
     }
 }
 
-// Helper for conflict detection
-pub fn check_conflict_proto(a: &ScheduleItem, b: &ScheduleItem) -> bool {
-    let a_wd_norm = a.weekday.trim();
-    let b_wd_norm = b.weekday.trim();
+#[derive(Clone)]
+struct ConflictMetadata {
+    weekday: Option<Weekday>,
+    weekday_fallback: Option<String>,
+    parity: Option<String>,
+}
 
-    let same_weekday = match (parse_weekday(a_wd_norm), parse_weekday(b_wd_norm)) {
+#[inline]
+fn conflict_metadata(item: &ScheduleItem) -> ConflictMetadata {
+    let weekday = item.weekday.trim();
+    let parity = item.parity.trim();
+    let parsed_weekday = parse_weekday(weekday);
+
+    ConflictMetadata {
+        weekday: parsed_weekday,
+        weekday_fallback: parsed_weekday.is_none().then(|| weekday.to_owned()),
+        parity: (!parity.eq_ignore_ascii_case("both")).then(|| parity.to_owned()),
+    }
+}
+
+#[inline]
+fn weekday_comparison_value(metadata: &ConflictMetadata) -> &str {
+    metadata
+        .weekday
+        .map(weekday_name)
+        .or(metadata.weekday_fallback.as_deref())
+        .unwrap_or_default()
+}
+
+#[inline]
+fn check_conflict_with_metadata(
+    a: &ScheduleItem,
+    a_metadata: &ConflictMetadata,
+    b: &ScheduleItem,
+    b_metadata: &ConflictMetadata,
+) -> bool {
+    let same_weekday = match (a_metadata.weekday, b_metadata.weekday) {
         (Some(w1), Some(w2)) => w1 == w2,
-        _ => a_wd_norm.eq_ignore_ascii_case(b_wd_norm),
+        _ => weekday_comparison_value(a_metadata)
+            .eq_ignore_ascii_case(weekday_comparison_value(b_metadata)),
     };
     if !same_weekday {
         return false;
     }
 
-    let a_parity_norm = a.parity.trim();
-    let b_parity_norm = b.parity.trim();
-    if !a_parity_norm.eq_ignore_ascii_case("both")
-        && !b_parity_norm.eq_ignore_ascii_case("both")
-        && !a_parity_norm.eq_ignore_ascii_case(b_parity_norm)
-    {
-        return false;
+    if let (Some(a_parity), Some(b_parity)) = (&a_metadata.parity, &b_metadata.parity) {
+        if !a_parity.eq_ignore_ascii_case(b_parity) {
+            return false;
+        }
     }
 
     a.start_time < a.end_time
         && b.start_time < b.end_time
         && a.start_time < b.end_time
         && b.start_time < a.end_time
+}
+
+// Helper for conflict detection
+pub fn check_conflict_proto(a: &ScheduleItem, b: &ScheduleItem) -> bool {
+    let a_metadata = conflict_metadata(a);
+    let b_metadata = conflict_metadata(b);
+    check_conflict_with_metadata(a, &a_metadata, b, &b_metadata)
 }
 
 /// Helper to normalize a ScheduleItem's start/end timestamps onto a target date's midnight timestamp,
@@ -201,6 +237,21 @@ fn detect_conflicts(
 const MAX_CONFLICT_ITEMS: usize = 2500;
 const MAX_CONFLICT_PAIRS: usize = 50_000;
 
+#[inline]
+fn record_conflict_pair(
+    a: &ScheduleItem,
+    b: &ScheduleItem,
+    pair_count: &std::sync::atomic::AtomicUsize,
+    limit_exceeded: &std::sync::atomic::AtomicBool,
+) -> Option<(ScheduleItem, ScheduleItem)> {
+    if pair_count.fetch_add(1, std::sync::atomic::Ordering::Relaxed) >= MAX_CONFLICT_PAIRS {
+        limit_exceeded.store(true, std::sync::atomic::Ordering::Relaxed);
+        None
+    } else {
+        Some((a.clone(), b.clone()))
+    }
+}
+
 pub fn batch_detect_conflicts(
     items: Vec<ScheduleItem>,
 ) -> PyResult<Vec<(ScheduleItem, ScheduleItem)>> {
@@ -237,31 +288,60 @@ pub fn batch_detect_conflicts(
                 }
             };
 
+            // Normalize each item once. The pairwise loop is O(n²), so doing
+            // case-folding and weekday parsing inside it made the benchmark
+            // regress by orders of magnitude for larger batches.
+            let metadata: Vec<ConflictMetadata> = items.iter().map(conflict_metadata).collect();
             let pair_count = std::sync::atomic::AtomicUsize::new(0);
             let limit_exceeded = std::sync::atomic::AtomicBool::new(false);
+            let canonical_both = metadata
+                .iter()
+                .all(|item| item.weekday.is_some() && item.parity.is_none());
 
-            let conflicts: Vec<(ScheduleItem, ScheduleItem)> = pool.install(|| {
-                items
-                    .par_iter()
-                    .enumerate()
-                    .flat_map_iter(|(i, a)| {
-                        items[i + 1..]
-                            .iter()
-                            .filter(move |b| check_conflict_proto(a, b))
-                            .filter_map(|b| {
-                                if pair_count.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
-                                    >= MAX_CONFLICT_PAIRS
-                                {
-                                    limit_exceeded
-                                        .store(true, std::sync::atomic::Ordering::Relaxed);
-                                    None
-                                } else {
-                                    Some((a.clone(), b.clone()))
-                                }
-                            })
-                    })
-                    .collect()
-            });
+            let conflicts: Vec<(ScheduleItem, ScheduleItem)> = if canonical_both {
+                pool.install(|| {
+                    items
+                        .par_iter()
+                        .enumerate()
+                        .flat_map_iter(|(i, a)| {
+                            let a_weekday = metadata[i].weekday.expect("canonical weekday");
+                            let a_valid = a.start_time < a.end_time;
+                            items[i + 1..]
+                                .iter()
+                                .zip(metadata[i + 1..].iter())
+                                .filter(move |(b, b_metadata)| {
+                                    a_valid
+                                        && b_metadata.weekday == Some(a_weekday)
+                                        && b.start_time < b.end_time
+                                        && a.start_time < b.end_time
+                                        && b.start_time < a.end_time
+                                })
+                                .filter_map(|(b, _b_metadata)| {
+                                    record_conflict_pair(a, b, &pair_count, &limit_exceeded)
+                                })
+                        })
+                        .collect()
+                })
+            } else {
+                pool.install(|| {
+                    items
+                        .par_iter()
+                        .enumerate()
+                        .flat_map_iter(|(i, a)| {
+                            let a_metadata = &metadata[i];
+                            items[i + 1..]
+                                .iter()
+                                .zip(metadata[i + 1..].iter())
+                                .filter(move |(b, b_metadata)| {
+                                    check_conflict_with_metadata(a, a_metadata, b, b_metadata)
+                                })
+                                .filter_map(|(b, _b_metadata)| {
+                                    record_conflict_pair(a, b, &pair_count, &limit_exceeded)
+                                })
+                        })
+                        .collect()
+                })
+            };
 
             if limit_exceeded.load(std::sync::atomic::Ordering::Relaxed) {
                 return Err(pyo3::exceptions::PyValueError::new_err(format!(
@@ -423,15 +503,23 @@ fn next_weekday(from: NaiveDate, target: Weekday) -> NaiveDate {
 
 /// Parse a weekday string (case-insensitive) into a chrono Weekday.
 pub fn parse_weekday(s: &str) -> Option<Weekday> {
-    match s.trim().to_lowercase().as_str() {
-        "monday" | "mon" => Some(Weekday::Mon),
-        "tuesday" | "tue" => Some(Weekday::Tue),
-        "wednesday" | "wed" => Some(Weekday::Wed),
-        "thursday" | "thu" => Some(Weekday::Thu),
-        "friday" | "fri" => Some(Weekday::Fri),
-        "saturday" | "sat" => Some(Weekday::Sat),
-        "sunday" | "sun" => Some(Weekday::Sun),
-        _ => None,
+    let trimmed = s.trim();
+    if trimmed.eq_ignore_ascii_case("monday") || trimmed.eq_ignore_ascii_case("mon") {
+        Some(Weekday::Mon)
+    } else if trimmed.eq_ignore_ascii_case("tuesday") || trimmed.eq_ignore_ascii_case("tue") {
+        Some(Weekday::Tue)
+    } else if trimmed.eq_ignore_ascii_case("wednesday") || trimmed.eq_ignore_ascii_case("wed") {
+        Some(Weekday::Wed)
+    } else if trimmed.eq_ignore_ascii_case("thursday") || trimmed.eq_ignore_ascii_case("thu") {
+        Some(Weekday::Thu)
+    } else if trimmed.eq_ignore_ascii_case("friday") || trimmed.eq_ignore_ascii_case("fri") {
+        Some(Weekday::Fri)
+    } else if trimmed.eq_ignore_ascii_case("saturday") || trimmed.eq_ignore_ascii_case("sat") {
+        Some(Weekday::Sat)
+    } else if trimmed.eq_ignore_ascii_case("sunday") || trimmed.eq_ignore_ascii_case("sun") {
+        Some(Weekday::Sun)
+    } else {
+        None
     }
 }
 
