@@ -1649,7 +1649,10 @@ jobs:
 
       - name: rust-crypto — native KAT tests + coverage
         working-directory: frontend/rust-crypto
-        run: cargo llvm-cov --lib --json --output-path ../../artifacts/coverage/rust/rust-crypto/llvm.json
+        # Include tests/native.rs in the coverage universe; --lib alone only
+        # measures the two src/lib.rs unit tests and leaves the contract below
+        # the 99/98 rust-crypto floor.
+        run: cargo llvm-cov --all-targets --json --output-path ../../artifacts/coverage/rust/rust-crypto/llvm.json
 
       - name: Upload Rust coverage artifacts
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -1702,7 +1705,9 @@ jobs:
 
       - name: Run incremental mutmut (blocking, 25-minute budget)
         run: |
-          git diff --name-only origin/main...HEAD | grep '^app/core/tenant\.py$' | head -n 1 > /tmp/changed_py.txt || true
+          # Scope mutmut to every changed backend module.  The old tenant-only
+          # probe silently skipped mutation evidence for all other Python diffs.
+          git diff --name-only origin/main...HEAD | grep -E '^app/.*\.py$' | sort -u > /tmp/changed_py.txt || true
           if [ ! -s /tmp/changed_py.txt ]; then
             echo "No changed Python source files found. Skipping mutation testing."
             exit 0
@@ -1724,7 +1729,7 @@ jobs:
           # and reduce the runner OOM-killer firing mid-sweep.
           set -f          # keep the $PATTERNS '*' globs intact for mutmut
           set +e
-          timeout --kill-after=30s 15m uv run mutmut run --max-children 2 $PATTERNS 2>&1 | tee /tmp/mutmut_run.log
+          timeout --kill-after=30s 25m uv run mutmut run --max-children 2 $PATTERNS 2>&1 | tee /tmp/mutmut_run.log
           ec=${PIPESTATUS[0]}   # exit code of timeout/mutmut, NOT tee
           set -e
           set +f
@@ -2290,6 +2295,7 @@ jobs:
   kyverno-test:
     name: Kyverno policy tests
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     permissions:
       contents: read
     steps:
@@ -2302,10 +2308,17 @@ jobs:
           version="v1.18.0"
           archive="kyverno-cli_v1.18.0_linux_x86_64.tar.gz"
           base="https://github.com/kyverno/kyverno/releases/download/${version}"
-          curl --fail --silent --show-error --location --output "$RUNNER_TEMP/$archive" "$base/$archive"
-          curl --fail --silent --show-error --location --output "$RUNNER_TEMP/checksums.txt" "$base/checksums.txt"
-          (cd "$RUNNER_TEMP" && grep "$archive" checksums.txt | sha256sum --check -)
-          tar --extract --gzip --file "$RUNNER_TEMP/$archive" --directory "$RUNNER_TEMP"
+          curl_args=(--fail --silent --show-error --location --retry 10 --retry-delay 5 --retry-all-errors --connect-timeout 20)
+          curl "${curl_args[@]}" --output "$RUNNER_TEMP/$archive" "$base/$archive"
+          curl "${curl_args[@]}" --output "$RUNNER_TEMP/checksums.txt" "$base/checksums.txt"
+          archive_path="$RUNNER_TEMP/$archive"
+          checksum_path="$RUNNER_TEMP/checksums.txt"
+          test -s "$archive_path"
+          test -s "$checksum_path"
+          expected_sha256="$(awk -v archive="$archive" '$2 == archive || $2 == "*" archive { print $1; exit }' "$checksum_path")"
+          test -n "$expected_sha256"
+          printf '%s  %s\n' "$expected_sha256" "$archive_path" | sha256sum --check -
+          tar --extract --gzip --file "$archive_path" --directory "$RUNNER_TEMP"
           echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
 
       - name: Run Kyverno tests

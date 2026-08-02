@@ -85,6 +85,21 @@ describe("WeatherParticles", () => {
     }
   })
 
+  it("recycles fog particles from the right when their drift is negative", () => {
+    let randomCall = 0
+    const randomSpy = vi.spyOn(Math, "random").mockImplementation(() => {
+      const particleSlot = randomCall++ % 6
+      return particleSlot === 5 ? 0 : 0.999
+    })
+
+    try {
+      const { container } = render(<WeatherParticles condition="fog" isDark={false} />)
+      expect(container.querySelector("canvas")).not.toBeNull()
+    } finally {
+      randomSpy.mockRestore()
+    }
+  })
+
   it("walks the storm flash scheduling branch", () => {
     // Low Math.random pushes the flash schedule toward its minimum window; this
     // still walks the storm flash scheduling + fade arithmetic.

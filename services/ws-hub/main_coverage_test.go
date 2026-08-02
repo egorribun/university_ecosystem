@@ -9,6 +9,7 @@ import (
 	"context"
 	"io"
 	"log/slog"
+	"net/http"
 	"testing"
 
 	"github.com/alicebob/miniredis/v2"
@@ -41,4 +42,48 @@ func TestInitRedis_PingFailureReturnsNil(t *testing.T) {
 	cfg := &config.Config{RedisURL: "127.0.0.1:1"}
 	rdb := initRedis(context.Background(), cfg, discardLogger())
 	assert.Nil(t, rdb)
+}
+
+func TestInitSpiffeClient_DisabledReturnsNil(t *testing.T) {
+	cfg := &config.Config{SpiffeEnabled: false}
+	client, err := initSpiffeClient(context.Background(), cfg, discardLogger())
+	require.NoError(t, err)
+	assert.Nil(t, client)
+}
+
+func TestInitSpiffeClient_InvalidTrustDomainFailsBeforeSocketDial(t *testing.T) {
+	cfg := &config.Config{
+		SpiffeEnabled:     true,
+		SpiffeTrustDomain: "not a trust domain",
+	}
+	client, err := initSpiffeClient(context.Background(), cfg, discardLogger())
+	assert.Nil(t, client)
+	require.Error(t, err)
+	assert.ErrorContains(t, err, "invalid SPIFFE trust domain")
+}
+
+func TestSetupHub_EnabledSpiffeRequiresClient(t *testing.T) {
+	cfg := &config.Config{
+		BackendURL:      "http://localhost:1",
+		SpiffeEnabled:   true,
+		BackendSpiffeID: "spiffe://university.ecosystem/ns/default/sa/backend",
+	}
+	h, err := setupHub(context.Background(), cfg, discardLogger(), nil, nil)
+	assert.Nil(t, h)
+	assert.ErrorIs(t, err, http.ErrServerClosed)
+}
+
+func TestDefaultInitNats_RejectsMalformedURL(t *testing.T) {
+	cfg := &config.Config{NatsURL: "://not-a-url"}
+	nc, err := defaultInitNats(context.Background(), cfg, discardLogger())
+	assert.Nil(t, nc)
+	assert.Error(t, err)
+}
+
+func TestCleanupHelpersAreNilSafe(t *testing.T) {
+	assert.NotPanics(t, func() {
+		closeNATSConnection(nil)
+		closeRedisConnection(nil, discardLogger())
+		closeSPIFFEClient(nil, discardLogger())
+	})
 }

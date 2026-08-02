@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import warnings
+
 import pytest
 
 from app.core.config.mixins.jwt_settings import JwtSettingsMixin
@@ -35,6 +37,14 @@ def test_algorithm_validator_normalizes_unrecognized_algorithm(monkeypatch):
     monkeypatch.setenv("ALGORITHM", "eddsa")
     settings = SecuritySettings()
     assert settings.algorithm == "EDDSA"
+
+
+def test_algorithm_validator_warns_for_hs256():
+    with warnings.catch_warnings(record=True) as captured:
+        warnings.simplefilter("always")
+        assert JwtSettingsMixin.validate_jwt_algorithm("HS256") == "HS256"
+
+    assert any("not recommended" in str(item.message) for item in captured)
 
 
 def test_production_placeholder_audience_logs_warning(monkeypatch, caplog):
@@ -112,8 +122,13 @@ def test_jwt_validators_reject_empty_and_short_production_values(monkeypatch):
 
     accepted = SecuritySettings(jwt_signing_keys="kid:" + "s" * 32)
     assert accepted.jwt_signing_keys == "kid:" + "s" * 32
-    pem = SecuritySettings(jwt_signing_keys="kid:-----BEGIN PRIVATE KEY-----")
-    assert pem.jwt_signing_keys == "kid:-----BEGIN PRIVATE KEY-----"
+    pem = SecuritySettings(  # pragma: allowlist secret
+        jwt_signing_keys="kid:-----BEGIN PRIVATE KEY-----"  # pragma: allowlist secret
+    )
+    assert (
+        pem.jwt_signing_keys
+        == "kid:-----BEGIN PRIVATE KEY-----"  # pragma: allowlist secret
+    )
 
     _development_env(monkeypatch)
     local_short = SecuritySettings(jwt_signing_keys="kid:short")
@@ -130,20 +145,27 @@ def test_jwt_validators_reject_empty_and_short_production_values(monkeypatch):
 
 def test_jwt_signing_registry_parses_entries_caches_and_exposes_aliases():
     settings = _mixin(
-        jwt_signing_keys=[" first : first-secret ", "second:second-secret"],
+        jwt_signing_keys=[  # pragma: allowlist secret
+            " first : first-secret ",  # pragma: allowlist secret
+            "second:second-secret",  # pragma: allowlist secret
+        ],
         jwt_active_kid=" first ",
         algorithm="RS256",
         jwt_private_key_path="",
-        secret_key="fallback",
+        secret_key="fallback",  # pragma: allowlist secret
         environment="development",
     )
 
     registry = settings.jwt_signing_key_registry
-    assert registry == {"first": "first-secret", "second": "second-secret"}
+    assert registry == {  # pragma: allowlist secret
+        "first": "first-secret",  # pragma: allowlist secret
+        "second": "second-secret",  # pragma: allowlist secret
+    }
     assert settings.jwt_signing_key_registry is registry
     assert settings.jwt_signing_active_kid == "first"
-    assert settings.jwt_signing_active_secret == "first-secret"
-    assert settings.SECRET_KEY == "first-secret"
+    expected_active_secret = "first-secret"  # pragma: allowlist secret
+    assert settings.jwt_signing_active_secret == expected_active_secret
+    assert settings.SECRET_KEY == "first-secret"  # pragma: allowlist secret
     assert settings.ALGORITHM == "RS256"
 
 
@@ -162,7 +184,7 @@ def test_jwt_signing_registry_rejects_malformed_entries(entries, message):
         jwt_active_kid=None,
         algorithm="HS256",
         jwt_private_key_path="",
-        secret_key="fallback",
+        secret_key="fallback",  # pragma: allowlist secret
         environment="development",
     )
 
@@ -176,10 +198,12 @@ def test_jwt_registry_falls_back_to_secret_and_validates_active_kid():
         jwt_active_kid="",
         algorithm="HS256",
         jwt_private_key_path="",
-        secret_key="fallback",
+        secret_key="fallback",  # pragma: allowlist secret
         environment="development",
     )
-    assert fallback.jwt_signing_key_registry == {"primary": "fallback"}
+    assert fallback.jwt_signing_key_registry == {  # pragma: allowlist secret
+        "primary": "fallback"  # pragma: allowlist secret
+    }
     assert fallback.jwt_signing_active_kid == "primary"
 
     invalid = _mixin(
@@ -187,7 +211,7 @@ def test_jwt_registry_falls_back_to_secret_and_validates_active_kid():
         jwt_active_kid="other",
         algorithm="HS256",
         jwt_private_key_path="",
-        secret_key="fallback",
+        secret_key="fallback",  # pragma: allowlist secret
         environment="development",
     )
     with pytest.raises(RuntimeError, match="must match"):

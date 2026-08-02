@@ -1,4 +1,4 @@
-import { describe, expect, it, vi, beforeEach } from "vitest"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 const mocks = vi.hoisted(() => ({
   sanitize_rich_text: vi.fn((s: string) => s),
@@ -44,8 +44,65 @@ beforeEach(() => {
   vi.clearAllMocks()
 })
 
+afterEach(() => {
+  vi.unstubAllGlobals()
+})
+
 describe("sanitize utilities", () => {
   describe("sanitizeNewsHtml", () => {
+    it("uses a cached Trusted Types policy when one is already available", async () => {
+      const createHTML = vi.fn((value: string) => `trusted:${value}`)
+      const createPolicy = vi.fn()
+      vi.stubGlobal("window", {
+        trustedTypes: { createPolicy },
+        __dompurifyNewsPolicy: { createHTML },
+      })
+
+      await expect(sanitizeNewsHtml("<p>cached</p>")).resolves.toBe("trusted:<p>cached</p>")
+      expect(createPolicy).not.toHaveBeenCalled()
+      expect(createHTML).toHaveBeenCalledWith("<p>cached</p>")
+    })
+
+    it("creates and uses a Trusted Types policy when the browser exposes the API", async () => {
+      const createHTML = vi.fn((value: string) => `trusted:${value}`)
+      const createPolicy = vi.fn(() => ({ createHTML }))
+      vi.stubGlobal("window", { trustedTypes: { createPolicy } })
+
+      await expect(sanitizeNewsHtml("<p>policy</p>")).resolves.toBe("trusted:<p>policy</p>")
+      expect(createPolicy).toHaveBeenCalledWith("dompurify-news", expect.any(Object))
+      expect(createHTML).toHaveBeenCalledWith("<p>policy</p>")
+      const rules = createPolicy.mock.calls[0]?.[1] as {
+        createHTML: (value: string) => string
+      }
+      expect(rules.createHTML("<p>rules</p>")).toBe("<p>rules</p>")
+      expect(mocks.sanitize_rich_text).toHaveBeenCalledWith("<p>rules</p>")
+    })
+
+    it("records Trusted Types policy failures and falls back to the sanitizer", async () => {
+      const createPolicy = vi.fn(() => {
+        throw new Error("policy blocked")
+      })
+      vi.stubGlobal("window", { trustedTypes: { createPolicy } })
+
+      await expect(sanitizeNewsHtml("<p>fallback</p>")).resolves.toBe("<p>fallback</p>")
+      expect(mocks.logWarning).toHaveBeenCalledWith(
+        "Unable to create dompurify-news trusted types policy",
+        expect.objectContaining({ error: expect.any(Error) })
+      )
+    })
+
+    it("honors a cached Trusted Types failure sentinel", async () => {
+      const createPolicy = vi.fn()
+      vi.stubGlobal("window", {
+        trustedTypes: { createPolicy },
+        __dompurifyNewsPolicy: false,
+      })
+
+      await expect(sanitizeNewsHtml("<p>sentinel</p>")).resolves.toBe("<p>sentinel</p>")
+      expect(createPolicy).not.toHaveBeenCalled()
+      expect(mocks.sanitize_rich_text).toHaveBeenCalledWith("<p>sentinel</p>")
+    })
+
     it("returns empty string for null input", async () => {
       await sanitizeNewsHtml(null)
       expect(mocks.sanitize_rich_text).toHaveBeenCalledWith("")
@@ -138,6 +195,16 @@ describe("sanitize utilities", () => {
       expect(result).toMatch(/^https?:\/\//)
       expect(result).toContain("/path/to/page")
     })
+
+    it("uses the safe fallback base when the browser location is unavailable", () => {
+      vi.stubGlobal("window", undefined)
+
+      expect(sanitizeHttpUrl("/path/to/page")).toBeNull()
+    })
+
+    it("rejects malformed URLs without throwing", () => {
+      expect(sanitizeHttpUrl("http://[invalid-host")).toBeNull()
+    })
   })
 
   describe("sanitizeEmailAddress", () => {
@@ -203,6 +270,10 @@ describe("sanitize utilities", () => {
       expect(sanitizeTelegramUrl("")).toBe("")
     })
 
+    it("returns empty string for whitespace-only input", () => {
+      expect(sanitizeTelegramUrl("   ")).toBe("")
+    })
+
     it("converts @username to https://t.me/username", () => {
       expect(sanitizeTelegramUrl("@university")).toBe("https://t.me/university")
     })
@@ -219,6 +290,33 @@ describe("sanitize utilities", () => {
 
     it("rejects non-telegram HTTP URLs", () => {
       expect(sanitizeTelegramUrl("https://evil.com/phish")).toBe("")
+    })
+
+    it("fails closed when the final Telegram URL parse throws", () => {
+      const NativeURL = globalThis.URL
+      let calls = 0
+      class FailingURL extends NativeURL {
+        constructor(..._args: ConstructorParameters<typeof NativeURL>) {
+          calls += 1
+          if (calls === 2) throw new TypeError("URL parser unavailable")
+          super(..._args)
+        }
+      }
+      vi.stubGlobal("URL", FailingURL)
+
+      expect(sanitizeTelegramUrl("https://t.me/university")).toBe("")
+    })
+
+    it("fails closed when the Telegram URL normalizer rejects the URL", () => {
+      const NativeURL = globalThis.URL
+      class FailingURL extends NativeURL {
+        constructor(..._args: ConstructorParameters<typeof NativeURL>) {
+          throw new TypeError("URL parser unavailable")
+        }
+      }
+      vi.stubGlobal("URL", FailingURL)
+
+      expect(sanitizeTelegramUrl("https://t.me/university")).toBe("")
     })
 
     it("rejects short usernames (less than 5 chars)", () => {

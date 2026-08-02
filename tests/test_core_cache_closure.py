@@ -15,6 +15,22 @@ def test_lru_update_and_prefix_invalidation_empty_result():
     assert cache.get("key") == "second"
     assert cache.invalidate_prefix("missing:") == 0
 
+    expired = LRUCache[str](max_size=1)
+    expired.set("expired", "value", ttl=-1)
+    assert expired.get("expired") is None
+
+    evicted = LRUCache[str](max_size=1)
+    evicted.set("first", "value")
+    evicted.set("second", "value")
+    assert evicted.get("first") is None
+    assert evicted.delete("second") is True
+    assert evicted.delete("second") is False
+    evicted.clear()
+    assert evicted.size == 0
+    assert evicted.hit_rate == 0.0
+    assert evicted.stats()["size"] == 0
+    assert LRUCache[str]().hit_rate == 0.0
+
 
 @pytest.mark.asyncio
 async def test_multilayer_l2_miss_and_metrics_guard_paths():
@@ -43,6 +59,33 @@ async def test_multilayer_prefix_scan_handles_empty_batch_and_no_redis():
     no_redis = MultiLayerCache()
     no_redis.l1.set("prefix:key", "value")
     assert await no_redis.invalidate_prefix("prefix:") == 1
+    await no_redis.delete("prefix:key")
+
+    paged_redis = AsyncMock()
+    paged_redis.scan.side_effect = [(1, []), (0, ["prefix:remote"])]
+    paged = MultiLayerCache(redis_client=paged_redis)
+    paged.l1.set("prefix:local", "value")
+    assert await paged.invalidate_prefix("prefix:") == 2
+    paged_redis.delete.assert_awaited_once_with("prefix:remote")
+
+    failing_redis = AsyncMock()
+    failing_redis.scan.side_effect = ConnectionError("redis unavailable")
+    failing = MultiLayerCache(redis_client=failing_redis)
+    assert await failing.invalidate_prefix("prefix:") == 0
+
+
+@pytest.mark.asyncio
+async def test_multilayer_delete_and_l2_set_success_and_failure():
+    redis = AsyncMock()
+    cache = MultiLayerCache(redis_client=redis, l2_ttl=11)
+    await cache.set("key", {"value": 1}, l1_ttl=3)
+    redis.setex.assert_awaited_once()
+    await cache.delete("key")
+    redis.delete.assert_awaited_once_with("key")
+
+    redis.delete.side_effect = ConnectionError("redis unavailable")
+    await cache.delete("missing")
+    assert cache.stats()["l2_available"] is True
 
 
 @pytest.mark.asyncio

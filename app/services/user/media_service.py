@@ -1,15 +1,35 @@
 from fastapi import UploadFile
 
-from app.api.utils import save_upload
 from app.core.exceptions.domain import EntityNotFound
 from app.core.logging import get_logger
 from app.core.protocols import UserLike, extract_user_id
 from app.repositories.unit_of_work import UnitOfWork
 from app.schemas.dtos import UserDTO
 from app.services.user.logic import update_user_attributes
-from app.utils.files import delete_static_file
 
 logger = get_logger(__name__)
+
+
+async def save_upload(
+    file: UploadFile,
+    subdir: str,
+    prefix: str,
+    *,
+    locale: str | None = None,
+) -> str:
+    """Load the optional image backend only when an upload is requested."""
+
+    from app.api.utils import save_upload as _save_upload
+
+    return await _save_upload(file, subdir, prefix, locale=locale)
+
+
+async def delete_static_file(path: str) -> None:
+    """Load the optional image backend only when a file is removed."""
+
+    from app.utils.files import delete_static_file as _delete_static_file
+
+    await _delete_static_file(path)
 
 
 class UserMediaService:

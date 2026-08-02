@@ -38,6 +38,15 @@ fn make_err(msg: &str) -> String {
     msg.to_string()
 }
 
+fn fill_scrypt_output(
+    password: &[u8],
+    salt: &[u8],
+    params: &ScryptParams,
+    output: &mut [u8],
+) -> Result<(), ErrorType> {
+    scrypt(password, salt, params, output).map_err(|e| make_err(&format!("Scrypt failed: {:?}", e)))
+}
+
 #[wasm_bindgen]
 pub fn scrypt_derive(
     password: &[u8],
@@ -54,14 +63,12 @@ pub fn scrypt_derive(
     let params = ScryptParams::new(log_n as u8, r, p, dk_len)
         .map_err(|e| make_err(&format!("Invalid scrypt params: {:?}", e)))?;
     let mut res = vec![0u8; dk_len];
-    scrypt(password, salt, &params, &mut res)
-        .map_err(|e| make_err(&format!("Scrypt failed: {:?}", e)))?;
-    Ok(res)
+    fill_scrypt_output(password, salt, &params, &mut res).map(|_| res)
 }
 
 #[cfg(test)]
 mod tests {
-    use super::scrypt_derive;
+    use super::{fill_scrypt_output, scrypt_derive, ScryptParams};
 
     #[test]
     fn scrypt_rejects_zero_cost_without_panicking() {
@@ -71,5 +78,12 @@ mod tests {
     #[test]
     fn scrypt_rejects_non_power_of_two_cost() {
         assert!(scrypt_derive(b"password", b"salt", 3, 8, 1, 64).is_err());
+    }
+
+    #[test]
+    fn scrypt_maps_output_length_error() {
+        let params = ScryptParams::recommended();
+        let mut empty_output = [];
+        assert!(fill_scrypt_output(b"password", b"salt", &params, &mut empty_output).is_err());
     }
 }

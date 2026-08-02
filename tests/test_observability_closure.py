@@ -231,6 +231,16 @@ def test_configure_otel_optional_pipelines_without_endpoint_or_headers() -> None
     observability._sqlalchemy_instrumented = False
 
 
+def test_configure_otel_returns_none_when_disabled() -> None:
+    """Disabled OTEL must skip provider creation before touching exporters."""
+    from app.core import observability
+
+    observability._otel_configured = False
+    with patch.object(observability, "settings", MagicMock(enable_otel=False)):
+        assert observability._configure_otel(MagicMock()) is None
+    assert observability._otel_configured is False
+
+
 def test_configure_observability_short_circuits_configured_app() -> None:
     from app.core import observability
 

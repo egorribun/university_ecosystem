@@ -36,7 +36,7 @@ describe("trustedTypes util", () => {
       createHTML,
     }
     const mockFactory = {
-      createPolicy: vi.fn((name) => {
+      createPolicy: vi.fn((name: string, _rules: Record<string, (value: string) => string>) => {
         if (name === "wasm-sanitizer") return mockPolicy
         return {}
       }),
@@ -47,6 +47,10 @@ describe("trustedTypes util", () => {
     expect(result).toBe("<b>test</b> (policy sanitized)")
     expect(mockFactory.createPolicy).toHaveBeenCalledWith("wasm-sanitizer", expect.anything())
     expect(createHTML).toHaveBeenCalledWith("<b>test</b>")
+    const sanitizerRules = mockFactory.createPolicy.mock.calls[0]?.[1] as {
+      createHTML: (value: string) => string
+    }
+    expect(sanitizerRules.createHTML("<i>rule</i>")).toBe("<i>rule</i> (sanitized)")
   })
 
   it("creates and then reuses both application policies", async () => {
@@ -95,6 +99,54 @@ describe("trustedTypes util", () => {
 
     // Should block unknown external origin
     expect(() => policyCallback("https://evil.com/malice.js")).toThrow(TypeError)
+  })
+
+  it("ignores a malformed document location while building the allowlist", async () => {
+    const originalWindow = globalThis.window
+    const mockFactory = {
+      createPolicy: vi.fn(
+        (_name: string, rules: Record<string, (value: string) => string>) => rules
+      ),
+    }
+    vi.stubGlobal("window", {
+      trustedTypes: mockFactory,
+      location: { href: "not a URL" },
+    })
+
+    try {
+      await ensureTrustedTypesPolicies()
+      expect(mockFactory.createPolicy).toHaveBeenCalledWith("app", expect.anything())
+    } finally {
+      vi.stubGlobal("window", originalWindow)
+    }
+  })
+
+  it("uses direct sanitizer and raw URL fallbacks during SSR", async () => {
+    const originalWindow = globalThis.window
+    vi.stubGlobal("window", undefined)
+
+    try {
+      await expect(ensureTrustedTypesPolicies()).resolves.toBeUndefined()
+      await expect(sanitizeHTML("<b>server</b>")).resolves.toBe("<b>server</b> (sanitized)")
+      expect(createTrustedScriptURL("/server.js")).toBe("/server.js")
+    } finally {
+      vi.stubGlobal("window", originalWindow)
+    }
+  })
+
+  it("returns raw script URLs when Trusted Types is unavailable", async () => {
+    const originalWindow = globalThis.window
+    vi.stubGlobal("window", {
+      trustedTypes: undefined,
+      location: { href: "https://frontend.example/" },
+    })
+
+    try {
+      await expect(ensureTrustedTypesPolicies()).resolves.toBeUndefined()
+      expect(createTrustedScriptURL("/fallback.js")).toBe("/fallback.js")
+    } finally {
+      vi.stubGlobal("window", originalWindow)
+    }
   })
 
   it("handles policy creation failure gracefully by falling back to WASM directly", async () => {

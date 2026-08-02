@@ -92,8 +92,6 @@ export function useSessionManagement({
       return !isNaN(parsed.getTime()) ? parsed.valueOf() : 0
     }
 
-    if (!Array.isArray(sessions)) return []
-
     return [...sessions].sort((a, b) => {
       const weightDiff = weight(a) - weight(b)
       if (weightDiff !== 0) return weightDiff

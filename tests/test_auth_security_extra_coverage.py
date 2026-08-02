@@ -218,23 +218,26 @@ def test_decode_token_branches(monkeypatch) -> None:
         "exp": now + timedelta(minutes=10),
         "jti": "some-jti",
     }
-    token_no_kid = jwt.encode(payload, "secret", algorithm="HS256")
+    test_hmac_key = "insecure-test-secret-32-chars-long"
+    token_no_kid = jwt.encode(payload, test_hmac_key, algorithm="HS256")
     assert decode_token(token_no_kid) is None
 
     token_unknown_kid = jwt.encode(
-        payload, "secret", algorithm="HS256", headers={"kid": "unknown"}
+        payload, test_hmac_key, algorithm="HS256", headers={"kid": "unknown"}
     )
     assert decode_token(token_unknown_kid) is None
 
     # Token with wrong signature (causes JWTError in loop verification)
     token_wrong_sig = jwt.encode(
         payload,
-        "wrong-secret-key-32-chars-long",
+        "wrong-secret-key-32-chars-long-extra",
         algorithm="HS256",
         headers={"kid": "hskey"},
     )
     monkeypatch.setattr(
-        settings, "jwt_signing_keys", ["hskey:another-secret-key-32-chars-long"]
+        settings,
+        "jwt_signing_keys",
+        ["hskey:another-secret-key-32-chars-long-extra"],
     )
     assert decode_token(token_wrong_sig) is None
 
@@ -278,7 +281,9 @@ def test_decode_token_branches(monkeypatch) -> None:
     monkeypatch.setattr(
         settings,
         "jwt_signing_keys",
-        ["rskey-invalid:-----BEGIN PRIVATE KEY-----\ninvalid\n"],
+        [  # pragma: allowlist secret
+            "rskey-invalid:-----BEGIN PRIVATE KEY-----\ninvalid\n"  # pragma: allowlist secret
+        ],
     )
     assert decode_token(rs256_token_invalid) is None
 

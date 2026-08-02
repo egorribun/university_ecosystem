@@ -16,8 +16,17 @@ from app.core.ratelimit.delay import (
     ProgressiveDelayTracker,
     _delay_memory,
     _delay_memory_lock,
+    clear_delay_memory,
 )
 from app.core.ratelimit.fastapi import get_progressive_delay_tracker
+
+
+def test_clear_delay_memory_removes_all_in_memory_entries():
+    _delay_memory["closure-key"] = 4
+
+    clear_delay_memory()
+
+    assert "closure-key" not in _delay_memory
 
 
 class TestProgressiveDelayCalculation:

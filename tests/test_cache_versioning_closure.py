@@ -125,3 +125,30 @@ async def test_reset_writes_zero_to_redis():
         await manager.reset(_redis_cache())
 
     client.set.assert_awaited_once_with("events:list:version", "0")
+
+
+@pytest.mark.asyncio
+async def test_non_redis_and_disabled_fallbacks_and_deterministic_key():
+    manager = CacheVersionManager(prefix="events:list")
+    disabled = MagicMock()
+    disabled.enabled = False
+
+    with patch("app.core.cache_versioning.get_cache", return_value=disabled):
+        assert await manager.get_version() == "0"
+        await manager.increment()
+        await manager.reset()
+
+    enabled_non_redis = MagicMock()
+    enabled_non_redis.enabled = True
+    assert await manager.get_version(enabled_non_redis) == "0"
+    await manager.increment(enabled_non_redis)
+    await manager.reset(enabled_non_redis)
+
+    key = manager.build_cache_key(
+        locale="en",
+        version="7",
+        page=2,
+        filters={"role": "student"},
+    )
+    assert key.startswith("events:list:7:en:")
+    assert len(key.rsplit(":", 1)[-1]) == 64

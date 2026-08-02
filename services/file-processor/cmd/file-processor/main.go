@@ -71,6 +71,39 @@ var (
 	newWorkerFunc    = worker.New
 )
 
+// legacyNatsJetStream keeps the legacy subscriber seam narrow enough to test
+// message handling without replacing the production NATS client. The real
+// nats.JetStreamContext is adapted below; tests can provide a deterministic
+// callback harness instead of requiring a broker for every error branch.
+type legacyNatsJetStream interface {
+	QueueSubscribe(subject, queue string, cb nats.MsgHandler, opts ...nats.SubOpt) (*nats.Subscription, error)
+}
+
+type legacyNatsConnection interface {
+	JetStream() (legacyNatsJetStream, error)
+	Close()
+}
+
+type legacyNatsConnectionAdapter struct {
+	conn *nats.Conn
+}
+
+func (a legacyNatsConnectionAdapter) JetStream() (legacyNatsJetStream, error) {
+	return a.conn.JetStream()
+}
+
+func (a legacyNatsConnectionAdapter) Close() {
+	a.conn.Close()
+}
+
+var connectLegacyNats = func(url string, opts ...nats.Option) (legacyNatsConnection, error) {
+	conn, err := nats.Connect(url, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return legacyNatsConnectionAdapter{conn: conn}, nil
+}
+
 func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
@@ -90,44 +123,19 @@ func runMain(ctx context.Context) error {
 	}
 
 	// TD-W18-01 (audit 2026-03-23 Wave 18): parse RSA public key for RS256 support.
-	var rsaPublicKey *rsa.PublicKey
-	if cfg.RSAPublicKeyPEM != "" {
-		rsaPublicKey, err = parseRSAPublicKey(cfg.RSAPublicKeyPEM)
-		if err != nil {
-			logger.ErrorContext(ctx, "Failed to parse RSA_PUBLIC_KEY_PEM", "err", err)
-			return err
-		}
-		logger.InfoContext(ctx, "RS256 token verification enabled")
+	rsaPublicKey, err := loadRSAPublicKey(ctx, cfg, logger)
+	if err != nil {
+		return err
 	}
 	initSentry(ctx, cfg, logger)
 
-	tp, err := initTracer(ctx, cfg, logger)
-	if err != nil {
-		logger.ErrorContext(ctx, "OpenTelemetry initialization failed", "err", err)
-	} else {
-		defer func() {
-			if shutErr := tp.Shutdown(ctx); shutErr != nil {
-				logger.WarnContext(ctx, "Failed to shutdown tracer provider", "err", shutErr)
-			}
-		}()
-	}
+	defer initializeTracerShutdown(ctx, cfg, logger)()
 
-	c, err := connectTemporal(ctx, cfg, logger)
+	c, w, err := startTemporalWorker(ctx, cfg, logger)
 	if err != nil {
-		logger.ErrorContext(ctx, "Failed to connect to Temporal", "err", err)
 		return err
 	}
-	defer c.Close()
-
-	w, _, err := setupTemporalWorker(ctx, c, cfg, logger)
-	if err != nil {
-		logger.ErrorContext(ctx, "Failed to setup Temporal worker", "err", err)
-		return err
-	}
-	if err := w.Start(); err != nil {
-		logger.ErrorContext(ctx, "Unable to start Temporal worker", "err", err)
-		return err
-	}
+	defer closeTemporalClient(c)
 	defer w.Stop()
 	logger.InfoContext(ctx, "Temporal Worker started", "queue", "FILE_PROCESSING_TASK_QUEUE")
 
@@ -158,6 +166,60 @@ func runMain(ctx context.Context) error {
 	}
 
 	return runServers(ctx, grpcSrv, graphqlSrv, cfg, logger)
+}
+
+func loadRSAPublicKey(ctx context.Context, cfg *config.Config, logger *slog.Logger) (*rsa.PublicKey, error) {
+	if cfg.RSAPublicKeyPEM == "" {
+		return nil, nil
+	}
+	key, err := parseRSAPublicKey(cfg.RSAPublicKeyPEM)
+	if err != nil {
+		logger.ErrorContext(ctx, "Failed to parse RSA_PUBLIC_KEY_PEM", "err", err)
+		return nil, err
+	}
+	logger.InfoContext(ctx, "RS256 token verification enabled")
+	return key, nil
+}
+
+func initializeTracerShutdown(ctx context.Context, cfg *config.Config, logger *slog.Logger) func() {
+	tp, err := initTracer(ctx, cfg, logger)
+	if err != nil {
+		logger.ErrorContext(ctx, "OpenTelemetry initialization failed", "err", err)
+		return func() {}
+	}
+	return func() {
+		if shutErr := tp.Shutdown(ctx); shutErr != nil {
+			logger.WarnContext(ctx, "Failed to shutdown tracer provider", "err", shutErr)
+		}
+	}
+}
+
+func startTemporalWorker(ctx context.Context, cfg *config.Config, logger *slog.Logger) (client.Client, worker.Worker, error) {
+	c, err := connectTemporal(ctx, cfg, logger)
+	if err != nil {
+		logger.ErrorContext(ctx, "Failed to connect to Temporal", "err", err)
+		return nil, nil, err
+	}
+
+	w, _, err := setupTemporalWorker(ctx, c, cfg, logger)
+	if err != nil {
+		logger.ErrorContext(ctx, "Failed to setup Temporal worker", "err", err)
+		closeTemporalClient(c)
+		return nil, nil, err
+	}
+	if err := w.Start(); err != nil {
+		logger.ErrorContext(ctx, "Unable to start Temporal worker", "err", err)
+		closeTemporalClient(c)
+		return nil, nil, err
+	}
+	return c, w, nil
+}
+
+func closeTemporalClient(c client.Client) {
+	if c == nil {
+		return
+	}
+	c.Close()
 }
 
 func initSpiffeClient(ctx context.Context, cfg *config.Config, logger *slog.Logger) (*spiffe.Client, error) {
@@ -305,7 +367,7 @@ func startNatsSubscriber(ctx context.Context, cfg *config.Config, c client.Clien
 		opts = append(opts, nats.RetryOnFailedConnect(true), nats.MaxReconnects(-1))
 	}
 
-	nc, err := nats.Connect(cfg.NatsURL, opts...)
+	nc, err := connectLegacyNats(cfg.NatsURL, opts...)
 	if err != nil {
 		logger.WarnContext(ctx, "Failed to connect to NATS (Legacy)", "err", err)
 		return

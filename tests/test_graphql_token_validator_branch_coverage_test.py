@@ -1,5 +1,6 @@
 import uuid
 from datetime import UTC, datetime, timedelta
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -28,6 +29,43 @@ async def test_redis_jti_check_connection_error(mock_get_cache, validator):
 
 
 @pytest.mark.asyncio
+@patch("app.deps.cache.get_cache_client", new_callable=AsyncMock)
+async def test_redis_jti_check_rejects_revoked_token(mock_get_cache, validator):
+    redis_mock = AsyncMock()
+    redis_mock.exists.return_value = True
+    mock_get_cache.return_value = redis_mock
+
+    assert await validator._redis_jti_check("revoked-jti") is False
+
+
+@pytest.mark.asyncio
+@patch("app.deps.cache.get_cache_client", new_callable=AsyncMock)
+async def test_redis_jti_check_allows_non_revoked_token(mock_get_cache, validator):
+    redis_mock = AsyncMock()
+    redis_mock.exists.return_value = False
+    mock_get_cache.return_value = redis_mock
+
+    assert await validator._redis_jti_check("live-jti") is True
+
+
+@pytest.mark.asyncio
+async def test_validate_rejects_redis_revocation_before_db(validator):
+    validator._redis_jti_check = AsyncMock(return_value=False)
+    validator._load_db_session = AsyncMock()
+
+    assert await validator.validate(str(uuid.uuid4()), "revoked-jti") is None
+    validator._load_db_session.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_validate_rejects_missing_db_session(validator):
+    validator._redis_jti_check = AsyncMock(return_value=True)
+    validator._load_db_session = AsyncMock(return_value=None)
+
+    assert await validator.validate(str(uuid.uuid4()), "missing-jti") is None
+
+
+@pytest.mark.asyncio
 async def test_load_db_session_connection_error(validator):
     validator._session.execute.side_effect = ConnectionError("DB down")
 
@@ -37,10 +75,26 @@ async def test_load_db_session_connection_error(validator):
 
 
 @pytest.mark.asyncio
+async def test_load_db_session_returns_active_record(validator):
+    active_session = MagicMock(spec=ActiveSession)
+    result = MagicMock()
+    result.scalar_one_or_none.return_value = active_session
+    validator._session.execute.return_value = result
+
+    assert await validator._load_db_session("jti_123") is active_session
+
+
+@pytest.mark.asyncio
 async def test_load_user_value_error(validator):
     # Pass an invalid UUID string that raises ValueError
     result = await validator._load_user("invalid-uuid")
     assert result is None
+
+
+def test_check_expiry_normalizes_naive_datetime(validator):
+    session = SimpleNamespace(expires_at=datetime.now() + timedelta(minutes=5))
+
+    assert validator._check_expiry(session) is True
 
 
 @pytest.mark.asyncio

@@ -161,7 +161,8 @@ export function ScheduleMobileView({
           onKeyDown={handleTabKeyDown}
         >
           {weekdayBackend.map((day, i) => {
-            const count = lessonsByDay.get(day)?.length ?? 0
+            // buildLessonsByDay initializes an entry for every weekdayBackend item.
+            const count = lessonsByDay.get(day)!.length
             const isToday = hasToday && i === todayIdx
             const isActive = i === activeDayIdx
             return (

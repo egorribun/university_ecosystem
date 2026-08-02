@@ -317,6 +317,32 @@ describe("useNowPlaying", () => {
     }
   })
 
+  it("keeps SSR persistence safe and resolves placeholder branches explicitly", () => {
+    const browserWindow = window
+    const browserDocument = document
+    vi.stubGlobal("window", undefined)
+    vi.stubGlobal("document", undefined)
+    try {
+      expect(nowPlayingTesting.persistNowPlaying(null)).toBeUndefined()
+      expect(
+        nowPlayingTesting.computeRefetchInterval({
+          enabled: true,
+          data: null,
+          isTestEnvironment: false,
+        })
+      ).toBe(3_000)
+
+      const cached = { track_id: "cached" } as NowPlaying
+      const previous = { track_id: "previous" } as NowPlaying
+      expect(nowPlayingTesting.resolvePlaceholderData(previous, cached)).toBe(previous)
+      expect(nowPlayingTesting.resolvePlaceholderData(null, cached)).toBeNull()
+      expect(nowPlayingTesting.resolvePlaceholderData(undefined, cached)).toBe(cached)
+    } finally {
+      vi.stubGlobal("window", browserWindow)
+      vi.stubGlobal("document", browserDocument)
+    }
+  })
+
   it("does not retry rate-limited query responses", async () => {
     const get = vi.spyOn(api, "get").mockRejectedValue(
       Object.assign(new Error("Too Many Requests"), {

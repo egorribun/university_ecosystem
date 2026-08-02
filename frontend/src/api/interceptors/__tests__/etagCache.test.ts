@@ -63,6 +63,27 @@ describe("etagCache — in-memory etag map", () => {
     expect(etagCache.get("a")).toBeUndefined()
     expect(etagCache.get("b")).toBeUndefined()
   })
+
+  it("swallows localStorage removal failures during clear", () => {
+    etagCache.set("clear:error", '"tag"')
+    const removeSpy = vi.spyOn(Storage.prototype, "removeItem").mockImplementation(() => {
+      throw new Error("storage blocked")
+    })
+
+    expect(() => etagCache.clear()).not.toThrow()
+    expect(etagCache.get("clear:error")).toBeUndefined()
+    removeSpy.mockRestore()
+  })
+
+  it("evicts the least-recently-used ETag when the bounded map overflows", () => {
+    for (let index = 0; index <= 200; index += 1) {
+      etagCache.set(`etag:${index}`, `"tag-${index}"`)
+    }
+
+    expect(etagCache.get("etag:0")).toBeUndefined()
+    expect(etagCache.get("etag:1")).toBe('"tag-1"')
+    expect(etagCache.get("etag:200")).toBe('"tag-200"')
+  })
 })
 
 describe("etagCache — in-memory response cache", () => {
@@ -82,6 +103,20 @@ describe("etagCache — in-memory response cache", () => {
     responseCache.set("rk2", { data: 1, hmac: "ab", ts: 1 })
     responseCache.clear()
     expect(responseCache.get("rk2")).toBeUndefined()
+  })
+
+  it("evicts the least-recently-used response when the bounded map overflows", () => {
+    for (let index = 0; index <= 200; index += 1) {
+      responseCache.set(`response:${index}`, {
+        data: index,
+        hmac: `hmac-${index}`,
+        ts: index,
+      })
+    }
+
+    expect(responseCache.get("response:0")).toBeUndefined()
+    expect(responseCache.get("response:1")).toBeDefined()
+    expect(responseCache.get("response:200")).toBeDefined()
   })
 })
 
@@ -417,6 +452,38 @@ describe("etagCache — debounced flush + visibilitychange", () => {
 
     nowSpy.mockRestore()
   })
+
+  it("keeps the in-memory cache when the quota retry also fails", () => {
+    const setItemSpy = vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw new DOMException("quota", "QuotaExceededError")
+    })
+
+    etagCache.set("q:retry-fails", '"tag"')
+    Object.defineProperty(document, "visibilityState", {
+      configurable: true,
+      get: () => "hidden",
+    })
+    expect(() => document.dispatchEvent(new Event("visibilitychange"))).not.toThrow()
+
+    const cacheWrites = setItemSpy.mock.calls.filter(([key]) => key.startsWith("ue:etag-cache"))
+    expect(cacheWrites.length).toBe(2)
+    expect(etagCache.get("q:retry-fails")).toBeUndefined()
+  })
+
+  it("swallows a non-quota localStorage flush failure", () => {
+    const setItemSpy = vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw new Error("storage unavailable")
+    })
+
+    etagCache.set("flush:error", '"tag"')
+    Object.defineProperty(document, "visibilityState", {
+      configurable: true,
+      get: () => "hidden",
+    })
+    expect(() => document.dispatchEvent(new Event("visibilitychange"))).not.toThrow()
+    expect(etagCache.get("flush:error")).toBe('"tag"')
+    expect(setItemSpy).toHaveBeenCalled()
+  })
 })
 
 describe("etagCache — lazy hydration on first access (isolated module)", () => {
@@ -449,5 +516,15 @@ describe("etagCache — lazy hydration on first access (isolated module)", () =>
     // Corrupt payload → hydration fails gracefully to an empty map, no throw.
     expect(() => mod.etagCache.get("anything")).not.toThrow()
     expect(mod.etagCache.get("anything")).toBeUndefined()
+  })
+
+  it("removes stale unversioned and prior-version keys during module startup", async () => {
+    localStorage.setItem("ue:etag-cache", "stale")
+    localStorage.setItem("ue:etag-cache:v0", "old-version")
+
+    await import("../etagCache")
+
+    expect(localStorage.getItem("ue:etag-cache")).toBeNull()
+    expect(localStorage.getItem("ue:etag-cache:v0")).toBeNull()
   })
 })

@@ -2,8 +2,16 @@ package main
 
 import (
 	"context"
+	"crypto/rand"
+	"crypto/rsa"
+	"crypto/tls"
+	"crypto/x509"
+	"crypto/x509/pkix"
+	"encoding/pem"
+	"math/big"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -112,6 +120,49 @@ func TestPrepareTLSConfig_SelfSignedGeneration(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, tlsCfg)
 	assert.Len(t, tlsCfg.Certificates, 1)
+}
+
+func TestPrepareTLSConfig_LoadsCertificateFiles(t *testing.T) {
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	require.NoError(t, err)
+	certificateDER, err := x509.CreateCertificate(rand.Reader, &x509.Certificate{
+		SerialNumber: big.NewInt(1),
+		Subject:      pkix.Name{CommonName: "gateway-test"},
+		NotBefore:    time.Now().Add(-time.Minute),
+		NotAfter:     time.Now().Add(time.Hour),
+		KeyUsage:     x509.KeyUsageDigitalSignature | x509.KeyUsageKeyEncipherment,
+		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+	}, &x509.Certificate{
+		SerialNumber: big.NewInt(1),
+		Subject:      pkix.Name{CommonName: "gateway-test"},
+		NotBefore:    time.Now().Add(-time.Minute),
+		NotAfter:     time.Now().Add(time.Hour),
+		KeyUsage:     x509.KeyUsageDigitalSignature | x509.KeyUsageKeyEncipherment,
+		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+	}, &key.PublicKey, key)
+	require.NoError(t, err)
+
+	certPath := t.TempDir() + string(os.PathSeparator) + "gateway.crt"
+	keyPath := t.TempDir() + string(os.PathSeparator) + "gateway.key"
+	require.NoError(t, os.WriteFile(certPath, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: certificateDER}), 0o600))
+	require.NoError(t, os.WriteFile(keyPath, pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(key)}), 0o600))
+
+	tlsCfg, err := prepareTLSConfig(&config.Config{TLSCertFile: certPath, TLSKeyFile: keyPath}, initLogger())
+	require.NoError(t, err)
+	require.NotNil(t, tlsCfg)
+	assert.Equal(t, uint16(tls.VersionTLS13), tlsCfg.MinVersion)
+	assert.Len(t, tlsCfg.Certificates, 1)
+}
+
+func TestPrepareTLSConfig_RejectsInvalidCertificateFiles(t *testing.T) {
+	certPath := t.TempDir() + string(os.PathSeparator) + "gateway.crt"
+	keyPath := t.TempDir() + string(os.PathSeparator) + "gateway.key"
+	require.NoError(t, os.WriteFile(certPath, []byte("not-a-certificate"), 0o600))
+	require.NoError(t, os.WriteFile(keyPath, []byte("not-a-key"), 0o600))
+
+	tlsCfg, err := prepareTLSConfig(&config.Config{TLSCertFile: certPath, TLSKeyFile: keyPath}, initLogger())
+	assert.Nil(t, tlsCfg)
+	assert.Error(t, err)
 }
 
 func TestGenerateTestJWT_Helpers(t *testing.T) {

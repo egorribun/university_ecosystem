@@ -113,6 +113,7 @@ describe("ScheduleListView", () => {
         ...baseProps,
         schedule: sameDaySchedule,
         rawSchedule: sameDaySchedule,
+        weekdayLabels: [],
         user: { role: "teacher" } as unknown as User,
         conflictedIds: new Set(["l1"]),
         currentLesson: sameDaySchedule[1]!,
@@ -136,5 +137,19 @@ describe("ScheduleListView", () => {
 
     await user.click(screen.getAllByRole("button", { name: "schedule:aria.deleteLesson" })[0]!)
     expect(onDeleteLesson).toHaveBeenCalledWith("l1")
+  })
+
+  it("defaults current progress to zero when the current lesson has no progress", () => {
+    renderView({
+      ...baseProps,
+      currentLesson: LESSONS[0]!,
+      // The hook's runtime data can transiently omit progress even though its public type is numeric.
+      currentProgress: undefined as unknown as number,
+    })
+
+    expect(document.getElementById("lesson-card-l1")).toHaveAttribute("aria-current", "time")
+    expect(document.getElementById("lesson-card-l1")?.getAttribute("style")).toContain(
+      "--sched-progress: 0"
+    )
   })
 })

@@ -108,7 +108,7 @@ export const ScheduleCard = memo(function ScheduleCard({
 
   const nextLesson = useMemo(() => {
     if (currentLesson) {
-      const endM = parseMinutes(currentLesson.end_time) ?? 0
+      const endM = parseMinutes(currentLesson.end_time)!
       return todayLessons.find((l) => (parseMinutes(l.start_time) ?? 0) > endM) || null
     }
     return todayLessons.find((l) => (parseMinutes(l.start_time) ?? 0) > minutesNow) || null
@@ -116,8 +116,8 @@ export const ScheduleCard = memo(function ScheduleCard({
 
   const currentProgress = useMemo(() => {
     if (!currentLesson) return 0
-    const s = parseMinutes(currentLesson.start_time) ?? 0
-    const e = parseMinutes(currentLesson.end_time) ?? 0
+    const s = parseMinutes(currentLesson.start_time)!
+    const e = parseMinutes(currentLesson.end_time)!
     const span = Math.max(1, e - s)
     const passed = Math.min(Math.max(0, minutesNow - s), span)
     return Math.round((passed / span) * 100)

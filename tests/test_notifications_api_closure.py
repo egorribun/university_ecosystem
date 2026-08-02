@@ -62,10 +62,15 @@ def _row(
 
 
 def test_notification_helpers_cover_edge_inputs() -> None:
+    assert api._parse_datetime(1704067200) is not None
     assert api._parse_datetime("1704067200000") is not None
+    assert api._parse_datetime("1704067200") is not None
+    assert api._parse_datetime("2026-01-01T00:00:00") is not None
+    assert api._parse_datetime("not-a-date") is None
     assert api._parse_datetime("   ") is None
     assert api._parse_datetime("1e30") is None
     assert api._parse_datetime(1e30) is None
+    assert api._parse_datetime(object()) is None
     assert api._parse_datetime(datetime(2026, 1, 1)) is not None
 
     class BadString:
@@ -75,6 +80,14 @@ def test_notification_helpers_cover_edge_inputs() -> None:
     assert api._coerce_int(BadString(), default=7) == 7
     assert api._coerce_int(" ", default=7) == 7
     assert api._coerce_int("1.5") == 1
+    assert api._coerce_int(None, default=7) == 7
+    assert api._coerce_int(True) == 1
+    assert api._coerce_int(4) == 4
+    assert api._coerce_int(4.5) == 4
+    assert api._coerce_int("not-a-number", default=7) == 7
+    assert api._coerce_bool(0) is False
+    assert api._coerce_bool(object()) is True
+    assert api._coerce_bool("off") is False
     assert api._coerce_bool(" maybe ") is True
 
 

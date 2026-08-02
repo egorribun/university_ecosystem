@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it, vi } from "vitest"
 
 import api from "@/api/client"
 import { createQueryClient } from "@/app/queryClient"
+import { testUser } from "@/tests/mocks/handlers"
 import {
   PROFILE_CACHE_STORAGE_KEY,
   useProfileSync,
@@ -90,6 +91,23 @@ describe("useProfileSync runtime defensive paths", () => {
     }
   })
 
+  it("marks an automatic fetch as attempted and skips a dependency-only duplicate", async () => {
+    localStorage.clear()
+    vi.spyOn(api, "get").mockResolvedValue({ data: testUser } as never)
+    const firstEnsure = vi.fn(async () => null)
+    const view = renderRuntime(firstEnsure, null)
+
+    await waitFor(() => expect(api.get).toHaveBeenCalledOnce())
+    await waitFor(() => expect(view.result.current.loading).toBe(false))
+
+    const replacementEnsure = vi.fn(async () => null)
+    view.rerender({ ensureSessionSigningKey: replacementEnsure })
+    await waitFor(() => expect(view.result.current.loading).toBe(false))
+
+    expect(api.get).toHaveBeenCalledOnce()
+    expect(replacementEnsure).not.toHaveBeenCalled()
+  })
+
   it("runs the SSR initial-user and initializing branches", () => {
     const originalWindow = globalThis.window
     vi.stubGlobal("window", undefined)
@@ -102,7 +120,9 @@ describe("useProfileSync runtime defensive paths", () => {
         vi.fn(async () => null),
         hint
       )
-      return <output>{`${state.user?.id ?? "none"}:${state.loading}`}</output>
+      return (
+        <output>{`${state.user?.id ?? "none"}:${state.user?.role ?? "none"}:${state.loading}`}</output>
+      )
     }
 
     try {
@@ -117,8 +137,15 @@ describe("useProfileSync runtime defensive paths", () => {
         </QueryClientProvider>
       )
 
-      expect(authenticatedHtml).toContain("ssr-stub:false")
-      expect(anonymousHtml).toContain("none:true")
+      expect(authenticatedHtml).toContain("ssr-stub:student:false")
+      expect(anonymousHtml).toContain("none:none:true")
+
+      const invalidRoleHtml = renderToString(
+        <QueryClientProvider client={createQueryClient()}>
+          <Probe hint={{ isAuth: true, user: { role: "not-a-real-role" } }} />
+        </QueryClientProvider>
+      )
+      expect(invalidRoleHtml).toContain("ssr-stub:student:false")
     } finally {
       vi.stubGlobal("window", originalWindow)
     }

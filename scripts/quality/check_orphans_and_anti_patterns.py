@@ -311,6 +311,24 @@ def matches_source(
             if parent_src_ts in source_paths or parent_src_tsx in source_paths:
                 return True
 
+        # Production/runtime suites may add one or more descriptive segments
+        # before `.test.ts[x]` (for example `client.csrf.production.test.ts`).
+        # Match those suites to a nearby source module by a dot-delimited stem;
+        # requiring the source directory to be the test directory or its
+        # `__tests__` parent avoids matching unrelated modules with a common
+        # prefix.
+        test_stem = name.rsplit(".test.", 1)[0]
+        nearby_source_dirs = {path_obj.parent}
+        if path_obj.parent.name == "__tests__":
+            nearby_source_dirs.add(path_obj.parent.parent)
+        for src in source_paths:
+            src_path = Path(src)
+            if src_path.parent not in nearby_source_dirs:
+                continue
+            source_stem = src_path.stem
+            if test_stem == source_stem or test_stem.startswith(source_stem + "."):
+                return True
+
         # Check general endswith match
         for src in source_paths:
             if src.endswith(base_name_ts) or src.endswith(base_name_tsx):

@@ -106,6 +106,14 @@ const persistNowPlaying = (value: NowPlaying | null) => {
   }
 }
 
+const resolvePlaceholderData = (
+  previous: NowPlaying | null | undefined,
+  cached: NowPlaying | null | undefined
+): NowPlaying | null => {
+  if (previous !== undefined) return previous ?? null
+  return cached ?? null
+}
+
 export const fetchNowPlaying = async () => {
   try {
     const res = await api.get<RawNowPlaying>("/spotify/now-playing", {
@@ -177,10 +185,7 @@ export const useNowPlaying = (enabled: boolean) => {
     queryFn: fetchNowPlaying,
     enabled,
     initialData: cached,
-    placeholderData: (previous) => {
-      if (previous !== undefined) return previous ?? null
-      return cached ?? null
-    },
+    placeholderData: (previous) => resolvePlaceholderData(previous, cached),
     staleTime: 60_000,
     gcTime: 5 * 60_000,
     networkMode: "online",
@@ -222,4 +227,6 @@ export const __testing = {
   scheduleRateLimit,
   computeInterval,
   computeRefetchInterval,
+  persistNowPlaying,
+  resolvePlaceholderData,
 }

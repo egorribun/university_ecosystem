@@ -40,7 +40,7 @@ jobs:
         ports:
           - 5432:5432
         options: >-
-          --health-cmd pg_isready
+          --health-cmd "pg_isready -U test -d test_deploy"
           --health-interval 5s
           --health-timeout 5s
           --health-retries 10
@@ -111,7 +111,6 @@ jobs:
       tags: |
         ghcr.io/${{ github.repository }}/backend:${{ needs.prepare.outputs.version }}
         ghcr.io/${{ github.repository }}/backend:${{ inputs.environment }}
-    secrets: inherit # pragma: allowlist secret
 
   build-frontend:
     name: Build Frontend
@@ -128,7 +127,6 @@ jobs:
       tags: |
         ghcr.io/${{ github.repository }}/frontend:${{ needs.prepare.outputs.version }}
         ghcr.io/${{ github.repository }}/frontend:${{ inputs.environment }}
-    secrets: inherit # pragma: allowlist secret
 
   build-ws-hub:
     name: Build WS Hub
@@ -146,7 +144,6 @@ jobs:
       tags: |
         ghcr.io/${{ github.repository }}/ws-hub:${{ needs.prepare.outputs.version }}
         ghcr.io/${{ github.repository }}/ws-hub:${{ inputs.environment }}
-    secrets: inherit # pragma: allowlist secret
 
   build-gateway:
     name: Build Gateway
@@ -164,7 +161,6 @@ jobs:
       tags: |
         ghcr.io/${{ github.repository }}/gateway:${{ needs.prepare.outputs.version }}
         ghcr.io/${{ github.repository }}/gateway:${{ inputs.environment }}
-    secrets: inherit # pragma: allowlist secret
 
   build-file-processor:
     name: Build File Processor
@@ -182,7 +178,6 @@ jobs:
       tags: |
         ghcr.io/${{ github.repository }}/file-processor:${{ needs.prepare.outputs.version }}
         ghcr.io/${{ github.repository }}/file-processor:${{ inputs.environment }}
-    secrets: inherit # pragma: allowlist secret
 
   deploy:
     name: Deploy to ${{ inputs.environment }}
@@ -350,7 +345,7 @@ jobs:
         ports:
           - 5432:5432
         options: >-
-          --health-cmd pg_isready
+          --health-cmd "pg_isready -U test -d test_rollback"
           --health-interval 5s
           --health-timeout 5s
           --health-retries 10

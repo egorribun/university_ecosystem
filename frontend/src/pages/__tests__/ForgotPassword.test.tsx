@@ -1,7 +1,7 @@
-import { screen } from "@testing-library/react"
+import { act, fireEvent, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { http, HttpResponse } from "msw"
-import { describe, expect, it } from "vitest"
+import { describe, expect, it, vi } from "vitest"
 import { axe } from "jest-axe"
 
 import ForgotPassword from "../ForgotPassword"
@@ -98,6 +98,44 @@ describe("ForgotPassword page", () => {
     expect(
       screen.getByRole("button", { name: startsWithText(tAuth("forgot.enterAnother")) })
     ).toBeDisabled()
+  })
+
+  it("resets the request form after the resend cooldown expires", async () => {
+    vi.useFakeTimers()
+    try {
+      await renderForgot()
+
+      const emailInput = screen.getByLabelText(startsWithText(tAuth("fields.email")))
+      fireEvent.change(emailInput, { target: { value: "user@example.com" } })
+      fireEvent.blur(emailInput)
+      await act(async () => {
+        await Promise.resolve()
+        await Promise.resolve()
+      })
+      fireEvent.click(screen.getByRole("button", { name: tAuth("forgot.sendLink") }))
+      await act(async () => {
+        await Promise.resolve()
+        await Promise.resolve()
+      })
+
+      const retryButton = screen.getByRole("button", {
+        name: startsWithText(tAuth("forgot.enterAnother")),
+      })
+      expect(retryButton).toBeDisabled()
+
+      act(() => {
+        vi.advanceTimersByTime(30_000)
+      })
+
+      expect(retryButton).toBeEnabled()
+      expect(retryButton).not.toHaveTextContent("(0s)")
+      fireEvent.click(retryButton)
+
+      expect(screen.getByLabelText(startsWithText(tAuth("fields.email")))).toHaveValue("")
+      expect(screen.getByRole("button", { name: tAuth("forgot.sendLink") })).toBeInTheDocument()
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it("is accessible for assistive technologies", async () => {

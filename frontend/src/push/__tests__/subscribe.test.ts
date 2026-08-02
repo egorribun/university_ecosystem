@@ -85,6 +85,11 @@ describe("subscribe", () => {
       expect(mod.getPersistedTopics()).toBeUndefined()
     })
 
+    it("falls back to an empty topic list for invalid runtime input", () => {
+      mod.setPersistedTopics({} as unknown as string[])
+      expect(mod.getPersistedTopics()).toEqual([])
+    })
+
     it("handles malformed payloads and invalid user identifiers safely", () => {
       vi.spyOn(storageMod.profileCacheStorage, "get").mockReturnValue({ data: { id: {} } })
 

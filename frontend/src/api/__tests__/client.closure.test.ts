@@ -103,6 +103,46 @@ describe("api/client — LHCI safe adapter", () => {
       data: { items: [] },
     })
   })
+
+  it("handles an adapter config without url or baseURL", async () => {
+    const { default: lhciApi } = await import("@/api/client")
+
+    ;(window as Window & { __E2E_NETWORK_API_MOCKS__?: boolean }).__E2E_NETWORK_API_MOCKS__ = true
+    const adapter = lhciApi.defaults.adapter as (
+      config: InternalAxiosRequestConfig
+    ) => Promise<AxiosResponse>
+    expect(adapter).toBeTypeOf("function")
+
+    const response = await adapter({
+      method: "get",
+      headers: new AxiosHeaders(),
+      url: undefined,
+      baseURL: undefined,
+    } as InternalAxiosRequestConfig)
+
+    expect(response.status).toBe(200)
+    expect(response.data).toEqual({ items: [] })
+  })
+
+  it("tolerates a request without url or method and skips the CSRF endpoint guard", async () => {
+    const { default: lhciApi } = await import("@/api/client")
+
+    await expect(lhciApi.request({ skipRateLimitQueue: true } as never)).resolves.toMatchObject({
+      status: 200,
+      data: { items: [] },
+    })
+    await expect(lhciApi.post("/auth/csrf-cookie", {})).resolves.toMatchObject({ status: 200 })
+  })
+
+  it("short-circuits the LHCI E2E matcher during SSR", async () => {
+    vi.stubGlobal("window", undefined)
+    const { default: lhciApi } = await import("@/api/client")
+
+    await expect(lhciApi.get("/news")).resolves.toMatchObject({
+      status: 200,
+      data: { items: [] },
+    })
+  })
 })
 
 describe("api/client — BroadcastChannel idempotency coordination", () => {
@@ -221,7 +261,7 @@ describe("api/client — SSR request branches", () => {
   })
 
   it("forwards the incoming cookie and uses the SSR fallback base configuration", async () => {
-    const { default: ssrApi } = await import("@/api/client")
+    const { default: ssrApi, ensureCsrfCookie } = await import("@/api/client")
     const seen: InternalAxiosRequestConfig[] = []
     ssrApi.defaults.adapter = async (config): Promise<AxiosResponse> => {
       seen.push(config)
@@ -236,6 +276,7 @@ describe("api/client — SSR request branches", () => {
     }
 
     await ssrApi.get("/news")
+    await ensureCsrfCookie()
 
     expect(AxiosHeaders.from(seen[0]!.headers).get("Cookie")).toBe("access_token_v2=server-token")
   })

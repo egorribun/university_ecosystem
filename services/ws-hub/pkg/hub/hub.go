@@ -487,6 +487,14 @@ func (h *Hub) broadcastMessage(parentCtx context.Context, msg *Message) {
 //
 //nolint:cyclop
 func (h *Hub) SubscribeToNATS(appCtx context.Context) error {
+	if h.Nats == nil {
+		err := fmt.Errorf("NATS connection is not configured")
+		if h.Logger != nil {
+			h.Logger.ErrorContext(appCtx, "NATS subscriptions cannot start without a connection", "err", err)
+		}
+		return err
+	}
+
 	if h.js == nil && h.Nats != nil && h.enableJetStream {
 		if js, err := h.Nats.JetStream(); err == nil {
 			h.js = js

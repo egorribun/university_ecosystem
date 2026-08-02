@@ -288,6 +288,7 @@ def test_subscription_supports_topic_user_prefs_deny():
 @pytest.mark.asyncio
 async def test_upsert_user_topics_creates_new_record():
     db = AsyncMock()
+    db.add = MagicMock()
     user_id = uuid.uuid4()
 
     # No existing record
@@ -325,6 +326,7 @@ async def test_upsert_user_topics_updates_existing_record():
 @pytest.mark.asyncio
 async def test_upsert_user_topics_filters_unknown():
     db = AsyncMock()
+    db.add = MagicMock()
     user_id = uuid.uuid4()
 
     mock_result = MagicMock()
@@ -347,6 +349,7 @@ async def test_upsert_user_topics_filters_unknown():
 @pytest.mark.asyncio
 async def test_synchronize_user_topics_updates_subscriptions():
     db = AsyncMock()
+    db.add = MagicMock()
     user_id = uuid.uuid4()
 
     # No existing UserPushTopic

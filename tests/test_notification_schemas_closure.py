@@ -6,6 +6,7 @@ from uuid import uuid4
 from app.schemas.notifications import (
     AdminUserTopicsUpdate,
     NotificationAction,
+    NotifyBody,
     PushSubscriptionDelete,
     PushSubscriptionIn,
     PushSubscriptionKeys,
@@ -64,6 +65,19 @@ def test_push_subscription_update_and_delete_accept_none_endpoints_and_topics():
     assert update.endpoint == ""
     assert update.topics == []
     assert delete.endpoint == ""
+
+    normalized_update = PushSubscriptionTopicsUpdate(
+        endpoint="  https://push.example  ", topics=["news", " news "]
+    )
+    normalized_delete = PushSubscriptionDelete(endpoint="  https://push.example  ")
+    assert normalized_update.endpoint == "https://push.example"
+    assert normalized_update.topics == ["news"]
+    assert normalized_delete.endpoint == "https://push.example"
+
+
+def test_notify_body_normalizes_topics():
+    assert NotifyBody(title="Title", topic=None).topic is None
+    assert NotifyBody(title="Title", topic="  news  ").topic == "news"
 
 
 def test_admin_topics_update_accepts_none_and_strictly_normalizes_values():

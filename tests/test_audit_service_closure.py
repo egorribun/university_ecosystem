@@ -50,6 +50,50 @@ def _event(
     )
 
 
+def _audit_log_stub(*, signature: str | None = None) -> SimpleNamespace:
+    """Build the small DTO surface used by SecureAuditService's pure paths."""
+
+    return SimpleNamespace(
+        id=uuid4(),
+        actor_user_id=None,
+        subject_user_id=None,
+        resource_type="user",
+        resource_id="42",
+        action="read",
+        ip_address="127.0.0.1",
+        created_at=datetime(2026, 1, 1, 12, 0, tzinfo=UTC),
+        signature=signature,
+    )
+
+
+def _sign_event(
+    service: SecureAuditService, event: SimpleNamespace, prev_hash: str
+) -> None:
+    event.prev_hash = prev_hash
+    canonical = service.canonicalize_event_payload(
+        event.aggregate_type,
+        event.aggregate_id,
+        event.event_type,
+        event.payload,
+        event.version,
+    )
+    event.hash = service.compute_event_hash(
+        prev_hash, canonical, event.created_at.replace(tzinfo=UTC).isoformat()
+    )
+
+
+def test_audit_service_log_includes_reason_in_payload():
+    service = audit_module.AuditService()
+    target_logger = MagicMock()
+
+    with patch.object(service, "_select_logger", return_value=target_logger):
+        service.log("access.denied", reason="policy")
+
+    target_logger.log.assert_called_once()
+    payload = target_logger.log.call_args.args[1]
+    assert '"reason": "policy"' in payload
+
+
 def test_secure_audit_rejects_empty_explicit_key_list():
     with pytest.raises(ValueError, match="at least one signing key"):
         SecureAuditService(signing_keys=[])
@@ -173,6 +217,96 @@ async def test_record_domain_event_accepts_non_string_aggregate_identifier():
 
 
 @pytest.mark.asyncio
+async def test_record_domain_event_preserves_uuid_aggregate_identifier():
+    service = SecureAuditService(signing_key=b"key")
+    db = MagicMock()
+    db.execute = AsyncMock(return_value=_Result(first=None))
+    db.flush = AsyncMock()
+    aggregate_id = uuid4()
+
+    event = await service.record_domain_event(
+        db,
+        event_type="CUSTOM",
+        aggregate_type="aggregate",
+        aggregate_id=aggregate_id,
+        payload={"value": 1},
+    )
+
+    assert event.aggregate_id_uuid == aggregate_id
+
+
+@pytest.mark.asyncio
+async def test_create_log_returns_updated_row_after_signing_flushed_dto():
+    service = SecureAuditService(signing_key=b"key")
+    db = MagicMock()
+    created = _audit_log_stub()
+    updated = _audit_log_stub()
+
+    with patch.object(audit_module, "AuditRepository") as repository_type:
+        repository = repository_type.return_value
+        repository.create = AsyncMock(return_value=created)
+        repository.update = AsyncMock(return_value=updated)
+
+        result = await service.create_log(
+            db,
+            resource_type="user",
+            resource_id="42",
+            action="read",
+        )
+
+    assert result is updated
+    repository.create.assert_awaited_once()
+    repository.update.assert_awaited_once()
+    assert repository.update.await_args.args[0] == created.id
+    assert repository.update.await_args.args[1]["signature"]
+
+
+@pytest.mark.asyncio
+async def test_create_log_returns_signed_copy_when_update_has_no_row():
+    service = SecureAuditService(signing_key=b"key")
+    db = MagicMock()
+    created = _audit_log_stub()
+    fallback = _audit_log_stub()
+    created.model_copy = MagicMock(return_value=fallback)
+
+    with patch.object(audit_module, "AuditRepository") as repository_type:
+        repository = repository_type.return_value
+        repository.create = AsyncMock(return_value=created)
+        repository.update = AsyncMock(return_value=None)
+
+        result = await service.create_log(
+            db,
+            resource_type="user",
+            resource_id="42",
+            action="read",
+        )
+
+    assert result is fallback
+    created.model_copy.assert_called_once()
+    assert created.model_copy.call_args.kwargs["update"]["signature"]
+
+
+@pytest.mark.asyncio
+async def test_verify_batch_returns_invalid_ids_and_honors_limit():
+    service = SecureAuditService(signing_key=b"key")
+    db = MagicMock()
+    valid = SimpleNamespace(id=uuid4())
+    invalid = SimpleNamespace(id=uuid4())
+
+    with patch.object(audit_module, "AuditRepository") as repository_type:
+        repository = repository_type.return_value
+        repository.list_logs = AsyncMock(return_value=[valid, invalid])
+        with patch.object(
+            service, "verify_integrity", side_effect=[True, False]
+        ) as verify:
+            result = await service.verify_batch(db, limit=17)
+
+    assert result == (2, 1, [invalid.id])
+    repository.list_logs.assert_awaited_once_with(limit=17)
+    assert verify.call_count == 2
+
+
+@pytest.mark.asyncio
 async def test_verify_chain_integrity_accepts_empty_result():
     service = SecureAuditService(signing_key=b"key")
     db = MagicMock()
@@ -191,7 +325,9 @@ async def test_verify_chain_integrity_uses_rust_success_path():
     rust.verify_event_chain.return_value = (True, -1, None)
 
     with patch.dict(sys.modules, {"rust_ext": rust}):
-        assert await service.verify_chain_integrity(db) == (True, None, None)
+        assert await service.verify_chain_integrity(
+            db, aggregate_type="aggregate", aggregate_id=uuid4()
+        ) == (True, None, None)
 
     rust.verify_event_chain.assert_called_once()
 
@@ -248,6 +384,106 @@ async def test_verify_chain_integrity_falls_back_when_rust_raises():
 
     with patch.dict(sys.modules, {"rust_ext": rust}):
         assert await service.verify_chain_integrity(db) == (True, None, None)
+
+
+@pytest.mark.asyncio
+async def test_verify_chain_integrity_python_fallback_accepts_rotated_key_and_groups_events():
+    service = SecureAuditService(signing_keys=[b"old", b"key"])
+    db = MagicMock()
+    first = _event("CUSTOM", {"value": 1}, created_at=datetime.now(UTC))
+    second = _event("CUSTOM", {"value": 2}, created_at=datetime.now(UTC))
+    _sign_event(service, first, "0" * 64)
+    _sign_event(service, second, first.hash)
+    rust = SimpleNamespace()
+    db.execute = AsyncMock(return_value=_Result([first, second]))
+
+    with patch.dict(sys.modules, {"rust_ext": rust}):
+        assert await service.verify_chain_integrity(db) == (True, None, None)
+
+
+@pytest.mark.asyncio
+async def test_verify_chain_integrity_python_fallback_normalizes_naive_event_time():
+    service = SecureAuditService(signing_key=b"key")
+    db = MagicMock()
+    event = _event("CUSTOM", {"value": 1}, created_at=datetime(2026, 1, 1, 12, 0))
+    _sign_event(service, event, "0" * 64)
+    db.execute = AsyncMock(return_value=_Result([event]))
+
+    with patch.dict(sys.modules, {"rust_ext": SimpleNamespace()}):
+        assert await service.verify_chain_integrity(db) == (True, None, None)
+
+
+@pytest.mark.asyncio
+async def test_verify_chain_integrity_reports_link_discontinuity():
+    service = SecureAuditService(signing_key=b"key")
+    db = MagicMock()
+    first = _event("CUSTOM", {"value": 1}, created_at=datetime.now(UTC))
+    second = _event("CUSTOM", {"value": 2}, created_at=datetime.now(UTC))
+    _sign_event(service, first, "0" * 64)
+    second.prev_hash = "broken"
+    db.execute = AsyncMock(return_value=_Result([first, second]))
+
+    with patch.dict(sys.modules, {"rust_ext": SimpleNamespace()}):
+        valid, failed_id, error = await service.verify_chain_integrity(db)
+
+    assert valid is False
+    assert failed_id == second.id
+    assert "Chain discontinuity" in str(error)
+
+
+@pytest.mark.asyncio
+async def test_verify_chain_integrity_reports_payload_tampering():
+    service = SecureAuditService(signing_key=b"key")
+    db = MagicMock()
+    event = _event("CUSTOM", {"value": 1}, created_at=datetime.now(UTC))
+    event.hash = "tampered"
+    db.execute = AsyncMock(return_value=_Result([event]))
+
+    with patch.dict(sys.modules, {"rust_ext": SimpleNamespace()}):
+        valid, failed_id, error = await service.verify_chain_integrity(db)
+
+    assert valid is False
+    assert failed_id == event.id
+    assert "tampering" in str(error)
+
+
+@pytest.mark.asyncio
+async def test_reconstruct_state_covers_verified_creation_updates_and_deletion():
+    service = SecureAuditService(signing_key=b"key")
+    db = MagicMock()
+    created_at = datetime(2026, 1, 1, 12, 0, tzinfo=UTC)
+    events = [
+        _event("SCHEDULE_CREATED", {"room": "A-101"}, created_at=created_at),
+        _event(
+            "SCHEDULE_UPDATED",
+            {"current_state": {"room": "B-202"}},
+            created_at=created_at,
+        ),
+        _event(
+            "SCHEDULE_UPDATED",
+            {"changes": {"teacher": {"old": "A", "new": "B"}}},
+            created_at=created_at,
+        ),
+        _event("SCHEDULE_DELETED", {}, created_at=None),
+    ]
+    db.execute = AsyncMock(return_value=_Result(events))
+
+    with patch.object(
+        service,
+        "verify_chain_integrity",
+        new=AsyncMock(return_value=(False, events[1].id, "invalid")),
+    ):
+        state, count, valid = await service.reconstruct_state(
+            db,
+            aggregate_type="aggregate",
+            aggregate_id="aggregate-1",
+            target_timestamp=created_at,
+            verify_chain=True,
+        )
+
+    assert state == {"_deleted": True, "_deleted_at": None}
+    assert count == 4
+    assert valid is False
 
 
 @pytest.mark.asyncio
@@ -310,6 +546,29 @@ async def test_reconstruct_state_handles_score_update_without_new_score():
         "_version": 1,
         "_updated_at": event.created_at.isoformat(),
     }
+
+
+@pytest.mark.asyncio
+async def test_reconstruct_state_applies_new_score_update():
+    service = SecureAuditService(signing_key=b"key")
+    db = MagicMock()
+    event = _event(
+        "GRADE_MODIFIED",
+        {"old_score": 90, "new_score": 95},
+        created_at=datetime.now(UTC),
+    )
+    db.execute = AsyncMock(return_value=_Result([event]))
+
+    state, _, _ = await service.reconstruct_state(
+        db,
+        aggregate_type="aggregate",
+        aggregate_id="aggregate-1",
+        target_timestamp=datetime.now(UTC),
+        verify_chain=False,
+    )
+
+    assert state is not None
+    assert state["score"] == 95
 
 
 @pytest.mark.asyncio

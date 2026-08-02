@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { describe, expect, it, vi } from "vitest"
+import type { ReactNode } from "react"
 import OtpEntry from "../OtpEntry"
 
 // Mock translations
@@ -9,6 +10,13 @@ vi.mock("react-i18next", () => ({
     t: (key: string) => key,
   }),
   useId: () => "test-id",
+}))
+vi.mock("@/components/settings", () => ({
+  Button: ({ children, onClick }: { children: ReactNode; onClick?: () => void }) => (
+    <button type="button" onClick={onClick}>
+      {children}
+    </button>
+  ),
 }))
 
 describe("OtpEntry", () => {
@@ -149,5 +157,15 @@ describe("OtpEntry", () => {
     await user.click(screen.getByRole("button", { name: "mfa.otp.submit" }))
 
     expect(onSubmit).toHaveBeenCalledTimes(2)
+  })
+
+  it("reports the required validation when an incomplete code is submitted", () => {
+    render(<OtpEntry onSubmit={vi.fn()} />)
+    const submit = screen.getByRole("button", { name: "mfa.otp.submit" })
+    submit.removeAttribute("disabled")
+
+    fireEvent.click(submit)
+
+    expect(screen.getByText("mfa.otp.validation.required")).toBeInTheDocument()
   })
 })

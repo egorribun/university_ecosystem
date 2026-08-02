@@ -72,10 +72,10 @@
 // framing per `feedback_perfectionism.md` "if you can't measure /
 // can't structurally fix in 1-iter, defer honestly".
 
-import { existsSync, statSync } from "node:fs"
+import { existsSync, readFileSync, statSync } from "node:fs"
 import path from "node:path"
 import process from "node:process"
-import { spawn } from "node:child_process"
+import { execFile, spawn } from "node:child_process"
 
 import { injectManifest } from "workbox-build"
 import * as esbuild from "esbuild"
@@ -88,6 +88,61 @@ import { buildWasmArtifacts } from "./build-wasm.mjs"
 const cwd = process.cwd()
 const wantsReport = process.argv.includes("--report")
 const sanitizedArgs = process.argv.slice(2).filter((a) => a !== "--report")
+
+const parseMemoryLimit = (rawValue, fallback) => {
+  const parsed = Number.parseInt(rawValue ?? "", 10)
+  return Number.isFinite(parsed) && parsed >= 256 ? parsed : fallback
+}
+
+const readProcessRssBytes = (pid) => {
+  if (!pid) return Promise.resolve(null)
+
+  if (process.platform === "win32") {
+    const command =
+      `$p = Get-Process -Id ${pid} -ErrorAction SilentlyContinue; ` +
+      "if ($p) { [Console]::Write($p.WorkingSet64) }"
+    return new Promise((resolve) => {
+      execFile(
+        "powershell.exe",
+        ["-NoProfile", "-NonInteractive", "-Command", command],
+        { windowsHide: true, timeout: 1500 },
+        (error, stdout) => {
+          if (error) {
+            resolve(null)
+            return
+          }
+          const bytes = Number.parseInt(stdout.trim(), 10)
+          resolve(Number.isFinite(bytes) ? bytes : null)
+        }
+      )
+    })
+  }
+
+  try {
+    const status = readFileSync(`/proc/${pid}/status`, "utf8")
+    const match = status.match(/^VmRSS:\s+(\d+)\s+kB$/m)
+    return Promise.resolve(match ? Number.parseInt(match[1], 10) * 1024 : null)
+  } catch {
+    return Promise.resolve(null)
+  }
+}
+
+const terminateProcessTree = (pid) => {
+  if (!pid) return
+  if (process.platform === "win32") {
+    const killer = spawn("taskkill.exe", ["/PID", String(pid), "/T", "/F"], {
+      stdio: "ignore",
+      windowsHide: true,
+    })
+    killer.unref()
+    return
+  }
+  try {
+    process.kill(pid, "SIGKILL")
+  } catch {
+    // The child may already have exited between the RSS probe and the kill.
+  }
+}
 
 function run(command, args, options = {}) {
   return new Promise((resolve, reject) => {
@@ -102,12 +157,12 @@ function run(command, args, options = {}) {
       env,
     })
     child.on("error", (err) => {
-      console.error(`Failed to start ${command}:`, err)
+      console.error("Failed to start command:", command, err)
       reject(err)
     })
     child.on("close", (code) => {
       if (code !== 0) {
-        console.error(`${command} exited with code ${code}`)
+        console.error("Command exited with code:", command, code)
         reject(new Error(`${command} exited with code ${code}`))
       } else {
         resolve(undefined)
@@ -163,6 +218,16 @@ async function step3_viteBuild() {
   // jsxDEV calls but Node loads the production react-dom runtime.
   const isUnminified = process.env.FRONTEND_BUILD_UNMINIFIED === "true"
 
+  // Resource-safety guard: Rolldown's native worker pool can retain memory
+  // after client emission while TanStack Start is producing the SSR bundle.
+  // Keep the default below an unbounded process, but above the last verified
+  // successful Windows build peak. Operators can tighten or raise the ceiling
+  // explicitly for machines with different memory budgets.
+  const maxRssMb = parseMemoryLimit(process.env.FRONTEND_BUILD_MAX_RSS_MB, 1536)
+  const maxOldSpaceMb = parseMemoryLimit(process.env.FRONTEND_BUILD_MAX_OLD_SPACE_MB, 1536)
+  const inheritedNodeOptions = process.env.NODE_OPTIONS ?? ""
+  const hasOldSpaceLimit = /(?:^|\s)--max-old-space-size(?:=|\s)/.test(inheritedNodeOptions)
+
   // W156 SW1 Tier 1 #1 — propagate FRONTEND_REACT_DEV_MODE to vite subprocess.
   // When set (dev compose only), vite.config.mts adds react-dom/client →
   // development bundle alias + per-environment NODE_ENV=development define
@@ -171,6 +236,14 @@ async function step3_viteBuild() {
   // production via tanstackStart's top-level define + no environments.server
   // override here).
   const isReactDevMode = process.env.FRONTEND_REACT_DEV_MODE === "true"
+
+  const nodeOptions = [
+    inheritedNodeOptions,
+    hasOldSpaceLimit ? "" : `--max-old-space-size=${maxOldSpaceMb}`,
+    traceEnabled ? `--require ${JSON.stringify(traceAgentPath)}` : "",
+  ]
+    .filter(Boolean)
+    .join(" ")
 
   await new Promise((resolve, reject) => {
     const env = {
@@ -183,13 +256,12 @@ async function step3_viteBuild() {
       FRONTEND_BUILD_UNMINIFIED: isUnminified ? "true" : "",
       // W156 SW1 Tier 1 #1 — see isReactDevMode block above.
       FRONTEND_REACT_DEV_MODE: isReactDevMode ? "true" : "",
-      ...(traceEnabled
-        ? {
-            NODE_OPTIONS:
-              `${process.env.NODE_OPTIONS ?? ""} --require ${JSON.stringify(traceAgentPath)}`.trim(),
-          }
-        : {}),
+      NODE_OPTIONS: nodeOptions,
     }
+
+    console.log(
+      `[orchestrator] Vite child RSS watchdog: ${maxRssMb} MB; V8 heap cap: ${maxOldSpaceMb} MB`
+    )
 
     const child = spawn("node", [viteBinPath, "build", ...sanitizedArgs], {
       stdio: useIpc ? ["inherit", "inherit", "inherit", "ipc"] : "inherit",
@@ -210,6 +282,7 @@ async function step3_viteBuild() {
     let killed = false
     let resolved = false
     let stableCount = 0
+    let memoryProbeInFlight = false
     const POLL_INTERVAL_MS = 500
     const STABLE_DEBOUNCE_TICKS = 4 // 4 × 500ms = 2s of stability
     const MAX_WAIT_MS = 180_000 // 3 minutes hard cap before giving up
@@ -229,6 +302,29 @@ async function step3_viteBuild() {
         return st.mtimeMs >= startTime - FRESH_MTIME_GRACE_MS
       } catch {
         return false
+      }
+    }
+
+    let memoryPoll
+    const checkMemory = async () => {
+      if (resolved || killed || memoryProbeInFlight) return
+      memoryProbeInFlight = true
+      try {
+        const rssBytes = await readProcessRssBytes(child.pid)
+        if (rssBytes === null || rssBytes <= maxRssMb * 1024 * 1024 || resolved) return
+
+        const rssMb = (rssBytes / 1024 / 1024).toFixed(1)
+        resolved = true
+        clearInterval(poll)
+        clearInterval(memoryPoll)
+        terminateProcessTree(child.pid)
+        reject(
+          new Error(
+            `vite child exceeded RSS watchdog (${rssMb} MB > ${maxRssMb} MB); process tree terminated`
+          )
+        )
+      } finally {
+        memoryProbeInFlight = false
       }
     }
 
@@ -278,7 +374,7 @@ async function step3_viteBuild() {
                 `\n[orchestrator] Artifacts stable after ${(elapsed / 1000).toFixed(1)}s — sending SIGTERM to vite subprocess`
               )
               killed = true
-              child.kill("SIGTERM")
+              terminateProcessTree(child.pid)
             }
           }
         }
@@ -290,14 +386,21 @@ async function step3_viteBuild() {
         clearInterval(poll)
         if (!resolved) {
           resolved = true
-          if (!killed) child.kill("SIGKILL")
+          clearInterval(memoryPoll)
+          if (!killed) terminateProcessTree(child.pid)
           reject(new Error(`vite build did not produce artifacts within ${MAX_WAIT_MS / 1000}s`))
         }
       }
     }, POLL_INTERVAL_MS)
 
+    memoryPoll = setInterval(() => {
+      void checkMemory()
+    }, 2000)
+    void checkMemory()
+
     child.on("error", (err) => {
       clearInterval(poll)
+      clearInterval(memoryPoll)
       if (!resolved) {
         resolved = true
         reject(err)
@@ -306,6 +409,7 @@ async function step3_viteBuild() {
 
     child.on("close", (code, signal) => {
       clearInterval(poll)
+      clearInterval(memoryPoll)
       if (resolved) return
       resolved = true
       // SIGTERM after artifacts confirmed → success. Any other exit code

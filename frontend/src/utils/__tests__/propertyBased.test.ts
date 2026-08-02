@@ -38,6 +38,20 @@ describe("property-based utility contracts", () => {
     )
   })
 
+  it("never emits a non-Telegram host from arbitrary URL-like input", () => {
+    fc.assert(
+      fc.property(fc.string(), (value) => {
+        const result = sanitizeTelegramUrl(value)
+        if (result !== "") {
+          const parsed = new URL(result)
+          expect(["t.me", "telegram.me"]).toContain(parsed.hostname)
+          expect(parsed.username).toBe("")
+          expect(parsed.password).toBe("")
+        }
+      })
+    )
+  })
+
   it("never returns a non-http URL or credentials from URL sanitization", () => {
     fc.assert(
       fc.property(fc.string(), (value) => {

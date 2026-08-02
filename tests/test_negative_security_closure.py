@@ -2,12 +2,18 @@
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+from unittest.mock import AsyncMock
+from uuid import uuid4
+
 import jwt
 import pytest
 
+from app.api.ws import auth as ws_auth
 from app.auth.security import decode_token
 from app.core.cache_versioning import CacheVersionManager
 from app.core.config import settings
+from app.core.csrf import _build_signed_token, _verify_signed_token
 from app.core.tenant import set_current_tenant, tenant_id_ctx
 from app.repositories.news_repository import build_news_cache_key
 
@@ -85,3 +91,42 @@ def test_news_repository_cache_key_separates_tenants() -> None:
         tenant_id_ctx.reset(tenant_b)
 
     assert tenant_a_key != tenant_b_key
+
+
+@pytest.mark.security
+def test_csrf_token_is_bound_to_the_issuing_session() -> None:
+    """A valid token for one session cannot be replayed by another session."""
+
+    secret = b"negative-security-csrf-secret"
+    token = _build_signed_token("session-a", secret)
+
+    assert _verify_signed_token(token, "session-a", secret) is True
+    assert _verify_signed_token(token, "session-b", secret) is False
+    assert _verify_signed_token(token[:-1] + "0", "session-a", secret) is False
+
+
+@pytest.mark.security
+@pytest.mark.asyncio
+async def test_ws_ticket_replay_is_rejected_after_atomic_consumption(
+    monkeypatch,
+) -> None:
+    """The second validation attempt must fail after the first GETDEL."""
+
+    ticket = "a" * 64
+    user_id = str(uuid4())
+    redis = SimpleNamespace(
+        getdel=AsyncMock(side_effect=[f"{user_id}:session-jti", None])
+    )
+    get_cache_client = AsyncMock(return_value=redis)
+    resolve_user = AsyncMock(return_value=(object(), "session-jti"))
+    monkeypatch.setattr("app.deps.cache.get_cache_client", get_cache_client)
+    monkeypatch.setattr(ws_auth, "_resolve_user_from_ids", resolve_user)
+
+    first = await ws_auth.get_user_from_ticket(ticket)
+    second = await ws_auth.get_user_from_ticket(ticket)
+
+    assert first[0] is not None
+    assert first[1] == "session-jti"
+    assert second == (None, None)
+    assert redis.getdel.await_count == 2
+    resolve_user.assert_awaited_once_with(user_id, "session-jti")

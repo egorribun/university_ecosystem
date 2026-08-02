@@ -13,6 +13,7 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"net/http"
 	"os"
 	"os/exec"
 	"testing"
@@ -21,6 +22,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/university-ecosystem/file-processor/internal/config"
+	"github.com/university-ecosystem/services/pkg/spiffe"
 	"go.temporal.io/sdk/client"
 	"go.temporal.io/sdk/worker"
 	"google.golang.org/grpc"
@@ -48,6 +50,22 @@ func TestInitSentry_MalformedDSNLogsError(t *testing.T) {
 	initSentry(context.Background(), &config.Config{SentryDSN: "not-a-valid-dsn", Environment: "test"}, discardLogger())
 }
 
+func TestInitSpiffeClient_DisabledReturnsNil(t *testing.T) {
+	client, err := initSpiffeClient(context.Background(), &config.Config{}, discardLogger())
+	require.NoError(t, err)
+	assert.Nil(t, client)
+}
+
+func TestInitSpiffeClient_InvalidTrustDomainFailsClosed(t *testing.T) {
+	client, err := initSpiffeClient(context.Background(), &config.Config{
+		SpiffeEnabled:     true,
+		SpiffeTrustDomain: "invalid trust domain with spaces!",
+	}, discardLogger())
+	assert.Nil(t, client)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "trust")
+}
+
 func TestInitTracer_ProductionInsecureForbidden(t *testing.T) {
 	_, err := initTracer(context.Background(),
 		&config.Config{OTLPInsecure: true, Environment: "production"}, discardLogger())
@@ -64,6 +82,30 @@ func TestInitTracer_DevInsecureSucceeds(t *testing.T) {
 	require.NotNil(t, tp)
 	// Shut down to stop the batch-span-processor goroutine cleanly.
 	require.NoError(t, tp.Shutdown(context.Background()))
+}
+
+func TestInitializeTracerShutdown_SuccessPath(t *testing.T) {
+	cleanup := initializeTracerShutdown(context.Background(), &config.Config{
+		OTLPInsecure: true,
+		Environment:  "development",
+		OTLPEndpoint: "127.0.0.1:4317",
+	}, discardLogger())
+	require.NotNil(t, cleanup)
+	cleanup()
+}
+
+func TestCloseTemporalClient_NilIsNoOp(t *testing.T) {
+	assert.NotPanics(t, func() { closeTemporalClient(nil) })
+}
+
+func TestLoadRSAPublicKey_Valid(t *testing.T) {
+	key := generateRSAKey(t)
+	loaded, err := loadRSAPublicKey(context.Background(), &config.Config{
+		RSAPublicKeyPEM: rsaPublicPEM(t, &key.PublicKey),
+	}, discardLogger())
+	require.NoError(t, err)
+	require.NotNil(t, loaded)
+	assert.Equal(t, key.N, loaded.N)
 }
 
 func TestSelectiveStreamAuth_AuthErrorBlocksHandler(t *testing.T) {
@@ -190,6 +232,22 @@ func TestRunServers_CleanShutdown(t *testing.T) {
 	assert.NotPanics(t, func() {
 		require.NoError(t, runServers(ctx, grpcSrv, graphqlSrv, cfg, discardLogger()))
 	})
+}
+
+func TestRunServers_GraphQLListenFailure(t *testing.T) {
+	grpcSrv := grpc.NewServer()
+	graphqlSrv := &http.Server{
+		Addr:              ":-1",
+		ReadHeaderTimeout: time.Second,
+	}
+	cfg := &config.Config{GRPCPort: "0", GraphQLPort: "0"}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	err := runServers(ctx, grpcSrv, graphqlSrv, cfg, discardLogger())
+	assert.Error(t, err)
+	grpcSrv.Stop()
 }
 
 func TestConnectTemporal_APIKeyFileHandling(t *testing.T) {
@@ -359,6 +417,83 @@ func (m *mockWorker) RegisterWorkflow(w interface{}) {
 func (m *mockWorker) RegisterActivity(a interface{}) {
 }
 
+type failingStartWorker struct {
+	mockWorker
+	err error
+}
+
+func (w *failingStartWorker) Start() error {
+	return w.err
+}
+
+type trackedTemporalClient struct {
+	client.Client
+	closed *bool
+}
+
+func (c *trackedTemporalClient) Close() {
+	*c.closed = true
+	c.Client.Close()
+}
+
+func newTrackedTemporalClient(t *testing.T) (*trackedTemporalClient, *bool) {
+	t.Helper()
+	base, err := client.NewLazyClient(client.Options{HostPort: "127.0.0.1:7233"})
+	require.NoError(t, err)
+	closed := false
+	return &trackedTemporalClient{Client: base, closed: &closed}, &closed
+}
+
+func TestStartTemporalWorker_ClosesClientOnWorkerSetupFailure(t *testing.T) {
+	oldDial := dialTemporalFunc
+	oldNewWorker := newWorkerFunc
+	defer func() {
+		dialTemporalFunc = oldDial
+		newWorkerFunc = oldNewWorker
+	}()
+
+	tracked, closed := newTrackedTemporalClient(t)
+	dialTemporalFunc = func(client.Options) (client.Client, error) {
+		return tracked, nil
+	}
+	newWorkerFunc = func(client.Client, string, worker.Options) worker.Worker {
+		return &mockWorker{}
+	}
+
+	_, _, err := startTemporalWorker(context.Background(), &config.Config{}, discardLogger())
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "MinIO")
+	assert.True(t, *closed, "Temporal client must close when worker setup fails")
+}
+
+func TestStartTemporalWorker_ClosesClientOnWorkerStartFailure(t *testing.T) {
+	oldDial := dialTemporalFunc
+	oldNewWorker := newWorkerFunc
+	defer func() {
+		dialTemporalFunc = oldDial
+		newWorkerFunc = oldNewWorker
+	}()
+
+	tracked, closed := newTrackedTemporalClient(t)
+	dialTemporalFunc = func(client.Options) (client.Client, error) {
+		return tracked, nil
+	}
+	newWorkerFunc = func(client.Client, string, worker.Options) worker.Worker {
+		return &failingStartWorker{err: errors.New("worker start failed")}
+	}
+
+	cfg := &config.Config{
+		MinioEndpoint:  "127.0.0.1:9000",
+		MinioAccessKey: "minioadmin",
+		MinioSecretKey: "minioadmin",
+		MinioBucket:    "test-bucket",
+	}
+	_, _, err := startTemporalWorker(context.Background(), cfg, discardLogger())
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "worker start failed")
+	assert.True(t, *closed, "Temporal client must close when worker start fails")
+}
+
 func TestMain_SuccessLifecycle(t *testing.T) {
 	oldDial := dialTemporalFunc
 	oldNewWorker := newWorkerFunc
@@ -485,6 +620,17 @@ func TestRunMain_TemporalConnectError(t *testing.T) {
 	t.Fatalf("process ran with err %v, want exit status 1", err)
 }
 
+func TestRunMain_TemporalConnectErrorReturnsDirectly(t *testing.T) {
+	t.Setenv("FP_JWT_SECRET", "secret")
+	t.Setenv("FP_TEMPORAL_HOST", "127.0.0.1:7233")
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	err := runMain(ctx)
+	require.Error(t, err)
+}
+
 func TestSetupGRPCServer_SpiffeNilClientError(t *testing.T) {
 	cfg := &config.Config{
 		JWTSecret:     "secret",
@@ -493,6 +639,16 @@ func TestSetupGRPCServer_SpiffeNilClientError(t *testing.T) {
 	_, err := setupGRPCServer(context.Background(), cfg, nil, nil, discardLogger())
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "SPIFFE is enabled but spiffeClient is nil")
+}
+
+func TestSetupGRPCServer_SpiffeCredentialFailure(t *testing.T) {
+	cfg := &config.Config{
+		JWTSecret:     "secret",
+		SpiffeEnabled: true,
+	}
+	_, err := setupGRPCServer(context.Background(), cfg, nil, nil, discardLogger(), &spiffe.Client{})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "uninitialized")
 }
 
 func TestSetupGraphQLServer_InvalidSchemaError(t *testing.T) {

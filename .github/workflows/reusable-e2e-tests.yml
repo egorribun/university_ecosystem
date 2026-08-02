@@ -82,7 +82,7 @@ jobs:
         ports:
           - 5432:5432
         options: >-
-          --health-cmd pg_isready
+          --health-cmd "pg_isready -U test -d test_e2e"
           --health-interval 5s
           --health-timeout 3s
           --health-retries 10
@@ -175,6 +175,8 @@ jobs:
           INPUT_BASE_URL: ${{ inputs.base-url }}
           TEST_PATTERN: ${{ inputs.test-pattern }}
           BROWSER: ${{ inputs.browser }}
+          SHARD_INDEX: ${{ inputs.shard-index }}
+          SHARD_TOTAL: ${{ inputs.shard-total }}
         run: |
           BASE_URL="$INPUT_BASE_URL"
           if [[ -z "$BASE_URL" ]]; then
@@ -183,7 +185,7 @@ jobs:
 
           npx playwright test "$TEST_PATTERN" \
             --project="$BROWSER" \
-            --shard=${{ inputs.shard-index }}/${{ inputs.shard-total }} \
+            --shard="$SHARD_INDEX/$SHARD_TOTAL" \
             --workers=1 \
             --reporter=html
 

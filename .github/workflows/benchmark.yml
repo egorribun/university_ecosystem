@@ -19,6 +19,7 @@ jobs:
   benchmark:
     name: Run Go Benchmarks
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -67,6 +68,7 @@ jobs:
   ws-hub-regression:
     name: WS-Hub Go Benchmark Regression Gate
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -100,7 +102,7 @@ jobs:
           # on both pull requests and main. A report-only PR would allow a
           # latency regression to merge before the baseline is updated.
           alert-threshold: "110%"
-          fail-on-alert: false
+          fail-on-alert: true
           comment-on-alert: true
 
   # ── W22: Rust Criterion benchmarks (pyo3-sanitizer) ───────────────────────
@@ -109,6 +111,7 @@ jobs:
   rust-criterion:
     name: Rust Criterion Benchmarks (pyo3-sanitizer)
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -158,6 +161,7 @@ jobs:
   rust-native-regression:
     name: Rust Native Optimizer Regression Gate
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -192,4 +196,4 @@ jobs:
           auto-push: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
           alert-threshold: "110%"
           comment-on-alert: true
-          fail-on-alert: false
+          fail-on-alert: true

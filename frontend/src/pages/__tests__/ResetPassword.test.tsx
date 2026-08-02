@@ -9,6 +9,7 @@ import i18n from "../../i18n/config"
 import { renderWithRouter } from "@/tests/helpers/renderWithRouter"
 
 const tAuth = (key: string, options?: Record<string, unknown>) => i18n.t(`auth:${key}`, options)
+const tCommon = (key: string) => i18n.t(`common:${key}`)
 const matchText = (text: string) => (content: string) => content.startsWith(text)
 
 vi.mock("zxcvbn", () => ({
@@ -17,13 +18,17 @@ vi.mock("zxcvbn", () => ({
 
 const passwordAnalysis = vi.hoisted(() => ({
   shouldThrow: false,
+  score: 3,
   suggestions: ["Add another word"],
 }))
 vi.mock("@zxcvbn-ts/core", () => ({
   zxcvbnOptions: { setOptions: vi.fn() },
   zxcvbn: () => {
     if (passwordAnalysis.shouldThrow) throw new Error("analysis unavailable")
-    return { score: 3, feedback: { warning: "", suggestions: passwordAnalysis.suggestions } }
+    return {
+      score: passwordAnalysis.score,
+      feedback: { warning: "", suggestions: passwordAnalysis.suggestions },
+    }
   },
 }))
 vi.mock("@zxcvbn-ts/language-common", () => ({}))
@@ -40,6 +45,7 @@ describe("ResetPassword page", () => {
   beforeEach(() => {
     localStorage.clear()
     passwordAnalysis.shouldThrow = false
+    passwordAnalysis.score = 3
     passwordAnalysis.suggestions = ["Add another word"]
   })
 
@@ -156,5 +162,96 @@ describe("ResetPassword page", () => {
     await user.type(screen.getByLabelText(matchText(tAuth("fields.password"))), "Password123!")
     await waitFor(() => expect(fetchMock).toHaveBeenCalled())
     fetchMock.mockRestore()
+  })
+
+  it("handles non-ok and non-matching breach responses without warning", async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(new Response("", { status: 503 }))
+      .mockResolvedValueOnce(new Response("NOT_THE_SUFFIX:1\n", { status: 200 }))
+    const user = userEvent.setup()
+    await renderWithToken()
+
+    const password = screen.getByLabelText(matchText(tAuth("fields.password")))
+    await user.type(password, "Password123!")
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledOnce())
+    expect(screen.queryByText(tAuth("reset.pwnedWarning"))).not.toBeInTheDocument()
+
+    await user.clear(password)
+    await user.type(password, "Password456!")
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2))
+    expect(screen.queryByText(tAuth("reset.pwnedWarning"))).not.toBeInTheDocument()
+    fetchMock.mockRestore()
+  })
+
+  it("covers validation helpers and strength color variants", async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(new Response("", { status: 200 }))
+    const user = userEvent.setup()
+    await renderWithToken()
+
+    const password = screen.getByLabelText(matchText(tAuth("fields.password")))
+    const confirmPassword = screen.getByLabelText(matchText(tAuth("fields.confirmPassword")))
+
+    await user.type(password, "short")
+    await user.tab()
+    expect(await screen.findByText("Password must be at least 8 characters")).toBeInTheDocument()
+
+    passwordAnalysis.score = 0
+    await user.clear(password)
+    await user.type(password, "Password123!")
+    await waitFor(() => expect(screen.getByText(tCommon("strength.very_weak"))).toBeInTheDocument())
+
+    passwordAnalysis.score = 2
+    await user.clear(password)
+    await user.type(password, "Password456!")
+    await waitFor(() => expect(screen.getByText(tCommon("strength.medium"))).toBeInTheDocument())
+
+    await user.type(confirmPassword, "Different123!")
+    await user.tab()
+    expect(await screen.findByText("Passwords do not match")).toBeInTheDocument()
+    fetchMock.mockRestore()
+  })
+
+  it("uses the generic error when reset API detail is absent", async () => {
+    server.use(http.post("*/password/reset", () => HttpResponse.json({}, { status: 500 })))
+    const user = userEvent.setup()
+    await renderWithToken()
+
+    await user.type(screen.getByLabelText(matchText(tAuth("fields.password"))), "Password123!")
+    await user.type(
+      screen.getByLabelText(matchText(tAuth("fields.confirmPassword"))),
+      "Password123!"
+    )
+    await user.click(screen.getByRole("button", { name: tAuth("reset.saveButton") }))
+
+    expect(await screen.findByText(tAuth("reset.errorGeneric"))).toBeInTheDocument()
+  })
+
+  it("accepts a token supplied through the query string", async () => {
+    const payloads: unknown[] = []
+    server.use(
+      http.post("*/password/reset", async ({ request }) => {
+        payloads.push(await request.json())
+        return HttpResponse.json({ ok: true })
+      })
+    )
+    const user = userEvent.setup()
+    await renderWithRouter({
+      ui: ResetPassword,
+      path: "/reset",
+      initialPath: "/reset?token=query-token",
+    })
+
+    await user.type(screen.getByLabelText(matchText(tAuth("fields.password"))), "Password123!")
+    await user.type(
+      screen.getByLabelText(matchText(tAuth("fields.confirmPassword"))),
+      "Password123!"
+    )
+    await user.click(screen.getByRole("button", { name: tAuth("reset.saveButton") }))
+
+    await waitFor(() => expect(screen.getByText(tAuth("reset.successTitle"))).toBeInTheDocument())
+    expect(payloads).toEqual([{ password: "Password123!", token: "query-token" }])
   })
 })

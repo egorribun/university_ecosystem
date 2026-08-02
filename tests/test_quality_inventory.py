@@ -168,3 +168,22 @@ def test_matches_source_normalizes_frontend_closure_test_suffix() -> None:
     source_paths = {"frontend/src/api/interceptors/rateLimit.ts"}
 
     assert matches_source(test_path, source_paths, []) is True
+
+
+def test_matches_source_accepts_production_variant_suites() -> None:
+    cases = (
+        (
+            "frontend/src/api/__tests__/client.csrf.production.test.ts",
+            "frontend/src/api/client.ts",
+        ),
+        (
+            "frontend/src/components/motion/__tests__/PageFadeIn.production.test.tsx",
+            "frontend/src/components/motion/PageFadeIn.tsx",
+        ),
+        (
+            "frontend/src/components/profile/__tests__/NowPlayingCard.production.test.tsx",
+            "frontend/src/components/profile/NowPlayingCard.tsx",
+        ),
+    )
+    for test_path, source_path in cases:
+        assert matches_source(test_path, {source_path}, []) is True

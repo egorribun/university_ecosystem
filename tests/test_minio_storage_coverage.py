@@ -20,7 +20,7 @@ import logging
 from datetime import timedelta
 from io import BytesIO
 from types import SimpleNamespace
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 from minio.error import S3Error
@@ -82,13 +82,12 @@ async def test_initialize_short_circuits_second_call(client: MinIOClient) -> Non
     client._client.bucket_exists.assert_called_once()
 
 
-async def test_initialize_s3_error_logged_and_raised(
-    client: MinIOClient, caplog: pytest.LogCaptureFixture
-) -> None:
+async def test_initialize_s3_error_logged_and_raised(client: MinIOClient) -> None:
     client._client.bucket_exists.side_effect = _s3_error()
-    with caplog.at_level(logging.ERROR), pytest.raises(S3Error):
-        await client.initialize()
-    assert "Failed to initialize MinIO" in caplog.text
+    with patch.object(minio_module.logger, "error") as error_logger:
+        with pytest.raises(S3Error):
+            await client.initialize()
+    assert "Failed to initialize MinIO" in str(error_logger.call_args.args[0])
     assert client._initialized is False
 
 
@@ -148,7 +147,6 @@ async def test_delete_object(client: MinIOClient) -> None:
 def test_get_minio_client_default_credentials_warns(
     minio_cls: MagicMock,
     monkeypatch: pytest.MonkeyPatch,
-    caplog: pytest.LogCaptureFixture,
 ) -> None:
     monkeypatch.setattr(minio_module, "_minio_client", None)
     stub_settings = SimpleNamespace(
@@ -156,10 +154,10 @@ def test_get_minio_client_default_credentials_warns(
     )  # no access/secret attrs -> getattr defaults ("minioadmin") kick in
     monkeypatch.setattr("app.core.config.settings", stub_settings)
 
-    with caplog.at_level(logging.WARNING):
+    with patch.object(minio_module.logger, "warning") as warning_logger:
         instance = get_minio_client()
 
-    assert "default credentials" in caplog.text
+    assert "default credentials" in str(warning_logger.call_args.args[0])
     assert isinstance(instance, MinIOClient)
     _, kwargs = minio_cls.call_args
     assert kwargs["access_key"] == "minioadmin"  # pragma: allowlist secret
@@ -203,3 +201,20 @@ def test_get_minio_client_fast_path_identity(
     second = get_minio_client()  # fast path — no lock, same instance
     assert first is second
     minio_cls.assert_called_once()
+
+
+def test_get_minio_client_second_lock_check_returns_racing_instance(monkeypatch):
+    sentinel = object()
+
+    class _RaceLock:
+        def __enter__(self):
+            minio_module._minio_client = sentinel
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+    monkeypatch.setattr(minio_module, "_minio_client", None)
+    monkeypatch.setattr(minio_module, "_minio_client_lock", _RaceLock())
+
+    assert get_minio_client() is sentinel

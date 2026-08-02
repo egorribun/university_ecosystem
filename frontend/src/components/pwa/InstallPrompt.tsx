@@ -182,11 +182,12 @@ export default function InstallPrompt() {
   }, [notificationPermission, pushSupported])
 
   const handleInstall = useCallback(async () => {
-    if (!deferredPrompt) return
+    // The install action is rendered only while showInstallPanel guarantees a prompt.
+    const prompt = deferredPrompt!
     setInstalling(true)
     try {
-      await deferredPrompt.prompt()
-      const choice = await deferredPrompt.userChoice
+      await prompt.prompt()
+      const choice = await prompt.userChoice
       if (choice.outcome === "accepted") {
         clearDismissed(PWA_DISMISS_STORAGE_KEY)
         setInstallVisible(false)

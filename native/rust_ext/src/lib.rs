@@ -726,6 +726,14 @@ mod tests {
     use super::*;
     use chrono::{DateTime, Timelike};
 
+    struct ZeroizeDropProbe(std::sync::Arc<std::sync::atomic::AtomicBool>);
+
+    impl zeroize::Zeroize for ZeroizeDropProbe {
+        fn zeroize(&mut self) {
+            self.0.store(true, std::sync::atomic::Ordering::SeqCst);
+        }
+    }
+
     #[test]
     fn test_pyo3_bindings_coverage() {
         Python::initialize();
@@ -1290,6 +1298,80 @@ mod tests {
     }
 
     #[test]
+    fn find_optimal_slot_exercises_each_next_day_name() {
+        // A two-hour slot beginning at 23:00 crosses midnight for every
+        // weekday.  This verifies the public scheduling behavior for all
+        // seven localized weekday names returned by the rollover path.
+        for weekday in [
+            Weekday::Mon,
+            Weekday::Tue,
+            Weekday::Wed,
+            Weekday::Thu,
+            Weekday::Fri,
+            Weekday::Sat,
+            Weekday::Sun,
+        ] {
+            let day = weekday_name(weekday).to_string();
+            let available = vec![(day.clone(), vec![23])];
+            let result = find_optimal_slot(120, Vec::new(), available).unwrap();
+            assert_eq!(
+                result.as_ref().map(|item| item.weekday.as_str()),
+                Some(day.as_str())
+            );
+            assert_eq!(
+                result.map(|item| item.end_time - item.start_time),
+                Some(120 * 60)
+            );
+        }
+    }
+
+    #[test]
+    fn find_optimal_slot_rejects_real_day_two_conflicts() {
+        let target_weekday = Weekday::Mon;
+        let target_date = next_weekday(Utc::now().date_naive(), target_weekday);
+        let next_date = target_date.succ_opt().unwrap();
+        let existing_start = Utc
+            .from_utc_datetime(&next_date.and_hms_opt(0, 30, 0).unwrap())
+            .timestamp();
+        let existing = vec![ScheduleItem {
+            id: Some(1),
+            weekday: weekday_name(next_date.weekday()).to_string(),
+            start_time: existing_start,
+            end_time: existing_start + 3600,
+            parity: "both".to_string(),
+        }];
+
+        let available = vec![("monday".to_string(), vec![23])];
+        assert!(find_optimal_slot(120, existing, available)
+            .unwrap()
+            .is_none());
+    }
+
+    #[test]
+    fn find_optimal_slot_accepts_non_conflicting_real_day_two_item() {
+        let target_weekday = Weekday::Mon;
+        let target_date = next_weekday(Utc::now().date_naive(), target_weekday);
+        let next_date = target_date.succ_opt().unwrap();
+        let existing_start = Utc
+            .from_utc_datetime(&next_date.and_hms_opt(3, 0, 0).unwrap())
+            .timestamp();
+        let existing = vec![ScheduleItem {
+            id: Some(1),
+            weekday: weekday_name(next_date.weekday()).to_string(),
+            start_time: existing_start,
+            end_time: existing_start + 3600,
+            parity: "both".to_string(),
+        }];
+
+        let available = vec![("monday".to_string(), vec![23])];
+        let result = find_optimal_slot(120, existing, available).unwrap();
+        assert_eq!(
+            result.as_ref().map(|item| item.weekday.as_str()),
+            Some("monday")
+        );
+    }
+
+    #[test]
     fn signature_verification_success() {
         let key = "my-secret-key";
         let data = "test-log-data";
@@ -1408,6 +1490,14 @@ mod tests {
             !is_partition_expired("events_y2999m01".to_string(), "events".to_string(), 100000)
                 .unwrap()
         );
+
+        // Duration::try_days rejects an i64-sized duration before subtraction.
+        assert!(!is_partition_expired(
+            "events_y2020m01".to_string(),
+            "events".to_string(),
+            i64::MAX
+        )
+        .unwrap());
 
         // Wrong table prefix -> false
         assert!(
@@ -1918,37 +2008,14 @@ mod tests {
 
     #[test]
     fn test_empirical_key_zeroization_behavior() {
-        // Empirically verify Zeroizing<Vec<u8>> behavior
-        let secret = b"sensitive_hmac_secret_key_123456";
-        let vec_secret = secret.to_vec();
-
-        // Save buffer pointer
-        let raw_ptr = vec_secret.as_ptr();
-        let len = vec_secret.len();
-
+        // Verify the wrapper invokes Zeroize during Drop without reading a
+        // buffer after its owner has been deallocated (which would be UB).
+        let zeroized = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
         {
-            let zeroized_wrapper = Zeroizing::new(vec_secret);
-            assert_eq!(&*zeroized_wrapper, secret);
-            // zeroized_wrapper goes out of scope here
+            let _zeroized_wrapper =
+                Zeroizing::new(ZeroizeDropProbe(std::sync::Arc::clone(&zeroized)));
         }
-
-        // Verify that Zeroizing::drop cleared the memory at raw_ptr to zeros before returning memory to allocator
-        let mut zero_count = 0;
-        unsafe {
-            for i in 0..len {
-                if *raw_ptr.add(i) == 0 {
-                    zero_count += 1;
-                }
-            }
-        }
-        println!(
-            "Zeroized memory check: {} out of {} bytes are zero",
-            zero_count, len
-        );
-        assert_eq!(
-            zero_count, len,
-            "Zeroizing must clear all bytes of vector buffer to 0"
-        );
+        assert!(zeroized.load(std::sync::atomic::Ordering::SeqCst));
     }
 
     #[test]

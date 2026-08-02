@@ -431,7 +431,6 @@ export function setPushConsent(consented: boolean): void {
  */
 export async function recoverPushConsentFromBrowser(): Promise<boolean> {
   if (!isPushSupported()) return false
-  if (typeof Notification === "undefined") return false
 
   // Already have consent, nothing to recover
   if (hasPushConsent()) return false
@@ -766,7 +765,6 @@ export async function softSyncPushSubscription(
   options?: SoftSyncOptions
 ): Promise<PushSubscription | null> {
   if (!isPushSupported()) return null
-  if (typeof Notification === "undefined") return null
   if (Notification.permission !== "granted") return null
 
   // Prevent parallel sync attempts by reusing existing sync

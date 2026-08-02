@@ -107,7 +107,9 @@ jobs:
       run-integration-tests: true
       parallel-workers: 0
       num-shards: 1
-    secrets: inherit
+    secrets:
+      SECRET_KEY: ${{ secrets.SECRET_KEY }}
+      CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
 
   go-integration:
     name: Go integration (${{ matrix.service-directory }})
@@ -121,7 +123,6 @@ jobs:
     uses: ./.github/workflows/reusable-go-integration-tests.yml
     with:
       service-directory: ${{ matrix.service-directory }}
-    secrets: inherit
 
   container-integration-cells:
     name: Disposable MinIO and SpiceDB cells
@@ -129,11 +130,16 @@ jobs:
     timeout-minutes: 30
     env:
       DATABASE_URL: sqlite+aiosqlite:///./test.db
-      SECRET_KEY: nightly-container-cell-test-secret-32-chars
+      POSTGRES_PASSWORD: postgres  # pragma: allowlist secret
+      SECRET_KEY: nightly-container-cell-test-secret-32-chars  # pragma: allowlist secret
       ENVIRONMENT: testing
       RUN_INTEGRATION_TESTS: "1"
       USE_TESTCONTAINERS_MINIO: "1"
       USE_TESTCONTAINERS_SPICEDB: "1"
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadminsecret  # pragma: allowlist secret
+      NATS_AUTH_TOKEN: nightly-nats-token  # pragma: allowlist secret
+      SPICEDB_PRESHARED_KEY: nightly-spicedb-key  # pragma: allowlist secret
       OTEL_SDK_DISABLED: "true"
     steps:
       - name: Checkout
@@ -177,16 +183,32 @@ jobs:
       browser: ${{ matrix.browser }}
       shard-index: 1
       shard-total: 1
-    secrets: inherit
 
   load-and-chaos:
     name: Load and chaos resilience
     runs-on: ubuntu-latest
     timeout-minutes: 45
     env:
-      SECRET_KEY: dummy_secret_key_for_ci_tests_at_least_32_chars
+      DATABASE_URL: postgresql+asyncpg://postgres:postgres@postgres:5432/ecosystem  # pragma: allowlist secret
+      POSTGRES_USER: postgres
+      POSTGRES_DB: ecosystem
+      POSTGRES_PASSWORD: postgres  # pragma: allowlist secret
+      SECRET_KEY: dummy_secret_key_for_ci_tests_at_least_32_chars  # pragma: allowlist secret
+      JWT_SECRET: dummy_jwt_secret_for_ci_tests_at_least_32_chars  # pragma: allowlist secret
       ENVIRONMENT: testing
       OTEL_SDK_DISABLED: "true"
+      REDIS_PASSWORD: nightly-redis-password  # pragma: allowlist secret
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadminsecret  # pragma: allowlist secret
+      NATS_AUTH_TOKEN: nightly-nats-token  # pragma: allowlist secret
+      SPICEDB_PRESHARED_KEY: nightly-spicedb-key  # pragma: allowlist secret
+      WS_HUB_INTERNAL_SECRET: nightly-ws-hub-secret  # pragma: allowlist secret
+      IMGPROXY_KEY: nightly-imgproxy-key  # pragma: allowlist secret
+      IMGPROXY_SALT: nightly-imgproxy-salt  # pragma: allowlist secret
+      SPOTIFY_CLIENT_ID: nightly-spotify-client  # pragma: allowlist secret
+      SPOTIFY_CLIENT_SECRET: nightly-spotify-secret  # pragma: allowlist secret
+      SPOTIFY_REDIRECT_URI: http://localhost/spotify/callback
+      SPOTIFY_SCOPES: user-read-currently-playing
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -218,6 +240,7 @@ jobs:
   kyverno-test:
     name: Kyverno policy tests
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -228,10 +251,17 @@ jobs:
           version="v1.18.0"
           archive="kyverno-cli_v1.18.0_linux_x86_64.tar.gz"
           base="https://github.com/kyverno/kyverno/releases/download/${version}"
-          curl --fail --silent --show-error --location --output "$RUNNER_TEMP/$archive" "$base/$archive"
-          curl --fail --silent --show-error --location --output "$RUNNER_TEMP/checksums.txt" "$base/checksums.txt"
-          (cd "$RUNNER_TEMP" && grep "$archive" checksums.txt | sha256sum --check -)
-          tar --extract --gzip --file "$RUNNER_TEMP/$archive" --directory "$RUNNER_TEMP"
+          curl_args=(--fail --silent --show-error --location --retry 10 --retry-delay 5 --retry-all-errors --connect-timeout 20)
+          curl "${curl_args[@]}" --output "$RUNNER_TEMP/$archive" "$base/$archive"
+          curl "${curl_args[@]}" --output "$RUNNER_TEMP/checksums.txt" "$base/checksums.txt"
+          archive_path="$RUNNER_TEMP/$archive"
+          checksum_path="$RUNNER_TEMP/checksums.txt"
+          test -s "$archive_path"
+          test -s "$checksum_path"
+          expected_sha256="$(awk -v archive="$archive" '$2 == archive || $2 == "*" archive { print $1; exit }' "$checksum_path")"
+          test -n "$expected_sha256"
+          printf '%s  %s\n' "$expected_sha256" "$archive_path" | sha256sum --check -
+          tar --extract --gzip --file "$archive_path" --directory "$RUNNER_TEMP"
           echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
 
       - name: Run Kyverno tests
@@ -241,6 +271,12 @@ jobs:
     name: Miri pure-Rust checks
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    env:
+      # pyo3-sanitizer supplies an explicit no-persistence config under Miri:
+      # Config::default constructs the file provider before this env override
+      # is applied. Keep the variable for any third-party proptest tests.
+      PROPTEST_DISABLE_FAILURE_PERSISTENCE: "1"
+      MIRIFLAGS: "-Zmiri-isolation-error=warn"
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

@@ -126,8 +126,7 @@ export function NewChatModal({
   }
 
   const handleSubmitGroup = () => {
-    if (!canSubmitGroup || !onCreateGroup) return
-    onCreateGroup(
+    onCreateGroup!(
       trimmedGroupName,
       selectedUsers.map((u) => String(u.id))
     )
@@ -146,7 +145,6 @@ export function NewChatModal({
   } = useQuery({
     queryKey: ["users", debouncedSearch],
     queryFn: async () => {
-      if (!debouncedSearch) return []
       const response = await client.get<User[]>(
         `/users?limit=${USERS_PAGE_LIMIT}&search=${debouncedSearch}`
       )

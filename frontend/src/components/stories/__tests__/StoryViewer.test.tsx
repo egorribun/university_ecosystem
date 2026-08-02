@@ -11,6 +11,13 @@ vi.mock("@/hooks/useMediaQuery", () => ({
   default: () => motionMocks.prefersReducedMotion,
 }))
 
+vi.mock("@/hooks/useFocusTrap", () => ({
+  default: ({ initialFocus }: { initialFocus?: () => unknown }) => {
+    initialFocus?.()
+    return { current: null }
+  },
+}))
+
 // Mock translations
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({
@@ -80,6 +87,11 @@ describe("StoryViewer", () => {
     // TanStack Router renders an <Outlet /> which wraps the ui; even when the
     // tested component returns null the container still has the router shell.
     // Assert the StoryViewer-specific dialog is absent instead.
+    expect(container.querySelector("[role='dialog']")).toBeNull()
+  })
+
+  it("renders nothing for an out-of-range active story index", async () => {
+    const { container } = await renderViewer({ activeStoryIndex: 99 })
     expect(container.querySelector("[role='dialog']")).toBeNull()
   })
 

@@ -1,6 +1,6 @@
 import type { ReactNode } from "react"
 import { beforeEach, describe, expect, it, vi } from "vitest"
-import { fireEvent, render, screen, waitFor } from "@testing-library/react"
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import NewsDetail from "../NewsDetail"
 
 const article = {
@@ -29,6 +29,7 @@ const mocks = vi.hoisted(() => ({
   articleNavigation: {} as Record<string, unknown>,
   swipe: {} as Record<string, unknown>,
   share: {} as Record<string, unknown>,
+  shareNotify: (_message: string): void => undefined,
   relatedArticles: [] as unknown[],
   t: (key: string) => key,
 }))
@@ -78,7 +79,10 @@ vi.mock("@/hooks/useNewsInteraction", () => ({
 }))
 
 vi.mock("@/hooks/useShare", () => ({
-  useShare: () => mocks.share,
+  useShare: (options: { onNotify: (message: string) => void }) => {
+    mocks.shareNotify = options.onNotify
+    return mocks.share
+  },
 }))
 
 vi.mock("@/hooks/useBookmarks", () => ({
@@ -141,13 +145,36 @@ vi.mock("@/components/ui", () => ({
 vi.mock("@/components/ui/SEO", () => ({ SEO: () => null }))
 
 vi.mock("@/components/settings", () => ({
-  Alert: ({ children }: { children: ReactNode }) => <div role="alert">{children}</div>,
-  Dialog: ({ open, children }: { open: boolean; children: ReactNode }) =>
-    open ? <div role="dialog">{children}</div> : null,
+  Alert: ({ children, onClose }: { children: ReactNode; onClose?: () => void }) => (
+    <div role="alert">
+      {children}
+      {onClose ? <button aria-label="alert-close" onClick={onClose} /> : null}
+    </div>
+  ),
+  Dialog: ({
+    open,
+    children,
+    onClose,
+  }: {
+    open: boolean
+    children: ReactNode
+    onClose?: () => void
+  }) =>
+    open ? (
+      <div role="dialog">
+        {onClose ? <button aria-label="dialog-close" onClick={onClose} /> : null}
+        {children}
+      </div>
+    ) : null,
   DialogActions: ({ children }: { children: ReactNode }) => <div>{children}</div>,
   DialogContent: ({ children }: { children: ReactNode }) => <div>{children}</div>,
   DialogTitle: ({ children }: { children: ReactNode }) => <h2>{children}</h2>,
-  Snackbar: ({ children }: { children: ReactNode }) => <div>{children}</div>,
+  Snackbar: ({ children, onClose }: { children: ReactNode; onClose?: () => void }) => (
+    <div>
+      {children}
+      {onClose ? <button aria-label="snackbar-close" onClick={onClose} /> : null}
+    </div>
+  ),
 }))
 
 vi.mock("@/components/news/NewsBackdrop", () => ({ NewsBackdrop: () => <div /> }))
@@ -170,7 +197,25 @@ vi.mock("@/components/news/RelatedNews", () => ({
 }))
 vi.mock("@/components/news/NewsDetailNavigation", () => ({ NewsDetailNavigation: () => <div /> }))
 vi.mock("@/components/news/NewsDetailEditDialog", () => ({
-  NewsDetailEditDialog: ({ open }: { open: boolean }) => (open ? <div>edit-dialog</div> : null),
+  NewsDetailEditDialog: ({
+    open,
+    onClose,
+    onSuccess,
+    onError,
+  }: {
+    open: boolean
+    onClose?: () => void
+    onSuccess?: (message: string) => void
+    onError?: (message: string) => void
+  }) =>
+    open ? (
+      <div>
+        <div>edit-dialog</div>
+        <button onClick={onClose}>edit-close</button>
+        <button onClick={() => onSuccess?.("edit-success")}>edit-success</button>
+        <button onClick={() => onError?.("edit-error")}>edit-error</button>
+      </div>
+    ) : null,
 }))
 vi.mock("@/components/news/NewsDetailHeader", () => ({
   NewsDetailHeader: ({
@@ -334,6 +379,24 @@ describe("NewsDetail", () => {
     requestAnimationFrame.mockRestore()
   })
 
+  it("ignores a queued progress callback after the page unmounts", () => {
+    const animationFrames: FrameRequestCallback[] = []
+    const requestAnimationFrame = vi
+      .spyOn(window, "requestAnimationFrame")
+      .mockImplementation((callback) => {
+        animationFrames.push(callback)
+        return animationFrames.length
+      })
+
+    const view = render(<NewsDetail />)
+    window.dispatchEvent(new Event("scroll"))
+    view.unmount()
+    animationFrames[0]?.(0)
+
+    expect(requestAnimationFrame).toHaveBeenCalledOnce()
+    requestAnimationFrame.mockRestore()
+  })
+
   it("localizes article content and wires interaction, edit, and delete flows", async () => {
     const historyLength = vi.spyOn(window.history, "length", "get").mockReturnValue(1)
     render(<NewsDetail />)
@@ -350,6 +413,14 @@ describe("NewsDetail", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "edit" }))
     expect(screen.getByText("edit-dialog")).toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: "edit-success" }))
+    expect(screen.getByRole("alert")).toHaveTextContent("edit-success")
+    fireEvent.click(screen.getByRole("button", { name: "edit-error" }))
+    expect(screen.getByRole("alert")).toHaveTextContent("edit-error")
+    fireEvent.click(screen.getByRole("button", { name: "edit-close" }))
+
+    act(() => mocks.shareNotify("share-notification"))
+    expect(screen.getByRole("alert")).toHaveTextContent("share-notification")
 
     fireEvent.click(screen.getByRole("button", { name: "delete" }))
     fireEvent.click(screen.getByRole("button", { name: "common:buttons.delete" }))
@@ -397,6 +468,8 @@ describe("NewsDetail", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "news:shareDialog.copy" }))
     expect(handleCopyLink).toHaveBeenCalledOnce()
+    fireEvent.click(screen.getByRole("button", { name: "dialog-close" }))
+    expect(setShareDialogOpen).toHaveBeenCalledWith(false)
   })
 
   it("renders related articles, shows copied-link state, and ignores missing neighbors", () => {
@@ -446,6 +519,28 @@ describe("NewsDetail", () => {
     await waitFor(() => {
       expect(screen.getByText("news:notifications.deleteError")).toBeInTheDocument()
     })
+    fireEvent.click(screen.getByRole("button", { name: "alert-close" }))
+    expect(screen.queryByText("news:notifications.deleteError")).not.toBeInTheDocument()
+  })
+
+  it("does not delete when the article disappears before confirmation", () => {
+    render(<NewsDetail />)
+
+    fireEvent.click(screen.getByRole("button", { name: "delete" }))
+    mocks.query.data = undefined
+    fireEvent.click(screen.getByRole("button", { name: "common:buttons.delete" }))
+
+    expect(mocks.deleteNews).not.toHaveBeenCalled()
+    expect(mocks.removeQueries).not.toHaveBeenCalled()
+  })
+
+  it("closes a notification through the snackbar callback", () => {
+    render(<NewsDetail />)
+
+    act(() => mocks.shareNotify("snackbar-notification"))
+    fireEvent.click(screen.getByRole("button", { name: "snackbar-close" }))
+
+    expect(screen.queryByText("snackbar-notification")).not.toBeInTheDocument()
   })
 
   it("uses browser history after a successful delete when a previous page exists", async () => {
@@ -453,6 +548,10 @@ describe("NewsDetail", () => {
     const historyLength = vi.spyOn(window.history, "length", "get").mockReturnValue(2)
 
     render(<NewsDetail />)
+
+    fireEvent.click(screen.getByRole("button", { name: "delete" }))
+    fireEvent.click(screen.getByRole("button", { name: "common:buttons.cancel" }))
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument()
 
     fireEvent.click(screen.getByRole("button", { name: "delete" }))
     fireEvent.click(screen.getByRole("button", { name: "common:buttons.delete" }))

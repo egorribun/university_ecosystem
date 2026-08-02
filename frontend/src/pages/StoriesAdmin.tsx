@@ -248,7 +248,7 @@ function StoryAdminItem({ story, formatDate, onRefresh }: StoryAdminItemProps) {
               >
                 {coverPreview ? (
                   <SmartImage
-                    srcRaw={coverPreview || ""}
+                    srcRaw={coverPreview}
                     alt={t("stories:list.coverAlt", { title: story.title })}
                     className="w-full h-full object-cover"
                   />
@@ -610,7 +610,7 @@ export default function StoriesAdmin() {
                       style={{ aspectRatio: "9/16" }}
                     >
                       <SmartImage
-                        srcRaw={coverPreview || ""}
+                        srcRaw={coverPreview}
                         alt={t("stories:form.previewAlt")}
                         className="w-full h-full object-cover"
                       />

@@ -101,6 +101,33 @@ describe("NowPlayingCard — production animation and defensive paths", () => {
     expect(requestFrame).not.toHaveBeenCalled()
   })
 
+  it("cancels an active RAF when reduced motion disables playback animation", () => {
+    const requestFrame = vi.fn(() => 1)
+    const cancelFrame = vi.fn()
+    vi.stubGlobal("requestAnimationFrame", requestFrame)
+    vi.stubGlobal("cancelAnimationFrame", cancelFrame)
+
+    const { rerender } = render(<NowPlayingCard data={makeData()} />)
+    expect(requestFrame).toHaveBeenCalledOnce()
+
+    mediaState.reduced = true
+    rerender(<NowPlayingCard data={makeData()} />)
+
+    expect(cancelFrame).toHaveBeenCalledWith(1)
+  })
+
+  it("handles a playing track changing to a nullable track id while paused", () => {
+    const { rerender } = render(
+      <NowPlayingCard data={makeData({ is_playing: false, progress_ms: 1_000 })} />
+    )
+
+    rerender(
+      <NowPlayingCard data={makeData({ is_playing: false, progress_ms: 1_000, track_id: null })} />
+    )
+
+    expect(screen.getByRole("progressbar")).toHaveAttribute("aria-valuenow", "1000")
+  })
+
   it("normalizes nullable duration, track id, and progress inputs", () => {
     render(
       <NowPlayingCard

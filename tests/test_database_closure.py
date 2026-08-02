@@ -68,7 +68,7 @@ def test_pool_metrics_snapshot_and_peak_property():
 
 def test_build_engine_kwargs_omits_optional_pool_limits():
     current_settings = SimpleNamespace(
-        database_url="postgresql+asyncpg://user:pass@example.com/db",
+        database_url="postgresql+asyncpg://user:pass@example.com/db",  # pragma: allowlist secret
         database_statement_cache_size=0,
         database_pool_size=None,
         database_max_overflow=None,
@@ -144,6 +144,14 @@ def test_slow_query_logging_closure_handles_fast_and_slow_queries(monkeypatch):
 
     token = database_module._query_start_time.set(200.0)
     try:
+        monkeypatch.setattr(database_module.time, "perf_counter", lambda: 200.0001)
+        after_callback(None, None, "SELECT below-threshold", None, None, False)
+    finally:
+        database_module._query_start_time.reset(token)
+    log_slow_query.assert_not_called()
+
+    token = database_module._query_start_time.set(200.0)
+    try:
         monkeypatch.setattr(database_module.time, "perf_counter", lambda: 200.01)
         after_callback(None, None, "SELECT slow", None, None, True)
     finally:
@@ -152,6 +160,16 @@ def test_slow_query_logging_closure_handles_fast_and_slow_queries(monkeypatch):
     assert call.args[0] == "SELECT slow"
     assert call.args[1] == pytest.approx(10.0)
     assert call.args[2:] == (1.0, True)
+
+
+def test_cursor_start_and_pool_callbacks_skip_debug_logging(monkeypatch):
+    database_module._before_cursor_execute(None, None, "SELECT 1", None, None, False)
+    assert database_module._query_start_time.get() is not None
+    database_module._query_start_time.set(None)
+
+    monkeypatch.setattr(database_module, "is_logger_enabled", lambda *_args: False)
+    database_module._on_checkout(None, None, None)
+    database_module._on_checkin(None, None)
 
 
 def test_pool_monitoring_registers_optional_checkout_failed(monkeypatch):

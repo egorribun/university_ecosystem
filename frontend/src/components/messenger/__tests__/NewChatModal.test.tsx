@@ -265,6 +265,20 @@ describe("NewChatModal", () => {
       expect(await screen.findByText("messenger:noUsersFound")).toBeInTheDocument()
     })
 
+    it("uses reduced-motion retry controls in the fetch-error state", async () => {
+      mocks.prefersReducedMotion = true
+      mocks.apiGet.mockRejectedValueOnce(new Error("offline"))
+      render(<NewChatModal open={true} onClose={() => {}} onSelect={() => {}} />, { wrapper })
+
+      fireEvent.change(screen.getByRole("textbox", { name: "messenger:searchUsers" }), {
+        target: { value: "error" },
+      })
+
+      expect(await screen.findByRole("alert")).toHaveTextContent(
+        "messenger:error.failedToLoadUsers"
+      )
+    })
+
     it("shows reduced-motion settings and the in-flight create state", async () => {
       mocks.prefersReducedMotion = true
       mocks.apiGet.mockResolvedValue({

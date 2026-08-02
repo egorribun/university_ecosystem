@@ -38,6 +38,11 @@ type chEntry struct {
 	closed bool
 }
 
+// writePumpPingInterval is a variable so the heartbeat branch can be exercised
+// deterministically without making a test wait for the production 30-second
+// interval. Production keeps the 30-second heartbeat contract.
+var writePumpPingInterval = 30 * time.Second
+
 var (
 	chMutexes = make(map[interface{}]*chEntry)
 	chMu      sync.Mutex
@@ -432,7 +437,7 @@ func (c *Client) handleMessage(msg Message, data []byte) {
 //
 //nolint:gocognit,cyclop
 func (c *Client) WritePump() {
-	ticker := time.NewTicker(30 * time.Second)
+	ticker := time.NewTicker(writePumpPingInterval)
 	defer func() {
 		ticker.Stop()
 		c.Hub.msgLimiters.Delete(c.ID) // TD-24-05: clean limiter on WritePump exit too

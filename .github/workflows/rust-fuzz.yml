@@ -25,6 +25,7 @@ jobs:
   fuzz:
     name: Run cargo fuzz
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -47,7 +48,9 @@ jobs:
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
             native/rust_ext/target/
-          key: ${{ runner.os }}-cargo-fuzz-${{ hashFiles('native/rust_ext/Cargo.toml') }}
+            frontend/wasm-sanitizer/fuzz/target/
+            frontend/rust-crypto/fuzz/target/
+          key: ${{ runner.os }}-cargo-fuzz-${{ hashFiles('native/rust_ext/Cargo.toml', 'native/rust_ext/Cargo.lock', 'frontend/wasm-sanitizer/fuzz/Cargo.toml', 'frontend/wasm-sanitizer/fuzz/Cargo.lock', 'frontend/rust-crypto/fuzz/Cargo.toml', 'frontend/rust-crypto/fuzz/Cargo.lock') }}
           restore-keys: |
             ${{ runner.os }}-cargo-fuzz-
 
@@ -94,6 +97,7 @@ jobs:
   fuzz-additional-rust-crates:
     name: Fuzz ${{ matrix.directory }}
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -117,6 +121,18 @@ jobs:
         uses: dtolnay/rust-toolchain@2c7215f132e9ebf062739d9130488b56d53c060c # stable
         with:
           toolchain: stable
+
+      - name: Cache additional fuzz target build
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            ${{ matrix.directory }}/target/
+          key: ${{ runner.os }}-${{ matrix.name }}-cargo-fuzz-${{ hashFiles(format('{0}/Cargo.toml', matrix.directory), format('{0}/Cargo.lock', matrix.directory), format('{0}/../Cargo.toml', matrix.directory)) }}
+          restore-keys: |
+            ${{ runner.os }}-${{ matrix.name }}-cargo-fuzz-
 
       - name: Install cargo-fuzz
         run: cargo +stable install cargo-fuzz --version 0.12.0 --locked

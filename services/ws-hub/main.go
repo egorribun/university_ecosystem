@@ -47,46 +47,23 @@ func run() error {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	tp, err := telemetry.InitTracer(ctx, cfg)
-	if err == nil {
-		defer func() {
-			if err := tp.Shutdown(ctx); err != nil {
-				logger.ErrorContext(ctx, "Failed to shutdown tracer provider", "err", err)
-			}
-		}()
-	} else {
-		logger.ErrorContext(ctx, "OpenTelemetry initialization failed", "err", err)
-	}
+	defer initializeTracerShutdown(ctx, cfg, logger)()
 
 	nc, err := getInitNats()(ctx, cfg, logger)
 	if err != nil {
 		logger.ErrorContext(ctx, "NATS initialization returned error", "err", err)
 		return err
 	}
-	if nc != nil {
-		defer nc.Close()
-	}
+	defer closeNATSConnection(nc)
 
 	rdb := initRedis(ctx, cfg, logger)
-	if rdb != nil {
-		defer func() {
-			if err := rdb.Close(); err != nil {
-				logger.ErrorContext(context.Background(), "Failed to close Redis connection", "err", err)
-			}
-		}()
-	}
+	defer closeRedisConnection(rdb, logger)
 
 	spiffeClient, err := initSpiffeClient(ctx, cfg, logger)
 	if err != nil {
 		return err
 	}
-	if spiffeClient != nil {
-		defer func() {
-			if err := spiffeClient.Close(); err != nil {
-				logger.WarnContext(ctx, "Failed to close SPIFFE client", "err", err)
-			}
-		}()
-	}
+	defer closeSPIFFEClient(spiffeClient, logger)
 
 	h, err := setupHub(ctx, cfg, logger, nc, rdb, spiffeClient)
 	if err != nil {
@@ -96,6 +73,44 @@ func run() error {
 	mux := http.NewServeMux()
 	setupHandlers(mux, h, cfg, logger, nc, rdb)
 	return runServer(cfg, logger, h, mux)
+}
+
+func initializeTracerShutdown(ctx context.Context, cfg *config.Config, logger *slog.Logger) func() {
+	tp, err := telemetry.InitTracer(ctx, cfg)
+	if err != nil {
+		logger.ErrorContext(ctx, "OpenTelemetry initialization failed", "err", err)
+		return func() {}
+	}
+	return func() {
+		if err := tp.Shutdown(ctx); err != nil {
+			logger.ErrorContext(ctx, "Failed to shutdown tracer provider", "err", err)
+		}
+	}
+}
+
+func closeNATSConnection(nc *nats.Conn) {
+	if nc == nil {
+		return
+	}
+	nc.Close()
+}
+
+func closeRedisConnection(rdb *redis.Client, logger *slog.Logger) {
+	if rdb == nil {
+		return
+	}
+	if err := rdb.Close(); err != nil {
+		logger.Error("Failed to close Redis connection", "err", err)
+	}
+}
+
+func closeSPIFFEClient(spiffeClient *spiffe.Client, logger *slog.Logger) {
+	if spiffeClient == nil {
+		return
+	}
+	if err := spiffeClient.Close(); err != nil {
+		logger.Warn("Failed to close SPIFFE client", "err", err)
+	}
 }
 
 func initSpiffeClient(ctx context.Context, cfg *config.Config, logger *slog.Logger) (*spiffe.Client, error) {

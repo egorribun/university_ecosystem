@@ -986,11 +986,6 @@ export const useProfileSync = (
   }, [userState])
 
   useEffect(() => {
-    if (typeof window === "undefined") {
-      setInitializing(false)
-      return
-    }
-
     // Wave 116 SW3 — LHCI auth mock. scripts/run-lhci.mjs builds with
     // VITE_LHCI=true and needs authenticated routes (/dashboard, /news,
     // /events, /schedule, /activity, /map) to render their real content

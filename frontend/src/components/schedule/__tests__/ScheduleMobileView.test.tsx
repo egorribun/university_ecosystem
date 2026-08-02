@@ -1,10 +1,30 @@
 import { act, fireEvent, render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { afterEach, describe, it, expect, vi } from "vitest"
+import { createElement, type ComponentProps, type ReactNode } from "react"
 
-vi.mock("framer-motion", async () =>
-  (await import("@/tests/helpers/framerMotionMock")).framerMotionMock()
-)
+vi.mock("framer-motion", async () => {
+  const base = (await import("@/tests/helpers/framerMotionMock")).framerMotionMock()
+  const motion = new Proxy(
+    {},
+    {
+      get: (_target, tag) => {
+        if (typeof tag !== "string") return undefined
+        return (props: Record<string, unknown>) => {
+          const variants = props.variants as
+            Record<string, ((custom: number) => unknown) | unknown> | undefined
+          const custom = typeof props.custom === "number" ? props.custom : 1
+          const enter = variants?.enter
+          const exit = variants?.exit
+          if (typeof enter === "function") enter(custom)
+          if (typeof exit === "function") exit(custom)
+          return createElement(tag, null, props.children as ReactNode)
+        }
+      },
+    }
+  )
+  return { ...base, motion, m: motion }
+})
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({
     t: (key: string) => key,
@@ -19,6 +39,8 @@ import { SchedulePageProvider, useSchedulePage } from "@/contexts/SchedulePageCo
 import { useScheduleUIStore } from "@/stores/scheduleUIStore"
 import type { User } from "@/types/User"
 import type { Lesson } from "@/components/schedule/scheduleUtils"
+
+type Props = ComponentProps<typeof ScheduleMobileView>
 
 const LESSONS: Lesson[] = [
   {
@@ -47,7 +69,7 @@ const LESSONS: Lesson[] = [
   },
 ]
 
-const baseProps = {
+const baseProps: Props = {
   schedule: LESSONS,
   weekdayBackend: ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday"],
   weekdayLabels: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"],
@@ -141,11 +163,48 @@ describe("ScheduleMobileView", () => {
     renderView()
     const tablist = screen.getByRole("tablist")
     const tabs = screen.getAllByRole("tab")
+
+    fireEvent.keyDown(tablist, { key: "ArrowRight" })
     tabs[0]!.focus()
 
     fireEvent.keyDown(tablist, { key: "ArrowRight" })
     expect(document.activeElement).toBe(tabs[1])
     fireEvent.keyDown(tablist, { key: "ArrowLeft" })
     expect(document.activeElement).toBe(tabs[0])
+  })
+
+  it("uses day-label and current-lesson fallbacks and scrolls the active panel", () => {
+    renderView({
+      ...baseProps,
+      weekdayBackend: ["monday"],
+      weekdayLabels: [],
+      weekdayShort: [],
+      currentLesson: LESSONS[0]!,
+      hasToday: false,
+      todayIdx: -1,
+    })
+
+    const panel = screen.getByRole("tabpanel")
+    const scrollIntoView = vi.fn()
+    Object.defineProperty(panel, "scrollIntoView", { value: scrollIntoView, configurable: true })
+    fireEvent.click(screen.getByRole("tab"))
+
+    expect(screen.getByRole("heading", { name: "monday" })).toBeInTheDocument()
+    expect(scrollIntoView).toHaveBeenCalledWith({ behavior: "smooth", block: "start" })
+  })
+
+  it("renders an empty backend safely when no day map entry exists", () => {
+    renderView({
+      ...baseProps,
+      schedule: [],
+      weekdayBackend: [],
+      weekdayLabels: [],
+      weekdayShort: [],
+      rawSchedule: [],
+      hasToday: false,
+      todayIdx: -1,
+    })
+
+    expect(screen.getByRole("tabpanel")).toBeInTheDocument()
   })
 })

@@ -85,6 +85,21 @@ describe("SearchDialog", () => {
     expect(screen.getByText("lab report")).toBeInTheDocument()
   })
 
+  it("loads a recent search and closes when the backdrop is clicked", async () => {
+    localStorage.setItem(RECENT_SEARCHES_KEY, JSON.stringify(["calculus"]))
+    const user = userEvent.setup()
+    render(<SearchDialog />)
+    openDialog()
+
+    await user.click(screen.getByRole("button", { name: "calculus" }))
+    expect(screen.getByPlaceholderText<HTMLInputElement>("common:search.placeholder")).toHaveValue(
+      "calculus"
+    )
+
+    await user.click(screen.getByRole("presentation"))
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
+  })
+
   it("renders the loading spinner branch while a 2+ char query is in flight", async () => {
     queryState.isLoading = true
     const user = userEvent.setup()

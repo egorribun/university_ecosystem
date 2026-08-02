@@ -518,8 +518,7 @@ export const ChatWindow = memo(function ChatWindow({
             // useVirtualizer above. Using `messages[virtualRow.index]` would
             // misalign when a search query is active (virtualizer count =
             // filteredMessages.length, but raw messages.length > filtered).
-            const message = filteredMessages[virtualRow.index]
-            if (!message) return null
+            const message = filteredMessages[virtualRow.index]!
 
             // Wave 202 SW6 — only newly-appended rows (index >= animateFromIndex)
             // run the entrance; already-seen rows mount with initial={false} so
@@ -1070,4 +1069,3 @@ export const ChatWindow = memo(function ChatWindow({
 })
 
 export default ChatWindow
-

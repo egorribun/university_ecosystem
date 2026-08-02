@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react"
+import { fireEvent, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { describe, it, expect, vi } from "vitest"
 
@@ -10,6 +10,13 @@ vi.mock("react-i18next", () => ({
     t: (key: string) => key,
     i18n: { language: "en", changeLanguage: () => Promise.resolve() },
   }),
+}))
+const focusTrapState = vi.hoisted(() => ({ onDeactivate: undefined as (() => void) | undefined }))
+vi.mock("@/hooks/useFocusTrap", () => ({
+  default: (options: { onDeactivate?: () => void }) => {
+    focusTrapState.onDeactivate = options.onDeactivate
+    return { current: null }
+  },
 }))
 
 import { NewsDetailHero } from "@/components/news/NewsDetailHero"
@@ -26,9 +33,12 @@ describe("NewsDetailHero", () => {
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
   })
 
-  it("renders a fallback figcaption when there is no display title", () => {
+  it("renders fallback caption and lightbox alt text when there is no display title", async () => {
+    const user = userEvent.setup()
     render(<NewsDetailHero {...baseProps} displayTitle="" />)
     expect(screen.getByText("news:alt.heroFallback")).toBeInTheDocument()
+    await user.click(screen.getByRole("button", { name: "news:actions.zoomImage" }))
+    expect(screen.getAllByRole("img", { name: "news:alt.heroFallback" })).toHaveLength(2)
   })
 
   it("uses responsive framing for portrait, square, wide, and landscape images", () => {
@@ -77,6 +87,10 @@ describe("NewsDetailHero", () => {
     await user.click(screen.getByRole("button", { name: "news:actions.zoomImage" }))
     const dialog = screen.getByRole("dialog")
     expect(dialog).toBeInTheDocument()
+    focusTrapState.onDeactivate?.()
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument())
+
+    await user.click(screen.getByRole("button", { name: "news:actions.zoomImage" }))
     await user.click(screen.getByRole("button", { name: "common:buttons.close" }))
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
 

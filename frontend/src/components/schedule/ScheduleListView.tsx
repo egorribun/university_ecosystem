@@ -81,7 +81,8 @@ export const ScheduleListView = memo(function ScheduleListView({
     let total = 0
     for (const day of weekdayBackend) {
       counts.push(total)
-      total += lessonsByDay.get(day)?.length ?? 0
+      // buildLessonsByDay initializes an entry for every weekdayBackend item.
+      total += lessonsByDay.get(day)!.length
     }
     return counts
   }, [weekdayBackend, lessonsByDay])
@@ -115,9 +116,9 @@ export const ScheduleListView = memo(function ScheduleListView({
     <div className="schedule-list-container mx-auto w-full max-w-5xl space-y-6">
       {weekdayBackend.map((day, dayIdx) => {
         const label = weekdayLabels[dayIdx] ?? day
-        const lessons = lessonsByDay.get(day) ?? []
+        const lessons = lessonsByDay.get(day)!
         const isToday = hasToday && dayIdx === todayIdx
-        const baseIndex = dayCumulativeCounts[dayIdx] ?? 0
+        const baseIndex = dayCumulativeCounts[dayIdx]!
 
         return (
           <section
@@ -223,4 +224,3 @@ export const ScheduleListView = memo(function ScheduleListView({
 })
 
 export default ScheduleListView
-

@@ -112,7 +112,7 @@ jobs:
         ports:
           - 5432:5432
         options: >-
-          --health-cmd pg_isready
+          --health-cmd "pg_isready -U test -d test_visual_audit"
           --health-interval 5s
           --health-timeout 3s
           --health-retries 10

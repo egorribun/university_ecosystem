@@ -84,6 +84,7 @@ def test_governance_quality_configuration_matches_contract() -> None:
     checkov = yaml.safe_load(_read_text(".github/workflows/checkov.yml"))
     checkov_with = checkov["jobs"]["checkov"]["steps"][1]["with"]
     assert checkov_with.get("soft_fail") is not True
+    assert checkov["jobs"]["checkov"]["timeout-minutes"] == 20
 
     mutation_exclusions = json.loads(_read_text("quality/mutation-exclusions.json"))
     assert mutation_exclusions == {"version": 1, "exclusions": []}
@@ -258,6 +259,8 @@ def test_coverage_commands_and_sonar_paths_match_quality_contract() -> None:
     )
 
     package = json.loads(_read_text("frontend/package.json"))
-    assert package["scripts"]["test:ci"].startswith(
-        "npm run test:wasm && vitest run --coverage"
-    )
+    test_ci = package["scripts"]["test:ci"]
+    assert test_ci.startswith("npm run test:wasm && vitest run ")
+    assert "--configLoader runner" in test_ci
+    assert "--coverage" in test_ci
+    assert package["scripts"]["test:watch"] == "vitest --configLoader runner"

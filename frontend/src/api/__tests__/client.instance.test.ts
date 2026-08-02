@@ -184,6 +184,25 @@ describe("api/client — response interceptor: 401 skip-unauthorized", () => {
       api.get("/users/me", { headers: { [SKIP_UNAUTHORIZED_HEADER]: "1" } } as never)
     ).rejects.toMatchObject({ response: { status: 401 } })
   })
+
+  it("propagates a normal 401 when no skip header is present", async () => {
+    api.defaults.adapter = async (config): Promise<AxiosResponse> => {
+      throw Object.assign(new Error("Unauthorized"), {
+        config,
+        response: {
+          status: 401,
+          statusText: "Unauthorized",
+          headers: new AxiosHeaders(),
+          data: { detail: "login required" },
+          config,
+        },
+      })
+    }
+
+    await expect(api.get("/private")).rejects.toMatchObject({
+      response: { status: 401 },
+    })
+  })
 })
 
 describe("api/client — defensive response cleanup", () => {

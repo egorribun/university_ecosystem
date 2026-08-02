@@ -1,22 +1,131 @@
-import { render, screen, waitFor } from "@testing-library/react"
+import { fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { describe, it, expect, vi } from "vitest"
+import { createElement, type ReactNode } from "react"
 import type { MapRef } from "react-map-gl/maplibre"
 
-vi.mock("react-map-gl/maplibre", async () =>
-  (await import("@/tests/helpers/mapGlMock")).mapGlMock()
-)
+const translationState = vi.hoisted(() => ({ resolvedLanguage: "en" as string | undefined }))
+
+vi.mock("react-map-gl/maplibre", async () => {
+  const base = (await import("@/tests/helpers/mapGlMock")).mapGlMock()
+  const invoke = (callback: unknown, ...args: unknown[]) => {
+    if (typeof callback === "function") callback(...args)
+  }
+  const MapWithEvents = ({ children, onClick, onMoveEnd }: Record<string, unknown>) =>
+    createElement(
+      "div",
+      null,
+      createElement(
+        "button",
+        { type: "button", "data-testid": "map-click", onClick: () => invoke(onClick) },
+        "map click"
+      ),
+      createElement(
+        "button",
+        {
+          type: "button",
+          "data-testid": "map-move-end",
+          onClick: () => invoke(onMoveEnd, { originalEvent: { type: "mouse" } }),
+        },
+        "map move"
+      ),
+      createElement(
+        "button",
+        {
+          type: "button",
+          "data-testid": "map-move-end-programmatic",
+          onClick: () => invoke(onMoveEnd, {}),
+        },
+        "programmatic move"
+      ),
+      children as ReactNode
+    )
+  return { ...base, Map: MapWithEvents }
+})
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({
     t: (key: string) => key,
-    i18n: { language: "en", resolvedLanguage: "en", changeLanguage: () => Promise.resolve() },
+    i18n: {
+      language: "en",
+      resolvedLanguage: translationState.resolvedLanguage,
+      changeLanguage: () => Promise.resolve(),
+    },
   }),
 }))
 // Stub the heavy child components so this test isolates MapLibreMap's own logic
 // (rAF poll, cinematic intro, easeTo, sky-update). Their internals are covered
 // by their own tests.
-vi.mock("@/components/map/BuildingMarker", () => ({ BuildingMarker: () => null }))
-vi.mock("@/components/map/POIMarker", () => ({ POIMarker: () => null }))
-vi.mock("@/components/map/EventMarker", () => ({ EventMarker: () => null }))
+vi.mock("@/components/map/BuildingMarker", () => ({
+  BuildingMarker: (props: Record<string, unknown>) => {
+    const building = props.building as { letter: string }
+    const invoke = (callback: unknown) => {
+      if (typeof callback === "function") callback()
+    }
+    return createElement(
+      "div",
+      null,
+      createElement(
+        "button",
+        {
+          type: "button",
+          "data-testid": `building-open-${building.letter}`,
+          onClick: () => invoke(props.onPopupOpen),
+        },
+        "building open"
+      ),
+      createElement(
+        "button",
+        {
+          type: "button",
+          "data-testid": `building-close-${building.letter}`,
+          onClick: () => invoke(props.onPopupClose),
+        },
+        "building close"
+      )
+    )
+  },
+}))
+vi.mock("@/components/map/POIMarker", () => ({
+  POIMarker: (props: Record<string, unknown>) => {
+    const invoke = (callback: unknown) => {
+      if (typeof callback === "function") callback()
+    }
+    return createElement(
+      "div",
+      null,
+      createElement(
+        "button",
+        { type: "button", "data-testid": "poi-open", onClick: () => invoke(props.onPopupOpen) },
+        "poi open"
+      ),
+      createElement(
+        "button",
+        { type: "button", "data-testid": "poi-close", onClick: () => invoke(props.onPopupClose) },
+        "poi close"
+      )
+    )
+  },
+}))
+vi.mock("@/components/map/EventMarker", () => ({
+  EventMarker: (props: Record<string, unknown>) => {
+    const invoke = (callback: unknown) => {
+      if (typeof callback === "function") callback()
+    }
+    return createElement(
+      "div",
+      null,
+      createElement(
+        "button",
+        { type: "button", "data-testid": "event-open", onClick: () => invoke(props.onPopupOpen) },
+        "event open"
+      ),
+      createElement(
+        "button",
+        { type: "button", "data-testid": "event-close", onClick: () => invoke(props.onPopupClose) },
+        "event close"
+      )
+    )
+  },
+}))
 vi.mock("@/components/map/MapControls", () => ({ MapControls: () => null }))
 vi.mock("@/components/map/WeatherParticles", () => ({ WeatherParticles: () => null }))
 
@@ -69,6 +178,7 @@ describe("MapLibreMap", () => {
 
   afterEach(() => {
     window.matchMedia = originalMatchMedia
+    translationState.resolvedLanguage = "en"
   })
 
   it("renders the map application container with the a11y keyboard hint", () => {
@@ -166,5 +276,115 @@ describe("MapLibreMap", () => {
       />
     )
     expect(screen.getByRole("application")).toBeInTheDocument()
+  })
+
+  it("dispatches map, marker-popup, weather, and move-end interactions", () => {
+    const onDeselectBuilding = vi.fn()
+    const onMapMoveEnd = vi.fn()
+    render(
+      <MapLibreMapComponent
+        {...baseProps}
+        onDeselectBuilding={onDeselectBuilding}
+        onMapMoveEnd={onMapMoveEnd}
+        mapRef={makeRef(makeMap())}
+        weatherCondition="rain"
+        mapEvents={[{ id: "event-1", buildingId: "ГУК" } as never]}
+      />
+    )
+
+    fireEvent.click(screen.getByTestId("map-click"))
+    fireEvent.click(screen.getByTestId("map-move-end-programmatic"))
+    fireEvent.click(screen.getByTestId("map-move-end"))
+    fireEvent.click(screen.getByTestId("building-open-ГУК"))
+    fireEvent.click(screen.getByTestId("building-close-ГУК"))
+    fireEvent.click(screen.getAllByTestId("poi-open")[0]!)
+    fireEvent.click(screen.getAllByTestId("poi-close")[0]!)
+    fireEvent.click(screen.getByTestId("event-open"))
+    fireEvent.click(screen.getByTestId("event-close"))
+
+    expect(onDeselectBuilding).toHaveBeenCalled()
+    expect(onMapMoveEnd).toHaveBeenCalledWith({
+      zoom: 16,
+      latitude: 55.7,
+      longitude: 37.8,
+      pitch: 45,
+      bearing: 0,
+    })
+  })
+
+  it("uses the base language and skips an unknown selected building", () => {
+    translationState.resolvedLanguage = undefined
+    const map = makeMap()
+    const ref = makeRef(map)
+    const easeTo = (ref.current as unknown as { easeTo: ReturnType<typeof vi.fn> }).easeTo
+
+    render(
+      <MapLibreMapComponent
+        {...baseProps}
+        mapRef={ref}
+        selectedBuilding={"missing-building" as never}
+      />
+    )
+
+    expect(screen.getByRole("application")).toBeInTheDocument()
+    expect(easeTo).not.toHaveBeenCalled()
+  })
+
+  it("stops a pending map-readiness poll after unmount", () => {
+    let pendingFrame: FrameRequestCallback | undefined
+    const requestAnimationFrame = vi
+      .spyOn(window, "requestAnimationFrame")
+      .mockImplementation((callback) => {
+        pendingFrame = callback
+        return 1
+      })
+    const cancelAnimationFrame = vi
+      .spyOn(window, "cancelAnimationFrame")
+      .mockImplementation(() => undefined)
+
+    try {
+      const { unmount } = render(<MapLibreMapComponent {...baseProps} />)
+      pendingFrame?.(0)
+      fireEvent.click(screen.getByTestId("map-move-end"))
+      unmount()
+      pendingFrame?.(0)
+      expect(cancelAnimationFrame).toHaveBeenCalled()
+    } finally {
+      requestAnimationFrame.mockRestore()
+      cancelAnimationFrame.mockRestore()
+    }
+  })
+
+  it("does not start the intro after its timeout was cancelled by unmount", () => {
+    const map = makeMap()
+    let pendingFrame: FrameRequestCallback | undefined
+    let introCallback: (() => void) | undefined
+    const requestAnimationFrame = vi
+      .spyOn(window, "requestAnimationFrame")
+      .mockImplementation((callback) => {
+        pendingFrame = callback
+        return 1
+      })
+    const realSetTimeout = globalThis.setTimeout
+    const setTimeout = vi.spyOn(globalThis, "setTimeout").mockImplementation((handler, timeout) => {
+      if (timeout === 300) {
+        introCallback = handler as unknown as () => void
+        return 99 as unknown as ReturnType<typeof globalThis.setTimeout>
+      }
+      return realSetTimeout(handler, timeout)
+    })
+
+    try {
+      const { unmount } = render(<MapLibreMapComponent {...baseProps} mapRef={makeRef(map)} />)
+      pendingFrame?.(0)
+      expect(map.resize).toHaveBeenCalled()
+      expect(introCallback).toBeDefined()
+      unmount()
+      introCallback?.()
+      expect(map.flyTo).not.toHaveBeenCalled()
+    } finally {
+      requestAnimationFrame.mockRestore()
+      setTimeout.mockRestore()
+    }
   })
 })

@@ -33,6 +33,7 @@ jobs:
     name: Python Dependency Audit
     if: ${{ inputs.run-pip-audit }}
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -63,6 +64,7 @@ jobs:
     name: Node.js Dependency Audit
     if: ${{ inputs.run-npm-audit }}
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     defaults:
       run:
         working-directory: frontend
@@ -106,6 +108,7 @@ jobs:
   docker-security:
     name: Container Security Scan
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     permissions:
       contents: read
       security-events: write
@@ -170,6 +173,7 @@ jobs:
   govulncheck:
     name: Go Vulnerability Scan
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -202,6 +206,7 @@ jobs:
   sbom:
     name: Generate SBOM
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -231,6 +236,7 @@ jobs:
   detect-secrets-baseline:
     name: detect-secrets Baseline Integrity
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -260,6 +266,7 @@ jobs:
   semgrep:
     name: Semgrep SAST
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     if: github.actor != 'dependabot[bot]'
     permissions:
       contents: read

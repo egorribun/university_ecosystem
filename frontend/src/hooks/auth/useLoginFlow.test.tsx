@@ -310,6 +310,16 @@ describe("useLoginForm.handlePasskeyLogin", () => {
     })
     await waitFor(() => expect(result.current.passkeyError).toBe("No passkey registered"))
   })
+
+  it("normalizes an empty current email before the passkey call", async () => {
+    const { result } = renderHook(() => useLoginForm())
+
+    await act(async () => {
+      await result.current.handlePasskeyLogin()
+    })
+
+    expect(mocks.loginWithPasskey).toHaveBeenCalledWith("", false)
+  })
 })
 
 // ---------------------------------------------------------------------------

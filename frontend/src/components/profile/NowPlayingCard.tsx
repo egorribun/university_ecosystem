@@ -62,21 +62,13 @@ export const NowPlayingCard = memo(function NowPlayingCard({ data }: { data: Now
     if (data.is_playing) return
     const next = clampProgress(data.progress_ms)
     startRef.current = Date.now() - next
-    setProgress((prev) => (prev === next ? prev : next))
-    if (rafRef.current != null) {
-      cancelAnimationFrame(rafRef.current)
-      rafRef.current = null
-    }
+    setProgress(next)
   }, [clampProgress, data.is_playing, data.progress_ms])
 
   const shouldAnimate = !isTest && data.is_playing && !prefersReduce && !reduced && duration > 0
 
   useEffect(() => {
     if (!shouldAnimate) {
-      if (rafRef.current != null) {
-        cancelAnimationFrame(rafRef.current)
-        rafRef.current = null
-      }
       return
     }
     const loop = () => {
@@ -94,8 +86,7 @@ export const NowPlayingCard = memo(function NowPlayingCard({ data }: { data: Now
   }, [clampProgress, shouldAnimate])
 
   const pct = duration > 0 ? Math.max(0, Math.min(100, (progress / duration) * 100)) : 0
-  const fmt = (ms: number | null | undefined) => {
-    if (ms == null) return "0:00"
+  const fmt = (ms: number) => {
     const seconds = Math.max(0, Math.floor(ms / 1000))
     const minutes = Math.floor(seconds / 60)
     const rest = String(seconds % 60).padStart(2, "0")
@@ -115,8 +106,7 @@ export const NowPlayingCard = memo(function NowPlayingCard({ data }: { data: Now
   const href = data.track_url || "https://open.spotify.com"
 
   const maxTimeWidth = useMemo(() => {
-    const fmtTime = (ms: number | null | undefined) => {
-      if (ms == null) return "0:00"
+    const fmtTime = (ms: number) => {
       const seconds = Math.max(0, Math.floor(ms / 1000))
       const minutes = Math.floor(seconds / 60)
       const rest = String(seconds % 60).padStart(2, "0")

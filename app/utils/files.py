@@ -12,9 +12,22 @@ from app.core.localization import translate
 from app.core.logging import get_logger
 from app.services.file_scanner import scan_for_malware
 from app.services.storage import StaticFSStorage, StorageBackend, get_storage_backend
-from app.utils.images import optimize_image
 
 logger = get_logger(__name__)
+
+
+def optimize_image(*args: Any, **kwargs: Any) -> Any:
+    """Load the Pillow-backed optimizer only when an image is actually saved.
+
+    Keeping this compatibility wrapper at module scope preserves the existing
+    test/extension patch seam while preventing MIME and attachment-only callers
+    from importing Pillow during application startup.
+    """
+
+    from app.utils.images import optimize_image as _optimize_image
+
+    return _optimize_image(*args, **kwargs)
+
 
 storage_backend = get_storage_backend(settings)
 _default_storage_backend = storage_backend

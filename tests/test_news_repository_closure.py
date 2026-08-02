@@ -2,11 +2,18 @@ from __future__ import annotations
 
 import uuid
 from datetime import UTC, datetime
-from unittest.mock import AsyncMock, MagicMock
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from sqlalchemy import literal
 
-from app.repositories.news_repository import NewsRepository
+from app.models.news import News
+from app.repositories.news_repository import (
+    NewsRepository,
+    build_news_cache_key,
+    get_news_repository,
+)
 
 
 def _news_item(news_id: uuid.UUID) -> MagicMock:
@@ -48,6 +55,86 @@ async def test_properties_and_list_news_current_user_like():
 
     result = await repo.list_news(current_user_id=uuid.uuid4())
     assert result[0].is_liked is True
+
+
+@pytest.mark.asyncio
+async def test_published_latest_search_and_count_paths():
+    repo, db = _repo()
+    item = _news_item(uuid.uuid4())
+    result = MagicMock()
+    result.scalars.return_value.all.return_value = [item]
+    db.execute.return_value = result
+    repo._to_dto = MagicMock(return_value="dto")
+
+    with patch(
+        "app.repositories.news_repository.get_current_tenant", return_value=None
+    ):
+        assert await repo.get_published(skip=91, limit=2) == ["dto"]
+    assert await repo.get_latest(limit=3) == ["dto"]
+    assert await repo.search("  News_%  ", skip=1, limit=2) == ["dto"]
+
+    result.scalar.return_value = 4
+    assert await repo.count_total() == 4
+    result.scalar.return_value = 0
+    assert await repo.count_total() == 0
+
+
+@pytest.mark.asyncio
+async def test_list_news_cursor_text_vector_and_empty_paths(monkeypatch):
+    repo, db = _repo()
+    empty = MagicMock()
+    empty.scalars.return_value.all.return_value = []
+    db.execute.return_value = empty
+    cursor = (datetime.now(UTC), str(uuid.uuid4()))
+
+    assert await repo.list_news(cursor=cursor) == []
+    assert await repo.list_news(search_query="title") == []
+
+    monkeypatch.setattr(
+        "app.repositories.news_repository.settings.semantic_search_enabled", True
+    )
+    with patch.object(
+        News,
+        "embedding",
+        SimpleNamespace(cosine_distance=lambda _embedding: literal(0)),
+    ):
+        assert (
+            await repo.list_news(search_query="title", query_embedding=[1.0, 0.0]) == []
+        )
+
+    item = _news_item(uuid.uuid4())
+    news_result = MagicMock()
+    news_result.scalars.return_value.all.return_value = [item]
+    likes_result = MagicMock()
+    likes_result.all.return_value = []
+    comments_result = MagicMock()
+    comments_result.all.return_value = []
+    db.execute.side_effect = [news_result, likes_result, comments_result]
+    result = await repo.list_news()
+    assert result[0].is_liked is False
+
+
+@pytest.mark.asyncio
+async def test_toggle_like_adds_and_removes_and_factory_and_cache_key():
+    repo, db = _repo()
+    db.execute.return_value = SimpleNamespace(rowcount=1)
+    assert await repo.toggle_like(uuid.uuid4(), uuid.uuid4()) is True
+
+    db.execute.side_effect = [SimpleNamespace(rowcount=0), MagicMock()]
+    assert await repo.toggle_like(uuid.uuid4(), uuid.uuid4()) is False
+    assert db.execute.await_count == 3
+
+    assert get_news_repository(db).db is db
+    with patch(
+        "app.repositories.news_repository.get_current_tenant", return_value=None
+    ):
+        assert (
+            build_news_cache_key(repo, skip=1, limit=2) == "news:published:public:1:2"
+        )
+    with patch(
+        "app.repositories.news_repository.get_current_tenant", return_value="tenant"
+    ):
+        assert build_news_cache_key(repo) == "news:published:tenant:0:20"
 
 
 @pytest.mark.asyncio

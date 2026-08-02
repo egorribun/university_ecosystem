@@ -2,6 +2,7 @@ import importlib
 import os
 from contextlib import contextmanager, suppress
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
@@ -247,9 +248,7 @@ def test_auto_create_schema_default_false_in_production(monkeypatch, tmp_path):
     assert settings.auto_create_schema is False
 
 
-def test_auto_create_schema_warns_when_enabled_in_production(
-    monkeypatch, caplog, tmp_path
-):
+def test_auto_create_schema_warns_when_enabled_in_production(monkeypatch, tmp_path):
     worker_id = os.environ.get("PYTEST_XDIST_WORKER")
     db_name = f"test_{worker_id}.db" if worker_id else "test.db"
 
@@ -273,16 +272,14 @@ def test_auto_create_schema_warns_when_enabled_in_production(
     monkeypatch.setenv("AUTO_CREATE_SCHEMA", "true")
 
     with _temporary_env_file(None):
-        from app.core import config as config_module
-
-        with caplog.at_level("WARNING"):
-            config_module = _reload_all_config()
+        config_module = _reload_all_config()
+        with patch.object(config_module, "_logger") as mock_logger:
             settings = config_module.Settings()
 
     assert settings.auto_create_schema is True
     assert any(
-        "AUTO_CREATE_SCHEMA is enabled" in record.getMessage()
-        for record in caplog.records
+        "AUTO_CREATE_SCHEMA is enabled" in str(call.args[0])
+        for call in mock_logger.warning.call_args_list
     )
 
 

@@ -59,3 +59,13 @@ func TestHandleCacheInvalidation_CancelledContextReturnsEarly(t *testing.T) {
 
 	assert.Empty(t, auth.calls(), "cancelled context must short-circuit before any Invalidate")
 }
+
+func TestSubscribeToNATS_RejectsMissingConnection(t *testing.T) {
+	h := newNatsTestHub(&mockAuthClient{allowed: true}, "", 10)
+	h.Nats = nil
+
+	err := h.SubscribeToNATS(context.Background())
+
+	assert.EqualError(t, err, "NATS connection is not configured")
+	assert.Empty(t, h.subs)
+}

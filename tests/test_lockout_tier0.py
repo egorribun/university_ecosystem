@@ -199,6 +199,57 @@ def test_expired_lockout_message_returns_base_without_retry(monkeypatch) -> None
     translate.assert_called_once_with("errors.auth.account_locked", locale="en")
 
 
+@pytest.mark.parametrize(
+    ("locale", "seconds", "expected"),
+    [
+        ("en", 0, "1 second"),
+        ("en", 1, "1 second"),
+        ("en", 2, "2 seconds"),
+        ("en", 60, "1 minute"),
+        ("en", 61, "2 minutes"),
+        ("en", 3600, "1 hour"),
+        ("en", 3601, "2 hours"),
+        ("ru", 11, "11 секунд"),
+        ("ru", 21, "21 секунду"),
+        ("ru", 22, "22 секунды"),
+        ("ru", 25, "25 секунд"),
+    ],
+)
+def test_format_duration_covers_english_and_russian_plural_rules(
+    locale: str, seconds: int, expected: str, monkeypatch
+) -> None:
+    from app.core.config import settings
+    from app.services.auth.lockout import LockoutService
+
+    monkeypatch.setattr(settings.security, "auth_lockout_thresholds", "2:10")
+    service = LockoutService(AsyncMock())
+
+    assert service.format_duration(locale, seconds) == expected
+
+    assert service._pluralize_en(1, "days") == "days"
+    assert service._pluralize_ru(1, "days") == "days"
+
+
+def test_active_lockout_message_includes_retry_details(monkeypatch) -> None:
+    from app.core.config import settings
+    from app.services.auth.lockout import LockoutService
+
+    monkeypatch.setattr(settings.security, "auth_lockout_thresholds", "2:10")
+    service = LockoutService(AsyncMock())
+
+    with patch(
+        "app.services.auth.lockout.translate",
+        side_effect=["Account locked", "Try again in 2 minutes"],
+    ) as translate:
+        detail, retry_after = service.get_lockout_message(
+            "en", datetime.now(UTC) + timedelta(seconds=61)
+        )
+
+    assert detail == "Account locked Try again in 2 minutes"
+    assert retry_after >= 1
+    assert translate.call_count == 2
+
+
 @pytest.mark.asyncio
 async def test_register_failed_attempt_uses_postgres_advisory_lock(monkeypatch) -> None:
     from app.core.config import settings

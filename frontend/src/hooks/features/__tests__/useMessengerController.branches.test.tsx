@@ -36,6 +36,7 @@ const mocks = vi.hoisted(() => ({
   },
   navigate: vi.fn(),
   paramsRef: { current: {} as { chatId?: string } },
+  presenceMap: {} as Record<string, { active?: boolean }>,
   testUser: {
     id: "current-user-id",
     email: "test@example.com",
@@ -66,7 +67,7 @@ vi.mock("@/contexts/AuthContext", () => ({
 
 vi.mock("@/contexts/MessengerContext", () => ({
   useMessenger: () => ({
-    presenceMap: {},
+    presenceMap: mocks.presenceMap,
     isConnected: true,
     sendTyping: vi.fn(),
     sendRead: vi.fn(),
@@ -142,6 +143,7 @@ const seedGroup = (chatId = "group-1") => {
 beforeEach(() => {
   vi.clearAllMocks()
   mocks.paramsRef.current = {}
+  mocks.presenceMap = {}
 
   mocks.createObjectURL.mockClear().mockReturnValue("blob:mock-url")
   mocks.revokeObjectURL.mockClear()
@@ -850,5 +852,174 @@ describe("useMessengerController — branch top-up", () => {
       const { result } = renderHook(() => useMessengerController(), { wrapper })
       expect(result.current.activeChatDisplay).toBeNull()
     })
+  })
+
+  describe("message mutations without a cached message list", () => {
+    it("keeps optimistic edit, delete, and reaction mutations safe before history resolves", async () => {
+      seedChat()
+      mocks.chatApi.getMessages.mockImplementation(() => new Promise(() => {}))
+      mocks.chatApi.editMessage.mockResolvedValue({ status: "ok" })
+      mocks.chatApi.deleteMessage.mockResolvedValue({ status: "ok" })
+      mocks.chatApi.addReaction.mockResolvedValue({ status: "ok" })
+
+      const { result } = renderHook(() => useMessengerController(), { wrapper })
+      await waitFor(() => expect(result.current.selectedChatId).toBe("chat-1"))
+
+      act(() => {
+        result.current.handleEditMessage("uncached-edit", "before")
+        result.current.setEditingMessageContent("after")
+      })
+      await waitFor(() => expect(result.current.editingMessageContent).toBe("after"))
+      act(() => result.current.handleSaveEdit("uncached-edit"))
+      await waitFor(() => expect(mocks.chatApi.editMessage).toHaveBeenCalled())
+
+      act(() => result.current.handleDeleteMessage("uncached-delete"))
+      await act(async () => result.current.confirmDialog?.onConfirm())
+      await waitFor(() => expect(mocks.chatApi.deleteMessage).toHaveBeenCalled())
+
+      act(() => result.current.handleToggleReaction("uncached-reaction", "👍"))
+      await waitFor(() => expect(mocks.chatApi.addReaction).toHaveBeenCalled())
+
+      act(() =>
+        result.current.handleSendMessage("uncached-send", [
+          new File(["payload"], "note.txt", { type: "text/plain" }),
+        ])
+      )
+      await waitFor(() => expect(mocks.chatApi.sendMessage).toHaveBeenCalled())
+    })
+  })
+
+  it("makes no selected-chat mutations no-ops", () => {
+    const { result } = renderHook(() => useMessengerController(), { wrapper })
+
+    act(() => {
+      result.current.handleSendMessage("ignored", [])
+      result.current.handleDeleteChat()
+      result.current.handleSaveEdit("ignored-edit")
+      result.current.handleDeleteMessage("ignored-delete")
+      result.current.handleToggleReaction("ignored-reaction", "👍")
+    })
+
+    expect(result.current.confirmDialog).toBeNull()
+    expect(mocks.chatApi.sendMessage).not.toHaveBeenCalled()
+    expect(mocks.chatApi.deleteChat).not.toHaveBeenCalled()
+    expect(mocks.chatApi.editMessage).not.toHaveBeenCalled()
+    expect(mocks.chatApi.deleteMessage).not.toHaveBeenCalled()
+    expect(mocks.chatApi.addReaction).not.toHaveBeenCalled()
+  })
+
+  it("marks the latest read message sent by the current user", async () => {
+    seedChat()
+    mocks.chatApi.getMessages.mockResolvedValue({
+      items: [
+        {
+          id: "read-own",
+          chat_id: "chat-1",
+          sender_id: "current-user-id",
+          content: "already seen",
+          created_at: "2026-07-30T10:00:00Z",
+          read_status: true,
+          read_at: "2026-07-30T10:01:00Z",
+        },
+        {
+          id: "unread-peer",
+          chat_id: "chat-1",
+          sender_id: "peer",
+          content: "reply",
+          created_at: "2026-07-30T10:02:00Z",
+          read_status: false,
+        },
+      ],
+      has_more: false,
+      next_cursor: null,
+    })
+
+    const { result } = renderHook(() => useMessengerController(), { wrapper })
+    await waitFor(() => expect(result.current.messages).toHaveLength(2))
+
+    expect(result.current.messages.find((message) => message.id === "read-own")?.isLastRead).toBe(
+      true
+    )
+  })
+
+  it("uses the live DM presence state for contact online status", async () => {
+    mocks.presenceMap = { peer: { active: true } }
+    seedChat("chat-1", { last_message: { content: "", created_at: "" } })
+    const { result } = renderHook(() => useMessengerController(), { wrapper })
+
+    await waitFor(() => expect(result.current.contacts[0]?.online).toBe(true))
+  })
+
+  it("does not append a server message that is already cached", async () => {
+    seedChat()
+    mocks.chatApi.getMessages.mockResolvedValue({
+      items: [
+        {
+          id: "server-msg-id",
+          chat_id: "chat-1",
+          sender_id: "current-user-id",
+          content: "already there",
+          created_at: "2026-07-30T10:00:00Z",
+          read_status: false,
+        },
+      ],
+      has_more: false,
+      next_cursor: null,
+    })
+
+    const { result } = renderHook(() => useMessengerController(), { wrapper })
+    await waitFor(() => expect(result.current.messages).toHaveLength(1))
+
+    act(() => result.current.handleSendMessage("duplicate", []))
+    await waitFor(() => expect(mocks.chatApi.sendMessage).toHaveBeenCalled())
+    expect(
+      result.current.messages.filter((message) => message.id === "server-msg-id")
+    ).toHaveLength(1)
+  })
+
+  it("keeps an unrelated message unchanged during an edit mutation", async () => {
+    seedChat()
+    mocks.chatApi.getMessages.mockResolvedValue({
+      items: [
+        {
+          id: "other-message",
+          chat_id: "chat-1",
+          sender_id: "peer",
+          content: "keep this",
+          created_at: "2026-07-30T10:00:00Z",
+          read_status: false,
+        },
+      ],
+      has_more: false,
+      next_cursor: null,
+    })
+
+    const { result } = renderHook(() => useMessengerController(), { wrapper })
+    await waitFor(() => expect(result.current.messages).toHaveLength(1))
+
+    act(() => result.current.handleEditMessage("missing-message", "before"))
+    act(() => result.current.setEditingMessageContent("after"))
+    await waitFor(() => expect(result.current.editingMessageContent).toBe("after"))
+    act(() => result.current.handleSaveEdit("missing-message"))
+
+    await waitFor(() => expect(mocks.chatApi.editMessage).toHaveBeenCalled())
+    expect(result.current.messages[0]?.text).toBe("keep this")
+  })
+
+  it("builds an optimistic message safely for a user without name or avatar", async () => {
+    const previousName = mocks.testUser.full_name
+    const previousAvatar = mocks.testUser.avatar_url
+    Object.assign(mocks.testUser, { full_name: undefined, avatar_url: undefined })
+    try {
+      seedChat()
+      mocks.chatApi.getMessages.mockImplementation(() => new Promise(() => {}))
+      const { result } = renderHook(() => useMessengerController(), { wrapper })
+      await waitFor(() => expect(result.current.selectedChatId).toBe("chat-1"))
+
+      act(() => result.current.handleSendMessage("fallback identity", []))
+      await waitFor(() => expect(mocks.chatApi.sendMessage).toHaveBeenCalled())
+    } finally {
+      Object.assign(mocks.testUser, { full_name: previousName, avatar_url: previousAvatar })
+    }
   })
 })

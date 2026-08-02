@@ -2,12 +2,16 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { beforeEach, describe, it, expect, vi } from "vitest"
 
+const translationMocks = vi.hoisted(() => ({
+  returnUndefined: false,
+}))
+
 vi.mock("framer-motion", async () =>
   (await import("@/tests/helpers/framerMotionMock")).framerMotionMock()
 )
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({
-    t: (key: string) => key,
+    t: (key: string) => (translationMocks.returnUndefined ? undefined : key),
     i18n: { language: "en", changeLanguage: () => Promise.resolve() },
   }),
 }))
@@ -75,6 +79,32 @@ describe("NewsCardEditDialog", () => {
     expect(screen.queryByRole("img")).not.toBeInTheDocument()
   })
 
+  it("normalizes empty optional translations and supports an omitted success callback", async () => {
+    const user = userEvent.setup()
+    const onClose = vi.fn()
+    render(
+      <NewsCardEditDialog
+        {...baseProps}
+        onClose={onClose}
+        onSuccess={undefined}
+        initialData={{ ...initialData, title_en: "", content_en: "", image_url: "" }}
+      />
+    )
+
+    await user.click(screen.getByRole("button", { name: "common:buttons.save" }))
+
+    await waitFor(() => {
+      expect(apiMocks.patch).toHaveBeenCalledWith("/news/news-1", {
+        title: initialData.title,
+        content: initialData.content,
+        title_en: undefined,
+        content_en: undefined,
+        image_url: "",
+      })
+    })
+    expect(onClose).toHaveBeenCalledOnce()
+  })
+
   it("fires onClose from the cancel button", async () => {
     const user = userEvent.setup()
     const onClose = vi.fn()
@@ -98,6 +128,36 @@ describe("NewsCardEditDialog", () => {
       expect(screen.getByText("Title is required")).toBeInTheDocument()
     })
     expect(screen.getByRole("button", { name: "common:buttons.save" })).toBeDisabled()
+  })
+
+  it("renders content and English-field validation states", async () => {
+    const user = userEvent.setup()
+    render(
+      <NewsCardEditDialog
+        {...baseProps}
+        initialData={{ ...initialData, title: "", content: "", title_en: "", content_en: "" }}
+      />
+    )
+
+    const content = screen.getByLabelText(/^news:form\.text\*/)
+    await user.type(content, "x")
+    await user.clear(content)
+    await user.tab()
+
+    await waitFor(() => expect(screen.getByText("Content is required")).toBeInTheDocument())
+
+    const titleEn = screen.getByLabelText("news:form.title_en")
+    fireEvent.change(titleEn, { target: { value: "x".repeat(101) } })
+    fireEvent.blur(titleEn)
+
+    const contentEn = screen.getByLabelText("news:form.content_en")
+    fireEvent.change(contentEn, { target: { value: "x".repeat(3001) } })
+    fireEvent.blur(contentEn)
+
+    await waitFor(() => {
+      expect(screen.getByText("Title (EN) must be less than 100 characters")).toBeInTheDocument()
+      expect(screen.getByText("Content (EN) must be less than 3000 characters")).toBeInTheDocument()
+    })
   })
 
   it("submits the edited fields and closes after a successful update", async () => {
@@ -160,6 +220,30 @@ describe("NewsCardEditDialog", () => {
     revokeObjectURL.mockRestore()
   })
 
+  it("shows the uploading state while an image upload is pending", async () => {
+    const user = userEvent.setup()
+    let resolveUpload: (value: { data: { url: string } }) => void = () => undefined
+    apiMocks.post.mockImplementation(
+      () =>
+        new Promise<{ data: { url: string } }>((resolve) => {
+          resolveUpload = resolve
+        })
+    )
+    render(<NewsCardEditDialog {...baseProps} />)
+
+    const fileInput = document.querySelector<HTMLInputElement>('input[type="file"]')
+    fireEvent.change(fileInput as HTMLInputElement, {
+      target: { files: [new File(["image"], "image.png", { type: "image/png" })] },
+    })
+    await user.click(screen.getByRole("button", { name: "common:buttons.save" }))
+
+    await waitFor(() => expect(screen.getByText("common:statuses.uploading")).toBeInTheDocument())
+    expect(screen.getByRole("button", { name: "common:buttons.save" })).toBeDisabled()
+
+    resolveUpload({ data: { url: "https://example.test/uploaded.png" } })
+    await waitFor(() => expect(apiMocks.patch).toHaveBeenCalled())
+  })
+
   it("shows the image validation error for an unsupported file type", async () => {
     const user = userEvent.setup()
     render(<NewsCardEditDialog {...baseProps} />)
@@ -208,5 +292,16 @@ describe("NewsCardEditDialog", () => {
     await waitFor(() => expect(apiMocks.logError).toHaveBeenCalledWith(patchError))
     expect(onSuccess).not.toHaveBeenCalled()
     expect(onClose).not.toHaveBeenCalled()
+  })
+
+  it("falls back to empty labels when translations are unavailable", () => {
+    translationMocks.returnUndefined = true
+    try {
+      const view = render(<NewsCardEditDialog {...baseProps} />)
+      expect(screen.getByRole("dialog")).toBeInTheDocument()
+      view.unmount()
+    } finally {
+      translationMocks.returnUndefined = false
+    }
   })
 })

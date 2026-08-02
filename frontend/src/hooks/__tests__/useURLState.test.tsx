@@ -1,4 +1,5 @@
 import { renderHook, act } from "@testing-library/react"
+import fc from "fast-check"
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest"
 
 // ---------------------------------------------------------------------------
@@ -175,6 +176,46 @@ describe("useURLState", () => {
 
     expect(mockNavigateFn).toHaveBeenCalledWith(
       expect.objectContaining({ replace: true, viewTransition: false })
+    )
+  })
+
+  it("preserves the URL update contract for arbitrary batch values", () => {
+    const valueArbitrary = fc.oneof(
+      fc.string(),
+      fc.integer(),
+      fc.constant(null),
+      fc.constant(undefined)
+    )
+    const updatesArbitrary = fc.dictionary(fc.constantFrom("tab", "q", "page"), valueArbitrary, {
+      maxKeys: 3,
+    })
+
+    fc.assert(
+      fc.property(updatesArbitrary, (updates) => {
+        mockNavigateFn.mockClear()
+        const { result } = renderHook(() => useURLState<TestSearch>())
+        const previous = { tab: "active", q: "seed", page: 2 }
+
+        act(() => {
+          result.current.setParams(updates as Partial<TestSearch>)
+        })
+
+        const navigateArg = mockNavigateFn.mock.calls.at(-1)?.[0]
+        if (!navigateArg) throw new Error("mockNavigateFn was not called")
+
+        const expected: Record<string, unknown> = { ...previous }
+        for (const [key, value] of Object.entries(updates)) {
+          if (value === "" || value === undefined || value === null) {
+            delete expected[key]
+          } else {
+            expected[key] = value
+          }
+        }
+
+        expect(navigateArg.search(previous)).toEqual(expected)
+        expect(navigateArg.replace).toBe(true)
+        expect(navigateArg.viewTransition).toBe(false)
+      })
     )
   })
 })

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from unittest.mock import patch
+
 from app.core.config.mixins.cors_settings import CorsSettingsMixin
 from app.core.config.security import SecuritySettings
 
@@ -131,10 +133,26 @@ class TestCorsSettingsClosure:
         ]
         assert empty.cors_allow_headers_list == ["Authorization", "Content-Type"]
 
+    def test_exposed_headers_and_proxy_lists_preserve_required_headers(self):
+        settings = _settings(
+            internal_allowed_ips=[" 127.0.0.1 ", "", "::1"],
+            cors_expose_headers=[" X-Test ", ""],
+            request_id_header="x-request-id",
+            trace_header="x-trace-id",
+            trusted_proxies=[" 10.0.0.1 ", ""],
+        )
+
+        assert settings.internal_allowed_ips_list == ["127.0.0.1", "::1"]
+        assert settings.cors_expose_headers_list == [
+            "X-Test",
+            "x-request-id",
+            "x-trace-id",
+        ]
+        assert settings.trusted_proxies_list == ["10.0.0.1"]
+
     def test_internal_auth_token_validator_warns_only_for_non_development(
-        self, monkeypatch, caplog
+        self, monkeypatch
     ):
-        caplog.set_level("WARNING")
         monkeypatch.setenv("ENVIRONMENT", "production")
         monkeypatch.setenv("AUDIT_LOG_SECRET", "a" * 32)  # pragma: allowlist secret
         monkeypatch.setenv("SECRET_KEY", "p" * 48)  # pragma: allowlist secret
@@ -142,9 +160,11 @@ class TestCorsSettingsClosure:
         monkeypatch.setenv("ALGORITHM", "RS256")
         monkeypatch.setenv("JWT_PRIVATE_KEY_PATH", "")
 
-        SecuritySettings(internal_auth_token=None)
+        with patch("app.core.logging.get_logger") as get_logger:
+            SecuritySettings(internal_auth_token=None)
 
-        assert "Internal route shared guard is not configured" in caplog.text
+        message = get_logger.return_value.warning.call_args.args[0]
+        assert "Internal route shared guard is not configured" in message
 
     def test_internal_auth_token_validator_returns_configured_value(self, monkeypatch):
         monkeypatch.setenv("ENVIRONMENT", "testing")

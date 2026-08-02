@@ -18,12 +18,16 @@ from app.core.events import (
     EventEmitterMixin,
     EventRegistration,
     EventUpdated,
+    GradeAssigned,
+    GradeModified,
     MessageSent,
     MfaEnabled,
     NewsCreated,
     NewsUpdated,
     NotificationSent,
     NotificationsRequested,
+    ScheduleCreated,
+    ScheduleUpdated,
     UserCreated,
     UserDeleted,
     UserLoggedIn,
@@ -58,6 +62,20 @@ def test_registry_snapshot_and_all_event_from_dict_variants() -> None:
         (UserDeleted, {"user_id": str(uuid4())}),
         (UserLoggedIn, {"user_id": str(uuid4()), "ip_address": "127.0.0.1"}),
         (UserUpdated, {"user_id": str(uuid4()), "updated_fields": ["email"]}),
+    ]
+    for event_class, payload in cases:
+        payload["_schema_version"] = 2
+        payload["unknown"] = "ignored"
+        event = event_class.from_dict(payload)
+        assert event.event_type == event_class.EVENT_TYPE
+
+
+def test_schedule_and_grade_events_filter_schema_metadata() -> None:
+    cases = [
+        (ScheduleCreated, {"schedule_id": str(uuid4()), "subject": "Math"}),
+        (ScheduleUpdated, {"schedule_id": str(uuid4()), "changes": {"room": "A"}}),
+        (GradeAssigned, {"grade_id": str(uuid4()), "score": 95.0}),
+        (GradeModified, {"grade_id": str(uuid4()), "new_score": 98.0}),
     ]
     for event_class, payload in cases:
         payload["_schema_version"] = 2
@@ -199,6 +217,26 @@ async def test_event_bus_timeout_middleware_exception_and_cancel_paths() -> None
 
 
 @pytest.mark.asyncio
+async def test_event_bus_successful_chain_and_handler_registry_lifecycle() -> None:
+    event = UserCreated(email="success@example.com")
+    bus = EventBus()
+
+    async def successful_handler(_event: object) -> None:
+        return None
+
+    bus.subscribe(event.event_type, successful_handler)
+    bus.subscribe_all(successful_handler)
+    assert bus.get_handler_count(event.event_type) == 2
+    assert bus.get_handler_count() == 2
+    await bus.publish(event)
+
+    bus.unsubscribe_all(successful_handler)
+    bus.unsubscribe_all(successful_handler)
+    bus.clear()
+    assert bus.get_handler_count() == 0
+
+
+@pytest.mark.asyncio
 async def test_safe_handle_reports_dlq_failure() -> None:
     bus = EventBus()
     event = UserCreated(email="user@example.com")
@@ -211,3 +249,6 @@ async def test_safe_handle_reports_dlq_failure() -> None:
     bus.set_dlq(dlq)
     await bus._safe_handle(failing_handler, event)
     dlq.add.assert_awaited_once()
+
+    no_dlq_bus = EventBus()
+    await no_dlq_bus._safe_handle(failing_handler, event)

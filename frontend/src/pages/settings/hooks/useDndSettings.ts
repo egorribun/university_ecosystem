@@ -23,10 +23,8 @@ const toInputTime = (value: unknown): string => {
 /**
  * Converts HH:MM to server format with seconds
  */
-const toServerTime = (value: string | null): string | null => {
-  if (!value) return null
+const toServerTime = (value: string): string => {
   const trimmed = value.trim()
-  if (!trimmed) return null
   if (/^\d{2}:\d{2}$/.test(trimmed)) return `${trimmed}:00`
   if (/^\d{2}:\d{2}:\d{2}$/.test(trimmed)) return trimmed
   return trimmed
@@ -71,10 +69,8 @@ export function useDndSettings(setSnackbar: SetSnackbar): UseDndSettingsReturn {
 
   const persistDnd = useCallback(
     async (nextEnabled: boolean, nextStart: string | null, nextEnd: string | null) => {
-      if (dndSaving) return
-
-      const normalizedStart = nextStart ? nextStart.trim() : null
-      const normalizedEnd = nextEnd ? nextEnd.trim() : null
+      const normalizedStart = nextStart?.trim() ?? ""
+      const normalizedEnd = nextEnd?.trim() ?? ""
       const previousEnabled = Boolean(user?.preferences?.dnd_enabled)
       const previousStart = toInputTime(user?.preferences?.dnd_start)
       const previousEnd = toInputTime(user?.preferences?.dnd_end)
@@ -149,7 +145,7 @@ export function useDndSettings(setSnackbar: SetSnackbar): UseDndSettingsReturn {
         setDndSaving(false)
       }
     },
-    [dndSaving, setUser, setSnackbar, syncDndFromUser, t, user]
+    [setUser, setSnackbar, syncDndFromUser, t, user]
   )
 
   const handleDndToggle = useCallback(

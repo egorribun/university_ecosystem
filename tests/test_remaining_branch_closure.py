@@ -33,6 +33,17 @@ def test_event_registry_reconstructs_payload_without_unknown_keys():
     assert event.value == "valid"
 
 
+def test_event_registry_falls_back_to_domain_event_registry():
+    event = reconstruct_event(
+        "user.created",
+        {"user_id": None, "email": "fallback@example.com", "ignored": True},
+    )
+
+    assert event.__class__.__name__ == "UserCreated"
+    assert event.email == "fallback@example.com"
+    assert not hasattr(event, "ignored")
+
+
 def test_reset_mfa_audit_without_extra_payload():
     from app.management.reset_mfa import _audit_cli
 
@@ -259,6 +270,26 @@ async def test_graphql_context_ignores_bearer_payload_without_jti():
         validate.assert_not_called()
 
 
+@pytest.mark.asyncio
+async def test_graphql_context_ignores_bearer_with_empty_payload():
+    from app.graphql.schema import get_context
+
+    request = MagicMock()
+    request.app.dependency_overrides = {}
+    request.state.dishka_container.get = AsyncMock(return_value=MagicMock())
+    request.headers = {"Authorization": "Bearer invalid-token"}
+
+    with (
+        patch("app.auth.security.decode_token", return_value=None),
+        patch(
+            "app.services.auth.graphql_token_validator.GraphQLTokenValidator.validate"
+        ) as validate,
+    ):
+        async for context in get_context(request):
+            assert context.current_user is None
+        validate.assert_not_called()
+
+
 def test_minio_client_double_checked_lock_returns_racing_instance(monkeypatch):
     import app.services.minio_storage as minio_module
 
@@ -362,7 +393,8 @@ def standalone_ws_client(monkeypatch):
 
     broker = AsyncMock()
     monkeypatch.setattr(
-        "app.core.config.settings", MagicMock(ws_hub_internal_secret="secret")
+        "app.core.config.settings",
+        MagicMock(ws_hub_internal_secret="secret"),  # pragma: allowlist secret
     )
     monkeypatch.setattr("app.core.nats_broker.broker", broker)
     return module.WsHubClient(), broker

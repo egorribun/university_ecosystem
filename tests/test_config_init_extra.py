@@ -71,7 +71,26 @@ def test_config_security_invariants():
         settings._validate_security_invariants()
 
 
-def test_config_dependent_settings_warnings(caplog):
+def test_config_security_invariants_accept_complete_production_credentials():
+    settings = Settings(_allow_missing=True)
+    settings.environment = "production"
+    settings.spotify_token_secret = "spotify-test-secret"  # pragma: allowlist secret
+    settings.nats_auth_token = "nats-test-secret"  # pragma: allowlist secret
+
+    assert settings._validate_security_invariants() is settings
+
+
+def test_auto_create_schema_false_skips_production_warning():
+    with patch("app.core.config._logger") as mock_logger:
+        Settings(_allow_missing=True, auto_create_schema=False)
+
+    assert not any(
+        "AUTO_CREATE_SCHEMA is enabled" in str(call.args[0])
+        for call in mock_logger.warning.call_args_list
+    )
+
+
+def test_config_dependent_settings_warnings():
     """Test low pool size and identical read replica warnings in production."""
     settings = Settings(_allow_missing=True)
     settings.environment = "production"
@@ -79,20 +98,23 @@ def test_config_dependent_settings_warnings(caplog):
     # Low pool size warning
     settings.database_pool_size = 1
     settings.database_max_overflow = 1
-    caplog.clear()
-    settings._validate_dependent_settings()
-    assert any("database_pool_size" in record.message for record in caplog.records)
+    with patch("app.core.config._logger") as mock_logger:
+        settings._validate_dependent_settings()
+    assert any(
+        "database_pool_size" in str(call.args[0])
+        for call in mock_logger.warning.call_args_list
+    )
 
     # Identical read replica warning
     settings.database_pool_size = 10
     settings.database_max_overflow = 10
     settings.database_url = "postgresql://primary"
     settings.database_read_replica_url = "postgresql://primary"
-    caplog.clear()
-    settings._validate_dependent_settings()
+    with patch("app.core.config._logger") as mock_logger:
+        settings._validate_dependent_settings()
     assert any(
-        "database_read_replica_url is identical to database_url" in record.message
-        for record in caplog.records
+        "database_read_replica_url is identical to database_url" in str(call.args[0])
+        for call in mock_logger.warning.call_args_list
     )
 
 
@@ -144,6 +166,8 @@ def test_load_settings_fallbacks():
             _load_settings()
 
     # 2. Fallback allowed: CI=true
+    ci_fallback = MagicMock()
+    ci_fallback.development_fallback_fields = ("database_url",)
     with (
         patch("app.core.config.__init__.Settings") as mock_settings_class,
         patch("app.core.config.__init__._base_should_allow", return_value=True),
@@ -152,12 +176,31 @@ def test_load_settings_fallbacks():
         patch.dict(os.environ, {"CI": "true"}),
     ):
         # Make the first call raise exc, second call (fallback) return a dummy
-        mock_settings_class.side_effect = [exc, MagicMock()]
+        mock_settings_class.side_effect = [exc, ci_fallback]
         # mock .env to not exist
         mock_root.__truediv__.return_value.exists.return_value = False
 
         _load_settings()
         mock_logger.warning.assert_called()
+
+    # 4. Missing fallback metadata and an existing .env use the safe defaults
+    # without adding a filesystem hint.
+    fallback = MagicMock()
+    fallback.development_fallback_fields = ()
+    with (
+        patch("app.core.config.__init__.Settings") as mock_settings_class,
+        patch("app.core.config.__init__._base_should_allow", return_value=True),
+        patch("app.core.config.__init__._logger") as mock_logger,
+        patch("app.core.config.__init__._PROJECT_ROOT") as mock_root,
+        patch.dict(os.environ, {"CI": "false", "GITHUB_ACTIONS": "false"}),
+    ):
+        mock_settings_class.side_effect = [exc, fallback]
+        mock_root.__truediv__.return_value.exists.return_value = True
+
+        result = _load_settings()
+
+    assert result is fallback
+    assert mock_logger.warning.call_args.args[1] == "DATABASE_URL, SECRET_KEY"
 
     # 3. Fallback allowed: Local dev (no CI)
     with (
@@ -167,7 +210,7 @@ def test_load_settings_fallbacks():
         patch("app.core.config.__init__._PROJECT_ROOT") as mock_root,
         patch.dict(os.environ, {"CI": "false", "GITHUB_ACTIONS": "false"}),
     ):
-        mock_settings_class.side_effect = [exc, MagicMock()]
+        mock_settings_class.side_effect = [exc, ci_fallback]
         mock_root.__truediv__.return_value.exists.return_value = False
 
         _load_settings()
@@ -206,21 +249,25 @@ def test_force_reload_security_config() -> None:
             app_core.config = original_config_attr
 
 
-def test_audit_log_secret_validation(caplog):
+def test_audit_log_secret_validation():
     """Verify validation and warnings/exceptions for AUDIT_LOG_SECRET in various envs."""
     # 1. Empty secret
     with pytest.raises(ValueError, match="AUDIT_LOG_SECRET must not be empty"):
         SecuritySettings(audit_log_secret="")
 
     # 2. Placeholder warning in development
-    caplog.clear()
     # Construct key that is >= 32 chars but contains a placeholder
-    _ = SecuritySettings(
-        environment="development",
-        audit_log_secret="change-me-long-secret-key-32-chars-long",  # pragma: allowlist secret
-    )
+    with (
+        patch.dict(os.environ, {"ENVIRONMENT": "development"}),
+        patch("app.core.config.security._logger") as mock_logger,
+    ):
+        _ = SecuritySettings(
+            environment="development",
+            audit_log_secret="change-me-long-secret-key-32-chars-long",  # pragma: allowlist secret
+        )
     assert any(
-        "looks like a placeholder" in record.message for record in caplog.records
+        "looks like a placeholder" in str(call.args[0])
+        for call in mock_logger.warning.call_args_list
     )
 
     # 3. Placeholder error in production
