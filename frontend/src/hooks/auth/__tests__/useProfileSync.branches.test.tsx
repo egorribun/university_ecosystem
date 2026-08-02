@@ -468,8 +468,8 @@ describe("useProfileSync — synchronous bootstrap (useState initFn)", () => {
 
     const { result } = renderProfileSync({ signingKey: mockSigningKey })
 
+    await waitFor(() => expect(removeSpy).toHaveBeenCalledWith(PROFILE_CACHE_STORAGE_KEY))
     await waitFor(() => expect(result.current.loading).toBe(false))
-    expect(removeSpy).toHaveBeenCalledWith(PROFILE_CACHE_STORAGE_KEY)
   })
 
   it("clears an encrypted cache when its salt or IV is empty", async () => {
@@ -486,8 +486,8 @@ describe("useProfileSync — synchronous bootstrap (useState initFn)", () => {
 
     const { result } = renderProfileSync({ signingKey: mockSigningKey })
 
+    await waitFor(() => expect(removeSpy).toHaveBeenCalledWith(PROFILE_CACHE_STORAGE_KEY))
     await waitFor(() => expect(result.current.loading).toBe(false))
-    expect(removeSpy).toHaveBeenCalledWith(PROFILE_CACHE_STORAGE_KEY)
   })
 
   it("clears an encrypted cache when Web Crypto disappears before decryption", async () => {
@@ -1303,6 +1303,7 @@ describe("useProfileSync — cross-tab sync effect", () => {
       mfa_required: true,
       mfa_default_method: "totp",
       mfa_last_verified_at: "2026-08-01T00:00:00Z",
+      totp_enrollments: [{ id: "cross-tab-enrollment" }],
     } as unknown as CachedUserSnapshot
     const payload: CacheSignaturePayload = {
       version: PROFILE_CACHE_SCHEMA_VERSION,
@@ -1333,6 +1334,7 @@ describe("useProfileSync — cross-tab sync effect", () => {
       mfa_required: true,
       mfa_default_method: "totp",
       mfa_last_verified_at: "2026-08-01T00:00:00Z",
+      totp_enrollments: [{ id: "cross-tab-enrollment" }],
     })
   })
 
@@ -1359,6 +1361,54 @@ describe("useProfileSync — cross-tab sync effect", () => {
     await waitFor(() => expect(localStorage.getItem(PROFILE_CACHE_STORAGE_KEY)).toBeNull(), {
       timeout: 3000,
     })
+  })
+
+  it("short-circuits cache deletion when localStorage is unavailable", async () => {
+    vi.spyOn(api, "get").mockResolvedValue({ data: testUser } as any)
+    const { result } = renderProfileSync({
+      signingKey: null,
+      ensureSessionSigningKey: async () => null,
+    })
+    await waitFor(() => expect(result.current.user?.id).toBe(testUser.id))
+
+    const originalStorage = globalThis.localStorage
+    vi.stubGlobal("localStorage", undefined)
+    try {
+      act(() => {
+        window.dispatchEvent(
+          new StorageEvent("storage", {
+            key: PROFILE_CACHE_STORAGE_KEY,
+            newValue: null,
+          })
+        )
+      })
+      await waitFor(() => expect(result.current.user).toBeNull())
+    } finally {
+      vi.stubGlobal("localStorage", originalStorage)
+    }
+  })
+
+  it("skips outbound broadcast when BroadcastChannel is absent", async () => {
+    vi.spyOn(api, "get").mockResolvedValue({ data: testUser } as any)
+    const { result } = renderProfileSync({ signingKey: mockSigningKey })
+    await waitFor(() => expect(result.current.loading).toBe(false))
+
+    const originalWindow = globalThis.window
+    const channellessWindow = new Proxy(originalWindow, {
+      has(target, property) {
+        if (property === "BroadcastChannel") return false
+        return Reflect.has(target, property)
+      },
+    })
+    vi.stubGlobal("window", channellessWindow)
+    try {
+      await act(async () => {
+        result.current.updatePendingMfa({ ticket: "no-channel", methods: [] } as any)
+      })
+      expect(result.current.pendingMfa).toMatchObject({ ticket: "no-channel" })
+    } finally {
+      vi.stubGlobal("window", originalWindow)
+    }
   })
 
   it("swallows BroadcastChannel construction failures", async () => {
@@ -1506,6 +1556,33 @@ describe("useProfileSync crypto failure paths", () => {
     subtleSpy.mockRestore()
   })
 
+  it("returns null when deriveKey loses crypto in an isolated browser stub", async () => {
+    const originalWindow = globalThis.window
+    let subtleReads = 0
+    const fakeSubtle = {
+      importKey: vi.fn(async () => ({}) as CryptoKey),
+      deriveKey: vi.fn(async () => ({}) as CryptoKey),
+    } as unknown as SubtleCrypto
+    const fakeWindow = {
+      crypto: {
+        get subtle() {
+          subtleReads += 1
+          return (subtleReads <= 2 ? fakeSubtle : undefined) as SubtleCrypto
+        },
+        getRandomValues: (bytes: Uint8Array) => bytes,
+      },
+    } as unknown as Window
+    vi.stubGlobal("window", fakeWindow)
+
+    try {
+      await expect(encryptData(snapshot, mockSigningKey)).resolves.toBeNull()
+      expect(subtleReads).toBeGreaterThanOrEqual(3)
+      expect(fakeSubtle.deriveKey).not.toHaveBeenCalled()
+    } finally {
+      vi.stubGlobal("window", originalWindow)
+    }
+  })
+
   it("returns null when browser crypto is unavailable", async () => {
     const browserWindow = window
     vi.stubGlobal("window", undefined)
@@ -1514,6 +1591,115 @@ describe("useProfileSync crypto failure paths", () => {
     } finally {
       vi.stubGlobal("window", browserWindow)
     }
+  })
+
+  it("clears an encrypted cache when decrypt key import is unavailable", async () => {
+    const payload: CacheSignaturePayload = {
+      version: PROFILE_CACHE_SCHEMA_VERSION,
+      expiresAt: Date.now() + 60_000,
+      data: "00:00:AA==",
+    }
+    const envelope = JSON.stringify({ ...payload, signature: signSync(payload, mockSigningKey) })
+    localStorage.setItem(PROFILE_CACHE_STORAGE_KEY, envelope)
+    markCurrentCacheVersion()
+
+    const pendingProfile = new Promise<never>(() => undefined)
+    vi.spyOn(api, "get").mockReturnValue(pendingProfile as never)
+
+    const originalImportKey = window.crypto.subtle.importKey.bind(window.crypto.subtle)
+    let importCalls = 0
+    const importSpy = vi
+      .spyOn(window.crypto.subtle, "importKey")
+      .mockImplementation(async (...args: any[]) => {
+        importCalls += 1
+        if (importCalls === 2) return null as unknown as CryptoKey
+        return Reflect.apply(originalImportKey, window.crypto.subtle, args) as Promise<CryptoKey>
+      })
+
+    const { unmount } = renderProfileSync({ signingKey: mockSigningKey })
+    await waitFor(() => expect(localStorage.getItem(PROFILE_CACHE_STORAGE_KEY)).toBeNull())
+    expect(importCalls).toBeGreaterThanOrEqual(2)
+    importSpy.mockRestore()
+    unmount()
+  })
+
+  it("clears an encrypted cache when decrypt key derivation is unavailable", async () => {
+    const payload: CacheSignaturePayload = {
+      version: PROFILE_CACHE_SCHEMA_VERSION,
+      expiresAt: Date.now() + 60_000,
+      data: "00:00:AA==",
+    }
+    const envelope = JSON.stringify({ ...payload, signature: signSync(payload, mockSigningKey) })
+    localStorage.setItem(PROFILE_CACHE_STORAGE_KEY, envelope)
+    markCurrentCacheVersion()
+
+    const pendingProfile = new Promise<never>(() => undefined)
+    vi.spyOn(api, "get").mockReturnValue(pendingProfile as never)
+    const deriveSpy = vi
+      .spyOn(window.crypto.subtle, "deriveKey")
+      .mockResolvedValue(null as unknown as CryptoKey)
+
+    const { unmount } = renderProfileSync({ signingKey: mockSigningKey })
+    await waitFor(() => expect(localStorage.getItem(PROFILE_CACHE_STORAGE_KEY)).toBeNull())
+    deriveSpy.mockRestore()
+    unmount()
+  })
+
+  it("returns null when crypto disappears before decrypt key derivation", async () => {
+    const payload: CacheSignaturePayload = {
+      version: PROFILE_CACHE_SCHEMA_VERSION,
+      expiresAt: Date.now() + 60_000,
+      data: "00:00:AA==",
+    }
+    const envelope = JSON.stringify({ ...payload, signature: signSync(payload, mockSigningKey) })
+    localStorage.setItem(PROFILE_CACHE_STORAGE_KEY, envelope)
+    markCurrentCacheVersion()
+
+    const pendingProfile = new Promise<never>(() => undefined)
+    vi.spyOn(api, "get").mockReturnValue(pendingProfile as never)
+    const originalSubtle = window.crypto.subtle
+    let reads = 0
+    const subtleSpy = vi.spyOn(window.crypto, "subtle", "get").mockImplementation(() => {
+      reads += 1
+      return (reads <= 3 ? originalSubtle : undefined) as SubtleCrypto
+    })
+
+    const { unmount } = renderProfileSync({ signingKey: mockSigningKey })
+    await waitFor(() => expect(localStorage.getItem(PROFILE_CACHE_STORAGE_KEY)).toBeNull())
+    expect(reads).toBeGreaterThanOrEqual(4)
+    subtleSpy.mockRestore()
+    unmount()
+  })
+
+  it("does not persist after unmount during cache signature generation", async () => {
+    const pendingProfile = new Promise<never>(() => undefined)
+    vi.spyOn(api, "get").mockReturnValue(pendingProfile as never)
+    const view = renderProfileSync({ signingKey: mockSigningKey })
+    await waitFor(() => expect(api.get).toHaveBeenCalled())
+
+    const originalTextEncoder = globalThis.TextEncoder
+    let encoderCalls = 0
+    const setUser = view.result.current.setUser
+    class UnmountingTextEncoder extends originalTextEncoder {
+      constructor() {
+        super()
+        encoderCalls += 1
+        if (encoderCalls === 3) view.unmount()
+      }
+    }
+    vi.stubGlobal("TextEncoder", UnmountingTextEncoder)
+
+    try {
+      await act(async () => {
+        setUser({ ...testUser, full_name: "Unmounted before cache signature" } as any)
+        await new Promise((resolve) => setTimeout(resolve, 0))
+      })
+      await waitFor(() => expect(encoderCalls).toBeGreaterThanOrEqual(3), { timeout: 5000 })
+    } finally {
+      vi.stubGlobal("TextEncoder", originalTextEncoder)
+    }
+
+    expect(localStorage.getItem(PROFILE_CACHE_STORAGE_KEY)).toBeNull()
   })
 
   it("returns null and logs when encryption rejects", async () => {

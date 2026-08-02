@@ -923,7 +923,9 @@ export const useProfileSync = (
             mfa_required: cached.mfa_required,
             mfa_default_method: cached.mfa_default_method,
             mfa_last_verified_at: cached.mfa_last_verified_at,
-            totp_enrollments: cached.totp_enrollments ?? prev.totp_enrollments,
+            // `createOptimisticUser` normalizes this field to an array, so the
+            // fallback to the authoritative value was unreachable here.
+            totp_enrollments: cached.totp_enrollments,
           }
         },
         { persist: false }
