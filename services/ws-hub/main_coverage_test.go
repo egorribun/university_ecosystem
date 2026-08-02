@@ -83,7 +83,7 @@ func TestDefaultInitNats_RejectsMalformedURL(t *testing.T) {
 func TestCleanupHelpersAreNilSafe(t *testing.T) {
 	assert.NotPanics(t, func() {
 		closeNATSConnection(nil)
-		closeRedisConnection(nil, discardLogger())
-		closeSPIFFEClient(nil, discardLogger())
+		closeRedisConnection(context.Background(), nil, discardLogger())
+		closeSPIFFEClient(context.Background(), nil, discardLogger())
 	})
 }
