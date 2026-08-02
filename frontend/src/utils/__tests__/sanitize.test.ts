@@ -65,7 +65,9 @@ describe("sanitize utilities", () => {
 
     it("creates and uses a Trusted Types policy when the browser exposes the API", async () => {
       const createHTML = vi.fn((value: string) => `trusted:${value}`)
-      const createPolicy = vi.fn(() => ({ createHTML }))
+      const createPolicy = vi.fn(
+        (_name: string, _rules: { createHTML: (value: string) => string }) => ({ createHTML })
+      )
       vi.stubGlobal("window", { trustedTypes: { createPolicy } })
 
       await expect(sanitizeNewsHtml("<p>policy</p>")).resolves.toBe("trusted:<p>policy</p>")
@@ -311,6 +313,7 @@ describe("sanitize utilities", () => {
       const NativeURL = globalThis.URL
       class FailingURL extends NativeURL {
         constructor(..._args: ConstructorParameters<typeof NativeURL>) {
+          super(..._args)
           throw new TypeError("URL parser unavailable")
         }
       }

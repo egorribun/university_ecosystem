@@ -462,4 +462,15 @@ describe("Profile behavior", () => {
     expect(screen.getByTestId("profile-root")).toBeInTheDocument()
     expect(screen.queryByTestId("now-playing-card")).not.toBeInTheDocument()
   })
+
+  it("renders production motion transitions when the app is not in test mode", async () => {
+    vi.stubEnv("MODE", "production")
+    vi.resetModules()
+    const { default: ProductionProfile } = await import("@/pages/Profile")
+
+    render(<ProductionProfile />)
+
+    expect(screen.getByTestId("profile-root")).toBeInTheDocument()
+    expect(screen.getByTestId("profile-header")).toBeInTheDocument()
+  })
 })
