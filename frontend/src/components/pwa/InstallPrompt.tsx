@@ -85,6 +85,18 @@ const clearDismissed = (key: string) => {
   }
 }
 
+export const togglePushNotifications = (
+  notificationsEnabled: boolean,
+  enableNotifications: () => void,
+  disableNotifications: () => void
+): void => {
+  if (notificationsEnabled) {
+    disableNotifications()
+  } else {
+    enableNotifications()
+  }
+}
+
 export default function InstallPrompt() {
   const { t } = useTranslation(["system", "navigation", "notifications", "common"])
   const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null)
@@ -249,6 +261,12 @@ export default function InstallPrompt() {
   // removing the WHOLE prompt regressed LCP +1800 ms).
   const showPushPanel = pushVisible && import.meta.env.VITE_LHCI !== "true"
   const shouldRenderPrompt = showInstallPanel || showPushPanel
+  const pushToggleHandler = togglePushNotifications.bind(
+    null,
+    notificationsEnabled,
+    enableNotifications,
+    disableNotifications
+  )
 
   return (
     <>
@@ -442,11 +460,7 @@ export default function InstallPrompt() {
                             </span>
                             <SwitchControl
                               checked={notificationsEnabled}
-                              onChange={() =>
-                                notificationsEnabled
-                                  ? disableNotifications()
-                                  : enableNotifications()
-                              }
+                              onChange={pushToggleHandler}
                               disabled={pushBusy || pushInitializing}
                             />
                           </div>

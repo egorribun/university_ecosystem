@@ -2,7 +2,7 @@ import { act, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { type ReactNode } from "react"
 import { renderToString } from "react-dom/server"
-import InstallPrompt from "@/components/pwa/InstallPrompt"
+import InstallPrompt, { togglePushNotifications } from "@/components/pwa/InstallPrompt"
 import { PWA_REFRESH_EVENT } from "@/app/pwaEvents"
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest"
 
@@ -48,13 +48,14 @@ interface MockBeforeInstallPromptEvent extends Event {
   userChoice: Promise<{ outcome: "accepted" | "dismissed" }>
 }
 
-const fireBeforeInstallPrompt = () => {
+const fireBeforeInstallPrompt = (outcome: "accepted" | "dismissed" = "dismissed") => {
   const event = new Event("beforeinstallprompt") as MockBeforeInstallPromptEvent
   event.prompt = vi.fn().mockResolvedValue(undefined)
-  event.userChoice = Promise.resolve({ outcome: "dismissed" })
+  event.userChoice = Promise.resolve({ outcome })
   act(() => {
     window.dispatchEvent(event)
   })
+  return event
 }
 
 beforeAll(() => {
@@ -111,6 +112,60 @@ describe("InstallPrompt — branches", () => {
     expect(screen.getByText("system:installPrompt.unsupported")).toBeInTheDocument()
   })
 
+  it("ignores malformed dismissal timestamps", async () => {
+    localStorage.setItem("ecosystem.pwa.install.dismissedAt", "not-a-number")
+
+    render(<InstallPrompt />)
+
+    await waitFor(() => {
+      expect(screen.getByText("system:installPrompt.manageNotifications")).toBeInTheDocument()
+    })
+  })
+
+  it("renders the granted notification topic controls during permission transition", async () => {
+    const enableNotifications = vi.fn()
+    const disableNotifications = vi.fn()
+    const topicToggle = vi.fn()
+    const handleTopicToggle = vi.fn(() => topicToggle)
+    mockUsePushPreferences.mockReturnValue(
+      createPushPreferencesState({
+        notificationPermission: "default",
+        notificationsEnabled: false,
+        topicKeys: ["events"],
+        topicState: { events: false },
+        enableNotifications,
+        disableNotifications,
+        handleTopicToggle,
+      })
+    )
+
+    const { rerender } = render(<InstallPrompt />)
+
+    await waitFor(() => {
+      expect(screen.getByText("system:installPrompt.allow")).toBeInTheDocument()
+    })
+
+    mockUsePushPreferences.mockReturnValue(
+      createPushPreferencesState({
+        notificationPermission: "granted",
+        notificationsEnabled: true,
+        topicKeys: ["events"],
+        topicState: { events: true },
+        enableNotifications,
+        disableNotifications,
+        handleTopicToggle,
+      })
+    )
+    rerender(<InstallPrompt />)
+
+    expect(screen.queryByText("system:installPrompt.toggleLabel")).not.toBeInTheDocument()
+    togglePushNotifications(false, enableNotifications, disableNotifications)
+    togglePushNotifications(true, enableNotifications, disableNotifications)
+    expect(enableNotifications).toHaveBeenCalledOnce()
+    expect(disableNotifications).toHaveBeenCalledOnce()
+    expect(topicToggle).not.toHaveBeenCalled()
+  })
+
   it("renders the blocked state when permission is denied", async () => {
     mockUsePushPreferences.mockReturnValue(
       createPushPreferencesState({ notificationPermission: "denied" })
@@ -140,6 +195,20 @@ describe("InstallPrompt — branches", () => {
     })
   })
 
+  it("shows an informational feedback toast with the neutral style", async () => {
+    render(<InstallPrompt />)
+
+    await waitFor(() => {
+      expect(lastNotify.fn).toBeTypeOf("function")
+    })
+
+    act(() => {
+      lastNotify.fn?.({ text: "info", severity: "info" })
+    })
+
+    expect(await screen.findByText("info")).toBeInTheDocument()
+  })
+
   it("invokes enableNotifications from the denied state check button", async () => {
     const enableNotifications = vi.fn()
     mockUsePushPreferences.mockReturnValue(
@@ -166,6 +235,72 @@ describe("InstallPrompt — branches", () => {
     await user.click(allowButton)
 
     expect(enableNotifications).toHaveBeenCalledTimes(1)
+  })
+
+  it("completes an accepted install and clears its deferred prompt", async () => {
+    render(<InstallPrompt />)
+    const event = fireBeforeInstallPrompt("accepted")
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("system:installPrompt.installTitle navigation:brandName")
+      ).toBeInTheDocument()
+    })
+
+    const user = userEvent.setup()
+    await user.click(screen.getByRole("button", { name: "system:installPrompt.install" }))
+
+    await waitFor(() => {
+      expect(event.prompt).toHaveBeenCalledOnce()
+      expect(
+        screen.queryByText("system:installPrompt.installTitle navigation:brandName")
+      ).not.toBeInTheDocument()
+    })
+    expect(localStorage.getItem("ecosystem.pwa.install.dismissedAt")).toBeNull()
+  })
+
+  it("suppresses a dismissed install and records the dismissal timestamp", async () => {
+    render(<InstallPrompt />)
+    const event = fireBeforeInstallPrompt("dismissed")
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("system:installPrompt.installTitle navigation:brandName")
+      ).toBeInTheDocument()
+    })
+
+    const user = userEvent.setup()
+    await user.click(screen.getByRole("button", { name: "system:installPrompt.install" }))
+
+    await waitFor(() => {
+      expect(event.prompt).toHaveBeenCalledOnce()
+      expect(
+        screen.queryByText("system:installPrompt.installTitle navigation:brandName")
+      ).not.toBeInTheDocument()
+    })
+    expect(localStorage.getItem("ecosystem.pwa.install.dismissedAt")).not.toBeNull()
+  })
+
+  it("suppresses the install prompt when the browser prompt rejects", async () => {
+    render(<InstallPrompt />)
+    const event = fireBeforeInstallPrompt("dismissed")
+    event.prompt = vi.fn().mockRejectedValue(new Error("prompt unavailable"))
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("system:installPrompt.installTitle navigation:brandName")
+      ).toBeInTheDocument()
+    })
+
+    const user = userEvent.setup()
+    await user.click(screen.getByRole("button", { name: "system:installPrompt.install" }))
+
+    await waitFor(() => {
+      expect(
+        screen.queryByText("system:installPrompt.installTitle navigation:brandName")
+      ).not.toBeInTheDocument()
+    })
+    expect(localStorage.getItem("ecosystem.pwa.install.dismissedAt")).not.toBeNull()
   })
 
   it("surfaces a feedback toast via the onNotify callback", async () => {
@@ -260,6 +395,46 @@ describe("InstallPrompt — branches", () => {
     const user = userEvent.setup()
     await user.click(await screen.findByText("system:installPrompt.reload"))
     expect(screen.getByText("system:installPrompt.updateAvailable")).toBeInTheDocument()
+  })
+
+  it("fails closed when localStorage read, write, or remove operations throw", async () => {
+    const getItemSpy = vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => {
+      throw new Error("storage read blocked")
+    })
+    try {
+      render(<InstallPrompt />)
+      await waitFor(() => {
+        expect(screen.getByText("system:installPrompt.manageNotifications")).toBeInTheDocument()
+      })
+    } finally {
+      getItemSpy.mockRestore()
+    }
+
+    const setItemSpy = vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw new Error("storage write blocked")
+    })
+    try {
+      const event = fireBeforeInstallPrompt("dismissed")
+      await waitFor(() => {
+        expect(
+          screen.getByText("system:installPrompt.installTitle navigation:brandName")
+        ).toBeInTheDocument()
+      })
+      const user = userEvent.setup()
+      await user.click(screen.getByRole("button", { name: "system:installPrompt.closeOffer" }))
+      expect(event.prompt).not.toHaveBeenCalled()
+    } finally {
+      setItemSpy.mockRestore()
+    }
+
+    const removeItemSpy = vi.spyOn(Storage.prototype, "removeItem").mockImplementation(() => {
+      throw new Error("storage remove blocked")
+    })
+    try {
+      act(() => window.dispatchEvent(new Event("appinstalled")))
+    } finally {
+      removeItemSpy.mockRestore()
+    }
   })
 
   it("skips install lifecycle listeners when the app is already standalone", () => {
