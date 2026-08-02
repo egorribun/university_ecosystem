@@ -104,9 +104,11 @@ jobs:
         include:
           - directory: frontend/wasm-sanitizer/fuzz
             name: frontend-wasm-sanitizer-fuzz
+            parent_manifest: frontend/wasm-sanitizer/Cargo.toml
             targets: "fuzz_sanitize_rich_text fuzz_strip_html"
           - directory: frontend/rust-crypto/fuzz
             name: frontend-rust-crypto-fuzz
+            parent_manifest: frontend/rust-crypto/Cargo.toml
             targets: "fuzz_hmac fuzz_scrypt"
     steps:
       - name: Checkout repository
@@ -130,7 +132,7 @@ jobs:
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
             ${{ matrix.directory }}/target/
-          key: ${{ runner.os }}-${{ matrix.name }}-cargo-fuzz-${{ hashFiles(format('{0}/Cargo.toml', matrix.directory), format('{0}/Cargo.lock', matrix.directory), format('{0}/../Cargo.toml', matrix.directory)) }}
+          key: ${{ runner.os }}-${{ matrix.name }}-cargo-fuzz-${{ hashFiles(format('{0}/Cargo.toml', matrix.directory), format('{0}/Cargo.lock', matrix.directory), matrix.parent_manifest) }}
           restore-keys: |
             ${{ runner.os }}-${{ matrix.name }}-cargo-fuzz-
 

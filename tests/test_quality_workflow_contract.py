@@ -611,7 +611,10 @@ def test_rust_fuzz_workflow_caches_every_declared_target_workspace() -> None:
         if step.get("uses", "").startswith("actions/cache")
     )
     assert "${{ matrix.directory }}/target/" in str(additional_cache["with"]["path"])
-    assert "${{ matrix.name }}" in str(additional_cache["with"]["key"])
+    additional_key = str(additional_cache["with"]["key"])
+    assert "${{ matrix.name }}" in additional_key
+    assert "matrix.parent_manifest" in additional_key
+    assert "../Cargo.toml" not in additional_key
 
 
 def test_incremental_mutation_gate_is_blocking_and_fails_on_timeout() -> None:

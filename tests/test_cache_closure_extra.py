@@ -6,8 +6,8 @@ import asyncio
 import importlib.util
 import random
 import sys
-import time
 from concurrent.futures import ThreadPoolExecutor
+from threading import Event
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -408,15 +408,22 @@ def test_cache_backend_factories_and_etag_edges(monkeypatch):
     factory.assert_called_once()
     set_cache_backend(None)
 
+    factory_started = Event()
+    release_factory = Event()
+
     def slow_factory():
-        time.sleep(0.05)
+        factory_started.set()
+        assert release_factory.wait(timeout=1)
         return backend
 
     with patch.object(
         cache_module, "create_cache_backend", side_effect=slow_factory
     ) as factory:
         with ThreadPoolExecutor(max_workers=2) as executor:
-            results = list(executor.map(lambda _item: get_cache(), range(2)))
+            futures = [executor.submit(get_cache) for _item in range(2)]
+            assert factory_started.wait(timeout=1)
+            release_factory.set()
+            results = [future.result(timeout=1) for future in futures]
     assert results == [backend, backend]
     factory.assert_called_once()
     set_cache_backend(None)
