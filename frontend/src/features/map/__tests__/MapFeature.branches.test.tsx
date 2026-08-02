@@ -1,5 +1,5 @@
 import { render, screen, fireEvent, act, waitFor, within } from "@testing-library/react"
-import type { ComponentType } from "react"
+import type { ComponentType, RefObject } from "react"
 import { Suspense } from "react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
@@ -119,14 +119,20 @@ vi.mock("@/components/map/MapSearchBar", () => ({
   MapSearchBar: (props: Record<string, unknown>) => {
     searchProps.current = props
     return (
-      <button
-        data-testid="search-room"
-        onClick={() =>
-          (props.onSelectRoom as (l: string, f: number, r: string) => void)("ГУК", 2, "ГУК-201")
-        }
-      >
-        search-room
-      </button>
+      <>
+        <input
+          data-testid="search-input"
+          ref={props.searchInputRef as RefObject<HTMLInputElement>}
+        />
+        <button
+          data-testid="search-room"
+          onClick={() =>
+            (props.onSelectRoom as (l: string, f: number, r: string) => void)("ГУК", 2, "ГУК-201")
+          }
+        >
+          search-room
+        </button>
+      </>
     )
   },
 }))
@@ -183,7 +189,14 @@ describe("MapFeature — orchestration handlers", () => {
     act(() => getSelectBuilding()("ГУК"))
     expect(screen.getByRole("button", { name: "sidebar.close" })).toBeInTheDocument()
 
-    // onDeselectBuilding → handleCloseSidebar (157-161) unmounts the sidebar.
+    // The visible close button exercises the callback passed at line 295 and
+    // proves the user-facing close path unmounts the sidebar.
+    act(() => fireEvent.click(screen.getByRole("button", { name: "sidebar.close" })))
+    expect(screen.queryByRole("button", { name: "sidebar.close" })).not.toBeInTheDocument()
+
+    // onDeselectBuilding → handleCloseSidebar (157-161) remains covered as a
+    // separate map-originated close path.
+    act(() => getSelectBuilding()("ГУК"))
     const onDeselect = mapProps.current!.onDeselectBuilding as () => void
     act(() => onDeselect())
     expect(screen.queryByRole("button", { name: "sidebar.close" })).not.toBeInTheDocument()
@@ -348,14 +361,22 @@ describe("MapFeature — keyboard shortcut callbacks", () => {
     expect(screen.queryByText("shortcuts.close")).not.toBeInTheDocument()
     act(() => ksOptions.current!.onToggleShortcuts())
     expect(screen.getByText("shortcuts.close")).toBeInTheDocument()
-    act(() => ksOptions.current!.onToggleShortcuts())
+    act(() => fireEvent.click(screen.getByRole("button", { name: "sidebar.close" })))
     expect(screen.queryByText("shortcuts.close")).not.toBeInTheDocument()
   })
 
   it("onFocusSearch focuses the search input without throwing", async () => {
     renderFeature()
     await whenMapMounted()
-    expect(() => act(() => ksOptions.current!.onFocusSearch())).not.toThrow()
+    act(() => ksOptions.current!.onFocusSearch())
+    expect(screen.getByTestId("search-input")).toHaveFocus()
+  })
+
+  it("ignores fullscreen shortcut after the map container is gone", async () => {
+    renderFeature()
+    await whenMapMounted()
+    document.querySelector(".map-card-matte")?.remove()
+    expect(() => act(() => ksOptions.current!.onToggleFullscreen())).not.toThrow()
   })
 
   it("onToggleFullscreen requests fullscreen when none is active (branch 185 true)", async () => {
