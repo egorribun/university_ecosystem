@@ -176,6 +176,26 @@ describe("MessageInput branch coverage", () => {
       expect(createObjectURLSpy).toHaveBeenCalledWith(img)
       expect(screen.queryByRole("alert")).toBeNull()
     })
+
+    it("rejects SVG markup found by the image content-sniff regex (156)", async () => {
+      const { container } = render(<MessageInput onSend={() => {}} />)
+      const fileInput = container.querySelector('input[type="file"]') as HTMLInputElement
+      const img = new File(["not-used"], " disguised.png", { type: "image/png" })
+      const sniffBlob = new Blob([])
+      Object.defineProperty(sniffBlob, "text", {
+        configurable: true,
+        value: vi.fn().mockResolvedValue('  <?xml version="1.0"?>\n<svg viewBox="0 0 1 1">'),
+      })
+      vi.spyOn(img, "slice").mockReturnValue(sniffBlob)
+      setFiles(fileInput, [img])
+
+      await act(async () => {
+        fireEvent.change(fileInput)
+      })
+
+      expect(screen.getByRole("alert").textContent).toBe("messenger:svgNotAllowed")
+      expect(createObjectURLSpy).not.toHaveBeenCalled()
+    })
   })
 
   describe("reply/quote compose chip (255-275)", () => {
