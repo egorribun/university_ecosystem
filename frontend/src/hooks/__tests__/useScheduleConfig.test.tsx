@@ -250,4 +250,29 @@ describe("useScheduleConfig — fallback branches (broken resources)", () => {
       color: defaultLessonTypeColor,
     })
   })
+
+  it("lessonType toConfig uses an inline fallback for a missing ordered entry", () => {
+    const inst = makeI18n({ lessonTypes: { order: ["missing"], items: {} } })
+    const { result } = renderHook(() => useScheduleConfig(), { wrapper: wrap(inst) })
+    expect(result.current.lessonTypeConfigs[0]).toEqual({
+      id: "missing",
+      backend: ["missing"],
+      label: "missing",
+      color: defaultLessonTypeColor,
+    })
+  })
+
+  it("appends lesson types that are absent from the configured order", () => {
+    const inst = makeI18n({
+      lessonTypes: {
+        order: ["first"],
+        items: {
+          first: { backend: ["first"], label: "First" },
+          extra: { backend: ["extra"], label: "Extra" },
+        },
+      },
+    })
+    const { result } = renderHook(() => useScheduleConfig(), { wrapper: wrap(inst) })
+    expect(result.current.lessonTypeConfigs.map((config) => config.id)).toEqual(["first", "extra"])
+  })
 })

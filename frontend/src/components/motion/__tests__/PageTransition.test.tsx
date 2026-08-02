@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react"
+import { act, render, screen, waitFor } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 // The animated branch only commits after the async `import("framer-motion")` →
@@ -118,5 +118,41 @@ describe("PageTransition", () => {
     await expectAnimatedChild("Toggle child")
     // the media-change listener was registered (covers the addEventListener branch)
     expect(changeHandler).toBeTypeOf("function")
+    act(() => changeHandler?.({ matches: true } as MediaQueryListEvent))
+    expect(screen.getByText("Toggle child").closest(WILL_CHANGE)).toBeNull()
+  })
+
+  it("supports the legacy MediaQueryList listener API and cleans it up", async () => {
+    let legacyHandler: ((event: MediaQueryListEvent) => void) | null = null
+    const removeListener = vi.fn()
+    const media = {
+      matches: false,
+      media: "(prefers-reduced-motion: reduce)",
+      onchange: null,
+      addEventListener: undefined,
+      removeEventListener: undefined,
+      addListener: vi.fn((handler: (event: MediaQueryListEvent) => void) => {
+        legacyHandler = handler
+      }),
+      removeListener,
+      dispatchEvent: vi.fn(),
+    }
+    Object.defineProperty(window, "matchMedia", {
+      configurable: true,
+      writable: true,
+      value: vi.fn(() => media),
+    })
+
+    const view = render(
+      <PageTransition>
+        <div>Legacy media child</div>
+      </PageTransition>
+    )
+    await waitFor(() => expect(legacyHandler).toBeTypeOf("function"))
+    act(() => legacyHandler?.({ matches: true } as MediaQueryListEvent))
+    expect(screen.getByText("Legacy media child").closest(WILL_CHANGE)).toBeNull()
+
+    view.unmount()
+    expect(removeListener).toHaveBeenCalledOnce()
   })
 })

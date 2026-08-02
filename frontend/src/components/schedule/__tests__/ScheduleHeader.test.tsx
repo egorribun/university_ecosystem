@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react"
+import { fireEvent, render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { describe, it, expect, vi, beforeEach } from "vitest"
 
@@ -14,6 +14,11 @@ vi.mock("react-i18next", () => ({
   }),
 }))
 vi.mock("@/hooks/useMediaQuery", () => ({ default: () => mediaMock() }))
+vi.mock("@/components/schedule/FlipCountdown", () => ({
+  FlipCountdown: ({ targetMinutes }: { targetMinutes: number }) => (
+    <span data-testid="flip-countdown">{targetMinutes}</span>
+  ),
+}))
 
 import { ScheduleHeader } from "@/components/schedule/ScheduleHeader"
 import type { Lesson } from "@/components/schedule/scheduleUtils"
@@ -59,6 +64,8 @@ describe("ScheduleHeader", () => {
         {...baseProps}
         currentLesson={lesson({ subject: "Active Lecture" })}
         currentProgress={40}
+        timeLeftText="10 minutes"
+        timeLeftShort="10m"
       />
     )
     expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("schedule:title.student")
@@ -77,9 +84,29 @@ describe("ScheduleHeader", () => {
     expect(screen.getByText("Upcoming Seminar")).toBeInTheDocument()
   })
 
+  it("shows next-lesson metadata, countdown, and the remaining-time chip", () => {
+    render(
+      <ScheduleHeader
+        {...baseProps}
+        nextLesson={lesson({ subject: "Soon Seminar", start_time: "10:15" })}
+        timeLeftText="15 minutes"
+        timeLeftShort="15m"
+      />
+    )
+
+    expect(screen.getByText("Soon Seminar")).toBeInTheDocument()
+    expect(screen.getByLabelText("15 minutes")).toHaveTextContent("15m")
+    expect(screen.getByTestId("flip-countdown")).toHaveTextContent("615")
+  })
+
   it("shows a day-complete message when nothing is current or next", () => {
     render(<ScheduleHeader {...baseProps} />)
     expect(screen.getByText("schedule:dayComplete")).toBeInTheDocument()
+  })
+
+  it("uses the empty-day message when there are no lessons", () => {
+    render(<ScheduleHeader {...baseProps} todayLessons={[]} />)
+    expect(screen.getByText("schedule:summary.noMoreToday")).toBeInTheDocument()
   })
 
   it("fires onOpenSettings when the controls button is clicked", async () => {
@@ -90,15 +117,28 @@ describe("ScheduleHeader", () => {
     expect(onOpenSettings).toHaveBeenCalledOnce()
   })
 
-  it("renders the group selector for teachers", () => {
+  it("renders and updates the group selector for teachers", () => {
+    const setSelectedGroup = vi.fn()
     render(
       <ScheduleHeader
         {...baseProps}
+        groups={[...baseProps.groups, { id: "g2", name: "CS-2025" }]}
+        setSelectedGroup={setSelectedGroup}
         user={
           { id: "1", email: "t@u.edu", full_name: "Teacher", role: "teacher" } as unknown as User
         }
       />
     )
     expect(screen.getByText("schedule:form.groupLabel")).toBeInTheDocument()
+
+    const selector = screen.getByRole("combobox")
+    fireEvent.click(selector)
+    fireEvent.mouseDown(screen.getByRole("option", { name: "CS-2025" }))
+    expect(setSelectedGroup).toHaveBeenCalledWith("g2")
+  })
+
+  it("omits the settings control when no callback is supplied", () => {
+    render(<ScheduleHeader {...baseProps} onOpenSettings={undefined} />)
+    expect(screen.queryByRole("button", { name: "schedule:toolbar.settings" })).toBeNull()
   })
 })
