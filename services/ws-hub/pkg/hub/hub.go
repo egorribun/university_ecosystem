@@ -29,14 +29,12 @@ import (
 
 // Message represents a WebSocket message.
 type Message struct {
-	Type      string            `json:"type"`
-	Room      string            `json:"room,omitempty"`
-	Payload   json.RawMessage   `json:"payload"`
-	From      string            `json:"from,omitempty"`
-	To        string            `json:"to,omitempty"`
-	TraceCtx  map[string]string `json:"trace_ctx,omitempty"`
-	LastSeq   uint64            `json:"last_seq,omitempty"`
-	LastMsgID string            `json:"last_msg_id,omitempty"`
+	Type     string            `json:"type"`
+	Room     string            `json:"room,omitempty"`
+	Payload  json.RawMessage   `json:"payload"`
+	From     string            `json:"from,omitempty"`
+	To       string            `json:"to,omitempty"`
+	TraceCtx map[string]string `json:"trace_ctx,omitempty"`
 }
 
 // LOCK HIERARCHY — RZ-22-04 (Wave 22 audit)

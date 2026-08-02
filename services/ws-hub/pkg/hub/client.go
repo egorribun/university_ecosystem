@@ -18,11 +18,16 @@ import (
 	"golang.org/x/time/rate"
 )
 
+// ClientIdentity carries optional tenant context for a connected session.
+type ClientIdentity struct {
+	TenantID string
+}
+
 // Client represents a connected user session (WebSocket or WebTransport).
 type Client struct {
 	ID        string
 	UserID    string
-	TenantID  string
+	Identity  *ClientIdentity
 	Conn      Session
 	Rooms     map[string]bool
 	Send      chan []byte
@@ -195,6 +200,7 @@ func (c *Client) processNextMessage() bool {
 		UnknownMsgTypeTotal.Inc()
 		return true
 	}
+	mergeTopLevelJoinReplay(&msg, data)
 
 	msg.From = c.ID
 	c.handleIncomingMessage(msg, data)
@@ -234,6 +240,33 @@ type joinPayload struct {
 	LastMsgID string `json:"last_msg_id,omitempty"`
 }
 
+func mergeTopLevelJoinReplay(msg *Message, data []byte) {
+	if msg == nil || msg.Type != "join" {
+		return
+	}
+	var topLevel joinPayload
+	if err := json.Unmarshal(data, &topLevel); err != nil ||
+		(topLevel.LastSeq == 0 && topLevel.LastMsgID == "") {
+		return
+	}
+
+	var payload joinPayload
+	if len(msg.Payload) > 0 {
+		if err := json.Unmarshal(msg.Payload, &payload); err != nil {
+			return
+		}
+	}
+	if payload.LastSeq == 0 {
+		payload.LastSeq = topLevel.LastSeq
+	}
+	if payload.LastMsgID == "" {
+		payload.LastMsgID = topLevel.LastMsgID
+	}
+	if merged, err := json.Marshal(payload); err == nil {
+		msg.Payload = merged
+	}
+}
+
 func (c *Client) handleJoin(msg Message) {
 	if msg.Room == "" {
 		return
@@ -247,8 +280,8 @@ func (c *Client) handleJoin(msg Message) {
 	}
 	c.JoinRoom(msg.Room)
 
-	lastSeq := msg.LastSeq
-	lastMsgID := msg.LastMsgID
+	var lastSeq uint64
+	var lastMsgID string
 	if len(msg.Payload) > 0 {
 		var jp joinPayload
 		if err := json.Unmarshal(msg.Payload, &jp); err == nil {

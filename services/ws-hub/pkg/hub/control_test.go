@@ -69,7 +69,7 @@ func TestHandleControlMessage_ValidSignature_DisconnectsClient(t *testing.T) {
 	c := &Client{
 		ID:       "client-101",
 		UserID:   "user-101",
-		TenantID: "tenant-1",
+		Identity: &ClientIdentity{TenantID: "tenant-1"},
 		Conn:     sess,
 		Rooms:    make(map[string]bool),
 		Send:     make(chan []byte, 10),

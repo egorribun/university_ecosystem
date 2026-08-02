@@ -203,7 +203,7 @@ func (h *Hub) HandleWebSocket(w http.ResponseWriter, r *http.Request, cfg *confi
 	client := &Client{
 		ID:       userID,
 		UserID:   userID,
-		TenantID: tenantID,
+		Identity: &ClientIdentity{TenantID: tenantID},
 		Conn:     NewWebSocketSession(conn),
 		Rooms:    make(map[string]bool),
 		Send:     make(chan []byte, cfg.SendBufferSize),
@@ -280,7 +280,7 @@ func (h *Hub) HandleWebTransport(w http.ResponseWriter, r *http.Request, cfg *co
 	client := &Client{
 		ID:       userID,
 		UserID:   userID,
-		TenantID: tenantID,
+		Identity: &ClientIdentity{TenantID: tenantID},
 		Conn:     NewWebTransportSession(sess),
 		Rooms:    make(map[string]bool),
 		Send:     make(chan []byte, cfg.SendBufferSize),

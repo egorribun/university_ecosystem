@@ -256,6 +256,14 @@ func TestHandleIncomingMessage_JoinLeaveDispatch(t *testing.T) {
 	assert.False(t, ok)
 }
 
+func TestMergeTopLevelJoinReplayIntoPayload(t *testing.T) {
+	msg := &Message{Type: "join", Payload: []byte(`{"last_msg_id":"payload-id"}`)}
+
+	mergeTopLevelJoinReplay(msg, []byte(`{"type":"join","last_seq":42,"last_msg_id":"top-id"}`))
+
+	assert.JSONEq(t, `{"last_seq":42,"last_msg_id":"payload-id"}`, string(msg.Payload))
+}
+
 func TestHandleIncomingMessage_UnknownTypeIncrementsMetric(t *testing.T) {
 	h := setupTestHub()
 	srv, _ := newConnPair(t)

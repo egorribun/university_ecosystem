@@ -194,7 +194,7 @@ func TestEmpirical_DualStack_MessageDispatch(t *testing.T) {
 	wsClient := &Client{
 		ID:       "client-ws-1",
 		UserID:   "user-ws-1",
-		TenantID: "tenant-1",
+		Identity: &ClientIdentity{TenantID: "tenant-1"},
 		Send:     wsSend,
 		Hub:      h,
 		Rooms:    make(map[string]bool),
@@ -205,7 +205,7 @@ func TestEmpirical_DualStack_MessageDispatch(t *testing.T) {
 	wtClient := &Client{
 		ID:       "client-wt-1",
 		UserID:   "user-wt-1",
-		TenantID: "tenant-1",
+		Identity: &ClientIdentity{TenantID: "tenant-1"},
 		Send:     wtSend,
 		Hub:      h,
 		Rooms:    make(map[string]bool),
