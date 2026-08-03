@@ -2,14 +2,15 @@ package main
 
 // Coverage tests (testing session 16) for cmd bootstrap helpers that don't need
 // a live Temporal/NATS/MinIO connection: initLogger, initSentry (no-DSN + bad-DSN),
-// initTracer (production-insecure guard + dev success path), and the stream-auth
-// error path + authedServerStream.Context() wrapper. The genuinely
-// integration-shaped funcs (connectTemporal Dial loop, setupTemporalWorker /
-// startNatsSubscriber / runServers / setupGraphQLServer with os.Exit) stay
-// covered by the integration suite, not here.
+// initTracer (production-insecure guard + dev success path), stream-auth
+// behavior, and runMain's startup error propagation through narrow function
+// seams. The genuinely infrastructure-shaped success paths (connectTemporal
+// Dial loop, setupTemporalWorker, startNatsSubscriber, and live server serving)
+// remain covered by the integration suite rather than synthetic mocks.
 
 import (
 	"context"
+	"crypto/rsa"
 	"errors"
 	"io"
 	"log/slog"
@@ -672,6 +673,98 @@ func TestRunMain_TemporalConnectErrorReturnsDirectly(t *testing.T) {
 
 	err := runMain(ctx)
 	require.Error(t, err)
+}
+
+func configureRunMainStubs(t *testing.T) {
+	t.Helper()
+	t.Setenv("FP_GRPC_PORT", "0")
+	t.Setenv("FP_GRAPHQL_PORT", "0")
+	t.Setenv("FP_JWT_SECRET", "run-main-test-secret")
+	t.Setenv("FP_NATS_URL", "nats://127.0.0.1:1")
+	t.Setenv("FP_OTLP_ENDPOINT", "127.0.0.1:4317")
+	t.Setenv("FP_OTLP_INSECURE", "true")
+
+	oldStartTemporalWorker := startTemporalWorkerFunc
+	oldStartNatsSubscriber := startNatsSubscriberFunc
+	oldInitSpiffeClient := initSpiffeClientFunc
+	oldSetupGRPCServer := setupGRPCServerFunc
+	oldSetupGraphQLServer := setupGraphQLServerFunc
+	oldRunServers := runServersFunc
+	t.Cleanup(func() {
+		startTemporalWorkerFunc = oldStartTemporalWorker
+		startNatsSubscriberFunc = oldStartNatsSubscriber
+		initSpiffeClientFunc = oldInitSpiffeClient
+		setupGRPCServerFunc = oldSetupGRPCServer
+		setupGraphQLServerFunc = oldSetupGraphQLServer
+		runServersFunc = oldRunServers
+	})
+
+	startTemporalWorkerFunc = func(context.Context, *config.Config, *slog.Logger) (client.Client, worker.Worker, error) {
+		c, err := client.NewLazyClient(client.Options{HostPort: "127.0.0.1:7233"})
+		if err != nil {
+			return nil, nil, err
+		}
+		return c, &mockWorker{}, nil
+	}
+	startNatsSubscriberFunc = func(context.Context, *config.Config, client.Client, *slog.Logger) {}
+}
+
+func TestRunMain_PropagatesSpiffeInitFailure(t *testing.T) {
+	configureRunMainStubs(t)
+	initSpiffeClientFunc = func(context.Context, *config.Config, *slog.Logger) (*spiffe.Client, error) {
+		return nil, errors.New("spiffe init failed")
+	}
+
+	err := runMain(context.Background())
+	require.EqualError(t, err, "spiffe init failed")
+}
+
+func TestRunMain_PropagatesGRPCSetupFailure(t *testing.T) {
+	configureRunMainStubs(t)
+	initSpiffeClientFunc = func(context.Context, *config.Config, *slog.Logger) (*spiffe.Client, error) {
+		return nil, nil
+	}
+	setupGRPCServerFunc = func(context.Context, *config.Config, *rsa.PublicKey, client.Client, ...any) (*grpc.Server, error) {
+		return nil, errors.New("grpc setup failed")
+	}
+
+	err := runMain(context.Background())
+	require.EqualError(t, err, "grpc setup failed")
+}
+
+func TestRunMain_PropagatesGraphQLSetupFailure(t *testing.T) {
+	configureRunMainStubs(t)
+	initSpiffeClientFunc = func(context.Context, *config.Config, *slog.Logger) (*spiffe.Client, error) {
+		return nil, nil
+	}
+	setupGRPCServerFunc = func(context.Context, *config.Config, *rsa.PublicKey, client.Client, ...any) (*grpc.Server, error) {
+		return grpc.NewServer(), nil
+	}
+	setupGraphQLServerFunc = func(context.Context, *config.Config, *rsa.PublicKey, client.Client, *slog.Logger) (*http.Server, error) {
+		return nil, errors.New("graphql setup failed")
+	}
+
+	err := runMain(context.Background())
+	require.EqualError(t, err, "graphql setup failed")
+}
+
+func TestRunMain_PropagatesServerLifecycleFailure(t *testing.T) {
+	configureRunMainStubs(t)
+	initSpiffeClientFunc = func(context.Context, *config.Config, *slog.Logger) (*spiffe.Client, error) {
+		return nil, nil
+	}
+	setupGRPCServerFunc = func(context.Context, *config.Config, *rsa.PublicKey, client.Client, ...any) (*grpc.Server, error) {
+		return grpc.NewServer(), nil
+	}
+	setupGraphQLServerFunc = func(context.Context, *config.Config, *rsa.PublicKey, client.Client, *slog.Logger) (*http.Server, error) {
+		return &http.Server{}, nil
+	}
+	runServersFunc = func(context.Context, *grpc.Server, *http.Server, *config.Config, *slog.Logger) error {
+		return errors.New("server lifecycle failed")
+	}
+
+	err := runMain(context.Background())
+	require.EqualError(t, err, "server lifecycle failed")
 }
 
 func TestSetupGRPCServer_SpiffeNilClientError(t *testing.T) {

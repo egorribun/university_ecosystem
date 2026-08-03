@@ -67,8 +67,14 @@ const (
 )
 
 var (
-	dialTemporalFunc = client.Dial
-	newWorkerFunc    = worker.New
+	dialTemporalFunc        = client.Dial
+	newWorkerFunc           = worker.New
+	startTemporalWorkerFunc = startTemporalWorker
+	startNatsSubscriberFunc = startNatsSubscriber
+	initSpiffeClientFunc    = initSpiffeClient
+	setupGRPCServerFunc     = setupGRPCServer
+	setupGraphQLServerFunc  = setupGraphQLServer
+	runServersFunc          = runServers
 )
 
 // legacyNatsJetStream keeps the legacy subscriber seam narrow enough to test
@@ -131,7 +137,7 @@ func runMain(ctx context.Context) error {
 
 	defer initializeTracerShutdown(ctx, cfg, logger)()
 
-	c, w, err := startTemporalWorker(ctx, cfg, logger)
+	c, w, err := startTemporalWorkerFunc(ctx, cfg, logger)
 	if err != nil {
 		return err
 	}
@@ -139,9 +145,9 @@ func runMain(ctx context.Context) error {
 	defer w.Stop()
 	logger.InfoContext(ctx, "Temporal Worker started", "queue", "FILE_PROCESSING_TASK_QUEUE")
 
-	startNatsSubscriber(ctx, cfg, c, logger)
+	startNatsSubscriberFunc(ctx, cfg, c, logger)
 
-	spiffeClient, err := initSpiffeClient(ctx, cfg, logger)
+	spiffeClient, err := initSpiffeClientFunc(ctx, cfg, logger)
 	if err != nil {
 		return err
 	}
@@ -153,19 +159,19 @@ func runMain(ctx context.Context) error {
 		}()
 	}
 
-	grpcSrv, err := setupGRPCServer(ctx, cfg, rsaPublicKey, c, spiffeClient, logger)
+	grpcSrv, err := setupGRPCServerFunc(ctx, cfg, rsaPublicKey, c, spiffeClient, logger)
 	if err != nil {
 		logger.ErrorContext(ctx, "Failed to setup gRPC server", "err", err)
 		return err
 	}
 
-	graphqlSrv, err := setupGraphQLServer(ctx, cfg, rsaPublicKey, c, logger)
+	graphqlSrv, err := setupGraphQLServerFunc(ctx, cfg, rsaPublicKey, c, logger)
 	if err != nil {
 		logger.ErrorContext(ctx, "Failed to setup GraphQL server", "err", err)
 		return err
 	}
 
-	return runServers(ctx, grpcSrv, graphqlSrv, cfg, logger)
+	return runServersFunc(ctx, grpcSrv, graphqlSrv, cfg, logger)
 }
 
 func loadRSAPublicKey(ctx context.Context, cfg *config.Config, logger *slog.Logger) (*rsa.PublicKey, error) {
