@@ -87,3 +87,37 @@ func TestHandleWebTransport_ValidationErrors(t *testing.T) {
 		assert.Equal(t, http.StatusServiceUnavailable, rec.Code)
 	})
 }
+
+func TestHandleWebTransport_OriginAndUpgradeFailures(t *testing.T) {
+	cfg := &config.Config{MaxClients: 100}
+
+	t.Run("production origin is rejected before upgrade", func(t *testing.T) {
+		t.Setenv("ENVIRONMENT", "production")
+		SetAllowedOrigins([]string{"https://allowed.example"})
+		t.Cleanup(func() { SetAllowedOrigins(nil) })
+
+		h := hubWithWTTicketRedis(t, "user-origin:jti-origin")
+		req := httptest.NewRequest("GET", "/wt?ticket="+validWTTicket, nil)
+		req.Header.Set("Origin", "https://blocked.example")
+		rec := httptest.NewRecorder()
+
+		h.HandleWebTransport(rec, req, cfg)
+
+		assert.Equal(t, http.StatusForbidden, rec.Code)
+	})
+
+	t.Run("ordinary HTTP writer rejects WebTransport upgrade", func(t *testing.T) {
+		h := hubWithWTTicketRedis(t, "user-upgrade:jti-upgrade")
+		req := httptest.NewRequest("GET", "/wt?ticket="+validWTTicket, nil)
+		rec := httptest.NewRecorder()
+
+		assert.NotPanics(t, func() {
+			h.HandleWebTransport(rec, req, cfg)
+		})
+
+		h.mu.RLock()
+		clientCount := len(h.Clients)
+		h.mu.RUnlock()
+		assert.Zero(t, clientCount)
+	})
+}
