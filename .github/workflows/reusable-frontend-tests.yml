@@ -76,7 +76,17 @@ jobs:
         run: npm run typecheck
 
       - name: Run unit-test shard
-        run: npm run test:ci -- --shard=${{ matrix.shard }}/4
+        # Each shard sees only a fraction of the repository and therefore
+        # cannot satisfy the repository-wide coverage thresholds on its own.
+        # The merged `unit-tests` job below owns the single global coverage
+        # and differential gate; keep shard runs focused on test correctness.
+        run: >-
+          npm run test:ci --
+          --shard=${{ matrix.shard }}/4
+          --coverage.thresholds.lines=0
+          --coverage.thresholds.branches=0
+          --coverage.thresholds.functions=0
+          --coverage.thresholds.statements=0
         env:
           CI: "true"
 
