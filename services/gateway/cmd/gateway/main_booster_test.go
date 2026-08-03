@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/getsentry/sentry-go"
 	"github.com/stretchr/testify/assert"
 	"github.com/university-ecosystem/gateway/internal/config"
 )
@@ -74,4 +75,16 @@ func TestInitTracer_TLS_Booster(t *testing.T) {
 			t.Logf("tracer shutdown: %v", shutErr)
 		}
 	}
+}
+
+func TestInitSentry_ValidDSN(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	initSentry(&config.Config{
+		SentryDSN:              "http://public@example.com/1",
+		Environment:            "test",
+		AppVersion:             "gateway-test",
+		SentryTracesSampleRate: 0,
+	}, logger)
+
+	assert.True(t, sentry.Flush(100*time.Millisecond))
 }
