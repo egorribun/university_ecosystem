@@ -222,6 +222,63 @@ func TestHandleControlMessage_MalformedJSON_NoPanic(t *testing.T) {
 	})
 }
 
+func TestHandleControlMessage_GuardsAndActionFallbacks(t *testing.T) {
+	secret := "control-guards-secret-32-bytes-long!!" // pragma: allowlist secret
+	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+	cfg := &config.Config{InternalSecret: secret}
+
+	t.Run("canceled context drops callback before parsing", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+		h := trackTestHub(NewHub(nil, logger, nil, cfg, nil))
+
+		assert.NotPanics(t, func() {
+			h.handleControlMessage(ctx)(&nats.Msg{Data: []byte("not-json")})
+		})
+	})
+
+	t.Run("empty internal secret fails closed", func(t *testing.T) {
+		h := trackTestHub(NewHub(nil, logger, nil, &config.Config{}, nil))
+		payload := signedControlPayload(t, secret, testControlData{
+			Action:    "disconnect",
+			Timestamp: 1700000000000,
+			UserID:    "user-empty-secret",
+		})
+
+		assert.NotPanics(t, func() {
+			h.handleControlMessage(context.Background())(&nats.Msg{Data: payload})
+		})
+	})
+
+	t.Run("access revoked reason forces disconnect branch", func(t *testing.T) {
+		h := trackTestHub(NewHub(nil, logger, nil, cfg, nil))
+		payload := signedControlPayload(t, secret, testControlData{
+			Action:    "refresh",
+			Reason:    "access_revoked",
+			Timestamp: 1700000000000,
+			UserID:    "user-reason-fallback",
+		})
+
+		assert.NotPanics(t, func() {
+			h.handleControlMessage(context.Background())(&nats.Msg{Data: payload})
+		})
+	})
+
+	t.Run("unknown action is ignored after signature validation", func(t *testing.T) {
+		h := trackTestHub(NewHub(nil, logger, nil, cfg, nil))
+		payload := signedControlPayload(t, secret, testControlData{
+			Action:    "rotate_keys",
+			Reason:    "operator_request",
+			Timestamp: 1700000000000,
+			UserID:    "user-unknown-action",
+		})
+
+		assert.NotPanics(t, func() {
+			h.handleControlMessage(context.Background())(&nats.Msg{Data: payload})
+		})
+	})
+}
+
 func TestDisconnectUser_MultipleSessionsForUser(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
 	cfg := &config.Config{
