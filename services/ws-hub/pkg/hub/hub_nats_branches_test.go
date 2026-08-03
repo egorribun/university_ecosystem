@@ -11,6 +11,7 @@ import (
 
 	"github.com/nats-io/nats.go"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestHandleNotifications_CancelledContextReturnsEarly(t *testing.T) {
@@ -67,5 +68,19 @@ func TestSubscribeToNATS_RejectsMissingConnection(t *testing.T) {
 	err := h.SubscribeToNATS(context.Background())
 
 	assert.EqualError(t, err, "NATS connection is not configured")
+	assert.Empty(t, h.subs)
+}
+
+func TestSubscribeToNATS_ChatSubscriptionFailure(t *testing.T) {
+	server := newMockNatsServer(t)
+	nc, err := nats.Connect(server.Addr())
+	require.NoError(t, err)
+	h := setupTestHub()
+	h.Nats = nc
+	nc.Close()
+
+	err = h.SubscribeToNATS(context.Background())
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "connection")
 	assert.Empty(t, h.subs)
 }
