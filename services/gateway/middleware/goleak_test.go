@@ -14,7 +14,13 @@ func TestMain(m *testing.M) {
 	// return before goleak samples the process. This turns a timing race into a
 	// deterministic lifecycle assertion without ignoring any goroutine.
 	jwksRefreshWG.Wait()
-	if err := goleak.Find(); err != nil {
+	opts := []goleak.Option{
+		// testcontainers-go talks to Docker Desktop through a Windows named pipe.
+		// The go-winio completion worker belongs to that external transport and
+		// can outlive container cleanup; it is not an application goroutine.
+		goleak.IgnoreAnyFunction("github.com/Microsoft/go-winio.ioCompletionProcessor"),
+	}
+	if err := goleak.Find(opts...); err != nil {
 		_, _ = fmt.Fprintln(os.Stderr, err)
 		code = 1
 	}
