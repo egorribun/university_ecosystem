@@ -38,6 +38,10 @@ export default {
     low: 100,
     break: 100,
   },
-  concurrency: 4,
+  // Keep the mutation runner bounded on Windows and CI hosts where Vitest's
+  // jsdom workers can retain native handles between mutations. The threshold
+  // remains 100%; this only serializes execution and recycles workers.
+  concurrency: 1,
+  maxTestRunnerReuse: 4,
   timeoutFactor: 2,
 }
