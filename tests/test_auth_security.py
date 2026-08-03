@@ -88,6 +88,7 @@ async def test_unicode_password_hashing():
 async def test_create_access_token_uses_active_signing_key(monkeypatch):
     active_private_key = _rsa_private_pem()
     legacy_private_key = _rsa_private_pem()
+    monkeypatch.setattr(settings, "algorithm", "RS256")
     monkeypatch.setattr(
         settings,
         "jwt_signing_keys",
@@ -119,6 +120,7 @@ async def test_create_access_token_uses_active_signing_key(monkeypatch):
 async def test_decode_token_accepts_legacy_and_active_secrets(monkeypatch):
     active_private_key = _rsa_private_pem()
     legacy_private_key = _rsa_private_pem()
+    monkeypatch.setattr(settings, "algorithm", "RS256")
     monkeypatch.setattr(
         settings,
         "jwt_signing_keys",

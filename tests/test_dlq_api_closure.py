@@ -64,19 +64,18 @@ async def test_trigger_dlq_replay_can_run_database_target_only():
     db.commit.assert_awaited_once()
 
 
-async def test_retry_dlq_job_defensive_unreachable_guard():
+async def test_retry_dlq_job_rejects_missing_job():
     db = AsyncMock()
     result = MagicMock()
     result.scalar_one_or_none.return_value = None
     db.execute.return_value = result
 
-    with (
-        patch.object(dlq, "raise_not_found", return_value=None),
-        pytest.raises(ValueError, match="Unreachable"),
-    ):
+    with pytest.raises(HTTPException) as exc_info:
         await dlq.retry_dlq_job(
             job_id=42,
             db=db,
             locale="en",
             _=MagicMock(),
         )
+
+    assert exc_info.value.status_code == 404
