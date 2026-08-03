@@ -69,6 +69,40 @@ describe("rateLimit interceptor — client queue slot acquire/release", () => {
     expect(config.__clientRateLimitAcquired).toBeUndefined()
   })
 
+  it("clears an acquired non-GET marker without changing queue accounting", () => {
+    const config = makeConfig("post")
+    config.__clientRateLimitAcquired = true
+
+    releaseClientQueueSlot(config)
+
+    expect(config.__clientRateLimitAcquired).toBe(false)
+  })
+
+  it("wakes a queued GET when an in-flight slot is released", async () => {
+    const acquired: Cfg[] = []
+    for (let index = 0; index < 6; index += 1) {
+      const config = makeConfig("get")
+      await waitForClientQueueSlot(config)
+      acquired.push(config)
+    }
+
+    const queued = makeConfig("get")
+    let settled = false
+    const pending = waitForClientQueueSlot(queued).then(() => {
+      settled = true
+    })
+
+    expect(settled).toBe(false)
+    releaseClientQueueSlot(acquired[0])
+    await pending
+    expect(queued.__clientRateLimitAcquired).toBe(true)
+
+    for (const config of acquired.slice(1)) {
+      releaseClientQueueSlot(config)
+    }
+    releaseClientQueueSlot(queued)
+  })
+
   it("throws synchronously when the config signal is already aborted before acquire", async () => {
     const controller = new AbortController()
     controller.abort()
@@ -136,6 +170,18 @@ describe("rateLimit interceptor — rate-limit window scheduling", () => {
     expect(isRateLimited()).toBe(true)
   })
 
+  it("replaces an active timer when a later target is requested", async () => {
+    scheduleRateLimitWindow(1_000)
+    scheduleRateLimitWindow(2_000)
+    const waitPromise = waitForRateLimitWindow()
+
+    await vi.advanceTimersByTimeAsync(1_000)
+    expect(isRateLimited()).toBe(true)
+    await vi.advanceTimersByTimeAsync(1_000)
+    await expect(waitPromise).resolves.toBeUndefined()
+    expect(isRateLimited()).toBe(false)
+  })
+
   it("treats a negative delay as zero (window already expired)", () => {
     scheduleRateLimitWindow(-1_000)
     expect(isRateLimited()).toBe(false)
@@ -156,5 +202,24 @@ describe("rateLimit interceptor — rate-limit window scheduling", () => {
     )
     controller.abort()
     await rejection
+  })
+
+  it("clears an expired window when the browser comes online", async () => {
+    scheduleRateLimitWindow(10_000)
+    const waitPromise = waitForRateLimitWindow()
+    vi.setSystemTime(Date.now() + 10_001)
+
+    window.dispatchEvent(new Event("online"))
+
+    await expect(waitPromise).resolves.toBeUndefined()
+    expect(isRateLimited()).toBe(false)
+  })
+
+  it("keeps an active server window when the browser comes online", () => {
+    scheduleRateLimitWindow(10_000)
+
+    window.dispatchEvent(new Event("online"))
+
+    expect(isRateLimited()).toBe(true)
   })
 })
