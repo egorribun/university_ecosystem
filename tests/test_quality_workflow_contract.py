@@ -550,6 +550,18 @@ def test_nightly_full_gate_contains_the_long_running_quality_suites() -> None:
     assert jobs["kyverno-test"]["timeout-minutes"] == 15
     assert jobs["miri"]["env"]["PROPTEST_DISABLE_FAILURE_PERSISTENCE"] == "1"
     assert jobs["miri"]["env"]["MIRIFLAGS"] == "-Zmiri-isolation-error=warn"
+    chaos_job = jobs["load-and-chaos"]
+    assert chaos_job["timeout-minutes"] == 45
+    chaos_steps = "\n".join(
+        f"{step.get('name', '')}\n{step.get('run', '')}"
+        for step in chaos_job["steps"]
+        if isinstance(step, dict)
+    )
+    assert "Prepare full chaos compose environment" in chaos_steps
+    assert "Start the full chaos compose stack" in chaos_steps
+    assert "docker-compose.ci-loadtest.yml" in chaos_steps
+    assert "54321/ecosystem" in chaos_steps
+    assert "Tear down full chaos compose stack" in chaos_steps
     pyo3_source = (
         REPOSITORY_ROOT / "crates" / "pyo3-sanitizer" / "src" / "lib.rs"
     ).read_text(encoding="utf-8")

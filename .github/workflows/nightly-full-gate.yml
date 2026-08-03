@@ -227,15 +227,105 @@ jobs:
       - name: Install dependencies
         run: uv sync --group dev
 
+      - name: Prepare full chaos compose environment
+        shell: bash
+        run: |
+          cp .env.example .env
+          mkdir -p .secrets
+          openssl genpkey \
+            -algorithm RSA \
+            -pkeyopt rsa_keygen_bits:2048 \
+            -out .secrets/jwt_rs256.pem
+          chmod 644 .secrets/jwt_rs256.pem
+          echo "COMPOSE_FILE=docker-compose.infra.yml:docker-compose.go.yml:docker-compose.yml:docker-compose.ci-loadtest.yml" >> "$GITHUB_ENV"
+          echo "API_BASE_URL=http://localhost:8000" >> "$GITHUB_ENV"
+          echo "GATEWAY_URL=http://localhost:8080" >> "$GITHUB_ENV"
+          echo "DATABASE_URL_SYNC=postgresql://postgres:${POSTGRES_PASSWORD}@localhost:54321/ecosystem" >> "$GITHUB_ENV"
+
       - name: Validate the production compose contract
         run: >-
           docker compose -f docker-compose.infra.yml -f docker-compose.go.yml
           -f docker-compose.yml -f docker-compose.ci-loadtest.yml config --quiet
 
+      - name: Start the full chaos compose stack
+        shell: bash
+        run: |
+          CF="-f docker-compose.infra.yml -f docker-compose.go.yml -f docker-compose.yml -f docker-compose.ci-loadtest.yml"
+          up_ok=""
+          for attempt in 1 2 3; do
+            if docker compose $CF up -d --build; then
+              echo "compose up succeeded (attempt $attempt)"
+              up_ok=1
+              break
+            fi
+            echo "::warning::compose up attempt $attempt failed; retrying in 15s"
+            sleep 15
+          done
+          if [ -z "$up_ok" ]; then
+            docker compose $CF ps || true
+            docker compose $CF logs --tail=100 backend postgres valkey nats temporal || true
+            exit 1
+          fi
+
+          # Compose versions differ in how they merge a ports override onto an
+          # expose-only service. Keep the sidecar fallback for runners that do
+          # not publish backend:8000, while using the direct mapping when it is
+          # available in the current compose implementation.
+          if [ -z "$(docker compose $CF port backend 8000 2>/dev/null || true)" ]; then
+            net=$(docker network ls --format '{{.Name}}' | grep -E '_internal$' | head -1)
+            docker rm -f ci-nightly-backend >/dev/null 2>&1 || true
+            docker run -d --name ci-nightly-backend -p 8000:8000 \
+              alpine/socat TCP-LISTEN:8000,fork,reuseaddr TCP:backend:8000
+            if [ -n "$net" ]; then
+              docker network connect "$net" ci-nightly-backend
+            fi
+          fi
+
+          backend_ready=""
+          for i in $(seq 1 120); do
+            if curl -fsS http://localhost:8000/ >/dev/null 2>&1; then
+              echo "backend ready (after $((i * 2))s)"
+              backend_ready=1
+              break
+            fi
+            sleep 2
+          done
+          if [ -z "$backend_ready" ]; then
+            docker compose $CF ps || true
+            docker compose $CF logs --tail=120 backend postgres valkey nats temporal || true
+            exit 1
+          fi
+
+          gateway_ready=""
+          for i in $(seq 1 60); do
+            if curl -fsS http://localhost:8080/health >/dev/null 2>&1; then
+              echo "gateway ready (after $((i * 2))s)"
+              gateway_ready=1
+              break
+            fi
+            sleep 2
+          done
+          if [ -z "$gateway_ready" ]; then
+            docker compose $CF ps || true
+            docker compose $CF logs --tail=120 gateway ws-hub || true
+            exit 1
+          fi
+
       - name: Run chaos and resilience tests
         env:
           CHAOS_TESTS: "1"
+          API_BASE_URL: http://localhost:8000
+          GATEWAY_URL: http://localhost:8080
+          COMPOSE_FILE: docker-compose.infra.yml:docker-compose.go.yml:docker-compose.yml:docker-compose.ci-loadtest.yml
         run: uv run pytest tests/chaos/ -v -m chaos --tb=short
+
+      - name: Tear down full chaos compose stack
+        if: always()
+        shell: bash
+        run: |
+          CF="-f docker-compose.infra.yml -f docker-compose.go.yml -f docker-compose.yml -f docker-compose.ci-loadtest.yml"
+          docker rm -f ci-nightly-backend >/dev/null 2>&1 || true
+          docker compose $CF down -v --remove-orphans || true
 
   kyverno-test:
     name: Kyverno policy tests

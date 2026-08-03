@@ -2040,7 +2040,7 @@ jobs:
           CHAOS_TESTS: "1"
           API_BASE_URL: "http://localhost:8000"
           GATEWAY_URL: "http://localhost:8080"
-          DATABASE_URL_SYNC: "postgresql://postgres:postgres@localhost:5432/university" # pragma: allowlist secret
+          DATABASE_URL_SYNC: "postgresql://postgres:postgres@localhost:54321/university" # pragma: allowlist secret
           # The chaos suite's internal `docker compose stop/start` calls carry no
           # -f flags. COMPOSE_FILE (Linux separator ':') makes them target the
           # full merged stack so nats / ws-hub / gateway are visible.
