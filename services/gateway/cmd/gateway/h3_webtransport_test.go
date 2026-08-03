@@ -16,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -163,6 +164,26 @@ func TestPrepareTLSConfig_RejectsInvalidCertificateFiles(t *testing.T) {
 	tlsCfg, err := prepareTLSConfig(&config.Config{TLSCertFile: certPath, TLSKeyFile: keyPath}, initLogger())
 	assert.Nil(t, tlsCfg)
 	assert.Error(t, err)
+}
+
+func TestRunServer_H3PreparationAndShutdown(t *testing.T) {
+	t.Run("h3 tls preparation failure does not prevent http shutdown", func(t *testing.T) {
+		certPath := t.TempDir() + string(os.PathSeparator) + "gateway.crt"
+		keyPath := t.TempDir() + string(os.PathSeparator) + "gateway.key"
+		require.NoError(t, os.WriteFile(certPath, []byte("not-a-certificate"), 0o600))
+		require.NoError(t, os.WriteFile(keyPath, []byte("not-a-key"), 0o600))
+
+		cfg := &config.Config{
+			Port:        "-1",
+			H3Enabled:   true,
+			H3Port:      "0",
+			TLSCertFile: certPath,
+			TLSKeyFile:  keyPath,
+		}
+
+		err := runServer(cfg, gin.New(), initLogger())
+		assert.Error(t, err)
+	})
 }
 
 func TestGenerateTestJWT_Helpers(t *testing.T) {
