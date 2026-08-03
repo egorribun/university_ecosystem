@@ -767,6 +767,27 @@ func TestRunMain_PropagatesServerLifecycleFailure(t *testing.T) {
 	require.EqualError(t, err, "server lifecycle failed")
 }
 
+func TestRunMain_ClosesInitializedSpiffeClientOnServerFailure(t *testing.T) {
+	configureRunMainStubs(t)
+	initSpiffeClientFunc = func(context.Context, *config.Config, *slog.Logger) (*spiffe.Client, error) {
+		// A zero-value client has a no-op Close method and lets this test exercise
+		// the production defer without requiring a live SPIRE Workload API socket.
+		return &spiffe.Client{}, nil
+	}
+	setupGRPCServerFunc = func(context.Context, *config.Config, *rsa.PublicKey, client.Client, ...any) (*grpc.Server, error) {
+		return grpc.NewServer(), nil
+	}
+	setupGraphQLServerFunc = func(context.Context, *config.Config, *rsa.PublicKey, client.Client, *slog.Logger) (*http.Server, error) {
+		return &http.Server{}, nil
+	}
+	runServersFunc = func(context.Context, *grpc.Server, *http.Server, *config.Config, *slog.Logger) error {
+		return errors.New("server lifecycle failed after SPIFFE initialization")
+	}
+
+	err := runMain(context.Background())
+	require.EqualError(t, err, "server lifecycle failed after SPIFFE initialization")
+}
+
 func TestSetupGRPCServer_SpiffeNilClientError(t *testing.T) {
 	cfg := &config.Config{
 		JWTSecret:     "secret",
