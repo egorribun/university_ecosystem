@@ -19,7 +19,12 @@ interface NewsCardProps {
   "data-pop"?: string
 }
 
-export const NewsCard = memo(function NewsCard({ locale, className, style, ...props }: NewsCardProps) {
+export const NewsCard = memo(function NewsCard({
+  locale,
+  className,
+  style,
+  ...props
+}: NewsCardProps) {
   const { t } = useTranslation(["dashboard", "common"])
   const { language } = useLanguage()
   const queryClient = useQueryClient()

@@ -13,7 +13,11 @@ interface NewsCardListProps {
   locale: string
 }
 
-export const NewsCardList = memo(function NewsCardList({ news, loading, locale }: NewsCardListProps) {
+export const NewsCardList = memo(function NewsCardList({
+  news,
+  loading,
+  locale,
+}: NewsCardListProps) {
   const { t } = useTranslation(["dashboard"])
   const navigate = useNavigate()
 
@@ -80,4 +84,3 @@ export const NewsCardList = memo(function NewsCardList({ news, loading, locale }
 })
 
 export default NewsCardList
-

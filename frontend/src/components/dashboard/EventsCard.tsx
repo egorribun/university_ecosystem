@@ -23,7 +23,11 @@ interface EventsCardProps {
   "data-pop"?: string
 }
 
-export const EventsCard = memo(function EventsCard({ className, style, ...props }: EventsCardProps) {
+export const EventsCard = memo(function EventsCard({
+  className,
+  style,
+  ...props
+}: EventsCardProps) {
   const { t } = useTranslation(["dashboard", "common"])
   const navigate = useNavigate()
   const { language } = useLanguage()

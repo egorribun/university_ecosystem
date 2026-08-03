@@ -62,7 +62,6 @@ interface ContactListProps {
 // sidebar viewport on most screens without being visually overwhelming.
 const SKELETON_ROW_COUNT = 6
 
-
 // Wave 124 SW1 — Removed LayoutGroup + `layout` prop (require domMax). Items
 // snap-reorder when contacts list is re-sorted (e.g., new message moves
 // contact to top). Per plan: messenger contact reorder is rare and snap is
@@ -390,4 +389,3 @@ export const ContactList = memo(function ContactList({
 })
 
 export default ContactList
-

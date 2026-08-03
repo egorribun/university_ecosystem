@@ -121,4 +121,3 @@ export const DataTable = React.memo(DataTableInner) as <TData, TValue = unknown>
 ) => React.ReactElement
 
 export default DataTable
-

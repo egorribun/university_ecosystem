@@ -32,4 +32,3 @@ export const ClockWidget = memo(function ClockWidget() {
 })
 
 export default ClockWidget
-

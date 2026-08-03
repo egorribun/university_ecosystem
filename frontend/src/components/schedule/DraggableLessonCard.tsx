@@ -57,4 +57,3 @@ export const DraggableLessonCard = memo(function DraggableLessonCard({
 })
 
 export default DraggableLessonCard
-

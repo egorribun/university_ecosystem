@@ -251,4 +251,3 @@ function LessonCountLegend({ count }: { count: number }) {
 }
 
 export default ScheduleTimeline
-

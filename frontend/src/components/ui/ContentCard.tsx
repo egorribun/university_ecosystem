@@ -54,19 +54,17 @@ interface ContentCardRootProps extends Omit<CardProps, "padding"> {
 
 /** Root ContentCard component */
 const ContentCardRoot = memo(
-  forwardRef<HTMLDivElement, ContentCardRootProps>(
-    ({ children, className, ...props }, _ref) => {
-      // Note: ref forwarding is not supported by Card component
-      // If needed, wrap Card in a div with ref
-      return (
-        <Card padding="none" className={cn("overflow-hidden", className)} {...props}>
-          <ContentCardContext.Provider value={{ isHovered: false }}>
-            {children}
-          </ContentCardContext.Provider>
-        </Card>
-      )
-    }
-  )
+  forwardRef<HTMLDivElement, ContentCardRootProps>(({ children, className, ...props }, _ref) => {
+    // Note: ref forwarding is not supported by Card component
+    // If needed, wrap Card in a div with ref
+    return (
+      <Card padding="none" className={cn("overflow-hidden", className)} {...props}>
+        <ContentCardContext.Provider value={{ isHovered: false }}>
+          {children}
+        </ContentCardContext.Provider>
+      </Card>
+    )
+  })
 )
 ContentCardRoot.displayName = "ContentCard"
 

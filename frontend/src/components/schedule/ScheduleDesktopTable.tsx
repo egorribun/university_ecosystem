@@ -314,4 +314,3 @@ export const ScheduleDesktopTable = memo(function ScheduleDesktopTable({
 })
 
 export default ScheduleDesktopTable
-

@@ -373,4 +373,3 @@ export const GroupInfoPanel = memo(function GroupInfoPanel({
 })
 
 export default GroupInfoPanel
-

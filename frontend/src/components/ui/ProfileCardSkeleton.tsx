@@ -13,10 +13,7 @@ interface ProfileCardSkeletonProps {
  * ProfileCardSkeleton - Loading state for Profile page header.
  * Displays placeholders for avatar, name, bio, and stats.
  */
-function ProfileCardSkeletonInner({
-  showCover = true,
-  className = "",
-}: ProfileCardSkeletonProps) {
+function ProfileCardSkeletonInner({ showCover = true, className = "" }: ProfileCardSkeletonProps) {
   const { t } = useTranslation()
   return (
     <div

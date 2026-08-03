@@ -7,7 +7,10 @@ interface DashboardSectionSkeletonProps {
   className?: string
 }
 
-export const DashboardSectionSkeleton = memo(function DashboardSectionSkeleton({ type, className }: DashboardSectionSkeletonProps) {
+export const DashboardSectionSkeleton = memo(function DashboardSectionSkeleton({
+  type,
+  className,
+}: DashboardSectionSkeletonProps) {
   return (
     <Card className={cn("card-matte glass-noise p-6 h-full", className)}>
       <Skeleton width="55%" height="1.5rem" className="mb-5" />
