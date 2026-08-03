@@ -558,18 +558,29 @@ describe("useProfileSync — synchronous bootstrap (useState initFn)", () => {
     vi.spyOn(api, "get").mockResolvedValue({ data: testUser } as any)
     const removeSpy = vi.spyOn(Storage.prototype, "removeItem")
     const originalSubtle = window.crypto.subtle
-    let reads = 0
-    const subtleSpy = vi.spyOn(window.crypto, "subtle", "get").mockImplementation(() => {
-      reads += 1
-      return (reads <= 3 ? originalSubtle : undefined) as SubtleCrypto
-    })
+    let cryptoAvailable = true
+    const subtleSpy = vi
+      .spyOn(window.crypto, "subtle", "get")
+      .mockImplementation(() => (cryptoAvailable ? originalSubtle : undefined) as SubtleCrypto)
+    const nativeImportKey = originalSubtle.importKey.bind(originalSubtle)
+    const importKeySpy = vi
+      .spyOn(originalSubtle, "importKey")
+      .mockImplementation(async (format, keyData, algorithm, extractable, keyUsages) => {
+        const result = await nativeImportKey(format, keyData, algorithm, extractable, keyUsages)
+        if (typeof algorithm !== "string" && algorithm.name === "PBKDF2") {
+          // Keep HMAC verification available, then hide Web Crypto immediately
+          // after the PBKDF2 material is imported so deriveKey sees `null`.
+          cryptoAvailable = false
+        }
+        return result
+      })
 
     try {
       const { result } = renderProfileSync({ signingKey: mockSigningKey })
       await waitFor(() => expect(result.current.loading).toBe(false))
       await waitFor(() => expect(removeSpy).toHaveBeenCalledWith(PROFILE_CACHE_STORAGE_KEY))
-      expect(reads).toBeGreaterThanOrEqual(4)
     } finally {
+      importKeySpy.mockRestore()
       subtleSpy.mockRestore()
     }
   })
