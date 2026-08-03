@@ -1660,6 +1660,42 @@ jobs:
           name: rust-coverage
           path: artifacts/coverage/rust/
 
+      - name: Upload rust-native coverage to Codecov
+        uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: artifacts/coverage/rust/rust-native/llvm.json
+          flags: rust-native
+          name: rust-native-coverage
+          fail_ci_if_error: false
+
+      - name: Upload rust-pyo3-sanitizer coverage to Codecov
+        uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: artifacts/coverage/rust/rust-pyo3-sanitizer/llvm.json
+          flags: rust-pyo3-sanitizer
+          name: rust-pyo3-sanitizer-coverage
+          fail_ci_if_error: false
+
+      - name: Upload rust-wasm-sanitizer coverage to Codecov
+        uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: artifacts/coverage/rust/rust-wasm-sanitizer/llvm.json
+          flags: rust-wasm-sanitizer
+          name: rust-wasm-sanitizer-coverage
+          fail_ci_if_error: false
+
+      - name: Upload rust-crypto coverage to Codecov
+        uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: artifacts/coverage/rust/rust-crypto/llvm.json
+          flags: rust-crypto
+          name: rust-crypto-coverage
+          fail_ci_if_error: false
+
       - name: Install wasm-pack
         # rustwasm canonical curl installer (W141 polish-v2 / W142 polish-v3:
         # taiki-e/install-action hardcodes the old drager/wasm-pack repo → 404).
