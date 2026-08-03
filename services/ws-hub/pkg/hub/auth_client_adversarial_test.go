@@ -29,3 +29,15 @@ func TestWithSPIFFEInvalidClientFailsClosed(t *testing.T) {
 		client.WithSPIFFE(&spiffe.Client{}, "spiffe://university.ecosystem/ns/default/sa/app")
 	})
 }
+
+func TestWithSPIFFEEmptyBackendIDSkipsConfiguration(t *testing.T) {
+	client := NewInternalAPIAuthClient("http://localhost:8000", nil)
+
+	// An enabled SPIFFE client without a backend identity is deliberately a
+	// no-op: there is no peer identity to validate and no TLS config to install.
+	client.WithSPIFFE(&spiffe.Client{}, "")
+
+	transport, ok := client.httpClient.Transport.(*http.Transport)
+	require.True(t, ok)
+	require.Nil(t, transport.TLSClientConfig)
+}

@@ -205,6 +205,16 @@ func TestHandleCacheInvalidation_ValidSignature(t *testing.T) {
 	assert.Equal(t, [2]string{"user-9", "room-9"}, calls[0])
 }
 
+func TestHandleCacheInvalidation_ValidSignatureWithoutAuthClient(t *testing.T) {
+	h := newNatsTestHub(nil, "internal-secret", 10) // pragma: allowlist secret
+	h.handleCacheInvalidation(context.Background())(&nats.Msg{
+		Subject: "cache.invalidate",
+		Data: signedInvalidationPayload(t, "internal-secret", invalidationData{
+			RoomID: "room-9", Timestamp: 1234, UserID: "user-9",
+		}),
+	})
+}
+
 func TestHandleCacheInvalidation_BadSignatureDropped(t *testing.T) {
 	auth := &recordingAuthClient{}
 	h := newNatsTestHub(auth, "internal-secret", 10) // pragma: allowlist secret
