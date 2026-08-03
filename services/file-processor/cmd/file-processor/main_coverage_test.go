@@ -16,6 +16,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -81,6 +82,17 @@ func TestInitTracer_DevInsecureSucceeds(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, tp)
 	// Shut down to stop the batch-span-processor goroutine cleanly.
+	require.NoError(t, tp.Shutdown(context.Background()))
+}
+
+func TestInitTracer_TLSPathSucceeds(t *testing.T) {
+	// The secure branch must construct TLS credentials without dialing the
+	// collector during startup; shutdown verifies the exporter remains clean.
+	tp, err := initTracer(context.Background(),
+		&config.Config{Environment: "development", OTLPEndpoint: "127.0.0.1:4317"},
+		discardLogger())
+	require.NoError(t, err)
+	require.NotNil(t, tp)
 	require.NoError(t, tp.Shutdown(context.Background()))
 }
 
@@ -211,6 +223,25 @@ func TestSetupGraphQLServer(t *testing.T) {
 		JWTSecret:   "test-secret",
 	}
 	srv, err := setupGraphQLServer(context.Background(), cfg, nil, nil, discardLogger())
+	require.NoError(t, err)
+	assert.NotNil(t, srv)
+}
+
+func TestSetupGraphQLServer_ParentSchemaFallback(t *testing.T) {
+	content, err := os.ReadFile("../../schema.graphql")
+	require.NoError(t, err)
+
+	tempDir := t.TempDir()
+	parentSchema := filepath.Join(tempDir, "..", "schema.graphql")
+	require.NoError(t, os.WriteFile(parentSchema, content, 0600)) // #nosec G703 -- test-only temp path.
+	t.Chdir(tempDir)
+	t.Setenv("FP_SCHEMA_PATH", "")
+
+	srv, err := setupGraphQLServer(context.Background(), &config.Config{
+		GraphQLPort: "0",
+		MinioBucket: "test-bucket",
+		JWTSecret:   "test-secret",
+	}, nil, nil, discardLogger())
 	require.NoError(t, err)
 	assert.NotNil(t, srv)
 }
