@@ -304,14 +304,14 @@ pub fn batch_detect_conflicts(
                         .par_iter()
                         .enumerate()
                         .flat_map_iter(|(i, a)| {
-                            let a_weekday = metadata[i].weekday.expect("canonical weekday");
+                            let a_weekday = metadata[i].weekday;
                             let a_valid = a.start_time < a.end_time;
                             items[i + 1..]
                                 .iter()
                                 .zip(metadata[i + 1..].iter())
                                 .filter(move |(b, b_metadata)| {
                                     a_valid
-                                        && b_metadata.weekday == Some(a_weekday)
+                                        && b_metadata.weekday == a_weekday
                                         && b.start_time < b.end_time
                                         && a.start_time < b.end_time
                                         && b.start_time < a.end_time
