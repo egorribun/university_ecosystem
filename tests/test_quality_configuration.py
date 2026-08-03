@@ -90,6 +90,17 @@ def test_governance_quality_configuration_matches_contract() -> None:
     assert mutation_exclusions == {"version": 1, "exclusions": []}
 
 
+def test_mutmut_uses_the_unit_population_instead_of_a_single_probe_file() -> None:
+    mutation_config = _read_pyproject()["tool"]["mutmut"]
+
+    assert mutation_config["pytest_add_cli_args_test_selection"] == [
+        "-m",
+        "not integration and not chaos and not performance and not slow",
+        "tests/",
+    ]
+    assert "tests/test_tenant_rls.py" not in mutation_config["pytest_add_cli_args"]
+
+
 def test_test_duration_updater_aggregates_junit_cases_and_preserves_schema() -> None:
     from scripts.quality.update_test_durations import build_duration_payload
 

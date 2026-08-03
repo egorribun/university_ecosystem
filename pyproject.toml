@@ -502,11 +502,16 @@ skips = [
 # universe; without it mutmut falls back to guess_paths_to_mutate(), which does
 # NOT try app/ and raises FileNotFoundError ("Could not figure out where the code
 # to mutate is"). `source_paths` is a newer/unreleased key NOT recognized by 3.5.0.
-# `pytest_add_cli_args_test_selection` scopes the pytest run. Incremental file
-# selection is done positionally via dotted-module glob patterns at the CLI
-# (see .github/workflows/ci.yml mutation-tests job) — those filter within this universe.
+# `pytest_add_cli_args_test_selection` scopes the pytest run to the deterministic
+# unit-test population. Incremental file selection is done positionally via
+# dotted-module glob patterns at the CLI (see .github/workflows/ci.yml
+# mutation-tests job) — those filter within this universe.
 paths_to_mutate = ["app/"]
-pytest_add_cli_args_test_selection = ["tests/test_tenant_rls.py"]
+pytest_add_cli_args_test_selection = [
+    "-m",
+    "not integration and not chaos and not performance and not slow",
+    "tests/",
+]
 # mutmut runs the baseline/stats suite inside an isolated `mutants/` copy whose
 # tree is built by copy_src_dir() (walk_all_files copies ONLY paths_to_mutate =
 # app/) plus copy_also_copy_files() (the user-config `also_copy` paths). tests/
@@ -546,7 +551,6 @@ also_copy = ["infrastructure", "alembic", "docker-compose.full.yml"]
 pytest_add_cli_args = [
     "-x",
     "-q",
-    "tests/test_tenant_rls.py",
     "--ignore=tests/integration/test_migration_data.py",
     # Schemathesis dynamically generates tests that pytest cannot collect individually by node ID,
     # causing exit code 4 / BadTestExecutionCommandsException. Ignore them under mutmut.
