@@ -94,6 +94,18 @@ func TestInitializeTracerShutdown_SuccessPath(t *testing.T) {
 	cleanup()
 }
 
+func TestInitializeTracerShutdown_InitFailureReturnsNoop(t *testing.T) {
+	// Production must reject insecure OTLP before an exporter is created. The
+	// wrapper converts that startup failure into a safe no-op cleanup function so
+	// callers can keep their unconditional defer without a nil function panic.
+	cleanup := initializeTracerShutdown(context.Background(), &config.Config{
+		OTLPInsecure: true,
+		Environment:  "production",
+	}, discardLogger())
+	require.NotNil(t, cleanup)
+	assert.NotPanics(t, cleanup)
+}
+
 func TestCloseTemporalClient_NilIsNoOp(t *testing.T) {
 	assert.NotPanics(t, func() { closeTemporalClient(nil) })
 }
