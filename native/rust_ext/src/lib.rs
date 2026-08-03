@@ -873,6 +873,15 @@ mod tests {
                 .unwrap();
             assert!(batch.is_empty());
 
+            // Invalid Python values must be converted to PyErr at the FFI
+            // boundary instead of panicking while extracting ScheduleItem.
+            assert!(detect_conflicts.call1((py.None(), &existing_list)).is_err());
+            let invalid_existing = pyo3::types::PyList::new(py, vec![py.None()]).unwrap();
+            assert!(detect_conflicts
+                .call1((&target, &invalid_existing))
+                .is_err());
+            assert!(batch_detect_conflicts.call1((&invalid_existing,)).is_err());
+
             // 4. find_optimal_slot
             let find_optimal_slot = m.getattr("find_optimal_slot").unwrap();
             let hours = pyo3::types::PyList::new(py, vec![10u32, 11u32]).unwrap();
@@ -1270,6 +1279,26 @@ mod tests {
             ..item2.clone()
         };
         assert!(!check_conflict_proto(&odd, &even));
+    }
+
+    #[test]
+    fn batch_detect_conflicts_exercises_noncanonical_metadata_path() {
+        let odd = ScheduleItem {
+            id: None,
+            weekday: "monday".to_string(),
+            start_time: 1000,
+            end_time: 2000,
+            parity: "odd".to_string(),
+        };
+        let even = ScheduleItem {
+            parity: "even".to_string(),
+            ..odd.clone()
+        };
+
+        // Non-canonical parity forces the metadata-aware branch rather than
+        // the fast weekday-only path.
+        let result = batch_detect_conflicts(vec![odd, even]).unwrap();
+        assert!(result.is_empty());
     }
 
     #[test]
