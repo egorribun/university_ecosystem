@@ -56,8 +56,8 @@ func startNATSContainer(t *testing.T) (*nats.Conn, func()) {
 		"nats:2.12.6-alpine",
 		// JetStream not required for the cache.invalidate / chat.* / notifications.*
 		// subjects this test suite covers — they run on core NATS pub/sub.
-		// JetStream-specific tests (PERF-22-01 NakWithDelay redelivery) would
-		// add `tcnats.WithArgument("jetstream", "")`.
+		// The testcontainers NATS module enables JetStream by default; this suite
+		// intentionally uses only core pub/sub subjects.
 		testcontainers.WithLogger(tclog.TestLogger(t)),
 	)
 	if err != nil {

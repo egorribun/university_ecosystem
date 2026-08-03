@@ -26,7 +26,6 @@ func startJetStreamNATSContainer(t *testing.T) (*nats.Conn, nats.JetStreamContex
 	container, err := tcnats.Run(
 		ctx,
 		"nats:2.12.6-alpine",
-		tcnats.WithArgument("jetstream", ""),
 		testcontainers.WithLogger(tclog.TestLogger(t)),
 	)
 	if err != nil {

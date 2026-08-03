@@ -27,7 +27,6 @@ func startFileProcessorJetStream(t *testing.T) (*nats.Conn, nats.JetStreamContex
 	container, err := tcnats.Run(
 		ctx,
 		"nats:2.12.6-alpine",
-		tcnats.WithArgument("jetstream", ""),
 		testcontainers.WithLogger(tclog.TestLogger(t)),
 	)
 	require.NoError(t, err)
@@ -119,7 +118,11 @@ func TestIntegration_StartNatsSubscriberExecutesWorkflow(t *testing.T) {
 		require.Equal(t, job.Type, got.Type)
 		require.Equal(t, job.SourceKey, got.SourceKey)
 		require.Equal(t, job.DestKey, got.DestKey)
-		require.Equal(t, job.Options, got.Options)
+		// Options crosses the JSON wire and is decoded into map[string]any, so
+		// numeric values are float64 even though the publisher started with ints.
+		require.Len(t, got.Options, 2)
+		require.Equal(t, float64(50), got.Options["width"])
+		require.Equal(t, float64(50), got.Options["height"])
 	case <-time.After(5 * time.Second):
 		t.Fatal("timed out waiting for NATS subscriber to execute workflow")
 	}
