@@ -247,6 +247,19 @@ func TestSetupGraphQLServer_ParentSchemaFallback(t *testing.T) {
 	assert.NotNil(t, srv)
 }
 
+func TestSetupGraphQLServer_InvalidSchemaReturnsParseError(t *testing.T) {
+	tempSchema := filepath.Join(t.TempDir(), "schema.graphql")
+	require.NoError(t, os.WriteFile(tempSchema, []byte("type Query {"), 0600)) // #nosec G703 -- test-only temp path.
+	t.Setenv("FP_SCHEMA_PATH", tempSchema)
+
+	_, err := setupGraphQLServer(context.Background(), &config.Config{
+		GraphQLPort: "0",
+		MinioBucket: "test-bucket",
+		JWTSecret:   "test-secret",
+	}, nil, nil, discardLogger())
+	require.Error(t, err)
+}
+
 func TestRunServers_CleanShutdown(t *testing.T) {
 	content, err := os.ReadFile("../../schema.graphql")
 	if err == nil {
