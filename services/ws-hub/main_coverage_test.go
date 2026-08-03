@@ -7,12 +7,14 @@ package main
 
 import (
 	"context"
+	"errors"
 	"io"
 	"log/slog"
 	"net/http"
 	"testing"
 
 	"github.com/alicebob/miniredis/v2"
+	"github.com/nats-io/nats.go"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/university-ecosystem/ws-hub/pkg/config"
@@ -86,4 +88,42 @@ func TestCleanupHelpersAreNilSafe(t *testing.T) {
 		closeRedisConnection(context.Background(), nil, discardLogger())
 		closeSPIFFEClient(context.Background(), nil, discardLogger())
 	})
+}
+
+func TestRun_PropagatesNATSInitializationFailure(t *testing.T) {
+	t.Setenv("WS_HUB_INTERNAL_SECRET", "test-secret-at-least-32-characters-long")
+	t.Setenv("SENTRY_DSN", "not-a-valid-dsn")
+	t.Setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "127.0.0.1:4317")
+	t.Setenv("OTEL_EXPORTER_OTLP_INSECURE", "true")
+
+	initNatsMu.Lock()
+	oldInitNats := initNats
+	initNats = func(context.Context, *config.Config, *slog.Logger) (*nats.Conn, error) {
+		return nil, errors.New("nats initialization failed")
+	}
+	initNatsMu.Unlock()
+	t.Cleanup(func() {
+		initNatsMu.Lock()
+		initNats = oldInitNats
+		initNatsMu.Unlock()
+	})
+
+	err := run()
+	require.EqualError(t, err, "nats initialization failed")
+}
+
+func TestInitializeTracerShutdown_CancelledContextIsSafe(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	cleanup := initializeTracerShutdown(ctx, &config.Config{Environment: "test"}, discardLogger())
+	assert.NotPanics(t, cleanup)
+}
+
+func TestInitializeTracerShutdown_SuccessPathCleansUp(t *testing.T) {
+	t.Setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "127.0.0.1:4317")
+	t.Setenv("OTEL_EXPORTER_OTLP_INSECURE", "true")
+
+	cleanup := initializeTracerShutdown(context.Background(), &config.Config{Environment: "test"}, discardLogger())
+	assert.NotPanics(t, cleanup)
 }
