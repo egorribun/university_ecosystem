@@ -5,6 +5,10 @@
  */
 export default {
   testRunner: "vitest",
+  // Windows Vitest/ESBuild cannot reliably resolve configs from Stryker's
+  // hidden default `.stryker-tmp`; keep the sandbox visible as recommended
+  // by Stryker's Windows troubleshooting guidance.
+  tempDirName: "stryker-tmp",
   vitest: {
     configFile: "vitest.config.ts",
     related: false,
