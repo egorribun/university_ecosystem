@@ -18,5 +18,9 @@ skip-path:
   - tests
   - frontend/tests
   - k8s/kyverno/tests
-  - k8s/spire
-
+  # SPIRE's node/workload attestation intentionally uses hostPID, hostNetwork,
+  # and hostPath-backed Workload API sockets. Checkov's generic pod-hardening
+  # checks cannot model that required deployment contract; these manifests are
+  # validated separately by Kubernetes/cluster policy tests. Checkov emits
+  # slash-separated paths on Linux and backslash-separated paths on Windows.
+  - 'k8s[/\\]spire'
