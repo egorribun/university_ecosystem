@@ -7,12 +7,22 @@ package hub
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/nats-io/nats.go"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+type scriptedJetStream struct {
+	nats.JetStreamContext
+	subscribe func(string, nats.MsgHandler, ...nats.SubOpt) (*nats.Subscription, error)
+}
+
+func (s *scriptedJetStream) Subscribe(subject string, handler nats.MsgHandler, opts ...nats.SubOpt) (*nats.Subscription, error) {
+	return s.subscribe(subject, handler, opts...)
+}
 
 func TestHandleNotifications_CancelledContextReturnsEarly(t *testing.T) {
 	h := newNatsTestHub(&mockAuthClient{allowed: true}, "", 10)
@@ -83,4 +93,27 @@ func TestSubscribeToNATS_ChatSubscriptionFailure(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "connection")
 	assert.Empty(t, h.subs)
+}
+
+func TestSubscribeToNATS_JetStreamFallbacksToCoreNATS(t *testing.T) {
+	server := newMockNatsServer(t)
+	nc, err := nats.Connect(server.Addr())
+	require.NoError(t, err)
+	t.Cleanup(nc.Close)
+
+	h := setupTestHub()
+	h.Nats = nc
+	h.enableJetStream = true
+	calledSubjects := make([]string, 0, 2)
+	h.js = &scriptedJetStream{
+		subscribe: func(subject string, _ nats.MsgHandler, _ ...nats.SubOpt) (*nats.Subscription, error) {
+			calledSubjects = append(calledSubjects, subject)
+			return nil, errors.New("scripted JetStream subscription failure")
+		},
+	}
+	t.Cleanup(h.Stop)
+
+	require.NoError(t, h.SubscribeToNATS(context.Background()))
+	assert.Equal(t, []string{"chat.*", "notifications.*"}, calledSubjects)
+	assert.Len(t, h.subs, 5, "core fallback must still register all subscriptions")
 }
