@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1785862077944,
+  "lastUpdate": 1785862127423,
   "repoUrl": "https://github.com/egorribun/university_ecosystem",
   "entries": {
     "Go Services Performance Benchmarks": [
@@ -2179,6 +2179,120 @@ window.BENCHMARK_DATA = {
             "name": "strip_html/large",
             "value": 93259,
             "range": "± 696",
+            "unit": "ns/iter"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "49699333+dependabot[bot]@users.noreply.github.com",
+            "name": "dependabot[bot]",
+            "username": "dependabot[bot]"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "f237c814f173127f3da824054e54268c0b13916c",
+          "message": "build(deps): Bump github.com/prometheus/client_golang from 1.24.0 to 1.24.1 in /services/ws-hub in the go-ws-hub group\n\nBumps the go-ws-hub group in /services/ws-hub with 1 update: [github.com/prometheus/client_golang](https://github.com/prometheus/client_golang).\n\n\nUpdates `github.com/prometheus/client_golang` from 1.24.0 to 1.24.1\n- [Release notes](https://github.com/prometheus/client_golang/releases)\n- [Changelog](https://github.com/prometheus/client_golang/blob/v1.24.1/CHANGELOG.md)\n- [Commits](https://github.com/prometheus/client_golang/compare/v1.24.0...v1.24.1)\n\n---\nupdated-dependencies:\n- dependency-name: github.com/prometheus/client_golang\n  dependency-version: 1.24.1\n  dependency-type: direct:production\n  update-type: version-update:semver-patch\n  dependency-group: go-ws-hub\n...\n\nSigned-off-by: dependabot[bot] <support@github.com>\nCo-authored-by: dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>",
+          "timestamp": "2026-08-04T21:41:59+05:00",
+          "tree_id": "79e11a838dd1d04b22410bddc066c133f55b7ee1",
+          "url": "https://github.com/egorribun/university_ecosystem/commit/f237c814f173127f3da824054e54268c0b13916c"
+        },
+        "date": 1785862126641,
+        "tool": "cargo",
+        "benches": [
+          {
+            "name": "sanitize_rich_text/empty",
+            "value": 6193,
+            "range": "± 118",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_rich_text/plain_text",
+            "value": 7116,
+            "range": "± 199",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_rich_text/simple_html",
+            "value": 9803,
+            "range": "± 101",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_rich_text/xss_attempt",
+            "value": 10413,
+            "range": "± 34",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_rich_text/large",
+            "value": 95227,
+            "range": "± 396",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_html_basic/empty",
+            "value": 5495,
+            "range": "± 109",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_html_basic/plain_text",
+            "value": 6412,
+            "range": "± 17",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_html_basic/simple_html",
+            "value": 9030,
+            "range": "± 34",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_html_basic/xss_attempt",
+            "value": 9244,
+            "range": "± 21",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_html_basic/large",
+            "value": 88981,
+            "range": "± 366",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "strip_html/empty",
+            "value": 5341,
+            "range": "± 14",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "strip_html/plain_text",
+            "value": 6310,
+            "range": "± 49",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "strip_html/simple_html",
+            "value": 8569,
+            "range": "± 107",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "strip_html/xss_attempt",
+            "value": 8904,
+            "range": "± 63",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "strip_html/large",
+            "value": 88106,
+            "range": "± 241",
             "unit": "ns/iter"
           }
         ]
