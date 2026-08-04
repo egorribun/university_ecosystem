@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1785863384987,
+  "lastUpdate": 1785863463663,
   "repoUrl": "https://github.com/egorribun/university_ecosystem",
   "entries": {
     "Go Services Performance Benchmarks": [
@@ -3135,6 +3135,54 @@ window.BENCHMARK_DATA = {
             "name": "batch_detect_conflicts/500",
             "value": 338849,
             "range": "± 9007",
+            "unit": "ns/iter"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "49699333+dependabot[bot]@users.noreply.github.com",
+            "name": "dependabot[bot]",
+            "username": "dependabot[bot]"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "4d8fcde61831ab6443e1f8dbfa86e644e3c28809",
+          "message": "ci(deps): Bump the uv group across 1 directory with 2 updates\n\nBumps the uv group with 2 updates in the / directory: [msgpack](https://github.com/msgpack/msgpack-python) and [pip](https://github.com/pypa/pip).\n\n\nUpdates `msgpack` from 1.1.2 to 1.2.1\n- [Release notes](https://github.com/msgpack/msgpack-python/releases)\n- [Changelog](https://github.com/msgpack/msgpack-python/blob/main/CHANGELOG.md)\n- [Commits](https://github.com/msgpack/msgpack-python/compare/v1.1.2...v1.2.1)\n\nUpdates `pip` from 26.1 to 26.1.2\n- [Changelog](https://github.com/pypa/pip/blob/main/NEWS.rst)\n- [Commits](https://github.com/pypa/pip/compare/26.1...26.1.2)\n\n---\nupdated-dependencies:\n- dependency-name: msgpack\n  dependency-version: 1.2.1\n  dependency-type: indirect\n  dependency-group: uv\n- dependency-name: pip\n  dependency-version: 26.1.2\n  dependency-type: indirect\n  dependency-group: uv\n...\n\nSigned-off-by: dependabot[bot] <support@github.com>\nCo-authored-by: dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>",
+          "timestamp": "2026-08-04T21:45:28+05:00",
+          "tree_id": "d8c3204dc26f383bcbfda522958a3b9258229d5e",
+          "url": "https://github.com/egorribun/university_ecosystem/commit/4d8fcde61831ab6443e1f8dbfa86e644e3c28809"
+        },
+        "date": 1785863462831,
+        "tool": "cargo",
+        "benches": [
+          {
+            "name": "batch_detect_conflicts/10",
+            "value": 13430,
+            "range": "± 438",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "batch_detect_conflicts/50",
+            "value": 22837,
+            "range": "± 1346",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "batch_detect_conflicts/100",
+            "value": 39823,
+            "range": "± 2066",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "batch_detect_conflicts/500",
+            "value": 346984,
+            "range": "± 10057",
             "unit": "ns/iter"
           }
         ]
