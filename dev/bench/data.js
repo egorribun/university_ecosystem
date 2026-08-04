@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1785863222837,
+  "lastUpdate": 1785863384987,
   "repoUrl": "https://github.com/egorribun/university_ecosystem",
   "entries": {
     "Go Services Performance Benchmarks": [
@@ -2635,6 +2635,120 @@ window.BENCHMARK_DATA = {
             "name": "strip_html/large",
             "value": 71708,
             "range": "± 1794",
+            "unit": "ns/iter"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "49699333+dependabot[bot]@users.noreply.github.com",
+            "name": "dependabot[bot]",
+            "username": "dependabot[bot]"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "913c0db5636d6c86e28b1fc517288e551d5277ea",
+          "message": "build(deps): Bump the go-file-processor group across 1 directory with 4 updates\n\nBumps the go-file-processor group with 4 updates in the /services/file-processor directory: [github.com/prometheus/client_golang](https://github.com/prometheus/client_golang), [go.temporal.io/api](https://github.com/temporalio/api-go), [go.temporal.io/sdk](https://github.com/temporalio/sdk-go) and [google.golang.org/grpc](https://github.com/grpc/grpc-go).\n\n\nUpdates `github.com/prometheus/client_golang` from 1.24.0 to 1.24.1\n- [Release notes](https://github.com/prometheus/client_golang/releases)\n- [Changelog](https://github.com/prometheus/client_golang/blob/v1.24.1/CHANGELOG.md)\n- [Commits](https://github.com/prometheus/client_golang/compare/v1.24.0...v1.24.1)\n\nUpdates `go.temporal.io/api` from 1.63.3 to 1.63.4\n- [Release notes](https://github.com/temporalio/api-go/releases)\n- [Commits](https://github.com/temporalio/api-go/compare/v1.63.3...v1.63.4)\n\nUpdates `go.temporal.io/sdk` from 1.46.0 to 1.47.0\n- [Release notes](https://github.com/temporalio/sdk-go/releases)\n- [Changelog](https://github.com/temporalio/sdk-go/blob/main/CHANGELOG.md)\n- [Commits](https://github.com/temporalio/sdk-go/compare/v1.46.0...v1.47.0)\n\nUpdates `google.golang.org/grpc` from 1.82.1 to 1.83.0\n- [Release notes](https://github.com/grpc/grpc-go/releases)\n- [Commits](https://github.com/grpc/grpc-go/compare/v1.82.1...v1.83.0)\n\n---\nupdated-dependencies:\n- dependency-name: github.com/prometheus/client_golang\n  dependency-version: 1.24.1\n  dependency-type: direct:production\n  update-type: version-update:semver-patch\n  dependency-group: go-file-processor\n- dependency-name: go.temporal.io/api\n  dependency-version: 1.63.4\n  dependency-type: direct:production\n  update-type: version-update:semver-patch\n  dependency-group: go-file-processor\n- dependency-name: go.temporal.io/sdk\n  dependency-version: 1.47.0\n  dependency-type: direct:production\n  update-type: version-update:semver-minor\n  dependency-group: go-file-processor\n- dependency-name: google.golang.org/grpc\n  dependency-version: 1.83.0\n  dependency-type: direct:production\n  update-type: version-update:semver-minor\n  dependency-group: go-file-processor\n...\n\nSigned-off-by: dependabot[bot] <support@github.com>\nCo-authored-by: dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>",
+          "timestamp": "2026-08-04T21:45:02+05:00",
+          "tree_id": "21adb758ca2821b4dc7f83d18e95b38375e28557",
+          "url": "https://github.com/egorribun/university_ecosystem/commit/913c0db5636d6c86e28b1fc517288e551d5277ea"
+        },
+        "date": 1785863383911,
+        "tool": "cargo",
+        "benches": [
+          {
+            "name": "sanitize_rich_text/empty",
+            "value": 3407,
+            "range": "± 131",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_rich_text/plain_text",
+            "value": 3897,
+            "range": "± 87",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_rich_text/simple_html",
+            "value": 5290,
+            "range": "± 189",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_rich_text/xss_attempt",
+            "value": 5678,
+            "range": "± 351",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_rich_text/large",
+            "value": 52810,
+            "range": "± 1159",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_html_basic/empty",
+            "value": 3092,
+            "range": "± 73",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_html_basic/plain_text",
+            "value": 3406,
+            "range": "± 58",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_html_basic/simple_html",
+            "value": 4874,
+            "range": "± 130",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_html_basic/xss_attempt",
+            "value": 4991,
+            "range": "± 254",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_html_basic/large",
+            "value": 49176,
+            "range": "± 1963",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "strip_html/empty",
+            "value": 3001,
+            "range": "± 67",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "strip_html/plain_text",
+            "value": 3536,
+            "range": "± 554",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "strip_html/simple_html",
+            "value": 4722,
+            "range": "± 144",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "strip_html/xss_attempt",
+            "value": 4907,
+            "range": "± 207",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "strip_html/large",
+            "value": 47880,
+            "range": "± 1138",
             "unit": "ns/iter"
           }
         ]
