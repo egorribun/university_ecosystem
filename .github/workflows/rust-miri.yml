@@ -1,0 +1,68 @@
+name: Rust Miri
+
+# Miri is intentionally a nightly/full-gate check.  It is useful for the
+# pure-Rust sanitizer and crypto paths, but it is not a fast PR gate and cannot
+# interpret the PyO3 C-API or wasm host bindings.
+on:
+  schedule:
+    - cron: "45 1 * * 0"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rust-miri
+  cancel-in-progress: false
+
+jobs:
+  miri:
+    name: Miri (${{ matrix.name }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: pyo3-sanitizer
+            manifest: crates/pyo3-sanitizer/Cargo.toml
+            cargo-args: --no-default-features --lib
+          - name: rust-crypto
+            manifest: frontend/rust-crypto/Cargo.toml
+            cargo-args: --lib
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install Rust nightly with Miri
+        uses: dtolnay/rust-toolchain@2c7215f132e9ebf062739d9130488b56d53c060c # nightly
+        with:
+          toolchain: nightly
+          components: miri
+
+      - name: Cache Cargo registry and Miri targets
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            crates/pyo3-sanitizer/target/
+            frontend/rust-crypto/target/
+          key: ${{ runner.os }}-cargo-miri-${{ hashFiles('crates/pyo3-sanitizer/Cargo.toml', 'crates/pyo3-sanitizer/Cargo.lock', 'frontend/rust-crypto/Cargo.toml', 'frontend/rust-crypto/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-miri-
+
+      - name: Prepare Miri sysroot
+        run: cargo +nightly miri setup
+
+      - name: Run pure-Rust Miri suite
+        env:
+          CARGO_INCREMENTAL: "0"
+          PROPTEST_CASES: "256"
+        run: >-
+          cargo +nightly miri test --locked
+          --manifest-path ${{ matrix.manifest }}
+          ${{ matrix.cargo-args }}
+          -- --test-threads=1

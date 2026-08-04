@@ -442,6 +442,7 @@ mod tests {
         assert!(!stripped.contains('<'), "no tags must remain after strip");
     }
 
+    #[cfg(not(miri))]
     #[test]
     fn test_panic_boundary_catches_rust_panic() {
         Python::initialize();
@@ -455,6 +456,7 @@ mod tests {
         });
     }
 
+    #[cfg(not(miri))]
     #[test]
     fn test_panic_formatting_coverage() {
         Python::initialize();
@@ -479,6 +481,7 @@ mod tests {
         });
     }
 
+    #[cfg(not(miri))]
     #[test]
     fn test_pyo3_bindings_coverage() {
         Python::initialize();
