@@ -582,6 +582,14 @@ def test_go_fuzz_workflow_executes_all_service_fuzz_targets() -> None:
     assert "FuzzJWTValidation" in text
     assert "FuzzParseMessage" in text
     assert "FuzzExtractAlgFromHeader" in text
+    fuzz_commands = [
+        line.strip()
+        for line in text.splitlines()
+        if line.strip().startswith("go test") and "-fuzz=" in line
+    ]
+    assert len(fuzz_commands) == 4
+    assert all("-fuzztime=30s" in command for command in fuzz_commands)
+    assert all("-parallel=1" in command for command in fuzz_commands)
 
 
 def test_python_fuzz_workflow_is_bounded() -> None:
