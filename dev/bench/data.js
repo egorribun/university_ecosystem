@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1785863463663,
+  "lastUpdate": 1785863638415,
   "repoUrl": "https://github.com/egorribun/university_ecosystem",
   "entries": {
     "Go Services Performance Benchmarks": [
@@ -2749,6 +2749,120 @@ window.BENCHMARK_DATA = {
             "name": "strip_html/large",
             "value": 47880,
             "range": "± 1138",
+            "unit": "ns/iter"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "49699333+dependabot[bot]@users.noreply.github.com",
+            "name": "dependabot[bot]",
+            "username": "dependabot[bot]"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "4d8fcde61831ab6443e1f8dbfa86e644e3c28809",
+          "message": "ci(deps): Bump the uv group across 1 directory with 2 updates\n\nBumps the uv group with 2 updates in the / directory: [msgpack](https://github.com/msgpack/msgpack-python) and [pip](https://github.com/pypa/pip).\n\n\nUpdates `msgpack` from 1.1.2 to 1.2.1\n- [Release notes](https://github.com/msgpack/msgpack-python/releases)\n- [Changelog](https://github.com/msgpack/msgpack-python/blob/main/CHANGELOG.md)\n- [Commits](https://github.com/msgpack/msgpack-python/compare/v1.1.2...v1.2.1)\n\nUpdates `pip` from 26.1 to 26.1.2\n- [Changelog](https://github.com/pypa/pip/blob/main/NEWS.rst)\n- [Commits](https://github.com/pypa/pip/compare/26.1...26.1.2)\n\n---\nupdated-dependencies:\n- dependency-name: msgpack\n  dependency-version: 1.2.1\n  dependency-type: indirect\n  dependency-group: uv\n- dependency-name: pip\n  dependency-version: 26.1.2\n  dependency-type: indirect\n  dependency-group: uv\n...\n\nSigned-off-by: dependabot[bot] <support@github.com>\nCo-authored-by: dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>",
+          "timestamp": "2026-08-04T21:45:28+05:00",
+          "tree_id": "d8c3204dc26f383bcbfda522958a3b9258229d5e",
+          "url": "https://github.com/egorribun/university_ecosystem/commit/4d8fcde61831ab6443e1f8dbfa86e644e3c28809"
+        },
+        "date": 1785863636147,
+        "tool": "cargo",
+        "benches": [
+          {
+            "name": "sanitize_rich_text/empty",
+            "value": 6129,
+            "range": "± 56",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_rich_text/plain_text",
+            "value": 7103,
+            "range": "± 69",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_rich_text/simple_html",
+            "value": 9964,
+            "range": "± 25",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_rich_text/xss_attempt",
+            "value": 10474,
+            "range": "± 30",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_rich_text/large",
+            "value": 98747,
+            "range": "± 4673",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_html_basic/empty",
+            "value": 5583,
+            "range": "± 16",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_html_basic/plain_text",
+            "value": 6483,
+            "range": "± 138",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_html_basic/simple_html",
+            "value": 9072,
+            "range": "± 24",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_html_basic/xss_attempt",
+            "value": 9297,
+            "range": "± 35",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_html_basic/large",
+            "value": 90746,
+            "range": "± 722",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "strip_html/empty",
+            "value": 5318,
+            "range": "± 21",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "strip_html/plain_text",
+            "value": 6272,
+            "range": "± 94",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "strip_html/simple_html",
+            "value": 8598,
+            "range": "± 67",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "strip_html/xss_attempt",
+            "value": 9136,
+            "range": "± 39",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "strip_html/large",
+            "value": 90298,
+            "range": "± 2913",
             "unit": "ns/iter"
           }
         ]
