@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1785872422465,
+  "lastUpdate": 1785874697181,
   "repoUrl": "https://github.com/egorribun/university_ecosystem",
   "entries": {
     "Go Services Performance Benchmarks": [
@@ -3459,6 +3459,54 @@ window.BENCHMARK_DATA = {
             "name": "batch_detect_conflicts/500",
             "value": 339755,
             "range": "± 6213",
+            "unit": "ns/iter"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "49699333+dependabot[bot]@users.noreply.github.com",
+            "name": "dependabot[bot]",
+            "username": "dependabot[bot]"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "59a94734bf71377c8f83f1b486ae1f44d7a97070",
+          "message": "ci(deps): Bump the npm_and_yarn group across 2 directories with 13 updates (#1226)\n\nBumps the npm_and_yarn group with 4 updates in the / directory: [undici](https://github.com/nodejs/undici), [handlebars](https://github.com/handlebars-lang/handlebars.js), [lodash](https://github.com/lodash/lodash) and [minimatch](https://github.com/isaacs/minimatch).\nBumps the npm_and_yarn group with 7 updates in the /frontend directory:\n\n| Package | From | To |\n| --- | --- | --- |\n| [brace-expansion](https://github.com/juliangruber/brace-expansion) | `5.0.7` | `5.0.9` |\n| [brace-expansion](https://github.com/juliangruber/brace-expansion) | `2.1.2` | `2.1.4` |\n| [brace-expansion](https://github.com/juliangruber/brace-expansion) | `1.1.16` | `1.1.18` |\n| [ip-address](https://github.com/beaugunderson/ip-address) | `10.2.0` | `10.4.0` |\n| [@vitest/browser](https://github.com/vitest-dev/vitest/tree/HEAD/packages/browser) | `3.2.6` | `4.1.10` |\n| [postcss](https://github.com/postcss/postcss) | `8.5.16` | `8.5.25` |\n| [sharp](https://github.com/lovell/sharp) | `0.34.5` | `0.35.0` |\n| [dompurify](https://github.com/cure53/DOMPurify) | `3.4.11` | `3.4.13` |\n| [fast-uri](https://github.com/fastify/fast-uri) | `3.1.2` | `3.1.5` |\n\n\n\nUpdates `undici` from 6.23.0 to 6.28.0\n- [Release notes](https://github.com/nodejs/undici/releases)\n- [Commits](https://github.com/nodejs/undici/compare/v6.23.0...v6.28.0)\n\nUpdates `handlebars` from 4.7.8 to 4.7.9\n- [Release notes](https://github.com/handlebars-lang/handlebars.js/releases)\n- [Changelog](https://github.com/handlebars-lang/handlebars.js/blob/v4.7.9/release-notes.md)\n- [Commits](https://github.com/handlebars-lang/handlebars.js/compare/v4.7.8...v4.7.9)\n\nUpdates `lodash` from 4.17.23 to 4.18.1\n- [Release notes](https://github.com/lodash/lodash/releases)\n- [Commits](https://github.com/lodash/lodash/compare/4.17.23...4.18.1)\n\nUpdates `minimatch` from 10.2.2 to 10.2.5\n- [Changelog](https://github.com/isaacs/minimatch/blob/main/changelog.md)\n- [Commits](https://github.com/isaacs/minimatch/compare/v10.2.2...v10.2.5)\n\nUpdates `sigstore` from 4.1.0 to 4.1.1\n- [Release notes](https://github.com/sigstore/sigstore-js/releases)\n- [Commits](https://github.com/sigstore/sigstore-js/compare/sigstore@4.1.0...sigstore@4.1.1)\n\nUpdates `tar` from 7.5.9 to 7.5.19\n- [Release notes](https://github.com/isaacs/node-tar/releases)\n- [Changelog](https://github.com/isaacs/node-tar/blob/main/CHANGELOG.md)\n- [Commits](https://github.com/isaacs/node-tar/compare/v7.5.9...v7.5.19)\n\nUpdates `brace-expansion` from 5.0.7 to 5.0.9\n- [Release notes](https://github.com/juliangruber/brace-expansion/releases)\n- [Commits](https://github.com/juliangruber/brace-expansion/compare/v5.0.7...v5.0.9)\n\nUpdates `brace-expansion` from 2.1.2 to 2.1.4\n- [Release notes](https://github.com/juliangruber/brace-expansion/releases)\n- [Commits](https://github.com/juliangruber/brace-expansion/compare/v5.0.7...v5.0.9)\n\nUpdates `brace-expansion` from 1.1.16 to 1.1.18\n- [Release notes](https://github.com/juliangruber/brace-expansion/releases)\n- [Commits](https://github.com/juliangruber/brace-expansion/compare/v5.0.7...v5.0.9)\n\nUpdates `ip-address` from 10.2.0 to 10.4.0\n- [Release notes](https://github.com/beaugunderson/ip-address/releases)\n- [Commits](https://github.com/beaugunderson/ip-address/compare/v10.2.0...v10.4.0)\n\nUpdates `@vitest/browser` from 3.2.6 to 4.1.10\n- [Release notes](https://github.com/vitest-dev/vitest/releases)\n- [Changelog](https://github.com/vitest-dev/vitest/blob/main/docs/releases.md)\n- [Commits](https://github.com/vitest-dev/vitest/commits/v4.1.10/packages/browser)\n\nUpdates `postcss` from 8.5.16 to 8.5.25\n- [Release notes](https://github.com/postcss/postcss/releases)\n- [Changelog](https://github.com/postcss/postcss/blob/main/CHANGELOG.md)\n- [Commits](https://github.com/postcss/postcss/compare/8.5.16...8.5.25)\n\nUpdates `sharp` from 0.34.5 to 0.35.0\n- [Release notes](https://github.com/lovell/sharp/releases)\n- [Commits](https://github.com/lovell/sharp/compare/v0.34.5...v0.35.0)\n\nUpdates `dompurify` from 3.4.11 to 3.4.13\n- [Release notes](https://github.com/cure53/DOMPurify/releases)\n- [Commits](https://github.com/cure53/DOMPurify/compare/3.4.11...3.4.13)\n\nUpdates `fast-uri` from 3.1.2 to 3.1.5\n- [Release notes](https://github.com/fastify/fast-uri/releases)\n- [Commits](https://github.com/fastify/fast-uri/compare/v3.1.2...v3.1.5)\n\n---\nupdated-dependencies:\n- dependency-name: undici\n  dependency-version: 6.28.0\n  dependency-type: indirect\n  dependency-group: npm_and_yarn\n- dependency-name: handlebars\n  dependency-version: 4.7.9\n  dependency-type: indirect\n  dependency-group: npm_and_yarn\n- dependency-name: lodash\n  dependency-version: 4.18.1\n  dependency-type: indirect\n  dependency-group: npm_and_yarn\n- dependency-name: minimatch\n  dependency-version: 10.2.5\n  dependency-type: indirect\n  dependency-group: npm_and_yarn\n- dependency-name: sigstore\n  dependency-version: 4.1.1\n  dependency-type: indirect\n  dependency-group: npm_and_yarn\n- dependency-name: tar\n  dependency-version: 7.5.19\n  dependency-type: indirect\n  dependency-group: npm_and_yarn\n- dependency-name: brace-expansion\n  dependency-version: 5.0.9\n  dependency-type: direct:production\n  dependency-group: npm_and_yarn\n- dependency-name: brace-expansion\n  dependency-version: 2.1.4\n  dependency-type: indirect\n  dependency-group: npm_and_yarn\n- dependency-name: brace-expansion\n  dependency-version: 1.1.18\n  dependency-type: indirect\n  dependency-group: npm_and_yarn\n- dependency-name: ip-address\n  dependency-version: 10.4.0\n  dependency-type: indirect\n  dependency-group: npm_and_yarn\n- dependency-name: \"@vitest/browser\"\n  dependency-version: 4.1.10\n  dependency-type: direct:development\n  dependency-group: npm_and_yarn\n- dependency-name: postcss\n  dependency-version: 8.5.25\n  dependency-type: direct:development\n  dependency-group: npm_and_yarn\n- dependency-name: sharp\n  dependency-version: 0.35.0\n  dependency-type: direct:development\n  dependency-group: npm_and_yarn\n- dependency-name: dompurify\n  dependency-version: 3.4.13\n  dependency-type: indirect\n  dependency-group: npm_and_yarn\n- dependency-name: fast-uri\n  dependency-version: 3.1.5\n  dependency-type: indirect\n  dependency-group: npm_and_yarn\n...\n\nSigned-off-by: dependabot[bot] <support@github.com>\nCo-authored-by: dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>",
+          "timestamp": "2026-08-04T23:16:53+03:00",
+          "tree_id": "358d295e79f3adb3f6a4dbcc1688157540dcc98a",
+          "url": "https://github.com/egorribun/university_ecosystem/commit/59a94734bf71377c8f83f1b486ae1f44d7a97070"
+        },
+        "date": 1785874695984,
+        "tool": "cargo",
+        "benches": [
+          {
+            "name": "batch_detect_conflicts/10",
+            "value": 11131,
+            "range": "± 445",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "batch_detect_conflicts/50",
+            "value": 31300,
+            "range": "± 733",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "batch_detect_conflicts/100",
+            "value": 54181,
+            "range": "± 1102",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "batch_detect_conflicts/500",
+            "value": 303425,
+            "range": "± 8731",
             "unit": "ns/iter"
           }
         ]
