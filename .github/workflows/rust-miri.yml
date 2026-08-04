@@ -26,10 +26,10 @@ jobs:
         include:
           - name: pyo3-sanitizer
             manifest: crates/pyo3-sanitizer/Cargo.toml
-            cargo-args: --no-default-features --lib
+            cargo_args: --no-default-features --lib
           - name: rust-crypto
             manifest: frontend/rust-crypto/Cargo.toml
-            cargo-args: --lib
+            cargo_args: --lib
 
     steps:
       - name: Checkout
@@ -64,5 +64,5 @@ jobs:
         run: >-
           cargo +nightly miri test --locked
           --manifest-path ${{ matrix.manifest }}
-          ${{ matrix.cargo-args }}
+          ${{ matrix.cargo_args }}
           -- --test-threads=1
