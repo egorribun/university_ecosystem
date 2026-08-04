@@ -381,10 +381,16 @@ jobs:
         run: cargo +nightly miri setup
 
       - name: Test pyo3-sanitizer pure Rust library
-        run: cargo +nightly miri test --manifest-path crates/pyo3-sanitizer/Cargo.toml --lib
+        run: >-
+          cargo +nightly miri test --locked
+          --manifest-path crates/pyo3-sanitizer/Cargo.toml
+          --no-default-features --lib -- --test-threads=1
 
       - name: Test rust-crypto pure Rust library
-        run: cargo +nightly miri test --manifest-path frontend/rust-crypto/Cargo.toml --lib
+        run: >-
+          cargo +nightly miri test --locked
+          --manifest-path frontend/rust-crypto/Cargo.toml
+          --lib -- --test-threads=1
 
   notify-failure:
     name: Report nightly regression

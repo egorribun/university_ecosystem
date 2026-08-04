@@ -21,7 +21,9 @@ PACT_WORKFLOW_PATH = REPOSITORY_ROOT / ".github" / "workflows" / "contract-tests
 QUALITY_HISTORY_WORKFLOW_PATH = (
     REPOSITORY_ROOT / ".github" / "workflows" / "quality-history.yml"
 )
-MIRI_WORKFLOW_PATH = REPOSITORY_ROOT / ".github" / "workflows" / "rust-miri.yml"
+NIGHTLY_FULL_WORKFLOW_PATH = (
+    REPOSITORY_ROOT / ".github" / "workflows" / "nightly-full-gate.yml"
+)
 KYVERNO_POLICY_PATH = REPOSITORY_ROOT / "k8s" / "kyverno" / "cluster-policies.yaml"
 KYVERNO_TEST_ROOT = REPOSITORY_ROOT / "k8s" / "kyverno" / "tests"
 
@@ -317,19 +319,9 @@ def test_quality_history_archives_manifests_and_renders_dashboard() -> None:
 
 
 def test_miri_workflow_scopes_to_pure_rust_crate_targets() -> None:
-    workflow = yaml.safe_load(MIRI_WORKFLOW_PATH.read_text(encoding="utf-8"))
-    triggers = _workflow_triggers(workflow)
-    assert "workflow_dispatch" in triggers
-    assert triggers["schedule"][0]["cron"] == "45 1 * * 0"
-
+    workflow = yaml.safe_load(NIGHTLY_FULL_WORKFLOW_PATH.read_text(encoding="utf-8"))
     job = workflow["jobs"]["miri"]
-    assert job["timeout-minutes"] == 20
-    matrix = job["strategy"]["matrix"]["include"]
-    manifests = {entry["manifest"] for entry in matrix}
-    assert manifests == {
-        "crates/pyo3-sanitizer/Cargo.toml",
-        "frontend/rust-crypto/Cargo.toml",
-    }
+    assert job["timeout-minutes"] == 60
     run_text = "\n".join(
         str(step.get("run", ""))
         for step in job["steps"]
@@ -338,10 +330,10 @@ def test_miri_workflow_scopes_to_pure_rust_crate_targets() -> None:
     assert "cargo +nightly miri setup" in run_text
     assert "cargo +nightly miri test --locked" in run_text
     assert "--test-threads=1" in run_text
-    assert "actions/cache@" in "\n".join(
-        str(step.get("uses", ""))
-        for step in job["steps"]
-        if isinstance(step, dict)
+    assert "crates/pyo3-sanitizer/Cargo.toml" in run_text
+    assert "frontend/rust-crypto/Cargo.toml" in run_text
+    assert "components: miri" in NIGHTLY_FULL_WORKFLOW_PATH.read_text(
+        encoding="utf-8"
     )
 
     pyo3_source = (REPOSITORY_ROOT / "crates/pyo3-sanitizer/src/lib.rs").read_text(
