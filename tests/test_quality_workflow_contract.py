@@ -338,6 +338,13 @@ def test_performance_workflow_has_blocking_native_and_ws_baselines() -> None:
     assert native_store["with"]["alert-threshold"] == "110%"
     assert native_store["with"]["fail-on-alert"] is True
 
+    ws_run_text = "\n".join(
+        step.get("run", "")
+        for step in jobs["ws-hub-regression"]["steps"]
+        if isinstance(step, dict)
+    )
+    assert "go test -bench=. -run=^$ -benchmem -count=5 -benchtime=1s" in ws_run_text
+
     ws_store = next(
         step
         for step in jobs["ws-hub-regression"]["steps"]

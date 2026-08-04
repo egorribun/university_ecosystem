@@ -85,7 +85,9 @@ jobs:
         run: |
           cd services/ws-hub
           go mod download
-          go test -bench=. -benchmem -count=5 -benchtime=1s ./... 2>&1 | grep -E '^(pkg:|goos:|goarch:|Benchmark|PASS|ok)' | tee ../../ws-hub-regression.txt
+          # Benchmarks run in dedicated jobs; skip ordinary tests here so
+          # infrastructure setup cannot distort or delay the regression gate.
+          go test -bench=. -run=^$ -benchmem -count=5 -benchtime=1s ./... 2>&1 | grep -E '^(pkg:|goos:|goarch:|Benchmark|PASS|ok)' | tee ../../ws-hub-regression.txt
           cd ../.. && git checkout -- . && rm -f go.work.sum || true
 
 
