@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1785863638415,
+  "lastUpdate": 1785872272390,
   "repoUrl": "https://github.com/egorribun/university_ecosystem",
   "entries": {
     "Go Services Performance Benchmarks": [
@@ -3297,6 +3297,54 @@ window.BENCHMARK_DATA = {
             "name": "batch_detect_conflicts/500",
             "value": 346984,
             "range": "± 10057",
+            "unit": "ns/iter"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "49699333+dependabot[bot]@users.noreply.github.com",
+            "name": "dependabot[bot]",
+            "username": "dependabot[bot]"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "dd9c6405161d8ec6c5bc34bd617712f667abe2d5",
+          "message": "ci(deps): Bump the uv group across 1 directory with 2 updates\n\nBumps the uv group with 2 updates in the / directory: [pyasn1](https://github.com/pyasn1/pyasn1) and [aiohttp](https://github.com/aio-libs/aiohttp).\n\n\nUpdates `pyasn1` from 0.6.3 to 0.6.4\n- [Release notes](https://github.com/pyasn1/pyasn1/releases)\n- [Changelog](https://github.com/pyasn1/pyasn1/blob/main/CHANGES.rst)\n- [Commits](https://github.com/pyasn1/pyasn1/compare/v0.6.3...v0.6.4)\n\nUpdates `aiohttp` from 3.14.1 to 3.14.3\n- [Changelog](https://github.com/aio-libs/aiohttp/blob/master/CHANGES.rst)\n- [Commits](https://github.com/aio-libs/aiohttp/compare/v3.14.1...v3.14.3)\n\n---\nupdated-dependencies:\n- dependency-name: pyasn1\n  dependency-version: 0.6.4\n  dependency-type: direct:production\n  dependency-group: uv\n- dependency-name: aiohttp\n  dependency-version: 3.14.3\n  dependency-type: indirect\n  dependency-group: uv\n...\n\nSigned-off-by: dependabot[bot] <support@github.com>\nCo-authored-by: dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>",
+          "timestamp": "2026-08-05T00:36:25+05:00",
+          "tree_id": "4af11d38f9b1dc1eacfe0e5b24369e5b9f8c65b7",
+          "url": "https://github.com/egorribun/university_ecosystem/commit/dd9c6405161d8ec6c5bc34bd617712f667abe2d5"
+        },
+        "date": 1785872270941,
+        "tool": "cargo",
+        "benches": [
+          {
+            "name": "batch_detect_conflicts/10",
+            "value": 13452,
+            "range": "± 663",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "batch_detect_conflicts/50",
+            "value": 22687,
+            "range": "± 714",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "batch_detect_conflicts/100",
+            "value": 39568,
+            "range": "± 4399",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "batch_detect_conflicts/500",
+            "value": 339755,
+            "range": "± 6213",
             "unit": "ns/iter"
           }
         ]
