@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1785861991525,
+  "lastUpdate": 1785862077944,
   "repoUrl": "https://github.com/egorribun/university_ecosystem",
   "entries": {
     "Go Services Performance Benchmarks": [
@@ -2373,6 +2373,54 @@ window.BENCHMARK_DATA = {
             "name": "batch_detect_conflicts/500",
             "value": 339244,
             "range": "± 8332",
+            "unit": "ns/iter"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "49699333+dependabot[bot]@users.noreply.github.com",
+            "name": "dependabot[bot]",
+            "username": "dependabot[bot]"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "9ec989da7f5d0df782b673fb2d50d68768437f45",
+          "message": "build(deps): Update fastapi requirement from <0.141,>=0.135.3 to >=0.135.3,<0.142 in the pip-dependencies group\n\nUpdates the requirements on [fastapi](https://github.com/fastapi/fastapi) to permit the latest version.\n\nUpdates `fastapi` to 0.141.1\n- [Release notes](https://github.com/fastapi/fastapi/releases)\n- [Commits](https://github.com/fastapi/fastapi/compare/0.135.3...0.141.1)\n\n---\nupdated-dependencies:\n- dependency-name: fastapi\n  dependency-version: 0.141.1\n  dependency-type: direct:production\n  dependency-group: pip-dependencies\n...\n\nSigned-off-by: dependabot[bot] <support@github.com>\nCo-authored-by: dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>",
+          "timestamp": "2026-08-04T21:42:47+05:00",
+          "tree_id": "7ec6b02cd9bfa17c94c0e69c3cedacb3f6fa15db",
+          "url": "https://github.com/egorribun/university_ecosystem/commit/9ec989da7f5d0df782b673fb2d50d68768437f45"
+        },
+        "date": 1785862077308,
+        "tool": "cargo",
+        "benches": [
+          {
+            "name": "batch_detect_conflicts/10",
+            "value": 13593,
+            "range": "± 945",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "batch_detect_conflicts/50",
+            "value": 22649,
+            "range": "± 478",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "batch_detect_conflicts/100",
+            "value": 40298,
+            "range": "± 2204",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "batch_detect_conflicts/500",
+            "value": 344970,
+            "range": "± 9628",
             "unit": "ns/iter"
           }
         ]
