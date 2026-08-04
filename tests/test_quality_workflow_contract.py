@@ -323,18 +323,14 @@ def test_miri_workflow_scopes_to_pure_rust_crate_targets() -> None:
     job = workflow["jobs"]["miri"]
     assert job["timeout-minutes"] == 60
     run_text = "\n".join(
-        str(step.get("run", ""))
-        for step in job["steps"]
-        if isinstance(step, dict)
+        str(step.get("run", "")) for step in job["steps"] if isinstance(step, dict)
     )
     assert "cargo +nightly miri setup" in run_text
     assert "cargo +nightly miri test --locked" in run_text
     assert "--test-threads=1" in run_text
     assert "crates/pyo3-sanitizer/Cargo.toml" in run_text
     assert "frontend/rust-crypto/Cargo.toml" in run_text
-    assert "components: miri" in NIGHTLY_FULL_WORKFLOW_PATH.read_text(
-        encoding="utf-8"
-    )
+    assert "components: miri" in NIGHTLY_FULL_WORKFLOW_PATH.read_text(encoding="utf-8")
 
     pyo3_source = (REPOSITORY_ROOT / "crates/pyo3-sanitizer/src/lib.rs").read_text(
         encoding="utf-8"
@@ -344,10 +340,7 @@ def test_miri_workflow_scopes_to_pure_rust_crate_targets() -> None:
         "test_panic_formatting_coverage",
         "test_pyo3_bindings_coverage",
     ):
-        assert (
-            f"#[cfg(not(miri))]\n    #[test]\n    fn {function_name}"
-            in pyo3_source
-        )
+        assert f"#[cfg(not(miri))]\n    #[test]\n    fn {function_name}" in pyo3_source
 
 
 def test_performance_workflow_has_blocking_native_and_ws_baselines() -> None:
