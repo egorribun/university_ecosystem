@@ -31,6 +31,19 @@ describe("parsePushEventData", () => {
     }
     expect(parsePushEventData(data)).toEqual({ body: "raw-body" })
   })
+
+  it("returns an empty payload for non-object JSON, empty text, or text failures", () => {
+    expect(
+      parsePushEventData({ json: () => "not-an-object", text: () => "ignored" })
+    ).toEqual({})
+    expect(parsePushEventData({ json: () => { throw new Error("bad") }, text: () => "" })).toEqual({})
+    expect(
+      parsePushEventData({
+        json: () => { throw new Error("bad") },
+        text: () => { throw new Error("also bad") },
+      })
+    ).toEqual({})
+  })
 })
 
 describe("buildNotificationDetails", () => {
@@ -79,5 +92,50 @@ describe("buildNotificationDetails", () => {
 
     expect(result.options.actions).toEqual([{ action: "open", title: "Open", icon: "icon.svg" }])
     expect(result.data.actionUrls).toEqual({ open: "/open" })
+  })
+
+  it("uses Russian defaults and preserves optional payload flags", () => {
+    const originalLanguage = navigator.language
+    Object.defineProperty(navigator, "language", { configurable: true, value: "ru-RU" })
+    try {
+      expect(getDefaultNotificationTitle()).toBe("Новое уведомление")
+      expect(getDefaultNotificationBody()).toBe("У вас есть новое уведомление.")
+
+      const result = buildNotificationDetails({
+        title: "  ",
+        body: "  ",
+        icon: "/icon.png",
+        badge: "",
+        url: "",
+        data: null as unknown as Record<string, unknown>,
+        renotify: false,
+        timestamp: 0,
+        actions: [{ action: "save", title: " Save " }],
+      })
+
+      expect(result.title).toBe("Новое уведомление")
+      expect(result.options.body).toBe("У вас есть новое уведомление.")
+      expect(result.options.icon).toBe("/icon.png")
+      expect(result.options.badge).toBe("/icon.png")
+      expect(result.options.renotify).toBe(false)
+      expect(result.options.timestamp).toBe(0)
+      expect(result.options.actions).toEqual([{ action: "save", title: "Save" }])
+      expect(result.data.url).toBe("/")
+      expect(result.payloadType).toBeUndefined()
+    } finally {
+      Object.defineProperty(navigator, "language", { configurable: true, value: originalLanguage })
+    }
+  })
+
+  it("filters invalid actions and omits optional action metadata when none is usable", () => {
+    const result = buildNotificationDetails({
+      actions: [
+        null as unknown as NotificationActionPayload,
+        { action: " ", title: "valid-looking" },
+        { action: "ok", title: "" },
+      ],
+    })
+    expect(result.options.actions).toBeUndefined()
+    expect(result.data.actionUrls).toBeUndefined()
   })
 })

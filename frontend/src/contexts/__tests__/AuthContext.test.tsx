@@ -19,6 +19,7 @@ import i18n from "@/i18n/config"
 import { hmac } from "@noble/hashes/hmac"
 import { sha256 } from "@noble/hashes/sha256"
 import { utf8ToBytes } from "@noble/hashes/utils"
+import * as logger from "@/app/logger"
 
 // cryptoWorker is mocked globally in setupTests.ts
 
@@ -577,5 +578,25 @@ describe("AuthProvider dashboard prefetch", () => {
     })
 
     queryClient.clear()
+  })
+})
+
+describe("useAuth outside AuthProvider", () => {
+  it("keeps the default context actions callable and warns on setUser", async () => {
+    const warningSpy = vi.spyOn(logger, "logWarning").mockImplementation(() => {})
+    const { result } = renderHook(() => useAuth())
+
+    await act(async () => {
+      expect(await result.current.login("user@example.com", "password")).toBeNull()
+      await result.current.logout()
+      result.current.setUser(null)
+      await result.current.refresh()
+      await result.current.submitMfaChallenge({ code: "123456" })
+      expect(await result.current.requireMfa()).toBeNull()
+      await result.current.loginWithPasskey("user@example.com")
+    })
+
+    expect(warningSpy).toHaveBeenCalledWith("AuthContext setUser called outside provider")
+    warningSpy.mockRestore()
   })
 })

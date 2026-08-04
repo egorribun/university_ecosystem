@@ -61,4 +61,33 @@ describe("useArticleNavigation", () => {
       nextTitle: "Last",
     })
   })
+
+  it("handles missing page data and first/last navigation boundaries", () => {
+    mocks.getQueriesData.mockReturnValue([
+      ["empty", {}],
+      ["pages", { pages: [{}, { items: undefined }] }],
+    ])
+    expect(renderHook(() => useArticleNavigation("missing")).result.current).toEqual({
+      prevId: null,
+      nextId: null,
+      prevTitle: null,
+      nextTitle: null,
+    })
+
+    mocks.getQueriesData.mockReturnValue([
+      ["list", { pages: [{ items: [{ id: "first", title: "First" }, { id: "last", title: "Last" }] }] }],
+    ])
+    expect(renderHook(() => useArticleNavigation("first")).result.current).toEqual({
+      prevId: null,
+      nextId: "last",
+      prevTitle: null,
+      nextTitle: "Last",
+    })
+    expect(renderHook(() => useArticleNavigation("last")).result.current).toEqual({
+      prevId: "first",
+      nextId: null,
+      prevTitle: "First",
+      nextTitle: null,
+    })
+  })
 })

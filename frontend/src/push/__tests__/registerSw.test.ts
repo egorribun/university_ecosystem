@@ -5,11 +5,13 @@ import { SERVICE_WORKER_MESSAGE_TYPES } from "@/constants/serviceWorkerMessages"
 
 describe("registerServiceWorker", () => {
   let addEventListenerSpy: any
+  let documentAddEventListenerSpy: any
   let dispatchEventSpy: any
   let originalLocation: any
 
   beforeEach(() => {
     addEventListenerSpy = vi.spyOn(window, "addEventListener")
+    documentAddEventListenerSpy = vi.spyOn(document, "addEventListener")
     dispatchEventSpy = vi.spyOn(window, "dispatchEvent")
 
     originalLocation = window.location
@@ -32,6 +34,12 @@ describe("registerServiceWorker", () => {
   afterEach(() => {
     if (addEventListenerSpy && typeof addEventListenerSpy.mockRestore === "function") {
       addEventListenerSpy.mockRestore()
+    }
+    if (
+      documentAddEventListenerSpy &&
+      typeof documentAddEventListenerSpy.mockRestore === "function"
+    ) {
+      documentAddEventListenerSpy.mockRestore()
     }
     if (dispatchEventSpy && typeof dispatchEventSpy.mockRestore === "function") {
       dispatchEventSpy.mockRestore()
@@ -114,6 +122,14 @@ describe("registerServiceWorker", () => {
     )[1]
     mockController.postMessage.mockClear()
     onlineHandler()
+    expect(mockController.postMessage).toHaveBeenCalledTimes(1)
+
+    const visibilityHandler = documentAddEventListenerSpy.mock.calls.find(
+      (call: any[]) => call[0] === "visibilitychange"
+    )?.[1]
+    expect(visibilityHandler).toEqual(expect.any(Function))
+    mockController.postMessage.mockClear()
+    visibilityHandler()
     expect(mockController.postMessage).toHaveBeenCalledTimes(1)
 
     // Trigger update found listener setup check
@@ -208,6 +224,30 @@ describe("registerServiceWorker", () => {
 
     await registerServiceWorker()
     expect(mockActive.postMessage).not.toHaveBeenCalled()
+  })
+
+  it("swallows background-sync registration failures", async () => {
+    const registerSync = vi.fn().mockRejectedValue(new Error("sync unavailable"))
+    const mockRegistration: any = {
+      active: { postMessage: vi.fn() },
+      sync: { register: registerSync },
+      addEventListener: vi.fn(),
+      ready: Promise.resolve(),
+    }
+    const mockServiceWorkerContainer = {
+      controller: null,
+      ready: Promise.resolve(mockRegistration),
+      register: vi.fn().mockResolvedValue(mockRegistration),
+      addEventListener: vi.fn(),
+    }
+    vi.stubGlobal("navigator", {
+      serviceWorker: mockServiceWorkerContainer,
+      onLine: true,
+    })
+
+    await registerServiceWorker()
+
+    await vi.waitFor(() => expect(registerSync).toHaveBeenCalledWith("sync-offline-mutations"))
   })
 
   it("does not reload page on controllerchange if window.name matches mock api initializer", async () => {

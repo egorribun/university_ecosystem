@@ -82,6 +82,50 @@ describe("initGlobalErrorHandlers", () => {
       "[GlobalErrors] Promise rejected with a non-error value",
       expect.objectContaining({ data: "bad" })
     )
+
+    rejectionHandler?.({ reason: "plain-value" } as PromiseRejectionEvent)
+    expect(logWarning).toHaveBeenCalledWith(
+      "[GlobalErrors] Promise rejected with a non-error value",
+      "plain-value"
+    )
+
+    const cyclic: Record<string, unknown> = {}
+    cyclic.self = cyclic
+    rejectionHandler?.({ reason: cyclic } as PromiseRejectionEvent)
+    expect(logWarning).toHaveBeenCalledWith(
+      "[GlobalErrors] Promise rejected with a non-error value",
+      expect.objectContaining({ self: cyclic })
+    )
+  })
+
+  it("is idempotent and reports non-Error window events", async () => {
+    const { initGlobalErrorHandlers } = await import("../globalErrorHandlers")
+    expect(initGlobalErrorHandlers(target)).toBe(true)
+    expect(initGlobalErrorHandlers(target)).toBe(true)
+    expect(addEventListenerMock).toHaveBeenCalledTimes(2)
+
+    const errorHandler = listeners.error?.[0]
+    errorHandler?.({
+      error: null,
+      message: "script failed",
+      filename: "app.js",
+      lineno: 12,
+      colno: 7,
+    } as ErrorEvent)
+    expect(logError).toHaveBeenCalledWith("[GlobalErrors] Error event", "script failed", {
+      filename: "app.js",
+      lineno: 12,
+      colno: 7,
+    })
+  })
+
+  it("returns false without a browser target", async () => {
+    const { initGlobalErrorHandlers, resetGlobalErrorHandlersForTesting } =
+      await import("../globalErrorHandlers")
+    vi.stubGlobal("window", undefined)
+    expect(initGlobalErrorHandlers()).toBe(false)
+    resetGlobalErrorHandlersForTesting()
+    vi.unstubAllGlobals()
   })
 
   it("removes listeners when reset is invoked", async () => {
@@ -92,5 +136,6 @@ describe("initGlobalErrorHandlers", () => {
 
     resetGlobalErrorHandlersForTesting()
     expect(removeEventListenerMock).toHaveBeenCalledTimes(2)
+    resetGlobalErrorHandlersForTesting()
   })
 })

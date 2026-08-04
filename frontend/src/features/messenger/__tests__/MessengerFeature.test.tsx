@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react"
+import { fireEvent, render, screen } from "@testing-library/react"
 import { describe, it, expect, vi, beforeEach } from "vitest"
 
 import MessengerFeature from "@/features/messenger/MessengerFeature"
@@ -43,30 +43,57 @@ vi.mock("@/components/messenger", async () => {
     await vi.importActual<typeof import("@/components/messenger")>("@/components/messenger")
   return {
     ...actual,
-    ChatArea: () => <div data-testid="mock-chat-area" />,
-    MessengerSidebar: () => <div data-testid="mock-sidebar" />,
+    ChatArea: (props: { onOpenGroupInfo?: () => void; onRetryMessages?: () => void }) => (
+      <div data-testid="mock-chat-area">
+        <button data-testid="mock-open-group-info" onClick={props.onOpenGroupInfo} />
+        <button data-testid="mock-retry-messages" onClick={props.onRetryMessages} />
+      </div>
+    ),
+    MessengerSidebar: (props: { onRetry?: () => void }) => (
+      <div data-testid="mock-sidebar">
+        <button data-testid="mock-retry-chats" onClick={props.onRetry} />
+      </div>
+    ),
     MessengerBackdrop: () => <div data-testid="mock-backdrop" />,
-    NewChatModal: (props: { open?: boolean }) => (
-      <div data-testid="mock-new-chat-modal" data-open={String(!!props.open)} />
+    NewChatModal: (props: {
+      open?: boolean
+      onClose?: () => void
+      onSelect?: (userId: string) => void
+    }) => (
+      <div data-testid="mock-new-chat-modal" data-open={String(!!props.open)}>
+        <button data-testid="mock-new-chat-close" onClick={props.onClose} />
+        <button data-testid="mock-new-chat-select" onClick={() => props.onSelect?.("user-1")} />
+      </div>
     ),
     // Wave 211 — ForwardModal + GroupInfoPanel mocked (GroupInfoPanel uses
     // useQuery for the add-member search → would need a QueryClientProvider).
-    ForwardModal: (props: { open?: boolean }) => (
-      <div data-testid="mock-forward-modal" data-open={String(!!props.open)} />
+    ForwardModal: (props: { open?: boolean; onClose?: () => void }) => (
+      <div data-testid="mock-forward-modal" data-open={String(!!props.open)}>
+        <button data-testid="mock-forward-close" onClick={props.onClose} />
+      </div>
     ),
-    GroupInfoPanel: (props: { open?: boolean }) => (
-      <div data-testid="mock-group-info-panel" data-open={String(!!props.open)} />
+    GroupInfoPanel: (props: { open?: boolean; onClose?: () => void }) => (
+      <div data-testid="mock-group-info-panel" data-open={String(!!props.open)}>
+        <button data-testid="mock-group-info-close" onClick={props.onClose} />
+      </div>
     ),
   }
 })
 
 vi.mock("@/components/messenger/ProfileModal", () => ({
-  ProfileModal: () => <div data-testid="mock-profile-modal" />,
+  ProfileModal: (props: { onClose?: () => void }) => (
+    <div data-testid="mock-profile-modal">
+      <button data-testid="mock-profile-close" onClick={props.onClose} />
+    </div>
+  ),
 }))
 
 vi.mock("@/components/ui/ConfirmDialog", () => ({
-  ConfirmDialog: (props: { open?: boolean }) => (
-    <div data-testid="mock-confirm-dialog" data-open={String(!!props.open)} />
+  ConfirmDialog: (props: { open?: boolean; onConfirm?: () => void; onCancel?: () => void }) => (
+    <div data-testid="mock-confirm-dialog" data-open={String(!!props.open)}>
+      <button data-testid="mock-confirm" onClick={props.onConfirm} />
+      <button data-testid="mock-cancel" onClick={props.onCancel} />
+    </div>
   ),
 }))
 
@@ -160,6 +187,13 @@ describe("MessengerFeature", () => {
     expect(screen.queryByText("messenger:connectionStatus.lost")).toBeFalsy()
   })
 
+  it("uses the reduced-motion disconnect transition", () => {
+    mockUseMessenger.mockReturnValue({ isConnected: false })
+    mockMediaQuery.mockImplementation((q: string) => q.includes("prefers-reduced-motion"))
+    render(<MessengerFeature />)
+    expect(screen.getByRole("status")).toBeTruthy()
+  })
+
   it("mobile + no chat selected → sidebar only (chat area hidden)", () => {
     mockMediaQuery.mockImplementation((q: string) => q.startsWith("(max-width"))
     mockController.mockReturnValue(makeController({ selectedChatId: null }))
@@ -174,5 +208,60 @@ describe("MessengerFeature", () => {
     render(<MessengerFeature />)
     expect(screen.getByTestId("mock-chat-area")).toBeTruthy()
     expect(screen.queryByTestId("mock-sidebar")).toBeFalsy()
+  })
+
+  it("wires retry, modal, group-panel, and confirm callbacks", () => {
+    const refetchChats = vi.fn()
+    const refetchMessages = vi.fn()
+    const setIsNewChatModalOpen = vi.fn()
+    const handleCreateChat = vi.fn()
+    const handleCloseProfile = vi.fn()
+    const handleCancelForward = vi.fn()
+    const setShowGroupInfo = vi.fn()
+    const setConfirmDialog = vi.fn()
+    const onConfirm = vi.fn()
+    mockController.mockReturnValue(
+      makeController({
+        chatsError: true,
+        refetchChats,
+        messagesError: true,
+        refetchMessages,
+        isNewChatModalOpen: true,
+        setIsNewChatModalOpen,
+        handleCreateChat,
+        profileUser: { id: "profile-1" },
+        handleCloseProfile,
+        forwardSourceMessageId: "message-1",
+        handleCancelForward,
+        showGroupInfo: true,
+        activeChatDisplay: { isGroup: true },
+        setShowGroupInfo,
+        confirmDialog: { open: true, title: "Confirm", message: "Proceed", onConfirm },
+        setConfirmDialog,
+      })
+    )
+
+    render(<MessengerFeature />)
+    fireEvent.click(screen.getByTestId("mock-retry-chats"))
+    fireEvent.click(screen.getByTestId("mock-retry-messages"))
+    fireEvent.click(screen.getByTestId("mock-new-chat-close"))
+    fireEvent.click(screen.getByTestId("mock-new-chat-select"))
+    fireEvent.click(screen.getByTestId("mock-profile-close"))
+    fireEvent.click(screen.getByTestId("mock-forward-close"))
+    fireEvent.click(screen.getByTestId("mock-open-group-info"))
+    fireEvent.click(screen.getByTestId("mock-group-info-close"))
+    fireEvent.click(screen.getByTestId("mock-confirm"))
+    fireEvent.click(screen.getByTestId("mock-cancel"))
+
+    expect(refetchChats).toHaveBeenCalledTimes(1)
+    expect(refetchMessages).toHaveBeenCalledTimes(1)
+    expect(setIsNewChatModalOpen).toHaveBeenCalledWith(false)
+    expect(handleCreateChat).toHaveBeenCalledWith("user-1")
+    expect(handleCloseProfile).toHaveBeenCalledTimes(1)
+    expect(handleCancelForward).toHaveBeenCalledTimes(1)
+    expect(setShowGroupInfo).toHaveBeenCalledWith(true)
+    expect(setShowGroupInfo).toHaveBeenCalledWith(false)
+    expect(onConfirm).toHaveBeenCalledTimes(1)
+    expect(setConfirmDialog).toHaveBeenCalledWith(null)
   })
 })

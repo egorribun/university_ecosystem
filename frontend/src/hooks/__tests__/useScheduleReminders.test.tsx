@@ -109,6 +109,21 @@ describe("useScheduleReminders", () => {
     expect(result.current.permission).toBe("granted")
   })
 
+  it("reports a denied permission result without enabling reminders", async () => {
+    requestPermissionMock.mockResolvedValueOnce("denied" as NotificationPermission)
+    const { result } = renderHook(() => useScheduleReminders([]))
+    await flush()
+
+    let granted: boolean | undefined
+    await act(async () => {
+      granted = await result.current.requestPermission()
+    })
+
+    expect(granted).toBe(false)
+    expect(result.current.permission).toBe("denied")
+    expect(result.current.isEnabled).toBe(false)
+  })
+
   it("setPrefs updates state and persists to IndexedDB", async () => {
     const { result } = renderHook(() => useScheduleReminders([]))
     await flush()
@@ -137,5 +152,105 @@ describe("useScheduleReminders", () => {
     })
     expect(notifications.length).toBeGreaterThanOrEqual(1)
     expect(notifications[0]!.title).toBe("schedule:reminder.title")
+  })
+
+  it("uses the service worker and tolerates persistence and display failures", async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date("2026-06-15T10:00:00"))
+    MockNotification.permission = "granted"
+    idbSet.mockRejectedValue(new Error("persistence failed"))
+    const showNotification = vi.fn().mockRejectedValue(new Error("display failed"))
+    Object.defineProperty(navigator, "serviceWorker", {
+      configurable: true,
+      value: { ready: Promise.resolve({ showNotification }) },
+    })
+
+    renderHook(() => useScheduleReminders([lesson({ id: "sw-lesson", subject: null })]))
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0)
+    })
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(105 * 60_000 + 100)
+    })
+
+    expect(showNotification).toHaveBeenCalledWith(
+      "schedule:reminder.title",
+      expect.objectContaining({ tag: "lesson-sw-lesson", body: "schedule:reminder.body" })
+    )
+    expect(notifications).toHaveLength(0)
+    Object.defineProperty(navigator, "serviceWorker", {
+      configurable: true,
+      value: undefined,
+    })
+  })
+
+  it("skips disabled, invalid, past, overridden, and already-reminded lessons", async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date("2026-06-15T10:00:00"))
+    MockNotification.permission = "granted"
+    const stored: ReminderPrefs = {
+      minutesBefore: 15,
+      overrides: { disabled: 0, remembered: 15, overridden: 0 },
+    }
+    idbGet.mockImplementation((key: string) =>
+      Promise.resolve(key === "schedule:reminder-prefs" ? stored : ["remembered"])
+    )
+
+    renderHook(() =>
+      useScheduleReminders([
+        lesson({ id: "disabled", start_time: "12:00" }),
+        lesson({ id: "invalid", start_time: "not-a-time" }),
+        lesson({ id: "past", start_time: "10:10" }),
+        lesson({ id: "remembered", start_time: "12:00" }),
+        lesson({ id: "overridden", start_time: "12:00" }),
+      ])
+    )
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0)
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(105 * 60_000 + 100)
+    })
+
+    expect(notifications).toHaveLength(0)
+  })
+
+  it("stops scheduling when reminders are disabled", async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date("2026-06-15T10:00:00"))
+    MockNotification.permission = "granted"
+    const { result } = renderHook(() => useScheduleReminders([lesson({ start_time: "12:00" })]))
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0)
+    })
+
+    await act(async () => {
+      await result.current.setPrefs({ minutesBefore: 0 })
+    })
+
+    expect(result.current.isEnabled).toBe(false)
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(105 * 60_000 + 100)
+    })
+    expect(notifications).toHaveLength(0)
+  })
+
+  it("returns false when the browser has no Notification API", async () => {
+    const descriptor = Object.getOwnPropertyDescriptor(window, "Notification")
+    Reflect.deleteProperty(window, "Notification")
+    Reflect.deleteProperty(globalThis, "Notification")
+
+    try {
+      const { result } = renderHook(() => useScheduleReminders([]))
+      await flush()
+
+      await expect(result.current.requestPermission()).resolves.toBe(false)
+      expect(result.current.permission).toBe("default")
+    } finally {
+      if (descriptor) Object.defineProperty(window, "Notification", descriptor)
+    }
   })
 })

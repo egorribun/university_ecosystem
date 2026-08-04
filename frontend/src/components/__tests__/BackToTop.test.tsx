@@ -74,4 +74,68 @@ describe("BackToTop", () => {
     expect(scrollTo).toHaveBeenCalledTimes(1)
     expect(scrollTo).toHaveBeenCalledWith({ top: 0, behavior: "smooth" })
   })
+
+  it("moves above an intersecting footer and disconnects the observer", async () => {
+    const observe = vi.fn()
+    const disconnect = vi.fn()
+    let callback: IntersectionObserverCallback | undefined
+    class MockIntersectionObserver {
+      constructor(next: IntersectionObserverCallback) {
+        callback = next
+      }
+
+      observe = observe
+      disconnect = disconnect
+    }
+    vi.stubGlobal("IntersectionObserver", MockIntersectionObserver)
+    Object.defineProperty(window, "innerHeight", { configurable: true, value: 800 })
+    const footer = document.createElement("footer")
+    footer.setAttribute("role", "contentinfo")
+    document.body.appendChild(footer)
+
+    const { unmount } = render(<BackToTop />)
+    expect(observe).toHaveBeenCalledWith(footer)
+
+    setScrollY(500)
+    fireEvent.scroll(window)
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: getLabel() })).toBeInTheDocument()
+    )
+
+    callback?.(
+      [{ isIntersecting: true, boundingClientRect: { top: 700 } } as IntersectionObserverEntry],
+      {} as IntersectionObserver
+    )
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: getLabel() }).parentElement?.parentElement
+      ).toHaveStyle("bottom: 140px")
+    )
+
+    callback?.([{ isIntersecting: false } as IntersectionObserverEntry], {} as IntersectionObserver)
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: getLabel() }).parentElement?.parentElement
+      ).toHaveStyle("bottom: 24px")
+    )
+
+    unmount()
+    expect(disconnect).toHaveBeenCalledOnce()
+    footer.remove()
+  })
+
+  it("falls back to the legacy scrollTo signature when smooth scrolling throws", async () => {
+    const scrollTo = vi.spyOn(window, "scrollTo").mockImplementationOnce(() => {
+      throw new Error("unsupported options")
+    })
+    render(<BackToTop />)
+    setScrollY(500)
+    fireEvent.scroll(window)
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: getLabel() })).toBeInTheDocument()
+    )
+
+    fireEvent.click(screen.getByRole("button", { name: getLabel() }))
+    expect(scrollTo).toHaveBeenNthCalledWith(2, 0, 0)
+  })
 })

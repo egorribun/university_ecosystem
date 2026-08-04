@@ -38,6 +38,11 @@ export default defineConfig({
       ".idea",
       ".git",
       ".cache",
+      // Stryker copies the repository (including nested dependency tests) into
+      // this directory. Vitest must never discover that sandbox as authored
+      // project tests, especially after a bounded mutation run is interrupted.
+      "stryker-tmp/**",
+      ".stryker-tmp/**",
       "tests/e2e/**",
       "scripts/**/*.test.mjs",
     ],
@@ -63,13 +68,12 @@ export default defineConfig({
         "src/sw.ts",
         "src/test/**/*",
       ],
-      // Repository quality-contract floors. They remain strict while the
-      // source-wide suite is restored; a failing run is actionable evidence.
+      // Frontend ratchet: authored-only aggregate now clears 99/98/98.
       thresholds: {
-        statements: 91,
-        branches: 82,
-        functions: 82,
-        lines: 91,
+        statements: 99,
+        branches: 98,
+        functions: 98,
+        lines: 99,
       },
     },
   },

@@ -48,6 +48,27 @@ describe("useLocalStorage", () => {
     expect(result.current[0]).toBe("fallback")
   })
 
+  it("uses a lazy initializer when initialization is deferred and a key is cleared", () => {
+    const initializer = vi.fn(() => "lazy-fallback")
+    const { result } = renderHook(() =>
+      useLocalStorage("deferred-key", initializer, { initializeWithValue: false })
+    )
+
+    expect(result.current[0]).toBe("lazy-fallback")
+
+    act(() => {
+      window.dispatchEvent(
+        new StorageEvent("storage", {
+          key: "deferred-key",
+          newValue: null,
+        })
+      )
+    })
+
+    expect(result.current[0]).toBe("lazy-fallback")
+    expect(initializer).toHaveBeenCalled()
+  })
+
   // ---------------------------------------------------------------------------
   // setValue
   // ---------------------------------------------------------------------------

@@ -304,3 +304,43 @@ describe("api/client — SSR request branches", () => {
     expect(AxiosHeaders.from(seen[0]!.headers).get("Cookie")).toBeUndefined()
   })
 })
+
+describe("api/client — defensive request/response interceptor inputs", () => {
+  beforeEach(() => {
+    vi.resetModules()
+    vi.stubEnv("VITE_API_RATE_LIMIT_PER_MINUTE", "100")
+    vi.stubEnv("VITE_API_RATE_LIMIT_MAX_CONCURRENT", "10")
+  })
+
+  it("normalizes an unsafe request with missing URL, headers, and FormData content", async () => {
+    const { default: client } = await import("@/api/client")
+    const requestHandler = (client.interceptors.request as any).handlers.find(
+      (handler: { fulfilled?: unknown }) => typeof handler.fulfilled === "function"
+    )?.fulfilled as (config: InternalAxiosRequestConfig) => Promise<InternalAxiosRequestConfig>
+
+    const config = {
+      method: "post",
+      url: undefined,
+      headers: undefined,
+      data: new FormData(),
+    } as unknown as InternalAxiosRequestConfig & { __clientRateLimitAcquired?: boolean }
+
+    const normalized = await requestHandler(config)
+    const headers = AxiosHeaders.from(normalized.headers)
+    expect(headers.get("Accept-Language")).toBeDefined()
+    expect(headers.has("Content-Type")).toBe(false)
+
+    const { releaseClientQueueSlot } = await import("@/api/interceptors/rateLimit")
+    releaseClientQueueSlot(config)
+  })
+
+  it("rejects a 401 response even when its request has no headers object", async () => {
+    const { default: client } = await import("@/api/client")
+    const responseHandler = (client.interceptors.response as any).handlers.find(
+      (handler: { rejected?: unknown }) => typeof handler.rejected === "function"
+    )?.rejected as (error: unknown) => Promise<unknown>
+    const error = { response: { status: 401 }, config: { headers: undefined } }
+
+    await expect(responseHandler(error)).rejects.toBe(error)
+  })
+})

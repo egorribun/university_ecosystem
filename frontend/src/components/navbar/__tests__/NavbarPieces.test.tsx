@@ -126,6 +126,26 @@ describe("MobileDrawerProfile", () => {
     })
     expect(screen.getByText("navigation:role.admin")).toBeInTheDocument()
   })
+
+  it("uses an avatar URL and the translated alt fallback when the name is empty", async () => {
+    await renderWithRouter({
+      ui: () => (
+        <MobileDrawerProfile
+          user={{
+            ...testUser,
+            full_name: "",
+            role: null,
+            avatar_url: "https://example.test/avatar.png",
+            avatar_updated_at: "2026-08-04T12:00:00Z",
+          }}
+          onProfileClick={vi.fn()}
+          t={t}
+        />
+      ),
+      authProvider: false,
+    })
+    expect(screen.getByAltText("navigation:aria.profileAvatar")).toBeInTheDocument()
+  })
 })
 
 describe("MobileDrawerQuickActions", () => {
@@ -171,5 +191,31 @@ describe("UserMenu", () => {
     expect(screen.getAllByTitle("navigation:aria.openProfile").length).toBeGreaterThan(0)
     await userEvent.click(screen.getByRole("button", { name: "navigation:aria.openProfile" }))
     expect(go).toHaveBeenCalledWith("/profile")
+  })
+
+  it("renders nothing for a settled unauthenticated state", async () => {
+    const { container } = await renderWithRouter({
+      ui: () => <UserMenu user={null} isAuth={false} loading={false} go={vi.fn()} t={(key) => key} />,
+    })
+    expect(container).toBeEmptyDOMElement()
+  })
+
+  it("passes avatar URL cache metadata through the authenticated profile", async () => {
+    await renderWithRouter({
+      ui: () => (
+        <UserMenu
+          user={{
+            ...testUser,
+            avatar_url: "https://example.test/avatar.png",
+            avatar_updated_at: "2026-08-04T12:00:00Z",
+          }}
+          isAuth
+          loading={false}
+          go={vi.fn()}
+          t={(key) => key}
+        />
+      ),
+    })
+    expect(screen.getByAltText("navigation:aria.profileAvatarNamed")).toBeInTheDocument()
   })
 })

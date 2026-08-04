@@ -147,6 +147,95 @@ describe("useClassReminders — permission gating", () => {
     await vi.runAllTimersAsync()
     expect(notificationCtor).not.toHaveBeenCalled()
   })
+
+  it("uses the service-worker notification API when a registration is available", async () => {
+    const showNotification = vi.fn().mockResolvedValue(undefined)
+    const getRegistration = (
+      navigator.serviceWorker as unknown as { getRegistration: ReturnType<typeof vi.fn> }
+    ).getRegistration
+    getRegistration.mockResolvedValue({ showNotification })
+
+    const items: RemindItem[] = [{ id: 7, title: "Physics", when: tPlus(15), minutesBefore: 5 }]
+    renderHook(() => useClassReminders(items))
+
+    await vi.runAllTimersAsync()
+
+    expect(showNotification).toHaveBeenCalledWith(
+      "Physics",
+      expect.objectContaining({
+        tag: "reminder:7",
+        data: { url: "/", id: 7, type: "reminder" },
+      })
+    )
+    expect(notificationCtor).not.toHaveBeenCalled()
+  })
+
+  it("opens the reminder URL when the fallback notification is clicked", async () => {
+    const notification = { onclick: undefined as (() => void) | undefined }
+    const NotificationWithClick = function (this: Notification) {
+      return notification as unknown as Notification
+    } as unknown as typeof Notification
+    Object.defineProperty(NotificationWithClick, "permission", {
+      get: () => "granted" as NotificationPermission,
+      configurable: true,
+    })
+    Object.defineProperty(NotificationWithClick, "requestPermission", {
+      value: vi.fn().mockResolvedValue("granted"),
+      configurable: true,
+    })
+    vi.stubGlobal("Notification", NotificationWithClick)
+    const openSpy = vi.spyOn(window, "open").mockReturnValue(null)
+
+    const items: RemindItem[] = [
+      { id: 8, title: "Chemistry", when: tPlus(15), minutesBefore: 5, url: "/events/8" },
+    ]
+    renderHook(() => useClassReminders(items))
+    await vi.runAllTimersAsync()
+    notification.onclick?.()
+
+    expect(openSpy).toHaveBeenCalledWith(`${location.origin}/events/8`, "_blank")
+    openSpy.mockRestore()
+  })
+
+  it("silently ignores malformed reminder URLs", async () => {
+    const notification = { onclick: undefined as (() => void) | undefined }
+    const NotificationWithClick = function (this: Notification) {
+      return notification as unknown as Notification
+    } as unknown as typeof Notification
+    Object.defineProperty(NotificationWithClick, "permission", {
+      get: () => "granted" as NotificationPermission,
+      configurable: true,
+    })
+    Object.defineProperty(NotificationWithClick, "requestPermission", {
+      value: vi.fn().mockResolvedValue("granted"),
+      configurable: true,
+    })
+    vi.stubGlobal("Notification", NotificationWithClick)
+    const openSpy = vi.spyOn(window, "open").mockReturnValue(null)
+
+    renderHook(() =>
+      useClassReminders([
+        { id: 10, title: "Biology", when: tPlus(15), minutesBefore: 5, url: "http://[invalid" },
+      ])
+    )
+    await vi.runAllTimersAsync()
+    notification.onclick?.()
+
+    expect(openSpy).not.toHaveBeenCalled()
+    openSpy.mockRestore()
+  })
+
+  it("ignores a service-worker registration failure", async () => {
+    const getRegistration = (
+      navigator.serviceWorker as unknown as { getRegistration: ReturnType<typeof vi.fn> }
+    ).getRegistration
+    getRegistration.mockRejectedValueOnce(new Error("worker unavailable"))
+
+    renderHook(() =>
+      useClassReminders([{ id: 9, title: "History", when: tPlus(15), minutesBefore: 5 }])
+    )
+    await vi.runAllTimersAsync()
+  })
 })
 
 describe("useClassReminders — requestPermission", () => {
@@ -173,6 +262,15 @@ describe("useClassReminders — requestPermission", () => {
     permission = "denied"
     const { result } = renderHook(() => useClassReminders([]))
     await expect(result.current.requestPermission()).resolves.toBe("denied")
+  })
+
+  it("requests permission when the browser has not decided yet", async () => {
+    permission = "default"
+    const requestPermission = Notification.requestPermission
+    const { result } = renderHook(() => useClassReminders([]))
+
+    await expect(result.current.requestPermission()).resolves.toBe("granted")
+    expect(requestPermission).toHaveBeenCalledOnce()
   })
 })
 

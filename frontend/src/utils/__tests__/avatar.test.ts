@@ -1,4 +1,4 @@
-import { describe, expect, it, vi, beforeEach } from "vitest"
+import { afterEach, describe, expect, it, vi, beforeEach } from "vitest"
 
 const mocks = vi.hoisted(() => ({
   apiDefaults: { baseURL: "/api" },
@@ -13,6 +13,10 @@ import { resolveBackendOrigin, buildAvatarUrl } from "@/utils/avatar"
 beforeEach(() => {
   vi.clearAllMocks()
   mocks.apiDefaults.baseURL = "/api"
+})
+
+afterEach(() => {
+  vi.unstubAllGlobals()
 })
 
 describe("avatar utilities", () => {
@@ -56,6 +60,18 @@ describe("avatar utilities", () => {
       })
       // Falls back to locationOrigin on URL parse error
       expect(result).toBe("https://example.com")
+    })
+
+    it("uses the dummy origin when a relative base URL has no location fallback", () => {
+      expect(resolveBackendOrigin({ baseURL: "/api", locationOrigin: null as unknown as string })).toBe(
+        "http://__avatar__"
+      )
+    })
+
+    it("falls back when URL construction rejects the base URL", () => {
+      expect(
+        resolveBackendOrigin({ baseURL: "http://[invalid", locationOrigin: "https://example.com" })
+      ).toBe("https://example.com")
     })
 
     it("works with default parameters", () => {
@@ -203,6 +219,33 @@ describe("avatar utilities", () => {
       })
       expect(result).toContain("uid=123")
       expect(result).toContain("size=large")
+    })
+
+    it("uses the appendUid fallback when URL construction rejects a relative path", () => {
+      const originalURL = globalThis.URL
+      class RejectingURL extends originalURL {
+        constructor(input: string | URL, base?: string | URL) {
+          if (String(input) === "/force-invalid") throw new TypeError("invalid relative URL")
+          super(input, base)
+        }
+      }
+      vi.stubGlobal("URL", RejectingURL)
+
+      expect(
+        buildAvatarUrl("/force-invalid", "a user", {
+          baseURL: "/api",
+          locationOrigin: "https://example.com",
+        })
+      ).toContain("uid=a%20user")
+    })
+
+    it("returns the relative URL when no backend origin is available", () => {
+      expect(
+        buildAvatarUrl("avatar.jpg", "42", {
+          baseURL: "",
+          locationOrigin: null as unknown as string,
+        })
+      ).toBe("/avatar.jpg?uid=42")
     })
   })
 })

@@ -254,4 +254,30 @@ describe("Navbar", () => {
     // actually performed a route transition (not just a no-op close).
     await waitFor(() => expect(screen.getByText("News route")).toBeInTheDocument())
   })
+
+  it("uses the scrolled mobile style and scrolls home to the top", async () => {
+    const user = userEvent.setup()
+    Object.defineProperty(window, "scrollY", { configurable: true, value: 200 })
+    const scrollTo = vi.fn()
+    Object.defineProperty(HTMLElement.prototype, "scrollTo", {
+      configurable: true,
+      value: scrollTo,
+    })
+
+    await renderNavbar()
+    await waitFor(() => expect(screen.getByRole("navigation")).toHaveClass("bg-(--pill-bg)"))
+
+    await user.click(screen.getByRole("link", { name: "Home" }))
+    expect(scrollTo).toHaveBeenCalledWith({ top: 0, behavior: "smooth" })
+  })
+
+  it("uses the transparent compact desktop style after scrolling", async () => {
+    setupMatchMedia({ mobile: false, reducedMotion: true })
+    Object.defineProperty(window, "scrollY", { configurable: true, value: 200 })
+
+    await renderNavbar()
+    const nav = await screen.findByRole("navigation")
+    await waitFor(() => expect(nav).toHaveClass("bg-transparent"))
+    expect(nav).toHaveStyle({ boxShadow: "none" })
+  })
 })

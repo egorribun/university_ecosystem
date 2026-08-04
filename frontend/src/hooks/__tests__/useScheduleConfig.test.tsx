@@ -238,6 +238,14 @@ describe("useScheduleConfig — fallback branches (broken resources)", () => {
     expect(result.current.weekdayConfigs.map((c) => c.id)).toEqual(["a", "b"])
   })
 
+  it("uses the fallback identity when a configured backend list is empty", () => {
+    const inst = makeI18n({
+      weekdays: { order: ["empty"], items: { empty: { backend: [], long: "Empty", short: "E" } } },
+    })
+    const { result } = renderHook(() => useScheduleConfig(), { wrapper: wrap(inst) })
+    expect(result.current.weekdayConfigs[0]!.backend).toEqual(["empty"])
+  })
+
   it("lessonType toConfig: backend-string + label/color fallbacks", () => {
     const inst = makeI18n({
       lessonTypes: { order: ["q"], items: { q: { backend: "single" } } },

@@ -19,6 +19,7 @@ describe("useFocusTrap", () => {
       const containerRef = useFocusTrap<HTMLDivElement>({
         active: open,
         initialFocus: () => closeRef.current ?? undefined,
+        fallbackFocus: () => closeRef.current ?? undefined,
         onDeactivate: () => setOpen(false),
       })
 
@@ -78,7 +79,7 @@ describe("useFocusTrap", () => {
       return (
         <div>
           {active && (
-            <div ref={containerRef}>
+            <div ref={containerRef} tabIndex={-1}>
               <button ref={closeRef} type="button">
                 Close trap
               </button>

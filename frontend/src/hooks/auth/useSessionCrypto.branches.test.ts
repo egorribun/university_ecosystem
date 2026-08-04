@@ -190,6 +190,33 @@ describe("sendServiceWorkerMessage", () => {
     )
   })
 
+  it("does not post when the ready registration has no active worker", async () => {
+    const postMessage = vi.fn()
+    vi.stubGlobal("navigator", {
+      serviceWorker: {
+        controller: null,
+        ready: Promise.resolve({ active: null }),
+      },
+    })
+    const { result } = renderHook(() => useSessionCrypto())
+    await act(async () => {
+      await result.current.sendSessionCacheUpdate("sk-no-active", { force: true })
+      await Promise.resolve()
+    })
+
+    expect(postMessage).not.toHaveBeenCalled()
+  })
+
+  it("returns safely when navigator is unavailable", async () => {
+    vi.stubGlobal("navigator", undefined)
+    const { result } = renderHook(() => useSessionCrypto())
+    await expect(
+      act(async () => {
+        await result.current.sendSessionCacheUpdate("sk-no-navigator", { force: true })
+      })
+    ).resolves.not.toThrow()
+  })
+
   it("returns early when navigator.serviceWorker is absent (lines 223-225)", async () => {
     vi.stubGlobal("navigator", {})
     const { result } = renderHook(() => useSessionCrypto())
@@ -200,6 +227,37 @@ describe("sendServiceWorkerMessage", () => {
         await result.current.sendSessionCacheUpdate("sk-none", { force: true })
       })
     ).resolves.not.toThrow()
+  })
+
+  it("swallows controller postMessage failures", async () => {
+    const postMessage = vi.fn(() => {
+      throw new Error("worker stopped")
+    })
+    vi.stubGlobal("navigator", {
+      serviceWorker: { controller: { postMessage }, ready: undefined },
+    })
+    const { result } = renderHook(() => useSessionCrypto())
+
+    await expect(
+      act(async () => {
+        await result.current.sendSessionCacheUpdate("sk-throw", { force: true })
+      })
+    ).resolves.not.toThrow()
+    expect(postMessage).toHaveBeenCalled()
+  })
+
+  it("swallows service-worker readiness failures", async () => {
+    const ready = Promise.reject(new Error("registration failed"))
+    vi.stubGlobal("navigator", {
+      serviceWorker: { controller: null, ready },
+    })
+    const { result } = renderHook(() => useSessionCrypto())
+
+    await act(async () => {
+      await result.current.sendSessionCacheUpdate("sk-ready-failure", { force: true })
+      await Promise.resolve()
+      await Promise.resolve()
+    })
   })
 
   it("skips re-sending when the session hash is unchanged + not forced (lines 264-265)", async () => {
@@ -218,6 +276,25 @@ describe("sendServiceWorkerMessage", () => {
       await result.current.sendSessionCacheUpdate("sk-same")
     })
     expect(postMessage).not.toHaveBeenCalled()
+  })
+
+  it("clears an existing backoff timer before scheduling the next retry window", async () => {
+    vi.useFakeTimers()
+    mocks.apiGet.mockRejectedValue(new Error("503"))
+    const clearSpy = vi.spyOn(globalThis, "clearTimeout")
+    const { result } = renderHook(() => useSessionCrypto())
+
+    await act(async () => {
+      await result.current.ensureSessionSigningKey()
+      await result.current.ensureSessionSigningKey()
+      await result.current.ensureSessionSigningKey()
+      await result.current.ensureSessionSigningKey()
+    })
+
+    expect(clearSpy).toHaveBeenCalled()
+    clearSpy.mockRestore()
+    vi.runAllTimers()
+    vi.useRealTimers()
   })
 })
 

@@ -22,6 +22,9 @@ vi.mock("react-i18next", () => ({
   }),
 }))
 
+const { mediaQueryMock } = vi.hoisted(() => ({ mediaQueryMock: vi.fn(() => false) }))
+vi.mock("@/hooks/useMediaQuery", () => ({ default: mediaQueryMock }))
+
 const navigateMock = vi.fn()
 vi.mock("@tanstack/react-router", () => ({
   useNavigate: () => navigateMock,
@@ -37,14 +40,28 @@ vi.mock("@/components/messenger", async () => {
       isLoading?: boolean
       isError?: boolean
       isSearchActive?: boolean
+      onSelect?: (id: string) => void
+      onClearSearch?: () => void
+      onRetry?: () => void
     }) => (
-      <div
-        data-testid="mock-contact-list"
-        data-count={props.contacts?.length ?? 0}
-        data-loading={String(!!props.isLoading)}
-        data-error={String(!!props.isError)}
-        data-search-active={String(!!props.isSearchActive)}
-      />
+      <div>
+        <div
+          data-testid="mock-contact-list"
+          data-count={props.contacts?.length ?? 0}
+          data-loading={String(!!props.isLoading)}
+          data-error={String(!!props.isError)}
+          data-search-active={String(!!props.isSearchActive)}
+        />
+        <button type="button" onClick={() => props.onSelect?.("c2")}>
+          mock-select-contact
+        </button>
+        <button type="button" onClick={props.onClearSearch}>
+          mock-clear-search
+        </button>
+        <button type="button" onClick={props.onRetry}>
+          mock-retry
+        </button>
+      </div>
     ),
   }
 })
@@ -76,6 +93,11 @@ const baseProps: SidebarProps = {
 }
 
 describe("MessengerSidebar", () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mediaQueryMock.mockReturnValue(false)
+  })
+
   it("renders the messenger title", () => {
     render(<MessengerSidebar {...baseProps} />, { wrapper })
     expect(screen.getByText("messenger:title")).toBeTruthy()
@@ -107,10 +129,47 @@ describe("MessengerSidebar", () => {
     expect(list.getAttribute("data-search-active")).toBe("true")
   })
 
+  it("navigates to a selected chat and clears an active search", () => {
+    render(<MessengerSidebar {...baseProps} />, { wrapper })
+    fireEvent.change(screen.getByPlaceholderText("messenger:search"), {
+      target: { value: "ali" },
+    })
+    fireEvent.click(screen.getByRole("button", { name: "mock-select-contact" }))
+    expect(navigateMock).toHaveBeenCalledWith({
+      to: "/messenger/$chatId",
+      params: { chatId: "c2" },
+    })
+
+    fireEvent.click(screen.getByRole("button", { name: "mock-clear-search" }))
+    expect(screen.getByTestId("mock-contact-list")).toHaveAttribute("data-search-active", "false")
+  })
+
   it("forwards loading + error flags to ContactList", () => {
-    render(<MessengerSidebar {...baseProps} isLoading isError />, { wrapper })
+    const onRetry = vi.fn()
+    render(<MessengerSidebar {...baseProps} isLoading isError onRetry={onRetry} />, { wrapper })
     const list = screen.getByTestId("mock-contact-list")
     expect(list.getAttribute("data-loading")).toBe("true")
     expect(list.getAttribute("data-error")).toBe("true")
+    fireEvent.click(screen.getByRole("button", { name: "mock-retry" }))
+    expect(onRetry).toHaveBeenCalledOnce()
+  })
+
+  it("uses reduced-motion-safe sidebar transition values on mobile", () => {
+    mediaQueryMock.mockReturnValue(true)
+    render(<MessengerSidebar {...baseProps} isMobile />, { wrapper })
+    expect(screen.getByRole("button", { name: "messenger:newChat" })).toBeInTheDocument()
+  })
+
+  it("uses animated mobile transitions and empty optional contact fields safely", () => {
+    mediaQueryMock.mockReturnValue(false)
+    render(
+      <MessengerSidebar
+        {...baseProps}
+        isMobile
+        contacts={[{ id: "sparse" } as unknown as SidebarProps["contacts"][number]]}
+      />,
+      { wrapper }
+    )
+    expect(screen.getByTestId("mock-contact-list")).toHaveAttribute("data-count", "1")
   })
 })

@@ -1828,7 +1828,11 @@ def test_output_cannot_alias_an_input_or_the_contract(tmp_path: Path) -> None:
         "--python-xml",
         str(input_path),
     )
-    contract_alias = _run_normalizer(QUALITY_CONTRACT_PATH)
+    contract_alias = _run_normalizer(
+        QUALITY_CONTRACT_PATH,
+        "--contract",
+        str(QUALITY_CONTRACT_PATH),
+    )
 
     for result in (input_alias, contract_alias):
         assert result.returncode == 2

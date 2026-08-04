@@ -324,6 +324,7 @@ describe("EventsFeature — client-side category + date filters", () => {
     listQuery.events = [
       evt({ id: "today", starts_at: todayIso }),
       evt({ id: "past", starts_at: "2000-01-01T00:00:00.000Z" }),
+      evt({ id: "missing-start", starts_at: null }),
     ]
     render(<EventsFeature />)
     expect(screen.getByTestId("list-count")).toHaveTextContent("1")
@@ -341,6 +342,20 @@ describe("EventsFeature — client-side category + date filters", () => {
     expect(screen.getByTestId("list-count")).toHaveTextContent("1")
   })
 
+  it("uses the Monday offset for a Sunday week start", () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date("2026-08-09T12:00:00.000Z"))
+    search.params = { dr: "week" }
+    listQuery.events = [evt({ id: "sunday-week" })]
+
+    try {
+      render(<EventsFeature />)
+      expect(screen.getByTestId("list-count")).toHaveTextContent("0")
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it("filters by the 'month' date range", () => {
     const now = new Date()
     const thisMonthIso = new Date(now.getFullYear(), now.getMonth(), 15, 9).toISOString()
@@ -349,6 +364,13 @@ describe("EventsFeature — client-side category + date filters", () => {
       evt({ id: "m", starts_at: thisMonthIso }),
       evt({ id: "old", starts_at: "1990-06-15T00:00:00.000Z" }),
     ]
+    render(<EventsFeature />)
+    expect(screen.getByTestId("list-count")).toHaveTextContent("1")
+  })
+
+  it("ignores an unknown date-range value", () => {
+    search.params = { dr: "unsupported" }
+    listQuery.events = [evt({ id: "kept" })]
     render(<EventsFeature />)
     expect(screen.getByTestId("list-count")).toHaveTextContent("1")
   })
@@ -388,6 +410,16 @@ describe("EventsFeature — sort modes", () => {
   it("handles missing participant_count in popular sort (?? 0 fallback)", () => {
     search.params = { sort: "popular" }
     listQuery.events = [evt({ id: "a", participant_count: undefined }), evt({ id: "b" })]
+    render(<EventsFeature />)
+    expect(screen.getByTestId("list-count")).toHaveTextContent("2")
+  })
+
+  it("handles a missing participant count in the second sort operand", () => {
+    search.params = { sort: "popular" }
+    listQuery.events = [
+      evt({ id: "defined-first", participant_count: 5 }),
+      evt({ id: "missing-second", participant_count: undefined }),
+    ]
     render(<EventsFeature />)
     expect(screen.getByTestId("list-count")).toHaveTextContent("2")
   })

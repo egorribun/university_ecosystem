@@ -3,11 +3,22 @@ from __future__ import annotations
 import argparse
 import fnmatch
 import json
+import os
 import sys
 from collections.abc import Sequence
 from pathlib import Path
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
+PRUNED_DIRECTORY_NAMES = frozenset(
+    {"node_modules", "dist", "build", "__pycache__", "stryker-tmp", ".stryker-tmp"}
+)
+
+
+def should_prune_directory(name: str) -> bool:
+    """Return whether a directory can be skipped before walking into it."""
+    return (name.startswith(".") and name != ".github") or (
+        name in PRUNED_DIRECTORY_NAMES
+    )
 
 
 def _parse_arguments(argv: Sequence[str] | None) -> argparse.Namespace:
@@ -99,41 +110,31 @@ def scan_repository(mapping_config: dict[str, object]) -> list[dict[str, object]
 
     records = []
 
-    # Traverse directory tree
-    for path in REPOSITORY_ROOT.rglob("*"):
-        if not path.is_file():
-            continue
+    # Traverse with directory pruning. The inventory intentionally excludes
+    # dependency/build/cache trees; pruning them before enumeration avoids
+    # materializing hundreds of thousands of irrelevant paths on local runs.
+    for root, dirnames, filenames in os.walk(REPOSITORY_ROOT):
+        dirnames[:] = [
+            name for name in dirnames if not should_prune_directory(name)
+        ]
+        root_path = Path(root)
+        for filename in filenames:
+            path = root_path / filename
+            relative_path = str(path.relative_to(REPOSITORY_ROOT)).replace("\\", "/")
 
-        relative_path = str(path.relative_to(REPOSITORY_ROOT)).replace("\\", "/")
+            file_class = classify_file(relative_path, generated_patterns)
 
-        # Fast ignore check for major dependency/git folders
-        parts = relative_path.split("/")
-        if any(
-            (part.startswith(".") and part != ".github")
-            or part
-            in {
-                "node_modules",
-                "dist",
-                "build",
-                "__pycache__",
-            }
-            for part in parts
-        ):
-            continue
+            owner = resolve_owner(relative_path, teams)
+            tier0_status = is_tier0(relative_path, tier0_rules)
 
-        file_class = classify_file(relative_path, generated_patterns)
-
-        owner = resolve_owner(relative_path, teams)
-        tier0_status = is_tier0(relative_path, tier0_rules)
-
-        records.append(
-            {
-                "path": relative_path,
-                "classification": file_class,
-                "owner": owner,
-                "tier0": tier0_status and file_class == "source",
-            }
-        )
+            records.append(
+                {
+                    "path": relative_path,
+                    "classification": file_class,
+                    "owner": owner,
+                    "tier0": tier0_status and file_class == "source",
+                }
+            )
 
     records.sort(key=lambda r: str(r["path"]))
     return records

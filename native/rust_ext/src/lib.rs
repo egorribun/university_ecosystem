@@ -304,14 +304,14 @@ pub fn batch_detect_conflicts(
                         .par_iter()
                         .enumerate()
                         .flat_map_iter(|(i, a)| {
-                            let a_weekday = metadata[i].weekday;
+                            let a_weekday = weekday_comparison_value(&metadata[i]);
                             let a_valid = a.start_time < a.end_time;
                             items[i + 1..]
                                 .iter()
                                 .zip(metadata[i + 1..].iter())
                                 .filter(move |(b, b_metadata)| {
                                     a_valid
-                                        && b_metadata.weekday == a_weekday
+                                        && weekday_comparison_value(b_metadata) == a_weekday
                                         && b.start_time < b.end_time
                                         && a.start_time < b.end_time
                                         && b.start_time < a.end_time
@@ -1700,6 +1700,29 @@ mod tests {
     }
 
     #[test]
+    fn test_batch_detect_conflicts_max_pairs_cap_noncanonical_metadata() {
+        // Exercise the normalized metadata path (parity != "both") as well as
+        // the bounded-pair early stop. The canonical path above does not enter
+        // the `check_conflict_with_metadata` branch in the parallel iterator.
+        let items = (0..320)
+            .map(|id| ScheduleItem {
+                id: Some(id),
+                weekday: "monday".to_string(),
+                start_time: 1000,
+                end_time: 2000,
+                parity: "odd".to_string(),
+            })
+            .collect();
+
+        let result = batch_detect_conflicts(items);
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("Detected conflict pairs exceed maximum allowed cap (50000)"));
+    }
+
+    #[test]
     fn test_get_partition_info_table_name_validation() {
         // Valid names
         assert!(get_partition_info("notifications".to_string(), 0).is_ok());
@@ -1732,7 +1755,11 @@ mod tests {
     fn test_find_optimal_slot_day2_spanning_conflict() {
         // Slot at 23:00 Monday spanning 120 mins into Tuesday 01:00.
         // Existing schedule has a conflict on Tuesday 00:30-01:30.
-        let tuesday_date = next_weekday(Utc::now().date_naive(), Weekday::Tue);
+        // Derive Tuesday from the selected Monday candidate rather than from
+        // today independently; otherwise the test is date-dependent whenever
+        // today is Tuesday through Sunday.
+        let monday_date = next_weekday(Utc::now().date_naive(), Weekday::Mon);
+        let tuesday_date = monday_date + Duration::days(1);
         let tuesday_midnight = tuesday_date
             .and_hms_opt(0, 0, 0)
             .unwrap()

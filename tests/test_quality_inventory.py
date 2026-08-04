@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 try:
+    from scripts.quality import generate_test_inventory as inventory
     from scripts.quality.check_orphans_and_anti_patterns import (
         check_anti_patterns,
         check_python_duplicates_and_imports,
@@ -13,6 +14,8 @@ try:
         is_generated,
         is_tier0,
         resolve_owner,
+        scan_repository,
+        should_prune_directory,
     )
 except ImportError:
     import pytest
@@ -77,6 +80,41 @@ def test_classify_file() -> None:
 
     # Utility
     assert classify_file("scripts/setup.sh", generated_patterns) == "utility"
+
+
+def test_inventory_prunes_dependency_and_hidden_directories(
+    tmp_path: Path, monkeypatch
+) -> None:
+    (tmp_path / "app").mkdir()
+    (tmp_path / "app" / "visible.py").write_text("pass", encoding="utf-8")
+    (tmp_path / "node_modules" / "pkg").mkdir(parents=True)
+    (tmp_path / "node_modules" / "pkg" / "hidden.ts").write_text(
+        "export {}", encoding="utf-8"
+    )
+    (tmp_path / ".codex" / "cache").mkdir(parents=True)
+    (tmp_path / ".codex" / "cache" / "hidden.py").write_text(
+        "pass", encoding="utf-8"
+    )
+    (tmp_path / ".github" / "workflows").mkdir(parents=True)
+    (tmp_path / ".github" / "workflows" / "ci.yml").write_text(
+        "name: ci", encoding="utf-8"
+    )
+
+    monkeypatch.setattr(inventory, "REPOSITORY_ROOT", tmp_path)
+    records = scan_repository(
+        {
+            "teams": {},
+            "tier0_rules": [],
+            "generated_patterns": [],
+        }
+    )
+    paths = {str(record["path"]) for record in records}
+
+    assert paths == {".github/workflows/ci.yml", "app/visible.py"}
+    assert should_prune_directory("node_modules") is True
+    assert should_prune_directory(".codex") is True
+    assert should_prune_directory("stryker-tmp") is True
+    assert should_prune_directory(".github") is False
 
 
 def test_check_anti_patterns(tmp_path: Path) -> None:

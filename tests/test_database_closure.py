@@ -3,7 +3,7 @@ from __future__ import annotations
 import sqlite3
 from datetime import datetime
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, call, patch
 
 import pytest
 
@@ -84,6 +84,42 @@ def test_build_engine_kwargs_omits_optional_pool_limits():
     assert kwargs["pool_recycle"] == 600
 
 
+def test_build_engine_kwargs_contracts_sqlite_and_postgres_defaults():
+    sqlite_kwargs = database_module._build_engine_kwargs(
+        SimpleNamespace(database_url="sqlite+aiosqlite:///./local.db")
+    )
+    assert sqlite_kwargs == {
+        "pool_pre_ping": True,
+        "echo": False,
+        "poolclass": database_module.NullPool,
+        "connect_args": {"timeout": 30.0},
+    }
+
+    postgres_kwargs = database_module._build_engine_kwargs(
+        SimpleNamespace(
+            database_url="postgresql+asyncpg://db.example/university",
+            database_statement_cache_size=1024,
+            database_pool_size=8,
+            database_max_overflow=4,
+            database_pool_timeout=30.0,
+            database_pool_recycle=540,
+        )
+    )
+    assert postgres_kwargs == {
+        "pool_pre_ping": True,
+        "echo": False,
+        "pool_size": 8,
+        "max_overflow": 4,
+        "pool_timeout": 30.0,
+        "pool_recycle": 540,
+        "connect_args": {
+            "statement_cache_size": 1024,
+            "command_timeout": 15.0,
+            "server_settings": {"application_name": "university-backend"},
+        },
+    }
+
+
 def test_slow_query_logging_truncates_long_statements(monkeypatch):
     slow_logger = MagicMock()
     monkeypatch.setattr(database_module, "slow_query_logger", slow_logger)
@@ -162,6 +198,47 @@ def test_slow_query_logging_closure_handles_fast_and_slow_queries(monkeypatch):
     assert call.args[2:] == (1.0, True)
 
 
+def test_slow_query_logging_disabled_and_zero_threshold_fallback(monkeypatch):
+    sync_engine = object()
+    listeners: list[tuple[str, object]] = []
+    logger = MagicMock()
+    monkeypatch.setattr(database_module, "logger", logger)
+    monkeypatch.setattr(database_module.event, "contains", lambda *args: False)
+    monkeypatch.setattr(
+        database_module.event,
+        "listen",
+        lambda _target, name, callback: listeners.append((name, callback)),
+    )
+
+    database_module._setup_slow_query_logging(
+        SimpleNamespace(sync_engine=sync_engine),
+        SimpleNamespace(slow_query_logging_enabled=False, slow_query_threshold_ms=1),
+    )
+    assert listeners == []
+
+    database_module._setup_slow_query_logging(
+        SimpleNamespace(sync_engine=sync_engine),
+        SimpleNamespace(slow_query_logging_enabled=True, slow_query_threshold_ms=0),
+    )
+    assert [name for name, _callback in listeners] == [
+        "before_cursor_execute",
+        "after_cursor_execute",
+    ]
+    with (
+        patch.object(database_module.time, "perf_counter", side_effect=[1.0, 1.5]),
+        patch.object(database_module, "_log_slow_query") as log_slow_query,
+    ):
+        before_callback = listeners[0][1]
+        after_callback = listeners[1][1]
+        before_callback(None, None, "SELECT 1", None, None, False)
+        after_callback(None, None, "SELECT 1", None, None, False)
+
+    log_slow_query.assert_called_once_with("SELECT 1", 500.0, 500.0, False)
+    logger.info.assert_called_once_with(
+        "Slow query logging enabled", threshold_ms=500.0
+    )
+
+
 def test_cursor_start_and_pool_callbacks_skip_debug_logging(monkeypatch):
     database_module._before_cursor_execute(None, None, "SELECT 1", None, None, False)
     assert database_module._query_start_time.get() is not None
@@ -189,6 +266,65 @@ def test_pool_monitoring_registers_optional_checkout_failed(monkeypatch):
     database_module._setup_pool_health_monitoring(engine)
 
     assert events == ["checkout", "checkin", "invalidate", "checkout_failed"]
+
+
+def test_pool_monitoring_uses_na_for_pools_without_size_or_overflow(monkeypatch):
+    events: list[str] = []
+    pool = SimpleNamespace(dispatch=SimpleNamespace())
+    engine = SimpleNamespace(sync_engine=SimpleNamespace(pool=pool))
+    logger = MagicMock()
+
+    monkeypatch.setattr(database_module, "logger", logger)
+    monkeypatch.setattr(
+        database_module.event,
+        "listen",
+        lambda _target, name, _callback: events.append(name),
+    )
+
+    database_module._setup_pool_health_monitoring(engine)
+
+    assert events == ["checkout", "checkin", "invalidate"]
+    logger.info.assert_called_once_with(
+        "Pool health monitoring enabled (size=%s, overflow=%s)", "N/A", "N/A"
+    )
+
+
+def test_create_session_factory_configures_primary_and_read_replica(monkeypatch):
+    primary = SimpleNamespace()
+    replica = SimpleNamespace()
+    create_engine = MagicMock(side_effect=[primary, replica])
+    setup_pool = MagicMock()
+    session_factory = object()
+    make_session = MagicMock(return_value=session_factory)
+    monkeypatch.setattr(database_module, "create_async_engine", create_engine)
+    monkeypatch.setattr(database_module, "_setup_pool_health_monitoring", setup_pool)
+    monkeypatch.setattr(database_module, "async_sessionmaker", make_session)
+
+    current_settings = SimpleNamespace(
+        database_url="sqlite+aiosqlite:///./primary.db",
+        database_read_replica_url="sqlite+aiosqlite:///./replica.db",
+        slow_query_logging_enabled=False,
+    )
+
+    result = database_module.create_session_factory(current_settings)
+
+    assert result == (primary, session_factory, replica)
+    assert [entry.args[0] for entry in create_engine.call_args_list] == [
+        current_settings.database_url,
+        current_settings.database_read_replica_url,
+    ]
+    assert create_engine.call_args_list[0].kwargs == {
+        "pool_pre_ping": True,
+        "echo": False,
+        "poolclass": database_module.NullPool,
+        "connect_args": {"timeout": 30.0},
+    }
+    setup_pool.assert_has_calls([call(primary), call(replica)])
+    make_session.assert_called_once_with(
+        primary,
+        expire_on_commit=False,
+        class_=database_module.AsyncSession,
+    )
 
 
 def test_pool_callbacks_emit_debug_logs(monkeypatch):
@@ -232,6 +368,49 @@ def test_init_database_rechecks_state_inside_lock(monkeypatch):
     database_module.init_database()
 
     create_factory.assert_not_called()
+
+
+def test_init_database_initializes_replica_read_factory_and_masks_urls(monkeypatch):
+    primary = object()
+    replica = object()
+    read_factory = object()
+    current_settings = SimpleNamespace(
+        database_url="postgresql+asyncpg://user:secret@db.example/university",
+        database_read_replica_url=(
+            "postgresql+asyncpg://user:secret@replica.example/university"
+        ),
+    )
+    create_factory = MagicMock(return_value=(primary, object(), replica))
+    make_session = MagicMock(return_value=read_factory)
+    tenant_listeners = MagicMock()
+    logger = MagicMock()
+
+    monkeypatch.setattr(database_module, "_engine", None)
+    monkeypatch.setattr(database_module, "_async_session", None)
+    monkeypatch.setattr(database_module, "_read_replica_engine", None)
+    monkeypatch.setattr(database_module, "_read_session_factory", None)
+    monkeypatch.setattr(database_module, "create_session_factory", create_factory)
+    monkeypatch.setattr(database_module, "async_sessionmaker", make_session)
+    monkeypatch.setattr(database_module, "logger", logger)
+
+    with patch(
+        "app.core.db.listeners.register_tenant_listeners", tenant_listeners
+    ):
+        database_module.init_database(current_settings)
+
+    create_factory.assert_called_once_with(current_settings)
+    make_session.assert_called_once_with(
+        replica,
+        expire_on_commit=False,
+        class_=database_module.AsyncSession,
+    )
+    tenant_listeners.assert_called_once_with()
+    assert database_module.get_read_engine() is replica
+    logger.info.assert_called_once_with(
+        "Database initialised: %s (replica: %s)",
+        "db.example/university",
+        "replica.example/university",
+    )
 
 
 def test_get_read_engine_falls_back_to_primary(monkeypatch):

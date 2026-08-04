@@ -72,6 +72,19 @@ describe("EventCreateDialog", () => {
     expect(screen.getByText("events:form.description_en")).toBeInTheDocument()
   })
 
+  it("updates optional description, type, and speaker fields", async () => {
+    const user = userEvent.setup()
+    render(<EventCreateDialog {...baseProps} language="en" />)
+
+    await user.type(fieldByLabel("events:form.description_en"), "Talk details")
+    await user.type(fieldByLabel("events:form.type_en"), "Workshop")
+    await user.type(fieldByLabel("events:form.speaker"), "Dr. Ada Lovelace")
+
+    expect(fieldByLabel("events:form.description_en")).toHaveValue("Talk details")
+    expect(fieldByLabel("events:form.type_en")).toHaveValue("Workshop")
+    expect(fieldByLabel("events:form.speaker")).toHaveValue("Dr. Ada Lovelace")
+  })
+
   it("enables submit once title/location/dates are valid and fires onCreated", async () => {
     const user = userEvent.setup()
     const onCreated = vi.fn()

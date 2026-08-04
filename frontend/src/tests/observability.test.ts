@@ -76,4 +76,47 @@ describe("initObservability", () => {
     expect(result).toBe(false)
     expect(Sentry.init).not.toHaveBeenCalled()
   })
+
+  it("normalizes valid, invalid, and out-of-range sample rates", () => {
+    const result = initObservability({
+      DEV: false,
+      PROD: true,
+      BASE_URL: "http://localhost",
+      MODE: "production",
+      VITE_SENTRY_DSN: "https://examplePublicKey.ingest.sentry.io/123",
+      VITE_SENTRY_TRACES_SAMPLE_RATE: "0.25",
+      VITE_SENTRY_PROFILES_SAMPLE_RATE: "2",
+    } as unknown as ImportMetaEnv)
+
+    expect(result).toBe(true)
+    expect(Sentry.init).toHaveBeenCalledWith(
+      expect.objectContaining({
+        environment: "production",
+        tracesSampleRate: 0.25,
+        profilesSampleRate: undefined,
+      })
+    )
+  })
+
+  it("rejects a non-numeric sample rate and returns true on repeated initialization", () => {
+    const env = {
+      DEV: false,
+      PROD: false,
+      BASE_URL: "http://localhost",
+      MODE: "production",
+      VITE_SENTRY_DSN: "https://examplePublicKey.ingest.sentry.io/123",
+      VITE_SENTRY_TRACES_SAMPLE_RATE: "not-a-number",
+    } as unknown as ImportMetaEnv
+
+    expect(initObservability(env)).toBe(true)
+    expect(initObservability(env)).toBe(true)
+    expect(Sentry.init).toHaveBeenCalledTimes(1)
+    expect(Sentry.init).toHaveBeenCalledWith(
+      expect.objectContaining({
+        environment: "development",
+        tracesSampleRate: undefined,
+        profilesSampleRate: undefined,
+      })
+    )
+  })
 })

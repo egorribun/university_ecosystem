@@ -15,8 +15,8 @@ pub fn pbkdf2_derive(password: &str, salt: &str, iterations: u32, key_size: usiz
 
 #[wasm_bindgen]
 pub fn hmac_sha256_sign(key: &str, message: &str) -> String {
-    let mut mac =
-        HmacSha256::new_from_slice(key.as_bytes()).expect("HMAC can take key of any size");
+    let mut mac = HmacSha256::new_from_slice(key.as_bytes())
+        .unwrap_or_else(|_| unreachable!("HMAC-SHA256 accepts arbitrary-length keys"));
     mac.update(message.as_bytes());
     let result = mac.finalize();
     hex::encode(result.into_bytes())

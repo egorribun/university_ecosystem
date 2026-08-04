@@ -28,6 +28,7 @@ import type { PropsWithChildren } from "react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import type { Event } from "@/types/Event"
+import { StorageItem } from "@/utils/storage"
 
 // ── SDK mock ────────────────────────────────────────────────────────────────
 // The hooks/factories import `allEventsApiV1EventsGet` + `myEventsApiV1EventsMyGet`
@@ -266,6 +267,24 @@ describe("useEventsListQuery placeholderData offline (events.ts:216-231)", () =>
     expect(result.current.events).toEqual([])
     await waitFor(() => expect(result.current.isSuccess).toBe(true))
   })
+
+  it("returns no placeholder when the storage adapter throws", async () => {
+    const getSpy = vi.spyOn(StorageItem.prototype, "get").mockImplementation(() => {
+      throw new Error("storage unavailable")
+    })
+    allEventsMock.mockResolvedValue(okPage([], null))
+
+    try {
+      const queryClient = freshClient()
+      const { result } = renderHook(() => useEventsListQuery({ language: "ru" }), {
+        wrapper: makeWrapper(queryClient),
+      })
+      await waitFor(() => expect(result.current.isSuccess).toBe(true))
+      expect(result.current.events).toEqual([])
+    } finally {
+      getSpy.mockRestore()
+    }
+  })
 })
 
 // ── mergeEventPages last-write-wins dedupe (events.ts:122) ─────────────────────
@@ -365,6 +384,11 @@ describe("useMyEventsQuery (events.ts:329-354)", () => {
     // placeholder visible first, then fresh
     await waitFor(() => expect(result.current.data).toEqual(fresh))
     expect(myEventsMock).toHaveBeenCalledOnce()
+    const validateStatus = (
+      myEventsMock.mock.calls[0]?.[0] as { validateStatus: (status: number) => boolean }
+    ).validateStatus
+    expect(validateStatus(200)).toBe(true)
+    expect(validateStatus(400)).toBe(false)
   })
 
   it("non-array 200 data coerces to [] (events.ts:353)", async () => {
@@ -398,6 +422,18 @@ describe("useMyEventsQuery (events.ts:329-354)", () => {
     expect(result.current.data).toEqual(cached)
   })
 
+  it("304 response returns an empty array when no cached my-events data exists", async () => {
+    myEventsMock.mockResolvedValue({ status: 304, data: undefined })
+
+    const queryClient = freshClient()
+    const { result } = renderHook(() => useMyEventsQuery({ language: "ru", userId: "u-empty" }), {
+      wrapper: makeWrapper(queryClient),
+    })
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    expect(result.current.data).toEqual([])
+  })
+
   it("placeholder swallows malformed JSON for the my-events key", async () => {
     window.localStorage.setItem("events:my:ru:u-bad", "{broken")
     myEventsMock.mockResolvedValue({ status: 200, data: [] })
@@ -408,6 +444,24 @@ describe("useMyEventsQuery (events.ts:329-354)", () => {
     })
     expect(result.current.data).toBeUndefined() // no placeholder
     await waitFor(() => expect(result.current.isSuccess).toBe(true))
+  })
+
+  it("returns no placeholder when the storage adapter throws", async () => {
+    const getSpy = vi.spyOn(StorageItem.prototype, "get").mockImplementation(() => {
+      throw new Error("storage unavailable")
+    })
+    myEventsMock.mockResolvedValue({ status: 200, data: [] })
+
+    try {
+      const queryClient = freshClient()
+      const { result } = renderHook(() => useMyEventsQuery({ language: "ru", userId: "u-throw" }), {
+        wrapper: makeWrapper(queryClient),
+      })
+      await waitFor(() => expect(result.current.isSuccess).toBe(true))
+      expect(result.current.data).toEqual([])
+    } finally {
+      getSpy.mockRestore()
+    }
   })
 })
 
@@ -425,6 +479,11 @@ describe("useSuspenseMyEventsQuery (events.ts:385-417)", () => {
 
     await waitFor(() => expect(result.current.data).toEqual(data))
     expect(result.current.queryKey).toEqual(["events", "my", { language: "ru", userId: "su-1" }])
+    const validateStatus = (
+      myEventsMock.mock.calls[0]?.[0] as { validateStatus: (status: number) => boolean }
+    ).validateStatus
+    expect(validateStatus(299)).toBe(true)
+    expect(validateStatus(500)).toBe(false)
   })
 
   it("non-array 200 data coerces to [] in suspense path (events.ts:409)", async () => {
@@ -449,6 +508,17 @@ describe("useSuspenseMyEventsQuery (events.ts:385-417)", () => {
       { wrapper: makeWrapper(queryClient) }
     )
     await waitFor(() => expect(result.current.data).toEqual(cached))
+  })
+
+  it("304 in suspense path returns an empty array when no cache exists", async () => {
+    myEventsMock.mockResolvedValue({ status: 304, data: undefined })
+    const queryClient = freshClient()
+    const { result } = renderHook(
+      () => useSuspenseMyEventsQuery({ language: "ru", userId: "su-empty-cache" }),
+      { wrapper: makeWrapper(queryClient) }
+    )
+
+    await waitFor(() => expect(result.current.data).toEqual([]))
   })
 })
 

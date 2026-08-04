@@ -1,10 +1,12 @@
 import { render, screen } from "@testing-library/react"
-import { describe, it, expect, vi } from "vitest"
+import { afterEach, describe, it, expect, vi } from "vitest"
 
 vi.mock("framer-motion", async () =>
   (await import("@/tests/helpers/framerMotionMock")).framerMotionMock()
 )
-vi.mock("@/hooks/useMediaQuery", () => ({ default: () => false }))
+const { reducedMotion } = vi.hoisted(() => ({ reducedMotion: vi.fn(() => false) }))
+
+vi.mock("@/hooks/useMediaQuery", () => ({ default: () => reducedMotion() }))
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({
     t: (key: string) => key,
@@ -26,6 +28,10 @@ const baseProps = {
 }
 
 describe("EventQuickView", () => {
+  afterEach(() => {
+    reducedMotion.mockReturnValue(false)
+  })
+
   it("renders title, description, location, participant count and the view-details CTA", () => {
     render(<EventQuickView {...baseProps} />)
     expect(screen.getByText("Quantum Computing Lecture")).toBeInTheDocument()
@@ -61,5 +67,21 @@ describe("EventQuickView", () => {
     // bottom position still shows core content
     expect(screen.getByText("Quantum Computing Lecture")).toBeInTheDocument()
     expect(screen.getByText("events:categories.conference")).toBeInTheDocument()
+  })
+
+  it("uses reduced-motion transitions and tolerates an invalid date", () => {
+    reducedMotion.mockReturnValue(true)
+    render(
+      <EventQuickView
+        {...baseProps}
+        position="bottom"
+        startsAt="not-a-date"
+        description=""
+        location={undefined}
+      />
+    )
+
+    expect(screen.getByText("Quantum Computing Lecture")).toBeInTheDocument()
+    expect(screen.queryByText("An introductory survey of qubits and gates.")).not.toBeInTheDocument()
   })
 })

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Mutation score checker for the University Ecosystem project.
 
-Runs ``uv run mutmut results`` and parses the output to compute:
+Runs ``uv run mutmut results --all`` and parses the output to compute:
     mutation_score = killed / (killed + survived)
 
 Usage:
@@ -33,6 +33,8 @@ class MutationSummary:
     survived: int
     timeout: int
     suspicious: int
+    no_tests: int
+    not_checked: int
 
     @property
     def total_meaningful(self) -> int:
@@ -64,16 +66,26 @@ _KILLED_PATTERN = re.compile(r"Killed[:\s]+(\d+)", re.IGNORECASE)
 _SURVIVED_PATTERN = re.compile(r"Survived[:\s]+(\d+)", re.IGNORECASE)
 _TIMEOUT_PATTERN = re.compile(r"Timed\s+out[:\s]+(\d+)", re.IGNORECASE)
 _SUSPICIOUS_PATTERN = re.compile(r"Suspicious[:\s]+(\d+)", re.IGNORECASE)
+_NO_TESTS_PATTERN = re.compile(r"No\s+tests[:\s]+(\d+)", re.IGNORECASE)
+_NOT_CHECKED_PATTERN = re.compile(r"Not\s+checked[:\s]+(\d+)", re.IGNORECASE)
+
+_STATUS_PATTERNS = {
+    "killed": re.compile(r":\s*killed\b", re.IGNORECASE),
+    "survived": re.compile(r":\s*survived\b", re.IGNORECASE),
+    "timeout": re.compile(r":\s*(?:timed\s+out|timeout)\b", re.IGNORECASE),
+    "suspicious": re.compile(r":\s*suspicious\b", re.IGNORECASE),
+    "no_tests": re.compile(r":\s*no\s+tests\b", re.IGNORECASE),
+    "not_checked": re.compile(r":\s*not\s+checked\b", re.IGNORECASE),
+}
 
 
 def _parse_mutmut_output(output: str) -> MutationSummary:
-    """Extract mutation counts from ``mutmut results`` output or CI run log.
+    """Extract mutation counts from the complete ``mutmut results --all`` output.
 
-    WHY: mutmut 3.x prints progress summaries (e.g. '3 killed, 0 survived') to stdout
-    during 'mutmut run' (captured in /tmp/mutmut_run.log in CI), while 'mutmut results'
-    lists non-killed mutants or per-mutant statuses. Parsing both guarantees an accurate score.
+    ``mutmut results`` hides killed mutants unless ``--all`` is supplied. The
+    checker therefore consumes the complete per-mutant status stream directly;
+    it must not infer a score from a stale or platform-specific run-log path.
     """
-    import pathlib
 
     def _extract(pattern: re.Pattern[str], text: str, default: int = 0) -> int:
         match = pattern.search(text)
@@ -81,51 +93,35 @@ def _parse_mutmut_output(output: str) -> MutationSummary:
             return int(match.group(1))
         return default
 
-    killed, survived, timeout, suspicious = 0, 0, 0, 0
-    parsed_from_log = False
+    status_counts = {
+        name: len(pattern.findall(output)) for name, pattern in _STATUS_PATTERNS.items()
+    }
 
-    run_log_path = pathlib.Path("/tmp/mutmut_run.log")  # noqa: S108
-    if run_log_path.exists():
-        try:
-            log_text = run_log_path.read_text(encoding="utf-8", errors="replace")
-            killed_matches = re.findall(r"(\d+)\s+killed\b", log_text, re.IGNORECASE)
-            survived_matches = re.findall(
-                r"(\d+)\s+survived\b", log_text, re.IGNORECASE
-            )
-            if killed_matches:
-                killed = int(killed_matches[-1])
-                parsed_from_log = True
-            if survived_matches:
-                survived = int(survived_matches[-1])
-                parsed_from_log = True
-        except OSError:
-            pass
+    if any(status_counts.values()):
+        return MutationSummary(
+            killed=status_counts["killed"],
+            survived=status_counts["survived"],
+            timeout=status_counts["timeout"],
+            suspicious=status_counts["suspicious"],
+            no_tests=status_counts["no_tests"],
+            not_checked=status_counts["not_checked"],
+        )
 
-    if not parsed_from_log:
-        killed_match = _KILLED_PATTERN.search(output)
-        survived_match = _SURVIVED_PATTERN.search(output)
-
-        if killed_match is not None and survived_match is not None:
-            killed = int(killed_match.group(1))
-            survived = int(survived_match.group(1))
-            timeout = _extract(_TIMEOUT_PATTERN, output)
-            suspicious = _extract(_SUSPICIOUS_PATTERN, output)
-        else:
-            killed = len(re.findall(r":\s*killed\b", output, re.IGNORECASE))
-            survived = len(re.findall(r":\s*survived\b", output, re.IGNORECASE))
-            timeout = len(re.findall(r":\s*timed out\b", output, re.IGNORECASE))
-            suspicious = len(re.findall(r":\s*suspicious\b", output, re.IGNORECASE))
-            if killed == 0 and survived == 0 and "not checked" not in output:
-                raise ValueError(
-                    "Could not parse 'Killed' or 'Survived' counts from mutmut output.\n"
-                    f"Raw output:\n{output}"
-                )
+    killed_match = _KILLED_PATTERN.search(output)
+    survived_match = _SURVIVED_PATTERN.search(output)
+    if killed_match is None or survived_match is None:
+        raise ValueError(
+            "Could not parse 'Killed' or 'Survived' counts from mutmut output.\n"
+            f"Raw output:\n{output}"
+        )
 
     return MutationSummary(
-        killed=killed,
-        survived=survived,
-        timeout=timeout,
-        suspicious=suspicious,
+        killed=int(killed_match.group(1)),
+        survived=int(survived_match.group(1)),
+        timeout=_extract(_TIMEOUT_PATTERN, output),
+        suspicious=_extract(_SUSPICIOUS_PATTERN, output),
+        no_tests=_extract(_NO_TESTS_PATTERN, output),
+        not_checked=_extract(_NOT_CHECKED_PATTERN, output),
     )
 
 
@@ -135,7 +131,7 @@ def _parse_mutmut_output(output: str) -> MutationSummary:
 
 
 def _run_mutmut() -> str:
-    """Invoke ``uv run mutmut results`` and return stdout as a string.
+    """Invoke ``uv run mutmut results --all`` and return stdout as a string.
 
     WHY: using subprocess keeps this script dependency-free (stdlib only).
     We capture stderr separately so that diagnostic messages from mutmut
@@ -158,7 +154,7 @@ def _run_mutmut() -> str:
 
     try:
         result = subprocess.run(
-            [uv_path, "run", "mutmut", "results"],
+            [uv_path, "run", "mutmut", "results", "--all"],
             capture_output=True,
             text=True,
             check=False,  # We check the return code manually below
@@ -203,6 +199,8 @@ def _print_report(summary: MutationSummary, min_score: float) -> None:
     print(f"  Survived   : {summary.survived:>6}")
     print(f"  Timed out  : {summary.timeout:>6}")
     print(f"  Suspicious : {summary.suspicious:>6}")
+    print(f"  No tests   : {summary.no_tests:>6}")
+    print(f"  Not checked: {summary.not_checked:>6}")
     print(f"  Total (K+S): {summary.total_meaningful:>6}")
     print()
     print(f"  Score  [{bar}]  {summary.score:.2f}%")
@@ -228,7 +226,7 @@ def _print_report(summary: MutationSummary, min_score: float) -> None:
 def _build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description=(
-            "Compute the mutation score from mutmut results and fail "
+            "Compute the mutation score from mutmut results --all and fail "
             "if it is below the required minimum."
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -258,7 +256,7 @@ def main(argv: list[str] | None = None) -> None:
         )
         sys.exit(1)
 
-    print("Running: uv run mutmut results …")
+    print("Running: uv run mutmut results --all …")
     raw_output = _run_mutmut()
 
     try:

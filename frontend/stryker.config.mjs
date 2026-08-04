@@ -9,6 +9,10 @@ export default {
   // hidden default `.stryker-tmp`; keep the sandbox visible as recommended
   // by Stryker's Windows troubleshooting guidance.
   tempDirName: "stryker-tmp",
+  // Never copy generated caches or a previous interrupted sandbox into the
+  // next mutation run. Besides wasting I/O, nested Cargo caches can amplify
+  // Stryker's memory use into the gigabyte range on Windows.
+  ignorePatterns: ["/stryker-tmp/**", "**/.codex_*/**", "**/target/**", "/reports/**"],
   vitest: {
     configFile: "vitest.config.ts",
     related: false,

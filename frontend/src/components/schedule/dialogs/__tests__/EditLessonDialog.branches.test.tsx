@@ -109,6 +109,23 @@ describe("EditLessonDialog — branches", () => {
     expect(screen.getByDisplayValue("ЛК-201")).toBeInTheDocument()
   })
 
+  it("renders empty values for nullable lesson metadata", () => {
+    const nullableLesson = {
+      ...SAMPLE,
+      subject: null,
+      teacher: null,
+      room: null,
+      lesson_type: null,
+    } as unknown as Lesson
+
+    renderDialog(makeBaseProps(), nullableLesson)
+
+    expect(screen.getByLabelText("schedule:form.subject")).toHaveValue("")
+    expect(screen.getByLabelText("schedule:form.teacher")).toHaveValue("")
+    expect(screen.getByLabelText("schedule:form.room")).toHaveValue("")
+    expect(screen.getAllByRole("combobox")[0]).toHaveTextContent("schedule:form.lessonType")
+  })
+
   it("edits start/end time on a bare HH:MM lesson (Date() datePart else-branch)", () => {
     const props = makeBaseProps()
     renderDialog(props)

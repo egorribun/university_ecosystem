@@ -109,6 +109,24 @@ describe("ScheduleHeader", () => {
     expect(screen.getByText("schedule:summary.noMoreToday")).toBeInTheDocument()
   })
 
+  it("treats an omitted lesson list as an empty day", () => {
+    render(<ScheduleHeader {...baseProps} todayLessons={undefined} />)
+    expect(screen.getByText("schedule:summary.noMoreToday")).toBeInTheDocument()
+  })
+
+  it("uses the compact progress ring on mobile", () => {
+    mediaMock.mockReturnValue(true)
+    render(
+      <ScheduleHeader
+        {...baseProps}
+        currentLesson={lesson({ subject: "Mobile Lecture" })}
+        currentProgress={40}
+      />
+    )
+
+    expect(screen.getByText("Mobile Lecture")).toBeInTheDocument()
+  })
+
   it("fires onOpenSettings when the controls button is clicked", async () => {
     const user = userEvent.setup()
     const onOpenSettings = vi.fn()
@@ -135,6 +153,26 @@ describe("ScheduleHeader", () => {
     fireEvent.click(selector)
     fireEvent.mouseDown(screen.getByRole("option", { name: "CS-2025" }))
     expect(setSelectedGroup).toHaveBeenCalledWith("g2")
+  })
+
+  it("normalizes an empty teacher group selection to null", () => {
+    const setSelectedGroup = vi.fn()
+    render(
+      <ScheduleHeader
+        {...baseProps}
+        groups={[{ id: "", name: "No group" }]}
+        selectedGroup={null}
+        setSelectedGroup={setSelectedGroup}
+        user={
+          { id: "1", email: "t@u.edu", full_name: "Teacher", role: "teacher" } as unknown as User
+        }
+      />
+    )
+
+    const selector = screen.getByRole("combobox")
+    fireEvent.click(selector)
+    fireEvent.mouseDown(screen.getByRole("option", { name: "No group" }))
+    expect(setSelectedGroup).toHaveBeenCalledWith(null)
   })
 
   it("omits the settings control when no callback is supplied", () => {

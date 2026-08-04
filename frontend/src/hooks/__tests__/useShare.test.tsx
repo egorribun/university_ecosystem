@@ -45,6 +45,18 @@ describe("useShare", () => {
     expect(telegram?.href).toContain("text=Test")
   })
 
+  it("uses the translated page title when the explicit title is empty", () => {
+    const { result } = renderHook(() =>
+      useShare({
+        title: "",
+        url: "https://example.com/foo",
+        translations: { pageTitle: "Translated page" },
+      })
+    )
+
+    expect(result.current.shareOptions[0]?.href).toContain("text=Translated%20page")
+  })
+
   it("uses native share when available", async () => {
     const { result } = renderHook(() =>
       useShare({ title: "Test Title", url: "https://example.com", onNotify, translations })
@@ -77,6 +89,80 @@ describe("useShare", () => {
 
     expect(result.current.shareDialogOpen).toBe(true)
     expect(onNotify).not.toHaveBeenCalled()
+  })
+
+  it("opens the fallback dialog when navigator.canShare rejects the payload", async () => {
+    vi.mocked(navigator.canShare).mockReturnValue(false)
+
+    const { result } = renderHook(() =>
+      useShare({ title: "Test", url: "https://example.com", onNotify, translations })
+    )
+
+    await act(async () => {
+      await result.current.handleShare()
+    })
+
+    expect(result.current.shareDialogOpen).toBe(true)
+    expect(navigator.share).not.toHaveBeenCalled()
+  })
+
+  it("uses native share when canShare is unavailable and applies default title", async () => {
+    Object.defineProperty(navigator, "canShare", {
+      value: undefined,
+      configurable: true,
+      writable: true,
+    })
+
+    const { result } = renderHook(() =>
+      useShare({ title: "", url: "https://example.com", translations: { pageTitle: "Page" } })
+    )
+
+    await act(async () => {
+      await result.current.handleShare()
+    })
+
+    expect(navigator.share).toHaveBeenCalledWith({
+      title: "Page",
+      text: "Page",
+      url: "https://example.com",
+    })
+  })
+
+  it("uses the built-in share, notification, and copy fallbacks", async () => {
+    const { result } = renderHook(() =>
+      useShare({ title: "", url: "https://example.com", onNotify })
+    )
+
+    await act(async () => {
+      await result.current.handleShare()
+    })
+    expect(navigator.share).toHaveBeenCalledWith({
+      title: "Share",
+      text: "Share",
+      url: "https://example.com",
+    })
+    expect(onNotify).toHaveBeenCalledWith("Shared successfully")
+
+    await act(async () => {
+      await result.current.handleCopyLink()
+    })
+    expect(onNotify).toHaveBeenCalledWith("Link copied!")
+
+    vi.mocked(navigator.share).mockRejectedValue(new Error("share failed"))
+    await act(async () => {
+      await result.current.handleShare()
+    })
+    expect(onNotify).toHaveBeenCalledWith("Share failed")
+
+    Object.defineProperty(navigator, "clipboard", {
+      value: { writeText: vi.fn().mockRejectedValue(new Error("copy failed")) },
+      configurable: true,
+      writable: true,
+    })
+    await act(async () => {
+      await result.current.handleCopyLink()
+    })
+    expect(onNotify).toHaveBeenCalledWith("Copy failed")
   })
 
   it("copies link to clipboard and clears state after timeout", async () => {
@@ -127,6 +213,20 @@ describe("useShare", () => {
     expect(onNotify).toHaveBeenCalledWith("Error")
   })
 
+  it("handles nameless share failures without requiring a notification callback", async () => {
+    vi.mocked(navigator.share).mockRejectedValue({})
+
+    const { result } = renderHook(() =>
+      useShare({ title: "Test", url: "https://example.com" })
+    )
+
+    await act(async () => {
+      await result.current.handleShare()
+    })
+
+    expect(result.current.sharing).toBe(false)
+  })
+
   it("uses window.location.href if url is not provided", () => {
     const originalLocation = window.location.href
     Object.defineProperty(window, "location", {
@@ -163,6 +263,81 @@ describe("useShare", () => {
     })
 
     expect(onNotify).toHaveBeenCalledWith("Error")
+  })
+
+  it("reports clipboard write failures with the default error message", async () => {
+    Object.defineProperty(navigator, "clipboard", {
+      value: { writeText: vi.fn().mockRejectedValue(new Error("denied")) },
+      configurable: true,
+      writable: true,
+    })
+
+    const { result } = renderHook(() =>
+      useShare({ title: "Test", url: "https://example.com" })
+    )
+
+    await act(async () => {
+      await result.current.handleCopyLink()
+    })
+
+    expect(result.current.copiedLink).toBe(false)
+    expect(result.current.copyingLink).toBe(false)
+  })
+
+  it("does not start a second clipboard operation while the first is pending", async () => {
+    let resolveCopy!: () => void
+    const writeText = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveCopy = resolve
+        })
+    )
+    Object.defineProperty(navigator, "clipboard", {
+      value: { writeText },
+      configurable: true,
+      writable: true,
+    })
+
+    const { result } = renderHook(() =>
+      useShare({ title: "Test", url: "https://example.com" })
+    )
+    let first!: Promise<void>
+    act(() => {
+      first = result.current.handleCopyLink()
+    })
+    let second!: Promise<void>
+    act(() => {
+      second = result.current.handleCopyLink()
+    })
+    expect(writeText).toHaveBeenCalledOnce()
+
+    await act(async () => {
+      resolveCopy()
+      await Promise.all([first, second])
+    })
+  })
+
+  it("returns empty share and copy states when the current location is empty", async () => {
+    const originalLocation = window.location
+    Object.defineProperty(window, "location", {
+      value: { href: "" },
+      writable: true,
+      configurable: true,
+    })
+
+    const { result } = renderHook(() => useShare({ title: "Test" }))
+    expect(result.current.shareOptions).toEqual([])
+    await act(async () => {
+      await result.current.handleShare()
+      await result.current.handleCopyLink()
+    })
+    expect(navigator.share).not.toHaveBeenCalled()
+
+    Object.defineProperty(window, "location", {
+      value: originalLocation,
+      writable: true,
+      configurable: true,
+    })
   })
 
   it("throws error in insecure context", async () => {

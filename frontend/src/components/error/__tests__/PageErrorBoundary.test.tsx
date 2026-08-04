@@ -1,15 +1,16 @@
 import { render, screen, fireEvent } from "@testing-library/react"
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
 
-const { routeState, navigateMock } = vi.hoisted(() => ({
+const { routeState, navigateMock, translationState } = vi.hoisted(() => ({
   routeState: { current: "/start" },
   navigateMock: vi.fn(),
+  translationState: { ready: true },
 }))
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({
     t: (key: string) => key,
-    ready: true,
+    ready: translationState.ready,
     i18n: { language: "en", changeLanguage: () => Promise.resolve() },
   }),
 }))
@@ -31,6 +32,7 @@ function Boom(): never {
 describe("PageErrorBoundary", () => {
   beforeEach(() => {
     routeState.current = "/start"
+    translationState.ready = true
     vi.clearAllMocks()
     // React logs caught errors via console.error — silence to keep output clean.
     vi.spyOn(console, "error").mockImplementation(() => {})
@@ -72,6 +74,48 @@ describe("PageErrorBoundary", () => {
     )
     expect(screen.getByText("custom fallback")).toBeInTheDocument()
     expect(screen.queryByRole("alert")).not.toBeInTheDocument()
+  })
+
+  it("shows the loading fallback while translations are not ready", () => {
+    translationState.ready = false
+    render(
+      <PageErrorBoundary>
+        <Boom />
+      </PageErrorBoundary>
+    )
+
+    expect(screen.getByText("common:statuses.loading")).toBeInTheDocument()
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument()
+  })
+
+  it("renders structured API error details in development", () => {
+    const apiError = Object.assign(new Error("validation failed"), {
+      isAxiosError: true,
+      response: {
+        status: 422,
+        data: {
+          detail: [
+            { type: "value_error", msg: "Title is required", loc: ["body", "title"] },
+            { type: "value_error", msg: "General failure", loc: [] },
+          ],
+          trace_id: "trace-123",
+        },
+      },
+    })
+    function ApiBoom(): never {
+      throw apiError
+    }
+
+    render(
+      <PageErrorBoundary pageName="news">
+        <ApiBoom />
+      </PageErrorBoundary>
+    )
+
+    expect(screen.getByText("Status: 422")).toBeInTheDocument()
+    expect(screen.getByText("Trace ID: trace-123")).toBeInTheDocument()
+    expect(screen.getByText(/Title is required/)).toBeInTheDocument()
+    expect(screen.getByText(/General failure/)).toBeInTheDocument()
   })
 
   it("navigates home from the fallback", () => {

@@ -281,6 +281,13 @@ describe("ScheduleDesktopTable", () => {
     expect(within(grid).getByRole("columnheader", { name: /Mon/ })).toBeInTheDocument()
   })
 
+  it("falls back to backend weekday names when a display label is missing", async () => {
+    await renderTable(baseProps({ weekdayLabels: [] }))
+
+    const grid = screen.getByRole("grid", { name: "Schedule" })
+    expect(within(grid).getByRole("columnheader", { name: /monday/ })).toBeInTheDocument()
+  })
+
   it("labels empty grid cells with the fallback 'Empty' aria-label", async () => {
     // One Monday lesson → row 0 Monday filled, the other 5 day-columns empty.
     await renderTable(baseProps({ schedule: [LESSON_MON_1], rawSchedule: [LESSON_MON_1] }))

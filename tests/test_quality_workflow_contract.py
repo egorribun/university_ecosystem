@@ -690,7 +690,7 @@ def test_frontend_mutation_gate_is_blocking_and_reproducible() -> None:
         for step in unit_steps
         if step.get("name") == "Check differential frontend coverage"
     )
-    assert "--fail-under=80" in diff_step["run"]
+    assert "--fail-under=100" in diff_step["run"]
     codecov_step = next(
         step
         for step in unit_steps

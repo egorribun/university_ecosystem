@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest"
-import { render, screen } from "@testing-library/react"
+import { fireEvent, render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { axe } from "jest-axe"
 
@@ -60,6 +60,57 @@ describe("ActionMenu — open + close", () => {
 
     await user.keyboard("{Escape}")
     expect(screen.queryByRole("menu")).toBeNull()
+  })
+
+  it("supports arrow navigation, custom trigger content, and click-outside dismissal", async () => {
+    const user = userEvent.setup()
+    render(
+      <ActionMenu
+        placement="bottom-start"
+        menuClassName="custom-menu"
+        triggerClassName="custom-trigger"
+        trigger={<span>Custom trigger</span>}
+        items={[
+          { label: "Edit", onClick: vi.fn(), icon: <span data-testid="edit-icon" /> },
+          { label: "Disabled", onClick: vi.fn(), disabled: true },
+          { label: "Delete", onClick: vi.fn(), variant: "danger", ariaLabel: "Remove item" },
+        ]}
+      />
+    )
+
+    const trigger = screen.getByRole("button", { name: /open menu/i })
+    expect(screen.getByText("Custom trigger")).toBeInTheDocument()
+    await user.click(trigger)
+    expect(screen.getByRole("menu")).toHaveClass("left-0", "custom-menu")
+    expect(screen.getByTestId("edit-icon")).toBeInTheDocument()
+
+    fireEvent.keyDown(trigger, { key: "ArrowDown" })
+    const edit = screen.getByRole("menuitem", { name: "Edit" })
+    expect(document.activeElement).toBe(edit)
+    const remove = screen.getByRole("menuitem", { name: "Remove item" })
+    const removeFocus = vi.spyOn(remove, "focus")
+    fireEvent.keyDown(edit, { key: "ArrowDown" })
+    expect(removeFocus).toHaveBeenCalledOnce()
+    const editFocus = vi.spyOn(edit, "focus")
+    fireEvent.keyDown(remove, { key: "ArrowUp" })
+    expect(editFocus).toHaveBeenCalledOnce()
+
+    fireEvent.mouseDown(document.body)
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument()
+    expect(document.activeElement).toBe(trigger)
+  })
+
+  it("closes from a menu-item Escape key", async () => {
+    const user = userEvent.setup()
+    render(<ActionMenu items={items} />)
+    await user.click(screen.getByRole("button", { name: /open menu/i }))
+    await user.click(screen.getByRole("menuitem", { name: "Edit" }))
+
+    await user.click(screen.getByRole("button", { name: /open menu/i }))
+    const edit = screen.getByRole("menuitem", { name: "Edit" })
+    edit.focus()
+    await user.keyboard("{Escape}")
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument()
   })
 })
 

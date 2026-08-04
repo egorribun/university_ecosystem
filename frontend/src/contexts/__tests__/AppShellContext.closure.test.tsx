@@ -122,4 +122,41 @@ describe("AppShellContext — defensive scroll branches", () => {
       scrollRoot.remove()
     }
   })
+
+  it("swallows session-storage failures while marking and consuming snapshots", () => {
+    const scrollRoot = document.createElement("div")
+    scrollRoot.setAttribute("data-scroll-root", "")
+    Object.defineProperty(scrollRoot, "scrollHeight", { configurable: true, value: 2000 })
+    Object.defineProperty(scrollRoot, "clientHeight", { configurable: true, value: 500 })
+    Object.defineProperty(scrollRoot, "scrollTop", { configurable: true, writable: true, value: 1600 })
+    document.body.appendChild(scrollRoot)
+    vi.spyOn(window, "getComputedStyle").mockReturnValue({ overflowY: "auto" } as CSSStyleDeclaration)
+    vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw new Error("storage write unavailable")
+    })
+    vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => {
+      throw new Error("storage read unavailable")
+    })
+
+    try {
+      const { result } = renderHook(() => useAppShell(), { wrapper })
+      expect(() => {
+        result.current.markScrollSnapshot()
+        result.current.restoreScrollIfNeeded()
+      }).not.toThrow()
+    } finally {
+      scrollRoot.remove()
+    }
+  })
+
+  it("does not restore a snapshot when the marker contains a different value", () => {
+    window.sessionStorage.setItem("__scrollTopNext", "0")
+    const { result } = renderHook(() => useAppShell(), { wrapper })
+
+    act(() => {
+      result.current.restoreScrollIfNeeded()
+    })
+
+    expect(window.sessionStorage.getItem("__scrollTopNext")).toBe("0")
+  })
 })

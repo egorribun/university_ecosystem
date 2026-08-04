@@ -143,6 +143,119 @@ def test_metric_recorders_fail_closed_when_prometheus_is_unavailable() -> None:
         metrics.record_circuit_breaker_trip("redis")
 
 
+def test_metric_recorders_emit_positive_events_and_values() -> None:
+    from app.core import metrics
+
+    def exercise_labels(
+        name: str,
+        callback,
+        expected: dict[str, object],
+        operation: str = "inc",
+    ) -> None:
+        collector = MagicMock()
+        with patch.object(metrics, name, collector):
+            callback()
+        collector.labels.assert_called_once_with(**expected)
+        getattr(collector.labels.return_value, operation).assert_called_once()
+
+    exercise_labels(
+        "_BACKGROUND_TASK_ERRORS",
+        lambda: metrics.record_background_task_error("scheduler"),
+        {"task_name": "scheduler"},
+    )
+    exercise_labels(
+        "_LOGIN_SUCCESS",
+        lambda: metrics.record_login_success("passkey"),
+        {"method": "passkey"},
+    )
+    exercise_labels(
+        "_LOGIN_FAILURE",
+        lambda: metrics.record_login_failure("locked"),
+        {"reason": "locked"},
+    )
+    exercise_labels(
+        "_NOTIFICATIONS_DELIVERED",
+        lambda: metrics.record_notification_delivered("push"),
+        {"type": "push"},
+    )
+    exercise_labels(
+        "_NOTIFICATIONS_FAILED",
+        lambda: metrics.record_notification_failed("email", "timeout"),
+        {"type": "email", "reason": "timeout"},
+    )
+    exercise_labels(
+        "_ACTIVE_USERS",
+        lambda: metrics.set_active_users(3, period="weekly"),
+        {"period": "weekly"},
+        "set",
+    )
+    exercise_labels(
+        "_PRESENCE_EVENTS",
+        lambda: metrics.record_presence_event("online", "web"),
+        {"state": "online", "source": "web"},
+    )
+    exercise_labels(
+        "_PRESENCE_THROTTLED",
+        lambda: metrics.record_presence_throttled("away", "mobile"),
+        {"state": "away", "source": "mobile"},
+    )
+    exercise_labels(
+        "_CSP_REPORTS",
+        lambda: metrics.record_csp_report("blocked"),
+        {"outcome": "blocked"},
+    )
+    exercise_labels(
+        "_CHAT_MESSAGES_TOTAL",
+        lambda: metrics.record_chat_message("group"),
+        {"channel": "group"},
+    )
+    exercise_labels(
+        "_WS_CONNECTIONS_ACTIVE",
+        lambda: metrics.set_ws_connections_active("/ws", 4),
+        {"path": "/ws"},
+        "set",
+    )
+    exercise_labels(
+        "_CACHE_HITS",
+        lambda: metrics.record_cache_hit("memory"),
+        {"backend": "memory"},
+    )
+    exercise_labels(
+        "_CACHE_MISSES",
+        lambda: metrics.record_cache_miss("memory"),
+        {"backend": "memory"},
+    )
+
+    event_registrations = MagicMock()
+    with patch.object(metrics, "_EVENT_REGISTRATIONS", event_registrations):
+        metrics.record_event_registration()
+    event_registrations.inc.assert_called_once()
+
+    mfa_adoption = MagicMock()
+    with patch.object(metrics, "_MFA_ADOPTION", mfa_adoption):
+        metrics.set_mfa_adoption(7)
+    mfa_adoption.set.assert_called_once_with(7.0)
+
+    ws_connections = MagicMock()
+    with patch.object(metrics, "_WS_CONNECTIONS_ACTIVE", ws_connections):
+        metrics.inc_ws_connections("/ws")
+        metrics.dec_ws_connections("/ws")
+    assert ws_connections.labels.call_count == 2
+    ws_connections.labels.assert_called_with(path="/ws")
+    ws_connections.labels.return_value.inc.assert_called_once()
+    ws_connections.labels.return_value.dec.assert_called_once()
+
+    circuit_state = MagicMock()
+    with patch.object(metrics, "_CIRCUIT_BREAKER_STATE", circuit_state):
+        metrics.record_circuit_breaker_state("redis", "half_open")
+    circuit_state.labels.return_value.set.assert_called_once_with(2.0)
+
+    circuit_trips = MagicMock()
+    with patch.object(metrics, "_CIRCUIT_BREAKER_TRIPS", circuit_trips):
+        metrics.record_circuit_breaker_trip("redis")
+    circuit_trips.labels.return_value.inc.assert_called_once()
+
+
 def test_metrics_authorization_rejects_malformed_and_wrong_credentials(
     monkeypatch,
 ) -> None:
@@ -216,6 +329,7 @@ def test_metrics_allowlist_handles_empty_invalid_and_hostname_values(
     assert metrics._is_loopback_value("not-an-address") is False
 
     monkeypatch.setattr(settings, "metrics_allowlist", "")
+    assert metrics._allowlist_is_loopback_only() is False
     assert metrics._is_allowed(_request()) is True
 
     monkeypatch.setattr(settings, "metrics_allowlist", "example.com")
@@ -318,6 +432,8 @@ def test_metrics_route_and_router_fallbacks() -> None:
     from app.core import metrics
 
     request = _request(path="/raw")
+    request.scope["route"] = SimpleNamespace(path="/items")
+    assert metrics._resolve_path_template(request) == "/items"
     request.scope["route"] = SimpleNamespace(path="", owner=None)
     assert metrics._resolve_path_template(request) == "/raw"
     request.scope["route"] = SimpleNamespace(
@@ -344,6 +460,16 @@ def test_metric_recorders_swallow_backend_errors() -> None:
         metrics.record_health_probe("db", "error", -1.0)
         metrics.record_redis_command("GET", -1.0, success=False)
         metrics.record_db_operation("select", -1.0, success=False)
+
+    duration = MagicMock()
+    errors = MagicMock()
+    with (
+        patch.object(metrics, "_DB_OPERATION_DURATION", duration),
+        patch.object(metrics, "_DB_OPERATION_ERRORS", errors),
+    ):
+        metrics.record_db_operation("insert", 0.1, success=False)
+    duration.labels.return_value.observe.assert_called_once_with(0.1)
+    errors.labels.return_value.inc.assert_called_once()
 
 
 @pytest.mark.asyncio
@@ -703,6 +829,13 @@ def test_metrics_branch_matrix_for_optional_guards(monkeypatch) -> None:
     ):
         metrics.record_db_operation("select", 0.1, success=False)
 
+    with patch.object(
+        metrics,
+        "engine",
+        SimpleNamespace(sync_engine=SimpleNamespace(pool=object())),
+    ):
+        metrics._record_pool_metrics()
+
 
 @pytest.mark.asyncio
 async def test_cache_and_pool_optional_metric_combinations() -> None:
@@ -809,6 +942,22 @@ async def test_db_system_and_registry_guard_branches(monkeypatch) -> None:
 
     with patch.object(metrics, "REGISTRY", None):
         metrics._ensure_notification_queue_metrics_registry()
+
+    same_registry = object()
+    with (
+        patch.object(metrics, "REGISTRY", same_registry),
+        patch.object(
+            observability,
+            "get_notification_queue_metrics",
+            return_value=SimpleNamespace(registry=same_registry),
+        ),
+        patch.object(
+            observability,
+            "reinitialize_notification_queue_metrics",
+        ) as reinitialize,
+    ):
+        metrics._ensure_notification_queue_metrics_registry()
+    reinitialize.assert_not_called()
 
     with patch.object(
         observability,

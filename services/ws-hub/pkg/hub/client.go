@@ -49,8 +49,8 @@ type chEntry struct {
 var writePumpPingInterval = 30 * time.Second
 
 var (
-	chMutexes = make(map[interface{}]*chEntry)
-	chMu      sync.Mutex
+	chMutexes = make(map[chan []byte]*chEntry)
+	chMu      sync.RWMutex
 )
 
 // safeSend writes data to ch without panicking if the channel is already closed.
@@ -58,26 +58,55 @@ func safeSend(ch chan []byte, data []byte) (sent bool) {
 	if ch == nil {
 		return false
 	}
-	chMu.Lock()
-	defer chMu.Unlock()
 
+	chMu.RLock()
 	entry, ok := chMutexes[ch]
-	if ok && entry.closed {
-		return false
+	if ok {
+		defer func() {
+			panicValue := recover()
+			chMu.RUnlock()
+			if panicValue != nil {
+				sent = false
+				chMu.Lock()
+				if chMutexes[ch] == entry {
+					delete(chMutexes, ch)
+				}
+				chMu.Unlock()
+			}
+		}()
+		if entry.closed {
+			return false
+		}
+		select {
+		case ch <- data:
+			return true
+		default:
+			return false
+		}
 	}
+	chMu.RUnlock()
 
+	// Register the channel under the exclusive lock only on its first send.
+	// Re-check after acquiring it because another sender may have won the race.
+	chMu.Lock()
+	entry, ok = chMutexes[ch]
+	if !ok {
+		entry = &chEntry{}
+		chMutexes[ch] = entry
+	}
 	defer func() {
-		if r := recover(); r != nil {
+		if recover() != nil {
 			sent = false
 			delete(chMutexes, ch)
 		}
+		chMu.Unlock()
 	}()
+	if entry.closed {
+		return false
+	}
 
 	select {
 	case ch <- data:
-		if !ok {
-			chMutexes[ch] = &chEntry{}
-		}
 		return true
 	default:
 		return false
@@ -99,12 +128,14 @@ func safeClose(ch chan []byte) {
 	if ok {
 		entry.closed = true
 	}
-	delete(chMutexes, ch)
 
-	defer func() {
-		_ = recover() //nolint:errcheck // recover() returns interface{}; blank discard is the canonical pattern.
+	func() {
+		defer func() {
+			_ = recover() //nolint:errcheck // recover() returns interface{}; blank discard is the canonical pattern.
+		}()
+		close(ch)
 	}()
-	close(ch)
+	delete(chMutexes, ch)
 }
 
 func isNormalCloseError(err error) bool {

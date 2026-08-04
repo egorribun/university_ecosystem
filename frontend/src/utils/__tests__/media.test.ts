@@ -97,5 +97,107 @@ describe("addVersionParam", () => {
   it("returns original URL when version is not provided", async () => {
     const { addVersionParam } = await import("@/utils/media")
     expect(addVersionParam("https://example.com/image.png")).toBe("https://example.com/image.png")
+    expect(addVersionParam(undefined, 1)).toBe("")
+  })
+
+  it("falls back to string concatenation when URL parsing fails", async () => {
+    const { addVersionParam } = await import("@/utils/media")
+    expect(addVersionParam("http://[invalid", "a b")).toBe("http://[invalid?_v=a%20b")
+    expect(addVersionParam("http://[invalid?existing=1", 3)).toBe("http://[invalid?existing=1&_v=3")
+  })
+
+  it("treats null and empty versions as no-op values", async () => {
+    const { addVersionParam } = await import("@/utils/media")
+    const url = "/media/image.png"
+    expect(addVersionParam(url, null)).toBe(url)
+    expect(addVersionParam(url, "")).toBe(url)
+  })
+})
+
+describe("resolveMediaUrl security and proxy helpers", () => {
+  it.each(["javascript:alert(1)", "vbscript:msgbox(1)", "data:text/html,<p>x</p>"])(
+    "rejects dangerous protocol %s",
+    async (value) => {
+      const { resolveMediaUrl } = await import("@/utils/media")
+      expect(resolveMediaUrl(`  ${value}`)).toBe("")
+    }
+  )
+
+  it("keeps blob previews and protocol-relative URLs unchanged", async () => {
+    const { resolveMediaUrl } = await import("@/utils/media")
+    expect(resolveMediaUrl("blob:https://example.com/preview")).toBe(
+      "blob:https://example.com/preview"
+    )
+    expect(resolveMediaUrl("//cdn.example.com/image.png")).toBe("//cdn.example.com/image.png")
+  })
+
+  it("creates an image proxy URL with width and normalized origin", async () => {
+    const { resolveProxyImageUrl } = await import("@/utils/media")
+    expect(resolveProxyImageUrl("media/photo.png", 320, "https://api.example.com///")).toBe(
+      "https://api.example.com/api/v1/img/media/photo.png?w=320"
+    )
+  })
+
+  it("supports an already proxied path and relative nginx mode", async () => {
+    const { resolveProxyImageUrl } = await import("@/utils/media")
+    expect(resolveProxyImageUrl("/api/v1/img/photo.png", undefined, "")).toBe(
+      "/api/v1/img/photo.png"
+    )
+    expect(resolveProxyImageUrl("/media/photo.png", undefined, "")).toBe(
+      "/api/v1/img/media/photo.png"
+    )
+    expect(resolveProxyImageUrl("/media/photo.png", undefined, undefined)).toBe(
+      "/api/v1/img/media/photo.png"
+    )
+  })
+
+  it("delegates non-media paths, absolute URLs, blobs, and empty input", async () => {
+    const { resolveProxyImageUrl } = await import("@/utils/media")
+    expect(resolveProxyImageUrl("avatar.png", undefined, "https://api.example.com")).toBe(
+      "avatar.png"
+    )
+    expect(resolveProxyImageUrl("https://cdn.example.com/photo.png")).toBe(
+      "https://cdn.example.com/photo.png"
+    )
+    expect(resolveProxyImageUrl("blob:https://example.com/preview")).toBe(
+      "blob:https://example.com/preview"
+    )
+    expect(resolveProxyImageUrl(undefined)).toBe("")
+  })
+})
+
+describe("sanitizeUrl", () => {
+  it("allows safe protocols and relative paths", async () => {
+    const { sanitizeUrl } = await import("@/utils/media")
+    expect(sanitizeUrl("https://example.com/photo.png")).toBe("https://example.com/photo.png")
+    expect(sanitizeUrl("/media/photo.png")).toBe(`${window.location.origin}/media/photo.png`)
+    expect(sanitizeUrl("blob:https://example.com/preview")).toBe("blob:https://example.com/preview")
+    expect(sanitizeUrl("mailto:user@example.com")).toBe("mailto:user@example.com")
+    expect(sanitizeUrl("tel:+79990000000")).toBe("tel:+79990000000")
+    expect(sanitizeUrl("data:image/png;base64,AAAA")).toBe("data:image/png;base64,AAAA")
+  })
+
+  it.each([
+    "",
+    "javascript:alert(1)",
+    "vbscript:msgbox(1)",
+    "data:text/html,<script>alert(1)</script>",
+    "ftp://example.com/file",
+    "file:///etc/passwd",
+    "http://[invalid",
+  ])("returns null for unsafe or malformed URL %s", async (value) => {
+    const { sanitizeUrl } = await import("@/utils/media")
+    expect(sanitizeUrl(value)).toBeNull()
+  })
+
+  it("uses the relative-path fallback when executed without window", async () => {
+    const { sanitizeUrl } = await import("@/utils/media")
+    const descriptor = Object.getOwnPropertyDescriptor(globalThis, "window")
+    Reflect.deleteProperty(globalThis, "window")
+    try {
+      expect(sanitizeUrl("/media/photo.png")).toBe("/media/photo.png")
+    } finally {
+      if (descriptor) Object.defineProperty(globalThis, "window", descriptor)
+    }
   })
 })

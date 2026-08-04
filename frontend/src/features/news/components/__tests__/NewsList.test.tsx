@@ -25,6 +25,9 @@ const mockNews: any[] = [
 ]
 
 describe("NewsList", () => {
+  let intersectionCallback: IntersectionObserverCallback | undefined
+  let disconnectObserver: ReturnType<typeof vi.fn>
+
   const defaultProps = {
     newsList: mockNews,
     isInitialLoading: false,
@@ -41,11 +44,14 @@ describe("NewsList", () => {
   beforeEach(() => {
     vi.clearAllMocks()
 
-    const mockIntersectionObserver = vi.fn()
-    mockIntersectionObserver.mockReturnValue({
-      observe: () => null,
-      unobserve: () => null,
-      disconnect: () => null,
+    disconnectObserver = vi.fn()
+    const mockIntersectionObserver = vi.fn((callback: IntersectionObserverCallback) => {
+      intersectionCallback = callback
+      return {
+        observe: vi.fn(),
+        unobserve: vi.fn(),
+        disconnect: disconnectObserver,
+      }
     })
     window.IntersectionObserver = mockIntersectionObserver
   })
@@ -88,5 +94,43 @@ describe("NewsList", () => {
     )
     // Should have 2 cards + 3 skeletons (but we didn't mock NewsCardSkeleton, so it's rendering the real one)
     expect(container).toBeInTheDocument()
+  })
+
+  it("fetches the next page when the sentinel intersects and disconnects on unmount", () => {
+    const fetchNextPage = vi.fn()
+    const { unmount } = render(
+      <NewsList {...defaultProps} fetchNextPage={fetchNextPage} hasNextPage />
+    )
+
+    intersectionCallback?.(
+      [{ isIntersecting: false } as IntersectionObserverEntry],
+      {} as IntersectionObserver
+    )
+    expect(fetchNextPage).not.toHaveBeenCalled()
+    intersectionCallback?.(
+      [{ isIntersecting: true } as IntersectionObserverEntry],
+      {} as IntersectionObserver
+    )
+    expect(fetchNextPage).toHaveBeenCalledOnce()
+
+    unmount()
+    expect(disconnectObserver).toHaveBeenCalledOnce()
+  })
+
+  it("shows the background refresh bar and active keyboard card styling", () => {
+    const registerCardRef = vi.fn()
+    const { container } = render(
+      <NewsList
+        {...defaultProps}
+        isFetching
+        activeKeyboardIndex={1}
+        registerCardRef={registerCardRef}
+      />
+    )
+
+    expect(container.querySelector(".animate-pulse")).toBeInTheDocument()
+    expect(registerCardRef).toHaveBeenCalledWith(0, expect.any(HTMLElement))
+    expect(registerCardRef).toHaveBeenCalledWith(1, expect.any(HTMLElement))
+    expect(container.querySelector(".ring-2")).toBeInTheDocument()
   })
 })

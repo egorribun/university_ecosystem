@@ -47,6 +47,35 @@ describe("PageTransition", () => {
     vi.clearAllMocks()
   })
 
+  it("uses the no-initial-animation path on the first non-reduced paint", async () => {
+    render(
+      <PageTransition>
+        <div>Initial paint child</div>
+      </PageTransition>
+    )
+    await expectAnimatedChild("Initial paint child")
+  })
+
+  it("keeps the fallback wrapper when matchMedia is unavailable", () => {
+    const originalMatchMedia = window.matchMedia
+    try {
+      delete (window as Window & { matchMedia?: typeof window.matchMedia }).matchMedia
+      const { container } = render(
+        <PageTransition>
+          <div>No media child</div>
+        </PageTransition>
+      )
+      expect(screen.getByText("No media child")).toBeInTheDocument()
+      expect(container.querySelector(".bg-page")).toBeInTheDocument()
+    } finally {
+      Object.defineProperty(window, "matchMedia", {
+        configurable: true,
+        writable: true,
+        value: originalMatchMedia,
+      })
+    }
+  })
+
   it("renders the reduced-motion fallback wrapper (no framer-motion)", () => {
     setReduceMotion(true)
     const { container } = render(

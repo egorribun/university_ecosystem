@@ -168,6 +168,13 @@ describe("etagCache — applyEtagHeader", () => {
     const headers = config.headers as AxiosHeaders
     expect(headers.has("if-none-match")).toBe(false)
   })
+
+  it("creates AxiosHeaders when the request config has no headers object", () => {
+    const config = { headers: undefined } as unknown as InternalAxiosRequestConfig
+    applyEtagHeader(config, "no-such-key")
+    expect(config.headers).toBeInstanceOf(AxiosHeaders)
+    expect((config.headers as AxiosHeaders).has("if-none-match")).toBe(false)
+  })
 })
 
 describe("etagCache — handleEtagResponse", () => {
@@ -193,6 +200,23 @@ describe("etagCache — handleEtagResponse", () => {
     const entry = responseCache.get("news:list")
     expect(entry?.data).toEqual(data)
     expect(typeof entry?.hmac).toBe("string")
+  })
+
+  it("accepts a response without a headers object", async () => {
+    await expect(
+      handleEtagResponse(
+        {
+          status: 200,
+          statusText: "OK",
+          headers: undefined,
+          data: { ok: true },
+          config: makeRequestConfig(),
+          request: {},
+        } as unknown as AxiosResponse,
+        "missing-response-headers"
+      )
+    ).resolves.toBeUndefined()
+    expect(etagCache.get("missing-response-headers")).toBeUndefined()
   })
 
   it("stores the etag but does NOT cache the body for non-JSON content", async () => {
@@ -316,6 +340,23 @@ describe("etagCache — handleEtagResponse", () => {
     expect(notModified.data).toBeNull()
     expect(etagCache.get("bad:hmac")).toBeUndefined()
     expect(responseCache.get("bad:hmac")).toBeUndefined()
+  })
+
+  it("rejects a stored HMAC with a different length without comparing characters", async () => {
+    const response = makeResponse(
+      200,
+      { etag: '"etag-short-hmac"', "content-type": "application/json" },
+      { v: 1 }
+    )
+    await handleEtagResponse(response, "short:hmac")
+    const cached = responseCache.get("short:hmac")!
+    responseCache.set("short:hmac", { ...cached, hmac: "x" })
+
+    const notModified = makeResponse(304, { etag: '"etag-short-hmac"' }, null)
+    await handleEtagResponse(notModified, "short:hmac")
+
+    expect(notModified.status).toBe(304)
+    expect(responseCache.get("short:hmac")).toBeUndefined()
   })
 
   it("evicts both caches on 304 when there is no signing key", async () => {

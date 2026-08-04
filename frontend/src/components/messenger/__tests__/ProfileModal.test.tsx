@@ -1,5 +1,5 @@
 import { render, screen, fireEvent } from "@testing-library/react"
-import { describe, it, expect, vi } from "vitest"
+import { afterEach, describe, it, expect, vi } from "vitest"
 
 import { ProfileModal } from "@/components/messenger/ProfileModal"
 import type { User } from "@/types/User"
@@ -32,10 +32,13 @@ vi.mock("react-i18next", () => ({
 }))
 
 vi.mock("@/components/media/SmartImage", () => ({
-  default: ({ alt, className }: { alt?: string; className?: string }) => (
-    <img alt={alt} className={className} />
+  default: ({ alt, className, srcRaw }: { alt?: string; className?: string; srcRaw?: string }) => (
+    <img alt={alt} className={className} src={srcRaw} />
   ),
 }))
+
+const mockUseMediaQuery = vi.hoisted(() => vi.fn(() => false))
+vi.mock("@/hooks/useMediaQuery", () => ({ default: mockUseMediaQuery }))
 
 vi.mock("@/hooks/useFocusTrap", () => ({
   default: () => ({ current: null }),
@@ -49,6 +52,10 @@ const testUser: User = {
   is_active: true,
   role: "student",
 } as User
+
+afterEach(() => {
+  mockUseMediaQuery.mockReturnValue(false)
+})
 
 describe("ProfileModal", () => {
   it("renders nothing when all inputs are falsy", () => {
@@ -88,6 +95,16 @@ describe("ProfileModal", () => {
 
     fireEvent.keyDown(document, { key: "Escape" })
     expect(onClose).toHaveBeenCalledTimes(1)
+  })
+
+  it("ignores non-Escape keys and closes from the close button", () => {
+    const onClose = vi.fn()
+    render(<ProfileModal user={testUser} loading={false} error={null} onClose={onClose} />)
+
+    fireEvent.keyDown(document, { key: "Enter" })
+    expect(onClose).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole("button", { name: "common:buttons.close" }))
+    expect(onClose).toHaveBeenCalledOnce()
   })
 
   it("backdrop click triggers onClose", () => {
@@ -141,5 +158,17 @@ describe("ProfileModal", () => {
 
     const statusBadge = document.querySelector('[data-status="offline"]')
     expect(statusBadge).toBeTruthy()
+  })
+
+  it("uses safe title/avatar fallbacks and reduced-motion animation branches", () => {
+    mockUseMediaQuery.mockReturnValue(true)
+    const user = { ...testUser, full_name: "", avatar_url: undefined, is_active: false }
+    render(<ProfileModal user={user} loading={true} error="problem" onClose={vi.fn()} />)
+
+    expect(screen.getByRole("heading", { name: "messenger:profile" })).toBeInTheDocument()
+    expect(screen.getByAltText("")).toHaveAttribute("src", "/fallbacks/default_avatar.png")
+    expect(screen.queryByText("messenger:viewAvatar")).not.toBeInTheDocument()
+    expect(screen.getByText("messenger:loadingProfile")).toBeInTheDocument()
+    expect(screen.getByText("problem")).toBeInTheDocument()
   })
 })

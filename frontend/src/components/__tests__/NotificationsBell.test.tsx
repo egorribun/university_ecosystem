@@ -239,6 +239,65 @@ describe("NotificationsBell", () => {
     expect(screen.getByText("Couldn't load more notifications")).toBeInTheDocument()
   })
 
+  it("renders the initial loading state while a refetching error is in flight", async () => {
+    const state = baseState()
+    state.isLoading = true
+    state.isError = true
+    state.isRefetching = true
+    useNotificationsMock.mockReturnValue(state)
+
+    const user = userEvent.setup()
+    render(<NotificationsBell />)
+    await user.click(screen.getByRole("button", { name: "Open notifications" }))
+
+    expect(document.querySelector(".animate-spin")).toBeInTheDocument()
+  })
+
+  it("handles unread links, read markers, and notification icon variants", async () => {
+    const state = baseState()
+    const markRead = vi.fn()
+    state.markRead = markRead
+    state.data = [
+      {
+        id: "chat-1",
+        title: "Unread chat",
+        body: "New message",
+        created_at: "2024-01-01T00:00:00Z",
+        read: false,
+        type: "chat.message",
+      },
+      {
+        id: "schedule-1",
+        title: "Unread reminder",
+        body: "Lesson starts soon",
+        created_at: "2024-01-01T00:00:00Z",
+        read: false,
+        type: "schedule.reminder",
+        link: "/schedule",
+      },
+      {
+        id: "other-1",
+        title: "Read update",
+        body: "A general update",
+        created_at: "2024-01-01T00:00:00Z",
+        read: true,
+      },
+    ]
+    useNotificationsMock.mockReturnValue(state)
+
+    const user = userEvent.setup()
+    render(<NotificationsBell />)
+    await user.click(screen.getByRole("button", { name: "Open notifications" }))
+
+    await user.click(screen.getByText("Unread chat"))
+    expect(markRead).toHaveBeenCalledWith("chat-1")
+
+    const markButtons = screen.getAllByTitle("Mark as read")
+    expect(markButtons).toHaveLength(2)
+    await user.click(markButtons[0])
+    expect(markRead).toHaveBeenCalledWith("chat-1")
+  })
+
   describe("dropdown positioning", () => {
     const originalInnerWidth = window.innerWidth
 

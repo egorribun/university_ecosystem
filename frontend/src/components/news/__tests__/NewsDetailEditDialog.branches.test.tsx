@@ -6,9 +6,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 vi.mock("framer-motion", async () =>
   (await import("@/tests/helpers/framerMotionMock")).framerMotionMock()
 )
+const translationMock = vi.hoisted(() => ({ returnUndefined: false }))
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({
-    t: (key: string) => key,
+    t: (key: string) => (translationMock.returnUndefined ? undefined : key),
     i18n: { language: "en", changeLanguage: () => Promise.resolve() },
   }),
 }))
@@ -205,5 +206,18 @@ describe("NewsDetailEditDialog branches", () => {
     fireEvent.change(fileInput)
     expect(globalThis.URL.createObjectURL).not.toHaveBeenCalled()
     expect(screen.queryByRole("button", { name: "common:buttons.reset" })).not.toBeInTheDocument()
+  })
+
+  it("falls back to empty field labels when translations are unavailable", () => {
+    translationMock.returnUndefined = true
+    try {
+      renderDialog()
+      expect(screen.getByDisplayValue(initialData.title)).toBeInTheDocument()
+      expect(screen.getByDisplayValue(initialData.content)).toBeInTheDocument()
+      expect(screen.getByDisplayValue(initialData.title_en)).toBeInTheDocument()
+      expect(screen.getByDisplayValue(initialData.content_en)).toBeInTheDocument()
+    } finally {
+      translationMock.returnUndefined = false
+    }
   })
 })

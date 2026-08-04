@@ -239,7 +239,7 @@ def test_frontend_coverage_policy_and_source_universe_match_quality_contract() -
 
     thresholds = _extract_object_body(coverage, "thresholds")
     for metric in ("statements", "branches", "functions", "lines"):
-        value = contract["coverage_minimums"][metric]
+        value = contract["components"]["frontend"]["coverage"][metric]
         match = re.search(rf"\b{metric}\s*:\s*(\d+)\b", thresholds)
         assert match is not None, f"missing {metric} coverage threshold"
         assert int(match.group(1)) == value
@@ -247,6 +247,25 @@ def test_frontend_coverage_policy_and_source_universe_match_quality_contract() -
     exclusions = _extract_string_array(coverage, "exclude")
     for forbidden_exclusion in FORBIDDEN_VITEST_EXCLUSIONS:
         assert forbidden_exclusion.removeprefix('"').removesuffix('"') not in exclusions
+
+
+def test_vitest_does_not_discover_stryker_sandbox_tests() -> None:
+    config = _read_text("frontend/vitest.config.ts")
+
+    assert '"stryker-tmp/**"' in config
+    assert '".stryker-tmp/**"' in config
+
+
+def test_stryker_does_not_copy_generated_caches_or_sandboxes() -> None:
+    config = _read_text("frontend/stryker.config.mjs")
+
+    for fragment in (
+        '"/stryker-tmp/**"',
+        '"**/.codex_*/**"',
+        '"**/target/**"',
+        '"/reports/**"',
+    ):
+        assert fragment in config
 
 
 def test_coverage_commands_and_sonar_paths_match_quality_contract() -> None:

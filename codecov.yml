@@ -20,7 +20,7 @@ coverage:
         flags:
           - python
       frontend:
-        target: 91%
+        target: 99%
         threshold: 0%
         flags:
           - frontend

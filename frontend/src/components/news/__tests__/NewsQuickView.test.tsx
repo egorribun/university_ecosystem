@@ -1,5 +1,5 @@
 import { render, screen } from "@testing-library/react"
-import { describe, it, expect, vi } from "vitest"
+import { afterEach, describe, it, expect, vi } from "vitest"
 
 vi.mock("framer-motion", async () =>
   (await import("@/tests/helpers/framerMotionMock")).framerMotionMock()
@@ -10,7 +10,8 @@ vi.mock("react-i18next", () => ({
     i18n: { language: "en", changeLanguage: () => Promise.resolve() },
   }),
 }))
-vi.mock("@/hooks/useMediaQuery", () => ({ default: () => false }))
+const { reducedMotion } = vi.hoisted(() => ({ reducedMotion: vi.fn(() => false) }))
+vi.mock("@/hooks/useMediaQuery", () => ({ default: () => reducedMotion() }))
 
 import { NewsQuickView } from "@/components/news/NewsQuickView"
 
@@ -23,6 +24,10 @@ const baseProps = {
 }
 
 describe("NewsQuickView", () => {
+  afterEach(() => {
+    reducedMotion.mockReturnValue(false)
+  })
+
   it("renders the popover with title, preview, counts and read-more key when visible", () => {
     render(<NewsQuickView visible {...baseProps} category="science" />)
 
@@ -78,5 +83,11 @@ describe("NewsQuickView", () => {
     render(<NewsQuickView visible={false} {...baseProps} category="science" />)
     expect(screen.queryByRole("tooltip")).not.toBeInTheDocument()
     expect(screen.queryByText(baseProps.title)).not.toBeInTheDocument()
+  })
+
+  it("uses reduced-motion transitions", () => {
+    reducedMotion.mockReturnValue(true)
+    render(<NewsQuickView visible {...baseProps} position="bottom" />)
+    expect(screen.getByRole("tooltip", { hidden: true })).toBeInTheDocument()
   })
 })

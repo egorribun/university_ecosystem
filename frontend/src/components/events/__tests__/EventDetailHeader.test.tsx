@@ -73,4 +73,21 @@ describe("EventDetailHeader", () => {
     expect(onShare).toHaveBeenCalledOnce()
     expect(onRegister).toHaveBeenCalledOnce()
   })
+
+  it("uses the English category fallback and ended status when optional dates are absent", () => {
+    render(
+      <EventDetailHeader
+        {...baseProps}
+        eventType={undefined}
+        eventTypeEn="lecture"
+        endsAt={undefined}
+        isRegistered={false}
+        isEnded
+      />
+    )
+
+    expect(screen.getByText("events:categories.lecture")).toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "events:card.actions.register" })).not.toBeInTheDocument()
+    expect(screen.getByText("events:card.statuses.ended")).toBeInTheDocument()
+  })
 })

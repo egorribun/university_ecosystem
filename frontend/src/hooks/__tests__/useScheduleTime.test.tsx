@@ -76,6 +76,16 @@ describe("useScheduleTime", () => {
     expect(result.current.timeLeftText).toBe("in 15m")
   })
 
+  it("returns no next lesson while the final lesson is in progress", () => {
+    vi.setSystemTime(new Date(2026, 3, 26, 11, 30))
+
+    const { result } = renderHook(() => useScheduleTime(mockLessons, true))
+
+    expect(result.current.currentLesson?.subject).toBe("Physics")
+    expect(result.current.nextLesson).toBeNull()
+    expect(result.current.timeLeftShort).toBe("1h")
+  })
+
   it("updates on ticker interval", () => {
     const date = new Date(2026, 3, 26, 9, 29, 59)
     vi.setSystemTime(date)
@@ -88,6 +98,19 @@ describe("useScheduleTime", () => {
     })
 
     expect(result.current.nowTick.getMinutes()).toBe(30)
+  })
+
+  it("keeps the same tick when an interval fires within the same minute", () => {
+    const date = new Date(2026, 3, 26, 9, 29, 5)
+    vi.setSystemTime(date)
+
+    const { result } = renderHook(() => useScheduleTime(mockLessons, true))
+
+    act(() => {
+      vi.advanceTimersByTime(30_000)
+    })
+
+    expect(result.current.nowTick.getTime()).toBe(date.getTime())
   })
 
   it("pauses ticker when page is hidden", () => {
@@ -126,6 +149,66 @@ describe("useScheduleTime", () => {
     const { result } = renderHook(() => useScheduleTime(mockLessons, false))
     expect(result.current.currentLesson).toBeNull()
     expect(result.current.nextLesson).toBeNull()
+    expect(result.current.currentProgress).toBe(0)
+  })
+
+  it("formats a duration with both hours and minutes", () => {
+    vi.setSystemTime(new Date(2026, 3, 26, 9, 0))
+    const longLesson: Lesson = {
+      ...mockLessons[0],
+      id: "long",
+      end_time: "10:45",
+    }
+
+    const { result } = renderHook(() => useScheduleTime([longLesson], true))
+
+    expect(result.current.currentLesson?.id).toBe("long")
+    expect(result.current.timeLeftShort).toBe("1h 45m")
+    expect(result.current.currentProgress).toBe(0)
+  })
+
+  it("formats a current lesson with minutes only", () => {
+    vi.setSystemTime(new Date(2026, 3, 26, 9, 5))
+    const shortLesson: Lesson = {
+      ...mockLessons[0],
+      id: "short",
+      end_time: "09:20",
+    }
+
+    const { result } = renderHook(() => useScheduleTime([shortLesson], true))
+
+    expect(result.current.currentLesson?.id).toBe("short")
+    expect(result.current.timeLeftShort).toBe("15m")
+    expect(result.current.timeLeftText).toBe("left 15m")
+  })
+
+  it("uses safe defaults for malformed lesson times", () => {
+    vi.setSystemTime(new Date(2026, 3, 26, 9, 30))
+    const malformed: Lesson = {
+      ...mockLessons[0],
+      id: "malformed",
+      start_time: null,
+      end_time: "not-a-time",
+    }
+
+    const { result } = renderHook(() => useScheduleTime([malformed], true))
+
+    expect(result.current.currentLesson).toBeNull()
+    expect(result.current.nextLesson).toBeNull()
+    expect(result.current.timeLeftText).toBe("")
+    expect(result.current.timeLeftShort).toBe("")
+    expect(result.current.currentProgress).toBe(0)
+  })
+
+  it("returns empty countdowns when today has lessons but none are current or next", () => {
+    vi.setSystemTime(new Date(2026, 3, 26, 13, 0))
+
+    const { result } = renderHook(() => useScheduleTime(mockLessons, true))
+
+    expect(result.current.currentLesson).toBeNull()
+    expect(result.current.nextLesson).toBeNull()
+    expect(result.current.timeLeftText).toBe("")
+    expect(result.current.timeLeftShort).toBe("")
     expect(result.current.currentProgress).toBe(0)
   })
 })

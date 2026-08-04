@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react"
+import { createEvent, fireEvent, render, screen } from "@testing-library/react"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import { StoryList } from "../StoryList"
 import type { StoryItem } from "@/types/Story"
@@ -84,6 +84,15 @@ describe("StoryList branches", () => {
     expect(screen.getByText("Se")).toBeInTheDocument()
   })
 
+  it("uses the LCP priority only for the first covered story", () => {
+    const secondCoveredStory = { ...storiesWithCover[1]!, cover_url: "https://example.test/second" }
+    render(<StoryList stories={[storiesWithCover[0]!, secondCoveredStory]} onOpenStory={vi.fn()} />)
+
+    const secondImg = screen.getByAltText("Second Cover")
+    expect(secondImg).not.toHaveAttribute("loading", "eager")
+    expect(secondImg).not.toHaveAttribute("fetchpriority", "high")
+  })
+
   it("sets the start-edge fade mask when scrolled to start (lines 61, 165-169)", () => {
     render(<StoryList stories={storiesWithCover} onOpenStory={vi.fn()} />)
     const ul = getList()
@@ -118,6 +127,52 @@ describe("StoryList branches", () => {
     expect(ul.style.maskImage).toBe("")
   })
 
+  it("converts vertical wheel input to clamped horizontal scrolling", () => {
+    render(<StoryList stories={storiesWithCover} onOpenStory={vi.fn()} />)
+    const ul = getList()
+    setLayout(ul, 50, 1000, 300)
+
+    const forward = createEvent.wheel(ul, { deltaY: 100, deltaX: 0 })
+    fireEvent(ul, forward)
+    expect(forward.defaultPrevented).toBe(true)
+    expect(ul.scrollLeft).toBe(150)
+
+    const upperClamp = createEvent.wheel(ul, { deltaY: 1000, deltaX: 0 })
+    fireEvent(ul, upperClamp)
+    expect(ul.scrollLeft).toBe(700)
+
+    const lowerClamp = createEvent.wheel(ul, { deltaY: -1000, deltaX: 0 })
+    fireEvent(ul, lowerClamp)
+    expect(ul.scrollLeft).toBe(0)
+  })
+
+  it("ignores horizontal, zero-delta, and non-scrollable wheel input", () => {
+    render(<StoryList stories={storiesWithCover} onOpenStory={vi.fn()} />)
+    const ul = getList()
+    setLayout(ul, 50, 1000, 300)
+
+    const horizontal = createEvent.wheel(ul, { deltaY: 50, deltaX: 2 })
+    fireEvent(ul, horizontal)
+    expect(horizontal.defaultPrevented).toBe(false)
+
+    const zero = createEvent.wheel(ul, { deltaY: 0, deltaX: 0 })
+    fireEvent(ul, zero)
+    expect(zero.defaultPrevented).toBe(false)
+
+    setLayout(ul, 0, 300, 300)
+    const fitting = createEvent.wheel(ul, { deltaY: 50, deltaX: 0 })
+    fireEvent(ul, fitting)
+    expect(fitting.defaultPrevented).toBe(false)
+  })
+
+  it("prevents native drag initiation on the horizontal story list", () => {
+    render(<StoryList stories={storiesWithCover} onOpenStory={vi.fn()} />)
+    const ul = getList()
+    const dragStart = createEvent.dragStart(ul)
+    fireEvent(ul, dragStart)
+    expect(dragStart.defaultPrevented).toBe(true)
+  })
+
   it("sets 'none' edge when both atStart and atEnd are true (line 63)", () => {
     render(<StoryList stories={storiesWithCover} onOpenStory={vi.fn()} />)
     const ul = getList()
@@ -145,6 +200,20 @@ describe("StoryList branches", () => {
     // snap re-enabled (cleared) + drag flag off
     expect(ul.style.scrollSnapType).toBe("")
     expect(ul).toHaveClass("cursor-grab")
+  })
+
+  it("releases pointer capture after a captured drag", () => {
+    render(<StoryList stories={storiesWithCover} onOpenStory={vi.fn()} />)
+    const ul = getList()
+    const hasPointerCapture = vi.spyOn(ul, "hasPointerCapture").mockReturnValue(true)
+    const releasePointerCapture = vi.spyOn(ul, "releasePointerCapture")
+
+    fireEvent.pointerDown(ul, { pointerType: "mouse", button: 0, clientX: 100 })
+    fireEvent.pointerMove(ul, { pointerType: "mouse", clientX: 40, pointerId: 7 })
+    fireEvent.pointerUp(ul, { pointerType: "mouse", pointerId: 7 })
+
+    expect(hasPointerCapture).toHaveBeenCalledWith(7)
+    expect(releasePointerCapture).toHaveBeenCalledWith(7)
   })
 
   it("ignores a press that never exceeds the drag threshold (line 125 false branch)", () => {
