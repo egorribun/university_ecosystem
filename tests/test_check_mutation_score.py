@@ -5,7 +5,6 @@ import shutil
 import sys
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -52,7 +51,9 @@ def test_runner_requests_all_statuses(monkeypatch) -> None:
         stdout = "status output"
         stderr = ""
 
-    monkeypatch.setattr(shutil, "which", lambda name: "uv.exe" if name == "uv" else None)
+    monkeypatch.setattr(
+        shutil, "which", lambda name: "uv.exe" if name == "uv" else None
+    )
     monkeypatch.setattr(
         checker.subprocess,
         "run",

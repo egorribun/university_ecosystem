@@ -92,9 +92,7 @@ def test_inventory_prunes_dependency_and_hidden_directories(
         "export {}", encoding="utf-8"
     )
     (tmp_path / ".codex" / "cache").mkdir(parents=True)
-    (tmp_path / ".codex" / "cache" / "hidden.py").write_text(
-        "pass", encoding="utf-8"
-    )
+    (tmp_path / ".codex" / "cache" / "hidden.py").write_text("pass", encoding="utf-8")
     (tmp_path / ".github" / "workflows").mkdir(parents=True)
     (tmp_path / ".github" / "workflows" / "ci.yml").write_text(
         "name: ci", encoding="utf-8"

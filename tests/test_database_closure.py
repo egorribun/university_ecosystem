@@ -393,9 +393,7 @@ def test_init_database_initializes_replica_read_factory_and_masks_urls(monkeypat
     monkeypatch.setattr(database_module, "async_sessionmaker", make_session)
     monkeypatch.setattr(database_module, "logger", logger)
 
-    with patch(
-        "app.core.db.listeners.register_tenant_listeners", tenant_listeners
-    ):
+    with patch("app.core.db.listeners.register_tenant_listeners", tenant_listeners):
         database_module.init_database(current_settings)
 
     create_factory.assert_called_once_with(current_settings)

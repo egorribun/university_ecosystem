@@ -114,9 +114,7 @@ def scan_repository(mapping_config: dict[str, object]) -> list[dict[str, object]
     # dependency/build/cache trees; pruning them before enumeration avoids
     # materializing hundreds of thousands of irrelevant paths on local runs.
     for root, dirnames, filenames in os.walk(REPOSITORY_ROOT):
-        dirnames[:] = [
-            name for name in dirnames if not should_prune_directory(name)
-        ]
+        dirnames[:] = [name for name in dirnames if not should_prune_directory(name)]
         root_path = Path(root)
         for filename in filenames:
             path = root_path / filename

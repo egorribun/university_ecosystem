@@ -4,13 +4,13 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock, call, patch
 
 from app.api.internal import INTERNAL_ROUTE_PREFIXES
+from app.core.csrf import CSRFMiddleware
 from app.core.middleware import setup
 from app.core.middleware.content_size import ContentSizeLimitMiddleware
 from app.core.middleware.request_id import RequestIDMiddleware
 from app.core.middleware.tenant import TenantContextMiddleware
 from app.core.ratelimit import EndpointRateLimit, RateLimitMiddleware
 from app.core.security_headers import SecurityHeadersMiddleware
-from app.core.csrf import CSRFMiddleware
 
 
 def _rate_settings(**overrides: object) -> SimpleNamespace:
