@@ -19,6 +19,8 @@ import reportsLib from "istanbul-reports"
 
 const { createCoverageMap } = coverageLib
 const { create: createReport } = reportsLib
+const EXTERNAL_SOURCE_MAP_COMMENT_RE =
+  /(?:\r?\n)?(?:\/\/[#@]\s+sourceMappingURL=(?!data:)[^\r\n]+|\/\*[#@]\s+sourceMappingURL=(?!data:)[\s\S]+?\*\/)[ \t\r\n]*$/u
 
 function option(name) {
   const prefix = `--${name}=`
@@ -62,7 +64,12 @@ async function convertReport(file, coverageMap) {
       throw new Error(`Invalid V8 coverage entry ${index} in ${file}`)
     }
 
-    const converter = v8ToIstanbul(entry.url, 0, { source: entry.source })
+    // Playwright captures the generated source but not the external .map file.
+    // Passing the dangling sourceMappingURL to v8-to-istanbul makes it resolve
+    // an HTTP URL as a local path and abort the entire shard. Inline maps remain
+    // intact; only an unavailable external trailer is removed.
+    const source = entry.source.replace(EXTERNAL_SOURCE_MAP_COMMENT_RE, "")
+    const converter = v8ToIstanbul(entry.url, 0, { source })
     try {
       await converter.load()
       converter.applyCoverage(entry.functions)
