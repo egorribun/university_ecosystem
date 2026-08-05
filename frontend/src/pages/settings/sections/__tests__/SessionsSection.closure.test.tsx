@@ -19,11 +19,13 @@ vi.mock("@/components/settings", () => ({
       disabled?: boolean
       "data-testid"?: string
     }
-  >(({ children, onClick, ...props }, ref) => (
-    <button ref={ref} type="button" onClick={onClick} {...props}>
-      {children}
-    </button>
-  )),
+  >(function MockButton({ children, onClick, ...props }, ref) {
+    return (
+      <button ref={ref} type="button" onClick={onClick} {...props}>
+        {children}
+      </button>
+    )
+  }),
   Chip: ({ label, ...props }: { label: string; [key: string]: unknown }) => (
     <span {...props}>{label}</span>
   ),
