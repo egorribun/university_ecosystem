@@ -245,6 +245,7 @@ def matches_source(
             "app" in imported_modules
             or "services" in imported_modules
             or "native" in imported_modules
+            or "scripts" in imported_modules
         ):
             return True
 

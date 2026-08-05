@@ -223,3 +223,15 @@ def test_matches_source_accepts_production_variant_suites() -> None:
     )
     for test_path, source_path in cases:
         assert matches_source(test_path, {source_path}, []) is True
+
+
+def test_matches_source_accepts_tests_for_utility_scripts() -> None:
+    assert (
+        matches_source(
+            "tests/test_aggregate_go_benchmarks.py",
+            set(),
+            [],
+            {"scripts"},
+        )
+        is True
+    )
