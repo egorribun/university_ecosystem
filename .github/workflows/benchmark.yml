@@ -80,14 +80,16 @@ jobs:
 
       - name: Run WS-Hub benchmarks (regression input)
         # -benchmem surfaces allocations so the tool can track them separately.
-        # -count=5 gives the benchmark action enough samples for a stable mean.
+        # -count=5 gives the aggregation step enough samples for a stable median.
         # -benchtime=1s ensures consistent wall-clock budget per run.
         run: |
           cd services/ws-hub
           go mod download
           # Benchmarks run in dedicated jobs; skip ordinary tests here so
           # infrastructure setup cannot distort or delay the regression gate.
-          go test -bench=. -run=^$ -benchmem -count=5 -benchtime=1s ./... 2>&1 | grep -E '^(pkg:|goos:|goarch:|Benchmark|PASS|ok)' | tee ../../ws-hub-regression.txt
+          set -o pipefail
+          go test -bench=. -run=^$ -benchmem -count=5 -benchtime=1s ./... 2>&1 | python3 ../../scripts/quality/aggregate_go_benchmarks.py - --output ../../ws-hub-regression.txt
+          cat ../../ws-hub-regression.txt
           cd ../.. && git checkout -- . && rm -f go.work.sum || true
 
 
