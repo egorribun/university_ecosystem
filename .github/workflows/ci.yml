@@ -681,6 +681,7 @@ jobs:
       browser: chromium
       shard-index: ${{ matrix.shard-index }}
       shard-total: 4
+      collect-coverage: true
     # nosemgrep: yaml.github-actions.security.secrets-inherit.secrets-inherit
     secrets: inherit
 

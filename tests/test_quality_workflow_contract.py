@@ -265,12 +265,65 @@ def test_cross_browser_e2e_is_advisory_during_stabilization() -> None:
     assert "needs.e2e-tests-cross-browser.result" not in blocking_script
 
 
+def test_e2e_coverage_is_chromium_opt_in_and_codecov_wired() -> None:
+    e2e_workflow = yaml.safe_load(E2E_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    call = _workflow_triggers(e2e_workflow)["workflow_call"]
+    inputs = call["inputs"]
+    assert inputs["collect-coverage"]["default"] is False
+    assert "CODECOV_TOKEN" in call["secrets"]
+
+    steps = e2e_workflow["jobs"]["e2e"]["steps"]
+    merge_step = next(
+        step
+        for step in steps
+        if step.get("name") == "Merge Chromium JavaScript coverage"
+    )
+    assert "inputs.collect-coverage" in merge_step["if"]
+    assert "inputs.browser == 'chromium'" in merge_step["if"]
+    assert "merge-playwright-coverage.mjs" in merge_step["run"]
+    merger_test_step = next(
+        step for step in steps if step.get("name") == "Verify E2E coverage merger"
+    )
+    assert merger_test_step["run"] == "npm run test:e2e:coverage-tool"
+
+    codecov_step = next(
+        step for step in steps if step.get("name") == "Upload E2E coverage to Codecov"
+    )
+    assert "inputs.browser == 'chromium'" in codecov_step["if"]
+    assert codecov_step["with"]["flags"] == "frontend"
+    assert codecov_step["with"]["files"] == "./frontend/coverage/e2e/lcov.info"
+
+    ci_workflow = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    assert ci_workflow["jobs"]["e2e-tests"]["with"]["collect-coverage"] is True
+    assert (
+        "collect-coverage" not in ci_workflow["jobs"]["e2e-tests-cross-browser"]["with"]
+    )
+
+
 def test_e2e_postgres_healthcheck_uses_declared_credentials() -> None:
     workflow = yaml.safe_load(E2E_WORKFLOW_PATH.read_text(encoding="utf-8"))
     options = workflow["jobs"]["e2e"]["services"]["postgres"]["options"]
 
     assert "pg_isready -U test -d test_e2e" in options
     assert "--health-cmd pg_isready\n" not in options
+
+
+def test_go_codecov_flags_match_component_contract() -> None:
+    workflow = yaml.safe_load(GO_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    steps = workflow["jobs"]["test"]["steps"]
+    resolver = next(
+        step for step in steps if step.get("name") == "Resolve Codecov component flag"
+    )
+    resolver_script = resolver["run"]
+    assert 'services/gateway) flag="go-gateway"' in resolver_script
+    assert 'services/ws-hub) flag="go-ws-hub"' in resolver_script
+    assert 'services/file-processor) flag="go-file-processor"' in resolver_script
+
+    upload = next(
+        step for step in steps if step.get("name") == "Upload coverage to Codecov"
+    )
+    assert "steps.codecov-flag.outputs.flag" in upload["if"]
+    assert upload["with"]["flags"] == "${{ steps.codecov-flag.outputs.flag }}"
 
 
 def test_advisory_integration_and_chaos_jobs_are_not_blocking() -> None:

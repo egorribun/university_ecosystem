@@ -1,4 +1,4 @@
-import { devices, expect, test } from "@playwright/test"
+import { devices, expect, test } from "./test"
 import { useMockApi } from "./utils/mockApi"
 
 // Skip: News share tests timeout during login in mock environment

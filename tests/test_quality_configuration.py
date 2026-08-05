@@ -99,6 +99,7 @@ def test_mutmut_uses_the_unit_population_instead_of_a_single_probe_file() -> Non
         "tests/",
     ]
     assert "tests/test_tenant_rls.py" not in mutation_config["pytest_add_cli_args"]
+    assert "scripts" in mutation_config["also_copy"]
 
 
 def test_test_duration_updater_aggregates_junit_cases_and_preserves_schema() -> None:
@@ -259,8 +260,13 @@ def test_vitest_does_not_discover_stryker_sandbox_tests() -> None:
 def test_stryker_does_not_copy_generated_caches_or_sandboxes() -> None:
     config = _read_text("frontend/stryker.config.mjs")
 
+    assert (
+        'const strykerTempRoot = path.join(os.tmpdir(), "university-ecosystem-stryker")'
+        in config
+    )
+    assert "tempDirName: strykerTempRoot" in config
+    assert 'cleanTempDir: "always"' in config
     for fragment in (
-        '"/stryker-tmp/**"',
         '"**/.codex_*/**"',
         '"**/target/**"',
         '"/reports/**"',
@@ -294,3 +300,10 @@ def test_coverage_commands_and_sonar_paths_match_quality_contract() -> None:
     assert "--configLoader runner" in test_ci
     assert "--coverage" in test_ci
     assert package["scripts"]["test:watch"] == "vitest --configLoader runner"
+
+    vitest_packages = package["devDependencies"]
+    vitest_specs = {
+        vitest_packages[name]
+        for name in ("vitest", "@vitest/browser", "@vitest/coverage-v8")
+    }
+    assert len(vitest_specs) == 1

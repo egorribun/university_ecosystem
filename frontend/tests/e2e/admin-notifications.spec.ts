@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test"
+import { expect, test } from "./test"
 import { useMockApi } from "./utils/mockApi"
 
 // Skip: Admin tests timeout during login in mock environment

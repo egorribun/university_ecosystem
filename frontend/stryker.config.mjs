@@ -1,3 +1,8 @@
+import os from "node:os"
+import path from "node:path"
+
+const strykerTempRoot = path.join(os.tmpdir(), "university-ecosystem-stryker")
+
 /**
  * Mutation scope for the frontend's deterministic, security-sensitive utility
  * layer. The 100% threshold is intentional: a green result means every
@@ -8,11 +13,14 @@ export default {
   // Windows Vitest/ESBuild cannot reliably resolve configs from Stryker's
   // hidden default `.stryker-tmp`; keep the sandbox visible as recommended
   // by Stryker's Windows troubleshooting guidance.
-  tempDirName: "stryker-tmp",
+  // Keep the sandbox outside the repository. On Windows, the workspace ACL
+  // can deny esbuild reads from nested mutation directories; an OS-temp root
+  // preserves isolation without broadening the mutation scope.
+  tempDirName: strykerTempRoot,
   // Never copy generated caches or a previous interrupted sandbox into the
   // next mutation run. Besides wasting I/O, nested Cargo caches can amplify
   // Stryker's memory use into the gigabyte range on Windows.
-  ignorePatterns: ["/stryker-tmp/**", "**/.codex_*/**", "**/target/**", "/reports/**"],
+  ignorePatterns: ["**/.codex_*/**", "**/target/**", "/reports/**"],
   vitest: {
     configFile: "vitest.config.ts",
     related: false,
@@ -47,5 +55,6 @@ export default {
   // remains 100%; this only serializes execution and recycles workers.
   concurrency: 1,
   maxTestRunnerReuse: 4,
+  cleanTempDir: "always",
   timeoutFactor: 2,
 }

@@ -529,9 +529,10 @@ pytest_add_cli_args_test_selection = [
 #   - test_wave173_caddy_routing  → infrastructure/Caddyfile  (W173 routing)
 #   - test_wave173_ws_hub_env     → docker-compose.full.yml   (W173 ws-hub env)
 # Copy the repository-contract paths into the isolated tree so the full nightly
-# run can measure them without a false collection failure. This also keeps the
-# incremental runner's clean-test baseline honest.
-also_copy = ["infrastructure", "alembic", "docker-compose.full.yml"]
+# run can measure them without a false collection failure. The mutation-score
+# parser contract imports `scripts/check_mutation_score.py`; copying its parent
+# directory prevents that test from breaking mutmut's clean-test baseline.
+also_copy = ["infrastructure", "alembic", "scripts", "docker-compose.full.yml"]
 #
 # UPDATE (mutmut-green fix): the async cross-loop exclusions (test_spotify_fallback /
 # test_push_router_full / test_auth_mfa / test_notifications_api) have been REMOVED.

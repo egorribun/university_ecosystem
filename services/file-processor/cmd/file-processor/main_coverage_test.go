@@ -770,7 +770,7 @@ func TestRunMain_PropagatesServerLifecycleFailure(t *testing.T) {
 		return grpc.NewServer(), nil
 	}
 	setupGraphQLServerFunc = func(context.Context, *config.Config, *rsa.PublicKey, client.Client, *slog.Logger) (*http.Server, error) {
-		return &http.Server{}, nil
+		return &http.Server{ReadHeaderTimeout: time.Second}, nil
 	}
 	runServersFunc = func(context.Context, *grpc.Server, *http.Server, *config.Config, *slog.Logger) error {
 		return errors.New("server lifecycle failed")
@@ -791,7 +791,7 @@ func TestRunMain_ClosesInitializedSpiffeClientOnServerFailure(t *testing.T) {
 		return grpc.NewServer(), nil
 	}
 	setupGraphQLServerFunc = func(context.Context, *config.Config, *rsa.PublicKey, client.Client, *slog.Logger) (*http.Server, error) {
-		return &http.Server{}, nil
+		return &http.Server{ReadHeaderTimeout: time.Second}, nil
 	}
 	runServersFunc = func(context.Context, *grpc.Server, *http.Server, *config.Config, *slog.Logger) error {
 		return errors.New("server lifecycle failed after SPIFFE initialization")

@@ -8,8 +8,24 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 
+def _checker_path() -> Path:
+    """Locate the checker both in a normal checkout and mutmut isolation."""
+    candidates = [
+        Path.cwd() / "scripts" / "check_mutation_score.py",
+        ROOT / "scripts" / "check_mutation_score.py",
+    ]
+    candidates.extend(
+        parent / "scripts" / "check_mutation_score.py"
+        for parent in Path(__file__).resolve().parents
+    )
+    for candidate in candidates:
+        if candidate.is_file():
+            return candidate
+    raise AssertionError("scripts/check_mutation_score.py is not available")
+
+
 def _load_checker():
-    path = ROOT / "scripts" / "check_mutation_score.py"
+    path = _checker_path()
     spec = importlib.util.spec_from_file_location("check_mutation_score", path)
     assert spec and spec.loader
     module = importlib.util.module_from_spec(spec)
