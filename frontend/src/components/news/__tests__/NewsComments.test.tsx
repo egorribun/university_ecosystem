@@ -143,6 +143,10 @@ describe("NewsComments", () => {
     expect(screen.getByText("400/500")).toHaveClass("text-warning-text")
     fireEvent.change(editBox, { target: { value: "x".repeat(475) } })
     expect(screen.getAllByText("475/500")).toHaveLength(2)
-    expect(screen.getAllByText("475/500").every((element) => element.className.includes("text-(--error-text)"))).toBe(true)
+    expect(
+      screen
+        .getAllByText("475/500")
+        .every((element) => element.className.includes("text-(--error-text)"))
+    ).toBe(true)
   })
 })

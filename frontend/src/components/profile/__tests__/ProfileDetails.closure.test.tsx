@@ -6,7 +6,9 @@ vi.mock("react-i18next", () => ({
 }))
 
 vi.mock("@/components/settings", () => ({
-  SectionCard: ({ children, ...props }: { children: React.ReactNode }) => <section {...props}>{children}</section>,
+  SectionCard: ({ children, ...props }: { children: React.ReactNode }) => (
+    <section {...props}>{children}</section>
+  ),
   Divider: () => <hr />,
 }))
 
@@ -35,8 +37,17 @@ describe("ProfileDetails role and disclosure branches", () => {
   it("renders teacher department/position and actual about text when open", () => {
     const user = {
       role: "teacher",
-      education_path: { institute: "Institute", education_level: "Higher", track: "Track", program: "Program" },
-      profile_detail: { department: "Computer Science", position: "Professor", about: "About teacher" },
+      education_path: {
+        institute: "Institute",
+        education_level: "Higher",
+        track: "Track",
+        program: "Program",
+      },
+      profile_detail: {
+        department: "Computer Science",
+        position: "Professor",
+        about: "About teacher",
+      },
     } as never
     render(<ProfileDetails user={user} isOpen onToggle={vi.fn()} />)
     const toggle = screen.getByRole("button")

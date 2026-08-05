@@ -128,9 +128,15 @@ describe("AppShellContext — defensive scroll branches", () => {
     scrollRoot.setAttribute("data-scroll-root", "")
     Object.defineProperty(scrollRoot, "scrollHeight", { configurable: true, value: 2000 })
     Object.defineProperty(scrollRoot, "clientHeight", { configurable: true, value: 500 })
-    Object.defineProperty(scrollRoot, "scrollTop", { configurable: true, writable: true, value: 1600 })
+    Object.defineProperty(scrollRoot, "scrollTop", {
+      configurable: true,
+      writable: true,
+      value: 1600,
+    })
     document.body.appendChild(scrollRoot)
-    vi.spyOn(window, "getComputedStyle").mockReturnValue({ overflowY: "auto" } as CSSStyleDeclaration)
+    vi.spyOn(window, "getComputedStyle").mockReturnValue({
+      overflowY: "auto",
+    } as CSSStyleDeclaration)
     vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
       throw new Error("storage write unavailable")
     })

@@ -2,11 +2,7 @@ import { fireEvent, render, screen } from "@testing-library/react"
 import type { ElementType, ReactNode } from "react"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
-const {
-  dashboardNewsMock,
-  prefetchDashboardNewsMock,
-  queryClient,
-} = vi.hoisted(() => ({
+const { dashboardNewsMock, prefetchDashboardNewsMock, queryClient } = vi.hoisted(() => ({
   dashboardNewsMock: vi.fn(),
   prefetchDashboardNewsMock: vi.fn(),
   queryClient: { id: "dashboard-query-client" },
@@ -57,7 +53,15 @@ vi.mock("@/components/ui", () => ({
 }))
 
 vi.mock("@/components/dashboard/NewsCardList", () => ({
-  NewsCardList: ({ news, loading, locale }: { news: unknown[]; loading: boolean; locale: string }) => (
+  NewsCardList: ({
+    news,
+    loading,
+    locale,
+  }: {
+    news: unknown[]
+    loading: boolean
+    locale: string
+  }) => (
     <div data-testid="dashboard-news-list" data-count={news.length} data-loading={String(loading)}>
       {locale}
     </div>
@@ -100,13 +104,7 @@ describe("dashboard NewsCard closure paths", () => {
       isFetching: true,
     })
 
-    render(
-      <NewsCard
-        locale="ru-RU"
-        style={{ opacity: 0.8 }}
-        data-pop="true"
-      />
-    )
+    render(<NewsCard locale="ru-RU" style={{ opacity: 0.8 }} data-pop="true" />)
 
     const card = screen.getByTestId("dashboard-news-card")
     expect(card).toHaveAttribute("aria-busy", "false")

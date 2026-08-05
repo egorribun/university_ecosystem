@@ -100,7 +100,11 @@ describe("useActivityData defensive derivation branches", () => {
       recent: [],
     })
     expect(result.current.grades).toMatchObject({ average: 0, scale: "5", trend: 0 })
-    expect(result.current.participation).toMatchObject({ events: 4, hours: undefined, groups: undefined })
+    expect(result.current.participation).toMatchObject({
+      events: 4,
+      hours: undefined,
+      groups: undefined,
+    })
   })
 
   it("parses non-empty translated fallback arrays after a successful empty response", async () => {

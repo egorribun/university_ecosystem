@@ -19,7 +19,9 @@ import SmartImage from "@/components/media/SmartImage"
 
 describe("SmartImage defensive closure branches", () => {
   it("omits proxy candidates and falls back when the proxy cannot resolve", () => {
-    render(<SmartImage srcRaw="/media/unavailable.jpg" fallback="/fallback.png" alt="unavailable" />)
+    render(
+      <SmartImage srcRaw="/media/unavailable.jpg" fallback="/fallback.png" alt="unavailable" />
+    )
     const image = screen.getByRole("img", { name: "unavailable" })
 
     expect(image).toHaveAttribute("src", "/fallback.png")

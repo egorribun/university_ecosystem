@@ -18,7 +18,9 @@ vi.mock("@/hooks/useMapWeather", () => ({
 }))
 
 vi.mock("../MapWeatherPanel", () => ({
-  MapWeatherPanel: ({ open }: { open: boolean }) => <div data-testid="weather-panel">{String(open)}</div>,
+  MapWeatherPanel: ({ open }: { open: boolean }) => (
+    <div data-testid="weather-panel">{String(open)}</div>
+  ),
 }))
 
 import { MapWeatherBadge } from "../MapWeatherBadge"

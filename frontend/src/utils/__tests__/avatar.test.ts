@@ -63,9 +63,9 @@ describe("avatar utilities", () => {
     })
 
     it("uses the dummy origin when a relative base URL has no location fallback", () => {
-      expect(resolveBackendOrigin({ baseURL: "/api", locationOrigin: null as unknown as string })).toBe(
-        "http://__avatar__"
-      )
+      expect(
+        resolveBackendOrigin({ baseURL: "/api", locationOrigin: null as unknown as string })
+      ).toBe("http://__avatar__")
     })
 
     it("falls back when URL construction rejects the base URL", () => {

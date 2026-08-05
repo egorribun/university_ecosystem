@@ -58,7 +58,9 @@ describe("NewsDetailBody", () => {
   })
 
   it("renders pull quotes and skips blank legacy paragraphs", () => {
-    const { container } = render(<NewsDetailBody content={"\n\n> Safety first\n\n\nPlain paragraph"} />)
+    const { container } = render(
+      <NewsDetailBody content={"\n\n> Safety first\n\n\nPlain paragraph"} />
+    )
     expect(container.querySelector("blockquote.news-pullquote")).toHaveTextContent("Safety first")
     expect(screen.getByText("Plain paragraph")).toBeInTheDocument()
   })

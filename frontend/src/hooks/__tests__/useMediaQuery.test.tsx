@@ -65,13 +65,17 @@ describe("useMediaQuery", () => {
       configurable: true,
       value: undefined,
     })
-    const unavailable = renderHook(() => useMediaQuery("(forced-unavailable)", { defaultValue: true }))
+    const unavailable = renderHook(() =>
+      useMediaQuery("(forced-unavailable)", { defaultValue: true })
+    )
     expect(unavailable.result.current).toBe(true)
     unavailable.unmount()
 
     Object.defineProperty(window, "matchMedia", {
       configurable: true,
-      value: vi.fn(() => { throw new Error("matchMedia unavailable") }),
+      value: vi.fn(() => {
+        throw new Error("matchMedia unavailable")
+      }),
     })
     const throwing = renderHook(() => useMediaQuery("(forced-throw)", { defaultValue: true }))
     expect(throwing.result.current).toBe(true)

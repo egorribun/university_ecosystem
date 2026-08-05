@@ -113,9 +113,7 @@ vi.mock("@/features/activity/components/ActivityMotivation", () => ({
   ActivityMotivation: () => <div data-testid="activity-motivation" />,
 }))
 vi.mock("@/features/activity/components/AttendanceCard", () => ({
-  AttendanceCard: ({ ringSize }: ChildProps) => (
-    <div data-testid="attendance-card">{ringSize}</div>
-  ),
+  AttendanceCard: ({ ringSize }: ChildProps) => <div data-testid="attendance-card">{ringSize}</div>,
 }))
 vi.mock("@/features/activity/components/GradesCard", () => ({
   GradesCard: ({ ringSize }: ChildProps) => <div data-testid="grades-card">{ringSize}</div>,
@@ -167,10 +165,7 @@ describe("ActivityFeature closure", () => {
     expect(screen.getByTestId("activity-heatmap")).toBeInTheDocument()
     expect(screen.getAllByTestId("activity-comparative-card")).toHaveLength(3)
     expect(screen.getByTestId("activity-timeline")).toBeInTheDocument()
-    expect(screen.getByRole("radio", { name: "30 days" })).toHaveAttribute(
-      "aria-checked",
-      "false"
-    )
+    expect(screen.getByRole("radio", { name: "30 days" })).toHaveAttribute("aria-checked", "false")
 
     fireEvent.click(screen.getByRole("radio", { name: "30 days" }))
     expect(state.setPeriod).toHaveBeenCalledWith("30d")

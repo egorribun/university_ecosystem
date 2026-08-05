@@ -217,10 +217,9 @@ describe("useNewsInteraction — query", () => {
   it("defaults omitted like fields in partial initialData", () => {
     const { wrapper } = makeWrapper()
     setupServer({ initial: baseInteractions })
-    const { result } = renderHook(
-      () => useNewsInteraction(NEWS_ID, { initialData: {} }),
-      { wrapper }
-    )
+    const { result } = renderHook(() => useNewsInteraction(NEWS_ID, { initialData: {} }), {
+      wrapper,
+    })
 
     expect(result.current.interactions).toMatchObject({
       likes_count: 0,

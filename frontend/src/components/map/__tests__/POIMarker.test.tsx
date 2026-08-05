@@ -80,7 +80,9 @@ describe("POIMarker", () => {
   it("renders the full popup, closes it, and handles fallback naming/icon", async () => {
     const user = userEvent.setup()
     const onPopupClose = vi.fn()
-    const openPopupView = render(<POIMarker {...baseProps} isPopupOpen onPopupClose={onPopupClose} />)
+    const openPopupView = render(
+      <POIMarker {...baseProps} isPopupOpen onPopupClose={onPopupClose} />
+    )
     expect(screen.getByText("poi.items.cafe-1.name")).toBeInTheDocument()
     expect(screen.getByRole("link", { name: /poi\.openInMaps/ })).toHaveAttribute(
       "href",

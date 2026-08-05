@@ -20,10 +20,9 @@ describe("useAnimatedFloat", () => {
 
   it("uses the reduced-motion value immediately and follows target updates", () => {
     mediaState.reduced = true
-    const { result, rerender } = renderHook(
-      ({ target }) => useAnimatedFloat(target, 0.2),
-      { initialProps: { target: 12 } }
-    )
+    const { result, rerender } = renderHook(({ target }) => useAnimatedFloat(target, 0.2), {
+      initialProps: { target: 12 },
+    })
 
     expect(result.current).toBe(12)
     rerender({ target: 7 })

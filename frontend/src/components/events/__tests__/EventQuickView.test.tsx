@@ -82,6 +82,8 @@ describe("EventQuickView", () => {
     )
 
     expect(screen.getByText("Quantum Computing Lecture")).toBeInTheDocument()
-    expect(screen.queryByText("An introductory survey of qubits and gates.")).not.toBeInTheDocument()
+    expect(
+      screen.queryByText("An introductory survey of qubits and gates.")
+    ).not.toBeInTheDocument()
   })
 })

@@ -247,11 +247,9 @@ describe("useMapWeather — defensive API handling", () => {
   })
 
   it("continues successfully when localStorage cannot persist the response", async () => {
-    const setItemSpy = vi
-      .spyOn(Storage.prototype, "setItem")
-      .mockImplementation(() => {
-        throw new DOMException("Quota exceeded", "QuotaExceededError")
-      })
+    const setItemSpy = vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw new DOMException("Quota exceeded", "QuotaExceededError")
+    })
 
     const client = newClient()
     const { result } = renderHook(() => useMapWeather(), { wrapper: wrapper(client) })

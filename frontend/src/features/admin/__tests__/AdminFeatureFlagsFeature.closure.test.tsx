@@ -41,13 +41,7 @@ vi.mock("@/api/hooks/adminFeatureFlags", () => ({
 
 vi.mock("@/components/settings", () => ({
   Chip: ({ label }: { label: string }) => <span data-testid={`chip-${label}`}>{label}</span>,
-  SwitchControl: ({
-    checked,
-    onChange,
-  }: {
-    checked: boolean
-    onChange: () => void
-  }) => (
+  SwitchControl: ({ checked, onChange }: { checked: boolean; onChange: () => void }) => (
     <button type="button" aria-label={`toggle-${checked ? "on" : "off"}`} onClick={onChange}>
       {String(checked)}
     </button>

@@ -216,9 +216,7 @@ describe("useShare", () => {
   it("handles nameless share failures without requiring a notification callback", async () => {
     vi.mocked(navigator.share).mockRejectedValue({})
 
-    const { result } = renderHook(() =>
-      useShare({ title: "Test", url: "https://example.com" })
-    )
+    const { result } = renderHook(() => useShare({ title: "Test", url: "https://example.com" }))
 
     await act(async () => {
       await result.current.handleShare()
@@ -272,9 +270,7 @@ describe("useShare", () => {
       writable: true,
     })
 
-    const { result } = renderHook(() =>
-      useShare({ title: "Test", url: "https://example.com" })
-    )
+    const { result } = renderHook(() => useShare({ title: "Test", url: "https://example.com" }))
 
     await act(async () => {
       await result.current.handleCopyLink()
@@ -298,9 +294,7 @@ describe("useShare", () => {
       writable: true,
     })
 
-    const { result } = renderHook(() =>
-      useShare({ title: "Test", url: "https://example.com" })
-    )
+    const { result } = renderHook(() => useShare({ title: "Test", url: "https://example.com" }))
     let first!: Promise<void>
     act(() => {
       first = result.current.handleCopyLink()

@@ -113,9 +113,11 @@ describe("fetchWeatherSnapshot", () => {
   it("normalizes null current values and a missing current block", async () => {
     vi.stubGlobal(
       "fetch",
-      vi.fn().mockResolvedValue(
-        okResponse({ current: { weather_code: null, temperature_2m: null, time: null } })
-      )
+      vi
+        .fn()
+        .mockResolvedValue(
+          okResponse({ current: { weather_code: null, temperature_2m: null, time: null } })
+        )
     )
 
     const result = await fetchWeatherSnapshot({ coordinates: { lat: 23, lon: 24 } })
@@ -123,9 +125,9 @@ describe("fetchWeatherSnapshot", () => {
     expect(result.temperatureC).toBeNull()
 
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(okResponse({ current: null })))
-    await expect(fetchWeatherSnapshot({ coordinates: { lat: 25, lon: 26 } })).rejects.toBeInstanceOf(
-      WeatherFetchError
-    )
+    await expect(
+      fetchWeatherSnapshot({ coordinates: { lat: 25, lon: 26 } })
+    ).rejects.toBeInstanceOf(WeatherFetchError)
   })
 
   it("throws WeatherFetchError when the payload has no current block", async () => {

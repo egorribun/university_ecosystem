@@ -75,7 +75,19 @@ describe("useArticleNavigation", () => {
     })
 
     mocks.getQueriesData.mockReturnValue([
-      ["list", { pages: [{ items: [{ id: "first", title: "First" }, { id: "last", title: "Last" }] }] }],
+      [
+        "list",
+        {
+          pages: [
+            {
+              items: [
+                { id: "first", title: "First" },
+                { id: "last", title: "Last" },
+              ],
+            },
+          ],
+        },
+      ],
     ])
     expect(renderHook(() => useArticleNavigation("first")).result.current).toEqual({
       prevId: null,

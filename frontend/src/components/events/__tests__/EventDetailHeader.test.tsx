@@ -87,7 +87,9 @@ describe("EventDetailHeader", () => {
     )
 
     expect(screen.getByText("events:categories.lecture")).toBeInTheDocument()
-    expect(screen.queryByRole("button", { name: "events:card.actions.register" })).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole("button", { name: "events:card.actions.register" })
+    ).not.toBeInTheDocument()
     expect(screen.getByText("events:card.statuses.ended")).toBeInTheDocument()
   })
 })

@@ -5,9 +5,7 @@ import type { TimelineEntry } from "../../types"
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({
     t: (key: string, options?: { course?: string }) =>
-      key === "activity:timeline.attendanceEntry"
-        ? `${key}:${options?.course ?? ""}`
-        : key,
+      key === "activity:timeline.attendanceEntry" ? `${key}:${options?.course ?? ""}` : key,
   }),
 }))
 
