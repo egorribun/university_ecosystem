@@ -34,11 +34,13 @@ vi.mock("@/components/ui", () => ({
       onClick?: () => void
       "aria-label"?: string
     }
-  >(({ children, onClick, ...props }, ref) => (
-    <button ref={ref} type="button" onClick={onClick} {...props}>
-      {children}
-    </button>
-  )),
+  >(function MockProfileButton({ children, onClick, ...props }, ref) {
+    return (
+      <button ref={ref} type="button" onClick={onClick} {...props}>
+        {children}
+      </button>
+    )
+  }),
 }))
 
 vi.mock("@/components/settings", () => ({
@@ -113,14 +115,7 @@ describe("ProfileHeader closure paths", () => {
   })
 
   it("uses placeholders for an empty profile and omits optional Telegram status", () => {
-    render(
-      <ProfileHeader
-        {...baseProps}
-        user={null}
-        isOnline={false}
-        reduceMotion
-      />
-    )
+    render(<ProfileHeader {...baseProps} user={null} isOnline={false} reduceMotion />)
 
     expect(screen.getByText("profile:placeholders.status")).toBeInTheDocument()
     expect(screen.getAllByText("—")).toHaveLength(2)
