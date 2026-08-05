@@ -236,6 +236,9 @@ fn detect_conflicts(
 // so they can be found by grep and updated in one place.
 const MAX_CONFLICT_ITEMS: usize = 2500;
 const MAX_CONFLICT_PAIRS: usize = 50_000;
+// Rayon scheduling overhead dominates tiny batches; keep those calls local while
+// retaining the bounded pool for the larger O(n²) workloads.
+const PARALLEL_CONFLICT_THRESHOLD: usize = 32;
 
 #[inline]
 fn record_conflict_pair(
@@ -294,6 +297,7 @@ pub fn batch_detect_conflicts(
             // inputs continue through the normalized path below.
             let canonical_fast_path = items.iter().all(|item| {
                 item.parity == "both"
+                    && item.start_time < item.end_time
                     && matches!(
                         item.weekday.as_str(),
                         "monday"
@@ -309,17 +313,15 @@ pub fn batch_detect_conflicts(
             let pair_count = std::sync::atomic::AtomicUsize::new(0);
             let limit_exceeded = std::sync::atomic::AtomicBool::new(false);
             let conflicts: Vec<(ScheduleItem, ScheduleItem)> = if canonical_fast_path {
-                pool.install(|| {
+                if items.len() < PARALLEL_CONFLICT_THRESHOLD {
                     items
-                        .par_iter()
+                        .iter()
                         .enumerate()
-                        .flat_map_iter(|(i, a)| {
+                        .flat_map(|(i, a)| {
                             items[i + 1..]
                                 .iter()
                                 .filter(move |b| {
                                     a.weekday == b.weekday
-                                        && a.start_time < a.end_time
-                                        && b.start_time < b.end_time
                                         && a.start_time < b.end_time
                                         && b.start_time < a.end_time
                                 })
@@ -328,7 +330,26 @@ pub fn batch_detect_conflicts(
                                 })
                         })
                         .collect()
-                })
+                } else {
+                    pool.install(|| {
+                        items
+                            .par_iter()
+                            .enumerate()
+                            .flat_map_iter(|(i, a)| {
+                                items[i + 1..]
+                                    .iter()
+                                    .filter(move |b| {
+                                        a.weekday == b.weekday
+                                            && a.start_time < b.end_time
+                                            && b.start_time < a.end_time
+                                    })
+                                    .filter_map(|b| {
+                                        record_conflict_pair(a, b, &pair_count, &limit_exceeded)
+                                    })
+                            })
+                            .collect()
+                    })
+                }
             } else {
                 // Normalize each item once. The pairwise loop is O(n²), so doing
                 // case-folding and weekday parsing inside it made the benchmark
