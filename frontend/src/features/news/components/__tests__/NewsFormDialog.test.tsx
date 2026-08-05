@@ -147,7 +147,9 @@ describe("NewsFormDialog", () => {
     await user.type(screen.getByLabelText(/^News text(?! \()/i), "This is the content of the news.")
     await user.type(screen.getByLabelText(/Title \(English\)/i), "Breaking News")
     await user.type(screen.getByLabelText(/News text \(English\)/i), "English content")
-    await user.click(screen.getByRole("button", { name: /Publish/i }))
+    const submitBtn = screen.getByRole("button", { name: /Publish/i })
+    await waitFor(() => expect(submitBtn).toBeEnabled())
+    await user.click(submitBtn)
 
     await waitFor(() => expect(defaultProps.onSuccess).toHaveBeenCalledTimes(1))
     expect(createPayloads).toHaveLength(1)
