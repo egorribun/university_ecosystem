@@ -28,6 +28,8 @@ allow-licenses:
   - Zlib
   - BSL-1.0
   - Unicode-3.0
+  # Fontsource packages are distributed under the SIL Open Font License.
+  - OFL-1.1
   - NCSA
   - Apache-2.0 WITH LLVM-exception
   - LicenseRef-scancode-protobuf
@@ -72,6 +74,10 @@ allow-dependencies-licenses:
   - "pkg:npm/@apideck/better-ajv-errors"
   - "pkg:npm/caniuse-lite"
   - "pkg:npm/idb-keyval"
+  # Direct branch additions whose upstream metadata is Apache-2.0 but is not
+  # emitted as a license by the Dependency Review Advisory DB.
+  - "pkg:npm/dexie"
+  - "pkg:npm/rxjs"
   - "pkg:npm/%40maplibre/geojson-vt"
   - "pkg:npm/@maplibre/geojson-vt"
   # Session 9 Stream D — wasm-bindgen-test (=0.3.64, rust-crypto dev-dep for the
@@ -128,6 +134,8 @@ allow-dependencies-licenses:
   - "pkg:golang/github.com/quic-go/quic-go"
   - "pkg:golang/github.com/quic-go/webtransport-go"
   - "pkg:golang/github.com/spiffe/go-spiffe/v2"
+  - "pkg:golang/github.com/university-ecosystem/services/pkg/spiffe"
+  - "pkg:golang/golang.org/x/sync"
   - "pkg:pypi/portalocker"
   - "pkg:pypi/qdrant-client"
 

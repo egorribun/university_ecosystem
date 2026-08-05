@@ -288,41 +288,52 @@ pub fn batch_detect_conflicts(
                 }
             };
 
-            // Normalize each item once. The pairwise loop is O(n²), so doing
-            // case-folding and weekday parsing inside it made the benchmark
-            // regress by orders of magnitude for larger batches.
-            let metadata: Vec<ConflictMetadata> = items.iter().map(conflict_metadata).collect();
+            // Keep the common canonical representation on the lean pairwise path. This is
+            // the format emitted by the normal scheduler and avoids allocating metadata for
+            // every item when no case/whitespace normalization is required. Non-canonical
+            // inputs continue through the normalized path below.
+            let canonical_fast_path = items.iter().all(|item| {
+                item.parity == "both"
+                    && matches!(
+                        item.weekday.as_str(),
+                        "monday"
+                            | "tuesday"
+                            | "wednesday"
+                            | "thursday"
+                            | "friday"
+                            | "saturday"
+                            | "sunday"
+                    )
+            });
+
             let pair_count = std::sync::atomic::AtomicUsize::new(0);
             let limit_exceeded = std::sync::atomic::AtomicBool::new(false);
-            let canonical_both = metadata
-                .iter()
-                .all(|item| item.weekday.is_some() && item.parity.is_none());
-
-            let conflicts: Vec<(ScheduleItem, ScheduleItem)> = if canonical_both {
+            let conflicts: Vec<(ScheduleItem, ScheduleItem)> = if canonical_fast_path {
                 pool.install(|| {
                     items
                         .par_iter()
                         .enumerate()
                         .flat_map_iter(|(i, a)| {
-                            let a_weekday = weekday_comparison_value(&metadata[i]);
-                            let a_valid = a.start_time < a.end_time;
                             items[i + 1..]
                                 .iter()
-                                .zip(metadata[i + 1..].iter())
-                                .filter(move |(b, b_metadata)| {
-                                    a_valid
-                                        && weekday_comparison_value(b_metadata) == a_weekday
+                                .filter(move |b| {
+                                    a.weekday == b.weekday
+                                        && a.start_time < a.end_time
                                         && b.start_time < b.end_time
                                         && a.start_time < b.end_time
                                         && b.start_time < a.end_time
                                 })
-                                .filter_map(|(b, _b_metadata)| {
+                                .filter_map(|b| {
                                     record_conflict_pair(a, b, &pair_count, &limit_exceeded)
                                 })
                         })
                         .collect()
                 })
             } else {
+                // Normalize each item once. The pairwise loop is O(n²), so doing
+                // case-folding and weekday parsing inside it made the benchmark
+                // regress by orders of magnitude for larger batches.
+                let metadata: Vec<ConflictMetadata> = items.iter().map(conflict_metadata).collect();
                 pool.install(|| {
                     items
                         .par_iter()
