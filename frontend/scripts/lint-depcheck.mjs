@@ -98,6 +98,9 @@ const options = {
     "@stryker-mutator/*",
   ],
   parsers: {
+    // Supplying this map replaces depcheck's defaults. Keep Node ESM tooling
+    // visible so dependencies owned by scripts/*.mjs are not misclassified.
+    "**/*.mjs": depcheck.parser.es6,
     "**/*.ts": depcheck.parser.typescript,
     "**/*.tsx": depcheck.parser.typescript,
   },

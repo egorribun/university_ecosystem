@@ -107,6 +107,8 @@ const story = {
   created_at: "2026-07-31T10:00:00.000Z",
 }
 
+const localDateTimeToIso = (value: string) => new Date(value).toISOString()
+
 describe("StoriesAdmin", () => {
   beforeEach(() => {
     mocks.user = { id: "admin-1", role: "admin" }
@@ -392,8 +394,8 @@ describe("StoriesAdmin", () => {
     fireEvent.click(screen.getByRole("button", { name: "stories:list.actions.updateTimer" }))
     await waitFor(() => {
       expect(mocks.updateStory).toHaveBeenCalledWith(story.id, {
-        published_at: "2026-08-01T07:00:00.000Z",
-        expires_at: "2026-08-02T07:00:00.000Z",
+        published_at: localDateTimeToIso("2026-08-01T10:00"),
+        expires_at: localDateTimeToIso("2026-08-02T10:00"),
       })
     })
 
