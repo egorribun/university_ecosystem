@@ -53,15 +53,25 @@ async function convertReport(file, coverageMap) {
     throw new Error(`Playwright coverage report ${file} must be an array`)
   }
 
+  let skippedWithoutSource = 0
   for (const [index, entry] of report.entries()) {
     if (
       !entry ||
       typeof entry !== "object" ||
       typeof entry.url !== "string" ||
-      typeof entry.source !== "string" ||
       !Array.isArray(entry.functions)
     ) {
       throw new Error(`Invalid V8 coverage entry ${index} in ${file}`)
+    }
+
+    // Playwright documents `source` as optional: browser-internal or otherwise
+    // unavailable scripts can still have a URL and V8 ranges. They cannot be
+    // converted to Istanbul, but must not invalidate the usable entries from
+    // the same page. The aggregate check below still rejects an entirely empty
+    // report, so this is not a silent-success path.
+    if (typeof entry.source !== "string" || entry.source.length === 0) {
+      skippedWithoutSource += 1
+      continue
     }
 
     // Playwright captures the generated source but not the external .map file.
@@ -78,6 +88,7 @@ async function convertReport(file, coverageMap) {
       throw new Error(`Cannot convert V8 entry ${entry.url} from ${file}`, { cause: error })
     }
   }
+  return skippedWithoutSource
 }
 
 export async function mergePlaywrightCoverage(input, output) {
@@ -89,8 +100,9 @@ export async function mergePlaywrightCoverage(input, output) {
   }
 
   const coverageMap = createCoverageMap({})
+  let skippedWithoutSource = 0
   for (const file of files) {
-    await convertReport(file, coverageMap)
+    skippedWithoutSource += await convertReport(file, coverageMap)
   }
   if (coverageMap.files().length === 0) {
     throw new Error("Merged Playwright coverage contains no instrumented files")
@@ -100,6 +112,11 @@ export async function mergePlaywrightCoverage(input, output) {
   const context = createContext({ dir: outputDir, coverageMap })
   createReport("json").execute(context)
   createReport("lcovonly").execute(context)
+  if (skippedWithoutSource > 0) {
+    process.stderr.write(
+      `Skipped ${skippedWithoutSource} Playwright V8 coverage entries without source text\n`
+    )
+  }
   process.stdout.write(`Merged ${files.length} Playwright coverage files into ${outputDir}\n`)
 }
 
