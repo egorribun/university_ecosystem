@@ -30,8 +30,8 @@ describe("EmailSection", () => {
     ]
     expect(fields).toHaveLength(2)
 
-    fireEvent.change(fields[0], { target: { value: "new@example.com" } })
-    fireEvent.change(fields[1], { target: { value: "current-password" } })
+    fireEvent.change(fields[0]!, { target: { value: "new@example.com" } })
+    fireEvent.change(fields[1]!, { target: { value: "current-password" } })
     await user.click(screen.getAllByRole("button").at(-1)!)
 
     expect(props.onEmailChange).toHaveBeenCalledWith("new@example.com")

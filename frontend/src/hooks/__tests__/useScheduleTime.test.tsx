@@ -155,7 +155,7 @@ describe("useScheduleTime", () => {
   it("formats a duration with both hours and minutes", () => {
     vi.setSystemTime(new Date(2026, 3, 26, 9, 0))
     const longLesson: Lesson = {
-      ...mockLessons[0],
+      ...mockLessons[0]!,
       id: "long",
       end_time: "10:45",
     }
@@ -170,7 +170,7 @@ describe("useScheduleTime", () => {
   it("formats a current lesson with minutes only", () => {
     vi.setSystemTime(new Date(2026, 3, 26, 9, 5))
     const shortLesson: Lesson = {
-      ...mockLessons[0],
+      ...mockLessons[0]!,
       id: "short",
       end_time: "09:20",
     }
@@ -185,7 +185,7 @@ describe("useScheduleTime", () => {
   it("uses safe defaults for malformed lesson times", () => {
     vi.setSystemTime(new Date(2026, 3, 26, 9, 30))
     const malformed: Lesson = {
-      ...mockLessons[0],
+      ...mockLessons[0]!,
       id: "malformed",
       start_time: null,
       end_time: "not-a-time",

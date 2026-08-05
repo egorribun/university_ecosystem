@@ -6,6 +6,7 @@ import {
   getDefaultNotificationTitle,
   parsePushEventData,
 } from "../notification-helpers"
+import type { NotificationActionPayload } from "../notification-helpers"
 
 describe("parsePushEventData", () => {
   it("returns empty payload when data is missing", () => {
@@ -33,14 +34,23 @@ describe("parsePushEventData", () => {
   })
 
   it("returns an empty payload for non-object JSON, empty text, or text failures", () => {
-    expect(
-      parsePushEventData({ json: () => "not-an-object", text: () => "ignored" })
-    ).toEqual({})
-    expect(parsePushEventData({ json: () => { throw new Error("bad") }, text: () => "" })).toEqual({})
+    expect(parsePushEventData({ json: () => "not-an-object", text: () => "ignored" })).toEqual({})
     expect(
       parsePushEventData({
-        json: () => { throw new Error("bad") },
-        text: () => { throw new Error("also bad") },
+        json: () => {
+          throw new Error("bad")
+        },
+        text: () => "",
+      })
+    ).toEqual({})
+    expect(
+      parsePushEventData({
+        json: () => {
+          throw new Error("bad")
+        },
+        text: () => {
+          throw new Error("also bad")
+        },
       })
     ).toEqual({})
   })

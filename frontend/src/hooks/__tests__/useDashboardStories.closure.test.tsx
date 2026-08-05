@@ -19,9 +19,9 @@ import {
 
 const story = { id: "story-1", title: "Campus" } as StoryItem
 
-const runQuery = (queryClient: QueryClient, signal?: AbortSignal): Promise<StoryItem[]> => {
+const runQuery = async (queryClient: QueryClient, signal?: AbortSignal): Promise<StoryItem[]> => {
   const options = createDashboardStoriesQueryOptions(queryClient)
-  return options.queryFn({
+  return await options.queryFn({
     queryKey: dashboardStoriesQueryKey,
     pageParam: undefined,
     signal: signal ?? new AbortController().signal,

@@ -28,7 +28,9 @@ vi.mock("../AnimatedRing", () => ({
 }))
 
 vi.mock("../CardShell", () => ({
-  default: ({ children, ...props }: { children: ReactNode }) => <section {...props}>{children}</section>,
+  default: ({ children, ...props }: { children: ReactNode }) => (
+    <section {...props}>{children}</section>
+  ),
 }))
 
 vi.mock("../TrendChip", () => ({
@@ -49,7 +51,7 @@ describe("GradesCard scale and loading branches", () => {
       <GradesCard
         hasInitiallyLoaded
         ringSize={64}
-        grades={{ average: "3.25", scale: "gpa", trend: 1.2 }}
+        grades={{ average: 3.25, scale: "gpa", trend: 1.2, recent: [] }}
       />
     )
     expect(screen.getByTestId("animated-ring")).toHaveTextContent("3.25/4")
@@ -62,7 +64,7 @@ describe("GradesCard scale and loading branches", () => {
       <GradesCard
         hasInitiallyLoaded
         ringSize={64}
-        grades={{ average: 87.6, scale: "100", trend: -2 }}
+        grades={{ average: 87.6, scale: "100", trend: -2, recent: [] }}
       />
     )
     expect(screen.getByTestId("animated-ring")).toHaveTextContent("87.6/100")
@@ -77,7 +79,7 @@ describe("GradesCard scale and loading branches", () => {
       <GradesCard
         hasInitiallyLoaded
         ringSize={64}
-        grades={{ average: 4.5, scale: "5", trend: 0 }}
+        grades={{ average: 4.5, scale: "5", trend: 0, recent: [] }}
       />
     )
     expect(screen.getByTestId("animated-ring")).toHaveTextContent("4.5/5")

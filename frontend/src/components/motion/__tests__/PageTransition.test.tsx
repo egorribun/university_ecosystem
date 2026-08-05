@@ -59,7 +59,10 @@ describe("PageTransition", () => {
   it("keeps the fallback wrapper when matchMedia is unavailable", () => {
     const originalMatchMedia = window.matchMedia
     try {
-      delete (window as Window & { matchMedia?: typeof window.matchMedia }).matchMedia
+      Object.defineProperty(window, "matchMedia", {
+        configurable: true,
+        value: undefined,
+      })
       const { container } = render(
         <PageTransition>
           <div>No media child</div>

@@ -18,8 +18,8 @@ describe("useFocusTrap", () => {
       const closeRef = useRef<HTMLButtonElement | null>(null)
       const containerRef = useFocusTrap<HTMLDivElement>({
         active: open,
-        initialFocus: () => closeRef.current ?? undefined,
-        fallbackFocus: () => closeRef.current ?? undefined,
+        initialFocus: () => closeRef.current ?? document.body,
+        fallbackFocus: () => closeRef.current ?? document.body,
         onDeactivate: () => setOpen(false),
       })
 
@@ -69,7 +69,7 @@ describe("useFocusTrap", () => {
       const closeRef = useRef<HTMLButtonElement | null>(null)
       const containerRef = useFocusTrap<HTMLDivElement>({
         active,
-        initialFocus: () => closeRef.current ?? undefined,
+        initialFocus: () => closeRef.current ?? document.body,
         onDeactivate: () => {
           onDeactivate()
           setActive(false)

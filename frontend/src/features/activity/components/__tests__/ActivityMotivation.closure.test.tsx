@@ -89,7 +89,7 @@ describe("ActivityMotivation closure", () => {
       "improving grades": "activity:motivation.improving",
       "active participation": "activity:motivation.active",
       "default motivation": "activity:motivation.default",
-    }[_label as string]
+    }[_label as string]!
     expect(screen.getByText(expected)).toBeInTheDocument()
   })
 })

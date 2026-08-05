@@ -48,6 +48,10 @@ describe("NewsList", () => {
     const mockIntersectionObserver = vi.fn((callback: IntersectionObserverCallback) => {
       intersectionCallback = callback
       return {
+        root: null,
+        rootMargin: "",
+        thresholds: [],
+        takeRecords: vi.fn(() => []),
         observe: vi.fn(),
         unobserve: vi.fn(),
         disconnect: disconnectObserver,

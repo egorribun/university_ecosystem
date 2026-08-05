@@ -6,7 +6,11 @@ import { useAnimatedFloat } from "@/hooks/useAnimatedFloat"
 // animate (require domMax) to shared rAF helper in @/hooks/useAnimatedFloat.
 // Same easeOutExpo formula + same durationLazy (0.9s) as the prior framer
 // animate() call. UX-equivalent. useReducedMotion handled inside the helper.
-function useAnimatedNumber(target: number, duration = motionTokens.durationLazy, fraction = 0) {
+function useAnimatedNumber(
+  target: number,
+  duration: number = motionTokens.durationLazy,
+  fraction = 0
+) {
   const val = useAnimatedFloat(target, duration)
   return useMemo(() => Number(val).toFixed(fraction), [val, fraction])
 }

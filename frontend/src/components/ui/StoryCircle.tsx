@@ -6,7 +6,7 @@ export type StoryCircleSize = "sm" | "md" | "lg"
 
 type StoryCircleOwnProps = {
   size?: StoryCircleSize
-  borderWidth?: number
+  borderWidth?: number | string
   className?: string
   style?: CSSProperties
 }

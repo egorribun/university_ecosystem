@@ -76,7 +76,14 @@ describe.each([
 
     act(() => result.current.triggerPick())
 
-    const src = kind === "avatar" ? result.current.avatarSrc : result.current.coverSrc
+    const src =
+      kind === "avatar"
+        ? "avatarSrc" in result.current
+          ? result.current.avatarSrc
+          : ""
+        : "coverSrc" in result.current
+          ? result.current.coverSrc
+          : ""
     expect(src).toContain("_v=")
     expect(click).toHaveBeenCalledOnce()
   })
@@ -88,7 +95,14 @@ describe.each([
     })
     const { result } = renderHook(() => useUpload(vi.fn()))
 
-    const src = kind === "avatar" ? result.current.avatarSrc : result.current.coverSrc
+    const src =
+      kind === "avatar"
+        ? "avatarSrc" in result.current
+          ? result.current.avatarSrc
+          : ""
+        : "coverSrc" in result.current
+          ? result.current.coverSrc
+          : ""
     if (kind === "avatar") {
       expect(src).toEqual(expect.stringContaining("gravatar.com/avatar"))
     } else {

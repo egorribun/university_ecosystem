@@ -111,7 +111,11 @@ describe("Feedback primitives", () => {
       )
       expect(screen.getByText("Top")).toHaveClass("top-8", "right-8")
 
-      rerender(<Snackbar open onClose={vi.fn()} />)
+      rerender(
+        <Snackbar open onClose={vi.fn()}>
+          Default
+        </Snackbar>
+      )
       expect(container.firstElementChild).toHaveClass("top-1/2", "left-8")
     })
 
@@ -138,7 +142,11 @@ describe("Feedback primitives", () => {
           Replaced
         </Snackbar>
       )
-      rerender(<Snackbar open={false} onClose={secondClose} autoHideDuration={1000} />)
+      rerender(
+        <Snackbar open={false} onClose={secondClose} autoHideDuration={1000}>
+          Hidden
+        </Snackbar>
+      )
       act(() => {
         vi.advanceTimersByTime(1000)
       })

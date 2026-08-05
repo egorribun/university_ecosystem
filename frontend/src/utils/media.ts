@@ -87,7 +87,7 @@ export function resolveProxyImageUrl(
   return resolveMediaUrl(raw, origin)
 }
 
-export function addVersionParam(url?: string, version?: string | number): string {
+export function addVersionParam(url?: string, version?: string | number | null): string {
   if (!url) return ""
   if (version === undefined || version === null || version === "") return url
   const value = String(version)

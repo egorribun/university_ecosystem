@@ -1,5 +1,6 @@
 import { QueryClient } from "@tanstack/react-query"
 import { describe, expect, it, vi } from "vitest"
+import type { Event } from "@/types/Event"
 
 const { mockGet } = vi.hoisted(() => ({ mockGet: vi.fn() }))
 
@@ -7,13 +8,19 @@ vi.mock("@/api/client", () => ({ default: { get: mockGet } }))
 
 import { createDashboardEventsQueryOptions, dashboardEventsQueryKey } from "../useDashboardEvents"
 
-const event = (id: string, starts_at?: string) => ({
-  id,
-  starts_at,
-  title: id,
-})
+const event = (id: string, starts_at?: string) =>
+  ({
+    id,
+    starts_at,
+    title: id,
+  }) as unknown as Event
 
-const context = (signal?: AbortSignal) => ({ signal })
+const context = (client: QueryClient, signal?: AbortSignal) => ({
+  client,
+  queryKey: dashboardEventsQueryKey,
+  signal: signal ?? new AbortController().signal,
+  meta: undefined,
+})
 
 describe("useDashboardEvents closure", () => {
   it("normalizes, filters, sorts, and caps successful event responses", async () => {
@@ -26,7 +33,7 @@ describe("useDashboardEvents closure", () => {
       },
     })
 
-    const out = await options.queryFn(context())
+    const out = await options.queryFn(context(client))
     expect(out.items.map((item) => item.id)).toEqual(["early", "late"])
     expect(mockGet).toHaveBeenCalledWith(
       "/events",
@@ -48,11 +55,11 @@ describe("useDashboardEvents closure", () => {
     client.setQueryData(dashboardEventsQueryKey, previous)
 
     mockGet.mockResolvedValueOnce({ status: 304, data: undefined })
-    await expect(options.queryFn(context())).resolves.toEqual(previous)
+    await expect(options.queryFn(context(client))).resolves.toEqual(previous)
 
     client.removeQueries({ queryKey: dashboardEventsQueryKey })
     mockGet.mockResolvedValueOnce({ status: 304, data: undefined })
-    await expect(options.queryFn(context())).resolves.toEqual({ items: [] })
+    await expect(options.queryFn(context(client))).resolves.toEqual({ items: [] })
   })
 
   it("falls back after non-aborted errors and rethrows abort/no-cache errors", async () => {
@@ -61,18 +68,18 @@ describe("useDashboardEvents closure", () => {
     const fallback = { items: [event("fallback", "2026-01-01")] }
     client.setQueryData(dashboardEventsQueryKey, fallback)
     mockGet.mockRejectedValueOnce(new Error("temporary"))
-    await expect(options.queryFn(context())).resolves.toEqual(fallback)
+    await expect(options.queryFn(context(client))).resolves.toEqual(fallback)
 
     client.removeQueries({ queryKey: dashboardEventsQueryKey })
     const aborted = new Error("aborted")
     const controller = new AbortController()
     controller.abort()
     mockGet.mockRejectedValueOnce(aborted)
-    await expect(options.queryFn(context(controller.signal))).rejects.toBe(aborted)
+    await expect(options.queryFn(context(client, controller.signal))).rejects.toBe(aborted)
 
     const uncached = new Error("uncached")
     mockGet.mockRejectedValueOnce(uncached)
-    await expect(options.queryFn(context())).rejects.toBe(uncached)
+    await expect(options.queryFn(context(client))).rejects.toBe(uncached)
   })
 
   it("exposes stable query options and select/placeholder transforms", () => {

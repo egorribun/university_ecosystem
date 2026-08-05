@@ -31,8 +31,8 @@ export interface CampusPOI {
   coords: [number, number]
   /** Lucide icon name — typed union to catch typos at compile time */
   icon: POIIconName
-  /** i18n key suffix — resolved as map:poi.items.<id>.name */
-  i18nKey: string
+  /** Optional i18n key suffix — falls back to osmName/category when absent. */
+  i18nKey?: string
 }
 
 /**

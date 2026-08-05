@@ -331,7 +331,7 @@ describe("api/client — defensive request/response interceptor inputs", () => {
     expect(headers.has("Content-Type")).toBe(false)
 
     const { releaseClientQueueSlot } = await import("@/api/interceptors/rateLimit")
-    releaseClientQueueSlot(config)
+    releaseClientQueueSlot(config as Parameters<typeof releaseClientQueueSlot>[0])
   })
 
   it("rejects a 401 response even when its request has no headers object", async () => {

@@ -45,7 +45,7 @@ beforeEach(() => {
 describe("EventDetailHero closure", () => {
   it("selects portrait, square, and landscape aspect modes from image dimensions", () => {
     const { container } = render(<EventDetailHero {...props} />)
-    const image = screen.getByRole("img")
+    const image = screen.getByRole("img") as HTMLImageElement
     const hero = container.firstElementChild as HTMLElement
 
     setNaturalSize(image, 600, 1000)

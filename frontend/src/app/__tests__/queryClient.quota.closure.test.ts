@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest"
 
-const idbSet = vi.fn(() => Promise.resolve())
-const idbGet = vi.fn(() => Promise.resolve(undefined))
-const idbDel = vi.fn(() => Promise.resolve())
+const idbSet = vi.fn((..._args: unknown[]) => Promise.resolve())
+const idbGet = vi.fn((..._args: unknown[]) => Promise.resolve(undefined))
+const idbDel = vi.fn((..._args: unknown[]) => Promise.resolve())
 
 vi.mock("idb-keyval", () => ({
   set: (...args: unknown[]) => idbSet(...args),
@@ -59,7 +59,9 @@ describe("queryClient quota closure paths", () => {
     vi.stubGlobal("navigator", { storage: { estimate } })
     const { createIDBPersister } = await import("@/app/queryClient")
 
-    await expect(createIDBPersister("fallback").persistClient(makeClient())).resolves.toBeUndefined()
+    await expect(
+      createIDBPersister("fallback").persistClient(makeClient())
+    ).resolves.toBeUndefined()
     expect(idbSet).toHaveBeenCalledOnce()
   })
 
@@ -70,13 +72,15 @@ describe("queryClient quota closure paths", () => {
 
     expect(shouldDehydrateQuery?.({ state: { status: "success" } } as never)).toBe(true)
     expect(shouldDehydrateQuery?.({ state: { status: "error" } } as never)).toBe(false)
-    expect(shouldDehydrateMutation?.({ state: { isPaused: true, status: "idle" } } as never)).toBe(true)
-    expect(shouldDehydrateMutation?.({ state: { isPaused: false, status: "pending" } } as never)).toBe(
+    expect(shouldDehydrateMutation?.({ state: { isPaused: true, status: "idle" } } as never)).toBe(
       true
     )
-    expect(shouldDehydrateMutation?.({ state: { isPaused: false, status: "success" } } as never)).toBe(
-      false
-    )
+    expect(
+      shouldDehydrateMutation?.({ state: { isPaused: false, status: "pending" } } as never)
+    ).toBe(true)
+    expect(
+      shouldDehydrateMutation?.({ state: { isPaused: false, status: "success" } } as never)
+    ).toBe(false)
   })
 
   it("falls back for malformed and non-positive duration environment values", async () => {

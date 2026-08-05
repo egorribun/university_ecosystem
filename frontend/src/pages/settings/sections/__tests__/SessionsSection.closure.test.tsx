@@ -43,6 +43,7 @@ vi.mock("@/components/settings", () => ({
 import { SessionsSection } from "../SessionsSection"
 
 const baseProps = {
+  setSnackbar: vi.fn(),
   sessions: [],
   sortedSessions: [],
   sessionsFetching: false,

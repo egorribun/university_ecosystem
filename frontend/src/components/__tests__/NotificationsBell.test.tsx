@@ -294,7 +294,7 @@ describe("NotificationsBell", () => {
 
     const markButtons = screen.getAllByTitle("Mark as read")
     expect(markButtons).toHaveLength(2)
-    await user.click(markButtons[0])
+    await user.click(markButtons[0]!)
     expect(markRead).toHaveBeenCalledWith("chat-1")
   })
 

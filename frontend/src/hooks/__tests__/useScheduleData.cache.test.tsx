@@ -300,7 +300,7 @@ describe("useScheduleData (Wave 130 SW1 factory integration)", () => {
     await act(async () => {
       result.current.applyScheduleUpdate((previous) => [
         ...previous,
-        { ...lessons[0], id: "lesson-added", parity: "both" },
+        { ...lessons[0]!, id: "lesson-added", parity: "both" },
       ])
     })
     expect(client.getQueryData(pageScheduleQueryOptions("group-object").queryKey)).toHaveLength(4)
@@ -363,7 +363,7 @@ describe("useScheduleData (Wave 130 SW1 factory integration)", () => {
     act(() => {
       result.current.applyScheduleUpdate((previous) => [
         ...previous,
-        { ...lessons[0], id: "lesson-added-after-empty-cache" },
+        { ...lessons[0]!, id: "lesson-added-after-empty-cache" },
       ])
     })
     expect(client.getQueryData(scheduleKey)).toEqual([

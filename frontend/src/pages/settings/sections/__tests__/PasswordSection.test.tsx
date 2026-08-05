@@ -30,9 +30,9 @@ describe("PasswordSection", () => {
     const fields = screen.getAllByDisplayValue("")
     expect(fields).toHaveLength(3)
 
-    fireEvent.change(fields[0], { target: { value: "old-password" } })
-    fireEvent.change(fields[1], { target: { value: "new-password" } })
-    fireEvent.change(fields[2], { target: { value: "new-password" } })
+    fireEvent.change(fields[0]!, { target: { value: "old-password" } })
+    fireEvent.change(fields[1]!, { target: { value: "new-password" } })
+    fireEvent.change(fields[2]!, { target: { value: "new-password" } })
     await user.click(screen.getAllByRole("button").at(-1)!)
 
     expect(props.onCurrentPasswordChange).toHaveBeenCalledWith("old-password")

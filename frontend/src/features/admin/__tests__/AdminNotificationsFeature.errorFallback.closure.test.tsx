@@ -2,7 +2,7 @@ import { screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { HttpResponse, http } from "msw"
 import { QueryClient } from "@tanstack/react-query"
-import { AxiosError } from "axios"
+import { AxiosError, AxiosHeaders } from "axios"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
 const translationOverrides = vi.hoisted(() => ({
@@ -145,7 +145,7 @@ describe("AdminNotificationsFeature defensive error handling", () => {
       status: 502,
       statusText: "Bad Gateway",
       headers: {},
-      config: {},
+      config: { headers: new AxiosHeaders() },
     }
     vi.mocked(retryDeadLetterJobs).mockRejectedValueOnce(
       new AxiosError("request failed", "ERR_BAD_RESPONSE", undefined, undefined, response)
@@ -180,7 +180,7 @@ describe("AdminNotificationsFeature defensive error handling", () => {
       status: 502,
       statusText: "Bad Gateway",
       headers: {},
-      config: {},
+      config: { headers: new AxiosHeaders() },
     }
     vi.mocked(retryDeadLetterJobs).mockRejectedValueOnce(
       new AxiosError("request failed", "ERR_BAD_RESPONSE", undefined, undefined, response)

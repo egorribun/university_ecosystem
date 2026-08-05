@@ -134,7 +134,7 @@ describe("MobileDrawerProfile", () => {
           user={{
             ...testUser,
             full_name: "",
-            role: null,
+            role: undefined,
             avatar_url: "https://example.test/avatar.png",
             avatar_updated_at: "2026-08-04T12:00:00Z",
           }}
@@ -195,7 +195,9 @@ describe("UserMenu", () => {
 
   it("renders nothing for a settled unauthenticated state", async () => {
     const { container } = await renderWithRouter({
-      ui: () => <UserMenu user={null} isAuth={false} loading={false} go={vi.fn()} t={(key) => key} />,
+      ui: () => (
+        <UserMenu user={null} isAuth={false} loading={false} go={vi.fn()} t={(key) => key} />
+      ),
     })
     expect(container).toBeEmptyDOMElement()
   })

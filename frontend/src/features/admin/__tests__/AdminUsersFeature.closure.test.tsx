@@ -67,7 +67,7 @@ vi.mock("@/components/ui/data-table/DataTable", () => ({
     data,
   }: {
     columns: Array<{
-      header?: unknown
+      header?: ReactNode | ((context: unknown) => ReactNode)
       cell?: (context: unknown) => ReactNode
     }>
     data: unknown[]
@@ -239,7 +239,9 @@ describe("AdminUsersFeature closure", () => {
     // The second student select is the mobile-card renderer and has a
     // separate callback closure from the desktop table cell.
     fireEvent.change(studentGroups[1]!, { target: { value: "g2" } })
-    await waitFor(() => expect(apiPatchMock).toHaveBeenCalledWith("/users/u-student", { group_id: "g2" }))
+    await waitFor(() =>
+      expect(apiPatchMock).toHaveBeenCalledWith("/users/u-student", { group_id: "g2" })
+    )
 
     fireEvent.change(studentGroup!, { target: { value: "" } })
     await waitFor(() => {
@@ -264,7 +266,9 @@ describe("AdminUsersFeature closure", () => {
     expect(invalidateMock).toHaveBeenCalled()
 
     // Exercise the mobile-card delete callback and the dialog cancel path.
-    const mobileDeleteButton = screen.getAllByRole("button", { name: "users.table.deleteUser" }).at(-1)
+    const mobileDeleteButton = screen
+      .getAllByRole("button", { name: "users.table.deleteUser" })
+      .at(-1)
     expect(mobileDeleteButton).toBeDefined()
     fireEvent.click(mobileDeleteButton!)
     expect(screen.getByRole("dialog")).toBeInTheDocument()

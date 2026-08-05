@@ -112,9 +112,7 @@ describe("NewsDetailHeader", () => {
 
   it("keeps aria labels empty when the corresponding translations are unavailable", () => {
     translationMock.mockImplementation((key: string) =>
-      ["news:aria.shareNews", "news:aria.editNews", "news:aria.deleteNews"].includes(key)
-        ? undefined
-        : key
+      ["news:aria.shareNews", "news:aria.editNews", "news:aria.deleteNews"].includes(key) ? "" : key
     )
 
     render(<NewsDetailHeader {...baseProps} isAdmin />)

@@ -1,35 +1,27 @@
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
-const {
-  registerRouteMock,
-  getSessionHashMock,
-  fetchMock,
-  publicCache,
-  privateCache,
-  cachesMock,
-} = vi.hoisted(() => {
-  const publicCache = {
-    match: vi.fn(),
-    put: vi.fn(),
-  }
-  const privateCache = {
-    match: vi.fn(),
-    put: vi.fn(),
-  }
-  return {
-    registerRouteMock: vi.fn(),
-    getSessionHashMock: vi.fn(),
-    fetchMock: vi.fn(),
-    publicCache,
-    privateCache,
-    cachesMock: {
-      open: vi.fn(async (name: string) =>
-        name === "media-public" ? publicCache : privateCache
-      ),
-      has: vi.fn(),
-    },
-  }
-})
+const { registerRouteMock, getSessionHashMock, fetchMock, publicCache, privateCache, cachesMock } =
+  vi.hoisted(() => {
+    const publicCache = {
+      match: vi.fn(),
+      put: vi.fn(),
+    }
+    const privateCache = {
+      match: vi.fn(),
+      put: vi.fn(),
+    }
+    return {
+      registerRouteMock: vi.fn(),
+      getSessionHashMock: vi.fn(),
+      fetchMock: vi.fn(),
+      publicCache,
+      privateCache,
+      cachesMock: {
+        open: vi.fn(async (name: string) => (name === "media-public" ? publicCache : privateCache)),
+        has: vi.fn(),
+      },
+    }
+  })
 
 vi.mock("workbox-routing", () => ({
   registerRoute: registerRouteMock,
@@ -97,9 +89,9 @@ describe("service-worker media cache", () => {
     privateCache.match.mockResolvedValue(cached)
     const { handleMediaRequest } = await loadMediaModule()
 
-    await expect(handleMediaRequest(new Request("https://cdn.example.test/private.jpg"))).resolves.toBe(
-      cached
-    )
+    await expect(
+      handleMediaRequest(new Request("https://cdn.example.test/private.jpg"))
+    ).resolves.toBe(cached)
     expect(cachesMock.has).toHaveBeenCalledWith("media-private:session-123")
     expect(fetchMock).not.toHaveBeenCalled()
   })
@@ -143,14 +135,14 @@ describe("service-worker media cache", () => {
   })
 
   it("registers static, image, and explicit media routes", async () => {
-    const { handleMediaRequest, initMediaCaching } = await loadMediaModule()
+    const { initMediaCaching } = await loadMediaModule()
     initMediaCaching()
 
     expect(registerRouteMock).toHaveBeenCalledTimes(3)
     const staticMatcher = registerRouteMock.mock.calls[0]?.[0] as (input: { url: URL }) => boolean
-    const imageMatcher = registerRouteMock.mock.calls[1]?.[0] as (
-      input: { request: Request }
-    ) => boolean
+    const imageMatcher = registerRouteMock.mock.calls[1]?.[0] as (input: {
+      request: Request
+    }) => boolean
     expect(staticMatcher({ url: new URL("https://app.test/static/app.js") })).toBe(true)
     expect(imageMatcher({ request: { destination: "image" } as Request })).toBe(true)
 

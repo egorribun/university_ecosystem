@@ -656,7 +656,7 @@ describe("loginWithPasskey", () => {
 describe("useAuthApi — residual defensive branches", () => {
   it("rejects a null token response as invalid", async () => {
     const w = makeWires()
-    mocks.apiPost.mockResolvedValue({ status: 200, data: null })
+    mocks.apiPost.mockResolvedValue({ status: 200, data: null } as never)
     const { result } = renderApi(w)
 
     await expect(

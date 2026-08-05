@@ -170,10 +170,7 @@ describe("ContactList — empty state (W183 SW1)", () => {
   })
 
   it("renders the animated error state without an optional retry callback", () => {
-    render(
-      <ContactList contacts={[]} selectedId={null} onSelect={() => {}} isError />,
-      { wrapper }
-    )
+    render(<ContactList contacts={[]} selectedId={null} onSelect={() => {}} isError />, { wrapper })
     expect(screen.getByRole("alert")).toBeInTheDocument()
     expect(screen.queryByRole("button")).toBeFalsy()
   })
@@ -206,13 +203,7 @@ describe("ContactList — empty state (W183 SW1)", () => {
     const onStartNewChat = vi.fn()
 
     const { rerender } = render(
-      <ContactList
-        contacts={[]}
-        selectedId={null}
-        onSelect={() => {}}
-        isError
-        onRetry={onRetry}
-      />,
+      <ContactList contacts={[]} selectedId={null} onSelect={() => {}} isError onRetry={onRetry} />,
       { wrapper }
     )
     fireEvent.click(screen.getByRole("button", { name: /messenger:error.retry/ }))
@@ -226,7 +217,9 @@ describe("ContactList — empty state (W183 SW1)", () => {
         onClearSearch={onClearSearch}
       />
     )
-    fireEvent.click(screen.getByRole("button", { name: /messenger:noChats.searchEmpty.clearSearch/ }))
+    fireEvent.click(
+      screen.getByRole("button", { name: /messenger:noChats.searchEmpty.clearSearch/ })
+    )
 
     rerender(
       <ContactList
@@ -464,7 +457,7 @@ describe("ContactList — populated contacts", () => {
     const onSelect = vi.fn()
     render(
       <ContactList
-        contacts={[{ ...mockContacts[1], isGroup: true, memberCount: 4, unread: 120 }]}
+        contacts={[{ ...mockContacts[1]!, isGroup: true, memberCount: 4, unread: 120 }]}
         selectedId="2"
         onSelect={onSelect}
       />,

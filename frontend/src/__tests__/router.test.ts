@@ -103,7 +103,7 @@ describe("router.getRouter() — Wave 126 SSR auth context", { timeout: 60000 },
 
   it("provides an accessible visible pending component for suspended routes", () => {
     globalThis.__ssrAuthGetter__ = undefined
-    const pending = getRouter().options.defaultPendingComponent?.()
+    const pending = getRouter().options.defaultPendingComponent?.({})
 
     expect(pending).toMatchObject({
       type: "div",
