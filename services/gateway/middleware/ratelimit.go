@@ -55,6 +55,9 @@ func NewRateLimiter(ctx context.Context, redisURL string, rps, burst int) (*Rate
 	defer cancel()
 
 	if err := client.Ping(pingCtx).Err(); err != nil {
+		if closeErr := client.Close(); closeErr != nil {
+			return nil, fmt.Errorf("%w; failed to close Redis client: %v", err, closeErr)
+		}
 		return nil, err
 	}
 

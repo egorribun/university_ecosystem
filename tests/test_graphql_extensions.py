@@ -686,13 +686,16 @@ class TestAdditionalExtensionSafeguards:
     async def test_request_timeout_extension_execution_timeout(self) -> None:
         """RequestTimeoutExtension raises GraphQLError when execution exceeds timeout."""
         ext = RequestTimeoutExtension()
-        ext.TIMEOUT_SECONDS = 0.001
+        # The exception is injected explicitly below; keep the real deadline
+        # comfortably above the test's scheduling overhead so the asyncio
+        # timer cannot race the injected exception on a loaded CI runner.
+        ext.TIMEOUT_SECONDS = 1.0
 
         gen = ext.on_execute()
         await gen.__anext__()
         with pytest.raises(
             GraphQLError,
-            match=r"Request exceeded the maximum execution time of 0\.001 seconds",
+            match=r"Request exceeded the maximum execution time of 1\.0 seconds",
         ):
             await gen.athrow(TimeoutError)
 

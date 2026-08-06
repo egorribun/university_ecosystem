@@ -183,6 +183,9 @@ func initRedis(ctx context.Context, cfg *config.Config, logger *slog.Logger) *re
 	})
 	if err := rdb.Ping(ctx).Err(); err != nil {
 		logger.WarnContext(ctx, "Redis connection failed, continuing without L2 cache", "err", err)
+		if closeErr := rdb.Close(); closeErr != nil {
+			logger.WarnContext(ctx, "Failed to close Redis client after failed ping", "err", closeErr)
+		}
 		return nil
 	}
 	logger.InfoContext(ctx, "Redis connected (L2 Cache enabled)", "addr", cfg.RedisURL)

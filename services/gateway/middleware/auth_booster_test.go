@@ -28,6 +28,12 @@ func TestNewJWTMiddleware_PanicOnInvalidPEM(t *testing.T) {
 	})
 }
 
+func TestNewJWTMiddleware_PanicOnInvalidL1CacheConfig(t *testing.T) {
+	assert.Panics(t, func() {
+		NewJWTMiddlewareWithConfig("secret", "", nil, L1CacheConfig{MaxSize: 0, TTL: time.Second})
+	})
+}
+
 // TestShouldRefreshProbabilistic verifies all paths of shouldRefreshProbabilistic.
 func TestShouldRefreshProbabilistic(t *testing.T) {
 	// Case 1: remaining <= 0 (already expired)
@@ -52,6 +58,12 @@ func TestFetchJWKSPublicKey_Errors(t *testing.T) {
 	t.Run("invalid url", func(t *testing.T) {
 		_, err := fetchJWKSPublicKey(context.Background(), httpClient, "invalid-proto://url")
 		assert.Error(t, err)
+	})
+
+	t.Run("invalid request target", func(t *testing.T) {
+		_, err := fetchJWKSPublicKey(context.Background(), httpClient, "http://example.com/\n")
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "create request")
 	})
 
 	t.Run("non-200 status", func(t *testing.T) {

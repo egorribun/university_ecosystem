@@ -18,6 +18,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	pb "github.com/university-ecosystem/core/gen/go/file_processor/v1"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -183,6 +184,42 @@ func TestProxyHandler_SetsInternalSignature(t *testing.T) {
 	mac.Write([]byte(testUserID + ":" + testSessionID))
 	expected := hex.EncodeToString(mac.Sum(nil))
 	assert.Equal(t, expected, capturedSig, "X-Internal-Signature must be HMAC-SHA256 of user_id:session_id")
+}
+
+func TestProxyHandler_SetsTenantIdentityAndSignature(t *testing.T) {
+	const (
+		testUserID    = "550e8400-e29b-41d4-a716-446655440000"
+		testSessionID = "session-jti-tenant"
+		testTenantID  = "tenant-42"
+	)
+	secret := []byte("test-internal-hmac-secret-32bytes!")
+	var capturedTenantID, capturedSignature string
+
+	backendServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		capturedTenantID = r.Header.Get("X-Tenant-ID")
+		capturedSignature = r.Header.Get("X-Internal-Signature")
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer backendServer.Close()
+
+	router := gin.New()
+	router.GET("/api/*path", func(c *gin.Context) {
+		c.Set("user_id", testUserID)
+		c.Set("session_id", testSessionID)
+		c.Set("tenant_id", testTenantID)
+		c.Next()
+	}, ProxyHandler(createTestProxy(backendServer.URL), secret))
+
+	recorder := newCloseNotifyingRecorder()
+	router.ServeHTTP(
+		recorder,
+		httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/api/test", nil),
+	)
+
+	mac := hmac.New(sha256.New, secret)
+	_, _ = mac.Write([]byte(testUserID + ":" + testSessionID + ":" + testTenantID))
+	assert.Equal(t, testTenantID, capturedTenantID)
+	assert.Equal(t, hex.EncodeToString(mac.Sum(nil)), capturedSignature)
 }
 
 // TestProxyHandler_NoSignatureWithoutSecret ensures X-Internal-Signature is
@@ -515,6 +552,44 @@ func TestFileProcessSyncHandler_PropagatesAuthorizationHeader(t *testing.T) {
 	authHeaders := md.Get("authorization")
 	assert.Len(t, authHeaders, 1)
 	assert.Equal(t, "Bearer test-token-123", authHeaders[0])
+}
+
+func TestFileProcessSyncHandler_PropagatesTenantHeaderFallback(t *testing.T) {
+	var capturedCtx context.Context
+	clientMock := &mockFileProcessingClientWithCtx{
+		mockClient: &mockFileProcessingServiceClient{
+			resp: &pb.ProcessFileResponse{JobId: "tenant-header-job"},
+		},
+		onCall: func(ctx context.Context) {
+			capturedCtx = ctx
+		},
+	}
+
+	router := gin.New()
+	router.POST("/sync", FileProcessSyncHandler(
+		context.Background(),
+		&grpc.ClientConn{},
+		clientMock,
+		slog.New(slog.NewJSONHandler(io.Discard, nil)),
+	))
+
+	reqBody := `{"id":"550e8400-e29b-41d4-a716-446655440000","type":"resize","source_key":"in.png","dest_key":"out.png"}`
+	req := httptest.NewRequestWithContext(
+		context.Background(),
+		http.MethodPost,
+		"/sync",
+		bytes.NewReader([]byte(reqBody)),
+	)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Tenant-ID", "tenant-from-header")
+	recorder := httptest.NewRecorder()
+
+	router.ServeHTTP(recorder, req)
+
+	assert.Equal(t, http.StatusOK, recorder.Code)
+	md, ok := metadata.FromOutgoingContext(capturedCtx)
+	require.True(t, ok)
+	assert.Equal(t, []string{"tenant-from-header"}, md.Get("x-tenant-id"))
 }
 
 type mockFileProcessingClientWithCtx struct {

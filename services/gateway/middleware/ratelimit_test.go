@@ -238,6 +238,16 @@ func TestNewRateLimiter_InvalidURLReturnsError(t *testing.T) {
 	assert.Nil(t, rl)
 }
 
+func TestNewRateLimiter_PingFailureReturnsError(t *testing.T) {
+	rl, err := NewRateLimiter(context.Background(), "redis://127.0.0.1:1", 10, 20)
+	assert.Error(t, err)
+	assert.Nil(t, rl)
+}
+
+func TestRateLimiter_CloseWithoutResourcesIsSafe(t *testing.T) {
+	assert.NoError(t, (&RateLimiter{}).Close())
+}
+
 func TestRateLimiter_GetClient_ReturnsUnderlyingClient(t *testing.T) {
 	// redis.NewClient does not dial, so a white-box struct literal is enough.
 	client := redis.NewClient(&redis.Options{Addr: "localhost:6379"})
