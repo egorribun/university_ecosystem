@@ -531,7 +531,11 @@ mod prop_tests {
     #[cfg(miri)]
     fn proptest_config() -> ProptestConfig {
         ProptestConfig {
-            cases: 256,
+            // Miri interprets every html5ever instruction and the full native
+            // 256-case property run already executes in the regular Rust gate.
+            // Keep every property active under Miri while bounding the
+            // interpreter-only workload to a meaningful representative sample.
+            cases: 32,
             max_local_rejects: 65_536,
             max_global_rejects: 1_024,
             max_flat_map_regens: 1_000_000,
