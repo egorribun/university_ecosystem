@@ -115,6 +115,7 @@ def test_mutmut_uses_the_unit_population_instead_of_a_single_probe_file() -> Non
         ".github",
         "quality",
         "scripts",
+        "backend.Dockerfile",
         "codecov.yml",
         "renovate.json",
         "uv.lock",
