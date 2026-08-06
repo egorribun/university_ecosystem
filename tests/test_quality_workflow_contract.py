@@ -492,6 +492,7 @@ def test_performance_workflow_has_blocking_native_and_ws_baselines() -> None:
         for step in jobs["ws-hub-regression"]["steps"]
         if "benchmark-action/github-action-benchmark" in step.get("uses", "")
     )
+    assert ws_store["with"]["benchmark-data-dir-path"] == "dev/bench/ws-hub-regression"
     assert ws_store["with"]["alert-threshold"] == "110%"
     assert ws_store["with"]["fail-on-alert"] is True
 

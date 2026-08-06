@@ -102,6 +102,11 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           # Only push historical data when merging to main; PRs only compare.
           auto-push: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+          # Keep this gate's history separate from the broad Go benchmark
+          # dashboard.  The action matches raw benchmark names, so sharing
+          # dev/bench/data.js would compare this dedicated suite with a
+          # differently configured historical run.
+          benchmark-data-dir-path: "dev/bench/ws-hub-regression"
           # Gate: reject any benchmark that runs ≥ 110 % of the stored baseline
           # on both pull requests and main. A report-only PR would allow a
           # latency regression to merge before the baseline is updated.
