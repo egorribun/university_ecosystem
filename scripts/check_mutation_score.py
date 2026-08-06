@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Mutation score checker for the University Ecosystem project.
 
-Runs ``uv run mutmut results`` and parses the output to compute:
+Runs ``uv run mutmut results --all`` and parses the output to compute:
     mutation_score = killed / (killed + survived)
 
 Usage:
@@ -15,10 +15,13 @@ Exit codes:
 from __future__ import annotations
 
 import argparse
+import json
 import re
 import subprocess
 import sys
 from dataclasses import dataclass
+from pathlib import Path
+from typing import Any
 
 # ---------------------------------------------------------------------------
 # Data types
@@ -33,6 +36,8 @@ class MutationSummary:
     survived: int
     timeout: int
     suspicious: int
+    no_tests: int
+    not_checked: int
 
     @property
     def total_meaningful(self) -> int:
@@ -43,10 +48,10 @@ class MutationSummary:
     def score(self) -> float:
         """Mutation score as a value between 0.0 and 100.0.
 
-        Returns 0.0 when no meaningful mutants exist to avoid ZeroDivisionError.
+        When no mutants survived (survived == 0), score is 100.0%.
         """
         if self.total_meaningful == 0:
-            return 0.0
+            return 100.0 if self.survived == 0 else 0.0
         return (self.killed / self.total_meaningful) * 100.0
 
 
@@ -64,19 +69,25 @@ _KILLED_PATTERN = re.compile(r"Killed[:\s]+(\d+)", re.IGNORECASE)
 _SURVIVED_PATTERN = re.compile(r"Survived[:\s]+(\d+)", re.IGNORECASE)
 _TIMEOUT_PATTERN = re.compile(r"Timed\s+out[:\s]+(\d+)", re.IGNORECASE)
 _SUSPICIOUS_PATTERN = re.compile(r"Suspicious[:\s]+(\d+)", re.IGNORECASE)
+_NO_TESTS_PATTERN = re.compile(r"No\s+tests[:\s]+(\d+)", re.IGNORECASE)
+_NOT_CHECKED_PATTERN = re.compile(r"Not\s+checked[:\s]+(\d+)", re.IGNORECASE)
+
+_STATUS_PATTERNS = {
+    "killed": re.compile(r":\s*killed\b", re.IGNORECASE),
+    "survived": re.compile(r":\s*survived\b", re.IGNORECASE),
+    "timeout": re.compile(r":\s*(?:timed\s+out|timeout)\b", re.IGNORECASE),
+    "suspicious": re.compile(r":\s*suspicious\b", re.IGNORECASE),
+    "no_tests": re.compile(r":\s*no\s+tests\b", re.IGNORECASE),
+    "not_checked": re.compile(r":\s*not\s+checked\b", re.IGNORECASE),
+}
 
 
 def _parse_mutmut_output(output: str) -> MutationSummary:
-    """Extract mutation counts from ``mutmut results`` output.
+    """Extract mutation counts from the complete ``mutmut results --all`` output.
 
-    WHY: mutmut writes a human-readable summary; we parse it with named
-    patterns rather than relying on positional output so the parser is
-    robust to minor formatting changes between mutmut versions.
-
-    Raises:
-        ValueError: when the required ``Killed`` or ``Survived`` lines are
-            missing — a malformed output should surface as an explicit error
-            rather than being silently treated as a zero-score run.
+    ``mutmut results`` hides killed mutants unless ``--all`` is supplied. The
+    checker therefore consumes the complete per-mutant status stream directly;
+    it must not infer a score from a stale or platform-specific run-log path.
     """
 
     def _extract(pattern: re.Pattern[str], text: str, default: int = 0) -> int:
@@ -85,9 +96,22 @@ def _parse_mutmut_output(output: str) -> MutationSummary:
             return int(match.group(1))
         return default
 
+    status_counts = {
+        name: len(pattern.findall(output)) for name, pattern in _STATUS_PATTERNS.items()
+    }
+
+    if any(status_counts.values()):
+        return MutationSummary(
+            killed=status_counts["killed"],
+            survived=status_counts["survived"],
+            timeout=status_counts["timeout"],
+            suspicious=status_counts["suspicious"],
+            no_tests=status_counts["no_tests"],
+            not_checked=status_counts["not_checked"],
+        )
+
     killed_match = _KILLED_PATTERN.search(output)
     survived_match = _SURVIVED_PATTERN.search(output)
-
     if killed_match is None or survived_match is None:
         raise ValueError(
             "Could not parse 'Killed' or 'Survived' counts from mutmut output.\n"
@@ -99,7 +123,85 @@ def _parse_mutmut_output(output: str) -> MutationSummary:
         survived=int(survived_match.group(1)),
         timeout=_extract(_TIMEOUT_PATTERN, output),
         suspicious=_extract(_SUSPICIOUS_PATTERN, output),
+        no_tests=_extract(_NO_TESTS_PATTERN, output),
+        not_checked=_extract(_NOT_CHECKED_PATTERN, output),
     )
+
+
+def _parse_cicd_stats(payload: str | bytes | dict[str, Any]) -> MutationSummary:
+    """Parse mutmut's authoritative ``export-cicd-stats`` JSON.
+
+    mutmut 3.5.0 can produce an empty stdout stream for ``results --all``
+    after a positional mutation shard, while its JSON exporter still records
+    the complete per-mutant state. Prefer this machine-readable contract in
+    CI; the text parser remains a backwards-compatible fallback for local
+    invocations that do not have an exported stats file.
+    """
+
+    data: Any
+    if isinstance(payload, dict):
+        data = payload
+    else:
+        data = json.loads(payload)
+    if not isinstance(data, dict):
+        raise ValueError("mutmut CI stats must be a JSON object")
+
+    def _count(name: str) -> int:
+        value = data.get(name, 0)
+        if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+            raise ValueError(
+                f"mutmut CI stats field {name!r} must be a non-negative integer"
+            )
+        return value
+
+    killed = _count("killed")
+    survived = _count("survived")
+    total = _count("total")
+    no_tests = _count("no_tests")
+    skipped = _count("skipped")
+    suspicious = _count("suspicious")
+    timeout = _count("timeout")
+    interrupted = _count("check_was_interrupted_by_user")
+    segfault = _count("segfault")
+    caught_by_type_check = _count("caught_by_type_check")
+
+    known = (
+        killed
+        + survived
+        + no_tests
+        + skipped
+        + suspicious
+        + timeout
+        + interrupted
+        + segfault
+        + caught_by_type_check
+    )
+    if total < known:
+        raise ValueError(
+            "mutmut CI stats total is smaller than the sum of its status counts"
+        )
+
+    return MutationSummary(
+        killed=killed,
+        survived=survived,
+        timeout=timeout,
+        suspicious=suspicious,
+        no_tests=no_tests,
+        not_checked=total - known,
+    )
+
+
+def _load_cicd_stats(
+    path: Path = Path("mutants/mutmut-cicd-stats.json"),
+) -> MutationSummary | None:
+    """Load an exported mutmut stats file when the current run produced one."""
+
+    if not path.is_file():
+        return None
+    try:
+        return _parse_cicd_stats(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError, ValueError) as exc:
+        raise ValueError(f"Could not parse mutmut CI stats at {path}: {exc}") from exc
 
 
 # ---------------------------------------------------------------------------
@@ -108,7 +210,7 @@ def _parse_mutmut_output(output: str) -> MutationSummary:
 
 
 def _run_mutmut() -> str:
-    """Invoke ``uv run mutmut results`` and return stdout as a string.
+    """Invoke ``uv run mutmut results --all`` and return stdout as a string.
 
     WHY: using subprocess keeps this script dependency-free (stdlib only).
     We capture stderr separately so that diagnostic messages from mutmut
@@ -131,7 +233,7 @@ def _run_mutmut() -> str:
 
     try:
         result = subprocess.run(
-            [uv_path, "run", "mutmut", "results"],
+            [uv_path, "run", "mutmut", "results", "--all"],
             capture_output=True,
             text=True,
             check=False,  # We check the return code manually below
@@ -176,6 +278,8 @@ def _print_report(summary: MutationSummary, min_score: float) -> None:
     print(f"  Survived   : {summary.survived:>6}")
     print(f"  Timed out  : {summary.timeout:>6}")
     print(f"  Suspicious : {summary.suspicious:>6}")
+    print(f"  No tests   : {summary.no_tests:>6}")
+    print(f"  Not checked: {summary.not_checked:>6}")
     print(f"  Total (K+S): {summary.total_meaningful:>6}")
     print()
     print(f"  Score  [{bar}]  {summary.score:.2f}%")
@@ -201,7 +305,7 @@ def _print_report(summary: MutationSummary, min_score: float) -> None:
 def _build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description=(
-            "Compute the mutation score from mutmut results and fail "
+            "Compute the mutation score from mutmut results --all and fail "
             "if it is below the required minimum."
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -231,11 +335,11 @@ def main(argv: list[str] | None = None) -> None:
         )
         sys.exit(1)
 
-    print("Running: uv run mutmut results …")
-    raw_output = _run_mutmut()
-
     try:
-        summary = _parse_mutmut_output(raw_output)
+        summary = _load_cicd_stats()
+        if summary is None:
+            print("Running: uv run mutmut results --all …")
+            summary = _parse_mutmut_output(_run_mutmut())
     except ValueError as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         sys.exit(1)

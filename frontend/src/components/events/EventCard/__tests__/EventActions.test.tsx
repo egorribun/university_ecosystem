@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react"
+import { render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { describe, it, expect, vi } from "vitest"
 
@@ -62,5 +62,43 @@ describe("EventActions", () => {
     render(<EventActions {...baseProps} onRegister={onRegister} />)
     await user.click(screen.getByRole("button", { name: "events:card.actions.register" }))
     expect(onRegister).toHaveBeenCalledOnce()
+  })
+
+  it("restores a persisted QR dialog and clears its marker on close", async () => {
+    const user = userEvent.setup()
+    window.sessionStorage.setItem("event:qr_open:evt-1", "1")
+
+    render(<EventActions {...baseProps} isRegistered qrToken="qr-token-123" />)
+
+    expect(await screen.findByRole("dialog")).toBeInTheDocument()
+    await user.click(screen.getByRole("button", { name: "events:card.actions.closeQr" }))
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument())
+    expect(window.sessionStorage.getItem("event:qr_open:evt-1")).toBeNull()
+
+    const qrButton = screen.getAllByRole("button")[1]
+    expect(qrButton).toBeDefined()
+    await user.click(qrButton!)
+    expect(await screen.findByRole("dialog")).toBeInTheDocument()
+    await user.click(screen.getByRole("button", { name: "events:card.actions.closeQr" }))
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument())
+  })
+
+  it("ignores sessionStorage failures in QR persistence effects", () => {
+    const getItem = vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => {
+      throw new Error("storage unavailable")
+    })
+    const removeItem = vi.spyOn(Storage.prototype, "removeItem").mockImplementation(() => {
+      throw new Error("storage unavailable")
+    })
+
+    try {
+      render(<EventActions {...baseProps} />)
+      expect(
+        screen.getByRole("button", { name: "events:card.actions.register" })
+      ).toBeInTheDocument()
+    } finally {
+      getItem.mockRestore()
+      removeItem.mockRestore()
+    }
   })
 })

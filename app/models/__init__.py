@@ -65,6 +65,7 @@ from app.models.events import (
     EventFile as EventFile,
 )
 from app.models.failed_outbox_events import FailedOutboxEvent as FailedOutboxEvent
+from app.models.grade import Grade as Grade
 from app.models.logs import DataAccessLog as DataAccessLog
 from app.models.news import (
     News as News,
@@ -94,6 +95,7 @@ from app.models.schedule import Group as Group
 from app.models.schedule import Schedule as Schedule
 from app.models.spotify import SpotifyIntegration as SpotifyIntegration
 from app.models.stories import Story as Story
+from app.models.tenant import Tenant as Tenant
 from app.models.users import (
     EducationPath as EducationPath,
 )
@@ -109,6 +111,7 @@ from app.models.users import (
 from app.models.users import (
     UserProfile as UserProfile,
 )
+from app.models.vector_shard import VectorChunk as VectorChunk
 
 
 # Re-added DeadLetterJob (fixed Alembic schema drift; model moved to app/models/dead_letter.py)

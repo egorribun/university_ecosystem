@@ -53,16 +53,36 @@ export async function registerServiceWorker(path = "/sw.js") {
 
     await navigator.serviceWorker.ready
 
+    const registerBackgroundSync = async () => {
+      if ("sync" in registration) {
+        try {
+          await (
+            registration as ServiceWorkerRegistration & {
+              sync: { register: (tag: string) => Promise<void> }
+            }
+          ).sync.register("sync-offline-mutations")
+        } catch (_e) {
+          // ignore error, falls back to postMessage
+        }
+      }
+    }
+
     const sendQueueSignal = () => {
       if (typeof navigator.onLine === "boolean" && !navigator.onLine) {
         return
       }
+      registerBackgroundSync()
       requestQueueProcessing(registration)
     }
 
     sendQueueSignal()
 
     window.addEventListener("online", sendQueueSignal)
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "visible") {
+        sendQueueSignal()
+      }
+    })
 
     if (registration.waiting && navigator.serviceWorker.controller) {
       notifyUpdateAvailable(registration)

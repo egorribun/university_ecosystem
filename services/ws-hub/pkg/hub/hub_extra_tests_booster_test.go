@@ -3,10 +3,12 @@ package hub
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"sync/atomic"
 	"testing"
 	"time"
 
+	"github.com/gorilla/websocket"
 	"github.com/lestrrat-go/jwx/v2/jwk"
 	"github.com/nats-io/nats.go"
 	"github.com/stretchr/testify/assert"
@@ -82,8 +84,39 @@ func TestSubscribeToNATS_KeysRotated(t *testing.T) {
 	h.jwksURL = "http://127.0.0.1:1/invalid"
 
 	assert.NotPanics(t, func() {
-		h.SubscribeToNATS(ctx)
+		require.NoError(t, h.SubscribeToNATS(ctx))
 	})
+}
+
+func TestSafeJetStreamAckNak_HandlesNilAndCoreMessages(t *testing.T) {
+	assert.NotPanics(t, func() {
+		safeAck(nil)
+		safeNakWithDelay(nil, time.Second)
+	})
+
+	coreMessage := &nats.Msg{Subject: "chat.room-1", Data: []byte(`{}`)}
+	assert.NotPanics(t, func() {
+		safeAck(coreMessage)
+		safeNakWithDelay(coreMessage, time.Millisecond)
+	})
+}
+
+func TestWebTransportSession_NilAndClosedPaths(t *testing.T) {
+	sess := NewWebTransportSession(nil)
+	sess.SetReadLimit(1024)
+	assert.NoError(t, sess.SetReadDeadline(time.Now()))
+	assert.NoError(t, sess.SetWriteDeadline(time.Now()))
+
+	assert.NoError(t, sess.WriteMessage(websocket.PingMessage, nil))
+	assert.NoError(t, sess.WriteMessage(websocket.PongMessage, nil))
+	assert.Error(t, sess.WriteMessage(websocket.TextMessage, []byte("payload")))
+	_, _, err := sess.ReadMessage()
+	assert.Error(t, err)
+
+	assert.NoError(t, sess.WriteMessage(websocket.CloseMessage, nil))
+	_, err = sess.getOrAcceptStream()
+	assert.ErrorIs(t, err, io.EOF)
+	assert.NoError(t, sess.WriteMessage(websocket.CloseMessage, nil))
 }
 
 // TestBroadcastMessage_ClientEvictOnShutdown covers the case when the Hub is shut down while evicting a client on full buffer.

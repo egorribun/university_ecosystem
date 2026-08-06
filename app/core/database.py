@@ -615,6 +615,10 @@ def init_database(current_settings: Settings | None = None) -> None:
             class_=AsyncSession,
         )
 
+        from app.core.db.listeners import register_tenant_listeners
+
+        register_tenant_listeners()
+
         # RZ-33-02: Mask credentials in database URL before logging.
         _masked_url = (
             str(s.database_url).split("@")[-1]

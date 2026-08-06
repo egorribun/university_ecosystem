@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"crypto/tls"
+	"errors"
 	"net"
 	"net/http"
 	"net/http/httputil"
@@ -38,13 +39,22 @@ import (
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
 
+	"github.com/quic-go/quic-go/http3"
 	pb "github.com/university-ecosystem/core/gen/go/file_processor/v1"
 	"github.com/university-ecosystem/gateway/internal/config"
 	"github.com/university-ecosystem/gateway/internal/handlers"
+	"github.com/university-ecosystem/gateway/internal/tlsutil"
 	"github.com/university-ecosystem/gateway/middleware"
+	"github.com/university-ecosystem/services/pkg/spiffe"
 )
 
 func main() {
+	if err := run(); err != nil {
+		os.Exit(1)
+	}
+}
+
+func run() error {
 	// 1. Initialize Logger
 	// TD-W17-02 (Wave 17): Migrated from uber-go/zap to log/slog, matching
 	// ws-hub and file-processor. Eliminates the EINVAL-on-Sync workaround
@@ -56,7 +66,7 @@ func main() {
 	cfg, err := config.Load()
 	if err != nil {
 		logger.ErrorContext(context.Background(), "Failed to load configuration", "err", err)
-		os.Exit(1)
+		return err
 	}
 
 	// 3. Initialize Sentry
@@ -78,8 +88,35 @@ func main() {
 		logger.InfoContext(ctx, "OpenTelemetry initialized")
 	}
 
+	// 4.5 Initialize SPIFFE Workload API Client
+	spiffeClient, err := spiffe.NewClient(ctx, spiffe.Config{
+		Enabled:     cfg.SpiffeEnabled,
+		SocketPath:  cfg.SpiffeEndpointSocket,
+		TrustDomain: cfg.SpiffeTrustDomain,
+		MySpiffeID:  cfg.SpiffeMyID,
+	}, logger)
+	if err != nil {
+		logger.ErrorContext(ctx, "SPIFFE initialization failed", "err", err)
+		if cfg.SpiffeEnabled {
+			return err
+		}
+	} else if cfg.SpiffeEnabled && spiffeClient == nil {
+		logger.ErrorContext(ctx, "SPIFFE is enabled but client initialization returned nil")
+		return errors.New("SPIFFE is enabled but client initialization returned nil")
+	} else if spiffeClient != nil {
+		defer func() {
+			if err := spiffeClient.Close(); err != nil {
+				logger.WarnContext(ctx, "Failed to close SPIFFE client", "err", err)
+			}
+		}()
+	}
+
 	// 5. Initialize gRPC connection to File Processor
-	grpcConn, fileClient := initGRPC(cfg, logger)
+	grpcConn, fileClient, err := initGRPC(cfg, logger, spiffeClient)
+	if err != nil {
+		logger.ErrorContext(ctx, "gRPC initialization failed", "err", err)
+		return err
+	}
 	defer func() {
 		if err := grpcConn.Close(); err != nil {
 			logger.ErrorContext(ctx, "Failed to close gRPC connection", "err", err)
@@ -87,10 +124,14 @@ func main() {
 	}()
 
 	// 6. Setup Router & Middleware
-	router := setupRouter(cfg, logger, grpcConn, fileClient, ctx)
+	router, err := setupRouter(cfg, logger, grpcConn, fileClient, spiffeClient, ctx)
+	if err != nil {
+		logger.ErrorContext(ctx, "Router setup failed", "err", err)
+		return err
+	}
 
 	// 7. Start Server
-	runServer(cfg, router, logger)
+	return runServer(cfg, router, logger)
 }
 
 func initLogger() *slog.Logger {
@@ -125,9 +166,24 @@ func initSentry(cfg *config.Config, logger *slog.Logger) {
 	logger.InfoContext(context.Background(), "Sentry initialized", "environment", cfg.Environment)
 }
 
-func initGRPC(cfg *config.Config, logger *slog.Logger) (*grpc.ClientConn, pb.FileProcessingServiceClient) {
+func initGRPC(cfg *config.Config, logger *slog.Logger, spiffeClients ...*spiffe.Client) (*grpc.ClientConn, pb.FileProcessingServiceClient, error) {
+	var spiffeClient *spiffe.Client
+	if len(spiffeClients) > 0 {
+		spiffeClient = spiffeClients[0]
+	}
 	var grpcCreds grpc.DialOption
-	if cfg.GrpcUseTLS {
+	if cfg.SpiffeEnabled {
+		if spiffeClient == nil {
+			logger.ErrorContext(context.Background(), "SPIFFE is enabled but spiffeClient is nil")
+			return nil, nil, http.ErrServerClosed
+		}
+		creds, err := spiffeClient.GRPCClientCredentials(cfg.FileProcessorSpiffeID)
+		if err != nil {
+			logger.ErrorContext(context.Background(), "Failed to create SPIFFE gRPC credentials", "err", err)
+			return nil, nil, err
+		}
+		grpcCreds = grpc.WithTransportCredentials(creds)
+	} else if cfg.GrpcUseTLS {
 		grpcCreds = grpc.WithTransportCredentials(credentials.NewClientTLSFromCert(nil, ""))
 	} else {
 		grpcCreds = grpc.WithTransportCredentials(insecure.NewCredentials())
@@ -141,14 +197,27 @@ func initGRPC(cfg *config.Config, logger *slog.Logger) (*grpc.ClientConn, pb.Fil
 	)
 	if err != nil {
 		logger.ErrorContext(context.Background(), "Failed to initialize File Processor gRPC transport", "err", err)
-		os.Exit(1)
+		return nil, nil, err
 	}
 	logger.InfoContext(context.Background(), "Connected to File Processor gRPC", "addr", cfg.FileProcessorAddr)
 
-	return grpcConn, pb.NewFileProcessingServiceClient(grpcConn)
+	return grpcConn, pb.NewFileProcessingServiceClient(grpcConn), nil
 }
 
-func setupRouter(cfg *config.Config, logger *slog.Logger, grpcConn *grpc.ClientConn, fileClient pb.FileProcessingServiceClient, ctx context.Context) *gin.Engine {
+//nolint:gocognit,cyclop
+func setupRouter(cfg *config.Config, logger *slog.Logger, grpcConn *grpc.ClientConn, fileClient pb.FileProcessingServiceClient, opts ...any) (*gin.Engine, error) {
+	ctx := context.Background()
+	var spiffeClient *spiffe.Client
+
+	for _, opt := range opts {
+		switch v := opt.(type) {
+		case context.Context:
+			ctx = v
+		case *spiffe.Client:
+			spiffeClient = v
+		}
+	}
+
 	gin.SetMode(gin.ReleaseMode)
 	router := gin.New()
 
@@ -167,6 +236,10 @@ func setupRouter(cfg *config.Config, logger *slog.Logger, grpcConn *grpc.ClientC
 	}
 	router.Use(otelgin.Middleware("gateway"))
 
+	if cfg.H3Enabled {
+		router.Use(middleware.AltSvcMiddleware(cfg.H3Port, cfg.H3AltSvcMaxAge))
+	}
+
 	router.Use(cors.New(cors.Config{
 		AllowOrigins:     cfg.AllowedOrigins,
 		AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
@@ -180,10 +253,10 @@ func setupRouter(cfg *config.Config, logger *slog.Logger, grpcConn *grpc.ClientC
 	backendURL, err := url.Parse(cfg.BackendURL)
 	if err != nil {
 		logger.ErrorContext(ctx, "Invalid backend URL", "err", err, "url", cfg.BackendURL)
-		os.Exit(1)
+		return nil, err
 	}
 	proxy := httputil.NewSingleHostReverseProxy(backendURL)
-	proxy.Transport = &http.Transport{
+	proxyTransport := &http.Transport{
 		DialContext: (&net.Dialer{
 			Timeout:   5 * time.Second,
 			KeepAlive: 30 * time.Second,
@@ -194,6 +267,19 @@ func setupRouter(cfg *config.Config, logger *slog.Logger, grpcConn *grpc.ClientC
 		MaxIdleConnsPerHost:   50,
 		TLSHandshakeTimeout:   10 * time.Second,
 	}
+	if cfg.SpiffeEnabled {
+		if spiffeClient == nil {
+			logger.ErrorContext(ctx, "SPIFFE is enabled but spiffeClient is nil")
+			return nil, http.ErrServerClosed
+		}
+		tlsCfg, err := spiffeClient.ClientTLSConfig(cfg.BackendSpiffeID)
+		if err != nil {
+			logger.ErrorContext(ctx, "Failed to build SPIFFE client TLS config for backend proxy", "err", err)
+			return nil, err
+		}
+		proxyTransport.TLSClientConfig = tlsCfg
+	}
+	proxy.Transport = proxyTransport
 	proxy.ErrorHandler = func(w http.ResponseWriter, r *http.Request, err error) {
 		logger.ErrorContext(ctx, "Proxy error", "err", err, "path", r.URL.Path)
 		w.WriteHeader(http.StatusBadGateway)
@@ -225,7 +311,7 @@ func setupRouter(cfg *config.Config, logger *slog.Logger, grpcConn *grpc.ClientC
 	// JWT
 	if len(strings.TrimSpace(cfg.JWTSecret)) < 32 {
 		logger.ErrorContext(ctx, "JWT_SECRET must be set and at least 32 characters.")
-		os.Exit(1)
+		return nil, http.ErrServerClosed
 	}
 	jwtMiddleware := middleware.NewJWTMiddlewareWithConfig(cfg.JWTSecret, cfg.JWKSPublicKeyPEM, redisClient, middleware.DefaultL1CacheConfig())
 	// PERF-W17-02: Pre-populate L1 cache from Redis to avoid cold-start thundering herd.
@@ -239,6 +325,25 @@ func setupRouter(cfg *config.Config, logger *slog.Logger, grpcConn *grpc.ClientC
 	}
 
 	internalSecret := []byte(cfg.InternalHMACSecret)
+
+	// ws-hub Reverse Proxy configuration (handles /ws, /ws/*, /webtransport)
+	wsHubURL, err := url.Parse(cfg.WsHubURL)
+	if err != nil {
+		logger.ErrorContext(ctx, "Invalid ws-hub URL", "err", err, "url", cfg.WsHubURL)
+		return nil, err
+	}
+	wsProxy := httputil.NewSingleHostReverseProxy(wsHubURL)
+	wsProxy.Transport = proxyTransport
+	wsProxy.ErrorHandler = func(w http.ResponseWriter, r *http.Request, err error) {
+		logger.ErrorContext(ctx, "WS Hub Proxy error", "err", err, "path", r.URL.Path)
+		w.WriteHeader(http.StatusBadGateway)
+	}
+	wsProxyFn := handlers.ProxyHandler(wsProxy, internalSecret)
+
+	// Register WebSocket and WebTransport reverse proxy routes
+	router.Any("/ws", wsProxyFn)
+	router.Any("/ws/*path", wsProxyFn)
+	router.Any("/webtransport", wsProxyFn)
 
 	// All API routes under a single wildcard to avoid gin tree conflicts.
 	// Auth logic is handled inside the handler based on path prefix.
@@ -293,10 +398,10 @@ func setupRouter(cfg *config.Config, logger *slog.Logger, grpcConn *grpc.ClientC
 		handlers.ProxyHandler(proxy, internalSecret)(c)
 	})
 
-	return router
+	return router, nil
 }
 
-func runServer(cfg *config.Config, router *gin.Engine, logger *slog.Logger) {
+func runServer(cfg *config.Config, router *gin.Engine, logger *slog.Logger, signalChannels ...chan os.Signal) error {
 	addr := ":" + cfg.Port
 	srv := &http.Server{
 		Addr:              addr,
@@ -314,6 +419,29 @@ func runServer(cfg *config.Config, router *gin.Engine, logger *slog.Logger) {
 		MaxHeaderBytes: 1 << 13,
 	}
 
+	// HTTP/3 QUIC Listener (UDP 8443)
+	var h3Server *http3.Server
+	if cfg.H3Enabled {
+		tlsConfig, err := prepareTLSConfig(cfg, logger)
+		if err != nil {
+			logger.ErrorContext(context.Background(), "Failed to prepare TLS config for HTTP/3 listener", "err", err)
+		} else {
+			h3Addr := ":" + cfg.H3Port
+			h3Server = &http3.Server{
+				Addr:            h3Addr,
+				Handler:         router,
+				TLSConfig:       http3.ConfigureTLSConfig(tlsConfig),
+				EnableDatagrams: true,
+			}
+			go func() {
+				logger.InfoContext(context.Background(), "Starting HTTP/3 QUIC listener", "addr", h3Addr)
+				if err := h3Server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+					logger.ErrorContext(context.Background(), "HTTP/3 QUIC listener error", "err", err)
+				}
+			}()
+		}
+	}
+
 	// RZ-31-01: Replace os.Exit(1) with channel-based error propagation so that
 	// all defers in main() execute (OTEL flush, gRPC close, Sentry drain).
 	// os.Exit bypasses defers in ALL goroutines — traces and error reports are lost.
@@ -327,11 +455,18 @@ func runServer(cfg *config.Config, router *gin.Engine, logger *slog.Logger) {
 	}()
 
 	quit := make(chan os.Signal, 1)
-	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	if len(signalChannels) > 0 && signalChannels[0] != nil {
+		quit = signalChannels[0]
+	} else {
+		signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+		defer signal.Stop(quit)
+	}
+	var runErr error
 	select {
 	case <-quit:
 	case err := <-serverErr:
 		logger.ErrorContext(context.Background(), "Server startup failed, initiating orderly shutdown", "err", err)
+		runErr = err
 	}
 
 	logger.InfoContext(context.Background(), "Shutting down server...")
@@ -339,11 +474,33 @@ func runServer(cfg *config.Config, router *gin.Engine, logger *slog.Logger) {
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer shutdownCancel()
 
+	if h3Server != nil {
+		if err := h3Server.Shutdown(shutdownCtx); err != nil {
+			logger.ErrorContext(context.Background(), "HTTP/3 server forced to shutdown", "err", err)
+		}
+	}
+
 	if err := srv.Shutdown(shutdownCtx); err != nil {
 		logger.ErrorContext(context.Background(), "Server forced to shutdown", "err", err)
 	}
 
 	logger.InfoContext(context.Background(), "Server exiting")
+	return runErr
+}
+
+func prepareTLSConfig(cfg *config.Config, logger *slog.Logger) (*tls.Config, error) {
+	if cfg.TLSCertFile != "" && cfg.TLSKeyFile != "" {
+		cert, err := tls.LoadX509KeyPair(cfg.TLSCertFile, cfg.TLSKeyFile)
+		if err != nil {
+			return nil, err
+		}
+		return &tls.Config{
+			Certificates: []tls.Certificate{cert},
+			MinVersion:   tls.VersionTLS13,
+		}, nil
+	}
+	logger.InfoContext(context.Background(), "No TLS cert files provided; generating in-memory self-signed TLS 1.3 certificate for HTTP/3 listener")
+	return tlsutil.GenerateSelfSignedTLSCert()
 }
 
 func initTracer(ctx context.Context, cfg *config.Config) (*sdktrace.TracerProvider, error) {

@@ -1,13 +1,17 @@
 import { render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
-import { describe, it, expect, vi } from "vitest"
+import { afterEach, describe, it, expect, vi } from "vitest"
+
+const { translationMock } = vi.hoisted(() => ({
+  translationMock: vi.fn((key: string) => key),
+}))
 
 vi.mock("framer-motion", async () =>
   (await import("@/tests/helpers/framerMotionMock")).framerMotionMock()
 )
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({
-    t: (key: string) => key,
+    t: (key: string) => translationMock(key),
     i18n: { language: "en", changeLanguage: () => Promise.resolve() },
   }),
 }))
@@ -33,6 +37,10 @@ const baseProps = {
   onEditOpen: vi.fn(),
   onDeleteOpen: vi.fn(),
 }
+
+afterEach(() => {
+  translationMock.mockImplementation((key: string) => key)
+})
 
 describe("NewsDetailHeader", () => {
   it("renders title, meta pills, and primary actions", () => {
@@ -100,5 +108,15 @@ describe("NewsDetailHeader", () => {
     expect(onShare).toHaveBeenCalledOnce()
     expect(onToggleBookmark).toHaveBeenCalledOnce()
     expect(onToggleLike).toHaveBeenCalledOnce()
+  })
+
+  it("keeps aria labels empty when the corresponding translations are unavailable", () => {
+    translationMock.mockImplementation((key: string) =>
+      ["news:aria.shareNews", "news:aria.editNews", "news:aria.deleteNews"].includes(key) ? "" : key
+    )
+
+    render(<NewsDetailHeader {...baseProps} isAdmin />)
+    expect(screen.getByRole("heading", { name: baseProps.displayTitle })).toBeInTheDocument()
+    expect(screen.getAllByRole("button").length).toBeGreaterThan(0)
   })
 })

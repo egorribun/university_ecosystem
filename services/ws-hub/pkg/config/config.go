@@ -74,6 +74,23 @@ type Config struct {
 	RedisURL      string
 	RedisPassword string
 	RedisDB       int
+	// SPIFFE Workload API & mTLS configuration
+	SpiffeEnabled        bool
+	SpiffeEndpointSocket string
+	SpiffeTrustDomain    string
+	SpiffeMyID           string
+	BackendSpiffeID      string
+	// WebTransport UDP port and TLS cert paths
+	WebTransportPort string
+	TLSCertFile      string
+	TLSKeyFile       string
+
+	// JetStream configuration options (R1 JetStream delivery & deduplication)
+	NatsStreamChat           string
+	NatsStreamNotifications  string
+	NatsDurableChat          string
+	NatsDurableNotifications string
+	EnableJetStream          bool
 }
 
 // LoadConfig initializes Config from environment variables.
@@ -93,34 +110,56 @@ func LoadConfig() *Config {
 		}
 	}
 	return &Config{
-		Port:                getEnv("WS_HUB_PORT", "8081"),
-		NatsURL:             getEnv("NATS_URL", "nats://nats:4222"),
-		NatsUser:            os.Getenv("NATS_USER"),     // empty means no auth override
-		NatsPassword:        os.Getenv("NATS_PASSWORD"), // empty means no auth override
-		JWTSecrets:          loadJWTSecrets(),
-		SentryDSN:           getEnv("SENTRY_DSN", ""),
-		Environment:         getEnv("VITE_ENVIRONMENT", "development"),
-		AllowedOrigins:      getEnvSlice("ALLOWED_ORIGINS", []string{"http://localhost:3000", "http://localhost:5173"}),
-		TrustedProxies:      trustedProxies,
-		TrustedProxiesSet:   trustedProxiesSet,
-		TrustedCIDRs:        trustedCIDRs,
-		BackendURL:          getEnv("BACKEND_INTERNAL_URL", "http://backend:8000"),
-		JWKSURL:             getEnv("JWKS_URL", "http://backend:8000/.well-known/jwks.json"),
-		SendBufferSize:      getEnvInt("WS_SEND_BUFFER_SIZE", 256),
-		BroadcastBufferSize: getEnvInt("WS_BROADCAST_BUFFER_SIZE", 4096),
-		// PERF-21-04 (audit 2026-03-25 Wave 21): Cap at 12 to prevent NATS
-		// connection saturation on high-core nodes. Backpressure (drop + Nak)
-		// provides a safety net for bursts beyond worker capacity.
-		BroadcastWorkers:   min(getEnvInt("WS_BROADCAST_WORKERS", runtime.GOMAXPROCS(0)*2), 12),
-		InternalSecret:     os.Getenv("WS_HUB_INTERNAL_SECRET"), // no default — empty secret allows HMAC forgery
-		MaxClients:         getEnvInt("WS_HUB_MAX_CLIENTS", 10000),
-		ClientMsgRateLimit: getEnvFloat("WS_CLIENT_MSG_RATE_LIMIT", 10),
-		ClientMsgRateBurst: getEnvInt("WS_CLIENT_MSG_BURST", 20),
-		TicketTTLSeconds:   getEnvInt("WS_TICKET_TTL_SECONDS", 15),
-		RedisURL:           getEnv("REDIS_URL", "redis:6379"),
-		RedisPassword:      getEnv("REDIS_PASSWORD", ""),
-		RedisDB:            getEnvInt("REDIS_DB", 0),
+		Port:                     getEnv("WS_HUB_PORT", "8081"),
+		NatsURL:                  getEnv("NATS_URL", "nats://nats:4222"),
+		NatsUser:                 os.Getenv("NATS_USER"),     // empty means no auth override
+		NatsPassword:             os.Getenv("NATS_PASSWORD"), // empty means no auth override
+		JWTSecrets:               loadJWTSecrets(),
+		SentryDSN:                getEnv("SENTRY_DSN", ""),
+		Environment:              getEnv("VITE_ENVIRONMENT", "development"),
+		AllowedOrigins:           getEnvSlice("ALLOWED_ORIGINS", []string{"http://localhost:3000", "http://localhost:5173"}),
+		TrustedProxies:           trustedProxies,
+		TrustedProxiesSet:        trustedProxiesSet,
+		TrustedCIDRs:             trustedCIDRs,
+		BackendURL:               getEnv("BACKEND_INTERNAL_URL", "http://backend:8000"),
+		JWKSURL:                  getEnv("JWKS_URL", "http://backend:8000/.well-known/jwks.json"),
+		SendBufferSize:           getEnvInt("WS_SEND_BUFFER_SIZE", 256),
+		BroadcastBufferSize:      getEnvInt("WS_BROADCAST_BUFFER_SIZE", 4096),
+		BroadcastWorkers:         min(getEnvInt("WS_BROADCAST_WORKERS", runtime.GOMAXPROCS(0)*2), 12),
+		InternalSecret:           os.Getenv("WS_HUB_INTERNAL_SECRET"), // no default — empty secret allows HMAC forgery
+		MaxClients:               getEnvInt("WS_HUB_MAX_CLIENTS", 10000),
+		ClientMsgRateLimit:       getEnvFloat("WS_CLIENT_MSG_RATE_LIMIT", 10),
+		ClientMsgRateBurst:       getEnvInt("WS_CLIENT_MSG_BURST", 20),
+		TicketTTLSeconds:         getEnvInt("WS_TICKET_TTL_SECONDS", 15),
+		RedisURL:                 getEnv("REDIS_URL", "redis:6379"),
+		RedisPassword:            getEnv("REDIS_PASSWORD", ""),
+		RedisDB:                  getEnvInt("REDIS_DB", 0),
+		SpiffeEnabled:            os.Getenv("SPIFFE_ENABLED") == "true",
+		SpiffeEndpointSocket:     getEnv("SPIFFE_ENDPOINT_SOCKET", "unix:///run/spire/sockets/agent.sock"),
+		SpiffeTrustDomain:        getEnv("SPIFFE_TRUST_DOMAIN", "university.ecosystem"),
+		SpiffeMyID:               getEnv("SPIFFE_MY_ID", "spiffe://university.ecosystem/ns/default/sa/ws-hub"),
+		BackendSpiffeID:          getEnv("BACKEND_SPIFFE_ID", "spiffe://university.ecosystem/ns/default/sa/app"),
+		WebTransportPort:         getEnv("WS_HUB_WT_PORT", getEnv("WT_PORT", "8443")),
+		TLSCertFile:              getEnv("TLS_CERT_FILE", ""),
+		TLSKeyFile:               getEnv("TLS_KEY_FILE", ""),
+		NatsStreamChat:           getEnv("NATS_STREAM_CHAT", "CHAT_EVENTS"),
+		NatsStreamNotifications:  getEnv("NATS_STREAM_NOTIFICATIONS", "NOTIFICATIONS_EVENTS"),
+		NatsDurableChat:          getEnv("NATS_DURABLE_CHAT", "ws-hub-chat"),
+		NatsDurableNotifications: getEnv("NATS_DURABLE_NOTIFICATIONS", "ws-hub-notifications"),
+		EnableJetStream:          getEnvBool("ENABLE_JETSTREAM", true),
 	}
+}
+
+func getEnvBool(key string, defaultValue bool) bool {
+	valStr := os.Getenv(key)
+	if valStr == "" {
+		return defaultValue
+	}
+	val, err := strconv.ParseBool(valStr)
+	if err != nil {
+		return defaultValue
+	}
+	return val
 }
 
 // loadJWTSecrets reads JWT signing secrets from env vars.

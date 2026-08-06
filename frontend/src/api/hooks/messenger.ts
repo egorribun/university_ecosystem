@@ -127,15 +127,7 @@ const retryDelay = (attempt: number) => Math.min(1_000 * 2 ** attempt, 10_000)
 export const chatsQueryOptions = () => ({
   queryKey: chatsQueryKey,
   queryFn: async ({ signal }: QueryFunctionContext<ChatsQueryKey>): Promise<ChatsListResponse> => {
-    // Pre-W180 useMessengerController called `chatApi.getChats()` without
-    // signal. Wave 180 surfaces the AbortSignal via QueryFunctionContext for
-    // cancellation parity with W134 SW2 sessions.ts pattern — but the
-    // existing `chatApi.getChats` signature doesn't accept it. The signal
-    // is reserved here for the future when chat.ts grows AbortSignal
-    // support; React Query still aborts the in-flight query when the
-    // component unmounts via its own internal cancellation pathway.
-    void signal
-    return chatApi.getChats()
+    return chatApi.getChats(undefined, 20, signal)
   },
   staleTime: QUERY_STALE_TIME_MS,
   gcTime: QUERY_GC_TIME_MS,
@@ -166,14 +158,13 @@ export const chatsQueryOptions = () => ({
 export const chatQueryOptions = (chatId: string | undefined) => ({
   queryKey: chatQueryKey(chatId ?? ""),
   queryFn: async ({ signal }: QueryFunctionContext<ChatQueryKey>): Promise<Chat> => {
-    void signal
     if (!chatId) {
       // Defensive — `enabled: !!chatId` in the consumer prevents this from
       // firing, but if a caller forgets the gate this throws cleanly
       // rather than hitting `chatApi.getChat("")` and producing a 404.
       throw new Error("chatId required")
     }
-    return chatApi.getChat(chatId)
+    return chatApi.getChat(chatId, signal)
   },
   staleTime: QUERY_STALE_TIME_MS,
   gcTime: QUERY_GC_TIME_MS,
@@ -203,8 +194,7 @@ export type ReactorsQueryKey = ReturnType<typeof reactorsQueryKey>
 export const reactorsQueryOptions = (chatId: string, messageId: string, emoji: string) => ({
   queryKey: reactorsQueryKey(chatId, messageId, emoji),
   queryFn: async ({ signal }: QueryFunctionContext<ReactorsQueryKey>): Promise<Reactor[]> => {
-    void signal
-    return chatApi.getReactors(chatId, messageId, emoji)
+    return chatApi.getReactors(chatId, messageId, emoji, signal)
   },
   staleTime: QUERY_STALE_TIME_MS,
   gcTime: QUERY_GC_TIME_MS,
@@ -230,14 +220,13 @@ export const messagesQueryOptions = (chatId: string | null) => ({
   queryFn: async ({
     signal,
   }: QueryFunctionContext<MessagesQueryKey>): Promise<MessagesListResponse> => {
-    void signal
     if (!chatId) {
       // Defensive — `enabled: !!chatId` gates the fetch; this branch only
       // fires if a caller forgets the gate. Matches pre-W180 line 83-86
       // shape (return empty list instead of throwing).
       return { items: [], has_more: false, next_cursor: null }
     }
-    return chatApi.getMessages(chatId)
+    return chatApi.getMessages(chatId, undefined, 50, signal)
   },
   staleTime: QUERY_STALE_TIME_MS,
   gcTime: QUERY_GC_TIME_MS,

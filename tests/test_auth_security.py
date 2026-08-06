@@ -3,6 +3,8 @@ from datetime import UTC, datetime, timedelta
 
 import jwt
 import pytest
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric import rsa
 from fastapi import status
 from jwt.exceptions import PyJWTError
 from sqlalchemy import select
@@ -15,6 +17,29 @@ from app.auth.security import (
     verify_password,
 )
 from app.core.config import settings
+
+
+def _rsa_private_pem() -> str:
+    key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    return key.private_bytes(
+        encoding=serialization.Encoding.PEM,
+        format=serialization.PrivateFormat.PKCS8,
+        encryption_algorithm=serialization.NoEncryption(),
+    ).decode("utf-8")
+
+
+def _rsa_public_pem(private_pem: str) -> str:
+    private_key = serialization.load_pem_private_key(
+        private_pem.encode("utf-8"), password=None
+    )
+    return (
+        private_key.public_key()
+        .public_bytes(
+            encoding=serialization.Encoding.PEM,
+            format=serialization.PublicFormat.SubjectPublicKeyInfo,
+        )
+        .decode("utf-8")
+    )
 
 
 @pytest.mark.asyncio
@@ -61,12 +86,15 @@ async def test_unicode_password_hashing():
 
 @pytest.mark.asyncio
 async def test_create_access_token_uses_active_signing_key(monkeypatch):
+    active_private_key = _rsa_private_pem()
+    legacy_private_key = _rsa_private_pem()
+    monkeypatch.setattr(settings, "algorithm", "RS256")
     monkeypatch.setattr(
         settings,
         "jwt_signing_keys",
         [
-            "new-key:new-secret-token-32-chars-long-here",
-            "legacy-key:old-secret-token-32-chars-long-here",
+            f"new-key:{active_private_key}",
+            f"legacy-key:{legacy_private_key}",
         ],
     )
     monkeypatch.setattr(settings, "jwt_active_kid", "new-key")
@@ -79,7 +107,7 @@ async def test_create_access_token_uses_active_signing_key(monkeypatch):
     with pytest.raises(PyJWTError):
         jwt.decode(
             token,
-            "old-secret-token-32-chars-long-here",
+            _rsa_public_pem(legacy_private_key),
             algorithms=[settings.algorithm],
         )
 
@@ -90,12 +118,15 @@ async def test_create_access_token_uses_active_signing_key(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_decode_token_accepts_legacy_and_active_secrets(monkeypatch):
+    active_private_key = _rsa_private_pem()
+    legacy_private_key = _rsa_private_pem()
+    monkeypatch.setattr(settings, "algorithm", "RS256")
     monkeypatch.setattr(
         settings,
         "jwt_signing_keys",
         [
-            "active:new-secret-token-32-chars-long-here",
-            "legacy:old-secret-token-32-chars-long-here",
+            f"active:{active_private_key}",
+            f"legacy:{legacy_private_key}",
         ],
     )
     monkeypatch.setattr(settings, "jwt_active_kid", "active")
@@ -111,7 +142,7 @@ async def test_decode_token_accepts_legacy_and_active_secrets(monkeypatch):
     }
     legacy_token = jwt.encode(
         legacy_payload,
-        "old-secret-token-32-chars-long-here",
+        legacy_private_key,
         algorithm=settings.algorithm,
         headers={"kid": "legacy"},
     )

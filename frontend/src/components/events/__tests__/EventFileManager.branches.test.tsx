@@ -95,6 +95,23 @@ const submitForm = (): void => {
   fireEvent.submit(form!)
 }
 
+const withFormFile = async (file: File, run: () => Promise<void>): Promise<void> => {
+  const NativeFormData = globalThis.FormData
+  class FormDataWithFile extends NativeFormData {
+    constructor(form?: HTMLFormElement, submitter?: HTMLElement) {
+      super(form, submitter)
+      if (form) this.set("file", file)
+    }
+  }
+
+  vi.stubGlobal("FormData", FormDataWithFile)
+  try {
+    await run()
+  } finally {
+    vi.stubGlobal("FormData", NativeFormData)
+  }
+}
+
 describe("EventFileManager branches", () => {
   beforeEach(() => {
     mocks.post.mockReset()
@@ -116,6 +133,14 @@ describe("EventFileManager branches", () => {
     expect(
       screen.getByRole("button", { name: "events:detail.upload.submit.label" })
     ).not.toBeDisabled()
+  })
+
+  it("clears the selected file when the browser reports an empty file list", () => {
+    render(<EventFileManager {...makeProps()} />)
+    const input = getFileInput()
+    fireEvent.change(input, { target: { files: [] } })
+
+    expect(screen.getByRole("button", { name: "events:detail.upload.submit.label" })).toBeDisabled()
   })
 
   // NOTE: the api.post success/error paths require a non-empty File to survive
@@ -151,6 +176,63 @@ describe("EventFileManager branches", () => {
     await waitFor(() =>
       expect(screen.queryByText("events:detail.upload.errors.noFile")).not.toBeInTheDocument()
     )
+  })
+
+  it("uploads a selected file, removes the optimistic row, and refreshes the event", async () => {
+    const props = makeProps()
+    const file = makeFile("slides.pdf")
+    render(<EventFileManager {...props} />)
+
+    await withFormFile(file, async () => {
+      selectFileViaInput(file)
+      submitForm()
+
+      await waitFor(() => {
+        expect(mocks.post).toHaveBeenCalledWith("/events/evt-1/upload_file", expect.any(FormData))
+        expect(props.onSuccess).toHaveBeenCalledWith("events:detail.messages.fileAdded")
+        expect(props.onUpdate).toHaveBeenCalledTimes(1)
+      })
+    })
+
+    expect(screen.queryByText("slides.pdf")).not.toBeInTheDocument()
+  })
+
+  it("uses an Axios detail when upload fails", async () => {
+    const props = makeProps()
+    const file = makeFile("large.pdf")
+    mocks.post.mockRejectedValueOnce(
+      Object.assign(new Error("quota"), {
+        isAxiosError: true,
+        response: { data: { detail: "File quota exceeded" } },
+      })
+    )
+    render(<EventFileManager {...props} />)
+
+    await withFormFile(file, async () => {
+      selectFileViaInput(file)
+      submitForm()
+
+      await waitFor(() => {
+        expect(props.onError).toHaveBeenCalledWith("File quota exceeded")
+      })
+    })
+    expect(props.onSuccess).not.toHaveBeenCalled()
+  })
+
+  it("uses the generic upload failure message for non-Axios errors", async () => {
+    const props = makeProps()
+    const file = makeFile("broken.pdf")
+    mocks.post.mockRejectedValueOnce(new Error("network down"))
+    render(<EventFileManager {...props} />)
+
+    await withFormFile(file, async () => {
+      selectFileViaInput(file)
+      submitForm()
+
+      await waitFor(() => {
+        expect(props.onError).toHaveBeenCalledWith("events:detail.messages.fileAddFailed")
+      })
+    })
   })
 
   it("deletes a file: calls api.delete, onSuccess and onUpdate", async () => {
@@ -217,6 +299,32 @@ describe("EventFileManager branches", () => {
     const pendingEvent: Event = { ...baseEvent, files: [pendingFile] }
     render(<EventFileManager {...makeProps({ event: pendingEvent })} />)
     expect(screen.getByText("events:detail.sections.files.pending")).toBeInTheDocument()
+  })
+
+  it("uses an empty-file fallback when a persisted file has no media URL", () => {
+    const eventWithoutUrl: Event = {
+      ...baseEvent,
+      files: [
+        {
+          id: "f-empty-url",
+          event_id: "evt-1",
+          file_url: "",
+          description: "attachment without url",
+        },
+      ],
+    }
+    render(<EventFileManager {...makeProps({ event: eventWithoutUrl, canEdit: false })} />)
+
+    expect(
+      screen.getByRole("link", { name: "events:detail.sections.files.downloadAria" })
+    ).toHaveAttribute("href", "#")
+  })
+
+  it("treats an omitted files collection as empty", () => {
+    const eventWithoutFiles = { ...baseEvent, files: undefined }
+    render(<EventFileManager {...makeProps({ event: eventWithoutFiles })} />)
+
+    expect(screen.getByText("events:detail.sections.files.empty")).toBeInTheDocument()
   })
 
   it("clicking a disabled pending delete does not call api.delete", () => {

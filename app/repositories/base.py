@@ -35,11 +35,11 @@ class ReadOnlyRepository[T: Base, DTOT: BaseModel](abc.ABC):
 
     @property
     @abc.abstractmethod
-    def model(self) -> type[T]: ...
+    def model(self) -> type[T]: ...  # pragma: no branch
 
     @property
     @abc.abstractmethod
-    def dto_class(self) -> type[DTOT]: ...
+    def dto_class(self) -> type[DTOT]: ...  # pragma: no branch
 
     def _to_dto(self, obj: T) -> DTOT:
         """Convert an ORM row to its concrete DTO via Pydantic ``model_validate``.

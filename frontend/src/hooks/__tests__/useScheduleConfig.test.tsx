@@ -238,6 +238,14 @@ describe("useScheduleConfig — fallback branches (broken resources)", () => {
     expect(result.current.weekdayConfigs.map((c) => c.id)).toEqual(["a", "b"])
   })
 
+  it("uses the fallback identity when a configured backend list is empty", () => {
+    const inst = makeI18n({
+      weekdays: { order: ["empty"], items: { empty: { backend: [], long: "Empty", short: "E" } } },
+    })
+    const { result } = renderHook(() => useScheduleConfig(), { wrapper: wrap(inst) })
+    expect(result.current.weekdayConfigs[0]!.backend).toEqual(["empty"])
+  })
+
   it("lessonType toConfig: backend-string + label/color fallbacks", () => {
     const inst = makeI18n({
       lessonTypes: { order: ["q"], items: { q: { backend: "single" } } },
@@ -249,5 +257,30 @@ describe("useScheduleConfig — fallback branches (broken resources)", () => {
       label: "q",
       color: defaultLessonTypeColor,
     })
+  })
+
+  it("lessonType toConfig uses an inline fallback for a missing ordered entry", () => {
+    const inst = makeI18n({ lessonTypes: { order: ["missing"], items: {} } })
+    const { result } = renderHook(() => useScheduleConfig(), { wrapper: wrap(inst) })
+    expect(result.current.lessonTypeConfigs[0]).toEqual({
+      id: "missing",
+      backend: ["missing"],
+      label: "missing",
+      color: defaultLessonTypeColor,
+    })
+  })
+
+  it("appends lesson types that are absent from the configured order", () => {
+    const inst = makeI18n({
+      lessonTypes: {
+        order: ["first"],
+        items: {
+          first: { backend: ["first"], label: "First" },
+          extra: { backend: ["extra"], label: "Extra" },
+        },
+      },
+    })
+    const { result } = renderHook(() => useScheduleConfig(), { wrapper: wrap(inst) })
+    expect(result.current.lessonTypeConfigs.map((config) => config.id)).toEqual(["first", "extra"])
   })
 })

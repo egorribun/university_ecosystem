@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react"
+import { act, render, screen, waitFor } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 // The animated branch only commits after the async `import("framer-motion")` →
@@ -45,6 +45,38 @@ describe("PageTransition", () => {
 
   afterEach(() => {
     vi.clearAllMocks()
+  })
+
+  it("uses the no-initial-animation path on the first non-reduced paint", async () => {
+    render(
+      <PageTransition>
+        <div>Initial paint child</div>
+      </PageTransition>
+    )
+    await expectAnimatedChild("Initial paint child")
+  })
+
+  it("keeps the fallback wrapper when matchMedia is unavailable", () => {
+    const originalMatchMedia = window.matchMedia
+    try {
+      Object.defineProperty(window, "matchMedia", {
+        configurable: true,
+        value: undefined,
+      })
+      const { container } = render(
+        <PageTransition>
+          <div>No media child</div>
+        </PageTransition>
+      )
+      expect(screen.getByText("No media child")).toBeInTheDocument()
+      expect(container.querySelector(".bg-page")).toBeInTheDocument()
+    } finally {
+      Object.defineProperty(window, "matchMedia", {
+        configurable: true,
+        writable: true,
+        value: originalMatchMedia,
+      })
+    }
   })
 
   it("renders the reduced-motion fallback wrapper (no framer-motion)", () => {
@@ -118,5 +150,41 @@ describe("PageTransition", () => {
     await expectAnimatedChild("Toggle child")
     // the media-change listener was registered (covers the addEventListener branch)
     expect(changeHandler).toBeTypeOf("function")
+    act(() => changeHandler?.({ matches: true } as MediaQueryListEvent))
+    expect(screen.getByText("Toggle child").closest(WILL_CHANGE)).toBeNull()
+  })
+
+  it("supports the legacy MediaQueryList listener API and cleans it up", async () => {
+    let legacyHandler: ((event: MediaQueryListEvent) => void) | null = null
+    const removeListener = vi.fn()
+    const media = {
+      matches: false,
+      media: "(prefers-reduced-motion: reduce)",
+      onchange: null,
+      addEventListener: undefined,
+      removeEventListener: undefined,
+      addListener: vi.fn((handler: (event: MediaQueryListEvent) => void) => {
+        legacyHandler = handler
+      }),
+      removeListener,
+      dispatchEvent: vi.fn(),
+    }
+    Object.defineProperty(window, "matchMedia", {
+      configurable: true,
+      writable: true,
+      value: vi.fn(() => media),
+    })
+
+    const view = render(
+      <PageTransition>
+        <div>Legacy media child</div>
+      </PageTransition>
+    )
+    await waitFor(() => expect(legacyHandler).toBeTypeOf("function"))
+    act(() => legacyHandler?.({ matches: true } as MediaQueryListEvent))
+    expect(screen.getByText("Legacy media child").closest(WILL_CHANGE)).toBeNull()
+
+    view.unmount()
+    expect(removeListener).toHaveBeenCalledOnce()
   })
 })

@@ -245,6 +245,7 @@ def matches_source(
             "app" in imported_modules
             or "services" in imported_modules
             or "native" in imported_modules
+            or "scripts" in imported_modules
         ):
             return True
 
@@ -280,6 +281,15 @@ def matches_source(
 
         base_name_ts = name.replace(".test.ts", ".ts").replace(".test.tsx", ".ts")
         base_name_tsx = name.replace(".test.ts", ".tsx").replace(".test.tsx", ".tsx")
+        # Coverage-closure suites use a descriptive segment before the test
+        # suffix (for example ``rateLimit.closure.test.ts``). Normalize that
+        # segment before matching the test against its production module.
+        base_name_ts = re.sub(
+            r"\.(?:branches|booster|closure|edge)(?=\.tsx?$)", "", base_name_ts
+        )
+        base_name_tsx = re.sub(
+            r"\.(?:branches|booster|closure|edge)(?=\.tsx?$)", "", base_name_tsx
+        )
 
         # Check local folder
         local_src_ts = str(path_obj.parent / base_name_ts).replace("\\", "/")
@@ -300,6 +310,24 @@ def matches_source(
                 .replace(".test.tsx", ".tsx")
             )
             if parent_src_ts in source_paths or parent_src_tsx in source_paths:
+                return True
+
+        # Production/runtime suites may add one or more descriptive segments
+        # before `.test.ts[x]` (for example `client.csrf.production.test.ts`).
+        # Match those suites to a nearby source module by a dot-delimited stem;
+        # requiring the source directory to be the test directory or its
+        # `__tests__` parent avoids matching unrelated modules with a common
+        # prefix.
+        test_stem = name.rsplit(".test.", 1)[0]
+        nearby_source_dirs = {path_obj.parent}
+        if path_obj.parent.name == "__tests__":
+            nearby_source_dirs.add(path_obj.parent.parent)
+        for src in source_paths:
+            src_path = Path(src)
+            if src_path.parent not in nearby_source_dirs:
+                continue
+            source_stem = src_path.stem
+            if test_stem == source_stem or test_stem.startswith(source_stem + "."):
                 return True
 
         # Check general endswith match

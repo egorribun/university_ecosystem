@@ -19,6 +19,7 @@ import {
 import { logError } from "@/app/logger"
 import { parseWsMessage } from "@/api/schemas/wsMessage"
 import api from "@/api/client"
+import { getDatabase } from "@/db"
 
 // Reconnection configuration
 const RECONNECT_BASE_DELAY_MS = 1000 // 1 second
@@ -433,6 +434,30 @@ export function useChatWebSocket({
                 // insert + sendMessage onSuccess), and processing the echo would
                 // wrongly +1 the sender's OWN unread_count in the chats cache.
                 if (validated.message.sender_id === currentUserIdRef.current) break
+
+                // Persist message to RxDB
+                getDatabase()
+                  .then((db) => {
+                    const msg = validated.message as Message
+                    db.messages
+                      .upsert({
+                        id: String(msg.id),
+                        chat_id: String(validated.chat_id),
+                        sender_id: String(msg.sender_id),
+                        content: msg.content || "",
+                        created_at: msg.created_at || new Date().toISOString(),
+                        read_status: msg.read_status ?? false,
+                        read_at: msg.read_at ?? null,
+                        edited_at: msg.edited_at ?? null,
+                        deleted_at: msg.deleted_at ?? null,
+                        attachments: msg.attachments ?? [],
+                        reactions: msg.reactions ?? [],
+                        sync_status: "synced",
+                      })
+                      .catch(() => {})
+                  })
+                  .catch(() => {})
+
                 // Wave 202 SW2 — `validated.message` is the Valibot `ParsedMessage`
                 // (attachments/sender validated shape-only as Record<string,unknown>);
                 // the cache stores `@/api/chat` `Message` (typed Attachment[]/User).

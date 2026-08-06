@@ -10,6 +10,7 @@ module-level imports on news_events and are patched there.
 from __future__ import annotations
 
 import uuid
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
@@ -33,6 +34,26 @@ def _make_comment(content: str = "Great article!"):
     return SimpleNamespace(content=content)
 
 
+def _make_event(**overrides):
+    defaults = {
+        "id": uuid.uuid4(),
+        "title": "Событие",
+        "title_en": "Event",
+        "description": "Описание события",
+        "description_en": "Event description",
+        "about": "Подробнее",
+        "about_en": "More details",
+        "location": "Корпус А",
+        "location_en": "Building A",
+        "event_type": "Лекция",
+        "event_type_en": "Lecture",
+        "speaker": "Иван Петров",
+        "starts_at": datetime(2026, 7, 27, 12, 30, tzinfo=UTC),
+    }
+    defaults.update(overrides)
+    return SimpleNamespace(**defaults)
+
+
 def _make_author(**overrides):
     defaults = {"full_name": "Иван Петров", "username": "ivan"}
     defaults.update(overrides)
@@ -51,6 +72,15 @@ def admin_ids(monkeypatch: pytest.MonkeyPatch) -> list[uuid.UUID]:
     ids = [uuid.uuid4(), uuid.uuid4()]
     monkeypatch.setattr(
         notifications_core, "_fetch_admin_ids", AsyncMock(return_value=ids)
+    )
+    return ids
+
+
+@pytest.fixture
+def active_ids(monkeypatch: pytest.MonkeyPatch) -> list[uuid.UUID]:
+    ids = [uuid.uuid4(), uuid.uuid4()]
+    monkeypatch.setattr(
+        news_events, "_fetch_active_user_ids", AsyncMock(return_value=ids)
     )
     return ids
 
@@ -166,3 +196,191 @@ async def test_notify_about_comment_payload_defaults_missing_data(
     )
     kwargs = fake_create.await_args.kwargs
     assert kwargs["payload_data"] == {}
+
+
+@pytest.mark.asyncio
+async def test_notify_about_news_uses_localized_fallback_and_active_users(
+    fake_create, active_ids, monkeypatch
+):
+    monkeypatch.setattr(
+        news_events, "render_notification_template", lambda *a, **k: None
+    )
+    news = _make_news(
+        content="<p>Краткое содержание</p>",
+        content_en="<p>English summary</p>",
+    )
+
+    result = await news_events.notify_about_news(AsyncMock(), news, locale="ru")
+
+    assert result == 3
+    kwargs = fake_create.await_args.kwargs
+    assert kwargs["type"] == "news.new"
+    assert kwargs["topic"] == "news"
+    assert kwargs["user_ids"] == active_ids
+    assert kwargs["url"] == f"/news/{news.id}"
+    assert kwargs["payload_data"]["category"] == "news"
+
+
+@pytest.mark.asyncio
+async def test_notify_about_news_template_and_no_users_paths(
+    fake_create, active_ids, monkeypatch
+):
+    monkeypatch.setattr(
+        news_events,
+        "render_notification_template",
+        lambda *a, **k: {
+            "title": "",
+            "body": "",
+            "url": "",
+            "tag": "",
+            "data": {"custom": "value"},
+        },
+    )
+    news = _make_news(id=None, title="", title_en=None, content="", content_en=None)
+    result = await news_events.notify_about_news(AsyncMock(), news, locale="en")
+
+    assert result == 3
+    kwargs = fake_create.await_args.kwargs
+    assert kwargs["url"] == "/news"
+    assert kwargs["tag"] == "news"
+    assert kwargs["payload_data"]["custom"] == "value"
+    assert kwargs["payload_data"]["category"] == "news"
+
+    monkeypatch.setattr(
+        news_events, "_fetch_active_user_ids", AsyncMock(return_value=[])
+    )
+    assert await news_events.notify_about_news(AsyncMock(), news) == 0
+
+
+@pytest.mark.asyncio
+async def test_notify_about_news_ignores_non_mapping_template_data(
+    fake_create, active_ids, monkeypatch
+):
+    monkeypatch.setattr(
+        news_events,
+        "render_notification_template",
+        lambda *a, **k: {"data": ["not-a-mapping"]},
+    )
+
+    await news_events.notify_about_news(AsyncMock(), _make_news(), locale="ru")
+
+    assert fake_create.await_args.kwargs["payload_data"]["category"] == "news"
+
+
+@pytest.mark.asyncio
+async def test_notify_about_event_uses_default_payload_and_active_users(
+    fake_create, active_ids, monkeypatch
+):
+    monkeypatch.setattr(
+        news_events, "render_notification_template", lambda *a, **k: None
+    )
+    event = _make_event()
+
+    result = await news_events.notify_about_event(AsyncMock(), event, locale="ru")
+
+    assert result == 3
+    kwargs = fake_create.await_args.kwargs
+    assert kwargs["type"] == "events.new"
+    assert kwargs["topic"] == "events"
+    assert kwargs["user_ids"] == active_ids
+    assert kwargs["payload_data"]["location"] == "Корпус А"
+    assert kwargs["payload_data"]["speaker"] == "Иван Петров"
+    assert kwargs["payload_data"]["eventType"] == "Лекция"
+
+
+@pytest.mark.asyncio
+async def test_notify_about_event_template_and_missing_optional_fields(
+    fake_create, active_ids, monkeypatch
+):
+    monkeypatch.setattr(
+        news_events,
+        "render_notification_template",
+        lambda *a, **k: {
+            "title": "Template title",
+            "body": "Template body",
+            "url": "/custom-event",
+            "tag": "custom-event",
+            "data": {"custom": "value"},
+        },
+    )
+    event = _make_event(
+        id=None,
+        title=None,
+        title_en=None,
+        description=None,
+        description_en=None,
+        about=None,
+        about_en=None,
+        location=None,
+        location_en=None,
+        event_type=None,
+        event_type_en=None,
+        speaker=None,
+        starts_at=datetime.now(UTC) - timedelta(hours=1),
+    )
+
+    result = await news_events.notify_about_event(AsyncMock(), event, locale="en")
+
+    assert result == 3
+    kwargs = fake_create.await_args.kwargs
+    assert kwargs["title"] == "Template title"
+    assert kwargs["url"] == "/custom-event"
+    assert kwargs["tag"] == "custom-event"
+    assert kwargs["payload_data"]["custom"] == "value"
+
+    monkeypatch.setattr(
+        news_events, "_fetch_active_user_ids", AsyncMock(return_value=[])
+    )
+    assert await news_events.notify_about_event(AsyncMock(), event) == 0
+
+
+@pytest.mark.asyncio
+async def test_notify_about_event_ignores_non_mapping_template_data(
+    fake_create, active_ids, monkeypatch
+):
+    monkeypatch.setattr(
+        news_events,
+        "render_notification_template",
+        lambda *a, **k: {"data": ["not-a-mapping"]},
+    )
+
+    await news_events.notify_about_event(AsyncMock(), _make_event(), locale="ru")
+
+    assert fake_create.await_args.kwargs["payload_data"]["category"] == "events"
+
+
+@pytest.mark.asyncio
+async def test_news_and_event_translation_loops_handle_empty_localized_values(
+    fake_create, active_ids, monkeypatch
+):
+    monkeypatch.setattr(
+        news_events, "render_notification_template", lambda *a, **k: None
+    )
+    monkeypatch.setattr(news_events, "translate", lambda *a, **k: "")
+
+    empty_news = _make_news(
+        id=None,
+        title="",
+        title_en=None,
+        content="",
+        content_en=None,
+    )
+    await news_events.notify_about_news(AsyncMock(), empty_news, locale="ru")
+
+    empty_event = _make_event(
+        id=None,
+        title=None,
+        title_en=None,
+        description=None,
+        description_en=None,
+        about=None,
+        about_en=None,
+        location=None,
+        location_en=None,
+        event_type=None,
+        event_type_en=None,
+        speaker=None,
+    )
+    await news_events.notify_about_event(AsyncMock(), empty_event, locale="ru")
+
+    assert fake_create.await_count == 2

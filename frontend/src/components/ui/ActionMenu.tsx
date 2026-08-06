@@ -105,18 +105,23 @@ export const ActionMenu = ({
   )
 
   const handleItemKeyDown = useCallback(
-    (event: KeyboardEvent<HTMLButtonElement>, index: number) => {
+    (event: KeyboardEvent<HTMLButtonElement>) => {
       const menuItems =
         menuRef.current?.querySelectorAll<HTMLButtonElement>("button:not(:disabled)")
       if (!menuItems) return
 
+      // `index` from the source items array is not safe here because disabled
+      // items are excluded from `menuItems`. Navigate relative to the actual
+      // enabled control that received the event instead.
+      const currentIndex = Array.from(menuItems).indexOf(event.currentTarget)
+
       if (event.key === "ArrowDown") {
         event.preventDefault()
-        const nextIndex = (index + 1) % menuItems.length
+        const nextIndex = (currentIndex + 1) % menuItems.length
         menuItems[nextIndex]?.focus()
       } else if (event.key === "ArrowUp") {
         event.preventDefault()
-        const prevIndex = (index - 1 + menuItems.length) % menuItems.length
+        const prevIndex = (currentIndex - 1 + menuItems.length) % menuItems.length
         menuItems[prevIndex]?.focus()
       } else if (event.key === "Escape") {
         handleClose()
@@ -174,14 +179,14 @@ export const ActionMenu = ({
             menuClassName
           )}
         >
-          {items.map((item, index) => (
+          {items.map((item) => (
             <button
               key={item.label}
               type="button"
               role="menuitem"
               disabled={item.disabled}
               onClick={handleItemClick(item)}
-              onKeyDown={(e) => handleItemKeyDown(e, index)}
+              onKeyDown={handleItemKeyDown}
               aria-label={item.ariaLabel}
               className={cn(
                 "flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm font-medium transition-fast",

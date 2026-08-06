@@ -244,3 +244,143 @@ async def test_create_group_deduplicates_creator_and_members():
         second_id,
     ]
     uow.chats.create_group.assert_awaited_once_with(creator, "Clean Team", members)
+
+
+@pytest.mark.asyncio
+async def test_create_group_uses_async_bulk_member_lookup():
+    creator = _user()
+    first_id, second_id = uuid.uuid4(), uuid.uuid4()
+    members = [_participant(first_id), _participant(second_id)]
+    created = _chat([_participant(creator.id), *members], chat_type="group")
+    uow = _uow()
+    uow.chats.get_users_by_ids = AsyncMock(return_value=members)
+    uow.chats.get_user = AsyncMock()
+    uow.chats.create_group = AsyncMock(return_value=created)
+
+    with (
+        patch(
+            "app.services.chat.creation_service.invalidate_chat_participants_cache",
+            new_callable=AsyncMock,
+        ),
+        patch(
+            "app.services.chat.creation_service.invalidate_presence_audience_cache",
+            new_callable=AsyncMock,
+        ),
+        patch(
+            "app.services.chat.creation_service.build_presence_map",
+            new_callable=AsyncMock,
+            return_value={},
+        ),
+    ):
+        await ChatCreationService(uow, "db", MagicMock()).create_group(
+            creator, "Bulk Team", [first_id, second_id], "en"
+        )
+
+    uow.chats.get_users_by_ids.assert_awaited_once_with([first_id, second_id])
+    uow.chats.get_user.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_create_group_accepts_sync_bulk_lookup_result():
+    creator = _user()
+    first_id, second_id = uuid.uuid4(), uuid.uuid4()
+    members = [_participant(first_id), _participant(second_id)]
+    created = _chat([_participant(creator.id), *members], chat_type="group")
+    uow = _uow()
+    uow.chats.get_users_by_ids = MagicMock(return_value=members)
+    uow.chats.get_user = AsyncMock()
+    uow.chats.create_group = AsyncMock(return_value=created)
+
+    with (
+        patch(
+            "app.services.chat.creation_service.invalidate_chat_participants_cache",
+            new_callable=AsyncMock,
+        ),
+        patch(
+            "app.services.chat.creation_service.invalidate_presence_audience_cache",
+            new_callable=AsyncMock,
+        ),
+        patch(
+            "app.services.chat.creation_service.build_presence_map",
+            new_callable=AsyncMock,
+            return_value={},
+        ),
+    ):
+        await ChatCreationService(uow, "db", MagicMock()).create_group(
+            creator, "Sync Team", [first_id, second_id], "en"
+        )
+
+    uow.chats.get_users_by_ids.assert_called_once_with([first_id, second_id])
+    uow.chats.get_user.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_create_group_falls_back_after_bulk_lookup_failure():
+    creator = _user()
+    first_id, second_id = uuid.uuid4(), uuid.uuid4()
+    members = [_participant(first_id), _participant(second_id)]
+    created = _chat([_participant(creator.id), *members], chat_type="group")
+    uow = _uow()
+    uow.chats.get_users_by_ids = AsyncMock(side_effect=RuntimeError("unsupported"))
+    uow.chats.get_user = AsyncMock(side_effect=members)
+    uow.chats.create_group = AsyncMock(return_value=created)
+
+    with (
+        patch(
+            "app.services.chat.creation_service.invalidate_chat_participants_cache",
+            new_callable=AsyncMock,
+        ),
+        patch(
+            "app.services.chat.creation_service.invalidate_presence_audience_cache",
+            new_callable=AsyncMock,
+        ),
+        patch(
+            "app.services.chat.creation_service.build_presence_map",
+            new_callable=AsyncMock,
+            return_value={},
+        ),
+    ):
+        await ChatCreationService(uow, "db", MagicMock()).create_group(
+            creator, "Fallback Team", [first_id, second_id], "en"
+        )
+
+    assert [call.args[0] for call in uow.chats.get_user.await_args_list] == [
+        first_id,
+        second_id,
+    ]
+
+
+@pytest.mark.asyncio
+async def test_create_group_falls_back_when_bulk_lookup_is_unavailable():
+    creator = _user()
+    first_id, second_id = uuid.uuid4(), uuid.uuid4()
+    members = [_participant(first_id), _participant(second_id)]
+    created = _chat([_participant(creator.id), *members], chat_type="group")
+    uow = _uow()
+    uow.chats.get_users_by_ids = None
+    uow.chats.get_user = AsyncMock(side_effect=members)
+    uow.chats.create_group = AsyncMock(return_value=created)
+
+    with (
+        patch(
+            "app.services.chat.creation_service.invalidate_chat_participants_cache",
+            new_callable=AsyncMock,
+        ),
+        patch(
+            "app.services.chat.creation_service.invalidate_presence_audience_cache",
+            new_callable=AsyncMock,
+        ),
+        patch(
+            "app.services.chat.creation_service.build_presence_map",
+            new_callable=AsyncMock,
+            return_value={},
+        ),
+    ):
+        await ChatCreationService(uow, "db", MagicMock()).create_group(
+            creator, "Fallback Team", [first_id, second_id], "en"
+        )
+
+    assert [call.args[0] for call in uow.chats.get_user.await_args_list] == [
+        first_id,
+        second_id,
+    ]

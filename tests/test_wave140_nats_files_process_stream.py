@@ -23,7 +23,7 @@ from app.core.nats_broker import NatsTaskBroker
 
 @pytest.mark.asyncio
 async def test_connect_creates_both_streams() -> None:
-    """NatsTaskBroker.connect() must add TASK_QUEUE + FILES_PROCESS streams."""
+    """NatsTaskBroker.connect() must add all 5 streams with file storage & 7-day retention."""
     broker = NatsTaskBroker()
 
     mock_js = MagicMock()
@@ -38,19 +38,27 @@ async def test_connect_creates_both_streams() -> None:
     ):
         await broker.connect()
 
-    assert mock_js.add_stream.await_count == 2, (
-        f"Expected 2 add_stream calls, got {mock_js.add_stream.await_count}"
+    assert mock_js.add_stream.await_count == 5, (
+        f"Expected 5 add_stream calls, got {mock_js.add_stream.await_count}"
     )
 
     calls = mock_js.add_stream.call_args_list
-    task_queue_call = calls[0]
-    files_process_call = calls[1]
+    configs = [c.kwargs["config"] for c in calls]
 
-    assert task_queue_call.kwargs["name"] == "TASK_QUEUE"
-    assert task_queue_call.kwargs["subjects"] == ["tasks.>"]
+    assert configs[0].name == "TASK_QUEUE"
+    assert configs[0].subjects == ["tasks.>"]
 
-    assert files_process_call.kwargs["name"] == "FILES_PROCESS"
-    assert files_process_call.kwargs["subjects"] == ["files.process"]
+    assert configs[1].name == "FILES_PROCESS"
+    assert configs[1].subjects == ["files.process"]
+
+    assert configs[2].name == "CHAT_EVENTS"
+    assert configs[2].subjects == ["chat.*"]
+
+    assert configs[3].name == "NOTIFICATIONS_EVENTS"
+    assert configs[3].subjects == ["notifications.*"]
+
+    assert configs[4].name == "OUTBOX_EVENTS"
+    assert configs[4].subjects == ["outbox.*"]
 
 
 @pytest.mark.asyncio
@@ -78,8 +86,8 @@ async def test_connect_idempotent_when_streams_exist() -> None:
         # not invoked again.
         await broker.connect()
 
-    assert mock_js.add_stream.await_count == 2, (
-        "Second connect() should short-circuit; add_stream should still be 2 total"
+    assert mock_js.add_stream.await_count == 5, (
+        "Second connect() should short-circuit; add_stream should still be 5 total"
     )
 
 

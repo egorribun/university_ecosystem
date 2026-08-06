@@ -4,6 +4,32 @@ import importlib
 import sys
 from types import ModuleType, SimpleNamespace
 
+_MISSING = object()
+_STUBBED_MODULE_NAMES = (
+    "app.core.container",
+    "app.core.database",
+    "app.deps.cache",
+    "app.services.audit_service",
+    "app.services.auth_service",
+    "app.services.event_service",
+    "app.services.group_service",
+    "app.services.news_service",
+    "app.services.notification_service",
+    "app.services.user_service",
+    "app.services.vector_service",
+    "app.services.user",
+    "app.services.user.compliance_service",
+    "app.services.user.media_service",
+    "app.services.user.profile_service",
+    "app.services.user.analytics_service",
+    "app.cqrs.queries",
+    "app.repositories.schedule_repository",
+    "app.repositories.unit_of_work",
+)
+_ORIGINAL_MODULES = {
+    name: sys.modules.get(name, _MISSING) for name in _STUBBED_MODULE_NAMES
+}
+
 
 def _class(name: str) -> type:
     return type(
@@ -78,6 +104,15 @@ def _install_stubs() -> None:
 _install_stubs()
 container = importlib.import_module("app.core.container")
 
+# This module replaces import dependencies only while importing the factory
+# module.  Leaving the stubs in ``sys.modules`` poisons later closure tests
+# that need the real CQRS modules (and makes collection order observable).
+for _name, _original in _ORIGINAL_MODULES.items():
+    if _original is _MISSING:
+        sys.modules.pop(_name, None)
+    else:
+        sys.modules[_name] = _original
+
 
 def test_simple_factories_return_expected_types():
     assert isinstance(container.get_audit_service(), container.AuditService)
@@ -90,7 +125,17 @@ def test_simple_factories_return_expected_types():
     assert isinstance(container.get_vector_service(db="db"), container.VectorService)
 
 
-def test_service_factories_wire_dependencies():
+def test_service_factories_wire_dependencies(monkeypatch):
+    monkeypatch.setattr(
+        "app.repositories.unit_of_work.uow_from_session",
+        lambda db: SimpleNamespace(
+            auth="auth",
+            users="users",
+            sessions="sessions",
+            events="events",
+            news="news",
+        ),
+    )
     audit = object()
     notifications = object()
     vector = object()
@@ -124,7 +169,17 @@ def test_service_factories_wire_dependencies():
     assert news.vector_service is vector
 
 
-def test_schedule_stats_and_auth_factories():
+def test_schedule_stats_and_auth_factories(monkeypatch):
+    monkeypatch.setattr(
+        "app.repositories.unit_of_work.uow_from_session",
+        lambda db: SimpleNamespace(
+            auth="auth",
+            users="users",
+            sessions="sessions",
+            events="events",
+            news="news",
+        ),
+    )
     schedule = container.get_schedule_handler(db="write-db", cache="cache")
     read_schedule = container.get_read_schedule_handler(db="read-db", cache="cache")
     assert schedule.db == "write-db"

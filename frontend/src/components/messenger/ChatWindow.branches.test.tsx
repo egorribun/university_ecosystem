@@ -6,6 +6,14 @@ import { ChatWindow } from "@/components/messenger/ChatWindow"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import type { Message } from "@/components/messenger/types"
 
+const { motionState } = vi.hoisted(() => ({
+  motionState: { reduced: false },
+}))
+
+vi.mock("@/hooks/useMediaQuery", () => ({
+  default: () => motionState.reduced,
+}))
+
 /**
  * Sibling branch-coverage test for ChatWindow (do NOT touch ChatWindow.test.tsx).
  *
@@ -32,9 +40,22 @@ vi.mock("react-i18next", () => ({
 }))
 
 vi.mock("@/components/media/SmartImage", () => ({
-  default: ({ alt, className }: { alt?: string; className?: string }) => (
-    <img alt={alt} className={className} />
-  ),
+  default: ({
+    alt,
+    className,
+    onClick,
+  }: {
+    alt?: string
+    className?: string
+    onClick?: () => void
+  }) =>
+    onClick ? (
+      <button type="button" onClick={onClick} aria-label={alt}>
+        <img alt={alt} className={className} />
+      </button>
+    ) : (
+      <img alt={alt} className={className} />
+    ),
 }))
 
 // Pass-through debounce so search filtering applies immediately (no fake timers).
@@ -78,6 +99,7 @@ const makeMessage = (overrides: Partial<Message> & Pick<Message, "id" | "text">)
 
 afterEach(() => {
   vi.useRealTimers()
+  motionState.reduced = false
 })
 
 describe("ChatWindow — reply / forward affordances (all bubbles)", () => {
@@ -416,5 +438,199 @@ describe("ChatWindow — reactions picker outside-click / Escape close (W206)", 
     expect(screen.getByRole("button", { name: pickerEmoji })).toBeTruthy()
     fireEvent.click(addBtn)
     expect(screen.queryByRole("button", { name: pickerEmoji })).toBeFalsy()
+  })
+})
+
+describe("ChatWindow — defensive motion and message-state branches", () => {
+  it("renders reduced-motion error states with and without retry", () => {
+    motionState.reduced = true
+    const onRetry = vi.fn()
+    const { rerender } = render(<ChatWindow messages={[]} isError onRetry={onRetry} />, { wrapper })
+
+    fireEvent.click(screen.getByRole("button", { name: "messenger:error.retry" }))
+    expect(onRetry).toHaveBeenCalledOnce()
+
+    rerender(<ChatWindow messages={[]} isError />)
+    expect(screen.queryByRole("button", { name: "messenger:error.retry" })).toBeFalsy()
+  })
+
+  it("renders reduced-motion empty and search-empty states with clear callback", () => {
+    motionState.reduced = true
+    const onClearSearch = vi.fn()
+    const { rerender } = render(<ChatWindow messages={[]} />, { wrapper })
+    expect(screen.getByText("messenger:noMessages.title")).toBeTruthy()
+
+    rerender(
+      <ChatWindow
+        messages={[makeMessage({ id: "search-edge", text: "visible" })]}
+        searchQuery="missing"
+        onClearSearch={onClearSearch}
+      />
+    )
+    const clear = screen.getByRole("button", {
+      name: "messenger:noMessages.searchEmpty.clearSearch",
+    })
+    fireEvent.click(clear)
+    expect(onClearSearch).toHaveBeenCalledOnce()
+  })
+
+  it("opens safe image attachments and covers sent reply, forward, reaction, and seen states", () => {
+    const openSpy = vi.spyOn(window, "open").mockImplementation(() => null)
+    const onToggleReaction = vi.fn()
+    render(
+      <ChatWindow
+        messages={[
+          makeMessage({
+            id: "edge-message",
+            text: "reply body",
+            isMe: true,
+            forwardedFromName: "Alice",
+            editedAt: "2026-07-31T10:00:00Z",
+            replyTo: {
+              id: "quoted",
+              senderName: "Alice",
+              isMe: true,
+              text: "deleted body",
+              deletedAt: "2026-07-31T09:00:00Z",
+            },
+            attachments: [
+              {
+                id: "image-edge",
+                url: "https://example.com/photo.png",
+                type: "image",
+                name: "photo.png",
+                size: 1024,
+              },
+            ],
+            reactions: [],
+            seenByCount: 2,
+            seenByTotal: 3,
+          }),
+        ]}
+        onToggleReaction={onToggleReaction}
+      />,
+      { wrapper }
+    )
+
+    fireEvent.click(screen.getByAltText("photo.png"))
+    expect(openSpy).toHaveBeenCalledWith(
+      "https://example.com/photo.png",
+      "_blank",
+      "noopener,noreferrer"
+    )
+    expect(screen.getByText('messenger:seenByGroup|{"count":2,"total":3}')).toBeTruthy()
+    expect(screen.getByText('messenger:forwardedFrom|{"name":"Alice"}')).toBeTruthy()
+    expect(screen.getByText("messenger:replyTo.deletedOriginal")).toBeTruthy()
+
+    fireEvent.click(screen.getByRole("button", { name: "messenger:reactions.add" }))
+    fireEvent.click(
+      screen.getByRole("button", { name: 'messenger:reactions.react|{"emoji":"👍"}' })
+    )
+    expect(onToggleReaction).toHaveBeenCalledWith("edge-message", "👍")
+    openSpy.mockRestore()
+  })
+
+  it("covers received tombstones, inline editors, edited labels, and attachment fallbacks", () => {
+    const { rerender } = render(
+      <ChatWindow
+        messages={[makeMessage({ id: "received-deleted", text: "gone", deletedAt: "2026-07-31" })]}
+      />,
+      { wrapper }
+    )
+    expect(screen.getByText("messenger:messageDeleted")).toBeTruthy()
+
+    rerender(
+      <ChatWindow
+        messages={[makeMessage({ id: "received-edit", text: "draft target" })]}
+        editingMessageId="received-edit"
+        editingMessageContent="draft"
+      />
+    )
+    expect(screen.getByRole("textbox")).toHaveValue("draft")
+
+    rerender(
+      <ChatWindow
+        messages={[makeMessage({ id: "received-edited", text: "updated", editedAt: "2026-07-31" })]}
+      />
+    )
+    expect(screen.getByText("messenger:edited")).toBeTruthy()
+
+    rerender(
+      <ChatWindow
+        messages={[
+          makeMessage({
+            id: "sent-file",
+            text: "file",
+            isMe: true,
+            attachments: [
+              {
+                id: "file-1",
+                url: "https://example.com/file.pdf",
+                type: "file",
+                name: "file.pdf",
+                size: 2048,
+              },
+            ],
+          }),
+        ]}
+      />
+    )
+    expect(screen.getByRole("link", { name: /file\.pdf/ })).toBeTruthy()
+
+    rerender(
+      <ChatWindow
+        messages={[
+          makeMessage({
+            id: "bad-file",
+            text: "bad file",
+            attachments: [
+              {
+                id: "file-2",
+                url: "javascript:alert(1)",
+                type: "file",
+                name: "bad.pdf",
+                size: 2048,
+              },
+            ],
+          }),
+        ]}
+      />
+    )
+    expect(screen.queryByRole("link", { name: /bad\.pdf/ })).toBeFalsy()
+  })
+
+  it("animates appended rows and renders the zero-count group-read branch", () => {
+    const first = makeMessage({ id: "append-1", text: "first", senderAvatar: "avatar-1" })
+    const second = makeMessage({
+      id: "append-2",
+      text: "second",
+      senderName: "",
+      senderAvatar: "avatar-2",
+      isMe: true,
+      seenByCount: 0,
+      seenByTotal: 3,
+    })
+    const { rerender } = render(<ChatWindow messages={[first]} />, { wrapper })
+
+    act(() => rerender(<ChatWindow messages={[first, second]} />))
+
+    expect(screen.getAllByAltText("Alice")).toHaveLength(1)
+    expect(screen.queryByText(/^messenger:seenByGroup/)).toBeFalsy()
+  })
+
+  it("uses reduced-motion transitions on the jump-to-latest FAB", () => {
+    motionState.reduced = true
+    const { container } = render(
+      <ChatWindow messages={[makeMessage({ id: "reduced-jump", text: "msg" })]} />,
+      { wrapper }
+    )
+    const log = container.querySelector('[role="log"]') as HTMLDivElement
+    Object.defineProperty(log, "scrollHeight", { value: 1000, configurable: true })
+    Object.defineProperty(log, "clientHeight", { value: 300, configurable: true })
+    Object.defineProperty(log, "scrollTop", { value: 100, configurable: true })
+    fireEvent.scroll(log)
+
+    fireEvent.click(screen.getByRole("button", { name: "messenger:aria.jumpToLatest" }))
+    expect(screen.getByRole("button", { name: "messenger:aria.jumpToLatest" })).toBeTruthy()
   })
 })

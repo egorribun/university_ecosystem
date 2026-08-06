@@ -87,11 +87,11 @@ if TYPE_CHECKING:
 class AttachmentProcessorProtocol(Protocol):
     async def process_upload(
         self, upload: UploadFile, chat_id: uuid.UUID, *, locale: str | None
-    ) -> dict[str, str | int]: ...
-    async def cleanup_files(self, urls: list[str]) -> None: ...
+    ) -> dict[str, str | int]: ...  # pragma: no branch
+    async def cleanup_files(self, urls: list[str]) -> None: ...  # pragma: no branch
     async def collect_urls(
         self, chat: Any
-    ) -> list[str]: ...  # Any: accepts Chat or ChatDTO
+    ) -> list[str]: ...  # pragma: no branch  # Any: accepts Chat or ChatDTO
 
 
 class ChatMessageDispatcher:

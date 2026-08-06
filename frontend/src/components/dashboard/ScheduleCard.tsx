@@ -1,4 +1,4 @@
-import { useMemo, useCallback, type KeyboardEvent, type CSSProperties } from "react"
+import { memo, useMemo, useCallback, type KeyboardEvent, type CSSProperties } from "react"
 
 import { Link } from "@tanstack/react-router"
 import { useTranslation } from "react-i18next"
@@ -17,8 +17,7 @@ interface ScheduleCardProps {
   "data-pop"?: string
 }
 
-// PERF-27-02: Removed React.memo() — React Compiler "infer" mode handles memoization
-export function ScheduleCard({
+export const ScheduleCard = memo(function ScheduleCard({
   userRole,
   userGroupId,
   time,
@@ -109,7 +108,7 @@ export function ScheduleCard({
 
   const nextLesson = useMemo(() => {
     if (currentLesson) {
-      const endM = parseMinutes(currentLesson.end_time) ?? 0
+      const endM = parseMinutes(currentLesson.end_time)!
       return todayLessons.find((l) => (parseMinutes(l.start_time) ?? 0) > endM) || null
     }
     return todayLessons.find((l) => (parseMinutes(l.start_time) ?? 0) > minutesNow) || null
@@ -117,8 +116,8 @@ export function ScheduleCard({
 
   const currentProgress = useMemo(() => {
     if (!currentLesson) return 0
-    const s = parseMinutes(currentLesson.start_time) ?? 0
-    const e = parseMinutes(currentLesson.end_time) ?? 0
+    const s = parseMinutes(currentLesson.start_time)!
+    const e = parseMinutes(currentLesson.end_time)!
     const span = Math.max(1, e - s)
     const passed = Math.min(Math.max(0, minutesNow - s), span)
     return Math.round((passed / span) * 100)
@@ -273,4 +272,6 @@ export function ScheduleCard({
       />
     </Card>
   )
-}
+})
+
+export default ScheduleCard

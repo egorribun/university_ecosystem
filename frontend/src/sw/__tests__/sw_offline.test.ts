@@ -1,11 +1,14 @@
 import { IDBFactory } from "fake-indexeddb"
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from "vitest"
 import {
+  addRecord,
   initOfflineQueue,
+  processOfflineQueues,
   storePendingNavigation,
   storePendingReport,
   readPendingReports,
   processPendingReports,
+  STORES,
 } from "../offline"
 
 vi.mock("../logger", () => ({
@@ -147,5 +150,56 @@ describe("Service Worker — Offline / Database Failures & Network Outage", () =
       stored = await readPendingReports()
       expect(stored).toHaveLength(0)
     })
+  })
+
+  it("flushes report records without optional method or idempotency key", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200 })
+    vi.stubGlobal("fetch", fetchMock)
+    await addRecord(STORES.REPORT, {
+      url: "http://localhost/page",
+      reportUrl: "http://localhost/api/report-get",
+      timestamp: Date.now(),
+      payload: null,
+    })
+
+    await processPendingReports()
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://localhost/api/report-get",
+      expect.objectContaining({ method: "POST", headers: { "Content-Type": "application/json" } })
+    )
+    expect(await readPendingReports()).toHaveLength(0)
+  })
+
+  it("processes news interactions and retains failed network records", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({ ok: true, status: 200 })
+      .mockResolvedValueOnce({ ok: false, status: 500 })
+    vi.stubGlobal("fetch", fetchMock)
+    await addRecord(STORES.NEWS_INTERACTION, {
+      url: "http://localhost/api/news/read",
+      method: "GET",
+      payload: { id: "read-1" },
+    })
+    await addRecord(STORES.NEWS_INTERACTION, {
+      url: "http://localhost/api/news/bookmark",
+      method: "POST",
+      payload: { id: "bookmark-1" },
+    })
+
+    await processOfflineQueues()
+
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      "http://localhost/api/news/read",
+      expect.objectContaining({ method: "GET" })
+    )
+    expect(fetchMock.mock.calls[0]?.[1]).not.toHaveProperty("body")
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      "http://localhost/api/news/bookmark",
+      expect.objectContaining({ method: "POST", body: JSON.stringify({ id: "bookmark-1" }) })
+    )
   })
 })

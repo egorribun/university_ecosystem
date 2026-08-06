@@ -53,4 +53,20 @@ describe("RelatedEvents", () => {
     await renderWithRouter({ ui: () => <RelatedEvents items={[]} />, extraRoutes })
     expect(screen.queryByRole("link")).not.toBeInTheDocument()
   })
+
+  it("uses safe fallbacks for optional title, category, date, and image fields", async () => {
+    const sparseEvent = {
+      ...ITEMS[0],
+      id: "sparse",
+      title: undefined,
+      title_en: undefined,
+      event_type: undefined,
+      event_type_en: undefined,
+      starts_at: undefined,
+      image_url: null,
+    } as unknown as Event
+
+    await renderWithRouter({ ui: () => <RelatedEvents items={[sparseEvent]} />, extraRoutes })
+    expect(screen.getByRole("link")).toHaveAttribute("href", "/events/sparse")
+  })
 })

@@ -35,6 +35,7 @@ import (
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/health"
 	"google.golang.org/grpc/health/grpc_health_v1"
+	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/reflection"
 	"google.golang.org/grpc/status"
 
@@ -55,79 +56,199 @@ import (
 	"github.com/university-ecosystem/file-processor/internal/middleware"
 	"github.com/university-ecosystem/file-processor/internal/service"
 	"github.com/university-ecosystem/file-processor/internal/workflow"
+	"github.com/university-ecosystem/services/pkg/spiffe"
 )
 
 type contextKey string
 
 const (
-	userIDKey contextKey = "user_id"
+	userIDKey   contextKey = "user_id"
+	tenantIDKey contextKey = "tenant_id"
 )
 
 var (
-	dialTemporalFunc = client.Dial
-	newWorkerFunc    = worker.New
+	dialTemporalFunc        = client.Dial
+	newWorkerFunc           = worker.New
+	buildMinIOClientFunc    = workflow.BuildMinIOClient
+	newFileActivitiesFunc   = workflow.NewFileActivities
+	startTemporalWorkerFunc = startTemporalWorker
+	startNatsSubscriberFunc = startNatsSubscriber
+	initSpiffeClientFunc    = initSpiffeClient
+	setupGRPCServerFunc     = setupGRPCServer
+	setupGraphQLServerFunc  = setupGraphQLServer
+	runServersFunc          = runServers
 )
+
+// legacyNatsJetStream keeps the legacy subscriber seam narrow enough to test
+// message handling without replacing the production NATS client. The real
+// nats.JetStreamContext is adapted below; tests can provide a deterministic
+// callback harness instead of requiring a broker for every error branch.
+type legacyNatsJetStream interface {
+	QueueSubscribe(subject, queue string, cb nats.MsgHandler, opts ...nats.SubOpt) (*nats.Subscription, error)
+}
+
+type legacyNatsConnection interface {
+	JetStream() (legacyNatsJetStream, error)
+	Close()
+}
+
+type legacyNatsConnectionAdapter struct {
+	conn *nats.Conn
+}
+
+func (a legacyNatsConnectionAdapter) JetStream() (legacyNatsJetStream, error) {
+	return a.conn.JetStream()
+}
+
+func (a legacyNatsConnectionAdapter) Close() {
+	a.conn.Close()
+}
+
+var connectLegacyNats = func(url string, opts ...nats.Option) (legacyNatsConnection, error) {
+	conn, err := nats.Connect(url, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return legacyNatsConnectionAdapter{conn: conn}, nil
+}
 
 func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	runMain(ctx)
+	if err := runMain(ctx); err != nil {
+		os.Exit(1)
+	}
 }
 
-func runMain(ctx context.Context) {
+func runMain(ctx context.Context) error {
 	logger := initLogger()
 
 	cfg, err := config.Load()
 	if err != nil {
 		logger.ErrorContext(ctx, "Failed to load configuration", "err", err)
-		os.Exit(1)
+		return err
 	}
 
 	// TD-W18-01 (audit 2026-03-23 Wave 18): parse RSA public key for RS256 support.
-	var rsaPublicKey *rsa.PublicKey
-	if cfg.RSAPublicKeyPEM != "" {
-		rsaPublicKey, err = parseRSAPublicKey(cfg.RSAPublicKeyPEM)
-		if err != nil {
-			logger.ErrorContext(ctx, "Failed to parse RSA_PUBLIC_KEY_PEM", "err", err)
-			os.Exit(1)
-		}
-		logger.InfoContext(ctx, "RS256 token verification enabled")
+	rsaPublicKey, err := loadRSAPublicKey(ctx, cfg, logger)
+	if err != nil {
+		return err
 	}
 	initSentry(ctx, cfg, logger)
 
-	tp, err := initTracer(ctx, cfg, logger)
+	defer initializeTracerShutdown(ctx, cfg, logger)()
+
+	c, w, err := startTemporalWorkerFunc(ctx, cfg, logger)
 	if err != nil {
-		logger.ErrorContext(ctx, "OpenTelemetry initialization failed", "err", err)
-	} else {
+		return err
+	}
+	defer closeTemporalClient(c)
+	defer w.Stop()
+	logger.InfoContext(ctx, "Temporal Worker started", "queue", "FILE_PROCESSING_TASK_QUEUE")
+
+	startNatsSubscriberFunc(ctx, cfg, c, logger)
+
+	spiffeClient, err := initSpiffeClientFunc(ctx, cfg, logger)
+	if err != nil {
+		return err
+	}
+	if spiffeClient != nil {
 		defer func() {
-			if shutErr := tp.Shutdown(ctx); shutErr != nil {
-				logger.WarnContext(ctx, "Failed to shutdown tracer provider", "err", shutErr)
+			if err := spiffeClient.Close(); err != nil {
+				logger.WarnContext(ctx, "Failed to close SPIFFE client", "err", err)
 			}
 		}()
 	}
 
+	grpcSrv, err := setupGRPCServerFunc(ctx, cfg, rsaPublicKey, c, spiffeClient, logger)
+	if err != nil {
+		logger.ErrorContext(ctx, "Failed to setup gRPC server", "err", err)
+		return err
+	}
+
+	graphqlSrv, err := setupGraphQLServerFunc(ctx, cfg, rsaPublicKey, c, logger)
+	if err != nil {
+		logger.ErrorContext(ctx, "Failed to setup GraphQL server", "err", err)
+		return err
+	}
+
+	return runServersFunc(ctx, grpcSrv, graphqlSrv, cfg, logger)
+}
+
+func loadRSAPublicKey(ctx context.Context, cfg *config.Config, logger *slog.Logger) (*rsa.PublicKey, error) {
+	if cfg.RSAPublicKeyPEM == "" {
+		return nil, nil
+	}
+	key, err := parseRSAPublicKey(cfg.RSAPublicKeyPEM)
+	if err != nil {
+		logger.ErrorContext(ctx, "Failed to parse RSA_PUBLIC_KEY_PEM", "err", err)
+		return nil, err
+	}
+	logger.InfoContext(ctx, "RS256 token verification enabled")
+	return key, nil
+}
+
+func initializeTracerShutdown(ctx context.Context, cfg *config.Config, logger *slog.Logger) func() {
+	tp, err := initTracer(ctx, cfg, logger)
+	if err != nil {
+		logger.ErrorContext(ctx, "OpenTelemetry initialization failed", "err", err)
+		return func() {}
+	}
+	return func() {
+		if shutErr := tp.Shutdown(ctx); shutErr != nil {
+			logger.WarnContext(ctx, "Failed to shutdown tracer provider", "err", shutErr)
+		}
+	}
+}
+
+func startTemporalWorker(ctx context.Context, cfg *config.Config, logger *slog.Logger) (client.Client, worker.Worker, error) {
 	c, err := connectTemporal(ctx, cfg, logger)
 	if err != nil {
 		logger.ErrorContext(ctx, "Failed to connect to Temporal", "err", err)
-		os.Exit(1)
+		return nil, nil, err
 	}
-	defer c.Close()
 
-	w, _ := setupTemporalWorker(ctx, c, cfg, logger)
+	w, _, err := setupTemporalWorker(ctx, c, cfg, logger)
+	if err != nil {
+		logger.ErrorContext(ctx, "Failed to setup Temporal worker", "err", err)
+		closeTemporalClient(c)
+		return nil, nil, err
+	}
 	if err := w.Start(); err != nil {
 		logger.ErrorContext(ctx, "Unable to start Temporal worker", "err", err)
-		os.Exit(1)
+		closeTemporalClient(c)
+		return nil, nil, err
 	}
-	defer w.Stop()
-	logger.InfoContext(ctx, "Temporal Worker started", "queue", "FILE_PROCESSING_TASK_QUEUE")
+	return c, w, nil
+}
 
-	startNatsSubscriber(ctx, cfg, c, logger)
+func closeTemporalClient(c client.Client) {
+	if c == nil {
+		return
+	}
+	c.Close()
+}
 
-	grpcSrv := setupGRPCServer(ctx, cfg, rsaPublicKey, c, logger)
-	graphqlSrv := setupGraphQLServer(ctx, cfg, rsaPublicKey, c, logger)
-
-	runServers(ctx, grpcSrv, graphqlSrv, cfg, logger)
+func initSpiffeClient(ctx context.Context, cfg *config.Config, logger *slog.Logger) (*spiffe.Client, error) {
+	client, err := spiffe.NewClient(ctx, spiffe.Config{
+		Enabled:     cfg.SpiffeEnabled,
+		SocketPath:  cfg.SpiffeEndpointSocket,
+		TrustDomain: cfg.SpiffeTrustDomain,
+		MySpiffeID:  cfg.SpiffeMyID,
+	}, logger)
+	if err != nil {
+		logger.ErrorContext(ctx, "SPIFFE initialization failed", "err", err)
+		if cfg.SpiffeEnabled {
+			return nil, err
+		}
+		return nil, nil
+	}
+	if cfg.SpiffeEnabled && client == nil {
+		logger.ErrorContext(ctx, "SPIFFE is enabled but client initialization returned nil")
+		return nil, errors.New("SPIFFE is enabled but client initialization returned nil")
+	}
+	return client, nil
 }
 
 func initLogger() *slog.Logger {
@@ -154,7 +275,7 @@ func initSentry(ctx context.Context, cfg *config.Config, logger *slog.Logger) {
 		TracesSampleRate: 1.0,
 	})
 	if err != nil {
-		logger.ErrorContext(ctx, "Sentry initialization failed", "err", err)
+		logger.ErrorContext(ctx, "Sentry initialization failed")
 	} else {
 		logger.InfoContext(ctx, "Sentry initialized", "environment", cfg.Environment)
 	}
@@ -172,16 +293,11 @@ func connectTemporal(ctx context.Context, cfg *config.Config, logger *slog.Logge
 	if cfg.TemporalAPIKeyFile != "" {
 		data, err := os.ReadFile(cfg.TemporalAPIKeyFile)
 		if err != nil {
-			logger.WarnContext(ctx, "Failed to read Temporal API key file; connecting without auth",
-				"path", cfg.TemporalAPIKeyFile,
-				"err", err,
-			)
+			logger.WarnContext(ctx, "Failed to read Temporal API key file; connecting without auth")
 		} else {
 			token := strings.TrimSpace(string(data))
 			if token == "" {
-				logger.WarnContext(ctx, "Temporal API key file is empty; connecting without auth",
-					"path", cfg.TemporalAPIKeyFile,
-				)
+				logger.WarnContext(ctx, "Temporal API key file is empty; connecting without auth")
 			} else {
 				// W141 SW5 critical detail: client.NewAPIKeyStaticCredentials AUTO-ENABLES
 				// TLS unless ConnectionOptions.TLSDisabled is true (verified at
@@ -200,7 +316,6 @@ func connectTemporal(ctx context.Context, cfg *config.Config, logger *slog.Logge
 					TLSDisabled: true,
 				}
 				logger.InfoContext(ctx, "Attached Temporal service token (TLS disabled for plaintext dev gRPC)",
-					"path", cfg.TemporalAPIKeyFile,
 					"token_chars", len(token),
 				)
 			}
@@ -232,24 +347,24 @@ func connectTemporal(ctx context.Context, cfg *config.Config, logger *slog.Logge
 	return nil, fmt.Errorf("unable to create Temporal client after multiple attempts: %w", err)
 }
 
-func setupTemporalWorker(ctx context.Context, c client.Client, cfg *config.Config, logger *slog.Logger) (worker.Worker, *workflow.FileActivities) {
+func setupTemporalWorker(ctx context.Context, c client.Client, cfg *config.Config, logger *slog.Logger) (worker.Worker, *workflow.FileActivities, error) {
 	w := newWorkerFunc(c, "FILE_PROCESSING_TASK_QUEUE", worker.Options{})
 	w.RegisterWorkflow(workflow.FileProcessingWorkflow)
 
-	minioClient, err := workflow.BuildMinIOClient(cfg)
+	minioClient, err := buildMinIOClientFunc(cfg)
 	if err != nil {
 		logger.ErrorContext(ctx, "Failed to initialize MinIO client", "err", err)
-		os.Exit(1)
+		return nil, nil, fmt.Errorf("failed to initialize MinIO client: %w", err)
 	}
 
-	activities, err := workflow.NewFileActivities(cfg, minioClient)
+	activities, err := newFileActivitiesFunc(cfg, minioClient)
 	if err != nil {
 		logger.ErrorContext(ctx, "Failed to initialize file activities", "err", err)
-		os.Exit(1)
+		return nil, nil, fmt.Errorf("failed to initialize file activities: %w", err)
 	}
 	w.RegisterActivity(activities.ResizeImageActivity)
 
-	return w, activities
+	return w, activities, nil
 }
 
 func startNatsSubscriber(ctx context.Context, cfg *config.Config, c client.Client, logger *slog.Logger) {
@@ -260,7 +375,7 @@ func startNatsSubscriber(ctx context.Context, cfg *config.Config, c client.Clien
 		opts = append(opts, nats.RetryOnFailedConnect(true), nats.MaxReconnects(-1))
 	}
 
-	nc, err := nats.Connect(cfg.NatsURL, opts...)
+	nc, err := connectLegacyNats(cfg.NatsURL, opts...)
 	if err != nil {
 		logger.WarnContext(ctx, "Failed to connect to NATS (Legacy)", "err", err)
 		return
@@ -362,9 +477,21 @@ type authedServerStream struct {
 
 func (s *authedServerStream) Context() context.Context { return s.ctx }
 
-func setupGRPCServer(ctx context.Context, cfg *config.Config, rsaPub *rsa.PublicKey, c client.Client, logger *slog.Logger) *grpc.Server {
+func setupGRPCServer(ctx context.Context, cfg *config.Config, rsaPub *rsa.PublicKey, c client.Client, opts ...any) (*grpc.Server, error) {
+	var spiffeClient *spiffe.Client
+	logger := slog.Default()
+
+	for _, opt := range opts {
+		switch v := opt.(type) {
+		case *slog.Logger:
+			logger = v
+		case *spiffe.Client:
+			spiffeClient = v
+		}
+	}
+
 	authFn := authFunc(cfg.JWTSecret, rsaPub, logger)
-	grpcServer := grpc.NewServer(
+	serverOpts := []grpc.ServerOption{
 		grpc.StatsHandler(otelgrpc.NewServerHandler()),
 		grpc.ChainStreamInterceptor(
 			grpc_prometheus.StreamServerInterceptor,
@@ -374,7 +501,22 @@ func setupGRPCServer(ctx context.Context, cfg *config.Config, rsaPub *rsa.Public
 			grpc_prometheus.UnaryServerInterceptor,
 			selectiveUnaryAuth(authFn),
 		),
-	)
+	}
+
+	if cfg.SpiffeEnabled {
+		if spiffeClient == nil {
+			logger.ErrorContext(ctx, "SPIFFE is enabled but spiffeClient is nil")
+			return nil, errors.New("SPIFFE is enabled but spiffeClient is nil")
+		}
+		creds, err := spiffeClient.GRPCCerverCredentials(cfg.AllowedClientSpiffeIDs...)
+		if err != nil {
+			logger.ErrorContext(ctx, "Failed to create SPIFFE gRPC server credentials", "err", err)
+			return nil, fmt.Errorf("failed to create SPIFFE gRPC server credentials: %w", err)
+		}
+		serverOpts = append(serverOpts, grpc.Creds(creds))
+	}
+
+	grpcServer := grpc.NewServer(serverOpts...)
 
 	pb.RegisterFileProcessingServiceServer(grpcServer, &service.Server{TemporalClient: c})
 	reflection.Register(grpcServer)
@@ -385,14 +527,28 @@ func setupGRPCServer(ctx context.Context, cfg *config.Config, rsaPub *rsa.Public
 	healthServer.SetServingStatus("", grpc_health_v1.HealthCheckResponse_SERVING)
 	healthServer.SetServingStatus("file_processor.v1.FileProcessingService", grpc_health_v1.HealthCheckResponse_SERVING)
 
-	return grpcServer
+	return grpcServer, nil
 }
 
-func setupGraphQLServer(ctx context.Context, cfg *config.Config, rsaPub *rsa.PublicKey, c client.Client, logger *slog.Logger) *http.Server {
-	s, err := os.ReadFile("schema.graphql")
-	if err != nil {
-		logger.ErrorContext(ctx, "schema.graphql not found", "err", err)
-		os.Exit(1)
+func setupGraphQLServer(ctx context.Context, cfg *config.Config, rsaPub *rsa.PublicKey, c client.Client, logger *slog.Logger) (srv *http.Server, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			logger.ErrorContext(ctx, "GraphQL schema parsing panicked", "panic", r)
+			err = fmt.Errorf("graphql schema parse panic: %v", r)
+		}
+	}()
+
+	schemaPath := "schema.graphql"
+	if p := os.Getenv("FP_SCHEMA_PATH"); p != "" {
+		schemaPath = p
+	}
+	s, readErr := os.ReadFile(schemaPath)
+	if readErr != nil && schemaPath == "schema.graphql" {
+		s, readErr = os.ReadFile("../schema.graphql")
+	}
+	if readErr != nil {
+		logger.ErrorContext(ctx, "schema.graphql not found", "err", readErr)
+		return nil, readErr
 	}
 
 	resolver := &gql.Resolver{
@@ -408,7 +564,11 @@ func setupGraphQLServer(ctx context.Context, cfg *config.Config, rsaPub *rsa.Pub
 		}))
 	}
 
-	schema := graphql.MustParseSchema(string(s), resolver, schemaOpts...)
+	schema, parseErr := graphql.ParseSchema(string(s), resolver, schemaOpts...)
+	if parseErr != nil {
+		logger.ErrorContext(ctx, "Failed to parse GraphQL schema", "err", parseErr)
+		return nil, parseErr
+	}
 	mux := http.NewServeMux()
 	graphqlHandler := httpJWTMiddleware(cfg.JWTSecret, rsaPub, logger,
 		middleware.MaxQueryDepthMiddleware(10,
@@ -424,21 +584,24 @@ func setupGraphQLServer(ctx context.Context, cfg *config.Config, rsaPub *rsa.Pub
 		Addr:              ":" + cfg.GraphQLPort,
 		Handler:           otelhttp.NewHandler(mux, "graphql_metrics"),
 		ReadHeaderTimeout: 5 * time.Second,
-	}
+	}, nil
 }
 
-func runServers(ctx context.Context, grpcSrv *grpc.Server, graphqlSrv *http.Server, cfg *config.Config, logger *slog.Logger) {
+func runServers(ctx context.Context, grpcSrv *grpc.Server, graphqlSrv *http.Server, cfg *config.Config, logger *slog.Logger) error {
 	lc := net.ListenConfig{}
 	lis, err := lc.Listen(ctx, "tcp", ":"+cfg.GRPCPort)
 	if err != nil {
 		logger.ErrorContext(ctx, "Failed to listen for gRPC", "err", err)
-		os.Exit(1)
+		return err
 	}
+
+	errChan := make(chan error, 2)
 
 	go func() {
 		logger.InfoContext(ctx, "gRPC Server listening", "addr", ":"+cfg.GRPCPort)
 		if err := grpcSrv.Serve(lis); err != nil && !errors.Is(err, grpc.ErrServerStopped) {
 			logger.ErrorContext(ctx, "failed to serve gRPC", "err", err)
+			errChan <- err
 		}
 	}()
 
@@ -446,10 +609,18 @@ func runServers(ctx context.Context, grpcSrv *grpc.Server, graphqlSrv *http.Serv
 		logger.InfoContext(ctx, "GraphQL & Metrics Server listening", "addr", ":"+cfg.GraphQLPort)
 		if err := graphqlSrv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			logger.ErrorContext(ctx, "Failed to serve HTTP", "err", err)
+			errChan <- err
 		}
 	}()
 
-	<-ctx.Done()
+	var runErr error
+	select {
+	case <-ctx.Done():
+	case err := <-errChan:
+		logger.ErrorContext(ctx, "Server error, shutting down", "err", err)
+		runErr = err
+	}
+
 	logger.InfoContext(ctx, "Shutting down servers...")
 
 	grpcSrv.GracefulStop()
@@ -459,6 +630,8 @@ func runServers(ctx context.Context, grpcSrv *grpc.Server, graphqlSrv *http.Serv
 	if err := graphqlSrv.Shutdown(shutdownCtx); err != nil { //nolint:contextcheck // RZ-33-21: uses fresh context because parent is cancelled
 		logger.ErrorContext(ctx, "HTTP Server forced to shutdown", "err", err)
 	}
+
+	return runErr
 }
 
 // parseRSAPublicKey parses a PEM-encoded RSA public key.
@@ -512,6 +685,28 @@ func jwtKeyFunc(secret string, rsaPub *rsa.PublicKey) jwt.Keyfunc {
 	}
 }
 
+func checkJWTAlgHeader(tokenStr string, rsaPub *rsa.PublicKey, log *slog.Logger, r *http.Request) bool {
+	if rsaPub == nil {
+		return true
+	}
+	parts := strings.SplitN(tokenStr, ".", 3)
+	if len(parts) == 3 {
+		if headerBytes, decErr := base64.RawURLEncoding.DecodeString(parts[0]); decErr == nil {
+			var hdr struct {
+				Alg string `json:"alg"`
+			}
+			if jsonErr := json.Unmarshal(headerBytes, &hdr); jsonErr == nil && hdr.Alg != "RS256" {
+				log.WarnContext(r.Context(), "GraphQL HTTP JWT algorithm downgrade attempt rejected",
+					"alg", hdr.Alg, "remote", r.RemoteAddr,
+					"event", "jwt_alg_downgrade",
+				)
+				return false
+			}
+		}
+	}
+	return true
+}
+
 func httpJWTMiddleware(secret string, rsaPub *rsa.PublicKey, log *slog.Logger, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		authHeader := r.Header.Get("Authorization")
@@ -525,29 +720,9 @@ func httpJWTMiddleware(secret string, rsaPub *rsa.PublicKey, log *slog.Logger, n
 		}
 		tokenStr := authHeader[len(prefix):]
 
-		// FIX-ALG-02: Pre-check the algorithm from the JWT header before calling
-		// jwt.Parse. This prevents algorithm-confusion attacks where a crafted token
-		// header selects a weaker algorithm (e.g. HS256 when RS256 is expected, or
-		// "none"). The check is intentionally done before any cryptographic work so
-		// that downgrade attempts are caught and logged immediately.
-		// Mirrors the pattern used in gateway/middleware/auth.go (RZ-W15-01).
-		if rsaPub != nil {
-			parts := strings.SplitN(tokenStr, ".", 3)
-			if len(parts) == 3 {
-				if headerBytes, decErr := base64.RawURLEncoding.DecodeString(parts[0]); decErr == nil {
-					var hdr struct {
-						Alg string `json:"alg"`
-					}
-					if jsonErr := json.Unmarshal(headerBytes, &hdr); jsonErr == nil && hdr.Alg != "RS256" {
-						log.WarnContext(r.Context(), "GraphQL HTTP JWT algorithm downgrade attempt rejected",
-							"alg", hdr.Alg, "remote", r.RemoteAddr,
-							"event", "jwt_alg_downgrade",
-						)
-						http.Error(w, "Unauthorized", http.StatusUnauthorized)
-						return
-					}
-				}
-			}
+		if !checkJWTAlgHeader(tokenStr, rsaPub, log, r) {
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			return
 		}
 
 		// TD-W18-01: use unified keyFunc supporting both RS256 and HS256.
@@ -566,10 +741,20 @@ func httpJWTMiddleware(secret string, rsaPub *rsa.PublicKey, log *slog.Logger, n
 			http.Error(w, "Unauthorized", http.StatusUnauthorized)
 			return
 		}
+		ctx := r.Context()
 		if sub, ok := claims["sub"].(string); ok {
-			ctx := context.WithValue(r.Context(), userIDKey, sub)
-			r = r.WithContext(ctx)
+			ctx = context.WithValue(ctx, userIDKey, sub)
 		}
+		tenantID := r.Header.Get("X-Tenant-ID")
+		if tenantID == "" {
+			if t, ok := claims["tenant_id"].(string); ok {
+				tenantID = t
+			}
+		}
+		if tenantID != "" {
+			ctx = context.WithValue(ctx, tenantIDKey, tenantID)
+		}
+		r = r.WithContext(ctx)
 
 		next.ServeHTTP(w, r)
 	})
@@ -591,10 +776,26 @@ func authFunc(secret string, rsaPub *rsa.PublicKey, logger *slog.Logger) auth.Au
 		}
 
 		if claims, ok := token.Claims.(jwt.MapClaims); ok && token.Valid {
-			if sub, ok := claims["sub"].(string); ok {
-				newCtx := context.WithValue(ctx, userIDKey, sub)
-				return newCtx, nil
+			sub, ok := claims["sub"].(string)
+			if !ok || sub == "" {
+				return nil, status.Errorf(codes.Unauthenticated, "invalid token claims: missing sub")
 			}
+			newCtx := context.WithValue(ctx, userIDKey, sub)
+			var tenantID string
+			if md, ok := metadata.FromIncomingContext(ctx); ok {
+				if vals := md.Get("x-tenant-id"); len(vals) > 0 {
+					tenantID = vals[0]
+				}
+			}
+			if tenantID == "" {
+				if t, ok := claims["tenant_id"].(string); ok {
+					tenantID = t
+				}
+			}
+			if tenantID != "" {
+				newCtx = context.WithValue(newCtx, tenantIDKey, tenantID)
+			}
+			return newCtx, nil
 		}
 
 		return nil, status.Errorf(codes.Unauthenticated, "invalid token claims")

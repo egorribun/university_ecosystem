@@ -10,7 +10,6 @@ from pathlib import Path
 from app.models.auth import ChallengeState
 from app.schemas.schemas import MfaChallengeOut
 
-
 _MIGRATION_SPEC = spec_from_file_location(
     "mfa_challenge_state_migration",
     Path(__file__).parents[1]
@@ -64,6 +63,6 @@ def test_current_payload_round_trips_every_historic_enum_value() -> None:
 
 def test_migration_enum_and_runtime_enum_stay_in_lockstep() -> None:
     """Prevent a future enum migration value from being omitted in Python."""
-    migration_values = set(getattr(_MFA_MIGRATION, "_ENUM_VALUES"))
+    migration_values = set(_MFA_MIGRATION._ENUM_VALUES)
 
     assert {state.value for state in ChallengeState} == migration_values

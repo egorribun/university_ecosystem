@@ -16,6 +16,7 @@ import {
   getTimeStr,
 } from "@/components/schedule/scheduleUtils"
 import { detectConflicts } from "@/utils/scheduleConflicts"
+import { getDatabase, type ScheduleDoc } from "@/db"
 import { useScheduleConfig } from "./useScheduleConfig"
 import { useScheduleTime } from "./useScheduleTime"
 
@@ -47,6 +48,42 @@ export function useScheduleData() {
     () => normalizeLessons(groupScheduleRaw),
     [groupScheduleRaw, normalizeLessons]
   )
+
+  // ── Persist Schedule to RxDB for Offline Access ─────
+  useEffect(() => {
+    if (activeGroupId && groupScheduleRaw.length > 0) {
+      getDatabase()
+        .then((db) => {
+          const docs: ScheduleDoc[] = groupScheduleRaw.map((lesson: Record<string, unknown>) => ({
+            id: String(lesson.id ?? ""),
+            group_id: activeGroupId,
+            subject:
+              typeof lesson.subject === "string"
+                ? lesson.subject
+                : lesson.subject && typeof lesson.subject === "object" && "name" in lesson.subject
+                  ? String((lesson.subject as { name?: unknown }).name ?? "")
+                  : String(lesson.subject ?? ""),
+            teacher:
+              typeof lesson.teacher === "string"
+                ? lesson.teacher
+                : lesson.teacher && typeof lesson.teacher === "object" && "name" in lesson.teacher
+                  ? String((lesson.teacher as { name?: unknown }).name ?? "")
+                  : String(lesson.teacher ?? ""),
+            room: typeof lesson.room === "string" ? lesson.room : String(lesson.room ?? ""),
+            building:
+              typeof lesson.building === "string" ? lesson.building : String(lesson.building ?? ""),
+            weekday: String(lesson.weekday ?? ""),
+            start_time: String(lesson.start_time ?? ""),
+            end_time: String(lesson.end_time ?? ""),
+            parity: String(lesson.parity ?? "both"),
+            lesson_type: String(lesson.lesson_type ?? "lecture"),
+            updated_at: new Date().toISOString(),
+          }))
+          db.schedule.bulkUpsert(docs).catch(() => {})
+        })
+        .catch(() => {})
+    }
+  }, [activeGroupId, groupScheduleRaw])
 
   // ── Auto-select group based on user role ───────────
   useEffect(() => {

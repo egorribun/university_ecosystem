@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import warnings
+
 import pytest
 
 from app.core.config.mixins.jwt_settings import JwtSettingsMixin
@@ -35,6 +37,14 @@ def test_algorithm_validator_normalizes_unrecognized_algorithm(monkeypatch):
     monkeypatch.setenv("ALGORITHM", "eddsa")
     settings = SecuritySettings()
     assert settings.algorithm == "EDDSA"
+
+
+def test_algorithm_validator_warns_for_hs256():
+    with warnings.catch_warnings(record=True) as captured:
+        warnings.simplefilter("always")
+        assert JwtSettingsMixin.validate_jwt_algorithm("HS256") == "HS256"
+
+    assert any("not recommended" in str(item.message) for item in captured)
 
 
 def test_production_placeholder_audience_logs_warning(monkeypatch, caplog):
@@ -88,5 +98,136 @@ def test_active_secret_fails_closed_when_registry_has_no_secret(monkeypatch):
         property(lambda _self: _Registry({"primary": "secret"})),
     )
     settings.jwt_active_kid = "primary"
+    with pytest.raises(RuntimeError, match="does not contain the active kid"):
+        _ = settings.jwt_signing_active_secret
+
+
+def _mixin(**values: object) -> JwtSettingsMixin:
+    instance = object.__new__(JwtSettingsMixin)
+    instance.__dict__.update(values)
+    return instance
+
+
+def test_jwt_validators_reject_empty_and_short_production_values(monkeypatch):
+    _development_env(monkeypatch)
+    with pytest.raises(ValueError, match="must not be empty"):
+        SecuritySettings(secret_key="")
+
+    _production_env(monkeypatch)
+    with pytest.raises(ValueError, match="at least 32 characters"):
+        SecuritySettings(secret_key="s" * 31)
+
+    with pytest.raises(ValueError, match="JWT_SIGNING_KEYS entries"):
+        SecuritySettings(jwt_signing_keys="kid:short")
+
+    accepted = SecuritySettings(jwt_signing_keys="kid:" + "s" * 32)
+    assert accepted.jwt_signing_keys == "kid:" + "s" * 32
+    pem = SecuritySettings(  # pragma: allowlist secret
+        jwt_signing_keys="kid:-----BEGIN PRIVATE KEY-----"  # pragma: allowlist secret
+    )
+    assert (
+        pem.jwt_signing_keys
+        == "kid:-----BEGIN PRIVATE KEY-----"  # pragma: allowlist secret
+    )
+
+    _development_env(monkeypatch)
+    local_short = SecuritySettings(jwt_signing_keys="kid:short")
+    assert local_short.jwt_signing_keys == "kid:short"
+
+    _production_env(monkeypatch)
+    monkeypatch.setenv("ALGORITHM", "HS256")
+    with pytest.raises(ValueError, match="HS256 is prohibited"):
+        SecuritySettings()
+
+    with pytest.raises(ValueError, match="JWT_AUDIENCE must not be empty"):
+        SecuritySettings(jwt_audience="")
+
+
+def test_jwt_signing_registry_parses_entries_caches_and_exposes_aliases():
+    settings = _mixin(
+        jwt_signing_keys=[  # pragma: allowlist secret
+            " first : first-secret ",  # pragma: allowlist secret
+            "second:second-secret",  # pragma: allowlist secret
+        ],
+        jwt_active_kid=" first ",
+        algorithm="RS256",
+        jwt_private_key_path="",
+        secret_key="fallback",  # pragma: allowlist secret
+        environment="development",
+    )
+
+    registry = settings.jwt_signing_key_registry
+    assert registry == {  # pragma: allowlist secret
+        "first": "first-secret",  # pragma: allowlist secret
+        "second": "second-secret",  # pragma: allowlist secret
+    }
+    assert settings.jwt_signing_key_registry is registry
+    assert settings.jwt_signing_active_kid == "first"
+    expected_active_secret = "first-secret"  # pragma: allowlist secret
+    assert settings.jwt_signing_active_secret == expected_active_secret
+    assert settings.SECRET_KEY == "first-secret"  # pragma: allowlist secret
+    assert settings.ALGORITHM == "RS256"
+
+
+@pytest.mark.parametrize(
+    "entries, message",
+    [
+        ("missing-separator", "format"),
+        (":secret", "non-empty kid"),
+        ("kid:", "non-empty secret"),
+        (["kid:secret", "kid:other"], "unique kid"),
+    ],
+)
+def test_jwt_signing_registry_rejects_malformed_entries(entries, message):
+    settings = _mixin(
+        jwt_signing_keys=entries,
+        jwt_active_kid=None,
+        algorithm="HS256",
+        jwt_private_key_path="",
+        secret_key="fallback",  # pragma: allowlist secret
+        environment="development",
+    )
+
+    with pytest.raises(RuntimeError, match=message):
+        _ = settings.jwt_signing_key_registry
+
+
+def test_jwt_registry_falls_back_to_secret_and_validates_active_kid():
+    fallback = _mixin(
+        jwt_signing_keys="",
+        jwt_active_kid="",
+        algorithm="HS256",
+        jwt_private_key_path="",
+        secret_key="fallback",  # pragma: allowlist secret
+        environment="development",
+    )
+    assert fallback.jwt_signing_key_registry == {  # pragma: allowlist secret
+        "primary": "fallback"  # pragma: allowlist secret
+    }
+    assert fallback.jwt_signing_active_kid == "primary"
+
+    invalid = _mixin(
+        jwt_signing_keys="kid:secret",
+        jwt_active_kid="other",
+        algorithm="HS256",
+        jwt_private_key_path="",
+        secret_key="fallback",  # pragma: allowlist secret
+        environment="development",
+    )
+    with pytest.raises(RuntimeError, match="must match"):
+        _ = invalid.jwt_signing_active_kid
+
+
+def test_jwt_active_secret_fails_closed_when_active_key_is_absent():
+    class _BrokenRegistry(JwtSettingsMixin):
+        @property
+        def jwt_signing_key_registry(self) -> dict[str, str]:
+            return {}
+
+        @property
+        def jwt_signing_active_kid(self) -> str:
+            return "primary"
+
+    settings = _BrokenRegistry()
     with pytest.raises(RuntimeError, match="does not contain the active kid"):
         _ = settings.jwt_signing_active_secret

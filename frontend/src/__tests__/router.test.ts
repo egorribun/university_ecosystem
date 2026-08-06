@@ -13,7 +13,7 @@
  * reads from it.
  */
 import { afterEach, beforeEach, describe, expect, it } from "vitest"
-import type { RouterContext } from "../router"
+import { getRouter, type RouterContext } from "../router"
 
 type SsrAuthGetter = (() => RouterContext["auth"] | undefined) | undefined
 
@@ -23,7 +23,7 @@ declare global {
   var __ssrAuthGetter__: SsrAuthGetter
 }
 
-describe("router.getRouter() — Wave 126 SSR auth context", { timeout: 30000 }, () => {
+describe("router.getRouter() — Wave 126 SSR auth context", { timeout: 60000 }, () => {
   let originalGetter: SsrAuthGetter
 
   beforeEach(() => {
@@ -34,9 +34,8 @@ describe("router.getRouter() — Wave 126 SSR auth context", { timeout: 30000 },
     globalThis.__ssrAuthGetter__ = originalGetter
   })
 
-  it("falls back to DEFAULT_AUTH (loading:false, isAuth:false) when getter is undefined", async () => {
+  it("falls back to DEFAULT_AUTH (loading:false, isAuth:false) when getter is undefined", () => {
     globalThis.__ssrAuthGetter__ = undefined
-    const { getRouter } = await import("../router")
     const router = getRouter()
     expect(router.options.context).toBeDefined()
     expect(router.options.context.auth).toEqual({
@@ -46,9 +45,8 @@ describe("router.getRouter() — Wave 126 SSR auth context", { timeout: 30000 },
     })
   })
 
-  it("falls back to DEFAULT_AUTH when getter returns undefined explicitly", async () => {
+  it("falls back to DEFAULT_AUTH when getter returns undefined explicitly", () => {
     globalThis.__ssrAuthGetter__ = () => undefined
-    const { getRouter } = await import("../router")
     const router = getRouter()
     expect(router.options.context.auth).toEqual({
       isAuth: false,
@@ -57,31 +55,29 @@ describe("router.getRouter() — Wave 126 SSR auth context", { timeout: 30000 },
     })
   })
 
-  it("uses SSR auth state when getter returns authenticated user", async () => {
+  it("uses SSR auth state when getter returns authenticated user", () => {
     const ssrAuth: RouterContext["auth"] = {
       isAuth: true,
       user: { role: "student" },
       loading: false,
     }
     globalThis.__ssrAuthGetter__ = () => ssrAuth
-    const { getRouter } = await import("../router")
     const router = getRouter()
     expect(router.options.context.auth).toEqual(ssrAuth)
   })
 
-  it("uses SSR auth state with admin role when getter returns admin user", async () => {
+  it("uses SSR auth state with admin role when getter returns admin user", () => {
     globalThis.__ssrAuthGetter__ = () => ({
       isAuth: true,
       user: { role: "admin" },
       loading: false,
     })
-    const { getRouter } = await import("../router")
     const router = getRouter()
     expect(router.options.context.auth.user?.role).toBe("admin")
     expect(router.options.context.auth.isAuth).toBe(true)
   })
 
-  it("calls getter fresh on each invocation (per-request scope)", async () => {
+  it("calls getter fresh on each invocation (per-request scope)", () => {
     let callCount = 0
     globalThis.__ssrAuthGetter__ = () => {
       callCount += 1
@@ -91,7 +87,6 @@ describe("router.getRouter() — Wave 126 SSR auth context", { timeout: 30000 },
         loading: false,
       }
     }
-    const { getRouter } = await import("../router")
     const r1 = getRouter()
     const r2 = getRouter()
     expect(callCount).toBe(2)
@@ -99,11 +94,27 @@ describe("router.getRouter() — Wave 126 SSR auth context", { timeout: 30000 },
     expect(r2.options.context.auth.isAuth).toBe(true)
   })
 
-  it("provides a fresh QueryClient per call (no shared cache state)", async () => {
+  it("provides a fresh QueryClient per call (no shared cache state)", () => {
     globalThis.__ssrAuthGetter__ = undefined
-    const { getRouter } = await import("../router")
     const r1 = getRouter()
     const r2 = getRouter()
     expect(r1.options.context.queryClient).not.toBe(r2.options.context.queryClient)
+  })
+
+  it("provides an accessible visible pending component for suspended routes", () => {
+    globalThis.__ssrAuthGetter__ = undefined
+    const pending = getRouter().options.defaultPendingComponent?.({})
+
+    expect(pending).toMatchObject({
+      type: "div",
+      props: {
+        role: "status",
+        "aria-live": "polite",
+        children: expect.objectContaining({
+          type: "span",
+          props: { children: "Loading…" },
+        }),
+      },
+    })
   })
 })

@@ -1,3 +1,4 @@
+import { memo } from "react"
 import { Skeleton } from "@/components/ui"
 import { cn } from "@/utils/cn"
 
@@ -5,7 +6,7 @@ interface NewsCardSkeletonProps {
   featured?: boolean
 }
 
-const NewsCardSkeleton = ({ featured }: NewsCardSkeletonProps) => {
+export const NewsCardSkeleton = memo(({ featured }: NewsCardSkeletonProps) => {
   return (
     <article
       className={cn(
@@ -49,7 +50,8 @@ const NewsCardSkeleton = ({ featured }: NewsCardSkeletonProps) => {
       </div>
     </article>
   )
-}
+})
 
-// PERF-27-02: Removed React.memo() — React Compiler "infer" mode handles memoization
+NewsCardSkeleton.displayName = "NewsCardSkeleton"
+
 export default NewsCardSkeleton

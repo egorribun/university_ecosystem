@@ -146,6 +146,89 @@ describe("InstallPrompt", () => {
     })
   })
 
+  it("hides the panel after a dismissed install prompt and remembers the choice", async () => {
+    const user = userEvent.setup()
+    render(<InstallPrompt />)
+    const event = await fireBeforeInstallPrompt("dismissed")
+
+    await user.click(screen.getByText("system:installPrompt.install"))
+
+    await waitFor(() => {
+      expect(screen.queryByText("system:installPrompt.installTitle")).not.toBeInTheDocument()
+    })
+    expect((event as unknown as { prompt: ReturnType<typeof vi.fn> }).prompt).toHaveBeenCalled()
+    expect(window.localStorage.getItem("ecosystem.pwa.install.dismissedAt")).not.toBeNull()
+  })
+
+  it("fails safe when the install prompt rejects", async () => {
+    const user = userEvent.setup()
+    const event = makeBeforeInstallPromptEvent()
+    event.prompt = vi.fn(() => Promise.reject(new Error("prompt failed")))
+    render(<InstallPrompt />)
+
+    await act(async () => {
+      window.dispatchEvent(event)
+      await Promise.resolve()
+    })
+    await user.click(screen.getByText("system:installPrompt.install"))
+
+    await waitFor(() => {
+      expect(screen.queryByText("system:installPrompt.installTitle")).not.toBeInTheDocument()
+    })
+    expect(window.localStorage.getItem("ecosystem.pwa.install.dismissedAt")).not.toBeNull()
+  })
+
+  it("ignores malformed and currently suppressed install timestamps", async () => {
+    window.localStorage.setItem("ecosystem.pwa.install.dismissedAt", "not-a-timestamp")
+    const first = render(<InstallPrompt />)
+    await fireBeforeInstallPrompt()
+    expect(screen.getByText("system:installPrompt.installTitle")).toBeInTheDocument()
+    first.unmount()
+
+    window.localStorage.setItem(
+      "ecosystem.pwa.install.dismissedAt",
+      String(Date.now() + 7 * 24 * 60 * 60 * 1000)
+    )
+    render(<InstallPrompt />)
+    await fireBeforeInstallPrompt()
+    expect(screen.queryByText("system:installPrompt.installTitle")).not.toBeInTheDocument()
+  })
+
+  it("continues when localStorage read, write, and remove operations fail", async () => {
+    const getItem = vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => {
+      throw new Error("read failed")
+    })
+    const setItem = vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw new Error("write failed")
+    })
+    const removeItem = vi.spyOn(Storage.prototype, "removeItem").mockImplementation(() => {
+      throw new Error("remove failed")
+    })
+    const user = userEvent.setup()
+
+    const first = render(<InstallPrompt />)
+    await fireBeforeInstallPrompt("dismissed")
+    await user.click(screen.getByText("system:installPrompt.install"))
+    await waitFor(() => {
+      expect(screen.queryByText("system:installPrompt.installTitle")).not.toBeInTheDocument()
+    })
+    first.unmount()
+
+    render(<InstallPrompt />)
+    await fireBeforeInstallPrompt("accepted")
+    await user.click(screen.getByText("system:installPrompt.install"))
+    await waitFor(() => {
+      expect(screen.queryByText("system:installPrompt.installTitle")).not.toBeInTheDocument()
+    })
+
+    expect(getItem).toHaveBeenCalled()
+    expect(setItem).toHaveBeenCalled()
+    expect(removeItem).toHaveBeenCalled()
+    getItem.mockRestore()
+    setItem.mockRestore()
+    removeItem.mockRestore()
+  })
+
   it("remembers a dismissal and hides the install panel when the user clicks Later", async () => {
     const user = userEvent.setup()
     render(<InstallPrompt />)
@@ -229,6 +312,36 @@ describe("InstallPrompt", () => {
     expect(screen.queryByText("system:installPrompt.toggleLabel")).not.toBeInTheDocument()
   })
 
+  it("renders the notification topic controls during a granted-state transition", async () => {
+    const user = userEvent.setup()
+    const { rerender } = render(<InstallPrompt />)
+
+    // A browser permission transition can briefly expose the already-granted
+    // controls before the visibility effect settles. Use a non-terminal
+    // permission token to exercise that UI state deterministically.
+    resetPushPrefs({
+      notificationPermission: "transitioning" as NotificationPermission,
+      notificationsEnabled: true,
+    })
+    rerender(<InstallPrompt />)
+
+    expect(screen.getByText("system:installPrompt.toggleLabel")).toBeInTheDocument()
+    expect(screen.getByText("notifications:topics.schedule")).toBeInTheDocument()
+    const switches = screen.getAllByRole("checkbox")
+    await user.click(switches[0]!)
+    expect(disableNotifications).toHaveBeenCalled()
+    await user.click(switches[1]!)
+    expect(topicToggleInner).toHaveBeenCalled()
+
+    resetPushPrefs({
+      notificationPermission: "transitioning" as NotificationPermission,
+      notificationsEnabled: false,
+    })
+    rerender(<InstallPrompt />)
+    await user.click(screen.getAllByRole("checkbox")[0]!)
+    expect(enableNotifications).toHaveBeenCalled()
+  })
+
   it("hides the push panel entirely under the VITE_LHCI gate", () => {
     vi.stubEnv("VITE_LHCI", "true")
     render(<InstallPrompt />)
@@ -307,6 +420,17 @@ describe("InstallPrompt", () => {
     })
 
     expect(await screen.findByText("Something broke")).toBeInTheDocument()
+  })
+
+  it("renders an informational feedback toast", async () => {
+    render(<InstallPrompt />)
+
+    await act(async () => {
+      onNotifyRef?.({ text: "Heads up", severity: "info" })
+      await Promise.resolve()
+    })
+
+    expect(await screen.findByText("Heads up")).toBeInTheDocument()
   })
 
   it("renders both install and push panels (divider branch) when both are eligible", async () => {

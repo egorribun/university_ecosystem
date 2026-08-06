@@ -1,4 +1,4 @@
-import { useMemo, useRef, useEffect, useCallback } from "react"
+import { memo, useMemo, useRef, useEffect, useCallback } from "react"
 import { useTranslation } from "react-i18next"
 import { Plus as AddIcon, Calendar as TodayIcon } from "lucide-react"
 import { EmptyState } from "@/components/ui/EmptyState"
@@ -32,7 +32,7 @@ type ScheduleDesktopTableProps = Pick<
   notesMap: Map<string, boolean>
 }
 
-export function ScheduleDesktopTable({
+export const ScheduleDesktopTable = memo(function ScheduleDesktopTable({
   schedule,
   weekdayBackend,
   weekdayLabels,
@@ -311,4 +311,6 @@ export function ScheduleDesktopTable({
       </div>
     </div>
   )
-}
+})
+
+export default ScheduleDesktopTable

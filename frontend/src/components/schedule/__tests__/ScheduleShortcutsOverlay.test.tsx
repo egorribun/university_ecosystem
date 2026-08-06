@@ -11,7 +11,8 @@ vi.mock("react-i18next", () => ({
     i18n: { language: "en", changeLanguage: () => Promise.resolve() },
   }),
 }))
-vi.mock("@/hooks/useMediaQuery", () => ({ default: () => true }))
+const mediaState = vi.hoisted(() => ({ prefersReduced: true }))
+vi.mock("@/hooks/useMediaQuery", () => ({ default: () => mediaState.prefersReduced }))
 
 import { ScheduleShortcutsOverlay } from "@/components/schedule/ScheduleShortcutsOverlay"
 
@@ -31,6 +32,16 @@ describe("ScheduleShortcutsOverlay", () => {
     expect(screen.getByText("schedule:shortcuts.today")).toBeInTheDocument()
     expect(screen.getByText("Enter")).toBeInTheDocument()
     expect(screen.getByText("Esc")).toBeInTheDocument()
+  })
+
+  it("uses the spring transition when reduced motion is disabled", () => {
+    mediaState.prefersReduced = false
+    try {
+      render(<ScheduleShortcutsOverlay {...baseProps} />)
+      expect(screen.getByRole("dialog")).toBeInTheDocument()
+    } finally {
+      mediaState.prefersReduced = true
+    }
   })
 
   it("fires onClose from the close button", async () => {

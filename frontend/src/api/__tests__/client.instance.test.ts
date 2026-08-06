@@ -92,6 +92,29 @@ describe("api/client — request interceptor: GET pass-through", () => {
   })
 })
 
+describe("api/client — legacy wrapper compatibility", () => {
+  it("forwards every legacy verb helper to the configured axios instance", async () => {
+    const { apiClient: legacyApiClient } = await import("@/api/client")
+    const seen = installAdapter((config) => ({ data: { method: config.method } }))
+
+    await legacyApiClient.get("/legacy-get")
+    await legacyApiClient.post("/legacy-post", { ok: true })
+    await legacyApiClient.put("/legacy-put", { ok: true })
+    await legacyApiClient.patch("/legacy-patch", { ok: true })
+    await legacyApiClient.delete("/legacy-delete")
+    await legacyApiClient.request({ method: "GET", url: "/legacy-request" })
+
+    expect(seen.map((config) => (config.method ?? "").toLowerCase())).toEqual([
+      "get",
+      "post",
+      "put",
+      "patch",
+      "delete",
+      "get",
+    ])
+  })
+})
+
 describe("api/client — request interceptor: FormData", () => {
   it("removes the JSON Content-Type so the browser sets the multipart boundary", async () => {
     const seen = installAdapter()
@@ -161,6 +184,107 @@ describe("api/client — response interceptor: 401 skip-unauthorized", () => {
       api.get("/users/me", { headers: { [SKIP_UNAUTHORIZED_HEADER]: "1" } } as never)
     ).rejects.toMatchObject({ response: { status: 401 } })
   })
+
+  it("propagates a normal 401 when no skip header is present", async () => {
+    api.defaults.adapter = async (config): Promise<AxiosResponse> => {
+      throw Object.assign(new Error("Unauthorized"), {
+        config,
+        response: {
+          status: 401,
+          statusText: "Unauthorized",
+          headers: new AxiosHeaders(),
+          data: { detail: "login required" },
+          config,
+        },
+      })
+    }
+
+    await expect(api.get("/private")).rejects.toMatchObject({
+      response: { status: 401 },
+    })
+  })
+})
+
+describe("api/client — defensive response cleanup", () => {
+  it("invalidates a cached ETag after a failed response", async () => {
+    const seen: CapturedConfig[] = []
+    let calls = 0
+    api.defaults.adapter = async (config): Promise<AxiosResponse> => {
+      seen.push(config as CapturedConfig)
+      calls += 1
+      if (calls === 1) {
+        return {
+          data: { ok: true },
+          status: 200,
+          statusText: "OK",
+          headers: AxiosHeaders.from({ etag: '"stale-tag"' }),
+          config,
+          request: {},
+        }
+      }
+      if (calls === 2) {
+        throw Object.assign(new Error("upstream failure"), {
+          config,
+          response: {
+            status: 500,
+            statusText: "Internal Server Error",
+            headers: new AxiosHeaders(),
+            data: { detail: "boom" },
+            config,
+          },
+        })
+      }
+      return {
+        data: { ok: true },
+        status: 200,
+        statusText: "OK",
+        headers: new AxiosHeaders(),
+        config,
+        request: {},
+      }
+    }
+
+    const requestConfig = { etagCacheKey: "events:failed-response" } as never
+    await api.get("/events", requestConfig)
+    await expect(api.get("/events", requestConfig)).rejects.toMatchObject({
+      response: { status: 500 },
+    })
+    await api.get("/events", requestConfig)
+
+    expect(AxiosHeaders.from(seen[1]!.headers).get("if-none-match")).toBe('"stale-tag"')
+    expect(AxiosHeaders.from(seen[2]!.headers).get("if-none-match")).toBeUndefined()
+  })
+
+  it("tolerates a plain headers object in the response config cleanup path", async () => {
+    api.defaults.adapter = async (config): Promise<AxiosResponse> => {
+      const responseConfig = { ...config, headers: { Accept: "application/json" } }
+      return {
+        data: { ok: true },
+        status: 200,
+        statusText: "OK",
+        headers: new AxiosHeaders(),
+        config: responseConfig as InternalAxiosRequestConfig,
+        request: {},
+      }
+    }
+
+    await expect(api.get("/events")).resolves.toMatchObject({ status: 200 })
+  })
+})
+
+describe("api/client — rate-limit bypass guard", () => {
+  it("demotes a non-allowlisted bypass request back to the client queue", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => undefined)
+    const seen = installAdapter()
+
+    await api.get("/news", { skipRateLimitQueue: true } as never)
+
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining("skipRateLimitQueue=true for non-allowlisted URL: /news")
+    )
+    expect(seen[0]!.skipRateLimitQueue).toBe(false)
+    warnSpy.mockRestore()
+  })
 })
 
 describe("api/client — ensureCsrfCookie", () => {
@@ -195,5 +319,12 @@ describe("api/client — prefix normalization", () => {
     expect(seen).toHaveLength(1)
     expect(seen[0]!.url).toBe("http://localhost:8000/news")
     api.defaults.baseURL = ""
+  })
+
+  it("keeps the request alive when an absolute URL cannot be parsed", async () => {
+    const seen = installAdapter()
+
+    await expect(api.get("http://%")).resolves.toMatchObject({ status: 200 })
+    expect(seen).toHaveLength(1)
   })
 })

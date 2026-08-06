@@ -207,6 +207,35 @@ describe("useLoginForm suggestion + trustDevice setter", () => {
     expect(result.current.emailSuggestion).toBeNull()
   })
 
+  it("does not ask for a domain suggestion when the trimmed email is empty", async () => {
+    const { result } = renderHook(() => useLoginForm())
+    act(() => {
+      result.current.form.setValue("email", "   ")
+    })
+
+    await act(async () => {
+      await result.current.handleEmailBlur()
+    })
+
+    expect(mocks.suggestEmailDomain).not.toHaveBeenCalled()
+    expect(result.current.emailSuggestion).toBeNull()
+  })
+
+  it("clears the suggestion when the helper returns the same email", async () => {
+    mocks.suggestEmailDomain.mockReturnValue("same@example.com")
+    const { result } = renderHook(() => useLoginForm())
+    act(() => {
+      result.current.form.setValue("email", "same@example.com")
+    })
+
+    await act(async () => {
+      await result.current.handleEmailBlur()
+    })
+
+    expect(mocks.suggestEmailDomain).toHaveBeenCalledWith("same@example.com")
+    expect(result.current.emailSuggestion).toBeNull()
+  })
+
   it("setTrustDevice updates the form value (lines 188-190)", () => {
     const { result } = renderHook(() => useLoginForm())
     act(() => {
@@ -221,6 +250,21 @@ describe("useLoginForm suggestion + trustDevice setter", () => {
 // ---------------------------------------------------------------------------
 
 describe("useLoginForm.handlePasskeyLogin", () => {
+  it("stops before WebAuthn when the email field already has a validation error", async () => {
+    const { result } = renderHook(() => useLoginForm())
+    act(() => {
+      result.current.form.setError("email", { type: "manual", message: "Required" })
+    })
+    await waitFor(() => expect(result.current.form.formState.errors.email).toBeTruthy())
+
+    await act(async () => {
+      await result.current.handlePasskeyLogin()
+    })
+
+    expect(mocks.loginWithPasskey).not.toHaveBeenCalled()
+    expect(mocks.navigate).not.toHaveBeenCalled()
+  })
+
   it("logs in with passkey then redirects (lines 170-173)", async () => {
     mocks.routerSearch = { redirect: "/dashboard" }
     const { result } = renderHook(() => useLoginForm())
@@ -265,6 +309,101 @@ describe("useLoginForm.handlePasskeyLogin", () => {
       await result.current.handlePasskeyLogin()
     })
     await waitFor(() => expect(result.current.passkeyError).toBe("No passkey registered"))
+  })
+
+  it("normalizes an empty current email before the passkey call", async () => {
+    const { result } = renderHook(() => useLoginForm())
+
+    await act(async () => {
+      await result.current.handlePasskeyLogin()
+    })
+
+    expect(mocks.loginWithPasskey).toHaveBeenCalledWith("", false)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// useMfaFlow.handleRecoveryVerify — lines 356-395
+// ---------------------------------------------------------------------------
+
+describe("useMfaFlow.handleRecoveryVerify", () => {
+  it("surfaces a general expired error when the login challenge is absent", async () => {
+    mocks.pendingMfa = null
+    const { result } = renderHook(() => useMfaFlow())
+
+    await act(async () => {
+      await result.current.handleRecoveryVerify("RECOVERY", false)
+    })
+
+    expect(result.current.mfaError).toBe("auth:mfa.errors.expired")
+    expect(result.current.mfaErrorSource).toBe("general")
+    expect(mocks.submitMfaChallenge).not.toHaveBeenCalled()
+  })
+
+  it("submits a recovery code and redirects on success", async () => {
+    mocks.pendingMfa = mfaLogin()
+    mocks.routerState = { from: { pathname: "/secure" } }
+    const { result } = renderHook(() => useMfaFlow())
+
+    await act(async () => {
+      await result.current.handleRecoveryVerify("RECOVERY-123", true)
+    })
+
+    expect(mocks.submitMfaChallenge).toHaveBeenCalledWith({
+      method: "recovery_code",
+      code: "RECOVERY-123",
+      challengeToken: "ct-totp",
+      trustDevice: true,
+    })
+    expect(mocks.navigate).toHaveBeenCalledWith({ to: "/secure", replace: true })
+    expect(result.current.mfaBusy).toBe(false)
+  })
+
+  it("routes a locked recovery challenge to the general banner", async () => {
+    mocks.pendingMfa = mfaLogin()
+    mocks.submitMfaChallenge.mockRejectedValue(new ChallengeLockedError("Recovery locked"))
+    const { result } = renderHook(() => useMfaFlow())
+
+    await act(async () => {
+      await result.current.handleRecoveryVerify("LOCKED", false)
+    })
+
+    expect(result.current.mfaError).toBe("Recovery locked")
+    expect(result.current.mfaErrorSource).toBe("general")
+  })
+
+  it("keeps a generic recovery error in the general banner", async () => {
+    mocks.pendingMfa = mfaLogin()
+    mocks.submitMfaChallenge.mockRejectedValue(new Error("Invalid recovery code"))
+    const { result } = renderHook(() => useMfaFlow())
+
+    await act(async () => {
+      await result.current.handleRecoveryVerify("BAD", false)
+    })
+
+    expect(result.current.mfaError).toBe("Invalid recovery code")
+    expect(result.current.mfaErrorSource).toBe("general")
+  })
+
+  it("prefers Axios detail for a recovery error", async () => {
+    mocks.pendingMfa = mfaLogin()
+    const err = new AxiosError("bad")
+    err.response = {
+      status: 400,
+      headers: {},
+      data: { detail: "Recovery code rejected" },
+      statusText: "",
+      config: {} as never,
+    }
+    mocks.submitMfaChallenge.mockRejectedValue(err)
+    const { result } = renderHook(() => useMfaFlow())
+
+    await act(async () => {
+      await result.current.handleRecoveryVerify("BAD", false)
+    })
+
+    expect(result.current.mfaError).toBe("Recovery code rejected")
+    expect(result.current.mfaErrorSource).toBe("general")
   })
 })
 

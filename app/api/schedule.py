@@ -31,7 +31,7 @@ from app.schemas import schemas
 
 @lru_cache(maxsize=1)
 def _get_vary_helper() -> Callable[[Response, str], None]:
-    from app.main import _ensure_vary_header
+    from app.core.middleware.response_hardening import _ensure_vary_header
 
     return _ensure_vary_header
 

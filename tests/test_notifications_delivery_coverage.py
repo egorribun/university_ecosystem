@@ -15,7 +15,8 @@ from __future__ import annotations
 import typing
 import uuid
 from datetime import UTC, datetime
-from unittest.mock import AsyncMock
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from sqlalchemy import select
@@ -107,6 +108,32 @@ def no_process_results(monkeypatch: pytest.MonkeyPatch) -> None:
 async def test_empty_user_ids_returns_zero(db_session):
     created = await create_notifications_for_users(db_session, title="T", user_ids=[])
     assert created == 0
+
+
+@pytest.mark.asyncio
+async def test_user_filter_retaining_user_continues_to_notification_insert(monkeypatch):
+    user_id = uuid.uuid4()
+    filtered_rows = MagicMock()
+    filtered_rows.scalars.return_value.all.return_value = [user_id]
+    db = MagicMock()
+    db.execute = AsyncMock(side_effect=[filtered_rows, MagicMock()])
+    db.flush = AsyncMock()
+    db.add = MagicMock()
+    monkeypatch.setattr(notifications_delivery, "_is_push_configured", lambda: False)
+
+    def _retain_user(stmt):
+        return stmt
+
+    assert (
+        await create_notifications_for_users(
+            db,
+            title="Filtered",
+            user_ids=[user_id],
+            user_filter=_retain_user,
+        )
+        == 1
+    )
+    assert db.execute.await_count == 2
 
 
 @pytest.mark.asyncio
@@ -397,3 +424,74 @@ async def test_webpush_timeout_records_error(
     assert len(rows) == 1
     assert rows[0].status == "error"
     assert "push delivery timed out" in rows[0].detail
+
+
+@pytest.mark.asyncio
+async def test_delivery_ignores_subscriptions_without_matching_notification(
+    monkeypatch,
+):
+    user_id = uuid.uuid4()
+    orphan_subscription = SimpleNamespace(user_id=None, id=uuid.uuid4())
+    unrelated_subscription = SimpleNamespace(user_id=uuid.uuid4(), id=uuid.uuid4())
+    subscriptions = MagicMock()
+    subscriptions.scalars.return_value = [orphan_subscription, unrelated_subscription]
+    db = MagicMock()
+    db.execute = AsyncMock(side_effect=[MagicMock(), subscriptions])
+    db.flush = AsyncMock()
+    db.add = MagicMock()
+    monkeypatch.setattr(notifications_delivery, "_is_push_configured", lambda: True)
+
+    assert (
+        await create_notifications_for_users(db, title="No match", user_ids=[user_id])
+        == 1
+    )
+    assert db.execute.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_default_webpush_path_handles_empty_normalized_actions(monkeypatch):
+    user_id = uuid.uuid4()
+    subscription = SimpleNamespace(
+        user_id=user_id,
+        id=uuid.uuid4(),
+        endpoint="https://push.example.test/subscription",
+        user=None,
+    )
+    subscriptions = MagicMock()
+    subscriptions.scalars.return_value = [subscription]
+    db = MagicMock()
+    db.execute = AsyncMock(side_effect=[MagicMock(), subscriptions, MagicMock()])
+    db.flush = AsyncMock()
+    db.add = MagicMock()
+    result = WebPushResult(
+        subscription_id=subscription.id,
+        endpoint=subscription.endpoint,
+        user_id=user_id,
+        status="sent",
+    )
+    send_async = AsyncMock(return_value=result)
+    process_results = AsyncMock()
+    monkeypatch.setattr(notifications_delivery, "_is_push_configured", lambda: True)
+    monkeypatch.setattr(
+        notifications_delivery,
+        "subscription_supports_topic",
+        lambda _sub, _topic: True,
+    )
+    monkeypatch.setattr(
+        notifications_delivery,
+        "prepare_push_payload_for_user",
+        lambda payload, _user: payload,
+    )
+    monkeypatch.setattr(webpush_module, "_send_push_async", send_async)
+    monkeypatch.setattr(webpush_module, "process_push_results", process_results)
+
+    created = await create_notifications_for_users(
+        db,
+        title="Default path",
+        actions=[{"action": "missing-title"}],
+        user_ids=[user_id],
+    )
+
+    assert created == 1
+    send_async.assert_awaited_once()
+    process_results.assert_awaited_once()

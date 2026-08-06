@@ -319,6 +319,32 @@ async def test_paginate_cursor_with_cursor_value():
 
 
 @pytest.mark.asyncio
+async def test_paginate_cursor_ignores_malformed_cursor():
+    """A non-decodable cursor skips filtering but still paginates normally."""
+    session = AsyncMock()
+    stmt = MagicMock()
+    stmt.order_by.return_value = stmt
+    stmt.limit.return_value = stmt
+    cursor_column = MagicMock()
+    cursor_column.desc.return_value = cursor_column
+    cursor_column.key = "id"
+
+    mock_scalars = MagicMock()
+    mock_scalars.all.return_value = []
+    session.scalars.return_value = mock_scalars
+
+    result = await paginate_cursor(
+        session,
+        stmt,
+        cursor_column,
+        CursorParams(cursor="not-a-valid-base64-cursor!", limit=10),
+    )
+
+    stmt.where.assert_not_called()
+    assert not result.has_more
+
+
+@pytest.mark.asyncio
 async def test_paginate_cursor_invalid_uuid_fallback():
     session = AsyncMock()
     stmt = MagicMock()

@@ -56,8 +56,8 @@ func startNATSContainer(t *testing.T) (*nats.Conn, func()) {
 		"nats:2.12.6-alpine",
 		// JetStream not required for the cache.invalidate / chat.* / notifications.*
 		// subjects this test suite covers — they run on core NATS pub/sub.
-		// JetStream-specific tests (PERF-22-01 NakWithDelay redelivery) would
-		// add `tcnats.WithArgument("jetstream", "")`.
+		// The testcontainers NATS module enables JetStream by default; this suite
+		// intentionally uses only core pub/sub subjects.
 		testcontainers.WithLogger(tclog.TestLogger(t)),
 	)
 	if err != nil {
@@ -453,7 +453,7 @@ func TestIntegration_HandleRegisterMaxClients(t *testing.T) {
 		Send:  make(chan []byte, 1),
 		Hub:   h,
 		ctx:   ctx,
-		Conn:  serverSideConn,
+		Conn:  NewWebSocketSession(serverSideConn),
 	}
 	h.handleRegister(ctx, c3)
 
@@ -632,7 +632,7 @@ func TestIntegration_NATSCacheInvalidation(t *testing.T) {
 	t.Cleanup(cleanup)
 
 	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelWarn}))
-	internalSecret := "integration-test-secret"
+	internalSecret := "integration-test-secret" // pragma: allowlist secret
 	cfg := &config.Config{
 		MaxClients:          10,
 		BroadcastBufferSize: 4,

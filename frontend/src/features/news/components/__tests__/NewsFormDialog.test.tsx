@@ -1,8 +1,20 @@
-import { render, screen, waitFor } from "@testing-library/react"
+import { fireEvent, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
-import { describe, expect, it, vi, beforeEach } from "vitest"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { http, HttpResponse } from "msw"
+
+const apiMocks = vi.hoisted(() => ({
+  uploadNewsImage: vi.fn(),
+}))
+
+vi.mock("@/api/news", async () => {
+  const actual = await vi.importActual<typeof import("@/api/news")>("@/api/news")
+  return {
+    ...actual,
+    uploadNewsImage: apiMocks.uploadNewsImage,
+  }
+})
 
 import { server } from "@/tests/mocks/server"
 import { NewsFormDialog } from "../NewsFormDialog"
@@ -28,6 +40,10 @@ describe("NewsFormDialog", () => {
   beforeEach(() => {
     vi.clearAllMocks()
     server.resetHandlers()
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
   })
 
   it("renders correctly when open", () => {
@@ -99,5 +115,132 @@ describe("NewsFormDialog", () => {
     // Ensure dialog remains open
     expect(defaultProps.onClose).not.toHaveBeenCalled()
     expect(defaultProps.onSuccess).not.toHaveBeenCalled()
+  })
+
+  it("previews an image and submits optional English fields with the uploaded URL", async () => {
+    const user = userEvent.setup()
+    const createPayloads: Array<Record<string, unknown>> = []
+    const objectUrl = vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:news-preview")
+
+    server.use(
+      http.post("*/news", async ({ request }) => {
+        createPayloads.push((await request.json()) as Record<string, unknown>)
+        return HttpResponse.json({
+          id: "123e4567-e89b-12d3-a456-426614174000",
+          title: "My Breaking News",
+          content: "This is the content of the news.",
+          title_en: "Breaking News",
+          content_en: "English content",
+          created_at: new Date().toISOString(),
+          image_url_optimized: "https://cdn.example.com/news-cover.png",
+          likes_count: 0,
+          comments_count: 0,
+          is_liked: false,
+        })
+      })
+    )
+    apiMocks.uploadNewsImage.mockResolvedValueOnce("https://cdn.example.com/news-cover.png")
+
+    renderWithProviders(<NewsFormDialog {...defaultProps} />)
+    const imageInput = document.querySelector('input[type="file"]') as HTMLInputElement
+    const image = new File(["png-bytes"], "cover.png", { type: "image/png" })
+    await user.upload(imageInput, image)
+
+    expect(objectUrl).toHaveBeenCalledWith(image)
+    expect(screen.getByText(/Change photo/i)).toBeInTheDocument()
+    expect(screen.getByRole("img", { name: /new cover/i })).toHaveAttribute(
+      "src",
+      "blob:news-preview"
+    )
+
+    await user.type(screen.getByLabelText(/^Title(?! \()/i), "My Breaking News")
+    await user.type(screen.getByLabelText(/^News text(?! \()/i), "This is the content of the news.")
+    await user.type(screen.getByLabelText(/Title \(English\)/i), "Breaking News")
+    await user.type(screen.getByLabelText(/News text \(English\)/i), "English content")
+    const submitBtn = screen.getByRole("button", { name: /Publish/i })
+    await waitFor(() => expect(submitBtn).toBeEnabled())
+    await user.click(submitBtn)
+
+    await waitFor(() => expect(defaultProps.onSuccess).toHaveBeenCalledTimes(1))
+    expect(apiMocks.uploadNewsImage).toHaveBeenCalledWith(image)
+    expect(createPayloads).toHaveLength(1)
+    expect(createPayloads[0]).toMatchObject({
+      title: "My Breaking News",
+      content: "This is the content of the news.",
+      image_url: "https://cdn.example.com/news-cover.png",
+      title_en: "Breaking News",
+      content_en: "English content",
+    })
+  })
+
+  it("shows image validation errors and resets fields after reopening", async () => {
+    const user = userEvent.setup()
+    const { rerender } = renderWithProviders(<NewsFormDialog {...defaultProps} />)
+    const imageInput = document.querySelector('input[type="file"]') as HTMLInputElement
+    await user.upload(imageInput, new File(["gif"], "cover.gif", { type: "image/gif" }))
+
+    expect(
+      await screen.findByText(/Only \.jpg, \.jpeg, \.png and \.webp formats are supported/i)
+    ).toBeInTheDocument()
+
+    await user.type(screen.getByLabelText(/^Title(?! \()/i), "Temporary title")
+    rerender(
+      <QueryClientProvider client={new QueryClient()}>
+        <NewsFormDialog {...defaultProps} open={false} />
+      </QueryClientProvider>
+    )
+    rerender(
+      <QueryClientProvider client={new QueryClient()}>
+        <NewsFormDialog {...defaultProps} open={true} />
+      </QueryClientProvider>
+    )
+    expect(screen.getByLabelText(/^Title(?! \()/i)).toHaveValue("")
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument()
+  })
+
+  it("handles message-shaped and network submission errors without closing", async () => {
+    const user = userEvent.setup()
+    server.use(
+      http.post("*/news", () =>
+        HttpResponse.json({ message: "Publishing is temporarily disabled" }, { status: 503 })
+      )
+    )
+    renderWithProviders(<NewsFormDialog {...defaultProps} />)
+    await user.type(screen.getByLabelText(/^Title(?! \()/i), "Unavailable")
+    await user.type(screen.getByLabelText(/^News text(?! \()/i), "Please retry later")
+    await user.click(screen.getByRole("button", { name: /Publish/i }))
+    expect(await screen.findByRole("alert")).toHaveTextContent("Publishing is temporarily disabled")
+    expect(defaultProps.onClose).not.toHaveBeenCalled()
+
+    server.use(http.post("*/news", () => HttpResponse.error()))
+    await user.click(screen.getByRole("button", { name: /Publish/i }))
+    expect(await screen.findByRole("alert")).toHaveTextContent(/network error|network error/i)
+  })
+
+  it("allows cancelling and supports a dialog without an onSuccess callback", async () => {
+    const user = userEvent.setup()
+    const onClose = vi.fn()
+    renderWithProviders(<NewsFormDialog open={true} onClose={onClose} />)
+    await user.click(screen.getByRole("button", { name: /Cancel/i }))
+    expect(onClose).toHaveBeenCalledTimes(1)
+  })
+
+  it("renders required and optional English validation messages", async () => {
+    renderWithProviders(<NewsFormDialog {...defaultProps} />)
+    fireEvent.submit(document.querySelector("form")!)
+
+    expect(await screen.findByText("Title is required")).toBeInTheDocument()
+    expect(screen.getByText("Content is required")).toBeInTheDocument()
+
+    fireEvent.change(screen.getByLabelText(/Title \(English\)/i), {
+      target: { value: "x".repeat(101) },
+    })
+    fireEvent.change(screen.getByLabelText(/News text \(English\)/i), {
+      target: { value: "x".repeat(3001) },
+    })
+    expect(
+      await screen.findByText("Title (EN) must be less than 100 characters")
+    ).toBeInTheDocument()
+    expect(screen.getByText("Content (EN) must be less than 3000 characters")).toBeInTheDocument()
   })
 })

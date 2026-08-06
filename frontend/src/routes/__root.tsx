@@ -21,7 +21,7 @@ import { QueryClientProvider } from "@tanstack/react-query"
 // continues to use per-request QueryClient from routerContext — IndexedDB is
 // browser-only, so server CANNOT use PersistQueryClientProvider regardless.
 import { PersistQueryClientProvider } from "@tanstack/react-query-persist-client"
-import { queryClient, idbPersister } from "@/app/queryClient"
+import { queryClient, persistOptions } from "@/app/queryClient"
 
 // Wave 125 Phase 2 — pre-paint inline scripts. These run in the document
 // scaffold BEFORE any React code or bundle JS evaluates, so they avoid
@@ -359,7 +359,7 @@ function RootComponent() {
   // WebSocketProvider sync init, MessengerProvider, MainLayout, OR
   // a deeper module-init issue (per W141 anti-pattern #1 iter cap reached).
   return (
-    <PersistQueryClientProvider client={queryClient} persistOptions={{ persister: idbPersister }}>
+    <PersistQueryClientProvider client={queryClient} persistOptions={persistOptions}>
       <ThemeProvider>
         <AppProviders>
           <MainLayout>

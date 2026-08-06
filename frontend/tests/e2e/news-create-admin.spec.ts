@@ -6,7 +6,7 @@
  * unauthenticated visitors. These tests act as a fast canary for regressions
  * that break the entire news subtree.
  */
-import { test, expect } from "@playwright/test"
+import { test, expect } from "./test"
 
 test.describe("News & Admin — Wave 11", () => {
   test("app root loads without uncaught JS errors", async ({ page }) => {

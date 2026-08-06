@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test"
+import { expect, test, type Page } from "./test"
 import { useMockApi } from "./utils/mockApi"
 
 /**
@@ -63,7 +63,7 @@ test.describe("MFA backup codes management", () => {
 
     const accountTab = page.getByRole("tab", { name: /account|аккаунт/i })
     if (await accountTab.isVisible({ timeout: 3000 })) {
-      await accountTab.click()
+      await accountTab.click({ force: true })
       await page.waitForTimeout(500)
     }
 
@@ -100,7 +100,7 @@ test.describe("MFA backup codes management", () => {
 
     const accountTab = page.getByRole("tab", { name: /account|аккаунт/i })
     if (await accountTab.isVisible({ timeout: 3000 })) {
-      await accountTab.click()
+      await accountTab.click({ force: true })
       await page.waitForTimeout(500)
     }
 
@@ -145,7 +145,7 @@ test.describe("MFA backup codes management", () => {
 
     const accountTab = page.getByRole("tab", { name: /account|аккаунт/i })
     if (await accountTab.isVisible({ timeout: 3000 })) {
-      await accountTab.click()
+      await accountTab.click({ force: true })
       await page.waitForTimeout(500)
     }
 

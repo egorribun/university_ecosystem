@@ -1,3 +1,4 @@
+import { memo } from "react"
 import { useNavigate } from "@tanstack/react-router"
 import { useTranslation } from "react-i18next"
 import { ArrowRight } from "lucide-react"
@@ -12,7 +13,11 @@ interface NewsCardListProps {
   locale: string
 }
 
-export function NewsCardList({ news, loading, locale }: NewsCardListProps) {
+export const NewsCardList = memo(function NewsCardList({
+  news,
+  loading,
+  locale,
+}: NewsCardListProps) {
   const { t } = useTranslation(["dashboard"])
   const navigate = useNavigate()
 
@@ -76,4 +81,6 @@ export function NewsCardList({ news, loading, locale }: NewsCardListProps) {
       ))}
     </ul>
   )
-}
+})
+
+export default NewsCardList

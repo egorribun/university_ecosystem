@@ -25,6 +25,8 @@ on:
       - "tests/contracts/test_ws_hub_contract.py"
       - "tests/contracts/test_gateway_rest_contract.py"
       - "tests/contracts/test_file_processor_grpc_contract.py"
+      - "tests/contracts/test_payload_migrations.py"
+      - "app/schemas/schemas.py"
       - "services/ws-hub/internal/contract/**"
       - "services/file-processor/internal/contract/**"
       - "services/file-processor/internal/service/**"
@@ -42,6 +44,8 @@ on:
       - "tests/contracts/test_ws_hub_contract.py"
       - "tests/contracts/test_gateway_rest_contract.py"
       - "tests/contracts/test_file_processor_grpc_contract.py"
+      - "tests/contracts/test_payload_migrations.py"
+      - "app/schemas/schemas.py"
       - "services/ws-hub/internal/contract/**"
       - "services/file-processor/internal/contract/**"
       - "services/file-processor/internal/service/**"
@@ -94,6 +98,7 @@ jobs:
             tests/contracts/test_ws_hub_contract.py \
             tests/contracts/test_gateway_rest_contract.py \
             tests/contracts/test_file_processor_grpc_contract.py \
+            tests/contracts/test_payload_migrations.py \
             -v \
             --tb=short \
             -p no:cacheprovider
@@ -207,8 +212,10 @@ jobs:
         image: pgvector/pgvector:pg17
         env:
           POSTGRES_USER: test
-          POSTGRES_PASSWORD: test
+          POSTGRES_PASSWORD: test # pragma: allowlist secret
           POSTGRES_DB: test
+        ports:
+          - 5432:5432
         options: >-
           --health-cmd "pg_isready -U test -d test"
           --health-interval 5s
@@ -216,6 +223,8 @@ jobs:
           --health-retries 12
       redis:
         image: redis:7-alpine
+        ports:
+          - 6379:6379
         options: >-
           --health-cmd "redis-cli ping"
           --health-interval 5s

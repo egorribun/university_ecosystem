@@ -152,4 +152,26 @@ describe("cryptoWorker wrapper", () => {
     await p
     expect(resolved).toBe(true)
   })
+
+  it("uses the no-op worker fallback when Worker is unavailable", async () => {
+    const descriptor = Object.getOwnPropertyDescriptor(globalThis, "Worker")
+    vi.unstubAllGlobals()
+    Reflect.deleteProperty(globalThis, "Worker")
+
+    try {
+      vi.resetModules()
+      const fallbackModule = await import("../cryptoWorker")
+      const pending = fallbackModule.cryptoWorker.pbkdf2({
+        value: "a",
+        salt: "b",
+        keySize: 128,
+        iterations: 1,
+      })
+
+      vi.advanceTimersByTime(30000)
+      await expect(pending).rejects.toThrow("Crypto worker timeout after 30000ms (op: PBKDF2)")
+    } finally {
+      if (descriptor) Object.defineProperty(globalThis, "Worker", descriptor)
+    }
+  })
 })

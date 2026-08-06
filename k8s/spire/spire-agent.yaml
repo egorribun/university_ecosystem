@@ -1,0 +1,102 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: spire-agent-config
+  namespace: spire
+data:
+  agent.conf: |
+    agent {
+      data_dir = "/run/spire/data"
+      log_level = "INFO"
+      server_address = "spire-server.spire.svc.cluster.local"
+      server_port = "8081"
+      socket_path = "/run/spire/sockets/agent.sock"
+      trust_domain = "university.ecosystem"
+    }
+
+    plugins {
+      NodeAttestor "k8s_psat" {
+        plugin_data {
+          cluster = "university-cluster"
+          token_path = "/var/run/secrets/tokens/spire-agent-token"
+        }
+      }
+
+      KeyManager "memory" {
+        plugin_data {}
+      }
+
+      WorkloadAttestor "k8s" {
+        plugin_data {}
+      }
+    }
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: spire-agent
+  namespace: spire
+spec:
+  selector:
+    matchLabels:
+      app: spire-agent
+  template:
+    metadata:
+      labels:
+        app: spire-agent
+    spec:
+      hostPID: true
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
+      serviceAccountName: spire-agent
+      initContainers:
+        - name: create-socket-symlink
+          image: ghcr.io/spiffe/spire-agent:1.8.0
+          command: ["sh", "-c", "mkdir -p /tmp/spire-agent/public && ln -sf /run/spire/sockets/agent.sock /tmp/spire-agent/public/api.sock"]
+          volumeMounts:
+            - name: spire-agent-socket
+              mountPath: /run/spire/sockets
+            - name: spire-legacy-socket
+              mountPath: /tmp/spire-agent/public
+      containers:
+        - name: spire-agent
+          image: ghcr.io/spiffe/spire-agent:1.8.0
+          args: ["-config", "/run/spire/config/agent.conf"]
+          securityContext:
+            privileged: true
+          volumeMounts:
+            - name: spire-config
+              mountPath: /run/spire/config
+              readOnly: true
+            - name: spire-agent-socket
+              mountPath: /run/spire/sockets
+            - name: spire-legacy-socket
+              mountPath: /tmp/spire-agent/public
+            - name: spire-token
+              mountPath: /var/run/secrets/tokens
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 250m
+              memory: 256Mi
+      volumes:
+        - name: spire-config
+          configMap:
+            name: spire-agent-config
+        - name: spire-agent-socket
+          hostPath:
+            path: /run/spire/sockets
+            type: DirectoryOrCreate
+        - name: spire-legacy-socket
+          hostPath:
+            path: /tmp/spire-agent/public
+            type: DirectoryOrCreate
+        - name: spire-token
+          projected:
+            sources:
+              - serviceAccountToken:
+                  path: spire-agent-token
+                  expirationSeconds: 7200
+                  audience: spire-server

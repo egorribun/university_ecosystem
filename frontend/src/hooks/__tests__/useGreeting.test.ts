@@ -1,5 +1,11 @@
-import { describe, expect, it } from "vitest"
-import { getContextualEmoji, getGreetingKey, getSpecialGreeting } from "../useGreeting"
+import { renderHook } from "@testing-library/react"
+import { describe, expect, it, vi } from "vitest"
+
+vi.mock("react-i18next", () => ({
+  useTranslation: () => ({ t: (key: string) => key }),
+}))
+
+import { getContextualEmoji, getGreetingKey, getSpecialGreeting, useGreeting } from "../useGreeting"
 
 // These pure-helper functions are exported and tested directly —
 // no React rendering required (no i18n dependency in the extracted helpers).
@@ -98,5 +104,17 @@ describe("getContextualEmoji", () => {
 
   it("returns default afternoon emoji on Monday afternoon (no Monday override)", () => {
     expect(getContextualEmoji("afternoon", 1, null)).toBe("🌤️")
+  })
+})
+
+describe("useGreeting", () => {
+  it("uses the special-date translation and keeps a normal date on the time-of-day path", () => {
+    const special = renderHook(() => useGreeting(new Date(2025, 0, 1, 9, 0)))
+    expect(special.result.current.specialKey).toBe("newYear")
+    expect(special.result.current.greeting).toBe("dashboard:greeting.special.newYear")
+
+    const regular = renderHook(() => useGreeting(new Date(2025, 5, 15, 20, 0)))
+    expect(regular.result.current.specialKey).toBeNull()
+    expect(regular.result.current.greeting).toBe("dashboard:greeting.evening")
   })
 })

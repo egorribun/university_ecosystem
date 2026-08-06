@@ -59,8 +59,7 @@ export const EventsHeader = ({
   const tabRect = useSlidingIndicator(tabsRef, tab)
 
   useEffect(() => {
-    const sentinel = sentinelRef.current
-    if (!sentinel) return
+    const sentinel = sentinelRef.current!
 
     const observer = new IntersectionObserver(
       ([entry]) => {

@@ -1,6 +1,6 @@
 import type { MutableRefObject, PropsWithChildren } from "react"
 import { useRef } from "react"
-import { renderHook, act, waitFor } from "@testing-library/react"
+import { renderHook, act, waitFor, cleanup } from "@testing-library/react"
 import { QueryClientProvider } from "@tanstack/react-query"
 import { hmac } from "@noble/hashes/hmac"
 import { sha256 } from "@noble/hashes/sha256"
@@ -38,6 +38,11 @@ import {
 const mockSigningKey = Array.from({ length: 32 }, (_, i) => ((i * 13 + 7) % 16).toString(16)).join(
   ""
 )
+const PROFILE_CACHE_VERSION_KEY = "ecosystem.profile.cache.version"
+
+const markCurrentCacheVersion = () => {
+  localStorage.setItem(PROFILE_CACHE_VERSION_KEY, String(PROFILE_CACHE_SCHEMA_VERSION))
+}
 
 const base64 = (bytes: Uint8Array): string => {
   let binary = ""
@@ -62,8 +67,21 @@ type HarnessOpts = {
 
 const renderProfileSync = (opts: HarnessOpts = {}) => {
   const queryClient = createQueryClient()
-  const updateSessionSigningKey = opts.updateSessionSigningKey ?? vi.fn((..._a: unknown[]) => {})
-  const ensureSessionSigningKey = opts.ensureSessionSigningKey ?? vi.fn(async () => mockSigningKey)
+  const initialKey = opts.signingKey !== undefined ? opts.signingKey : mockSigningKey
+  const signingKeyRef = { current: initialKey } as MutableRefObject<string | null>
+  const promiseRef = { current: null } as MutableRefObject<Promise<string | null> | null>
+
+  const updateSessionSigningKey =
+    opts.updateSessionSigningKey ??
+    vi.fn((key: string | null) => {
+      signingKeyRef.current = key
+    })
+  const ensureSessionSigningKey =
+    opts.ensureSessionSigningKey ??
+    vi.fn(async () => {
+      signingKeyRef.current = initialKey
+      return initialKey
+    })
 
   const wrapper = ({ children }: PropsWithChildren) => (
     <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
@@ -71,12 +89,6 @@ const renderProfileSync = (opts: HarnessOpts = {}) => {
 
   const view = renderHook(
     () => {
-      const signingKeyRef = useRef<string | null>(opts.signingKey ?? null) as MutableRefObject<
-        string | null
-      >
-      const promiseRef = useRef<Promise<string | null> | null>(null) as MutableRefObject<Promise<
-        string | null
-      > | null>
       return useProfileSync(
         updateSessionSigningKey,
         signingKeyRef,
@@ -90,12 +102,38 @@ const renderProfileSync = (opts: HarnessOpts = {}) => {
   return { ...view, queryClient, updateSessionSigningKey, ensureSessionSigningKey }
 }
 
+const renderProfileSyncWithPendingQuery = () => {
+  let resolveFetch!: (value: unknown) => void
+  const pendingFetch = new Promise<unknown>((resolve) => {
+    resolveFetch = resolve
+  })
+  const queryClient = createQueryClient()
+  vi.spyOn(queryClient, "fetchQuery").mockReturnValue(pendingFetch as never)
+  const signingKeyRef = { current: mockSigningKey } as MutableRefObject<string | null>
+  const promiseRef = { current: null } as MutableRefObject<Promise<string | null> | null>
+  const wrapper = ({ children }: PropsWithChildren) => (
+    <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+  )
+  const view = renderHook(
+    () =>
+      useProfileSync(
+        vi.fn(),
+        signingKeyRef,
+        promiseRef,
+        vi.fn(async () => mockSigningKey)
+      ),
+    { wrapper }
+  )
+  return { ...view, resolveFetch }
+}
+
 beforeEach(() => {
   localStorage.clear()
   sessionStorage.clear()
 })
 
 afterEach(() => {
+  cleanup()
   vi.restoreAllMocks()
 })
 
@@ -197,6 +235,18 @@ describe("fetchCurrentUser branches", () => {
     await expect(fetchCurrentUser()).rejects.toBe(plainErr)
     expect(getSpy).toHaveBeenCalledTimes(1)
   })
+
+  it("continues without a cache header when localStorage access throws", async () => {
+    const storageSpy = vi.spyOn(Storage.prototype, "getItem").mockImplementation((key) => {
+      if (key === PROFILE_CACHE_STORAGE_KEY) throw new Error("private mode")
+      return null
+    })
+    const getSpy = vi.spyOn(api, "get").mockResolvedValue({ data: testUser } as any)
+
+    await expect(fetchCurrentUser()).resolves.toEqual(testUser)
+    expect(getSpy.mock.calls[0]?.[1]?.headers).toBeUndefined()
+    storageSpy.mockRestore()
+  })
 })
 
 // ===========================================================================
@@ -204,15 +254,11 @@ describe("fetchCurrentUser branches", () => {
 // ===========================================================================
 
 describe("useProfileSync — synchronous bootstrap (useState initFn)", () => {
-  // NOTE: readCachedEnvelope() in the source returns `undefined` for every
-  // input (it reads `raw` but never returns it — see useProfileSync.ts:164),
-  // so the initFn's `if (!candidate) return null` branch (line 658) is the
-  // reachable outcome whenever a signing key + a stored envelope are present.
-  // These tests pin that observable behaviour: the hook starts with `user`
-  // null and falls through to the async auto-fetch, regardless of envelope
-  // shape (encrypted / legacy / version-mismatch / expired / tampered).
+  // The synchronous bootstrap now parses the versioned envelope. Encrypted
+  // payloads intentionally start with a minimal placeholder until async
+  // AES-GCM decryption completes; legacy object payloads render optimistically.
 
-  it("starts with null user given an encrypted-string envelope + signing key", async () => {
+  it("starts with a placeholder for an encrypted-string envelope + signing key", async () => {
     const encrypted = await encryptData(
       {
         id: testUser.id,
@@ -232,19 +278,20 @@ describe("useProfileSync — synchronous bootstrap (useState initFn)", () => {
     }
     const signature = signSync(payload, mockSigningKey)
     localStorage.setItem(PROFILE_CACHE_STORAGE_KEY, JSON.stringify({ ...payload, signature }))
+    markCurrentCacheVersion()
 
     vi.spyOn(api, "get").mockResolvedValue({ data: testUser } as any)
 
     const { result } = renderProfileSync({ signingKey: mockSigningKey })
 
-    // initFn: signingKey present → readCachedEnvelope() undefined → null.
-    expect(result.current.user).toBeNull()
+    // Encrypted v4 data cannot be decrypted synchronously.
+    expect(result.current.user?.id).toBe("-1")
     // Eventually the async auto-fetch resolves the real user.
     await waitFor(() => expect(result.current.user?.id).toBe(testUser.id))
     await waitFor(() => expect(result.current.loading).toBe(false))
   })
 
-  it("starts with null user given a legacy v3 (object) envelope + signing key", async () => {
+  it("starts with an optimistic user for a legacy v3 object envelope", async () => {
     const snapshot = {
       id: testUser.id,
       full_name: "Legacy Bob",
@@ -261,13 +308,49 @@ describe("useProfileSync — synchronous bootstrap (useState initFn)", () => {
     }
     const signature = signSync(payload, mockSigningKey)
     localStorage.setItem(PROFILE_CACHE_STORAGE_KEY, JSON.stringify({ ...payload, signature }))
+    markCurrentCacheVersion()
 
     vi.spyOn(api, "get").mockResolvedValue({ data: testUser } as any)
 
     const { result } = renderProfileSync({ signingKey: mockSigningKey })
 
-    expect(result.current.user).toBeNull()
+    expect(result.current.user).toMatchObject({ id: testUser.id, full_name: "Legacy Bob" })
     await waitFor(() => expect(result.current.user?.id).toBe(testUser.id))
+    await waitFor(() => expect(result.current.loading).toBe(false))
+  })
+
+  it("normalizes missing optional legacy snapshot fields", async () => {
+    const snapshot = {
+      id: "cached-defaults",
+      full_name: null,
+      group_id: undefined,
+      avatar_url: undefined,
+      cover_url: undefined,
+      spotify_connected: undefined,
+      preferences: undefined,
+      is_active: true,
+    } as unknown as CachedUserSnapshot
+    const payload: CacheSignaturePayload = {
+      version: PROFILE_CACHE_SCHEMA_VERSION,
+      expiresAt: Date.now() + 60_000,
+      data: snapshot,
+    }
+    const signature = signSync(payload, mockSigningKey)
+    localStorage.setItem(PROFILE_CACHE_STORAGE_KEY, JSON.stringify({ ...payload, signature }))
+    markCurrentCacheVersion()
+    vi.spyOn(api, "get").mockResolvedValue({ data: testUser } as any)
+
+    const { result } = renderProfileSync({ signingKey: mockSigningKey })
+
+    expect(result.current.user).toMatchObject({
+      id: "cached-defaults",
+      full_name: null,
+      group_id: null,
+      avatar_url: null,
+      cover_url: null,
+      spotify_connected: false,
+      preferences: null,
+    })
     await waitFor(() => expect(result.current.loading).toBe(false))
   })
 
@@ -279,6 +362,7 @@ describe("useProfileSync — synchronous bootstrap (useState initFn)", () => {
     }
     const signature = signSync(payload, mockSigningKey)
     localStorage.setItem(PROFILE_CACHE_STORAGE_KEY, JSON.stringify({ ...payload, signature }))
+    markCurrentCacheVersion()
 
     vi.spyOn(api, "get").mockResolvedValue({ data: testUser } as any)
 
@@ -299,6 +383,7 @@ describe("useProfileSync — synchronous bootstrap (useState initFn)", () => {
     }
     const signature = signSync(payload as CacheSignaturePayload, mockSigningKey)
     localStorage.setItem(PROFILE_CACHE_STORAGE_KEY, JSON.stringify({ ...payload, signature }))
+    markCurrentCacheVersion()
 
     vi.spyOn(api, "get").mockResolvedValue({ data: testUser } as any)
 
@@ -316,6 +401,7 @@ describe("useProfileSync — synchronous bootstrap (useState initFn)", () => {
     }
     const signature = signSync(payload, mockSigningKey)
     localStorage.setItem(PROFILE_CACHE_STORAGE_KEY, JSON.stringify({ ...payload, signature }))
+    markCurrentCacheVersion()
 
     vi.spyOn(api, "get").mockResolvedValue({ data: testUser } as any)
 
@@ -323,6 +409,263 @@ describe("useProfileSync — synchronous bootstrap (useState initFn)", () => {
 
     expect(result.current.user).toBeNull()
     await waitFor(() => expect(result.current.loading).toBe(false))
+  })
+
+  it("clears a versioned envelope with invalid payload fields", async () => {
+    const payload = {
+      version: PROFILE_CACHE_SCHEMA_VERSION,
+      expiresAt: Date.now() + 60_000,
+      data: {},
+    } as CacheSignaturePayload
+    const signature = signSync(payload, mockSigningKey)
+    localStorage.setItem(PROFILE_CACHE_STORAGE_KEY, JSON.stringify({ ...payload, signature }))
+    markCurrentCacheVersion()
+    vi.spyOn(api, "get").mockResolvedValue({ data: testUser } as any)
+    const removeSpy = vi.spyOn(Storage.prototype, "removeItem")
+
+    const { result } = renderProfileSync({ signingKey: mockSigningKey })
+
+    await waitFor(() => expect(result.current.loading).toBe(false))
+    await waitFor(() => expect(removeSpy).toHaveBeenCalledWith(PROFILE_CACHE_STORAGE_KEY))
+  })
+
+  it("keeps the synchronous snapshot when async cache verification has no Web Crypto", async () => {
+    const payload: CacheSignaturePayload = {
+      version: PROFILE_CACHE_SCHEMA_VERSION,
+      expiresAt: Date.now() + 60_000,
+      data: {
+        id: "cached-without-crypto",
+        full_name: "Cached Without Crypto",
+      } as unknown as CachedUserSnapshot,
+    }
+    const signature = signSync(payload, mockSigningKey)
+    localStorage.setItem(PROFILE_CACHE_STORAGE_KEY, JSON.stringify({ ...payload, signature }))
+    markCurrentCacheVersion()
+    vi.spyOn(api, "get").mockResolvedValue({ data: testUser } as any)
+    const subtleSpy = vi
+      .spyOn(window.crypto, "subtle", "get")
+      .mockReturnValue(undefined as unknown as SubtleCrypto)
+
+    try {
+      const { result } = renderProfileSync({ signingKey: mockSigningKey })
+      await waitFor(() => expect(result.current.user?.id).toBe("cached-without-crypto"))
+    } finally {
+      subtleSpy.mockRestore()
+    }
+  })
+
+  it("clears a versioned envelope when encrypted data is malformed", async () => {
+    const payload: CacheSignaturePayload = {
+      version: PROFILE_CACHE_SCHEMA_VERSION,
+      expiresAt: Date.now() + 60_000,
+      data: "malformed-encrypted-payload",
+    }
+    const signature = signSync(payload, mockSigningKey)
+    localStorage.setItem(PROFILE_CACHE_STORAGE_KEY, JSON.stringify({ ...payload, signature }))
+    markCurrentCacheVersion()
+    vi.spyOn(api, "get").mockResolvedValue({ data: testUser } as any)
+    const removeSpy = vi.spyOn(Storage.prototype, "removeItem")
+
+    const { result } = renderProfileSync({ signingKey: mockSigningKey })
+
+    await waitFor(() => expect(removeSpy).toHaveBeenCalledWith(PROFILE_CACHE_STORAGE_KEY))
+    await waitFor(() => expect(result.current.loading).toBe(false))
+  })
+
+  it("clears an encrypted cache when its salt or IV is empty", async () => {
+    const payload: CacheSignaturePayload = {
+      version: PROFILE_CACHE_SCHEMA_VERSION,
+      expiresAt: Date.now() + 60_000,
+      data: `::${btoa("ciphertext")}`,
+    }
+    const signature = signSync(payload, mockSigningKey)
+    localStorage.setItem(PROFILE_CACHE_STORAGE_KEY, JSON.stringify({ ...payload, signature }))
+    markCurrentCacheVersion()
+    vi.spyOn(api, "get").mockResolvedValue({ data: testUser } as any)
+    const removeSpy = vi.spyOn(Storage.prototype, "removeItem")
+
+    const { result } = renderProfileSync({ signingKey: mockSigningKey })
+
+    await waitFor(() => expect(removeSpy).toHaveBeenCalledWith(PROFILE_CACHE_STORAGE_KEY))
+    await waitFor(() => expect(result.current.loading).toBe(false))
+  })
+
+  it("clears an encrypted cache when Web Crypto disappears before decryption", async () => {
+    const payload: CacheSignaturePayload = {
+      version: PROFILE_CACHE_SCHEMA_VERSION,
+      expiresAt: Date.now() + 60_000,
+      data: "00:00:YmFk",
+    }
+    const signature = signSync(payload, mockSigningKey)
+    localStorage.setItem(PROFILE_CACHE_STORAGE_KEY, JSON.stringify({ ...payload, signature }))
+    markCurrentCacheVersion()
+    vi.spyOn(api, "get").mockResolvedValue({ data: testUser } as any)
+    const removeSpy = vi.spyOn(Storage.prototype, "removeItem")
+    const originalSubtle = window.crypto.subtle
+    let reads = 0
+    const subtleSpy = vi.spyOn(window.crypto, "subtle", "get").mockImplementation(() => {
+      reads += 1
+      return (reads === 1 ? originalSubtle : undefined) as SubtleCrypto
+    })
+
+    try {
+      const { result } = renderProfileSync({ signingKey: mockSigningKey })
+      await waitFor(() => expect(result.current.loading).toBe(false))
+      await waitFor(() => expect(removeSpy).toHaveBeenCalledWith(PROFILE_CACHE_STORAGE_KEY))
+      expect(reads).toBeGreaterThanOrEqual(2)
+    } finally {
+      subtleSpy.mockRestore()
+    }
+  })
+
+  it("clears an encrypted cache when key import becomes unavailable during decryption", async () => {
+    const payload: CacheSignaturePayload = {
+      version: PROFILE_CACHE_SCHEMA_VERSION,
+      expiresAt: Date.now() + 60_000,
+      data: "00:00:YmFk",
+    }
+    const signature = signSync(payload, mockSigningKey)
+    localStorage.setItem(PROFILE_CACHE_STORAGE_KEY, JSON.stringify({ ...payload, signature }))
+    markCurrentCacheVersion()
+    vi.spyOn(api, "get").mockResolvedValue({ data: testUser } as any)
+    const removeSpy = vi.spyOn(Storage.prototype, "removeItem")
+    const originalSubtle = window.crypto.subtle
+    let reads = 0
+    const subtleSpy = vi.spyOn(window.crypto, "subtle", "get").mockImplementation(() => {
+      reads += 1
+      return (reads <= 2 ? originalSubtle : undefined) as SubtleCrypto
+    })
+
+    try {
+      const { result } = renderProfileSync({ signingKey: mockSigningKey })
+      await waitFor(() => expect(result.current.loading).toBe(false))
+      await waitFor(() => expect(removeSpy).toHaveBeenCalledWith(PROFILE_CACHE_STORAGE_KEY))
+      expect(reads).toBeGreaterThanOrEqual(3)
+    } finally {
+      subtleSpy.mockRestore()
+    }
+  })
+
+  it("clears an encrypted cache when key derivation becomes unavailable during decryption", async () => {
+    const payload: CacheSignaturePayload = {
+      version: PROFILE_CACHE_SCHEMA_VERSION,
+      expiresAt: Date.now() + 60_000,
+      data: "00:00:YmFk",
+    }
+    const signature = signSync(payload, mockSigningKey)
+    localStorage.setItem(PROFILE_CACHE_STORAGE_KEY, JSON.stringify({ ...payload, signature }))
+    markCurrentCacheVersion()
+    vi.spyOn(api, "get").mockResolvedValue({ data: testUser } as any)
+    const removeSpy = vi.spyOn(Storage.prototype, "removeItem")
+    const originalSubtle = window.crypto.subtle
+    let cryptoAvailable = true
+    const subtleSpy = vi
+      .spyOn(window.crypto, "subtle", "get")
+      .mockImplementation(() => (cryptoAvailable ? originalSubtle : undefined) as SubtleCrypto)
+    const nativeImportKey = originalSubtle.importKey.bind(originalSubtle)
+    const importKeySpy = vi
+      .spyOn(originalSubtle, "importKey")
+      .mockImplementation(async (format, keyData, algorithm, extractable, keyUsages) => {
+        const result = await nativeImportKey(format, keyData, algorithm, extractable, keyUsages)
+        if (typeof algorithm !== "string" && algorithm.name === "PBKDF2") {
+          // Keep HMAC verification available, then hide Web Crypto immediately
+          // after the PBKDF2 material is imported so deriveKey sees `null`.
+          cryptoAvailable = false
+        }
+        return result
+      })
+
+    try {
+      const { result } = renderProfileSync({ signingKey: mockSigningKey })
+      await waitFor(() => expect(result.current.loading).toBe(false))
+      await waitFor(() => expect(removeSpy).toHaveBeenCalledWith(PROFILE_CACHE_STORAGE_KEY))
+    } finally {
+      importKeySpy.mockRestore()
+      subtleSpy.mockRestore()
+    }
+  })
+
+  it("clears a cache when async HMAC decoding throws", async () => {
+    const payload: CacheSignaturePayload = {
+      version: PROFILE_CACHE_SCHEMA_VERSION,
+      expiresAt: Date.now() + 60_000,
+      data: { id: testUser.id } as unknown as CachedUserSnapshot,
+    }
+    localStorage.setItem(PROFILE_CACHE_STORAGE_KEY, JSON.stringify({ ...payload, signature: "%" }))
+    markCurrentCacheVersion()
+    vi.spyOn(api, "get").mockResolvedValue({ data: testUser } as any)
+    const removeSpy = vi.spyOn(Storage.prototype, "removeItem")
+
+    const { result } = renderProfileSync({ signingKey: mockSigningKey })
+
+    await waitFor(() => expect(result.current.loading).toBe(false))
+    expect(removeSpy).toHaveBeenCalledWith(PROFILE_CACHE_STORAGE_KEY)
+  })
+
+  it("handles a non-string signature in synchronous bootstrap", async () => {
+    const payload: CacheSignaturePayload = {
+      version: PROFILE_CACHE_SCHEMA_VERSION,
+      expiresAt: Date.now() + 60_000,
+      data: { id: testUser.id } as unknown as CachedUserSnapshot,
+    }
+    localStorage.setItem(PROFILE_CACHE_STORAGE_KEY, JSON.stringify({ ...payload, signature: null }))
+    markCurrentCacheVersion()
+    vi.spyOn(api, "get").mockResolvedValue({ data: testUser } as any)
+    const removeSpy = vi.spyOn(Storage.prototype, "removeItem")
+
+    const { result } = renderProfileSync({ signingKey: mockSigningKey })
+
+    await waitFor(() => expect(result.current.loading).toBe(false))
+    expect(removeSpy).toHaveBeenCalledWith(PROFILE_CACHE_STORAGE_KEY)
+  })
+
+  it("handles a decryption exception as invalid cache data", async () => {
+    const payload: CacheSignaturePayload = {
+      version: PROFILE_CACHE_SCHEMA_VERSION,
+      expiresAt: Date.now() + 60_000,
+      data: "00:00:%%%",
+    }
+    const signature = signSync(payload, mockSigningKey)
+    localStorage.setItem(PROFILE_CACHE_STORAGE_KEY, JSON.stringify({ ...payload, signature }))
+    markCurrentCacheVersion()
+    vi.spyOn(api, "get").mockResolvedValue({ data: testUser } as any)
+    const removeSpy = vi.spyOn(Storage.prototype, "removeItem")
+
+    const { result } = renderProfileSync({ signingKey: mockSigningKey })
+
+    await waitFor(() => expect(result.current.loading).toBe(false))
+    await waitFor(() => expect(removeSpy).toHaveBeenCalledWith(PROFILE_CACHE_STORAGE_KEY))
+  })
+
+  it("migrates an older cache version and evicts legacy keys", async () => {
+    localStorage.setItem(PROFILE_CACHE_VERSION_KEY, "7")
+    localStorage.setItem("ecosystem.profile.cache.v1", "legacy")
+    localStorage.setItem("ecosystem.profile.cache.v7", "legacy-pii")
+    vi.spyOn(api, "get").mockResolvedValue({ data: testUser } as any)
+
+    const { result } = renderProfileSync({ signingKey: mockSigningKey })
+
+    await waitFor(() => expect(result.current.loading).toBe(false))
+    await waitFor(() =>
+      expect(localStorage.getItem(PROFILE_CACHE_VERSION_KEY)).toBe(
+        String(PROFILE_CACHE_SCHEMA_VERSION)
+      )
+    )
+    expect(localStorage.getItem("ecosystem.profile.cache.v1")).toBeNull()
+    expect(localStorage.getItem("ecosystem.profile.cache.v7")).toBeNull()
+  })
+
+  it("survives a localStorage failure while migrating cache versions", async () => {
+    const getItemSpy = vi.spyOn(Storage.prototype, "getItem").mockImplementation((key) => {
+      if (key === PROFILE_CACHE_VERSION_KEY) throw new Error("storage blocked")
+      return null
+    })
+    vi.spyOn(api, "get").mockResolvedValue({ data: testUser } as any)
+
+    const { result } = renderProfileSync({ signingKey: mockSigningKey })
+
+    await waitFor(() => expect(result.current.loading).toBe(false))
+    expect(getItemSpy).toHaveBeenCalledWith(PROFILE_CACHE_VERSION_KEY)
   })
 
   it("starts with null user for a tampered-signature envelope", async () => {
@@ -335,6 +678,7 @@ describe("useProfileSync — synchronous bootstrap (useState initFn)", () => {
       PROFILE_CACHE_STORAGE_KEY,
       JSON.stringify({ ...payload, signature: "tampered" })
     )
+    markCurrentCacheVersion()
 
     vi.spyOn(api, "get").mockResolvedValue({ data: testUser } as any)
 
@@ -342,6 +686,59 @@ describe("useProfileSync — synchronous bootstrap (useState initFn)", () => {
 
     expect(result.current.user).toBeNull()
     await waitFor(() => expect(result.current.loading).toBe(false))
+  })
+
+  it("clears a malformed JSON envelope before falling back to the API", async () => {
+    localStorage.setItem(PROFILE_CACHE_STORAGE_KEY, "not-json")
+    vi.spyOn(api, "get").mockResolvedValue({ data: testUser } as any)
+
+    const { result } = renderProfileSync({ signingKey: mockSigningKey })
+
+    expect(localStorage.getItem(PROFILE_CACHE_STORAGE_KEY)).toBeNull()
+    await waitFor(() => expect(result.current.user?.id).toBe(testUser.id))
+  })
+
+  it("clears a JSON primitive envelope as a parse error", async () => {
+    localStorage.setItem(PROFILE_CACHE_STORAGE_KEY, "null")
+    vi.spyOn(api, "get").mockResolvedValue({ data: testUser } as any)
+
+    const { result } = renderProfileSync({ signingKey: mockSigningKey })
+
+    expect(localStorage.getItem(PROFILE_CACHE_STORAGE_KEY)).toBeNull()
+    await waitFor(() => expect(result.current.user?.id).toBe(testUser.id))
+  })
+
+  it("continues when cache cleanup itself cannot remove localStorage", async () => {
+    localStorage.setItem(PROFILE_CACHE_STORAGE_KEY, "not-json")
+    const removeSpy = vi.spyOn(Storage.prototype, "removeItem").mockImplementation(() => {
+      throw new Error("remove blocked")
+    })
+    vi.spyOn(api, "get").mockResolvedValue({ data: testUser } as any)
+
+    const { result } = renderProfileSync({ signingKey: mockSigningKey })
+
+    await waitFor(() => expect(result.current.user?.id).toBe(testUser.id))
+    expect(removeSpy).toHaveBeenCalledWith(PROFILE_CACHE_STORAGE_KEY)
+  })
+
+  it("rejects envelopes with invalid metadata before signature verification", async () => {
+    localStorage.setItem(
+      PROFILE_CACHE_STORAGE_KEY,
+      JSON.stringify({
+        version: PROFILE_CACHE_SCHEMA_VERSION,
+        expiresAt: "not-a-timestamp",
+        data: { id: testUser.id },
+        signature: 123,
+      })
+    )
+    markCurrentCacheVersion()
+    vi.spyOn(api, "get").mockResolvedValue({ data: testUser } as any)
+    const removeSpy = vi.spyOn(Storage.prototype, "removeItem")
+
+    const { result } = renderProfileSync({ signingKey: mockSigningKey })
+
+    await waitFor(() => expect(result.current.loading).toBe(false))
+    expect(removeSpy).toHaveBeenCalledWith(PROFILE_CACHE_STORAGE_KEY)
   })
 })
 
@@ -397,6 +794,90 @@ describe("useProfileSync — auto-fetch effect", () => {
     await waitFor(() => expect(result.current.loading).toBe(false))
     // Non-401 → no unauthorized handling; key untouched, user stays null.
     expect(updateSessionSigningKey).not.toHaveBeenCalledWith(null)
+  })
+
+  it("silently ignores a canceled profile query", async () => {
+    vi.spyOn(api, "get").mockImplementation((url) => {
+      if (url === "/users/me") return Promise.reject({ __CANCEL__: true })
+      throw new Error(`Unexpected url: ${url}`)
+    })
+
+    const { result } = renderProfileSync({ signingKey: mockSigningKey })
+
+    await waitFor(() => expect(result.current.loading).toBe(false))
+    expect(result.current.user).toBeNull()
+  })
+
+  it("keeps the profile when the fetched object is deeply equal", async () => {
+    let resolveProfile: ((value: unknown) => void) | undefined
+    const pendingProfile = new Promise((resolve) => {
+      resolveProfile = resolve
+    })
+    vi.spyOn(api, "get").mockImplementation((url) => {
+      if (url === "/users/me") return pendingProfile as Promise<any>
+      throw new Error(`Unexpected url: ${url}`)
+    })
+
+    const { result } = renderProfileSync({ signingKey: mockSigningKey })
+    await act(async () => {
+      result.current.setUser(testUser)
+    })
+    resolveProfile?.({ data: testUser })
+
+    await waitFor(() => expect(result.current.loading).toBe(false))
+    expect(result.current.user).toEqual(testUser)
+  })
+
+  it("walks nested equal snapshots before leaving the current user intact", async () => {
+    const { result, resolveFetch } = renderProfileSyncWithPendingQuery()
+    const cached = { ...testUser, preferences: { dnd_enabled: false } } as any
+
+    await act(async () => {
+      result.current.setUser(cached)
+    })
+    resolveFetch({ ...cached, preferences: { dnd_enabled: false } })
+
+    await waitFor(() => expect(result.current.loading).toBe(false))
+    expect(result.current.user).toEqual(cached)
+  })
+
+  it("replaces the profile when a nested value changes", async () => {
+    const { result, resolveFetch } = renderProfileSyncWithPendingQuery()
+
+    await act(async () => {
+      result.current.setUser(testUser)
+    })
+    resolveFetch({ ...testUser, full_name: "Changed by server" })
+
+    await waitFor(() => expect(result.current.user?.full_name).toBe("Changed by server"))
+  })
+
+  it("replaces the profile when an object key is exchanged", async () => {
+    const { result, resolveFetch } = renderProfileSyncWithPendingQuery()
+    const fetched = { ...testUser, cache_marker: "server" } as Record<string, unknown>
+    delete fetched.email
+
+    await act(async () => {
+      result.current.setUser(testUser)
+    })
+    resolveFetch(fetched)
+
+    await waitFor(() =>
+      expect((result.current.user as Record<string, unknown>)?.cache_marker).toBe("server")
+    )
+  })
+
+  it("fetches the profile when the auto-fetch cache probe throws", async () => {
+    const getItemSpy = vi.spyOn(Storage.prototype, "getItem").mockImplementation((key) => {
+      if (key === PROFILE_CACHE_STORAGE_KEY) throw new Error("private browsing")
+      return null
+    })
+    vi.spyOn(api, "get").mockResolvedValue({ data: testUser } as any)
+
+    const { result } = renderProfileSync({ signingKey: mockSigningKey })
+
+    await waitFor(() => expect(result.current.user?.id).toBe(testUser.id))
+    expect(getItemSpy).toHaveBeenCalledWith(PROFILE_CACHE_STORAGE_KEY)
   })
 
   it("ensureSessionSigningKey rejection does not break the fetch (warning path)", async () => {
@@ -476,11 +957,62 @@ describe("useProfileSync — handleUnauthorized / clearProfile / setUser", () =>
     await waitFor(() => expect(result.current.loading).toBe(false))
 
     await act(async () => {
-      result.current.setUser({ ...testUser, full_name: "Renamed" } as any)
+      result.current.setUser({
+        ...testUser,
+        full_name: "Renamed",
+        totp_enrollments: undefined,
+      } as any)
     })
 
     expect(result.current.user?.full_name).toBe("Renamed")
     expect((queryClient.getQueryData(currentUserQueryKey) as any)?.full_name).toBe("Renamed")
+  })
+
+  it("swallows localStorage failures while persisting a user snapshot", async () => {
+    vi.spyOn(api, "get").mockResolvedValue({ data: testUser } as any)
+    const { result } = renderProfileSync({ signingKey: mockSigningKey })
+    await waitFor(() => expect(result.current.user?.id).toBe(testUser.id))
+
+    const setItemSpy = vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw new Error("storage quota exceeded")
+    })
+    await act(async () => {
+      result.current.setUser({ ...testUser, full_name: "Persist failure" } as any)
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    })
+    await waitFor(() =>
+      expect(setItemSpy).toHaveBeenCalledWith(PROFILE_CACHE_STORAGE_KEY, expect.any(String))
+    )
+    expect(result.current.user?.full_name).toBe("Persist failure")
+  })
+
+  it("continues without localStorage in restricted browser mode", async () => {
+    vi.spyOn(api, "get").mockResolvedValue({ data: testUser } as any)
+    const originalStorage = globalThis.localStorage
+    vi.stubGlobal("localStorage", undefined)
+
+    try {
+      const { result } = renderProfileSync({ signingKey: mockSigningKey })
+      await waitFor(() => expect(result.current.user?.id).toBe(testUser.id))
+      expect(result.current.loading).toBe(false)
+    } finally {
+      vi.stubGlobal("localStorage", originalStorage)
+    }
+  })
+
+  it("skips cache persistence when Web Crypto encryption is unavailable", async () => {
+    vi.spyOn(api, "get").mockResolvedValue({ data: testUser } as any)
+    const subtleSpy = vi
+      .spyOn(window.crypto, "subtle", "get")
+      .mockReturnValue(undefined as unknown as SubtleCrypto)
+
+    try {
+      const { result } = renderProfileSync({ signingKey: mockSigningKey })
+      await waitFor(() => expect(result.current.user?.id).toBe(testUser.id))
+      expect(localStorage.getItem(PROFILE_CACHE_STORAGE_KEY)).toBeNull()
+    } finally {
+      subtleSpy.mockRestore()
+    }
   })
 
   it("handleUnauthorized clears the key, the user, and pending MFA", async () => {
@@ -498,7 +1030,7 @@ describe("useProfileSync — handleUnauthorized / clearProfile / setUser", () =>
     await waitFor(() => expect(result.current.user?.id).toBe(testUser.id))
 
     await act(async () => {
-      result.current.handleUnauthorized({ broadcast: false })
+      result.current.handleUnauthorized()
     })
 
     expect(updateKey).toHaveBeenCalledWith(null)
@@ -521,12 +1053,12 @@ describe("useProfileSync — handleUnauthorized / clearProfile / setUser", () =>
     } as any
 
     await act(async () => {
-      result.current.updatePendingMfa(challenge, { broadcast: false })
+      result.current.updatePendingMfa(challenge)
     })
     expect(result.current.pendingMfa).toEqual(challenge)
 
     await act(async () => {
-      result.current.updatePendingMfa(null, { broadcast: false })
+      result.current.updatePendingMfa(null)
     })
     expect(result.current.pendingMfa).toBeNull()
   })
@@ -680,6 +1212,235 @@ describe("useProfileSync — cross-tab sync effect", () => {
     await waitFor(() => expect(result.current.pendingMfa).toBeNull())
   })
 
+  it("applies a valid versioned cache snapshot from a storage event", async () => {
+    vi.spyOn(api, "get").mockImplementation((url) => {
+      if (url === "/users/me") return Promise.resolve({ data: testUser } as any)
+      throw new Error(`Unexpected url: ${url}`)
+    })
+
+    const { result, unmount } = renderProfileSync({ signingKey: mockSigningKey })
+    await waitFor(() => expect(result.current.user?.id).toBe(testUser.id))
+
+    const snapshot = {
+      id: "storage-user",
+      full_name: "Storage User",
+      group_id: null,
+      avatar_url: null,
+      cover_url: null,
+      is_active: true,
+      spotify_connected: false,
+    } as unknown as CachedUserSnapshot
+    const payload: CacheSignaturePayload = {
+      version: PROFILE_CACHE_SCHEMA_VERSION,
+      expiresAt: Date.now() + 60_000,
+      data: snapshot,
+    }
+    const signature = signSync(payload, mockSigningKey)
+    localStorage.setItem(PROFILE_CACHE_STORAGE_KEY, JSON.stringify({ ...payload, signature }))
+    markCurrentCacheVersion()
+
+    act(() => {
+      window.dispatchEvent(
+        new StorageEvent("storage", {
+          key: PROFILE_CACHE_STORAGE_KEY,
+          newValue: JSON.stringify({ ...payload, signature }),
+          storageArea: localStorage,
+        })
+      )
+    })
+
+    await waitFor(() => expect(result.current.user?.id).toBe("storage-user"))
+    expect(result.current.user?.full_name).toBe("Storage User")
+    unmount()
+  })
+
+  it("applies a valid cache snapshot when no authoritative user exists", async () => {
+    const pendingProfile = new Promise<never>(() => undefined)
+    vi.spyOn(api, "get").mockReturnValue(pendingProfile as never)
+
+    const { result } = renderProfileSync({ signingKey: mockSigningKey })
+    await waitFor(() => expect(api.get).toHaveBeenCalled())
+
+    const snapshot = {
+      id: "cache-only-user",
+      full_name: "Cache Only User",
+      group_id: null,
+      avatar_url: null,
+      cover_url: null,
+      is_active: true,
+      spotify_connected: false,
+    } as unknown as CachedUserSnapshot
+    const payload: CacheSignaturePayload = {
+      version: PROFILE_CACHE_SCHEMA_VERSION,
+      expiresAt: Date.now() + 60_000,
+      data: snapshot,
+    }
+    const signature = signSync(payload, mockSigningKey)
+    const envelope = JSON.stringify({ ...payload, signature })
+    localStorage.setItem(PROFILE_CACHE_STORAGE_KEY, envelope)
+    markCurrentCacheVersion()
+
+    act(() => {
+      window.dispatchEvent(
+        new StorageEvent("storage", {
+          key: PROFILE_CACHE_STORAGE_KEY,
+          newValue: envelope,
+          storageArea: localStorage,
+        })
+      )
+    })
+
+    await waitFor(() => expect(result.current.user?.id).toBe("cache-only-user"))
+  })
+
+  it("merges a cross-tab cache snapshot into an existing authoritative user", async () => {
+    const pendingProfile = new Promise<never>(() => undefined)
+    vi.spyOn(api, "get").mockReturnValue(pendingProfile as never)
+    const { result } = renderProfileSync({ signingKey: mockSigningKey })
+
+    await act(async () => {
+      result.current.setUser(testUser)
+    })
+    await waitFor(() => expect(result.current.user?.email).toBe(testUser.email))
+
+    const snapshot = {
+      id: "cross-tab-user",
+      full_name: "Updated From Another Tab",
+      group_id: null,
+      avatar_url: "https://cdn.example/avatar.png",
+      cover_url: null,
+      is_active: true,
+      spotify_connected: false,
+      mfa_required: true,
+      mfa_default_method: "totp",
+      mfa_last_verified_at: "2026-08-01T00:00:00Z",
+      totp_enrollments: [{ id: "cross-tab-enrollment" }],
+    } as unknown as CachedUserSnapshot
+    const payload: CacheSignaturePayload = {
+      version: PROFILE_CACHE_SCHEMA_VERSION,
+      expiresAt: Date.now() + 60_000,
+      data: snapshot,
+    }
+    const signature = signSync(payload, mockSigningKey)
+    const envelope = JSON.stringify({ ...payload, signature })
+    localStorage.setItem(PROFILE_CACHE_STORAGE_KEY, envelope)
+    markCurrentCacheVersion()
+
+    act(() => {
+      window.dispatchEvent(
+        new StorageEvent("storage", {
+          key: PROFILE_CACHE_STORAGE_KEY,
+          newValue: envelope,
+          storageArea: localStorage,
+        })
+      )
+    })
+
+    await waitFor(() => expect(result.current.user?.id).toBe("cross-tab-user"))
+    expect(result.current.user).toMatchObject({
+      email: testUser.email,
+      role: testUser.role,
+      full_name: "Updated From Another Tab",
+      avatar_url: "https://cdn.example/avatar.png",
+      mfa_required: true,
+      mfa_default_method: "totp",
+      mfa_last_verified_at: "2026-08-01T00:00:00Z",
+      totp_enrollments: [{ id: "cross-tab-enrollment" }],
+    })
+  })
+
+  it("clears a storage snapshot when no session signing key is available", async () => {
+    vi.spyOn(api, "get").mockResolvedValue({ data: testUser } as any)
+    const { result } = renderProfileSync({
+      signingKey: null,
+      ensureSessionSigningKey: async () => null,
+    })
+    await waitFor(() => expect(result.current.user?.id).toBe(testUser.id))
+
+    localStorage.setItem(PROFILE_CACHE_STORAGE_KEY, JSON.stringify({ stale: true }))
+    act(() => {
+      window.dispatchEvent(
+        new StorageEvent("storage", {
+          key: PROFILE_CACHE_STORAGE_KEY,
+          newValue: JSON.stringify({ stale: true }),
+          storageArea: localStorage,
+        })
+      )
+    })
+
+    await waitFor(() => expect(result.current.user).toBeNull())
+    await waitFor(() => expect(localStorage.getItem(PROFILE_CACHE_STORAGE_KEY)).toBeNull(), {
+      timeout: 3000,
+    })
+  })
+
+  it("short-circuits cache deletion when localStorage is unavailable", async () => {
+    vi.spyOn(api, "get").mockResolvedValue({ data: testUser } as any)
+    const { result } = renderProfileSync({
+      signingKey: null,
+      ensureSessionSigningKey: async () => null,
+    })
+    await waitFor(() => expect(result.current.user?.id).toBe(testUser.id))
+
+    const originalStorage = globalThis.localStorage
+    vi.stubGlobal("localStorage", undefined)
+    try {
+      act(() => {
+        window.dispatchEvent(
+          new StorageEvent("storage", {
+            key: PROFILE_CACHE_STORAGE_KEY,
+            newValue: null,
+          })
+        )
+      })
+      await waitFor(() => expect(result.current.user).toBeNull())
+    } finally {
+      vi.stubGlobal("localStorage", originalStorage)
+    }
+  })
+
+  it("skips outbound broadcast when BroadcastChannel is absent", async () => {
+    vi.spyOn(api, "get").mockResolvedValue({ data: testUser } as any)
+    const { result } = renderProfileSync({ signingKey: mockSigningKey })
+    await waitFor(() => expect(result.current.loading).toBe(false))
+
+    const originalWindow = globalThis.window
+    const channellessWindow = new Proxy(originalWindow, {
+      has(target, property) {
+        if (property === "BroadcastChannel") return false
+        return Reflect.has(target, property)
+      },
+    })
+    vi.stubGlobal("window", channellessWindow)
+    try {
+      await act(async () => {
+        result.current.updatePendingMfa({ ticket: "no-channel", methods: [] } as any)
+      })
+      expect(result.current.pendingMfa).toMatchObject({ ticket: "no-channel" })
+    } finally {
+      vi.stubGlobal("window", originalWindow)
+    }
+  })
+
+  it("swallows BroadcastChannel construction failures", async () => {
+    class ThrowingBroadcastChannel {
+      constructor() {
+        throw new Error("BroadcastChannel unavailable")
+      }
+    }
+    vi.stubGlobal("BroadcastChannel", ThrowingBroadcastChannel)
+    vi.spyOn(api, "get").mockResolvedValue({ data: testUser } as any)
+
+    const { result, unmount } = renderProfileSync({ signingKey: mockSigningKey })
+    await waitFor(() => expect(result.current.loading).toBe(false))
+    await act(async () => {
+      result.current.updatePendingMfa({ ticket: "channel-error", methods: [] } as any)
+    })
+    expect(result.current.pendingMfa).toMatchObject({ ticket: "channel-error" })
+    unmount()
+    vi.unstubAllGlobals()
+  })
+
   it("ignores malformed BroadcastChannel messages", async () => {
     vi.spyOn(api, "get").mockImplementation((url) => {
       if (url === "/users/me") return Promise.resolve({ data: testUser } as any)
@@ -708,6 +1469,36 @@ describe("useProfileSync — cross-tab sync effect", () => {
 // (locks the encrypt+sign+persist invariant the hook relies on)
 // ===========================================================================
 
+describe("useProfileSync — invalid cross-tab cache data", () => {
+  it("clears truthy primitive cache data received from another tab", async () => {
+    const pendingProfile = new Promise<never>(() => undefined)
+    vi.spyOn(api, "get").mockReturnValue(pendingProfile as never)
+    const view = renderProfileSync()
+    await waitFor(() => expect(api.get).toHaveBeenCalled())
+
+    const payload: CacheSignaturePayload = {
+      version: PROFILE_CACHE_SCHEMA_VERSION,
+      expiresAt: Date.now() + 60_000,
+      data: 42 as unknown as CachedUserSnapshot,
+    }
+    const serialized = JSON.stringify({ ...payload, signature: signSync(payload, mockSigningKey) })
+    localStorage.setItem(PROFILE_CACHE_STORAGE_KEY, serialized)
+    localStorage.setItem(PROFILE_CACHE_VERSION_KEY, String(PROFILE_CACHE_SCHEMA_VERSION))
+
+    act(() => {
+      window.dispatchEvent(
+        new StorageEvent("storage", {
+          key: PROFILE_CACHE_STORAGE_KEY,
+          newValue: serialized,
+        })
+      )
+    })
+
+    await waitFor(() => expect(localStorage.getItem(PROFILE_CACHE_STORAGE_KEY)).toBeNull())
+    view.unmount()
+  })
+})
+
 describe("signPayload parity with the cached-bootstrap signature", () => {
   it("async signPayload matches the noble HMAC used to seed the cache", async () => {
     const payload: CacheSignaturePayload = {
@@ -718,5 +1509,232 @@ describe("signPayload parity with the cached-bootstrap signature", () => {
     const fromHook = await signPayload(payload, mockSigningKey)
     const external = signSync(payload, mockSigningKey)
     expect(fromHook).toBe(external)
+  })
+})
+
+describe("useProfileSync crypto failure paths", () => {
+  const snapshot = {
+    id: "crypto-user",
+    full_name: "Crypto User",
+    group_id: null,
+    avatar_url: null,
+    cover_url: null,
+    is_active: true,
+    spotify_connected: false,
+  } as unknown as CachedUserSnapshot
+
+  it("returns null when key import is unavailable", async () => {
+    const importSpy = vi
+      .spyOn(window.crypto.subtle, "importKey")
+      .mockResolvedValue(null as unknown as CryptoKey)
+
+    await expect(encryptData(snapshot, mockSigningKey)).resolves.toBeNull()
+    importSpy.mockRestore()
+  })
+
+  it("returns null when key derivation returns no key", async () => {
+    const deriveSpy = vi
+      .spyOn(window.crypto.subtle, "deriveKey")
+      .mockResolvedValue(null as unknown as CryptoKey)
+
+    await expect(encryptData(snapshot, mockSigningKey)).resolves.toBeNull()
+    deriveSpy.mockRestore()
+  })
+
+  it("returns null when subtle crypto disappears before key import", async () => {
+    const originalSubtle = window.crypto.subtle
+    let reads = 0
+    const subtleSpy = vi.spyOn(window.crypto, "subtle", "get").mockImplementation(() => {
+      reads += 1
+      return (reads === 1 ? originalSubtle : undefined) as SubtleCrypto
+    })
+
+    await expect(encryptData(snapshot, mockSigningKey)).resolves.toBeNull()
+    expect(reads).toBeGreaterThanOrEqual(2)
+    subtleSpy.mockRestore()
+  })
+
+  it("returns null when subtle crypto disappears before key derivation", async () => {
+    const originalSubtle = window.crypto.subtle
+    let reads = 0
+    const subtleSpy = vi.spyOn(window.crypto, "subtle", "get").mockImplementation(() => {
+      reads += 1
+      return (reads <= 2 ? originalSubtle : undefined) as SubtleCrypto
+    })
+
+    await expect(encryptData(snapshot, mockSigningKey)).resolves.toBeNull()
+    expect(reads).toBeGreaterThanOrEqual(3)
+    subtleSpy.mockRestore()
+  })
+
+  it("returns null when deriveKey loses crypto in an isolated browser stub", async () => {
+    const originalWindow = globalThis.window
+    let subtleReads = 0
+    const fakeSubtle = {
+      importKey: vi.fn(async () => ({}) as CryptoKey),
+      deriveKey: vi.fn(async () => ({}) as CryptoKey),
+    } as unknown as SubtleCrypto
+    const fakeWindow = {
+      crypto: {
+        get subtle() {
+          subtleReads += 1
+          return (subtleReads <= 2 ? fakeSubtle : undefined) as SubtleCrypto
+        },
+        getRandomValues: (bytes: Uint8Array) => bytes,
+      },
+    } as unknown as Window
+    vi.stubGlobal("window", fakeWindow)
+
+    try {
+      await expect(encryptData(snapshot, mockSigningKey)).resolves.toBeNull()
+      expect(subtleReads).toBeGreaterThanOrEqual(3)
+      expect(fakeSubtle.deriveKey).not.toHaveBeenCalled()
+    } finally {
+      vi.stubGlobal("window", originalWindow)
+    }
+  })
+
+  it("returns null when browser crypto is unavailable", async () => {
+    const browserWindow = window
+    vi.stubGlobal("window", undefined)
+    try {
+      await expect(encryptData(snapshot, mockSigningKey)).resolves.toBeNull()
+    } finally {
+      vi.stubGlobal("window", browserWindow)
+    }
+  })
+
+  it("clears an encrypted cache when decrypt key import is unavailable", async () => {
+    const payload: CacheSignaturePayload = {
+      version: PROFILE_CACHE_SCHEMA_VERSION,
+      expiresAt: Date.now() + 60_000,
+      data: "00:00:AA==",
+    }
+    const envelope = JSON.stringify({ ...payload, signature: signSync(payload, mockSigningKey) })
+    localStorage.setItem(PROFILE_CACHE_STORAGE_KEY, envelope)
+    markCurrentCacheVersion()
+
+    const pendingProfile = new Promise<never>(() => undefined)
+    vi.spyOn(api, "get").mockReturnValue(pendingProfile as never)
+
+    const originalImportKey = window.crypto.subtle.importKey.bind(window.crypto.subtle)
+    let importCalls = 0
+    const importSpy = vi
+      .spyOn(window.crypto.subtle, "importKey")
+      .mockImplementation(async (...args: any[]) => {
+        importCalls += 1
+        if (importCalls === 2) return null as unknown as CryptoKey
+        return Reflect.apply(originalImportKey, window.crypto.subtle, args) as Promise<CryptoKey>
+      })
+
+    const { unmount } = renderProfileSync({ signingKey: mockSigningKey })
+    await waitFor(() => expect(localStorage.getItem(PROFILE_CACHE_STORAGE_KEY)).toBeNull())
+    expect(importCalls).toBeGreaterThanOrEqual(2)
+    importSpy.mockRestore()
+    unmount()
+  })
+
+  it("clears an encrypted cache when decrypt key derivation is unavailable", async () => {
+    const payload: CacheSignaturePayload = {
+      version: PROFILE_CACHE_SCHEMA_VERSION,
+      expiresAt: Date.now() + 60_000,
+      data: "00:00:AA==",
+    }
+    const envelope = JSON.stringify({ ...payload, signature: signSync(payload, mockSigningKey) })
+    localStorage.setItem(PROFILE_CACHE_STORAGE_KEY, envelope)
+    markCurrentCacheVersion()
+
+    const pendingProfile = new Promise<never>(() => undefined)
+    vi.spyOn(api, "get").mockReturnValue(pendingProfile as never)
+    const deriveSpy = vi
+      .spyOn(window.crypto.subtle, "deriveKey")
+      .mockResolvedValue(null as unknown as CryptoKey)
+
+    const { unmount } = renderProfileSync({ signingKey: mockSigningKey })
+    await waitFor(() => expect(localStorage.getItem(PROFILE_CACHE_STORAGE_KEY)).toBeNull())
+    deriveSpy.mockRestore()
+    unmount()
+  })
+
+  it("returns null when crypto disappears before decrypt key derivation", async () => {
+    const payload: CacheSignaturePayload = {
+      version: PROFILE_CACHE_SCHEMA_VERSION,
+      expiresAt: Date.now() + 60_000,
+      data: "00:00:AA==",
+    }
+    const envelope = JSON.stringify({ ...payload, signature: signSync(payload, mockSigningKey) })
+    localStorage.setItem(PROFILE_CACHE_STORAGE_KEY, envelope)
+    markCurrentCacheVersion()
+
+    const pendingProfile = new Promise<never>(() => undefined)
+    vi.spyOn(api, "get").mockReturnValue(pendingProfile as never)
+    const originalSubtle = window.crypto.subtle
+    let reads = 0
+    const subtleSpy = vi.spyOn(window.crypto, "subtle", "get").mockImplementation(() => {
+      reads += 1
+      return (reads <= 3 ? originalSubtle : undefined) as SubtleCrypto
+    })
+
+    const { unmount } = renderProfileSync({ signingKey: mockSigningKey })
+    await waitFor(() => expect(localStorage.getItem(PROFILE_CACHE_STORAGE_KEY)).toBeNull())
+    expect(reads).toBeGreaterThanOrEqual(4)
+    subtleSpy.mockRestore()
+    unmount()
+  })
+
+  it("does not persist after unmount during cache signature generation", async () => {
+    const pendingProfile = new Promise<never>(() => undefined)
+    vi.spyOn(api, "get").mockReturnValue(pendingProfile as never)
+    const view = renderProfileSync({ signingKey: mockSigningKey })
+    await waitFor(() => expect(api.get).toHaveBeenCalled())
+
+    const originalTextEncoder = globalThis.TextEncoder
+    let encoderCalls = 0
+    const setUser = view.result.current.setUser
+    class UnmountingTextEncoder extends originalTextEncoder {
+      constructor() {
+        super()
+        encoderCalls += 1
+        if (encoderCalls === 3) view.unmount()
+      }
+    }
+    vi.stubGlobal("TextEncoder", UnmountingTextEncoder)
+
+    try {
+      await act(async () => {
+        setUser({ ...testUser, full_name: "Unmounted before cache signature" } as any)
+        await new Promise((resolve) => setTimeout(resolve, 0))
+      })
+      await waitFor(() => expect(encoderCalls).toBeGreaterThanOrEqual(3), { timeout: 5000 })
+    } finally {
+      vi.stubGlobal("TextEncoder", originalTextEncoder)
+    }
+
+    expect(localStorage.getItem(PROFILE_CACHE_STORAGE_KEY)).toBeNull()
+  })
+
+  it("returns null and logs when encryption rejects", async () => {
+    const importSpy = vi.spyOn(window.crypto.subtle, "importKey").mockResolvedValue({} as CryptoKey)
+    const deriveSpy = vi.spyOn(window.crypto.subtle, "deriveKey").mockResolvedValue({} as CryptoKey)
+    const encryptSpy = vi
+      .spyOn(window.crypto.subtle, "encrypt")
+      .mockRejectedValue(new Error("crypto unavailable"))
+
+    await expect(encryptData(snapshot, mockSigningKey)).resolves.toBeNull()
+    encryptSpy.mockRestore()
+    deriveSpy.mockRestore()
+    importSpy.mockRestore()
+  })
+
+  it("returns an empty signature when the payload cannot be serialized", async () => {
+    const circular: Record<string, unknown> = {}
+    circular.self = circular
+    const payload: CacheSignaturePayload = {
+      version: PROFILE_CACHE_SCHEMA_VERSION,
+      expiresAt: Date.now() + 60_000,
+      data: circular as unknown as CachedUserSnapshot,
+    }
+
+    await expect(signPayload(payload, mockSigningKey)).resolves.toBe("")
   })
 })

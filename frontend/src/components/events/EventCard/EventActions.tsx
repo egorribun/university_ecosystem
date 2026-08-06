@@ -1,4 +1,4 @@
-import { useState, useEffect, type MouseEvent } from "react"
+import { memo, useState, useEffect, type MouseEvent } from "react"
 import { Button, Tooltip } from "@/components/ui"
 import { Users as PeopleAltIcon, QrCode as QrCodeIcon } from "lucide-react"
 import { useTranslation } from "react-i18next"
@@ -19,7 +19,7 @@ interface EventActionsProps {
 
 const qrOpenKey = (eventId: string) => `event:qr_open:${eventId}`
 
-export function EventActions({
+export const EventActions = memo(function EventActions({
   eventId,
   isActive,
   isEnded,
@@ -117,4 +117,6 @@ export function EventActions({
       )}
     </div>
   )
-}
+})
+
+export default EventActions

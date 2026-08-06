@@ -2,13 +2,20 @@
 import { defineConfig } from "vitest/config"
 import react from "@vitejs/plugin-react"
 import path from "node:path"
+import { fileURLToPath } from "node:url"
+
+// Vite's bundled config loader preserves import.meta.dirname, while the
+// module-runner path remains compatible with older Node versions via the URL
+// fallback. Avoid __dirname: this file is an ESM config.
+const configDirectory = import.meta.dirname ?? path.dirname(fileURLToPath(import.meta.url))
+
 export default defineConfig({
-  cacheDir: path.resolve(__dirname, ".vitest"),
+  cacheDir: path.resolve(configDirectory, ".vitest"),
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   plugins: [react() as any],
   resolve: {
     alias: {
-      "@": path.resolve(__dirname, "src"),
+      "@": path.resolve(configDirectory, "src"),
       // Wave 116 polish — removed dead aliases for @mui/material/styles/
       // CssVarsProvider + useColorScheme. MUI was uninstalled long ago;
       // these pointed to src/shims/ which doesn't exist. No source file
@@ -31,6 +38,11 @@ export default defineConfig({
       ".idea",
       ".git",
       ".cache",
+      // Stryker copies the repository (including nested dependency tests) into
+      // this directory. Vitest must never discover that sandbox as authored
+      // project tests, especially after a bounded mutation run is interrupted.
+      "stryker-tmp/**",
+      ".stryker-tmp/**",
       "tests/e2e/**",
       "scripts/**/*.test.mjs",
     ],
@@ -56,13 +68,12 @@ export default defineConfig({
         "src/sw.ts",
         "src/test/**/*",
       ],
-      // Repository quality-contract floors. They remain strict while the
-      // source-wide suite is restored; a failing run is actionable evidence.
+      // Frontend ratchet: authored-only aggregate now clears 99/98/98.
       thresholds: {
-        statements: 91,
-        branches: 82,
-        functions: 82,
-        lines: 91,
+        statements: 99,
+        branches: 98,
+        functions: 98,
+        lines: 99,
       },
     },
   },

@@ -55,7 +55,24 @@ class _NamespaceView[T]:
         object.__setattr__(self, "_mixin_cls", mixin_cls)
 
     def __getattr__(self, name: str) -> typing.Any:
-        return getattr(object.__getattribute__(self, "_parent"), name)
+        parent = object.__getattribute__(self, "_parent")
+        return getattr(parent, name)
+
+    def __setattr__(self, name: str, value: typing.Any) -> None:
+        if name in object.__getattribute__(self, "__slots__"):
+            object.__setattr__(self, name, value)
+        else:
+            setattr(object.__getattribute__(self, "_parent"), name, value)
+
+    def __delattr__(self, name: str) -> None:
+        if name in object.__getattribute__(self, "__slots__"):
+            object.__delattr__(self, name)
+        else:
+            parent = object.__getattribute__(self, "_parent")
+            try:
+                delattr(parent, name)
+            except AttributeError:
+                pass
 
     def __repr__(self) -> str:
         cls_name = object.__getattribute__(self, "_mixin_cls").__name__

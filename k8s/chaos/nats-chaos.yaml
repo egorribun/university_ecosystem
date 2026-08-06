@@ -1,0 +1,17 @@
+apiVersion: chaos-mesh.org/v1alpha1
+kind: NetworkChaos
+metadata:
+  name: nats-network-partition
+spec:
+  action: partition
+  mode: all
+  selector:
+    labelSelectors:
+      app.kubernetes.io/name: nats
+  direction: both
+  target:
+    mode: all
+    selector:
+      labelSelectors:
+        app.kubernetes.io/name: backend
+  duration: "30s"

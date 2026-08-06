@@ -1,15 +1,30 @@
 import { render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { describe, it, expect, vi } from "vitest"
+import type { ReactNode } from "react"
 
-vi.mock("react-map-gl/maplibre", async () =>
-  (await import("@/tests/helpers/mapGlMock")).mapGlMock()
-)
+vi.mock("react-map-gl/maplibre", async () => {
+  const base = (await import("@/tests/helpers/mapGlMock")).mapGlMock()
+  return {
+    ...base,
+    Popup: ({ children, onClose }: { children?: ReactNode; onClose?: () => void }) => (
+      <div>
+        {children}
+        <button type="button" onClick={() => onClose?.()}>
+          close-popup
+        </button>
+      </div>
+    ),
+  }
+})
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({
     t: (key: string) => key,
     i18n: { language: "en", changeLanguage: () => Promise.resolve() },
   }),
+}))
+vi.mock("@/utils/buildingHours", () => ({
+  isOpenNow: (hours: { weekday: string }) => hours.weekday === "open",
 }))
 
 import { BuildingMarker } from "@/components/map/BuildingMarker"
@@ -61,5 +76,51 @@ describe("BuildingMarker", () => {
   it("renders an event badge when eventCount is positive", () => {
     render(<BuildingMarker {...baseProps} eventCount={3} />)
     expect(screen.getByText("3")).toBeInTheDocument()
+  })
+
+  it("covers active/highlighted states and keyboard activation", async () => {
+    const user = userEvent.setup()
+    const onClick = vi.fn()
+    const onPopupOpen = vi.fn()
+    const { unmount } = render(
+      <BuildingMarker {...baseProps} isHighlighted onClick={onClick} onPopupOpen={onPopupOpen} />
+    )
+    const highlighted = screen.getByRole("button", { name: "a11y.buildingSelected" })
+    expect(highlighted).toHaveClass("map-building-pin--pulse")
+    await user.click(highlighted)
+    highlighted.focus()
+    await user.keyboard("{Enter}")
+    await user.keyboard(" ")
+    expect(onClick).toHaveBeenCalledTimes(3)
+    expect(onPopupOpen).toHaveBeenCalledTimes(3)
+    unmount()
+
+    render(<BuildingMarker {...baseProps} isSelected isHighlighted />)
+    const active = screen.getByRole("button", { name: "a11y.buildingSelected" })
+    expect(active).toHaveClass("map-building-pin--active")
+    expect(active).not.toHaveClass("map-building-pin--pulse")
+  })
+
+  it("renders a photo popup and open-hours styling", () => {
+    const onPopupClose = vi.fn()
+    render(
+      <BuildingMarker
+        {...baseProps}
+        isSelected
+        isPopupOpen
+        onPopupClose={onPopupClose}
+        eventCount={0}
+        building={{
+          ...BUILDING,
+          photo: "/campus.jpg",
+          hours: { ...BUILDING.hours, weekday: "open" },
+        }}
+      />
+    )
+    expect(screen.getByRole("img", { name: BUILDING.name })).toHaveAttribute("src", "/campus.jpg")
+    expect(screen.getByText("hours.openNow")).toBeInTheDocument()
+    expect(screen.queryByText("0")).not.toBeInTheDocument()
+    screen.getByRole("button", { name: "close-popup" }).click()
+    expect(onPopupClose).toHaveBeenCalledOnce()
   })
 })

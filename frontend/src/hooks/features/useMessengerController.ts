@@ -839,7 +839,7 @@ export const useMessengerController = () => {
       if (!target || target.deletedAt) return
       setReplyingTo({
         id: target.id,
-        senderName: target.senderName ?? null,
+        senderName: target.senderName!,
         isMe: target.isMe,
         text: target.text,
       })

@@ -7,7 +7,7 @@ from uuid import UUID
 
 from sqlalchemy import text
 
-from app.core.config import settings
+import app.core.config
 from app.core.localization import translate
 from app.core.logging import get_logger
 from app.core.protocols import AsyncDatabaseSession
@@ -26,14 +26,14 @@ class LockoutService:
         self._rules: list[tuple[int, int]] = self._parse_lockout_rules()
         # RZ-1: Detect PostgreSQL dialect from the database URL at construction time.
         # AsyncSession.bind was removed in SQLAlchemy 2.0; we must not access it.
-        _db_url: str = str(settings.database_url or "")
+        _db_url: str = str(app.core.config.settings.database_url or "")
         self._is_postgresql: bool = any(
             driver in _db_url for driver in ("postgresql", "asyncpg", "psycopg")
         )
 
     def _parse_lockout_rules(self) -> list[tuple[int, int]]:
-        """Parse lockout thresholds from settings. Called once at construction."""
-        raw = settings.auth_lockout_thresholds
+        """Parse lockout thresholds from settings."""
+        raw = app.core.config.settings.security.auth_lockout_thresholds
         tokens: list[str]
         if isinstance(raw, str):
             tokens = [token.strip() for token in raw.split(",")]
@@ -44,9 +44,10 @@ class LockoutService:
         for token in tokens:
             if not token:
                 continue
-            threshold_str, _, duration_str = token.partition(":")
-            if not threshold_str or not duration_str:
+            parts = token.split(":")
+            if len(parts) != 2:
                 continue
+            threshold_str, duration_str = parts[0].strip(), parts[1].strip()
             try:
                 threshold = int(threshold_str)
                 duration = int(duration_str)
@@ -58,8 +59,8 @@ class LockoutService:
         return rules
 
     def _lockout_rules(self) -> list[tuple[int, int]]:
-        """Return cached lockout rules. Parsing done once in __init__."""
-        return self._rules
+        """Return lockout rules parsed from settings."""
+        return self._parse_lockout_rules()
 
     def _max_lockout_threshold(self) -> int:
         rules = self._lockout_rules()
@@ -68,7 +69,7 @@ class LockoutService:
         return max(threshold for threshold, _ in rules)
 
     async def _prune_stale_attempts(self, email: str) -> None:
-        history_minutes = getattr(settings, "auth_lockout_history_minutes", 0)
+        history_minutes = app.core.config.settings.security.auth_lockout_history_minutes
         if history_minutes <= 0:
             return
         cutoff = datetime.now(UTC) - timedelta(minutes=history_minutes)

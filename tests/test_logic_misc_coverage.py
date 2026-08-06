@@ -678,7 +678,9 @@ async def test_schedule_service_delete_success():
     mock_uow.commit = AsyncMock()
 
     svc = ScheduleService(mock_uow, MagicMock())
-    result = await svc.delete_schedule(uuid.uuid4())
+    with patch("app.services.audit_service.get_secure_audit_service") as audit_factory:
+        audit_factory.return_value.record_domain_event = AsyncMock()
+        result = await svc.delete_schedule(uuid.uuid4())
     assert result is True
 
 
@@ -779,7 +781,9 @@ async def test_schedule_service_create_no_teacher():
     data.end_time = datetime(2026, 1, 1, 10, 0, tzinfo=UTC)
     data.parity = "both"
 
-    result = await svc.create_schedule(data, locale="en")
+    with patch("app.services.audit_service.get_secure_audit_service") as audit_factory:
+        audit_factory.return_value.record_domain_event = AsyncMock()
+        result = await svc.create_schedule(data, locale="en")
     assert result is not None
     mock_uow.schedules.get_by_teacher.assert_not_called()
 

@@ -28,26 +28,42 @@ jobs:
           python-version: "3.14"
 
       - name: Collect latest successful CI quality manifest
+        id: collect-manifest
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           set -euo pipefail
           latest="$(gh run list --workflow ci.yml --branch main --status success --limit 1 --json databaseId,headSha --jq '.[0] // empty')"
-          test -n "$latest" || { echo "::error::No successful main CI run found"; exit 1; }
+          if [[ -z "$latest" ]]; then
+            echo "::warning::No successful main CI run found; skipping this history cycle."
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
           run_id="$(jq -r '.databaseId' <<< "$latest")"
           head_sha="$(jq -r '.headSha' <<< "$latest")"
           mkdir -p "$RUNNER_TEMP/quality-ci" artifacts/quality/history
-          gh run download "$run_id" --name quality-manifest --dir "$RUNNER_TEMP/quality-ci"
+          if ! gh run download "$run_id" --name quality-manifest --dir "$RUNNER_TEMP/quality-ci"; then
+            echo "::warning::Successful CI run $run_id has no downloadable quality-manifest; skipping this history cycle."
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
           manifest_path="$(find "$RUNNER_TEMP/quality-ci" -name quality-manifest.json -print -quit)"
-          test -n "$manifest_path" || { echo "::error::quality-manifest.json missing"; exit 1; }
+          if [[ -z "$manifest_path" ]]; then
+            echo "::warning::quality-manifest.json is missing from CI run $run_id; skipping this history cycle."
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
           timestamp="$(date -u +%Y%m%dT%H%M%SZ)"
           cp "$manifest_path" "artifacts/quality/history/${timestamp}-${head_sha}.json"
+          echo "available=true" >> "$GITHUB_OUTPUT"
 
       - name: Render deterministic dashboard
+        if: steps.collect-manifest.outputs.available == 'true'
         run: python scripts/quality/generate_dashboard.py --limit 30
 
       - name: Commit quality history
+        if: steps.collect-manifest.outputs.available == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash

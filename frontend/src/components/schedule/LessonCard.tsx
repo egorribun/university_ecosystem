@@ -1,3 +1,4 @@
+import { memo } from "react"
 import {
   Trash2 as DeleteIcon,
   Clock as AccessTimeIcon,
@@ -48,8 +49,7 @@ export interface LessonCardProps {
   hasNote?: boolean
 }
 
-// PERF-27-02: Removed React.memo() — React Compiler "infer" mode handles memoization
-export function LessonCard({
+export const LessonCard = memo(function LessonCard({
   lesson,
   isConflict,
   isCurrent = false,
@@ -210,6 +210,6 @@ export function LessonCard({
       )}
     </div>
   )
-}
+})
 
 export default LessonCard

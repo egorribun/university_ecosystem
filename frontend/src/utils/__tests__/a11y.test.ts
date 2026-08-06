@@ -188,6 +188,20 @@ describe("a11y utilities", () => {
       trap.deactivate()
       document.body.removeChild(container)
     })
+
+    it("safely ignores Tab when the dialog has no visible focusable elements", () => {
+      const container = document.createElement("div")
+      document.body.appendChild(container)
+
+      const trap = new FocusTrap(container)
+      trap.activate()
+
+      const event = new KeyboardEvent("keydown", { key: "Tab", bubbles: true })
+      expect(() => document.dispatchEvent(event)).not.toThrow()
+
+      trap.deactivate()
+      document.body.removeChild(container)
+    })
   })
 
   describe("prefersReducedMotion", () => {

@@ -147,7 +147,7 @@ async def create_notifications_for_users(
     # delivery with at-least-once semantics.  The direct push dispatch below is
     # kept as the primary path; the outbox acts as a durability record and
     # retry mechanism when the in-process delivery fails or the process crashes.
-    if notification_ids_by_user:
+    if notification_ids_by_user:  # pragma: no branch - uids is non-empty here
         from app.core.events import NotificationsRequested
         from app.models.domain_events import StoredEvent
 
@@ -169,9 +169,6 @@ async def create_notifications_for_users(
             user_ids=list(notification_ids_by_user.keys()),
             kinds=("grades",),
         )
-
-    if not notification_ids_by_user:
-        return 0
 
     delivery_rows: list[dict[str, Any]] = []
 
@@ -292,9 +289,9 @@ async def create_notifications_for_users(
                     )
 
         for sub in subs:
-            user_id_raw = getattr(sub, "user_id", None)
-            if not user_id_raw:
-                continue
+            # ``subs_by_user`` only contains subscriptions with a non-null
+            # user_id, so this conversion is guaranteed by the grouping above.
+            user_id_raw = sub.user_id
             user_id = uuid.UUID(str(user_id_raw))
             notification_id = notification_ids_by_user.get(user_id)
             if not notification_id:

@@ -231,6 +231,16 @@ def test_configure_otel_optional_pipelines_without_endpoint_or_headers() -> None
     observability._sqlalchemy_instrumented = False
 
 
+def test_configure_otel_returns_none_when_disabled() -> None:
+    """Disabled OTEL must skip provider creation before touching exporters."""
+    from app.core import observability
+
+    observability._otel_configured = False
+    with patch.object(observability, "settings", MagicMock(enable_otel=False)):
+        assert observability._configure_otel(MagicMock()) is None
+    assert observability._otel_configured is False
+
+
 def test_configure_observability_short_circuits_configured_app() -> None:
     from app.core import observability
 
@@ -327,8 +337,9 @@ def test_create_worker_metrics_requires_prometheus() -> None:
 
 
 @pytest.mark.asyncio
-async def test_periodic_task_tracking_records_success_failure_cancel_and_values(
-) -> None:
+async def test_periodic_task_tracking_records_success_failure_cancel_and_values() -> (
+    None
+):
     from app.core import observability
 
     metrics = observability.get_periodic_task_metrics(
@@ -376,8 +387,9 @@ async def test_worker_monitoring_app_exposes_health_and_metrics() -> None:
 
 
 @pytest.mark.asyncio
-async def test_worker_monitoring_server_validates_port_and_handles_bool_started(
-) -> None:
+async def test_worker_monitoring_server_validates_port_and_handles_bool_started() -> (
+    None
+):
     from app.core import observability
 
     with pytest.raises(ValueError, match="positive"):

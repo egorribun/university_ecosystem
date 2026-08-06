@@ -1,3 +1,5 @@
+#![cfg(not(target_arch = "wasm32"))]
+
 use proptest::prelude::*;
 use uni_wasm_crypto::{hmac_sha256_sign, pbkdf2_derive, scrypt_derive};
 

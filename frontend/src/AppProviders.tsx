@@ -10,6 +10,7 @@ import { WebSocketProvider } from "./hooks/useChatWebSocket"
 import { MessengerProvider } from "./contexts/MessengerContext"
 import { LanguageProvider } from "./contexts/LanguageContext"
 import { GlobalHapticsListener } from "./components/ui/GlobalHapticsListener"
+import { RxDBProvider } from "./db/RxDBContext"
 
 interface AppProvidersProps {
   children: ReactNode
@@ -17,17 +18,19 @@ interface AppProvidersProps {
 
 function ProvidersInner({ children }: AppProvidersProps) {
   return (
-    <LiveRegionProvider>
-      <AppShellProvider>
-        <AuthProvider>
-          <WebSocketProvider>
-            <MessengerProvider>
-              <ErrorBoundary>{children}</ErrorBoundary>
-            </MessengerProvider>
-          </WebSocketProvider>
-        </AuthProvider>
-      </AppShellProvider>
-    </LiveRegionProvider>
+    <RxDBProvider>
+      <LiveRegionProvider>
+        <AppShellProvider>
+          <AuthProvider>
+            <WebSocketProvider>
+              <MessengerProvider>
+                <ErrorBoundary>{children}</ErrorBoundary>
+              </MessengerProvider>
+            </WebSocketProvider>
+          </AuthProvider>
+        </AppShellProvider>
+      </LiveRegionProvider>
+    </RxDBProvider>
   )
 }
 

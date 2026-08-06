@@ -367,3 +367,81 @@ async def test_secure_audit_create_log_and_verify_batch(db_session, user_factory
     total, valid, invalid_ids = await svc.verify_batch(db_session)
     assert total >= 1
     assert valid == total - len(invalid_ids)
+
+
+@pytest.mark.asyncio
+async def test_record_domain_event_hmac_chaining(db_session):
+    """Verify record_domain_event links events sequentially with HMAC chaining."""
+    svc = SecureAuditService(signing_key=b"domain-event-secret-key-32bytes")
+    agg_id = uuid4()
+
+    event1 = await svc.record_domain_event(
+        db_session,
+        event_type="SCHEDULE_CREATED",
+        aggregate_type="schedule",
+        aggregate_id=agg_id,
+        payload={"subject": "Math", "room": "101"},
+    )
+    assert event1.prev_hash == "0" * 64
+    assert event1.hash is not None
+    assert len(event1.hash) == 64
+
+    event2 = await svc.record_domain_event(
+        db_session,
+        event_type="SCHEDULE_UPDATED",
+        aggregate_type="schedule",
+        aggregate_id=agg_id,
+        payload={"room": "202"},
+    )
+    assert event2.prev_hash == event1.hash
+    assert event2.hash is not None
+    assert len(event2.hash) == 64
+
+    is_valid, failed_id, err_msg = await svc.verify_chain_integrity(
+        db_session, aggregate_type="schedule", aggregate_id=agg_id
+    )
+    assert is_valid is True
+    assert failed_id is None
+    assert err_msg is None
+
+
+@pytest.mark.asyncio
+async def test_verify_chain_integrity_tamper_detection(db_session):
+    """Verify tamper detection catches broken prev_hash or payload modification."""
+    svc = SecureAuditService(signing_key=b"domain-event-secret-key-32bytes")
+    agg_id = uuid4()
+
+    _ = await svc.record_domain_event(
+        db_session,
+        event_type="GRADE_ASSIGNED",
+        aggregate_type="grade",
+        aggregate_id=agg_id,
+        payload={"score": 90},
+    )
+    e2 = await svc.record_domain_event(
+        db_session,
+        event_type="GRADE_MODIFIED",
+        aggregate_type="grade",
+        aggregate_id=agg_id,
+        payload={"score": 95},
+    )
+
+    # Verify initial integrity passes
+    is_valid, _, _ = await svc.verify_chain_integrity(
+        db_session, aggregate_type="grade", aggregate_id=agg_id
+    )
+    assert is_valid is True
+
+    # Tamper with e2 payload
+    e2.payload = {"score": 100}
+    await db_session.flush()
+
+    is_valid, failed_id, err_msg = await svc.verify_chain_integrity(
+        db_session, aggregate_type="grade", aggregate_id=agg_id
+    )
+    assert is_valid is False
+    assert failed_id == str(e2.id)
+    assert (
+        "tampering detected" in (err_msg or "").lower()
+        or "discontinuity" in (err_msg or "").lower()
+    )

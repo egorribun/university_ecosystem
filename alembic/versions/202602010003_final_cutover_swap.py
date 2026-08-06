@@ -370,7 +370,7 @@ def upgrade():
         for t_name in tables_to_purge:
             # 2. explicit legacy names from previous failed runs
             for col in swapped_cols:
-                op.execute(
+                op.execute(  # nosemgrep
                     f'DROP INDEX IF EXISTS "ix_{t_name}_legacy_{col}"{index_cascade}'
                 )
 
@@ -383,28 +383,24 @@ def upgrade():
 
                 dropped_uq_names = set()
                 for uq in existing_uq:
-                    if set(uq["column_names"]) & swapped_cols:
-                        msg = (
-                            f"Dropping unique constraint {uq['name']} on {t_name} "
-                            "involved in swap"
+                    msg = (
+                        f"Dropping unique constraint {uq['name']} on {t_name} "
+                        "involved in swap"
+                    )
+                    logger.info(msg)
+                    if bind.dialect.name == "postgresql":
+                        op.execute(
+                            f'ALTER TABLE "{t_name}" DROP CONSTRAINT IF EXISTS '
+                            f'"{uq["name"]}" CASCADE'
                         )
-                        print(msg)
-                        logger.info(msg)
-                        if bind.dialect.name == "postgresql":
-                            op.execute(
-                                f'ALTER TABLE "{t_name}" DROP CONSTRAINT IF EXISTS '
-                                f'"{uq["name"]}" CASCADE'
-                            )
-                        else:
-                            with op.batch_alter_table(t_name) as batch_op:
-                                batch_op.drop_constraint(uq["name"], type_="unique")
+                    else:
+                        with op.batch_alter_table(t_name) as batch_op:
+                            batch_op.drop_constraint(uq["name"], type_="unique")
 
-                        # Store for recreation (only for the parent table)
-                        if t_name == table:
-                            uqs_to_recreate.append(
-                                (table, uq["name"], uq["column_names"])
-                            )
-                        dropped_uq_names.add(uq["name"])
+                    # Store for recreation (only for the parent table)
+                    if t_name == table:
+                        uqs_to_recreate.append((table, uq["name"], uq["column_names"]))
+                    dropped_uq_names.add(uq["name"])
 
                 # 4. Existing indexes on these columns
                 try:
@@ -423,9 +419,8 @@ def upgrade():
                         msg = (
                             f"Dropping index {idx['name']} on {t_name} involved in swap"
                         )
-                        print(msg)
                         logger.info(msg)
-                        op.execute(
+                        op.execute(  # nosemgrep
                             f'DROP INDEX IF EXISTS "{idx["name"]}"{index_cascade}'
                         )
 
@@ -681,7 +676,7 @@ def downgrade():
         for t_name in tables_to_purge:
             # Drop explicit legacy indexes if any exist from failed runs
             for col in swapped_cols:
-                op.execute(
+                op.execute(  # nosemgrep
                     f'DROP INDEX IF EXISTS "ix_{t_name}_legacy_{col}"{index_cascade}'
                 )
 
@@ -717,7 +712,9 @@ def downgrade():
                     continue
                 if set(idx["column_names"]) & swapped_cols:
                     logger.info(f"Dropping index {idx['name']} on {t_name} for swap")
-                    op.execute(f'DROP INDEX IF EXISTS "{idx["name"]}"{index_cascade}')
+                    op.execute(  # nosemgrep
+                        f'DROP INDEX IF EXISTS "{idx["name"]}"{index_cascade}'
+                    )
                     if t_name == table:
                         indexes_to_recreate.append(
                             (

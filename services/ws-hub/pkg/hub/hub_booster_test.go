@@ -26,7 +26,7 @@ func TestValidateUpgradeTicket_Errors(t *testing.T) {
 
 	t.Run("redis nil", func(t *testing.T) {
 		h := trackTestHub(NewHub(nil, logger, nil, &configHubPlaceholder, nil))
-		_, err := h.validateUpgradeTicket(context.Background(), strings.Repeat("a", 64))
+		_, _, err := h.validateUpgradeTicket(context.Background(), strings.Repeat("a", 64))
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "redis not available")
 	})
@@ -37,7 +37,7 @@ func TestValidateUpgradeTicket_Errors(t *testing.T) {
 		defer func() { require.NoError(t, rClient.Close()) }()
 		h := trackTestHub(NewHub(nil, logger, nil, &configHubPlaceholder, rClient))
 
-		_, err := h.validateUpgradeTicket(context.Background(), "short")
+		_, _, err := h.validateUpgradeTicket(context.Background(), "short")
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "invalid ticket length")
 	})
@@ -49,7 +49,7 @@ func TestValidateUpgradeTicket_Errors(t *testing.T) {
 		h := trackTestHub(NewHub(nil, logger, nil, &configHubPlaceholder, rClient))
 
 		invalidTicket := strings.Repeat("a", 63) + "Z" // Z is not lowercase hex
-		_, err := h.validateUpgradeTicket(context.Background(), invalidTicket)
+		_, _, err := h.validateUpgradeTicket(context.Background(), invalidTicket)
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "invalid ticket charset")
 	})
@@ -61,7 +61,7 @@ func TestValidateUpgradeTicket_Errors(t *testing.T) {
 		h := trackTestHub(NewHub(nil, logger, nil, &configHubPlaceholder, rClient))
 
 		validTicket := strings.Repeat("a", 64)
-		_, err := h.validateUpgradeTicket(context.Background(), validTicket)
+		_, _, err := h.validateUpgradeTicket(context.Background(), validTicket)
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "ticket not found")
 	})
@@ -73,7 +73,7 @@ func TestValidateUpgradeTicket_Errors(t *testing.T) {
 		h := trackTestHub(NewHub(nil, logger, nil, &configHubPlaceholder, rClient))
 
 		validTicket := strings.Repeat("a", 64)
-		_, err := h.validateUpgradeTicket(context.Background(), validTicket)
+		_, _, err := h.validateUpgradeTicket(context.Background(), validTicket)
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "redis error")
 	})
@@ -87,7 +87,7 @@ func TestValidateUpgradeTicket_Errors(t *testing.T) {
 		ticket := strings.Repeat("a", 64)
 		require.NoError(t, mr.Set("ott:ws:"+ticket, "nocolon"))
 
-		_, err := h.validateUpgradeTicket(context.Background(), ticket)
+		_, _, err := h.validateUpgradeTicket(context.Background(), ticket)
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "malformed ticket payload")
 	})
@@ -101,7 +101,7 @@ func TestValidateUpgradeTicket_Errors(t *testing.T) {
 		ticket := strings.Repeat("a", 64)
 		require.NoError(t, mr.Set("ott:ws:"+ticket, ":jti"))
 
-		_, err := h.validateUpgradeTicket(context.Background(), ticket)
+		_, _, err := h.validateUpgradeTicket(context.Background(), ticket)
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "malformed ticket payload")
 	})
@@ -115,9 +115,8 @@ func TestValidateUpgradeTicket_Errors(t *testing.T) {
 		ticket := strings.Repeat("a", 64)
 		require.NoError(t, mr.Set("ott:ws:"+ticket, "user-id:"))
 
-		_, err := h.validateUpgradeTicket(context.Background(), ticket)
-		assert.Error(t, err)
-		assert.Contains(t, err.Error(), "malformed ticket payload")
+		_, _, err := h.validateUpgradeTicket(context.Background(), ticket)
+		assert.NoError(t, err)
 	})
 }
 

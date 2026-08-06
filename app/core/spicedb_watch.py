@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import asyncio
 import time
+from typing import Any
 
 from app.core.config import settings
 from app.core.logging import get_logger
@@ -67,25 +68,23 @@ async def _watch_once(token: str, host: str, port: int, use_ssl: bool) -> None:
 
         async for response in stub.Watch(request):
             for update in response.updates:
-                _invalidate_for_update(update, _permission_cache)
+                await _invalidate_for_update(update, _permission_cache)
     finally:
         await channel.close()
 
 
-def _invalidate_for_update(
+async def _invalidate_for_update(
     update: object,
-    cache: dict[tuple[str, str, str, str], tuple[bool, float]],
+    cache: Any,
 ) -> None:
-    """Remove cache entries affected by a SpiceDB relationship update.
+    """Process a SpiceDB relationship update and execute full revocation pipeline.
 
-    SpiceDB Watch delivers ``RelationshipUpdate`` objects. Each update contains:
-    - ``relationship.resource.object_type`` (resource_type)
-    - ``relationship.resource.object_id``   (resource_id)
-    - ``relationship.subject.object.object_id`` (user_id)
-
-    We evict all entries matching the (user_id, resource_type, resource_id) triple
-    regardless of the permission dimension — a relationship change can affect
-    multiple permissions (e.g. adding "member" grants "read", "comment", "list").
+    Steps:
+    1. Parse update payload (extract user_id, resource_type, resource_id).
+    2. Evict matching entries from local _permission_cache.
+    3. Invalidate Redis authorization cache keys ('auth:perms:<user_id>*').
+    4. Publish HMAC-signed disconnect event to NATS subject 'ws_hub.control' via WsHubClient.
+    5. Record metrics (spicedb_watch_events_total, ws_hub_sessions_revoked_total).
     """
     try:
         rel = update.relationship  # type: ignore[attr-defined]
@@ -96,22 +95,68 @@ def _invalidate_for_update(
         logger.debug("SpiceDB Watch: unrecognised update shape: %r", update)
         return
 
+    # 1. Local _permission_cache eviction
     keys_to_evict = [
         k
         for k in cache
-        if k[0] == user_id and k[1] == resource_type and k[2] == resource_id
+        if len(k) >= 3
+        and k[0] == user_id
+        and k[1] == resource_type
+        and k[2] == resource_id
     ]
     for key in keys_to_evict:
         cache.pop(key, None)
 
     if keys_to_evict:
         logger.debug(
-            "SpiceDB Watch: evicted %d cache entries for %s:%s (user=%s)",
+            "SpiceDB Watch: evicted %d local cache entries for %s:%s (user=%s)",
             len(keys_to_evict),
             resource_type,
             resource_id,
             user_id,
         )
+
+    # 2. Redis authorization cache invalidation
+    try:
+        from app.deps.cache import get_cache
+
+        redis_cache = get_cache()
+        await redis_cache.invalidate(f"auth:perms:{user_id}*", f"auth:perms:{user_id}")
+    except Exception:  # RZ-22-01-JUSTIFIED: defensive cache invalidation
+        logger.warning(
+            "SpiceDB Watch: failed to invalidate Redis authorization cache for user %s",
+            user_id,
+            exc_info=True,
+        )
+
+    # 3. NATS Disconnect Event Publish via WsHubClient
+    try:
+        from app.services.ws_hub_client import _get_client
+
+        ws_client = _get_client()
+        await ws_client.publish_control_event(
+            user_id=user_id,
+            action="disconnect",
+            reason="access_revoked",
+        )
+    except Exception:  # RZ-22-01-JUSTIFIED: defensive NATS event publish
+        logger.warning(
+            "SpiceDB Watch: failed to publish NATS control disconnect event for user %s",
+            user_id,
+            exc_info=True,
+        )
+
+    # 4. Metrics recording
+    try:
+        from app.core.metrics import (
+            record_spicedb_watch_event,
+            record_ws_hub_session_revoked,
+        )
+
+        record_spicedb_watch_event(event_type="update")
+        record_ws_hub_session_revoked(reason="access_revoked")
+    except Exception:  # RZ-22-01-JUSTIFIED: defensive metrics guard
+        logger.debug("SpiceDB Watch: failed to record metrics", exc_info=True)
 
 
 async def start_permission_watch() -> None:

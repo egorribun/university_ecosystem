@@ -1,0 +1,225 @@
+{{- if .Values.keda.enabled -}}
+
+{{- if .Values.keda.outboxWorker.enabled -}}
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: {{ include "university-ecosystem.fullname" . }}-outbox-worker
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "university-ecosystem.labels" . | nindent 4 }}
+    app.kubernetes.io/component: outbox-worker
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "university-ecosystem.fullname" . }}-outbox-worker
+  minReplicaCount: {{ .Values.keda.outboxWorker.minReplicas }}
+  maxReplicaCount: {{ .Values.keda.outboxWorker.maxReplicas }}
+  cooldownPeriod: {{ .Values.keda.outboxWorker.cooldownPeriod }}
+  pollingInterval: {{ .Values.keda.outboxWorker.pollingInterval }}
+  triggers:
+    {{- if .Values.keda.outboxWorker.natsJetstream.enabled }}
+    - type: nats-jetstream
+      metadata:
+        natsServerMonitoringEndpoint: {{ .Values.keda.outboxWorker.natsJetstream.monitoringEndpoint | quote }}
+        account: "$SYS"
+        stream: {{ .Values.keda.outboxWorker.natsJetstream.stream | quote }}
+        consumer: {{ .Values.keda.outboxWorker.natsJetstream.consumer | quote }}
+        lagThreshold: {{ .Values.keda.outboxWorker.natsJetstream.lagThreshold | quote }}
+        activationLagThreshold: "0"
+      {{- if .Values.keda.natsAuth.enabled }}
+      authenticationRef:
+        name: {{ include "university-ecosystem.fullname" . }}-trigger-auth-nats
+      {{- end }}
+    {{- end }}
+    {{- if and .Values.hibernation.enabled .Values.hibernation.workloads.outboxWorker.enabled }}
+    - type: cron
+      metadata:
+        timezone: {{ .Values.hibernation.schedules.offPeak.timezone | quote }}
+        start: {{ .Values.hibernation.schedules.offPeak.start | quote }}
+        end: {{ .Values.hibernation.schedules.offPeak.end | quote }}
+        desiredReplicas: {{ .Values.hibernation.schedules.offPeak.desiredReplicas | quote }}
+    {{- end }}
+{{- end }}
+
+{{- if .Values.keda.fileProcessor.enabled }}
+---
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: {{ include "university-ecosystem.fullname" . }}-file-processor
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "university-ecosystem.labels" . | nindent 4 }}
+    app.kubernetes.io/component: file-processor
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "university-ecosystem.fullname" . }}-file-processor
+  minReplicaCount: {{ .Values.keda.fileProcessor.minReplicas }}
+  maxReplicaCount: {{ .Values.keda.fileProcessor.maxReplicas }}
+  cooldownPeriod: {{ .Values.keda.fileProcessor.cooldownPeriod }}
+  pollingInterval: {{ .Values.keda.fileProcessor.pollingInterval }}
+  triggers:
+    {{- if .Values.keda.fileProcessor.natsJetstream.enabled }}
+    - type: nats-jetstream
+      metadata:
+        natsServerMonitoringEndpoint: {{ .Values.keda.fileProcessor.natsJetstream.monitoringEndpoint | quote }}
+        account: "$SYS"
+        stream: {{ .Values.keda.fileProcessor.natsJetstream.stream | quote }}
+        consumer: {{ .Values.keda.fileProcessor.natsJetstream.consumer | quote }}
+        lagThreshold: {{ .Values.keda.fileProcessor.natsJetstream.lagThreshold | quote }}
+        activationLagThreshold: "0"
+      {{- if .Values.keda.natsAuth.enabled }}
+      authenticationRef:
+        name: {{ include "university-ecosystem.fullname" . }}-trigger-auth-nats
+      {{- end }}
+    {{- end }}
+    {{- if and .Values.hibernation.enabled .Values.hibernation.workloads.fileProcessor.enabled }}
+    - type: cron
+      metadata:
+        timezone: {{ .Values.hibernation.schedules.offPeak.timezone | quote }}
+        start: {{ .Values.hibernation.schedules.offPeak.start | quote }}
+        end: {{ .Values.hibernation.schedules.offPeak.end | quote }}
+        desiredReplicas: {{ .Values.hibernation.schedules.offPeak.desiredReplicas | quote }}
+    {{- end }}
+{{- end }}
+
+{{- if .Values.keda.backend.enabled }}
+---
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: {{ include "university-ecosystem.fullname" . }}-backend
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "university-ecosystem.labels" . | nindent 4 }}
+    app.kubernetes.io/component: backend
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "university-ecosystem.fullname" . }}-backend
+  minReplicaCount: {{ .Values.keda.backend.minReplicas }}
+  maxReplicaCount: {{ .Values.keda.backend.maxReplicas }}
+  cooldownPeriod: {{ .Values.keda.backend.cooldownPeriod }}
+  pollingInterval: {{ .Values.keda.backend.pollingInterval }}
+  triggers:
+    {{- if .Values.keda.backend.redisQueue.enabled }}
+    - type: redis
+      metadata:
+        address: {{ .Values.keda.backend.redisQueue.address | quote }}
+        listName: {{ .Values.keda.backend.redisQueue.listName | quote }}
+        listLength: {{ .Values.keda.backend.redisQueue.listLength | quote }}
+        databaseIndex: {{ .Values.keda.backend.redisQueue.databaseIndex | quote }}
+        enableTLS: "false"
+      {{- if .Values.keda.redisAuth.enabled }}
+      authenticationRef:
+        name: {{ include "university-ecosystem.fullname" . }}-trigger-auth-redis
+      {{- end }}
+    {{- end }}
+    {{- if .Values.keda.backend.natsJetstream.enabled }}
+    - type: nats-jetstream
+      metadata:
+        natsServerMonitoringEndpoint: {{ .Values.keda.backend.natsJetstream.monitoringEndpoint | quote }}
+        account: "$SYS"
+        stream: {{ .Values.keda.backend.natsJetstream.stream | quote }}
+        consumer: {{ .Values.keda.backend.natsJetstream.consumer | quote }}
+        lagThreshold: {{ .Values.keda.backend.natsJetstream.lagThreshold | quote }}
+        activationLagThreshold: "0"
+      {{- if .Values.keda.natsAuth.enabled }}
+      authenticationRef:
+        name: {{ include "university-ecosystem.fullname" . }}-trigger-auth-nats
+      {{- end }}
+    {{- end }}
+    {{- if and .Values.hibernation.enabled .Values.hibernation.workloads.backend.enabled }}
+    - type: cron
+      metadata:
+        timezone: {{ .Values.hibernation.schedules.offPeak.timezone | quote }}
+        start: {{ .Values.hibernation.schedules.offPeak.start | quote }}
+        end: {{ .Values.hibernation.schedules.offPeak.end | quote }}
+        desiredReplicas: {{ .Values.hibernation.schedules.offPeak.desiredReplicas | quote }}
+    {{- end }}
+{{- end }}
+
+{{- if and .Values.hibernation.enabled .Values.hibernation.workloads.frontend.enabled }}
+---
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: {{ include "university-ecosystem.fullname" . }}-frontend-hibernation
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "university-ecosystem.labels" . | nindent 4 }}
+    app.kubernetes.io/component: frontend
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "university-ecosystem.fullname" . }}-frontend
+  minReplicaCount: {{ .Values.hibernation.workloads.frontend.minReplicasDay }}
+  maxReplicaCount: {{ .Values.hibernation.workloads.frontend.maxReplicasDay }}
+  triggers:
+    - type: cron
+      metadata:
+        timezone: {{ .Values.hibernation.schedules.offPeak.timezone | quote }}
+        start: {{ .Values.hibernation.schedules.offPeak.start | quote }}
+        end: {{ .Values.hibernation.schedules.offPeak.end | quote }}
+        desiredReplicas: {{ .Values.hibernation.schedules.offPeak.desiredReplicas | quote }}
+{{- end }}
+
+{{- if and .Values.hibernation.enabled .Values.hibernation.workloads.gateway.enabled }}
+---
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: {{ include "university-ecosystem.fullname" . }}-gateway-hibernation
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "university-ecosystem.labels" . | nindent 4 }}
+    app.kubernetes.io/component: gateway
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "university-ecosystem.fullname" . }}-gateway
+  minReplicaCount: {{ .Values.hibernation.workloads.gateway.minReplicasDay }}
+  maxReplicaCount: {{ .Values.hibernation.workloads.gateway.maxReplicasDay }}
+  triggers:
+    - type: cron
+      metadata:
+        timezone: {{ .Values.hibernation.schedules.offPeak.timezone | quote }}
+        start: {{ .Values.hibernation.schedules.offPeak.start | quote }}
+        end: {{ .Values.hibernation.schedules.offPeak.end | quote }}
+        desiredReplicas: {{ .Values.hibernation.schedules.offPeak.desiredReplicas | quote }}
+{{- end }}
+
+{{- if and .Values.hibernation.enabled .Values.hibernation.workloads.rustOptimizer.enabled }}
+---
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: {{ include "university-ecosystem.fullname" . }}-rust-optimizer-hibernation
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "university-ecosystem.labels" . | nindent 4 }}
+    app.kubernetes.io/component: rust-optimizer
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "university-ecosystem.fullname" . }}-rust-optimizer
+  minReplicaCount: {{ .Values.hibernation.workloads.rustOptimizer.minReplicasDay }}
+  maxReplicaCount: {{ .Values.hibernation.workloads.rustOptimizer.maxReplicasDay }}
+  triggers:
+    - type: cron
+      metadata:
+        timezone: {{ .Values.hibernation.schedules.offPeak.timezone | quote }}
+        start: {{ .Values.hibernation.schedules.offPeak.start | quote }}
+        end: {{ .Values.hibernation.schedules.offPeak.end | quote }}
+        desiredReplicas: {{ .Values.hibernation.schedules.offPeak.desiredReplicas | quote }}
+{{- end }}
+
+{{- end }}

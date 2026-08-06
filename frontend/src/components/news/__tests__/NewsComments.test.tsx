@@ -1,4 +1,4 @@
-import { render, screen, within } from "@testing-library/react"
+import { fireEvent, render, screen, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { describe, it, expect, vi } from "vitest"
 
@@ -76,6 +76,30 @@ describe("NewsComments", () => {
     expect(addComment).toHaveBeenCalledWith("Looking forward to it!")
   })
 
+  it("does not submit whitespace and supports cancelling an empty edit", async () => {
+    const user = userEvent.setup()
+    const addComment = vi.fn()
+    render(<NewsComments {...baseProps} addComment={addComment} />)
+
+    const textarea = screen.getByLabelText("news:form.commentAriaLabel")
+    await user.type(textarea, "   ")
+    expect(screen.getByRole("button", { name: "news:actions.postComment" })).toBeDisabled()
+    expect(addComment).not.toHaveBeenCalled()
+
+    await user.click(screen.getAllByLabelText("news:actions.editComment")[0]!)
+    const editBox = screen.getByLabelText("news:form.editCommentAriaLabel")
+    await user.clear(editBox)
+    expect(screen.getByRole("button", { name: "common:buttons.save" })).toBeDisabled()
+    await user.click(screen.getByRole("button", { name: "common:buttons.cancel" }))
+    expect(screen.queryByLabelText("news:form.editCommentAriaLabel")).not.toBeInTheDocument()
+  })
+
+  it("hides owner actions for a different non-admin user", () => {
+    render(<NewsComments {...baseProps} user={{ id: "other", role: "student" }} />)
+    expect(screen.queryByLabelText("news:actions.editComment")).not.toBeInTheDocument()
+    expect(screen.queryByLabelText("news:actions.deleteComment")).not.toBeInTheDocument()
+  })
+
   it("enters inline edit mode and saves an update", async () => {
     const user = userEvent.setup()
     const updateComment = vi.fn()
@@ -93,8 +117,36 @@ describe("NewsComments", () => {
     const deleteComment = vi.fn()
     render(<NewsComments {...baseProps} deleteComment={deleteComment} />)
     await user.click(screen.getAllByLabelText("news:actions.deleteComment")[0]!)
-    const dialog = screen.getByRole("alertdialog")
+    let dialog = screen.getByRole("alertdialog")
+    await user.click(within(dialog).getByRole("button", { name: "common:buttons.cancel" }))
+    expect(deleteComment).not.toHaveBeenCalled()
+
+    await user.click(screen.getAllByLabelText("news:actions.deleteComment")[0]!)
+    dialog = screen.getByRole("alertdialog")
     await user.click(within(dialog).getByRole("button", { name: "common:buttons.delete" }))
     expect(deleteComment).toHaveBeenCalledWith("c1")
+  })
+
+  it("shows warning and error character-count thresholds for new and edited comments", async () => {
+    const user = userEvent.setup()
+    render(<NewsComments {...baseProps} />)
+
+    const newComment = screen.getByLabelText("news:form.commentAriaLabel")
+    fireEvent.change(newComment, { target: { value: "x".repeat(400) } })
+    expect(screen.getByText("400/500")).toHaveClass("text-warning-text")
+    fireEvent.change(newComment, { target: { value: "x".repeat(475) } })
+    expect(screen.getByText("475/500")).toHaveClass("text-(--error-text)")
+
+    await user.click(screen.getAllByLabelText("news:actions.editComment")[0]!)
+    const editBox = screen.getByLabelText("news:form.editCommentAriaLabel")
+    fireEvent.change(editBox, { target: { value: "x".repeat(400) } })
+    expect(screen.getByText("400/500")).toHaveClass("text-warning-text")
+    fireEvent.change(editBox, { target: { value: "x".repeat(475) } })
+    expect(screen.getAllByText("475/500")).toHaveLength(2)
+    expect(
+      screen
+        .getAllByText("475/500")
+        .every((element) => element.className.includes("text-(--error-text)"))
+    ).toBe(true)
   })
 })

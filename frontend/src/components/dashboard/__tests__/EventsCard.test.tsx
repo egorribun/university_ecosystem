@@ -1,14 +1,23 @@
 import { createElement } from "react"
-import { render, screen } from "@testing-library/react"
+import { fireEvent, render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { describe, it, expect, vi, beforeEach } from "vitest"
 
-const { eventsState, mockNavigate } = vi.hoisted(() => ({
+const {
+  eventsState,
+  mockNavigate,
+  mockPrefetchDashboardEvents,
+  mockPrefetchEventsListQuery,
+  reducedMotion,
+} = vi.hoisted(() => ({
   eventsState: {
     current: { data: [] as unknown[] | undefined, isLoading: false, isFetching: false },
   },
   mockNavigate: vi.fn(),
+  mockPrefetchDashboardEvents: vi.fn(),
+  mockPrefetchEventsListQuery: vi.fn(),
+  reducedMotion: { value: true },
 }))
 
 vi.mock("framer-motion", async () =>
@@ -20,7 +29,7 @@ vi.mock("react-i18next", () => ({
     i18n: { language: "en", changeLanguage: () => Promise.resolve() },
   }),
 }))
-vi.mock("@/hooks/useMediaQuery", () => ({ default: () => true }))
+vi.mock("@/hooks/useMediaQuery", () => ({ default: () => reducedMotion.value }))
 vi.mock("@tanstack/react-router", () => ({
   Link: ({
     children,
@@ -35,10 +44,10 @@ vi.mock("@/contexts/LanguageContext", () => ({
 }))
 vi.mock("@/hooks/useDashboardEvents", () => ({
   useDashboardEvents: () => eventsState.current,
-  prefetchDashboardEvents: vi.fn(),
+  prefetchDashboardEvents: mockPrefetchDashboardEvents,
 }))
 vi.mock("@/api/hooks/events", () => ({
-  prefetchEventsListQuery: vi.fn(),
+  prefetchEventsListQuery: mockPrefetchEventsListQuery,
   EVENTS_PAGE_SIZE: 20,
 }))
 
@@ -63,6 +72,9 @@ describe("EventsCard", () => {
   beforeEach(() => {
     eventsState.current = { data: EVENTS, isLoading: false, isFetching: false }
     mockNavigate.mockReset()
+    mockPrefetchDashboardEvents.mockReset()
+    mockPrefetchEventsListQuery.mockReset()
+    reducedMotion.value = true
   })
 
   it("renders the heading, view-all link, and scope toggles", () => {
@@ -93,5 +105,50 @@ describe("EventsCard", () => {
       "aria-busy",
       "true"
     )
+  })
+
+  it("prefetches dashboard and list data from pointer and keyboard activation", () => {
+    renderCard()
+    const viewAll = screen.getByRole("link", { name: "dashboard:aria.viewAllEvents" })
+
+    fireEvent.pointerDown(viewAll)
+    fireEvent.keyDown(viewAll, { key: "Enter" })
+    fireEvent.keyDown(viewAll, { key: " " })
+    fireEvent.keyDown(viewAll, { key: "Spacebar" })
+    fireEvent.keyDown(viewAll, { key: "Escape" })
+
+    expect(mockPrefetchDashboardEvents).toHaveBeenCalledTimes(4)
+    expect(mockPrefetchEventsListQuery).toHaveBeenCalledTimes(4)
+    expect(mockPrefetchEventsListQuery).toHaveBeenCalledWith(expect.anything(), {
+      language: "en",
+      is_active: true,
+      limit: 20,
+    })
+  })
+
+  it("filters invalid and missing dates, navigates today events, and renders no location badge", async () => {
+    reducedMotion.value = false
+    const today = new Date()
+    const todayIso = new Date(today.getTime() + 60_000).toISOString()
+    eventsState.current = {
+      data: [
+        { id: 2, title: "Today event", starts_at: todayIso, location: "" },
+        { id: 3, title: "Invalid event", starts_at: "not-a-date", location: "Room" },
+        { id: 4, title: "No date", starts_at: null, location: "Room" },
+      ],
+      isLoading: false,
+      isFetching: true,
+    }
+
+    const user = userEvent.setup()
+    renderCard()
+    expect(
+      screen.getByText("dashboard:events.heading").closest("[data-refetching]")
+    ).toHaveAttribute("data-refetching", "true")
+    const event = screen.getByRole("button", { name: "dashboard:aria.eventItem" })
+    expect(event).toBeInTheDocument()
+    await user.click(event)
+    expect(mockNavigate).toHaveBeenCalledWith({ to: "/events/$id", params: { id: "2" } })
+    expect(screen.queryByText("Room")).not.toBeInTheDocument()
   })
 })

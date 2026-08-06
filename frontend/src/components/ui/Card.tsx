@@ -1,4 +1,4 @@
-import type { ComponentPropsWithoutRef, ElementType } from "react"
+import { memo, type ComponentPropsWithoutRef, type ElementType } from "react"
 import { cva, type VariantProps } from "class-variance-authority"
 import { cn } from "@/utils/cn"
 
@@ -31,7 +31,7 @@ type CardOwnProps = VariantProps<typeof cardVariants> & {
 export type CardProps<T extends ElementType = "div"> = CardOwnProps &
   Omit<ComponentPropsWithoutRef<T>, keyof CardOwnProps>
 
-export const Card = <T extends ElementType = "div">({
+export const Card = memo(function Card<T extends ElementType = "div">({
   as,
   hoverable,
   padding,
@@ -39,7 +39,7 @@ export const Card = <T extends ElementType = "div">({
   children,
   style,
   ...rest
-}: CardProps<T>) => {
+}: CardProps<T>) {
   const Component = (as ?? "div") as ElementType
 
   return (
@@ -51,6 +51,6 @@ export const Card = <T extends ElementType = "div">({
       {children}
     </Component>
   )
-}
+})
 
 Card.displayName = "Card"

@@ -66,7 +66,6 @@ export function useEmailChange({
   const resolveDetailMessage = useCallback((error: unknown, fallback: string) => {
     if (isAxiosError(error)) {
       const detail = (error.response?.data as { detail?: unknown } | undefined)?.detail
-      if (typeof detail === "string") return detail
       if (Array.isArray(detail)) {
         const combined = detail
           .map((item) =>

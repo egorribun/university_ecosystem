@@ -86,6 +86,17 @@ describe("SpotifyConnect", () => {
     expect(screen.queryByText("settings:integrations.spotify.connect")).not.toBeInTheDocument()
   })
 
+  it("renders safe fallbacks for an incomplete now-playing payload", () => {
+    mockState.user = { spotify_connected: true }
+    mockState.nowPlaying = { track_name: "", artists: undefined, album_name: "", track_url: "" }
+
+    render(<SpotifyConnect />)
+
+    expect(screen.getByText("—")).toBeInTheDocument()
+    expect(screen.queryByRole("link")).not.toBeInTheDocument()
+    expect(screen.queryByText("Album X")).not.toBeInTheDocument()
+  })
+
   it("falls back to the status label when connected without a display name", () => {
     mockState.user = { spotify_is_connected: true }
     render(<SpotifyConnect />)
@@ -118,6 +129,16 @@ describe("SpotifyConnect", () => {
     expect(mockState.apiPost).toHaveBeenCalledWith("/spotify/disconnect")
     expect(mockState.setUser).toHaveBeenCalled()
     expect(mockState.invalidateQueries).toHaveBeenCalled()
+
+    const updater = mockState.setUser.mock.calls[0]?.[0] as (
+      previous: Record<string, unknown>
+    ) => Record<string, unknown> | null
+    expect(updater(mockState.user ?? {})).toMatchObject({
+      spotify_connected: false,
+      spotify_is_connected: false,
+      spotify_display_name: null,
+    })
+    expect(updater(null as never)).toBeNull()
   })
 
   it("refreshes now-playing via the refresh button", async () => {
@@ -127,5 +148,29 @@ describe("SpotifyConnect", () => {
     mockState.refetch.mockClear()
     await user.click(screen.getByText("common:buttons.refresh"))
     expect(mockState.refetch).toHaveBeenCalled()
+  })
+
+  it("requests the authorization URL and follows a safe hash redirect", async () => {
+    const user = userEvent.setup()
+    mockState.user = { spotify_connected: false }
+    mockState.apiGet.mockResolvedValueOnce({ data: { url: "#spotify" } })
+    window.history.replaceState({}, "", "/settings")
+    render(<SpotifyConnect />)
+
+    await user.click(screen.getByText("settings:integrations.spotify.connect"))
+
+    expect(mockState.apiGet).toHaveBeenCalledWith("/spotify/auth-url")
+    expect(window.location.hash).toBe("#spotify")
+    window.history.replaceState({}, "", "/")
+  })
+
+  it("refetches now-playing when the Spotify callback query is present", () => {
+    mockState.user = { spotify_connected: true }
+    window.history.replaceState({}, "", "/settings?spotify=connected")
+
+    render(<SpotifyConnect />)
+
+    expect(mockState.refetch).toHaveBeenCalled()
+    window.history.replaceState({}, "", "/")
   })
 })

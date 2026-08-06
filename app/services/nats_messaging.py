@@ -13,11 +13,12 @@ Features:
 from __future__ import annotations
 
 import threading
+import uuid
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 import nats
-from nats.js.api import StreamConfig
+from nats.js.api import RetentionPolicy, StorageType, StreamConfig
 
 from app.core.logging import get_logger
 from app.core.orjson_utils import orjson
@@ -96,14 +97,14 @@ class NatsService:
         self,
         name: str,
         subjects: list[str],
-        max_age: int = 86400,  # 1 day in seconds
+        max_age: int = 604_800,  # 7 days in seconds
     ) -> None:
         """Create or update a JetStream stream.
 
         Args:
             name: Stream name
             subjects: List of subjects to capture
-            max_age: Maximum message age in seconds
+            max_age: Maximum message age in seconds (default: 7 days = 604,800s)
         """
         if not self._js:
             raise RuntimeError("Not connected to NATS")
@@ -113,12 +114,18 @@ class NatsService:
                 config=StreamConfig(
                     name=name,
                     subjects=subjects,
-                    max_age=max_age * 1_000_000_000,  # nanoseconds
+                    storage=StorageType.FILE,
+                    retention=RetentionPolicy.LIMITS,
+                    max_age=max_age,
                 )
             )
             logger.info("Created/updated stream: %s", name)
-        except (ConnectionError, TimeoutError, OSError) as exc:
-            # RZ-20-04: Narrowed — NATS stream setup is idempotent.
+        except (
+            nats.errors.Error,
+            ConnectionError,
+            TimeoutError,
+            OSError,
+        ) as exc:  # RZ-20-04: Narrowed — NATS stream setup is idempotent.
             logger.warning("Stream setup issue: %s", exc)
 
     async def publish(
@@ -126,6 +133,7 @@ class NatsService:
         subject: str,
         data: bytes | dict[str, Any],
         headers: dict[str, str] | None = None,
+        msg_id: str | None = None,
     ) -> None:
         """Publish a message to a subject.
 
@@ -133,34 +141,55 @@ class NatsService:
             subject: NATS subject
             data: Message data (bytes or dict to be JSON encoded)
             headers: Optional message headers
+            msg_id: Optional deduplication message ID
         """
         if not self._client:
             raise RuntimeError("Not connected to NATS")
 
+        msg_headers: dict[str, str] = headers.copy() if headers else {}
+        dedup_id = msg_id
+        if not dedup_id and isinstance(data, dict):
+            dedup_id = data.get("id") or data.get("event_id")
+        if not dedup_id:
+            dedup_id = str(uuid.uuid4())
+        msg_headers["Nats-Msg-Id"] = str(dedup_id)
+
         if isinstance(data, dict):
             data = orjson.dumps(data)
 
-        await self._client.publish(subject, data, headers=headers)
+        await self._client.publish(subject, data, headers=msg_headers)
         logger.debug("Published to %s", subject)
 
     async def publish_jetstream(
         self,
         subject: str,
         data: bytes | dict[str, Any],
+        headers: dict[str, str] | None = None,
+        msg_id: str | None = None,
     ) -> None:
         """Publish a message with JetStream acknowledgment.
 
         Args:
             subject: NATS subject (must be in a stream)
             data: Message data
+            headers: Optional message headers
+            msg_id: Optional deduplication message ID
         """
         if not self._js:
             raise RuntimeError("Not connected to NATS")
 
+        msg_headers: dict[str, str] = headers.copy() if headers else {}
+        dedup_id = msg_id
+        if not dedup_id and isinstance(data, dict):
+            dedup_id = data.get("id") or data.get("event_id")
+        if not dedup_id:
+            dedup_id = str(uuid.uuid4())
+        msg_headers["Nats-Msg-Id"] = str(dedup_id)
+
         if isinstance(data, dict):
             data = orjson.dumps(data)
 
-        ack = await self._js.publish(subject, data)
+        ack = await self._js.publish(subject, data, headers=msg_headers)
         logger.debug("Published to JetStream %s, seq=%d", subject, ack.seq)
 
     async def subscribe(
@@ -219,9 +248,12 @@ class NatsService:
             raise RuntimeError("Not connected to NATS")
 
         async def _wrapper(msg: Any) -> None:
+            headers = dict(msg.header) if msg.header else None
             wrapped = NatsMessage(
                 subject=msg.subject,
                 data=msg.data,
+                headers=headers,
+                reply=msg.reply,
             )
             try:
                 await handler(wrapped)

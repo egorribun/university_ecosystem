@@ -106,6 +106,14 @@ const persistNowPlaying = (value: NowPlaying | null) => {
   }
 }
 
+const resolvePlaceholderData = (
+  previous: NowPlaying | null | undefined,
+  cached: NowPlaying | null | undefined
+): NowPlaying | null => {
+  if (previous !== undefined) return previous ?? null
+  return cached ?? null
+}
+
 export const fetchNowPlaying = async () => {
   try {
     const res = await api.get<RawNowPlaying>("/spotify/now-playing", {
@@ -146,6 +154,29 @@ const computeInterval = (data: NowPlaying | null) => {
   return POLLING_ACTIVE_MS
 }
 
+type RefetchIntervalOptions = {
+  enabled: boolean
+  data: NowPlaying | null
+  isTestEnvironment?: boolean
+  visibilityState?: DocumentVisibilityState
+}
+
+const computeRefetchInterval = ({
+  enabled,
+  data,
+  isTestEnvironment = isTestEnv,
+  visibilityState = typeof document === "undefined" ? undefined : document.visibilityState,
+}: RefetchIntervalOptions): number | false => {
+  if (!enabled || isTestEnvironment) return false
+  if (visibilityState === "hidden") return false
+  const interval = computeInterval(data)
+  const rateLimitWait = rateLimitDelay()
+  if (rateLimitWait > 0) {
+    return Math.max(interval, rateLimitWait)
+  }
+  return interval
+}
+
 export const useNowPlaying = (enabled: boolean) => {
   const cached = useMemo(() => readCachedNowPlaying(), [])
 
@@ -154,10 +185,7 @@ export const useNowPlaying = (enabled: boolean) => {
     queryFn: fetchNowPlaying,
     enabled,
     initialData: cached,
-    placeholderData: (previous) => {
-      if (previous !== undefined) return previous ?? null
-      return cached ?? null
-    },
+    placeholderData: (previous) => resolvePlaceholderData(previous, cached),
     staleTime: 60_000,
     gcTime: 5 * 60_000,
     networkMode: "online",
@@ -168,16 +196,7 @@ export const useNowPlaying = (enabled: boolean) => {
       return failureCount < 1
     },
     refetchOnWindowFocus: false,
-    refetchInterval: ({ state }) => {
-      if (!enabled || isTestEnv) return false
-      if (typeof document !== "undefined" && document.visibilityState === "hidden") return false
-      const interval = computeInterval(state.data ?? null)
-      const rateLimitWait = rateLimitDelay()
-      if (rateLimitWait > 0) {
-        return Math.max(interval, rateLimitWait)
-      }
-      return interval
-    },
+    refetchInterval: ({ state }) => computeRefetchInterval({ enabled, data: state.data ?? null }),
     refetchIntervalInBackground: false,
   })
 
@@ -205,4 +224,9 @@ export const useNowPlaying = (enabled: boolean) => {
 export const __testing = {
   clearRateLimit,
   getRateLimitedUntil: () => rateLimit.until,
+  scheduleRateLimit,
+  computeInterval,
+  computeRefetchInterval,
+  persistNowPlaying,
+  resolvePlaceholderData,
 }

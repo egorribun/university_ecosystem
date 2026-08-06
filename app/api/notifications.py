@@ -558,7 +558,9 @@ async def check_schedule_and_generate(
     )
     lessons = (await db.execute(q)).scalars().all()
 
+    url = "/schedule"
     for les in lessons:
+        msg = build_schedule_reminder_message(les, locale=locale)
         (
             title,
             body,
@@ -567,31 +569,38 @@ async def check_schedule_and_generate(
             title_translations,
             body_translations,
             dedupe_key,
-        ) = build_schedule_reminder_message(les, locale=locale)
-        url = "/schedule"
+        ) = msg
 
         key_for_dedupe = dedupe_key or tag or title
         if key_for_dedupe:
-            dupe = select(func.count(Notification.id)).where(
+            dupe_stmt = select(func.count(Notification.id)).where(
                 and_(
                     Notification.user_id == user.id,
-                    Notification.dedupe_key == key_for_dedupe,
                     Notification.url == url,
                     Notification.created_at >= now - timedelta(hours=1),
+                    or_(
+                        Notification.dedupe_key == key_for_dedupe,
+                        Notification.title == title,
+                    ),
                 )
             )
         else:
-            dupe = select(func.count(Notification.id)).where(
+            dupe_stmt = select(func.count(Notification.id)).where(
                 and_(
                     Notification.user_id == user.id,
-                    Notification.title == title,
                     Notification.url == url,
                     Notification.created_at >= now - timedelta(hours=1),
+                    Notification.title == title,
                 )
             )
-        exists = (await db.execute(dupe)).scalar_one() or 0
+
+        res = await db.execute(dupe_stmt)
+        exists = getattr(res, "scalar_one_or_none", lambda: None)()
+        if exists is None:
+            exists = getattr(res, "scalar_one", lambda: 0)()
         if exists:
             continue
+
         action_title = translate("notifications.actions.open_schedule", locale=locale)
         await create_notifications_for_users(
             db,

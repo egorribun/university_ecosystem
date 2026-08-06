@@ -66,8 +66,6 @@ export default function ForgotPassword() {
   }
 
   const onSubmit = async (data: ResetPasswordValues) => {
-    if (cooldown > 0) return
-
     try {
       await axios.post(FORGOT_URL, { email: data.email })
       // Even if API fails (security reasons), we often show success or generic message.
@@ -202,15 +200,6 @@ export default function ForgotPassword() {
                         </m.div>
                       )}
                     </div>
-
-                    {errors.root?.message && (
-                      <div
-                        className="min-h-6 text-center text-sm font-semibold text-error-text animate-bounce"
-                        aria-live="assertive"
-                      >
-                        {errors.root.message}
-                      </div>
-                    )}
 
                     <div className="space-y-4 pt-2">
                       <Button

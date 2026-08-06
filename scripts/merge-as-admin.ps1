@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Merges a pull request as repository admin, bypassing Ruleset and classic
     branch-protection review requirements.
@@ -7,7 +7,7 @@
     Because this is a solo repository, both the GitHub Ruleset and the classic
     branch-protection rule require human reviewers that do not exist.
     This script temporarily disables both guards, performs the squash-merge,
-    then immediately re-enables them — leaving the branch-protection posture
+    then immediately re-enables them - leaving the branch-protection posture
     unchanged for Scorecard purposes.
 
     The working branch (egorribun) is never deleted.
@@ -35,7 +35,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
 # ---------------------------------------------------------------------------
-# Constants — update if the ruleset ID changes (gh api repos/.../rulesets)
+# Constants - update if the ruleset ID changes (gh api repos/.../rulesets)
 # ---------------------------------------------------------------------------
 $REPO           = "egorribun/university_ecosystem"
 $RULESET_ID     = 8335285
@@ -54,7 +54,7 @@ function Write-Warn([string]$Message) {
 }
 
 # ---------------------------------------------------------------------------
-# Step 1 — Fetch PR info
+# Step 1 - Fetch PR info
 # ---------------------------------------------------------------------------
 Write-Step "Fetching PR #$PrNumber info..."
 $pr = gh pr view $PrNumber --json title,headRefName,state | ConvertFrom-Json
@@ -68,20 +68,20 @@ Write-Ok "Title : $mergeTitle"
 Write-Ok "Branch: $($pr.headRefName)"
 
 # ---------------------------------------------------------------------------
-# Step 2 — Disable protections
+# Step 2 - Disable protections
 # ---------------------------------------------------------------------------
 Write-Step "Disabling Ruleset enforcement..."
 gh api --method PUT "repos/$REPO/rulesets/$RULESET_ID" `
     --field enforcement=disabled | Out-Null
-Write-Ok "Ruleset $RULESET_ID → disabled"
+Write-Ok "Ruleset $RULESET_ID -> disabled"
 
 Write-Step "Setting classic branch-protection required_approving_review_count=0..."
 gh api --method PATCH "repos/$REPO/branches/$PROTECTED_BRANCH/protection/required_pull_request_reviews" `
     --field required_approving_review_count=0 | Out-Null
-Write-Ok "Classic protection → 0 approvals required"
+Write-Ok "Classic protection -> 0 approvals required"
 
 # ---------------------------------------------------------------------------
-# Step 3 — Merge (squash, keep head branch)
+# Step 3 - Merge (squash, keep head branch)
 # ---------------------------------------------------------------------------
 $mergeError = $null
 try {
@@ -95,27 +95,27 @@ catch {
 }
 
 # ---------------------------------------------------------------------------
-# Step 4 — Always restore protections (even on failure)
+# Step 4 - Always restore protections (even on failure)
 # ---------------------------------------------------------------------------
 Write-Step "Restoring Ruleset enforcement..."
 gh api --method PUT "repos/$REPO/rulesets/$RULESET_ID" `
     --field enforcement=active | Out-Null
-Write-Ok "Ruleset $RULESET_ID → active"
+Write-Ok "Ruleset $RULESET_ID -> active"
 
 Write-Step "Restoring classic branch-protection required_approving_review_count=1..."
 gh api --method PATCH "repos/$REPO/branches/$PROTECTED_BRANCH/protection/required_pull_request_reviews" `
     --field required_approving_review_count=1 | Out-Null
-Write-Ok "Classic protection → 1 approval required"
+Write-Ok "Classic protection -> 1 approval required"
 
 # ---------------------------------------------------------------------------
-# Step 5 — Re-raise merge error if any
+# Step 5 - Re-raise merge error if any
 # ---------------------------------------------------------------------------
 if ($mergeError) {
     throw "Merge failed (protections have been restored): $mergeError"
 }
 
 # ---------------------------------------------------------------------------
-# Step 6 — Sync local main, return to working branch
+# Step 6 - Sync local main, return to working branch
 # ---------------------------------------------------------------------------
 Write-Step "Syncing local main and returning to working branch..."
 $currentBranch = git rev-parse --abbrev-ref HEAD

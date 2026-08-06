@@ -7,16 +7,24 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from fastapi import HTTPException, status
 
+_MISSING = object()
+
 # ``app.api.health`` only needs the storage-backend selector from this module.
 # Isolating that import keeps this focused endpoint suite independent from the
 # optional Pillow native extension used by the upload helpers in ``files.py``.
 _files_stub = type(sys)("app.utils.files")
 _files_stub._get_storage_backend = lambda: object()
+_ORIGINAL_FILES_MODULE = sys.modules.get("app.utils.files", _MISSING)
 sys.modules.setdefault("app.utils.files", _files_stub)
 
 from app.api import health
 from app.core import health as core_health
 from app.services.storage import StorageBackend
+
+if _ORIGINAL_FILES_MODULE is _MISSING:
+    sys.modules.pop("app.utils.files", None)
+else:
+    sys.modules["app.utils.files"] = _ORIGINAL_FILES_MODULE
 
 
 class _Connection:

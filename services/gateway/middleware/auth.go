@@ -111,6 +111,7 @@ type Claims struct {
 	UserID   string `json:"sub"`
 	Role     string `json:"role,omitempty"`
 	IsActive bool   `json:"is_active,omitempty"`
+	TenantID string `json:"tenant_id,omitempty"`
 }
 
 // NewJWTMiddleware creates a new JWT middleware with default L1 cache settings.
@@ -759,9 +760,14 @@ func (m *JWTMiddleware) Validate(ctx context.Context) gin.HandlerFunc { //nolint
 		}
 
 		// Set user info in context
+		tenantID := claims.TenantID
+		if tenantID == "" {
+			tenantID = c.GetHeader("X-Tenant-ID")
+		}
 		c.Set("user_id", claims.UserID)
 		c.Set("user_role", claims.Role)
 		c.Set("session_id", claims.ID)
+		c.Set("tenant_id", tenantID)
 		c.Set("claims", claims)
 
 		c.Next()
@@ -771,6 +777,11 @@ func (m *JWTMiddleware) Validate(ctx context.Context) gin.HandlerFunc { //nolint
 // Optional returns a middleware that extracts JWT claims but doesn't require auth.
 func (m *JWTMiddleware) Optional(ctx context.Context) gin.HandlerFunc { //nolint:gocognit,cyclop // mirrors Validate complexity
 	return func(c *gin.Context) {
+		tenantID := c.GetHeader("X-Tenant-ID")
+		if tenantID != "" {
+			c.Set("tenant_id", tenantID)
+		}
+
 		// 1. Try to get token from cookie
 		tokenString, err := c.Cookie(AccessTokenCookieName)
 		if err != nil || tokenString == "" {
@@ -856,9 +867,13 @@ func (m *JWTMiddleware) Optional(ctx context.Context) gin.HandlerFunc { //nolint
 		}
 
 		// Set user info in context only if session is valid
+		if claims.TenantID != "" {
+			tenantID = claims.TenantID
+		}
 		c.Set("user_id", claims.UserID)
 		c.Set("user_role", claims.Role)
 		c.Set("session_id", claims.ID)
+		c.Set("tenant_id", tenantID)
 		c.Set("claims", claims)
 
 		c.Next()

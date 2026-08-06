@@ -18,6 +18,8 @@ require (
 	github.com/prometheus/client_golang v1.24.1
 	github.com/redis/go-redis/v9 v9.21.0
 	github.com/sony/gobreaker v1.0.0
+	github.com/spiffe/go-spiffe/v2 v2.6.0 // indirect
+	github.com/university-ecosystem/services/pkg/spiffe v0.0.0
 	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.69.0
 	go.opentelemetry.io/otel v1.44.0
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc v1.44.0
@@ -29,6 +31,8 @@ require (
 
 require (
 	github.com/alicebob/miniredis/v2 v2.38.0
+	github.com/quic-go/quic-go v0.60.0
+	github.com/quic-go/webtransport-go v0.11.1
 	github.com/testcontainers/testcontainers-go v0.43.0
 	github.com/testcontainers/testcontainers-go/modules/nats v0.43.0
 	github.com/testcontainers/testcontainers-go/modules/redis v0.43.0
@@ -50,8 +54,10 @@ require (
 	github.com/distribution/reference v0.6.0 // indirect
 	github.com/docker/go-connections v0.6.0 // indirect
 	github.com/docker/go-units v0.5.0 // indirect
+	github.com/dunglas/httpsfv v1.1.0 // indirect
 	github.com/ebitengine/purego v0.10.0 // indirect
 	github.com/felixge/httpsnoop v1.0.4 // indirect
+	github.com/go-jose/go-jose/v4 v4.1.4 // indirect
 	github.com/go-logr/logr v1.4.3 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/go-ole/go-ole v1.2.6 // indirect
@@ -82,6 +88,7 @@ require (
 	github.com/opencontainers/go-digest v1.0.0 // indirect
 	github.com/opencontainers/image-spec v1.1.1 // indirect
 	github.com/power-devops/perfstat v0.0.0-20240221224432-82ca36839d55 // indirect
+	github.com/quic-go/qpack v0.6.0 // indirect
 	github.com/segmentio/asm v1.2.1 // indirect
 	github.com/shirou/gopsutil/v4 v4.26.5 // indirect
 	github.com/sirupsen/logrus v1.9.4 // indirect
@@ -123,3 +130,5 @@ require (
 )
 
 replace github.com/university-ecosystem/core/gen/go => ../../gen/go
+
+replace github.com/university-ecosystem/services/pkg/spiffe => ../pkg/spiffe

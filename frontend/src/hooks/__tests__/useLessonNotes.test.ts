@@ -27,10 +27,20 @@ const idb = vi.hoisted(() => {
   }
 })
 
+const dbState = vi.hoisted(() => ({
+  getDatabase: vi.fn(async () => {
+    throw new Error("RxDB disabled in unit test")
+  }),
+}))
+
 vi.mock("idb-keyval", () => ({ get: idb.get, set: idb.set, del: idb.del }))
 vi.mock("@/app/logger", async (orig) => ({
   ...(await orig<typeof import("@/app/logger")>()),
   logError: vi.fn(),
+}))
+vi.mock("@/db", () => ({
+  getDatabase: dbState.getDatabase,
+  resetDatabaseForTesting: vi.fn(async () => {}),
 }))
 
 const KEY = (id: string) => `schedule:notes:${id}`
@@ -41,6 +51,10 @@ beforeEach(() => {
   idb.get.mockClear()
   idb.set.mockClear()
   idb.del.mockClear()
+  dbState.getDatabase.mockReset()
+  dbState.getDatabase.mockImplementation(async () => {
+    throw new Error("RxDB disabled in unit test")
+  })
   vi.mocked(logError).mockClear()
 })
 
@@ -180,6 +194,59 @@ describe("useLessonNotes", () => {
     // NOTE: cannot use waitFor() here — fake timers freeze its polling clock.
     expect(logError).toHaveBeenCalled()
     expect(vi.mocked(logError).mock.calls[0]?.[0]).toBe("[schedule:notes]")
+  })
+
+  it("uses an available RxDB note before falling back to IndexedDB", async () => {
+    const rxNote = { id: "lessonRx", text: "from RxDB", updated_at: 42, remove: vi.fn() }
+    const findOne = vi.fn(() => ({ exec: vi.fn(async () => rxNote) }))
+    const upsert = vi.fn(async () => undefined)
+    const find = vi.fn(() => ({ exec: vi.fn(async () => [rxNote]) }))
+    dbState.getDatabase.mockResolvedValue({ notes: { findOne, upsert, find } } as never)
+
+    const { result } = renderHook(() => useLessonNotes("lessonRx"))
+    await waitFor(() => expect(result.current.note?.text).toBe("from RxDB"))
+    expect(idb.get).not.toHaveBeenCalled()
+
+    vi.useFakeTimers()
+    act(() => result.current.setNote("updated in RxDB"))
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(300)
+    })
+    expect(upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: "lessonRx",
+        text: "updated in RxDB",
+        updated_at: expect.any(Number),
+      })
+    )
+  })
+
+  it("removes RxDB records when clearing a note and marks mapped notes", async () => {
+    const rxNote = { id: "lessonMap", text: "mapped", updated_at: 9, remove: vi.fn() }
+    const findOne = vi.fn(() => ({ exec: vi.fn(async () => rxNote) }))
+    const find = vi.fn(() => ({ exec: vi.fn(async () => [rxNote]) }))
+    dbState.getDatabase.mockResolvedValue({ notes: { findOne, find, upsert: vi.fn() } } as never)
+
+    const { result } = renderHook(() => useLessonNotes("lessonMap"))
+    await waitFor(() => expect(result.current.note?.text).toBe("mapped"))
+    await act(async () => {
+      result.current.clearNote()
+      await Promise.resolve()
+    })
+    expect(rxNote.remove).toHaveBeenCalledTimes(1)
+
+    vi.useFakeTimers()
+    act(() => result.current.setNote("   "))
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(300)
+    })
+    expect(rxNote.remove).toHaveBeenCalledTimes(2)
+    vi.useRealTimers()
+
+    const map = renderHook(() => useLessonNotesMap(["lessonMap", "missing"]))
+    await waitFor(() => expect(map.result.current.size).toBe(2))
+    expect(map.result.current.get("lessonMap")).toBe(true)
+    expect(map.result.current.get("missing")).toBe(false)
   })
 })
 

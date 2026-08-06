@@ -218,6 +218,117 @@ class MfaEnabled(DomainEvent):
         return cls(**{k: v for k, v in data.items() if k in known})
 
 
+# Schedule & Grade Domain Events (M4 / R4)
+@register_domain_event
+@dataclass
+class ScheduleCreated(DomainEvent):
+    """Fired when a schedule item is created."""
+
+    EVENT_VERSION: ClassVar[int] = 1
+
+    schedule_id: UUID | None = None
+    group_id: UUID | None = None
+    subject: str = ""
+    teacher: str | None = None
+    room: str | None = None
+    weekday: int = 1
+    start_time: str = ""
+    end_time: str = ""
+    parity: str | None = None
+    lesson_type: str | None = None
+
+    EVENT_TYPE: ClassVar[str] = "SCHEDULE_CREATED"
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> ScheduleCreated:
+        data.pop("_schema_version", 1)
+        known = {
+            f.name
+            for f in dataclasses.fields(cls)
+            if f.name not in ("event_id", "occurred_at", "metadata")
+        }
+        return cls(**{k: v for k, v in data.items() if k in known})
+
+
+@register_domain_event
+@dataclass
+class ScheduleUpdated(DomainEvent):
+    """Fired when a schedule item is updated."""
+
+    EVENT_VERSION: ClassVar[int] = 1
+
+    schedule_id: UUID | None = None
+    group_id: UUID | None = None
+    changes: dict[str, Any] = field(default_factory=dict)
+    current_state: dict[str, Any] = field(default_factory=dict)
+
+    EVENT_TYPE: ClassVar[str] = "SCHEDULE_UPDATED"
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> ScheduleUpdated:
+        data.pop("_schema_version", 1)
+        known = {
+            f.name
+            for f in dataclasses.fields(cls)
+            if f.name not in ("event_id", "occurred_at", "metadata")
+        }
+        return cls(**{k: v for k, v in data.items() if k in known})
+
+
+@register_domain_event
+@dataclass
+class GradeAssigned(DomainEvent):
+    """Fired when a grade is assigned to a student."""
+
+    EVENT_VERSION: ClassVar[int] = 1
+
+    grade_id: UUID | None = None
+    student_id: UUID | None = None
+    subject: str = ""
+    score: float = 0.0
+    assessment_type: str = "exam"
+    assigned_by: UUID | None = None
+
+    EVENT_TYPE: ClassVar[str] = "GRADE_ASSIGNED"
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> GradeAssigned:
+        data.pop("_schema_version", 1)
+        known = {
+            f.name
+            for f in dataclasses.fields(cls)
+            if f.name not in ("event_id", "occurred_at", "metadata")
+        }
+        return cls(**{k: v for k, v in data.items() if k in known})
+
+
+@register_domain_event
+@dataclass
+class GradeModified(DomainEvent):
+    """Fired when a student's grade is modified."""
+
+    EVENT_VERSION: ClassVar[int] = 1
+
+    grade_id: UUID | None = None
+    student_id: UUID | None = None
+    old_score: float = 0.0
+    new_score: float = 0.0
+    reason: str | None = None
+    modified_by: UUID | None = None
+
+    EVENT_TYPE: ClassVar[str] = "GRADE_MODIFIED"
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> GradeModified:
+        data.pop("_schema_version", 1)
+        known = {
+            f.name
+            for f in dataclasses.fields(cls)
+            if f.name not in ("event_id", "occurred_at", "metadata")
+        }
+        return cls(**{k: v for k, v in data.items() if k in known})
+
+
 # Event Events
 @register_domain_event
 @dataclass
@@ -787,7 +898,7 @@ class EventBus:
                 chain_task.cancel()
                 try:
                     await chain_task
-                except (asyncio.CancelledError, Exception):  # noqa: S110  # RZ-27-01
+                except (asyncio.CancelledError, Exception):  # noqa: S110  # RZ-27-01  # RZ-22-01-JUSTIFIED: suppress cleanup exception after cancelling timed-out event handler chain
                     pass
                 logger.error(
                     "Event production timed out (10s)",

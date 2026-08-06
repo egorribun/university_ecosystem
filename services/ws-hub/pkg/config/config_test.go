@@ -116,7 +116,7 @@ func TestLoadConfig_DefaultsAndOverrides(t *testing.T) {
 	cfg = LoadConfig()
 	require.Equal(t, []string{"single-secret"}, cfg.JWTSecrets)
 
-	// 4. Test invalid float and int inputs to verify fallback to default
+	// 4. Test invalid float, int, and bool inputs to verify fallback to default
 	t.Setenv("WS_SEND_BUFFER_SIZE", "invalid-int")
 	t.Setenv("WS_BROADCAST_BUFFER_SIZE", "invalid-int")
 	t.Setenv("WS_BROADCAST_WORKERS", "invalid-int")
@@ -125,6 +125,7 @@ func TestLoadConfig_DefaultsAndOverrides(t *testing.T) {
 	t.Setenv("WS_CLIENT_MSG_BURST", "invalid-int")
 	t.Setenv("WS_TICKET_TTL_SECONDS", "invalid-int")
 	t.Setenv("REDIS_DB", "invalid-int")
+	t.Setenv("ENABLE_JETSTREAM", "invalid-bool")
 
 	cfg = LoadConfig()
 	require.Equal(t, 256, cfg.SendBufferSize)
@@ -134,4 +135,9 @@ func TestLoadConfig_DefaultsAndOverrides(t *testing.T) {
 	require.Equal(t, 20, cfg.ClientMsgRateBurst)
 	require.Equal(t, 15, cfg.TicketTTLSeconds)
 	require.Equal(t, 0, cfg.RedisDB)
+	require.True(t, cfg.EnableJetStream)
+
+	t.Setenv("ENABLE_JETSTREAM", "false")
+	cfg = LoadConfig()
+	require.False(t, cfg.EnableJetStream)
 }

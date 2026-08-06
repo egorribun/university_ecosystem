@@ -16,6 +16,14 @@ from app.services.notifications.delivery import create_notifications_for_users
 logger = get_logger(__name__)
 
 
+def _coerce_user_id(value: uuid.UUID | int) -> uuid.UUID:
+    """Normalize UUID and legacy integer identifiers for the UUID schema."""
+
+    if isinstance(value, uuid.UUID):
+        return value
+    return uuid.UUID(int=value)
+
+
 class NotificationService:
     def __init__(self, db: AsyncDatabaseSession) -> None:
         self.db = db
@@ -92,5 +100,5 @@ class NotificationService:
             title=title,
             body=body,
             type="security",
-            user_ids=[uuid.UUID(str(uid)) for uid in user_ids],
+            user_ids=[_coerce_user_id(uid) for uid in user_ids],
         )

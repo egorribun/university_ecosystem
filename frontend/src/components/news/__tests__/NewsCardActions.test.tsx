@@ -2,9 +2,10 @@ import { render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { describe, it, expect, vi } from "vitest"
 
+const translationState = vi.hoisted(() => ({ returnUndefined: false }))
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({
-    t: (key: string) => key,
+    t: (key: string) => (translationState.returnUndefined ? undefined : key),
     i18n: { language: "en", changeLanguage: () => Promise.resolve() },
   }),
 }))
@@ -68,6 +69,31 @@ describe("NewsCardActions", () => {
     expect(screen.getByRole("menu")).toBeInTheDocument()
     await user.keyboard("{Escape}")
     expect(screen.queryByRole("menu")).not.toBeInTheDocument()
+  })
+
+  it("closes the menu when the pointer lands outside the menu", async () => {
+    const user = userEvent.setup()
+    setup()
+    await user.click(screen.getByRole("button", { name: "news:aria.cardActions" }))
+    expect(screen.getByRole("menu")).toBeInTheDocument()
+
+    await user.click(document.body)
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument()
+  })
+
+  it("falls back to an empty aria-label when the translation is unavailable", () => {
+    translationState.returnUndefined = true
+    try {
+      const { container } = render(
+        <NewsCardActions id="article-undefined" onEdit={vi.fn()} onDelete={vi.fn()} />
+      )
+      expect(container.querySelector("[data-news-card-menu-button]")).toHaveAttribute(
+        "aria-label",
+        ""
+      )
+    } finally {
+      translationState.returnUndefined = false
+    }
   })
 
   it("disables the trigger and ignores clicks when isDisabled is set", async () => {

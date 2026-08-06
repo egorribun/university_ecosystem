@@ -6,7 +6,7 @@
  * renders without crashes before a user even authenticates, catching bundler
  * regressions that would otherwise only surface in production.
  */
-import { test, expect } from "@playwright/test"
+import { test, expect } from "./test"
 
 test.describe("Profile Settings — Wave 11", () => {
   test("settings route resolves to settings or login (no crash)", async ({ page }) => {

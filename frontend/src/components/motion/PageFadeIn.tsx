@@ -20,11 +20,6 @@ export default function PageFadeIn({
   useEffect(() => {
     if (isTestEnvironment) return
 
-    if (typeof window === "undefined") {
-      setReady(true)
-      return
-    }
-
     const markReady = () => setReady(true)
 
     if (typeof window.requestAnimationFrame === "function") {

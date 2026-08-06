@@ -1,5 +1,5 @@
 import { render, screen, fireEvent } from "@testing-library/react"
-import { describe, it, expect, vi } from "vitest"
+import { afterEach, beforeEach, describe, it, expect, vi } from "vitest"
 
 import { ContactList } from "@/components/messenger/ContactList"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
@@ -32,11 +32,23 @@ vi.mock("@/components/media/SmartImage", () => ({
   default: ({ alt }: { alt?: string }) => <img alt={alt} />,
 }))
 
+const { mockReducedMotion } = vi.hoisted(() => ({
+  mockReducedMotion: vi.fn(() => false),
+}))
+
+vi.mock("@/hooks/useMediaQuery", () => ({
+  default: () => mockReducedMotion(),
+}))
+
 const queryClient = new QueryClient()
 
 const wrapper = ({ children }: { children: ReactNode }) => (
   <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
 )
+
+afterEach(() => {
+  mockReducedMotion.mockReturnValue(false)
+})
 
 const mockContacts = [
   {
@@ -69,6 +81,10 @@ const mockContacts = [
 ]
 
 describe("ContactList — empty state (W183 SW1)", () => {
+  beforeEach(() => {
+    mockReducedMotion.mockReturnValue(false)
+  })
+
   it("renders no-chats empty state when contacts is empty and !isSearchActive", () => {
     render(<ContactList contacts={[]} selectedId={null} onSelect={() => {}} />, { wrapper })
 
@@ -134,6 +150,31 @@ describe("ContactList — empty state (W183 SW1)", () => {
     expect(onClearSearch).toHaveBeenCalledTimes(1)
   })
 
+  it("omits the optional empty-state callbacks when they are not provided", () => {
+    const { rerender } = render(
+      <ContactList contacts={[]} selectedId={null} onSelect={() => {}} />,
+      { wrapper }
+    )
+    expect(screen.queryByRole("button")).toBeFalsy()
+
+    rerender(
+      <ContactList
+        contacts={[]}
+        selectedId={null}
+        onSelect={() => {}}
+        isSearchActive
+        searchQuery="missing"
+      />
+    )
+    expect(screen.queryByRole("button")).toBeFalsy()
+  })
+
+  it("renders the animated error state without an optional retry callback", () => {
+    render(<ContactList contacts={[]} selectedId={null} onSelect={() => {}} isError />, { wrapper })
+    expect(screen.getByRole("alert")).toBeInTheDocument()
+    expect(screen.queryByRole("button")).toBeFalsy()
+  })
+
   it("empty state has role=status + aria-live=polite", () => {
     const { container } = render(
       <ContactList contacts={[]} selectedId={null} onSelect={() => {}} />,
@@ -142,6 +183,57 @@ describe("ContactList — empty state (W183 SW1)", () => {
 
     const status = container.querySelector('[role="status"][aria-live="polite"]')
     expect(status).toBeTruthy()
+  })
+
+  it("uses reduced-motion transitions and omits the optional CTA", () => {
+    mockReducedMotion.mockReturnValue(true)
+    const { container } = render(
+      <ContactList contacts={[]} selectedId={null} onSelect={() => {}} isSearchActive />,
+      { wrapper }
+    )
+
+    expect(container.querySelector('[role="status"]')).toBeTruthy()
+    expect(screen.queryByRole("button")).toBeFalsy()
+  })
+
+  it("keeps reduced-motion CTAs present without hover/tap animations", () => {
+    mockReducedMotion.mockReturnValue(true)
+    const onRetry = vi.fn()
+    const onClearSearch = vi.fn()
+    const onStartNewChat = vi.fn()
+
+    const { rerender } = render(
+      <ContactList contacts={[]} selectedId={null} onSelect={() => {}} isError onRetry={onRetry} />,
+      { wrapper }
+    )
+    fireEvent.click(screen.getByRole("button", { name: /messenger:error.retry/ }))
+
+    rerender(
+      <ContactList
+        contacts={[]}
+        selectedId={null}
+        onSelect={() => {}}
+        isSearchActive
+        onClearSearch={onClearSearch}
+      />
+    )
+    fireEvent.click(
+      screen.getByRole("button", { name: /messenger:noChats.searchEmpty.clearSearch/ })
+    )
+
+    rerender(
+      <ContactList
+        contacts={[]}
+        selectedId={null}
+        onSelect={() => {}}
+        onStartNewChat={onStartNewChat}
+      />
+    )
+    fireEvent.click(screen.getByRole("button", { name: /messenger:noChats.cta/ }))
+
+    expect(onRetry).toHaveBeenCalledOnce()
+    expect(onClearSearch).toHaveBeenCalledOnce()
+    expect(onStartNewChat).toHaveBeenCalledOnce()
   })
 })
 
@@ -238,6 +330,10 @@ describe("ContactList — keyboard navigation (W183 SW4)", () => {
 })
 
 describe("ContactList — W184 SW2 skeleton + SW3 error states", () => {
+  beforeEach(() => {
+    mockReducedMotion.mockReturnValue(false)
+  })
+
   it("renders 6 skeleton rows when isLoading=true (role=status + aria-live)", () => {
     const { container } = render(
       <ContactList contacts={[]} selectedId={null} onSelect={() => {}} isLoading />,
@@ -338,5 +434,42 @@ describe("ContactList — W184 SW2 skeleton + SW3 error states", () => {
     // Error branch does NOT fire
     expect(container.querySelector('[role="alert"]')).toBeFalsy()
     expect(screen.queryByText("messenger:error.failedToLoadChats")).toBeFalsy()
+  })
+
+  it("renders the reduced-motion error branch without a retry callback", () => {
+    mockReducedMotion.mockReturnValue(true)
+    const { container } = render(
+      <ContactList contacts={[]} selectedId={null} onSelect={() => {}} isError />,
+      { wrapper }
+    )
+
+    expect(container.querySelector('[role="alert"]')).toBeTruthy()
+    expect(screen.queryByRole("button")).toBeFalsy()
+  })
+})
+
+describe("ContactList — populated contacts", () => {
+  beforeEach(() => {
+    mockReducedMotion.mockReturnValue(false)
+  })
+
+  it("renders active group rows and handles click and Space activation", () => {
+    const onSelect = vi.fn()
+    render(
+      <ContactList
+        contacts={[{ ...mockContacts[1]!, isGroup: true, memberCount: 4, unread: 120 }]}
+        selectedId="2"
+        onSelect={onSelect}
+      />,
+      { wrapper }
+    )
+
+    const row = document.getElementById("messenger-contact-2")!
+    expect(row).toHaveAttribute("aria-current", "true")
+    expect(screen.getByLabelText('messenger:aria.unread|{"count":120}')).toHaveTextContent("99+")
+    fireEvent.click(row)
+    fireEvent.keyDown(row, { key: " " })
+    expect(onSelect).toHaveBeenCalledTimes(2)
+    expect(screen.queryByAltText("Bob")).toBeFalsy()
   })
 })

@@ -259,6 +259,22 @@ async def test_grade_stats_average_trend_and_filtering(
     assert len(result["recent"]) == 2
 
 
+async def test_grade_stats_skips_invalid_previous_entry(
+    svc: StatsService, repo: AsyncMock
+) -> None:
+    repo.get_grade_notifications.side_effect = [
+        [_notification('{"score": 5}')],
+        [_notification("not json")],
+    ]
+
+    result = await svc.get_grade_stats(
+        user_id=uuid.uuid4(), period_days=30, skip_cache=True
+    )
+
+    assert result["average"] == 5.0
+    assert result["trend"] == 5.0
+
+
 async def test_grade_stats_scale_100_via_max(
     svc: StatsService, repo: AsyncMock
 ) -> None:

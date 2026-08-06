@@ -135,17 +135,18 @@ func TestSetupHubAndHandlers_ProbesHealth(t *testing.T) {
 	}
 	logger := initLogger()
 
-	// Create hub and handlers
-	h := setupHub(context.Background(), cfg, logger, nil, nil)
+	h, err := setupHub(context.Background(), cfg, logger, nil, nil)
+	require.NoError(t, err)
 	assert.NotNil(t, h)
 
-	setupHandlers(h, cfg, logger, nil, nil)
+	mux := http.NewServeMux()
+	setupHandlers(mux, h, cfg, logger, nil, nil)
 
 	t.Run("liveness endpoint", func(t *testing.T) {
 		rec := httptest.NewRecorder()
 		req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, "/health/live", nil)
 		require.NoError(t, err)
-		http.DefaultServeMux.ServeHTTP(rec, req)
+		mux.ServeHTTP(rec, req)
 		assert.Equal(t, http.StatusOK, rec.Code)
 		assert.Contains(t, rec.Body.String(), "alive")
 	})
@@ -154,7 +155,7 @@ func TestSetupHubAndHandlers_ProbesHealth(t *testing.T) {
 		rec := httptest.NewRecorder()
 		req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, "/health/ready", nil)
 		require.NoError(t, err)
-		http.DefaultServeMux.ServeHTTP(rec, req)
+		mux.ServeHTTP(rec, req)
 		// Expecting 502/503 because NATS/Redis/JWKS are not initialized/configured
 		assert.Equal(t, http.StatusServiceUnavailable, rec.Code)
 		assert.Contains(t, rec.Body.String(), "degraded")
@@ -164,7 +165,7 @@ func TestSetupHubAndHandlers_ProbesHealth(t *testing.T) {
 		rec := httptest.NewRecorder()
 		req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, "/health", nil)
 		require.NoError(t, err)
-		http.DefaultServeMux.ServeHTTP(rec, req)
+		mux.ServeHTTP(rec, req)
 		assert.Equal(t, http.StatusOK, rec.Code)
 		assert.Contains(t, rec.Body.String(), "healthy")
 	})
@@ -173,7 +174,7 @@ func TestSetupHubAndHandlers_ProbesHealth(t *testing.T) {
 		rec := httptest.NewRecorder()
 		req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, "/ws", nil)
 		require.NoError(t, err)
-		http.DefaultServeMux.ServeHTTP(rec, req)
+		mux.ServeHTTP(rec, req)
 		// websocket upgrade should fail with unauthorized due to missing ticket
 		assert.Equal(t, http.StatusUnauthorized, rec.Code)
 	})
@@ -182,7 +183,7 @@ func TestSetupHubAndHandlers_ProbesHealth(t *testing.T) {
 		rec := httptest.NewRecorder()
 		req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, "/metrics", nil)
 		require.NoError(t, err)
-		http.DefaultServeMux.ServeHTTP(rec, req)
+		mux.ServeHTTP(rec, req)
 		assert.Equal(t, http.StatusOK, rec.Code)
 	})
 }
@@ -195,23 +196,24 @@ func TestSetupHub_JWKS(t *testing.T) {
 		JWKSURL:        "http://127.0.0.1:1/jwks",
 	}
 	logger := initLogger()
-	h := setupHub(context.Background(), cfg, logger, nil, nil)
+	h, err := setupHub(context.Background(), cfg, logger, nil, nil)
+	require.NoError(t, err)
 	assert.NotNil(t, h)
 	assert.True(t, h.HasJWKSCache())
 }
 
 func TestRunServer_Error(t *testing.T) {
 	cfg := &config.Config{
-		Port: "-1",
+		Port:             "-1",
+		WebTransportPort: "-1",
 	}
 	logger := initLogger()
 	h := hub.NewHub(nil, logger, nil, cfg, nil)
-	runServer(cfg, logger, h)
+	mux := http.NewServeMux()
+	require.Error(t, runServer(cfg, logger, h, mux))
 }
 
 func TestSetupHubAndHandlers_ReadinessHealthy(t *testing.T) {
-	http.DefaultServeMux = http.NewServeMux()
-
 	lc := net.ListenConfig{}
 	l, err := lc.Listen(t.Context(), "tcp", "127.0.0.1:0")
 	require.NoError(t, err)
@@ -259,20 +261,20 @@ func TestSetupHubAndHandlers_ReadinessHealthy(t *testing.T) {
 	}
 	logger := initLogger()
 
-	h := setupHub(context.Background(), cfg, logger, nc, rdb)
-	setupHandlers(h, cfg, logger, nc, rdb)
+	h, err := setupHub(context.Background(), cfg, logger, nc, rdb)
+	require.NoError(t, err)
+	mux := http.NewServeMux()
+	setupHandlers(mux, h, cfg, logger, nc, rdb)
 
 	rec := httptest.NewRecorder()
 	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, "/health/ready", nil)
 	require.NoError(t, err)
-	http.DefaultServeMux.ServeHTTP(rec, req)
+	mux.ServeHTTP(rec, req)
 	assert.Equal(t, http.StatusOK, rec.Code)
 	assert.Contains(t, rec.Body.String(), "ready")
 }
 
 func TestSetupHubAndHandlers_ReadinessRedisPingError(t *testing.T) {
-	http.DefaultServeMux = http.NewServeMux()
-
 	rdb := redis.NewClient(&redis.Options{Addr: "127.0.0.1:1"})
 	defer func() { _ = rdb.Close() }() //nolint:errcheck // test cleanup
 
@@ -283,13 +285,15 @@ func TestSetupHubAndHandlers_ReadinessRedisPingError(t *testing.T) {
 	}
 	logger := initLogger()
 
-	h := setupHub(context.Background(), cfg, logger, nil, rdb)
-	setupHandlers(h, cfg, logger, nil, rdb)
+	h, err := setupHub(context.Background(), cfg, logger, nil, rdb)
+	require.NoError(t, err)
+	mux := http.NewServeMux()
+	setupHandlers(mux, h, cfg, logger, nil, rdb)
 
 	rec := httptest.NewRecorder()
 	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, "/health/ready", nil)
 	require.NoError(t, err)
-	http.DefaultServeMux.ServeHTTP(rec, req)
+	mux.ServeHTTP(rec, req)
 	assert.Equal(t, http.StatusServiceUnavailable, rec.Code)
 	assert.Contains(t, rec.Body.String(), "degraded")
 }

@@ -97,17 +97,47 @@ jobs:
           if-no-files-found: ignore
 
   backend-full:
-    name: Full backend suite
+    name: Full backend unit (shard ${{ matrix.unit-shard }})
+    strategy:
+      fail-fast: false
+      matrix:
+        unit-shard: [0, 1, 2, 3]
     uses: ./.github/workflows/reusable-backend-tests.yml
     with:
-      test-group-name: Nightly-Full
+      test-group-name: Nightly-Full-${{ matrix.unit-shard }}
       test-pattern: tests/
       python-version: "3.14"
       coverage-threshold: 0
-      run-integration-tests: true
+      run-unit-tests: true
+      run-integration-tests: false
       parallel-workers: 0
+      shard-id: ${{ matrix.unit-shard }}
+      num-shards: 4
+    secrets:
+      SECRET_KEY: ${{ secrets.SECRET_KEY }}
+      CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+
+  backend-integration:
+    name: Full backend integration (shard ${{ matrix.integration-shard }})
+    strategy:
+      fail-fast: false
+      matrix:
+        integration-shard: [0, 1, 2, 3]
+    uses: ./.github/workflows/reusable-backend-tests.yml
+    with:
+      test-group-name: Nightly-Integration-${{ matrix.integration-shard }}
+      test-pattern: tests/
+      python-version: "3.14"
+      coverage-threshold: 0
+      run-unit-tests: false
+      run-integration-tests: true
+      parallel-workers: -1
       num-shards: 1
-    secrets: inherit
+      integration-shard-id: ${{ matrix.integration-shard }}
+      integration-num-shards: 4
+    secrets:
+      SECRET_KEY: ${{ secrets.SECRET_KEY }}
+      CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
 
   go-integration:
     name: Go integration (${{ matrix.service-directory }})
@@ -121,7 +151,6 @@ jobs:
     uses: ./.github/workflows/reusable-go-integration-tests.yml
     with:
       service-directory: ${{ matrix.service-directory }}
-    secrets: inherit
 
   container-integration-cells:
     name: Disposable MinIO and SpiceDB cells
@@ -129,11 +158,16 @@ jobs:
     timeout-minutes: 30
     env:
       DATABASE_URL: sqlite+aiosqlite:///./test.db
-      SECRET_KEY: nightly-container-cell-test-secret-32-chars
+      POSTGRES_PASSWORD: postgres  # pragma: allowlist secret
+      SECRET_KEY: nightly-container-cell-test-secret-32-chars  # pragma: allowlist secret
       ENVIRONMENT: testing
       RUN_INTEGRATION_TESTS: "1"
       USE_TESTCONTAINERS_MINIO: "1"
       USE_TESTCONTAINERS_SPICEDB: "1"
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadminsecret  # pragma: allowlist secret
+      NATS_AUTH_TOKEN: nightly-nats-token  # pragma: allowlist secret
+      SPICEDB_PRESHARED_KEY: nightly-spicedb-key  # pragma: allowlist secret
       OTEL_SDK_DISABLED: "true"
     steps:
       - name: Checkout
@@ -177,16 +211,33 @@ jobs:
       browser: ${{ matrix.browser }}
       shard-index: 1
       shard-total: 1
-    secrets: inherit
+      collect-coverage: ${{ matrix.browser == 'chromium' }}
 
   load-and-chaos:
     name: Load and chaos resilience
     runs-on: ubuntu-latest
     timeout-minutes: 45
     env:
-      SECRET_KEY: dummy_secret_key_for_ci_tests_at_least_32_chars
+      DATABASE_URL: postgresql+asyncpg://postgres:postgres@postgres:5432/ecosystem  # pragma: allowlist secret
+      POSTGRES_USER: postgres
+      POSTGRES_DB: ecosystem
+      POSTGRES_PASSWORD: postgres  # pragma: allowlist secret
+      SECRET_KEY: dummy_secret_key_for_ci_tests_at_least_32_chars  # pragma: allowlist secret
+      JWT_SECRET: dummy_jwt_secret_for_ci_tests_at_least_32_chars  # pragma: allowlist secret
       ENVIRONMENT: testing
       OTEL_SDK_DISABLED: "true"
+      REDIS_PASSWORD: nightly-redis-password  # pragma: allowlist secret
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadminsecret  # pragma: allowlist secret
+      NATS_AUTH_TOKEN: nightly-nats-token  # pragma: allowlist secret
+      SPICEDB_PRESHARED_KEY: nightly-spicedb-key  # pragma: allowlist secret
+      WS_HUB_INTERNAL_SECRET: nightly-ws-hub-secret  # pragma: allowlist secret
+      IMGPROXY_KEY: nightly-imgproxy-key  # pragma: allowlist secret
+      IMGPROXY_SALT: nightly-imgproxy-salt  # pragma: allowlist secret
+      SPOTIFY_CLIENT_ID: nightly-spotify-client  # pragma: allowlist secret
+      SPOTIFY_CLIENT_SECRET: nightly-spotify-secret  # pragma: allowlist secret
+      SPOTIFY_REDIRECT_URI: http://localhost/spotify/callback
+      SPOTIFY_SCOPES: user-read-currently-playing
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -205,19 +256,114 @@ jobs:
       - name: Install dependencies
         run: uv sync --group dev
 
+      - name: Prepare full chaos compose environment
+        shell: bash
+        run: |
+          cp .env.example .env
+          mkdir -p .secrets
+          openssl genpkey \
+            -algorithm RSA \
+            -pkeyopt rsa_keygen_bits:2048 \
+            -out .secrets/jwt_rs256.pem
+          chmod 644 .secrets/jwt_rs256.pem
+          echo "COMPOSE_FILE=docker-compose.infra.yml:docker-compose.go.yml:docker-compose.yml:docker-compose.ci-loadtest.yml" >> "$GITHUB_ENV"
+          echo "API_BASE_URL=http://localhost:8000" >> "$GITHUB_ENV"
+          echo "GATEWAY_URL=http://localhost:8080" >> "$GITHUB_ENV"
+          echo "DATABASE_URL_SYNC=postgresql://postgres:${POSTGRES_PASSWORD}@localhost:54321/ecosystem" >> "$GITHUB_ENV"
+
       - name: Validate the production compose contract
         run: >-
           docker compose -f docker-compose.infra.yml -f docker-compose.go.yml
           -f docker-compose.yml -f docker-compose.ci-loadtest.yml config --quiet
 
+      - name: Start the full chaos compose stack
+        shell: bash
+        run: |
+          CF="-f docker-compose.infra.yml -f docker-compose.go.yml -f docker-compose.yml -f docker-compose.ci-loadtest.yml"
+          up_ok=""
+          for attempt in 1 2 3; do
+            if docker compose $CF up -d --build; then
+              echo "compose up succeeded (attempt $attempt)"
+              up_ok=1
+              break
+            fi
+            echo "::warning::compose up attempt $attempt failed; retrying in 15s"
+            sleep 15
+          done
+          if [ -z "$up_ok" ]; then
+            docker compose $CF ps || true
+            docker compose $CF logs --tail=100 backend postgres valkey nats temporal || true
+            exit 1
+          fi
+
+          # Compose versions differ in how they merge a ports override onto an
+          # expose-only service. Keep the sidecar fallback for runners that do
+          # not publish backend:8000, while using the direct mapping when it is
+          # available in the current compose implementation.
+          if [ -z "$(docker compose $CF port backend 8000 2>/dev/null || true)" ]; then
+            net=$(docker network ls --format '{{.Name}}' | grep -E '_internal$' | head -1)
+            docker rm -f ci-nightly-backend >/dev/null 2>&1 || true
+            docker run -d --name ci-nightly-backend -p 8000:8000 \
+              alpine/socat TCP-LISTEN:8000,fork,reuseaddr TCP:backend:8000
+            if [ -n "$net" ]; then
+              docker network connect "$net" ci-nightly-backend
+            fi
+          fi
+
+          backend_ready=""
+          for i in $(seq 1 120); do
+            if curl -fsS http://localhost:8000/ >/dev/null 2>&1; then
+              echo "backend ready (after $((i * 2))s)"
+              backend_ready=1
+              break
+            fi
+            sleep 2
+          done
+          if [ -z "$backend_ready" ]; then
+            docker compose $CF ps || true
+            docker compose $CF logs --tail=120 backend postgres valkey nats temporal || true
+            exit 1
+          fi
+
+          gateway_ready=""
+          for i in $(seq 1 60); do
+            if curl -fsS http://localhost:8080/health >/dev/null 2>&1; then
+              echo "gateway ready (after $((i * 2))s)"
+              gateway_ready=1
+              break
+            fi
+            sleep 2
+          done
+          if [ -z "$gateway_ready" ]; then
+            docker compose $CF ps || true
+            docker compose $CF logs --tail=120 gateway ws-hub || true
+            exit 1
+          fi
+
       - name: Run chaos and resilience tests
         env:
           CHAOS_TESTS: "1"
+          API_BASE_URL: http://localhost:8000
+          GATEWAY_URL: http://localhost:8080
+          # The pytest process runs on the GitHub runner, not inside the
+          # Compose network. Keep the job-level DATABASE_URL for containers,
+          # but point this host-side fixture at the published PostgreSQL port.
+          DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:54321/ecosystem  # pragma: allowlist secret
+          COMPOSE_FILE: docker-compose.infra.yml:docker-compose.go.yml:docker-compose.yml:docker-compose.ci-loadtest.yml
         run: uv run pytest tests/chaos/ -v -m chaos --tb=short
+
+      - name: Tear down full chaos compose stack
+        if: always()
+        shell: bash
+        run: |
+          CF="-f docker-compose.infra.yml -f docker-compose.go.yml -f docker-compose.yml -f docker-compose.ci-loadtest.yml"
+          docker rm -f ci-nightly-backend >/dev/null 2>&1 || true
+          docker compose $CF down -v --remove-orphans || true
 
   kyverno-test:
     name: Kyverno policy tests
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -228,10 +374,17 @@ jobs:
           version="v1.18.0"
           archive="kyverno-cli_v1.18.0_linux_x86_64.tar.gz"
           base="https://github.com/kyverno/kyverno/releases/download/${version}"
-          curl --fail --silent --show-error --location --output "$RUNNER_TEMP/$archive" "$base/$archive"
-          curl --fail --silent --show-error --location --output "$RUNNER_TEMP/checksums.txt" "$base/checksums.txt"
-          grep "$archive" "$RUNNER_TEMP/checksums.txt" | sha256sum --check -
-          tar --extract --gzip --file "$RUNNER_TEMP/$archive" --directory "$RUNNER_TEMP"
+          curl_args=(--fail --silent --show-error --location --retry 10 --retry-delay 5 --retry-all-errors --connect-timeout 20)
+          curl "${curl_args[@]}" --output "$RUNNER_TEMP/$archive" "$base/$archive"
+          curl "${curl_args[@]}" --output "$RUNNER_TEMP/checksums.txt" "$base/checksums.txt"
+          archive_path="$RUNNER_TEMP/$archive"
+          checksum_path="$RUNNER_TEMP/checksums.txt"
+          test -s "$archive_path"
+          test -s "$checksum_path"
+          expected_sha256="$(awk -v archive="$archive" '$2 == archive || $2 == "*" archive { print $1; exit }' "$checksum_path")"
+          test -n "$expected_sha256"
+          printf '%s  %s\n' "$expected_sha256" "$archive_path" | sha256sum --check -
+          tar --extract --gzip --file "$archive_path" --directory "$RUNNER_TEMP"
           echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
 
       - name: Run Kyverno tests
@@ -241,6 +394,21 @@ jobs:
     name: Miri pure-Rust checks
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    env:
+      # pyo3-sanitizer supplies an explicit no-persistence config under Miri:
+      # Config::default constructs the file provider before this env override
+      # is applied. Keep the variable for any third-party proptest tests.
+      PROPTEST_DISABLE_FAILURE_PERSISTENCE: "1"
+      # proptest's failure persistence probes current_dir even when persistence
+      # is disabled.  Miri's default filesystem isolation rejects that syscall
+      # before the pure-Rust property tests can run; disabling isolation is
+      # scoped to this test-only job and keeps the source crate unchanged.
+      #
+      # html5ever's string_cache 0.9.0 currently trips Miri's experimental
+      # Stacked Borrows model in its atomic ref-count drop path. Tree Borrows
+      # keeps aliasing checks enabled while avoiding that known dependency
+      # false-positive; this remains scoped to the Miri job only.
+      MIRIFLAGS: "-Zmiri-tree-borrows -Zmiri-disable-isolation -Zmiri-isolation-error=warn"
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -255,10 +423,16 @@ jobs:
         run: cargo +nightly miri setup
 
       - name: Test pyo3-sanitizer pure Rust library
-        run: cargo +nightly miri test --manifest-path crates/pyo3-sanitizer/Cargo.toml --lib
+        run: >-
+          cargo +nightly miri test --locked
+          --manifest-path crates/pyo3-sanitizer/Cargo.toml
+          --no-default-features --lib -- --test-threads=1
 
       - name: Test rust-crypto pure Rust library
-        run: cargo +nightly miri test --manifest-path frontend/rust-crypto/Cargo.toml --lib
+        run: >-
+          cargo +nightly miri test --locked
+          --manifest-path frontend/rust-crypto/Cargo.toml
+          --lib -- --test-threads=1
 
   notify-failure:
     name: Report nightly regression
@@ -267,6 +441,7 @@ jobs:
       - mutation-tests-full
       - frontend-mutation-tests-full
       - backend-full
+      - backend-integration
       - go-integration
       - container-integration-cells
       - browser-matrix

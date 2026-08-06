@@ -18,6 +18,8 @@ chrono = { version = "0.4", features = ["serde"] }
 hmac = "=0.12.1"
 sha2 = "=0.10.9"
 hex = "=0.4.3"
+subtle = "=2.6.1"
+zeroize = "=1.8.1"
 
 # Variant B feature-gate (testing session 9). extension-module stays the DEFAULT,
 # so every existing build site is unchanged: maturin/uv (the abi3 wheel),

@@ -106,6 +106,28 @@ rustOptimizer:
       cpu: 500m
       memory: 512Mi
 
+# CDC Worker
+cdcWorker:
+  replicaCount: 1
+  image:
+    repository: university-backend
+    pullPolicy: IfNotPresent
+    tag: ""
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+  env:
+    DATABASE_URL: ""
+    NATS_URL: ""
+    ENABLE_CDC_OUTBOX: "true"
+    POSTGRES_REPLICATION_SLOT: "outbox_cdc_slot"
+    CDC_SLOT_NAME: "outbox_cdc_slot"
+    CDC_PUBLICATION_NAME: "outbox_pub"
+
 # Ingress (MOD-30-04: fully parameterized)
 ingress:
   enabled: false
@@ -162,6 +184,23 @@ networkPolicy:
 # Run `helm dependency update` after modifying.
 postgres:
   enabled: true  # External — managed by CloudNativePG or external RDS
+  wal_level: logical
+  max_replication_slots: 5
+  max_wal_senders: 5
+  config:
+    wal_level: logical
+    max_replication_slots: 5
+    max_wal_senders: 5
+
+postgresql:
+  enabled: true
+  wal_level: logical
+  max_replication_slots: 5
+  max_wal_senders: 5
+  config:
+    wal_level: logical
+    max_replication_slots: 5
+    max_wal_senders: 5
 
 # bitnami/redis subchart configuration.
 # Docs: https://github.com/bitnami/charts/tree/main/bitnami/redis
@@ -227,10 +266,10 @@ nats:
       enabled: true
       memStorage:
         enabled: true
-        size: 256Mi
+        size: 512Mi
       fileStorage:
         enabled: true
-        size: 2Gi
+        size: 10Gi
   # Pod security hardening
   podSecurityContext:
     runAsNonRoot: true
@@ -246,3 +285,99 @@ minio:
   enabled: true  # External — managed separately
 temporal:
   enabled: true  # External — managed separately
+
+# KEDA Auto-Scaling Configuration (Vector 17 FinOps)
+keda:
+  enabled: false  # Global master switch (set true in clusters with KEDA operator installed)
+
+  redisAuth:
+    enabled: true
+    secretName: "redis-credentials"
+    secretPasswordKey: "redis-password"
+
+  natsAuth:
+    enabled: false
+    secretName: "nats-credentials"  # pragma: allowlist secret
+    secretTokenKey: "nats-token"  # pragma: allowlist secret
+
+  backend:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 8
+    cooldownPeriod: 300
+    pollingInterval: 30
+    redisQueue:
+      enabled: true
+      address: "university-ecosystem-redis-master:6379"
+      listName: "backend_tasks"
+      listLength: 20
+      databaseIndex: 0
+    natsJetstream:
+      enabled: true
+      monitoringEndpoint: "http://university-ecosystem-nats:8222"
+      stream: "TASK_QUEUE"
+      consumer: "backend-worker"
+      lagThreshold: 25
+
+  fileProcessor:
+    enabled: true
+    minReplicas: 1
+    maxReplicas: 10
+    cooldownPeriod: 300
+    pollingInterval: 15
+    natsJetstream:
+      enabled: true
+      monitoringEndpoint: "http://university-ecosystem-nats:8222"
+      stream: "FILES_PROCESS"
+      consumer: "file-processor-worker"
+      lagThreshold: 10
+
+  outboxWorker:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 10
+    cooldownPeriod: 60
+    pollingInterval: 15
+    natsJetstream:
+      enabled: true
+      monitoringEndpoint: "http://university-ecosystem-nats:8222"
+      stream: "OUTBOX_EVENTS"
+      consumer: "outbox-cdc-worker"
+      lagThreshold: 50
+
+# Off-Peak Resource Hibernation (FinOps scale-to-zero for dev/staging)
+hibernation:
+  enabled: false  # Default false in production; set true in dev/staging
+  schedules:
+    offPeak:
+      timezone: "UTC"
+      start: "0 20 * * 1-5"   # 20:00 Mon-Fri (start off-peak hibernation)
+      end: "0 7 * * 1-5"     # 07:00 Mon-Fri (resume daytime scaling)
+      desiredReplicas: 0
+
+  workloads:
+    frontend:
+      enabled: true
+      minReplicasDay: 2
+      maxReplicasDay: 5
+    backend:
+      enabled: true
+      minReplicasDay: 2
+      maxReplicasDay: 8
+    gateway:
+      enabled: true
+      minReplicasDay: 2
+      maxReplicasDay: 5
+    fileProcessor:
+      enabled: true
+      minReplicasDay: 1
+      maxReplicasDay: 5
+    rustOptimizer:
+      enabled: true
+      minReplicasDay: 1
+      maxReplicasDay: 3
+    outboxWorker:
+      enabled: true
+      minReplicasDay: 2
+      maxReplicasDay: 10
+

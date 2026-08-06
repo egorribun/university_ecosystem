@@ -4,7 +4,7 @@
  * A toast-like notification that appears at the bottom of the screen.
  */
 
-import { useEffect } from "react"
+import { memo, useEffect } from "react"
 
 interface SnackbarProps {
   /** Whether the snackbar is visible */
@@ -39,5 +39,4 @@ function Snackbar({ open, message, onClose, duration = DEFAULT_DURATION }: Snack
   )
 }
 
-// PERF-27-02: Removed React.memo() — React Compiler "infer" mode handles memoization
-export default Snackbar
+export default memo(Snackbar)

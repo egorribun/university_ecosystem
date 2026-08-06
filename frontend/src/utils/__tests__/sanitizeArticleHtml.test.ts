@@ -1,5 +1,9 @@
-import { describe, expect, it } from "vitest"
+import { afterEach, describe, expect, it, vi } from "vitest"
 import { sanitizeArticleHtml } from "../sanitizeArticleHtml"
+
+afterEach(() => {
+  vi.unstubAllGlobals()
+})
 
 describe("sanitizeArticleHtml", () => {
   // ---------------------------------------------------------------------------
@@ -14,6 +18,12 @@ describe("sanitizeArticleHtml", () => {
   // ---------------------------------------------------------------------------
   it("returns plain text unchanged", () => {
     expect(sanitizeArticleHtml("Hello, world!")).toBe("Hello, world!")
+  })
+
+  it("uses the plain-text fallback when document is unavailable during SSR", () => {
+    vi.stubGlobal("document", undefined)
+
+    expect(sanitizeArticleHtml("<p>Hello, <strong>SSR</strong></p>")).toBe("Hello, SSR")
   })
 
   it("preserves allowed HTML structure (p, h2, ul, li, a, img)", () => {
@@ -102,6 +112,16 @@ describe("sanitizeArticleHtml", () => {
   it("removes javascript: in src", () => {
     const result = sanitizeArticleHtml('<img src="javascript:alert(1)">')
     expect(result).not.toMatch(/src\s*=\s*["']javascript:/i)
+  })
+
+  it("removes malformed URL attributes without throwing", () => {
+    const result = sanitizeArticleHtml('<a href="http://[invalid-host">broken</a>')
+    expect(result).not.toContain("href")
+  })
+
+  it("removes URL attributes that contain no usable characters", () => {
+    const result = sanitizeArticleHtml('<a href=" \t">blank</a>')
+    expect(result).not.toContain("href")
   })
 
   // ---------------------------------------------------------------------------

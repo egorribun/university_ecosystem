@@ -1,6 +1,7 @@
-// PERF-27-02: Removed React.memo() — React Compiler "infer" mode handles memoization
+import { memo, type FC } from "react"
+
 // Wave 43→45: CSS @keyframes, slowed + softened orbs
-export function NewsCardBackground() {
+export const NewsCardBackground: FC = memo(function NewsCardBackground() {
   return (
     <>
       <span
@@ -22,4 +23,6 @@ export function NewsCardBackground() {
       />
     </>
   )
-}
+})
+
+export default NewsCardBackground

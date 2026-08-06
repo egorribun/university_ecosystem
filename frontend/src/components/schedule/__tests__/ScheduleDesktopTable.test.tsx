@@ -16,11 +16,11 @@
  */
 import { fireEvent, screen, within } from "@testing-library/react"
 import type { ComponentProps } from "react"
-import { beforeEach, describe, expect, it, vi } from "vitest"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import { ScheduleDesktopTable } from "@/components/schedule/ScheduleDesktopTable"
 import type { Lesson } from "@/components/schedule/scheduleUtils"
-import { SchedulePageProvider } from "@/contexts/SchedulePageContext"
+import { SchedulePageProvider, useSchedulePage } from "@/contexts/SchedulePageContext"
 import { useScheduleUIStore } from "@/stores/scheduleUIStore"
 import { renderWithRouter } from "@/tests/helpers/renderWithRouter"
 
@@ -70,6 +70,14 @@ const ALL_LESSONS: Lesson[] = [LESSON_MON_1, LESSON_MON_2, LESSON_WED_1]
 
 type Props = ComponentProps<typeof ScheduleDesktopTable>
 
+let resizeObserverCallback: ResizeObserverCallback | undefined
+const resizeObserverDisconnect = vi.fn()
+
+function ContextProbe() {
+  const { addDay, activeDialog } = useSchedulePage()
+  return <div data-testid="schedule-context-probe">{`${addDay ?? ""}:${activeDialog ?? ""}`}</div>
+}
+
 function baseProps(overrides: Partial<Props> = {}): Props {
   return {
     schedule: ALL_LESSONS,
@@ -97,6 +105,7 @@ function renderTable(props: Props) {
     ui: () => (
       <SchedulePageProvider>
         <ScheduleDesktopTable {...props} />
+        <ContextProbe />
       </SchedulePageProvider>
     ),
     authProvider: false,
@@ -104,10 +113,29 @@ function renderTable(props: Props) {
 }
 
 beforeEach(() => {
+  resizeObserverCallback = undefined
+  resizeObserverDisconnect.mockReset()
+  vi.stubGlobal(
+    "ResizeObserver",
+    class {
+      observe = vi.fn()
+      disconnect() {
+        resizeObserverDisconnect()
+      }
+
+      constructor(callback: ResizeObserverCallback) {
+        resizeObserverCallback = callback
+      }
+    }
+  )
   // scheduleUIStore persists hiddenWeekdays + compactMode to localStorage; reset
   // to defaults so all 6 days are visible and cards render non-compact (required
   // for the note indicator + details row).
   useScheduleUIStore.setState({ hiddenWeekdays: [], compactMode: false })
+})
+
+afterEach(() => {
+  vi.unstubAllGlobals()
 })
 
 describe("ScheduleDesktopTable", () => {
@@ -185,6 +213,16 @@ describe("ScheduleDesktopTable", () => {
     expect(onDeleteLesson).toHaveBeenCalledWith("l1")
   })
 
+  it("opens the add dialog for the selected weekday", async () => {
+    await renderTable(baseProps({ user: { role: "admin" } as Props["user"] }))
+
+    const addButtons = screen.getAllByRole("button", { name: "actions.addLesson" })
+    expect(addButtons).toHaveLength(WEEKDAYS.length)
+    fireEvent.click(addButtons[0]!)
+
+    expect(screen.getByTestId("schedule-context-probe")).toHaveTextContent("monday:add")
+  })
+
   it("renders the EmptyState when there are no lessons (online)", async () => {
     await renderTable(baseProps({ schedule: [], rawSchedule: [], isOnline: true }))
 
@@ -243,6 +281,13 @@ describe("ScheduleDesktopTable", () => {
     expect(within(grid).getByRole("columnheader", { name: /Mon/ })).toBeInTheDocument()
   })
 
+  it("falls back to backend weekday names when a display label is missing", async () => {
+    await renderTable(baseProps({ weekdayLabels: [] }))
+
+    const grid = screen.getByRole("grid", { name: "Schedule" })
+    expect(within(grid).getByRole("columnheader", { name: /monday/ })).toBeInTheDocument()
+  })
+
   it("labels empty grid cells with the fallback 'Empty' aria-label", async () => {
     // One Monday lesson → row 0 Monday filled, the other 5 day-columns empty.
     await renderTable(baseProps({ schedule: [LESSON_MON_1], rawSchedule: [LESSON_MON_1] }))
@@ -252,5 +297,28 @@ describe("ScheduleDesktopTable", () => {
     expect(within(grid).getAllByRole("gridcell", { name: "Empty" })).toHaveLength(5)
     // The filled Monday cell carries the stable keyboard-nav id (W120 SW3).
     expect(grid.querySelector("#sched-cell-0-0")).not.toBeNull()
+  })
+
+  it("updates the overflow marker and renders current-lesson cell state", async () => {
+    await renderTable(baseProps({ currentLesson: LESSON_MON_1, currentProgress: 42, todayIdx: 1 }))
+
+    const container = document.querySelector(".schedule-grid-container") as HTMLElement
+    const scrollWrapper = document.querySelector(".sched-scroll-wrapper") as HTMLElement
+    Object.defineProperties(scrollWrapper, {
+      scrollWidth: { configurable: true, value: 1200 },
+      clientWidth: { configurable: true, value: 800 },
+    })
+    resizeObserverCallback?.([], {} as ResizeObserver)
+    expect(container).toHaveAttribute("data-overflows", "")
+
+    Object.defineProperty(scrollWrapper, "scrollWidth", { configurable: true, value: 700 })
+    resizeObserverCallback?.([], {} as ResizeObserver)
+    expect(container).not.toHaveAttribute("data-overflows")
+
+    const currentCell = document.getElementById("sched-cell-0-0")
+    expect(currentCell).toBeInTheDocument()
+    expect(document.getElementById("sched-cell-0-1")).toHaveClass("sched-today-col")
+    expect(screen.getByLabelText("Linear Algebra, 09:00–10:30, 101")).toBeInTheDocument()
+    expect(resizeObserverDisconnect).not.toHaveBeenCalled()
   })
 })

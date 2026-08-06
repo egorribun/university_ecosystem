@@ -4,7 +4,7 @@ import { cn } from "@/utils/cn"
 import { getMoscowDate, formatRelativeTime } from "@/utils/date"
 import { getNewsHeroId, clearNewsHeroId } from "@/utils/newsTransition"
 import { Cloud, FileText as ArticleIcon } from "lucide-react"
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
 
 interface NewsCardHeroProps {
@@ -161,5 +161,4 @@ const NewsCardHero = ({
   )
 }
 
-// PERF-27-02: Removed React.memo() — React Compiler "infer" mode handles memoization
-export default NewsCardHero
+export default memo(NewsCardHero)

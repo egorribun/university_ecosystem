@@ -11,7 +11,22 @@ export const STORES = {
   NAVIGATION: "pending-navigations",
   REPORT: "pending-reports",
   NEWS_INTERACTION: "pending-news-interactions",
+  MUTATION: "pending-mutations",
 } as const
+
+export interface PendingMutationRecord {
+  id?: number
+  mutationId: string
+  url: string
+  method: "POST" | "PUT" | "PATCH" | "DELETE"
+  payload: unknown
+  headers?: Record<string, string>
+  timestamp: number
+  idempotencyKey: string
+  dedupeKey?: string
+  retryCount: number
+  category?: "events" | "news" | "messenger" | "profile" | "schedule" | "general"
+}
 
 /**
  * Get the database with proper upgrade handler.
@@ -41,6 +56,15 @@ async function getDatabase() {
       }
       if (!db.objectStoreNames.contains(STORES.NEWS_INTERACTION)) {
         db.createObjectStore(STORES.NEWS_INTERACTION, { keyPath: "id", autoIncrement: true })
+      }
+      if (!db.objectStoreNames.contains(STORES.MUTATION)) {
+        const mutationStore = db.createObjectStore(STORES.MUTATION, {
+          keyPath: "id",
+          autoIncrement: true,
+        })
+        mutationStore.createIndex("mutationId", "mutationId", { unique: true })
+        mutationStore.createIndex("category", "category", { unique: false })
+        mutationStore.createIndex("dedupeKey", "dedupeKey", { unique: false })
       }
     },
   })
@@ -148,6 +172,100 @@ export function sanitizeReportPayload(payload: unknown, _depth = 0): unknown {
   return result
 }
 
+export async function storePendingMutation(
+  record: Omit<
+    PendingMutationRecord,
+    "mutationId" | "idempotencyKey" | "timestamp" | "retryCount"
+  > &
+    Partial<PendingMutationRecord>
+) {
+  const fullRecord: PendingMutationRecord = {
+    mutationId:
+      record.mutationId ??
+      (typeof crypto !== "undefined" && crypto.randomUUID
+        ? crypto.randomUUID()
+        : String(Date.now() + Math.random())),
+    url: record.url,
+    method: record.method ?? "POST",
+    payload: sanitizeReportPayload(record.payload),
+    headers: record.headers,
+    timestamp: record.timestamp ?? Date.now(),
+    idempotencyKey:
+      record.idempotencyKey ??
+      (typeof crypto !== "undefined" && crypto.randomUUID
+        ? crypto.randomUUID()
+        : String(Date.now() + Math.random())),
+    retryCount: record.retryCount ?? 0,
+    category: record.category ?? "general",
+  }
+  return addRecord(STORES.MUTATION, fullRecord)
+}
+
+export async function readPendingMutations() {
+  const db = await getDatabase()
+  return db.getAll(STORES.MUTATION)
+}
+
+export async function processPendingMutations() {
+  if (!isOnline()) return
+  const db = await getDatabase()
+  const records = (await db.getAll(STORES.MUTATION)) as PendingMutationRecord[]
+  if (!records || !records.length) return
+
+  records.sort((a, b) => a.timestamp - b.timestamp)
+
+  const broadcast =
+    typeof BroadcastChannel !== "undefined"
+      ? new BroadcastChannel("offline-mutation-sync-channel")
+      : null
+  const notifyBroadcast = (msg: unknown) => {
+    if (broadcast && typeof broadcast.postMessage === "function") {
+      try {
+        broadcast.postMessage(msg)
+      } catch {
+        /* ignore */
+      }
+    }
+  }
+
+  for (const record of records) {
+    if (record.retryCount >= 5) {
+      warn("Mutation exceeded max retries, discarding:", record)
+      if (record.id) await db.delete(STORES.MUTATION, record.id)
+      notifyBroadcast({ type: "MUTATION_FAILED_PERMANENT", record })
+      continue
+    }
+
+    try {
+      const response = await fetch(record.url, {
+        method: record.method,
+        headers: {
+          "Content-Type": "application/json",
+          "Idempotency-Key": record.idempotencyKey,
+          ...(record.headers ?? {}),
+        },
+        body: record.payload ? JSON.stringify(record.payload) : undefined,
+        signal: AbortSignal.timeout(10_000),
+      })
+
+      if (response.ok) {
+        if (record.id) await db.delete(STORES.MUTATION, record.id)
+        notifyBroadcast({ type: "MUTATION_SYNCED", record })
+      } else if (response.status >= 400 && response.status < 500 && response.status !== 429) {
+        warn(`Mutation returned non-retriable status ${response.status}:`, record)
+        if (record.id) await db.delete(STORES.MUTATION, record.id)
+        notifyBroadcast({ type: "MUTATION_REJECTED", record, status: response.status })
+      } else {
+        record.retryCount += 1
+        await db.put(STORES.MUTATION, record)
+      }
+    } catch (_err) {
+      record.retryCount += 1
+      await db.put(STORES.MUTATION, record)
+    }
+  }
+}
+
 export async function processOfflineQueues() {
   if (!isOnline()) return
 
@@ -158,6 +276,7 @@ export async function processOfflineQueues() {
     processPendingNavigations(),
     processPendingReports(),
     processNewsInteractionQueue(db),
+    processPendingMutations(),
   ])
 }
 

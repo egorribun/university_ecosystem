@@ -39,6 +39,26 @@ def test_spicedb_client_init_missing_token():
             )
 
 
+def test_spicedb_client_init_secure_token_and_get_client():
+    with (
+        patch("app.core.spicedb.settings") as mock_settings,
+        patch("app.core.spicedb.Client") as client_class,
+        patch("grpcutil.bearer_token_credentials") as credentials,
+        patch.dict(os.environ, {"SPICEDB_INSECURE": "false"}),
+    ):
+        mock_settings.spicedb_preshared_key = "secure-token"
+        mock_settings.spicedb_endpoint = "grpcs://spicedb.internal:443"
+        credentials.return_value = MagicMock(name="credentials")
+        client = MagicMock(name="client")
+        client_class.return_value = client
+
+        wrapper = SpiceDBClient()
+
+        assert wrapper.get_client() is client
+        client_class.assert_called_once()
+        credentials.assert_called_once_with("secure-token")
+
+
 def test_get_spicedb_client_singleton():
     """Verify get_spicedb_client returns the same client on subsequent calls."""
     with patch("app.core.spicedb.SpiceDBClient") as mock_class:

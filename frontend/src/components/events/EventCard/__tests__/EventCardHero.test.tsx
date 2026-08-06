@@ -1,5 +1,12 @@
-import { render, screen } from "@testing-library/react"
-import { describe, it, expect, vi } from "vitest"
+import { act, render, screen } from "@testing-library/react"
+import { afterEach, describe, it, expect, vi } from "vitest"
+
+const transitions = vi.hoisted(() => ({
+  getEventsHeroId: vi.fn(() => null as string | null),
+  clearEventsHeroId: vi.fn(),
+}))
+
+vi.mock("@/utils/eventsTransition", () => transitions)
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({
@@ -20,6 +27,14 @@ const baseProps = {
 }
 
 describe("EventCardHero", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    vi.useRealTimers()
+    transitions.getEventsHeroId.mockReset()
+    transitions.getEventsHeroId.mockReturnValue(null)
+    transitions.clearEventsHeroId.mockReset()
+  })
+
   it("renders the hero image with alt text and a date <time> element", () => {
     const { container } = render(<EventCardHero {...baseProps} />)
     expect(screen.getByAltText("events:alt.image")).toBeInTheDocument()
@@ -86,5 +101,66 @@ describe("EventCardHero", () => {
     expect(screen.getByText("common:statuses.cached")).toBeInTheDocument()
     vi.doUnmock("@/hooks/useOnlineStatus")
     vi.doUnmock("react-i18next")
+  })
+
+  it("applies and cleans up the back-navigation view transition name", () => {
+    vi.useFakeTimers()
+    transitions.getEventsHeroId.mockReturnValue("evt-1")
+    const { container, unmount } = render(<EventCardHero {...baseProps} />)
+    const hero = container.firstElementChild as HTMLElement
+
+    expect(hero.style.viewTransitionName).toBe("events-hero")
+    expect(transitions.clearEventsHeroId).toHaveBeenCalledOnce()
+
+    act(() => {
+      vi.runAllTimers()
+    })
+    expect(hero.style.viewTransitionName).toBe("")
+    unmount()
+    expect(hero.style.viewTransitionName).toBe("")
+  })
+
+  it("updates the parallax transform from intersection changes", () => {
+    let callback: IntersectionObserverCallback | undefined
+    const observe = vi.fn()
+    const disconnect = vi.fn()
+    class MockIntersectionObserver {
+      constructor(next: IntersectionObserverCallback) {
+        callback = next
+      }
+
+      observe = observe
+      disconnect = disconnect
+    }
+    vi.stubGlobal("IntersectionObserver", MockIntersectionObserver)
+
+    const { container, unmount } = render(<EventCardHero {...baseProps} />)
+    const img = container.querySelector("[data-parallax-img]") as HTMLElement
+    expect(observe).toHaveBeenCalled()
+
+    callback?.([] as IntersectionObserverEntry[], {} as IntersectionObserver)
+    callback?.(
+      [{ intersectionRatio: 0.25 } as IntersectionObserverEntry],
+      {} as IntersectionObserver
+    )
+    expect(img.style.transform).toBe("translateY(4%) scale(1.12)")
+
+    unmount()
+    expect(disconnect).toHaveBeenCalledOnce()
+  })
+
+  it("skips parallax work when reduced motion is requested", () => {
+    const observer = vi.fn()
+    vi.stubGlobal("IntersectionObserver", observer)
+    vi.spyOn(window, "matchMedia").mockReturnValue({ matches: true } as MediaQueryList)
+
+    render(<EventCardHero {...baseProps} />)
+
+    expect(observer).not.toHaveBeenCalled()
+  })
+
+  it("uses an empty image alt when the event has no title", () => {
+    const { container } = render(<EventCardHero {...baseProps} title={undefined} />)
+    expect(container.querySelector('img[alt=""]')).toBeInTheDocument()
   })
 })

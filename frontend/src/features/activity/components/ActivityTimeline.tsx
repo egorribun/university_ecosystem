@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react"
+import { memo, useCallback, useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { ActivityTimelineItem } from "./ActivityTimelineItem"
 import type { AttendanceStats, GradeStats, ParticipationStats, TimelineEntry } from "../types"
@@ -26,7 +26,7 @@ function getDateGroup(
   return dateStr
 }
 
-export function ActivityTimeline({
+export const ActivityTimeline = memo(function ActivityTimeline({
   attendance,
   grades,
   participation,
@@ -178,4 +178,6 @@ export function ActivityTimeline({
       )}
     </section>
   )
-}
+})
+
+export default ActivityTimeline

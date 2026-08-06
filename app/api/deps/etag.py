@@ -5,6 +5,7 @@ from typing import Any
 from fastapi import Request, Response, status
 
 from app.core.localization import normalize_locale, resolve_locale
+from app.core.tenant import get_current_tenant
 from app.deps.cache import etag_matches, format_etag, get_cache
 
 
@@ -118,6 +119,12 @@ def cached_endpoint(
                     user_id = getattr(user, "id", None)
                     if user_id is not None:
                         cacheable_kwargs["__authenticated_user_id"] = str(user_id)
+
+                # Tenant-scoped rows are protected by RLS at the database layer,
+                # but a cache hit bypasses that query entirely. Include the
+                # request's tenant context so one tenant can never receive a
+                # cached payload populated by another tenant (SEC-09).
+                cacheable_kwargs["__tenant_id"] = get_current_tenant()
 
                 cache_key = generate_cache_key(
                     cache_prefix=cache_prefix,

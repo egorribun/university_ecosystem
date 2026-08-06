@@ -174,4 +174,20 @@ describe("WeatherWidget", () => {
 
     expect(container.firstChild).toBeNull()
   })
+
+  it("renders the loading skeleton while weather data is being fetched", () => {
+    weatherStore.setState({ isLoading: true })
+
+    render(<WeatherWidget />)
+
+    expect(screen.getByLabelText("Loading")).toBeInTheDocument()
+  })
+
+  it("renders nothing when the temperature is not finite", () => {
+    weatherStore.setState({ data: weatherStore.createData({ temperatureC: Number.NaN }) })
+
+    const { container } = render(<WeatherWidget />)
+
+    expect(container.firstChild).toBeNull()
+  })
 })

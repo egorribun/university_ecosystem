@@ -16,9 +16,10 @@ from __future__ import annotations
 
 import json
 import uuid
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from nats.js.api import RetentionPolicy, StorageType
 
 from app.core.nats_broker import NatsTaskBroker, _NatsTaskPayload
 
@@ -138,6 +139,71 @@ async def test_publish_jetstream_propagates_subject_correctly() -> None:
 
     call_subject = mock_js.publish.call_args[0][0]
     assert call_subject == "files.process"
+
+
+async def test_nats_jetstream_five_file_backed_streams_with_seven_day_retention() -> (
+    None
+):
+    """NatsTaskBroker.connect() provisions 5 file-backed streams with 7-day retention."""
+    broker = NatsTaskBroker()
+
+    mock_js = AsyncMock()
+    mock_nc = AsyncMock()
+    mock_nc.jetstream = MagicMock(return_value=mock_js)
+    mock_nc.is_connected = True
+
+    with patch(
+        "app.core.nats_broker.nats.connect", new=AsyncMock(return_value=mock_nc)
+    ):
+        await broker.connect()
+
+    assert mock_js.add_stream.await_count == 5
+    expected_streams = {
+        "TASK_QUEUE": ["tasks.>"],
+        "FILES_PROCESS": ["files.process"],
+        "CHAT_EVENTS": ["chat.*"],
+        "NOTIFICATIONS_EVENTS": ["notifications.*"],
+        "OUTBOX_EVENTS": ["outbox.*"],
+    }
+
+    for call in mock_js.add_stream.call_args_list:
+        cfg = call.kwargs["config"]
+        assert cfg.name in expected_streams
+        assert cfg.subjects == expected_streams[cfg.name]
+        assert cfg.storage == StorageType.FILE
+        assert cfg.retention == RetentionPolicy.LIMITS
+        assert cfg.max_age == 604_800
+
+
+async def test_publish_injects_nats_msg_id_header() -> None:
+    """publish(), enqueue(), and publish_core() must inject Nats-Msg-Id headers."""
+    broker, mock_js = _build_broker_with_mocked_js()
+
+    # 1. publish with explicit msg_id
+    explicit_id = str(uuid.uuid4())
+    await broker.publish("chat.event", {"event_id": "evt-123"}, msg_id=explicit_id)
+    headers = mock_js.publish.call_args.kwargs["headers"]
+    assert headers["Nats-Msg-Id"] == explicit_id
+
+    # 2. publish with payload event_id fallback
+    mock_js.publish.reset_mock()
+    await broker.publish("chat.event", {"event_id": "evt-456"})
+    headers = mock_js.publish.call_args.kwargs["headers"]
+    assert headers["Nats-Msg-Id"] == "evt-456"
+
+    # 3. enqueue generates task_id and uses it as Nats-Msg-Id
+    mock_js.publish.reset_mock()
+    task_id = await broker.enqueue("test.task")
+    headers = mock_js.publish.call_args.kwargs["headers"]
+    assert headers["Nats-Msg-Id"] == task_id
+
+    # 4. publish_core injects Nats-Msg-Id
+    mock_nc = AsyncMock()
+    mock_nc.is_connected = True
+    broker._nc = mock_nc
+    await broker.publish_core("chat.live", {"id": "msg-789"})
+    headers = mock_nc.publish.call_args.kwargs["headers"]
+    assert headers["Nats-Msg-Id"] == "msg-789"
 
 
 # ---------------------------------------------------------------------------
@@ -381,3 +447,52 @@ async def test_outbox_worker_promotes_to_dlq_after_max_retries() -> None:
         f"Event must be promoted to DLQ after {max_retries} retries. "
         f"error_count={mock_event.error_count}, status={getattr(mock_event, 'status', 'n/a')}"
     )
+
+
+# ---------------------------------------------------------------------------
+# CDC Outbox Worker JetStream Integration Tests
+# ---------------------------------------------------------------------------
+
+
+async def test_cdc_outbox_worker_publishes_to_jetstream_with_dedup_header() -> None:
+    """CdcOutboxWorker must publish CDC insert events to JetStream stream OUTBOX_EVENTS
+    (subject outbox.events.<event_type>) with Nats-Msg-Id: <stored_event.id> header and sub-5ms latency.
+    """
+    import time
+
+    from app.workers.cdc_outbox import CDCInsertRecord, CdcOutboxWorker
+
+    broker, mock_js = _build_broker_with_mocked_js()
+    worker = CdcOutboxWorker(nats_broker=broker)
+
+    event_id = str(uuid.uuid4())
+    record = CDCInsertRecord(
+        relation_id=1,
+        relation_name="stored_events",
+        data={
+            "id": event_id,
+            "event_type": "UserCreated",
+            "aggregate_type": "User",
+            "aggregate_id": "usr-int-1",
+            "payload": {"user_id": "usr-int-1", "email": "cdc_integration@test.com"},
+            "metadata_": {"correlation_id": "corr-cdc-int"},
+        },
+        lsn=99999,
+    )
+
+    t0 = time.perf_counter()
+    event = await worker.dispatch_insert_record(record)
+    elapsed_ms = (time.perf_counter() - t0) * 1000
+
+    assert elapsed_ms < 50.0, (
+        f"CDC dispatch latency was {elapsed_ms:.3f}ms (expected < 50ms)"
+    )
+    assert event is not None
+    mock_js.publish.assert_called_once()
+
+    call_args = mock_js.publish.call_args
+    call_subject = call_args[0][0]
+    headers = call_args.kwargs.get("headers", {})
+
+    assert call_subject == "outbox.events.UserCreated"
+    assert headers.get("Nats-Msg-Id") == event_id

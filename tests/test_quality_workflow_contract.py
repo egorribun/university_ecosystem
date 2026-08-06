@@ -9,10 +9,23 @@ CI_WORKFLOW_PATH = REPOSITORY_ROOT / ".github" / "workflows" / "ci.yml"
 BACKEND_WORKFLOW_PATH = (
     REPOSITORY_ROOT / ".github" / "workflows" / "reusable-backend-tests.yml"
 )
+FRONTEND_WORKFLOW_PATH = (
+    REPOSITORY_ROOT / ".github" / "workflows" / "reusable-frontend-tests.yml"
+)
+E2E_WORKFLOW_PATH = REPOSITORY_ROOT / ".github" / "workflows" / "reusable-e2e-tests.yml"
+GO_WORKFLOW_PATH = REPOSITORY_ROOT / ".github" / "workflows" / "reusable-go-tests.yml"
+SECURITY_WORKFLOW_PATH = (
+    REPOSITORY_ROOT / ".github" / "workflows" / "reusable-security-audit.yml"
+)
 PACT_WORKFLOW_PATH = REPOSITORY_ROOT / ".github" / "workflows" / "contract-tests.yml"
 QUALITY_HISTORY_WORKFLOW_PATH = (
     REPOSITORY_ROOT / ".github" / "workflows" / "quality-history.yml"
 )
+NIGHTLY_FULL_WORKFLOW_PATH = (
+    REPOSITORY_ROOT / ".github" / "workflows" / "nightly-full-gate.yml"
+)
+KYVERNO_POLICY_PATH = REPOSITORY_ROOT / "k8s" / "kyverno" / "cluster-policies.yaml"
+KYVERNO_TEST_ROOT = REPOSITORY_ROOT / "k8s" / "kyverno" / "tests"
 
 
 def _workflow_triggers(workflow: dict[str, object]) -> dict[str, object]:
@@ -141,8 +154,58 @@ def test_quality_policy_gate_is_properly_wired_in_ci() -> None:
         if isinstance(step, dict)
     )
     assert "kyverno test k8s/kyverno/tests/ --require-tests" in kyverno_text
+    assert "--retry-all-errors" in kyverno_text
+    assert "--connect-timeout 20" in kyverno_text
+    assert 'test -s "$archive_path"' in kyverno_text
+    assert 'test -s "$checksum_path"' in kyverno_text
+    assert 'expected_sha256="$(awk' in kyverno_text
+    assert (
+        'printf \'%s  %s\\n\' "$expected_sha256" "$archive_path" | sha256sum --check -'
+        in kyverno_text
+    )
     assert "kyverno-test" in needs
     assert "needs.kyverno-test.result" in run_script
+    assert kyverno_job["timeout-minutes"] == 15
+
+
+def test_kyverno_matrix_covers_every_policy_with_positive_and_negative_cases() -> None:
+    policies = {
+        document["metadata"]["name"]
+        for document in yaml.safe_load_all(
+            KYVERNO_POLICY_PATH.read_text(encoding="utf-8")
+        )
+        if isinstance(document, dict)
+        and document.get("kind") == "ClusterPolicy"
+        and isinstance(document.get("metadata"), dict)
+    }
+    suites = {
+        path.name
+        for path in KYVERNO_TEST_ROOT.iterdir()
+        if path.is_dir() and (path / "kyverno-test.yaml").is_file()
+    }
+
+    assert policies, "Kyverno policy file must declare at least one ClusterPolicy"
+    assert suites == policies, (
+        "Every ClusterPolicy must have exactly one executable test suite; "
+        f"missing={sorted(policies - suites)}, extra={sorted(suites - policies)}"
+    )
+
+    for policy_name in sorted(policies):
+        suite_path = KYVERNO_TEST_ROOT / policy_name / "kyverno-test.yaml"
+        suite = yaml.safe_load(suite_path.read_text(encoding="utf-8"))
+        assert suite["metadata"]["name"] == policy_name
+        assert "../../cluster-policies.yaml" in suite["policies"]
+        results = [
+            result
+            for result in suite.get("results", [])
+            if result.get("policy") == policy_name
+        ]
+        assert any(result.get("result") == "pass" for result in results), (
+            f"Kyverno suite {policy_name} needs a passing case"
+        )
+        assert any(result.get("result") == "fail" for result in results), (
+            f"Kyverno suite {policy_name} needs a rejecting case"
+        )
 
 
 def test_pact_workflow_replays_every_cross_process_boundary() -> None:
@@ -187,7 +250,11 @@ def test_cross_browser_e2e_is_advisory_during_stabilization() -> None:
     jobs = workflow["jobs"]
     cross_browser = jobs["e2e-tests-cross-browser"]
 
-    assert cross_browser["continue-on-error"] is True
+    # Reusable-workflow callers cannot use continue-on-error directly. The
+    # reusable job receives an explicit advisory input and applies the policy
+    # at the executable job level.
+    assert cross_browser.get("continue-on-error") is not True
+    assert cross_browser["with"]["advisory"] is True
     assert cross_browser["strategy"]["matrix"]["browser"] == [
         "firefox",
         "webkit",
@@ -196,6 +263,109 @@ def test_cross_browser_e2e_is_advisory_during_stabilization() -> None:
     assert "e2e-tests-cross-browser" in jobs["ci-success"]["needs"]
     blocking_script = jobs["ci-success"]["steps"][0]["run"]
     assert "needs.e2e-tests-cross-browser.result" not in blocking_script
+
+
+def test_trivy_job_id_matches_stable_code_scanning_configuration() -> None:
+    workflow = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    jobs = workflow["jobs"]
+
+    assert "docker-security-scan" in jobs
+    assert "docker-security" not in jobs
+    assert "docker-security-scan" in jobs["ci-success"]["needs"]
+
+    blocking_script = jobs["ci-success"]["steps"][0]["run"]
+    assert "needs.docker-security-scan.result" in blocking_script
+    assert "needs.docker-security.result" not in blocking_script
+
+
+def test_trivy_sarif_categories_preserve_main_configuration_keys() -> None:
+    ci_workflow = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    image_upload = next(
+        step
+        for step in ci_workflow["jobs"]["docker-security-scan"]["steps"]
+        if step.get("uses", "").startswith("github/codeql-action/upload-sarif@")
+    )
+    assert image_upload["with"]["category"] == (
+        ".github/workflows/ci.yml:docker-security-scan"
+    )
+
+    security_workflow = yaml.safe_load(
+        SECURITY_WORKFLOW_PATH.read_text(encoding="utf-8")
+    )
+    security_uploads = [
+        step
+        for step in security_workflow["jobs"]["docker-security"]["steps"]
+        if step.get("uses", "").startswith("github/codeql-action/upload-sarif@")
+    ]
+    categories_by_sarif = {
+        step["with"]["sarif_file"]: step["with"]["category"]
+        for step in security_uploads
+    }
+    assert categories_by_sarif == {
+        "trivy-fs.sarif": ".github/workflows/ci.yml:docker-security",
+        "trivy-config.sarif": "trivy-config",
+    }
+
+
+def test_e2e_coverage_is_chromium_opt_in_and_codecov_wired() -> None:
+    e2e_workflow = yaml.safe_load(E2E_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    call = _workflow_triggers(e2e_workflow)["workflow_call"]
+    inputs = call["inputs"]
+    assert inputs["collect-coverage"]["default"] is False
+    assert "CODECOV_TOKEN" in call["secrets"]
+
+    steps = e2e_workflow["jobs"]["e2e"]["steps"]
+    merge_step = next(
+        step
+        for step in steps
+        if step.get("name") == "Merge Chromium JavaScript coverage"
+    )
+    assert "inputs.collect-coverage" in merge_step["if"]
+    assert "inputs.browser == 'chromium'" in merge_step["if"]
+    assert "merge-playwright-coverage.mjs" in merge_step["run"]
+    merger_test_step = next(
+        step for step in steps if step.get("name") == "Verify E2E coverage merger"
+    )
+    assert merger_test_step["run"] == "npm run test:e2e:coverage-tool"
+
+    codecov_step = next(
+        step for step in steps if step.get("name") == "Upload E2E coverage to Codecov"
+    )
+    assert "inputs.browser == 'chromium'" in codecov_step["if"]
+    assert codecov_step["with"]["flags"] == "frontend"
+    assert codecov_step["with"]["files"] == "./frontend/coverage/e2e/lcov.info"
+
+    ci_workflow = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    assert ci_workflow["jobs"]["e2e-tests"]["with"]["collect-coverage"] is True
+    assert (
+        "collect-coverage" not in ci_workflow["jobs"]["e2e-tests-cross-browser"]["with"]
+    )
+
+
+def test_e2e_postgres_healthcheck_uses_declared_credentials() -> None:
+    workflow = yaml.safe_load(E2E_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    options = workflow["jobs"]["e2e"]["services"]["postgres"]["options"]
+
+    assert "pg_isready -U test -d test_e2e" in options
+    assert "--health-cmd pg_isready\n" not in options
+
+
+def test_go_codecov_flags_match_component_contract() -> None:
+    workflow = yaml.safe_load(GO_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    steps = workflow["jobs"]["test"]["steps"]
+    resolver = next(
+        step for step in steps if step.get("name") == "Resolve Codecov component flag"
+    )
+    resolver_script = resolver["run"]
+    assert 'services/gateway) flag="go-gateway"' in resolver_script
+    assert 'services/ws-hub) flag="go-ws-hub"' in resolver_script
+    assert 'services/file-processor) flag="go-file-processor"' in resolver_script
+
+    upload = next(
+        step for step in steps if step.get("name") == "Upload coverage to Codecov"
+    )
+    assert "steps.codecov-flag.outputs.flag" in upload["if"]
+    assert upload["with"]["flags"] == "${{ steps.codecov-flag.outputs.flag }}"
 
 
 def test_advisory_integration_and_chaos_jobs_are_not_blocking() -> None:
@@ -219,7 +389,70 @@ def test_incremental_mutation_budget_matches_declared_gate() -> None:
         for step in job["steps"]
         if step.get("name") == "Run incremental mutmut (blocking, 25-minute budget)"
     )
-    assert "timeout --kill-after=60s 25m" in run_step["run"]
+    assert job["strategy"]["matrix"]["shard"] == [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16,
+    ]
+    assert "timeout --kill-after=30s 25m" in run_step["run"]
+    job_text = "\n".join(
+        step.get("run", "") for step in job["steps"] if isinstance(step, dict)
+    )
+    assert "grep -E '^app/.*\\.py$'" in job_text
+    assert "matrix.shard" in job_text
+    assert "awk -v shard" in job_text
+    assert "-v total=16" in job_text
+    assert "grep '^app/core/tenant\\.py$'" not in job_text
+
+
+def test_incremental_mutation_stats_are_sharded_and_merged_before_execution() -> None:
+    workflow = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    jobs = workflow["jobs"]
+    stats_job = jobs["mutation-tests-stats"]
+    mutation_job = jobs["mutation-tests-incremental"]
+
+    assert stats_job["strategy"]["matrix"]["stats_shard"] == [0, 1, 2, 3]
+    assert stats_job["timeout-minutes"] == 25
+    assert "pre-commit-check" in stats_job["needs"]
+    stats_text = "\n".join(
+        step.get("run", "") for step in stats_job["steps"] if isinstance(step, dict)
+    )
+    assert "scripts/mutmut_stats_shard.py" in stats_text
+    assert "--shard-id" in stats_text
+    assert "--num-shards 4" in stats_text
+    helper_text = (REPOSITORY_ROOT / "scripts/mutmut_stats_shard.py").read_text(
+        encoding="utf-8"
+    )
+    assert "config = mutmut.config" in helper_text
+    assert "mutmut_cli.config" not in helper_text
+
+    assert "mutation-tests-stats" in mutation_job["needs"]
+    mutation_text = "\n".join(
+        step.get("run", "") for step in mutation_job["steps"] if isinstance(step, dict)
+    )
+    download_step = next(
+        step
+        for step in mutation_job["steps"]
+        if step.get("uses", "").startswith("actions/download-artifact")
+    )
+    assert download_step["with"]["pattern"] == "mutmut-stats-*"
+    assert "scripts/merge_mutmut_stats.py" in mutation_text
+    assert "full pytest stats population four times" in mutation_text
+    assert "mutation-tests-stats" in jobs["ci-success"]["needs"]
+    assert "needs.mutation-tests-stats.result" in jobs["ci-success"]["steps"][0]["run"]
 
 
 def test_quality_history_archives_manifests_and_renders_dashboard() -> None:
@@ -241,10 +474,39 @@ def test_quality_history_archives_manifests_and_renders_dashboard() -> None:
     assert "gh pr create" in text
 
 
+def test_miri_workflow_scopes_to_pure_rust_crate_targets() -> None:
+    workflow = yaml.safe_load(NIGHTLY_FULL_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    job = workflow["jobs"]["miri"]
+    assert job["timeout-minutes"] == 60
+    run_text = "\n".join(
+        str(step.get("run", "")) for step in job["steps"] if isinstance(step, dict)
+    )
+    assert "cargo +nightly miri setup" in run_text
+    assert "cargo +nightly miri test --locked" in run_text
+    assert "--test-threads=1" in run_text
+    assert "crates/pyo3-sanitizer/Cargo.toml" in run_text
+    assert "frontend/rust-crypto/Cargo.toml" in run_text
+    assert "components: miri" in NIGHTLY_FULL_WORKFLOW_PATH.read_text(encoding="utf-8")
+
+    pyo3_source = (REPOSITORY_ROOT / "crates/pyo3-sanitizer/src/lib.rs").read_text(
+        encoding="utf-8"
+    )
+    for function_name in (
+        "test_panic_boundary_catches_rust_panic",
+        "test_panic_formatting_coverage",
+        "test_pyo3_bindings_coverage",
+    ):
+        assert f"#[cfg(not(miri))]\n    #[test]\n    fn {function_name}" in pyo3_source
+
+
 def test_performance_workflow_has_blocking_native_and_ws_baselines() -> None:
     workflow_path = REPOSITORY_ROOT / ".github" / "workflows" / "benchmark.yml"
     workflow = yaml.safe_load(workflow_path.read_text(encoding="utf-8"))
     jobs = workflow["jobs"]
+    assert jobs["benchmark"]["timeout-minutes"] == 20
+    assert jobs["ws-hub-regression"]["timeout-minutes"] == 20
+    assert jobs["rust-criterion"]["timeout-minutes"] == 30
+    assert jobs["rust-native-regression"]["timeout-minutes"] == 30
     assert "rust-native-regression" in jobs
     native_text = "\n".join(
         step.get("run", "")
@@ -260,11 +522,19 @@ def test_performance_workflow_has_blocking_native_and_ws_baselines() -> None:
     assert native_store["with"]["alert-threshold"] == "110%"
     assert native_store["with"]["fail-on-alert"] is True
 
+    ws_run_text = "\n".join(
+        step.get("run", "")
+        for step in jobs["ws-hub-regression"]["steps"]
+        if isinstance(step, dict)
+    )
+    assert "go test -bench=. -run=^$ -benchmem -count=5 -benchtime=1s" in ws_run_text
+
     ws_store = next(
         step
         for step in jobs["ws-hub-regression"]["steps"]
         if "benchmark-action/github-action-benchmark" in step.get("uses", "")
     )
+    assert ws_store["with"]["benchmark-data-dir-path"] == "dev/bench/ws-hub-regression"
     assert ws_store["with"]["alert-threshold"] == "110%"
     assert ws_store["with"]["fail-on-alert"] is True
 
@@ -299,11 +569,22 @@ def test_backend_ci_uses_historical_duration_shards_and_aggregates_coverage() ->
         "--rust-report rust-crypto=artifacts/coverage/rust/rust-crypto/llvm.json"
         in policy_text
     )
+    rust_tests_job = ci_workflow["jobs"]["rust-tests"]
+    rust_crypto_step = next(
+        step
+        for step in rust_tests_job["steps"]
+        if step.get("name", "").startswith("rust-crypto")
+        and "coverage" in step.get("name", "")
+    )
+    assert "cargo llvm-cov --all-targets" in rust_crypto_step["run"]
 
     backend_workflow = yaml.safe_load(BACKEND_WORKFLOW_PATH.read_text(encoding="utf-8"))
     inputs = _workflow_triggers(backend_workflow)["workflow_call"]["inputs"]
+    assert inputs["run-unit-tests"]["default"] is True
     assert inputs["shard-id"]["default"] == -1
     assert inputs["num-shards"]["default"] == 1
+    assert inputs["integration-shard-id"]["default"] == -1
+    assert inputs["integration-num-shards"]["default"] == 1
     run_step = next(
         step
         for step in backend_workflow["jobs"]["unit-tests"]["steps"]
@@ -311,6 +592,150 @@ def test_backend_ci_uses_historical_duration_shards_and_aggregates_coverage() ->
     )
     assert "--shard-id=${{ inputs.shard-id }}" in run_step["run"]
     assert "--num-shards=${{ inputs.num-shards }}" in run_step["run"]
+    integration_run_step = next(
+        step
+        for step in backend_workflow["jobs"]["integration-tests"]["steps"]
+        if step.get("name") == "Run integration tests"
+    )
+    assert "inputs.integration-shard-id" in integration_run_step["run"]
+    assert "inputs.integration-num-shards" in integration_run_step["run"]
+
+
+def test_reusable_quality_jobs_have_bounded_execution() -> None:
+    backend = yaml.safe_load(BACKEND_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    assert backend["jobs"]["unit-tests"]["timeout-minutes"] == 45
+    assert backend["jobs"]["integration-tests"]["timeout-minutes"] == 60
+
+    frontend = yaml.safe_load(FRONTEND_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    assert {
+        name: frontend["jobs"][name]["timeout-minutes"]
+        for name in (
+            "unit-tests",
+            "lint",
+            "build",
+            "bundle-analysis",
+            "lighthouse-shards",
+            "lighthouse",
+        )
+    } == {
+        "unit-tests": 45,
+        "lint": 30,
+        "build": 45,
+        "bundle-analysis": 15,
+        "lighthouse-shards": 20,
+        "lighthouse": 10,
+    }
+
+    lighthouse_shards = frontend["jobs"]["lighthouse-shards"]
+    assert lighthouse_shards["strategy"]["fail-fast"] is False
+    assert [
+        entry["shard"] for entry in lighthouse_shards["strategy"]["matrix"]["include"]
+    ] == [
+        "core",
+        "content",
+        "realtime",
+        "fallback",
+    ]
+    assert lighthouse_shards["env"]["LHCI_URLS"] == "${{ matrix.urls }}"
+    shard_upload = next(
+        step
+        for step in lighthouse_shards["steps"]
+        if step.get("name") == "Upload Lighthouse shard reports"
+    )
+    assert shard_upload["with"]["include-hidden-files"] is True
+    assert shard_upload["with"]["name"] == "lighthouse-reports-${{ matrix.shard }}"
+
+    lighthouse_aggregate = frontend["jobs"]["lighthouse"]
+    assert lighthouse_aggregate["needs"] == "lighthouse-shards"
+    assert "always()" in lighthouse_aggregate["if"]
+    assert lighthouse_aggregate["name"] == "Lighthouse Audit"
+    merge_text = "\n".join(
+        step.get("run", "")
+        for step in lighthouse_aggregate["steps"]
+        if isinstance(step, dict)
+    )
+    assert "lhr-${counter}.json" in merge_text
+    merged_upload = next(
+        step
+        for step in lighthouse_aggregate["steps"]
+        if step.get("name") == "Upload merged Lighthouse reports"
+    )
+    assert merged_upload["with"]["name"] == "lighthouse-reports"
+    assert merged_upload["with"]["include-hidden-files"] is True
+
+    go = yaml.safe_load(GO_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    assert go["jobs"]["test"]["timeout-minutes"] == 60
+    assert go["jobs"]["lint"]["timeout-minutes"] == 20
+
+    security = yaml.safe_load(SECURITY_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    assert {
+        name: security["jobs"][name]["timeout-minutes"]
+        for name in (
+            "pip-audit",
+            "npm-audit",
+            "docker-security",
+            "govulncheck",
+            "sbom",
+            "detect-secrets-baseline",
+            "semgrep",
+        )
+    } == {
+        "pip-audit": 20,
+        "npm-audit": 25,
+        "docker-security": 30,
+        "govulncheck": 20,
+        "sbom": 15,
+        "detect-secrets-baseline": 15,
+        "semgrep": 20,
+    }
+
+
+def test_frontend_coverage_is_merged_after_all_vitest_shards() -> None:
+    workflow = yaml.safe_load(FRONTEND_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    shard_job = workflow["jobs"]["unit-tests-shard"]
+    aggregate_job = workflow["jobs"]["unit-tests"]
+
+    assert shard_job["strategy"]["matrix"]["shard"] == [1, 2, 3, 4]
+    shard_text = "\n".join(str(step.get("run", "")) for step in shard_job["steps"])
+    assert "npm run test:ci -- --shard=${{ matrix.shard }}/4" in shard_text
+    shard_artifacts = "\n".join(
+        str(step.get("with", {}).get("name", ""))
+        for step in shard_job["steps"]
+        if isinstance(step, dict)
+    )
+    assert "frontend-coverage-shard-${{ matrix.shard }}" in shard_artifacts
+    assert aggregate_job["needs"] == "unit-tests-shard"
+    assert aggregate_job["if"] == "${{ always() }}"
+
+    aggregate_steps = aggregate_job["steps"]
+    aggregate_checkout = next(
+        step
+        for step in aggregate_steps
+        if step.get("uses", "").startswith("actions/checkout@")
+    )
+    assert aggregate_checkout["with"]["fetch-depth"] == 0
+    merge_step = next(
+        step
+        for step in aggregate_steps
+        if step.get("name") == "Merge frontend coverage shards"
+    )
+    assert (
+        REPOSITORY_ROOT / "frontend" / "scripts" / "merge-vitest-coverage.mjs"
+    ).is_file()
+    assert "scripts/merge-vitest-coverage.mjs" in merge_step["run"]
+    assert "--input=.coverage-shards" in merge_step["run"]
+    assert "--output=coverage" in merge_step["run"]
+    assert "--expected-shards=4" in merge_step["run"]
+    assert any(
+        step.get("with", {}).get("pattern") == "frontend-coverage-shard-*"
+        for step in aggregate_steps
+        if isinstance(step, dict)
+    )
+    assert any(
+        step.get("with", {}).get("name") == "frontend-coverage"
+        for step in aggregate_steps
+        if isinstance(step, dict)
+    )
 
 
 def test_weekly_duration_refresh_is_a_reviewable_bot_pr() -> None:
@@ -360,6 +785,18 @@ def test_nightly_full_gate_contains_the_long_running_quality_suites() -> None:
         "services/ws-hub",
         "services/file-processor",
     ]
+    assert jobs["backend-integration"]["strategy"]["matrix"]["integration-shard"] == [
+        0,
+        1,
+        2,
+        3,
+    ]
+    assert jobs["backend-full"]["strategy"]["matrix"]["unit-shard"] == [0, 1, 2, 3]
+    assert jobs["backend-full"]["with"]["run-unit-tests"] is True
+    assert jobs["backend-full"]["with"]["num-shards"] == 4
+    assert jobs["backend-integration"]["with"]["run-unit-tests"] is False
+    assert jobs["backend-integration"]["with"]["integration-num-shards"] == 4
+    assert "backend-integration" in jobs["notify-failure"]["needs"]
     cell_job = jobs["container-integration-cells"]
     assert cell_job["env"]["USE_TESTCONTAINERS_MINIO"] == "1"
     assert cell_job["env"]["USE_TESTCONTAINERS_SPICEDB"] == "1"
@@ -377,11 +814,42 @@ def test_nightly_full_gate_contains_the_long_running_quality_suites() -> None:
     assert "always()" in jobs["notify-failure"]["if"]
     assert "frontend-mutation-tests-full" in jobs["notify-failure"]["needs"]
     assert "issues" in workflow["permissions"]
+    assert jobs["kyverno-test"]["timeout-minutes"] == 15
+    assert jobs["miri"]["env"]["PROPTEST_DISABLE_FAILURE_PERSISTENCE"] == "1"
+    assert jobs["miri"]["env"]["MIRIFLAGS"] == (
+        "-Zmiri-tree-borrows -Zmiri-disable-isolation -Zmiri-isolation-error=warn"
+    )
+    chaos_job = jobs["load-and-chaos"]
+    assert chaos_job["timeout-minutes"] == 45
+    chaos_steps = "\n".join(
+        f"{step.get('name', '')}\n{step.get('run', '')}"
+        for step in chaos_job["steps"]
+        if isinstance(step, dict)
+    )
+    assert "Prepare full chaos compose environment" in chaos_steps
+    assert "Start the full chaos compose stack" in chaos_steps
+    assert "docker-compose.ci-loadtest.yml" in chaos_steps
+    assert "54321/ecosystem" in chaos_steps
+    assert "Tear down full chaos compose stack" in chaos_steps
+    pyo3_source = (
+        REPOSITORY_ROOT / "crates" / "pyo3-sanitizer" / "src" / "lib.rs"
+    ).read_text(encoding="utf-8")
+    assert "#[cfg(miri)]" in pyo3_source
+    assert "failure_persistence: None" in pyo3_source
+
+
+def test_go_service_dockerfiles_package_local_spiffe_replacement() -> None:
+    for service in ("gateway", "ws-hub", "file-processor"):
+        dockerfile = (REPOSITORY_ROOT / "services" / service / "Dockerfile").read_text(
+            encoding="utf-8"
+        )
+        assert "COPY services/pkg/spiffe ./services/pkg/spiffe" in dockerfile
 
 
 def test_go_fuzz_workflow_executes_all_service_fuzz_targets() -> None:
     workflow_path = REPOSITORY_ROOT / ".github" / "workflows" / "go-fuzz.yml"
     workflow = yaml.safe_load(workflow_path.read_text(encoding="utf-8"))
+    assert workflow["jobs"]["fuzz"]["timeout-minutes"] == 15
     text = "\n".join(
         step.get("run", "")
         for step in workflow["jobs"]["fuzz"]["steps"]
@@ -391,6 +859,59 @@ def test_go_fuzz_workflow_executes_all_service_fuzz_targets() -> None:
     assert "FuzzJWTValidation" in text
     assert "FuzzParseMessage" in text
     assert "FuzzExtractAlgFromHeader" in text
+    fuzz_commands = [
+        line.strip()
+        for line in text.splitlines()
+        if line.strip().startswith("go test") and "-fuzz=" in line
+    ]
+    assert len(fuzz_commands) == 4
+    assert all("-fuzztime=30s" in command for command in fuzz_commands)
+    assert all("-parallel=1" in command for command in fuzz_commands)
+
+
+def test_python_fuzz_workflow_is_bounded() -> None:
+    workflow_path = REPOSITORY_ROOT / ".github" / "workflows" / "python-fuzz.yml"
+    workflow = yaml.safe_load(workflow_path.read_text(encoding="utf-8"))
+    assert workflow["jobs"]["fuzz"]["timeout-minutes"] == 15
+
+
+def test_rust_fuzz_workflow_caches_every_declared_target_workspace() -> None:
+    workflow_path = REPOSITORY_ROOT / ".github" / "workflows" / "rust-fuzz.yml"
+    workflow = yaml.safe_load(workflow_path.read_text(encoding="utf-8"))
+    assert workflow["jobs"]["fuzz"]["timeout-minutes"] == 30
+    assert workflow["jobs"]["fuzz-additional-rust-crates"]["timeout-minutes"] == 30
+    cache_step = next(
+        step
+        for step in workflow["jobs"]["fuzz"]["steps"]
+        if step.get("uses", "").startswith("actions/cache")
+    )
+    cache_paths = str(cache_step["with"]["path"])
+    cache_key = str(cache_step["with"]["key"])
+
+    for workspace in (
+        "native/rust_ext/target/",
+        "frontend/wasm-sanitizer/fuzz/target/",
+        "frontend/rust-crypto/fuzz/target/",
+    ):
+        assert workspace in cache_paths
+
+    for manifest in (
+        "native/rust_ext/Cargo.toml",
+        "frontend/wasm-sanitizer/fuzz/Cargo.toml",
+        "frontend/rust-crypto/fuzz/Cargo.toml",
+    ):
+        assert manifest in cache_key
+
+    additional_cache = next(
+        step
+        for step in workflow["jobs"]["fuzz-additional-rust-crates"]["steps"]
+        if step.get("uses", "").startswith("actions/cache")
+    )
+    assert "${{ matrix.directory }}/target/" in str(additional_cache["with"]["path"])
+    additional_key = str(additional_cache["with"]["key"])
+    assert "${{ matrix.name }}" in additional_key
+    assert "matrix.parent_manifest" in additional_key
+    assert "../Cargo.toml" not in additional_key
 
 
 def test_incremental_mutation_gate_is_blocking_and_fails_on_timeout() -> None:
@@ -408,6 +929,44 @@ def test_incremental_mutation_gate_is_blocking_and_fails_on_timeout() -> None:
         "needs.mutation-tests-incremental.result"
         in jobs["ci-success"]["steps"][0]["run"]
     )
+    export_index = mutation_text.index("mutmut export-cicd-stats")
+    gate_index = mutation_text.index("scripts/mutmut_ci_gate.py")
+    assert export_index < gate_index
+
+
+def test_performance_gate_asserts_downloaded_lighthouse_without_rebuilding() -> None:
+    ci_workflow = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    performance_job = ci_workflow["jobs"]["performance-gate"]
+    threshold_step = next(
+        step
+        for step in performance_job["steps"]
+        if step.get("name") == "Enforce Lighthouse thresholds"
+    )
+    assert threshold_step["env"]["LHCI_SKIP_PREPARE"] == "1"
+
+
+def test_chaos_job_provisions_real_minio_through_toxiproxy() -> None:
+    ci_workflow = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    chaos_job = ci_workflow["jobs"]["chaos-tests"]
+    assert chaos_job["services"]["minio"]["image"].startswith("minio/minio:")
+    assert "9003:9003" in chaos_job["services"]["toxiproxy"]["ports"]
+
+    configure_text = next(
+        step["run"]
+        for step in chaos_job["steps"]
+        if step.get("name") == "Configure ToxiProxy proxies"
+    )
+    assert '"name":"minio"' in configure_text
+    assert '"upstream":"minio:9000"' in configure_text
+
+    chaos_env = next(
+        step["env"]
+        for step in chaos_job["steps"]
+        if step.get("name") == "Run chaos tests"
+    )
+    assert chaos_env["MINIO_PROXY_ENDPOINT"] == "http://localhost:9003"
+    assert chaos_env["MINIO_DIRECT_ENDPOINT"] == "localhost:9000"
+    assert chaos_env["STORAGE_S3_ENDPOINT_URL"] == "http://localhost:9003"
 
 
 def test_frontend_mutation_gate_is_blocking_and_reproducible() -> None:
@@ -430,7 +989,7 @@ def test_frontend_mutation_gate_is_blocking_and_reproducible() -> None:
         for step in unit_steps
         if step.get("name") == "Check differential frontend coverage"
     )
-    assert "--fail-under=80" in diff_step["run"]
+    assert "--fail-under=100" in diff_step["run"]
     codecov_step = next(
         step
         for step in unit_steps

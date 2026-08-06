@@ -43,6 +43,7 @@ describe("useEventRegistration (branches)", () => {
   })
 
   afterEach(() => {
+    vi.restoreAllMocks()
     localStorage.clear()
   })
 
@@ -341,5 +342,71 @@ describe("useEventRegistration (branches)", () => {
     })
 
     expect(stop).toHaveBeenCalledTimes(2)
+  })
+
+  it("ignores storage failures during restore, QR recovery, and sync", async () => {
+    vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => {
+      throw new Error("storage read failed")
+    })
+    vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw new Error("storage write failed")
+    })
+    vi.spyOn(Storage.prototype, "removeItem").mockImplementation(() => {
+      throw new Error("storage delete failed")
+    })
+    mockGet
+      .mockResolvedValueOnce({
+        data: { is_registered: true, participant_count: 4, my_qr_token: "remote-qr" },
+      })
+      .mockResolvedValueOnce({ data: { is_registered: false, participant_count: 3 } })
+
+    const { result } = renderHook(() =>
+      useEventRegistration({ eventId, user: mockUser, initialRegistered: true })
+    )
+
+    await act(async () => {
+      expect(await result.current.sync()).toBe("registered")
+      expect(await result.current.sync()).toBe("unregistered")
+    })
+    expect(result.current.isRegistered).toBe(false)
+  })
+
+  it("ignores storage failures for initial QR tokens and attendance success", async () => {
+    vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => {
+      throw new Error("storage read failed")
+    })
+    vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw new Error("storage write failed")
+    })
+    vi.spyOn(Storage.prototype, "removeItem").mockImplementation(() => {
+      throw new Error("storage delete failed")
+    })
+    mockPost.mockResolvedValue({ data: { qr_code: "created-qr" } })
+    mockDelete.mockResolvedValue({ data: null })
+
+    const { result } = renderHook(() =>
+      useEventRegistration({
+        eventId,
+        user: mockUser,
+        initialRegistered: false,
+        initialQrToken: "initial-qr",
+      })
+    )
+
+    await act(async () => {
+      await result.current.register()
+      await result.current.unregister()
+    })
+    expect(mockPost).toHaveBeenCalledTimes(1)
+    expect(mockDelete).toHaveBeenCalledTimes(1)
+  })
+
+  it("skips user registration cache effects for anonymous visitors", () => {
+    const { result } = renderHook(() =>
+      useEventRegistration({ eventId, user: null, initialRegistered: false })
+    )
+
+    expect(result.current.isRegistered).toBe(false)
+    expect(result.current.qrToken).toBeUndefined()
   })
 })

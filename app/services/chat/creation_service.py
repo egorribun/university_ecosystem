@@ -191,9 +191,28 @@ class ChatCreationService:
         if total > settings.chat_group_max_members:
             raise_validation_error("errors.chat.group_too_many_members", locale)
 
+        get_users_fn = getattr(self.repository, "get_users_by_ids", None)
+        fetched_members = None
+        if get_users_fn is not None:
+            try:
+                res = get_users_fn(member_ids)
+                if asyncio.iscoroutine(res) or hasattr(res, "__await__"):
+                    fetched_members = await res
+                elif isinstance(res, (list, tuple, set)):
+                    fetched_members = res
+            except Exception:  # RZ-22-01-JUSTIFIED: fallback to per-user query if mock or custom repo doesn't support batching
+                fetched_members = None
+
+        if isinstance(fetched_members, (list, tuple, set)):
+            member_map = {m.id: m for m in fetched_members if hasattr(m, "id")}
+        else:
+            member_map = {}
+
         members: list[User] = []
         for pid in member_ids:
-            member = await self.repository.get_user(pid)
+            member = member_map.get(pid)
+            if member is None:
+                member = await self.repository.get_user(pid)
             ensure_exists(member, "users", locale)
             assert member is not None  # noqa: S101
             members.append(member)

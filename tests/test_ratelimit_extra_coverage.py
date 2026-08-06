@@ -9,7 +9,7 @@ import pytest
 from fastapi import Request
 
 from app.core.config import settings
-from app.core.ratelimit.exceptions import RateLimitStorageUnavailable
+from app.core.ratelimit.exceptions import RateLimitExceeded, RateLimitStorageUnavailable
 from app.core.ratelimit.fastapi import (
     get_progressive_delay_tracker,
     sensitive_route_limit,
@@ -197,6 +197,32 @@ async def test_sensitive_route_limit_storage_unavailable(monkeypatch):
             await dependency(mock_request)
 
 
+@pytest.mark.asyncio
+async def test_sensitive_route_limit_exceeded_uses_retry_after_header(monkeypatch):
+    monkeypatch.setattr(settings, "rate_limit_enabled", True)
+    monkeypatch.setattr(settings, "rate_limit_storage_backend", "memory")
+
+    dependency = sensitive_route_limit(limit=2, window_sec=60)
+    mock_request = MagicMock()
+    mock_request.url.path = "/sensitive"
+
+    info = RateLimitInfo(allowed=False, remaining=0, retry_after=7)
+    with (
+        patch(
+            "app.core.ratelimit.fastapi.enforce_rate_limit",
+            side_effect=RateLimitExceeded(info),
+        ),
+        patch(
+            "app.core.ratelimit.fastapi.raise_http_error",
+            side_effect=RuntimeError("converted"),
+        ) as raise_error,
+    ):
+        with pytest.raises(RuntimeError, match="converted"):
+            await dependency(mock_request)
+
+    assert raise_error.call_args.kwargs["headers"] == {"Retry-After": "7"}
+
+
 # ── 7. get_progressive_delay_tracker exception ──────────────────────────────
 
 
@@ -241,6 +267,32 @@ async def test_check_rate_limit_redis_success(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_check_rate_limit_redis_error_uses_memory_fallback(monkeypatch):
+    monkeypatch.setattr(settings, "rate_limit_enabled", True)
+    mock_strategy = MagicMock()
+    mock_strategy.check = AsyncMock(side_effect=OSError("redis unavailable"))
+    mock_cb = MagicMock()
+    mock_cb.allow_request.return_value = True
+
+    with (
+        patch(
+            "app.core.ratelimit.logic._get_redis_strategy",
+            return_value=mock_strategy,
+        ),
+        patch("app.core.ratelimit.logic.get_circuit_breaker", return_value=mock_cb),
+    ):
+        result = await check_rate_limit(
+            identifier="redis-error-user",
+            limit=4,
+            window_seconds=60,
+            redis_url="redis://localhost",
+        )
+
+    assert result.allowed is True
+    mock_cb.record_failure.assert_called_once()
+
+
+@pytest.mark.asyncio
 async def test_check_rate_limit_circuit_open(monkeypatch):
     monkeypatch.setattr(settings, "rate_limit_enabled", True)
 
@@ -259,6 +311,39 @@ async def test_check_rate_limit_circuit_open(monkeypatch):
         assert res.allowed is True  # fallback memory allowed it
 
 
+@pytest.mark.asyncio
+async def test_check_rate_limit_rejects_nonpositive_limit_and_window(monkeypatch):
+    monkeypatch.setattr(settings, "rate_limit_enabled", True)
+
+    with pytest.raises(ValueError, match="must be positive"):
+        await check_rate_limit(identifier="user", limit=0, window_seconds=60)
+    with pytest.raises(ValueError, match="window must be positive"):
+        await check_rate_limit(identifier="user", limit=1, window_seconds=0)
+
+
+@pytest.mark.asyncio
+async def test_check_rate_limit_disabled_returns_allowed_info(monkeypatch):
+    monkeypatch.setattr(settings, "rate_limit_enabled", False)
+
+    result = await check_rate_limit(identifier="user", limit=5, window_seconds=60)
+
+    assert result.allowed is True
+    assert result.remaining == 5
+    assert result.retry_after == 0
+
+
+@pytest.mark.asyncio
+async def test_check_rate_limit_without_redis_uses_memory_mode(monkeypatch):
+    monkeypatch.setattr(settings, "rate_limit_enabled", True)
+
+    result = await check_rate_limit(
+        identifier="unique-memory-user", namespace="memory", limit=2, window_seconds=60
+    )
+
+    assert result.allowed is True
+    assert result.remaining == 1
+
+
 def test_get_default_strategy_redis(monkeypatch):
     monkeypatch.setattr(settings, "rate_limit_storage_backend", "redis")
     monkeypatch.setattr(settings, "rate_limit_storage_uri", "redis://localhost")
@@ -267,6 +352,78 @@ def test_get_default_strategy_redis(monkeypatch):
     with patch("app.core.ratelimit.logic._get_redis_strategy") as mock_get_redis:
         get_default_strategy()
         mock_get_redis.assert_called_once_with("redis://localhost")
+
+
+def test_get_default_strategy_memory(monkeypatch):
+    monkeypatch.setattr(settings, "rate_limit_storage_backend", "memory")
+
+    strategy = get_default_strategy("memory-namespace")
+
+    assert type(strategy).__name__ == "MemorySlidingWindowStrategy"
+
+
+@pytest.mark.asyncio
+async def test_enforce_rate_limit_success_records_circuit_success(monkeypatch):
+    monkeypatch.setattr(settings, "rate_limit_enabled", True)
+    strategy = MagicMock()
+    strategy.check = AsyncMock(
+        return_value=RateLimitInfo(allowed=True, remaining=4, retry_after=0)
+    )
+    circuit = MagicMock()
+    circuit.allow_request.return_value = True
+
+    with patch("app.core.ratelimit.logic.get_circuit_breaker", return_value=circuit):
+        result = await enforce_rate_limit(
+            identifier="user",
+            limit=5,
+            window_seconds=60,
+            strategy=strategy,
+        )
+
+    assert result.allowed is True
+    circuit.record_success.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_enforce_rate_limit_redis_error_uses_capped_fallback(monkeypatch):
+    monkeypatch.setattr(settings, "rate_limit_enabled", True)
+    strategy = MagicMock()
+    strategy.check = AsyncMock(side_effect=OSError("redis down"))
+    circuit = MagicMock()
+    circuit.allow_request.return_value = True
+
+    with patch("app.core.ratelimit.logic.get_circuit_breaker", return_value=circuit):
+        result = await enforce_rate_limit(
+            identifier="user",
+            limit=5,
+            window_seconds=60,
+            strategy=strategy,
+        )
+
+    assert result.allowed is True
+    circuit.record_failure.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_enforce_rate_limit_raises_for_denied_result(monkeypatch):
+    monkeypatch.setattr(settings, "rate_limit_enabled", True)
+    strategy = MagicMock()
+    strategy.check = AsyncMock(
+        return_value=RateLimitInfo(allowed=False, remaining=0, retry_after=3)
+    )
+    circuit = MagicMock()
+    circuit.allow_request.return_value = True
+
+    with patch("app.core.ratelimit.logic.get_circuit_breaker", return_value=circuit):
+        with pytest.raises(RateLimitExceeded) as caught:
+            await enforce_rate_limit(
+                identifier="user",
+                limit=1,
+                window_seconds=60,
+                strategy=strategy,
+            )
+
+    assert caught.value.info.retry_after == 3
 
 
 @pytest.mark.asyncio

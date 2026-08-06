@@ -127,9 +127,8 @@ export function WeatherParticles({ condition, isDark }: WeatherParticlesProps) {
     const config = CONFIGS[condition]
     if (!config) return
 
-    const canvas = canvasRef.current
-    const container = containerRef.current
-    if (!canvas || !container) return
+    const canvas = canvasRef.current!
+    const container = containerRef.current!
 
     const ctx = canvas.getContext("2d")
     if (!ctx) return
@@ -217,8 +216,7 @@ export function WeatherParticles({ condition, isDark }: WeatherParticlesProps) {
 
       /* -- update & draw particles -- */
       for (let i = 0; i < particles.length; i++) {
-        const p = particles[i]
-        if (!p) continue
+        const p = particles[i]!
 
         if (isSnow) {
           // Sinusoidal horizontal drift for snow

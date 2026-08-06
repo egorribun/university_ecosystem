@@ -288,7 +288,7 @@ def test_require_group_participant_non_participant_raises_forbidden():
         service._require_group_participant(chat, user, locale="ru")
 
 
-def test_require_group_participant_dm_chat_raises_validation_error():
+async def test_require_group_participant_dm_chat_raises_validation_error():
     """Branch: user is a participant but chat_type != 'group' → raise_validation_error.
 
     WHY: DM chats must not be mutated via the group-management endpoints; any

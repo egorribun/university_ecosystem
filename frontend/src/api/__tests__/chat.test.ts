@@ -121,6 +121,33 @@ describe("chatApi", () => {
     expect(result).toEqual(mockData)
   })
 
+  it("forwards abort signals on cancellable GET requests", async () => {
+    const signal = new AbortController().signal
+    const chats = { items: [], has_more: false, next_cursor: null }
+    const chat = { id: "chat1" }
+    const messages = { items: [], has_more: false, next_cursor: null }
+    const reactors = [{ user_id: "u1", name: "Alice", avatar_url: null }]
+    vi.mocked(client.get)
+      .mockResolvedValueOnce({ data: chats })
+      .mockResolvedValueOnce({ data: chat })
+      .mockResolvedValueOnce({ data: messages })
+      .mockResolvedValueOnce({ data: reactors })
+
+    await chatApi.getChats(undefined, 20, signal)
+    await chatApi.getChat("chat1", signal)
+    await chatApi.getMessages("chat1", undefined, 50, signal)
+    await chatApi.getReactors("chat1", "msg1", "👍", signal)
+
+    expect(client.get).toHaveBeenNthCalledWith(1, "/chats?limit=20", { signal })
+    expect(client.get).toHaveBeenNthCalledWith(2, "/chats/chat1", { signal })
+    expect(client.get).toHaveBeenNthCalledWith(3, "/chats/chat1/messages?limit=50", { signal })
+    expect(client.get).toHaveBeenNthCalledWith(
+      4,
+      `/chats/chat1/messages/msg1/reactions?emoji=${encodeURIComponent("👍")}`,
+      { signal }
+    )
+  })
+
   it("sendMessage appends reply_to_message_id when replying (W207)", async () => {
     vi.mocked(client.post).mockResolvedValueOnce({ data: { id: "m2" } })
     await chatApi.sendMessage("chat1", "re", undefined, "target-msg")

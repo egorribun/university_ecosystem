@@ -480,7 +480,7 @@ def test_transition_no_op_when_same_state() -> None:
 
     # Calling _transition(CLOSED) on a CLOSED breaker should silently return
     # (line 157: if old == new_state: return)
-    cb._transition(CircuitState.CLOSED)  # type: ignore[attr-defined]
+    cb._transition(CircuitState.CLOSED, CircuitState.CLOSED)  # type: ignore[attr-defined]
     # State must still be CLOSED and failure count unchanged
     assert cb.state == CircuitState.CLOSED
     assert cb._failure_count == 0  # type: ignore[attr-defined]
@@ -489,5 +489,5 @@ def test_transition_no_op_when_same_state() -> None:
 def test_circuit_breaker_transition_no_op() -> None:
     """_transition returns early without changes if new state matches current state."""
     cb = RedisCircuitBreaker(failure_threshold=2)
-    cb._transition(cb._state)
+    cb._transition(cb._state, cb._state)
     assert cb.state == CircuitState.CLOSED

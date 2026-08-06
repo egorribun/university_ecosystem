@@ -59,7 +59,9 @@ func processFileResponse(_ []models.ProviderState) (message.Body, message.Metada
 			"dest_key":    response.DestKey,
 			"duration_ms": response.DurationMs,
 		}, message.Metadata{
-			"contentType": "application/grpc",
+			// Pact verifies the JSON representation of the protobuf message;
+			// application/grpc would make the matcher body opaque bytes.
+			"contentType": "application/json",
 		}, nil
 }
 

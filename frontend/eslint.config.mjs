@@ -34,7 +34,11 @@ export default tseslint.config(
     languageOptions: {
       parser: tseslint.parser,
       parserOptions: {
-        projectService: true,
+        // TypeScript type-checking is a separate blocking gate (`npm run
+        // typecheck`). Keeping ESLint syntax-aware avoids constructing the
+        // entire 1,300+ file TS project for every lint invocation; the full
+        // run exceeded 2.5 GB and a one-file probe exhausted 768 MB.
+        projectService: false,
         tsconfigRootDir: import.meta.dirname,
         ecmaVersion: 2022,
         sourceType: "module",

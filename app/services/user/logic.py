@@ -5,7 +5,14 @@ import app.models as models
 from app.core.constants import ANONYMIZED_USER_CREDENTIAL
 from app.core.exceptions.domain import EntityAlreadyExists
 from app.repositories.user_repository import UserRepository
-from app.utils.files import delete_static_file
+
+
+async def delete_static_file(path: str) -> None:
+    """Load the optional image backend only when a profile file is removed."""
+
+    from app.utils.files import delete_static_file as _delete_static_file
+
+    await _delete_static_file(path)
 
 
 def update_user_attributes(user: models.User, data: dict[str, Any]) -> None:

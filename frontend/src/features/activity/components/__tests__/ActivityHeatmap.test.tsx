@@ -17,6 +17,15 @@ function todayIso(): string {
   return `${y}-${m}-${d}`
 }
 
+function dateOffset(offset: number): string {
+  const date = new Date()
+  date.setDate(date.getDate() + offset)
+  const y = date.getFullYear()
+  const m = String(date.getMonth() + 1).padStart(2, "0")
+  const d = String(date.getDate()).padStart(2, "0")
+  return `${y}-${m}-${d}`
+}
+
 describe("ActivityHeatmap", () => {
   it("renders heat cells + legend swatches as role=img", async () => {
     await renderWithRouter({
@@ -24,7 +33,14 @@ describe("ActivityHeatmap", () => {
         <ActivityHeatmap
           ariaLabel="Activity heatmap"
           period="30d"
-          data={new Map([[todayIso(), 5]])}
+          data={
+            new Map([
+              [todayIso(), 4],
+              [dateOffset(-1), 1],
+              [dateOffset(-2), 2],
+              [dateOffset(-3), 3],
+            ])
+          }
         />
       ),
       authProvider: false,

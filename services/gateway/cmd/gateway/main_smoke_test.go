@@ -25,8 +25,10 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/university-ecosystem/gateway/internal/config"
@@ -46,8 +48,10 @@ func TestSetupRouter_WiresRoutesAndProbes(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	var router *gin.Engine
+	var err error
 	assert.NotPanics(t, func() {
-		router = setupRouter(cfg, logger, nil, nil, context.Background())
+		router, err = setupRouter(cfg, logger, nil, nil, context.Background())
+		require.NoError(t, err)
 	}, "setupRouter must wire a valid config without panicking or exiting")
 	if router == nil {
 		t.Fatal("setupRouter returned nil")
@@ -71,6 +75,50 @@ func TestSetupRouter_WiresRoutesAndProbes(t *testing.T) {
 		router.ServeHTTP(rec, httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api/totally/unknown", nil))
 		assert.Equal(t, http.StatusNotFound, rec.Code)
 		assert.Contains(t, rec.Body.String(), "endpoint not found")
+	})
+
+	t.Run("optional auth route reaches the backend proxy", func(t *testing.T) {
+		rec := httptest.NewRecorder()
+		router.ServeHTTP(rec, httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api/v1/auth/csrf-cookie", nil))
+		assert.Equal(t, http.StatusBadGateway, rec.Code)
+	})
+
+	t.Run("authenticated protected route reaches the backend proxy", func(t *testing.T) {
+		rec := httptest.NewRecorder()
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api/v1/users/me", nil)
+		now := time.Now()
+		token, err := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
+			"sub":       "user-1",
+			"role":      "student",
+			"jti":       "jti-1",
+			"is_active": true,
+			"iat":       now.Unix(),
+			"exp":       now.Add(time.Hour).Unix(),
+		}).SignedString([]byte("smoke-test-jwt-secret-at-least-32-chars-long"))
+		require.NoError(t, err)
+		req.Header.Set("Authorization", "Bearer "+token)
+		router.ServeHTTP(rec, req)
+		assert.Equal(t, http.StatusBadGateway, rec.Code)
+	})
+
+	t.Run("admin route aborts without authentication", func(t *testing.T) {
+		rec := httptest.NewRecorder()
+		router.ServeHTTP(rec, httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api/admin/users", nil))
+		assert.Equal(t, http.StatusUnauthorized, rec.Code)
+	})
+
+	t.Run("public and GraphQL optional routes reach the backend proxy", func(t *testing.T) {
+		for _, path := range []string{"/api/public/config", "/graphql"} {
+			rec := httptest.NewRecorder()
+			router.ServeHTTP(rec, httptest.NewRequestWithContext(t.Context(), http.MethodGet, path, nil))
+			assert.Equal(t, http.StatusBadGateway, rec.Code, path)
+		}
+	})
+
+	t.Run("non-API no-route is proxied", func(t *testing.T) {
+		rec := httptest.NewRecorder()
+		router.ServeHTTP(rec, httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/unknown", nil))
+		assert.Equal(t, http.StatusBadGateway, rec.Code)
 	})
 }
 
@@ -103,7 +151,8 @@ func TestInitGRPC(t *testing.T) {
 		FileProcessorAddr: "localhost:50051",
 		GrpcUseTLS:        false,
 	}
-	conn, client := initGRPC(cfg, logger)
+	conn, client, err := initGRPC(cfg, logger)
+	require.NoError(t, err)
 	assert.NotNil(t, conn)
 	assert.NotNil(t, client)
 	require.NoError(t, conn.Close())
@@ -128,6 +177,6 @@ func TestRunServer_Error(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	router := gin.New()
 	assert.NotPanics(t, func() {
-		runServer(cfg, router, logger)
+		require.Error(t, runServer(cfg, router, logger))
 	})
 }

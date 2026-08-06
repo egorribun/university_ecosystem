@@ -19,6 +19,7 @@ from fastapi import Request, Response
 from pydantic import BaseModel
 
 from app.api.deps.etag import cached_endpoint, generate_cache_key
+from app.core.tenant import get_current_tenant, set_current_tenant, tenant_id_ctx
 from app.deps.cache import MemoryCache, NullCache, set_cache_backend
 
 
@@ -181,6 +182,36 @@ async def test_authenticated_identity_is_part_of_personalized_cache_key() -> Non
     assert first.body == b'{"user_id":"user-a"}'
     assert second.body == b'{"user_id":"user-b"}'
     assert third == {"user_id": "user-a"}
+    assert calls["n"] == 2
+
+
+@pytest.mark.asyncio
+async def test_tenant_context_is_part_of_cache_identity() -> None:
+    """A tenant must never receive another tenant's cached payload."""
+    cache = MemoryCache()
+    set_cache_backend(cache)
+    calls = {"n": 0}
+
+    @_decorate()
+    async def endpoint(**_kwargs: Any) -> dict[str, str]:
+        calls["n"] += 1
+        return {"tenant_id": get_current_tenant()}
+
+    tenant_a = set_current_tenant("tenant-a")
+    try:
+        first = await endpoint(request=_build_request(), response=Response())
+    finally:
+        # The explicit reset keeps this ContextVar isolated from later tests.
+        tenant_id_ctx.reset(tenant_a)
+
+    tenant_b = set_current_tenant("tenant-b")
+    try:
+        second = await endpoint(request=_build_request(), response=Response())
+    finally:
+        tenant_id_ctx.reset(tenant_b)
+
+    assert first.body == b'{"tenant_id":"tenant-a"}'
+    assert second.body == b'{"tenant_id":"tenant-b"}'
     assert calls["n"] == 2
 
 

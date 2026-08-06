@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest"
 import { screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { useForm } from "react-hook-form"
-import type { ReactNode } from "react"
+import { useEffect, type ReactNode } from "react"
 
 import { LoginCredentialForm } from "./LoginCredentialForm"
 import { renderWithRouter } from "@/tests/helpers/renderWithRouter"
@@ -210,6 +210,28 @@ describe("LoginCredentialForm — errors", () => {
     // The component renders `submitError || passkeyError`, so submit wins.
     expect(screen.getByText("Submit error")).toBeInTheDocument()
     expect(screen.queryByText("Passkey error")).toBeNull()
+  })
+
+  it("renders react-hook-form field errors and the email fallback message", async () => {
+    function ErrorHarness(): ReactNode {
+      const stub = useFormStub()
+      useEffect(() => {
+        stub.form.setError("email", { type: "manual", message: "" })
+        stub.form.setError("password", { type: "manual", message: "Password validation failed" })
+      }, [stub.form])
+      return <LoginCredentialForm form={stub} />
+    }
+
+    await renderWithRouter({
+      ui: ErrorHarness,
+      extraRoutes: [
+        { path: "/forgot-password", Component: () => <div>forgot</div> },
+        { path: "/register", Component: () => <div>register</div> },
+      ],
+    })
+
+    expect(await screen.findByText("Invalid email format")).toBeInTheDocument()
+    expect(screen.getByText("Password validation failed")).toBeInTheDocument()
   })
 })
 

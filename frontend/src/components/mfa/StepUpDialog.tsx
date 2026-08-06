@@ -115,13 +115,10 @@ export const StepUpDialog = ({
 
   const handleOtpSubmit = useCallback(
     async (code: string) => {
-      if (!challenge) {
-        setError(t("mfa.stepUp.missingChallenge"))
-        return
-      }
-      await handleSubmit({ code, challengeToken: challenge.challenge_token })
+      // OtpEntry is mounted only while a challenge exists.
+      await handleSubmit({ code, challengeToken: challenge!.challenge_token })
     },
-    [challenge, handleSubmit, t]
+    [challenge, handleSubmit]
   )
 
   const formatRemainingAttempts = useCallback(
@@ -185,6 +182,10 @@ export const StepUpDialog = ({
                   helperText={helperText}
                   onSubmit={handleOtpSubmit}
                 />
+              ) : error ? (
+                <p role="alert" className="text-sm font-bold text-error-text">
+                  {error}
+                </p>
               ) : null}
             </div>
           </div>

@@ -11,7 +11,7 @@ import nats
 import pytest
 
 import app.core.nats_broker as nats_broker_module
-from app.core.nats_broker import NatsTaskBroker, Task, set_app
+from app.core.nats_broker import NatsTaskBroker, Task, _NatsTaskPayload, set_app
 
 
 def _message(payload: dict) -> AsyncMock:
@@ -43,15 +43,18 @@ async def test_connect_registers_both_streams_and_lifecycle_callbacks() -> None:
         await kwargs["reconnected_cb"]()
         await kwargs["disconnected_cb"]()
 
-    assert mock_js.add_stream.await_count == 2
-    assert mock_js.add_stream.await_args_list[0].kwargs == {
-        "name": "TASK_QUEUE",
-        "subjects": ["tasks.>"],
-    }
-    assert mock_js.add_stream.await_args_list[1].kwargs == {
-        "name": "FILES_PROCESS",
-        "subjects": ["files.process"],
-    }
+    assert mock_js.add_stream.await_count == 5
+    configs = [c.kwargs["config"] for c in mock_js.add_stream.await_args_list]
+    assert configs[0].name == "TASK_QUEUE"
+    assert configs[0].subjects == ["tasks.>"]
+    assert configs[1].name == "FILES_PROCESS"
+    assert configs[1].subjects == ["files.process"]
+    assert configs[2].name == "CHAT_EVENTS"
+    assert configs[2].subjects == ["chat.*"]
+    assert configs[3].name == "NOTIFICATIONS_EVENTS"
+    assert configs[3].subjects == ["notifications.*"]
+    assert configs[4].name == "OUTBOX_EVENTS"
+    assert configs[4].subjects == ["outbox.*"]
 
 
 async def test_close_clears_disconnected_client_without_close_call() -> None:
@@ -98,6 +101,11 @@ async def test_task_kick_enqueues_registered_task() -> None:
 async def test_task_protocol_stubs_are_executable_type_contracts() -> None:
     assert await Task.__call__(object()) is None
     assert await Task.kick(object()) is None
+
+
+def test_task_payload_rejects_blank_names() -> None:
+    with pytest.raises(ValueError, match="task name must not be empty"):
+        _NatsTaskPayload(id="task-id", name=" ")
 
 
 @pytest.mark.parametrize("method_name", ["publish", "enqueue"])

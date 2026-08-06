@@ -442,6 +442,7 @@ mod tests {
         assert!(!stripped.contains('<'), "no tags must remain after strip");
     }
 
+    #[cfg(not(miri))]
     #[test]
     fn test_panic_boundary_catches_rust_panic() {
         Python::initialize();
@@ -455,6 +456,7 @@ mod tests {
         });
     }
 
+    #[cfg(not(miri))]
     #[test]
     fn test_panic_formatting_coverage() {
         Python::initialize();
@@ -479,6 +481,7 @@ mod tests {
         });
     }
 
+    #[cfg(not(miri))]
     #[test]
     fn test_pyo3_bindings_coverage() {
         Python::initialize();
@@ -518,8 +521,47 @@ mod tests {
 mod prop_tests {
     use super::*;
     use proptest::prelude::*;
+    #[cfg(miri)]
+    use proptest::test_runner::{noop_result_cache, RngAlgorithm, RngSeed};
+
+    // Miri rejects the `getcwd` call used while proptest constructs its
+    // default file-persistence provider.  Constructing the configuration
+    // explicitly under Miri avoids that eager filesystem access while
+    // preserving the same generation/shrinking defaults as `Config::default`.
+    #[cfg(miri)]
+    fn proptest_config() -> ProptestConfig {
+        ProptestConfig {
+            // Miri interprets every html5ever instruction and the full native
+            // 256-case property run already executes in the regular Rust gate.
+            // Keep every property active under Miri while bounding the
+            // interpreter-only workload to a meaningful representative sample.
+            cases: 32,
+            max_local_rejects: 65_536,
+            max_global_rejects: 1_024,
+            max_flat_map_regens: 1_000_000,
+            failure_persistence: None,
+            source_file: None,
+            test_name: None,
+            fork: false,
+            timeout: 0,
+            max_shrink_time: 0,
+            max_shrink_iters: u32::MAX,
+            max_default_size_range: 100,
+            result_cache: noop_result_cache,
+            verbose: 0,
+            rng_algorithm: RngAlgorithm::default(),
+            rng_seed: RngSeed::Random,
+            _non_exhaustive: (),
+        }
+    }
+
+    #[cfg(not(miri))]
+    fn proptest_config() -> ProptestConfig {
+        ProptestConfig::default()
+    }
 
     proptest! {
+        #![proptest_config(proptest_config())]
         // ── sanitize_rich_text ───────────────────────────────────────────────
 
         /// Idempotency: sanitize(sanitize(x)) == sanitize(x) for rich mode.

@@ -55,22 +55,24 @@ export function ReactionPill({
   reactedByMe,
   onToggle,
 }: ReactionPillProps) {
-  // React Compiler opt-out (FIX-54-01 / RC-91-01 precedent): the imperative
-  // long-press refs (longPressFiredRef / longPressTimerRef) + floating-ui's
-  // ref-merging via getReferenceProps({onClick,...}) trip the Babel transform's
-  // validateNoRefAccessInRender ("Cannot access refs during render"), even though
-  // the refs are only touched in event handlers — a false positive. The Babel
-  // transform FLAGS it (the build fails without this directive) but the eslint
-  // plugin does NOT, so it calls the directive "unused" (W199 plugin-vs-transform
-  // mismatch) — hence the paired disable, same as Dashboard.tsx FIX-54-01.
-  // eslint-disable-next-line react-compiler/react-compiler -- Babel needs it; eslint thinks it unused
+  // Floating UI's interaction prop factories intentionally inspect internal
+  // refs while producing event props; opt this component out of React Compiler
+  // memoization rather than rewriting the library's supported integration.
+  // Babel's compiler honors this opt-out for Floating UI's ref-reading prop
+  // factories, while the lint rule cannot model that library boundary.
+  // eslint-disable-next-line react-compiler/react-compiler -- intentional opt-out
   "use no memo"
+
   const { t } = useTranslation(["messenger"])
   const [isOpen, setIsOpen] = useState(false)
   const longPressFiredRef = useRef(false)
   const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  const { refs, floatingStyles, context } = useFloating({
+  const {
+    refs: { setReference, setFloating },
+    floatingStyles,
+    context,
+  } = useFloating({
     open: isOpen,
     onOpenChange: setIsOpen,
     placement: "top",
@@ -125,22 +127,25 @@ export function ReactionPill({
     onToggle(emoji)
   }
 
+  const referenceProps = getReferenceProps({
+    onClick: handleClick,
+    onPointerDown: handlePointerDown,
+    onPointerUp: clearLongPress,
+    onPointerLeave: clearLongPress,
+    onPointerCancel: clearLongPress,
+    onPointerMove: clearLongPress,
+  })
+  const floatingProps = getFloatingProps()
+
   return (
     <>
       <button
-        ref={refs.setReference}
+        ref={setReference}
         type="button"
         data-reaction-ui
         aria-pressed={reactedByMe}
         aria-label={t("messenger:reactions.tally", { emoji, count })}
-        {...getReferenceProps({
-          onClick: handleClick,
-          onPointerDown: handlePointerDown,
-          onPointerUp: clearLongPress,
-          onPointerLeave: clearLongPress,
-          onPointerCancel: clearLongPress,
-          onPointerMove: clearLongPress,
-        })}
+        {...referenceProps}
         className={cn(
           "inline-flex min-h-[28px] items-center gap-1 rounded-full border px-2 py-0.5 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-violet-500) focus-visible:ring-offset-1 focus-visible:ring-offset-(--bg-surface)",
           reactedByMe
@@ -154,9 +159,9 @@ export function ReactionPill({
       {isOpen ? (
         <FloatingPortal>
           <div
-            ref={refs.setFloating}
+            ref={setFloating}
             style={floatingStyles}
-            {...getFloatingProps()}
+            {...floatingProps}
             data-reaction-ui
             className="z-popover max-w-[16rem] rounded-xl border border-glass-border bg-(--bg-surface)/(--opacity-heavy) p-2.5 shadow-glass backdrop-blur-xl"
           >

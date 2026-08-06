@@ -43,11 +43,30 @@ on:
         required: false
         type: number
         default: 1
+      advisory:
+        description: "Allow this E2E invocation to report without blocking its caller"
+        required: false
+        type: boolean
+        default: false
+      collect-coverage:
+        description: "Collect Chromium V8 coverage and upload an Istanbul/LCOV artifact"
+        required: false
+        type: boolean
+        default: false
+    secrets:
+      CODECOV_TOKEN:
+        required: false
+        description: "Codecov upload token"
 
 jobs:
   e2e:
     name: E2E Tests (${{ inputs.browser }})
     runs-on: ubuntu-latest
+    # Reusable-workflow callers cannot set continue-on-error on the caller job.
+    # Keep the advisory policy inside the reusable workflow so the same workflow
+    # remains blocking by default for Chromium and opt-in advisory for the
+    # stabilization matrix.
+    continue-on-error: ${{ inputs.advisory }}
     # The Chromium suite contains 114 tests, including expensive accessibility
     # scans. The caller splits the default suite into four Playwright shards.
     # Keep one worker per shard: four concurrent Chromium navigations are the
@@ -62,6 +81,7 @@ jobs:
       # SQLite-passing migrations can silently fail in production.
       DATABASE_URL: "postgresql+asyncpg://test:test@localhost:5432/test_e2e"
       OTEL_SDK_DISABLED: "true"
+      E2E_COVERAGE: ${{ inputs.collect-coverage && inputs.browser == 'chromium' && 'true' || 'false' }}
     services:
       postgres:
         image: pgvector/pgvector:pg17
@@ -72,7 +92,7 @@ jobs:
         ports:
           - 5432:5432
         options: >-
-          --health-cmd pg_isready
+          --health-cmd "pg_isready -U test -d test_e2e"
           --health-interval 5s
           --health-timeout 3s
           --health-retries 10
@@ -114,6 +134,11 @@ jobs:
         working-directory: frontend
         run: npm ci
 
+      - name: Verify E2E coverage merger
+        if: ${{ inputs.collect-coverage && inputs.browser == 'chromium' }}
+        working-directory: frontend
+        run: npm run test:e2e:coverage-tool
+
       # W142 polish-v3 — taiki-e/install-action wasm-pack tool resolution
       # broken: drager/wasm-pack 404 since v0.14.0 moved to rustwasm/wasm-pack;
       # install-action hardcodes old repo. Pinned rustwasm canonical curl URL
@@ -129,7 +154,12 @@ jobs:
         working-directory: frontend
         env:
           BROWSER: ${{ inputs.browser }}
-        run: npx playwright install --with-deps "$BROWSER"
+        run: |
+          INSTALL_BROWSER="$BROWSER"
+          if [[ "$INSTALL_BROWSER" == "mobile-webkit" ]]; then
+            INSTALL_BROWSER="webkit"
+          fi
+          npx playwright install --with-deps "$INSTALL_BROWSER"
 
       - name: Run database migrations
         run: uv run alembic upgrade head
@@ -160,6 +190,8 @@ jobs:
           INPUT_BASE_URL: ${{ inputs.base-url }}
           TEST_PATTERN: ${{ inputs.test-pattern }}
           BROWSER: ${{ inputs.browser }}
+          SHARD_INDEX: ${{ inputs.shard-index }}
+          SHARD_TOTAL: ${{ inputs.shard-total }}
         run: |
           BASE_URL="$INPUT_BASE_URL"
           if [[ -z "$BASE_URL" ]]; then
@@ -168,7 +200,7 @@ jobs:
 
           npx playwright test "$TEST_PATTERN" \
             --project="$BROWSER" \
-            --shard=${{ inputs.shard-index }}/${{ inputs.shard-total }} \
+            --shard="$SHARD_INDEX/$SHARD_TOTAL" \
             --workers=1 \
             --reporter=html
 
@@ -219,8 +251,13 @@ jobs:
           URL_STATE_E2E: "true"
           VITE_BACKEND_ORIGIN: http://127.0.0.1:8000
         run: |
+          # Playwright cleans its output directory at the start of each
+          # invocation. Keep auxiliary suites in separate subdirectories so
+          # the coverage merger can still see the regular shard output and
+          # every auxiliary suite's report.
           npx playwright test url-state-persistence.spec.ts \
             --project=chromium \
+            --output=test-results/url-state \
             --reporter=html
 
       # Wave 179 SW9: extend URL_STATE_E2E auto-managed mode to the new
@@ -240,6 +277,7 @@ jobs:
         run: |
           npx playwright test wave179-login-flow.spec.ts \
             --project=chromium \
+            --output=test-results/wave179-login-flow \
             --reporter=html
 
       # Phase 7.4: exercise the production Node SSR wrapper and assert that
@@ -253,6 +291,7 @@ jobs:
         run: |
           npx playwright test ssr-caching.spec.ts \
             --project=chromium \
+            --output=test-results/ssr-caching \
             --reporter=html
 
       - name: Run authenticated accessibility E2E tests (cross-env auto-managed)
@@ -264,7 +303,32 @@ jobs:
         run: |
           npx playwright test accessibility.spec.ts \
             --project=chromium \
+            --output=test-results/accessibility \
             --reporter=html
+
+      - name: Merge Chromium JavaScript coverage
+        if: ${{ inputs.collect-coverage && inputs.browser == 'chromium' && success() }}
+        working-directory: frontend
+        run: node scripts/merge-playwright-coverage.mjs --input=test-results --output=coverage/e2e
+
+      - name: Upload E2E coverage artifact
+        if: ${{ always() && inputs.collect-coverage && inputs.browser == 'chromium' }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: frontend-e2e-coverage-${{ inputs.shard-index }}-of-${{ inputs.shard-total }}
+          path: frontend/coverage/e2e/
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Upload E2E coverage to Codecov
+        if: ${{ inputs.collect-coverage && inputs.browser == 'chromium' && success() && hashFiles('frontend/coverage/e2e/lcov.info') != '' }}
+        uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: ./frontend/coverage/e2e/lcov.info
+          flags: frontend
+          name: frontend-e2e-chromium-${{ inputs.shard-index }}-of-${{ inputs.shard-total }}
+          fail_ci_if_error: false
 
       - name: Terminate backend
         if: always()

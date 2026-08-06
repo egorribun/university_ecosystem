@@ -6,7 +6,7 @@
  * regardless of auth state. Tests are intentionally resilient to backend state —
  * they pass whether the dev server is running or not (by checking for redirect).
  */
-import { test, expect } from "@playwright/test"
+import { test, expect } from "./test"
 
 test.describe("Schedule View — Wave 11", () => {
   test("schedule route resolves without uncaught JS errors", async ({ page }) => {

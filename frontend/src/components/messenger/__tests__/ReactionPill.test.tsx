@@ -136,12 +136,93 @@ describe("ReactionPill", () => {
     }
   })
 
+  it("shows the loading state while reactors are being fetched", () => {
+    vi.useFakeTimers()
+    try {
+      getReactors.mockReturnValueOnce(new Promise(() => undefined))
+      renderPill()
+      const btn = screen.getByRole("button")
+
+      fireEvent.pointerDown(btn, { pointerType: "touch" })
+      act(() => {
+        vi.advanceTimersByTime(600)
+      })
+
+      expect(screen.getByText("messenger:reactions.reactorsLoading")).toBeInTheDocument()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it("shows the empty state when the reactor response has no users", () => {
+    vi.useFakeTimers()
+    try {
+      const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+      queryClient.setQueryData(reactorsQueryKey("chat-1", "msg-1", "👍"), [])
+      const onToggle = vi.fn()
+      render(
+        <QueryClientProvider client={queryClient}>
+          <ReactionPill
+            chatId="chat-1"
+            messageId="msg-1"
+            emoji="👍"
+            count={3}
+            reactedByMe={false}
+            onToggle={onToggle}
+          />
+        </QueryClientProvider>
+      )
+
+      fireEvent.pointerDown(screen.getByRole("button"), { pointerType: "touch" })
+      act(() => {
+        vi.advanceTimersByTime(600)
+      })
+
+      expect(screen.getByText("messenger:reactions.reactorsEmpty")).toBeInTheDocument()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it("uses the unknown-sender label when a reactor has no name", () => {
+    vi.useFakeTimers()
+    try {
+      const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+      queryClient.setQueryData(reactorsQueryKey("chat-1", "msg-1", "👍"), [
+        { user_id: "u2", name: null, avatar_url: null },
+      ])
+      const onToggle = vi.fn()
+      render(
+        <QueryClientProvider client={queryClient}>
+          <ReactionPill
+            chatId="chat-1"
+            messageId="msg-1"
+            emoji="👍"
+            count={3}
+            reactedByMe={false}
+            onToggle={onToggle}
+          />
+        </QueryClientProvider>
+      )
+
+      fireEvent.pointerDown(screen.getByRole("button"), { pointerType: "touch" })
+      act(() => {
+        vi.advanceTimersByTime(600)
+      })
+
+      expect(screen.getByText("messenger:replyTo.unknownSender")).toBeInTheDocument()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it("reactorsQueryOptions.queryFn delegates to chatApi.getReactors (the on-demand fetch)", async () => {
     getReactors.mockResolvedValueOnce([{ user_id: "u1", name: "Bob", avatar_url: null }])
     const opts = reactorsQueryOptions("c", "m", "😮")
     const queryFn = opts.queryFn as (ctx: { signal: AbortSignal }) => Promise<unknown>
-    const result = await queryFn({ signal: new AbortController().signal })
-    expect(getReactors).toHaveBeenCalledWith("c", "m", "😮")
+    const signal = new AbortController().signal
+    const result = await queryFn({ signal })
+    expect(getReactors).toHaveBeenCalledWith("c", "m", "😮", signal)
     expect(result).toEqual([{ user_id: "u1", name: "Bob", avatar_url: null }])
   })
 })

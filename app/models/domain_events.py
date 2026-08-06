@@ -26,6 +26,10 @@ class StoredEvent(Base, UUID7PrimaryKeyMixin):
     metadata_: Mapped[dict[str, Any]] = mapped_column("metadata", JSON, nullable=True)
     version: Mapped[int] = mapped_column(Integer, default=1)
 
+    # Cryptographic HMAC Hash-Chaining fields (R3 & R4)
+    prev_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    hash: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+
     # Outbox Pattern fields (RZ-F-11)
     subject: Mapped[str | None] = mapped_column(String(255), index=True, nullable=True)
     status: Mapped[str] = mapped_column(

@@ -6,7 +6,7 @@
  * when connectivity is lost and restored. This complements the existing
  * offline.spec.ts by specifically testing recovery transitions.
  */
-import { test, expect } from "@playwright/test"
+import { test, expect } from "./test"
 
 test.describe("Error Recovery — Wave 11", () => {
   test("app remains visible when going offline", async ({ page, context }) => {

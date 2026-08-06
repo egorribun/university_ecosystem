@@ -40,8 +40,8 @@ class NewsService:
         if cursor:
             decoded = decode_datetime_cursor(cursor)
             if decoded:
-                dt, id_str = decoded
                 with contextlib.suppress(ValueError, TypeError):
+                    dt, id_str = decoded
                     decoded_cursor = (dt, id_str)
 
         # Fetch limit + 1 to determine has_more
@@ -100,7 +100,7 @@ class NewsService:
         liked = await self.repo.toggle_like(news_id, user_id)
         async with self.uow:
             await self.uow.commit()
-        return liked
+        return bool(liked)
 
     async def get_news(
         self, news_id: uuid.UUID, user_id: uuid.UUID | None = None
@@ -157,9 +157,9 @@ class NewsService:
         async with self.uow:
             await self.uow.commit()
 
-        from app.utils.files import delete_static_file
-
         if old_image_url and updated_news.image_url != old_image_url:
+            from app.utils.files import delete_static_file
+
             with contextlib.suppress(FileNotFoundError, OSError):  # RZ-33-15: narrowed
                 await delete_static_file(str(old_image_url))
 
@@ -178,9 +178,9 @@ class NewsService:
         # BaseRepository delete: execute delete stmt. Does NOT commit.
         # So we need to commit.
 
-        from app.utils.files import delete_static_file
-
         if image_url:
+            from app.utils.files import delete_static_file
+
             with contextlib.suppress(FileNotFoundError, OSError):  # RZ-33-15: narrowed
                 await delete_static_file(str(image_url))
         return True

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import threading as _threading
+import uuid
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
@@ -15,7 +16,6 @@ from app.tasks.notifications import (
 )
 
 if TYPE_CHECKING:
-    import uuid
     from collections.abc import Awaitable, Callable
 
 logger = get_logger(__name__)
@@ -42,7 +42,7 @@ async def enqueue_event_notification(
 ) -> None:
     """Enqueue an event notification job using NATS JetStream."""
     await enqueue_event_notification_task.kick(
-        uuid.UUID(str(event_id)) if isinstance(event_id, int) else event_id,
+        uuid.UUID(int=event_id) if isinstance(event_id, int) else event_id,
         locale=locale,
     )
 
@@ -52,7 +52,7 @@ async def enqueue_news_notification(
 ) -> None:
     """Enqueue a news notification job using NATS JetStream."""
     await enqueue_news_notification_task.kick(
-        uuid.UUID(str(news_id)) if isinstance(news_id, int) else news_id, locale=locale
+        uuid.UUID(int=news_id) if isinstance(news_id, int) else news_id, locale=locale
     )
 
 
@@ -65,9 +65,9 @@ async def enqueue_comment_notification(
 ) -> None:
     """Enqueue a comment notification job using NATS JetStream."""
     await enqueue_comment_notification_task.kick(
-        uuid.UUID(str(news_id)) if isinstance(news_id, int) else news_id,
-        uuid.UUID(str(comment_id)) if isinstance(comment_id, int) else comment_id,
-        uuid.UUID(str(user_id)) if isinstance(user_id, int) else user_id,
+        uuid.UUID(int=news_id) if isinstance(news_id, int) else news_id,
+        uuid.UUID(int=comment_id) if isinstance(comment_id, int) else comment_id,
+        uuid.UUID(int=user_id) if isinstance(user_id, int) else user_id,
         locale=locale,
     )
 

@@ -5,10 +5,15 @@ import { sanitizeArticleHtml } from "@/utils/sanitizeArticleHtml"
 import { sanitizeEmailAddress, sanitizeHttpUrl, sanitizeTelegramUrl } from "@/utils/sanitize"
 
 const telegramUsernameArbitrary = fc
-  .array(fc.constantFrom(..."abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_"), {
-    minLength: 5,
-    maxLength: 32,
-  })
+  .array(
+    fc.constantFrom(
+      ..."abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_" // pragma: allowlist secret
+    ),
+    {
+      minLength: 5,
+      maxLength: 32,
+    }
+  )
   .map((characters) => characters.join(""))
 
 describe("property-based utility contracts", () => {
@@ -29,6 +34,20 @@ describe("property-based utility contracts", () => {
     fc.assert(
       fc.property(telegramUsernameArbitrary, (username) => {
         expect(sanitizeTelegramUrl(`@${username}`)).toBe(`https://t.me/${username}`)
+      })
+    )
+  })
+
+  it("never emits a non-Telegram host from arbitrary URL-like input", () => {
+    fc.assert(
+      fc.property(fc.string(), (value) => {
+        const result = sanitizeTelegramUrl(value)
+        if (result !== "") {
+          const parsed = new URL(result)
+          expect(["t.me", "telegram.me"]).toContain(parsed.hostname)
+          expect(parsed.username).toBe("")
+          expect(parsed.password).toBe("")
+        }
       })
     )
   })
@@ -61,6 +80,37 @@ describe("property-based utility contracts", () => {
       fc.property(fc.array(dangerousFragment, { minLength: 1, maxLength: 8 }), (fragments) => {
         const result = sanitizeArticleHtml(fragments.join(""))
         expect(result).not.toMatch(/<script|<iframe|javascript:|vbscript:|onerror|onclick/i)
+      })
+    )
+  })
+
+  it("keeps article sanitization idempotent", () => {
+    const htmlFragment = fc.oneof(
+      fc.string(),
+      fc.constantFrom(
+        "<p>safe text</p>",
+        '<img src="data:image/png;base64,Zm9v">',
+        '<a href="/news/42">news</a>',
+        "<script>alert(1)</script>",
+        '<div onclick="alert(1)">click</div>',
+        '<iframe src="https://evil.example"></iframe>'
+      )
+    )
+
+    fc.assert(
+      fc.property(fc.array(htmlFragment, { maxLength: 8 }), (fragments) => {
+        const once = sanitizeArticleHtml(fragments.join(""))
+        expect(sanitizeArticleHtml(once)).toBe(once)
+      })
+    )
+  })
+
+  it("keeps URL sanitization idempotent for every generated input", () => {
+    fc.assert(
+      fc.property(fc.string(), (value) => {
+        const once = sanitizeHttpUrl(value)
+        const twice = sanitizeHttpUrl(once ?? "")
+        expect(twice).toBe(once)
       })
     )
   })

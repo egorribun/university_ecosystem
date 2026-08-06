@@ -17,9 +17,11 @@ def test_config_hardening_policy(monkeypatch):
 
     # 2. Dev/Test -> True (if no env vars/files block it)
     monkeypatch.setenv("ENVIRONMENT", "dev")
-    import app.core.config.base
+    import importlib
 
-    monkeypatch.setattr(app.core.config.base, "_ENV_FILE", None)
+    config_base = importlib.import_module("app.core.config.base")
+
+    monkeypatch.setattr(config_base, "_ENV_FILE", None)
     monkeypatch.delenv("SECRET_KEY", raising=False)
     monkeypatch.delenv("DATABASE_URL", raising=False)
     assert _should_allow_development_defaults() is True
@@ -51,9 +53,11 @@ def test_config_fallback_generation(monkeypatch):
     Verify that BaseAppSettings DOES generate fallbacks in dev.
     """
     monkeypatch.setenv("ENVIRONMENT", "local")
-    import app.core.config.base
+    import importlib
 
-    monkeypatch.setattr(app.core.config.base, "_ENV_FILE", None)
+    config_base = importlib.import_module("app.core.config.base")
+
+    monkeypatch.setattr(config_base, "_ENV_FILE", None)
 
     from pydantic_settings import SettingsConfigDict
 

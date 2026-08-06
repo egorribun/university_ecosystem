@@ -89,7 +89,7 @@ async def test_user_registration_and_login_flow(
     # Step 3: use the JWT for an authenticated request
     protected_response = await async_client.get(
         "/users/me",
-        headers={"Authorization": f"Bearer {token}"},
+        headers={"Authorization": f"Bearer {token}", "X-Query-Budget": "15"},
     )
     # 200 means auth worked end-to-end; 403 would indicate an RBAC issue
     # that is a separate concern.  Both are acceptable here — what we guard

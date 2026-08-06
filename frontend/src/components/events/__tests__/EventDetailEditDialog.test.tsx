@@ -1,7 +1,8 @@
 import { render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
-import { describe, it, expect, vi } from "vitest"
+import { beforeEach, describe, it, expect, vi } from "vitest"
+import { waitFor } from "@testing-library/react"
 
 vi.mock("framer-motion", async () =>
   (await import("@/tests/helpers/framerMotionMock")).framerMotionMock()
@@ -12,7 +13,17 @@ vi.mock("react-i18next", () => ({
     i18n: { language: "en", changeLanguage: () => Promise.resolve() },
   }),
 }))
-vi.mock("@/api/events", () => ({ uploadEventImage: vi.fn(() => Promise.resolve("")) }))
+const mocks = vi.hoisted(() => ({
+  patch: vi.fn(),
+  uploadEventImage: vi.fn(),
+}))
+vi.mock("@/api/events", () => ({ uploadEventImage: mocks.uploadEventImage }))
+vi.mock("@/api/client", () => ({
+  default: { patch: mocks.patch },
+  resetEtagCache: vi.fn(),
+  registerSigningKeyAccessor: vi.fn(),
+}))
+vi.mock("@/app/logger", () => ({ logError: vi.fn() }))
 
 import { EventDetailEditDialog } from "@/components/events/EventDetailEditDialog"
 import type { Event } from "@/types/Event"
@@ -52,6 +63,12 @@ function renderDialog(props = baseProps) {
 }
 
 describe("EventDetailEditDialog", () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mocks.patch.mockResolvedValue({ data: {} })
+    mocks.uploadEventImage.mockResolvedValue("")
+  })
+
   it("renders the edit dialog when open", () => {
     renderDialog()
     const dialog = screen.getByRole("dialog")
@@ -64,11 +81,103 @@ describe("EventDetailEditDialog", () => {
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
   })
 
+  it("normalizes nullable event fields and falls back to localized title/location", () => {
+    const sparseEvent = {
+      ...baseEvent,
+      title: "",
+      title_en: "Fallback title",
+      description: null,
+      description_en: null,
+      event_type: null,
+      event_type_en: null,
+      location: "",
+      location_en: "Fallback location",
+      starts_at: null,
+      ends_at: null,
+      speaker: null,
+      image_url: null,
+      about: null,
+      about_en: null,
+    } as unknown as Event
+
+    const { unmount } = renderDialog({ ...baseProps, event: sparseEvent })
+    expect(screen.getByDisplayValue("Fallback title")).toBeInTheDocument()
+    expect(screen.getByDisplayValue("Fallback location")).toBeInTheDocument()
+
+    unmount()
+    renderDialog({
+      ...baseProps,
+      event: {
+        ...sparseEvent,
+        title: null,
+        title_en: null,
+        location: null,
+        location_en: null,
+      } as unknown as Event,
+    })
+    expect(screen.getByRole("dialog")).toBeInTheDocument()
+  })
+
   it("fires onClose when the cancel button is clicked", async () => {
     const user = userEvent.setup()
     const onClose = vi.fn()
     renderDialog({ ...baseProps, onClose })
     await user.click(screen.getByRole("button", { name: "common:buttons.cancel" }))
     expect(onClose).toHaveBeenCalledOnce()
+  })
+
+  it("saves the draft, invalidates detail/list queries, and reports success", async () => {
+    const user = userEvent.setup()
+    const onClose = vi.fn()
+    const onSuccess = vi.fn()
+    renderDialog({ ...baseProps, onClose, onSuccess })
+
+    await user.click(screen.getByRole("button", { name: "common:buttons.save" }))
+
+    await waitFor(() => expect(onSuccess).toHaveBeenCalledWith("events:card.messages.saveSuccess"))
+    expect(mocks.patch).toHaveBeenCalledWith(
+      "/events/evt-1",
+      expect.objectContaining({ id: "evt-1", image_url: baseEvent.image_url })
+    )
+    expect(onClose).toHaveBeenCalledOnce()
+  })
+
+  it("uploads a replacement image and revokes its preview URL on close", async () => {
+    const user = userEvent.setup()
+    const createObjectUrl = vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:preview")
+    const revokeObjectUrl = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined)
+    mocks.uploadEventImage.mockResolvedValue("https://cdn.example/new.png")
+    const { unmount } = renderDialog()
+    const fileInput = document.querySelector<HTMLInputElement>('input[type="file"]')
+    const file = new File(["image"], "cover.png", { type: "image/png" })
+
+    expect(fileInput).not.toBeNull()
+    await user.upload(fileInput!, file)
+    expect(createObjectUrl).toHaveBeenCalledWith(file)
+    expect(screen.getByAltText("events:alt.preview")).toBeInTheDocument()
+
+    await user.click(screen.getByRole("button", { name: "common:buttons.save" }))
+    await waitFor(() => expect(mocks.uploadEventImage).toHaveBeenCalledWith(file))
+    expect(mocks.patch).toHaveBeenCalledWith(
+      "/events/evt-1",
+      expect.objectContaining({ image_url: "https://cdn.example/new.png" })
+    )
+    unmount()
+    expect(revokeObjectUrl).toHaveBeenCalledWith("blob:preview")
+    createObjectUrl.mockRestore()
+    revokeObjectUrl.mockRestore()
+  })
+
+  it("reports save failures without closing the dialog", async () => {
+    const user = userEvent.setup()
+    const onClose = vi.fn()
+    const onError = vi.fn()
+    mocks.patch.mockRejectedValue(new Error("server unavailable"))
+    renderDialog({ ...baseProps, onClose, onError })
+
+    await user.click(screen.getByRole("button", { name: "common:buttons.save" }))
+
+    await waitFor(() => expect(onError).toHaveBeenCalledWith("events:card.messages.saveFailure"))
+    expect(onClose).not.toHaveBeenCalled()
   })
 })

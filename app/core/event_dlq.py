@@ -7,6 +7,7 @@ Provides storage and replay capabilities for events that failed processing.
 from __future__ import annotations
 
 import asyncio
+import random
 from collections import deque
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -16,8 +17,10 @@ from app.core.logging import get_logger
 
 if TYPE_CHECKING:
     from app.core.events import DomainEvent, EventBus
+    from app.core.ratelimit.circuit_breaker import CircuitState, RedisCircuitBreaker
 
 logger = get_logger(__name__)
+_dlq_tasks: set[asyncio.Task[Any]] = set()
 
 
 @dataclass
@@ -57,34 +60,44 @@ class DeadLetterQueue:
     - Retrieval and inspection of failed events
     - Replay functionality to re-process events
     - Thread-safe async operations
-
-    Example:
-        dlq = DeadLetterQueue(max_size=1000)
-        await dlq.add(failed_event, ValueError("oops"))
-
-        # Later, replay all events
-        replayed = await dlq.replay(event_bus)
+    - Automated recovery replay engine with circuit breaker listener,
+      thundering herd prevention, rate limiting, and exponential backoff.
     """
 
-    def __init__(self, max_size: int = 1000) -> None:
+    def __init__(
+        self,
+        max_size: int = 1000,
+        *,
+        event_bus: EventBus | None = None,
+        circuit_breaker: RedisCircuitBreaker | None = None,
+    ) -> None:
         """
         Initialize the DLQ.
 
         Args:
             max_size: Maximum number of events to store. Oldest events
                       are dropped when limit is reached.
+            event_bus: Optional EventBus instance for replay.
+            circuit_breaker: Optional RedisCircuitBreaker instance for auto-recovery.
         """
-        # MED-W19: This DLQ is purely in-memory.  All queued events are lost on
-        # process restart (deployment, crash, OOM kill).  For production
-        # durability, persist failed events to a database or a NATS stream.
         logger.warning(
             "DeadLetterQueue is using in-memory storage — all events will be "
-            "lost on process restart.  Consider a persistent backend for "
+            "lost on process restart. Consider a persistent backend for "
             "production use.",
         )
         self._queue: deque[FailedEvent] = deque(maxlen=max_size)
         self._lock = asyncio.Lock()
+        self._replay_lock = asyncio.Lock()
         self._max_size = max_size
+        self._event_bus = event_bus
+        self._circuit_breaker: RedisCircuitBreaker | None = None
+        self._is_replaying = False
+        self._last_replay_at: datetime | None = None
+        self._total_replayed_success = 0
+        self._total_replayed_failed = 0
+
+        if circuit_breaker is not None:
+            self.attach_circuit_breaker(circuit_breaker, event_bus)
 
     @property
     def size(self) -> int:
@@ -95,6 +108,190 @@ class DeadLetterQueue:
     def max_size(self) -> int:
         """Return maximum queue size."""
         return self._max_size
+
+    @property
+    def is_replaying(self) -> bool:
+        """Return whether automated replay is currently executing."""
+        return self._is_replaying
+
+    def attach_circuit_breaker(
+        self,
+        circuit_breaker: RedisCircuitBreaker,
+        bus: EventBus | None = None,
+    ) -> None:
+        """Attach a circuit breaker to trigger automated replay on recovery."""
+        self._circuit_breaker = circuit_breaker
+        if bus is not None:
+            self._event_bus = bus
+
+        circuit_breaker.add_state_listener(self._on_circuit_state_change)
+        logger.info(
+            "Attached RedisCircuitBreaker listener to in-memory DeadLetterQueue"
+        )
+
+    def _on_circuit_state_change(
+        self,
+        old_state: CircuitState,
+        new_state: CircuitState,
+    ) -> None:
+        """Callback triggered when circuit breaker state changes."""
+        # Trigger recovery replay when circuit moves out of OPEN (HALF_OPEN or CLOSED)
+        if getattr(new_state, "name", str(new_state)) in ("HALF_OPEN", "CLOSED"):
+            if len(self._queue) > 0:
+                logger.info(
+                    "Circuit breaker recovered (%s -> %s). Triggering automated DLQ replay (%d queued events).",
+                    getattr(old_state, "name", str(old_state)),
+                    getattr(new_state, "name", str(new_state)),
+                    len(self._queue),
+                )
+                try:
+                    loop = asyncio.get_running_loop()
+                    task = loop.create_task(self.auto_replay())
+                    _dlq_tasks.add(task)
+                    task.add_done_callback(_dlq_tasks.discard)
+                except RuntimeError:
+                    # No running loop, will be picked up on next active cycle
+                    pass
+
+    async def auto_replay(
+        self,
+        bus: EventBus | None = None,
+        *,
+        batch_size: int = 20,
+        max_retries: int = 3,
+        base_backoff: float = 0.1,
+        max_backoff: float = 5.0,
+        jitter: float = 0.1,
+        rate_limit_delay: float = 0.01,
+        force: bool = False,
+    ) -> tuple[int, int]:
+        """
+        Automated recovery replay engine.
+
+        Features:
+        - Thundering herd prevention via asyncio lock
+        - Rate-limited batch processing
+        - Exponential backoff with jitter on failures
+        - Circuit breaker monitoring during replay
+
+        Returns:
+            Tuple of (successful_count, failed_count)
+        """
+        target_bus = bus or self._event_bus
+        if not target_bus:
+            logger.warning("Auto-replay requested but no EventBus is attached")
+            return (0, 0)
+
+        # Thundering herd prevention: if replay is already in progress, skip or return
+        if self._replay_lock.locked() and not force:
+            logger.info(
+                "Auto-replay already in progress; skipping trigger (thundering herd prevention)"
+            )
+            return (0, 0)
+
+        async with self._replay_lock:
+            self._is_replaying = True
+            self._last_replay_at = datetime.now(UTC)
+            total_success = 0
+            total_failed = 0
+
+            try:
+                while len(self._queue) > 0:
+                    if self._circuit_breaker and not force:
+                        if (
+                            getattr(
+                                self._circuit_breaker.state,
+                                "name",
+                                str(self._circuit_breaker.state),
+                            )
+                            == "OPEN"
+                        ):
+                            logger.warning(
+                                "Circuit breaker is OPEN during auto-replay; pausing replay engine"
+                            )
+                            break
+
+                    async with self._lock:
+                        batch = list(self._queue)[:batch_size]
+
+                    if not batch:
+                        break
+
+                    batch_success = 0
+                    batch_failed = 0
+                    circuit_paused = False
+
+                    for failed in batch:
+                        if self._circuit_breaker and not force:
+                            if not self._circuit_breaker.allow_request():
+                                circuit_paused = True
+                                break
+
+                        try:
+                            await target_bus.publish(failed.event)
+                            await self.remove(failed.event.event_id)
+                            batch_success += 1
+                            self._total_replayed_success += 1
+                            if self._circuit_breaker:
+                                self._circuit_breaker.record_success()
+                        except Exception as exc:  # RZ-22-01-JUSTIFIED: Replay handler error must be captured for exponential backoff update
+                            batch_failed += 1
+                            self._total_replayed_failed += 1
+                            failed.retry_count += 1
+
+                            backoff = min(
+                                base_backoff * (2**failed.retry_count)
+                                + random.uniform(0, jitter),  # noqa: S311 # nosec B311
+                                max_backoff,
+                            )
+                            if failed.retry_count >= max_retries:
+                                await self.remove(failed.event.event_id)
+                                logger.error(
+                                    "Event %s permanently failed DLQ replay after %d retries: %s",
+                                    failed.event.event_id,
+                                    failed.retry_count,
+                                    exc,
+                                )
+
+                            if self._circuit_breaker:
+                                self._circuit_breaker.record_failure()
+
+                            if backoff > 0:
+                                await asyncio.sleep(backoff)
+
+                        if rate_limit_delay > 0:
+                            await asyncio.sleep(rate_limit_delay)
+
+                    total_success += batch_success
+                    total_failed += batch_failed
+
+                    if circuit_paused:
+                        # The queue is unchanged when the breaker rejects a
+                        # request; leave the outer loop or it will spin forever.
+                        break
+
+                    if batch_failed > 0 and not force:
+                        # Pause replay run on batch failure to allow backoff
+                        break
+            finally:
+                self._is_replaying = False
+
+            return (total_success, total_failed)
+
+    async def get_replay_status(self) -> dict[str, Any]:
+        """Get metrics on replay status, queue depth, and auto-replay configurations."""
+        async with self._lock:
+            return {
+                "size": len(self._queue),
+                "max_size": self._max_size,
+                "is_replaying": self._is_replaying,
+                "auto_replay_enabled": self._circuit_breaker is not None,
+                "last_replay_at": (
+                    self._last_replay_at.isoformat() if self._last_replay_at else None
+                ),
+                "total_replayed_success": self._total_replayed_success,
+                "total_replayed_failed": self._total_replayed_failed,
+            }
 
     async def add(
         self,
@@ -168,12 +365,6 @@ class DeadLetterQueue:
         Returns:
             True if event was found and removed, False otherwise.
         """
-        # MED-W19: deque deletion is O(n) — both the linear scan and the
-        # subsequent element shift.  For high-volume DLQs, replace self._queue
-        # with a dict[str, FailedEvent] keyed on event_id to achieve O(1)
-        # removal.  The deque is retained here to preserve insertion-ordered
-        # iteration for replay(), but a dict preserves insertion order in
-        # Python ≥ 3.7 and is a safe drop-in replacement.
         async with self._lock:
             for i, failed in enumerate(self._queue):
                 if failed.event.event_id == event_id:

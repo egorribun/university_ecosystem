@@ -58,20 +58,145 @@ _LIST_FIELD_NAMES: frozenset[str] = frozenset(
     }
 )
 
-_FIELD_COST: int = 1  # scalar / single-object field
-_LIST_FIELD_COST: int = 5  # list field — O(N) resolver / DataLoader fan-out
+# R2: DataLoader fields from app/graphql/dataloaders.py and resolvers resolving via DataLoaders
+_DATALOADER_FIELD_NAMES: frozenset[str] = (
+    frozenset(
+        {
+            "users",
+            "news",
+            "events",
+            "author",
+            "organizer",
+        }
+    )
+    | _LIST_FIELD_NAMES
+)
+
+_FIELD_COST: int = 1  # scalar / single-object field standard cost
+_DATALOADER_COST_MULTIPLIER: int = 5  # 5x cost multiplier for DataLoader fields
+_DATALOADER_FIELD_COST: int = _FIELD_COST * _DATALOADER_COST_MULTIPLIER  # 5
+_LIST_FIELD_COST: int = _DATALOADER_FIELD_COST  # backward-compatibility alias
 _MAX_QUERY_COST: int = 200  # vetted against current schema; increase as needed
 
 # TD-14-03 (audit 2026-03-23): Per-user cost budget per 60-second tumbling window.
-# A single query may cost up to _MAX_QUERY_COST (200), but sustained batching of
-# 200-cost queries would exhaust the connection pool. 1 000 cost/min ≈ 5 max-cost
-# queries per minute per user — generous for normal usage, blocks abuse.
 _MAX_USER_COST_PER_MINUTE: int = 1_000
 
+# R3: Token Bucket Rate Limiting configuration
+_TOKEN_BUCKET_CAPACITY: int = 1000
+_TOKEN_BUCKET_REFILL_RATE: float = 50.0  # tokens per second
+_TOKEN_BUCKET_TTL: int = 3600  # 1 hour key TTL in Redis
+
+_BUCKET_LUA_SCRIPT: str = """
+local key = KEYS[1]
+local cost = tonumber(ARGV[1])
+local capacity = tonumber(ARGV[2])
+local refill_rate = tonumber(ARGV[3])
+local now = tonumber(ARGV[4])
+local ttl = tonumber(ARGV[5])
+
+local data = redis.call("HMGET", key, "tokens", "last_updated")
+local tokens = tonumber(data[1])
+local last_updated = tonumber(data[2])
+
+if tokens == nil then
+    tokens = capacity
+    last_updated = now
+else
+    local delta = math.max(0, now - last_updated)
+    tokens = math.min(capacity, tokens + delta * refill_rate)
+    last_updated = now
+end
+
+if tokens >= cost then
+    tokens = tokens - cost
+    redis.call("HMSET", key, "tokens", tokens, "last_updated", last_updated)
+    redis.call("EXPIRE", key, ttl)
+    return {1, math.floor(tokens)}
+else
+    redis.call("HMSET", key, "tokens", tokens, "last_updated", last_updated)
+    redis.call("EXPIRE", key, ttl)
+    return {0, math.floor(tokens)}
+end
+"""
+
 # In-memory fallback for per-user cost quota when Redis is unavailable.
-# {user_id: (accumulated_cost, window_minute)} — window_minute = int(time.time() // 60)
 _user_cost_memory: dict[str, tuple[int, int]] = {}
 _user_cost_lock = asyncio.Lock()
+
+# R3: In-memory fallback for token bucket
+_memory_token_buckets: dict[str, tuple[float, float]] = {}
+_memory_token_bucket_lock = asyncio.Lock()
+
+
+async def _consume_token_bucket_memory(
+    key: str, cost: int, capacity: int, refill_rate: float, now: float
+) -> tuple[bool, int]:
+    """Process-local token bucket consumption fallback."""
+    async with _memory_token_bucket_lock:
+        tokens, last_updated = _memory_token_buckets.get(key, (float(capacity), now))
+        delta = max(0.0, now - last_updated)
+        tokens = min(float(capacity), tokens + delta * refill_rate)
+        last_updated = now
+
+        if tokens >= cost:
+            tokens -= cost
+            _memory_token_buckets[key] = (tokens, last_updated)
+            return True, int(tokens)
+        else:
+            _memory_token_buckets[key] = (tokens, last_updated)
+            return False, int(tokens)
+
+
+async def _consume_token_bucket(
+    key: str,
+    cost: int,
+    capacity: int = _TOKEN_BUCKET_CAPACITY,
+    refill_rate: float = _TOKEN_BUCKET_REFILL_RATE,
+    ttl: int = _TOKEN_BUCKET_TTL,
+) -> tuple[bool, int]:
+    """Deduct cost from Redis token bucket atomically via Lua script.
+
+    Key patterns:
+    - Authenticated users: `gql:token_bucket:{user_id}`
+    - Anonymous users: `gql:token_bucket:ip:{ip}`
+
+    Falls back to process-local token bucket on Redis connection/timeout/scripting error.
+    Returns (success: bool, remaining_tokens: int).
+    """
+    try:
+        from redis.exceptions import ResponseError
+    except ImportError:
+        ResponseError = OSError  # type: ignore[misc, assignment]
+
+    now = time.time()
+    try:
+        from app.deps.cache import get_cache_client
+
+        redis = await get_cache_client()
+        res = await redis.eval(  # type: ignore[no-untyped-call]
+            _BUCKET_LUA_SCRIPT,
+            1,
+            key,
+            cost,
+            capacity,
+            refill_rate,
+            now,
+            ttl,
+        )
+        if isinstance(res, (list, tuple)) and len(res) >= 2:
+            return bool(int(res[0])), int(res[1])
+        return await _consume_token_bucket_memory(key, cost, capacity, refill_rate, now)
+    except (
+        ConnectionError,
+        TimeoutError,
+        OSError,
+        ResponseError,
+    ):  # RZ-22-01-JUSTIFIED: Fall back to process-local token bucket on Redis error
+        logger.warning(
+            "GraphQL token bucket falling back to process-local token bucket",
+            extra={"key": key, "cost": cost},
+        )
+        return await _consume_token_bucket_memory(key, cost, capacity, refill_rate, now)
 
 
 async def _increment_user_cost(user_id: str, cost: int, window_minute: int) -> int:
@@ -119,6 +244,8 @@ class _CostVisitor(Visitor):
 
     Traverses the full document including inline fragments and named fragment
     spreads — which ``MaxTokensLimiter`` does not fully expand.
+    Applies a 5x cost multiplier for fields invoking DataLoaders from
+    app/graphql/dataloaders.py or fields resolving via DataLoaders.
     """
 
     def __init__(self) -> None:
@@ -127,29 +254,24 @@ class _CostVisitor(Visitor):
 
     def enter_field(self, node: FieldNode, *_args: object) -> None:
         name = node.name.value
-        self.cost += _LIST_FIELD_COST if name in _LIST_FIELD_NAMES else _FIELD_COST
+        if name in _DATALOADER_FIELD_NAMES or name in _LIST_FIELD_NAMES:
+            self.cost += _DATALOADER_FIELD_COST
+        else:
+            self.cost += _FIELD_COST
 
 
 class QueryCostExtension(SchemaExtension):
-    """Reject GraphQL operations whose estimated cost exceeds _MAX_QUERY_COST.
-
-    D-06 (audit 2026-03-08): Complements QueryDepthLimiter (structural nesting)
-    and MaxTokensLimiter (raw token budget) with a semantic cost model that
-    weights list-returning fields (O(N) resolvers / DataLoader fan-outs) more
-    heavily than scalar fields.
+    """Reject GraphQL operations whose estimated cost exceeds _MAX_QUERY_COST or token bucket balance.
 
     Evaluation happens in on_validate() — after parsing, before any DB
-    round-trip — so high-cost queries are rejected cheaply.  Errors from
-    the existing depth/token limiters are respected: if they already rejected
-    the query, cost analysis is skipped.
+    round-trip or resolver / DataLoader execution — so high-cost or rate-limited
+    queries are rejected pre-validation.
     """
 
     async def on_validate(self) -> AsyncGenerator[None]:
         yield  # let QueryDepthLimiter, MaxTokensLimiter, and other rules run first
 
         # If prior validators already rejected the query, skip cost analysis.
-        # Use getattr for compatibility — execution_context.errors is not
-        # guaranteed to exist during the validation phase in all Strawberry versions.
         if getattr(self.execution_context, "pre_execution_errors", None):
             return
 
@@ -177,13 +299,13 @@ class QueryCostExtension(SchemaExtension):
                 "especially list fields (chats, messages, users, etc.)."
             )
 
-        # TD-14-03 (audit 2026-03-23): Per-user minute budget.
-        # Only applies to authenticated users — anonymous requests are already
-        # guarded by per-IP rate limiting at the gateway layer.
         context = getattr(self.execution_context, "context", None)
         current_user = getattr(context, "current_user", None)
-        if current_user is not None:
+        request = getattr(context, "request", None)
+
+        if current_user is not None and getattr(current_user, "id", None) is not None:
             user_id = str(current_user.id)
+            bucket_key = f"gql:token_bucket:{user_id}"
             window_minute = int(time.time() // 60)
             new_total = await _increment_user_cost(user_id, cost, window_minute)
             if new_total > _MAX_USER_COST_PER_MINUTE:
@@ -197,8 +319,55 @@ class QueryCostExtension(SchemaExtension):
                     f"GraphQL rate limit exceeded. Budget: {_MAX_USER_COST_PER_MINUTE} "
                     "cost/min. Reduce query frequency or complexity and try again."
                 )
+        else:
+            ip = None
+            if request is not None:
+                client = getattr(request, "client", None)
+                if client is not None and getattr(client, "host", None):
+                    ip = client.host
+                if not ip:
+                    headers = getattr(request, "headers", {})
+                    forwarded = headers.get("x-forwarded-for") or headers.get(
+                        "X-Forwarded-For"
+                    )
+                    if forwarded:
+                        ip = forwarded.split(",")[0].strip()
+            if not ip:
+                ip = "127.0.0.1"
+            bucket_key = f"gql:token_bucket:ip:{ip}"
 
-        logger.debug("GraphQL query cost=%d (max=%d)", cost, _MAX_QUERY_COST)
+        allowed, remaining_tokens = await _consume_token_bucket(
+            key=bucket_key,
+            cost=cost,
+            capacity=_TOKEN_BUCKET_CAPACITY,
+            refill_rate=_TOKEN_BUCKET_REFILL_RATE,
+        )
+
+        if not allowed:
+            logger.warning(
+                "GraphQL quota exceeded for key=%s query_cost=%d remaining_balance=%d max_capacity=%d",  # pragma: allowlist secret
+                bucket_key,
+                cost,
+                remaining_tokens,
+                _TOKEN_BUCKET_CAPACITY,
+            )
+            raise GraphQLError(
+                f"GraphQL rate limit exceeded: required query cost {cost} exceeds available token bucket balance ({remaining_tokens} tokens).",
+                extensions={
+                    "http": {"status_code": 429},
+                    "code": "RATE_LIMITED",
+                    "status_code": 429,
+                    "required_cost": cost,
+                    "available_tokens": remaining_tokens,
+                },
+            )
+
+        logger.debug(
+            "GraphQL query cost=%d (max=%d, remaining=%d)",
+            cost,
+            _MAX_QUERY_COST,
+            remaining_tokens,
+        )
 
 
 class RequestTimeoutExtension(SchemaExtension):
@@ -237,7 +406,7 @@ class RequestTimeoutExtension(SchemaExtension):
 
 # Path to the query manifest generated by the frontend build.
 # Format: {"<sha256-hex>": "<original-query-string>", ...}
-_MANIFEST_PATH = Path(__file__).resolve().parent / "query-manifest.json"
+_MANIFEST_PATH = Path(__file__).resolve().parent / "persisted_queries.json"
 
 _query_allowlist: dict[str, str] | None = None
 _manifest_lock = threading.Lock()  # RZ-25-05: protect lazy manifest load
@@ -253,7 +422,11 @@ def _load_manifest() -> dict[str, str]:
             return _query_allowlist  # type: ignore[unreachable]  # RZ-25-05: concurrent double-check
         if _MANIFEST_PATH.exists():
             try:
-                _query_allowlist = json.loads(_MANIFEST_PATH.read_text("utf-8"))
+                data = json.loads(_MANIFEST_PATH.read_text("utf-8"))
+                if isinstance(data, dict):
+                    _query_allowlist = {str(k): str(v) for k, v in data.items()}
+                else:
+                    _query_allowlist = {}
                 logger.info(
                     "Loaded %d persisted queries from %s",
                     len(_query_allowlist),
@@ -282,54 +455,101 @@ class PersistedQueryExtension(SchemaExtension):
     """Reject unknown queries in production when a manifest is present.
 
     MOD-21-02 (audit 2026-03-25 Wave 21): In production, only queries whose
-    SHA-256 hash appears in ``query-manifest.json`` are accepted.  This
+    SHA-256 hash appears in ``persisted_queries.json`` are accepted.  This
     eliminates arbitrary query execution and reduces the attack surface to
     a known, reviewed set of operations.
 
-    In development/testing the extension is a no-op (all queries accepted).
-
-    Frontend integration:
-    1. ``vite build`` extracts all GraphQL operations → ``query-manifest.json``
-    2. Deploy the manifest alongside the backend
-    3. Clients send ``extensions: { persistedQuery: { sha256Hash: "..." } }``
-       OR the full query body (the extension hashes it server-side)
+    In development/testing the extension allows unpersisted queries, but
+    resolves persisted query hashes if present in ``persisted_queries.json``.
     """
 
     async def on_validate(self) -> AsyncGenerator[None]:
-        yield  # let other validators run first
+        from graphql import parse
 
         from app.core.config import settings
 
-        if settings.environment in {"development", "testing", "local"}:
-            return
+        # Determine environment
+        env = str(getattr(settings, "environment", "production")).lower()
+        is_dev = env in {"development", "testing", "local"}
 
-        manifest = _load_manifest()
-        if not manifest:
-            return  # no manifest → allow all (graceful degradation)
+        raw_query = getattr(self.execution_context, "query", None)
+        if raw_query is not None and not isinstance(raw_query, str):
+            raw_query = str(raw_query) if raw_query else ""
 
-        query = getattr(self.execution_context, "query", None)
-        if not query:
-            return
-
-        # Check the extensions block for a client-provided hash first.
         extensions = getattr(self.execution_context, "extensions", None) or {}
         pq = (
             extensions.get("persistedQuery", {}) if isinstance(extensions, dict) else {}
         )
         client_hash = pq.get("sha256Hash", "") if isinstance(pq, dict) else ""
+        if not isinstance(client_hash, str):
+            client_hash = str(client_hash) if client_hash else ""
 
-        query_hash = client_hash or _hash_query(query)
+        manifest = _load_manifest()
 
-        if query_hash not in manifest:
-            logger.warning(
-                "Rejected unknown query (hash=%s): %s",
-                query_hash[:16],
-                query[:80],
+        # Before yield: resolve APQ hash-only query if present in manifest
+        if not raw_query and client_hash and client_hash in manifest:
+            resolved_query = manifest[client_hash]
+            self.execution_context.query = resolved_query
+            if getattr(self.execution_context, "graphql_document", None) is None:
+                try:
+                    self.execution_context.graphql_document = parse(resolved_query)
+                except (
+                    Exception
+                ) as exc:  # RZ-22-01-JUSTIFIED: invalid query syntax fallback
+                    logger.debug("APQ query AST parse failed: %s", exc)
+            raw_query = resolved_query
+
+        yield
+
+        # After yield: perform allowlist validation
+        if is_dev:
+            # Development / testing / local environment:
+            # - Raw unpersisted queries remain allowed.
+            # - If sha256Hash was passed without raw query body and not found in manifest:
+            if (
+                not getattr(self.execution_context, "query", None)
+                and client_hash
+                and client_hash not in manifest
+            ):
+                raise GraphQLError("Persisted query not found in allowlist")
+            return
+
+        # Production environment:
+        # Require persisted_queries.json manifest to exist and be readable/non-empty.
+        if (
+            not _MANIFEST_PATH.exists()
+            or not manifest
+            or not isinstance(manifest, dict)
+        ):
+            raise GraphQLError("Persisted query manifest missing or unreadable")
+
+        current_query = getattr(self.execution_context, "query", None)
+        if current_query is not None and not isinstance(current_query, str):
+            current_query = str(current_query) if current_query else ""
+
+        # 1. APQ Hash-only Query (request contains sha256Hash without raw query body)
+        if not current_query and client_hash:
+            if client_hash not in manifest:
+                raise GraphQLError("Persisted query not found in allowlist")
+
+        # 2. Raw query string provided
+        elif current_query:
+            computed_hash = _hash_query(current_query)
+            query_stripped = current_query.strip()
+
+            is_in_allowlist = (
+                (client_hash and client_hash in manifest)
+                or (computed_hash in manifest)
+                or (current_query in manifest)
+                or (query_stripped in manifest)
             )
-            raise GraphQLError(
-                "This query is not in the persisted-query allowlist. "
-                "Use a known operation or update the query manifest."
-            )
+
+            if not is_in_allowlist:
+                raise GraphQLError("Query not found in persisted query allowlist")
+
+        # 3. Neither raw query nor client_hash provided
+        else:
+            raise GraphQLError("Persisted query not found in allowlist")
 
 
 __all__ = ["PersistedQueryExtension", "QueryCostExtension", "RequestTimeoutExtension"]

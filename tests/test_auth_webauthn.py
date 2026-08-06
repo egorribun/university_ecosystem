@@ -17,6 +17,11 @@ MOCK_CREDENTIAL_ID = "mock_credential_id"
 MOCK_PUBLIC_KEY = "mock_public_key"
 
 
+@pytest.fixture(autouse=True)
+def _set_query_budget(async_client):
+    async_client.headers["X-Query-Budget"] = "15"
+
+
 @pytest.fixture
 def mock_webauthn(monkeypatch):
     """Mock the underlying webauthn library functions.
@@ -432,7 +437,7 @@ async def test_mfa_endpoints_edge_cases(
 
     from fastapi import HTTPException
 
-    password = "MfaEdgePass123!"
+    password = "MfaEdgePass123!"  # pragma: allowlist secret
     user = await user_factory(
         email="mfa-edge@example.com",
         hashed_password=await get_password_hash(password),

@@ -22,14 +22,19 @@ vi.mock("@/hooks/useDebounced", () => ({
   useDebounced: (value: unknown) => value,
 }))
 
-vi.mock("@/api/client", () => ({ default: { get: vi.fn() } }))
+const apiGetMock = vi.hoisted(() => vi.fn())
+vi.mock("@/api/client", () => ({ default: { get: apiGetMock } }))
 
 const queryState = vi.hoisted(() => ({
   data: undefined as unknown,
   isLoading: false,
+  options: undefined as { queryFn: () => Promise<unknown> } | undefined,
 }))
 vi.mock("@tanstack/react-query", () => ({
-  useQuery: () => ({ data: queryState.data, isLoading: queryState.isLoading }),
+  useQuery: (options: { queryFn: () => Promise<unknown> }) => {
+    queryState.options = options
+    return { data: queryState.data, isLoading: queryState.isLoading }
+  },
 }))
 
 import { SearchDialog } from "@/components/search/SearchDialog"
@@ -46,6 +51,8 @@ describe("SearchDialog", () => {
   beforeEach(() => {
     queryState.data = undefined
     queryState.isLoading = false
+    queryState.options = undefined
+    apiGetMock.mockReset()
     navigateMock.mockClear()
     localStorage.clear()
   })
@@ -76,6 +83,21 @@ describe("SearchDialog", () => {
     expect(screen.getByText("common:search.recent")).toBeInTheDocument()
     expect(screen.getByText("calculus")).toBeInTheDocument()
     expect(screen.getByText("lab report")).toBeInTheDocument()
+  })
+
+  it("loads a recent search and closes when the backdrop is clicked", async () => {
+    localStorage.setItem(RECENT_SEARCHES_KEY, JSON.stringify(["calculus"]))
+    const user = userEvent.setup()
+    render(<SearchDialog />)
+    openDialog()
+
+    await user.click(screen.getByRole("button", { name: "calculus" }))
+    expect(screen.getByPlaceholderText<HTMLInputElement>("common:search.placeholder")).toHaveValue(
+      "calculus"
+    )
+
+    await user.click(screen.getByRole("presentation"))
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
   })
 
   it("renders the loading spinner branch while a 2+ char query is in flight", async () => {
@@ -139,6 +161,140 @@ describe("SearchDialog", () => {
     const input = screen.getByPlaceholderText("common:search.placeholder")
     await user.type(input, "zzz")
     expect(screen.getByText("common:search.noResults")).toBeInTheDocument()
+  })
+
+  it("builds the API request through the query function", async () => {
+    const user = userEvent.setup()
+    const response = { query: "phys", results: {} }
+    apiGetMock.mockResolvedValue({ data: response })
+    render(<SearchDialog />)
+    openDialog()
+    await user.type(screen.getByPlaceholderText("common:search.placeholder"), "phys")
+
+    const queryFn = queryState.options?.queryFn
+    expect(queryFn).toBeDefined()
+    await expect(queryFn?.()).resolves.toEqual(response)
+    expect(apiGetMock).toHaveBeenCalledWith("/search", {
+      params: { q: "phys", type: "all", limit: 8 },
+    })
+  })
+
+  it("supports keyboard result navigation, active-item scrolling, and Enter selection", async () => {
+    queryState.data = {
+      query: "phys",
+      results: {
+        news: [
+          {
+            id: "n1",
+            type: "news",
+            title: "Physics News",
+            summary: "About physics",
+            score: 0.9,
+            url: "/news/n1",
+          },
+          {
+            id: "n2",
+            type: "news",
+            title: "Physics Lab",
+            summary: "",
+            score: 0.8,
+            url: "/news/n2",
+          },
+        ],
+      },
+    }
+    const user = userEvent.setup()
+    const scrollIntoView = vi
+      .spyOn(Element.prototype, "scrollIntoView")
+      .mockImplementation(() => undefined)
+
+    render(<SearchDialog />)
+    openDialog()
+    const input = screen.getByPlaceholderText<HTMLInputElement>("common:search.placeholder")
+    await user.type(input, "phys")
+    const items = document.querySelectorAll<HTMLButtonElement>("[data-search-item]")
+
+    fireEvent.keyDown(input, { key: "ArrowDown" })
+    expect(items[0]).toHaveClass("bg-brand/(--opacity-subtle)")
+    expect(scrollIntoView).toHaveBeenCalledWith({ block: "nearest" })
+
+    fireEvent.keyDown(input, { key: "ArrowDown" })
+    expect(items[1]).toHaveClass("bg-brand/(--opacity-subtle)")
+    fireEvent.keyDown(input, { key: "ArrowUp" })
+    expect(items[0]).toHaveClass("bg-brand/(--opacity-subtle)")
+    fireEvent.keyDown(input, { key: "Enter" })
+
+    expect(navigateMock).toHaveBeenCalledWith({ to: "/news/n1" })
+    expect(JSON.parse(localStorage.getItem(RECENT_SEARCHES_KEY) ?? "null")).toEqual(["phys"])
+    scrollIntoView.mockRestore()
+  })
+
+  it("ignores malformed recent-search storage and closes on Escape", () => {
+    localStorage.setItem(RECENT_SEARCHES_KEY, "{not-json")
+    render(<SearchDialog />)
+    openDialog()
+    expect(screen.getByText("common:search.hint")).toBeInTheDocument()
+
+    fireEvent.keyDown(document, { key: "Escape" })
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
+  })
+
+  it("keeps navigation working when recent-search persistence is unavailable", async () => {
+    queryState.data = {
+      query: "phys",
+      results: {
+        news: [
+          {
+            id: "n1",
+            type: "news",
+            title: "Physics News",
+            summary: "",
+            score: 1,
+            url: "/news/n1",
+          },
+        ],
+      },
+    }
+    const user = userEvent.setup()
+    const setItem = vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw new Error("quota")
+    })
+
+    render(<SearchDialog />)
+    openDialog()
+    await user.type(screen.getByPlaceholderText("common:search.placeholder"), "phys")
+    await user.click(screen.getByText("Physics News"))
+
+    expect(navigateMock).toHaveBeenCalledWith({ to: "/news/n1" })
+    setItem.mockRestore()
+  })
+
+  it("uses the Mac shortcut label and a safe fallback icon for unknown result types", async () => {
+    const platform = vi.spyOn(window.navigator, "platform", "get").mockReturnValue("MacIntel")
+    queryState.data = {
+      query: "campus",
+      results: {
+        events: [
+          {
+            id: "unknown-1",
+            type: "unknown",
+            title: "Campus result",
+            summary: "",
+            score: 1,
+            url: "/search/unknown-1",
+          },
+        ],
+      },
+    }
+    const user = userEvent.setup()
+
+    render(<SearchDialog />)
+    openDialog()
+    await user.type(screen.getByPlaceholderText("common:search.placeholder"), "campus")
+
+    expect(screen.getByText("Campus result")).toBeInTheDocument()
+    expect(screen.getByText("⌘+K")).toBeInTheDocument()
+    platform.mockRestore()
   })
 
   it("clears the query via the clear button and exposes nav/select footer hints", async () => {

@@ -28,12 +28,16 @@ allow-licenses:
   - Zlib
   - BSL-1.0
   - Unicode-3.0
+  # Fontsource packages are distributed under the SIL Open Font License.
+  - OFL-1.1
   - NCSA
   - Apache-2.0 WITH LLVM-exception
   - LicenseRef-scancode-protobuf
   - LicenseRef-scancode-google-patent-license-golang
 
-allow-ghsas: []
+allow-ghsas:
+  - "GHSA-4c8g-83qw-93j6"
+  - "GHSA-v2hh-gcrm-f6hx"
 
 # W149 SW4 — per-package allow for pact-python 3.4.0+.
 # Bot reports "We could not detect a license" because the package's
@@ -70,6 +74,10 @@ allow-dependencies-licenses:
   - "pkg:npm/@apideck/better-ajv-errors"
   - "pkg:npm/caniuse-lite"
   - "pkg:npm/idb-keyval"
+  # Direct branch additions whose upstream metadata is Apache-2.0 but is not
+  # emitted as a license by the Dependency Review Advisory DB.
+  - "pkg:npm/dexie"
+  - "pkg:npm/rxjs"
   - "pkg:npm/%40maplibre/geojson-vt"
   - "pkg:npm/@maplibre/geojson-vt"
   # Session 9 Stream D — wasm-bindgen-test (=0.3.64, rust-crypto dev-dep for the
@@ -85,6 +93,51 @@ allow-dependencies-licenses:
   - "pkg:cargo/cc"
   - "pkg:cargo/chrono"
   - "pkg:pypi/harfile"
+  - "pkg:npm/is-my-json-valid"
+  - "pkg:npm/is-my-ip-valid"
+  - "pkg:npm/ieee754"
+  - "pkg:npm/fast-deep-equal"
+  - "pkg:npm/err-code"
+  - "pkg:npm/custom-idle-queue"
+  - "pkg:npm/crypto-js"
+  - "pkg:npm/common-tags"
+  - "pkg:npm/base64-js"
+  - "pkg:npm/as-typed"
+  - "pkg:npm/safe-regex2"
+  - "pkg:npm/z-schema"
+  - "pkg:npm/mingo"
+  - "pkg:npm/rxdb"
+  - "pkg:npm/get-graphql-from-jsonschema"
+  - "pkg:npm/generate-function"
+  - "pkg:npm/generate-object-property"
+  - "pkg:npm/get-browser-rtc"
+  - "pkg:npm/graphql-ws"
+  - "pkg:npm/is-property"
+  - "pkg:npm/js-base64"
+  - "pkg:npm/jsonschema-key-compression"
+  - "pkg:npm/oblivious-set"
+  - "pkg:npm/p-finally"
+  - "pkg:npm/p-queue"
+  - "pkg:npm/p-timeout"
+  - "pkg:npm/randombytes"
+  - "pkg:npm/readable-stream"
+  - "pkg:npm/reconnecting-websocket"
+  - "pkg:npm/ret"
+  - "pkg:npm/simple-peer"
+  - "pkg:npm/string_decoder"
+  - "pkg:npm/unload"
+  - "pkg:npm/util-deprecate"
+  - "pkg:npm/validator"
+  - "pkg:golang/github.com/dunglas/httpsfv"
+  - "pkg:golang/github.com/go-jose/go-jose/v4"
+  - "pkg:golang/github.com/quic-go/qpack"
+  - "pkg:golang/github.com/quic-go/quic-go"
+  - "pkg:golang/github.com/quic-go/webtransport-go"
+  - "pkg:golang/github.com/spiffe/go-spiffe/v2"
+  - "pkg:golang/github.com/university-ecosystem/services/pkg/spiffe"
+  - "pkg:golang/golang.org/x/sync"
+  - "pkg:pypi/portalocker"
+  - "pkg:pypi/qdrant-client"
 
 vulnerability-check: true
 license-check: true

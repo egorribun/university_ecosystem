@@ -652,3 +652,91 @@ describe("loginWithPasskey", () => {
     ).rejects.toThrow("passkey unavailable")
   })
 })
+
+describe("useAuthApi — residual defensive branches", () => {
+  it("rejects a null token response as invalid", async () => {
+    const w = makeWires()
+    mocks.apiPost.mockResolvedValue({ status: 200, data: null } as never)
+    const { result } = renderApi(w)
+
+    await expect(
+      act(async () => {
+        await result.current.login("a@b.dev", "pw")
+      })
+    ).rejects.toThrow("Invalid response from server")
+  })
+
+  it("formats lockouts measured in hours", async () => {
+    const w = makeWires()
+    mocks.apiPost.mockRejectedValue(lockedError("7200"))
+    const { result } = renderApi(w)
+
+    await expect(
+      act(async () => {
+        await result.current.login("a@b.dev", "pw")
+      })
+    ).rejects.toThrow(/login\.duration\.hours:2/)
+  })
+
+  it("swallows push soft-sync failures after a recovered login consent", async () => {
+    const w = makeWires()
+    mocks.apiPost.mockResolvedValue({ status: 200, data: { user: fullUser() } })
+    mocks.recoverPushConsentFromBrowser.mockResolvedValue(true)
+    mocks.softSyncPushSubscription.mockRejectedValue(new Error("push sync unavailable"))
+    const { result } = renderApi(w)
+
+    await act(async () => {
+      await result.current.login("a@b.dev", "pw")
+    })
+    await waitFor(() => expect(mocks.softSyncPushSubscription).toHaveBeenCalled())
+  })
+
+  it("swallows push soft-sync failures after an MFA verification", async () => {
+    const w = makeWires()
+    mocks.apiPost.mockResolvedValue({ status: 200, data: { user: fullUser() } })
+    mocks.recoverPushConsentFromBrowser.mockResolvedValue(true)
+    mocks.softSyncPushSubscription.mockRejectedValue(new Error("push sync unavailable"))
+    const { result } = renderApi(w)
+
+    await act(async () => {
+      await result.current.submitMfaChallenge({ code: "123456", challengeToken: "ct" })
+    })
+    await waitFor(() => expect(mocks.softSyncPushSubscription).toHaveBeenCalled())
+  })
+
+  it("swallows push soft-sync failures after a passkey verification", async () => {
+    const w = makeWires()
+    mocks.apiPost
+      .mockResolvedValueOnce({
+        status: 200,
+        data: { publicKey: {}, challenge_token: "ct" },
+      })
+      .mockResolvedValueOnce({ status: 200, data: { user: fullUser() } })
+    mocks.recoverPushConsentFromBrowser.mockResolvedValue(true)
+    mocks.softSyncPushSubscription.mockRejectedValue(new Error("push sync unavailable"))
+    const { result } = renderApi(w)
+
+    await act(async () => {
+      await result.current.loginWithPasskey("a@b.dev")
+    })
+    await waitFor(() => expect(mocks.softSyncPushSubscription).toHaveBeenCalled())
+  })
+
+  it("swallows a dashboard prefetch import failure", async () => {
+    vi.doMock("@/hooks/useDashboardStories", () => {
+      throw new Error("dashboard module unavailable")
+    })
+    try {
+      const w = makeWires()
+      mocks.apiPost.mockResolvedValue({ status: 200, data: { user: fullUser() } })
+      const { result } = renderApi(w)
+
+      await act(async () => {
+        await result.current.login("a@b.dev", "pw")
+      })
+      await waitFor(() => expect(w.setUser).toHaveBeenCalled())
+    } finally {
+      vi.doUnmock("@/hooks/useDashboardStories")
+    }
+  })
+})

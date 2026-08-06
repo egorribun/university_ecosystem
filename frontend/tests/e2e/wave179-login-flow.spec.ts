@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test"
+import { expect, test } from "./test"
 
 /**
  * Wave 179 SW9 login-flow regression e2e (closes W174 §Honesty #4-playwright).

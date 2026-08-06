@@ -16,6 +16,11 @@ from app.models import ActiveSession
 pytestmark = pytest.mark.asyncio(loop_scope="session")
 
 
+@pytest.fixture(autouse=True)
+def _set_query_budget(async_client):
+    async_client.headers["X-Query-Budget"] = "15"
+
+
 async def _create_active_user(user_factory, password: str):
     hashed = await get_password_hash(password)
     return await user_factory(hashed_password=hashed, is_active=True)
@@ -25,7 +30,10 @@ async def _login(async_client, email: str, password: str):
     response = await async_client.post(
         "/auth/login",
         data={"username": email, "password": password},
-        headers={"Content-Type": "application/x-www-form-urlencoded"},
+        headers={
+            "Content-Type": "application/x-www-form-urlencoded",
+            "X-Query-Budget": "15",
+        },
     )
     # The login process forcibly rotates the CSRF token (RZ-5).
     # Update the test client's headers so subsequent mutating requests
@@ -133,7 +141,9 @@ async def test_login_cookie_security_modes(
     if new_csrf_token:
         async_client.cookies.set("csrf_token", new_csrf_token)
 
-    profile_response = await async_client.get("/users/me")
+    profile_response = await async_client.get(
+        "/users/me", headers={"X-Query-Budget": "15"}
+    )
     assert profile_response.status_code == 200
     assert profile_response.json()["email"] == user.email
 

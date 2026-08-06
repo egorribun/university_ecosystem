@@ -16,6 +16,11 @@ from app.core.config import settings
 from app.models import ActiveSession
 
 
+@pytest.fixture(autouse=True)
+def _set_query_budget(async_client):
+    async_client.headers["X-Query-Budget"] = "15"
+
+
 async def _login(
     async_client: AsyncClient,
     *,
@@ -41,7 +46,11 @@ async def _login(
         )
     assert response.status_code == 200
     token = response.cookies.get("access_token_v2")
-    return {"Authorization": f"Bearer {token}", "User-Agent": user_agent}
+    return {
+        "Authorization": f"Bearer {token}",
+        "User-Agent": user_agent,
+        "X-Query-Budget": "15",
+    }
 
 
 async def _enable_totp(async_client: AsyncClient, headers: dict[str, str]) -> str:

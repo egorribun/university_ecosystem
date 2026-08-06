@@ -8,6 +8,7 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.ext.compiler import compiles
 
+import app.models  # noqa: F401
 from app.core import database
 from app.core.database import Base, init_database
 
@@ -408,6 +409,8 @@ async def prepare_database() -> AsyncIterator[None]:
                 payload JSON NOT NULL,
                 metadata JSON,
                 version INTEGER NOT NULL DEFAULT 1,
+                prev_hash VARCHAR(64),
+                hash VARCHAR(64),
                 subject VARCHAR(255),
                 status VARCHAR(20) NOT NULL DEFAULT 'pending',
                 trace_context JSON,
@@ -428,6 +431,25 @@ async def prepare_database() -> AsyncIterator[None]:
         )
         await conn.exec_driver_sql(
             "CREATE INDEX IF NOT EXISTS ix_stored_events_pending ON stored_events(status, created_at)"
+        )
+
+        # dead_letter_jobs table
+        await conn.exec_driver_sql(
+            """
+            CREATE TABLE IF NOT EXISTS dead_letter_jobs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                job_type VARCHAR(100) NOT NULL,
+                job_hash VARCHAR(64) NOT NULL UNIQUE,
+                payload TEXT NOT NULL,
+                error_message TEXT,
+                retry_count INTEGER NOT NULL DEFAULT 0,
+                max_retries INTEGER NOT NULL DEFAULT 3,
+                status VARCHAR(20) NOT NULL DEFAULT 'pending',
+                next_retry_at DATETIME,
+                created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+        """
         )
 
     yield

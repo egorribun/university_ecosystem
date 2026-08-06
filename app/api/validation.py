@@ -139,7 +139,7 @@ def require_owner_or_admin(
     locale: str,
     *,
     owner_id: uuid.UUID | int | str,
-) -> None: ...
+) -> None: ...  # pragma: no branch
 
 
 @overload
@@ -149,7 +149,7 @@ def require_owner_or_admin(
     *,
     owner_id: uuid.UUID | int | str,
     allow_teacher: bool,
-) -> None: ...
+) -> None: ...  # pragma: no branch
 
 
 def require_owner_or_admin(

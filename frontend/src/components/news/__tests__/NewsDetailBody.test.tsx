@@ -56,4 +56,18 @@ describe("NewsDetailBody", () => {
     expect(() => render(<NewsDetailBody content="" />)).not.toThrow()
     expect(screen.queryByText("news:toc.title")).not.toBeInTheDocument()
   })
+
+  it("renders pull quotes and skips blank legacy paragraphs", () => {
+    const { container } = render(
+      <NewsDetailBody content={"\n\n> Safety first\n\n\nPlain paragraph"} />
+    )
+    expect(container.querySelector("blockquote.news-pullquote")).toHaveTextContent("Safety first")
+    expect(screen.getByText("Plain paragraph")).toBeInTheDocument()
+  })
+
+  it("places the table of contents below the article on mobile", () => {
+    mediaMock.mockReturnValue(false)
+    render(<NewsDetailBody content={MARKDOWN_WITH_TOC} />)
+    expect(screen.getByText("news:toc.title")).toBeInTheDocument()
+  })
 })

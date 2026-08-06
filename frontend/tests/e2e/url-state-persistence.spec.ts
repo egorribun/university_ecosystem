@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test"
+import { expect, test } from "./test"
 
 /**
  * URL-state persistence smoke spec — Wave 120 SW7 (Item #9).

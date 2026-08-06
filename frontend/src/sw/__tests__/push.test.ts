@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { initPushHandlers } from "../push"
-import { storePendingNavigation, storePendingReport } from "../offline"
+import { sanitizeReportPayload, storePendingNavigation, storePendingReport } from "../offline"
+import { buildNotificationDetails, parsePushEventData } from "@/push/notification-helpers"
 
 // Mock notification helpers
 vi.mock("@/push/notification-helpers", () => ({
@@ -221,6 +222,135 @@ describe("Service Worker - Push Notifications", () => {
         reportUrl: `${origin}/api/report-click`,
         timestamp: expect.any(Number),
         payload: { ref: "email", notificationId: "123" },
+      })
+    })
+
+    it("uses payload and notification option fallbacks for an in-app toast", async () => {
+      vi.mocked(parsePushEventData).mockReturnValue({
+        body: "",
+        url: "",
+        data: { type: "in-app" },
+      } as never)
+      vi.mocked(buildNotificationDetails).mockReturnValue({
+        title: "Fallback title",
+        options: { body: "", data: { url: "/fallback-url" } },
+      } as never)
+
+      const mockClient = {
+        visibilityState: "visible",
+        postMessage: vi.fn(),
+      }
+      ;((self as any).clients.matchAll as any).mockResolvedValue([mockClient])
+
+      const mockEvent = {
+        data: { type: "in-app" },
+        waitUntil: vi.fn((promise) => promise),
+      }
+
+      await (eventListeners.push as any)(mockEvent)
+
+      expect(mockClient.postMessage).toHaveBeenCalledWith({
+        type: "PUSH_NOTIFICATION",
+        toast: { title: "Fallback title", body: "", url: "/fallback-url" },
+      })
+    })
+
+    it("queues navigation when a click has no report URL and opening fails", async () => {
+      vi.mocked(storePendingNavigation).mockClear()
+      ;((self as any).clients.matchAll as any).mockResolvedValue([])
+      ;((self as any).clients.openWindow as any).mockResolvedValue(null)
+
+      const mockEvent = {
+        notification: {
+          close: vi.fn(),
+          data: { url: "/without-report" },
+        },
+        waitUntil: vi.fn((promise) => promise),
+      }
+
+      await (eventListeners.notificationclick as any)(mockEvent)
+      await (mockEvent.waitUntil.mock.results[0] as any).value
+
+      expect(storePendingNavigation).toHaveBeenCalledWith({
+        url: `${window.location.origin}/without-report`,
+        timestamp: expect.any(Number),
+      })
+    })
+
+    it("uses the root URL when an in-app push has no URL in either payload", async () => {
+      vi.mocked(parsePushEventData).mockReturnValue({
+        body: "",
+        url: "",
+        data: { type: "in-app" },
+      } as never)
+      vi.mocked(buildNotificationDetails).mockReturnValue({
+        title: "Root fallback",
+        options: { body: "", data: {} },
+      } as never)
+      const mockClient = { visibilityState: "visible", postMessage: vi.fn() }
+      ;((self as any).clients.matchAll as any).mockResolvedValue([mockClient])
+
+      const mockEvent = {
+        data: { type: "in-app" },
+        waitUntil: vi.fn((promise) => promise),
+      }
+      await (eventListeners.push as any)(mockEvent)
+
+      expect(mockClient.postMessage).toHaveBeenCalledWith({
+        type: "PUSH_NOTIFICATION",
+        toast: { title: "Root fallback", body: "", url: "/" },
+      })
+    })
+
+    it("queues the root navigation when a click has no URL", async () => {
+      vi.mocked(storePendingNavigation).mockClear()
+      ;((self as any).clients.matchAll as any).mockResolvedValue([])
+      ;((self as any).clients.openWindow as any).mockResolvedValue(null)
+
+      const mockEvent = {
+        notification: { close: vi.fn(), data: {} },
+        waitUntil: vi.fn((promise) => promise),
+      }
+      await (eventListeners.notificationclick as any)(mockEvent)
+      await (mockEvent.waitUntil.mock.results[0] as any).value
+
+      expect(storePendingNavigation).toHaveBeenCalledWith({
+        url: `${window.location.origin}/`,
+        timestamp: expect.any(Number),
+      })
+    })
+
+    it("drops non-object report payloads while preserving the notification id", async () => {
+      vi.mocked(storePendingReport).mockClear()
+      vi.mocked(sanitizeReportPayload).mockReturnValueOnce("unsafe" as never)
+      ;((self as any).clients.matchAll as any).mockResolvedValue([])
+      ;((self as any).clients.openWindow as any).mockResolvedValue(null)
+      vi.stubGlobal("self", {
+        ...globalThis,
+        location: globalThis.location,
+        navigator: { onLine: false },
+      })
+
+      const mockEvent = {
+        notification: {
+          close: vi.fn(),
+          data: {
+            url: "/mock-url",
+            reportUrl: "/api/report-click",
+            notificationId: "primitive-payload",
+            reportPayload: { ignored: true },
+          },
+        },
+        waitUntil: vi.fn((promise) => promise),
+      }
+      await (eventListeners.notificationclick as any)(mockEvent)
+      await (mockEvent.waitUntil.mock.results[0] as any).value
+
+      expect(storePendingReport).toHaveBeenCalledWith({
+        url: `${window.location.origin}/mock-url`,
+        reportUrl: `${window.location.origin}/api/report-click`,
+        timestamp: expect.any(Number),
+        payload: { notificationId: "primitive-payload" },
       })
     })
   })

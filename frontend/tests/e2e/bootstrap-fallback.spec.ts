@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test"
+import { test, expect } from "./test"
 
 // Skip: i18n not initialized when error boundary renders in mock environment
 test.describe.skip("bootstrap fallback", () => {

@@ -4,7 +4,338 @@
 **Audit baseline commit:** `ce588bb0a1c08eb66ff2e5558349096a51d3ed4a` (the "finalize quality-roadmap" merge)
 **Repository HEAD at audit time:** `0becc3e1ff130392dbc4166d04e6aa63495053bb`
 **Audit date:** 2026-07-22
-**Status:** draft — not started
+**Status:** execution in progress — baseline remains historical; see the uncommitted execution ledger below
+
+## Execution ledger — 2026-07-27 (uncommitted)
+
+This section records only independently verified results from the current closure
+work. The historical measurements below remain unchanged so that the original
+audit baseline is reproducible. Python reports were collected with `uv run` and
+checked one file at a time after bounded test runs; no `.md` or `.diff` file is
+intended for the checkpoint commit.
+
+### Verified closures
+
+- Python Tier0/auth, metrics/observability, cache, database, NATS, and the
+  previously closed long-tail modules remain verified from the earlier
+  checkpoint.
+- `app/core/config/mixins/jwt_settings.py`: 133/133 statements, 48/48 branch
+  pairs.
+- `app/core/config/mixins/csp_settings.py`: 155/155 statements, 48/48 branch
+  pairs.
+- `app/api/ws/presence.py`: 159/159 statements, 50/50 branch pairs.
+- `app/api/ws/connection_manager.py`: 209/209 statements, 64/64 branch pairs.
+- `app/api/spotify.py`: 261/261 statements, 72/72 branch pairs.
+- `app/api/notifications.py`: 297/297 statements, 90/90 branch pairs.
+- `app/services/notifications/news_events.py`: 147/147 statements, 52/52
+  branch pairs.
+- `app/services/notification_templates.py`: 362/362 statements, 196/196
+  branch pairs.
+- `app/services/privacy_cleanup.py`: 91/91 statements, 4/4 branch pairs.
+- `app/utils/request_coalescing.py`: 72/72 statements, 14/14 branch pairs.
+- Notification model/repository and cleanup closures added during this session
+  are also verified at 100% in their isolated reports.
+- Go bounded verification on 2026-07-27: `go test ./... -count=1 -timeout=90s`
+  passed for gateway (7 packages, 34s), ws-hub (4 packages, 9s), and
+  file-processor (6 packages, 11s). Their fresh local statement profiles are
+  87.9%, 81.9%, and 88.0%, respectively; these are measurements, not closure
+  claims. Existing ws-hub and gateway `TestMain` goleak checks completed as
+  part of the passing package runs. Local `-race` is blocked by the Windows
+  environment lacking a C compiler (`go test -race` requires CGO).
+- Additional Go modules `services/cmd/uni-cli` and `services/pkg/spiffe` also
+  passed their bounded `go test ./...` runs.
+- Frontend bounded verification: `npm run typecheck` passed and a one-worker
+  Vitest smoke selection passed 24/24 tests. The full Vitest suite was not
+  allowed to run unbounded on this host after its 120-second guard expired.
+- Frontend property-based verification: the fast-check utility contract suite
+  passed 5/5 in one worker. The scoped Stryker run mutated one pure utility file
+  with 33 mutants and killed all 33 (100.00% mutation score) under
+  `--concurrency 1`; generated reports remain temporary and uncommitted.
+- CI wiring fixes verified by contract tests/static inspection: cross-browser
+  advisory mode is now passed as an explicit reusable-workflow input (so the
+  caller has no invalid job-level `continue-on-error`), the opt-in load/chaos
+  job no longer uses a constant-false condition, and the GitHub Actions MinIO
+  service no longer uses an unsupported `command` key. Full actionlint and
+  remote CI verification remain open.
+- Targeted Ruff is clean for all closure/contract test files changed in this
+  session. A full `uv run ruff check tests` still reports 34 pre-existing
+  findings in unrelated stress/security/tenant tests; those were not silently
+  rewritten as part of this closure batch.
+- Fixed a real testing-mode observability defect in
+  `app/core/logging.py`: console structlog now formats positional `%s`
+  arguments before event renaming. The logging regression suite passes 11/11.
+- Regenerated frontend API SDK/types and MSW mocks from a freshly generated
+  FastAPI OpenAPI document. The generated diff now includes `ChallengeState`,
+  `MfaChallengeOut.state`, and the audit time-travel endpoint; frontend
+  `npm run typecheck` passes, followed by a bounded one-worker API smoke of
+  24/24 tests. Remote drift rerun remains pending.
+- Fixed the Pact provider workflow's localhost service wiring by publishing
+  Postgres/Redis ports; its workflow contract suite passes 14/14. A remote
+  provider rerun remains pending.
+- Fixed the file-processor Pact body mismatch at its source: the consumer and
+  provider now declare the JSON-encoded protobuf representation as
+  `application/json`, allowing Pact V4 structural matchers to run instead of
+  comparing matcher documents as opaque `application/grpc` bytes. File-
+  processor Go tests pass; remote Pact verification remains pending.
+
+## Execution ledger — 2026-07-30 (uncommitted)
+
+- Frontend service-worker API caching tests now cover the private
+  session-aware `NetworkFirst` handler: session cache isolation, shared-cache
+  fallback, and the synthetic 6-second timeout response. The isolated file
+  passes 34/34 tests with one Vitest worker; `src/sw/api.ts` measures 100% for
+  lines, branches, functions, and statements in the targeted coverage run.
+- Fixed test-only mock lifecycle leakage in
+  `frontend/src/sw/__tests__/api.test.ts`: `vi.restoreAllMocks()` was restoring
+  the Workbox constructor to an empty mock between tests, producing a false
+  `strategy.handle is not a function` failure. The teardown now clears calls,
+  restores globals, and explicitly restores real timers.
+- Frontend fast-check coverage expanded with idempotency properties for
+  `sanitizeArticleHtml` and `sanitizeHttpUrl`; the property suite passes 7/7
+  in one worker. Targeted ESLint and `npm run typecheck` pass.
+- Current HEAD remains the user's `0b8d305c6`; the working tree intentionally
+  contains the uncommitted frontend, Go, Python-test, and ledger changes from
+  this closure session. No `.diff` or temporary coverage artifacts are part of
+  the intended checkpoint.
+- Rust verification on the resumed branch: `native/rust_ext` passes 48/48
+  tests and measures 99.89% lines / 98.92% functions with
+  `cargo llvm-cov --no-default-features`; `frontend/rust-crypto` passes 2 lib
+  tests plus 15 native integration/property tests; `frontend/wasm-sanitizer`
+  passes 15/15 integration/property tests. The fuzz/proptest wiring already
+  present in both frontend Rust crates is therefore locally verified; remote
+  fuzz/Miri/coverage runs and stabilization evidence remain open.
+- Fresh `uv` verification on the resumed HEAD: quality workflow/contract/
+  configuration suites pass 48/48, and the metrics regression set passes
+  64/64. The earlier remote metrics failure is not reproducible in the local
+  bounded suites after the current branch's credential-normalization fix.
+- Fresh Tier0 auth measurement on the resumed tree: 122 bounded tests pass;
+  `app/services/auth/lockout.py`,
+  `app/services/auth/graphql_token_validator.py`,
+  `app/services/auth/login_session_manager.py`, `app/auth/security.py`, and
+  `app/api/auth/login.py` all measure 100% lines and 100% branches. The
+  metrics/observability slice also passes 92/92 with both
+  `app/core/metrics.py` and `app/core/observability.py` at 100% lines and
+  branches.
+- Fresh cache-specific measurement passes 162/162; `app/deps/cache.py`
+  measures 100% lines and 100% branches across the Memory, Redis, cluster,
+  NATS KV, tiered-cache, decorator, and error-path cases.
+- Fresh configuration measurement passes 97/97; `app/core/config/notifications.py`
+  measures 100% lines and 100% branches with the notification/configuration
+  closure tests.
+- Fresh event API measurement passes 57/57 with one PostgreSQL-only test
+  skipped by its explicit marker; `app/api/events.py` measures 100% lines and
+  100% branches.
+- Fresh users API measurement passes 13/13; `app/api/users.py` measures 100%
+  lines and 100% branches.
+- Fresh news API measurement passes 28/28; `app/api/news.py` measures 100%
+  lines and 100% branches.
+- Fresh push-router measurement passes 113/113 across the focused router,
+  endpoint, and booster suites; `app/routers/notifications.py` now measures
+  100% lines and 100% branches. The final missing `unsubscribe` rate-limit
+  branch is covered by a direct HTTP 429/retry-after regression test.
+- Notification support slices are also locally closed: the schema suite passes
+  6/6 with `app/schemas/notifications.py` at 100% lines and branches, the
+  model closure passes 2/2 with `app/models/notifications.py` at 100% lines,
+  and the push-service slice passes 70/70 with
+  `app/services/push_service.py` at 100% lines and branches. The package-wide
+  model measurement is intentionally reported as a per-file result because
+  unrelated model files remain below the global floor in that narrow run.
+- Fresh stats API measurement passes 18/18; `app/api/stats.py` measures 100%
+  lines and 100% branches. Fresh sessions API measurement passes 13/13 after
+  adding the cookie-token fallback regression; `app/api/sessions.py` now
+  measures 100% lines and 100% branches.
+- Fresh health API measurement passes 30/30; `app/api/health.py` measures
+  100% lines and 100% branches. Fresh config-base measurement passes 38/38;
+  `app/core/config/base.py` measures 100% lines and 100% branches.
+- Fresh cache/database settings measurement passes 41/41, including the
+  cgroup-v1/v2 and fallback cases; both `app/core/config/cache.py` and
+  `app/core/config/database.py` measure 100% lines and 100% branches.
+- Frontend push-subscription closure advanced with public failure/recovery
+  scenarios for permission denial, registration fallback, VAPID lookup errors,
+  persistence 409/429/permanent failures, concurrent ensure locking, stale
+  unsubscribe, local cleanup, browser lookup failures, and recovery resync.
+  The bounded one-worker push set passes 57/57; targeted `src/push/subscribe.ts`
+  coverage is now 88.92% lines, 83.07% branches, and 100% functions. Remaining
+  defensive storage/concurrency branches stay explicitly open for the broader
+  frontend 99/98/98 target.
+- Frontend WebSocket closure advanced: the combined one-worker suites for
+  `src/tests/hooks/useChatWebSocket.test.tsx` and
+  `src/hooks/__tests__/useChatWebSocket.test.tsx` pass 52/52. The targeted
+  `src/hooks/useChatWebSocket.ts` report measures 100% lines/statements, 98.18%
+  branches, and 100% functions. Covered behavior includes ticket auth/transient
+  failures, reconnect caps and terminal close codes, room rejoin/leave races,
+  heartbeat cleanup, typing expiry/caps, read/reaction/message frame cache
+  updates, RxDB fallback/error paths, and the 200-message sliding window. The
+  whole frontend long-tail and global 99/98/98 target remain open.
+- `useProfileSync` closure advanced with 74 bounded one-worker tests across
+  bootstrap, encrypted/legacy/versioned cache restore, migration, storage and
+  BroadcastChannel synchronization, cancellation, error handling, and crypto
+  failures. Targeted `src/hooks/auth/useProfileSync.ts` coverage now measures
+  93.34% lines, 85.65% branches, and 100% functions. This work also fixed two
+  production defects exposed by the tests: `readCachedEnvelope()` now parses
+  and returns the stored JSON envelope, and the render-only encrypted-cache
+  placeholder (`id: "-1"`) is no longer inserted as authoritative TanStack
+  Query data. SSR/LHCI-specific and remaining defensive branches stay open.
+- Frontend `api/client.ts` closure advanced with 57 bounded one-worker tests
+  across the existing ETag, retry, rate-limit, language, SSR-cookie, CSRF, and
+  instance suites plus new LHCI adapter, BroadcastChannel, abort, ETag-error,
+  rate-limit-bypass, and legacy-wrapper regressions. The combined run passes
+  57/57; targeted coverage measures 96.92% lines, 80% branches, and 100%
+  functions. The roadmap's broader frontend 99/98/98 target remains open; the
+  remaining uncovered cases are defensive URL/header and rate-window branches.
+- Frontend rate-limit interceptor closure advanced with 21 bounded one-worker
+  tests, including concurrent queue release, rolling-window backpressure,
+  timer replacement, online recovery, abort reasons, and non-GET release
+  guards. The combined run passes 21/21; targeted coverage measures 92.85%
+  lines, 93.82% branches, and 100% functions. The remaining branches are
+  defensive queue-notification guards that are not reachable through the
+  exported API without mutating private waiter state.
+- Frontend `useLoginFlow.ts` closure advanced from 20 to 26 bounded hook tests:
+  passkey validation short-circuit plus recovery-code MFA expired/success,
+  locked, generic, and Axios-detail paths are now exercised. The targeted run
+  passes 26/26 and measures 100% lines/statements and functions, with 96.34%
+  branches; only defensive suggestion/passkey fallback branches remain.
+- Frontend Trusted Types utility closure advanced to 10 bounded tests covering
+  policy caching, CSP creation failures, failure sentinels, safe HTML fallback,
+  same-origin/backend-origin URL allowlisting, and malformed backend origins.
+  The targeted run passes 10/10 and measures 98.86% lines, 84.21% branches,
+  and 88.88% functions; only the defensive invalid `window.location` parse
+  catch remains unreachable in jsdom.
+- Frontend `useWebAuthn.ts` now has an isolated 11-test hook suite covering
+  credential loading/non-array and failure responses, dialog resets, browser
+  support, registration validation/success/428 step-up/retry and error
+  fallbacks, plus deletion success/step-up/error paths. The one-worker run
+  passes 11/11 and measures 100% lines/statements and functions, with 95.65%
+  branches; only two defensive branch outcomes remain.
+- Post-closure frontend integration check is clean: the new hook mocks pass
+  Prettier, ESLint, and the repository-wide `npm run typecheck`; the final
+  targeted WebAuthn run remains 11/11 with one worker.
+- Frontend `useDndSettings.ts` closure expanded from 4 to 9 bounded hook tests:
+  disable/update payloads, HH:MM:SS and non-standard values, no-op and
+  in-flight guards, end-time blur, and Axios validation-array aggregation are
+  now covered. The targeted run passes 9/9 with 100% lines/statements and
+  functions and 87.05% branches; remaining branches are null-normalization
+  and disabled blur guards that are defensive/no-op paths.
+- Frontend `usePasswordChange.ts` closure expanded from 5 to 11 bounded hook
+  tests covering all local validation states, `ok:false` response handling,
+  busy-submit suppression, 428 step-up callback/retry, classified current/same
+  password errors, generic and validation-array Axios details. The targeted
+  run passes 11/11 with 100% lines/statements and functions and 96.22%
+  branches; two defensive detail-resolution outcomes remain.
+- Frontend `useSessionManagement.ts` now has a real-QueryClient 10-test hook
+  suite covering tab gating/query errors, current/active/revoked sorting,
+  single-session revoke/logout, revoke-all, step-up retry callbacks, API
+  detail/generic failures, and timestamp formatting. The targeted run passes
+  10/10 with 100% lines/statements and functions and 83.63% branches; four
+  defensive null/formatting outcomes remain.
+- Frontend `useTotpEnrollment.ts` now has an isolated 11-test hook suite
+  covering derived MFA state, pending-enrollment auto-resume, start/confirm/
+  cancel flows, step-up retry, limit guards, refresh, and error/snackbar paths.
+  The bounded one-worker run passes 11/11 and measures 95.45% lines,
+  93.75% branches, and 100% functions; the remaining uncovered lines are
+  defensive fallback and callback-identity outcomes. The heavyweight full
+  `Settings.totp` UI coverage run remains intentionally open after exceeding
+  the bounded execution window; no fresh test process remains active.
+- Frontend `useEmailChange.ts` closure expanded to 11 bounded hook tests for
+  required/no-change/pending-email validation, busy-submit suppression,
+  successful refresh, step-up retry, invalid-password and string-detail
+  handling, validation-array aggregation, and missing-user state. The targeted
+  run passes 11/11 and measures 100% lines/statements and functions with
+  98.24% branches; the only remaining branch is a defensive resolver path
+  superseded by the handler's earlier Axios-detail classification.
+- Frontend `useNowPlaying.ts` closure expanded to 11 stable bounded tests for
+  request validation/header policy, payload normalization, null/204 responses,
+  invalid cache and storage failures, 401 reauthentication, 429 retry-after
+  variants, cache persistence, and visibility-triggered refetch. The one-worker
+  run passes 11/11 and measures 91.71% lines, 88.57% branches, and 82.35%
+  functions; only the production polling/retry callback branches remain open,
+  because polling is intentionally disabled in Vitest's test environment and
+  the real QueryClient terminal-error seam is not bounded-stable.
+- Frontend `MfaChallengeView.tsx` closure expanded to 18 behavior and
+  accessibility tests covering empty-email fallback, no-methods, TOTP submit
+  and trust-device paths, TOTP-specific errors, WebAuthn supported/unsupported
+  states, both-method separator, recovery-code Enter/button/empty/back paths,
+  busy controls, general errors, restart affordance, and axe checks. The
+  bounded one-worker run passes 18/18 with 100% statements, lines, and branches;
+  the remaining 77.77% function metric consists only of browser/start-over
+  callback wrappers without additional decision logic.
+- Frontend `NowPlayingCard.tsx` image lifecycle closure expanded to 8 tests
+  covering image load/error fallback, hover transforms, track reset, paused
+  progress, generic Spotify fallback, and zero-duration safety. The targeted
+  run passes 8/8 and measures 88.36% lines, 59.45% branches, and 83.33%
+  functions; the remaining paths are production-only animation/reduced-motion
+  branches intentionally bypassed by the test-environment guard.
+ - Frontend `InstallPrompt.tsx` closure expanded to 32 combined bounded tests
+   covering install accepted/dismissed/rejected flows, suppression windows,
+   malformed and failing storage, app-installed cleanup, push unsupported/
+   denied/default/granted visibility, Safari guidance, LHCI suppression, update
+   toast lifecycle, and success/error/info feedback. The one-worker run passes
+   32/32 and measures 92.18% lines, 90.14% branches, and 90.9% functions; the
+   remaining block is the granted-toggle JSX that is intentionally hidden by
+   the preceding `pushSupported && permission === "granted"` visibility effect.
+ - Frontend `NewsDetail.tsx` closure expanded to 7 bounded tests covering
+   loading/error recovery, browser-history fallback, swipe navigation and the
+   Firefox reading-progress fallback, localized rendering, share options/copy,
+   deletion success, and deletion failure feedback. The one-worker run passes
+   7/7 and measures 100% statements/lines, 90.47% branches, and 61.9%
+   functions; the remaining function/branch gaps are callback/render variants
+   without uncovered executable statements.
+ - The remote rerun of job `90699730876` (`90716869133`, commit
+  `0b8d305c6`) completed with one failure after 3,662 passes. A minimal local
+  reproduction identified the deterministic cause: `test_force_reload_security_config`
+  left a reloaded `app.core.config` singleton behind, while the metrics module
+  retained its imported singleton. The config reload test now restores the
+  module objects, and the authorization test patches `metrics.settings` at the
+  lookup site. The exact repro passes 3/3, the config/metrics slice passes
+  65/65, and the final combined quality/config/metrics regression slice passes
+  123/123; a fresh remote run is still required before claiming CI closure.
+- Gateway vector-router closure on the resumed branch: targeted behavioral
+  tests cover state-string/default/collision/removal paths, fallback routing,
+  HTTP 400/500 responses, gRPC validation/filtering, and multi-shard routing.
+  The root `gateway` package passes all tests at 99.2% statements; all seven
+  `services/gateway/...` packages pass their bounded suite. One defensive
+  error branch in `ExecuteVectorQuery` remains structurally unreachable because
+  `Route` converts `ErrEmptyRing` into the documented fallback result.
+- ws-hub bounded verification on the resumed branch: all four
+  `services/ws-hub/...` packages pass; the hub package's safe JetStream ACK/NAK
+  nil/core-message guards and WebTransport nil/closed paths are now directly
+  exercised. The hub package measures 81.4% statements locally, so
+  transport/bootstrap and long-running subscriber paths remain open rather
+  than being overstated as closed.
+- Production SSR cache-policy E2E smoke passes 1/1 in a single Chromium worker:
+  HTML is `no-store, private, max-age=0`, hashed assets are immutable for one
+  year, and the service-worker response is non-cacheable. The production build
+  previously reported a 726 KB `index-*` chunk (and a 1,003 KB map vendor
+  chunk), above the repository's 500 KB main-bundle budget. A bounded fresh
+  production build after adding explicit vendor splits for RxDB/Dexie,
+  accessibility helpers, router core, validation, and TanStack Start now
+  produces `index-C41OwRrZ.js` at 339,661 bytes (331 KiB), below the 500 KiB
+  CI limit. The exact budget check and `npm run typecheck` both pass; the map
+  vendor chunk remains separately cacheable and does not count as the main
+  chunk.
+- Phase 9.1 cache-poisoning hardening: `cached_endpoint` now includes the
+  current tenant context in every cache identity, in addition to the existing
+  authenticated-user identity; the repository-level news cache key now also
+  carries the tenant context. The tenant-isolation regression suite passes
+  20/20, and targeted Ruff is clean for the four changed cache/security files.
+
+### Still open
+
+The roadmap is not complete. The remaining workstreams are the frontend 99/98/98
+closure plus broader Stryker/property/diff coverage beyond the verified utility
+slice; Go low-coverage bootstrap and
+goroutine/fuzz/integration hardening; remote Rust fuzz/Miri/coverage execution
+and stabilization evidence; remote Pact provider replay; browser-matrix
+stabilization; Checkov/Kyverno and nightly-full-gate evidence; negative-security
+and performance baselines; durable dashboard/certification evidence; and the
+manual Codecov token action. The latest remote evidence also contains separate
+failures in Checkov (72 findings on the historical PR merge), continuous
+performance baselines, DAST, and a file-processor Pact body mismatch (fix
+prepared locally); these remain actionable until a fresh remote verification. The
+repository wiring for several workstreams
+already exists and is locally contract-tested, but it must not be marked
+complete from backend unit-coverage evidence alone or from YAML presence
+without green remote runs and the roadmap's stabilization windows.
 
 ## 0. Why this document exists
 

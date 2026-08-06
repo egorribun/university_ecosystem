@@ -67,6 +67,17 @@ def test_verify_and_update_rehashes_valid_argon2_hash() -> None:
         ) == (True, "$argon2id$new")
 
 
+def test_verify_and_update_keeps_current_argon2_hash() -> None:
+    from app.auth import security
+
+    mock_hasher = MagicMock()
+    mock_hasher.check_needs_rehash.return_value = False
+    with patch.object(security, "argon2_hasher", mock_hasher):
+        assert security.verify_and_update_password_sync(
+            "password", "$argon2id$current"
+        ) == (True, None)
+
+
 def test_password_policy_rejects_short_password(monkeypatch) -> None:
     from app.auth import security
     from app.core.config import settings

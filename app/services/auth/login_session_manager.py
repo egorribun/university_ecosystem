@@ -5,9 +5,9 @@ from typing import TYPE_CHECKING, Any, cast
 
 from fastapi import BackgroundTasks, Request, Response
 
+import app.core.config
 from app.auth.fingerprint import SessionFingerprint, extract_fingerprint
 from app.core import metrics
-from app.core.config import settings
 from app.core.database import async_session
 from app.core.logging import get_logger
 from app.models import User
@@ -163,7 +163,8 @@ class LoginSessionManager:
 
     def _set_access_token_cookie(self, response: Response, token: str) -> None:
         try:
-            minutes = int(settings.access_token_expire_minutes)
+            raw_minutes = app.core.config.settings.security.access_token_expire_minutes
+            minutes = int(raw_minutes)
         except (TypeError, ValueError):
             minutes = 60
         max_age = minutes * 60
@@ -173,8 +174,8 @@ class LoginSessionManager:
             "access_token_v2",
             token,
             httponly=True,
-            secure=settings.cookie_secure,
-            samesite=settings.cookie_samesite,  # type: ignore[arg-type]
+            secure=app.core.config.settings.cookie_secure,
+            samesite=app.core.config.settings.cookie_samesite,  # type: ignore[arg-type]
             max_age=max_age,
             expires=expires,
             path="/",

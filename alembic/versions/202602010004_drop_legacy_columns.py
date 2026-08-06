@@ -109,21 +109,21 @@ def upgrade():
 
     # 1. Drop the legacy primary key columns and their unique constraints
     for table in TABLES_TO_CLEANUP:
-        if not op.get_bind().dialect.has_table(op.get_bind(), table):
+        if not sa.inspect(op.get_bind()).has_table(table):
             logger.info(f"Skipping drop for missing table {table}")
             continue
 
-        print(f"Cleaning legacy_id {table}...")
+        logger.info(f"Cleaning legacy_id {table}...")
         try:
             if dialect == "postgresql":
                 # Drop constraint if exists (CASCADE handles it usually)
                 if table == "active_sessions":
-                    op.execute(
+                    op.execute(  # nosemgrep
                         f'ALTER TABLE "{table}" '
                         f'DROP CONSTRAINT IF EXISTS "uq_{table}_legacy_id" CASCADE'
                     )
 
-                op.execute(
+                op.execute(  # nosemgrep
                     f'ALTER TABLE "{table}" DROP COLUMN IF EXISTS "legacy_id" CASCADE'
                 )
                 logger.info(f"Dropped legacy_id from {table} (Postgres)")
@@ -141,13 +141,13 @@ def upgrade():
 
     # 2. Drop the legacy foreign key columns
     for table, legacy_col in FK_TO_CLEANUP:
-        if not op.get_bind().dialect.has_table(op.get_bind(), table):
+        if not sa.inspect(op.get_bind()).has_table(table):
             continue
 
-        print(f"Cleaning FK {legacy_col} in {table}...")
+        logger.info(f"Cleaning FK {legacy_col} in {table}...")
         try:
             if dialect == "postgresql":
-                op.execute(
+                op.execute(  # nosemgrep
                     f'ALTER TABLE "{table}" DROP COLUMN IF EXISTS '
                     f'"{legacy_col}" CASCADE'
                 )

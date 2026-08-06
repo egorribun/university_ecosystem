@@ -59,4 +59,75 @@ describe("useMediaQuery", () => {
 
     expect(result.current).toBe(true)
   })
+
+  it("uses defaultValue when matchMedia is unavailable or throws", () => {
+    Object.defineProperty(window, "matchMedia", {
+      configurable: true,
+      value: undefined,
+    })
+    const unavailable = renderHook(() =>
+      useMediaQuery("(forced-unavailable)", { defaultValue: true })
+    )
+    expect(unavailable.result.current).toBe(true)
+    unavailable.unmount()
+
+    Object.defineProperty(window, "matchMedia", {
+      configurable: true,
+      value: vi.fn(() => {
+        throw new Error("matchMedia unavailable")
+      }),
+    })
+    const throwing = renderHook(() => useMediaQuery("(forced-throw)", { defaultValue: true }))
+    expect(throwing.result.current).toBe(true)
+  })
+
+  it("supports legacy addListener/removeListener media-query APIs", () => {
+    let listener: ((event: MediaQueryListEvent) => void) | undefined
+    const addListener = vi.fn((cb: (event: MediaQueryListEvent) => void) => {
+      listener = cb
+    })
+    const removeListener = vi.fn()
+    Object.defineProperty(window, "matchMedia", {
+      configurable: true,
+      value: vi.fn(
+        () =>
+          ({
+            matches: false,
+            media: "(legacy)",
+            addEventListener: undefined,
+            removeEventListener: undefined,
+            addListener,
+            removeListener,
+          }) as unknown as MediaQueryList
+      ),
+    })
+
+    const { result, unmount } = renderHook(() => useMediaQuery("(legacy)"))
+    expect(result.current).toBe(false)
+    act(() => listener?.({ matches: true } as MediaQueryListEvent))
+    expect(result.current).toBe(true)
+    unmount()
+    expect(addListener).toHaveBeenCalledOnce()
+    expect(removeListener).toHaveBeenCalledOnce()
+  })
+
+  it("handles a legacy event object without a matches property", () => {
+    let listener: ((event: unknown) => void) | undefined
+    Object.defineProperty(window, "matchMedia", {
+      configurable: true,
+      value: vi.fn(
+        () =>
+          ({
+            matches: true,
+            addEventListener: vi.fn((_type: string, cb: (event: unknown) => void) => {
+              listener = cb
+            }),
+            removeEventListener: vi.fn(),
+          }) as unknown as MediaQueryList
+      ),
+    })
+    const { result } = renderHook(() => useMediaQuery("(legacy-event)"))
+    act(() => listener?.({}))
+    expect(result.current).toBeUndefined()
+  })
 })

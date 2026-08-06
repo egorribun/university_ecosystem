@@ -71,7 +71,7 @@ export function SearchDialog() {
   const inputRef = useRef<HTMLInputElement>(null)
   const resultsRef = useRef<HTMLDivElement>(null)
   const isMac = useMemo(
-    () => typeof navigator !== "undefined" && /Mac/i.test(navigator.platform ?? ""),
+    () => typeof navigator !== "undefined" && /Mac/i.test(navigator.platform),
     []
   )
 

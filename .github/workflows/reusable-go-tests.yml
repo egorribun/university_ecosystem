@@ -31,6 +31,7 @@ jobs:
   test:
     name: Test Go Service (${{ inputs.service-directory }})
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -109,17 +110,17 @@ jobs:
               BASE_REF="origin/main"
             fi
           fi
-          
+
           echo "Comparing against $BASE_REF to find modified Go files..."
-          
+
           # Find modified Go files within the service directory (excluding tests and generated files)
           CHANGED_FILES=$(git diff --name-only "$BASE_REF"...HEAD | grep "^${SERVICE_DIRECTORY}/" | grep "\.go$" | grep -v "_test\.go$" | grep -v "\.pb\.go$" | grep -v "/gen/" || true)
-          
+
           if [ -z "$CHANGED_FILES" ]; then
             echo "No changed Go source files found in $SERVICE_DIRECTORY. Skipping mutation tests."
             exit 0
           fi
-          
+
           # Map files to their package paths relative to service directory
           cd "$SERVICE_DIRECTORY"
           PACKAGES=""
@@ -137,14 +138,14 @@ jobs:
               PACKAGES="$PACKAGES $pkg"
             fi
           done
-          
+
           # Clean up whitespace
           PACKAGES=$(echo "$PACKAGES" | xargs)
           if [ -z "$PACKAGES" ]; then
             echo "No target packages resolved. Skipping."
             exit 0
           fi
-          
+
           echo "Running mutation tests on: $PACKAGES"
           # Run go-mutesting and fail if any mutant survives (exit code 1).
           # Limit execution time per package to keep CI fast (5m per package)
@@ -184,19 +185,35 @@ jobs:
           path: |
             ${{ inputs.service-directory }}/coverage.out
 
+      - name: Resolve Codecov component flag
+        if: always()
+        id: codecov-flag
+        shell: bash
+        env:
+          SERVICE_DIRECTORY: ${{ inputs.service-directory }}
+        run: |
+          case "$SERVICE_DIRECTORY" in
+            services/gateway) flag="go-gateway" ;;
+            services/ws-hub) flag="go-ws-hub" ;;
+            services/file-processor) flag="go-file-processor" ;;
+            *) flag="" ;;
+          esac
+          echo "flag=$flag" >> "$GITHUB_OUTPUT"
+
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0
+        if: ${{ always() && steps.codecov-flag.outputs.flag != '' }}
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: ${{ inputs.service-directory }}/coverage.out
-          flags: go-${{ inputs.service-directory }}
-          name: go-coverage
+          flags: ${{ steps.codecov-flag.outputs.flag }}
+          name: ${{ steps.codecov-flag.outputs.flag }}
           fail_ci_if_error: false
-
 
   lint:
     name: Lint Go Service (${{ inputs.service-directory }})
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 

@@ -23,6 +23,7 @@
  */
 
 import {
+  memo,
   createContext,
   useContext,
   forwardRef,
@@ -52,8 +53,8 @@ interface ContentCardRootProps extends Omit<CardProps, "padding"> {
 }
 
 /** Root ContentCard component */
-const ContentCardRoot = forwardRef<HTMLDivElement, ContentCardRootProps>(
-  ({ children, className, ...props }, _ref) => {
+const ContentCardRoot = memo(
+  forwardRef<HTMLDivElement, ContentCardRootProps>(({ children, className, ...props }, _ref) => {
     // Note: ref forwarding is not supported by Card component
     // If needed, wrap Card in a div with ref
     return (
@@ -63,7 +64,7 @@ const ContentCardRoot = forwardRef<HTMLDivElement, ContentCardRootProps>(
         </ContentCardContext.Provider>
       </Card>
     )
-  }
+  })
 )
 ContentCardRoot.displayName = "ContentCard"
 

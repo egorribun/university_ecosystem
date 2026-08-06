@@ -1,4 +1,3 @@
-import sys
 import time
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -24,18 +23,30 @@ async def test_rbac_fork_registration_unix():
     with patch("os.register_at_fork", create=True) as mock_register:
         # Force reload app.auth.rbac to execute module-level setup again
         _clear_rbac_metrics()
-        if "app.auth.rbac" in sys.modules:
-            del sys.modules["app.auth.rbac"]
+        import importlib
 
         import app.auth.rbac as rbac_mod
 
-        # Verify it was registered
-        mock_register.assert_called_once()
+        original_breaker = rbac_mod._spicedb_breaker
+        original_cache = rbac_mod._permission_cache
+        original_error = rbac_mod.SpiceDBUnavailableError
+        importlib.reload(rbac_mod)
 
-        # Trigger the child callback manually
-        rbac_mod._permission_cache["dummy_key"] = (True, time.monotonic())
-        rbac_mod._reset_cache_after_fork()
-        assert len(rbac_mod._permission_cache) == 0
+        try:
+            # Verify it was registered
+            mock_register.assert_called_once()
+
+            # Trigger the child callback manually
+            rbac_mod._permission_cache["dummy_key"] = (True, time.monotonic())
+            rbac_mod._reset_cache_after_fork()
+            assert len(rbac_mod._permission_cache) == 0
+        finally:
+            # Keep module-level state shared with the stress tests, which import
+            # these objects directly during collection.
+            rbac_mod._spicedb_breaker = original_breaker
+            rbac_mod._permission_cache = original_cache
+            rbac_mod.SpiceDBUnavailableError = original_error
+            original_cache.clear()
 
 
 @pytest.mark.asyncio
@@ -43,8 +54,6 @@ async def test_rbac_spicedb_imports_absent():
     """Test ImportError handling when grpc/authzed is missing."""
     # Reload rbac module clean
     _clear_rbac_metrics()
-    if "app.auth.rbac" in sys.modules:
-        del sys.modules["app.auth.rbac"]
     import app.auth.rbac as rbac_mod
 
     # Patch sys.modules to raise ImportError for grpc.aio
@@ -59,8 +68,6 @@ async def test_rbac_spicedb_imports_absent():
 async def test_rbac_check_admin():
     """Test check_admin proxy method calling check_permission."""
     _clear_rbac_metrics()
-    if "app.auth.rbac" in sys.modules:
-        del sys.modules["app.auth.rbac"]
     import app.auth.rbac as rbac_mod
 
     checker = rbac_mod.PermissionChecker(channel=MagicMock())
@@ -82,8 +89,6 @@ async def test_rbac_check_admin():
 async def test_rbac_cache_eviction_and_fallback():
     """Test LRU eviction logic and fallback cache behaviour on SpiceDB failures."""
     _clear_rbac_metrics()
-    if "app.auth.rbac" in sys.modules:
-        del sys.modules["app.auth.rbac"]
     import app.auth.rbac as rbac_mod
 
     # Temporarily set max size to 2 for testing popitem
@@ -145,7 +150,7 @@ async def test_rbac_cache_eviction_and_fallback():
             assert res3 is True
             assert len(rbac_mod._permission_cache) == 2
             # Key 1 was evicted
-            assert ("u1", "r", "1", "p") not in rbac_mod._permission_cache
+            assert ("u1", "r", "1", "p", "", "") not in rbac_mod._permission_cache
 
             # 4. Outage fallback check (True/Positive cache key still valid)
             # Make CheckPermission raise error
@@ -161,7 +166,7 @@ async def test_rbac_cache_eviction_and_fallback():
 
             # 6. Outage fallback check (Expired cache entries)
             # Manually expire "r:3" in cache by setting time to 1 hour ago
-            rbac_mod._permission_cache[("u1", "r", "3", "p")] = (
+            rbac_mod._permission_cache[("u1", "r", "3", "p", "", "")] = (
                 True,
                 time.monotonic() - 3600,
             )

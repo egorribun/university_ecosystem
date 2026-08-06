@@ -4,7 +4,7 @@ from collections.abc import Sequence
 
 import sqlalchemy as sa
 
-from alembic import op
+from alembic import context, op
 
 # revision identifiers, used by Alembic.
 revision: str = "c8d0b5515f2d"
@@ -15,6 +15,21 @@ depends_on: str | Sequence[str] | None = None
 
 def upgrade() -> None:
     """Create indexes for frequent schedule and news queries."""
+    if context.is_offline_mode():
+        op.execute(
+            """
+            CREATE INDEX IF NOT EXISTS ix_schedule_group_week_parity_date
+            ON schedule (group_id, week_parity, date)
+            """
+        )
+        op.execute(
+            """
+            CREATE INDEX IF NOT EXISTS ix_news_published_at_desc
+            ON news (published_at DESC)
+            """
+        )
+        return
+
     bind = op.get_bind()
     inspector = sa.inspect(bind)
 

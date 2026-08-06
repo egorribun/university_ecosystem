@@ -39,7 +39,27 @@ async def test_nats_jetstream_publish_accepts_bytes():
     ack = MagicMock(seq=7)
     service._js.publish.return_value = ack
     await service.publish_jetstream("subject", b"raw")
-    service._js.publish.assert_awaited_once_with("subject", b"raw")
+    service._js.publish.assert_awaited_once()
+    args, kwargs = service._js.publish.call_args
+    assert args == ("subject", b"raw")
+    assert "Nats-Msg-Id" in kwargs["headers"]
+
+
+@pytest.mark.asyncio
+async def test_nats_publish_uses_payload_and_explicit_deduplication_ids():
+    service = NatsService()
+    service._client = AsyncMock()
+    service._js = AsyncMock()
+
+    await service.publish("subject", {"id": "event-id"})
+    assert service._client.publish.call_args.kwargs["headers"]["Nats-Msg-Id"] == (
+        "event-id"
+    )
+
+    await service.publish_jetstream("subject", {"event_id": "jetstream-id"})
+    assert service._js.publish.call_args.kwargs["headers"]["Nats-Msg-Id"] == (
+        "jetstream-id"
+    )
 
 
 def test_nats_singleton_double_check_handles_race_inside_lock():

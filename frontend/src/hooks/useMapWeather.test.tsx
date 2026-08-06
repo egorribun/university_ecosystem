@@ -171,3 +171,92 @@ describe("useMapWeather — apparent_temperature fallback", () => {
     expect(result.current.data?.feelsLike).toBe(12)
   })
 })
+
+describe("useMapWeather — defensive API handling", () => {
+  it("surfaces a non-OK API response as a query error", async () => {
+    fetchMock.mockResolvedValue({
+      ok: false,
+      status: 503,
+    } as Response)
+
+    const client = newClient()
+    const { result } = renderHook(() => useMapWeather(), { wrapper: wrapper(client) })
+
+    await waitFor(() => expect(result.current.isError).toBe(true))
+    expect(result.current.error).toEqual(new Error("Weather API 503"))
+  })
+
+  it("uses safe defaults when optional current and hourly collections are absent", async () => {
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        current: {
+          temperature_2m: 5.6,
+          weather_code: 99,
+          is_day: 0,
+          apparent_temperature: undefined,
+          wind_speed_10m: undefined,
+          relative_humidity_2m: undefined,
+          uv_index: undefined,
+        },
+        hourly: {
+          time: undefined,
+          temperature_2m: undefined,
+          weather_code: undefined,
+        },
+      }),
+    } as Response)
+
+    const client = newClient()
+    const { result } = renderHook(() => useMapWeather(), { wrapper: wrapper(client) })
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    expect(result.current.data).toMatchObject({
+      temperature: 6,
+      isDay: false,
+      feelsLike: 6,
+      windSpeed: 0,
+      humidity: 0,
+      uvIndex: 0,
+      hourlyForecast: [],
+    })
+  })
+
+  it("skips empty hourly timestamps and defaults missing point values", async () => {
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        current: FIXTURE_API_RESPONSE.current,
+        hourly: {
+          time: ["", "2026-05-15T14:00"],
+          temperature_2m: [],
+          weather_code: [],
+        },
+      }),
+    } as Response)
+
+    const client = newClient()
+    const { result } = renderHook(() => useMapWeather(), { wrapper: wrapper(client) })
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    expect(result.current.data?.hourlyForecast).toEqual([
+      { hour: 14, temperature: 0, condition: "clear" },
+    ])
+  })
+
+  it("continues successfully when localStorage cannot persist the response", async () => {
+    const setItemSpy = vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw new DOMException("Quota exceeded", "QuotaExceededError")
+    })
+
+    const client = newClient()
+    const { result } = renderHook(() => useMapWeather(), { wrapper: wrapper(client) })
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    expect(result.current.data?.temperature).toBe(12)
+    expect(setItemSpy).toHaveBeenCalledOnce()
+    setItemSpy.mockRestore()
+  })
+})

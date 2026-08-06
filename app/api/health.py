@@ -8,7 +8,6 @@ from typing import TYPE_CHECKING, Any
 from fastapi import APIRouter, HTTPException, status
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
-from sqlalchemy.exc import OperationalError
 
 from app.core.config import settings
 from app.core.database import engine, get_pool_health_metrics, wait_db
@@ -219,10 +218,7 @@ async def healthz(
                 queue_start = time.perf_counter()
                 try:
                     await _check_queue(conn)
-                except (
-                    OperationalError,
-                    Exception,
-                ):  # RZ-25-01  # RZ-22-01-JUSTIFIED: health probe catch-all (reviewed TD-27-04)
+                except Exception:  # RZ-25-01  # RZ-22-01-JUSTIFIED: health probe catch-all (reviewed TD-27-04)
                     queue_status = "error"
                 queue_elapsed = time.perf_counter() - queue_start
                 statuses["notification_queue"] = queue_status

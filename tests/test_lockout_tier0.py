@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -18,7 +18,7 @@ def test_lockout_rules_discard_invalid_entries_and_sort_thresholds(monkeypatch) 
     from app.services.auth.lockout import LockoutService
 
     monkeypatch.setattr(
-        settings,
+        settings.security,
         "auth_lockout_thresholds",
         "bad, 5:20, 2:x, 0:3, 2:10, :4",
     )
@@ -33,7 +33,7 @@ def test_lockout_rules_accept_sequence_settings(monkeypatch) -> None:
     from app.core.config import settings
     from app.services.auth.lockout import LockoutService
 
-    monkeypatch.setattr(settings, "auth_lockout_thresholds", ["", 3, "4:8"])
+    monkeypatch.setattr(settings.security, "auth_lockout_thresholds", ["", 3, "4:8"])
 
     service = LockoutService(AsyncMock())
 
@@ -46,7 +46,7 @@ def test_calculate_lock_until_normalizes_naive_time_and_keeps_longest_window(
     from app.core.config import settings
     from app.services.auth.lockout import LockoutService
 
-    monkeypatch.setattr(settings, "auth_lockout_thresholds", "2:10,3:20")
+    monkeypatch.setattr(settings.security, "auth_lockout_thresholds", "2:10,3:20")
     service = LockoutService(AsyncMock())
     now = datetime(2026, 7, 23, 12, tzinfo=UTC)
 
@@ -66,7 +66,7 @@ def test_calculate_lock_until_skips_unmet_and_expired_rules(monkeypatch) -> None
     from app.core.config import settings
     from app.services.auth.lockout import LockoutService
 
-    monkeypatch.setattr(settings, "auth_lockout_thresholds", "2:10")
+    monkeypatch.setattr(settings.security, "auth_lockout_thresholds", "2:10")
     service = LockoutService(AsyncMock())
     now = datetime(2026, 7, 23, 12, tzinfo=UTC)
 
@@ -94,8 +94,8 @@ async def test_prune_stale_attempts_flushes_transaction(monkeypatch) -> None:
     from app.core.config import settings
     from app.services.auth.lockout import LockoutService
 
-    monkeypatch.setattr(settings, "auth_lockout_thresholds", "2:10")
-    monkeypatch.setattr(settings, "auth_lockout_history_minutes", 5)
+    monkeypatch.setattr(settings.security, "auth_lockout_thresholds", "2:10")
+    monkeypatch.setattr(settings.security, "auth_lockout_history_minutes", 5)
     db = AsyncMock()
     service = LockoutService(db)
     service.repo.prune_stale_failed_attempts = AsyncMock()
@@ -113,7 +113,7 @@ async def test_fetch_recent_attempts_clamps_limit_and_reverses_db_order(
     from app.core.config import settings
     from app.services.auth.lockout import LockoutService
 
-    monkeypatch.setattr(settings, "auth_lockout_thresholds", "2:10")
+    monkeypatch.setattr(settings.security, "auth_lockout_thresholds", "2:10")
     service = LockoutService(AsyncMock())
     first = _attempt(datetime.now(UTC) - timedelta(seconds=2))
     second = _attempt(datetime.now(UTC) - timedelta(seconds=1))
@@ -122,16 +122,12 @@ async def test_fetch_recent_attempts_clamps_limit_and_reverses_db_order(
     attempts = await service._fetch_recent_attempts("ordered@example.com", 0)
 
     assert attempts == [second, first]
-    service.repo.get_failed_attempts.assert_awaited_once_with(
-        "ordered@example.com", 1
-    )
+    service.repo.get_failed_attempts.assert_awaited_once_with("ordered@example.com", 1)
     service.repo.get_failed_attempts.reset_mock()
 
     await service._fetch_recent_attempts("ordered@example.com", 2)
 
-    service.repo.get_failed_attempts.assert_awaited_once_with(
-        "ordered@example.com", 2
-    )
+    service.repo.get_failed_attempts.assert_awaited_once_with("ordered@example.com", 2)
 
 
 @pytest.mark.asyncio
@@ -139,8 +135,8 @@ async def test_prune_stale_attempts_skips_when_history_is_disabled(monkeypatch) 
     from app.core.config import settings
     from app.services.auth.lockout import LockoutService
 
-    monkeypatch.setattr(settings, "auth_lockout_thresholds", "2:10")
-    monkeypatch.setattr(settings, "auth_lockout_history_minutes", 0)
+    monkeypatch.setattr(settings.security, "auth_lockout_thresholds", "2:10")
+    monkeypatch.setattr(settings.security, "auth_lockout_history_minutes", 0)
     service = LockoutService(AsyncMock())
     service.repo.prune_stale_failed_attempts = AsyncMock()
 
@@ -154,7 +150,7 @@ async def test_get_active_lockout_prunes_and_reads_recent_attempts(monkeypatch) 
     from app.core.config import settings
     from app.services.auth.lockout import LockoutService
 
-    monkeypatch.setattr(settings, "auth_lockout_thresholds", "1:10")
+    monkeypatch.setattr(settings.security, "auth_lockout_thresholds", "1:10")
     service = LockoutService(AsyncMock())
     service._prune_stale_attempts = AsyncMock()
     service._fetch_recent_attempts = AsyncMock(
@@ -175,7 +171,7 @@ async def test_get_active_lockout_without_rules_does_not_query_repository(
     from app.core.config import settings
     from app.services.auth.lockout import LockoutService
 
-    monkeypatch.setattr(settings, "auth_lockout_thresholds", "invalid")
+    monkeypatch.setattr(settings.security, "auth_lockout_thresholds", "invalid")
     service = LockoutService(AsyncMock())
     service.repo.get_failed_attempts = AsyncMock()
 
@@ -188,7 +184,7 @@ def test_expired_lockout_message_returns_base_without_retry(monkeypatch) -> None
     from app.core.config import settings
     from app.services.auth.lockout import LockoutService
 
-    monkeypatch.setattr(settings, "auth_lockout_thresholds", "2:10")
+    monkeypatch.setattr(settings.security, "auth_lockout_thresholds", "2:10")
     service = LockoutService(AsyncMock())
 
     with patch(
@@ -203,12 +199,63 @@ def test_expired_lockout_message_returns_base_without_retry(monkeypatch) -> None
     translate.assert_called_once_with("errors.auth.account_locked", locale="en")
 
 
+@pytest.mark.parametrize(
+    ("locale", "seconds", "expected"),
+    [
+        ("en", 0, "1 second"),
+        ("en", 1, "1 second"),
+        ("en", 2, "2 seconds"),
+        ("en", 60, "1 minute"),
+        ("en", 61, "2 minutes"),
+        ("en", 3600, "1 hour"),
+        ("en", 3601, "2 hours"),
+        ("ru", 11, "11 секунд"),
+        ("ru", 21, "21 секунду"),
+        ("ru", 22, "22 секунды"),
+        ("ru", 25, "25 секунд"),
+    ],
+)
+def test_format_duration_covers_english_and_russian_plural_rules(
+    locale: str, seconds: int, expected: str, monkeypatch
+) -> None:
+    from app.core.config import settings
+    from app.services.auth.lockout import LockoutService
+
+    monkeypatch.setattr(settings.security, "auth_lockout_thresholds", "2:10")
+    service = LockoutService(AsyncMock())
+
+    assert service.format_duration(locale, seconds) == expected
+
+    assert service._pluralize_en(1, "days") == "days"
+    assert service._pluralize_ru(1, "days") == "days"
+
+
+def test_active_lockout_message_includes_retry_details(monkeypatch) -> None:
+    from app.core.config import settings
+    from app.services.auth.lockout import LockoutService
+
+    monkeypatch.setattr(settings.security, "auth_lockout_thresholds", "2:10")
+    service = LockoutService(AsyncMock())
+
+    with patch(
+        "app.services.auth.lockout.translate",
+        side_effect=["Account locked", "Try again in 2 minutes"],
+    ) as translate:
+        detail, retry_after = service.get_lockout_message(
+            "en", datetime.now(UTC) + timedelta(seconds=61)
+        )
+
+    assert detail == "Account locked Try again in 2 minutes"
+    assert retry_after >= 1
+    assert translate.call_count == 2
+
+
 @pytest.mark.asyncio
 async def test_register_failed_attempt_uses_postgres_advisory_lock(monkeypatch) -> None:
     from app.core.config import settings
     from app.services.auth.lockout import LockoutService
 
-    monkeypatch.setattr(settings, "auth_lockout_thresholds", "1:30")
+    monkeypatch.setattr(settings.security, "auth_lockout_thresholds", "1:30")
     db = AsyncMock()
     service = LockoutService(db)
     service._is_postgresql = True
@@ -230,11 +277,13 @@ async def test_register_failed_attempt_uses_postgres_advisory_lock(monkeypatch) 
 
 
 @pytest.mark.asyncio
-async def test_register_failed_attempt_skips_postgres_lock_for_sqlite(monkeypatch) -> None:
+async def test_register_failed_attempt_skips_postgres_lock_for_sqlite(
+    monkeypatch,
+) -> None:
     from app.core.config import settings
     from app.services.auth.lockout import LockoutService
 
-    monkeypatch.setattr(settings, "auth_lockout_thresholds", "1:30")
+    monkeypatch.setattr(settings.security, "auth_lockout_thresholds", "1:30")
     db = AsyncMock()
     service = LockoutService(db)
     service._is_postgresql = False
@@ -256,7 +305,7 @@ async def test_clear_failed_attempts_commits_and_returns_count(monkeypatch) -> N
     from app.core.config import settings
     from app.services.auth.lockout import LockoutService
 
-    monkeypatch.setattr(settings, "auth_lockout_thresholds", "2:10")
+    monkeypatch.setattr(settings.security, "auth_lockout_thresholds", "2:10")
     db = AsyncMock()
     service = LockoutService(db)
     service.repo.clear_failed_attempts = AsyncMock(return_value=4)

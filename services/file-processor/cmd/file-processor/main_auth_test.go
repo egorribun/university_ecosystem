@@ -205,6 +205,40 @@ func TestHTTPJWTMiddleware_InvalidSignatureRejected(t *testing.T) {
 	assert.Equal(t, http.StatusUnauthorized, rec.Code)
 }
 
+func TestHTTPJWTMiddleware_TenantContextUsesHeaderBeforeClaim(t *testing.T) {
+	token := signedToken(t, jwt.SigningMethodHS256, []byte("hmac-secret"), jwt.MapClaims{
+		"sub":       "tenant-user",
+		"tenant_id": "claim-tenant",
+	})
+
+	for _, tc := range []struct {
+		name       string
+		header     string
+		wantTenant string
+	}{
+		{name: "explicit header wins", header: "header-tenant", wantTenant: "header-tenant"},
+		{name: "claim is fallback", wantTenant: "claim-tenant"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var tenant string
+			next := http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+				tenant, _ = r.Context().Value(tenantIDKey).(string)
+			})
+			handler := httpJWTMiddleware("hmac-secret", nil, testLogger(), next)
+			req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/graphql", nil)
+			if tc.header != "" {
+				req.Header.Set("X-Tenant-ID", tc.header)
+			}
+			req.Header.Set("Authorization", "Bearer "+token)
+			rec := httptest.NewRecorder()
+
+			handler.ServeHTTP(rec, req)
+			assert.Equal(t, http.StatusOK, rec.Code)
+			assert.Equal(t, tc.wantTenant, tenant)
+		})
+	}
+}
+
 // ---------------------------------------------------------------------------
 // authFunc — gRPC metadata path
 // ---------------------------------------------------------------------------
@@ -221,6 +255,28 @@ func TestAuthFunc_ValidTokenPutsSubInContext(t *testing.T) {
 	ctx, err := fn(metadataCtx(token))
 	require.NoError(t, err)
 	assert.Equal(t, "grpc-user", ctx.Value(userIDKey))
+}
+
+func TestAuthFunc_TenantContextPrefersMetadataAndFallsBackToClaim(t *testing.T) {
+	fn := authFunc("grpc-secret", nil, testLogger()) // pragma: allowlist secret
+	token := signedToken(t, jwt.SigningMethodHS256, []byte("grpc-secret"), jwt.MapClaims{
+		"sub":       "grpc-tenant-user",
+		"tenant_id": "claim-tenant",
+	})
+
+	withMetadata, err := fn(metadata.NewIncomingContext(
+		context.Background(),
+		metadata.Pairs(
+			"authorization", "Bearer "+token,
+			"x-tenant-id", "metadata-tenant",
+		),
+	))
+	require.NoError(t, err)
+	assert.Equal(t, "metadata-tenant", withMetadata.Value(tenantIDKey))
+
+	claimOnly, err := fn(metadataCtx(token))
+	require.NoError(t, err)
+	assert.Equal(t, "claim-tenant", claimOnly.Value(tenantIDKey))
 }
 
 func TestAuthFunc_InvalidTokenUnauthenticated(t *testing.T) {
@@ -253,7 +309,8 @@ func TestAuthFunc_MissingMetadataErrors(t *testing.T) {
 
 func TestSetupGRPCServer_BuildsServer(t *testing.T) {
 	cfg := &config.Config{JWTSecret: "smoke-secret"} // pragma: allowlist secret
-	srv := setupGRPCServer(context.Background(), cfg, nil, nil, testLogger())
+	srv, err := setupGRPCServer(context.Background(), cfg, nil, nil, testLogger())
+	require.NoError(t, err)
 	require.NotNil(t, srv)
 	info := srv.GetServiceInfo()
 	assert.Contains(t, info, "grpc.health.v1.Health")

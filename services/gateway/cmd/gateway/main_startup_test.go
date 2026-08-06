@@ -3,13 +3,16 @@ package main
 import (
 	"bytes"
 	"context"
+	"net/http"
 	"os"
 	"os/exec"
 	"testing"
 
 	"github.com/alicebob/miniredis/v2"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"github.com/university-ecosystem/gateway/internal/config"
+	"github.com/university-ecosystem/services/pkg/spiffe"
 )
 
 // TestMain_InvalidPortExitsCleanly tests that running main() with an invalid port
@@ -25,11 +28,12 @@ func TestMain_InvalidPortExitsCleanly(t *testing.T) {
 	t.Setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "")
 	t.Setenv("SENTRY_DSN", "")
 
-	// We run main() directly in the test context.
-	// Since port is -1, ListenAndServe fails immediately, runServer handles the error
-	// and exits. The main() function will execute all its defers and exit cleanly.
+	// We run run() directly in the test context.
+	// Since port is -1, ListenAndServe fails immediately, runServer handles the error,
+	// performs orderly shutdown, and returns an error. run() executes all defers and returns the error.
 	assert.NotPanics(t, func() {
-		main()
+		err := run()
+		assert.Error(t, err)
 	})
 }
 
@@ -121,7 +125,8 @@ func TestSetupRouter_FullFeatures(t *testing.T) {
 	}
 
 	assert.NotPanics(t, func() {
-		router := setupRouter(cfg, initLogger(), nil, nil, context.Background())
+		router, err := setupRouter(cfg, initLogger(), nil, nil, context.Background())
+		assert.NoError(t, err)
 		assert.NotNil(t, router)
 	})
 }
@@ -131,12 +136,88 @@ func TestInitGRPC_TLS(t *testing.T) {
 		FileProcessorAddr: "localhost:50051",
 		GrpcUseTLS:        true,
 	}
-	conn, client := initGRPC(cfg, initLogger())
+	conn, client, err := initGRPC(cfg, initLogger())
+	assert.NoError(t, err)
 	assert.NotNil(t, conn)
 	assert.NotNil(t, client)
 	if err := conn.Close(); err != nil {
 		t.Logf("gRPC conn close: %v", err)
 	}
+}
+
+func TestInitGRPC_Insecure(t *testing.T) {
+	cfg := &config.Config{
+		FileProcessorAddr: "localhost:50051",
+		GrpcUseTLS:        false,
+	}
+	conn, fileClient, err := initGRPC(cfg, initLogger())
+	assert.NoError(t, err)
+	assert.NotNil(t, conn)
+	assert.NotNil(t, fileClient)
+	if conn != nil {
+		assert.NoError(t, conn.Close())
+	}
+}
+
+func TestInitGRPC_SpiffeRequiresClient(t *testing.T) {
+	conn, fileClient, err := initGRPC(&config.Config{
+		FileProcessorAddr: "localhost:50051",
+		SpiffeEnabled:     true,
+	}, initLogger())
+	assert.Nil(t, conn)
+	assert.Nil(t, fileClient)
+	assert.ErrorIs(t, err, http.ErrServerClosed)
+}
+
+func TestInitGRPC_SpiffeClientCredentialFailure(t *testing.T) {
+	conn, fileClient, err := initGRPC(&config.Config{
+		FileProcessorAddr:     "localhost:50051",
+		SpiffeEnabled:         true,
+		FileProcessorSpiffeID: "spiffe://university.ecosystem/ns/services/sa/file-processor",
+	}, initLogger(), &spiffe.Client{})
+
+	assert.Nil(t, conn)
+	assert.Nil(t, fileClient)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "uninitialized")
+}
+
+func TestSetupRouter_InvalidWsHubURL(t *testing.T) {
+	cfg := &config.Config{
+		BackendURL:     "http://localhost:8080",
+		WsHubURL:       "://invalid-url",
+		JWTSecret:      "test-secret-at-least-32-characters-long",
+		AllowedOrigins: []string{"http://localhost"},
+	}
+	router, err := setupRouter(cfg, initLogger(), nil, nil, context.Background())
+	assert.Nil(t, router)
+	assert.Error(t, err)
+}
+
+func TestSetupRouter_SpiffeRequiresClient(t *testing.T) {
+	cfg := &config.Config{
+		BackendURL:     "http://localhost:8080",
+		JWTSecret:      "test-secret-at-least-32-characters-long",
+		AllowedOrigins: []string{"http://localhost"},
+		SpiffeEnabled:  true,
+	}
+	router, err := setupRouter(cfg, initLogger(), nil, nil, context.Background())
+	assert.Nil(t, router)
+	assert.ErrorIs(t, err, http.ErrServerClosed)
+}
+
+func TestSetupRouter_SpiffeBackendCredentialFailure(t *testing.T) {
+	cfg := &config.Config{
+		BackendURL:     "http://localhost:8080",
+		JWTSecret:      "test-secret-at-least-32-characters-long",
+		AllowedOrigins: []string{"http://localhost"},
+		SpiffeEnabled:  true,
+	}
+
+	router, err := setupRouter(cfg, initLogger(), nil, nil, context.Background(), &spiffe.Client{})
+	assert.Nil(t, router)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "uninitialized")
 }
 
 func TestInitTracer_TLS(t *testing.T) {
@@ -151,4 +232,20 @@ func TestInitTracer_TLS(t *testing.T) {
 			t.Logf("tracer shutdown: %v", shutdownErr)
 		}
 	}
+}
+
+func TestRun_SpiffeInitializationFailureReturnsError(t *testing.T) {
+	t.Setenv("GATEWAY_PORT", "0")
+	t.Setenv("JWT_SECRET", "test-secret-at-least-32-characters-long")
+	t.Setenv("BACKEND_URL", "http://localhost:8080")
+	t.Setenv("REDIS_URL", "")
+	t.Setenv("GRPC_USE_TLS", "false")
+	t.Setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "")
+	t.Setenv("SENTRY_DSN", "")
+	t.Setenv("SPIFFE_ENABLED", "true")
+	t.Setenv("SPIFFE_TRUST_DOMAIN", "invalid trust domain with spaces!")
+
+	err := run()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "trust")
 }

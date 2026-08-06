@@ -37,7 +37,7 @@ describe("campusPOI data", () => {
       expect(typeof poi.coords[1]).toBe("number")
       expect(ICONS.has(poi.icon)).toBe(true)
       expect(typeof poi.i18nKey).toBe("string")
-      expect(poi.i18nKey.length).toBeGreaterThan(0)
+      expect(poi.i18nKey!.length).toBeGreaterThan(0)
     }
   })
 

@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest"
+import { afterEach, describe, expect, it, vi } from "vitest"
 import { screen } from "@testing-library/react"
 
 import { ActivityTrendChart } from "@/features/activity/components/ActivityTrendChart"
@@ -8,6 +8,10 @@ import { renderWithRouter } from "@/tests/helpers/renderWithRouter"
 // needs >= 2 points to draw; fewer falls back to the empty state.
 
 describe("ActivityTrendChart", () => {
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
   it("renders the trend svg + sr-only table with >= 2 points", async () => {
     await renderWithRouter({
       ui: () => (
@@ -66,5 +70,53 @@ describe("ActivityTrendChart", () => {
     })
 
     expect(screen.queryByRole("img")).not.toBeInTheDocument()
+  })
+
+  it("uses the constant-value padding fallback and full-motion transition path", async () => {
+    vi.spyOn(window, "matchMedia").mockReturnValue({
+      matches: false,
+      media: "(prefers-reduced-motion: reduce)",
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    } as unknown as MediaQueryList)
+
+    await renderWithRouter({
+      ui: () => (
+        <ActivityTrendChart
+          ariaLabel="Constant trend"
+          data={[
+            { date: "2026-06-01", value: 5 },
+            { date: "2026-06-02", value: 5 },
+          ]}
+        />
+      ),
+      authProvider: false,
+    })
+
+    expect(screen.getByRole("img", { name: "Constant trend" })).toBeInTheDocument()
+  })
+
+  it("uses the reduced-motion transition values when the preference is enabled", async () => {
+    vi.spyOn(window, "matchMedia").mockReturnValue({
+      matches: true,
+      media: "(prefers-reduced-motion: reduce)",
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    } as unknown as MediaQueryList)
+
+    await renderWithRouter({
+      ui: () => (
+        <ActivityTrendChart
+          ariaLabel="Reduced trend"
+          data={[
+            { date: "2026-06-01", value: 2 },
+            { date: "2026-06-02", value: 3 },
+          ]}
+        />
+      ),
+      authProvider: false,
+    })
+
+    expect(screen.getByRole("img", { name: "Reduced trend" })).toBeInTheDocument()
   })
 })

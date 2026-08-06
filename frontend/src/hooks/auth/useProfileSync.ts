@@ -166,6 +166,12 @@ const readCachedEnvelope = (): CachedProfileEnvelope | undefined => {
   try {
     const raw = localStorage.getItem(PROFILE_CACHE_STORAGE_KEY)
     if (!raw) return undefined
+    const parsed: unknown = JSON.parse(raw)
+    if (!parsed || typeof parsed !== "object") {
+      clearProfileCacheStorage("parse_error")
+      return undefined
+    }
+    return parsed as CachedProfileEnvelope
   } catch (_e) {
     clearProfileCacheStorage("parse_error")
     return undefined
@@ -413,7 +419,11 @@ const readCachedUserAsync = async (signingKey: string | null): Promise<User | un
   return createOptimisticUser(snapshotData)
 }
 
-const persistUserToCacheAsync = async (value: User | null, signingKey: string | null) => {
+const persistUserToCacheAsync = async (
+  value: User | null,
+  signingKey: string | null,
+  isMounted?: () => boolean
+) => {
   if (typeof localStorage === "undefined") return
   try {
     if (value != null && signingKey) {
@@ -437,6 +447,7 @@ const persistUserToCacheAsync = async (value: User | null, signingKey: string | 
 
       const encryptedData = await encryptData(snapshot, signingKey)
       if (!encryptedData) return
+      if (isMounted && !isMounted()) return
 
       const payload: CacheSignaturePayload = {
         version: PROFILE_CACHE_SCHEMA_VERSION,
@@ -445,6 +456,7 @@ const persistUserToCacheAsync = async (value: User | null, signingKey: string | 
       }
 
       const signature = await signPayload(payload, signingKey)
+      if (isMounted && !isMounted()) return
 
       const envelope: CachedProfileEnvelope = {
         ...payload,
@@ -667,6 +679,10 @@ export const useProfileSync = (
 
     if (verifySignatureSync(payload, candidate.signature, signingKey)) {
       if (typeof candidate.data !== "string") {
+        if (!candidate.data || typeof candidate.data.id !== "string") {
+          clearProfileCacheStorage("invalid_data")
+          return null
+        }
         // Legacy v3 format with unencrypted object data
         return createOptimisticUser(candidate.data)
       }
@@ -723,6 +739,14 @@ export const useProfileSync = (
   // Closes W134 §Honesty #3.
   const autoFetchAttemptedRef = useRef(false)
   const initializingRef = useRef(initializing)
+  const mountedRef = useRef(true)
+
+  useEffect(() => {
+    mountedRef.current = true
+    return () => {
+      mountedRef.current = false
+    }
+  }, [])
 
   useEffect(() => {
     let mounted = true
@@ -792,7 +816,7 @@ export const useProfileSync = (
         userStateRef.current = normalized
         if (persist) {
           const key = sessionSigningKeyRef.current
-          persistUserToCacheAsync(normalized, key)
+          persistUserToCacheAsync(normalized, key, () => mountedRef.current)
         }
         queryClient.setQueryData<UserState>(currentUserQueryKey, normalized)
         return normalized
@@ -860,8 +884,15 @@ export const useProfileSync = (
   )
 
   useEffect(() => {
-    if (cachedUserRef.current !== null) {
-      queryClient.setQueryData<UserState>(currentUserQueryKey, cachedUserRef.current)
+    const cachedUser = cachedUserRef.current
+    if (cachedUser !== null) {
+      // The encrypted-cache bootstrap uses id "-1" as a render-only
+      // placeholder. It must not become fresh authoritative /users/me data,
+      // otherwise fetchQuery() returns the placeholder and never reaches the
+      // backend for the real profile.
+      if (cachedUser.id !== "-1") {
+        queryClient.setQueryData<UserState>(currentUserQueryKey, cachedUser)
+      }
       cachedUserRef.current = null
     }
   }, [queryClient])
@@ -892,7 +923,9 @@ export const useProfileSync = (
             mfa_required: cached.mfa_required,
             mfa_default_method: cached.mfa_default_method,
             mfa_last_verified_at: cached.mfa_last_verified_at,
-            totp_enrollments: cached.totp_enrollments ?? prev.totp_enrollments,
+            // `createOptimisticUser` normalizes this field to an array, so the
+            // fallback to the authoritative value was unreachable here.
+            totp_enrollments: cached.totp_enrollments,
           }
         },
         { persist: false }
@@ -955,11 +988,6 @@ export const useProfileSync = (
   }, [userState])
 
   useEffect(() => {
-    if (typeof window === "undefined") {
-      setInitializing(false)
-      return
-    }
-
     // Wave 116 SW3 — LHCI auth mock. scripts/run-lhci.mjs builds with
     // VITE_LHCI=true and needs authenticated routes (/dashboard, /news,
     // /events, /schedule, /activity, /map) to render their real content

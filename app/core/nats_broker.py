@@ -12,6 +12,7 @@ from typing import Any, ParamSpec, Protocol, TypeVar, cast
 import nats
 from nats.aio.client import Client as NATS
 from nats.js import JetStreamContext
+from nats.js.api import RetentionPolicy, StorageType, StreamConfig
 from opentelemetry import propagate, trace
 from opentelemetry.trace import SpanKind
 from pydantic import BaseModel, ValidationError, field_validator
@@ -22,6 +23,8 @@ from app.core.orjson_utils import orjson
 
 P = ParamSpec("P")
 R_co = TypeVar("R_co", covariant=True)
+
+_SEVEN_DAYS_SECONDS = 7 * 24 * 3600  # 604,800 seconds
 
 
 class Task(Protocol[P, R_co]):
@@ -96,6 +99,12 @@ class NatsTaskBroker:
         # only subscribes and waits via compose depends_on (W140 SW3).
         self._files_process_stream_name = "FILES_PROCESS"
         self._files_process_subject = "files.process"
+        self._chat_events_stream_name = "CHAT_EVENTS"
+        self._chat_events_subject = "chat.*"
+        self._notifications_events_stream_name = "NOTIFICATIONS_EVENTS"
+        self._notifications_events_subject = "notifications.*"
+        self._outbox_events_stream_name = "OUTBOX_EVENTS"
+        self._outbox_events_subject = "outbox.*"
 
     @property
     def is_connected(self) -> bool:
@@ -134,19 +143,51 @@ class NatsTaskBroker:
             )
             self._js = self._nc.jetstream()
 
-            # Ensure stream exists
-            await self._js.add_stream(
-                name=self._stream_name,
-                subjects=[f"{self._subject_prefix}.>"],
+            # Provision 5 file-backed streams with 7-day retention policy (604,800s)
+            streams = [
+                StreamConfig(
+                    name=self._stream_name,
+                    subjects=[f"{self._subject_prefix}.>"],
+                    storage=StorageType.FILE,
+                    retention=RetentionPolicy.LIMITS,
+                    max_age=_SEVEN_DAYS_SECONDS,
+                ),
+                StreamConfig(
+                    name=self._files_process_stream_name,
+                    subjects=[self._files_process_subject],
+                    storage=StorageType.FILE,
+                    retention=RetentionPolicy.LIMITS,
+                    max_age=_SEVEN_DAYS_SECONDS,
+                ),
+                StreamConfig(
+                    name=self._chat_events_stream_name,
+                    subjects=[self._chat_events_subject],
+                    storage=StorageType.FILE,
+                    retention=RetentionPolicy.LIMITS,
+                    max_age=_SEVEN_DAYS_SECONDS,
+                ),
+                StreamConfig(
+                    name=self._notifications_events_stream_name,
+                    subjects=[self._notifications_events_subject],
+                    storage=StorageType.FILE,
+                    retention=RetentionPolicy.LIMITS,
+                    max_age=_SEVEN_DAYS_SECONDS,
+                ),
+                StreamConfig(
+                    name=self._outbox_events_stream_name,
+                    subjects=[self._outbox_events_subject],
+                    storage=StorageType.FILE,
+                    retention=RetentionPolicy.LIMITS,
+                    max_age=_SEVEN_DAYS_SECONDS,
+                ),
+            ]
+
+            for stream_cfg in streams:
+                await self._js.add_stream(config=stream_cfg)
+
+            _logger.info(
+                "Connected to NATS JetStream (5 file-backed streams provisioned)"
             )
-            # W140 SW1: provision file-processor's NATS stream. file-processor
-            # crashes at startup if this stream is missing (W139 §Honesty #6).
-            # add_stream is idempotent — re-creating the same stream is a no-op.
-            await self._js.add_stream(
-                name=self._files_process_stream_name,
-                subjects=[self._files_process_subject],
-            )
-            _logger.info("Connected to NATS JetStream for task processing")
         except Exception as exc:  # RZ-22-01-JUSTIFIED: re-raise-after-cleanup — logs then re-raises (reviewed TD-27-04)
             _logger.error("Failed to connect to NATS: %s", exc)
             raise
@@ -189,7 +230,13 @@ class NatsTaskBroker:
 
         return decorator
 
-    async def publish(self, subject: str, payload: dict[str, Any]) -> None:
+    async def publish(
+        self,
+        subject: str,
+        payload: dict[str, Any],
+        headers: dict[str, str] | None = None,
+        msg_id: str | None = None,
+    ) -> None:
         """Publish a generic event to JetStream with trace context propagation.
 
         W-03 (audit 2026-03-10): Generic publisher for event-driven patterns where
@@ -205,20 +252,35 @@ class NatsTaskBroker:
             f"nats.publish:{subject}", kind=SpanKind.PRODUCER
         ) as span:
             # Inject trace context into headers
-            headers: dict[str, str] = {}
-            propagate.inject(headers)
+            msg_headers: dict[str, str] = headers.copy() if headers else {}
+            propagate.inject(msg_headers)
+
+            dedup_id = (
+                msg_id
+                or payload.get("id")
+                or payload.get("event_id")
+                or str(uuid.uuid4())
+            )
+            msg_headers["Nats-Msg-Id"] = str(dedup_id)
 
             span.set_attribute("messaging.system", "nats")
             span.set_attribute("messaging.destination", subject)
+            span.set_attribute("messaging.message_id", str(dedup_id))
 
             if self._js:
                 await self._js.publish(
                     subject,
                     json.dumps(payload).encode(),
-                    headers=headers,
+                    headers=msg_headers,
                 )
 
-    async def publish_core(self, subject: str, payload: dict[str, Any]) -> None:
+    async def publish_core(
+        self,
+        subject: str,
+        payload: dict[str, Any],
+        headers: dict[str, str] | None = None,
+        msg_id: str | None = None,
+    ) -> None:
         """Publish an ephemeral event via CORE NATS (fire-and-forget, no stream).
 
         W204 SW1: mirrors in-process ``ws_manager`` chat broadcasts onto the
@@ -255,17 +317,29 @@ class NatsTaskBroker:
         with tracer.start_as_current_span(
             f"nats.publish_core:{subject}", kind=SpanKind.PRODUCER
         ) as span:
-            headers: dict[str, str] = {}
-            propagate.inject(headers)
+            msg_headers: dict[str, str] = headers.copy() if headers else {}
+            propagate.inject(msg_headers)
+
+            dedup_id = (
+                msg_id
+                or payload.get("id")
+                or payload.get("event_id")
+                or str(uuid.uuid4())
+            )
+            msg_headers["Nats-Msg-Id"] = str(dedup_id)
+
             span.set_attribute("messaging.system", "nats")
             span.set_attribute("messaging.destination", subject)
+            span.set_attribute("messaging.message_id", str(dedup_id))
+
             try:
                 await self._nc.publish(
                     subject,
                     orjson.dumps(payload, default=str),
-                    headers=headers,
+                    headers=msg_headers,
                 )
             except (
+                nats.errors.Error,
                 ConnectionError,
                 TimeoutError,
                 OSError,
@@ -291,6 +365,7 @@ class NatsTaskBroker:
             # Inject trace context into headers/metadata
             headers: dict[str, str] = {}
             propagate.inject(headers)
+            headers["Nats-Msg-Id"] = task_id
 
             payload = {
                 "id": task_id,
@@ -304,8 +379,8 @@ class NatsTaskBroker:
             span.set_attribute("messaging.destination", task_name)
             span.set_attribute("messaging.message_id", task_id)
 
+            subject = f"{self._subject_prefix}.{task_name}"
             if self._js:
-                subject = f"{self._subject_prefix}.{task_name}"
                 await self._js.publish(
                     subject,
                     json.dumps(payload).encode(),

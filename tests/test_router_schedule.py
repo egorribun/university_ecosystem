@@ -299,3 +299,29 @@ class TestDownloadScheduleIcs:
 
         assert response.status_code == 200
         assert response.headers.get("cache-control") == "no-cache"
+
+    @pytest.mark.asyncio
+    async def test_locale_header_omitted_when_locale_is_unresolved(self):
+        from app.routers.schedule import download_schedule_ics
+
+        group_id = uuid.uuid4()
+        group = MagicMock()
+        group.id = group_id
+        group.name = "No Locale"
+        db = AsyncMock()
+        db.get.return_value = group
+        service = MagicMock()
+        service.get_schedule = AsyncMock(return_value=[])
+        request = MagicMock()
+
+        with (
+            patch("app.routers.schedule.resolve_locale", return_value=None),
+            patch(
+                "app.routers.schedule.generate_schedule_ics",
+                return_value="BEGIN:VCALENDAR\nEND:VCALENDAR",
+            ),
+        ):
+            response = await download_schedule_ics(request, service, group_id, db)
+
+        assert response.status_code == 200
+        assert "content-language" not in response.headers

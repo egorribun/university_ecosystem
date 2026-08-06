@@ -9,7 +9,6 @@ from __future__ import annotations
 from io import BytesIO
 from typing import Any, cast
 
-from defusedxml.common import DefusedXmlException
 from defusedxml.ElementTree import fromstring as parse_svg_string
 from PIL import Image, ImageOps, UnidentifiedImageError
 
@@ -48,7 +47,7 @@ def sanitize_svg(data: bytes) -> bytes:
         # defusedxml will raise an error if it finds any suspicious XML
         parse_svg_string(data)
         return data
-    except (DefusedXmlException, Exception) as exc:
+    except Exception as exc:  # RZ-22-01-JUSTIFIED: convert-to-domain ValueError for invalid or malicious SVG data
         raise ValueError("Invalid or malicious SVG data") from exc
 
 

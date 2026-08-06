@@ -202,4 +202,81 @@ describe("useEventCardLogic (branches)", () => {
     expect(onChange).not.toHaveBeenCalled()
     expect(result.current.loading).toBe(false)
   })
+
+  it("covers live, distant, ended, and invalid date status paths", () => {
+    vi.useFakeTimers()
+    try {
+      vi.setSystemTime(new Date("2026-12-01T11:00:00Z"))
+      const live = renderHook(() =>
+        useEventCardLogic({
+          ...eventProps,
+          starts_at: "2026-12-01T10:00:00Z",
+          ends_at: "2026-12-01T12:00:00Z",
+        })
+      )
+      expect(live.result.current.timeStatus).toEqual({ status: "live" })
+      expect(live.result.current.eventEnded).toBe(false)
+      live.unmount()
+
+      vi.setSystemTime(new Date("2026-12-01T09:30:00Z"))
+      const soon = renderHook(() =>
+        useEventCardLogic({
+          ...eventProps,
+          starts_at: "2026-12-01T10:00:00Z",
+          ends_at: "2026-12-01T12:00:00Z",
+        })
+      )
+      expect(soon.result.current.timeStatus.status).toBe("soon")
+      soon.unmount()
+
+      vi.setSystemTime(new Date("2026-12-02T00:00:00Z"))
+      const ended = renderHook(() =>
+        useEventCardLogic({
+          ...eventProps,
+          starts_at: "2026-12-01T10:00:00Z",
+          ends_at: "2026-12-01T12:00:00Z",
+        })
+      )
+      expect(ended.result.current.timeStatus).toEqual({ status: "none" })
+      expect(ended.result.current.eventEnded).toBe(true)
+      ended.unmount()
+
+      const invalid = renderHook(() => useEventCardLogic({ id: "invalid-dates" }))
+      expect(invalid.result.current.timeStatus).toEqual({ status: "none" })
+      expect(invalid.result.current.eventEnded).toBe(false)
+      expect(invalid.result.current.cardImageUrl).toBeUndefined()
+      invalid.unmount()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it("ignores clicks on interactive descendants and while editing", () => {
+    const { result } = renderHook(() => useEventCardLogic(eventProps))
+    const buttonTarget = {
+      closest: (selector: string) => (selector === "button" ? {} : null),
+    }
+    const menuTarget = {
+      closest: (selector: string) => (selector === '[role="menu"]' ? {} : null),
+    }
+    const anchorTarget = {
+      closest: (selector: string) => (selector === "a" ? {} : null),
+    }
+    const plainTarget = { closest: () => null }
+
+    act(() => {
+      result.current.onCardClick({ target: buttonTarget } as unknown as React.MouseEvent)
+      result.current.onCardClick({ target: menuTarget } as unknown as React.MouseEvent)
+      result.current.onCardClick({ target: anchorTarget } as unknown as React.MouseEvent)
+    })
+    expect(mockNavigate).not.toHaveBeenCalled()
+
+    act(() => {
+      result.current.setEditOpen(true)
+    })
+    act(() => {
+      result.current.onCardClick({ target: plainTarget } as unknown as React.MouseEvent)
+    })
+    expect(mockNavigate).not.toHaveBeenCalled()
+  })
 })

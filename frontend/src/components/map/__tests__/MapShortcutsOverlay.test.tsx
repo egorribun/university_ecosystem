@@ -1,6 +1,8 @@
 import { render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
-import { describe, it, expect, vi } from "vitest"
+import { afterEach, describe, it, expect, vi } from "vitest"
+
+const mediaQueryState = vi.hoisted(() => ({ prefersReduced: true }))
 
 vi.mock("framer-motion", async () =>
   (await import("@/tests/helpers/framerMotionMock")).framerMotionMock()
@@ -11,11 +13,17 @@ vi.mock("react-i18next", () => ({
     i18n: { language: "en", changeLanguage: () => Promise.resolve() },
   }),
 }))
-vi.mock("@/hooks/useMediaQuery", () => ({ default: () => true }))
+vi.mock("@/hooks/useMediaQuery", () => ({
+  default: () => mediaQueryState.prefersReduced,
+}))
 
 import { MapShortcutsOverlay } from "@/components/map/MapShortcutsOverlay"
 
 const baseProps = { open: true, onClose: vi.fn() }
+
+afterEach(() => {
+  mediaQueryState.prefersReduced = true
+})
 
 describe("MapShortcutsOverlay", () => {
   it("renders nothing when closed", () => {
@@ -38,5 +46,13 @@ describe("MapShortcutsOverlay", () => {
     render(<MapShortcutsOverlay {...baseProps} onClose={onClose} />)
     await user.click(screen.getByRole("button", { name: "sidebar.close" }))
     expect(onClose).toHaveBeenCalledOnce()
+  })
+
+  it("uses the spring transition arm for users without reduced motion", () => {
+    mediaQueryState.prefersReduced = false
+
+    render(<MapShortcutsOverlay {...baseProps} />)
+
+    expect(screen.getByRole("dialog", { name: "shortcuts.title" })).toBeInTheDocument()
   })
 })

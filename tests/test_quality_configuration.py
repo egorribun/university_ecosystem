@@ -84,9 +84,53 @@ def test_governance_quality_configuration_matches_contract() -> None:
     checkov = yaml.safe_load(_read_text(".github/workflows/checkov.yml"))
     checkov_with = checkov["jobs"]["checkov"]["steps"][1]["with"]
     assert checkov_with.get("soft_fail") is not True
+    assert checkov["jobs"]["checkov"]["timeout-minutes"] == 20
 
     mutation_exclusions = json.loads(_read_text("quality/mutation-exclusions.json"))
     assert mutation_exclusions == {"version": 1, "exclusions": []}
+
+
+def test_uv_version_is_pinned_for_reproducible_ci_bootstrap() -> None:
+    uv_config = _read_pyproject()["tool"]["uv"]
+
+    assert uv_config["required-version"] == "==0.11.28"
+
+
+def test_backend_dockerfile_uses_the_required_uv_version() -> None:
+    dockerfile = (ROOT / "backend.Dockerfile").read_text(encoding="utf-8")
+
+    assert "ghcr.io/astral-sh/uv:0.11.28@sha256:" in dockerfile
+
+
+def test_mutmut_uses_the_unit_population_instead_of_a_single_probe_file() -> None:
+    mutation_config = _read_pyproject()["tool"]["mutmut"]
+
+    assert mutation_config["pytest_add_cli_args_test_selection"] == [
+        "-m",
+        "not integration and not chaos and not performance and not slow",
+        "tests/",
+    ]
+    assert "tests/test_tenant_rls.py" not in mutation_config["pytest_add_cli_args"]
+    required_contract_inputs = {
+        ".github",
+        "quality",
+        "scripts",
+        "backend.Dockerfile",
+        "codecov.yml",
+        "renovate.json",
+        "uv.lock",
+        ".pre-commit-config.yaml",
+        "Makefile",
+        "docs",
+        "k8s/kyverno",
+        "crates/pyo3-sanitizer/src",
+        "frontend/scripts",
+        "frontend/package.json",
+        "frontend/stryker.config.mjs",
+        "frontend/vitest.config.ts",
+        "sonar-project.properties",
+    }
+    assert required_contract_inputs.issubset(mutation_config["also_copy"])
 
 
 def test_test_duration_updater_aggregates_junit_cases_and_preserves_schema() -> None:
@@ -198,6 +242,15 @@ def test_python_coverage_policy_and_output_paths_match_quality_contract() -> Non
     assert coverage["json"]["output"] == "artifacts/coverage/python/coverage.json"
 
 
+def test_mypy_excludes_are_valid_regular_expressions() -> None:
+    excludes = _read_pyproject()["tool"]["mypy"]["exclude"]
+
+    assert isinstance(excludes, list)
+    for pattern in excludes:
+        assert isinstance(pattern, str)
+        re.compile(pattern)
+
+
 def test_frontend_coverage_policy_and_source_universe_match_quality_contract() -> None:
     contract = _read_contract()
     coverage = _extract_object_body(_read_text("frontend/vitest.config.ts"), "coverage")
@@ -218,7 +271,7 @@ def test_frontend_coverage_policy_and_source_universe_match_quality_contract() -
 
     thresholds = _extract_object_body(coverage, "thresholds")
     for metric in ("statements", "branches", "functions", "lines"):
-        value = contract["coverage_minimums"][metric]
+        value = contract["components"]["frontend"]["coverage"][metric]
         match = re.search(rf"\b{metric}\s*:\s*(\d+)\b", thresholds)
         assert match is not None, f"missing {metric} coverage threshold"
         assert int(match.group(1)) == value
@@ -226,6 +279,30 @@ def test_frontend_coverage_policy_and_source_universe_match_quality_contract() -
     exclusions = _extract_string_array(coverage, "exclude")
     for forbidden_exclusion in FORBIDDEN_VITEST_EXCLUSIONS:
         assert forbidden_exclusion.removeprefix('"').removesuffix('"') not in exclusions
+
+
+def test_vitest_does_not_discover_stryker_sandbox_tests() -> None:
+    config = _read_text("frontend/vitest.config.ts")
+
+    assert '"stryker-tmp/**"' in config
+    assert '".stryker-tmp/**"' in config
+
+
+def test_stryker_does_not_copy_generated_caches_or_sandboxes() -> None:
+    config = _read_text("frontend/stryker.config.mjs")
+
+    assert (
+        'const strykerTempRoot = path.join(os.tmpdir(), "university-ecosystem-stryker")'
+        in config
+    )
+    assert "tempDirName: strykerTempRoot" in config
+    assert 'cleanTempDir: "always"' in config
+    for fragment in (
+        '"**/.codex_*/**"',
+        '"**/target/**"',
+        '"/reports/**"',
+    ):
+        assert fragment in config
 
 
 def test_coverage_commands_and_sonar_paths_match_quality_contract() -> None:
@@ -249,6 +326,15 @@ def test_coverage_commands_and_sonar_paths_match_quality_contract() -> None:
     )
 
     package = json.loads(_read_text("frontend/package.json"))
-    assert package["scripts"]["test:ci"].startswith(
-        "npm run test:wasm && vitest run --coverage"
-    )
+    test_ci = package["scripts"]["test:ci"]
+    assert test_ci.startswith("npm run test:wasm && vitest run ")
+    assert "--configLoader runner" in test_ci
+    assert "--coverage" in test_ci
+    assert package["scripts"]["test:watch"] == "vitest --configLoader runner"
+
+    vitest_packages = package["devDependencies"]
+    vitest_specs = {
+        vitest_packages[name]
+        for name in ("vitest", "@vitest/browser", "@vitest/coverage-v8")
+    }
+    assert len(vitest_specs) == 1

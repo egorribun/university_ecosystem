@@ -21,13 +21,16 @@ def _get_allowed_ws_origins() -> frozenset[str]:
     """
     from app.core.config import settings
 
-    raw = getattr(settings, "frontend_url", "") or ""
-    origin = raw.rstrip("/")
-    return frozenset([origin]) if origin else frozenset()
+    configured = getattr(settings, "frontend_origins_list", []) or []
+    return frozenset(
+        origin.rstrip("/")
+        for origin in configured
+        if isinstance(origin, str) and origin
+    )
 
 
 # LOW-W19: _ALLOWED_WS_ORIGINS is intentionally computed once at import time.
-# settings.frontend_url is read from the environment before the first request
+# settings.frontend_origins_list is read from the environment before the first request
 # and never changes at runtime, so eager evaluation is safe and avoids the
 # per-request overhead of re-reading the setting.  If dynamic reconfiguration
 # is ever needed, replace this with a lazy call inside authenticate_upgrade().

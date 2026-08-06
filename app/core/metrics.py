@@ -43,369 +43,352 @@ except Exception:  # pragma: no cover - optional dependency guard  # RZ-22-01-JU
     generate_latest = _generate_latest_fallback
 
 
-_REQUEST_COUNT = (
-    Counter(
-        "http_requests_total",
-        "Total HTTP requests",
-        ("method", "path", "status"),
-        registry=REGISTRY,
-    )
-    if Counter is not None
-    else None
+def _get_or_create_metric(
+    cls: type, name: str, documentation: str, **kwargs: Any
+) -> Any:
+    if cls is None:
+        return None
+    if (
+        REGISTRY
+        and hasattr(REGISTRY, "_names_to_collectors")
+        and name in REGISTRY._names_to_collectors
+    ):
+        return REGISTRY._names_to_collectors[name]
+    try:
+        return cls(name, documentation, registry=REGISTRY, **kwargs)
+    except ValueError:
+        if (
+            REGISTRY
+            and hasattr(REGISTRY, "_names_to_collectors")
+            and name in REGISTRY._names_to_collectors
+        ):
+            return REGISTRY._names_to_collectors[name]
+        raise
+
+
+_REQUEST_COUNT = _get_or_create_metric(
+    Counter,
+    "http_requests_total",
+    "Total HTTP requests",
+    labelnames=("method", "path", "status"),
 )
 
-_REQUEST_DURATION = (
-    Histogram(
-        "http_request_duration_seconds",
-        "HTTP request duration in seconds",
-        ("method", "path"),
-        registry=REGISTRY,
-    )
-    if Histogram is not None
-    else None
+_REQUEST_DURATION = _get_or_create_metric(
+    Histogram,
+    "http_request_duration_seconds",
+    "HTTP request duration in seconds",
+    labelnames=("method", "path"),
 )
 
-_ROUTER_DURATION = (
-    Histogram(
-        "router_request_duration_seconds",
-        "HTTP request duration per router",
-        ("router", "method", "path"),
-        registry=REGISTRY,
-    )
-    if Histogram is not None
-    else None
+_ROUTER_DURATION = _get_or_create_metric(
+    Histogram,
+    "router_request_duration_seconds",
+    "HTTP request duration per router",
+    labelnames=("router", "method", "path"),
 )
 
-_ROUTER_ERRORS = (
-    Counter(
-        "router_request_errors_total",
-        "HTTP errors per router",
-        ("router", "method", "path", "status"),
-        registry=REGISTRY,
-    )
-    if Counter is not None
-    else None
+_ROUTER_ERRORS = _get_or_create_metric(
+    Counter,
+    "router_request_errors_total",
+    "HTTP errors per router",
+    labelnames=("router", "method", "path", "status"),
 )
 
-_HEALTH_CHECK_DURATION = (
-    Histogram(
-        "healthcheck_duration_seconds",
-        "Duration of dependency health probes",
-        ("component",),
-        registry=REGISTRY,
-    )
-    if Histogram is not None
-    else None
+_HEALTH_CHECK_DURATION = _get_or_create_metric(
+    Histogram,
+    "healthcheck_duration_seconds",
+    "Duration of dependency health probes",
+    labelnames=("component",),
 )
 
-_HEALTH_CHECK_STATUS = (
-    Counter(
-        "healthcheck_status_total",
-        "Total dependency health check results",
-        ("component", "status"),
-        registry=REGISTRY,
-    )
-    if Counter is not None
-    else None
+_HEALTH_CHECK_STATUS = _get_or_create_metric(
+    Counter,
+    "healthcheck_status_total",
+    "Total dependency health check results",
+    labelnames=("component", "status"),
 )
 
-_REDIS_COMMAND_DURATION = (
-    Histogram(
-        "redis_command_duration_seconds",
-        "Redis command duration in seconds",
-        ("command",),
-        registry=REGISTRY,
-    )
-    if Histogram is not None
-    else None
+_REDIS_COMMAND_DURATION = _get_or_create_metric(
+    Histogram,
+    "redis_command_duration_seconds",
+    "Redis command duration in seconds",
+    labelnames=("command",),
 )
 
-_REDIS_COMMAND_ERRORS = (
-    Counter(
-        "redis_command_errors_total",
-        "Total Redis command failures",
-        ("command",),
-        registry=REGISTRY,
-    )
-    if Counter is not None
-    else None
+_REDIS_COMMAND_ERRORS = _get_or_create_metric(
+    Counter,
+    "redis_command_errors_total",
+    "Total Redis command failures",
+    labelnames=("command",),
 )
 
-_DB_OPERATION_DURATION = (
-    Histogram(
-        "db_operation_duration_seconds",
-        "Database operation duration in seconds",
-        ("operation",),
-        registry=REGISTRY,
-    )
-    if Histogram is not None
-    else None
+_DB_OPERATION_DURATION = _get_or_create_metric(
+    Histogram,
+    "db_operation_duration_seconds",
+    "Database operation duration in seconds",
+    labelnames=("operation",),
 )
 
-_DB_OPERATION_ERRORS = (
-    Counter(
-        "db_operation_errors_total",
-        "Total database operation failures",
-        ("operation",),
-        registry=REGISTRY,
-    )
-    if Counter is not None
-    else None
+_DB_OPERATION_ERRORS = _get_or_create_metric(
+    Counter,
+    "db_operation_errors_total",
+    "Total database operation failures",
+    labelnames=("operation",),
 )
 
-_CACHE_ENTRIES = (
-    Gauge("cache_entries", "Number of cached entries", registry=REGISTRY)
-    if Gauge is not None
-    else None
+_CACHE_ENTRIES = _get_or_create_metric(
+    Gauge,
+    "cache_entries",
+    "Number of cached entries",
 )
 
-_CACHE_MEMORY_BYTES = (
-    Gauge(
-        "cache_memory_bytes",
-        "Memory consumption of cache backend",
-        registry=REGISTRY,
-    )
-    if Gauge is not None
-    else None
+_CACHE_MEMORY_BYTES = _get_or_create_metric(
+    Gauge,
+    "cache_memory_bytes",
+    "Memory consumption of cache backend",
 )
 
-_REDIS_HEALTH = (
-    Gauge("redis_health", "Redis availability", registry=REGISTRY)
-    if Gauge is not None
-    else None
+_REDIS_HEALTH = _get_or_create_metric(
+    Gauge,
+    "redis_health",
+    "Redis availability",
 )
 
-_CACHE_HITS = (
-    Counter(
-        "cache_hits_total",
-        "Total cache hits",
-        ("backend",),
-        registry=REGISTRY,
-    )
-    if Counter is not None
-    else None
+_CACHE_HITS = _get_or_create_metric(
+    Counter,
+    "cache_hits_total",
+    "Total cache hits",
+    labelnames=("backend",),
 )
 
-_CACHE_MISSES = (
-    Counter(
-        "cache_misses_total",
-        "Total cache misses",
-        ("backend",),
-        registry=REGISTRY,
-    )
-    if Counter is not None
-    else None
+_CACHE_MISSES = _get_or_create_metric(
+    Counter,
+    "cache_misses_total",
+    "Total cache misses",
+    labelnames=("backend",),
 )
 
-_DB_HEALTH = (
-    Gauge("db_health", "Database availability", registry=REGISTRY)
-    if Gauge is not None
-    else None
+_DB_HEALTH = _get_or_create_metric(
+    Gauge,
+    "db_health",
+    "Database availability",
 )
 
 # Connection pool metrics
-_DB_POOL_SIZE = (
-    Gauge("db_pool_size", "Database connection pool size", registry=REGISTRY)
-    if Gauge is not None
-    else None
+_DB_POOL_SIZE = _get_or_create_metric(
+    Gauge,
+    "db_pool_size",
+    "Database connection pool size",
 )
 
-_DB_POOL_CHECKEDOUT = (
-    Gauge(
-        "db_pool_checkedout",
-        "Number of connections currently checked out from the pool",
-        registry=REGISTRY,
-    )
-    if Gauge is not None
-    else None
+_DB_POOL_CHECKEDOUT = _get_or_create_metric(
+    Gauge,
+    "db_pool_checkedout",
+    "Number of connections currently checked out from the pool",
 )
 
-_DB_POOL_OVERFLOW = (
-    Gauge(
-        "db_pool_overflow",
-        "Number of overflow connections beyond pool size",
-        registry=REGISTRY,
-    )
-    if Gauge is not None
-    else None
+_DB_POOL_OVERFLOW = _get_or_create_metric(
+    Gauge,
+    "db_pool_overflow",
+    "Number of overflow connections beyond pool size",
 )
 
-_DB_POOL_CHECKEDIN = (
-    Gauge(
-        "db_pool_checkedin",
-        "Number of connections currently available in the pool",
-        registry=REGISTRY,
-    )
-    if Gauge is not None
-    else None
+_DB_POOL_CHECKEDIN = _get_or_create_metric(
+    Gauge,
+    "db_pool_checkedin",
+    "Number of connections currently available in the pool",
 )
 
-_CPU_LOAD = (
-    Gauge("cpu_load_percent", "CPU load percentage", registry=REGISTRY)
-    if Gauge is not None
-    else None
+_CPU_LOAD = _get_or_create_metric(
+    Gauge,
+    "cpu_load_percent",
+    "CPU load percentage",
 )
 
-_GPU_LOAD = (
-    Gauge(
-        "gpu_load_percent", "GPU load percentage", ("index", "name"), registry=REGISTRY
-    )
-    if Gauge is not None
-    else None
+# NATS JetStream & CDC Observability Metrics
+
+
+CDC_WAL_REPLICATION_LAG_BYTES = _get_or_create_metric(
+    Gauge,
+    "cdc_wal_replication_lag_bytes",
+    "PostgreSQL CDC WAL replication lag in bytes",
+    labelnames=["slot_name"],
+)
+
+PG_CDC_REPLICATION_LAG_BYTES = _get_or_create_metric(
+    Gauge,
+    "pg_cdc_replication_lag_bytes",
+    "PostgreSQL CDC replication LSN lag in bytes",
+    labelnames=["slot_name"],
+)
+
+PG_CDC_REPLICATION_LAG_SECONDS = _get_or_create_metric(
+    Gauge,
+    "pg_cdc_replication_lag_seconds",
+    "PostgreSQL CDC replication lag in seconds",
+    labelnames=["slot_name"],
+)
+
+OUTBOX_CDC_DISPATCH_DURATION = _get_or_create_metric(
+    Histogram,
+    "outbox_cdc_dispatch_duration_seconds",
+    "End-to-end CDC dispatch latency from WAL parse to NATS PubAck",
+    labelnames=["event_type"],
+    buckets=(0.001, 0.002, 0.005, 0.010, 0.025, 0.050, 0.100, 0.500, 1.0),
+)
+
+OUTBOX_CDC_EVENTS_DISPATCHED = _get_or_create_metric(
+    Counter,
+    "outbox_cdc_events_dispatched_total",
+    "Total CDC outbox events dispatched to NATS JetStream",
+    labelnames=["event_type", "status"],
+)
+
+NATS_JETSTREAM_CONSUMER_LAG = _get_or_create_metric(
+    Gauge,
+    "nats_jetstream_consumer_lag",
+    "NATS JetStream consumer unacknowledged message lag",
+    labelnames=["stream", "consumer"],
+)
+
+JETSTREAM_CONSUMER_LAG = _get_or_create_metric(
+    Gauge,
+    "jetstream_consumer_lag_messages",
+    "NATS JetStream consumer lag in messages",
+    labelnames=["stream", "consumer"],
+)
+
+NATS_JETSTREAM_ACKS_TOTAL = _get_or_create_metric(
+    Counter,
+    "nats_jetstream_acks_total",
+    "Total NATS JetStream message ACKs",
+    labelnames=["stream", "consumer"],
+)
+
+JETSTREAM_MESSAGES_ACKED = _get_or_create_metric(
+    Counter,
+    "jetstream_messages_acked_total",
+    "Total NATS JetStream messages ACKed",
+    labelnames=["stream", "consumer"],
+)
+
+NATS_JETSTREAM_NAKS_TOTAL = _get_or_create_metric(
+    Counter,
+    "nats_jetstream_naks_total",
+    "Total NATS JetStream message NAKs",
+    labelnames=["stream", "consumer"],
+)
+
+JETSTREAM_MESSAGES_NACKED = _get_or_create_metric(
+    Counter,
+    "jetstream_messages_nacked_total",
+    "Total NATS JetStream messages NACKed",
+    labelnames=["stream", "consumer"],
+)
+
+_GPU_LOAD = _get_or_create_metric(
+    Gauge,
+    "gpu_load_percent",
+    "GPU load percentage",
+    labelnames=("index", "name"),
 )
 
 # Business metrics for product analytics
-_LOGIN_SUCCESS = (
-    Counter(
-        "auth_login_success_total",
-        "Total successful login attempts",
-        ("method",),
-        registry=REGISTRY,
-    )
-    if Counter is not None
-    else None
+_LOGIN_SUCCESS = _get_or_create_metric(
+    Counter,
+    "auth_login_success_total",
+    "Total successful login attempts",
+    labelnames=("method",),
 )
 
-_LOGIN_FAILURE = (
-    Counter(
-        "auth_login_failure_total",
-        "Total failed login attempts",
-        ("reason",),
-        registry=REGISTRY,
-    )
-    if Counter is not None
-    else None
+_LOGIN_FAILURE = _get_or_create_metric(
+    Counter,
+    "auth_login_failure_total",
+    "Total failed login attempts",
+    labelnames=("reason",),
 )
 
-_NOTIFICATIONS_DELIVERED = (
-    Counter(
-        "notifications_delivered_total",
-        "Total notifications successfully delivered",
-        ("type",),
-        registry=REGISTRY,
-    )
-    if Counter is not None
-    else None
+_NOTIFICATIONS_DELIVERED = _get_or_create_metric(
+    Counter,
+    "notifications_delivered_total",
+    "Total notifications successfully delivered",
+    labelnames=("type",),
 )
 
-_NOTIFICATIONS_FAILED = (
-    Counter(
-        "notifications_failed_total",
-        "Total notifications that failed to deliver",
-        ("type", "reason"),
-        registry=REGISTRY,
-    )
-    if Counter is not None
-    else None
+_NOTIFICATIONS_FAILED = _get_or_create_metric(
+    Counter,
+    "notifications_failed_total",
+    "Total notifications that failed to deliver",
+    labelnames=("type", "reason"),
 )
 
-_EVENT_REGISTRATIONS = (
-    Counter(
-        "event_registrations_total",
-        "Total event registrations",
-        registry=REGISTRY,
-    )
-    if Counter is not None
-    else None
+_EVENT_REGISTRATIONS = _get_or_create_metric(
+    Counter,
+    "event_registrations_total",
+    "Total event registrations",
 )
 
-_ACTIVE_USERS = (
-    Gauge(
-        "active_users_count",
-        "Number of currently active users",
-        ("period",),
-        registry=REGISTRY,
-    )
-    if Gauge is not None
-    else None
+_ACTIVE_USERS = _get_or_create_metric(
+    Gauge,
+    "active_users_count",
+    "Number of currently active users",
+    labelnames=("period",),
 )
 
-_MFA_ADOPTION = (
-    Gauge(
-        "mfa_enabled_users_total",
-        "Number of users with MFA enabled",
-        registry=REGISTRY,
-    )
-    if Gauge is not None
-    else None
+_MFA_ADOPTION = _get_or_create_metric(
+    Gauge,
+    "mfa_enabled_users_total",
+    "Number of users with MFA enabled",
 )
 
-_PRESENCE_EVENTS = (
-    Counter(
-        "websocket_presence_events_total",
-        "Total presence events broadcast over websockets",
-        ("state", "source"),
-        registry=REGISTRY,
-    )
-    if Counter is not None
-    else None
+_PRESENCE_EVENTS = _get_or_create_metric(
+    Counter,
+    "websocket_presence_events_total",
+    "Total presence events broadcast over websockets",
+    labelnames=("state", "source"),
 )
 
-_PRESENCE_THROTTLED = (
-    Counter(
-        "websocket_presence_throttled_total",
-        "Total presence events throttled before broadcast",
-        ("state", "source"),
-        registry=REGISTRY,
-    )
-    if Counter is not None
-    else None
+_PRESENCE_THROTTLED = _get_or_create_metric(
+    Counter,
+    "websocket_presence_throttled_total",
+    "Total presence events throttled before broadcast",
+    labelnames=("state", "source"),
 )
 
-_CSP_REPORTS = (
-    Counter(
-        "csp_reports_total",
-        "Total CSP violation reports received",
-        ("outcome",),
-        registry=REGISTRY,
-    )
-    if Counter is not None
-    else None
+_CSP_REPORTS = _get_or_create_metric(
+    Counter,
+    "csp_reports_total",
+    "Total CSP violation reports received",
+    labelnames=("outcome",),
 )
 
-_CHAT_MESSAGES_TOTAL = (
-    Counter(
-        "chat_messages_total",
-        "Total chat messages processed",
-        ("channel",),
-        registry=REGISTRY,
-    )
-    if Counter is not None
-    else None
+_CHAT_MESSAGES_TOTAL = _get_or_create_metric(
+    Counter,
+    "chat_messages_total",
+    "Total chat messages processed",
+    labelnames=("channel",),
 )
 
-_WS_CONNECTIONS_ACTIVE = (
-    Gauge(
-        "websocket_connections_active",
-        "Number of currently active websocket connections",
-        ("path",),
-        registry=REGISTRY,
-    )
-    if Gauge is not None
-    else None
+_WS_CONNECTIONS_ACTIVE = _get_or_create_metric(
+    Gauge,
+    "websocket_connections_active",
+    "Number of currently active websocket connections",
+    labelnames=("path",),
 )
 
 # Circuit breaker metrics
-_CIRCUIT_BREAKER_STATE = (
-    Gauge(
-        "circuit_breaker_state",
-        "Current circuit breaker state (0=closed, 1=open, 2=half_open)",
-        ("service",),
-        registry=REGISTRY,
-    )
-    if Gauge is not None
-    else None
+_CIRCUIT_BREAKER_STATE = _get_or_create_metric(
+    Gauge,
+    "circuit_breaker_state",
+    "Current circuit breaker state (0=closed, 1=open, 2=half_open)",
+    labelnames=("service",),
 )
 
-_CIRCUIT_BREAKER_TRIPS = (
-    Counter(
-        "circuit_breaker_trips_total",
-        "Total circuit breaker trips (transitions to open state)",
-        ("service",),
-        registry=REGISTRY,
-    )
-    if Counter is not None
-    else None
+_CIRCUIT_BREAKER_TRIPS = _get_or_create_metric(
+    Counter,
+    "circuit_breaker_trips_total",
+    "Total circuit breaker trips (transitions to open state)",
+    labelnames=("service",),
 )
 
 # TD-W14-02 (audit 2026-03-23 Wave 14): Legacy bcrypt migration tracking.
@@ -433,15 +416,33 @@ _CIRCUIT_BREAKER_TRIPS = (
 
 # MOD-W10-08: Counter for background task failures.
 # Alert when rate(background_task_errors_total[5m]) > 0.
-_BACKGROUND_TASK_ERRORS = (
-    Counter(
-        "background_task_errors_total",
-        "Total background task failures by task class name",
-        ("task_name",),
-        registry=REGISTRY,
-    )
-    if Counter is not None
-    else None
+_BACKGROUND_TASK_ERRORS = _get_or_create_metric(
+    Counter,
+    "background_task_errors_total",
+    "Total background task failures by task class name",
+    labelnames=("task_name",),
+)
+
+# ── Revocation & ABAC Metrics ──────────────────────────────────────────────
+_SPICEDB_WATCH_EVENTS = _get_or_create_metric(
+    Counter,
+    "spicedb_watch_events_total",
+    "Total SpiceDB Watch stream relationship events received",
+    labelnames=("event_type",),
+)
+
+_WS_HUB_SESSIONS_REVOKED = _get_or_create_metric(
+    Counter,
+    "ws_hub_sessions_revoked_total",
+    "Total WebSocket hub user sessions revoked due to permission updates",
+    labelnames=("reason",),
+)
+
+_ABAC_ACCESS_DENIED = _get_or_create_metric(
+    Counter,
+    "abac_access_denied_total",
+    "Total ABAC access denials by policy rule",
+    labelnames=("rule",),
 )
 
 
@@ -570,6 +571,33 @@ def record_circuit_breaker_trip(service: str) -> None:
         _CIRCUIT_BREAKER_TRIPS.labels(service=service).inc()
 
 
+def record_spicedb_watch_event(event_type: str = "update") -> None:
+    """Record a SpiceDB watch stream event."""
+    if _SPICEDB_WATCH_EVENTS is not None:
+        try:
+            _SPICEDB_WATCH_EVENTS.labels(event_type=event_type).inc()
+        except Exception:  # RZ-22-01-JUSTIFIED: metrics guard
+            logger.debug("Failed to record SpiceDB watch event", exc_info=True)
+
+
+def record_ws_hub_session_revoked(reason: str = "access_revoked") -> None:
+    """Record a WebSocket hub session revocation event."""
+    if _WS_HUB_SESSIONS_REVOKED is not None:
+        try:
+            _WS_HUB_SESSIONS_REVOKED.labels(reason=reason).inc()
+        except Exception:  # RZ-22-01-JUSTIFIED: metrics guard
+            logger.debug("Failed to record ws_hub session revoked", exc_info=True)
+
+
+def record_abac_access_denied(rule: str = "unknown") -> None:
+    """Record an ABAC access denial event by rule (e.g. 'subnet', 'schedule')."""
+    if _ABAC_ACCESS_DENIED is not None:
+        try:
+            _ABAC_ACCESS_DENIED.labels(rule=rule).inc()
+        except Exception:  # RZ-22-01-JUSTIFIED: metrics guard
+            logger.debug("Failed to record ABAC access denied", exc_info=True)
+
+
 _CONFIGURED_ATTR = "_metrics_configured"
 # CFG-1 (audit 2026-03): Expanded placeholder password set.  The previous
 # set only contained "changeme".  Common weak/placeholder values are now
@@ -671,7 +699,7 @@ def _authorization_header(request: Request) -> str:
 
 def _is_authorized(request: Request) -> bool:
     username = settings.metrics_basic_auth_username.strip()
-    password = settings.metrics_basic_auth_password
+    password = settings.metrics_basic_auth_password.strip()
     if not username and not password:
         # LOW-W19: Intentional behaviour — when no credentials are configured,
         # access is granted only when the entire allowlist consists of loopback

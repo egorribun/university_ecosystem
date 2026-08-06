@@ -9,9 +9,10 @@ FROM rust:1.94.1-slim-bookworm@sha256:5ae2d2ef9875c9c2407bf9b5678e6375304f7ecf8e
 # deferred annotation evaluation (PEP 649), and improved error messages.
 FROM python:3.14-slim-bookworm@sha256:4ff4b92a68355dbdb52584ab3391dff8d371a61d4e063468bfd0130e3189c6d9 AS builder
 
-# Pin uv to an exact version for reproducible builds.
-# Use 0.10.8 for proven stability in current scan environments.
-COPY --from=ghcr.io/astral-sh/uv:0.11.2 /uv /uv/bin/uv
+# Pin uv to the same exact version enforced by pyproject.toml. The digest is
+# the linux/amd64 manifest for uv 0.11.28, the platform used by CI and release
+# image builds.
+COPY --from=ghcr.io/astral-sh/uv:0.11.28@sha256:5c3ab83183a73c5d319a77009eb425b60d5bb937f339fb7876788ebf567baf48 /uv /uv/bin/uv
 
 ENV UV_COMPILE_BYTECODE=1 \
     UV_LINK_MODE=copy \

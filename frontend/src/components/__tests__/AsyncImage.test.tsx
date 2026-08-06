@@ -1,5 +1,5 @@
 import { fireEvent, render, screen } from "@testing-library/react"
-import { beforeAll, describe, expect, it } from "vitest"
+import { beforeAll, describe, expect, it, vi } from "vitest"
 
 import AsyncImage from "../media/AsyncImage"
 
@@ -62,6 +62,59 @@ describe("AsyncImage", () => {
 
     const image = screen.getByTestId("async-image-img") as HTMLImageElement
     fireEvent.error(image)
+
+    expect(screen.getByTestId("async-image-fallback")).toBeInTheDocument()
+  })
+
+  it("renders a blurred thumbnail while loading and forwards image callbacks", () => {
+    const onLoad = vi.fn()
+    const onError = vi.fn()
+    render(
+      <AsyncImage
+        src={src}
+        thumbSrc="https://example.com/thumb.png"
+        alt="with callbacks"
+        onLoad={onLoad}
+        onError={onError}
+      />
+    )
+
+    expect(document.querySelector('img[src="https://example.com/thumb.png"]')).toHaveAttribute(
+      "aria-hidden",
+      "true"
+    )
+
+    const image = screen.getByTestId("async-image-img") as HTMLImageElement
+    fireEvent.load(image)
+    expect(onLoad).toHaveBeenCalledOnce()
+
+    fireEvent.error(image)
+    expect(onError).toHaveBeenCalledOnce()
+  })
+
+  it("renders a fallback source when the primary source is absent", () => {
+    const { rerender } = render(<AsyncImage fallbackSrc="/fallback.png" alt="fallback source" />)
+
+    const fallbackImage = screen.getByAltText("fallback source") as HTMLImageElement
+    expect(fallbackImage).toHaveAttribute("src", "/fallback.png")
+    expect(screen.queryByTestId("async-image-fallback")).not.toBeInTheDocument()
+
+    rerender(<AsyncImage fallbackSrc="/fallback.png" />)
+    expect(document.querySelector('img[src="/fallback.png"]')).toHaveAttribute(
+      "aria-hidden",
+      "true"
+    )
+  })
+
+  it("renders a custom fallback when no image source is available", () => {
+    render(<AsyncImage fallback={<span>Custom fallback</span>} />)
+
+    expect(screen.getByText("Custom fallback")).toBeInTheDocument()
+    expect(screen.getByTestId("async-image-fallback")).toBeInTheDocument()
+  })
+
+  it("renders the default fallback when both image sources are absent", () => {
+    render(<AsyncImage />)
 
     expect(screen.getByTestId("async-image-fallback")).toBeInTheDocument()
   })

@@ -77,7 +77,7 @@ async def start_notifications_retention_scheduler(
 
     async def _stop() -> None:
         if task.done():
-            with suppress(Exception):
+            with suppress(asyncio.CancelledError, Exception):
                 task.result()
             return
         task.cancel()

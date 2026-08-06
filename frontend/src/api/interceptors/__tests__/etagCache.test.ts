@@ -63,6 +63,27 @@ describe("etagCache — in-memory etag map", () => {
     expect(etagCache.get("a")).toBeUndefined()
     expect(etagCache.get("b")).toBeUndefined()
   })
+
+  it("swallows localStorage removal failures during clear", () => {
+    etagCache.set("clear:error", '"tag"')
+    const removeSpy = vi.spyOn(Storage.prototype, "removeItem").mockImplementation(() => {
+      throw new Error("storage blocked")
+    })
+
+    expect(() => etagCache.clear()).not.toThrow()
+    expect(etagCache.get("clear:error")).toBeUndefined()
+    removeSpy.mockRestore()
+  })
+
+  it("evicts the least-recently-used ETag when the bounded map overflows", () => {
+    for (let index = 0; index <= 200; index += 1) {
+      etagCache.set(`etag:${index}`, `"tag-${index}"`)
+    }
+
+    expect(etagCache.get("etag:0")).toBeUndefined()
+    expect(etagCache.get("etag:1")).toBe('"tag-1"')
+    expect(etagCache.get("etag:200")).toBe('"tag-200"')
+  })
 })
 
 describe("etagCache — in-memory response cache", () => {
@@ -82,6 +103,20 @@ describe("etagCache — in-memory response cache", () => {
     responseCache.set("rk2", { data: 1, hmac: "ab", ts: 1 })
     responseCache.clear()
     expect(responseCache.get("rk2")).toBeUndefined()
+  })
+
+  it("evicts the least-recently-used response when the bounded map overflows", () => {
+    for (let index = 0; index <= 200; index += 1) {
+      responseCache.set(`response:${index}`, {
+        data: index,
+        hmac: `hmac-${index}`,
+        ts: index,
+      })
+    }
+
+    expect(responseCache.get("response:0")).toBeUndefined()
+    expect(responseCache.get("response:1")).toBeDefined()
+    expect(responseCache.get("response:200")).toBeDefined()
   })
 })
 
@@ -133,6 +168,13 @@ describe("etagCache — applyEtagHeader", () => {
     const headers = config.headers as AxiosHeaders
     expect(headers.has("if-none-match")).toBe(false)
   })
+
+  it("creates AxiosHeaders when the request config has no headers object", () => {
+    const config = { headers: undefined } as unknown as InternalAxiosRequestConfig
+    applyEtagHeader(config, "no-such-key")
+    expect(config.headers).toBeInstanceOf(AxiosHeaders)
+    expect((config.headers as AxiosHeaders).has("if-none-match")).toBe(false)
+  })
 })
 
 describe("etagCache — handleEtagResponse", () => {
@@ -158,6 +200,23 @@ describe("etagCache — handleEtagResponse", () => {
     const entry = responseCache.get("news:list")
     expect(entry?.data).toEqual(data)
     expect(typeof entry?.hmac).toBe("string")
+  })
+
+  it("accepts a response without a headers object", async () => {
+    await expect(
+      handleEtagResponse(
+        {
+          status: 200,
+          statusText: "OK",
+          headers: undefined,
+          data: { ok: true },
+          config: makeRequestConfig(),
+          request: {},
+        } as unknown as AxiosResponse,
+        "missing-response-headers"
+      )
+    ).resolves.toBeUndefined()
+    expect(etagCache.get("missing-response-headers")).toBeUndefined()
   })
 
   it("stores the etag but does NOT cache the body for non-JSON content", async () => {
@@ -281,6 +340,23 @@ describe("etagCache — handleEtagResponse", () => {
     expect(notModified.data).toBeNull()
     expect(etagCache.get("bad:hmac")).toBeUndefined()
     expect(responseCache.get("bad:hmac")).toBeUndefined()
+  })
+
+  it("rejects a stored HMAC with a different length without comparing characters", async () => {
+    const response = makeResponse(
+      200,
+      { etag: '"etag-short-hmac"', "content-type": "application/json" },
+      { v: 1 }
+    )
+    await handleEtagResponse(response, "short:hmac")
+    const cached = responseCache.get("short:hmac")!
+    responseCache.set("short:hmac", { ...cached, hmac: "x" })
+
+    const notModified = makeResponse(304, { etag: '"etag-short-hmac"' }, null)
+    await handleEtagResponse(notModified, "short:hmac")
+
+    expect(notModified.status).toBe(304)
+    expect(responseCache.get("short:hmac")).toBeUndefined()
   })
 
   it("evicts both caches on 304 when there is no signing key", async () => {
@@ -417,6 +493,38 @@ describe("etagCache — debounced flush + visibilitychange", () => {
 
     nowSpy.mockRestore()
   })
+
+  it("keeps the in-memory cache when the quota retry also fails", () => {
+    const setItemSpy = vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw new DOMException("quota", "QuotaExceededError")
+    })
+
+    etagCache.set("q:retry-fails", '"tag"')
+    Object.defineProperty(document, "visibilityState", {
+      configurable: true,
+      get: () => "hidden",
+    })
+    expect(() => document.dispatchEvent(new Event("visibilitychange"))).not.toThrow()
+
+    const cacheWrites = setItemSpy.mock.calls.filter(([key]) => key.startsWith("ue:etag-cache"))
+    expect(cacheWrites.length).toBe(2)
+    expect(etagCache.get("q:retry-fails")).toBeUndefined()
+  })
+
+  it("swallows a non-quota localStorage flush failure", () => {
+    const setItemSpy = vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw new Error("storage unavailable")
+    })
+
+    etagCache.set("flush:error", '"tag"')
+    Object.defineProperty(document, "visibilityState", {
+      configurable: true,
+      get: () => "hidden",
+    })
+    expect(() => document.dispatchEvent(new Event("visibilitychange"))).not.toThrow()
+    expect(etagCache.get("flush:error")).toBe('"tag"')
+    expect(setItemSpy).toHaveBeenCalled()
+  })
 })
 
 describe("etagCache — lazy hydration on first access (isolated module)", () => {
@@ -449,5 +557,15 @@ describe("etagCache — lazy hydration on first access (isolated module)", () =>
     // Corrupt payload → hydration fails gracefully to an empty map, no throw.
     expect(() => mod.etagCache.get("anything")).not.toThrow()
     expect(mod.etagCache.get("anything")).toBeUndefined()
+  })
+
+  it("removes stale unversioned and prior-version keys during module startup", async () => {
+    localStorage.setItem("ue:etag-cache", "stale")
+    localStorage.setItem("ue:etag-cache:v0", "old-version")
+
+    await import("../etagCache")
+
+    expect(localStorage.getItem("ue:etag-cache")).toBeNull()
+    expect(localStorage.getItem("ue:etag-cache:v0")).toBeNull()
   })
 })

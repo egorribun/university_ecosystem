@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { m } from "framer-motion"
 import { useTranslation } from "react-i18next"
 import { motion as motionTokens } from "@/theme/tokens"
@@ -8,8 +8,7 @@ import type { NowPlaying } from "@/types/spotify"
 
 const isTest = typeof import.meta !== "undefined" && import.meta.env.MODE === "test"
 
-// PERF-27-02: Removed React.memo() — React Compiler "infer" mode handles memoization
-export function NowPlayingCard({ data }: { data: NowPlaying }) {
+export const NowPlayingCard = memo(function NowPlayingCard({ data }: { data: NowPlaying }) {
   const prefersReduce = useMediaQuery("(prefers-reduced-motion: reduce)")
   const reduced = useMediaQuery("(prefers-reduced-motion: reduce)")
   const duration = data.duration_ms ?? 0
@@ -63,21 +62,13 @@ export function NowPlayingCard({ data }: { data: NowPlaying }) {
     if (data.is_playing) return
     const next = clampProgress(data.progress_ms)
     startRef.current = Date.now() - next
-    setProgress((prev) => (prev === next ? prev : next))
-    if (rafRef.current != null) {
-      cancelAnimationFrame(rafRef.current)
-      rafRef.current = null
-    }
+    setProgress(next)
   }, [clampProgress, data.is_playing, data.progress_ms])
 
   const shouldAnimate = !isTest && data.is_playing && !prefersReduce && !reduced && duration > 0
 
   useEffect(() => {
     if (!shouldAnimate) {
-      if (rafRef.current != null) {
-        cancelAnimationFrame(rafRef.current)
-        rafRef.current = null
-      }
       return
     }
     const loop = () => {
@@ -95,8 +86,7 @@ export function NowPlayingCard({ data }: { data: NowPlaying }) {
   }, [clampProgress, shouldAnimate])
 
   const pct = duration > 0 ? Math.max(0, Math.min(100, (progress / duration) * 100)) : 0
-  const fmt = (ms: number | null | undefined) => {
-    if (ms == null) return "0:00"
+  const fmt = (ms: number) => {
     const seconds = Math.max(0, Math.floor(ms / 1000))
     const minutes = Math.floor(seconds / 60)
     const rest = String(seconds % 60).padStart(2, "0")
@@ -116,8 +106,7 @@ export function NowPlayingCard({ data }: { data: NowPlaying }) {
   const href = data.track_url || "https://open.spotify.com"
 
   const maxTimeWidth = useMemo(() => {
-    const fmtTime = (ms: number | null | undefined) => {
-      if (ms == null) return "0:00"
+    const fmtTime = (ms: number) => {
       const seconds = Math.max(0, Math.floor(ms / 1000))
       const minutes = Math.floor(seconds / 60)
       const rest = String(seconds % 60).padStart(2, "0")
@@ -265,6 +254,6 @@ export function NowPlayingCard({ data }: { data: NowPlaying }) {
       </m.div>
     </a>
   )
-}
+})
 
 export default NowPlayingCard

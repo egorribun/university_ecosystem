@@ -37,7 +37,6 @@ const PWNED_API_URL = "https://api.pwnedpasswords.com/range/"
 const HASH_PREFIX_LEN = 5
 
 async function isPwnedPassword(pwd: string) {
-  if (!pwd) return false
   const hash = await sha1Hex(pwd)
   const prefix = hash.slice(0, HASH_PREFIX_LEN)
   const suffix = hash.slice(HASH_PREFIX_LEN)

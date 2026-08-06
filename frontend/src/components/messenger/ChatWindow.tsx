@@ -1,4 +1,4 @@
-import { useRef, useEffect, useMemo, useState } from "react"
+import { memo, useRef, useEffect, useMemo, useState } from "react"
 import { m } from "framer-motion" // Removed AnimatePresence, LayoutGroup as they are not used
 import useMediaQuery from "@/hooks/useMediaQuery"
 import {
@@ -129,8 +129,7 @@ const SKELETON_BUBBLE_COUNT = 6
 // many px up from the bottom. Module-level per W202 SW1 hoist convention.
 const SCROLL_FAB_THRESHOLD = 240
 
-// PERF-27-02: Removed React.memo() — React Compiler "infer" mode handles memoization
-export function ChatWindow({
+export const ChatWindow = memo(function ChatWindow({
   messages,
   searchQuery = "",
   onClearSearch,
@@ -519,8 +518,7 @@ export function ChatWindow({
             // useVirtualizer above. Using `messages[virtualRow.index]` would
             // misalign when a search query is active (virtualizer count =
             // filteredMessages.length, but raw messages.length > filtered).
-            const message = filteredMessages[virtualRow.index]
-            if (!message) return null
+            const message = filteredMessages[virtualRow.index]!
 
             // Wave 202 SW6 — only newly-appended rows (index >= animateFromIndex)
             // run the entrance; already-seen rows mount with initial={false} so
@@ -1068,4 +1066,6 @@ export function ChatWindow({
       ) : null}
     </div>
   )
-}
+})
+
+export default ChatWindow

@@ -73,4 +73,34 @@ var (
 		Name: "ws_hub_unknown_msg_type_total",
 		Help: "Unknown WS message types received (RZ-27-05)",
 	})
+
+	// SessionsRevokedTotal counts user session evictions triggered by NATS control events.
+	SessionsRevokedTotal = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "ws_hub_sessions_revoked_total",
+		Help: "Total number of WebSocket sessions revoked via control events.",
+	})
+
+	// JetStreamAcksTotal tracks successful JetStream message ACKs.
+	JetStreamAcksTotal = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "ws_hub_jetstream_acks_total",
+		Help: "Total number of JetStream message ACKs.",
+	})
+
+	// JetStreamNaksTotal tracks JetStream message NAKs (backpressure redelivery delay).
+	JetStreamNaksTotal = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "ws_hub_jetstream_naks_total",
+		Help: "Total number of JetStream message NAKs.",
+	})
+
+	// JetStreamDedupHitsTotal tracks duplicate JetStream messages dropped via Nats-Msg-Id header.
+	JetStreamDedupHitsTotal = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "ws_hub_jetstream_dedup_hits_total",
+		Help: "Total number of duplicate JetStream messages dropped.",
+	})
+
+	// JetStreamReplayedTotal tracks offline JetStream messages replayed upon client room join.
+	JetStreamReplayedTotal = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "ws_hub_jetstream_replayed_total",
+		Help: "Total number of JetStream messages replayed to reconnecting clients.",
+	})
 )

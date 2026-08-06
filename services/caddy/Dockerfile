@@ -30,7 +30,13 @@ FROM caddy:2.9.1-alpine@sha256:b4e3952384eb9524a887633ce65c752dd7c71314d2c2acf98
 
 COPY --from=builder /go/caddy /usr/bin/caddy
 
-# checkov:skip=CKV_DOCKER_3:Caddy's upstream image owns the runtime user.
+# The pinned upstream Alpine image runs as root and does not ship a named
+# runtime account.  Create the account explicitly so the custom binary is
+# usable by Docker Compose and by non-root Kubernetes deployments.
+RUN addgroup -S caddy \
+    && adduser -S -D -H -G caddy caddy \
+    && chown -R caddy:caddy /data /config /etc/caddy
+
 USER caddy
 
 # Kubernetes supplies liveness/readiness probes for this edge proxy.

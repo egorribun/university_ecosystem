@@ -3,6 +3,12 @@ import { describe, it, expect, vi } from "vitest"
 import { ForwardModal } from "../ForwardModal"
 import type { Contact } from "../types"
 
+const mediaQueryState = vi.hoisted(() => ({ reduced: false }))
+
+vi.mock("@/hooks/useMediaQuery", () => ({
+  default: () => mediaQueryState.reduced,
+}))
+
 /**
  * Wave 211 — ForwardModal unit tests.
  *
@@ -194,5 +200,24 @@ describe("ForwardModal", () => {
     expect(options[0]).toBeTruthy()
     fireEvent.click(options[0]!)
     expect(onSelect).not.toHaveBeenCalled()
+  })
+
+  it("uses avatar and message fallbacks and reduced-motion dialog transitions", () => {
+    mediaQueryState.reduced = true
+    render(
+      <ForwardModal
+        open={true}
+        onClose={() => {}}
+        contacts={[{ ...mockContacts[0]!, id: "fallback", avatar: "", lastMessage: "" }]}
+        onSelect={() => {}}
+      />
+    )
+
+    expect(screen.getByTestId("smart-image")).toHaveAttribute(
+      "src",
+      "/fallbacks/default_avatar.png"
+    )
+    expect(screen.queryByText("Hey there!")).not.toBeInTheDocument()
+    mediaQueryState.reduced = false
   })
 })

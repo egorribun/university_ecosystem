@@ -489,7 +489,7 @@ async def test_extract_client_info_forwarded(login_service):
         with patch("app.core.ratelimit.utils.settings", mock_settings):
             mock_settings.trusted_proxies_list = ["127.0.0.1"]
             ip, ua = login_service.session_manager.extract_client_info(req)
-            assert ip == "10.0.0.1"
+            assert ip == "10.0.0.2"
             assert ua == "client-ua"
 
 

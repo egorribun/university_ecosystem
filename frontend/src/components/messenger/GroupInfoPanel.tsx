@@ -1,4 +1,4 @@
-import { useEffect, useId, useState } from "react"
+import { memo, useEffect, useId, useState } from "react"
 import { AnimatePresence, m } from "framer-motion"
 import { Check, Crown, LogOut, Pencil, Search, Trash2, UserPlus, X } from "lucide-react"
 import { useQuery } from "@tanstack/react-query"
@@ -40,7 +40,7 @@ const MIN_SEARCH_LENGTH = 1
  * rename + add = any member; KICK (remove someone else) = owner only
  * (created_by === currentUserId); LEAVE (remove self) = always.
  */
-export function GroupInfoPanel({
+export const GroupInfoPanel = memo(function GroupInfoPanel({
   open,
   onClose,
   chat,
@@ -60,7 +60,7 @@ export function GroupInfoPanel({
   const [nameDraft, setNameDraft] = useState("")
   const [showAddSearch, setShowAddSearch] = useState(false)
   const [search, setSearch] = useState("")
-  const debouncedSearch = useDebounced(search, "default")
+  const debouncedSearch = useDebounced(search, "search")
 
   const containerRef = useFocusTrap<HTMLDivElement>({
     active: open,
@@ -370,4 +370,6 @@ export function GroupInfoPanel({
       )}
     </AnimatePresence>
   )
-}
+})
+
+export default GroupInfoPanel

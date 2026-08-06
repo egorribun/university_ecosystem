@@ -66,6 +66,25 @@ describe("LivePushToasts", () => {
     expect(messageHandler).toBeTypeOf("function")
   })
 
+  it("renders safely when service-worker messaging is unavailable", () => {
+    const serviceWorker = navigator.serviceWorker
+    Object.defineProperty(navigator, "serviceWorker", {
+      configurable: true,
+      value: undefined,
+    })
+
+    try {
+      render(<LivePushToasts />)
+      expect(messageHandler).toBeNull()
+      expect(screen.queryByRole("heading", { level: 4 })).not.toBeInTheDocument()
+    } finally {
+      Object.defineProperty(navigator, "serviceWorker", {
+        configurable: true,
+        value: serviceWorker,
+      })
+    }
+  })
+
   it("renders a success toast (CheckCircle icon) from a PUSH_NOTIFICATION message", async () => {
     render(<LivePushToasts />)
 
@@ -100,6 +119,57 @@ describe("LivePushToasts", () => {
     })
 
     expect(screen.getByText("Heads up")).toBeInTheDocument()
+  })
+
+  it("falls back for non-string and unknown severity values", async () => {
+    render(<LivePushToasts />)
+
+    await dispatchSwMessage({
+      type: "PUSH_NOTIFICATION",
+      toast: {
+        id: "t-invalid-severity",
+        title: "Invalid severity",
+        body: "Falls back to info",
+        data: { severity: 42 },
+      },
+    })
+    act(() => {
+      vi.advanceTimersByTime(0)
+    })
+    expect(screen.getByText("Invalid severity")).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole("button", { name: "common:buttons.close" }))
+    act(() => {
+      vi.advanceTimersByTime(300)
+    })
+
+    await dispatchSwMessage({
+      type: "PUSH_NOTIFICATION",
+      toast: {
+        id: "t-unknown-severity",
+        title: "Unknown severity",
+        body: "Also falls back",
+        data: { severity: "not-a-severity" },
+      },
+    })
+    act(() => {
+      vi.advanceTimersByTime(0)
+    })
+    expect(screen.getByText("Unknown severity")).toBeInTheDocument()
+  })
+
+  it("generates a stable-enough fallback id when push metadata has no id", async () => {
+    render(<LivePushToasts />)
+
+    await dispatchSwMessage({
+      type: "PUSH_NOTIFICATION",
+      toast: { title: "Generated id", body: "No id, tag, or timestamp" },
+    })
+
+    act(() => {
+      vi.advanceTimersByTime(0)
+    })
+    expect(screen.getByText("Generated id")).toBeInTheDocument()
   })
 
   it("renders a warning toast", async () => {
@@ -231,6 +301,61 @@ describe("LivePushToasts", () => {
     openSpy.mockRestore()
   })
 
+  it("falls back to a new-tab open when the initial action open throws", async () => {
+    const openSpy = vi
+      .spyOn(window, "open")
+      .mockImplementationOnce(() => {
+        throw new Error("popup blocked")
+      })
+      .mockReturnValue(null)
+    render(<LivePushToasts />)
+
+    await dispatchSwMessage({
+      type: "PUSH_NOTIFICATION",
+      toast: {
+        id: "t-url-fallback",
+        title: "Fallback open",
+        body: "Browser blocks the first attempt",
+        url: "https://example.com/path",
+      },
+    })
+
+    act(() => {
+      vi.advanceTimersByTime(0)
+    })
+    fireEvent.click(screen.getByText("notifications:toast.open"))
+
+    expect(openSpy).toHaveBeenCalledTimes(2)
+    act(() => {
+      vi.advanceTimersByTime(300)
+    })
+    expect(screen.queryByText("Fallback open")).not.toBeInTheDocument()
+    openSpy.mockRestore()
+  })
+
+  it("opens a same-origin action in the current tab", async () => {
+    const openSpy = vi.spyOn(window, "open").mockReturnValue(null)
+    render(<LivePushToasts />)
+
+    await dispatchSwMessage({
+      type: "PUSH_NOTIFICATION",
+      toast: {
+        id: "t-same-origin",
+        title: "Open internally",
+        body: "Same-origin action",
+        url: "/events/42",
+      },
+    })
+    act(() => {
+      vi.advanceTimersByTime(0)
+    })
+
+    fireEvent.click(screen.getByText("notifications:toast.open"))
+
+    expect(openSpy).toHaveBeenCalledWith(`${window.location.origin}/events/42`, "_self", undefined)
+    openSpy.mockRestore()
+  })
+
   it("strips an unsafe (non-http) URL so no action button is shown", async () => {
     render(<LivePushToasts />)
 
@@ -296,6 +421,47 @@ describe("LivePushToasts", () => {
     expect(window.localStorage.getItem(BUFFER_STORAGE_KEY)).toBe("[]")
   })
 
+  it("restores tag/timestamp ids and filters malformed buffered entries", () => {
+    window.localStorage.setItem(
+      BUFFER_STORAGE_KEY,
+      JSON.stringify([
+        null,
+        42,
+        {},
+        { tag: "buffer-tag", title: "Tagged", body: "Tag id" },
+        { timestamp: 1700000000000, title: "Timestamped", body: "Timestamp id" },
+      ])
+    )
+
+    render(<LivePushToasts />)
+    act(() => {
+      vi.advanceTimersByTime(0)
+    })
+
+    expect(screen.getByText("Tagged")).toBeInTheDocument()
+    expect(screen.queryByText("Timestamped")).not.toBeInTheDocument()
+    expect(window.localStorage.getItem(BUFFER_STORAGE_KEY)).toBe("[]")
+  })
+
+  it("ignores a non-array persisted buffer", () => {
+    window.localStorage.setItem(BUFFER_STORAGE_KEY, JSON.stringify({ unexpected: true }))
+
+    render(<LivePushToasts />)
+
+    expect(screen.queryByRole("heading", { level: 4 })).not.toBeInTheDocument()
+  })
+
+  it("ignores a storage read failure while flushing the buffer", () => {
+    const getItemSpy = vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => {
+      throw new Error("storage unavailable")
+    })
+
+    render(<LivePushToasts />)
+
+    expect(screen.queryByRole("heading", { level: 4 })).not.toBeInTheDocument()
+    getItemSpy.mockRestore()
+  })
+
   it("buffers a PUSH_NOTIFICATION when the document is hidden instead of showing it", async () => {
     const visibilitySpy = vi.spyOn(document, "visibilityState", "get").mockReturnValue("hidden")
     render(<LivePushToasts />)
@@ -311,6 +477,23 @@ describe("LivePushToasts", () => {
     const raw = window.localStorage.getItem(BUFFER_STORAGE_KEY)
     expect(raw).toContain("hidden-1")
 
+    visibilitySpy.mockRestore()
+  })
+
+  it("ignores a storage write failure while buffering a hidden push", async () => {
+    const visibilitySpy = vi.spyOn(document, "visibilityState", "get").mockReturnValue("hidden")
+    const setItemSpy = vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw new Error("storage unavailable")
+    })
+    render(<LivePushToasts />)
+
+    await dispatchSwMessage({
+      type: "PUSH_NOTIFICATION",
+      toast: { id: "hidden-write-failure", title: "Hidden push", body: "Should be ignored" },
+    })
+
+    expect(screen.queryByText("Hidden push")).not.toBeInTheDocument()
+    setItemSpy.mockRestore()
     visibilitySpy.mockRestore()
   })
 

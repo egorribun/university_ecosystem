@@ -60,6 +60,20 @@ type Config struct {
 	// SentryTracesSampleRate controls Sentry performance monitoring sample rate.
 	// Default 1.0 (100%) for dev; recommend 0.1 (10%) for production.
 	SentryTracesSampleRate float64
+	// SPIFFE Workload API & mTLS configuration
+	SpiffeEnabled         bool
+	SpiffeEndpointSocket  string
+	SpiffeTrustDomain     string
+	SpiffeMyID            string
+	FileProcessorSpiffeID string
+	BackendSpiffeID       string
+	// HTTP/3 QUIC & WebTransport Ingress Configuration
+	H3Enabled      bool   // GATEWAY_H3_ENABLED (default: true)
+	H3Port         string // GATEWAY_H3_PORT (default: "8443")
+	H3AltSvcMaxAge int    // GATEWAY_H3_ALT_SVC_MAX_AGE (default: 2592000)
+	TLSCertFile    string // TLS_CERT_FILE (optional in dev, required for prod H3)
+	TLSKeyFile     string // TLS_KEY_FILE (optional in dev, required for prod H3)
+	WsHubURL       string // WSHUB_URL (default: "http://ws-hub:8081")
 }
 
 // Load loads the configuration from environment variables
@@ -90,6 +104,18 @@ func Load() (*Config, error) {
 		// RZ-33-02: Configurable Sentry sample rate. Default 1.0 for dev;
 		// recommend 0.1 for production (set SENTRY_TRACES_SAMPLE_RATE=0.1).
 		SentryTracesSampleRate: getEnvFloat64("SENTRY_TRACES_SAMPLE_RATE", 1.0),
+		SpiffeEnabled:          os.Getenv("SPIFFE_ENABLED") == "true",
+		SpiffeEndpointSocket:   getEnv("SPIFFE_ENDPOINT_SOCKET", "unix:///run/spire/sockets/agent.sock"),
+		SpiffeTrustDomain:      getEnv("SPIFFE_TRUST_DOMAIN", "university.ecosystem"),
+		SpiffeMyID:             getEnv("SPIFFE_MY_ID", "spiffe://university.ecosystem/ns/default/sa/gateway"),
+		FileProcessorSpiffeID:  getEnv("FILE_PROCESSOR_SPIFFE_ID", "spiffe://university.ecosystem/ns/default/sa/file-processor"),
+		BackendSpiffeID:        getEnv("BACKEND_SPIFFE_ID", "spiffe://university.ecosystem/ns/default/sa/app"),
+		H3Enabled:              getEnvBool("GATEWAY_H3_ENABLED", true),
+		H3Port:                 getEnv("GATEWAY_H3_PORT", "8443"),
+		H3AltSvcMaxAge:         getEnvInt("GATEWAY_H3_ALT_SVC_MAX_AGE", 2592000),
+		TLSCertFile:            os.Getenv("TLS_CERT_FILE"),
+		TLSKeyFile:             os.Getenv("TLS_KEY_FILE"),
+		WsHubURL:               getEnv("WSHUB_URL", "http://ws-hub:8081"),
 	}
 
 	if cfg.JWTSecret == "" {
@@ -144,4 +170,18 @@ func getEnvSlice(key string, defaultValue []string) []string {
 		return defaultValue
 	}
 	return result
+}
+
+func getEnvBool(key string, defaultValue bool) bool {
+	valStr := os.Getenv(key)
+	if valStr == "" {
+		return defaultValue
+	}
+	val, err := strconv.ParseBool(valStr)
+	if err != nil {
+		slog.WarnContext(context.Background(), "invalid boolean env var, using default",
+			"key", key, "value", valStr, "default", defaultValue)
+		return defaultValue
+	}
+	return val
 }

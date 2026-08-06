@@ -44,6 +44,38 @@ if (!process.stderr.columns || process.stderr.columns === 0) {
 if (!globalThis.TextEncoder) (globalThis as any).TextEncoder = TextEncoder
 if (!globalThis.TextDecoder) (globalThis as any).TextDecoder = TextDecoder as any
 if (!globalThis.crypto) (globalThis as any).crypto = webcrypto
+if (typeof globalThis.URL !== "undefined") {
+  if (typeof globalThis.URL.createObjectURL !== "function") {
+    Object.defineProperty(globalThis.URL, "createObjectURL", {
+      value: vi.fn(() => "blob:mock-url"),
+      writable: true,
+      configurable: true,
+    })
+  }
+  if (typeof globalThis.URL.revokeObjectURL !== "function") {
+    Object.defineProperty(globalThis.URL, "revokeObjectURL", {
+      value: vi.fn(() => undefined),
+      writable: true,
+      configurable: true,
+    })
+  }
+}
+if (!("dispatchEvent" in globalThis)) {
+  Object.defineProperty(globalThis, "dispatchEvent", {
+    value: (event: Event) => {
+      try {
+        if (typeof window !== "undefined" && typeof window.dispatchEvent === "function") {
+          return window.dispatchEvent(event)
+        }
+      } catch (_e) {
+        /* ignore */
+      }
+      return false
+    },
+    writable: true,
+    configurable: false,
+  })
+}
 
 const requestBodyMap = new WeakMap<Request, Promise<string>>()
 
@@ -139,7 +171,9 @@ beforeAll(async () => {
   }
 })
 
-afterEach(() => {
+import { resetDatabaseForTesting } from "./db"
+
+afterEach(async () => {
   server.resetHandlers()
   resetTestSessions()
   resetTestEvents()
@@ -148,6 +182,7 @@ afterEach(() => {
   resetTestMfa()
   resetAdminDeadLetterJobs()
   resetEtagCache()
+  await resetDatabaseForTesting()
 })
 
 afterAll(() => server.close())
@@ -289,6 +324,7 @@ if (typeof window !== "undefined") {
   if (!("ResizeObserver" in window)) {
     Object.defineProperty(window, "ResizeObserver", {
       writable: true,
+      configurable: true,
       value: class {
         constructor() {}
         observe() {}

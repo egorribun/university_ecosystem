@@ -149,6 +149,137 @@ describe("API client 429 retry loop", () => {
     expect(result).toMatchObject({ response: { status: 429 } })
     expect(adapter).toHaveBeenCalledTimes(1)
   })
+
+  it("waits for an already active rate-limit window before sending a request", async () => {
+    const { default: api } = await import("@/api/client")
+    const { scheduleRateLimitWindow } = await import("@/api/interceptors/rateLimit")
+    const adapter = vi.fn(async (config): Promise<AxiosResponse> => ({
+      config,
+      data: { ok: true },
+      status: 200,
+      statusText: "OK",
+      headers: new AxiosHeaders(),
+      request: {},
+    }))
+    api.defaults.adapter = adapter
+    scheduleRateLimitWindow(1_000)
+
+    const pending = api.get("/news")
+    await vi.advanceTimersByTimeAsync(0)
+    expect(adapter).not.toHaveBeenCalled()
+
+    await vi.advanceTimersByTimeAsync(1_000)
+    await expect(pending).resolves.toMatchObject({ status: 200 })
+    expect(adapter).toHaveBeenCalledOnce()
+  })
+
+  it("treats a nameless 429 payload as non-abort and retries it", async () => {
+    const { default: api } = await import("@/api/client")
+    let calls = 0
+    const adapter = vi.fn(async (config): Promise<AxiosResponse> => {
+      calls += 1
+      if (calls === 1) {
+        throw {
+          config,
+          response: {
+            status: 429,
+            statusText: "Too Many Requests",
+            headers: AxiosHeaders.from({ "retry-after": "1" }),
+            data: { detail: "slow down" },
+            config,
+          },
+        }
+      }
+      return {
+        config,
+        data: { ok: true },
+        status: 200,
+        statusText: "OK",
+        headers: new AxiosHeaders(),
+        request: {},
+      }
+    })
+    api.defaults.adapter = adapter
+
+    const pending = api.get("/news")
+    await vi.advanceTimersByTimeAsync(1_000)
+    await vi.advanceTimersByTimeAsync(0)
+
+    await expect(pending).resolves.toMatchObject({ status: 200 })
+    expect(adapter).toHaveBeenCalledTimes(2)
+  })
+
+  it("uses the default retry delay when the 429 response has no headers", async () => {
+    const { default: api } = await import("@/api/client")
+    let calls = 0
+    const adapter = vi.fn(async (config): Promise<AxiosResponse> => {
+      calls += 1
+      if (calls === 1) {
+        throw Object.assign(new Error("Too Many Requests"), {
+          config,
+          response: {
+            status: 429,
+            statusText: "Too Many Requests",
+            headers: undefined,
+            data: { detail: "slow down" },
+            config,
+          },
+        })
+      }
+      return {
+        config,
+        data: { ok: true },
+        status: 200,
+        statusText: "OK",
+        headers: new AxiosHeaders(),
+        request: {},
+      }
+    })
+    api.defaults.adapter = adapter
+
+    const pending = api.get("/news")
+    await vi.advanceTimersByTimeAsync(2_000)
+    await vi.advanceTimersByTimeAsync(0)
+
+    await expect(pending).resolves.toMatchObject({ status: 200 })
+    expect(adapter).toHaveBeenCalledTimes(2)
+  })
+
+  it("uses the default retry delay when Retry-After is not a string", async () => {
+    const { default: api } = await import("@/api/client")
+    let calls = 0
+    const adapter = vi.fn(async (config): Promise<AxiosResponse> => {
+      calls += 1
+      if (calls === 1) {
+        throw Object.assign(new Error("Too Many Requests"), {
+          config,
+          response: {
+            status: 429,
+            statusText: "Too Many Requests",
+            headers: { "retry-after": 1 },
+            data: { detail: "slow down" },
+            config,
+          },
+        })
+      }
+      return {
+        config,
+        data: { ok: true },
+        status: 200,
+        statusText: "OK",
+        headers: new AxiosHeaders(),
+        request: {},
+      }
+    })
+    api.defaults.adapter = adapter
+
+    const pending = api.get("/news")
+    await vi.advanceTimersByTimeAsync(2_000)
+    await vi.advanceTimersByTimeAsync(0)
+
+    await expect(pending).resolves.toMatchObject({ status: 200 })
+    expect(adapter).toHaveBeenCalledTimes(2)
+  })
 })
 
 describe("API client trace-context response interceptor", () => {

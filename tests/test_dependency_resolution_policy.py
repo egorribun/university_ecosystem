@@ -85,6 +85,10 @@ def test_dependency_resolution_policy_enforces_cooldown_and_security_visibility(
     uv = tool["uv"]
     assert isinstance(uv, dict)
     assert uv.get("exclude-newer") == "7 days"
+    assert uv.get("exclude-newer-package") == {
+        "cryptography": "2026-08-01T00:00:00Z",
+        "pyopenssl": "2026-08-02T00:00:00Z",
+    }
 
     renovate = _read_renovate()
     assert renovate["osvVulnerabilityAlerts"] is True
@@ -128,11 +132,11 @@ def test_renovate_validator_contract_is_pinned_and_blocking() -> None:
     assert "permissions:\n  contents: read" in workflow_renovate
     assert "on:\n  push:\n  pull_request:" in workflow_renovate
     assert (
-        "uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0"
+        "uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1"
         in workflow_renovate
     )
     assert (
-        "uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1"
+        "uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97"
         in workflow_renovate
     )
 

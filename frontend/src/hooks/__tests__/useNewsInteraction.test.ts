@@ -213,6 +213,21 @@ describe("useNewsInteraction — query", () => {
     expect(result.current.interactions?.comments).toEqual([])
     expect(result.current.interactions?.comments_count).toBe(0)
   })
+
+  it("defaults omitted like fields in partial initialData", () => {
+    const { wrapper } = makeWrapper()
+    setupServer({ initial: baseInteractions })
+    const { result } = renderHook(() => useNewsInteraction(NEWS_ID, { initialData: {} }), {
+      wrapper,
+    })
+
+    expect(result.current.interactions).toMatchObject({
+      likes_count: 0,
+      is_liked: false,
+      comments: [],
+      comments_count: 0,
+    })
+  })
 })
 
 describe("useNewsInteraction — toggleLike", () => {
@@ -273,6 +288,46 @@ describe("useNewsInteraction — toggleLike", () => {
     // offline refetch also errors → optimistic flip is NOT reverted
     const d = qc.getQueryData<NewsInteractions>(["news", NEWS_ID, "interactions"])
     expect(d?.is_liked).toBe(true)
+  })
+
+  it("registers background sync when the service-worker sync APIs exist", async () => {
+    const register = vi.fn().mockResolvedValue(undefined)
+    const previousServiceWorker = navigator.serviceWorker
+    const previousSyncManager = (window as Window & { SyncManager?: unknown }).SyncManager
+    Object.defineProperty(navigator, "serviceWorker", {
+      configurable: true,
+      value: { ready: Promise.resolve({ sync: { register } }) },
+    })
+    Object.defineProperty(window, "SyncManager", {
+      configurable: true,
+      value: class SyncManager {},
+    })
+    expect("serviceWorker" in navigator).toBe(true)
+    expect("SyncManager" in window).toBe(true)
+
+    try {
+      const { wrapper } = makeWrapper()
+      setupServer({
+        initial: baseInteractions,
+        like: "offline",
+      })
+      const { result } = renderHook(() => useNewsInteraction(NEWS_ID), { wrapper })
+      await waitFor(() => expect(result.current.isLoading).toBe(false))
+      setOnline(false)
+
+      act(() => result.current.toggleLike())
+      await waitFor(() => expect(register).toHaveBeenCalledWith("news-interaction:sync"))
+      await waitFor(() => expect(result.current.isLiking).toBe(false))
+    } finally {
+      Object.defineProperty(navigator, "serviceWorker", {
+        configurable: true,
+        value: previousServiceWorker,
+      })
+      Object.defineProperty(window, "SyncManager", {
+        configurable: true,
+        value: previousSyncManager,
+      })
+    }
   })
 })
 
@@ -480,5 +535,44 @@ describe("useNewsInteraction — updateComment + deleteComment", () => {
     expect(q[0]!.url).toBe("/api/v1/news/comments/c2")
     expect(q[0]!.method).toBe("DELETE")
     expect(q[0]!.payload).toEqual({})
+  })
+})
+
+describe("useNewsInteraction — IndexedDB failure callbacks", () => {
+  it("surfaces an IndexedDB open failure from the offline queue attempt", async () => {
+    vi.stubGlobal("indexedDB", {
+      open: vi.fn(() => {
+        const request = {} as IDBOpenDBRequest
+        queueMicrotask(() => request.onerror?.(new Event("error")))
+        return request
+      }),
+    })
+
+    const { wrapper } = makeWrapper()
+    setupServer({ initial: baseInteractions, like: "offline" })
+    const { result } = renderHook(() => useNewsInteraction(NEWS_ID), { wrapper })
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+    setOnline(false)
+
+    act(() => result.current.toggleLike())
+    await waitFor(() => expect(result.current.isLiking).toBe(false))
+  })
+
+  it("surfaces an IndexedDB add failure after the queue database opens", async () => {
+    const addSpy = vi.spyOn(IDBObjectStore.prototype, "add").mockImplementation(() => {
+      const request = {} as IDBRequest
+      queueMicrotask(() => request.onerror?.(new Event("error")))
+      return request
+    })
+
+    const { wrapper } = makeWrapper()
+    setupServer({ initial: baseInteractions, like: "offline" })
+    const { result } = renderHook(() => useNewsInteraction(NEWS_ID), { wrapper })
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+    setOnline(false)
+
+    act(() => result.current.toggleLike())
+    await waitFor(() => expect(result.current.isLiking).toBe(false))
+    addSpy.mockRestore()
   })
 })

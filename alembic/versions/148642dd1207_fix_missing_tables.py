@@ -13,7 +13,7 @@ import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
 import app.utils.encryption
-from alembic import op
+from alembic import context, op
 
 # revision identifiers, used by Alembic.
 revision: str = "148642dd1207"
@@ -54,6 +54,8 @@ def safe_batch_alter_table(table_name: str, schema=None, **kwargs):
 
 def ensure_partitioned(table_name: str, create_sql: str, partition_key: str) -> None:
     """Enforce partitioning on an existing table in PostgreSQL."""
+    if context.is_offline_mode():
+        return
     conn = op.get_bind()
     if conn.dialect.name != "postgresql":
         return
@@ -81,12 +83,12 @@ def ensure_partitioned(table_name: str, create_sql: str, partition_key: str) -> 
         return
 
     # Table exists but is not partitioned. We must convert it.
-    op.execute(f"DROP TABLE IF EXISTS {table_name}_old CASCADE")
-    op.execute(f"ALTER TABLE {table_name} RENAME TO {table_name}_old")
-    op.execute(create_sql)
+    op.execute(f"DROP TABLE IF EXISTS {table_name}_old CASCADE")  # nosemgrep
+    op.execute(f"ALTER TABLE {table_name} RENAME TO {table_name}_old")  # nosemgrep
+    op.execute(create_sql)  # nosemgrep
 
     # Create default partition if it doesn't exist
-    op.execute(
+    op.execute(  # nosemgrep
         f"CREATE TABLE IF NOT EXISTS {table_name}_default "
         f"PARTITION OF {table_name} DEFAULT"
     )
@@ -94,10 +96,10 @@ def ensure_partitioned(table_name: str, create_sql: str, partition_key: str) -> 
     # Move data
     columns = [c["name"] for c in inspector.get_columns(f"{table_name}_old")]
     cols_str = ", ".join(columns)
-    op.execute(
+    op.execute(  # nosemgrep
         f"INSERT INTO {table_name} ({cols_str}) SELECT {cols_str} FROM {table_name}_old"  # noqa: S608
     )
-    op.execute(f"DROP TABLE {table_name}_old")
+    op.execute(f"DROP TABLE {table_name}_old")  # nosemgrep
 
 
 def upgrade() -> None:

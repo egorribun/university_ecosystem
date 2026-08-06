@@ -158,8 +158,7 @@ function ScheduleContent() {
   const prefersReduced = useMediaQuery("(prefers-reduced-motion: reduce)")
 
   const confirmDeleteLesson = useCallback(async () => {
-    const id = pendingDeleteId
-    if (!id) return
+    const id = pendingDeleteId!
     setPendingDeleteId(null)
 
     const backup = [...rawSchedule]

@@ -27,9 +27,7 @@ def test_webpush_subject_accepts_mailto_https_and_local_http() -> None:
     )
     assert _settings(
         vapid_subject=" https://push.example.test/app "
-    ).WEBPUSH_SUBJECT == (
-        "https://push.example.test/app"
-    )
+    ).WEBPUSH_SUBJECT == ("https://push.example.test/app")
     assert _settings(vapid_subject="http://localhost:8000").WEBPUSH_SUBJECT == (
         "http://localhost:8000"
     )
@@ -79,15 +77,24 @@ def test_smtp_security_normalization_and_validation() -> None:
 def test_smtp_user_security_validator_covers_dev_and_production_paths() -> None:
     from app.core.config.notifications import NotificationSettings
 
-    assert NotificationSettings._validate_smtp_user_security(
-        "user",
-        SimpleNamespace(
-            data={"smtp_security": "starttls", "environment": "production"}
-        ),
-    ) == "user"
-    assert NotificationSettings._validate_smtp_user_security(
-        "", SimpleNamespace(data={"smtp_security": "none", "environment": "production"})
-    ) == ""
+    assert (
+        NotificationSettings._validate_smtp_user_security(
+            "user",
+            SimpleNamespace(
+                data={"smtp_security": "starttls", "environment": "production"}
+            ),
+        )
+        == "user"
+    )
+    assert (
+        NotificationSettings._validate_smtp_user_security(
+            "",
+            SimpleNamespace(
+                data={"smtp_security": "none", "environment": "production"}
+            ),
+        )
+        == ""
+    )
     with pytest.raises(ValueError, match="cannot be used"):
         NotificationSettings._validate_smtp_user_security(
             "user",
@@ -95,12 +102,13 @@ def test_smtp_user_security_validator_covers_dev_and_production_paths() -> None:
                 data={"smtp_security": "none", "environment": "production"}
             ),
         )
-    assert NotificationSettings._validate_smtp_user_security(
-        "user",
-        SimpleNamespace(
-            data={"smtp_security": "none", "environment": "testing"}
-        ),
-    ) == "user"
+    assert (
+        NotificationSettings._validate_smtp_user_security(
+            "user",
+            SimpleNamespace(data={"smtp_security": "none", "environment": "testing"}),
+        )
+        == "user"
+    )
 
 
 def test_notification_secret_file_validators_and_cached_keys(

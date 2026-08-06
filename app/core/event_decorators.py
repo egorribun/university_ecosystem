@@ -20,13 +20,19 @@ _pending_all_subscriptions: list[EventHandler] = []
 
 
 @overload
-def subscribe(event_type: str) -> Callable[[EventHandler], EventHandler]: ...
+def subscribe(
+    event_type: str,
+) -> Callable[
+    [EventHandler], EventHandler
+]: ...  # pragma: no cover - typing-only overload
 
 
 @overload
 def subscribe[EventT: DomainEvent](
     event_type: type[EventT],
-) -> Callable[[EventHandler], EventHandler]: ...
+) -> Callable[
+    [EventHandler], EventHandler
+]: ...  # pragma: no cover - typing-only overload
 
 
 def subscribe(

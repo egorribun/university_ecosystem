@@ -61,7 +61,7 @@ vi.mock("react-i18next", () => ({
   useTranslation: () => stableTranslation,
 }))
 
-import { usePushPreferences } from "../usePushPreferences"
+import { NOTIFICATION_TOPIC_KEYS, usePushPreferences } from "../usePushPreferences"
 
 function wrapper({ children }: { children: ReactNode }) {
   const client = new QueryClient({
@@ -623,5 +623,78 @@ describe("usePushPreferences", () => {
     expect(predicate({ queryKey: ["notifications", "list"] })).toBe(true)
     expect(predicate({ queryKey: ["unrelated", "thing"] })).toBe(false)
     expect(predicate({ queryKey: "not-an-array" })).toBe(false)
+  })
+
+  it("supports an anonymous user and reports when every topic is disabled", async () => {
+    mockUseAuth.mockReturnValue({ user: null } as any)
+    const { result } = renderHook(() => usePushPreferences(), { wrapper })
+
+    await waitFor(() => expect(result.current.pushInitializing).toBe(false))
+    for (const topic of NOTIFICATION_TOPIC_KEYS) {
+      await act(async () => {
+        await result.current.handleTopicToggle(topic)({} as any, false)
+      })
+    }
+
+    expect(result.current.selectedTopicsDescription).toBe("notifications:messages.noTopics")
+  })
+
+  it("does not update permission state after the hook unmounts", async () => {
+    let resolveQuery: ((status: PermissionStatus) => void) | undefined
+    const pendingQuery = new Promise<PermissionStatus>((resolve) => {
+      resolveQuery = resolve
+    })
+    const status = {
+      state: "granted",
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    }
+    ;(globalThis.navigator as any).permissions = {
+      query: vi.fn(() => pendingQuery),
+    }
+
+    const { unmount } = renderHook(() => usePushPreferences(), { wrapper })
+    unmount()
+    resolveQuery?.(status as unknown as PermissionStatus)
+    await act(async () => {
+      await pendingQuery
+    })
+
+    expect(status.addEventListener).not.toHaveBeenCalled()
+  })
+
+  it("does not update subscription state after an async detection resolves post-unmount", async () => {
+    let resolveSubscription: ((value: PushSubscription | null) => void) | undefined
+    const pendingSubscription = new Promise<PushSubscription | null>((resolve) => {
+      resolveSubscription = resolve
+    })
+    mockGetExistingPushSubscription.mockReturnValue(pendingSubscription)
+
+    const { unmount } = renderHook(() => usePushPreferences(), { wrapper })
+    unmount()
+    resolveSubscription?.(null)
+    await act(async () => {
+      await pendingSubscription
+    })
+
+    expect(mockGetExistingPushSubscription).toHaveBeenCalled()
+  })
+
+  it("swallows permission listener cleanup failures", async () => {
+    const status = {
+      state: "granted",
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(() => {
+        throw new Error("listener already gone")
+      }),
+    }
+    ;(globalThis.navigator as any).permissions = {
+      query: vi.fn(async () => status),
+    }
+
+    const { result, unmount } = renderHook(() => usePushPreferences(), { wrapper })
+    await waitFor(() => expect(result.current.notificationPermission).toBe("granted"))
+    expect(() => unmount()).not.toThrow()
+    expect(status.removeEventListener).toHaveBeenCalled()
   })
 })

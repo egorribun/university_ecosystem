@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useTranslation } from "react-i18next"
 import { Search as SearchIcon } from "lucide-react"
 
@@ -85,6 +85,13 @@ export function EventCreateDialog({ open, onClose, onCreated, language }: EventC
       setImageUploading(false)
     }
   }
+
+  // Cleanup preview Blob URL on unmount or preview update
+  useEffect(() => {
+    return () => {
+      if (preview) URL.revokeObjectURL(preview)
+    }
+  }, [preview])
 
   const handleClose = () => {
     setDraft(INITIAL_DRAFT)

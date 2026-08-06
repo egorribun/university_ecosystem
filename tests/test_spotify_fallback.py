@@ -243,7 +243,16 @@ async def test_now_playing_refreshes_when_access_token_missing(
     monkeypatch.setattr("httpx.AsyncClient.get", fake_get)
 
     headers = await _login(async_client, user, password)
-    headers["Accept-Language"] = "ru"
+    headers.update(
+        {
+            "Accept-Language": "ru",
+            # PostgreSQL's RLS transaction context plus the token-refresh and
+            # now-playing persistence commits are eight statements in this
+            # intentionally stateful path. Keep the query trip-wire enabled
+            # with an explicit, scenario-specific ceiling instead of disabling it.
+            "X-Query-Budget": "8",
+        }
+    )
 
     response = await async_client.get("/spotify/now-playing", headers=headers)
 

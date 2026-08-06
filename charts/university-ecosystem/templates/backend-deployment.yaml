@@ -6,7 +6,7 @@ metadata:
     {{- include "university-ecosystem.labels" . | nindent 4 }}
     app.kubernetes.io/component: backend
 spec:
-  {{- if not .Values.backend.autoscaling.enabled }}
+  {{- if not (or .Values.backend.autoscaling.enabled (and .Values.keda.enabled .Values.keda.backend.enabled) (and .Values.keda.enabled (and .Values.hibernation.enabled .Values.hibernation.workloads.backend.enabled))) }}
   replicas: {{ .Values.backend.replicaCount }}
   {{- end }}
   selector:
@@ -70,7 +70,7 @@ spec:
             periodSeconds: 5
           livenessProbe:
             httpGet:
-              path: /healthz
+              path: /health/live
               port: http
             initialDelaySeconds: 10
             periodSeconds: 15

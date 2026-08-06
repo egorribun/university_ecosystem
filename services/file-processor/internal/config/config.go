@@ -38,6 +38,13 @@ type Config struct {
 	// OTLPInsecure disables TLS for the OTLP exporter.
 	// MUST be false in production — use TLS with a trusted CA or mTLS.
 	OTLPInsecure bool `mapstructure:"otlp_insecure"`
+
+	// SPIFFE Workload API & mTLS configuration
+	SpiffeEnabled          bool     `mapstructure:"spiffe_enabled"`
+	SpiffeEndpointSocket   string   `mapstructure:"spiffe_endpoint_socket"`
+	SpiffeTrustDomain      string   `mapstructure:"spiffe_trust_domain"`
+	SpiffeMyID             string   `mapstructure:"spiffe_my_id"`
+	AllowedClientSpiffeIDs []string `mapstructure:"allowed_client_spiffe_ids"`
 }
 
 // Load loads the configuration from environment variables using Viper.
@@ -60,23 +67,33 @@ func Load() (*Config, error) {
 	viper.SetDefault("minio_access_key", "minioadmin")
 	viper.SetDefault("minio_secret_key", "minioadmin")
 	viper.SetDefault("minio_secure", false)
+	viper.SetDefault("spiffe_enabled", false)
+	viper.SetDefault("spiffe_endpoint_socket", "unix:///run/spire/sockets/agent.sock")
+	viper.SetDefault("spiffe_trust_domain", "university.ecosystem")
+	viper.SetDefault("spiffe_my_id", "spiffe://university.ecosystem/ns/default/sa/file-processor")
+	viper.SetDefault("allowed_client_spiffe_ids", []string{"spiffe://university.ecosystem/ns/default/sa/gateway"})
 
 	bindEnvs := map[string]string{
-		"grpc_port":             "GRPC_PORT",
-		"nats_url":              "NATS_URL",
-		"temporal_host":         "TEMPORAL_HOST",
-		"temporal_api_key_file": "TEMPORAL_API_KEY_FILE",
-		"minio_bucket":          "MINIO_BUCKET",
-		"minio_endpoint":        "MINIO_ENDPOINT",
-		"minio_access_key":      "MINIO_ACCESS_KEY",
-		"minio_secret_key":      "MINIO_SECRET_KEY",
-		"minio_secure":          "MINIO_SECURE",
-		"jwt_secret":            "JWT_SECRET",
-		"rsa_public_key_pem":    "RSA_PUBLIC_KEY_PEM",
-		"sentry_dsn":            "SENTRY_DSN",
-		"environment":           "VITE_ENVIRONMENT",
-		"otlp_endpoint":         "OTLP_ENDPOINT",
-		"otlp_insecure":         "OTLP_INSECURE",
+		"grpc_port":                 "GRPC_PORT",
+		"nats_url":                  "NATS_URL",
+		"temporal_host":             "TEMPORAL_HOST",
+		"temporal_api_key_file":     "TEMPORAL_API_KEY_FILE",
+		"minio_bucket":              "MINIO_BUCKET",
+		"minio_endpoint":            "MINIO_ENDPOINT",
+		"minio_access_key":          "MINIO_ACCESS_KEY",
+		"minio_secret_key":          "MINIO_SECRET_KEY",
+		"minio_secure":              "MINIO_SECURE",
+		"jwt_secret":                "JWT_SECRET",
+		"rsa_public_key_pem":        "RSA_PUBLIC_KEY_PEM",
+		"sentry_dsn":                "SENTRY_DSN",
+		"environment":               "VITE_ENVIRONMENT",
+		"otlp_endpoint":             "OTLP_ENDPOINT",
+		"otlp_insecure":             "OTLP_INSECURE",
+		"spiffe_enabled":            "SPIFFE_ENABLED",
+		"spiffe_endpoint_socket":    "SPIFFE_ENDPOINT_SOCKET",
+		"spiffe_trust_domain":       "SPIFFE_TRUST_DOMAIN",
+		"spiffe_my_id":              "SPIFFE_MY_ID",
+		"allowed_client_spiffe_ids": "ALLOWED_CLIENT_SPIFFE_IDS",
 	}
 
 	for key, env := range bindEnvs {

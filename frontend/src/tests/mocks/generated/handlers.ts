@@ -1881,6 +1881,36 @@ export const handlers = [
         : body;
     return HttpResponse.json(responseJson, init);
   }),
+  http.get(`${baseURL}/admin/audit/time-travel`, async ({ request }) => {
+    const shouldEchoRequestBody = false;
+    let requestJson = null;
+    if (shouldEchoRequestBody && ["post", "put", "patch"].includes("get")) {
+      try {
+        requestJson = await request.clone().json();
+      } catch (e) {
+        requestJson = null;
+      }
+    }
+
+    const resultArray = [
+      [
+        await getGetTimeTravelStateAdminAuditTimeTravelGet200Response(),
+        { status: 200 },
+      ],
+      [
+        await getGetTimeTravelStateAdminAuditTimeTravelGet422Response(),
+        { status: 422 },
+      ],
+    ] as [any, { status: number }][];
+
+    const [body, init] =
+      resultArray[next(`get /admin/audit/time-travel`) % resultArray.length];
+    const responseJson =
+      requestJson && body && typeof body === "object" && !Array.isArray(body)
+        ? { ...body, ...requestJson }
+        : body;
+    return HttpResponse.json(responseJson, init);
+  }),
   http.get(`${baseURL}/api/v1/chats`, async ({ request }) => {
     const shouldEchoRequestBody = false;
     let requestJson = null;
@@ -4153,6 +4183,12 @@ export function getLoginPasskeyVerifyApiV1AuthLoginPasskeyVerifyPost200Response(
             ]),
             payload: faker.helpers.arrayElement([{}, null]),
             attempt_count: faker.number.int(),
+            state: faker.helpers.arrayElement([
+              "pending",
+              "consumed",
+              "locked",
+              "expired",
+            ]),
           }));
         })(),
         recovery_codes_left: faker.number.int(),
@@ -4414,6 +4450,12 @@ export function getLoginApiV1AuthLoginPost200Response() {
             ]),
             payload: faker.helpers.arrayElement([{}, null]),
             attempt_count: faker.number.int(),
+            state: faker.helpers.arrayElement([
+              "pending",
+              "consumed",
+              "locked",
+              "expired",
+            ]),
           }));
         })(),
         recovery_codes_left: faker.number.int(),
@@ -4675,6 +4717,12 @@ export function getLoginJsonApiV1AuthLoginJsonPost200Response() {
             ]),
             payload: faker.helpers.arrayElement([{}, null]),
             attempt_count: faker.number.int(),
+            state: faker.helpers.arrayElement([
+              "pending",
+              "consumed",
+              "locked",
+              "expired",
+            ]),
           }));
         })(),
         recovery_codes_left: faker.number.int(),
@@ -4929,6 +4977,12 @@ export function getVerifyMfaChallengeApiV1AuthMfaVerifyPost200Response() {
           ]),
           payload: faker.helpers.arrayElement([{}, null]),
           attempt_count: faker.number.int(),
+          state: faker.helpers.arrayElement([
+            "pending",
+            "consumed",
+            "locked",
+            "expired",
+          ]),
         }));
       })(),
       recovery_codes_left: faker.number.int(),
@@ -6479,6 +6533,12 @@ export function getMeApiV1UsersMeGet200Response() {
         ]),
         payload: faker.helpers.arrayElement([{}, null]),
         attempt_count: faker.number.int(),
+        state: faker.helpers.arrayElement([
+          "pending",
+          "consumed",
+          "locked",
+          "expired",
+        ]),
       }));
     })(),
     recovery_codes_left: faker.number.int(),
@@ -6643,6 +6703,12 @@ export function getUpdateMeApiV1UsersMePut200Response() {
         ]),
         payload: faker.helpers.arrayElement([{}, null]),
         attempt_count: faker.number.int(),
+        state: faker.helpers.arrayElement([
+          "pending",
+          "consumed",
+          "locked",
+          "expired",
+        ]),
       }));
     })(),
     recovery_codes_left: faker.number.int(),
@@ -6840,6 +6906,12 @@ export function getChangeEmailApiV1UsersMeEmailPost200Response() {
         ]),
         payload: faker.helpers.arrayElement([{}, null]),
         attempt_count: faker.number.int(),
+        state: faker.helpers.arrayElement([
+          "pending",
+          "consumed",
+          "locked",
+          "expired",
+        ]),
       }));
     })(),
     recovery_codes_left: faker.number.int(),
@@ -7037,6 +7109,12 @@ export function getVerifyEmailChangeApiV1UsersMeEmailConfirmPost200Response() {
         ]),
         payload: faker.helpers.arrayElement([{}, null]),
         attempt_count: faker.number.int(),
+        state: faker.helpers.arrayElement([
+          "pending",
+          "consumed",
+          "locked",
+          "expired",
+        ]),
       }));
     })(),
     recovery_codes_left: faker.number.int(),
@@ -7360,6 +7438,12 @@ export function getUploadAvatarApiV1UsersMeAvatarPost200Response() {
         ]),
         payload: faker.helpers.arrayElement([{}, null]),
         attempt_count: faker.number.int(),
+        state: faker.helpers.arrayElement([
+          "pending",
+          "consumed",
+          "locked",
+          "expired",
+        ]),
       }));
     })(),
     recovery_codes_left: faker.number.int(),
@@ -7557,6 +7641,12 @@ export function getDeleteAvatarApiV1UsersMeAvatarDelete200Response() {
         ]),
         payload: faker.helpers.arrayElement([{}, null]),
         attempt_count: faker.number.int(),
+        state: faker.helpers.arrayElement([
+          "pending",
+          "consumed",
+          "locked",
+          "expired",
+        ]),
       }));
     })(),
     recovery_codes_left: faker.number.int(),
@@ -7721,6 +7811,12 @@ export function getUploadCoverApiV1UsersMeCoverPost200Response() {
         ]),
         payload: faker.helpers.arrayElement([{}, null]),
         attempt_count: faker.number.int(),
+        state: faker.helpers.arrayElement([
+          "pending",
+          "consumed",
+          "locked",
+          "expired",
+        ]),
       }));
     })(),
     recovery_codes_left: faker.number.int(),
@@ -7918,6 +8014,12 @@ export function getDeleteCoverApiV1UsersMeCoverDelete200Response() {
         ]),
         payload: faker.helpers.arrayElement([{}, null]),
         attempt_count: faker.number.int(),
+        state: faker.helpers.arrayElement([
+          "pending",
+          "consumed",
+          "locked",
+          "expired",
+        ]),
       }));
     })(),
     recovery_codes_left: faker.number.int(),
@@ -8082,6 +8184,12 @@ export function getCreateUserApiV1UsersPost200Response() {
         ]),
         payload: faker.helpers.arrayElement([{}, null]),
         attempt_count: faker.number.int(),
+        state: faker.helpers.arrayElement([
+          "pending",
+          "consumed",
+          "locked",
+          "expired",
+        ]),
       }));
     })(),
     recovery_codes_left: faker.number.int(),
@@ -8385,6 +8493,12 @@ export function getGetUsersApiV1UsersGet200Response() {
               ]),
               payload: faker.helpers.arrayElement([{}, null]),
               attempt_count: faker.number.int(),
+              state: faker.helpers.arrayElement([
+                "pending",
+                "consumed",
+                "locked",
+                "expired",
+              ]),
             }));
           })(),
           recovery_codes_left: faker.number.int(),
@@ -8631,6 +8745,12 @@ export function getUpdateUserAdminApiV1UsersUserIdPatch200Response() {
         ]),
         payload: faker.helpers.arrayElement([{}, null]),
         attempt_count: faker.number.int(),
+        state: faker.helpers.arrayElement([
+          "pending",
+          "consumed",
+          "locked",
+          "expired",
+        ]),
       }));
     })(),
     recovery_codes_left: faker.number.int(),
@@ -12740,6 +12860,55 @@ export function getListAuditLogsAdminAuditGet200Response() {
 }
 
 export function getListAuditLogsAdminAuditGet422Response() {
+  return {
+    detail: (() => {
+      const arrayMin = 1;
+      const arrayMax = MAX_ARRAY_LENGTH;
+      const safeMin = Math.min(arrayMin, arrayMax);
+      return [
+        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
+      ].map((_) => ({
+        loc: (() => {
+          const arrayMin = 1;
+          const arrayMax = MAX_ARRAY_LENGTH;
+          const safeMin = Math.min(arrayMin, arrayMax);
+          return [
+            ...new Array(
+              faker.number.int({ min: safeMin, max: arrayMax }),
+            ).keys(),
+          ].map((_) =>
+            faker.helpers.arrayElement([
+              faker.lorem.words(),
+              faker.number.int(),
+            ]),
+          );
+        })(),
+        msg: faker.lorem.words(),
+        type: faker.lorem.words(),
+        input: null,
+        ctx: {},
+      }));
+    })(),
+  };
+}
+
+export function getGetTimeTravelStateAdminAuditTimeTravelGet200Response() {
+  return {
+    aggregate_type: faker.lorem.words(),
+    aggregate_id: faker.string.uuid(),
+    target_timestamp: faker.date.anytime().toISOString(),
+    state_at_timestamp: faker.helpers.arrayElement([{}, null]),
+    version_at_timestamp: faker.helpers.arrayElement([
+      faker.number.int(),
+      null,
+    ]),
+    events_replayed: faker.number.int(),
+    chain_integrity_valid: faker.datatype.boolean(),
+    tampered_event_id: faker.helpers.arrayElement([faker.lorem.words(), null]),
+  };
+}
+
+export function getGetTimeTravelStateAdminAuditTimeTravelGet422Response() {
   return {
     detail: (() => {
       const arrayMin = 1;

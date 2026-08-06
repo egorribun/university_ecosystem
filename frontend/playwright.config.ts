@@ -11,9 +11,16 @@ const __dirname = dirname(fileURLToPath(import.meta.url))
 // dev preview used by a11y-public + a11y-cdn-axe.
 const URL_STATE_E2E_MODE = process.env.URL_STATE_E2E === "true"
 const PRODUCTION_SERVER_E2E_MODE = process.env.PRODUCTION_SERVER_E2E === "true"
+const E2E_COVERAGE_MODE = process.env.E2E_COVERAGE === "true"
 const PORT = Number(process.env.PLAYWRIGHT_PORT || (URL_STATE_E2E_MODE ? 4175 : 5173))
 const HOST = process.env.PLAYWRIGHT_HOST || "127.0.0.1"
 const BASE_URL = process.env.PLAYWRIGHT_BASE_URL || `http://${HOST}:${PORT}`
+const BUILD_COMMAND = E2E_COVERAGE_MODE
+  ? "npx cross-env FRONTEND_BUILD_UNMINIFIED=true npm run build"
+  : "npm run build"
+const URL_STATE_BUILD_COMMAND = E2E_COVERAGE_MODE
+  ? "npx cross-env VITE_LHCI=true FRONTEND_BUILD_UNMINIFIED=true npm run build"
+  : "npx cross-env VITE_LHCI=true npm run build"
 
 export default defineConfig({
   testDir: "./tests/e2e",
@@ -80,7 +87,7 @@ export default defineConfig({
         ? {
             // The cache-policy contract must exercise the production Node
             // wrapper, not Vite's development preview middleware.
-            command: `npm run build && npx cross-env HOST=${HOST} PORT=${PORT} npm run start`,
+            command: `${BUILD_COMMAND} && npx cross-env HOST=${HOST} PORT=${PORT} npm run start`,
             url: BASE_URL,
             reuseExistingServer: false,
             timeout: 360_000,
@@ -96,7 +103,7 @@ export default defineConfig({
               // platform (bash, zsh, cmd.exe, PowerShell). The rebuild is gated
               // by the env var — once dist/ is the LHCI build, vite preview is
               // env-independent. --strictPort fails fast on collision.
-              command: `npx cross-env VITE_LHCI=true npm run build && npm run preview -- --host ${HOST} --port ${PORT} --strictPort`,
+              command: `${URL_STATE_BUILD_COMMAND} && npm run preview -- --host ${HOST} --port ${PORT} --strictPort`,
               url: BASE_URL,
               reuseExistingServer: !process.env.CI,
               // Wave 125 polish — bumped from 240s. Phase 2 build is slower
@@ -114,7 +121,7 @@ export default defineConfig({
               },
             }
           : {
-              command: `npm run build && npm run preview -- --host ${HOST} --port ${PORT}`,
+              command: `${BUILD_COMMAND} && npm run preview -- --host ${HOST} --port ${PORT}`,
               url: BASE_URL,
               reuseExistingServer: !process.env.CI,
               // Wave 125 polish — bumped from 180s. Phase 2 build is slower

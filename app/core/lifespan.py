@@ -87,6 +87,14 @@ async def _startup_database_and_di(app: FastAPI) -> None:
             "Fernet key to decouple the two secrets. (dev/local/testing mode only)"
         )
 
+    # Initialize SPIFFE SVIDManager
+    from app.core.security.spiffe import svid_manager
+
+    svid_manager.socket_path = settings.security.spiffe_socket_path
+    svid_manager.spiffe_id_str = settings.security.spiffe_app_id
+    svid_manager.enabled = settings.security.spiffe_enabled
+    svid_manager.start()
+
 
 async def _startup_websocket_and_flags(app: FastAPI) -> None:
     """Stage 2: WebSocket management and feature flag recovery."""
@@ -110,7 +118,7 @@ async def _verify_database_readiness() -> None:
         # cancelled long before it exhausted its own retry budget, making the
         # retry config misleading.  Raised to 35 s to give wait_db enough room.
         await asyncio.wait_for(wait_db(max_attempts=10, base_delay=0.5), timeout=35.0)
-    except (TimeoutError, Exception) as exc:
+    except Exception as exc:  # RZ-22-01-JUSTIFIED: startup db readiness check re-raises in prod, allows degraded mode in dev
         if settings.environment not in {"development", "local", "testing"}:
             raise
         _logger.warning("Database unavailable: %s. Continuing (degraded mode).", exc)
@@ -500,3 +508,7 @@ async def _shutdown_subsystems(app: FastAPI) -> None:
     shutdown_observability()
     shutdown_geolocation_service()
     await close_hibp_client()
+
+    from app.core.security.spiffe import svid_manager
+
+    svid_manager.stop()

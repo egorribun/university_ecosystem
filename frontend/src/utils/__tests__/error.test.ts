@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest"
 import axios from "axios"
 import { extractApiError, createFallback } from "../error"
+import { ApiResponseValidationError, ensureValidResponse } from "@/api/validation"
+import * as v from "valibot"
 
 // ---------------------------------------------------------------------------
 // Helpers — build a minimal AxiosError shape without importing internals
@@ -85,6 +87,16 @@ describe("extractApiError", () => {
       })
     })
 
+    it("normalizes missing validation type and non-array locations", () => {
+      const err = buildAxiosError(422, {
+        detail: [{ msg: "invalid", loc: "email" }],
+      })
+
+      expect(extractApiError(err).details).toEqual([
+        { code: "validation_error", message: "invalid", field: undefined },
+      ])
+    })
+
     it("omits details when validation array is empty", () => {
       const err = buildAxiosError(200, { detail: [] })
       const result = extractApiError(err)
@@ -114,6 +126,20 @@ describe("extractApiError", () => {
       const result = extractApiError(err, "Fallback msg")
       expect(result.message).toBe("Fallback msg")
     })
+  })
+
+  it("normalizes a response-validation error with issue paths", () => {
+    let caught: unknown
+    try {
+      ensureValidResponse(v.object({ id: v.string() }), { id: 42 }, "users/me")
+    } catch (error) {
+      caught = error
+    }
+
+    expect(caught).toBeInstanceOf(ApiResponseValidationError)
+    const result = extractApiError(caught)
+    expect(result.status).toBe(422)
+    expect(result.details?.[0]?.field).toBe("id")
   })
 
   // ---------------------------------------------------------------------------

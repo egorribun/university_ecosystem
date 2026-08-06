@@ -159,6 +159,50 @@ describe("AdminNotifications page", () => {
     queryClient.clear()
   })
 
+  it("toggles an individual row off after selecting it", async () => {
+    const { queryClient } = await renderPage()
+
+    const rowCheckbox = await screen.findByRole("checkbox", {
+      name: /Select job 550e8400-e29b-41d4-a716-446655440000/i,
+    })
+    await userEvent.click(rowCheckbox)
+    expect(rowCheckbox).toBeChecked()
+    await userEvent.click(rowCheckbox)
+    expect(rowCheckbox).not.toBeChecked()
+
+    queryClient.clear()
+  })
+
+  it("renders unknown job kinds and defensive nullable cells", async () => {
+    server.use(
+      http.get("*/notifications/admin/dead-letter", () =>
+        HttpResponse.json({
+          items: [
+            {
+              id: "unknown-job",
+              kind: "maintenance",
+              record_id: "record-unknown",
+              locale: null,
+              enqueued_at: new Date().toISOString(),
+              claimed_at: null,
+              attempts: 1,
+              last_error: null,
+              next_retry_at: null,
+            },
+          ],
+          total: 1,
+        })
+      )
+    )
+    const { queryClient } = await renderPage()
+
+    expect(await screen.findByText("maintenance")).toBeInTheDocument()
+    expect(screen.getByText("Any")).toBeInTheDocument()
+    expect(screen.getByText("No error recorded")).toBeInTheDocument()
+
+    queryClient.clear()
+  })
+
   it("retries a single job via the row action button", async () => {
     const { queryClient } = await renderPage()
 
@@ -234,6 +278,49 @@ describe("AdminNotifications page", () => {
 
     expect(await screen.findByText(/Topics updated successfully/i)).toBeInTheDocument()
     expect(savedTopics).toEqual(["news", "events"])
+
+    queryClient.clear()
+  })
+
+  it("shows the empty state when the user has no allowed topics", async () => {
+    server.use(
+      http.get("*/push/admin/topics/:userId", () =>
+        HttpResponse.json({
+          user_id: "33333333-3333-3333-3333-333333333333",
+          email: "empty@example.com",
+          allowed_topics: [],
+          topics: [],
+        })
+      )
+    )
+    const { queryClient } = await renderPage()
+
+    await userEvent.type(await screen.findByRole("textbox"), "empty-user-id")
+    await userEvent.click(screen.getByRole("button", { name: /Load topics/i }))
+
+    expect(await screen.findByText("No topics are currently available.")).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: /Save topics/i })).toBeDisabled()
+
+    queryClient.clear()
+  })
+
+  it("keeps an unknown topic readable when no translation exists", async () => {
+    server.use(
+      http.get("*/push/admin/topics/:userId", () =>
+        HttpResponse.json({
+          user_id: "44444444-4444-4444-4444-444444444444",
+          email: "unknown-topic@example.com",
+          allowed_topics: ["experimental"],
+          topics: [],
+        })
+      )
+    )
+    const { queryClient } = await renderPage()
+
+    await userEvent.type(await screen.findByRole("textbox"), "unknown-topic-user-id")
+    await userEvent.click(screen.getByRole("button", { name: /Load topics/i }))
+
+    expect(await screen.findByText(/experimental/)).toBeInTheDocument()
 
     queryClient.clear()
   })

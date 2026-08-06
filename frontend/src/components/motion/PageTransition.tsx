@@ -18,7 +18,7 @@ const PageTransition: FC<Props> = ({ children }) => {
   const [motionModule, setMotionModule] = useState<MotionModule | null>(null)
   const [hasPainted, setHasPainted] = useState(didPaint)
   const [reduceMotion, setReduceMotion] = useState(() => {
-    if (typeof window === "undefined" || !("matchMedia" in window)) return false
+    if (typeof window === "undefined" || typeof window.matchMedia !== "function") return false
     return window.matchMedia("(prefers-reduced-motion: reduce)").matches
   })
 
@@ -28,7 +28,7 @@ const PageTransition: FC<Props> = ({ children }) => {
   }, [])
 
   useEffect(() => {
-    if (typeof window === "undefined" || !("matchMedia" in window)) return
+    if (typeof window === "undefined" || typeof window.matchMedia !== "function") return
     const media = window.matchMedia("(prefers-reduced-motion: reduce)")
     const handleChange = (event: MediaQueryListEvent) => {
       setReduceMotion(event.matches)

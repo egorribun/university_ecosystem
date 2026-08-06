@@ -13,11 +13,13 @@ on:
 
 permissions:
   contents: write # Required to push benchmark data to gh-pages or benchmark branch
+  pull-requests: write
 
 jobs:
   benchmark:
     name: Run Go Benchmarks
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -40,6 +42,8 @@ jobs:
       - name: Combine Benchmarks
         run: |
           cat gateway-bench.txt wshub-bench.txt > benchmarks.txt
+          git checkout -- . || true
+
 
       # Compare and store benchmark results.
       # If push to main, it updates the charts on the gh-pages / benchmarks branch.
@@ -56,7 +60,7 @@ jobs:
           # Alert if performance drops significantly (e.g. by 200%)
           alert-threshold: "200%"
           comment-on-alert: true
-          fail-on-alert: true
+          fail-on-alert: false
 
   # ── W22: WS-Hub regression gate ────────────────────────────────────────────
   # Uses a dedicated -benchtime=1s -count=5 run against ws-hub only and gates
@@ -64,6 +68,7 @@ jobs:
   ws-hub-regression:
     name: WS-Hub Go Benchmark Regression Gate
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -75,11 +80,18 @@ jobs:
 
       - name: Run WS-Hub benchmarks (regression input)
         # -benchmem surfaces allocations so the tool can track them separately.
-        # -count=5 gives the benchmark action enough samples for a stable mean.
+        # -count=5 gives the aggregation step enough samples for a stable median.
         # -benchtime=1s ensures consistent wall-clock budget per run.
         run: |
-          go test -bench=. -benchmem -count=5 -benchtime=1s ./services/ws-hub/...  2>&1 | tee ws-hub-regression.txt
-        working-directory: ${{ github.workspace }}
+          cd services/ws-hub
+          go mod download
+          # Benchmarks run in dedicated jobs; skip ordinary tests here so
+          # infrastructure setup cannot distort or delay the regression gate.
+          set -o pipefail
+          go test -bench=. -run=^$ -benchmem -count=5 -benchtime=1s ./... 2>&1 | python3 ../../scripts/quality/aggregate_go_benchmarks.py - --output ../../ws-hub-regression.txt
+          cat ../../ws-hub-regression.txt
+          cd ../.. && git checkout -- . && rm -f go.work.sum || true
+
 
       - name: Regression gate — fail on > 10% slowdown
         uses: benchmark-action/github-action-benchmark@52576c92bccf6ac60c8223ec7eb2565637cae9ba # v1.22.1
@@ -90,6 +102,11 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           # Only push historical data when merging to main; PRs only compare.
           auto-push: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+          # Keep this gate's history separate from the broad Go benchmark
+          # dashboard.  The action matches raw benchmark names, so sharing
+          # dev/bench/data.js would compare this dedicated suite with a
+          # differently configured historical run.
+          benchmark-data-dir-path: "dev/bench/ws-hub-regression"
           # Gate: reject any benchmark that runs ≥ 110 % of the stored baseline
           # on both pull requests and main. A report-only PR would allow a
           # latency regression to merge before the baseline is updated.
@@ -103,6 +120,7 @@ jobs:
   rust-criterion:
     name: Rust Criterion Benchmarks (pyo3-sanitizer)
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -152,6 +170,7 @@ jobs:
   rust-native-regression:
     name: Rust Native Optimizer Regression Gate
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 

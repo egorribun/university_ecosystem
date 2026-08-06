@@ -636,8 +636,7 @@ async def send_test(
         or translate("notifications.push.test.body_default", locale=locale),
         "url": base_url,
     }
-    if normalized_topic:
-        message["topic"] = normalized_topic
+    message["topic"] = normalized_topic
 
     optional_fields = ("tag", "badge", "ttl", "urgency", "actions", "data")
     if payload:

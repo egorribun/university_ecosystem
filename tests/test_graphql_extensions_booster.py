@@ -102,9 +102,7 @@ async def test_persisted_query_extension_prod_not_in_manifest():
 
         gen = ext.on_validate()
         await gen.__anext__()
-        with pytest.raises(
-            GraphQLError, match="This query is not in the persisted-query allowlist"
-        ):
+        with pytest.raises(GraphQLError, match="allowlist"):
             await gen.asend(None)
 
 
@@ -155,13 +153,13 @@ async def test_persisted_query_extension_prod_no_query():
     ext.execution_context = MagicMock()
     ext.execution_context.query = None
 
-    with patch("app.core.config.settings") as mock_settings:
+    with (
+        patch("app.core.config.settings") as mock_settings,
+        patch("app.graphql.extensions._query_allowlist", {"known_hash": "query"}),
+    ):
         mock_settings.environment = "production"
 
         gen = ext.on_validate()
         await gen.__anext__()
-        # Should return without error
-        try:
+        with pytest.raises(GraphQLError, match="allowlist"):
             await gen.asend(None)
-        except StopAsyncIteration:
-            pass

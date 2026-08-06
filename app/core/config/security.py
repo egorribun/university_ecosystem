@@ -11,8 +11,9 @@ add it to the SecuritySettings inheritance chain here.
 from __future__ import annotations
 
 import os
+from typing import Any
 
-from pydantic import ValidationInfo, field_validator
+from pydantic import Field, ValidationInfo, field_validator
 
 from app.core.logging import get_logger
 
@@ -71,6 +72,12 @@ class SecuritySettings(
     monitoring_heavy_probe_enabled: bool = False
     geoip_database_path: str | None = None
 
+    # ── ABAC & Subnet Security ─────────────────────────────────────────────
+    campus_subnets: list[str] | str = Field(
+        default_factory=lambda: ["192.168.0.0/16", "10.0.0.0/8", "127.0.0.1/32"]
+    )
+    control_work_grace_minutes: int = 15
+
     # ── Audit log ────────────────────────────────────────────────────────────
     # CFG-2 (audit 2026-03): Default secret must be at least 32 chars and not
     # use a common placeholder substring to avoid the production validator's
@@ -106,6 +113,19 @@ class SecuritySettings(
     # In production: set INTERNAL_HMAC_SECRET to an independent ≥32-byte random
     # value (e.g. `openssl rand -hex 32`) and set it on BOTH gateway and backend.
     internal_hmac_secret: str = ""
+
+    # ── SPIFFE Workload API & mTLS ──────────────────────────────────────────
+    spiffe_enabled: bool = False
+    spiffe_socket_path: str = Field(default="/tmp/spire-agent/public/api.sock")  # noqa: S108 # nosec B108
+    spiffe_trust_domain: str = "university.ecosystem"
+    spiffe_app_id: str = "spiffe://university.ecosystem/ns/default/sa/app"
+    spiffe_allowed_clients: list[str] = Field(
+        default_factory=lambda: [
+            "spiffe://university.ecosystem/ns/default/sa/gateway",
+            "spiffe://university.ecosystem/ns/default/sa/ws-hub",
+            "spiffe://university.ecosystem/ns/default/sa/file-processor",
+        ]
+    )
 
     @field_validator("audit_log_secret")
     @classmethod
@@ -173,3 +193,10 @@ class SecuritySettings(
                 "INTERNAL_HMAC_SECRET MUST be set in production to prevent identity spoofing (SSRF)."
             )
         return v
+
+    @field_validator("campus_subnets", mode="before")
+    @classmethod
+    def _validate_campus_subnets(cls, v: Any) -> list[str]:
+        if v is None:
+            return ["192.168.0.0/16", "10.0.0.0/8", "127.0.0.1/32"]
+        return _coerce_str_list(v)

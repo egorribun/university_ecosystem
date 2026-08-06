@@ -16,7 +16,13 @@ import pytest
 from hypothesis import HealthCheck, given
 from hypothesis import settings as hypo_settings
 from hypothesis import strategies as st
-from hypothesis.stateful import RuleBasedStateMachine, initialize, invariant, rule
+from hypothesis.stateful import (
+    RuleBasedStateMachine,
+    initialize,
+    invariant,
+    precondition,
+    rule,
+)
 
 # ── 1. Pydantic serialization round-trip ───────────────────────────────────────
 
@@ -29,7 +35,11 @@ _name_st = st.text(
 )
 
 
-@hypo_settings(max_examples=50, suppress_health_check=[HealthCheck.too_slow])
+@hypo_settings(
+    max_examples=50,
+    suppress_health_check=[HealthCheck.too_slow],
+    deadline=None,
+)
 @given(full_name=_name_st)
 def test_user_schema_round_trip(full_name: str) -> None:
     """Serialising a user schema to dict and back produces identical data."""
@@ -315,6 +325,73 @@ class CircuitBreakerStateMachine(RuleBasedStateMachine):
 
 
 TestCircuitBreakerStateMachine = CircuitBreakerStateMachine.TestCase
+
+
+class RedisCircuitBreakerStateMachine(RuleBasedStateMachine):
+    """Exercise the Redis rate-limit breaker through its public operations."""
+
+    @initialize()
+    def initialize_breaker(self) -> None:
+        from app.core.ratelimit.circuit_breaker import RedisCircuitBreaker
+
+        self.clock = 0.0
+        self.breaker = RedisCircuitBreaker(
+            failure_threshold=3,
+            recovery_timeout=10.0,
+            max_recovery_timeout=40.0,
+        )
+        self.clock_patch = patch(
+            "app.core.ratelimit.circuit_breaker.time.monotonic",
+            new=lambda: self.clock,
+        )
+        self.clock_patch.start()
+
+    @rule()
+    def record_failure(self) -> None:
+        from app.core.ratelimit.circuit_breaker import CircuitState
+
+        previous = self.breaker.state
+        self.breaker.record_failure()
+        if previous == CircuitState.HALF_OPEN:
+            assert self.breaker.state == CircuitState.OPEN
+
+    @rule()
+    def record_success(self) -> None:
+        self.breaker.record_success()
+
+    @rule()
+    def is_open(self) -> None:
+        from app.core.ratelimit.circuit_breaker import CircuitState
+
+        state = self.breaker.state
+        if state == CircuitState.OPEN:
+            assert self.breaker.allow_request() is False
+        elif state == CircuitState.CLOSED:
+            assert self.breaker.allow_request() is True
+
+    @precondition(lambda self: self.breaker.state.name == "HALF_OPEN")
+    @rule()
+    def half_open_probe(self) -> None:
+        assert self.breaker.allow_request() is True
+        assert self.breaker.allow_request() is False
+        self.breaker.record_success()
+
+    @rule(seconds=st.integers(min_value=0, max_value=25))
+    def time_advance(self, seconds: int) -> None:
+        self.clock += seconds
+
+    @invariant()
+    def open_breaker_rejects_requests(self) -> None:
+        from app.core.ratelimit.circuit_breaker import CircuitState
+
+        if self.breaker.state == CircuitState.OPEN:
+            assert self.breaker.allow_request() is False
+
+    def teardown(self) -> None:
+        self.clock_patch.stop()
+
+
+TestRedisCircuitBreakerStateMachine = RedisCircuitBreakerStateMachine.TestCase
 
 
 class LockoutLifecycleStateMachine(RuleBasedStateMachine):

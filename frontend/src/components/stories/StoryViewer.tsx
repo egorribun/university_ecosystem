@@ -61,17 +61,16 @@ export const StoryViewer = ({
 
   const progressForIndex = useCallback(
     (index: number) => {
-      if (activeStoryIndex === null) return 0
-      if (index < activeStoryIndex) return 100
-      if (index > activeStoryIndex) return 0
+      const currentIndex = activeStoryIndex!
+      if (index < currentIndex) return 100
+      if (index > currentIndex) return 0
       return progress
     },
     [activeStoryIndex, progress]
   )
 
   const linkPropsFor = useCallback(
-    (url?: string | null): ButtonProps<typeof Link> | ButtonProps<"a"> | null => {
-      if (!url) return null
+    (url: string): ButtonProps<typeof Link> | ButtonProps<"a"> | null => {
       const trimmed = url.trim()
       if (!trimmed) return null
       if (trimmed.startsWith("/")) {
@@ -95,7 +94,7 @@ export const StoryViewer = ({
   const storyDialogLabel = viewerStory
     ? t("stories.viewer.aria.dialog", {
         title: viewerStory.title,
-        index: (activeStoryIndex ?? 0) + 1,
+        index: activeStoryIndex! + 1,
         total: stories.length,
       })
     : undefined

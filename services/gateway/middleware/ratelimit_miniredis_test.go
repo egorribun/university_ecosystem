@@ -25,7 +25,7 @@ func TestNewRateLimiter_SuccessWithMiniredis(t *testing.T) {
 	rl, err := NewRateLimiter(context.Background(), "redis://"+mr.Addr(), 10, 10)
 	require.NoError(t, err)
 	require.NotNil(t, rl)
-	t.Cleanup(func() { _ = rl.Close() })
+	t.Cleanup(func() { assert.NoError(t, rl.Close()) })
 	assert.NotNil(t, rl.GetClient())
 }
 
@@ -34,7 +34,7 @@ func TestRateLimiter_Middleware_HealthExemptAndLimitEnforced(t *testing.T) {
 	mr := miniredis.RunT(t)
 	rl, err := NewRateLimiter(context.Background(), "redis://"+mr.Addr(), 1, 1)
 	require.NoError(t, err)
-	t.Cleanup(func() { _ = rl.Close() })
+	t.Cleanup(func() { assert.NoError(t, rl.Close()) })
 
 	r := gin.New()
 	requestCtx, requestCancel := context.WithCancel(context.Background())

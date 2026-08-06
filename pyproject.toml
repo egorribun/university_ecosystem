@@ -22,7 +22,7 @@ dependencies = [
   "aioboto3>=15.5.0,<16",
   "brotli-asgi>=1.6.0",
   "clamd>=1.0.2",
-  "cryptography>=46.0.7",                             # TD-06 (audit 2026-03-15): updated to fix CVE-2026-26007
+  "cryptography>=50.0.0",                             # SEC: fixes CVE-2026-69247 reported by Trivy on 49.0.0
   "defusedxml>=0.7.1",
   "diskcache>=5.6.3",
   "elasticsearch[async]>=9.3.0,<10.0.0",
@@ -52,6 +52,7 @@ dependencies = [
   "opentelemetry-semantic-conventions>=0.62b0,<1.0",
   "orjson>=3.11.8",
   "pgvector>=0.4.2",
+  "qdrant-client>=1.13.0",
   "pillow>=12.3.0",
   "pillow-avif-plugin>=1.5.5,<2",  # TD-26-04: upper bound
   "polars>=1.39.3",
@@ -127,8 +128,8 @@ explicit_package_bases = true
 implicit_reexport = false    # Catches accidental re-exports from __init__.py modules
 warn_no_return = true        # Detects functions with missing return in non-void branches
 exclude = [
-    "alembic/versions/",     # Auto-generated migrations
-    "app/api/generated/",    # Auto-generated OpenAPI client
+    '^alembic/.*\.py$',     # Auto-generated migrations
+    '^app/api/generated/',   # Auto-generated OpenAPI client
 ]
 
 # TD-W15-01 (audit 2026-03-23 Wave 15): Strict mypy for app/repositories/.
@@ -256,6 +257,7 @@ module = [
   "clamd",
   "elasticsearch.*",
   "structlog.*",
+  "qdrant_client.*",
 ]
 ignore_missing_imports = true
 
@@ -290,7 +292,7 @@ ignore = [
 "scripts/check_mutation_score.py" = ["S603"]
 "scripts/run_mutmut_diff.py" = ["S603", "S607"]
 "tests/*" = ["ARG001", "ARG002", "E402", "W291", "S101", "S105", "S106", "ERA001"]
-"alembic/*" = ["I001", "E402"]
+"alembic/**/*.py" = ["I001", "E402"]
 "app/main.py" = ["E402"]
 # Wave-20 (audit 2026-03-24): suppress pre-existing false positives on field
 # names containing "password"/"auth" that trigger S104/S105 heuristics.
@@ -436,7 +438,14 @@ security = ["bandit[toml]>=1.9.4", "semgrep>=1.159.0", "pip-audit>=2.10.0"]
 members = ["native/rust_ext", "crates/pyo3-sanitizer"]
 
 [tool.uv]
+# Keep CI independent from the latest-version manifest availability.  The
+# setup-uv action reads this exact requirement before downloading the binary.
+required-version = "==0.11.28"
 exclude-newer = "7 days"
+# Security exception: cryptography 50.0.0 (uploaded 2026-07-31) fixes
+# CVE-2026-69247; keep the general reproducibility cutoff for every other
+# package while allowing this patched release into the lockfile.
+exclude-newer-package = { cryptography = "2026-08-01T00:00:00Z", pyopenssl = "2026-08-02T00:00:00Z" }
 environments = [
     "sys_platform == 'win32'",
     "sys_platform == 'linux'",
@@ -500,11 +509,16 @@ skips = [
 # universe; without it mutmut falls back to guess_paths_to_mutate(), which does
 # NOT try app/ and raises FileNotFoundError ("Could not figure out where the code
 # to mutate is"). `source_paths` is a newer/unreleased key NOT recognized by 3.5.0.
-# `pytest_add_cli_args_test_selection` scopes the pytest run. Incremental file
-# selection is done positionally via dotted-module glob patterns at the CLI
-# (see .github/workflows/ci.yml mutation-tests job) — those filter within this universe.
+# `pytest_add_cli_args_test_selection` scopes the pytest run to the deterministic
+# unit-test population. Incremental file selection is done positionally via
+# dotted-module glob patterns at the CLI (see .github/workflows/ci.yml
+# mutation-tests job) — those filter within this universe.
 paths_to_mutate = ["app/"]
-pytest_add_cli_args_test_selection = ["tests/"]
+pytest_add_cli_args_test_selection = [
+    "-m",
+    "not integration and not chaos and not performance and not slow",
+    "tests/",
+]
 # mutmut runs the baseline/stats suite inside an isolated `mutants/` copy whose
 # tree is built by copy_src_dir() (walk_all_files copies ONLY paths_to_mutate =
 # app/) plus copy_also_copy_files() (the user-config `also_copy` paths). tests/
@@ -515,16 +529,44 @@ pytest_add_cli_args_test_selection = ["tests/"]
 # mode; `mutmut run` itself exits 0 even with surviving mutants — score-gating is
 # the separate `export_cicd_stats` command the CI does not call).
 #
-# These three tests assert repo files mutmut's mutants/ copy lacks AND exercise
-# ZERO app/ source (pure infra-config contracts → zero mutation-killing signal),
-# so they are correctly excluded from the mutation baseline:
+# These repository-contract tests exercise ZERO app/ source (pure infra/config
+# contracts → zero mutation-killing signal), but their inputs must still exist
+# in the isolated tree so stats collection can complete. Keep the small,
+# source-controlled roots below in sync with the paths asserted by those tests:
 #   - test_migrations_runtime.py  → alembic/ ScriptDirectory (head convergence)
 #   - test_wave173_caddy_routing  → infrastructure/Caddyfile  (W173 routing)
 #   - test_wave173_ws_hub_env     → docker-compose.full.yml   (W173 ws-hub env)
+#   - test_backend_dockerfile      → backend.Dockerfile         (uv image pin)
 # Copy the repository-contract paths into the isolated tree so the full nightly
-# run can measure them without a false collection failure. This also keeps the
-# incremental runner's clean-test baseline honest.
-also_copy = ["infrastructure", "alembic", "docker-compose.full.yml"]
+# run can measure them without a false collection failure. The mutation-score
+# parser contract imports `scripts/check_mutation_score.py`; copying its parent
+# directory prevents that test from breaking mutmut's clean-test baseline.
+also_copy = [
+    ".github",
+    "quality",
+    "infrastructure",
+    "alembic",
+    "scripts",
+    "backend.Dockerfile",
+    "docker-compose.full.yml",
+    "codecov.yml",
+    "renovate.json",
+    "uv.lock",
+    ".pre-commit-config.yaml",
+    "Makefile",
+    "docs",
+    "k8s/kyverno",
+    # test_quality_workflow_contract reads the three Go service Dockerfiles;
+    # copy their common parent because mutmut's sandbox copier needs the
+    # parent directory present for nested repository inputs.
+    "services",
+    "crates/pyo3-sanitizer/src",
+    "frontend/scripts",
+    "frontend/package.json",
+    "frontend/stryker.config.mjs",
+    "frontend/vitest.config.ts",
+    "sonar-project.properties",
+]
 #
 # UPDATE (mutmut-green fix): the async cross-loop exclusions (test_spotify_fallback /
 # test_push_router_full / test_auth_mfa / test_notifications_api) have been REMOVED.
@@ -542,6 +584,8 @@ also_copy = ["infrastructure", "alembic", "docker-compose.full.yml"]
 # (Session-5's dispose-engine hook only MOVED the failure because the engine was not the
 # first leaker — periodic_scheduler's Task/Event was. No conftest hook is needed now.)
 pytest_add_cli_args = [
+    "-x",
+    "-q",
     "--ignore=tests/integration/test_migration_data.py",
     # Schemathesis dynamically generates tests that pytest cannot collect individually by node ID,
     # causing exit code 4 / BadTestExecutionCommandsException. Ignore them under mutmut.

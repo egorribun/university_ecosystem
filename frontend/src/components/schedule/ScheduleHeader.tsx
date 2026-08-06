@@ -19,20 +19,24 @@ import { getTimeStr, getEndTimeStr, parseMinutes } from "./scheduleUtils"
 import { uniqueBuildings } from "@/utils/buildingIcons"
 import type { Lesson } from "./scheduleUtils"
 
-type ScheduleHeaderProps = Pick<
-  ReturnType<typeof useScheduleData>,
-  | "user"
-  | "groups"
-  | "selectedGroup"
-  | "setSelectedGroup"
-  | "currentLesson"
-  | "nextLesson"
-  | "timeLeftText"
-  | "timeLeftShort"
-  | "currentProgress"
-  | "todayLessons"
-  | "nowTick"
+type ScheduleHeaderProps = Omit<
+  Pick<
+    ReturnType<typeof useScheduleData>,
+    | "user"
+    | "groups"
+    | "selectedGroup"
+    | "setSelectedGroup"
+    | "currentLesson"
+    | "nextLesson"
+    | "timeLeftText"
+    | "timeLeftShort"
+    | "currentProgress"
+    | "todayLessons"
+    | "nowTick"
+  >,
+  "todayLessons"
 > & {
+  todayLessons?: Lesson[]
   onOpenSettings?: () => void
 }
 

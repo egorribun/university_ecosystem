@@ -263,8 +263,7 @@ async def notify_about_event(
         default_lines = []
         if summary:
             default_lines.append(summary)
-        if details:
-            default_lines.append(" · ".join(details))
+        default_lines.append(" · ".join(details))
         default_body = "\n".join(default_lines) or translate(
             "notifications.events.no_details", locale=locale_option
         )
@@ -350,7 +349,7 @@ async def notify_about_event(
         ) = _variant(locale_code)
         if localized_title:
             title_translations[locale_code] = localized_title
-        if localized_body:
+        if localized_body:  # pragma: no branch - details always provide event body
             body_translations[locale_code] = localized_body
 
     user_ids = await _fetch_active_user_ids(db)

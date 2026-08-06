@@ -13,6 +13,7 @@ jobs:
   checkov:
     name: Checkov Scan
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     permissions:
       security-events: write
       contents: read
@@ -24,6 +25,7 @@ jobs:
         uses: bridgecrewio/checkov-action@7b972723c44fb3d256283fac96fae5d7c1894bb7 # v12.3114.0
         with:
           directory: .
+          config_file: .checkov.yml
           framework: all
           output_format: sarif
           output_file_path: results.sarif

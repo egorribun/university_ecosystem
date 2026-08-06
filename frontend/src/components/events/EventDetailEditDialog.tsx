@@ -101,8 +101,10 @@ export function EventDetailEditDialog({
     onClose()
   }, [initialDraft, onClose])
 
-  const normalizedTitle = (draft.title ?? "").trim() || (draft.title_en ?? "").trim()
-  const normalizedLocation = (draft.location ?? "").trim() || (draft.location_en ?? "").trim()
+  // initialDraft normalizes all editable fields to strings, and the controlled
+  // inputs in EventEditDialog preserve that invariant on every update.
+  const normalizedTitle = draft.title!.trim() || draft.title_en!.trim()
+  const normalizedLocation = draft.location!.trim() || draft.location_en!.trim()
 
   return (
     <EventEditDialog

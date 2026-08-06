@@ -15,6 +15,7 @@ import app.models as models
 from app.core.cache import cached, news_cache
 from app.core.config import settings
 from app.core.protocols import AsyncDatabaseSession
+from app.core.tenant import get_current_tenant
 from app.models.news import News
 from app.repositories.base import BaseRepository
 from app.schemas.dtos import (
@@ -32,7 +33,8 @@ if TYPE_CHECKING:
 
 
 def build_news_cache_key(self: Any, *, skip: int = 0, limit: int = 20) -> str:
-    return f"news:published:{skip}:{limit}"
+    tenant_id = get_current_tenant() or "public"
+    return f"news:published:{tenant_id}:{skip}:{limit}"
 
 
 class NewsRepository(BaseRepository[News, NewsDTO, dict[str, Any], dict[str, Any]]):
@@ -49,7 +51,7 @@ class NewsRepository(BaseRepository[News, NewsDTO, dict[str, Any], dict[str, Any
     def dto_class(self) -> type[NewsDTO]:
         return NewsDTO
 
-    @cached(cache_instance=news_cache, key_builder=build_news_cache_key)
+    @cached(cache_instance=news_cache, key_builder=build_news_cache_key, _l1_ttl=60)
     async def get_published(self, *, skip: int = 0, limit: int = 20) -> list[NewsDTO]:
         """Get published news ordered by creation date descending with caching."""
         # TODO: News model has no is_published column; all news rows are treated as published.

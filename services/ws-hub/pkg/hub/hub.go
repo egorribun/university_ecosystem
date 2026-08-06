@@ -11,8 +11,8 @@ import (
 	"time"
 
 	"log/slog"
-	"os"
 
+	lru "github.com/hashicorp/golang-lru/v2"
 	"github.com/lestrrat-go/jwx/v2/jwk"
 	"github.com/nats-io/nats.go"
 	goredis "github.com/redis/go-redis/v9"
@@ -29,12 +29,11 @@ import (
 
 // Message represents a WebSocket message.
 type Message struct {
-	Type    string          `json:"type"`
-	Room    string          `json:"room,omitempty"`
-	Payload json.RawMessage `json:"payload"`
-	From    string          `json:"from,omitempty"`
-	To      string          `json:"to,omitempty"`
-	// TraceCtx carries the W3C traceparent/tracestate from the NATS publisher.
+	Type     string            `json:"type"`
+	Room     string            `json:"room,omitempty"`
+	Payload  json.RawMessage   `json:"payload"`
+	From     string            `json:"from,omitempty"`
+	To       string            `json:"to,omitempty"`
 	TraceCtx map[string]string `json:"trace_ctx,omitempty"`
 }
 
@@ -88,29 +87,118 @@ type Hub struct {
 	// RZ-W14-01 (audit 2026-03-23 Wave 14): tickets replace JWT-in-Sec-WebSocket-Protocol.
 	redisClient            *goredis.Client
 	limiterCleanupInterval time.Duration
+
+	// JetStream R1 fields
+	js              nats.JetStreamContext
+	dedupCache      *lru.Cache[string, time.Time]
+	streamChat      string
+	streamNotif     string
+	durableChat     string
+	durableNotif    string
+	enableJetStream bool
+}
+
+// safeAck attempts to ACK a NATS message, suppressing nats.ErrNotJS for core/synthetic NATS messages.
+func safeAck(msg *nats.Msg) {
+	if msg == nil {
+		return
+	}
+	err := msg.Ack()
+	if err == nil {
+		JetStreamAcksTotal.Inc()
+	}
+}
+
+// safeNakWithDelay attempts to NAK a NATS message with delay, suppressing nats.ErrNotJS.
+func safeNakWithDelay(msg *nats.Msg, delay time.Duration) {
+	if msg == nil {
+		return
+	}
+	err := msg.NakWithDelay(delay)
+	if err == nil {
+		JetStreamNaksTotal.Inc()
+	}
 }
 
 // NewHub creates a new Hub instance.
 func NewHub(nc *nats.Conn, logger *slog.Logger, authClient RoomAuthClient, cfg *config.Config, rdb *goredis.Client) *Hub {
+	bufSize := 4096
+	maxC := 10000
+	workers := 4
+	secret := ""
+	rateLimit := 10.0
+	rateBurst := 20
+	streamChat := "CHAT_EVENTS"
+	streamNotif := "NOTIFICATIONS_EVENTS"
+	durableChat := "ws-hub-chat"
+	durableNotif := "ws-hub-notifications"
+	enableJS := true
+
+	if cfg != nil {
+		if cfg.BroadcastBufferSize > 0 {
+			bufSize = cfg.BroadcastBufferSize
+		}
+		maxC = cfg.MaxClients
+		workers = cfg.BroadcastWorkers
+		secret = cfg.InternalSecret // #pragma: allowlist secret
+		if cfg.ClientMsgRateLimit > 0 {
+			rateLimit = cfg.ClientMsgRateLimit
+		}
+		if cfg.ClientMsgRateBurst > 0 {
+			rateBurst = cfg.ClientMsgRateBurst
+		}
+		if cfg.NatsStreamChat != "" {
+			streamChat = cfg.NatsStreamChat
+		}
+		if cfg.NatsStreamNotifications != "" {
+			streamNotif = cfg.NatsStreamNotifications
+		}
+		if cfg.NatsDurableChat != "" {
+			durableChat = cfg.NatsDurableChat
+		}
+		if cfg.NatsDurableNotifications != "" {
+			durableNotif = cfg.NatsDurableNotifications
+		}
+		enableJS = cfg.EnableJetStream
+	}
+
+	dedupCache, err := lru.New[string, time.Time](10000)
+	if err != nil && logger != nil {
+		logger.ErrorContext(context.Background(), "Failed to initialize dedup LRU cache", "err", err)
+	}
+
+	var js nats.JetStreamContext
+	if nc != nil && enableJS {
+		if jsc, err := nc.JetStream(); err == nil {
+			js = jsc
+		}
+	}
+
 	return &Hub{
-		Clients:    make(map[string]*Client),
-		Rooms:      make(map[string]map[*Client]bool),
-		Register:   make(chan *Client),
-		Unregister: make(chan *Client),
-		Broadcast:  make(chan *Message, cfg.BroadcastBufferSize),
-		Nats:       nc,
-		Logger:     logger,
-		authClient: authClient,
-		// 10 upgrade attempts per 60-second window per IP.
+		Clients:                make(map[string]*Client),
+		Rooms:                  make(map[string]map[*Client]bool),
+		Register:               make(chan *Client),
+		Unregister:             make(chan *Client),
+		Broadcast:              make(chan *Message, bufSize),
+		Nats:                   nc,
+		Logger:                 logger,
+		authClient:             authClient,
 		UpgradeLimiter:         NewWSUpgradeRateLimiter(10, 60),
 		jwksCache:              nil, // Initialised via SetupJWKS()
-		maxClients:             cfg.MaxClients,
-		broadcastWorkers:       cfg.BroadcastWorkers,
-		internalSecret:         cfg.InternalSecret,
-		clientMsgRateLimit:     cfg.ClientMsgRateLimit,
-		clientMsgRateBurst:     cfg.ClientMsgRateBurst,
+		maxClients:             maxC,
+		broadcastWorkers:       workers,
+		internalSecret:         secret,
+		clientMsgRateLimit:     rateLimit,
+		clientMsgRateBurst:     rateBurst,
 		redisClient:            rdb,
 		limiterCleanupInterval: 5 * time.Minute,
+		js:                     js,
+		dedupCache:             dedupCache,
+		streamChat:             streamChat,
+		streamNotif:            streamNotif,
+		durableChat:            durableChat,
+		durableNotif:           durableNotif,
+		enableJetStream:        enableJS,
 	}
 }
 
@@ -147,6 +235,16 @@ func (h *Hub) SetupJWKS(ctx context.Context, jwksURL string) error {
 
 	h.Logger.InfoContext(ctx, "JWKS cache initialised", "url", jwksURL)
 	return nil
+}
+
+// Context returns the hub's lifecycle context in a thread-safe manner.
+func (h *Hub) Context() context.Context {
+	if h == nil {
+		return nil
+	}
+	h.lifecycleMu.Lock()
+	defer h.lifecycleMu.Unlock()
+	return h.ctx
 }
 
 // Run starts the hub's main select loop.
@@ -233,8 +331,10 @@ func (h *Hub) handleRegister(ctx context.Context, client *Client) {
 			"id", client.ID,
 			"max", h.maxClients)
 		client.closeOnce.Do(func() { safeClose(client.Send) })
-		if err := client.Conn.Close(); err != nil {
-			h.Logger.ErrorContext(ctx, "Failed to close connection after max connections", "id", client.ID, "err", err)
+		if client.Conn != nil {
+			if err := client.Conn.Close(); err != nil {
+				h.Logger.ErrorContext(ctx, "Failed to close connection after max connections", "id", client.ID, "err", err)
+			}
 		}
 		return
 	}
@@ -382,34 +482,80 @@ func (h *Hub) broadcastMessage(parentCtx context.Context, msg *Message) {
 // delivery to the current chat.{room_id} pattern.  Same tightening applied to
 // "notifications.*".  Both are intentional breaking changes if any internal
 // service currently publishes multi-level subjects under these prefixes.
-func (h *Hub) SubscribeToNATS(appCtx context.Context) {
-	chatSub, err := h.Nats.Subscribe("chat.*", h.handleChat(appCtx))
+//
+//nolint:cyclop
+func (h *Hub) SubscribeToNATS(appCtx context.Context) error {
+	if h.Nats == nil {
+		err := fmt.Errorf("NATS connection is not configured")
+		if h.Logger != nil {
+			h.Logger.ErrorContext(appCtx, "NATS subscriptions cannot start without a connection", "err", err)
+		}
+		return err
+	}
+
+	if h.js == nil && h.Nats != nil && h.enableJetStream {
+		if js, err := h.Nats.JetStream(); err == nil {
+			h.js = js
+		}
+	}
+
+	var chatSub *nats.Subscription
+	var err error
+
+	if h.js != nil && h.enableJetStream {
+		chatSub, err = h.js.Subscribe("chat.*", h.handleChat(appCtx),
+			nats.Durable(h.durableChat),
+			nats.AckExplicit(),
+			nats.ManualAck(),
+		)
+		if err != nil {
+			h.Logger.WarnContext(appCtx, "JetStream chat subscription failed, falling back to core NATS", "err", err)
+			chatSub, err = h.Nats.Subscribe("chat.*", h.handleChat(appCtx))
+		}
+	} else {
+		chatSub, err = h.Nats.Subscribe("chat.*", h.handleChat(appCtx))
+	}
 	if err != nil {
 		h.Logger.ErrorContext(appCtx, "NATS chat subscription failed — hub cannot deliver messages", "err", err)
-		os.Exit(1)
+		return err
 	}
 	h.subs = append(h.subs, chatSub)
 
-	notifSub, err := h.Nats.Subscribe("notifications.*", h.handleNotifications(appCtx))
+	var notifSub *nats.Subscription
+	if h.js != nil && h.enableJetStream {
+		notifSub, err = h.js.Subscribe("notifications.*", h.handleNotifications(appCtx),
+			nats.Durable(h.durableNotif),
+			nats.AckExplicit(),
+			nats.ManualAck(),
+		)
+		if err != nil {
+			h.Logger.WarnContext(appCtx, "JetStream notifications subscription failed, falling back to core NATS", "err", err)
+			notifSub, err = h.Nats.Subscribe("notifications.*", h.handleNotifications(appCtx))
+		}
+	} else {
+		notifSub, err = h.Nats.Subscribe("notifications.*", h.handleNotifications(appCtx))
+	}
 	if err != nil {
 		h.Logger.ErrorContext(appCtx, "NATS notifications subscription failed — hub cannot deliver messages", "err", err)
-		os.Exit(1)
+		return err
 	}
 	h.subs = append(h.subs, notifSub)
 
 	invSub, err := h.Nats.Subscribe("cache.invalidate", h.handleCacheInvalidation(appCtx))
 	if err != nil {
 		h.Logger.ErrorContext(appCtx, "NATS cache invalidation subscription failed", "err", err)
-		os.Exit(1)
+		return err
 	}
 	h.subs = append(h.subs, invSub)
 
+	ctrlSub, err := h.Nats.Subscribe("ws_hub.control", h.handleControlMessage(appCtx))
+	if err != nil {
+		h.Logger.ErrorContext(appCtx, "NATS control subscription failed — hub cannot receive session control events", "err", err)
+		return err
+	}
+	h.subs = append(h.subs, ctrlSub)
+
 	// RZ-21-05 (audit 2026-03-25 Wave 21): Pre-warm JWKS cache on key rotation.
-	// The Python backend publishes to "keys.rotated" before issuing tokens with
-	// a new kid.  This eliminates the 30 s force-refresh cooldown window where
-	// valid tokens could be rejected during key rotation.
-	// Non-fatal: if the subscription fails, the existing force-refresh-on-kid-miss
-	// mechanism still works (just with the 30 s cooldown).
 	jwksSub, err := h.Nats.Subscribe("keys.rotated", func(msg *nats.Msg) {
 		h.Logger.InfoContext(appCtx, "JWKS rotation event received — pre-warming cache")
 		h.tryForceRefreshJWKS(appCtx)
@@ -420,7 +566,12 @@ func (h *Hub) SubscribeToNATS(appCtx context.Context) {
 		h.subs = append(h.subs, jwksSub)
 	}
 
-	h.Logger.InfoContext(appCtx, "Subscribed to NATS topics")
+	if h.js != nil && h.enableJetStream {
+		h.Logger.InfoContext(appCtx, "Subscribed to NATS JetStream streams (CHAT_EVENTS, NOTIFICATIONS_EVENTS)")
+	} else {
+		h.Logger.InfoContext(appCtx, "Subscribed to NATS topics")
+	}
+	return nil
 }
 
 func (h *Hub) handleChat(appCtx context.Context) nats.MsgHandler {
@@ -451,26 +602,36 @@ func (h *Hub) handleChat(appCtx context.Context) nats.MsgHandler {
 		)
 		defer span.End()
 
+		msgID := ""
+		if msg.Header != nil {
+			msgID = msg.Header.Get("Nats-Msg-Id")
+		}
+		if msgID != "" && h.dedupCache != nil {
+			if _, ok := h.dedupCache.Get(msgID); ok {
+				JetStreamDedupHitsTotal.Inc()
+				safeAck(msg)
+				return
+			}
+		}
+
 		var wsMsg Message
 		if err := json.Unmarshal(msg.Data, &wsMsg); err != nil {
 			h.Logger.WarnContext(msgCtx, "ws-hub: malformed NATS chat message dropped",
 				"subject", msg.Subject, "size", len(msg.Data), "err", err)
+			safeAck(msg)
 			return
 		}
 		select {
 		case h.Broadcast <- &wsMsg:
+			if msgID != "" && h.dedupCache != nil {
+				h.dedupCache.Add(msgID, time.Now())
+			}
+			safeAck(msg)
 		default:
 			BroadcastDropsTotal.Inc()
 			h.Logger.WarnContext(msgCtx, "Broadcast channel full, dropping NATS chat message",
 				"subject", msg.Subject)
-			// PERF-W18-01 (audit 2026-03-23 Wave 18): if this is a JetStream message
-			// (identifiable by a non-empty Reply subject used for ack protocol),
-			// PERF-22-01 (Wave 22): NakWithDelay prevents redelivery storm.
-			// Immediate Nak causes amplification when the worker pool is
-			// saturated — 5-second backoff breaks the feedback loop.
-			if msg.Reply != "" {
-				_ = msg.NakWithDelay(5 * time.Second) //nolint:errcheck // best-effort NAK
-			}
+			safeNakWithDelay(msg, 5*time.Second)
 		}
 	}
 }
@@ -503,23 +664,37 @@ func (h *Hub) handleNotifications(appCtx context.Context) nats.MsgHandler {
 		)
 		defer span.End()
 
+		msgID := ""
+		if msg.Header != nil {
+			msgID = msg.Header.Get("Nats-Msg-Id")
+		}
+		if msgID != "" && h.dedupCache != nil {
+			if _, ok := h.dedupCache.Get(msgID); ok {
+				JetStreamDedupHitsTotal.Inc()
+				safeAck(msg)
+				return
+			}
+		}
+
 		var wsMsg Message
 		if err := json.Unmarshal(msg.Data, &wsMsg); err != nil {
 			h.Logger.WarnContext(msgCtx, "ws-hub: malformed NATS notification dropped",
 				"subject", msg.Subject, "size", len(msg.Data), "err", err)
+			safeAck(msg)
 			return
 		}
 		wsMsg.Type = "notification"
 		select {
 		case h.Broadcast <- &wsMsg:
+			if msgID != "" && h.dedupCache != nil {
+				h.dedupCache.Add(msgID, time.Now())
+			}
+			safeAck(msg)
 		default:
 			BroadcastDropsTotal.Inc()
 			h.Logger.WarnContext(msgCtx, "Broadcast channel full, dropping NATS notification",
 				"subject", msg.Subject)
-			// PERF-W18-01 / PERF-22-01: NakWithDelay to prevent redelivery storm.
-			if msg.Reply != "" {
-				_ = msg.NakWithDelay(5 * time.Second) //nolint:errcheck // best-effort NAK
-			}
+			safeNakWithDelay(msg, 5*time.Second)
 		}
 	}
 }
@@ -590,6 +765,128 @@ func (h *Hub) handleCacheInvalidation(appCtx context.Context) nats.MsgHandler {
 		if h.authClient != nil {
 			h.authClient.Invalidate(payload.Data.UserID, payload.Data.RoomID)
 		}
+	}
+}
+
+type controlPayload struct {
+	Data struct {
+		Action    string `json:"action"`
+		Reason    string `json:"reason"`
+		Timestamp uint64 `json:"timestamp"`
+		UserID    string `json:"user_id"`
+	} `json:"data"`
+	Signature string `json:"signature"`
+}
+
+func (h *Hub) handleControlMessage(appCtx context.Context) nats.MsgHandler {
+	const natsCallbackTimeout = 30 * time.Second
+	return func(msg *nats.Msg) {
+		defer func() {
+			if r := recover(); r != nil {
+				h.Logger.ErrorContext(appCtx, "NATS control callback panic recovered",
+					"panic", r, "subject", msg.Subject)
+			}
+		}()
+
+		select {
+		case <-appCtx.Done():
+			return
+		default:
+		}
+
+		msgCtx, cancel := context.WithTimeout(appCtx, natsCallbackTimeout)
+		defer cancel()
+		msgCtx = otel.GetTextMapPropagator().Extract(msgCtx, propagation.HeaderCarrier(msg.Header))
+		_, span := otel.Tracer("hub").Start(msgCtx, "NATS.Subscribe.Control",
+			trace.WithAttributes(
+				semconv.MessagingSystemKey.String("nats"),
+				semconv.MessagingOperationTypeKey.String("receive"),
+				semconv.MessagingDestinationNameKey.String("ws_hub.control"),
+			),
+		)
+		defer span.End()
+
+		var payload controlPayload
+		if err := json.Unmarshal(msg.Data, &payload); err != nil {
+			h.Logger.WarnContext(msgCtx, "ws-hub: malformed NATS control message dropped",
+				"subject", msg.Subject, "size", len(msg.Data), "err", err)
+			return
+		}
+
+		if h.internalSecret == "" {
+			h.Logger.WarnContext(msgCtx, "ws-hub: internalSecret empty, dropping control event",
+				"user_id", payload.Data.UserID)
+			return
+		}
+
+		dataBytes, err := json.Marshal(payload.Data)
+		if err != nil {
+			h.Logger.ErrorContext(msgCtx, "Failed to marshal control payload data for HMAC verification", "err", err)
+			return
+		}
+
+		hFunc := hmac.New(sha256.New, []byte(h.internalSecret))
+		if _, err := hFunc.Write(dataBytes); err != nil {
+			h.Logger.ErrorContext(msgCtx, "Failed to write data to HMAC", "err", err)
+			return
+		}
+		expectedSigBytes := hFunc.Sum(nil)
+
+		payloadSigBytes, decodeErr := hex.DecodeString(payload.Signature)
+		if decodeErr != nil || !hmac.Equal(payloadSigBytes, expectedSigBytes) {
+			h.Logger.WarnContext(msgCtx, "Invalid internal NATS control signature — dropping event",
+				"action", payload.Data.Action, "user_id", payload.Data.UserID)
+			return
+		}
+
+		h.Logger.InfoContext(msgCtx, "Received valid NATS control event",
+			"action", payload.Data.Action, "user_id", payload.Data.UserID, "reason", payload.Data.Reason)
+
+		if h.authClient != nil {
+			h.authClient.Invalidate(payload.Data.UserID, "")
+		}
+
+		if payload.Data.Action == "disconnect" || payload.Data.Reason == "access_revoked" {
+			reason := payload.Data.Reason
+			if reason == "" || reason == "access_revoked" {
+				reason = "Access Revoked"
+			}
+			//nolint:contextcheck
+			h.DisconnectUser(payload.Data.UserID, 4401, reason)
+			SessionsRevokedTotal.Inc()
+		} else {
+			h.Logger.WarnContext(msgCtx, "Unknown control action ignored", "action", payload.Data.Action)
+		}
+	}
+}
+
+// DisconnectUser finds active client(s) for the given userID under a read lock (Hub.mu.RLock),
+// then writes a WebSocket close control frame (code 4401, reason) and triggers unregistration.
+// Adheres strictly to RZ-22-04: Hub.mu is released BEFORE calling client.Disconnect.
+func (h *Hub) DisconnectUser(userID string, closeCode int, reason string) {
+	if userID == "" {
+		return
+	}
+
+	h.mu.RLock()
+	var targets []*Client
+	for _, client := range h.Clients {
+		if client.UserID == userID || client.ID == userID {
+			targets = append(targets, client)
+		}
+	}
+	h.mu.RUnlock()
+
+	if len(targets) == 0 {
+		h.Logger.DebugContext(context.Background(), "DisconnectUser: no active connections found", "user_id", userID)
+		return
+	}
+
+	h.Logger.InfoContext(context.Background(), "Disconnecting active user sessions",
+		"user_id", userID, "count", len(targets), "code", closeCode, "reason", reason)
+
+	for _, client := range targets {
+		client.Disconnect(closeCode, reason)
 	}
 }
 
