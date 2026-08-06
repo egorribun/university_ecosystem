@@ -303,7 +303,7 @@ func setupHandlers(mux *http.ServeMux, h *hub.Hub, cfg *config.Config, logger *s
 	mux.Handle("/metrics", promhttp.Handler())
 }
 
-func runServer(cfg *config.Config, logger *slog.Logger, h *hub.Hub, mux *http.ServeMux) error {
+func runServer(cfg *config.Config, logger *slog.Logger, h *hub.Hub, mux *http.ServeMux, signalChannels ...chan os.Signal) error {
 	server := &http.Server{
 		Addr:              ":" + cfg.Port,
 		Handler:           mux,
@@ -357,7 +357,12 @@ func runServer(cfg *config.Config, logger *slog.Logger, h *hub.Hub, mux *http.Se
 	}()
 
 	quit := make(chan os.Signal, 1)
-	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	if len(signalChannels) > 0 && signalChannels[0] != nil {
+		quit = signalChannels[0]
+	} else {
+		signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+		defer signal.Stop(quit)
+	}
 
 	var runErr error
 	select {
