@@ -9,7 +9,11 @@ from app.models.auth import ChallengeState
 from app.schemas.schemas import MfaChallengeOut
 
 
-def _legacy_payload(*, consumed_at: datetime | None = None) -> dict[str, object]:
+def _legacy_payload(
+    *,
+    consumed_at: datetime | None = None,
+    locked_at: datetime | None = None,
+) -> dict[str, object]:
     return {
         "id": uuid4(),
         "user_id": uuid4(),
@@ -18,6 +22,7 @@ def _legacy_payload(*, consumed_at: datetime | None = None) -> dict[str, object]
         "token": "legacy-token",
         "expires_at": datetime(2026, 8, 7, tzinfo=UTC),
         "consumed_at": consumed_at,
+        "locked_at": locked_at,
         "created_at": datetime(2026, 8, 6, tzinfo=UTC),
         "payload": {"method": "totp"},
         "attempt_count": 1,
@@ -36,6 +41,14 @@ def test_pre_enum_consumed_payload_recovers_consumed_state() -> None:
     )
 
     assert result.state is ChallengeState.CONSUMED
+
+
+def test_pre_enum_locked_payload_recovers_locked_state() -> None:
+    result = MfaChallengeOut.model_validate(
+        _legacy_payload(locked_at=datetime(2026, 8, 6, 12, tzinfo=UTC))
+    )
+
+    assert result.state is ChallengeState.LOCKED
 
 
 def test_current_enum_payload_round_trips_without_legacy_inference() -> None:
