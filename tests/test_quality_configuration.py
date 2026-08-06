@@ -99,7 +99,7 @@ def test_mutmut_uses_the_unit_population_instead_of_a_single_probe_file() -> Non
         "tests/",
     ]
     assert "tests/test_tenant_rls.py" not in mutation_config["pytest_add_cli_args"]
-    assert "scripts" in mutation_config["also_copy"]
+    assert set((".github", "quality", "scripts")).issubset(mutation_config["also_copy"])
 
 
 def test_test_duration_updater_aggregates_junit_cases_and_preserves_schema() -> None:

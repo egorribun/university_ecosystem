@@ -522,9 +522,10 @@ pytest_add_cli_args_test_selection = [
 # mode; `mutmut run` itself exits 0 even with surviving mutants — score-gating is
 # the separate `export_cicd_stats` command the CI does not call).
 #
-# These three tests assert repo files mutmut's mutants/ copy lacks AND exercise
-# ZERO app/ source (pure infra-config contracts → zero mutation-killing signal),
-# so they are correctly excluded from the mutation baseline:
+# These repository-contract tests exercise ZERO app/ source (pure infra/config
+# contracts → zero mutation-killing signal), but their inputs must still exist
+# in the isolated tree so stats collection can complete. Keep the small,
+# source-controlled roots below in sync with the paths asserted by those tests:
 #   - test_migrations_runtime.py  → alembic/ ScriptDirectory (head convergence)
 #   - test_wave173_caddy_routing  → infrastructure/Caddyfile  (W173 routing)
 #   - test_wave173_ws_hub_env     → docker-compose.full.yml   (W173 ws-hub env)
@@ -532,7 +533,14 @@ pytest_add_cli_args_test_selection = [
 # run can measure them without a false collection failure. The mutation-score
 # parser contract imports `scripts/check_mutation_score.py`; copying its parent
 # directory prevents that test from breaking mutmut's clean-test baseline.
-also_copy = ["infrastructure", "alembic", "scripts", "docker-compose.full.yml"]
+also_copy = [
+    ".github",
+    "quality",
+    "infrastructure",
+    "alembic",
+    "scripts",
+    "docker-compose.full.yml",
+]
 #
 # UPDATE (mutmut-green fix): the async cross-loop exclusions (test_spotify_fallback /
 # test_push_router_full / test_auth_mfa / test_notifications_api) have been REMOVED.
