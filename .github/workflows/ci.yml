@@ -644,7 +644,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     needs: pre-commit-check
-    if: ${{ github.event_name == 'pull_request' }}
+    # Keep the manual recovery path equivalent to the PR gate. This is needed
+    # when GitHub temporarily drops pull_request webhooks: a dispatched run
+    # must execute Stryker rather than publish a misleading skipped context.
+    if: ${{ github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch' }}
     permissions:
       contents: read
     steps:

@@ -1013,7 +1013,9 @@ def test_frontend_mutation_gate_is_blocking_and_reproducible() -> None:
     ci_workflow = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
     jobs = ci_workflow["jobs"]
     mutation_job = jobs["stryker-incremental"]
-    assert mutation_job["if"] == "${{ github.event_name == 'pull_request' }}"
+    mutation_condition = mutation_job["if"]
+    assert "github.event_name == 'pull_request'" in mutation_condition
+    assert "github.event_name == 'workflow_dispatch'" in mutation_condition
     assert "stryker-incremental" in jobs["ci-success"]["needs"]
     result_check = jobs["ci-success"]["steps"][0]["run"]
     assert "needs.stryker-incremental.result" in result_check
