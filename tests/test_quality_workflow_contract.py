@@ -265,6 +265,19 @@ def test_cross_browser_e2e_is_advisory_during_stabilization() -> None:
     assert "needs.e2e-tests-cross-browser.result" not in blocking_script
 
 
+def test_trivy_job_id_matches_stable_code_scanning_configuration() -> None:
+    workflow = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    jobs = workflow["jobs"]
+
+    assert "docker-security-scan" in jobs
+    assert "docker-security" not in jobs
+    assert "docker-security-scan" in jobs["ci-success"]["needs"]
+
+    blocking_script = jobs["ci-success"]["steps"][0]["run"]
+    assert "needs.docker-security-scan.result" in blocking_script
+    assert "needs.docker-security.result" not in blocking_script
+
+
 def test_e2e_coverage_is_chromium_opt_in_and_codecov_wired() -> None:
     e2e_workflow = yaml.safe_load(E2E_WORKFLOW_PATH.read_text(encoding="utf-8"))
     call = _workflow_triggers(e2e_workflow)["workflow_call"]

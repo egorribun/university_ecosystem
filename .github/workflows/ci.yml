@@ -1138,7 +1138,7 @@ jobs:
   # MOD-W15-02 (audit 2026-03-23 Wave 15): Trivy Docker image scanning.
   # Runs on every PR/push. Scans the built backend image for CRITICAL/HIGH CVEs.
   # Results are uploaded to GitHub Security tab as SARIF (visible in Code Scanning).
-  docker-security:
+  docker-security-scan:
     name: Trivy Image Scan
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -2509,7 +2509,7 @@ jobs:
       - openapi-verify
       - verify-runtime-reqs
       - performance-gate
-      - docker-security
+      - docker-security-scan
       - helm-validate
       - db-migration-gate
       - go-fuzz
@@ -2566,7 +2566,7 @@ jobs:
             "${{ needs.openapi-verify.result }}"
             "${{ needs.verify-runtime-reqs.result }}"
             "${{ needs.performance-gate.result }}"
-            "${{ needs.docker-security.result }}"
+            "${{ needs.docker-security-scan.result }}"
             "${{ needs.helm-validate.result }}"
             "${{ needs.db-migration-gate.result }}"
             "${{ needs.go-fuzz.result }}"
