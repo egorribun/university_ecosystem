@@ -373,6 +373,11 @@ def test_incremental_mutation_stats_are_sharded_and_merged_before_execution() ->
     assert "scripts/mutmut_stats_shard.py" in stats_text
     assert "--shard-id" in stats_text
     assert "--num-shards 4" in stats_text
+    helper_text = (REPOSITORY_ROOT / "scripts/mutmut_stats_shard.py").read_text(
+        encoding="utf-8"
+    )
+    assert "config = mutmut.config" in helper_text
+    assert "mutmut_cli.config" not in helper_text
 
     assert "mutation-tests-stats" in mutation_job["needs"]
     mutation_text = "\n".join(

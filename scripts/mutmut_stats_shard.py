@@ -77,9 +77,12 @@ def collect_stats_shard(*, shard_id: int, num_shards: int, max_children: int) ->
     # The repository conftest assigns whole test files to deterministic shards.
     # Appending these options to mutmut's normal test-selection population keeps
     # all existing exclusions intact while partitioning only the stats pass.
+    import mutmut
+
     mutmut_cli.ensure_config_loaded()
-    mutmut_cli.config.pytest_add_cli_args_test_selection = [
-        *mutmut_cli.config.pytest_add_cli_args_test_selection,
+    config = mutmut.config
+    config.pytest_add_cli_args_test_selection = [
+        *config.pytest_add_cli_args_test_selection,
         f"--shard-id={shard_id}",
         f"--num-shards={num_shards}",
     ]
