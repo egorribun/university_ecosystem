@@ -9,6 +9,7 @@ on:
       - "services/**/*.go"
       - "services/**/go.mod"
       - ".golangci.yml"
+  workflow_dispatch: {}
   push:
     branches: [main]
     paths:
