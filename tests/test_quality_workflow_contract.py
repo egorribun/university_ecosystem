@@ -6,6 +6,9 @@ import yaml
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 CI_WORKFLOW_PATH = REPOSITORY_ROOT / ".github" / "workflows" / "ci.yml"
+CONTRACT_VALIDATION_WORKFLOW_PATH = (
+    REPOSITORY_ROOT / ".github" / "workflows" / "contract-validation.yml"
+)
 BACKEND_WORKFLOW_PATH = (
     REPOSITORY_ROOT / ".github" / "workflows" / "reusable-backend-tests.yml"
 )
@@ -48,6 +51,29 @@ def test_ci_triggers_when_draft_pull_request_becomes_ready() -> None:
         "reopened",
         "ready_for_review",
     }
+
+
+def test_required_openapi_compatibility_check_runs_for_every_pull_request() -> None:
+    workflow = yaml.safe_load(
+        CONTRACT_VALIDATION_WORKFLOW_PATH.read_text(encoding="utf-8")
+    )
+    triggers = _workflow_triggers(workflow)
+    pull_request = triggers.get("pull_request")
+
+    assert isinstance(pull_request, dict)
+    assert "paths" not in pull_request, (
+        "A required check must not be hidden behind a pull_request path filter"
+    )
+    assert set(pull_request["types"]) >= {
+        "opened",
+        "synchronize",
+        "reopened",
+        "ready_for_review",
+    }
+    assert (
+        workflow["jobs"]["openapi-diff"]["name"]
+        == "OpenAPI Backward Compatibility Check"
+    )
 
 
 def test_quality_policy_gate_is_properly_wired_in_ci() -> None:

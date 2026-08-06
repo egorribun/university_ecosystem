@@ -21,11 +21,10 @@ on:
       - ".spectral.yml"
       - ".github/workflows/contract-validation.yml"
   pull_request:
-    paths:
-      - "app/**"
-      - "pyproject.toml"
-      - ".spectral.yml"
-      - ".github/workflows/contract-validation.yml"
+    # OpenAPI Backward Compatibility Check is a required status context in the
+    # main-branch ruleset.  A path-filtered required workflow would leave every
+    # unrelated PR permanently pending, so it must be scheduled for every PR.
+    types: [opened, synchronize, reopened, ready_for_review]
   workflow_dispatch: {}
 
 permissions: read-all
@@ -250,4 +249,3 @@ jobs:
             exit 1
           }
           echo "✅ TypeScript interfaces are in sync with the FastAPI schema."
-
