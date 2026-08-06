@@ -317,6 +317,10 @@ jobs:
           CHAOS_TESTS: "1"
           API_BASE_URL: http://localhost:8000
           GATEWAY_URL: http://localhost:8080
+          # The pytest process runs on the GitHub runner, not inside the
+          # Compose network. Keep the job-level DATABASE_URL for containers,
+          # but point this host-side fixture at the published PostgreSQL port.
+          DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:54321/ecosystem  # pragma: allowlist secret
           COMPOSE_FILE: docker-compose.infra.yml:docker-compose.go.yml:docker-compose.yml:docker-compose.ci-loadtest.yml
         run: uv run pytest tests/chaos/ -v -m chaos --tb=short
 
