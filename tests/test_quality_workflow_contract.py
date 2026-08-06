@@ -36,6 +36,20 @@ def _workflow_triggers(workflow: dict[str, object]) -> dict[str, object]:
     return value
 
 
+def test_ci_triggers_when_draft_pull_request_becomes_ready() -> None:
+    workflow = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    triggers = _workflow_triggers(workflow)
+    pull_request = triggers.get("pull_request")
+
+    assert isinstance(pull_request, dict)
+    assert set(pull_request["types"]) >= {
+        "opened",
+        "synchronize",
+        "reopened",
+        "ready_for_review",
+    }
+
+
 def test_quality_policy_gate_is_properly_wired_in_ci() -> None:
     assert CI_WORKFLOW_PATH.exists()
 

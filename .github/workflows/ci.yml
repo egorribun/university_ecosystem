@@ -8,6 +8,9 @@ on:
   push:
     branches: [main, develop, "release/**"]
   pull_request:
+    # Keep the required gate runnable when a draft PR is promoted to ready.
+    # GitHub's default pull_request activity types omit ready_for_review.
+    types: [opened, synchronize, reopened, ready_for_review]
   workflow_dispatch:
 
 # Least-privilege defaults — individual jobs extend as needed.
