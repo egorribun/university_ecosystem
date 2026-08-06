@@ -96,6 +96,12 @@ def test_uv_version_is_pinned_for_reproducible_ci_bootstrap() -> None:
     assert uv_config["required-version"] == "==0.11.28"
 
 
+def test_backend_dockerfile_uses_the_required_uv_version() -> None:
+    dockerfile = (ROOT / "backend.Dockerfile").read_text(encoding="utf-8")
+
+    assert "ghcr.io/astral-sh/uv:0.11.28@sha256:" in dockerfile
+
+
 def test_mutmut_uses_the_unit_population_instead_of_a_single_probe_file() -> None:
     mutation_config = _read_pyproject()["tool"]["mutmut"]
 
