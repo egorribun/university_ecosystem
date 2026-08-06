@@ -8,3 +8,5 @@
 !dev/bench/data.js
 !dev/bench/index.html
 !.gitignore
+!dev/bench/ws-hub-regression/
+!dev/bench/ws-hub-regression/data.js
