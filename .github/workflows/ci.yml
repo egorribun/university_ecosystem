@@ -1775,16 +1775,16 @@ jobs:
           if-no-files-found: error
 
   mutation-tests-incremental:
-    name: Incremental Mutation Tests (mutmut) / shard ${{ matrix.shard }}/4
+    name: Incremental Mutation Tests (mutmut) / shard ${{ matrix.shard }}/16
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
-      # A long-lived branch can change dozens of backend modules.  Each leg
-      # executes a disjoint module subset, while every leg keeps the same
+      # A long-lived branch can change dozens of backend modules.  Sixteen
+      # legs keep each mutation loop bounded while every leg retains the same
       # blocking score and timeout policy.  Empty legs are valid for small
       # diffs and exit successfully after proving their slice is empty.
       matrix:
-        shard: [1, 2, 3, 4]
+        shard: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]
     # 35 = outer safety net for the 25-min in-command gate below (+ setup/install).
     # A time-box is a failed mutation gate: silently skipping score verification
     # would turn a missing quality signal into a green required check.
@@ -1840,13 +1840,13 @@ jobs:
           # probe silently skipped mutation evidence for all other Python diffs.
           # mutmut 3.x removed --paths-to-mutate. Select changed modules positionally
           # via Unix-glob patterns: app/services/search.py -> app.services.search*
-          # (source_paths in pyproject scopes the universe).  The four matrix
-          # legs receive disjoint lines from the sorted manifest; each leg then
+          # (source_paths in pyproject scopes the universe).  The sixteen
+          # matrix legs receive disjoint lines from the sorted manifest; each leg then
           # performs a blocking score gate for its own changed slice.  Stats were
           # collected once per disjoint test shard and merged before this step;
           # mutmut therefore loads the complete mapping instead of rerunning the
           # full pytest stats population four times.
-          PATTERNS=$(awk -v shard='${{ matrix.shard }}' -v total=4 '
+          PATTERNS=$(awk -v shard='${{ matrix.shard }}' -v total=16 '
             ((NR - 1) % total + 1) == shard {
               path = $0
               gsub(/\//, ".", path)
@@ -1855,10 +1855,10 @@ jobs:
             }
           ' /tmp/changed_py.txt)
           if [ -z "$PATTERNS" ]; then
-            echo "No changed Python modules assigned to mutation shard ${{ matrix.shard }}/4."
+            echo "No changed Python modules assigned to mutation shard ${{ matrix.shard }}/16."
             exit 0
           fi
-          echo "Mutating shard ${{ matrix.shard }}/4: $PATTERNS"
+          echo "Mutating shard ${{ matrix.shard }}/16: $PATTERNS"
           rm -f .mutmut-cache
           # Time-box: mutmut 3.x mutates WHOLE changed modules (no line-level
           # scoping), so on a long-lived branch the diff spans many modules = tens of
