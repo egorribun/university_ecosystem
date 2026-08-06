@@ -538,14 +538,59 @@ def test_reusable_quality_jobs_have_bounded_execution() -> None:
     frontend = yaml.safe_load(FRONTEND_WORKFLOW_PATH.read_text(encoding="utf-8"))
     assert {
         name: frontend["jobs"][name]["timeout-minutes"]
-        for name in ("unit-tests", "lint", "build", "bundle-analysis", "lighthouse")
+        for name in (
+            "unit-tests",
+            "lint",
+            "build",
+            "bundle-analysis",
+            "lighthouse-shards",
+            "lighthouse",
+        )
     } == {
         "unit-tests": 45,
         "lint": 30,
         "build": 45,
         "bundle-analysis": 15,
-        "lighthouse": 30,
+        "lighthouse-shards": 20,
+        "lighthouse": 10,
     }
+
+    lighthouse_shards = frontend["jobs"]["lighthouse-shards"]
+    assert lighthouse_shards["strategy"]["fail-fast"] is False
+    assert [
+        entry["shard"] for entry in lighthouse_shards["strategy"]["matrix"]["include"]
+    ] == [
+        "core",
+        "content",
+        "realtime",
+        "fallback",
+    ]
+    assert lighthouse_shards["env"]["LHCI_URLS"] == "${{ matrix.urls }}"
+    shard_upload = next(
+        step
+        for step in lighthouse_shards["steps"]
+        if step.get("name") == "Upload Lighthouse shard reports"
+    )
+    assert shard_upload["with"]["include-hidden-files"] is True
+    assert shard_upload["with"]["name"] == "lighthouse-reports-${{ matrix.shard }}"
+
+    lighthouse_aggregate = frontend["jobs"]["lighthouse"]
+    assert lighthouse_aggregate["needs"] == "lighthouse-shards"
+    assert "always()" in lighthouse_aggregate["if"]
+    assert lighthouse_aggregate["name"] == "Lighthouse Audit"
+    merge_text = "\n".join(
+        step.get("run", "")
+        for step in lighthouse_aggregate["steps"]
+        if isinstance(step, dict)
+    )
+    assert "lhr-${counter}.json" in merge_text
+    merged_upload = next(
+        step
+        for step in lighthouse_aggregate["steps"]
+        if step.get("name") == "Upload merged Lighthouse reports"
+    )
+    assert merged_upload["with"]["name"] == "lighthouse-reports"
+    assert merged_upload["with"]["include-hidden-files"] is True
 
     go = yaml.safe_load(GO_WORKFLOW_PATH.read_text(encoding="utf-8"))
     assert go["jobs"]["test"]["timeout-minutes"] == 60
