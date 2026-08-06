@@ -251,8 +251,13 @@ jobs:
           URL_STATE_E2E: "true"
           VITE_BACKEND_ORIGIN: http://127.0.0.1:8000
         run: |
+          # Playwright cleans its output directory at the start of each
+          # invocation. Keep auxiliary suites in separate subdirectories so
+          # the coverage merger can still see the regular shard output and
+          # every auxiliary suite's report.
           npx playwright test url-state-persistence.spec.ts \
             --project=chromium \
+            --output=test-results/url-state \
             --reporter=html
 
       # Wave 179 SW9: extend URL_STATE_E2E auto-managed mode to the new
@@ -272,6 +277,7 @@ jobs:
         run: |
           npx playwright test wave179-login-flow.spec.ts \
             --project=chromium \
+            --output=test-results/wave179-login-flow \
             --reporter=html
 
       # Phase 7.4: exercise the production Node SSR wrapper and assert that
@@ -285,6 +291,7 @@ jobs:
         run: |
           npx playwright test ssr-caching.spec.ts \
             --project=chromium \
+            --output=test-results/ssr-caching \
             --reporter=html
 
       - name: Run authenticated accessibility E2E tests (cross-env auto-managed)
@@ -296,6 +303,7 @@ jobs:
         run: |
           npx playwright test accessibility.spec.ts \
             --project=chromium \
+            --output=test-results/accessibility \
             --reporter=html
 
       - name: Merge Chromium JavaScript coverage
