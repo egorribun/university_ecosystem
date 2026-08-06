@@ -550,6 +550,10 @@ also_copy = [
     "Makefile",
     "docs",
     "k8s/kyverno",
+    # test_quality_workflow_contract reads the three Go service Dockerfiles;
+    # copy their common parent because mutmut's sandbox copier needs the
+    # parent directory present for nested repository inputs.
+    "services",
     "crates/pyo3-sanitizer/src",
     "frontend/scripts",
     "frontend/package.json",
