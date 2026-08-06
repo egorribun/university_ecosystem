@@ -558,6 +558,8 @@ def test_frontend_coverage_is_merged_after_all_vitest_shards() -> None:
         REPOSITORY_ROOT / "frontend" / "scripts" / "merge-vitest-coverage.mjs"
     ).is_file()
     assert "scripts/merge-vitest-coverage.mjs" in merge_step["run"]
+    assert "--input=.coverage-shards" in merge_step["run"]
+    assert "--output=coverage" in merge_step["run"]
     assert "--expected-shards=4" in merge_step["run"]
     assert any(
         step.get("with", {}).get("pattern") == "frontend-coverage-shard-*"
