@@ -108,10 +108,10 @@ def test_mutmut_uses_the_unit_population_instead_of_a_single_probe_file() -> Non
         "uv.lock",
         ".pre-commit-config.yaml",
         "Makefile",
-        "docs/DEPENDENCY_COOLDOWN_EMERGENCY.md",
+        "docs",
         "k8s/kyverno",
-        "crates/pyo3-sanitizer/src/lib.rs",
-        "frontend/scripts/merge-vitest-coverage.mjs",
+        "crates/pyo3-sanitizer/src",
+        "frontend/scripts",
     }
     assert required_contract_inputs.issubset(mutation_config["also_copy"])
 

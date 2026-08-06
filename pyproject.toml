@@ -545,10 +545,10 @@ also_copy = [
     "uv.lock",
     ".pre-commit-config.yaml",
     "Makefile",
-    "docs/DEPENDENCY_COOLDOWN_EMERGENCY.md",
+    "docs",
     "k8s/kyverno",
-    "crates/pyo3-sanitizer/src/lib.rs",
-    "frontend/scripts/merge-vitest-coverage.mjs",
+    "crates/pyo3-sanitizer/src",
+    "frontend/scripts",
 ]
 #
 # UPDATE (mutmut-green fix): the async cross-loop exclusions (test_spotify_fallback /
