@@ -1171,7 +1171,9 @@ jobs:
         if: always() && steps.trivy_scan.outcome == 'success'
         with:
           sarif_file: trivy-results.sarif
-          category: "docker-security"
+          # Match the pre-category configuration key used by main. The
+          # reusable audit has a separate job key for filesystem/config scans.
+          category: ".github/workflows/ci.yml:docker-security-scan"
 
   # MOD-W15-03 (audit 2026-03-23 Wave 15): Helm lint + kubeconform validation.
   # Catches broken Helm templates and K8s manifest schema violations before deploy.

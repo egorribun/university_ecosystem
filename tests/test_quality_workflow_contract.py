@@ -278,6 +278,35 @@ def test_trivy_job_id_matches_stable_code_scanning_configuration() -> None:
     assert "needs.docker-security.result" not in blocking_script
 
 
+def test_trivy_sarif_categories_preserve_main_configuration_keys() -> None:
+    ci_workflow = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    image_upload = next(
+        step
+        for step in ci_workflow["jobs"]["docker-security-scan"]["steps"]
+        if step.get("uses", "").startswith("github/codeql-action/upload-sarif@")
+    )
+    assert image_upload["with"]["category"] == (
+        ".github/workflows/ci.yml:docker-security-scan"
+    )
+
+    security_workflow = yaml.safe_load(
+        SECURITY_WORKFLOW_PATH.read_text(encoding="utf-8")
+    )
+    security_uploads = [
+        step
+        for step in security_workflow["jobs"]["docker-security"]["steps"]
+        if step.get("uses", "").startswith("github/codeql-action/upload-sarif@")
+    ]
+    categories_by_sarif = {
+        step["with"]["sarif_file"]: step["with"]["category"]
+        for step in security_uploads
+    }
+    assert categories_by_sarif == {
+        "trivy-fs.sarif": ".github/workflows/ci.yml:docker-security",
+        "trivy-config.sarif": "trivy-config",
+    }
+
+
 def test_e2e_coverage_is_chromium_opt_in_and_codecov_wired() -> None:
     e2e_workflow = yaml.safe_load(E2E_WORKFLOW_PATH.read_text(encoding="utf-8"))
     call = _workflow_triggers(e2e_workflow)["workflow_call"]
