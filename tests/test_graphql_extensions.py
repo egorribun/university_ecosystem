@@ -687,28 +687,27 @@ class TestAdditionalExtensionSafeguards:
         """RequestTimeoutExtension raises GraphQLError when execution exceeds timeout."""
         ext = RequestTimeoutExtension()
 
-        class _DeterministicTimeout:
+        class _RaisingTimeout:
             async def __aenter__(self) -> None:
-                return None
+                raise TimeoutError
 
             async def __aexit__(self, _exc_type, _exc, _traceback) -> bool:
                 return False
 
-        # Inject the timeout exception without scheduling a wall-clock
-        # cancellation. This keeps the test deterministic under mutmut's
-        # instrumented stats runner while exercising the production handler.
+        # Raise while entering the timeout context. This exercises the
+        # production handler without a wall-clock cancellation or athrow() on
+        # the async generator, which mutmut's stats trampoline cannot forward.
         with patch.object(
             ext_module.asyncio,
             "timeout",
-            return_value=_DeterministicTimeout(),
+            return_value=_RaisingTimeout(),
         ):
             gen = ext.on_execute()
-            await gen.__anext__()
             with pytest.raises(
                 GraphQLError,
                 match=r"Request exceeded the maximum execution time of 30 seconds",
             ):
-                await gen.athrow(TimeoutError)
+                await gen.__anext__()
 
     def test_load_manifest_corrupted_json(self, tmp_path: Path) -> None:
         """_load_manifest handles corrupted JSON files gracefully."""
