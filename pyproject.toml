@@ -540,6 +540,15 @@ also_copy = [
     "alembic",
     "scripts",
     "docker-compose.full.yml",
+    "codecov.yml",
+    "renovate.json",
+    "uv.lock",
+    ".pre-commit-config.yaml",
+    "Makefile",
+    "docs/DEPENDENCY_COOLDOWN_EMERGENCY.md",
+    "k8s/kyverno",
+    "crates/pyo3-sanitizer/src/lib.rs",
+    "frontend/scripts/merge-vitest-coverage.mjs",
 ]
 #
 # UPDATE (mutmut-green fix): the async cross-loop exclusions (test_spotify_fallback /
