@@ -4,6 +4,18 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { http, HttpResponse } from "msw"
 
+const apiMocks = vi.hoisted(() => ({
+  uploadNewsImage: vi.fn(),
+}))
+
+vi.mock("@/api/news", async () => {
+  const actual = await vi.importActual<typeof import("@/api/news")>("@/api/news")
+  return {
+    ...actual,
+    uploadNewsImage: apiMocks.uploadNewsImage,
+  }
+})
+
 import { server } from "@/tests/mocks/server"
 import { NewsFormDialog } from "../NewsFormDialog"
 
@@ -111,9 +123,6 @@ describe("NewsFormDialog", () => {
     const objectUrl = vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:news-preview")
 
     server.use(
-      http.post("*/news/upload_image", () => {
-        return HttpResponse.json({ url: "https://cdn.example.com/news-cover.png" })
-      }),
       http.post("*/news", async ({ request }) => {
         createPayloads.push((await request.json()) as Record<string, unknown>)
         return HttpResponse.json({
@@ -130,6 +139,7 @@ describe("NewsFormDialog", () => {
         })
       })
     )
+    apiMocks.uploadNewsImage.mockResolvedValueOnce("https://cdn.example.com/news-cover.png")
 
     renderWithProviders(<NewsFormDialog {...defaultProps} />)
     const imageInput = document.querySelector('input[type="file"]') as HTMLInputElement
@@ -152,6 +162,7 @@ describe("NewsFormDialog", () => {
     await user.click(submitBtn)
 
     await waitFor(() => expect(defaultProps.onSuccess).toHaveBeenCalledTimes(1))
+    expect(apiMocks.uploadNewsImage).toHaveBeenCalledWith(image)
     expect(createPayloads).toHaveLength(1)
     expect(createPayloads[0]).toMatchObject({
       title: "My Breaking News",
