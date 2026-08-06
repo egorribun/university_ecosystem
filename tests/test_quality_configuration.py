@@ -90,6 +90,12 @@ def test_governance_quality_configuration_matches_contract() -> None:
     assert mutation_exclusions == {"version": 1, "exclusions": []}
 
 
+def test_uv_version_is_pinned_for_reproducible_ci_bootstrap() -> None:
+    uv_config = _read_pyproject()["tool"]["uv"]
+
+    assert uv_config["required-version"] == "==0.11.28"
+
+
 def test_mutmut_uses_the_unit_population_instead_of_a_single_probe_file() -> None:
     mutation_config = _read_pyproject()["tool"]["mutmut"]
 

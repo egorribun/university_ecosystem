@@ -438,6 +438,9 @@ security = ["bandit[toml]>=1.9.4", "semgrep>=1.159.0", "pip-audit>=2.10.0"]
 members = ["native/rust_ext", "crates/pyo3-sanitizer"]
 
 [tool.uv]
+# Keep CI independent from the latest-version manifest availability.  The
+# setup-uv action reads this exact requirement before downloading the binary.
+required-version = "==0.11.28"
 exclude-newer = "7 days"
 environments = [
     "sys_platform == 'win32'",
