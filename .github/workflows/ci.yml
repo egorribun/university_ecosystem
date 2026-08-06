@@ -1718,21 +1718,17 @@ jobs:
           export CHROMEDRIVER_ARGS="--headless=new --no-sandbox --disable-gpu"
           wasm-pack test --headless --chrome frontend/rust-crypto
 
-  mutation-tests-incremental:
-    name: Incremental Mutation Tests (mutmut) / shard ${{ matrix.shard }}/4
+  mutation-tests-stats:
+    name: Incremental Mutation Stats (mutmut) / shard ${{ matrix.stats_shard }}/4
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
-      # A long-lived branch can change dozens of backend modules.  Each leg
-      # executes a disjoint module subset, while every leg keeps the same
-      # blocking score and timeout policy.  Empty legs are valid for small
-      # diffs and exit successfully after proving their slice is empty.
+      # mutmut 3.5.0 collects the complete pytest-to-mutant mapping before it
+      # applies positional mutant filters.  Collect disjoint test populations
+      # once per leg and merge them before the mutation legs start.
       matrix:
-        shard: [1, 2, 3, 4]
-    # 35 = outer safety net for the 25-min in-command gate below (+ setup/install).
-    # A time-box is a failed mutation gate: silently skipping score verification
-    # would turn a missing quality signal into a green required check.
-    timeout-minutes: 35
+        stats_shard: [0, 1, 2, 3]
+    timeout-minutes: 25
     needs: pre-commit-check
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -1750,20 +1746,106 @@ jobs:
       - name: Install dependencies
         run: uv sync --group dev
 
+      - name: Detect changed Python source
+        id: mutation_scope
+        shell: bash
+        run: |
+          changed=$(git diff --name-only origin/main...HEAD | grep -E '^app/.*\.py$' || true)
+          if [ -n "$changed" ]; then
+            echo "has_python=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_python=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Collect mutmut stats shard
+        if: steps.mutation_scope.outputs.has_python == 'true'
+        run: |
+          rm -rf mutants
+          uv run python scripts/mutmut_stats_shard.py \
+            --shard-id "${{ matrix.stats_shard }}" \
+            --num-shards 4 \
+            --max-children 2
+
+      - name: Upload mutmut stats shard
+        if: steps.mutation_scope.outputs.has_python == 'true'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: mutmut-stats-${{ matrix.stats_shard }}
+          path: mutants/mutmut-stats.json
+          if-no-files-found: error
+
+  mutation-tests-incremental:
+    name: Incremental Mutation Tests (mutmut) / shard ${{ matrix.shard }}/4
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      # A long-lived branch can change dozens of backend modules.  Each leg
+      # executes a disjoint module subset, while every leg keeps the same
+      # blocking score and timeout policy.  Empty legs are valid for small
+      # diffs and exit successfully after proving their slice is empty.
+      matrix:
+        shard: [1, 2, 3, 4]
+    # 35 = outer safety net for the 25-min in-command gate below (+ setup/install).
+    # A time-box is a failed mutation gate: silently skipping score verification
+    # would turn a missing quality signal into a green required check.
+    timeout-minutes: 35
+    needs:
+      - pre-commit-check
+      - mutation-tests-stats
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.14"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+
+      - name: Install dependencies
+        run: uv sync --group dev
+
+      - name: Detect changed Python source
+        id: mutation_scope
+        shell: bash
+        run: |
+          git diff --name-only origin/main...HEAD | grep -E '^app/.*\.py$' | sort -u > /tmp/changed_py.txt || true
+          if [ -s /tmp/changed_py.txt ]; then
+            echo "has_python=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_python=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Download mutmut stats shards
+        if: steps.mutation_scope.outputs.has_python == 'true'
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: mutmut-stats-*
+          path: mutmut-stats
+
+      - name: Merge mutmut stats shards
+        if: steps.mutation_scope.outputs.has_python == 'true'
+        run: |
+          uv run python scripts/merge_mutmut_stats.py \
+            --input-root mutmut-stats \
+            --output mutants/mutmut-stats.json
+
       - name: Run incremental mutmut (blocking, 25-minute budget)
+        if: steps.mutation_scope.outputs.has_python == 'true'
         run: |
           # Scope mutmut to every changed backend module.  The old tenant-only
           # probe silently skipped mutation evidence for all other Python diffs.
-          git diff --name-only origin/main...HEAD | grep -E '^app/.*\.py$' | sort -u > /tmp/changed_py.txt || true
-          if [ ! -s /tmp/changed_py.txt ]; then
-            echo "No changed Python source files found. Skipping mutation testing."
-            exit 0
-          fi
           # mutmut 3.x removed --paths-to-mutate. Select changed modules positionally
           # via Unix-glob patterns: app/services/search.py -> app.services.search*
           # (source_paths in pyproject scopes the universe).  The four matrix
           # legs receive disjoint lines from the sorted manifest; each leg then
-          # performs a complete blocking score gate for its own changed slice.
+          # performs a blocking score gate for its own changed slice.  Stats were
+          # collected once per disjoint test shard and merged before this step;
+          # mutmut therefore loads the complete mapping instead of rerunning the
+          # full pytest stats population four times.
           PATTERNS=$(awk -v shard='${{ matrix.shard }}' -v total=4 '
             ((NR - 1) % total + 1) == shard {
               path = $0
@@ -2431,6 +2513,7 @@ jobs:
       - rust-ffi-asan
       - rust-ffi-tsan
       - rust-tests
+      - mutation-tests-stats
       - mutation-tests-incremental
       - stryker-incremental
       - chaos-tests
@@ -2483,6 +2566,7 @@ jobs:
             "${{ needs.rust-ffi-asan.result }}"
             "${{ needs.rust-ffi-tsan.result }}"
             "${{ needs.rust-tests.result }}"
+            "${{ needs.mutation-tests-stats.result }}"
             "${{ needs.mutation-tests-incremental.result }}"
             "${{ needs.stryker-incremental.result }}"
             "${{ needs.chaos-loadtest-orchestrator.result }}"

@@ -349,10 +349,45 @@ def test_incremental_mutation_budget_matches_declared_gate() -> None:
     )
     assert job["strategy"]["matrix"]["shard"] == [1, 2, 3, 4]
     assert "timeout --kill-after=30s 25m" in run_step["run"]
-    assert "grep -E '^app/.*\\.py$'" in run_step["run"]
-    assert "matrix.shard" in run_step["run"]
-    assert "awk -v shard" in run_step["run"]
-    assert "grep '^app/core/tenant\\.py$'" not in run_step["run"]
+    job_text = "\n".join(
+        step.get("run", "") for step in job["steps"] if isinstance(step, dict)
+    )
+    assert "grep -E '^app/.*\\.py$'" in job_text
+    assert "matrix.shard" in job_text
+    assert "awk -v shard" in job_text
+    assert "grep '^app/core/tenant\\.py$'" not in job_text
+
+
+def test_incremental_mutation_stats_are_sharded_and_merged_before_execution() -> None:
+    workflow = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    jobs = workflow["jobs"]
+    stats_job = jobs["mutation-tests-stats"]
+    mutation_job = jobs["mutation-tests-incremental"]
+
+    assert stats_job["strategy"]["matrix"]["stats_shard"] == [0, 1, 2, 3]
+    assert stats_job["timeout-minutes"] == 25
+    assert "pre-commit-check" in stats_job["needs"]
+    stats_text = "\n".join(
+        step.get("run", "") for step in stats_job["steps"] if isinstance(step, dict)
+    )
+    assert "scripts/mutmut_stats_shard.py" in stats_text
+    assert "--shard-id" in stats_text
+    assert "--num-shards 4" in stats_text
+
+    assert "mutation-tests-stats" in mutation_job["needs"]
+    mutation_text = "\n".join(
+        step.get("run", "") for step in mutation_job["steps"] if isinstance(step, dict)
+    )
+    download_step = next(
+        step
+        for step in mutation_job["steps"]
+        if step.get("uses", "").startswith("actions/download-artifact")
+    )
+    assert download_step["with"]["pattern"] == "mutmut-stats-*"
+    assert "scripts/merge_mutmut_stats.py" in mutation_text
+    assert "full pytest stats population four times" in mutation_text
+    assert "mutation-tests-stats" in jobs["ci-success"]["needs"]
+    assert "needs.mutation-tests-stats.result" in jobs["ci-success"]["steps"][0]["run"]
 
 
 def test_quality_history_archives_manifests_and_renders_dashboard() -> None:
