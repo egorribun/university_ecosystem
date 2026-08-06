@@ -2,6 +2,7 @@
   "ignores": [
     ".agents/**",
     "node_modules/**",
-    "frontend/node_modules/**"
+    "frontend/node_modules/**",
+    "docs/testing/roadmap-100-percent-quality-closure-plan.md"
   ]
 }
