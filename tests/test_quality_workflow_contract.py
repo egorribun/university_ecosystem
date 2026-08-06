@@ -549,6 +549,12 @@ def test_frontend_coverage_is_merged_after_all_vitest_shards() -> None:
     assert aggregate_job["if"] == "${{ always() }}"
 
     aggregate_steps = aggregate_job["steps"]
+    aggregate_checkout = next(
+        step
+        for step in aggregate_steps
+        if step.get("uses", "").startswith("actions/checkout@")
+    )
+    assert aggregate_checkout["with"]["fetch-depth"] == 0
     merge_step = next(
         step
         for step in aggregate_steps
