@@ -16,7 +16,7 @@ import (
 	"github.com/university-ecosystem/gateway/internal/config"
 )
 
-const routeBranchJWTSecret = "route-branch-test-secret-at-least-32-chars-long" // pragma: allowlist secret // #nosec G101 -- test-only JWT signing secret
+const routeBranchJWTSecret = "route-branch-test-secret-at-least-32-chars-long" // #nosec G101 -- test-only JWT signing secret // pragma: allowlist secret
 
 func newRouteBranchRouter(t *testing.T, wsHubURL string) (*gin.Engine, context.CancelFunc) {
 	t.Helper()
