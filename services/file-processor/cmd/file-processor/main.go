@@ -69,6 +69,8 @@ const (
 var (
 	dialTemporalFunc        = client.Dial
 	newWorkerFunc           = worker.New
+	buildMinIOClientFunc    = workflow.BuildMinIOClient
+	newFileActivitiesFunc   = workflow.NewFileActivities
 	startTemporalWorkerFunc = startTemporalWorker
 	startNatsSubscriberFunc = startNatsSubscriber
 	initSpiffeClientFunc    = initSpiffeClient
@@ -349,13 +351,13 @@ func setupTemporalWorker(ctx context.Context, c client.Client, cfg *config.Confi
 	w := newWorkerFunc(c, "FILE_PROCESSING_TASK_QUEUE", worker.Options{})
 	w.RegisterWorkflow(workflow.FileProcessingWorkflow)
 
-	minioClient, err := workflow.BuildMinIOClient(cfg)
+	minioClient, err := buildMinIOClientFunc(cfg)
 	if err != nil {
 		logger.ErrorContext(ctx, "Failed to initialize MinIO client", "err", err)
 		return nil, nil, fmt.Errorf("failed to initialize MinIO client: %w", err)
 	}
 
-	activities, err := workflow.NewFileActivities(cfg, minioClient)
+	activities, err := newFileActivitiesFunc(cfg, minioClient)
 	if err != nil {
 		logger.ErrorContext(ctx, "Failed to initialize file activities", "err", err)
 		return nil, nil, fmt.Errorf("failed to initialize file activities: %w", err)

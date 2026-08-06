@@ -21,9 +21,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/minio/minio-go/v7"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/university-ecosystem/file-processor/internal/config"
+	"github.com/university-ecosystem/file-processor/internal/workflow"
 	"github.com/university-ecosystem/services/pkg/spiffe"
 	"go.temporal.io/sdk/client"
 	"go.temporal.io/sdk/worker"
@@ -455,6 +457,28 @@ func TestSetupTemporalWorker_BuildMinIOClientError(t *testing.T) {
 	require.NoError(t, err)
 	_, _, err = setupTemporalWorker(context.Background(), c, cfg, discardLogger())
 	require.Error(t, err)
+}
+
+func TestSetupTemporalWorker_FileActivitiesError(t *testing.T) {
+	oldBuild := buildMinIOClientFunc
+	oldActivities := newFileActivitiesFunc
+	t.Cleanup(func() {
+		buildMinIOClientFunc = oldBuild
+		newFileActivitiesFunc = oldActivities
+	})
+
+	buildMinIOClientFunc = func(*config.Config) (*minio.Client, error) {
+		return &minio.Client{}, nil
+	}
+	newFileActivitiesFunc = func(*config.Config, *minio.Client) (*workflow.FileActivities, error) {
+		return nil, errors.New("activity dependency unavailable")
+	}
+
+	c, err := client.NewLazyClient(client.Options{HostPort: "127.0.0.1:7233"})
+	require.NoError(t, err)
+	_, _, err = setupTemporalWorker(context.Background(), c, &config.Config{}, discardLogger())
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "activity dependency unavailable")
 }
 
 type mockWorker struct {
