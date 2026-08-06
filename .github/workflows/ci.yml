@@ -1123,6 +1123,12 @@ jobs:
 
       - name: Enforce Lighthouse thresholds
         if: steps.download_lighthouse_results.outcome == 'success'
+        env:
+          # The artifact is already collected by the frontend shards. The
+          # repository-level LHCI config otherwise performs its build-time
+          # preparation as a side effect of `lhci assert`, requiring wasm-pack
+          # in this assertion-only job.
+          LHCI_SKIP_PREPARE: "1"
         run: |
           npx lhci assert \
             --config=../.lighthouserc.js \
@@ -1889,6 +1895,11 @@ jobs:
           if grep -qF 'Running mutation testing' /tmp/mutmut_run.log; then mutants_started=1; fi
           if [ "$ec" -eq 0 ]; then
             echo "mutmut completed within the time-box."
+            # mutmut 3.5.0's positional-shard `results --all` can emit an
+            # empty stdout stream. Export its authoritative numeric state
+            # before the score gate so missing text cannot become missing
+            # evidence.
+            uv run mutmut export-cicd-stats
             # Verify mutation score (gate blocking at >= 85.0% via mutmut_ci_gate.py)
             echo "Verifying mutation score (gate blocking at >= 85.0%)..."
             uv run python scripts/mutmut_ci_gate.py

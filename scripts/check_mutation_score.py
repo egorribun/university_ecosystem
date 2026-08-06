@@ -15,10 +15,13 @@ Exit codes:
 from __future__ import annotations
 
 import argparse
+import json
 import re
 import subprocess
 import sys
 from dataclasses import dataclass
+from pathlib import Path
+from typing import Any
 
 # ---------------------------------------------------------------------------
 # Data types
@@ -123,6 +126,82 @@ def _parse_mutmut_output(output: str) -> MutationSummary:
         no_tests=_extract(_NO_TESTS_PATTERN, output),
         not_checked=_extract(_NOT_CHECKED_PATTERN, output),
     )
+
+
+def _parse_cicd_stats(payload: str | bytes | dict[str, Any]) -> MutationSummary:
+    """Parse mutmut's authoritative ``export-cicd-stats`` JSON.
+
+    mutmut 3.5.0 can produce an empty stdout stream for ``results --all``
+    after a positional mutation shard, while its JSON exporter still records
+    the complete per-mutant state. Prefer this machine-readable contract in
+    CI; the text parser remains a backwards-compatible fallback for local
+    invocations that do not have an exported stats file.
+    """
+
+    data: Any
+    if isinstance(payload, dict):
+        data = payload
+    else:
+        data = json.loads(payload)
+    if not isinstance(data, dict):
+        raise ValueError("mutmut CI stats must be a JSON object")
+
+    def _count(name: str) -> int:
+        value = data.get(name, 0)
+        if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+            raise ValueError(
+                f"mutmut CI stats field {name!r} must be a non-negative integer"
+            )
+        return value
+
+    killed = _count("killed")
+    survived = _count("survived")
+    total = _count("total")
+    no_tests = _count("no_tests")
+    skipped = _count("skipped")
+    suspicious = _count("suspicious")
+    timeout = _count("timeout")
+    interrupted = _count("check_was_interrupted_by_user")
+    segfault = _count("segfault")
+    caught_by_type_check = _count("caught_by_type_check")
+
+    known = (
+        killed
+        + survived
+        + no_tests
+        + skipped
+        + suspicious
+        + timeout
+        + interrupted
+        + segfault
+        + caught_by_type_check
+    )
+    if total < known:
+        raise ValueError(
+            "mutmut CI stats total is smaller than the sum of its status counts"
+        )
+
+    return MutationSummary(
+        killed=killed,
+        survived=survived,
+        timeout=timeout,
+        suspicious=suspicious,
+        no_tests=no_tests,
+        not_checked=total - known,
+    )
+
+
+def _load_cicd_stats(
+    path: Path = Path("mutants/mutmut-cicd-stats.json"),
+) -> MutationSummary | None:
+    """Load an exported mutmut stats file when the current run produced one."""
+
+    if not path.is_file():
+        return None
+    try:
+        return _parse_cicd_stats(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError, ValueError) as exc:
+        raise ValueError(f"Could not parse mutmut CI stats at {path}: {exc}") from exc
 
 
 # ---------------------------------------------------------------------------
@@ -256,11 +335,11 @@ def main(argv: list[str] | None = None) -> None:
         )
         sys.exit(1)
 
-    print("Running: uv run mutmut results --all …")
-    raw_output = _run_mutmut()
-
     try:
-        summary = _parse_mutmut_output(raw_output)
+        summary = _load_cicd_stats()
+        if summary is None:
+            print("Running: uv run mutmut results --all …")
+            summary = _parse_mutmut_output(_run_mutmut())
     except ValueError as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         sys.exit(1)

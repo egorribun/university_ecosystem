@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 import shutil
 import sys
 from pathlib import Path
@@ -78,3 +79,30 @@ def test_runner_requests_all_statuses(monkeypatch) -> None:
 
     assert checker._run_mutmut() == "status output"
     assert calls == [["uv.exe", "run", "mutmut", "results", "--all"]]
+
+
+def test_parser_accepts_mutmut_cicd_stats_json() -> None:
+    checker = _load_checker()
+    summary = checker._parse_cicd_stats(
+        json.dumps(
+            {
+                "killed": 17,
+                "survived": 3,
+                "total": 24,
+                "no_tests": 2,
+                "skipped": 1,
+                "suspicious": 1,
+                "timeout": 0,
+                "check_was_interrupted_by_user": 0,
+                "segfault": 0,
+                "caught_by_type_check": 0,
+            }
+        )
+    )
+
+    assert summary.killed == 17
+    assert summary.survived == 3
+    assert summary.no_tests == 2
+    assert summary.suspicious == 1
+    assert summary.not_checked == 0
+    assert summary.score == 17 / 20 * 100

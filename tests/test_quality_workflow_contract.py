@@ -865,6 +865,20 @@ def test_incremental_mutation_gate_is_blocking_and_fails_on_timeout() -> None:
         "needs.mutation-tests-incremental.result"
         in jobs["ci-success"]["steps"][0]["run"]
     )
+    export_index = mutation_text.index("mutmut export-cicd-stats")
+    gate_index = mutation_text.index("scripts/mutmut_ci_gate.py")
+    assert export_index < gate_index
+
+
+def test_performance_gate_asserts_downloaded_lighthouse_without_rebuilding() -> None:
+    ci_workflow = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    performance_job = ci_workflow["jobs"]["performance-gate"]
+    threshold_step = next(
+        step
+        for step in performance_job["steps"]
+        if step.get("name") == "Enforce Lighthouse thresholds"
+    )
+    assert threshold_step["env"]["LHCI_SKIP_PREPARE"] == "1"
 
 
 def test_chaos_job_provisions_real_minio_through_toxiproxy() -> None:
