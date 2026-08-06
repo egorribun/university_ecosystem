@@ -752,7 +752,7 @@ def test_nightly_full_gate_contains_the_long_running_quality_suites() -> None:
     assert jobs["kyverno-test"]["timeout-minutes"] == 15
     assert jobs["miri"]["env"]["PROPTEST_DISABLE_FAILURE_PERSISTENCE"] == "1"
     assert jobs["miri"]["env"]["MIRIFLAGS"] == (
-        "-Zmiri-disable-isolation -Zmiri-isolation-error=warn"
+        "-Zmiri-tree-borrows -Zmiri-disable-isolation -Zmiri-isolation-error=warn"
     )
     chaos_job = jobs["load-and-chaos"]
     assert chaos_job["timeout-minutes"] == 45
@@ -771,6 +771,14 @@ def test_nightly_full_gate_contains_the_long_running_quality_suites() -> None:
     ).read_text(encoding="utf-8")
     assert "#[cfg(miri)]" in pyo3_source
     assert "failure_persistence: None" in pyo3_source
+
+
+def test_go_service_dockerfiles_package_local_spiffe_replacement() -> None:
+    for service in ("gateway", "ws-hub", "file-processor"):
+        dockerfile = (REPOSITORY_ROOT / "services" / service / "Dockerfile").read_text(
+            encoding="utf-8"
+        )
+        assert "COPY services/pkg/spiffe ./services/pkg/spiffe" in dockerfile
 
 
 def test_go_fuzz_workflow_executes_all_service_fuzz_targets() -> None:
