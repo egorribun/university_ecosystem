@@ -97,17 +97,22 @@ jobs:
           if-no-files-found: ignore
 
   backend-full:
-    name: Full backend unit suite
+    name: Full backend unit (shard ${{ matrix.unit-shard }})
+    strategy:
+      fail-fast: false
+      matrix:
+        unit-shard: [0, 1, 2, 3]
     uses: ./.github/workflows/reusable-backend-tests.yml
     with:
-      test-group-name: Nightly-Full
+      test-group-name: Nightly-Full-${{ matrix.unit-shard }}
       test-pattern: tests/
       python-version: "3.14"
       coverage-threshold: 0
       run-unit-tests: true
       run-integration-tests: false
       parallel-workers: 0
-      num-shards: 1
+      shard-id: ${{ matrix.unit-shard }}
+      num-shards: 4
     secrets:
       SECRET_KEY: ${{ secrets.SECRET_KEY }}
       CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}

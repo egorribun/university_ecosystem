@@ -791,6 +791,9 @@ def test_nightly_full_gate_contains_the_long_running_quality_suites() -> None:
         2,
         3,
     ]
+    assert jobs["backend-full"]["strategy"]["matrix"]["unit-shard"] == [0, 1, 2, 3]
+    assert jobs["backend-full"]["with"]["run-unit-tests"] is True
+    assert jobs["backend-full"]["with"]["num-shards"] == 4
     assert jobs["backend-integration"]["with"]["run-unit-tests"] is False
     assert jobs["backend-integration"]["with"]["integration-num-shards"] == 4
     assert "backend-integration" in jobs["notify-failure"]["needs"]
