@@ -112,6 +112,10 @@ def test_mutmut_uses_the_unit_population_instead_of_a_single_probe_file() -> Non
         "k8s/kyverno",
         "crates/pyo3-sanitizer/src",
         "frontend/scripts",
+        "frontend/package.json",
+        "frontend/stryker.config.mjs",
+        "frontend/vitest.config.ts",
+        "sonar-project.properties",
     }
     assert required_contract_inputs.issubset(mutation_config["also_copy"])
 

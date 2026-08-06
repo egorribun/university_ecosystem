@@ -9,11 +9,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from authzed.api.v1 import CheckPermissionResponse
 
+from app.auth import rbac
 from app.auth.rbac import (
     PermissionChecker,
     SpiceDBUnavailableError,
-    _permission_cache,
-    _spicedb_breaker,
 )
 from app.core.circuit_breaker import CircuitBreakerState
 
@@ -21,13 +20,13 @@ from app.core.circuit_breaker import CircuitBreakerState
 @pytest.fixture(autouse=True)
 def reset_spicedb_state():
     """Reset global permission cache and circuit breaker before each test."""
-    _permission_cache.clear()
-    _spicedb_breaker._internal_state.state = CircuitBreakerState.CLOSED
-    _spicedb_breaker._internal_state.failure_count = 0
-    _spicedb_breaker._internal_state.success_count = 0
-    _spicedb_breaker._internal_state.last_state_change_time = time.monotonic()
+    rbac._permission_cache.clear()
+    rbac._spicedb_breaker._internal_state.state = CircuitBreakerState.CLOSED
+    rbac._spicedb_breaker._internal_state.failure_count = 0
+    rbac._spicedb_breaker._internal_state.success_count = 0
+    rbac._spicedb_breaker._internal_state.last_state_change_time = time.monotonic()
     yield
-    _permission_cache.clear()
+    rbac._permission_cache.clear()
 
 
 @pytest.mark.asyncio
@@ -66,11 +65,11 @@ async def test_spicedb_cache_key_tenant_and_campus_isolation():
         assert res2 is False
 
         # Verify cache has two distinct entries
-        assert len(_permission_cache) == 2
+        assert len(rbac._permission_cache) == 2
         key1 = (user_id, "campus", campus_id, "view", tenant1, campus_id)
         key2 = (user_id, "campus", campus_id, "view", tenant2, campus_id)
-        assert _permission_cache[key1][0] is True
-        assert _permission_cache[key2][0] is False
+        assert rbac._permission_cache[key1][0] is True
+        assert rbac._permission_cache[key2][0] is False
 
 
 @pytest.mark.asyncio
@@ -102,7 +101,7 @@ async def test_spicedb_two_tier_grace_period_cache():
         # Case A: Within 45s positive TTL -> served from grace cache
         with patch("time.monotonic") as mock_time:
             # Assume 10 seconds elapsed since cache population
-            cached_entry = list(_permission_cache.values())[0]
+            cached_entry = next(iter(rbac._permission_cache.values()))
             mock_time.return_value = cached_entry[1] + 10.0
             stale_res = await checker.check_permission(
                 "document", res_id, "read", user_id
@@ -111,13 +110,13 @@ async def test_spicedb_two_tier_grace_period_cache():
 
         # Case B: Exceeds 45s positive TTL (e.g. 50s elapsed) -> raises SpiceDBUnavailableError (fail closed)
         with patch("time.monotonic") as mock_time:
-            cached_entry = list(_permission_cache.values())[0]
+            cached_entry = next(iter(rbac._permission_cache.values()))
             mock_time.return_value = cached_entry[1] + 50.0
             with pytest.raises(SpiceDBUnavailableError):
                 await checker.check_permission("document", res_id, "read", user_id)
 
     # 2. Populate DENY result
-    _permission_cache.clear()
+    rbac._permission_cache.clear()
     with patch("authzed.api.v1.PermissionsServiceStub") as mock_stub_cls:
         mock_stub = mock_stub_cls.return_value
         mock_stub.CheckPermission = AsyncMock(
@@ -134,7 +133,7 @@ async def test_spicedb_two_tier_grace_period_cache():
 
         # Within 60s DENY TTL (e.g. 55s elapsed) -> served stale DENY
         with patch("time.monotonic") as mock_time:
-            cached_entry = list(_permission_cache.values())[0]
+            cached_entry = next(iter(rbac._permission_cache.values()))
             mock_time.return_value = cached_entry[1] + 55.0
             stale_deny = await checker.check_permission(
                 "document", res_id, "write", user_id
@@ -143,7 +142,7 @@ async def test_spicedb_two_tier_grace_period_cache():
 
         # Exceeds 60s DENY TTL (e.g. 65s elapsed) -> raises SpiceDBUnavailableError
         with patch("time.monotonic") as mock_time:
-            cached_entry = list(_permission_cache.values())[0]
+            cached_entry = next(iter(rbac._permission_cache.values()))
             mock_time.return_value = cached_entry[1] + 65.0
             with pytest.raises(SpiceDBUnavailableError):
                 await checker.check_permission("document", res_id, "write", user_id)
@@ -165,7 +164,7 @@ async def test_spicedb_circuit_breaker_tripping():
                 await checker.check_permission("resource", "id1", "view", "user1")
 
         # Circuit breaker should now be open
-        assert _spicedb_breaker.state == CircuitBreakerState.OPEN
+        assert rbac._spicedb_breaker.state == CircuitBreakerState.OPEN
 
 
 @pytest.mark.asyncio
@@ -186,9 +185,9 @@ async def test_spicedb_lru_cache_max_capacity():
             for i in range(10):
                 await checker.check_permission("res", f"id-{i}", "view", "user1")
 
-            assert len(_permission_cache) == 5
+            assert len(rbac._permission_cache) == 5
             # First 5 items (0..4) should have been evicted
             first_key = ("user1", "res", "id-0", "view", "", "")
             last_key = ("user1", "res", "id-9", "view", "", "")
-            assert first_key not in _permission_cache
-            assert last_key in _permission_cache
+            assert first_key not in rbac._permission_cache
+            assert last_key in rbac._permission_cache

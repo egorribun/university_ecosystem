@@ -549,6 +549,10 @@ also_copy = [
     "k8s/kyverno",
     "crates/pyo3-sanitizer/src",
     "frontend/scripts",
+    "frontend/package.json",
+    "frontend/stryker.config.mjs",
+    "frontend/vitest.config.ts",
+    "sonar-project.properties",
 ]
 #
 # UPDATE (mutmut-green fix): the async cross-loop exclusions (test_spotify_fallback /

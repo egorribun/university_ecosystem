@@ -102,7 +102,10 @@ def test_csrf_token_is_bound_to_the_issuing_session() -> None:
 
     assert _verify_signed_token(token, "session-a", secret) is True
     assert _verify_signed_token(token, "session-b", secret) is False
-    assert _verify_signed_token(token[:-1] + "0", "session-a", secret) is False
+    nonce, received_mac = token.rsplit(".", maxsplit=1)
+    tampered_first_char = "0" if received_mac[0] != "0" else "1"
+    tampered_token = f"{nonce}.{tampered_first_char}{received_mac[1:]}"
+    assert _verify_signed_token(tampered_token, "session-a", secret) is False
 
 
 @pytest.mark.security
