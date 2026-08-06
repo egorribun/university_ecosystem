@@ -347,8 +347,11 @@ def test_incremental_mutation_budget_matches_declared_gate() -> None:
         for step in job["steps"]
         if step.get("name") == "Run incremental mutmut (blocking, 25-minute budget)"
     )
+    assert job["strategy"]["matrix"]["shard"] == [1, 2, 3, 4]
     assert "timeout --kill-after=30s 25m" in run_step["run"]
     assert "grep -E '^app/.*\\.py$'" in run_step["run"]
+    assert "matrix.shard" in run_step["run"]
+    assert "awk -v shard" in run_step["run"]
     assert "grep '^app/core/tenant\\.py$'" not in run_step["run"]
 
 
