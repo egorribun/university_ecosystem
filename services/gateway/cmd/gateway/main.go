@@ -401,7 +401,7 @@ func setupRouter(cfg *config.Config, logger *slog.Logger, grpcConn *grpc.ClientC
 	return router, nil
 }
 
-func runServer(cfg *config.Config, router *gin.Engine, logger *slog.Logger) error {
+func runServer(cfg *config.Config, router *gin.Engine, logger *slog.Logger, signalChannels ...chan os.Signal) error {
 	addr := ":" + cfg.Port
 	srv := &http.Server{
 		Addr:              addr,
@@ -455,7 +455,12 @@ func runServer(cfg *config.Config, router *gin.Engine, logger *slog.Logger) erro
 	}()
 
 	quit := make(chan os.Signal, 1)
-	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	if len(signalChannels) > 0 && signalChannels[0] != nil {
+		quit = signalChannels[0]
+	} else {
+		signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+		defer signal.Stop(quit)
+	}
 	var runErr error
 	select {
 	case <-quit:
