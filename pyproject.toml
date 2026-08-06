@@ -22,7 +22,7 @@ dependencies = [
   "aioboto3>=15.5.0,<16",
   "brotli-asgi>=1.6.0",
   "clamd>=1.0.2",
-  "cryptography>=46.0.7",                             # TD-06 (audit 2026-03-15): updated to fix CVE-2026-26007
+  "cryptography>=50.0.0",                             # SEC: fixes CVE-2026-69247 reported by Trivy on 49.0.0
   "defusedxml>=0.7.1",
   "diskcache>=5.6.3",
   "elasticsearch[async]>=9.3.0,<10.0.0",
@@ -442,6 +442,10 @@ members = ["native/rust_ext", "crates/pyo3-sanitizer"]
 # setup-uv action reads this exact requirement before downloading the binary.
 required-version = "==0.11.28"
 exclude-newer = "7 days"
+# Security exception: cryptography 50.0.0 (uploaded 2026-07-31) fixes
+# CVE-2026-69247; keep the general reproducibility cutoff for every other
+# package while allowing this patched release into the lockfile.
+exclude-newer-package = { cryptography = "2026-08-01T00:00:00Z", pyopenssl = "2026-08-02T00:00:00Z" }
 environments = [
     "sys_platform == 'win32'",
     "sys_platform == 'linux'",
