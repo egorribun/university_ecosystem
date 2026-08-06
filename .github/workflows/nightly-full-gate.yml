@@ -367,7 +367,11 @@ jobs:
       # Config::default constructs the file provider before this env override
       # is applied. Keep the variable for any third-party proptest tests.
       PROPTEST_DISABLE_FAILURE_PERSISTENCE: "1"
-      MIRIFLAGS: "-Zmiri-isolation-error=warn"
+      # proptest's failure persistence probes current_dir even when persistence
+      # is disabled.  Miri's default filesystem isolation rejects that syscall
+      # before the pure-Rust property tests can run; disabling isolation is
+      # scoped to this test-only job and keeps the source crate unchanged.
+      MIRIFLAGS: "-Zmiri-disable-isolation -Zmiri-isolation-error=warn"
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

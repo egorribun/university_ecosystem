@@ -751,7 +751,9 @@ def test_nightly_full_gate_contains_the_long_running_quality_suites() -> None:
     assert "issues" in workflow["permissions"]
     assert jobs["kyverno-test"]["timeout-minutes"] == 15
     assert jobs["miri"]["env"]["PROPTEST_DISABLE_FAILURE_PERSISTENCE"] == "1"
-    assert jobs["miri"]["env"]["MIRIFLAGS"] == "-Zmiri-isolation-error=warn"
+    assert jobs["miri"]["env"]["MIRIFLAGS"] == (
+        "-Zmiri-disable-isolation -Zmiri-isolation-error=warn"
+    )
     chaos_job = jobs["load-and-chaos"]
     assert chaos_job["timeout-minutes"] == 45
     chaos_steps = "\n".join(
