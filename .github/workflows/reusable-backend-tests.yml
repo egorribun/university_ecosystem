@@ -22,6 +22,11 @@ on:
                 required: false
                 type: boolean
                 default: false
+            run-unit-tests:
+                description: "Run the unit-test job"
+                required: false
+                type: boolean
+                default: true
             test-group-name:
                 description: "Name of the test group (e.g., Auth, Events)"
                 required: false
@@ -44,6 +49,16 @@ on:
                 default: -1
             num-shards:
                 description: "Total number of historical-duration shards"
+                required: false
+                type: number
+                default: 1
+            integration-shard-id:
+                description: "0-based historical-duration integration shard index"
+                required: false
+                type: number
+                default: -1
+            integration-num-shards:
+                description: "Total number of historical-duration integration shards"
                 required: false
                 type: number
                 default: 1
@@ -70,6 +85,7 @@ on:
 jobs:
     unit-tests:
         name: Unit Tests (${{ inputs.test-group-name }})
+        if: ${{ inputs.run-unit-tests }}
         runs-on: ubuntu-latest
         timeout-minutes: 45
         env:
@@ -320,7 +336,32 @@ jobs:
 
             - name: Run integration tests
               shell: pwsh
-              run: uv run pytest ${{ inputs.test-pattern }} -v --tb=short -x --ignore=tests/performance --ignore=tests/test_schemathesis_api.py  # nosemgrep: yaml.github-actions.security.run-shell-injection.run-shell-injection
+              run: |  # nosemgrep: yaml.github-actions.security.run-shell-injection.run-shell-injection
+                  $integrationShardArgs = @()
+                  $integrationShardId = [int]"${{ inputs.integration-shard-id }}"
+                  $integrationNumShards = [int]"${{ inputs.integration-num-shards }}"
+                  if ($integrationShardId -ge 0 -or $integrationNumShards -ne 1) {
+                    if ($integrationShardId -lt 0 -or $integrationShardId -ge $integrationNumShards -or $integrationNumShards -lt 1) {
+                      throw "Invalid integration shard configuration: id=$integrationShardId total=$integrationNumShards"
+                    }
+                    $integrationShardArgs = @(
+                      "--shard-id=$integrationShardId",
+                      "--num-shards=$integrationNumShards"
+                    )
+                  }
+
+                  $pytestArgs = @(
+                    "${{ inputs.test-pattern }}",
+                    "-v",
+                    "--tb=short",
+                    "-x"
+                  )
+                  $pytestArgs += $integrationShardArgs
+                  $pytestArgs += @(
+                    "--ignore=tests/performance",
+                    "--ignore=tests/test_schemathesis_api.py"
+                  )
+                  uv run pytest @pytestArgs
 
             - name: Upload test results
               uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

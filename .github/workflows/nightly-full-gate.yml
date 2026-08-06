@@ -97,16 +97,39 @@ jobs:
           if-no-files-found: ignore
 
   backend-full:
-    name: Full backend suite
+    name: Full backend unit suite
     uses: ./.github/workflows/reusable-backend-tests.yml
     with:
       test-group-name: Nightly-Full
       test-pattern: tests/
       python-version: "3.14"
       coverage-threshold: 0
-      run-integration-tests: true
+      run-unit-tests: true
+      run-integration-tests: false
       parallel-workers: 0
       num-shards: 1
+    secrets:
+      SECRET_KEY: ${{ secrets.SECRET_KEY }}
+      CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+
+  backend-integration:
+    name: Full backend integration (shard ${{ matrix.integration-shard }})
+    strategy:
+      fail-fast: false
+      matrix:
+        integration-shard: [0, 1, 2, 3]
+    uses: ./.github/workflows/reusable-backend-tests.yml
+    with:
+      test-group-name: Nightly-Integration-${{ matrix.integration-shard }}
+      test-pattern: tests/
+      python-version: "3.14"
+      coverage-threshold: 0
+      run-unit-tests: false
+      run-integration-tests: true
+      parallel-workers: -1
+      num-shards: 1
+      integration-shard-id: ${{ matrix.integration-shard }}
+      integration-num-shards: 4
     secrets:
       SECRET_KEY: ${{ secrets.SECRET_KEY }}
       CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
@@ -413,6 +436,7 @@ jobs:
       - mutation-tests-full
       - frontend-mutation-tests-full
       - backend-full
+      - backend-integration
       - go-integration
       - container-integration-cells
       - browser-matrix

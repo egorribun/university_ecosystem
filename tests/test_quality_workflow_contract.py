@@ -580,8 +580,11 @@ def test_backend_ci_uses_historical_duration_shards_and_aggregates_coverage() ->
 
     backend_workflow = yaml.safe_load(BACKEND_WORKFLOW_PATH.read_text(encoding="utf-8"))
     inputs = _workflow_triggers(backend_workflow)["workflow_call"]["inputs"]
+    assert inputs["run-unit-tests"]["default"] is True
     assert inputs["shard-id"]["default"] == -1
     assert inputs["num-shards"]["default"] == 1
+    assert inputs["integration-shard-id"]["default"] == -1
+    assert inputs["integration-num-shards"]["default"] == 1
     run_step = next(
         step
         for step in backend_workflow["jobs"]["unit-tests"]["steps"]
@@ -589,6 +592,13 @@ def test_backend_ci_uses_historical_duration_shards_and_aggregates_coverage() ->
     )
     assert "--shard-id=${{ inputs.shard-id }}" in run_step["run"]
     assert "--num-shards=${{ inputs.num-shards }}" in run_step["run"]
+    integration_run_step = next(
+        step
+        for step in backend_workflow["jobs"]["integration-tests"]["steps"]
+        if step.get("name") == "Run integration tests"
+    )
+    assert "inputs.integration-shard-id" in integration_run_step["run"]
+    assert "inputs.integration-num-shards" in integration_run_step["run"]
 
 
 def test_reusable_quality_jobs_have_bounded_execution() -> None:
@@ -775,6 +785,15 @@ def test_nightly_full_gate_contains_the_long_running_quality_suites() -> None:
         "services/ws-hub",
         "services/file-processor",
     ]
+    assert jobs["backend-integration"]["strategy"]["matrix"]["integration-shard"] == [
+        0,
+        1,
+        2,
+        3,
+    ]
+    assert jobs["backend-integration"]["with"]["run-unit-tests"] is False
+    assert jobs["backend-integration"]["with"]["integration-num-shards"] == 4
+    assert "backend-integration" in jobs["notify-failure"]["needs"]
     cell_job = jobs["container-integration-cells"]
     assert cell_job["env"]["USE_TESTCONTAINERS_MINIO"] == "1"
     assert cell_job["env"]["USE_TESTCONTAINERS_SPICEDB"] == "1"
