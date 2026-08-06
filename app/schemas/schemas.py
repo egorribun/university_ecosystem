@@ -242,9 +242,28 @@ class MfaChallengeOut(OrmModel):
     payload: dict[str, Any] | None = None
     attempt_count: int = 0
     # TD-W5-01: Added after the original payload shape was persisted.  The
-    # default preserves deserialisation of pre-migration payloads that have no
-    # state field; ORM rows created after the migration expose the enum value.
+    # validator below preserves the state encoded by pre-migration payloads
+    # that have no state field; ORM rows created after the migration expose the
+    # enum value directly.
     state: ChallengeState = ChallengeState.PENDING
+
+    @model_validator(mode="before")
+    @classmethod
+    def restore_legacy_state(cls, value: Any) -> Any:
+        """Recover the MFA state encoded by the pre-enum payload shape.
+
+        The migration introduced ``state`` after older serialized rows already
+        existed.  Those rows used ``consumed_at``/``locked_at`` as the state
+        machine.  Preserve that meaning when an old dict is read instead of
+        silently defaulting a consumed or locked challenge to ``pending``.
+        """
+        if not isinstance(value, dict) or "state" in value:
+            return value
+        if value.get("locked_at") is not None:
+            return {**value, "state": ChallengeState.LOCKED}
+        if value.get("consumed_at") is not None:
+            return {**value, "state": ChallengeState.CONSUMED}
+        return value
 
 
 class MfaFactorStatusOut(BaseModel):
