@@ -397,7 +397,7 @@ def test_iac_scan_exceptions_use_supported_scoped_syntax() -> None:
         for step in security_workflow["jobs"]["docker-security"]["steps"]
         if step.get("name") == "Run Trivy configuration scanner (IaC)"
     )
-    assert config_scan["with"]["trivyignores"] == ".trivyignore.yaml"
+    assert config_scan["with"]["trivyignores"] == ".trivyignore,.trivyignore.yaml"
 
     trivy_ignore = yaml.safe_load(
         (REPOSITORY_ROOT / ".trivyignore.yaml").read_text(encoding="utf-8")

@@ -153,7 +153,9 @@ jobs:
           # Keep the OSS-Fuzz builder's documented root exception scoped to
           # that single Dockerfile; all other container user findings remain
           # blocking code-scanning alerts.
-          trivyignores: ".trivyignore.yaml"
+          # Preserve the repository-wide Kubernetes suppressions and add the
+          # scoped YAML exception for the disposable OSS-Fuzz builder.
+          trivyignores: ".trivyignore,.trivyignore.yaml"
           format: "sarif"
           output: "trivy-config.sarif"
           severity: "CRITICAL,HIGH"
