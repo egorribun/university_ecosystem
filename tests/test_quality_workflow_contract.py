@@ -886,6 +886,7 @@ def test_reusable_quality_jobs_have_bounded_execution() -> None:
         "fallback",
     ]
     assert lighthouse_shards["env"]["LHCI_URLS"] == "${{ matrix.urls }}"
+    assert lighthouse_shards["env"]["LHCI_SKIP_SYSTEM_DEPS"] == "1"
     shard_upload = next(
         step
         for step in lighthouse_shards["steps"]
@@ -1249,6 +1250,13 @@ def test_lhci_command_runner_uses_shell_free_platform_resolution() -> None:
     assert "shell: false" in lhci_script
     assert "shell: true" not in lhci_script
     assert '"/d", "/s", "/c", `${command}.cmd`' in lhci_script
+
+
+def test_lhci_system_dependency_bootstrap_is_explicitly_skippable() -> None:
+    lhci_script = LHCI_SCRIPT_PATH.read_text(encoding="utf-8")
+
+    assert "LHCI_SKIP_SYSTEM_DEPS" in lhci_script
+    assert "playwright install-deps chromium" in lhci_script
 
 
 def test_chaos_job_provisions_real_minio_through_toxiproxy() -> None:

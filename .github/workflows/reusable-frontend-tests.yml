@@ -393,6 +393,11 @@ jobs:
     env:
       VITE_BACKEND_ORIGIN: http://localhost:8000
       LHCI_URLS: ${{ matrix.urls }}
+      # ubuntu-latest already contains the browser runtime libraries. The
+      # Playwright apt bootstrap is intentionally opt-in here: every matrix
+      # shard has its own runner, and a slow apt mirror can consume the full
+      # Lighthouse timeout before the audit begins.
+      LHCI_SKIP_SYSTEM_DEPS: "1"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 

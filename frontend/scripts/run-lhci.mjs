@@ -85,7 +85,19 @@ async function ensureChromiumExecutable() {
 }
 
 async function ensureSystemDependencies() {
-  if (dependenciesEnsured) {
+  const skipSystemDependencies =
+    process.env.LHCI_SKIP_SYSTEM_DEPS === "1" || process.env.LHCI_SKIP_SYSTEM_DEPS === "true"
+
+  // GitHub-hosted Ubuntu runners are pre-provisioned with the shared browser
+  // libraries. Re-running Playwright's apt bootstrap in every Lighthouse
+  // matrix shard is both redundant and vulnerable to slow package mirrors
+  // (the 20-minute shard budget can be exhausted before Lighthouse starts).
+  // Keep the explicit opt-out so local and self-hosted runners retain the
+  // documented `playwright install-deps chromium` fallback by default.
+  if (dependenciesEnsured || skipSystemDependencies) {
+    if (skipSystemDependencies && !dependenciesEnsured) {
+      console.log("Skipping Playwright system-dependency bootstrap (LHCI_SKIP_SYSTEM_DEPS is set).")
+    }
     return
   }
 
