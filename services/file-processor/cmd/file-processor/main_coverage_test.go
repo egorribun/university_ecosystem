@@ -14,6 +14,7 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"os/exec"
@@ -21,6 +22,7 @@ import (
 	"testing"
 	"time"
 
+	graphql "github.com/graph-gophers/graphql-go"
 	"github.com/minio/minio-go/v7"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -30,6 +32,8 @@ import (
 	"go.temporal.io/sdk/client"
 	"go.temporal.io/sdk/worker"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/credentials/insecure"
 )
 
 func discardLogger() *slog.Logger {
@@ -68,6 +72,30 @@ func TestInitSpiffeClient_InvalidTrustDomainFailsClosed(t *testing.T) {
 	assert.Nil(t, client)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "trust")
+}
+
+func TestInitSpiffeClient_DisabledErrorFallsBackToNil(t *testing.T) {
+	oldNewClient := newSpiffeClientFunc
+	t.Cleanup(func() { newSpiffeClientFunc = oldNewClient })
+	newSpiffeClientFunc = func(context.Context, spiffe.Config, *slog.Logger) (*spiffe.Client, error) {
+		return nil, errors.New("synthetic SPIFFE failure")
+	}
+
+	client, err := initSpiffeClient(context.Background(), &config.Config{}, discardLogger())
+	require.NoError(t, err)
+	assert.Nil(t, client)
+}
+
+func TestInitSpiffeClient_EnabledNilClientFailsClosed(t *testing.T) {
+	oldNewClient := newSpiffeClientFunc
+	t.Cleanup(func() { newSpiffeClientFunc = oldNewClient })
+	newSpiffeClientFunc = func(context.Context, spiffe.Config, *slog.Logger) (*spiffe.Client, error) {
+		return nil, nil
+	}
+
+	client, err := initSpiffeClient(context.Background(), &config.Config{SpiffeEnabled: true}, discardLogger())
+	assert.Nil(t, client)
+	require.EqualError(t, err, "SPIFFE is enabled but client initialization returned nil")
 }
 
 func TestInitTracer_ProductionInsecureForbidden(t *testing.T) {
@@ -189,6 +217,27 @@ func TestConnectTemporal_CancelledContext(t *testing.T) {
 	assert.Nil(t, c)
 }
 
+func TestConnectTemporal_ExhaustsRetriesWithoutWaiting(t *testing.T) {
+	oldDial := dialTemporalFunc
+	oldWait := temporalRetryWaitFunc
+	t.Cleanup(func() {
+		dialTemporalFunc = oldDial
+		temporalRetryWaitFunc = oldWait
+	})
+	dialTemporalFunc = func(client.Options) (client.Client, error) {
+		return nil, errors.New("synthetic Temporal dial failure")
+	}
+	temporalRetryWaitFunc = func(time.Duration) <-chan time.Time {
+		ready := make(chan time.Time)
+		close(ready)
+		return ready
+	}
+
+	c, err := connectTemporal(context.Background(), &config.Config{TemporalHost: "temporal:7233"}, discardLogger())
+	assert.Nil(t, c)
+	require.ErrorContains(t, err, "after multiple attempts")
+}
+
 func TestStartNatsSubscriber_FailGracefully(t *testing.T) {
 	t.Run("connecting in background", func(t *testing.T) {
 		cfg := &config.Config{
@@ -262,6 +311,21 @@ func TestSetupGraphQLServer_InvalidSchemaReturnsParseError(t *testing.T) {
 	require.Error(t, err)
 }
 
+func TestSetupGraphQLServer_ConvertsSchemaParserPanicToError(t *testing.T) {
+	tempSchema := filepath.Join(t.TempDir(), "schema.graphql")
+	require.NoError(t, os.WriteFile(tempSchema, []byte("type Query { health: String }") /* #nosec G306 -- test-only schema */, 0600))
+	t.Setenv("FP_SCHEMA_PATH", tempSchema)
+
+	oldParseSchema := parseGraphQLSchemaFunc
+	t.Cleanup(func() { parseGraphQLSchemaFunc = oldParseSchema })
+	parseGraphQLSchemaFunc = func(string, interface{}, ...graphql.SchemaOpt) (*graphql.Schema, error) {
+		panic("synthetic schema parser panic")
+	}
+
+	_, err := setupGraphQLServer(context.Background(), &config.Config{GraphQLPort: "0"}, nil, nil, discardLogger())
+	require.ErrorContains(t, err, "graphql schema parse panic")
+}
+
 func TestRunServers_CleanShutdown(t *testing.T) {
 	content, err := os.ReadFile("../../schema.graphql")
 	if err == nil {
@@ -307,6 +371,34 @@ func TestRunServers_GraphQLListenFailure(t *testing.T) {
 	err := runServers(ctx, grpcSrv, graphqlSrv, cfg, discardLogger())
 	assert.Error(t, err)
 	grpcSrv.Stop()
+}
+
+func TestRunServers_GRPCServeAndShutdownErrors(t *testing.T) {
+	oldGRPCServe := grpcServeFunc
+	oldGraphQLServe := graphqlListenAndServeFunc
+	oldShutdown := graphqlShutdownFunc
+	t.Cleanup(func() {
+		grpcServeFunc = oldGRPCServe
+		graphqlListenAndServeFunc = oldGraphQLServe
+		graphqlShutdownFunc = oldShutdown
+	})
+	grpcServeFunc = func(_ *grpc.Server, listener net.Listener) error {
+		_ = listener.Close()
+		return errors.New("synthetic gRPC serve failure")
+	}
+	graphqlListenAndServeFunc = func(*http.Server) error { return http.ErrServerClosed }
+	graphqlShutdownFunc = func(*http.Server, context.Context) error {
+		return errors.New("synthetic HTTP shutdown failure")
+	}
+
+	err := runServers(
+		context.Background(),
+		grpc.NewServer(),
+		&http.Server{},
+		&config.Config{GRPCPort: "0", GraphQLPort: "0"},
+		discardLogger(),
+	)
+	require.EqualError(t, err, "synthetic gRPC serve failure")
 }
 
 func TestConnectTemporal_APIKeyFileHandling(t *testing.T) {
@@ -447,6 +539,7 @@ func TestSetupGraphQLServer_RestrictIntrospection(t *testing.T) {
 	srv, err := setupGraphQLServer(context.Background(), cfg, nil, nil, discardLogger())
 	require.NoError(t, err)
 	assert.NotNil(t, srv)
+	assert.False(t, denyGraphQLIntrospection(context.Background()))
 }
 
 func TestSetupTemporalWorker_BuildMinIOClientError(t *testing.T) {
@@ -845,6 +938,22 @@ func TestSetupGRPCServer_SpiffeCredentialFailure(t *testing.T) {
 	assert.Contains(t, err.Error(), "uninitialized")
 }
 
+func TestSetupGRPCServer_SpiffeCredentialsAreAttached(t *testing.T) {
+	oldCredentials := grpcServerCredentialsFunc
+	t.Cleanup(func() { grpcServerCredentialsFunc = oldCredentials })
+	grpcServerCredentialsFunc = func(*spiffe.Client, ...string) (credentials.TransportCredentials, error) {
+		return insecure.NewCredentials(), nil
+	}
+
+	server, err := setupGRPCServer(context.Background(), &config.Config{
+		JWTSecret:     "secret",
+		SpiffeEnabled: true,
+	}, nil, nil, discardLogger(), &spiffe.Client{})
+	require.NoError(t, err)
+	require.NotNil(t, server)
+	server.Stop()
+}
+
 func TestSetupGraphQLServer_InvalidSchemaError(t *testing.T) {
 	tmpFile, err := os.CreateTemp("", "invalid_schema_*.graphql")
 	require.NoError(t, err)
@@ -863,4 +972,26 @@ func TestSetupGraphQLServer_InvalidSchemaError(t *testing.T) {
 	}
 	_, err = setupGraphQLServer(context.Background(), cfg, nil, nil, discardLogger())
 	require.Error(t, err)
+}
+
+func TestRunMain_ClosesSpiffeClientErrorIsLogged(t *testing.T) {
+	configureRunMainStubs(t)
+	initSpiffeClientFunc = func(context.Context, *config.Config, *slog.Logger) (*spiffe.Client, error) {
+		return &spiffe.Client{}, nil
+	}
+	setupGRPCServerFunc = func(context.Context, *config.Config, *rsa.PublicKey, client.Client, ...any) (*grpc.Server, error) {
+		return grpc.NewServer(), nil
+	}
+	setupGraphQLServerFunc = func(context.Context, *config.Config, *rsa.PublicKey, client.Client, *slog.Logger) (*http.Server, error) {
+		return &http.Server{ReadHeaderTimeout: time.Second}, nil
+	}
+	runServersFunc = func(context.Context, *grpc.Server, *http.Server, *config.Config, *slog.Logger) error {
+		return errors.New("synthetic server failure")
+	}
+	oldClose := closeSpiffeClientFunc
+	t.Cleanup(func() { closeSpiffeClientFunc = oldClose })
+	closeSpiffeClientFunc = func(*spiffe.Client) error { return errors.New("synthetic SPIFFE close failure") }
+
+	err := runMain(context.Background())
+	require.EqualError(t, err, "synthetic server failure")
 }

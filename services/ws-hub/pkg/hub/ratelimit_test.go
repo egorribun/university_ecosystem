@@ -135,6 +135,14 @@ func TestRealIP(t *testing.T) {
 }
 
 func TestWSUpgradeRateLimiter_GC(t *testing.T) {
+	defaultInterval := &WSUpgradeRateLimiter{
+		stopGC: make(chan struct{}),
+		gcDone: make(chan struct{}),
+	}
+	go defaultInterval.gcLoop()
+	time.Sleep(5 * time.Millisecond)
+	defaultInterval.Stop()
+
 	l := &WSUpgradeRateLimiter{
 		capacity:    2,
 		ratePerSec:  2,

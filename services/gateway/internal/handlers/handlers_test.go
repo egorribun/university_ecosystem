@@ -330,12 +330,16 @@ func TestFileProcessSyncHandler_Errors(t *testing.T) {
 			},
 		}
 		router := gin.New()
-		router.POST("/sync", FileProcessSyncHandler(ctx, dummyConn, mockClient, logger))
+		router.POST("/sync", func(c *gin.Context) {
+			c.Set("tenant_id", "tenant-from-context")
+			c.Next()
+		}, FileProcessSyncHandler(ctx, dummyConn, mockClient, logger))
 
 		w := httptest.NewRecorder()
 		reqBody := `{"id":"550e8400-e29b-41d4-a716-446655440000","type":"resize","source_key":"in.png","dest_key":"out.png"}`
 		req := newRequestWithChildContext(t, ctx, http.MethodPost, "/sync", bytes.NewReader([]byte(reqBody)))
 		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Authorization", "Bearer test-token")
 		router.ServeHTTP(w, req)
 
 		assert.Equal(t, http.StatusOK, w.Code)

@@ -293,7 +293,7 @@ func TestValidateRS256_WithoutJWKSConfigured(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestHandleWebSocket_E2EUpgradeJoinAndDeliver(t *testing.T) {
-	h := hubWithTicketRedis(t, "user-e2e:jti-1")
+	h := hubWithTicketRedis(t, "user-e2e:jti-1:tenant-e2e")
 	cfg := &config.Config{SendBufferSize: 8}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -324,6 +324,9 @@ func TestHandleWebSocket_E2EUpgradeJoinAndDeliver(t *testing.T) {
 		_, ok := h.Clients["user-e2e"]
 		return ok
 	}, 2*time.Second, 10*time.Millisecond)
+	h.mu.RLock()
+	assert.Equal(t, "tenant-e2e", h.Clients["user-e2e"].Identity.TenantID)
+	h.mu.RUnlock()
 
 	// Join a room through ReadPump (NATS-free message type).
 	require.NoError(t, conn.WriteJSON(map[string]string{"type": "join", "room": "room-e2e"}))

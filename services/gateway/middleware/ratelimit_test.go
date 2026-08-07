@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -11,7 +12,23 @@ import (
 	"github.com/go-redis/redis_rate/v10"
 	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
+
+func TestNewRateLimiter_ReportsRedisCloseFailure(t *testing.T) {
+	oldClose := closeRedisClientFunc
+	t.Cleanup(func() { closeRedisClientFunc = oldClose })
+	closeRedisClientFunc = func(client *redis.Client) error {
+		_ = client.Close() //nolint:errcheck // deliberately return the synthetic error below
+		return errors.New("synthetic redis close failure")
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	_, err := NewRateLimiter(ctx, "redis://127.0.0.1:6379", 10, 10)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "failed to close Redis client")
+}
 
 func TestRateLimiter_GetClientKey_ReturnsUserIDWhenAuthenticated(t *testing.T) {
 	gin.SetMode(gin.TestMode)

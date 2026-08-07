@@ -205,6 +205,17 @@ func TestHTTPJWTMiddleware_InvalidSignatureRejected(t *testing.T) {
 	assert.Equal(t, http.StatusUnauthorized, rec.Code)
 }
 
+func TestHTTPJWTMiddleware_NonMapClaimsAreRejected(t *testing.T) {
+	oldParseJWT := parseJWTFunc
+	t.Cleanup(func() { parseJWTFunc = oldParseJWT })
+	parseJWTFunc = func(string, jwt.Keyfunc, ...jwt.ParserOption) (*jwt.Token, error) {
+		return &jwt.Token{Claims: &jwt.RegisteredClaims{}, Valid: true}, nil
+	}
+
+	rec, _ := runMiddleware(t, "test-secret", nil, "Bearer synthetic")
+	assert.Equal(t, http.StatusUnauthorized, rec.Code)
+}
+
 func TestHTTPJWTMiddleware_TenantContextUsesHeaderBeforeClaim(t *testing.T) {
 	token := signedToken(t, jwt.SigningMethodHS256, []byte("hmac-secret"), jwt.MapClaims{
 		"sub":       "tenant-user",
@@ -293,6 +304,18 @@ func TestAuthFunc_MissingSubRejected(t *testing.T) {
 	token := signedToken(t, jwt.SigningMethodHS256, []byte("grpc-secret"), jwt.MapClaims{"role": "nobody"})
 
 	_, err := fn(metadataCtx(token))
+	require.Error(t, err)
+	assert.Equal(t, codes.Unauthenticated, status.Code(err))
+}
+
+func TestAuthFunc_NonMapClaimsAreRejected(t *testing.T) {
+	oldParseJWT := parseJWTFunc
+	t.Cleanup(func() { parseJWTFunc = oldParseJWT })
+	parseJWTFunc = func(string, jwt.Keyfunc, ...jwt.ParserOption) (*jwt.Token, error) {
+		return &jwt.Token{Claims: &jwt.RegisteredClaims{}, Valid: true}, nil
+	}
+
+	_, err := authFunc("test-secret", nil, testLogger())(metadataCtx("synthetic"))
 	require.Error(t, err)
 	assert.Equal(t, codes.Unauthenticated, status.Code(err))
 }

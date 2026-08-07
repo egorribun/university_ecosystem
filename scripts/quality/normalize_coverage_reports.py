@@ -1309,6 +1309,136 @@ def _validate_rust_file_identities(
             seen_identities.add(identity)
 
 
+def _parse_rust_crypto_source_function_pair(
+    document: dict[str, object],
+    component: str,
+    ignore_outside_files: bool,
+) -> tuple[int, int] | None:
+    """Count source functions without wasm-bindgen-generated glue symbols.
+
+    ``cargo llvm-cov --all-targets`` includes generated wasm-bindgen wrapper
+    monomorphizations in its function summary.  Those symbols are not source
+    functions and can be unexecuted in the native test binary even when every
+    Rust function is covered.  The detailed LLVM function list retains the
+    source filename, source span, and execution count needed to deduplicate
+    target-specific instantiations while excluding only the generated ``_RNC``
+    symbols for the rust-crypto component.
+    """
+    if component != "rust-crypto" or "data" not in document:
+        return None
+    data = document["data"]
+    if not isinstance(data, list) or len(data) != 1:
+        return None
+    entry = data[0]
+    if not isinstance(entry, dict) or "functions" not in entry:
+        return None
+    reported_files = entry.get("files")
+    if not isinstance(reported_files, list):
+        return None
+    reported_identities: set[str] = set()
+    for file_index, file_entry in enumerate(reported_files):
+        if not isinstance(file_entry, dict):
+            raise _InputError(f"LLVM JSON files[{file_index}] must be an object")
+        for field_name in ("filename", "path"):
+            filename = file_entry.get(field_name)
+            if filename is None:
+                continue
+            if not isinstance(filename, str):
+                raise _InputError(
+                    f"LLVM JSON files[{file_index}].{field_name} must be a string"
+                )
+            try:
+                reported_identities.add(_canonical_source_identity(component, filename))
+            except _InputError as error:
+                if ignore_outside_files and (
+                    "outside the repository" in str(error)
+                    or "configured roots" in str(error)
+                ):
+                    continue
+                raise
+    if not reported_identities:
+        return None
+    function_entries = entry["functions"]
+    if not isinstance(function_entries, list):
+        raise _InputError("LLVM JSON data[0].functions must be a list")
+
+    source_functions: dict[tuple[str, int, int], bool] = {}
+    for index, function in enumerate(function_entries):
+        if not isinstance(function, dict):
+            raise _InputError(f"LLVM JSON functions[{index}] must be an object")
+        name = function.get("name")
+        if not isinstance(name, str) or not name:
+            raise _InputError(f"LLVM JSON functions[{index}].name must be a string")
+        if name.startswith("_RNC"):
+            continue
+
+        filenames = function.get("filenames")
+        if not isinstance(filenames, list) or not filenames:
+            raise _InputError(
+                f"LLVM JSON functions[{index}].filenames must be a non-empty list"
+            )
+        identities: list[str] = []
+        for filename in filenames:
+            if not isinstance(filename, str):
+                raise _InputError(
+                    f"LLVM JSON functions[{index}].filenames must contain strings"
+                )
+            try:
+                identities.append(_canonical_source_identity(component, filename))
+            except _InputError as error:
+                if ignore_outside_files and (
+                    "outside the repository" in str(error)
+                    or "configured roots" in str(error)
+                ):
+                    continue
+                raise
+        if not identities or not any(
+            identity in reported_identities for identity in identities
+        ):
+            continue
+
+        regions = function.get("regions")
+        if not isinstance(regions, list) or not regions:
+            raise _InputError(
+                f"LLVM JSON functions[{index}].regions must be a non-empty list"
+            )
+        line_spans: list[tuple[int, int]] = []
+        for region_index, region in enumerate(regions):
+            if not isinstance(region, list) or len(region) < 4:
+                raise _InputError(
+                    f"LLVM JSON functions[{index}].regions[{region_index}] must contain source "
+                    "coordinates"
+                )
+            start_line = _parse_nonnegative_integer(
+                region[0],
+                f"LLVM functions[{index}].regions[{region_index}] start line",
+            )
+            end_line = _parse_nonnegative_integer(
+                region[2],
+                f"LLVM functions[{index}].regions[{region_index}] end line",
+            )
+            if end_line < start_line:
+                raise _InputError(
+                    f"LLVM functions[{index}].regions[{region_index}] has a reversed span"
+                )
+            line_spans.append((start_line, end_line))
+
+        count = _parse_nonnegative_integer(
+            function.get("count"), f"LLVM functions[{index}] count"
+        )
+        key = (
+            identities[0],
+            min(span[0] for span in line_spans),
+            max(span[1] for span in line_spans),
+        )
+        source_functions[key] = source_functions.get(key, False) or count > 0
+
+    if not source_functions:
+        return None
+    covered = sum(covered_function for covered_function in source_functions.values())
+    return covered, len(source_functions)
+
+
 def _parse_rust_llvm_json(
     raw: bytes,
     component: str,
@@ -1355,9 +1485,14 @@ def _parse_rust_llvm_json(
     _validate_rust_file_identities(component, file_collections, ignore_outside_files)
 
     line_pairs = [_parse_rust_counter(totals, "lines") for totals in totals_entries]
-    function_pairs = [
-        _parse_rust_counter(totals, "functions") for totals in totals_entries
-    ]
+    source_function_pair = _parse_rust_crypto_source_function_pair(
+        document, component, ignore_outside_files
+    )
+    function_pairs = (
+        [source_function_pair]
+        if source_function_pair is not None
+        else [_parse_rust_counter(totals, "functions") for totals in totals_entries]
+    )
     return {
         "lines": _measured_metric(
             "native",

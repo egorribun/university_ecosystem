@@ -605,6 +605,66 @@ def test_rust_direct_totals_form_is_normalized(tmp_path: Path) -> None:
     assert _metric(manifest, "rust-native", "functions")["percent"] == 50.0
 
 
+def test_rust_crypto_function_floor_ignores_wasm_bindgen_generated_wrappers(
+    tmp_path: Path,
+) -> None:
+    """Count source functions, not uncovered wasm-bindgen glue monomorphizations."""
+    source_path = "frontend/rust-crypto/src/lib.rs"
+    report_path = tmp_path / "rust-crypto-generated-functions.json"
+    report_path.write_text(
+        json.dumps(
+            {
+                "data": [
+                    {
+                        "totals": {
+                            "functions": {"count": 3, "covered": 2},
+                            "lines": {"count": 4, "covered": 3},
+                        },
+                        "files": [{"filename": source_path}],
+                        "functions": [
+                            {
+                                "name": "_RNv_source_pbdkf2_derive",
+                                "count": 1,
+                                "filenames": [source_path],
+                                "regions": [[10, 1, 10, 2, 1, 0, 0, 0]],
+                            },
+                            {
+                                "name": "_RNv_source_hmac_sha256_sign",
+                                "count": 1,
+                                "filenames": [source_path],
+                                "regions": [[17, 1, 17, 2, 1, 0, 0, 0]],
+                            },
+                            {
+                                "name": "_RNC_source_hmac_sha256_sign0B3_",
+                                "count": 0,
+                                "filenames": [source_path],
+                                "regions": [[17, 1, 17, 2, 0, 0, 0, 0]],
+                            },
+                        ],
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    output = tmp_path / "quality-manifest.json"
+    result = _run_normalizer(
+        output,
+        "--rust-report",
+        f"rust-crypto={report_path}",
+    )
+
+    assert result.returncode == 1
+    manifest = json.loads(output.read_text(encoding="utf-8"))
+    assert _metric(manifest, "rust-crypto", "functions") == {
+        "covered": 2,
+        "percent": 100.0,
+        "status": "native",
+        "total": 2,
+    }
+
+
 def test_source_identity_accepts_in_root_relative_backslash_and_absolute_paths(
     tmp_path: Path,
 ) -> None:

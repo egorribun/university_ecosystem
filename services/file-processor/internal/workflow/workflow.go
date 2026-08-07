@@ -177,6 +177,20 @@ var imageMIMETypes = map[string]string{
 	"webp": "image/webp",
 }
 
+var (
+	getObjectFunc = func(
+		client *minio.Client,
+		ctx context.Context,
+		bucket string,
+		key string,
+		options minio.GetObjectOptions,
+	) (*minio.Object, error) {
+		return client.GetObject(ctx, bucket, key, options)
+	}
+	jpegEncodeFunc = jpeg.Encode
+	pngEncodeFunc  = png.Encode
+)
+
 // sanitizeMinIOKey validates and normalises a MinIO object key.
 // MinIO keys are URI path segments; path.Clean normalises ".." sequences.
 // AUDIT-INFRA-04: path traversal in object keys can reach outside the intended
@@ -256,7 +270,7 @@ func (a *FileActivities) ResizeImageActivity(ctx context.Context, job ProcessJob
 }
 
 func (a *FileActivities) downloadAndDecodeImage(ctx context.Context, key string) (image.Image, string, error) {
-	obj, err := a.MinioClient.GetObject(ctx, a.Bucket, key, minio.GetObjectOptions{})
+	obj, err := getObjectFunc(a.MinioClient, ctx, a.Bucket, key, minio.GetObjectOptions{})
 	if err != nil {
 		return nil, "", err
 	}
@@ -281,15 +295,7 @@ func (a *FileActivities) downloadAndDecodeImage(ctx context.Context, key string)
 			}
 		}()
 
-		type deadliner interface{ SetReadDeadline(time.Time) error }
-		if dl, ok := any(obj).(deadliner); ok {
-			if deadline, hasDeadline := ctx.Deadline(); hasDeadline {
-				if err := dl.SetReadDeadline(deadline); err != nil {
-					// Special case: logging here instead of failing since decode is the main goal
-					_ = err
-				}
-			}
-		}
+		applyDecodeDeadline(obj, ctx)
 		img, format, err := image.Decode(obj)
 		doneCh <- decodeResult{img, format, err}
 	}()
@@ -308,21 +314,33 @@ func (a *FileActivities) downloadAndDecodeImage(ctx context.Context, key string)
 	}
 }
 
+func applyDecodeDeadline(obj any, ctx context.Context) {
+	type deadliner interface{ SetReadDeadline(time.Time) error }
+	if dl, ok := obj.(deadliner); ok {
+		if deadline, hasDeadline := ctx.Deadline(); hasDeadline {
+			if err := dl.SetReadDeadline(deadline); err != nil {
+				// Special case: logging here instead of failing since decode is the main goal
+				_ = err
+			}
+		}
+	}
+}
+
 func encodeImage(dst *image.RGBA, format string) (*bytes.Buffer, string, error) {
 	var buf bytes.Buffer
 	outFormat := format
 	switch format {
 	case "jpeg", "jpg":
-		if err := jpeg.Encode(&buf, dst, &jpeg.Options{Quality: 85}); err != nil {
+		if err := jpegEncodeFunc(&buf, dst, &jpeg.Options{Quality: 85}); err != nil {
 			return nil, "", err
 		}
 	case "png":
-		if err := png.Encode(&buf, dst); err != nil {
+		if err := pngEncodeFunc(&buf, dst); err != nil {
 			return nil, "", err
 		}
 	case "webp":
 		outFormat = "png"
-		if err := png.Encode(&buf, dst); err != nil {
+		if err := pngEncodeFunc(&buf, dst); err != nil {
 			return nil, "", fmt.Errorf("webp→png transcode: %w", err)
 		}
 	default:
@@ -330,7 +348,7 @@ func encodeImage(dst *image.RGBA, format string) (*bytes.Buffer, string, error) 
 		// the actual encoding used.  Without this the caller would get the original
 		// unknown format string back (e.g. "tiff") while the bytes are JPEG.
 		outFormat = "jpeg"
-		if err := jpeg.Encode(&buf, dst, &jpeg.Options{Quality: 85}); err != nil {
+		if err := jpegEncodeFunc(&buf, dst, &jpeg.Options{Quality: 85}); err != nil {
 			return nil, "", err
 		}
 	}

@@ -24,11 +24,14 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"testing"
 	"time"
 
+	"github.com/alicebob/miniredis/v2"
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -215,6 +218,146 @@ func TestOptional_ValidSessionSetsContextHS256(t *testing.T) {
 
 	assert.Equal(t, http.StatusOK, rec.Code)
 	assert.Equal(t, "user-1", (*captured)["user_id"])
+}
+
+func TestOptional_RejectsOverageIssuedToken(t *testing.T) {
+	m := NewJWTMiddleware(testSecret, nil)
+	claims := freshClaims("jti-too-old")
+	claims.IssuedAt = jwt.NewNumericDate(time.Now().Add(-jwtMaxTokenAge - time.Hour))
+	token := createValidToken(testSecret, claims)
+
+	probe, captured := captureContextHandler()
+	router := gin.New()
+	router.GET("/test", m.Optional(context.Background()), probe)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, bearerRequest(t, token))
+
+	assert.Equal(t, http.StatusOK, rec.Code)
+	_, authenticated := (*captured)["user_id"]
+	assert.False(t, authenticated)
+}
+
+func TestValidate_RejectsNonClaimsParserResult(t *testing.T) {
+	oldParse := parseJWTClaimsFunc
+	t.Cleanup(func() { parseJWTClaimsFunc = oldParse })
+	parseJWTClaimsFunc = func(*jwt.Parser, string, jwt.Claims, jwt.Keyfunc) (*jwt.Token, error) {
+		return &jwt.Token{Claims: &jwt.RegisteredClaims{}, Valid: true}, nil
+	}
+
+	m := NewJWTMiddleware(testSecret, nil)
+	router := gin.New()
+	router.GET("/test", m.Validate(context.Background()), func(c *gin.Context) { c.Status(http.StatusOK) })
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, bearerRequest(t, "synthetic"))
+
+	assert.Equal(t, http.StatusUnauthorized, rec.Code)
+}
+
+func TestOptional_RejectsNonClaimsParserResult(t *testing.T) {
+	oldParse := parseJWTClaimsFunc
+	t.Cleanup(func() { parseJWTClaimsFunc = oldParse })
+	parseJWTClaimsFunc = func(*jwt.Parser, string, jwt.Claims, jwt.Keyfunc) (*jwt.Token, error) {
+		return &jwt.Token{Claims: &jwt.RegisteredClaims{}, Valid: true}, nil
+	}
+
+	m := NewJWTMiddleware(testSecret, nil)
+	probe, captured := captureContextHandler()
+	router := gin.New()
+	router.GET("/test", m.Optional(context.Background()), probe)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, bearerRequest(t, "synthetic"))
+
+	assert.Equal(t, http.StatusOK, rec.Code)
+	_, authenticated := (*captured)["user_id"]
+	assert.False(t, authenticated)
+}
+
+func TestOptional_VerifySessionDecisionBranches(t *testing.T) {
+	oldVerify := verifySessionFunc
+	t.Cleanup(func() { verifySessionFunc = oldVerify })
+
+	cases := []struct {
+		name       string
+		valid      bool
+		deny       bool
+		err        error
+		wantStatus int
+		wantUser   bool
+	}{
+		{name: "session invalid", valid: false, wantStatus: http.StatusOK},
+		{name: "redis error but valid", valid: true, err: assert.AnError, wantStatus: http.StatusOK, wantUser: true},
+		{name: "service unavailable", deny: true, err: assert.AnError, wantStatus: http.StatusServiceUnavailable},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			verifySessionFunc = func(*JWTMiddleware, context.Context, string, bool) (bool, bool, error) {
+				return tc.valid, tc.deny, tc.err
+			}
+			m := NewJWTMiddleware(testSecret, nil)
+			probe, captured := captureContextHandler()
+			router := gin.New()
+			router.GET("/test", m.Optional(context.Background()), probe)
+			token := createValidToken(testSecret, freshClaims("jti-decision"))
+			rec := httptest.NewRecorder()
+			router.ServeHTTP(rec, bearerRequest(t, token))
+
+			assert.Equal(t, tc.wantStatus, rec.Code)
+			_, authenticated := (*captured)["user_id"]
+			assert.Equal(t, tc.wantUser, authenticated)
+		})
+	}
+}
+
+func TestVerifySession_UsesRevocationL1Cache(t *testing.T) {
+	oldRand := xfetchRandFunc
+	t.Cleanup(func() { xfetchRandFunc = oldRand })
+	xfetchRandFunc = func() float64 { return 1 }
+	url, stop := startMockRedis(t, mockRedisConfig{existsReply: ":0\r\n"})
+	defer stop()
+	m := newRedisMiddleware(t, url)
+	m.l1cache.Add("revoked:jti:cached", cacheEntry{exists: true, storedAt: time.Now()})
+
+	isValid, shouldDeny, err := m.verifySession(context.Background(), "cached", true)
+	assert.False(t, isValid)
+	assert.False(t, shouldDeny)
+	assert.NoError(t, err)
+}
+
+func TestShouldRefreshProbabilistic_ZeroRandomFactorIsSafe(t *testing.T) {
+	oldRand := xfetchRandFunc
+	t.Cleanup(func() { xfetchRandFunc = oldRand })
+	xfetchRandFunc = func() float64 { return 0 }
+
+	assert.True(t, shouldRefreshProbabilistic(time.Now(), time.Minute, 1))
+}
+
+func TestValidate_RejectsTokenWithExpiredIssuedAt(t *testing.T) {
+	m := NewJWTMiddleware(testSecret, nil)
+	router := createTestRouter(m.Validate(context.Background()))
+	claims := revocableClaims("jti-expired-iat")
+	claims.IssuedAt = jwt.NewNumericDate(time.Now().Add(-jwtMaxTokenAge - time.Minute))
+	token := createValidToken(testSecret, claims)
+
+	recorder := httptest.NewRecorder()
+	router.ServeHTTP(recorder, bearerRequest(t, token))
+
+	assert.Equal(t, http.StatusUnauthorized, recorder.Code)
+	assert.Contains(t, recorder.Body.String(), "too old")
+}
+
+func TestWarmL1CacheStopsAtMaximumKeyLimit(t *testing.T) {
+	mr := miniredis.RunT(t)
+	client := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	t.Cleanup(func() { _ = client.Close() }) //nolint:errcheck // test cleanup
+
+	for i := 0; i < 10000; i++ {
+		require.NoError(t, mr.Set("revoked:jti:warm-"+strconv.Itoa(i), "1"))
+	}
+
+	m := NewJWTMiddleware(testSecret, client)
+	m.WarmL1Cache(context.Background())
+	assert.Equal(t, 10000, m.l1cache.Len())
 }
 
 // ---------------------------------------------------------------------------

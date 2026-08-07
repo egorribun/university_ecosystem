@@ -97,6 +97,11 @@ var (
 			return env != "production"
 		},
 	}
+	upgradeWTFunc              = upgradeWT
+	newWebTransportSessionFunc = func(sess *webtransport.Session) Session { return NewWebTransportSession(sess) }
+	validateUpgradeTicketFunc  = func(h *Hub, ctx context.Context, ticket string) (string, string, error) {
+		return h.validateUpgradeTicket(ctx, ticket)
+	}
 )
 
 // SetAllowedOrigins configures the origins allowed for WebSocket upgrades.
@@ -154,7 +159,7 @@ func (h *Hub) HandleWebSocket(w http.ResponseWriter, r *http.Request, cfg *confi
 		return
 	}
 
-	userID, tenantID, err := h.validateUpgradeTicket(setupCtx, ticket)
+	userID, tenantID, err := validateUpgradeTicketFunc(h, setupCtx, ticket)
 	if err != nil {
 		h.Logger.WarnContext(setupCtx, "WebSocket upgrade ticket invalid", "err", err)
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
@@ -236,7 +241,7 @@ func (h *Hub) HandleWebTransport(w http.ResponseWriter, r *http.Request, cfg *co
 		return
 	}
 
-	userID, tenantID, err := h.validateUpgradeTicket(setupCtx, ticket)
+	userID, tenantID, err := validateUpgradeTicketFunc(h, setupCtx, ticket)
 	if err != nil {
 		h.Logger.WarnContext(setupCtx, "WebTransport upgrade ticket invalid", "err", err)
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
@@ -265,7 +270,7 @@ func (h *Hub) HandleWebTransport(w http.ResponseWriter, r *http.Request, cfg *co
 		return
 	}
 
-	sess, err := upgradeWT(&wtUpgrader, w, r)
+	sess, err := upgradeWTFunc(&wtUpgrader, w, r)
 	if err != nil {
 		h.Logger.ErrorContext(setupCtx, "WebTransport upgrade failed", "err", err)
 		return
@@ -281,7 +286,7 @@ func (h *Hub) HandleWebTransport(w http.ResponseWriter, r *http.Request, cfg *co
 		ID:       userID,
 		UserID:   userID,
 		Identity: &ClientIdentity{TenantID: tenantID},
-		Conn:     NewWebTransportSession(sess),
+		Conn:     newWebTransportSessionFunc(sess),
 		Rooms:    make(map[string]bool),
 		Send:     make(chan []byte, cfg.SendBufferSize),
 		Hub:      h,

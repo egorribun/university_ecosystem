@@ -129,6 +129,15 @@ func TestFetchJWKSPublicKey_ErrorsAndPEMFallback(t *testing.T) {
 	assert.Error(t, err)
 }
 
+func TestFetchJWKSPublicKey_NilHTTPResponseIsRejected(t *testing.T) {
+	oldHTTPDo := httpDoFunc
+	t.Cleanup(func() { httpDoFunc = oldHTTPDo })
+	httpDoFunc = func(*http.Client, *http.Request) (*http.Response, error) { return nil, nil }
+
+	_, err := fetchJWKSPublicKey(context.Background(), http.DefaultClient, "http://example.com/jwks")
+	require.EqualError(t, err, "jwks: fetch: nil response")
+}
+
 func TestListenForRevocations_DisconnectionAndClose(t *testing.T) {
 	// Setup mock redis server that disconnects immediately
 	url, cleanup := startMockRedis(t, mockRedisConfig{existsReply: ":0\r\n"})

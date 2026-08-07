@@ -67,16 +67,29 @@ const (
 )
 
 var (
-	dialTemporalFunc        = client.Dial
-	newWorkerFunc           = worker.New
-	buildMinIOClientFunc    = workflow.BuildMinIOClient
-	newFileActivitiesFunc   = workflow.NewFileActivities
-	startTemporalWorkerFunc = startTemporalWorker
-	startNatsSubscriberFunc = startNatsSubscriber
-	initSpiffeClientFunc    = initSpiffeClient
-	setupGRPCServerFunc     = setupGRPCServer
-	setupGraphQLServerFunc  = setupGraphQLServer
-	runServersFunc          = runServers
+	dialTemporalFunc          = client.Dial
+	newWorkerFunc             = worker.New
+	buildMinIOClientFunc      = workflow.BuildMinIOClient
+	newFileActivitiesFunc     = workflow.NewFileActivities
+	startTemporalWorkerFunc   = startTemporalWorker
+	startNatsSubscriberFunc   = startNatsSubscriber
+	initSpiffeClientFunc      = initSpiffeClient
+	setupGRPCServerFunc       = setupGRPCServer
+	setupGraphQLServerFunc    = setupGraphQLServer
+	runServersFunc            = runServers
+	newSpiffeClientFunc       = spiffe.NewClient
+	closeSpiffeClientFunc     = func(client *spiffe.Client) error { return client.Close() }
+	grpcServerCredentialsFunc = func(client *spiffe.Client, allowedIDs ...string) (credentials.TransportCredentials, error) {
+		return client.GRPCCerverCredentials(allowedIDs...)
+	}
+	parseGraphQLSchemaFunc    = graphql.ParseSchema
+	temporalRetryWaitFunc     = func(duration time.Duration) <-chan time.Time { return time.After(duration) }
+	grpcServeFunc             = func(server *grpc.Server, listener net.Listener) error { return server.Serve(listener) }
+	graphqlListenAndServeFunc = func(server *http.Server) error { return server.ListenAndServe() }
+	graphqlShutdownFunc       = func(server *http.Server, ctx context.Context) error { return server.Shutdown(ctx) }
+	parseJWTFunc              = func(tokenString string, keyFunc jwt.Keyfunc, options ...jwt.ParserOption) (*jwt.Token, error) {
+		return jwt.Parse(tokenString, keyFunc, options...)
+	}
 )
 
 // legacyNatsJetStream keeps the legacy subscriber seam narrow enough to test
@@ -155,7 +168,7 @@ func runMain(ctx context.Context) error {
 	}
 	if spiffeClient != nil {
 		defer func() {
-			if err := spiffeClient.Close(); err != nil {
+			if err := closeSpiffeClientFunc(spiffeClient); err != nil {
 				logger.WarnContext(ctx, "Failed to close SPIFFE client", "err", err)
 			}
 		}()
@@ -231,7 +244,7 @@ func closeTemporalClient(c client.Client) {
 }
 
 func initSpiffeClient(ctx context.Context, cfg *config.Config, logger *slog.Logger) (*spiffe.Client, error) {
-	client, err := spiffe.NewClient(ctx, spiffe.Config{
+	client, err := newSpiffeClientFunc(ctx, spiffe.Config{
 		Enabled:     cfg.SpiffeEnabled,
 		SocketPath:  cfg.SpiffeEndpointSocket,
 		TrustDomain: cfg.SpiffeTrustDomain,
@@ -341,7 +354,7 @@ func connectTemporal(ctx context.Context, cfg *config.Config, logger *slog.Logge
 		select {
 		case <-ctx.Done():
 			return nil, ctx.Err()
-		case <-time.After(time.Duration(attempt) * 2 * time.Second):
+		case <-temporalRetryWaitFunc(time.Duration(attempt) * 2 * time.Second):
 		}
 	}
 	return nil, fmt.Errorf("unable to create Temporal client after multiple attempts: %w", err)
@@ -508,7 +521,7 @@ func setupGRPCServer(ctx context.Context, cfg *config.Config, rsaPub *rsa.Public
 			logger.ErrorContext(ctx, "SPIFFE is enabled but spiffeClient is nil")
 			return nil, errors.New("SPIFFE is enabled but spiffeClient is nil")
 		}
-		creds, err := spiffeClient.GRPCCerverCredentials(cfg.AllowedClientSpiffeIDs...)
+		creds, err := grpcServerCredentialsFunc(spiffeClient, cfg.AllowedClientSpiffeIDs...)
 		if err != nil {
 			logger.ErrorContext(ctx, "Failed to create SPIFFE gRPC server credentials", "err", err)
 			return nil, fmt.Errorf("failed to create SPIFFE gRPC server credentials: %w", err)
@@ -559,12 +572,10 @@ func setupGraphQLServer(ctx context.Context, cfg *config.Config, rsaPub *rsa.Pub
 	var schemaOpts []graphql.SchemaOpt
 	// TD-W16-02: Disable introspection in staging too — prevents schema leakage.
 	if cfg.Environment == "production" || cfg.Environment == "staging" {
-		schemaOpts = append(schemaOpts, graphql.RestrictIntrospection(func(ctx context.Context) bool {
-			return false
-		}))
+		schemaOpts = append(schemaOpts, graphql.RestrictIntrospection(denyGraphQLIntrospection))
 	}
 
-	schema, parseErr := graphql.ParseSchema(string(s), resolver, schemaOpts...)
+	schema, parseErr := parseGraphQLSchemaFunc(string(s), resolver, schemaOpts...)
 	if parseErr != nil {
 		logger.ErrorContext(ctx, "Failed to parse GraphQL schema", "err", parseErr)
 		return nil, parseErr
@@ -587,6 +598,8 @@ func setupGraphQLServer(ctx context.Context, cfg *config.Config, rsaPub *rsa.Pub
 	}, nil
 }
 
+func denyGraphQLIntrospection(context.Context) bool { return false }
+
 func runServers(ctx context.Context, grpcSrv *grpc.Server, graphqlSrv *http.Server, cfg *config.Config, logger *slog.Logger) error {
 	lc := net.ListenConfig{}
 	lis, err := lc.Listen(ctx, "tcp", ":"+cfg.GRPCPort)
@@ -599,7 +612,7 @@ func runServers(ctx context.Context, grpcSrv *grpc.Server, graphqlSrv *http.Serv
 
 	go func() {
 		logger.InfoContext(ctx, "gRPC Server listening", "addr", ":"+cfg.GRPCPort)
-		if err := grpcSrv.Serve(lis); err != nil && !errors.Is(err, grpc.ErrServerStopped) {
+		if err := grpcServeFunc(grpcSrv, lis); err != nil && !errors.Is(err, grpc.ErrServerStopped) {
 			logger.ErrorContext(ctx, "failed to serve gRPC", "err", err)
 			errChan <- err
 		}
@@ -607,7 +620,7 @@ func runServers(ctx context.Context, grpcSrv *grpc.Server, graphqlSrv *http.Serv
 
 	go func() {
 		logger.InfoContext(ctx, "GraphQL & Metrics Server listening", "addr", ":"+cfg.GraphQLPort)
-		if err := graphqlSrv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		if err := graphqlListenAndServeFunc(graphqlSrv); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			logger.ErrorContext(ctx, "Failed to serve HTTP", "err", err)
 			errChan <- err
 		}
@@ -627,7 +640,7 @@ func runServers(ctx context.Context, grpcSrv *grpc.Server, graphqlSrv *http.Serv
 
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second) // RZ-33-21: parent ctx is already cancelled
 	defer cancel()
-	if err := graphqlSrv.Shutdown(shutdownCtx); err != nil { //nolint:contextcheck // RZ-33-21: uses fresh context because parent is cancelled
+	if err := graphqlShutdownFunc(graphqlSrv, shutdownCtx); err != nil { //nolint:contextcheck // RZ-33-21: uses fresh context because parent is cancelled
 		logger.ErrorContext(ctx, "HTTP Server forced to shutdown", "err", err)
 	}
 
@@ -726,7 +739,7 @@ func httpJWTMiddleware(secret string, rsaPub *rsa.PublicKey, log *slog.Logger, n
 		}
 
 		// TD-W18-01: use unified keyFunc supporting both RS256 and HS256.
-		token, err := jwt.Parse(tokenStr, jwtKeyFunc(secret, rsaPub))
+		token, err := parseJWTFunc(tokenStr, jwtKeyFunc(secret, rsaPub))
 		if err != nil || !token.Valid {
 			log.WarnContext(r.Context(), "GraphQL HTTP JWT validation failed",
 				"remote", r.RemoteAddr,
@@ -768,7 +781,7 @@ func authFunc(secret string, rsaPub *rsa.PublicKey, logger *slog.Logger) auth.Au
 		}
 
 		// TD-W18-01: use unified keyFunc supporting both RS256 and HS256.
-		token, err := jwt.Parse(tokenStr, jwtKeyFunc(secret, rsaPub))
+		token, err := parseJWTFunc(tokenStr, jwtKeyFunc(secret, rsaPub))
 
 		if err != nil {
 			logger.WarnContext(ctx, "gRPC auth failed", "err", err)

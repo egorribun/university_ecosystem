@@ -6,6 +6,11 @@ import (
 	"github.com/spf13/viper"
 )
 
+var (
+	bindEnvFunc         = func(input ...string) error { return viper.BindEnv(input...) }
+	unmarshalConfigFunc = func(rawVal any) error { return viper.Unmarshal(rawVal) }
+)
+
 // Config holds processor configuration.
 type Config struct {
 	GRPCPort     string `mapstructure:"grpc_port"`
@@ -97,7 +102,7 @@ func Load() (*Config, error) {
 	}
 
 	for key, env := range bindEnvs {
-		if err := viper.BindEnv(key, env); err != nil {
+		if err := bindEnvFunc(key, env); err != nil {
 			return nil, fmt.Errorf("failed to bind env %s: %w", env, err)
 		}
 	}
@@ -108,7 +113,7 @@ func Load() (*Config, error) {
 	viper.SetDefault("otlp_insecure", true)
 
 	var cfg Config
-	if err := viper.Unmarshal(&cfg); err != nil {
+	if err := unmarshalConfigFunc(&cfg); err != nil {
 		return nil, err
 	}
 

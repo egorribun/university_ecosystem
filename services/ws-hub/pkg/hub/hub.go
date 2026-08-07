@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"hash"
 	"sync"
 	"time"
 
@@ -98,12 +99,26 @@ type Hub struct {
 	enableJetStream bool
 }
 
+var (
+	jetStreamAckFunc      = func(msg *nats.Msg) error { return msg.Ack() }
+	jetStreamNakFunc      = func(msg *nats.Msg, delay time.Duration) error { return msg.NakWithDelay(delay) }
+	jetStreamContextFunc  = func(conn *nats.Conn) (nats.JetStreamContext, error) { return conn.JetStream() }
+	hubJSONMarshalFunc    = json.Marshal
+	hubJSONUnmarshalFunc  = json.Unmarshal
+	hmacWriteFunc         = func(dst hash.Hash, data []byte) (int, error) { return dst.Write(data) }
+	broadcastMessageFunc  = func(h *Hub, ctx context.Context, msg *Message) { h.broadcastMessage(ctx, msg) }
+	queueDepthInterval    = 5 * time.Second
+	coreNATSSubscribeFunc = func(nc *nats.Conn, subject string, handler nats.MsgHandler) (*nats.Subscription, error) {
+		return nc.Subscribe(subject, handler)
+	}
+)
+
 // safeAck attempts to ACK a NATS message, suppressing nats.ErrNotJS for core/synthetic NATS messages.
 func safeAck(msg *nats.Msg) {
 	if msg == nil {
 		return
 	}
-	err := msg.Ack()
+	err := jetStreamAckFunc(msg)
 	if err == nil {
 		JetStreamAcksTotal.Inc()
 	}
@@ -114,7 +129,7 @@ func safeNakWithDelay(msg *nats.Msg, delay time.Duration) {
 	if msg == nil {
 		return
 	}
-	err := msg.NakWithDelay(delay)
+	err := jetStreamNakFunc(msg, delay)
 	if err == nil {
 		JetStreamNaksTotal.Inc()
 	}
@@ -169,7 +184,7 @@ func NewHub(nc *nats.Conn, logger *slog.Logger, authClient RoomAuthClient, cfg *
 
 	var js nats.JetStreamContext
 	if nc != nil && enableJS {
-		if jsc, err := nc.JetStream(); err == nil {
+		if jsc, err := jetStreamContextFunc(nc); err == nil {
 			js = jsc
 		}
 	}
@@ -284,13 +299,13 @@ func (h *Hub) Run(ctx context.Context) {
 			defer broadcastWg.Done()
 			defer ActiveGoroutines.Dec()
 			for msg := range broadcastCh {
-				h.broadcastMessage(runCtx, msg)
+				broadcastMessageFunc(h, runCtx, msg)
 			}
 		}()
 	}
 
 	// PERF-W17-03: Sample broadcast queue depth every 5s for Prometheus.
-	queueDepthTicker := time.NewTicker(5 * time.Second)
+	queueDepthTicker := time.NewTicker(queueDepthInterval)
 	defer queueDepthTicker.Stop()
 
 	for {
@@ -431,7 +446,7 @@ func (h *Hub) broadcastMessage(parentCtx context.Context, msg *Message) {
 	)
 	defer span.End()
 
-	data, err := json.Marshal(msg)
+	data, err := hubJSONMarshalFunc(msg)
 	if err != nil {
 		h.Logger.ErrorContext(bctx, "Failed to marshal broadcast message", "err", err)
 		return
@@ -510,10 +525,10 @@ func (h *Hub) SubscribeToNATS(appCtx context.Context) error {
 		)
 		if err != nil {
 			h.Logger.WarnContext(appCtx, "JetStream chat subscription failed, falling back to core NATS", "err", err)
-			chatSub, err = h.Nats.Subscribe("chat.*", h.handleChat(appCtx))
+			chatSub, err = coreNATSSubscribeFunc(h.Nats, "chat.*", h.handleChat(appCtx))
 		}
 	} else {
-		chatSub, err = h.Nats.Subscribe("chat.*", h.handleChat(appCtx))
+		chatSub, err = coreNATSSubscribeFunc(h.Nats, "chat.*", h.handleChat(appCtx))
 	}
 	if err != nil {
 		h.Logger.ErrorContext(appCtx, "NATS chat subscription failed — hub cannot deliver messages", "err", err)
@@ -530,10 +545,10 @@ func (h *Hub) SubscribeToNATS(appCtx context.Context) error {
 		)
 		if err != nil {
 			h.Logger.WarnContext(appCtx, "JetStream notifications subscription failed, falling back to core NATS", "err", err)
-			notifSub, err = h.Nats.Subscribe("notifications.*", h.handleNotifications(appCtx))
+			notifSub, err = coreNATSSubscribeFunc(h.Nats, "notifications.*", h.handleNotifications(appCtx))
 		}
 	} else {
-		notifSub, err = h.Nats.Subscribe("notifications.*", h.handleNotifications(appCtx))
+		notifSub, err = coreNATSSubscribeFunc(h.Nats, "notifications.*", h.handleNotifications(appCtx))
 	}
 	if err != nil {
 		h.Logger.ErrorContext(appCtx, "NATS notifications subscription failed — hub cannot deliver messages", "err", err)
@@ -541,14 +556,14 @@ func (h *Hub) SubscribeToNATS(appCtx context.Context) error {
 	}
 	h.subs = append(h.subs, notifSub)
 
-	invSub, err := h.Nats.Subscribe("cache.invalidate", h.handleCacheInvalidation(appCtx))
+	invSub, err := coreNATSSubscribeFunc(h.Nats, "cache.invalidate", h.handleCacheInvalidation(appCtx))
 	if err != nil {
 		h.Logger.ErrorContext(appCtx, "NATS cache invalidation subscription failed", "err", err)
 		return err
 	}
 	h.subs = append(h.subs, invSub)
 
-	ctrlSub, err := h.Nats.Subscribe("ws_hub.control", h.handleControlMessage(appCtx))
+	ctrlSub, err := coreNATSSubscribeFunc(h.Nats, "ws_hub.control", h.handleControlMessage(appCtx))
 	if err != nil {
 		h.Logger.ErrorContext(appCtx, "NATS control subscription failed — hub cannot receive session control events", "err", err)
 		return err
@@ -556,7 +571,7 @@ func (h *Hub) SubscribeToNATS(appCtx context.Context) error {
 	h.subs = append(h.subs, ctrlSub)
 
 	// RZ-21-05 (audit 2026-03-25 Wave 21): Pre-warm JWKS cache on key rotation.
-	jwksSub, err := h.Nats.Subscribe("keys.rotated", func(msg *nats.Msg) {
+	jwksSub, err := coreNATSSubscribeFunc(h.Nats, "keys.rotated", func(msg *nats.Msg) {
 		h.Logger.InfoContext(appCtx, "JWKS rotation event received — pre-warming cache")
 		h.tryForceRefreshJWKS(appCtx)
 	})
@@ -615,7 +630,7 @@ func (h *Hub) handleChat(appCtx context.Context) nats.MsgHandler {
 		}
 
 		var wsMsg Message
-		if err := json.Unmarshal(msg.Data, &wsMsg); err != nil {
+		if err := hubJSONUnmarshalFunc(msg.Data, &wsMsg); err != nil {
 			h.Logger.WarnContext(msgCtx, "ws-hub: malformed NATS chat message dropped",
 				"subject", msg.Subject, "size", len(msg.Data), "err", err)
 			safeAck(msg)
@@ -677,7 +692,7 @@ func (h *Hub) handleNotifications(appCtx context.Context) nats.MsgHandler {
 		}
 
 		var wsMsg Message
-		if err := json.Unmarshal(msg.Data, &wsMsg); err != nil {
+		if err := hubJSONUnmarshalFunc(msg.Data, &wsMsg); err != nil {
 			h.Logger.WarnContext(msgCtx, "ws-hub: malformed NATS notification dropped",
 				"subject", msg.Subject, "size", len(msg.Data), "err", err)
 			safeAck(msg)
@@ -736,20 +751,20 @@ func (h *Hub) handleCacheInvalidation(appCtx context.Context) nats.MsgHandler {
 			Signature string `json:"signature"`
 		}
 
-		if err := json.Unmarshal(msg.Data, &payload); err != nil {
+		if err := hubJSONUnmarshalFunc(msg.Data, &payload); err != nil {
 			h.Logger.WarnContext(msgCtx, "ws-hub: malformed NATS cache.invalidate message dropped",
 				"subject", msg.Subject, "size", len(msg.Data), "err", err)
 			return
 		}
 
-		dataBytes, err := json.Marshal(payload.Data)
+		dataBytes, err := hubJSONMarshalFunc(payload.Data)
 		if err != nil {
 			h.Logger.ErrorContext(msgCtx, "Failed to marshal validation data", "err", err)
 			return
 		}
 
 		hFunc := hmac.New(sha256.New, []byte(h.internalSecret))
-		if _, err := hFunc.Write(dataBytes); err != nil {
+		if _, err := hmacWriteFunc(hFunc, dataBytes); err != nil {
 			h.Logger.ErrorContext(msgCtx, "Failed to write data to HMAC", "err", err)
 			return
 		}
@@ -807,7 +822,7 @@ func (h *Hub) handleControlMessage(appCtx context.Context) nats.MsgHandler {
 		defer span.End()
 
 		var payload controlPayload
-		if err := json.Unmarshal(msg.Data, &payload); err != nil {
+		if err := hubJSONUnmarshalFunc(msg.Data, &payload); err != nil {
 			h.Logger.WarnContext(msgCtx, "ws-hub: malformed NATS control message dropped",
 				"subject", msg.Subject, "size", len(msg.Data), "err", err)
 			return
@@ -819,14 +834,14 @@ func (h *Hub) handleControlMessage(appCtx context.Context) nats.MsgHandler {
 			return
 		}
 
-		dataBytes, err := json.Marshal(payload.Data)
+		dataBytes, err := hubJSONMarshalFunc(payload.Data)
 		if err != nil {
 			h.Logger.ErrorContext(msgCtx, "Failed to marshal control payload data for HMAC verification", "err", err)
 			return
 		}
 
 		hFunc := hmac.New(sha256.New, []byte(h.internalSecret))
-		if _, err := hFunc.Write(dataBytes); err != nil {
+		if _, err := hmacWriteFunc(hFunc, dataBytes); err != nil {
 			h.Logger.ErrorContext(msgCtx, "Failed to write data to HMAC", "err", err)
 			return
 		}
