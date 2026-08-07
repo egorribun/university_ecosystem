@@ -482,10 +482,11 @@ def test_checkov_workflow_filters_sarif_before_upload() -> None:
     )
     assert filter_index < upload_index
     assert steps[filter_index]["if"] == "always()"
-    assert (
-        steps[filter_index]["run"]
-        == "python scripts/quality/filter_checkov_sarif.py results.sarif"
+    assert steps[filter_index]["run"] == (
+        "python scripts/quality/filter_checkov_sarif.py results.sarif "
+        "--output-path filtered-results.sarif"
     )
+    assert steps[upload_index]["with"]["sarif_file"] == "filtered-results.sarif"
 
 
 def test_e2e_coverage_is_chromium_opt_in_and_codecov_wired() -> None:

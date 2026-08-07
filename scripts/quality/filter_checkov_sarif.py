@@ -136,13 +136,17 @@ def _sarif_files(path: Path) -> Iterator[Path]:
         )
 
 
-def _filter_file(path: Path, repository_root: Path) -> int:
+def _filter_file(
+    path: Path, repository_root: Path, destination: Path | None = None
+) -> int:
     document = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(document, dict):
         raise ValueError(f"SARIF root must be an object: {path}")
     removed = filter_suppressed_results(document, repository_root)
-    if removed:
-        path.write_text(
+    output_path = destination or path
+    if removed or output_path != path:
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_text(
             json.dumps(document, ensure_ascii=False, indent=2) + "\n",
             encoding="utf-8",
         )
@@ -157,6 +161,14 @@ def main() -> int:
         type=Path,
         default=Path.cwd(),
     )
+    parser.add_argument(
+        "--output-path",
+        type=Path,
+        help=(
+            "Write filtered files here instead of modifying the input. "
+            "For a directory input this is an output directory."
+        ),
+    )
     args = parser.parse_args()
 
     files = tuple(_sarif_files(args.sarif_path))
@@ -164,7 +176,17 @@ def main() -> int:
         print(f"No SARIF files found under {args.sarif_path}; nothing to filter.")
         return 0
 
-    removed = sum(_filter_file(path, args.repository_root.resolve()) for path in files)
+    input_is_directory = args.sarif_path.is_dir()
+    removed = 0
+    for path in files:
+        destination = None
+        if args.output_path is not None:
+            destination = (
+                args.output_path / path.relative_to(args.sarif_path)
+                if input_is_directory
+                else args.output_path
+            )
+        removed += _filter_file(path, args.repository_root.resolve(), destination)
     print(f"Removed {removed} source-backed suppressed Checkov SARIF results.")
     return 0
 
