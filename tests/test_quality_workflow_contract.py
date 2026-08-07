@@ -933,6 +933,28 @@ def test_reusable_quality_jobs_have_bounded_execution() -> None:
         "semgrep": 20,
     }
 
+    semgrep_steps = security["jobs"]["semgrep"]["steps"]
+    semgrep_run = next(
+        step for step in semgrep_steps if step.get("name") == "Run Semgrep SAST"
+    )
+    semgrep_run_text = semgrep_run["run"]
+    assert (
+        "semgrep scan --config auto --sarif --sarif-output=semgrep.sarif"
+        in semgrep_run_text
+    )
+    assert "SEMGREP_SCAN_STATUS" in semgrep_run_text
+    assert any(
+        step.get("name") == "Fail if Semgrep reported findings or scan errors"
+        and step.get("if") == "always()"
+        for step in semgrep_steps
+    )
+    semgrep_upload = next(
+        step
+        for step in semgrep_steps
+        if step.get("name") == "Upload SARIF to GitHub Advanced Security"
+    )
+    assert "continue-on-error" not in semgrep_upload
+
 
 def test_frontend_coverage_is_merged_after_all_vitest_shards() -> None:
     workflow = yaml.safe_load(FRONTEND_WORKFLOW_PATH.read_text(encoding="utf-8"))
