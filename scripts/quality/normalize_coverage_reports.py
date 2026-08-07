@@ -162,6 +162,7 @@ class _RawReport:
     path: Path
     raw: bytes
     sha256: str
+    supplemental: tuple[_RawReport, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -953,6 +954,160 @@ def _parse_frontend_lcov(
     return {metric: metrics[metric] for metric in METRICS}
 
 
+def _parse_istanbul_counter_map(
+    value: object,
+    field: str,
+) -> list[int]:
+    if not isinstance(value, dict):
+        raise _InputError(f"Istanbul JSON {field} counters must be an object")
+    counters: list[int] = []
+    for key, counter in value.items():
+        if not isinstance(key, str):
+            raise _InputError(f"Istanbul JSON {field} counter key must be a string")
+        counters.append(
+            _parse_nonnegative_integer(counter, f"Istanbul JSON {field}[{key}]")
+        )
+    return counters
+
+
+def _parse_istanbul_branch_map(value: object) -> list[int]:
+    if not isinstance(value, dict):
+        raise _InputError("Istanbul JSON branch counters must be an object")
+    counters: list[int] = []
+    for key, branch_counts in value.items():
+        if not isinstance(key, str):
+            raise _InputError("Istanbul JSON branch counter key must be a string")
+        if not isinstance(branch_counts, list):
+            raise _InputError(f"Istanbul JSON b[{key}] must be an array of counters")
+        counters.extend(
+            _parse_nonnegative_integer(counter, f"Istanbul JSON b[{key}]")
+            for counter in branch_counts
+        )
+    return counters
+
+
+def _metric_from_counters(
+    counters: Sequence[int],
+) -> dict[str, object]:
+    return _measured_metric(
+        "native",
+        sum(counter > 0 for counter in counters),
+        len(counters),
+    )
+
+
+def _parse_frontend_istanbul_json(
+    raw: bytes,
+    component: str,
+    ignore_outside_files: bool = False,
+) -> tuple[
+    dict[str, dict[str, object]],
+    dict[str, dict[str, dict[str, object]]],
+]:
+    text = _decode_report(raw, "Istanbul JSON report")
+    try:
+        document = json.loads(
+            text,
+            object_pairs_hook=_duplicate_key_object,
+            parse_constant=_reject_json_constant,
+        )
+    except _DuplicateKeyError as error:
+        raise _InputError(str(error)) from error
+    except (json.JSONDecodeError, RecursionError, ValueError) as error:
+        raise _InputError(f"malformed Istanbul JSON: {error}") from error
+    if not isinstance(document, dict):
+        raise _InputError("Istanbul JSON root must be an object")
+    if not document:
+        raise _InputError("Istanbul JSON contains no file records")
+
+    total_statements: list[int] = []
+    total_branches: list[int] = []
+    total_functions: list[int] = []
+    file_metrics: dict[str, dict[str, dict[str, object]]] = {}
+    source_spellings: dict[str, str] = {}
+    for raw_source, record in document.items():
+        if not isinstance(raw_source, str):
+            raise _InputError("Istanbul JSON source path must be a string")
+        try:
+            source = _canonical_source_identity(component, raw_source)
+        except _InputError as error:
+            if ignore_outside_files and "configured roots" in str(error):
+                continue
+            raise
+        if source in file_metrics:
+            raise _InputError(f"Istanbul JSON has duplicate source {source}")
+        if not isinstance(record, dict):
+            raise _InputError(
+                f"Istanbul JSON record for {raw_source} must be an object"
+            )
+
+        record_path = record.get("path")
+        if record_path is not None:
+            if not isinstance(record_path, str):
+                raise _InputError(
+                    f"Istanbul JSON record for {raw_source}.path must be a string"
+                )
+            try:
+                record_identity = _canonical_source_identity(component, record_path)
+            except _InputError as error:
+                if ignore_outside_files and "configured roots" in str(error):
+                    continue
+                raise
+            if record_identity != source:
+                raise _InputError(
+                    f"Istanbul JSON record for {raw_source} has conflicting path"
+                )
+            _register_source_spelling(
+                source_spellings,
+                source,
+                record_path,
+                "Istanbul JSON report",
+            )
+        _register_source_spelling(
+            source_spellings,
+            source,
+            raw_source,
+            "Istanbul JSON report",
+        )
+
+        statement_counters = _parse_istanbul_counter_map(
+            record.get("s"),
+            f"s for {source}",
+        )
+        branch_counters = _parse_istanbul_branch_map(record.get("b"))
+        function_counters = _parse_istanbul_counter_map(
+            record.get("f"),
+            f"f for {source}",
+        )
+        total_statements.extend(statement_counters)
+        total_branches.extend(branch_counters)
+        total_functions.extend(function_counters)
+        file_metrics[source] = {
+            "lines": _unmeasured_metric(
+                "unsupported",
+                reason_code="istanbul_json_line_counter_not_used",
+            ),
+            "statements": _metric_from_counters(statement_counters),
+            "branches": _metric_from_counters(branch_counters),
+            "functions": _metric_from_counters(function_counters),
+        }
+
+    if not file_metrics:
+        raise _InputError("Istanbul JSON contains no in-scope file records")
+    return (
+        {
+            "lines": _unmeasured_metric(
+                "unsupported",
+                reason_code="istanbul_json_line_counter_not_used",
+            ),
+            "statements": _metric_from_counters(total_statements),
+            "branches": _metric_from_counters(total_branches),
+            "functions": _metric_from_counters(total_functions),
+        },
+        file_metrics,
+    )
+
+
 def _inclusive_interval_union_length(intervals: Sequence[tuple[int, int]]) -> int:
     """Return the inclusive union size without materializing individual lines."""
     ordered = sorted(intervals)
@@ -1694,33 +1849,119 @@ def _collect_report_inputs(arguments: argparse.Namespace) -> list[_ReportInput]:
 
 def _read_raw_report(report_input: _ReportInput) -> _RawReport:
     raw = _read_report_bytes(report_input.path)
+    supplemental: tuple[_RawReport, ...] = ()
+    if report_input.report_format == "lcov":
+        istanbul_path = report_input.path.with_name("coverage-final.json")
+        if istanbul_path.is_file():
+            istanbul_raw = _read_report_bytes(istanbul_path)
+            supplemental = (
+                _RawReport(
+                    component=report_input.component,
+                    report_format="istanbul-json",
+                    path=istanbul_path,
+                    raw=istanbul_raw,
+                    sha256=hashlib.sha256(istanbul_raw).hexdigest(),
+                ),
+            )
     return _RawReport(
         component=report_input.component,
         report_format=report_input.report_format,
         path=report_input.path,
         raw=raw,
         sha256=hashlib.sha256(raw).hexdigest(),
+        supplemental=supplemental,
     )
 
 
 def _parse_report(
     raw_report: _RawReport, ignore_outside_files: bool = False
 ) -> _ParsedReport:
+    file_metrics: dict[str, dict[str, dict[str, object]]]
     if raw_report.report_format == "cobertura-xml":
         metrics = _parse_python_xml(
             raw_report.raw, raw_report.component, ignore_outside_files
+        )
+        file_metrics = _parse_tier0_files(
+            raw_report,
+            ignore_outside_files=ignore_outside_files,
         )
     elif raw_report.report_format == "lcov":
         metrics = _parse_frontend_lcov(
             raw_report.raw, raw_report.component, ignore_outside_files
         )
+        file_metrics = _parse_tier0_files(
+            raw_report,
+            ignore_outside_files=ignore_outside_files,
+        )
+        istanbul_reports = [
+            report
+            for report in raw_report.supplemental
+            if report.report_format == "istanbul-json"
+        ]
+        if istanbul_reports:
+            if len(istanbul_reports) != 1:
+                raise _InputError(
+                    "frontend coverage must contain exactly one Istanbul JSON report"
+                )
+            istanbul_metrics, istanbul_file_metrics = _parse_frontend_istanbul_json(
+                istanbul_reports[0].raw,
+                raw_report.component,
+                ignore_outside_files,
+            )
+            for metric_name in ("branches", "functions"):
+                lcov_metric = metrics[metric_name]
+                istanbul_metric = istanbul_metrics[metric_name]
+                if (
+                    lcov_metric["status"] == "native"
+                    and istanbul_metric["status"] == "native"
+                    and (
+                        lcov_metric["covered"] != istanbul_metric["covered"]
+                        or lcov_metric["total"] != istanbul_metric["total"]
+                    )
+                ):
+                    raise _InputError(
+                        f"frontend coverage reports disagree for {metric_name}"
+                    )
+                if lcov_metric["status"] != "native":
+                    metrics[metric_name] = istanbul_metric
+            metrics["statements"] = istanbul_metrics["statements"]
+            for source, supplemental_metrics in istanbul_file_metrics.items():
+                target_metrics = file_metrics.setdefault(
+                    source,
+                    {metric: _unmeasured_metric("missing") for metric in METRICS},
+                )
+                for metric_name in ("statements", "branches", "functions"):
+                    lcov_metric = target_metrics[metric_name]
+                    istanbul_metric = supplemental_metrics[metric_name]
+                    if (
+                        lcov_metric["status"] == "native"
+                        and istanbul_metric["status"] == "native"
+                        and (
+                            lcov_metric["covered"] != istanbul_metric["covered"]
+                            or lcov_metric["total"] != istanbul_metric["total"]
+                        )
+                    ):
+                        raise _InputError(
+                            f"frontend coverage reports disagree for "
+                            f"{source}.{metric_name}"
+                        )
+                    if lcov_metric["status"] != "native":
+                        target_metrics[metric_name] = istanbul_metric
     elif raw_report.report_format == "go-coverprofile":
         metrics = _parse_go_coverprofile(
             raw_report.raw, raw_report.component, ignore_outside_files
         )
+        file_metrics = _parse_tier0_files(
+            raw_report,
+            ignore_outside_files=ignore_outside_files,
+        )
     elif raw_report.report_format == "llvm-cov-json":
         metrics = _parse_rust_llvm_json(
             raw_report.raw, raw_report.component, ignore_outside_files
+        )
+        file_metrics = _parse_tier0_files(
+            raw_report,
+            ignore_outside_files=ignore_outside_files,
         )
     else:
         raise _InputError(f"unsupported report format: {raw_report.report_format}")
@@ -1729,10 +1970,7 @@ def _parse_report(
         report_format=raw_report.report_format,
         path=raw_report.path,
         metrics=metrics,
-        file_metrics=_parse_tier0_files(
-            raw_report,
-            ignore_outside_files=ignore_outside_files,
-        ),
+        file_metrics=file_metrics,
         sha256=raw_report.sha256,
     )
 
@@ -1938,7 +2176,12 @@ def _prepare_invocation(arguments: argparse.Namespace) -> _PreparedInvocation:
     )
     output_path = _resolve_path(arguments.output)
     report_inputs = _collect_report_inputs(arguments)
-    for path in [contract_path, *(entry.path for entry in report_inputs)]:
+    report_paths: list[Path] = []
+    for entry in report_inputs:
+        report_paths.append(entry.path)
+        if entry.report_format == "lcov":
+            report_paths.append(entry.path.with_name("coverage-final.json"))
+    for path in [contract_path, *report_paths]:
         if _paths_alias(output_path, path):
             raise _InputError(
                 "output path must not alias the contract or an input report"
@@ -1974,7 +2217,7 @@ def _build_manifest(
             evidence_errors_by_component[report_input.component].append(message)
             structural_errors.append(message)
             continue
-        raw_reports.append(raw_report)
+        raw_reports.extend((raw_report, *raw_report.supplemental))
         try:
             report = _parse_report(
                 raw_report, ignore_outside_files=arguments.ignore_outside_files

@@ -1471,6 +1471,50 @@ def test_duplicate_component_input_is_an_honest_evidence_failure(
     )
 
 
+def test_frontend_lcov_enriches_statements_from_adjacent_istanbul_json(
+    tmp_path: Path,
+) -> None:
+    coverage_dir = tmp_path / "frontend" / "coverage"
+    coverage_dir.mkdir(parents=True)
+    lcov_path = coverage_dir / "lcov.info"
+    lcov_path.write_bytes((FIXTURES / "frontend-valid.lcov").read_bytes())
+    json_path = coverage_dir / "coverage-final.json"
+    json_path.write_text(
+        json.dumps(
+            {
+                "frontend/src/one.ts": {
+                    "s": {"0": 1, "1": 0},
+                    "b": {"0": [1, 0]},
+                    "f": {"0": 1},
+                },
+                "frontend/src/two.ts": {
+                    "s": {"0": 1},
+                    "b": {"0": [1]},
+                    "f": {"0": 1, "1": 0},
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    output = tmp_path / "quality-manifest.json"
+    result = _run_normalizer(output, "--frontend-lcov", str(lcov_path))
+
+    assert result.returncode == 1
+    manifest = json.loads(output.read_text(encoding="utf-8"))
+    frontend = manifest["components"]["frontend"]
+    assert frontend["metrics"]["statements"] == {
+        "covered": 2,
+        "percent": 66.666667,
+        "status": "native",
+        "total": 3,
+    }
+    assert {report["format"] for report in manifest["reports"]} == {
+        "istanbul-json",
+        "lcov",
+    }
+
+
 def test_invalid_component_and_malformed_arguments_return_two(tmp_path: Path) -> None:
     invalid_component = _run_normalizer(
         tmp_path / "component.json",

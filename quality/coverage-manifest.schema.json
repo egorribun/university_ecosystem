@@ -94,7 +94,13 @@
       "properties": {
         "component": {"$ref": "#/$defs/componentName"},
         "format": {
-          "enum": ["cobertura-xml", "lcov", "go-coverprofile", "llvm-cov-json"]
+          "enum": [
+            "cobertura-xml",
+            "lcov",
+            "istanbul-json",
+            "go-coverprofile",
+            "llvm-cov-json"
+          ]
         },
         "path": {"type": "string", "minLength": 1},
         "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
