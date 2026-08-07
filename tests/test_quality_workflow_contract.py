@@ -915,6 +915,12 @@ def test_reusable_quality_jobs_have_bounded_execution() -> None:
     go = yaml.safe_load(GO_WORKFLOW_PATH.read_text(encoding="utf-8"))
     assert go["jobs"]["test"]["timeout-minutes"] == 60
     assert go["jobs"]["lint"]["timeout-minutes"] == 20
+    go_lint_action = next(
+        step
+        for step in go["jobs"]["lint"]["steps"]
+        if step.get("uses", "").startswith("golangci/golangci-lint-action@")
+    )
+    assert go_lint_action["with"]["verify"] is False
 
     security = yaml.safe_load(SECURITY_WORKFLOW_PATH.read_text(encoding="utf-8"))
     assert {
