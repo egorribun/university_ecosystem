@@ -4,6 +4,8 @@ from pathlib import Path
 
 import yaml
 
+from scripts.quality.filter_checkov_sarif import filter_suppressed_results
+
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 CI_WORKFLOW_PATH = REPOSITORY_ROOT / ".github" / "workflows" / "ci.yml"
 ACTIONLINT_CONFIG_PATH = REPOSITORY_ROOT / ".github" / "actionlint.yaml"
@@ -23,6 +25,7 @@ GO_WORKFLOW_PATH = REPOSITORY_ROOT / ".github" / "workflows" / "reusable-go-test
 SECURITY_WORKFLOW_PATH = (
     REPOSITORY_ROOT / ".github" / "workflows" / "reusable-security-audit.yml"
 )
+CHECKOV_WORKFLOW_PATH = REPOSITORY_ROOT / ".github" / "workflows" / "checkov.yml"
 PACT_WORKFLOW_PATH = REPOSITORY_ROOT / ".github" / "workflows" / "contract-tests.yml"
 QUALITY_HISTORY_WORKFLOW_PATH = (
     REPOSITORY_ROOT / ".github" / "workflows" / "quality-history.yml"
@@ -413,6 +416,76 @@ def test_iac_scan_exceptions_use_supported_scoped_syntax() -> None:
             ),
         }
     ]
+
+
+def test_checkov_sarif_filter_removes_only_source_backed_suppressions(tmp_path) -> None:
+    suppressed = tmp_path / "suppressed.yml"
+    suppressed.write_text(
+        "workflow_dispatch: #checkov:skip=CKV_GHA_7:manual input is intentional\n",
+        encoding="utf-8",
+    )
+    unsuppressed = tmp_path / "unsuppressed.yml"
+    unsuppressed.write_text("workflow_dispatch:\n", encoding="utf-8")
+    annotated = tmp_path / "annotated.yml"
+    annotated.write_text(
+        "checkov.io/skip1: CKV_K8S_43=the deployment pipeline pins the image\n",
+        encoding="utf-8",
+    )
+
+    def result(path: str, rule_id: str = "CKV_GHA_7") -> dict[str, object]:
+        return {
+            "ruleId": rule_id,
+            "locations": [
+                {
+                    "physicalLocation": {
+                        "artifactLocation": {"uri": path},
+                        "region": {"startLine": 1, "endLine": 1},
+                    }
+                }
+            ],
+        }
+
+    document: dict[str, object] = {
+        "runs": [
+            {
+                "results": [
+                    result("suppressed.yml"),
+                    result("annotated.yml", "CKV_K8S_43"),
+                    result("unsuppressed.yml"),
+                ]
+            }
+        ]
+    }
+
+    assert filter_suppressed_results(document, tmp_path) == 2
+    assert len(document["runs"][0]["results"]) == 1
+    assert (
+        document["runs"][0]["results"][0]["locations"][0]["physicalLocation"][
+            "artifactLocation"
+        ]["uri"]
+        == "unsuppressed.yml"
+    )
+
+
+def test_checkov_workflow_filters_sarif_before_upload() -> None:
+    workflow = yaml.safe_load(CHECKOV_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    steps = workflow["jobs"]["checkov"]["steps"]
+    filter_index = next(
+        index
+        for index, step in enumerate(steps)
+        if step.get("name") == "Remove inline-suppressed results from SARIF"
+    )
+    upload_index = next(
+        index
+        for index, step in enumerate(steps)
+        if step.get("uses", "").startswith("github/codeql-action/upload-sarif@")
+    )
+    assert filter_index < upload_index
+    assert steps[filter_index]["if"] == "always()"
+    assert (
+        steps[filter_index]["run"]
+        == "python scripts/quality/filter_checkov_sarif.py results.sarif"
+    )
 
 
 def test_e2e_coverage_is_chromium_opt_in_and_codecov_wired() -> None:
