@@ -8,12 +8,47 @@ package telemetry
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/university-ecosystem/ws-hub/pkg/config"
+	"go.opentelemetry.io/otel/exporters/otlp/otlptrace"
+	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
+	"go.opentelemetry.io/otel/sdk/resource"
 )
+
+func TestInitTracer_DeterministicDependencyFailures(t *testing.T) {
+	oldExporter := newOTLPTraceExporterFunc
+	oldResource := newTelemetryResourceFunc
+	t.Cleanup(func() {
+		newOTLPTraceExporterFunc = oldExporter
+		newTelemetryResourceFunc = oldResource
+	})
+
+	t.Run("exporter construction", func(t *testing.T) {
+		newOTLPTraceExporterFunc = func(context.Context, ...otlptracegrpc.Option) (*otlptrace.Exporter, error) {
+			return nil, errors.New("exporter unavailable")
+		}
+		newTelemetryResourceFunc = oldResource
+
+		tp, err := InitTracer(context.Background(), &config.Config{Environment: "test"})
+		assert.Nil(t, tp)
+		assert.EqualError(t, err, "exporter unavailable")
+	})
+
+	t.Run("resource construction", func(t *testing.T) {
+		newOTLPTraceExporterFunc = oldExporter
+		newTelemetryResourceFunc = func(context.Context, ...resource.Option) (*resource.Resource, error) {
+			return nil, errors.New("resource unavailable")
+		}
+
+		tp, err := InitTracer(context.Background(), &config.Config{Environment: "test"})
+		assert.Nil(t, tp)
+		assert.EqualError(t, err, "resource unavailable")
+	})
+}
 
 // TestInitTracer_ExporterFailsWithCancelledContext exercises the
 // `if err != nil { return nil, err }` branch after otlptracegrpc.New().

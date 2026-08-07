@@ -75,6 +75,7 @@ var (
 	httpDoFunc = func(client *http.Client, request *http.Request) (*http.Response, error) {
 		return client.Do(request)
 	}
+	cryptoRandReadFunc = cryptorand.Read
 	xfetchRandFunc     = secureRandomFloat64
 	parseJWTClaimsFunc = func(
 		parser *jwt.Parser,
@@ -121,7 +122,7 @@ var (
 // preserves bounded backoff behavior if the OS entropy source is unavailable.
 func secureRandomFloat64() float64 {
 	var randomBytes [8]byte
-	if _, err := cryptorand.Read(randomBytes[:]); err != nil {
+	if _, err := cryptoRandReadFunc(randomBytes[:]); err != nil {
 		return 0.5
 	}
 	const mantissaBits = 53

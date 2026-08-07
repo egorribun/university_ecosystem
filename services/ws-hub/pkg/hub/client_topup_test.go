@@ -125,6 +125,10 @@ func TestClientReplayOfflineMessages_UsesResumeOptionsAndHandlesFetchFailure(t *
 	t.Cleanup(func() { unsubscribePullFunc = oldUnsubscribe })
 	unsubscribePullFunc = func(*nats.Subscription) error { return errors.New("unsubscribe failed") }
 	client.replayOfflineMessages("room", 1, "")
+	fetchPullMessagesFunc = func(*nats.Subscription, int, ...nats.PullOpt) ([]*nats.Msg, error) {
+		return nil, errors.New("fetch unavailable")
+	}
+	client.replayOfflineMessages("room", 1, "")
 }
 
 func TestClientDeliverOfflineMessages_ResumesAndSerializesReplay(t *testing.T) {

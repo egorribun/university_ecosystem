@@ -53,6 +53,8 @@ func TestTryForceRefreshJWKS_CooldownAndRace(t *testing.T) {
 	h := setupTestHub()
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+	previous := _lastJWKSForceRefreshUnix.Load()
+	t.Cleanup(func() { _lastJWKSForceRefreshUnix.Store(previous) })
 
 	h.jwksCache = jwk.NewCache(ctx)
 	h.jwksURL = "http://127.0.0.1:1/invalid"
@@ -64,6 +66,15 @@ func TestTryForceRefreshJWKS_CooldownAndRace(t *testing.T) {
 		assert.NotPanics(t, func() {
 			h.tryForceRefreshJWKS(ctx)
 		})
+	})
+
+	t.Run("CAS race path", func(t *testing.T) {
+		oldCAS := jwksForceRefreshCASFunc
+		t.Cleanup(func() { jwksForceRefreshCASFunc = oldCAS })
+		_lastJWKSForceRefreshUnix.Store(0)
+		jwksForceRefreshCASFunc = func(int64, int64) bool { return false }
+
+		assert.NotPanics(t, func() { h.tryForceRefreshJWKS(ctx) })
 	})
 }
 

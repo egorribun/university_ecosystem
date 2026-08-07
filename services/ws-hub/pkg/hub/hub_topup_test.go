@@ -245,8 +245,10 @@ func TestHubStop_CancelsLifecycleAndJWKS(t *testing.T) {
 	require.Eventually(t, func() bool { return h.Context() != nil }, time.Second, time.Millisecond)
 	cancelled := false
 	h.jwksCacheCancel = func() { cancelled = true }
+	h.StartLimiterCleanup(context.Background())
 	h.Stop()
 	assert.True(t, cancelled)
+	assert.Nil(t, h.limiterCancel)
 	select {
 	case <-done:
 	case <-time.After(time.Second):

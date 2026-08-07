@@ -114,7 +114,7 @@ func (s *fakeWebTransportSession) SendDatagram([]byte) error { return s.datagram
 func TestWebTransportSession_DelegatesSessionAndStreamOperations(t *testing.T) {
 	stream := &fakeWebTransportStream{readData: []byte("hello")}
 	session := &fakeWebTransportSession{remote: &net.UDPAddr{IP: net.IPv4(192, 0, 2, 1), Port: 443}, stream: stream}
-	s := &WebTransportSession{sess: session, readLimit: 16}
+	s := &WebTransportSession{sess: session, stream: stream, readLimit: 16}
 
 	assert.Equal(t, session.remote, s.RemoteAddr())
 	assert.NoError(t, s.SetReadDeadline(time.Now()))
@@ -139,6 +139,12 @@ func TestWebTransportSession_DelegatesErrorsAndDatagramFallback(t *testing.T) {
 	assert.ErrorIs(t, err, streamErr)
 	assert.ErrorIs(t, s.WriteMessage(websocket.TextMessage, []byte("payload")), streamErr)
 	assert.ErrorIs(t, s.Close(), sessionErr, "session close error takes precedence")
+
+	streamCloseOnly := &WebTransportSession{
+		sess:   &fakeWebTransportSession{},
+		stream: &fakeWebTransportStream{closeErr: streamErr},
+	}
+	assert.ErrorIs(t, streamCloseOnly.Close(), streamErr)
 
 	noStream := &fakeWebTransportSession{datagramErr: nil, acceptErr: errors.New("stream unavailable")}
 	s = &WebTransportSession{sess: noStream, readLimit: 16}

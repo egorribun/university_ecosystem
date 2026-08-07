@@ -19,6 +19,11 @@ import (
 	semconv "go.opentelemetry.io/otel/semconv/v1.27.0"
 )
 
+var (
+	newOTLPTraceExporterFunc = otlptracegrpc.New
+	newTelemetryResourceFunc = resource.New
+)
+
 // InitSentry initializes Raven/Sentry for error tracking.
 func InitSentry(cfg *config.Config) error {
 	if cfg.SentryDSN == "" {
@@ -41,18 +46,19 @@ func InitTracer(ctx context.Context, cfg *config.Config) (*sdktrace.TracerProvid
 	//   OTEL_EXPORTER_OTLP_CERTIFICATE — optional CA bundle path
 	// This eliminates the hardcoded "jaeger:4317" and removes the blanket
 	// WithInsecure() that was sending traces in plaintext in production.
-	exporter, err := otlptracegrpc.New(ctx)
+	exporter, err := newOTLPTraceExporterFunc(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	res, err := resource.New(ctx,
+	res, err := newTelemetryResourceFunc(ctx,
 		resource.WithAttributes(
 			semconv.ServiceNameKey.String("ws-hub"),
 			attribute.String("environment", cfg.Environment),
 		),
 	)
 	if err != nil {
+		_ = exporter.Shutdown(ctx) //nolint:errcheck // preserve the original resource error
 		return nil, err
 	}
 

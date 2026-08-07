@@ -14,6 +14,7 @@ import (
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/gorilla/websocket"
+	"github.com/lestrrat-go/jwx/v2/jwk"
 	"github.com/quic-go/webtransport-go"
 	goredis "github.com/redis/go-redis/v9"
 	"github.com/university-ecosystem/ws-hub/pkg/config"
@@ -28,6 +29,15 @@ import (
 var _lastJWKSForceRefreshUnix atomic.Int64 // unix seconds, zero = never refreshed
 
 const _jwksForceRefreshCooldown = 30 * time.Second
+
+var (
+	jwksForceRefreshCASFunc = func(old, updated int64) bool {
+		return _lastJWKSForceRefreshUnix.CompareAndSwap(old, updated)
+	}
+	rawJWKFunc = func(key jwk.Key, target interface{}) error {
+		return key.Raw(target)
+	}
+)
 
 type contextKey string
 
@@ -414,7 +424,7 @@ func (h *Hub) tryForceRefreshJWKS(ctx context.Context) {
 	if now-last < int64(_jwksForceRefreshCooldown.Seconds()) {
 		return // rate-limited — another goroutine refreshed recently
 	}
-	if !_lastJWKSForceRefreshUnix.CompareAndSwap(last, now) {
+	if !jwksForceRefreshCASFunc(last, now) {
 		return // another goroutine won the CAS race
 	}
 	h.Logger.InfoContext(ctx, "JWKS: unknown kid — forcing cache refresh", "url", h.jwksURL)
@@ -451,7 +461,7 @@ func (h *Hub) validateRS256(ctx context.Context, tokenStr string) (string, error
 			return nil, fmt.Errorf("kid %q not found in JWKS", kid)
 		}
 		var pubKey interface{}
-		if err := key.Raw(&pubKey); err != nil {
+		if err := rawJWKFunc(key, &pubKey); err != nil {
 			return nil, fmt.Errorf("failed to extract raw public key: %w", err)
 		}
 		return pubKey, nil

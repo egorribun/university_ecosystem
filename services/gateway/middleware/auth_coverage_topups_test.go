@@ -138,6 +138,16 @@ func TestFetchJWKSPublicKey_NilHTTPResponseIsRejected(t *testing.T) {
 	require.EqualError(t, err, "jwks: fetch: nil response")
 }
 
+func TestSecureRandomFloat64_EntropyFailureUsesBoundedFallback(t *testing.T) {
+	oldRead := cryptoRandReadFunc
+	t.Cleanup(func() { cryptoRandReadFunc = oldRead })
+	cryptoRandReadFunc = func([]byte) (int, error) {
+		return 0, errors.New("entropy source unavailable")
+	}
+
+	assert.Equal(t, 0.5, secureRandomFloat64())
+}
+
 func TestListenForRevocations_DisconnectionAndClose(t *testing.T) {
 	// Setup mock redis server that disconnects immediately
 	url, cleanup := startMockRedis(t, mockRedisConfig{existsReply: ":0\r\n"})

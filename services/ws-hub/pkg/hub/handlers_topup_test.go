@@ -2,11 +2,15 @@ package hub
 
 import (
 	"context"
+	"crypto/rand"
+	"crypto/rsa"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 	"time"
 
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/lestrrat-go/jwx/v2/jwk"
 	"github.com/quic-go/webtransport-go"
 	"github.com/stretchr/testify/assert"
@@ -115,4 +119,27 @@ func TestTryForceRefreshJWKS_RespectsCooldown(t *testing.T) {
 	h := setupTestHub()
 	h.jwksURL = "http://127.0.0.1:1/jwks"
 	assert.NotPanics(t, func() { h.tryForceRefreshJWKS(context.Background()) })
+}
+
+func TestValidateRS256_RawKeyExtractionFailureIsRejected(t *testing.T) {
+	priv, err := rsa.GenerateKey(rand.Reader, 2048)
+	require.NoError(t, err)
+	server := startJWKSServer(t, &priv.PublicKey, "kid-raw-error")
+
+	h := setupTestHub()
+	ctx := context.Background()
+	require.NoError(t, h.SetupJWKS(ctx, server.URL))
+
+	oldRaw := rawJWKFunc
+	t.Cleanup(func() { rawJWKFunc = oldRaw })
+	rawJWKFunc = func(jwk.Key, interface{}) error {
+		return errors.New("raw key unavailable")
+	}
+
+	_, err = h.validateRS256(ctx, signRS256(t, priv, "kid-raw-error", jwt.MapClaims{
+		"sub": "user-rs",
+		"exp": time.Now().Add(time.Hour).Unix(),
+	}))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "invalid RS256 token")
 }

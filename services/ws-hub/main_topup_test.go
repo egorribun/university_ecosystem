@@ -5,6 +5,7 @@ import (
 	"io"
 	"log/slog"
 	"net"
+	"net/http"
 	"os"
 	"testing"
 	"time"
@@ -14,6 +15,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/university-ecosystem/ws-hub/pkg/config"
+	"github.com/university-ecosystem/ws-hub/pkg/hub"
 )
 
 func TestStartupPacketConn_ForwardsOperationsAndSignalsOnce(t *testing.T) {
@@ -111,6 +113,39 @@ func TestWaitForShutdown_AllTerminalBranches(t *testing.T) {
 		quit <- os.Interrupt
 		assert.NoError(t, waitForShutdown(quit, make(chan error), logger))
 	})
+}
+
+func TestRunServer_WaitsForShutdownAfterWebTransportReady(t *testing.T) {
+	oldServe := webTransportServeFunc
+	t.Cleanup(func() { webTransportServeFunc = oldServe })
+	ready := make(chan struct{})
+	webTransportServeFunc = func(_ *webtransport.Server, conn net.PacketConn) error {
+		_ = conn.LocalAddr()
+		close(ready)
+		return nil
+	}
+
+	quit := make(chan os.Signal, 1)
+	cfg := &config.Config{Port: "0", WebTransportPort: "0"}
+	h := hub.NewHub(nil, slog.New(slog.NewTextHandler(io.Discard, nil)), nil, cfg, nil)
+	done := make(chan error, 1)
+	go func() {
+		done <- runServer(cfg, slog.New(slog.NewTextHandler(io.Discard, nil)), h, http.NewServeMux(), quit)
+	}()
+
+	select {
+	case <-ready:
+	case <-time.After(time.Second):
+		t.Fatal("WebTransport server did not signal readiness")
+	}
+	quit <- os.Interrupt
+
+	select {
+	case err := <-done:
+		assert.NoError(t, err)
+	case <-time.After(2 * time.Second):
+		t.Fatal("runServer did not enter and leave the shutdown wait path")
+	}
 }
 
 func TestShutdownWebTransport_ClosesWhenNotAlreadyDone(t *testing.T) {
