@@ -627,6 +627,7 @@ def test_backend_ci_uses_historical_duration_shards_and_aggregates_coverage() ->
     assert inputs["num-shards"]["default"] == 1
     assert inputs["integration-shard-id"]["default"] == -1
     assert inputs["integration-num-shards"]["default"] == 1
+    assert inputs["integration-test-pattern"]["default"] == "tests/integration/"
     run_step = next(
         step
         for step in backend_workflow["jobs"]["unit-tests"]["steps"]
@@ -641,6 +642,20 @@ def test_backend_ci_uses_historical_duration_shards_and_aggregates_coverage() ->
     )
     assert "inputs.integration-shard-id" in integration_run_step["run"]
     assert "inputs.integration-num-shards" in integration_run_step["run"]
+    assert '"${{ inputs.integration-test-pattern }}"' in integration_run_step["run"]
+    assert '"${{ inputs.test-pattern }}"' not in integration_run_step["run"]
+    assert backend_workflow["jobs"]["integration-tests"]["timeout-minutes"] == 60
+    assert (
+        yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))["jobs"][
+            "backend-tests"
+        ]["with"]["integration-test-pattern"]
+        == "tests/integration/"
+    )
+    nightly = yaml.safe_load(NIGHTLY_FULL_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    assert (
+        nightly["jobs"]["backend-integration"]["with"]["integration-test-pattern"]
+        == "tests/integration/"
+    )
 
 
 def test_reusable_quality_jobs_have_bounded_execution() -> None:

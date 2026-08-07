@@ -467,6 +467,7 @@ jobs:
     with:
       test-group-name: "All-${{ matrix.name }}"
       test-pattern: "tests/"
+      integration-test-pattern: "tests/integration/"
       python-version: ${{ matrix.python-version }}
       # Ratchet floor at measured reality (local hermetic 88.04% after the
       # session-10 service-layer climb; CI Linux+integration measures ~0.7pp higher).

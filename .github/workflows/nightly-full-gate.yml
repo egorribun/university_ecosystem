@@ -127,6 +127,7 @@ jobs:
     with:
       test-group-name: Nightly-Integration-${{ matrix.integration-shard }}
       test-pattern: tests/
+      integration-test-pattern: tests/integration/
       python-version: "3.14"
       coverage-threshold: 0
       run-unit-tests: false

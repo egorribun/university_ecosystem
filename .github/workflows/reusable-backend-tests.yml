@@ -37,6 +37,11 @@ on:
                 required: false
                 type: string
                 default: "tests/"
+            integration-test-pattern:
+                description: "Pytest pattern for the PostgreSQL integration job"
+                required: false
+                type: string
+                default: "tests/integration/"
             parallel-workers:
                 description: "Number of parallel workers for pytest-xdist (0 = auto, -1 = disabled)"
                 required: false
@@ -351,7 +356,7 @@ jobs:
                   }
 
                   $pytestArgs = @(
-                    "${{ inputs.test-pattern }}",
+                    "${{ inputs.integration-test-pattern }}",
                     "-v",
                     "--tb=short",
                     "-x"
