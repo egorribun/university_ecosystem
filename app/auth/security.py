@@ -159,9 +159,8 @@ def _calculate_lookup_hash(input_data: str) -> str:
     This is NOT used for password storage or verification.
     """
     # nosec: B303 - SHA-1 is required by the external API
-    # nosemgrep: python.lang.security.insecure-hash-algorithms.insecure-hash-algorithm-sha1
     return (
-        hashlib.sha1(
+        hashlib.sha1(  # nosemgrep: python.lang.security.insecure-hash-algorithms.insecure-hash-algorithm-sha1
             input_data.encode("utf-8"), usedforsecurity=False
         )  # codeql[py/weak-sensitive-data-hashing]
         .hexdigest()
@@ -528,7 +527,11 @@ def _get_cached_public_key_pem(kid: str, private_key_pem: str) -> str:
     in-place; instead, the global reference is swapped.
     """
     global _public_key_cache
-    cache_key = kid or hashlib.sha256(private_key_pem.encode()).hexdigest()
+    # Include the key material fingerprint even when a kid is present.  A
+    # reused kid during key rotation must not return the public key derived
+    # from an older private key.
+    key_fingerprint = hashlib.sha256(private_key_pem.encode()).hexdigest()
+    cache_key = f"{kid}:{key_fingerprint}" if kid else key_fingerprint
 
     # Fast path — atomic reference read. The local dict copy is immutable.
     local_cache = _public_key_cache
