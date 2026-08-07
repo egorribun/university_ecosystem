@@ -10,6 +10,17 @@ import {
 } from "./useSessionCrypto"
 
 describe("browser runtime guard", () => {
+  it("returns false when window is unavailable during SSR", () => {
+    const originalWindow = globalThis.window
+    vi.stubGlobal("window", undefined)
+
+    try {
+      expect(isSessionCryptoBrowserRuntime()).toBe(false)
+    } finally {
+      vi.stubGlobal("window", originalWindow)
+    }
+  })
+
   it("distinguishes browser and server environments", () => {
     expect(isSessionCryptoBrowserRuntime()).toBe(true)
     vi.stubGlobal("window", { event: undefined })

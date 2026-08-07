@@ -304,6 +304,11 @@ export const useSessionCrypto = () => {
     if (sessionSigningKeyPromiseRef.current) {
       return sessionSigningKeyPromiseRef.current
     }
+    const clearInFlightPromise = () => {
+      // Always clear the ref so subsequent callers retry rather than awaiting
+      // a settled promise indefinitely, regardless of fulfillment or rejection.
+      sessionSigningKeyPromiseRef.current = null
+    }
     const promise = (async (): Promise<string | null> => {
       try {
         const response = await api.get<SessionSigningKeyResponse>("/auth/session/signing-key", {
@@ -347,13 +352,12 @@ export const useSessionCrypto = () => {
           )
         }
         return null
-      } finally {
-        // Always clear promise ref so subsequent callers retry rather than
-        // awaiting a settled (rejected) promise indefinitely.
-        sessionSigningKeyPromiseRef.current = null
       }
     })()
     sessionSigningKeyPromiseRef.current = promise
+    // Register both settlement handlers before returning the promise. This
+    // preserves the old finally semantics without a synthetic uncovered branch.
+    void promise.then(clearInFlightPromise, clearInFlightPromise)
     return promise
   }, [updateSessionSigningKey])
 

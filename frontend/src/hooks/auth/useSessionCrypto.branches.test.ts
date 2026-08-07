@@ -156,6 +156,26 @@ describe("ensureSessionSigningKey failure path", () => {
     dispatch.mockRestore()
     vi.useRealTimers()
   })
+
+  it("clears the in-flight promise when failure notification throws", async () => {
+    vi.useFakeTimers()
+    mocks.apiGet.mockRejectedValue(new Error("503"))
+    vi.spyOn(window, "dispatchEvent").mockImplementationOnce(() => {
+      throw new Error("event unavailable")
+    })
+    const { result } = renderHook(() => useSessionCrypto())
+
+    await act(async () => {
+      await result.current.ensureSessionSigningKey()
+      await result.current.ensureSessionSigningKey()
+      await expect(result.current.ensureSessionSigningKey()).rejects.toThrow("event unavailable")
+    })
+
+    expect(result.current.sessionSigningKeyPromiseRef.current).toBeNull()
+    vi.runAllTimers()
+    vi.restoreAllMocks()
+    vi.useRealTimers()
+  })
 })
 
 // ---------------------------------------------------------------------------
