@@ -400,22 +400,33 @@ def test_iac_scan_exceptions_use_supported_scoped_syntax() -> None:
         for step in security_workflow["jobs"]["docker-security"]["steps"]
         if step.get("name") == "Run Trivy configuration scanner (IaC)"
     )
-    assert config_scan["with"]["trivyignores"] == ".trivyignore,.trivyignore.yaml"
+    assert config_scan["with"]["trivyignores"] == ".trivyignore.yaml"
 
     trivy_ignore = yaml.safe_load(
         (REPOSITORY_ROOT / ".trivyignore.yaml").read_text(encoding="utf-8")
     )
-    assert trivy_ignore["misconfigurations"] == [
-        {
-            "id": "AVD-DS-0002",
-            "paths": ["infra/oss-fuzz/Dockerfile"],
-            "statement": (
-                "OSS-Fuzz controls this disposable builder image and requires its "
-                "base-builder execution model; the image is never deployed or used as a "
-                "runtime container."
-            ),
-        }
+    assert [entry["id"] for entry in trivy_ignore["misconfigurations"]] == [
+        "KSV-0012",
+        "KSV-0104",
+        "KSV-0023",
+        "KSV-0001",
+        "KSV-0118",
+        "KSV-0014",
+        "KSV-0047",
+        "KSV-0017",
+        "KSV-0009",
+        "KSV-0010",
+        "AVD-DS-0002",
     ]
+    assert trivy_ignore["misconfigurations"][-1] == {
+        "id": "AVD-DS-0002",
+        "paths": ["infra/oss-fuzz/Dockerfile"],
+        "statement": (
+            "OSS-Fuzz controls this disposable builder image and requires its "
+            "base-builder execution model; the image is never deployed or used as a "
+            "runtime container."
+        ),
+    }
 
 
 def test_checkov_sarif_filter_removes_only_source_backed_suppressions(tmp_path) -> None:
