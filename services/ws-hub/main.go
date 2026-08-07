@@ -342,7 +342,11 @@ func serveWebTransport(wtServer *webtransport.Server, wtPort string, cfg *config
 	if err != nil {
 		return err
 	}
-	defer conn.Close()
+	defer func() {
+		if err := conn.Close(); err != nil {
+			logger.WarnContext(context.Background(), "WebTransport UDP socket close failed", "err", err)
+		}
+	}()
 
 	if cfg.TLSCertFile != "" && cfg.TLSKeyFile != "" {
 		cert, err := tls.LoadX509KeyPair(cfg.TLSCertFile, cfg.TLSKeyFile)
