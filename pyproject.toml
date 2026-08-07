@@ -543,10 +543,15 @@ pytest_add_cli_args_test_selection = [
 # directory prevents that test from breaking mutmut's clean-test baseline.
 also_copy = [
     ".github",
+    ".lighthouserc.js",
+    ".trivyignore.yaml",
     "quality",
     "infrastructure",
+    "infra/oss-fuzz",
     "alembic",
     "scripts",
+    "Dockerfile.test",
+    "Dockerfile.protogen",
     "backend.Dockerfile",
     "docker-compose.full.yml",
     "codecov.yml",
@@ -556,12 +561,15 @@ also_copy = [
     "Makefile",
     "docs",
     "k8s/kyverno",
+    "k8s/backend",
+    "k8s/frontend",
     # test_quality_workflow_contract reads the three Go service Dockerfiles;
     # copy their common parent because mutmut's sandbox copier needs the
     # parent directory present for nested repository inputs.
     "services",
     "crates/pyo3-sanitizer/src",
     "frontend/scripts",
+    "frontend/tests/e2e/utils",
     "frontend/package.json",
     "frontend/stryker.config.mjs",
     "frontend/vitest.config.ts",
