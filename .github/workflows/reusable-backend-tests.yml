@@ -339,6 +339,48 @@ jobs:
                   uv run alembic upgrade head
                   echo "Migration round-trip succeeded"
 
+            - name: Pre-pull testcontainer images with bounded retries
+              shell: pwsh
+              run: |
+                  # Testcontainers pulls these images lazily.  A transient
+                  # Docker Hub token/registry timeout must not turn a healthy
+                  # integration suite into a false-negative CI failure.
+                  $images = @(
+                    "nats:2.10-alpine",
+                    "postgres:15-alpine",
+                    "redis:7-alpine",
+                    "pgvector/pgvector:pg17"
+                  )
+                  $maxAttempts = 5
+
+                  foreach ($image in $images) {
+                    $available = $false
+                    for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
+                      docker image inspect $image *> $null
+                      if ($LASTEXITCODE -eq 0) {
+                        $available = $true
+                        break
+                      }
+
+                      Write-Host "Pulling $image (attempt $attempt/$maxAttempts)"
+                      docker pull $image
+                      if ($LASTEXITCODE -eq 0) {
+                        $available = $true
+                        break
+                      }
+
+                      if ($attempt -lt $maxAttempts) {
+                        $delaySeconds = [int][math]::Pow(2, $attempt)
+                        Write-Host "Retrying $image in $delaySeconds seconds"
+                        Start-Sleep -Seconds $delaySeconds
+                      }
+                    }
+
+                    if (-not $available) {
+                      throw "Unable to make testcontainer image available after $maxAttempts attempts: $image"
+                    }
+                  }
+
             - name: Run integration tests
               shell: pwsh
               run: |  # nosemgrep: yaml.github-actions.security.run-shell-injection.run-shell-injection

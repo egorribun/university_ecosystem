@@ -665,6 +665,21 @@ def test_backend_ci_uses_historical_duration_shards_and_aggregates_coverage() ->
     assert '"${{ inputs.integration-test-pattern }}"' in integration_run_step["run"]
     assert '"${{ inputs.test-pattern }}"' not in integration_run_step["run"]
     assert backend_workflow["jobs"]["integration-tests"]["timeout-minutes"] == 60
+    integration_steps = backend_workflow["jobs"]["integration-tests"]["steps"]
+    image_prep_step = next(
+        step
+        for step in integration_steps
+        if step.get("name") == "Pre-pull testcontainer images with bounded retries"
+    )
+    image_prep_text = image_prep_step["run"]
+    assert "nats:2.10-alpine" in image_prep_text
+    assert "postgres:15-alpine" in image_prep_text
+    assert "redis:7-alpine" in image_prep_text
+    assert "pgvector/pgvector:pg17" in image_prep_text
+    assert "docker image inspect" in image_prep_text
+    assert "docker pull" in image_prep_text
+    assert "$maxAttempts = 5" in image_prep_text
+    assert "Start-Sleep" in image_prep_text
     assert (
         yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))["jobs"][
             "backend-tests"
