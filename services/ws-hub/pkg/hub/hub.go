@@ -79,11 +79,12 @@ type Hub struct {
 	clientMsgRateBurst int
 	// ctx is the lifecycle context for the Hub, cancelled when Run() exits.
 	// Used by ReadPump/WritePump goroutines to detect hub shutdown (RZ-24-02).
-	ctx         context.Context
-	ctxCancel   context.CancelFunc
-	lifecycleMu sync.Mutex
-	stopOnce    sync.Once
-	jwksMu      sync.Mutex
+	ctx           context.Context
+	ctxCancel     context.CancelFunc
+	limiterCancel context.CancelFunc
+	lifecycleMu   sync.Mutex
+	stopOnce      sync.Once
+	jwksMu        sync.Mutex
 	// redisClient is the shared Redis connection used for upgrade ticket validation.
 	// RZ-W14-01 (audit 2026-03-23 Wave 14): tickets replace JWT-in-Sec-WebSocket-Protocol.
 	redisClient            *goredis.Client
@@ -908,10 +909,18 @@ func (h *Hub) DisconnectUser(userID string, closeCode int, reason string) {
 // StartLimiterCleanup launches a background goroutine that periodically
 // removes orphaned rate.Limiter entries from msgLimiters.
 func (h *Hub) StartLimiterCleanup(ctx context.Context) {
+	cleanupCtx, cancel := context.WithCancel(ctx)
+	h.lifecycleMu.Lock()
+	if h.limiterCancel != nil {
+		h.limiterCancel()
+	}
+	h.limiterCancel = cancel
+	h.lifecycleMu.Unlock()
+
 	go func() {
 		defer func() {
 			if r := recover(); r != nil {
-				h.Logger.ErrorContext(ctx, "CRITICAL: Panic in LimiterCleanup goroutine avoided ws-hub crash", "panic", r)
+				h.Logger.ErrorContext(cleanupCtx, "CRITICAL: Panic in LimiterCleanup goroutine avoided ws-hub crash", "panic", r)
 			}
 		}()
 		interval := h.limiterCleanupInterval
@@ -922,7 +931,7 @@ func (h *Hub) StartLimiterCleanup(ctx context.Context) {
 		defer ticker.Stop()
 		for {
 			select {
-			case <-ctx.Done():
+			case <-cleanupCtx.Done():
 				return
 			case <-ticker.C:
 				h.mu.RLock()
@@ -941,7 +950,7 @@ func (h *Hub) StartLimiterCleanup(ctx context.Context) {
 					return true
 				})
 				if removed > 0 {
-					h.Logger.InfoContext(ctx, "Cleaned up orphaned msgLimiters",
+					h.Logger.InfoContext(cleanupCtx, "Cleaned up orphaned msgLimiters",
 						"removed", removed)
 				}
 			}
@@ -955,6 +964,10 @@ func (h *Hub) Stop() {
 		h.lifecycleMu.Lock()
 		if h.ctxCancel != nil {
 			h.ctxCancel()
+		}
+		if h.limiterCancel != nil {
+			h.limiterCancel()
+			h.limiterCancel = nil
 		}
 		h.lifecycleMu.Unlock()
 		for _, sub := range h.subs {

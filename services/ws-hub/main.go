@@ -247,18 +247,16 @@ func setupHub(ctx context.Context, cfg *config.Config, logger *slog.Logger, nc *
 	if cfg.JWKSURL != "" {
 		if err := setupJWKSFunc(h, ctx, cfg.JWKSURL); err != nil {
 			logger.ErrorContext(ctx, "Failed to setup JWKS", "err", err)
-			h.Stop()
+			h.Stop() //nolint:contextcheck // Hub.Stop cancels its own lifecycle context.
 			return nil, err
 		}
 	}
 
-	limiterCtx, cancelLimiter := context.WithCancel(ctx)
-	h.StartLimiterCleanup(limiterCtx)
+	h.StartLimiterCleanup(ctx)
 	go h.Run(ctx)
 	if nc != nil {
 		if err := subscribeNATSFunc(h, ctx); err != nil {
-			cancelLimiter()
-			h.Stop()
+			h.Stop() //nolint:contextcheck // Hub.Stop cancels its own lifecycle context.
 			return nil, err
 		}
 	}

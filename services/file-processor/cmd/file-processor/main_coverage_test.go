@@ -383,7 +383,9 @@ func TestRunServers_GRPCServeAndShutdownErrors(t *testing.T) {
 		graphqlShutdownFunc = oldShutdown
 	})
 	grpcServeFunc = func(_ *grpc.Server, listener net.Listener) error {
-		_ = listener.Close()
+		if err := listener.Close(); err != nil {
+			return errors.New("listener close failed: " + err.Error())
+		}
 		return errors.New("synthetic gRPC serve failure")
 	}
 	graphqlListenAndServeFunc = func(*http.Server) error { return http.ErrServerClosed }
@@ -394,7 +396,7 @@ func TestRunServers_GRPCServeAndShutdownErrors(t *testing.T) {
 	err := runServers(
 		context.Background(),
 		grpc.NewServer(),
-		&http.Server{},
+		&http.Server{ReadHeaderTimeout: time.Second},
 		&config.Config{GRPCPort: "0", GraphQLPort: "0"},
 		discardLogger(),
 	)

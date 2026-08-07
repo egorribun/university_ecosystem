@@ -12,7 +12,6 @@ import (
 	"os"
 	"strconv"
 	"testing"
-	"time"
 
 	"github.com/nats-io/nats.go"
 	"github.com/quic-go/quic-go/http3"
@@ -182,14 +181,12 @@ func TestSetupHub_CleansUpOnJWKSAndSubscriptionFailures(t *testing.T) {
 	assert.EqualError(t, err, "jwks setup failed")
 
 	resetBootstrapSeams(t)
-	subscribeNATSFunc = func(h *hub.Hub, ctx context.Context) error {
-		deadline := time.Now().Add(time.Second)
-		for h.Context() == nil && time.Now().Before(deadline) {
-			time.Sleep(time.Millisecond)
-		}
+	subscribeNATSFunc = func(*hub.Hub, context.Context) error {
 		return errors.New("subscription failed")
 	}
-	h, err = setupHub(context.Background(), &config.Config{}, slog.New(slog.NewTextHandler(io.Discard, nil)), &nats.Conn{}, nil)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	h, err = setupHub(ctx, &config.Config{}, slog.New(slog.NewTextHandler(io.Discard, nil)), &nats.Conn{}, nil)
 	assert.Nil(t, h)
 	assert.EqualError(t, err, "subscription failed")
 }

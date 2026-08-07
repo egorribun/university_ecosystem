@@ -74,11 +74,10 @@ func TestWaitForWebTransportStartup_AllTerminalBranches(t *testing.T) {
 	t.Run("server error", func(t *testing.T) {
 		ready := make(chan struct{})
 		done := make(chan struct{})
-		errCh := make(chan error, 1)
+		errCh := make(chan error)
 		want := errors.New("webtransport failed")
-		errCh <- want
 		go func() {
-			time.Sleep(5 * time.Millisecond)
+			errCh <- want
 			close(done)
 		}()
 		err, requested := waitForWebTransportStartup(make(chan os.Signal), ready, done, errCh, logger)
@@ -88,10 +87,9 @@ func TestWaitForWebTransportStartup_AllTerminalBranches(t *testing.T) {
 	t.Run("signal", func(t *testing.T) {
 		ready := make(chan struct{})
 		done := make(chan struct{})
-		quit := make(chan os.Signal, 1)
-		quit <- os.Interrupt
+		quit := make(chan os.Signal)
 		go func() {
-			time.Sleep(5 * time.Millisecond)
+			quit <- os.Interrupt
 			close(done)
 		}()
 		err, requested := waitForWebTransportStartup(quit, ready, done, make(chan error), logger)

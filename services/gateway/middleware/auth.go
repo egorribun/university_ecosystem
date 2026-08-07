@@ -6,6 +6,7 @@ import (
 	"crypto/rsa"
 	"crypto/x509"
 	"encoding/base64"
+	"encoding/binary"
 	"encoding/json"
 	"encoding/pem"
 	"fmt"
@@ -119,11 +120,13 @@ var (
 // Jitter is not a security token; the deterministic midpoint fallback only
 // preserves bounded backoff behavior if the OS entropy source is unavailable.
 func secureRandomFloat64() float64 {
-	value, err := cryptorand.Float64(cryptorand.Reader)
-	if err != nil {
+	var randomBytes [8]byte
+	if _, err := cryptorand.Read(randomBytes[:]); err != nil {
 		return 0.5
 	}
-	return value
+	const mantissaBits = 53
+	const mantissaScale = float64(uint64(1) << mantissaBits)
+	return float64(binary.BigEndian.Uint64(randomBytes[:])>>(64-mantissaBits)) / mantissaScale
 }
 
 var verifySessionFunc = func(

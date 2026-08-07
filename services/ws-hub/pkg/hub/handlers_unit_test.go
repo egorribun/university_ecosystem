@@ -325,8 +325,11 @@ func TestHandleWebSocket_E2EUpgradeJoinAndDeliver(t *testing.T) {
 		return ok
 	}, 2*time.Second, 10*time.Millisecond)
 	h.mu.RLock()
-	assert.Equal(t, "tenant-e2e", h.Clients["user-e2e"].Identity.TenantID)
+	client := h.Clients["user-e2e"]
 	h.mu.RUnlock()
+	require.NotNil(t, client)
+	require.NotNil(t, client.Identity)
+	assert.Equal(t, "tenant-e2e", client.Identity.TenantID)
 
 	// Join a room through ReadPump (NATS-free message type).
 	require.NoError(t, conn.WriteJSON(map[string]string{"type": "join", "room": "room-e2e"}))

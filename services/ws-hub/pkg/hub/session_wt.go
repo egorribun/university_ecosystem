@@ -172,6 +172,9 @@ func (s *WebTransportSession) ReadMessage() (int, []byte, error) {
 	if err != nil {
 		return 0, nil, err
 	}
+	if st == nil {
+		return 0, nil, errors.New("webtransport stream is nil")
+	}
 
 	buf := make([]byte, s.readLimit)
 	n, err := st.Read(buf)
@@ -198,6 +201,12 @@ func (s *WebTransportSession) WriteMessage(messageType int, data []byte) error {
 			return s.sess.SendDatagram(data)
 		}
 		return err
+	}
+	if st == nil {
+		if s.sess != nil {
+			return s.sess.SendDatagram(data)
+		}
+		return errors.New("webtransport stream is nil")
 	}
 
 	_, err = st.Write(data)

@@ -73,7 +73,8 @@ func TestNewHub_LoadsJetStreamContextWhenAvailable(t *testing.T) {
 
 	oldJetStream := jetStreamContextFunc
 	t.Cleanup(func() { jetStreamContextFunc = oldJetStream })
-	_, _ = oldJetStream(nc)
+	_, jetStreamErr := oldJetStream(nc)
+	require.NoError(t, jetStreamErr)
 	jetStreamContextFunc = func(*nats.Conn) (nats.JetStreamContext, error) {
 		return &scriptedJetStream{}, nil
 	}
@@ -163,6 +164,7 @@ func TestHubBroadcast_TraceAndMarshalErrorBranches(t *testing.T) {
 }
 
 func TestHubNATSHandlers_RecoverPanicsAndContainHMACFailures(t *testing.T) {
+	//nolint:gosec // test-only HMAC secret
 	const secret = "handler-topup-secret" // pragma: allowlist secret
 	h := newNatsTestHub(nil, secret, 10)
 	ctx := context.Background()

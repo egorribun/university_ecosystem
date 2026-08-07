@@ -148,6 +148,12 @@ func TestWebTransportSession_DelegatesErrorsAndDatagramFallback(t *testing.T) {
 	s = &WebTransportSession{sess: noDatagram, readLimit: 16}
 	assert.EqualError(t, s.WriteMessage(websocket.TextMessage, []byte("datagram")), "datagram failure")
 
+	nilStream := &fakeWebTransportSession{}
+	s = &WebTransportSession{sess: nilStream, readLimit: 16}
+	_, _, err = s.ReadMessage()
+	assert.EqualError(t, err, "webtransport stream is nil")
+	assert.NoError(t, s.WriteMessage(websocket.TextMessage, []byte("datagram after nil stream")))
+
 	noSession := &WebTransportSession{}
 	assert.EqualError(t, noSession.WriteMessage(websocket.TextMessage, []byte("payload")), "webtransport session is nil")
 }

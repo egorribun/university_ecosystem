@@ -112,7 +112,8 @@ func TestClientReplayOfflineMessages_UsesResumeOptionsAndHandlesFetchFailure(t *
 	sub, err := nc.SubscribeSync("chat.room")
 	require.NoError(t, err)
 	defaultFetch := fetchPullMessagesFunc
-	_, _ = defaultFetch(sub, 1, nats.MaxWait(time.Millisecond))
+	_, fetchErr := defaultFetch(sub, 1, nats.MaxWait(time.Millisecond))
+	assert.Error(t, fetchErr)
 	t.Cleanup(func() { fetchPullMessagesFunc = defaultFetch })
 	fetchPullMessagesFunc = func(*nats.Subscription, int, ...nats.PullOpt) ([]*nats.Msg, error) {
 		return []*nats.Msg{}, nil
