@@ -812,10 +812,15 @@ def test_backend_ci_uses_historical_duration_shards_and_aggregates_coverage() ->
         for step in backend_workflow["jobs"]["integration-tests"]["steps"]
         if step.get("name") == "Run integration tests"
     )
-    assert "inputs.integration-shard-id" in integration_run_step["run"]
-    assert "inputs.integration-num-shards" in integration_run_step["run"]
-    assert '"${{ inputs.integration-test-pattern }}"' in integration_run_step["run"]
-    assert '"${{ inputs.test-pattern }}"' not in integration_run_step["run"]
+    assert "INTEGRATION_SHARD_ID" in integration_run_step["run"]
+    assert "INTEGRATION_NUM_SHARDS" in integration_run_step["run"]
+    assert "$env:INTEGRATION_TEST_PATTERN" in integration_run_step["run"]
+    assert '"${{ inputs.integration-test-pattern }}"' not in integration_run_step["run"]
+    assert integration_run_step["env"] == {
+        "INTEGRATION_SHARD_ID": "${{ inputs.integration-shard-id }}",
+        "INTEGRATION_NUM_SHARDS": "${{ inputs.integration-num-shards }}",
+        "INTEGRATION_TEST_PATTERN": "${{ inputs.integration-test-pattern }}",
+    }
     assert backend_workflow["jobs"]["integration-tests"]["timeout-minutes"] == 60
     integration_steps = backend_workflow["jobs"]["integration-tests"]["steps"]
     image_prep_step = next(

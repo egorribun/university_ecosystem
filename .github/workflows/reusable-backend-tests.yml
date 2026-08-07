@@ -383,10 +383,14 @@ jobs:
 
             - name: Run integration tests
               shell: pwsh
-              run: |  # nosemgrep: yaml.github-actions.security.run-shell-injection.run-shell-injection
+              env:
+                  INTEGRATION_SHARD_ID: ${{ inputs.integration-shard-id }}
+                  INTEGRATION_NUM_SHARDS: ${{ inputs.integration-num-shards }}
+                  INTEGRATION_TEST_PATTERN: ${{ inputs.integration-test-pattern }}
+              run: |
                   $integrationShardArgs = @()
-                  $integrationShardId = [int]"${{ inputs.integration-shard-id }}"
-                  $integrationNumShards = [int]"${{ inputs.integration-num-shards }}"
+                  $integrationShardId = [int]$env:INTEGRATION_SHARD_ID
+                  $integrationNumShards = [int]$env:INTEGRATION_NUM_SHARDS
                   if ($integrationShardId -ge 0 -or $integrationNumShards -ne 1) {
                     if ($integrationShardId -lt 0 -or $integrationShardId -ge $integrationNumShards -or $integrationNumShards -lt 1) {
                       throw "Invalid integration shard configuration: id=$integrationShardId total=$integrationNumShards"
@@ -398,7 +402,7 @@ jobs:
                   }
 
                   $pytestArgs = @(
-                    "${{ inputs.integration-test-pattern }}",
+                    $env:INTEGRATION_TEST_PATTERN,
                     "-v",
                     "--tb=short",
                     "-x"

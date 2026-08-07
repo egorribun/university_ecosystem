@@ -395,7 +395,7 @@ func TestRunServers_GRPCServeAndShutdownErrors(t *testing.T) {
 
 	err := runServers(
 		context.Background(),
-		grpc.NewServer(),
+		grpc.NewServer(grpc.Creds(insecure.NewCredentials())),
 		&http.Server{ReadHeaderTimeout: time.Second},
 		&config.Config{GRPCPort: "0", GraphQLPort: "0"},
 		discardLogger(),
@@ -982,7 +982,7 @@ func TestRunMain_ClosesSpiffeClientErrorIsLogged(t *testing.T) {
 		return &spiffe.Client{}, nil
 	}
 	setupGRPCServerFunc = func(context.Context, *config.Config, *rsa.PublicKey, client.Client, ...any) (*grpc.Server, error) {
-		return grpc.NewServer(), nil
+		return grpc.NewServer(grpc.Creds(insecure.NewCredentials())), nil
 	}
 	setupGraphQLServerFunc = func(context.Context, *config.Config, *rsa.PublicKey, client.Client, *slog.Logger) (*http.Server, error) {
 		return &http.Server{ReadHeaderTimeout: time.Second}, nil
