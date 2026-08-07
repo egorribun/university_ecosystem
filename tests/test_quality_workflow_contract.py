@@ -6,6 +6,7 @@ import yaml
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 CI_WORKFLOW_PATH = REPOSITORY_ROOT / ".github" / "workflows" / "ci.yml"
+ACTIONLINT_CONFIG_PATH = REPOSITORY_ROOT / ".github" / "actionlint.yaml"
 LIGHTHOUSE_CONFIG_PATH = REPOSITORY_ROOT / ".lighthouserc.js"
 LHCI_SCRIPT_PATH = REPOSITORY_ROOT / "frontend" / "scripts" / "run-lhci.mjs"
 CONTRACT_VALIDATION_WORKFLOW_PATH = (
@@ -1034,7 +1035,9 @@ def test_lhci_command_runner_uses_shell_free_platform_resolution() -> None:
 def test_chaos_job_provisions_real_minio_through_toxiproxy() -> None:
     ci_workflow = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
     chaos_job = ci_workflow["jobs"]["chaos-tests"]
-    assert chaos_job["services"]["minio"]["image"].startswith("minio/minio:")
+    minio_service = chaos_job["services"]["minio"]
+    assert minio_service["image"].startswith("minio/minio:")
+    assert minio_service["command"] == 'server /data --console-address ":9001"'
     assert "9003:9003" in chaos_job["services"]["toxiproxy"]["ports"]
 
     configure_text = next(
@@ -1053,6 +1056,13 @@ def test_chaos_job_provisions_real_minio_through_toxiproxy() -> None:
     assert chaos_env["MINIO_PROXY_ENDPOINT"] == "http://localhost:9003"
     assert chaos_env["MINIO_DIRECT_ENDPOINT"] == "localhost:9000"
     assert chaos_env["STORAGE_S3_ENDPOINT_URL"] == "http://localhost:9003"
+
+
+def test_actionlint_documents_github_service_command_compatibility() -> None:
+    config = yaml.safe_load(ACTIONLINT_CONFIG_PATH.read_text(encoding="utf-8"))
+    ignores = config["paths"][".github/workflows/ci.yml"]["ignore"]
+
+    assert 'unexpected key "command" for "services" section' in ignores
 
 
 def test_frontend_mutation_gate_is_blocking_and_reproducible() -> None:

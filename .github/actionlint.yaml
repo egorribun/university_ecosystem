@@ -1,0 +1,7 @@
+# GitHub's workflow schema supports `jobs.<job_id>.services.<service_id>.command`;
+# actionlint v1.7.12 does not yet model that key and reports a false syntax
+# error. Keep the exception scoped to the one CI workflow and exact message.
+paths:
+  .github/workflows/ci.yml:
+    ignore:
+      - 'unexpected key "command" for "services" section'
