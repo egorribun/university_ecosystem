@@ -433,7 +433,14 @@ mod tests {
     fn test_very_long_string_performance_boundary() {
         // Verifies that the sanitizer completes without panic or OOM for a
         // 1 MiB payload — a practical upper bound for user-supplied content.
-        let repeated = "<p>Hello world</p>".repeat(60_000); // ~1.08 MiB
+        // Miri interprets every html5ever instruction, so it keeps the same
+        // input shape at a representative size while the native Rust gate
+        // retains the full 1 MiB performance boundary.
+        #[cfg(miri)]
+        const REPETITIONS: usize = 256;
+        #[cfg(not(miri))]
+        const REPETITIONS: usize = 60_000;
+        let repeated = "<p>Hello world</p>".repeat(REPETITIONS);
         let out = sanitize_rich_text(&repeated);
         // Output must still contain paragraph tags (they are in the allow-list)
         assert!(
