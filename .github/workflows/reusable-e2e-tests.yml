@@ -82,6 +82,12 @@ jobs:
       DATABASE_URL: "postgresql+asyncpg://test:test@localhost:5432/test_e2e"
       OTEL_SDK_DISABLED: "true"
       E2E_COVERAGE: ${{ inputs.collect-coverage && inputs.browser == 'chromium' && 'true' || 'false' }}
+      # Rolldown/TanStack Start can briefly peak at ~1.55 GiB on the Linux
+      # hosted runner while the SSR bundle is emitted. Keep the orchestrator's
+      # finite RSS watchdog enabled with CI headroom; the V8 heap cap remains
+      # 1536 MiB, so this does not turn an unbounded build into a pass.
+      FRONTEND_BUILD_MAX_RSS_MB: "2048"
+      FRONTEND_BUILD_MAX_OLD_SPACE_MB: "1536"
     services:
       postgres:
         image: pgvector/pgvector:pg17

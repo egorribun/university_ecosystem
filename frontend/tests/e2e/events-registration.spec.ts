@@ -1,5 +1,6 @@
 import { expect, test, type Page, type Route } from "./test"
 import { useMockApi } from "./utils/mockApi"
+import { gotoWithTransientRetry } from "./utils/navigation"
 
 /**
  * Events registration specs — W24.
@@ -131,7 +132,7 @@ test.describe("Events registration", () => {
     const { login } = await useMockApi(page)
     await login(page)
 
-    await page.goto("/events", { waitUntil: "commit", timeout: 30_000 })
+    await gotoWithTransientRetry(page, "/events", { waitUntil: "commit", timeout: 30_000 })
     await page.waitForURL(/\/events$/)
 
     // Click into the open event.
@@ -183,7 +184,7 @@ test.describe("Events registration", () => {
     const { login } = await useMockApi(page)
     await login(page)
 
-    await page.goto("/events", { waitUntil: "commit", timeout: 30_000 })
+    await gotoWithTransientRetry(page, "/events", { waitUntil: "commit", timeout: 30_000 })
 
     const fullEventLink = page
       .getByText(/Full Capacity Event/i)
@@ -223,7 +224,7 @@ test.describe("Events registration", () => {
     const { login } = await useMockApi(page)
     await login(page)
 
-    await page.goto("/events", { waitUntil: "commit", timeout: 30_000 })
+    await gotoWithTransientRetry(page, "/events", { waitUntil: "commit", timeout: 30_000 })
 
     const registeredEventLink = page
       .getByText(/Already Registered Event/i)

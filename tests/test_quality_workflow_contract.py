@@ -412,6 +412,27 @@ def test_e2e_postgres_healthcheck_uses_declared_credentials() -> None:
     assert "--health-cmd pg_isready\n" not in options
 
 
+def test_e2e_linux_build_memory_budget_keeps_both_limits_bounded() -> None:
+    workflow = yaml.safe_load(E2E_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    job = workflow["jobs"]["e2e"]
+    env = job["env"]
+
+    assert env["FRONTEND_BUILD_MAX_RSS_MB"] == "2048"
+    assert env["FRONTEND_BUILD_MAX_OLD_SPACE_MB"] == "1536"
+
+
+def test_cross_browser_navigation_retries_only_transient_abort_errors() -> None:
+    source = (
+        REPOSITORY_ROOT / "frontend" / "tests" / "e2e" / "utils" / "navigation.ts"
+    ).read_text(encoding="utf-8")
+
+    assert "NS_BINDING_ABORTED" in source
+    assert "net::ERR_ABORTED" in source
+    assert "MAX_ATTEMPTS = 3" in source
+    assert "waitForTimeout(250 * attempt)" in source
+    assert "if (!TRANSIENT_NAVIGATION_ERROR.test(message)" in source
+
+
 def test_go_codecov_flags_match_component_contract() -> None:
     workflow = yaml.safe_load(GO_WORKFLOW_PATH.read_text(encoding="utf-8"))
     steps = workflow["jobs"]["test"]["steps"]
