@@ -939,9 +939,9 @@ def test_reusable_quality_jobs_have_bounded_execution() -> None:
     )
     semgrep_run_text = semgrep_run["run"]
     assert (
-        "semgrep scan --config auto --sarif --sarif-output=semgrep.sarif"
-        in semgrep_run_text
+        "semgrep scan --config auto --baseline-commit origin/main" in semgrep_run_text
     )
+    assert "--sarif --sarif-output=semgrep.sarif" in semgrep_run_text
     assert "SEMGREP_SCAN_STATUS" in semgrep_run_text
     assert any(
         step.get("name") == "Fail if Semgrep reported findings or scan errors"

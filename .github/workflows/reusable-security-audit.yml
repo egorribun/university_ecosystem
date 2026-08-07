@@ -296,19 +296,25 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # The CE fallback uses --baseline-commit for diff-aware PR scans.
+          fetch-depth: 0
 
       - name: Run Semgrep SAST
         # Keep the SARIF upload alive when findings make the scanner return 1;
         # the follow-up gate fails the job after GitHub has received findings.
         # Without the AppSec token, use the documented CE command instead of
-        # `semgrep ci`, which requires `semgrep login`.
+        # `semgrep ci`, which requires `semgrep login`. The baseline keeps the
+        # PR gate focused on newly introduced findings; scheduled/full scans
+        # remain responsible for existing repository debt.
         run: |
           set -u
           scan_status=0
           if [ -n "${SEMGREP_APP_TOKEN:-}" ]; then
             semgrep ci --sarif --sarif-output=semgrep.sarif || scan_status=$?
           else
-            semgrep scan --config auto --sarif --sarif-output=semgrep.sarif || scan_status=$?
+            semgrep scan --config auto --baseline-commit origin/main \
+              --sarif --sarif-output=semgrep.sarif || scan_status=$?
           fi
           if [ ! -s semgrep.sarif ]; then
             echo "::error::Semgrep completed without producing SARIF output"
