@@ -16,6 +16,7 @@ import (
 	"os"
 	"os/signal"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -609,8 +610,11 @@ func runServers(ctx context.Context, grpcSrv *grpc.Server, graphqlSrv *http.Serv
 	}
 
 	errChan := make(chan error, 2)
+	var serveWg sync.WaitGroup
+	serveWg.Add(2)
 
 	go func() {
+		defer serveWg.Done()
 		logger.InfoContext(ctx, "gRPC Server listening", "addr", ":"+cfg.GRPCPort)
 		if err := grpcServeFunc(grpcSrv, lis); err != nil && !errors.Is(err, grpc.ErrServerStopped) {
 			logger.ErrorContext(ctx, "failed to serve gRPC", "err", err)
@@ -619,6 +623,7 @@ func runServers(ctx context.Context, grpcSrv *grpc.Server, graphqlSrv *http.Serv
 	}()
 
 	go func() {
+		defer serveWg.Done()
 		logger.InfoContext(ctx, "GraphQL & Metrics Server listening", "addr", ":"+cfg.GraphQLPort)
 		if err := graphqlListenAndServeFunc(graphqlSrv); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			logger.ErrorContext(ctx, "Failed to serve HTTP", "err", err)
@@ -643,6 +648,7 @@ func runServers(ctx context.Context, grpcSrv *grpc.Server, graphqlSrv *http.Serv
 	if err := graphqlShutdownFunc(graphqlSrv, shutdownCtx); err != nil { //nolint:contextcheck // RZ-33-21: uses fresh context because parent is cancelled
 		logger.ErrorContext(ctx, "HTTP Server forced to shutdown", "err", err)
 	}
+	serveWg.Wait()
 
 	return runErr
 }
