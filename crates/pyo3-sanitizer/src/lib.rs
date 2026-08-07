@@ -437,7 +437,7 @@ mod tests {
         // input shape at a representative size while the native Rust gate
         // retains the full 1 MiB performance boundary.
         #[cfg(miri)]
-        const REPETITIONS: usize = 256;
+        const REPETITIONS: usize = 16;
         #[cfg(not(miri))]
         const REPETITIONS: usize = 60_000;
         let repeated = "<p>Hello world</p>".repeat(REPETITIONS);
