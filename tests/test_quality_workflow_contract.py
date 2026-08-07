@@ -6,6 +6,8 @@ import yaml
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 CI_WORKFLOW_PATH = REPOSITORY_ROOT / ".github" / "workflows" / "ci.yml"
+LIGHTHOUSE_CONFIG_PATH = REPOSITORY_ROOT / ".lighthouserc.js"
+LHCI_SCRIPT_PATH = REPOSITORY_ROOT / "frontend" / "scripts" / "run-lhci.mjs"
 CONTRACT_VALIDATION_WORKFLOW_PATH = (
     REPOSITORY_ROOT / ".github" / "workflows" / "contract-validation.yml"
 )
@@ -987,6 +989,31 @@ def test_performance_gate_asserts_downloaded_lighthouse_without_rebuilding() -> 
     assert "--config=../.lighthouserc.js" in threshold_command
     assert "--preset=" not in threshold_command
     assert "--budgetsFile=" not in threshold_command
+
+
+def test_lighthouse_config_uses_supported_budget_path_and_audit() -> None:
+    lighthouse_config = LIGHTHOUSE_CONFIG_PATH.read_text(encoding="utf-8")
+
+    assert "budgetPath:" in lighthouse_config
+    assert "budgetsPath:" not in lighthouse_config
+    assert "budgets:" not in lighthouse_config
+    assert '"total-blocking-time": [' in lighthouse_config
+    assert '"categories:performance": ["warn"' in lighthouse_config
+
+
+def test_lhci_collection_uses_lighthouse_budget_path_inside_settings() -> None:
+    lhci_script = LHCI_SCRIPT_PATH.read_text(encoding="utf-8")
+
+    assert 'budgetPath: path.resolve(frontendRoot, "../../budget.json")' in lhci_script
+    assert "budgetsPath:" not in lhci_script
+
+
+def test_lhci_command_runner_uses_shell_free_platform_resolution() -> None:
+    lhci_script = LHCI_SCRIPT_PATH.read_text(encoding="utf-8")
+
+    assert "shell: false" in lhci_script
+    assert "shell: true" not in lhci_script
+    assert '"/d", "/s", "/c", `${command}.cmd`' in lhci_script
 
 
 def test_chaos_job_provisions_real_minio_through_toxiproxy() -> None:

@@ -25,12 +25,21 @@ const useRemotePreview = Boolean(base)
 let dependenciesEnsured = false
 
 async function runCommand(command, args, description, extraEnv = {}) {
+  // npm and npx are .cmd shims on Windows and cannot be spawned directly with
+  // shell:false. Invoke the Windows command interpreter explicitly while
+  // keeping Node's shell option disabled; all command names and arguments are
+  // fixed by this script.
+  const isWindowsBatchCommand =
+    process.platform === "win32" && (command === "npm" || command === "npx")
+  const executable = isWindowsBatchCommand ? (process.env.ComSpec ?? "cmd.exe") : command
+  const spawnArgs = isWindowsBatchCommand ? ["/d", "/s", "/c", `${command}.cmd`, ...args] : args
+
   await new Promise((resolve, reject) => {
-    const child = spawn(command, args, {
+    const child = spawn(executable, spawnArgs, {
       cwd: frontendRoot,
       env: { ...process.env, ...extraEnv },
       stdio: "inherit",
-      shell: true,
+      shell: false,
     })
 
     child.on("exit", (code, signal) => {
@@ -294,10 +303,10 @@ async function createConfig() {
         "--no-sandbox --disable-dev-shm-usage --allow-insecure-localhost --ignore-certificate-errors --test-type --disable-gpu --headless=new",
       throttlingMethod: "devtools",
       emulatedFormFactor: "mobile",
+      budgetPath: path.resolve(frontendRoot, "../../budget.json"),
       maxWaitForFcp: 45000,
       maxWaitForLoad: 60000,
     },
-    budgetsPath: path.resolve(frontendRoot, "../../budget.json"),
   }
 
   if (!useRemotePreview) {
@@ -480,8 +489,7 @@ async function run() {
   //
   // MSYS_NO_PATHCONV=1 prevents Git Bash on Windows from mangling URL-style
   // paths like `/news` into `c:/Program Files/Git/news` when LHCI forwards
-  // them to the Lighthouse CLI subprocess (shell: true is required for
-  // `npx` resolution on Windows).
+  // them to the Lighthouse CLI subprocess.
   const lhciEnv = { MSYS_NO_PATHCONV: "1" }
   try {
     await runCommand(
