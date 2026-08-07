@@ -2,9 +2,11 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"errors"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -303,6 +305,61 @@ func setupHandlers(mux *http.ServeMux, h *hub.Hub, cfg *config.Config, logger *s
 	mux.Handle("/metrics", promhttp.Handler())
 }
 
+// startupPacketConn exposes a readiness barrier after webtransport.Server.Serve
+// has registered its internal shutdown wait group. webtransport-go's Serve and
+// Close must not be called concurrently before that registration completes.
+type startupPacketConn struct {
+	net.PacketConn
+	ready     chan<- struct{}
+	readyOnce sync.Once
+}
+
+func (c *startupPacketConn) signalReady() {
+	c.readyOnce.Do(func() { close(c.ready) })
+}
+
+func (c *startupPacketConn) LocalAddr() net.Addr {
+	c.signalReady()
+	return c.PacketConn.LocalAddr()
+}
+
+func (c *startupPacketConn) ReadFrom(p []byte) (int, net.Addr, error) {
+	c.signalReady()
+	return c.PacketConn.ReadFrom(p)
+}
+
+func (c *startupPacketConn) WriteTo(p []byte, addr net.Addr) (int, error) {
+	c.signalReady()
+	return c.PacketConn.WriteTo(p, addr)
+}
+
+func serveWebTransport(wtServer *webtransport.Server, wtPort string, cfg *config.Config, logger *slog.Logger, ready chan<- struct{}) error {
+	addr, err := net.ResolveUDPAddr("udp", ":"+wtPort)
+	if err != nil {
+		return err
+	}
+	conn, err := net.ListenUDP("udp", addr)
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+
+	if cfg.TLSCertFile != "" && cfg.TLSKeyFile != "" {
+		cert, err := tls.LoadX509KeyPair(cfg.TLSCertFile, cfg.TLSKeyFile)
+		if err != nil {
+			return err
+		}
+		wtServer.H3.TLSConfig = &tls.Config{
+			Certificates: []tls.Certificate{cert},
+			MinVersion:   tls.VersionTLS13,
+		}
+	} else {
+		logger.WarnContext(context.Background(), "WebTransport TLS cert files not configured; attempting ListenAndServe fallback")
+	}
+
+	return wtServer.Serve(&startupPacketConn{PacketConn: conn, ready: ready})
+}
+
 func runServer(cfg *config.Config, logger *slog.Logger, h *hub.Hub, mux *http.ServeMux, signalChannels ...chan os.Signal) error {
 	server := &http.Server{
 		Addr:              ":" + cfg.Port,
@@ -328,6 +385,14 @@ func runServer(cfg *config.Config, logger *slog.Logger, h *hub.Hub, mux *http.Se
 		},
 	}
 
+	quit := make(chan os.Signal, 1)
+	if len(signalChannels) > 0 && signalChannels[0] != nil {
+		quit = signalChannels[0]
+	} else {
+		signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+		defer signal.Stop(quit)
+	}
+
 	// RZ-33-07: Use channel-based error propagation instead of os.Exit in
 	// goroutine — ensures deferred cleanup (NATS close, Redis close, tracer
 	// shutdown) always executes. Matches gateway pattern (RZ-31-01).
@@ -339,37 +404,47 @@ func runServer(cfg *config.Config, logger *slog.Logger, h *hub.Hub, mux *http.Se
 		}
 	}()
 
-	var wtWg sync.WaitGroup
-	wtWg.Add(1)
+	wtReady := make(chan struct{})
+	wtDone := make(chan struct{})
 	go func() {
-		defer wtWg.Done()
+		defer close(wtDone)
 		logger.InfoContext(context.Background(), "Starting WebTransport Hub (UDP HTTP/3)", "port", wtPort)
-		var err error
-		if cfg.TLSCertFile != "" && cfg.TLSKeyFile != "" {
-			err = wtServer.ListenAndServeTLS(cfg.TLSCertFile, cfg.TLSKeyFile)
-		} else {
-			logger.WarnContext(context.Background(), "WebTransport TLS cert files not configured; attempting ListenAndServe fallback")
-			err = wtServer.ListenAndServe()
-		}
+		err := serveWebTransport(wtServer, wtPort, cfg, logger, wtReady)
 		if err != nil && err != http.ErrServerClosed {
 			logger.WarnContext(context.Background(), "WebTransport HTTP/3 listener stopped", "err", err)
 		}
 	}()
 
-	quit := make(chan os.Signal, 1)
-	if len(signalChannels) > 0 && signalChannels[0] != nil {
-		quit = signalChannels[0]
-	} else {
-		signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
-		defer signal.Stop(quit)
+	var runErr error
+	shutdownRequested := false
+	wtStartupComplete := false
+	for !wtStartupComplete && !shutdownRequested {
+		select {
+		case <-wtReady:
+			wtStartupComplete = true
+		case <-wtDone:
+			wtStartupComplete = true
+		case err := <-errChan:
+			logger.ErrorContext(context.Background(), "Server error", "err", err)
+			runErr = err
+			shutdownRequested = true
+		case <-quit:
+			shutdownRequested = true
+		}
 	}
 
-	var runErr error
-	select {
-	case err := <-errChan:
-		logger.ErrorContext(context.Background(), "Server error", "err", err)
-		runErr = err
-	case <-quit:
+	if shutdownRequested {
+		select {
+		case <-wtReady:
+		case <-wtDone:
+		}
+	} else {
+		select {
+		case err := <-errChan:
+			logger.ErrorContext(context.Background(), "Server error", "err", err)
+			runErr = err
+		case <-quit:
+		}
 	}
 
 	logger.InfoContext(context.Background(), "Shutting down...")
@@ -377,9 +452,13 @@ func runServer(cfg *config.Config, logger *slog.Logger, h *hub.Hub, mux *http.Se
 	defer shutdownCancel()
 
 	h.Stop()
-	//nolint:errcheck
-	_ = wtServer.Close()
-	wtWg.Wait()
+	select {
+	case <-wtDone:
+	default:
+		//nolint:errcheck
+		_ = wtServer.Close()
+		<-wtDone
+	}
 	if err := server.Shutdown(shutdownCtx); err != nil {
 		logger.ErrorContext(context.Background(), "Server forced to shutdown", "err", err)
 	}
