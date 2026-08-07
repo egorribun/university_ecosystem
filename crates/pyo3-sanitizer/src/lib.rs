@@ -140,6 +140,10 @@ pub fn py_strip_html(html: &str) -> PyResult<String> {
 /// (see `app/services/content_processing.py`).
 #[pymodule]
 fn pyo3_sanitizer(module: &Bound<'_, PyModule>) -> PyResult<()> {
+    register_python_functions(module)
+}
+
+fn register_python_functions(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_function(wrap_pyfunction!(py_sanitize_rich_text, module)?)?;
     module.add_function(wrap_pyfunction!(py_sanitize_html_basic, module)?)?;
     module.add_function(wrap_pyfunction!(py_strip_html, module)?)?;

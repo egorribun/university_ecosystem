@@ -161,3 +161,18 @@ def test_cache_reset_and_at_fork_registration_path():
         register.assert_called_once_with(after_in_child=loaded._reset_cache_after_fork)
     finally:
         sys.modules.pop(module_name, None)
+
+
+def test_cache_registration_is_skipped_without_at_fork(monkeypatch: pytest.MonkeyPatch):
+    """Import cleanly on platforms such as Windows without os.register_at_fork."""
+    monkeypatch.delattr(os, "register_at_fork", raising=False)
+    module_name = "app.auth.rbac_without_at_fork_coverage"
+    spec = importlib.util.spec_from_file_location(module_name, rbac.__file__)
+    assert spec is not None and spec.loader is not None
+    loaded = importlib.util.module_from_spec(spec)
+    sys.modules[module_name] = loaded
+    try:
+        with patch("prometheus_client.Counter", return_value=MagicMock()):
+            spec.loader.exec_module(loaded)
+    finally:
+        sys.modules.pop(module_name, None)

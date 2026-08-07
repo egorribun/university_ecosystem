@@ -5,6 +5,7 @@ import {
   PROFILE_CACHE_STORAGE_KEY,
   currentUserQueryKey,
   encryptData,
+  isProfileSyncBrowserRuntime,
   signPayload,
   type CachedUserSnapshot,
 } from "./useProfileSync"
@@ -29,6 +30,16 @@ import {
  */
 
 describe("useProfileSync — public constants", () => {
+  it("detects both browser and server runtimes", () => {
+    expect(isProfileSyncBrowserRuntime()).toBe(true)
+    vi.stubGlobal("window", undefined)
+    try {
+      expect(isProfileSyncBrowserRuntime()).toBe(false)
+    } finally {
+      vi.unstubAllGlobals()
+    }
+  })
+
   it("PROFILE_CACHE_SCHEMA_VERSION is 8", () => {
     // Lock current schema version. Bump the test together with the
     // const when a new shape ships — the on-disk cache must be evicted.

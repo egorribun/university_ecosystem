@@ -58,6 +58,12 @@ const PROFILE_CACHE_HEADER = "X-Profile-Cache-Envelope"
 
 export const currentUserQueryKey = ["users", "me"] as const
 
+/** Return whether profile-cache effects are running in a browser runtime. */
+export const isProfileSyncBrowserRuntime = (): boolean =>
+  typeof window !== "undefined" &&
+  typeof window.document !== "undefined" &&
+  typeof window.location !== "undefined"
+
 // TD-14-07: Only non-PII fields may be stored here.
 // NEVER add: email, phone, role, permissions, address, pending_email.
 // Fields email and role were removed in TD-14-07 (2026-03-18).
@@ -751,7 +757,7 @@ export const useProfileSync = (
   useEffect(() => {
     let mounted = true
     const init = async () => {
-      if (typeof window === "undefined") return
+      if (!isProfileSyncBrowserRuntime()) return
       try {
         migrateProfileCache()
       } catch {
@@ -777,7 +783,7 @@ export const useProfileSync = (
   }, [sessionSigningKeyRef])
 
   const broadcastProfileEvent = useCallback((message: ProfileBroadcastMessage) => {
-    if (typeof window === "undefined") return
+    if (!isProfileSyncBrowserRuntime()) return
     if (!("BroadcastChannel" in window)) return
     try {
       const channel = new BroadcastChannel(PROFILE_BROADCAST_CHANNEL)
@@ -898,7 +904,7 @@ export const useProfileSync = (
   }, [queryClient])
 
   useEffect(() => {
-    if (typeof window === "undefined") return
+    if (!isProfileSyncBrowserRuntime()) return
 
     const syncFromCache = async () => {
       const key = sessionSigningKeyRef.current

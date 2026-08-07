@@ -62,6 +62,16 @@ def test_container_cpu_count_cgroups_v1() -> None:
             assert val == (os.cpu_count() or 2)
 
 
+def test_container_cpu_count_falls_back_when_cgroup_files_are_unavailable() -> None:
+    """Use the host fallback when neither affinity nor cgroups are available."""
+    with (
+        patch.object(os, "sched_getaffinity", None, create=True),
+        patch("builtins.open", side_effect=FileNotFoundError),
+        patch("os.cpu_count", return_value=6),
+    ):
+        assert _container_cpu_count() == 6
+
+
 def test_format_password_class_labels() -> None:
     labels = _format_password_class_labels(["uppercase", "digit"], locale="en")
     assert "uppercase letters" in labels

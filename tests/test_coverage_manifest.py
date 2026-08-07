@@ -552,11 +552,14 @@ def test_tier0_measurement_contains_matched_file_evidence_before_enforcement(
                     "total": 2,
                 },
                 "functions": {
-                    "covered": None,
-                    "percent": None,
-                    "reason_code": "coverage_xml_has_no_method_breakdown",
-                    "status": "unsupported",
-                    "total": None,
+                    "covered": 0,
+                    "derivation": (
+                        "AST function entries covered when the first executable "
+                        "body line is reported as executed"
+                    ),
+                    "percent": 0.0,
+                    "status": "derived",
+                    "total": 15,
                 },
                 "lines": {
                     "covered": 1,
@@ -576,7 +579,7 @@ def test_tier0_measurement_contains_matched_file_evidence_before_enforcement(
         }
     ]
     assert tier0["coverage"]["lines"]["percent"] == 50.0
-    assert any("functions" in error for error in tier0["errors"])
+    assert not any("functions" in error for error in tier0["errors"])
 
 
 def test_normalizer_output_is_byte_identical_for_fixed_inputs(tmp_path: Path) -> None:
@@ -603,6 +606,66 @@ def test_rust_direct_totals_form_is_normalized(tmp_path: Path) -> None:
     manifest = json.loads(output.read_text(encoding="utf-8"))
     assert _metric(manifest, "rust-native", "lines")["percent"] == 75.0
     assert _metric(manifest, "rust-native", "functions")["percent"] == 50.0
+
+
+def test_rust_tier0_lines_deduplicate_macro_segments_by_source_line(
+    tmp_path: Path,
+) -> None:
+    source_path = "native/rust_ext/src/lib.rs"
+    report_path = tmp_path / "rust-segment-lines.json"
+    report_path.write_text(
+        json.dumps(
+            {
+                "data": [
+                    {
+                        "totals": {
+                            "functions": {"count": 1, "covered": 1},
+                            "lines": {"count": 3, "covered": 2},
+                        },
+                        "files": [
+                            {
+                                "filename": source_path,
+                                "summary": {
+                                    "functions": {"count": 1, "covered": 1},
+                                    "lines": {"count": 3, "covered": 2},
+                                },
+                                "segments": [
+                                    [1, 1, 1, True, True, False],
+                                    [1, 9, 0, True, True, False],
+                                    [2, 1, 0, True, True, False],
+                                    [3, 1, 2, True, True, False],
+                                ],
+                            }
+                        ],
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    output = tmp_path / "quality-manifest.json"
+    result = _run_normalizer(
+        output,
+        "--rust-report",
+        f"rust-native={report_path}",
+    )
+
+    assert result.returncode == 1
+    manifest = json.loads(output.read_text(encoding="utf-8"))
+    native_file = next(
+        item for item in manifest["tier0"]["files"] if item["path"] == source_path
+    )
+    assert native_file["metrics"]["lines"] == {
+        "covered": 2,
+        "derivation": (
+            "unique source lines from non-gap LLVM segments; covered when any "
+            "segment on the line is executed"
+        ),
+        "percent": 66.666667,
+        "status": "derived",
+        "total": 3,
+    }
 
 
 def test_rust_crypto_function_floor_ignores_wasm_bindgen_generated_wrappers(

@@ -1,10 +1,37 @@
-import { describe, expect, it } from "vitest"
+import { describe, expect, it, vi } from "vitest"
+import { renderHook } from "@testing-library/react"
 
 import {
   hashSessionIdentifier,
+  isSessionCryptoBrowserRuntime,
   readStoredSessionSigningKey,
   signSnapshot,
+  useSessionCrypto,
 } from "./useSessionCrypto"
+
+describe("browser runtime guard", () => {
+  it("distinguishes browser and server environments", () => {
+    expect(isSessionCryptoBrowserRuntime()).toBe(true)
+    vi.stubGlobal("window", { event: undefined })
+    try {
+      expect(isSessionCryptoBrowserRuntime()).toBe(false)
+    } finally {
+      vi.unstubAllGlobals()
+    }
+  })
+
+  it("does not synchronize the session cache from a server runtime", () => {
+    const originalWindow = globalThis.window
+    vi.stubGlobal("window", { event: undefined, document: globalThis.document })
+
+    try {
+      const view = renderHook(() => useSessionCrypto())
+      view.unmount()
+    } finally {
+      vi.stubGlobal("window", originalWindow)
+    }
+  })
+})
 
 /**
  * useSessionCrypto — exposes three pure helpers + a stateful hook.

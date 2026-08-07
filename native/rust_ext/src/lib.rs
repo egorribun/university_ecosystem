@@ -1,7 +1,7 @@
 #![deny(clippy::unwrap_used)]
 #![deny(clippy::expect_used)] // LOW-W19: expect() panics just like unwrap(); deny it too
 #![allow(unexpected_cfgs)]
-use chrono::{Datelike, Duration, NaiveDate, TimeZone, Utc, Weekday};
+use chrono::{DateTime, Datelike, Duration, NaiveDate, TimeZone, Utc, Weekday};
 use pyo3::prelude::*;
 use rayon::prelude::*;
 use std::any::Any;
@@ -91,6 +91,10 @@ fn build_rayon_pool(threads: usize) -> PyResult<rayon::ThreadPool> {
         .num_threads(threads)
         .build()
         .map_err(rayon_pool_build_error)
+}
+
+fn parse_rayon_threads(value: Option<String>) -> usize {
+    value.and_then(|raw| raw.parse().ok()).unwrap_or(4usize)
 }
 
 fn rayon_pool_build_error<E: Display>(error: E) -> PyErr {
@@ -281,10 +285,7 @@ pub fn batch_detect_conflicts(
             let pool = match POOL.get() {
                 Some(p) => p,
                 None => {
-                    let threads = std::env::var("RUST_EXT_THREADS")
-                        .ok()
-                        .and_then(|v| v.parse().ok())
-                        .unwrap_or(4usize);
+                    let threads = parse_rayon_threads(std::env::var("RUST_EXT_THREADS").ok());
                     let built = build_rayon_pool(threads)?;
                     // If another thread raced us, discard our pool and use theirs.
                     POOL.get_or_init(|| built)
@@ -417,6 +418,10 @@ fn find_optimal_slot_py(
     find_optimal_slot(duration_minutes, existing_schedule, available_blocks)
 }
 
+fn checked_slot_end(start: DateTime<Utc>, duration: Duration) -> Option<DateTime<Utc>> {
+    start.checked_add_signed(duration)
+}
+
 fn weekday_name(wd: Weekday) -> &'static str {
     match wd {
         Weekday::Mon => "monday",
@@ -437,91 +442,103 @@ fn find_optimal_slot(
     catch_unwind_value(
         "find_optimal_slot",
         std::panic::AssertUnwindSafe(|| {
-            let today = Utc::now().date_naive();
-
-            for (day, hours) in available_blocks {
-                // TD-W17-03: Resolve the actual next date matching this weekday.
-                let target_wd = match parse_weekday(&day) {
-                    Some(wd) => wd,
-                    None => continue, // Skip unparseable weekday names.
-                };
-                let target_date = next_weekday(today, target_wd);
-                let target_midnight = target_date
-                    .and_hms_opt(0, 0, 0)
-                    .map(|ndt| Utc.from_utc_datetime(&ndt))
-                    .map(|dt| dt.timestamp())
-                    .unwrap_or(0);
-
-                for hour in hours {
-                    let start_date_time = target_date
-                        .and_hms_opt(hour, 0, 0)
-                        .map(|ndt| Utc.from_utc_datetime(&ndt));
-
-                    let Some(start_dt) = start_date_time else {
-                        continue;
-                    };
-                    let Some(dur) = Duration::try_minutes(duration_minutes as i64) else {
-                        continue;
-                    };
-                    let Some(end_dt) = start_dt.checked_add_signed(dur) else {
-                        continue;
-                    };
-
-                    let candidate = ScheduleItem {
-                        id: None,
-                        weekday: day.clone(),
-                        start_time: start_dt.timestamp(),
-                        end_time: end_dt.timestamp(),
-                        parity: "both".to_string(),
-                    };
-
-                    let candidate_day2 = if end_dt.date_naive() > start_dt.date_naive() {
-                        Some(ScheduleItem {
-                            id: None,
-                            weekday: weekday_name(end_dt.weekday()).to_string(),
-                            start_time: start_dt.timestamp(),
-                            end_time: end_dt.timestamp(),
-                            parity: "both".to_string(),
-                        })
-                    } else {
-                        None
-                    };
-
-                    let has_conflict = existing_schedule.iter().any(|item| {
-                        if item.start_time < 31536000 {
-                            let norm_item = normalize_item_for_date(item, target_midnight);
-                            if check_conflict_proto(&candidate, &norm_item) {
-                                return true;
-                            }
-                            if let Some(c2) = &candidate_day2 {
-                                let norm_item_day2 =
-                                    normalize_item_for_date(item, target_midnight + 86400);
-                                if check_conflict_proto(c2, &norm_item_day2) {
-                                    return true;
-                                }
-                            }
-                            false
-                        } else {
-                            if check_conflict_proto(&candidate, item) {
-                                return true;
-                            }
-                            if let Some(c2) = &candidate_day2 {
-                                if check_conflict_proto(c2, item) {
-                                    return true;
-                                }
-                            }
-                            false
-                        }
-                    });
-
-                    if !has_conflict {
-                        return Some(candidate);
-                    }
-                }
-            }
-            None
+            find_optimal_slot_at(
+                Utc::now().date_naive(),
+                duration_minutes,
+                existing_schedule,
+                available_blocks,
+            )
         }),
     )
+}
+
+fn find_optimal_slot_at(
+    today: NaiveDate,
+    duration_minutes: u32,
+    existing_schedule: Vec<ScheduleItem>,
+    available_blocks: Vec<(String, Vec<u32>)>,
+) -> Option<ScheduleItem> {
+    for (day, hours) in available_blocks {
+        // TD-W17-03: Resolve the actual next date matching this weekday.
+        let target_wd = match parse_weekday(&day) {
+            Some(wd) => wd,
+            None => continue, // Skip unparseable weekday names.
+        };
+        let target_date = next_weekday(today, target_wd);
+        let target_midnight = target_date
+            .and_hms_opt(0, 0, 0)
+            .map(|ndt| Utc.from_utc_datetime(&ndt))
+            .map(|dt| dt.timestamp())
+            .unwrap_or(0);
+
+        for hour in hours {
+            let start_date_time = target_date
+                .and_hms_opt(hour, 0, 0)
+                .map(|ndt| Utc.from_utc_datetime(&ndt));
+
+            let Some(start_dt) = start_date_time else {
+                continue;
+            };
+            // `duration_minutes` is a u32, so conversion to chrono's
+            // i64-backed duration cannot overflow; keeping this path
+            // infallible avoids an unreachable branch in the scheduler.
+            let dur = Duration::minutes(duration_minutes as i64);
+            let Some(end_dt) = checked_slot_end(start_dt, dur) else {
+                continue;
+            };
+
+            let candidate = ScheduleItem {
+                id: None,
+                weekday: day.clone(),
+                start_time: start_dt.timestamp(),
+                end_time: end_dt.timestamp(),
+                parity: "both".to_string(),
+            };
+
+            let candidate_day2 = if end_dt.date_naive() > start_dt.date_naive() {
+                Some(ScheduleItem {
+                    id: None,
+                    weekday: weekday_name(end_dt.weekday()).to_string(),
+                    start_time: start_dt.timestamp(),
+                    end_time: end_dt.timestamp(),
+                    parity: "both".to_string(),
+                })
+            } else {
+                None
+            };
+
+            let has_conflict = existing_schedule.iter().any(|item| {
+                if item.start_time < 31536000 {
+                    let norm_item = normalize_item_for_date(item, target_midnight);
+                    if check_conflict_proto(&candidate, &norm_item) {
+                        return true;
+                    }
+                    if let Some(c2) = &candidate_day2 {
+                        let norm_item_day2 = normalize_item_for_date(item, target_midnight + 86400);
+                        if check_conflict_proto(c2, &norm_item_day2) {
+                            return true;
+                        }
+                    }
+                    false
+                } else {
+                    if check_conflict_proto(&candidate, item) {
+                        return true;
+                    }
+                    if let Some(c2) = &candidate_day2 {
+                        if check_conflict_proto(c2, item) {
+                            return true;
+                        }
+                    }
+                    false
+                }
+            });
+
+            if !has_conflict {
+                return Some(candidate);
+            }
+        }
+    }
+    None
 }
 
 /// Find the next date (today or later) that falls on the given weekday.
@@ -1334,6 +1351,67 @@ mod tests {
     }
 
     #[test]
+    fn batch_detect_conflicts_covers_canonical_non_overlaps_and_parallel_path() {
+        let late = ScheduleItem {
+            id: Some(1),
+            weekday: "monday".to_string(),
+            start_time: 3_000,
+            end_time: 4_000,
+            parity: "both".to_string(),
+        };
+        let early = ScheduleItem {
+            id: Some(2),
+            weekday: "monday".to_string(),
+            start_time: 1_000,
+            end_time: 2_000,
+            parity: "both".to_string(),
+        };
+
+        // Keep a small canonical case to exercise the sequential pairwise
+        // path before the larger input below crosses the parallel threshold.
+        assert!(batch_detect_conflicts(vec![late.clone(), early.clone()])
+            .unwrap()
+            .is_empty());
+
+        // Include both orderings so each short-circuit overlap comparison is
+        // exercised, then add enough disjoint canonical items for rayon's
+        // parallel branch to run without producing any conflicts.
+        let mut items = vec![late, early.clone()];
+        let weekdays = [
+            "monday",
+            "tuesday",
+            "wednesday",
+            "thursday",
+            "friday",
+            "saturday",
+            "sunday",
+        ];
+        for index in 0..32 {
+            let start: i64 = 5_000 + (index as i64) * 1_000;
+            items.push(ScheduleItem {
+                id: Some(index as i32 + 3),
+                weekday: weekdays[index % weekdays.len()].to_string(),
+                start_time: start,
+                end_time: start + 500,
+                parity: "both".to_string(),
+            });
+        }
+
+        assert!(batch_detect_conflicts(items).unwrap().is_empty());
+
+        let noncanonical = ScheduleItem {
+            id: Some(100),
+            weekday: "monday".to_string(),
+            start_time: 9_000,
+            end_time: 9_000,
+            parity: "both".to_string(),
+        };
+        assert!(batch_detect_conflicts(vec![noncanonical, early])
+            .unwrap()
+            .is_empty());
+    }
+
+    #[test]
     fn panic_mapping_covers_all_payload_shapes() {
         Python::initialize();
         let borrowed = catch_unwind_value::<(), _>(
@@ -1398,6 +1476,13 @@ mod tests {
     }
 
     #[test]
+    fn parse_rayon_threads_uses_safe_defaults_for_missing_or_invalid_values() {
+        assert_eq!(parse_rayon_threads(None), 4);
+        assert_eq!(parse_rayon_threads(Some("2".to_string())), 2);
+        assert_eq!(parse_rayon_threads(Some("not-a-number".to_string())), 4);
+    }
+
+    #[test]
     fn error_mapping_helpers_preserve_context() {
         Python::initialize();
         let rayon_error = rayon_pool_build_error("synthetic failure");
@@ -1414,6 +1499,18 @@ mod tests {
         assert!(find_optimal_slot(60, Vec::new(), Vec::new())
             .unwrap()
             .is_none());
+    }
+
+    #[test]
+    fn find_optimal_slot_rejects_durations_that_overflow_chrono() {
+        assert!(checked_slot_end(DateTime::<Utc>::MAX_UTC, Duration::seconds(1)).is_none());
+
+        let max_date = DateTime::<Utc>::MAX_UTC.date_naive();
+        let max_weekday = weekday_name(max_date.weekday()).to_string();
+        assert!(
+            find_optimal_slot_at(max_date, u32::MAX, Vec::new(), vec![(max_weekday, vec![0])],)
+                .is_none()
+        );
     }
 
     #[test]
@@ -1648,6 +1745,11 @@ mod tests {
         )
         .unwrap());
 
+        // A parsed zero year is rejected by the structural date guard.
+        assert!(
+            !is_partition_expired("events_y0m01".to_string(), "events".to_string(), 1).unwrap()
+        );
+
         // Wrong table prefix -> false
         assert!(
             !is_partition_expired("other_y2020m01".to_string(), "events".to_string(), 1).unwrap()
@@ -1813,6 +1915,27 @@ mod tests {
             result.is_none(),
             "Slot spanning past midnight into Tuesday 01:00 should conflict with Tuesday 00:30 slot"
         );
+    }
+
+    #[test]
+    fn find_optimal_slot_normalizes_epoch_day2_conflict() {
+        let monday = NaiveDate::from_ymd_opt(2026, 1, 5).unwrap();
+        assert_eq!(monday.weekday(), Weekday::Mon);
+        let existing = vec![ScheduleItem {
+            id: Some(2),
+            weekday: "tuesday".to_string(),
+            start_time: 1_800,
+            end_time: 5_400,
+            parity: "both".to_string(),
+        }];
+
+        let result = find_optimal_slot_at(
+            monday,
+            120,
+            existing,
+            vec![("monday".to_string(), vec![23])],
+        );
+        assert!(result.is_none());
     }
 
     // --- Property-based tests (proptest) ---

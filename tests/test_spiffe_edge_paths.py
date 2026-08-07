@@ -7,7 +7,7 @@ import sys
 import threading
 from pathlib import Path
 from types import ModuleType, SimpleNamespace
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import grpc
 import pytest
@@ -73,6 +73,31 @@ def test_load_cert_chain_uses_temporary_files_without_manager() -> None:
     assert not os.path.exists(call["certfile"])
     assert not os.path.exists(call["keyfile"])
 
+    # The no-lock cleanup path must tolerate files disappearing or becoming
+    # unremovable while the SSL context is being rebuilt.
+    cleanup_context = MagicMock()
+    with (
+        patch.object(spiffe.os.path, "exists", return_value=True),
+        patch.object(
+            spiffe.os, "unlink", side_effect=OSError("certificate still busy")
+        ),
+    ):
+        spiffe._load_cert_chain_from_pem(
+            cleanup_context,
+            b"CERT",
+            b"KEY",
+            svid_manager=object(),
+        )
+
+    no_files_context = MagicMock()
+    with patch.object(spiffe.os.path, "exists", return_value=False):
+        spiffe._load_cert_chain_from_pem(
+            no_files_context,
+            b"CERT",
+            b"KEY",
+            svid_manager=object(),
+        )
+
 
 def test_svid_manager_recreates_files_and_handles_cleanup_failures(
     monkeypatch: pytest.MonkeyPatch,
@@ -88,6 +113,12 @@ def test_svid_manager_recreates_files_and_handles_cleanup_failures(
     monkeypatch.setattr(spiffe.shutil, "rmtree", MagicMock(side_effect=OSError("busy")))
     cleanup_manager.close()
     assert cleanup_manager._temp_dir == ""
+
+
+def test_svid_manager_destructor_suppresses_cleanup_errors() -> None:
+    manager = SVIDManager()
+    with patch.object(manager, "close", side_effect=RuntimeError("shutdown race")):
+        manager.__del__()
 
 
 def test_svid_manager_start_stop_and_source_failures(
@@ -141,6 +172,9 @@ def test_svid_manager_active_pair_and_retrieval_edges(
     assert manager.set_active_svid(svid) == (b"CERT-2", b"KEY-2")
     assert manager.set_active_svid(object()) == (b"CERT-2", b"KEY-2")
 
+    empty_manager = SVIDManager()
+    assert empty_manager.set_active_svid() is None
+
     source = MagicMock()
     source.get_s_v_i_d.return_value = None
     manager._cached_pair = None
@@ -168,6 +202,12 @@ def test_svid_manager_trust_bundle_variants_and_failures(
     fake_spiffe_id.parse.side_effect = ValueError("invalid id")
     assert manager.get_trust_bundle_pem() is None
 
+    fake_spiffe_id.parse.side_effect = None
+    source.get_bundle_for_trust_domain.return_value = SimpleNamespace(
+        x509_certs_bytes="not-bytes"
+    )
+    assert manager.get_trust_bundle_pem() is None
+
     monkeypatch.setattr(spiffe, "SpiffeId", None)
     source.get_bundle_for_trust_domain.return_value = SimpleNamespace(
         x509_certs_bytes=b"CA-FALLBACK"
@@ -178,10 +218,8 @@ def test_svid_manager_trust_bundle_variants_and_failures(
     source.get_bundle_for_trust_domain.side_effect = OSError("bundle unavailable")
     assert manager.get_trust_bundle_pem() is None
 
-    source.get_bundle_for_trust_domain.side_effect = None
-    source.get_bundle_for_trust_domain.return_value = SimpleNamespace(
-        x509_certs_bytes="not-bytes"
-    )
+    monkeypatch.setattr(spiffe, "SpiffeId", None)
+    manager._source = SimpleNamespace()
     assert manager.get_trust_bundle_pem() is None
 
 
@@ -207,9 +245,60 @@ def test_sni_reload_handles_no_change_context_swap_and_errors(
     assert ssl_obj.context is fresh_context
     assert fresh_context.verify_mode == ssl.CERT_NONE
 
+    class ReadOnlyContext:
+        def __init__(self) -> None:
+            self.context = context
+
+        def __setattr__(self, name: str, value: object) -> None:
+            if name == "context" and hasattr(self, "context"):
+                raise AttributeError("context is read-only")
+            object.__setattr__(self, name, value)
+
+    manager.get_server_ssl_context = MagicMock(return_value=fresh_context)
+    manager._cached_pair = (b"CERT-3", b"KEY-3")
+    context.sni_callback(ReadOnlyContext(), "example.test", context)
+    context.sni_callback(None, "example.test", context)
+
     manager.get_server_ssl_context.side_effect = RuntimeError("reload failed")
     context.sni_callback(ssl_obj, "example.test", context)
     context.sni_callback(None, "example.test", context)
+
+    no_lock_manager = SimpleNamespace(
+        _lock=None,
+        get_trust_bundle_pem=lambda: None,
+        get_active_svid=lambda: (b"CERT", b"KEY"),
+        get_server_ssl_context=lambda _allowed=None: fresh_context,
+    )
+    no_lock_context = create_spiffe_server_ssl_context(no_lock_manager)
+    no_lock_manager.get_active_svid = lambda: (b"CERT-2", b"KEY-2")
+    no_lock_context.sni_callback(None, "example.test", no_lock_context)
+
+
+def test_sni_callback_assignment_failure_is_ignored(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class NoSniContext:
+        minimum_version = ssl.TLSVersion.TLSv1_3
+        verify_mode = ssl.CERT_REQUIRED
+
+        @property
+        def sni_callback(self):
+            return None
+
+        @sni_callback.setter
+        def sni_callback(self, _callback) -> None:
+            raise AttributeError("SNI callback unavailable")
+
+    fake_context = NoSniContext()
+    monkeypatch.setattr(
+        spiffe.ssl, "create_default_context", lambda *_args, **_kwargs: fake_context
+    )
+    manager = SimpleNamespace(
+        _lock=None,
+        get_trust_bundle_pem=lambda: None,
+        get_active_svid=lambda: None,
+    )
+    assert create_spiffe_server_ssl_context(manager) is fake_context
 
 
 def test_ssl_context_builders_without_pair_and_client_with_pair(
@@ -260,6 +349,29 @@ async def test_spiffe_middleware_pass_through_and_peer_certificate_variants() ->
     invalid_transport = MagicMock()
     invalid_transport.get_extra_info.side_effect = RuntimeError("transport closed")
     assert middleware._extract_spiffe_id(_scope(transport=invalid_transport)) is None
+
+    non_spiffe_peer = MagicMock()
+    non_spiffe_peer.get_extra_info.side_effect = [
+        {"subjectAltName": [("DNS", "not-spiffe"), ("URI", "https://not-spiffe")]},
+        None,
+    ]
+    assert middleware._extract_spiffe_id(_scope(transport=non_spiffe_peer)) is None
+
+    no_ssl_peer = MagicMock()
+    no_ssl_peer.get_extra_info.side_effect = [{}, None]
+    assert middleware._extract_spiffe_id(_scope(transport=no_ssl_peer)) is None
+
+    empty_cert_ssl = MagicMock()
+    empty_cert_ssl.getpeercert.return_value = {}
+    empty_cert_transport = MagicMock()
+    empty_cert_transport.get_extra_info.side_effect = [None, empty_cert_ssl]
+    assert middleware._extract_spiffe_id(_scope(transport=empty_cert_transport)) is None
+
+    dns_only_ssl = MagicMock()
+    dns_only_ssl.getpeercert.return_value = {"subjectAltName": [("DNS", "not-spiffe")]}
+    dns_only_transport = MagicMock()
+    dns_only_transport.get_extra_info.side_effect = [None, dns_only_ssl]
+    assert middleware._extract_spiffe_id(_scope(transport=dns_only_transport)) is None
 
 
 @pytest.mark.asyncio

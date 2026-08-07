@@ -1,5 +1,5 @@
 import type { MutableRefObject, PropsWithChildren } from "react"
-import { renderHook, waitFor, cleanup } from "@testing-library/react"
+import { act, renderHook, waitFor, cleanup } from "@testing-library/react"
 import { renderToString } from "react-dom/server"
 import { QueryClientProvider } from "@tanstack/react-query"
 import { afterEach, describe, expect, it, vi } from "vitest"
@@ -146,6 +146,31 @@ describe("useProfileSync runtime defensive paths", () => {
         </QueryClientProvider>
       )
       expect(invalidRoleHtml).toContain("ssr-stub:student:false")
+    } finally {
+      vi.stubGlobal("window", originalWindow)
+    }
+  })
+
+  it("skips browser-only synchronization effects during server runtime", async () => {
+    const originalWindow = globalThis.window
+    vi.stubGlobal("window", { event: undefined, document: globalThis.document })
+    vi.stubEnv("VITE_LHCI", "true")
+
+    try {
+      const view = renderRuntime(
+        vi.fn(async () => null),
+        null
+      )
+
+      await waitFor(() => expect(view.result.current.user?.id).toBe("lhci-mock-user"))
+
+      await act(async () => {
+        view.result.current.updatePendingMfa({
+          ticket: "ssr-ticket",
+          methods: [],
+        } as never)
+      })
+      expect(view.result.current.pendingMfa).toMatchObject({ ticket: "ssr-ticket" })
     } finally {
       vi.stubGlobal("window", originalWindow)
     }
