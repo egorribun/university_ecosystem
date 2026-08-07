@@ -1700,6 +1700,20 @@ def _python_function_entry_line(
     return body[0].lineno if body else function.lineno
 
 
+def _is_mutmut_generated_function(
+    node: ast.FunctionDef | ast.AsyncFunctionDef,
+) -> bool:
+    """Identify helper functions injected by mutmut's source trampoline.
+
+    mutmut rewrites each source file in its isolated ``mutants/`` tree and
+    appends one function per generated mutant.  Those helpers are execution
+    machinery, not source-level coverage obligations.  Keeping this filter in
+    the AST-derived path makes the normalizer measure the same source units in
+    the regular and mutation-test environments.
+    """
+    return "_mutmut_" in node.name
+
+
 def _derive_python_function_metric(
     source: str,
     line_hits: dict[int, bool],
@@ -1711,6 +1725,7 @@ def _derive_python_function_metric(
         node
         for node in ast.walk(tree)
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+        and not _is_mutmut_generated_function(node)
     ]
     if not functions:
         return _vacuous_metric("AST source contains no function definitions")
@@ -1743,6 +1758,12 @@ def _python_has_branch_constructs(tree: ast.Module) -> bool:
 
     def _walk_runtime_nodes(node: ast.AST) -> Iterator[ast.AST]:
         for child in ast.iter_child_nodes(node):
+            if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef)) and (
+                _is_mutmut_generated_function(child)
+            ):
+                # Mutmut's generated wrappers contain their own dispatch
+                # branches.  They are not source-level branch obligations.
+                continue
             if (
                 isinstance(child, ast.If)
                 and isinstance(child.test, ast.Name)

@@ -582,6 +582,44 @@ def test_tier0_measurement_contains_matched_file_evidence_before_enforcement(
     assert not any("functions" in error for error in tier0["errors"])
 
 
+def test_ast_derived_metrics_ignore_mutmut_generated_functions(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    normalizer = _normalizer_module()
+    source_path = tmp_path / "app" / "sample.py"
+    source_path.parent.mkdir()
+    source_path.write_text(
+        """def real_function():
+    return 1
+
+
+def _mutmut_trampoline():
+    if True:
+        return 1
+
+
+def x_mutmut_real_function__mutmut_orig():
+    if True:
+        return 1
+""",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(normalizer, "REPOSITORY_ROOT", tmp_path)
+
+    function_metric = normalizer._derive_python_function_metric(
+        "app/sample.py", {2: True}
+    )
+    branch_metric = normalizer._derive_python_branch_metric("app/sample.py")
+
+    assert function_metric is not None
+    assert function_metric["covered"] == 1
+    assert function_metric["total"] == 1
+    assert branch_metric is not None
+    assert branch_metric["status"] == "derived"
+    assert branch_metric["total"] == 0
+
+
 def test_normalizer_output_is_byte_identical_for_fixed_inputs(tmp_path: Path) -> None:
     first_output = tmp_path / "first.json"
     second_output = tmp_path / "second.json"

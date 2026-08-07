@@ -1938,6 +1938,29 @@ mod tests {
         assert!(result.is_none());
     }
 
+    #[test]
+    fn find_optimal_slot_normalizes_epoch_day2_non_conflict() {
+        let monday = NaiveDate::from_ymd_opt(2026, 1, 5).unwrap();
+        let existing = vec![ScheduleItem {
+            id: Some(3),
+            weekday: "tuesday".to_string(),
+            start_time: 10_800,
+            end_time: 14_400,
+            parity: "both".to_string(),
+        }];
+
+        let result = find_optimal_slot_at(
+            monday,
+            120,
+            existing,
+            vec![("monday".to_string(), vec![23])],
+        );
+        assert_eq!(
+            result.as_ref().map(|item| item.weekday.as_str()),
+            Some("monday")
+        );
+    }
+
     // --- Property-based tests (proptest) ---
     // These verify algebraic properties that hold for ALL valid inputs,
     // not just hand-picked examples.
