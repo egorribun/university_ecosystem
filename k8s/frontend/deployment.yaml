@@ -1,4 +1,4 @@
-# checkov:skip=CKV_K8S_43:IMAGE_TAG is replaced with an immutable digest by the deployment pipeline
+#checkov:skip=CKV_K8S_43:IMAGE_TAG is replaced with an immutable digest by the deployment pipeline
 apiVersion: apps/v1
 kind: Deployment
 metadata:

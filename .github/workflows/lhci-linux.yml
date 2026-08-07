@@ -41,7 +41,7 @@
 name: LHCI Linux On-Demand
 
 on:
-  workflow_dispatch: # checkov:skip=CKV_GHA_7:manual input intentionally selects the audited URL subset
+  workflow_dispatch: #checkov:skip=CKV_GHA_7:manual input intentionally selects the audited URL subset
     inputs:
       urls:
         description: "Comma-separated URL paths (empty = full default 9-URL sweep). Example: `,login,dashboard` for / + /login + /dashboard."

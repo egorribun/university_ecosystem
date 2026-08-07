@@ -46,7 +46,7 @@ COPY --from=builder /app/services/ws-hub/ws-hub .
 EXPOSE 8081
 
 # Note: Docker HEALTHCHECK removed in favor of Kubernetes liveness/readiness probes (TD-EXP-02)
-# checkov:skip=CKV_DOCKER_2:health is enforced by the Kubernetes probes.
+#checkov:skip=CKV_DOCKER_2:health is enforced by the Kubernetes probes.
 USER nonroot:nonroot
 
 CMD ["/app/ws-hub"]

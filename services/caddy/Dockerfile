@@ -40,4 +40,4 @@ RUN addgroup -S caddy \
 USER caddy
 
 # Kubernetes supplies liveness/readiness probes for this edge proxy.
-# checkov:skip=CKV_DOCKER_2:health is enforced by the Kubernetes probes.
+#checkov:skip=CKV_DOCKER_2:health is enforced by the Kubernetes probes.

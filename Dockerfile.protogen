@@ -14,13 +14,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Digest sourced from: https://github.com/bufbuild/buf/releases/download/v1.50.0/sha256.txt
 # Architecture: Linux-x86_64 (CI runners are amd64). Update both when upgrading buf.
 ARG BUF_VERSION="v1.50.0"
-ARG BUF_SHA256="154ea883ce098eac4fa106ff9ee4e4964bb97f809dd8ec9c34a432b466ce1494" # pragma: allowlist secret
 
-RUN set -eux; \
-    curl -fsSL -o /usr/local/bin/buf \
-        "https://github.com/bufbuild/buf/releases/download/${BUF_VERSION}/buf-Linux-x86_64"; \
-    echo "${BUF_SHA256}  /usr/local/bin/buf" | sha256sum -c -; \
-    chmod +x /usr/local/bin/buf
+RUN <<'EOF'
+set -eux
+buf_sha256="154ea883ce098eac4fa106ff9ee4e4964bb97f809dd8ec9c34a432b466ce1494" # pragma: allowlist secret
+curl -fsSL -o /usr/local/bin/buf \
+    "https://github.com/bufbuild/buf/releases/download/${BUF_VERSION}/buf-Linux-x86_64"
+echo "${buf_sha256}  /usr/local/bin/buf" | sha256sum -c -
+chmod +x /usr/local/bin/buf
+EOF
 
 # Install Go Plugins with pinned versions
 RUN go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.36.5
@@ -31,6 +33,13 @@ ENV PATH="/go/bin:${PATH}"
 
 WORKDIR /workspace
 
+# The image is used for code generation only; keep the generated workspace
+# writable while ensuring the default process cannot run as root.
+RUN groupadd --system --gid 10001 protogen \
+    && useradd --system --uid 10001 --gid protogen --create-home --shell /usr/sbin/nologin protogen \
+    && chown -R protogen:protogen /workspace
+USER protogen
+
 # This is a short-lived code-generation tool image, never a deployed service.
-# checkov:skip=CKV_DOCKER_2:the image is not a long-running service.
-# checkov:skip=CKV_DOCKER_3:the image is a build tool and runs only in CI.
+#checkov:skip=CKV_DOCKER_2:the image is not a long-running service.
+#checkov:skip=CKV_DOCKER_3:the image is a build tool and runs only in CI.

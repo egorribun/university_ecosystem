@@ -209,8 +209,8 @@ redis:
   architecture: standalone  # standalone for dev; replication for prod
   auth:
     enabled: true
-    existingSecret: "redis-credentials" # checkov:skip=CKV_SECRET_6:references a Kubernetes Secret name, not a credential value
-    existingSecretPasswordKey: "redis-password" # checkov:skip=CKV_SECRET_6:references a Secret key name, not a credential value
+    existingSecret: "redis-credentials" #checkov:skip=CKV_SECRET_6:references a Kubernetes Secret name, not a credential value
+    existingSecretPasswordKey: "redis-password" #checkov:skip=CKV_SECRET_6:references a Secret key name, not a credential value
   master:
     resources:
       requests:
@@ -380,4 +380,3 @@ hibernation:
       enabled: true
       minReplicasDay: 2
       maxReplicasDay: 10
-

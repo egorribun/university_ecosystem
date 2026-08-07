@@ -369,6 +369,52 @@ def test_trivy_sarif_categories_preserve_main_configuration_keys() -> None:
     assert image_scan["with"]["limit-severities-for-sarif"] is True
 
 
+def test_iac_scan_exceptions_use_supported_scoped_syntax() -> None:
+    """Keep documented IaC exceptions active instead of silently ignored."""
+
+    exception_files = (
+        REPOSITORY_ROOT / ".github" / "workflows" / "lhci-linux.yml",
+        REPOSITORY_ROOT / ".github" / "workflows" / "dast.yml",
+        REPOSITORY_ROOT / ".github" / "workflows" / "build-orchestrated-linux.yml",
+        REPOSITORY_ROOT / ".github" / "workflows" / "visual-audit.yml",
+        REPOSITORY_ROOT / "Dockerfile.test",
+        REPOSITORY_ROOT / "Dockerfile.protogen",
+        REPOSITORY_ROOT / "infra" / "oss-fuzz" / "Dockerfile",
+        REPOSITORY_ROOT / "k8s" / "backend" / "deployment.yaml",
+        REPOSITORY_ROOT / "k8s" / "frontend" / "deployment.yaml",
+        REPOSITORY_ROOT / "k8s" / "frontend" / "canary" / "deployment-stable.yaml",
+    )
+    assert all(
+        "# checkov:skip" not in path.read_text(encoding="utf-8")
+        for path in exception_files
+    )
+
+    security_workflow = yaml.safe_load(
+        SECURITY_WORKFLOW_PATH.read_text(encoding="utf-8")
+    )
+    config_scan = next(
+        step
+        for step in security_workflow["jobs"]["docker-security"]["steps"]
+        if step.get("name") == "Run Trivy configuration scanner (IaC)"
+    )
+    assert config_scan["with"]["trivyignores"] == ".trivyignore.yaml"
+
+    trivy_ignore = yaml.safe_load(
+        (REPOSITORY_ROOT / ".trivyignore.yaml").read_text(encoding="utf-8")
+    )
+    assert trivy_ignore["misconfigurations"] == [
+        {
+            "id": "AVD-DS-0002",
+            "paths": ["infra/oss-fuzz/Dockerfile"],
+            "statement": (
+                "OSS-Fuzz controls this disposable builder image and requires its "
+                "base-builder execution model; the image is never deployed or used as a "
+                "runtime container."
+            ),
+        }
+    ]
+
+
 def test_e2e_coverage_is_chromium_opt_in_and_codecov_wired() -> None:
     e2e_workflow = yaml.safe_load(E2E_WORKFLOW_PATH.read_text(encoding="utf-8"))
     call = _workflow_triggers(e2e_workflow)["workflow_call"]

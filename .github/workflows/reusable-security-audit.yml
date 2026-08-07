@@ -150,6 +150,10 @@ jobs:
         with:
           scan-type: "config"
           scan-ref: "."
+          # Keep the OSS-Fuzz builder's documented root exception scoped to
+          # that single Dockerfile; all other container user findings remain
+          # blocking code-scanning alerts.
+          trivyignores: ".trivyignore.yaml"
           format: "sarif"
           output: "trivy-config.sarif"
           severity: "CRITICAL,HIGH"

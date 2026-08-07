@@ -46,7 +46,7 @@
 name: Build Orchestrated Linux Validation
 
 on:
-  workflow_dispatch: # checkov:skip=CKV_GHA_7:manual input intentionally selects the reproducibility run count
+  workflow_dispatch: #checkov:skip=CKV_GHA_7:manual input intentionally selects the reproducibility run count
     inputs:
       runs:
         description: "Number of consecutive builds to run for reproducibility check (default 3)."
@@ -97,10 +97,11 @@ jobs:
       # BYTE-IDENTICAL invariant.
       - name: Run build-orchestrated.mjs × N
         id: build_runs
+        env:
+          RUNS_INPUT: ${{ inputs.runs }}
         run: |
           set -e
-          RUNS=${{ inputs.runs }}
-          : "${RUNS:=3}"
+          RUNS="${RUNS_INPUT:-3}"
           echo "Running build × $RUNS for reproducibility check"
 
           declare -a SHELL_HASHES

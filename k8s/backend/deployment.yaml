@@ -1,5 +1,5 @@
-# checkov:skip=CKV_K8S_43:IMAGE_TAG is replaced with an immutable digest by the deployment pipeline
-# checkov:skip=CKV_K8S_35:the backend receives configuration through ExternalSecret-backed envFrom by design
+#checkov:skip=CKV_K8S_43:IMAGE_TAG is replaced with an immutable digest by the deployment pipeline
+#checkov:skip=CKV_K8S_35:the backend receives configuration through ExternalSecret-backed envFrom by design
 apiVersion: apps/v1
 kind: Deployment
 metadata:
