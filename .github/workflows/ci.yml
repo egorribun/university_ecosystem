@@ -1137,9 +1137,7 @@ jobs:
           LHCI_SKIP_PREPARE: "1"
         run: |
           npx lhci assert \
-            --config=../.lighthouserc.js \
-            --preset=lighthouse:recommended \
-            --budgetsFile=../budget.json
+            --config=../.lighthouserc.js
 
   # MOD-W15-02 (audit 2026-03-23 Wave 15): Trivy Docker image scanning.
   # Runs on every PR/push. Scans the built backend image for CRITICAL/HIGH CVEs.

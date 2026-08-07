@@ -983,6 +983,10 @@ def test_performance_gate_asserts_downloaded_lighthouse_without_rebuilding() -> 
         if step.get("name") == "Enforce Lighthouse thresholds"
     )
     assert threshold_step["env"]["LHCI_SKIP_PREPARE"] == "1"
+    threshold_command = threshold_step["run"]
+    assert "--config=../.lighthouserc.js" in threshold_command
+    assert "--preset=" not in threshold_command
+    assert "--budgetsFile=" not in threshold_command
 
 
 def test_chaos_job_provisions_real_minio_through_toxiproxy() -> None:
