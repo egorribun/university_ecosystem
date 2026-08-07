@@ -364,6 +364,59 @@ func serveWebTransport(wtServer *webtransport.Server, wtPort string, cfg *config
 	return wtServer.Serve(&startupPacketConn{PacketConn: conn, ready: ready})
 }
 
+func setupSignalChannel(signalChannels ...chan os.Signal) (<-chan os.Signal, func()) {
+	if len(signalChannels) > 0 && signalChannels[0] != nil {
+		return signalChannels[0], func() {}
+	}
+
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	return quit, func() { signal.Stop(quit) }
+}
+
+func waitForWebTransportStartup(quit <-chan os.Signal, ready <-chan struct{}, done <-chan struct{}, errChan <-chan error, logger *slog.Logger) (error, bool) {
+	select {
+	case <-ready:
+		return nil, false
+	case <-done:
+		return nil, false
+	case err := <-errChan:
+		logger.ErrorContext(context.Background(), "Server error", "err", err)
+		select {
+		case <-ready:
+		case <-done:
+		}
+		return err, true
+	case <-quit:
+		select {
+		case <-ready:
+		case <-done:
+		}
+		return nil, true
+	}
+}
+
+func waitForShutdown(quit <-chan os.Signal, errChan <-chan error, logger *slog.Logger) error {
+	select {
+	case err := <-errChan:
+		logger.ErrorContext(context.Background(), "Server error", "err", err)
+		return err
+	case <-quit:
+		return nil
+	}
+}
+
+func shutdownWebTransport(wtServer *webtransport.Server, done <-chan struct{}) {
+	select {
+	case <-done:
+		return
+	default:
+		//nolint:errcheck
+		_ = wtServer.Close()
+		<-done
+	}
+}
+
 func runServer(cfg *config.Config, logger *slog.Logger, h *hub.Hub, mux *http.ServeMux, signalChannels ...chan os.Signal) error {
 	server := &http.Server{
 		Addr:              ":" + cfg.Port,
@@ -389,13 +442,8 @@ func runServer(cfg *config.Config, logger *slog.Logger, h *hub.Hub, mux *http.Se
 		},
 	}
 
-	quit := make(chan os.Signal, 1)
-	if len(signalChannels) > 0 && signalChannels[0] != nil {
-		quit = signalChannels[0]
-	} else {
-		signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
-		defer signal.Stop(quit)
-	}
+	quit, stopSignals := setupSignalChannel(signalChannels...)
+	defer stopSignals()
 
 	// RZ-33-07: Use channel-based error propagation instead of os.Exit in
 	// goroutine — ensures deferred cleanup (NATS close, Redis close, tracer
@@ -419,36 +467,9 @@ func runServer(cfg *config.Config, logger *slog.Logger, h *hub.Hub, mux *http.Se
 		}
 	}()
 
-	var runErr error
-	shutdownRequested := false
-	wtStartupComplete := false
-	for !wtStartupComplete && !shutdownRequested {
-		select {
-		case <-wtReady:
-			wtStartupComplete = true
-		case <-wtDone:
-			wtStartupComplete = true
-		case err := <-errChan:
-			logger.ErrorContext(context.Background(), "Server error", "err", err)
-			runErr = err
-			shutdownRequested = true
-		case <-quit:
-			shutdownRequested = true
-		}
-	}
-
-	if shutdownRequested {
-		select {
-		case <-wtReady:
-		case <-wtDone:
-		}
-	} else {
-		select {
-		case err := <-errChan:
-			logger.ErrorContext(context.Background(), "Server error", "err", err)
-			runErr = err
-		case <-quit:
-		}
+	runErr, shutdownRequested := waitForWebTransportStartup(quit, wtReady, wtDone, errChan, logger)
+	if !shutdownRequested {
+		runErr = waitForShutdown(quit, errChan, logger)
 	}
 
 	logger.InfoContext(context.Background(), "Shutting down...")
@@ -456,13 +477,7 @@ func runServer(cfg *config.Config, logger *slog.Logger, h *hub.Hub, mux *http.Se
 	defer shutdownCancel()
 
 	h.Stop()
-	select {
-	case <-wtDone:
-	default:
-		//nolint:errcheck
-		_ = wtServer.Close()
-		<-wtDone
-	}
+	shutdownWebTransport(wtServer, wtDone)
 	if err := server.Shutdown(shutdownCtx); err != nil {
 		logger.ErrorContext(context.Background(), "Server forced to shutdown", "err", err)
 	}
