@@ -349,6 +349,25 @@ def test_trivy_sarif_categories_preserve_main_configuration_keys() -> None:
         "trivy-config.sarif": "trivy-config",
     }
 
+    trivy_steps = [
+        step
+        for step in security_workflow["jobs"]["docker-security"]["steps"]
+        if step.get("uses", "").startswith("aquasecurity/trivy-action@")
+    ]
+    assert trivy_steps
+    assert all(
+        step["with"]["limit-severities-for-sarif"] is True
+        for step in trivy_steps
+        if step["with"].get("format") == "sarif"
+    )
+
+    image_scan = next(
+        step
+        for step in ci_workflow["jobs"]["docker-security-scan"]["steps"]
+        if step.get("uses", "").startswith("aquasecurity/trivy-action@")
+    )
+    assert image_scan["with"]["limit-severities-for-sarif"] is True
+
 
 def test_e2e_coverage_is_chromium_opt_in_and_codecov_wired() -> None:
     e2e_workflow = yaml.safe_load(E2E_WORKFLOW_PATH.read_text(encoding="utf-8"))

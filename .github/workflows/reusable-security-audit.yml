@@ -137,6 +137,9 @@ jobs:
           format: "sarif"
           output: "trivy-fs.sarif"
           severity: "CRITICAL,HIGH"
+          # SARIF otherwise contains every severity even when the scan filter
+          # is restricted. Keep Code Scanning aligned with the blocking policy.
+          limit-severities-for-sarif: true
           # skip-setup-trivy: use the binary we installed above via apt
           skip-setup-trivy: true
           # fs scan feeds advisory SARIF; blocking is enforced by the image scan in build-and-sign
@@ -150,6 +153,9 @@ jobs:
           format: "sarif"
           output: "trivy-config.sarif"
           severity: "CRITICAL,HIGH"
+          # Without this flag Trivy deliberately emits LOW/MEDIUM findings in
+          # SARIF, which can block the zero-alert ruleset while the job is green.
+          limit-severities-for-sarif: true
           skip-setup-trivy: true
           exit-code: "0"
 
