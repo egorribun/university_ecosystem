@@ -279,6 +279,7 @@ describe("Profile behavior", () => {
 
   afterEach(() => {
     cleanup()
+    vi.unstubAllEnvs()
   })
 
   it("renders the loading skeleton before user data is ready", () => {
