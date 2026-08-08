@@ -552,11 +552,14 @@ def test_tier0_measurement_contains_matched_file_evidence_before_enforcement(
                     "total": 2,
                 },
                 "functions": {
-                    "covered": None,
-                    "percent": None,
-                    "reason_code": "coverage_xml_has_no_method_breakdown",
-                    "status": "unsupported",
-                    "total": None,
+                    "covered": 0,
+                    "derivation": (
+                        "AST function entries covered when the first executable "
+                        "body line is reported as executed"
+                    ),
+                    "percent": 0.0,
+                    "status": "derived",
+                    "total": 15,
                 },
                 "lines": {
                     "covered": 1,
@@ -576,7 +579,45 @@ def test_tier0_measurement_contains_matched_file_evidence_before_enforcement(
         }
     ]
     assert tier0["coverage"]["lines"]["percent"] == 50.0
-    assert any("functions" in error for error in tier0["errors"])
+    assert not any("functions" in error for error in tier0["errors"])
+
+
+def test_ast_derived_metrics_ignore_mutmut_generated_functions(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    normalizer = _normalizer_module()
+    source_path = tmp_path / "app" / "sample.py"
+    source_path.parent.mkdir()
+    source_path.write_text(
+        """def real_function():
+    return 1
+
+
+def _mutmut_trampoline():
+    if True:
+        return 1
+
+
+def x_mutmut_real_function__mutmut_orig():
+    if True:
+        return 1
+""",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(normalizer, "REPOSITORY_ROOT", tmp_path)
+
+    function_metric = normalizer._derive_python_function_metric(
+        "app/sample.py", {2: True}
+    )
+    branch_metric = normalizer._derive_python_branch_metric("app/sample.py")
+
+    assert function_metric is not None
+    assert function_metric["covered"] == 1
+    assert function_metric["total"] == 1
+    assert branch_metric is not None
+    assert branch_metric["status"] == "derived"
+    assert branch_metric["total"] == 0
 
 
 def test_normalizer_output_is_byte_identical_for_fixed_inputs(tmp_path: Path) -> None:
@@ -603,6 +644,126 @@ def test_rust_direct_totals_form_is_normalized(tmp_path: Path) -> None:
     manifest = json.loads(output.read_text(encoding="utf-8"))
     assert _metric(manifest, "rust-native", "lines")["percent"] == 75.0
     assert _metric(manifest, "rust-native", "functions")["percent"] == 50.0
+
+
+def test_rust_tier0_lines_deduplicate_macro_segments_by_source_line(
+    tmp_path: Path,
+) -> None:
+    source_path = "native/rust_ext/src/lib.rs"
+    report_path = tmp_path / "rust-segment-lines.json"
+    report_path.write_text(
+        json.dumps(
+            {
+                "data": [
+                    {
+                        "totals": {
+                            "functions": {"count": 1, "covered": 1},
+                            "lines": {"count": 3, "covered": 2},
+                        },
+                        "files": [
+                            {
+                                "filename": source_path,
+                                "summary": {
+                                    "functions": {"count": 1, "covered": 1},
+                                    "lines": {"count": 3, "covered": 2},
+                                },
+                                "segments": [
+                                    [1, 1, 1, True, True, False],
+                                    [1, 9, 0, True, True, False],
+                                    [2, 1, 0, True, True, False],
+                                    [3, 1, 2, True, True, False],
+                                ],
+                            }
+                        ],
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    output = tmp_path / "quality-manifest.json"
+    result = _run_normalizer(
+        output,
+        "--rust-report",
+        f"rust-native={report_path}",
+    )
+
+    assert result.returncode == 1
+    manifest = json.loads(output.read_text(encoding="utf-8"))
+    native_file = next(
+        item for item in manifest["tier0"]["files"] if item["path"] == source_path
+    )
+    assert native_file["metrics"]["lines"] == {
+        "covered": 2,
+        "derivation": (
+            "unique source lines from non-gap LLVM segments; covered when any "
+            "segment on the line is executed"
+        ),
+        "percent": 66.666667,
+        "status": "derived",
+        "total": 3,
+    }
+
+
+def test_rust_crypto_function_floor_ignores_wasm_bindgen_generated_wrappers(
+    tmp_path: Path,
+) -> None:
+    """Count source functions, not uncovered wasm-bindgen glue monomorphizations."""
+    source_path = "frontend/rust-crypto/src/lib.rs"
+    report_path = tmp_path / "rust-crypto-generated-functions.json"
+    report_path.write_text(
+        json.dumps(
+            {
+                "data": [
+                    {
+                        "totals": {
+                            "functions": {"count": 3, "covered": 2},
+                            "lines": {"count": 4, "covered": 3},
+                        },
+                        "files": [{"filename": source_path}],
+                        "functions": [
+                            {
+                                "name": "_RNv_source_pbdkf2_derive",
+                                "count": 1,
+                                "filenames": [source_path],
+                                "regions": [[10, 1, 10, 2, 1, 0, 0, 0]],
+                            },
+                            {
+                                "name": "_RNv_source_hmac_sha256_sign",
+                                "count": 1,
+                                "filenames": [source_path],
+                                "regions": [[17, 1, 17, 2, 1, 0, 0, 0]],
+                            },
+                            {
+                                "name": "_RNC_source_hmac_sha256_sign0B3_",
+                                "count": 0,
+                                "filenames": [source_path],
+                                "regions": [[17, 1, 17, 2, 0, 0, 0, 0]],
+                            },
+                        ],
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    output = tmp_path / "quality-manifest.json"
+    result = _run_normalizer(
+        output,
+        "--rust-report",
+        f"rust-crypto={report_path}",
+    )
+
+    assert result.returncode == 1
+    manifest = json.loads(output.read_text(encoding="utf-8"))
+    assert _metric(manifest, "rust-crypto", "functions") == {
+        "covered": 2,
+        "percent": 100.0,
+        "status": "native",
+        "total": 2,
+    }
 
 
 def test_source_identity_accepts_in_root_relative_backslash_and_absolute_paths(
@@ -1469,6 +1630,50 @@ def test_duplicate_component_input_is_an_honest_evidence_failure(
         "duplicate report input for component go-gateway"
         in manifest["validation"]["errors"]
     )
+
+
+def test_frontend_lcov_enriches_statements_from_adjacent_istanbul_json(
+    tmp_path: Path,
+) -> None:
+    coverage_dir = tmp_path / "frontend" / "coverage"
+    coverage_dir.mkdir(parents=True)
+    lcov_path = coverage_dir / "lcov.info"
+    lcov_path.write_bytes((FIXTURES / "frontend-valid.lcov").read_bytes())
+    json_path = coverage_dir / "coverage-final.json"
+    json_path.write_text(
+        json.dumps(
+            {
+                "frontend/src/one.ts": {
+                    "s": {"0": 1, "1": 0},
+                    "b": {"0": [1, 0]},
+                    "f": {"0": 1},
+                },
+                "frontend/src/two.ts": {
+                    "s": {"0": 1},
+                    "b": {"0": [1]},
+                    "f": {"0": 1, "1": 0},
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    output = tmp_path / "quality-manifest.json"
+    result = _run_normalizer(output, "--frontend-lcov", str(lcov_path))
+
+    assert result.returncode == 1
+    manifest = json.loads(output.read_text(encoding="utf-8"))
+    frontend = manifest["components"]["frontend"]
+    assert frontend["metrics"]["statements"] == {
+        "covered": 2,
+        "percent": 66.666667,
+        "status": "native",
+        "total": 3,
+    }
+    assert {report["format"] for report in manifest["reports"]} == {
+        "istanbul-json",
+        "lcov",
+    }
 
 
 def test_invalid_component_and_malformed_arguments_return_two(tmp_path: Path) -> None:

@@ -16,7 +16,7 @@ import (
 	"github.com/university-ecosystem/gateway/internal/config"
 )
 
-const routeBranchJWTSecret = "route-branch-test-secret-at-least-32-chars-long" // pragma: allowlist secret
+const routeBranchJWTSecret = "route-branch-test-secret-at-least-32-chars-long" // #nosec G101 -- test-only JWT signing secret // pragma: allowlist secret
 
 func newRouteBranchRouter(t *testing.T, wsHubURL string) (*gin.Engine, context.CancelFunc) {
 	t.Helper()
@@ -39,7 +39,9 @@ func TestSetupRouter_AuthenticatedAdminRouteReachesProxy(t *testing.T) {
 
 	server := httptest.NewServer(router)
 	t.Cleanup(server.Close)
-	req, err := http.NewRequest(http.MethodGet, server.URL+"/api/admin/users", nil)
+	req, err := http.NewRequestWithContext(
+		context.Background(), http.MethodGet, server.URL+"/api/admin/users", nil,
+	)
 	require.NoError(t, err)
 	token, err := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
 		"sub":       "user-1",
@@ -53,7 +55,14 @@ func TestSetupRouter_AuthenticatedAdminRouteReachesProxy(t *testing.T) {
 	req.Header.Set("Authorization", "Bearer "+token)
 	response, err := server.Client().Do(req)
 	require.NoError(t, err)
-	t.Cleanup(func() { _ = response.Body.Close() })
+	if response == nil {
+		t.Fatal("expected a response from the test server")
+	}
+	t.Cleanup(func() {
+		if closeErr := response.Body.Close(); closeErr != nil {
+			t.Errorf("close response body: %v", closeErr)
+		}
+	})
 
 	assert.Equal(t, http.StatusBadGateway, response.StatusCode)
 }
@@ -64,9 +73,18 @@ func TestSetupRouter_WSProxyErrorHandlerReturnsBadGateway(t *testing.T) {
 
 	server := httptest.NewServer(router)
 	t.Cleanup(server.Close)
-	response, err := server.Client().Get(server.URL + "/ws")
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, server.URL+"/ws", nil)
 	require.NoError(t, err)
-	t.Cleanup(func() { _ = response.Body.Close() })
+	response, err := server.Client().Do(req)
+	require.NoError(t, err)
+	if response == nil {
+		t.Fatal("expected a response from the test server")
+	}
+	t.Cleanup(func() {
+		if closeErr := response.Body.Close(); closeErr != nil {
+			t.Errorf("close response body: %v", closeErr)
+		}
+	})
 
 	assert.Equal(t, http.StatusBadGateway, response.StatusCode)
 }

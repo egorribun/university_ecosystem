@@ -19,6 +19,15 @@ type Resolver struct {
 	MinioBucket    string
 }
 
+const maxProcessOptions = 10
+
+func validateProcessOptions(options map[string]interface{}) error {
+	if len(options) > maxProcessOptions {
+		return fmt.Errorf("options map exceeds maximum of %d entries", maxProcessOptions)
+	}
+	return nil
+}
+
 // Health returns the health status of the service.
 func (r *Resolver) Health() string {
 	return "OK"
@@ -76,8 +85,8 @@ func (r *Resolver) ProcessFile(ctx context.Context, args struct{ Input ProcessFi
 	}
 
 	// RZ-24-06: Bound options map to 10 entries (parity with gRPC path — RZ-23-04).
-	if len(options) > 10 {
-		return nil, fmt.Errorf("options map exceeds maximum of 10 entries")
+	if err := validateProcessOptions(options); err != nil {
+		return nil, err
 	}
 
 	job := workflow.ProcessJob{

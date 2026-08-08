@@ -1,4 +1,4 @@
-# checkov:skip=CKV_K8S_43:the upstream release tag is verified by image admission; promotion records the digest
+#checkov:skip=CKV_K8S_43:the upstream release tag is verified by image admission; promotion records the digest
 # MOD-14-01 (audit 2026-03-18): flagd — self-hosted OpenFeature provider.
 #
 # flagd serves feature flag evaluation via gRPC (port 8013) and HTTP (port 8016).

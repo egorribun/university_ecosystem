@@ -37,6 +37,11 @@ on:
                 required: false
                 type: string
                 default: "tests/"
+            integration-test-pattern:
+                description: "Pytest pattern for the PostgreSQL integration job"
+                required: false
+                type: string
+                default: "tests/integration/"
             parallel-workers:
                 description: "Number of parallel workers for pytest-xdist (0 = auto, -1 = disabled)"
                 required: false
@@ -334,12 +339,58 @@ jobs:
                   uv run alembic upgrade head
                   echo "Migration round-trip succeeded"
 
+            - name: Pre-pull testcontainer images with bounded retries
+              shell: pwsh
+              run: |
+                  # Testcontainers pulls these images lazily.  A transient
+                  # Docker Hub token/registry timeout must not turn a healthy
+                  # integration suite into a false-negative CI failure.
+                  $images = @(
+                    "nats:2.10-alpine",
+                    "postgres:15-alpine",
+                    "redis:7-alpine",
+                    "pgvector/pgvector:pg17"
+                  )
+                  $maxAttempts = 5
+
+                  foreach ($image in $images) {
+                    $available = $false
+                    for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
+                      docker image inspect $image *> $null
+                      if ($LASTEXITCODE -eq 0) {
+                        $available = $true
+                        break
+                      }
+
+                      Write-Host "Pulling $image (attempt $attempt/$maxAttempts)"
+                      docker pull $image
+                      if ($LASTEXITCODE -eq 0) {
+                        $available = $true
+                        break
+                      }
+
+                      if ($attempt -lt $maxAttempts) {
+                        $delaySeconds = [int][math]::Pow(2, $attempt)
+                        Write-Host "Retrying $image in $delaySeconds seconds"
+                        Start-Sleep -Seconds $delaySeconds
+                      }
+                    }
+
+                    if (-not $available) {
+                      throw "Unable to make testcontainer image available after $maxAttempts attempts: $image"
+                    }
+                  }
+
             - name: Run integration tests
               shell: pwsh
-              run: |  # nosemgrep: yaml.github-actions.security.run-shell-injection.run-shell-injection
+              env:
+                  INTEGRATION_SHARD_ID: ${{ inputs.integration-shard-id }}
+                  INTEGRATION_NUM_SHARDS: ${{ inputs.integration-num-shards }}
+                  INTEGRATION_TEST_PATTERN: ${{ inputs.integration-test-pattern }}
+              run: |
                   $integrationShardArgs = @()
-                  $integrationShardId = [int]"${{ inputs.integration-shard-id }}"
-                  $integrationNumShards = [int]"${{ inputs.integration-num-shards }}"
+                  $integrationShardId = [int]$env:INTEGRATION_SHARD_ID
+                  $integrationNumShards = [int]$env:INTEGRATION_NUM_SHARDS
                   if ($integrationShardId -ge 0 -or $integrationNumShards -ne 1) {
                     if ($integrationShardId -lt 0 -or $integrationShardId -ge $integrationNumShards -or $integrationNumShards -lt 1) {
                       throw "Invalid integration shard configuration: id=$integrationShardId total=$integrationNumShards"
@@ -351,7 +402,7 @@ jobs:
                   }
 
                   $pytestArgs = @(
-                    "${{ inputs.test-pattern }}",
+                    $env:INTEGRATION_TEST_PATTERN,
                     "-v",
                     "--tb=short",
                     "-x"

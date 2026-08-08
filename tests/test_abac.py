@@ -8,7 +8,7 @@ import pytest
 from fastapi import HTTPException, status
 
 from app.auth.abac import ContextAwareAccessGuard, check_control_work_access
-from app.auth.rbac import SpiceDBUnavailableError
+from app.auth.rbac import PermissionChecker, SpiceDBUnavailableError
 from app.core.config import settings
 
 
@@ -96,6 +96,69 @@ async def test_check_control_work_access_explicit_params_happy_path(
         resource_id=resource_id,
         permission="submit",
         user_id=user_id,
+    )
+
+
+@pytest.mark.asyncio
+async def test_check_control_work_access_accepts_positional_lesson_and_checker(
+    dummy_request,
+):
+    """Resolve the documented positional lesson/checker compatibility form."""
+    now = datetime.now(UTC)
+    lesson = DummyLesson(
+        start_time=now - timedelta(minutes=10),
+        end_time=now + timedelta(minutes=50),
+    )
+    checker = PermissionChecker(MagicMock())
+    checker.check_permission = AsyncMock(return_value=True)
+    user_id = uuid.uuid4()
+
+    await check_control_work_access(
+        dummy_request,
+        user_id,
+        lesson,
+        checker,
+    )
+
+    checker.check_permission.assert_awaited_once_with(
+        resource_type="control_work",
+        resource_id=str(lesson.id),
+        permission="submit",
+        user_id=str(user_id),
+    )
+
+    checker.check_permission.reset_mock()
+    await check_control_work_access(
+        dummy_request,
+        user_id,
+        lesson,
+        "explicit-resource-id",
+        permission_checker=checker,
+    )
+    checker.check_permission.assert_awaited_once_with(
+        resource_type="control_work",
+        resource_id=str(lesson.id),
+        permission="submit",
+        user_id=str(user_id),
+    )
+
+
+@pytest.mark.asyncio
+async def test_check_control_work_access_allows_context_without_rebac_checker(
+    dummy_request,
+):
+    """Continue with ABAC-only checks when no optional ReBAC checker is configured."""
+    now = datetime.now(UTC)
+    lesson = DummyLesson(
+        start_time=now - timedelta(minutes=10),
+        end_time=now + timedelta(minutes=50),
+    )
+
+    await check_control_work_access(
+        request=dummy_request,
+        user_id=uuid.uuid4(),
+        lesson=lesson,
+        permission_checker=None,
     )
 
 

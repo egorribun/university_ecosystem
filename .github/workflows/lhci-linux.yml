@@ -41,7 +41,7 @@
 name: LHCI Linux On-Demand
 
 on:
-  workflow_dispatch: # checkov:skip=CKV_GHA_7:manual input intentionally selects the audited URL subset
+  workflow_dispatch: #checkov:skip=CKV_GHA_7:manual input intentionally selects the audited URL subset
     inputs:
       urls:
         description: "Comma-separated URL paths (empty = full default 9-URL sweep). Example: `,login,dashboard` for / + /login + /dashboard."
@@ -153,6 +153,10 @@ jobs:
       - name: Run Lighthouse CI
         env:
           LHCI_URLS: ${{ inputs.urls }}
+          # ubuntu-latest is pre-provisioned with the browser runtime. Avoid
+          # repeating Playwright's apt bootstrap on every on-demand run; the
+          # script still validates/downloads the pinned Chromium executable.
+          LHCI_SKIP_SYSTEM_DEPS: "1"
         run: npm run lhci
 
       - name: Upload Lighthouse reports

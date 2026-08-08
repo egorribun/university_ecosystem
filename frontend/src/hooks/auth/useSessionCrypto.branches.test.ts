@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
 
 import { useSessionCrypto } from "./useSessionCrypto"
 import { SERVICE_WORKER_MESSAGE_TYPES } from "@/constants/serviceWorkerMessages"
+import { cryptoWorker } from "@/utils/cryptoWorker"
 
 // ---------------------------------------------------------------------------
 // useSessionCrypto.branches — drives the stateful hook (the existing
@@ -109,6 +110,18 @@ describe("ensureSessionSigningKey failure path", () => {
     expect(result.current.signingKeyRetryCountRef.current).toBe(1)
   })
 
+  it("clears the in-flight promise when cache-key derivation fails after fetch", async () => {
+    vi.mocked(cryptoWorker.pbkdf2).mockRejectedValueOnce(new Error("worker unavailable"))
+    const { result } = renderHook(() => useSessionCrypto())
+
+    await act(async () => {
+      await expect(result.current.ensureSessionSigningKey()).resolves.toBeNull()
+    })
+    expect(result.current.signingKeyRetryCountRef.current).toBe(1)
+    expect(result.current.sessionSigningKeyRef.current).toBe("sk-1")
+    expect(result.current.sessionSigningKeyPromiseRef.current).toBeNull()
+  })
+
   it("enters backoff + dispatches the crypto-failed event on the 3rd failure (lines 314-342)", async () => {
     vi.useFakeTimers()
     const dispatch = vi.spyOn(window, "dispatchEvent")
@@ -141,6 +154,26 @@ describe("ensureSessionSigningKey failure path", () => {
     expect(result.current.signingKeyRetryCountRef.current).toBe(0)
 
     dispatch.mockRestore()
+    vi.useRealTimers()
+  })
+
+  it("clears the in-flight promise when failure notification throws", async () => {
+    vi.useFakeTimers()
+    mocks.apiGet.mockRejectedValue(new Error("503"))
+    vi.spyOn(window, "dispatchEvent").mockImplementationOnce(() => {
+      throw new Error("event unavailable")
+    })
+    const { result } = renderHook(() => useSessionCrypto())
+
+    await act(async () => {
+      await result.current.ensureSessionSigningKey()
+      await result.current.ensureSessionSigningKey()
+      await expect(result.current.ensureSessionSigningKey()).rejects.toThrow("event unavailable")
+    })
+
+    expect(result.current.sessionSigningKeyPromiseRef.current).toBeNull()
+    vi.runAllTimers()
+    vi.restoreAllMocks()
     vi.useRealTimers()
   })
 })

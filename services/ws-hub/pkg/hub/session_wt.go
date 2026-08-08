@@ -14,18 +14,58 @@ import (
 
 // WebTransportSession adapts a quic-go webtransport.Session to implement Session.
 type WebTransportSession struct {
-	sess      *webtransport.Session
-	stream    *webtransport.Stream
+	sess      webTransportSession
+	stream    webTransportStream
 	streamMu  sync.Mutex
 	readLimit int64
 	closed    bool
 	closeMu   sync.Mutex
 }
 
+// webTransportStream is the small part of a bidirectional WebTransport stream
+// used by the Session adapter. Keeping this boundary explicit makes the
+// adapter testable without starting a QUIC listener for every error path.
+type webTransportStream interface {
+	io.Reader
+	io.Writer
+	Close() error
+	SetReadDeadline(time.Time) error
+	SetWriteDeadline(time.Time) error
+}
+
+type webTransportSession interface {
+	RemoteAddr() net.Addr
+	CloseWithError(webtransport.SessionErrorCode, string) error
+	AcceptStream(context.Context) (webTransportStream, error)
+	SendDatagram([]byte) error
+}
+
+type realWebTransportSession struct{ sess *webtransport.Session }
+
+func (s *realWebTransportSession) RemoteAddr() net.Addr {
+	return s.sess.RemoteAddr()
+}
+
+func (s *realWebTransportSession) CloseWithError(code webtransport.SessionErrorCode, message string) error {
+	return s.sess.CloseWithError(code, message)
+}
+
+func (s *realWebTransportSession) AcceptStream(ctx context.Context) (webTransportStream, error) {
+	return s.sess.AcceptStream(ctx)
+}
+
+func (s *realWebTransportSession) SendDatagram(data []byte) error {
+	return s.sess.SendDatagram(data)
+}
+
 // NewWebTransportSession creates a new WebTransportSession wrapping sess.
 func NewWebTransportSession(sess *webtransport.Session) *WebTransportSession {
+	var adapted webTransportSession
+	if sess != nil {
+		adapted = &realWebTransportSession{sess: sess}
+	}
 	return &WebTransportSession{
-		sess:      sess,
+		sess:      adapted,
 		readLimit: 64 * 1024,
 	}
 }
@@ -101,7 +141,7 @@ func (s *WebTransportSession) SetPongHandler(h func(appData string) error) {
 	// Pong handler is a no-op for WebTransport.
 }
 
-func (s *WebTransportSession) getOrAcceptStream() (*webtransport.Stream, error) {
+func (s *WebTransportSession) getOrAcceptStream() (webTransportStream, error) {
 	s.streamMu.Lock()
 	defer s.streamMu.Unlock()
 
@@ -132,6 +172,9 @@ func (s *WebTransportSession) ReadMessage() (int, []byte, error) {
 	if err != nil {
 		return 0, nil, err
 	}
+	if st == nil {
+		return 0, nil, errors.New("webtransport stream is nil")
+	}
 
 	buf := make([]byte, s.readLimit)
 	n, err := st.Read(buf)
@@ -158,6 +201,12 @@ func (s *WebTransportSession) WriteMessage(messageType int, data []byte) error {
 			return s.sess.SendDatagram(data)
 		}
 		return err
+	}
+	if st == nil {
+		if s.sess != nil {
+			return s.sess.SendDatagram(data)
+		}
+		return errors.New("webtransport stream is nil")
 	}
 
 	_, err = st.Write(data)

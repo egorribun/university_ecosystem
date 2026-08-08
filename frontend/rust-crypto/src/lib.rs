@@ -16,7 +16,7 @@ pub fn pbkdf2_derive(password: &str, salt: &str, iterations: u32, key_size: usiz
 #[wasm_bindgen]
 pub fn hmac_sha256_sign(key: &str, message: &str) -> String {
     let mut mac = HmacSha256::new_from_slice(key.as_bytes())
-        .unwrap_or_else(|_| unreachable!("HMAC-SHA256 accepts arbitrary-length keys"));
+        .expect("HMAC-SHA256 accepts arbitrary-length keys");
     mac.update(message.as_bytes());
     let result = mac.finalize();
     hex::encode(result.into_bytes())
@@ -68,7 +68,17 @@ pub fn scrypt_derive(
 
 #[cfg(test)]
 mod tests {
-    use super::{fill_scrypt_output, scrypt_derive, ScryptParams};
+    use super::{fill_scrypt_output, hmac_sha256_sign, scrypt_derive, ScryptParams};
+
+    #[test]
+    fn hmac_sha256_sign_is_deterministic_and_hex_encoded() {
+        let first = hmac_sha256_sign("key", "message");
+        let second = hmac_sha256_sign("key", "message");
+
+        assert_eq!(first, second);
+        assert_eq!(first.len(), 64);
+        assert!(first.chars().all(|character| character.is_ascii_hexdigit()));
+    }
 
     #[test]
     fn scrypt_rejects_zero_cost_without_panicking() {

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import os
 from collections.abc import Generator
 from datetime import UTC, datetime, timedelta
@@ -60,6 +61,16 @@ def test_container_cpu_count_cgroups_v1() -> None:
         ):
             val = _container_cpu_count()
             assert val == (os.cpu_count() or 2)
+
+
+def test_container_cpu_count_falls_back_when_cgroup_files_are_unavailable() -> None:
+    """Use the host fallback when neither affinity nor cgroups are available."""
+    with (
+        patch.object(os, "sched_getaffinity", None, create=True),
+        patch("builtins.open", side_effect=FileNotFoundError),
+        patch("os.cpu_count", return_value=6),
+    ):
+        assert _container_cpu_count() == 6
 
 
 def test_format_password_class_labels() -> None:
@@ -180,6 +191,25 @@ def test_get_cached_public_key_pem_and_eviction() -> None:
     pem2 = _get_cached_public_key_pem("kid-1", private_pem)
     assert pem1 == pem2
 
+    # Reusing a kid for a rotated private key must derive a fresh public key.
+    rotated_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    rotated_pem = rotated_key.private_bytes(
+        encoding=serialization.Encoding.PEM,
+        format=serialization.PrivateFormat.PKCS8,
+        encryption_algorithm=serialization.NoEncryption(),
+    ).decode("utf-8")
+    rotated_public_pem = (
+        rotated_key.public_key()
+        .public_bytes(
+            encoding=serialization.Encoding.PEM,
+            format=serialization.PublicFormat.SubjectPublicKeyInfo,
+        )
+        .decode()
+    )
+    rotated = _get_cached_public_key_pem("kid-1", rotated_pem)
+    assert rotated == rotated_public_pem
+    assert rotated != pem1
+
     with patch.dict(sec._public_key_cache, {f"k{i}": f"v{i}" for i in range(32)}):
         pem3 = _get_cached_public_key_pem("new-kid", private_pem)
         assert pem3 is not None
@@ -187,7 +217,8 @@ def test_get_cached_public_key_pem_and_eviction() -> None:
     # Test double-checked lock: key added while waiting for lock
     class MockCacheLock:
         def __enter__(self) -> MockCacheLock:
-            sec._public_key_cache["new-kid-2"] = "some-cached-pem"
+            cache_key = "new-kid-2:" + hashlib.sha256(private_pem.encode()).hexdigest()
+            sec._public_key_cache[cache_key] = "some-cached-pem"
             return self
 
         def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:

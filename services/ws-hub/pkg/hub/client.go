@@ -49,8 +49,14 @@ type chEntry struct {
 var writePumpPingInterval = 30 * time.Second
 
 var (
-	chMutexes = make(map[chan []byte]*chEntry)
-	chMu      sync.RWMutex
+	chMutexes             = make(map[chan []byte]*chEntry)
+	chMu                  sync.RWMutex
+	safeSendAfterLockHook = func(chan []byte, *chEntry) {}
+	unsubscribePullFunc   = func(sub *nats.Subscription) error { return sub.Unsubscribe() }
+	ackOfflineMessageFunc = func(msg *nats.Msg) error { return msg.Ack() }
+	fetchPullMessagesFunc = func(sub *nats.Subscription, batch int, opts ...nats.PullOpt) ([]*nats.Msg, error) {
+		return sub.Fetch(batch, opts...)
+	}
 )
 
 // safeSend writes data to ch without panicking if the channel is already closed.
@@ -101,6 +107,7 @@ func safeSend(ch chan []byte, data []byte) (sent bool) {
 		}
 		chMu.Unlock()
 	}()
+	safeSendAfterLockHook(ch, entry)
 	if entry.closed {
 		return false
 	}
@@ -361,12 +368,12 @@ func (c *Client) replayOfflineMessages(room string, lastSeq uint64, lastMsgID st
 		return
 	}
 	defer func() {
-		if err := sub.Unsubscribe(); err != nil && c.Hub != nil && c.Hub.Logger != nil {
+		if err := unsubscribePullFunc(sub); err != nil && c.Hub != nil && c.Hub.Logger != nil {
 			c.Hub.Logger.DebugContext(c.ctx, "Failed to unsubscribe NATS pull sub", "err", err)
 		}
 	}()
 
-	msgs, err := sub.Fetch(100, nats.MaxWait(1*time.Second))
+	msgs, err := fetchPullMessagesFunc(sub, 100, nats.MaxWait(1*time.Second))
 	if err != nil {
 		if !errors.Is(err, nats.ErrTimeout) {
 			c.Hub.Logger.DebugContext(c.ctx, "Pull fetch for offline replay returned error",
@@ -374,7 +381,10 @@ func (c *Client) replayOfflineMessages(room string, lastSeq uint64, lastMsgID st
 		}
 		return
 	}
+	c.deliverOfflineMessages(msgs, lastSeq, lastMsgID)
+}
 
+func (c *Client) deliverOfflineMessages(msgs []*nats.Msg, lastSeq uint64, lastMsgID string) {
 	foundLastMsgID := (lastMsgID == "" || lastSeq > 0)
 	for _, m := range msgs {
 		select {
@@ -383,7 +393,7 @@ func (c *Client) replayOfflineMessages(room string, lastSeq uint64, lastMsgID st
 		default:
 		}
 
-		if err := m.Ack(); err != nil && c.Hub != nil && c.Hub.Logger != nil {
+		if err := ackOfflineMessageFunc(m); err != nil && c.Hub != nil && c.Hub.Logger != nil {
 			c.Hub.Logger.DebugContext(c.ctx, "Failed to ack NATS message", "err", err)
 		}
 		msgID := ""

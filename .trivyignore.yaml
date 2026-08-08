@@ -1,0 +1,50 @@
+misconfigurations:
+  # Accepted SPIRE node-attestation architecture. These checks are also kept
+  # in .trivyignore for scanners that still use the plain ignore format.
+  - id: KSV-0012
+    statement: >-
+      SPIRE node and workload attestation requires host-network, host-PID,
+      hostPath-backed sockets, and the associated node privileges.
+  - id: KSV-0104
+    statement: >-
+      SPIRE node and workload attestation requires the documented host-mounted
+      SPIFFE Workload API sockets.
+  - id: KSV-0023
+    statement: >-
+      SPIRE node and workload attestation requires the documented privileged
+      node-agent execution model.
+  - id: KSV-0001
+    statement: >-
+      SPIRE node and workload attestation requires the documented node-agent
+      filesystem access.
+  - id: KSV-0118
+    statement: >-
+      SPIRE node and workload attestation requires the documented host
+      networking and node-level execution model.
+  - id: KSV-0014
+    statement: >-
+      SPIRE node and workload attestation requires the documented root
+      filesystem access.
+  - id: KSV-0047
+    statement: >-
+      SPIRE node and workload attestation requires the documented node proxy
+      privileges.
+  - id: KSV-0017
+    statement: >-
+      SPIRE node and workload attestation requires the documented node-agent
+      capability set.
+  - id: KSV-0009
+    statement: >-
+      SPIRE node and workload attestation requires the documented node-agent
+      security context.
+  - id: KSV-0010
+    statement: >-
+      SPIRE node and workload attestation requires the documented node-agent
+      security context.
+  - id: AVD-DS-0002
+    paths:
+      - infra/oss-fuzz/Dockerfile
+    statement: >-
+      OSS-Fuzz controls this disposable builder image and requires its
+      base-builder execution model; the image is never deployed or used as a
+      runtime container.

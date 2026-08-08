@@ -1,6 +1,7 @@
 package config
 
 import (
+	"errors"
 	"os"
 	"testing"
 
@@ -87,4 +88,27 @@ func TestLoad_RSAPublicKeySetOnly(t *testing.T) {
 	assert.NotNil(t, cfg)
 	assert.Equal(t, "dummy-rsa-key-pem", cfg.RSAPublicKeyPEM)
 	assert.Empty(t, cfg.JWTSecret)
+}
+
+func TestLoad_BindEnvErrorIsReturned(t *testing.T) {
+	oldBindEnv := bindEnvFunc
+	t.Cleanup(func() { bindEnvFunc = oldBindEnv })
+	bindEnvFunc = func(...string) error {
+		return errors.New("synthetic bind failure")
+	}
+
+	_, err := Load()
+	assert.ErrorContains(t, err, "failed to bind env")
+	assert.ErrorContains(t, err, "synthetic bind failure")
+}
+
+func TestLoad_UnmarshalErrorIsReturned(t *testing.T) {
+	oldUnmarshal := unmarshalConfigFunc
+	t.Cleanup(func() { unmarshalConfigFunc = oldUnmarshal })
+	unmarshalConfigFunc = func(any) error {
+		return errors.New("synthetic unmarshal failure")
+	}
+
+	_, err := Load()
+	assert.EqualError(t, err, "synthetic unmarshal failure")
 }

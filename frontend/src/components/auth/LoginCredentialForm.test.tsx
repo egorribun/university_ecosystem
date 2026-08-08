@@ -233,6 +233,26 @@ describe("LoginCredentialForm — errors", () => {
     expect(await screen.findByText("Invalid email format")).toBeInTheDocument()
     expect(screen.getByText("Password validation failed")).toBeInTheDocument()
   })
+
+  it("renders the password fallback message when the validator omits a message", async () => {
+    function PasswordFallbackHarness(): ReactNode {
+      const stub = useFormStub()
+      useEffect(() => {
+        stub.form.setError("password", { type: "manual", message: "" })
+      }, [stub.form])
+      return <LoginCredentialForm form={stub} />
+    }
+
+    await renderWithRouter({
+      ui: PasswordFallbackHarness,
+      extraRoutes: [
+        { path: "/forgot-password", Component: () => <div>forgot</div> },
+        { path: "/register", Component: () => <div>register</div> },
+      ],
+    })
+
+    expect(await screen.findByText("Enter a password")).toBeInTheDocument()
+  })
 })
 
 // ── 7. Passkey click ────────────────────────────────────────────────────────

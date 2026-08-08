@@ -8,6 +8,9 @@ on:
   push:
     branches: [main, develop, "release/**"]
   pull_request:
+    # Keep the required gate runnable when a draft PR is promoted to ready.
+    # GitHub's default pull_request activity types omit ready_for_review.
+    types: [opened, synchronize, reopened, ready_for_review]
   workflow_dispatch:
 
 # Least-privilege defaults — individual jobs extend as needed.
@@ -464,6 +467,7 @@ jobs:
     with:
       test-group-name: "All-${{ matrix.name }}"
       test-pattern: "tests/"
+      integration-test-pattern: "tests/integration/"
       python-version: ${{ matrix.python-version }}
       # Ratchet floor at measured reality (local hermetic 88.04% after the
       # session-10 service-layer climb; CI Linux+integration measures ~0.7pp higher).
@@ -639,9 +643,12 @@ jobs:
   stryker-incremental:
     name: Incremental Mutation Tests (frontend)
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     needs: pre-commit-check
-    if: ${{ github.event_name == 'pull_request' }}
+    # Keep the manual recovery path equivalent to the PR gate. This is needed
+    # when GitHub temporarily drops pull_request webhooks: a dispatched run
+    # must execute Stryker rather than publish a misleading skipped context.
+    if: ${{ github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch' }}
     permissions:
       contents: read
     steps:
@@ -1131,9 +1138,7 @@ jobs:
           LHCI_SKIP_PREPARE: "1"
         run: |
           npx lhci assert \
-            --config=../.lighthouserc.js \
-            --preset=lighthouse:recommended \
-            --budgetsFile=../budget.json
+            --config=../.lighthouserc.js
 
   # MOD-W15-02 (audit 2026-03-23 Wave 15): Trivy Docker image scanning.
   # Runs on every PR/push. Scans the built backend image for CRITICAL/HIGH CVEs.
@@ -1163,6 +1168,7 @@ jobs:
           format: sarif
           output: trivy-results.sarif
           severity: CRITICAL,HIGH
+          limit-severities-for-sarif: true
           exit-code: "0"
           ignore-unfixed: true
 
@@ -1635,6 +1641,9 @@ jobs:
         with:
           tool: cargo-llvm-cov
 
+      - name: Install nightly Rust for branch coverage
+        run: rustup toolchain install nightly --component llvm-tools-preview --allow-downgrade --no-self-update
+
       - name: Create coverage output directories
         run: mkdir -p artifacts/coverage/rust/rust-native artifacts/coverage/rust/rust-pyo3-sanitizer artifacts/coverage/rust/rust-wasm-sanitizer artifacts/coverage/rust/rust-crypto
 
@@ -1647,6 +1656,7 @@ jobs:
           LIBDIR="$(python -c 'import sysconfig; print(sysconfig.get_config_var("LIBDIR"))')"
           export LD_LIBRARY_PATH="${LIBDIR}:${LD_LIBRARY_PATH}"
           cargo llvm-cov --no-default-features --lib --json --output-path ../../artifacts/coverage/rust/rust-native/llvm.json
+          cargo +nightly llvm-cov --no-default-features --lib --branch --json --output-path ../../artifacts/coverage/rust/rust-native/branch-llvm.json
 
       - name: pyo3-sanitizer — native unit tests + coverage
         working-directory: crates/pyo3-sanitizer
@@ -1654,17 +1664,22 @@ jobs:
           LIBDIR="$(python -c 'import sysconfig; print(sysconfig.get_config_var("LIBDIR"))')"
           export LD_LIBRARY_PATH="${LIBDIR}:${LD_LIBRARY_PATH}"
           cargo llvm-cov --no-default-features --lib --json --output-path ../../artifacts/coverage/rust/rust-pyo3-sanitizer/llvm.json
+          cargo +nightly llvm-cov --no-default-features --lib --branch --json --output-path ../../artifacts/coverage/rust/rust-pyo3-sanitizer/branch-llvm.json
 
       - name: wasm-sanitizer — native unit tests + coverage
         working-directory: frontend/wasm-sanitizer
-        run: cargo llvm-cov --lib --json --output-path ../../artifacts/coverage/rust/rust-wasm-sanitizer/llvm.json
+        run: |
+          cargo llvm-cov --lib --json --output-path ../../artifacts/coverage/rust/rust-wasm-sanitizer/llvm.json
+          cargo +nightly llvm-cov --lib --branch --json --output-path ../../artifacts/coverage/rust/rust-wasm-sanitizer/branch-llvm.json
 
       - name: rust-crypto — native KAT tests + coverage
         working-directory: frontend/rust-crypto
         # Include tests/native.rs in the coverage universe; --lib alone only
         # measures the two src/lib.rs unit tests and leaves the contract below
         # the 99/98 rust-crypto floor.
-        run: cargo llvm-cov --all-targets --json --output-path ../../artifacts/coverage/rust/rust-crypto/llvm.json
+        run: |
+          cargo llvm-cov --all-targets --json --output-path ../../artifacts/coverage/rust/rust-crypto/llvm.json
+          cargo +nightly llvm-cov --all-targets --branch --json --output-path ../../artifacts/coverage/rust/rust-crypto/branch-llvm.json
 
       - name: Upload Rust coverage artifacts
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -1847,43 +1862,35 @@ jobs:
         run: |
           # Scope mutmut to every changed backend module.  The old tenant-only
           # probe silently skipped mutation evidence for all other Python diffs.
-          # mutmut 3.x removed --paths-to-mutate. Select changed modules positionally
-          # via Unix-glob patterns: app/services/search.py -> app.services.search*
-          # (source_paths in pyproject scopes the universe).  The sixteen
-          # matrix legs receive disjoint lines from the sorted manifest; each leg then
-          # performs a blocking score gate for its own changed slice.  Stats were
-          # collected once per disjoint test shard and merged before this step;
-          # mutmut therefore loads the complete mapping instead of rerunning the
-          # full pytest stats population four times.
-          PATTERNS=$(awk -v shard='${{ matrix.shard }}' -v total=16 '
-            ((NR - 1) % total + 1) == shard {
-              path = $0
-              gsub(/\//, ".", path)
-              sub(/\.py$/, "*", path)
-              printf "%s ", path
-            }
-          ' /tmp/changed_py.txt)
-          if [ -z "$PATTERNS" ]; then
-            echo "No changed Python modules assigned to mutation shard ${{ matrix.shard }}/16."
+          # The sixteen matrix legs receive exact mutant names from a
+          # duration-balanced plan.  Whole-file assignment made a one-file diff
+          # put every mutant on shard 1, leaving the other 15 legs empty and
+          # making the blocking gate needlessly hit its time-box.
+          uv run python scripts/plan_mutmut_shards.py \
+            --changed-files /tmp/changed_py.txt \
+            --shard-id "${{ matrix.shard }}" \
+            --num-shards 16 \
+            --max-children 2 \
+            --output /tmp/mutmut-shard.txt
+          mapfile -t MUTANT_NAMES < /tmp/mutmut-shard.txt
+          if [ "${#MUTANT_NAMES[@]}" -eq 0 ]; then
+            echo "No changed mutants assigned to mutation shard ${{ matrix.shard }}/16."
             exit 0
           fi
-          echo "Mutating shard ${{ matrix.shard }}/16: $PATTERNS"
+          echo "Mutating shard ${{ matrix.shard }}/16: ${#MUTANT_NAMES[@]} exact mutants"
           rm -f .mutmut-cache
-          # Time-box: mutmut 3.x mutates WHOLE changed modules (no line-level
-          # scoping), so on a long-lived branch the diff spans many modules = tens of
-          # thousands of mutants (multi-hour full run). This advisory job runs REAL
+          # Time-box: a long-lived branch can span tens of thousands of mutants
+          # (multi-hour full run). This advisory job runs REAL
           # mutation for a bounded window. mutmut exits 0 on completion regardless of
           # survivors; the test-isolation invariants we actually gate on (generate +
           # stats + clean-test + forced-fail) each exit NON-ZERO *before* the mutant
           # loop on a regression. --max-children 2 caps concurrent forked mutant
           # workers (default = nproc) to bound peak RAM (one full app load per fork)
           # and reduce the runner OOM-killer firing mid-sweep.
-          set -f          # keep the $PATTERNS '*' globs intact for mutmut
           set +e
-          timeout --kill-after=30s 25m uv run mutmut run --max-children 2 $PATTERNS 2>&1 | tee /tmp/mutmut_run.log
+          timeout --kill-after=30s 25m uv run mutmut run --max-children 2 "${MUTANT_NAMES[@]}" 2>&1 | tee /tmp/mutmut_run.log
           ec=${PIPESTATUS[0]}   # exit code of timeout/mutmut, NOT tee
           set -e
-          set +f
           # mutmut prints the ASCII line "Running mutation testing" (mutmut/__main__.py:1255)
           # ONLY after generate + stats + clean-test + forced-fail ALL pass — each of
           # those exits non-zero BEFORE that line on a regression (stats 957, clean-test
@@ -2200,6 +2207,10 @@ jobs:
         ports: ["4222:4222"]
       minio:
         image: minio/minio:RELEASE.2025-09-07T16-13-09Z
+        # The MinIO image defaults to printing its CLI help and exiting.  The
+        # chaos job needs a long-lived object-storage server for the health
+        # probe and the ToxiProxy upstream.
+        command: server /data --console-address ":9001"
         env:
           MINIO_ROOT_USER: minioadmin
           MINIO_ROOT_PASSWORD: minioadminsecret  # pragma: allowlist secret
@@ -2413,7 +2424,11 @@ jobs:
             --rust-report rust-native=artifacts/coverage/rust/rust-native/llvm.json \
             --rust-report rust-pyo3-sanitizer=artifacts/coverage/rust/rust-pyo3-sanitizer/llvm.json \
             --rust-report rust-wasm-sanitizer=artifacts/coverage/rust/rust-wasm-sanitizer/llvm.json \
-            --rust-report rust-crypto=artifacts/coverage/rust/rust-crypto/llvm.json
+            --rust-report rust-crypto=artifacts/coverage/rust/rust-crypto/llvm.json \
+            --rust-branch-report rust-native=artifacts/coverage/rust/rust-native/branch-llvm.json \
+            --rust-branch-report rust-pyo3-sanitizer=artifacts/coverage/rust/rust-pyo3-sanitizer/branch-llvm.json \
+            --rust-branch-report rust-wasm-sanitizer=artifacts/coverage/rust/rust-wasm-sanitizer/branch-llvm.json \
+            --rust-branch-report rust-crypto=artifacts/coverage/rust/rust-crypto/branch-llvm.json
 
       - name: Validate quality policy, mutation registry, and Tier0 manifest
         run: >-

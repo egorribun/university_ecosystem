@@ -14,6 +14,7 @@ import (
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/gorilla/websocket"
+	"github.com/lestrrat-go/jwx/v2/jwk"
 	"github.com/quic-go/webtransport-go"
 	goredis "github.com/redis/go-redis/v9"
 	"github.com/university-ecosystem/ws-hub/pkg/config"
@@ -28,6 +29,15 @@ import (
 var _lastJWKSForceRefreshUnix atomic.Int64 // unix seconds, zero = never refreshed
 
 const _jwksForceRefreshCooldown = 30 * time.Second
+
+var (
+	jwksForceRefreshCASFunc = func(old, updated int64) bool {
+		return _lastJWKSForceRefreshUnix.CompareAndSwap(old, updated)
+	}
+	rawJWKFunc = func(key jwk.Key, target interface{}) error {
+		return key.Raw(target)
+	}
+)
 
 type contextKey string
 
@@ -97,6 +107,11 @@ var (
 			return env != "production"
 		},
 	}
+	upgradeWTFunc              = upgradeWT
+	newWebTransportSessionFunc = func(sess *webtransport.Session) Session { return NewWebTransportSession(sess) }
+	validateUpgradeTicketFunc  = func(h *Hub, ctx context.Context, ticket string) (string, string, error) {
+		return h.validateUpgradeTicket(ctx, ticket)
+	}
 )
 
 // SetAllowedOrigins configures the origins allowed for WebSocket upgrades.
@@ -154,7 +169,7 @@ func (h *Hub) HandleWebSocket(w http.ResponseWriter, r *http.Request, cfg *confi
 		return
 	}
 
-	userID, tenantID, err := h.validateUpgradeTicket(setupCtx, ticket)
+	userID, tenantID, err := validateUpgradeTicketFunc(h, setupCtx, ticket)
 	if err != nil {
 		h.Logger.WarnContext(setupCtx, "WebSocket upgrade ticket invalid", "err", err)
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
@@ -236,7 +251,7 @@ func (h *Hub) HandleWebTransport(w http.ResponseWriter, r *http.Request, cfg *co
 		return
 	}
 
-	userID, tenantID, err := h.validateUpgradeTicket(setupCtx, ticket)
+	userID, tenantID, err := validateUpgradeTicketFunc(h, setupCtx, ticket)
 	if err != nil {
 		h.Logger.WarnContext(setupCtx, "WebTransport upgrade ticket invalid", "err", err)
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
@@ -265,7 +280,7 @@ func (h *Hub) HandleWebTransport(w http.ResponseWriter, r *http.Request, cfg *co
 		return
 	}
 
-	sess, err := upgradeWT(&wtUpgrader, w, r)
+	sess, err := upgradeWTFunc(&wtUpgrader, w, r)
 	if err != nil {
 		h.Logger.ErrorContext(setupCtx, "WebTransport upgrade failed", "err", err)
 		return
@@ -281,7 +296,7 @@ func (h *Hub) HandleWebTransport(w http.ResponseWriter, r *http.Request, cfg *co
 		ID:       userID,
 		UserID:   userID,
 		Identity: &ClientIdentity{TenantID: tenantID},
-		Conn:     NewWebTransportSession(sess),
+		Conn:     newWebTransportSessionFunc(sess),
 		Rooms:    make(map[string]bool),
 		Send:     make(chan []byte, cfg.SendBufferSize),
 		Hub:      h,
@@ -409,7 +424,7 @@ func (h *Hub) tryForceRefreshJWKS(ctx context.Context) {
 	if now-last < int64(_jwksForceRefreshCooldown.Seconds()) {
 		return // rate-limited — another goroutine refreshed recently
 	}
-	if !_lastJWKSForceRefreshUnix.CompareAndSwap(last, now) {
+	if !jwksForceRefreshCASFunc(last, now) {
 		return // another goroutine won the CAS race
 	}
 	h.Logger.InfoContext(ctx, "JWKS: unknown kid — forcing cache refresh", "url", h.jwksURL)
@@ -446,7 +461,7 @@ func (h *Hub) validateRS256(ctx context.Context, tokenStr string) (string, error
 			return nil, fmt.Errorf("kid %q not found in JWKS", kid)
 		}
 		var pubKey interface{}
-		if err := key.Raw(&pubKey); err != nil {
+		if err := rawJWKFunc(key, &pubKey); err != nil {
 			return nil, fmt.Errorf("failed to extract raw public key: %w", err)
 		}
 		return pubKey, nil

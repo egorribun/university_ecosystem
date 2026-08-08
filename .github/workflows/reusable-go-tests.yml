@@ -234,3 +234,7 @@ jobs:
           version: v2.3.0
           install-mode: goinstall
           working-directory: ${{ inputs.service-directory }}
+          # The action's default config verification downloads a remote JSON
+          # schema. The lint run still parses and validates this config locally;
+          # avoid making the required gate depend on schema-host availability.
+          verify: false

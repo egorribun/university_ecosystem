@@ -1,5 +1,6 @@
 import { expect, test, type Page } from "./test"
 import { useMockApi } from "./utils/mockApi"
+import { gotoWithTransientRetry } from "./utils/navigation"
 
 /**
  * i18n language switching specs — W24.
@@ -135,7 +136,10 @@ test.describe("i18n language switching", () => {
     const { login } = await useMockApi(page)
     await login(page)
 
-    await page.goto("/settings", { waitUntil: "domcontentloaded", timeout: 30_000 })
+    await gotoWithTransientRetry(page, "/settings", {
+      waitUntil: "domcontentloaded",
+      timeout: 30_000,
+    })
 
     // Appearance settings use an accordion, not a combobox/listbox. Open the
     // language section through its semantic button before locating the radio.

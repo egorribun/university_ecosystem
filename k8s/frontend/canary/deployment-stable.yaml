@@ -28,8 +28,9 @@
 #
 # See `docs/CANARY_ROLLOUT_PHASE6.md` § "Pre-canary checklist" for the
 # full operator workflow.
-# checkov:skip=CKV_K8S_43:operator replaces the image template with an immutable digest before apply
-# checkov:skip=CKV_K8S_14:operator replaces the image template with a fixed non-latest tag before apply
+#checkov:skip=CKV_K8S_43:operator replaces the image template with an immutable digest before apply
+#checkov:skip=CKV_K8S_14:operator replaces the image template with a fixed non-latest tag before apply
+#checkov:skip=CKV_K8S_40:operator supplies a non-root UID matching the selected legacy image
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -99,7 +100,7 @@ spec:
           # before applying. Example references:
           #   registry.example.com/frontend-stable:pre-w125-spa
           #   registry.example.com/frontend-stable:b2f6960aa
-          image: ${LEGACY_SPA_IMAGE}  # checkov:skip=CKV_K8S_43:operator replaces this template with an immutable canary digest before apply; checkov:skip=CKV_K8S_14:operator must provide a non-latest immutable image
+          image: ${LEGACY_SPA_IMAGE}  #checkov:skip=CKV_K8S_43:operator replaces this template with an immutable canary digest before apply; checkov:skip=CKV_K8S_14:operator must provide a non-latest immutable image
           imagePullPolicy: Always
           ports:
             - containerPort: 8080

@@ -99,7 +99,8 @@ async def test_concurrent_request_burst_no_data_corruption(
 
     WHY: A burst of concurrent requests (simulating a flash crowd) stress-tests
     connection pool limits, async task scheduling, and shared state.  We send
-    concurrent GET requests to a stateless endpoint (/health) and verify:
+    concurrent GET requests to the stateless liveness endpoint (/health/live)
+    and verify:
       1. The server does not crash (no 5xx).
       2. All responses have the expected shape.
     """
@@ -108,7 +109,7 @@ async def test_concurrent_request_burst_no_data_corruption(
     responses = await asyncio.gather(
         *[
             async_client.get(
-                "http://testserver/healthz",
+                "http://testserver/health/live",
                 headers={"X-Disable-Query-Budget": "1"},
             )
             for _ in range(concurrent_count)
@@ -126,6 +127,11 @@ async def test_concurrent_request_burst_no_data_corruption(
     ]
     assert not server_errors, (
         f"{len(server_errors)}/{concurrent_count} concurrent requests returned 5xx"
+    )
+    assert all(
+        response.json() == {"status": "alive"}
+        for response in responses
+        if not isinstance(response, Exception)
     )
 
 
@@ -162,12 +168,14 @@ async def test_rapid_successive_requests_on_same_resource(
     """
     burst_count = 10
     statuses: list[int] = []
+    responses = []
 
     for _ in range(burst_count):
         resp = await async_client.get(
-            "http://testserver/healthz",
+            "http://testserver/health/live",
             headers={"X-Disable-Query-Budget": "1"},
         )
+        responses.append(resp)
         statuses.append(resp.status_code)
 
     server_errors = [s for s in statuses if s >= 500]
@@ -180,6 +188,7 @@ async def test_rapid_successive_requests_on_same_resource(
     assert len(unique_statuses) == 1, (
         f"Inconsistent responses during rapid burst: {unique_statuses}"
     )
+    assert all(response.json() == {"status": "alive"} for response in responses)
 
 
 async def test_empty_body_on_post_endpoint_returns_422(

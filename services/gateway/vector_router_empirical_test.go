@@ -353,7 +353,8 @@ func TestEmpirical_ScatterGather_LargeScaleMergingCorrectness(t *testing.T) {
 			"Merged results must be sorted in descending order of score")
 	}
 
-	assert.Less(t, elapsed, 50*time.Millisecond, "ScatterGatherMerger execution should be <50ms for 50k items")
+	assert.Less(t, elapsed, scatterGatherMergerBudget,
+		"ScatterGatherMerger execution should be <%s for 50k items", scatterGatherMergerBudget)
 }
 
 func TestEmpirical_ScatterGather_NegativeCosineSimilarityScores(t *testing.T) {

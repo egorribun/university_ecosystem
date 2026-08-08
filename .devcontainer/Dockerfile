@@ -12,3 +12,6 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /workspace
+
+# The base image provides the non-root vscode user used by devcontainer.json.
+USER vscode

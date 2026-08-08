@@ -8,6 +8,7 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"fmt"
+	"io"
 	"math/big"
 	"net"
 	"time"
@@ -16,7 +17,11 @@ import (
 // GenerateSelfSignedTLSCert generates an in-memory TLS 1.3 self-signed certificate
 // for localhost/127.0.0.1 for local development and testing of HTTP/3 QUIC listeners.
 func GenerateSelfSignedTLSCert() (*tls.Config, error) {
-	priv, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	return generateSelfSignedTLSCert(rand.Reader)
+}
+
+func generateSelfSignedTLSCert(random io.Reader) (*tls.Config, error) {
+	priv, err := ecdsa.GenerateKey(elliptic.P256(), random)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate P256 key: %w", err)
 	}
@@ -24,7 +29,7 @@ func GenerateSelfSignedTLSCert() (*tls.Config, error) {
 	notBefore := time.Now().Add(-1 * time.Hour)
 	notAfter := notBefore.Add(365 * 24 * time.Hour)
 
-	serialNumber, err := rand.Int(rand.Reader, new(big.Int).Lsh(big.NewInt(1), 128))
+	serialNumber, err := rand.Int(random, new(big.Int).Lsh(big.NewInt(1), 128))
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate serial number: %w", err)
 	}
@@ -44,7 +49,7 @@ func GenerateSelfSignedTLSCert() (*tls.Config, error) {
 		DNSNames:              []string{"localhost", "gateway"},
 	}
 
-	derBytes, err := x509.CreateCertificate(rand.Reader, &template, &template, &priv.PublicKey, priv)
+	derBytes, err := x509.CreateCertificate(random, &template, &template, &priv.PublicKey, priv)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create certificate: %w", err)
 	}

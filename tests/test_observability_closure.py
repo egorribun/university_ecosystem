@@ -19,6 +19,15 @@ from opentelemetry.sdk.trace import TracerProvider
 from prometheus_client import CollectorRegistry
 
 
+@pytest.fixture
+def restore_notification_queue_metrics_state():
+    from app.core import observability
+
+    previous = observability._notification_queue_metrics
+    yield
+    observability._notification_queue_metrics = previous
+
+
 def test_observability_header_and_logging_helpers(monkeypatch) -> None:
     from app.core import observability
     from app.core.config import settings
@@ -446,7 +455,9 @@ def test_worker_observability_without_otel_or_name() -> None:
         observability.configure_worker_observability(worker_name="worker")
 
 
-def test_notification_queue_metrics_reset_and_reinitialize() -> None:
+def test_notification_queue_metrics_reset_and_reinitialize(
+    restore_notification_queue_metrics_state,
+) -> None:
     from app.core import observability
 
     registry = CollectorRegistry()

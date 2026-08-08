@@ -9,17 +9,22 @@ package middleware
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
 	"github.com/alicebob/miniredis/v2"
 	"github.com/redis/go-redis/v9"
+	"github.com/redis/go-redis/v9/maintnotifications"
 	"github.com/stretchr/testify/require"
 )
 
 func TestListenOnce_RemovesL1KeyOnRevocationMessage(t *testing.T) {
 	mr := miniredis.RunT(t)
-	client := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	client := redis.NewClient(&redis.Options{
+		Addr:                     mr.Addr(),
+		MaintNotificationsConfig: &maintnotifications.Config{Mode: maintnotifications.ModeDisabled},
+	})
 	t.Cleanup(func() { _ = client.Close() }) //nolint:errcheck // best-effort cleanup
 
 	m := NewJWTMiddleware(testSecret, client)
@@ -59,6 +64,52 @@ func TestListenForRevocations_NilRedisIsNoOp(t *testing.T) {
 	m := NewJWTMiddleware(testSecret, nil)
 	// m.redis == nil guard returns immediately and spawns no goroutine.
 	m.ListenForRevocations(context.Background())
+}
+
+func TestListenOnce_ReportsPubSubCloseFailure(t *testing.T) {
+	mr := miniredis.RunT(t)
+	client := redis.NewClient(&redis.Options{
+		Addr:                     mr.Addr(),
+		MaintNotificationsConfig: &maintnotifications.Config{Mode: maintnotifications.ModeDisabled},
+	})
+	t.Cleanup(func() { _ = client.Close() }) //nolint:errcheck // test cleanup
+
+	oldClose := closePubSubFunc
+	t.Cleanup(func() { closePubSubFunc = oldClose })
+	closed := make(chan struct{}, 1)
+	closePubSubFunc = func(pubsub *redis.PubSub) error {
+		_ = pubsub.Close() //nolint:errcheck // deliberately return the synthetic error below
+		closed <- struct{}{}
+		return errors.New("synthetic pubsub close failure")
+	}
+
+	m := NewJWTMiddleware(testSecret, client)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	done := make(chan struct{})
+	go func() {
+		m.listenOnce(ctx)
+		close(done)
+	}()
+
+	cancel()
+	require.Eventually(t, func() bool {
+		_ = client.Publish(context.Background(), "session:revocations", "drain").Err() //nolint:errcheck // test wake-up
+		select {
+		case <-done:
+			return true
+		default:
+			return false
+		}
+	}, 3*time.Second, 25*time.Millisecond)
+	require.Eventually(t, func() bool {
+		select {
+		case <-closed:
+			return true
+		default:
+			return false
+		}
+	}, time.Second, 10*time.Millisecond)
 }
 
 func TestListenForRevocations_ProcessesThenReconnectsOnDisconnect(t *testing.T) {

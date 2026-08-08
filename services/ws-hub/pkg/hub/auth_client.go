@@ -2,6 +2,7 @@ package hub
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
 	"io"
 	"net/http"
@@ -72,6 +73,16 @@ type InternalAPIAuthClient struct {
 	cb *gobreaker.CircuitBreaker
 }
 
+// authHTTPDoFunc is a narrow seam around net/http for deterministic transport
+// error testing. Production delegates directly to the configured client.
+var authHTTPDoFunc = func(client *http.Client, req *http.Request) (*http.Response, error) {
+	return client.Do(req)
+}
+
+var authClientTLSConfigFunc = func(client *spiffe.Client, backendSpiffeID string) (*tls.Config, error) {
+	return client.ClientTLSConfig(backendSpiffeID)
+}
+
 // NewInternalAPIAuthClient creates a client with L1/L2 caching.
 func NewInternalAPIAuthClient(baseURL string, redisClient *redis.Client) *InternalAPIAuthClient {
 	cache, err := lru.New[string, cacheEntry](100000)
@@ -128,7 +139,7 @@ func NewInternalAPIAuthClient(baseURL string, redisClient *redis.Client) *Intern
 // WithSPIFFE configures the client's HTTP transport to use SPIFFE mTLS when communicating with the backend.
 func (c *InternalAPIAuthClient) WithSPIFFE(spiffeClient *spiffe.Client, backendSpiffeID string) *InternalAPIAuthClient {
 	if spiffeClient != nil && backendSpiffeID != "" {
-		tlsCfg, err := spiffeClient.ClientTLSConfig(backendSpiffeID)
+		tlsCfg, err := authClientTLSConfigFunc(spiffeClient, backendSpiffeID)
 		if err != nil {
 			panic(fmt.Sprintf("failed to create SPIFFE client TLS config for auth client: %v", err))
 		}
@@ -232,7 +243,7 @@ func (c *InternalAPIAuthClient) doRequest(ctx context.Context, userID, roomID st
 	if err != nil {
 		return false, err
 	}
-	resp, err := c.httpClient.Do(req)
+	resp, err := authHTTPDoFunc(c.httpClient, req)
 	if err != nil {
 		// Network/DNS/timeout error — backend may be unavailable.
 		return false, err

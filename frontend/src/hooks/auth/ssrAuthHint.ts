@@ -20,7 +20,6 @@ import type { SsrAuthState } from "@/ssrAuth"
  * back to the safe `null` user state.
  */
 export function readSsrAuthHint(): SsrAuthState | undefined {
-  if (typeof globalThis === "undefined") return undefined
   try {
     return globalThis.__ssrAuthGetter__?.()
   } catch {

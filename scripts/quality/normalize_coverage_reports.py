@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import ast
 import fnmatch
 import hashlib
 import json
@@ -10,7 +11,7 @@ import sys
 import tempfile
 import unicodedata
 from collections import defaultdict
-from collections.abc import Sequence
+from collections.abc import Iterator, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime
 from decimal import ROUND_HALF_UP, Decimal, localcontext
@@ -162,6 +163,7 @@ class _RawReport:
     path: Path
     raw: bytes
     sha256: str
+    supplemental: tuple[_RawReport, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -232,6 +234,23 @@ def _unmeasured_metric(
     if reason_code is not None:
         metric["reason_code"] = reason_code
     return metric
+
+
+def _vacuous_metric(derivation: str) -> dict[str, object]:
+    """Represent a metric with no applicable units as a derived 100% result.
+
+    A source file with no executable lines, branches, or functions has no
+    uncovered unit.  Keeping the zero counters preserves the evidence while
+    the explicit 100% display value lets the strict Tier0 policy distinguish
+    an empty metric from an unavailable measurement.
+    """
+    return {
+        "status": "derived",
+        "covered": 0,
+        "total": 0,
+        "percent": 100.0,
+        "derivation": derivation,
+    }
 
 
 def _parse_nonnegative_integer(value: object, field: str) -> int:
@@ -953,6 +972,160 @@ def _parse_frontend_lcov(
     return {metric: metrics[metric] for metric in METRICS}
 
 
+def _parse_istanbul_counter_map(
+    value: object,
+    field: str,
+) -> list[int]:
+    if not isinstance(value, dict):
+        raise _InputError(f"Istanbul JSON {field} counters must be an object")
+    counters: list[int] = []
+    for key, counter in value.items():
+        if not isinstance(key, str):
+            raise _InputError(f"Istanbul JSON {field} counter key must be a string")
+        counters.append(
+            _parse_nonnegative_integer(counter, f"Istanbul JSON {field}[{key}]")
+        )
+    return counters
+
+
+def _parse_istanbul_branch_map(value: object) -> list[int]:
+    if not isinstance(value, dict):
+        raise _InputError("Istanbul JSON branch counters must be an object")
+    counters: list[int] = []
+    for key, branch_counts in value.items():
+        if not isinstance(key, str):
+            raise _InputError("Istanbul JSON branch counter key must be a string")
+        if not isinstance(branch_counts, list):
+            raise _InputError(f"Istanbul JSON b[{key}] must be an array of counters")
+        counters.extend(
+            _parse_nonnegative_integer(counter, f"Istanbul JSON b[{key}]")
+            for counter in branch_counts
+        )
+    return counters
+
+
+def _metric_from_counters(
+    counters: Sequence[int],
+) -> dict[str, object]:
+    return _measured_metric(
+        "native",
+        sum(counter > 0 for counter in counters),
+        len(counters),
+    )
+
+
+def _parse_frontend_istanbul_json(
+    raw: bytes,
+    component: str,
+    ignore_outside_files: bool = False,
+) -> tuple[
+    dict[str, dict[str, object]],
+    dict[str, dict[str, dict[str, object]]],
+]:
+    text = _decode_report(raw, "Istanbul JSON report")
+    try:
+        document = json.loads(
+            text,
+            object_pairs_hook=_duplicate_key_object,
+            parse_constant=_reject_json_constant,
+        )
+    except _DuplicateKeyError as error:
+        raise _InputError(str(error)) from error
+    except (json.JSONDecodeError, RecursionError, ValueError) as error:
+        raise _InputError(f"malformed Istanbul JSON: {error}") from error
+    if not isinstance(document, dict):
+        raise _InputError("Istanbul JSON root must be an object")
+    if not document:
+        raise _InputError("Istanbul JSON contains no file records")
+
+    total_statements: list[int] = []
+    total_branches: list[int] = []
+    total_functions: list[int] = []
+    file_metrics: dict[str, dict[str, dict[str, object]]] = {}
+    source_spellings: dict[str, str] = {}
+    for raw_source, record in document.items():
+        if not isinstance(raw_source, str):
+            raise _InputError("Istanbul JSON source path must be a string")
+        try:
+            source = _canonical_source_identity(component, raw_source)
+        except _InputError as error:
+            if ignore_outside_files and "configured roots" in str(error):
+                continue
+            raise
+        if source in file_metrics:
+            raise _InputError(f"Istanbul JSON has duplicate source {source}")
+        if not isinstance(record, dict):
+            raise _InputError(
+                f"Istanbul JSON record for {raw_source} must be an object"
+            )
+
+        record_path = record.get("path")
+        if record_path is not None:
+            if not isinstance(record_path, str):
+                raise _InputError(
+                    f"Istanbul JSON record for {raw_source}.path must be a string"
+                )
+            try:
+                record_identity = _canonical_source_identity(component, record_path)
+            except _InputError as error:
+                if ignore_outside_files and "configured roots" in str(error):
+                    continue
+                raise
+            if record_identity != source:
+                raise _InputError(
+                    f"Istanbul JSON record for {raw_source} has conflicting path"
+                )
+            _register_source_spelling(
+                source_spellings,
+                source,
+                record_path,
+                "Istanbul JSON report",
+            )
+        _register_source_spelling(
+            source_spellings,
+            source,
+            raw_source,
+            "Istanbul JSON report",
+        )
+
+        statement_counters = _parse_istanbul_counter_map(
+            record.get("s"),
+            f"s for {source}",
+        )
+        branch_counters = _parse_istanbul_branch_map(record.get("b"))
+        function_counters = _parse_istanbul_counter_map(
+            record.get("f"),
+            f"f for {source}",
+        )
+        total_statements.extend(statement_counters)
+        total_branches.extend(branch_counters)
+        total_functions.extend(function_counters)
+        file_metrics[source] = {
+            "lines": _unmeasured_metric(
+                "unsupported",
+                reason_code="istanbul_json_line_counter_not_used",
+            ),
+            "statements": _metric_from_counters(statement_counters),
+            "branches": _metric_from_counters(branch_counters),
+            "functions": _metric_from_counters(function_counters),
+        }
+
+    if not file_metrics:
+        raise _InputError("Istanbul JSON contains no in-scope file records")
+    return (
+        {
+            "lines": _unmeasured_metric(
+                "unsupported",
+                reason_code="istanbul_json_line_counter_not_used",
+            ),
+            "statements": _metric_from_counters(total_statements),
+            "branches": _metric_from_counters(total_branches),
+            "functions": _metric_from_counters(total_functions),
+        },
+        file_metrics,
+    )
+
+
 def _inclusive_interval_union_length(intervals: Sequence[tuple[int, int]]) -> int:
     """Return the inclusive union size without materializing individual lines."""
     ordered = sorted(intervals)
@@ -1154,10 +1327,142 @@ def _validate_rust_file_identities(
             seen_identities.add(identity)
 
 
+def _parse_rust_crypto_source_function_pair(
+    document: dict[str, object],
+    component: str,
+    ignore_outside_files: bool,
+) -> tuple[int, int] | None:
+    """Count source functions without wasm-bindgen-generated glue symbols.
+
+    ``cargo llvm-cov --all-targets`` includes generated wasm-bindgen wrapper
+    monomorphizations in its function summary.  Those symbols are not source
+    functions and can be unexecuted in the native test binary even when every
+    Rust function is covered.  The detailed LLVM function list retains the
+    source filename, source span, and execution count needed to deduplicate
+    target-specific instantiations while excluding only the generated ``_RNC``
+    symbols for the rust-crypto component.
+    """
+    if component != "rust-crypto" or "data" not in document:
+        return None
+    data = document["data"]
+    if not isinstance(data, list) or len(data) != 1:
+        return None
+    entry = data[0]
+    if not isinstance(entry, dict) or "functions" not in entry:
+        return None
+    reported_files = entry.get("files")
+    if not isinstance(reported_files, list):
+        return None
+    reported_identities: set[str] = set()
+    for file_index, file_entry in enumerate(reported_files):
+        if not isinstance(file_entry, dict):
+            raise _InputError(f"LLVM JSON files[{file_index}] must be an object")
+        for field_name in ("filename", "path"):
+            filename = file_entry.get(field_name)
+            if filename is None:
+                continue
+            if not isinstance(filename, str):
+                raise _InputError(
+                    f"LLVM JSON files[{file_index}].{field_name} must be a string"
+                )
+            try:
+                reported_identities.add(_canonical_source_identity(component, filename))
+            except _InputError as error:
+                if ignore_outside_files and (
+                    "outside the repository" in str(error)
+                    or "configured roots" in str(error)
+                ):
+                    continue
+                raise
+    if not reported_identities:
+        return None
+    function_entries = entry["functions"]
+    if not isinstance(function_entries, list):
+        raise _InputError("LLVM JSON data[0].functions must be a list")
+
+    source_functions: dict[tuple[str, int, int], bool] = {}
+    for index, function in enumerate(function_entries):
+        if not isinstance(function, dict):
+            raise _InputError(f"LLVM JSON functions[{index}] must be an object")
+        name = function.get("name")
+        if not isinstance(name, str) or not name:
+            raise _InputError(f"LLVM JSON functions[{index}].name must be a string")
+        if name.startswith("_RNC"):
+            continue
+
+        filenames = function.get("filenames")
+        if not isinstance(filenames, list) or not filenames:
+            raise _InputError(
+                f"LLVM JSON functions[{index}].filenames must be a non-empty list"
+            )
+        identities: list[str] = []
+        for filename in filenames:
+            if not isinstance(filename, str):
+                raise _InputError(
+                    f"LLVM JSON functions[{index}].filenames must contain strings"
+                )
+            try:
+                identities.append(_canonical_source_identity(component, filename))
+            except _InputError as error:
+                if ignore_outside_files and (
+                    "outside the repository" in str(error)
+                    or "configured roots" in str(error)
+                ):
+                    continue
+                raise
+        if not identities or not any(
+            identity in reported_identities for identity in identities
+        ):
+            continue
+
+        regions = function.get("regions")
+        if not isinstance(regions, list) or not regions:
+            raise _InputError(
+                f"LLVM JSON functions[{index}].regions must be a non-empty list"
+            )
+        line_spans: list[tuple[int, int]] = []
+        for region_index, region in enumerate(regions):
+            if not isinstance(region, list) or len(region) < 4:
+                raise _InputError(
+                    f"LLVM JSON functions[{index}].regions[{region_index}] must contain source "
+                    "coordinates"
+                )
+            start_line = _parse_nonnegative_integer(
+                region[0],
+                f"LLVM functions[{index}].regions[{region_index}] start line",
+            )
+            end_line = _parse_nonnegative_integer(
+                region[2],
+                f"LLVM functions[{index}].regions[{region_index}] end line",
+            )
+            if end_line < start_line:
+                raise _InputError(
+                    f"LLVM functions[{index}].regions[{region_index}] has a reversed span"
+                )
+            line_spans.append((start_line, end_line))
+
+        count = _parse_nonnegative_integer(
+            function.get("count"), f"LLVM functions[{index}] count"
+        )
+        key = (
+            identities[0],
+            min(span[0] for span in line_spans),
+            max(span[1] for span in line_spans),
+        )
+        source_functions[key] = source_functions.get(key, False) or count > 0
+
+    if not source_functions:
+        return None
+    covered = sum(covered_function for covered_function in source_functions.values())
+    return covered, len(source_functions)
+
+
 def _parse_rust_llvm_json(
     raw: bytes,
     component: str,
     ignore_outside_files: bool = False,
+    *,
+    native_branches: bool = False,
 ) -> dict[str, dict[str, object]]:
     text = _decode_report(raw, "LLVM JSON report")
     try:
@@ -1200,9 +1505,19 @@ def _parse_rust_llvm_json(
     _validate_rust_file_identities(component, file_collections, ignore_outside_files)
 
     line_pairs = [_parse_rust_counter(totals, "lines") for totals in totals_entries]
-    function_pairs = [
-        _parse_rust_counter(totals, "functions") for totals in totals_entries
-    ]
+    branch_pairs = (
+        [_parse_rust_counter(totals, "branches") for totals in totals_entries]
+        if native_branches
+        else []
+    )
+    source_function_pair = _parse_rust_crypto_source_function_pair(
+        document, component, ignore_outside_files
+    )
+    function_pairs = (
+        [source_function_pair]
+        if source_function_pair is not None
+        else [_parse_rust_counter(totals, "functions") for totals in totals_entries]
+    )
     return {
         "lines": _measured_metric(
             "native",
@@ -1213,9 +1528,17 @@ def _parse_rust_llvm_json(
             "unsupported",
             reason_code="llvm_json_has_no_statement_counter",
         ),
-        "branches": _unmeasured_metric(
-            "experimental",
-            reason_code="llvm_branch_coverage_unstable",
+        "branches": (
+            _measured_metric(
+                "native",
+                sum(covered for covered, _ in branch_pairs),
+                sum(total for _, total in branch_pairs),
+            )
+            if native_branches
+            else _unmeasured_metric(
+                "experimental",
+                reason_code="llvm_branch_coverage_unstable",
+            )
         ),
         "functions": _measured_metric(
             "native",
@@ -1223,6 +1546,248 @@ def _parse_rust_llvm_json(
             sum(total for _, total in function_pairs),
         ),
     }
+
+
+def _rust_source_line_metric(
+    entry: dict[str, object],
+) -> dict[str, object] | None:
+    """Derive source-line coverage from LLVM's non-gap segments.
+
+    LLVM's file summary can count macro expansion fragments and generic
+    instantiations as separate line obligations even when they map to one
+    source line.  For Tier0 file evidence, source lines are the auditable
+    unit: a line is covered when any non-gap segment on that line executed.
+    The component-level metric continues to use LLVM's native summary.
+    """
+    raw_segments = entry.get("segments")
+    if raw_segments is None:
+        return None
+    if not isinstance(raw_segments, list):
+        raise _InputError("LLVM JSON file segments must be a list")
+
+    source_lines: dict[int, bool] = {}
+    for index, raw_segment in enumerate(raw_segments):
+        if not isinstance(raw_segment, list) or len(raw_segment) < 6:
+            raise _InputError(
+                f"LLVM JSON segments[{index}] must contain line, count, and flags"
+            )
+        line = _parse_nonnegative_integer(raw_segment[0], f"LLVM segment {index} line")
+        count = _parse_nonnegative_integer(
+            raw_segment[2], f"LLVM segment {index} count"
+        )
+        has_count = raw_segment[3]
+        is_gap_region = raw_segment[5]
+        if not isinstance(has_count, bool) or not isinstance(is_gap_region, bool):
+            raise _InputError(f"LLVM segments[{index}] coverage flags must be booleans")
+        if not has_count or is_gap_region:
+            continue
+        source_lines[line] = source_lines.get(line, False) or count > 0
+
+    if not source_lines:
+        return _vacuous_metric("LLVM source contains no executable line segments")
+    return _measured_metric(
+        "derived",
+        sum(is_covered for is_covered in source_lines.values()),
+        len(source_lines),
+        derivation=(
+            "unique source lines from non-gap LLVM segments; covered when any "
+            "segment on the line is executed"
+        ),
+    )
+
+
+def _rust_source_branch_metrics(
+    document: dict[str, object],
+    component: str,
+    ignore_outside_files: bool,
+) -> dict[str, dict[str, object]]:
+    """Collapse LLVM branch records to source-level branch sites.
+
+    Generic Rust functions can produce several LLVM branch records for the
+    same source condition.  A source branch is covered when at least one
+    instrumented instantiation exercises each outcome; counting every
+    monomorphization would make the Tier0 result depend on compiler codegen.
+    """
+    entries: list[object] = []
+    if isinstance(document.get("files"), list):
+        entries.extend(document["files"])
+    data = document.get("data")
+    if (
+        isinstance(data, list)
+        and data
+        and isinstance(data[0], dict)
+        and isinstance(data[0].get("files"), list)
+    ):
+        entries.extend(data[0]["files"])
+
+    result: dict[str, dict[str, object]] = {}
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+        raw_path = entry.get("filename", entry.get("path"))
+        if not isinstance(raw_path, str):
+            continue
+        try:
+            filename = _canonical_source_identity(component, raw_path)
+        except _InputError as error:
+            if ignore_outside_files and "configured roots" in str(error):
+                continue
+            raise
+        branch_records = entry.get("branches", [])
+        if not isinstance(branch_records, list):
+            raise _InputError("LLVM JSON file branches must be a list")
+        sites: dict[tuple[int, int, int, int], list[bool]] = {}
+        for index, branch in enumerate(branch_records):
+            if not isinstance(branch, list) or len(branch) < 6:
+                raise _InputError(
+                    f"LLVM JSON branches[{index}] must contain source coordinates "
+                    "and both outcome counters"
+                )
+            coordinates = tuple(
+                _parse_nonnegative_integer(
+                    branch[offset],
+                    f"LLVM branch {index} coordinate {offset}",
+                )
+                for offset in range(4)
+            )
+            true_count = _parse_nonnegative_integer(
+                branch[4], f"LLVM branch {index} true count"
+            )
+            false_count = _parse_nonnegative_integer(
+                branch[5], f"LLVM branch {index} false count"
+            )
+            outcomes = sites.setdefault(coordinates, [False, False])
+            outcomes[0] = outcomes[0] or true_count > 0
+            outcomes[1] = outcomes[1] or false_count > 0
+        total = len(sites) * 2
+        covered = sum(outcome for outcomes in sites.values() for outcome in outcomes)
+        result[filename] = (
+            _vacuous_metric("Nightly LLVM source contains no branch sites")
+            if total == 0
+            else _measured_metric(
+                "derived",
+                covered,
+                total,
+                derivation=(
+                    "source branch sites deduplicated across LLVM generic "
+                    "instantiations; each outcome covered by any instantiation"
+                ),
+            )
+        )
+    return result
+
+
+def _load_python_source_tree(source: str) -> ast.Module | None:
+    """Load a repository Python source file for derived Tier0 metrics."""
+    source_path = REPOSITORY_ROOT / source
+    try:
+        source_text = source_path.read_text(encoding="utf-8")
+        return ast.parse(source_text, filename=str(source_path))
+    except (FileNotFoundError, OSError, SyntaxError, UnicodeDecodeError):
+        return None
+
+
+def _python_function_entry_line(
+    function: ast.FunctionDef | ast.AsyncFunctionDef,
+) -> int:
+    body = list(function.body)
+    if body and isinstance(body[0], ast.Expr):
+        value = body[0].value
+        if isinstance(value, ast.Constant) and isinstance(value.value, str):
+            body.pop(0)
+    while body and isinstance(body[0], (ast.Global, ast.Nonlocal)):
+        body.pop(0)
+    return body[0].lineno if body else function.lineno
+
+
+def _is_mutmut_generated_function(
+    node: ast.FunctionDef | ast.AsyncFunctionDef,
+) -> bool:
+    """Identify helper functions injected by mutmut's source trampoline.
+
+    mutmut rewrites each source file in its isolated ``mutants/`` tree and
+    appends one function per generated mutant.  Those helpers are execution
+    machinery, not source-level coverage obligations.  Keeping this filter in
+    the AST-derived path makes the normalizer measure the same source units in
+    the regular and mutation-test environments.
+    """
+    return "_mutmut_" in node.name
+
+
+def _derive_python_function_metric(
+    source: str,
+    line_hits: dict[int, bool],
+) -> dict[str, object] | None:
+    tree = _load_python_source_tree(source)
+    if tree is None:
+        return None
+    functions = [
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+        and not _is_mutmut_generated_function(node)
+    ]
+    if not functions:
+        return _vacuous_metric("AST source contains no function definitions")
+    covered = sum(
+        line_hits.get(_python_function_entry_line(function), False)
+        for function in functions
+    )
+    return _measured_metric(
+        "derived",
+        covered,
+        len(functions),
+        derivation=(
+            "AST function entries covered when the first executable body line "
+            "is reported as executed"
+        ),
+    )
+
+
+def _python_has_branch_constructs(tree: ast.Module) -> bool:
+    branch_nodes = (
+        ast.If,
+        ast.For,
+        ast.AsyncFor,
+        ast.While,
+        ast.IfExp,
+        ast.Try,
+        ast.Match,
+        ast.BoolOp,
+    )
+
+    def _walk_runtime_nodes(node: ast.AST) -> Iterator[ast.AST]:
+        for child in ast.iter_child_nodes(node):
+            if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef)) and (
+                _is_mutmut_generated_function(child)
+            ):
+                # Mutmut's generated wrappers contain their own dispatch
+                # branches.  They are not source-level branch obligations.
+                continue
+            if (
+                isinstance(child, ast.If)
+                and isinstance(child.test, ast.Name)
+                and child.test.id == "TYPE_CHECKING"
+            ):
+                # TYPE_CHECKING blocks are erased at runtime and therefore do
+                # not represent executable branch obligations in coverage.
+                continue
+            yield child
+            yield from _walk_runtime_nodes(child)
+
+    if any(isinstance(node, branch_nodes) for node in _walk_runtime_nodes(tree)):
+        return True
+    return any(
+        isinstance(node, ast.comprehension) and bool(node.ifs)
+        for node in _walk_runtime_nodes(tree)
+    )
+
+
+def _derive_python_branch_metric(source: str) -> dict[str, object] | None:
+    tree = _load_python_source_tree(source)
+    if tree is None or _python_has_branch_constructs(tree):
+        return None
+    return _vacuous_metric("AST source contains no branch construct")
 
 
 def _parse_tier0_python_files(
@@ -1258,10 +1823,13 @@ def _parse_tier0_python_files(
             for line in child
             if _xml_local_name(line) == "line"
         ]
-        line_hits = [
-            _parse_nonnegative_decimal(line.get("hits"), "Tier0 Python line hits") > 0
+        line_hits = {
+            _parse_nonnegative_decimal(
+                line.get("number"), "Tier0 Python line number"
+            ): _parse_nonnegative_decimal(line.get("hits"), "Tier0 Python line hits")
+            > 0
             for line in line_elements
-        ]
+        }
         branch_pairs: list[tuple[int, int]] = []
         for line in line_elements:
             condition = line.get("condition-coverage")
@@ -1306,24 +1874,33 @@ def _parse_tier0_python_files(
         functions = (
             _measured_metric("native", sum(method_hits), len(method_hits))
             if methods
-            else _unmeasured_metric(
+            else _derive_python_function_metric(source, line_hits)
+        )
+        if functions is None:
+            functions = _unmeasured_metric(
                 "unsupported", reason_code="coverage_xml_has_no_method_breakdown"
             )
+        branches = (
+            _measured_metric(
+                "native",
+                sum(covered for covered, _ in branch_pairs),
+                sum(total for _, total in branch_pairs),
+            )
+            if branch_pairs
+            else _derive_python_branch_metric(source)
         )
+        if branches is None:
+            branches = _unmeasured_metric("missing")
         result[source] = {
-            "lines": _measured_metric("native", sum(line_hits), len(line_hits)),
+            "lines": (
+                _measured_metric("native", sum(line_hits.values()), len(line_hits))
+                if line_hits
+                else _vacuous_metric("Cobertura source contains no executable lines")
+            ),
             "statements": _unmeasured_metric(
                 "unsupported", reason_code="coverage_xml_has_no_statement_counter"
             ),
-            "branches": (
-                _measured_metric(
-                    "native",
-                    sum(covered for covered, _ in branch_pairs),
-                    sum(total for _, total in branch_pairs),
-                )
-                if branch_pairs
-                else _unmeasured_metric("missing")
-            ),
+            "branches": branches,
             "functions": functions,
         }
     return result
@@ -1356,23 +1933,40 @@ def _parse_tier0_frontend_files(
             if source is not None:
                 counters[field] = _parse_lcov_counter(value, f"Tier0 {field}")
         elif field == "end_of_record" and source is not None:
+            line_metric = (
+                _unmeasured_metric("missing")
+                if "LF" not in counters or "LH" not in counters
+                else (
+                    _vacuous_metric("LCOV source contains no executable lines")
+                    if counters["LF"] == 0
+                    else _measured_metric("native", counters["LH"], counters["LF"])
+                )
+            )
+            branch_metric = (
+                _unmeasured_metric("missing")
+                if "BRF" not in counters or "BRH" not in counters
+                else (
+                    _vacuous_metric("LCOV source contains no branch units")
+                    if counters["BRF"] == 0
+                    else _measured_metric("native", counters["BRH"], counters["BRF"])
+                )
+            )
+            function_metric = (
+                _unmeasured_metric("missing")
+                if "FNF" not in counters or "FNH" not in counters
+                else (
+                    _vacuous_metric("LCOV source contains no function units")
+                    if counters["FNF"] == 0
+                    else _measured_metric("native", counters["FNH"], counters["FNF"])
+                )
+            )
             result[source] = {
-                "lines": _measured_metric(
-                    "native", counters.get("LH", 0), counters.get("LF", 0)
-                ),
+                "lines": line_metric,
                 "statements": _unmeasured_metric(
                     "unsupported", reason_code="lcov_has_no_statement_counter"
                 ),
-                "branches": (
-                    _measured_metric("native", counters["BRH"], counters["BRF"])
-                    if "BRH" in counters and "BRF" in counters
-                    else _unmeasured_metric("missing")
-                ),
-                "functions": (
-                    _measured_metric("native", counters["FNH"], counters["FNF"])
-                    if "FNH" in counters and "FNF" in counters
-                    else _unmeasured_metric("missing")
-                ),
+                "branches": branch_metric,
+                "functions": function_metric,
             }
             source = None
             counters = {}
@@ -1441,6 +2035,8 @@ def _parse_tier0_rust_files(
     raw: bytes,
     component: str,
     ignore_outside_files: bool = False,
+    *,
+    zero_branch_is_vacuous: bool = False,
 ) -> dict[str, dict[str, dict[str, object]]]:
     """Extract file summaries when llvm-cov JSON provides them."""
 
@@ -1452,6 +2048,11 @@ def _parse_tier0_rust_files(
     )
     if not isinstance(document, dict):
         raise _InputError("LLVM JSON root must be an object")
+    source_branch_metrics = (
+        _rust_source_branch_metrics(document, component, ignore_outside_files)
+        if zero_branch_is_vacuous
+        else {}
+    )
     entries: list[object] = []
     if isinstance(document.get("files"), list):
         entries.extend(document["files"])
@@ -1479,8 +2080,12 @@ def _parse_tier0_rust_files(
         summary = entry.get("summary")
         if not isinstance(summary, dict):
             summary = {}
+        source_line_metric = _rust_source_line_metric(entry)
         file_metrics: dict[str, dict[str, object]] = {}
         for metric_name in METRICS:
+            if metric_name == "lines" and source_line_metric is not None:
+                file_metrics[metric_name] = source_line_metric
+                continue
             value = summary.get(metric_name)
             if isinstance(value, dict):
                 try:
@@ -1495,9 +2100,17 @@ def _parse_tier0_rust_files(
                         "unsupported", reason_code="llvm_file_summary_malformed"
                     )
                 else:
-                    file_metrics[metric_name] = _measured_metric(
-                        "native", covered, total
-                    )
+                    if metric_name == "branches" and zero_branch_is_vacuous:
+                        file_metrics[metric_name] = source_branch_metrics.get(
+                            filename,
+                            _vacuous_metric(
+                                "Nightly LLVM source contains no branch sites"
+                            ),
+                        )
+                    else:
+                        file_metrics[metric_name] = _measured_metric(
+                            "native", covered, total
+                        )
             else:
                 file_metrics[metric_name] = _unmeasured_metric(
                     "unsupported", reason_code=f"llvm_file_has_no_{metric_name}_counter"
@@ -1526,6 +2139,13 @@ def _parse_tier0_files(
     if raw_report.report_format == "llvm-cov-json":
         return _parse_tier0_rust_files(
             raw_report.raw, raw_report.component, ignore_outside_files
+        )
+    if raw_report.report_format == "llvm-cov-branch-json":
+        return _parse_tier0_rust_files(
+            raw_report.raw,
+            raw_report.component,
+            ignore_outside_files,
+            zero_branch_is_vacuous=True,
         )
     raise _InputError(f"unsupported report format: {raw_report.report_format}")
 
@@ -1593,6 +2213,15 @@ def _parse_arguments(argv: Sequence[str] | None) -> argparse.Namespace:
         action="append",
         default=[],
         metavar="COMPONENT=PATH",
+    )
+    parser.add_argument(
+        "--rust-branch-report",
+        action="append",
+        default=[],
+        metavar="COMPONENT=PATH",
+        help=(
+            "Merge nightly LLVM branch counters into the matching stable Rust report."
+        ),
     )
     return parser.parse_args(argv)
 
@@ -1689,38 +2318,151 @@ def _collect_report_inputs(arguments: argparse.Namespace) -> list[_ReportInput]:
                 "llvm-cov-json",
             )
         )
+    for value in arguments.rust_branch_report:
+        inputs.append(
+            _parse_component_path(
+                value,
+                RUST_COMPONENTS,
+                "--rust-branch-report",
+                "llvm-cov-branch-json",
+            )
+        )
     return inputs
 
 
 def _read_raw_report(report_input: _ReportInput) -> _RawReport:
     raw = _read_report_bytes(report_input.path)
+    supplemental: tuple[_RawReport, ...] = ()
+    if report_input.report_format == "lcov":
+        istanbul_path = report_input.path.with_name("coverage-final.json")
+        if istanbul_path.is_file():
+            istanbul_raw = _read_report_bytes(istanbul_path)
+            supplemental = (
+                _RawReport(
+                    component=report_input.component,
+                    report_format="istanbul-json",
+                    path=istanbul_path,
+                    raw=istanbul_raw,
+                    sha256=hashlib.sha256(istanbul_raw).hexdigest(),
+                ),
+            )
     return _RawReport(
         component=report_input.component,
         report_format=report_input.report_format,
         path=report_input.path,
         raw=raw,
         sha256=hashlib.sha256(raw).hexdigest(),
+        supplemental=supplemental,
     )
 
 
 def _parse_report(
     raw_report: _RawReport, ignore_outside_files: bool = False
 ) -> _ParsedReport:
+    file_metrics: dict[str, dict[str, dict[str, object]]]
     if raw_report.report_format == "cobertura-xml":
         metrics = _parse_python_xml(
             raw_report.raw, raw_report.component, ignore_outside_files
+        )
+        file_metrics = _parse_tier0_files(
+            raw_report,
+            ignore_outside_files=ignore_outside_files,
         )
     elif raw_report.report_format == "lcov":
         metrics = _parse_frontend_lcov(
             raw_report.raw, raw_report.component, ignore_outside_files
         )
+        file_metrics = _parse_tier0_files(
+            raw_report,
+            ignore_outside_files=ignore_outside_files,
+        )
+        istanbul_reports = [
+            report
+            for report in raw_report.supplemental
+            if report.report_format == "istanbul-json"
+        ]
+        if istanbul_reports:
+            if len(istanbul_reports) != 1:
+                raise _InputError(
+                    "frontend coverage must contain exactly one Istanbul JSON report"
+                )
+            istanbul_metrics, istanbul_file_metrics = _parse_frontend_istanbul_json(
+                istanbul_reports[0].raw,
+                raw_report.component,
+                ignore_outside_files,
+            )
+            for metric_name in ("branches", "functions"):
+                lcov_metric = metrics[metric_name]
+                istanbul_metric = istanbul_metrics[metric_name]
+                if (
+                    lcov_metric["status"] == "native"
+                    and istanbul_metric["status"] == "native"
+                    and (
+                        lcov_metric["covered"] != istanbul_metric["covered"]
+                        or lcov_metric["total"] != istanbul_metric["total"]
+                    )
+                ):
+                    raise _InputError(
+                        f"frontend coverage reports disagree for {metric_name}"
+                    )
+                if lcov_metric["status"] != "native":
+                    metrics[metric_name] = istanbul_metric
+            metrics["statements"] = istanbul_metrics["statements"]
+            for source, supplemental_metrics in istanbul_file_metrics.items():
+                target_metrics = file_metrics.setdefault(
+                    source,
+                    {metric: _unmeasured_metric("missing") for metric in METRICS},
+                )
+                for metric_name in ("statements", "branches", "functions"):
+                    lcov_metric = target_metrics[metric_name]
+                    istanbul_metric = supplemental_metrics[metric_name]
+                    if (
+                        lcov_metric["status"] == "native"
+                        and istanbul_metric["status"] == "native"
+                        and (
+                            lcov_metric["covered"] != istanbul_metric["covered"]
+                            or lcov_metric["total"] != istanbul_metric["total"]
+                        )
+                    ):
+                        raise _InputError(
+                            f"frontend coverage reports disagree for "
+                            f"{source}.{metric_name}"
+                        )
+                    if lcov_metric["status"] != "native":
+                        preserve_vacuous_metric = (
+                            lcov_metric["status"] == "derived"
+                            and lcov_metric["total"] == 0
+                            and istanbul_metric["status"] == "native"
+                            and istanbul_metric["total"] == 0
+                        )
+                        if not preserve_vacuous_metric:
+                            target_metrics[metric_name] = istanbul_metric
     elif raw_report.report_format == "go-coverprofile":
         metrics = _parse_go_coverprofile(
             raw_report.raw, raw_report.component, ignore_outside_files
         )
+        file_metrics = _parse_tier0_files(
+            raw_report,
+            ignore_outside_files=ignore_outside_files,
+        )
     elif raw_report.report_format == "llvm-cov-json":
         metrics = _parse_rust_llvm_json(
             raw_report.raw, raw_report.component, ignore_outside_files
+        )
+        file_metrics = _parse_tier0_files(
+            raw_report,
+            ignore_outside_files=ignore_outside_files,
+        )
+    elif raw_report.report_format == "llvm-cov-branch-json":
+        metrics = _parse_rust_llvm_json(
+            raw_report.raw,
+            raw_report.component,
+            ignore_outside_files,
+            native_branches=True,
+        )
+        file_metrics = _parse_tier0_files(
+            raw_report,
+            ignore_outside_files=ignore_outside_files,
         )
     else:
         raise _InputError(f"unsupported report format: {raw_report.report_format}")
@@ -1729,10 +2471,7 @@ def _parse_report(
         report_format=raw_report.report_format,
         path=raw_report.path,
         metrics=metrics,
-        file_metrics=_parse_tier0_files(
-            raw_report,
-            ignore_outside_files=ignore_outside_files,
-        ),
+        file_metrics=file_metrics,
         sha256=raw_report.sha256,
     )
 
@@ -1841,6 +2580,53 @@ def _component_entry(
     )
 
 
+def _merge_rust_branch_report(
+    stable_report: _ParsedReport,
+    branch_report: _ParsedReport,
+) -> tuple[_ParsedReport, list[str]]:
+    """Combine stable line/function evidence with nightly branch evidence.
+
+    Rust branch instrumentation is nightly-only, while the stable report is
+    the compatibility baseline for line and function counters.  The two
+    reports are matched by the canonical source identity produced by each
+    parser; no coverage counter is synthesized from the other report.
+    """
+    errors: list[str] = []
+    branch_metrics = branch_report.metrics["branches"]
+    if branch_metrics["status"] not in {"native", "derived"}:
+        errors.append(
+            f"{branch_report.component} nightly branch report did not provide "
+            f"measured branches (status={branch_metrics['status']!r})"
+        )
+
+    merged_file_metrics: dict[str, dict[str, dict[str, object]]] = {}
+    for path, stable_metrics in stable_report.file_metrics.items():
+        nightly_metrics = branch_report.file_metrics.get(path)
+        if nightly_metrics is None:
+            errors.append(
+                f"{stable_report.component} nightly branch report is missing source {path}"
+            )
+            merged_file_metrics[path] = stable_metrics
+            continue
+        merged_metrics = dict(stable_metrics)
+        merged_metrics["branches"] = nightly_metrics["branches"]
+        merged_file_metrics[path] = merged_metrics
+
+    merged_metrics = dict(stable_report.metrics)
+    merged_metrics["branches"] = branch_metrics
+    return (
+        _ParsedReport(
+            component=stable_report.component,
+            report_format=stable_report.report_format,
+            path=stable_report.path,
+            metrics=merged_metrics,
+            file_metrics=merged_file_metrics,
+            sha256=stable_report.sha256,
+        ),
+        errors,
+    )
+
+
 def _load_tier0_rules() -> tuple[list[str], str | None]:
     path = REPOSITORY_ROOT / "quality" / "ownership-mapping.json"
     try:
@@ -1938,7 +2724,12 @@ def _prepare_invocation(arguments: argparse.Namespace) -> _PreparedInvocation:
     )
     output_path = _resolve_path(arguments.output)
     report_inputs = _collect_report_inputs(arguments)
-    for path in [contract_path, *(entry.path for entry in report_inputs)]:
+    report_paths: list[Path] = []
+    for entry in report_inputs:
+        report_paths.append(entry.path)
+        if entry.report_format == "lcov":
+            report_paths.append(entry.path.with_name("coverage-final.json"))
+    for path in [contract_path, *report_paths]:
         if _paths_alias(output_path, path):
             raise _InputError(
                 "output path must not alias the contract or an input report"
@@ -1961,12 +2752,20 @@ def _build_manifest(
     report_inputs = invocation.report_inputs
     floors = invocation.floors
     reports_by_component: defaultdict[str, list[_ParsedReport]] = defaultdict(list)
+    branch_reports_by_component: defaultdict[str, list[_ParsedReport]] = defaultdict(
+        list
+    )
     report_input_counts: defaultdict[str, int] = defaultdict(int)
+    branch_input_counts: defaultdict[str, int] = defaultdict(int)
     evidence_errors_by_component: defaultdict[str, list[str]] = defaultdict(list)
     raw_reports: list[_RawReport] = []
     structural_errors: list[str] = []
     for report_input in report_inputs:
-        report_input_counts[report_input.component] += 1
+        is_branch_report = report_input.report_format == "llvm-cov-branch-json"
+        if is_branch_report:
+            branch_input_counts[report_input.component] += 1
+        else:
+            report_input_counts[report_input.component] += 1
         try:
             raw_report = _read_raw_report(report_input)
         except _InputError as error:
@@ -1974,7 +2773,7 @@ def _build_manifest(
             evidence_errors_by_component[report_input.component].append(message)
             structural_errors.append(message)
             continue
-        raw_reports.append(raw_report)
+        raw_reports.extend((raw_report, *raw_report.supplemental))
         try:
             report = _parse_report(
                 raw_report, ignore_outside_files=arguments.ignore_outside_files
@@ -1986,7 +2785,33 @@ def _build_manifest(
             evidence_errors_by_component[report_input.component].append(message)
             structural_errors.append(message)
         else:
-            reports_by_component[report.component].append(report)
+            if is_branch_report:
+                branch_reports_by_component[report.component].append(report)
+            else:
+                reports_by_component[report.component].append(report)
+
+    for component in RUST_COMPONENTS:
+        branch_count = branch_input_counts[component]
+        if branch_count == 0:
+            continue
+        if branch_count > 1:
+            evidence_errors_by_component[component].append(
+                f"duplicate branch report input for component {component}"
+            )
+            continue
+        stable_reports = reports_by_component[component]
+        branch_reports = branch_reports_by_component[component]
+        if len(stable_reports) != 1 or len(branch_reports) != 1:
+            evidence_errors_by_component[component].append(
+                f"Rust branch evidence for component {component} requires exactly "
+                "one stable report and one branch report"
+            )
+            continue
+        merged_report, merge_errors = _merge_rust_branch_report(
+            stable_reports[0], branch_reports[0]
+        )
+        reports_by_component[component] = [merged_report]
+        evidence_errors_by_component[component].extend(merge_errors)
 
     components: dict[str, object] = {}
     missing_reports: list[dict[str, object]] = []

@@ -12,12 +12,15 @@ package workflow
 import (
 	"bytes"
 	"context"
+	"errors"
 	"image"
 	"image/jpeg"
 	"io"
 	"net/http/httptest"
 	"testing"
+	"time"
 
+	"github.com/minio/minio-go/v7"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/university-ecosystem/file-processor/internal/config"
@@ -71,6 +74,66 @@ func TestEncodeImage_UnknownFormat_FallsBackToJPEG(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "jpeg", format, "unknown format should produce JPEG output")
 	require.NotEmpty(t, buf.Bytes())
+}
+
+func TestEncodeImage_EncoderErrorsAreReturned(t *testing.T) {
+	img := image.NewRGBA(image.Rect(0, 0, 8, 8))
+	encodeErr := errors.New("synthetic encoder failure")
+
+	oldJPEGEncode := jpegEncodeFunc
+	oldPNGEncode := pngEncodeFunc
+	t.Cleanup(func() {
+		jpegEncodeFunc = oldJPEGEncode
+		pngEncodeFunc = oldPNGEncode
+	})
+
+	jpegEncodeFunc = func(io.Writer, image.Image, *jpeg.Options) error {
+		return encodeErr
+	}
+	_, _, err := encodeImage(img, "jpeg")
+	require.ErrorIs(t, err, encodeErr)
+	_, _, err = encodeImage(img, "tiff")
+	require.ErrorIs(t, err, encodeErr)
+
+	pngEncodeFunc = func(io.Writer, image.Image) error {
+		return encodeErr
+	}
+	_, _, err = encodeImage(img, "png")
+	require.ErrorIs(t, err, encodeErr)
+	_, _, err = encodeImage(img, "webp")
+	require.ErrorContains(t, err, "webp→png transcode")
+	require.ErrorIs(t, err, encodeErr)
+}
+
+type deadlineProbe struct {
+	err    error
+	called bool
+}
+
+func (p *deadlineProbe) SetReadDeadline(time.Time) error {
+	p.called = true
+	return p.err
+}
+
+func TestApplyDecodeDeadline_PropagatesDeadlineWithoutFailingDecode(t *testing.T) {
+	probe := &deadlineProbe{err: errors.New("synthetic deadline failure")}
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+
+	applyDecodeDeadline(probe, ctx)
+	assert.True(t, probe.called)
+}
+
+func TestDownloadAndDecodeImage_GetObjectErrorIsReturned(t *testing.T) {
+	oldGetObject := getObjectFunc
+	t.Cleanup(func() { getObjectFunc = oldGetObject })
+	getObjectFunc = func(*minio.Client, context.Context, string, string, minio.GetObjectOptions) (*minio.Object, error) {
+		return nil, errors.New("synthetic get object failure")
+	}
+
+	activities := &FileActivities{MinioClient: &minio.Client{}, Bucket: "test-bucket"}
+	_, _, err := activities.downloadAndDecodeImage(context.Background(), "image.png")
+	require.EqualError(t, err, "synthetic get object failure")
 }
 
 // ── sanitizeMinIOKey ─────────────────────────────────────────────────────────

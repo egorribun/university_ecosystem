@@ -4,7 +4,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { describe, it, expect, vi, beforeEach } from "vitest"
 import { AxiosError, AxiosHeaders } from "axios"
 
-import { useAuthApi } from "./useAuthApi"
+import { extractSigningKey, useAuthApi } from "./useAuthApi"
 import type { User } from "@/types/User"
 import { ChallengeLockedError } from "@/types/Auth"
 import { API_UNAUTHORIZED_EVENT } from "@/api/client"
@@ -654,6 +654,11 @@ describe("loginWithPasskey", () => {
 })
 
 describe("useAuthApi — residual defensive branches", () => {
+  it("returns no signing key for an absent response value", () => {
+    expect(extractSigningKey(null)).toBeNull()
+    expect(extractSigningKey(undefined)).toBeNull()
+  })
+
   it("rejects a null token response as invalid", async () => {
     const w = makeWires()
     mocks.apiPost.mockResolvedValue({ status: 200, data: null } as never)

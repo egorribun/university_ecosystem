@@ -9,6 +9,7 @@ on:
       - "services/**/*.go"
       - "services/**/go.mod"
       - ".golangci.yml"
+  workflow_dispatch: {}
   push:
     branches: [main]
     paths:
@@ -49,6 +50,9 @@ jobs:
           install-mode: goinstall
           working-directory: services/${{ matrix.service }}
           args: --config ../../.golangci.yml --timeout 5m
+          # Do not make the standalone lint workflow depend on the remote
+          # golangci-lint JSON-schema host either.
+          verify: false
 
   # ── MOD-08: SBOM generation for each Go service ────────────────────────────
   go-sbom:

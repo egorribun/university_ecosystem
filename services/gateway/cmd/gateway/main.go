@@ -48,6 +48,22 @@ import (
 	"github.com/university-ecosystem/services/pkg/spiffe"
 )
 
+var (
+	initTracerFunc               = initTracer
+	initGRPCFunc                 = initGRPC
+	newGRPCClientFunc            = grpc.NewClient
+	newSpiffeClientFunc          = spiffe.NewClient
+	newSpiffeGRPCCredentialsFunc = func(client *spiffe.Client, expectedServerID string) (credentials.TransportCredentials, error) {
+		return client.GRPCClientCredentials(expectedServerID)
+	}
+	newSpiffeClientTLSConfigFunc = func(client *spiffe.Client, expectedServerID string) (*tls.Config, error) {
+		return client.ClientTLSConfig(expectedServerID)
+	}
+	closeSpiffeClientFunc  = func(client *spiffe.Client) error { return client.Close() }
+	shutdownH3ServerFunc   = func(server *http3.Server, ctx context.Context) error { return server.Shutdown(ctx) }
+	shutdownHTTPServerFunc = func(server *http.Server, ctx context.Context) error { return server.Shutdown(ctx) }
+)
+
 func main() {
 	if err := run(); err != nil {
 		os.Exit(1)
@@ -76,7 +92,7 @@ func run() error {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	tp, err := initTracer(ctx, cfg)
+	tp, err := initTracerFunc(ctx, cfg)
 	if err != nil {
 		logger.ErrorContext(ctx, "OpenTelemetry initialization failed", "err", err)
 	} else {
@@ -89,7 +105,7 @@ func run() error {
 	}
 
 	// 4.5 Initialize SPIFFE Workload API Client
-	spiffeClient, err := spiffe.NewClient(ctx, spiffe.Config{
+	spiffeClient, err := newSpiffeClientFunc(ctx, spiffe.Config{
 		Enabled:     cfg.SpiffeEnabled,
 		SocketPath:  cfg.SpiffeEndpointSocket,
 		TrustDomain: cfg.SpiffeTrustDomain,
@@ -105,14 +121,14 @@ func run() error {
 		return errors.New("SPIFFE is enabled but client initialization returned nil")
 	} else if spiffeClient != nil {
 		defer func() {
-			if err := spiffeClient.Close(); err != nil {
+			if err := closeSpiffeClientFunc(spiffeClient); err != nil {
 				logger.WarnContext(ctx, "Failed to close SPIFFE client", "err", err)
 			}
 		}()
 	}
 
 	// 5. Initialize gRPC connection to File Processor
-	grpcConn, fileClient, err := initGRPC(cfg, logger, spiffeClient)
+	grpcConn, fileClient, err := initGRPCFunc(cfg, logger, spiffeClient)
 	if err != nil {
 		logger.ErrorContext(ctx, "gRPC initialization failed", "err", err)
 		return err
@@ -177,7 +193,7 @@ func initGRPC(cfg *config.Config, logger *slog.Logger, spiffeClients ...*spiffe.
 			logger.ErrorContext(context.Background(), "SPIFFE is enabled but spiffeClient is nil")
 			return nil, nil, http.ErrServerClosed
 		}
-		creds, err := spiffeClient.GRPCClientCredentials(cfg.FileProcessorSpiffeID)
+		creds, err := newSpiffeGRPCCredentialsFunc(spiffeClient, cfg.FileProcessorSpiffeID)
 		if err != nil {
 			logger.ErrorContext(context.Background(), "Failed to create SPIFFE gRPC credentials", "err", err)
 			return nil, nil, err
@@ -192,7 +208,7 @@ func initGRPC(cfg *config.Config, logger *slog.Logger, spiffeClients ...*spiffe.
 	// RZ-31-05: Set a default 30s per-RPC timeout via service config.  grpc.NewClient
 	// is lazy (no blocking dial), but RPCs without a deadline can hang indefinitely if
 	// file-processor is unresponsive.  30s matches the gateway ResponseHeaderTimeout.
-	grpcConn, err := grpc.NewClient(cfg.FileProcessorAddr, grpcCreds,
+	grpcConn, err := newGRPCClientFunc(cfg.FileProcessorAddr, grpcCreds,
 		grpc.WithDefaultServiceConfig(`{"methodConfig":[{"name":[{}],"timeout":"30s"}]}`),
 	)
 	if err != nil {
@@ -272,7 +288,7 @@ func setupRouter(cfg *config.Config, logger *slog.Logger, grpcConn *grpc.ClientC
 			logger.ErrorContext(ctx, "SPIFFE is enabled but spiffeClient is nil")
 			return nil, http.ErrServerClosed
 		}
-		tlsCfg, err := spiffeClient.ClientTLSConfig(cfg.BackendSpiffeID)
+		tlsCfg, err := newSpiffeClientTLSConfigFunc(spiffeClient, cfg.BackendSpiffeID)
 		if err != nil {
 			logger.ErrorContext(ctx, "Failed to build SPIFFE client TLS config for backend proxy", "err", err)
 			return nil, err
@@ -475,12 +491,12 @@ func runServer(cfg *config.Config, router *gin.Engine, logger *slog.Logger, sign
 	defer shutdownCancel()
 
 	if h3Server != nil {
-		if err := h3Server.Shutdown(shutdownCtx); err != nil {
+		if err := shutdownH3ServerFunc(h3Server, shutdownCtx); err != nil {
 			logger.ErrorContext(context.Background(), "HTTP/3 server forced to shutdown", "err", err)
 		}
 	}
 
-	if err := srv.Shutdown(shutdownCtx); err != nil {
+	if err := shutdownHTTPServerFunc(srv, shutdownCtx); err != nil {
 		logger.ErrorContext(context.Background(), "Server forced to shutdown", "err", err)
 	}
 

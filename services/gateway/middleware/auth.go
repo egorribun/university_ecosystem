@@ -2,9 +2,11 @@ package middleware
 
 import (
 	"context"
+	cryptorand "crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
 	"encoding/base64"
+	"encoding/binary"
 	"encoding/json"
 	"encoding/pem"
 	"fmt"
@@ -12,7 +14,6 @@ import (
 	"log/slog"
 	"math"
 	"math/big"
-	"math/rand/v2"
 	"net/http"
 	"strings"
 	"sync"
@@ -71,6 +72,22 @@ type JWTMiddleware struct {
 }
 
 var (
+	httpDoFunc = func(client *http.Client, request *http.Request) (*http.Response, error) {
+		return client.Do(request)
+	}
+	cryptoRandReadFunc = cryptorand.Read
+	xfetchRandFunc     = secureRandomFloat64
+	parseJWTClaimsFunc = func(
+		parser *jwt.Parser,
+		tokenString string,
+		claims jwt.Claims,
+		keyFunc jwt.Keyfunc,
+	) (*jwt.Token, error) {
+		return parser.ParseWithClaims(tokenString, claims, keyFunc)
+	}
+	closePubSubFunc = func(pubsub *redis.PubSub) error {
+		return pubsub.Close()
+	}
 	l1Hits = prometheus.NewCounter(prometheus.CounterOpts{
 		Name: "gateway_l1_cache_hits_total",
 		Help: "Total number of Gateway L1 cache hits",
@@ -99,6 +116,28 @@ var (
 	})
 	metricsRegistered sync.Once
 )
+
+// secureRandomFloat64 supplies jitter without the weak PRNG flagged by SAST.
+// Jitter is not a security token; the deterministic midpoint fallback only
+// preserves bounded backoff behavior if the OS entropy source is unavailable.
+func secureRandomFloat64() float64 {
+	var randomBytes [8]byte
+	if _, err := cryptoRandReadFunc(randomBytes[:]); err != nil {
+		return 0.5
+	}
+	const mantissaBits = 53
+	const mantissaScale = float64(uint64(1) << mantissaBits)
+	return float64(binary.BigEndian.Uint64(randomBytes[:])>>(64-mantissaBits)) / mantissaScale
+}
+
+var verifySessionFunc = func(
+	middleware *JWTMiddleware,
+	ctx context.Context,
+	sessionID string,
+	failSecure bool,
+) (bool, bool, error) {
+	return middleware.verifySession(ctx, sessionID, failSecure)
+}
 
 // Claims represents JWT claims
 // RZ-10 (audit 2026-03-05): Email removed from claims. Including email in the
@@ -265,7 +304,7 @@ func fetchJWKSPublicKey(ctx context.Context, client *http.Client, endpoint strin
 	if err != nil {
 		return nil, fmt.Errorf("jwks: create request: %w", err)
 	}
-	resp, err := client.Do(req)
+	resp, err := httpDoFunc(client, req)
 	if err != nil {
 		return nil, fmt.Errorf("jwks: fetch: %w", err)
 	}
@@ -434,7 +473,7 @@ func (m *JWTMiddleware) ListenForRevocations(ctx context.Context) {
 				float64(maxDelay),
 			))
 			// Jitter: 75%-125% of computed delay.
-			jitter := 0.75 + rand.Float64()*0.5 //nolint:gosec // G404: jitter for backoff, not security-sensitive
+			jitter := 0.75 + secureRandomFloat64()*0.5
 			delay = time.Duration(float64(delay) * jitter)
 
 			slog.ErrorContext(ctx, "Redis pubsub disconnected — revocation listener lost, reconnecting",
@@ -455,7 +494,7 @@ func (m *JWTMiddleware) ListenForRevocations(ctx context.Context) {
 func (m *JWTMiddleware) listenOnce(ctx context.Context) {
 	pubsub := m.redis.Subscribe(ctx, "session:revocations")
 	defer func() {
-		if err := pubsub.Close(); err != nil {
+		if err := closePubSubFunc(pubsub); err != nil {
 			slog.WarnContext(ctx, "failed to close Redis pubsub in revocation listener",
 				"err", err, "event", "pubsub_close_error")
 		}
@@ -487,7 +526,7 @@ func shouldRefreshProbabilistic(storedAt time.Time, ttl time.Duration, beta floa
 	if remaining <= 0 {
 		return true
 	}
-	randFactor := rand.Float64() // #nosec G404 — non-cryptographic use
+	randFactor := xfetchRandFunc() // #nosec G404 — non-cryptographic use
 	if randFactor == 0 {
 		randFactor = 1e-10
 	}
@@ -710,7 +749,7 @@ func (m *JWTMiddleware) Validate(ctx context.Context) gin.HandlerFunc { //nolint
 			jwt.WithIssuedAt(),
 			jwt.WithExpirationRequired(),
 		)
-		token, err := parser.ParseWithClaims(tokenString, &Claims{}, m.keyFunc)
+		token, err := parseJWTClaimsFunc(parser, tokenString, &Claims{}, m.keyFunc)
 
 		if err != nil {
 			AbortWithProblem(c, http.StatusUnauthorized, "Unauthorized", "invalid token", "https://api.university.edu/probs/invalid-token")
@@ -824,7 +863,7 @@ func (m *JWTMiddleware) Optional(ctx context.Context) gin.HandlerFunc { //nolint
 			jwt.WithIssuedAt(),
 			jwt.WithExpirationRequired(),
 		)
-		token, err := parser.ParseWithClaims(tokenString, &Claims{}, m.keyFunc)
+		token, err := parseJWTClaimsFunc(parser, tokenString, &Claims{}, m.keyFunc)
 
 		if err != nil {
 			// Invalid token for optional auth: continue as unauthenticated
@@ -848,7 +887,7 @@ func (m *JWTMiddleware) Optional(ctx context.Context) gin.HandlerFunc { //nolint
 		// failSecure=false means: on Redis error, verifySession returns (false, false, nil)
 		// → isValid=false → c.Next() without user context (unauthenticated, not authenticated).
 		// This is correct: a Redis outage should NOT treat revoked tokens as valid.
-		isValid, shouldDeny, err := m.verifySession(ctx, claims.ID, false)
+		isValid, shouldDeny, err := verifySessionFunc(m, ctx, claims.ID, false)
 		if err != nil {
 			_ = err
 		}

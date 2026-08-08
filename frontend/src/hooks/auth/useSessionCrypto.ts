@@ -28,6 +28,12 @@ import {
 import { SessionSigningKeyOut } from "@/api/generated"
 import { logWarning } from "@/app/logger"
 
+/** Return whether session-key synchronization is running in a browser runtime. */
+export const isSessionCryptoBrowserRuntime = (): boolean =>
+  typeof window !== "undefined" &&
+  typeof window.document !== "undefined" &&
+  typeof window.location !== "undefined"
+
 const PROFILE_CACHE_BASE_KEY = "ecosystem.profile.cache"
 // Kept for one-time migration: clear any key previously persisted in sessionStorage.
 const SESSION_SIGNING_KEY_STORAGE_KEY = `${PROFILE_CACHE_BASE_KEY}.sessionKey`
@@ -298,6 +304,11 @@ export const useSessionCrypto = () => {
     if (sessionSigningKeyPromiseRef.current) {
       return sessionSigningKeyPromiseRef.current
     }
+    const clearInFlightPromise = () => {
+      // Always clear the ref so subsequent callers retry rather than awaiting
+      // a settled promise indefinitely, regardless of fulfillment or rejection.
+      sessionSigningKeyPromiseRef.current = null
+    }
     const promise = (async (): Promise<string | null> => {
       try {
         const response = await api.get<SessionSigningKeyResponse>("/auth/session/signing-key", {
@@ -341,13 +352,12 @@ export const useSessionCrypto = () => {
           )
         }
         return null
-      } finally {
-        // Always clear promise ref so subsequent callers retry rather than
-        // awaiting a settled (rejected) promise indefinitely.
-        sessionSigningKeyPromiseRef.current = null
       }
     })()
     sessionSigningKeyPromiseRef.current = promise
+    // Register both settlement handlers before returning the promise. This
+    // preserves the old finally semantics without a synthetic uncovered branch.
+    void promise.then(clearInFlightPromise, clearInFlightPromise)
     return promise
   }, [updateSessionSigningKey])
 
@@ -357,7 +367,7 @@ export const useSessionCrypto = () => {
   // that also ran twice per mount in React 18 StrictMode.
 
   useEffect(() => {
-    if (typeof window === "undefined") return
+    if (!isSessionCryptoBrowserRuntime()) return
     void sendSessionCacheUpdate(sessionSigningKeyRef.current, { force: true })
   }, [sendSessionCacheUpdate])
 

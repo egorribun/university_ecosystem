@@ -2,9 +2,11 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"errors"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -23,6 +25,38 @@ import (
 	"github.com/university-ecosystem/ws-hub/internal/telemetry"
 	"github.com/university-ecosystem/ws-hub/pkg/config"
 	"github.com/university-ecosystem/ws-hub/pkg/hub"
+)
+
+// Bootstrap seams keep failure handling deterministic in unit tests while
+// production continues to use the concrete implementations below.
+var (
+	initTracerFunc          = telemetry.InitTracer
+	initRedisFunc           = initRedis
+	initSpiffeClientFunc    = initSpiffeClient
+	setupHubFunc            = setupHub
+	runServerFunc           = runServer
+	newSpiffeClientFunc     = spiffe.NewClient
+	closeRedisFunc          = func(client *redis.Client) error { return client.Close() }
+	closeSpiffeClientFunc   = func(client *spiffe.Client) error { return client.Close() }
+	setupJWKSFunc           = func(h *hub.Hub, ctx context.Context, url string) error { return h.SetupJWKS(ctx, url) }
+	subscribeNATSFunc       = func(h *hub.Hub, ctx context.Context) error { return h.SubscribeToNATS(ctx) }
+	configureAuthSPIFFEFunc = func(client *hub.InternalAPIAuthClient, spiffeClient *spiffe.Client, serverID string) {
+		client.WithSPIFFE(spiffeClient, serverID)
+	}
+	healthNATSConnectedFunc   = func(conn *nats.Conn) bool { return conn != nil && conn.IsConnected() }
+	healthRedisConfiguredFunc = func(client *redis.Client) bool { return client != nil }
+	healthRedisPingFunc       = func(ctx context.Context, client *redis.Client) error {
+		if client == nil {
+			return nil
+		}
+		return client.Ping(ctx).Err()
+	}
+	healthJWKSReadyFunc    = func(h *hub.Hub) bool { return h.HasJWKSCache() }
+	loadTLSCertFunc        = tls.LoadX509KeyPair
+	listenUDPFunc          = net.ListenUDP
+	closeUDPFunc           = func(conn *net.UDPConn) error { return conn.Close() }
+	webTransportServeFunc  = func(server *webtransport.Server, conn net.PacketConn) error { return server.Serve(conn) }
+	shutdownHTTPServerFunc = func(server *http.Server, ctx context.Context) error { return server.Shutdown(ctx) }
 )
 
 func main() {
@@ -56,27 +90,27 @@ func run() error {
 	}
 	defer closeNATSConnection(nc)
 
-	rdb := initRedis(ctx, cfg, logger)
+	rdb := initRedisFunc(ctx, cfg, logger)
 	defer closeRedisConnection(ctx, rdb, logger)
 
-	spiffeClient, err := initSpiffeClient(ctx, cfg, logger)
+	spiffeClient, err := initSpiffeClientFunc(ctx, cfg, logger)
 	if err != nil {
 		return err
 	}
 	defer closeSPIFFEClient(ctx, spiffeClient, logger)
 
-	h, err := setupHub(ctx, cfg, logger, nc, rdb, spiffeClient)
+	h, err := setupHubFunc(ctx, cfg, logger, nc, rdb, spiffeClient)
 	if err != nil {
 		logger.ErrorContext(ctx, "Hub setup failed", "err", err)
 		return err
 	}
 	mux := http.NewServeMux()
 	setupHandlers(mux, h, cfg, logger, nc, rdb)
-	return runServer(cfg, logger, h, mux)
+	return runServerFunc(cfg, logger, h, mux)
 }
 
 func initializeTracerShutdown(ctx context.Context, cfg *config.Config, logger *slog.Logger) func() {
-	tp, err := telemetry.InitTracer(ctx, cfg)
+	tp, err := initTracerFunc(ctx, cfg)
 	if err != nil {
 		logger.ErrorContext(ctx, "OpenTelemetry initialization failed", "err", err)
 		return func() {}
@@ -99,7 +133,7 @@ func closeRedisConnection(ctx context.Context, rdb *redis.Client, logger *slog.L
 	if rdb == nil {
 		return
 	}
-	if err := rdb.Close(); err != nil {
+	if err := closeRedisFunc(rdb); err != nil {
 		logger.ErrorContext(ctx, "Failed to close Redis connection", "err", err)
 	}
 }
@@ -108,13 +142,13 @@ func closeSPIFFEClient(ctx context.Context, spiffeClient *spiffe.Client, logger 
 	if spiffeClient == nil {
 		return
 	}
-	if err := spiffeClient.Close(); err != nil {
+	if err := closeSpiffeClientFunc(spiffeClient); err != nil {
 		logger.WarnContext(ctx, "Failed to close SPIFFE client", "err", err)
 	}
 }
 
 func initSpiffeClient(ctx context.Context, cfg *config.Config, logger *slog.Logger) (*spiffe.Client, error) {
-	client, err := spiffe.NewClient(ctx, spiffe.Config{
+	client, err := newSpiffeClientFunc(ctx, spiffe.Config{
 		Enabled:     cfg.SpiffeEnabled,
 		SocketPath:  cfg.SpiffeEndpointSocket,
 		TrustDomain: cfg.SpiffeTrustDomain,
@@ -183,7 +217,7 @@ func initRedis(ctx context.Context, cfg *config.Config, logger *slog.Logger) *re
 	})
 	if err := rdb.Ping(ctx).Err(); err != nil {
 		logger.WarnContext(ctx, "Redis connection failed, continuing without L2 cache", "err", err)
-		if closeErr := rdb.Close(); closeErr != nil {
+		if closeErr := closeRedisFunc(rdb); closeErr != nil {
 			logger.WarnContext(ctx, "Failed to close Redis client after failed ping", "err", closeErr)
 		}
 		return nil
@@ -203,7 +237,7 @@ func setupHub(ctx context.Context, cfg *config.Config, logger *slog.Logger, nc *
 			logger.ErrorContext(ctx, "SPIFFE is enabled but spiffeClient is nil")
 			return nil, http.ErrServerClosed
 		}
-		authClient.WithSPIFFE(spiffeClient, cfg.BackendSpiffeID)
+		configureAuthSPIFFEFunc(authClient, spiffeClient, cfg.BackendSpiffeID)
 	}
 	authClient.StartEviction(ctx)
 	// RZ-W14-01: pass rdb so the Hub can validate one-time WS upgrade tickets
@@ -211,8 +245,9 @@ func setupHub(ctx context.Context, cfg *config.Config, logger *slog.Logger, nc *
 	h := hub.NewHub(nc, logger, authClient, cfg, rdb)
 
 	if cfg.JWKSURL != "" {
-		if err := h.SetupJWKS(ctx, cfg.JWKSURL); err != nil {
+		if err := setupJWKSFunc(h, ctx, cfg.JWKSURL); err != nil {
 			logger.ErrorContext(ctx, "Failed to setup JWKS", "err", err)
+			h.Stop() //nolint:contextcheck // Hub.Stop cancels its own lifecycle context.
 			return nil, err
 		}
 	}
@@ -220,7 +255,8 @@ func setupHub(ctx context.Context, cfg *config.Config, logger *slog.Logger, nc *
 	h.StartLimiterCleanup(ctx)
 	go h.Run(ctx)
 	if nc != nil {
-		if err := h.SubscribeToNATS(ctx); err != nil {
+		if err := subscribeNATSFunc(h, ctx); err != nil {
+			h.Stop() //nolint:contextcheck // Hub.Stop cancels its own lifecycle context.
 			return nil, err
 		}
 	}
@@ -259,13 +295,13 @@ func setupHandlers(mux *http.ServeMux, h *hub.Hub, cfg *config.Config, logger *s
 
 	mux.Handle("/health/ready", otelhttp.NewHandler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		checks := map[string]string{}
-		if nc == nil || !nc.IsConnected() {
+		if !healthNATSConnectedFunc(nc) {
 			checks["nats"] = "disconnected"
 		}
-		if rdb != nil {
+		if healthRedisConfiguredFunc(rdb) {
 			redisCacheMu.Lock()
 			if time.Since(redisCacheUpdated) > redisCacheTTL {
-				redisCacheErr = rdb.Ping(r.Context()).Err()
+				redisCacheErr = healthRedisPingFunc(r.Context(), rdb)
 				redisCacheUpdated = time.Now()
 			}
 			cachedErr := redisCacheErr
@@ -276,7 +312,7 @@ func setupHandlers(mux *http.ServeMux, h *hub.Hub, cfg *config.Config, logger *s
 		} else {
 			checks["redis"] = "not configured"
 		}
-		if !h.HasJWKSCache() {
+		if !healthJWKSReadyFunc(h) {
 			checks["jwks"] = "not initialized"
 		}
 		if len(checks) > 0 {
@@ -301,6 +337,118 @@ func setupHandlers(mux *http.ServeMux, h *hub.Hub, cfg *config.Config, logger *s
 	}), "health_check"))
 
 	mux.Handle("/metrics", promhttp.Handler())
+}
+
+// startupPacketConn exposes a readiness barrier after webtransport.Server.Serve
+// has registered its internal shutdown wait group. webtransport-go's Serve and
+// Close must not be called concurrently before that registration completes.
+type startupPacketConn struct {
+	net.PacketConn
+	ready     chan<- struct{}
+	readyOnce sync.Once
+}
+
+func (c *startupPacketConn) signalReady() {
+	c.readyOnce.Do(func() { close(c.ready) })
+}
+
+func (c *startupPacketConn) LocalAddr() net.Addr {
+	c.signalReady()
+	return c.PacketConn.LocalAddr()
+}
+
+func (c *startupPacketConn) ReadFrom(p []byte) (int, net.Addr, error) {
+	c.signalReady()
+	return c.PacketConn.ReadFrom(p)
+}
+
+func (c *startupPacketConn) WriteTo(p []byte, addr net.Addr) (int, error) {
+	c.signalReady()
+	return c.PacketConn.WriteTo(p, addr)
+}
+
+func serveWebTransport(wtServer *webtransport.Server, wtPort string, cfg *config.Config, logger *slog.Logger, ready chan<- struct{}) error {
+	addr, err := net.ResolveUDPAddr("udp", ":"+wtPort)
+	if err != nil {
+		return err
+	}
+	conn, err := listenUDPFunc("udp", addr)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if err := closeUDPFunc(conn); err != nil {
+			logger.WarnContext(context.Background(), "WebTransport UDP socket close failed", "err", err)
+		}
+	}()
+
+	if cfg.TLSCertFile != "" && cfg.TLSKeyFile != "" {
+		cert, err := loadTLSCertFunc(cfg.TLSCertFile, cfg.TLSKeyFile)
+		if err != nil {
+			return err
+		}
+		wtServer.H3.TLSConfig = &tls.Config{
+			Certificates: []tls.Certificate{cert},
+			MinVersion:   tls.VersionTLS13,
+		}
+	} else {
+		logger.WarnContext(context.Background(), "WebTransport TLS cert files not configured; attempting ListenAndServe fallback")
+	}
+
+	return webTransportServeFunc(wtServer, &startupPacketConn{PacketConn: conn, ready: ready})
+}
+
+func setupSignalChannel(signalChannels ...chan os.Signal) (<-chan os.Signal, func()) {
+	if len(signalChannels) > 0 && signalChannels[0] != nil {
+		return signalChannels[0], func() {}
+	}
+
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	return quit, func() { signal.Stop(quit) }
+}
+
+func waitForWebTransportStartup(quit <-chan os.Signal, ready <-chan struct{}, done <-chan struct{}, errChan <-chan error, logger *slog.Logger) (error, bool) {
+	select {
+	case <-ready:
+		return nil, false
+	case <-done:
+		return nil, false
+	case err := <-errChan:
+		logger.ErrorContext(context.Background(), "Server error", "err", err)
+		select {
+		case <-ready:
+		case <-done:
+		}
+		return err, true
+	case <-quit:
+		select {
+		case <-ready:
+		case <-done:
+		}
+		return nil, true
+	}
+}
+
+func waitForShutdown(quit <-chan os.Signal, errChan <-chan error, logger *slog.Logger) error {
+	select {
+	case err := <-errChan:
+		logger.ErrorContext(context.Background(), "Server error", "err", err)
+		return err
+	case <-quit:
+		return nil
+	}
+}
+
+func shutdownWebTransport(wtServer *webtransport.Server, done <-chan struct{}) {
+	select {
+	case <-done:
+		return
+	default:
+		//nolint:errcheck
+		_ = wtServer.Close()
+		<-done
+	}
 }
 
 func runServer(cfg *config.Config, logger *slog.Logger, h *hub.Hub, mux *http.ServeMux, signalChannels ...chan os.Signal) error {
@@ -328,6 +476,9 @@ func runServer(cfg *config.Config, logger *slog.Logger, h *hub.Hub, mux *http.Se
 		},
 	}
 
+	quit, stopSignals := setupSignalChannel(signalChannels...)
+	defer stopSignals()
+
 	// RZ-33-07: Use channel-based error propagation instead of os.Exit in
 	// goroutine — ensures deferred cleanup (NATS close, Redis close, tracer
 	// shutdown) always executes. Matches gateway pattern (RZ-31-01).
@@ -339,37 +490,20 @@ func runServer(cfg *config.Config, logger *slog.Logger, h *hub.Hub, mux *http.Se
 		}
 	}()
 
-	var wtWg sync.WaitGroup
-	wtWg.Add(1)
+	wtReady := make(chan struct{})
+	wtDone := make(chan struct{})
 	go func() {
-		defer wtWg.Done()
+		defer close(wtDone)
 		logger.InfoContext(context.Background(), "Starting WebTransport Hub (UDP HTTP/3)", "port", wtPort)
-		var err error
-		if cfg.TLSCertFile != "" && cfg.TLSKeyFile != "" {
-			err = wtServer.ListenAndServeTLS(cfg.TLSCertFile, cfg.TLSKeyFile)
-		} else {
-			logger.WarnContext(context.Background(), "WebTransport TLS cert files not configured; attempting ListenAndServe fallback")
-			err = wtServer.ListenAndServe()
-		}
+		err := serveWebTransport(wtServer, wtPort, cfg, logger, wtReady)
 		if err != nil && err != http.ErrServerClosed {
 			logger.WarnContext(context.Background(), "WebTransport HTTP/3 listener stopped", "err", err)
 		}
 	}()
 
-	quit := make(chan os.Signal, 1)
-	if len(signalChannels) > 0 && signalChannels[0] != nil {
-		quit = signalChannels[0]
-	} else {
-		signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
-		defer signal.Stop(quit)
-	}
-
-	var runErr error
-	select {
-	case err := <-errChan:
-		logger.ErrorContext(context.Background(), "Server error", "err", err)
-		runErr = err
-	case <-quit:
+	runErr, shutdownRequested := waitForWebTransportStartup(quit, wtReady, wtDone, errChan, logger)
+	if !shutdownRequested {
+		runErr = waitForShutdown(quit, errChan, logger)
 	}
 
 	logger.InfoContext(context.Background(), "Shutting down...")
@@ -377,10 +511,8 @@ func runServer(cfg *config.Config, logger *slog.Logger, h *hub.Hub, mux *http.Se
 	defer shutdownCancel()
 
 	h.Stop()
-	//nolint:errcheck
-	_ = wtServer.Close()
-	wtWg.Wait()
-	if err := server.Shutdown(shutdownCtx); err != nil {
+	shutdownWebTransport(wtServer, wtDone)
+	if err := shutdownHTTPServerFunc(server, shutdownCtx); err != nil {
 		logger.ErrorContext(context.Background(), "Server forced to shutdown", "err", err)
 	}
 	return runErr

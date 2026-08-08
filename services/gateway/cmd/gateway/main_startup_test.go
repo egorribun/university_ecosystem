@@ -3,6 +3,9 @@ package main
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
+	"errors"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/exec"
@@ -11,8 +14,13 @@ import (
 	"github.com/alicebob/miniredis/v2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	pb "github.com/university-ecosystem/core/gen/go/file_processor/v1"
 	"github.com/university-ecosystem/gateway/internal/config"
 	"github.com/university-ecosystem/services/pkg/spiffe"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/credentials/insecure"
 )
 
 // TestMain_InvalidPortExitsCleanly tests that running main() with an invalid port
@@ -182,6 +190,36 @@ func TestInitGRPC_SpiffeClientCredentialFailure(t *testing.T) {
 	assert.Contains(t, err.Error(), "uninitialized")
 }
 
+func TestInitGRPC_SpiffeClientCredentialSuccess(t *testing.T) {
+	oldCredentials := newSpiffeGRPCCredentialsFunc
+	t.Cleanup(func() { newSpiffeGRPCCredentialsFunc = oldCredentials })
+	newSpiffeGRPCCredentialsFunc = func(*spiffe.Client, string) (credentials.TransportCredentials, error) {
+		return insecure.NewCredentials(), nil
+	}
+
+	conn, fileClient, err := initGRPC(&config.Config{
+		FileProcessorAddr: "localhost:50051",
+		SpiffeEnabled:     true,
+	}, initLogger(), &spiffe.Client{})
+	require.NoError(t, err)
+	require.NotNil(t, conn)
+	require.NotNil(t, fileClient)
+	require.NoError(t, conn.Close())
+}
+
+func TestInitGRPC_InvalidTargetReturnsError(t *testing.T) {
+	oldNewClient := newGRPCClientFunc
+	t.Cleanup(func() { newGRPCClientFunc = oldNewClient })
+	newGRPCClientFunc = func(string, ...grpc.DialOption) (*grpc.ClientConn, error) {
+		return nil, errors.New("synthetic grpc client failure")
+	}
+
+	conn, fileClient, err := initGRPC(&config.Config{FileProcessorAddr: "localhost:50051"}, initLogger())
+	assert.Nil(t, conn)
+	assert.Nil(t, fileClient)
+	assert.EqualError(t, err, "synthetic grpc client failure")
+}
+
 func TestSetupRouter_InvalidWsHubURL(t *testing.T) {
 	cfg := &config.Config{
 		BackendURL:     "http://localhost:8080",
@@ -220,6 +258,29 @@ func TestSetupRouter_SpiffeBackendCredentialFailure(t *testing.T) {
 	assert.Contains(t, err.Error(), "uninitialized")
 }
 
+func TestSetupRouter_SpiffeClientTLSConfigSuccess(t *testing.T) {
+	oldTLSConfig := newSpiffeClientTLSConfigFunc
+	t.Cleanup(func() { newSpiffeClientTLSConfigFunc = oldTLSConfig })
+	newSpiffeClientTLSConfigFunc = func(*spiffe.Client, string) (*tls.Config, error) {
+		return &tls.Config{MinVersion: tls.VersionTLS13}, nil
+	}
+
+	router, err := setupRouter(&config.Config{
+		BackendURL:      "http://localhost:8080",
+		WsHubURL:        "http://localhost:8081",
+		JWTSecret:       "test-secret-at-least-32-characters-long",
+		AllowedOrigins:  []string{"http://localhost"},
+		SpiffeEnabled:   true,
+		BackendSpiffeID: "spiffe://university.ecosystem/ns/services/backend",
+	}, initLogger(), nil, nil, context.Background(), &spiffe.Client{})
+	require.NoError(t, err)
+	require.NotNil(t, router)
+}
+
+func TestDefaultSpiffeCloseWrapperIsSafeForEmptyClient(t *testing.T) {
+	assert.NoError(t, closeSpiffeClientFunc(&spiffe.Client{}))
+}
+
 func TestInitTracer_TLS(t *testing.T) {
 	cfg := &config.Config{
 		OtelEndpoint: "localhost:4317",
@@ -248,4 +309,110 @@ func TestRun_SpiffeInitializationFailureReturnsError(t *testing.T) {
 	err := run()
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "trust")
+}
+
+func setValidRunEnvironment(t *testing.T) {
+	t.Helper()
+	t.Setenv("GATEWAY_PORT", "0")
+	t.Setenv("JWT_SECRET", "test-secret-at-least-32-characters-long")
+	t.Setenv("BACKEND_URL", "http://localhost:8080")
+	t.Setenv("REDIS_URL", "")
+	t.Setenv("GRPC_USE_TLS", "false")
+	t.Setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "")
+	t.Setenv("SENTRY_DSN", "")
+	t.Setenv("SPIFFE_ENABLED", "false")
+}
+
+func TestRun_TracerFailureStillPropagatesGRPCFailure(t *testing.T) {
+	setValidRunEnvironment(t)
+	oldTracer := initTracerFunc
+	oldGRPC := initGRPCFunc
+	t.Cleanup(func() {
+		initTracerFunc = oldTracer
+		initGRPCFunc = oldGRPC
+	})
+	initTracerFunc = func(context.Context, *config.Config) (*sdktrace.TracerProvider, error) {
+		return nil, errors.New("synthetic tracer failure")
+	}
+	initGRPCFunc = func(*config.Config, *slog.Logger, ...*spiffe.Client) (*grpc.ClientConn, pb.FileProcessingServiceClient, error) {
+		return nil, nil, errors.New("synthetic gRPC failure")
+	}
+
+	err := run()
+	require.EqualError(t, err, "synthetic gRPC failure")
+}
+
+func TestRun_EnabledSPIFFEWithNilClientFailsClosed(t *testing.T) {
+	setValidRunEnvironment(t)
+	t.Setenv("SPIFFE_ENABLED", "true")
+	oldClient := newSpiffeClientFunc
+	t.Cleanup(func() { newSpiffeClientFunc = oldClient })
+	newSpiffeClientFunc = func(context.Context, spiffe.Config, *slog.Logger) (*spiffe.Client, error) {
+		return nil, nil
+	}
+
+	err := run()
+	require.EqualError(t, err, "SPIFFE is enabled but client initialization returned nil")
+}
+
+func TestRun_SpiffeCloseErrorDoesNotMaskStartupFailure(t *testing.T) {
+	setValidRunEnvironment(t)
+	t.Setenv("SPIFFE_ENABLED", "true")
+	oldClient := newSpiffeClientFunc
+	oldClose := closeSpiffeClientFunc
+	oldGRPC := initGRPCFunc
+	t.Cleanup(func() {
+		newSpiffeClientFunc = oldClient
+		closeSpiffeClientFunc = oldClose
+		initGRPCFunc = oldGRPC
+	})
+	newSpiffeClientFunc = func(context.Context, spiffe.Config, *slog.Logger) (*spiffe.Client, error) {
+		return &spiffe.Client{}, nil
+	}
+	closeSpiffeClientFunc = func(*spiffe.Client) error { return errors.New("synthetic close failure") }
+	initGRPCFunc = func(*config.Config, *slog.Logger, ...*spiffe.Client) (*grpc.ClientConn, pb.FileProcessingServiceClient, error) {
+		return nil, nil, errors.New("synthetic startup failure")
+	}
+
+	err := run()
+	require.EqualError(t, err, "synthetic startup failure")
+}
+
+type failingSpanExporter struct{}
+
+func (failingSpanExporter) ExportSpans(context.Context, []sdktrace.ReadOnlySpan) error {
+	return nil
+}
+
+func (failingSpanExporter) Shutdown(context.Context) error {
+	return errors.New("synthetic tracer shutdown failure")
+}
+
+func TestRun_LogsTracerShutdownFailure(t *testing.T) {
+	setValidRunEnvironment(t)
+	oldTracer := initTracerFunc
+	oldGRPC := initGRPCFunc
+	t.Cleanup(func() {
+		initTracerFunc = oldTracer
+		initGRPCFunc = oldGRPC
+	})
+	initTracerFunc = func(context.Context, *config.Config) (*sdktrace.TracerProvider, error) {
+		return sdktrace.NewTracerProvider(sdktrace.WithSyncer(failingSpanExporter{})), nil
+	}
+	initGRPCFunc = func(*config.Config, *slog.Logger, ...*spiffe.Client) (*grpc.ClientConn, pb.FileProcessingServiceClient, error) {
+		return nil, nil, errors.New("synthetic startup failure")
+	}
+
+	require.EqualError(t, run(), "synthetic startup failure")
+}
+
+func TestSetupRouter_RejectsShortJWTSecretWithoutExiting(t *testing.T) {
+	router, err := setupRouter(&config.Config{
+		BackendURL:     "http://localhost:8080",
+		WsHubURL:       "http://localhost:8081",
+		JWTSecret:      "too-short",
+		AllowedOrigins: []string{"http://localhost"},
+	}, initLogger(), nil, nil, context.Background())
+	assert.Nil(t, router)
+	assert.ErrorIs(t, err, http.ErrServerClosed)
 }

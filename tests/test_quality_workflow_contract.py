@@ -4,8 +4,16 @@ from pathlib import Path
 
 import yaml
 
+from scripts.quality.filter_checkov_sarif import filter_suppressed_results
+
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 CI_WORKFLOW_PATH = REPOSITORY_ROOT / ".github" / "workflows" / "ci.yml"
+ACTIONLINT_CONFIG_PATH = REPOSITORY_ROOT / ".github" / "actionlint.yaml"
+LIGHTHOUSE_CONFIG_PATH = REPOSITORY_ROOT / ".lighthouserc.js"
+LHCI_SCRIPT_PATH = REPOSITORY_ROOT / "frontend" / "scripts" / "run-lhci.mjs"
+CONTRACT_VALIDATION_WORKFLOW_PATH = (
+    REPOSITORY_ROOT / ".github" / "workflows" / "contract-validation.yml"
+)
 BACKEND_WORKFLOW_PATH = (
     REPOSITORY_ROOT / ".github" / "workflows" / "reusable-backend-tests.yml"
 )
@@ -17,6 +25,7 @@ GO_WORKFLOW_PATH = REPOSITORY_ROOT / ".github" / "workflows" / "reusable-go-test
 SECURITY_WORKFLOW_PATH = (
     REPOSITORY_ROOT / ".github" / "workflows" / "reusable-security-audit.yml"
 )
+CHECKOV_WORKFLOW_PATH = REPOSITORY_ROOT / ".github" / "workflows" / "checkov.yml"
 PACT_WORKFLOW_PATH = REPOSITORY_ROOT / ".github" / "workflows" / "contract-tests.yml"
 QUALITY_HISTORY_WORKFLOW_PATH = (
     REPOSITORY_ROOT / ".github" / "workflows" / "quality-history.yml"
@@ -34,6 +43,43 @@ def _workflow_triggers(workflow: dict[str, object]) -> dict[str, object]:
     value = workflow.get("on", workflow.get(True))
     assert isinstance(value, dict)
     return value
+
+
+def test_ci_triggers_when_draft_pull_request_becomes_ready() -> None:
+    workflow = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    triggers = _workflow_triggers(workflow)
+    pull_request = triggers.get("pull_request")
+
+    assert isinstance(pull_request, dict)
+    assert set(pull_request["types"]) >= {
+        "opened",
+        "synchronize",
+        "reopened",
+        "ready_for_review",
+    }
+
+
+def test_required_openapi_compatibility_check_runs_for_every_pull_request() -> None:
+    workflow = yaml.safe_load(
+        CONTRACT_VALIDATION_WORKFLOW_PATH.read_text(encoding="utf-8")
+    )
+    triggers = _workflow_triggers(workflow)
+    pull_request = triggers.get("pull_request")
+
+    assert isinstance(pull_request, dict)
+    assert "paths" not in pull_request, (
+        "A required check must not be hidden behind a pull_request path filter"
+    )
+    assert set(pull_request["types"]) >= {
+        "opened",
+        "synchronize",
+        "reopened",
+        "ready_for_review",
+    }
+    assert (
+        workflow["jobs"]["openapi-diff"]["name"]
+        == "OpenAPI Backward Compatibility Check"
+    )
 
 
 def test_quality_policy_gate_is_properly_wired_in_ci() -> None:
@@ -306,6 +352,153 @@ def test_trivy_sarif_categories_preserve_main_configuration_keys() -> None:
         "trivy-config.sarif": "trivy-config",
     }
 
+    trivy_steps = [
+        step
+        for step in security_workflow["jobs"]["docker-security"]["steps"]
+        if step.get("uses", "").startswith("aquasecurity/trivy-action@")
+    ]
+    assert trivy_steps
+    assert all(
+        step["with"]["limit-severities-for-sarif"] is True
+        for step in trivy_steps
+        if step["with"].get("format") == "sarif"
+    )
+
+    image_scan = next(
+        step
+        for step in ci_workflow["jobs"]["docker-security-scan"]["steps"]
+        if step.get("uses", "").startswith("aquasecurity/trivy-action@")
+    )
+    assert image_scan["with"]["limit-severities-for-sarif"] is True
+
+
+def test_iac_scan_exceptions_use_supported_scoped_syntax() -> None:
+    """Keep documented IaC exceptions active instead of silently ignored."""
+
+    exception_files = (
+        REPOSITORY_ROOT / ".github" / "workflows" / "lhci-linux.yml",
+        REPOSITORY_ROOT / ".github" / "workflows" / "dast.yml",
+        REPOSITORY_ROOT / ".github" / "workflows" / "build-orchestrated-linux.yml",
+        REPOSITORY_ROOT / ".github" / "workflows" / "visual-audit.yml",
+        REPOSITORY_ROOT / "Dockerfile.test",
+        REPOSITORY_ROOT / "Dockerfile.protogen",
+        REPOSITORY_ROOT / "infra" / "oss-fuzz" / "Dockerfile",
+        REPOSITORY_ROOT / "k8s" / "backend" / "deployment.yaml",
+        REPOSITORY_ROOT / "k8s" / "frontend" / "deployment.yaml",
+        REPOSITORY_ROOT / "k8s" / "frontend" / "canary" / "deployment-stable.yaml",
+    )
+    assert all(
+        "# checkov:skip" not in path.read_text(encoding="utf-8")
+        for path in exception_files
+    )
+
+    security_workflow = yaml.safe_load(
+        SECURITY_WORKFLOW_PATH.read_text(encoding="utf-8")
+    )
+    config_scan = next(
+        step
+        for step in security_workflow["jobs"]["docker-security"]["steps"]
+        if step.get("name") == "Run Trivy configuration scanner (IaC)"
+    )
+    assert config_scan["with"]["trivyignores"] == ".trivyignore.yaml"
+
+    trivy_ignore = yaml.safe_load(
+        (REPOSITORY_ROOT / ".trivyignore.yaml").read_text(encoding="utf-8")
+    )
+    assert [entry["id"] for entry in trivy_ignore["misconfigurations"]] == [
+        "KSV-0012",
+        "KSV-0104",
+        "KSV-0023",
+        "KSV-0001",
+        "KSV-0118",
+        "KSV-0014",
+        "KSV-0047",
+        "KSV-0017",
+        "KSV-0009",
+        "KSV-0010",
+        "AVD-DS-0002",
+    ]
+    assert trivy_ignore["misconfigurations"][-1] == {
+        "id": "AVD-DS-0002",
+        "paths": ["infra/oss-fuzz/Dockerfile"],
+        "statement": (
+            "OSS-Fuzz controls this disposable builder image and requires its "
+            "base-builder execution model; the image is never deployed or used as a "
+            "runtime container."
+        ),
+    }
+
+
+def test_checkov_sarif_filter_removes_only_source_backed_suppressions(tmp_path) -> None:
+    suppressed = tmp_path / "suppressed.yml"
+    suppressed.write_text(
+        "workflow_dispatch: #checkov:skip=CKV_GHA_7:manual input is intentional\n",
+        encoding="utf-8",
+    )
+    unsuppressed = tmp_path / "unsuppressed.yml"
+    unsuppressed.write_text("workflow_dispatch:\n", encoding="utf-8")
+    annotated = tmp_path / "annotated.yml"
+    annotated.write_text(
+        "checkov.io/skip1: CKV_K8S_43=the deployment pipeline pins the image\n",
+        encoding="utf-8",
+    )
+
+    def result(path: str, rule_id: str = "CKV_GHA_7") -> dict[str, object]:
+        return {
+            "ruleId": rule_id,
+            "locations": [
+                {
+                    "physicalLocation": {
+                        "artifactLocation": {"uri": path},
+                        "region": {"startLine": 1, "endLine": 1},
+                    }
+                }
+            ],
+        }
+
+    document: dict[str, object] = {
+        "runs": [
+            {
+                "results": [
+                    result("suppressed.yml"),
+                    result("annotated.yml", "CKV_K8S_43"),
+                    result("unsuppressed.yml"),
+                ]
+            }
+        ]
+    }
+
+    assert filter_suppressed_results(document, tmp_path) == 2
+    assert len(document["runs"][0]["results"]) == 1
+    assert (
+        document["runs"][0]["results"][0]["locations"][0]["physicalLocation"][
+            "artifactLocation"
+        ]["uri"]
+        == "unsuppressed.yml"
+    )
+
+
+def test_checkov_workflow_filters_sarif_before_upload() -> None:
+    workflow = yaml.safe_load(CHECKOV_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    steps = workflow["jobs"]["checkov"]["steps"]
+    filter_index = next(
+        index
+        for index, step in enumerate(steps)
+        if step.get("name") == "Remove inline-suppressed results from SARIF"
+    )
+    upload_index = next(
+        index
+        for index, step in enumerate(steps)
+        if step.get("uses", "").startswith("github/codeql-action/upload-sarif@")
+    )
+    assert filter_index < upload_index
+    assert steps[filter_index]["if"] == "always()"
+    assert steps[filter_index]["run"] == (
+        "python scripts/quality/filter_checkov_sarif.py results.sarif "
+        "--output-path filtered-results.sarif"
+    )
+    assert steps[upload_index]["with"]["sarif_file"] == "filtered-results.sarif"
+
 
 def test_e2e_coverage_is_chromium_opt_in_and_codecov_wired() -> None:
     e2e_workflow = yaml.safe_load(E2E_WORKFLOW_PATH.read_text(encoding="utf-8"))
@@ -348,6 +541,44 @@ def test_e2e_postgres_healthcheck_uses_declared_credentials() -> None:
 
     assert "pg_isready -U test -d test_e2e" in options
     assert "--health-cmd pg_isready\n" not in options
+
+
+def test_e2e_linux_build_memory_budget_keeps_both_limits_bounded() -> None:
+    workflow = yaml.safe_load(E2E_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    job = workflow["jobs"]["e2e"]
+    env = job["env"]
+
+    assert env["FRONTEND_BUILD_MAX_RSS_MB"] == "2048"
+    assert env["FRONTEND_BUILD_MAX_OLD_SPACE_MB"] == "1536"
+
+
+def test_e2e_wasm_build_retries_transient_binaryen_downloads() -> None:
+    workflow = yaml.safe_load(E2E_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    job = workflow["jobs"]["e2e"]
+    assert job["env"]["SKIP_WASM_BUILD"] == "1"
+
+    build_step = next(
+        step for step in job["steps"] if step.get("name") == "Build WASM modules"
+    )
+    run = build_step["run"]
+    assert build_step["env"]["SKIP_WASM_BUILD"] == "0"
+    assert "for attempt in 1 2 3" in run
+    assert "wasm-pack build rust-crypto --target web --release" in run
+    assert "wasm-pack build wasm-sanitizer --target web --release" in run
+    assert "sleep 10" in run
+    assert "WASM build failed after 3 attempts" in run
+
+
+def test_cross_browser_navigation_retries_only_transient_abort_errors() -> None:
+    source = (
+        REPOSITORY_ROOT / "frontend" / "tests" / "e2e" / "utils" / "navigation.ts"
+    ).read_text(encoding="utf-8")
+
+    assert "NS_BINDING_ABORTED" in source
+    assert "net::ERR_ABORTED" in source
+    assert "MAX_ATTEMPTS = 3" in source
+    assert "waitForTimeout(250 * attempt)" in source
+    assert "if (!TRANSIENT_NAVIGATION_ERROR.test(message)" in source
 
 
 def test_go_codecov_flags_match_component_contract() -> None:
@@ -413,8 +644,11 @@ def test_incremental_mutation_budget_matches_declared_gate() -> None:
     )
     assert "grep -E '^app/.*\\.py$'" in job_text
     assert "matrix.shard" in job_text
-    assert "awk -v shard" in job_text
-    assert "-v total=16" in job_text
+    assert "scripts/plan_mutmut_shards.py" in job_text
+    assert "--changed-files /tmp/changed_py.txt" in job_text
+    assert "--num-shards 16" in job_text
+    assert '"${MUTANT_NAMES[@]}"' in job_text
+    assert "awk -v shard" not in job_text
     assert "grep '^app/core/tenant\\.py$'" not in job_text
 
 
@@ -450,7 +684,7 @@ def test_incremental_mutation_stats_are_sharded_and_merged_before_execution() ->
     )
     assert download_step["with"]["pattern"] == "mutmut-stats-*"
     assert "scripts/merge_mutmut_stats.py" in mutation_text
-    assert "full pytest stats population four times" in mutation_text
+    assert "mutants/mutmut-stats.json" in mutation_text
     assert "mutation-tests-stats" in jobs["ci-success"]["needs"]
     assert "needs.mutation-tests-stats.result" in jobs["ci-success"]["steps"][0]["run"]
 
@@ -585,6 +819,7 @@ def test_backend_ci_uses_historical_duration_shards_and_aggregates_coverage() ->
     assert inputs["num-shards"]["default"] == 1
     assert inputs["integration-shard-id"]["default"] == -1
     assert inputs["integration-num-shards"]["default"] == 1
+    assert inputs["integration-test-pattern"]["default"] == "tests/integration/"
     run_step = next(
         step
         for step in backend_workflow["jobs"]["unit-tests"]["steps"]
@@ -597,8 +832,42 @@ def test_backend_ci_uses_historical_duration_shards_and_aggregates_coverage() ->
         for step in backend_workflow["jobs"]["integration-tests"]["steps"]
         if step.get("name") == "Run integration tests"
     )
-    assert "inputs.integration-shard-id" in integration_run_step["run"]
-    assert "inputs.integration-num-shards" in integration_run_step["run"]
+    assert "INTEGRATION_SHARD_ID" in integration_run_step["run"]
+    assert "INTEGRATION_NUM_SHARDS" in integration_run_step["run"]
+    assert "$env:INTEGRATION_TEST_PATTERN" in integration_run_step["run"]
+    assert '"${{ inputs.integration-test-pattern }}"' not in integration_run_step["run"]
+    assert integration_run_step["env"] == {
+        "INTEGRATION_SHARD_ID": "${{ inputs.integration-shard-id }}",
+        "INTEGRATION_NUM_SHARDS": "${{ inputs.integration-num-shards }}",
+        "INTEGRATION_TEST_PATTERN": "${{ inputs.integration-test-pattern }}",
+    }
+    assert backend_workflow["jobs"]["integration-tests"]["timeout-minutes"] == 60
+    integration_steps = backend_workflow["jobs"]["integration-tests"]["steps"]
+    image_prep_step = next(
+        step
+        for step in integration_steps
+        if step.get("name") == "Pre-pull testcontainer images with bounded retries"
+    )
+    image_prep_text = image_prep_step["run"]
+    assert "nats:2.10-alpine" in image_prep_text
+    assert "postgres:15-alpine" in image_prep_text
+    assert "redis:7-alpine" in image_prep_text
+    assert "pgvector/pgvector:pg17" in image_prep_text
+    assert "docker image inspect" in image_prep_text
+    assert "docker pull" in image_prep_text
+    assert "$maxAttempts = 5" in image_prep_text
+    assert "Start-Sleep" in image_prep_text
+    assert (
+        yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))["jobs"][
+            "backend-tests"
+        ]["with"]["integration-test-pattern"]
+        == "tests/integration/"
+    )
+    nightly = yaml.safe_load(NIGHTLY_FULL_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    assert (
+        nightly["jobs"]["backend-integration"]["with"]["integration-test-pattern"]
+        == "tests/integration/"
+    )
 
 
 def test_reusable_quality_jobs_have_bounded_execution() -> None:
@@ -637,6 +906,7 @@ def test_reusable_quality_jobs_have_bounded_execution() -> None:
         "fallback",
     ]
     assert lighthouse_shards["env"]["LHCI_URLS"] == "${{ matrix.urls }}"
+    assert lighthouse_shards["env"]["LHCI_SKIP_SYSTEM_DEPS"] == "1"
     shard_upload = next(
         step
         for step in lighthouse_shards["steps"]
@@ -666,6 +936,12 @@ def test_reusable_quality_jobs_have_bounded_execution() -> None:
     go = yaml.safe_load(GO_WORKFLOW_PATH.read_text(encoding="utf-8"))
     assert go["jobs"]["test"]["timeout-minutes"] == 60
     assert go["jobs"]["lint"]["timeout-minutes"] == 20
+    go_lint_action = next(
+        step
+        for step in go["jobs"]["lint"]["steps"]
+        if step.get("uses", "").startswith("golangci/golangci-lint-action@")
+    )
+    assert go_lint_action["with"]["verify"] is False
 
     security = yaml.safe_load(SECURITY_WORKFLOW_PATH.read_text(encoding="utf-8"))
     assert {
@@ -688,6 +964,28 @@ def test_reusable_quality_jobs_have_bounded_execution() -> None:
         "detect-secrets-baseline": 15,
         "semgrep": 20,
     }
+
+    semgrep_steps = security["jobs"]["semgrep"]["steps"]
+    semgrep_run = next(
+        step for step in semgrep_steps if step.get("name") == "Run Semgrep SAST"
+    )
+    semgrep_run_text = semgrep_run["run"]
+    assert (
+        "semgrep scan --config auto --baseline-commit origin/main" in semgrep_run_text
+    )
+    assert "--sarif --sarif-output=semgrep.sarif" in semgrep_run_text
+    assert "SEMGREP_SCAN_STATUS" in semgrep_run_text
+    assert any(
+        step.get("name") == "Fail if Semgrep reported findings or scan errors"
+        and step.get("if") == "always()"
+        for step in semgrep_steps
+    )
+    semgrep_upload = next(
+        step
+        for step in semgrep_steps
+        if step.get("name") == "Upload SARIF to GitHub Advanced Security"
+    )
+    assert "continue-on-error" not in semgrep_upload
 
 
 def test_frontend_coverage_is_merged_after_all_vitest_shards() -> None:
@@ -943,12 +1241,50 @@ def test_performance_gate_asserts_downloaded_lighthouse_without_rebuilding() -> 
         if step.get("name") == "Enforce Lighthouse thresholds"
     )
     assert threshold_step["env"]["LHCI_SKIP_PREPARE"] == "1"
+    threshold_command = threshold_step["run"]
+    assert "--config=../.lighthouserc.js" in threshold_command
+    assert "--preset=" not in threshold_command
+    assert "--budgetsFile=" not in threshold_command
+
+
+def test_lighthouse_config_uses_supported_budget_path_and_audit() -> None:
+    lighthouse_config = LIGHTHOUSE_CONFIG_PATH.read_text(encoding="utf-8")
+
+    assert "budgetPath:" in lighthouse_config
+    assert "budgetsPath:" not in lighthouse_config
+    assert "budgets:" not in lighthouse_config
+    assert '"total-blocking-time": [' in lighthouse_config
+    assert '"categories:performance": ["warn"' in lighthouse_config
+
+
+def test_lhci_collection_uses_lighthouse_budget_path_inside_settings() -> None:
+    lhci_script = LHCI_SCRIPT_PATH.read_text(encoding="utf-8")
+
+    assert 'budgetPath: path.resolve(frontendRoot, "../../budget.json")' in lhci_script
+    assert "budgetsPath:" not in lhci_script
+
+
+def test_lhci_command_runner_uses_shell_free_platform_resolution() -> None:
+    lhci_script = LHCI_SCRIPT_PATH.read_text(encoding="utf-8")
+
+    assert "shell: false" in lhci_script
+    assert "shell: true" not in lhci_script
+    assert '"/d", "/s", "/c", `${command}.cmd`' in lhci_script
+
+
+def test_lhci_system_dependency_bootstrap_is_explicitly_skippable() -> None:
+    lhci_script = LHCI_SCRIPT_PATH.read_text(encoding="utf-8")
+
+    assert "LHCI_SKIP_SYSTEM_DEPS" in lhci_script
+    assert "playwright install-deps chromium" in lhci_script
 
 
 def test_chaos_job_provisions_real_minio_through_toxiproxy() -> None:
     ci_workflow = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
     chaos_job = ci_workflow["jobs"]["chaos-tests"]
-    assert chaos_job["services"]["minio"]["image"].startswith("minio/minio:")
+    minio_service = chaos_job["services"]["minio"]
+    assert minio_service["image"].startswith("minio/minio:")
+    assert minio_service["command"] == 'server /data --console-address ":9001"'
     assert "9003:9003" in chaos_job["services"]["toxiproxy"]["ports"]
 
     configure_text = next(
@@ -969,11 +1305,20 @@ def test_chaos_job_provisions_real_minio_through_toxiproxy() -> None:
     assert chaos_env["STORAGE_S3_ENDPOINT_URL"] == "http://localhost:9003"
 
 
+def test_actionlint_documents_github_service_command_compatibility() -> None:
+    config = yaml.safe_load(ACTIONLINT_CONFIG_PATH.read_text(encoding="utf-8"))
+    ignores = config["paths"][".github/workflows/ci.yml"]["ignore"]
+
+    assert 'unexpected key "command" for "services" section' in ignores
+
+
 def test_frontend_mutation_gate_is_blocking_and_reproducible() -> None:
     ci_workflow = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
     jobs = ci_workflow["jobs"]
     mutation_job = jobs["stryker-incremental"]
-    assert mutation_job["if"] == "${{ github.event_name == 'pull_request' }}"
+    mutation_condition = mutation_job["if"]
+    assert "github.event_name == 'pull_request'" in mutation_condition
+    assert "github.event_name == 'workflow_dispatch'" in mutation_condition
     assert "stryker-incremental" in jobs["ci-success"]["needs"]
     result_check = jobs["ci-success"]["steps"][0]["run"]
     assert "needs.stryker-incremental.result" in result_check

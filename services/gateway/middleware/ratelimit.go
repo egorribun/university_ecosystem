@@ -40,6 +40,10 @@ type RateLimiter struct {
 	cleanupDone     chan struct{}
 }
 
+var closeRedisClientFunc = func(client *redis.Client) error {
+	return client.Close()
+}
+
 // NewRateLimiter creates a new rate limiter with Redis backend.
 // Fallback defaults: 10 requests / 60 s per client key.
 func NewRateLimiter(ctx context.Context, redisURL string, rps, burst int) (*RateLimiter, error) {
@@ -55,7 +59,7 @@ func NewRateLimiter(ctx context.Context, redisURL string, rps, burst int) (*Rate
 	defer cancel()
 
 	if err := client.Ping(pingCtx).Err(); err != nil {
-		if closeErr := client.Close(); closeErr != nil {
+		if closeErr := closeRedisClientFunc(client); closeErr != nil {
 			return nil, fmt.Errorf("%w; failed to close Redis client: %v", err, closeErr)
 		}
 		return nil, err

@@ -15,6 +15,7 @@ import tempfile
 import threading
 import time
 from datetime import UTC, datetime, timedelta
+from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
@@ -188,8 +189,8 @@ async def test_high_concurrency_mtls_with_dynamic_svid_rotations():
             if data:
                 writer.write(b"ACK:" + data)
                 await writer.drain()
-        except Exception:
-            pass
+        except (ConnectionError, OSError, asyncio.IncompleteReadError):
+            return
         finally:
             writer.close()
             await writer.wait_closed()
