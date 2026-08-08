@@ -2,7 +2,7 @@
 
 **Companion to:** `docs/testing/roadmap-100-percent-quality.md`
 **Audit baseline commit:** `ce588bb0a1c08eb66ff2e5558349096a51d3ed4a` (the "finalize quality-roadmap" merge)
-**Repository HEAD at audit time:** `465c29055` (follow-up verification continued on this branch)
+**Repository HEAD at audit time:** `b9405c5da` (follow-up verification continued on this branch)
 **Audit date:** 2026-08-08
 **Status:** final control audit in progress — repository-side quality gates are being closed; only fresh post-fix remote evidence and the objective 30-day promotion window can change the certification state
 
@@ -15,11 +15,14 @@ claim that the long-running or manually provisioned workstreams are complete.
 ### Evidence captured
 
 - The audit began from a clean tree at `d5bedc62991caf7f3d9618974b8a9a3a5e310ea1`;
-  quality-gate hardening was then committed as `702278a8d` and `465c29055`.
+  quality-gate hardening was then committed as `702278a8d`, `465c29055`, and
+  `b9405c5da` (the dependency-policy contract was updated with the newly
+  pinned security cutoffs and passed its remote shard).
   The earlier fresh evidence below remains tied to its exact source commit.
-- The fresh remote CI run `31272523668` for this exact commit completed with
-  `105` jobs, `success`, and zero failed jobs. Its normalized quality manifest
-  was valid and the quality-contract validator passed.
+- The fresh remote CI run `31272523668` for source commit
+  `496ed7f2c5c0fd33da738b4687b4c31281f14d7e` completed with `105` jobs,
+  `success`, and zero failed jobs. Its normalized quality manifest was valid
+  and the quality-contract validator passed.
 - The active `main` ruleset `8335285` is enforced and now contains the core
   CI, coverage, inventory, backend/frontend, Go, Rust, contract, security,
   migration, Helm, Docker, workflow, and Kyverno checks. The documented admin
@@ -46,15 +49,20 @@ claim that the long-running or manually provisioned workstreams are complete.
   run `31276786678` successfully obtained OIDC tokens and completed the test
   work, but Codecov rejected every upload with `Repository not found`. The
   repository must be onboarded/authorized in Codecov (or receive a valid
-  repository token) before this external gate can be certified.
+  repository token) before this external gate can be certified. The fresh
+  current-HEAD CI run `31278744917` for `b9405c5da` completed with `105` jobs:
+  all repository tests and quality jobs passed, while the `13` component
+  Codecov uploads returned the same `Repository not found` response and the
+  aggregate `CI Success` job consequently failed closed.
 - Follow-up local regression evidence is current: the quality closure slice
-  passes `227` tests; Ruff, `uv lock --check`, and the repository dependency
+  passes `230` tests; Ruff, `uv lock --check`, and the repository dependency
   audit pass. The Python lock now removes unused `diskcache`, pins patched
   `h2>=4.4.1`, and constrains transitive `mcp` to the patched `<2` line.
-- The full current-HEAD nightly run `31275975109` was dispatched during this
-  audit. At the latest poll only its full mutmut job remained active; its final
-  conclusion is recorded only after the run reaches a terminal state, and a
-  single green nightly cannot satisfy the 30-day rule.
+- The full nightly run `31275975109` was dispatched during this audit from the
+  clean audit baseline `d5bedc62991caf7f3d9618974b8a9a3a5e310ea1`; its final
+  conclusion is recorded only after the full mutmut job reaches a terminal
+  state. No production source files changed between that baseline and
+  `b9405c5da`, but the run is still not used as a fabricated 30-day window.
 
 ### Current normalized coverage
 
@@ -117,14 +125,14 @@ closure matrix for this audit is:
 
 | Workstream | Current repository evidence | State |
 | --- | --- | --- |
-| Python, frontend, Go, Rust, and Tier0 coverage | `quality-manifest.json` from CI run `31272523668`, contract validator, Tier0 per-file checks | closed at contract floors |
+| Python, frontend, Go, Rust, and Tier0 coverage | `quality-manifest.json` from CI run `31272523668` (source `496ed7f2c5c0fd33da738b4687b4c31281f14d7e`), contract validator, Tier0 per-file checks | closed at contract floors |
 | Stateful/property testing and disposable MinIO/SpiceDB cells | Hypothesis state machines, real container integration tests, nightly container cell | closed in code; nightly evidence tracked |
 | Python mutmut and frontend Stryker | blocking incremental jobs plus full nightly jobs | repository wiring closed; full nightly evidence tracked |
 | Go goleak/fuzz/integration and Rust fuzz/proptest/Miri | Go workflows/tests, Rust fuzz targets/proptest suites, nightly Miri job | repository wiring closed; current nightly evidence tracked |
 | Pact, schema compatibility, browser matrix, SSR cache assertions | contract workflow/provider verification, cross-browser reusable workflow, production SSR E2E | closed in code; promotion window tracked |
 | Checkov, Kyverno, negative security, performance baselines | blocking Checkov, Kyverno tests, security suites, Criterion/WS-Hub regression gates | closed in repository; external target/key evidence tracked where applicable |
 | Dashboard and certification | quality-history workflow, dashboard/certification generators, release hook, runbook | closed in repository; durable run evidence is generated by CI |
-| Codecov | all callers use OIDC and fail closed on upload errors; run `31276786678` reached Codecov but got `Repository not found` | blocked on Codecov repository authorization |
+| Codecov | all callers use OIDC and fail closed on upload errors; runs `31276786678` and `31278744917` reached Codecov but got `Repository not found` | blocked on Codecov repository authorization |
 | Advisory promotion | `scripts/quality/check_stabilization_window.py` and `quality-promotion-check.yml` | intentionally blocked until 30 consecutive green calendar days |
 
 ## Execution ledger — 2026-07-27 (uncommitted)
