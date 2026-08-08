@@ -42,10 +42,14 @@ jobs:
 
       - name: Collect completed nightly runs
         shell: bash
-        run: >-
-          gh api
-          "repos/$GITHUB_REPOSITORY/actions/workflows/nightly-full-gate.yml/runs?branch=$TARGET_BRANCH&status=completed&per_page=100"
-          > "$RUNNER_TEMP/nightly-runs.json"
+        run: |
+          gh api \
+            --method GET \
+            "repos/$GITHUB_REPOSITORY/actions/workflows/nightly-full-gate.yml/runs" \
+            --raw-field "branch=$TARGET_BRANCH" \
+            --raw-field "status=completed" \
+            --raw-field "per_page=100" \
+            > "$RUNNER_TEMP/nightly-runs.json"
 
       - name: Evaluate stabilization window
         id: evaluate
