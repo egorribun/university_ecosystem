@@ -88,6 +88,10 @@ jobs:
       # 1536 MiB, so this does not turn an unbounded build into a pass.
       FRONTEND_BUILD_MAX_RSS_MB: "2048"
       FRONTEND_BUILD_MAX_OLD_SPACE_MB: "1536"
+      # Build WASM once with the retrying step below. Subsequent Playwright
+      # webServer builds validate the checked/generated artifacts instead of
+      # re-downloading Binaryen from GitHub Releases for every suite.
+      SKIP_WASM_BUILD: "1"
     services:
       postgres:
         image: pgvector/pgvector:pg17
@@ -155,6 +159,26 @@ jobs:
         uses: taiki-e/install-action@54420ca6e3a4cab262aeabc1af4f52908ca28931 # wasm-pack
         with:
           tool: wasm-pack@0.13.1
+
+      - name: Build WASM modules
+        # Binaryen is downloaded by wasm-pack from GitHub Releases on the first
+        # build. Retry transient CDN 404/timeout failures without weakening the
+        # build: persistent failures still fail the job after three attempts.
+        working-directory: frontend
+        env:
+          SKIP_WASM_BUILD: "0"
+        run: |
+          for attempt in 1 2 3; do
+            if wasm-pack build rust-crypto --target web --release && \
+               wasm-pack build wasm-sanitizer --target web --release; then
+              echo "OK: WASM modules built (attempt $attempt)"
+              exit 0
+            fi
+            echo "WASM build failed on attempt $attempt; retrying after 10s..."
+            sleep 10
+          done
+          echo "::error::WASM build failed after 3 attempts"
+          exit 1
 
       - name: Install Playwright
         working-directory: frontend

@@ -552,6 +552,23 @@ def test_e2e_linux_build_memory_budget_keeps_both_limits_bounded() -> None:
     assert env["FRONTEND_BUILD_MAX_OLD_SPACE_MB"] == "1536"
 
 
+def test_e2e_wasm_build_retries_transient_binaryen_downloads() -> None:
+    workflow = yaml.safe_load(E2E_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    job = workflow["jobs"]["e2e"]
+    assert job["env"]["SKIP_WASM_BUILD"] == "1"
+
+    build_step = next(
+        step for step in job["steps"] if step.get("name") == "Build WASM modules"
+    )
+    run = build_step["run"]
+    assert build_step["env"]["SKIP_WASM_BUILD"] == "0"
+    assert "for attempt in 1 2 3" in run
+    assert "wasm-pack build rust-crypto --target web --release" in run
+    assert "wasm-pack build wasm-sanitizer --target web --release" in run
+    assert "sleep 10" in run
+    assert "WASM build failed after 3 attempts" in run
+
+
 def test_cross_browser_navigation_retries_only_transient_abort_errors() -> None:
     source = (
         REPOSITORY_ROOT / "frontend" / "tests" / "e2e" / "utils" / "navigation.ts"
