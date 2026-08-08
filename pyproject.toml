@@ -24,7 +24,6 @@ dependencies = [
   "clamd>=1.0.2",
   "cryptography>=50.0.0",                             # SEC: fixes CVE-2026-69247 reported by Trivy on 49.0.0
   "defusedxml>=0.7.1",
-  "diskcache>=5.6.3",
   "elasticsearch[async]>=9.3.0,<10.0.0",
   "email-validator>=2.3.0,<3",  # TD-W18-06 (Wave 18): upper bound prevents silent major-version breakage
   "fastapi>=0.135.3,<0.142",                          # PY-P1-01 (audit Wave 10): tight minor bound; update consciously via Renovate
@@ -33,6 +32,7 @@ dependencies = [
   "grpcio>=1.80.0",
   "gunicorn>=25.3.0",
   "httpx[http2]>=0.28.1,<1.0",                          # TD-W9-06: upper bound — httpx 1.0 has breaking transport API changes
+  "h2>=4.4.1,<5",                                       # SEC: fixes the active h2 advisory in HTTP/2 transport
   "minio>=7.2.20",
   "nats-py>=2.14.0,<3",                                  # MOD-W10-01: upper bound; nats-py 3.0 has breaking JetStream API changes
   "nh3>=0.3.4",
@@ -444,8 +444,8 @@ required-version = "==0.11.28"
 exclude-newer = "7 days"
 # Security exception: cryptography 50.0.0 (uploaded 2026-07-31) fixes
 # CVE-2026-69247; keep the general reproducibility cutoff for every other
-# package while allowing this patched release into the lockfile.
-exclude-newer-package = { cryptography = "2026-08-01T00:00:00Z", pyopenssl = "2026-08-02T00:00:00Z" }
+# package while allowing patched security releases into the lockfile.
+exclude-newer-package = { cryptography = "2026-08-01T00:00:00Z", pyopenssl = "2026-08-02T00:00:00Z", h2 = "2026-08-04T00:00:00Z", mcp = "2026-08-04T00:00:00Z" }
 environments = [
     "sys_platform == 'win32'",
     "sys_platform == 'linux'",
@@ -463,6 +463,7 @@ override-dependencies = [
     "opentelemetry-semantic-conventions>=0.62b0",
     "click>=8.2.1",
     "tomli>=2.2.1",
+    "mcp>=1.28.1,<2",
 ]
 
 [tool.uv.sources]

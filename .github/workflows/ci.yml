@@ -1706,7 +1706,6 @@ jobs:
       - name: Upload rust-native coverage to Codecov
         uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0
         with:
-          token: ${{ secrets.CODECOV_TOKEN }}
           use_oidc: true
           files: artifacts/coverage/rust/rust-native/llvm.json
           flags: rust-native
@@ -1716,7 +1715,6 @@ jobs:
       - name: Upload rust-pyo3-sanitizer coverage to Codecov
         uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0
         with:
-          token: ${{ secrets.CODECOV_TOKEN }}
           use_oidc: true
           files: artifacts/coverage/rust/rust-pyo3-sanitizer/llvm.json
           flags: rust-pyo3-sanitizer
@@ -1726,7 +1724,6 @@ jobs:
       - name: Upload rust-wasm-sanitizer coverage to Codecov
         uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0
         with:
-          token: ${{ secrets.CODECOV_TOKEN }}
           use_oidc: true
           files: artifacts/coverage/rust/rust-wasm-sanitizer/llvm.json
           flags: rust-wasm-sanitizer
@@ -1736,7 +1733,6 @@ jobs:
       - name: Upload rust-crypto coverage to Codecov
         uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0
         with:
-          token: ${{ secrets.CODECOV_TOKEN }}
           use_oidc: true
           files: artifacts/coverage/rust/rust-crypto/llvm.json
           flags: rust-crypto

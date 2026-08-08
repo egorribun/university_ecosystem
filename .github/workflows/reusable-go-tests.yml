@@ -205,7 +205,6 @@ jobs:
         uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0
         if: ${{ always() && steps.codecov-flag.outputs.flag != '' }}
         with:
-          token: ${{ secrets.CODECOV_TOKEN }}
           use_oidc: true
           files: ${{ inputs.service-directory }}/coverage.out
           flags: ${{ steps.codecov-flag.outputs.flag }}
