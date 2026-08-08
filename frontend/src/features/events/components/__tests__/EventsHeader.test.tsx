@@ -1,5 +1,5 @@
-import { act, fireEvent, render, screen } from "@testing-library/react"
-import { describe, expect, it, vi, beforeEach } from "vitest"
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react"
+import { afterEach, describe, expect, it, vi, beforeEach } from "vitest"
 import { EventsHeader } from "../EventsHeader"
 import useMediaQuery from "@/hooks/useMediaQuery"
 import { useSlidingIndicator } from "@/hooks/ui/useSlidingIndicator"
@@ -54,6 +54,10 @@ describe("EventsHeader", () => {
       }
     })
     window.IntersectionObserver = mockIntersectionObserver as unknown as typeof IntersectionObserver
+  })
+
+  afterEach(() => {
+    cleanup()
   })
 
   it("renders correctly", () => {
