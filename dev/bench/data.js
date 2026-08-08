@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1786214863615,
+  "lastUpdate": 1786215032584,
   "repoUrl": "https://github.com/egorribun/university_ecosystem",
   "entries": {
     "Go Services Performance Benchmarks": [
@@ -3235,6 +3235,120 @@ window.BENCHMARK_DATA = {
             "name": "strip_html/large",
             "value": 85917,
             "range": "± 625",
+            "unit": "ns/iter"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "egorribun2005@gmail.com",
+            "name": "Egor",
+            "username": "egorribun"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "496ed7f2c5c0fd33da738b4687b4c31281f14d7e",
+          "message": "fix(ci): restore checks after draft pull requests become ready (#1227)\n\n* feat(wave212): remove obsolete handoff prompt\n\n* fix(ci): trigger checks when draft PR becomes ready\n\n* test(quality): cover gateway TLS certificate failure paths\n\n* fix(ci): keep required OpenAPI check live on every PR\n\n* fix(ci): run frontend mutation gate during manual recovery\n\n* test(gateway): satisfy Go lint and nil analysis\n\n* fix(ci): add manual recovery triggers for Go analysis\n\n* fix(ci): make gosec test directive effective\n\n* fix(ci): use canonical lighthouse assertions\n\n* fix(ci): eliminate ws-hub shutdown race\n\n* fix(ci): handle ws-hub socket cleanup error\n\n* fix(ci): reduce ws-hub server complexity\n\n* fix(ci): align lighthouse gates with canonical config\n\n* fix(ci): isolate backend integration test scope\n\n* fix(ci): start minio for chaos services\n\n* fix(quality): consume frontend statement coverage\n\n* fix(ci): close PR check and coverage gaps\n\n* fix(ci): close analyzer findings\n\n* fix(ci): drain file processor servers before return\n\n* fix(ci): close coverage gate deficits\n\n* fix(ci): make PR quality gate reproducible\n\n* fix(ci): prevent security scan alert drift\n\n* fix(ci): retry testcontainer image pulls\n\n* fix(ci): stabilize browser e2e execution\n\n* fix(ci): close mutation and tier0 coverage gaps\n\n* fix(ci): unblock code scanning ruleset\n\n* fix(ci): preserve scoped trivy suppressions\n\n* fix(ci): filter suppressed checkov alerts\n\n* fix(ci): write filtered checkov sarif separately\n\n* fix(ci): use one trivy ignore format\n\n* fix(ci): make Semgrep SARIF analysis reliable\n\n* fix(ci): make Semgrep pull requests diff-aware\n\n* fix(ci): close Semgrep findings in integration gate\n\n* fix(ci): make gateway race performance gate stable\n\n* fix(ci): remove golangci schema network dependency\n\n* fix(ci): avoid redundant Lighthouse dependency bootstrap\n\n* fix(ci): close session crypto coverage branch\n\n* fix(ci): include workflow contract inputs in mutmut sandbox\n\n* fix(test): bound Miri sanitizer payload\n\n* fix(test): reduce Miri sanitizer fixture\n\n* fix(test): invalidate cached JWT keys on rotation\n\n* fix(test): isolate notification metrics state\n\n* chore: update codebase test coverage reports and configuration files\n\n* fix(ci): balance incremental mutmut shards\n\n* fix(test): clean up SPIFFE stress test lint\n\n* fix(test): isolate ChatWindow render suites\n\n* fix(frontend): guard profile sync auto-fetch reruns\n\n* fix(test): isolate profile coverage suites\n\n* fix(test): isolate component coverage suites\n\n* fix(test): isolate event hero coverage suites\n\n* fix(test): isolate schedule and event file suites\n\n* chore(test): checkpoint current branch changes\n\n---------\n\nCo-authored-by: Egor Ribun <egorribun@gmail.com>",
+          "timestamp": "2026-08-08T21:40:49+03:00",
+          "tree_id": "26101b1ba5348abe8e9c0a22c539a733d8f96e1b",
+          "url": "https://github.com/egorribun/university_ecosystem/commit/496ed7f2c5c0fd33da738b4687b4c31281f14d7e"
+        },
+        "date": 1786215031244,
+        "tool": "cargo",
+        "benches": [
+          {
+            "name": "sanitize_rich_text/empty",
+            "value": 6011,
+            "range": "± 156",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_rich_text/plain_text",
+            "value": 6906,
+            "range": "± 28",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_rich_text/simple_html",
+            "value": 9868,
+            "range": "± 63",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_rich_text/xss_attempt",
+            "value": 10799,
+            "range": "± 52",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_rich_text/large",
+            "value": 98468,
+            "range": "± 2713",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_html_basic/empty",
+            "value": 5298,
+            "range": "± 26",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_html_basic/plain_text",
+            "value": 6260,
+            "range": "± 51",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_html_basic/simple_html",
+            "value": 9058,
+            "range": "± 28",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_html_basic/xss_attempt",
+            "value": 9418,
+            "range": "± 64",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_html_basic/large",
+            "value": 91999,
+            "range": "± 298",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "strip_html/empty",
+            "value": 5299,
+            "range": "± 129",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "strip_html/plain_text",
+            "value": 6211,
+            "range": "± 24",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "strip_html/simple_html",
+            "value": 8577,
+            "range": "± 179",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "strip_html/xss_attempt",
+            "value": 9191,
+            "range": "± 107",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "strip_html/large",
+            "value": 90218,
+            "range": "± 2828",
             "unit": "ns/iter"
           }
         ]
