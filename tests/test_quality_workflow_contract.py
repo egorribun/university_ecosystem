@@ -33,6 +33,9 @@ QUALITY_HISTORY_WORKFLOW_PATH = (
 NIGHTLY_FULL_WORKFLOW_PATH = (
     REPOSITORY_ROOT / ".github" / "workflows" / "nightly-full-gate.yml"
 )
+QUALITY_PROMOTION_WORKFLOW_PATH = (
+    REPOSITORY_ROOT / ".github" / "workflows" / "quality-promotion-check.yml"
+)
 KYVERNO_POLICY_PATH = REPOSITORY_ROOT / "k8s" / "kyverno" / "cluster-policies.yaml"
 KYVERNO_TEST_ROOT = REPOSITORY_ROOT / "k8s" / "kyverno" / "tests"
 
@@ -1341,3 +1344,17 @@ def test_frontend_mutation_gate_is_blocking_and_reproducible() -> None:
         if step.get("name") == "Upload frontend coverage to Codecov"
     )
     assert codecov_step["with"]["flags"] == "frontend"
+
+
+def test_quality_promotion_workflow_uses_fail_closed_stabilization_checker() -> None:
+    workflow = yaml.safe_load(
+        QUALITY_PROMOTION_WORKFLOW_PATH.read_text(encoding="utf-8")
+    )
+    triggers = _workflow_triggers(workflow)
+    assert "workflow_dispatch" in triggers
+    assert workflow["permissions"] == {"actions": "read", "contents": "read"}
+
+    text = QUALITY_PROMOTION_WORKFLOW_PATH.read_text(encoding="utf-8")
+    assert "nightly-full-gate.yml/runs" in text
+    assert "check_stabilization_window.py" in text
+    assert "Fail when promotion is not yet eligible" in text

@@ -4,6 +4,7 @@ name: E2E Tests
 
 permissions:
   contents: read
+  id-token: write
 
 on:
   workflow_call:
@@ -355,10 +356,11 @@ jobs:
         uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
+          use_oidc: true
           files: ./frontend/coverage/e2e/lcov.info
           flags: frontend
           name: frontend-e2e-chromium-${{ inputs.shard-index }}-of-${{ inputs.shard-total }}
-          fail_ci_if_error: false
+          fail_ci_if_error: true
 
       - name: Terminate backend
         if: always()

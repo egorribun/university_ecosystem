@@ -463,6 +463,9 @@ jobs:
             run-integration: false
             free-threading: false
     needs: pre-commit-check
+    permissions:
+      contents: read
+      id-token: write
     uses: ./.github/workflows/reusable-backend-tests.yml
     with:
       test-group-name: "All-${{ matrix.name }}"
@@ -553,6 +556,9 @@ jobs:
           - service: services/cmd/uni-cli
             coverage-threshold: 80
     needs: pre-commit-check
+    permissions:
+      contents: read
+      id-token: write
     uses: ./.github/workflows/reusable-go-tests.yml
     with:
       service-directory: ${{ matrix.service }}
@@ -633,6 +639,9 @@ jobs:
   frontend-tests:
     name: Frontend Tests
     needs: pre-commit-check
+    permissions:
+      contents: read
+      id-token: write
     uses: ./.github/workflows/reusable-frontend-tests.yml
     with:
       node-version: "22"
@@ -677,6 +686,9 @@ jobs:
   e2e-tests:
     name: E2E Tests (shard ${{ matrix.shard-index }}/4)
     needs: pre-commit-check
+    permissions:
+      contents: read
+      id-token: write
     strategy:
       fail-fast: false
       matrix:
@@ -699,6 +711,9 @@ jobs:
   e2e-tests-cross-browser:
     name: E2E Tests (cross-browser ${{ matrix.browser }})
     needs: pre-commit-check
+    permissions:
+      contents: read
+      id-token: write
     strategy:
       fail-fast: false
       matrix:
@@ -1597,6 +1612,7 @@ jobs:
     timeout-minutes: 20
     permissions:
       contents: read
+      id-token: write
     if: |
       github.event_name == 'push' ||
       github.event_name == 'pull_request' ||
@@ -1691,37 +1707,41 @@ jobs:
         uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
+          use_oidc: true
           files: artifacts/coverage/rust/rust-native/llvm.json
           flags: rust-native
           name: rust-native-coverage
-          fail_ci_if_error: false
+          fail_ci_if_error: true
 
       - name: Upload rust-pyo3-sanitizer coverage to Codecov
         uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
+          use_oidc: true
           files: artifacts/coverage/rust/rust-pyo3-sanitizer/llvm.json
           flags: rust-pyo3-sanitizer
           name: rust-pyo3-sanitizer-coverage
-          fail_ci_if_error: false
+          fail_ci_if_error: true
 
       - name: Upload rust-wasm-sanitizer coverage to Codecov
         uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
+          use_oidc: true
           files: artifacts/coverage/rust/rust-wasm-sanitizer/llvm.json
           flags: rust-wasm-sanitizer
           name: rust-wasm-sanitizer-coverage
-          fail_ci_if_error: false
+          fail_ci_if_error: true
 
       - name: Upload rust-crypto coverage to Codecov
         uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
+          use_oidc: true
           files: artifacts/coverage/rust/rust-crypto/llvm.json
           flags: rust-crypto
           name: rust-crypto-coverage
-          fail_ci_if_error: false
+          fail_ci_if_error: true
 
       - name: Install wasm-pack
         # rustwasm canonical curl installer (W141 polish-v2 / W142 polish-v3:

@@ -2,9 +2,9 @@
 
 **Companion to:** `docs/testing/roadmap-100-percent-quality.md`
 **Audit baseline commit:** `ce588bb0a1c08eb66ff2e5558349096a51d3ed4a` (the "finalize quality-roadmap" merge)
-**Repository HEAD at audit time:** `496ed7f2c5c0fd33da738b4687b4c31281f14d7e`
+**Repository HEAD at audit time:** `d5bedc62991caf7f3d9618974b8a9a3a5e310ea1`
 **Audit date:** 2026-08-08
-**Status:** final control audit — the fast PR gate and current quality contract pass; the roadmap is not fully closure-certified until the manual and stabilization gates listed below are completed
+**Status:** final control audit in progress — repository-side quality gates are being closed; only fresh post-fix remote evidence and the objective 30-day promotion window can change the certification state
 
 ## Final control audit — 2026-08-08
 
@@ -38,6 +38,13 @@ claim that the long-running or manually provisioned workstreams are complete.
   the fresh current-HEAD CI run is therefore the authoritative aggregate for
   this checkpoint. This is an environment-duration limitation, not evidence
   of a Python test failure.
+- Codecov uploads were reproduced as rejected when no repository token was
+  available. The upload path is now switched to Codecov OIDC with explicit
+  GitHub `id-token: write` permissions and `fail_ci_if_error: true`; a fresh
+  remote run after this change is required to close the evidence gap.
+- The full current-HEAD nightly run `31275975109` was dispatched during this
+  audit. Its completed jobs are recorded only after the run reaches a terminal
+  conclusion; a single green nightly cannot satisfy the 30-day rule.
 
 ### Current normalized coverage
 
@@ -77,18 +84,38 @@ instrumentation runtime.
   floors, Tier0 per-file metrics, current Checkov workflow run, current Kyverno
   policy job, contracts, Schemathesis, migrations, security jobs, browser
   matrix execution, Go integration execution, and the incremental Python
-  mutation gate.
-- Not yet closure-certified: `CODECOV_TOKEN` is absent from the repository
-  secrets and requires the explicit user action in G.5.1; `nightly-full-gate`
-  has no current-HEAD green run and its recent history has no 30-day green
-  window; Go integration, cross-browser, and chaos/migration resilience remain
-  advisory under the documented promotion rule; full-repository mutation,
-  full Stryker, Miri, load/chaos, DAST, and continuous performance evidence
-  still require a successful nightly/stabilization record.
+  mutation gate. The Codecov configuration and all upload callers are also
+  repository-complete; the post-fix OIDC upload result is the remaining
+  remote verification item.
+- Not yet closure-certified: the current nightly run must finish, and its
+  historical run set still has no 30-day green window. Go integration,
+  cross-browser, and chaos/migration resilience remain advisory until the
+  objective promotion check passes. DAST still requires an authorized target
+  URL; release signing still requires the protected certification key. Those
+  are external deployment/evidence prerequisites, not missing test code.
 - The historical Checkov findings and file-processor Pact mismatch cited by the
   older ledger are no longer current blockers: `.checkov.yml` is blocking with
   scoped skips, the current Checkov run passed, and the current contract job
   passed. They remain in the historical text below only as audit history.
+
+### Historical phase text and current-state reconciliation
+
+The execution plan below was intentionally retained as an audit trail. Its
+“currently absent”, baseline-count, and “task” paragraphs describe the state
+that existed when the plan was written, not a second live backlog. The live
+closure matrix for this audit is:
+
+| Workstream | Current repository evidence | State |
+| --- | --- | --- |
+| Python, frontend, Go, Rust, and Tier0 coverage | `quality-manifest.json` from CI run `31272523668`, contract validator, Tier0 per-file checks | closed at contract floors |
+| Stateful/property testing and disposable MinIO/SpiceDB cells | Hypothesis state machines, real container integration tests, nightly container cell | closed in code; nightly evidence tracked |
+| Python mutmut and frontend Stryker | blocking incremental jobs plus full nightly jobs | repository wiring closed; full nightly evidence tracked |
+| Go goleak/fuzz/integration and Rust fuzz/proptest/Miri | Go workflows/tests, Rust fuzz targets/proptest suites, nightly Miri job | repository wiring closed; current nightly evidence tracked |
+| Pact, schema compatibility, browser matrix, SSR cache assertions | contract workflow/provider verification, cross-browser reusable workflow, production SSR E2E | closed in code; promotion window tracked |
+| Checkov, Kyverno, negative security, performance baselines | blocking Checkov, Kyverno tests, security suites, Criterion/WS-Hub regression gates | closed in repository; external target/key evidence tracked where applicable |
+| Dashboard and certification | quality-history workflow, dashboard/certification generators, release hook, runbook | closed in repository; durable run evidence is generated by CI |
+| Codecov | all callers use OIDC and fail closed on upload errors | awaiting post-fix remote confirmation |
+| Advisory promotion | `scripts/quality/check_stabilization_window.py` and `quality-promotion-check.yml` | intentionally blocked until 30 consecutive green calendar days |
 
 ## Execution ledger — 2026-07-27 (uncommitted)
 
@@ -497,7 +524,11 @@ See Phase 14 (Ratchet sequencing table) for the authoritative ratchet floors; th
 
 **Task G.2.2** — Add a Slack/GitHub-issue-on-failure step to `nightly-full-gate.yml` so nightly regressions are not silently ignored (there is no PR to fail against).
 
-**Task G.2.3** — Once `nightly-full-gate.yml` is green for 30 consecutive calendar days, promote its constituent checks into the ruleset's `required_status_checks` for merges to `main` (mirrors the existing `go-integration-*` promotion criterion already written into `ci.yml`'s `ci-success` job comments).
+**Task G.2.3** — Promotion is measured by `quality-promotion-check.yml`,
+which calls `scripts/quality/check_stabilization_window.py` against completed
+nightly runs and fails closed until every day in the required 30-day window is
+green. Only then may the named checks be added to the ruleset; the workflow
+never changes branch protection automatically.
 
 ### G.3 — Document (do not remove) the admin bypass
 
@@ -511,19 +542,26 @@ See Phase 14 (Ratchet sequencing table) for the authoritative ratchet floors; th
 
 **Task G.4.3** — Re-run `scripts/quality/generate_test_inventory.py` + `scripts/quality/check_orphans_and_anti_patterns.py` locally after G.4.1 to confirm no owner-resolution regression (the checker will now resolve every path to `@egorribun`; confirm it still passes with `Quality inventory validation passed`).
 
-### G.5 — Codecov integration (requires a manual user action)
+### G.5 — Codecov integration (OIDC, fail-closed)
 
-**Task G.5.1 (user action, cannot be automated by an agent):** Create a Codecov account/link for `egorribun/university_ecosystem`, generate a `CODECOV_TOKEN`, and add it as a GitHub Actions secret (`gh secret set CODECOV_TOKEN`).
+**Task G.5.1** — All Codecov callers now request GitHub OIDC with
+`id-token: write` and set `use_oidc: true`; the repository no longer depends
+on a manually created `CODECOV_TOKEN`.
 
-**Task G.5.2** — Author `codecov.yml` at the repo root with per-component `flags` (`python`, `frontend`, `go-gateway`, `go-ws-hub`, `go-file-processor`, `rust-native`, `rust-pyo3-sanitizer`, `rust-wasm-sanitizer`) mapped to the same paths as `quality/quality-contract.json`'s components, `coverage.status.project` per flag with the same floors as the contract, and `comment: layout: "condensed_header, diff, flags, files"` so PRs get an automatic coverage comment.
+**Task G.5.2** — `codecov.yml` is present with per-component flags and the
+same contract floors for Python, frontend, Go, native Rust, PyO3, WASM, and
+rust-crypto.
 
-**Task G.5.3** — Wire the missing Codecov upload step into `reusable-frontend-tests.yml` and `reusable-e2e-tests.yml` (currently only `reusable-backend-tests.yml` and `reusable-go-tests.yml` upload; Rust and combined-frontend uploads are absent).
+**Task G.5.3** — Backend, frontend, E2E, Go, and Rust upload callers are all
+present and use `fail_ci_if_error: true`; the post-change CI run is the final
+remote proof that the OIDC exchange and uploads succeed.
 
-### G.6 — Make Checkov actually block
+### G.6 — Checkov blocking gate — closed
 
-**Task G.6.1** — Run `checkov --framework all -d .` locally once, capture the full current finding list, and either fix each real finding or add a scoped, justified `--skip-check` entry (never `soft_fail: true`) per finding ID in `.checkov.yml` (new config file) with an inline comment explaining why it's a false positive for this repo.
-
-**Task G.6.2** — Remove `soft_fail: true` from `.github/workflows/checkov.yml` once G.6.1's baseline is clean, so future IaC regressions actually fail the job. Add this job to the Phase G.1 required-checks list once stable.
+`.checkov.yml` contains only scoped, documented skips;
+`.github/workflows/checkov.yml` has no `soft_fail` escape hatch, and the
+current remote Checkov job passed. Further work is governance promotion and
+review of the skip register when IaC changes.
 
 ## Phase 0 — Close the Tier0 measurement gap
 

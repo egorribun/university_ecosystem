@@ -1,0 +1,73 @@
+name: Quality Promotion Readiness
+
+# This workflow is an enforcement point for the documented advisory-to-
+# blocking promotion rule. It never changes the ruleset automatically; it
+# produces a signed-by-GitHub-run decision that a maintainer can review before
+# adding long-running checks to branch protection.
+on:
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: "Branch whose nightly runs must be evaluated"
+        required: false
+        type: string
+        default: main
+      days:
+        description: "Required consecutive successful calendar days"
+        required: false
+        type: number
+        default: 30
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  stabilization-window:
+    name: Verify ${{ inputs.days }}-day nightly stabilization window
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TARGET_BRANCH: ${{ inputs.branch }}
+      REQUIRED_DAYS: ${{ inputs.days }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.14"
+
+      - name: Collect completed nightly runs
+        shell: bash
+        run: >-
+          gh api
+          "repos/$GITHUB_REPOSITORY/actions/workflows/nightly-full-gate.yml/runs?branch=$TARGET_BRANCH&status=completed&per_page=100"
+          > "$RUNNER_TEMP/nightly-runs.json"
+
+      - name: Evaluate stabilization window
+        id: evaluate
+        continue-on-error: true
+        run: >-
+          python scripts/quality/check_stabilization_window.py
+          --runs "$RUNNER_TEMP/nightly-runs.json"
+          --branch "$TARGET_BRANCH"
+          --days "$REQUIRED_DAYS"
+          --output artifacts/quality/stabilization-window.json
+
+      - name: Upload stabilization evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: quality-stabilization-${{ github.run_id }}
+          path: artifacts/quality/stabilization-window.json
+          if-no-files-found: error
+
+      - name: Fail when promotion is not yet eligible
+        if: steps.evaluate.outcome == 'failure'
+        run: |
+          echo "The advisory quality checks are not eligible for promotion yet;"
+          echo "inspect the uploaded stabilization-window.json evidence."
+          exit 1
