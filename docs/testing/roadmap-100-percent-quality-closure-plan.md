@@ -2,7 +2,7 @@
 
 **Companion to:** `docs/testing/roadmap-100-percent-quality.md`
 **Audit baseline commit:** `ce588bb0a1c08eb66ff2e5558349096a51d3ed4a` (the "finalize quality-roadmap" merge)
-**Repository HEAD at audit time:** `b9405c5da` (follow-up verification continued on this branch)
+**Repository HEAD at audit time:** `1394a79bc` (follow-up verification continued on this branch)
 **Audit date:** 2026-08-08
 **Status:** final control audit in progress — repository-side quality gates are being closed; only fresh post-fix remote evidence and the objective 30-day promotion window can change the certification state
 
@@ -17,7 +17,8 @@ claim that the long-running or manually provisioned workstreams are complete.
 - The audit began from a clean tree at `d5bedc62991caf7f3d9618974b8a9a3a5e310ea1`;
   quality-gate hardening was then committed as `702278a8d`, `465c29055`, and
   `b9405c5da` (the dependency-policy contract was updated with the newly
-  pinned security cutoffs and passed its remote shard).
+  pinned security cutoffs and passed its remote shard), and `1394a79bc` (the
+  repeated-mutmut Dishka lifecycle regression was fixed and covered locally).
   The earlier fresh evidence below remains tied to its exact source commit.
 - The fresh remote CI run `31272523668` for source commit
   `496ed7f2c5c0fd33da738b4687b4c31281f14d7e` completed with `105` jobs,
@@ -58,11 +59,16 @@ claim that the long-running or manually provisioned workstreams are complete.
   passes `230` tests; Ruff, `uv lock --check`, and the repository dependency
   audit pass. The Python lock now removes unused `diskcache`, pins patched
   `h2>=4.4.1`, and constrains transitive `mcp` to the patched `<2` line.
-- The full nightly run `31275975109` was dispatched during this audit from the
-  clean audit baseline `d5bedc62991caf7f3d9618974b8a9a3a5e310ea1`; its final
-  conclusion is recorded only after the full mutmut job reaches a terminal
-  state. No production source files changed between that baseline and
-  `b9405c5da`, but the run is still not used as a fabricated 30-day window.
+- The targeted repeated-lifecycle regression is now green locally: the full
+  GraphQL file passed twice through separate `pytest.main()` runs (`15 + 15`),
+  while the broader Windows clean-test profile timed out at its 15-minute host
+  budget without producing a test failure. The old nightly run `31275975109`
+  then reached terminal `failure` before mutation scoring: its clean-test
+  phase failed at `tests/test_graphql.py::test_graphql_schedule_query` with
+  `assert 0 == 1` after the app-level Dishka container had been closed and
+  reused. The lifecycle reset is in `1394a79bc`; fresh nightly run
+  `31282842649` is now running against that SHA, and its terminal result is
+  intentionally pending.
 
 ### Current normalized coverage
 
@@ -105,8 +111,8 @@ instrumentation runtime.
   mutation gate. The Codecov configuration and all upload callers are also
   repository-complete; the post-fix OIDC exchange works, while Codecov
   repository authorization remains the remaining external verification item.
-- Not yet closure-certified: the current nightly run must finish, and its
-  historical run set still has no 30-day green window. Go integration,
+- Not yet closure-certified: fresh nightly run `31282842649` must finish, and
+  its historical run set still has no 30-day green window. Go integration,
   cross-browser, and chaos/migration resilience remain advisory until the
   objective promotion check passes. DAST still requires an authorized target
   URL; release signing still requires the protected certification key. Those
