@@ -1057,6 +1057,9 @@ export const useProfileSync = (
       // Already tried or have data, nothing to do
       return
     }
+    // Mark every launched request, including cached/initializing paths, so a
+    // dependency-only effect re-run cannot invoke the session-key fetch twice.
+    autoFetchAttemptedRef.current = true
     ;(async () => {
       try {
         // Wave 134 SW1 — Bridge: route through queryClient.fetchQuery so the
