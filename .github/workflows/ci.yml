@@ -1880,7 +1880,7 @@ jobs:
           echo "Mutating shard ${{ matrix.shard }}/16: ${#MUTANT_NAMES[@]} exact mutants"
           rm -f .mutmut-cache
           # Time-box: a long-lived branch can span tens of thousands of mutants
-          # (multi-hour full run). This blocking PR job runs REAL
+          # (multi-hour full run). This advisory job runs REAL
           # mutation for a bounded window. mutmut exits 0 on completion regardless of
           # survivors; the test-isolation invariants we actually gate on (generate +
           # stats + clean-test + forced-fail) each exit NON-ZERO *before* the mutant

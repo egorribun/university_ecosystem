@@ -1,5 +1,5 @@
-import { cleanup, render, screen } from "@testing-library/react"
-import { afterEach, describe, it, expect, vi } from "vitest"
+import { render, screen } from "@testing-library/react"
+import { describe, it, expect, vi } from "vitest"
 
 vi.mock("framer-motion", async () =>
   (await import("@/tests/helpers/framerMotionMock")).framerMotionMock()
@@ -49,10 +49,6 @@ const baseProps = {
 }
 
 describe("EventFileManager", () => {
-  afterEach(() => {
-    cleanup()
-  })
-
   it("renders the file list and upload form when editable", () => {
     render(<EventFileManager {...baseProps} />)
     expect(screen.getByText("events:detail.sections.files.title")).toBeInTheDocument()

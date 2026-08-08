@@ -1,5 +1,5 @@
-import { cleanup, render, screen, fireEvent, waitFor } from "@testing-library/react"
-import { afterEach, describe, it, expect, vi, beforeEach } from "vitest"
+import { render, screen, fireEvent, waitFor } from "@testing-library/react"
+import { describe, it, expect, vi, beforeEach } from "vitest"
 
 const mocks = vi.hoisted(() => ({
   post: vi.fn(() => Promise.resolve({ data: {} })),
@@ -118,10 +118,6 @@ describe("EventFileManager branches", () => {
     mocks.post.mockResolvedValue({ data: {} })
     mocks.del.mockReset()
     mocks.del.mockResolvedValue({ data: {} })
-  })
-
-  afterEach(() => {
-    cleanup()
   })
 
   it("disables the submit button until a file is selected", () => {

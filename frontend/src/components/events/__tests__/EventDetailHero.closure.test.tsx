@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react"
+import { fireEvent, render, screen } from "@testing-library/react"
 import { act } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
@@ -35,7 +35,6 @@ const setNaturalSize = (image: HTMLImageElement, width: number, height: number) 
 }
 
 afterEach(() => {
-  cleanup()
   vi.useRealTimers()
 })
 

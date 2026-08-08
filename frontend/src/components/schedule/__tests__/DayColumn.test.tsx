@@ -1,6 +1,6 @@
-import { cleanup, render, screen } from "@testing-library/react"
+import { render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
-import { afterEach, describe, it, expect, vi } from "vitest"
+import { describe, it, expect, vi } from "vitest"
 
 vi.mock("framer-motion", async () =>
   (await import("@/tests/helpers/framerMotionMock")).framerMotionMock()
@@ -60,10 +60,6 @@ const baseProps = {
 }
 
 describe("DayColumn", () => {
-  afterEach(() => {
-    cleanup()
-  })
-
   it("renders the day label, count badge, and lesson subjects", () => {
     render(<DayColumn {...baseProps} />)
     expect(screen.getByRole("heading", { name: "Monday" })).toBeInTheDocument()

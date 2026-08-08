@@ -1,5 +1,5 @@
-import { afterEach, describe, expect, it } from "vitest"
-import { cleanup, render, screen } from "@testing-library/react"
+import { describe, expect, it } from "vitest"
+import { render, screen } from "@testing-library/react"
 import { axe } from "jest-axe"
 
 import { ChatWindow } from "./ChatWindow"
@@ -41,10 +41,6 @@ const MSG_FIXTURE: Message[] = [
     isLastRead: true,
   },
 ]
-
-afterEach(() => {
-  cleanup()
-})
 
 describe("ChatWindow — ARIA shape", () => {
   it("exposes role=log with aria-live=polite", () => {

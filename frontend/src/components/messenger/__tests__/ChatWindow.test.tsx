@@ -1,5 +1,5 @@
-import { cleanup, render, screen, fireEvent } from "@testing-library/react"
-import { afterEach, describe, it, expect, vi } from "vitest"
+import { render, screen, fireEvent } from "@testing-library/react"
+import { describe, it, expect, vi } from "vitest"
 import type { ReactNode } from "react"
 
 import { ChatWindow } from "@/components/messenger/ChatWindow"
@@ -96,10 +96,6 @@ const makeMessage = (overrides: Partial<Message> & Pick<Message, "id" | "text">)
   timestamp: "12:00",
   isMe: false,
   ...overrides,
-})
-
-afterEach(() => {
-  cleanup()
 })
 
 const mockMessages: Message[] = [

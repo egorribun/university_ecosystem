@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import asyncio
 import glob
-import logging
 import os
 import ssl
 import tempfile
@@ -25,8 +24,6 @@ from app.core.security.spiffe import (
     SVIDManager,
     create_spiffe_server_ssl_context,
 )
-
-LOGGER = logging.getLogger(__name__)
 
 
 def generate_ca() -> tuple[Any, Any, bytes]:
@@ -192,8 +189,8 @@ async def test_high_concurrency_mtls_with_dynamic_svid_rotations():
             if data:
                 writer.write(b"ACK:" + data)
                 await writer.drain()
-        except (ConnectionError, OSError, asyncio.IncompleteReadError) as exc:
-            LOGGER.debug("Expected stress-client disconnect during echo", exc_info=exc)
+        except (ConnectionError, OSError, asyncio.IncompleteReadError):
+            return
         finally:
             writer.close()
             await writer.wait_closed()

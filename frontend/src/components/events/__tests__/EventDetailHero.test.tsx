@@ -1,6 +1,6 @@
-import { cleanup, render, screen } from "@testing-library/react"
+import { render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
-import { afterEach, describe, it, expect, vi } from "vitest"
+import { describe, it, expect, vi } from "vitest"
 
 vi.mock("framer-motion", async () =>
   (await import("@/tests/helpers/framerMotionMock")).framerMotionMock()
@@ -17,10 +17,6 @@ import { EventDetailHero } from "@/components/events/EventDetailHero"
 const baseProps = { imageUrl: "https://picsum.photos/seed/event-detail/1200/675" }
 
 describe("EventDetailHero", () => {
-  afterEach(() => {
-    cleanup()
-  })
-
   it("renders the hero image and a zoom button", () => {
     render(<EventDetailHero {...baseProps} />)
     expect(screen.getByRole("button", { name: "events:detail.actions.zoom" })).toBeInTheDocument()

@@ -1,6 +1,6 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react"
+import { fireEvent, render, screen } from "@testing-library/react"
 import type { ElementType, ReactNode } from "react"
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
+import { beforeEach, describe, expect, it, vi } from "vitest"
 
 const scheduleState = vi.hoisted(() => ({
   current: {
@@ -97,10 +97,6 @@ describe("ScheduleCard", () => {
   beforeEach(() => {
     scheduleState.current = { data: undefined, isLoading: false, isFetching: false }
     translationState.useArrays = true
-  })
-
-  afterEach(() => {
-    cleanup()
   })
 
   it("gates loading to student accounts with a group", () => {

@@ -1,4 +1,4 @@
-import { cleanup, render, screen, fireEvent, act } from "@testing-library/react"
+import { render, screen, fireEvent, act } from "@testing-library/react"
 import { describe, it, expect, vi, afterEach } from "vitest"
 import type { ReactNode } from "react"
 
@@ -98,7 +98,6 @@ const makeMessage = (overrides: Partial<Message> & Pick<Message, "id" | "text">)
 })
 
 afterEach(() => {
-  cleanup()
   vi.useRealTimers()
   motionState.reduced = false
 })

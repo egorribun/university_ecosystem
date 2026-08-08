@@ -1,6 +1,6 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
+import { fireEvent, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
-import { afterEach, describe, expect, it, vi } from "vitest"
+import { describe, expect, it, vi } from "vitest"
 import type { ReactNode } from "react"
 
 vi.mock("react-i18next", () => ({
@@ -151,10 +151,6 @@ const baseProps = {
 }
 
 describe("DayColumn closure paths", () => {
-  afterEach(() => {
-    cleanup()
-  })
-
   it("renders the offline fallback and forwards its retry action", async () => {
     const user = userEvent.setup()
     const onRetry = vi.fn()
