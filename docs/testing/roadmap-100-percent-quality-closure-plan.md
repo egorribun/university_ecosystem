@@ -2,9 +2,93 @@
 
 **Companion to:** `docs/testing/roadmap-100-percent-quality.md`
 **Audit baseline commit:** `ce588bb0a1c08eb66ff2e5558349096a51d3ed4a` (the "finalize quality-roadmap" merge)
-**Repository HEAD at audit time:** `0becc3e1ff130392dbc4166d04e6aa63495053bb`
-**Audit date:** 2026-07-22
-**Status:** execution in progress — baseline remains historical; see the uncommitted execution ledger below
+**Repository HEAD at audit time:** `496ed7f2c5c0fd33da738b4687b4c31281f14d7e`
+**Audit date:** 2026-08-08
+**Status:** final control audit — the fast PR gate and current quality contract pass; the roadmap is not fully closure-certified until the manual and stabilization gates listed below are completed
+
+## Final control audit — 2026-08-08
+
+This checkpoint replaces stale “pending” conclusions from the historical
+execution ledgers below. It does not turn a passing bounded PR gate into a
+claim that the long-running or manually provisioned workstreams are complete.
+
+### Evidence captured
+
+- Repository HEAD was `496ed7f2c5c0fd33da738b4687b4c31281f14d7e`; the working tree
+  was clean at audit start and the only resulting change is this audit record.
+- The fresh remote CI run `31272523668` for this exact commit completed with
+  `105` jobs, `success`, and zero failed jobs. Its normalized quality manifest
+  was valid and the quality-contract validator passed.
+- The active `main` ruleset `8335285` is enforced and now contains the core
+  CI, coverage, inventory, backend/frontend, Go, Rust, contract, security,
+  migration, Helm, Docker, workflow, and Kyverno checks. The documented admin
+  bypass remains intentionally enabled under the repository bypass policy.
+- Local static and contract checks passed: `uv lock --check`, Ruff check and
+  format, mypy (349 files), source/test inventory, 224 quality-contract tests,
+  frontend typecheck, ESLint, Prettier, i18n parity, dead-code and dependency
+  checks. The complete frontend Vitest suite also passed on the local Node 26
+  host.
+- Local Go unit suites passed for gateway, ws-hub, file-processor, uni-cli, and
+  SPIFFE. Local Rust tests and stable/nightly LLVM coverage runs passed for
+  native, PyO3 sanitizer, WASM sanitizer, and rust-crypto. Local `go test
+  -race` cannot run on this Windows host because CGO is enabled but no C
+  compiler is installed; the remote current-HEAD Go integration job passed.
+- The full local Python coverage run exceeded the 30-minute host budget before
+  producing an aggregate artifact. The complete four-shard Python result from
+  the fresh current-HEAD CI run is therefore the authoritative aggregate for
+  this checkpoint. This is an environment-duration limitation, not evidence
+  of a Python test failure.
+
+### Current normalized coverage
+
+The following values are from the current-HEAD quality manifest. “n/a” means
+that the source report format does not provide that counter; it is not silently
+treated as 100%.
+
+| Component | Lines | Statements | Branches | Functions |
+| --- | ---: | ---: | ---: | ---: |
+| Python | 99.5097% | n/a | 98.5262% | n/a |
+| Frontend | 99.4999% | 99.4999% | 98.1009% | 98.1013% |
+| Go gateway | 98.8764% derived | 99.0809% | n/a | n/a |
+| Go ws-hub | 98.7771% derived | 99.0119% | n/a | n/a |
+| Go file-processor | 99.1372% derived | 99.2401% | n/a | n/a |
+| Rust native | 100% | n/a | 100% | 100% |
+| Rust PyO3 sanitizer | 99.3769% | n/a | 50% | 100% |
+| Rust WASM sanitizer | 100% | n/a | 100% | 100% |
+| Rust crypto | 100% | n/a | 100% (0/0) | 100% |
+| Tier0 (54 files) | 100% (7266/7266) | unsupported by source reports | 100% (1730/1730) | 100% (532/532) |
+
+The contract deliberately enforces no Rust component branch floor because the
+PyO3 sanitizer's native branch report is 50%; its required line/function
+floors pass. Tier0's strict per-file line/branch/function validator passes all
+54 matched files, while the generator still labels the aggregate as
+`measurement_only` by design.
+
+The local Node 26 V8 report measured 99.4979% statements, 98.0935% functions,
+and 97.6824% branches; the repository CI contract runs Node 22 and its fresh
+normalized artifact passes 99/98/98. No Node 22 runtime is installed on this
+host, so the local branch discrepancy remains an environment-specific
+verification note rather than a code change inferred from a mismatched
+instrumentation runtime.
+
+### Closure status after this audit
+
+- Closed and freshly evidenced: current PR-gate checks, aggregate coverage
+  floors, Tier0 per-file metrics, current Checkov workflow run, current Kyverno
+  policy job, contracts, Schemathesis, migrations, security jobs, browser
+  matrix execution, Go integration execution, and the incremental Python
+  mutation gate.
+- Not yet closure-certified: `CODECOV_TOKEN` is absent from the repository
+  secrets and requires the explicit user action in G.5.1; `nightly-full-gate`
+  has no current-HEAD green run and its recent history has no 30-day green
+  window; Go integration, cross-browser, and chaos/migration resilience remain
+  advisory under the documented promotion rule; full-repository mutation,
+  full Stryker, Miri, load/chaos, DAST, and continuous performance evidence
+  still require a successful nightly/stabilization record.
+- The historical Checkov findings and file-processor Pact mismatch cited by the
+  older ledger are no longer current blockers: `.checkov.yml` is blocking with
+  scoped skips, the current Checkov run passed, and the current contract job
+  passed. They remain in the historical text below only as audit history.
 
 ## Execution ledger — 2026-07-27 (uncommitted)
 
@@ -321,21 +405,15 @@ intended for the checkpoint commit.
 
 ### Still open
 
-The roadmap is not complete. The remaining workstreams are the frontend 99/98/98
-closure plus broader Stryker/property/diff coverage beyond the verified utility
-slice; Go low-coverage bootstrap and
-goroutine/fuzz/integration hardening; remote Rust fuzz/Miri/coverage execution
-and stabilization evidence; remote Pact provider replay; browser-matrix
-stabilization; Checkov/Kyverno and nightly-full-gate evidence; negative-security
-and performance baselines; durable dashboard/certification evidence; and the
-manual Codecov token action. The latest remote evidence also contains separate
-failures in Checkov (72 findings on the historical PR merge), continuous
-performance baselines, DAST, and a file-processor Pact body mismatch (fix
-prepared locally); these remain actionable until a fresh remote verification. The
-repository wiring for several workstreams
-already exists and is locally contract-tested, but it must not be marked
-complete from backend unit-coverage evidence alone or from YAML presence
-without green remote runs and the roadmap's stabilization windows.
+The roadmap is not complete. The remaining gates are the manual Codecov token
+action; a current-HEAD nightly-full-gate run followed by the required 30-day
+green stabilization window; promotion of the currently advisory Go integration,
+cross-browser, and chaos/migration-resilience checks; full-repository mutation
+and Stryker evidence; Miri, load/chaos, DAST, and continuous-performance
+baselines; and durable dashboard/certification evidence. The repository wiring
+for several workstreams already exists and the current PR gate is green, but
+those workstreams must not be marked complete from YAML presence or bounded
+unit-coverage evidence alone.
 
 ## 0. Why this document exists
 
