@@ -510,9 +510,9 @@ skips = [
 # NOT try app/ and raises FileNotFoundError ("Could not figure out where the code
 # to mutate is"). `source_paths` is a newer/unreleased key NOT recognized by 3.5.0.
 # `pytest_add_cli_args_test_selection` scopes the pytest run to the deterministic
-# unit-test population. Incremental file selection is done positionally via
-# dotted-module glob patterns at the CLI (see .github/workflows/ci.yml
-# mutation-tests job) — those filter within this universe.
+# unit-test population. Incremental selection is done by
+# `scripts/plan_mutmut_shards.py`, which assigns exact mutant names using the
+# merged test-duration map (see .github/workflows/ci.yml mutation-tests job).
 paths_to_mutate = ["app/"]
 pytest_add_cli_args_test_selection = [
     "-m",

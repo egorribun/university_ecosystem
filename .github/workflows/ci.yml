@@ -1862,43 +1862,35 @@ jobs:
         run: |
           # Scope mutmut to every changed backend module.  The old tenant-only
           # probe silently skipped mutation evidence for all other Python diffs.
-          # mutmut 3.x removed --paths-to-mutate. Select changed modules positionally
-          # via Unix-glob patterns: app/services/search.py -> app.services.search*
-          # (source_paths in pyproject scopes the universe).  The sixteen
-          # matrix legs receive disjoint lines from the sorted manifest; each leg then
-          # performs a blocking score gate for its own changed slice.  Stats were
-          # collected once per disjoint test shard and merged before this step;
-          # mutmut therefore loads the complete mapping instead of rerunning the
-          # full pytest stats population four times.
-          PATTERNS=$(awk -v shard='${{ matrix.shard }}' -v total=16 '
-            ((NR - 1) % total + 1) == shard {
-              path = $0
-              gsub(/\//, ".", path)
-              sub(/\.py$/, "*", path)
-              printf "%s ", path
-            }
-          ' /tmp/changed_py.txt)
-          if [ -z "$PATTERNS" ]; then
-            echo "No changed Python modules assigned to mutation shard ${{ matrix.shard }}/16."
+          # The sixteen matrix legs receive exact mutant names from a
+          # duration-balanced plan.  Whole-file assignment made a one-file diff
+          # put every mutant on shard 1, leaving the other 15 legs empty and
+          # making the blocking gate needlessly hit its time-box.
+          uv run python scripts/plan_mutmut_shards.py \
+            --changed-files /tmp/changed_py.txt \
+            --shard-id "${{ matrix.shard }}" \
+            --num-shards 16 \
+            --max-children 2 \
+            --output /tmp/mutmut-shard.txt
+          mapfile -t MUTANT_NAMES < /tmp/mutmut-shard.txt
+          if [ "${#MUTANT_NAMES[@]}" -eq 0 ]; then
+            echo "No changed mutants assigned to mutation shard ${{ matrix.shard }}/16."
             exit 0
           fi
-          echo "Mutating shard ${{ matrix.shard }}/16: $PATTERNS"
+          echo "Mutating shard ${{ matrix.shard }}/16: ${#MUTANT_NAMES[@]} exact mutants"
           rm -f .mutmut-cache
-          # Time-box: mutmut 3.x mutates WHOLE changed modules (no line-level
-          # scoping), so on a long-lived branch the diff spans many modules = tens of
-          # thousands of mutants (multi-hour full run). This advisory job runs REAL
+          # Time-box: a long-lived branch can span tens of thousands of mutants
+          # (multi-hour full run). This blocking PR job runs REAL
           # mutation for a bounded window. mutmut exits 0 on completion regardless of
           # survivors; the test-isolation invariants we actually gate on (generate +
           # stats + clean-test + forced-fail) each exit NON-ZERO *before* the mutant
           # loop on a regression. --max-children 2 caps concurrent forked mutant
           # workers (default = nproc) to bound peak RAM (one full app load per fork)
           # and reduce the runner OOM-killer firing mid-sweep.
-          set -f          # keep the $PATTERNS '*' globs intact for mutmut
           set +e
-          timeout --kill-after=30s 25m uv run mutmut run --max-children 2 $PATTERNS 2>&1 | tee /tmp/mutmut_run.log
+          timeout --kill-after=30s 25m uv run mutmut run --max-children 2 "${MUTANT_NAMES[@]}" 2>&1 | tee /tmp/mutmut_run.log
           ec=${PIPESTATUS[0]}   # exit code of timeout/mutmut, NOT tee
           set -e
-          set +f
           # mutmut prints the ASCII line "Running mutation testing" (mutmut/__main__.py:1255)
           # ONLY after generate + stats + clean-test + forced-fail ALL pass — each of
           # those exits non-zero BEFORE that line on a regression (stats 957, clean-test

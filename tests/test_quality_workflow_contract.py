@@ -644,8 +644,11 @@ def test_incremental_mutation_budget_matches_declared_gate() -> None:
     )
     assert "grep -E '^app/.*\\.py$'" in job_text
     assert "matrix.shard" in job_text
-    assert "awk -v shard" in job_text
-    assert "-v total=16" in job_text
+    assert "scripts/plan_mutmut_shards.py" in job_text
+    assert "--changed-files /tmp/changed_py.txt" in job_text
+    assert "--num-shards 16" in job_text
+    assert '"${MUTANT_NAMES[@]}"' in job_text
+    assert "awk -v shard" not in job_text
     assert "grep '^app/core/tenant\\.py$'" not in job_text
 
 
@@ -681,7 +684,7 @@ def test_incremental_mutation_stats_are_sharded_and_merged_before_execution() ->
     )
     assert download_step["with"]["pattern"] == "mutmut-stats-*"
     assert "scripts/merge_mutmut_stats.py" in mutation_text
-    assert "full pytest stats population four times" in mutation_text
+    assert "mutants/mutmut-stats.json" in mutation_text
     assert "mutation-tests-stats" in jobs["ci-success"]["needs"]
     assert "needs.mutation-tests-stats.result" in jobs["ci-success"]["steps"][0]["run"]
 
