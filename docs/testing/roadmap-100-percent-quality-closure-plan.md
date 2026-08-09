@@ -2,11 +2,11 @@
 
 **Companion to:** `docs/testing/roadmap-100-percent-quality.md`
 **Audit baseline commit:** `ce588bb0a1c08eb66ff2e5558349096a51d3ed4a` (the "finalize quality-roadmap" merge)
-**Repository HEAD at audit time:** `1394a79bc` (follow-up verification continued on this branch)
-**Audit date:** 2026-08-08
+**Repository HEAD at audit time:** `113e91723` (fresh Dishka lifecycle-isolation fix under remote verification)
+**Audit date:** 2026-08-09
 **Status:** final control audit in progress — repository-side quality gates are being closed; only fresh post-fix remote evidence and the objective 30-day promotion window can change the certification state
 
-## Final control audit — 2026-08-08
+## Final control audit — 2026-08-09
 
 This checkpoint replaces stale “pending” conclusions from the historical
 execution ledgers below. It does not turn a passing bounded PR gate into a
@@ -17,8 +17,16 @@ claim that the long-running or manually provisioned workstreams are complete.
 - The audit began from a clean tree at `d5bedc62991caf7f3d9618974b8a9a3a5e310ea1`;
   quality-gate hardening was then committed as `702278a8d`, `465c29055`, and
   `b9405c5da` (the dependency-policy contract was updated with the newly
-  pinned security cutoffs and passed its remote shard), and `1394a79bc` (the
-  repeated-mutmut Dishka lifecycle regression was fixed and covered locally).
+  pinned security cutoffs and passed its remote shard), `1394a79bc` (the
+  repeated-mutmut Dishka lifecycle regression was fixed and covered locally),
+  `825141d0d` (manual performance dispatch was added), `a23052dc4` (the
+  lifecycle-owned Dishka shutdown marker was added after the first fresh
+  nightly still found a global-ASGI lifecycle leak), `d8a25844e` (the lifespan
+  test's package import was aliased so it cannot replace the FastAPI app fixture
+  during the second context-manager scenario), and `113e91723` (lifespan now
+  recreates closed application containers; the infrastructure fixture installs
+  a fresh full container at every boundary; and a restart contract test covers
+  the closed-root path).
   The earlier fresh evidence below remains tied to its exact source commit.
 - The fresh remote CI run `31272523668` for source commit
   `496ed7f2c5c0fd33da738b4687b4c31281f14d7e` completed with `105` jobs,
@@ -56,7 +64,9 @@ claim that the long-running or manually provisioned workstreams are complete.
   Codecov uploads returned the same `Repository not found` response and the
   aggregate `CI Success` job consequently failed closed.
 - Follow-up local regression evidence is current: the quality closure slice
-  passes `230` tests; Ruff, `uv lock --check`, and the repository dependency
+  passes `231` tests; the targeted provider-replacement sequence passes `22/22`
+  (`test_schedule_api_coverage.py`, `test_search_api.py`, and `test_graphql.py`);
+  Ruff, `uv lock --check`, and the repository dependency
   audit pass. The Python lock now removes unused `diskcache`, pins patched
   `h2>=4.4.1`, and constrains transitive `mcp` to the patched `<2` line.
 - The targeted repeated-lifecycle regression is now green locally: the full
@@ -66,9 +76,33 @@ claim that the long-running or manually provisioned workstreams are complete.
   then reached terminal `failure` before mutation scoring: its clean-test
   phase failed at `tests/test_graphql.py::test_graphql_schedule_query` with
   `assert 0 == 1` after the app-level Dishka container had been closed and
-  reused. The lifecycle reset is in `1394a79bc`; fresh nightly run
-  `31282842649` is now running against that SHA, and its terminal result is
-  intentionally pending.
+  reused. The first fixture-only reset in `1394a79bc` did not observe a
+  container closed by an earlier global `TestClient` lifespan; the lifecycle-
+  owned marker fix is in `a23052dc4`. Its backend shard exposed a test-only
+  package-import rebinding, fixed in `d8a25844e` and covered locally by all
+  `28` lifespan tests. Fresh nightly run `31288102177` is executing against
+  `d8a25844e`, and its terminal result is intentionally pending.
+- The fresh remote performance run `31287050376` on source commit
+  `825141d0d` completed successfully across all four jobs: Go benchmarks,
+  WS-Hub's blocking 110% regression gate, Rust Criterion, and the native
+  optimizer's blocking 110% regression gate.
+- In fresh nightly `31288102177`, all four backend unit shards completed their
+  pytest workloads successfully (`1775`–`1795` passed tests per shard). Their
+  job conclusions are failure only because the fail-closed Codecov uploads
+  still receive `Repository not found`, matching the already documented
+  external authorization blocker.
+- The same nightly's Chromium matrix completed its functional suites with
+  `56` passed and `61` skipped; its only failure was the frontend E2E Codecov
+  upload returning `Repository not found`. Firefox, WebKit, and mobile-WebKit
+  completed successfully.
+- The live stabilization query for `main` returned `16` completed nightly
+  runs from 2026-07-24 through 2026-08-08, all with `failure` conclusions.
+  Running `check_stabilization_window.py` against that API response for
+  `2026-08-09` produced `eligible: false`, `latest_success_date: null`, and
+  `no successful workflow run is available`. The promotion workflow is present
+  on this pushed branch but is not yet registered on default `main`; GitHub's
+  dispatch API therefore returned `404 workflow ... not found on the default
+  branch` until the branch is merged.
 
 ### Current normalized coverage
 
@@ -111,7 +145,7 @@ instrumentation runtime.
   mutation gate. The Codecov configuration and all upload callers are also
   repository-complete; the post-fix OIDC exchange works, while Codecov
   repository authorization remains the remaining external verification item.
-- Not yet closure-certified: fresh nightly run `31282842649` must finish, and
+- Not yet closure-certified: fresh nightly run `31288102177` must finish, and
   its historical run set still has no 30-day green window. Go integration,
   cross-browser, and chaos/migration resilience remain advisory until the
   objective promotion check passes. DAST still requires an authorized target
@@ -133,10 +167,10 @@ closure matrix for this audit is:
 | --- | --- | --- |
 | Python, frontend, Go, Rust, and Tier0 coverage | `quality-manifest.json` from CI run `31272523668` (source `496ed7f2c5c0fd33da738b4687b4c31281f14d7e`), contract validator, Tier0 per-file checks | closed at contract floors |
 | Stateful/property testing and disposable MinIO/SpiceDB cells | Hypothesis state machines, real container integration tests, nightly container cell | closed in code; nightly evidence tracked |
-| Python mutmut and frontend Stryker | blocking incremental jobs plus full nightly jobs | repository wiring closed; full nightly evidence tracked |
+| Python mutmut and frontend Stryker | blocking incremental jobs plus full nightly jobs | frontend full run passed in `31282842649`; current-HEAD Python/full rerun tracked in `31288102177` |
 | Go goleak/fuzz/integration and Rust fuzz/proptest/Miri | Go workflows/tests, Rust fuzz targets/proptest suites, nightly Miri job | repository wiring closed; current nightly evidence tracked |
 | Pact, schema compatibility, browser matrix, SSR cache assertions | contract workflow/provider verification, cross-browser reusable workflow, production SSR E2E | closed in code; promotion window tracked |
-| Checkov, Kyverno, negative security, performance baselines | blocking Checkov, Kyverno tests, security suites, Criterion/WS-Hub regression gates | closed in repository; external target/key evidence tracked where applicable |
+| Checkov, Kyverno, negative security, performance baselines | blocking Checkov, Kyverno tests, security suites, Criterion/WS-Hub regression gates | current benchmark run `31287050376` green; durable history and external target/key evidence tracked where applicable |
 | Dashboard and certification | quality-history workflow, dashboard/certification generators, release hook, runbook | closed in repository; durable run evidence is generated by CI |
 | Codecov | all callers use OIDC and fail closed on upload errors; runs `31276786678` and `31278744917` reached Codecov but got `Repository not found` | blocked on Codecov repository authorization |
 | Advisory promotion | `scripts/quality/check_stabilization_window.py` and `quality-promotion-check.yml` | intentionally blocked until 30 consecutive green calendar days |
