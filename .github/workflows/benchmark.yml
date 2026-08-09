@@ -10,6 +10,7 @@ on:
       - "crates/**"
       - "native/rust_ext/**"
       - ".github/workflows/benchmark.yml"
+  workflow_dispatch:
 
 permissions:
   contents: write # Required to push benchmark data to gh-pages or benchmark branch

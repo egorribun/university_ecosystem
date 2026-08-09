@@ -739,6 +739,8 @@ def test_miri_workflow_scopes_to_pure_rust_crate_targets() -> None:
 def test_performance_workflow_has_blocking_native_and_ws_baselines() -> None:
     workflow_path = REPOSITORY_ROOT / ".github" / "workflows" / "benchmark.yml"
     workflow = yaml.safe_load(workflow_path.read_text(encoding="utf-8"))
+    triggers = workflow.get("on", workflow.get(True, {}))
+    assert "workflow_dispatch" in triggers
     jobs = workflow["jobs"]
     assert jobs["benchmark"]["timeout-minutes"] == 20
     assert jobs["ws-hub-regression"]["timeout-minutes"] == 20
