@@ -46,13 +46,14 @@ jobs:
       - name: Run the complete mutation universe
         run: |
           rm -rf mutants
-          # mutmut 3.5.0 has no --CI flag; the CI/CD behavior is provided by
-          # the explicit export-cicd-stats command below.
+          # The exporter below reads the freshly-created complete universe and
+          # retains every status, including caught_by_type_check.
           uv run mutmut run
 
       - name: Export and gate mutation statistics
         run: |
-          uv run mutmut export-cicd-stats
+          uv run python scripts/export_mutmut_shard_stats.py --all \
+            --output mutants/mutmut-cicd-stats.json
           test -s mutants/mutmut-cicd-stats.json
           uv run python scripts/check_mutation_score.py --min-score 100
 

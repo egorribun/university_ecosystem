@@ -1,5 +1,12 @@
 # University Ecosystem — Maximum Coverage Testing Roadmap
 
+> **Каноническая политика (2026-08-09):** исполнимый источник порогов —
+> `quality/quality-contract.json`; `policy.viable_mutant_score = 100`.
+> Проход означает 100% viable score: непустой universe, в котором каждый
+> мутант убит тестом либо настроенным type checker, без surviving или
+> incomplete statuses. CI wiring не является remote certification; исторические
+> цифры ниже сохранены только как архив.
+
 > **Стратегия:** 6 волн, логическая последовательность без временных рамок.  
 > **Философия:** Жёсткие CI-гейты — волна не закрывается, пока threshold не пройден.  
 > **Цели верхнего уровня:**  
@@ -7,7 +14,7 @@
 > |-------|---------|------|
 > | Python statements | ~89% | **98%+** |
 > | Python branches | ~85% | **95%+** |
-> | Python mutation score | ~50-60% | **85%+** |
+> | Python mutation score | ~50-60% | **100% viable, fail-closed** |
 > | Go coverage | неизвестно/умеренное | **90%+** per service |
 > | Rust unit coverage | smoke only | **95%+ (llvm-cov)** |
 > | Frontend statements | ~90% | **98%+** |
@@ -231,18 +238,22 @@
 
 ---
 
-### 1.9 — Mutation testing: к 85%
+### 1.9 — Mutation testing: 100% viable score
 
-**Текущее:** `mutmut run` настроен, `paths_to_mutate = ["app/"]`.
+**Исполнимая policy:** `mutmut run` охватывает `paths_to_mutate = ["app/"]`.
+PR gate использует неизменяемый base SHA, точные имена мутантов и локальный
+JSON artifact через `scripts/export_mutmut_shard_stats.py`; full nightly
+использует тот же exporter с `--all` для полного universe.
 
-**Задачи:**
-- [ ] Запустить `mutmut run` на приоритетных модулях: `app/auth/`, `app/services/`, `app/utils/`
-- [ ] Найти выживших мутантов (`mutmut results --only-survived`)
-- [ ] Для каждого выжившего мутанта написать тест, убивающий его
-- [ ] Добавить в CI job: `mutmut export-results` + threshold check скрипт
-- [ ] Создать `scripts/mutmut_ci_gate.py` — читает `mutmut.log`, выдаёт exit 1 если kill rate < 85%
+**Требования gate:**
+- Каждый survived mutant требует теста, который его убивает, либо отдельно
+  доказанной и настроенной проверки type checker.
+- `scripts/mutmut_ci_gate.py` применяет порог 100% viable score.
+- Пустой universe и `timeout`, `suspicious`, `no_tests`, `not_checked`,
+  `skipped`, `interrupted` или `segfault` завершают gate fail-closed.
 
-**CI-gate:** `mutmut_ci_gate.py` → exit 0 (kill rate ≥ 85%)
+**CI-gate:** machine-readable stats существуют до запуска
+`mutmut_ci_gate.py`; exit 0 возможен только при 100% complete viable evidence.
 
 ---
 
@@ -854,7 +865,7 @@
 - [ ] Go: 90% per service, race detector
 - [ ] Rust: llvm-cov 95%
 - [ ] Frontend: statements 97%, branches 90%, functions 94%
-- [ ] Mutation: 85% kill rate
+- [ ] Mutation: 100% viable score; incomplete evidence fails closed
 - [ ] Fuzz: weekly CI job с budget
 - [ ] Pact: provider verification blocking
 - [ ] k6: P99 SLO blocking
@@ -871,7 +882,7 @@
 |-------|--------|--------|--------|--------|--------|--------|--------|------------|-------------------------------|
 | Python statements | baseline | 95% | — | — | — | — | 98%+ | **fail_under=93** ✅ | **98%+** |
 | Python branches | baseline | 88%+ | — | — | — | — | 95%+ | branch sweep (+35 tests) ✅ | **95%+** |
-| Python mutation | baseline | 75% | — | — | — | — | 85%+ | gate script added ✅ | **85%+ (kill rate)** |
+| Python mutation | baseline | 75% | — | — | — | — | 85%+ | gate script added ✅ | **100% viable (canonical, fail-closed)** |
 | Go gateway | baseline | — | 85% | — | — | — | 90%+ | **91.9%** ✅ | **95%+** |
 | Go ws-hub | baseline | — | 85% | — | — | — | 90%+ | **85.7%** (telemetry coverage++) ✅ | **95%+** |
 | Go file-proc | baseline | — | 80% | — | — | — | 90%+ | go-test-gates Makefile ✅ | **95%+** |
@@ -929,10 +940,10 @@
 #### Phase III: Python Backend — Mutation Gates & Fuzz Seeding
 * **Description**: Контроль качества тест-ассертов через мутационное тестирование и накопление стабильного корпуса фаззинга.
 * **Key Tasks**:
-  1. **Blocking mutmut gate**: Интеграция блокирующего шага сборки, требующего Mutation Score $\ge 85\%$ для изменений в критических модулях (`app/auth/`, `app/services/`).
+   1. **Blocking mutmut gate**: Интеграция блокирующего шага сборки, требующего 100% viable Mutation Score для exact PR shards и полного nightly universe; incomplete evidence завершает gate fail-closed.
   2. **Atheris structured corpus seeding**: Написание и фиксация в репозитории корпуса семян (seed inputs) для фаззинга очистки HTML (`fuzz_sanitize`), декодирования JWT и проверки UUID v7.
   3. **Fuzzing automation**: Запуск Atheris в еженедельных CI cron пайплайнах с автоматической отправкой дампов при сбоях.
-* **CI Gates**: `mutmut` score $\ge 85\%$ для измененного Python-кода.
+* **CI Gates**: `mutmut` score = 100% viable для измененного Python-кода и полного nightly universe.
 
 #### Phase IV: Go Services — Multi-Service E2E Integration & Lock Checks
 * **Description**: Сквозная интеграция Go-сервисов и аудит многопоточных блокировок.

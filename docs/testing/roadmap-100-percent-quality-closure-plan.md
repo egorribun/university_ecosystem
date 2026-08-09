@@ -2,9 +2,15 @@
 
 **Companion to:** `docs/testing/roadmap-100-percent-quality.md`
 **Audit baseline commit:** `ce588bb0a1c08eb66ff2e5558349096a51d3ed4a` (the "finalize quality-roadmap" merge)
-**Repository HEAD at audit time:** `671b79c466348e37530d601f787404400e395723` (latest E2E navigation-stability hardening)
+**Repository HEAD at audit snapshot:** `671b79c466348e37530d601f787404400e395723` (latest E2E navigation-stability hardening at that checkpoint)
 **Audit date:** 2026-08-09
-**Status:** repository-side control evidence is current for `671b79c46`; certification remains fail-closed on external Codecov authorization, current-HEAD full/nightly mutation evidence, and the objective promotion prerequisites
+**Status:** the observations below are retained as an audit snapshot, not a claim about the current checkout. Certification remains fail-closed on external Codecov authorization, terminal current-HEAD CI and full-nightly mutation evidence, and the promotion prerequisites.
+
+> **Live enforcement policy (repository source, not remote certification):**
+> `quality/quality-contract.json` requires `patch_coverage = 100` and
+> `viable_mutant_score = 100`. The source wiring must still be confirmed by a
+> terminal current-HEAD PR run and full-nightly artifact before it is treated as
+> certification evidence.
 
 ## Final control audit — 2026-08-09
 
@@ -218,9 +224,9 @@ host, so the local branch discrepancy remains an environment-specific
 verification note rather than a code change inferred from a mismatched
 instrumentation runtime.
 
-### Closure status after this audit
+### Historical closure status at the audit snapshot (not current HEAD)
 
-- Closed and freshly evidenced at the current SHA: local regression fixes,
+- Closed and evidenced at the historical audit SHA: local regression fixes,
   browser-navigation stability, functional fast-matrix execution, exact raw
   artifact normalization, aggregate coverage floors, Tier0 per-file metrics,
   Checkov/Kyverno, contracts, Schemathesis, migrations, security jobs, Go
@@ -251,13 +257,30 @@ closure matrix for this audit is:
 | --- | --- | --- |
 | Python, frontend, Go, Rust, and Tier0 coverage | Exact raw artifacts from `31310271914`, recomputed manifest for SHA `671b79c46`, contract validator, Tier0 per-file checks | current metrics pass contract floors; CI upload is blocked only by Codecov |
 | Stateful/property testing and disposable MinIO/SpiceDB cells | Fast CI functional jobs plus nightly container cell | closed in code; current-HEAD nightly evidence tracked |
-| Python mutmut and frontend Stryker | blocking incremental jobs; current mutmut planning covers 7102 tests and 1645 mutant functions; full frontend Stryker `93229205221` tested 33/33 mutants with 100% score and no frontend source changed afterward | frontend full score is current-tree applicable; Python full mutation certification pending |
+| Python mutmut and frontend Stryker | Python source uses immutable PR-base SHA selection, exact mutant-name shards, a 25-minute hard failure, scope-local JSON evidence, and a 100% viable-score gate; the full nightly uses the same exporter in `--all` mode. The cited Stryker run remains historical evidence only. | terminal current-HEAD PR and full-nightly artifacts are still required; a source inspection or old frontend run is not renewed certification |
 | Go goleak/fuzz/integration and Rust fuzz/proptest/Miri | Go workflows/tests, Rust suites, nightly Miri job | repository wiring and bounded execution pass; promotion/evidence history tracked |
 | Pact, schema compatibility, browser matrix, SSR cache assertions | contract workflow/provider verification, four-project browser matrix, production SSR E2E | current functional checks pass; promotion window tracked |
 | Checkov, Kyverno, negative security, performance baselines | blocking Checkov, Kyverno tests, security suites, Lighthouse and benchmark gates | current fast security/Lighthouse checks pass; durable current-HEAD baseline and promotion evidence tracked |
 | Dashboard and certification | quality-history workflow, dashboard/certification generators, release hook, runbook | repository wiring closed; durable certification remains key/window dependent |
 | Codecov | all callers use OIDC and fail closed; current run `31310271914` reaches OIDC but gets `Repository not found` | blocked on Codecov repository authorization |
 | Advisory promotion | `scripts/quality/check_stabilization_window.py` and `quality-promotion-check.yml` | intentionally blocked until 30 consecutive green calendar days (`0/30`) |
+
+### Live source enforcement (not certification evidence)
+
+- Pull-request mutation execution resolves the immutable PR base SHA, assigns
+  exact mutant names to shards, and fails if its 25-minute budget is exceeded.
+  The exporter writes scope-local machine-readable evidence before the blocking
+  100% viable-score gate runs.
+- The full nightly run starts from a newly-created `mutants/` directory, runs
+  the complete mutmut universe, and invokes the same exporter with `--all` so
+  `caught_by_type_check` is preserved as an accepted kill.
+- A score is eligible to pass only when the universe is non-empty and each
+  evaluated mutant is conclusively killed by tests or a configured type check.
+  Survivors and `timeout`, `suspicious`, `no_tests`, `not_checked`, `skipped`,
+  `interrupted`, or `segfault` evidence fail closed.
+- These statements describe reviewed repository source. They do not replace a
+  terminal current-HEAD PR run, a full-nightly artifact, Codecov authorization,
+  or the required 30-day promotion evidence.
 
 ## Execution ledger — 2026-07-27 (uncommitted)
 
@@ -601,7 +624,7 @@ This document is the actionable closure plan. It is organized as phases with con
 | Question                                                                                                                                                                                                                                     | Decision                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Governance model for a de-facto solo-maintainer repo                                                                                                                                                                                         | **Technical self-enforcement.** Add every blocking CI job to the GitHub ruleset's `required_status_checks`. Do not rely on human review discipline as the primary gate. `ownership-mapping.json`/`CODEOWNERS` become accurate documentation, not blocking review gates, because there is no second active contributor (`Semeno-v` has `write` access but 0 commits in the entire history).                                                                                                                                    |
-| `quality-contract.json` floors (99%/98% Python, 99% Go statements, 100% Tier0, 100% mutation score, 100% diff coverage) vs. the honestly-lower CI floors (90% Go, 85% mutation, 80% diff-coverage) that the code comments explicitly justify | **Ratchet up to the contract values.** Do not lower the contract. This is the larger-effort path (writing real tests) but matches the roadmap's own "Definition of maximum" and avoids quietly declaring victory by rewriting the target.                                                                                                                                                                                                                                                                                     |
+| `quality-contract.json` floors (99%/98% Python, 99% Go statements, 100% Tier0, 100% mutation score, 100% diff coverage) vs. the historically lower CI floors (90% Go, 85% mutation, 80% diff coverage) | **Ratchet up to the contract values.** Do not lower the contract. Source now enforces the 100% patch-coverage and viable-mutation policy; the historical lower figures are retained only to explain the original audit conflict. Remote evidence remains separately required. |
 | Chromium-only E2E vs. the roadmap's required Firefox/WebKit/mobile-WebKit matrix                                                                                                                                                             | **Include the full matrix as its own workstream with an explicit stabilization budget** (Phase 7), landed as advisory-then-blocking, mirroring the existing `go-integration-*` advisory→blocking precedent already used in this repo.                                                                                                                                                                                                                                                                                         |
 | CI gating strategy once ~15 more jobs become required                                                                                                                                                                                        | **Fast PR gate + nightly full gate on `main`.** Only bounded-duration jobs (unit tests, coverage, lint, incremental mutation) block PRs. Long-running suites (full-repo mutation score, load/chaos, the new browser shards) run nightly via `schedule: cron` + `workflow_dispatch` (the pattern already used by `weekly-cleanup.yml` and `dast.yml`) and become required for merges to `main` only after they are green for 30 days, exactly like the existing `go-integration-*` promotion criterion documented in `ci.yml`. |
 | `bypass_actors: [{actor_type: RepositoryRole, actor_id: 5 (admin), bypass_mode: always}]` on the ruleset                                                                                                                                     | **Left technically unchanged** (not selected for hardening in this plan). Documented explicitly as an accepted risk for a solo-owned repository, with a _process_ rule (state the bypass reason in the PR description) rather than a technical lock — because removing admin bypass on a single-owner repo risks the owner locking themselves out with no path to override a false-positive gate.                                                                                                                             |
@@ -654,7 +677,10 @@ Pre-commit & Linting (Read-only)
 - `Security Audit / detect-secrets Baseline Integrity`
 - `Trivy Image Scan`
 
-**Task G.1.3** — Do **not** add these to required checks yet (they belong to Phase G.2's "full" bucket, or are already advisory by explicit repo decision documented in `ci.yml`): `mutation-tests`, `load-and-chaos-tests`, `chaos-tests`, `go-integration-ws-hub`, `go-integration-file-processor`, `go-integration-gateway`, `ws-stress-test`, `Continuous Performance Benchmarking`, `WS-Hub Go Benchmark Regression Gate`.
+**Historical classification (superseded)** — `mutation-tests-incremental` is
+now a blocking input to `ci-success`. Full-nightly promotion remains subject to
+the separate evidence and stabilization process; the other long-running lanes
+listed here retain their individually documented promotion conditions.
 
 **Task G.1.4** — Re-verify with a throwaway PR that a deliberately-broken `coverage-policy-gate` now blocks merge (cannot be bypassed except by the documented admin override in G.3).
 
@@ -662,7 +688,14 @@ Pre-commit & Linting (Read-only)
 
 See Phase 14 (Ratchet sequencing table) for the authoritative ratchet floors; the fast/full job classification is described inline below. Summary of the mechanics:
 
-**Task G.2.1** — Create `.github/workflows/nightly-full-gate.yml` with `on: schedule: cron: "0 1 * * *"` + `workflow_dispatch`, running: full-repo `mutmut run` (no time-box, no incremental diff filter) with `export_cicd_stats` actually invoked and gated at the ratcheting mutation-score floor (see Phase 14), `load-and-chaos-tests` promoted from the PR pipeline to this nightly workflow, the full Playwright browser matrix (chromium + firefox + webkit + mobile-webkit) once Phase 7 lands, `go-integration-*` full suite, `kyverno test` (Phase 8.2), Miri (Phase 5.5).
+**Implemented source wiring** — `.github/workflows/nightly-full-gate.yml`
+uses `schedule: cron: "0 1 * * *"` and `workflow_dispatch`. Its mutation lane
+runs full-repo `mutmut run` without an incremental filter, then writes
+`mutants/mutmut-cicd-stats.json` through
+`scripts/export_mutmut_shard_stats.py --all` and applies the fail-closed 100%
+viable-score checker. The workflow also carries the long-running load/chaos,
+browser-matrix, Go-integration, Kyverno, and Miri lanes. Source wiring is not
+evidence that a particular nightly revision has completed successfully.
 
 **Task G.2.2** — Add a Slack/GitHub-issue-on-failure step to `nightly-full-gate.yml` so nightly regressions are not silently ignored (there is no PR to fail against).
 
@@ -897,16 +930,30 @@ The roadmap requires "Hypothesis/Schemathesis **stateful**/property tests." Curr
 
 ### 2.6 — Mutation testing gate rework
 
-Current state: `scripts/mutmut_ci_gate.py` hardcodes `--min-score 85.0`, `mutation-tests` in `ci.yml` is incremental (only files changed vs. `origin/main`), time-boxed at 20 minutes with **silent score-verification skip** if the time-box is hit (`ec -eq 124` branch), and the job is **advisory** — not in `ci-success`'s blocking `results[]` array. This contradicts the roadmap's "Mutation testing kills 100% of viable mutants" and Wave 10's "Enable strict ... mutation gates in the required PR matrix."
+**Historical planning baseline (superseded; retained for audit):** At the time
+this section was written, the gate used an 85% score, a 20-minute budget,
+silent verification skip, and advisory classification.
 
-**Task 2.6.1** — Split mutation testing into two jobs:
+**Implemented enforcement wiring (not certification evidence):**
+`policy.viable_mutant_score` is `100`. Pull-request mutation execution uses
+the immutable PR base SHA, exact-name shards, a 25-minute fail-closed budget,
+and scope-local machine-readable statistics. The checker accepts only complete
+evidence: every evaluated mutant must be killed by tests or a configured type
+check; survivors, an empty universe, and `timeout`, `suspicious`, `no_tests`,
+`not_checked`, `skipped`, `interrupted`, or `segfault` fail the gate. The
+nightly lane evaluates the complete universe with the same exporter in `--all`
+mode. A terminal current-HEAD PR run and full-nightly artifact are still
+required before this source wiring can be certified.
 
-- **`mutation-tests-incremental`** (PR-blocking, fast gate): keep the diff-only scope, but change the timeout handling so a time-box hit **fails** the job instead of silently skipping score verification (raise the time-box to 25 minutes to reduce false failures first, and shard the changed-module list across parallel matrix legs if a single PR's diff is large enough to still risk timing out).
-- **`mutation-tests-full`** (nightly, `nightly-full-gate.yml`): run `mutmut run` across the entire `app/` tree with `also_copy = ["infrastructure", "alembic", "docker-compose.full.yml"]` added to `[tool.mutmut]` in `pyproject.toml` so the three currently-excluded infra-contract tests (`test_migrations_runtime.py`, `test_wave173_caddy_routing.py`, `test_wave173_ws_hub_env.py`) can be re-included, and explicitly call `mutmut run --CI` followed by the score-export step the current job never calls, gated at the ratcheting floor in Phase 14.
+**Implemented registry:** `quality/mutation-exclusions.json` exists, is
+schema-validated, and currently has no exclusions. A future equivalent-mutant
+record must include path, reason, owner, issue, evidence, and expiry; it must
+not silently create a passing denominator.
 
-**Task 2.6.2** — Build an equivalent-mutant registry (`quality/mutation-exclusions.json`), matching the same schema discipline as `quality/quality-contract.json`'s `exclusions`/`quarantines` (id, path, reason, owner, issue, evidence, created_on, expires_on) so genuinely-equivalent mutants (e.g., logging statement text changes) can be recorded without silently lowering the denominator — per the roadmap's explicit requirement.
-
-**Task 2.6.3** — Once `mutation-tests-incremental` is stable for 30 days, add it to the Phase G.1 required-checks list.
+**Promotion boundary:** `mutation-tests-incremental` is already a blocking
+input to `ci-success`. Fresh ruleset/API evidence is still required before
+claiming branch-protection status; the 30-day window applies to promotion of
+the full and other advisory lanes.
 
 ### 2.7 — diff-cover floor
 
@@ -1167,7 +1214,7 @@ Raise contract floors only after the corresponding phase's backlog is materially
 | 10   | `frontend`                                   | lines/branches/functions | 95/88/88 → 99/98/98                                                              | Phase 3.2 (long tail) closed                                                                                   |
 | 11   | `policy.patch_coverage` (backend)            | diff-cover               | 80 → 90 → 100                                                                    | Phase 2.2 items 1–60 closed, then fully closed                                                                 |
 | 12   | `policy.patch_coverage` (frontend, new)      | diff-cover               | n/a → 80 → 100                                                                   | Phase 3.5 tooling lands, then Phase 3.1 closed                                                                 |
-| 13   | `policy.viable_mutant_score` (Python)        | mutmut                   | 85 (incremental, silent-skip) → 85 (incremental, hard-fail) → 100 (full nightly) | Phase 2.6.1 lands, then Phase 2.6.2 equivalent-mutant registry is populated for genuinely-equivalent survivors |
+| 13   | `policy.viable_mutant_score` (Python)        | mutmut                   | 85% historical audit baseline → 100% viable score, fail-closed in exact PR shards and the full nightly universe | source wiring and local contract tests; terminal current-HEAD PR and nightly artifacts still required |
 | 14   | `policy.viable_mutant_score` (frontend, new) | Stryker                  | n/a → 100 (scoped to pure utilities)                                             | Phase 3.3 lands                                                                                                |
 
 Never skip a step or raise a floor before its gate condition — this table exists specifically to prevent a repeat of the PR #1207 failure mode where a contract floor was aspirational rather than earned.

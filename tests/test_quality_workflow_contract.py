@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import yaml
@@ -36,6 +37,8 @@ NIGHTLY_FULL_WORKFLOW_PATH = (
 QUALITY_PROMOTION_WORKFLOW_PATH = (
     REPOSITORY_ROOT / ".github" / "workflows" / "quality-promotion-check.yml"
 )
+QUALITY_CONTRACT_PATH = REPOSITORY_ROOT / "quality" / "quality-contract.json"
+MUTMUT_GATE_PATH = REPOSITORY_ROOT / "scripts" / "mutmut_ci_gate.py"
 KYVERNO_POLICY_PATH = REPOSITORY_ROOT / "k8s" / "kyverno" / "cluster-policies.yaml"
 KYVERNO_TEST_ROOT = REPOSITORY_ROOT / "k8s" / "kyverno" / "tests"
 
@@ -642,6 +645,9 @@ def test_incremental_mutation_budget_matches_declared_gate() -> None:
         16,
     ]
     assert "timeout --kill-after=30s 25m" in run_step["run"]
+    assert "This advisory job" not in run_step["run"]
+    assert "This blocking job runs REAL mutation" in run_step["run"]
+    assert "viable mutation score" in run_step["run"]
     job_text = "\n".join(
         step.get("run", "") for step in job["steps"] if isinstance(step, dict)
     )
@@ -678,6 +684,21 @@ def test_incremental_mutation_stats_are_sharded_and_merged_before_execution() ->
     assert "mutmut_cli.config" not in helper_text
 
     assert "mutation-tests-stats" in mutation_job["needs"]
+    for job in (stats_job, mutation_job):
+        mutation_scope = next(
+            step
+            for step in job["steps"]
+            if step.get("name") == "Detect changed Python source"
+        )
+        scope_script = mutation_scope["run"]
+        assert mutation_scope["env"]["PR_BASE_SHA"] == (
+            "${{ github.event.pull_request.base.sha }}"
+        )
+        assert 'if [ -n "$PR_BASE_SHA" ]; then' in scope_script
+        assert 'COMPARE_BASE="$PR_BASE_SHA"' in scope_script
+        assert 'COMPARE_BASE="origin/main"' in scope_script
+        assert '"$COMPARE_BASE...HEAD"' in scope_script
+        assert "origin/main...HEAD" not in scope_script
     mutation_text = "\n".join(
         step.get("run", "") for step in mutation_job["steps"] if isinstance(step, dict)
     )
@@ -1083,7 +1104,8 @@ def test_nightly_full_gate_contains_the_long_running_quality_suites() -> None:
         for step in mutation_steps
         if step.get("name") == "Export and gate mutation statistics"
     )
-    assert "export-cicd-stats" in export_step["run"]
+    assert "scripts/export_mutmut_shard_stats.py --all" in export_step["run"]
+    assert "mutmut export-cicd-stats" not in export_step["run"]
     assert jobs["go-integration"]["strategy"]["matrix"]["service-directory"] == [
         "services/gateway",
         "services/ws-hub",
@@ -1233,9 +1255,96 @@ def test_incremental_mutation_gate_is_blocking_and_fails_on_timeout() -> None:
         "needs.mutation-tests-incremental.result"
         in jobs["ci-success"]["steps"][0]["run"]
     )
-    export_index = mutation_text.index("mutmut export-cicd-stats")
+    export_index = mutation_text.index("scripts/export_mutmut_shard_stats.py")
     gate_index = mutation_text.index("scripts/mutmut_ci_gate.py")
     assert export_index < gate_index
+    assert "--selected-file /tmp/mutmut-shard.txt" in mutation_text
+    assert "--output mutants/mutmut-cicd-stats.json" in mutation_text
+    assert "uv run mutmut export-cicd-stats" not in mutation_text
+    assert "test -s mutants/mutmut-cicd-stats.json" in mutation_text
+
+
+def test_blocking_mutation_jobs_are_not_mislabeled_as_advisory() -> None:
+    ci_text = CI_WORKFLOW_PATH.read_text(encoding="utf-8")
+
+    assert "advisory mutation" not in ci_text.lower()
+    assert "mutation: $mut" not in ci_text
+    assert "stryker: $stryker" not in ci_text
+
+
+def test_full_mutation_gate_uses_the_fail_closed_exporter() -> None:
+    nightly_workflow = yaml.safe_load(
+        NIGHTLY_FULL_WORKFLOW_PATH.read_text(encoding="utf-8")
+    )
+    mutation_job = nightly_workflow["jobs"]["mutation-tests-full"]
+    mutation_text = "\n".join(
+        step.get("run", "") for step in mutation_job["steps"] if isinstance(step, dict)
+    )
+
+    export_index = mutation_text.index("scripts/export_mutmut_shard_stats.py")
+    gate_index = mutation_text.index("scripts/check_mutation_score.py")
+    assert export_index < gate_index
+    assert "--all" in mutation_text
+    assert "uv run mutmut export-cicd-stats" not in mutation_text
+    assert "test -s mutants/mutmut-cicd-stats.json" in mutation_text
+
+
+def test_pr_quality_gates_enforce_contract_policy_values() -> None:
+    contract = json.loads(QUALITY_CONTRACT_PATH.read_text(encoding="utf-8"))
+    policy = contract["policy"]
+    patch_coverage = policy["patch_coverage"]
+    viable_mutant_score = policy["viable_mutant_score"]
+    assert patch_coverage == 100
+    assert viable_mutant_score == 100
+
+    backend_workflow = yaml.safe_load(BACKEND_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    diff_coverage_step = next(
+        step
+        for step in backend_workflow["jobs"]["unit-tests"]["steps"]
+        if step.get("name") == "Check differential coverage (diff-cover)"
+    )
+    assert "github.event_name == 'pull_request'" in diff_coverage_step["if"]
+    assert "inputs.num-shards <= 1" in diff_coverage_step["if"]
+    assert diff_coverage_step["env"]["COMPARE_BRANCH"] == "${{ github.base_ref }}"
+    assert f"--fail-under={patch_coverage}" in diff_coverage_step["run"]
+    assert "git fetch origin $compareBranch" in diff_coverage_step["run"]
+    assert "origin/$compareBranch" in diff_coverage_step["run"]
+    assert not diff_coverage_step.get("continue-on-error", False)
+
+    ci_workflow = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    aggregate_coverage_job = ci_workflow["jobs"]["coverage-policy-gate"]
+    aggregate_diff_step = next(
+        step
+        for step in aggregate_coverage_job["steps"]
+        if step.get("name") == "Enforce aggregate PR differential coverage"
+    )
+    aggregate_checkout_step = next(
+        step
+        for step in aggregate_coverage_job["steps"]
+        if step.get("name") == "Checkout"
+    )
+    assert aggregate_checkout_step.get("with", {}).get("fetch-depth") == 0
+    assert aggregate_diff_step["if"] == "${{ github.event_name == 'pull_request' }}"
+    assert aggregate_diff_step["env"]["COMPARE_BRANCH"] == "${{ github.base_ref }}"
+    assert f"--fail-under={patch_coverage}" in aggregate_diff_step["run"]
+    assert 'git fetch origin "$COMPARE_BRANCH"' in aggregate_diff_step["run"]
+    assert "origin/$COMPARE_BRANCH" in aggregate_diff_step["run"]
+    assert not aggregate_diff_step.get("continue-on-error", False)
+
+    combine_index = next(
+        index
+        for index, step in enumerate(aggregate_coverage_job["steps"])
+        if step.get("name") == "Combine Python shard coverage"
+    )
+    aggregate_diff_index = next(
+        index
+        for index, step in enumerate(aggregate_coverage_job["steps"])
+        if step is aggregate_diff_step
+    )
+    assert combine_index < aggregate_diff_index
+
+    mutation_gate = MUTMUT_GATE_PATH.read_text(encoding="utf-8")
+    assert 'main(["--min-score", "100"])' in mutation_gate
 
 
 def test_performance_gate_asserts_downloaded_lighthouse_without_rebuilding() -> None:

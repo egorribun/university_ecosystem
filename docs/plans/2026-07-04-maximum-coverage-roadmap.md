@@ -1,5 +1,9 @@
 # Phase 2: Maximum Coverage Testing Roadmap
 
+> **Historical planning snapshot (2026-07-04):** its thresholds and status
+> statements are archival. The live enforceable policy is
+> `quality/quality-contract.json`, including a 100% viable mutation score.
+
 This document outlines the comprehensive roadmap to achieve maximum test coverage and testing robustness across all components of the University Ecosystem project.
 
 ---
@@ -68,7 +72,9 @@ While the overall numbers satisfy the minimal floors, new feature branches and c
      - `PaginationParams`: Ensure offset/limit validations never raise 500 under any inputs.
      - `UUID7`: Verify monotonicity, ordering, and date extraction invariants.
 7. **Mutation Testing (mutmut)**:
-   - Run `mutmut run` on the entire backend codebase as a blocking CI gate. The mutation testing targets the complete `app/` scope without limiting checks only to security/auth subdirectories, establishing a target mutation score floor of **85%**.
+    - Historical target: run `mutmut run` on the entire backend codebase as a
+      blocking CI gate with an 85% mutation-score floor. This archival target
+      is superseded by the live 100% viable-score policy above.
 
 ---
 

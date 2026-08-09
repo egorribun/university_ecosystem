@@ -215,7 +215,7 @@ jobs:
               run: |
                 $compareBranch = $env:COMPARE_BRANCH
                 git fetch origin $compareBranch
-                uv run diff-cover coverage.xml --compare-branch=origin/$compareBranch --fail-under=80
+                uv run diff-cover coverage.xml --compare-branch=origin/$compareBranch --fail-under=100
 
             - name: Upload coverage artifact
               uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

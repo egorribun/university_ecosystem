@@ -526,9 +526,10 @@ pytest_add_cli_args_test_selection = [
 # arrives via mutmut's own test-selection copy, but on-disk repo files OUTSIDE
 # app/+tests/ are NOT copied — so infra-contract tests that assert those files
 # fail in the mutants/ copy with "Path doesn't exist: mutants/<path>" →
-# "failed to collect stats. runner returned 1" (the mutmut CI job's sole failure
-# mode; `mutmut run` itself exits 0 even with surviving mutants — score-gating is
-# the separate `export_cicd_stats` command the CI does not call).
+# "failed to collect stats. runner returned 1". `mutmut run` itself exits 0
+# even with surviving mutants; CI therefore writes fresh scope-local stats with
+# `scripts/export_mutmut_shard_stats.py` and applies the separate fail-closed
+# score gate before it can report success.
 #
 # These repository-contract tests exercise ZERO app/ source (pure infra/config
 # contracts → zero mutation-killing signal), but their inputs must still exist

@@ -1605,8 +1605,8 @@ jobs:
     # Rust coverage came only from the ASan job + the weekly fuzz run).
     # Runs the native unit/KAT suites for all three Rust crates plus the
     # browser-parity wasm-bindgen tests for rust-crypto. Deterministic, so it is
-    # BLOCKING (in the ci-success results array), unlike the advisory mutation /
-    # load-and-chaos jobs.
+    # BLOCKING (in the ci-success results array), unlike the advisory
+    # long-running load-and-chaos jobs.
     name: "Rust - cargo test (x3 crates) + wasm-pack + coverage"
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -1789,8 +1789,16 @@ jobs:
       - name: Detect changed Python source
         id: mutation_scope
         shell: bash
+        env:
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: |
-          changed=$(git diff --name-only origin/main...HEAD | grep -E '^app/.*\.py$' || true)
+          if [ -n "$PR_BASE_SHA" ]; then
+            git cat-file -e "${PR_BASE_SHA}^{commit}"
+            COMPARE_BASE="$PR_BASE_SHA"
+          else
+            COMPARE_BASE="origin/main"
+          fi
+          changed=$(git diff --name-only "$COMPARE_BASE...HEAD" | grep -E '^app/.*\.py$' || true)
           if [ -n "$changed" ]; then
             echo "has_python=true" >> "$GITHUB_OUTPUT"
           else
@@ -1851,9 +1859,17 @@ jobs:
       - name: Detect changed Python source
         id: mutation_scope
         shell: bash
+        env:
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: |
-          git diff --name-only origin/main...HEAD | grep -E '^app/.*\.py$' | sort -u > /tmp/changed_py.txt || true
-          git diff --unified=0 origin/main...HEAD -- app/ > /tmp/changed_py.diff
+          if [ -n "$PR_BASE_SHA" ]; then
+            git cat-file -e "${PR_BASE_SHA}^{commit}"
+            COMPARE_BASE="$PR_BASE_SHA"
+          else
+            COMPARE_BASE="origin/main"
+          fi
+          git diff --name-only "$COMPARE_BASE...HEAD" | grep -E '^app/.*\.py$' | sort -u > /tmp/changed_py.txt || true
+          git diff --unified=0 "$COMPARE_BASE...HEAD" -- app/ > /tmp/changed_py.diff
           if [ -s /tmp/changed_py.txt ]; then
             echo "has_python=true" >> "$GITHUB_OUTPUT"
           else
@@ -1900,11 +1916,11 @@ jobs:
           echo "Mutating shard ${{ matrix.shard }}/16: ${#MUTANT_NAMES[@]} exact mutants"
           rm -f .mutmut-cache
           # Time-box: a long-lived branch can span tens of thousands of mutants
-          # (multi-hour full run). This advisory job runs REAL
-          # mutation for a bounded window. mutmut exits 0 on completion regardless of
-          # survivors; the test-isolation invariants we actually gate on (generate +
-          # stats + clean-test + forced-fail) each exit NON-ZERO *before* the mutant
-          # loop on a regression. --max-children 2 caps concurrent forked mutant
+          # (multi-hour full run). This blocking job runs REAL mutation for a
+          # bounded window. mutmut exits 0 on completion regardless of survivors;
+          # the test-isolation invariants (generate + stats + clean-test + forced-fail)
+          # and the 100% viable mutation-score gate both fail non-zero on regression.
+          # --max-children 2 caps concurrent forked mutant
           # workers (default = nproc) to bound peak RAM (one full app load per fork)
           # and reduce the runner OOM-killer firing mid-sweep.
           set +e
@@ -1924,13 +1940,16 @@ jobs:
           if grep -qF 'Running mutation testing' /tmp/mutmut_run.log; then mutants_started=1; fi
           if [ "$ec" -eq 0 ]; then
             echo "mutmut completed within the time-box."
-            # mutmut 3.5.0's positional-shard `results --all` can emit an
-            # empty stdout stream. Export its authoritative numeric state
-            # before the score gate so missing text cannot become missing
-            # evidence.
-            uv run mutmut export-cicd-stats
-            # Verify mutation score (gate blocking at >= 85.0% via mutmut_ci_gate.py)
-            echo "Verifying mutation score (gate blocking at >= 85.0%)..."
+            # mutmut creates metadata for the full source universe even when
+            # positional arguments run one exact shard. Export only the names
+            # assigned above, so unrelated unselected records cannot mask or
+            # falsely fail this shard's evidence.
+            uv run python scripts/export_mutmut_shard_stats.py \
+              --selected-file /tmp/mutmut-shard.txt \
+              --output mutants/mutmut-cicd-stats.json
+            test -s mutants/mutmut-cicd-stats.json
+            # Verify viable mutation score (gate blocking at 100% via mutmut_ci_gate.py)
+            echo "Verifying viable mutation score (gate blocking at 100%)..."
             uv run python scripts/mutmut_ci_gate.py
           elif [ "$ec" -eq 124 ]; then
             echo "::error::Incremental mutation testing exceeded its 25-minute budget; incomplete mutation evidence is not mergeable."
@@ -2370,6 +2389,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
 
       - name: Set up Python
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
@@ -2398,6 +2419,15 @@ jobs:
           uv run coverage combine --data-file=.coverage artifacts/coverage/python/shards
           uv run coverage xml --data-file=.coverage -o coverage.xml
           uv run coverage json --data-file=.coverage -o artifacts/coverage/python/coverage.json
+
+      - name: Enforce aggregate PR differential coverage
+        if: ${{ github.event_name == 'pull_request' }}
+        shell: bash
+        env:
+          COMPARE_BRANCH: ${{ github.base_ref }}
+        run: |
+          git fetch origin "$COMPARE_BRANCH"
+          uv run diff-cover coverage.xml --compare-branch="origin/$COMPARE_BRANCH" --fail-under=100
 
       - name: Download Frontend coverage artifact
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
@@ -2645,7 +2675,7 @@ jobs:
           fi
           echo "✅ All CI checks passed!"
 
-      - name: Report Go integration test results (advisory, ADR-022 §Migration)
+      - name: Report blocking and advisory quality results
         shell: bash
         run: |
           # Advisory-only — these results inform the team but do not block
@@ -2693,4 +2723,4 @@ jobs:
             echo "| e2e-tests-cross-browser | $browsers |";
             echo "_Promote after 30 consecutive green days and update required-check policy._";
           } >> "$GITHUB_STEP_SUMMARY"
-          echo "Advisory results — ws-hub: $ws, file-processor: $fp, gateway: $gw, browsers: $browsers, mutation: $mut, stryker: $stryker, toxi: $toxi, dbmig: $dbmig"
+          echo "Advisory results — ws-hub: $ws, file-processor: $fp, gateway: $gw, browsers: $browsers, toxi: $toxi, dbmig: $dbmig"
