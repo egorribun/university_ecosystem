@@ -10,6 +10,8 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
+from collections import defaultdict
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -23,6 +25,9 @@ class MutantEstimate:
     estimated_seconds: float
 
 
+ChangedLineRanges = Mapping[str, Sequence[tuple[int, int]]]
+
+
 def normalize_source_path(path: str | Path) -> str:
     """Return a repository-relative path in the CI manifest format."""
 
@@ -30,6 +35,35 @@ def normalize_source_path(path: str | Path) -> str:
     while normalized.startswith("./"):
         normalized = normalized[2:]
     return normalized
+
+
+def parse_unified_diff_line_ranges(diff_text: str) -> dict[str, list[tuple[int, int]]]:
+    """Return changed new-file line ranges from a zero-context git diff."""
+
+    ranges_by_path: dict[str, list[tuple[int, int]]] = defaultdict(list)
+    current_path: str | None = None
+    hunk_pattern = re.compile(r"^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @")
+
+    for line in diff_text.splitlines():
+        if line.startswith("+++ "):
+            raw_path = line[4:].strip()
+            if raw_path == "/dev/null":
+                current_path = None
+                continue
+            current_path = normalize_source_path(raw_path.removeprefix("b/"))
+            ranges_by_path.setdefault(current_path, [])
+            continue
+
+        match = hunk_pattern.match(line)
+        if not match or current_path is None:
+            continue
+
+        start = int(match.group(1))
+        count = int(match.group(2) or "1")
+        if count:
+            ranges_by_path[current_path].append((start, start + count - 1))
+
+    return dict(ranges_by_path)
 
 
 def estimate_mutant_times(
@@ -93,6 +127,11 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--shard-id", type=int, required=True)
     parser.add_argument("--num-shards", type=int, required=True)
     parser.add_argument("--max-children", type=int, default=2)
+    parser.add_argument(
+        "--changed-diff",
+        type=Path,
+        help="Optional git diff --unified=0 used to select changed source lines",
+    )
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
     if args.num_shards < 1:
@@ -152,14 +191,87 @@ def _read_changed_files(path: Path) -> set[str]:
     }
 
 
-def _collect_changed_mutants(mutmut_cli, changed_files: set[str]) -> list[str]:
+def _mutant_line_ranges(mutmut_cli, path: Path) -> dict[str, tuple[int, int]]:
+    """Map generated mutmut names to the original source node they mutate."""
+
+    import libcst as cst
+    from libcst.metadata import MetadataWrapper, PositionProvider
+    from mutmut.file_mutation import MutationVisitor, pragma_no_mutate_lines
+    from mutmut.node_mutation import mutation_operators
+    from mutmut.trampoline_templates import mangle_function_name
+
+    source = path.read_text(encoding="utf-8")
+    module = cst.parse_module(source)
+    wrapper = MetadataWrapper(module)
+    visitor = MutationVisitor(mutation_operators, pragma_no_mutate_lines(source), None)
+    wrapper.visit(visitor)
+    positions = wrapper.resolve(PositionProvider)
+
+    class_name_by_function_id: dict[int, str] = {}
+    for node in module.body:
+        if isinstance(node, cst.ClassDef) and isinstance(node.body, cst.IndentedBlock):
+            for child in node.body.body:
+                if isinstance(child, cst.FunctionDef):
+                    class_name_by_function_id[id(child)] = node.name.value
+
+    mutation_numbers_by_function_id: defaultdict[int, int] = defaultdict(int)
+    line_ranges: dict[str, tuple[int, int]] = {}
+    for mutation in visitor.mutations:
+        function = mutation.contained_by_top_level_function
+        if function is None:
+            # mutmut does not emit trampoline mutants for module-level nodes.
+            continue
+
+        function_id = id(function)
+        mutation_numbers_by_function_id[function_id] += 1
+        mangled_name = mangle_function_name(
+            name=function.name.value,
+            class_name=class_name_by_function_id.get(function_id),
+        )
+        mutant_method_name = (
+            f"{mangled_name}__mutmut_{mutation_numbers_by_function_id[function_id]}"
+        )
+        mutant_name = mutmut_cli.get_mutant_name(path, mutant_method_name)
+        position = positions[mutation.original_node]
+        line_ranges[mutant_name] = (position.start.line, position.end.line)
+
+    return line_ranges
+
+
+def _line_ranges_intersect(
+    mutant_range: tuple[int, int], changed_ranges: Sequence[tuple[int, int]]
+) -> bool:
+    return any(
+        mutant_range[0] <= changed_end and changed_start <= mutant_range[1]
+        for changed_start, changed_end in changed_ranges
+    )
+
+
+def _collect_changed_mutants(
+    mutmut_cli,
+    changed_files: set[str],
+    changed_line_ranges: ChangedLineRanges | None = None,
+) -> list[str]:
     names: list[str] = []
     for path in mutmut_cli.walk_source_files():
-        if normalize_source_path(path) not in changed_files:
+        normalized_path = normalize_source_path(path)
+        if normalized_path not in changed_files:
             continue
         metadata = mutmut_cli.SourceFileMutationData(path=path)
         metadata.load()
-        names.extend(metadata.exit_code_by_key)
+        mutant_names = set(metadata.exit_code_by_key)
+        if changed_line_ranges is not None:
+            changed_ranges = changed_line_ranges.get(normalized_path, ())
+            if not changed_ranges:
+                continue
+            line_ranges = _mutant_line_ranges(mutmut_cli, Path(path))
+            mutant_names = {
+                mutant_name
+                for mutant_name in mutant_names
+                if mutant_name in line_ranges
+                and _line_ranges_intersect(line_ranges[mutant_name], changed_ranges)
+            }
+        names.extend(mutant_names)
     return sorted(set(names))
 
 
@@ -179,7 +291,16 @@ def main() -> None:
 
     mutmut_cli = _load_mutmut_cli()
     _generate_mutant_universe(mutmut_cli, max_children=args.max_children)
-    mutant_names = _collect_changed_mutants(mutmut_cli, changed_files)
+    changed_line_ranges = None
+    if args.changed_diff is not None:
+        changed_line_ranges = parse_unified_diff_line_ranges(
+            args.changed_diff.read_text(encoding="utf-8")
+        )
+    mutant_names = _collect_changed_mutants(
+        mutmut_cli,
+        changed_files,
+        changed_line_ranges,
+    )
     if not mutant_names:
         raise RuntimeError(
             "Changed Python source produced no mutmut mutants; refusing to skip mutation evidence"

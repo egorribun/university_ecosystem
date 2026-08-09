@@ -1853,6 +1853,7 @@ jobs:
         shell: bash
         run: |
           git diff --name-only origin/main...HEAD | grep -E '^app/.*\.py$' | sort -u > /tmp/changed_py.txt || true
+          git diff --unified=0 origin/main...HEAD -- app/ > /tmp/changed_py.diff
           if [ -s /tmp/changed_py.txt ]; then
             echo "has_python=true" >> "$GITHUB_OUTPUT"
           else
@@ -1876,14 +1877,17 @@ jobs:
       - name: Run incremental mutmut (blocking, 25-minute budget)
         if: steps.mutation_scope.outputs.has_python == 'true'
         run: |
-          # Scope mutmut to every changed backend module.  The old tenant-only
-          # probe silently skipped mutation evidence for all other Python diffs.
+          # Scope mutmut to every changed backend source line.  The old
+          # tenant-only probe silently skipped mutation evidence for all other
+          # Python diffs, while whole-file selection made a small edit replay
+          # hundreds of unrelated mutants.
           # The sixteen matrix legs receive exact mutant names from a
           # duration-balanced plan.  Whole-file assignment made a one-file diff
           # put every mutant on shard 1, leaving the other 15 legs empty and
           # making the blocking gate needlessly hit its time-box.
           uv run python scripts/plan_mutmut_shards.py \
             --changed-files /tmp/changed_py.txt \
+            --changed-diff /tmp/changed_py.diff \
             --shard-id "${{ matrix.shard }}" \
             --num-shards 16 \
             --max-children 2 \

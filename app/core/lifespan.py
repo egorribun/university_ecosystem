@@ -402,11 +402,9 @@ async def _prewarm_jwt_public_key_cache() -> None:
                 _logger.warning("JWT key pre-warm failed for kid=%r: %s", kid, exc)
 
 
-@asynccontextmanager
-async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
-    """Granular startup and shutdown orchestration (TD-004 decomposition)."""
-    # RZ-33-14: Clear the stop event so the scheduler works after hot-reload.
-    _SCHEDULER_STOP.clear()
+def _reset_closed_dishka_container(app: FastAPI) -> None:
+    """Replace a closed APP-scoped container before a lifespan restart."""
+
     # A TestClient, LifespanManager, or ASGI server may start this application
     # again after the previous lifespan closed the APP-scoped container.  The
     # Dishka middleware reads the container from ``app.state`` for each request,
@@ -420,6 +418,14 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
     # in-process test lifespan can replace the closed Dishka container instead
     # of reusing it after shutdown.
     app.state._dishka_container_closed = False
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
+    """Granular startup and shutdown orchestration (TD-004 decomposition)."""
+    # RZ-33-14: Clear the stop event so the scheduler works after hot-reload.
+    _SCHEDULER_STOP.clear()
+    _reset_closed_dishka_container(app)
 
     # 1. Bootstrapping
     await _startup_database_and_di(app)

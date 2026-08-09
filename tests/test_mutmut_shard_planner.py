@@ -6,12 +6,33 @@ from scripts.plan_mutmut_shards import (
     MutantEstimate,
     estimate_mutant_times,
     normalize_source_path,
+    parse_unified_diff_line_ranges,
     plan_mutant_shards,
 )
 
 
 def test_normalize_source_path_matches_git_manifest_format() -> None:
     assert normalize_source_path(r".\app\auth\security.py") == "app/auth/security.py"
+
+
+def test_parse_unified_diff_line_ranges_uses_new_file_lines() -> None:
+    diff = """\
+diff --git a/app/core/lifespan.py b/app/core/lifespan.py
+--- a/app/core/lifespan.py
++++ b/app/core/lifespan.py
+@@ -408,0 +409,4 @@ async def lifespan(app):
++one
++two
++three
++four
+@@ -500,2 +504,1 @@ async def shutdown(app):
+-old
++new
+"""
+
+    assert parse_unified_diff_line_ranges(diff) == {
+        "app/core/lifespan.py": [(409, 412), (504, 504)]
+    }
 
 
 def test_estimate_mutant_times_uses_associated_test_durations() -> None:

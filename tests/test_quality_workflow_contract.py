@@ -649,6 +649,7 @@ def test_incremental_mutation_budget_matches_declared_gate() -> None:
     assert "matrix.shard" in job_text
     assert "scripts/plan_mutmut_shards.py" in job_text
     assert "--changed-files /tmp/changed_py.txt" in job_text
+    assert "--changed-diff /tmp/changed_py.diff" in job_text
     assert "--num-shards 16" in job_text
     assert '"${MUTANT_NAMES[@]}"' in job_text
     assert "awk -v shard" not in job_text
