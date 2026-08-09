@@ -68,7 +68,11 @@ claim that the long-running or manually provisioned workstreams are complete.
   functional workload completed successfully; their job conclusions are
   Codecov-only failures. Miri, disposable MinIO/SpiceDB, all backend
   integration shards, Firefox, WebKit, mobile-WebKit, and the nightly load/
-  chaos lane completed successfully. Current-HEAD nightly run `31310278607`
+  chaos lane completed successfully. Its full frontend mutation job also
+  completed successfully: Stryker tested `33/33` mutants with `0 survived` and
+  a `100.00%` score. There are no `frontend/src` changes between that SHA and
+  the current HEAD, so the full frontend score remains exact for the current
+  production tree. Current-HEAD nightly run `31310278607`
   is queued behind it under the intentionally non-canceling nightly
   concurrency group and cannot yet provide current-HEAD full-mutation proof.
 - The current GitHub secret inventory still has no `CODECOV_TOKEN`, and OIDC
@@ -225,8 +229,7 @@ instrumentation runtime.
   job itself is skipped only because its required upstream Codecov uploads are
   fail-closed.
 - Not yet closure-certified: current-HEAD full nightly/mutmut completion,
-  full frontend Stryker evidence for this SHA, Codecov repository
-  authorization, the 30-day green stabilization window, and promotion of
+  Codecov repository authorization, the 30-day green stabilization window, and promotion of
   advisory Go integration, cross-browser, chaos/migration-resilience, and
   continuous-performance checks. DAST still requires an authorized target URL
   and release signing still requires the protected certification key. These
@@ -248,7 +251,7 @@ closure matrix for this audit is:
 | --- | --- | --- |
 | Python, frontend, Go, Rust, and Tier0 coverage | Exact raw artifacts from `31310271914`, recomputed manifest for SHA `671b79c46`, contract validator, Tier0 per-file checks | current metrics pass contract floors; CI upload is blocked only by Codecov |
 | Stateful/property testing and disposable MinIO/SpiceDB cells | Fast CI functional jobs plus nightly container cell | closed in code; current-HEAD nightly evidence tracked |
-| Python mutmut and frontend Stryker | blocking incremental jobs; current mutmut planning covers 7102 tests and 1645 mutant functions; full nightly jobs | current incremental run is still executing; full current-SHA mutation certification pending |
+| Python mutmut and frontend Stryker | blocking incremental jobs; current mutmut planning covers 7102 tests and 1645 mutant functions; full frontend Stryker `93229205221` tested 33/33 mutants with 100% score and no frontend source changed afterward | frontend full score is current-tree applicable; Python full mutation certification pending |
 | Go goleak/fuzz/integration and Rust fuzz/proptest/Miri | Go workflows/tests, Rust suites, nightly Miri job | repository wiring and bounded execution pass; promotion/evidence history tracked |
 | Pact, schema compatibility, browser matrix, SSR cache assertions | contract workflow/provider verification, four-project browser matrix, production SSR E2E | current functional checks pass; promotion window tracked |
 | Checkov, Kyverno, negative security, performance baselines | blocking Checkov, Kyverno tests, security suites, Lighthouse and benchmark gates | current fast security/Lighthouse checks pass; durable current-HEAD baseline and promotion evidence tracked |
@@ -572,8 +575,8 @@ intended for the checkpoint commit.
 ### Still open
 
 The roadmap is not fully certification-complete. The remaining gates are
-Codecov repository authorization; current-HEAD full nightly/mutmut and full
-frontend Stryker evidence; the required 30-day green stabilization window;
+Codecov repository authorization; current-HEAD full nightly/mutmut evidence;
+the required 30-day green stabilization window;
 promotion of the currently advisory Go integration, cross-browser, and
 chaos/migration-resilience checks; a current durable performance baseline; an
 authorized DAST target; and the protected release certification key. The

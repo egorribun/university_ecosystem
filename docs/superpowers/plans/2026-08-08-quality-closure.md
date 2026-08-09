@@ -84,7 +84,7 @@ Expected: zero failures.
 - [x] **Step 1: Generate fresh Python, frontend, Go, and Rust reports using the repository CI commands.**
 - [x] **Step 2: Normalize all reports through `normalize_coverage_reports.py` and validate the manifest through `validate_quality_contract.py --manifest`.**
 - [ ] **Step 3: Run incremental and full mutation gates; if a clean-test failure or survivor appears, reproduce it with the smallest affected test set, add a behavior-level regression test, and rerun the mutation gate.** Current incremental mutmut shards and the full nightly mutation job are still running; no survivor/clean-test failure is currently observed.
-- [ ] **Step 4: Run frontend Stryker and fast-check closure for the complete authored diff and nightly full scope; keep equivalent-mutant exclusions empty unless a documented, independently proven equivalence exists.** Full current-SHA Stryker evidence remains pending.
+- [x] **Step 4: Run frontend Stryker and fast-check closure for the complete authored diff and nightly full scope; keep equivalent-mutant exclusions empty unless a documented, independently proven equivalence exists.** Nightly job `93229205221` tested 33/33 mutants with zero survivors and a 100% score; no `frontend/src` files changed afterward.
 - [x] **Step 5: Verify Tier0 line/branch/function coverage per file and ensure the generator status and validator semantics agree with the roadmap's enforcement phase.**
 
 ### Task 3: Close integration, browser, security, performance, and infrastructure gates
