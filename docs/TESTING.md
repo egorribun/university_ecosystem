@@ -6,7 +6,6 @@
 > мутант убит тестом либо настроенным type checker, без surviving или
 > incomplete statuses. CI wiring не является remote certification; исторические
 > цифры ниже сохранены только как архив.
-
 > **Стратегия:** 6 волн, логическая последовательность без временных рамок.  
 > **Философия:** Жёсткие CI-гейты — волна не закрывается, пока threshold не пройден.  
 > **Цели верхнего уровня:**  
@@ -941,8 +940,8 @@ JSON artifact через `scripts/export_mutmut_shard_stats.py`; full nightly
 * **Description**: Контроль качества тест-ассертов через мутационное тестирование и накопление стабильного корпуса фаззинга.
 * **Key Tasks**:
    1. **Blocking mutmut gate**: Интеграция блокирующего шага сборки, требующего 100% viable Mutation Score для exact PR shards и полного nightly universe; incomplete evidence завершает gate fail-closed.
-  2. **Atheris structured corpus seeding**: Написание и фиксация в репозитории корпуса семян (seed inputs) для фаззинга очистки HTML (`fuzz_sanitize`), декодирования JWT и проверки UUID v7.
-  3. **Fuzzing automation**: Запуск Atheris в еженедельных CI cron пайплайнах с автоматической отправкой дампов при сбоях.
+   2. **Atheris structured corpus seeding**: Написание и фиксация в репозитории корпуса семян (seed inputs) для фаззинга очистки HTML (`fuzz_sanitize`), декодирования JWT и проверки UUID v7.
+   3. **Fuzzing automation**: Запуск Atheris в еженедельных CI cron пайплайнах с автоматической отправкой дампов при сбоях.
 * **CI Gates**: `mutmut` score = 100% viable для измененного Python-кода и полного nightly universe.
 
 #### Phase IV: Go Services — Multi-Service E2E Integration & Lock Checks
