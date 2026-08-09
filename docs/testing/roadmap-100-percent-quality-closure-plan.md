@@ -2,9 +2,9 @@
 
 **Companion to:** `docs/testing/roadmap-100-percent-quality.md`
 **Audit baseline commit:** `ce588bb0a1c08eb66ff2e5558349096a51d3ed4a` (the "finalize quality-roadmap" merge)
-**Repository HEAD at audit time:** `113e91723` (fresh Dishka lifecycle-isolation fix under remote verification)
+**Repository HEAD at audit time:** `671b79c466348e37530d601f787404400e395723` (latest E2E navigation-stability hardening)
 **Audit date:** 2026-08-09
-**Status:** final control audit in progress — repository-side quality gates are being closed; only fresh post-fix remote evidence and the objective 30-day promotion window can change the certification state
+**Status:** repository-side control evidence is current for `671b79c46`; certification remains fail-closed on external Codecov authorization, current-HEAD full/nightly mutation evidence, and the objective promotion prerequisites
 
 ## Final control audit — 2026-08-09
 
@@ -12,7 +12,85 @@ This checkpoint replaces stale “pending” conclusions from the historical
 execution ledgers below. It does not turn a passing bounded PR gate into a
 claim that the long-running or manually provisioned workstreams are complete.
 
-### Evidence captured
+### Current-HEAD evidence — 2026-08-09
+
+- The latest pushed commits are `ac6b14d36`, `89961dc37`, `3268476dc`, and
+  `671b79c46`. They close the observed hydration race in the login/a11y and
+  settings/i18n flows, add bounded retries for Firefox `NS_BINDING_ABORTED`
+  navigation aborts, and apply that retry helper to every remaining E2E
+  `networkidle` navigation. Local repeated evidence is green: i18n is `32/32`
+  across eight repetitions; the targeted notifications/schedule slice is
+  `6 passed, 6 skipped` (the skips are service-worker-dependent cases); and
+  the a11y target passed four repetitions.
+- Fast CI run `31310271914` targets this exact SHA. Every executed test and
+  artifact-producing step passed: Python four shards, frontend four Vitest
+  shards plus aggregate merge, Go gateway/ws-hub/file-processor, Rust test
+  suites, security/static/contract/migration jobs, and all four browser
+  projects. The Chromium functional steps passed in all four shards; Firefox
+  completed `52 passed, 65 skipped` with no page-navigation flake; WebKit and
+  mobile-WebKit completed successfully; all Lighthouse lanes passed. The
+  `13` job failures are exclusively the mandatory Codecov upload step after
+  the preceding test/coverage/artifact steps succeeded. The run's aggregate
+  `Coverage & Quality Policy Gate` is therefore skipped by its dependency,
+  not failed by a coverage violation; the incremental mutmut shards remain
+  in progress at this checkpoint.
+- Exact raw artifacts from `31310271914` were recomputed with
+  `scripts/quality/normalize_coverage_reports.py` in a Linux container using
+  the same runner path as CI. The resulting manifest has
+  `commit_sha=671b79c466348e37530d601f787404400e395723`,
+  `validation.valid=true`, and `tier0` evidence for 54 files. The official
+  `validate_quality_contract.py --manifest` check passed. This is exact
+  current-HEAD artifact evidence, but it is recorded as a recomputation
+  because the CI policy job could not upload its manifest after Codecov made
+  the upstream jobs non-green.
+- The current normalized values are shown in the table below. Unsupported
+  counters remain `n/a`; missing infrastructure/scripts/workflows reports are
+  not converted into false coverage claims. Rust crypto's `100% (0/0)` branch
+  value means the source report contains no branch sites.
+
+### Current normalized coverage — run `31310271914`, SHA `671b79c46`
+
+| Component | Lines | Statements | Branches | Functions |
+| --- | ---: | ---: | ---: | ---: |
+| Python | 99.4904% | n/a | 98.5048% | n/a |
+| Frontend | 99.4820% | 99.4820% | 98.0787% | 98.1013% |
+| Go gateway | 98.8764% derived | 99.0809% | n/a | n/a |
+| Go ws-hub | 98.7771% derived | 99.0119% | n/a | n/a |
+| Go file-processor | 99.1372% derived | 99.2401% | n/a | n/a |
+| Rust native | 100% | n/a | 100% | 100% |
+| Rust PyO3 sanitizer | 99.3769% | n/a | 50% | 100% |
+| Rust WASM sanitizer | 100% | n/a | 100% | 100% |
+| Rust crypto | 100% | n/a | 100% (0/0) | 100% |
+| Tier0 (54 files) | 100% (7266/7266) | unsupported by source reports | 100% (1732/1732) | 100% (532/532) |
+
+- Full nightly run `31307154620` is still executing its full mutmut job on
+  the earlier SHA `ac6b14d36`. Its four backend unit shards and Chromium
+  functional workload completed successfully; their job conclusions are
+  Codecov-only failures. Miri, disposable MinIO/SpiceDB, all backend
+  integration shards, Firefox, WebKit, mobile-WebKit, and the nightly load/
+  chaos lane completed successfully. Current-HEAD nightly run `31310278607`
+  is queued behind it under the intentionally non-canceling nightly
+  concurrency group and cannot yet provide current-HEAD full-mutation proof.
+- The current GitHub secret inventory still has no `CODECOV_TOKEN`, and OIDC
+  authentication reaches Codecov but receives `Repository not found`. This
+  remains an external repository-onboarding/authorization action; upload
+  failures stay blocking by design.
+- The live `main` stabilization calculation remains `eligible: false`: the
+  16 completed nightly runs from 2026-07-24 through 2026-08-08 all concluded
+  `failure`, so the required 30 consecutive green calendar days are `0/30`.
+  The promotion workflow is present on this branch but cannot certify the
+  default branch until it is merged and has eligible run history.
+- DAST still has no authorized target URL, release certification still has no
+  protected `QUALITY_CERTIFICATION_KEY`, and advisory Go integration,
+  cross-browser, chaos/migration-resilience, and continuous-performance
+  checks cannot be promoted without their documented live evidence. These
+  are external deployment/evidence prerequisites, not silently closable
+  repository TODOs.
+
+### Historical evidence retained from earlier checkpoints
+
+Everything in this subsection is retained for reproducibility only; it is not
+the live certification basis for the current SHA.
 
 - The audit began from a clean tree at `d5bedc62991caf7f3d9618974b8a9a3a5e310ea1`;
   quality-gate hardening was then committed as `702278a8d`, `465c29055`, and
@@ -104,11 +182,11 @@ claim that the long-running or manually provisioned workstreams are complete.
   dispatch API therefore returned `404 workflow ... not found on the default
   branch` until the branch is merged.
 
-### Current normalized coverage
+### Historical normalized coverage (run `31272523668`; not current HEAD)
 
-The following values are from the current-HEAD quality manifest. “n/a” means
-that the source report format does not provide that counter; it is not silently
-treated as 100%.
+The following values are from the historical CI manifest named in this
+heading, not from the current HEAD. “n/a” means that the source report format
+does not provide that counter; it is not silently treated as 100%.
 
 | Component | Lines | Statements | Branches | Functions |
 | --- | ---: | ---: | ---: | ---: |
@@ -138,23 +216,26 @@ instrumentation runtime.
 
 ### Closure status after this audit
 
-- Closed and freshly evidenced: current PR-gate checks, aggregate coverage
-  floors, Tier0 per-file metrics, current Checkov workflow run, current Kyverno
-  policy job, contracts, Schemathesis, migrations, security jobs, browser
-  matrix execution, Go integration execution, and the incremental Python
-  mutation gate. The Codecov configuration and all upload callers are also
-  repository-complete; the post-fix OIDC exchange works, while Codecov
-  repository authorization remains the remaining external verification item.
-- Not yet closure-certified: fresh nightly run `31288102177` must finish, and
-  its historical run set still has no 30-day green window. Go integration,
-  cross-browser, and chaos/migration resilience remain advisory until the
-  objective promotion check passes. DAST still requires an authorized target
-  URL; release signing still requires the protected certification key. Those
-  are external deployment/evidence prerequisites, not missing test code.
-- The historical Checkov findings and file-processor Pact mismatch cited by the
-  older ledger are no longer current blockers: `.checkov.yml` is blocking with
-  scoped skips, the current Checkov run passed, and the current contract job
-  passed. They remain in the historical text below only as audit history.
+- Closed and freshly evidenced at the current SHA: local regression fixes,
+  browser-navigation stability, functional fast-matrix execution, exact raw
+  artifact normalization, aggregate coverage floors, Tier0 per-file metrics,
+  Checkov/Kyverno, contracts, Schemathesis, migrations, security jobs, Go
+  integration execution, and the repository's blocking incremental mutation
+  wiring. The exact manifest and contract validator both pass; the CI policy
+  job itself is skipped only because its required upstream Codecov uploads are
+  fail-closed.
+- Not yet closure-certified: current-HEAD full nightly/mutmut completion,
+  full frontend Stryker evidence for this SHA, Codecov repository
+  authorization, the 30-day green stabilization window, and promotion of
+  advisory Go integration, cross-browser, chaos/migration-resilience, and
+  continuous-performance checks. DAST still requires an authorized target URL
+  and release signing still requires the protected certification key. These
+  are explicit evidence or deployment prerequisites, not reasons to weaken a
+  gate.
+- The historical Checkov findings and file-processor Pact mismatch cited by
+  the older ledger are no longer current blockers: `.checkov.yml` is blocking
+  with scoped skips, current Checkov/Kyverno/contract jobs pass, and the
+  historical wording remains below only as audit history.
 
 ### Historical phase text and current-state reconciliation
 
@@ -165,15 +246,15 @@ closure matrix for this audit is:
 
 | Workstream | Current repository evidence | State |
 | --- | --- | --- |
-| Python, frontend, Go, Rust, and Tier0 coverage | `quality-manifest.json` from CI run `31272523668` (source `496ed7f2c5c0fd33da738b4687b4c31281f14d7e`), contract validator, Tier0 per-file checks | closed at contract floors |
-| Stateful/property testing and disposable MinIO/SpiceDB cells | Hypothesis state machines, real container integration tests, nightly container cell | closed in code; nightly evidence tracked |
-| Python mutmut and frontend Stryker | blocking incremental jobs plus full nightly jobs | frontend full run passed in `31282842649`; current-HEAD Python/full rerun tracked in `31288102177` |
-| Go goleak/fuzz/integration and Rust fuzz/proptest/Miri | Go workflows/tests, Rust fuzz targets/proptest suites, nightly Miri job | repository wiring closed; current nightly evidence tracked |
-| Pact, schema compatibility, browser matrix, SSR cache assertions | contract workflow/provider verification, cross-browser reusable workflow, production SSR E2E | closed in code; promotion window tracked |
-| Checkov, Kyverno, negative security, performance baselines | blocking Checkov, Kyverno tests, security suites, Criterion/WS-Hub regression gates | current benchmark run `31287050376` green; durable history and external target/key evidence tracked where applicable |
-| Dashboard and certification | quality-history workflow, dashboard/certification generators, release hook, runbook | closed in repository; durable run evidence is generated by CI |
-| Codecov | all callers use OIDC and fail closed on upload errors; runs `31276786678` and `31278744917` reached Codecov but got `Repository not found` | blocked on Codecov repository authorization |
-| Advisory promotion | `scripts/quality/check_stabilization_window.py` and `quality-promotion-check.yml` | intentionally blocked until 30 consecutive green calendar days |
+| Python, frontend, Go, Rust, and Tier0 coverage | Exact raw artifacts from `31310271914`, recomputed manifest for SHA `671b79c46`, contract validator, Tier0 per-file checks | current metrics pass contract floors; CI upload is blocked only by Codecov |
+| Stateful/property testing and disposable MinIO/SpiceDB cells | Fast CI functional jobs plus nightly container cell | closed in code; current-HEAD nightly evidence tracked |
+| Python mutmut and frontend Stryker | blocking incremental jobs; current mutmut planning covers 7102 tests and 1645 mutant functions; full nightly jobs | current incremental run is still executing; full current-SHA mutation certification pending |
+| Go goleak/fuzz/integration and Rust fuzz/proptest/Miri | Go workflows/tests, Rust suites, nightly Miri job | repository wiring and bounded execution pass; promotion/evidence history tracked |
+| Pact, schema compatibility, browser matrix, SSR cache assertions | contract workflow/provider verification, four-project browser matrix, production SSR E2E | current functional checks pass; promotion window tracked |
+| Checkov, Kyverno, negative security, performance baselines | blocking Checkov, Kyverno tests, security suites, Lighthouse and benchmark gates | current fast security/Lighthouse checks pass; durable current-HEAD baseline and promotion evidence tracked |
+| Dashboard and certification | quality-history workflow, dashboard/certification generators, release hook, runbook | repository wiring closed; durable certification remains key/window dependent |
+| Codecov | all callers use OIDC and fail closed; current run `31310271914` reaches OIDC but gets `Repository not found` | blocked on Codecov repository authorization |
+| Advisory promotion | `scripts/quality/check_stabilization_window.py` and `quality-promotion-check.yml` | intentionally blocked until 30 consecutive green calendar days (`0/30`) |
 
 ## Execution ledger — 2026-07-27 (uncommitted)
 
@@ -490,14 +571,14 @@ intended for the checkpoint commit.
 
 ### Still open
 
-The roadmap is not complete. The remaining external gates are Codecov
-repository authorization; a current-HEAD nightly-full-gate run followed by the required 30-day
-green stabilization window; promotion of the currently advisory Go integration,
-cross-browser, and chaos/migration-resilience checks; full-repository mutation
-and Stryker evidence; Miri, load/chaos, DAST, and continuous-performance
-baselines; and durable dashboard/certification evidence. The repository wiring
-for several workstreams already exists and the current PR gate is green, but
-those workstreams must not be marked complete from YAML presence or bounded
+The roadmap is not fully certification-complete. The remaining gates are
+Codecov repository authorization; current-HEAD full nightly/mutmut and full
+frontend Stryker evidence; the required 30-day green stabilization window;
+promotion of the currently advisory Go integration, cross-browser, and
+chaos/migration-resilience checks; a current durable performance baseline; an
+authorized DAST target; and the protected release certification key. The
+repository wiring and bounded functional evidence are present, but these
+items must not be marked complete from YAML presence or bounded
 unit-coverage evidence alone.
 
 ## 0. Why this document exists
@@ -625,7 +706,12 @@ review of the skip register when IaC changes.
 
 ## Phase 0 — Close the Tier0 measurement gap
 
-The roadmap's Wave 2 exit gate and the "Definition of maximum" both require 100% line/branch/function coverage and explicit negative-path tests for every Tier0 path. The current `scripts/quality/normalize_coverage_reports.py` has **zero lines referencing Tier0** — the generated `quality-manifest.json` always emits `"tier0": null`. `quality/quality-contract.json`'s `tier0.coverage` floors are consequently never actually checked against real per-file data; they exist only as a schema shape that `validate_quality_contract.py` can lint syntactically.
+Historical phase note (superseded by the current-HEAD evidence above): the
+roadmap's Wave 2 exit gate and the "Definition of maximum" both require 100%
+line/branch/function coverage and explicit negative-path tests for every Tier0
+path. The old plan text below predates the Tier0 implementation; the current
+`scripts/quality/normalize_coverage_reports.py` now emits per-file Tier0
+evidence and `validate_quality_contract.py` validates it against the contract.
 
 **Task 0.1** — Extend `normalize_coverage_reports.py` to accept the already-existing `quality/ownership-mapping.json` `tier0_rules` glob list and cross-reference it against every parsed report's per-file breakdown (Python XML, Go coverprofile per-line, Rust llvm-cov per-file, frontend LCOV per-file) to produce a `tier0` aggregate: `{lines: {covered, total, percent}, branches: {...}, functions: {...}, files: [{path, component, lines_percent, branches_percent, ...}]}`.
 
