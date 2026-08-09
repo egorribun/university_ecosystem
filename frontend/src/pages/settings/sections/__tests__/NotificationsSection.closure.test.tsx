@@ -35,6 +35,13 @@ const createProps = () => ({
   onDndEndBlur: vi.fn(),
 })
 
+const openNotificationAccordion = () => {
+  const button = screen.getByRole("button", { name: /notifications\.push\.title/ })
+  if (button.getAttribute("aria-expanded") !== "true") {
+    fireEvent.click(button)
+  }
+}
+
 const renderSection = async (overrides: Partial<ReturnType<typeof createProps>> = {}) => {
   const props = { ...createProps(), ...overrides }
   const result = await renderWithRouter({
@@ -42,8 +49,8 @@ const renderSection = async (overrides: Partial<ReturnType<typeof createProps>> 
     authProvider: false,
   })
   // AccordionSection intentionally starts collapsed; expose its branch content.
-  fireEvent.click(screen.getAllByRole("button")[0]!)
-  return { ...result, props }
+  openNotificationAccordion()
+  return { ...result, props, openNotificationAccordion }
 }
 
 beforeEach(() => {
@@ -84,7 +91,7 @@ describe("NotificationsSection — push and quiet-hours branches", () => {
   })
 
   it("toggles notifications, handles busy guards, and updates DND controls", async () => {
-    const { props, rerender } = await renderSection()
+    const { props, rerender, openNotificationAccordion } = await renderSection()
     const switches = screen.getAllByRole("checkbox")
     expect(switches).toHaveLength(2)
 
@@ -93,12 +100,14 @@ describe("NotificationsSection — push and quiet-hours branches", () => {
 
     pushState.value = { ...pushState.value, notificationsEnabled: true, pushBusy: true }
     rerender(<NotificationsSection {...props} />)
+    openNotificationAccordion()
     expect(screen.getAllByRole("checkbox")[0]).toBeDisabled()
     fireEvent.click(screen.getAllByRole("checkbox")[0]!)
     expect(pushState.value.disableNotifications).not.toHaveBeenCalled()
 
     pushState.value = { ...pushState.value, pushBusy: false }
     rerender(<NotificationsSection {...props} />)
+    openNotificationAccordion()
     fireEvent.click(screen.getAllByRole("checkbox")[0]!)
     expect(pushState.value.disableNotifications).toHaveBeenCalledOnce()
 
@@ -117,6 +126,7 @@ describe("NotificationsSection — push and quiet-hours branches", () => {
     expect(props.onDndEndBlur).toHaveBeenCalled()
 
     rerender(<NotificationsSection {...props} dndEnabled={false} dndSaving />)
+    openNotificationAccordion()
     expect(screen.getAllByRole("checkbox")[1]).toBeDisabled()
     expect(screen.getAllByDisplayValue(/:/)[0]).toBeDisabled()
   })
