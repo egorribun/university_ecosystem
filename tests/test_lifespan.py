@@ -667,9 +667,9 @@ async def test_lifespan_context_manager() -> None:
         mock_settings.environment = "production"
 
         # Force registration flag to be True
-        import app.core.lifespan
+        import app.core.lifespan as lifespan_module
 
-        app.core.lifespan._LISTENERS_REGISTERED = True
+        lifespan_module._LISTENERS_REGISTERED = True
 
         async with lifespan(app):
             pass
