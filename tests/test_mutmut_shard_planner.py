@@ -1,9 +1,14 @@
 from __future__ import annotations
 
+from pathlib import Path
+from types import SimpleNamespace
+
 import pytest
+from mutmut.file_mutation import mutate_file_contents
 
 from scripts.plan_mutmut_shards import (
     MutantEstimate,
+    _mutant_line_ranges,
     estimate_mutant_times,
     normalize_source_path,
     parse_unified_diff_line_ranges,
@@ -32,6 +37,19 @@ diff --git a/app/core/lifespan.py b/app/core/lifespan.py
 
     assert parse_unified_diff_line_ranges(diff) == {
         "app/core/lifespan.py": [(409, 412), (504, 504)]
+    }
+
+
+def test_mutant_line_ranges_match_mutmut_names_for_class_methods() -> None:
+    path = Path("app/core/ratelimit/circuit_breaker.py")
+    source = path.read_text(encoding="utf-8")
+    _mutated_source, bare_mutant_names = mutate_file_contents(str(path), source)
+    cli = SimpleNamespace(
+        get_mutant_name=lambda _path, name: f"app.core.ratelimit.circuit_breaker.{name}"
+    )
+
+    assert set(_mutant_line_ranges(cli, path)) == {
+        f"app.core.ratelimit.circuit_breaker.{name}" for name in bare_mutant_names
     }
 
 

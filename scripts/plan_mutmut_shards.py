@@ -208,7 +208,7 @@ def _mutant_line_ranges(mutmut_cli, path: Path) -> dict[str, tuple[int, int]]:
     positions = wrapper.resolve(PositionProvider)
 
     class_name_by_function_id: dict[int, str] = {}
-    for node in module.body:
+    for node in wrapper.module.body:
         if isinstance(node, cst.ClassDef) and isinstance(node.body, cst.IndentedBlock):
             for child in node.body.body:
                 if isinstance(child, cst.FunctionDef):
@@ -218,8 +218,8 @@ def _mutant_line_ranges(mutmut_cli, path: Path) -> dict[str, tuple[int, int]]:
     line_ranges: dict[str, tuple[int, int]] = {}
     for mutation in visitor.mutations:
         function = mutation.contained_by_top_level_function
-        if function is None:
-            # mutmut does not emit trampoline mutants for module-level nodes.
+        if not isinstance(function, cst.FunctionDef):
+            # Only top-level functions and class methods receive trampolines.
             continue
 
         function_id = id(function)
