@@ -37,6 +37,7 @@ NIGHTLY_FULL_WORKFLOW_PATH = (
 QUALITY_PROMOTION_WORKFLOW_PATH = (
     REPOSITORY_ROOT / ".github" / "workflows" / "quality-promotion-check.yml"
 )
+DAST_WORKFLOW_PATH = REPOSITORY_ROOT / ".github" / "workflows" / "dast.yml"
 QUALITY_CONTRACT_PATH = REPOSITORY_ROOT / "quality" / "quality-contract.json"
 MUTMUT_GATE_PATH = REPOSITORY_ROOT / "scripts" / "mutmut_ci_gate.py"
 KYVERNO_POLICY_PATH = REPOSITORY_ROOT / "k8s" / "kyverno" / "cluster-policies.yaml"
@@ -1470,3 +1471,25 @@ def test_quality_promotion_workflow_uses_fail_closed_stabilization_checker() -> 
     assert "nightly-full-gate.yml/runs" in text
     assert "check_stabilization_window.py" in text
     assert "Fail when promotion is not yet eligible" in text
+
+
+def test_dast_pr_trigger_requires_the_explicit_run_dast_label() -> None:
+    """Active scans on pull requests require deliberate reviewer authorization."""
+
+    workflow = yaml.safe_load(DAST_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    pull_request = _workflow_triggers(workflow)["pull_request"]
+    assert pull_request["types"] == ["labeled"]
+
+    required_guard = (
+        "${{ github.event_name != 'pull_request' || "
+        "github.event.label.name == 'run-dast' }}"
+    )
+    for job_name in ("nuclei", "zap"):
+        assert workflow["jobs"][job_name]["if"] == required_guard
+
+    nuclei_setup = next(
+        step
+        for step in workflow["jobs"]["nuclei"]["steps"]
+        if step.get("uses", "").startswith("projectdiscovery/nuclei-action@")
+    )
+    assert nuclei_setup["with"] == {"version": "v3.3.9", "install-only": True}

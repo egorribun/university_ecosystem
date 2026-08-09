@@ -7,7 +7,8 @@ name: DAST — Nuclei + ZAP Scan
 # Trigger strategy:
 #   - Weekly (Sunday 02:00 UTC) so findings surface before Monday on-call starts.
 #   - Manual dispatch for ad-hoc scans (e.g. after large feature merges).
-#   - NOT on push/PR — DAST requires a running target and is too slow for CI.
+#   - Not on push; a PR label event runs only when the label is exactly
+#     `run-dast`, because DAST requires an explicitly authorized target.
 
 on:
   schedule:
@@ -30,6 +31,10 @@ permissions: read-all
 jobs:
   nuclei:
     name: Nuclei DAST scan
+    # A label event is attacker-adjacent input; run an active scan only after
+    # the explicit reviewer-selected label. Scheduled and manual scans remain
+    # available for the configured target.
+    if: ${{ github.event_name != 'pull_request' || github.event.label.name == 'run-dast' }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
@@ -52,7 +57,9 @@ jobs:
       - name: Set up Nuclei
         uses: projectdiscovery/nuclei-action@cc153d0541e1adf8a42bbe31c0a4fb2376147538 # v3.1.1
         with:
-          nuclei-version: v3.3.9
+          version: v3.3.9
+          # The custom step below validates TARGET_URL before any scan runs.
+          install-only: true
 
       - name: Run Nuclei scan
         env:
@@ -108,6 +115,8 @@ jobs:
   # ---------------------------------------------------------------------------
   zap:
     name: OWASP ZAP Full Scan
+    # Keep the same explicit authorization boundary as the Nuclei active scan.
+    if: ${{ github.event_name != 'pull_request' || github.event.label.name == 'run-dast' }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
     permissions:
