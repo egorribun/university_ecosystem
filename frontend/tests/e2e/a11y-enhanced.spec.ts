@@ -130,6 +130,9 @@ test.describe("@a11y enhanced WCAG 2.2 AA + tab-order + reduced-motion", () => {
     )
 
     await page.goto("/login", { waitUntil: "commit", timeout: 30_000 })
+    await page.waitForFunction(() => window.__APP_HYDRATED === true, null, {
+      timeout: 15_000,
+    })
     await expect(page.locator('input[name="email"]')).toBeVisible({ timeout: 15_000 })
     await expect(page.locator('input[name="password"]')).toBeVisible({ timeout: 15_000 })
     await expect(page.locator('button[type="submit"]')).toBeVisible({ timeout: 15_000 })
