@@ -407,6 +407,14 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
     """Granular startup and shutdown orchestration (TD-004 decomposition)."""
     # RZ-33-14: Clear the stop event so the scheduler works after hot-reload.
     _SCHEDULER_STOP.clear()
+    # A TestClient, LifespanManager, or ASGI server may start this application
+    # again after the previous lifespan closed the APP-scoped container.  The
+    # Dishka middleware reads the container from ``app.state`` for each request,
+    # so replacing the closed root here keeps every ASGI driver restart-safe.
+    if getattr(app.state, "_dishka_container_closed", False):
+        from app.core.di_provider import create_dishka_container
+
+        app.state.dishka_container = create_dishka_container()
     # TestClient, LifespanManager, and production ASGI servers all drive this
     # context.  Keep the container lifecycle observable so a subsequent
     # in-process test lifespan can replace the closed Dishka container instead

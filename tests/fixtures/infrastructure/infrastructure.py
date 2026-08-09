@@ -180,13 +180,21 @@ async def app():
     # ``app.state`` and the lifespan closes it during teardown.  TestClient,
     # LifespanManager, and mutmut can all drive that lifecycle, so the marker
     # is owned by ``app.core.lifespan`` rather than by this fixture alone.
-    # Recreate the container only after a completed lifespan, preserving the
-    # one installed by app import for the initial test while keeping every
-    # later in-process lifespan independent.
-    if getattr(main.app.state, "_dishka_container_closed", False):
-        from app.core.di_provider import create_dishka_container
+    # Always install a fresh application container at the fixture boundary:
+    # tests that temporarily replace ``app.state.dishka_container`` must not
+    # leak a narrow test provider into a later mutmut clean-test run.
+    from app.core.di_provider import create_dishka_container
 
-        main.app.state.dishka_container = create_dishka_container()
+    previous_container = getattr(main.app.state, "dishka_container", None)
+    if previous_container is not None and not getattr(
+        main.app.state, "_dishka_container_closed", False
+    ):
+        try:
+            await previous_container.close()
+        except (RuntimeError, ValueError):
+            # A previous ASGI driver may already have closed this root.
+            pass
+    main.app.state.dishka_container = create_dishka_container()
     main.app.state._dishka_container_closed = False
     manager = LifespanManager(main.app)
     await manager.__aenter__()
