@@ -38,10 +38,53 @@ QUALITY_PROMOTION_WORKFLOW_PATH = (
     REPOSITORY_ROOT / ".github" / "workflows" / "quality-promotion-check.yml"
 )
 DAST_WORKFLOW_PATH = REPOSITORY_ROOT / ".github" / "workflows" / "dast.yml"
+MANUAL_MUTATION_EVIDENCE_WORKFLOW_PATH = (
+    REPOSITORY_ROOT / ".github" / "workflows" / "manual-mutation-evidence.yml"
+)
 QUALITY_CONTRACT_PATH = REPOSITORY_ROOT / "quality" / "quality-contract.json"
 MUTMUT_GATE_PATH = REPOSITORY_ROOT / "scripts" / "mutmut_ci_gate.py"
 KYVERNO_POLICY_PATH = REPOSITORY_ROOT / "k8s" / "kyverno" / "cluster-policies.yaml"
 KYVERNO_TEST_ROOT = REPOSITORY_ROOT / "k8s" / "kyverno" / "tests"
+REQUIRED_CI_CONTEXTS = frozenset(
+    {
+        "CI Diagnostic",
+        "Pre-commit & Linting (Read-only)",
+        "CI Success",
+        "Coverage & Quality Policy Gate",
+        "Source/Test Inventory & Anti-Pattern Check",
+        "Backend Tests (Python 3.14) / Unit Tests (All-Python 3.14)",
+        "Backend Tests (Python 3.14) / Integration Tests (All-Python 3.14)",
+        "Backend Type Check",
+        "Frontend Tests / Lint & Format",
+        "Frontend Tests / Unit Tests",
+        "Frontend Tests / Production Build",
+        "Frontend Tests / Bundle Analysis",
+        "Frontend Tests / Lighthouse Audit",
+        "Incremental Mutation Tests (frontend)",
+        "Go Tests (services/gateway) / Test Go Service (services/gateway)",
+        "Go Tests (services/ws-hub) / Test Go Service (services/ws-hub)",
+        "Go Tests (services/file-processor) / Test Go Service (services/file-processor)",
+        "Go Tests (services/cmd/uni-cli) / Test Go Service (services/cmd/uni-cli)",
+        "Rust - cargo test (x3 crates) + wasm-pack + coverage",
+        "Rust Lint & Format",
+        "Alembic Migrations",
+        "DB Migration Gate (Postgres)",
+        "Helm Lint & Validate",
+        "Contract Tests",
+        "Schemathesis - API Schema Conformance",
+        "OpenAPI Backward Compatibility Check",
+        "Verify OpenAPI Types",
+        "Security Audit / Semgrep SAST",
+        "Security Audit / Python Dependency Audit",
+        "Security Audit / Node.js Dependency Audit",
+        "Security Audit / Go Vulnerability Scan",
+        "Security Audit / detect-secrets Baseline Integrity",
+        "Trivy Image Scan",
+        "Dockerfile Lint",
+        "Lint GitHub Actions Workflows",
+        "Kyverno policy tests",
+    }
+)
 
 
 def _workflow_triggers(workflow: dict[str, object]) -> dict[str, object]:
@@ -669,6 +712,10 @@ def test_incremental_mutation_stats_are_sharded_and_merged_before_execution() ->
     stats_job = jobs["mutation-tests-stats"]
     mutation_job = jobs["mutation-tests-incremental"]
 
+    assert "workflow_dispatch" not in _workflow_triggers(workflow)
+    assert workflow["concurrency"]["group"] == "ci-matrix-${{ github.ref }}"
+    assert jobs["ci-success"]["name"] == "CI Success"
+
     assert stats_job["strategy"]["matrix"]["stats_shard"] == [0, 1, 2, 3]
     assert stats_job["timeout-minutes"] == 25
     assert "pre-commit-check" in stats_job["needs"]
@@ -695,9 +742,11 @@ def test_incremental_mutation_stats_are_sharded_and_merged_before_execution() ->
         assert mutation_scope["env"]["PR_BASE_SHA"] == (
             "${{ github.event.pull_request.base.sha }}"
         )
-        assert 'if [ -n "$PR_BASE_SHA" ]; then' in scope_script
-        assert 'COMPARE_BASE="$PR_BASE_SHA"' in scope_script
-        assert 'COMPARE_BASE="origin/main"' in scope_script
+        assert mutation_scope["env"]["EVENT_NAME"] == "${{ github.event_name }}"
+        assert "scripts/resolve_mutation_base.py" in scope_script
+        assert '--pr-base-sha "$PR_BASE_SHA"' in scope_script
+        assert '--event-name "$EVENT_NAME"' in scope_script
+        assert 'COMPARE_BASE="origin/main"' not in scope_script
         assert '"$COMPARE_BASE...HEAD"' in scope_script
         assert "origin/main...HEAD" not in scope_script
     mutation_text = "\n".join(
@@ -713,6 +762,89 @@ def test_incremental_mutation_stats_are_sharded_and_merged_before_execution() ->
     assert "mutants/mutmut-stats.json" in mutation_text
     assert "mutation-tests-stats" in jobs["ci-success"]["needs"]
     assert "needs.mutation-tests-stats.result" in jobs["ci-success"]["steps"][0]["run"]
+
+
+def test_manual_mutation_evidence_is_isolated_from_required_ci_contexts() -> None:
+    ci_workflow = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    ci_text = CI_WORKFLOW_PATH.read_text(encoding="utf-8")
+    workflow = yaml.safe_load(
+        MANUAL_MUTATION_EVIDENCE_WORKFLOW_PATH.read_text(encoding="utf-8")
+    )
+    jobs = workflow["jobs"]
+
+    # A manual workflow must never emit the required CI contexts.  GitHub
+    # rulesets match check names across event types, so a workflow_dispatch
+    # run with skipped PR-only work must not be able to satisfy protection.
+    assert "workflow_dispatch" not in _workflow_triggers(ci_workflow)
+    assert "github.event.inputs" not in ci_text
+    assert ci_workflow["jobs"]["ci-success"]["name"] == "CI Success"
+
+    assert set(_workflow_triggers(workflow)) == {"workflow_dispatch"}
+    dispatch = _workflow_triggers(workflow)["workflow_dispatch"]
+    assert isinstance(dispatch, dict)
+    assert dispatch["inputs"]["mutation_base_sha"] == {
+        "description": "Full strict-ancestor commit SHA used to scope manual mutation evidence",
+        "required": True,
+        "type": "string",
+    }
+    assert workflow["permissions"] == {"contents": "read"}
+    assert workflow["concurrency"]["group"] == (
+        "manual-mutation-evidence-${{ github.ref }}"
+    )
+    assert workflow["concurrency"]["cancel-in-progress"] is False
+    assert all(
+        isinstance(job.get("name"), str)
+        and job["name"].startswith("Manual Mutation Evidence")
+        for job in jobs.values()
+    )
+    assert {job["name"] for job in jobs.values()}.isdisjoint(REQUIRED_CI_CONTEXTS)
+
+    for job_name in ("manual-mutation-stats", "manual-mutation-tests"):
+        mutation_scope = next(
+            step
+            for step in jobs[job_name]["steps"]
+            if step.get("name") == "Resolve manual mutation comparison base"
+        )
+        scope_script = mutation_scope["run"]
+        assert mutation_scope["env"]["MANUAL_BASE_SHA"] == (
+            "${{ inputs.mutation_base_sha }}"
+        )
+        assert "scripts/resolve_mutation_base.py" in scope_script
+        assert '--event-name "workflow_dispatch"' in scope_script
+        assert '--manual-base-sha "$MANUAL_BASE_SHA"' in scope_script
+
+
+def test_dispatchable_workflows_never_emit_required_ci_contexts() -> None:
+    workflow_root = REPOSITORY_ROOT / ".github" / "workflows"
+    collisions: list[str] = []
+
+    for workflow_path in sorted(workflow_root.glob("*.yml")):
+        workflow = yaml.safe_load(workflow_path.read_text(encoding="utf-8"))
+        raw_triggers = workflow.get("on", workflow.get(True))
+        if isinstance(raw_triggers, str):
+            dispatchable = raw_triggers == "workflow_dispatch"
+        elif isinstance(raw_triggers, list):
+            dispatchable = "workflow_dispatch" in raw_triggers
+        else:
+            assert isinstance(raw_triggers, dict)
+            dispatchable = "workflow_dispatch" in raw_triggers
+        if not dispatchable:
+            continue
+        for job_id, job in workflow["jobs"].items():
+            if not isinstance(job, dict):
+                continue
+            name = job.get("name", job_id)
+            if not isinstance(name, str):
+                collisions.append(f"{workflow_path.name}:{job_id}:non-string-name")
+                continue
+            for required_context in REQUIRED_CI_CONTEXTS:
+                if required_context in name:
+                    collisions.append(f"{workflow_path.name}:{job_id}:{name}")
+                    break
+
+    assert not collisions, (
+        f"A workflow_dispatch run must not emit a required status context: {collisions}"
+    )
 
 
 def test_quality_history_archives_manifests_and_renders_dashboard() -> None:
@@ -1430,14 +1562,26 @@ def test_actionlint_documents_github_service_command_compatibility() -> None:
 
 def test_frontend_mutation_gate_is_blocking_and_reproducible() -> None:
     ci_workflow = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    manual_workflow = yaml.safe_load(
+        MANUAL_MUTATION_EVIDENCE_WORKFLOW_PATH.read_text(encoding="utf-8")
+    )
     jobs = ci_workflow["jobs"]
     mutation_job = jobs["stryker-incremental"]
     mutation_condition = mutation_job["if"]
     assert "github.event_name == 'pull_request'" in mutation_condition
-    assert "github.event_name == 'workflow_dispatch'" in mutation_condition
+    assert "workflow_dispatch" not in mutation_condition
     assert "stryker-incremental" in jobs["ci-success"]["needs"]
     result_check = jobs["ci-success"]["steps"][0]["run"]
     assert "needs.stryker-incremental.result" in result_check
+
+    manual_stryker = manual_workflow["jobs"]["manual-frontend-mutation-tests"]
+    assert manual_stryker["name"] == "Manual Mutation Evidence (frontend Stryker)"
+    manual_stryker_run = next(
+        step["run"]
+        for step in manual_stryker["steps"]
+        if step.get("name") == "Run manual incremental Stryker gate"
+    )
+    assert "npm run test:mutation -- --incremental" in manual_stryker_run
 
     frontend_workflow = yaml.safe_load(
         (

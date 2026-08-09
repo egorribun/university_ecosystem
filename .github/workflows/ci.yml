@@ -11,7 +11,6 @@ on:
     # Keep the required gate runnable when a draft PR is promoted to ready.
     # GitHub's default pull_request activity types omit ready_for_review.
     types: [opened, synchronize, reopened, ready_for_review]
-  workflow_dispatch:
 
 # Least-privilege defaults — individual jobs extend as needed.
 # Prevents Poisoned Pipeline Execution (PPE) from fork PRs (OWASP CI/CD C-PPE-1).
@@ -654,10 +653,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     needs: pre-commit-check
-    # Keep the manual recovery path equivalent to the PR gate. This is needed
-    # when GitHub temporarily drops pull_request webhooks: a dispatched run
-    # must execute Stryker rather than publish a misleading skipped context.
-    if: ${{ github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch' }}
+    # This required context only runs for an actual PR event. Operator-run
+    # mutation evidence is isolated in manual-mutation-evidence.yml so a
+    # skipped manual run cannot satisfy branch protection.
+    if: ${{ github.event_name == 'pull_request' }}
     permissions:
       contents: read
     steps:
@@ -1499,8 +1498,7 @@ jobs:
       contents: read
     if: |
       github.event_name == 'push' ||
-      github.event_name == 'pull_request' ||
-      github.event_name == 'workflow_dispatch'
+      github.event_name == 'pull_request'
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -1559,8 +1557,7 @@ jobs:
       contents: read
     if: |
       github.event_name == 'push' ||
-      github.event_name == 'pull_request' ||
-      github.event_name == 'workflow_dispatch'
+      github.event_name == 'pull_request'
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -1615,8 +1612,7 @@ jobs:
       id-token: write
     if: |
       github.event_name == 'push' ||
-      github.event_name == 'pull_request' ||
-      github.event_name == 'workflow_dispatch'
+      github.event_name == 'pull_request'
     env:
       RUST_BACKTRACE: "1"
     steps:
@@ -1791,13 +1787,22 @@ jobs:
         shell: bash
         env:
           PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          EVENT_NAME: ${{ github.event_name }}
         run: |
+          COMPARE_BASE="$(uv run python scripts/resolve_mutation_base.py \
+            --event-name "$EVENT_NAME" \
+            --pr-base-sha "$PR_BASE_SHA")"
           if [ -n "$PR_BASE_SHA" ]; then
-            git cat-file -e "${PR_BASE_SHA}^{commit}"
-            COMPARE_BASE="$PR_BASE_SHA"
+            BASE_SOURCE="pull_request"
           else
-            COMPARE_BASE="origin/main"
+            BASE_SOURCE="origin/main"
           fi
+          {
+            echo "## Mutation comparison base";
+            echo "- Source: $BASE_SOURCE";
+            echo "- Base: $COMPARE_BASE";
+            echo "- Head: $(git rev-parse HEAD)";
+          } >> "$GITHUB_STEP_SUMMARY"
           changed=$(git diff --name-only "$COMPARE_BASE...HEAD" | grep -E '^app/.*\.py$' || true)
           if [ -n "$changed" ]; then
             echo "has_python=true" >> "$GITHUB_OUTPUT"
@@ -1861,13 +1866,22 @@ jobs:
         shell: bash
         env:
           PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          EVENT_NAME: ${{ github.event_name }}
         run: |
+          COMPARE_BASE="$(uv run python scripts/resolve_mutation_base.py \
+            --event-name "$EVENT_NAME" \
+            --pr-base-sha "$PR_BASE_SHA")"
           if [ -n "$PR_BASE_SHA" ]; then
-            git cat-file -e "${PR_BASE_SHA}^{commit}"
-            COMPARE_BASE="$PR_BASE_SHA"
+            BASE_SOURCE="pull_request"
           else
-            COMPARE_BASE="origin/main"
+            BASE_SOURCE="origin/main"
           fi
+          {
+            echo "## Mutation comparison base";
+            echo "- Source: $BASE_SOURCE";
+            echo "- Base: $COMPARE_BASE";
+            echo "- Head: $(git rev-parse HEAD)";
+          } >> "$GITHUB_STEP_SUMMARY"
           git diff --name-only "$COMPARE_BASE...HEAD" | grep -E '^app/.*\.py$' | sort -u > /tmp/changed_py.txt || true
           git diff --unified=0 "$COMPARE_BASE...HEAD" -- app/ > /tmp/changed_py.diff
           if [ -s /tmp/changed_py.txt ]; then
@@ -1967,9 +1981,10 @@ jobs:
   # nightly-full-gate.yml. Keep this historical definition inert so old links
   # and local workflow tooling do not accidentally reintroduce it into the PR
   # gate; promotion back to CI requires a documented Temporal boot fix. The
-  # repository variable is intentionally unset (false) by default and gives
-  # maintainers an explicit opt-in for a diagnostic run without a constant
-  # `if: false` expression that actionlint rejects.
+  # repository variable is intentionally unset (false) by default. This
+  # historical definition is inert: ci.yml intentionally has no
+  # workflow_dispatch trigger because required CI contexts must never be
+  # dispatchable. Re-enable the diagnostic only in a dedicated workflow.
   load-and-chaos-tests:
     if: ${{ github.event_name == 'workflow_dispatch' && vars.ENABLE_LOAD_CHAOS == 'true' }}
     name: Load and Chaos Resilience Tests

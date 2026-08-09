@@ -1,0 +1,227 @@
+name: Manual Mutation Evidence
+
+# This workflow is intentionally separate from ci.yml. GitHub rulesets match
+# required check names across event types, so dispatching the required CI
+# workflow would allow skipped PR-only work to supply protected contexts.
+on:
+  workflow_dispatch: #checkov:skip=CKV_GHA_7:input is validated as a strict ancestor commit before use
+    inputs:
+      mutation_base_sha:
+        description: "Full strict-ancestor commit SHA used to scope manual mutation evidence"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: manual-mutation-evidence-${{ github.ref }}
+  # Evidence is auditable only if an in-flight run is retained. Later manual
+  # dispatches queue behind it instead of cancelling it.
+  cancel-in-progress: false
+
+jobs:
+  manual-mutation-stats:
+    name: Manual Mutation Evidence (mutmut stats) / shard ${{ matrix.stats_shard }}/4
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        stats_shard: [0, 1, 2, 3]
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.14"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+
+      - name: Install dependencies
+        run: uv sync --group dev
+
+      - name: Resolve manual mutation comparison base
+        id: mutation_scope
+        shell: bash
+        env:
+          MANUAL_BASE_SHA: ${{ inputs.mutation_base_sha }}
+        run: |
+          COMPARE_BASE="$(uv run python scripts/resolve_mutation_base.py \
+            --event-name "workflow_dispatch" \
+            --manual-base-sha "$MANUAL_BASE_SHA")"
+          {
+            echo "## Manual mutation comparison base";
+            echo "- Base: $COMPARE_BASE";
+            echo "- Head: $(git rev-parse HEAD)";
+          } >> "$GITHUB_STEP_SUMMARY"
+          changed=$(git diff --name-only "$COMPARE_BASE...HEAD" | grep -E '^app/.*\.py$' || true)
+          if [ -n "$changed" ]; then
+            echo "has_python=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_python=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Collect mutmut stats shard
+        if: steps.mutation_scope.outputs.has_python == 'true'
+        run: |
+          rm -rf mutants
+          uv run python scripts/mutmut_stats_shard.py \
+            --shard-id "${{ matrix.stats_shard }}" \
+            --num-shards 4 \
+            --max-children 2
+
+      - name: Upload manual mutmut stats shard
+        if: steps.mutation_scope.outputs.has_python == 'true'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: manual-mutmut-stats-${{ github.run_id }}-${{ matrix.stats_shard }}
+          path: mutants/mutmut-stats.json
+          if-no-files-found: error
+
+  manual-mutation-tests:
+    name: Manual Mutation Evidence (mutmut) / shard ${{ matrix.shard }}/16
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]
+    timeout-minutes: 35
+    needs: manual-mutation-stats
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.14"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+
+      - name: Install dependencies
+        run: uv sync --group dev
+
+      - name: Resolve manual mutation comparison base
+        id: mutation_scope
+        shell: bash
+        env:
+          MANUAL_BASE_SHA: ${{ inputs.mutation_base_sha }}
+        run: |
+          COMPARE_BASE="$(uv run python scripts/resolve_mutation_base.py \
+            --event-name "workflow_dispatch" \
+            --manual-base-sha "$MANUAL_BASE_SHA")"
+          {
+            echo "## Manual mutation comparison base";
+            echo "- Base: $COMPARE_BASE";
+            echo "- Head: $(git rev-parse HEAD)";
+          } >> "$GITHUB_STEP_SUMMARY"
+          git diff --name-only "$COMPARE_BASE...HEAD" | grep -E '^app/.*\.py$' | sort -u > /tmp/changed_py.txt || true
+          git diff --unified=0 "$COMPARE_BASE...HEAD" -- app/ > /tmp/changed_py.diff
+          if [ -s /tmp/changed_py.txt ]; then
+            echo "has_python=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_python=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Download manual mutmut stats shards
+        if: steps.mutation_scope.outputs.has_python == 'true'
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: manual-mutmut-stats-${{ github.run_id }}-*
+          path: mutmut-stats
+
+      - name: Merge manual mutmut stats shards
+        if: steps.mutation_scope.outputs.has_python == 'true'
+        run: |
+          uv run python scripts/merge_mutmut_stats.py \
+            --input-root mutmut-stats \
+            --output mutants/mutmut-stats.json
+
+      - name: Run manual incremental mutmut (blocking, 25-minute budget)
+        if: steps.mutation_scope.outputs.has_python == 'true'
+        run: |
+          uv run python scripts/plan_mutmut_shards.py \
+            --changed-files /tmp/changed_py.txt \
+            --changed-diff /tmp/changed_py.diff \
+            --shard-id "${{ matrix.shard }}" \
+            --num-shards 16 \
+            --max-children 2 \
+            --output /tmp/mutmut-shard.txt
+          mapfile -t MUTANT_NAMES < /tmp/mutmut-shard.txt
+          if [ "${#MUTANT_NAMES[@]}" -eq 0 ]; then
+            echo "No changed mutants assigned to manual mutation shard ${{ matrix.shard }}/16."
+            exit 0
+          fi
+          echo "Mutating manual shard ${{ matrix.shard }}/16: ${#MUTANT_NAMES[@]} exact mutants"
+          rm -f .mutmut-cache
+          set +e
+          timeout --kill-after=30s 25m uv run mutmut run --max-children 2 "${MUTANT_NAMES[@]}" 2>&1 | tee /tmp/mutmut_run.log
+          ec=${PIPESTATUS[0]}
+          set -e
+          mutants_started=0
+          if grep -qF 'Running mutation testing' /tmp/mutmut_run.log; then mutants_started=1; fi
+          if [ "$ec" -eq 0 ]; then
+            uv run python scripts/export_mutmut_shard_stats.py \
+              --selected-file /tmp/mutmut-shard.txt \
+              --output mutants/mutmut-cicd-stats.json
+            test -s mutants/mutmut-cicd-stats.json
+            echo "Verifying viable mutation score (manual evidence gate at 100%)..."
+            uv run python scripts/mutmut_ci_gate.py
+          elif [ "$ec" -eq 124 ]; then
+            echo "::error::Manual mutation testing exceeded its 25-minute budget; incomplete evidence is not valid."
+            exit 124
+          elif [ "$mutants_started" -eq 1 ]; then
+            echo "::error::mutmut exited $ec after the mutant phase began; incomplete evidence is not valid."
+            exit "$ec"
+          else
+            echo "::error::mutmut exited $ec before the mutant phase began; failing the evidence run."
+            exit "$ec"
+          fi
+
+      - name: Upload manual mutation evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: manual-mutation-evidence-${{ github.run_id }}-${{ matrix.shard }}
+          path: |
+            mutants/mutmut-cicd-stats.json
+            /tmp/mutmut_run.log
+          if-no-files-found: ignore
+
+  manual-frontend-mutation-tests:
+    name: Manual Mutation Evidence (frontend Stryker)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Run manual incremental Stryker gate
+        working-directory: frontend
+        run: npm run test:mutation -- --incremental
+
+      - name: Upload manual frontend mutation evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: manual-frontend-mutation-evidence-${{ github.run_id }}
+          path: frontend/reports/mutation/
+          if-no-files-found: ignore

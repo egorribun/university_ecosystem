@@ -364,7 +364,9 @@ jobs:
           docker compose $CF down -v --remove-orphans || true
 
   kyverno-test:
-    name: Kyverno policy tests
+    # Kept distinct from the required fast-CI context because this workflow
+    # is manually dispatchable as well as scheduled.
+    name: Nightly Kyverno validation
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
