@@ -143,9 +143,16 @@ test.describe("i18n language switching", () => {
 
     // Appearance settings use an accordion, not a combobox/listbox. Open the
     // language section through its semantic button before locating the radio.
-    const languageSection = page.getByRole("button", { name: /language|язык/i }).first()
+    const languageSection = page
+      .locator("button:has(h3):visible")
+      .filter({
+        hasText: /language|язык/i,
+      })
+      .first()
     await expect(languageSection).toBeVisible({ timeout: 5000 })
-    await languageSection.click()
+    if ((await languageSection.getAttribute("aria-expanded")) !== "true") {
+      await languageSection.click()
+    }
     await expect(languageSection).toHaveAttribute("aria-expanded", "true", { timeout: 5000 })
 
     const enOption = page.getByRole("radio", { name: /English|Английский/i })
