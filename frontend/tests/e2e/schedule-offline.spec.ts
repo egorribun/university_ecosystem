@@ -1,5 +1,6 @@
 import { expect, test, type Page } from "./test"
 import { useMockApi } from "./utils/mockApi"
+import { gotoWithTransientRetry } from "./utils/navigation"
 
 /**
  * Schedule offline behaviour specs — W24.
@@ -63,7 +64,7 @@ test.describe("Schedule offline behaviour", () => {
     const { login } = await useMockApi(page)
     await login(page)
 
-    await page.goto("/schedule", { waitUntil: "networkidle" })
+    await gotoWithTransientRetry(page, "/schedule", { waitUntil: "networkidle" })
     await page.waitForURL(/\/schedule$/)
 
     // Verify the page loaded online first (baseline content present).
@@ -101,7 +102,7 @@ test.describe("Schedule offline behaviour", () => {
     const { login } = await useMockApi(page)
     await login(page)
 
-    await page.goto("/schedule", { waitUntil: "networkidle" })
+    await gotoWithTransientRetry(page, "/schedule", { waitUntil: "networkidle" })
     await page.waitForURL(/\/schedule$/)
 
     const swReady = await ensureServiceWorkerReady(page)
@@ -139,7 +140,7 @@ test.describe("Schedule offline behaviour", () => {
     const { login } = await useMockApi(page)
     await login(page)
 
-    await page.goto("/schedule", { waitUntil: "networkidle" })
+    await gotoWithTransientRetry(page, "/schedule", { waitUntil: "networkidle" })
     await page.waitForURL(/\/schedule$/)
 
     const swReady = await ensureServiceWorkerReady(page)
