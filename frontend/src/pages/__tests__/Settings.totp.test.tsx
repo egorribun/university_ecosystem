@@ -91,6 +91,15 @@ const renderSettings = async () => {
 const matchTotpAddButton = /Set up authenticator app|Подключить приложение/i
 const matchSecurityTab = /Security|Безопасность/i
 const matchSecurityHeading = /Security & MFA|Безопасность и MFA/i
+const matchTotpSection = /^Authenticator app|^Приложение для аутентификации/i
+
+const openTotpAccordion = async (user: ReturnType<typeof userEvent.setup>) => {
+  const accordion = await screen.findByRole("button", { name: matchTotpSection })
+  if (accordion.getAttribute("aria-expanded") !== "true") {
+    await user.click(accordion)
+  }
+  await waitFor(() => expect(accordion).toHaveAttribute("aria-expanded", "true"))
+}
 
 describe("Settings TOTP enrollment", () => {
   beforeEach(() => {
@@ -111,6 +120,7 @@ describe("Settings TOTP enrollment", () => {
 
     await user.click(await screen.findByRole("tab", { name: matchSecurityTab }))
     await screen.findByRole("heading", { name: matchSecurityHeading })
+    await openTotpAccordion(user)
     await user.click(await screen.findByRole("button", { name: matchTotpAddButton }))
 
     await screen.findByText(/Finish setup|Завершите настройку/i)
@@ -158,10 +168,7 @@ describe("Settings TOTP enrollment", () => {
 
     await user.click(await screen.findByRole("tab", { name: matchSecurityTab }))
     await screen.findByRole("heading", { name: matchSecurityHeading })
-    const accordions = await screen.findAllByText(
-      /Authenticator app|Приложение для аутентификации/i
-    )
-    await user.click(accordions[0] as HTMLElement)
+    await openTotpAccordion(user)
     await user.click(await screen.findByRole("button", { name: matchTotpAddButton }))
 
     await screen.findByText(/Finish setup|Завершите настройку/i)
@@ -186,6 +193,7 @@ describe("Settings TOTP enrollment", () => {
 
     await user.click(await screen.findByRole("tab", { name: matchSecurityTab }))
     await screen.findByRole("heading", { name: matchSecurityHeading })
+    await openTotpAccordion(user)
     await user.click(await screen.findByRole("button", { name: matchTotpAddButton }))
 
     await screen.findByText(/Finish setup|Завершите настройку/i)
@@ -213,6 +221,7 @@ describe("Settings TOTP enrollment", () => {
 
     await user.click(await screen.findByRole("tab", { name: matchSecurityTab }))
     await screen.findByRole("heading", { name: matchSecurityHeading })
+    await openTotpAccordion(user)
     await user.click(await screen.findByRole("button", { name: matchTotpAddButton }))
 
     await screen.findByText(/Finish setup|Завершите настройку/i)
@@ -237,6 +246,7 @@ describe("Settings TOTP enrollment", () => {
 
     await user.click(await screen.findByRole("tab", { name: matchSecurityTab }))
     await screen.findByRole("heading", { name: matchSecurityHeading })
+    await openTotpAccordion(user)
 
     await screen.findByText(/Finish setup|Завершите настройку/i)
     expect(
@@ -262,6 +272,7 @@ describe("Settings TOTP enrollment", () => {
 
     await user.click(await screen.findByRole("tab", { name: matchSecurityTab }))
     await screen.findByRole("heading", { name: matchSecurityHeading })
+    await openTotpAccordion(user)
 
     expect(
       await screen.findByText((_, element) => {
