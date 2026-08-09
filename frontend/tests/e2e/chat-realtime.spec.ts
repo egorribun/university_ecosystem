@@ -1,4 +1,5 @@
 import { expect, test } from "./test"
+import { gotoWithTransientRetry } from "./utils/navigation"
 
 /**
  * Chat real-time behaviour specs — W24.
@@ -28,7 +29,7 @@ test.describe("Chat real-time behaviour", () => {
   // page.evaluate, then verifies the client reconnects and can still
   // receive messages (indicated by a new message appearing in the UI).
   test("reconnects WebSocket and receives messages after disconnect", async ({ page }) => {
-    await page.goto("/messenger", { waitUntil: "networkidle" })
+    await gotoWithTransientRetry(page, "/messenger", { waitUntil: "networkidle" })
 
     // Grab a chat room — assumes at least one is listed.
     await page.getByRole("listitem").first().click()
@@ -73,7 +74,7 @@ test.describe("Chat real-time behaviour", () => {
   // Simulates a typing event arriving from another user by injecting a
   // synthetic WebSocket message, then verifies the UI renders the indicator.
   test("shows typing indicator when remote user sends typing event", async ({ page }) => {
-    await page.goto("/messenger", { waitUntil: "networkidle" })
+    await gotoWithTransientRetry(page, "/messenger", { waitUntil: "networkidle" })
     await page.getByRole("listitem").first().click()
     await page.waitForTimeout(500)
 
@@ -108,7 +109,7 @@ test.describe("Chat real-time behaviour", () => {
   // Sends a message and verifies the UI progresses from a pending/sending
   // state to a delivered/sent confirmation (tick, check-mark, or similar).
   test("shows delivery confirmation after message is sent", async ({ page }) => {
-    await page.goto("/messenger", { waitUntil: "networkidle" })
+    await gotoWithTransientRetry(page, "/messenger", { waitUntil: "networkidle" })
     await page.getByRole("listitem").first().click()
     await page.waitForTimeout(500)
 
@@ -133,7 +134,7 @@ test.describe("Chat real-time behaviour", () => {
   // injecting a synthetic WS read frame, then verifies the UI reflects the
   // read status (either specific "Seen" / "Прочитано" label or group "seen by" status).
   test("shows read confirmation after remote user reads the message", async ({ page }) => {
-    await page.goto("/messenger", { waitUntil: "networkidle" })
+    await gotoWithTransientRetry(page, "/messenger", { waitUntil: "networkidle" })
     await page.getByRole("listitem").first().click()
     await page.waitForTimeout(500)
 

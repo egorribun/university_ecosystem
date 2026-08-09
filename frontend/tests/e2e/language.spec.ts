@@ -1,5 +1,6 @@
 import { expect, test } from "./test"
 import { useMockApi } from "./utils/mockApi"
+import { gotoWithTransientRetry } from "./utils/navigation"
 
 const storageKey = "ue:language"
 
@@ -15,7 +16,7 @@ test.describe.skip("Language switching and RTL support", () => {
     const mock = await useMockApi(page)
     await mock.login(page)
 
-    await page.goto("/settings", { waitUntil: "networkidle" })
+    await gotoWithTransientRetry(page, "/settings", { waitUntil: "networkidle" })
     await expect(page.getByRole("heading", { name: "Настройки" })).toBeVisible()
     await expect(page.locator("html")).toHaveAttribute("dir", "ltr")
 

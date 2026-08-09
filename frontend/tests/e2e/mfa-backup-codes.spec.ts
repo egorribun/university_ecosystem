@@ -1,5 +1,6 @@
 import { expect, test, type Page } from "./test"
 import { useMockApi } from "./utils/mockApi"
+import { gotoWithTransientRetry } from "./utils/navigation"
 
 /**
  * MFA backup / recovery codes specs — W24.
@@ -59,7 +60,7 @@ test.describe("MFA backup codes management", () => {
     await login(page)
 
     // Navigate to settings then the MFA / security tab.
-    await page.goto("/settings", { waitUntil: "networkidle" })
+    await gotoWithTransientRetry(page, "/settings", { waitUntil: "networkidle" })
 
     const accountTab = page.getByRole("tab", { name: /account|аккаунт/i })
     if (await accountTab.isVisible({ timeout: 3000 })) {
@@ -76,7 +77,9 @@ test.describe("MFA backup codes management", () => {
       await expect(recoverySection.first()).toBeVisible()
     } else {
       // Try navigating directly to the recovery codes page.
-      await page.goto("/settings/mfa/recovery-codes", { waitUntil: "networkidle" })
+      await gotoWithTransientRetry(page, "/settings/mfa/recovery-codes", {
+        waitUntil: "networkidle",
+      })
       const directPage = page.locator("body").filter({ hasText: /recovery codes?|резервные коды/i })
       if (await directPage.isVisible({ timeout: 3000 })) {
         await expect(directPage.first()).toBeVisible()
@@ -96,7 +99,7 @@ test.describe("MFA backup codes management", () => {
     const { login } = await useMockApi(page)
     await login(page)
 
-    await page.goto("/settings", { waitUntil: "networkidle" })
+    await gotoWithTransientRetry(page, "/settings", { waitUntil: "networkidle" })
 
     const accountTab = page.getByRole("tab", { name: /account|аккаунт/i })
     if (await accountTab.isVisible({ timeout: 3000 })) {
@@ -111,7 +114,9 @@ test.describe("MFA backup codes management", () => {
 
     if (!(await downloadButton.isVisible({ timeout: 5000 }))) {
       // Try direct navigation.
-      await page.goto("/settings/mfa/recovery-codes", { waitUntil: "networkidle" })
+      await gotoWithTransientRetry(page, "/settings/mfa/recovery-codes", {
+        waitUntil: "networkidle",
+      })
     }
 
     const downloadButtonRetry = page.getByRole("button", {
@@ -141,7 +146,7 @@ test.describe("MFA backup codes management", () => {
     const { login } = await useMockApi(page)
     await login(page)
 
-    await page.goto("/settings", { waitUntil: "networkidle" })
+    await gotoWithTransientRetry(page, "/settings", { waitUntil: "networkidle" })
 
     const accountTab = page.getByRole("tab", { name: /account|аккаунт/i })
     if (await accountTab.isVisible({ timeout: 3000 })) {

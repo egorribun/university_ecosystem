@@ -1,5 +1,6 @@
 import { expect, test } from "./test"
 import { useMockApi } from "./utils/mockApi"
+import { gotoWithTransientRetry } from "./utils/navigation"
 
 /**
  * Profile avatar upload specs — W24.
@@ -44,7 +45,7 @@ test.describe("Profile avatar upload", () => {
     const { login } = await useMockApi(page)
     await login(page)
 
-    await page.goto("/profile", { waitUntil: "networkidle" })
+    await gotoWithTransientRetry(page, "/profile", { waitUntil: "networkidle" })
     await page.waitForURL(/\/profile/)
 
     // Look for the avatar upload trigger: a button, label, or direct input.
@@ -110,7 +111,7 @@ test.describe("Profile avatar upload", () => {
     const { login } = await useMockApi(page)
     await login(page)
 
-    await page.goto("/profile", { waitUntil: "networkidle" })
+    await gotoWithTransientRetry(page, "/profile", { waitUntil: "networkidle" })
     await page.waitForURL(/\/profile/)
 
     await page.evaluate(() => {
@@ -172,7 +173,7 @@ test.describe("Profile avatar upload", () => {
     await login(page)
 
     // Navigate to profile edit mode (some apps require ?edit=1).
-    await page.goto("/profile?edit=1", { waitUntil: "networkidle" })
+    await gotoWithTransientRetry(page, "/profile?edit=1", { waitUntil: "networkidle" })
     await page.waitForTimeout(1000)
 
     await page.evaluate(() => {
