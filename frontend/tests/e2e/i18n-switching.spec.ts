@@ -146,11 +146,11 @@ test.describe("i18n language switching", () => {
     const languageSection = page.getByRole("button", { name: /language|язык/i }).first()
     await expect(languageSection).toBeVisible({ timeout: 5000 })
     await languageSection.click()
+    await expect(languageSection).toHaveAttribute("aria-expanded", "true", { timeout: 5000 })
 
     const enOption = page.getByRole("radio", { name: /English|Английский/i })
-    const enOptionLabel = page.locator("label").filter({ has: enOption }).first()
-    await expect(enOptionLabel).toBeVisible({ timeout: 3000 })
-    await enOptionLabel.click()
+    await expect(enOption).toBeVisible({ timeout: 5000 })
+    await enOption.check()
 
     // Accept either "en" or "en-US" / "en-GB".
     await expect(page.locator("html")).toHaveAttribute("lang", /^en/)
