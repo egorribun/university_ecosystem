@@ -138,7 +138,9 @@ test.describe("@a11y enhanced WCAG 2.2 AA + tab-order + reduced-motion", () => {
     // notification prompt are optional chrome, so beginning from the browser
     // default focus can make the first 15 tab stops vary between CI runs.
     const emailInput = page.locator('input[name="email"]')
+    await expect(emailInput).toBeEnabled({ timeout: 15_000 })
     await emailInput.focus()
+    await expect(emailInput).toBeFocused({ timeout: 5_000 })
 
     // Collect focused element IDs/types as Tab is pressed.
     const focusedElements: string[] = [

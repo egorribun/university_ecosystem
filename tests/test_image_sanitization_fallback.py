@@ -71,9 +71,12 @@ def test_optimize_image_vips_routing_and_fallback() -> None:
 
     # Case 1: Route to VIPS when VIPS_AVAILABLE is True
     mock_vips_opt = MagicMock(return_value=(b"vips_optimized_webp_bytes", "image/webp"))
-    with (
-        patch("app.utils.images.VIPS_AVAILABLE", True),
-        patch("app.utils.images.optimize_image_vips", mock_vips_opt),
+    # ``test_images_v2`` reloads ``app.utils.images`` while this module keeps
+    # the function imported at collection time. Patch that function's actual
+    # globals so the test remains correct regardless of module reload order.
+    with patch.dict(
+        optimize_image.__globals__,
+        {"VIPS_AVAILABLE": True, "optimize_image_vips": mock_vips_opt},
     ):
         optimized_data, content_type = optimize_image(
             png_data, max_width=5, max_height=5
@@ -86,9 +89,9 @@ def test_optimize_image_vips_routing_and_fallback() -> None:
 
     # Case 2: VIPS fails with OSError -> Fallback to Pillow
     mock_vips_fail = MagicMock(side_effect=OSError("libvips error"))
-    with (
-        patch("app.utils.images.VIPS_AVAILABLE", True),
-        patch("app.utils.images.optimize_image_vips", mock_vips_fail),
+    with patch.dict(
+        optimize_image.__globals__,
+        {"VIPS_AVAILABLE": True, "optimize_image_vips": mock_vips_fail},
     ):
         optimized_data, content_type = optimize_image(
             png_data, max_width=5, max_height=5
