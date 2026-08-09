@@ -40,16 +40,25 @@ diff --git a/app/core/lifespan.py b/app/core/lifespan.py
     }
 
 
-def test_mutant_line_ranges_match_mutmut_names_for_class_methods() -> None:
-    path = Path("app/core/ratelimit/circuit_breaker.py")
-    source = path.read_text(encoding="utf-8")
+def test_mutant_line_ranges_match_mutmut_names_for_class_methods(
+    tmp_path: Path,
+) -> None:
+    # mutmut runs clean tests from its already-trampolined ``mutants/`` copy.
+    # Keep this fixture outside that tree so this regression test never asks
+    # mutmut to instrument its own generated class-method names a second time.
+    path = tmp_path / "class_method_fixture.py"
+    source = """\
+class FixtureClass:
+    def method(self) -> bool:
+        return True
+"""
+    path.write_text(source, encoding="utf-8")
     _mutated_source, bare_mutant_names = mutate_file_contents(str(path), source)
-    cli = SimpleNamespace(
-        get_mutant_name=lambda _path, name: f"app.core.ratelimit.circuit_breaker.{name}"
-    )
+    cli = SimpleNamespace(get_mutant_name=lambda _path, name: f"fixture.module.{name}")
 
+    assert set(bare_mutant_names) == {"xǁFixtureClassǁmethod__mutmut_1"}
     assert set(_mutant_line_ranges(cli, path)) == {
-        f"app.core.ratelimit.circuit_breaker.{name}" for name in bare_mutant_names
+        f"fixture.module.{name}" for name in bare_mutant_names
     }
 
 
