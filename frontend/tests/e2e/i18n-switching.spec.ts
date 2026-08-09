@@ -157,7 +157,9 @@ test.describe("i18n language switching", () => {
 
     const enOption = page.getByRole("radio", { name: /English|Английский/i })
     await expect(enOption).toBeVisible({ timeout: 5000 })
-    await enOption.check()
+    // The custom indicator intentionally overlays the visually-hidden native
+    // input; activate the wrapping label to exercise the real user path.
+    await enOption.locator("xpath=ancestor::label").click()
 
     // Accept either "en" or "en-US" / "en-GB".
     await expect(page.locator("html")).toHaveAttribute("lang", /^en/)
