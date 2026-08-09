@@ -140,6 +140,9 @@ test.describe("i18n language switching", () => {
       waitUntil: "domcontentloaded",
       timeout: 30_000,
     })
+    await page.waitForFunction(() => window.__APP_HYDRATED === true, null, {
+      timeout: 15_000,
+    })
 
     // Appearance settings use an accordion, not a combobox/listbox. Open the
     // language section through its semantic button before locating the radio.
