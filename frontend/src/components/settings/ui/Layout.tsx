@@ -126,6 +126,7 @@ export function AccordionSection({
   className?: string
 }) {
   const [expanded, setExpanded] = useState(defaultExpanded)
+  const contentId = useId()
 
   return (
     <div
@@ -141,6 +142,8 @@ export function AccordionSection({
       <button
         type="button"
         onClick={() => setExpanded(!expanded)}
+        aria-expanded={expanded}
+        aria-controls={contentId}
         className="w-full px-4 py-3 text-left transition-colors hover:bg-(--primary-main)/5"
       >
         <div className="flex items-center justify-between gap-3">
@@ -160,6 +163,8 @@ export function AccordionSection({
         </div>
       </button>
       <div
+        id={contentId}
+        hidden={!expanded}
         className={cn(
           "overflow-hidden transition-all duration-slow",
           expanded ? "max-h-[125rem] opacity-100" : "max-h-0 opacity-0"

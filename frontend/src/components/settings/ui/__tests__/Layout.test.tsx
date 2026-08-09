@@ -93,13 +93,22 @@ describe("settings layout primitives", () => {
     )
 
     const collapsedButton = screen.getByRole("button", { name: /Collapsed Details/ })
+    expect(collapsedButton).toHaveAttribute("aria-expanded", "false")
+    expect(collapsedButton).toHaveAttribute("aria-controls", collapsedButton.nextElementSibling?.id)
+    expect(collapsedButton.nextElementSibling).toHaveAttribute("hidden")
     expect(collapsedButton.nextElementSibling).toHaveStyle({ maxHeight: "0px" })
     await user.click(collapsedButton)
+    expect(collapsedButton).toHaveAttribute("aria-expanded", "true")
+    expect(collapsedButton.nextElementSibling).not.toHaveAttribute("hidden")
     expect(collapsedButton.nextElementSibling).toHaveStyle({ maxHeight: "2000px" })
     await user.click(collapsedButton)
+    expect(collapsedButton).toHaveAttribute("aria-expanded", "false")
+    expect(collapsedButton.nextElementSibling).toHaveAttribute("hidden")
     expect(collapsedButton.nextElementSibling).toHaveStyle({ maxHeight: "0px" })
 
     const expandedButton = screen.getByRole("button", { name: "Expanded" })
+    expect(expandedButton).toHaveAttribute("aria-expanded", "true")
+    expect(expandedButton.nextElementSibling).not.toHaveAttribute("hidden")
     expect(expandedButton.nextElementSibling).toHaveStyle({ maxHeight: "2000px" })
   })
 
