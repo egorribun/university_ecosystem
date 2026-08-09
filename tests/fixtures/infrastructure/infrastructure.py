@@ -177,18 +177,17 @@ def mock_background_tasks(monkeypatch):
 @pytest_asyncio.fixture
 async def app():
     # Dishka's FastAPI integration stores the application container on
-    # ``app.state`` and the lifespan closes it during teardown.  The mutmut
-    # runner invokes pytest.main() repeatedly in one Python process; reusing
-    # that closed container makes request-scoped providers (notably
-    # PermissionChecker) disappear in the next clean-test run.  Recreate the
-    # container only after the first managed lifespan, preserving the one
-    # installed by app import for the initial test while keeping every later
-    # in-process lifespan independent.
-    if getattr(main.app.state, "_test_dishka_container_closed", False):
+    # ``app.state`` and the lifespan closes it during teardown.  TestClient,
+    # LifespanManager, and mutmut can all drive that lifecycle, so the marker
+    # is owned by ``app.core.lifespan`` rather than by this fixture alone.
+    # Recreate the container only after a completed lifespan, preserving the
+    # one installed by app import for the initial test while keeping every
+    # later in-process lifespan independent.
+    if getattr(main.app.state, "_dishka_container_closed", False):
         from app.core.di_provider import create_dishka_container
 
         main.app.state.dishka_container = create_dishka_container()
-    main.app.state._test_dishka_container_closed = False
+    main.app.state._dishka_container_closed = False
     manager = LifespanManager(main.app)
     await manager.__aenter__()
     yield main.app  # yield the ASGI app, not the manager
@@ -218,7 +217,9 @@ async def app():
         ):
             raise
     finally:
-        main.app.state._test_dishka_container_closed = True
+        # The application lifespan sets this before closing the container;
+        # retain the fallback for a fixture teardown that exits unusually.
+        main.app.state._dishka_container_closed = True
 
 
 @pytest_asyncio.fixture

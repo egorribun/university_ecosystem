@@ -407,6 +407,11 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
     """Granular startup and shutdown orchestration (TD-004 decomposition)."""
     # RZ-33-14: Clear the stop event so the scheduler works after hot-reload.
     _SCHEDULER_STOP.clear()
+    # TestClient, LifespanManager, and production ASGI servers all drive this
+    # context.  Keep the container lifecycle observable so a subsequent
+    # in-process test lifespan can replace the closed Dishka container instead
+    # of reusing it after shutdown.
+    app.state._dishka_container_closed = False
 
     # 1. Bootstrapping
     await _startup_database_and_di(app)
@@ -488,7 +493,9 @@ async def _shutdown_subsystems(app: FastAPI) -> None:
     if _bg_tasks:
         await asyncio.gather(*_bg_tasks, return_exceptions=True)
 
-    # Orderly pool and client teardown
+    # Orderly pool and client teardown.  Set the marker before closing so it is
+    # still reliable if a provider finalizer raises during shutdown.
+    app.state._dishka_container_closed = True
     await app.state.dishka_container.close()
     await stop_presence_pubsub()
     await notification_queue.shutdown_notification_queue()

@@ -735,6 +735,7 @@ async def test_shutdown_subsystems() -> None:
             assert task2.cancelled()
 
             mock_container.close.assert_awaited_once()
+            assert app.state._dishka_container_closed is True
             mock_presence.assert_awaited_once()
             mock_notif.assert_awaited_once()
             mock_webpush.assert_called_once()
