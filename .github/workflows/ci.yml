@@ -1838,14 +1838,27 @@ jobs:
       # diffs and exit successfully after proving their slice is empty.
       matrix:
         shard: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]
-    # 35 = outer safety net for the 25-min in-command gate below (+ setup/install).
-    # A time-box is a failed mutation gate: silently skipping score verification
-    # would turn a missing quality signal into a green required check.
-    timeout-minutes: 35
+    # Cap mutmut at 300 minutes (18,000 seconds).  After timeout's 30-second KILL grace,
+    # the six-hour hosted job still has 3,570 seconds for setup,
+    # metadata verification, score checking, evidence upload, and a
+    # fail-closed exit.  The manual evidence workflow uses the same envelope.
+    timeout-minutes: 360
     needs:
       - pre-commit-check
       - mutation-tests-stats
     steps:
+      # This must stay before checkout and dependency installation. Each Actions
+      # step starts a new shell, so persist wall-clock epochs through GITHUB_ENV.
+      - name: Record mutmut job deadline
+        shell: bash
+        run: |
+          MUTMUT_JOB_STARTED_EPOCH="$(date -u +%s)"
+          MUTMUT_JOB_DEADLINE_EPOCH="$((MUTMUT_JOB_STARTED_EPOCH + 21600))"
+          {
+            echo "MUTMUT_JOB_STARTED_EPOCH=$MUTMUT_JOB_STARTED_EPOCH"
+            echo "MUTMUT_JOB_DEADLINE_EPOCH=$MUTMUT_JOB_DEADLINE_EPOCH"
+          } >> "$GITHUB_ENV"
+
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
@@ -1904,7 +1917,8 @@ jobs:
             --input-root mutmut-stats \
             --output mutants/mutmut-stats.json
 
-      - name: Run incremental mutmut (blocking, 25-minute budget)
+      - name: Run incremental mutmut (blocking, stats-derived budget)
+        id: run_incremental_mutmut
         if: steps.mutation_scope.outputs.has_python == 'true'
         run: |
           # Scope mutmut to every changed backend source line.  The old
@@ -1925,22 +1939,128 @@ jobs:
           mapfile -t MUTANT_NAMES < /tmp/mutmut-shard.txt
           if [ "${#MUTANT_NAMES[@]}" -eq 0 ]; then
             echo "No changed mutants assigned to mutation shard ${{ matrix.shard }}/16."
+            echo "has_mutants=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
+          echo "has_mutants=true" >> "$GITHUB_OUTPUT"
           echo "Mutating shard ${{ matrix.shard }}/16: ${#MUTANT_NAMES[@]} exact mutants"
+          MUTMUT_EVIDENCE_DIR=mutants/mutmut-exact-evidence
+          mkdir -p "$MUTMUT_EVIDENCE_DIR"
+          MUTMUT_EVIDENCE_FINALIZED=false
+          MUTMUT_FAILURE_REASON="preparing exact mutation execution evidence"
+          mutmut_exit_code=""
+          tee_exit_code=""
+          # Once a shard has selected mutants, every non-success exit must leave
+          # an auditable partial result set and proof. This includes setup,
+          # deadline, budget, and exact-verification failures before mutmut runs.
+          finalize_incomplete_mutmut_evidence() {
+            local failure_exit_code="$1"
+            local exporter_args=(
+              --selected-file /tmp/mutmut-shard.txt
+              --finalize-incomplete-execution "$MUTMUT_EVIDENCE_DIR/execution-plan.json"
+              --failure-exit-code "$failure_exit_code"
+              --failure-reason "$MUTMUT_FAILURE_REASON"
+            )
+            if [ -n "$mutmut_exit_code" ]; then
+              exporter_args+=(--mutation-exit-code "$mutmut_exit_code")
+            fi
+            if [ -n "$tee_exit_code" ]; then
+              exporter_args+=(--tee-exit-code "$tee_exit_code")
+            fi
+            uv run python scripts/export_mutmut_shard_stats.py "${exporter_args[@]}" \
+              --execution-proof "$MUTMUT_EVIDENCE_DIR/execution-proof.json" \
+              --execution-evidence-dir "$MUTMUT_EVIDENCE_DIR" || return $?
+            test -s "$MUTMUT_EVIDENCE_DIR/execution-proof.json" || return $?
+            test -s "$MUTMUT_EVIDENCE_DIR/selected-mutants.json" || return $?
+            test -s "$MUTMUT_EVIDENCE_DIR/selected-results.json" || return $?
+          }
+          on_mutation_step_exit() {
+            local exit_code="$?"
+            local finalizer_exit_code=0
+            trap - EXIT
+            if [ "$exit_code" -ne 0 ] && [ "$MUTMUT_EVIDENCE_FINALIZED" != "true" ]; then
+              set +e
+              finalize_incomplete_mutmut_evidence "$exit_code"
+              finalizer_exit_code="$?"
+              if [ "$finalizer_exit_code" -ne 0 ]; then
+                echo "::error::Unable to finalize incomplete mutation evidence."
+              fi
+            fi
+            exit "$exit_code"
+          }
+          trap on_mutation_step_exit EXIT
+          # The planner has generated the full metadata universe. Snapshot its
+          # exact selected IDs while every result is still not checked, then
+          # prove after the run that no other ID was executed.
+          uv run python scripts/export_mutmut_shard_stats.py \
+            --selected-file /tmp/mutmut-shard.txt \
+            --prepare-exact-execution "$MUTMUT_EVIDENCE_DIR/execution-plan.json" \
+            --execution-evidence-dir "$MUTMUT_EVIDENCE_DIR"
+          MUTMUT_FAILURE_REASON="deriving the stats-based mutation budget"
+          MUTMUT_BUDGET_TIMEOUT_SECONDS="$(uv run python scripts/mutmut_shard_budget.py \
+            --selected-file /tmp/mutmut-shard.txt \
+            --stats mutants/mutmut-stats.json \
+            --max-children 2 \
+            --max-timeout-seconds 18000 \
+            --output "$MUTMUT_EVIDENCE_DIR/shard-budget.json")"
+          if ! [[ "$MUTMUT_BUDGET_TIMEOUT_SECONDS" =~ ^[1-9][0-9]*$ ]]; then
+            MUTMUT_FAILURE_REASON="mutation budget helper returned an unsafe timeout value"
+            echo "::error::Mutation budget helper returned an unsafe timeout value."
+            exit 1
+          fi
+          # The 18,000-second budget is only an upper cap.  The timeout starts
+          # after setup, so derive a lower cap from the durable job deadline and
+          # leave 3,570 seconds after timeout's 30-second KILL grace for proof,
+          # score verification, upload, and a fail-closed exit.
+          if ! [[ "${MUTMUT_JOB_DEADLINE_EPOCH:-}" =~ ^[1-9][0-9]*$ ]]; then
+            MUTMUT_FAILURE_REASON="mutation job deadline is missing or invalid"
+            echo "::error::Mutation job deadline is missing or invalid; refusing to run without post-run evidence headroom."
+            exit 1
+          fi
+          MUTMUT_FAILURE_REASON="deriving the deadline-bounded mutation timeout"
+          MUTMUT_POST_RUN_UPLOAD_RESERVE_SECONDS=3570
+          MUTMUT_TIMEOUT_KILL_GRACE_SECONDS=30
+          MUTMUT_CURRENT_EPOCH="$(date -u +%s)"
+          MUTMUT_REMAINING_JOB_SECONDS="$((MUTMUT_JOB_DEADLINE_EPOCH - MUTMUT_CURRENT_EPOCH))"
+          MUTMUT_REMAINING_TIMEOUT_SECONDS="$((MUTMUT_REMAINING_JOB_SECONDS - MUTMUT_POST_RUN_UPLOAD_RESERVE_SECONDS - MUTMUT_TIMEOUT_KILL_GRACE_SECONDS))"
+          if [ "$MUTMUT_REMAINING_TIMEOUT_SECONDS" -lt 1 ]; then
+            MUTMUT_FAILURE_REASON="mutation deadline leaves no execution time after required evidence headroom"
+            echo "::error::Mutation deadline leaves no execution time after the required 3570-second post-run/upload reserve and 30-second KILL grace."
+            exit 1
+          fi
+          MUTMUT_TIMEOUT_SECONDS="$MUTMUT_BUDGET_TIMEOUT_SECONDS"
+          if [ "$MUTMUT_TIMEOUT_SECONDS" -gt "$MUTMUT_REMAINING_TIMEOUT_SECONDS" ]; then
+            MUTMUT_TIMEOUT_SECONDS="$MUTMUT_REMAINING_TIMEOUT_SECONDS"
+          fi
+          if [ "$MUTMUT_TIMEOUT_SECONDS" -lt "$MUTMUT_BUDGET_TIMEOUT_SECONDS" ]; then
+            MUTMUT_FAILURE_REASON="mutation deadline cannot satisfy the verified shard budget"
+            echo "::error::Mutation deadline only permits ${MUTMUT_TIMEOUT_SECONDS}s but the verified shard budget requires ${MUTMUT_BUDGET_TIMEOUT_SECONDS}s; refusing to run incomplete mutation evidence."
+            exit 1
+          fi
+          echo "Derived fail-closed mutation timeout: ${MUTMUT_TIMEOUT_SECONDS}s"
           rm -f .mutmut-cache
-          # Time-box: a long-lived branch can span tens of thousands of mutants
-          # (multi-hour full run). This blocking job runs REAL mutation for a
-          # bounded window. mutmut exits 0 on completion regardless of survivors;
-          # the test-isolation invariants (generate + stats + clean-test + forced-fail)
-          # and the 100% viable mutation-score gate both fail non-zero on regression.
+          # The shell cap is calculated from the merged test durations and
+          # mutmut 3.5's 15x child watchdog, rather than an arbitrary shorter
+          # wall-clock that could preempt a valid mutmut classification.
+          # This blocking job runs REAL mutation and still hard-fails above
+          # the CI-supported cap; mutmut exits 0 on completion regardless of
+          # survivors, so the exact-execution proof and 100% viable-score gate
+          # remain blocking defenses.
           # --max-children 2 caps concurrent forked mutant
           # workers (default = nproc) to bound peak RAM (one full app load per fork)
           # and reduce the runner OOM-killer firing mid-sweep.
+          MUTMUT_FAILURE_REASON="mutmut pipeline did not complete"
           set +e
-          timeout --kill-after=30s 25m uv run mutmut run --max-children 2 "${MUTANT_NAMES[@]}" 2>&1 | tee /tmp/mutmut_run.log
-          ec=${PIPESTATUS[0]}   # exit code of timeout/mutmut, NOT tee
+          timeout --kill-after=30s "${MUTMUT_TIMEOUT_SECONDS}s" uv run mutmut run --max-children 2 "${MUTANT_NAMES[@]}" 2>&1 | tee "$MUTMUT_EVIDENCE_DIR/mutmut-run.log"
+          pipeline_status=("${PIPESTATUS[@]}")
+          mutmut_exit_code="${pipeline_status[0]}"
+          tee_exit_code="${pipeline_status[1]}"
           set -e
+          if [ "$tee_exit_code" -ne 0 ]; then
+            MUTMUT_FAILURE_REASON="unable to persist mutmut output"
+            echo "::error::Unable to persist mutmut output; exact mutation evidence is incomplete."
+            exit "$tee_exit_code"
+          fi
           # mutmut prints the ASCII line "Running mutation testing" (mutmut/__main__.py:1255)
           # ONLY after generate + stats + clean-test + forced-fail ALL pass — each of
           # those exits non-zero BEFORE that line on a regression (stats 957, clean-test
@@ -1951,30 +2071,58 @@ jobs:
           # Any kill AFTER it (124 time-box / 137 OOM-SIGKILL / 143 SIGTERM) is in the
           # mutation-execution zone. The gate fails if the signal is incomplete.
           mutants_started=0
-          if grep -qF 'Running mutation testing' /tmp/mutmut_run.log; then mutants_started=1; fi
-          if [ "$ec" -eq 0 ]; then
-            echo "mutmut completed within the time-box."
+          if grep -qF 'Running mutation testing' "$MUTMUT_EVIDENCE_DIR/mutmut-run.log"; then mutants_started=1; fi
+          if [ "$mutmut_exit_code" -eq 0 ]; then
+            MUTMUT_FAILURE_REASON="verifying exact mutmut execution"
+            echo "mutmut completed within its stats-derived budget."
             # mutmut creates metadata for the full source universe even when
-            # positional arguments run one exact shard. Export only the names
-            # assigned above, so unrelated unselected records cannot mask or
-            # falsely fail this shard's evidence.
+            # positional arguments run one exact shard. Verify the pristine
+            # snapshot before exporting only the assigned terminal records.
             uv run python scripts/export_mutmut_shard_stats.py \
               --selected-file /tmp/mutmut-shard.txt \
+              --verify-exact-execution "$MUTMUT_EVIDENCE_DIR/execution-plan.json" \
+              --execution-proof "$MUTMUT_EVIDENCE_DIR/execution-proof.json" \
+              --execution-evidence-dir "$MUTMUT_EVIDENCE_DIR" \
               --output mutants/mutmut-cicd-stats.json
             test -s mutants/mutmut-cicd-stats.json
+            test -s "$MUTMUT_EVIDENCE_DIR/execution-proof.json"
+            test -s "$MUTMUT_EVIDENCE_DIR/selected-mutants.json"
+            test -s "$MUTMUT_EVIDENCE_DIR/selected-results.json"
+            # Preserve the completed proof if the independent score gate fails.
+            MUTMUT_EVIDENCE_FINALIZED=true
             # Verify viable mutation score (gate blocking at 100% via mutmut_ci_gate.py)
             echo "Verifying viable mutation score (gate blocking at 100%)..."
             uv run python scripts/mutmut_ci_gate.py
-          elif [ "$ec" -eq 124 ]; then
-            echo "::error::Incremental mutation testing exceeded its 25-minute budget; incomplete mutation evidence is not mergeable."
+          elif [ "$mutmut_exit_code" -eq 124 ]; then
+            MUTMUT_FAILURE_REASON="mutmut exceeded its stats-derived timeout"
+            echo "::error::Incremental mutation testing exceeded its stats-derived budget; incomplete mutation evidence is not mergeable."
             exit 124
           elif [ "$mutants_started" -eq 1 ]; then
-            echo "::error::mutmut exited $ec after the mutant phase began; incomplete mutation evidence is not mergeable."
-            exit "$ec"
+            MUTMUT_FAILURE_REASON="mutmut exited after the mutant phase began"
+            echo "::error::mutmut exited $mutmut_exit_code after the mutant phase began; incomplete mutation evidence is not mergeable."
+            exit "$mutmut_exit_code"
           else
-            echo "::error::mutmut exited $ec BEFORE the mutant phase began — a genuine clean-test / forced-fail / stats isolation regression. Failing the job."
-            exit "$ec"
+            MUTMUT_FAILURE_REASON="mutmut exited before the mutant phase began"
+            echo "::error::mutmut exited $mutmut_exit_code BEFORE the mutant phase began — a genuine clean-test / forced-fail / stats isolation regression. Failing the job."
+            exit "$mutmut_exit_code"
           fi
+
+      - name: Validate incremental mutation evidence artifact
+        if: always() && steps.mutation_scope.outputs.has_python == 'true' && steps.run_incremental_mutmut.outputs.has_mutants == 'true'
+        run: |
+          test -s "mutants/mutmut-exact-evidence/selected-mutants.json"
+          test -s "mutants/mutmut-exact-evidence/selected-results.json"
+          test -s "mutants/mutmut-exact-evidence/execution-proof.json"
+
+      - name: Upload incremental mutation evidence
+        if: always() && steps.mutation_scope.outputs.has_python == 'true' && steps.run_incremental_mutmut.outputs.has_mutants == 'true'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: mutmut-exact-evidence-${{ github.run_id }}-${{ matrix.shard }}
+          path: |
+            mutants/mutmut-cicd-stats.json
+            mutants/mutmut-exact-evidence/
+          if-no-files-found: error
 
 
   # Phase 8.3: the full Temporal-backed load/chaos stack is executed by

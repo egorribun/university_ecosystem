@@ -2,7 +2,6 @@
 .git
 .gitmodules
 .gitignore
-.github
 
 # Python cache & artifacts
 __pycache__/
@@ -77,10 +76,13 @@ crates/pyo3-sanitizer/target/
 
 # Misc
 Dockerfile*
+!backend.Dockerfile
+!Dockerfile.test
+!Dockerfile.test.dockerignore
+!.gitignore
 docker-compose*.yml
 README.md
 LICENSE
 docs/
-tests/
 alembic/versions/*.pyc
 .pre-commit-trivy-cache/

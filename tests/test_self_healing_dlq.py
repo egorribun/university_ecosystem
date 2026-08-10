@@ -306,6 +306,9 @@ async def test_db_dlq_circuit_breaker_listener_registration() -> None:
     """Test register_circuit_breaker_db_dlq_listener helper."""
     cb = RedisCircuitBreaker(failure_threshold=1, recovery_timeout=0.05)
     mock_session = AsyncMock()
+    mock_result = MagicMock()
+    mock_result.scalars.return_value.all.return_value = []
+    mock_session.execute.return_value = mock_result
 
     mock_session_factory = MagicMock()
     mock_session_factory.return_value.__aenter__.return_value = mock_session
@@ -323,7 +326,9 @@ async def test_db_dlq_circuit_breaker_listener_registration() -> None:
     _ = cb.state  # Triggers transition to HALF_OPEN
 
     await asyncio.sleep(0.05)  # Allow background task to execute
-    assert mock_session_factory.called or True
+    assert mock_session_factory.called
+    mock_session.execute.assert_awaited_once()
+    mock_session.commit.assert_awaited_once()
 
 
 # ---------------------------------------------------------------------------

@@ -79,10 +79,21 @@ def estimate_mutant_times(
         mangled_name, separator, _ = mutant_name.partition("__mutmut_")
         if not separator:
             raise ValueError(f"Invalid mutmut name without __mutmut_: {mutant_name}")
-        estimated_seconds = sum(
-            durations.get(test_name, 0.0)
-            for test_name in tests_by_mangled_function_name.get(mangled_name, ())
+        associated_tests = tests_by_mangled_function_name.get(mangled_name, ())
+        if not associated_tests:
+            raise ValueError(
+                "mutmut stats contain no mapped tests for planned mutant "
+                f"{mutant_name!r}"
+            )
+        missing_durations = sorted(
+            test_name for test_name in associated_tests if test_name not in durations
         )
+        if missing_durations:
+            raise ValueError(
+                "mutmut stats contain missing durations for planned mutant "
+                f"{mutant_name!r}: {missing_durations}"
+            )
+        estimated_seconds = sum(durations[test_name] for test_name in associated_tests)
         estimates.append(
             MutantEstimate(
                 name=mutant_name,

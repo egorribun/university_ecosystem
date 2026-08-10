@@ -75,6 +75,24 @@ def test_estimate_mutant_times_uses_associated_test_durations() -> None:
     ]
 
 
+def test_estimate_mutant_times_rejects_mutants_without_mapped_tests() -> None:
+    with pytest.raises(ValueError, match="no mapped tests"):
+        estimate_mutant_times(
+            ["app.core.lifespan.x_shutdown__mutmut_1"],
+            {},
+            {},
+        )
+
+
+def test_estimate_mutant_times_rejects_missing_test_durations() -> None:
+    with pytest.raises(ValueError, match="missing durations"):
+        estimate_mutant_times(
+            ["app.core.lifespan.x_shutdown__mutmut_1"],
+            {"app.core.lifespan.x_shutdown": ["tests/test_lifespan.py::test"]},
+            {},
+        )
+
+
 def test_plan_mutant_shards_balances_duration_and_preserves_all_mutants() -> None:
     estimates = [
         MutantEstimate("long", 10.0),

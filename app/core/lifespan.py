@@ -409,10 +409,18 @@ def _reset_closed_dishka_container(app: FastAPI) -> None:
     # again after the previous lifespan closed the APP-scoped container.  The
     # Dishka middleware reads the container from ``app.state`` for each request,
     # so replacing the closed root here keeps every ASGI driver restart-safe.
-    if getattr(app.state, "_dishka_container_closed", False):
-        from app.core.di_provider import create_dishka_container
+    try:
+        container_was_closed = app.state._dishka_container_closed
+    except AttributeError:
+        # A freshly-created FastAPI app has not completed a prior lifespan.
+        # Initialize its explicit lifecycle marker below without recreating a
+        # healthy container.
+        pass
+    else:
+        if container_was_closed:
+            from app.core.di_provider import create_dishka_container
 
-        app.state.dishka_container = create_dishka_container()
+            app.state.dishka_container = create_dishka_container()
     # TestClient, LifespanManager, and production ASGI servers all drive this
     # context.  Keep the container lifecycle observable so a subsequent
     # in-process test lifespan can replace the closed Dishka container instead

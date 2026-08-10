@@ -186,6 +186,7 @@ async def test_subscribe_db_integrity_error_not_found_on_final_attempt():
     request.headers.get.return_value = "Mozilla/5.0"
 
     db = AsyncMock()
+    db.add = MagicMock()
     nested_mock = MagicMock()
     nested_mock.__aenter__ = AsyncMock()
     nested_mock.__aexit__ = AsyncMock()

@@ -668,7 +668,7 @@ def test_incremental_mutation_budget_matches_declared_gate() -> None:
     run_step = next(
         step
         for step in job["steps"]
-        if step.get("name") == "Run incremental mutmut (blocking, 25-minute budget)"
+        if step.get("name") == "Run incremental mutmut (blocking, stats-derived budget)"
     )
     assert job["strategy"]["matrix"]["shard"] == [
         1,
@@ -688,7 +688,19 @@ def test_incremental_mutation_budget_matches_declared_gate() -> None:
         15,
         16,
     ]
-    assert "timeout --kill-after=30s 25m" in run_step["run"]
+    assert job["timeout-minutes"] == 360
+    assert "scripts/mutmut_shard_budget.py" in run_step["run"]
+    assert "--max-timeout-seconds 18000" in run_step["run"]
+    assert '"${MUTMUT_TIMEOUT_SECONDS}s"' in run_step["run"]
+    assert "timeout --kill-after=30s 25m" not in run_step["run"]
+    assert (
+        '--prepare-exact-execution "$MUTMUT_EVIDENCE_DIR/execution-plan.json"'
+        in run_step["run"]
+    )
+    assert (
+        '--verify-exact-execution "$MUTMUT_EVIDENCE_DIR/execution-plan.json"'
+        in run_step["run"]
+    )
     assert "This advisory job" not in run_step["run"]
     assert "This blocking job runs REAL mutation" in run_step["run"]
     assert "viable mutation score" in run_step["run"]
@@ -812,6 +824,252 @@ def test_manual_mutation_evidence_is_isolated_from_required_ci_contexts() -> Non
         assert "scripts/resolve_mutation_base.py" in scope_script
         assert '--event-name "workflow_dispatch"' in scope_script
         assert '--manual-base-sha "$MANUAL_BASE_SHA"' in scope_script
+
+    manual_mutation_job = jobs["manual-mutation-tests"]
+    assert manual_mutation_job["timeout-minutes"] == 360
+    manual_mutation_text = "\n".join(
+        step.get("run", "")
+        for step in manual_mutation_job["steps"]
+        if isinstance(step, dict)
+    )
+    assert "scripts/mutmut_shard_budget.py" in manual_mutation_text
+    assert "--max-timeout-seconds 18000" in manual_mutation_text
+    assert '--prepare-exact-execution "$MUTMUT_EVIDENCE_DIR/execution-plan.json"' in (
+        manual_mutation_text
+    )
+    assert '--verify-exact-execution "$MUTMUT_EVIDENCE_DIR/execution-plan.json"' in (
+        manual_mutation_text
+    )
+    manual_upload = next(
+        step
+        for step in manual_mutation_job["steps"]
+        if step.get("name") == "Upload manual mutation evidence"
+    )
+    assert "mutants/mutmut-exact-evidence/" in manual_upload["with"]["path"]
+
+
+def test_incremental_mutation_workflows_preserve_headroom_and_full_evidence() -> None:
+    # A hosted six-hour job needs 3,570 seconds after the 30-second KILL grace
+    # for metadata checks, score verification, artifact upload, and a
+    # fail-closed exit.  The two workflows must enforce that same envelope.
+    hosted_job_seconds = 6 * 60 * 60
+    inner_mutmut_cap_seconds = 18_000
+    kill_grace_seconds = 30
+    assert hosted_job_seconds - inner_mutmut_cap_seconds - kill_grace_seconds == 3_570
+
+    workflows = (
+        (
+            CI_WORKFLOW_PATH,
+            "mutation-tests-incremental",
+            "Run incremental mutmut (blocking, stats-derived budget)",
+            "Upload incremental mutation evidence",
+        ),
+        (
+            MANUAL_MUTATION_EVIDENCE_WORKFLOW_PATH,
+            "manual-mutation-tests",
+            "Run manual incremental mutmut (blocking, stats-derived budget)",
+            "Upload manual mutation evidence",
+        ),
+    )
+    for workflow_path, job_name, run_step_name, upload_step_name in workflows:
+        workflow = yaml.safe_load(workflow_path.read_text(encoding="utf-8"))
+        job = workflow["jobs"][job_name]
+        deadline_step = job["steps"][0]
+        assert deadline_step["name"] == "Record mutmut job deadline"
+        assert deadline_step["shell"] == "bash"
+        deadline_script = deadline_step["run"]
+        assert 'MUTMUT_JOB_STARTED_EPOCH="$(date -u +%s)"' in deadline_script
+        assert (
+            'MUTMUT_JOB_DEADLINE_EPOCH="$((MUTMUT_JOB_STARTED_EPOCH + 21600))"'
+            in deadline_script
+        )
+        assert 'echo "MUTMUT_JOB_DEADLINE_EPOCH=$MUTMUT_JOB_DEADLINE_EPOCH"' in (
+            deadline_script
+        )
+        assert '>> "$GITHUB_ENV"' in deadline_script
+
+        run_step = next(
+            step for step in job["steps"] if step.get("name") == run_step_name
+        )
+        run_script = run_step["run"]
+
+        assert job["timeout-minutes"] == 360
+        assert "--max-timeout-seconds 18000" in run_script
+        assert (
+            "MUTMUT_EVIDENCE_DIR="
+            "mutants/mutmut-exact-evidence"  # pragma: allowlist secret
+        ) in run_script
+        assert '--execution-evidence-dir "$MUTMUT_EVIDENCE_DIR"' in run_script
+        assert 'if ! [[ "${MUTMUT_JOB_DEADLINE_EPOCH:-}" =~ ^[1-9][0-9]*$ ]]; then' in (
+            run_script
+        )
+        assert "MUTMUT_POST_RUN_UPLOAD_RESERVE_SECONDS=3570" in run_script
+        assert "MUTMUT_TIMEOUT_KILL_GRACE_SECONDS=30" in run_script
+        assert 'MUTMUT_CURRENT_EPOCH="$(date -u +%s)"' in run_script
+        assert (
+            'MUTMUT_REMAINING_JOB_SECONDS="$((MUTMUT_JOB_DEADLINE_EPOCH '
+            '- MUTMUT_CURRENT_EPOCH))"'
+        ) in run_script
+        assert (
+            'MUTMUT_REMAINING_TIMEOUT_SECONDS="$((MUTMUT_REMAINING_JOB_SECONDS '
+            "- MUTMUT_POST_RUN_UPLOAD_RESERVE_SECONDS "
+            '- MUTMUT_TIMEOUT_KILL_GRACE_SECONDS))"'
+        ) in run_script
+        assert 'MUTMUT_TIMEOUT_SECONDS="$MUTMUT_BUDGET_TIMEOUT_SECONDS"' in (run_script)
+        assert (
+            'MUTMUT_TIMEOUT_SECONDS="$MUTMUT_REMAINING_TIMEOUT_SECONDS"' in run_script
+        )
+        assert "refusing to run incomplete mutation evidence" in run_script
+        assert (
+            'timeout --kill-after=30s "${MUTMUT_TIMEOUT_SECONDS}s" '
+            'uv run mutmut run --max-children 2 "${MUTANT_NAMES[@]}" 2>&1 '
+            '| tee "$MUTMUT_EVIDENCE_DIR/mutmut-run.log"'
+        ) in run_script
+        assert (
+            'tee "$MUTMUT_EVIDENCE_DIR/mutmut-run.log"\n'
+            'pipeline_status=("${PIPESTATUS[@]}")'
+        ) in run_script
+        assert 'mutmut_exit_code="${pipeline_status[0]}"' in run_script
+        assert 'tee_exit_code="${pipeline_status[1]}"' in run_script
+        failure_finalizer_definition = run_script.index(
+            "finalize_incomplete_mutmut_evidence()"
+        )
+        failure_finalizer_call = run_script.index(
+            'finalize_incomplete_mutmut_evidence "$exit_code"',
+            failure_finalizer_definition,
+        )
+        assert (
+            '--finalize-incomplete-execution "$MUTMUT_EVIDENCE_DIR/execution-plan.json"'
+            in run_script
+        )
+        assert '--mutation-exit-code "$mutmut_exit_code"' in run_script
+        assert '--tee-exit-code "$tee_exit_code"' in run_script
+        assert failure_finalizer_definition < failure_finalizer_call
+        assert (
+            failure_finalizer_definition
+            < run_script.index("trap on_mutation_step_exit EXIT")
+            < run_script.index("--prepare-exact-execution")
+        )
+        assert (
+            'if [ "$exit_code" -ne 0 ] && [ "$MUTMUT_EVIDENCE_FINALIZED" != "true" ]; then'
+            in run_script
+        )
+        assert (
+            failure_finalizer_definition
+            < run_script.index(
+                'test -s "$MUTMUT_EVIDENCE_DIR/execution-proof.json"',
+                failure_finalizer_definition,
+            )
+            < failure_finalizer_call
+        )
+        assert (
+            failure_finalizer_definition
+            < run_script.index(
+                'test -s "$MUTMUT_EVIDENCE_DIR/selected-results.json"',
+                failure_finalizer_definition,
+            )
+            < failure_finalizer_call
+        )
+        assert 'if [ "$tee_exit_code" -ne 0 ]; then' in run_script
+        assert 'exit "$tee_exit_code"' in run_script
+        assert 'test -s "$MUTMUT_EVIDENCE_DIR/selected-mutants.json"' in run_script
+        assert 'test -s "$MUTMUT_EVIDENCE_DIR/selected-results.json"' in run_script
+
+        upload_step = next(
+            step for step in job["steps"] if step.get("name") == upload_step_name
+        )
+        assert upload_step["if"].startswith(
+            "always() && steps.mutation_scope.outputs.has_python == 'true'"
+        )
+        assert "mutants/mutmut-exact-evidence/" in upload_step["with"]["path"]
+        assert upload_step["with"]["if-no-files-found"] == "error"
+
+        workflow_text = workflow_path.read_text(encoding="utf-8")
+        assert "3,570 seconds" in workflow_text
+        assert "30-second KILL grace" in workflow_text
+
+
+def test_incremental_mutation_workflows_allow_empty_shards_and_validate_failures() -> (
+    None
+):
+    workflows = (
+        (
+            CI_WORKFLOW_PATH,
+            "mutation-tests-incremental",
+            "Run incremental mutmut (blocking, stats-derived budget)",
+            "run_incremental_mutmut",
+            "Validate incremental mutation evidence artifact",
+            "Upload incremental mutation evidence",
+        ),
+        (
+            MANUAL_MUTATION_EVIDENCE_WORKFLOW_PATH,
+            "manual-mutation-tests",
+            "Run manual incremental mutmut (blocking, stats-derived budget)",
+            "run_manual_incremental_mutmut",
+            "Validate manual mutation evidence artifact",
+            "Upload manual mutation evidence",
+        ),
+    )
+
+    for (
+        workflow_path,
+        job_name,
+        run_step_name,
+        run_step_id,
+        validation_step_name,
+        upload_step_name,
+    ) in workflows:
+        workflow = yaml.safe_load(workflow_path.read_text(encoding="utf-8"))
+        job = workflow["jobs"][job_name]
+        run_step = next(
+            step for step in job["steps"] if step.get("name") == run_step_name
+        )
+        run_script = run_step["run"]
+
+        assert run_step["id"] == run_step_id
+        empty_shard_index = run_script.index('if [ "${#MUTANT_NAMES[@]}" -eq 0 ]; then')
+        empty_output_index = run_script.index(
+            'echo "has_mutants=false" >> "$GITHUB_OUTPUT"', empty_shard_index
+        )
+        assert (
+            empty_shard_index
+            < empty_output_index
+            < run_script.index("exit 0", empty_output_index)
+        )
+        assert 'echo "has_mutants=true" >> "$GITHUB_OUTPUT"' in run_script
+
+        assert "trap on_mutation_step_exit EXIT" in run_script
+        assert (
+            'if [ "$exit_code" -ne 0 ] && [ "$MUTMUT_EVIDENCE_FINALIZED" != "true" ]; then'
+            in run_script
+        )
+        assert '--failure-exit-code "$failure_exit_code"' in run_script
+        assert '--failure-reason "$MUTMUT_FAILURE_REASON"' in run_script
+
+        validation_step = next(
+            step for step in job["steps"] if step.get("name") == validation_step_name
+        )
+        artifact_condition = (
+            "always() && steps.mutation_scope.outputs.has_python == 'true' && "
+            f"steps.{run_step_id}.outputs.has_mutants == 'true'"
+        )
+        assert validation_step["if"] == artifact_condition
+        for filename in (
+            "selected-mutants.json",
+            "selected-results.json",
+            "execution-proof.json",
+        ):
+            assert (
+                f'test -s "mutants/mutmut-exact-evidence/{filename}"'
+                in validation_step["run"]
+            )
+
+        upload_step = next(
+            step for step in job["steps"] if step.get("name") == upload_step_name
+        )
+        assert upload_step["if"] == artifact_condition
+        assert job["steps"].index(run_step) < job["steps"].index(validation_step)
+        assert job["steps"].index(validation_step) < job["steps"].index(upload_step)
 
 
 def test_dispatchable_workflows_never_emit_required_ci_contexts() -> None:
@@ -1377,12 +1635,12 @@ def test_incremental_mutation_gate_is_blocking_and_fails_on_timeout() -> None:
     ci_workflow = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
     jobs = ci_workflow["jobs"]
     mutation_job = jobs["mutation-tests-incremental"]
-    assert mutation_job["timeout-minutes"] == 35
+    assert mutation_job["timeout-minutes"] == 360
     assert "mutation-tests-incremental" in jobs["ci-success"]["needs"]
     mutation_text = "\n".join(
         step.get("run", "") for step in mutation_job["steps"] if isinstance(step, dict)
     )
-    assert "exceeded its 25-minute budget" in mutation_text
+    assert "exceeded its stats-derived budget" in mutation_text
     assert "Skipping score verification" not in mutation_text
     assert (
         "needs.mutation-tests-incremental.result"
@@ -1392,6 +1650,15 @@ def test_incremental_mutation_gate_is_blocking_and_fails_on_timeout() -> None:
     gate_index = mutation_text.index("scripts/mutmut_ci_gate.py")
     assert export_index < gate_index
     assert "--selected-file /tmp/mutmut-shard.txt" in mutation_text
+    assert (
+        '--prepare-exact-execution "$MUTMUT_EVIDENCE_DIR/execution-plan.json"'
+        in mutation_text
+    )
+    assert (
+        '--verify-exact-execution "$MUTMUT_EVIDENCE_DIR/execution-plan.json"'
+        in mutation_text
+    )
+    assert '"$MUTMUT_EVIDENCE_DIR/execution-proof.json"' in mutation_text
     assert "--output mutants/mutmut-cicd-stats.json" in mutation_text
     assert "uv run mutmut export-cicd-stats" not in mutation_text
     assert "test -s mutants/mutmut-cicd-stats.json" in mutation_text

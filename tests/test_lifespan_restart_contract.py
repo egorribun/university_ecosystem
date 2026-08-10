@@ -4,7 +4,79 @@ import pytest
 from fastapi import FastAPI
 
 import app.core.lifespan as lifespan_module
-from app.core.lifespan import lifespan
+from app.core.lifespan import (
+    _reset_closed_dishka_container,
+    _shutdown_subsystems,
+    lifespan,
+)
+
+
+def test_reset_closed_dishka_container_keeps_open_containers_and_sets_boolean_marker() -> (
+    None
+):
+    """First startup and an open restart must retain the live root container."""
+    for initial_marker in (None, False):
+        app = FastAPI()
+        original = MagicMock()
+        app.state.dishka_container = original
+        if initial_marker is not None:
+            app.state._dishka_container_closed = initial_marker
+
+        with patch("app.core.di_provider.create_dishka_container") as factory:
+            _reset_closed_dishka_container(app)
+
+        assert app.state.dishka_container is original
+        assert app.state._dishka_container_closed is False
+        factory.assert_not_called()
+
+
+def test_reset_closed_dishka_container_replaces_only_a_closed_container() -> None:
+    """A closed root is replaced once and becomes explicitly open again."""
+    app = FastAPI()
+    replacement = MagicMock()
+    app.state.dishka_container = MagicMock()
+    app.state._dishka_container_closed = True
+
+    with patch(
+        "app.core.di_provider.create_dishka_container", return_value=replacement
+    ) as factory:
+        _reset_closed_dishka_container(app)
+
+    assert app.state.dishka_container is replacement
+    assert app.state._dishka_container_closed is False
+    factory.assert_called_once_with()
+
+
+@pytest.mark.asyncio
+async def test_shutdown_marks_container_closed_before_close_failure() -> None:
+    """A failed close must still make the next lifespan recreate the root."""
+    app = FastAPI()
+    replacement = MagicMock()
+
+    async def close_and_assert_marker() -> None:
+        assert app.state._dishka_container_closed is True
+        raise RuntimeError("container close failed")
+
+    container = MagicMock()
+    container.close = AsyncMock(side_effect=close_and_assert_marker)
+    app.state.dishka_container = container
+
+    with (
+        patch("app.api.health.set_shutdown_flag"),
+        patch("app.core.lifespan._SCHEDULER_STOP"),
+        pytest.raises(RuntimeError, match="container close failed"),
+    ):
+        await _shutdown_subsystems(app)
+
+    assert app.state._dishka_container_closed is True
+    with patch(
+        "app.core.di_provider.create_dishka_container", return_value=replacement
+    ) as factory:
+        _reset_closed_dishka_container(app)
+
+    assert app.state.dishka_container is replacement
+    assert app.state._dishka_container_closed is False
+    factory.assert_called_once_with()
 
 
 @pytest.mark.asyncio

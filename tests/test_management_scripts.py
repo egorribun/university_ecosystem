@@ -252,12 +252,11 @@ def test_reset_mfa_main() -> None:
     args = argparse.Namespace(user_id=1, email=None, no_notify=True)
     with (
         patch("app.management.reset_mfa._build_arg_parser") as mock_parser,
-        patch("app.management.reset_mfa._async_main"),
-        patch("app.management.reset_mfa.asyncio.run") as mock_run,
+        patch("app.management.reset_mfa._async_main") as mock_async_main,
     ):
         mock_parser.return_value.parse_args.return_value = args
         reset_mfa_main()
-        mock_run.assert_called_once()
+        mock_async_main.assert_awaited_once_with(args)
 
 
 # ===========================================================================

@@ -97,6 +97,44 @@ claim that the long-running or manually provisioned workstreams are complete.
   are external deployment/evidence prerequisites, not silently closable
   repository TODOs.
 
+### Local hardening update — 2026-08-10 (not certification evidence)
+
+This is local candidate evidence for the current worktree. It must be linked
+to a terminal current-HEAD PR run and full-nightly artifacts after publication;
+it is not a replacement for external certification.
+
+- The complete Python suite passed with isolated xdist workers and strict
+  async-warning gates:
+  `uv run pytest -q -n 16 -W error::RuntimeWarning -W error::pytest.PytestUnraisableExceptionWarning`
+  produced `7210 passed, 71 skipped, 298 warnings` in `938.51s`. The warnings
+  are separately reported known Pydantic, dependency-deprecation, and
+  environment-gated notices; the two enforced warning classes were clean.
+- The focused quality-closure selection also passed with those gates:
+  `370 passed, 8 warnings` in `187.89s`. Its warnings are the known Pydantic
+  and structlog exception-formatting notices, not un-awaited coroutine paths.
+- Local test hardening now models synchronous repository/session APIs with
+  `MagicMock` and asynchronous APIs with `AsyncMock`. It closes four formerly
+  hidden un-awaited-coroutine paths in media, notification retry, reset-MFA,
+  and DB-DLQ listener tests. The affected five modules passed the same strict
+  warning gates (`124 passed`).
+- Mutation evidence handling now fails closed on early errors, reserves its
+  budget per child workflow, and permits safe empty shards. `Dockerfile.test`
+  uses a restricted build context that excludes secrets and caches; its smoke
+  test passed (`19 passed`). The DAST workflow now fails explicitly when no
+  authorized target URL is supplied.
+- Changed Python files passed Ruff check and format check; the changed Python
+  sources/scripts passed `py_compile`; `uv lock --check`, YAML parsing for the
+  quality workflows, and `actionlint v1.7.7` also passed.
+- The formal Codex Security diff scan did not create a scan because the
+  working tree changed after selection. Manual scoped security reviews are
+  useful local evidence, but they are not reported as a completed formal scan.
+
+The external blockers above remain unchanged: Codecov repository authorization,
+an authorized DAST target, the protected certification key, terminal
+current-HEAD PR/full-nightly artifacts, the `0/30` stabilization window, and
+promotion evidence for advisory workloads. None may be marked closed from this
+local update.
+
 ### Historical evidence retained from earlier checkpoints
 
 Everything in this subsection is retained for reproducibility only; it is not

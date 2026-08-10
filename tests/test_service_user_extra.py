@@ -1,4 +1,5 @@
 import datetime as dt
+import gc
 import json
 import uuid
 from datetime import UTC
@@ -25,7 +26,13 @@ from app.services.user.stats_service import StatsService
 @pytest.fixture
 def mock_uow():
     uow = AsyncMock()
-    uow.users = AsyncMock()
+    users = MagicMock()
+    users.get_orm_for_update_with_relations = AsyncMock()
+    users._get_orm = AsyncMock()
+    users.delete_sensitive_data = AsyncMock()
+    users._to_dto = MagicMock()
+    users.add = MagicMock()
+    uow.users = users
     uow.__aenter__.return_value = uow
     return uow
 
@@ -79,7 +86,7 @@ async def test_upload_avatar_not_found(mock_uow):
 
 
 @pytest.mark.asyncio
-async def test_delete_avatar(mock_uow, monkeypatch):
+async def test_delete_avatar(mock_uow, monkeypatch, recwarn):
     user_id = uuid.uuid4()
     mock_user = User(id=user_id)
     mock_user.profile = UserProfile(avatar_url="to_delete")
@@ -98,10 +105,12 @@ async def test_delete_avatar(mock_uow, monkeypatch):
 
     svc = UserMediaService(mock_uow)
     await svc.delete_avatar(user_id)
+    gc.collect()
 
     mock_delete.assert_called_once_with("to_delete")
     mock_update.assert_called_once_with(mock_user, {"avatar_url": None})
     mock_uow.commit.assert_called_once()
+    assert not any(issubclass(warning.category, RuntimeWarning) for warning in recwarn)
 
 
 # --- AnalyticsService Tests ---

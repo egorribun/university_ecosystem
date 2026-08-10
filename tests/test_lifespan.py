@@ -418,9 +418,17 @@ async def test_periodic_scheduler_loop_crashes() -> None:
 async def test_periodic_scheduler_loop_jitter_stop() -> None:
     # Initial sleep_or_stop returns True (signals early stop)
     with patch("asyncio.wait_for", new_callable=AsyncMock) as mock_wait_for:
-        mock_wait_for.return_value = True  # stop requested
+
+        async def stop_immediately(awaitable, timeout=None):
+            # This fake returns before asyncio.wait_for can consume Event.wait().
+            awaitable.close()
+            return True
+
+        mock_wait_for.side_effect = stop_immediately
         with patch("app.core.lifespan.random.uniform", return_value=0.0):
             await _periodic_scheduler_loop()
+
+    assert mock_wait_for.await_args.kwargs["timeout"] == 0.0
 
 
 @pytest.mark.asyncio
@@ -1060,6 +1068,7 @@ async def test_periodic_scheduler_loop_immediate_exit() -> None:
 
     async def mock_wait_for(fut, timeout=None):
         if timeout == 0.0:
+            fut.close()
             raise TimeoutError()
         return await orig_wait_for(fut, timeout)
 
@@ -1094,6 +1103,7 @@ async def test_periodic_scheduler_loop_all_hours() -> None:
 
     async def mock_wait_for(fut, timeout=None):
         if timeout == 0.0 or timeout == 3600:
+            fut.close()
             raise TimeoutError()
         return await orig_wait_for(fut, timeout)
 

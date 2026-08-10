@@ -131,6 +131,15 @@ jobs:
             .zap
           sparse-checkout-cone-mode: false
 
+      - name: Validate ZAP target URL
+        env:
+          TARGET_URL: ${{ inputs.target_url || secrets.DAST_TARGET_URL }}
+        run: |
+          if [ -z "$TARGET_URL" ]; then
+            echo "::error::No target URL configured. Set DAST_TARGET_URL secret or pass target_url input."
+            exit 1
+          fi
+
       - name: ZAP Full Scan
         uses: zaproxy/action-full-scan@3c58388149901b9a03b7718852c5ba889646c27c # v0.13.0
         env:
