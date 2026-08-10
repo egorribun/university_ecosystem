@@ -1902,6 +1902,19 @@ def test_rust_fuzz_workflow_caches_every_declared_target_workspace() -> None:
     assert "../Cargo.toml" not in additional_key
 
 
+def test_rust_fuzz_required_context_runs_when_its_workflow_changes() -> None:
+    """A workflow-only PR change must exercise the required fuzz context."""
+
+    workflow_path = REPOSITORY_ROOT / ".github" / "workflows" / "rust-fuzz.yml"
+    workflow = yaml.safe_load(workflow_path.read_text(encoding="utf-8"))
+    triggers = _workflow_triggers(workflow)
+
+    for event_name in ("push", "pull_request"):
+        event = triggers[event_name]
+        assert isinstance(event, dict)
+        assert ".github/workflows/rust-fuzz.yml" in event["paths"]
+
+
 def test_rust_fuzz_keeps_the_required_pr_context_out_of_manual_and_scheduled_runs() -> (
     None
 ):
