@@ -169,7 +169,7 @@ def _load_mutmut_cli():
 def _generate_mutant_universe(mutmut_cli, *, max_children: int) -> None:
     """Create the same source copy and metadata that ``mutmut run`` uses."""
 
-    mutmut_cli.ensure_config_loaded()
+    mutmut_cli.Config.ensure_loaded()
     mutants_dir = Path("mutants")
     mutants_dir.mkdir(parents=True, exist_ok=True)
     mutmut_cli.copy_src_dir()
@@ -179,9 +179,7 @@ def _generate_mutant_universe(mutmut_cli, *, max_children: int) -> None:
     # This is false in the repository configuration.  Keep the branch so a
     # future config change cannot make the planner and mutmut use different
     # mutant universes.
-    import mutmut
-
-    if mutmut.config.mutate_only_covered_lines:
+    if mutmut_cli.Config.get().mutate_only_covered_lines:
         mutmut_cli.store_lines_covered_by_tests()
     stats = mutmut_cli.create_mutants(max_children)
     metadata = list(mutants_dir.rglob("*.py.meta"))
@@ -207,14 +205,16 @@ def _mutant_line_ranges(mutmut_cli, path: Path) -> dict[str, tuple[int, int]]:
 
     import libcst as cst
     from libcst.metadata import MetadataWrapper, PositionProvider
-    from mutmut.file_mutation import MutationVisitor, pragma_no_mutate_lines
-    from mutmut.node_mutation import mutation_operators
-    from mutmut.trampoline_templates import mangle_function_name
+    from mutmut.mutation.file_mutation import MutationVisitor
+    from mutmut.mutation.mutators import mutation_operators
+    from mutmut.mutation.pragma_handling import get_ignored_lines
+    from mutmut.mutation.trampoline_templates import mangle_function_name
 
     source = path.read_text(encoding="utf-8")
     module = cst.parse_module(source)
     wrapper = MetadataWrapper(module)
-    visitor = MutationVisitor(mutation_operators, pragma_no_mutate_lines(source), None)
+    ignored_code = get_ignored_lines(str(path), source, wrapper)
+    visitor = MutationVisitor(mutation_operators, ignored_code, None)
     wrapper.visit(visitor)
     positions = wrapper.resolve(PositionProvider)
 

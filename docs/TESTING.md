@@ -239,7 +239,7 @@
 
 ### 1.9 — Mutation testing: 100% viable score
 
-**Исполнимая policy:** `mutmut run` охватывает `paths_to_mutate = ["app/"]`.
+**Исполнимая policy:** `mutmut run` охватывает `source_paths = ["app/"]`.
 PR gate использует неизменяемый base SHA, точные имена мутантов и локальный
 JSON artifact через `scripts/export_mutmut_shard_stats.py`; full nightly
 использует тот же exporter с `--all` для полного universe.

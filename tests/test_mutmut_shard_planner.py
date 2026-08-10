@@ -4,7 +4,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
-from mutmut.file_mutation import mutate_file_contents
+from mutmut.mutation.file_mutation import mutate_file_contents
 
 from scripts.plan_mutmut_shards import (
     MutantEstimate,
@@ -53,7 +53,8 @@ class FixtureClass:
         return True
 """
     path.write_text(source, encoding="utf-8")
-    _mutated_source, bare_mutant_names = mutate_file_contents(str(path), source)
+    mutated_source = mutate_file_contents(str(path), source)
+    bare_mutant_names = mutated_source.mutant_names
     cli = SimpleNamespace(get_mutant_name=lambda _path, name: f"fixture.module.{name}")
 
     assert set(bare_mutant_names) == {"xǁFixtureClassǁmethod__mutmut_1"}

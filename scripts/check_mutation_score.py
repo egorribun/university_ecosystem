@@ -187,7 +187,7 @@ def _parse_mutmut_output(output: str) -> MutationSummary:
 def _parse_cicd_stats(payload: str | bytes | dict[str, Any]) -> MutationSummary:
     """Parse the machine-readable mutmut CI/CD statistics JSON.
 
-    mutmut 3.5.0 can produce an empty stdout stream for ``results --all``
+    mutmut can produce an empty stdout stream for ``results --all``
     after a positional mutation shard. CI supplies the exact-shard or complete
     universe JSON produced by ``export_mutmut_shard_stats.py``; the text parser
     remains a backwards-compatible fallback for local invocations that do not

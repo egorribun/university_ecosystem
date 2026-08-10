@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -46,9 +47,10 @@ class _FakeMutmut:
         self.received_names: list[str] | None = None
         self.received_name_calls: list[list[str]] = []
         self.config_loaded = False
+        self.Config = SimpleNamespace(ensure_loaded=self._ensure_config_loaded)
         self.status_by_exit_code = _STATUS_BY_EXIT_CODE
 
-    def ensure_config_loaded(self) -> None:
+    def _ensure_config_loaded(self) -> None:
         self.config_loaded = True
 
     def collect_source_file_mutation_data(

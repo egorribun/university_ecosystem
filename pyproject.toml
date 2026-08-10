@@ -397,6 +397,10 @@ dev = [
   "pytest>=9.0.3",
   "pytest-asyncio>=1.3.0",
   "pytest-cov>=7.1.0",
+  # Mutation workers receive hundreds of mapped tests. Bound a single mutant-
+  # induced hang so it is classified as killed rather than consuming mutmut's
+  # aggregate 15x watchdog budget.
+  "pytest-timeout>=2.4.0",
   "pytest-xdist>=3.8.0",
   # RZ-30-05: ruff v0.15.x has regression (strips except parens → SyntaxError).
   # Pin to 0.14.x until upstream fix lands.  Pre-commit already pins 0.14.14.
@@ -415,7 +419,9 @@ dev = [
   # Pact Rust FFI and exposes the pact.v3 API used in tests/contracts/.
   "pact-python==3.4.0",
   "diff-cover>=9.2.0",
-  "mutmut>=3.0.0",
+  # The incremental planner uses mutmut's 3.7 publicized 3.x orchestration
+  # interfaces; pin the tested release to keep CI mutation semantics stable.
+  "mutmut==3.7.0",
   # Wave 2 / Task 2.3 — Schemathesis for property-based OpenAPI conformance testing.
   # Generates random-but-valid requests from the OpenAPI spec and asserts the
   # server's responses match the declared schemas (status codes, bodies, headers).
@@ -504,24 +510,25 @@ skips = [
 ]
 
 [tool.mutmut]
-# mutmut 3.5.0 config (read from [tool.mutmut] in pyproject by config_reader()).
-# The installed 3.5.0 reads `paths_to_mutate` (a LIST — load_config() iterates the
-# value, so a bare string would be split char-by-char) to locate the mutation
-# universe; without it mutmut falls back to guess_paths_to_mutate(), which does
-# NOT try app/ and raises FileNotFoundError ("Could not figure out where the code
-# to mutate is"). `source_paths` is a newer/unreleased key NOT recognized by 3.5.0.
+# mutmut 3.7.0 configuration. `source_paths` is the supported list-valued
+# setting for the mutation universe; without it mutmut falls back to guessing
+# a source directory and cannot reliably select this repository's `app/` tree.
 # `pytest_add_cli_args_test_selection` scopes the pytest run to the deterministic
 # unit-test population. Incremental selection is done by
 # `scripts/plan_mutmut_shards.py`, which assigns exact mutant names using the
 # merged test-duration map (see .github/workflows/ci.yml mutation-tests job).
-paths_to_mutate = ["app/"]
+source_paths = ["app/"]
+# Keep the external shard-budget calculation exactly aligned with mutmut's
+# per-PID watchdog in 3.7.0: timeout_multiplier * (estimated + timeout_constant).
+timeout_multiplier = 15.0
+timeout_constant = 1.0
 pytest_add_cli_args_test_selection = [
     "-m",
     "not integration and not chaos and not performance and not slow",
     "tests/",
 ]
 # mutmut runs the baseline/stats suite inside an isolated `mutants/` copy whose
-# tree is built by copy_src_dir() (walk_all_files copies ONLY paths_to_mutate =
+# tree is built by copy_src_dir() (walk_all_files copies ONLY source_paths =
 # app/) plus copy_also_copy_files() (the user-config `also_copy` paths). tests/
 # arrives via mutmut's own test-selection copy, but on-disk repo files OUTSIDE
 # app/+tests/ are NOT copied — so infra-contract tests that assert those files
@@ -600,6 +607,12 @@ also_copy = [
 pytest_add_cli_args = [
     "-x",
     "-q",
+    # Applied only inside mutmut's Linux pytest invocations. The 120-second
+    # per-test cap is >5x the longest fresh mapped test (22.835s), while
+    # turning mutant-induced hangs into a normal failing/killed result instead
+    # of an incomplete SIGXCPU mutation shard.
+    "--timeout=120",
+    "--timeout-method=signal",
     "--ignore=tests/integration/test_migration_data.py",
     # Schemathesis dynamically generates tests that pytest cannot collect individually by node ID,
     # causing exit code 4 / BadTestExecutionCommandsException. Ignore them under mutmut.

@@ -228,6 +228,10 @@ def test_test_image_context_preserves_required_and_safe_inputs() -> None:
 def test_mutmut_uses_the_unit_population_instead_of_a_single_probe_file() -> None:
     mutation_config = _read_pyproject()["tool"]["mutmut"]
 
+    assert mutation_config["source_paths"] == ["app/"]
+    assert "paths_to_mutate" not in mutation_config
+    assert mutation_config["timeout_multiplier"] == 15.0
+    assert mutation_config["timeout_constant"] == 1.0
     assert mutation_config["pytest_add_cli_args_test_selection"] == [
         "-m",
         "not integration and not chaos and not performance and not slow",
@@ -257,6 +261,18 @@ def test_mutmut_uses_the_unit_population_instead_of_a_single_probe_file() -> Non
         "sonar-project.properties",
     }
     assert required_contract_inputs.issubset(mutation_config["also_copy"])
+
+
+def test_mutmut_bounds_each_hanging_test_without_weakening_mutation_scope() -> None:
+    """A hung mutant must become a killed result, not exhaust the shard watchdog."""
+
+    pyproject = _read_pyproject()
+    mutation_config = pyproject["tool"]["mutmut"]
+    dev_dependencies = pyproject["dependency-groups"]["dev"]
+
+    assert "pytest-timeout>=2.4.0" in dev_dependencies
+    assert "--timeout=120" in mutation_config["pytest_add_cli_args"]
+    assert "--timeout-method=signal" in mutation_config["pytest_add_cli_args"]
 
 
 def test_test_duration_updater_aggregates_junit_cases_and_preserves_schema() -> None:
