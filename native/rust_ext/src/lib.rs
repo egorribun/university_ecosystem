@@ -1706,8 +1706,12 @@ mod tests {
         let existing = vec![ScheduleItem {
             id: Some(1),
             weekday: "monday".to_string(),
-            start_time: Utc::now().timestamp(), // conflicting block
-            end_time: Utc::now().timestamp() + 3600,
+            // Use a 1970 baseline time-of-day rather than wall-clock time.
+            // `find_optimal_slot` normalizes it to the next matching weekday;
+            // a live timestamp can overlap both candidates depending on when
+            // the test happens to run.
+            start_time: 9 * 3600,
+            end_time: 10 * 3600,
             parity: "both".to_string(),
         }];
 
@@ -1718,8 +1722,15 @@ mod tests {
 
         let slot = find_optimal_slot(60, existing, available);
         assert!(slot.is_ok());
-        let found = slot.unwrap();
-        assert_eq!(found.unwrap().weekday, "monday");
+        let found = slot.unwrap().expect("10:00 must remain available");
+        assert_eq!(found.weekday, "monday");
+        assert_eq!(
+            DateTime::<Utc>::from_timestamp(found.start_time, 0)
+                .unwrap()
+                .time()
+                .hour(),
+            10
+        );
     }
 
     #[test]
