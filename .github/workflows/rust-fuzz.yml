@@ -8,12 +8,14 @@ on:
       - 'crates/pyo3-sanitizer/**'
       - 'frontend/wasm-sanitizer/**'
       - 'frontend/rust-crypto/**'
+      - '.github/workflows/rust-fuzz.yml'
   pull_request:
     paths:
       - 'native/rust_ext/**'
       - 'crates/pyo3-sanitizer/**'
       - 'frontend/wasm-sanitizer/**'
       - 'frontend/rust-crypto/**'
+      - '.github/workflows/rust-fuzz.yml'
   schedule:
     # Run every Sunday at 00:00 UTC
     - cron: '0 0 * * 0'
