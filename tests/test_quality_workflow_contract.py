@@ -109,6 +109,53 @@ def test_ci_triggers_when_draft_pull_request_becomes_ready() -> None:
     }
 
 
+def test_dockerfile_lint_excludes_companion_dockerignore_files() -> None:
+    workflow = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    hadolint_step = next(
+        step
+        for step in workflow["jobs"]["dockerfile-lint"]["steps"]
+        if step.get("name") == "Run Hadolint"
+    )
+
+    assert '! -name "*.dockerignore"' in hadolint_step["run"]
+
+
+def test_rust_codecov_uploads_are_explicit_custom_reports() -> None:
+    workflow = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    rust_job = workflow["jobs"]["rust-tests"]
+
+    report_commands = {
+        "rust-native": "cargo llvm-cov report --no-default-features --codecov",
+        "rust-pyo3-sanitizer": "cargo llvm-cov report --no-default-features --codecov",
+        "rust-wasm-sanitizer": "cargo llvm-cov report --codecov",
+        "rust-crypto": "cargo llvm-cov report --codecov",
+    }
+    for component, command in report_commands.items():
+        report_path = f"artifacts/coverage/rust/{component}/codecov.json"
+        coverage_step = next(
+            step
+            for step in rust_job["steps"]
+            if f"{component}/llvm.json" in step.get("run", "")
+        )
+        coverage_script = coverage_step["run"]
+        assert command in coverage_script
+        assert f"--output-path ../../{report_path}" in coverage_script
+        assert (
+            coverage_script.index(f"{component}/llvm.json")
+            < coverage_script.index(report_path)
+            < coverage_script.index(f"{component}/branch-llvm.json")
+        )
+
+        upload_step = next(
+            step
+            for step in rust_job["steps"]
+            if step.get("name") == f"Upload {component} coverage to Codecov"
+        )
+        assert upload_step["with"]["files"] == report_path
+        assert upload_step["with"]["disable_search"] is True
+        assert upload_step["with"]["fail_ci_if_error"] is True
+
+
 def test_required_openapi_compatibility_check_runs_for_every_pull_request() -> None:
     workflow = yaml.safe_load(
         CONTRACT_VALIDATION_WORKFLOW_PATH.read_text(encoding="utf-8")

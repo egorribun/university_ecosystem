@@ -539,12 +539,15 @@ pytest_add_cli_args_test_selection = [
 #   - test_wave173_caddy_routing  → infrastructure/Caddyfile  (W173 routing)
 #   - test_wave173_ws_hub_env     → docker-compose.full.yml   (W173 ws-hub env)
 #   - test_backend_dockerfile      → backend.Dockerfile         (uv image pin)
+#   - test_quality_configuration   → .dockerignore and Dockerfile.test.dockerignore
+#                                      (test-image build context)
 # Copy the repository-contract paths into the isolated tree so the full nightly
 # run can measure them without a false collection failure. The mutation-score
 # parser contract imports `scripts/check_mutation_score.py`; copying its parent
 # directory prevents that test from breaking mutmut's clean-test baseline.
 also_copy = [
     ".github",
+    ".dockerignore",
     ".lighthouserc.js",
     ".trivyignore.yaml",
     "quality",
@@ -553,6 +556,7 @@ also_copy = [
     "alembic",
     "scripts",
     "Dockerfile.test",
+    "Dockerfile.test.dockerignore",
     "Dockerfile.protogen",
     "backend.Dockerfile",
     "docker-compose.full.yml",

@@ -236,8 +236,11 @@ def test_mutmut_uses_the_unit_population_instead_of_a_single_probe_file() -> Non
     assert "tests/test_tenant_rls.py" not in mutation_config["pytest_add_cli_args"]
     required_contract_inputs = {
         ".github",
+        ".dockerignore",
         "quality",
         "scripts",
+        "Dockerfile.test",
+        "Dockerfile.test.dockerignore",
         "backend.Dockerfile",
         "codecov.yml",
         "renovate.json",
