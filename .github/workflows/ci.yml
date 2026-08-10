@@ -1668,7 +1668,7 @@ jobs:
           LIBDIR="$(python -c 'import sysconfig; print(sysconfig.get_config_var("LIBDIR"))')"
           export LD_LIBRARY_PATH="${LIBDIR}:${LD_LIBRARY_PATH}"
           cargo llvm-cov --no-default-features --lib --json --output-path ../../artifacts/coverage/rust/rust-native/llvm.json
-          cargo llvm-cov report --no-default-features --codecov --output-path ../../artifacts/coverage/rust/rust-native/codecov.json
+          cargo llvm-cov report --codecov --output-path ../../artifacts/coverage/rust/rust-native/codecov.json
           cargo +nightly llvm-cov --no-default-features --lib --branch --json --output-path ../../artifacts/coverage/rust/rust-native/branch-llvm.json
 
       - name: pyo3-sanitizer — native unit tests + coverage
@@ -1677,7 +1677,7 @@ jobs:
           LIBDIR="$(python -c 'import sysconfig; print(sysconfig.get_config_var("LIBDIR"))')"
           export LD_LIBRARY_PATH="${LIBDIR}:${LD_LIBRARY_PATH}"
           cargo llvm-cov --no-default-features --lib --json --output-path ../../artifacts/coverage/rust/rust-pyo3-sanitizer/llvm.json
-          cargo llvm-cov report --no-default-features --codecov --output-path ../../artifacts/coverage/rust/rust-pyo3-sanitizer/codecov.json
+          cargo llvm-cov report --codecov --output-path ../../artifacts/coverage/rust/rust-pyo3-sanitizer/codecov.json
           cargo +nightly llvm-cov --no-default-features --lib --branch --json --output-path ../../artifacts/coverage/rust/rust-pyo3-sanitizer/branch-llvm.json
 
       - name: wasm-sanitizer — native unit tests + coverage

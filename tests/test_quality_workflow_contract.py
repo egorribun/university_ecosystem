@@ -125,8 +125,8 @@ def test_rust_codecov_uploads_are_explicit_custom_reports() -> None:
     rust_job = workflow["jobs"]["rust-tests"]
 
     report_commands = {
-        "rust-native": "cargo llvm-cov report --no-default-features --codecov",
-        "rust-pyo3-sanitizer": "cargo llvm-cov report --no-default-features --codecov",
+        "rust-native": "cargo llvm-cov report --codecov",
+        "rust-pyo3-sanitizer": "cargo llvm-cov report --codecov",
         "rust-wasm-sanitizer": "cargo llvm-cov report --codecov",
         "rust-crypto": "cargo llvm-cov report --codecov",
     }
@@ -140,6 +140,12 @@ def test_rust_codecov_uploads_are_explicit_custom_reports() -> None:
         coverage_script = coverage_step["run"]
         assert command in coverage_script
         assert f"--output-path ../../{report_path}" in coverage_script
+        report_line = next(
+            line.strip()
+            for line in coverage_script.splitlines()
+            if line.strip().startswith("cargo llvm-cov report") and report_path in line
+        )
+        assert report_line == f"{command} --output-path ../../{report_path}"
         assert (
             coverage_script.index(f"{component}/llvm.json")
             < coverage_script.index(report_path)
