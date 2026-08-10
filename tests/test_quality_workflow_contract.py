@@ -162,6 +162,53 @@ def test_rust_codecov_uploads_are_explicit_custom_reports() -> None:
         assert upload_step["with"]["fail_ci_if_error"] is True
 
 
+def test_rust_coverage_job_does_not_restore_stale_llvm_build_artifacts() -> None:
+    workflow = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    rust_job = workflow["jobs"]["rust-tests"]
+
+    cache_step = next(
+        step
+        for step in rust_job["steps"]
+        if step.get("name") == "Cache Cargo registry + target dirs (coverage-safe)"
+    )
+    assert "cargo-rust-tests-v2-" in cache_step["with"]["key"]
+    assert "Cargo.lock" in cache_step["with"]["key"]
+    assert all(
+        "cargo-rust-tests-v2-" in restore_key
+        for restore_key in cache_step["with"]["restore-keys"].splitlines()
+        if restore_key.strip()
+    )
+
+    components = {
+        "rust-native": "rust_ext — native unit tests + coverage (--no-default-features)",
+        "rust-pyo3-sanitizer": "pyo3-sanitizer — native unit tests + coverage",
+        "rust-wasm-sanitizer": "wasm-sanitizer — native unit tests + coverage",
+        "rust-crypto": "rust-crypto — native KAT tests + coverage",
+    }
+    for component, step_name in components.items():
+        coverage_step = next(
+            step for step in rust_job["steps"] if step.get("name") == step_name
+        )
+        assert coverage_step["env"]["CARGO_TARGET_DIR"] == (
+            "${{ runner.temp }}/llvm-cov/" + component
+        )
+        coverage_script = coverage_step["run"]
+        stable_clean = "cargo llvm-cov clean"
+        stable_report = f"{component}/llvm.json"
+        codecov_report = f"{component}/codecov.json"
+        nightly_clean = "cargo +nightly llvm-cov clean"
+        nightly_report = f"{component}/branch-llvm.json"
+        assert stable_clean in coverage_script
+        assert nightly_clean in coverage_script
+        assert (
+            coverage_script.index(stable_clean)
+            < coverage_script.index(stable_report)
+            < coverage_script.index(codecov_report)
+            < coverage_script.index(nightly_clean)
+            < coverage_script.index(nightly_report)
+        )
+
+
 def test_required_openapi_compatibility_check_runs_for_every_pull_request() -> None:
     workflow = yaml.safe_load(
         CONTRACT_VALIDATION_WORKFLOW_PATH.read_text(encoding="utf-8")
