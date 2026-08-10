@@ -1618,6 +1618,41 @@ mod tests {
     }
 
     #[test]
+    fn find_optimal_slot_accepts_non_conflicting_real_same_day_item() {
+        let monday = NaiveDate::from_ymd_opt(2026, 1, 5).unwrap();
+        assert_eq!(monday.weekday(), Weekday::Mon);
+        let existing_start = Utc
+            .from_utc_datetime(&monday.and_hms_opt(12, 0, 0).unwrap())
+            .timestamp();
+        let expected_start = Utc
+            .from_utc_datetime(&monday.and_hms_opt(9, 0, 0).unwrap())
+            .timestamp();
+        let existing = vec![ScheduleItem {
+            id: Some(1),
+            weekday: "monday".to_string(),
+            start_time: existing_start,
+            end_time: existing_start + 3600,
+            parity: "both".to_string(),
+        }];
+
+        let result =
+            find_optimal_slot_at(monday, 60, existing, vec![("monday".to_string(), vec![9])]);
+
+        assert_eq!(
+            result.as_ref().map(|item| item.weekday.as_str()),
+            Some("monday")
+        );
+        assert_eq!(
+            result.as_ref().map(|item| item.start_time),
+            Some(expected_start)
+        );
+        assert_eq!(
+            result.map(|item| item.end_time),
+            Some(expected_start + 3600)
+        );
+    }
+
+    #[test]
     fn signature_verification_success() {
         let key = "my-secret-key";
         let data = "test-log-data";
