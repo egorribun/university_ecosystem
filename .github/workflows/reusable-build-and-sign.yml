@@ -120,7 +120,7 @@ jobs:
 
       - name: Attest SBOM & Build Provenance (SLSA L3)
         # CI-01 (audit Wave 10): SHA-pinned; mutable @v4 tag replaced.
-        uses: actions/attest@508db95dd578ae2727ebd6217d5ba78e4fbda05d # v4.2.1
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
         with:
           subject-name: ghcr.io/${{ github.repository }}/${{ inputs.image_name }}
           subject-digest: ${{ steps.build.outputs.digest }}
