@@ -215,6 +215,7 @@ def matches_source(
     source_paths: set[str],
     allowed_orphans: list[str],
     imported_modules: set[str] | None = None,
+    workflow_paths: set[str] | None = None,
 ) -> bool:
     if matches_any_glob(test_path, allowed_orphans):
         return True
@@ -251,6 +252,20 @@ def matches_source(
 
         base_name = name[5:]  # Remove 'test_'
         base_name_clean = base_name.replace(".py", "")
+
+        # Workflow-contract suites intentionally verify a workflow document
+        # rather than importing executable Python.  Map the conventional
+        # ``test_<workflow>_workflow_contract.py`` name to that document so a
+        # new contract test remains governed by the orphan gate.
+        workflow_name = base_name_clean.removesuffix("_workflow_contract")
+        if workflow_name != base_name_clean and any(
+            Path(workflow_path).parent == Path(".github/workflows")
+            and Path(workflow_path).suffix in {".yml", ".yaml"}
+            and Path(workflow_path).stem.replace("-", "_") == workflow_name
+            for workflow_path in workflow_paths or set()
+        ):
+            return True
+
         # Remove common suffixes
         for suffix in ("_service", "_api", "_full", "_coverage", "_unit", "_booster"):
             if base_name_clean.endswith(suffix):
@@ -384,6 +399,14 @@ def main(argv: Sequence[str] | None = None) -> int:
     errors = []
 
     source_paths = {f["path"] for f in files if f["classification"] == "source"}
+    # Workflows are classified as utilities. Keep them separate from ordinary
+    # source paths so only the exact workflow-contract matcher may use them.
+    workflow_paths = {
+        f["path"]
+        for f in files
+        if f["path"].startswith(".github/workflows/")
+        and f["path"].endswith((".yml", ".yaml"))
+    }
 
     for f in files:
         path_str = f["path"]
@@ -406,7 +429,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         # 3. Orphan Tests Check
         if classification == "test":
             if not matches_source(
-                path_str, source_paths, allowed_orphans, imported_modules
+                path_str,
+                source_paths,
+                allowed_orphans,
+                imported_modules,
+                workflow_paths,
             ):
                 errors.append(
                     f"ERROR: {path_str}: orphaned test file (no matching source file found)"

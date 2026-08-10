@@ -1875,13 +1875,26 @@ def test_quality_promotion_workflow_uses_fail_closed_stabilization_checker() -> 
         QUALITY_PROMOTION_WORKFLOW_PATH.read_text(encoding="utf-8")
     )
     triggers = _workflow_triggers(workflow)
-    assert "workflow_dispatch" in triggers
+    assert triggers == {"workflow_dispatch": {}}
     assert workflow["permissions"] == {"actions": "read", "contents": "read"}
 
     text = QUALITY_PROMOTION_WORKFLOW_PATH.read_text(encoding="utf-8")
+    assert "inputs." not in text
+    assert "github.event.inputs" not in text
+    assert "TARGET_BRANCH: main" in text
+    assert 'REQUIRED_DAYS: "30"' in text
     assert "nightly-full-gate.yml/runs" in text
     assert "check_stabilization_window.py" in text
     assert "Fail when promotion is not yet eligible" in text
+
+    canonical_job = workflow["jobs"]["verify-canonical-ref"]
+    canonical_step = canonical_job["steps"][0]
+    assert canonical_step["env"] == {"WORKFLOW_REF": "${{ github.ref }}"}
+    assert '"$WORKFLOW_REF" != "refs/heads/main"' in canonical_step["run"]
+    assert workflow["jobs"]["stabilization-window"]["needs"] == "verify-canonical-ref"
+
+    checkout = workflow["jobs"]["stabilization-window"]["steps"][0]
+    assert checkout["with"] == {"ref": "main", "fetch-depth": 1}
 
 
 def test_dast_pr_trigger_requires_the_explicit_run_dast_label() -> None:

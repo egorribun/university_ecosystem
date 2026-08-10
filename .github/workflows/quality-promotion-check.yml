@@ -5,35 +5,44 @@ name: Quality Promotion Readiness
 # produces a signed-by-GitHub-run decision that a maintainer can review before
 # adding long-running checks to branch protection.
 on:
-  workflow_dispatch:
-    inputs:
-      branch:
-        description: "Branch whose nightly runs must be evaluated"
-        required: false
-        type: string
-        default: main
-      days:
-        description: "Required consecutive successful calendar days"
-        required: false
-        type: number
-        default: 30
+  # The promotion decision has one fixed, non-bypassable scope: main must
+  # sustain the documented 30 consecutive successful calendar days.
+  workflow_dispatch: {}
 
 permissions:
   actions: read
   contents: read
 
 jobs:
+  verify-canonical-ref:
+    name: Verify canonical promotion ref
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Reject a workflow dispatched outside main
+        env:
+          WORKFLOW_REF: ${{ github.ref }}
+        run: |
+          if [ "$WORKFLOW_REF" != "refs/heads/main" ]; then
+            echo "::error::Quality promotion evidence must be dispatched from main."
+            exit 1
+          fi
+
   stabilization-window:
-    name: Verify ${{ inputs.days }}-day nightly stabilization window
+    name: Verify 30-day nightly stabilization window
+    needs: verify-canonical-ref
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
       GH_TOKEN: ${{ github.token }}
-      TARGET_BRANCH: ${{ inputs.branch }}
-      REQUIRED_DAYS: ${{ inputs.days }}
+      TARGET_BRANCH: main
+      REQUIRED_DAYS: "30"
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+          fetch-depth: 1
 
       - name: Set up Python
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
