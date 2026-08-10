@@ -1,27 +1,14 @@
-name: "Continuous Performance Benchmarking"
+name: "Manual Performance Evidence"
 
 on:
-  push:
-    branches:
-      - main
-  pull_request:
-    paths:
-      - "services/**/*.go"
-      - "crates/**"
-      - "native/rust_ext/**"
-      - ".github/workflows/benchmark.yml"
-
-# Manual benchmark evidence is intentionally isolated in
-# manual-performance-evidence.yml. GitHub rulesets match check names across
-# event types, so this required PR workflow must never be dispatchable.
+  workflow_dispatch: {}
 
 permissions:
-  contents: write # Required to push benchmark data to gh-pages or benchmark branch
-  pull-requests: write
+  contents: read
 
 jobs:
   benchmark:
-    name: Run Go Benchmarks
+    name: Manual Performance Evidence / Run Go Benchmarks
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -50,7 +37,7 @@ jobs:
 
 
       # Compare and store benchmark results.
-      # If push to main, it updates the charts on the gh-pages / benchmarks branch.
+      # Manual evidence never updates baselines; it is read-only by design.
       # If PR, it runs the comparison and reports progress/status.
       - name: Store Benchmark Results
         uses: benchmark-action/github-action-benchmark@52576c92bccf6ac60c8223ec7eb2565637cae9ba # v1.22.1
@@ -59,8 +46,8 @@ jobs:
           tool: "go"
           output-file-path: "benchmarks.txt"
           github-token: ${{ secrets.GITHUB_TOKEN }}
-          # Push to pages on push to main, otherwise just analyze (PR check)
-          auto-push: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+          # Manual evidence only analyzes the recorded baseline.
+          auto-push: false
           # Alert if performance drops significantly (e.g. by 200%)
           alert-threshold: "200%"
           comment-on-alert: true
@@ -70,7 +57,7 @@ jobs:
   # Uses a dedicated -benchtime=1s -count=5 run against ws-hub only and gates
   # the PR on a strict 110% threshold (fail at > 10% regression).
   ws-hub-regression:
-    name: WS-Hub Go Benchmark Regression Gate
+    name: Manual Performance Evidence / WS-Hub Go Benchmark Regression Gate
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -104,8 +91,8 @@ jobs:
           tool: "go"
           output-file-path: "ws-hub-regression.txt"
           github-token: ${{ secrets.GITHUB_TOKEN }}
-          # Only push historical data when merging to main; PRs only compare.
-          auto-push: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+          # Manual evidence compares against, but never writes, the baseline.
+          auto-push: false
           # Keep this gate's history separate from the broad Go benchmark
           # dashboard.  The action matches raw benchmark names, so sharing
           # dev/bench/data.js would compare this dedicated suite with a
@@ -122,7 +109,7 @@ jobs:
   # Criterion benches are present in crates/pyo3-sanitizer (see Cargo.toml
   # [[bench]] section).  Run them for visibility; no regression gate yet.
   rust-criterion:
-    name: Rust Criterion Benchmarks (pyo3-sanitizer)
+    name: Manual Performance Evidence / Rust Criterion Benchmarks (pyo3-sanitizer)
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -162,7 +149,7 @@ jobs:
           tool: "cargo"
           output-file-path: "criterion-bench.txt"
           github-token: ${{ secrets.GITHUB_TOKEN }}
-          auto-push: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+          auto-push: false
           alert-threshold: "150%"
           comment-on-alert: true
           fail-on-alert: false
@@ -172,7 +159,7 @@ jobs:
   # runs against the actual PyO3/Rayon optimizer crate and has a blocking 10%
   # slowdown threshold.
   rust-native-regression:
-    name: Rust Native Optimizer Regression Gate
+    name: Manual Performance Evidence / Rust Native Optimizer Regression Gate
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -206,7 +193,7 @@ jobs:
           tool: "cargo"
           output-file-path: "rust-native-bench.txt"
           github-token: ${{ secrets.GITHUB_TOKEN }}
-          auto-push: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+          auto-push: false
           alert-threshold: "110%"
           comment-on-alert: true
           fail-on-alert: true

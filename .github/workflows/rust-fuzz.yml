@@ -23,7 +23,9 @@ permissions: read-all
 
 jobs:
   fuzz:
-    name: Run cargo fuzz
+    # `Run cargo fuzz` is a protected PR/push context.  Scheduled and manual
+    # five-minute evidence runs must not be able to satisfy that context.
+    name: "${{ (github.event_name == 'pull_request' || github.event_name == 'push') && 'Run cargo fuzz' || 'Extended Rust fuzz evidence' }}"
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
