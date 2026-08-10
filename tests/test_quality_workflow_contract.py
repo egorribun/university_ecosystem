@@ -41,6 +41,9 @@ DAST_WORKFLOW_PATH = REPOSITORY_ROOT / ".github" / "workflows" / "dast.yml"
 MANUAL_MUTATION_EVIDENCE_WORKFLOW_PATH = (
     REPOSITORY_ROOT / ".github" / "workflows" / "manual-mutation-evidence.yml"
 )
+MANUAL_PERFORMANCE_EVIDENCE_WORKFLOW_PATH = (
+    REPOSITORY_ROOT / ".github" / "workflows" / "manual-performance-evidence.yml"
+)
 QUALITY_CONTRACT_PATH = REPOSITORY_ROOT / "quality" / "quality-contract.json"
 MUTMUT_GATE_PATH = REPOSITORY_ROOT / "scripts" / "mutmut_ci_gate.py"
 KYVERNO_POLICY_PATH = REPOSITORY_ROOT / "k8s" / "kyverno" / "cluster-policies.yaml"
@@ -83,8 +86,23 @@ REQUIRED_CI_CONTEXTS = frozenset(
         "Dockerfile Lint",
         "Lint GitHub Actions Workflows",
         "Kyverno policy tests",
+        "Run Go Benchmarks",
+        "WS-Hub Go Benchmark Regression Gate",
+        "Rust Criterion Benchmarks (pyo3-sanitizer)",
+        "Rust Native Optimizer Regression Gate",
+        "Run cargo fuzz",
     }
 )
+RUST_FUZZ_MANUAL_CONTEXT_EXPRESSION = (
+    "${{ (github.event_name == 'pull_request' || github.event_name == 'push') && "
+    "'Run cargo fuzz' || 'Extended Rust fuzz evidence' }}"
+)
+RUST_FUZZ_CONTEXT_BY_EVENT = {
+    "pull_request": "Run cargo fuzz",
+    "push": "Run cargo fuzz",
+    "schedule": "Extended Rust fuzz evidence",
+    "workflow_dispatch": "Extended Rust fuzz evidence",
+}
 
 
 def _workflow_triggers(workflow: dict[str, object]) -> dict[str, object]:
@@ -93,6 +111,17 @@ def _workflow_triggers(workflow: dict[str, object]) -> dict[str, object]:
     value = workflow.get("on", workflow.get(True))
     assert isinstance(value, dict)
     return value
+
+
+def _job_context_for_event(
+    workflow_path: Path, job_id: str, job_name: str, event_name: str
+) -> str:
+    """Resolve the one audited event-conditional job name before collision checks."""
+
+    if workflow_path.name == "rust-fuzz.yml" and job_id == "fuzz":
+        assert job_name == RUST_FUZZ_MANUAL_CONTEXT_EXPRESSION
+        return RUST_FUZZ_CONTEXT_BY_EVENT[event_name]
+    return job_name
 
 
 def test_ci_triggers_when_draft_pull_request_becomes_ready() -> None:
@@ -655,7 +684,7 @@ def test_e2e_coverage_is_chromium_opt_in_and_codecov_wired() -> None:
     call = _workflow_triggers(e2e_workflow)["workflow_call"]
     inputs = call["inputs"]
     assert inputs["collect-coverage"]["default"] is False
-    assert "CODECOV_TOKEN" in call["secrets"]
+    assert "CODECOV_TOKEN" not in call.get("secrets", {})
 
     steps = e2e_workflow["jobs"]["e2e"]["steps"]
     merge_step = next(
@@ -677,12 +706,58 @@ def test_e2e_coverage_is_chromium_opt_in_and_codecov_wired() -> None:
     assert "inputs.browser == 'chromium'" in codecov_step["if"]
     assert codecov_step["with"]["flags"] == "frontend"
     assert codecov_step["with"]["files"] == "./frontend/coverage/e2e/lcov.info"
+    assert codecov_step["with"]["use_oidc"] is True
+    assert codecov_step["with"]["fail_ci_if_error"] is True
+    assert e2e_workflow["permissions"] == {"contents": "read"}
+    assert e2e_workflow["jobs"]["e2e"]["permissions"] == {
+        "contents": "read",
+        "id-token": "write",
+    }
 
     ci_workflow = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
     assert ci_workflow["jobs"]["e2e-tests"]["with"]["collect-coverage"] is True
     assert (
         "collect-coverage" not in ci_workflow["jobs"]["e2e-tests-cross-browser"]["with"]
     )
+
+
+def test_codecov_oidc_permissions_are_scoped_to_upload_jobs() -> None:
+    """Only jobs that can upload coverage receive an OIDC identity token."""
+
+    reusable_workflows = (
+        (BACKEND_WORKFLOW_PATH, "unit-tests"),
+        (FRONTEND_WORKFLOW_PATH, "unit-tests"),
+        (E2E_WORKFLOW_PATH, "e2e"),
+        (GO_WORKFLOW_PATH, "test"),
+    )
+    for workflow_path, upload_job_name in reusable_workflows:
+        workflow = yaml.safe_load(workflow_path.read_text(encoding="utf-8"))
+        call = _workflow_triggers(workflow)["workflow_call"]
+        assert workflow["permissions"] == {"contents": "read"}
+        assert "CODECOV_TOKEN" not in call.get("secrets", {})
+        assert workflow["jobs"][upload_job_name]["permissions"] == {
+            "contents": "read",
+            "id-token": "write",
+        }
+
+        uploads = [
+            step
+            for step in workflow["jobs"][upload_job_name]["steps"]
+            if str(step.get("uses", "")).startswith("codecov/codecov-action@")
+        ]
+        assert uploads
+        for upload in uploads:
+            assert upload["with"]["use_oidc"] is True
+            assert upload["with"]["fail_ci_if_error"] is True
+
+    nightly = yaml.safe_load(NIGHTLY_FULL_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    assert nightly["permissions"] == {"contents": "read", "issues": "write"}
+    assert "CODECOV_TOKEN" not in NIGHTLY_FULL_WORKFLOW_PATH.read_text(encoding="utf-8")
+    for job_name in ("backend-full", "backend-integration", "browser-matrix"):
+        assert nightly["jobs"][job_name]["permissions"] == {
+            "contents": "read",
+            "id-token": "write",
+        }
 
 
 def test_e2e_postgres_healthcheck_uses_declared_credentials() -> None:
@@ -751,15 +826,30 @@ def test_go_codecov_flags_match_component_contract() -> None:
 
 def test_advisory_integration_and_chaos_jobs_are_not_blocking() -> None:
     workflow = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    nightly_workflow = yaml.safe_load(
+        NIGHTLY_FULL_WORKFLOW_PATH.read_text(encoding="utf-8")
+    )
     blocking_script = workflow["jobs"]["ci-success"]["steps"][0]["run"]
 
     for job_name in (
         "go-integration-ws-hub",
         "go-integration-file-processor",
         "go-integration-gateway",
-        "load-and-chaos-tests",
     ):
         assert f"needs.{job_name}.result" not in blocking_script
+
+    # The historical dispatch-only job could never run from ci.yml, yet its
+    # check name was externally required.  Full load/chaos remains nightly and
+    # advisory until Temporal startup is stable enough for promotion.
+    assert "load-and-chaos-tests" not in workflow["jobs"]
+    assert "Load and Chaos Resilience Tests" not in CI_WORKFLOW_PATH.read_text(
+        encoding="utf-8"
+    )
+    assert "load-and-chaos" in nightly_workflow["jobs"]
+    assert nightly_workflow["jobs"]["load-and-chaos"]["name"] == (
+        "Load and chaos resilience"
+    )
+    assert nightly_workflow["jobs"]["load-and-chaos"]["timeout-minutes"] == 45
 
 
 def test_incremental_mutation_budget_matches_declared_gate() -> None:
@@ -788,11 +878,10 @@ def test_incremental_mutation_budget_matches_declared_gate() -> None:
         15,
         16,
     ]
-    assert job["timeout-minutes"] == 360
+    assert job["timeout-minutes"] == 25
     assert "scripts/mutmut_shard_budget.py" in run_step["run"]
-    assert "--max-timeout-seconds 18000" in run_step["run"]
+    assert "--max-timeout-seconds 1200" in run_step["run"]
     assert '"${MUTMUT_TIMEOUT_SECONDS}s"' in run_step["run"]
-    assert "timeout --kill-after=30s 25m" not in run_step["run"]
     assert (
         '--prepare-exact-execution "$MUTMUT_EVIDENCE_DIR/execution-plan.json"'
         in run_step["run"]
@@ -949,13 +1038,25 @@ def test_manual_mutation_evidence_is_isolated_from_required_ci_contexts() -> Non
 
 
 def test_incremental_mutation_workflows_preserve_headroom_and_full_evidence() -> None:
-    # A hosted six-hour job needs 3,570 seconds after the 30-second KILL grace
-    # for metadata checks, score verification, artifact upload, and a
-    # fail-closed exit.  The two workflows must enforce that same envelope.
-    hosted_job_seconds = 6 * 60 * 60
-    inner_mutmut_cap_seconds = 18_000
-    kill_grace_seconds = 30
-    assert hosted_job_seconds - inner_mutmut_cap_seconds - kill_grace_seconds == 3_570
+    # Pull-request mutation is a total 25-minute job.  The dynamic timeout
+    # reserves four minutes for proof/score/upload after timeout's 30-second
+    # KILL grace, and fails instead of running an under-budget shard.
+    pr_workflow = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    pr_job = pr_workflow["jobs"]["mutation-tests-incremental"]
+    pr_deadline = pr_job["steps"][0]["run"]
+    pr_run_step = next(
+        step
+        for step in pr_job["steps"]
+        if step.get("name") == "Run incremental mutmut (blocking, stats-derived budget)"
+    )
+    assert pr_job["timeout-minutes"] == 25
+    assert 'MUTMUT_JOB_DEADLINE_EPOCH="$((MUTMUT_JOB_STARTED_EPOCH + 1500))"' in (
+        pr_deadline
+    )
+    assert "--max-timeout-seconds 1200" in pr_run_step["run"]
+    assert "MUTMUT_POST_RUN_UPLOAD_RESERVE_SECONDS=240" in pr_run_step["run"]
+    assert "MUTMUT_TIMEOUT_KILL_GRACE_SECONDS=30" in pr_run_step["run"]
+    assert 25 * 60 - 20 * 60 - 4 * 60 - 30 == 30
 
     workflows = (
         (
@@ -963,15 +1064,32 @@ def test_incremental_mutation_workflows_preserve_headroom_and_full_evidence() ->
             "mutation-tests-incremental",
             "Run incremental mutmut (blocking, stats-derived budget)",
             "Upload incremental mutation evidence",
+            25,
+            1500,
+            1200,
+            240,
         ),
         (
             MANUAL_MUTATION_EVIDENCE_WORKFLOW_PATH,
             "manual-mutation-tests",
             "Run manual incremental mutmut (blocking, stats-derived budget)",
             "Upload manual mutation evidence",
+            360,
+            21600,
+            18000,
+            3570,
         ),
     )
-    for workflow_path, job_name, run_step_name, upload_step_name in workflows:
+    for (
+        workflow_path,
+        job_name,
+        run_step_name,
+        upload_step_name,
+        timeout_minutes,
+        deadline_seconds,
+        max_timeout_seconds,
+        post_run_reserve_seconds,
+    ) in workflows:
         workflow = yaml.safe_load(workflow_path.read_text(encoding="utf-8"))
         job = workflow["jobs"][job_name]
         deadline_step = job["steps"][0]
@@ -980,8 +1098,8 @@ def test_incremental_mutation_workflows_preserve_headroom_and_full_evidence() ->
         deadline_script = deadline_step["run"]
         assert 'MUTMUT_JOB_STARTED_EPOCH="$(date -u +%s)"' in deadline_script
         assert (
-            'MUTMUT_JOB_DEADLINE_EPOCH="$((MUTMUT_JOB_STARTED_EPOCH + 21600))"'
-            in deadline_script
+            'MUTMUT_JOB_DEADLINE_EPOCH="$((MUTMUT_JOB_STARTED_EPOCH + '
+            f'{deadline_seconds}))"' in deadline_script
         )
         assert 'echo "MUTMUT_JOB_DEADLINE_EPOCH=$MUTMUT_JOB_DEADLINE_EPOCH"' in (
             deadline_script
@@ -993,8 +1111,8 @@ def test_incremental_mutation_workflows_preserve_headroom_and_full_evidence() ->
         )
         run_script = run_step["run"]
 
-        assert job["timeout-minutes"] == 360
-        assert "--max-timeout-seconds 18000" in run_script
+        assert job["timeout-minutes"] == timeout_minutes
+        assert f"--max-timeout-seconds {max_timeout_seconds}" in run_script
         assert (
             "MUTMUT_EVIDENCE_DIR="
             "mutants/mutmut-exact-evidence"  # pragma: allowlist secret
@@ -1003,7 +1121,10 @@ def test_incremental_mutation_workflows_preserve_headroom_and_full_evidence() ->
         assert 'if ! [[ "${MUTMUT_JOB_DEADLINE_EPOCH:-}" =~ ^[1-9][0-9]*$ ]]; then' in (
             run_script
         )
-        assert "MUTMUT_POST_RUN_UPLOAD_RESERVE_SECONDS=3570" in run_script
+        assert (
+            f"MUTMUT_POST_RUN_UPLOAD_RESERVE_SECONDS={post_run_reserve_seconds}"
+            in run_script
+        )
         assert "MUTMUT_TIMEOUT_KILL_GRACE_SECONDS=30" in run_script
         assert 'MUTMUT_CURRENT_EPOCH="$(date -u +%s)"' in run_script
         assert (
@@ -1086,7 +1207,7 @@ def test_incremental_mutation_workflows_preserve_headroom_and_full_evidence() ->
         assert upload_step["with"]["if-no-files-found"] == "error"
 
         workflow_text = workflow_path.read_text(encoding="utf-8")
-        assert "3,570 seconds" in workflow_text
+        assert f"{post_run_reserve_seconds:,} seconds" in workflow_text
         assert "30-second KILL grace" in workflow_text
 
 
@@ -1196,8 +1317,18 @@ def test_dispatchable_workflows_never_emit_required_ci_contexts() -> None:
             if not isinstance(name, str):
                 collisions.append(f"{workflow_path.name}:{job_id}:non-string-name")
                 continue
+            try:
+                name = _job_context_for_event(
+                    workflow_path, job_id, name, "workflow_dispatch"
+                )
+            except AssertionError:
+                collisions.append(f"{workflow_path.name}:{job_id}:{name}")
+                continue
             for required_context in REQUIRED_CI_CONTEXTS:
-                if required_context in name:
+                # GitHub matches status contexts exactly.  A manual workflow
+                # must use a distinct full context, not merely avoid a shared
+                # substring such as the underlying benchmark label.
+                if required_context == name:
                     collisions.append(f"{workflow_path.name}:{job_id}:{name}")
                     break
 
@@ -1254,7 +1385,7 @@ def test_performance_workflow_has_blocking_native_and_ws_baselines() -> None:
     workflow_path = REPOSITORY_ROOT / ".github" / "workflows" / "benchmark.yml"
     workflow = yaml.safe_load(workflow_path.read_text(encoding="utf-8"))
     triggers = workflow.get("on", workflow.get(True, {}))
-    assert "workflow_dispatch" in triggers
+    assert "workflow_dispatch" not in triggers
     jobs = workflow["jobs"]
     assert jobs["benchmark"]["timeout-minutes"] == 20
     assert jobs["ws-hub-regression"]["timeout-minutes"] == 20
@@ -1290,6 +1421,45 @@ def test_performance_workflow_has_blocking_native_and_ws_baselines() -> None:
     assert ws_store["with"]["benchmark-data-dir-path"] == "dev/bench/ws-hub-regression"
     assert ws_store["with"]["alert-threshold"] == "110%"
     assert ws_store["with"]["fail-on-alert"] is True
+
+
+def test_manual_performance_evidence_uses_distinct_read_only_contexts() -> None:
+    """Manual benchmarks retain evidence without being able to satisfy PR checks."""
+
+    workflow = yaml.safe_load(
+        MANUAL_PERFORMANCE_EVIDENCE_WORKFLOW_PATH.read_text(encoding="utf-8")
+    )
+    assert workflow["name"] == "Manual Performance Evidence"
+    assert _workflow_triggers(workflow) == {"workflow_dispatch": {}}
+    assert workflow["permissions"] == {"contents": "read"}
+
+    expected_names = {
+        "benchmark": "Manual Performance Evidence / Run Go Benchmarks",
+        "ws-hub-regression": (
+            "Manual Performance Evidence / WS-Hub Go Benchmark Regression Gate"
+        ),
+        "rust-criterion": (
+            "Manual Performance Evidence / Rust Criterion Benchmarks (pyo3-sanitizer)"
+        ),
+        "rust-native-regression": (
+            "Manual Performance Evidence / Rust Native Optimizer Regression Gate"
+        ),
+    }
+    assert {
+        job_id: workflow["jobs"][job_id]["name"] for job_id in expected_names
+    } == expected_names
+    assert set(expected_names.values()).isdisjoint(REQUIRED_CI_CONTEXTS)
+    assert workflow["jobs"]["ws-hub-regression"]["timeout-minutes"] == 20
+    assert workflow["jobs"]["rust-native-regression"]["timeout-minutes"] == 30
+
+    for job_id in ("ws-hub-regression", "rust-native-regression"):
+        store_step = next(
+            step
+            for step in workflow["jobs"][job_id]["steps"]
+            if "benchmark-action/github-action-benchmark" in step.get("uses", "")
+        )
+        assert store_step["with"]["fail-on-alert"] is True
+        assert store_step["with"]["auto-push"] is False
 
 
 def test_backend_ci_uses_historical_duration_shards_and_aggregates_coverage() -> None:
@@ -1732,11 +1902,46 @@ def test_rust_fuzz_workflow_caches_every_declared_target_workspace() -> None:
     assert "../Cargo.toml" not in additional_key
 
 
+def test_rust_fuzz_keeps_the_required_pr_context_out_of_manual_and_scheduled_runs() -> (
+    None
+):
+    """The extended fuzz duration must not mint a required PR status context."""
+
+    workflow_path = REPOSITORY_ROOT / ".github" / "workflows" / "rust-fuzz.yml"
+    workflow = yaml.safe_load(workflow_path.read_text(encoding="utf-8"))
+    fuzz_job = workflow["jobs"]["fuzz"]
+
+    assert "Run cargo fuzz" in REQUIRED_CI_CONTEXTS
+    assert "workflow_dispatch" in _workflow_triggers(workflow)
+    assert fuzz_job["name"] == RUST_FUZZ_MANUAL_CONTEXT_EXPRESSION
+    assert (
+        _job_context_for_event(workflow_path, "fuzz", fuzz_job["name"], "pull_request")
+        == "Run cargo fuzz"
+    )
+    assert (
+        _job_context_for_event(
+            workflow_path, "fuzz", fuzz_job["name"], "workflow_dispatch"
+        )
+        == "Extended Rust fuzz evidence"
+    )
+    assert "Extended Rust fuzz evidence" not in REQUIRED_CI_CONTEXTS
+
+    fuzz_step = next(
+        step for step in fuzz_job["steps"] if step.get("name") == "Run fuzz targets"
+    )
+    assert (
+        'if [ "${EVENT_NAME}" = "schedule" ] || [ "${EVENT_NAME}" = "workflow_dispatch" ]; then'
+        in fuzz_step["run"]
+    )
+    assert "DURATION=300" in fuzz_step["run"]
+    assert "DURATION=60" in fuzz_step["run"]
+
+
 def test_incremental_mutation_gate_is_blocking_and_fails_on_timeout() -> None:
     ci_workflow = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
     jobs = ci_workflow["jobs"]
     mutation_job = jobs["mutation-tests-incremental"]
-    assert mutation_job["timeout-minutes"] == 360
+    assert mutation_job["timeout-minutes"] == 25
     assert "mutation-tests-incremental" in jobs["ci-success"]["needs"]
     mutation_text = "\n".join(
         step.get("run", "") for step in mutation_job["steps"] if isinstance(step, dict)
@@ -2029,19 +2234,16 @@ def test_quality_promotion_workflow_uses_fail_closed_stabilization_checker() -> 
     assert checkout["with"] == {"ref": "main", "fetch-depth": 1}
 
 
-def test_dast_pr_trigger_requires_the_explicit_run_dast_label() -> None:
-    """Active scans on pull requests require deliberate reviewer authorization."""
+def test_dast_active_scans_do_not_accept_pr_label_authorization() -> None:
+    """A PR label must never authorize a secret-bearing active DAST scan."""
 
     workflow = yaml.safe_load(DAST_WORKFLOW_PATH.read_text(encoding="utf-8"))
-    pull_request = _workflow_triggers(workflow)["pull_request"]
-    assert pull_request["types"] == ["labeled"]
+    triggers = _workflow_triggers(workflow)
+    assert "pull_request" not in triggers
+    assert "pull_request_target" not in triggers
 
-    required_guard = (
-        "${{ github.event_name != 'pull_request' || "
-        "github.event.label.name == 'run-dast' }}"
-    )
     for job_name in ("nuclei", "zap"):
-        assert workflow["jobs"][job_name]["if"] == required_guard
+        assert workflow["jobs"][job_name]["needs"] == "verify-trusted-ref"
 
     nuclei_setup = next(
         step

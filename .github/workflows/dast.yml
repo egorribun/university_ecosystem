@@ -6,19 +6,13 @@ name: DAST — Nuclei + ZAP Scan
 #
 # Trigger strategy:
 #   - Weekly (Sunday 02:00 UTC) so findings surface before Monday on-call starts.
-#   - Manual dispatch for ad-hoc scans (e.g. after large feature merges).
-#   - Not on push; a PR label event runs only when the label is exactly
-#     `run-dast`, because DAST requires an explicitly authorized target.
+#   - Manual dispatch from the protected main ref for ad-hoc scans.
+#   - Never from a pull-request event: PR-controlled workflow/configuration
+#     must not receive the configured DAST target.
 
 on:
   schedule:
     - cron: "0 2 * * 0"
-  # W23: Allow triggering DAST on PRs when the 'run-dast' label is applied.
-  # This lets security reviewers kick off a scan without waiting for Sunday.
-  # The workflow still requires a running DAST_TARGET_URL (staging environment).
-  pull_request:
-    branches: [main]
-    types: [labeled]
   workflow_dispatch: #checkov:skip=CKV_GHA_7:manual input intentionally selects the DAST target
     inputs:
       target_url:
@@ -29,12 +23,28 @@ on:
 permissions: read-all
 
 jobs:
+  verify-trusted-ref:
+    name: Verify trusted DAST source
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Reject untrusted workflow ref
+        shell: bash
+        env:
+          WORKFLOW_REF: ${{ github.ref }}
+        run: |
+          if [ "$WORKFLOW_REF" != "refs/heads/main" ]; then
+            echo "::error::DAST scans must run from the protected main ref."
+            exit 1
+          fi
+
   nuclei:
     name: Nuclei DAST scan
-    # A label event is attacker-adjacent input; run an active scan only after
-    # the explicit reviewer-selected label. Scheduled and manual scans remain
-    # available for the configured target.
-    if: ${{ github.event_name != 'pull_request' || github.event.label.name == 'run-dast' }}
+    # Only the protected default branch can supply the active-scan workflow,
+    # templates, and configured target to a scheduled or manual execution.
+    needs: verify-trusted-ref
+    if: ${{ needs.verify-trusted-ref.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
@@ -45,6 +55,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: main
           # Only need templates directory, not full history
           sparse-checkout: |
             .github
@@ -61,7 +72,7 @@ jobs:
           # The custom step below validates TARGET_URL before any scan runs.
           install-only: true
 
-      - name: Run Nuclei scan
+      - name: Validate Nuclei target URL
         env:
           TARGET_URL: ${{ inputs.target_url || secrets.DAST_TARGET_URL }}
         run: |
@@ -72,6 +83,10 @@ jobs:
             exit 1
           fi
 
+      - name: Run Nuclei scan
+        env:
+          TARGET_URL: ${{ inputs.target_url || secrets.DAST_TARGET_URL }}
+        run: |
           nuclei \
             -u "$TARGET_URL" \
             -t cves/ \
@@ -87,8 +102,7 @@ jobs:
             -max-host-error 30 \
             -sarif-export nuclei-results.sarif \
             -json-export nuclei-results.json \
-            -stats \
-            || true  # Don't fail the workflow — findings are uploaded as SARIF
+            -stats
 
       - name: Upload results to GitHub Security
         uses: github/codeql-action/upload-sarif@5595ccaf912efad79be6eef63a5619ff05969be3 # v4.37.6
@@ -115,8 +129,9 @@ jobs:
   # ---------------------------------------------------------------------------
   zap:
     name: OWASP ZAP Full Scan
-    # Keep the same explicit authorization boundary as the Nuclei active scan.
-    if: ${{ github.event_name != 'pull_request' || github.event.label.name == 'run-dast' }}
+    # Keep the same protected-source boundary as the Nuclei active scan.
+    needs: verify-trusted-ref
+    if: ${{ needs.verify-trusted-ref.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
     permissions:
@@ -127,6 +142,7 @@ jobs:
       - name: Checkout repository (ZAP rules config)
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: main
           sparse-checkout: |
             .zap
           sparse-checkout-cone-mode: false
@@ -135,6 +151,7 @@ jobs:
         env:
           TARGET_URL: ${{ inputs.target_url || secrets.DAST_TARGET_URL }}
         run: |
+          echo "::add-mask::$TARGET_URL"
           if [ -z "$TARGET_URL" ]; then
             echo "::error::No target URL configured. Set DAST_TARGET_URL secret or pass target_url input."
             exit 1

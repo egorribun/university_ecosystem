@@ -11,19 +11,27 @@ TARGET_EXPRESSION = "${{ inputs.target_url || secrets.DAST_TARGET_URL }}"
 EMPTY_TARGET_ERROR = (
     "No target URL configured. Set DAST_TARGET_URL secret or pass target_url input."
 )
-PR_AUTHORIZATION_GUARD = (
-    "${{ github.event_name != 'pull_request' || "
-    "github.event.label.name == 'run-dast' }}"
-)
+TRUSTED_REF_ERROR = "DAST scans must run from the protected main ref."
 
 
-def _assert_fail_closed_empty_target_branch(preflight_script: str) -> None:
-    """Assert that the empty-target branch returns a non-zero status."""
+def _workflow_triggers(workflow: dict[str, object]) -> dict[str, object]:
+    """PyYAML parses the YAML 1.1 key ``on`` as boolean True."""
+
+    triggers = workflow.get("on", workflow.get(True))
+    assert isinstance(triggers, dict)
+    return triggers
+
+
+def _assert_fail_closed_target_preflight(preflight_script: str) -> None:
+    """Assert that missing targets fail before a scan can receive one."""
 
     shell_lines = [
-        line.strip() for line in preflight_script.splitlines() if line.strip()
+        line.strip()
+        for line in preflight_script.splitlines()
+        if line.strip() and not line.lstrip().startswith("#")
     ]
     assert shell_lines == [
+        'echo "::add-mask::$TARGET_URL"',
         'if [ -z "$TARGET_URL" ]; then',
         f'echo "::error::{EMPTY_TARGET_ERROR}"',
         "exit 1",
@@ -31,11 +39,93 @@ def _assert_fail_closed_empty_target_branch(preflight_script: str) -> None:
     ]
 
 
+def test_dast_active_scans_reject_pr_controlled_workflow_sources() -> None:
+    """Changing a PR label must never expose the configured scan target."""
+
+    workflow = yaml.safe_load(DAST_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    triggers = _workflow_triggers(workflow)
+
+    assert set(triggers) == {"schedule", "workflow_dispatch"}
+    assert "pull_request" not in triggers
+    assert "pull_request_target" not in triggers
+
+    trusted_ref = workflow["jobs"]["verify-trusted-ref"]
+    assert trusted_ref["permissions"] == {"contents": "read"}
+    validation_step = trusted_ref["steps"][0]
+    assert validation_step["env"] == {"WORKFLOW_REF": "${{ github.ref }}"}
+    assert 'if [ "$WORKFLOW_REF" != "refs/heads/main" ]; then' in validation_step["run"]
+    assert f'echo "::error::{TRUSTED_REF_ERROR}"' in validation_step["run"]
+    assert "exit 1" in validation_step["run"]
+
+    for job_name in ("nuclei", "zap"):
+        job = workflow["jobs"][job_name]
+        assert job["needs"] == "verify-trusted-ref"
+        assert job["if"] == "${{ needs.verify-trusted-ref.result == 'success' }}"
+        checkout = next(
+            step
+            for step in job["steps"]
+            if step.get("uses", "").startswith("actions/checkout@")
+        )
+        assert checkout["with"]["ref"] == "main"
+
+
+def test_target_preflight_blocks_an_empty_target_before_active_scans() -> None:
+    """Both scanners mask and reject absent configured targets before scanning."""
+
+    workflow = yaml.safe_load(DAST_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    scan_steps = {
+        "nuclei": ("Validate Nuclei target URL", "Run Nuclei scan"),
+        "zap": ("Validate ZAP target URL", "ZAP Full Scan"),
+    }
+    for job_name, (preflight_name, scan_name) in scan_steps.items():
+        steps = workflow["jobs"][job_name]["steps"]
+        preflight_index, preflight = next(
+            (index, step)
+            for index, step in enumerate(steps)
+            if step.get("name") == preflight_name
+        )
+        scan_index = next(
+            index for index, step in enumerate(steps) if step.get("name") == scan_name
+        )
+        assert preflight_index < scan_index
+        assert preflight["env"] == {"TARGET_URL": TARGET_EXPRESSION}
+        assert preflight.get("continue-on-error", False) is False
+        _assert_fail_closed_target_preflight(preflight["run"])
+
+
+def test_nuclei_nonzero_exit_remains_terminal_after_artifact_uploads() -> None:
+    """Network/configuration failures must not be converted into a green DAST run."""
+
+    workflow = yaml.safe_load(DAST_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    steps = workflow["jobs"]["nuclei"]["steps"]
+    scan_index, scan = next(
+        (index, step)
+        for index, step in enumerate(steps)
+        if step.get("name") == "Run Nuclei scan"
+    )
+    assert scan.get("continue-on-error", False) is False
+    assert "|| true" not in scan["run"]
+    assert "nuclei \\" in scan["run"]
+
+    artifact_steps = [
+        (index, step)
+        for index, step in enumerate(steps)
+        if step.get("name")
+        in {"Upload results to GitHub Security", "Upload raw JSON findings"}
+    ]
+    assert len(artifact_steps) == 2
+    assert all(
+        scan_index < index and step["if"] == "always()"
+        for index, step in artifact_steps
+    )
+
+
 def test_zap_preflight_contract_rejects_exit_after_the_empty_target_branch() -> None:
     """A configured target must not inherit the empty-target failure exit."""
 
     escaped_failure_exit = "\n".join(
         (
+            'echo "::add-mask::$TARGET_URL"',
             'if [ -z "$TARGET_URL" ]; then',
             f'  echo "::error::{EMPTY_TARGET_ERROR}"',
             "fi",
@@ -44,57 +134,19 @@ def test_zap_preflight_contract_rejects_exit_after_the_empty_target_branch() -> 
     )
 
     with pytest.raises(AssertionError):
-        _assert_fail_closed_empty_target_branch(escaped_failure_exit)
-
-
-def test_zap_preflight_blocks_an_empty_target_before_the_active_scan() -> None:
-    """ZAP must fail closed before its action can receive an absent target."""
-
-    workflow = yaml.safe_load(DAST_WORKFLOW_PATH.read_text(encoding="utf-8"))
-    zap_steps = workflow["jobs"]["zap"]["steps"]
-    zap_action_index = next(
-        index
-        for index, step in enumerate(zap_steps)
-        if step.get("name") == "ZAP Full Scan"
-    )
-    preflights = [
-        (index, step)
-        for index, step in enumerate(zap_steps)
-        if step.get("name") == "Validate ZAP target URL"
-    ]
-
-    assert preflights, "ZAP must validate its target before the active scan action"
-    assert len(preflights) == 1
-
-    preflight_index, preflight = preflights[0]
-    preflight_script = preflight["run"]
-
-    assert preflight_index < zap_action_index
-    assert preflight["env"] == {"TARGET_URL": TARGET_EXPRESSION}
-    assert (
-        "continue-on-error" not in preflight or preflight["continue-on-error"] is False
-    )
-    _assert_fail_closed_empty_target_branch(preflight_script)
-    assert "::add-mask::" not in preflight_script
-
-    output_lines = [
-        line.strip()
-        for line in preflight_script.splitlines()
-        if line.strip().startswith(("echo ", "printf "))
-    ]
-    assert all("$TARGET_URL" not in line for line in output_lines)
+        _assert_fail_closed_target_preflight(escaped_failure_exit)
 
 
 def test_zap_action_keeps_the_authorized_target_and_scan_configuration() -> None:
-    """A configured target continues through the existing authorized ZAP action."""
+    """Trusted scheduled/manual scans retain the full active ZAP configuration."""
 
     workflow = yaml.safe_load(DAST_WORKFLOW_PATH.read_text(encoding="utf-8"))
-    zap_job = workflow["jobs"]["zap"]
     zap_action = next(
-        step for step in zap_job["steps"] if step.get("name") == "ZAP Full Scan"
+        step
+        for step in workflow["jobs"]["zap"]["steps"]
+        if step.get("name") == "ZAP Full Scan"
     )
 
-    assert zap_job["if"] == PR_AUTHORIZATION_GUARD
     assert zap_action == {
         "name": "ZAP Full Scan",
         "uses": "zaproxy/action-full-scan@3c58388149901b9a03b7718852c5ba889646c27c",

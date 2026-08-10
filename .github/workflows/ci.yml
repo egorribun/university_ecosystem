@@ -1867,11 +1867,12 @@ jobs:
       # diffs and exit successfully after proving their slice is empty.
       matrix:
         shard: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]
-    # Cap mutmut at 300 minutes (18,000 seconds).  After timeout's 30-second KILL grace,
-    # the six-hour hosted job still has 3,570 seconds for setup,
-    # metadata verification, score checking, evidence upload, and a
-    # fail-closed exit.  The manual evidence workflow uses the same envelope.
-    timeout-minutes: 360
+    # The pull-request gate has a true 25-minute wall-clock envelope.  Its
+    # dynamic inner timeout is fail-closed: after a 30-second KILL grace it
+    # reserves four minutes for proof, score verification, and upload.  The
+    # separately dispatched manual evidence workflow intentionally keeps its
+    # longer six-hour envelope for full forensic evidence.
+    timeout-minutes: 25
     needs:
       - pre-commit-check
       - mutation-tests-stats
@@ -1882,7 +1883,7 @@ jobs:
         shell: bash
         run: |
           MUTMUT_JOB_STARTED_EPOCH="$(date -u +%s)"
-          MUTMUT_JOB_DEADLINE_EPOCH="$((MUTMUT_JOB_STARTED_EPOCH + 21600))"
+          MUTMUT_JOB_DEADLINE_EPOCH="$((MUTMUT_JOB_STARTED_EPOCH + 1500))"
           {
             echo "MUTMUT_JOB_STARTED_EPOCH=$MUTMUT_JOB_STARTED_EPOCH"
             echo "MUTMUT_JOB_DEADLINE_EPOCH=$MUTMUT_JOB_DEADLINE_EPOCH"
@@ -2030,31 +2031,32 @@ jobs:
             --selected-file /tmp/mutmut-shard.txt \
             --stats mutants/mutmut-stats.json \
             --max-children 2 \
-            --max-timeout-seconds 18000 \
+            --max-timeout-seconds 1200 \
             --output "$MUTMUT_EVIDENCE_DIR/shard-budget.json")"
           if ! [[ "$MUTMUT_BUDGET_TIMEOUT_SECONDS" =~ ^[1-9][0-9]*$ ]]; then
             MUTMUT_FAILURE_REASON="mutation budget helper returned an unsafe timeout value"
             echo "::error::Mutation budget helper returned an unsafe timeout value."
             exit 1
           fi
-          # The 18,000-second budget is only an upper cap.  The timeout starts
-          # after setup, so derive a lower cap from the durable job deadline and
-          # leave 3,570 seconds after timeout's 30-second KILL grace for proof,
-          # score verification, upload, and a fail-closed exit.
+          # The 1,200-second budget is only an upper cap. The deadline starts
+          # before setup, so derive a lower cap from the durable 25-minute job
+          # deadline and leave 240 seconds (four minutes) after timeout's
+          # 30-second KILL grace for proof, score verification, upload, and a
+          # fail-closed exit.
           if ! [[ "${MUTMUT_JOB_DEADLINE_EPOCH:-}" =~ ^[1-9][0-9]*$ ]]; then
             MUTMUT_FAILURE_REASON="mutation job deadline is missing or invalid"
             echo "::error::Mutation job deadline is missing or invalid; refusing to run without post-run evidence headroom."
             exit 1
           fi
           MUTMUT_FAILURE_REASON="deriving the deadline-bounded mutation timeout"
-          MUTMUT_POST_RUN_UPLOAD_RESERVE_SECONDS=3570
+          MUTMUT_POST_RUN_UPLOAD_RESERVE_SECONDS=240
           MUTMUT_TIMEOUT_KILL_GRACE_SECONDS=30
           MUTMUT_CURRENT_EPOCH="$(date -u +%s)"
           MUTMUT_REMAINING_JOB_SECONDS="$((MUTMUT_JOB_DEADLINE_EPOCH - MUTMUT_CURRENT_EPOCH))"
           MUTMUT_REMAINING_TIMEOUT_SECONDS="$((MUTMUT_REMAINING_JOB_SECONDS - MUTMUT_POST_RUN_UPLOAD_RESERVE_SECONDS - MUTMUT_TIMEOUT_KILL_GRACE_SECONDS))"
           if [ "$MUTMUT_REMAINING_TIMEOUT_SECONDS" -lt 1 ]; then
             MUTMUT_FAILURE_REASON="mutation deadline leaves no execution time after required evidence headroom"
-            echo "::error::Mutation deadline leaves no execution time after the required 3570-second post-run/upload reserve and 30-second KILL grace."
+            echo "::error::Mutation deadline leaves no execution time after the required 240-second post-run/upload reserve and 30-second KILL grace."
             exit 1
           fi
           MUTMUT_TIMEOUT_SECONDS="$MUTMUT_BUDGET_TIMEOUT_SECONDS"
@@ -2153,269 +2155,6 @@ jobs:
             mutants/mutmut-exact-evidence/
           if-no-files-found: error
 
-
-  # Phase 8.3: the full Temporal-backed load/chaos stack is executed by
-  # nightly-full-gate.yml. Keep this historical definition inert so old links
-  # and local workflow tooling do not accidentally reintroduce it into the PR
-  # gate; promotion back to CI requires a documented Temporal boot fix. The
-  # repository variable is intentionally unset (false) by default. This
-  # historical definition is inert: ci.yml intentionally has no
-  # workflow_dispatch trigger because required CI contexts must never be
-  # dispatchable. Re-enable the diagnostic only in a dedicated workflow.
-  load-and-chaos-tests:
-    if: ${{ github.event_name == 'workflow_dispatch' && vars.ENABLE_LOAD_CHAOS == 'true' }}
-    name: Load and Chaos Resilience Tests
-    runs-on: ubuntu-latest
-    timeout-minutes: 30 # +3 Go builds (gateway/ws-hub/file-processor) + temporal boot
-    needs:
-      - pre-commit-check
-      - compose-validate
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      - name: Set up Python
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
-        with:
-          python-version: "3.14"
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
-
-      - name: Install dependencies
-        run: uv sync --group dev
-
-      - name: Setup environment file
-        run: cp .env.example .env
-
-      # Generate an ephemeral SECRET_KEY when the CI_TEST_SECRET_KEY repo secret
-      # is unset (mirrors the fallback the other jobs use). Without this, the
-      # empty workflow-level SECRET_KEY shadows .env during compose interpolation
-      # and the strict ${SECRET_KEY:?} fails before the stack starts.
-      - name: Generate ephemeral SECRET_KEY when CI secret unset
-        if: env.SECRET_KEY == ''
-        run: echo "SECRET_KEY=$(openssl rand -hex 32)" >> "$GITHUB_ENV"
-
-      # docker-compose.go.yml uses strict ${JWT_SECRET:?} (gateway + ws-hub) and
-      # JWT_SECRET is NOT in .env.example. Its value is irrelevant for the WS
-      # ticket flow (tickets are Redis-validated), so an ephemeral one suffices.
-      # WS_HUB_INTERNAL_SECRET: ws-hub HARD-EXITS at startup if it is empty
-      # (services/ws-hub/main.go:28 os.Exit(1)); go.yml's ws-hub block doesn't
-      # set it + it is absent from .env.example. The ci-loadtest fragment wires
-      # the SAME value into backend + ws-hub so the room-join authz HMAC (W204)
-      # matches.
-      - name: Generate ephemeral JWT_SECRET + WS_HUB_INTERNAL_SECRET
-        run: |
-          echo "JWT_SECRET=$(openssl rand -hex 32)" >> "$GITHUB_ENV"
-          echo "WS_HUB_INTERNAL_SECRET=$(openssl rand -hex 32)" >> "$GITHUB_ENV"
-
-      # Backend ALGORITHM=RS256 + JWT_PRIVATE_KEY_PATH=.secrets/jwt_rs256.pem.
-      # The key is NOT baked into the image (no source mount in prod), so login
-      # cannot sign tokens without it. Generate it here; docker-compose.ci-loadtest.yml
-      # bind-mounts ./.secrets into the backend (WORKDIR /app). Mirrors the
-      # visual-audit.yml / wave189-unauthed-smoke.yml precedent.
-      - name: Generate RS256 keypair
-        run: |
-          mkdir -p .secrets
-          openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out .secrets/jwt_rs256.pem
-          # The backend runs as a non-root user and the :ro bind-mount inherits
-          # host perms. Default genpkey output is 0600 (runner-owned) -> the
-          # backend user gets "[Errno 13] Permission denied". 0644 = readable.
-          chmod 644 .secrets/jwt_rs256.pem
-
-      - name: Spin up Docker Compose
-        run: |
-          CF_UP="-f docker-compose.infra.yml -f docker-compose.go.yml -f docker-compose.yml -f docker-compose.ci-loadtest.yml"
-          
-          # Pre-pull images sequentially to avoid network bottlenecks and pull timeouts
-          echo "Listing images to pre-pull..."
-          images=$(docker compose $CF_UP config --images | sort -u)
-          
-          # Add Dockerfile base images to the pre-pulling list
-          images="$images golang:1.26.4-alpine3.22@sha256:cff7cf3120cd74bf0960cfe19a3efb6631161148d8e070f76976f73a13b2e3d4 gcr.io/distroless/static-debian12:latest@sha256:20bc6c0bc4d625a22a8fde3e55f6515709b32055ef8fb9cfbddaa06d1760f838 rust:1.94.1-slim-bookworm@sha256:5ae2d2ef9875c9c2407bf9b5678e6375304f7ecf8ea46b23e403a5690ec357ec python:3.14-slim-bookworm@sha256:4ff4b92a68355dbdb52584ab3391dff8d371a61d4e063468bfd0130e3189c6d9 node:24-alpine@sha256:01743339035a5c3c11a373cd7c83aeab6ed1457b55da6a69e014a95ac4e4700b alpine:3.20@sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc golang:1.24-alpine@sha256:8bee1901f1e530bfb4a7850aa7a479d17ae3a18beb6e09064ed54cfd245b7191 caddy:2.9.1-alpine@sha256:b4e3952384eb9524a887633ce65c752dd7c71314d2c2acf98cd5c715aaa534f0 alpine/socat"
-
-          for img in $images; do
-            # Skip local build images (which lack a tag/colon) or contain project names
-            if [[ "$img" != *":"* ]] && [[ "$img" != "alpine/socat" ]]; then
-              continue
-            fi
-            if [[ "$img" == "university_ecosystem"* ]] || [[ "$img" == "quality-roadmap"* ]]; then
-              continue
-            fi
-            echo "Pre-pulling $img..."
-            for attempt in 1 2 3 4 5; do
-              if docker pull "$img"; then
-                echo "$img pulled successfully"
-                break
-              fi
-              echo "Warning: failed to pull $img (attempt $attempt), retrying in 10s..."
-              sleep 10
-            done
-          done
-
-          # ROUND-15: retry `up -d --build`. The full stack pulls many infra
-          # images (tempo, temporal-ui, ...) from Docker Hub, which intermittently
-          # times out on the CI runner ("net/http: request canceled ...
-          # Client.Timeout exceeded while awaiting headers") and INTERRUPTS the
-          # whole compose-up -> exit 1 (round-14 died here, a pure registry flake
-          # unrelated to the test changes). Build cache makes retries fast and the
-          # transient pull almost always succeeds on a 2nd/3rd attempt.
-          up_ok=""
-          for attempt in 1 2 3; do
-            if docker compose $CF_UP up -d --build; then
-              echo "compose up succeeded (attempt $attempt)"; up_ok=1; break
-            fi
-            echo "::warning::compose up attempt $attempt failed (likely a Docker Hub pull timeout); retrying in 15s"
-            sleep 15
-          done
-          if [ -z "$up_ok" ]; then
-            echo "compose up failed after 3 attempts"; exit 1
-          fi
-
-          # Host-publish backend:8000 via a socat sidecar. docker compose v2.x on
-          # the CI runner does NOT apply a ports: override added to backend's
-          # expose-only base, so k6 (--network=host), the readiness poll and the
-          # chaos suite cannot reach localhost:8000 otherwise. socat is
-          # version-independent. gateway:8080 is already host-published by go.yml.
-          #
-          # DUAL-HOMING (round-3): backend is ONLY on `internal: true` networks
-          # (service_net/db_net/cache_net/event_net/internal — docker-compose.yml
-          # :650-661), and `-p` is a SILENT no-op for a container whose only net
-          # is internal:true (round-2: `ci-pf-backend Up` with an EMPTY Ports
-          # column -> localhost:8000 connection refused). So start socat on the
-          # default bridge (host-publishable) for `-p`, THEN attach the internal
-          # net so it can DNS-resolve + reach backend:8000 (resolved lazily per
-          # client, so attaching before traffic arrives is sufficient).
-          NET=$(docker network ls --format '{{.Name}}' | grep -E '_internal$' | head -1)
-          echo "Internal network: ${NET:-<none>}"
-          docker run -d --name ci-pf-backend -p 8000:8000 \
-            alpine/socat TCP-LISTEN:8000,fork,reuseaddr TCP:backend:8000
-          docker network connect "$NET" ci-pf-backend
-          docker ps --filter name=ci-pf-backend --format '{{.Names}} {{.Status}} {{.Ports}}'
-
-          echo "Waiting for backend + gateway to be ready..."
-          # Readiness poll replaces a blind `sleep 20`: the backend builds the
-          # RS256 signer + connects to valkey/postgres, and the gateway depends
-          # on a healthy backend (3 Go images build first). Poll /healthz, then
-          # the gateway /health.
-          backend_ready=""
-          for i in $(seq 1 90); do
-            if curl -fsS http://localhost:8000/healthz >/dev/null 2>&1; then
-              echo "backend ready (after $((i * 2))s)"; backend_ready=1; break
-            fi
-            sleep 2
-          done
-          if [ -z "$backend_ready" ]; then
-            echo "::warning::backend /healthz not ready after 180s; dumping status + logs"
-            docker compose -f docker-compose.infra.yml -f docker-compose.go.yml -f docker-compose.yml -f docker-compose.ci-loadtest.yml ps || true
-            docker compose -f docker-compose.infra.yml -f docker-compose.go.yml -f docker-compose.yml -f docker-compose.ci-loadtest.yml logs --tail=80 backend ws-hub gateway || true
-            docker logs ci-pf-backend 2>&1 | tail -20 || true
-          fi
-          for i in $(seq 1 30); do
-            if curl -fsS http://localhost:8080/health >/dev/null 2>&1; then
-              echo "gateway ready (after $((i * 2))s)"; break
-            fi
-            sleep 2
-          done
-
-          # ws-hub's Redis connect is startup-ONLY (no retry). It came up during
-          # the heavy parallel build, before valkey was reachable + while Docker
-          # DNS SERVFAILed, so it gave up on Redis ("continuing without L2 cache")
-          # -> the OTT ticket GETDEL hard-rejects -> the WS 101 upgrade fails. The
-          # stack is settled now + ws-hub is on cache_net (fragment): bounce it so
-          # initRedis reconnects to valkey, then confirm in the logs.
-          docker compose -f docker-compose.infra.yml -f docker-compose.go.yml -f docker-compose.yml -f docker-compose.ci-loadtest.yml restart ws-hub
-          sleep 6
-          docker compose -f docker-compose.infra.yml -f docker-compose.go.yml -f docker-compose.yml -f docker-compose.ci-loadtest.yml logs --tail=15 ws-hub | grep -iE "Redis connected|continuing without L2" || echo "::warning::ws-hub Redis status not found in logs"
-
-      # Always-on ws-hub diagnostics: round 1 showed ws-hub `Restarting` but CI
-      # never captured its logs, so the WS-chain root cause was unknown. Confirm
-      # the fragment's Redis/NATS env overrides actually merged on compose v2.x
-      # (ws-hub is distroless -> `inspect` the configured env, no shell to `exec`)
-      # and dump the logs so the restart cause is visible even if the WS k6 test
-      # then passes.
-      - name: Diagnose ws-hub (full-section-6 WS chain)
-        if: always()
-        run: |
-          CF="-f docker-compose.infra.yml -f docker-compose.go.yml -f docker-compose.yml -f docker-compose.ci-loadtest.yml"
-          echo "=== ws-hub container status ==="
-          docker compose $CF ps ws-hub || true
-          echo "=== ws-hub configured Redis/NATS env (merge check) ==="
-          WSID=$(docker compose $CF ps -q ws-hub 2>/dev/null || true)
-          docker inspect "$WSID" --format '{{range .Config.Env}}{{println .}}{{end}}' 2>/dev/null | grep -E 'REDIS|NATS|JWT|ALLOWED|WS_HUB' || true
-          echo "=== ws-hub logs (restart cause) ==="
-          docker compose $CF logs --tail=80 ws-hub || true
-
-      - name: Run k6 load tests
-        run: |
-          # Backend reached via the socat host-publish (localhost:8000); ws-hub
-          # via its go.yml host port (localhost:8083).
-          docker run --network="host" -i -e API_BASE_URL=http://localhost:8000 \
-            grafana/k6 run - <tests/performance/load_test.js
-          docker run --network="host" -i \
-            -e API_BASE_URL=http://localhost:8000 -e WS_URL=ws://localhost:8083 \
-            grafana/k6 run - <tests/performance/ws_hub_load_test.js
-
-      # ROUND-7 DIAGNOSTIC (W147 §Honesty NEW #1 discipline): rounds 5+6 each
-      # pivoted the k6 CSRF mechanism without ground truth. Stop guessing — read
-      # the backend's OWN rejection log. structlog emits one of three distinct
-      # warnings (app/core/csrf.py:349/362/377) with method= + path= fields:
-      #   "CSRF rejected (missing token)"        -> cookie OR header absent
-      #   "CSRF rejected (token mismatch)"       -> compare_digest(cookie,header) fail
-      #   "CSRF rejected (invalid HMAC signature)" -> session_id/anon-nonce binding fail
-      # The k6 WS dance hits /register, /login/json, /ws/ticket. The rejection
-      # string + the path pinpoints the EXACT failing step + sub-cause so round-8
-      # fixes precisely. Strong hypothesis to confirm/refute: /login/json sets the
-      # access_token cookie -> _extract_session_id switches session_id from anon:X
-      # to the authenticated session, but the csrf_token is still HMAC-bound to
-      # anon:X and does NOT rotate (csrf.py:391 only sets when absent) -> the
-      # /ws/ticket POST (Bearer + auth-cookie present -> CSRF NOT skipped,
-      # csrf.py:339) fails with "invalid HMAC signature" on path=/ws/ticket.
-      # if: always() -> runs even though the k6 step fails on the errors threshold.
-      - name: Diagnose backend CSRF (WS k6 auth dance — round-7)
-        if: always()
-        run: |
-          CF="-f docker-compose.infra.yml -f docker-compose.go.yml -f docker-compose.yml -f docker-compose.ci-loadtest.yml"
-          echo "=== backend CSRF rejections (string + method= + path=) ==="
-          docker compose $CF logs --tail=600 backend 2>&1 | grep -iE "CSRF rejected" | tail -40 || echo "(no 'CSRF rejected' log lines found)"
-          echo "=== backend 4xx/rate-limit context ==="
-          docker compose $CF logs --tail=200 backend 2>&1 | grep -iE "warning|error|429|403|rate.?limit|/register|/login|/ws/ticket" | tail -30 || true
-          # ROUND-14: backend container HEALTH -- this is the gate the chaos suite's
-          # setup `docker compose up -d` waits on (service_healthy). round-13's
-          # /health/ready (wait_db 1-attempt) flapped under the k6 DB load; round-14
-          # uses "/" (DB-less). Show the live health + the actual endpoint responses
-          # so the cause is visible whether or not "/" makes it healthy.
-          echo "=== backend container health (chaos up -d gate) ==="
-          docker compose $CF ps backend || true
-          BID=$(docker compose $CF ps -q backend 2>/dev/null || true)
-          docker inspect "$BID" --format '{{json .State.Health}}' 2>/dev/null | head -c 1500 || true
-          echo
-          echo "=== backend / + /health/ready (from inside the container) ==="
-          docker compose $CF exec -T backend python -c "import urllib.request; print('root status', urllib.request.urlopen('http://127.0.0.1:8000/', timeout=4).status)" 2>&1 | tail -3 || true
-          docker compose $CF exec -T backend python -c "import urllib.request; print('ready status', urllib.request.urlopen('http://127.0.0.1:8000/health/ready', timeout=4).status)" 2>&1 | tail -3 || true
-
-      - name: Run chaos resilience tests
-        env:
-          CHAOS_TESTS: "1"
-          API_BASE_URL: "http://localhost:8000"
-          GATEWAY_URL: "http://localhost:8080"
-          DATABASE_URL_SYNC: "postgresql://postgres:postgres@localhost:54321/university" # pragma: allowlist secret
-          # The chaos suite's internal `docker compose stop/start` calls carry no
-          # -f flags. COMPOSE_FILE (Linux separator ':') makes them target the
-          # full merged stack so nats / ws-hub / gateway are visible.
-          COMPOSE_FILE: "docker-compose.infra.yml:docker-compose.go.yml:docker-compose.yml:docker-compose.ci-loadtest.yml"
-        run: |
-          uv run pytest tests/chaos/test_resilience.py -v
-
-      - name: Tear down Docker Compose
-        if: always()
-        run: |
-          docker rm -f ci-pf-backend || true
-          docker compose \
-            -f docker-compose.infra.yml \
-            -f docker-compose.go.yml \
-            -f docker-compose.yml \
-            -f docker-compose.ci-loadtest.yml \
-            down -v
 
   chaos-tests:
     name: Chaos Engineering (ToxiProxy)

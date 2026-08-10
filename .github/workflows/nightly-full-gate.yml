@@ -12,7 +12,6 @@ on:
 permissions:
   contents: read
   issues: write
-  id-token: write
 
 concurrency:
   group: nightly-full-gate
@@ -119,6 +118,9 @@ jobs:
       matrix:
         unit-shard: [0, 1, 2, 3]
     uses: ./.github/workflows/reusable-backend-tests.yml
+    permissions:
+      contents: read
+      id-token: write
     with:
       test-group-name: Nightly-Full-${{ matrix.unit-shard }}
       test-pattern: tests/
@@ -131,7 +133,6 @@ jobs:
       num-shards: 4
     secrets:
       SECRET_KEY: ${{ secrets.SECRET_KEY }}
-      CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
 
   backend-integration:
     name: Full backend integration (shard ${{ matrix.integration-shard }})
@@ -140,6 +141,9 @@ jobs:
       matrix:
         integration-shard: [0, 1, 2, 3]
     uses: ./.github/workflows/reusable-backend-tests.yml
+    permissions:
+      contents: read
+      id-token: write
     with:
       test-group-name: Nightly-Integration-${{ matrix.integration-shard }}
       test-pattern: tests/
@@ -154,7 +158,6 @@ jobs:
       integration-num-shards: 4
     secrets:
       SECRET_KEY: ${{ secrets.SECRET_KEY }}
-      CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
 
   go-integration:
     name: Go integration (${{ matrix.service-directory }})
@@ -222,6 +225,9 @@ jobs:
           - webkit
           - mobile-webkit
     uses: ./.github/workflows/reusable-e2e-tests.yml
+    permissions:
+      contents: read
+      id-token: write
     with:
       node-version: "22"
       python-version: "3.14"

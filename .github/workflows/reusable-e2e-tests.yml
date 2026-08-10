@@ -4,7 +4,6 @@ name: E2E Tests
 
 permissions:
   contents: read
-  id-token: write
 
 on:
   workflow_call:
@@ -54,11 +53,6 @@ on:
         required: false
         type: boolean
         default: false
-    secrets:
-      CODECOV_TOKEN:
-        required: false
-        description: "Codecov upload token"
-
 jobs:
   e2e:
     name: E2E Tests (${{ inputs.browser }})
@@ -74,6 +68,9 @@ jobs:
     # stable ceiling for the SSR preview; higher aggregate concurrency cascades
     # into page.goto net::ERR_ABORTED timeouts.
     timeout-minutes: 45
+    permissions:
+      contents: read
+      id-token: write
     env:
       SECRET_KEY: "dummy_secret_key_for_ci_tests_at_least_32_chars"
       ENVIRONMENT: testing

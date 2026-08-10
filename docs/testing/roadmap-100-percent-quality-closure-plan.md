@@ -295,7 +295,7 @@ closure matrix for this audit is:
 | --- | --- | --- |
 | Python, frontend, Go, Rust, and Tier0 coverage | Exact raw artifacts from `31310271914`, recomputed manifest for SHA `671b79c46`, contract validator, Tier0 per-file checks | current metrics pass contract floors; CI upload is blocked only by Codecov |
 | Stateful/property testing and disposable MinIO/SpiceDB cells | Fast CI functional jobs plus nightly container cell | closed in code; current-HEAD nightly evidence tracked |
-| Python mutmut and frontend Stryker | Python source uses immutable PR-base SHA selection, exact mutant-name shards, a 25-minute hard failure, scope-local JSON evidence, and a 100% viable-score gate; the full nightly uses the same exporter in `--all` mode. The cited Stryker run remains historical evidence only. | terminal current-HEAD PR and full-nightly artifacts are still required; a source inspection or old frontend run is not renewed certification |
+| Python mutmut and frontend Stryker | Python source uses immutable PR-base SHA selection, exact mutant-name shards, a 25-minute wall-clock failure boundary (20-minute maximum execution cap, 30-second KILL grace, and four-minute proof/upload reserve), scope-local JSON evidence, and a 100% viable-score gate; the full nightly uses the same exporter in `--all` mode. The cited Stryker run remains historical evidence only. | terminal current-HEAD PR and full-nightly artifacts are still required; a source inspection or old frontend run is not renewed certification |
 | Go goleak/fuzz/integration and Rust fuzz/proptest/Miri | Go workflows/tests, Rust suites, nightly Miri job | repository wiring and bounded execution pass; promotion/evidence history tracked |
 | Pact, schema compatibility, browser matrix, SSR cache assertions | contract workflow/provider verification, four-project browser matrix, production SSR E2E | current functional checks pass; promotion window tracked |
 | Checkov, Kyverno, negative security, performance baselines | blocking Checkov, Kyverno tests, security suites, Lighthouse and benchmark gates | current fast security/Lighthouse checks pass; durable current-HEAD baseline and promotion evidence tracked |
@@ -306,9 +306,12 @@ closure matrix for this audit is:
 ### Live source enforcement (not certification evidence)
 
 - Pull-request mutation execution resolves the immutable PR base SHA, assigns
-  exact mutant names to shards, and fails if its 25-minute budget is exceeded.
-  The exporter writes scope-local machine-readable evidence before the blocking
-  100% viable-score gate runs.
+  exact mutant names to shards, and fails beyond a 25-minute total wall-clock
+  deadline. Its stats-derived execution cap is at most 20 minutes; after the
+  30-second KILL grace, four minutes remain for proof, score verification, and
+  upload. If setup leaves less than the verified shard budget, the job fails
+  rather than emitting incomplete evidence. The exporter writes scope-local
+  machine-readable evidence before the blocking 100% viable-score gate runs.
 - The full nightly run starts from a newly-created `mutants/` directory, runs
   the complete mutmut universe, and invokes the same exporter with `--all` so
   `caught_by_type_check` is preserved as an accepted kill.
@@ -316,6 +319,11 @@ closure matrix for this audit is:
   evaluated mutant is conclusively killed by tests or a configured type check.
   Survivors and `timeout`, `suspicious`, `no_tests`, `not_checked`, `skipped`,
   `interrupted`, or `segfault` evidence fail closed.
+- Load/chaos remains a nightly, advisory workstream while the Temporal CI boot
+  issue is unresolved. The obsolete dispatch-only `ci.yml` job and its inert
+  `Load and Chaos Resilience Tests` context were removed; the matching context
+  must be removed from active ruleset `8335285` during the controller's remote
+  reconciliation. This is not a promotion claim.
 - These statements describe reviewed repository source. They do not replace a
   terminal current-HEAD PR run, a full-nightly artifact, Codecov authorization,
   or the required 30-day promotion evidence.
@@ -974,8 +982,10 @@ silent verification skip, and advisory classification.
 
 **Implemented enforcement wiring (not certification evidence):**
 `policy.viable_mutant_score` is `100`. Pull-request mutation execution uses
-the immutable PR base SHA, exact-name shards, a 25-minute fail-closed budget,
-and scope-local machine-readable statistics. The checker accepts only complete
+the immutable PR base SHA, exact-name shards, a 25-minute fail-closed
+wall-clock budget (20-minute execution cap, 30-second KILL grace, and
+four-minute evidence reserve), and scope-local machine-readable statistics.
+The checker accepts only complete
 evidence: every evaluated mutant must be killed by tests or a configured type
 check; survivors, an empty universe, and `timeout`, `suspicious`, `no_tests`,
 `not_checked`, `skipped`, `interrupted`, or `segfault` fail the gate. The
@@ -1218,7 +1228,7 @@ Current state: `playwright.config.ts` declares `chromium`, `firefox`, `webkit`, 
 
 **Task 8.2** — Add a `kyverno-test` CI job. Kyverno ships a native `kyverno test` CLI subcommand for exactly this purpose (policy unit testing without a live cluster) — author `k8s/kyverno/tests/` with at least one positive and one negative test case per policy in `k8s/kyverno/cluster-policies.yaml`, and wire `kyverno test k8s/kyverno/tests/` into a new job in `ci.yml`.
 
-**Task 8.3** — `load-and-chaos-tests` advisory → blocking: this job's blocker is the production Temporal container failing to boot reliably in CI (`W144`-class issue per the existing `ci-success` comment). Track root cause separately (likely a Temporal server config/entrypoint issue specific to the CI environment, not a test-quality issue) and move to `nightly-full-gate.yml` in the interim per Phase G.2, revisiting blocking-promotion once the Temporal boot issue has a documented fix.
+**Task 8.3** — `load-and-chaos-tests` advisory → blocking: this job's blocker is the production Temporal container failing to boot reliably in CI (`W144`-class issue per the existing `ci-success` comment). Track root cause separately (likely a Temporal server config/entrypoint issue specific to the CI environment, not a test-quality issue) and move to `nightly-full-gate.yml` in the interim per Phase G.2, revisiting blocking-promotion once the Temporal boot issue has a documented fix. The obsolete dispatch-only CI definition was removed because it could only produce a skipped required status; remote ruleset context removal remains an auditable controller action, not a promotion.
 
 ## Phase 9 — Non-functional, security, and resilience
 
