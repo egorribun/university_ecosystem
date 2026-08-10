@@ -1633,7 +1633,10 @@ jobs:
           targets: wasm32-unknown-unknown
           components: llvm-tools-preview
 
-      - name: Cache Cargo registry + target dirs
+      # cargo-llvm-cov coverage targets are deliberately redirected to
+      # runner.temp below. This keeps ordinary Cargo build caching fast without
+      # restoring stale LLVM profraw files across source revisions.
+      - name: Cache Cargo registry + target dirs (coverage-safe)
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
@@ -1644,9 +1647,11 @@ jobs:
             frontend/wasm-sanitizer/target/
             frontend/rust-crypto/target/
             crates/pyo3-sanitizer/target/
-          key: ${{ runner.os }}-cargo-rust-tests-${{ hashFiles('native/rust_ext/Cargo.toml', 'frontend/wasm-sanitizer/Cargo.toml', 'frontend/rust-crypto/Cargo.toml', 'crates/pyo3-sanitizer/Cargo.toml') }}
+          # The v2 namespace prevents an existing cache archive that still
+          # contains target/llvm-cov-target from being restored.
+          key: ${{ runner.os }}-cargo-rust-tests-v2-${{ hashFiles('native/rust_ext/Cargo.toml', 'native/rust_ext/Cargo.lock', 'frontend/wasm-sanitizer/Cargo.toml', 'frontend/wasm-sanitizer/Cargo.lock', 'frontend/rust-crypto/Cargo.toml', 'frontend/rust-crypto/Cargo.lock', 'crates/pyo3-sanitizer/Cargo.toml', 'crates/pyo3-sanitizer/Cargo.lock') }}
           restore-keys: |
-            ${{ runner.os }}-cargo-rust-tests-
+            ${{ runner.os }}-cargo-rust-tests-v2-
 
       - name: Install cargo-llvm-cov
         uses: taiki-e/install-action@54420ca6e3a4cab262aeabc1af4f52908ca28931 # cargo-llvm-cov
@@ -1664,37 +1669,53 @@ jobs:
         # binary on Linux; drop it and point the linker/loader at setup-python's
         # libpython via sysconfig LIBDIR.
         working-directory: native/rust_ext
+        env:
+          CARGO_TARGET_DIR: ${{ runner.temp }}/llvm-cov/rust-native
         run: |
           LIBDIR="$(python -c 'import sysconfig; print(sysconfig.get_config_var("LIBDIR"))')"
           export LD_LIBRARY_PATH="${LIBDIR}:${LD_LIBRARY_PATH}"
+          cargo llvm-cov clean
           cargo llvm-cov --no-default-features --lib --json --output-path ../../artifacts/coverage/rust/rust-native/llvm.json
           cargo llvm-cov report --codecov --output-path ../../artifacts/coverage/rust/rust-native/codecov.json
+          cargo +nightly llvm-cov clean
           cargo +nightly llvm-cov --no-default-features --lib --branch --json --output-path ../../artifacts/coverage/rust/rust-native/branch-llvm.json
 
       - name: pyo3-sanitizer — native unit tests + coverage
         working-directory: crates/pyo3-sanitizer
+        env:
+          CARGO_TARGET_DIR: ${{ runner.temp }}/llvm-cov/rust-pyo3-sanitizer
         run: |
           LIBDIR="$(python -c 'import sysconfig; print(sysconfig.get_config_var("LIBDIR"))')"
           export LD_LIBRARY_PATH="${LIBDIR}:${LD_LIBRARY_PATH}"
+          cargo llvm-cov clean
           cargo llvm-cov --no-default-features --lib --json --output-path ../../artifacts/coverage/rust/rust-pyo3-sanitizer/llvm.json
           cargo llvm-cov report --codecov --output-path ../../artifacts/coverage/rust/rust-pyo3-sanitizer/codecov.json
+          cargo +nightly llvm-cov clean
           cargo +nightly llvm-cov --no-default-features --lib --branch --json --output-path ../../artifacts/coverage/rust/rust-pyo3-sanitizer/branch-llvm.json
 
       - name: wasm-sanitizer — native unit tests + coverage
         working-directory: frontend/wasm-sanitizer
+        env:
+          CARGO_TARGET_DIR: ${{ runner.temp }}/llvm-cov/rust-wasm-sanitizer
         run: |
+          cargo llvm-cov clean
           cargo llvm-cov --lib --json --output-path ../../artifacts/coverage/rust/rust-wasm-sanitizer/llvm.json
           cargo llvm-cov report --codecov --output-path ../../artifacts/coverage/rust/rust-wasm-sanitizer/codecov.json
+          cargo +nightly llvm-cov clean
           cargo +nightly llvm-cov --lib --branch --json --output-path ../../artifacts/coverage/rust/rust-wasm-sanitizer/branch-llvm.json
 
       - name: rust-crypto — native KAT tests + coverage
         working-directory: frontend/rust-crypto
+        env:
+          CARGO_TARGET_DIR: ${{ runner.temp }}/llvm-cov/rust-crypto
         # Include tests/native.rs in the coverage universe; --lib alone only
         # measures the two src/lib.rs unit tests and leaves the contract below
         # the 99/98 rust-crypto floor.
         run: |
+          cargo llvm-cov clean
           cargo llvm-cov --all-targets --json --output-path ../../artifacts/coverage/rust/rust-crypto/llvm.json
           cargo llvm-cov report --codecov --output-path ../../artifacts/coverage/rust/rust-crypto/codecov.json
+          cargo +nightly llvm-cov clean
           cargo +nightly llvm-cov --all-targets --branch --json --output-path ../../artifacts/coverage/rust/rust-crypto/branch-llvm.json
 
       - name: Upload Rust coverage artifacts
