@@ -6,7 +6,7 @@ is unsuitable for the incremental CI job because a positional run deliberately
 leaves unselected mutants as ``not checked``. This helper exports only the
 exact mutant names assigned to an incremental shard. Its explicit ``--all``
 mode is for a freshly-created full-run ``mutants`` directory and also retains
-``caught_by_type_check``, which mutmut 3.5 does not serialize itself.
+``caught_by_type_check``, which mutmut does not serialize itself.
 """
 
 from __future__ import annotations
@@ -73,7 +73,7 @@ def _collect_selected_results(
     selected_mutants: Sequence[str], mutmut_cli: Any
 ) -> tuple[list[tuple[str, int | None]], Mapping[int | None, str]]:
     """Read exact records, or the complete universe when ``selected_mutants`` is empty."""
-    mutmut_cli.ensure_config_loaded()
+    mutmut_cli.Config.ensure_loaded()
     selected, _ = mutmut_cli.collect_source_file_mutation_data(
         mutant_names=list(selected_mutants)
     )
@@ -92,7 +92,7 @@ def _collect_selected_results(
 
 def _collect_all_results(mutmut_cli: Any) -> list[tuple[str, int | None]]:
     """Read the complete generated mutation metadata without filtering it."""
-    mutmut_cli.ensure_config_loaded()
+    mutmut_cli.Config.ensure_loaded()
     all_mutants, _ = mutmut_cli.collect_source_file_mutation_data(mutant_names=[])
     return [(mutant_name, exit_code) for _, mutant_name, exit_code in all_mutants]
 

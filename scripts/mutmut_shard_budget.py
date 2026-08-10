@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Calculate a fail-closed outer timeout for one exact mutmut shard.
 
-Mutmut 3.5 aborts a child after ``15 * (estimated_test_seconds + 1)`` wall
+Mutmut 3.7.0 aborts a child after ``15 * (estimated_test_seconds + 1)`` wall
 seconds.  A shorter shell ``timeout`` can therefore terminate a valid child
 before mutmut has classified it as a timeout.  This helper derives an upper
 bound from the same merged stats and exact IDs used by the shard planner.  It

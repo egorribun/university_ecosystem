@@ -154,5 +154,5 @@ def test_calculate_shard_budget_rejects_invalid_worker_count() -> None:
         )
 
 
-def test_watchdog_multiplier_remains_the_mutmut_35_wall_timeout_contract() -> None:
+def test_watchdog_multiplier_remains_the_mutmut_37_wall_timeout_contract() -> None:
     assert MUTMUT_WALL_TIMEOUT_MULTIPLIER == 15

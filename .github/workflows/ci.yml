@@ -1788,7 +1788,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
-      # mutmut 3.5.0 collects the complete pytest-to-mutant mapping before it
+      # mutmut 3.7.0 collects the complete pytest-to-mutant mapping before it
       # applies positional mutant filters.  Collect disjoint test populations
       # once per leg and merge them before the mutation legs start.
       matrix:
@@ -2069,7 +2069,7 @@ jobs:
           echo "Derived fail-closed mutation timeout: ${MUTMUT_TIMEOUT_SECONDS}s"
           rm -f .mutmut-cache
           # The shell cap is calculated from the merged test durations and
-          # mutmut 3.5's 15x child watchdog, rather than an arbitrary shorter
+          # mutmut 3.7's 15x per-PID watchdog, rather than an arbitrary shorter
           # wall-clock that could preempt a valid mutmut classification.
           # This blocking job runs REAL mutation and still hard-fails above
           # the CI-supported cap; mutmut exits 0 on completion regardless of
@@ -2080,7 +2080,7 @@ jobs:
           # and reduce the runner OOM-killer firing mid-sweep.
           MUTMUT_FAILURE_REASON="mutmut pipeline did not complete"
           set +e
-          timeout --kill-after=30s "${MUTMUT_TIMEOUT_SECONDS}s" uv run mutmut run --max-children 2 "${MUTANT_NAMES[@]}" 2>&1 | tee "$MUTMUT_EVIDENCE_DIR/mutmut-run.log"
+          timeout --kill-after=30s "${MUTMUT_TIMEOUT_SECONDS}s" uv run python scripts/run_mutmut_with_stats.py --max-children 2 "${MUTANT_NAMES[@]}" 2>&1 | tee "$MUTMUT_EVIDENCE_DIR/mutmut-run.log"
           pipeline_status=("${PIPESTATUS[@]}")
           mutmut_exit_code="${pipeline_status[0]}"
           tee_exit_code="${pipeline_status[1]}"

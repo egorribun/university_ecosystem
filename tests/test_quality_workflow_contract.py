@@ -840,8 +840,8 @@ def test_incremental_mutation_stats_are_sharded_and_merged_before_execution() ->
     helper_text = (REPOSITORY_ROOT / "scripts/mutmut_stats_shard.py").read_text(
         encoding="utf-8"
     )
-    assert "config = mutmut.config" in helper_text
-    assert "mutmut_cli.config" not in helper_text
+    assert "config = mutmut_cli.Config.get()" in helper_text
+    assert "mutmut.config" not in helper_text
 
     assert "mutation-tests-stats" in mutation_job["needs"]
     for job in (stats_job, mutation_job):
@@ -1022,7 +1022,8 @@ def test_incremental_mutation_workflows_preserve_headroom_and_full_evidence() ->
         assert "refusing to run incomplete mutation evidence" in run_script
         assert (
             'timeout --kill-after=30s "${MUTMUT_TIMEOUT_SECONDS}s" '
-            'uv run mutmut run --max-children 2 "${MUTANT_NAMES[@]}" 2>&1 '
+            "uv run python scripts/run_mutmut_with_stats.py --max-children 2 "
+            '"${MUTANT_NAMES[@]}" 2>&1 '
             '| tee "$MUTMUT_EVIDENCE_DIR/mutmut-run.log"'
         ) in run_script
         assert (
@@ -1787,6 +1788,37 @@ def test_full_mutation_gate_uses_the_fail_closed_exporter() -> None:
     assert "--all" in mutation_text
     assert "uv run mutmut export-cicd-stats" not in mutation_text
     assert "test -s mutants/mutmut-cicd-stats.json" in mutation_text
+
+
+def test_full_mutation_gate_isolates_stats_and_clean_pytest_invocations() -> None:
+    """Keep the clean baseline as the fresh mutation process's first pytest call."""
+
+    nightly_workflow = yaml.safe_load(
+        NIGHTLY_FULL_WORKFLOW_PATH.read_text(encoding="utf-8")
+    )
+    mutation_steps = nightly_workflow["jobs"]["mutation-tests-full"]["steps"]
+    stats_step_index = next(
+        index
+        for index, step in enumerate(mutation_steps)
+        if step.get("name") == "Collect full mutmut stats (isolated process)"
+    )
+    run_step_index = next(
+        index
+        for index, step in enumerate(mutation_steps)
+        if step.get("name") == "Run the complete mutation universe"
+    )
+    stats_script = mutation_steps[stats_step_index]["run"]
+    run_script = mutation_steps[run_step_index]["run"]
+
+    assert stats_step_index < run_step_index
+    assert "rm -rf mutants" in stats_script
+    assert "scripts/mutmut_stats_shard.py" in stats_script
+    assert "--shard-id 0" in stats_script
+    assert "--num-shards 1" in stats_script
+    assert "--max-children 2" in stats_script
+    assert "scripts/run_mutmut_with_stats.py --max-children 2" in run_script
+    assert "uv run mutmut run" not in run_script
+    assert "scripts/mutmut_stats_shard.py" not in run_script
 
 
 def test_pr_quality_gates_enforce_contract_policy_values() -> None:

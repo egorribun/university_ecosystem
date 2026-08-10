@@ -43,12 +43,26 @@ jobs:
       - name: Install dependencies
         run: uv sync --group dev
 
-      - name: Run the complete mutation universe
+      # mutmut 3.7 invokes pytest.main() repeatedly in one interpreter. Pytest
+      # explicitly does not support re-running the same suite in-process:
+      # imported test modules and their dependencies remain cached. Collect the
+      # complete stats map in one CLI process, then start mutation execution in
+      # a fresh one. The pinned wrapper reuses that complete map for mutmut's
+      # redundant test-discovery check, making the clean baseline this process's
+      # first pytest invocation while retaining every mutmut mutation phase.
+      - name: Collect full mutmut stats (isolated process)
         run: |
           rm -rf mutants
+          uv run python scripts/mutmut_stats_shard.py \
+            --shard-id 0 \
+            --num-shards 1 \
+            --max-children 2
+
+      - name: Run the complete mutation universe
+        run: |
           # The exporter below reads the freshly-created complete universe and
           # retains every status, including caught_by_type_check.
-          uv run mutmut run
+          uv run python scripts/run_mutmut_with_stats.py --max-children 2
 
       - name: Export and gate mutation statistics
         run: |
