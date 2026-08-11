@@ -85,8 +85,12 @@ capabilities, no-new-privileges, a non-root uid, PID/CPU/memory/swap limits,
 and bounded tmpfs mounts. A short networked dependency-prefetch run is allowed
 only before measurement, with the same source and resource boundary. Raw
 stdout is captured by the trusted host helper into a fresh directory beneath
-`RUNNER_TEMP`; the helper disables GitHub workflow-command parsing while it
-captures output, enforces a streaming size limit, and kills an overflowing
+`RUNNER_TEMP`; the helper keeps one non-networked holder container alive for
+each private cache volume so Docker daemons that scope tmpfs mounts to a
+container cannot discard prefetched dependencies between runs. Short-lived
+prefetch, warm-up, and measurement containers attach only to that
+side-specific cache. The helper disables GitHub workflow-command parsing while
+it captures output, enforces a streaming size limit, and kills an overflowing
 capture.
 
 The Go image is digest-pinned. The Rust image is built from a Dockerfile copied
