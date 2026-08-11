@@ -18,12 +18,13 @@ import json
 import math
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
+from fractions import Fraction
 from pathlib import Path
 
 MUTMUT_WALL_TIMEOUT_MULTIPLIER = 15
 MUTMUT_WALL_TIMEOUT_GRACE_SECONDS = 1
 METADATA_AND_STARTUP_RESERVE_SECONDS = 900
-FULL_POPULATION_PHASE_MULTIPLIER = 2
+SELECTED_TEST_PHASE_MULTIPLIER = 2
 CONTROL_CYCLE_RESERVE_SECONDS = 15
 TERMINATION_GRACE_SECONDS = 30
 DEFAULT_MAX_TIMEOUT_SECONDS = 18_000
@@ -36,7 +37,7 @@ class ShardBudget:
 
     selected_count: int
     max_children: int
-    full_test_population_seconds: int
+    selected_test_union_seconds: int
     pre_mutation_reserve_seconds: int
     watchdog_execution_cap_seconds: int
     control_cycle_count: int
@@ -44,13 +45,14 @@ class ShardBudget:
     execution_cap_seconds: int
     termination_grace_seconds: int
     outer_timeout_seconds: int
+    total_wall_cap_seconds: int
 
     def as_json(self, *, max_timeout_seconds: int) -> dict[str, int]:
         return {
-            "schema_version": 1,
+            "schema_version": 2,
             "selected_count": self.selected_count,
             "max_children": self.max_children,
-            "full_test_population_seconds": self.full_test_population_seconds,
+            "selected_test_union_seconds": self.selected_test_union_seconds,
             "pre_mutation_reserve_seconds": self.pre_mutation_reserve_seconds,
             "watchdog_execution_cap_seconds": self.watchdog_execution_cap_seconds,
             "control_cycle_count": self.control_cycle_count,
@@ -58,8 +60,17 @@ class ShardBudget:
             "execution_cap_seconds": self.execution_cap_seconds,
             "termination_grace_seconds": self.termination_grace_seconds,
             "outer_timeout_seconds": self.outer_timeout_seconds,
+            "total_wall_cap_seconds": self.total_wall_cap_seconds,
             "max_timeout_seconds": max_timeout_seconds,
         }
+
+
+@dataclass(frozen=True, slots=True)
+class _DurationTotal:
+    """One deterministic duration sum before its one-sided integer rounding."""
+
+    exact_seconds: Fraction
+    fsum_seconds: float | None
 
 
 def load_selected_mutants(path: Path) -> list[str]:
@@ -129,12 +140,48 @@ def _load_stats(path: Path) -> tuple[dict[str, list[str]], dict[str, float]]:
     return tests_by_function, durations
 
 
+def _duration_total(
+    test_names: Iterable[str], durations: Mapping[str, float]
+) -> _DurationTotal:
+    """Sum durations in canonical order without losing a positive sub-ULP tail.
+
+    ``math.fsum`` makes the floating aggregate deterministic across hash seeds.
+    ``Fraction.from_float`` retains each valid input float exactly until the final
+    upward rounding, so a mathematically positive fraction cannot round down to
+    a whole-second timeout.
+    """
+
+    ordered_durations = tuple(durations[test_name] for test_name in sorted(test_names))
+    try:
+        fsum_seconds: float | None = math.fsum(ordered_durations)
+    except OverflowError:
+        # The exact rational total remains usable for a fail-closed cap check.
+        fsum_seconds = None
+    exact_seconds = sum(
+        (Fraction.from_float(duration) for duration in ordered_durations),
+        start=Fraction(),
+    )
+    return _DurationTotal(
+        exact_seconds=exact_seconds,
+        fsum_seconds=fsum_seconds,
+    )
+
+
+def _conservative_ceil(total: _DurationTotal) -> int:
+    """Return an integer that is never below the mathematical float total."""
+
+    exact_ceiling = math.ceil(total.exact_seconds)
+    if total.fsum_seconds is None:
+        return exact_ceiling
+    return max(exact_ceiling, math.ceil(total.fsum_seconds))
+
+
 def _estimated_test_seconds(
     selected_mutants: Iterable[str],
     tests_by_function: Mapping[str, Sequence[str]],
     durations: Mapping[str, float],
-) -> list[tuple[str, float]]:
-    estimates: list[tuple[str, float]] = []
+) -> list[tuple[str, _DurationTotal]]:
+    estimates: list[tuple[str, _DurationTotal]] = []
     for mutant_name in sorted(selected_mutants):
         function_name, separator, _ = mutant_name.partition("__mutmut_")
         if not separator:
@@ -153,27 +200,66 @@ def _estimated_test_seconds(
                 "mutmut stats contain missing durations for selected mutant "
                 f"{mutant_name!r}: {missing_durations}"
             )
-        estimates.append(
-            (mutant_name, sum(durations[test_name] for test_name in test_names))
-        )
+        estimates.append((mutant_name, _duration_total(test_names, durations)))
     return estimates
 
 
+def _selected_test_union_seconds(
+    selected_mutants: Iterable[str],
+    tests_by_function: Mapping[str, Sequence[str]],
+    durations: Mapping[str, float],
+) -> int:
+    """Return the de-duplicated mapped test duration for an exact shard."""
+
+    selected_test_names: set[str] = set()
+    for mutant_name in selected_mutants:
+        function_name, separator, _ = mutant_name.partition("__mutmut_")
+        if not separator:
+            raise ValueError(f"invalid mutmut name without __mutmut_: {mutant_name}")
+        test_names = tests_by_function.get(function_name, ())
+        if not test_names:
+            raise ValueError(
+                "mutmut stats contain no mapped tests for selected mutant "
+                f"{mutant_name!r}"
+            )
+        missing_durations = sorted(
+            test_name for test_name in test_names if test_name not in durations
+        )
+        if missing_durations:
+            raise ValueError(
+                "mutmut stats contain missing durations for selected mutant "
+                f"{mutant_name!r}: {missing_durations}"
+            )
+        selected_test_names.update(test_names)
+    return _conservative_ceil(_duration_total(selected_test_names, durations))
+
+
 def _schedule_execution_caps(
-    estimates: Iterable[tuple[str, float]], *, max_children: int
+    estimates: Iterable[tuple[str, _DurationTotal]], *, max_children: int
 ) -> int:
     """Model mutmut's ascending-estimate fork schedule with wall watchdog caps."""
     if max_children < 1:
         raise ValueError("max_children must be positive")
     worker_loads = [0] * max_children
     heapq.heapify(worker_loads)
-    for _mutant_name, estimate_seconds in sorted(
+    for _mutant_name, estimate in sorted(
         estimates,
-        key=lambda item: (item[1], item[0]),
+        key=lambda item: (item[1].exact_seconds, item[0]),
     ):
-        worker_cap = math.ceil(
-            MUTMUT_WALL_TIMEOUT_MULTIPLIER
-            * (estimate_seconds + MUTMUT_WALL_TIMEOUT_GRACE_SECONDS)
+        watchdog_exact_seconds = MUTMUT_WALL_TIMEOUT_MULTIPLIER * (
+            estimate.exact_seconds + MUTMUT_WALL_TIMEOUT_GRACE_SECONDS
+        )
+        watchdog_fsum_seconds = (
+            None
+            if estimate.fsum_seconds is None
+            else MUTMUT_WALL_TIMEOUT_MULTIPLIER
+            * (estimate.fsum_seconds + MUTMUT_WALL_TIMEOUT_GRACE_SECONDS)
+        )
+        worker_cap = _conservative_ceil(
+            _DurationTotal(
+                exact_seconds=watchdog_exact_seconds,
+                fsum_seconds=watchdog_fsum_seconds,
+            )
         )
         current_load = heapq.heappop(worker_loads)
         heapq.heappush(worker_loads, current_load + worker_cap)
@@ -214,21 +300,24 @@ def calculate_shard_budget(
         raise ValueError("selected mutant names contain duplicates")
 
     estimates = _estimated_test_seconds(selected_mutants, tests_by_function, durations)
-    full_population_seconds = math.ceil(sum(durations.values()))
+    selected_test_union_seconds = _selected_test_union_seconds(
+        selected_mutants, tests_by_function, durations
+    )
     pre_mutation_reserve = (
         METADATA_AND_STARTUP_RESERVE_SECONDS
-        + FULL_POPULATION_PHASE_MULTIPLIER * full_population_seconds
+        + SELECTED_TEST_PHASE_MULTIPLIER * selected_test_union_seconds
     )
     watchdog_execution_cap = _schedule_execution_caps(
         estimates, max_children=max_children
     )
     control_cycle_count, control_cycle_reserve = _control_cycle_reserve(len(estimates))
     execution_cap = watchdog_execution_cap + control_cycle_reserve
-    outer_timeout = pre_mutation_reserve + execution_cap + TERMINATION_GRACE_SECONDS
+    outer_timeout = pre_mutation_reserve + execution_cap
+    total_wall_cap = outer_timeout + TERMINATION_GRACE_SECONDS
     return ShardBudget(
         selected_count=len(selected_mutants),
         max_children=max_children,
-        full_test_population_seconds=full_population_seconds,
+        selected_test_union_seconds=selected_test_union_seconds,
         pre_mutation_reserve_seconds=pre_mutation_reserve,
         watchdog_execution_cap_seconds=watchdog_execution_cap,
         control_cycle_count=control_cycle_count,
@@ -236,6 +325,7 @@ def calculate_shard_budget(
         execution_cap_seconds=execution_cap,
         termination_grace_seconds=TERMINATION_GRACE_SECONDS,
         outer_timeout_seconds=outer_timeout,
+        total_wall_cap_seconds=total_wall_cap,
     )
 
 

@@ -878,9 +878,9 @@ def test_incremental_mutation_budget_matches_declared_gate() -> None:
         15,
         16,
     ]
-    assert job["timeout-minutes"] == 25
+    assert job["timeout-minutes"] == 120
     assert "scripts/mutmut_shard_budget.py" in run_step["run"]
-    assert "--max-timeout-seconds 1200" in run_step["run"]
+    assert "--max-timeout-seconds 6600" in run_step["run"]
     assert '"${MUTMUT_TIMEOUT_SECONDS}s"' in run_step["run"]
     assert (
         '--prepare-exact-execution "$MUTMUT_EVIDENCE_DIR/execution-plan.json"'
@@ -1038,8 +1038,8 @@ def test_manual_mutation_evidence_is_isolated_from_required_ci_contexts() -> Non
 
 
 def test_incremental_mutation_workflows_preserve_headroom_and_full_evidence() -> None:
-    # Pull-request mutation is a total 25-minute job.  The dynamic timeout
-    # reserves four minutes for proof/score/upload after timeout's 30-second
+    # Pull-request mutation keeps a two-hour envelope. The dynamic timeout
+    # reserves five minutes for proof/score/upload after timeout's 30-second
     # KILL grace, and fails instead of running an under-budget shard.
     pr_workflow = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
     pr_job = pr_workflow["jobs"]["mutation-tests-incremental"]
@@ -1049,14 +1049,14 @@ def test_incremental_mutation_workflows_preserve_headroom_and_full_evidence() ->
         for step in pr_job["steps"]
         if step.get("name") == "Run incremental mutmut (blocking, stats-derived budget)"
     )
-    assert pr_job["timeout-minutes"] == 25
-    assert 'MUTMUT_JOB_DEADLINE_EPOCH="$((MUTMUT_JOB_STARTED_EPOCH + 1500))"' in (
+    assert pr_job["timeout-minutes"] == 120
+    assert 'MUTMUT_JOB_DEADLINE_EPOCH="$((MUTMUT_JOB_STARTED_EPOCH + 7200))"' in (
         pr_deadline
     )
-    assert "--max-timeout-seconds 1200" in pr_run_step["run"]
-    assert "MUTMUT_POST_RUN_UPLOAD_RESERVE_SECONDS=240" in pr_run_step["run"]
+    assert "--max-timeout-seconds 6600" in pr_run_step["run"]
+    assert "MUTMUT_POST_RUN_UPLOAD_RESERVE_SECONDS=300" in pr_run_step["run"]
     assert "MUTMUT_TIMEOUT_KILL_GRACE_SECONDS=30" in pr_run_step["run"]
-    assert 25 * 60 - 20 * 60 - 4 * 60 - 30 == 30
+    assert 120 * 60 - 110 * 60 - 5 * 60 - 30 == 270
 
     workflows = (
         (
@@ -1064,10 +1064,10 @@ def test_incremental_mutation_workflows_preserve_headroom_and_full_evidence() ->
             "mutation-tests-incremental",
             "Run incremental mutmut (blocking, stats-derived budget)",
             "Upload incremental mutation evidence",
-            25,
-            1500,
-            1200,
-            240,
+            120,
+            7200,
+            6600,
+            300,
         ),
         (
             MANUAL_MUTATION_EVIDENCE_WORKFLOW_PATH,
@@ -1954,12 +1954,20 @@ def test_incremental_mutation_gate_is_blocking_and_fails_on_timeout() -> None:
     ci_workflow = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
     jobs = ci_workflow["jobs"]
     mutation_job = jobs["mutation-tests-incremental"]
-    assert mutation_job["timeout-minutes"] == 25
+    assert mutation_job["timeout-minutes"] == 120
     assert "mutation-tests-incremental" in jobs["ci-success"]["needs"]
+    deadline_step = mutation_job["steps"][0]
+    assert deadline_step["name"] == "Record mutmut job deadline"
+    assert (
+        'MUTMUT_JOB_DEADLINE_EPOCH="$((MUTMUT_JOB_STARTED_EPOCH + 7200))"'
+        in deadline_step["run"]
+    )
     mutation_text = "\n".join(
         step.get("run", "") for step in mutation_job["steps"] if isinstance(step, dict)
     )
     assert "exceeded its stats-derived budget" in mutation_text
+    assert "--max-timeout-seconds 6600" in mutation_text
+    assert "MUTMUT_TIMEOUT_KILL_GRACE_SECONDS=30" in mutation_text
     assert "Skipping score verification" not in mutation_text
     assert (
         "needs.mutation-tests-incremental.result"
