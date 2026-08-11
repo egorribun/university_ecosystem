@@ -267,7 +267,9 @@ def build_container_command(
         raise CaptureError("Container image reference is invalid")
     if _VOLUME_RE.fullmatch(cache_volume) is None:
         raise CaptureError(f"Container cache volume is invalid: {cache_volume!r}")
-    if not workdir.startswith("/src/"):
+    # The mount root itself is a valid workdir for the Rust workspace; nested
+    # paths remain constrained below that read-only source mount.
+    if workdir != "/src" and not workdir.startswith("/src/"):
         raise CaptureError("Container workdir must stay below the read-only /src mount")
     if not program or any(not token or "\x00" in token for token in program):
         raise CaptureError("Container program is invalid")
