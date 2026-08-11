@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1786484891647,
+  "lastUpdate": 1786485012014,
   "repoUrl": "https://github.com/egorribun/university_ecosystem",
   "entries": {
     "Go Services Performance Benchmarks": [
@@ -5299,6 +5299,120 @@ window.BENCHMARK_DATA = {
             "name": "strip_html/large",
             "value": 91466,
             "range": "± 1655",
+            "unit": "ns/iter"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "egorribun2005@gmail.com",
+            "name": "Egor",
+            "username": "egorribun"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "96689a7514e55bbfda63504c83b484eed5e03fbd",
+          "message": "fix(quality): keep isolated benchmark caches mounted (#1238)\n\nCo-authored-by: Egor Ribun <egorribun@gmail.com>",
+          "timestamp": "2026-08-12T02:46:21+05:00",
+          "tree_id": "ed5af247033d8021b235e4c06769fe99d297a19d",
+          "url": "https://github.com/egorribun/university_ecosystem/commit/96689a7514e55bbfda63504c83b484eed5e03fbd"
+        },
+        "date": 1786485010580,
+        "tool": "cargo",
+        "benches": [
+          {
+            "name": "sanitize_rich_text/empty",
+            "value": 5984,
+            "range": "± 13",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_rich_text/plain_text",
+            "value": 6949,
+            "range": "± 92",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_rich_text/simple_html",
+            "value": 10042,
+            "range": "± 83",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_rich_text/xss_attempt",
+            "value": 10738,
+            "range": "± 24",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_rich_text/large",
+            "value": 98050,
+            "range": "± 2310",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_html_basic/empty",
+            "value": 5444,
+            "range": "± 27",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_html_basic/plain_text",
+            "value": 6340,
+            "range": "± 121",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_html_basic/simple_html",
+            "value": 9034,
+            "range": "± 211",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_html_basic/xss_attempt",
+            "value": 9516,
+            "range": "± 33",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_html_basic/large",
+            "value": 91852,
+            "range": "± 470",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "strip_html/empty",
+            "value": 5211,
+            "range": "± 31",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "strip_html/plain_text",
+            "value": 6244,
+            "range": "± 104",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "strip_html/simple_html",
+            "value": 8533,
+            "range": "± 46",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "strip_html/xss_attempt",
+            "value": 9104,
+            "range": "± 25",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "strip_html/large",
+            "value": 90475,
+            "range": "± 2966",
             "unit": "ns/iter"
           }
         ]
