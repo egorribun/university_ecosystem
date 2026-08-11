@@ -60,6 +60,12 @@ def test_governance_quality_configuration_matches_contract() -> None:
     codeowners = _read_text(".github/CODEOWNERS")
     assert "@security-team" not in codeowners
     assert "@devops-team" not in codeowners
+    for protected_path in (
+        "scripts/quality/compare_paired_benchmarks.py",
+        "scripts/quality/capture_isolated_benchmarks.py",
+        "containers/quality/Dockerfile.performance-rust",
+    ):
+        assert f"{protected_path} @egorribun" in codeowners
 
     codecov = yaml.safe_load(_read_text("codecov.yml"))
     expected_flags = {
@@ -122,6 +128,7 @@ def test_mutmut_uses_the_unit_population_instead_of_a_single_probe_file() -> Non
         ".pre-commit-config.yaml",
         "Makefile",
         "docs",
+        "containers/quality",
         "k8s/kyverno",
         "crates/pyo3-sanitizer/src",
         "frontend/scripts",
