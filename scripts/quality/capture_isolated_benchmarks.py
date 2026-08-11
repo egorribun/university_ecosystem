@@ -267,7 +267,9 @@ def build_container_command(
         raise CaptureError("Container image reference is invalid")
     if _VOLUME_RE.fullmatch(cache_volume) is None:
         raise CaptureError(f"Container cache volume is invalid: {cache_volume!r}")
-    if not workdir.startswith("/src/"):
+    # The mount root itself is a valid workdir for the Rust workspace; nested
+    # paths remain constrained below that read-only source mount.
+    if workdir != "/src" and not workdir.startswith("/src/"):
         raise CaptureError("Container workdir must stay below the read-only /src mount")
     if not program or any(not token or "\x00" in token for token in program):
         raise CaptureError("Container program is invalid")
@@ -685,6 +687,8 @@ def _go_environment(*, offline: bool) -> dict[str, str]:
         "GOMODCACHE": "/cache/go-mod",
         "GOPATH": "/cache/go-path",
         "GOTOOLCHAIN": "local",
+        "GOWORK": "off",
+        "GOFLAGS": "-mod=readonly -buildvcs=false",
         "HOME": CONTAINER_HOME,
     }
     if offline:
@@ -696,6 +700,12 @@ def _go_environment(*, offline: bool) -> dict[str, str]:
             }
         )
     return environment
+
+
+def _go_prefetch_environment() -> dict[str, str]:
+    """Fetch Go modules without mutating the read-only workspace checkout."""
+
+    return _go_environment(offline=False)
 
 
 def _rust_environment(*, offline: bool) -> dict[str, str]:
@@ -908,7 +918,7 @@ def capture(arguments: CaptureArguments) -> None:
             image = GO_IMAGE
             workdir = "/src/services/ws-hub"
             prefetch_program = ("sh", "-ec", "go mod download && go mod verify")
-            prefetch_environment = _go_environment(offline=False)
+            prefetch_environment = _go_prefetch_environment()
             measurement_environment = _go_environment(offline=True)
             warm_program = _go_program()
             measurement_program = _go_program()

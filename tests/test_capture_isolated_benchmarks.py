@@ -19,6 +19,7 @@ from scripts.quality.capture_isolated_benchmarks import (
     _docker_server_version,
     _force_remove_container,
     _go_environment,
+    _go_prefetch_environment,
     _remove_image,
     _remove_volume,
     _rust_environment,
@@ -126,6 +127,27 @@ def test_container_command_has_an_explicit_non_privileged_boundary(
     ]
 
 
+def test_container_command_allows_the_read_only_source_mount_root(
+    tmp_path: Path,
+) -> None:
+    """Rust cargo commands run from the workspace mount root."""
+
+    source = tmp_path / "candidate-source"
+    source.mkdir()
+    command = build_container_command(
+        image="example.invalid/performance@sha256:" + "a" * 64,
+        source_worktree=source,
+        cache_volume="private-candidate-cache",
+        container_name="quality-benchmark-" + "a" * 32,
+        workdir="/src",
+        network="none",
+        environment={"HOME": CONTAINER_HOME},
+        program=("cargo", "fetch", "--locked"),
+    )
+
+    assert command[command.index("--workdir") + 1] == "/src"
+
+
 def test_limited_capture_stops_writing_before_an_untrusted_stream_can_fill_disk(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -154,6 +176,25 @@ def test_rust_prefetch_selects_the_workspace_manifest() -> None:
         "--manifest-path",
         "native/rust_ext/Cargo.toml",
     )
+
+
+def test_go_prefetch_is_read_only_workspace_safe() -> None:
+    """Go dependency setup must not attempt to rewrite go.work.sum."""
+
+    environment = _go_prefetch_environment()
+
+    assert environment["GOWORK"] == "off"
+    assert environment["GOFLAGS"] == "-mod=readonly -buildvcs=false"
+
+
+@pytest.mark.parametrize("offline", [False, True])
+def test_go_capture_never_uses_the_read_only_workspace_file(offline: bool) -> None:
+    """Both dependency setup and benchmark runs use the module's go.mod graph."""
+
+    environment = _go_environment(offline=offline)
+
+    assert environment["GOWORK"] == "off"
+    assert environment["GOFLAGS"] == "-mod=readonly -buildvcs=false"
 
 
 def test_isolated_capture_rejects_a_single_checkout_for_both_sides(
