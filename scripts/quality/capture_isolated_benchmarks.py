@@ -55,6 +55,10 @@ _IMAGE_ID_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
 _CONTAINER_NAME_RE = re.compile(r"^quality-benchmark-[0-9a-f]{32}$")
 _VOLUME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]*$")
 _FORBIDDEN_ENV_PREFIXES = ("GITHUB_", "RUNNER_", "DOCKER_")
+# Docker's local tmpfs volume driver can unmount a named volume when its last
+# container exits on some hosted daemons.  Keep one non-networked holder alive
+# for each side so every short-lived capture observes the same cache mount.
+_CACHE_HOLDERS: dict[str, str] = {}
 
 
 class CaptureError(RuntimeError):
@@ -254,6 +258,7 @@ def build_container_command(
     image: str,
     source_worktree: Path,
     cache_volume: str,
+    cache_holder: str | None = None,
     container_name: str,
     workdir: str,
     network: str,
@@ -267,6 +272,8 @@ def build_container_command(
         raise CaptureError("Container image reference is invalid")
     if _VOLUME_RE.fullmatch(cache_volume) is None:
         raise CaptureError(f"Container cache volume is invalid: {cache_volume!r}")
+    if cache_holder is not None:
+        _validate_container_name(cache_holder)
     # The mount root itself is a valid workdir for the Rust workspace; nested
     # paths remain constrained below that read-only source mount.
     if workdir != "/src" and not workdir.startswith("/src/"):
@@ -284,12 +291,14 @@ def build_container_command(
         (
             "--mount",
             f"type=bind,src={source},dst=/src,readonly",
-            "--mount",
-            f"type=volume,src={cache_volume},dst=/cache",
             "--workdir",
             workdir,
         )
     )
+    if cache_holder is None:
+        command.extend(("--mount", f"type=volume,src={cache_volume},dst=/cache"))
+    else:
+        command.extend(("--volumes-from", cache_holder))
     for key in sorted(environment):
         command.extend(("--env", f"{key}={environment[key]}"))
     return [*command, image, *program]
@@ -540,7 +549,58 @@ def _create_private_volume(image: str, artifact_root: Path, side: str) -> str:
     return volume
 
 
+def _start_cache_holder(*, image: str, cache_volume: str, side: str) -> str:
+    """Keep a side cache mounted while short-lived containers come and go.
+
+    The holder has no source checkout, no network, and the same resource and
+    privilege bounds as benchmark containers.  ``--volumes-from`` then shares
+    this exact mount with prefetch, warm-up, and measurement containers.
+    """
+
+    if _VOLUME_RE.fullmatch(cache_volume) is None:
+        raise CaptureError(f"Container cache volume is invalid: {cache_volume!r}")
+    holder = _new_container_name()
+    command = _bounded_docker_run_options(
+        container_name=holder,
+        network="none",
+        tmpfs_mounts=(CONTAINER_SMALL_TMPFS,),
+    )
+    command.extend(
+        (
+            "--mount",
+            f"type=volume,src={cache_volume},dst=/cache",
+            "--workdir",
+            "/",
+            "--detach",
+            image,
+            "sh",
+            "-ec",
+            "while :; do sleep 3600; done",
+        )
+    )
+    try:
+        completed = _run_checked(command, f"start {side} cache holder")
+    except CaptureError:
+        _best_effort_docker_cleanup(
+            [str(DOCKER_BINARY), "container", "rm", "--force", holder]
+        )
+        raise
+    container_id = completed.stdout.strip()
+    if re.fullmatch(r"[0-9a-f]{12,64}", container_id) is None:
+        _best_effort_docker_cleanup(
+            [str(DOCKER_BINARY), "container", "rm", "--force", holder]
+        )
+        raise CaptureError("Docker returned an invalid cache-holder identifier")
+    _CACHE_HOLDERS[cache_volume] = holder
+    return holder
+
+
 def _remove_volume(volume: str) -> None:
+    holder = _CACHE_HOLDERS.pop(volume, None)
+    if holder is not None:
+        _best_effort_docker_cleanup(
+            [str(DOCKER_BINARY), "container", "rm", "--force", holder]
+        )
     _best_effort_docker_cleanup([str(DOCKER_BINARY), "volume", "rm", "--force", volume])
 
 
@@ -782,6 +842,7 @@ def _capture_pair(
             image=image,
             source_worktree=source_worktree,
             cache_volume=cache_volume,
+            cache_holder=_CACHE_HOLDERS.get(cache_volume),
             container_name=container_name,
             workdir=workdir,
             network="none",
@@ -812,6 +873,7 @@ def _prefetch(
             image=image,
             source_worktree=source_worktree,
             cache_volume=cache_volume,
+            cache_holder=_CACHE_HOLDERS.get(cache_volume),
             container_name=container_name,
             workdir=workdir,
             network="bridge",
@@ -941,6 +1003,10 @@ def capture(arguments: CaptureArguments) -> None:
 
         base_volume = _create_private_volume(image, artifact_root, "base")
         candidate_volume = _create_private_volume(image, artifact_root, "candidate")
+        _start_cache_holder(image=image, cache_volume=base_volume, side="base")
+        _start_cache_holder(
+            image=image, cache_volume=candidate_volume, side="candidate"
+        )
         for side, worktree, volume in (
             ("base", base_worktree, base_volume),
             ("candidate", candidate_worktree, candidate_volume),

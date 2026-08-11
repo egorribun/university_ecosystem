@@ -226,8 +226,9 @@ For `ns/op` and any positive-valued allocation metric, compute `candidate_value 
   and create a detached base worktree under `${RUNNER_TEMP}`. Hash and retain
   the base comparator before the helper runs. Invoke the base-only helper with
   distinct base/candidate source mounts and a new host-only evidence root below
-  `${RUNNER_TEMP}`; it creates private per-side caches, prefetches over the
-  network, and makes every recorded measurement offline in a non-root,
+  `${RUNNER_TEMP}`; it creates private per-side caches and keeps a
+  non-networked holder mounted for each side, prefetches over the network,
+  and makes every recorded measurement offline in a non-root,
   read-only, capability-dropped Docker container with CPU/memory/PID/output
   bounds. It records the container tool version, image reference/content ID,
   Docker version, and trusted Rust-Dockerfile hash.
