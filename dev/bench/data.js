@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1786468908242,
+  "lastUpdate": 1786469038454,
   "repoUrl": "https://github.com/egorribun/university_ecosystem",
   "entries": {
     "Go Services Performance Benchmarks": [
@@ -4525,6 +4525,120 @@ window.BENCHMARK_DATA = {
             "name": "strip_html/large",
             "value": 90772,
             "range": "± 370",
+            "unit": "ns/iter"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "egorribun2005@gmail.com",
+            "name": "Egor",
+            "username": "egorribun"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "fdf9a6ea8b9d1b222f51dc4a2c7ed3b57f91e667",
+          "message": "feat(quality): bootstrap trusted performance assets (#1234)\n\nasset bootstrap / no safe preexisting required context; base is missing base-trusted performance tooling; retaining path filter avoids widening legacy writable PR workflow.\nCo-authored-by: Egor Ribun <egorribun@gmail.com>",
+          "timestamp": "2026-08-11T20:19:16+03:00",
+          "tree_id": "e6ce87a619a6dd553eef22861034220a6828012c",
+          "url": "https://github.com/egorribun/university_ecosystem/commit/fdf9a6ea8b9d1b222f51dc4a2c7ed3b57f91e667"
+        },
+        "date": 1786469037015,
+        "tool": "cargo",
+        "benches": [
+          {
+            "name": "sanitize_rich_text/empty",
+            "value": 5981,
+            "range": "± 83",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_rich_text/plain_text",
+            "value": 6920,
+            "range": "± 160",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_rich_text/simple_html",
+            "value": 9876,
+            "range": "± 230",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_rich_text/xss_attempt",
+            "value": 10490,
+            "range": "± 267",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_rich_text/large",
+            "value": 97395,
+            "range": "± 2520",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_html_basic/empty",
+            "value": 5406,
+            "range": "± 88",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_html_basic/plain_text",
+            "value": 6235,
+            "range": "± 147",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_html_basic/simple_html",
+            "value": 8989,
+            "range": "± 209",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_html_basic/xss_attempt",
+            "value": 9261,
+            "range": "± 232",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_html_basic/large",
+            "value": 91371,
+            "range": "± 1987",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "strip_html/empty",
+            "value": 5209,
+            "range": "± 124",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "strip_html/plain_text",
+            "value": 6254,
+            "range": "± 146",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "strip_html/simple_html",
+            "value": 8593,
+            "range": "± 230",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "strip_html/xss_attempt",
+            "value": 9216,
+            "range": "± 210",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "strip_html/large",
+            "value": 88555,
+            "range": "± 2193",
             "unit": "ns/iter"
           }
         ]
