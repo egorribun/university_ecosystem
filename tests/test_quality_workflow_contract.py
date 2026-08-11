@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import re
+from copy import deepcopy
 from pathlib import Path
 
+import pytest
 import yaml
 
 from scripts.quality.filter_checkov_sarif import filter_suppressed_results
@@ -32,6 +35,39 @@ QUALITY_HISTORY_WORKFLOW_PATH = (
 )
 NIGHTLY_FULL_WORKFLOW_PATH = (
     REPOSITORY_ROOT / ".github" / "workflows" / "nightly-full-gate.yml"
+)
+MANUAL_PERFORMANCE_EVIDENCE_WORKFLOW_PATH = (
+    REPOSITORY_ROOT / ".github" / "workflows" / "manual-performance-evidence.yml"
+)
+CHECKOUT_ACTION_PIN = "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1"
+SETUP_PYTHON_ACTION_PIN = (
+    "actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97"
+)
+UPLOAD_ARTIFACT_ACTION_PIN = (
+    "actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a"
+)
+CAPTURE_ALLOWED_CONDITIONAL_ORS = (
+    'if [[ "$BASE_SHA" == "$ZERO_SHA" || "$CANDIDATE_SHA" == "$ZERO_SHA" ]]; then',
+    'if [[ "$PYTHON_BIN" != /* || ! -x "$PYTHON_BIN" ]]; then',
+)
+COMPARISON_ALLOWED_CONDITIONAL_ORS = (
+    'if [[ "$PYTHON_BIN" != /* || ! -x "$PYTHON_BIN" ]]; then',
+)
+FAIL_CLOSED_SHELL_DISABLE = re.compile(
+    r"(?:^|[;\n])\s*set\s+\+(?:[a-z]*e[a-z]*|o\s+(?:errexit|pipefail))(?=\s|;|$)",
+    re.IGNORECASE,
+)
+FORBIDDEN_SHELL_INDIRECTION_OR_OPTION_CONTROL = re.compile(
+    r"`|\b(?:eval|builtin)\b|\bcommand\s+set\b|\bset\s+\+",
+    re.IGNORECASE,
+)
+REQUIRED_PERFORMANCE_CONTEXTS = frozenset(
+    {
+        "Run Go Benchmarks",
+        "WS-Hub Go Benchmark Regression Gate",
+        "Rust Criterion Benchmarks (pyo3-sanitizer)",
+        "Rust Native Optimizer Regression Gate",
+    }
 )
 KYVERNO_POLICY_PATH = REPOSITORY_ROOT / "k8s" / "kyverno" / "cluster-policies.yaml"
 KYVERNO_TEST_ROOT = REPOSITORY_ROOT / "k8s" / "kyverno" / "tests"
@@ -733,46 +769,6 @@ def test_miri_workflow_scopes_to_pure_rust_crate_targets() -> None:
         assert f"#[cfg(not(miri))]\n    #[test]\n    fn {function_name}" in pyo3_source
 
 
-def test_performance_workflow_has_blocking_native_and_ws_baselines() -> None:
-    workflow_path = REPOSITORY_ROOT / ".github" / "workflows" / "benchmark.yml"
-    workflow = yaml.safe_load(workflow_path.read_text(encoding="utf-8"))
-    jobs = workflow["jobs"]
-    assert jobs["benchmark"]["timeout-minutes"] == 20
-    assert jobs["ws-hub-regression"]["timeout-minutes"] == 20
-    assert jobs["rust-criterion"]["timeout-minutes"] == 30
-    assert jobs["rust-native-regression"]["timeout-minutes"] == 30
-    assert "rust-native-regression" in jobs
-    native_text = "\n".join(
-        step.get("run", "")
-        for step in jobs["rust-native-regression"]["steps"]
-        if isinstance(step, dict)
-    )
-    assert "native/rust_ext/Cargo.toml" in native_text
-    native_store = next(
-        step
-        for step in jobs["rust-native-regression"]["steps"]
-        if "benchmark-action/github-action-benchmark" in step.get("uses", "")
-    )
-    assert native_store["with"]["alert-threshold"] == "110%"
-    assert native_store["with"]["fail-on-alert"] is True
-
-    ws_run_text = "\n".join(
-        step.get("run", "")
-        for step in jobs["ws-hub-regression"]["steps"]
-        if isinstance(step, dict)
-    )
-    assert "go test -bench=. -run=^$ -benchmem -count=5 -benchtime=1s" in ws_run_text
-
-    ws_store = next(
-        step
-        for step in jobs["ws-hub-regression"]["steps"]
-        if "benchmark-action/github-action-benchmark" in step.get("uses", "")
-    )
-    assert ws_store["with"]["benchmark-data-dir-path"] == "dev/bench/ws-hub-regression"
-    assert ws_store["with"]["alert-threshold"] == "110%"
-    assert ws_store["with"]["fail-on-alert"] is True
-
-
 def test_backend_ci_uses_historical_duration_shards_and_aggregates_coverage() -> None:
     ci_workflow = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
     backend_job = ci_workflow["jobs"]["backend-tests"]
@@ -1341,3 +1337,1218 @@ def test_frontend_mutation_gate_is_blocking_and_reproducible() -> None:
         if step.get("name") == "Upload frontend coverage to Codecov"
     )
     assert codecov_step["with"]["flags"] == "frontend"
+
+
+def _step_named(job: dict[str, object], name: str) -> dict[str, object]:
+    return next(
+        step
+        for step in job["steps"]
+        if isinstance(step, dict) and step.get("name") == name
+    )
+
+
+def _assert_only_documented_conditional_ors(
+    script: str, allowed_conditions: tuple[str, ...]
+) -> None:
+    """Permit only the audited conditional expressions, never shell fallbacks."""
+
+    normalized_script = _normalize_shell_lexical_continuations(script)
+    sanitized_script = normalized_script
+    for condition in allowed_conditions:
+        assert normalized_script.count(condition) == 1
+        sanitized_script = sanitized_script.replace(condition, "")
+    assert "||" not in sanitized_script
+
+
+def _normalize_shell_lexical_continuations(script: str) -> str:
+    """Make Bash backslash-newline token joins visible to contract assertions."""
+
+    return script.replace("\\\r\n", "").replace("\\\n", "")
+
+
+def _assert_fail_closed_shell_mode(script: str) -> None:
+    """Prevent later shell-option changes from making a required command advisory."""
+
+    assert script.splitlines()[0] == "set -euo pipefail"
+    assert (
+        FAIL_CLOSED_SHELL_DISABLE.search(_normalize_shell_lexical_continuations(script))
+        is None
+    )
+
+
+def _canonical_shell_lines(script: str) -> tuple[str, ...]:
+    """Canonicalize a small shell fragment without changing its command shape."""
+
+    return tuple(
+        " ".join(line.split())
+        for line in _normalize_shell_lexical_continuations(script).splitlines()
+        if line.strip()
+    )
+
+
+def _assert_critical_execution_segment(
+    script: str, *, anchor: str, expected: tuple[str, ...]
+) -> None:
+    """Require the fail-closed hash-to-invocation tail to retain its exact shape."""
+
+    assert script.count(anchor) == 1
+    assert _canonical_shell_lines(script[script.index(anchor) :]) == expected
+
+
+def _assert_no_shell_indirection_or_option_control(script: str) -> None:
+    """Forbid unneeded constructs that can hide a required command's failure."""
+
+    assert (
+        FORBIDDEN_SHELL_INDIRECTION_OR_OPTION_CONTROL.search(
+            _normalize_shell_lexical_continuations(script)
+        )
+        is None
+    )
+
+
+def _expected_capture_critical_execution_segment(
+    capture_format: str,
+) -> tuple[str, ...]:
+    """Return the narrow trusted capture tail for one benchmark format."""
+
+    assert capture_format in {"go", "rust"}
+    rust_dockerfile_argument = (
+        ' --rust-dockerfile "$BASE_RUST_DOCKERFILE"' if capture_format == "rust" else ""
+    )
+    return _canonical_shell_lines(
+        'BASE_COMPARATOR_SHA256="$(sha256sum "$BASE_COMPARATOR" | awk \'{print $1}\')"\n'
+        'if [[ ! "$BASE_COMPARATOR_SHA256" =~ ^[0-9a-f]{64}$ ]]; then\n'
+        '  echo "Trusted base comparator hash is invalid" >&2\n'
+        "  exit 2\n"
+        "fi\n"
+        "\n"
+        "{\n"
+        '  echo "base_sha=$BASE_SHA"\n'
+        '  echo "candidate_sha=$CANDIDATE_SHA"\n'
+        '  echo "base_worktree=$BASE_WORKTREE"\n'
+        '  echo "base_comparator=$BASE_COMPARATOR"\n'
+        '  echo "base_comparator_sha256=$BASE_COMPARATOR_SHA256"\n'
+        '  echo "python_bin=$PYTHON_BIN"\n'
+        '} >> "$GITHUB_OUTPUT"\n'
+        "\n"
+        '"$PYTHON_BIN" -I "$BASE_CAPTURE_HELPER" '
+        f"--format {capture_format} "
+        '--base-worktree "$BASE_WORKTREE" '
+        '--candidate-worktree "$GITHUB_WORKSPACE" '
+        '--artifact-root "$ARTIFACT_ROOT" '
+        '--runner-temp "$RUNNER_TEMP" '
+        '--base-revision "$BASE_SHA" '
+        '--candidate-revision "$CANDIDATE_SHA"' + rust_dockerfile_argument
+    )
+
+
+def _expected_comparator_critical_execution_segment(
+    comparator_format: str, capture_id: str
+) -> tuple[str, ...]:
+    """Return the narrow trusted comparator tail for one benchmark format."""
+
+    assert comparator_format in {"go", "bencher"}
+    base_revision = "${{ steps." + capture_id + ".outputs.base_sha }}"
+    candidate_revision = "${{ steps." + capture_id + ".outputs.candidate_sha }}"
+    return _canonical_shell_lines(
+        'ACTUAL_COMPARATOR_SHA256="$(sha256sum "$BASE_COMPARATOR" | awk \'{print $1}\')"\n'
+        'if [[ "$ACTUAL_COMPARATOR_SHA256" != "$EXPECTED_COMPARATOR_SHA256" ]]; then\n'
+        '  echo "Trusted base comparator changed after capture" >&2\n'
+        "  exit 2\n"
+        "fi\n"
+        '"$PYTHON_BIN" -I "$BASE_COMPARATOR" '
+        f"--format {comparator_format} "
+        '--base-dir "$ARTIFACT_ROOT/base" '
+        '--candidate-dir "$ARTIFACT_ROOT/candidate" '
+        "--expected-pairs 12 "
+        f'--base-revision "{base_revision}" '
+        f'--candidate-revision "{candidate_revision}" '
+        '--toolchain-json "$ARTIFACT_ROOT/toolchain.json" '
+        '--output "$ARTIFACT_ROOT/comparison.json"'
+    )
+
+
+def _covered_action_uses(job: dict[str, object], action_name: str) -> list[str]:
+    """Return every use of one covered action, including malformed missing pins."""
+
+    return [
+        uses
+        for step in job["steps"]
+        if isinstance(step, dict)
+        and (uses := str(step.get("uses", ""))).partition("@")[0].casefold()
+        == action_name
+    ]
+
+
+def _assert_paired_gate_variant(
+    workflow: dict[str, object], *, workflow_path: Path, job_id: str
+) -> None:
+    """Apply the shared paired-gate contract to one parsed workflow variant."""
+
+    jobs = workflow["jobs"]
+    assert isinstance(jobs, dict)
+    job = jobs[job_id]
+    assert isinstance(job, dict)
+    assert workflow_path in {
+        REPOSITORY_ROOT / ".github" / "workflows" / "benchmark.yml",
+        MANUAL_PERFORMANCE_EVIDENCE_WORKFLOW_PATH,
+    }
+    assert job_id in {"ws-hub-regression", "rust-native-regression"}
+
+    is_manual = workflow_path == MANUAL_PERFORMANCE_EVIDENCE_WORKFLOW_PATH
+    is_rust = job_id == "rust-native-regression"
+    _assert_paired_capture_contract(
+        job,
+        capture_format="rust" if is_rust else "go",
+        comparator_format="bencher" if is_rust else "go",
+        revision_environment=(
+            {
+                "MANUAL_BASE_SHA": "${{ inputs.base_sha }}",
+                "MANUAL_CANDIDATE_SHA": "${{ github.sha }}",
+            }
+            if is_manual
+            else {
+                "EVENT_NAME": "${{ github.event_name }}",
+                "PR_BASE_SHA": "${{ github.event.pull_request.base.sha }}",
+                "PR_CANDIDATE_SHA": "${{ github.sha }}",
+                "PUSH_BASE_SHA": "${{ github.event.before }}",
+                "PUSH_CANDIDATE_SHA": "${{ github.sha }}",
+            }
+        ),
+        base_worktree_leaf=(
+            "manual-performance-base-rust-native"
+            if is_manual and is_rust
+            else "manual-performance-base-ws-hub"
+            if is_manual
+            else "performance-base-rust-native"
+            if is_rust
+            else "performance-base-ws-hub"
+        ),
+        timeout_minutes=30 if is_rust else 20,
+    )
+
+
+def _wrap_standalone_invocation_in_if(script: str, invocation_prefix: str) -> str:
+    """Turn the real multiline command into a Bash condition in memory."""
+
+    command_start = script.index(invocation_prefix)
+    command_block_start = script.rfind("\n", 0, command_start) + 1
+    command_block_end = script.find("\n\n", command_start)
+    if command_block_end == -1:
+        command_block_end = len(script)
+    command_block = script[command_block_start:command_block_end].strip()
+    assert command_block.startswith(invocation_prefix)
+    return (
+        script[:command_block_start]
+        + f"if {command_block}; then\n  :\nfi"
+        + script[command_block_end:]
+    )
+
+
+def _wrap_standalone_invocation_in_substitution(
+    script: str, invocation_prefix: str
+) -> str:
+    """Hide the real multiline command in a success-returning substitution."""
+
+    command_start = script.index(invocation_prefix)
+    command_block_start = script.rfind("\n", 0, command_start) + 1
+    command_block_end = script.find("\n\n", command_start)
+    if command_block_end == -1:
+        command_block_end = len(script)
+    command_block = script[command_block_start:command_block_end].strip()
+    assert command_block.startswith(invocation_prefix)
+    return (
+        script[:command_block_start]
+        + f': "$(\\\n  {command_block})'
+        + script[command_block_end:]
+    )
+
+
+def _wrap_standalone_invocation_in_backticks(
+    script: str, invocation_prefix: str
+) -> str:
+    """Hide the real multiline command in a success-returning legacy substitution."""
+
+    command_start = script.index(invocation_prefix)
+    command_block_start = script.rfind("\n", 0, command_start) + 1
+    command_block_end = script.find("\n\n", command_start)
+    if command_block_end == -1:
+        command_block_end = len(script)
+    command_block = script[command_block_start:command_block_end].strip()
+    assert command_block.startswith(invocation_prefix)
+    return (
+        script[:command_block_start]
+        + f": `\n  {command_block}`"
+        + script[command_block_end:]
+    )
+
+
+def _wrap_standalone_invocation_in_outer_context(
+    script: str, invocation_prefix: str, context: str
+) -> str:
+    """Put the direct command in an outer compound shell form with padding."""
+
+    command_start = script.index(invocation_prefix)
+    command_block_start = script.rfind("\n", 0, command_start) + 1
+    command_block_end = script.find("\n\n", command_start)
+    if command_block_end == -1:
+        command_block_end = len(script)
+    command_block = script[command_block_start:command_block_end].strip()
+    assert command_block.startswith(invocation_prefix)
+    contexts = {
+        "if": ("if :; then\n  :\n", "  :\nfi"),
+        "elif": ("if false; then\n  :\nelif :; then\n  :\n", "  :\nfi"),
+        "negation": ("! {\n  :\n", "  :\n}"),
+        "while": ("while :; do\n  :\n", "  break\ndone"),
+        "until": ("until false; do\n  :\n", "  break\ndone"),
+        "case": ("case 1 in\n  1)\n    :\n", "    :\n    ;;\nesac"),
+    }
+    assert context in contexts
+    prefix, suffix = contexts[context]
+    return (
+        script[:command_block_start]
+        + prefix
+        + command_block
+        + "\n\n"
+        + suffix
+        + script[command_block_end:]
+    )
+
+
+def _mutate_paired_gate(job: dict[str, object], mutation: str) -> None:
+    """Introduce one real fail-open regression into an in-memory gate."""
+
+    capture = _step_named(
+        job, "Resolve immutable revisions and capture paired evidence"
+    )
+    comparator = _step_named(job, "Compare paired benchmark evidence")
+
+    if mutation == "job-continue-on-error":
+        job["continue-on-error"] = True
+    elif mutation == "capture-continue-on-error":
+        capture["continue-on-error"] = True
+    elif mutation == "comparison-continue-on-error":
+        comparator["continue-on-error"] = True
+    elif mutation == "capture-error-swallowing":
+        capture["run"] = f"{capture['run']}\ntrue || true\n"
+    elif mutation == "comparison-error-swallowing":
+        comparator["run"] = f"{comparator['run']}\ntrue || true\n"
+    elif mutation == "capture-split-or-error-swallowing":
+        capture["run"] = f"{capture['run']}\nfalse ||\n  true\n"
+    elif mutation == "comparison-split-or-error-swallowing":
+        comparator["run"] = f"{comparator['run']}\nfalse ||\n  true\n"
+    elif mutation == "capture-lexical-split-or-error-swallowing":
+        capture["run"] = f"{capture['run']}\nfalse |\\\n| true\n"
+    elif mutation == "comparison-lexical-split-or-error-swallowing":
+        comparator["run"] = f"{comparator['run']}\nfalse |\\\n| true\n"
+    elif mutation == "capture-conditional-wrapper":
+        capture["run"] = _wrap_standalone_invocation_in_if(
+            str(capture["run"]), '"$PYTHON_BIN" -I "$BASE_CAPTURE_HELPER"'
+        )
+    elif mutation == "comparison-conditional-wrapper":
+        comparator["run"] = _wrap_standalone_invocation_in_if(
+            str(comparator["run"]), '"$PYTHON_BIN" -I "$BASE_COMPARATOR"'
+        )
+    elif mutation == "capture-substitution-wrapper":
+        capture["run"] = _wrap_standalone_invocation_in_substitution(
+            str(capture["run"]), '"$PYTHON_BIN" -I "$BASE_CAPTURE_HELPER"'
+        )
+    elif mutation == "capture-backtick-wrapper":
+        capture["run"] = _wrap_standalone_invocation_in_backticks(
+            str(capture["run"]), '"$PYTHON_BIN" -I "$BASE_CAPTURE_HELPER"'
+        )
+    elif mutation.startswith("capture-outer-"):
+        capture["run"] = _wrap_standalone_invocation_in_outer_context(
+            str(capture["run"]),
+            '"$PYTHON_BIN" -I "$BASE_CAPTURE_HELPER"',
+            mutation.removeprefix("capture-outer-").removesuffix("-wrapper"),
+        )
+    elif mutation.startswith("comparison-outer-"):
+        comparator["run"] = _wrap_standalone_invocation_in_outer_context(
+            str(comparator["run"]),
+            '"$PYTHON_BIN" -I "$BASE_COMPARATOR"',
+            mutation.removeprefix("comparison-outer-").removesuffix("-wrapper"),
+        )
+    elif mutation == "capture-disable-errexit":
+        capture["run"] = str(capture["run"]).replace(
+            "set -euo pipefail", "set -euo pipefail\nset +e", 1
+        )
+    elif mutation == "capture-disable-errexit-option":
+        capture["run"] = str(capture["run"]).replace(
+            "set -euo pipefail", "set -euo pipefail\nset +o errexit", 1
+        )
+    elif mutation == "comparison-disable-pipefail":
+        comparator["run"] = str(comparator["run"]).replace(
+            "set -euo pipefail", "set -euo pipefail\nset +o pipefail", 1
+        )
+    elif mutation == "capture-builtin-disable-errexit":
+        capture["run"] = str(capture["run"]).replace(
+            "set -euo pipefail", "set -euo pipefail\nbuiltin set +e", 1
+        )
+    elif mutation == "comparison-builtin-disable-pipefail":
+        comparator["run"] = str(comparator["run"]).replace(
+            "set -euo pipefail", "set -euo pipefail\nbuiltin set +o pipefail", 1
+        )
+    elif mutation == "capture-eval-disable-errexit":
+        capture["run"] = str(capture["run"]).replace(
+            "set -euo pipefail", "set -euo pipefail\neval 'set +e'", 1
+        )
+    elif mutation == "comparison-command-set-disable-errexit":
+        comparator["run"] = str(comparator["run"]).replace(
+            "set -euo pipefail", "set -euo pipefail\ncommand set +e", 1
+        )
+    elif mutation == "pre-capture-hash-order":
+        capture_text = str(capture["run"])
+        hash_start = capture_text.index(
+            'BASE_COMPARATOR_SHA256="$(sha256sum "$BASE_COMPARATOR" | awk \'{print $1}\')"'
+        )
+        hash_end = capture_text.index("\n\n", hash_start) + 2
+        hash_block = capture_text[hash_start:hash_end]
+        capture["run"] = (
+            capture_text[:hash_start] + capture_text[hash_end:] + hash_block
+        )
+    elif mutation == "checkout-pin":
+        checkout = next(
+            step
+            for step in job["steps"]
+            if isinstance(step, dict)
+            and str(step.get("uses", "")).startswith("actions/checkout@")
+        )
+        checkout["uses"] = "actions/checkout@v7"
+    elif mutation == "setup-python-pin":
+        setup_python = _step_named(job, "Set up Python")
+        setup_python["uses"] = "actions/setup-python@v7"
+    elif mutation == "upload-pin":
+        upload = _step_named(job, "Upload paired benchmark evidence")
+        upload["uses"] = "actions/upload-artifact@v7"
+    elif mutation == "upload-continue-on-error":
+        upload = _step_named(job, "Upload paired benchmark evidence")
+        upload["continue-on-error"] = True
+    elif mutation.startswith("duplicate-unpinned-"):
+        action_name = mutation.removeprefix("duplicate-unpinned-")
+        action_pins = {
+            "checkout": "actions/checkout@v7",
+            "setup-python": "actions/setup-python@v7",
+            "upload-artifact": "actions/upload-artifact@v7",
+        }
+        assert action_name in action_pins
+        action_prefix = action_pins[action_name].split("@", maxsplit=1)[0] + "@"
+        source_step = next(
+            step
+            for step in job["steps"]
+            if isinstance(step, dict)
+            and str(step.get("uses", "")).startswith(action_prefix)
+        )
+        duplicate_step = deepcopy(source_step)
+        duplicate_step["uses"] = action_pins[action_name]
+        cleanup = _step_named(job, "Remove immutable base worktree")
+        steps = job["steps"]
+        assert isinstance(steps, list)
+        steps.insert(steps.index(cleanup), duplicate_step)
+    elif mutation == "duplicate-case-variant-checkout":
+        source_step = next(
+            step
+            for step in job["steps"]
+            if isinstance(step, dict)
+            and str(step.get("uses", "")).startswith("actions/checkout@")
+        )
+        duplicate_step = deepcopy(source_step)
+        duplicate_step["uses"] = "Actions/checkout@v7"
+        cleanup = _step_named(job, "Remove immutable base worktree")
+        steps = job["steps"]
+        assert isinstance(steps, list)
+        steps.insert(steps.index(cleanup), duplicate_step)
+    else:
+        raise AssertionError(f"Unknown paired-gate mutation: {mutation}")
+
+
+@pytest.mark.parametrize(
+    ("workflow_path", "job_id", "mutation"),
+    (
+        (
+            REPOSITORY_ROOT / ".github" / "workflows" / "benchmark.yml",
+            "ws-hub-regression",
+            "job-continue-on-error",
+        ),
+        (
+            MANUAL_PERFORMANCE_EVIDENCE_WORKFLOW_PATH,
+            "ws-hub-regression",
+            "capture-continue-on-error",
+        ),
+        (
+            REPOSITORY_ROOT / ".github" / "workflows" / "benchmark.yml",
+            "rust-native-regression",
+            "comparison-continue-on-error",
+        ),
+        (
+            REPOSITORY_ROOT / ".github" / "workflows" / "benchmark.yml",
+            "ws-hub-regression",
+            "capture-error-swallowing",
+        ),
+        (
+            MANUAL_PERFORMANCE_EVIDENCE_WORKFLOW_PATH,
+            "rust-native-regression",
+            "comparison-error-swallowing",
+        ),
+        (
+            REPOSITORY_ROOT / ".github" / "workflows" / "benchmark.yml",
+            "rust-native-regression",
+            "pre-capture-hash-order",
+        ),
+        (
+            MANUAL_PERFORMANCE_EVIDENCE_WORKFLOW_PATH,
+            "rust-native-regression",
+            "pre-capture-hash-order",
+        ),
+        (
+            REPOSITORY_ROOT / ".github" / "workflows" / "benchmark.yml",
+            "ws-hub-regression",
+            "checkout-pin",
+        ),
+        (
+            MANUAL_PERFORMANCE_EVIDENCE_WORKFLOW_PATH,
+            "ws-hub-regression",
+            "setup-python-pin",
+        ),
+        (
+            MANUAL_PERFORMANCE_EVIDENCE_WORKFLOW_PATH,
+            "rust-native-regression",
+            "upload-pin",
+        ),
+    ),
+    ids=(
+        "automatic-job-continue-on-error",
+        "manual-capture-continue-on-error",
+        "automatic-comparison-continue-on-error",
+        "automatic-capture-error-swallowing",
+        "manual-comparison-error-swallowing",
+        "automatic-pre-capture-hash-order",
+        "manual-pre-capture-hash-order",
+        "automatic-checkout-tag",
+        "manual-setup-python-tag",
+        "manual-upload-tag",
+    ),
+)
+def test_paired_performance_contract_rejects_fail_open_mutations(
+    workflow_path: Path, job_id: str, mutation: str
+) -> None:
+    """The shared contract must reject fail-open changes in memory, before CI."""
+
+    workflow = deepcopy(yaml.safe_load(workflow_path.read_text(encoding="utf-8")))
+    assert isinstance(workflow, dict)
+    jobs = workflow["jobs"]
+    assert isinstance(jobs, dict)
+    job = jobs[job_id]
+    assert isinstance(job, dict)
+    _mutate_paired_gate(job, mutation)
+
+    with pytest.raises(AssertionError):
+        _assert_paired_gate_variant(
+            workflow, workflow_path=workflow_path, job_id=job_id
+        )
+
+
+@pytest.mark.parametrize(
+    ("workflow_path", "job_id", "mutation"),
+    (
+        (
+            REPOSITORY_ROOT / ".github" / "workflows" / "benchmark.yml",
+            "ws-hub-regression",
+            "capture-split-or-error-swallowing",
+        ),
+        (
+            MANUAL_PERFORMANCE_EVIDENCE_WORKFLOW_PATH,
+            "rust-native-regression",
+            "comparison-split-or-error-swallowing",
+        ),
+        (
+            MANUAL_PERFORMANCE_EVIDENCE_WORKFLOW_PATH,
+            "ws-hub-regression",
+            "upload-continue-on-error",
+        ),
+        (
+            REPOSITORY_ROOT / ".github" / "workflows" / "benchmark.yml",
+            "ws-hub-regression",
+            "duplicate-unpinned-checkout",
+        ),
+        (
+            MANUAL_PERFORMANCE_EVIDENCE_WORKFLOW_PATH,
+            "ws-hub-regression",
+            "duplicate-unpinned-setup-python",
+        ),
+        (
+            REPOSITORY_ROOT / ".github" / "workflows" / "benchmark.yml",
+            "rust-native-regression",
+            "duplicate-unpinned-upload-artifact",
+        ),
+    ),
+    ids=(
+        "automatic-capture-split-or-error-swallowing",
+        "manual-comparison-split-or-error-swallowing",
+        "manual-upload-continue-on-error",
+        "automatic-duplicate-unpinned-checkout",
+        "manual-duplicate-unpinned-setup-python",
+        "automatic-duplicate-unpinned-upload-artifact",
+    ),
+)
+def test_paired_performance_contract_rejects_evasion_mutations(
+    workflow_path: Path, job_id: str, mutation: str
+) -> None:
+    """The shared contract must reject nonliteral fail-open evasions in memory."""
+
+    workflow = deepcopy(yaml.safe_load(workflow_path.read_text(encoding="utf-8")))
+    assert isinstance(workflow, dict)
+    jobs = workflow["jobs"]
+    assert isinstance(jobs, dict)
+    job = jobs[job_id]
+    assert isinstance(job, dict)
+    _mutate_paired_gate(job, mutation)
+
+    with pytest.raises(AssertionError):
+        _assert_paired_gate_variant(
+            workflow, workflow_path=workflow_path, job_id=job_id
+        )
+
+
+@pytest.mark.parametrize(
+    ("workflow_path", "job_id", "mutation"),
+    (
+        (
+            REPOSITORY_ROOT / ".github" / "workflows" / "benchmark.yml",
+            "ws-hub-regression",
+            "capture-lexical-split-or-error-swallowing",
+        ),
+        (
+            MANUAL_PERFORMANCE_EVIDENCE_WORKFLOW_PATH,
+            "rust-native-regression",
+            "comparison-lexical-split-or-error-swallowing",
+        ),
+        (
+            MANUAL_PERFORMANCE_EVIDENCE_WORKFLOW_PATH,
+            "ws-hub-regression",
+            "duplicate-case-variant-checkout",
+        ),
+    ),
+    ids=(
+        "automatic-capture-lexical-split-or-error-swallowing",
+        "manual-comparison-lexical-split-or-error-swallowing",
+        "manual-case-variant-unpinned-checkout",
+    ),
+)
+def test_paired_performance_contract_rejects_lexical_evasion_mutations(
+    workflow_path: Path, job_id: str, mutation: str
+) -> None:
+    """Lexical spelling cannot bypass the fail-closed paired-gate contract."""
+
+    workflow = deepcopy(yaml.safe_load(workflow_path.read_text(encoding="utf-8")))
+    assert isinstance(workflow, dict)
+    jobs = workflow["jobs"]
+    assert isinstance(jobs, dict)
+    job = jobs[job_id]
+    assert isinstance(job, dict)
+    _mutate_paired_gate(job, mutation)
+
+    with pytest.raises(AssertionError):
+        _assert_paired_gate_variant(
+            workflow, workflow_path=workflow_path, job_id=job_id
+        )
+
+
+@pytest.mark.parametrize(
+    ("workflow_path", "job_id", "mutation"),
+    (
+        (
+            REPOSITORY_ROOT / ".github" / "workflows" / "benchmark.yml",
+            "ws-hub-regression",
+            "capture-conditional-wrapper",
+        ),
+        (
+            MANUAL_PERFORMANCE_EVIDENCE_WORKFLOW_PATH,
+            "rust-native-regression",
+            "comparison-conditional-wrapper",
+        ),
+        (
+            REPOSITORY_ROOT / ".github" / "workflows" / "benchmark.yml",
+            "rust-native-regression",
+            "capture-substitution-wrapper",
+        ),
+        (
+            REPOSITORY_ROOT / ".github" / "workflows" / "benchmark.yml",
+            "rust-native-regression",
+            "capture-disable-errexit",
+        ),
+        (
+            MANUAL_PERFORMANCE_EVIDENCE_WORKFLOW_PATH,
+            "ws-hub-regression",
+            "capture-disable-errexit-option",
+        ),
+        (
+            MANUAL_PERFORMANCE_EVIDENCE_WORKFLOW_PATH,
+            "rust-native-regression",
+            "comparison-disable-pipefail",
+        ),
+    ),
+    ids=(
+        "automatic-capture-conditional-wrapper",
+        "manual-comparison-conditional-wrapper",
+        "automatic-capture-substitution-wrapper",
+        "automatic-capture-disable-errexit",
+        "manual-capture-disable-errexit-option",
+        "manual-comparison-disable-pipefail",
+    ),
+)
+def test_paired_performance_contract_rejects_nonstandalone_invocation_mutations(
+    workflow_path: Path, job_id: str, mutation: str
+) -> None:
+    """Immutable helper and comparator calls must remain independently blocking."""
+
+    workflow = deepcopy(yaml.safe_load(workflow_path.read_text(encoding="utf-8")))
+    assert isinstance(workflow, dict)
+    jobs = workflow["jobs"]
+    assert isinstance(jobs, dict)
+    job = jobs[job_id]
+    assert isinstance(job, dict)
+    _mutate_paired_gate(job, mutation)
+
+    with pytest.raises(AssertionError):
+        _assert_paired_gate_variant(
+            workflow, workflow_path=workflow_path, job_id=job_id
+        )
+
+
+@pytest.mark.parametrize(
+    ("workflow_path", "job_id", "mutation"),
+    (
+        (
+            REPOSITORY_ROOT / ".github" / "workflows" / "benchmark.yml",
+            "ws-hub-regression",
+            "capture-backtick-wrapper",
+        ),
+        (
+            MANUAL_PERFORMANCE_EVIDENCE_WORKFLOW_PATH,
+            "rust-native-regression",
+            "comparison-outer-if-wrapper",
+        ),
+        (
+            REPOSITORY_ROOT / ".github" / "workflows" / "benchmark.yml",
+            "rust-native-regression",
+            "capture-outer-elif-wrapper",
+        ),
+        (
+            MANUAL_PERFORMANCE_EVIDENCE_WORKFLOW_PATH,
+            "ws-hub-regression",
+            "comparison-outer-negation-wrapper",
+        ),
+        (
+            REPOSITORY_ROOT / ".github" / "workflows" / "benchmark.yml",
+            "ws-hub-regression",
+            "capture-outer-while-wrapper",
+        ),
+        (
+            MANUAL_PERFORMANCE_EVIDENCE_WORKFLOW_PATH,
+            "rust-native-regression",
+            "comparison-outer-until-wrapper",
+        ),
+        (
+            REPOSITORY_ROOT / ".github" / "workflows" / "benchmark.yml",
+            "rust-native-regression",
+            "capture-outer-case-wrapper",
+        ),
+        (
+            REPOSITORY_ROOT / ".github" / "workflows" / "benchmark.yml",
+            "ws-hub-regression",
+            "capture-builtin-disable-errexit",
+        ),
+        (
+            MANUAL_PERFORMANCE_EVIDENCE_WORKFLOW_PATH,
+            "rust-native-regression",
+            "comparison-builtin-disable-pipefail",
+        ),
+        (
+            MANUAL_PERFORMANCE_EVIDENCE_WORKFLOW_PATH,
+            "ws-hub-regression",
+            "capture-eval-disable-errexit",
+        ),
+        (
+            REPOSITORY_ROOT / ".github" / "workflows" / "benchmark.yml",
+            "rust-native-regression",
+            "comparison-command-set-disable-errexit",
+        ),
+    ),
+    ids=(
+        "automatic-capture-backtick-wrapper",
+        "manual-comparison-outer-if-wrapper",
+        "automatic-capture-outer-elif-wrapper",
+        "manual-comparison-outer-negation-wrapper",
+        "automatic-capture-outer-while-wrapper",
+        "manual-comparison-outer-until-wrapper",
+        "automatic-capture-outer-case-wrapper",
+        "automatic-capture-builtin-disable-errexit",
+        "manual-comparison-builtin-disable-pipefail",
+        "manual-capture-eval-disable-errexit",
+        "automatic-comparison-command-set-disable-errexit",
+    ),
+)
+def test_paired_performance_contract_rejects_compound_shell_mutations(
+    workflow_path: Path, job_id: str, mutation: str
+) -> None:
+    """No compound shell form may turn a required paired-gate command advisory."""
+
+    workflow = deepcopy(yaml.safe_load(workflow_path.read_text(encoding="utf-8")))
+    assert isinstance(workflow, dict)
+    jobs = workflow["jobs"]
+    assert isinstance(jobs, dict)
+    job = jobs[job_id]
+    assert isinstance(job, dict)
+    _mutate_paired_gate(job, mutation)
+
+    with pytest.raises(AssertionError):
+        _assert_paired_gate_variant(
+            workflow, workflow_path=workflow_path, job_id=job_id
+        )
+
+
+def _assert_paired_capture_contract(
+    job: dict[str, object],
+    *,
+    capture_format: str,
+    comparator_format: str,
+    revision_environment: dict[str, str],
+    base_worktree_leaf: str,
+    timeout_minutes: int,
+) -> None:
+    """Assert the observable workflow contract for a fail-closed paired gate."""
+
+    assert job["runs-on"] == "ubuntu-latest"
+    assert job["permissions"] == {"contents": "read"}
+    assert job["timeout-minutes"] == timeout_minutes
+    assert job.get("continue-on-error", False) is False
+    for step in job["steps"]:
+        assert isinstance(step, dict)
+        assert step.get("continue-on-error", False) is False
+    assert not any(
+        "benchmark-action/github-action-benchmark" in str(step.get("uses", ""))
+        for step in job["steps"]
+        if isinstance(step, dict)
+    )
+    regression_job_text = "\n".join(
+        str(step.get("run", "")) for step in job["steps"] if isinstance(step, dict)
+    )
+    for forbidden_fragment in (
+        "go test",
+        "cargo bench",
+        "actions/setup-go",
+        "dtolnay/rust-toolchain",
+        "actions/cache",
+        "for pair in",
+        "run_base_then_candidate",
+        "run_candidate_then_base",
+    ):
+        assert forbidden_fragment not in regression_job_text
+    assert not any(
+        forbidden_fragment in str(step.get("uses", ""))
+        for step in job["steps"]
+        if isinstance(step, dict)
+        for forbidden_fragment in (
+            "actions/setup-go",
+            "dtolnay/rust-toolchain",
+            "actions/cache",
+        )
+    )
+
+    assert _covered_action_uses(job, "actions/checkout") == [CHECKOUT_ACTION_PIN]
+    checkout = next(
+        step
+        for step in job["steps"]
+        if isinstance(step, dict) and step.get("uses") == CHECKOUT_ACTION_PIN
+    )
+    assert checkout["with"]["ref"] == "${{ github.sha }}"
+    assert checkout["with"]["fetch-depth"] == 0
+    assert checkout["with"]["persist-credentials"] is False
+
+    assert _covered_action_uses(job, "actions/setup-python") == [
+        SETUP_PYTHON_ACTION_PIN
+    ]
+    setup_python = _step_named(job, "Set up Python")
+    assert setup_python["uses"] == SETUP_PYTHON_ACTION_PIN
+
+    capture = _step_named(
+        job, "Resolve immutable revisions and capture paired evidence"
+    )
+    assert capture["shell"] == "bash"
+    assert capture["env"] == revision_environment
+    assert capture.get("continue-on-error", False) is False
+    capture_text = str(capture["run"])
+    normalized_capture_text = " ".join(capture_text.replace("\\\n", " ").split())
+    assert normalized_capture_text.startswith("set -euo pipefail")
+    _assert_fail_closed_shell_mode(capture_text)
+    _assert_only_documented_conditional_ors(
+        capture_text, CAPTURE_ALLOWED_CONDITIONAL_ORS
+    )
+    _assert_no_shell_indirection_or_option_control(capture_text)
+    _assert_critical_execution_segment(
+        capture_text,
+        anchor='BASE_COMPARATOR_SHA256="$(sha256sum "$BASE_COMPARATOR" | awk \'{print $1}\')"',
+        expected=_expected_capture_critical_execution_segment(capture_format),
+    )
+    for required_fragment in (
+        "0000000000000000000000000000000000000000",
+        'git fetch --no-tags origin "$BASE_SHA" "$CANDIDATE_SHA"',
+        'git cat-file -e "$BASE_SHA^{commit}"',
+        'git cat-file -e "$CANDIDATE_SHA^{commit}"',
+        'if [[ "$BASE_SHA" == "$CANDIDATE_SHA" ]]; then',
+        'git merge-base --is-ancestor "$BASE_SHA" "$CANDIDATE_SHA"',
+        'if [[ "$(git rev-parse HEAD)" != "$CANDIDATE_SHA" ]]; then',
+        f'BASE_WORKTREE="${{RUNNER_TEMP}}/{base_worktree_leaf}"',
+        'if [[ -e "$BASE_WORKTREE" ]]; then',
+        'git worktree add --detach "$BASE_WORKTREE" "$BASE_SHA"',
+        'BASE_CAPTURE_HELPER="$BASE_WORKTREE/scripts/quality/capture_isolated_benchmarks.py"',
+        'BASE_COMPARATOR="$BASE_WORKTREE/scripts/quality/compare_paired_benchmarks.py"',
+        'if ! test -f "$BASE_CAPTURE_HELPER"; then',
+        'if ! test -f "$BASE_COMPARATOR"; then',
+        'PYTHON_BIN="$(command -v python)"',
+        'if [[ "$PYTHON_BIN" != /* || ! -x "$PYTHON_BIN" ]]; then',
+        'ARTIFACT_ROOT="${RUNNER_TEMP}/',
+        'if [[ -e "$ARTIFACT_ROOT" ]]; then',
+        'BASE_COMPARATOR_SHA256="$(sha256sum "$BASE_COMPARATOR" | awk \'{print $1}\')"',
+        'if [[ ! "$BASE_COMPARATOR_SHA256" =~ ^[0-9a-f]{64}$ ]]; then',
+        'echo "base_comparator=$BASE_COMPARATOR"',
+        'echo "base_comparator_sha256=$BASE_COMPARATOR_SHA256"',
+        'echo "artifact_root=$ARTIFACT_ROOT"',
+        'echo "python_bin=$PYTHON_BIN"',
+        '"$PYTHON_BIN" -I "$BASE_CAPTURE_HELPER"',
+        f"--format {capture_format}",
+        '--base-worktree "$BASE_WORKTREE"',
+        '--candidate-worktree "$GITHUB_WORKSPACE"',
+        '--artifact-root "$ARTIFACT_ROOT"',
+        '--runner-temp "$RUNNER_TEMP"',
+        '--base-revision "$BASE_SHA"',
+        '--candidate-revision "$CANDIDATE_SHA"',
+    ):
+        assert " ".join(required_fragment.split()) in normalized_capture_text
+    assert "trap " not in capture_text
+    assert "$GITHUB_WORKSPACE/artifacts/performance" not in capture_text
+    assert "scripts/quality/capture_isolated_benchmarks.py" not in capture_text.replace(
+        "$BASE_WORKTREE/scripts/quality/capture_isolated_benchmarks.py", ""
+    )
+    if capture_format == "rust":
+        assert (
+            'BASE_RUST_DOCKERFILE="$BASE_WORKTREE/containers/quality/Dockerfile.performance-rust"'
+            in normalized_capture_text
+        )
+        assert '--rust-dockerfile "$BASE_RUST_DOCKERFILE"' in normalized_capture_text
+    else:
+        assert "--rust-dockerfile" not in capture_text
+    candidate_commit_validation = normalized_capture_text.index(
+        'git cat-file -e "$CANDIDATE_SHA^{commit}"'
+    )
+    distinct_revision_validation = normalized_capture_text.index(
+        'if [[ "$BASE_SHA" == "$CANDIDATE_SHA" ]]; then'
+    )
+    ancestor_validation = normalized_capture_text.index(
+        'git merge-base --is-ancestor "$BASE_SHA" "$CANDIDATE_SHA"'
+    )
+    assert (
+        candidate_commit_validation < distinct_revision_validation < ancestor_validation
+    )
+    assert capture_text.index(
+        'echo "artifact_root=$ARTIFACT_ROOT"'
+    ) < capture_text.index('git fetch --no-tags origin "$BASE_SHA" "$CANDIDATE_SHA"')
+    assert capture_text.index(
+        'echo "artifact_root=$ARTIFACT_ROOT"'
+    ) < capture_text.index('"$PYTHON_BIN" -I "$BASE_CAPTURE_HELPER"')
+    assert (
+        capture_text.index(
+            'BASE_COMPARATOR_SHA256="$(sha256sum "$BASE_COMPARATOR" | awk \'{print $1}\')"'
+        )
+        < capture_text.index('echo "base_comparator_sha256=$BASE_COMPARATOR_SHA256"')
+        < capture_text.index('"$PYTHON_BIN" -I "$BASE_CAPTURE_HELPER"')
+    )
+    if "EVENT_NAME" in revision_environment:
+        for required_fragment in (
+            'pull_request) BASE_SHA="$PR_BASE_SHA" CANDIDATE_SHA="$PR_CANDIDATE_SHA"',
+            'push) BASE_SHA="$PUSH_BASE_SHA" CANDIDATE_SHA="$PUSH_CANDIDATE_SHA"',
+        ):
+            assert required_fragment in normalized_capture_text
+    else:
+        assert 'BASE_SHA="$MANUAL_BASE_SHA" CANDIDATE_SHA="$MANUAL_CANDIDATE_SHA"' in (
+            normalized_capture_text
+        )
+
+    comparator = _step_named(job, "Compare paired benchmark evidence")
+    assert comparator["shell"] == "bash"
+    assert comparator.get("continue-on-error", False) is False
+    comparator_text = str(comparator["run"])
+    capture_id = str(capture["id"])
+    assert (
+        'BASE_COMPARATOR="${{ steps.' + capture_id + '.outputs.base_comparator }}"'
+    ) in comparator_text
+    assert (
+        'PYTHON_BIN="${{ steps.' + capture_id + '.outputs.python_bin }}"'
+        in comparator_text
+    )
+    assert (
+        'EXPECTED_COMPARATOR_SHA256="${{ steps.'
+        + capture_id
+        + '.outputs.base_comparator_sha256 }}"'
+    ) in comparator_text
+    assert 'ARTIFACT_ROOT="${{ steps.' + capture_id + '.outputs.artifact_root }}"' in (
+        comparator_text
+    )
+    assert 'if [[ "$PYTHON_BIN" != /* || ! -x "$PYTHON_BIN" ]]; then' in comparator_text
+    assert 'if ! test -f "$BASE_COMPARATOR"; then' in comparator_text
+    assert (
+        'ACTUAL_COMPARATOR_SHA256="$(sha256sum "$BASE_COMPARATOR" | awk \'{print $1}\')"'
+        in comparator_text
+    )
+    assert (
+        'if [[ "$ACTUAL_COMPARATOR_SHA256" != "$EXPECTED_COMPARATOR_SHA256" ]]; then'
+        in (comparator_text)
+    )
+    assert '"$PYTHON_BIN" -I "$BASE_COMPARATOR"' in comparator_text
+    assert "set -euo pipefail" in comparator_text
+    _assert_fail_closed_shell_mode(comparator_text)
+    _assert_only_documented_conditional_ors(
+        comparator_text, COMPARISON_ALLOWED_CONDITIONAL_ORS
+    )
+    _assert_no_shell_indirection_or_option_control(comparator_text)
+    _assert_critical_execution_segment(
+        comparator_text,
+        anchor='ACTUAL_COMPARATOR_SHA256="$(sha256sum "$BASE_COMPARATOR" | awk \'{print $1}\')"',
+        expected=_expected_comparator_critical_execution_segment(
+            comparator_format, capture_id
+        ),
+    )
+    assert "python scripts/quality/compare_paired_benchmarks.py" not in comparator_text
+    assert 'python "$BASE_COMPARATOR"' not in comparator_text
+    assert "$GITHUB_WORKSPACE/scripts/quality/compare_paired_benchmarks.py" not in (
+        comparator_text
+    )
+    for required_fragment in (
+        f"--format {comparator_format}",
+        '--base-dir "$ARTIFACT_ROOT/base"',
+        '--candidate-dir "$ARTIFACT_ROOT/candidate"',
+        "--expected-pairs 12",
+        "--base-revision",
+        "--candidate-revision",
+        "--toolchain-json",
+        "--output",
+    ):
+        assert required_fragment in comparator_text
+    assert (
+        comparator_text.index(
+            'ACTUAL_COMPARATOR_SHA256="$(sha256sum "$BASE_COMPARATOR" | awk \'{print $1}\')"'
+        )
+        < comparator_text.index(
+            'if [[ "$ACTUAL_COMPARATOR_SHA256" != "$EXPECTED_COMPARATOR_SHA256" ]]; then'
+        )
+        < comparator_text.index('"$PYTHON_BIN" -I "$BASE_COMPARATOR"')
+    )
+
+    evidence_artifact = _step_named(job, "Upload paired benchmark evidence")
+    assert _covered_action_uses(job, "actions/upload-artifact") == [
+        UPLOAD_ARTIFACT_ACTION_PIN
+    ]
+    assert evidence_artifact["uses"] == UPLOAD_ARTIFACT_ACTION_PIN
+    assert evidence_artifact["if"] == "always()"
+    assert evidence_artifact["with"]["retention-days"] == 14
+    assert evidence_artifact["with"]["path"] == (
+        "${{ steps." + capture_id + ".outputs.artifact_root }}"
+    )
+
+    cleanup = _step_named(job, "Remove immutable base worktree")
+    assert cleanup["if"] == "always()"
+    assert cleanup["shell"] == "bash"
+    assert cleanup.get("continue-on-error", False) is False
+    cleanup_text = str(cleanup["run"])
+    assert "set -euo pipefail" in cleanup_text
+    assert f'BASE_WORKTREE="${{RUNNER_TEMP}}/{base_worktree_leaf}"' in cleanup_text
+    assert 'git worktree remove --force "$BASE_WORKTREE" || true' in cleanup_text
+    assert cleanup_text.count("|| true") == 1
+    best_effort_steps = [
+        step
+        for step in job["steps"]
+        if isinstance(step, dict) and "|| true" in str(step.get("run", ""))
+    ]
+    assert best_effort_steps == [cleanup]
+    assert job["steps"][-1] is cleanup
+    assert (
+        job["steps"].index(cleanup)
+        > job["steps"].index(evidence_artifact)
+        > job["steps"].index(comparator)
+    )
+
+
+def test_performance_workflow_uses_same_run_immutable_paired_gates() -> None:
+    """A required performance gate must compare immutable revisions in one VM."""
+
+    workflow_path = REPOSITORY_ROOT / ".github" / "workflows" / "benchmark.yml"
+    workflow = yaml.safe_load(workflow_path.read_text(encoding="utf-8"))
+    triggers = _workflow_triggers(workflow)
+    assert "workflow_dispatch" not in triggers
+    assert "paths" not in triggers["pull_request"]
+    assert workflow["permissions"] == {"contents": "read"}
+
+    jobs = workflow["jobs"]
+    assert jobs["ws-hub-regression"]["name"] == ("WS-Hub Go Benchmark Regression Gate")
+    assert jobs["rust-native-regression"]["name"] == (
+        "Rust Native Optimizer Regression Gate"
+    )
+
+    shared_revision_environment = {
+        "EVENT_NAME": "${{ github.event_name }}",
+        "PR_BASE_SHA": "${{ github.event.pull_request.base.sha }}",
+        "PR_CANDIDATE_SHA": "${{ github.sha }}",
+        "PUSH_BASE_SHA": "${{ github.event.before }}",
+        "PUSH_CANDIDATE_SHA": "${{ github.sha }}",
+    }
+    _assert_paired_capture_contract(
+        jobs["ws-hub-regression"],
+        capture_format="go",
+        comparator_format="go",
+        revision_environment=shared_revision_environment,
+        base_worktree_leaf="performance-base-ws-hub",
+        timeout_minutes=20,
+    )
+    _assert_paired_capture_contract(
+        jobs["rust-native-regression"],
+        capture_format="rust",
+        comparator_format="bencher",
+        revision_environment=shared_revision_environment,
+        base_worktree_leaf="performance-base-rust-native",
+        timeout_minutes=30,
+    )
+
+
+def test_performance_history_is_main_only_and_advisory() -> None:
+    """Historical charts cannot supply a PR decision or receive PR credentials."""
+
+    workflow_path = REPOSITORY_ROOT / ".github" / "workflows" / "benchmark.yml"
+    workflow = yaml.safe_load(workflow_path.read_text(encoding="utf-8"))
+    jobs = workflow["jobs"]
+    assert jobs["benchmark"]["name"] == "Run Go Benchmarks"
+    assert (
+        jobs["rust-criterion"]["name"] == "Rust Criterion Benchmarks (pyo3-sanitizer)"
+    )
+
+    for job_id in ("benchmark", "rust-criterion"):
+        job = jobs[job_id]
+        assert not any(
+            "benchmark-action/github-action-benchmark" in str(step.get("uses", ""))
+            for step in job["steps"]
+            if isinstance(step, dict)
+        )
+        checkout = next(
+            step
+            for step in job["steps"]
+            if isinstance(step, dict)
+            and str(step.get("uses", "")).startswith("actions/checkout")
+        )
+        assert checkout["with"]["persist-credentials"] is False
+        assert any(
+            str(step.get("uses", "")).startswith("actions/upload-artifact")
+            for step in job["steps"]
+            if isinstance(step, dict)
+        )
+
+    publisher = jobs["publish-performance-history"]
+    assert publisher["needs"] == [
+        "benchmark",
+        "ws-hub-regression",
+        "rust-criterion",
+        "rust-native-regression",
+    ]
+    assert publisher["if"] == (
+        "github.event_name == 'push' && github.ref == 'refs/heads/main'"
+    )
+    assert publisher["permissions"] == {"contents": "write"}
+    publisher_steps = [
+        step
+        for step in publisher["steps"]
+        if isinstance(step, dict)
+        and "benchmark-action/github-action-benchmark" in str(step.get("uses", ""))
+    ]
+    assert len(publisher_steps) == 2
+    for step in publisher_steps:
+        assert step["with"]["auto-push"] is True
+        assert step["with"]["comment-on-alert"] is False
+        assert step["with"]["fail-on-alert"] is False
+
+    assert [
+        job_id
+        for job_id, job in jobs.items()
+        if job.get("permissions", {}).get("contents") == "write"
+    ] == ["publish-performance-history"]
+
+    combined_workflow_text = workflow_path.read_text(
+        encoding="utf-8"
+    ) + MANUAL_PERFORMANCE_EVIDENCE_WORKFLOW_PATH.read_text(encoding="utf-8")
+    for forbidden_fragment in (
+        "pull_request_target",
+        "self-hosted",
+        "PERFORMANCE_BENCHMARK_RUNNER",
+    ):
+        assert forbidden_fragment not in combined_workflow_text
+    for job in jobs.values():
+        assert "${{" not in str(job["runs-on"])
+
+
+def test_manual_performance_evidence_uses_distinct_read_only_paired_contexts() -> None:
+    """Manual evidence has explicit revisions and cannot satisfy required PR checks."""
+
+    workflow = yaml.safe_load(
+        MANUAL_PERFORMANCE_EVIDENCE_WORKFLOW_PATH.read_text(encoding="utf-8")
+    )
+    assert workflow["name"] == "Manual Performance Evidence"
+    triggers = _workflow_triggers(workflow)
+    assert set(triggers) == {"workflow_dispatch"}
+    assert triggers["workflow_dispatch"]["inputs"]["base_sha"] == {
+        "description": "Full immutable base commit SHA for same-run performance evidence",
+        "required": True,
+        "type": "string",
+    }
+    assert workflow["permissions"] == {"contents": "read"}
+
+    jobs = workflow["jobs"]
+    expected_names = {
+        "benchmark": "Manual Performance Evidence / Run Go Benchmarks",
+        "ws-hub-regression": (
+            "Manual Performance Evidence / WS-Hub Go Benchmark Regression Gate"
+        ),
+        "rust-criterion": (
+            "Manual Performance Evidence / Rust Criterion Benchmarks (pyo3-sanitizer)"
+        ),
+        "rust-native-regression": (
+            "Manual Performance Evidence / Rust Native Optimizer Regression Gate"
+        ),
+    }
+    assert {job_id: jobs[job_id]["name"] for job_id in expected_names} == expected_names
+    assert set(expected_names.values()).isdisjoint(REQUIRED_PERFORMANCE_CONTEXTS)
+
+    manual_revision_environment = {
+        "MANUAL_BASE_SHA": "${{ inputs.base_sha }}",
+        "MANUAL_CANDIDATE_SHA": "${{ github.sha }}",
+    }
+    _assert_paired_capture_contract(
+        jobs["ws-hub-regression"],
+        capture_format="go",
+        comparator_format="go",
+        revision_environment=manual_revision_environment,
+        base_worktree_leaf="manual-performance-base-ws-hub",
+        timeout_minutes=20,
+    )
+    _assert_paired_capture_contract(
+        jobs["rust-native-regression"],
+        capture_format="rust",
+        comparator_format="bencher",
+        revision_environment=manual_revision_environment,
+        base_worktree_leaf="manual-performance-base-rust-native",
+        timeout_minutes=30,
+    )
+
+    assert all(
+        "benchmark-action/github-action-benchmark" not in str(step.get("uses", ""))
+        for job in jobs.values()
+        for step in job["steps"]
+        if isinstance(step, dict)
+    )
