@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+import shlex
 from copy import deepcopy
 from pathlib import Path
 
@@ -11,6 +12,9 @@ from scripts.quality.filter_checkov_sarif import filter_suppressed_results
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 CI_WORKFLOW_PATH = REPOSITORY_ROOT / ".github" / "workflows" / "ci.yml"
+SQLMAP_WORKFLOW_PATH = REPOSITORY_ROOT / ".github" / "workflows" / "sqlmap.yml"
+SQLMAP_OPENAPI_URL = "http://127.0.0.1:8000/api/openapi.json"
+SQLMAP_OPENAPI_BASE_URL = "http://127.0.0.1:8000"
 ACTIONLINT_CONFIG_PATH = REPOSITORY_ROOT / ".github" / "actionlint.yaml"
 LIGHTHOUSE_CONFIG_PATH = REPOSITORY_ROOT / ".lighthouserc.js"
 LHCI_SCRIPT_PATH = REPOSITORY_ROOT / "frontend" / "scripts" / "run-lhci.mjs"
@@ -2552,3 +2556,64 @@ def test_manual_performance_evidence_uses_distinct_read_only_paired_contexts() -
         for step in job["steps"]
         if isinstance(step, dict)
     )
+
+
+def test_sqlmap_openapi_scan_is_pinned_local_and_bounded() -> None:
+    workflow = yaml.safe_load(SQLMAP_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    sqlmap_job = workflow["jobs"]["sqlmap"]
+    assert sqlmap_job.get("continue-on-error", False) is False
+    assert sqlmap_job["timeout-minutes"] == 20
+
+    steps = {step["name"]: step for step in sqlmap_job["steps"]}
+    install = steps["Install SQLMap"]
+    capability = steps["Verify SQLMap OpenAPI support"]
+    readiness = steps["Start FastAPI Backend in Background"]
+    scan = steps["Run SQLMap Scan on API"]
+
+    assert install["run"].strip() == 'uv pip install "sqlmap==1.10.8"'
+    assert "uv run sqlmap -hh" in capability["run"]
+    assert 'grep -Fq -- "--openapi="' in capability["run"]
+    assert "exit 1" in capability["run"]
+    assert SQLMAP_OPENAPI_URL in readiness["run"]
+    assert "http://127.0.0.1:8000/openapi.json" not in readiness["run"]
+    assert "curl --fail --silent --show-error" in readiness["run"]
+    assert "test -s" in readiness["run"]
+    assert "for i in {1..30}; do" in readiness["run"]
+    assert "exit 1" in readiness["run"]
+
+    scan_script = scan["run"]
+    assert f'--openapi="{SQLMAP_OPENAPI_URL}"' in scan_script
+    assert f'--openapi-base="{SQLMAP_OPENAPI_BASE_URL}"' in scan_script
+    for option in (
+        "--batch",
+        "--crawl=0",
+        "--technique=BEU",
+        "--risk=1",
+        "--level=1",
+        "--threads=2",
+        "--timeout=5",
+        "--retries=0",
+    ):
+        assert option in scan_script
+
+    scan_arguments = shlex.split(scan_script.replace("\\\n", ""), comments=True)
+    assert scan_arguments == [
+        "uv",
+        "run",
+        "sqlmap",
+        f"--openapi={SQLMAP_OPENAPI_URL}",
+        f"--openapi-base={SQLMAP_OPENAPI_BASE_URL}",
+        "--batch",
+        "--crawl=0",
+        "--technique=BEU",
+        "--risk=1",
+        "--level=1",
+        "--threads=2",
+        "--timeout=5",
+        "--retries=0",
+        "--flush-session",
+    ]
+
+    for step in (capability, readiness, scan):
+        assert step.get("continue-on-error", False) is False
+        assert "|| true" not in step["run"]
