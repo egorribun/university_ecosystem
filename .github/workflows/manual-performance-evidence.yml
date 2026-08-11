@@ -1,19 +1,21 @@
-name: "Continuous Performance Benchmarking"
+name: "Manual Performance Evidence"
 
+# This workflow is deliberately separate from benchmark.yml. Its job names are
+# disjoint from protected contexts, and it can only read repository contents.
 on:
-  push:
-    branches:
-      - main
-  pull_request: {}
+  workflow_dispatch: #checkov:skip=CKV_GHA_7:base SHA is validated before it reaches git
+    inputs:
+      base_sha:
+        description: "Full immutable base commit SHA for same-run performance evidence"
+        required: true
+        type: string
 
-# Required pull-request contexts must be read-only. Historical charts are
-# published only by the guarded main-only job below.
 permissions:
   contents: read
 
 jobs:
   benchmark:
-    name: Run Go Benchmarks
+    name: Manual Performance Evidence / Run Go Benchmarks
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -21,6 +23,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ github.sha }}
           persist-credentials: false
 
       - name: Set up Go
@@ -51,13 +54,13 @@ jobs:
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: performance-advisory-go
+          name: manual-performance-advisory-go
           path: artifacts/performance/advisory/go
           if-no-files-found: warn
           retention-days: 14
 
   ws-hub-regression:
-    name: WS-Hub Go Benchmark Regression Gate
+    name: Manual Performance Evidence / WS-Hub Go Benchmark Regression Gate
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -78,29 +81,12 @@ jobs:
         id: capture_ws_hub
         shell: bash
         env:
-          EVENT_NAME: ${{ github.event_name }}
-          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          PR_CANDIDATE_SHA: ${{ github.sha }}
-          PUSH_BASE_SHA: ${{ github.event.before }}
-          PUSH_CANDIDATE_SHA: ${{ github.sha }}
+          MANUAL_BASE_SHA: ${{ inputs.base_sha }}
+          MANUAL_CANDIDATE_SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
-
-          case "$EVENT_NAME" in
-            pull_request)
-              BASE_SHA="$PR_BASE_SHA"
-              CANDIDATE_SHA="$PR_CANDIDATE_SHA"
-              ;;
-            push)
-              BASE_SHA="$PUSH_BASE_SHA"
-              CANDIDATE_SHA="$PUSH_CANDIDATE_SHA"
-              ;;
-            *)
-              echo "Unsupported performance event: $EVENT_NAME" >&2
-              exit 2
-              ;;
-          esac
-
+          BASE_SHA="$MANUAL_BASE_SHA"
+          CANDIDATE_SHA="$MANUAL_CANDIDATE_SHA"
           ZERO_SHA="0000000000000000000000000000000000000000"
           validate_sha() {
             local value="$1"
@@ -139,7 +125,7 @@ jobs:
             exit 2
           fi
 
-          BASE_WORKTREE="${RUNNER_TEMP}/performance-base-ws-hub"
+          BASE_WORKTREE="${RUNNER_TEMP}/manual-performance-base-ws-hub"
           if [[ -e "$BASE_WORKTREE" ]]; then
             echo "Base worktree path must be fresh: $BASE_WORKTREE" >&2
             exit 2
@@ -220,7 +206,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: performance-ws-hub-paired
+          name: manual-performance-ws-hub-paired
           path: ${{ steps.capture_ws_hub.outputs.artifact_root }}
           if-no-files-found: warn
           retention-days: 14
@@ -230,13 +216,13 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          BASE_WORKTREE="${RUNNER_TEMP}/performance-base-ws-hub"
+          BASE_WORKTREE="${RUNNER_TEMP}/manual-performance-base-ws-hub"
           if [[ -d "$BASE_WORKTREE" ]]; then
             git worktree remove --force "$BASE_WORKTREE" || true
           fi
 
   rust-criterion:
-    name: Rust Criterion Benchmarks (pyo3-sanitizer)
+    name: Manual Performance Evidence / Rust Criterion Benchmarks (pyo3-sanitizer)
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -244,6 +230,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ github.sha }}
           persist-credentials: false
 
       - name: Install stable Rust toolchain
@@ -276,13 +263,13 @@ jobs:
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: performance-advisory-rust-criterion
+          name: manual-performance-advisory-rust-criterion
           path: artifacts/performance/advisory/rust-criterion
           if-no-files-found: warn
           retention-days: 14
 
   rust-native-regression:
-    name: Rust Native Optimizer Regression Gate
+    name: Manual Performance Evidence / Rust Native Optimizer Regression Gate
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -303,29 +290,12 @@ jobs:
         id: capture_rust_native
         shell: bash
         env:
-          EVENT_NAME: ${{ github.event_name }}
-          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          PR_CANDIDATE_SHA: ${{ github.sha }}
-          PUSH_BASE_SHA: ${{ github.event.before }}
-          PUSH_CANDIDATE_SHA: ${{ github.sha }}
+          MANUAL_BASE_SHA: ${{ inputs.base_sha }}
+          MANUAL_CANDIDATE_SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
-
-          case "$EVENT_NAME" in
-            pull_request)
-              BASE_SHA="$PR_BASE_SHA"
-              CANDIDATE_SHA="$PR_CANDIDATE_SHA"
-              ;;
-            push)
-              BASE_SHA="$PUSH_BASE_SHA"
-              CANDIDATE_SHA="$PUSH_CANDIDATE_SHA"
-              ;;
-            *)
-              echo "Unsupported performance event: $EVENT_NAME" >&2
-              exit 2
-              ;;
-          esac
-
+          BASE_SHA="$MANUAL_BASE_SHA"
+          CANDIDATE_SHA="$MANUAL_CANDIDATE_SHA"
           ZERO_SHA="0000000000000000000000000000000000000000"
           validate_sha() {
             local value="$1"
@@ -364,7 +334,7 @@ jobs:
             exit 2
           fi
 
-          BASE_WORKTREE="${RUNNER_TEMP}/performance-base-rust-native"
+          BASE_WORKTREE="${RUNNER_TEMP}/manual-performance-base-rust-native"
           if [[ -e "$BASE_WORKTREE" ]]; then
             echo "Base worktree path must be fresh: $BASE_WORKTREE" >&2
             exit 2
@@ -451,7 +421,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: performance-rust-native-paired
+          name: manual-performance-rust-native-paired
           path: ${{ steps.capture_rust_native.outputs.artifact_root }}
           if-no-files-found: warn
           retention-days: 14
@@ -461,59 +431,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          BASE_WORKTREE="${RUNNER_TEMP}/performance-base-rust-native"
+          BASE_WORKTREE="${RUNNER_TEMP}/manual-performance-base-rust-native"
           if [[ -d "$BASE_WORKTREE" ]]; then
             git worktree remove --force "$BASE_WORKTREE" || true
           fi
-
-  publish-performance-history:
-    needs:
-      - benchmark
-      - ws-hub-regression
-      - rust-criterion
-      - rust-native-regression
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-
-      - name: Download advisory Go benchmark evidence
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-        with:
-          name: performance-advisory-go
-          path: history-artifacts/go
-
-      - name: Download advisory Criterion benchmark evidence
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-        with:
-          name: performance-advisory-rust-criterion
-          path: history-artifacts/rust-criterion
-
-      - name: Publish advisory Go benchmark history
-        uses: benchmark-action/github-action-benchmark@52576c92bccf6ac60c8223ec7eb2565637cae9ba # v1.22.1
-        with:
-          name: "Go Services Performance Benchmarks"
-          tool: "go"
-          output-file-path: "history-artifacts/go/benchmarks.txt"
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          auto-push: true
-          alert-threshold: "200%"
-          comment-on-alert: false
-          fail-on-alert: false
-
-      - name: Publish advisory Criterion benchmark history
-        uses: benchmark-action/github-action-benchmark@52576c92bccf6ac60c8223ec7eb2565637cae9ba # v1.22.1
-        with:
-          name: "Rust Criterion Benchmarks (pyo3-sanitizer)"
-          tool: "cargo"
-          output-file-path: "history-artifacts/rust-criterion/criterion-bench.txt"
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          auto-push: true
-          alert-threshold: "150%"
-          comment-on-alert: false
-          fail-on-alert: false

@@ -25,6 +25,7 @@ from scripts.quality.capture_isolated_benchmarks import (
     _rust_environment,
     _rust_prefetch_program,
     _safe_capture,
+    _start_cache_holder,
     _timeout_command,
     _validate_distinct_worktrees,
     _validate_image_content_id,
@@ -867,6 +868,48 @@ def test_best_effort_cleanup_cannot_mask_a_timed_out_docker_client(
     cleanup(identifier)
 
     assert observed == [(expected_command, 30)]
+
+
+def test_cache_holder_is_non_networked_and_removed_before_its_volume(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Holder lifecycle keeps cache mounts alive without leaking Docker state."""
+
+    volume = "quality-benchmark-cache-holder"
+    observed_start: list[list[str]] = []
+
+    def fake_checked(command: tuple[str, ...] | list[str], _: str) -> SimpleNamespace:
+        observed_start.append(list(command))
+        return SimpleNamespace(returncode=0, stdout="a" * 64 + "\n", stderr="")
+
+    monkeypatch.setattr(
+        "scripts.quality.capture_isolated_benchmarks._run_checked", fake_checked
+    )
+    monkeypatch.setattr(
+        "scripts.quality.capture_isolated_benchmarks._new_container_name",
+        lambda: "quality-benchmark-" + "b" * 32,
+    )
+    holder = _start_cache_holder(
+        image="example.invalid/performance@sha256:" + "a" * 64,
+        cache_volume=volume,
+        side="base",
+    )
+    assert holder == "quality-benchmark-" + "b" * 32
+    assert observed_start[0][observed_start[0].index("--network") + 1] == "none"
+    assert observed_start[0][observed_start[0].index("--detach") + 1].startswith(
+        "example.invalid/"
+    )
+
+    cleanup: list[list[str]] = []
+    monkeypatch.setattr(
+        "scripts.quality.capture_isolated_benchmarks._best_effort_docker_cleanup",
+        cleanup.append,
+    )
+    _remove_volume(volume)
+    assert cleanup == [
+        [str(DOCKER_BINARY), "container", "rm", "--force", holder],
+        [str(DOCKER_BINARY), "volume", "rm", "--force", volume],
+    ]
 
 
 @pytest.mark.parametrize(
