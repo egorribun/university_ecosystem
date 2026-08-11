@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1786446940886,
+  "lastUpdate": 1786447055264,
   "repoUrl": "https://github.com/egorribun/university_ecosystem",
   "entries": {
     "Go Services Performance Benchmarks": [
@@ -1554,6 +1554,150 @@ window.BENCHMARK_DATA = {
             "value": 17653,
             "unit": "ns/op",
             "extra": "92112 times\n4 procs"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "49699333+dependabot[bot]@users.noreply.github.com",
+            "name": "dependabot[bot]",
+            "username": "dependabot[bot]"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "83beb35c866c4baa10b60e2ef95c663568a3c58e",
+          "message": "build(deps): Bump the go-file-processor group (#1233)\n\nBumps the go-file-processor group in /services/file-processor with 10 updates:\n\n| Package | From | To |\n| --- | --- | --- |\n| [github.com/pact-foundation/pact-go/v2](https://github.com/pact-foundation/pact-go) | `2.5.1` | `2.7.0` |\n| [github.com/testcontainers/testcontainers-go](https://github.com/testcontainers/testcontainers-go) | `0.43.0` | `0.44.0` |\n| [github.com/testcontainers/testcontainers-go/modules/minio](https://github.com/testcontainers/testcontainers-go) | `0.43.0` | `0.44.0` |\n| [github.com/testcontainers/testcontainers-go/modules/nats](https://github.com/testcontainers/testcontainers-go) | `0.43.0` | `0.44.0` |\n| [go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc](https://github.com/open-telemetry/opentelemetry-go-contrib) | `0.69.0` | `0.70.0` |\n| [go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp](https://github.com/open-telemetry/opentelemetry-go-contrib) | `0.69.0` | `0.70.0` |\n| [go.opentelemetry.io/otel](https://github.com/open-telemetry/opentelemetry-go) | `1.44.0` | `1.45.0` |\n| [go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc](https://github.com/open-telemetry/opentelemetry-go) | `1.44.0` | `1.45.0` |\n| [go.opentelemetry.io/otel/sdk](https://github.com/open-telemetry/opentelemetry-go) | `1.44.0` | `1.45.0` |\n| [go.temporal.io/api](https://github.com/temporalio/api-go) | `1.63.4` | `1.63.5` |\n\n\nUpdates `github.com/pact-foundation/pact-go/v2` from 2.5.1 to 2.7.0\n- [Release notes](https://github.com/pact-foundation/pact-go/releases)\n- [Changelog](https://github.com/pact-foundation/pact-go/blob/master/CHANGELOG.md)\n- [Commits](https://github.com/pact-foundation/pact-go/compare/v2.5.1...v2.7.0)\n\nUpdates `github.com/testcontainers/testcontainers-go` from 0.43.0 to 0.44.0\n- [Release notes](https://github.com/testcontainers/testcontainers-go/releases)\n- [Commits](https://github.com/testcontainers/testcontainers-go/compare/v0.43.0...v0.44.0)\n\nUpdates `github.com/testcontainers/testcontainers-go/modules/minio` from 0.43.0 to 0.44.0\n- [Release notes](https://github.com/testcontainers/testcontainers-go/releases)\n- [Commits](https://github.com/testcontainers/testcontainers-go/compare/v0.43.0...v0.44.0)\n\nUpdates `github.com/testcontainers/testcontainers-go/modules/nats` from 0.43.0 to 0.44.0\n- [Release notes](https://github.com/testcontainers/testcontainers-go/releases)\n- [Commits](https://github.com/testcontainers/testcontainers-go/compare/v0.43.0...v0.44.0)\n\nUpdates `go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc` from 0.69.0 to 0.70.0\n- [Release notes](https://github.com/open-telemetry/opentelemetry-go-contrib/releases)\n- [Changelog](https://github.com/open-telemetry/opentelemetry-go-contrib/blob/main/CHANGELOG.md)\n- [Commits](https://github.com/open-telemetry/opentelemetry-go-contrib/compare/zpages/v0.69.0...zpages/v0.70.0)\n\nUpdates `go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp` from 0.69.0 to 0.70.0\n- [Release notes](https://github.com/open-telemetry/opentelemetry-go-contrib/releases)\n- [Changelog](https://github.com/open-telemetry/opentelemetry-go-contrib/blob/main/CHANGELOG.md)\n- [Commits](https://github.com/open-telemetry/opentelemetry-go-contrib/compare/zpages/v0.69.0...zpages/v0.70.0)\n\nUpdates `go.opentelemetry.io/otel` from 1.44.0 to 1.45.0\n- [Release notes](https://github.com/open-telemetry/opentelemetry-go/releases)\n- [Changelog](https://github.com/open-telemetry/opentelemetry-go/blob/main/CHANGELOG.md)\n- [Commits](https://github.com/open-telemetry/opentelemetry-go/compare/v1.44.0...v1.45.0)\n\nUpdates `go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc` from 1.44.0 to 1.45.0\n- [Release notes](https://github.com/open-telemetry/opentelemetry-go/releases)\n- [Changelog](https://github.com/open-telemetry/opentelemetry-go/blob/main/CHANGELOG.md)\n- [Commits](https://github.com/open-telemetry/opentelemetry-go/compare/v1.44.0...v1.45.0)\n\nUpdates `go.opentelemetry.io/otel/sdk` from 1.44.0 to 1.45.0\n- [Release notes](https://github.com/open-telemetry/opentelemetry-go/releases)\n- [Changelog](https://github.com/open-telemetry/opentelemetry-go/blob/main/CHANGELOG.md)\n- [Commits](https://github.com/open-telemetry/opentelemetry-go/compare/v1.44.0...v1.45.0)\n\nUpdates `go.temporal.io/api` from 1.63.4 to 1.63.5\n- [Release notes](https://github.com/temporalio/api-go/releases)\n- [Commits](https://github.com/temporalio/api-go/compare/v1.63.4...v1.63.5)\n\n---\nupdated-dependencies:\n- dependency-name: github.com/pact-foundation/pact-go/v2\n  dependency-version: 2.7.0\n  dependency-type: direct:production\n  update-type: version-update:semver-minor\n  dependency-group: go-file-processor\n- dependency-name: github.com/testcontainers/testcontainers-go\n  dependency-version: 0.44.0\n  dependency-type: direct:production\n  update-type: version-update:semver-minor\n  dependency-group: go-file-processor\n- dependency-name: github.com/testcontainers/testcontainers-go/modules/minio\n  dependency-version: 0.44.0\n  dependency-type: direct:production\n  update-type: version-update:semver-minor\n  dependency-group: go-file-processor\n- dependency-name: github.com/testcontainers/testcontainers-go/modules/nats\n  dependency-version: 0.44.0\n  dependency-type: direct:production\n  update-type: version-update:semver-minor\n  dependency-group: go-file-processor\n- dependency-name: go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc\n  dependency-version: 0.70.0\n  dependency-type: direct:production\n  update-type: version-update:semver-minor\n  dependency-group: go-file-processor\n- dependency-name: go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp\n  dependency-version: 0.70.0\n  dependency-type: direct:production\n  update-type: version-update:semver-minor\n  dependency-group: go-file-processor\n- dependency-name: go.opentelemetry.io/otel\n  dependency-version: 1.45.0\n  dependency-type: direct:production\n  update-type: version-update:semver-minor\n  dependency-group: go-file-processor\n- dependency-name: go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc\n  dependency-version: 1.45.0\n  dependency-type: direct:production\n  update-type: version-update:semver-minor\n  dependency-group: go-file-processor\n- dependency-name: go.opentelemetry.io/otel/sdk\n  dependency-version: 1.45.0\n  dependency-type: direct:production\n  update-type: version-update:semver-minor\n  dependency-group: go-file-processor\n- dependency-name: go.temporal.io/api\n  dependency-version: 1.63.5\n  dependency-type: direct:production\n  update-type: version-update:semver-patch\n  dependency-group: go-file-processor\n...\n\nSigned-off-by: dependabot[bot] <support@github.com>\nCo-authored-by: dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>",
+          "timestamp": "2026-08-11T14:12:40+03:00",
+          "tree_id": "d51f68500e421c60f18e4437922edb661971e41a",
+          "url": "https://github.com/egorribun/university_ecosystem/commit/83beb35c866c4baa10b60e2ef95c663568a3c58e"
+        },
+        "date": 1786447054567,
+        "tool": "go",
+        "benches": [
+          {
+            "name": "BenchmarkJWKSValidation (github.com/university-ecosystem/gateway/middleware)",
+            "value": 103849,
+            "unit": "ns/op",
+            "extra": "10000 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkRateLimitFallback (github.com/university-ecosystem/gateway/middleware)",
+            "value": 108.1,
+            "unit": "ns/op",
+            "extra": "10990288 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkExtractAlgFromHeader (github.com/university-ecosystem/gateway/middleware)",
+            "value": 806,
+            "unit": "ns/op",
+            "extra": "1308133 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkValidateIAT (github.com/university-ecosystem/gateway/middleware)",
+            "value": 72.57,
+            "unit": "ns/op",
+            "extra": "16517539 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkCheckL1Cache_Hit (github.com/university-ecosystem/gateway/middleware)",
+            "value": 156.6,
+            "unit": "ns/op",
+            "extra": "7634566 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkCheckL1Cache_Miss (github.com/university-ecosystem/gateway/middleware)",
+            "value": 15.15,
+            "unit": "ns/op",
+            "extra": "79027190 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkJWKToRSAPublicKey (github.com/university-ecosystem/gateway/middleware)",
+            "value": 524.9,
+            "unit": "ns/op",
+            "extra": "2313061 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkShouldRefreshProbabilistic (github.com/university-ecosystem/gateway/middleware)",
+            "value": 126.5,
+            "unit": "ns/op",
+            "extra": "9480818 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkKeyFunc_HS256 (github.com/university-ecosystem/gateway/middleware)",
+            "value": 29.4,
+            "unit": "ns/op",
+            "extra": "39540112 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkMessageMarshal (github.com/university-ecosystem/ws-hub/pkg/hub)",
+            "value": 473.2,
+            "unit": "ns/op",
+            "extra": "2533408 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkMessageUnmarshal (github.com/university-ecosystem/ws-hub/pkg/hub)",
+            "value": 1339,
+            "unit": "ns/op",
+            "extra": "767064 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkClientLookup (github.com/university-ecosystem/ws-hub/pkg/hub)",
+            "value": 13.23,
+            "unit": "ns/op",
+            "extra": "91680105 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkCollectRecipients_Room (github.com/university-ecosystem/ws-hub/pkg/hub)",
+            "value": 762.5,
+            "unit": "ns/op",
+            "extra": "1537620 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkCollectRecipients_DirectMessage (github.com/university-ecosystem/ws-hub/pkg/hub)",
+            "value": 87.1,
+            "unit": "ns/op",
+            "extra": "13241346 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkCollectRecipients_Broadcast (github.com/university-ecosystem/ws-hub/pkg/hub)",
+            "value": 1375,
+            "unit": "ns/op",
+            "extra": "867572 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkSafeSend (github.com/university-ecosystem/ws-hub/pkg/hub)",
+            "value": 30.53,
+            "unit": "ns/op",
+            "extra": "35673810 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkHandleRegister (github.com/university-ecosystem/ws-hub/pkg/hub)",
+            "value": 1935,
+            "unit": "ns/op",
+            "extra": "1000000 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkNATSPublishSimulated (github.com/university-ecosystem/ws-hub/pkg/hub)",
+            "value": 46.55,
+            "unit": "ns/op",
+            "extra": "25941598 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkJWTVerify (github.com/university-ecosystem/ws-hub/pkg/hub)",
+            "value": 787.4,
+            "unit": "ns/op",
+            "extra": "1643811 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkBroadcastTo1000Clients (github.com/university-ecosystem/ws-hub/pkg/hub)",
+            "value": 14428,
+            "unit": "ns/op",
+            "extra": "115788 times\n4 procs"
           }
         ]
       }
