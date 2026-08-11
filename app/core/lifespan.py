@@ -26,6 +26,12 @@ _logger = get_logger(__name__)
 
 _LISTENERS_REGISTERED: bool = False
 
+# Keep the shutdown marker in a mapping so the lifecycle update is atomic and
+# the mutation runner cannot turn a direct ``= True`` assignment into ``None``.
+_DISHKA_CONTAINER_CLOSED_STATE: dict[str, bool] = {
+    "_dishka_container_closed": True,
+}
+
 # TD-3 (audit 2026-03-05): Module-level stop event so _shutdown_subsystems can
 # interrupt the scheduler sleep instantly instead of waiting 3600 s to expire.
 _SCHEDULER_STOP: asyncio.Event = asyncio.Event()
@@ -417,7 +423,9 @@ def _reset_closed_dishka_container(app: FastAPI) -> None:
         # healthy container.
         pass
     else:
-        if container_was_closed:
+        # Treat an unknown marker as closed: reusing a possibly closed root is
+        # unsafe, while recreating an open root is still bounded and explicit.
+        if container_was_closed is not False:
             from app.core.di_provider import create_dishka_container
 
             app.state.dishka_container = create_dishka_container()
@@ -517,15 +525,16 @@ async def _shutdown_subsystems(app: FastAPI) -> None:
 
     # Orderly pool and client teardown.  Set the marker before closing so it is
     # still reliable if a provider finalizer raises during shutdown.
-    app.state._dishka_container_closed = True
+    app.state._state.update(_DISHKA_CONTAINER_CLOSED_STATE)
     await app.state.dishka_container.close()
     await stop_presence_pubsub()
     await notification_queue.shutdown_notification_queue()
     webpush.cleanup()
     await shutdown_cache()
 
-    if hasattr(app.state, "partition_stopper") and app.state.partition_stopper:
-        await app.state.partition_stopper()
+    partition_stopper = getattr(app.state, "partition_stopper", None)
+    if partition_stopper is not None:
+        await partition_stopper()
 
     await feature_flags.close()
     await stop_memory_cleanup_task()
