@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1786482491478,
+  "lastUpdate": 1786482579730,
   "repoUrl": "https://github.com/egorribun/university_ecosystem",
   "entries": {
     "Go Services Performance Benchmarks": [
@@ -5907,6 +5907,54 @@ window.BENCHMARK_DATA = {
             "name": "batch_detect_conflicts/500",
             "value": 239613,
             "range": "± 9585",
+            "unit": "ns/iter"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "egorribun2005@gmail.com",
+            "name": "Egor",
+            "username": "egorribun"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "1155f5f007a498aa3ffa10194b50cd403661aede",
+          "message": "fix(ci): harden SQLMap OpenAPI scan (#1235)\n\n* fix(ci): harden SQLMap OpenAPI scan\n\n* fix(ci): bound SQLMap OpenAPI smoke scan\n\n---------\n\nCo-authored-by: Egor Ribun <egorribun@gmail.com>",
+          "timestamp": "2026-08-12T01:57:05+05:00",
+          "tree_id": "c793336565247ba5b4d55a2ab9549d910c419079",
+          "url": "https://github.com/egorribun/university_ecosystem/commit/1155f5f007a498aa3ffa10194b50cd403661aede"
+        },
+        "date": 1786482578183,
+        "tool": "cargo",
+        "benches": [
+          {
+            "name": "batch_detect_conflicts/10",
+            "value": 628,
+            "range": "± 5",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "batch_detect_conflicts/50",
+            "value": 21614,
+            "range": "± 873",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "batch_detect_conflicts/100",
+            "value": 34731,
+            "range": "± 3945",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "batch_detect_conflicts/500",
+            "value": 234059,
+            "range": "± 6029",
             "unit": "ns/iter"
           }
         ]
