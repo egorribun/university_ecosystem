@@ -13,6 +13,7 @@ jobs:
   sqlmap:
     name: SQLMap Scan
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -32,7 +33,15 @@ jobs:
         run: uv sync --frozen
 
       - name: Install SQLMap
-        run: uv pip install sqlmap
+        run: uv pip install "sqlmap==1.10.8"
+
+      - name: Verify SQLMap OpenAPI support
+        run: |
+          sqlmap_help="$(uv run sqlmap -hh)"
+          if ! grep -Fq -- "--openapi=" <<<"$sqlmap_help"; then
+            echo "::error::Pinned SQLMap lacks required OpenAPI support."
+            exit 1
+          fi
 
       - name: Start FastAPI Backend in Background
         env:
@@ -41,22 +50,30 @@ jobs:
           SECRET_KEY: "sqlmap-ci-placeholder-key" # pragma: allowlist secret
         run: |
           uv run uvicorn app.main:app --host 127.0.0.1 --port 8000 &
-          # Wait for the server to spin up
+          openapi_document="$(mktemp)"
+          # Wait for a successful, nonempty OpenAPI response from the app's real route.
           for i in {1..30}; do
-            if curl -s http://127.0.0.1:8000/openapi.json > /dev/null; then
-              echo "Server is up!"
+            if curl --fail --silent --show-error \
+              --output "$openapi_document" \
+              "http://127.0.0.1:8000/api/openapi.json" && test -s "$openapi_document"; then
+              echo "Server and OpenAPI document are ready."
               break
             fi
             echo "Waiting for server..."
             sleep 1
           done
+          if ! test -s "$openapi_document"; then
+            echo "::error::FastAPI OpenAPI document did not become ready within 30 seconds."
+            exit 1
+          fi
 
       - name: Run SQLMap Scan on API
         run: |
           # --batch: non-interactive mode
-          # --crawl=1: crawl from home/openapi links
+          # --crawl=1: crawl from OpenAPI-derived links
           # --risk=1 --level=1: lightweight scan for CI speed
-          uv run sqlmap --openapi="http://127.0.0.1:8000/openapi.json" \
+          uv run sqlmap --openapi="http://127.0.0.1:8000/api/openapi.json" \
+            --openapi-base="http://127.0.0.1:8000" \
             --batch \
             --crawl=1 \
             --risk=1 \
