@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1786469038454,
+  "lastUpdate": 1786478394612,
   "repoUrl": "https://github.com/egorribun/university_ecosystem",
   "entries": {
     "Go Services Performance Benchmarks": [
@@ -5457,6 +5457,54 @@ window.BENCHMARK_DATA = {
             "name": "batch_detect_conflicts/500",
             "value": 173999,
             "range": "± 10157",
+            "unit": "ns/iter"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "egorribun2005@gmail.com",
+            "name": "Egor",
+            "username": "egorribun"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "751414ffb59ac2f2de723c1074fa88f1331cfce9",
+          "message": "fix(quality): permit rust benchmark workspace root (#1237)\n\n* fix(quality): permit rust benchmark workspace root\n\n* fix(quality): prefetch Go modules without workspace writes\n\n* fix(quality): disable Go workspace mutation in captures\n\n---------\n\nCo-authored-by: Egor Ribun <egorribun@gmail.com>",
+          "timestamp": "2026-08-12T00:58:14+05:00",
+          "tree_id": "ac8481a0731fa299f91978f543c32455c51d042e",
+          "url": "https://github.com/egorribun/university_ecosystem/commit/751414ffb59ac2f2de723c1074fa88f1331cfce9"
+        },
+        "date": 1786478393722,
+        "tool": "cargo",
+        "benches": [
+          {
+            "name": "batch_detect_conflicts/10",
+            "value": 612,
+            "range": "± 18",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "batch_detect_conflicts/50",
+            "value": 21382,
+            "range": "± 488",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "batch_detect_conflicts/100",
+            "value": 34728,
+            "range": "± 1572",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "batch_detect_conflicts/500",
+            "value": 239613,
+            "range": "± 9585",
             "unit": "ns/iter"
           }
         ]
