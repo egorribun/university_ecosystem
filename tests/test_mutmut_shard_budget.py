@@ -7,9 +7,9 @@ from pathlib import Path
 import pytest
 
 from scripts.mutmut_shard_budget import (
-    FULL_POPULATION_PHASE_MULTIPLIER,
     METADATA_AND_STARTUP_RESERVE_SECONDS,
     MUTMUT_WALL_TIMEOUT_MULTIPLIER,
+    SELECTED_TEST_PHASE_MULTIPLIER,
     TERMINATION_GRACE_SECONDS,
     calculate_shard_budget,
     main,
@@ -42,14 +42,59 @@ def test_calculate_shard_budget_models_mutmut_watchdog_and_parallel_workers() ->
     assert budget.control_cycle_count == 3
     assert budget.control_cycle_reserve_seconds == 45
     assert budget.execution_cap_seconds == 135
-    assert budget.full_test_population_seconds == 4
+    assert budget.selected_test_union_seconds == 4
     assert budget.pre_mutation_reserve_seconds == (
-        METADATA_AND_STARTUP_RESERVE_SECONDS + FULL_POPULATION_PHASE_MULTIPLIER * 4
+        METADATA_AND_STARTUP_RESERVE_SECONDS + SELECTED_TEST_PHASE_MULTIPLIER * 4
     )
     assert budget.outer_timeout_seconds == (
-        budget.pre_mutation_reserve_seconds
-        + budget.execution_cap_seconds
-        + TERMINATION_GRACE_SECONDS
+        budget.pre_mutation_reserve_seconds + budget.execution_cap_seconds
+    )
+    assert budget.total_wall_cap_seconds == (
+        budget.outer_timeout_seconds + TERMINATION_GRACE_SECONDS
+    )
+
+
+def test_calculate_shard_budget_scopes_clean_and_forced_fail_to_selected_test_union() -> (
+    None
+):
+    """Unrelated tests cannot inflate a selected shard's pre-mutation budget."""
+
+    budget = calculate_shard_budget(
+        [
+            "app.module.x_alpha__mutmut_1",
+            "app.module.x_beta__mutmut_1",
+        ],
+        {
+            "app.module.x_alpha": [
+                "tests/test_alpha.py::test_alpha",
+                "tests/test_shared.py::test_shared",
+            ],
+            "app.module.x_beta": [
+                "tests/test_beta.py::test_beta",
+                "tests/test_shared.py::test_shared",
+            ],
+        },
+        {
+            "tests/test_alpha.py::test_alpha": 1.0,
+            "tests/test_beta.py::test_beta": 3.0,
+            "tests/test_shared.py::test_shared": 2.0,
+            "tests/test_unrelated.py::test_very_slow": 10_000.0,
+        },
+        max_children=2,
+    )
+
+    # The selected exact union is alpha + beta + shared (1 + 3 + 2), not the
+    # complete population and not the duplicate sum from two mutant mappings.
+    assert budget.selected_test_union_seconds == 6
+    assert budget.pre_mutation_reserve_seconds == (
+        METADATA_AND_STARTUP_RESERVE_SECONDS + 2 * 6
+    )
+    # GNU timeout receives this value and adds its separate kill-after grace.
+    assert budget.outer_timeout_seconds == (
+        budget.pre_mutation_reserve_seconds + budget.execution_cap_seconds
+    )
+    assert budget.total_wall_cap_seconds == (
+        budget.outer_timeout_seconds + TERMINATION_GRACE_SECONDS
     )
 
 
@@ -75,6 +120,57 @@ def test_calculate_shard_budget_reserves_each_selected_child_control_cycle() -> 
     assert budget.control_cycle_count == 5
     assert budget.control_cycle_reserve_seconds == 75
     assert budget.execution_cap_seconds == 165
+
+
+def test_calculate_shard_budget_rounds_a_positive_sub_ulp_duration_up_in_both_paths() -> (
+    None
+):
+    """A positive fractional test duration cannot disappear before either cap."""
+
+    whole_test = "tests/test_z_integer.py::test_integer"
+    fractional_test = "tests/test_a_fraction.py::test_fraction"
+    budget = calculate_shard_budget(
+        ["app.module.x__mutmut_1"],
+        {"app.module.x": [whole_test, fractional_test]},
+        {
+            whole_test: 1.0,
+            fractional_test: 2.0**-54,
+        },
+        max_children=1,
+    )
+
+    # The exact valid duration is 1 + 2**-54. It is strictly above one even
+    # though its nearest binary float rounds to 1.0. Both the selected union
+    # reserve and mutmut's 15x watchdog therefore need their next full second.
+    assert budget.selected_test_union_seconds == 2
+    assert budget.watchdog_execution_cap_seconds == 31
+    assert budget.pre_mutation_reserve_seconds == 904
+    assert budget.outer_timeout_seconds == 950
+    assert budget.total_wall_cap_seconds == 980
+
+
+def test_calculate_shard_budget_matches_the_observed_pr_lifecycle_shape() -> None:
+    """The observed shard fits the PR's pre-KILL cap and separate grace."""
+
+    test_name = "tests/test_lifecycle.py::test_observed_duration"
+    budget = calculate_shard_budget(
+        ["app.module.lifecycle__mutmut_1"],
+        {"app.module.lifecycle": [test_name]},
+        {test_name: 258.839754},
+        max_children=1,
+    )
+
+    assert budget.selected_test_union_seconds == 259
+    assert budget.pre_mutation_reserve_seconds == 1418
+    assert budget.watchdog_execution_cap_seconds == 3898
+    assert budget.control_cycle_reserve_seconds == 15
+    assert budget.execution_cap_seconds == 3913
+    assert budget.outer_timeout_seconds == 5331
+    assert budget.total_wall_cap_seconds == 5361
+    assert budget.outer_timeout_seconds < 6600
+    assert budget.total_wall_cap_seconds == (
+        budget.outer_timeout_seconds + TERMINATION_GRACE_SECONDS
+    )
 
 
 def test_budget_cli_fails_closed_when_multi_wave_reserve_exceeds_cap(

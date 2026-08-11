@@ -1867,12 +1867,13 @@ jobs:
       # diffs and exit successfully after proving their slice is empty.
       matrix:
         shard: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]
-    # The pull-request gate has a true 25-minute wall-clock envelope.  Its
-    # dynamic inner timeout is fail-closed: after a 30-second KILL grace it
-    # reserves four minutes for proof, score verification, and upload.  The
+    # Exact shards can legitimately map to a large lifecycle test union. The
+    # pull-request gate therefore has a two-hour wall-clock envelope. Its
+    # dynamic inner timeout stays fail-closed: after a 30-second KILL grace it
+    # reserves five minutes for proof, score verification, and upload. The
     # separately dispatched manual evidence workflow intentionally keeps its
     # longer six-hour envelope for full forensic evidence.
-    timeout-minutes: 25
+    timeout-minutes: 120
     needs:
       - pre-commit-check
       - mutation-tests-stats
@@ -1883,7 +1884,7 @@ jobs:
         shell: bash
         run: |
           MUTMUT_JOB_STARTED_EPOCH="$(date -u +%s)"
-          MUTMUT_JOB_DEADLINE_EPOCH="$((MUTMUT_JOB_STARTED_EPOCH + 1500))"
+          MUTMUT_JOB_DEADLINE_EPOCH="$((MUTMUT_JOB_STARTED_EPOCH + 7200))"
           {
             echo "MUTMUT_JOB_STARTED_EPOCH=$MUTMUT_JOB_STARTED_EPOCH"
             echo "MUTMUT_JOB_DEADLINE_EPOCH=$MUTMUT_JOB_DEADLINE_EPOCH"
@@ -2031,16 +2032,16 @@ jobs:
             --selected-file /tmp/mutmut-shard.txt \
             --stats mutants/mutmut-stats.json \
             --max-children 2 \
-            --max-timeout-seconds 1200 \
+            --max-timeout-seconds 6600 \
             --output "$MUTMUT_EVIDENCE_DIR/shard-budget.json")"
           if ! [[ "$MUTMUT_BUDGET_TIMEOUT_SECONDS" =~ ^[1-9][0-9]*$ ]]; then
             MUTMUT_FAILURE_REASON="mutation budget helper returned an unsafe timeout value"
             echo "::error::Mutation budget helper returned an unsafe timeout value."
             exit 1
           fi
-          # The 1,200-second budget is only an upper cap. The deadline starts
-          # before setup, so derive a lower cap from the durable 25-minute job
-          # deadline and leave 240 seconds (four minutes) after timeout's
+          # The 6,600-second budget is only an upper cap. The deadline starts
+          # before setup, so derive a lower cap from the durable two-hour job
+          # deadline and leave 300 seconds (five minutes) after timeout's
           # 30-second KILL grace for proof, score verification, upload, and a
           # fail-closed exit.
           if ! [[ "${MUTMUT_JOB_DEADLINE_EPOCH:-}" =~ ^[1-9][0-9]*$ ]]; then
@@ -2049,14 +2050,14 @@ jobs:
             exit 1
           fi
           MUTMUT_FAILURE_REASON="deriving the deadline-bounded mutation timeout"
-          MUTMUT_POST_RUN_UPLOAD_RESERVE_SECONDS=240
+          MUTMUT_POST_RUN_UPLOAD_RESERVE_SECONDS=300
           MUTMUT_TIMEOUT_KILL_GRACE_SECONDS=30
           MUTMUT_CURRENT_EPOCH="$(date -u +%s)"
           MUTMUT_REMAINING_JOB_SECONDS="$((MUTMUT_JOB_DEADLINE_EPOCH - MUTMUT_CURRENT_EPOCH))"
           MUTMUT_REMAINING_TIMEOUT_SECONDS="$((MUTMUT_REMAINING_JOB_SECONDS - MUTMUT_POST_RUN_UPLOAD_RESERVE_SECONDS - MUTMUT_TIMEOUT_KILL_GRACE_SECONDS))"
           if [ "$MUTMUT_REMAINING_TIMEOUT_SECONDS" -lt 1 ]; then
             MUTMUT_FAILURE_REASON="mutation deadline leaves no execution time after required evidence headroom"
-            echo "::error::Mutation deadline leaves no execution time after the required 240-second post-run/upload reserve and 30-second KILL grace."
+            echo "::error::Mutation deadline leaves no execution time after the required 300-second post-run/upload reserve and 30-second KILL grace."
             exit 1
           fi
           MUTMUT_TIMEOUT_SECONDS="$MUTMUT_BUDGET_TIMEOUT_SECONDS"

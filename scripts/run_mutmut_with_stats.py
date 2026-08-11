@@ -7,9 +7,10 @@ baseline.  Pytest does not support repeated in-process invocations for this
 suite: imported test modules and dependencies remain cached.  CI has already
 created a complete, same-revision stats map in a separate process, so reuse
 its test IDs for that discovery check and leave the clean baseline as this
-process's first pytest invocation.  All mutation generation, clean/forced-fail
-checks, watchdogs, exact selection, and result persistence remain mutmut's
-own pinned-3.7 implementation.
+process's first pytest invocation. For an exact shard, the forced-fail check
+is scoped to the same mapped test union mutmut uses for its clean baseline and
+mutation children. All mutation generation, watchdogs, exact selection, and
+result persistence remain mutmut's own pinned-3.7 implementation.
 """
 
 from __future__ import annotations
@@ -83,25 +84,36 @@ def run_mutmut_from_stats(
     max_children: int,
     mutmut_cli: Any | None = None,
 ) -> None:
-    """Run mutmut while bypassing only its redundant same-process collection."""
+    """Run an exact mutmut shard with reused stats and matching forced-fail scope."""
 
     if max_children < 1:
         raise ValueError("max_children must be positive")
     _require_precomputed_stats()
     cli = mutmut_cli or _load_mutmut_cli()
 
+    selected_mutants = tuple(mutant_names)
     original_list_all_tests = cli.PytestRunner.list_all_tests
+    original_run_forced_fail = cli.PytestRunner.run_forced_fail
 
     def _reuse_precomputed_test_ids(_runner: Any) -> Any:
         return cli.ListAllTestsResult(ids=set(cli.collected_test_names()))
 
+    def _run_selected_forced_fail(runner: Any) -> Any:
+        return runner.run_tests(
+            mutant_name=None,
+            tests=cli.tests_for_mutant_names(selected_mutants),
+        )
+
     cli.PytestRunner.list_all_tests = _reuse_precomputed_test_ids
+    cli.PytestRunner.run_forced_fail = _run_selected_forced_fail
     try:
         # `_run` is pinned with mutmut==3.7.0.  It still owns all mutation
-        # phases; the temporary hook only replaces redundant test discovery.
-        cli._run(tuple(mutant_names), max_children=max_children)
+        # phases. The temporary hooks reuse redundant collection and align
+        # forced-fail with mutmut's exact clean/mutation test selection.
+        cli._run(selected_mutants, max_children=max_children)
     finally:
         cli.PytestRunner.list_all_tests = original_list_all_tests
+        cli.PytestRunner.run_forced_fail = original_run_forced_fail
 
 
 def main() -> None:
