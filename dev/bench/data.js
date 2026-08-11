@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1786447438098,
+  "lastUpdate": 1786447504005,
   "repoUrl": "https://github.com/egorribun/university_ecosystem",
   "entries": {
     "Go Services Performance Benchmarks": [
@@ -4845,6 +4845,54 @@ window.BENCHMARK_DATA = {
             "name": "batch_detect_conflicts/500",
             "value": 139560,
             "range": "± 2762",
+            "unit": "ns/iter"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "49699333+dependabot[bot]@users.noreply.github.com",
+            "name": "dependabot[bot]",
+            "username": "dependabot[bot]"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "10c0ecff521b04524da5d7dd48aa9a93e8611647",
+          "message": "build(deps): Bump the go-gateway group (#1232)\n\nBumps the go-gateway group in /services/gateway with 10 updates:\n\n| Package | From | To |\n| --- | --- | --- |\n| [github.com/quic-go/quic-go](https://github.com/quic-go/quic-go) | `0.59.1` | `0.61.0` |\n| [github.com/redis/go-redis/extra/redisprometheus/v9](https://github.com/redis/go-redis) | `9.21.0` | `9.22.0` |\n| [github.com/redis/go-redis/v9](https://github.com/redis/go-redis) | `9.21.0` | `9.22.0` |\n| [github.com/testcontainers/testcontainers-go](https://github.com/testcontainers/testcontainers-go) | `0.43.0` | `0.44.0` |\n| [github.com/testcontainers/testcontainers-go/modules/redis](https://github.com/testcontainers/testcontainers-go) | `0.43.0` | `0.44.0` |\n| [go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin](https://github.com/open-telemetry/opentelemetry-go-contrib) | `0.69.0` | `0.70.0` |\n| [go.opentelemetry.io/otel](https://github.com/open-telemetry/opentelemetry-go) | `1.44.0` | `1.45.0` |\n| [go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc](https://github.com/open-telemetry/opentelemetry-go) | `1.44.0` | `1.45.0` |\n| [go.opentelemetry.io/otel/sdk](https://github.com/open-telemetry/opentelemetry-go) | `1.44.0` | `1.45.0` |\n| [go.opentelemetry.io/otel/trace](https://github.com/open-telemetry/opentelemetry-go) | `1.44.0` | `1.45.0` |\n\n\nUpdates `github.com/quic-go/quic-go` from 0.59.1 to 0.61.0\n- [Release notes](https://github.com/quic-go/quic-go/releases)\n- [Commits](https://github.com/quic-go/quic-go/compare/v0.59.1...v0.61.0)\n\nUpdates `github.com/redis/go-redis/extra/redisprometheus/v9` from 9.21.0 to 9.22.0\n- [Release notes](https://github.com/redis/go-redis/releases)\n- [Changelog](https://github.com/redis/go-redis/blob/master/RELEASE-NOTES.md)\n- [Commits](https://github.com/redis/go-redis/compare/v9.21.0...v9.22.0)\n\nUpdates `github.com/redis/go-redis/v9` from 9.21.0 to 9.22.0\n- [Release notes](https://github.com/redis/go-redis/releases)\n- [Changelog](https://github.com/redis/go-redis/blob/master/RELEASE-NOTES.md)\n- [Commits](https://github.com/redis/go-redis/compare/v9.21.0...v9.22.0)\n\nUpdates `github.com/testcontainers/testcontainers-go` from 0.43.0 to 0.44.0\n- [Release notes](https://github.com/testcontainers/testcontainers-go/releases)\n- [Commits](https://github.com/testcontainers/testcontainers-go/compare/v0.43.0...v0.44.0)\n\nUpdates `github.com/testcontainers/testcontainers-go/modules/redis` from 0.43.0 to 0.44.0\n- [Release notes](https://github.com/testcontainers/testcontainers-go/releases)\n- [Commits](https://github.com/testcontainers/testcontainers-go/compare/v0.43.0...v0.44.0)\n\nUpdates `go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin` from 0.69.0 to 0.70.0\n- [Release notes](https://github.com/open-telemetry/opentelemetry-go-contrib/releases)\n- [Changelog](https://github.com/open-telemetry/opentelemetry-go-contrib/blob/main/CHANGELOG.md)\n- [Commits](https://github.com/open-telemetry/opentelemetry-go-contrib/compare/zpages/v0.69.0...zpages/v0.70.0)\n\nUpdates `go.opentelemetry.io/otel` from 1.44.0 to 1.45.0\n- [Release notes](https://github.com/open-telemetry/opentelemetry-go/releases)\n- [Changelog](https://github.com/open-telemetry/opentelemetry-go/blob/main/CHANGELOG.md)\n- [Commits](https://github.com/open-telemetry/opentelemetry-go/compare/v1.44.0...v1.45.0)\n\nUpdates `go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc` from 1.44.0 to 1.45.0\n- [Release notes](https://github.com/open-telemetry/opentelemetry-go/releases)\n- [Changelog](https://github.com/open-telemetry/opentelemetry-go/blob/main/CHANGELOG.md)\n- [Commits](https://github.com/open-telemetry/opentelemetry-go/compare/v1.44.0...v1.45.0)\n\nUpdates `go.opentelemetry.io/otel/sdk` from 1.44.0 to 1.45.0\n- [Release notes](https://github.com/open-telemetry/opentelemetry-go/releases)\n- [Changelog](https://github.com/open-telemetry/opentelemetry-go/blob/main/CHANGELOG.md)\n- [Commits](https://github.com/open-telemetry/opentelemetry-go/compare/v1.44.0...v1.45.0)\n\nUpdates `go.opentelemetry.io/otel/trace` from 1.44.0 to 1.45.0\n- [Release notes](https://github.com/open-telemetry/opentelemetry-go/releases)\n- [Changelog](https://github.com/open-telemetry/opentelemetry-go/blob/main/CHANGELOG.md)\n- [Commits](https://github.com/open-telemetry/opentelemetry-go/compare/v1.44.0...v1.45.0)\n\n---\nupdated-dependencies:\n- dependency-name: github.com/quic-go/quic-go\n  dependency-version: 0.61.0\n  dependency-type: direct:production\n  update-type: version-update:semver-minor\n  dependency-group: go-gateway\n- dependency-name: github.com/redis/go-redis/extra/redisprometheus/v9\n  dependency-version: 9.22.0\n  dependency-type: direct:production\n  update-type: version-update:semver-minor\n  dependency-group: go-gateway\n- dependency-name: github.com/redis/go-redis/v9\n  dependency-version: 9.22.0\n  dependency-type: direct:production\n  update-type: version-update:semver-minor\n  dependency-group: go-gateway\n- dependency-name: github.com/testcontainers/testcontainers-go\n  dependency-version: 0.44.0\n  dependency-type: direct:production\n  update-type: version-update:semver-minor\n  dependency-group: go-gateway\n- dependency-name: github.com/testcontainers/testcontainers-go/modules/redis\n  dependency-version: 0.44.0\n  dependency-type: direct:production\n  update-type: version-update:semver-minor\n  dependency-group: go-gateway\n- dependency-name: go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin\n  dependency-version: 0.70.0\n  dependency-type: direct:production\n  update-type: version-update:semver-minor\n  dependency-group: go-gateway\n- dependency-name: go.opentelemetry.io/otel\n  dependency-version: 1.45.0\n  dependency-type: direct:production\n  update-type: version-update:semver-minor\n  dependency-group: go-gateway\n- dependency-name: go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc\n  dependency-version: 1.45.0\n  dependency-type: direct:production\n  update-type: version-update:semver-minor\n  dependency-group: go-gateway\n- dependency-name: go.opentelemetry.io/otel/sdk\n  dependency-version: 1.45.0\n  dependency-type: direct:production\n  update-type: version-update:semver-minor\n  dependency-group: go-gateway\n- dependency-name: go.opentelemetry.io/otel/trace\n  dependency-version: 1.45.0\n  dependency-type: direct:production\n  update-type: version-update:semver-minor\n  dependency-group: go-gateway\n...\n\nSigned-off-by: dependabot[bot] <support@github.com>\nCo-authored-by: dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>\nCo-authored-by: Egor <egorribun2005@gmail.com>",
+          "timestamp": "2026-08-11T14:13:36+03:00",
+          "tree_id": "ca611e2a36d4ebc8176e6d30b8dc969e933c1748",
+          "url": "https://github.com/egorribun/university_ecosystem/commit/10c0ecff521b04524da5d7dd48aa9a93e8611647"
+        },
+        "date": 1786447503112,
+        "tool": "cargo",
+        "benches": [
+          {
+            "name": "batch_detect_conflicts/10",
+            "value": 496,
+            "range": "± 1",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "batch_detect_conflicts/50",
+            "value": 17469,
+            "range": "± 1136",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "batch_detect_conflicts/100",
+            "value": 27888,
+            "range": "± 1734",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "batch_detect_conflicts/500",
+            "value": 182169,
+            "range": "± 6622",
             "unit": "ns/iter"
           }
         ]
