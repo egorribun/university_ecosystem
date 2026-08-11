@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1786469013981,
+  "lastUpdate": 1786478504271,
   "repoUrl": "https://github.com/egorribun/university_ecosystem",
   "entries": {
     "WS-Hub Regression Gate": [
@@ -1728,6 +1728,294 @@ window.BENCHMARK_DATA = {
             "value": 2,
             "unit": "allocs/op",
             "extra": "113168 times\n4 procs"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "egorribun2005@gmail.com",
+            "name": "Egor",
+            "username": "egorribun"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "751414ffb59ac2f2de723c1074fa88f1331cfce9",
+          "message": "fix(quality): permit rust benchmark workspace root (#1237)\n\n* fix(quality): permit rust benchmark workspace root\n\n* fix(quality): prefetch Go modules without workspace writes\n\n* fix(quality): disable Go workspace mutation in captures\n\n---------\n\nCo-authored-by: Egor Ribun <egorribun@gmail.com>",
+          "timestamp": "2026-08-12T00:58:14+05:00",
+          "tree_id": "ac8481a0731fa299f91978f543c32455c51d042e",
+          "url": "https://github.com/egorribun/university_ecosystem/commit/751414ffb59ac2f2de723c1074fa88f1331cfce9"
+        },
+        "date": 1786478503003,
+        "tool": "go",
+        "benches": [
+          {
+            "name": "BenchmarkMessageMarshal",
+            "value": 506.1,
+            "unit": "ns/op 192 B/op 2 allocs/op",
+            "extra": "2378848 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkMessageMarshal - ns/op",
+            "value": 506.1,
+            "unit": "ns/op",
+            "extra": "2378848 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkMessageMarshal - B/op",
+            "value": 192,
+            "unit": "B/op",
+            "extra": "2378848 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkMessageMarshal - allocs/op",
+            "value": 2,
+            "unit": "allocs/op",
+            "extra": "2378848 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkMessageUnmarshal",
+            "value": 1367,
+            "unit": "ns/op 376 B/op 10 allocs/op",
+            "extra": "776361 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkMessageUnmarshal - ns/op",
+            "value": 1367,
+            "unit": "ns/op",
+            "extra": "776361 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkMessageUnmarshal - B/op",
+            "value": 376,
+            "unit": "B/op",
+            "extra": "776361 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkMessageUnmarshal - allocs/op",
+            "value": 10,
+            "unit": "allocs/op",
+            "extra": "776361 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkClientLookup",
+            "value": 21.96,
+            "unit": "ns/op 0 B/op 0 allocs/op",
+            "extra": "57457339 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkClientLookup - ns/op",
+            "value": 21.96,
+            "unit": "ns/op",
+            "extra": "57457339 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkClientLookup - B/op",
+            "value": 0,
+            "unit": "B/op",
+            "extra": "57457339 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkClientLookup - allocs/op",
+            "value": 0,
+            "unit": "allocs/op",
+            "extra": "57457339 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkCollectRecipients_Room",
+            "value": 687.7,
+            "unit": "ns/op 960 B/op 2 allocs/op",
+            "extra": "1753989 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkCollectRecipients_Room - ns/op",
+            "value": 687.7,
+            "unit": "ns/op",
+            "extra": "1753989 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkCollectRecipients_Room - B/op",
+            "value": 960,
+            "unit": "B/op",
+            "extra": "1753989 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkCollectRecipients_Room - allocs/op",
+            "value": 2,
+            "unit": "allocs/op",
+            "extra": "1753989 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkCollectRecipients_DirectMessage",
+            "value": 82.03,
+            "unit": "ns/op 80 B/op 2 allocs/op",
+            "extra": "13710530 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkCollectRecipients_DirectMessage - ns/op",
+            "value": 82.03,
+            "unit": "ns/op",
+            "extra": "13710530 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkCollectRecipients_DirectMessage - B/op",
+            "value": 80,
+            "unit": "B/op",
+            "extra": "13710530 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkCollectRecipients_DirectMessage - allocs/op",
+            "value": 2,
+            "unit": "allocs/op",
+            "extra": "13710530 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkCollectRecipients_Broadcast",
+            "value": 1316,
+            "unit": "ns/op 1856 B/op 2 allocs/op",
+            "extra": "1000000 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkCollectRecipients_Broadcast - ns/op",
+            "value": 1316,
+            "unit": "ns/op",
+            "extra": "1000000 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkCollectRecipients_Broadcast - B/op",
+            "value": 1856,
+            "unit": "B/op",
+            "extra": "1000000 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkCollectRecipients_Broadcast - allocs/op",
+            "value": 2,
+            "unit": "allocs/op",
+            "extra": "1000000 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkSafeSend",
+            "value": 51.59,
+            "unit": "ns/op 0 B/op 0 allocs/op",
+            "extra": "23110419 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkSafeSend - ns/op",
+            "value": 51.59,
+            "unit": "ns/op",
+            "extra": "23110419 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkSafeSend - B/op",
+            "value": 0,
+            "unit": "B/op",
+            "extra": "23110419 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkSafeSend - allocs/op",
+            "value": 0,
+            "unit": "allocs/op",
+            "extra": "23110419 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkHandleRegister",
+            "value": 2074,
+            "unit": "ns/op 6879 B/op 8 allocs/op",
+            "extra": "1000000 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkHandleRegister - ns/op",
+            "value": 2074,
+            "unit": "ns/op",
+            "extra": "1000000 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkHandleRegister - B/op",
+            "value": 6879,
+            "unit": "B/op",
+            "extra": "1000000 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkHandleRegister - allocs/op",
+            "value": 8,
+            "unit": "allocs/op",
+            "extra": "1000000 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkNATSPublishSimulated",
+            "value": 68.9,
+            "unit": "ns/op 0 B/op 0 allocs/op",
+            "extra": "17394327 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkNATSPublishSimulated - ns/op",
+            "value": 68.9,
+            "unit": "ns/op",
+            "extra": "17394327 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkNATSPublishSimulated - B/op",
+            "value": 0,
+            "unit": "B/op",
+            "extra": "17394327 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkNATSPublishSimulated - allocs/op",
+            "value": 0,
+            "unit": "allocs/op",
+            "extra": "17394327 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkJWTVerify",
+            "value": 685,
+            "unit": "ns/op 640 B/op 8 allocs/op",
+            "extra": "1732543 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkJWTVerify - ns/op",
+            "value": 685,
+            "unit": "ns/op",
+            "extra": "1732543 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkJWTVerify - B/op",
+            "value": 640,
+            "unit": "B/op",
+            "extra": "1732543 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkJWTVerify - allocs/op",
+            "value": 8,
+            "unit": "allocs/op",
+            "extra": "1732543 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkBroadcastTo1000Clients",
+            "value": 12221,
+            "unit": "ns/op 16448 B/op 2 allocs/op",
+            "extra": "101139 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkBroadcastTo1000Clients - ns/op",
+            "value": 12221,
+            "unit": "ns/op",
+            "extra": "101139 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkBroadcastTo1000Clients - B/op",
+            "value": 16448,
+            "unit": "B/op",
+            "extra": "101139 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkBroadcastTo1000Clients - allocs/op",
+            "value": 2,
+            "unit": "allocs/op",
+            "extra": "101139 times\n4 procs"
           }
         ]
       }
