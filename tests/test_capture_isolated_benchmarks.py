@@ -19,6 +19,7 @@ from scripts.quality.capture_isolated_benchmarks import (
     _docker_server_version,
     _force_remove_container,
     _go_environment,
+    _go_prefetch_environment,
     _remove_image,
     _remove_volume,
     _rust_environment,
@@ -175,6 +176,15 @@ def test_rust_prefetch_selects_the_workspace_manifest() -> None:
         "--manifest-path",
         "native/rust_ext/Cargo.toml",
     )
+
+
+def test_go_prefetch_is_read_only_workspace_safe() -> None:
+    """Go dependency setup must not attempt to rewrite go.work.sum."""
+
+    environment = _go_prefetch_environment()
+
+    assert environment["GOWORK"] == "off"
+    assert environment["GOFLAGS"] == "-mod=readonly -buildvcs=false"
 
 
 def test_isolated_capture_rejects_a_single_checkout_for_both_sides(

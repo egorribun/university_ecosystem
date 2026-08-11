@@ -700,6 +700,19 @@ def _go_environment(*, offline: bool) -> dict[str, str]:
     return environment
 
 
+def _go_prefetch_environment() -> dict[str, str]:
+    """Fetch Go modules without mutating the read-only workspace checkout."""
+
+    environment = _go_environment(offline=False)
+    environment.update(
+        {
+            "GOWORK": "off",
+            "GOFLAGS": "-mod=readonly -buildvcs=false",
+        }
+    )
+    return environment
+
+
 def _rust_environment(*, offline: bool) -> dict[str, str]:
     environment = {
         "CARGO_HOME": "/cache/cargo",
@@ -910,7 +923,7 @@ def capture(arguments: CaptureArguments) -> None:
             image = GO_IMAGE
             workdir = "/src/services/ws-hub"
             prefetch_program = ("sh", "-ec", "go mod download && go mod verify")
-            prefetch_environment = _go_environment(offline=False)
+            prefetch_environment = _go_prefetch_environment()
             measurement_environment = _go_environment(offline=True)
             warm_program = _go_program()
             measurement_program = _go_program()
