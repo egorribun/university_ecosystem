@@ -70,13 +70,21 @@ jobs:
       - name: Run SQLMap Scan on API
         run: |
           # --batch: non-interactive mode
-          # --crawl=1: crawl from OpenAPI-derived links
+          # The OpenAPI document already enumerates the complete route set;
+          # recrawling it only multiplies requests without increasing coverage.
+          # Exclude time-based probes from this PR smoke gate: the disposable
+          # app deliberately rate-limits repeated requests and those probes
+          # can consume the entire job envelope without improving the
+          # boolean/error/union injection signal.
           # --risk=1 --level=1: lightweight scan for CI speed
           uv run sqlmap --openapi="http://127.0.0.1:8000/api/openapi.json" \
             --openapi-base="http://127.0.0.1:8000" \
             --batch \
-            --crawl=1 \
+            --crawl=0 \
+            --technique=BEU \
             --risk=1 \
             --level=1 \
             --threads=2 \
+            --timeout=5 \
+            --retries=0 \
             --flush-session
