@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1786478401411,
+  "lastUpdate": 1786478555887,
   "repoUrl": "https://github.com/egorribun/university_ecosystem",
   "entries": {
     "Go Services Performance Benchmarks": [
@@ -4783,6 +4783,120 @@ window.BENCHMARK_DATA = {
             "name": "strip_html/large",
             "value": 88555,
             "range": "± 2193",
+            "unit": "ns/iter"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "egorribun2005@gmail.com",
+            "name": "Egor",
+            "username": "egorribun"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "751414ffb59ac2f2de723c1074fa88f1331cfce9",
+          "message": "fix(quality): permit rust benchmark workspace root (#1237)\n\n* fix(quality): permit rust benchmark workspace root\n\n* fix(quality): prefetch Go modules without workspace writes\n\n* fix(quality): disable Go workspace mutation in captures\n\n---------\n\nCo-authored-by: Egor Ribun <egorribun@gmail.com>",
+          "timestamp": "2026-08-12T00:58:14+05:00",
+          "tree_id": "ac8481a0731fa299f91978f543c32455c51d042e",
+          "url": "https://github.com/egorribun/university_ecosystem/commit/751414ffb59ac2f2de723c1074fa88f1331cfce9"
+        },
+        "date": 1786478554916,
+        "tool": "cargo",
+        "benches": [
+          {
+            "name": "sanitize_rich_text/empty",
+            "value": 6140,
+            "range": "± 340",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_rich_text/plain_text",
+            "value": 7059,
+            "range": "± 169",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_rich_text/simple_html",
+            "value": 9936,
+            "range": "± 766",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_rich_text/xss_attempt",
+            "value": 10461,
+            "range": "± 20",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_rich_text/large",
+            "value": 95228,
+            "range": "± 442",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_html_basic/empty",
+            "value": 5521,
+            "range": "± 24",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_html_basic/plain_text",
+            "value": 6417,
+            "range": "± 17",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_html_basic/simple_html",
+            "value": 8926,
+            "range": "± 180",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_html_basic/xss_attempt",
+            "value": 9124,
+            "range": "± 14",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_html_basic/large",
+            "value": 88935,
+            "range": "± 1907",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "strip_html/empty",
+            "value": 5353,
+            "range": "± 69",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "strip_html/plain_text",
+            "value": 6265,
+            "range": "± 149",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "strip_html/simple_html",
+            "value": 8555,
+            "range": "± 95",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "strip_html/xss_attempt",
+            "value": 9092,
+            "range": "± 156",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "strip_html/large",
+            "value": 86724,
+            "range": "± 396",
             "unit": "ns/iter"
           }
         ]
