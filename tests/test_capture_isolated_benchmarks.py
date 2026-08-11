@@ -148,6 +148,30 @@ def test_container_command_allows_the_read_only_source_mount_root(
     assert command[command.index("--workdir") + 1] == "/src"
 
 
+def test_container_command_reuses_a_persistent_cache_holder(
+    tmp_path: Path,
+) -> None:
+    """Short-lived benchmark runs attach to the side's persistent cache holder."""
+
+    source = tmp_path / "candidate-source"
+    source.mkdir()
+    holder = "quality-benchmark-" + "b" * 32
+    command = build_container_command(
+        image="example.invalid/performance@sha256:" + "a" * 64,
+        source_worktree=source,
+        cache_volume="private-candidate-cache",
+        cache_holder=holder,
+        container_name="quality-benchmark-" + "a" * 32,
+        workdir="/src/services/ws-hub",
+        network="none",
+        environment={"HOME": CONTAINER_HOME},
+        program=("go", "test", "-mod=readonly", "-bench=.", "./..."),
+    )
+
+    assert command[command.index("--volumes-from") + 1] == holder
+    assert "type=volume,src=private-candidate-cache,dst=/cache" not in command
+
+
 def test_limited_capture_stops_writing_before_an_untrusted_stream_can_fill_disk(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -261,6 +285,10 @@ def test_capture_rejects_a_mismatched_worktree_head_before_benchmark_setup(
         lambda **_kwargs: benchmark_setup.append("prefetch"),
     )
     monkeypatch.setattr(
+        "scripts.quality.capture_isolated_benchmarks._start_cache_holder",
+        lambda **_kwargs: None,
+    )
+    monkeypatch.setattr(
         "scripts.quality.capture_isolated_benchmarks._capture_pair",
         lambda **_kwargs: benchmark_setup.append("capture"),
     )
@@ -342,6 +370,10 @@ def test_capture_accepts_worktrees_with_matching_declared_heads(
     )
     monkeypatch.setattr(
         "scripts.quality.capture_isolated_benchmarks._prefetch", lambda **_kwargs: None
+    )
+    monkeypatch.setattr(
+        "scripts.quality.capture_isolated_benchmarks._start_cache_holder",
+        lambda **_kwargs: None,
     )
     monkeypatch.setattr(
         "scripts.quality.capture_isolated_benchmarks._capture_pair",
