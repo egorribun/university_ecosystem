@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1786447796326,
+  "lastUpdate": 1786468891882,
   "repoUrl": "https://github.com/egorribun/university_ecosystem",
   "entries": {
     "Go Services Performance Benchmarks": [
@@ -5151,6 +5151,54 @@ window.BENCHMARK_DATA = {
             "name": "batch_detect_conflicts/500",
             "value": 182169,
             "range": "± 6622",
+            "unit": "ns/iter"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "egorribun2005@gmail.com",
+            "name": "Egor",
+            "username": "egorribun"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "fdf9a6ea8b9d1b222f51dc4a2c7ed3b57f91e667",
+          "message": "feat(quality): bootstrap trusted performance assets (#1234)\n\nasset bootstrap / no safe preexisting required context; base is missing base-trusted performance tooling; retaining path filter avoids widening legacy writable PR workflow.\nCo-authored-by: Egor Ribun <egorribun@gmail.com>",
+          "timestamp": "2026-08-11T20:19:16+03:00",
+          "tree_id": "e6ce87a619a6dd553eef22861034220a6828012c",
+          "url": "https://github.com/egorribun/university_ecosystem/commit/fdf9a6ea8b9d1b222f51dc4a2c7ed3b57f91e667"
+        },
+        "date": 1786468890456,
+        "tool": "cargo",
+        "benches": [
+          {
+            "name": "batch_detect_conflicts/10",
+            "value": 644,
+            "range": "± 18",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "batch_detect_conflicts/50",
+            "value": 26834,
+            "range": "± 911",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "batch_detect_conflicts/100",
+            "value": 43154,
+            "range": "± 1264",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "batch_detect_conflicts/500",
+            "value": 173999,
+            "range": "± 10157",
             "unit": "ns/iter"
           }
         ]
