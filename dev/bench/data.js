@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1786482579730,
+  "lastUpdate": 1786482598055,
   "repoUrl": "https://github.com/egorribun/university_ecosystem",
   "entries": {
     "Go Services Performance Benchmarks": [
@@ -5041,6 +5041,120 @@ window.BENCHMARK_DATA = {
             "name": "strip_html/large",
             "value": 86724,
             "range": "± 396",
+            "unit": "ns/iter"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "egorribun2005@gmail.com",
+            "name": "Egor",
+            "username": "egorribun"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "1155f5f007a498aa3ffa10194b50cd403661aede",
+          "message": "fix(ci): harden SQLMap OpenAPI scan (#1235)\n\n* fix(ci): harden SQLMap OpenAPI scan\n\n* fix(ci): bound SQLMap OpenAPI smoke scan\n\n---------\n\nCo-authored-by: Egor Ribun <egorribun@gmail.com>",
+          "timestamp": "2026-08-12T01:57:05+05:00",
+          "tree_id": "c793336565247ba5b4d55a2ab9549d910c419079",
+          "url": "https://github.com/egorribun/university_ecosystem/commit/1155f5f007a498aa3ffa10194b50cd403661aede"
+        },
+        "date": 1786482596747,
+        "tool": "cargo",
+        "benches": [
+          {
+            "name": "sanitize_rich_text/empty",
+            "value": 5953,
+            "range": "± 14",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_rich_text/plain_text",
+            "value": 6921,
+            "range": "± 20",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_rich_text/simple_html",
+            "value": 10041,
+            "range": "± 44",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_rich_text/xss_attempt",
+            "value": 10622,
+            "range": "± 189",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_rich_text/large",
+            "value": 100538,
+            "range": "± 331",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_html_basic/empty",
+            "value": 5430,
+            "range": "± 22",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_html_basic/plain_text",
+            "value": 6370,
+            "range": "± 24",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_html_basic/simple_html",
+            "value": 9199,
+            "range": "± 24",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_html_basic/xss_attempt",
+            "value": 9531,
+            "range": "± 116",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_html_basic/large",
+            "value": 93004,
+            "range": "± 435",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "strip_html/empty",
+            "value": 5280,
+            "range": "± 198",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "strip_html/plain_text",
+            "value": 6196,
+            "range": "± 12",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "strip_html/simple_html",
+            "value": 8733,
+            "range": "± 81",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "strip_html/xss_attempt",
+            "value": 9425,
+            "range": "± 41",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "strip_html/large",
+            "value": 91466,
+            "range": "± 1655",
             "unit": "ns/iter"
           }
         ]
