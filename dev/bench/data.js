@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1786482598055,
+  "lastUpdate": 1786484861389,
   "repoUrl": "https://github.com/egorribun/university_ecosystem",
   "entries": {
     "Go Services Performance Benchmarks": [
@@ -6069,6 +6069,54 @@ window.BENCHMARK_DATA = {
             "name": "batch_detect_conflicts/500",
             "value": 234059,
             "range": "± 6029",
+            "unit": "ns/iter"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "egorribun2005@gmail.com",
+            "name": "Egor",
+            "username": "egorribun"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "96689a7514e55bbfda63504c83b484eed5e03fbd",
+          "message": "fix(quality): keep isolated benchmark caches mounted (#1238)\n\nCo-authored-by: Egor Ribun <egorribun@gmail.com>",
+          "timestamp": "2026-08-12T02:46:21+05:00",
+          "tree_id": "ed5af247033d8021b235e4c06769fe99d297a19d",
+          "url": "https://github.com/egorribun/university_ecosystem/commit/96689a7514e55bbfda63504c83b484eed5e03fbd"
+        },
+        "date": 1786484859874,
+        "tool": "cargo",
+        "benches": [
+          {
+            "name": "batch_detect_conflicts/10",
+            "value": 630,
+            "range": "± 11",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "batch_detect_conflicts/50",
+            "value": 21408,
+            "range": "± 636",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "batch_detect_conflicts/100",
+            "value": 34287,
+            "range": "± 2370",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "batch_detect_conflicts/500",
+            "value": 238162,
+            "range": "± 10442",
             "unit": "ns/iter"
           }
         ]
