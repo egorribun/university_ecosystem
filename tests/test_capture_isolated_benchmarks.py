@@ -126,6 +126,27 @@ def test_container_command_has_an_explicit_non_privileged_boundary(
     ]
 
 
+def test_container_command_allows_the_read_only_source_mount_root(
+    tmp_path: Path,
+) -> None:
+    """Rust cargo commands run from the workspace mount root."""
+
+    source = tmp_path / "candidate-source"
+    source.mkdir()
+    command = build_container_command(
+        image="example.invalid/performance@sha256:" + "a" * 64,
+        source_worktree=source,
+        cache_volume="private-candidate-cache",
+        container_name="quality-benchmark-" + "a" * 32,
+        workdir="/src",
+        network="none",
+        environment={"HOME": CONTAINER_HOME},
+        program=("cargo", "fetch", "--locked"),
+    )
+
+    assert command[command.index("--workdir") + 1] == "/src"
+
+
 def test_limited_capture_stops_writing_before_an_untrusted_stream_can_fill_disk(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
