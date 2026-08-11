@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1786468891882,
+  "lastUpdate": 1786468908242,
   "repoUrl": "https://github.com/egorribun/university_ecosystem",
   "entries": {
     "Go Services Performance Benchmarks": [
@@ -1986,6 +1986,150 @@ window.BENCHMARK_DATA = {
             "value": 11288,
             "unit": "ns/op",
             "extra": "149094 times\n4 procs"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "egorribun2005@gmail.com",
+            "name": "Egor",
+            "username": "egorribun"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "fdf9a6ea8b9d1b222f51dc4a2c7ed3b57f91e667",
+          "message": "feat(quality): bootstrap trusted performance assets (#1234)\n\nasset bootstrap / no safe preexisting required context; base is missing base-trusted performance tooling; retaining path filter avoids widening legacy writable PR workflow.\nCo-authored-by: Egor Ribun <egorribun@gmail.com>",
+          "timestamp": "2026-08-11T20:19:16+03:00",
+          "tree_id": "e6ce87a619a6dd553eef22861034220a6828012c",
+          "url": "https://github.com/egorribun/university_ecosystem/commit/fdf9a6ea8b9d1b222f51dc4a2c7ed3b57f91e667"
+        },
+        "date": 1786468907293,
+        "tool": "go",
+        "benches": [
+          {
+            "name": "BenchmarkJWKSValidation (github.com/university-ecosystem/gateway/middleware)",
+            "value": 100094,
+            "unit": "ns/op",
+            "extra": "10000 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkRateLimitFallback (github.com/university-ecosystem/gateway/middleware)",
+            "value": 113.9,
+            "unit": "ns/op",
+            "extra": "10430826 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkExtractAlgFromHeader (github.com/university-ecosystem/gateway/middleware)",
+            "value": 752.8,
+            "unit": "ns/op",
+            "extra": "1596622 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkValidateIAT (github.com/university-ecosystem/gateway/middleware)",
+            "value": 73.46,
+            "unit": "ns/op",
+            "extra": "16439209 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkCheckL1Cache_Hit (github.com/university-ecosystem/gateway/middleware)",
+            "value": 154.5,
+            "unit": "ns/op",
+            "extra": "7768789 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkCheckL1Cache_Miss (github.com/university-ecosystem/gateway/middleware)",
+            "value": 14.8,
+            "unit": "ns/op",
+            "extra": "81254575 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkJWKToRSAPublicKey (github.com/university-ecosystem/gateway/middleware)",
+            "value": 538.1,
+            "unit": "ns/op",
+            "extra": "2221740 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkShouldRefreshProbabilistic (github.com/university-ecosystem/gateway/middleware)",
+            "value": 126.8,
+            "unit": "ns/op",
+            "extra": "9460597 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkKeyFunc_HS256 (github.com/university-ecosystem/gateway/middleware)",
+            "value": 28.97,
+            "unit": "ns/op",
+            "extra": "40317484 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkMessageMarshal (github.com/university-ecosystem/ws-hub/pkg/hub)",
+            "value": 479.6,
+            "unit": "ns/op",
+            "extra": "2492546 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkMessageUnmarshal (github.com/university-ecosystem/ws-hub/pkg/hub)",
+            "value": 1568,
+            "unit": "ns/op",
+            "extra": "749468 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkClientLookup (github.com/university-ecosystem/ws-hub/pkg/hub)",
+            "value": 13.14,
+            "unit": "ns/op",
+            "extra": "90351416 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkCollectRecipients_Room (github.com/university-ecosystem/ws-hub/pkg/hub)",
+            "value": 765.3,
+            "unit": "ns/op",
+            "extra": "1569540 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkCollectRecipients_DirectMessage (github.com/university-ecosystem/ws-hub/pkg/hub)",
+            "value": 86.79,
+            "unit": "ns/op",
+            "extra": "13474306 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkCollectRecipients_Broadcast (github.com/university-ecosystem/ws-hub/pkg/hub)",
+            "value": 1326,
+            "unit": "ns/op",
+            "extra": "907651 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkSafeSend (github.com/university-ecosystem/ws-hub/pkg/hub)",
+            "value": 30.41,
+            "unit": "ns/op",
+            "extra": "45605508 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkHandleRegister (github.com/university-ecosystem/ws-hub/pkg/hub)",
+            "value": 1910,
+            "unit": "ns/op",
+            "extra": "1000000 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkNATSPublishSimulated (github.com/university-ecosystem/ws-hub/pkg/hub)",
+            "value": 46.49,
+            "unit": "ns/op",
+            "extra": "25504616 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkJWTVerify (github.com/university-ecosystem/ws-hub/pkg/hub)",
+            "value": 766.7,
+            "unit": "ns/op",
+            "extra": "1732756 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkBroadcastTo1000Clients (github.com/university-ecosystem/ws-hub/pkg/hub)",
+            "value": 15348,
+            "unit": "ns/op",
+            "extra": "116074 times\n4 procs"
           }
         ]
       }
