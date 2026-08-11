@@ -540,7 +540,8 @@ pytest_add_cli_args_test_selection = [
 # Copy the repository-contract paths into the isolated tree so the full nightly
 # run can measure them without a false collection failure. The mutation-score
 # parser contract imports `scripts/check_mutation_score.py`; copying its parent
-# directory prevents that test from breaking mutmut's clean-test baseline.
+# directory prevents that test from breaking mutmut's clean-test baseline. The
+# isolated-performance tool test also reads its trusted Rust Dockerfile.
 also_copy = [
     ".github",
     ".lighthouserc.js",
@@ -560,6 +561,7 @@ also_copy = [
     ".pre-commit-config.yaml",
     "Makefile",
     "docs",
+    "containers/quality",
     "k8s/kyverno",
     "k8s/backend",
     "k8s/frontend",
