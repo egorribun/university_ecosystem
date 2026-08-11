@@ -687,6 +687,8 @@ def _go_environment(*, offline: bool) -> dict[str, str]:
         "GOMODCACHE": "/cache/go-mod",
         "GOPATH": "/cache/go-path",
         "GOTOOLCHAIN": "local",
+        "GOWORK": "off",
+        "GOFLAGS": "-mod=readonly -buildvcs=false",
         "HOME": CONTAINER_HOME,
     }
     if offline:
@@ -703,14 +705,7 @@ def _go_environment(*, offline: bool) -> dict[str, str]:
 def _go_prefetch_environment() -> dict[str, str]:
     """Fetch Go modules without mutating the read-only workspace checkout."""
 
-    environment = _go_environment(offline=False)
-    environment.update(
-        {
-            "GOWORK": "off",
-            "GOFLAGS": "-mod=readonly -buildvcs=false",
-        }
-    )
-    return environment
+    return _go_environment(offline=False)
 
 
 def _rust_environment(*, offline: bool) -> dict[str, str]:

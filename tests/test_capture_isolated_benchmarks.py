@@ -187,6 +187,16 @@ def test_go_prefetch_is_read_only_workspace_safe() -> None:
     assert environment["GOFLAGS"] == "-mod=readonly -buildvcs=false"
 
 
+@pytest.mark.parametrize("offline", [False, True])
+def test_go_capture_never_uses_the_read_only_workspace_file(offline: bool) -> None:
+    """Both dependency setup and benchmark runs use the module's go.mod graph."""
+
+    environment = _go_environment(offline=offline)
+
+    assert environment["GOWORK"] == "off"
+    assert environment["GOFLAGS"] == "-mod=readonly -buildvcs=false"
+
+
 def test_isolated_capture_rejects_a_single_checkout_for_both_sides(
     tmp_path: Path,
 ) -> None:
