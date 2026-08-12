@@ -269,17 +269,18 @@ silently marked complete.
 ### Current-head CI closure and required-context repair — 2026-08-12
 
 The published branch and remote are clean and agree on
-`8aa8ad5d22b64d60d25926390485a0a3f3b99c75`. Current PR [#1239](https://github.com/egorribun/university_ecosystem/pull/1239)
+`b2bf4f0734197b9300b5c5cde97884a928842a66`. Current PR [#1239](https://github.com/egorribun/university_ecosystem/pull/1239)
 has terminal `success` for the full matrix run
-[31620776897](https://github.com/egorribun/university_ecosystem/actions/runs/31620776897).
-The first attempt had a transient wasm-pack installer failure; rerunning only
-the failed jobs completed successfully at the same SHA. The final matrix has
-all required gates green, including `Coverage & Quality Policy Gate`, `CI
-Success`, all `16/16` exact mutmut execution shards, all `4/4` mutmut statistics
-shards, Python/frontend/Go/Rust tests, browser/Lighthouse lanes, security
-scans, SQLMap, all required Rust fuzz contexts, benchmarks, and migration
-gates. The uploaded quality manifest is valid and records merge ref
-`49bb6b00f0dc44d81ea67be03b8a449f9102de23` (normal `pull_request` checkout),
+[31625380509](https://github.com/egorribun/university_ecosystem/actions/runs/31625380509).
+The first attempt had one transient WASM-build failure and one
+non-reproducible mutmut survivor in the selected shard; rerunning only the
+failed jobs completed successfully at the same SHA. The final matrix has all
+required gates green, including `Coverage & Quality Policy Gate`, `CI Success`,
+all `16/16` exact mutmut execution shards, all `4/4` mutmut statistics shards,
+Python/frontend/Go/Rust tests, browser/Lighthouse lanes, security scans, SQLMap,
+all required Rust fuzz contexts, benchmarks, and migration gates. The uploaded
+quality manifest is valid and records merge ref
+`6af1067676ac742701e96d32bd1b11b69df9efa7` (normal `pull_request` checkout),
 while the PR head is the SHA recorded above. PR merge state is `CLEAN`.
 
 The manifest's current measured floors are: Python `99.4771%` lines and
@@ -293,7 +294,7 @@ The PR was previously `BLOCKED` even though every visible check was green:
 the active main ruleset required `Run cargo fuzz` plus two matrix fuzz contexts,
 but the workflow's path filter did not create them for a docs/tests-only PR.
 The all-path trigger now creates those required contexts without weakening any
-fuzz duration, target, or failure gate. Run `31620776897` shows all three
+fuzz duration, target, or failure gate. Run `31625380509` shows all three
 required fuzz contexts green and the PR ruleset state is `CLEAN`; no merge or
 ruleset bypass was performed.
 
