@@ -201,9 +201,12 @@ actionlint, Semgrep, gitleaks, Bandit, detect-secrets and YAML parsing passed).
   left only three bundled npm dependency findings open (two high, one medium:
   `ip-address`, `brace-expansion`, `undici`). The application SSRF and CI
   credential findings were fixed in `71acdac82`; `npm audit fix --package-lock-only --dry-run`
-  cannot safely replace the release tool's bundled copies. Deep Scan remains
-  blocked by the host managed-filesystem permission requirement and is not
-  represented as passed.
+  cannot safely replace the release tool's bundled copies. A fresh local audit
+  reports `7` advisories (`2` high, `5` moderate), and GitHub Dependabot reports
+  `6` open alerts (`1` high, `5` moderate); these are the same nested tooling
+  exposure across two advisory databases. Deep Scan remains blocked by the
+  host managed-filesystem permission requirement and is not represented as
+  passed.
 - Full nightly
   [31559213815](https://github.com/egorribun/university_ecosystem/actions/runs/31559213815)
   is queued on the exact `71acdac82` SHA behind diagnostic run

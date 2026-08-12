@@ -165,6 +165,10 @@ push/SSRF tests are green (`112 passed, 3 warnings`).
   credential findings were remediated in `71acdac82`; the bundled dependency
   findings remain explicitly open because the release tool owns those copies
   and `npm audit fix --package-lock-only --dry-run` cannot safely replace them.
+  A fresh local `npm audit --package-lock-only` reports `7` advisories
+  (`2` high, `5` moderate), while the GitHub Dependabot API reports `6` open
+  alerts (`1` high, `5` moderate); both are the same nested npm-tooling
+  exposure viewed through different advisory databases.
   The formal Deep Scan remains unavailable under the current host permission
   profile and is not claimed as passed.
 - Current full nightly
