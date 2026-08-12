@@ -283,6 +283,10 @@ itself; release certification still requires a trusted `main` release run.
 authorized deployed HTTPS staging/QA URL. No target is inferred from local
 placeholders or localhost addresses.
 
+The owner has explicitly deferred DAST for the moment. This is a deliberate
+authorization/deployment deferral, not a passed scan: no Nuclei/ZAP result or
+DAST certification evidence may be recorded until an authorized target exists.
+
 ### Local hardening update — 2026-08-10 (not certification evidence)
 
 This is local candidate evidence for the current worktree. It must be linked

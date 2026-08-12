@@ -289,6 +289,8 @@ timestamp were verified. This enables the release workflow's signed
 certification path, but a trusted `main` release run is still required to
 produce evidence. `DAST_TARGET_URL` remains unset until the owner supplies an
 authorized deployed HTTPS staging/QA URL; no local or placeholder URL is used.
+The owner has explicitly deferred DAST for now, so this remains an
+authorization/deployment blocker rather than a completed security scan.
 
 ### Главный текущий инженерный дефект: CI mutmut stats shard 2
 
