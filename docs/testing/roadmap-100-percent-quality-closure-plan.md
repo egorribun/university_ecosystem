@@ -4,7 +4,7 @@
 **Audit baseline commit:** `ce588bb0a1c08eb66ff2e5558349096a51d3ed4a` (the "finalize quality-roadmap" merge)
 **Repository HEAD at audit snapshot:** `671b79c466348e37530d601f787404400e395723` (latest E2E navigation-stability hardening at that checkpoint)
 **Audit date:** 2026-08-09
-**Status:** the observations below are retained as an audit snapshot, not a claim about the current checkout. Certification remains fail-closed on external Codecov authorization, terminal current-HEAD CI and full-nightly mutation evidence, and the promotion prerequisites.
+**Status:** the observations below are retained as an audit snapshot, not a claim about the current checkout. Certification remains fail-closed on terminal current-HEAD CI and full-nightly mutation evidence, the 30-day promotion prerequisites, authorized DAST/certification inputs, and unresolved third-party dependency findings.
 
 > **Live enforcement policy (repository source, not remote certification):**
 > `quality/quality-contract.json` requires `patch_coverage = 100` and
@@ -147,6 +147,40 @@ was merged to `main` as `c838c2000cf5b73d4dfa38dfa4a7d239c13cbb0b`.
   advisory-workload promotion evidence, and a managed filesystem permission
   profile for the formal Deep Security Scan. This roadmap remains fail-closed;
   the goal is not complete from these results alone.
+
+### Security hardening continuation — 2026-08-12 (published `71acdac82`)
+
+The current canonical `egorribun` tip is
+`71acdac8204c6331f5fd56aee62a4abcc984d53d`, pushed and verified on the remote.
+It hardens push-subscription SSRF validation and moves Codecov OIDC uploads and
+release/deploy credentials behind trusted `main` conditions; PR test jobs no
+longer receive `id-token: write` or inherited secrets. The selected changed-file
+pre-commit suite, YAML parsing, actionlint, Semgrep, Ruff, mypy, and the focused
+push/SSRF tests are green (`112 passed, 3 warnings`).
+
+- The standard Codex Security scan
+  `9ccd3274-fd28-4971-93ae-362bec838d8e` completed before this hardening and
+  reported three bundled npm dependency findings (two high, one medium:
+  `ip-address`, `brace-expansion`, and `undici`). The application SSRF and CI
+  credential findings were remediated in `71acdac82`; the bundled dependency
+  findings remain explicitly open because the release tool owns those copies
+  and `npm audit fix --package-lock-only --dry-run` cannot safely replace them.
+  The formal Deep Scan remains unavailable under the current host permission
+  profile and is not claimed as passed.
+- Current full nightly
+  [31559213815](https://github.com/egorribun/university_ecosystem/actions/runs/31559213815)
+  targets `71acdac8204c6331f5fd56aee62a4abcc984d53d` and is queued behind the
+  older non-canceling diagnostic run
+  [31543639360](https://github.com/egorribun/university_ecosystem/actions/runs/31543639360).
+  No nightly score or artifact result is inferred until this run is terminal
+  and its mutation, Stryker, Miri, browser, load/chaos, and coverage artifacts
+  are inspected.
+- A fresh stabilization-window query over completed `main` nightly runs,
+  evaluated on 2026-08-12, returned `eligible: false`,
+  `latest_success_date: null`, and no successful dates in the required 30-day
+  interval. DAST still has no authorized target URL and release certification
+  still has no protected `QUALITY_CERTIFICATION_KEY`; these remain external
+  blockers rather than repository code gaps.
 
 ### Local hardening update — 2026-08-10 (not certification evidence)
 

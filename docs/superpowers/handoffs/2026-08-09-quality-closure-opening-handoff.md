@@ -186,6 +186,37 @@ merged it to `main` as `c838c2000cf5b73d4dfa38dfa4a7d239c13cbb0b`.
   promotion evidence, and the managed permission profile required by Deep
   Security Scan. No final closure claim is justified yet.
 
+### Security hardening continuation — 2026-08-12
+
+The canonical `egorribun` branch now points to published commit
+`71acdac8204c6331f5fd56aee62a4abcc984d53d`. It rejects private push endpoints
+before persistence or outbound delivery, removes PR `id-token: write` and
+inherited secrets from test workflows, and gates Codecov OIDC plus release/deploy
+credentials to trusted `main`. Focused security tests and the selected changed-
+file pre-commit suite are green (`112 passed, 3 warnings`; Ruff, mypy,
+actionlint, Semgrep, gitleaks, Bandit, detect-secrets and YAML parsing passed).
+
+- Standard Codex Security scan
+  `9ccd3274-fd28-4971-93ae-362bec838d8e` completed before the hardening and
+  left only three bundled npm dependency findings open (two high, one medium:
+  `ip-address`, `brace-expansion`, `undici`). The application SSRF and CI
+  credential findings were fixed in `71acdac82`; `npm audit fix --package-lock-only --dry-run`
+  cannot safely replace the release tool's bundled copies. Deep Scan remains
+  blocked by the host managed-filesystem permission requirement and is not
+  represented as passed.
+- Full nightly
+  [31559213815](https://github.com/egorribun/university_ecosystem/actions/runs/31559213815)
+  is queued on the exact `71acdac82` SHA behind diagnostic run
+  [31543639360](https://github.com/egorribun/university_ecosystem/actions/runs/31543639360).
+  Do not infer mutation, Stryker, Miri, browser, load/chaos, or coverage
+  evidence until the run is terminal and its artifacts have been downloaded and
+  inspected. A fresh stabilization query on 2026-08-12 is `eligible: false`
+  with no successful `main` nightly date in the required 30-day window.
+- DAST still has no authorized target URL and certification still lacks the
+  protected `QUALITY_CERTIFICATION_KEY`; these external inputs remain the only
+  user/administrator actions needed after the queued nightly and local evidence
+  are complete.
+
 ### Главный текущий инженерный дефект: CI mutmut stats shard 2
 
 Fast CI run:
