@@ -236,6 +236,29 @@ parsing passed).
   and 100% diff coverage. This is source-equivalent evidence for the merged
   quality code; the security branch requires a trusted-main integration run.
 
+### CI acceleration continuation — 2026-08-12
+
+Commit `928debab4943b9ce547526a523eb87e5d9626862` is pushed and verified on
+`origin/egorribun`. It parallelizes the nightly full mutmut stats pass into
+four isolated jobs, uploads their exact JSON payloads, and merges them with
+the existing fail-closed overlap detector before the unchanged mutation
+execution job. No mutant scope, clean-test isolation, exporter, or score gate
+was relaxed.
+
+- Local evidence: workflow contract `97 passed, 1 warning`; mutmut stats/wrapper
+  contracts `7 passed, 1 warning`; all `53` workflow YAML files parse; Ruff,
+  diff-check, and selected pre-commit (including actionlint/Semgrep/secrets)
+  pass.
+- Fresh collection checks produced disjoint shards of `1791/1816/1870/1935`
+  tests (`7412` total, zero overlap). This is a partition check only; terminal
+  Linux mutmut artifacts remain required for certification.
+- The old queued runs remain untouched: merged-SHA run
+  [31559727370](https://github.com/egorribun/university_ecosystem/actions/runs/31559727370)
+  is `in_progress`, and exact run
+  [31564641012](https://github.com/egorribun/university_ecosystem/actions/runs/31564641012)
+  is `pending`. Dispatch the optimized nightly only after the current
+  non-canceling queue drains; do not infer scores from either old workflow.
+
 ### Главный текущий инженерный дефект: CI mutmut stats shard 2
 
 Fast CI run:

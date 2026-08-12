@@ -210,6 +210,39 @@ warnings`.
   This is source-equivalent evidence for the merged quality code; the security
   branch still needs its own trusted-main integration run after merge.
 
+### CI acceleration continuation — 2026-08-12 (published `928debab4`)
+
+The canonical `egorribun` branch now contains `928debab4943b9ce547526a523eb87e5d9626862`,
+which keeps the full mutmut gate fail-closed while parallelizing its expensive
+stats discovery. The nightly workflow now runs four isolated stats jobs with
+the existing `--shard-id/--num-shards` contract, uploads one JSON artifact per
+shard, and makes the mutation job download and merge them through the existing
+`merge_mutmut_stats.py` overlap-rejecting implementation. The mutation
+execution, clean-test isolation, exporter, and 100% viable-score gate are
+unchanged. This addresses the observed single-shard stats bottleneck (the
+previous diagnostic spent approximately 87 minutes in stats collection) and
+does not weaken the evidence scope.
+
+- Local workflow contract evidence is green: `97 passed, 1 warning` for
+  `tests/test_quality_workflow_contract.py`; mutmut stats/wrapper contracts are
+  `7 passed, 1 warning`; YAML parsing covers all `53` workflow files; Ruff,
+  `git diff --check`, and the selected pre-commit suite pass.
+- The sharding contract was exercised with fresh Windows collection checks:
+  shards yielded `1791`, `1816`, `1870`, and `1935` unique test IDs, with a
+  `7412`-test union and zero overlap. This validates partition/disjointness;
+  Linux mutmut execution still requires the terminal GitHub artifact.
+- The already queued nightly runs were deliberately not cancelled. Run
+  [31559727370](https://github.com/egorribun/university_ecosystem/actions/runs/31559727370)
+  still targets merged SHA `c838c2000cf5b73d4dfa38dfa4a7d239c13cbb0b` and is
+  `in_progress`; exact older run
+  [31564641012](https://github.com/egorribun/university_ecosystem/actions/runs/31564641012)
+  still targets `db1d9a2bca7162dbf100538733f55576e70314ee` and is `pending`.
+  A fresh nightly dispatch for the optimized workflow must wait until this
+  non-canceling queue drains; no score is inferred from the old workflow.
+- The 30-day stabilization, authorized DAST target, protected
+  `QUALITY_CERTIFICATION_KEY`, advisory promotion evidence, Deep Scan host
+  profile, and bundled npm advisories remain unchanged external blockers.
+
 ### Local hardening update — 2026-08-10 (not certification evidence)
 
 This is local candidate evidence for the current worktree. It must be linked
