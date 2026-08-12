@@ -173,10 +173,16 @@ push/SSRF tests are green (`112 passed, 3 warnings`).
   profile and is not claimed as passed.
 - Current full nightly
   [31559213815](https://github.com/egorribun/university_ecosystem/actions/runs/31559213815)
-  targets `71acdac8204c6331f5fd56aee62a4abcc984d53d` and is queued behind the
-  older non-canceling diagnostic run
-  [31543639360](https://github.com/egorribun/university_ecosystem/actions/runs/31543639360).
-  No nightly score or artifact result is inferred until this run is terminal
+  targeted `71acdac8204c6331f5fd56aee62a4abcc984d53d` but was automatically
+  cancelled by GitHub's single-pending-run queue at 2026-08-12T03:19:38Z when
+  the newer main-branch run
+  [31559727370](https://github.com/egorribun/university_ecosystem/actions/runs/31559727370)
+  (SHA `c838c2000cf5b73d4dfa38dfa4a7d239c13cbb0b`) entered the queue. No
+  running workflow was manually cancelled. The old diagnostic run
+  [31543639360](https://github.com/egorribun/university_ecosystem/actions/runs/31543639360)
+  remains in progress; after it releases the slot, the main run must start
+  before a new exact-`71acdac82` dispatch is queued. No nightly score or
+  artifact result is inferred until the relevant current-HEAD run is terminal
   and its mutation, Stryker, Miri, browser, load/chaos, and coverage artifacts
   are inspected.
 - A fresh stabilization-window query over completed `main` nightly runs,
