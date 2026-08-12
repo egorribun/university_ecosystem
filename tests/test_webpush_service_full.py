@@ -59,6 +59,60 @@ class TestSendWebPush:
         assert result.status == "sent"
         assert result.subscription_id == sub.id
         mock_pywebpush.assert_called_once()
+        call_kwargs = mock_pywebpush.call_args.kwargs
+        assert call_kwargs["subscription_info"] == {
+            "endpoint": sub.endpoint,
+            "keys": {"p256dh": sub.p256dh, "auth": sub.auth},
+        }
+
+    def test_dns_failure_is_not_bypassed_outside_development(
+        self, mock_pywebpush, monkeypatch
+    ):
+        """A DNS failure must remain fail-closed outside development mode."""
+        from types import SimpleNamespace
+
+        monkeypatch.setattr(
+            "app.services.webpush.settings",
+            SimpleNamespace(
+                is_development=False,
+                VAPID_PRIVATE_KEY="",
+                WEBPUSH_SUBJECT="mailto:test@example.com",
+            ),
+        )
+        monkeypatch.setattr(
+            "app.services.webpush.validate_url_not_internal",
+            MagicMock(side_effect=ValueError("DNS resolution failed")),
+        )
+
+        result = send_web_push(self._make_sub(), {"title": "Blocked"})
+
+        assert result.status == "error"
+        assert "DNS resolution failed" in (result.error or "")
+        mock_pywebpush.assert_not_called()
+
+    def test_dns_failure_default_is_fail_closed_when_setting_is_missing(
+        self, mock_pywebpush, monkeypatch
+    ):
+        """Missing development configuration must use the safe false default."""
+        from types import SimpleNamespace
+
+        monkeypatch.setattr(
+            "app.services.webpush.settings",
+            SimpleNamespace(
+                VAPID_PRIVATE_KEY="",
+                WEBPUSH_SUBJECT="mailto:test@example.com",
+            ),
+        )
+        monkeypatch.setattr(
+            "app.services.webpush.validate_url_not_internal",
+            MagicMock(side_effect=ValueError("DNS resolution failed")),
+        )
+
+        result = send_web_push(self._make_sub(), {"title": "Blocked"})
+
+        assert result.status == "error"
+        assert "DNS resolution failed" in (result.error or "")
+        mock_pywebpush.assert_not_called()
 
     def test_rejects_private_endpoint_before_network_call(self, mock_pywebpush):
         sub = self._make_sub("https://127.0.0.1/latest")
