@@ -148,15 +148,16 @@ was merged to `main` as `c838c2000cf5b73d4dfa38dfa4a7d239c13cbb0b`.
   profile for the formal Deep Security Scan. This roadmap remains fail-closed;
   the goal is not complete from these results alone.
 
-### Security hardening continuation — 2026-08-12 (published `71acdac82`)
+### Security hardening continuation — 2026-08-12 (published `db9c3dc6b`)
 
 The current canonical `egorribun` tip is
-`71acdac8204c6331f5fd56aee62a4abcc984d53d`, pushed and verified on the remote.
-It hardens push-subscription SSRF validation and moves Codecov OIDC uploads and
-release/deploy credentials behind trusted `main` conditions; PR test jobs no
-longer receive `id-token: write` or inherited secrets. The selected changed-file
-pre-commit suite, YAML parsing, actionlint, Semgrep, Ruff, mypy, and the focused
-push/SSRF tests are green (`112 passed, 3 warnings`).
+`db9c3dc6ba3e01265a04b1bae1f01bf63a2a1dd2`, pushed and verified on the remote.
+The preceding `71acdac82` commit hardens push-subscription SSRF validation and
+moves Codecov OIDC uploads and release/deploy credentials behind trusted `main`
+conditions; `db9c3dc6b` additionally scopes nightly workflow permissions. PR
+test jobs no longer receive `id-token: write` or inherited secrets. The selected
+changed-file pre-commit suite, YAML parsing, actionlint, Semgrep, Ruff, mypy,
+and the focused push/SSRF/contract tests are green (`142 passed, 3 warnings`).
 
 - The standard Codex Security scan
   `9ccd3274-fd28-4971-93ae-362bec838d8e` completed before this hardening and
@@ -181,7 +182,7 @@ push/SSRF tests are green (`112 passed, 3 warnings`).
   running workflow was manually cancelled. The old diagnostic run
   [31543639360](https://github.com/egorribun/university_ecosystem/actions/runs/31543639360)
   remains in progress; after it releases the slot, the main run must start
-  before a new exact-`71acdac82` dispatch is queued. No nightly score or
+  before a new exact-`db9c3dc6b` dispatch is queued. No nightly score or
   artifact result is inferred until the relevant current-HEAD run is terminal
   and its mutation, Stryker, Miri, browser, load/chaos, and coverage artifacts
   are inspected.
@@ -191,6 +192,12 @@ push/SSRF tests are green (`112 passed, 3 warnings`).
   interval. DAST still has no authorized target URL and release certification
   still has no protected `QUALITY_CERTIFICATION_KEY`; these remain external
   blockers rather than repository code gaps.
+- Codecov's v2 commit endpoint for merged `main` SHA
+  `c838c2000cf5b73d4dfa38dfa4a7d239c13cbb0b` is independently complete:
+  `state=complete`, `ci_passed=true`, 99.47% total coverage
+  (`84,925/85,371` hits, 917 files, 12 sessions), and 100% diff coverage.
+  This is source-equivalent evidence for the merged quality code; the security
+  branch still needs its own trusted-main integration run after merge.
 
 ### Local hardening update — 2026-08-10 (not certification evidence)
 

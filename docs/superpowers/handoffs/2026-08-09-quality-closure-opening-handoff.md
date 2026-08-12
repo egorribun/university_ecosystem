@@ -189,12 +189,14 @@ merged it to `main` as `c838c2000cf5b73d4dfa38dfa4a7d239c13cbb0b`.
 ### Security hardening continuation — 2026-08-12
 
 The canonical `egorribun` branch now points to published commit
-`71acdac8204c6331f5fd56aee62a4abcc984d53d`. It rejects private push endpoints
-before persistence or outbound delivery, removes PR `id-token: write` and
-inherited secrets from test workflows, and gates Codecov OIDC plus release/deploy
-credentials to trusted `main`. Focused security tests and the selected changed-
-file pre-commit suite are green (`112 passed, 3 warnings`; Ruff, mypy,
-actionlint, Semgrep, gitleaks, Bandit, detect-secrets and YAML parsing passed).
+`db9c3dc6ba3e01265a04b1bae1f01bf63a2a1dd2`. Preceding commit `71acdac82`
+rejects private push endpoints before persistence or outbound delivery, removes
+PR `id-token: write` and inherited secrets from test workflows, and gates
+Codecov OIDC plus release/deploy credentials to trusted `main`; `db9c3dc6b`
+scopes nightly workflow permissions. Focused security/contract tests and the
+selected changed-file pre-commit suite are green (`142 passed, 3 warnings`;
+Ruff, mypy, actionlint, Semgrep, gitleaks, Bandit, detect-secrets and YAML
+parsing passed).
 
 - Standard Codex Security scan
   `9ccd3274-fd28-4971-93ae-362bec838d8e` completed before the hardening and
@@ -216,7 +218,7 @@ actionlint, Semgrep, gitleaks, Bandit, detect-secrets and YAML parsing passed).
   running workflow was manually cancelled. Diagnostic run
   [31543639360](https://github.com/egorribun/university_ecosystem/actions/runs/31543639360)
   remains in progress; wait for the main run to start, then queue a fresh
-  exact-`71acdac82` dispatch after the slot is occupied. Do not infer
+  exact-`db9c3dc6b` dispatch after the slot is occupied. Do not infer
   mutation, Stryker, Miri, browser, load/chaos, or coverage evidence until the
   relevant run is terminal and its artifacts are downloaded and inspected. A
   fresh stabilization query on 2026-08-12 is `eligible: false` with no
@@ -225,6 +227,11 @@ actionlint, Semgrep, gitleaks, Bandit, detect-secrets and YAML parsing passed).
   protected `QUALITY_CERTIFICATION_KEY`; these external inputs remain the only
   user/administrator actions needed after the queued nightly and local evidence
   are complete.
+- Codecov v2 independently reports merged `main` SHA
+  `c838c2000cf5b73d4dfa38dfa4a7d239c13cbb0b` as complete with `ci_passed=true`,
+  99.47% total coverage (`84,925/85,371` hits across 917 files, 12 sessions),
+  and 100% diff coverage. This is source-equivalent evidence for the merged
+  quality code; the security branch requires a trusted-main integration run.
 
 ### Главный текущий инженерный дефект: CI mutmut stats shard 2
 
