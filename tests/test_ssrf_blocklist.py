@@ -97,6 +97,21 @@ class TestSSRFBlocklist:
         with pytest.raises(ValueError):
             validate_public_https_url(url)
 
+    def test_public_https_url_rejects_out_of_range_parsed_port(self) -> None:
+        from types import SimpleNamespace
+
+        parsed = SimpleNamespace(
+            scheme="https",
+            netloc="push.example.com:0",
+            username=None,
+            password=None,
+            hostname="push.example.com",
+            port=0,
+        )
+        with patch("app.core.ssrf.urlparse", return_value=parsed):
+            with pytest.raises(ValueError, match="invalid port"):
+                validate_public_https_url("https://push.example.com:0/push")
+
 
 class TestValidateAndResolve:
     """RZ-W17-01: Tests for DNS-rebinding-safe resolve function."""
