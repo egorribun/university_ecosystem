@@ -146,6 +146,37 @@ Roadmap сейчас содержит исторические результа�
 статус «queued/in progress»: после свежих доказательств добавь точный
 dated evidence с SHA, URL, измерениями и оставшимися blockers.
 
+### Live continuation — 2026-08-12
+
+The source repair is published on the canonical `egorribun` branch at
+`1820e4efeba721260f37d20b4995dd69b9c5359a`; PR [#1229](https://github.com/egorribun/university_ecosystem/pull/1229)
+merged it to `main` as `c838c2000cf5b73d4dfa38dfa4a7d239c13cbb0b`.
+
+- Local focused lifecycle evidence: `32 passed, 2 warnings`; reconstructed
+  mutmut lifecycle union: `95 passed, 1 skipped, 3 warnings`; Ruff, format,
+  diff-check, and pre-push hooks are green.
+- Fast CI
+  [31553098588](https://github.com/egorribun/university_ecosystem/actions/runs/31553098588)
+  is terminal `success` on the exact source SHA: 104 jobs, 99 success,
+  5 skipped, 0 failed; `CI Success`, policy gate, and mutmut `16/16` shards
+  passed.
+- Performance
+  [31553098414](https://github.com/egorribun/university_ecosystem/actions/runs/31553098414)
+  and SQLMap
+  [31553098424](https://github.com/egorribun/university_ecosystem/actions/runs/31553098424)
+  are terminal `success` on that SHA.
+- Current full nightly
+  [31554388135](https://github.com/egorribun/university_ecosystem/actions/runs/31554388135)
+  is `pending` behind diagnostic run
+  [31543639360](https://github.com/egorribun/university_ecosystem/actions/runs/31543639360)
+  (`in_progress`, old SHA `7af03d45fdd7a03128c93e8268a7c19699001031`). Do not
+  infer nightly scores until the current-SHA run is terminal and artifacts are
+  read.
+- External blockers remain: Codecov repository authorization, authorized DAST
+  target, protected certification key, stabilization window, advisory
+  promotion evidence, and the managed permission profile required by Deep
+  Security Scan. No final closure claim is justified yet.
+
 ### Главный текущий инженерный дефект: CI mutmut stats shard 2
 
 Fast CI run:

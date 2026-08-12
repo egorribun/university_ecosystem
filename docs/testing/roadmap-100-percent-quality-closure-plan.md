@@ -97,6 +97,47 @@ claim that the long-running or manually provisioned workstreams are complete.
   are external deployment/evidence prerequisites, not silently closable
   repository TODOs.
 
+### Live continuation — 2026-08-12 (published source SHA `1820e4efe`)
+
+This dated section records fresh evidence without rewriting the historical
+audit below. The source hardening from `763f4c260` (portable JSON nesting
+guard) and `1820e4efe` (Dishka lifecycle/mutmut timeout repair) is published on
+`egorribun`; PR [#1229](https://github.com/egorribun/university_ecosystem/pull/1229)
+was merged to `main` as `c838c2000cf5b73d4dfa38dfa4a7d239c13cbb0b`.
+
+- Focused local evidence on the published source commit is green:
+  `uv run pytest -q tests/test_lifespan_restart_contract.py tests/test_lifespan.py`
+  => `32 passed, 2 warnings`; the reconstructed mutmut lifecycle union =>
+  `95 passed, 1 skipped, 3 warnings`. Ruff check, Ruff format check,
+  `git diff --check`, and all pre-push hooks passed.
+- Fast CI run
+  [31553098588](https://github.com/egorribun/university_ecosystem/actions/runs/31553098588)
+  targets `1820e4efeba721260f37d20b4995dd69b9c5359a` and is terminal
+  `success`: 104 jobs, 99 successful, 5 skipped, 0 failed. `CI Success`,
+  `Coverage & Quality Policy Gate`, and all exact mutmut shards (`16/16`)
+  passed.
+- Current performance run
+  [31553098414](https://github.com/egorribun/university_ecosystem/actions/runs/31553098414)
+  is terminal `success` for Go, WS-Hub regression, Rust Criterion, and Rust
+  native optimizer gates; history publication was intentionally skipped.
+  SQLMap smoke run
+  [31553098424](https://github.com/egorribun/university_ecosystem/actions/runs/31553098424)
+  is also terminal `success` on the same SHA.
+- Full nightly run
+  [31554388135](https://github.com/egorribun/university_ecosystem/actions/runs/31554388135)
+  targets the exact published source SHA but is still `pending` behind the
+  older non-canceling diagnostic run
+  [31543639360](https://github.com/egorribun/university_ecosystem/actions/runs/31543639360).
+  No full-mutation, Stryker, Miri, load/chaos, browser-matrix, or nightly
+  artifact score may be inferred until the current-SHA run is terminal and
+  its artifacts are inspected.
+- External blockers remain unchanged: Codecov repository authorization, an
+  explicitly authorized DAST target (local SQLMap is not authorization), the
+  protected `QUALITY_CERTIFICATION_KEY`, the 30-day stabilization window,
+  advisory-workload promotion evidence, and a managed filesystem permission
+  profile for the formal Deep Security Scan. This roadmap remains fail-closed;
+  the goal is not complete from these results alone.
+
 ### Local hardening update — 2026-08-10 (not certification evidence)
 
 This is local candidate evidence for the current worktree. It must be linked
