@@ -15,32 +15,40 @@
 ## Live current-head closure checkpoint — 2026-08-12
 
 The clean `egorribun` branch and `origin/egorribun` agree on
-`b2bf4f0734197b9300b5c5cde97884a928842a66`. PR [#1239](https://github.com/egorribun/university_ecosystem/pull/1239)
-run [31625380509](https://github.com/egorribun/university_ecosystem/actions/runs/31625380509)
-is terminal `success` with all required checks green. The first attempt had
-one transient WASM-build failure and one non-reproducible mutmut survivor in
-the selected shard; rerunning only the failed jobs at attempt 2 completed
-successfully without changing the SHA. The final matrix includes the policy
-and aggregate gates, `16/16` exact mutmut execution shards, `4/4` mutmut
-statistics shards, full Python/frontend/Go/Rust checks, browser and Lighthouse
-lanes, security scans, SQLMap, all required Rust fuzz contexts, benchmarks, and
-migration jobs. The quality manifest validates successfully; because this is a
-`pull_request` run its recorded commit is the GitHub merge ref
-(`6af1067676ac742701e96d32bd1b11b69df9efa7`), while the branch head is the SHA
-above. PR merge state is `CLEAN` and no bypass or merge was performed.
+`0b0141da79b0dd0c98fd8298ab66859632b91e94`. PR [#1239](https://github.com/egorribun/university_ecosystem/pull/1239)
+run [31635038661](https://github.com/egorribun/university_ecosystem/actions/runs/31635038661)
+is terminal `success` at attempt 2 with all required checks green. Attempt 1
+had one external `cargo-binstall` download reset (`curl: (56) Connection
+died`); failed-only rerun recovered it without changing the SHA. The final
+matrix includes the policy and aggregate gates, `16/16` exact mutmut execution
+shards, `4/4` mutmut statistics shards, full Python/frontend/Go/Rust checks,
+browser and Lighthouse lanes, security scans, SQLMap, all required Rust fuzz
+contexts, benchmarks, and migration jobs. The quality manifest validates
+successfully; because this is a `pull_request` run its recorded commit is the
+GitHub merge ref (`0301abcc87e80dbac5632d30148099aba1911330`), while the branch
+head is the SHA above. PR merge state is `CLEAN` and no bypass or merge was
+performed.
+
+The current-head mutmut aggregate is independently evidenced by all sixteen
+exact artifacts: `114/114` viable mutants killed, `0` survived, `0` timed out,
+and `0` without tests. The previous equivalent survivor
+`app.services.webpush.x_send_web_push__mutmut_65` was removed by replacing the
+mutation-equivalent `getattr(..., False)` fallback with a narrow direct-attribute
+fallback; its intentionally equivalent `False` assignment is marked
+`# pragma: no mutate` with a fail-closed rationale.
 
 Current measured coverage floors are Python `99.4771%` lines / `98.4895%`
-branches; frontend `99.5000%` lines / `98.0937%` branches / `98.1013%`
+branches; frontend `99.5000%` lines / `98.0932%` branches / `98.1013%`
 functions; Go line coverage `98.7771%`–`99.1372%` by service; Rust native and
 WASM sanitizer `100%`; Rust crypto `100%` lines/functions; and Tier0 `100%`
-for measured lines, branches, and functions (`7294/7294`, `1731/1731`,
+for measured lines, branches, and functions (`7294/7294`, `1727/1727`,
 `534/534`). Local full Python, focused webpush/SSRF closure tests, Ruff,
 formatting, lock validation, and frontend typecheck are green.
 
 The active main ruleset previously remained `BLOCKED` because three required
 fuzz contexts were absent when the Rust fuzz workflow's path filter skipped a
 docs/tests-only PR. The all-path trigger now creates those contexts without
-weakening any fuzz duration, target, or failure gate, and run `31625380509`
+weakening any fuzz duration, target, or failure gate, and run `31635038661`
 shows all three required fuzz contexts green. The remote PR state is now
 `CLEAN`; no bypass or merge was performed.
 
