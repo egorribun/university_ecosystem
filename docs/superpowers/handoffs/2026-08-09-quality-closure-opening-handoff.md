@@ -269,34 +269,36 @@ silently marked complete.
 ### Current-head CI closure and required-context repair — 2026-08-12
 
 The published branch and remote are clean and agree on
-`47f843733808944fb26b67f6ace80ed44397a1ea`. Current PR [#1239](https://github.com/egorribun/university_ecosystem/pull/1239)
+`8aa8ad5d22b64d60d25926390485a0a3f3b99c75`. Current PR [#1239](https://github.com/egorribun/university_ecosystem/pull/1239)
 has terminal `success` for the full matrix run
-[31612221754](https://github.com/egorribun/university_ecosystem/actions/runs/31612221754):
-all `105/105` jobs are terminal, including `Coverage & Quality Policy Gate`,
-`CI Success`, all `16/16` exact mutmut execution shards, all `4/4` mutmut
-statistics shards, Python/frontend/Go/Rust tests, browser/Lighthouse lanes,
-security scans, SQLMap, fuzz, benchmark, and migration gates. The uploaded
-quality manifest is valid and reports passed measured components; its
-`commit_sha` is the pull-request merge ref (the normal `pull_request` event
-checkout), while the PR head is the SHA recorded above.
+[31620776897](https://github.com/egorribun/university_ecosystem/actions/runs/31620776897).
+The first attempt had a transient wasm-pack installer failure; rerunning only
+the failed jobs completed successfully at the same SHA. The final matrix has
+all required gates green, including `Coverage & Quality Policy Gate`, `CI
+Success`, all `16/16` exact mutmut execution shards, all `4/4` mutmut statistics
+shards, Python/frontend/Go/Rust tests, browser/Lighthouse lanes, security
+scans, SQLMap, all required Rust fuzz contexts, benchmarks, and migration
+gates. The uploaded quality manifest is valid and records merge ref
+`49bb6b00f0dc44d81ea67be03b8a449f9102de23` (normal `pull_request` checkout),
+while the PR head is the SHA recorded above. PR merge state is `CLEAN`.
 
 The manifest's current measured floors are: Python `99.4771%` lines and
-`98.4895%` branches; frontend `99.4960%` lines, `98.0937%` branches, and
+`98.4895%` branches; frontend `99.5000%` lines, `98.0937%` branches, and
 `98.1013%` functions; Go line coverage `98.7771%`–`99.1372%` by service;
 Rust native `100%` lines/functions/branches; Rust WASM sanitizer `100%`;
 Rust crypto `100%` lines/functions; and Tier0 `100%` for all measured lines,
-branches, and functions (`7294/7294`, `1730/1730`, `534/534`).
+branches, and functions (`7294/7294`, `1731/1731`, `534/534`).
 
 The PR was previously `BLOCKED` even though every visible check was green:
 the active main ruleset required `Run cargo fuzz` plus two matrix fuzz contexts,
 but the workflow's path filter did not create them for a docs/tests-only PR.
-The workflow now includes an all-path trigger so those required contexts are
-always created without weakening any fuzz duration, target, or failure gate.
-A fresh post-fix PR run is still required to verify the repaired branch-rule
-state; no merge or ruleset bypass was performed.
+The all-path trigger now creates those required contexts without weakening any
+fuzz duration, target, or failure gate. Run `31620776897` shows all three
+required fuzz contexts green and the PR ruleset state is `CLEAN`; no merge or
+ruleset bypass was performed.
 
 Local evidence remains green: the complete Python suite passed (`7345 passed,
-71 skipped, 298 warnings`), the webpush closure suite passed (`42 passed`),
+71 skipped, 298 warnings`), the webpush closure suite passed (`43 passed`),
 the SSRF/push-router closure slice passed (`40 passed, 1 warning`), Ruff check
 and format checks passed, `uv lock --check` passed, and the frontend pre-push
 typecheck passed. The local security scan reported zero verified and unverified

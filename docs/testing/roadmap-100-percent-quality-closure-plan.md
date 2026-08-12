@@ -15,30 +15,34 @@
 ## Live current-head closure checkpoint — 2026-08-12
 
 The clean `egorribun` branch and `origin/egorribun` agree on
-`47f843733808944fb26b67f6ace80ed44397a1ea`. PR [#1239](https://github.com/egorribun/university_ecosystem/pull/1239)
-run [31612221754](https://github.com/egorribun/university_ecosystem/actions/runs/31612221754)
-is terminal `success` with `105/105` jobs complete. The current matrix includes
-the policy and aggregate gates, `16/16` exact mutmut execution shards, `4/4`
-mutmut statistics shards, full Python/frontend/Go/Rust checks, browser and
-Lighthouse lanes, security scans, SQLMap, fuzz, benchmark, and migration jobs.
-The quality manifest validates successfully; because this is a `pull_request`
-run its recorded commit is the GitHub merge ref, while the branch head is the
-SHA above.
+`8aa8ad5d22b64d60d25926390485a0a3f3b99c75`. PR [#1239](https://github.com/egorribun/university_ecosystem/pull/1239)
+run [31620776897](https://github.com/egorribun/university_ecosystem/actions/runs/31620776897)
+is terminal `success` with all required checks green. The initial attempt had
+one transient wasm-pack installer failure; the failed jobs were rerun without
+changing the SHA and the second attempt completed successfully. The final
+matrix includes the policy and aggregate gates, `16/16` exact mutmut execution
+shards, `4/4` mutmut statistics shards, full Python/frontend/Go/Rust checks,
+browser and Lighthouse lanes, security scans, SQLMap, all required Rust fuzz
+contexts, benchmarks, and migration jobs. The quality manifest validates
+successfully; because this is a `pull_request` run its recorded commit is the
+GitHub merge ref (`49bb6b00f0dc44d81ea67be03b8a449f9102de23`), while the branch
+head is the SHA above. PR merge state is `CLEAN` and no bypass or merge was
+performed.
 
 Current measured coverage floors are Python `99.4771%` lines / `98.4895%`
-branches; frontend `99.4960%` lines / `98.0937%` branches / `98.1013%`
+branches; frontend `99.5000%` lines / `98.0937%` branches / `98.1013%`
 functions; Go line coverage `98.7771%`–`99.1372%` by service; Rust native and
 WASM sanitizer `100%`; Rust crypto `100%` lines/functions; and Tier0 `100%`
-for measured lines, branches, and functions (`7294/7294`, `1730/1730`,
+for measured lines, branches, and functions (`7294/7294`, `1731/1731`,
 `534/534`). Local full Python, focused webpush/SSRF closure tests, Ruff,
 formatting, lock validation, and frontend typecheck are green.
 
 The active main ruleset previously remained `BLOCKED` because three required
 fuzz contexts were absent when the Rust fuzz workflow's path filter skipped a
-docs/tests-only PR. The workflow now triggers on all paths for push and pull
-request events, preserving the bounded fuzz jobs while guaranteeing those
-required contexts are created. A fresh post-fix PR run must still confirm the
-remote ruleset is unblocked; no bypass or merge was performed.
+docs/tests-only PR. The all-path trigger now creates those contexts without
+weakening any fuzz duration, target, or failure gate, and run `31620776897`
+shows all three required fuzz contexts green. The remote PR state is now
+`CLEAN`; no bypass or merge was performed.
 
 This checkpoint does not close the remaining external certification gates:
 Codecov current-head repository authorization/accepted upload evidence,
