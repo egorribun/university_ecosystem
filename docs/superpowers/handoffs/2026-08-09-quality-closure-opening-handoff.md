@@ -189,12 +189,13 @@ merged it to `main` as `c838c2000cf5b73d4dfa38dfa4a7d239c13cbb0b`.
 ### Security hardening continuation — 2026-08-12
 
 The canonical `egorribun` branch now points to published commit
-`db9c3dc6ba3e01265a04b1bae1f01bf63a2a1dd2`. Preceding commit `71acdac82`
+`7973577a9d45ed4e2d0f6cc955c26ee454a274b5`. Preceding commit `71acdac82`
 rejects private push endpoints before persistence or outbound delivery, removes
 PR `id-token: write` and inherited secrets from test workflows, and gates
 Codecov OIDC plus release/deploy credentials to trusted `main`; `db9c3dc6b`
-scopes nightly workflow permissions. Focused security/contract tests and the
-selected changed-file pre-commit suite are green (`142 passed, 3 warnings`;
+scopes nightly workflow permissions; `7973577a9` closes the IPv4-mapped IPv6
+literal SSRF bypass. Focused security/contract tests and the selected
+changed-file pre-commit suite are green (`120 passed, 3 warnings`;
 Ruff, mypy, actionlint, Semgrep, gitleaks, Bandit, detect-secrets and YAML
 parsing passed).
 
@@ -218,7 +219,7 @@ parsing passed).
   running workflow was manually cancelled. Diagnostic run
   [31543639360](https://github.com/egorribun/university_ecosystem/actions/runs/31543639360)
   remains in progress; wait for the main run to start, then queue a fresh
-  exact-`db9c3dc6b` dispatch after the slot is occupied. Do not infer
+  exact-`7973577a9` dispatch after the slot is occupied. Do not infer
   mutation, Stryker, Miri, browser, load/chaos, or coverage evidence until the
   relevant run is terminal and its artifacts are downloaded and inspected. A
   fresh stabilization query on 2026-08-12 is `eligible: false` with no

@@ -148,16 +148,19 @@ was merged to `main` as `c838c2000cf5b73d4dfa38dfa4a7d239c13cbb0b`.
   profile for the formal Deep Security Scan. This roadmap remains fail-closed;
   the goal is not complete from these results alone.
 
-### Security hardening continuation — 2026-08-12 (published `db9c3dc6b`)
+### Security hardening continuation — 2026-08-12 (published `7973577a9`)
 
 The current canonical `egorribun` tip is
-`db9c3dc6ba3e01265a04b1bae1f01bf63a2a1dd2`, pushed and verified on the remote.
+`7973577a9d45ed4e2d0f6cc955c26ee454a274b5`, pushed and verified on the remote.
 The preceding `71acdac82` commit hardens push-subscription SSRF validation and
 moves Codecov OIDC uploads and release/deploy credentials behind trusted `main`
-conditions; `db9c3dc6b` additionally scopes nightly workflow permissions. PR
+conditions; `db9c3dc6b` additionally scopes nightly workflow permissions, and
+`7973577a9` closes the IPv4-mapped IPv6 literal bypass in the SSRF blocklist. PR
 test jobs no longer receive `id-token: write` or inherited secrets. The selected
 changed-file pre-commit suite, YAML parsing, actionlint, Semgrep, Ruff, mypy,
-and the focused push/SSRF/contract tests are green (`142 passed, 3 warnings`).
+and the focused SSRF regression tests are green (`120 passed, 3 warnings`); the
+broader selected push/SSRF/quality-contract run remains `142 passed, 3
+warnings`.
 
 - The standard Codex Security scan
   `9ccd3274-fd28-4971-93ae-362bec838d8e` completed before this hardening and
@@ -182,7 +185,7 @@ and the focused push/SSRF/contract tests are green (`142 passed, 3 warnings`).
   running workflow was manually cancelled. The old diagnostic run
   [31543639360](https://github.com/egorribun/university_ecosystem/actions/runs/31543639360)
   remains in progress; after it releases the slot, the main run must start
-  before a new exact-`db9c3dc6b` dispatch is queued. No nightly score or
+  before a new exact-`7973577a9` dispatch is queued. No nightly score or
   artifact result is inferred until the relevant current-HEAD run is terminal
   and its mutation, Stryker, Miri, browser, load/chaos, and coverage artifacts
   are inspected.
