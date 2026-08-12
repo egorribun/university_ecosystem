@@ -130,6 +130,9 @@ test.describe("@a11y enhanced WCAG 2.2 AA + tab-order + reduced-motion", () => {
     )
 
     await page.goto("/login", { waitUntil: "commit", timeout: 30_000 })
+    await page.waitForFunction(() => window.__APP_HYDRATED === true, null, {
+      timeout: 15_000,
+    })
     await expect(page.locator('input[name="email"]')).toBeVisible({ timeout: 15_000 })
     await expect(page.locator('input[name="password"]')).toBeVisible({ timeout: 15_000 })
     await expect(page.locator('button[type="submit"]')).toBeVisible({ timeout: 15_000 })
@@ -138,7 +141,9 @@ test.describe("@a11y enhanced WCAG 2.2 AA + tab-order + reduced-motion", () => {
     // notification prompt are optional chrome, so beginning from the browser
     // default focus can make the first 15 tab stops vary between CI runs.
     const emailInput = page.locator('input[name="email"]')
+    await expect(emailInput).toBeEnabled({ timeout: 15_000 })
     await emailInput.focus()
+    await expect(emailInput).toBeFocused({ timeout: 5_000 })
 
     // Collect focused element IDs/types as Tab is pressed.
     const focusedElements: string[] = [

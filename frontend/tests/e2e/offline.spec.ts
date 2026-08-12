@@ -1,5 +1,6 @@
 import { expect, test, type Page } from "./test"
 import { useMockApi } from "./utils/mockApi"
+import { gotoWithTransientRetry } from "./utils/navigation"
 
 const ensureServiceWorkerIsReady = async (page: Page) => {
   await page.waitForLoadState("networkidle")
@@ -53,7 +54,7 @@ test.describe("PWA offline support", () => {
       page.getByRole("heading", { name: /No network connection|Нет подключения к сети/i })
     ).toBeVisible()
 
-    await page.goto("/dashboard", { waitUntil: "networkidle" })
+    await gotoWithTransientRetry(page, "/dashboard", { waitUntil: "networkidle" })
 
     await context.setOffline(true)
     try {
@@ -85,7 +86,7 @@ test.describe("PWA offline support", () => {
 
     await ensureServiceWorkerIsReady(page)
 
-    await page.goto("/profile", { waitUntil: "networkidle" })
+    await gotoWithTransientRetry(page, "/profile", { waitUntil: "networkidle" })
     await expect(page).toHaveURL(/\/profile/)
     await expect(page.getByText(/Иван Иванов|Ivan Ivanov/i)).toBeVisible()
 
@@ -108,10 +109,10 @@ test.describe("PWA offline support", () => {
     await mock.login(page)
     await ensureServiceWorkerIsReady(page)
 
-    await page.goto("/news", { waitUntil: "networkidle" })
+    await gotoWithTransientRetry(page, "/news", { waitUntil: "networkidle" })
     await expect(page.getByText(/Новость дня|News of the day/i)).toBeVisible()
 
-    await page.goto("/schedule", { waitUntil: "networkidle" })
+    await gotoWithTransientRetry(page, "/schedule", { waitUntil: "networkidle" })
     await expect(page.getByText(/Математика|Mathematics/i).first()).toBeVisible()
 
     const initialStatuses = await page.evaluate(async () => {
@@ -176,7 +177,7 @@ test.describe("PWA offline support", () => {
 
     await ensureServiceWorkerIsReady(page)
 
-    await page.goto("/dashboard", { waitUntil: "networkidle" })
+    await gotoWithTransientRetry(page, "/dashboard", { waitUntil: "networkidle" })
 
     // Go offline and check for indicator
     await context.setOffline(true)

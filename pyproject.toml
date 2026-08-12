@@ -24,7 +24,6 @@ dependencies = [
   "clamd>=1.0.2",
   "cryptography>=50.0.0",                             # SEC: fixes CVE-2026-69247 reported by Trivy on 49.0.0
   "defusedxml>=0.7.1",
-  "diskcache>=5.6.3",
   "elasticsearch[async]>=9.3.0,<10.0.0",
   "email-validator>=2.3.0,<3",  # TD-W18-06 (Wave 18): upper bound prevents silent major-version breakage
   "fastapi>=0.135.3,<0.142",                          # PY-P1-01 (audit Wave 10): tight minor bound; update consciously via Renovate
@@ -33,6 +32,7 @@ dependencies = [
   "grpcio>=1.80.0",
   "gunicorn>=25.3.0",
   "httpx[http2]>=0.28.1,<1.0",                          # TD-W9-06: upper bound — httpx 1.0 has breaking transport API changes
+  "h2>=4.4.1,<5",                                       # SEC: fixes the active h2 advisory in HTTP/2 transport
   "minio>=7.2.20",
   "nats-py>=2.14.0,<3",                                  # MOD-W10-01: upper bound; nats-py 3.0 has breaking JetStream API changes
   "nh3>=0.3.4",
@@ -397,6 +397,10 @@ dev = [
   "pytest>=9.0.3",
   "pytest-asyncio>=1.3.0",
   "pytest-cov>=7.1.0",
+  # Mutation workers receive hundreds of mapped tests. Bound a single mutant-
+  # induced hang so it is classified as killed rather than consuming mutmut's
+  # aggregate 15x watchdog budget.
+  "pytest-timeout>=2.4.0",
   "pytest-xdist>=3.8.0",
   # RZ-30-05: ruff v0.15.x has regression (strips except parens → SyntaxError).
   # Pin to 0.14.x until upstream fix lands.  Pre-commit already pins 0.14.14.
@@ -415,7 +419,9 @@ dev = [
   # Pact Rust FFI and exposes the pact.v3 API used in tests/contracts/.
   "pact-python==3.4.0",
   "diff-cover>=9.2.0",
-  "mutmut>=3.0.0",
+  # The incremental planner uses mutmut's 3.7 publicized 3.x orchestration
+  # interfaces; pin the tested release to keep CI mutation semantics stable.
+  "mutmut==3.7.0",
   # Wave 2 / Task 2.3 — Schemathesis for property-based OpenAPI conformance testing.
   # Generates random-but-valid requests from the OpenAPI spec and asserts the
   # server's responses match the declared schemas (status codes, bodies, headers).
@@ -444,8 +450,8 @@ required-version = "==0.11.28"
 exclude-newer = "7 days"
 # Security exception: cryptography 50.0.0 (uploaded 2026-07-31) fixes
 # CVE-2026-69247; keep the general reproducibility cutoff for every other
-# package while allowing this patched release into the lockfile.
-exclude-newer-package = { cryptography = "2026-08-01T00:00:00Z", pyopenssl = "2026-08-02T00:00:00Z" }
+# package while allowing patched security releases into the lockfile.
+exclude-newer-package = { cryptography = "2026-08-01T00:00:00Z", pyopenssl = "2026-08-02T00:00:00Z", h2 = "2026-08-04T00:00:00Z", mcp = "2026-08-04T00:00:00Z" }
 environments = [
     "sys_platform == 'win32'",
     "sys_platform == 'linux'",
@@ -463,6 +469,7 @@ override-dependencies = [
     "opentelemetry-semantic-conventions>=0.62b0",
     "click>=8.2.1",
     "tomli>=2.2.1",
+    "mcp>=1.28.1,<2",
 ]
 
 [tool.uv.sources]
@@ -503,31 +510,33 @@ skips = [
 ]
 
 [tool.mutmut]
-# mutmut 3.5.0 config (read from [tool.mutmut] in pyproject by config_reader()).
-# The installed 3.5.0 reads `paths_to_mutate` (a LIST — load_config() iterates the
-# value, so a bare string would be split char-by-char) to locate the mutation
-# universe; without it mutmut falls back to guess_paths_to_mutate(), which does
-# NOT try app/ and raises FileNotFoundError ("Could not figure out where the code
-# to mutate is"). `source_paths` is a newer/unreleased key NOT recognized by 3.5.0.
+# mutmut 3.7.0 configuration. `source_paths` is the supported list-valued
+# setting for the mutation universe; without it mutmut falls back to guessing
+# a source directory and cannot reliably select this repository's `app/` tree.
 # `pytest_add_cli_args_test_selection` scopes the pytest run to the deterministic
 # unit-test population. Incremental selection is done by
 # `scripts/plan_mutmut_shards.py`, which assigns exact mutant names using the
 # merged test-duration map (see .github/workflows/ci.yml mutation-tests job).
-paths_to_mutate = ["app/"]
+source_paths = ["app/"]
+# Keep the external shard-budget calculation exactly aligned with mutmut's
+# per-PID watchdog in 3.7.0: timeout_multiplier * (estimated + timeout_constant).
+timeout_multiplier = 15.0
+timeout_constant = 1.0
 pytest_add_cli_args_test_selection = [
     "-m",
     "not integration and not chaos and not performance and not slow",
     "tests/",
 ]
 # mutmut runs the baseline/stats suite inside an isolated `mutants/` copy whose
-# tree is built by copy_src_dir() (walk_all_files copies ONLY paths_to_mutate =
+# tree is built by copy_src_dir() (walk_all_files copies ONLY source_paths =
 # app/) plus copy_also_copy_files() (the user-config `also_copy` paths). tests/
 # arrives via mutmut's own test-selection copy, but on-disk repo files OUTSIDE
 # app/+tests/ are NOT copied — so infra-contract tests that assert those files
 # fail in the mutants/ copy with "Path doesn't exist: mutants/<path>" →
-# "failed to collect stats. runner returned 1" (the mutmut CI job's sole failure
-# mode; `mutmut run` itself exits 0 even with surviving mutants — score-gating is
-# the separate `export_cicd_stats` command the CI does not call).
+# "failed to collect stats. runner returned 1". `mutmut run` itself exits 0
+# even with surviving mutants; CI therefore writes fresh scope-local stats with
+# `scripts/export_mutmut_shard_stats.py` and applies the separate fail-closed
+# score gate before it can report success.
 #
 # These repository-contract tests exercise ZERO app/ source (pure infra/config
 # contracts → zero mutation-killing signal), but their inputs must still exist
@@ -537,6 +546,8 @@ pytest_add_cli_args_test_selection = [
 #   - test_wave173_caddy_routing  → infrastructure/Caddyfile  (W173 routing)
 #   - test_wave173_ws_hub_env     → docker-compose.full.yml   (W173 ws-hub env)
 #   - test_backend_dockerfile      → backend.Dockerfile         (uv image pin)
+#   - test_quality_configuration   → .dockerignore and Dockerfile.test.dockerignore
+#                                      plus .gitignore (test-image and xdist contracts)
 # Copy the repository-contract paths into the isolated tree so the full nightly
 # run can measure them without a false collection failure. The mutation-score
 # parser contract imports `scripts/check_mutation_score.py`; copying its parent
@@ -544,6 +555,8 @@ pytest_add_cli_args_test_selection = [
 # isolated-performance tool test also reads its trusted Rust Dockerfile.
 also_copy = [
     ".github",
+    ".gitignore",
+    ".dockerignore",
     ".lighthouserc.js",
     ".trivyignore.yaml",
     "quality",
@@ -552,6 +565,7 @@ also_copy = [
     "alembic",
     "scripts",
     "Dockerfile.test",
+    "Dockerfile.test.dockerignore",
     "Dockerfile.protogen",
     "backend.Dockerfile",
     "docker-compose.full.yml",
@@ -596,6 +610,12 @@ also_copy = [
 pytest_add_cli_args = [
     "-x",
     "-q",
+    # Applied only inside mutmut's Linux pytest invocations. The 120-second
+    # per-test cap is >5x the longest fresh mapped test (22.835s), while
+    # turning mutant-induced hangs into a normal failing/killed result instead
+    # of an incomplete SIGXCPU mutation shard.
+    "--timeout=120",
+    "--timeout-method=signal",
     "--ignore=tests/integration/test_migration_data.py",
     # Schemathesis dynamically generates tests that pytest cannot collect individually by node ID,
     # causing exit code 4 / BadTestExecutionCommandsException. Ignore them under mutmut.

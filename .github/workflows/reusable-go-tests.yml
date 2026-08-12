@@ -22,16 +22,14 @@ on:
         type: number
         default: 80
 
-    secrets:
-      CODECOV_TOKEN:
-        required: false
-        description: "Codecov upload token"
-
 jobs:
   test:
     name: Test Go Service (${{ inputs.service-directory }})
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    permissions:
+      contents: read
+      id-token: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -204,11 +202,11 @@ jobs:
         uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0
         if: ${{ always() && steps.codecov-flag.outputs.flag != '' }}
         with:
-          token: ${{ secrets.CODECOV_TOKEN }}
+          use_oidc: true
           files: ${{ inputs.service-directory }}/coverage.out
           flags: ${{ steps.codecov-flag.outputs.flag }}
           name: ${{ steps.codecov-flag.outputs.flag }}
-          fail_ci_if_error: false
+          fail_ci_if_error: true
 
   lint:
     name: Lint Go Service (${{ inputs.service-directory }})

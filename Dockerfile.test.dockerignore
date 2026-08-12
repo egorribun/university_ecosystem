@@ -1,0 +1,88 @@
+# VCS
+.git
+.gitmodules
+.gitignore
+
+# Python cache & artifacts
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.ruff_cache/
+.tox/
+.nox/
+.coverage
+.coverage.*
+htmlcov/
+.hypothesis/
+.mypy_cache/
+**/.mypy_cache/
+
+# Node/npm artifacts
+node_modules/
+**/node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.npm/
+.vite/
+dist/
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+env/
+.quality-venv/
+
+# Local databases and secrets
+.secrets/
+**/.secrets/
+*.db
+*.sqlite3
+.env
+.env.*
+!.env.example
+*.bak
+*.swp
+*.log
+
+# Local agent state and disposable quality artifacts
+.codex-uv-cache/
+.agents/
+.opencode/
+.superpowers/
+.quality-pytest-tmp*/
+.worktrees/
+.pytest_tmp*/
+.uv-cache*/
+.docker-quality-closure/
+
+# IDE files
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+.DS_Store
+
+# Rust build artifacts
+target/
+**/target/
+native/rust_ext/target/
+crates/pyo3-sanitizer/target/
+
+# Misc
+Dockerfile*
+!backend.Dockerfile
+!Dockerfile.test
+!Dockerfile.test.dockerignore
+!.gitignore
+docker-compose*.yml
+README.md
+LICENSE
+docs/
+alembic/versions/*.pyc
+.pre-commit-trivy-cache/

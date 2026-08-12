@@ -3,6 +3,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import sys
+from datetime import date, timedelta
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -117,3 +118,47 @@ def test_certification_cli_hashes_every_file_in_report_directory(
     assert certification.main() == 0
     record = json.loads(output.read_text(encoding="utf-8"))
     assert report.as_posix() in record["report_hashes"]
+
+
+def test_stabilization_window_requires_every_calendar_day() -> None:
+    stabilization = _load_script("check_stabilization_window")
+    as_of = date(2026, 8, 8)
+    runs = [
+        {
+            "conclusion": "success",
+            "head_branch": "main",
+            "completed_at": f"{as_of - timedelta(days=offset):%Y-%m-%d}T01:30:00Z",
+        }
+        for offset in range(30)
+    ]
+
+    result = stabilization.evaluate_window(runs, days=30, as_of=as_of, branch="main")
+
+    assert result["eligible"] is True
+    assert result["missing_dates"] == []
+
+
+def test_stabilization_window_rejects_failed_or_stale_runs() -> None:
+    stabilization = _load_script("check_stabilization_window")
+    as_of = date(2026, 8, 8)
+    runs = [
+        {
+            "conclusion": "success",
+            "head_branch": "main",
+            "completed_at": f"{as_of - timedelta(days=offset):%Y-%m-%d}T01:30:00Z",
+        }
+        for offset in range(1, 30)
+    ]
+    runs.append(
+        {
+            "conclusion": "failure",
+            "head_branch": "main",
+            "completed_at": f"{as_of:%Y-%m-%d}T01:30:00Z",
+        }
+    )
+
+    result = stabilization.evaluate_window(runs, days=30, as_of=as_of, branch="main")
+
+    assert result["eligible"] is False
+    assert result["missing_dates"] == [as_of.isoformat()]
+    assert "latest successful run" in result["reason"]

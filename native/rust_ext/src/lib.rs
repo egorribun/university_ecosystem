@@ -1618,6 +1618,41 @@ mod tests {
     }
 
     #[test]
+    fn find_optimal_slot_accepts_non_conflicting_real_same_day_item() {
+        let monday = NaiveDate::from_ymd_opt(2026, 1, 5).unwrap();
+        assert_eq!(monday.weekday(), Weekday::Mon);
+        let existing_start = Utc
+            .from_utc_datetime(&monday.and_hms_opt(12, 0, 0).unwrap())
+            .timestamp();
+        let expected_start = Utc
+            .from_utc_datetime(&monday.and_hms_opt(9, 0, 0).unwrap())
+            .timestamp();
+        let existing = vec![ScheduleItem {
+            id: Some(1),
+            weekday: "monday".to_string(),
+            start_time: existing_start,
+            end_time: existing_start + 3600,
+            parity: "both".to_string(),
+        }];
+
+        let result =
+            find_optimal_slot_at(monday, 60, existing, vec![("monday".to_string(), vec![9])]);
+
+        assert_eq!(
+            result.as_ref().map(|item| item.weekday.as_str()),
+            Some("monday")
+        );
+        assert_eq!(
+            result.as_ref().map(|item| item.start_time),
+            Some(expected_start)
+        );
+        assert_eq!(
+            result.map(|item| item.end_time),
+            Some(expected_start + 3600)
+        );
+    }
+
+    #[test]
     fn signature_verification_success() {
         let key = "my-secret-key";
         let data = "test-log-data";
@@ -1706,8 +1741,12 @@ mod tests {
         let existing = vec![ScheduleItem {
             id: Some(1),
             weekday: "monday".to_string(),
-            start_time: Utc::now().timestamp(), // conflicting block
-            end_time: Utc::now().timestamp() + 3600,
+            // Use a 1970 baseline time-of-day rather than wall-clock time.
+            // `find_optimal_slot` normalizes it to the next matching weekday;
+            // a live timestamp can overlap both candidates depending on when
+            // the test happens to run.
+            start_time: 9 * 3600,
+            end_time: 10 * 3600,
             parity: "both".to_string(),
         }];
 
@@ -1718,8 +1757,15 @@ mod tests {
 
         let slot = find_optimal_slot(60, existing, available);
         assert!(slot.is_ok());
-        let found = slot.unwrap();
-        assert_eq!(found.unwrap().weekday, "monday");
+        let found = slot.unwrap().expect("10:00 must remain available");
+        assert_eq!(found.weekday, "monday");
+        assert_eq!(
+            DateTime::<Utc>::from_timestamp(found.start_time, 0)
+                .unwrap()
+                .time()
+                .hour(),
+            10
+        );
     }
 
     #[test]

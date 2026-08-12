@@ -1,5 +1,6 @@
 import { expect, test } from "./test"
 import { useMockApi } from "./utils/mockApi"
+import { gotoWithTransientRetry } from "./utils/navigation"
 
 const TEST_TIMEOUTS = {
   short: 5000,
@@ -177,7 +178,7 @@ test.describe.skip("University ecosystem app", () => {
     const mock = await useMockApi(page)
     await mock.login(page)
 
-    await page.goto("/settings", { waitUntil: "networkidle" })
+    await gotoWithTransientRetry(page, "/settings", { waitUntil: "networkidle" })
     await page.waitForTimeout(TEST_DELAYS.short)
     await page.waitForSelector('[role="radiogroup"]')
 
@@ -194,7 +195,7 @@ test.describe.skip("University ecosystem app", () => {
     const mock = await useMockApi(page)
     await mock.login(page)
 
-    await page.goto("/profile?edit=1", { waitUntil: "networkidle" })
+    await gotoWithTransientRetry(page, "/profile?edit=1", { waitUntil: "networkidle" })
     await page.waitForTimeout(TEST_DELAYS.default) // Allow more time for edit mode hydration
 
     const saveBtn = page.getByTestId("profile-save-button")

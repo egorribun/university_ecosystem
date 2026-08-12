@@ -235,3 +235,33 @@ def test_matches_source_accepts_tests_for_utility_scripts() -> None:
         )
         is True
     )
+
+
+def test_matches_source_accepts_named_workflow_contract_tests() -> None:
+    workflow_paths = {".github/workflows/dast.yml"}
+
+    assert (
+        matches_source(
+            "tests/test_dast_workflow_contract.py",
+            set(),
+            [],
+            workflow_paths=workflow_paths,
+        )
+        is True
+    )
+    assert (
+        matches_source("tests/test_dast.py", set(), [], workflow_paths=workflow_paths)
+        is False
+    )
+
+
+def test_matches_source_normalizes_hyphenated_workflow_contract_names() -> None:
+    assert (
+        matches_source(
+            "tests/test_quality_promotion_check_workflow_contract.py",
+            set(),
+            [],
+            workflow_paths={".github/workflows/quality-promotion-check.yml"},
+        )
+        is True
+    )

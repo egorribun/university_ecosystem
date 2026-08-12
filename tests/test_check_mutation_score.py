@@ -6,6 +6,8 @@ import shutil
 import sys
 from pathlib import Path
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -45,6 +47,10 @@ def test_parser_counts_complete_mutmut_status_stream() -> None:
             "    app.four__mutmut_1: timed out",
             "    app.five__mutmut_1: suspicious",
             "    app.six__mutmut_1: not checked",
+            "    app.seven__mutmut_1: skipped",
+            "    app.eight__mutmut_1: check was interrupted by user",
+            "    app.nine__mutmut_1: segfault",
+            "    app.ten__mutmut_1: caught by type check",
         )
     )
 
@@ -56,7 +62,12 @@ def test_parser_counts_complete_mutmut_status_stream() -> None:
     assert summary.not_checked == 1
     assert summary.timeout == 1
     assert summary.suspicious == 1
-    assert summary.score == 50.0
+    assert summary.skipped == 1
+    assert summary.interrupted == 1
+    assert summary.segfault == 1
+    assert summary.caught_by_type_check == 1
+    assert summary.total_meaningful == 3
+    assert summary.score == 2 / 3 * 100
 
 
 def test_runner_requests_all_statuses(monkeypatch) -> None:
@@ -104,5 +115,165 @@ def test_parser_accepts_mutmut_cicd_stats_json() -> None:
     assert summary.survived == 3
     assert summary.no_tests == 2
     assert summary.suspicious == 1
+    assert summary.skipped == 1
+    assert summary.interrupted == 0
+    assert summary.segfault == 0
+    assert summary.caught_by_type_check == 0
     assert summary.not_checked == 0
     assert summary.score == 17 / 20 * 100
+
+
+def test_default_score_gate_requires_all_viable_mutants_to_be_killed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    checker = _load_checker()
+    monkeypatch.setattr(
+        checker,
+        "_load_cicd_stats",
+        lambda: checker.MutationSummary(
+            killed=99,
+            survived=1,
+            timeout=0,
+            suspicious=0,
+            no_tests=0,
+            not_checked=0,
+        ),
+    )
+
+    with pytest.raises(SystemExit) as error:
+        checker.main([])
+
+    assert error.value.code == 1
+
+
+def test_default_score_gate_accepts_all_killed_viable_mutants(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    checker = _load_checker()
+    monkeypatch.setattr(
+        checker,
+        "_load_cicd_stats",
+        lambda: checker.MutationSummary(
+            killed=100,
+            survived=0,
+            timeout=0,
+            suspicious=0,
+            no_tests=0,
+            not_checked=0,
+        ),
+    )
+
+    assert checker.main([]) is None
+
+
+@pytest.mark.parametrize(
+    "status",
+    (
+        "timeout",
+        "suspicious",
+        "no_tests",
+        "not_checked",
+        "skipped",
+        "interrupted",
+        "segfault",
+    ),
+)
+def test_default_score_gate_fails_closed_on_unresolved_mutation_status(
+    monkeypatch: pytest.MonkeyPatch,
+    status: str,
+) -> None:
+    checker = _load_checker()
+    values = {
+        "killed": 1,
+        "survived": 0,
+        "timeout": 0,
+        "suspicious": 0,
+        "no_tests": 0,
+        "not_checked": 0,
+        "skipped": 0,
+        "interrupted": 0,
+        "segfault": 0,
+        "caught_by_type_check": 0,
+    }
+    values[status] = 1
+    monkeypatch.setattr(
+        checker,
+        "_load_cicd_stats",
+        lambda: checker.MutationSummary(**values),
+    )
+
+    with pytest.raises(SystemExit) as error:
+        checker.main([])
+
+    assert error.value.code == 1
+
+
+def test_default_score_gate_accepts_type_check_kill(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    checker = _load_checker()
+    monkeypatch.setattr(
+        checker,
+        "_load_cicd_stats",
+        lambda: checker.MutationSummary(
+            killed=0,
+            survived=0,
+            timeout=0,
+            suspicious=0,
+            no_tests=0,
+            not_checked=0,
+            caught_by_type_check=1,
+        ),
+    )
+
+    assert checker.main([]) is None
+
+
+def test_default_score_gate_rejects_an_empty_mutation_universe(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    checker = _load_checker()
+    monkeypatch.setattr(
+        checker,
+        "_load_cicd_stats",
+        lambda: checker.MutationSummary(
+            killed=0,
+            survived=0,
+            timeout=0,
+            suspicious=0,
+            no_tests=0,
+            not_checked=0,
+        ),
+    )
+
+    with pytest.raises(SystemExit) as error:
+        checker.main([])
+
+    assert error.value.code == 1
+
+
+def test_unclassified_exported_mutant_is_not_checked_and_fails_closed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    checker = _load_checker()
+    summary = checker._parse_cicd_stats(
+        {
+            "killed": 1,
+            "survived": 0,
+            "total": 2,
+            "no_tests": 0,
+            "skipped": 0,
+            "suspicious": 0,
+            "timeout": 0,
+            "check_was_interrupted_by_user": 0,
+            "segfault": 0,
+            "caught_by_type_check": 0,
+        }
+    )
+    assert summary.not_checked == 1
+    monkeypatch.setattr(checker, "_load_cicd_stats", lambda: summary)
+
+    with pytest.raises(SystemExit) as error:
+        checker.main([])
+
+    assert error.value.code == 1

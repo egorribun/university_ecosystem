@@ -15,6 +15,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from PIL import Image
 
+import app.utils.images as images
 from app.utils.images import optimize_image
 from app.utils.sanitization import sanitize_html, sanitize_rich_text
 
@@ -71,11 +72,13 @@ def test_optimize_image_vips_routing_and_fallback() -> None:
 
     # Case 1: Route to VIPS when VIPS_AVAILABLE is True
     mock_vips_opt = MagicMock(return_value=(b"vips_optimized_webp_bytes", "image/webp"))
+    # ``test_images_v2`` reloads this module; keep the patches and invocation
+    # on the collection-time module object so they target the same globals.
     with (
-        patch("app.utils.images.VIPS_AVAILABLE", True),
-        patch("app.utils.images.optimize_image_vips", mock_vips_opt),
+        patch.object(images, "VIPS_AVAILABLE", True),
+        patch.object(images, "optimize_image_vips", mock_vips_opt),
     ):
-        optimized_data, content_type = optimize_image(
+        optimized_data, content_type = images.optimize_image(
             png_data, max_width=5, max_height=5
         )
         assert optimized_data == b"vips_optimized_webp_bytes"
@@ -87,10 +90,10 @@ def test_optimize_image_vips_routing_and_fallback() -> None:
     # Case 2: VIPS fails with OSError -> Fallback to Pillow
     mock_vips_fail = MagicMock(side_effect=OSError("libvips error"))
     with (
-        patch("app.utils.images.VIPS_AVAILABLE", True),
-        patch("app.utils.images.optimize_image_vips", mock_vips_fail),
+        patch.object(images, "VIPS_AVAILABLE", True),
+        patch.object(images, "optimize_image_vips", mock_vips_fail),
     ):
-        optimized_data, content_type = optimize_image(
+        optimized_data, content_type = images.optimize_image(
             png_data, max_width=5, max_height=5
         )
         assert content_type == "image/webp"

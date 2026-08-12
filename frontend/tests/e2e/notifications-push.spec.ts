@@ -1,5 +1,6 @@
 import { expect, test, type Page } from "./test"
 import { useMockApi } from "./utils/mockApi"
+import { gotoWithTransientRetry } from "./utils/navigation"
 
 /**
  * Push notification UX specs — W24.
@@ -65,7 +66,7 @@ test.describe("Push notification UX", () => {
     const { login } = await useMockApi(page)
     await login(page)
 
-    await page.goto("/settings", { waitUntil: "networkidle" })
+    await gotoWithTransientRetry(page, "/settings", { waitUntil: "networkidle" })
 
     // Navigate to the notifications tab (label varies by locale).
     const notificationsTab = page.getByRole("tab", { name: /notification|уведомлени/i })
@@ -118,7 +119,7 @@ test.describe("Push notification UX", () => {
     const { login } = await useMockApi(page)
     await login(page)
 
-    await page.goto("/settings", { waitUntil: "networkidle" })
+    await gotoWithTransientRetry(page, "/settings", { waitUntil: "networkidle" })
 
     const notificationsTab = page.getByRole("tab", { name: /notification|уведомлени/i })
     if (await notificationsTab.isVisible()) {

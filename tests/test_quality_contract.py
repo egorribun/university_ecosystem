@@ -387,6 +387,19 @@ def test_rejects_tier0_coverage_below_100(tmp_path: Path) -> None:
     assert "tier0.coverage.functions must equal 100" in result.stderr
 
 
+@pytest.mark.parametrize("field", ("patch_coverage", "viable_mutant_score"))
+def test_rejects_policy_floor_below_100(tmp_path: Path, field: str) -> None:
+    contract = _load_contract()
+    policy = contract["policy"]
+    assert isinstance(policy, dict)
+    policy[field] = 99
+
+    result = _run_contract(tmp_path, contract)
+
+    assert result.returncode == 1
+    assert f"policy.{field} must equal 100" in result.stderr
+
+
 def test_manifest_enforces_tier0_coverage_per_file(tmp_path: Path) -> None:
     manifest_path = tmp_path / "quality-manifest.json"
     manifest_path.write_text(

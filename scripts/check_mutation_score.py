@@ -1,14 +1,18 @@
 #!/usr/bin/env python3
 """Mutation score checker for the University Ecosystem project.
 
-Runs ``uv run mutmut results --all`` and parses the output to compute:
-    mutation_score = killed / (killed + survived)
+Runs ``uv run mutmut results --all`` and parses the output to compute the
+viable mutation score:
+    mutation_score = accepted_kills / (accepted_kills + survived)
+
+Only a killed mutant or a mutant caught by a configured type checker is an
+accepted kill. Any incomplete or unclassified mutmut status fails the gate.
 
 Usage:
     python scripts/check_mutation_score.py [--min-score FLOAT]
 
 Exit codes:
-    0  Score meets or exceeds --min-score (default 80.0)
+    0  Score meets or exceeds --min-score (default 100.0)
     1  Score is below --min-score, or mutmut could not be run / parsed
 """
 
@@ -38,21 +42,47 @@ class MutationSummary:
     suspicious: int
     no_tests: int
     not_checked: int
+    skipped: int = 0
+    interrupted: int = 0
+    segfault: int = 0
+    caught_by_type_check: int = 0
+
+    @property
+    def accepted_kills(self) -> int:
+        """Mutants conclusively rejected by tests or a configured type checker."""
+        return self.killed + self.caught_by_type_check
 
     @property
     def total_meaningful(self) -> int:
-        """Killed + survived — the denominator for score calculation."""
-        return self.killed + self.survived
+        """Accepted kills + survivors — the viable-score denominator."""
+        return self.accepted_kills + self.survived
+
+    @property
+    def incomplete_statuses(self) -> dict[str, int]:
+        """Statuses that cannot serve as complete mutation-test evidence."""
+        return {
+            name: count
+            for name, count in (
+                ("timeout", self.timeout),
+                ("suspicious", self.suspicious),
+                ("no_tests", self.no_tests),
+                ("not_checked", self.not_checked),
+                ("skipped", self.skipped),
+                ("interrupted", self.interrupted),
+                ("segfault", self.segfault),
+            )
+            if count
+        }
 
     @property
     def score(self) -> float:
         """Mutation score as a value between 0.0 and 100.0.
 
-        When no mutants survived (survived == 0), score is 100.0%.
+        An empty viable-mutant universe is not a passing score.
         """
         if self.total_meaningful == 0:
-            return 100.0 if self.survived == 0 else 0.0
-        return (self.killed / self.total_meaningful) * 100.0
+            return 0.0
+        return (self.accepted_kills / self.total_meaningful) * 100.0
 
 
 # ---------------------------------------------------------------------------
@@ -71,6 +101,15 @@ _TIMEOUT_PATTERN = re.compile(r"Timed\s+out[:\s]+(\d+)", re.IGNORECASE)
 _SUSPICIOUS_PATTERN = re.compile(r"Suspicious[:\s]+(\d+)", re.IGNORECASE)
 _NO_TESTS_PATTERN = re.compile(r"No\s+tests[:\s]+(\d+)", re.IGNORECASE)
 _NOT_CHECKED_PATTERN = re.compile(r"Not\s+checked[:\s]+(\d+)", re.IGNORECASE)
+_SKIPPED_PATTERN = re.compile(r"Skipped[:\s]+(\d+)", re.IGNORECASE)
+_INTERRUPTED_PATTERN = re.compile(
+    r"(?:Check\s+was\s+)?interrupted(?:\s+by\s+user)?[:\s]+(\d+)",
+    re.IGNORECASE,
+)
+_SEGFAULT_PATTERN = re.compile(r"Segfault[:\s]+(\d+)", re.IGNORECASE)
+_CAUGHT_BY_TYPE_CHECK_PATTERN = re.compile(
+    r"Caught\s+by\s+type\s+check[:\s]+(\d+)", re.IGNORECASE
+)
 
 _STATUS_PATTERNS = {
     "killed": re.compile(r":\s*killed\b", re.IGNORECASE),
@@ -79,6 +118,15 @@ _STATUS_PATTERNS = {
     "suspicious": re.compile(r":\s*suspicious\b", re.IGNORECASE),
     "no_tests": re.compile(r":\s*no\s+tests\b", re.IGNORECASE),
     "not_checked": re.compile(r":\s*not\s+checked\b", re.IGNORECASE),
+    "skipped": re.compile(r":\s*skipped\b", re.IGNORECASE),
+    "interrupted": re.compile(
+        r":\s*(?:check\s+was\s+)?interrupted(?:\s+by\s+user)?\b",
+        re.IGNORECASE,
+    ),
+    "segfault": re.compile(r":\s*segfault\b", re.IGNORECASE),
+    "caught_by_type_check": re.compile(
+        r":\s*caught\s+by\s+type\s+check\b", re.IGNORECASE
+    ),
 }
 
 
@@ -108,6 +156,10 @@ def _parse_mutmut_output(output: str) -> MutationSummary:
             suspicious=status_counts["suspicious"],
             no_tests=status_counts["no_tests"],
             not_checked=status_counts["not_checked"],
+            skipped=status_counts["skipped"],
+            interrupted=status_counts["interrupted"],
+            segfault=status_counts["segfault"],
+            caught_by_type_check=status_counts["caught_by_type_check"],
         )
 
     killed_match = _KILLED_PATTERN.search(output)
@@ -125,17 +177,21 @@ def _parse_mutmut_output(output: str) -> MutationSummary:
         suspicious=_extract(_SUSPICIOUS_PATTERN, output),
         no_tests=_extract(_NO_TESTS_PATTERN, output),
         not_checked=_extract(_NOT_CHECKED_PATTERN, output),
+        skipped=_extract(_SKIPPED_PATTERN, output),
+        interrupted=_extract(_INTERRUPTED_PATTERN, output),
+        segfault=_extract(_SEGFAULT_PATTERN, output),
+        caught_by_type_check=_extract(_CAUGHT_BY_TYPE_CHECK_PATTERN, output),
     )
 
 
 def _parse_cicd_stats(payload: str | bytes | dict[str, Any]) -> MutationSummary:
-    """Parse mutmut's authoritative ``export-cicd-stats`` JSON.
+    """Parse the machine-readable mutmut CI/CD statistics JSON.
 
-    mutmut 3.5.0 can produce an empty stdout stream for ``results --all``
-    after a positional mutation shard, while its JSON exporter still records
-    the complete per-mutant state. Prefer this machine-readable contract in
-    CI; the text parser remains a backwards-compatible fallback for local
-    invocations that do not have an exported stats file.
+    mutmut can produce an empty stdout stream for ``results --all``
+    after a positional mutation shard. CI supplies the exact-shard or complete
+    universe JSON produced by ``export_mutmut_shard_stats.py``; the text parser
+    remains a backwards-compatible fallback for local invocations that do not
+    have an exported stats file.
     """
 
     data: Any
@@ -188,6 +244,10 @@ def _parse_cicd_stats(payload: str | bytes | dict[str, Any]) -> MutationSummary:
         suspicious=suspicious,
         no_tests=no_tests,
         not_checked=total - known,
+        skipped=skipped,
+        interrupted=interrupted,
+        segfault=segfault,
+        caught_by_type_check=caught_by_type_check,
     )
 
 
@@ -275,17 +335,26 @@ def _print_report(summary: MutationSummary, min_score: float) -> None:
     print("  Mutation Score Report")
     print("═" * 52)
     print(f"  Killed     : {summary.killed:>6}")
+    print(f"  Type check : {summary.caught_by_type_check:>6}")
     print(f"  Survived   : {summary.survived:>6}")
     print(f"  Timed out  : {summary.timeout:>6}")
     print(f"  Suspicious : {summary.suspicious:>6}")
     print(f"  No tests   : {summary.no_tests:>6}")
     print(f"  Not checked: {summary.not_checked:>6}")
-    print(f"  Total (K+S): {summary.total_meaningful:>6}")
+    print(f"  Skipped    : {summary.skipped:>6}")
+    print(f"  Interrupted: {summary.interrupted:>6}")
+    print(f"  Segfault   : {summary.segfault:>6}")
+    print(f"  Total (A+S): {summary.total_meaningful:>6}")
     print()
     print(f"  Score  [{bar}]  {summary.score:.2f}%")
     print(f"  Target : {min_score:.2f}%")
     print()
-    if summary.score >= min_score:
+    if summary.incomplete_statuses:
+        statuses = ", ".join(
+            f"{name}={count}" for name, count in summary.incomplete_statuses.items()
+        )
+        print(f"  ❌  FAIL — incomplete mutation evidence: {statuses}")
+    elif summary.score >= min_score:
         print(f"  ✅  PASS — score {summary.score:.2f}% ≥ min {min_score:.2f}%")
     else:
         delta = min_score - summary.score
@@ -313,11 +382,11 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--min-score",
         type=float,
-        default=80.0,
+        default=100.0,
         metavar="FLOAT",
         help=(
             "Minimum acceptable mutation score (0–100). "
-            "Defaults to 80.0. Exits with code 1 if below this threshold."
+            "Defaults to 100.0. Exits with code 1 if below this threshold."
         ),
     )
     return parser
@@ -346,7 +415,7 @@ def main(argv: list[str] | None = None) -> None:
 
     _print_report(summary, args.min_score)
 
-    if summary.score < args.min_score:
+    if summary.incomplete_statuses or summary.score < args.min_score:
         sys.exit(1)
 
 

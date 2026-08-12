@@ -1,5 +1,6 @@
 import { expect, test, type Page } from "./test"
 import { useMockApi } from "./utils/mockApi"
+import { gotoWithTransientRetry } from "./utils/navigation"
 
 /**
  * Full-text search specs — W24.
@@ -90,7 +91,7 @@ test.describe("Full-text search", () => {
     await login(page)
 
     // Navigate to the search page or open the search overlay.
-    await page.goto("/search", { waitUntil: "networkidle" })
+    await gotoWithTransientRetry(page, "/search", { waitUntil: "networkidle" })
 
     // If no dedicated /search route exists, try activating the global search.
     if (!page.url().includes("/search")) {
@@ -148,7 +149,7 @@ test.describe("Full-text search", () => {
     const { login } = await useMockApi(page)
     await login(page)
 
-    await page.goto("/search", { waitUntil: "networkidle" })
+    await gotoWithTransientRetry(page, "/search", { waitUntil: "networkidle" })
 
     const searchInput = page.getByRole("searchbox").or(page.locator('input[type="search"]')).first()
 
@@ -186,7 +187,7 @@ test.describe("Full-text search", () => {
     const { login } = await useMockApi(page)
     await login(page)
 
-    await page.goto("/search", { waitUntil: "networkidle" })
+    await gotoWithTransientRetry(page, "/search", { waitUntil: "networkidle" })
 
     const searchInput = page.getByRole("searchbox").or(page.locator('input[type="search"]')).first()
 

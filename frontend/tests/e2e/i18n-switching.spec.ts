@@ -140,17 +140,29 @@ test.describe("i18n language switching", () => {
       waitUntil: "domcontentloaded",
       timeout: 30_000,
     })
+    await page.waitForFunction(() => window.__APP_HYDRATED === true, null, {
+      timeout: 15_000,
+    })
 
     // Appearance settings use an accordion, not a combobox/listbox. Open the
     // language section through its semantic button before locating the radio.
-    const languageSection = page.getByRole("button", { name: /language|язык/i }).first()
+    const languageSection = page
+      .locator("button:has(h3):visible")
+      .filter({
+        hasText: /language|язык/i,
+      })
+      .first()
     await expect(languageSection).toBeVisible({ timeout: 5000 })
-    await languageSection.click()
+    if ((await languageSection.getAttribute("aria-expanded")) !== "true") {
+      await languageSection.click()
+    }
+    await expect(languageSection).toHaveAttribute("aria-expanded", "true", { timeout: 5000 })
 
     const enOption = page.getByRole("radio", { name: /English|Английский/i })
-    const enOptionLabel = page.locator("label").filter({ has: enOption }).first()
-    await expect(enOptionLabel).toBeVisible({ timeout: 3000 })
-    await enOptionLabel.click()
+    await expect(enOption).toBeVisible({ timeout: 5000 })
+    // The custom indicator intentionally overlays the visually-hidden native
+    // input; activate the wrapping label to exercise the real user path.
+    await enOption.locator("xpath=ancestor::label").click()
 
     // Accept either "en" or "en-US" / "en-GB".
     await expect(page.locator("html")).toHaveAttribute("lang", /^en/)

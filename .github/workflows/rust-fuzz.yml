@@ -8,12 +8,14 @@ on:
       - 'crates/pyo3-sanitizer/**'
       - 'frontend/wasm-sanitizer/**'
       - 'frontend/rust-crypto/**'
+      - '.github/workflows/rust-fuzz.yml'
   pull_request:
     paths:
       - 'native/rust_ext/**'
       - 'crates/pyo3-sanitizer/**'
       - 'frontend/wasm-sanitizer/**'
       - 'frontend/rust-crypto/**'
+      - '.github/workflows/rust-fuzz.yml'
   schedule:
     # Run every Sunday at 00:00 UTC
     - cron: '0 0 * * 0'
@@ -23,7 +25,9 @@ permissions: read-all
 
 jobs:
   fuzz:
-    name: Run cargo fuzz
+    # `Run cargo fuzz` is a protected PR/push context.  Scheduled and manual
+    # five-minute evidence runs must not be able to satisfy that context.
+    name: "${{ (github.event_name == 'pull_request' || github.event_name == 'push') && 'Run cargo fuzz' || 'Extended Rust fuzz evidence' }}"
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:

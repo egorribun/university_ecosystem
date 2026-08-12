@@ -176,6 +176,26 @@ def mock_background_tasks(monkeypatch):
 
 @pytest_asyncio.fixture
 async def app():
+    # Dishka's FastAPI integration stores the application container on
+    # ``app.state`` and the lifespan closes it during teardown.  TestClient,
+    # LifespanManager, and mutmut can all drive that lifecycle, so the marker
+    # is owned by ``app.core.lifespan`` rather than by this fixture alone.
+    # Always install a fresh application container at the fixture boundary:
+    # tests that temporarily replace ``app.state.dishka_container`` must not
+    # leak a narrow test provider into a later mutmut clean-test run.
+    from app.core.di_provider import create_dishka_container
+
+    previous_container = getattr(main.app.state, "dishka_container", None)
+    if previous_container is not None and not getattr(
+        main.app.state, "_dishka_container_closed", False
+    ):
+        try:
+            await previous_container.close()
+        except (RuntimeError, ValueError):
+            # A previous ASGI driver may already have closed this root.
+            pass
+    main.app.state.dishka_container = create_dishka_container()
+    main.app.state._dishka_container_closed = False
     manager = LifespanManager(main.app)
     await manager.__aenter__()
     yield main.app  # yield the ASGI app, not the manager
@@ -204,6 +224,10 @@ async def app():
             and "different loop" not in message
         ):
             raise
+    finally:
+        # The application lifespan sets this before closing the container;
+        # retain the fallback for a fixture teardown that exits unusually.
+        main.app.state._dishka_container_closed = True
 
 
 @pytest_asyncio.fixture

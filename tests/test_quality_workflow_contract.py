@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import re
 import shlex
 from copy import deepcopy
@@ -40,9 +41,18 @@ QUALITY_HISTORY_WORKFLOW_PATH = (
 NIGHTLY_FULL_WORKFLOW_PATH = (
     REPOSITORY_ROOT / ".github" / "workflows" / "nightly-full-gate.yml"
 )
+QUALITY_PROMOTION_WORKFLOW_PATH = (
+    REPOSITORY_ROOT / ".github" / "workflows" / "quality-promotion-check.yml"
+)
+DAST_WORKFLOW_PATH = REPOSITORY_ROOT / ".github" / "workflows" / "dast.yml"
+MANUAL_MUTATION_EVIDENCE_WORKFLOW_PATH = (
+    REPOSITORY_ROOT / ".github" / "workflows" / "manual-mutation-evidence.yml"
+)
 MANUAL_PERFORMANCE_EVIDENCE_WORKFLOW_PATH = (
     REPOSITORY_ROOT / ".github" / "workflows" / "manual-performance-evidence.yml"
 )
+QUALITY_CONTRACT_PATH = REPOSITORY_ROOT / "quality" / "quality-contract.json"
+MUTMUT_GATE_PATH = REPOSITORY_ROOT / "scripts" / "mutmut_ci_gate.py"
 CHECKOUT_ACTION_PIN = "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1"
 SETUP_PYTHON_ACTION_PIN = (
     "actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97"
@@ -75,6 +85,61 @@ REQUIRED_PERFORMANCE_CONTEXTS = frozenset(
 )
 KYVERNO_POLICY_PATH = REPOSITORY_ROOT / "k8s" / "kyverno" / "cluster-policies.yaml"
 KYVERNO_TEST_ROOT = REPOSITORY_ROOT / "k8s" / "kyverno" / "tests"
+REQUIRED_CI_CONTEXTS = frozenset(
+    {
+        "CI Diagnostic",
+        "Pre-commit & Linting (Read-only)",
+        "CI Success",
+        "Coverage & Quality Policy Gate",
+        "Source/Test Inventory & Anti-Pattern Check",
+        "Backend Tests (Python 3.14) / Unit Tests (All-Python 3.14)",
+        "Backend Tests (Python 3.14) / Integration Tests (All-Python 3.14)",
+        "Backend Type Check",
+        "Frontend Tests / Lint & Format",
+        "Frontend Tests / Unit Tests",
+        "Frontend Tests / Production Build",
+        "Frontend Tests / Bundle Analysis",
+        "Frontend Tests / Lighthouse Audit",
+        "Incremental Mutation Tests (frontend)",
+        "Go Tests (services/gateway) / Test Go Service (services/gateway)",
+        "Go Tests (services/ws-hub) / Test Go Service (services/ws-hub)",
+        "Go Tests (services/file-processor) / Test Go Service (services/file-processor)",
+        "Go Tests (services/cmd/uni-cli) / Test Go Service (services/cmd/uni-cli)",
+        "Rust - cargo test (x3 crates) + wasm-pack + coverage",
+        "Rust Lint & Format",
+        "Alembic Migrations",
+        "DB Migration Gate (Postgres)",
+        "Helm Lint & Validate",
+        "Contract Tests",
+        "Schemathesis - API Schema Conformance",
+        "OpenAPI Backward Compatibility Check",
+        "Verify OpenAPI Types",
+        "Security Audit / Semgrep SAST",
+        "Security Audit / Python Dependency Audit",
+        "Security Audit / Node.js Dependency Audit",
+        "Security Audit / Go Vulnerability Scan",
+        "Security Audit / detect-secrets Baseline Integrity",
+        "Trivy Image Scan",
+        "Dockerfile Lint",
+        "Lint GitHub Actions Workflows",
+        "Kyverno policy tests",
+        "Run Go Benchmarks",
+        "WS-Hub Go Benchmark Regression Gate",
+        "Rust Criterion Benchmarks (pyo3-sanitizer)",
+        "Rust Native Optimizer Regression Gate",
+        "Run cargo fuzz",
+    }
+)
+RUST_FUZZ_MANUAL_CONTEXT_EXPRESSION = (
+    "${{ (github.event_name == 'pull_request' || github.event_name == 'push') && "
+    "'Run cargo fuzz' || 'Extended Rust fuzz evidence' }}"
+)
+RUST_FUZZ_CONTEXT_BY_EVENT = {
+    "pull_request": "Run cargo fuzz",
+    "push": "Run cargo fuzz",
+    "schedule": "Extended Rust fuzz evidence",
+    "workflow_dispatch": "Extended Rust fuzz evidence",
+}
 
 
 def _workflow_triggers(workflow: dict[str, object]) -> dict[str, object]:
@@ -83,6 +148,17 @@ def _workflow_triggers(workflow: dict[str, object]) -> dict[str, object]:
     value = workflow.get("on", workflow.get(True))
     assert isinstance(value, dict)
     return value
+
+
+def _job_context_for_event(
+    workflow_path: Path, job_id: str, job_name: str, event_name: str
+) -> str:
+    """Resolve the one audited event-conditional job name before collision checks."""
+
+    if workflow_path.name == "rust-fuzz.yml" and job_id == "fuzz":
+        assert job_name == RUST_FUZZ_MANUAL_CONTEXT_EXPRESSION
+        return RUST_FUZZ_CONTEXT_BY_EVENT[event_name]
+    return job_name
 
 
 def test_ci_triggers_when_draft_pull_request_becomes_ready() -> None:
@@ -97,6 +173,106 @@ def test_ci_triggers_when_draft_pull_request_becomes_ready() -> None:
         "reopened",
         "ready_for_review",
     }
+
+
+def test_dockerfile_lint_excludes_companion_dockerignore_files() -> None:
+    workflow = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    hadolint_step = next(
+        step
+        for step in workflow["jobs"]["dockerfile-lint"]["steps"]
+        if step.get("name") == "Run Hadolint"
+    )
+
+    assert '! -name "*.dockerignore"' in hadolint_step["run"]
+
+
+def test_rust_codecov_uploads_are_explicit_custom_reports() -> None:
+    workflow = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    rust_job = workflow["jobs"]["rust-tests"]
+
+    report_commands = {
+        "rust-native": "cargo llvm-cov report --codecov",
+        "rust-pyo3-sanitizer": "cargo llvm-cov report --codecov",
+        "rust-wasm-sanitizer": "cargo llvm-cov report --codecov",
+        "rust-crypto": "cargo llvm-cov report --codecov",
+    }
+    for component, command in report_commands.items():
+        report_path = f"artifacts/coverage/rust/{component}/codecov.json"
+        coverage_step = next(
+            step
+            for step in rust_job["steps"]
+            if f"{component}/llvm.json" in step.get("run", "")
+        )
+        coverage_script = coverage_step["run"]
+        assert command in coverage_script
+        assert f"--output-path ../../{report_path}" in coverage_script
+        report_line = next(
+            line.strip()
+            for line in coverage_script.splitlines()
+            if line.strip().startswith("cargo llvm-cov report") and report_path in line
+        )
+        assert report_line == f"{command} --output-path ../../{report_path}"
+        assert (
+            coverage_script.index(f"{component}/llvm.json")
+            < coverage_script.index(report_path)
+            < coverage_script.index(f"{component}/branch-llvm.json")
+        )
+
+        upload_step = next(
+            step
+            for step in rust_job["steps"]
+            if step.get("name") == f"Upload {component} coverage to Codecov"
+        )
+        assert upload_step["with"]["files"] == report_path
+        assert upload_step["with"]["disable_search"] is True
+        assert upload_step["with"]["fail_ci_if_error"] is True
+
+
+def test_rust_coverage_job_does_not_restore_stale_llvm_build_artifacts() -> None:
+    workflow = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    rust_job = workflow["jobs"]["rust-tests"]
+
+    cache_step = next(
+        step
+        for step in rust_job["steps"]
+        if step.get("name") == "Cache Cargo registry + target dirs (coverage-safe)"
+    )
+    assert "cargo-rust-tests-v2-" in cache_step["with"]["key"]
+    assert "Cargo.lock" in cache_step["with"]["key"]
+    assert all(
+        "cargo-rust-tests-v2-" in restore_key
+        for restore_key in cache_step["with"]["restore-keys"].splitlines()
+        if restore_key.strip()
+    )
+
+    components = {
+        "rust-native": "rust_ext — native unit tests + coverage (--no-default-features)",
+        "rust-pyo3-sanitizer": "pyo3-sanitizer — native unit tests + coverage",
+        "rust-wasm-sanitizer": "wasm-sanitizer — native unit tests + coverage",
+        "rust-crypto": "rust-crypto — native KAT tests + coverage",
+    }
+    for component, step_name in components.items():
+        coverage_step = next(
+            step for step in rust_job["steps"] if step.get("name") == step_name
+        )
+        assert coverage_step["env"]["CARGO_TARGET_DIR"] == (
+            "${{ runner.temp }}/llvm-cov/" + component
+        )
+        coverage_script = coverage_step["run"]
+        stable_clean = "cargo llvm-cov clean"
+        stable_report = f"{component}/llvm.json"
+        codecov_report = f"{component}/codecov.json"
+        nightly_clean = "cargo +nightly llvm-cov clean"
+        nightly_report = f"{component}/branch-llvm.json"
+        assert stable_clean in coverage_script
+        assert nightly_clean in coverage_script
+        assert (
+            coverage_script.index(stable_clean)
+            < coverage_script.index(stable_report)
+            < coverage_script.index(codecov_report)
+            < coverage_script.index(nightly_clean)
+            < coverage_script.index(nightly_report)
+        )
 
 
 def test_required_openapi_compatibility_check_runs_for_every_pull_request() -> None:
@@ -545,7 +721,7 @@ def test_e2e_coverage_is_chromium_opt_in_and_codecov_wired() -> None:
     call = _workflow_triggers(e2e_workflow)["workflow_call"]
     inputs = call["inputs"]
     assert inputs["collect-coverage"]["default"] is False
-    assert "CODECOV_TOKEN" in call["secrets"]
+    assert "CODECOV_TOKEN" not in call.get("secrets", {})
 
     steps = e2e_workflow["jobs"]["e2e"]["steps"]
     merge_step = next(
@@ -567,12 +743,58 @@ def test_e2e_coverage_is_chromium_opt_in_and_codecov_wired() -> None:
     assert "inputs.browser == 'chromium'" in codecov_step["if"]
     assert codecov_step["with"]["flags"] == "frontend"
     assert codecov_step["with"]["files"] == "./frontend/coverage/e2e/lcov.info"
+    assert codecov_step["with"]["use_oidc"] is True
+    assert codecov_step["with"]["fail_ci_if_error"] is True
+    assert e2e_workflow["permissions"] == {"contents": "read"}
+    assert e2e_workflow["jobs"]["e2e"]["permissions"] == {
+        "contents": "read",
+        "id-token": "write",
+    }
 
     ci_workflow = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
     assert ci_workflow["jobs"]["e2e-tests"]["with"]["collect-coverage"] is True
     assert (
         "collect-coverage" not in ci_workflow["jobs"]["e2e-tests-cross-browser"]["with"]
     )
+
+
+def test_codecov_oidc_permissions_are_scoped_to_upload_jobs() -> None:
+    """Only jobs that can upload coverage receive an OIDC identity token."""
+
+    reusable_workflows = (
+        (BACKEND_WORKFLOW_PATH, "unit-tests"),
+        (FRONTEND_WORKFLOW_PATH, "unit-tests"),
+        (E2E_WORKFLOW_PATH, "e2e"),
+        (GO_WORKFLOW_PATH, "test"),
+    )
+    for workflow_path, upload_job_name in reusable_workflows:
+        workflow = yaml.safe_load(workflow_path.read_text(encoding="utf-8"))
+        call = _workflow_triggers(workflow)["workflow_call"]
+        assert workflow["permissions"] == {"contents": "read"}
+        assert "CODECOV_TOKEN" not in call.get("secrets", {})
+        assert workflow["jobs"][upload_job_name]["permissions"] == {
+            "contents": "read",
+            "id-token": "write",
+        }
+
+        uploads = [
+            step
+            for step in workflow["jobs"][upload_job_name]["steps"]
+            if str(step.get("uses", "")).startswith("codecov/codecov-action@")
+        ]
+        assert uploads
+        for upload in uploads:
+            assert upload["with"]["use_oidc"] is True
+            assert upload["with"]["fail_ci_if_error"] is True
+
+    nightly = yaml.safe_load(NIGHTLY_FULL_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    assert nightly["permissions"] == {"contents": "read", "issues": "write"}
+    assert "CODECOV_TOKEN" not in NIGHTLY_FULL_WORKFLOW_PATH.read_text(encoding="utf-8")
+    for job_name in ("backend-full", "backend-integration", "browser-matrix"):
+        assert nightly["jobs"][job_name]["permissions"] == {
+            "contents": "read",
+            "id-token": "write",
+        }
 
 
 def test_e2e_postgres_healthcheck_uses_declared_credentials() -> None:
@@ -641,15 +863,30 @@ def test_go_codecov_flags_match_component_contract() -> None:
 
 def test_advisory_integration_and_chaos_jobs_are_not_blocking() -> None:
     workflow = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    nightly_workflow = yaml.safe_load(
+        NIGHTLY_FULL_WORKFLOW_PATH.read_text(encoding="utf-8")
+    )
     blocking_script = workflow["jobs"]["ci-success"]["steps"][0]["run"]
 
     for job_name in (
         "go-integration-ws-hub",
         "go-integration-file-processor",
         "go-integration-gateway",
-        "load-and-chaos-tests",
     ):
         assert f"needs.{job_name}.result" not in blocking_script
+
+    # The historical dispatch-only job could never run from ci.yml, yet its
+    # check name was externally required.  Full load/chaos remains nightly and
+    # advisory until Temporal startup is stable enough for promotion.
+    assert "load-and-chaos-tests" not in workflow["jobs"]
+    assert "Load and Chaos Resilience Tests" not in CI_WORKFLOW_PATH.read_text(
+        encoding="utf-8"
+    )
+    assert "load-and-chaos" in nightly_workflow["jobs"]
+    assert nightly_workflow["jobs"]["load-and-chaos"]["name"] == (
+        "Load and chaos resilience"
+    )
+    assert nightly_workflow["jobs"]["load-and-chaos"]["timeout-minutes"] == 45
 
 
 def test_incremental_mutation_budget_matches_declared_gate() -> None:
@@ -658,7 +895,7 @@ def test_incremental_mutation_budget_matches_declared_gate() -> None:
     run_step = next(
         step
         for step in job["steps"]
-        if step.get("name") == "Run incremental mutmut (blocking, 25-minute budget)"
+        if step.get("name") == "Run incremental mutmut (blocking, stats-derived budget)"
     )
     assert job["strategy"]["matrix"]["shard"] == [
         1,
@@ -678,7 +915,21 @@ def test_incremental_mutation_budget_matches_declared_gate() -> None:
         15,
         16,
     ]
-    assert "timeout --kill-after=30s 25m" in run_step["run"]
+    assert job["timeout-minutes"] == 120
+    assert "scripts/mutmut_shard_budget.py" in run_step["run"]
+    assert "--max-timeout-seconds 6600" in run_step["run"]
+    assert '"${MUTMUT_TIMEOUT_SECONDS}s"' in run_step["run"]
+    assert (
+        '--prepare-exact-execution "$MUTMUT_EVIDENCE_DIR/execution-plan.json"'
+        in run_step["run"]
+    )
+    assert (
+        '--verify-exact-execution "$MUTMUT_EVIDENCE_DIR/execution-plan.json"'
+        in run_step["run"]
+    )
+    assert "This advisory job" not in run_step["run"]
+    assert "This blocking job runs REAL mutation" in run_step["run"]
+    assert "viable mutation score" in run_step["run"]
     job_text = "\n".join(
         step.get("run", "") for step in job["steps"] if isinstance(step, dict)
     )
@@ -686,6 +937,7 @@ def test_incremental_mutation_budget_matches_declared_gate() -> None:
     assert "matrix.shard" in job_text
     assert "scripts/plan_mutmut_shards.py" in job_text
     assert "--changed-files /tmp/changed_py.txt" in job_text
+    assert "--changed-diff /tmp/changed_py.diff" in job_text
     assert "--num-shards 16" in job_text
     assert '"${MUTANT_NAMES[@]}"' in job_text
     assert "awk -v shard" not in job_text
@@ -697,6 +949,10 @@ def test_incremental_mutation_stats_are_sharded_and_merged_before_execution() ->
     jobs = workflow["jobs"]
     stats_job = jobs["mutation-tests-stats"]
     mutation_job = jobs["mutation-tests-incremental"]
+
+    assert "workflow_dispatch" not in _workflow_triggers(workflow)
+    assert workflow["concurrency"]["group"] == "ci-matrix-${{ github.ref }}"
+    assert jobs["ci-success"]["name"] == "CI Success"
 
     assert stats_job["strategy"]["matrix"]["stats_shard"] == [0, 1, 2, 3]
     assert stats_job["timeout-minutes"] == 25
@@ -710,10 +966,27 @@ def test_incremental_mutation_stats_are_sharded_and_merged_before_execution() ->
     helper_text = (REPOSITORY_ROOT / "scripts/mutmut_stats_shard.py").read_text(
         encoding="utf-8"
     )
-    assert "config = mutmut.config" in helper_text
-    assert "mutmut_cli.config" not in helper_text
+    assert "config = mutmut_cli.Config.get()" in helper_text
+    assert "mutmut.config" not in helper_text
 
     assert "mutation-tests-stats" in mutation_job["needs"]
+    for job in (stats_job, mutation_job):
+        mutation_scope = next(
+            step
+            for step in job["steps"]
+            if step.get("name") == "Detect changed Python source"
+        )
+        scope_script = mutation_scope["run"]
+        assert mutation_scope["env"]["PR_BASE_SHA"] == (
+            "${{ github.event.pull_request.base.sha }}"
+        )
+        assert mutation_scope["env"]["EVENT_NAME"] == "${{ github.event_name }}"
+        assert "scripts/resolve_mutation_base.py" in scope_script
+        assert '--pr-base-sha "$PR_BASE_SHA"' in scope_script
+        assert '--event-name "$EVENT_NAME"' in scope_script
+        assert 'COMPARE_BASE="origin/main"' not in scope_script
+        assert '"$COMPARE_BASE...HEAD"' in scope_script
+        assert "origin/main...HEAD" not in scope_script
     mutation_text = "\n".join(
         step.get("run", "") for step in mutation_job["steps"] if isinstance(step, dict)
     )
@@ -727,6 +1000,378 @@ def test_incremental_mutation_stats_are_sharded_and_merged_before_execution() ->
     assert "mutants/mutmut-stats.json" in mutation_text
     assert "mutation-tests-stats" in jobs["ci-success"]["needs"]
     assert "needs.mutation-tests-stats.result" in jobs["ci-success"]["steps"][0]["run"]
+
+
+def test_manual_mutation_evidence_is_isolated_from_required_ci_contexts() -> None:
+    ci_workflow = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    ci_text = CI_WORKFLOW_PATH.read_text(encoding="utf-8")
+    workflow = yaml.safe_load(
+        MANUAL_MUTATION_EVIDENCE_WORKFLOW_PATH.read_text(encoding="utf-8")
+    )
+    jobs = workflow["jobs"]
+
+    # A manual workflow must never emit the required CI contexts.  GitHub
+    # rulesets match check names across event types, so a workflow_dispatch
+    # run with skipped PR-only work must not be able to satisfy protection.
+    assert "workflow_dispatch" not in _workflow_triggers(ci_workflow)
+    assert "github.event.inputs" not in ci_text
+    assert ci_workflow["jobs"]["ci-success"]["name"] == "CI Success"
+
+    assert set(_workflow_triggers(workflow)) == {"workflow_dispatch"}
+    dispatch = _workflow_triggers(workflow)["workflow_dispatch"]
+    assert isinstance(dispatch, dict)
+    assert dispatch["inputs"]["mutation_base_sha"] == {
+        "description": "Full strict-ancestor commit SHA used to scope manual mutation evidence",
+        "required": True,
+        "type": "string",
+    }
+    assert workflow["permissions"] == {"contents": "read"}
+    assert workflow["concurrency"]["group"] == (
+        "manual-mutation-evidence-${{ github.ref }}"
+    )
+    assert workflow["concurrency"]["cancel-in-progress"] is False
+    assert all(
+        isinstance(job.get("name"), str)
+        and job["name"].startswith("Manual Mutation Evidence")
+        for job in jobs.values()
+    )
+    assert {job["name"] for job in jobs.values()}.isdisjoint(REQUIRED_CI_CONTEXTS)
+
+    for job_name in ("manual-mutation-stats", "manual-mutation-tests"):
+        mutation_scope = next(
+            step
+            for step in jobs[job_name]["steps"]
+            if step.get("name") == "Resolve manual mutation comparison base"
+        )
+        scope_script = mutation_scope["run"]
+        assert mutation_scope["env"]["MANUAL_BASE_SHA"] == (
+            "${{ inputs.mutation_base_sha }}"
+        )
+        assert "scripts/resolve_mutation_base.py" in scope_script
+        assert '--event-name "workflow_dispatch"' in scope_script
+        assert '--manual-base-sha "$MANUAL_BASE_SHA"' in scope_script
+
+    manual_mutation_job = jobs["manual-mutation-tests"]
+    assert manual_mutation_job["timeout-minutes"] == 360
+    manual_mutation_text = "\n".join(
+        step.get("run", "")
+        for step in manual_mutation_job["steps"]
+        if isinstance(step, dict)
+    )
+    assert "scripts/mutmut_shard_budget.py" in manual_mutation_text
+    assert "--max-timeout-seconds 18000" in manual_mutation_text
+    assert '--prepare-exact-execution "$MUTMUT_EVIDENCE_DIR/execution-plan.json"' in (
+        manual_mutation_text
+    )
+    assert '--verify-exact-execution "$MUTMUT_EVIDENCE_DIR/execution-plan.json"' in (
+        manual_mutation_text
+    )
+    manual_upload = next(
+        step
+        for step in manual_mutation_job["steps"]
+        if step.get("name") == "Upload manual mutation evidence"
+    )
+    assert "mutants/mutmut-exact-evidence/" in manual_upload["with"]["path"]
+
+
+def test_incremental_mutation_workflows_preserve_headroom_and_full_evidence() -> None:
+    # Pull-request mutation keeps a two-hour envelope. The dynamic timeout
+    # reserves five minutes for proof/score/upload after timeout's 30-second
+    # KILL grace, and fails instead of running an under-budget shard.
+    pr_workflow = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    pr_job = pr_workflow["jobs"]["mutation-tests-incremental"]
+    pr_deadline = pr_job["steps"][0]["run"]
+    pr_run_step = next(
+        step
+        for step in pr_job["steps"]
+        if step.get("name") == "Run incremental mutmut (blocking, stats-derived budget)"
+    )
+    assert pr_job["timeout-minutes"] == 120
+    assert 'MUTMUT_JOB_DEADLINE_EPOCH="$((MUTMUT_JOB_STARTED_EPOCH + 7200))"' in (
+        pr_deadline
+    )
+    assert "--max-timeout-seconds 6600" in pr_run_step["run"]
+    assert "MUTMUT_POST_RUN_UPLOAD_RESERVE_SECONDS=300" in pr_run_step["run"]
+    assert "MUTMUT_TIMEOUT_KILL_GRACE_SECONDS=30" in pr_run_step["run"]
+    assert 120 * 60 - 110 * 60 - 5 * 60 - 30 == 270
+
+    workflows = (
+        (
+            CI_WORKFLOW_PATH,
+            "mutation-tests-incremental",
+            "Run incremental mutmut (blocking, stats-derived budget)",
+            "Upload incremental mutation evidence",
+            120,
+            7200,
+            6600,
+            300,
+        ),
+        (
+            MANUAL_MUTATION_EVIDENCE_WORKFLOW_PATH,
+            "manual-mutation-tests",
+            "Run manual incremental mutmut (blocking, stats-derived budget)",
+            "Upload manual mutation evidence",
+            360,
+            21600,
+            18000,
+            3570,
+        ),
+    )
+    for (
+        workflow_path,
+        job_name,
+        run_step_name,
+        upload_step_name,
+        timeout_minutes,
+        deadline_seconds,
+        max_timeout_seconds,
+        post_run_reserve_seconds,
+    ) in workflows:
+        workflow = yaml.safe_load(workflow_path.read_text(encoding="utf-8"))
+        job = workflow["jobs"][job_name]
+        deadline_step = job["steps"][0]
+        assert deadline_step["name"] == "Record mutmut job deadline"
+        assert deadline_step["shell"] == "bash"
+        deadline_script = deadline_step["run"]
+        assert 'MUTMUT_JOB_STARTED_EPOCH="$(date -u +%s)"' in deadline_script
+        assert (
+            'MUTMUT_JOB_DEADLINE_EPOCH="$((MUTMUT_JOB_STARTED_EPOCH + '
+            f'{deadline_seconds}))"' in deadline_script
+        )
+        assert 'echo "MUTMUT_JOB_DEADLINE_EPOCH=$MUTMUT_JOB_DEADLINE_EPOCH"' in (
+            deadline_script
+        )
+        assert '>> "$GITHUB_ENV"' in deadline_script
+
+        run_step = next(
+            step for step in job["steps"] if step.get("name") == run_step_name
+        )
+        run_script = run_step["run"]
+
+        assert job["timeout-minutes"] == timeout_minutes
+        assert f"--max-timeout-seconds {max_timeout_seconds}" in run_script
+        assert (
+            "MUTMUT_EVIDENCE_DIR="
+            "mutants/mutmut-exact-evidence"  # pragma: allowlist secret
+        ) in run_script
+        assert '--execution-evidence-dir "$MUTMUT_EVIDENCE_DIR"' in run_script
+        assert 'if ! [[ "${MUTMUT_JOB_DEADLINE_EPOCH:-}" =~ ^[1-9][0-9]*$ ]]; then' in (
+            run_script
+        )
+        assert (
+            f"MUTMUT_POST_RUN_UPLOAD_RESERVE_SECONDS={post_run_reserve_seconds}"
+            in run_script
+        )
+        assert "MUTMUT_TIMEOUT_KILL_GRACE_SECONDS=30" in run_script
+        assert 'MUTMUT_CURRENT_EPOCH="$(date -u +%s)"' in run_script
+        assert (
+            'MUTMUT_REMAINING_JOB_SECONDS="$((MUTMUT_JOB_DEADLINE_EPOCH '
+            '- MUTMUT_CURRENT_EPOCH))"'
+        ) in run_script
+        assert (
+            'MUTMUT_REMAINING_TIMEOUT_SECONDS="$((MUTMUT_REMAINING_JOB_SECONDS '
+            "- MUTMUT_POST_RUN_UPLOAD_RESERVE_SECONDS "
+            '- MUTMUT_TIMEOUT_KILL_GRACE_SECONDS))"'
+        ) in run_script
+        assert 'MUTMUT_TIMEOUT_SECONDS="$MUTMUT_BUDGET_TIMEOUT_SECONDS"' in (run_script)
+        assert (
+            'MUTMUT_TIMEOUT_SECONDS="$MUTMUT_REMAINING_TIMEOUT_SECONDS"' in run_script
+        )
+        assert "refusing to run incomplete mutation evidence" in run_script
+        assert (
+            'timeout --kill-after=30s "${MUTMUT_TIMEOUT_SECONDS}s" '
+            "uv run python scripts/run_mutmut_with_stats.py --max-children 2 "
+            '"${MUTANT_NAMES[@]}" 2>&1 '
+            '| tee "$MUTMUT_EVIDENCE_DIR/mutmut-run.log"'
+        ) in run_script
+        assert (
+            'tee "$MUTMUT_EVIDENCE_DIR/mutmut-run.log"\n'
+            'pipeline_status=("${PIPESTATUS[@]}")'
+        ) in run_script
+        assert 'mutmut_exit_code="${pipeline_status[0]}"' in run_script
+        assert 'tee_exit_code="${pipeline_status[1]}"' in run_script
+        failure_finalizer_definition = run_script.index(
+            "finalize_incomplete_mutmut_evidence()"
+        )
+        failure_finalizer_call = run_script.index(
+            'finalize_incomplete_mutmut_evidence "$exit_code"',
+            failure_finalizer_definition,
+        )
+        assert (
+            '--finalize-incomplete-execution "$MUTMUT_EVIDENCE_DIR/execution-plan.json"'
+            in run_script
+        )
+        assert '--mutation-exit-code "$mutmut_exit_code"' in run_script
+        assert '--tee-exit-code "$tee_exit_code"' in run_script
+        assert failure_finalizer_definition < failure_finalizer_call
+        assert (
+            failure_finalizer_definition
+            < run_script.index("trap on_mutation_step_exit EXIT")
+            < run_script.index("--prepare-exact-execution")
+        )
+        assert (
+            'if [ "$exit_code" -ne 0 ] && [ "$MUTMUT_EVIDENCE_FINALIZED" != "true" ]; then'
+            in run_script
+        )
+        assert (
+            failure_finalizer_definition
+            < run_script.index(
+                'test -s "$MUTMUT_EVIDENCE_DIR/execution-proof.json"',
+                failure_finalizer_definition,
+            )
+            < failure_finalizer_call
+        )
+        assert (
+            failure_finalizer_definition
+            < run_script.index(
+                'test -s "$MUTMUT_EVIDENCE_DIR/selected-results.json"',
+                failure_finalizer_definition,
+            )
+            < failure_finalizer_call
+        )
+        assert 'if [ "$tee_exit_code" -ne 0 ]; then' in run_script
+        assert 'exit "$tee_exit_code"' in run_script
+        assert 'test -s "$MUTMUT_EVIDENCE_DIR/selected-mutants.json"' in run_script
+        assert 'test -s "$MUTMUT_EVIDENCE_DIR/selected-results.json"' in run_script
+
+        upload_step = next(
+            step for step in job["steps"] if step.get("name") == upload_step_name
+        )
+        assert upload_step["if"].startswith(
+            "always() && steps.mutation_scope.outputs.has_python == 'true'"
+        )
+        assert "mutants/mutmut-exact-evidence/" in upload_step["with"]["path"]
+        assert upload_step["with"]["if-no-files-found"] == "error"
+
+        workflow_text = workflow_path.read_text(encoding="utf-8")
+        assert f"{post_run_reserve_seconds:,} seconds" in workflow_text
+        assert "30-second KILL grace" in workflow_text
+
+
+def test_incremental_mutation_workflows_allow_empty_shards_and_validate_failures() -> (
+    None
+):
+    workflows = (
+        (
+            CI_WORKFLOW_PATH,
+            "mutation-tests-incremental",
+            "Run incremental mutmut (blocking, stats-derived budget)",
+            "run_incremental_mutmut",
+            "Validate incremental mutation evidence artifact",
+            "Upload incremental mutation evidence",
+        ),
+        (
+            MANUAL_MUTATION_EVIDENCE_WORKFLOW_PATH,
+            "manual-mutation-tests",
+            "Run manual incremental mutmut (blocking, stats-derived budget)",
+            "run_manual_incremental_mutmut",
+            "Validate manual mutation evidence artifact",
+            "Upload manual mutation evidence",
+        ),
+    )
+
+    for (
+        workflow_path,
+        job_name,
+        run_step_name,
+        run_step_id,
+        validation_step_name,
+        upload_step_name,
+    ) in workflows:
+        workflow = yaml.safe_load(workflow_path.read_text(encoding="utf-8"))
+        job = workflow["jobs"][job_name]
+        run_step = next(
+            step for step in job["steps"] if step.get("name") == run_step_name
+        )
+        run_script = run_step["run"]
+
+        assert run_step["id"] == run_step_id
+        empty_shard_index = run_script.index('if [ "${#MUTANT_NAMES[@]}" -eq 0 ]; then')
+        empty_output_index = run_script.index(
+            'echo "has_mutants=false" >> "$GITHUB_OUTPUT"', empty_shard_index
+        )
+        assert (
+            empty_shard_index
+            < empty_output_index
+            < run_script.index("exit 0", empty_output_index)
+        )
+        assert 'echo "has_mutants=true" >> "$GITHUB_OUTPUT"' in run_script
+
+        assert "trap on_mutation_step_exit EXIT" in run_script
+        assert (
+            'if [ "$exit_code" -ne 0 ] && [ "$MUTMUT_EVIDENCE_FINALIZED" != "true" ]; then'
+            in run_script
+        )
+        assert '--failure-exit-code "$failure_exit_code"' in run_script
+        assert '--failure-reason "$MUTMUT_FAILURE_REASON"' in run_script
+
+        validation_step = next(
+            step for step in job["steps"] if step.get("name") == validation_step_name
+        )
+        artifact_condition = (
+            "always() && steps.mutation_scope.outputs.has_python == 'true' && "
+            f"steps.{run_step_id}.outputs.has_mutants == 'true'"
+        )
+        assert validation_step["if"] == artifact_condition
+        for filename in (
+            "selected-mutants.json",
+            "selected-results.json",
+            "execution-proof.json",
+        ):
+            assert (
+                f'test -s "mutants/mutmut-exact-evidence/{filename}"'
+                in validation_step["run"]
+            )
+
+        upload_step = next(
+            step for step in job["steps"] if step.get("name") == upload_step_name
+        )
+        assert upload_step["if"] == artifact_condition
+        assert job["steps"].index(run_step) < job["steps"].index(validation_step)
+        assert job["steps"].index(validation_step) < job["steps"].index(upload_step)
+
+
+def test_dispatchable_workflows_never_emit_required_ci_contexts() -> None:
+    workflow_root = REPOSITORY_ROOT / ".github" / "workflows"
+    collisions: list[str] = []
+
+    for workflow_path in sorted(workflow_root.glob("*.yml")):
+        workflow = yaml.safe_load(workflow_path.read_text(encoding="utf-8"))
+        raw_triggers = workflow.get("on", workflow.get(True))
+        if isinstance(raw_triggers, str):
+            dispatchable = raw_triggers == "workflow_dispatch"
+        elif isinstance(raw_triggers, list):
+            dispatchable = "workflow_dispatch" in raw_triggers
+        else:
+            assert isinstance(raw_triggers, dict)
+            dispatchable = "workflow_dispatch" in raw_triggers
+        if not dispatchable:
+            continue
+        for job_id, job in workflow["jobs"].items():
+            if not isinstance(job, dict):
+                continue
+            name = job.get("name", job_id)
+            if not isinstance(name, str):
+                collisions.append(f"{workflow_path.name}:{job_id}:non-string-name")
+                continue
+            try:
+                name = _job_context_for_event(
+                    workflow_path, job_id, name, "workflow_dispatch"
+                )
+            except AssertionError:
+                collisions.append(f"{workflow_path.name}:{job_id}:{name}")
+                continue
+            for required_context in REQUIRED_CI_CONTEXTS:
+                # GitHub matches status contexts exactly.  A manual workflow
+                # must use a distinct full context, not merely avoid a shared
+                # substring such as the underlying benchmark label.
+                if required_context == name:
+                    collisions.append(f"{workflow_path.name}:{job_id}:{name}")
+                    break
+
+    assert not collisions, (
+        f"A workflow_dispatch run must not emit a required status context: {collisions}"
+    )
 
 
 def test_quality_history_archives_manifests_and_renders_dashboard() -> None:
@@ -771,6 +1416,20 @@ def test_miri_workflow_scopes_to_pure_rust_crate_targets() -> None:
         "test_pyo3_bindings_coverage",
     ):
         assert f"#[cfg(not(miri))]\n    #[test]\n    fn {function_name}" in pyo3_source
+
+
+def test_performance_workflow_has_blocking_native_and_ws_baselines() -> None:
+    workflow_path = REPOSITORY_ROOT / ".github" / "workflows" / "benchmark.yml"
+    workflow = yaml.safe_load(workflow_path.read_text(encoding="utf-8"))
+    assert "workflow_dispatch" not in _workflow_triggers(workflow)
+    assert workflow["jobs"]["ws-hub-regression"]["timeout-minutes"] == 20
+    assert workflow["jobs"]["rust-native-regression"]["timeout-minutes"] == 30
+    _assert_paired_gate_variant(
+        workflow, workflow_path=workflow_path, job_id="ws-hub-regression"
+    )
+    _assert_paired_gate_variant(
+        workflow, workflow_path=workflow_path, job_id="rust-native-regression"
+    )
 
 
 def test_backend_ci_uses_historical_duration_shards_and_aggregates_coverage() -> None:
@@ -1077,7 +1736,8 @@ def test_nightly_full_gate_contains_the_long_running_quality_suites() -> None:
         for step in mutation_steps
         if step.get("name") == "Export and gate mutation statistics"
     )
-    assert "export-cicd-stats" in export_step["run"]
+    assert "scripts/export_mutmut_shard_stats.py --all" in export_step["run"]
+    assert "mutmut export-cicd-stats" not in export_step["run"]
     assert jobs["go-integration"]["strategy"]["matrix"]["service-directory"] == [
         "services/gateway",
         "services/ws-hub",
@@ -1212,24 +1872,207 @@ def test_rust_fuzz_workflow_caches_every_declared_target_workspace() -> None:
     assert "../Cargo.toml" not in additional_key
 
 
+def test_rust_fuzz_required_context_runs_when_its_workflow_changes() -> None:
+    """A workflow-only PR change must exercise the required fuzz context."""
+
+    workflow_path = REPOSITORY_ROOT / ".github" / "workflows" / "rust-fuzz.yml"
+    workflow = yaml.safe_load(workflow_path.read_text(encoding="utf-8"))
+    triggers = _workflow_triggers(workflow)
+
+    for event_name in ("push", "pull_request"):
+        event = triggers[event_name]
+        assert isinstance(event, dict)
+        assert ".github/workflows/rust-fuzz.yml" in event["paths"]
+
+
+def test_rust_fuzz_keeps_the_required_pr_context_out_of_manual_and_scheduled_runs() -> (
+    None
+):
+    """The extended fuzz duration must not mint a required PR status context."""
+
+    workflow_path = REPOSITORY_ROOT / ".github" / "workflows" / "rust-fuzz.yml"
+    workflow = yaml.safe_load(workflow_path.read_text(encoding="utf-8"))
+    fuzz_job = workflow["jobs"]["fuzz"]
+
+    assert "Run cargo fuzz" in REQUIRED_CI_CONTEXTS
+    assert "workflow_dispatch" in _workflow_triggers(workflow)
+    assert fuzz_job["name"] == RUST_FUZZ_MANUAL_CONTEXT_EXPRESSION
+    assert (
+        _job_context_for_event(workflow_path, "fuzz", fuzz_job["name"], "pull_request")
+        == "Run cargo fuzz"
+    )
+    assert (
+        _job_context_for_event(
+            workflow_path, "fuzz", fuzz_job["name"], "workflow_dispatch"
+        )
+        == "Extended Rust fuzz evidence"
+    )
+    assert "Extended Rust fuzz evidence" not in REQUIRED_CI_CONTEXTS
+
+    fuzz_step = next(
+        step for step in fuzz_job["steps"] if step.get("name") == "Run fuzz targets"
+    )
+    assert (
+        'if [ "${EVENT_NAME}" = "schedule" ] || [ "${EVENT_NAME}" = "workflow_dispatch" ]; then'
+        in fuzz_step["run"]
+    )
+    assert "DURATION=300" in fuzz_step["run"]
+    assert "DURATION=60" in fuzz_step["run"]
+
+
 def test_incremental_mutation_gate_is_blocking_and_fails_on_timeout() -> None:
     ci_workflow = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
     jobs = ci_workflow["jobs"]
     mutation_job = jobs["mutation-tests-incremental"]
-    assert mutation_job["timeout-minutes"] == 35
+    assert mutation_job["timeout-minutes"] == 120
     assert "mutation-tests-incremental" in jobs["ci-success"]["needs"]
+    deadline_step = mutation_job["steps"][0]
+    assert deadline_step["name"] == "Record mutmut job deadline"
+    assert (
+        'MUTMUT_JOB_DEADLINE_EPOCH="$((MUTMUT_JOB_STARTED_EPOCH + 7200))"'
+        in deadline_step["run"]
+    )
     mutation_text = "\n".join(
         step.get("run", "") for step in mutation_job["steps"] if isinstance(step, dict)
     )
-    assert "exceeded its 25-minute budget" in mutation_text
+    assert "exceeded its stats-derived budget" in mutation_text
+    assert "--max-timeout-seconds 6600" in mutation_text
+    assert "MUTMUT_TIMEOUT_KILL_GRACE_SECONDS=30" in mutation_text
     assert "Skipping score verification" not in mutation_text
     assert (
         "needs.mutation-tests-incremental.result"
         in jobs["ci-success"]["steps"][0]["run"]
     )
-    export_index = mutation_text.index("mutmut export-cicd-stats")
+    export_index = mutation_text.index("scripts/export_mutmut_shard_stats.py")
     gate_index = mutation_text.index("scripts/mutmut_ci_gate.py")
     assert export_index < gate_index
+    assert "--selected-file /tmp/mutmut-shard.txt" in mutation_text
+    assert (
+        '--prepare-exact-execution "$MUTMUT_EVIDENCE_DIR/execution-plan.json"'
+        in mutation_text
+    )
+    assert (
+        '--verify-exact-execution "$MUTMUT_EVIDENCE_DIR/execution-plan.json"'
+        in mutation_text
+    )
+    assert '"$MUTMUT_EVIDENCE_DIR/execution-proof.json"' in mutation_text
+    assert "--output mutants/mutmut-cicd-stats.json" in mutation_text
+    assert "uv run mutmut export-cicd-stats" not in mutation_text
+    assert "test -s mutants/mutmut-cicd-stats.json" in mutation_text
+
+
+def test_blocking_mutation_jobs_are_not_mislabeled_as_advisory() -> None:
+    ci_text = CI_WORKFLOW_PATH.read_text(encoding="utf-8")
+
+    assert "advisory mutation" not in ci_text.lower()
+    assert "mutation: $mut" not in ci_text
+    assert "stryker: $stryker" not in ci_text
+
+
+def test_full_mutation_gate_uses_the_fail_closed_exporter() -> None:
+    nightly_workflow = yaml.safe_load(
+        NIGHTLY_FULL_WORKFLOW_PATH.read_text(encoding="utf-8")
+    )
+    mutation_job = nightly_workflow["jobs"]["mutation-tests-full"]
+    mutation_text = "\n".join(
+        step.get("run", "") for step in mutation_job["steps"] if isinstance(step, dict)
+    )
+
+    export_index = mutation_text.index("scripts/export_mutmut_shard_stats.py")
+    gate_index = mutation_text.index("scripts/check_mutation_score.py")
+    assert export_index < gate_index
+    assert "--all" in mutation_text
+    assert "uv run mutmut export-cicd-stats" not in mutation_text
+    assert "test -s mutants/mutmut-cicd-stats.json" in mutation_text
+
+
+def test_full_mutation_gate_isolates_stats_and_clean_pytest_invocations() -> None:
+    """Keep the clean baseline as the fresh mutation process's first pytest call."""
+
+    nightly_workflow = yaml.safe_load(
+        NIGHTLY_FULL_WORKFLOW_PATH.read_text(encoding="utf-8")
+    )
+    mutation_steps = nightly_workflow["jobs"]["mutation-tests-full"]["steps"]
+    stats_step_index = next(
+        index
+        for index, step in enumerate(mutation_steps)
+        if step.get("name") == "Collect full mutmut stats (isolated process)"
+    )
+    run_step_index = next(
+        index
+        for index, step in enumerate(mutation_steps)
+        if step.get("name") == "Run the complete mutation universe"
+    )
+    stats_script = mutation_steps[stats_step_index]["run"]
+    run_script = mutation_steps[run_step_index]["run"]
+
+    assert stats_step_index < run_step_index
+    assert "rm -rf mutants" in stats_script
+    assert "scripts/mutmut_stats_shard.py" in stats_script
+    assert "--shard-id 0" in stats_script
+    assert "--num-shards 1" in stats_script
+    assert "--max-children 2" in stats_script
+    assert "scripts/run_mutmut_with_stats.py --max-children 2" in run_script
+    assert "uv run mutmut run" not in run_script
+    assert "scripts/mutmut_stats_shard.py" not in run_script
+
+
+def test_pr_quality_gates_enforce_contract_policy_values() -> None:
+    contract = json.loads(QUALITY_CONTRACT_PATH.read_text(encoding="utf-8"))
+    policy = contract["policy"]
+    patch_coverage = policy["patch_coverage"]
+    viable_mutant_score = policy["viable_mutant_score"]
+    assert patch_coverage == 100
+    assert viable_mutant_score == 100
+
+    backend_workflow = yaml.safe_load(BACKEND_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    diff_coverage_step = next(
+        step
+        for step in backend_workflow["jobs"]["unit-tests"]["steps"]
+        if step.get("name") == "Check differential coverage (diff-cover)"
+    )
+    assert "github.event_name == 'pull_request'" in diff_coverage_step["if"]
+    assert "inputs.num-shards <= 1" in diff_coverage_step["if"]
+    assert diff_coverage_step["env"]["COMPARE_BRANCH"] == "${{ github.base_ref }}"
+    assert f"--fail-under={patch_coverage}" in diff_coverage_step["run"]
+    assert "git fetch origin $compareBranch" in diff_coverage_step["run"]
+    assert "origin/$compareBranch" in diff_coverage_step["run"]
+    assert not diff_coverage_step.get("continue-on-error", False)
+
+    ci_workflow = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    aggregate_coverage_job = ci_workflow["jobs"]["coverage-policy-gate"]
+    aggregate_diff_step = next(
+        step
+        for step in aggregate_coverage_job["steps"]
+        if step.get("name") == "Enforce aggregate PR differential coverage"
+    )
+    aggregate_checkout_step = next(
+        step
+        for step in aggregate_coverage_job["steps"]
+        if step.get("name") == "Checkout"
+    )
+    assert aggregate_checkout_step.get("with", {}).get("fetch-depth") == 0
+    assert aggregate_diff_step["if"] == "${{ github.event_name == 'pull_request' }}"
+    assert aggregate_diff_step["env"]["COMPARE_BRANCH"] == "${{ github.base_ref }}"
+    assert f"--fail-under={patch_coverage}" in aggregate_diff_step["run"]
+    assert 'git fetch origin "$COMPARE_BRANCH"' in aggregate_diff_step["run"]
+    assert "origin/$COMPARE_BRANCH" in aggregate_diff_step["run"]
+    assert not aggregate_diff_step.get("continue-on-error", False)
+
+    combine_index = next(
+        index
+        for index, step in enumerate(aggregate_coverage_job["steps"])
+        if step.get("name") == "Combine Python shard coverage"
+    )
+    aggregate_diff_index = next(
+        index
+        for index, step in enumerate(aggregate_coverage_job["steps"])
+        if step is aggregate_diff_step
+    )
+    assert combine_index < aggregate_diff_index
+
+    mutation_gate = MUTMUT_GATE_PATH.read_text(encoding="utf-8")
+    assert 'main(["--min-score", "100"])' in mutation_gate
 
 
 def test_performance_gate_asserts_downloaded_lighthouse_without_rebuilding() -> None:
@@ -1314,14 +2157,26 @@ def test_actionlint_documents_github_service_command_compatibility() -> None:
 
 def test_frontend_mutation_gate_is_blocking_and_reproducible() -> None:
     ci_workflow = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    manual_workflow = yaml.safe_load(
+        MANUAL_MUTATION_EVIDENCE_WORKFLOW_PATH.read_text(encoding="utf-8")
+    )
     jobs = ci_workflow["jobs"]
     mutation_job = jobs["stryker-incremental"]
     mutation_condition = mutation_job["if"]
     assert "github.event_name == 'pull_request'" in mutation_condition
-    assert "github.event_name == 'workflow_dispatch'" in mutation_condition
+    assert "workflow_dispatch" not in mutation_condition
     assert "stryker-incremental" in jobs["ci-success"]["needs"]
     result_check = jobs["ci-success"]["steps"][0]["run"]
     assert "needs.stryker-incremental.result" in result_check
+
+    manual_stryker = manual_workflow["jobs"]["manual-frontend-mutation-tests"]
+    assert manual_stryker["name"] == "Manual Mutation Evidence (frontend Stryker)"
+    manual_stryker_run = next(
+        step["run"]
+        for step in manual_stryker["steps"]
+        if step.get("name") == "Run manual incremental Stryker gate"
+    )
+    assert "npm run test:mutation -- --incremental" in manual_stryker_run
 
     frontend_workflow = yaml.safe_load(
         (
@@ -1341,6 +2196,52 @@ def test_frontend_mutation_gate_is_blocking_and_reproducible() -> None:
         if step.get("name") == "Upload frontend coverage to Codecov"
     )
     assert codecov_step["with"]["flags"] == "frontend"
+
+
+def test_quality_promotion_workflow_uses_fail_closed_stabilization_checker() -> None:
+    workflow = yaml.safe_load(
+        QUALITY_PROMOTION_WORKFLOW_PATH.read_text(encoding="utf-8")
+    )
+    triggers = _workflow_triggers(workflow)
+    assert triggers == {"workflow_dispatch": {}}
+    assert workflow["permissions"] == {"actions": "read", "contents": "read"}
+
+    text = QUALITY_PROMOTION_WORKFLOW_PATH.read_text(encoding="utf-8")
+    assert "inputs." not in text
+    assert "github.event.inputs" not in text
+    assert "TARGET_BRANCH: main" in text
+    assert 'REQUIRED_DAYS: "30"' in text
+    assert "nightly-full-gate.yml/runs" in text
+    assert "check_stabilization_window.py" in text
+    assert "Fail when promotion is not yet eligible" in text
+
+    canonical_job = workflow["jobs"]["verify-canonical-ref"]
+    canonical_step = canonical_job["steps"][0]
+    assert canonical_step["env"] == {"WORKFLOW_REF": "${{ github.ref }}"}
+    assert '"$WORKFLOW_REF" != "refs/heads/main"' in canonical_step["run"]
+    assert workflow["jobs"]["stabilization-window"]["needs"] == "verify-canonical-ref"
+
+    checkout = workflow["jobs"]["stabilization-window"]["steps"][0]
+    assert checkout["with"] == {"ref": "main", "fetch-depth": 1}
+
+
+def test_dast_active_scans_do_not_accept_pr_label_authorization() -> None:
+    """A PR label must never authorize a secret-bearing active DAST scan."""
+
+    workflow = yaml.safe_load(DAST_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    triggers = _workflow_triggers(workflow)
+    assert "pull_request" not in triggers
+    assert "pull_request_target" not in triggers
+
+    for job_name in ("nuclei", "zap"):
+        assert workflow["jobs"][job_name]["needs"] == "verify-trusted-ref"
+
+    nuclei_setup = next(
+        step
+        for step in workflow["jobs"]["nuclei"]["steps"]
+        if step.get("uses", "").startswith("projectdiscovery/nuclei-action@")
+    )
+    assert nuclei_setup["with"] == {"version": "v3.3.9", "install-only": True}
 
 
 def _step_named(job: dict[str, object], name: str) -> dict[str, object]:

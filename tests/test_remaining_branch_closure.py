@@ -219,12 +219,16 @@ def test_middleware_setup_handles_missing_proxy_headers_dependency(monkeypatch):
             raise ImportError("proxy headers unavailable")
         return original_import(name, *args, **kwargs)
 
-    monkeypatch.setattr(builtins, "__import__", fail_proxy_headers_import)
-    reloaded = importlib.reload(setup)
     try:
-        assert reloaded.ProxyHeadersMiddleware is None
+        with monkeypatch.context() as mocked_import:
+            mocked_import.setattr(builtins, "__import__", fail_proxy_headers_import)
+            reloaded = importlib.reload(setup)
+            assert reloaded.ProxyHeadersMiddleware is None
     finally:
-        importlib.reload(setup)
+        # Reload only after the mock context restores the real import hook.
+        restored = importlib.reload(setup)
+
+    assert callable(restored.ProxyHeadersMiddleware)
 
 
 def test_middleware_setup_skips_endpoint_when_parser_returns_none(monkeypatch):

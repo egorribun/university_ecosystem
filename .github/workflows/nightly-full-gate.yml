@@ -42,16 +42,31 @@ jobs:
       - name: Install dependencies
         run: uv sync --group dev
 
-      - name: Run the complete mutation universe
+      # mutmut 3.7 invokes pytest.main() repeatedly in one interpreter. Pytest
+      # explicitly does not support re-running the same suite in-process:
+      # imported test modules and their dependencies remain cached. Collect the
+      # complete stats map in one CLI process, then start mutation execution in
+      # a fresh one. The pinned wrapper reuses that complete map for mutmut's
+      # redundant test-discovery check, making the clean baseline this process's
+      # first pytest invocation while retaining every mutmut mutation phase.
+      - name: Collect full mutmut stats (isolated process)
         run: |
           rm -rf mutants
-          # mutmut 3.5.0 has no --CI flag; the CI/CD behavior is provided by
-          # the explicit export-cicd-stats command below.
-          uv run mutmut run
+          uv run python scripts/mutmut_stats_shard.py \
+            --shard-id 0 \
+            --num-shards 1 \
+            --max-children 2
+
+      - name: Run the complete mutation universe
+        run: |
+          # The exporter below reads the freshly-created complete universe and
+          # retains every status, including caught_by_type_check.
+          uv run python scripts/run_mutmut_with_stats.py --max-children 2
 
       - name: Export and gate mutation statistics
         run: |
-          uv run mutmut export-cicd-stats
+          uv run python scripts/export_mutmut_shard_stats.py --all \
+            --output mutants/mutmut-cicd-stats.json
           test -s mutants/mutmut-cicd-stats.json
           uv run python scripts/check_mutation_score.py --min-score 100
 
@@ -103,6 +118,9 @@ jobs:
       matrix:
         unit-shard: [0, 1, 2, 3]
     uses: ./.github/workflows/reusable-backend-tests.yml
+    permissions:
+      contents: read
+      id-token: write
     with:
       test-group-name: Nightly-Full-${{ matrix.unit-shard }}
       test-pattern: tests/
@@ -115,7 +133,6 @@ jobs:
       num-shards: 4
     secrets:
       SECRET_KEY: ${{ secrets.SECRET_KEY }}
-      CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
 
   backend-integration:
     name: Full backend integration (shard ${{ matrix.integration-shard }})
@@ -124,6 +141,9 @@ jobs:
       matrix:
         integration-shard: [0, 1, 2, 3]
     uses: ./.github/workflows/reusable-backend-tests.yml
+    permissions:
+      contents: read
+      id-token: write
     with:
       test-group-name: Nightly-Integration-${{ matrix.integration-shard }}
       test-pattern: tests/
@@ -138,7 +158,6 @@ jobs:
       integration-num-shards: 4
     secrets:
       SECRET_KEY: ${{ secrets.SECRET_KEY }}
-      CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
 
   go-integration:
     name: Go integration (${{ matrix.service-directory }})
@@ -159,16 +178,16 @@ jobs:
     timeout-minutes: 30
     env:
       DATABASE_URL: sqlite+aiosqlite:///./test.db
-      POSTGRES_PASSWORD: postgres  # pragma: allowlist secret
-      SECRET_KEY: nightly-container-cell-test-secret-32-chars  # pragma: allowlist secret
+      POSTGRES_PASSWORD: postgres # pragma: allowlist secret
+      SECRET_KEY: nightly-container-cell-test-secret-32-chars # pragma: allowlist secret
       ENVIRONMENT: testing
       RUN_INTEGRATION_TESTS: "1"
       USE_TESTCONTAINERS_MINIO: "1"
       USE_TESTCONTAINERS_SPICEDB: "1"
       MINIO_ROOT_USER: minioadmin
-      MINIO_ROOT_PASSWORD: minioadminsecret  # pragma: allowlist secret
-      NATS_AUTH_TOKEN: nightly-nats-token  # pragma: allowlist secret
-      SPICEDB_PRESHARED_KEY: nightly-spicedb-key  # pragma: allowlist secret
+      MINIO_ROOT_PASSWORD: minioadminsecret # pragma: allowlist secret
+      NATS_AUTH_TOKEN: nightly-nats-token # pragma: allowlist secret
+      SPICEDB_PRESHARED_KEY: nightly-spicedb-key # pragma: allowlist secret
       OTEL_SDK_DISABLED: "true"
     steps:
       - name: Checkout
@@ -206,6 +225,9 @@ jobs:
           - webkit
           - mobile-webkit
     uses: ./.github/workflows/reusable-e2e-tests.yml
+    permissions:
+      contents: read
+      id-token: write
     with:
       node-version: "22"
       python-version: "3.14"
@@ -219,24 +241,24 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     env:
-      DATABASE_URL: postgresql+asyncpg://postgres:postgres@postgres:5432/ecosystem  # pragma: allowlist secret
+      DATABASE_URL: postgresql+asyncpg://postgres:postgres@postgres:5432/ecosystem # pragma: allowlist secret
       POSTGRES_USER: postgres
       POSTGRES_DB: ecosystem
-      POSTGRES_PASSWORD: postgres  # pragma: allowlist secret
-      SECRET_KEY: dummy_secret_key_for_ci_tests_at_least_32_chars  # pragma: allowlist secret
-      JWT_SECRET: dummy_jwt_secret_for_ci_tests_at_least_32_chars  # pragma: allowlist secret
+      POSTGRES_PASSWORD: postgres # pragma: allowlist secret
+      SECRET_KEY: dummy_secret_key_for_ci_tests_at_least_32_chars # pragma: allowlist secret
+      JWT_SECRET: dummy_jwt_secret_for_ci_tests_at_least_32_chars # pragma: allowlist secret
       ENVIRONMENT: testing
       OTEL_SDK_DISABLED: "true"
-      REDIS_PASSWORD: nightly-redis-password  # pragma: allowlist secret
+      REDIS_PASSWORD: nightly-redis-password # pragma: allowlist secret
       MINIO_ROOT_USER: minioadmin
-      MINIO_ROOT_PASSWORD: minioadminsecret  # pragma: allowlist secret
-      NATS_AUTH_TOKEN: nightly-nats-token  # pragma: allowlist secret
-      SPICEDB_PRESHARED_KEY: nightly-spicedb-key  # pragma: allowlist secret
-      WS_HUB_INTERNAL_SECRET: nightly-ws-hub-secret  # pragma: allowlist secret
-      IMGPROXY_KEY: nightly-imgproxy-key  # pragma: allowlist secret
-      IMGPROXY_SALT: nightly-imgproxy-salt  # pragma: allowlist secret
-      SPOTIFY_CLIENT_ID: nightly-spotify-client  # pragma: allowlist secret
-      SPOTIFY_CLIENT_SECRET: nightly-spotify-secret  # pragma: allowlist secret
+      MINIO_ROOT_PASSWORD: minioadminsecret # pragma: allowlist secret
+      NATS_AUTH_TOKEN: nightly-nats-token # pragma: allowlist secret
+      SPICEDB_PRESHARED_KEY: nightly-spicedb-key # pragma: allowlist secret
+      WS_HUB_INTERNAL_SECRET: nightly-ws-hub-secret # pragma: allowlist secret
+      IMGPROXY_KEY: nightly-imgproxy-key # pragma: allowlist secret
+      IMGPROXY_SALT: nightly-imgproxy-salt # pragma: allowlist secret
+      SPOTIFY_CLIENT_ID: nightly-spotify-client # pragma: allowlist secret
+      SPOTIFY_CLIENT_SECRET: nightly-spotify-secret # pragma: allowlist secret
       SPOTIFY_REDIRECT_URI: http://localhost/spotify/callback
       SPOTIFY_SCOPES: user-read-currently-playing
     steps:
@@ -349,7 +371,7 @@ jobs:
           # The pytest process runs on the GitHub runner, not inside the
           # Compose network. Keep the job-level DATABASE_URL for containers,
           # but point this host-side fixture at the published PostgreSQL port.
-          DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:54321/ecosystem  # pragma: allowlist secret
+          DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:54321/ecosystem # pragma: allowlist secret
           COMPOSE_FILE: docker-compose.infra.yml:docker-compose.go.yml:docker-compose.yml:docker-compose.ci-loadtest.yml
         run: uv run pytest tests/chaos/ -v -m chaos --tb=short
 
@@ -362,7 +384,9 @@ jobs:
           docker compose $CF down -v --remove-orphans || true
 
   kyverno-test:
-    name: Kyverno policy tests
+    # Kept distinct from the required fast-CI context because this workflow
+    # is manually dispatchable as well as scheduled.
+    name: Nightly Kyverno validation
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -458,11 +482,11 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           title="Nightly full quality gate failed"
-          existing=$(gh issue list --state open --search "$title in:title" --json number --jq '.[0].number // empty')
+          existing=$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --search "$title in:title" --json number --jq '.[0].number // empty')
           if [ -n "$existing" ]; then
-            gh issue comment "$existing" --body "Run $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID failed."
+            gh issue comment "$existing" --repo "$GITHUB_REPOSITORY" --body "Run $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID failed."
           else
-            gh issue create --title "$title" --body "Run $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID failed. Inspect the nightly artifacts and promote checks only after the documented 30-day green window."
+            gh issue create --repo "$GITHUB_REPOSITORY" --title "$title" --body "Run $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID failed. Inspect the nightly artifacts and promote checks only after the documented 30-day green window."
           fi
 
       - name: Send optional Slack notification

@@ -74,6 +74,7 @@ QUARANTINE_FIELDS = EXCLUSION_FIELDS | {"test"}
 MUTATION_REGISTRY_FIELDS = frozenset({"version", "exclusions"})
 DATE_PATTERN = re.compile(r"\d{4}-\d{2}-\d{2}")
 WILDCARD_CHARACTERS = "*?[]"
+MAX_JSON_NESTING_DEPTH = 1_024
 
 
 class _ArgumentParsingError(ValueError):
@@ -87,6 +88,37 @@ class _QualityArgumentParser(argparse.ArgumentParser):
 
 class _DuplicateKeyError(ValueError):
     """Raised when a JSON object repeats a key."""
+
+
+def _reject_excessive_json_nesting(text: str) -> None:
+    """Reject deeply nested JSON before interpreter-specific decoding limits.
+
+    CPython's JSON decoder does not guarantee the same recursion boundary on
+    every platform/build.  A small lexical pass keeps the validator's
+    fail-closed depth limit deterministic without treating braces inside JSON
+    strings as structure.
+    """
+
+    depth = 0
+    in_string = False
+    escaped = False
+    for character in text:
+        if in_string:
+            if escaped:
+                escaped = False
+            elif character == "\\":
+                escaped = True
+            elif character == '"':
+                in_string = False
+            continue
+        if character == '"':
+            in_string = True
+        elif character in "[{":
+            depth += 1
+            if depth > MAX_JSON_NESTING_DEPTH:
+                raise RecursionError("JSON nesting exceeds supported depth")
+        elif character in "]}":
+            depth = max(0, depth - 1)
 
 
 def _require_object(
@@ -597,6 +629,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 2
 
     try:
+        _reject_excessive_json_nesting(contract_text)
         contract = json.loads(
             contract_text,
             object_pairs_hook=_duplicate_key_object,
@@ -624,6 +657,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     try:
         mutation_registry_text = arguments.mutation_registry.read_text(encoding="utf-8")
+        _reject_excessive_json_nesting(mutation_registry_text)
         mutation_registry = json.loads(
             mutation_registry_text,
             object_pairs_hook=_duplicate_key_object,
@@ -654,6 +688,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     if arguments.manifest is not None:
         try:
             manifest_text = arguments.manifest.read_text(encoding="utf-8")
+            _reject_excessive_json_nesting(manifest_text)
             manifest = json.loads(
                 manifest_text,
                 object_pairs_hook=_duplicate_key_object,

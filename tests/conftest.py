@@ -141,7 +141,7 @@ def minio_container() -> dict[str, str]:
         yield {
             "endpoint": f"{host}:{port}",
             "access_key": "minioadmin",
-            "secret_key": "minioadminsecret",
+            "secret_key": "minioadminsecret",  # pragma: allowlist secret
         }
 
 
@@ -422,6 +422,12 @@ def mock_spicedb_permissions():
     from app.api.deps.auth import get_permission_checker
 
     app.dependency_overrides[get_permission_checker] = lambda: mock_checker
+    # GraphQL context resolves PermissionChecker directly from Dishka, while
+    # REST handlers use the legacy get_permission_checker dependency. Keep the
+    # same fail-safe mock on both entry points so tests that temporarily swap a
+    # narrow provider container cannot leak an authorization gap into a later
+    # in-process pytest/mutmut run.
+    app.dependency_overrides[PermissionChecker] = lambda: mock_checker
     yield mock_checker
 
 

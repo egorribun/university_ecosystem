@@ -12,7 +12,7 @@ WORKDIR /app
 RUN --mount=type=cache,id=apt-lists-test,target=/var/lib/apt/lists \
     --mount=type=cache,id=apt-cache-test,target=/var/cache/apt \
     apt-get update && apt-get install -y --no-install-recommends \
-    build-essential curl \
+    build-essential curl clang libclang-rt-14-dev \
     && rm -rf /var/lib/apt/lists/* \
     && groupadd --system --gid 10001 app \
     && useradd --system --uid 10001 --gid app --home-dir /home/app --shell /bin/bash app
@@ -26,16 +26,18 @@ ENV RUSTUP_HOME="/usr/local/rustup" \
     PATH="/usr/local/cargo/bin:$PATH"
 
 # Install uv
-# LOW-W19: pin to same version used in CI (reusable-backend-tests uses setup-uv v7.6.0)
-# Use --locked flag on uv sync to enforce lockfile consistency regardless of uv version
-COPY --from=ghcr.io/astral-sh/uv:0.11.2 /uv /uv/bin/uv
+# Pin to the exact version required by pyproject.toml so ``uv sync --frozen``
+# cannot fail before the disposable test image has installed its dependencies.
+COPY --from=ghcr.io/astral-sh/uv:0.11.28@sha256:5c3ab83183a73c5d319a77009eb425b60d5bb937f339fb7876788ebf567baf48 /uv /uv/bin/uv
 ENV PATH="/uv/bin:$PATH"
 
 # Copy workspace member manifests + sources so uv can resolve the workspace before sync
 COPY native/rust_ext/pyproject.toml native/rust_ext/Cargo.toml native/rust_ext/Cargo.lock native/rust_ext/
 COPY native/rust_ext/src native/rust_ext/src
+COPY native/rust_ext/benches native/rust_ext/benches
 COPY crates/pyo3-sanitizer/pyproject.toml crates/pyo3-sanitizer/Cargo.toml crates/pyo3-sanitizer/Cargo.lock crates/pyo3-sanitizer/
 COPY crates/pyo3-sanitizer/src crates/pyo3-sanitizer/src
+COPY crates/pyo3-sanitizer/benches crates/pyo3-sanitizer/benches
 
 COPY pyproject.toml uv.lock ./
 

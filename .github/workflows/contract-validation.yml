@@ -25,7 +25,6 @@ on:
     # main-branch ruleset.  A path-filtered required workflow would leave every
     # unrelated PR permanently pending, so it must be scheduled for every PR.
     types: [opened, synchronize, reopened, ready_for_review]
-  workflow_dispatch: {}
 
 permissions: read-all
 

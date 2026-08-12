@@ -1,35 +1,32 @@
-import sys
 from unittest.mock import MagicMock, patch
 
 import pytest
 
-# Mock pyvips before importing images_vips to ensure VIPS_AVAILABLE is True
+# Keep the optional dependency mock local to each test. Mutmut passes selected
+# node IDs as an unordered set; mutating ``sys.modules`` at collection time can
+# make ``app.utils.images`` capture this MagicMock instead of the real pyvips
+# module when another test module imports it later.
+import app.utils.images_vips as iv
+
 mock_pyvips = MagicMock()
 mock_pyvips.enums.Size.DOWN = "down"
-sys.modules["pyvips"] = mock_pyvips
-
-if "app.utils.images_vips" in sys.modules:
-    del sys.modules["app.utils.images_vips"]
-
-import app.utils.images_vips as iv
 
 
 @pytest.fixture(autouse=True)
 def _reset_pyvips_mock():
-    # mock_pyvips is installed into sys.modules at import time and is SHARED across
-    # the whole pytest session, so its call counts ACCUMULATE: any earlier test that
-    # exercises the image-processing production path (e.g. a media/profile-service
-    # test, once this file's import has set sys.modules["pyvips"]) increments
-    # Image.new_from_buffer / Image.thumbnail_buffer. Reset before each test so the
-    # `assert_called_once_with(...)` checks below count ONLY the current test's calls.
-    # Surfaced by mutmut, whose clean-test runs the changed modules' covering tests in
-    # ONE deterministic-order pytest.main() (a context normal randomized CI never hits);
-    # the tests pass in isolation but the shared mock leaks across that combined run.
-    mock_pyvips.reset_mock(return_value=True, side_effect=True)
-    mock_pyvips.enums.Size.DOWN = (
-        "down"  # reset_mock(return_value=True) drops set attrs
-    )
-    yield
+    # Reset before each test so call counts cover ONLY the current test. The
+    # module-level patch is deliberately scoped by pytest rather than installed
+    # in sys.modules, keeping unrelated image tests isolated even when mutmut
+    # collects an unordered subset of node IDs.
+    with (
+        patch.object(iv, "pyvips", mock_pyvips),
+        patch.object(iv, "VIPS_AVAILABLE", True),
+    ):
+        mock_pyvips.reset_mock(return_value=True, side_effect=True)
+        mock_pyvips.enums.Size.DOWN = (
+            "down"  # reset_mock(return_value=True) drops set attrs
+        )
+        yield
 
 
 def test_optimize_image_vips_success():

@@ -52,6 +52,24 @@ def _read_text(relative_path: str) -> str:
     return (ROOT / relative_path).read_text(encoding="utf-8")
 
 
+def _dockerignore_patterns(relative_path: str) -> tuple[str, ...]:
+    return tuple(
+        line.strip()
+        for line in _read_text(relative_path).splitlines()
+        if line.strip() and not line.lstrip().startswith("#")
+    )
+
+
+def test_xdist_sqlite_database_artifacts_are_ignored() -> None:
+    gitignore_patterns = set(_read_text(".gitignore").splitlines())
+
+    assert {
+        "test_gw*.db",
+        "test_gw*.db-wal",
+        "test_gw*.db-shm",
+    }.issubset(gitignore_patterns)
+
+
 def test_governance_quality_configuration_matches_contract() -> None:
     contract = _read_contract()
     ownership = json.loads(_read_text("quality/ownership-mapping.json"))
@@ -108,9 +126,118 @@ def test_backend_dockerfile_uses_the_required_uv_version() -> None:
     assert "ghcr.io/astral-sh/uv:0.11.28@sha256:" in dockerfile
 
 
+def test_test_dockerfile_uses_the_required_uv_version() -> None:
+    dockerfile = (ROOT / "Dockerfile.test").read_text(encoding="utf-8")
+
+    assert "ghcr.io/astral-sh/uv:0.11.28@sha256:" in dockerfile
+
+
+def test_test_image_installs_atheris_toolchain() -> None:
+    dockerfile = (ROOT / "Dockerfile.test").read_text(encoding="utf-8")
+
+    package_install = re.search(
+        r"apt-get install -y --no-install-recommends \\\n(?P<packages>.*?)\n    &&",
+        dockerfile,
+        re.DOTALL,
+    )
+
+    assert package_install is not None
+    package_names = package_install.group("packages").split()
+    assert "clang" in package_names
+    assert "libclang-rt-14-dev" in package_names
+
+
+def test_test_image_copies_rust_benches_declared_in_workspace_manifests() -> None:
+    dockerfile = (ROOT / "Dockerfile.test").read_text(encoding="utf-8")
+
+    assert re.search(
+        r"^COPY native/rust_ext/benches native/rust_ext/benches$",
+        dockerfile,
+        re.MULTILINE,
+    )
+    assert re.search(
+        r"^COPY crates/pyo3-sanitizer/benches crates/pyo3-sanitizer/benches$",
+        dockerfile,
+        re.MULTILINE,
+    )
+
+
+def test_test_docker_context_excludes_recursive_rust_build_artifacts() -> None:
+    dockerignore = (ROOT / ".dockerignore").read_text(encoding="utf-8")
+
+    assert "**/target/" in dockerignore
+    assert ".pre-commit-trivy-cache/" in dockerignore
+
+
+def test_docker_context_excludes_local_quality_virtualenv() -> None:
+    dockerignore = (ROOT / ".dockerignore").read_text(encoding="utf-8")
+
+    assert ".quality-venv/" in dockerignore.splitlines()
+
+
+def test_test_image_context_preserves_required_and_safe_inputs() -> None:
+    test_dockerignore = ROOT / "Dockerfile.test.dockerignore"
+
+    assert test_dockerignore.is_file()
+
+    root_patterns = _dockerignore_patterns(".dockerignore")
+    test_patterns = _dockerignore_patterns("Dockerfile.test.dockerignore")
+    required_docker_config = (
+        "!backend.Dockerfile",
+        "!Dockerfile.test",
+        "!Dockerfile.test.dockerignore",
+        "!.gitignore",
+    )
+    required_safety_exclusions = (
+        ".secrets/",
+        "**/.secrets/",
+        ".codex-uv-cache/",
+        ".agents/",
+        ".opencode/",
+        ".superpowers/",
+        ".quality-pytest-tmp*/",
+        ".worktrees/",
+        ".pytest_tmp*/",
+        ".uv-cache*/",
+        ".docker-quality-closure/",
+    )
+    assert "tests/" in root_patterns
+    assert "tests/" not in test_patterns
+    assert ".github" in root_patterns
+    assert ".github" not in test_patterns
+    for safety_exclusion in required_safety_exclusions:
+        assert safety_exclusion in root_patterns
+        assert safety_exclusion in test_patterns
+
+    expected_test_patterns = tuple(
+        pattern for pattern in root_patterns if pattern not in {"tests/", ".github"}
+    )
+    dockerfile_rule_index = expected_test_patterns.index("Dockerfile*")
+    expected_test_patterns = (
+        expected_test_patterns[: dockerfile_rule_index + 1]
+        + required_docker_config
+        + expected_test_patterns[dockerfile_rule_index + 1 :]
+    )
+    assert test_patterns == expected_test_patterns
+    test_dockerfile_rule_index = test_patterns.index("Dockerfile*")
+    assert (
+        test_patterns[
+            test_dockerfile_rule_index + 1 : test_dockerfile_rule_index
+            + 1
+            + len(required_docker_config)
+        ]
+        == required_docker_config
+    )
+    assert 'CMD ["pytest", "tests/",' in _read_text("Dockerfile.test")
+
+
 def test_mutmut_uses_the_unit_population_instead_of_a_single_probe_file() -> None:
     mutation_config = _read_pyproject()["tool"]["mutmut"]
 
+    assert mutation_config["source_paths"] == ["app/"]
+    assert "paths_to_mutate" not in mutation_config
+    assert mutation_config["timeout_multiplier"] == 15.0
+    assert mutation_config["timeout_constant"] == 1.0
     assert mutation_config["pytest_add_cli_args_test_selection"] == [
         "-m",
         "not integration and not chaos and not performance and not slow",
@@ -119,8 +246,12 @@ def test_mutmut_uses_the_unit_population_instead_of_a_single_probe_file() -> Non
     assert "tests/test_tenant_rls.py" not in mutation_config["pytest_add_cli_args"]
     required_contract_inputs = {
         ".github",
+        ".gitignore",
+        ".dockerignore",
         "quality",
         "scripts",
+        "Dockerfile.test",
+        "Dockerfile.test.dockerignore",
         "backend.Dockerfile",
         "codecov.yml",
         "renovate.json",
@@ -138,6 +269,18 @@ def test_mutmut_uses_the_unit_population_instead_of_a_single_probe_file() -> Non
         "sonar-project.properties",
     }
     assert required_contract_inputs.issubset(mutation_config["also_copy"])
+
+
+def test_mutmut_bounds_each_hanging_test_without_weakening_mutation_scope() -> None:
+    """A hung mutant must become a killed result, not exhaust the shard watchdog."""
+
+    pyproject = _read_pyproject()
+    mutation_config = pyproject["tool"]["mutmut"]
+    dev_dependencies = pyproject["dependency-groups"]["dev"]
+
+    assert "pytest-timeout>=2.4.0" in dev_dependencies
+    assert "--timeout=120" in mutation_config["pytest_add_cli_args"]
+    assert "--timeout-method=signal" in mutation_config["pytest_add_cli_args"]
 
 
 def test_test_duration_updater_aggregates_junit_cases_and_preserves_schema() -> None:

@@ -17,6 +17,7 @@ __pycache__/
 htmlcov/
 .hypothesis/
 .mypy_cache/
+**/.mypy_cache/
 
 # Node/npm artifacts
 node_modules/
@@ -33,8 +34,11 @@ dist/
 venv/
 ENV/
 env/
+.quality-venv/
 
 # Local databases and secrets
+.secrets/
+**/.secrets/
 *.db
 *.sqlite3
 .env
@@ -43,6 +47,17 @@ env/
 *.bak
 *.swp
 *.log
+
+# Local agent state and disposable quality artifacts
+.codex-uv-cache/
+.agents/
+.opencode/
+.superpowers/
+.quality-pytest-tmp*/
+.worktrees/
+.pytest_tmp*/
+.uv-cache*/
+.docker-quality-closure/
 
 # IDE files
 .vscode/
@@ -56,6 +71,7 @@ env/
 
 # Rust build artifacts
 target/
+**/target/
 native/rust_ext/target/
 crates/pyo3-sanitizer/target/
 
@@ -67,3 +83,4 @@ LICENSE
 docs/
 tests/
 alembic/versions/*.pyc
+.pre-commit-trivy-cache/

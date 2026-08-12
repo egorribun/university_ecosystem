@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Mutation testing gate script for CI.
 
-Wraps the check_mutation_score.py utility to enforce a strict 85% mutant kill rate.
+Wraps the check_mutation_score.py utility to enforce a strict 100% viable
+mutation score.
 """
 
 from __future__ import annotations
@@ -19,5 +20,4 @@ except ImportError as e:
     sys.exit(1)
 
 if __name__ == "__main__":
-    # Wave 212 Phase III Step 1: Enforce minimum 85.0% mutation kill rate
-    main(["--min-score", "85.0"])
+    main(["--min-score", "100"])

@@ -255,6 +255,7 @@ async def test_subscribe_integrity_error_retry():
         ),
     ):
         db = AsyncMock()
+        db.add = MagicMock()
         nested_mock = MagicMock()
         nested_mock.__aenter__ = AsyncMock()
         nested_mock.__aexit__ = AsyncMock()

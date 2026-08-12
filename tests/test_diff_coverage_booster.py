@@ -8,6 +8,8 @@ and has no coupling to unrelated logic.
 from __future__ import annotations
 
 import asyncio
+import builtins
+import importlib
 import sys
 from types import ModuleType
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -45,22 +47,51 @@ def test_middleware_setup_uvicorn_import_error_fallback(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """When uvicorn is not installed ProxyHeadersMiddleware becomes None (line 24)."""
-    for key in list(sys.modules):
-        if key == "app.core.middleware.setup":
-            monkeypatch.delitem(sys.modules, key)
-    monkeypatch.setitem(sys.modules, "uvicorn", None)  # type: ignore[arg-type]
-    monkeypatch.setitem(sys.modules, "uvicorn.middleware", None)  # type: ignore[arg-type]
-    monkeypatch.setitem(
-        sys.modules,
-        "uvicorn.middleware.proxy_headers",
-        None,  # type: ignore[arg-type]
-    )
+    setup = importlib.import_module("app.core.middleware.setup")
+    original_import = builtins.__import__
 
-    import importlib
+    def fail_proxy_headers_import(name, *args, **kwargs):
+        if name == "uvicorn.middleware.proxy_headers":
+            raise ImportError("proxy headers unavailable")
+        return original_import(name, *args, **kwargs)
 
-    mod = importlib.import_module("app.core.middleware.setup")
-    # Either the real class (uvicorn installed) or None (fallback path exercised).
-    assert mod.ProxyHeadersMiddleware is None or callable(mod.ProxyHeadersMiddleware)
+    try:
+        with monkeypatch.context() as mocked_import:
+            mocked_import.setattr(builtins, "__import__", fail_proxy_headers_import)
+            fallback = importlib.reload(setup)
+            assert fallback.ProxyHeadersMiddleware is None
+    finally:
+        # Reload only after the mock context restores the real import hook.
+        restored = importlib.reload(setup)
+
+    assert callable(restored.ProxyHeadersMiddleware)
+
+
+def test_middleware_setup_fallback_does_not_leak_into_next_import(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A mocked fallback must not affect the next clean middleware import."""
+    setup = importlib.import_module("app.core.middleware.setup")
+    original_import = builtins.__import__
+
+    def fail_proxy_headers_import(name, *args, **kwargs):
+        if name == "uvicorn.middleware.proxy_headers":
+            raise ImportError("proxy headers unavailable")
+        return original_import(name, *args, **kwargs)
+
+    try:
+        with monkeypatch.context() as mocked_import:
+            mocked_import.setattr(builtins, "__import__", fail_proxy_headers_import)
+            fallback = importlib.reload(setup)
+            assert fallback.ProxyHeadersMiddleware is None
+    finally:
+        # Reload only after the mock context restores the real import hook.
+        restored = importlib.reload(setup)
+
+    import app.core.middleware.setup as direct_import
+
+    assert direct_import is restored
+    assert callable(direct_import.ProxyHeadersMiddleware)
 
 
 # ---------------------------------------------------------------------------
@@ -80,7 +111,8 @@ def test_reset_mfa_main_value_error_calls_parser_error() -> None:
     with (
         patch("app.management.reset_mfa._build_arg_parser", return_value=fake_parser),
         patch(
-            "app.management.reset_mfa.asyncio.run",
+            "app.management.reset_mfa._async_main",
+            new_callable=AsyncMock,
             side_effect=ValueError("user not found"),
         ),
     ):

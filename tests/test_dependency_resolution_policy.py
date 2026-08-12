@@ -87,6 +87,8 @@ def test_dependency_resolution_policy_enforces_cooldown_and_security_visibility(
     assert uv.get("exclude-newer") == "7 days"
     assert uv.get("exclude-newer-package") == {
         "cryptography": "2026-08-01T00:00:00Z",
+        "h2": "2026-08-04T00:00:00Z",
+        "mcp": "2026-08-04T00:00:00Z",
         "pyopenssl": "2026-08-02T00:00:00Z",
     }
 

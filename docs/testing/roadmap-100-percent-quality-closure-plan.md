@@ -2,9 +2,331 @@
 
 **Companion to:** `docs/testing/roadmap-100-percent-quality.md`
 **Audit baseline commit:** `ce588bb0a1c08eb66ff2e5558349096a51d3ed4a` (the "finalize quality-roadmap" merge)
-**Repository HEAD at audit time:** `0becc3e1ff130392dbc4166d04e6aa63495053bb`
-**Audit date:** 2026-07-22
-**Status:** execution in progress — baseline remains historical; see the uncommitted execution ledger below
+**Repository HEAD at audit snapshot:** `671b79c466348e37530d601f787404400e395723` (latest E2E navigation-stability hardening at that checkpoint)
+**Audit date:** 2026-08-09
+**Status:** the observations below are retained as an audit snapshot, not a claim about the current checkout. Certification remains fail-closed on external Codecov authorization, terminal current-HEAD CI and full-nightly mutation evidence, and the promotion prerequisites.
+
+> **Live enforcement policy (repository source, not remote certification):**
+> `quality/quality-contract.json` requires `patch_coverage = 100` and
+> `viable_mutant_score = 100`. The source wiring must still be confirmed by a
+> terminal current-HEAD PR run and full-nightly artifact before it is treated as
+> certification evidence.
+
+## Final control audit — 2026-08-09
+
+This checkpoint replaces stale “pending” conclusions from the historical
+execution ledgers below. It does not turn a passing bounded PR gate into a
+claim that the long-running or manually provisioned workstreams are complete.
+
+### Current-HEAD evidence — 2026-08-09
+
+- The latest pushed commits are `ac6b14d36`, `89961dc37`, `3268476dc`, and
+  `671b79c46`. They close the observed hydration race in the login/a11y and
+  settings/i18n flows, add bounded retries for Firefox `NS_BINDING_ABORTED`
+  navigation aborts, and apply that retry helper to every remaining E2E
+  `networkidle` navigation. Local repeated evidence is green: i18n is `32/32`
+  across eight repetitions; the targeted notifications/schedule slice is
+  `6 passed, 6 skipped` (the skips are service-worker-dependent cases); and
+  the a11y target passed four repetitions.
+- Fast CI run `31310271914` targets this exact SHA. Every executed test and
+  artifact-producing step passed: Python four shards, frontend four Vitest
+  shards plus aggregate merge, Go gateway/ws-hub/file-processor, Rust test
+  suites, security/static/contract/migration jobs, and all four browser
+  projects. The Chromium functional steps passed in all four shards; Firefox
+  completed `52 passed, 65 skipped` with no page-navigation flake; WebKit and
+  mobile-WebKit completed successfully; all Lighthouse lanes passed. The
+  `13` job failures are exclusively the mandatory Codecov upload step after
+  the preceding test/coverage/artifact steps succeeded. The run's aggregate
+  `Coverage & Quality Policy Gate` is therefore skipped by its dependency,
+  not failed by a coverage violation; the incremental mutmut shards remain
+  in progress at this checkpoint.
+- Exact raw artifacts from `31310271914` were recomputed with
+  `scripts/quality/normalize_coverage_reports.py` in a Linux container using
+  the same runner path as CI. The resulting manifest has
+  `commit_sha=671b79c466348e37530d601f787404400e395723`,
+  `validation.valid=true`, and `tier0` evidence for 54 files. The official
+  `validate_quality_contract.py --manifest` check passed. This is exact
+  current-HEAD artifact evidence, but it is recorded as a recomputation
+  because the CI policy job could not upload its manifest after Codecov made
+  the upstream jobs non-green.
+- The current normalized values are shown in the table below. Unsupported
+  counters remain `n/a`; missing infrastructure/scripts/workflows reports are
+  not converted into false coverage claims. Rust crypto's `100% (0/0)` branch
+  value means the source report contains no branch sites.
+
+### Current normalized coverage — run `31310271914`, SHA `671b79c46`
+
+| Component | Lines | Statements | Branches | Functions |
+| --- | ---: | ---: | ---: | ---: |
+| Python | 99.4904% | n/a | 98.5048% | n/a |
+| Frontend | 99.4820% | 99.4820% | 98.0787% | 98.1013% |
+| Go gateway | 98.8764% derived | 99.0809% | n/a | n/a |
+| Go ws-hub | 98.7771% derived | 99.0119% | n/a | n/a |
+| Go file-processor | 99.1372% derived | 99.2401% | n/a | n/a |
+| Rust native | 100% | n/a | 100% | 100% |
+| Rust PyO3 sanitizer | 99.3769% | n/a | 50% | 100% |
+| Rust WASM sanitizer | 100% | n/a | 100% | 100% |
+| Rust crypto | 100% | n/a | 100% (0/0) | 100% |
+| Tier0 (54 files) | 100% (7266/7266) | unsupported by source reports | 100% (1732/1732) | 100% (532/532) |
+
+- Full nightly run `31307154620` is still executing its full mutmut job on
+  the earlier SHA `ac6b14d36`. Its four backend unit shards and Chromium
+  functional workload completed successfully; their job conclusions are
+  Codecov-only failures. Miri, disposable MinIO/SpiceDB, all backend
+  integration shards, Firefox, WebKit, mobile-WebKit, and the nightly load/
+  chaos lane completed successfully. Its full frontend mutation job also
+  completed successfully: Stryker tested `33/33` mutants with `0 survived` and
+  a `100.00%` score. There are no `frontend/src` changes between that SHA and
+  the current HEAD, so the full frontend score remains exact for the current
+  production tree. Current-HEAD nightly run `31310278607`
+  is queued behind it under the intentionally non-canceling nightly
+  concurrency group and cannot yet provide current-HEAD full-mutation proof.
+- The current GitHub secret inventory still has no `CODECOV_TOKEN`, and OIDC
+  authentication reaches Codecov but receives `Repository not found`. This
+  remains an external repository-onboarding/authorization action; upload
+  failures stay blocking by design.
+- The live `main` stabilization calculation remains `eligible: false`: the
+  16 completed nightly runs from 2026-07-24 through 2026-08-08 all concluded
+  `failure`, so the required 30 consecutive green calendar days are `0/30`.
+  The promotion workflow is present on this branch but cannot certify the
+  default branch until it is merged and has eligible run history.
+- DAST still has no authorized target URL, release certification still has no
+  protected `QUALITY_CERTIFICATION_KEY`, and advisory Go integration,
+  cross-browser, chaos/migration-resilience, and continuous-performance
+  checks cannot be promoted without their documented live evidence. These
+  are external deployment/evidence prerequisites, not silently closable
+  repository TODOs.
+
+### Local hardening update — 2026-08-10 (not certification evidence)
+
+This is local candidate evidence for the current worktree. It must be linked
+to a terminal current-HEAD PR run and full-nightly artifacts after publication;
+it is not a replacement for external certification.
+
+- The complete Python suite passed with isolated xdist workers and strict
+  async-warning gates:
+  `uv run pytest -q -n 16 -W error::RuntimeWarning -W error::pytest.PytestUnraisableExceptionWarning`
+  produced `7210 passed, 71 skipped, 298 warnings` in `938.51s`. The warnings
+  are separately reported known Pydantic, dependency-deprecation, and
+  environment-gated notices; the two enforced warning classes were clean.
+- The focused quality-closure selection also passed with those gates:
+  `370 passed, 8 warnings` in `187.89s`. Its warnings are the known Pydantic
+  and structlog exception-formatting notices, not un-awaited coroutine paths.
+- Local test hardening now models synchronous repository/session APIs with
+  `MagicMock` and asynchronous APIs with `AsyncMock`. It closes four formerly
+  hidden un-awaited-coroutine paths in media, notification retry, reset-MFA,
+  and DB-DLQ listener tests. The affected five modules passed the same strict
+  warning gates (`124 passed`).
+- Mutation evidence handling now fails closed on early errors, reserves its
+  budget per child workflow, and permits safe empty shards. `Dockerfile.test`
+  uses a restricted build context that excludes secrets and caches; its smoke
+  test passed (`19 passed`). The DAST workflow now fails explicitly when no
+  authorized target URL is supplied.
+- Changed Python files passed Ruff check and format check; the changed Python
+  sources/scripts passed `py_compile`; `uv lock --check`, YAML parsing for the
+  quality workflows, and `actionlint v1.7.7` also passed.
+- The formal Codex Security diff scan did not create a scan because the
+  working tree changed after selection. Manual scoped security reviews are
+  useful local evidence, but they are not reported as a completed formal scan.
+
+The external blockers above remain unchanged: Codecov repository authorization,
+an authorized DAST target, the protected certification key, terminal
+current-HEAD PR/full-nightly artifacts, the `0/30` stabilization window, and
+promotion evidence for advisory workloads. None may be marked closed from this
+local update.
+
+### Historical evidence retained from earlier checkpoints
+
+Everything in this subsection is retained for reproducibility only; it is not
+the live certification basis for the current SHA.
+
+- The audit began from a clean tree at `d5bedc62991caf7f3d9618974b8a9a3a5e310ea1`;
+  quality-gate hardening was then committed as `702278a8d`, `465c29055`, and
+  `b9405c5da` (the dependency-policy contract was updated with the newly
+  pinned security cutoffs and passed its remote shard), `1394a79bc` (the
+  repeated-mutmut Dishka lifecycle regression was fixed and covered locally),
+  `825141d0d` (manual performance dispatch was added), `a23052dc4` (the
+  lifecycle-owned Dishka shutdown marker was added after the first fresh
+  nightly still found a global-ASGI lifecycle leak), `d8a25844e` (the lifespan
+  test's package import was aliased so it cannot replace the FastAPI app fixture
+  during the second context-manager scenario), and `113e91723` (lifespan now
+  recreates closed application containers; the infrastructure fixture installs
+  a fresh full container at every boundary; and a restart contract test covers
+  the closed-root path).
+  The earlier fresh evidence below remains tied to its exact source commit.
+- The fresh remote CI run `31272523668` for source commit
+  `496ed7f2c5c0fd33da738b4687b4c31281f14d7e` completed with `105` jobs,
+  `success`, and zero failed jobs. Its normalized quality manifest was valid
+  and the quality-contract validator passed.
+- The active `main` ruleset `8335285` is enforced and now contains the core
+  CI, coverage, inventory, backend/frontend, Go, Rust, contract, security,
+  migration, Helm, Docker, workflow, and Kyverno checks. The documented admin
+  bypass remains intentionally enabled under the repository bypass policy.
+- Local static and contract checks passed: `uv lock --check`, Ruff check and
+  format, mypy (349 files), source/test inventory, 224 quality-contract tests,
+  frontend typecheck, ESLint, Prettier, i18n parity, dead-code and dependency
+  checks. The complete frontend Vitest suite also passed on the local Node 26
+  host.
+- Local Go unit suites passed for gateway, ws-hub, file-processor, uni-cli, and
+  SPIFFE. Local Rust tests and stable/nightly LLVM coverage runs passed for
+  native, PyO3 sanitizer, WASM sanitizer, and rust-crypto. Local `go test
+  -race` cannot run on this Windows host because CGO is enabled but no C
+  compiler is installed; the remote current-HEAD Go integration job passed.
+- The full local Python coverage run exceeded the 30-minute host budget before
+  producing an aggregate artifact. The complete four-shard Python result from
+  the fresh current-HEAD CI run is therefore the authoritative aggregate for
+  this checkpoint. This is an environment-duration limitation, not evidence
+  of a Python test failure.
+- Codecov uploads were reproduced as rejected when no repository token was
+  available. The upload path is now switched to Codecov OIDC with explicit
+  GitHub `id-token: write` permissions and `fail_ci_if_error: true`; the empty
+  token inputs were removed so OIDC is the sole authentication path. The fresh
+  run `31276786678` successfully obtained OIDC tokens and completed the test
+  work, but Codecov rejected every upload with `Repository not found`. The
+  repository must be onboarded/authorized in Codecov (or receive a valid
+  repository token) before this external gate can be certified. The fresh
+  current-HEAD CI run `31278744917` for `b9405c5da` completed with `105` jobs:
+  all repository tests and quality jobs passed, while the `13` component
+  Codecov uploads returned the same `Repository not found` response and the
+  aggregate `CI Success` job consequently failed closed.
+- Follow-up local regression evidence is current: the quality closure slice
+  passes `231` tests; the targeted provider-replacement sequence passes `22/22`
+  (`test_schedule_api_coverage.py`, `test_search_api.py`, and `test_graphql.py`);
+  Ruff, `uv lock --check`, and the repository dependency
+  audit pass. The Python lock now removes unused `diskcache`, pins patched
+  `h2>=4.4.1`, and constrains transitive `mcp` to the patched `<2` line.
+- The targeted repeated-lifecycle regression is now green locally: the full
+  GraphQL file passed twice through separate `pytest.main()` runs (`15 + 15`),
+  while the broader Windows clean-test profile timed out at its 15-minute host
+  budget without producing a test failure. The old nightly run `31275975109`
+  then reached terminal `failure` before mutation scoring: its clean-test
+  phase failed at `tests/test_graphql.py::test_graphql_schedule_query` with
+  `assert 0 == 1` after the app-level Dishka container had been closed and
+  reused. The first fixture-only reset in `1394a79bc` did not observe a
+  container closed by an earlier global `TestClient` lifespan; the lifecycle-
+  owned marker fix is in `a23052dc4`. Its backend shard exposed a test-only
+  package-import rebinding, fixed in `d8a25844e` and covered locally by all
+  `28` lifespan tests. Fresh nightly run `31288102177` is executing against
+  `d8a25844e`, and its terminal result is intentionally pending.
+- The fresh remote performance run `31287050376` on source commit
+  `825141d0d` completed successfully across all four jobs: Go benchmarks,
+  WS-Hub's blocking 110% regression gate, Rust Criterion, and the native
+  optimizer's blocking 110% regression gate.
+- In fresh nightly `31288102177`, all four backend unit shards completed their
+  pytest workloads successfully (`1775`–`1795` passed tests per shard). Their
+  job conclusions are failure only because the fail-closed Codecov uploads
+  still receive `Repository not found`, matching the already documented
+  external authorization blocker.
+- The same nightly's Chromium matrix completed its functional suites with
+  `56` passed and `61` skipped; its only failure was the frontend E2E Codecov
+  upload returning `Repository not found`. Firefox, WebKit, and mobile-WebKit
+  completed successfully.
+- The live stabilization query for `main` returned `16` completed nightly
+  runs from 2026-07-24 through 2026-08-08, all with `failure` conclusions.
+  Running `check_stabilization_window.py` against that API response for
+  `2026-08-09` produced `eligible: false`, `latest_success_date: null`, and
+  `no successful workflow run is available`. The promotion workflow is present
+  on this pushed branch but is not yet registered on default `main`; GitHub's
+  dispatch API therefore returned `404 workflow ... not found on the default
+  branch` until the branch is merged.
+
+### Historical normalized coverage (run `31272523668`; not current HEAD)
+
+The following values are from the historical CI manifest named in this
+heading, not from the current HEAD. “n/a” means that the source report format
+does not provide that counter; it is not silently treated as 100%.
+
+| Component | Lines | Statements | Branches | Functions |
+| --- | ---: | ---: | ---: | ---: |
+| Python | 99.5097% | n/a | 98.5262% | n/a |
+| Frontend | 99.4999% | 99.4999% | 98.1009% | 98.1013% |
+| Go gateway | 98.8764% derived | 99.0809% | n/a | n/a |
+| Go ws-hub | 98.7771% derived | 99.0119% | n/a | n/a |
+| Go file-processor | 99.1372% derived | 99.2401% | n/a | n/a |
+| Rust native | 100% | n/a | 100% | 100% |
+| Rust PyO3 sanitizer | 99.3769% | n/a | 50% | 100% |
+| Rust WASM sanitizer | 100% | n/a | 100% | 100% |
+| Rust crypto | 100% | n/a | 100% (0/0) | 100% |
+| Tier0 (54 files) | 100% (7266/7266) | unsupported by source reports | 100% (1730/1730) | 100% (532/532) |
+
+The contract deliberately enforces no Rust component branch floor because the
+PyO3 sanitizer's native branch report is 50%; its required line/function
+floors pass. Tier0's strict per-file line/branch/function validator passes all
+54 matched files, while the generator still labels the aggregate as
+`measurement_only` by design.
+
+The local Node 26 V8 report measured 99.4979% statements, 98.0935% functions,
+and 97.6824% branches; the repository CI contract runs Node 22 and its fresh
+normalized artifact passes 99/98/98. No Node 22 runtime is installed on this
+host, so the local branch discrepancy remains an environment-specific
+verification note rather than a code change inferred from a mismatched
+instrumentation runtime.
+
+### Historical closure status at the audit snapshot (not current HEAD)
+
+- Closed and evidenced at the historical audit SHA: local regression fixes,
+  browser-navigation stability, functional fast-matrix execution, exact raw
+  artifact normalization, aggregate coverage floors, Tier0 per-file metrics,
+  Checkov/Kyverno, contracts, Schemathesis, migrations, security jobs, Go
+  integration execution, and the repository's blocking incremental mutation
+  wiring. The exact manifest and contract validator both pass; the CI policy
+  job itself is skipped only because its required upstream Codecov uploads are
+  fail-closed.
+- Not yet closure-certified: current-HEAD full nightly/mutmut completion,
+  Codecov repository authorization, the 30-day green stabilization window, and promotion of
+  advisory Go integration, cross-browser, chaos/migration-resilience, and
+  continuous-performance checks. DAST still requires an authorized target URL
+  and release signing still requires the protected certification key. These
+  are explicit evidence or deployment prerequisites, not reasons to weaken a
+  gate.
+- The historical Checkov findings and file-processor Pact mismatch cited by
+  the older ledger are no longer current blockers: `.checkov.yml` is blocking
+  with scoped skips, current Checkov/Kyverno/contract jobs pass, and the
+  historical wording remains below only as audit history.
+
+### Historical phase text and current-state reconciliation
+
+The execution plan below was intentionally retained as an audit trail. Its
+“currently absent”, baseline-count, and “task” paragraphs describe the state
+that existed when the plan was written, not a second live backlog. The live
+closure matrix for this audit is:
+
+| Workstream | Current repository evidence | State |
+| --- | --- | --- |
+| Python, frontend, Go, Rust, and Tier0 coverage | Exact raw artifacts from `31310271914`, recomputed manifest for SHA `671b79c46`, contract validator, Tier0 per-file checks | current metrics pass contract floors; CI upload is blocked only by Codecov |
+| Stateful/property testing and disposable MinIO/SpiceDB cells | Fast CI functional jobs plus nightly container cell | closed in code; current-HEAD nightly evidence tracked |
+| Python mutmut and frontend Stryker | Python source uses immutable PR-base SHA selection, exact mutant-name shards, a 25-minute wall-clock failure boundary (20-minute maximum execution cap, 30-second KILL grace, and four-minute proof/upload reserve), scope-local JSON evidence, and a 100% viable-score gate; the full nightly uses the same exporter in `--all` mode. The cited Stryker run remains historical evidence only. | terminal current-HEAD PR and full-nightly artifacts are still required; a source inspection or old frontend run is not renewed certification |
+| Go goleak/fuzz/integration and Rust fuzz/proptest/Miri | Go workflows/tests, Rust suites, nightly Miri job | repository wiring and bounded execution pass; promotion/evidence history tracked |
+| Pact, schema compatibility, browser matrix, SSR cache assertions | contract workflow/provider verification, four-project browser matrix, production SSR E2E | current functional checks pass; promotion window tracked |
+| Checkov, Kyverno, negative security, performance baselines | blocking Checkov, Kyverno tests, security suites, Lighthouse and benchmark gates | current fast security/Lighthouse checks pass; durable current-HEAD baseline and promotion evidence tracked |
+| Dashboard and certification | quality-history workflow, dashboard/certification generators, release hook, runbook | repository wiring closed; durable certification remains key/window dependent |
+| Codecov | all callers use OIDC and fail closed; current run `31310271914` reaches OIDC but gets `Repository not found` | blocked on Codecov repository authorization |
+| Advisory promotion | `scripts/quality/check_stabilization_window.py` and `quality-promotion-check.yml` | intentionally blocked until 30 consecutive green calendar days (`0/30`) |
+
+### Live source enforcement (not certification evidence)
+
+- Pull-request mutation execution resolves the immutable PR base SHA, assigns
+  exact mutant names to shards, and fails beyond a 25-minute total wall-clock
+  deadline. Its stats-derived execution cap is at most 20 minutes; after the
+  30-second KILL grace, four minutes remain for proof, score verification, and
+  upload. If setup leaves less than the verified shard budget, the job fails
+  rather than emitting incomplete evidence. The exporter writes scope-local
+  machine-readable evidence before the blocking 100% viable-score gate runs.
+- The full nightly run starts from a newly-created `mutants/` directory, runs
+  the complete mutmut universe, and invokes the same exporter with `--all` so
+  `caught_by_type_check` is preserved as an accepted kill.
+- A score is eligible to pass only when the universe is non-empty and each
+  evaluated mutant is conclusively killed by tests or a configured type check.
+  Survivors and `timeout`, `suspicious`, `no_tests`, `not_checked`, `skipped`,
+  `interrupted`, or `segfault` evidence fail closed.
+- Load/chaos remains a nightly, advisory workstream while the Temporal CI boot
+  issue is unresolved. The obsolete dispatch-only `ci.yml` job and its inert
+  `Load and Chaos Resilience Tests` context were removed; the matching context
+  must be removed from active ruleset `8335285` during the controller's remote
+  reconciliation. This is not a promotion claim.
+- These statements describe reviewed repository source. They do not replace a
+  terminal current-HEAD PR run, a full-nightly artifact, Codecov authorization,
+  or the required 30-day promotion evidence.
 
 ## Execution ledger — 2026-07-27 (uncommitted)
 
@@ -321,21 +643,15 @@ intended for the checkpoint commit.
 
 ### Still open
 
-The roadmap is not complete. The remaining workstreams are the frontend 99/98/98
-closure plus broader Stryker/property/diff coverage beyond the verified utility
-slice; Go low-coverage bootstrap and
-goroutine/fuzz/integration hardening; remote Rust fuzz/Miri/coverage execution
-and stabilization evidence; remote Pact provider replay; browser-matrix
-stabilization; Checkov/Kyverno and nightly-full-gate evidence; negative-security
-and performance baselines; durable dashboard/certification evidence; and the
-manual Codecov token action. The latest remote evidence also contains separate
-failures in Checkov (72 findings on the historical PR merge), continuous
-performance baselines, DAST, and a file-processor Pact body mismatch (fix
-prepared locally); these remain actionable until a fresh remote verification. The
-repository wiring for several workstreams
-already exists and is locally contract-tested, but it must not be marked
-complete from backend unit-coverage evidence alone or from YAML presence
-without green remote runs and the roadmap's stabilization windows.
+The roadmap is not fully certification-complete. The remaining gates are
+Codecov repository authorization; current-HEAD full nightly/mutmut evidence;
+the required 30-day green stabilization window;
+promotion of the currently advisory Go integration, cross-browser, and
+chaos/migration-resilience checks; a current durable performance baseline; an
+authorized DAST target; and the protected release certification key. The
+repository wiring and bounded functional evidence are present, but these
+items must not be marked complete from YAML presence or bounded
+unit-coverage evidence alone.
 
 ## 0. Why this document exists
 
@@ -354,7 +670,7 @@ This document is the actionable closure plan. It is organized as phases with con
 | Question                                                                                                                                                                                                                                     | Decision                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Governance model for a de-facto solo-maintainer repo                                                                                                                                                                                         | **Technical self-enforcement.** Add every blocking CI job to the GitHub ruleset's `required_status_checks`. Do not rely on human review discipline as the primary gate. `ownership-mapping.json`/`CODEOWNERS` become accurate documentation, not blocking review gates, because there is no second active contributor (`Semeno-v` has `write` access but 0 commits in the entire history).                                                                                                                                    |
-| `quality-contract.json` floors (99%/98% Python, 99% Go statements, 100% Tier0, 100% mutation score, 100% diff coverage) vs. the honestly-lower CI floors (90% Go, 85% mutation, 80% diff-coverage) that the code comments explicitly justify | **Ratchet up to the contract values.** Do not lower the contract. This is the larger-effort path (writing real tests) but matches the roadmap's own "Definition of maximum" and avoids quietly declaring victory by rewriting the target.                                                                                                                                                                                                                                                                                     |
+| `quality-contract.json` floors (99%/98% Python, 99% Go statements, 100% Tier0, 100% mutation score, 100% diff coverage) vs. the historically lower CI floors (90% Go, 85% mutation, 80% diff coverage) | **Ratchet up to the contract values.** Do not lower the contract. Source now enforces the 100% patch-coverage and viable-mutation policy; the historical lower figures are retained only to explain the original audit conflict. Remote evidence remains separately required. |
 | Chromium-only E2E vs. the roadmap's required Firefox/WebKit/mobile-WebKit matrix                                                                                                                                                             | **Include the full matrix as its own workstream with an explicit stabilization budget** (Phase 7), landed as advisory-then-blocking, mirroring the existing `go-integration-*` advisory→blocking precedent already used in this repo.                                                                                                                                                                                                                                                                                         |
 | CI gating strategy once ~15 more jobs become required                                                                                                                                                                                        | **Fast PR gate + nightly full gate on `main`.** Only bounded-duration jobs (unit tests, coverage, lint, incremental mutation) block PRs. Long-running suites (full-repo mutation score, load/chaos, the new browser shards) run nightly via `schedule: cron` + `workflow_dispatch` (the pattern already used by `weekly-cleanup.yml` and `dast.yml`) and become required for merges to `main` only after they are green for 30 days, exactly like the existing `go-integration-*` promotion criterion documented in `ci.yml`. |
 | `bypass_actors: [{actor_type: RepositoryRole, actor_id: 5 (admin), bypass_mode: always}]` on the ruleset                                                                                                                                     | **Left technically unchanged** (not selected for hardening in this plan). Documented explicitly as an accepted risk for a solo-owned repository, with a _process_ rule (state the bypass reason in the PR description) rather than a technical lock — because removing admin bypass on a single-owner repo risks the owner locking themselves out with no path to override a false-positive gate.                                                                                                                             |
@@ -407,7 +723,10 @@ Pre-commit & Linting (Read-only)
 - `Security Audit / detect-secrets Baseline Integrity`
 - `Trivy Image Scan`
 
-**Task G.1.3** — Do **not** add these to required checks yet (they belong to Phase G.2's "full" bucket, or are already advisory by explicit repo decision documented in `ci.yml`): `mutation-tests`, `load-and-chaos-tests`, `chaos-tests`, `go-integration-ws-hub`, `go-integration-file-processor`, `go-integration-gateway`, `ws-stress-test`, `Continuous Performance Benchmarking`, `WS-Hub Go Benchmark Regression Gate`.
+**Historical classification (superseded)** — `mutation-tests-incremental` is
+now a blocking input to `ci-success`. Full-nightly promotion remains subject to
+the separate evidence and stabilization process; the other long-running lanes
+listed here retain their individually documented promotion conditions.
 
 **Task G.1.4** — Re-verify with a throwaway PR that a deliberately-broken `coverage-policy-gate` now blocks merge (cannot be bypassed except by the documented admin override in G.3).
 
@@ -415,11 +734,22 @@ Pre-commit & Linting (Read-only)
 
 See Phase 14 (Ratchet sequencing table) for the authoritative ratchet floors; the fast/full job classification is described inline below. Summary of the mechanics:
 
-**Task G.2.1** — Create `.github/workflows/nightly-full-gate.yml` with `on: schedule: cron: "0 1 * * *"` + `workflow_dispatch`, running: full-repo `mutmut run` (no time-box, no incremental diff filter) with `export_cicd_stats` actually invoked and gated at the ratcheting mutation-score floor (see Phase 14), `load-and-chaos-tests` promoted from the PR pipeline to this nightly workflow, the full Playwright browser matrix (chromium + firefox + webkit + mobile-webkit) once Phase 7 lands, `go-integration-*` full suite, `kyverno test` (Phase 8.2), Miri (Phase 5.5).
+**Implemented source wiring** — `.github/workflows/nightly-full-gate.yml`
+uses `schedule: cron: "0 1 * * *"` and `workflow_dispatch`. Its mutation lane
+runs full-repo `mutmut run` without an incremental filter, then writes
+`mutants/mutmut-cicd-stats.json` through
+`scripts/export_mutmut_shard_stats.py --all` and applies the fail-closed 100%
+viable-score checker. The workflow also carries the long-running load/chaos,
+browser-matrix, Go-integration, Kyverno, and Miri lanes. Source wiring is not
+evidence that a particular nightly revision has completed successfully.
 
 **Task G.2.2** — Add a Slack/GitHub-issue-on-failure step to `nightly-full-gate.yml` so nightly regressions are not silently ignored (there is no PR to fail against).
 
-**Task G.2.3** — Once `nightly-full-gate.yml` is green for 30 consecutive calendar days, promote its constituent checks into the ruleset's `required_status_checks` for merges to `main` (mirrors the existing `go-integration-*` promotion criterion already written into `ci.yml`'s `ci-success` job comments).
+**Task G.2.3** — Promotion is measured by `quality-promotion-check.yml`,
+which calls `scripts/quality/check_stabilization_window.py` against completed
+nightly runs and fails closed until every day in the required 30-day window is
+green. Only then may the named checks be added to the ruleset; the workflow
+never changes branch protection automatically.
 
 ### G.3 — Document (do not remove) the admin bypass
 
@@ -433,23 +763,37 @@ See Phase 14 (Ratchet sequencing table) for the authoritative ratchet floors; th
 
 **Task G.4.3** — Re-run `scripts/quality/generate_test_inventory.py` + `scripts/quality/check_orphans_and_anti_patterns.py` locally after G.4.1 to confirm no owner-resolution regression (the checker will now resolve every path to `@egorribun`; confirm it still passes with `Quality inventory validation passed`).
 
-### G.5 — Codecov integration (requires a manual user action)
+### G.5 — Codecov integration (OIDC, fail-closed)
 
-**Task G.5.1 (user action, cannot be automated by an agent):** Create a Codecov account/link for `egorribun/university_ecosystem`, generate a `CODECOV_TOKEN`, and add it as a GitHub Actions secret (`gh secret set CODECOV_TOKEN`).
+**Task G.5.1** — All Codecov callers now request GitHub OIDC with
+`id-token: write` and set `use_oidc: true`; the repository no longer depends
+on a manually created `CODECOV_TOKEN`.
 
-**Task G.5.2** — Author `codecov.yml` at the repo root with per-component `flags` (`python`, `frontend`, `go-gateway`, `go-ws-hub`, `go-file-processor`, `rust-native`, `rust-pyo3-sanitizer`, `rust-wasm-sanitizer`) mapped to the same paths as `quality/quality-contract.json`'s components, `coverage.status.project` per flag with the same floors as the contract, and `comment: layout: "condensed_header, diff, flags, files"` so PRs get an automatic coverage comment.
+**Task G.5.2** — `codecov.yml` is present with per-component flags and the
+same contract floors for Python, frontend, Go, native Rust, PyO3, WASM, and
+rust-crypto.
 
-**Task G.5.3** — Wire the missing Codecov upload step into `reusable-frontend-tests.yml` and `reusable-e2e-tests.yml` (currently only `reusable-backend-tests.yml` and `reusable-go-tests.yml` upload; Rust and combined-frontend uploads are absent).
+**Task G.5.3** — Backend, frontend, E2E, Go, and Rust upload callers are all
+present and use `fail_ci_if_error: true`; the post-change CI run is the final
+remote proof that must show both successful OIDC authorization and accepted
+uploads. Run `31276786678` proved the OIDC exchange but Codecov returned
+`Repository not found`, so this task remains externally blocked.
 
-### G.6 — Make Checkov actually block
+### G.6 — Checkov blocking gate — closed
 
-**Task G.6.1** — Run `checkov --framework all -d .` locally once, capture the full current finding list, and either fix each real finding or add a scoped, justified `--skip-check` entry (never `soft_fail: true`) per finding ID in `.checkov.yml` (new config file) with an inline comment explaining why it's a false positive for this repo.
-
-**Task G.6.2** — Remove `soft_fail: true` from `.github/workflows/checkov.yml` once G.6.1's baseline is clean, so future IaC regressions actually fail the job. Add this job to the Phase G.1 required-checks list once stable.
+`.checkov.yml` contains only scoped, documented skips;
+`.github/workflows/checkov.yml` has no `soft_fail` escape hatch, and the
+current remote Checkov job passed. Further work is governance promotion and
+review of the skip register when IaC changes.
 
 ## Phase 0 — Close the Tier0 measurement gap
 
-The roadmap's Wave 2 exit gate and the "Definition of maximum" both require 100% line/branch/function coverage and explicit negative-path tests for every Tier0 path. The current `scripts/quality/normalize_coverage_reports.py` has **zero lines referencing Tier0** — the generated `quality-manifest.json` always emits `"tier0": null`. `quality/quality-contract.json`'s `tier0.coverage` floors are consequently never actually checked against real per-file data; they exist only as a schema shape that `validate_quality_contract.py` can lint syntactically.
+Historical phase note (superseded by the current-HEAD evidence above): the
+roadmap's Wave 2 exit gate and the "Definition of maximum" both require 100%
+line/branch/function coverage and explicit negative-path tests for every Tier0
+path. The old plan text below predates the Tier0 implementation; the current
+`scripts/quality/normalize_coverage_reports.py` now emits per-file Tier0
+evidence and `validate_quality_contract.py` validates it against the contract.
 
 **Task 0.1** — Extend `normalize_coverage_reports.py` to accept the already-existing `quality/ownership-mapping.json` `tier0_rules` glob list and cross-reference it against every parsed report's per-file breakdown (Python XML, Go coverprofile per-line, Rust llvm-cov per-file, frontend LCOV per-file) to produce a `tier0` aggregate: `{lines: {covered, total, percent}, branches: {...}, functions: {...}, files: [{path, component, lines_percent, branches_percent, ...}]}`.
 
@@ -632,16 +976,32 @@ The roadmap requires "Hypothesis/Schemathesis **stateful**/property tests." Curr
 
 ### 2.6 — Mutation testing gate rework
 
-Current state: `scripts/mutmut_ci_gate.py` hardcodes `--min-score 85.0`, `mutation-tests` in `ci.yml` is incremental (only files changed vs. `origin/main`), time-boxed at 20 minutes with **silent score-verification skip** if the time-box is hit (`ec -eq 124` branch), and the job is **advisory** — not in `ci-success`'s blocking `results[]` array. This contradicts the roadmap's "Mutation testing kills 100% of viable mutants" and Wave 10's "Enable strict ... mutation gates in the required PR matrix."
+**Historical planning baseline (superseded; retained for audit):** At the time
+this section was written, the gate used an 85% score, a 20-minute budget,
+silent verification skip, and advisory classification.
 
-**Task 2.6.1** — Split mutation testing into two jobs:
+**Implemented enforcement wiring (not certification evidence):**
+`policy.viable_mutant_score` is `100`. Pull-request mutation execution uses
+the immutable PR base SHA, exact-name shards, a 25-minute fail-closed
+wall-clock budget (20-minute execution cap, 30-second KILL grace, and
+four-minute evidence reserve), and scope-local machine-readable statistics.
+The checker accepts only complete
+evidence: every evaluated mutant must be killed by tests or a configured type
+check; survivors, an empty universe, and `timeout`, `suspicious`, `no_tests`,
+`not_checked`, `skipped`, `interrupted`, or `segfault` fail the gate. The
+nightly lane evaluates the complete universe with the same exporter in `--all`
+mode. A terminal current-HEAD PR run and full-nightly artifact are still
+required before this source wiring can be certified.
 
-- **`mutation-tests-incremental`** (PR-blocking, fast gate): keep the diff-only scope, but change the timeout handling so a time-box hit **fails** the job instead of silently skipping score verification (raise the time-box to 25 minutes to reduce false failures first, and shard the changed-module list across parallel matrix legs if a single PR's diff is large enough to still risk timing out).
-- **`mutation-tests-full`** (nightly, `nightly-full-gate.yml`): run `mutmut run` across the entire `app/` tree with `also_copy = ["infrastructure", "alembic", "docker-compose.full.yml"]` added to `[tool.mutmut]` in `pyproject.toml` so the three currently-excluded infra-contract tests (`test_migrations_runtime.py`, `test_wave173_caddy_routing.py`, `test_wave173_ws_hub_env.py`) can be re-included, and explicitly call `mutmut run --CI` followed by the score-export step the current job never calls, gated at the ratcheting floor in Phase 14.
+**Implemented registry:** `quality/mutation-exclusions.json` exists, is
+schema-validated, and currently has no exclusions. A future equivalent-mutant
+record must include path, reason, owner, issue, evidence, and expiry; it must
+not silently create a passing denominator.
 
-**Task 2.6.2** — Build an equivalent-mutant registry (`quality/mutation-exclusions.json`), matching the same schema discipline as `quality/quality-contract.json`'s `exclusions`/`quarantines` (id, path, reason, owner, issue, evidence, created_on, expires_on) so genuinely-equivalent mutants (e.g., logging statement text changes) can be recorded without silently lowering the denominator — per the roadmap's explicit requirement.
-
-**Task 2.6.3** — Once `mutation-tests-incremental` is stable for 30 days, add it to the Phase G.1 required-checks list.
+**Promotion boundary:** `mutation-tests-incremental` is already a blocking
+input to `ci-success`. Fresh ruleset/API evidence is still required before
+claiming branch-protection status; the 30-day window applies to promotion of
+the full and other advisory lanes.
 
 ### 2.7 — diff-cover floor
 
@@ -868,7 +1228,7 @@ Current state: `playwright.config.ts` declares `chromium`, `firefox`, `webkit`, 
 
 **Task 8.2** — Add a `kyverno-test` CI job. Kyverno ships a native `kyverno test` CLI subcommand for exactly this purpose (policy unit testing without a live cluster) — author `k8s/kyverno/tests/` with at least one positive and one negative test case per policy in `k8s/kyverno/cluster-policies.yaml`, and wire `kyverno test k8s/kyverno/tests/` into a new job in `ci.yml`.
 
-**Task 8.3** — `load-and-chaos-tests` advisory → blocking: this job's blocker is the production Temporal container failing to boot reliably in CI (`W144`-class issue per the existing `ci-success` comment). Track root cause separately (likely a Temporal server config/entrypoint issue specific to the CI environment, not a test-quality issue) and move to `nightly-full-gate.yml` in the interim per Phase G.2, revisiting blocking-promotion once the Temporal boot issue has a documented fix.
+**Task 8.3** — `load-and-chaos-tests` advisory → blocking: this job's blocker is the production Temporal container failing to boot reliably in CI (`W144`-class issue per the existing `ci-success` comment). Track root cause separately (likely a Temporal server config/entrypoint issue specific to the CI environment, not a test-quality issue) and move to `nightly-full-gate.yml` in the interim per Phase G.2, revisiting blocking-promotion once the Temporal boot issue has a documented fix. The obsolete dispatch-only CI definition was removed because it could only produce a skipped required status; remote ruleset context removal remains an auditable controller action, not a promotion.
 
 ## Phase 9 — Non-functional, security, and resilience
 
@@ -902,7 +1262,7 @@ Raise contract floors only after the corresponding phase's backlog is materially
 | 10   | `frontend`                                   | lines/branches/functions | 95/88/88 → 99/98/98                                                              | Phase 3.2 (long tail) closed                                                                                   |
 | 11   | `policy.patch_coverage` (backend)            | diff-cover               | 80 → 90 → 100                                                                    | Phase 2.2 items 1–60 closed, then fully closed                                                                 |
 | 12   | `policy.patch_coverage` (frontend, new)      | diff-cover               | n/a → 80 → 100                                                                   | Phase 3.5 tooling lands, then Phase 3.1 closed                                                                 |
-| 13   | `policy.viable_mutant_score` (Python)        | mutmut                   | 85 (incremental, silent-skip) → 85 (incremental, hard-fail) → 100 (full nightly) | Phase 2.6.1 lands, then Phase 2.6.2 equivalent-mutant registry is populated for genuinely-equivalent survivors |
+| 13   | `policy.viable_mutant_score` (Python)        | mutmut                   | 85% historical audit baseline → 100% viable score, fail-closed in exact PR shards and the full nightly universe | source wiring and local contract tests; terminal current-HEAD PR and nightly artifacts still required |
 | 14   | `policy.viable_mutant_score` (frontend, new) | Stryker                  | n/a → 100 (scoped to pure utilities)                                             | Phase 3.3 lands                                                                                                |
 
 Never skip a step or raise a floor before its gate condition — this table exists specifically to prevent a repeat of the PR #1207 failure mode where a contract floor was aspirational rather than earned.

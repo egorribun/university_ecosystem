@@ -41,6 +41,8 @@ services/file-processor/cov
 test.db
 test-migration.db
 test_gw*.db
+test_gw*.db-wal
+test_gw*.db-shm
 test_sch.db
 university.db
 cache/images/cache.db
@@ -436,7 +438,6 @@ artifacts/
 
 # Agent superpowers directory
 .superpowers/
-
 
 
 

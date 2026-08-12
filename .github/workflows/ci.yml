@@ -11,7 +11,6 @@ on:
     # Keep the required gate runnable when a draft PR is promoted to ready.
     # GitHub's default pull_request activity types omit ready_for_review.
     types: [opened, synchronize, reopened, ready_for_review]
-  workflow_dispatch:
 
 # Least-privilege defaults — individual jobs extend as needed.
 # Prevents Poisoned Pipeline Execution (PPE) from fork PRs (OWASP CI/CD C-PPE-1).
@@ -294,7 +293,7 @@ jobs:
         run: |
           sudo curl -sSLo /usr/bin/hadolint https://github.com/hadolint/hadolint/releases/download/v2.12.0/hadolint-Linux-x86_64
           sudo chmod +x /usr/bin/hadolint
-          find . -type f \( -name "*Dockerfile*" -o -name "Dockerfile*" \) ! -path "*/node_modules/*" ! -path "*/.venv/*" -exec hadolint --config .hadolint.yaml {} +
+          find . -type f \( -name "*Dockerfile*" -o -name "Dockerfile*" \) ! -name "*.dockerignore" ! -path "*/node_modules/*" ! -path "*/.venv/*" -exec hadolint --config .hadolint.yaml {} +
 
   shellcheck:
     name: ShellCheck Scripts
@@ -463,6 +462,9 @@ jobs:
             run-integration: false
             free-threading: false
     needs: pre-commit-check
+    permissions:
+      contents: read
+      id-token: write
     uses: ./.github/workflows/reusable-backend-tests.yml
     with:
       test-group-name: "All-${{ matrix.name }}"
@@ -553,6 +555,9 @@ jobs:
           - service: services/cmd/uni-cli
             coverage-threshold: 80
     needs: pre-commit-check
+    permissions:
+      contents: read
+      id-token: write
     uses: ./.github/workflows/reusable-go-tests.yml
     with:
       service-directory: ${{ matrix.service }}
@@ -633,6 +638,9 @@ jobs:
   frontend-tests:
     name: Frontend Tests
     needs: pre-commit-check
+    permissions:
+      contents: read
+      id-token: write
     uses: ./.github/workflows/reusable-frontend-tests.yml
     with:
       node-version: "22"
@@ -645,10 +653,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     needs: pre-commit-check
-    # Keep the manual recovery path equivalent to the PR gate. This is needed
-    # when GitHub temporarily drops pull_request webhooks: a dispatched run
-    # must execute Stryker rather than publish a misleading skipped context.
-    if: ${{ github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch' }}
+    # This required context only runs for an actual PR event. Operator-run
+    # mutation evidence is isolated in manual-mutation-evidence.yml so a
+    # skipped manual run cannot satisfy branch protection.
+    if: ${{ github.event_name == 'pull_request' }}
     permissions:
       contents: read
     steps:
@@ -677,6 +685,9 @@ jobs:
   e2e-tests:
     name: E2E Tests (shard ${{ matrix.shard-index }}/4)
     needs: pre-commit-check
+    permissions:
+      contents: read
+      id-token: write
     strategy:
       fail-fast: false
       matrix:
@@ -699,6 +710,9 @@ jobs:
   e2e-tests-cross-browser:
     name: E2E Tests (cross-browser ${{ matrix.browser }})
     needs: pre-commit-check
+    permissions:
+      contents: read
+      id-token: write
     strategy:
       fail-fast: false
       matrix:
@@ -1484,8 +1498,7 @@ jobs:
       contents: read
     if: |
       github.event_name == 'push' ||
-      github.event_name == 'pull_request' ||
-      github.event_name == 'workflow_dispatch'
+      github.event_name == 'pull_request'
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -1544,8 +1557,7 @@ jobs:
       contents: read
     if: |
       github.event_name == 'push' ||
-      github.event_name == 'pull_request' ||
-      github.event_name == 'workflow_dispatch'
+      github.event_name == 'pull_request'
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -1590,17 +1602,17 @@ jobs:
     # Rust coverage came only from the ASan job + the weekly fuzz run).
     # Runs the native unit/KAT suites for all three Rust crates plus the
     # browser-parity wasm-bindgen tests for rust-crypto. Deterministic, so it is
-    # BLOCKING (in the ci-success results array), unlike the advisory mutation /
-    # load-and-chaos jobs.
+    # BLOCKING (in the ci-success results array), unlike the advisory
+    # long-running load-and-chaos jobs.
     name: "Rust - cargo test (x3 crates) + wasm-pack + coverage"
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
       contents: read
+      id-token: write
     if: |
       github.event_name == 'push' ||
-      github.event_name == 'pull_request' ||
-      github.event_name == 'workflow_dispatch'
+      github.event_name == 'pull_request'
     env:
       RUST_BACKTRACE: "1"
     steps:
@@ -1621,7 +1633,10 @@ jobs:
           targets: wasm32-unknown-unknown
           components: llvm-tools-preview
 
-      - name: Cache Cargo registry + target dirs
+      # cargo-llvm-cov coverage targets are deliberately redirected to
+      # runner.temp below. This keeps ordinary Cargo build caching fast without
+      # restoring stale LLVM profraw files across source revisions.
+      - name: Cache Cargo registry + target dirs (coverage-safe)
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
@@ -1632,9 +1647,11 @@ jobs:
             frontend/wasm-sanitizer/target/
             frontend/rust-crypto/target/
             crates/pyo3-sanitizer/target/
-          key: ${{ runner.os }}-cargo-rust-tests-${{ hashFiles('native/rust_ext/Cargo.toml', 'frontend/wasm-sanitizer/Cargo.toml', 'frontend/rust-crypto/Cargo.toml', 'crates/pyo3-sanitizer/Cargo.toml') }}
+          # The v2 namespace prevents an existing cache archive that still
+          # contains target/llvm-cov-target from being restored.
+          key: ${{ runner.os }}-cargo-rust-tests-v2-${{ hashFiles('native/rust_ext/Cargo.toml', 'native/rust_ext/Cargo.lock', 'frontend/wasm-sanitizer/Cargo.toml', 'frontend/wasm-sanitizer/Cargo.lock', 'frontend/rust-crypto/Cargo.toml', 'frontend/rust-crypto/Cargo.lock', 'crates/pyo3-sanitizer/Cargo.toml', 'crates/pyo3-sanitizer/Cargo.lock') }}
           restore-keys: |
-            ${{ runner.os }}-cargo-rust-tests-
+            ${{ runner.os }}-cargo-rust-tests-v2-
 
       - name: Install cargo-llvm-cov
         uses: taiki-e/install-action@54420ca6e3a4cab262aeabc1af4f52908ca28931 # cargo-llvm-cov
@@ -1652,33 +1669,53 @@ jobs:
         # binary on Linux; drop it and point the linker/loader at setup-python's
         # libpython via sysconfig LIBDIR.
         working-directory: native/rust_ext
+        env:
+          CARGO_TARGET_DIR: ${{ runner.temp }}/llvm-cov/rust-native
         run: |
           LIBDIR="$(python -c 'import sysconfig; print(sysconfig.get_config_var("LIBDIR"))')"
           export LD_LIBRARY_PATH="${LIBDIR}:${LD_LIBRARY_PATH}"
+          cargo llvm-cov clean
           cargo llvm-cov --no-default-features --lib --json --output-path ../../artifacts/coverage/rust/rust-native/llvm.json
+          cargo llvm-cov report --codecov --output-path ../../artifacts/coverage/rust/rust-native/codecov.json
+          cargo +nightly llvm-cov clean
           cargo +nightly llvm-cov --no-default-features --lib --branch --json --output-path ../../artifacts/coverage/rust/rust-native/branch-llvm.json
 
       - name: pyo3-sanitizer — native unit tests + coverage
         working-directory: crates/pyo3-sanitizer
+        env:
+          CARGO_TARGET_DIR: ${{ runner.temp }}/llvm-cov/rust-pyo3-sanitizer
         run: |
           LIBDIR="$(python -c 'import sysconfig; print(sysconfig.get_config_var("LIBDIR"))')"
           export LD_LIBRARY_PATH="${LIBDIR}:${LD_LIBRARY_PATH}"
+          cargo llvm-cov clean
           cargo llvm-cov --no-default-features --lib --json --output-path ../../artifacts/coverage/rust/rust-pyo3-sanitizer/llvm.json
+          cargo llvm-cov report --codecov --output-path ../../artifacts/coverage/rust/rust-pyo3-sanitizer/codecov.json
+          cargo +nightly llvm-cov clean
           cargo +nightly llvm-cov --no-default-features --lib --branch --json --output-path ../../artifacts/coverage/rust/rust-pyo3-sanitizer/branch-llvm.json
 
       - name: wasm-sanitizer — native unit tests + coverage
         working-directory: frontend/wasm-sanitizer
+        env:
+          CARGO_TARGET_DIR: ${{ runner.temp }}/llvm-cov/rust-wasm-sanitizer
         run: |
+          cargo llvm-cov clean
           cargo llvm-cov --lib --json --output-path ../../artifacts/coverage/rust/rust-wasm-sanitizer/llvm.json
+          cargo llvm-cov report --codecov --output-path ../../artifacts/coverage/rust/rust-wasm-sanitizer/codecov.json
+          cargo +nightly llvm-cov clean
           cargo +nightly llvm-cov --lib --branch --json --output-path ../../artifacts/coverage/rust/rust-wasm-sanitizer/branch-llvm.json
 
       - name: rust-crypto — native KAT tests + coverage
         working-directory: frontend/rust-crypto
+        env:
+          CARGO_TARGET_DIR: ${{ runner.temp }}/llvm-cov/rust-crypto
         # Include tests/native.rs in the coverage universe; --lib alone only
         # measures the two src/lib.rs unit tests and leaves the contract below
         # the 99/98 rust-crypto floor.
         run: |
+          cargo llvm-cov clean
           cargo llvm-cov --all-targets --json --output-path ../../artifacts/coverage/rust/rust-crypto/llvm.json
+          cargo llvm-cov report --codecov --output-path ../../artifacts/coverage/rust/rust-crypto/codecov.json
+          cargo +nightly llvm-cov clean
           cargo +nightly llvm-cov --all-targets --branch --json --output-path ../../artifacts/coverage/rust/rust-crypto/branch-llvm.json
 
       - name: Upload Rust coverage artifacts
@@ -1690,38 +1727,42 @@ jobs:
       - name: Upload rust-native coverage to Codecov
         uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0
         with:
-          token: ${{ secrets.CODECOV_TOKEN }}
-          files: artifacts/coverage/rust/rust-native/llvm.json
+          use_oidc: true
+          files: artifacts/coverage/rust/rust-native/codecov.json
+          disable_search: true
           flags: rust-native
           name: rust-native-coverage
-          fail_ci_if_error: false
+          fail_ci_if_error: true
 
       - name: Upload rust-pyo3-sanitizer coverage to Codecov
         uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0
         with:
-          token: ${{ secrets.CODECOV_TOKEN }}
-          files: artifacts/coverage/rust/rust-pyo3-sanitizer/llvm.json
+          use_oidc: true
+          files: artifacts/coverage/rust/rust-pyo3-sanitizer/codecov.json
+          disable_search: true
           flags: rust-pyo3-sanitizer
           name: rust-pyo3-sanitizer-coverage
-          fail_ci_if_error: false
+          fail_ci_if_error: true
 
       - name: Upload rust-wasm-sanitizer coverage to Codecov
         uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0
         with:
-          token: ${{ secrets.CODECOV_TOKEN }}
-          files: artifacts/coverage/rust/rust-wasm-sanitizer/llvm.json
+          use_oidc: true
+          files: artifacts/coverage/rust/rust-wasm-sanitizer/codecov.json
+          disable_search: true
           flags: rust-wasm-sanitizer
           name: rust-wasm-sanitizer-coverage
-          fail_ci_if_error: false
+          fail_ci_if_error: true
 
       - name: Upload rust-crypto coverage to Codecov
         uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0
         with:
-          token: ${{ secrets.CODECOV_TOKEN }}
-          files: artifacts/coverage/rust/rust-crypto/llvm.json
+          use_oidc: true
+          files: artifacts/coverage/rust/rust-crypto/codecov.json
+          disable_search: true
           flags: rust-crypto
           name: rust-crypto-coverage
-          fail_ci_if_error: false
+          fail_ci_if_error: true
 
       - name: Install wasm-pack
         # rustwasm canonical curl installer (W141 polish-v2 / W142 polish-v3:
@@ -1747,7 +1788,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
-      # mutmut 3.5.0 collects the complete pytest-to-mutant mapping before it
+      # mutmut 3.7.0 collects the complete pytest-to-mutant mapping before it
       # applies positional mutant filters.  Collect disjoint test populations
       # once per leg and merge them before the mutation legs start.
       matrix:
@@ -1773,8 +1814,25 @@ jobs:
       - name: Detect changed Python source
         id: mutation_scope
         shell: bash
+        env:
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          EVENT_NAME: ${{ github.event_name }}
         run: |
-          changed=$(git diff --name-only origin/main...HEAD | grep -E '^app/.*\.py$' || true)
+          COMPARE_BASE="$(uv run python scripts/resolve_mutation_base.py \
+            --event-name "$EVENT_NAME" \
+            --pr-base-sha "$PR_BASE_SHA")"
+          if [ -n "$PR_BASE_SHA" ]; then
+            BASE_SOURCE="pull_request"
+          else
+            BASE_SOURCE="origin/main"
+          fi
+          {
+            echo "## Mutation comparison base";
+            echo "- Source: $BASE_SOURCE";
+            echo "- Base: $COMPARE_BASE";
+            echo "- Head: $(git rev-parse HEAD)";
+          } >> "$GITHUB_STEP_SUMMARY"
+          changed=$(git diff --name-only "$COMPARE_BASE...HEAD" | grep -E '^app/.*\.py$' || true)
           if [ -n "$changed" ]; then
             echo "has_python=true" >> "$GITHUB_OUTPUT"
           else
@@ -1809,14 +1867,29 @@ jobs:
       # diffs and exit successfully after proving their slice is empty.
       matrix:
         shard: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]
-    # 35 = outer safety net for the 25-min in-command gate below (+ setup/install).
-    # A time-box is a failed mutation gate: silently skipping score verification
-    # would turn a missing quality signal into a green required check.
-    timeout-minutes: 35
+    # Exact shards can legitimately map to a large lifecycle test union. The
+    # pull-request gate therefore has a two-hour wall-clock envelope. Its
+    # dynamic inner timeout stays fail-closed: after a 30-second KILL grace it
+    # reserves five minutes for proof, score verification, and upload. The
+    # separately dispatched manual evidence workflow intentionally keeps its
+    # longer six-hour envelope for full forensic evidence.
+    timeout-minutes: 120
     needs:
       - pre-commit-check
       - mutation-tests-stats
     steps:
+      # This must stay before checkout and dependency installation. Each Actions
+      # step starts a new shell, so persist wall-clock epochs through GITHUB_ENV.
+      - name: Record mutmut job deadline
+        shell: bash
+        run: |
+          MUTMUT_JOB_STARTED_EPOCH="$(date -u +%s)"
+          MUTMUT_JOB_DEADLINE_EPOCH="$((MUTMUT_JOB_STARTED_EPOCH + 7200))"
+          {
+            echo "MUTMUT_JOB_STARTED_EPOCH=$MUTMUT_JOB_STARTED_EPOCH"
+            echo "MUTMUT_JOB_DEADLINE_EPOCH=$MUTMUT_JOB_DEADLINE_EPOCH"
+          } >> "$GITHUB_ENV"
+
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
@@ -1835,8 +1908,26 @@ jobs:
       - name: Detect changed Python source
         id: mutation_scope
         shell: bash
+        env:
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          EVENT_NAME: ${{ github.event_name }}
         run: |
-          git diff --name-only origin/main...HEAD | grep -E '^app/.*\.py$' | sort -u > /tmp/changed_py.txt || true
+          COMPARE_BASE="$(uv run python scripts/resolve_mutation_base.py \
+            --event-name "$EVENT_NAME" \
+            --pr-base-sha "$PR_BASE_SHA")"
+          if [ -n "$PR_BASE_SHA" ]; then
+            BASE_SOURCE="pull_request"
+          else
+            BASE_SOURCE="origin/main"
+          fi
+          {
+            echo "## Mutation comparison base";
+            echo "- Source: $BASE_SOURCE";
+            echo "- Base: $COMPARE_BASE";
+            echo "- Head: $(git rev-parse HEAD)";
+          } >> "$GITHUB_STEP_SUMMARY"
+          git diff --name-only "$COMPARE_BASE...HEAD" | grep -E '^app/.*\.py$' | sort -u > /tmp/changed_py.txt || true
+          git diff --unified=0 "$COMPARE_BASE...HEAD" -- app/ > /tmp/changed_py.diff
           if [ -s /tmp/changed_py.txt ]; then
             echo "has_python=true" >> "$GITHUB_OUTPUT"
           else
@@ -1857,17 +1948,21 @@ jobs:
             --input-root mutmut-stats \
             --output mutants/mutmut-stats.json
 
-      - name: Run incremental mutmut (blocking, 25-minute budget)
+      - name: Run incremental mutmut (blocking, stats-derived budget)
+        id: run_incremental_mutmut
         if: steps.mutation_scope.outputs.has_python == 'true'
         run: |
-          # Scope mutmut to every changed backend module.  The old tenant-only
-          # probe silently skipped mutation evidence for all other Python diffs.
+          # Scope mutmut to every changed backend source line.  The old
+          # tenant-only probe silently skipped mutation evidence for all other
+          # Python diffs, while whole-file selection made a small edit replay
+          # hundreds of unrelated mutants.
           # The sixteen matrix legs receive exact mutant names from a
           # duration-balanced plan.  Whole-file assignment made a one-file diff
           # put every mutant on shard 1, leaving the other 15 legs empty and
           # making the blocking gate needlessly hit its time-box.
           uv run python scripts/plan_mutmut_shards.py \
             --changed-files /tmp/changed_py.txt \
+            --changed-diff /tmp/changed_py.diff \
             --shard-id "${{ matrix.shard }}" \
             --num-shards 16 \
             --max-children 2 \
@@ -1875,22 +1970,129 @@ jobs:
           mapfile -t MUTANT_NAMES < /tmp/mutmut-shard.txt
           if [ "${#MUTANT_NAMES[@]}" -eq 0 ]; then
             echo "No changed mutants assigned to mutation shard ${{ matrix.shard }}/16."
+            echo "has_mutants=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
+          echo "has_mutants=true" >> "$GITHUB_OUTPUT"
           echo "Mutating shard ${{ matrix.shard }}/16: ${#MUTANT_NAMES[@]} exact mutants"
+          MUTMUT_EVIDENCE_DIR=mutants/mutmut-exact-evidence
+          mkdir -p "$MUTMUT_EVIDENCE_DIR"
+          MUTMUT_EVIDENCE_FINALIZED=false
+          MUTMUT_FAILURE_REASON="preparing exact mutation execution evidence"
+          mutmut_exit_code=""
+          tee_exit_code=""
+          # Once a shard has selected mutants, every non-success exit must leave
+          # an auditable partial result set and proof. This includes setup,
+          # deadline, budget, and exact-verification failures before mutmut runs.
+          finalize_incomplete_mutmut_evidence() {
+            local failure_exit_code="$1"
+            local exporter_args=(
+              --selected-file /tmp/mutmut-shard.txt
+              --finalize-incomplete-execution "$MUTMUT_EVIDENCE_DIR/execution-plan.json"
+              --failure-exit-code "$failure_exit_code"
+              --failure-reason "$MUTMUT_FAILURE_REASON"
+            )
+            if [ -n "$mutmut_exit_code" ]; then
+              exporter_args+=(--mutation-exit-code "$mutmut_exit_code")
+            fi
+            if [ -n "$tee_exit_code" ]; then
+              exporter_args+=(--tee-exit-code "$tee_exit_code")
+            fi
+            uv run python scripts/export_mutmut_shard_stats.py "${exporter_args[@]}" \
+              --execution-proof "$MUTMUT_EVIDENCE_DIR/execution-proof.json" \
+              --execution-evidence-dir "$MUTMUT_EVIDENCE_DIR" || return $?
+            test -s "$MUTMUT_EVIDENCE_DIR/execution-proof.json" || return $?
+            test -s "$MUTMUT_EVIDENCE_DIR/selected-mutants.json" || return $?
+            test -s "$MUTMUT_EVIDENCE_DIR/selected-results.json" || return $?
+          }
+          on_mutation_step_exit() {
+            local exit_code="$?"
+            local finalizer_exit_code=0
+            trap - EXIT
+            if [ "$exit_code" -ne 0 ] && [ "$MUTMUT_EVIDENCE_FINALIZED" != "true" ]; then
+              set +e
+              finalize_incomplete_mutmut_evidence "$exit_code"
+              finalizer_exit_code="$?"
+              if [ "$finalizer_exit_code" -ne 0 ]; then
+                echo "::error::Unable to finalize incomplete mutation evidence."
+              fi
+            fi
+            exit "$exit_code"
+          }
+          trap on_mutation_step_exit EXIT
+          # The planner has generated the full metadata universe. Snapshot its
+          # exact selected IDs while every result is still not checked, then
+          # prove after the run that no other ID was executed.
+          uv run python scripts/export_mutmut_shard_stats.py \
+            --selected-file /tmp/mutmut-shard.txt \
+            --prepare-exact-execution "$MUTMUT_EVIDENCE_DIR/execution-plan.json" \
+            --execution-evidence-dir "$MUTMUT_EVIDENCE_DIR"
+          MUTMUT_FAILURE_REASON="deriving the stats-based mutation budget"
+          MUTMUT_BUDGET_TIMEOUT_SECONDS="$(uv run python scripts/mutmut_shard_budget.py \
+            --selected-file /tmp/mutmut-shard.txt \
+            --stats mutants/mutmut-stats.json \
+            --max-children 2 \
+            --max-timeout-seconds 6600 \
+            --output "$MUTMUT_EVIDENCE_DIR/shard-budget.json")"
+          if ! [[ "$MUTMUT_BUDGET_TIMEOUT_SECONDS" =~ ^[1-9][0-9]*$ ]]; then
+            MUTMUT_FAILURE_REASON="mutation budget helper returned an unsafe timeout value"
+            echo "::error::Mutation budget helper returned an unsafe timeout value."
+            exit 1
+          fi
+          # The 6,600-second budget is only an upper cap. The deadline starts
+          # before setup, so derive a lower cap from the durable two-hour job
+          # deadline and leave 300 seconds (five minutes) after timeout's
+          # 30-second KILL grace for proof, score verification, upload, and a
+          # fail-closed exit.
+          if ! [[ "${MUTMUT_JOB_DEADLINE_EPOCH:-}" =~ ^[1-9][0-9]*$ ]]; then
+            MUTMUT_FAILURE_REASON="mutation job deadline is missing or invalid"
+            echo "::error::Mutation job deadline is missing or invalid; refusing to run without post-run evidence headroom."
+            exit 1
+          fi
+          MUTMUT_FAILURE_REASON="deriving the deadline-bounded mutation timeout"
+          MUTMUT_POST_RUN_UPLOAD_RESERVE_SECONDS=300
+          MUTMUT_TIMEOUT_KILL_GRACE_SECONDS=30
+          MUTMUT_CURRENT_EPOCH="$(date -u +%s)"
+          MUTMUT_REMAINING_JOB_SECONDS="$((MUTMUT_JOB_DEADLINE_EPOCH - MUTMUT_CURRENT_EPOCH))"
+          MUTMUT_REMAINING_TIMEOUT_SECONDS="$((MUTMUT_REMAINING_JOB_SECONDS - MUTMUT_POST_RUN_UPLOAD_RESERVE_SECONDS - MUTMUT_TIMEOUT_KILL_GRACE_SECONDS))"
+          if [ "$MUTMUT_REMAINING_TIMEOUT_SECONDS" -lt 1 ]; then
+            MUTMUT_FAILURE_REASON="mutation deadline leaves no execution time after required evidence headroom"
+            echo "::error::Mutation deadline leaves no execution time after the required 300-second post-run/upload reserve and 30-second KILL grace."
+            exit 1
+          fi
+          MUTMUT_TIMEOUT_SECONDS="$MUTMUT_BUDGET_TIMEOUT_SECONDS"
+          if [ "$MUTMUT_TIMEOUT_SECONDS" -gt "$MUTMUT_REMAINING_TIMEOUT_SECONDS" ]; then
+            MUTMUT_TIMEOUT_SECONDS="$MUTMUT_REMAINING_TIMEOUT_SECONDS"
+          fi
+          if [ "$MUTMUT_TIMEOUT_SECONDS" -lt "$MUTMUT_BUDGET_TIMEOUT_SECONDS" ]; then
+            MUTMUT_FAILURE_REASON="mutation deadline cannot satisfy the verified shard budget"
+            echo "::error::Mutation deadline only permits ${MUTMUT_TIMEOUT_SECONDS}s but the verified shard budget requires ${MUTMUT_BUDGET_TIMEOUT_SECONDS}s; refusing to run incomplete mutation evidence."
+            exit 1
+          fi
+          echo "Derived fail-closed mutation timeout: ${MUTMUT_TIMEOUT_SECONDS}s"
           rm -f .mutmut-cache
-          # Time-box: a long-lived branch can span tens of thousands of mutants
-          # (multi-hour full run). This advisory job runs REAL
-          # mutation for a bounded window. mutmut exits 0 on completion regardless of
-          # survivors; the test-isolation invariants we actually gate on (generate +
-          # stats + clean-test + forced-fail) each exit NON-ZERO *before* the mutant
-          # loop on a regression. --max-children 2 caps concurrent forked mutant
+          # The shell cap is calculated from the merged test durations and
+          # mutmut 3.7's 15x per-PID watchdog, rather than an arbitrary shorter
+          # wall-clock that could preempt a valid mutmut classification.
+          # This blocking job runs REAL mutation and still hard-fails above
+          # the CI-supported cap; mutmut exits 0 on completion regardless of
+          # survivors, so the exact-execution proof and 100% viable-score gate
+          # remain blocking defenses.
+          # --max-children 2 caps concurrent forked mutant
           # workers (default = nproc) to bound peak RAM (one full app load per fork)
           # and reduce the runner OOM-killer firing mid-sweep.
+          MUTMUT_FAILURE_REASON="mutmut pipeline did not complete"
           set +e
-          timeout --kill-after=30s 25m uv run mutmut run --max-children 2 "${MUTANT_NAMES[@]}" 2>&1 | tee /tmp/mutmut_run.log
-          ec=${PIPESTATUS[0]}   # exit code of timeout/mutmut, NOT tee
+          timeout --kill-after=30s "${MUTMUT_TIMEOUT_SECONDS}s" uv run python scripts/run_mutmut_with_stats.py --max-children 2 "${MUTANT_NAMES[@]}" 2>&1 | tee "$MUTMUT_EVIDENCE_DIR/mutmut-run.log"
+          pipeline_status=("${PIPESTATUS[@]}")
+          mutmut_exit_code="${pipeline_status[0]}"
+          tee_exit_code="${pipeline_status[1]}"
           set -e
+          if [ "$tee_exit_code" -ne 0 ]; then
+            MUTMUT_FAILURE_REASON="unable to persist mutmut output"
+            echo "::error::Unable to persist mutmut output; exact mutation evidence is incomplete."
+            exit "$tee_exit_code"
+          fi
           # mutmut prints the ASCII line "Running mutation testing" (mutmut/__main__.py:1255)
           # ONLY after generate + stats + clean-test + forced-fail ALL pass — each of
           # those exits non-zero BEFORE that line on a regression (stats 957, clean-test
@@ -1901,290 +2103,59 @@ jobs:
           # Any kill AFTER it (124 time-box / 137 OOM-SIGKILL / 143 SIGTERM) is in the
           # mutation-execution zone. The gate fails if the signal is incomplete.
           mutants_started=0
-          if grep -qF 'Running mutation testing' /tmp/mutmut_run.log; then mutants_started=1; fi
-          if [ "$ec" -eq 0 ]; then
-            echo "mutmut completed within the time-box."
-            # mutmut 3.5.0's positional-shard `results --all` can emit an
-            # empty stdout stream. Export its authoritative numeric state
-            # before the score gate so missing text cannot become missing
-            # evidence.
-            uv run mutmut export-cicd-stats
-            # Verify mutation score (gate blocking at >= 85.0% via mutmut_ci_gate.py)
-            echo "Verifying mutation score (gate blocking at >= 85.0%)..."
+          if grep -qF 'Running mutation testing' "$MUTMUT_EVIDENCE_DIR/mutmut-run.log"; then mutants_started=1; fi
+          if [ "$mutmut_exit_code" -eq 0 ]; then
+            MUTMUT_FAILURE_REASON="verifying exact mutmut execution"
+            echo "mutmut completed within its stats-derived budget."
+            # mutmut creates metadata for the full source universe even when
+            # positional arguments run one exact shard. Verify the pristine
+            # snapshot before exporting only the assigned terminal records.
+            uv run python scripts/export_mutmut_shard_stats.py \
+              --selected-file /tmp/mutmut-shard.txt \
+              --verify-exact-execution "$MUTMUT_EVIDENCE_DIR/execution-plan.json" \
+              --execution-proof "$MUTMUT_EVIDENCE_DIR/execution-proof.json" \
+              --execution-evidence-dir "$MUTMUT_EVIDENCE_DIR" \
+              --output mutants/mutmut-cicd-stats.json
+            test -s mutants/mutmut-cicd-stats.json
+            test -s "$MUTMUT_EVIDENCE_DIR/execution-proof.json"
+            test -s "$MUTMUT_EVIDENCE_DIR/selected-mutants.json"
+            test -s "$MUTMUT_EVIDENCE_DIR/selected-results.json"
+            # Preserve the completed proof if the independent score gate fails.
+            MUTMUT_EVIDENCE_FINALIZED=true
+            # Verify viable mutation score (gate blocking at 100% via mutmut_ci_gate.py)
+            echo "Verifying viable mutation score (gate blocking at 100%)..."
             uv run python scripts/mutmut_ci_gate.py
-          elif [ "$ec" -eq 124 ]; then
-            echo "::error::Incremental mutation testing exceeded its 25-minute budget; incomplete mutation evidence is not mergeable."
+          elif [ "$mutmut_exit_code" -eq 124 ]; then
+            MUTMUT_FAILURE_REASON="mutmut exceeded its stats-derived timeout"
+            echo "::error::Incremental mutation testing exceeded its stats-derived budget; incomplete mutation evidence is not mergeable."
             exit 124
           elif [ "$mutants_started" -eq 1 ]; then
-            echo "::error::mutmut exited $ec after the mutant phase began; incomplete mutation evidence is not mergeable."
-            exit "$ec"
+            MUTMUT_FAILURE_REASON="mutmut exited after the mutant phase began"
+            echo "::error::mutmut exited $mutmut_exit_code after the mutant phase began; incomplete mutation evidence is not mergeable."
+            exit "$mutmut_exit_code"
           else
-            echo "::error::mutmut exited $ec BEFORE the mutant phase began — a genuine clean-test / forced-fail / stats isolation regression. Failing the job."
-            exit "$ec"
+            MUTMUT_FAILURE_REASON="mutmut exited before the mutant phase began"
+            echo "::error::mutmut exited $mutmut_exit_code BEFORE the mutant phase began — a genuine clean-test / forced-fail / stats isolation regression. Failing the job."
+            exit "$mutmut_exit_code"
           fi
 
+      - name: Validate incremental mutation evidence artifact
+        if: always() && steps.mutation_scope.outputs.has_python == 'true' && steps.run_incremental_mutmut.outputs.has_mutants == 'true'
+        run: |
+          test -s "mutants/mutmut-exact-evidence/selected-mutants.json"
+          test -s "mutants/mutmut-exact-evidence/selected-results.json"
+          test -s "mutants/mutmut-exact-evidence/execution-proof.json"
 
-  # Phase 8.3: the full Temporal-backed load/chaos stack is executed by
-  # nightly-full-gate.yml. Keep this historical definition inert so old links
-  # and local workflow tooling do not accidentally reintroduce it into the PR
-  # gate; promotion back to CI requires a documented Temporal boot fix. The
-  # repository variable is intentionally unset (false) by default and gives
-  # maintainers an explicit opt-in for a diagnostic run without a constant
-  # `if: false` expression that actionlint rejects.
-  load-and-chaos-tests:
-    if: ${{ github.event_name == 'workflow_dispatch' && vars.ENABLE_LOAD_CHAOS == 'true' }}
-    name: Load and Chaos Resilience Tests
-    runs-on: ubuntu-latest
-    timeout-minutes: 30 # +3 Go builds (gateway/ws-hub/file-processor) + temporal boot
-    needs:
-      - pre-commit-check
-      - compose-validate
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      - name: Set up Python
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+      - name: Upload incremental mutation evidence
+        if: always() && steps.mutation_scope.outputs.has_python == 'true' && steps.run_incremental_mutmut.outputs.has_mutants == 'true'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          python-version: "3.14"
+          name: mutmut-exact-evidence-${{ github.run_id }}-${{ matrix.shard }}
+          path: |
+            mutants/mutmut-cicd-stats.json
+            mutants/mutmut-exact-evidence/
+          if-no-files-found: error
 
-      - name: Install uv
-        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
-
-      - name: Install dependencies
-        run: uv sync --group dev
-
-      - name: Setup environment file
-        run: cp .env.example .env
-
-      # Generate an ephemeral SECRET_KEY when the CI_TEST_SECRET_KEY repo secret
-      # is unset (mirrors the fallback the other jobs use). Without this, the
-      # empty workflow-level SECRET_KEY shadows .env during compose interpolation
-      # and the strict ${SECRET_KEY:?} fails before the stack starts.
-      - name: Generate ephemeral SECRET_KEY when CI secret unset
-        if: env.SECRET_KEY == ''
-        run: echo "SECRET_KEY=$(openssl rand -hex 32)" >> "$GITHUB_ENV"
-
-      # docker-compose.go.yml uses strict ${JWT_SECRET:?} (gateway + ws-hub) and
-      # JWT_SECRET is NOT in .env.example. Its value is irrelevant for the WS
-      # ticket flow (tickets are Redis-validated), so an ephemeral one suffices.
-      # WS_HUB_INTERNAL_SECRET: ws-hub HARD-EXITS at startup if it is empty
-      # (services/ws-hub/main.go:28 os.Exit(1)); go.yml's ws-hub block doesn't
-      # set it + it is absent from .env.example. The ci-loadtest fragment wires
-      # the SAME value into backend + ws-hub so the room-join authz HMAC (W204)
-      # matches.
-      - name: Generate ephemeral JWT_SECRET + WS_HUB_INTERNAL_SECRET
-        run: |
-          echo "JWT_SECRET=$(openssl rand -hex 32)" >> "$GITHUB_ENV"
-          echo "WS_HUB_INTERNAL_SECRET=$(openssl rand -hex 32)" >> "$GITHUB_ENV"
-
-      # Backend ALGORITHM=RS256 + JWT_PRIVATE_KEY_PATH=.secrets/jwt_rs256.pem.
-      # The key is NOT baked into the image (no source mount in prod), so login
-      # cannot sign tokens without it. Generate it here; docker-compose.ci-loadtest.yml
-      # bind-mounts ./.secrets into the backend (WORKDIR /app). Mirrors the
-      # visual-audit.yml / wave189-unauthed-smoke.yml precedent.
-      - name: Generate RS256 keypair
-        run: |
-          mkdir -p .secrets
-          openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out .secrets/jwt_rs256.pem
-          # The backend runs as a non-root user and the :ro bind-mount inherits
-          # host perms. Default genpkey output is 0600 (runner-owned) -> the
-          # backend user gets "[Errno 13] Permission denied". 0644 = readable.
-          chmod 644 .secrets/jwt_rs256.pem
-
-      - name: Spin up Docker Compose
-        run: |
-          CF_UP="-f docker-compose.infra.yml -f docker-compose.go.yml -f docker-compose.yml -f docker-compose.ci-loadtest.yml"
-          
-          # Pre-pull images sequentially to avoid network bottlenecks and pull timeouts
-          echo "Listing images to pre-pull..."
-          images=$(docker compose $CF_UP config --images | sort -u)
-          
-          # Add Dockerfile base images to the pre-pulling list
-          images="$images golang:1.26.4-alpine3.22@sha256:cff7cf3120cd74bf0960cfe19a3efb6631161148d8e070f76976f73a13b2e3d4 gcr.io/distroless/static-debian12:latest@sha256:20bc6c0bc4d625a22a8fde3e55f6515709b32055ef8fb9cfbddaa06d1760f838 rust:1.94.1-slim-bookworm@sha256:5ae2d2ef9875c9c2407bf9b5678e6375304f7ecf8ea46b23e403a5690ec357ec python:3.14-slim-bookworm@sha256:4ff4b92a68355dbdb52584ab3391dff8d371a61d4e063468bfd0130e3189c6d9 node:24-alpine@sha256:01743339035a5c3c11a373cd7c83aeab6ed1457b55da6a69e014a95ac4e4700b alpine:3.20@sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc golang:1.24-alpine@sha256:8bee1901f1e530bfb4a7850aa7a479d17ae3a18beb6e09064ed54cfd245b7191 caddy:2.9.1-alpine@sha256:b4e3952384eb9524a887633ce65c752dd7c71314d2c2acf98cd5c715aaa534f0 alpine/socat"
-
-          for img in $images; do
-            # Skip local build images (which lack a tag/colon) or contain project names
-            if [[ "$img" != *":"* ]] && [[ "$img" != "alpine/socat" ]]; then
-              continue
-            fi
-            if [[ "$img" == "university_ecosystem"* ]] || [[ "$img" == "quality-roadmap"* ]]; then
-              continue
-            fi
-            echo "Pre-pulling $img..."
-            for attempt in 1 2 3 4 5; do
-              if docker pull "$img"; then
-                echo "$img pulled successfully"
-                break
-              fi
-              echo "Warning: failed to pull $img (attempt $attempt), retrying in 10s..."
-              sleep 10
-            done
-          done
-
-          # ROUND-15: retry `up -d --build`. The full stack pulls many infra
-          # images (tempo, temporal-ui, ...) from Docker Hub, which intermittently
-          # times out on the CI runner ("net/http: request canceled ...
-          # Client.Timeout exceeded while awaiting headers") and INTERRUPTS the
-          # whole compose-up -> exit 1 (round-14 died here, a pure registry flake
-          # unrelated to the test changes). Build cache makes retries fast and the
-          # transient pull almost always succeeds on a 2nd/3rd attempt.
-          up_ok=""
-          for attempt in 1 2 3; do
-            if docker compose $CF_UP up -d --build; then
-              echo "compose up succeeded (attempt $attempt)"; up_ok=1; break
-            fi
-            echo "::warning::compose up attempt $attempt failed (likely a Docker Hub pull timeout); retrying in 15s"
-            sleep 15
-          done
-          if [ -z "$up_ok" ]; then
-            echo "compose up failed after 3 attempts"; exit 1
-          fi
-
-          # Host-publish backend:8000 via a socat sidecar. docker compose v2.x on
-          # the CI runner does NOT apply a ports: override added to backend's
-          # expose-only base, so k6 (--network=host), the readiness poll and the
-          # chaos suite cannot reach localhost:8000 otherwise. socat is
-          # version-independent. gateway:8080 is already host-published by go.yml.
-          #
-          # DUAL-HOMING (round-3): backend is ONLY on `internal: true` networks
-          # (service_net/db_net/cache_net/event_net/internal — docker-compose.yml
-          # :650-661), and `-p` is a SILENT no-op for a container whose only net
-          # is internal:true (round-2: `ci-pf-backend Up` with an EMPTY Ports
-          # column -> localhost:8000 connection refused). So start socat on the
-          # default bridge (host-publishable) for `-p`, THEN attach the internal
-          # net so it can DNS-resolve + reach backend:8000 (resolved lazily per
-          # client, so attaching before traffic arrives is sufficient).
-          NET=$(docker network ls --format '{{.Name}}' | grep -E '_internal$' | head -1)
-          echo "Internal network: ${NET:-<none>}"
-          docker run -d --name ci-pf-backend -p 8000:8000 \
-            alpine/socat TCP-LISTEN:8000,fork,reuseaddr TCP:backend:8000
-          docker network connect "$NET" ci-pf-backend
-          docker ps --filter name=ci-pf-backend --format '{{.Names}} {{.Status}} {{.Ports}}'
-
-          echo "Waiting for backend + gateway to be ready..."
-          # Readiness poll replaces a blind `sleep 20`: the backend builds the
-          # RS256 signer + connects to valkey/postgres, and the gateway depends
-          # on a healthy backend (3 Go images build first). Poll /healthz, then
-          # the gateway /health.
-          backend_ready=""
-          for i in $(seq 1 90); do
-            if curl -fsS http://localhost:8000/healthz >/dev/null 2>&1; then
-              echo "backend ready (after $((i * 2))s)"; backend_ready=1; break
-            fi
-            sleep 2
-          done
-          if [ -z "$backend_ready" ]; then
-            echo "::warning::backend /healthz not ready after 180s; dumping status + logs"
-            docker compose -f docker-compose.infra.yml -f docker-compose.go.yml -f docker-compose.yml -f docker-compose.ci-loadtest.yml ps || true
-            docker compose -f docker-compose.infra.yml -f docker-compose.go.yml -f docker-compose.yml -f docker-compose.ci-loadtest.yml logs --tail=80 backend ws-hub gateway || true
-            docker logs ci-pf-backend 2>&1 | tail -20 || true
-          fi
-          for i in $(seq 1 30); do
-            if curl -fsS http://localhost:8080/health >/dev/null 2>&1; then
-              echo "gateway ready (after $((i * 2))s)"; break
-            fi
-            sleep 2
-          done
-
-          # ws-hub's Redis connect is startup-ONLY (no retry). It came up during
-          # the heavy parallel build, before valkey was reachable + while Docker
-          # DNS SERVFAILed, so it gave up on Redis ("continuing without L2 cache")
-          # -> the OTT ticket GETDEL hard-rejects -> the WS 101 upgrade fails. The
-          # stack is settled now + ws-hub is on cache_net (fragment): bounce it so
-          # initRedis reconnects to valkey, then confirm in the logs.
-          docker compose -f docker-compose.infra.yml -f docker-compose.go.yml -f docker-compose.yml -f docker-compose.ci-loadtest.yml restart ws-hub
-          sleep 6
-          docker compose -f docker-compose.infra.yml -f docker-compose.go.yml -f docker-compose.yml -f docker-compose.ci-loadtest.yml logs --tail=15 ws-hub | grep -iE "Redis connected|continuing without L2" || echo "::warning::ws-hub Redis status not found in logs"
-
-      # Always-on ws-hub diagnostics: round 1 showed ws-hub `Restarting` but CI
-      # never captured its logs, so the WS-chain root cause was unknown. Confirm
-      # the fragment's Redis/NATS env overrides actually merged on compose v2.x
-      # (ws-hub is distroless -> `inspect` the configured env, no shell to `exec`)
-      # and dump the logs so the restart cause is visible even if the WS k6 test
-      # then passes.
-      - name: Diagnose ws-hub (full-section-6 WS chain)
-        if: always()
-        run: |
-          CF="-f docker-compose.infra.yml -f docker-compose.go.yml -f docker-compose.yml -f docker-compose.ci-loadtest.yml"
-          echo "=== ws-hub container status ==="
-          docker compose $CF ps ws-hub || true
-          echo "=== ws-hub configured Redis/NATS env (merge check) ==="
-          WSID=$(docker compose $CF ps -q ws-hub 2>/dev/null || true)
-          docker inspect "$WSID" --format '{{range .Config.Env}}{{println .}}{{end}}' 2>/dev/null | grep -E 'REDIS|NATS|JWT|ALLOWED|WS_HUB' || true
-          echo "=== ws-hub logs (restart cause) ==="
-          docker compose $CF logs --tail=80 ws-hub || true
-
-      - name: Run k6 load tests
-        run: |
-          # Backend reached via the socat host-publish (localhost:8000); ws-hub
-          # via its go.yml host port (localhost:8083).
-          docker run --network="host" -i -e API_BASE_URL=http://localhost:8000 \
-            grafana/k6 run - <tests/performance/load_test.js
-          docker run --network="host" -i \
-            -e API_BASE_URL=http://localhost:8000 -e WS_URL=ws://localhost:8083 \
-            grafana/k6 run - <tests/performance/ws_hub_load_test.js
-
-      # ROUND-7 DIAGNOSTIC (W147 §Honesty NEW #1 discipline): rounds 5+6 each
-      # pivoted the k6 CSRF mechanism without ground truth. Stop guessing — read
-      # the backend's OWN rejection log. structlog emits one of three distinct
-      # warnings (app/core/csrf.py:349/362/377) with method= + path= fields:
-      #   "CSRF rejected (missing token)"        -> cookie OR header absent
-      #   "CSRF rejected (token mismatch)"       -> compare_digest(cookie,header) fail
-      #   "CSRF rejected (invalid HMAC signature)" -> session_id/anon-nonce binding fail
-      # The k6 WS dance hits /register, /login/json, /ws/ticket. The rejection
-      # string + the path pinpoints the EXACT failing step + sub-cause so round-8
-      # fixes precisely. Strong hypothesis to confirm/refute: /login/json sets the
-      # access_token cookie -> _extract_session_id switches session_id from anon:X
-      # to the authenticated session, but the csrf_token is still HMAC-bound to
-      # anon:X and does NOT rotate (csrf.py:391 only sets when absent) -> the
-      # /ws/ticket POST (Bearer + auth-cookie present -> CSRF NOT skipped,
-      # csrf.py:339) fails with "invalid HMAC signature" on path=/ws/ticket.
-      # if: always() -> runs even though the k6 step fails on the errors threshold.
-      - name: Diagnose backend CSRF (WS k6 auth dance — round-7)
-        if: always()
-        run: |
-          CF="-f docker-compose.infra.yml -f docker-compose.go.yml -f docker-compose.yml -f docker-compose.ci-loadtest.yml"
-          echo "=== backend CSRF rejections (string + method= + path=) ==="
-          docker compose $CF logs --tail=600 backend 2>&1 | grep -iE "CSRF rejected" | tail -40 || echo "(no 'CSRF rejected' log lines found)"
-          echo "=== backend 4xx/rate-limit context ==="
-          docker compose $CF logs --tail=200 backend 2>&1 | grep -iE "warning|error|429|403|rate.?limit|/register|/login|/ws/ticket" | tail -30 || true
-          # ROUND-14: backend container HEALTH -- this is the gate the chaos suite's
-          # setup `docker compose up -d` waits on (service_healthy). round-13's
-          # /health/ready (wait_db 1-attempt) flapped under the k6 DB load; round-14
-          # uses "/" (DB-less). Show the live health + the actual endpoint responses
-          # so the cause is visible whether or not "/" makes it healthy.
-          echo "=== backend container health (chaos up -d gate) ==="
-          docker compose $CF ps backend || true
-          BID=$(docker compose $CF ps -q backend 2>/dev/null || true)
-          docker inspect "$BID" --format '{{json .State.Health}}' 2>/dev/null | head -c 1500 || true
-          echo
-          echo "=== backend / + /health/ready (from inside the container) ==="
-          docker compose $CF exec -T backend python -c "import urllib.request; print('root status', urllib.request.urlopen('http://127.0.0.1:8000/', timeout=4).status)" 2>&1 | tail -3 || true
-          docker compose $CF exec -T backend python -c "import urllib.request; print('ready status', urllib.request.urlopen('http://127.0.0.1:8000/health/ready', timeout=4).status)" 2>&1 | tail -3 || true
-
-      - name: Run chaos resilience tests
-        env:
-          CHAOS_TESTS: "1"
-          API_BASE_URL: "http://localhost:8000"
-          GATEWAY_URL: "http://localhost:8080"
-          DATABASE_URL_SYNC: "postgresql://postgres:postgres@localhost:54321/university" # pragma: allowlist secret
-          # The chaos suite's internal `docker compose stop/start` calls carry no
-          # -f flags. COMPOSE_FILE (Linux separator ':') makes them target the
-          # full merged stack so nats / ws-hub / gateway are visible.
-          COMPOSE_FILE: "docker-compose.infra.yml:docker-compose.go.yml:docker-compose.yml:docker-compose.ci-loadtest.yml"
-        run: |
-          uv run pytest tests/chaos/test_resilience.py -v
-
-      - name: Tear down Docker Compose
-        if: always()
-        run: |
-          docker rm -f ci-pf-backend || true
-          docker compose \
-            -f docker-compose.infra.yml \
-            -f docker-compose.go.yml \
-            -f docker-compose.yml \
-            -f docker-compose.ci-loadtest.yml \
-            down -v
 
   chaos-tests:
     name: Chaos Engineering (ToxiProxy)
@@ -2350,6 +2321,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
 
       - name: Set up Python
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
@@ -2378,6 +2351,15 @@ jobs:
           uv run coverage combine --data-file=.coverage artifacts/coverage/python/shards
           uv run coverage xml --data-file=.coverage -o coverage.xml
           uv run coverage json --data-file=.coverage -o artifacts/coverage/python/coverage.json
+
+      - name: Enforce aggregate PR differential coverage
+        if: ${{ github.event_name == 'pull_request' }}
+        shell: bash
+        env:
+          COMPARE_BRANCH: ${{ github.base_ref }}
+        run: |
+          git fetch origin "$COMPARE_BRANCH"
+          uv run diff-cover coverage.xml --compare-branch="origin/$COMPARE_BRANCH" --fail-under=100
 
       - name: Download Frontend coverage artifact
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
@@ -2625,7 +2607,7 @@ jobs:
           fi
           echo "✅ All CI checks passed!"
 
-      - name: Report Go integration test results (advisory, ADR-022 §Migration)
+      - name: Report blocking and advisory quality results
         shell: bash
         run: |
           # Advisory-only — these results inform the team but do not block
@@ -2673,4 +2655,4 @@ jobs:
             echo "| e2e-tests-cross-browser | $browsers |";
             echo "_Promote after 30 consecutive green days and update required-check policy._";
           } >> "$GITHUB_STEP_SUMMARY"
-          echo "Advisory results — ws-hub: $ws, file-processor: $fp, gateway: $gw, browsers: $browsers, mutation: $mut, stryker: $stryker, toxi: $toxi, dbmig: $dbmig"
+          echo "Advisory results — ws-hub: $ws, file-processor: $fp, gateway: $gw, browsers: $browsers, toxi: $toxi, dbmig: $dbmig"

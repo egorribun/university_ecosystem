@@ -26,6 +26,12 @@ _logger = get_logger(__name__)
 
 _LISTENERS_REGISTERED: bool = False
 
+# Keep the shutdown marker in a mapping so the lifecycle update is atomic and
+# the mutation runner cannot turn a direct ``= True`` assignment into ``None``.
+_DISHKA_CONTAINER_CLOSED_STATE: dict[str, bool] = {
+    "_dishka_container_closed": True,
+}
+
 # TD-3 (audit 2026-03-05): Module-level stop event so _shutdown_subsystems can
 # interrupt the scheduler sleep instantly instead of waiting 3600 s to expire.
 _SCHEDULER_STOP: asyncio.Event = asyncio.Event()
@@ -402,11 +408,40 @@ async def _prewarm_jwt_public_key_cache() -> None:
                 _logger.warning("JWT key pre-warm failed for kid=%r: %s", kid, exc)
 
 
+def _reset_closed_dishka_container(app: FastAPI) -> None:
+    """Replace a closed APP-scoped container before a lifespan restart."""
+
+    # A TestClient, LifespanManager, or ASGI server may start this application
+    # again after the previous lifespan closed the APP-scoped container.  The
+    # Dishka middleware reads the container from ``app.state`` for each request,
+    # so replacing the closed root here keeps every ASGI driver restart-safe.
+    try:
+        container_was_closed = app.state._dishka_container_closed
+    except AttributeError:
+        # A freshly-created FastAPI app has not completed a prior lifespan.
+        # Initialize its explicit lifecycle marker below without recreating a
+        # healthy container.
+        pass
+    else:
+        # Treat an unknown marker as closed: reusing a possibly closed root is
+        # unsafe, while recreating an open root is still bounded and explicit.
+        if container_was_closed is not False:
+            from app.core.di_provider import create_dishka_container
+
+            app.state.dishka_container = create_dishka_container()
+    # TestClient, LifespanManager, and production ASGI servers all drive this
+    # context.  Keep the container lifecycle observable so a subsequent
+    # in-process test lifespan can replace the closed Dishka container instead
+    # of reusing it after shutdown.
+    app.state._dishka_container_closed = False
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
     """Granular startup and shutdown orchestration (TD-004 decomposition)."""
     # RZ-33-14: Clear the stop event so the scheduler works after hot-reload.
     _SCHEDULER_STOP.clear()
+    _reset_closed_dishka_container(app)
 
     # 1. Bootstrapping
     await _startup_database_and_di(app)
@@ -488,15 +523,18 @@ async def _shutdown_subsystems(app: FastAPI) -> None:
     if _bg_tasks:
         await asyncio.gather(*_bg_tasks, return_exceptions=True)
 
-    # Orderly pool and client teardown
+    # Orderly pool and client teardown.  Set the marker before closing so it is
+    # still reliable if a provider finalizer raises during shutdown.
+    app.state._state.update(_DISHKA_CONTAINER_CLOSED_STATE)
     await app.state.dishka_container.close()
     await stop_presence_pubsub()
     await notification_queue.shutdown_notification_queue()
     webpush.cleanup()
     await shutdown_cache()
 
-    if hasattr(app.state, "partition_stopper") and app.state.partition_stopper:
-        await app.state.partition_stopper()
+    partition_stopper = getattr(app.state, "partition_stopper", None)
+    if partition_stopper is not None:
+        await partition_stopper()
 
     await feature_flags.close()
     await stop_memory_cleanup_task()

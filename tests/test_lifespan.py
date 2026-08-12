@@ -418,9 +418,17 @@ async def test_periodic_scheduler_loop_crashes() -> None:
 async def test_periodic_scheduler_loop_jitter_stop() -> None:
     # Initial sleep_or_stop returns True (signals early stop)
     with patch("asyncio.wait_for", new_callable=AsyncMock) as mock_wait_for:
-        mock_wait_for.return_value = True  # stop requested
+
+        async def stop_immediately(awaitable, timeout=None):
+            # This fake returns before asyncio.wait_for can consume Event.wait().
+            awaitable.close()
+            return True
+
+        mock_wait_for.side_effect = stop_immediately
         with patch("app.core.lifespan.random.uniform", return_value=0.0):
             await _periodic_scheduler_loop()
+
+    assert mock_wait_for.await_args.kwargs["timeout"] == 0.0
 
 
 @pytest.mark.asyncio
@@ -667,9 +675,9 @@ async def test_lifespan_context_manager() -> None:
         mock_settings.environment = "production"
 
         # Force registration flag to be True
-        import app.core.lifespan
+        import app.core.lifespan as lifespan_module
 
-        app.core.lifespan._LISTENERS_REGISTERED = True
+        lifespan_module._LISTENERS_REGISTERED = True
 
         async with lifespan(app):
             pass
@@ -735,6 +743,7 @@ async def test_shutdown_subsystems() -> None:
             assert task2.cancelled()
 
             mock_container.close.assert_awaited_once()
+            assert app.state._dishka_container_closed is True
             mock_presence.assert_awaited_once()
             mock_notif.assert_awaited_once()
             mock_webpush.assert_called_once()
@@ -1059,6 +1068,7 @@ async def test_periodic_scheduler_loop_immediate_exit() -> None:
 
     async def mock_wait_for(fut, timeout=None):
         if timeout == 0.0:
+            fut.close()
             raise TimeoutError()
         return await orig_wait_for(fut, timeout)
 
@@ -1093,6 +1103,7 @@ async def test_periodic_scheduler_loop_all_hours() -> None:
 
     async def mock_wait_for(fut, timeout=None):
         if timeout == 0.0 or timeout == 3600:
+            fut.close()
             raise TimeoutError()
         return await orig_wait_for(fut, timeout)
 

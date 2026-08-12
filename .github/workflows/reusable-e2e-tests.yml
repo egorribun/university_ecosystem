@@ -53,11 +53,6 @@ on:
         required: false
         type: boolean
         default: false
-    secrets:
-      CODECOV_TOKEN:
-        required: false
-        description: "Codecov upload token"
-
 jobs:
   e2e:
     name: E2E Tests (${{ inputs.browser }})
@@ -73,6 +68,9 @@ jobs:
     # stable ceiling for the SSR preview; higher aggregate concurrency cascades
     # into page.goto net::ERR_ABORTED timeouts.
     timeout-minutes: 45
+    permissions:
+      contents: read
+      id-token: write
     env:
       SECRET_KEY: "dummy_secret_key_for_ci_tests_at_least_32_chars"
       ENVIRONMENT: testing
@@ -354,11 +352,11 @@ jobs:
         if: ${{ inputs.collect-coverage && inputs.browser == 'chromium' && success() && hashFiles('frontend/coverage/e2e/lcov.info') != '' }}
         uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0
         with:
-          token: ${{ secrets.CODECOV_TOKEN }}
+          use_oidc: true
           files: ./frontend/coverage/e2e/lcov.info
           flags: frontend
           name: frontend-e2e-chromium-${{ inputs.shard-index }}-of-${{ inputs.shard-total }}
-          fail_ci_if_error: false
+          fail_ci_if_error: true
 
       - name: Terminate backend
         if: always()
