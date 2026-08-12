@@ -12,6 +12,41 @@
 > terminal current-HEAD PR run and full-nightly artifact before it is treated as
 > certification evidence.
 
+## Live current-head closure checkpoint — 2026-08-12
+
+The clean `egorribun` branch and `origin/egorribun` agree on
+`47f843733808944fb26b67f6ace80ed44397a1ea`. PR [#1239](https://github.com/egorribun/university_ecosystem/pull/1239)
+run [31612221754](https://github.com/egorribun/university_ecosystem/actions/runs/31612221754)
+is terminal `success` with `105/105` jobs complete. The current matrix includes
+the policy and aggregate gates, `16/16` exact mutmut execution shards, `4/4`
+mutmut statistics shards, full Python/frontend/Go/Rust checks, browser and
+Lighthouse lanes, security scans, SQLMap, fuzz, benchmark, and migration jobs.
+The quality manifest validates successfully; because this is a `pull_request`
+run its recorded commit is the GitHub merge ref, while the branch head is the
+SHA above.
+
+Current measured coverage floors are Python `99.4771%` lines / `98.4895%`
+branches; frontend `99.4960%` lines / `98.0937%` branches / `98.1013%`
+functions; Go line coverage `98.7771%`–`99.1372%` by service; Rust native and
+WASM sanitizer `100%`; Rust crypto `100%` lines/functions; and Tier0 `100%`
+for measured lines, branches, and functions (`7294/7294`, `1730/1730`,
+`534/534`). Local full Python, focused webpush/SSRF closure tests, Ruff,
+formatting, lock validation, and frontend typecheck are green.
+
+The active main ruleset previously remained `BLOCKED` because three required
+fuzz contexts were absent when the Rust fuzz workflow's path filter skipped a
+docs/tests-only PR. The workflow now triggers on all paths for push and pull
+request events, preserving the bounded fuzz jobs while guaranteeing those
+required contexts are created. A fresh post-fix PR run must still confirm the
+remote ruleset is unblocked; no bypass or merge was performed.
+
+This checkpoint does not close the remaining external certification gates:
+Codecov current-head repository authorization/accepted upload evidence,
+current-head full-nightly promotion artifacts, the `0/30` main stabilization
+window, advisory promotion/performance-baseline evidence, an authorized
+`DAST_TARGET_URL`, the managed Deep Security Scan profile, and a trusted-main
+release run using the configured `QUALITY_CERTIFICATION_KEY`.
+
 ## Final control audit — 2026-08-09
 
 This checkpoint replaces stale “pending” conclusions from the historical
@@ -216,14 +251,13 @@ pre-push frontend typecheck are green. This is contract hardening only and does
 not provide an authorized external DAST target or replace current-head Linux
 nightly, Codecov, or stabilization evidence.
 
-### Current-head CI trigger and local polyglot evidence — 2026-08-12
+### Current-head CI trigger and local polyglot evidence — 2026-08-12 (superseded by live checkpoint)
 
 PR [#1239](https://github.com/egorribun/university_ecosystem/pull/1239) is open
-from `egorribun` at exact SHA `01cad024beb459484de919ebbfef3ae668f6592b` so
-the repository's pull-request CI can validate this current head. The strict
-Renovate validator already passed on that SHA. A subsequent synchronize event
-is expected to create the normal CI matrix; no `workflow_dispatch` bypass or
-branch-protection relaxation was added.
+from `egorribun` at exact SHA `47f843733808944fb26b67f6ace80ed44397a1ea`.
+The normal pull-request matrix for this head is terminal green in run
+`31612221754`; no `workflow_dispatch` bypass or branch-protection relaxation
+was used.
 
 Fresh local polyglot evidence for the same clean checkout is green: gateway,
 ws-hub, and file-processor `go test ./...` suites pass; native Rust workspace
@@ -232,7 +266,7 @@ passed`). Windows linker informational warnings were non-fatal. These results
 complement the full Python suite and frontend Vitest/typecheck results already
 recorded above, but do not replace the required Linux PR/nightly artifacts.
 
-### Current-head secret-scan remediation — 2026-08-12 (published `01cad024b`)
+### Current-head secret-scan remediation — 2026-08-12 (published `47f843733`)
 
 The first PR run correctly blocked on a TruffleHog `Lob` detector false positive:
 the historical private-endpoint test method name was mistaken for a verified
