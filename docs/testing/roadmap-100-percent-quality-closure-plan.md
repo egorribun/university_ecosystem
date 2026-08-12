@@ -247,7 +247,7 @@ The follow-up `c2a114d05` makes the stats matrix an explicit dependency of
   `QUALITY_CERTIFICATION_KEY`, advisory promotion evidence, Deep Scan host
   profile, and bundled npm advisories remain unchanged external blockers.
 
-### CI acceleration continuation — parallel full execution (candidate, 2026-08-12)
+### CI acceleration continuation — parallel full execution (published `46cc98327`, 2026-08-12)
 
 The next safe acceleration keeps the four isolated stats legs above and
 parallelizes only the expensive mutation execution into sixteen exact-name
@@ -262,9 +262,10 @@ mutant IDs, mixed universe fingerprints, and any selected-universe gap before
 - Local evidence is green for the new fail-closed aggregator (`4 passed,
   1 warning`), the updated nightly/aggregator workflow contracts, Ruff,
   actionlint, Semgrep, detect-secrets, YAML parsing, and `git diff --check`.
-- This is source-level acceleration only until a terminal Linux nightly on the
-  published SHA produces all sixteen shard artifacts plus the aggregate score.
-  The currently running older nightly and its queued successor must drain
+- This is source-level acceleration only until a terminal Linux nightly on
+  published SHA `46cc983271557b4ef0a4ae999ad8caa5883a658d` produces all
+  sixteen shard artifacts plus the aggregate score. The currently running
+  older nightly and its queued successor must drain
   without cancellation; no mutation score is inferred from them.
 - The 30-day stabilization window, Codecov authorization, authorized DAST
   target, protected certification key, advisory promotion, Deep Scan host

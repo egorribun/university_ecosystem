@@ -260,7 +260,7 @@ was relaxed.
   is `pending`. Dispatch the optimized nightly only after the current
   non-canceling queue drains; do not infer scores from either old workflow.
 
-### CI acceleration continuation — parallel full execution (candidate, 2026-08-12)
+### CI acceleration continuation — parallel full execution (published `46cc98327`, 2026-08-12)
 
 The candidate follow-up preserves the four isolated stats jobs and splits the
 full mutation execution into sixteen exact-name legs. Every leg creates a
@@ -271,7 +271,9 @@ fail-closed: it requires all sixteen artifacts, rejects incomplete/duplicate
 results and mixed universe hashes, proves the selected union equals the
 universe count, then runs the existing 100% score gate.
 
-Local checks for this candidate are green: aggregator `4 passed, 1 warning`,
+Commit `46cc983271557b4ef0a4ae999ad8caa5883a658d` is pushed to
+`origin/egorribun`. Local checks for this change are green: aggregator
+`4 passed, 1 warning`,
 nightly workflow contracts, Ruff/format, actionlint, Semgrep, detect-secrets,
 YAML parsing, and `git diff --check`. It is not certification evidence until a
 terminal Linux nightly on the published SHA supplies all shard and aggregate
