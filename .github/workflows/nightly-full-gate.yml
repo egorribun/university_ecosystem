@@ -512,6 +512,7 @@ jobs:
     name: Report nightly regression
     if: ${{ always() && contains(needs.*.result, 'failure') }}
     needs:
+      - mutation-tests-full-stats
       - mutation-tests-full
       - frontend-mutation-tests-full
       - backend-full

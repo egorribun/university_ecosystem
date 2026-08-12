@@ -1797,6 +1797,7 @@ def test_nightly_full_gate_contains_the_long_running_quality_suites() -> None:
         "mobile-webkit",
     ]
     assert "always()" in jobs["notify-failure"]["if"]
+    assert "mutation-tests-full-stats" in jobs["notify-failure"]["needs"]
     assert "frontend-mutation-tests-full" in jobs["notify-failure"]["needs"]
     assert workflow["permissions"] == {"contents": "read"}
     assert jobs["notify-failure"]["permissions"] == {
