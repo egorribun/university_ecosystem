@@ -216,6 +216,22 @@ pre-push frontend typecheck are green. This is contract hardening only and does
 not provide an authorized external DAST target or replace current-head Linux
 nightly, Codecov, or stabilization evidence.
 
+### Current-head CI trigger and local polyglot evidence — 2026-08-12
+
+PR [#1239](https://github.com/egorribun/university_ecosystem/pull/1239) is open
+from `egorribun` at exact SHA `dce0928c7202ecf9e4b7fa9967e622974992dd00` so
+the repository's pull-request CI can validate this current head. The strict
+Renovate validator already passed on that SHA. A subsequent synchronize event
+is expected to create the normal CI matrix; no `workflow_dispatch` bypass or
+branch-protection relaxation was added.
+
+Fresh local polyglot evidence for the same clean checkout is green: gateway,
+ws-hub, and file-processor `go test ./...` suites pass; native Rust workspace
+tests pass (`73 passed`); and the PyO3 sanitizer workspace tests pass (`37
+passed`). Windows linker informational warnings were non-fatal. These results
+complement the full Python suite and frontend Vitest/typecheck results already
+recorded above, but do not replace the required Linux PR/nightly artifacts.
+
 ### Security hardening continuation — 2026-08-12 (published `7973577a9`)
 
 The current canonical `egorribun` tip is
