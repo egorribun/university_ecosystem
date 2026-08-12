@@ -124,10 +124,12 @@ was merged to `main` as `c838c2000cf5b73d4dfa38dfa4a7d239c13cbb0b`.
   [31553098424](https://github.com/egorribun/university_ecosystem/actions/runs/31553098424)
   is also terminal `success` on the same SHA.
 - Full nightly run
-  [31554388135](https://github.com/egorribun/university_ecosystem/actions/runs/31554388135)
-  targets the exact published source SHA but is still `pending` behind the
-  older non-canceling diagnostic run
+  [31555962606](https://github.com/egorribun/university_ecosystem/actions/runs/31555962606)
+  targets the exact published source SHA `ae0cee53866945da9b3a298e48a05a9bb7d02757`
+  but is still `pending` behind the older non-canceling diagnostic run
   [31543639360](https://github.com/egorribun/university_ecosystem/actions/runs/31543639360).
+  The earlier queued run `31554388135` was automatically cancelled when this
+  newer run was dispatched; no running workflow was manually cancelled.
   No full-mutation, Stryker, Miri, load/chaos, browser-matrix, or nightly
   artifact score may be inferred until the current-SHA run is terminal and
   its artifacts are inspected.

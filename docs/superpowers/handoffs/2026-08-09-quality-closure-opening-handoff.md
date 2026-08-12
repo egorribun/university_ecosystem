@@ -166,12 +166,14 @@ merged it to `main` as `c838c2000cf5b73d4dfa38dfa4a7d239c13cbb0b`.
   [31553098424](https://github.com/egorribun/university_ecosystem/actions/runs/31553098424)
   are terminal `success` on that SHA.
 - Current full nightly
-  [31554388135](https://github.com/egorribun/university_ecosystem/actions/runs/31554388135)
-  is `pending` behind diagnostic run
+  [31555962606](https://github.com/egorribun/university_ecosystem/actions/runs/31555962606)
+  targets the exact published source SHA `ae0cee53866945da9b3a298e48a05a9bb7d02757`
+  and is `pending` behind diagnostic run
   [31543639360](https://github.com/egorribun/university_ecosystem/actions/runs/31543639360)
   (`in_progress`, old SHA `7af03d45fdd7a03128c93e8268a7c19699001031`). Do not
   infer nightly scores until the current-SHA run is terminal and artifacts are
-  read.
+  read. The earlier queued run `31554388135` was automatically cancelled when
+  this newer run was dispatched; no running workflow was manually cancelled.
 - External blockers remain: Codecov repository authorization, authorized DAST
   target, protected certification key, stabilization window, advisory
   promotion evidence, and the managed permission profile required by Deep
