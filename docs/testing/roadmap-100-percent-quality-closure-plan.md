@@ -219,7 +219,7 @@ nightly, Codecov, or stabilization evidence.
 ### Current-head CI trigger and local polyglot evidence — 2026-08-12
 
 PR [#1239](https://github.com/egorribun/university_ecosystem/pull/1239) is open
-from `egorribun` at exact SHA `dce0928c7202ecf9e4b7fa9967e622974992dd00` so
+from `egorribun` at exact SHA `01cad024beb459484de919ebbfef3ae668f6592b` so
 the repository's pull-request CI can validate this current head. The strict
 Renovate validator already passed on that SHA. A subsequent synchronize event
 is expected to create the normal CI matrix; no `workflow_dispatch` bypass or
@@ -231,6 +231,26 @@ tests pass (`73 passed`); and the PyO3 sanitizer workspace tests pass (`37
 passed`). Windows linker informational warnings were non-fatal. These results
 complement the full Python suite and frontend Vitest/typecheck results already
 recorded above, but do not replace the required Linux PR/nightly artifacts.
+
+### Current-head secret-scan remediation — 2026-08-12 (published `01cad024b`)
+
+The first PR run correctly blocked on a TruffleHog `Lob` detector false positive:
+the historical test method name `the-old-private-endpoint-test-name` was
+mistaken for a verified token at commit `71acdac8204c6331f5fd56aee62a4abcc984d53d`.
+The value was only a Python identifier; no credential was present. The method was
+renamed to `test_private_endpoint_is_rejected_before_persistence`, and the exact
+text was removed from the `egorribun` history after `origin/main` with a
+`--force-with-lease` push. The original tip remains recoverable through the local
+backup ref `refs/backup/egorribun-pre-trufflehog-history-20260812`; no allowlist or
+scanner exclusion was added.
+
+Fresh local TruffleHog 3.96.0 scanning from `origin/main` (`c838c2000`) to the
+published head completed with `verified_secrets=0` and `unverified_secrets=0`.
+The corresponding PR TruffleHog job is terminal `success`; the focused test file
+is `44 passed, 1 warning`, and the pre-push hooks plus frontend typecheck pass.
+Remaining closure evidence is still fail-closed on the terminal current-head
+nightly/Codecov artifacts, the 30-day stabilization window, an authorized DAST
+target, managed Deep Security Scan access, and dependency-advisory disposition.
 
 ### Security hardening continuation — 2026-08-12 (published `7973577a9`)
 

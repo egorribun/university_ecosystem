@@ -236,6 +236,38 @@ parsing passed).
   and 100% diff coverage. This is source-equivalent evidence for the merged
   quality code; the security branch requires a trusted-main integration run.
 
+### Current-head secret-scan remediation — 2026-08-12
+
+The current published `egorribun` head is
+`01cad024beb459484de919ebbfef3ae668f6592b`; remote `egorribun` and the clean
+local checkout agree on this SHA. PR [#1239](https://github.com/egorribun/university_ecosystem/pull/1239)
+uses the accepted `test:` semantic title and has no branch-protection bypass.
+
+The first current-head TruffleHog run reported a verified `Lob` result for the
+historical Python test identifier
+`the-old-private-endpoint-test-name` in commit
+`71acdac8204c6331f5fd56aee62a4abcc984d53d`; local reproduction showed no secret,
+only detector misclassification of the method name. The method is now named
+`test_private_endpoint_is_rejected_before_persistence`. Because the gate scans
+history, the exact identifier was removed from `egorribun` history after
+`origin/main`, validated in a temporary clone, and published with
+`--force-with-lease`. The original pre-rewrite tip is retained only as the local
+recoverable ref `refs/backup/egorribun-pre-trufflehog-history-20260812`; no
+allowlist, exclusion, or scanner weakening was introduced.
+
+Fresh local TruffleHog 3.96.0 evidence from `c838c2000` to `01cad024b` reports
+`verified_secrets=0` and `unverified_secrets=0`. PR TruffleHog, Gitleaks, SQLMap,
+CodeQL, Checkov, OpenAPI, Go/Rust security, and Wave189 smoke checks are
+terminal green at this head; the remaining fuzz, performance, and CI matrix
+jobs are still running. The focused push-router regression suite is `44 passed,
+1 warning`; pre-push hooks and frontend typecheck are green.
+
+External closure prerequisites remain unchanged: no authorized `DAST_TARGET_URL`,
+no completed 30-day main stabilization window, no terminal current-head full
+nightly/Codecov artifact set, no managed permission profile for the formal Deep
+Security Scan, and open nested release-tool dependency advisories. These are not
+silently marked complete.
+
 ### CI acceleration continuation — 2026-08-12
 
 Commit `928debab4943b9ce547526a523eb87e5d9626862` is pushed and verified on
