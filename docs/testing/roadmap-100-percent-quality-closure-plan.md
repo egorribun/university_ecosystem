@@ -184,11 +184,19 @@ warnings`.
   (SHA `c838c2000cf5b73d4dfa38dfa4a7d239c13cbb0b`) entered the queue. No
   running workflow was manually cancelled. The old diagnostic run
   [31543639360](https://github.com/egorribun/university_ecosystem/actions/runs/31543639360)
-  remains in progress; after it releases the slot, the main run must start
-  before a new exact-`7973577a9` dispatch is queued. No nightly score or
-  artifact result is inferred until the relevant current-HEAD run is terminal
-  and its mutation, Stryker, Miri, browser, load/chaos, and coverage artifacts
-  are inspected.
+  was automatically cancelled by GitHub's single-pending-run queue. The older
+  diagnostic run
+  [31543639360](https://github.com/egorribun/university_ecosystem/actions/runs/31543639360)
+  then reached its 360-minute job limit and is terminal `cancelled`; no run was
+  manually cancelled. Main run
+  [31559727370](https://github.com/egorribun/university_ecosystem/actions/runs/31559727370)
+  targets merged SHA `c838c2000cf5b73d4dfa38dfa4a7d239c13cbb0b` and is now
+  `in_progress`. Exact current-tip run
+  [31564641012](https://github.com/egorribun/university_ecosystem/actions/runs/31564641012)
+  targets `db1d9a2bca7162dbf100538733f55576e70314ee` and is `pending` behind
+  that main run. No nightly score or artifact result is inferred until the
+  relevant current-HEAD run is terminal and its mutation, Stryker, Miri,
+  browser, load/chaos, and coverage artifacts are inspected.
 - A fresh stabilization-window query over completed `main` nightly runs,
   evaluated on 2026-08-12, returned `eligible: false`,
   `latest_success_date: null`, and no successful dates in the required 30-day

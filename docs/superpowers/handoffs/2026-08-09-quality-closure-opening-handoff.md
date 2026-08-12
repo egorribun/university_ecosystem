@@ -213,17 +213,19 @@ parsing passed).
 - Full nightly
   [31559213815](https://github.com/egorribun/university_ecosystem/actions/runs/31559213815)
   targeted the exact `71acdac82` SHA but was automatically cancelled by
-  GitHub's single-pending-run queue at 2026-08-12T03:19:38Z when newer main run
-  [31559727370](https://github.com/egorribun/university_ecosystem/actions/runs/31559727370)
-  (SHA `c838c2000cf5b73d4dfa38dfa4a7d239c13cbb0b`) entered the queue. No
-  running workflow was manually cancelled. Diagnostic run
+  GitHub's single-pending-run queue. Diagnostic run
   [31543639360](https://github.com/egorribun/university_ecosystem/actions/runs/31543639360)
-  remains in progress; wait for the main run to start, then queue a fresh
-  exact-`7973577a9` dispatch after the slot is occupied. Do not infer
-  mutation, Stryker, Miri, browser, load/chaos, or coverage evidence until the
-  relevant run is terminal and its artifacts are downloaded and inspected. A
-  fresh stabilization query on 2026-08-12 is `eligible: false` with no
-  successful `main` nightly date in the required 30-day window.
+  then reached its 360-minute job limit and is terminal `cancelled`; no
+  workflow was manually cancelled. Main run
+  [31559727370](https://github.com/egorribun/university_ecosystem/actions/runs/31559727370)
+  (SHA `c838c2000cf5b73d4dfa38dfa4a7d239c13cbb0b`) is now `in_progress`.
+  Exact current-tip run
+  [31564641012](https://github.com/egorribun/university_ecosystem/actions/runs/31564641012)
+  (SHA `db1d9a2bca7162dbf100538733f55576e70314ee`) is `pending` behind it.
+  Do not infer mutation, Stryker, Miri, browser, load/chaos, or coverage
+  evidence until the relevant run is terminal and its artifacts are downloaded
+  and inspected. A fresh stabilization query on 2026-08-12 is `eligible: false`
+  with no successful `main` nightly date in the required 30-day window.
 - DAST still has no authorized target URL and certification still lacks the
   protected `QUALITY_CERTIFICATION_KEY`; these external inputs remain the only
   user/administrator actions needed after the queued nightly and local evidence
