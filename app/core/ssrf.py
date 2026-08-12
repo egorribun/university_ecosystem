@@ -30,6 +30,14 @@ _BLOCKED_NETWORKS: tuple[ipaddress.IPv4Network | ipaddress.IPv6Network, ...] = (
 
 
 def _is_blocked(addr: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
+    # IPv4-mapped IPv6 literals (for example ``::ffff:127.0.0.1``) carry the
+    # same trust-boundary semantics as their IPv4 address.  Normalize them
+    # before applying the network table so an alternate textual family cannot
+    # bypass the SSRF guard.
+    if isinstance(addr, ipaddress.IPv6Address):
+        mapped = addr.ipv4_mapped
+        if mapped is not None:
+            return _is_blocked(mapped)
     return any(addr in net for net in _BLOCKED_NETWORKS)
 
 

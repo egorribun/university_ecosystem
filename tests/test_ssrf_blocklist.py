@@ -28,6 +28,7 @@ class TestSSRFBlocklist:
             "http://100.64.0.1/",
             "http://0.0.0.1/",
             "http://[::1]/",
+            "http://[::ffff:127.0.0.1]/",
         ],
     )
     def test_blocks_internal_ips(self, url: str) -> None:
@@ -71,6 +72,7 @@ class TestSSRFBlocklist:
             "http://example.com/push",
             "https://127.0.0.1/push",
             "https://[::1]/push",
+            "https://[::ffff:127.0.0.1]/push",
             "https://user%3Apassword@example.com/push",  # pragma: allowlist secret
         ],
     )
