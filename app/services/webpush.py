@@ -635,10 +635,12 @@ def send_web_push(sub: PushSubscription, data: dict[str, Any]) -> WebPushResult:
             # bypass an actual private-address resolution.
             validate_url_not_internal(endpoint)
         except ValueError as exc:
-            if not (
-                getattr(settings, "is_development", False)
-                and "DNS resolution failed" in str(exc)
-            ):
+            try:
+                is_development = bool(settings.is_development)
+            except AttributeError:
+                # Missing development configuration must remain fail-closed.
+                is_development = False  # pragma: no mutate
+            if not (is_development and "DNS resolution failed" in str(exc)):
                 raise
         webpush(
             subscription_info=subscription_info,
