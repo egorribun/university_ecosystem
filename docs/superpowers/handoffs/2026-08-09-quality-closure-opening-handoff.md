@@ -239,7 +239,8 @@ parsing passed).
 ### CI acceleration continuation — 2026-08-12
 
 Commit `928debab4943b9ce547526a523eb87e5d9626862` is pushed and verified on
-`origin/egorribun`. It parallelizes the nightly full mutmut stats pass into
+`origin/egorribun`; follow-up `c2a114d05` wires the stats matrix into nightly
+failure notification. It parallelizes the nightly full mutmut stats pass into
 four isolated jobs, uploads their exact JSON payloads, and merges them with
 the existing fail-closed overlap detector before the unchanged mutation
 execution job. No mutant scope, clean-test isolation, exporter, or score gate

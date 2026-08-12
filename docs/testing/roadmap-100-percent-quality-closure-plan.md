@@ -210,7 +210,7 @@ warnings`.
   This is source-equivalent evidence for the merged quality code; the security
   branch still needs its own trusted-main integration run after merge.
 
-### CI acceleration continuation — 2026-08-12 (published `928debab4`)
+### CI acceleration continuation — 2026-08-12 (published `928debab4`, reporting fix `c2a114d05`)
 
 The canonical `egorribun` branch now contains `928debab4943b9ce547526a523eb87e5d9626862`,
 which keeps the full mutmut gate fail-closed while parallelizing its expensive
@@ -222,6 +222,10 @@ execution, clean-test isolation, exporter, and 100% viable-score gate are
 unchanged. This addresses the observed single-shard stats bottleneck (the
 previous diagnostic spent approximately 87 minutes in stats collection) and
 does not weaken the evidence scope.
+
+The follow-up `c2a114d05` makes the stats matrix an explicit dependency of
+`notify-failure`, so a failed stats shard cannot be hidden behind a downstream
+`skipped` mutation job.
 
 - Local workflow contract evidence is green: `97 passed, 1 warning` for
   `tests/test_quality_workflow_contract.py`; mutmut stats/wrapper contracts are
