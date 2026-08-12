@@ -73,7 +73,7 @@ class TestSSRFBlocklist:
             "https://127.0.0.1/push",
             "https://[::1]/push",
             "https://[::ffff:127.0.0.1]/push",
-            "https://user%3Apassword@example.com/push",  # pragma: allowlist secret
+            "https://user%3Apassword@example.com/push",
         ],
     )
     def test_push_endpoint_requires_safe_https_url(self, url: str) -> None:
