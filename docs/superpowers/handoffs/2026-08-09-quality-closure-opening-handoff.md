@@ -165,6 +165,13 @@ merged it to `main` as `c838c2000cf5b73d4dfa38dfa4a7d239c13cbb0b`.
   and SQLMap
   [31553098424](https://github.com/egorribun/university_ecosystem/actions/runs/31553098424)
   are terminal `success` on that SHA.
+- Codecov v2 independently reports source SHA
+  `1820e4efeba721260f37d20b4995dd69b9c5359a` as `state=complete` with
+  `ci_passed=true`, `99.47%` total coverage (`84,927/85,371` lines across
+  `917` files), `12` sessions, and `100%` diff coverage. All current OIDC
+  uploads were accepted and queued; the historical repository-authorization
+  failure is not reproduced. The later `ae0cee538` and `54a1d1871` commits
+  only change these documents, so the Codecov result is source-equivalent.
 - Current full nightly
   [31555962606](https://github.com/egorribun/university_ecosystem/actions/runs/31555962606)
   targets the exact published source SHA `ae0cee53866945da9b3a298e48a05a9bb7d02757`
@@ -174,8 +181,8 @@ merged it to `main` as `c838c2000cf5b73d4dfa38dfa4a7d239c13cbb0b`.
   infer nightly scores until the current-SHA run is terminal and artifacts are
   read. The earlier queued run `31554388135` was automatically cancelled when
   this newer run was dispatched; no running workflow was manually cancelled.
-- External blockers remain: Codecov repository authorization, authorized DAST
-  target, protected certification key, stabilization window, advisory
+- External blockers remain: authorized DAST target, protected certification
+  key, stabilization window, advisory
   promotion evidence, and the managed permission profile required by Deep
   Security Scan. No final closure claim is justified yet.
 

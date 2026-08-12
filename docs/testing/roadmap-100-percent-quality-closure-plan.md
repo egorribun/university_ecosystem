@@ -123,6 +123,14 @@ was merged to `main` as `c838c2000cf5b73d4dfa38dfa4a7d239c13cbb0b`.
   SQLMap smoke run
   [31553098424](https://github.com/egorribun/university_ecosystem/actions/runs/31553098424)
   is also terminal `success` on the same SHA.
+- Codecov processing is independently confirmed for source SHA
+  `1820e4efeba721260f37d20b4995dd69b9c5359a`: the v2 commit endpoint returned
+  HTTP 200 with `state=complete`, `ci_passed=true`, total line coverage
+  `99.47%` (`84,927/85,371` hits, `917` files), `12` sessions, and `100%`
+  diff coverage. The current OIDC uploads were accepted and queued without a
+  repository-authorization error. The later `ae0cee538`/`54a1d1871` commits
+  are documentation-only descendants, so this is source-equivalent evidence;
+  no new code coverage upload is expected for them.
 - Full nightly run
   [31555962606](https://github.com/egorribun/university_ecosystem/actions/runs/31555962606)
   targets the exact published source SHA `ae0cee53866945da9b3a298e48a05a9bb7d02757`
@@ -133,8 +141,8 @@ was merged to `main` as `c838c2000cf5b73d4dfa38dfa4a7d239c13cbb0b`.
   No full-mutation, Stryker, Miri, load/chaos, browser-matrix, or nightly
   artifact score may be inferred until the current-SHA run is terminal and
   its artifacts are inspected.
-- External blockers remain unchanged: Codecov repository authorization, an
-  explicitly authorized DAST target (local SQLMap is not authorization), the
+- External blockers remaining are an explicitly authorized DAST target (local
+  SQLMap is not authorization), the
   protected `QUALITY_CERTIFICATION_KEY`, the 30-day stabilization window,
   advisory-workload promotion evidence, and a managed filesystem permission
   profile for the formal Deep Security Scan. This roadmap remains fail-closed;
