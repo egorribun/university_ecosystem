@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1786501576759,
+  "lastUpdate": 1786501579631,
   "repoUrl": "https://github.com/egorribun/university_ecosystem",
   "entries": {
     "Go Services Performance Benchmarks": [
@@ -5815,6 +5815,120 @@ window.BENCHMARK_DATA = {
             "name": "strip_html/large",
             "value": 91472,
             "range": "± 401",
+            "unit": "ns/iter"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "egorribun2005@gmail.com",
+            "name": "Egor",
+            "username": "egorribun"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "c838c2000cf5b73d4dfa38dfa4a7d239c13cbb0b",
+          "message": "fix(quality): harden evidence and strict test gates (#1229)\n\n* docs(testing): record final quality audit\n\n* test(quality): close final quality gates\n\n* test(quality): harden promotion evidence query\n\n* test(quality): harden external quality gates\n\n* test(quality): align dependency policy contract\n\n* test(quality): record remote closure evidence\n\n* test(quality): reset dishka lifecycle between runs\n\n* test(quality): record mutation regression and rerun\n\n* test(quality): add manual performance benchmark dispatch\n\n* test(quality): reset Dishka state across ASGI lifecycles\n\n* test(quality): preserve lifespan app fixture identity\n\n* test(quality): isolate dishka containers between lifespans\n\n* docs(quality): record dishka lifecycle closure evidence\n\n* test(quality): fix nested radio label markup\n\n* test(quality): make settings accordion deterministic\n\n* test(quality): reopen accordion after remount\n\n* test(quality): wait for expanded language controls\n\n* test(quality): align TOTP accordion contract\n\n* test(quality): isolate nightly permission checks\n\n* test(quality): target visible language accordion\n\n* test(quality): activate custom language radio label\n\n* test(quality): harden nightly browser and image isolation\n\n* test(quality): wait for hydrated login before tab audit\n\n* test(quality): wait for hydrated settings accordion\n\n* test(quality): retry transient browser navigations\n\n* test(quality): harden all transient e2e navigations\n\n* docs(quality): record current closure evidence\n\n* docs(quality): record frontend mutation evidence\n\n* fix(quality): harden mutation and image test isolation\n\n* fix(quality): handle mutmut non-function nodes\n\n* docs(quality): add closure handoff\n\n* fix(quality): isolate mutmut class-method fixture\n\n* fix(quality): enforce complete mutation evidence\n\n* test(quality): link legacy mutmut coverage test\n\n* fix(security): gate DAST label scans\n\n* fix(docs): satisfy markdown quality gate\n\n* fix(security): isolate manual mutation evidence\n\n* fix(quality): harden evidence and strict test gates\n\n* fix(quality): secure promotion evidence gates\n\n* fix(quality): repair mutation and coverage gates\n\n* fix(quality): stabilize Rust coverage gate\n\n* fix(quality): isolate Rust coverage artifacts\n\n* fix(quality): isolate mutmut clean baselines\n\n* test(quality): stabilize mutmut image isolation\n\n* test(quality): cover native scheduler non-spanning conflict\n\n* fix(quality): harden workflow closure gates\n\n* fix(quality): trigger required rust fuzz on workflow changes\n\n* fix(quality): copy gitignore into mutmut sandbox\n\n* docs(quality): specify same-run performance gates\n\n* fix(ci): give incremental mutmut a safe execution envelope\n\n* fix(quality): enforce portable JSON nesting limit\n\n---------\n\nCo-authored-by: Egor Ribun <egorribun@gmail.com>",
+          "timestamp": "2026-08-12T07:01:22+05:00",
+          "tree_id": "975b43b412f0ac71c80a1a1caecb73f765075b06",
+          "url": "https://github.com/egorribun/university_ecosystem/commit/c838c2000cf5b73d4dfa38dfa4a7d239c13cbb0b"
+        },
+        "date": 1786501578739,
+        "tool": "cargo",
+        "benches": [
+          {
+            "name": "sanitize_rich_text/empty",
+            "value": 5981,
+            "range": "± 13",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_rich_text/plain_text",
+            "value": 6876,
+            "range": "± 16",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_rich_text/simple_html",
+            "value": 9925,
+            "range": "± 76",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_rich_text/xss_attempt",
+            "value": 10691,
+            "range": "± 40",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_rich_text/large",
+            "value": 100603,
+            "range": "± 1449",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_html_basic/empty",
+            "value": 5407,
+            "range": "± 21",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_html_basic/plain_text",
+            "value": 6360,
+            "range": "± 15",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_html_basic/simple_html",
+            "value": 9063,
+            "range": "± 29",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_html_basic/xss_attempt",
+            "value": 9443,
+            "range": "± 44",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_html_basic/large",
+            "value": 93211,
+            "range": "± 573",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "strip_html/empty",
+            "value": 5243,
+            "range": "± 17",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "strip_html/plain_text",
+            "value": 6217,
+            "range": "± 13",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "strip_html/simple_html",
+            "value": 8599,
+            "range": "± 24",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "strip_html/xss_attempt",
+            "value": 9140,
+            "range": "± 51",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "strip_html/large",
+            "value": 90733,
+            "range": "± 806",
             "unit": "ns/iter"
           }
         ]
