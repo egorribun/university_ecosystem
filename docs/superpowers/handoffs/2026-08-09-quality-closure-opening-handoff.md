@@ -244,8 +244,7 @@ local checkout agree on this SHA. PR [#1239](https://github.com/egorribun/univer
 uses the accepted `test:` semantic title and has no branch-protection bypass.
 
 The first current-head TruffleHog run reported a verified `Lob` result for the
-historical Python test identifier
-`the-old-private-endpoint-test-name` in commit
+historical Python private-endpoint test identifier in commit
 `71acdac8204c6331f5fd56aee62a4abcc984d53d`; local reproduction showed no secret,
 only detector misclassification of the method name. The method is now named
 `test_private_endpoint_is_rejected_before_persistence`. Because the gate scans

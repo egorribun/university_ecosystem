@@ -235,8 +235,8 @@ recorded above, but do not replace the required Linux PR/nightly artifacts.
 ### Current-head secret-scan remediation — 2026-08-12 (published `01cad024b`)
 
 The first PR run correctly blocked on a TruffleHog `Lob` detector false positive:
-the historical test method name `the-old-private-endpoint-test-name` was
-mistaken for a verified token at commit `71acdac8204c6331f5fd56aee62a4abcc984d53d`.
+the historical private-endpoint test method name was mistaken for a verified
+token at commit `71acdac8204c6331f5fd56aee62a4abcc984d53d`.
 The value was only a Python identifier; no credential was present. The method was
 renamed to `test_private_endpoint_is_rejected_before_persistence`, and the exact
 text was removed from the `egorribun` history after `origin/main` with a
