@@ -148,6 +148,58 @@ was merged to `main` as `c838c2000cf5b73d4dfa38dfa4a7d239c13cbb0b`.
   profile for the formal Deep Security Scan. This roadmap remains fail-closed;
   the goal is not complete from these results alone.
 
+### Live audit refresh — 2026-08-12 (current `9518ef1d3`)
+
+This refresh was captured at `2026-08-12T12:00:11+03:00` after the local
+`egorribun` checkout was fast-forwarded to and verified against
+`origin/egorribun` at `9518ef1d33a73c224b03fb6c85be98c5a40c2cbf`. The working
+tree is clean; the measurements below are fresh evidence for this exact
+checkout, not a certification claim for the remote long-running lanes.
+
+- The roadmap/contract baseline passed locally: the combined contract,
+  coverage-manifest, workflow-contract, and certification-dashboard suite
+  completed with `259 passed, 1 warning` in `147.72s`. The mutation planner,
+  budget, wrapper, and full-stats aggregate suite completed with `28 passed,
+  1 warning` in `14.21s`; DAST workflow and quality-configuration contracts
+  completed with `25 passed, 1 warning` in `11.19s`.
+- `uv run ruff check app scripts tests`, `uv run ruff format --check app scripts
+  tests`, `uv lock --check`, parsing of all `53` workflow YAML files, and
+  `scripts/quality/validate_quality_contract.py --contract
+  quality/quality-contract.json --mutation-registry
+  quality/mutation-exclusions.json` all passed. No normalized CI coverage
+  manifest is present in this checkout, so these local checks do not replace
+  current Linux coverage artifacts.
+- Codecov's v2 commit endpoint returns `404` for exact current SHA
+  `9518ef1d3`; the merged-main endpoint for `c838c2000cf5b73d4dfa38dfa4a7d239c13cbb0b`
+  is `state=complete`, `ci_passed=true`, and `99.47%` (`84,925/85,371`, 917
+  files), but it is not current-HEAD evidence because this branch contains
+  later security/CI changes.
+- Full nightly run
+  `31559727370` remains `in_progress` on old merged-main SHA
+  `c838c2000cf5b73d4dfa38dfa4a7d239c13cbb0b`, with only the serial full
+  mutmut job running. Queued run `31564641012` remains `pending` on old SHA
+  `db1d9a2bca7162dbf100538733f55576e70314ee`. No mutation, Stryker, Miri,
+  browser, load/chaos, or coverage score is inferred from either run for
+  `9518ef1d3`.
+- The fresh stabilization checker for `main` and `2026-08-12` returns
+  `eligible=false`, `latest_success_date=null`, and no successful dates in the
+  required 30-day interval. `QUALITY_CERTIFICATION_KEY` is present in the
+  GitHub Actions secret inventory (updated `2026-08-12T08:12:40Z`), but no
+  trusted release certification run has produced a signed record yet.
+- `DAST_TARGET_URL` is still absent and the owner has not authorized a
+  deployed target. Deep-scan preflight itself is `ready`, but the Codex
+  Security MCP refuses discovery because the parent lacks a managed filesystem
+  permission profile; no Deep Scan result is claimed. `npm audit
+  --package-lock-only` reports `7` nested tooling advisories (`2` high,
+  `5` moderate), while GitHub Dependabot reports `6` open alerts (`1` high,
+  `5` moderate); these remain separate dependency-maintenance findings.
+
+The remaining closure conditions are therefore exact current-HEAD Codecov and
+full-nightly artifacts after the queue drains, an authorized DAST target, the
+30-day green stabilization window, advisory promotion evidence, a durable
+performance baseline, the managed Deep Scan profile, and disposition of the
+nested release-tool advisories. None is marked closed by source wiring alone.
+
 ### Security hardening continuation — 2026-08-12 (published `7973577a9`)
 
 The current canonical `egorribun` tip is
