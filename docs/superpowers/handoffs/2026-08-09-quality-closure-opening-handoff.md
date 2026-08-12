@@ -280,6 +280,16 @@ terminal Linux nightly on the published SHA supplies all shard and aggregate
 artifacts. Do not infer a score from the older in-progress run or pending
 queued run.
 
+### External secret continuation — 2026-08-12
+
+`QUALITY_CERTIFICATION_KEY` is now present in the repository's GitHub Actions
+Secrets. It was generated locally as a 32-byte random value and sent through
+`gh secret set` without printing the value; only the secret name and creation
+timestamp were verified. This enables the release workflow's signed
+certification path, but a trusted `main` release run is still required to
+produce evidence. `DAST_TARGET_URL` remains unset until the owner supplies an
+authorized deployed HTTPS staging/QA URL; no local or placeholder URL is used.
+
 ### Главный текущий инженерный дефект: CI mutmut stats shard 2
 
 Fast CI run:

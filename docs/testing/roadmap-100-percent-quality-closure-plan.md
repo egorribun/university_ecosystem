@@ -271,6 +271,18 @@ mutant IDs, mixed universe fingerprints, and any selected-universe gap before
   target, protected certification key, advisory promotion, Deep Scan host
   profile, and bundled npm advisories remain open.
 
+### External secret continuation — certification key configured (2026-08-12)
+
+The repository secret inventory was rechecked after the parallel CI update:
+`QUALITY_CERTIFICATION_KEY` is now present in GitHub Actions Secrets (created
+2026-08-12 through a locally generated 32-byte random value; the value was
+never printed or persisted in the repository). This removes the missing-secret
+configuration blocker, but it does not create a signed release record by
+itself; release certification still requires a trusted `main` release run.
+`DAST_TARGET_URL` remains intentionally unset until the owner supplies an
+authorized deployed HTTPS staging/QA URL. No target is inferred from local
+placeholders or localhost addresses.
+
 ### Local hardening update — 2026-08-10 (not certification evidence)
 
 This is local candidate evidence for the current worktree. It must be linked
