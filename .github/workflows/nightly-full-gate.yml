@@ -17,8 +17,57 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  mutation-tests-full-stats:
+    name: Full mutation stats (mutmut) / shard ${{ matrix.stats_shard }}/4
+    strategy:
+      fail-fast: false
+      # The complete pytest-to-mutant map is partitionable by the same stable
+      # shard contract used by the PR gate.  Running the four stats legs in
+      # parallel removes the single 80+ minute discovery bottleneck without
+      # dropping any test: merge_mutmut_stats.py rejects overlap and requires
+      # every shard to contain a non-empty, valid stats payload.
+      matrix:
+        stats_shard: [0, 1, 2, 3]
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.14"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: Install dependencies
+        run: uv sync --group dev
+
+      - name: Collect full mutmut stats shard
+        run: |
+          rm -rf mutants
+          uv run python scripts/mutmut_stats_shard.py \
+            --shard-id "${{ matrix.stats_shard }}" \
+            --num-shards 4 \
+            --max-children 2
+
+      - name: Upload full mutmut stats shard
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: nightly-mutmut-stats-${{ github.run_id }}-${{ matrix.stats_shard }}
+          path: mutants/mutmut-stats.json
+          if-no-files-found: error
+
   mutation-tests-full:
     name: Full mutation score (mutmut)
+    needs: mutation-tests-full-stats
     runs-on: ubuntu-latest
     timeout-minutes: 360
     steps:
@@ -43,18 +92,22 @@ jobs:
 
       # mutmut 3.7 invokes pytest.main() repeatedly in one interpreter. Pytest
       # explicitly does not support re-running the same suite in-process:
-      # imported test modules and their dependencies remain cached. Collect the
-      # complete stats map in one CLI process, then start mutation execution in
-      # a fresh one. The pinned wrapper reuses that complete map for mutmut's
-      # redundant test-discovery check, making the clean baseline this process's
-      # first pytest invocation while retaining every mutmut mutation phase.
-      - name: Collect full mutmut stats (isolated process)
+      # imported test modules and their dependencies remain cached. The four
+      # stats jobs above collect disjoint populations in isolated processes;
+      # merge_mutmut_stats.py fails closed on overlap/missing data, then the
+      # pinned wrapper starts mutation execution in a fresh process so its
+      # clean baseline is still the first pytest invocation there.
+      - name: Download full mutmut stats shards
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: nightly-mutmut-stats-${{ github.run_id }}-*
+          path: mutmut-stats
+
+      - name: Merge full mutmut stats shards
         run: |
-          rm -rf mutants
-          uv run python scripts/mutmut_stats_shard.py \
-            --shard-id 0 \
-            --num-shards 1 \
-            --max-children 2
+          uv run python scripts/merge_mutmut_stats.py \
+            --input-root mutmut-stats \
+            --output mutants/mutmut-stats.json
 
       - name: Run the complete mutation universe
         run: |
