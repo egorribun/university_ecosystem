@@ -42,6 +42,17 @@ def _read_stats(path: Path) -> dict[str, Any]:
     return payload
 
 
+def _canonical_mutant_function_name(name: str) -> str:
+    """Match mutmut's module-name canonicalization for package ``__init__``."""
+
+    # Keep this in sync with mutmut.utils.format_utils.get_mutant_name().
+    # mutmut metadata and pytest stats can disagree for package modules:
+    # metadata uses ``pkg.__init__.method`` while mutmut's public mutant name
+    # is ``pkg.method``.  Normalize at the merge boundary so every exact shard
+    # resolves the same mapped test set.
+    return name.replace(".__init__.", ".")
+
+
 def merge_stats(paths: list[Path]) -> dict[str, Any]:
     """Union mutant-to-test mappings and durations from disjoint shards.
 
@@ -90,7 +101,8 @@ def merge_stats(paths: list[Path]) -> dict[str, Any]:
                 raise ValueError(
                     f"{path} has non-list tests for mutant {mutant_name!r}"
                 )
-            tests_by_mutant[mutant_name].update(test_names)
+            canonical_name = _canonical_mutant_function_name(mutant_name)
+            tests_by_mutant[canonical_name].update(test_names)
 
     if not duration_by_test:
         raise ValueError("merged mutmut stats contain no active tests")
