@@ -200,6 +200,22 @@ full-nightly artifacts after the queue drains, an authorized DAST target, the
 performance baseline, the managed Deep Scan profile, and disposition of the
 nested release-tool advisories. None is marked closed by source wiring alone.
 
+### SQLMap contract refresh — 2026-08-12 (published `13151bbc8`)
+
+The SQLMap workflow itself remains unchanged and fail-closed; this commit adds
+the missing contract test that was present only in a pre-sync backup. The new
+test locks the main-only push/PR triggers, credentialless checkout, pinned
+SQLMap/OpenAPI capability preflight, real `/api/openapi.json` readiness check,
+and the bounded boolean/error/union profile (`--crawl=0`, `--technique=BEU`,
+low risk/level, two threads, five-second timeout, and zero retries). It also
+asserts that scan/preflight failures cannot be converted to green results.
+
+Fresh evidence for the published commit is `28 passed, 1 warning` for the
+SQLMap/DAST/quality configuration slice; Ruff, format, pre-commit, and the
+pre-push frontend typecheck are green. This is contract hardening only and does
+not provide an authorized external DAST target or replace current-head Linux
+nightly, Codecov, or stabilization evidence.
+
 ### Security hardening continuation — 2026-08-12 (published `7973577a9`)
 
 The current canonical `egorribun` tip is
