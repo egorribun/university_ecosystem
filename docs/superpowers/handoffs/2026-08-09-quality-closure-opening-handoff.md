@@ -260,6 +260,24 @@ was relaxed.
   is `pending`. Dispatch the optimized nightly only after the current
   non-canceling queue drains; do not infer scores from either old workflow.
 
+### CI acceleration continuation — parallel full execution (candidate, 2026-08-12)
+
+The candidate follow-up preserves the four isolated stats jobs and splits the
+full mutation execution into sixteen exact-name legs. Every leg creates a
+pristine universe, selects a duration-balanced all-`app/**/*.py` shard with
+`plan_mutmut_shards.py`, writes the existing exact-execution proof, and uploads
+scope-local results. The new `merge_mutmut_cicd_stats.py` aggregate is
+fail-closed: it requires all sixteen artifacts, rejects incomplete/duplicate
+results and mixed universe hashes, proves the selected union equals the
+universe count, then runs the existing 100% score gate.
+
+Local checks for this candidate are green: aggregator `4 passed, 1 warning`,
+nightly workflow contracts, Ruff/format, actionlint, Semgrep, detect-secrets,
+YAML parsing, and `git diff --check`. It is not certification evidence until a
+terminal Linux nightly on the published SHA supplies all shard and aggregate
+artifacts. Do not infer a score from the older in-progress run or pending
+queued run.
+
 ### Главный текущий инженерный дефект: CI mutmut stats shard 2
 
 Fast CI run:

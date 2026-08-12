@@ -247,6 +247,29 @@ The follow-up `c2a114d05` makes the stats matrix an explicit dependency of
   `QUALITY_CERTIFICATION_KEY`, advisory promotion evidence, Deep Scan host
   profile, and bundled npm advisories remain unchanged external blockers.
 
+### CI acceleration continuation — parallel full execution (candidate, 2026-08-12)
+
+The next safe acceleration keeps the four isolated stats legs above and
+parallelizes only the expensive mutation execution into sixteen exact-name
+legs. Each leg regenerates a pristine mutmut universe, uses the existing
+duration-balanced `plan_mutmut_shards.py` contract over all `app/**/*.py`,
+prepares and verifies the existing exact-execution proof, and uploads its
+scope-local result. A new `merge_mutmut_cicd_stats.py` aggregate validates all
+sixteen reports before summing them: it rejects incomplete evidence, duplicate
+mutant IDs, mixed universe fingerprints, and any selected-universe gap before
+`check_mutation_score.py --min-score 100` runs.
+
+- Local evidence is green for the new fail-closed aggregator (`4 passed,
+  1 warning`), the updated nightly/aggregator workflow contracts, Ruff,
+  actionlint, Semgrep, detect-secrets, YAML parsing, and `git diff --check`.
+- This is source-level acceleration only until a terminal Linux nightly on the
+  published SHA produces all sixteen shard artifacts plus the aggregate score.
+  The currently running older nightly and its queued successor must drain
+  without cancellation; no mutation score is inferred from them.
+- The 30-day stabilization window, Codecov authorization, authorized DAST
+  target, protected certification key, advisory promotion, Deep Scan host
+  profile, and bundled npm advisories remain open.
+
 ### Local hardening update — 2026-08-10 (not certification evidence)
 
 This is local candidate evidence for the current worktree. It must be linked
@@ -445,7 +468,7 @@ closure matrix for this audit is:
 | --- | --- | --- |
 | Python, frontend, Go, Rust, and Tier0 coverage | Exact raw artifacts from `31310271914`, recomputed manifest for SHA `671b79c46`, contract validator, Tier0 per-file checks | current metrics pass contract floors; CI upload is blocked only by Codecov |
 | Stateful/property testing and disposable MinIO/SpiceDB cells | Fast CI functional jobs plus nightly container cell | closed in code; current-HEAD nightly evidence tracked |
-| Python mutmut and frontend Stryker | Python source uses immutable PR-base SHA selection, exact mutant-name shards, a 25-minute wall-clock failure boundary (20-minute maximum execution cap, 30-second KILL grace, and four-minute proof/upload reserve), scope-local JSON evidence, and a 100% viable-score gate; the full nightly uses the same exporter in `--all` mode. The cited Stryker run remains historical evidence only. | terminal current-HEAD PR and full-nightly artifacts are still required; a source inspection or old frontend run is not renewed certification |
+| Python mutmut and frontend Stryker | Python source uses immutable PR-base SHA selection, exact mutant-name shards, a 25-minute wall-clock failure boundary (20-minute maximum execution cap, 30-second KILL grace, and four-minute proof/upload reserve), scope-local JSON evidence, and a 100% viable-score gate; the full nightly now executes sixteen exact full-universe shards and fail-closed aggregates them. The cited Stryker run remains historical evidence only. | terminal current-HEAD PR and full-nightly artifacts are still required; a source inspection or old frontend run is not renewed certification |
 | Go goleak/fuzz/integration and Rust fuzz/proptest/Miri | Go workflows/tests, Rust suites, nightly Miri job | repository wiring and bounded execution pass; promotion/evidence history tracked |
 | Pact, schema compatibility, browser matrix, SSR cache assertions | contract workflow/provider verification, four-project browser matrix, production SSR E2E | current functional checks pass; promotion window tracked |
 | Checkov, Kyverno, negative security, performance baselines | blocking Checkov, Kyverno tests, security suites, Lighthouse and benchmark gates | current fast security/Lighthouse checks pass; durable current-HEAD baseline and promotion evidence tracked |
@@ -462,9 +485,12 @@ closure matrix for this audit is:
   upload. If setup leaves less than the verified shard budget, the job fails
   rather than emitting incomplete evidence. The exporter writes scope-local
   machine-readable evidence before the blocking 100% viable-score gate runs.
-- The full nightly run starts from a newly-created `mutants/` directory, runs
-  the complete mutmut universe, and invokes the same exporter with `--all` so
-  `caught_by_type_check` is preserved as an accepted kill.
+- The full nightly stats matrix still starts from newly-created `mutants/`
+  directories and merges disjoint pytest timing maps. Sixteen execution legs
+  each regenerate the complete mutmut universe, run only their exact selected
+  names, and invoke the exporter so `caught_by_type_check` is preserved as an
+  accepted kill. `merge_mutmut_cicd_stats.py` proves exact coverage of the
+  common universe before the aggregate score gate.
 - A score is eligible to pass only when the universe is non-empty and each
   evaluated mutant is conclusively killed by tests or a configured type check.
   Survivors and `timeout`, `suspicious`, `no_tests`, `not_checked`, `skipped`,
@@ -1139,9 +1165,10 @@ The checker accepts only complete
 evidence: every evaluated mutant must be killed by tests or a configured type
 check; survivors, an empty universe, and `timeout`, `suspicious`, `no_tests`,
 `not_checked`, `skipped`, `interrupted`, or `segfault` fail the gate. The
-nightly lane evaluates the complete universe with the same exporter in `--all`
-mode. A terminal current-HEAD PR run and full-nightly artifact are still
-required before this source wiring can be certified.
+nightly lane evaluates the complete universe through sixteen exact exporter
+shards and a fail-closed aggregate. A terminal current-HEAD PR run and
+full-nightly artifacts are still required before this source wiring can be
+certified.
 
 **Implemented registry:** `quality/mutation-exclusions.json` exists, is
 schema-validated, and currently has no exclusions. A future equivalent-mutant

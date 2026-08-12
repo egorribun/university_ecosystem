@@ -1747,6 +1747,7 @@ def test_nightly_full_gate_contains_the_long_running_quality_suites() -> None:
     jobs = workflow["jobs"]
     assert {
         "mutation-tests-full",
+        "mutation-tests-full-aggregate",
         "frontend-mutation-tests-full",
         "backend-full",
         "go-integration",
@@ -1757,13 +1758,15 @@ def test_nightly_full_gate_contains_the_long_running_quality_suites() -> None:
         "notify-failure",
         "container-integration-cells",
     } <= set(jobs)
-    mutation_steps = jobs["mutation-tests-full"]["steps"]
+    mutation_steps = jobs["mutation-tests-full-aggregate"]["steps"]
     export_step = next(
         step
         for step in mutation_steps
-        if step.get("name") == "Export and gate mutation statistics"
+        if step.get("name") == "Merge and gate full mutation evidence"
     )
-    assert "scripts/export_mutmut_shard_stats.py --all" in export_step["run"]
+    assert "scripts/merge_mutmut_cicd_stats.py" in export_step["run"]
+    assert "--expected-shards 16" in export_step["run"]
+    assert "scripts/check_mutation_score.py --min-score 100" in export_step["run"]
     assert "mutmut export-cicd-stats" not in export_step["run"]
     assert jobs["go-integration"]["strategy"]["matrix"]["service-directory"] == [
         "services/gateway",
@@ -2005,15 +2008,15 @@ def test_full_mutation_gate_uses_the_fail_closed_exporter() -> None:
     nightly_workflow = yaml.safe_load(
         NIGHTLY_FULL_WORKFLOW_PATH.read_text(encoding="utf-8")
     )
-    mutation_job = nightly_workflow["jobs"]["mutation-tests-full"]
+    mutation_job = nightly_workflow["jobs"]["mutation-tests-full-aggregate"]
     mutation_text = "\n".join(
         step.get("run", "") for step in mutation_job["steps"] if isinstance(step, dict)
     )
 
-    export_index = mutation_text.index("scripts/export_mutmut_shard_stats.py")
+    export_index = mutation_text.index("scripts/merge_mutmut_cicd_stats.py")
     gate_index = mutation_text.index("scripts/check_mutation_score.py")
     assert export_index < gate_index
-    assert "--all" in mutation_text
+    assert "--expected-shards 16" in mutation_text
     assert "uv run mutmut export-cicd-stats" not in mutation_text
     assert "test -s mutants/mutmut-cicd-stats.json" in mutation_text
 
@@ -2029,6 +2032,9 @@ def test_full_mutation_gate_isolates_stats_and_clean_pytest_invocations() -> Non
     assert nightly_workflow["jobs"]["mutation-tests-full"]["needs"] == (
         "mutation-tests-full-stats"
     )
+    assert nightly_workflow["jobs"]["mutation-tests-full"]["strategy"]["matrix"][
+        "shard"
+    ] == list(range(1, 17))
     assert stats_job["strategy"]["matrix"]["stats_shard"] == [0, 1, 2, 3]
     stats_steps = stats_job["steps"]
     stats_step = next(
@@ -2044,7 +2050,7 @@ def test_full_mutation_gate_isolates_stats_and_clean_pytest_invocations() -> Non
     run_step_index = next(
         index
         for index, step in enumerate(mutation_steps)
-        if step.get("name") == "Run the complete mutation universe"
+        if step.get("name") == "Plan and run exact full mutation shard"
     )
     download_step = next(
         step
@@ -2073,9 +2079,18 @@ def test_full_mutation_gate_isolates_stats_and_clean_pytest_invocations() -> Non
     )
     assert "scripts/merge_mutmut_stats.py" in merge_step["run"]
     assert "--input-root mutmut-stats" in merge_step["run"]
+    assert "scripts/plan_mutmut_shards.py" in run_script
+    assert "--num-shards 16" in run_script
     assert "scripts/run_mutmut_with_stats.py --max-children 2" in run_script
     assert "uv run mutmut run" not in run_script
     assert "scripts/mutmut_stats_shard.py" not in run_script
+    aggregate_job = nightly_workflow["jobs"]["mutation-tests-full-aggregate"]
+    assert aggregate_job["needs"] == "mutation-tests-full"
+    aggregate_text = "\n".join(
+        step.get("run", "") for step in aggregate_job["steps"] if isinstance(step, dict)
+    )
+    assert "scripts/merge_mutmut_cicd_stats.py" in aggregate_text
+    assert "--expected-shards 16" in aggregate_text
 
 
 def test_pr_quality_gates_enforce_contract_policy_values() -> None:
