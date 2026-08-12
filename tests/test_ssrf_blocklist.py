@@ -83,6 +83,20 @@ class TestSSRFBlocklist:
     def test_push_endpoint_accepts_provider_hostname(self) -> None:
         validate_public_https_url("https://push.example.com/wpush/v2/token")
 
+    @pytest.mark.parametrize(
+        "url",
+        [
+            "",
+            "https://:443/push",
+            "https://example.com:bad/push",
+            "https://example.com:65536/push",
+            "https://localhost/push",
+        ],
+    )
+    def test_public_https_url_rejects_malformed_and_local_urls(self, url: str) -> None:
+        with pytest.raises(ValueError):
+            validate_public_https_url(url)
+
 
 class TestValidateAndResolve:
     """RZ-W17-01: Tests for DNS-rebinding-safe resolve function."""

@@ -102,6 +102,35 @@ async def test_subscribe_defensive_failure_and_missing_client_host():
 
 
 @pytest.mark.asyncio
+async def test_subscription_validation_rejects_private_resolution_failure():
+    from app.routers import notifications
+    from app.schemas.notifications import PushSubscriptionIn
+
+    payload = PushSubscriptionIn(
+        endpoint="https://push.example.com/subscription",
+        keys={"p256dh": "public-key", "auth": "auth-key"},
+    )
+    with (
+        patch.object(
+            notifications,
+            "validate_url_not_internal_async",
+            new=AsyncMock(side_effect=ValueError("SSRF blocked")),
+        ),
+        patch.object(
+            notifications,
+            "settings",
+            SimpleNamespace(is_development=False),
+        ),
+    ):
+        with pytest.raises(notifications.HTTPException) as exc:
+            await notifications._validate_subscription_payload(payload, locale="en")
+
+    assert exc.value.status_code == 400
+    assert exc.value.detail["error"] == "invalid_subscription"
+    assert exc.value.detail["fields"][0]["field"] == "endpoint"
+
+
+@pytest.mark.asyncio
 async def test_unsubscribe_and_send_test_cover_missing_client_and_optional_payload():
     from app.models.enums import UserRole
     from app.routers import notifications
