@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1786488532566,
+  "lastUpdate": 1786501576759,
   "repoUrl": "https://github.com/egorribun/university_ecosystem",
   "entries": {
     "Go Services Performance Benchmarks": [
@@ -2706,6 +2706,150 @@ window.BENCHMARK_DATA = {
             "value": 14351,
             "unit": "ns/op",
             "extra": "118011 times\n4 procs"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "egorribun2005@gmail.com",
+            "name": "Egor",
+            "username": "egorribun"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "c838c2000cf5b73d4dfa38dfa4a7d239c13cbb0b",
+          "message": "fix(quality): harden evidence and strict test gates (#1229)\n\n* docs(testing): record final quality audit\n\n* test(quality): close final quality gates\n\n* test(quality): harden promotion evidence query\n\n* test(quality): harden external quality gates\n\n* test(quality): align dependency policy contract\n\n* test(quality): record remote closure evidence\n\n* test(quality): reset dishka lifecycle between runs\n\n* test(quality): record mutation regression and rerun\n\n* test(quality): add manual performance benchmark dispatch\n\n* test(quality): reset Dishka state across ASGI lifecycles\n\n* test(quality): preserve lifespan app fixture identity\n\n* test(quality): isolate dishka containers between lifespans\n\n* docs(quality): record dishka lifecycle closure evidence\n\n* test(quality): fix nested radio label markup\n\n* test(quality): make settings accordion deterministic\n\n* test(quality): reopen accordion after remount\n\n* test(quality): wait for expanded language controls\n\n* test(quality): align TOTP accordion contract\n\n* test(quality): isolate nightly permission checks\n\n* test(quality): target visible language accordion\n\n* test(quality): activate custom language radio label\n\n* test(quality): harden nightly browser and image isolation\n\n* test(quality): wait for hydrated login before tab audit\n\n* test(quality): wait for hydrated settings accordion\n\n* test(quality): retry transient browser navigations\n\n* test(quality): harden all transient e2e navigations\n\n* docs(quality): record current closure evidence\n\n* docs(quality): record frontend mutation evidence\n\n* fix(quality): harden mutation and image test isolation\n\n* fix(quality): handle mutmut non-function nodes\n\n* docs(quality): add closure handoff\n\n* fix(quality): isolate mutmut class-method fixture\n\n* fix(quality): enforce complete mutation evidence\n\n* test(quality): link legacy mutmut coverage test\n\n* fix(security): gate DAST label scans\n\n* fix(docs): satisfy markdown quality gate\n\n* fix(security): isolate manual mutation evidence\n\n* fix(quality): harden evidence and strict test gates\n\n* fix(quality): secure promotion evidence gates\n\n* fix(quality): repair mutation and coverage gates\n\n* fix(quality): stabilize Rust coverage gate\n\n* fix(quality): isolate Rust coverage artifacts\n\n* fix(quality): isolate mutmut clean baselines\n\n* test(quality): stabilize mutmut image isolation\n\n* test(quality): cover native scheduler non-spanning conflict\n\n* fix(quality): harden workflow closure gates\n\n* fix(quality): trigger required rust fuzz on workflow changes\n\n* fix(quality): copy gitignore into mutmut sandbox\n\n* docs(quality): specify same-run performance gates\n\n* fix(ci): give incremental mutmut a safe execution envelope\n\n* fix(quality): enforce portable JSON nesting limit\n\n---------\n\nCo-authored-by: Egor Ribun <egorribun@gmail.com>",
+          "timestamp": "2026-08-12T07:01:22+05:00",
+          "tree_id": "975b43b412f0ac71c80a1a1caecb73f765075b06",
+          "url": "https://github.com/egorribun/university_ecosystem/commit/c838c2000cf5b73d4dfa38dfa4a7d239c13cbb0b"
+        },
+        "date": 1786501575517,
+        "tool": "go",
+        "benches": [
+          {
+            "name": "BenchmarkJWKSValidation (github.com/university-ecosystem/gateway/middleware)",
+            "value": 101236,
+            "unit": "ns/op",
+            "extra": "12061 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkRateLimitFallback (github.com/university-ecosystem/gateway/middleware)",
+            "value": 113.7,
+            "unit": "ns/op",
+            "extra": "11116650 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkExtractAlgFromHeader (github.com/university-ecosystem/gateway/middleware)",
+            "value": 758,
+            "unit": "ns/op",
+            "extra": "1429442 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkValidateIAT (github.com/university-ecosystem/gateway/middleware)",
+            "value": 73.17,
+            "unit": "ns/op",
+            "extra": "16363436 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkCheckL1Cache_Hit (github.com/university-ecosystem/gateway/middleware)",
+            "value": 154.4,
+            "unit": "ns/op",
+            "extra": "7685874 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkCheckL1Cache_Miss (github.com/university-ecosystem/gateway/middleware)",
+            "value": 14.82,
+            "unit": "ns/op",
+            "extra": "81137558 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkJWKToRSAPublicKey (github.com/university-ecosystem/gateway/middleware)",
+            "value": 537.5,
+            "unit": "ns/op",
+            "extra": "2203023 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkShouldRefreshProbabilistic (github.com/university-ecosystem/gateway/middleware)",
+            "value": 126.5,
+            "unit": "ns/op",
+            "extra": "9358384 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkKeyFunc_HS256 (github.com/university-ecosystem/gateway/middleware)",
+            "value": 29.75,
+            "unit": "ns/op",
+            "extra": "38249607 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkMessageMarshal (github.com/university-ecosystem/ws-hub/pkg/hub)",
+            "value": 484.5,
+            "unit": "ns/op",
+            "extra": "2481597 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkMessageUnmarshal (github.com/university-ecosystem/ws-hub/pkg/hub)",
+            "value": 1345,
+            "unit": "ns/op",
+            "extra": "773324 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkClientLookup (github.com/university-ecosystem/ws-hub/pkg/hub)",
+            "value": 13.72,
+            "unit": "ns/op",
+            "extra": "89881472 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkCollectRecipients_Room (github.com/university-ecosystem/ws-hub/pkg/hub)",
+            "value": 765.9,
+            "unit": "ns/op",
+            "extra": "1579474 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkCollectRecipients_DirectMessage (github.com/university-ecosystem/ws-hub/pkg/hub)",
+            "value": 87.09,
+            "unit": "ns/op",
+            "extra": "13235575 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkCollectRecipients_Broadcast (github.com/university-ecosystem/ws-hub/pkg/hub)",
+            "value": 1369,
+            "unit": "ns/op",
+            "extra": "873901 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkSafeSend (github.com/university-ecosystem/ws-hub/pkg/hub)",
+            "value": 31.06,
+            "unit": "ns/op",
+            "extra": "34927580 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkHandleRegister (github.com/university-ecosystem/ws-hub/pkg/hub)",
+            "value": 1931,
+            "unit": "ns/op",
+            "extra": "1000000 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkNATSPublishSimulated (github.com/university-ecosystem/ws-hub/pkg/hub)",
+            "value": 46.96,
+            "unit": "ns/op",
+            "extra": "25959282 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkJWTVerify (github.com/university-ecosystem/ws-hub/pkg/hub)",
+            "value": 758.8,
+            "unit": "ns/op",
+            "extra": "1674729 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkBroadcastTo1000Clients (github.com/university-ecosystem/ws-hub/pkg/hub)",
+            "value": 14184,
+            "unit": "ns/op",
+            "extra": "119318 times\n4 procs"
           }
         ]
       }
