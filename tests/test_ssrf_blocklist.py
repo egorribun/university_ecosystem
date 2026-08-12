@@ -8,6 +8,7 @@ import pytest
 
 from app.core.ssrf import (
     validate_and_resolve,
+    validate_public_https_url,
     validate_url_not_internal,
     validate_url_not_internal_async,
 )
@@ -63,6 +64,22 @@ class TestSSRFBlocklist:
         ):
             with pytest.raises(ValueError, match="DNS resolution failed"):
                 validate_url_not_internal("https://attacker-controlled.example.com/")
+
+    @pytest.mark.parametrize(
+        "url",
+        [
+            "http://example.com/push",
+            "https://127.0.0.1/push",
+            "https://[::1]/push",
+            "https://user%3Apassword@example.com/push",  # pragma: allowlist secret
+        ],
+    )
+    def test_push_endpoint_requires_safe_https_url(self, url: str) -> None:
+        with pytest.raises(ValueError):
+            validate_public_https_url(url)
+
+    def test_push_endpoint_accepts_provider_hostname(self) -> None:
+        validate_public_https_url("https://push.example.com/wpush/v2/token")
 
 
 class TestValidateAndResolve:

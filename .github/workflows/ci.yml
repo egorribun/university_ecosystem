@@ -464,7 +464,6 @@ jobs:
     needs: pre-commit-check
     permissions:
       contents: read
-      id-token: write
     uses: ./.github/workflows/reusable-backend-tests.yml
     with:
       test-group-name: "All-${{ matrix.name }}"
@@ -481,8 +480,8 @@ jobs:
       shard-id: ${{ matrix.shard }}
       num-shards: 4
       python-gil: ${{ matrix.free-threading && '0' || '1' }}  # MOD-24-03
-    # nosemgrep: yaml.github-actions.security.secrets-inherit.secrets-inherit
-    secrets: inherit
+    secrets:
+      SECRET_KEY: ${{ secrets.CI_TEST_SECRET_KEY }}
 
   backend-type-check:
     name: Backend Type Check
@@ -557,14 +556,11 @@ jobs:
     needs: pre-commit-check
     permissions:
       contents: read
-      id-token: write
     uses: ./.github/workflows/reusable-go-tests.yml
     with:
       service-directory: ${{ matrix.service }}
       go-version: "1.26.5"
       coverage-threshold: ${{ matrix.coverage-threshold }}
-    # nosemgrep: yaml.github-actions.security.secrets-inherit.secrets-inherit
-    secrets: inherit
 
   # MOD-W15-06 (audit 2026-03-23 Wave 15): Go fuzz testing for ws-hub message parsing.
   # Short 30s CI budget — finds quick panics and crashes.
@@ -612,8 +608,6 @@ jobs:
     with:
       service-directory: services/ws-hub
       go-version: "1.26.5"
-    # nosemgrep: yaml.github-actions.security.secrets-inherit.secrets-inherit
-    secrets: inherit
 
   go-integration-file-processor:
     name: Go Integration Tests (file-processor)
@@ -622,8 +616,6 @@ jobs:
     with:
       service-directory: services/file-processor
       go-version: "1.26.5"
-    # nosemgrep: yaml.github-actions.security.secrets-inherit.secrets-inherit
-    secrets: inherit
 
   go-integration-gateway:
     name: Go Integration Tests (gateway)
@@ -632,21 +624,16 @@ jobs:
     with:
       service-directory: services/gateway
       go-version: "1.26.5"
-    # nosemgrep: yaml.github-actions.security.secrets-inherit.secrets-inherit
-    secrets: inherit
 
   frontend-tests:
     name: Frontend Tests
     needs: pre-commit-check
     permissions:
       contents: read
-      id-token: write
     uses: ./.github/workflows/reusable-frontend-tests.yml
     with:
       node-version: "22"
       run-lighthouse: true
-    # nosemgrep: yaml.github-actions.security.secrets-inherit.secrets-inherit
-    secrets: inherit
 
   stryker-incremental:
     name: Incremental Mutation Tests (frontend)
@@ -687,7 +674,6 @@ jobs:
     needs: pre-commit-check
     permissions:
       contents: read
-      id-token: write
     strategy:
       fail-fast: false
       matrix:
@@ -700,8 +686,6 @@ jobs:
       shard-index: ${{ matrix.shard-index }}
       shard-total: 4
       collect-coverage: true
-    # nosemgrep: yaml.github-actions.security.secrets-inherit.secrets-inherit
-    secrets: inherit
 
   # Phase 7.1: browser coverage is visible immediately but remains advisory
   # during the 30-day stabilization window. Nightly runs execute the same
@@ -712,7 +696,6 @@ jobs:
     needs: pre-commit-check
     permissions:
       contents: read
-      id-token: write
     strategy:
       fail-fast: false
       matrix:
@@ -725,8 +708,6 @@ jobs:
       shard-index: 1
       shard-total: 1
       advisory: true
-    # nosemgrep: yaml.github-actions.security.secrets-inherit.secrets-inherit
-    secrets: inherit
 
   security-audit:
     name: Security Audit
@@ -739,8 +720,6 @@ jobs:
     with:
       python-version: "3.14"
       node-version: "22"
-    # nosemgrep: yaml.github-actions.security.secrets-inherit.secrets-inherit
-    secrets: inherit
 
   # MOD-21-04 (audit 2026-03-25 Wave 21): Generate Software Bill of Materials
   # for supply chain security compliance (CycloneDX/SPDX).  Uploads as a build
@@ -1609,7 +1588,6 @@ jobs:
     timeout-minutes: 20
     permissions:
       contents: read
-      id-token: write
     if: |
       github.event_name == 'push' ||
       github.event_name == 'pull_request'
@@ -1723,46 +1701,6 @@ jobs:
         with:
           name: rust-coverage
           path: artifacts/coverage/rust/
-
-      - name: Upload rust-native coverage to Codecov
-        uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0
-        with:
-          use_oidc: true
-          files: artifacts/coverage/rust/rust-native/codecov.json
-          disable_search: true
-          flags: rust-native
-          name: rust-native-coverage
-          fail_ci_if_error: true
-
-      - name: Upload rust-pyo3-sanitizer coverage to Codecov
-        uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0
-        with:
-          use_oidc: true
-          files: artifacts/coverage/rust/rust-pyo3-sanitizer/codecov.json
-          disable_search: true
-          flags: rust-pyo3-sanitizer
-          name: rust-pyo3-sanitizer-coverage
-          fail_ci_if_error: true
-
-      - name: Upload rust-wasm-sanitizer coverage to Codecov
-        uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0
-        with:
-          use_oidc: true
-          files: artifacts/coverage/rust/rust-wasm-sanitizer/codecov.json
-          disable_search: true
-          flags: rust-wasm-sanitizer
-          name: rust-wasm-sanitizer-coverage
-          fail_ci_if_error: true
-
-      - name: Upload rust-crypto coverage to Codecov
-        uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0
-        with:
-          use_oidc: true
-          files: artifacts/coverage/rust/rust-crypto/codecov.json
-          disable_search: true
-          flags: rust-crypto
-          name: rust-crypto-coverage
-          fail_ci_if_error: true
 
       - name: Install wasm-pack
         # rustwasm canonical curl installer (W141 polish-v2 / W142 polish-v3:
@@ -2418,11 +2356,68 @@ jobs:
           --mutation-registry quality/mutation-exclusions.json
           --manifest artifacts/coverage/quality-manifest.json
 
+      - name: Stage trusted Codecov reports
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/coverage/codecov
+          cp coverage.xml artifacts/coverage/codecov/python.xml
+          cp frontend/coverage/lcov.info artifacts/coverage/codecov/frontend.lcov
+          cp artifacts/coverage/go/gateway/coverage.out artifacts/coverage/codecov/go-gateway.out
+          cp artifacts/coverage/go/ws-hub/coverage.out artifacts/coverage/codecov/go-ws-hub.out
+          cp artifacts/coverage/go/file-processor/coverage.out artifacts/coverage/codecov/go-file-processor.out
+          cp artifacts/coverage/rust/rust-native/codecov.json artifacts/coverage/codecov/rust-native.json
+          cp artifacts/coverage/rust/rust-pyo3-sanitizer/codecov.json artifacts/coverage/codecov/rust-pyo3-sanitizer.json
+          cp artifacts/coverage/rust/rust-wasm-sanitizer/codecov.json artifacts/coverage/codecov/rust-wasm-sanitizer.json
+          cp artifacts/coverage/rust/rust-crypto/codecov.json artifacts/coverage/codecov/rust-crypto.json
+
+      - name: Upload trusted Codecov reports artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: coverage-codecov-inputs
+          path: artifacts/coverage/codecov/
+          if-no-files-found: error
+
       - name: Upload Quality Manifest
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: quality-manifest
           path: artifacts/coverage/quality-manifest.json
+
+  codecov-upload:
+    name: Trusted Codecov Upload
+    # Never expose the OIDC minting permission to PR-controlled code.  This
+    # job runs only after the aggregate gate and only for protected main pushes.
+    if: ${{ github.event_name != 'pull_request' && github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: coverage-policy-gate
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Download staged coverage reports
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: coverage-codecov-inputs
+          path: artifacts/coverage/codecov
+
+      - name: Upload coverage to Codecov via OIDC
+        uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0
+        with:
+          use_oidc: true
+          disable_search: true
+          files: |
+            artifacts/coverage/codecov/python.xml
+            artifacts/coverage/codecov/frontend.lcov
+            artifacts/coverage/codecov/go-gateway.out
+            artifacts/coverage/codecov/go-ws-hub.out
+            artifacts/coverage/codecov/go-file-processor.out
+            artifacts/coverage/codecov/rust-native.json
+            artifacts/coverage/codecov/rust-pyo3-sanitizer.json
+            artifacts/coverage/codecov/rust-wasm-sanitizer.json
+            artifacts/coverage/codecov/rust-crypto.json
+          name: trusted-main-${{ github.sha }}
+          fail_ci_if_error: true
 
   quality-inventory-check:
     name: Source/Test Inventory & Anti-Pattern Check
@@ -2537,6 +2532,7 @@ jobs:
       - quality
       - rust-lint
       - coverage-policy-gate
+      - codecov-upload
       - quality-inventory-check
       - kyverno-test
 
@@ -2588,6 +2584,7 @@ jobs:
             "${{ needs.quality.result }}"
             "${{ needs.rust-lint.result }}"
             "${{ needs.coverage-policy-gate.result }}"
+            "${{ needs.codecov-upload.result }}"
             "${{ needs.quality-inventory-check.result }}"
             "${{ needs.kyverno-test.result }}"
           )

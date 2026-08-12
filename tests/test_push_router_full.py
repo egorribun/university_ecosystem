@@ -128,6 +128,22 @@ class TestSubscribe:
         assert resp.json()["detail"]["error"] == "invalid_subscription"
 
     @pytest.mark.asyncio
+    async def test_private_endpoint_is_rejected_before_persistence(
+        self, async_client: AsyncClient, user_factory, db_session
+    ):
+        hashed = await get_password_hash(_TEST_PASSWORD)
+        user = await user_factory(hashed_password=hashed, is_active=True)
+        headers = await _login(async_client, user.email)
+
+        resp = await async_client.post(
+            "/push/subscribe",
+            json=_sub_payload(endpoint="https://127.0.0.1/latest"),
+            headers=headers,
+        )
+        assert resp.status_code == 400
+        assert resp.json()["detail"]["error"] == "invalid_subscription"
+
+    @pytest.mark.asyncio
     async def test_validation_empty_keys(
         self, async_client: AsyncClient, user_factory, db_session
     ):

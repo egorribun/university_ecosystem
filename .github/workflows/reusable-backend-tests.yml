@@ -92,7 +92,6 @@ jobs:
         timeout-minutes: 45
         permissions:
             contents: read
-            id-token: write
         env:
             SECRET_KEY: ${{ secrets.SECRET_KEY || 'dummy_secret_key_for_ci_tests_at_least_32_chars' }}
             ENVIRONMENT: testing
@@ -112,6 +111,7 @@ jobs:
             - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
               with:
                   fetch-depth: 0
+                  persist-credentials: false
 
             - name: Setup Python
               uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
@@ -248,15 +248,6 @@ jobs:
                   uv run python scripts/quality/update_test_durations.py pytest-report.xml `
                     --output "artifacts/quality/test-durations-$env:TEST_GROUP_NAME.json"
 
-            - name: Upload coverage to Codecov
-              uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0
-              with:
-                use_oidc: true
-                files: ./coverage-*.xml
-                flags: python
-                name: backend-coverage-${{ inputs.test-group-name }}
-                fail_ci_if_error: true
-
 
     integration-tests:
         name: Integration Tests (${{ inputs.test-group-name }})
@@ -294,6 +285,8 @@ jobs:
                     --health-retries 5
         steps:
             - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+              with:
+                  persist-credentials: false
 
             - name: Setup Python
               uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0

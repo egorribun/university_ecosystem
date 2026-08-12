@@ -579,6 +579,10 @@ TRANSLATIONS: Mapping[str, Mapping[str, str]] = {
         "ru": "Endpoint обязателен",
         "en": "Endpoint is required",
     },
+    "notifications.push.validation.endpoint_invalid": {
+        "ru": "Endpoint должен быть безопасным HTTPS-адресом",
+        "en": "Endpoint must be a safe HTTPS URL",
+    },
     "notifications.push.validation.keys_auth_required": {
         "ru": "keys.auth не может быть пустым",
         "en": "keys.auth must not be empty",

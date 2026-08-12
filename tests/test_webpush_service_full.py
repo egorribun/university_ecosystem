@@ -60,6 +60,13 @@ class TestSendWebPush:
         assert result.subscription_id == sub.id
         mock_pywebpush.assert_called_once()
 
+    def test_rejects_private_endpoint_before_network_call(self, mock_pywebpush):
+        sub = self._make_sub("https://127.0.0.1/latest")
+        result = send_web_push(sub, {"title": "Blocked"})
+        assert result.status == "error"
+        assert "private" in (result.error or "").lower()
+        mock_pywebpush.assert_not_called()
+
     def test_gone_404(self, mock_pywebpush):
         from pywebpush import WebPushException
 

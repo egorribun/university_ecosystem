@@ -33,6 +33,43 @@ def _is_blocked(addr: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
     return any(addr in net for net in _BLOCKED_NETWORKS)
 
 
+def validate_public_https_url(url: str) -> None:
+    """Validate syntax and local-address safety for a public HTTPS URL.
+
+    Push endpoints are supplied by browsers, so a provider allow-list is not
+    appropriate.  This check is safe before persistence; callers should also
+    resolve and validate the hostname immediately before an outbound request.
+    """
+    if not isinstance(url, str) or not url.strip():
+        raise ValueError("URL must not be empty")
+
+    parsed = urlparse(url.strip())
+    if parsed.scheme.lower() != "https":
+        raise ValueError("URL must use https scheme")
+    if not parsed.netloc or parsed.username or parsed.password:
+        raise ValueError("URL must include a host and no credentials")
+
+    hostname = parsed.hostname
+    if not hostname:
+        raise ValueError("URL has no hostname")
+    try:
+        port = parsed.port
+    except ValueError as exc:
+        raise ValueError("URL has an invalid port") from exc
+    if port is not None and not 1 <= port <= 65535:
+        raise ValueError("URL has an invalid port")
+
+    normalized_hostname = hostname.rstrip(".").lower()
+    if normalized_hostname in {"localhost", "localhost.localdomain"}:
+        raise ValueError("URL hostname is local")
+    try:
+        address = ipaddress.ip_address(normalized_hostname)
+    except ValueError:
+        return
+    if _is_blocked(address):
+        raise ValueError(f"URL resolves to a private/reserved address: {address}")
+
+
 def _check_ip_literal(
     hostname: str,
 ) -> ipaddress.IPv4Address | ipaddress.IPv6Address | None:

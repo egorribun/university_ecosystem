@@ -35,6 +35,7 @@ from app.core.ratelimit import (
     enforce_rate_limit,
     get_default_strategy,
 )
+from app.core.ssrf import validate_public_https_url, validate_url_not_internal
 from app.models import PushSubscription, User
 from app.services.notification_templates import render_notification_template
 from app.services.push_topics import normalize_topic
@@ -619,12 +620,26 @@ def send_web_push(sub: PushSubscription, data: dict[str, Any]) -> WebPushResult:
     topic = meta.get("topic")
     if topic:
         headers["Topic"] = str(topic)
+    endpoint = str(sub.endpoint).strip()
     subscription_info = {
-        "endpoint": sub.endpoint,
+        "endpoint": endpoint,
         "keys": {"p256dh": sub.p256dh, "auth": sub.auth},
     }
     user_id = getattr(sub, "user_id", None)
     try:
+        validate_public_https_url(endpoint)
+        try:
+            # Re-check immediately before the network call to fail closed on
+            # DNS changes between subscription and delivery.  Development
+            # fixtures may use non-resolving provider placeholders, but never
+            # bypass an actual private-address resolution.
+            validate_url_not_internal(endpoint)
+        except ValueError as exc:
+            if not (
+                getattr(settings, "is_development", False)
+                and "DNS resolution failed" in str(exc)
+            ):
+                raise
         webpush(
             subscription_info=subscription_info,
             data=json_dumps(normalized_payload),
