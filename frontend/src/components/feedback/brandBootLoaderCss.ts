@@ -5,9 +5,9 @@ export const BRAND_BOOT_LOADER_CSS = String.raw`
   --brand-boot-loader-cycle: 6s;
   --brand-boot-loader-hold: 2500ms;
   --brand-boot-loader-exit: 450ms;
-  --brand-boot-loader-size: clamp(9rem, 22vmin, 18rem);
-  --brand-boot-loader-gap: clamp(1.125rem, 3vmin, 1.75rem);
-  --brand-boot-loader-status-size: clamp(0.6875rem, 1.4vmin, 0.8125rem);
+  --brand-boot-loader-size: clamp(9rem, 22vmin, 30rem);
+  --brand-boot-loader-gap: clamp(1.125rem, 3vmin, 3rem);
+  --brand-boot-loader-status-size: clamp(0.6875rem, 1.4vmin, 1.125rem);
   --brand-boot-loader-status-color: #8490a2;
   --brand-boot-loader-draw-ease: cubic-bezier(0.61, 0.06, 0.35, 1);
   --brand-boot-loader-exit-ease: cubic-bezier(0.4, 0, 0.2, 1);
@@ -16,6 +16,17 @@ export const BRAND_BOOT_LOADER_CSS = String.raw`
 
 .dark {
   --brand-boot-loader-status-color: #aeb8c7;
+}
+
+html:has(.brand-boot-loader) {
+  overflow-y: hidden;
+  overflow-y: clip;
+  animation: brand-boot-loader-scroll-unlock 1ms linear 12s forwards;
+}
+
+.brand-boot-loader ~ #root {
+  overflow-x: hidden;
+  overflow-x: clip;
 }
 
 .brand-boot-loader {
@@ -354,6 +365,12 @@ export const BRAND_BOOT_LOADER_CSS = String.raw`
     opacity: 0;
     visibility: hidden;
     pointer-events: none;
+  }
+}
+
+@keyframes brand-boot-loader-scroll-unlock {
+  to {
+    overflow-y: auto;
   }
 }
 
