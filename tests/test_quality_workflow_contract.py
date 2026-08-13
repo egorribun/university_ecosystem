@@ -1594,6 +1594,24 @@ def test_reusable_quality_jobs_have_bounded_execution() -> None:
     assert lighthouse_shards["env"]["LHCI_URLS"] == "${{ matrix.urls }}"
     assert lighthouse_shards["env"]["SKIP_BUILD"] == "1"
     assert lighthouse_shards["env"]["LHCI_SKIP_SYSTEM_DEPS"] == "1"
+    lighthouse_bundle = next(
+        step
+        for step in frontend["jobs"]["build"]["steps"]
+        if step.get("name") == "Upload Lighthouse bundle"
+    )
+    assert lighthouse_bundle["with"]["name"] == "frontend-lhci-dist"
+    lighthouse_build = next(
+        step
+        for step in frontend["jobs"]["build"]["steps"]
+        if step.get("name") == "Build Lighthouse bundle"
+    )
+    assert lighthouse_build["env"] == {"VITE_LHCI": "true", "SKIP_WASM_BUILD": "1"}
+    lighthouse_download = next(
+        step
+        for step in lighthouse_shards["steps"]
+        if step.get("name") == "Download Lighthouse bundle"
+    )
+    assert lighthouse_download["with"]["name"] == "frontend-lhci-dist"
     shard_upload = next(
         step
         for step in lighthouse_shards["steps"]

@@ -305,6 +305,24 @@ jobs:
           path: ${{ inputs.working-directory }}/dist
           if-no-files-found: error
 
+      # Lighthouse must use a bundle compiled with VITE_LHCI=true.  That flag
+      # controls compile-time mocks and SSR-safe UI branches, so setting it in
+      # the shard after downloading the production bundle is too late.  Reuse
+      # the WASM artifacts produced above and build this second immutable
+      # bundle once, keeping the expensive wasm-pack work out of every shard.
+      - name: Build Lighthouse bundle
+        run: npm run build
+        env:
+          VITE_LHCI: "true"
+          SKIP_WASM_BUILD: "1"
+
+      - name: Upload Lighthouse bundle
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: frontend-lhci-dist
+          path: ${{ inputs.working-directory }}/dist
+          if-no-files-found: error
+
   # MOD-23-06 (audit 2026-03-25 Wave 23): Bundle size analysis.
   # Alerts on >500 KB main chunk growth and generates a JSON report for trend tracking.
   bundle-analysis:
@@ -390,12 +408,12 @@ jobs:
     env:
       VITE_BACKEND_ORIGIN: http://localhost:8000
       LHCI_URLS: ${{ matrix.urls }}
-      # The production bundle is built and validated by the `build` job above
-      # and is downloaded into this shard.  Rebuilding here makes every shard
-      # re-download Binaryen through wasm-pack, so a transient GitHub Releases
-      # outage can fail Lighthouse before a single audit starts.  Reuse the
-      # immutable same-commit bundle; run-lhci still prepares route fallbacks
-      # and performs the complete collect/assert gate.
+      # The dedicated LHCI bundle is built once by the `build` job with
+      # VITE_LHCI=true and downloaded into this shard. Rebuilding here would
+      # make every shard re-download Binaryen through wasm-pack, so a transient
+      # GitHub Releases outage could fail Lighthouse before a single audit
+      # starts. run-lhci still prepares route fallbacks and performs the
+      # complete collect/assert gate.
       SKIP_BUILD: "1"
       # ubuntu-latest already contains the browser runtime libraries. The
       # Playwright apt bootstrap is intentionally opt-in here: every matrix
@@ -414,10 +432,10 @@ jobs:
           cache: npm
           cache-dependency-path: ${{ inputs.working-directory }}/package-lock.json
 
-      - name: Download built dist
+      - name: Download Lighthouse bundle
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          name: frontend-dist
+          name: frontend-lhci-dist
           path: ${{ inputs.working-directory }}/dist
 
       - name: Install dependencies
