@@ -8,6 +8,8 @@ import {
 import type { RouterContext } from "@/router"
 import MainLayout from "@/components/layout/MainLayout"
 import InstallPrompt from "@/components/pwa/InstallPrompt"
+import { BrandBootLoader } from "@/components/feedback/BrandBootLoader"
+import { BRAND_BOOT_LOADER_CSS } from "@/components/feedback/brandBootLoaderCss"
 import LivePushToasts from "@/components/feedback/LivePushToasts"
 import OfflineIndicator from "@/components/feedback/OfflineIndicator"
 import { PageErrorBoundary } from "@/components/error/PageErrorBoundary"
@@ -129,6 +131,8 @@ body::after {
 }
 
 /* LHCI_CSS_PLACEHOLDER */`
+
+const CRITICAL_SHELL_CSS = `${INITIAL_PAINT_CSS}\n${BRAND_BOOT_LOADER_CSS}`
 
 export const Route = createRootRouteWithContext<RouterContext>()({
   // Wave 128 SW2 baseline: root `ssr: true` so per-route `ssr: true` annotations
@@ -256,7 +260,7 @@ function RootShell({ children }: { children: React.ReactNode }) {
     <html lang={lang} className={isDark ? "dark" : undefined} suppressHydrationWarning>
       <head>
         <HeadContent />
-        <style dangerouslySetInnerHTML={{ __html: INITIAL_PAINT_CSS }} />
+        <style dangerouslySetInnerHTML={{ __html: CRITICAL_SHELL_CSS }} />
       </head>
       {/*
         W156 SW3 polish — `suppressHydrationWarning` on <body> because browser
@@ -293,6 +297,7 @@ function RootShell({ children }: { children: React.ReactNode }) {
         >
           LHCI RENDER START
         </div>
+        <BrandBootLoader />
         {/*
           W156 SW3 polish — `className="ready"` rendered server-side via JSX
           so the opacity-1 state is in the SSR HTML from the start. Pre-W156

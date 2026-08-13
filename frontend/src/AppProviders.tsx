@@ -2,6 +2,7 @@ import { useEffect } from "react"
 import type { ReactNode } from "react"
 import { LazyMotion, MotionConfig, domAnimation } from "framer-motion"
 
+import { markAppHydrated } from "@/app/hydration"
 import ErrorBoundary from "@/components/feedback/ErrorBoundary"
 import { LiveRegionProvider } from "./components/ui/LiveRegionProvider"
 import { AppShellProvider } from "./contexts/AppShellContext"
@@ -99,12 +100,10 @@ export function AppProviders({ children }: AppProvidersProps) {
   //       complexity for a 1-byte boolean.
   //
   // The current implementation is the safe default (top-level, immediate,
-  // no-cleanup). Adjust if any choice's reasoning above doesn't match the
-  // app's actual hydration semantics for your future test needs.
+  // no-cleanup). markAppHydrated also emits the idempotent bootstrap-loader
+  // completion event without changing this post-commit timing.
   useEffect(() => {
-    if (typeof window !== "undefined") {
-      window.__APP_HYDRATED = true
-    }
+    markAppHydrated()
   }, [])
 
   return (
