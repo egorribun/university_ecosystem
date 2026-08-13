@@ -41,6 +41,8 @@ jobs:
         working-directory: ${{ inputs.working-directory }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Setup Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
@@ -107,7 +109,6 @@ jobs:
     timeout-minutes: 45
     permissions:
       contents: read
-      id-token: write
     defaults:
       run:
         working-directory: ${{ inputs.working-directory }}
@@ -121,6 +122,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Setup Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
@@ -191,15 +193,6 @@ jobs:
           name: frontend-coverage
           path: ${{ inputs.working-directory }}/coverage/
 
-      - name: Upload frontend coverage to Codecov
-        uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0
-        with:
-          use_oidc: true
-          files: ./${{ inputs.working-directory }}/coverage/lcov.info
-          flags: frontend
-          name: frontend-coverage
-          fail_ci_if_error: true
-
   lint:
     name: Lint & Format
     runs-on: ubuntu-latest
@@ -209,6 +202,8 @@ jobs:
         working-directory: ${{ inputs.working-directory }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Setup Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
@@ -271,6 +266,8 @@ jobs:
       VITE_BACKEND_ORIGIN: http://localhost:8000
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Setup Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
@@ -308,6 +305,24 @@ jobs:
           path: ${{ inputs.working-directory }}/dist
           if-no-files-found: error
 
+      # Lighthouse must use a bundle compiled with VITE_LHCI=true.  That flag
+      # controls compile-time mocks and SSR-safe UI branches, so setting it in
+      # the shard after downloading the production bundle is too late.  Reuse
+      # the WASM artifacts produced above and build this second immutable
+      # bundle once, keeping the expensive wasm-pack work out of every shard.
+      - name: Build Lighthouse bundle
+        run: npm run build
+        env:
+          VITE_LHCI: "true"
+          SKIP_WASM_BUILD: "1"
+
+      - name: Upload Lighthouse bundle
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: frontend-lhci-dist
+          path: ${{ inputs.working-directory }}/dist
+          if-no-files-found: error
+
   # MOD-23-06 (audit 2026-03-25 Wave 23): Bundle size analysis.
   # Alerts on >500 KB main chunk growth and generates a JSON report for trend tracking.
   bundle-analysis:
@@ -320,6 +335,8 @@ jobs:
         working-directory: ${{ inputs.working-directory }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Download production bundle
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
@@ -391,6 +408,13 @@ jobs:
     env:
       VITE_BACKEND_ORIGIN: http://localhost:8000
       LHCI_URLS: ${{ matrix.urls }}
+      # The dedicated LHCI bundle is built once by the `build` job with
+      # VITE_LHCI=true and downloaded into this shard. Rebuilding here would
+      # make every shard re-download Binaryen through wasm-pack, so a transient
+      # GitHub Releases outage could fail Lighthouse before a single audit
+      # starts. run-lhci still prepares route fallbacks and performs the
+      # complete collect/assert gate.
+      SKIP_BUILD: "1"
       # ubuntu-latest already contains the browser runtime libraries. The
       # Playwright apt bootstrap is intentionally opt-in here: every matrix
       # shard has its own runner, and a slow apt mirror can consume the full
@@ -398,6 +422,8 @@ jobs:
       LHCI_SKIP_SYSTEM_DEPS: "1"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Setup Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
@@ -406,22 +432,14 @@ jobs:
           cache: npm
           cache-dependency-path: ${{ inputs.working-directory }}/package-lock.json
 
-      - name: Download built dist
+      - name: Download Lighthouse bundle
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          name: frontend-dist
+          name: frontend-lhci-dist
           path: ${{ inputs.working-directory }}/dist
 
       - name: Install dependencies
         run: npm ci
-
-      - name: Install wasm-pack
-        # W142 polish-v3 — taiki-e/install-action wasm-pack broken (drager/
-        # wasm-pack 404; rustwasm/wasm-pack canonical since v0.14.0). Same
-        # fix as W141 polish-v2 visual-audit.yml + W142 chromatic.yml.
-        uses: taiki-e/install-action@54420ca6e3a4cab262aeabc1af4f52908ca28931 # wasm-pack
-        with:
-          tool: wasm-pack@0.13.1
 
       - name: Run Lighthouse CI shard
         run: npm run lhci
@@ -451,6 +469,10 @@ jobs:
     steps:
       - name: Verify all Lighthouse shards passed
         if: ${{ needs.lighthouse-shards.result != 'success' }}
+        # This guard runs before the artifact download creates the frontend
+        # working directory.  Keep it at the workspace root so a failed shard
+        # reports the real Lighthouse failure instead of a missing cwd error.
+        working-directory: ${{ github.workspace }}
         run: |
           echo "::error::One or more Lighthouse shards failed"
           exit 1

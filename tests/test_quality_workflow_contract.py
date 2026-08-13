@@ -186,9 +186,16 @@ def test_dockerfile_lint_excludes_companion_dockerignore_files() -> None:
     assert '! -name "*.dockerignore"' in hadolint_step["run"]
 
 
-def test_rust_codecov_uploads_are_explicit_custom_reports() -> None:
+def test_rust_codecov_reports_are_staged_for_trusted_upload() -> None:
     workflow = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
     rust_job = workflow["jobs"]["rust-tests"]
+    coverage_gate = workflow["jobs"]["coverage-policy-gate"]
+    staging_step = next(
+        step
+        for step in coverage_gate["steps"]
+        if step.get("name") == "Stage trusted Codecov reports"
+    )
+    trusted_upload = workflow["jobs"]["codecov-upload"]["steps"][-1]
 
     report_commands = {
         "rust-native": "cargo llvm-cov report --codecov",
@@ -217,15 +224,19 @@ def test_rust_codecov_uploads_are_explicit_custom_reports() -> None:
             < coverage_script.index(report_path)
             < coverage_script.index(f"{component}/branch-llvm.json")
         )
-
-        upload_step = next(
-            step
-            for step in rust_job["steps"]
-            if step.get("name") == f"Upload {component} coverage to Codecov"
+        assert (
+            f"cp {report_path} artifacts/coverage/codecov/{component}.json"
+            in staging_step["run"]
         )
-        assert upload_step["with"]["files"] == report_path
-        assert upload_step["with"]["disable_search"] is True
-        assert upload_step["with"]["fail_ci_if_error"] is True
+        assert (
+            f"artifacts/coverage/codecov/{component}.json"
+            in trusted_upload["with"]["files"]
+        )
+
+    assert not any(
+        str(step.get("uses", "")).startswith("codecov/codecov-action@")
+        for step in rust_job["steps"]
+    )
 
 
 def test_rust_coverage_job_does_not_restore_stale_llvm_build_artifacts() -> None:
@@ -716,7 +727,7 @@ def test_checkov_workflow_filters_sarif_before_upload() -> None:
     assert steps[upload_index]["with"]["sarif_file"] == "filtered-results.sarif"
 
 
-def test_e2e_coverage_is_chromium_opt_in_and_codecov_wired() -> None:
+def test_e2e_coverage_is_chromium_opt_in_and_staged_for_codecov() -> None:
     e2e_workflow = yaml.safe_load(E2E_WORKFLOW_PATH.read_text(encoding="utf-8"))
     call = _workflow_triggers(e2e_workflow)["workflow_call"]
     inputs = call["inputs"]
@@ -737,29 +748,36 @@ def test_e2e_coverage_is_chromium_opt_in_and_codecov_wired() -> None:
     )
     assert merger_test_step["run"] == "npm run test:e2e:coverage-tool"
 
-    codecov_step = next(
-        step for step in steps if step.get("name") == "Upload E2E coverage to Codecov"
+    artifact_step = next(
+        step for step in steps if step.get("name") == "Upload E2E coverage artifact"
     )
-    assert "inputs.browser == 'chromium'" in codecov_step["if"]
-    assert codecov_step["with"]["flags"] == "frontend"
-    assert codecov_step["with"]["files"] == "./frontend/coverage/e2e/lcov.info"
-    assert codecov_step["with"]["use_oidc"] is True
-    assert codecov_step["with"]["fail_ci_if_error"] is True
+    assert "inputs.collect-coverage" in artifact_step["if"]
+    assert "inputs.browser == 'chromium'" in artifact_step["if"]
+    assert artifact_step["with"]["path"] == "frontend/coverage/e2e/"
+    assert not any(
+        str(step.get("uses", "")).startswith("codecov/codecov-action@")
+        for step in steps
+    )
     assert e2e_workflow["permissions"] == {"contents": "read"}
-    assert e2e_workflow["jobs"]["e2e"]["permissions"] == {
-        "contents": "read",
-        "id-token": "write",
-    }
+    assert e2e_workflow["jobs"]["e2e"]["permissions"] == {"contents": "read"}
 
     ci_workflow = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    staging = next(
+        step
+        for step in ci_workflow["jobs"]["coverage-policy-gate"]["steps"]
+        if step.get("name") == "Stage trusted Codecov reports"
+    )
+    assert "frontend/coverage/lcov.info" in staging["run"]
+    assert "artifacts/coverage/codecov/frontend.lcov" in staging["run"]
+
     assert ci_workflow["jobs"]["e2e-tests"]["with"]["collect-coverage"] is True
     assert (
         "collect-coverage" not in ci_workflow["jobs"]["e2e-tests-cross-browser"]["with"]
     )
 
 
-def test_codecov_oidc_permissions_are_scoped_to_upload_jobs() -> None:
-    """Only jobs that can upload coverage receive an OIDC identity token."""
+def test_codecov_oidc_permissions_are_scoped_to_trusted_upload_job() -> None:
+    """Only the trusted main-branch uploader receives an OIDC token."""
 
     reusable_workflows = (
         (BACKEND_WORKFLOW_PATH, "unit-tests"),
@@ -772,29 +790,29 @@ def test_codecov_oidc_permissions_are_scoped_to_upload_jobs() -> None:
         call = _workflow_triggers(workflow)["workflow_call"]
         assert workflow["permissions"] == {"contents": "read"}
         assert "CODECOV_TOKEN" not in call.get("secrets", {})
-        assert workflow["jobs"][upload_job_name]["permissions"] == {
-            "contents": "read",
-            "id-token": "write",
-        }
-
-        uploads = [
-            step
+        assert workflow["jobs"][upload_job_name]["permissions"] == {"contents": "read"}
+        assert not any(
+            str(step.get("uses", "")).startswith("codecov/codecov-action@")
             for step in workflow["jobs"][upload_job_name]["steps"]
-            if str(step.get("uses", "")).startswith("codecov/codecov-action@")
-        ]
-        assert uploads
-        for upload in uploads:
-            assert upload["with"]["use_oidc"] is True
-            assert upload["with"]["fail_ci_if_error"] is True
+        )
 
     nightly = yaml.safe_load(NIGHTLY_FULL_WORKFLOW_PATH.read_text(encoding="utf-8"))
-    assert nightly["permissions"] == {"contents": "read", "issues": "write"}
+    assert nightly["permissions"] == {"contents": "read"}
     assert "CODECOV_TOKEN" not in NIGHTLY_FULL_WORKFLOW_PATH.read_text(encoding="utf-8")
     for job_name in ("backend-full", "backend-integration", "browser-matrix"):
-        assert nightly["jobs"][job_name]["permissions"] == {
-            "contents": "read",
-            "id-token": "write",
-        }
+        assert nightly["jobs"][job_name]["permissions"] == {"contents": "read"}
+
+    ci = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    trusted = ci["jobs"]["codecov-upload"]
+    assert trusted["permissions"] == {"contents": "read", "id-token": "write"}
+    assert "github.ref == 'refs/heads/main'" in trusted["if"]
+    upload = next(
+        step
+        for step in trusted["steps"]
+        if str(step.get("uses", "")).startswith("codecov/codecov-action@")
+    )
+    assert upload["with"]["use_oidc"] is True
+    assert upload["with"]["fail_ci_if_error"] is True
 
 
 def test_e2e_postgres_healthcheck_uses_declared_credentials() -> None:
@@ -843,22 +861,31 @@ def test_cross_browser_navigation_retries_only_transient_abort_errors() -> None:
     assert "if (!TRANSIENT_NAVIGATION_ERROR.test(message)" in source
 
 
-def test_go_codecov_flags_match_component_contract() -> None:
+def test_go_coverage_artifacts_are_staged_for_trusted_codecov_upload() -> None:
     workflow = yaml.safe_load(GO_WORKFLOW_PATH.read_text(encoding="utf-8"))
     steps = workflow["jobs"]["test"]["steps"]
-    resolver = next(
-        step for step in steps if step.get("name") == "Resolve Codecov component flag"
-    )
-    resolver_script = resolver["run"]
-    assert 'services/gateway) flag="go-gateway"' in resolver_script
-    assert 'services/ws-hub) flag="go-ws-hub"' in resolver_script
-    assert 'services/file-processor) flag="go-file-processor"' in resolver_script
-
     upload = next(
-        step for step in steps if step.get("name") == "Upload coverage to Codecov"
+        step for step in steps if step.get("name") == "Upload coverage artifacts"
     )
-    assert "steps.codecov-flag.outputs.flag" in upload["if"]
-    assert upload["with"]["flags"] == "${{ steps.codecov-flag.outputs.flag }}"
+    assert "coverage.out" in upload["with"]["path"]
+    assert upload["with"]["name"] == "${{ steps.artifact-name.outputs.name }}"
+    artifact_name = next(
+        step for step in steps if step.get("name") == "Generate artifact name"
+    )
+    assert "go-coverage-$SANITIZED" in artifact_name["run"]
+
+    ci = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    staging = next(
+        step
+        for step in ci["jobs"]["coverage-policy-gate"]["steps"]
+        if step.get("name") == "Stage trusted Codecov reports"
+    )
+    for report in (
+        "go-gateway.out",
+        "go-ws-hub.out",
+        "go-file-processor.out",
+    ):
+        assert f"artifacts/coverage/codecov/{report}" in staging["run"]
 
 
 def test_advisory_integration_and_chaos_jobs_are_not_blocking() -> None:
@@ -1565,7 +1592,26 @@ def test_reusable_quality_jobs_have_bounded_execution() -> None:
         "fallback",
     ]
     assert lighthouse_shards["env"]["LHCI_URLS"] == "${{ matrix.urls }}"
+    assert lighthouse_shards["env"]["SKIP_BUILD"] == "1"
     assert lighthouse_shards["env"]["LHCI_SKIP_SYSTEM_DEPS"] == "1"
+    lighthouse_bundle = next(
+        step
+        for step in frontend["jobs"]["build"]["steps"]
+        if step.get("name") == "Upload Lighthouse bundle"
+    )
+    assert lighthouse_bundle["with"]["name"] == "frontend-lhci-dist"
+    lighthouse_build = next(
+        step
+        for step in frontend["jobs"]["build"]["steps"]
+        if step.get("name") == "Build Lighthouse bundle"
+    )
+    assert lighthouse_build["env"] == {"VITE_LHCI": "true", "SKIP_WASM_BUILD": "1"}
+    lighthouse_download = next(
+        step
+        for step in lighthouse_shards["steps"]
+        if step.get("name") == "Download Lighthouse bundle"
+    )
+    assert lighthouse_download["with"]["name"] == "frontend-lhci-dist"
     shard_upload = next(
         step
         for step in lighthouse_shards["steps"]
@@ -1573,11 +1619,20 @@ def test_reusable_quality_jobs_have_bounded_execution() -> None:
     )
     assert shard_upload["with"]["include-hidden-files"] is True
     assert shard_upload["with"]["name"] == "lighthouse-reports-${{ matrix.shard }}"
+    assert not any(
+        step.get("name") == "Install wasm-pack" for step in lighthouse_shards["steps"]
+    )
 
     lighthouse_aggregate = frontend["jobs"]["lighthouse"]
     assert lighthouse_aggregate["needs"] == "lighthouse-shards"
     assert "always()" in lighthouse_aggregate["if"]
     assert lighthouse_aggregate["name"] == "Lighthouse Audit"
+    shard_guard = next(
+        step
+        for step in lighthouse_aggregate["steps"]
+        if step.get("name") == "Verify all Lighthouse shards passed"
+    )
+    assert shard_guard["working-directory"] == "${{ github.workspace }}"
     merge_text = "\n".join(
         step.get("run", "")
         for step in lighthouse_aggregate["steps"]
@@ -1720,6 +1775,7 @@ def test_nightly_full_gate_contains_the_long_running_quality_suites() -> None:
     jobs = workflow["jobs"]
     assert {
         "mutation-tests-full",
+        "mutation-tests-full-aggregate",
         "frontend-mutation-tests-full",
         "backend-full",
         "go-integration",
@@ -1730,13 +1786,15 @@ def test_nightly_full_gate_contains_the_long_running_quality_suites() -> None:
         "notify-failure",
         "container-integration-cells",
     } <= set(jobs)
-    mutation_steps = jobs["mutation-tests-full"]["steps"]
+    mutation_steps = jobs["mutation-tests-full-aggregate"]["steps"]
     export_step = next(
         step
         for step in mutation_steps
-        if step.get("name") == "Export and gate mutation statistics"
+        if step.get("name") == "Merge and gate full mutation evidence"
     )
-    assert "scripts/export_mutmut_shard_stats.py --all" in export_step["run"]
+    assert "scripts/merge_mutmut_cicd_stats.py" in export_step["run"]
+    assert "--expected-shards 16" in export_step["run"]
+    assert "scripts/check_mutation_score.py --min-score 100" in export_step["run"]
     assert "mutmut export-cicd-stats" not in export_step["run"]
     assert jobs["go-integration"]["strategy"]["matrix"]["service-directory"] == [
         "services/gateway",
@@ -1770,8 +1828,13 @@ def test_nightly_full_gate_contains_the_long_running_quality_suites() -> None:
         "mobile-webkit",
     ]
     assert "always()" in jobs["notify-failure"]["if"]
+    assert "mutation-tests-full-stats" in jobs["notify-failure"]["needs"]
     assert "frontend-mutation-tests-full" in jobs["notify-failure"]["needs"]
-    assert "issues" in workflow["permissions"]
+    assert workflow["permissions"] == {"contents": "read"}
+    assert jobs["notify-failure"]["permissions"] == {
+        "contents": "read",
+        "issues": "write",
+    }
     assert jobs["kyverno-test"]["timeout-minutes"] == 15
     assert jobs["miri"]["env"]["PROPTEST_DISABLE_FAILURE_PERSISTENCE"] == "1"
     assert jobs["miri"]["env"]["MIRIFLAGS"] == (
@@ -1973,48 +2036,89 @@ def test_full_mutation_gate_uses_the_fail_closed_exporter() -> None:
     nightly_workflow = yaml.safe_load(
         NIGHTLY_FULL_WORKFLOW_PATH.read_text(encoding="utf-8")
     )
-    mutation_job = nightly_workflow["jobs"]["mutation-tests-full"]
+    mutation_job = nightly_workflow["jobs"]["mutation-tests-full-aggregate"]
     mutation_text = "\n".join(
         step.get("run", "") for step in mutation_job["steps"] if isinstance(step, dict)
     )
 
-    export_index = mutation_text.index("scripts/export_mutmut_shard_stats.py")
+    export_index = mutation_text.index("scripts/merge_mutmut_cicd_stats.py")
     gate_index = mutation_text.index("scripts/check_mutation_score.py")
     assert export_index < gate_index
-    assert "--all" in mutation_text
+    assert "--expected-shards 16" in mutation_text
     assert "uv run mutmut export-cicd-stats" not in mutation_text
     assert "test -s mutants/mutmut-cicd-stats.json" in mutation_text
 
 
 def test_full_mutation_gate_isolates_stats_and_clean_pytest_invocations() -> None:
-    """Keep the clean baseline as the fresh mutation process's first pytest call."""
+    """Keep sharded stats isolated and the clean baseline fresh."""
 
     nightly_workflow = yaml.safe_load(
         NIGHTLY_FULL_WORKFLOW_PATH.read_text(encoding="utf-8")
     )
+    stats_job = nightly_workflow["jobs"]["mutation-tests-full-stats"]
     mutation_steps = nightly_workflow["jobs"]["mutation-tests-full"]["steps"]
-    stats_step_index = next(
-        index
-        for index, step in enumerate(mutation_steps)
-        if step.get("name") == "Collect full mutmut stats (isolated process)"
+    assert nightly_workflow["jobs"]["mutation-tests-full"]["needs"] == (
+        "mutation-tests-full-stats"
+    )
+    assert nightly_workflow["jobs"]["mutation-tests-full"]["strategy"]["matrix"][
+        "shard"
+    ] == list(range(1, 17))
+    assert stats_job["strategy"]["matrix"]["stats_shard"] == [0, 1, 2, 3]
+    stats_steps = stats_job["steps"]
+    stats_step = next(
+        step
+        for step in stats_steps
+        if step.get("name") == "Collect full mutmut stats shard"
+    )
+    upload_step = next(
+        step
+        for step in stats_steps
+        if step.get("name") == "Upload full mutmut stats shard"
     )
     run_step_index = next(
         index
         for index, step in enumerate(mutation_steps)
-        if step.get("name") == "Run the complete mutation universe"
+        if step.get("name") == "Plan and run exact full mutation shard"
     )
-    stats_script = mutation_steps[stats_step_index]["run"]
+    download_step = next(
+        step
+        for step in mutation_steps
+        if step.get("name") == "Download full mutmut stats shards"
+    )
+    merge_step = next(
+        step
+        for step in mutation_steps
+        if step.get("name") == "Merge full mutmut stats shards"
+    )
+    stats_script = stats_step["run"]
     run_script = mutation_steps[run_step_index]["run"]
 
-    assert stats_step_index < run_step_index
     assert "rm -rf mutants" in stats_script
     assert "scripts/mutmut_stats_shard.py" in stats_script
-    assert "--shard-id 0" in stats_script
-    assert "--num-shards 1" in stats_script
+    assert '--shard-id "${{ matrix.stats_shard }}"' in stats_script
+    assert "--num-shards 4" in stats_script
     assert "--max-children 2" in stats_script
+    assert (
+        "nightly-mutmut-stats-${{ github.run_id }}-${{ matrix.stats_shard }}"
+        in upload_step["with"]["name"]
+    )
+    assert download_step["with"]["pattern"] == (
+        "nightly-mutmut-stats-${{ github.run_id }}-*"
+    )
+    assert "scripts/merge_mutmut_stats.py" in merge_step["run"]
+    assert "--input-root mutmut-stats" in merge_step["run"]
+    assert "scripts/plan_mutmut_shards.py" in run_script
+    assert "--num-shards 16" in run_script
     assert "scripts/run_mutmut_with_stats.py --max-children 2" in run_script
     assert "uv run mutmut run" not in run_script
     assert "scripts/mutmut_stats_shard.py" not in run_script
+    aggregate_job = nightly_workflow["jobs"]["mutation-tests-full-aggregate"]
+    assert aggregate_job["needs"] == "mutation-tests-full"
+    aggregate_text = "\n".join(
+        step.get("run", "") for step in aggregate_job["steps"] if isinstance(step, dict)
+    )
+    assert "scripts/merge_mutmut_cicd_stats.py" in aggregate_text
+    assert "--expected-shards 16" in aggregate_text
 
 
 def test_pr_quality_gates_enforce_contract_policy_values() -> None:
@@ -2190,12 +2294,20 @@ def test_frontend_mutation_gate_is_blocking_and_reproducible() -> None:
         if step.get("name") == "Check differential frontend coverage"
     )
     assert "--fail-under=100" in diff_step["run"]
-    codecov_step = next(
-        step
-        for step in unit_steps
-        if step.get("name") == "Upload frontend coverage to Codecov"
+    coverage_step = next(
+        step for step in unit_steps if step.get("name") == "Upload coverage artifacts"
     )
-    assert codecov_step["with"]["flags"] == "frontend"
+    assert "frontend-coverage" == coverage_step["with"]["name"]
+
+    ci_coverage_gate = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))[
+        "jobs"
+    ]["coverage-policy-gate"]
+    staging_step = next(
+        step
+        for step in ci_coverage_gate["steps"]
+        if step.get("name") == "Stage trusted Codecov reports"
+    )
+    assert "frontend/coverage/lcov.info" in staging_step["run"]
 
 
 def test_quality_promotion_workflow_uses_fail_closed_stabilization_checker() -> None:

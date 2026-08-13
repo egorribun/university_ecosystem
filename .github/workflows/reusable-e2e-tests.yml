@@ -70,7 +70,6 @@ jobs:
     timeout-minutes: 45
     permissions:
       contents: read
-      id-token: write
     env:
       SECRET_KEY: "dummy_secret_key_for_ci_tests_at_least_32_chars"
       ENVIRONMENT: testing
@@ -115,6 +114,8 @@ jobs:
           --health-retries 5
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Setup Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
@@ -347,16 +348,6 @@ jobs:
           path: frontend/coverage/e2e/
           if-no-files-found: warn
           retention-days: 14
-
-      - name: Upload E2E coverage to Codecov
-        if: ${{ inputs.collect-coverage && inputs.browser == 'chromium' && success() && hashFiles('frontend/coverage/e2e/lcov.info') != '' }}
-        uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0
-        with:
-          use_oidc: true
-          files: ./frontend/coverage/e2e/lcov.info
-          flags: frontend
-          name: frontend-e2e-chromium-${{ inputs.shard-index }}-of-${{ inputs.shard-total }}
-          fail_ci_if_error: true
 
       - name: Terminate backend
         if: always()

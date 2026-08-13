@@ -8,6 +8,7 @@ import pytest
 
 from app.core.ssrf import (
     validate_and_resolve,
+    validate_public_https_url,
     validate_url_not_internal,
     validate_url_not_internal_async,
 )
@@ -27,6 +28,7 @@ class TestSSRFBlocklist:
             "http://100.64.0.1/",
             "http://0.0.0.1/",
             "http://[::1]/",
+            "http://[::ffff:127.0.0.1]/",
         ],
     )
     def test_blocks_internal_ips(self, url: str) -> None:
@@ -63,6 +65,52 @@ class TestSSRFBlocklist:
         ):
             with pytest.raises(ValueError, match="DNS resolution failed"):
                 validate_url_not_internal("https://attacker-controlled.example.com/")
+
+    @pytest.mark.parametrize(
+        "url",
+        [
+            "http://example.com/push",
+            "https://127.0.0.1/push",
+            "https://[::1]/push",
+            "https://[::ffff:127.0.0.1]/push",
+            "https://user%3Apassword@example.com/push",
+        ],
+    )
+    def test_push_endpoint_requires_safe_https_url(self, url: str) -> None:
+        with pytest.raises(ValueError):
+            validate_public_https_url(url)
+
+    def test_push_endpoint_accepts_provider_hostname(self) -> None:
+        validate_public_https_url("https://push.example.com/wpush/v2/token")
+
+    @pytest.mark.parametrize(
+        "url",
+        [
+            "",
+            "https://:443/push",
+            "https://example.com:bad/push",
+            "https://example.com:65536/push",
+            "https://localhost/push",
+        ],
+    )
+    def test_public_https_url_rejects_malformed_and_local_urls(self, url: str) -> None:
+        with pytest.raises(ValueError):
+            validate_public_https_url(url)
+
+    def test_public_https_url_rejects_out_of_range_parsed_port(self) -> None:
+        from types import SimpleNamespace
+
+        parsed = SimpleNamespace(
+            scheme="https",
+            netloc="push.example.com:0",
+            username=None,
+            password=None,
+            hostname="push.example.com",
+            port=0,
+        )
+        with patch("app.core.ssrf.urlparse", return_value=parsed):
+            with pytest.raises(ValueError, match="invalid port"):
+                validate_public_https_url("https://push.example.com:0/push")
 
 
 class TestValidateAndResolve:

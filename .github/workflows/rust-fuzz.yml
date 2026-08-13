@@ -4,6 +4,10 @@ on:
   push:
     branches: [ main, master ]
     paths:
+      # The three fuzz jobs below are required branch-protection contexts.
+      # Keep this workflow schedulable for every push so a docs-only or
+      # test-only PR cannot leave those required contexts missing/pending.
+      - '**'
       - 'native/rust_ext/**'
       - 'crates/pyo3-sanitizer/**'
       - 'frontend/wasm-sanitizer/**'
@@ -11,6 +15,9 @@ on:
       - '.github/workflows/rust-fuzz.yml'
   pull_request:
     paths:
+      # Required contexts must be created for every PR, even when the change
+      # does not touch Rust sources. The fuzz jobs remain bounded below.
+      - '**'
       - 'native/rust_ext/**'
       - 'crates/pyo3-sanitizer/**'
       - 'frontend/wasm-sanitizer/**'

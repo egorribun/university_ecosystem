@@ -24,6 +24,7 @@ from app.core.ratelimit import (
     enforce_rate_limit,
     get_default_strategy,
 )
+from app.core.ssrf import validate_public_https_url, validate_url_not_internal_async
 from app.models import PushSubscription, User, UserPushTopic
 from app.models.enums import UserRole
 from app.schemas.notifications import (
@@ -164,6 +165,30 @@ async def _validate_subscription_payload(
                 ),
             }
         )
+    else:
+        try:
+            validate_public_https_url(endpoint)
+            # Development/test fixtures may use non-resolving provider
+            # placeholders, but a hostname that resolves to an internal
+            # address is rejected in every environment.
+            try:
+                await validate_url_not_internal_async(endpoint)
+            except ValueError as exc:
+                if not (
+                    getattr(settings, "is_development", False)
+                    and "DNS resolution failed" in str(exc)
+                ):
+                    raise
+        except ValueError:
+            errors.append(
+                {
+                    "field": "endpoint",
+                    "message": translate(
+                        "notifications.push.validation.endpoint_invalid",
+                        locale=locale,
+                    ),
+                }
+            )
     if not p256dh:
         errors.append(
             {

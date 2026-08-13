@@ -72,3 +72,39 @@ def test_merge_mutmut_stats_rejects_overlapping_test_shards(tmp_path: Path) -> N
 
     with pytest.raises(ValueError, match="appears in multiple stats shards"):
         merge_stats([first, second])
+
+
+def test_merge_mutmut_stats_canonicalizes_package_init_mutants(
+    tmp_path: Path,
+) -> None:
+    legacy_stats = tmp_path / "legacy" / "mutmut-stats.json"
+    canonical_stats = tmp_path / "canonical" / "mutmut-stats.json"
+    legacy_stats.parent.mkdir()
+    canonical_stats.parent.mkdir()
+    _write_stats(
+        legacy_stats,
+        tests={"tests/test_config.py::test_delattr": 0.5},
+        mapping={
+            "app.core.config.__init__.xǁNamespaceViewǁ__delattr__": [
+                "tests/test_config.py::test_delattr"
+            ]
+        },
+    )
+    _write_stats(
+        canonical_stats,
+        tests={"tests/test_config.py::test_repr": 0.25},
+        mapping={
+            "app.core.config.xǁNamespaceViewǁ__delattr__": [
+                "tests/test_config.py::test_repr"
+            ]
+        },
+    )
+
+    merged = merge_stats([legacy_stats, canonical_stats])
+
+    assert merged["tests_by_mangled_function_name"] == {
+        "app.core.config.xǁNamespaceViewǁ__delattr__": [
+            "tests/test_config.py::test_delattr",
+            "tests/test_config.py::test_repr",
+        ]
+    }

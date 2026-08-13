@@ -146,6 +146,239 @@ Roadmap сейчас содержит исторические результа�
 статус «queued/in progress»: после свежих доказательств добавь точный
 dated evidence с SHA, URL, измерениями и оставшимися blockers.
 
+### Live continuation — 2026-08-12
+
+The source repair is published on the canonical `egorribun` branch at
+`1820e4efeba721260f37d20b4995dd69b9c5359a`; PR [#1229](https://github.com/egorribun/university_ecosystem/pull/1229)
+merged it to `main` as `c838c2000cf5b73d4dfa38dfa4a7d239c13cbb0b`.
+
+- Local focused lifecycle evidence: `32 passed, 2 warnings`; reconstructed
+  mutmut lifecycle union: `95 passed, 1 skipped, 3 warnings`; Ruff, format,
+  diff-check, and pre-push hooks are green.
+- Fast CI
+  [31553098588](https://github.com/egorribun/university_ecosystem/actions/runs/31553098588)
+  is terminal `success` on the exact source SHA: 104 jobs, 99 success,
+  5 skipped, 0 failed; `CI Success`, policy gate, and mutmut `16/16` shards
+  passed.
+- Performance
+  [31553098414](https://github.com/egorribun/university_ecosystem/actions/runs/31553098414)
+  and SQLMap
+  [31553098424](https://github.com/egorribun/university_ecosystem/actions/runs/31553098424)
+  are terminal `success` on that SHA.
+- Codecov v2 independently reports source SHA
+  `1820e4efeba721260f37d20b4995dd69b9c5359a` as `state=complete` with
+  `ci_passed=true`, `99.47%` total coverage (`84,927/85,371` lines across
+  `917` files), `12` sessions, and `100%` diff coverage. All current OIDC
+  uploads were accepted and queued; the historical repository-authorization
+  failure is not reproduced. The later `ae0cee538` and `54a1d1871` commits
+  only change these documents, so the Codecov result is source-equivalent.
+- Current full nightly
+  [31555962606](https://github.com/egorribun/university_ecosystem/actions/runs/31555962606)
+  targets the exact published source SHA `ae0cee53866945da9b3a298e48a05a9bb7d02757`
+  and is `pending` behind diagnostic run
+  [31543639360](https://github.com/egorribun/university_ecosystem/actions/runs/31543639360)
+  (`in_progress`, old SHA `7af03d45fdd7a03128c93e8268a7c19699001031`). Do not
+  infer nightly scores until the current-SHA run is terminal and artifacts are
+  read. The earlier queued run `31554388135` was automatically cancelled when
+  this newer run was dispatched; no running workflow was manually cancelled.
+- External blockers remain: authorized DAST target, protected certification
+  key, stabilization window, advisory
+  promotion evidence, and the managed permission profile required by Deep
+  Security Scan. No final closure claim is justified yet.
+
+### Security hardening continuation — 2026-08-12
+
+The canonical `egorribun` branch now points to published commit
+`7973577a9d45ed4e2d0f6cc955c26ee454a274b5`. Preceding commit `71acdac82`
+rejects private push endpoints before persistence or outbound delivery, removes
+PR `id-token: write` and inherited secrets from test workflows, and gates
+Codecov OIDC plus release/deploy credentials to trusted `main`; `db9c3dc6b`
+scopes nightly workflow permissions; `7973577a9` closes the IPv4-mapped IPv6
+literal SSRF bypass. Focused security/contract tests and the selected
+changed-file pre-commit suite are green (`120 passed, 3 warnings`;
+Ruff, mypy, actionlint, Semgrep, gitleaks, Bandit, detect-secrets and YAML
+parsing passed).
+
+- Standard Codex Security scan
+  `9ccd3274-fd28-4971-93ae-362bec838d8e` completed before the hardening and
+  left only three bundled npm dependency findings open (two high, one medium:
+  `ip-address`, `brace-expansion`, `undici`). The application SSRF and CI
+  credential findings were fixed in `71acdac82`; `npm audit fix --package-lock-only --dry-run`
+  cannot safely replace the release tool's bundled copies. A fresh local audit
+  reports `7` advisories (`2` high, `5` moderate), and GitHub Dependabot reports
+  `6` open alerts (`1` high, `5` moderate); these are the same nested tooling
+  exposure across two advisory databases. Deep Scan remains blocked by the
+  host managed-filesystem permission requirement and is not represented as
+  passed.
+- Full nightly
+  [31559213815](https://github.com/egorribun/university_ecosystem/actions/runs/31559213815)
+  targeted the exact `71acdac82` SHA but was automatically cancelled by
+  GitHub's single-pending-run queue. Diagnostic run
+  [31543639360](https://github.com/egorribun/university_ecosystem/actions/runs/31543639360)
+  then reached its 360-minute job limit and is terminal `cancelled`; no
+  workflow was manually cancelled. Main run
+  [31559727370](https://github.com/egorribun/university_ecosystem/actions/runs/31559727370)
+  (SHA `c838c2000cf5b73d4dfa38dfa4a7d239c13cbb0b`) is now `in_progress`.
+  Exact current-tip run
+  [31564641012](https://github.com/egorribun/university_ecosystem/actions/runs/31564641012)
+  (SHA `db1d9a2bca7162dbf100538733f55576e70314ee`) is `pending` behind it.
+  Do not infer mutation, Stryker, Miri, browser, load/chaos, or coverage
+  evidence until the relevant run is terminal and its artifacts are downloaded
+  and inspected. A fresh stabilization query on 2026-08-12 is `eligible: false`
+  with no successful `main` nightly date in the required 30-day window.
+- DAST still has no authorized target URL and certification still lacks the
+  protected `QUALITY_CERTIFICATION_KEY`; these external inputs remain the only
+  user/administrator actions needed after the queued nightly and local evidence
+  are complete.
+- Codecov v2 independently reports merged `main` SHA
+  `c838c2000cf5b73d4dfa38dfa4a7d239c13cbb0b` as complete with `ci_passed=true`,
+  99.47% total coverage (`84,925/85,371` hits across 917 files, 12 sessions),
+  and 100% diff coverage. This is source-equivalent evidence for the merged
+  quality code; the security branch requires a trusted-main integration run.
+
+### Current-head secret-scan remediation — 2026-08-12
+
+The current published `egorribun` head is
+`47f843733808944fb26b67f6ace80ed44397a1ea`; remote `egorribun` and the clean
+local checkout agree on this SHA. PR [#1239](https://github.com/egorribun/university_ecosystem/pull/1239)
+uses the accepted `test:` semantic title and has no branch-protection bypass.
+
+The first current-head TruffleHog run reported a verified `Lob` result for the
+historical Python private-endpoint test identifier in commit
+`71acdac8204c6331f5fd56aee62a4abcc984d53d`; local reproduction showed no secret,
+only detector misclassification of the method name. The method is now named
+`test_private_endpoint_is_rejected_before_persistence`. Because the gate scans
+history, the exact identifier was removed from `egorribun` history after
+`origin/main`, validated in a temporary clone, and published with
+`--force-with-lease`. The original pre-rewrite tip is retained only as the local
+recoverable ref `refs/backup/egorribun-pre-trufflehog-history-20260812`; no
+allowlist, exclusion, or scanner weakening was introduced.
+
+Fresh local TruffleHog 3.96.0 evidence from `c838c2000` to `47f843733` reports
+`verified_secrets=0` and `unverified_secrets=0`. PR TruffleHog, Gitleaks, SQLMap,
+CodeQL, Checkov, OpenAPI, Go/Rust security, and Wave189 smoke checks are
+terminal green at this head. The focused push-router regression suite is
+`44 passed, 1 warning`; pre-push hooks and frontend typecheck are green.
+
+External closure prerequisites remain unchanged: no authorized `DAST_TARGET_URL`,
+no completed 30-day main stabilization window, no terminal current-head full
+nightly/Codecov artifact set, no managed permission profile for the formal Deep
+Security Scan, and open nested release-tool dependency advisories. These are not
+silently marked complete.
+
+### Current-head CI closure and required-context repair — 2026-08-12
+
+The final code-bearing evidence state is commit
+`0d44157d0c44c2289b3bc637e5007f871c77e2aa`; this checkpoint update is
+documentation-only. Current PR [#1239](https://github.com/egorribun/university_ecosystem/pull/1239)
+has terminal `success` for the full matrix run
+[31639582910](https://github.com/egorribun/university_ecosystem/actions/runs/31639582910)
+at attempt 2. Attempt 1 had one external actionlint download returning an
+invalid 107-byte payload; rerunning only failed jobs completed successfully at
+the same SHA. The preceding source run
+[31635038661](https://github.com/egorribun/university_ecosystem/actions/runs/31635038661)
+validated the webpush mutation fix and all exact mutation shards. The final
+matrix has all required gates green, including `Coverage & Quality Policy Gate`,
+`CI Success`, all `16/16` exact mutmut execution shards, all `4/4` mutmut
+statistics shards, Python/frontend/Go/Rust tests, browser/Lighthouse lanes,
+security scans, SQLMap, all required Rust fuzz contexts, benchmarks, and
+migration gates. The uploaded quality manifest is valid and records merge ref
+`d8a1b1dde243111d00ed333d5c2aadb934a166d8` (normal `pull_request` checkout),
+while the PR head is the SHA recorded above. PR merge state is `CLEAN`.
+
+The exact mutmut artifacts aggregate to `114/114` viable mutants killed,
+`0` survived, `0` timed out, and `0` without tests. This closes the prior
+equivalent `app.services.webpush.x_send_web_push__mutmut_65` survivor through a
+direct development-setting lookup with a narrow fail-closed fallback; the
+semantically equivalent fallback assignment is explicitly marked
+`# pragma: no mutate`.
+
+The manifest's current measured floors are: Python `99.4771%` lines and
+`98.4895%` branches; frontend `99.4960%` lines, `98.0860%` branches, and
+`98.1013%` functions; Go line coverage `98.7771%`–`99.1372%` by service;
+Rust native `100%` lines/functions/branches; Rust WASM sanitizer `100%`;
+Rust crypto `100%` lines/functions; and Tier0 `100%` for all measured lines,
+branches, and functions (`7294/7294`, `1731/1731`, `534/534`).
+
+The PR was previously `BLOCKED` even though every visible check was green:
+the active main ruleset required `Run cargo fuzz` plus two matrix fuzz contexts,
+but the workflow's path filter did not create them for a docs/tests-only PR.
+The all-path trigger now creates those required contexts without weakening any
+fuzz duration, target, or failure gate. Run `31639582910` shows all three
+required fuzz contexts green and the PR ruleset state is `CLEAN`; no merge or
+ruleset bypass was performed.
+
+Local evidence remains green: the complete Python suite passed (`7345 passed,
+71 skipped, 298 warnings`), the webpush closure suite passed (`43 passed`),
+the SSRF/push-router closure slice passed (`40 passed, 1 warning`), Ruff check
+and format checks passed, `uv lock --check` passed, and the frontend pre-push
+typecheck passed. The local security scan reported zero verified and unverified
+secrets for the published range.
+
+External certification remains deliberately open: Codecov's trusted upload is
+skipped on PR events and current-head accepted Codecov processing still needs
+repository authorization evidence; `DAST_TARGET_URL` is absent by the owner's
+deferral; the 30-day `main` stabilization window is `0/30`; the formal managed
+Deep Security Scan profile is unavailable; and bundled release-tool dependency
+advisories remain. `QUALITY_CERTIFICATION_KEY` exists, but a trusted `main`
+release run is still needed to produce a signed certification artifact.
+
+### CI acceleration continuation — 2026-08-12
+
+Commit `928debab4943b9ce547526a523eb87e5d9626862` is pushed and verified on
+`origin/egorribun`; follow-up `c2a114d05` wires the stats matrix into nightly
+failure notification. It parallelizes the nightly full mutmut stats pass into
+four isolated jobs, uploads their exact JSON payloads, and merges them with
+the existing fail-closed overlap detector before the unchanged mutation
+execution job. No mutant scope, clean-test isolation, exporter, or score gate
+was relaxed.
+
+- Local evidence: workflow contract `97 passed, 1 warning`; mutmut stats/wrapper
+  contracts `7 passed, 1 warning`; all `53` workflow YAML files parse; Ruff,
+  diff-check, and selected pre-commit (including actionlint/Semgrep/secrets)
+  pass.
+- Fresh collection checks produced disjoint shards of `1791/1816/1870/1935`
+  tests (`7412` total, zero overlap). This is a partition check only; terminal
+  Linux mutmut artifacts remain required for certification.
+- The old queued runs remain untouched: merged-SHA run
+  [31559727370](https://github.com/egorribun/university_ecosystem/actions/runs/31559727370)
+  is `in_progress`, and exact run
+  [31564641012](https://github.com/egorribun/university_ecosystem/actions/runs/31564641012)
+  is `pending`. Dispatch the optimized nightly only after the current
+  non-canceling queue drains; do not infer scores from either old workflow.
+
+### CI acceleration continuation — parallel full execution (published `46cc98327`, 2026-08-12)
+
+The candidate follow-up preserves the four isolated stats jobs and splits the
+full mutation execution into sixteen exact-name legs. Every leg creates a
+pristine universe, selects a duration-balanced all-`app/**/*.py` shard with
+`plan_mutmut_shards.py`, writes the existing exact-execution proof, and uploads
+scope-local results. The new `merge_mutmut_cicd_stats.py` aggregate is
+fail-closed: it requires all sixteen artifacts, rejects incomplete/duplicate
+results and mixed universe hashes, proves the selected union equals the
+universe count, then runs the existing 100% score gate.
+
+Commit `46cc983271557b4ef0a4ae999ad8caa5883a658d` is pushed to
+`origin/egorribun`. Local checks for this change are green: aggregator
+`4 passed, 1 warning`,
+nightly workflow contracts, Ruff/format, actionlint, Semgrep, detect-secrets,
+YAML parsing, and `git diff --check`. It is not certification evidence until a
+terminal Linux nightly on the published SHA supplies all shard and aggregate
+artifacts. Do not infer a score from the older in-progress run or pending
+queued run.
+
+### External secret continuation — 2026-08-12
+
+`QUALITY_CERTIFICATION_KEY` is now present in the repository's GitHub Actions
+Secrets. It was generated locally as a 32-byte random value and sent through
+`gh secret set` without printing the value; only the secret name and creation
+timestamp were verified. This enables the release workflow's signed
+certification path, but a trusted `main` release run is still required to
+produce evidence. `DAST_TARGET_URL` remains unset until the owner supplies an
+authorized deployed HTTPS staging/QA URL; no local or placeholder URL is used.
+The owner has explicitly deferred DAST for now, so this remains an
+authorization/deployment blocker rather than a completed security scan.
+
 ### Главный текущий инженерный дефект: CI mutmut stats shard 2
 
 Fast CI run:

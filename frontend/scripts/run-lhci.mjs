@@ -479,7 +479,7 @@ async function run() {
       console.log("Building for LHCI...")
       await runCommand("npm", ["run", "build"], "npm run build")
     } else {
-      console.log("SKIP_BUILD is set, skipping npm run build.")
+      console.log("SKIP_BUILD is set, reusing the downloaded production bundle.")
     }
     console.log("Preparing LHCI routes...")
     await runCommand("node", ["scripts/prepare-lhci-routes.mjs"], "prepare-lhci-routes")

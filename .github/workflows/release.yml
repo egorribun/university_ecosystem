@@ -10,6 +10,9 @@ permissions: read-all
 jobs:
   release:
     name: Release
+    # Release credentials must never reach code from an arbitrary dispatch ref.
+    # The main branch is protected and is the only trusted release source.
+    if: ${{ github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-latest
     timeout-minutes: 20 # CI-03 (audit Wave 10)
     permissions:
@@ -51,7 +54,7 @@ jobs:
             --limitation "Per-tool raw reports remain in the CI run; this release record hashes the normalized quality manifest and contract."
 
       - name: Upload quality certification
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0 # v7.0.1
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: quality-certification-${{ github.sha }}
           path: artifacts/quality/certification.json
@@ -112,4 +115,3 @@ jobs:
       tags: |
         ghcr.io/${{ github.repository }}/${{ matrix.image_name }}:latest
         ghcr.io/${{ github.repository }}/${{ matrix.image_name }}:${{ github.sha }}
-    secrets: inherit # pragma: allowlist secret
