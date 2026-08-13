@@ -1,6 +1,8 @@
-import type { ReactNode } from "react"
+import { StrictMode, type ReactNode } from "react"
 import { render, screen, waitFor } from "@testing-library/react"
 import { beforeEach, describe, expect, it, vi } from "vitest"
+
+import { APP_HYDRATED_EVENT } from "@/app/hydration"
 
 const provider = (name: string) => {
   const TestProvider = ({ children }: { children?: ReactNode }) => (
@@ -100,5 +102,23 @@ describe("AppProviders closure", () => {
     expect(screen.getByText("lhci child")).toBeInTheDocument()
     expect(screen.getByTestId("motion-config")).toHaveAttribute("data-reduced-motion", "always")
     await waitFor(() => expect(window.__APP_HYDRATED).toBe(true))
+  })
+
+  it("publishes hydration exactly once, including under StrictMode effects", async () => {
+    const AppProviders = await loadProviders("false")
+    const onHydrated = vi.fn()
+    window.addEventListener(APP_HYDRATED_EVENT, onHydrated)
+
+    render(
+      <StrictMode>
+        <AppProviders>
+          <span>strict application child</span>
+        </AppProviders>
+      </StrictMode>
+    )
+
+    await waitFor(() => expect(window.__APP_HYDRATED).toBe(true))
+    expect(onHydrated).toHaveBeenCalledTimes(1)
+    window.removeEventListener(APP_HYDRATED_EVENT, onHydrated)
   })
 })
