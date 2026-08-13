@@ -76,6 +76,18 @@ describe("__root.tsx components", () => {
       expect(document.documentElement.className).toContain("dark")
 
       expect(screen.getByText("Test Child")).toBeInTheDocument()
+      const loader = document.querySelector("[data-brand-boot-loader]")
+      const root = document.getElementById("root")
+      expect(loader).toBeInTheDocument()
+      expect(root).toBeInTheDocument()
+
+      if (!loader || !root) {
+        throw new Error("Root shell must render the brand loader before the application root")
+      }
+
+      expect(loader.compareDocumentPosition(root) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+      expect(document.head.textContent).toContain("@keyframes brand-boot-loader-mark-exit")
+      expect(document.head.textContent).not.toContain("@keyframes status-exit")
     })
 
     it("uses default theme/lang values when globals are undefined", () => {
@@ -88,6 +100,21 @@ describe("__root.tsx components", () => {
 
       expect(document.documentElement.getAttribute("lang")).toBe("ru")
       expect(document.documentElement.className).not.toContain("dark")
+    })
+
+    it("keeps the loading label outside the cycling logo mark", () => {
+      const Shell = (Route.options as any).shellComponent
+      render(
+        <Shell>
+          <div>Test Child</div>
+        </Shell>
+      )
+
+      const status = screen.getByText("Загрузка").closest(".brand-boot-loader__status")
+      const mark = document.querySelector(".brand-boot-loader__mark")
+      expect(status).toBeInTheDocument()
+      expect(mark).toBeInTheDocument()
+      expect(mark?.contains(status)).toBe(false)
     })
   })
 
