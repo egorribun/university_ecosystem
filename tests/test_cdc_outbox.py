@@ -21,6 +21,26 @@ from app.workers.cdc_outbox import (
     lsn_to_int,
 )
 
+
+@pytest.mark.asyncio
+async def test_cdc_worker_fallback_delegates_to_outbox_worker(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Keep the logical-replication fallback path mapped in mutmut."""
+
+    fallback_run = AsyncMock()
+
+    class FakeOutboxWorker:
+        async def run_forever(self) -> None:
+            await fallback_run()
+
+    monkeypatch.setattr("app.workers.outbox.OutboxWorker", FakeOutboxWorker)
+
+    await CdcOutboxWorker(nats_broker=AsyncMock())._run_fallback_worker()
+
+    fallback_run.assert_awaited_once_with()
+
+
 # ── Helpers for Building Test Binary Payloads ─────────────────────────────────
 
 
