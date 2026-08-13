@@ -1592,6 +1592,7 @@ def test_reusable_quality_jobs_have_bounded_execution() -> None:
         "fallback",
     ]
     assert lighthouse_shards["env"]["LHCI_URLS"] == "${{ matrix.urls }}"
+    assert lighthouse_shards["env"]["SKIP_BUILD"] == "1"
     assert lighthouse_shards["env"]["LHCI_SKIP_SYSTEM_DEPS"] == "1"
     shard_upload = next(
         step
@@ -1600,11 +1601,20 @@ def test_reusable_quality_jobs_have_bounded_execution() -> None:
     )
     assert shard_upload["with"]["include-hidden-files"] is True
     assert shard_upload["with"]["name"] == "lighthouse-reports-${{ matrix.shard }}"
+    assert not any(
+        step.get("name") == "Install wasm-pack" for step in lighthouse_shards["steps"]
+    )
 
     lighthouse_aggregate = frontend["jobs"]["lighthouse"]
     assert lighthouse_aggregate["needs"] == "lighthouse-shards"
     assert "always()" in lighthouse_aggregate["if"]
     assert lighthouse_aggregate["name"] == "Lighthouse Audit"
+    shard_guard = next(
+        step
+        for step in lighthouse_aggregate["steps"]
+        if step.get("name") == "Verify all Lighthouse shards passed"
+    )
+    assert shard_guard["working-directory"] == "${{ github.workspace }}"
     merge_text = "\n".join(
         step.get("run", "")
         for step in lighthouse_aggregate["steps"]

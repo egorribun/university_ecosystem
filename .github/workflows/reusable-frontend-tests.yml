@@ -390,6 +390,13 @@ jobs:
     env:
       VITE_BACKEND_ORIGIN: http://localhost:8000
       LHCI_URLS: ${{ matrix.urls }}
+      # The production bundle is built and validated by the `build` job above
+      # and is downloaded into this shard.  Rebuilding here makes every shard
+      # re-download Binaryen through wasm-pack, so a transient GitHub Releases
+      # outage can fail Lighthouse before a single audit starts.  Reuse the
+      # immutable same-commit bundle; run-lhci still prepares route fallbacks
+      # and performs the complete collect/assert gate.
+      SKIP_BUILD: "1"
       # ubuntu-latest already contains the browser runtime libraries. The
       # Playwright apt bootstrap is intentionally opt-in here: every matrix
       # shard has its own runner, and a slow apt mirror can consume the full
@@ -415,14 +422,6 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
-
-      - name: Install wasm-pack
-        # W142 polish-v3 — taiki-e/install-action wasm-pack broken (drager/
-        # wasm-pack 404; rustwasm/wasm-pack canonical since v0.14.0). Same
-        # fix as W141 polish-v2 visual-audit.yml + W142 chromatic.yml.
-        uses: taiki-e/install-action@54420ca6e3a4cab262aeabc1af4f52908ca28931 # wasm-pack
-        with:
-          tool: wasm-pack@0.13.1
 
       - name: Run Lighthouse CI shard
         run: npm run lhci
@@ -452,6 +451,10 @@ jobs:
     steps:
       - name: Verify all Lighthouse shards passed
         if: ${{ needs.lighthouse-shards.result != 'success' }}
+        # This guard runs before the artifact download creates the frontend
+        # working directory.  Keep it at the workspace root so a failed shard
+        # reports the real Lighthouse failure instead of a missing cwd error.
+        working-directory: ${{ github.workspace }}
         run: |
           echo "::error::One or more Lighthouse shards failed"
           exit 1
