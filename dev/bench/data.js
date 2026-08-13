@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1786617183159,
+  "lastUpdate": 1786617185656,
   "repoUrl": "https://github.com/egorribun/university_ecosystem",
   "entries": {
     "Go Services Performance Benchmarks": [
@@ -6073,6 +6073,120 @@ window.BENCHMARK_DATA = {
             "name": "strip_html/large",
             "value": 90733,
             "range": "± 806",
+            "unit": "ns/iter"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "egorribun2005@gmail.com",
+            "name": "Egor",
+            "username": "egorribun"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "44f750004ed1fe5cda15cd7ae3a459ca886b2bec",
+          "message": "test: current-head closure gates (#1239)\n\n* docs(testing): record final quality audit\n\n* test(quality): close final quality gates\n\n* test(quality): harden promotion evidence query\n\n* test(quality): harden external quality gates\n\n* test(quality): align dependency policy contract\n\n* test(quality): record remote closure evidence\n\n* test(quality): reset dishka lifecycle between runs\n\n* test(quality): record mutation regression and rerun\n\n* test(quality): add manual performance benchmark dispatch\n\n* test(quality): reset Dishka state across ASGI lifecycles\n\n* test(quality): preserve lifespan app fixture identity\n\n* test(quality): isolate dishka containers between lifespans\n\n* docs(quality): record dishka lifecycle closure evidence\n\n* test(quality): fix nested radio label markup\n\n* test(quality): make settings accordion deterministic\n\n* test(quality): reopen accordion after remount\n\n* test(quality): wait for expanded language controls\n\n* test(quality): align TOTP accordion contract\n\n* test(quality): isolate nightly permission checks\n\n* test(quality): target visible language accordion\n\n* test(quality): activate custom language radio label\n\n* test(quality): harden nightly browser and image isolation\n\n* test(quality): wait for hydrated login before tab audit\n\n* test(quality): wait for hydrated settings accordion\n\n* test(quality): retry transient browser navigations\n\n* test(quality): harden all transient e2e navigations\n\n* docs(quality): record current closure evidence\n\n* docs(quality): record frontend mutation evidence\n\n* fix(quality): harden mutation and image test isolation\n\n* fix(quality): handle mutmut non-function nodes\n\n* docs(quality): add closure handoff\n\n* fix(quality): isolate mutmut class-method fixture\n\n* fix(quality): enforce complete mutation evidence\n\n* test(quality): link legacy mutmut coverage test\n\n* fix(security): gate DAST label scans\n\n* fix(docs): satisfy markdown quality gate\n\n* fix(security): isolate manual mutation evidence\n\n* fix(quality): harden evidence and strict test gates\n\n* fix(quality): secure promotion evidence gates\n\n* fix(quality): repair mutation and coverage gates\n\n* fix(quality): stabilize Rust coverage gate\n\n* fix(quality): isolate Rust coverage artifacts\n\n* fix(quality): isolate mutmut clean baselines\n\n* test(quality): stabilize mutmut image isolation\n\n* test(quality): cover native scheduler non-spanning conflict\n\n* fix(quality): harden workflow closure gates\n\n* fix(quality): trigger required rust fuzz on workflow changes\n\n* fix(quality): copy gitignore into mutmut sandbox\n\n* docs(quality): specify same-run performance gates\n\n* fix(ci): give incremental mutmut a safe execution envelope\n\n* fix(quality): enforce portable JSON nesting limit\n\n* docs(quality): record live closure evidence\n\n* docs(quality): track current nightly queue\n\n* docs(quality): confirm Codecov processing\n\n* fix(security): harden push endpoints and trusted CI\n\n* docs(quality): record security hardening and nightly queue\n\n* docs(quality): quantify residual dependency advisories\n\n* docs(quality): record nightly queue replacement\n\n* fix(security): scope nightly workflow permissions\n\n* docs(quality): record current security and Codecov evidence\n\n* fix(security): block mapped IPv4 SSRF literals\n\n* docs(quality): record mapped IPv6 SSRF closure\n\n* docs(quality): record terminal nightly queue state\n\n* fix(ci): parallelize full mutmut stats collection\n\n* docs(quality): record parallel nightly mutation stats\n\n* fix(ci): report nightly mutation stats failures\n\n* docs(quality): record nightly failure notification guard\n\n* fix(ci): parallelize full mutation execution\n\n* docs(quality): record parallel mutation execution\n\n* docs(quality): record certification secret configuration\n\n* docs(quality): record DAST deferral\n\n* docs(quality): refresh live closure audit\n\n* test(quality): cover SQLMap workflow contract\n\n* docs(quality): record SQLMap contract refresh\n\n* docs(quality): record current-head validation trigger\n\n* docs(quality): record TruffleHog remediation\n\n* docs(quality): avoid scanner trigger wording\n\n* test(quality): close webpush mutation survivors\n\n* fix(security): avoid URI scanner false positive\n\n* test(quality): close diff coverage branches\n\n* test(quality): cover SSRF port guard\n\n* fix(ci): ensure required fuzz contexts run\n\n* test(webpush): cover development DNS fallback\n\n* docs(quality): record current-head CI closure\n\n* docs(quality): record rerun validation\n\n* fix(webpush): make development fallback mutation-proof\n\n* docs(quality): record mutation closure evidence\n\n* docs(quality): pin final evidence checkpoint\n\n* test(quality): cover dagger pipeline proposal\n\n* fix(quality): canonicalize mutmut package names\n\n* test(quality): cover scheduler mutation mapping\n\n* test(quality): cover pyroscope profiler mapping\n\n* test(quality): cover uvloop detection mapping\n\n* test(quality): cover event file repr mapping\n\n* test(quality): cover event repr mapping\n\n* test(quality): cover news comment repr mapping\n\n* test(quality): cover model repr mappings\n\n* test(quality): cover user file cleanup mapping\n\n* test(quality): cover worker entrypoint mapping\n\n* test(quality): cover cdc fallback mapping\n\n* docs: specify standalone logo loader\n\n* fix(ci): reuse validated bundle for lighthouse shards\n\n* docs: plan standalone logo loader\n\n* docs: specify application logo loader integration\n\n* fix(ci): build dedicated lighthouse bundle\n\n* docs: plan application logo loader integration\n\n---------\n\nCo-authored-by: Egor Ribun <egorribun@gmail.com>",
+          "timestamp": "2026-08-13T13:07:55+03:00",
+          "tree_id": "c64f7d408f7ce31136809c8198c8538b73d083dc",
+          "url": "https://github.com/egorribun/university_ecosystem/commit/44f750004ed1fe5cda15cd7ae3a459ca886b2bec"
+        },
+        "date": 1786617184972,
+        "tool": "cargo",
+        "benches": [
+          {
+            "name": "sanitize_rich_text/empty",
+            "value": 5984,
+            "range": "± 33",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_rich_text/plain_text",
+            "value": 6914,
+            "range": "± 26",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_rich_text/simple_html",
+            "value": 9905,
+            "range": "± 150",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_rich_text/xss_attempt",
+            "value": 10739,
+            "range": "± 37",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_rich_text/large",
+            "value": 100655,
+            "range": "± 366",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_html_basic/empty",
+            "value": 5373,
+            "range": "± 10",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_html_basic/plain_text",
+            "value": 6235,
+            "range": "± 59",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_html_basic/simple_html",
+            "value": 8964,
+            "range": "± 27",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_html_basic/xss_attempt",
+            "value": 9444,
+            "range": "± 17",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_html_basic/large",
+            "value": 93444,
+            "range": "± 574",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "strip_html/empty",
+            "value": 5274,
+            "range": "± 35",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "strip_html/plain_text",
+            "value": 6133,
+            "range": "± 262",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "strip_html/simple_html",
+            "value": 8554,
+            "range": "± 48",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "strip_html/xss_attempt",
+            "value": 9167,
+            "range": "± 57",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "strip_html/large",
+            "value": 91894,
+            "range": "± 733",
             "unit": "ns/iter"
           }
         ]
