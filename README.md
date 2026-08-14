@@ -194,7 +194,7 @@ sequenceDiagram
 | **Native Performance**| Rust, PyO3, Rayon, Maturin | Microsecond-speed schedule conflict solver & HMAC | **95%** |
 | **Auth & Security** | Argon2id, SpiceDB, WebAuthn/Passkeys, Kyverno, CSRF nonces | Zero-trust ReBAC, hardware MFA & policy enforcement | Verified |
 | **Data & Cache** | PostgreSQL 17, pgvector, Valkey / Redis 7 (`volatile-lru`) | Relational, vector, & probabilistic L1/L2 caching | Verified |
-| **Observability** | OTEL, Tempo, Prometheus, Pyroscope 1.19, Loki + Fluent Bit | Complete 360° tracing, metrics, profiling & logging | Verified |
+| **Observability** | OTEL, Tempo, Prometheus, Pyroscope 1.19, Loki + Alloy/Fluent Bit | Complete 360° tracing, metrics, profiling & logging | Verified |
 
 ## 🚀 Rapid Onboarding
 
@@ -206,17 +206,20 @@ sops -d .env.enc > .env
 ```
 
 ### 2. Ignition
-Launch the entire ecosystem with Docker Compose:
-```bash
-docker compose -f docker-compose.full.yml up --build
+Launch the entire ecosystem through the PowerShell 7 bootstrapper. It creates
+local secrets, reconciles persistent infrastructure, builds images, and waits
+for every runtime and Prometheus target:
+```powershell
+.\start-docker.ps1 -Build
 ```
 
 ### 🌐 Access Points
-- **Digital Hub (Frontend)**: [http://localhost:8081](http://localhost:8081)
-- **Core API Blueprints**: [http://localhost:8000/api/docs](http://localhost:8000/api/docs)
+- **Digital Hub (Caddy edge)**: [http://localhost](http://localhost)
+- **Frontend SSR debug port**: [http://localhost:8081](http://localhost:8081)
+- **Core API documentation**: [http://localhost:8000/docs](http://localhost:8000/docs)
 - **Go Gateway Entry**: [http://localhost:8080](http://localhost:8080)
-- **Real-Time Signal**: `ws://localhost:8082`
-- **Observability Hub (Metrics)**: [http://localhost:8000/metrics](http://localhost:8000/metrics)
+- **Real-Time Signal**: `ws://localhost:8083/ws`
+- **Observability Hub**: [Grafana](http://localhost:3000) · [Prometheus](http://localhost:9090) · [Pyroscope](http://localhost:4040)
 
 ## 🛡️ Security & Quality Pillars
 

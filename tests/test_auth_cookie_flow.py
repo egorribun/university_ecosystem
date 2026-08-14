@@ -10,6 +10,7 @@ from sqlalchemy import select
 
 from app.auth.security import decode_token, get_password_hash
 from app.core.config import settings
+from app.core.csrf import _ANON_NONCE_COOKIE_NAME
 from app.core.localization import translate
 from app.models import ActiveSession
 
@@ -128,6 +129,8 @@ async def test_login_cookie_security_modes(
 
     stored_cookie = async_client.cookies.get("access_token_v2")
     assert stored_cookie is not None and stored_cookie != ""
+    anon_nonce = async_client.cookies.get(_ANON_NONCE_COOKIE_NAME)
+    assert anon_nonce is not None and anon_nonce != ""
 
     new_csrf_token = ""
     for header in set_cookie_headers:
@@ -138,6 +141,7 @@ async def test_login_cookie_security_modes(
     # Wipe the client cookie jar entirely to prevent httpx CookieConflict
     async_client.cookies.clear()
     async_client.cookies.set("access_token_v2", stored_cookie)
+    async_client.cookies.set(_ANON_NONCE_COOKIE_NAME, anon_nonce)
     if new_csrf_token:
         async_client.cookies.set("csrf_token", new_csrf_token)
 

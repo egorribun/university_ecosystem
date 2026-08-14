@@ -370,14 +370,17 @@ async def test_bearer_without_auth_cookie_bypasses() -> None:
 
 
 @pytest.mark.asyncio
-async def test_bearer_with_auth_cookie_still_validated() -> None:
+@pytest.mark.parametrize(
+    "cookie_name", ["access_token_v2", "access_token", "session_id"]
+)
+async def test_bearer_with_auth_cookie_still_validated(cookie_name: str) -> None:
     """Bearer + access_token cookie → CSRF must still be enforced."""
     app = _wrap(_make_app())
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(
         transport=transport, base_url="http://testserver"
     ) as client:
-        client.cookies.set("access_token", "logged-in-cookie")
+        client.cookies.set(cookie_name, "logged-in-cookie")
         response = await client.post(
             "/mut",
             headers={"Authorization": "Bearer token-abc"},

@@ -258,6 +258,7 @@ describe("api/client — SSR request branches", () => {
       vi.fn(() => "access_token_v2=server-token")
     )
     vi.stubEnv("VITE_BACKEND_ORIGIN", "")
+    vi.stubEnv("BACKEND_ORIGIN", "")
   })
 
   it("forwards the incoming cookie and uses the SSR fallback base configuration", async () => {
@@ -279,6 +280,17 @@ describe("api/client — SSR request branches", () => {
     await ensureCsrfCookie()
 
     expect(AxiosHeaders.from(seen[0]!.headers).get("Cookie")).toBe("access_token_v2=server-token")
+    const { resolveSsrBackendOrigin } = await import("@/api/backendOrigin")
+    expect(resolveSsrBackendOrigin()).toBe("http://localhost:8000")
+  })
+
+  it("prefers the runtime backend origin in the Node SSR container", async () => {
+    vi.stubEnv("VITE_BACKEND_ORIGIN", "https://build-time.example")
+    vi.stubEnv("BACKEND_ORIGIN", "http://release-backend:8000/")
+
+    const { resolveSsrBackendOrigin } = await import("@/api/backendOrigin")
+
+    expect(resolveSsrBackendOrigin()).toBe("http://release-backend:8000")
   })
 
   it("does not add an empty SSR cookie header", async () => {

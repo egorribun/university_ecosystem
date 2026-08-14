@@ -1,13 +1,16 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"os/exec"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -51,6 +54,44 @@ func respondRESP(write func(string), upperPart string) {
 	}
 }
 
+// readRESPCommand decodes one RESP array without assuming a TCP Read preserves
+// command boundaries. The previous mock split each socket buffer on "*", which
+// intermittently split DEL into "D" + "EL" and returned a bogus +OK reply.
+func readRESPCommand(reader *bufio.Reader) ([]string, error) {
+	header, err := reader.ReadString('\n')
+	if err != nil {
+		return nil, err
+	}
+	if len(header) < 3 || header[0] != '*' {
+		return nil, fmt.Errorf("invalid RESP array header %q", header)
+	}
+	count, err := strconv.Atoi(strings.TrimSpace(header[1:]))
+	if err != nil {
+		return nil, fmt.Errorf("parse RESP array length: %w", err)
+	}
+
+	command := make([]string, 0, count)
+	for range count {
+		lengthLine, err := reader.ReadString('\n')
+		if err != nil {
+			return nil, err
+		}
+		if len(lengthLine) < 3 || lengthLine[0] != '$' {
+			return nil, fmt.Errorf("invalid RESP bulk header %q", lengthLine)
+		}
+		length, err := strconv.Atoi(strings.TrimSpace(lengthLine[1:]))
+		if err != nil || length < 0 {
+			return nil, fmt.Errorf("invalid RESP bulk length %q", lengthLine)
+		}
+		payload := make([]byte, length+2)
+		if _, err := io.ReadFull(reader, payload); err != nil {
+			return nil, err
+		}
+		command = append(command, string(payload[:length]))
+	}
+	return command, nil
+}
+
 // Setup mock RESP server to simulate Redis without external dependencies.
 func setupMockRedisServer(t *testing.T) (string, func()) {
 	var lc net.ListenConfig
@@ -68,19 +109,13 @@ func setupMockRedisServer(t *testing.T) (string, func()) {
 			go func(c net.Conn) {
 				defer func() { _ = c.Close() }()                      //nolint:errcheck // mock server cleanup
 				write := func(s string) { _, _ = c.Write([]byte(s)) } //nolint:errcheck // mock server best-effort write
-				buf := make([]byte, 2048)
+				reader := bufio.NewReader(c)
 				for {
-					n, err := c.Read(buf)
+					command, err := readRESPCommand(reader)
 					if err != nil {
 						return
 					}
-					// Split pipelined RESP commands (each starts with '*').
-					for _, part := range strings.Split(string(buf[:n]), "*") {
-						if part == "" {
-							continue
-						}
-						respondRESP(write, strings.ToUpper(part))
-					}
+					respondRESP(write, strings.ToUpper(strings.Join(command, " ")))
 				}
 			}(conn)
 		}

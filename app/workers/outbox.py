@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import asyncio
-import contextlib
+import os
+import tempfile
 import time
 import traceback
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 from urllib.parse import urlparse, urlunparse
 
@@ -90,11 +92,18 @@ class OutboxWorker:
     CHANNEL = "outbox_events"
 
     def __init__(
-        self, poll_interval: float = 5.0, batch_size: int = 20, max_retries: int = 5
+        self,
+        poll_interval: float = 5.0,
+        batch_size: int = 20,
+        max_retries: int = 5,
+        heartbeat_path: Path | None = None,
+        heartbeat_interval: float = 5.0,
     ):
         self.poll_interval = poll_interval
         self.batch_size = batch_size
         self.max_retries = max_retries
+        self.heartbeat_path = heartbeat_path
+        self.heartbeat_interval = heartbeat_interval
         self._is_running = False
         self._wakeup_event = asyncio.Event()
 
@@ -102,7 +111,9 @@ class OutboxWorker:
         self._is_running = True
         logger.info("OutboxWorker started (Reactive Mode)")
 
-        listen_task = asyncio.create_task(self._listen_loop())
+        auxiliary_tasks = [asyncio.create_task(self._listen_loop())]
+        if self.heartbeat_path is not None:
+            auxiliary_tasks.append(asyncio.create_task(self._heartbeat_loop()))
 
         try:
             while self._is_running:
@@ -124,12 +135,20 @@ class OutboxWorker:
                     logger.exception("Error in OutboxWorker loop")
                     await asyncio.sleep(self.poll_interval)
         finally:
-            # Always cancel the listen task so the raw asyncpg LISTEN connection
-            # is closed, even if run_forever is cancelled externally (e.g. during
-            # LifespanManager teardown in tests).
-            listen_task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await asyncio.shield(listen_task)
+            # Always cancel auxiliary tasks so the raw asyncpg LISTEN connection
+            # is closed and the standalone heartbeat stops during shutdown.
+            for task in auxiliary_tasks:
+                task.cancel()
+            await asyncio.gather(*auxiliary_tasks, return_exceptions=True)
+
+    async def _heartbeat_loop(self) -> None:
+        """Record event-loop progress for the standalone container healthcheck."""
+        heartbeat_path = self.heartbeat_path
+        if heartbeat_path is None:
+            return
+        while self._is_running:
+            heartbeat_path.write_text(str(time.time_ns()), encoding="ascii")
+            await asyncio.sleep(self.heartbeat_interval)
 
     async def _listen_loop(self) -> None:
         """Listen for PostgreSQL NOTIFY events to wake up the worker."""
@@ -363,11 +382,10 @@ async def _wait_for_signals(stop_event: asyncio.Event) -> None:
 
 
 async def main() -> None:
-    import os
-
     from app.core.config import settings
     from app.core.database import init_database, wait_db
     from app.core.events import register_event_listeners
+    from app.core.nats_broker import broker as nats_broker
     from app.services.event_handlers import configure_event_handlers
 
     init_database()
@@ -375,44 +393,37 @@ async def main() -> None:
 
     await register_event_listeners()
     configure_event_handlers()
+    await nats_broker.connect()
 
-    use_cdc = os.environ.get("ENABLE_CDC_OUTBOX", "false").lower() in (
-        "true",
-        "1",
-        "yes",
+    runtime_dir = Path(
+        os.environ.get("OUTBOX_WORKER_RUNTIME_DIR") or tempfile.gettempdir()
     )
+    runtime_dir.mkdir(parents=True, exist_ok=True)
+    pid_path = runtime_dir / "worker.pid"
+    heartbeat_path = runtime_dir / "worker.heartbeat"
+    pid_path.write_text(str(os.getpid()), encoding="ascii")
 
-    worker: OutboxWorker | Any
-    if use_cdc:
-        try:
-            from app.workers.cdc_outbox import CdcOutboxWorker
-
-            worker = CdcOutboxWorker()
-            logger.info("Starting outbox worker in CDC mode (PostgreSQL pgoutput)")
-        except Exception as exc:  # RZ-22-01-JUSTIFIED: handler-nak — fallback worker mode selection (reviewed TD-27-04)
-            logger.warning(
-                "CDC outbox worker initialization failed (%s); falling back to OutboxWorker",
-                exc,
-            )
-            worker = OutboxWorker(
-                poll_interval=settings.outbox_poll_interval_seconds,
-                batch_size=settings.outbox_batch_size,
-            )
-    else:
-        worker = OutboxWorker(
-            poll_interval=settings.outbox_poll_interval_seconds,
-            batch_size=settings.outbox_batch_size,
-        )
+    worker = OutboxWorker(
+        poll_interval=settings.outbox_poll_interval_seconds,
+        batch_size=settings.outbox_batch_size,
+        max_retries=settings.outbox_max_retries,
+        heartbeat_path=heartbeat_path,
+    )
 
     stop_event = asyncio.Event()
 
-    async with asyncio.TaskGroup() as tg:
-        worker_task = tg.create_task(worker.run_forever())
-        tg.create_task(_wait_for_signals(stop_event))
+    try:
+        async with asyncio.TaskGroup() as tg:
+            worker_task = tg.create_task(worker.run_forever())
+            tg.create_task(_wait_for_signals(stop_event))
 
-        await stop_event.wait()
-        await worker.stop()
-        worker_task.cancel()
+            await stop_event.wait()
+            await worker.stop()
+            worker_task.cancel()
+    finally:
+        await nats_broker.close()
+        pid_path.unlink(missing_ok=True)
+        heartbeat_path.unlink(missing_ok=True)
 
     logger.info("Outbox worker stopped")
 

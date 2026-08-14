@@ -77,7 +77,7 @@ RUN --mount=type=cache,id=apt-lists-runtime,target=/var/lib/apt/lists \
     && apt-get install -y --no-install-recommends tini \
     && rm -rf /var/lib/apt/lists/* \
     && groupadd --system --gid 10001 app \
-    && useradd --system --uid 10001 --gid app --home-dir /home/app --shell /usr/sbin/nologin --no-create-home app
+    && useradd --system --uid 10001 --gid app --home-dir /home/app --shell /usr/sbin/nologin --create-home app
 
 # Copy virtual environment from builder
 COPY --from=builder --chown=app:app /opt/venv /opt/venv

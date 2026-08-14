@@ -260,14 +260,15 @@ jobs:
         shell: pwsh
         run: |
           Copy-Item .env.example .env
+          # imgproxy signing is mandatory in Compose; deterministic low-entropy
+          # values are sufficient for config rendering and are never deployed.
+          $env:IMGPROXY_KEY = [string]::new('0', 64)
+          $env:IMGPROXY_SALT = [string]::new('1', 64)
           docker compose -f docker-compose.yml config
-          # Also validate the merged load-and-chaos stack (infra + go + base +
-          # CI override). docker-compose.go.yml uses strict ${JWT_SECRET:?}
-          # (absent from .env.example); dummy values are fine for `config`.
-          # WS_HUB_INTERNAL_SECRET is referenced (non-strict) by the CI fragment.
-          $env:JWT_SECRET = "dummy-ci-validate-secret"  # pragma: allowlist secret
+          # Also validate the merged load-and-chaos stack (base + infra + go +
+          # CI override). WS_HUB_INTERNAL_SECRET is referenced by the fragment.
           $env:WS_HUB_INTERNAL_SECRET = "dummy-ci-validate-secret"  # pragma: allowlist secret
-          docker compose -f docker-compose.infra.yml -f docker-compose.go.yml -f docker-compose.yml -f docker-compose.ci-loadtest.yml config | Out-Null
+          docker compose -f docker-compose.yml -f docker-compose.infra.yml -f docker-compose.go.yml -f docker-compose.ci-loadtest.yml config | Out-Null
 
   actionlint:
     name: Lint GitHub Actions Workflows
@@ -1203,7 +1204,7 @@ jobs:
           helm lint charts/university-ecosystem/ $STRICT_FLAG \
             --set redis.enabled=false \
             --set nats.enabled=false \
-            --set gateway.config.jwtSecret=ci-placeholder
+            --set applicationSecrets.existingSecret=ci-application-secrets
 
       - name: Helm template — dry-run
         env:
@@ -1212,8 +1213,8 @@ jobs:
           helm template university-ecosystem charts/university-ecosystem/ \
             --set redis.enabled=false \
             --set nats.enabled=false \
-            --set gateway.config.jwtSecret=ci-placeholder \
-            --set image.tag="test-sha-${IMAGE_TAG}" \
+            --set applicationSecrets.existingSecret=ci-application-secrets \
+            --set global.imageTag="test-sha-${IMAGE_TAG}" \
             > /tmp/backend-manifests.yaml
           echo "Helm template rendered successfully ($(wc -l < /tmp/backend-manifests.yaml) lines)"
 

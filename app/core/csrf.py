@@ -334,7 +334,9 @@ class CSRFMiddleware:
         # If a user is logged in via cookie, we MUST verify CSRF regardless of Bearer presence,
         # because browsers will auto-attach the cookie on cross-origin requests.
         has_auth_cookie = bool(
-            request.cookies.get("access_token") or request.cookies.get("session_id")
+            request.cookies.get("access_token_v2")
+            or request.cookies.get("access_token")
+            or request.cookies.get("session_id")
         )
         if auth_header.lower().startswith("bearer ") and not has_auth_cookie:
             await self._app(scope, receive, send)

@@ -141,10 +141,11 @@ async def _verify_database_readiness() -> None:
 
             async with engine.connect() as _conn:
                 if _conn.dialect.name == "postgresql":
-                    _ctx = await _conn.run_sync(
-                        lambda sync_conn: MigrationContext.configure(sync_conn)
+                    _current = await _conn.run_sync(
+                        lambda sync_conn: MigrationContext.configure(
+                            sync_conn
+                        ).get_current_revision()
                     )
-                    _current = _ctx.get_current_revision()
                     if _current != _head:
                         raise RuntimeError(
                             f"DB schema mismatch — current={_current!r}, head={_head!r}."
@@ -249,11 +250,16 @@ async def _startup_background_workers(app: FastAPI) -> None:
 
     # Boot components from DI container
     if settings.environment != "testing":
-        outbox_worker = await app.state.dishka_container.get(OutboxWorker)
-        outbox_task = asyncio.create_task(
-            outbox_worker.run_forever(), name="outbox_worker"
-        )
-        app.state.background_tasks.add(outbox_task)
+        if settings.embedded_outbox_worker_enabled:
+            outbox_worker = await app.state.dishka_container.get(OutboxWorker)
+            outbox_task = asyncio.create_task(
+                outbox_worker.run_forever(), name="outbox_worker"
+            )
+            app.state.background_tasks.add(outbox_task)
+        else:
+            _logger.info(
+                "Embedded OutboxWorker disabled; expecting a standalone worker"
+            )
 
         nats_broker = await app.state.dishka_container.get(NatsTaskBroker)
         if nats_broker.is_connected:

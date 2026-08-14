@@ -511,11 +511,11 @@ jobs:
       REDIS_PASSWORD: nightly-redis-password # pragma: allowlist secret
       MINIO_ROOT_USER: minioadmin
       MINIO_ROOT_PASSWORD: minioadminsecret # pragma: allowlist secret
-      NATS_AUTH_TOKEN: nightly-nats-token # pragma: allowlist secret
+      NATS_PASSWORD: nightly-nats-token # pragma: allowlist secret
       SPICEDB_PRESHARED_KEY: nightly-spicedb-key # pragma: allowlist secret
       WS_HUB_INTERNAL_SECRET: nightly-ws-hub-secret # pragma: allowlist secret
-      IMGPROXY_KEY: nightly-imgproxy-key # pragma: allowlist secret
-      IMGPROXY_SALT: nightly-imgproxy-salt # pragma: allowlist secret
+      IMGPROXY_KEY: "0000000000000000000000000000000000000000000000000000000000000000"
+      IMGPROXY_SALT: "1111111111111111111111111111111111111111111111111111111111111111"
       SPOTIFY_CLIENT_ID: nightly-spotify-client # pragma: allowlist secret
       SPOTIFY_CLIENT_SECRET: nightly-spotify-secret # pragma: allowlist secret
       SPOTIFY_REDIRECT_URI: http://localhost/spotify/callback
@@ -547,21 +547,41 @@ jobs:
             -algorithm RSA \
             -pkeyopt rsa_keygen_bits:2048 \
             -out .secrets/jwt_rs256.pem
+          openssl pkey -in .secrets/jwt_rs256.pem -pubout -out .secrets/jwt_rs256.pub.pem
+          now="$(date +%s)"
+          exp="$((now + 31536000))"
+          jti="$(openssl rand -hex 16)"
+          base64url() {
+            openssl base64 -A | tr '+/' '-_' | tr -d '='
+          }
+          header="$(printf '%s' '{"alg":"RS256","kid":"primary","typ":"JWT"}' | base64url)"
+          payload="$(
+            printf '{"sub":"file-processor-service","aud":"temporal","iat":%s,"exp":%s,"jti":"%s"}' \
+              "$now" "$exp" "$jti" | base64url
+          )"
+          signing_input="${header}.${payload}"
+          signature="$(
+            printf '%s' "$signing_input" \
+              | openssl dgst -sha256 -sign .secrets/jwt_rs256.pem \
+              | base64url
+          )"
+          printf '%s.%s' "$signing_input" "$signature" > .secrets/temporal_api_key
           chmod 644 .secrets/jwt_rs256.pem
-          echo "COMPOSE_FILE=docker-compose.infra.yml:docker-compose.go.yml:docker-compose.yml:docker-compose.ci-loadtest.yml" >> "$GITHUB_ENV"
+          chmod 644 .secrets/jwt_rs256.pub.pem .secrets/temporal_api_key
+          echo "COMPOSE_FILE=docker-compose.yml:docker-compose.infra.yml:docker-compose.go.yml:docker-compose.ci-loadtest.yml" >> "$GITHUB_ENV"
           echo "API_BASE_URL=http://localhost:8000" >> "$GITHUB_ENV"
           echo "GATEWAY_URL=http://localhost:8080" >> "$GITHUB_ENV"
           echo "DATABASE_URL_SYNC=postgresql://postgres:${POSTGRES_PASSWORD}@localhost:54321/ecosystem" >> "$GITHUB_ENV"
 
       - name: Validate the production compose contract
         run: >-
-          docker compose -f docker-compose.infra.yml -f docker-compose.go.yml
-          -f docker-compose.yml -f docker-compose.ci-loadtest.yml config --quiet
+          docker compose -f docker-compose.yml -f docker-compose.infra.yml
+          -f docker-compose.go.yml -f docker-compose.ci-loadtest.yml config --quiet
 
       - name: Start the full chaos compose stack
         shell: bash
         run: |
-          CF="-f docker-compose.infra.yml -f docker-compose.go.yml -f docker-compose.yml -f docker-compose.ci-loadtest.yml"
+          CF="-f docker-compose.yml -f docker-compose.infra.yml -f docker-compose.go.yml -f docker-compose.ci-loadtest.yml"
           up_ok=""
           for attempt in 1 2 3; do
             if docker compose $CF up -d --build; then
@@ -631,14 +651,14 @@ jobs:
           # Compose network. Keep the job-level DATABASE_URL for containers,
           # but point this host-side fixture at the published PostgreSQL port.
           DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:54321/ecosystem # pragma: allowlist secret
-          COMPOSE_FILE: docker-compose.infra.yml:docker-compose.go.yml:docker-compose.yml:docker-compose.ci-loadtest.yml
+          COMPOSE_FILE: docker-compose.yml:docker-compose.infra.yml:docker-compose.go.yml:docker-compose.ci-loadtest.yml
         run: uv run pytest tests/chaos/ -v -m chaos --tb=short
 
       - name: Tear down full chaos compose stack
         if: always()
         shell: bash
         run: |
-          CF="-f docker-compose.infra.yml -f docker-compose.go.yml -f docker-compose.yml -f docker-compose.ci-loadtest.yml"
+          CF="-f docker-compose.yml -f docker-compose.infra.yml -f docker-compose.go.yml -f docker-compose.ci-loadtest.yml"
           docker rm -f ci-nightly-backend >/dev/null 2>&1 || true
           docker compose $CF down -v --remove-orphans || true
 

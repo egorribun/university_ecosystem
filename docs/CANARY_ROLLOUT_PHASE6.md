@@ -2,9 +2,16 @@
 
 > Operational runbook for the W125–W131 SSR migration arc's canary rollout phase. Authored Wave 132 SW6 in author-only mode (no live cluster access on dev workstation); cluster operator follows this procedure during the actual rollout. Cross-references the canary infrastructure shipped in W132 SW3-SW5.
 
+> **Archived procedure (2026-08-13):** the checked-in Caddy baseline now routes
+> only to the deployed `frontend` service. The `frontend-stable` service and its
+> weighted route are not part of the current Compose or Helm topology. Do not
+> run the commands below against the default Caddyfile. A future canary must
+> first provision both upstreams and prepare a temporary, reviewed Caddy
+> configuration derived from the then-current baseline.
+
 ## At a glance
 
-This is the project's **first canary rollout**. The migration target is the SPA → Node SSR transition shipped over W125-W131. Phase 4 (W131) prepared the deploy infrastructure — Node 24 Alpine runtime, Caddy multi-service routing, cookie SameSite=Lax. Phase 6 (W132) authored the canary infrastructure — Caddy `lb_policy weighted_round_robin`, k8s rolling-update strategy, `frontend-stable` Deployment template, Server-Timing observability — and wrote this runbook. The actual rollout (this document's procedure) is W133+ ops work.
+This document preserves the project's first canary rollout procedure. The migration target was the SPA → Node SSR transition shipped over W125-W131. Phase 4 (W131) prepared the deploy infrastructure — Node 24 Alpine runtime, Caddy multi-service routing, cookie SameSite=Lax. Phase 6 (W132) authored the historical canary infrastructure — Caddy `lb_policy weighted_round_robin`, k8s rolling-update strategy, `frontend-stable` Deployment template, Server-Timing observability — and wrote this runbook. It is retained as design history, not as a runnable current-state procedure.
 
 The expected user-facing outcome: authenticated route LCP drops from ~12 s (SPA) to ~2-4 s (SSR) on mobile devtools throttling, per W125 design § Phase 6 step 1.
 
@@ -44,7 +51,9 @@ caddy:443 ──► handle / { reverse_proxy {
 ```
 
 Key files in this canary system:
-- [`services/caddy/Caddyfile`](../services/caddy/Caddyfile) — weight knob lives here (`lb_policy weighted_round_robin <stable> <ssr>` line)
+- Historical canary Caddy configuration — removed after the rollout; any future
+  weighted configuration must be created as a temporary overlay from the
+  current [`services/caddy/Caddyfile`](../services/caddy/Caddyfile)
 - [`k8s/frontend/deployment.yaml`](../k8s/frontend/deployment.yaml) — Node SSR Deployment (W131 SW3) + Service `frontend`; W132 SW4 added explicit RollingUpdate strategy
 - [`k8s/frontend/canary/deployment-stable.yaml`](../k8s/frontend/canary/deployment-stable.yaml) — template legacy fallback Deployment + Service + PDB
 - [`k8s/frontend/canary/canary-flip-strategies.md`](../k8s/frontend/canary/canary-flip-strategies.md) — quick-reference flip commands
@@ -165,9 +174,9 @@ If `/healthz` returns 404 from frontend-stable, your nginx config didn't include
 ### Step 6 — Apply the W132 SW3 Caddy config (Stage 0 = identity change)
 
 ```bash
-# Update Caddy ConfigMap from the W132 SW3 Caddyfile:
+# Historical example only: apply the reviewed temporary canary Caddyfile:
 kubectl -n university-ecosystem create configmap caddy-config \
-  --from-file=Caddyfile=services/caddy/Caddyfile \
+  --from-file=Caddyfile=/secure/operator-workdir/Caddyfile.canary \
   --dry-run=client -o yaml | kubectl apply -f -
 
 # Trigger Caddy hot-reload:
@@ -178,7 +187,7 @@ kubectl -n university-ecosystem rollout status deployment caddy
 kubectl -n university-ecosystem logs -l app=caddy --tail=20 | grep -i "reload\|reverse_proxy"
 ```
 
-The Caddyfile weights are `lb_policy weighted_round_robin 100 0` — stable serves all traffic; SSR pool gets zero. This is **Stage 0 identity change**: applied config differs from pre-W132 only in routing-config syntax, not in observed traffic distribution. Verify via:
+The temporary canary Caddyfile weights are `lb_policy weighted_round_robin 100 0` — stable serves all traffic; SSR pool gets zero. This is **Stage 0 identity change**: applied config differs from pre-W132 only in routing-config syntax, not in observed traffic distribution. Verify via:
 
 ```bash
 # Run for ~5 min, then sample the access log:
@@ -251,7 +260,7 @@ Per-stage advance/abort criteria:
 
 ### Stage advance command pattern
 
-The single line that changes per advance is in `services/caddy/Caddyfile`:
+The single line that changes per advance is in the temporary operator-managed canary Caddyfile:
 
 ```caddy
 lb_policy weighted_round_robin <stable> <ssr>
@@ -306,11 +315,11 @@ If any abort criterion fires during soak, immediately execute the rollback proce
 The W125 design § Phase 6 step 5 documented this as the "Caddy config flip to serve old SPA build" rollback. Execution time: **~50 ms config reload + 30 s `fail_duration` window** before the stable pool fully reabsorbs traffic.
 
 ```bash
-# Edit services/caddy/Caddyfile:
+# Edit /secure/operator-workdir/Caddyfile.canary:
 #   Change `lb_policy weighted_round_robin X Y` back to `lb_policy weighted_round_robin 100 0`
 
 kubectl -n university-ecosystem create configmap caddy-config \
-  --from-file=Caddyfile=services/caddy/Caddyfile \
+  --from-file=Caddyfile=/secure/operator-workdir/Caddyfile.canary \
   --dry-run=client -o yaml | kubectl apply -f -
 kubectl -n university-ecosystem rollout restart deployment caddy
 kubectl -n university-ecosystem rollout status deployment caddy
@@ -361,11 +370,11 @@ kubectl -n university-ecosystem get all -l wave=w132-canary
 
 ### Step 2 — Revert Caddy to single-upstream block
 
-Edit `services/caddy/Caddyfile`. Replace the W132 SW3 `lb_policy weighted_round_robin` block in the `default` handle with the post-Phase-6 single-upstream form (commented at the bottom of the file). Then apply:
+Edit the temporary operator-managed canary Caddyfile. Replace its `lb_policy weighted_round_robin` block in the `default` handle with the current single-upstream form from `services/caddy/Caddyfile`. Then apply:
 
 ```bash
 kubectl -n university-ecosystem create configmap caddy-config \
-  --from-file=Caddyfile=services/caddy/Caddyfile \
+  --from-file=Caddyfile=/secure/operator-workdir/Caddyfile.canary \
   --dry-run=client -o yaml | kubectl apply -f -
 kubectl -n university-ecosystem rollout restart deployment caddy
 ```
@@ -423,7 +432,7 @@ This section captures honest gaps in the W132 SW6 author phase that the operator
 - [`docs/plans/2026-05-06-wave131-phase4-deploy-design.md`](plans/2026-05-06-wave131-phase4-deploy-design.md) — Phase 4 prerequisites
 - [`docs/audits/AUDIT_WAVE131.md`](audits/AUDIT_WAVE131.md) — W131 §Honesty probe #1+#2 (Docker stack verification deferred → addressed by W132 SW1)
 - [`docs/audits/AUDIT_WAVE132.md`](audits/AUDIT_WAVE132.md) — W132 wave-close audit (this wave's work)
-- [`services/caddy/Caddyfile`](../services/caddy/Caddyfile) — active canary config (W132 SW3)
+- [`services/caddy/Caddyfile`](../services/caddy/Caddyfile) — current single-upstream baseline; the historical canary variant has been retired
 - [`k8s/frontend/canary/canary-flip-strategies.md`](../k8s/frontend/canary/canary-flip-strategies.md) — quick-reference flip commands (W132 SW4)
 - [`k8s/frontend/canary/deployment-stable.yaml`](../k8s/frontend/canary/deployment-stable.yaml) — legacy SPA fallback Deployment template (W132 SW4)
 - [`frontend/scripts/server-prod.mjs`](../frontend/scripts/server-prod.mjs) — Node SSR runtime + Server-Timing observability (W131 SW1+SW7, W132 SW5)

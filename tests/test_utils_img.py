@@ -71,6 +71,17 @@ class TestGetOptimizedImageUrl:
         assert result is not None
         assert result.startswith("https://img.example.com/")
 
+    def test_preserves_a_proxy_path_prefix_in_the_public_base_url(self) -> None:
+        settings = _settings_with_proxy(
+            imgproxy_base_url="https://app.example.com/imgproxy/"
+        )
+
+        with patch("app.utils.img.settings", settings):
+            result = get_optimized_image_url("https://cdn.example.com/photo.jpg")
+
+        assert result is not None
+        assert result.startswith("https://app.example.com/imgproxy/")
+
     def test_signed_url_contains_processing_options(self) -> None:
         with patch("app.utils.img.settings", _settings_with_proxy()):
             result = get_optimized_image_url(

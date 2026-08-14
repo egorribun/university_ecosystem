@@ -91,7 +91,7 @@ func Load() (*Config, error) {
 		AllowedOrigins:    getEnvSlice("ALLOWED_ORIGINS", []string{"http://localhost:3000", "http://localhost:5173"}),
 		SentryDSN:         getEnv("SENTRY_DSN", ""),
 		Environment:       getEnv("VITE_ENVIRONMENT", "development"),
-		OtelEndpoint:      getEnv("OTEL_EXPORTER_OTLP_ENDPOINT", "jaeger:4317"),
+		OtelEndpoint:      getEnv("OTEL_EXPORTER_OTLP_ENDPOINT", "tempo:4317"),
 		AppVersion:        getEnv("APP_VERSION", "unknown"),
 		// AUDIT-INFRA-05: Fail-closed — TLS on by default. Set GRPC_USE_TLS=false
 		// ONLY for local dev (docker-compose.yml). Production/K8s inherit TLS=true.

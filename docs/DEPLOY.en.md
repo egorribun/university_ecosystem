@@ -6,7 +6,7 @@ _[Russian version](DEPLOY.md) · [English version](DEPLOY.en.md)_
 
 - Before building the frontend, set `VITE_BACKEND_ORIGIN` (for example via `frontend/.env.production`).
 - To render the interactive map, set `VITE_MAP_CONSTRUCTOR_ID` — the Yandex Maps constructor ID for the campus.
-- The `root/.env.example` file is a template for local use. Copy it to `root/.env`, replace every secret, and keep the filled version outside of version control. Compose ships with safe development defaults for `DATABASE_URL` and `POSTGRES_PASSWORD_FILE` so commands like `docker compose config` succeed without secrets, but real deployments must override them. If you keep secrets elsewhere, set `ENV_FILE=/path/to/.env` before running Compose to point `env_file` at a different location.
+- The `root/.env.example` file is a template only: required passwords and keys intentionally have no insecure fallback values. For a complete local launch, use PowerShell 7 and run `.\start-docker.ps1 -Build`; the bootstrapper creates and synchronizes `.env`/`.env.docker`. Never commit populated files.
 - All variables prefixed with `VITE_` are inlined into the code during `npm run build`; changing them after the build has no effect.
 - During CI/CD export `SERVICE_VERSION` (or `APP_VERSION`) before launching containers to propagate the build identifier to OpenTelemetry (`service.version`). The frontend build automatically reuses these variables — alongside common CI commit identifiers such as `SOURCE_VERSION`, `VERCEL_GIT_COMMIT`, or `GITHUB_SHA` — when `VITE_APP_RELEASE` is not explicitly provided.
 - Set `VITE_APP_RELEASE` to forward the release identifier to Sentry. Values are embedded at build time.
@@ -16,7 +16,8 @@ _[Russian version](DEPLOY.md) · [English version](DEPLOY.en.md)_
 - Backend and frontend must run over HTTPS, otherwise the browser blocks `/media` and `/static`.
 - To limit requests, configure the backend with `RATE_LIMIT_STORAGE_BACKEND` and `RATE_LIMIT_STORAGE_URI`. The value `redis` + a Redis URL (for example, `redis://user:pass@host:6379/0`) enables a shared storage for the middleware and sensitive endpoints. Use `memory` or `memory://` for a simple single-process mode without external Redis.
 - Control the object-storage health probe with `HEALTH_STORAGE_PROBE_ENABLED` (run a write/delete check when set to `true`) and `HEALTH_STORAGE_PROBE_MIN_INTERVAL_SECONDS` (cache probe results between intervals). When disabled, the probe uses cheap bucket/list calls when available, which is friendlier to external providers.
-- Docker Compose has a production override (`docker-compose.prod.yml`) that marks secrets as mandatory. Run with `docker compose --profile prod -f docker-compose.yml -f docker-compose.prod.yml up -d` and provide `DATABASE_URL`, `POSTGRES_PASSWORD_FILE`, and the frontend origins explicitly.
+- Docker Compose has a production override (`docker-compose.prod.yml`) that marks secrets as mandatory. Create the Compose secrets `secret_key`, `database_url`, and `nats_auth_token`, and provide the PostgreSQL password file through `POSTGRES_PASSWORD_SOURCE_FILE`. The `database_url` secret must point to `postgresql+asyncpg://...@pgbouncer:5432/university`. Then run `docker compose --profile prod -f docker-compose.yml -f docker-compose.go.yml -f docker-compose.prod.yml up -d` with `FRONTEND_ORIGIN` and `FRONTEND_ORIGINS` set explicitly; the Go overlay is required because Caddy routes API and WebSocket traffic through gateway/ws-hub.
+- The Helm chart reads connections from the pre-created `university-connections` Secret (all required keys are documented in `charts/university-ecosystem/values.yaml`). In production, set `applicationSecrets.existingSecret`; it must contain the listed JWT/RSA keys, independent HMAC/integration secrets, MinIO credentials, and Temporal API key. Production rendering rejects plaintext MinIO, Temporal, gRPC, and OTLP so unsafe configuration never reaches the cluster or Helm release state.
 - Healthchecks stay inside the containers (`127.0.0.1`), and the only `extra_hosts` entry is `host.docker.internal`; remove it for production clusters that do not need host access.
 - Prometheus metrics are disabled by default in `docker-compose.yml`. To expose them, set `ENABLE_METRICS_ENDPOINT=true` **and** configure durable values for `METRICS_BASIC_AUTH_USERNAME` and `METRICS_BASIC_AUTH_PASSWORD` (Compose no longer injects placeholders). The backend now fails startup — or returns `503` at runtime — when metrics are enabled without credentials unless the allowlist is strictly loopback-only (`127.0.0.1`, `::1`, `localhost`).
 - To attach the `Cross-Origin-Resource-Policy` header, set `ENABLE_CORP=true`. Customize the value via `CORP_VALUE` (defaults to `same-site`; `same-origin` and `cross-origin` are also accepted).
@@ -41,6 +42,16 @@ _[Russian version](DEPLOY.md) · [English version](DEPLOY.en.md)_
   ```bash
   docker compose run --rm backend alembic upgrade head
   ```
+
+- Helm performs the same upgrade automatically through a blocking
+  `pre-install,pre-upgrade` hook Job. `connections.existingSecret` must exist
+  before `helm install`; a failed migration aborts the application rollout.
+  Disable `migrations.enabled` only when a separate verified deployment pipeline
+  owns schema migrations.
+- Enable Helm backups with `backup.enabled=true`: an init container creates a
+  custom-format `pg_dump`, then `minio/mc` uploads it to the configured bucket.
+  This requires `backup-database-url` in the connection Secret and
+  `minio-access-key`/`minio-secret-key` in the application Secret.
 
 ### Database connection pool
 
@@ -186,7 +197,7 @@ PY
 ## Docker image
 
 - `root/frontend.Dockerfile` is built in two stages: the `builder` stage runs `npm ci && npm run build`, and the final image is based on `nginx:alpine` and contains only the `dist/` contents.
-- `VITE_BACKEND_ORIGIN` is passed via `--build-arg` (see `docker-compose.yml`). For local development it is already set to `http://localhost:8000`.
+- `VITE_BACKEND_ORIGIN` remains the frontend build-time fallback. Node SSR first reads the runtime `BACKEND_ORIGIN`, so one immutable image works with different Compose/Helm service names; the chart and Compose already provide the internal backend address. Browser API requests stay same-origin and flow through the gateway.
 - Static assets are served by Nginx with caching: files in `assets/` receive `Cache-Control: public, max-age=31536000, immutable`, and `index.html` gets `Cache-Control: no-cache`.
 - The container listens on port `80`. In docker-compose it is forwarded to `8080`, so the SPA is available at http://localhost:8080.
 

@@ -55,9 +55,11 @@ class NatsService:
         self,
         servers: list[str] | str = "nats://localhost:4222",
         name: str = "university-ecosystem",
+        auth_token: str | None = None,
     ) -> None:
         self._servers = [servers] if isinstance(servers, str) else servers
         self._name = name
+        self._auth_token = auth_token
         self._client: NatsClient | None = None
         self._js: JetStreamContext | None = None
         self._subscriptions: list[Any] = []
@@ -71,11 +73,16 @@ class NatsService:
         if self.is_connected:
             return
 
+        connect_options: dict[str, Any] = {
+            "servers": self._servers,
+            "name": self._name,
+            "reconnect_time_wait": 2,
+            "max_reconnect_attempts": -1,
+        }
+        if self._auth_token:
+            connect_options["token"] = self._auth_token
         self._client = await nats.connect(
-            servers=self._servers,
-            name=self._name,
-            reconnect_time_wait=2,
-            max_reconnect_attempts=-1,  # Infinite reconnect
+            **connect_options,
         )
         self._js = self._client.jetstream()
         logger.info("Connected to NATS: %s", self._servers)
@@ -292,8 +299,10 @@ def get_nats_service() -> NatsService:
         if _nats_service is None:
             from app.core.config import settings
 
-            servers = getattr(settings, "nats_servers", "nats://localhost:4222")
-            _nats_service = NatsService(servers=servers)
+            _nats_service = NatsService(
+                servers=settings.nats_url,
+                auth_token=settings.nats_auth_token,
+            )
         return _nats_service
 
 

@@ -1,121 +1,140 @@
 # University Ecosystem - Caddy Configuration
 # Automatic HTTPS reverse proxy with compression and security headers
-
 {
-    # Global options
-    email admin@example.com
+	# Global options
+	email admin@example.com
 
-    # Development mode - disable HTTPS for local testing
-    # Remove this block in production
-    auto_https off
+	# Development mode - disable HTTPS for local testing
+	# Remove this block in production
+	auto_https off
 }
 
 # Development: localhost
 :80 {
-    # Health check endpoint for Docker
-    handle /health {
-        respond "OK" 200
-    }
+	# Throttle WebSocket connection creation before requests reach ws-hub.
+	# The backend applies its own limiter as defense in depth.
+	@ws_upgrade {
+		path /ws/*
+		header Connection *Upgrade*
+	}
+	rate_limit @ws_upgrade {
+		zone ws_upgrades {
+			key {http.request.remote.host}
+			events 10
+			window 1m
+		}
+	}
 
-    # Compression
-    encode zstd gzip
+	# Edge-local liveness endpoint used by start-docker.ps1.
+	handle /healthz {
+		respond "OK" 200
+	}
 
-    # Security headers
-    header {
-        X-Content-Type-Options nosniff
-        X-Frame-Options DENY
-        X-XSS-Protection "0"
-        Referrer-Policy strict-origin-when-cross-origin
-        -Server
-    }
+	# Compression
+	encode zstd gzip
 
-    # Wave 137 SW4: backend's RFC 8615 well-known endpoints (JWKS, OpenID
-    # configuration, etc.) must be publicly reachable for ssrAuth.ts +
-    # external clients. Pre-W137 these fell through to the default handle
-    # (frontend SSR shell). Backend mounts the JWKS endpoint at
-    # /.well-known/jwks.json (app/api/well_known.py).
-    handle /.well-known/* {
-        reverse_proxy backend:8000
-    }
+	# Security headers
+	header {
+		X-Content-Type-Options nosniff
+		X-Frame-Options DENY
+		X-XSS-Protection "0"
+		Referrer-Policy strict-origin-when-cross-origin
+		-Server
+	}
 
-    # API Gateway (Go)
-    handle /api/* {
-        reverse_proxy gateway:8080
-    }
+	# Wave 137 SW4: backend's RFC 8615 well-known endpoints (JWKS, OpenID
+	# configuration, etc.) must be publicly reachable for ssrAuth.ts +
+	# external clients. Pre-W137 these fell through to the default handle
+	# (frontend SSR shell). Backend mounts the JWKS endpoint at
+	# /.well-known/jwks.json (app/api/well_known.py).
+	handle /.well-known/* {
+		reverse_proxy backend:8000
+	}
 
-    # GraphQL endpoint (via Gateway)
-    handle /graphql* {
-        reverse_proxy gateway:8080
-    }
+	# API Gateway (Go)
+	handle /api/* {
+		reverse_proxy gateway:8080
+	}
 
-    # Wave 173 SW1 — /ws/ticket is an HTTP POST endpoint on backend (via gateway)
-    # that issues short-lived OTT (one-time-tickets) for WS upgrade authentication
-    # (RZ-W14-01, see app/api/ws/ticket.py). It MUST precede the general /ws/*
-    # rule because Caddy `handle` blocks are mutually exclusive and matched in
-    # declaration order — without this exception POST /ws/ticket gets routed to
-    # ws-hub:8081 (a Go WS service with no HTTP /ticket endpoint) and returns
-    # 404, breaking ALL chat/messenger functionality. Closes W131 SW4 routing
-    # omission that lay dormant ≥17 waves because /messenger was Phase 5 punted.
-    handle /ws/ticket {
-        reverse_proxy gateway:8080
-    }
+	# GraphQL endpoint (via Gateway)
+	handle /graphql* {
+		reverse_proxy gateway:8080
+	}
 
-    # Wave 173 polish-v1 — frontend `useChatWebSocket.ts:202` constructs WS URL
-    # as `/ws/chat?ticket=<hex>` but ws-hub Go service serves WS upgrade at
-    # plain `/ws` (`services/ws-hub/main.go:133 http.Handle("/ws", ...)`). Go's
-    # net/http `Handle("/ws", ...)` matches ONLY the exact path `/ws`, NOT
-    # `/ws/chat` (which would require `Handle("/ws/", ...)` trailing slash).
-    # Rewrite `/ws/chat` → `/ws` before proxying so frontend code + ws-hub Go
-    # both stay unchanged. Pre-W173 polish-v1: WS upgrade requests for
-    # `/ws/chat?ticket=<hex>` returned 404 from ws-hub (path mismatch). This
-    # was the W173 SW1 «безупречно?» finding — surface-level /ws/ticket fix
-    # closed HTTP ticket issuance but didn't restore full chat flow because
-    # the downstream WS upgrade was ALSO broken by W131 SW4 endpoint-class
-    # omission (same root cause class as /ws/ticket fix).
-    handle /ws/chat* {
-        rewrite * /ws
-        reverse_proxy ws-hub:8081
-    }
+	# Wave 173 SW1 — /ws/ticket is an HTTP POST endpoint on backend (via gateway)
+	# that issues short-lived OTT (one-time-tickets) for WS upgrade authentication
+	# (RZ-W14-01, see app/api/ws/ticket.py). It MUST precede the general /ws/*
+	# rule because Caddy `handle` blocks are mutually exclusive and matched in
+	# declaration order — without this exception POST /ws/ticket gets routed to
+	# ws-hub:8081 (a Go WS service with no HTTP /ticket endpoint) and returns
+	# 404, breaking ALL chat/messenger functionality. Closes W131 SW4 routing
+	# omission that lay dormant ≥17 waves because /messenger was Phase 5 punted.
+	handle /ws/ticket {
+		reverse_proxy gateway:8080
+	}
 
-    # WebSocket Hub (Go) — WS upgrade endpoint itself (catch-all for any
-    # future /ws/<other-path> routes; ws-hub will return 404 unless it
-    # explicitly handles those paths, but we route there for visibility).
-    handle /ws/* {
-        reverse_proxy ws-hub:8081
-    }
+	# Wave 173 polish-v1 — frontend `useChatWebSocket.ts:202` constructs WS URL
+	# as `/ws/chat?ticket=<hex>` but ws-hub Go service serves WS upgrade at
+	# plain `/ws` (`services/ws-hub/main.go:133 http.Handle("/ws", ...)`). Go's
+	# net/http `Handle("/ws", ...)` matches ONLY the exact path `/ws`, NOT
+	# `/ws/chat` (which would require `Handle("/ws/", ...)` trailing slash).
+	# Rewrite `/ws/chat` → `/ws` before proxying so frontend code + ws-hub Go
+	# both stay unchanged. Pre-W173 polish-v1: WS upgrade requests for
+	# `/ws/chat?ticket=<hex>` returned 404 from ws-hub (path mismatch). This
+	# was the W173 SW1 «безупречно?» finding — surface-level /ws/ticket fix
+	# closed HTTP ticket issuance but didn't restore full chat flow because
+	# the downstream WS upgrade was ALSO broken by W131 SW4 endpoint-class
+	# omission (same root cause class as /ws/ticket fix).
+	handle /ws/chat* {
+		rewrite * /ws
+		reverse_proxy ws-hub:8081
+	}
 
-    # Static files from backend
-    handle /static/* {
-        reverse_proxy backend:8000
-    }
+	# WebSocket Hub (Go) — WS upgrade endpoint itself (catch-all for any
+	# future /ws/<other-path> routes; ws-hub will return 404 unless it
+	# explicitly handles those paths, but we route there for visibility).
+	handle /ws/* {
+		reverse_proxy ws-hub:8081
+	}
 
-    # MinIO presigned URLs (optional direct access)
-    handle /storage/* {
-        uri strip_prefix /storage
-        reverse_proxy minio:9000
-    }
+	# Static files from backend
+	handle /static/* {
+		reverse_proxy backend:8000
+	}
 
-    # Wave 131 SW4 — Service worker MUST come from same origin and MUST NOT
-    # be cached (browsers re-check on every navigation). The Node SSR runtime
-    # serves /sw.js from dist/client/sw.js; Caddy adds the Service-Worker-Allowed
-    # header so the SW can claim a wider scope than its file location.
-    handle /sw.js {
-        reverse_proxy frontend:3000
-        header Service-Worker-Allowed "/"
-        header Cache-Control "no-store, no-cache, must-revalidate, max-age=0"
-    }
+	# Signed image-processing URLs. The public prefix is not part of the path
+	# signed for imgproxy, so handle_path must strip it before proxying.
+	handle_path /imgproxy/* {
+		reverse_proxy imgproxy:8080
+	}
 
-    # Wave 131 SW4 — Phase 4 deploy infrastructure: default handle now points
-    # at the Node SSR runtime (frontend:3000) instead of the prior nginx
-    # static-serve (frontend:8080). `health_uri /healthz` probes the W131 SW2
-    # fast path so Caddy stops proxying to a dead upstream automatically.
-    handle {
-        reverse_proxy frontend:3000 {
-            health_uri /healthz
-            health_interval 10s
-            health_timeout 5s
-        }
-    }
+	# MinIO presigned URLs (optional direct access)
+	handle /storage/* {
+		uri strip_prefix /storage
+		reverse_proxy minio:9000
+	}
+
+	# Wave 131 SW4 — Service worker MUST come from same origin and MUST NOT
+	# be cached (browsers re-check on every navigation). The Node SSR runtime
+	# serves /sw.js from dist/client/sw.js; Caddy adds the Service-Worker-Allowed
+	# header so the SW can claim a wider scope than its file location.
+	handle /sw.js {
+		reverse_proxy frontend:3000
+		header Service-Worker-Allowed "/"
+		header Cache-Control "no-store, no-cache, must-revalidate, max-age=0"
+	}
+
+	# Wave 131 SW4 — Phase 4 deploy infrastructure: default handle now points
+	# at the Node SSR runtime (frontend:3000) instead of the prior nginx
+	# static-serve (frontend:8080). `health_uri /healthz` probes the W131 SW2
+	# fast path so Caddy stops proxying to a dead upstream automatically.
+	handle {
+		reverse_proxy frontend:3000 {
+			health_uri /healthz
+			health_interval 10s
+			health_timeout 5s
+		}
+	}
 }
 
 # Production configuration (uncomment and customize)

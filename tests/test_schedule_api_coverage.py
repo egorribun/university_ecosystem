@@ -10,6 +10,7 @@ from httpx import ASGITransport, AsyncClient
 import app.models as models
 from app.api.deps import get_current_user
 from app.core.container import get_read_schedule_handler
+from app.core.csrf import CSRF_COOKIE_NAME, CSRF_HEADER_NAME
 from app.core.database import get_db
 from app.cqrs.bus import CommandBus, QueryBus
 from app.main import app
@@ -159,9 +160,13 @@ async def test_schedule_api_coverage(
         async with AsyncClient(
             transport=ASGITransport(app=app),
             base_url="http://testserver",
-            headers={"X-CSRF-Token": "test-csrf-token"},
-            cookies={"csrf_token": "test-csrf-token"},
         ) as ac:
+            csrf_response = await ac.get("/api/v1/auth/csrf-cookie")
+            assert csrf_response.status_code == 200
+            csrf_token = ac.cookies.get(CSRF_COOKIE_NAME)
+            assert csrf_token
+            ac.headers[CSRF_HEADER_NAME] = csrf_token
+
             gid = str(uuid.uuid4())
             # Test get schedule (uses handler)
             res = await ac.get(f"/api/v1/schedule/{gid}")

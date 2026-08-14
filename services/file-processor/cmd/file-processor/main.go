@@ -191,12 +191,23 @@ func runMain(ctx context.Context) error {
 }
 
 func loadRSAPublicKey(ctx context.Context, cfg *config.Config, logger *slog.Logger) (*rsa.PublicKey, error) {
-	if cfg.RSAPublicKeyPEM == "" {
+	publicKeyPEM := cfg.RSAPublicKeyPEM
+	if publicKeyPEM == "" && cfg.RSAPublicKeyFile != "" {
+		keyBytes, err := os.ReadFile(cfg.RSAPublicKeyFile)
+		if err != nil {
+			return nil, fmt.Errorf("read RSA public key file: %w", err)
+		}
+		publicKeyPEM = string(keyBytes)
+		if strings.TrimSpace(publicKeyPEM) == "" {
+			return nil, fmt.Errorf("RSA public key file is empty: %s", cfg.RSAPublicKeyFile)
+		}
+	}
+	if publicKeyPEM == "" {
 		return nil, nil
 	}
-	key, err := parseRSAPublicKey(cfg.RSAPublicKeyPEM)
+	key, err := parseRSAPublicKey(publicKeyPEM)
 	if err != nil {
-		logger.ErrorContext(ctx, "Failed to parse RSA_PUBLIC_KEY_PEM", "err", err)
+		logger.ErrorContext(ctx, "Failed to parse RSA public key", "err", err)
 		return nil, err
 	}
 	logger.InfoContext(ctx, "RS256 token verification enabled")
@@ -307,11 +318,11 @@ func connectTemporal(ctx context.Context, cfg *config.Config, logger *slog.Logge
 	if cfg.TemporalAPIKeyFile != "" {
 		data, err := os.ReadFile(cfg.TemporalAPIKeyFile)
 		if err != nil {
-			logger.WarnContext(ctx, "Failed to read Temporal API key file; connecting without auth")
+			return nil, fmt.Errorf("read Temporal API key file: %w", err)
 		} else {
 			token := strings.TrimSpace(string(data))
 			if token == "" {
-				logger.WarnContext(ctx, "Temporal API key file is empty; connecting without auth")
+				return nil, fmt.Errorf("Temporal API key file is empty: %s", cfg.TemporalAPIKeyFile)
 			} else {
 				// W141 SW5 critical detail: client.NewAPIKeyStaticCredentials AUTO-ENABLES
 				// TLS unless ConnectionOptions.TLSDisabled is true (verified at
@@ -323,14 +334,15 @@ func connectTemporal(ctx context.Context, cfg *config.Config, logger *slog.Logge
 				// Bearer <token> header is still attached via the credentials' gRPC
 				// interceptor — only the transport-level TLS is bypassed.
 				//
-				// Production K8s deployments using managed Temporal Cloud will set
-				// TLS explicitly (real CA cert) — TLSDisabled stays false there.
+				// Production K8s deployments keep TLS enabled; only the local
+				// plaintext Temporal dev server opts out through configuration.
 				opts.Credentials = client.NewAPIKeyStaticCredentials(token)
 				opts.ConnectionOptions = client.ConnectionOptions{
-					TLSDisabled: true,
+					TLSDisabled: cfg.TemporalTLSDisabled,
 				}
-				logger.InfoContext(ctx, "Attached Temporal service token (TLS disabled for plaintext dev gRPC)",
+				logger.InfoContext(ctx, "Attached Temporal service token",
 					"token_chars", len(token),
+					"tls_enabled", !cfg.TemporalTLSDisabled,
 				)
 			}
 		}
@@ -824,7 +836,7 @@ func authFunc(secret string, rsaPub *rsa.PublicKey, logger *slog.Logger) auth.Au
 func initTracer(ctx context.Context, cfg *config.Config, logger *slog.Logger) (*sdktrace.TracerProvider, error) {
 	endpoint := cfg.OTLPEndpoint
 	if endpoint == "" {
-		endpoint = "jaeger:4317"
+		endpoint = "tempo:4317"
 	}
 
 	var opts []otlptracegrpc.Option

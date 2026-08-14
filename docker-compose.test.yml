@@ -13,7 +13,7 @@ services:
       timeout: 5s
       retries: 5
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     networks:
       - test-net
 
@@ -30,10 +30,10 @@ services:
   toxiproxy:
     image: ghcr.io/shopify/toxiproxy:2.9.0
     ports:
-      - "8474:8474"   # HTTP API для управления toxics
-      - "5433:5433"   # PostgreSQL proxy
-      - "6380:6380"   # Redis proxy
-      - "4223:4223"   # NATS proxy
+      - "127.0.0.1:8474:8474"   # HTTP API для управления toxics
+      - "127.0.0.1:5433:5433"   # PostgreSQL proxy
+      - "127.0.0.1:6380:6380"   # Redis proxy
+      - "127.0.0.1:4223:4223"   # NATS proxy
     healthcheck:
       test: ["CMD", "wget", "-q", "-O-", "http://localhost:8474/version"]
       interval: 5s

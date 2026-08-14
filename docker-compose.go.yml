@@ -8,12 +8,14 @@ services:
       context: .
       dockerfile: services/gateway/Dockerfile
     ports:
-      - "8080:8080"
+      - "127.0.0.1:8080:8080"
     environment:
       GATEWAY_PORT: "8080"
       BACKEND_URL: http://backend:8000
-      REDIS_URL: redis://:${REDIS_PASSWORD}@valkey:6379/3
-      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET must be explicitly set in .env (TD-W16-01)}
+      REDIS_URL: redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required - set in .env file}@valkey:6379/3
+      JWT_SECRET: ${SECRET_KEY:?SECRET_KEY must be explicitly set in .env}
+      JWKS_ENDPOINT: http://backend:8000/.well-known/jwks.json
+      JWKS_REFRESH_INTERVAL: "60"
       OTEL_EXPORTER_OTLP_ENDPOINT: tempo:4317
       OTEL_EXPORTER_OTLP_INSECURE: "true"
     depends_on:
@@ -37,17 +39,21 @@ services:
       context: .
       dockerfile: services/ws-hub/Dockerfile
     ports:
-      - "8083:8081"
+      - "127.0.0.1:8083:8081"
     environment:
       WS_HUB_PORT: "8081"
-      NATS_URL: nats://nats:4222
-      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET must be explicitly set in .env (TD-W16-01)}
+      NATS_URL: nats://${NATS_PASSWORD:?NATS_PASSWORD is required - set in .env file}@nats:4222
+      JWT_SECRET: ${SECRET_KEY:?SECRET_KEY must be explicitly set in .env}
+      JWKS_URL: http://backend:8000/.well-known/jwks.json
       OTEL_EXPORTER_OTLP_ENDPOINT: tempo:4317
       OTEL_EXPORTER_OTLP_INSECURE: "true"
       # PERF-W15-04: Increase in production to handle burst reconnects (e.g. post-deploy)
       AUTH_CLIENT_MAX_CONNS_PER_HOST: "50"
     depends_on:
-      - nats
+      nats:
+        condition: service_healthy
+      backend:
+        condition: service_healthy
     networks:
       - internal
       - public
@@ -64,18 +70,35 @@ services:
       context: .
       dockerfile: services/file-processor/Dockerfile
     environment:
-      NATS_URL: nats://nats:4222
-      MINIO_ENDPOINT: minio:9000
-      MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:?MINIO_ROOT_USER is required - set in .env file}
-      MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:?MINIO_ROOT_PASSWORD is required - set in .env file}
-      MINIO_BUCKET: uploads
+      FP_NATS_URL: nats://${NATS_PASSWORD:?NATS_PASSWORD is required - set in .env file}@nats:4222
+      FP_MINIO_ENDPOINT: minio:9000
+      FP_MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:?MINIO_ROOT_USER is required - set in .env file}
+      FP_MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:?MINIO_ROOT_PASSWORD is required - set in .env file}
+      FP_MINIO_BUCKET: uploads
+      FP_TEMPORAL_HOST: temporal:7233
+      FP_TEMPORAL_API_KEY_FILE: /app/.secrets/temporal_api_key
+      FP_TEMPORAL_TLS_DISABLED: "true"
+      FP_ENVIRONMENT: "${ENVIRONMENT:-development}"
+      FP_RSA_PUBLIC_KEY_FILE: /app/.secrets/jwt_rs256.pub.pem
+      FP_OTLP_ENDPOINT: tempo:4317
+      FP_OTLP_INSECURE: "true"
+    volumes:
+      - ./.secrets:/app/.secrets:ro
     depends_on:
       nats:
-        condition: service_started
+        condition: service_healthy
       minio:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+      temporal-namespace-init:
+        condition: service_completed_successfully
+      backend:
         condition: service_healthy
     networks:
       - internal
+      - event_net
+      - service_net
     deploy:
       resources:
         limits:

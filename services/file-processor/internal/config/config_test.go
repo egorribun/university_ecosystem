@@ -14,6 +14,7 @@ func TestLoad_ReturnsDefaultValues(t *testing.T) {
 		"FP_GRPC_PORT", "FP_GRAPHQL_PORT", "FP_NATS_URL",
 		"FP_TEMPORAL_HOST", "FP_MINIO_BUCKET", "FP_MINIO_ENDPOINT",
 		"FP_MINIO_ACCESS_KEY", "FP_MINIO_SECRET_KEY", "FP_MINIO_SECURE",
+		"FP_TEMPORAL_TLS_DISABLED", "FP_ENVIRONMENT",
 	}
 	originalEnvVars := make(map[string]string, len(fpEnvVars))
 	for _, key := range fpEnvVars {
@@ -46,6 +47,8 @@ func TestLoad_ReturnsDefaultValues(t *testing.T) {
 	assert.Equal(t, "minioadmin", cfg.MinioAccessKey)
 	assert.Equal(t, "minioadmin", cfg.MinioSecretKey)
 	assert.False(t, cfg.MinioSecure)
+	assert.True(t, cfg.TemporalTLSDisabled)
+	assert.Equal(t, "development", cfg.Environment)
 }
 
 // TD-33-12: Use FP_ prefix — SetEnvPrefix("FP") in Load() requires it.
@@ -75,9 +78,41 @@ func TestLoad_MissingCredentials(t *testing.T) {
 func TestLoad_MissingJWTSecretAndRSAPublicKey(t *testing.T) {
 	t.Setenv("FP_JWT_SECRET", "")
 	t.Setenv("FP_RSA_PUBLIC_KEY_PEM", "")
+	t.Setenv("FP_RSA_PUBLIC_KEY_FILE", "")
 	_, err := Load()
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "either FP_JWT_SECRET or FP_RSA_PUBLIC_KEY_PEM must be set")
+	assert.Contains(t, err.Error(), "FP_RSA_PUBLIC_KEY_FILE")
+}
+
+func TestLoad_RejectsInsecureProductionDataPlanes(t *testing.T) {
+	t.Setenv("FP_JWT_SECRET", "dummy-secret-value-for-testing-purposes-only")
+	t.Setenv("FP_ENVIRONMENT", "production")
+	t.Setenv("FP_MINIO_SECURE", "true")
+	t.Setenv("FP_TEMPORAL_TLS_DISABLED", "false")
+	t.Setenv("FP_OTLP_INSECURE", "false")
+	secureCfg, err := Load()
+	assert.NoError(t, err)
+	assert.Equal(t, "production", secureCfg.Environment)
+	assert.True(t, secureCfg.MinioSecure)
+	assert.False(t, secureCfg.TemporalTLSDisabled)
+
+	t.Run("MinIO", func(t *testing.T) {
+		t.Setenv("FP_MINIO_SECURE", "false")
+		_, err := Load()
+		assert.ErrorContains(t, err, "FP_MINIO_SECURE=true")
+	})
+
+	t.Run("Temporal", func(t *testing.T) {
+		t.Setenv("FP_TEMPORAL_TLS_DISABLED", "true")
+		_, err := Load()
+		assert.ErrorContains(t, err, "FP_TEMPORAL_TLS_DISABLED=false")
+	})
+
+	t.Run("OTLP", func(t *testing.T) {
+		t.Setenv("FP_OTLP_INSECURE", "true")
+		_, err := Load()
+		assert.ErrorContains(t, err, "FP_OTLP_INSECURE=false")
+	})
 }
 
 func TestLoad_RSAPublicKeySetOnly(t *testing.T) {
@@ -88,6 +123,17 @@ func TestLoad_RSAPublicKeySetOnly(t *testing.T) {
 	assert.NotNil(t, cfg)
 	assert.Equal(t, "dummy-rsa-key-pem", cfg.RSAPublicKeyPEM)
 	assert.Empty(t, cfg.JWTSecret)
+}
+
+func TestLoad_RSAPublicKeyFileSetOnly(t *testing.T) {
+	t.Setenv("FP_JWT_SECRET", "")
+	t.Setenv("FP_RSA_PUBLIC_KEY_PEM", "")
+	t.Setenv("FP_RSA_PUBLIC_KEY_FILE", "/run/secrets/jwt_rs256.pub.pem")
+
+	cfg, err := Load()
+	assert.NoError(t, err)
+	assert.NotNil(t, cfg)
+	assert.Equal(t, "/run/secrets/jwt_rs256.pub.pem", cfg.RSAPublicKeyFile)
 }
 
 func TestLoad_BindEnvErrorIsReturned(t *testing.T) {

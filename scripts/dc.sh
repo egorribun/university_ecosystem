@@ -31,4 +31,10 @@ if [ -z "$ROOT" ]; then
 fi
 
 cd "$ROOT"
-exec docker compose -f docker-compose.full.yml "$@"
+ENV_FILE="$ROOT/.env.docker"
+if [ ! -f "$ENV_FILE" ]; then
+  echo "scripts/dc.sh: ERROR — .env.docker is missing. Run ./start-docker.ps1 once to generate it." >&2
+  exit 1
+fi
+
+exec docker compose -f docker-compose.full.yml --env-file "$ENV_FILE" "$@"

@@ -21,6 +21,21 @@ describe("ssrAuth real JWKS path", () => {
     vi.unstubAllEnvs()
   })
 
+  it("prefers the runtime backend origin for a reusable SSR image", async () => {
+    vi.resetModules()
+    vi.stubGlobal("window", undefined)
+    vi.stubEnv("VITE_BACKEND_ORIGIN", "https://build-time.example")
+    vi.stubEnv("BACKEND_ORIGIN", "http://release-backend:8000/")
+    const { validateJwt } = await import("../ssrAuth")
+
+    await expect(validateJwt("runtime-token")).resolves.toMatchObject({
+      isAuth: true,
+    })
+    expect(joseMocks.createRemoteJWKSet).toHaveBeenCalledWith(
+      new URL("http://release-backend:8000/.well-known/jwks.json")
+    )
+  })
+
   it("uses the configured backend origin for the real verification path", async () => {
     vi.resetModules()
     vi.stubEnv("VITE_BACKEND_ORIGIN", "https://api.example.test")

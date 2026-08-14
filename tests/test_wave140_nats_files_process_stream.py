@@ -17,6 +17,7 @@ from __future__ import annotations
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from nats.js.errors import BadRequestError
 
 from app.core.nats_broker import NatsTaskBroker
 
@@ -62,6 +63,29 @@ async def test_connect_creates_both_streams() -> None:
 
 
 @pytest.mark.asyncio
+async def test_connect_passes_file_loaded_auth_token_separately_from_url() -> None:
+    broker = NatsTaskBroker()
+    mock_js = MagicMock()
+    mock_js.add_stream = AsyncMock()
+    mock_nc = MagicMock()
+    mock_nc.jetstream = MagicMock(return_value=mock_js)
+    mock_nc.is_connected = True
+
+    with (
+        patch("app.core.nats_broker.settings.nats_url", "nats://nats:4222"),
+        patch("app.core.nats_broker.settings.nats_auth_token", "file-token"),
+        patch(
+            "app.core.nats_broker.nats.connect",
+            new=AsyncMock(return_value=mock_nc),
+        ) as connect,
+    ):
+        await broker.connect()
+
+    assert connect.await_args.args == ("nats://nats:4222",)
+    assert connect.await_args.kwargs["token"] == "file-token"
+
+
+@pytest.mark.asyncio
 async def test_connect_idempotent_when_streams_exist() -> None:
     """add_stream is idempotent per nats-py contract — re-creating is a no-op.
 
@@ -89,6 +113,71 @@ async def test_connect_idempotent_when_streams_exist() -> None:
     assert mock_js.add_stream.await_count == 5, (
         "Second connect() should short-circuit; add_stream should still be 5 total"
     )
+
+
+@pytest.mark.asyncio
+async def test_connect_reconciles_existing_stream_configuration_drift() -> None:
+    """Existing streams must be updated in place when their config has drifted."""
+    broker = NatsTaskBroker()
+    drift_error = BadRequestError(
+        code=400,
+        err_code=10058,
+        description="stream name already in use with a different configuration",
+    )
+
+    mock_js = MagicMock()
+    mock_js.add_stream = AsyncMock(side_effect=[drift_error, None, None, None, None])
+    mock_js.update_stream = AsyncMock()
+
+    mock_nc = MagicMock()
+    mock_nc.jetstream = MagicMock(return_value=mock_js)
+    mock_nc.is_connected = True
+    mock_nc.close = AsyncMock()
+
+    with patch(
+        "app.core.nats_broker.nats.connect", new=AsyncMock(return_value=mock_nc)
+    ):
+        await broker.connect()
+
+    mock_js.update_stream.assert_awaited_once()
+    reconciled = mock_js.update_stream.await_args.kwargs["config"]
+    assert reconciled.name == "TASK_QUEUE"
+    assert reconciled.subjects == ["tasks.>"]
+    assert reconciled.max_age == 604_800
+    assert broker.is_connected
+
+
+@pytest.mark.asyncio
+async def test_connect_cleans_up_partial_connection_for_unrelated_stream_error() -> (
+    None
+):
+    """Only configuration drift is recoverable; other API errors stay fatal."""
+    broker = NatsTaskBroker()
+    api_error = BadRequestError(
+        code=400,
+        err_code=10052,
+        description="invalid stream configuration",
+    )
+
+    mock_js = MagicMock()
+    mock_js.add_stream = AsyncMock(side_effect=api_error)
+    mock_js.update_stream = AsyncMock()
+
+    mock_nc = MagicMock()
+    mock_nc.jetstream = MagicMock(return_value=mock_js)
+    mock_nc.is_connected = True
+    mock_nc.close = AsyncMock()
+
+    with (
+        patch("app.core.nats_broker.nats.connect", new=AsyncMock(return_value=mock_nc)),
+        pytest.raises(BadRequestError, match="invalid stream configuration"),
+    ):
+        await broker.connect()
+
+    mock_js.update_stream.assert_not_awaited()
+    mock_nc.close.assert_awaited_once()
+    assert broker._nc is None
+    assert broker._js is None
 
 
 @pytest.mark.asyncio

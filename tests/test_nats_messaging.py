@@ -13,7 +13,11 @@ async def test_nats_message_json_decoding():
 
 @pytest.mark.anyio
 async def test_nats_service_connect_success():
-    service = NatsService(servers="nats://localhost:4222", name="test-service")
+    service = NatsService(
+        servers="nats://localhost:4222",
+        name="test-service",
+        auth_token="file-token",
+    )
     mock_client = AsyncMock()
     mock_client.is_connected = True
     mock_js = AsyncMock()
@@ -28,6 +32,7 @@ async def test_nats_service_connect_success():
             name="test-service",
             reconnect_time_wait=2,
             max_reconnect_attempts=-1,
+            token="file-token",
         )
         assert service._client is mock_client
         assert service._js is mock_js

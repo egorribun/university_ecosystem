@@ -1,5 +1,6 @@
-"""Closure tests for outbox metric registration and CDC worker selection."""
+"""Closure tests for outbox metrics and standalone worker lifecycle."""
 
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -66,25 +67,9 @@ async def _prepare_outbox_main(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_outbox_main_uses_cdc_worker_when_enabled(monkeypatch):
-    await _prepare_outbox_main(monkeypatch)
-    cdc_worker = SimpleNamespace(run_forever=AsyncMock(), stop=AsyncMock())
-
-    with (
-        patch.dict("os.environ", {"ENABLE_CDC_OUTBOX": "true"}),
-        patch(
-            "app.workers.cdc_outbox.CdcOutboxWorker", return_value=cdc_worker
-        ) as constructor,
-    ):
-        await outbox.main()
-
-    constructor.assert_called_once_with()
-    cdc_worker.run_forever.assert_awaited_once()
-    cdc_worker.stop.assert_awaited_once()
-
-
-@pytest.mark.asyncio
-async def test_outbox_main_falls_back_when_cdc_worker_initialization_fails(monkeypatch):
+async def test_outbox_main_uses_reactive_worker_when_legacy_cdc_flag_is_set(
+    monkeypatch,
+):
     await _prepare_outbox_main(monkeypatch)
     run_forever = AsyncMock()
     stop = AsyncMock()
@@ -93,18 +78,42 @@ async def test_outbox_main_falls_back_when_cdc_worker_initialization_fails(monke
 
     with (
         patch.dict("os.environ", {"ENABLE_CDC_OUTBOX": "true"}),
-        patch(
-            "app.workers.cdc_outbox.CdcOutboxWorker",
-            side_effect=RuntimeError("CDC unavailable"),
-        ),
-        patch.object(
-            outbox,
-            "settings",
-            SimpleNamespace(outbox_poll_interval_seconds=1.0, outbox_batch_size=2),
-        ),
+        patch("app.workers.cdc_outbox.CdcOutboxWorker") as constructor,
+        patch("app.core.nats_broker.broker.connect", new_callable=AsyncMock),
+        patch("app.core.nats_broker.broker.close", new_callable=AsyncMock),
     ):
         await outbox.main()
 
+    constructor.assert_not_called()
+    run_forever.assert_awaited_once()
+    stop.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_outbox_main_connects_and_closes_nats(monkeypatch):
+    await _prepare_outbox_main(monkeypatch)
+    run_forever = AsyncMock()
+    stop = AsyncMock()
+    monkeypatch.setattr(outbox.OutboxWorker, "run_forever", run_forever)
+    monkeypatch.setattr(outbox.OutboxWorker, "stop", stop)
+
+    with (
+        patch.object(
+            outbox,
+            "settings",
+            SimpleNamespace(
+                outbox_poll_interval_seconds=1.0,
+                outbox_batch_size=2,
+                outbox_max_retries=3,
+            ),
+        ),
+        patch("app.core.nats_broker.broker.connect", new_callable=AsyncMock) as connect,
+        patch("app.core.nats_broker.broker.close", new_callable=AsyncMock) as close,
+    ):
+        await outbox.main()
+
+    connect.assert_awaited_once()
+    close.assert_awaited_once()
     run_forever.assert_awaited_once()
     stop.assert_awaited_once()
 
@@ -133,3 +142,22 @@ async def test_outbox_run_forever_handles_notification_wait_timeout(monkeypatch)
     await worker.run_forever()
 
     assert not worker._wakeup_event.is_set()
+
+
+@pytest.mark.asyncio
+async def test_outbox_heartbeat_records_event_loop_progress(
+    tmp_path: Path, monkeypatch
+) -> None:
+    heartbeat_path = tmp_path / "worker.heartbeat"
+    worker = outbox.OutboxWorker(heartbeat_path=heartbeat_path)
+    worker._is_running = True
+
+    async def stop_after_first_heartbeat(_seconds: float) -> None:
+        worker._is_running = False
+
+    monkeypatch.setattr(outbox.asyncio, "sleep", stop_after_first_heartbeat)
+
+    await worker._heartbeat_loop()
+
+    assert heartbeat_path.is_file()
+    assert heartbeat_path.read_text(encoding="ascii").strip().isdigit()

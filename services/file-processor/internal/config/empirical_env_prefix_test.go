@@ -22,13 +22,14 @@ func TestEmpirical_FP_EnvPrefixEnforcement(t *testing.T) {
 		t.Setenv("FP_MINIO_BUCKET", "")
 		t.Setenv("FP_JWT_SECRET", "")
 		t.Setenv("FP_RSA_PUBLIC_KEY_PEM", "")
+		t.Setenv("FP_RSA_PUBLIC_KEY_FILE", "")
 		t.Setenv("FP_MINIO_ACCESS_KEY", "minioadmin")
 		t.Setenv("FP_MINIO_SECRET_KEY", "minioadmin")
 
 		// Load config. Since FP_JWT_SECRET is unset, Load should fail with missing secret error.
 		cfg, err := Load()
 		require.Error(t, err, "Load must fail because unprefixed JWT_SECRET is ignored and FP_JWT_SECRET is missing")
-		assert.Contains(t, err.Error(), "either FP_JWT_SECRET or FP_RSA_PUBLIC_KEY_PEM must be set")
+		assert.Contains(t, err.Error(), "FP_RSA_PUBLIC_KEY_FILE")
 		assert.Nil(t, cfg)
 	})
 

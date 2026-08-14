@@ -5,6 +5,11 @@ Expand the name of the chart.
 {{- default .Chart.Name .Values.nameOverride | trunc 63 | trimSuffix "-" }}
 {{- end }}
 
+{{/* Name of the Secret containing application credentials and JWT keys. */}}
+{{- define "university-ecosystem.applicationSecretName" -}}
+{{- default (printf "%s-secrets" .Release.Name) .Values.applicationSecrets.existingSecret -}}
+{{- end }}
+
 {{/*
 Create a default fully qualified app name.
 We truncate at 63 chars because some Kubernetes name fields are limited to this (by the DNS naming spec).

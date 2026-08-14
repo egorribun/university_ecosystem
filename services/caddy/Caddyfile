@@ -9,182 +9,153 @@
 # For production, set:
 #   ACME_EMAIL=you@example.com
 #   PUBLIC_HOSTNAME=your.domain.tld
-
 {
-    # Enable all three protocol versions at the server level.
-    # h3 (QUIC) is enabled automatically when UDP 443 is exposed.
-    servers {
-        protocols h1 h2 h3
-    }
+	# Enable all three protocol versions at the server level.
+	# h3 (QUIC) is enabled automatically when UDP 443 is exposed.
+	servers {
+		protocols h1 h2 h3
+	}
 
-    # Auto-HTTPS certificate management email (required for ACME production).
-    # In dev environments without a real domain, Caddy falls back to self-signed.
-    email {$ACME_EMAIL}
+	# Auto-HTTPS certificate management email (required for ACME production).
+	# In dev environments without a real domain, Caddy falls back to self-signed.
+	email {$ACME_EMAIL}
 }
 
 # Main HTTPS site — matches the public hostname or falls back to :443.
 {$PUBLIC_HOSTNAME} {
+	# --- WebSocket upgrade rate limit (MED-05) --------------------------------
+	# Throttle WebSocket connection creation to 10 upgrades / minute per IP.
+	# This is a network-layer guard before the request reaches the Python backend,
+	# which applies its own /ws rate limit as defense-in-depth.
+	# Requires the caddy-ratelimit plugin (see services/caddy/Dockerfile).
+	@ws_upgrade {
+		path /ws/*
+		header Connection *Upgrade*
+	}
+	rate_limit @ws_upgrade {
+		zone ws_upgrades {
+			key {http.request.remote.host}
+			events 10
+			window 1m
+		}
+	}
 
-    # --- WebSocket upgrade rate limit (MED-05) --------------------------------
-    # Throttle WebSocket connection creation to 10 upgrades / minute per IP.
-    # This is a network-layer guard before the request reaches the Python backend,
-    # which applies its own /ws rate limit as defense-in-depth.
-    # Requires the caddy-ratelimit plugin (see services/caddy/Dockerfile).
-    @ws_upgrade {
-        path /ws/*
-        header Connection *Upgrade*
-    }
-    rate_limit @ws_upgrade {
-        zone ws_upgrades {
-            key {http.request.remote.host}
-            events 10
-            window 1m
-        }
-    }
+	# Edge-local liveness: confirms Caddy can serve requests without depending
+	# on any upstream application container.
+	handle /healthz {
+		respond "OK" 200
+	}
 
-    # --- Multi-service routing (Wave 131 SW4 Phase 4 deploy infrastructure) -
-    # Pre-W131: a single root-level reverse_proxy sent ALL traffic to backend
-    # — internal-only configuration that never had a frontend service. Phase
-    # 4 introduces a Node SSR frontend runtime, so prefixes now route
-    # explicitly: /api/*, /graphql*, /ws/* go to backend services; /sw.js
-    # plus the default handle go to frontend:3000.
+	# --- Multi-service routing (Wave 131 SW4 Phase 4 deploy infrastructure) -
+	# Pre-W131: a single root-level reverse_proxy sent ALL traffic to backend
+	# — internal-only configuration that never had a frontend service. Phase
+	# 4 introduces a Node SSR frontend runtime, so prefixes now route
+	# explicitly: /api/*, /graphql*, /ws/* go to backend services; /sw.js
+	# plus the default handle go to frontend:3000.
+	# Public key discovery bypasses the gateway so edge and service clients can
+	# refresh the backend's RS256 key without an authentication dependency.
+	handle /.well-known/* {
+		reverse_proxy backend:8000
+	}
 
-    handle /api/* {
-        reverse_proxy backend:8000 {
-            header_up X-Real-IP {http.request.remote}
-            header_up X-Forwarded-For {http.request.remote}
-            header_up X-Forwarded-Proto https
-            header_up X-Forwarded-Host {host}
-            health_uri /healthz
-            health_interval 10s
-            health_timeout 5s
-        }
-    }
+	handle /api/* {
+		reverse_proxy gateway:8080 {
+			header_up X-Real-IP {http.request.remote}
+			header_up X-Forwarded-Proto https
+			health_uri /health
+			health_interval 10s
+			health_timeout 5s
+		}
+	}
 
-    handle /graphql* {
-        reverse_proxy backend:8000 {
-            header_up X-Real-IP {http.request.remote}
-            header_up X-Forwarded-For {http.request.remote}
-            header_up X-Forwarded-Proto https
-            header_up X-Forwarded-Host {host}
-        }
-    }
+	handle /graphql* {
+		reverse_proxy gateway:8080 {
+			header_up X-Real-IP {http.request.remote}
+			header_up X-Forwarded-Proto https
+		}
+	}
 
-    # /ws/* routes to ws-hub (port 8081) — `@ws_upgrade` rate_limit above
-    # already throttles WS upgrade attempts before they reach this block.
-    handle /ws/* {
-        reverse_proxy ws-hub:8081 {
-            header_up X-Real-IP {http.request.remote}
-            header_up X-Forwarded-For {http.request.remote}
-            header_up X-Forwarded-Proto https
-            header_up X-Forwarded-Host {host}
-        }
-    }
+	# Ticket issuance is an ordinary authenticated HTTP request handled by the
+	# gateway. It must not fall through to the WebSocket server.
+	handle /ws/ticket {
+		reverse_proxy gateway:8080
+	}
 
-    # Backend-served static assets (uploads, generated thumbnails, etc.).
-    handle /static/* {
-        reverse_proxy backend:8000
-    }
+	# The browser-facing path is /ws/chat, while ws-hub registers the exact /ws
+	# endpoint. Preserve the query string (including the one-time ticket) while
+	# rewriting only the path.
+	handle /ws/chat* {
+		rewrite * /ws
+		reverse_proxy ws-hub:8081 {
+			header_up X-Real-IP {http.request.remote}
+			header_up X-Forwarded-Proto https
+		}
+	}
 
-    # Service worker — must be on same origin, no cache, with broad scope.
-    handle /sw.js {
-        reverse_proxy frontend:3000
-        header Service-Worker-Allowed "/"
-        header Cache-Control "no-store, no-cache, must-revalidate, max-age=0"
-    }
+	# /ws/* routes to ws-hub (port 8081) — `@ws_upgrade` rate_limit above
+	# already throttles WS upgrade attempts before they reach this block.
+	handle /ws/* {
+		reverse_proxy ws-hub:8081 {
+			header_up X-Real-IP {http.request.remote}
+			header_up X-Forwarded-Proto https
+		}
+	}
 
-    # Wave 132 SW3 Phase 6 — SPA-fallback canary infrastructure.
-    #
-    # `lb_policy weighted_round_robin` distributes requests between two
-    # upstream pools per the integer weight values. Weights are compared
-    # as integers; only their RATIO matters. The W125-design Phase 6
-    # rollback strategy is "Caddy config flip to serve old SPA build" —
-    # operator edits these `weight=N` numbers + reloads Caddy (~50ms hot
-    # reload, no Pod cycling) to advance OR roll back the canary stage.
-    #
-    # SPA-fallback canary pattern: `frontend-stable` pool serves the
-    # pre-W125 nginx + SPA bundle (pinned legacy image; operator builds
-    # during canary prep — see docs/CANARY_ROLLOUT_PHASE6.md). `frontend`
-    # pool serves the W131 Node SSR runtime (server-prod.mjs). When the
-    # canary completes (Stage 5: 0/100), operator deletes the
-    # `frontend-stable` Deployment + Service and replaces this block
-    # with the single-upstream version commented at the bottom.
-    #
-    # Initial weights 100/0 (stable=100, ssr=0): applying this Caddyfile
-    # at Stage 0 is an *identity change* — stable still serves all traffic.
-    # Canary triggers via runbook command flip, not by default.
-    #
-    # Stage progression (operator-adjustable):
-    #   Stage 0: weight=100 / weight=0   stable-only (pre-canary identity)
-    #   Stage 1: weight=90  / weight=10  first 24-48h soak
-    #   Stage 2: weight=75  / weight=25  12-24h
-    #   Stage 3: weight=50  / weight=50  12-24h
-    #   Stage 4: weight=25  / weight=75  6-12h
-    #   Stage 5: weight=0   / weight=100 24h soak before cleanup
-    #   Stage 6: delete frontend-stable + revert to single-upstream block
-    #
-    # `health_uri /healthz` is the W131 SW2 fast-path on the SSR pool
-    # (~10ms response, bypasses SSR). The frontend-stable nginx pool
-    # MUST expose its own `/healthz` endpoint during canary prep — see
-    # `docs/CANARY_ROLLOUT_PHASE6.md` § "Pre-canary checklist" step 4
-    # ("Build the legacy SPA fallback image"). Without /healthz on the
-    # legacy pool, Caddy will mark it unhealthy + route all traffic to
-    # the SSR pool, defeating the canary purpose.
-    handle {
-        reverse_proxy {
-            to frontend-stable:8080 frontend:3000
-            lb_policy weighted_round_robin 100 0
+	# Backend-served static assets (uploads, generated thumbnails, etc.).
+	handle /static/* {
+		reverse_proxy backend:8000
+	}
 
-            health_uri /healthz
-            health_interval 10s
-            health_timeout 5s
+	# Signed image-processing URLs. handle_path strips /imgproxy before
+	# forwarding because the backend signs the path understood by imgproxy.
+	handle_path /imgproxy/* {
+		reverse_proxy imgproxy:8080
+	}
 
-            # Passive health check: react to actual user-traffic 5xx
-            # failures by marking an upstream unhealthy for 30s. Combined
-            # with the active probe above, gives both proactive (probe-
-            # detected) and reactive (user-detected) failure handling.
-            fail_duration 30s
-            unhealthy_status 5xx
+	# Optional same-origin access to MinIO objects.
+	handle /storage/* {
+		uri strip_prefix /storage
+		reverse_proxy minio:9000
+	}
 
-            header_up X-Real-IP {http.request.remote}
-            header_up X-Forwarded-For {http.request.remote}
-            header_up X-Forwarded-Proto https
-            header_up X-Forwarded-Host {host}
-        }
-    }
+	# Service worker — must be on same origin, no cache, with broad scope.
+	handle /sw.js {
+		reverse_proxy frontend:3000
+		header Service-Worker-Allowed "/"
+		header Cache-Control "no-store, no-cache, must-revalidate, max-age=0"
+	}
 
-    # Wave 132 SW3 — post-Phase-6-cleanup single-upstream form.
-    # After Stage 6 (frontend-stable Deployment + Service deleted),
-    # replace the handle{} block above with this commented version:
-    #
-    # handle {
-    #     reverse_proxy frontend:3000 {
-    #         header_up X-Real-IP {http.request.remote}
-    #         header_up X-Forwarded-For {http.request.remote}
-    #         header_up X-Forwarded-Proto https
-    #         header_up X-Forwarded-Host {host}
-    #         health_uri /healthz
-    #         health_interval 10s
-    #         health_timeout 5s
-    #     }
-    # }
+	# The default deployment has one frontend service. Any future canary must
+	# provide its additional upstream through a temporary operator-managed
+	# config; the checked-in baseline must remain independently deployable.
+	handle {
+		reverse_proxy frontend:3000 {
+			health_uri /healthz
+			health_interval 10s
+			health_timeout 5s
+			fail_duration 30s
+			unhealthy_status 5xx
+			header_up X-Real-IP {http.request.remote}
+			header_up X-Forwarded-Proto https
+		}
+	}
 
-    # --- HTTP/3 advertisement header --------------------------------------
-    # Browsers use this to upgrade future connections to QUIC.
-    # ma=2592000 = 30-day max-age (standard recommendation).
-    header Alt-Svc `h3=":443"; ma=2592000`
+	# --- HTTP/3 advertisement header --------------------------------------
+	# Browsers use this to upgrade future connections to QUIC.
+	# ma=2592000 = 30-day max-age (standard recommendation).
+	header Alt-Svc `h3=":443"; ma=2592000`
 
-    # --- Security hardening -----------------------------------------------
-    # HSTS: tell browsers to always use HTTPS for this domain (1 year).
-    header Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+	# --- Security hardening -----------------------------------------------
+	# HSTS: tell browsers to always use HTTPS for this domain (1 year).
+	header Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
 
-    # Prevent Caddy from leaking its version in the Server header.
-    header -Server
+	# Prevent Caddy from leaking its version in the Server header.
+	header -Server
 
-    # --- Logging -----------------------------------------------------------
-    log {
-        output stderr
-        format json
-        level  INFO
-    }
+	# --- Logging -----------------------------------------------------------
+	log {
+		output stderr
+		format json
+		level INFO
+	}
 }

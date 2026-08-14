@@ -163,6 +163,42 @@ func TestLoadRSAPublicKey_Valid(t *testing.T) {
 	assert.Equal(t, key.N, loaded.N)
 }
 
+func TestLoadRSAPublicKey_FromFile(t *testing.T) {
+	key := generateRSAKey(t)
+	keyPath := filepath.Join(t.TempDir(), "jwt_rs256.pub.pem")
+	require.NoError(t, os.WriteFile(keyPath, []byte(rsaPublicPEM(t, &key.PublicKey)), 0o600))
+
+	loaded, err := loadRSAPublicKey(context.Background(), &config.Config{
+		RSAPublicKeyFile: keyPath,
+	}, discardLogger())
+	require.NoError(t, err)
+	require.NotNil(t, loaded)
+	assert.Equal(t, key.N, loaded.N)
+}
+
+func TestLoadRSAPublicKey_FileReadFailure(t *testing.T) {
+	keyPath := filepath.Join(t.TempDir(), "missing.pem")
+
+	loaded, err := loadRSAPublicKey(context.Background(), &config.Config{
+		RSAPublicKeyFile: keyPath,
+	}, discardLogger())
+	require.Error(t, err)
+	assert.Nil(t, loaded)
+	assert.ErrorContains(t, err, "read RSA public key file")
+}
+
+func TestLoadRSAPublicKey_EmptyFileFailsClosed(t *testing.T) {
+	keyPath := filepath.Join(t.TempDir(), "empty.pem")
+	require.NoError(t, os.WriteFile(keyPath, nil, 0o600))
+
+	loaded, err := loadRSAPublicKey(context.Background(), &config.Config{
+		RSAPublicKeyFile: keyPath,
+	}, discardLogger())
+	require.Error(t, err)
+	assert.Nil(t, loaded)
+	assert.ErrorContains(t, err, "RSA public key file is empty")
+}
+
 func TestSelectiveStreamAuth_AuthErrorBlocksHandler(t *testing.T) {
 	authFn := func(ctx context.Context) (context.Context, error) {
 		return nil, errors.New("invalid stream token")
@@ -413,7 +449,7 @@ func TestConnectTemporal_APIKeyFileHandling(t *testing.T) {
 			TemporalAPIKeyFile: "non-existent-key-file.txt",
 		}
 		c, err := connectTemporal(ctx, cfg, discardLogger())
-		assert.Error(t, err)
+		assert.ErrorContains(t, err, "read Temporal API key file")
 		assert.Nil(t, c)
 	})
 
@@ -430,7 +466,7 @@ func TestConnectTemporal_APIKeyFileHandling(t *testing.T) {
 			TemporalAPIKeyFile: tmpFile.Name(),
 		}
 		c, err := connectTemporal(ctx, cfg, discardLogger())
-		assert.Error(t, err)
+		assert.ErrorContains(t, err, "Temporal API key file is empty")
 		assert.Nil(t, c)
 	})
 
@@ -452,6 +488,39 @@ func TestConnectTemporal_APIKeyFileHandling(t *testing.T) {
 		assert.Error(t, err)
 		assert.Nil(t, c)
 	})
+}
+
+func TestConnectTemporal_UsesConfiguredTransportSecurity(t *testing.T) {
+	keyPath := filepath.Join(t.TempDir(), "temporal-api-key")
+	require.NoError(t, os.WriteFile(keyPath, []byte("test-temporal-token"), 0o600))
+
+	for _, testCase := range []struct {
+		name        string
+		tlsDisabled bool
+	}{
+		{name: "TLS enabled", tlsDisabled: false},
+		{name: "development plaintext", tlsDisabled: true},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			oldDial := dialTemporalFunc
+			t.Cleanup(func() { dialTemporalFunc = oldDial })
+			var captured client.Options
+			dialTemporalFunc = func(options client.Options) (client.Client, error) {
+				captured = options
+				return nil, errors.New("synthetic dial failure")
+			}
+
+			ctx, cancel := context.WithCancel(context.Background())
+			cancel()
+			_, err := connectTemporal(ctx, &config.Config{
+				TemporalHost:        "temporal:7233",
+				TemporalAPIKeyFile:  keyPath,
+				TemporalTLSDisabled: testCase.tlsDisabled,
+			}, discardLogger())
+			require.Error(t, err)
+			assert.Equal(t, testCase.tlsDisabled, captured.ConnectionOptions.TLSDisabled)
+		})
+	}
 }
 
 func TestSetupTemporalWorker(t *testing.T) {

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import secrets
 from unittest.mock import MagicMock
 
 import pytest
@@ -10,10 +9,6 @@ from sqlalchemy import event as sa_event
 import app.core.ratelimit as ratelimit_module
 from app import main
 from asgi_lifespan import LifespanManager
-
-# Static CSRF token for test clients — used by both the cookie and the header.
-# Using a fixed value keeps debugging simple and removes non-determinism.
-_TEST_CSRF_TOKEN: str = secrets.token_urlsafe(32)
 
 _DEFAULT_QUERY_BUDGET: int = 5
 
@@ -140,6 +135,35 @@ def _build_budget_send(original_send):
     return _budget_guarded_send
 
 
+async def _configure_csrf_client(client, initialization_path: str) -> None:
+    """Prime a test client through the application's real CSRF handshake.
+
+    Tests may run with ``CSRF_HMAC_SECRET`` loaded from a developer ``.env`` or
+    injected by CI.  Manufacturing a raw token in the fixture bypasses the
+    signed-token format and makes the suite depend on whether that external
+    secret happens to exist.  Fetching the public initialization endpoint keeps
+    the fixture hermetic while exercising both signed and unsigned modes.
+    """
+    original_send = client.send
+
+    async def _csrf_rotating_send(*args, **kwargs):
+        response = await original_send(*args, **kwargs)
+        for header in response.headers.get_list("set-cookie"):
+            if header.lower().startswith("csrf_token="):
+                new_token = header.split(";", maxsplit=1)[0].split("=", maxsplit=1)[1]
+                client.headers["X-CSRF-Token"] = new_token
+        return response
+
+    client.send = _csrf_rotating_send
+    response = await client.get(initialization_path)
+    response.raise_for_status()
+
+    cookie_token = client.cookies.get("csrf_token")
+    header_token = client.headers.get("X-CSRF-Token")
+    if not cookie_token or header_token != cookie_token:
+        raise RuntimeError("CSRF initialization did not return a matching token")
+
+
 @pytest_asyncio.fixture(scope="session")
 async def _rate_limit_redis_client(mock_global_redis):
     yield mock_global_redis
@@ -234,8 +258,8 @@ async def app():
 async def async_client(app, prepare_database):
     """Client for testing API endpoints (with /api/v1 prefix).
 
-    Pre-configures a CSRF token cookie and the matching X-CSRF-Token header
-    so that mutation requests (POST/PUT/PATCH/DELETE) are accepted by the
+    Initializes a CSRF token cookie and the matching X-CSRF-Token header through
+    the application's public handshake so mutation requests are accepted by
     CSRFMiddleware without a separate setup step in each test.
 
     Note: tests that POST to /auth/login via form data (not Bearer) rely on
@@ -250,24 +274,13 @@ async def async_client(app, prepare_database):
         transport=transport,
         base_url="http://testserver/api/v1",
         follow_redirects=True,
-        headers={"X-CSRF-Token": _TEST_CSRF_TOKEN},
     ) as ac:
-        ac.cookies.set("csrf_token", _TEST_CSRF_TOKEN, domain="testserver.local")
-
-        # Layer 1: CSRF token rotation — must run on every response.
-        original_send = ac.send
-
-        async def _csrf_rotating_send(*args, **kwargs):
-            response = await original_send(*args, **kwargs)
-            for header in response.headers.get_list("set-cookie"):
-                if header.lower().startswith("csrf_token="):
-                    new_token = header.split(";")[0].split("=")[1]
-                    ac.headers["X-CSRF-Token"] = new_token
-            return response
+        # Layer 1: real CSRF handshake plus token rotation on every response.
+        await _configure_csrf_client(ac, "/auth/csrf-cookie")
 
         # Layer 2: SQL Query Budget Gate — wraps the CSRF-rotating send so
         # that each GET request is counted and the test fails fast on N+1s.
-        ac.send = _build_budget_send(_csrf_rotating_send)
+        ac.send = _build_budget_send(ac.send)
 
         yield ac
 
@@ -285,22 +298,11 @@ async def root_client(app, prepare_database):
         transport=transport,
         base_url="http://testserver",
         follow_redirects=True,
-        headers={"X-CSRF-Token": _TEST_CSRF_TOKEN},
     ) as ac:
-        ac.cookies.set("csrf_token", _TEST_CSRF_TOKEN, domain="testserver.local")
-
-        # Layer 1: CSRF token rotation — must run on every response.
-        original_send = ac.send
-
-        async def _csrf_rotating_send(*args, **kwargs):
-            response = await original_send(*args, **kwargs)
-            for header in response.headers.get_list("set-cookie"):
-                if header.lower().startswith("csrf_token="):
-                    new_token = header.split(";")[0].split("=")[1]
-                    ac.headers["X-CSRF-Token"] = new_token
-            return response
+        # Layer 1: real CSRF handshake plus token rotation on every response.
+        await _configure_csrf_client(ac, "/api/v1/auth/csrf-cookie")
 
         # Layer 2: SQL Query Budget Gate — mirrors the async_client gate.
-        ac.send = _build_budget_send(_csrf_rotating_send)
+        ac.send = _build_budget_send(ac.send)
 
         yield ac

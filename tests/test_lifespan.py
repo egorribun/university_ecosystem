@@ -150,14 +150,11 @@ async def test_verify_database_readiness_alembic_head_check() -> None:
         mock_script_dir.return_value = mock_scripts
 
         # Setup connection dialect/execution context mocks
-        mock_ctx = MagicMock()
-        mock_ctx.get_current_revision.return_value = "mismatched_rev"
-
         mock_conn = AsyncMock()
         mock_dialect = MagicMock()
         mock_dialect.name = "postgresql"
         mock_conn.dialect = mock_dialect
-        mock_conn.run_sync = AsyncMock(return_value=mock_ctx)
+        mock_conn.run_sync = AsyncMock(return_value="mismatched_rev")
 
         mock_connect_context = MagicMock()
         mock_connect_context.__aenter__.return_value = mock_conn
@@ -186,14 +183,11 @@ async def test_verify_database_readiness_alembic_head_check() -> None:
         mock_scripts.get_current_head.return_value = "head_rev"
         mock_script_dir.return_value = mock_scripts
 
-        mock_ctx = MagicMock()
-        mock_ctx.get_current_revision.return_value = "head_rev"
-
         mock_conn = AsyncMock()
         mock_dialect = MagicMock()
         mock_dialect.name = "postgresql"
         mock_conn.dialect = mock_dialect
-        mock_conn.run_sync = AsyncMock(return_value=mock_ctx)
+        mock_conn.run_sync = AsyncMock(return_value="head_rev")
 
         mock_connect_context = MagicMock()
         mock_connect_context.__aenter__.return_value = mock_conn
@@ -220,6 +214,51 @@ async def test_verify_database_readiness_alembic_head_check() -> None:
         mock_engine.connect.return_value = mock_connect_context
 
         await _verify_database_readiness()
+
+
+@pytest.mark.asyncio
+async def test_verify_database_readiness_reads_revision_inside_run_sync() -> None:
+    """Alembic must not use a sync connection after SQLAlchemy leaves run_sync."""
+    inside_run_sync = False
+    sync_conn = MagicMock()
+    migration_context = MagicMock()
+
+    def get_current_revision() -> str:
+        assert inside_run_sync, "current revision was read outside run_sync"
+        return "head_rev"
+
+    migration_context.get_current_revision.side_effect = get_current_revision
+
+    async def run_sync(callback):
+        nonlocal inside_run_sync
+        inside_run_sync = True
+        try:
+            return callback(sync_conn)
+        finally:
+            inside_run_sync = False
+
+    mock_conn = AsyncMock()
+    mock_conn.dialect.name = "postgresql"
+    mock_conn.run_sync.side_effect = run_sync
+
+    with (
+        patch("app.core.lifespan.wait_db", new_callable=AsyncMock),
+        patch("app.core.lifespan.settings") as mock_settings,
+        patch("app.core.lifespan.engine") as mock_engine,
+        patch("alembic.config.Config"),
+        patch("alembic.script.ScriptDirectory.from_config") as mock_script_dir,
+        patch(
+            "alembic.runtime.migration.MigrationContext.configure",
+            return_value=migration_context,
+        ) as configure,
+    ):
+        mock_settings.environment = "production"
+        mock_script_dir.return_value.get_current_head.return_value = "head_rev"
+        mock_engine.connect.return_value.__aenter__.return_value = mock_conn
+
+        await _verify_database_readiness()
+
+    configure.assert_called_once_with(sync_conn)
 
 
 @pytest.mark.asyncio
@@ -853,9 +892,7 @@ async def test_lifespan_edge_cases_coverage() -> None:
         mock_conn = AsyncMock()
         mock_engine.connect.return_value.__aenter__.return_value = mock_conn
         mock_conn.dialect.name = "postgresql"
-        mock_ctx = MagicMock()
-        mock_ctx.get_current_revision.return_value = "current_rev"
-        mock_conn.run_sync.return_value = mock_ctx
+        mock_conn.run_sync.return_value = "current_rev"
 
         with (
             patch("alembic.config.Config"),
@@ -1033,6 +1070,42 @@ async def test_startup_background_workers_partition_disabled() -> None:
         mock_app.state = MagicMock()
 
         await _startup_background_workers(mock_app)
+
+
+@pytest.mark.asyncio
+async def test_startup_background_workers_can_disable_embedded_outbox() -> None:
+    app = FastAPI()
+    app.state.dishka_container = AsyncMock()
+    mock_nats = AsyncMock()
+    mock_nats.is_connected = False
+
+    async def container_get_mock(svc_type):
+        from app.core.nats_broker import NatsTaskBroker
+
+        if svc_type == OutboxWorker:
+            pytest.fail("embedded OutboxWorker must not be resolved when disabled")
+        if svc_type == NatsTaskBroker:
+            return mock_nats
+        return MagicMock()
+
+    app.state.dishka_container.get.side_effect = container_get_mock
+
+    with (
+        patch("app.core.lifespan.settings") as mock_settings,
+        patch("app.core.lifespan.setup_periodic_cleanups", new_callable=AsyncMock),
+    ):
+        mock_settings.environment = "production"
+        mock_settings.embedded_outbox_worker_enabled = False
+        mock_settings.partition_management_enabled = False
+
+        await _startup_background_workers(app)
+
+    task_names = {task.get_name() for task in app.state.background_tasks}
+    assert "outbox_worker" not in task_names
+
+    for task in app.state.background_tasks:
+        task.cancel()
+    await asyncio.gather(*app.state.background_tasks, return_exceptions=True)
 
 
 @pytest.mark.asyncio

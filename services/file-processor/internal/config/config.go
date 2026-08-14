@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/spf13/viper"
 )
@@ -16,6 +17,9 @@ type Config struct {
 	GRPCPort     string `mapstructure:"grpc_port"`
 	NatsURL      string `mapstructure:"nats_url"`
 	TemporalHost string `mapstructure:"temporal_host"`
+	// TemporalTLSDisabled is true only for the plaintext local development
+	// server. Managed/staging/production Temporal endpoints must use TLS.
+	TemporalTLSDisabled bool `mapstructure:"temporal_tls_disabled"`
 	// Wave 141 SW5 — Path (a-auth): path to file containing the Temporal service
 	// token (RS256 JWT minted by start-docker.ps1's New-TemporalServiceToken at
 	// W141 SW4). Read once at startup in connectTemporal. Empty value = no auth
@@ -33,12 +37,13 @@ type Config struct {
 	// TD-W18-01 (audit 2026-03-23 Wave 18): RSA public key PEM for RS256 verification.
 	// When set, both RS256 and HS256 tokens are accepted (RS256 preferred).
 	// This brings file-processor into parity with ws-hub and gateway.
-	RSAPublicKeyPEM string `mapstructure:"rsa_public_key_pem"`
-	SentryDSN       string `mapstructure:"sentry_dsn"`
-	Environment     string `mapstructure:"environment"`
+	RSAPublicKeyPEM  string `mapstructure:"rsa_public_key_pem"`
+	RSAPublicKeyFile string `mapstructure:"rsa_public_key_file"`
+	SentryDSN        string `mapstructure:"sentry_dsn"`
+	Environment      string `mapstructure:"environment"`
 
 	// OTLPEndpoint is the OpenTelemetry collector gRPC endpoint.
-	// Defaults to jaeger:4317 for local development.
+	// Defaults to the Tempo service shipped by the local Compose stack.
 	OTLPEndpoint string `mapstructure:"otlp_endpoint"`
 	// OTLPInsecure disables TLS for the OTLP exporter.
 	// MUST be false in production — use TLS with a trusted CA or mTLS.
@@ -67,12 +72,14 @@ func Load() (*Config, error) {
 	viper.SetDefault("graphql_port", "8080")
 	viper.SetDefault("nats_url", "nats://nats:4222")
 	viper.SetDefault("temporal_host", "temporal:7233")
+	viper.SetDefault("temporal_tls_disabled", true)
 	viper.SetDefault("minio_bucket", "uploads")
 	viper.SetDefault("minio_endpoint", "minio:9000")
 	viper.SetDefault("minio_access_key", "minioadmin")
 	viper.SetDefault("minio_secret_key", "minioadmin")
 	viper.SetDefault("minio_secure", false)
 	viper.SetDefault("spiffe_enabled", false)
+	viper.SetDefault("environment", "development")
 	viper.SetDefault("spiffe_endpoint_socket", "unix:///run/spire/sockets/agent.sock")
 	viper.SetDefault("spiffe_trust_domain", "university.ecosystem")
 	viper.SetDefault("spiffe_my_id", "spiffe://university.ecosystem/ns/default/sa/file-processor")
@@ -83,6 +90,7 @@ func Load() (*Config, error) {
 		"nats_url":                  "NATS_URL",
 		"temporal_host":             "TEMPORAL_HOST",
 		"temporal_api_key_file":     "TEMPORAL_API_KEY_FILE",
+		"temporal_tls_disabled":     "TEMPORAL_TLS_DISABLED",
 		"minio_bucket":              "MINIO_BUCKET",
 		"minio_endpoint":            "MINIO_ENDPOINT",
 		"minio_access_key":          "MINIO_ACCESS_KEY",
@@ -90,8 +98,8 @@ func Load() (*Config, error) {
 		"minio_secure":              "MINIO_SECURE",
 		"jwt_secret":                "JWT_SECRET",
 		"rsa_public_key_pem":        "RSA_PUBLIC_KEY_PEM",
+		"rsa_public_key_file":       "RSA_PUBLIC_KEY_FILE",
 		"sentry_dsn":                "SENTRY_DSN",
-		"environment":               "VITE_ENVIRONMENT",
 		"otlp_endpoint":             "OTLP_ENDPOINT",
 		"otlp_insecure":             "OTLP_INSECURE",
 		"spiffe_enabled":            "SPIFFE_ENABLED",
@@ -107,7 +115,7 @@ func Load() (*Config, error) {
 		}
 	}
 
-	viper.SetDefault("otlp_endpoint", "jaeger:4317")
+	viper.SetDefault("otlp_endpoint", "tempo:4317")
 	// Default to insecure only in development; production deployments must
 	// set OTLP_INSECURE=false and provide a valid TLS CA / cert-manager cert.
 	viper.SetDefault("otlp_insecure", true)
@@ -121,8 +129,23 @@ func Load() (*Config, error) {
 		return nil, fmt.Errorf("MINIO_ACCESS_KEY and MINIO_SECRET_KEY are required")
 	}
 
-	if cfg.JWTSecret == "" && cfg.RSAPublicKeyPEM == "" {
-		return nil, fmt.Errorf("either FP_JWT_SECRET or FP_RSA_PUBLIC_KEY_PEM must be set")
+	if cfg.JWTSecret == "" && cfg.RSAPublicKeyPEM == "" && cfg.RSAPublicKeyFile == "" {
+		return nil, fmt.Errorf(
+			"one of FP_JWT_SECRET, FP_RSA_PUBLIC_KEY_PEM, or FP_RSA_PUBLIC_KEY_FILE must be set",
+		)
+	}
+
+	environment := strings.ToLower(strings.TrimSpace(cfg.Environment))
+	if environment == "production" || environment == "staging" {
+		if !cfg.MinioSecure {
+			return nil, fmt.Errorf("FP_MINIO_SECURE=true is required in %s", environment)
+		}
+		if cfg.TemporalTLSDisabled {
+			return nil, fmt.Errorf("FP_TEMPORAL_TLS_DISABLED=false is required in %s", environment)
+		}
+		if cfg.OTLPInsecure {
+			return nil, fmt.Errorf("FP_OTLP_INSECURE=false is required in %s", environment)
+		}
 	}
 
 	return &cfg, nil
