@@ -1,0 +1,16 @@
+{
+  "name": "npm",
+  "version": "0.0.0-private",
+  "private": true,
+  "description": "Fail-closed bridge from semantic-release plugins to the runner-managed npm CLI",
+  "type": "module",
+  "bin": {
+    "npm": "bin/npm-cli.js"
+  },
+  "scripts": {
+    "test": "node --test test/*.test.mjs"
+  },
+  "engines": {
+    "node": ">=22.14.0"
+  }
+}

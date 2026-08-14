@@ -63,7 +63,8 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: 22
+          # Pin a runtime supported by semantic-release 25 and its plugins.
+          node-version: 24.15.0
           cache: "npm"
           cache-dependency-path: package-lock.json
 
@@ -71,24 +72,26 @@ jobs:
         # npm ci installs from the lockfile exactly — reproducible and faster than npm install.
         run: npm ci
 
+      - name: Verify release toolchain
+        run: npm run test:release-toolchain
+
       - name: Release
         id: semantic
         env:
           GITHUB_TOKEN: ${{ secrets.RELEASE_TOKEN }}
-        # CI-02 (audit Wave 10): pin semantic-release version — `npx semantic-release`
-        # without a version downloads the latest from npm at runtime, allowing a
-        # compromised npm package to exfiltrate RELEASE_TOKEN with repo write access.
-        run: npx semantic-release@24.2.0
+        # Execute the exact integrity-checked package installed by `npm ci`
+        # without invoking npm while the write-capable token is present.
+        run: node node_modules/semantic-release/bin/semantic-release.js
 
   build:
     name: Build & Sign Releases
     needs: [release]
     permissions:
       contents: read
-      packages: write  # Required: push Docker images to GHCR
+      packages: write # Required: push Docker images to GHCR
       id-token: write
       attestations: write
-      security-events: write  # Required: upload SARIF security scan results
+      security-events: write # Required: upload SARIF security scan results
     strategy:
       matrix:
         include:

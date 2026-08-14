@@ -363,6 +363,34 @@ warnings`.
   This is source-equivalent evidence for the merged quality code; the security
   branch still needs its own trusted-main integration run after merge.
 
+### Docker and release-toolchain closure — 2026-08-14
+
+The Docker reliability baseline
+`94031703eb94ccac3e3c3d388d4eecf180b46a5a` is pushed and verified on
+`origin/egorribun`. It closes the persistent JetStream stream-configuration
+startup failure, the Alembic `MissingGreenlet` startup path, and the audited
+Compose/Helm/container contracts. The exact `start-docker.ps1 -Build` path
+passes on persistent volumes; the security follow-up rebuild completed in
+`415.9s` with all `31` configured Compose services accounted for, all monitored
+services healthy, and all `9` Prometheus targets up.
+
+- The bundled npm advisory blocker is closed without hiding advisories. A
+  private fail-closed CLI shim replaces semantic-release's vulnerable nested
+  npm implementation, configured plugins are contract-tested, and the
+  token-bearing release step executes the integrity-checked semantic-release
+  entrypoint directly. Root and frontend `npm audit` both report zero
+  vulnerabilities, and the frontend production image rebuild reports zero
+  vulnerabilities during both dependency-install stages.
+- Fresh `pip-audit` reports no known vulnerabilities in the fully pinned uv
+  dependency set. Trivy 0.73.0 reports zero HIGH/CRITICAL dependency findings
+  across the npm, uv, Cargo, and Go manifests, zero fixable HIGH/CRITICAL
+  findings in the rebuilt backend image, and zero HIGH/CRITICAL
+  misconfigurations across a `4,487`-file tracked-source snapshot and the `13`
+  rendered Helm manifests.
+- GitHub's existing Dependabot alerts remain visible until this branch reaches
+  the default branch. The formal managed Deep Scan remains unavailable under
+  the current host permission profile and is not claimed as passed.
+
 ### CI acceleration continuation — 2026-08-12 (published `928debab4`, reporting fix `c2a114d05`)
 
 The canonical `egorribun` branch now contains `928debab4943b9ce547526a523eb87e5d9626862`,
@@ -933,22 +961,22 @@ intended for the checkpoint commit.
   run passes 8/8 and measures 88.36% lines, 59.45% branches, and 83.33%
   functions; the remaining paths are production-only animation/reduced-motion
   branches intentionally bypassed by the test-environment guard.
- - Frontend `InstallPrompt.tsx` closure expanded to 32 combined bounded tests
-   covering install accepted/dismissed/rejected flows, suppression windows,
-   malformed and failing storage, app-installed cleanup, push unsupported/
-   denied/default/granted visibility, Safari guidance, LHCI suppression, update
-   toast lifecycle, and success/error/info feedback. The one-worker run passes
-   32/32 and measures 92.18% lines, 90.14% branches, and 90.9% functions; the
-   remaining block is the granted-toggle JSX that is intentionally hidden by
-   the preceding `pushSupported && permission === "granted"` visibility effect.
- - Frontend `NewsDetail.tsx` closure expanded to 7 bounded tests covering
-   loading/error recovery, browser-history fallback, swipe navigation and the
-   Firefox reading-progress fallback, localized rendering, share options/copy,
-   deletion success, and deletion failure feedback. The one-worker run passes
-   7/7 and measures 100% statements/lines, 90.47% branches, and 61.9%
-   functions; the remaining function/branch gaps are callback/render variants
-   without uncovered executable statements.
- - The remote rerun of job `90699730876` (`90716869133`, commit
+- Frontend `InstallPrompt.tsx` closure expanded to 32 combined bounded tests
+  covering install accepted/dismissed/rejected flows, suppression windows,
+  malformed and failing storage, app-installed cleanup, push unsupported/
+  denied/default/granted visibility, Safari guidance, LHCI suppression, update
+  toast lifecycle, and success/error/info feedback. The one-worker run passes
+  32/32 and measures 92.18% lines, 90.14% branches, and 90.9% functions; the
+  remaining block is the granted-toggle JSX that is intentionally hidden by
+  the preceding `pushSupported && permission === "granted"` visibility effect.
+- Frontend `NewsDetail.tsx` closure expanded to 7 bounded tests covering
+  loading/error recovery, browser-history fallback, swipe navigation and the
+  Firefox reading-progress fallback, localized rendering, share options/copy,
+  deletion success, and deletion failure feedback. The one-worker run passes
+  7/7 and measures 100% statements/lines, 90.47% branches, and 61.9%
+  functions; the remaining function/branch gaps are callback/render variants
+  without uncovered executable statements.
+- The remote rerun of job `90699730876` (`90716869133`, commit
   `0b8d305c6`) completed with one failure after 3,662 passes. A minimal local
   reproduction identified the deterministic cause: `test_force_reload_security_config`
   left a reloaded `app.core.config` singleton behind, while the metrics module

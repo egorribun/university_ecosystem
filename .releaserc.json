@@ -1,30 +1,21 @@
 {
-    "branches": [
-        "main"
+  "branches": ["main"],
+  "plugins": [
+    "@semantic-release/commit-analyzer",
+    "@semantic-release/release-notes-generator",
+    "@semantic-release/changelog",
+    [
+      "@semantic-release/exec",
+      {
+        "prepareCmd": "node scripts/prepare-release-version.mjs ${nextRelease.version}"
+      }
     ],
-    "plugins": [
-        "@semantic-release/commit-analyzer",
-        "@semantic-release/release-notes-generator",
-        "@semantic-release/changelog",
-        [
-            "@semantic-release/npm",
-            {
-                "npmPublish": false,
-                "pkgRoot": "frontend"
-            }
-        ],
-        [
-            "@semantic-release/exec",
-            {
-                "prepareCmd": "sed -i \"s/^version = \\\".*\\\"/version = \\\"${nextRelease.version}\\\"/\" pyproject.toml && sed -i \"s/^API_VERSION: Final\\[str\\] = \\\".*\\\"/API_VERSION: Final[str] = \\\"${nextRelease.version}\\\"/\" app/core/versioning.py"
-            }
-        ],
-        [
-            "@semantic-release/github",
-            {
-                "successComment": false,
-                "failTitle": false
-            }
-        ]
+    [
+      "@semantic-release/github",
+      {
+        "successComment": false,
+        "failTitle": false
+      }
     ]
+  ]
 }
