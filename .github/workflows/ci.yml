@@ -560,7 +560,7 @@ jobs:
     uses: ./.github/workflows/reusable-go-tests.yml
     with:
       service-directory: ${{ matrix.service }}
-      go-version: "1.26.5"
+      go-version: "1.26.6"
       coverage-threshold: ${{ matrix.coverage-threshold }}
 
   # MOD-W15-06 (audit 2026-03-23 Wave 15): Go fuzz testing for ws-hub message parsing.
@@ -576,7 +576,7 @@ jobs:
 
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version: "1.26.5"
+          go-version: "1.26.6"
           cache-dependency-path: services/ws-hub/go.sum
 
       # PERF-W18-04 (audit 2026-03-23 Wave 18): increased from 30s to 120s for
@@ -608,7 +608,7 @@ jobs:
     uses: ./.github/workflows/reusable-go-integration-tests.yml
     with:
       service-directory: services/ws-hub
-      go-version: "1.26.5"
+      go-version: "1.26.6"
 
   go-integration-file-processor:
     name: Go Integration Tests (file-processor)
@@ -616,7 +616,7 @@ jobs:
     uses: ./.github/workflows/reusable-go-integration-tests.yml
     with:
       service-directory: services/file-processor
-      go-version: "1.26.5"
+      go-version: "1.26.6"
 
   go-integration-gateway:
     name: Go Integration Tests (gateway)
@@ -624,7 +624,7 @@ jobs:
     uses: ./.github/workflows/reusable-go-integration-tests.yml
     with:
       service-directory: services/gateway
-      go-version: "1.26.5"
+      go-version: "1.26.6"
 
   frontend-tests:
     name: Frontend Tests
@@ -2407,16 +2407,7 @@ jobs:
         with:
           use_oidc: true
           disable_search: true
-          files: |
-            artifacts/coverage/codecov/python.xml
-            artifacts/coverage/codecov/frontend.lcov
-            artifacts/coverage/codecov/go-gateway.out
-            artifacts/coverage/codecov/go-ws-hub.out
-            artifacts/coverage/codecov/go-file-processor.out
-            artifacts/coverage/codecov/rust-native.json
-            artifacts/coverage/codecov/rust-pyo3-sanitizer.json
-            artifacts/coverage/codecov/rust-wasm-sanitizer.json
-            artifacts/coverage/codecov/rust-crypto.json
+          files: artifacts/coverage/codecov/python.xml,artifacts/coverage/codecov/frontend.lcov,artifacts/coverage/codecov/go-gateway.out,artifacts/coverage/codecov/go-ws-hub.out,artifacts/coverage/codecov/go-file-processor.out,artifacts/coverage/codecov/rust-native.json,artifacts/coverage/codecov/rust-pyo3-sanitizer.json,artifacts/coverage/codecov/rust-wasm-sanitizer.json,artifacts/coverage/codecov/rust-crypto.json
           name: trusted-main-${{ github.sha }}
           fail_ci_if_error: true
 

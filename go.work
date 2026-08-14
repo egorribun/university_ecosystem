@@ -8,7 +8,7 @@
 // To add a new module: `go work use ./path/to/module`
 // To regenerate: `go work sync`
 
-go 1.26.4
+go 1.26.6
 
 use (
 	.

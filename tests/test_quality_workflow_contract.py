@@ -9,6 +9,7 @@ from pathlib import Path
 import pytest
 import yaml
 
+from scripts.quality.capture_isolated_benchmarks import GO_IMAGE as BENCHMARK_GO_IMAGE
 from scripts.quality.filter_checkov_sarif import filter_suppressed_results
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
@@ -41,6 +42,7 @@ QUALITY_HISTORY_WORKFLOW_PATH = (
 NIGHTLY_FULL_WORKFLOW_PATH = (
     REPOSITORY_ROOT / ".github" / "workflows" / "nightly-full-gate.yml"
 )
+SBOM_WORKFLOW_PATH = REPOSITORY_ROOT / ".github" / "workflows" / "sbom.yml"
 QUALITY_PROMOTION_WORKFLOW_PATH = (
     REPOSITORY_ROOT / ".github" / "workflows" / "quality-promotion-check.yml"
 )
@@ -813,6 +815,143 @@ def test_codecov_oidc_permissions_are_scoped_to_trusted_upload_job() -> None:
     )
     assert upload["with"]["use_oidc"] is True
     assert upload["with"]["fail_ci_if_error"] is True
+    expected_reports = (
+        "artifacts/coverage/codecov/python.xml",
+        "artifacts/coverage/codecov/frontend.lcov",
+        "artifacts/coverage/codecov/go-gateway.out",
+        "artifacts/coverage/codecov/go-ws-hub.out",
+        "artifacts/coverage/codecov/go-file-processor.out",
+        "artifacts/coverage/codecov/rust-native.json",
+        "artifacts/coverage/codecov/rust-pyo3-sanitizer.json",
+        "artifacts/coverage/codecov/rust-wasm-sanitizer.json",
+        "artifacts/coverage/codecov/rust-crypto.json",
+    )
+    files = upload["with"]["files"]
+    assert files == ",".join(expected_reports)
+    assert "\n" not in files
+
+
+def test_sbom_go_gate_uses_symbol_aware_reachable_vulnerability_analysis() -> None:
+    """Keep full OSV reporting while blocking every reachable Go vulnerability."""
+
+    workflow = yaml.safe_load(SBOM_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    report_job = workflow["jobs"]["sbom-go"]
+    report_script = "\n".join(str(step.get("run", "")) for step in report_job["steps"])
+    assert "osv-scanner scan --recursive --format sarif" in report_script
+    assert any(
+        str(step.get("uses", "")).startswith("github/codeql-action/upload-sarif@")
+        for step in report_job["steps"]
+    )
+
+    gate_steps = workflow["jobs"]["vuln-gate"]["steps"]
+    install = next(
+        step for step in gate_steps if step.get("name") == "Install govulncheck"
+    )
+    assert install["run"] == "go install golang.org/x/vuln/cmd/govulncheck@v1.7.0"
+
+    scan = next(
+        step
+        for step in gate_steps
+        if step.get("name") == "Go — govulncheck reachable vulnerability gate"
+    )
+    scan_script = scan["run"]
+    expected_packages = (
+        "./services/gateway/...",
+        "./services/ws-hub/...",
+        "./services/file-processor/...",
+        "./services/cmd/uni-cli/...",
+        "./services/pkg/spiffe/...",
+    )
+    assert scan_script.strip().startswith("govulncheck \\")
+    assert all(package in scan_script for package in expected_packages)
+    assert "osv-scanner" not in scan_script
+    assert "max_cvss" not in scan_script
+    assert "score < 0" not in scan_script
+
+    reusable_audit = (
+        REPOSITORY_ROOT / ".github" / "workflows" / "reusable-security-audit.yml"
+    ).read_text(encoding="utf-8")
+    assert "go install golang.org/x/vuln/cmd/govulncheck@v1.7.0" in reusable_audit
+    assert "govulncheck@v1.5.0" not in reusable_audit
+
+
+def test_active_go_toolchain_pins_use_current_security_patch() -> None:
+    """All executable Go surfaces must use the same patched toolchain."""
+
+    expected_version = "1.26.6"
+    manifests = (
+        "go.mod",
+        "go.work",
+        "gen/go/go.mod",
+        "services/cmd/uni-cli/go.mod",
+        "services/file-processor/go.mod",
+        "services/gateway/go.mod",
+        "services/pkg/spiffe/go.mod",
+        "services/ws-hub/go.mod",
+    )
+    for relative_path in manifests:
+        directives = [
+            line.split(maxsplit=1)[1]
+            for line in (REPOSITORY_ROOT / relative_path)
+            .read_text(encoding="utf-8")
+            .splitlines()
+            if line.startswith("go ")
+        ]
+        assert directives == [expected_version], relative_path
+
+    literal_version_workflows = (
+        "benchmark.yml",
+        "ci.yml",
+        "go-fuzz.yml",
+        "manual-performance-evidence.yml",
+        "nilaway.yml",
+        "reusable-cache-deps.yml",
+        "reusable-go-integration-tests.yml",
+        "reusable-go-tests.yml",
+        "reusable-security-audit.yml",
+    )
+    for workflow_name in literal_version_workflows:
+        workflow_text = (
+            REPOSITORY_ROOT / ".github" / "workflows" / workflow_name
+        ).read_text(encoding="utf-8")
+        assert '"1.26.4"' not in workflow_text, workflow_name
+        assert '"1.26.5"' not in workflow_text, workflow_name
+        assert f'"{expected_version}"' in workflow_text, workflow_name
+
+    assert BENCHMARK_GO_IMAGE == (
+        "docker.io/library/golang:1.26.6-bookworm@"
+        "sha256:116d58cbd88c1297624acc6e967a060012422bacf9930927e23fb719189c6f36"
+    )
+
+
+def test_go_integration_workflow_validates_service_input_before_shell_use() -> None:
+    workflow_path = (
+        REPOSITORY_ROOT / ".github" / "workflows" / "reusable-go-integration-tests.yml"
+    )
+    workflow = yaml.safe_load(workflow_path.read_text(encoding="utf-8"))
+    job = workflow["jobs"]["integration"]
+
+    assert job["env"]["SERVICE_DIRECTORY"] == "${{ inputs.service-directory }}"
+    scripts = "\n".join(str(step.get("run", "")) for step in job["steps"])
+    assert "${{ inputs.service-directory }}" not in scripts
+
+    validation = next(
+        step for step in job["steps"] if step.get("id") == "validate-service"
+    )
+    for service in (
+        "services/gateway",
+        "services/file-processor",
+        "services/ws-hub",
+    ):
+        assert service in validation["run"]
+
+    upload = next(
+        step
+        for step in job["steps"]
+        if str(step.get("uses", "")).startswith("actions/upload-artifact@")
+    )
+    assert "inputs.service-directory" not in upload["with"]["path"]
+    assert "steps.validate-service.outcome == 'success'" in upload["if"]
 
 
 def test_e2e_postgres_healthcheck_uses_declared_credentials() -> None:

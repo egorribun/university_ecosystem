@@ -141,15 +141,16 @@ jobs:
   #
   # The sbom-python / sbom-go / sbom-rust jobs above upload reports but do NOT
   # fail CI — they use `|| true` so SARIF upload happens even when vulns are
-  # found.  This separate job provides the fail-closed gate: it runs pip-audit
-  # (Python), osv-scanner (Go), and cargo-audit (Rust) with strict exit codes and
-  # breaks the build on CRITICAL or HIGH severity findings.
+  # found. This separate job provides the fail-closed gate: it runs pip-audit
+  # (Python), symbol-aware govulncheck (Go), and cargo-audit (Rust). Reachable Go
+  # findings are all blocking because the curated Go database does not assign
+  # CVSS consistently; module-only findings remain visible in the OSV SARIF.
   #
   # Design rationale:
   #   - Report jobs remain unconditional (always upload artefacts for auditors).
-  #   - Gate job is the enforcement point; it can be muted per-CVE via
-  #     .pip-audit-ignore, osv-scanner.toml, or cargo-audit.toml when a fix is
-  #     not yet available and the team has accepted the risk via ADR.
+  #   - Gate job is the enforcement point. Python/Rust exceptions require their
+  #     versioned policy files and an accepted-risk ADR. Reachable Go findings
+  #     are never silently ignored by this workflow.
   vuln-gate:
     name: Vulnerability gate (CRITICAL/HIGH)
     runs-on: ubuntu-latest
@@ -213,71 +214,26 @@ jobs:
           go-version-file: services/gateway/go.mod
           cache: true
 
-      - name: Install osv-scanner
-        # @v1.9.2 is content-addressed by the Go module sum DB (equivalent to commit pinning).  # nosec
-        run: go install github.com/google/osv-scanner/cmd/osv-scanner@v1.9.2
+      - name: Install govulncheck
+        # Pinned official Go vulnerability analyzer; the module sum DB verifies
+        # the downloaded source before installation.  # nosec
+        run: go install golang.org/x/vuln/cmd/govulncheck@v1.7.0
 
-      - name: Go — osv-scanner CRITICAL/HIGH gate
-        # RZ-W15-02 (audit 2026-03-23 Wave 15): Replaced fragile one-liner with a
-        # robust Python script. Key fixes:
-        #   1. Malformed / missing JSON now fails explicitly (::error:: annotation).
-        #   2. Vulnerabilities with NO CVSS score default to -1 (fail-closed), not 0.
-        #      A missing score means unknown severity — safe default is to block.
-        #   3. All blocked vulns are listed individually in the log for easy triage.
+      - name: Go — govulncheck reachable vulnerability gate
+        # Source analysis blocks every vulnerability reachable from authored
+        # service code. The separate OSV SARIF job intentionally retains the
+        # broader module inventory for review without guessing missing CVSS.
         run: |
-          osv-scanner scan --recursive --format json \
-            --output go-vuln-gate.json \
-            ./services/ || true  # non-zero on vulns; gate script handles exit
-
-          python3 << 'PYEOF'
-          import json, sys
-
-          try:
-              with open("go-vuln-gate.json") as f:
-                  data = json.load(f)
-          except (json.JSONDecodeError, FileNotFoundError) as exc:
-              print(f"::error::osv-scanner output missing or malformed: {exc}", flush=True)
-              sys.exit(1)
-
-          def max_cvss(severity_list: list) -> float:
-              """Return max CVSS score, or -1.0 when no CVSS entry exists (fail-closed)."""
-              scores = [
-                  float(s["score"])
-                  for s in severity_list
-                  if s.get("type", "").upper() in ("CVSS_V3", "CVSS_V2") and "score" in s
-              ]
-              return max(scores) if scores else -1.0
-
-          blocked: list[dict] = []
-          for result in data.get("results", []):
-              for pkg in result.get("packages", []):
-                  pkg_name = pkg.get("package", {}).get("name", "unknown")
-                  for vuln in pkg.get("vulnerabilities", []):
-                      score = max_cvss(vuln.get("severity", []))
-                      # score == -1.0  → no CVSS data → unknown → treat as HIGH (fail-closed)
-                      # score >= 7.0   → HIGH (7.0–8.9) or CRITICAL (9.0–10.0)
-                      if score < 0 or score >= 7.0:
-                          blocked.append({
-                              "id": vuln.get("id", "UNKNOWN"),
-                              "pkg": pkg_name,
-                              "score": f"{score:.1f}" if score >= 0 else "no-CVSS",
-                          })
-
-          if blocked:
-              print(f"::error::osv-scanner: {len(blocked)} HIGH/CRITICAL Go vulnerabilities found:", flush=True)
-              for v in blocked:
-                  print(f"  - {v['id']} ({v['pkg']}) CVSS={v['score']}", flush=True)
-              print("Review go-vuln.sarif artefact and add accepted-risk entries to osv-scanner.toml", flush=True)
-              sys.exit(1)
-
-          pkg_count = sum(len(r.get("packages", [])) for r in data.get("results", []))
-          print(f"osv-scanner gate passed. Checked {pkg_count} package(s) — no HIGH/CRITICAL findings.", flush=True)
-          PYEOF
+          govulncheck \
+            ./services/gateway/... \
+            ./services/ws-hub/... \
+            ./services/file-processor/... \
+            ./services/cmd/uni-cli/... \
+            ./services/pkg/spiffe/...
 
       # RZ-W18-05 (audit 2026-03-23 Wave 18): cargo-audit gate was non-functional —
       # the trailing `|| true` swallowed sys.exit(1) from the Python script, making
-      # the gate always pass. Also added CVSS >= 7.0 filtering for consistency with
-      # the Go osv-scanner gate above.
+      # the gate always pass. CVSS >= 7.0 remains the Rust severity threshold.
       - name: Rust — cargo-audit CRITICAL/HIGH gate
         working-directory: native/rust_ext
         run: |

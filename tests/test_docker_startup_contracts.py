@@ -1540,8 +1540,62 @@ def test_protobuf_generator_uses_the_repository_go_toolchain() -> None:
 
     assert (
         (
-            "golang:1.26.4-bookworm@sha256:"
-            "b305420a68d0f229d91eb3b3ed9e519fcf2cf5461da4bef997bf927e8c0bfd2b"  # pragma: allowlist secret
+            "golang:1.26.6-alpine3.24@sha256:"
+            "af8d6740070b8906d12eae1c3e3ea0957fb63f492051ea05e354c38ef9fe88df"  # pragma: allowlist secret
         )
         in dockerfile
     )
+    assert 'ARG BUF_VERSION="v1.72.0"' in dockerfile
+    assert dockerfile.count("GOBIN=/usr/local/bin go install") == 3
+    assert '"github.com/bufbuild/buf/cmd/buf@${BUF_VERSION}"' in dockerfile
+    assert "google.golang.org/protobuf/cmd/protoc-gen-go@v1.36.12" in dockerfile
+    assert "google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.6.2" in dockerfile
+    assert "buf-Linux-x86_64" not in dockerfile
+    assert "curl" not in dockerfile
+    assert "apk add --no-cache" in dockerfile
+    assert "apt-get" not in dockerfile
+
+
+def test_go_service_builders_use_the_patched_repository_toolchain() -> None:
+    expected = (
+        "golang:1.26.6-alpine3.24@sha256:"
+        "af8d6740070b8906d12eae1c3e3ea0957fb63f492051ea05e354c38ef9fe88df"  # pragma: allowlist secret
+    )
+
+    for relative_path in (
+        "services/gateway/Dockerfile",
+        "services/ws-hub/Dockerfile",
+        "services/file-processor/Dockerfile",
+    ):
+        assert expected in _read(relative_path), relative_path
+
+
+def test_file_processor_sum_is_complete_for_standalone_docker_build() -> None:
+    go_sum = _read("services/file-processor/go.sum")
+
+    for module, version in (
+        ("github.com/klauspost/cpuid/v2", "v2.4.0"),
+        ("github.com/pelletier/go-toml/v2", "v2.4.3"),
+    ):
+        assert f"{module} {version} h1:" in go_sum
+        assert f"{module} {version}/go.mod h1:" in go_sum
+
+
+def test_file_processor_builds_health_probe_with_patched_dependencies() -> None:
+    dockerfile = _read("services/file-processor/Dockerfile")
+    health_probe = dockerfile[
+        dockerfile.index("AS health-probe") : dockerfile.index("# Runtime stage")
+    ]
+
+    assert "GRPC_HEALTH_PROBE_VERSION=v0.4.51" in health_probe
+    for dependency in (
+        "github.com/spiffe/go-spiffe/v2@v2.7.0",
+        "google.golang.org/grpc@v1.83.0",
+        "golang.org/x/net@v0.57.0",
+        "golang.org/x/text@v0.40.0",
+    ):
+        assert dependency in health_probe
+    assert "go mod download" in health_probe
+    assert "CGO_ENABLED=0 GOOS=linux go build" in health_probe
+    assert "-X main.versionTag=${GRPC_HEALTH_PROBE_VERSION}" in health_probe
+    assert "wget" not in health_probe

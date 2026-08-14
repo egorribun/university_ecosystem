@@ -62,7 +62,7 @@ def _run_cli(
     candidate_revision: str = CANDIDATE_REVISION,
 ) -> int:
     toolchain = tmp_path / "toolchain.json"
-    toolchain.write_text(json.dumps({"go": "go version go1.26.5"}), encoding="utf-8")
+    toolchain.write_text(json.dumps({"go": "go version go1.26.6"}), encoding="utf-8")
     return main(
         [
             "--format",
@@ -335,7 +335,7 @@ def test_cli_writes_byte_identical_report_with_metadata_and_raw_values(
     )
     assert report["base_revision"] == BASE_REVISION
     assert report["candidate_revision"] == CANDIDATE_REVISION
-    assert report["toolchain"] == {"go": "go version go1.26.5"}
+    assert report["toolchain"] == {"go": "go version go1.26.6"}
     assert ns_metric["base_values"] == [100.0] * 12
     assert ns_metric["candidate_values"] == [105.0] * 12
     assert ns_metric["ratios"] == [1.05] * 12
