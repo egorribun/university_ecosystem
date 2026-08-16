@@ -1,6 +1,6 @@
 /**
  * wave165-admin-visual-smoke.mjs — W164 §Honesty #4 admin.css `.dark` visual
- * smoke completion (Path B attempt). Adapts wave137-authed-smoke.mjs auth+JWKS
+ * smoke completion (Path B attempt). Uses the shared visual-audit auth+JWKS
  * infra for admin user + 5 admin routes × 2 themes (10 captures total).
  *
  * ## W165 SW3 outcome (post-execution, 2026-05-18)
@@ -64,7 +64,7 @@
  *
  * W137 SW7 + W138 SW3 documented Windows wall patterns for chrome-devtools-
  * mcp (chrome-profile-locked + heavy-DOM eval timeout on authed routes).
- * Per W137 SW3 lesson + wave137-authed-smoke.mjs precedent, Playwright real-
+ * Playwright real-
  * Chrome (channel: "chrome") bypasses CDP backchannel timeouts. Bundled
  * Chromium fallback if real Chrome unavailable.
  *

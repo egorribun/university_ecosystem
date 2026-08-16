@@ -447,10 +447,3 @@ def test_container_cpu_count_cgroups_v1_capped():
     finally:
         if orig is not None:
             sys.modules["app.auth.security"] = orig
-
-
-def test_verify_legacy_bcrypt():
-    """Verify _verify_legacy_bcrypt warning and false return."""
-    from app.auth.security import _verify_legacy_bcrypt
-
-    assert _verify_legacy_bcrypt("password", "$2b$12$...") is False

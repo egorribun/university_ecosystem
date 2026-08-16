@@ -77,7 +77,7 @@ if (import.meta.env.VITE_LHCI === "true") {
     const combinedUrl = isAbsoluteUrl
       ? rawUrl
       : `${rawBaseUrl.replace(/\/+$/u, "")}/${rawUrl.replace(/^\/+/u, "")}`
-    const baseOrigin = typeof window === "undefined" ? "http://localhost" : window.location.origin
+    const baseOrigin = window.location.origin
     return new URL(combinedUrl, baseOrigin).pathname
   }
   const shouldUseE2ENetworkMocks = (config: AxiosRequestConfig) => {
@@ -114,7 +114,6 @@ export const resetEtagCache = () => {
 }
 
 const isAbortError = (error: unknown) => {
-  if (!error) return false
   if (error instanceof DOMException) return error.name === "AbortError"
   if (typeof error === "object" && "name" in error) {
     const name = (error as { name?: string }).name
@@ -297,17 +296,16 @@ api.interceptors.request.use(async (config) => {
   // in the server chunk only). NEVER log or surface the raw cookie value — it
   // contains the access_token_v2 HttpOnly cookie.
   if (typeof window === "undefined") {
-    const cookie =
-      typeof globalThis !== "undefined" ? globalThis.__ssrCookieGetter__?.() : undefined
+    const cookie = globalThis.__ssrCookieGetter__?.()
     if (cookie && cookie.length > 0) {
-      const headers = AxiosHeaders.from(config.headers ?? {})
+      const headers = AxiosHeaders.from(config.headers)
       headers.set("Cookie", cookie)
       config.headers = headers
     }
   }
 
   if (config.data instanceof FormData) {
-    const headers = AxiosHeaders.from(config.headers ?? {})
+    const headers = AxiosHeaders.from(config.headers)
     headers.delete("Content-Type")
     config.headers = headers
   }
@@ -363,7 +361,6 @@ api.interceptors.response.use(
         config.__rateLimitRetryCount = retryCount + 1
         // RZ-31-04: Propagate AbortSignal so navigation cancels the wait.
         await waitForRateLimitWindow(config.signal)
-        if (config.signal?.aborted) return Promise.reject(new DOMException("Aborted", "AbortError"))
         return api.request(config)
       }
     }
@@ -380,21 +377,5 @@ api.interceptors.response.use(
     return Promise.reject(error)
   }
 )
-
-/**
- * DEPRECATED: Use the generated SDK from @/api/generated instead.
- * This manual TypedApiClient is kept for backward compatibility during migration.
- */
-export const apiClient = {
-  get: <T = unknown>(url: string, config?: AxiosRequestConfig) => api.get<T>(url, config),
-  post: <T = unknown>(url: string, data?: unknown, config?: AxiosRequestConfig) =>
-    api.post<T>(url, data, config),
-  put: <T = unknown>(url: string, data?: unknown, config?: AxiosRequestConfig) =>
-    api.put<T>(url, data, config),
-  patch: <T = unknown>(url: string, data?: unknown, config?: AxiosRequestConfig) =>
-    api.patch<T>(url, data, config),
-  delete: (url: string, config?: AxiosRequestConfig) => api.delete(url, config),
-  request: (config: AxiosRequestConfig) => api.request(config),
-}
 
 export default api

@@ -55,14 +55,17 @@ const ISO_SAMPLE: Lesson = {
 }
 
 function makeBaseProps() {
+  const unrelatedLesson = { ...SAMPLE, id: "unrelated" }
   return {
-    schedule: [SAMPLE],
+    schedule: [SAMPLE, unrelatedLesson],
     lessonTypeOptions: [
       { value: "lecture", label: "Лекция" },
       { value: "practice", label: "Практика" },
     ],
     toBackendLessonType: (v?: string | null) => v ?? "lecture",
-    applyScheduleUpdate: vi.fn((updater: (prev: Lesson[]) => Lesson[]) => updater([SAMPLE])),
+    applyScheduleUpdate: vi.fn((updater: (prev: Lesson[]) => Lesson[]) =>
+      updater([SAMPLE, unrelatedLesson])
+    ),
     refresh: vi.fn(),
   }
 }

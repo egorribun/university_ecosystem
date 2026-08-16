@@ -1,4 +1,4 @@
-import { render, screen, waitFor, act } from "@testing-library/react"
+import { render, screen, waitFor, act, fireEvent } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
 
@@ -75,6 +75,16 @@ describe("ActivityExportButton", () => {
     await waitFor(() => expect(screen.getByText("activity:export.error")).toBeInTheDocument())
   })
 
+  it("uses translated error feedback when a failed export has no message", async () => {
+    exportMock.pdf.mockResolvedValueOnce({ success: false })
+    const user = userEvent.setup()
+    renderButton()
+    await user.click(screen.getByRole("button", { name: "activity:export.title" }))
+    await user.click(screen.getByText("activity:export.pdf"))
+
+    await waitFor(() => expect(screen.getByText("activity:export.error")).toBeInTheDocument())
+  })
+
   it("shows the exporting state while a slow export is pending", async () => {
     let resolveExport: (v: { success: boolean }) => void = () => {}
     exportMock.pdf.mockReturnValueOnce(
@@ -92,6 +102,23 @@ describe("ActivityExportButton", () => {
     await act(async () => {
       resolveExport({ success: true })
     })
+    await waitFor(() => expect(screen.getByText("activity:export.success")).toBeInTheDocument())
+  })
+
+  it("ignores a synchronous re-entrant export request", async () => {
+    const user = userEvent.setup()
+    renderButton()
+    await user.click(screen.getByRole("button", { name: "activity:export.title" }))
+    const pdfItem = screen.getByRole("menuitem", { name: "activity:export.pdf" })
+
+    exportMock.pdf.mockImplementationOnce(() => {
+      fireEvent.click(pdfItem)
+      return Promise.resolve({ success: true })
+    })
+
+    fireEvent.click(pdfItem)
+
+    expect(exportMock.pdf).toHaveBeenCalledOnce()
     await waitFor(() => expect(screen.getByText("activity:export.success")).toBeInTheDocument())
   })
 

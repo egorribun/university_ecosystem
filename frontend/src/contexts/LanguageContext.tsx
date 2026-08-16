@@ -19,7 +19,6 @@ const COOKIE_MAX_AGE_SECONDS = 365 * 24 * 60 * 60 // 1 year
 // Cookie attrs identical to W127 SW2 ThemeContext (Path=/, Lax, 1y, Secure
 // on HTTPS).
 const setLangCookie = (lang: SupportedLanguage) => {
-  if (typeof document === "undefined") return
   const isSecure = typeof location !== "undefined" && location.protocol === "https:"
   const secureAttr = isSecure ? "; Secure" : ""
   document.cookie = `${storageKey}=${encodeURIComponent(lang)}; Path=/; Max-Age=${COOKIE_MAX_AGE_SECONDS}; SameSite=Lax${secureAttr}`
@@ -30,7 +29,12 @@ const resolveInitialLanguage = (): SupportedLanguage => {
     return (i18n.language as SupportedLanguage) || fallbackLng
   }
 
-  const stored = window.localStorage.getItem(storageKey)
+  let stored: string | null = null
+  try {
+    stored = window.localStorage.getItem(storageKey)
+  } catch {
+    // Storage can be unavailable in privacy modes; continue with browser locale.
+  }
   if (stored && supportedLngs.includes(stored as SupportedLanguage)) {
     return stored as SupportedLanguage
   }
@@ -68,7 +72,11 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
     const locale = localeMeta[language]
     // dayjs.locale(locale?.dayjsLocale) removed
     if (typeof window !== "undefined") {
-      window.localStorage.setItem(storageKey, language)
+      try {
+        window.localStorage.setItem(storageKey, language)
+      } catch {
+        // Persistence is best-effort; DOM and cookie state must still update.
+      }
       document.documentElement.setAttribute("lang", language)
       document.documentElement.setAttribute("dir", locale?.dir ?? "ltr")
       document.body?.setAttribute("dir", locale?.dir ?? "ltr")

@@ -3,7 +3,7 @@
  *                              (carried through W188).
  *
  * Visual smoke for the 4 PUBLIC unauthenticated routes through real Caddy →
- * Node SSR → backend chain. Mirrors wave137-authed-smoke.mjs structure minus
+ * Node SSR → backend chain. Mirrors the authenticated visual-audit structure minus
  * the auth chokepoint (CSRF dance + login POST + JWKS pre-check + JWT
  * decode/validation) since unauthenticated visitors never traverse those
  * code paths.

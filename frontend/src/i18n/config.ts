@@ -3,11 +3,11 @@ import { initReactI18next } from "react-i18next"
 import type { BackendModule } from "i18next"
 import { defaultNS, fallbackLng, localeMeta, namespaces, supportedLngs } from "./metadata"
 
-const localeLoaders = import.meta.glob("./locales/*/*.json", {
+export const localeLoaders = import.meta.glob("./locales/*/*.json", {
   import: "default",
 })
 
-const dynamicBackend: BackendModule = {
+export const dynamicBackend: BackendModule = {
   type: "backend",
   init() {
     // No initialization required for the dynamic import backend

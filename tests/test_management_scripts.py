@@ -24,18 +24,20 @@ from app.management.weekly_cleanup import main as weekly_cleanup_main
 from app.management.weekly_cleanup import run_weekly_cleanup
 from app.scripts.backfill_uuids import main as backfill_uuids_main
 
-# Declarative models for backfill testing to mimic transition phase
-TestBase = declarative_base()
+# Declarative models for backfill testing to mimic transition phase.  The name
+# intentionally does not start with ``Test`` so pytest never treats the SQLAlchemy
+# base as a test container.
+MockBase = declarative_base()
 
 
-class MockUser(TestBase):
+class MockUser(MockBase):
     __tablename__ = "mock_users"
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     uuid_id: Mapped[str] = mapped_column(String, nullable=True)
     created_at = None
 
 
-class MockActiveSession(TestBase):
+class MockActiveSession(MockBase):
     __tablename__ = "mock_active_sessions"
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     uuid_id: Mapped[str] = mapped_column(String, nullable=True)

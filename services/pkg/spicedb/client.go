@@ -50,6 +50,9 @@ func (c *MemoryClient) SetCampusTenant(campusID, tenantID string) {
 
 // CheckPermission evaluates a permission tuple.
 func (c *MemoryClient) CheckPermission(ctx context.Context, resourceType, resourceID, permission, userID string) (bool, error) {
+	if err := ctx.Err(); err != nil {
+		return false, err
+	}
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 

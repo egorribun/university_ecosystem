@@ -17,6 +17,7 @@ import (
 	"github.com/nats-io/nats.go"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/university-ecosystem/services/pkg/spiffe"
 	"github.com/university-ecosystem/ws-hub/pkg/config"
 )
 
@@ -88,6 +89,10 @@ func TestCleanupHelpersAreNilSafe(t *testing.T) {
 		closeRedisConnection(context.Background(), nil, discardLogger())
 		closeSPIFFEClient(context.Background(), nil, discardLogger())
 	})
+}
+
+func TestDefaultCloseSpiffeAdapterDelegates(t *testing.T) {
+	assert.NoError(t, closeSpiffeClientFunc(&spiffe.Client{}))
 }
 
 func TestRun_PropagatesNATSInitializationFailure(t *testing.T) {

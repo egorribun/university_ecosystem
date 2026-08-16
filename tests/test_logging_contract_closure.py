@@ -73,6 +73,15 @@ def test_configure_logging_builds_json_and_console_processor_chains():
         assert kwargs["wrapper_class"] is structlog.stdlib.BoundLogger
         assert kwargs["cache_logger_on_first_use"] is True
         assert isinstance(processors[-1], renderer_type)
+        if json_output:
+            assert structlog.processors.format_exc_info in processors
+        else:
+            # ConsoleRenderer formats ``exc_info`` itself. Pre-formatting it
+            # emits a warning and produces a less readable duplicate trace.
+            assert structlog.processors.format_exc_info not in processors
+            exception_formatter = processors[-1]._exception_formatter
+            assert isinstance(exception_formatter, structlog.dev.RichTracebackFormatter)
+            assert exception_formatter.show_locals is False
         basic_config.assert_called_once_with(
             format="%(message)s",
             stream=sys.stdout,

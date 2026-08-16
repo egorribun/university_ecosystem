@@ -119,10 +119,13 @@ export async function storePendingReport(record: {
   const idempotentMethods = ["GET", "PUT", "DELETE", "HEAD"]
 
   if (idempotentMethods.includes(method)) {
-    // DEBT-04 (audit Wave 11): deduplicate idempotent requests by URL+body hash.
+    // DEBT-04 (audit Wave 11): deduplicate idempotent requests by a framed
+    // method+URL+body tuple so different methods and field boundaries cannot collide.
     // A user going offline then back online while the same resource is pending
     // should not enqueue duplicate requests that create duplicate side-effects.
-    const dedupeKey = await digestKey(record.reportUrl + JSON.stringify(record.payload ?? null))
+    const dedupeKey = await digestKey(
+      JSON.stringify([method, record.reportUrl, record.payload ?? null])
+    )
     const db = await getDatabase()
     const existing = await db.getAllFromIndex(STORES.REPORT, "dedupeKey", dedupeKey)
     if (existing.length > 0) {
@@ -228,41 +231,45 @@ export async function processPendingMutations() {
     }
   }
 
-  for (const record of records) {
-    if (record.retryCount >= 5) {
-      warn("Mutation exceeded max retries, discarding:", record)
-      if (record.id) await db.delete(STORES.MUTATION, record.id)
-      notifyBroadcast({ type: "MUTATION_FAILED_PERMANENT", record })
-      continue
-    }
-
-    try {
-      const response = await fetch(record.url, {
-        method: record.method,
-        headers: {
-          "Content-Type": "application/json",
-          "Idempotency-Key": record.idempotencyKey,
-          ...(record.headers ?? {}),
-        },
-        body: record.payload ? JSON.stringify(record.payload) : undefined,
-        signal: AbortSignal.timeout(10_000),
-      })
-
-      if (response.ok) {
+  try {
+    for (const record of records) {
+      if (record.retryCount >= 5) {
+        warn("Mutation exceeded max retries, discarding:", record)
         if (record.id) await db.delete(STORES.MUTATION, record.id)
-        notifyBroadcast({ type: "MUTATION_SYNCED", record })
-      } else if (response.status >= 400 && response.status < 500 && response.status !== 429) {
-        warn(`Mutation returned non-retriable status ${response.status}:`, record)
-        if (record.id) await db.delete(STORES.MUTATION, record.id)
-        notifyBroadcast({ type: "MUTATION_REJECTED", record, status: response.status })
-      } else {
+        notifyBroadcast({ type: "MUTATION_FAILED_PERMANENT", record })
+        continue
+      }
+
+      try {
+        const response = await fetch(record.url, {
+          method: record.method,
+          headers: {
+            "Content-Type": "application/json",
+            "Idempotency-Key": record.idempotencyKey,
+            ...(record.headers ?? {}),
+          },
+          body: record.payload ? JSON.stringify(record.payload) : undefined,
+          signal: AbortSignal.timeout(10_000),
+        })
+
+        if (response.ok) {
+          if (record.id) await db.delete(STORES.MUTATION, record.id)
+          notifyBroadcast({ type: "MUTATION_SYNCED", record })
+        } else if (response.status >= 400 && response.status < 500 && response.status !== 429) {
+          warn(`Mutation returned non-retriable status ${response.status}:`, record)
+          if (record.id) await db.delete(STORES.MUTATION, record.id)
+          notifyBroadcast({ type: "MUTATION_REJECTED", record, status: response.status })
+        } else {
+          record.retryCount += 1
+          await db.put(STORES.MUTATION, record)
+        }
+      } catch (_err) {
         record.retryCount += 1
         await db.put(STORES.MUTATION, record)
       }
-    } catch (_err) {
-      record.retryCount += 1
-      await db.put(STORES.MUTATION, record)
     }
+  } finally {
+    broadcast?.close()
   }
 }
 
@@ -309,9 +316,10 @@ export async function processPendingReports() {
       if (record.idempotencyKey) {
         headers["Idempotency-Key"] = record.idempotencyKey
       }
+      const method = (record.method ?? "POST").toUpperCase()
       const response = await fetch(record.reportUrl, {
-        method: record.method ?? "POST",
-        body: JSON.stringify(record.payload),
+        method,
+        ...(method !== "GET" && method !== "HEAD" ? { body: JSON.stringify(record.payload) } : {}),
         headers,
         keepalive: true,
         signal: AbortSignal.timeout(10_000),

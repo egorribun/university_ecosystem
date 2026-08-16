@@ -23,6 +23,11 @@ describe("browser utilities", () => {
       expect(isIOS()).toBe(false)
     })
 
+    it("treats missing platform and user-agent values as empty strings", () => {
+      vi.stubGlobal("navigator", { maxTouchPoints: 0 })
+      expect(isIOS()).toBe(false)
+    })
+
     it("returns true for iPhone platform", () => {
       mockNavigator({ platform: "iPhone" })
       expect(isIOS()).toBe(true)
@@ -81,6 +86,11 @@ describe("browser utilities", () => {
   describe("isSafari", () => {
     it("returns false when navigator is undefined", () => {
       vi.stubGlobal("navigator", undefined)
+      expect(isSafari()).toBe(false)
+    })
+
+    it("treats missing user-agent and vendor values as empty strings", () => {
+      vi.stubGlobal("navigator", { userAgent: undefined, vendor: undefined })
       expect(isSafari()).toBe(false)
     })
 

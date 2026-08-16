@@ -35,7 +35,6 @@ let clientQueueInFlight = 0
 const clientQueueWaiters: Array<() => void> = []
 const clientQueueTimestamps: number[] = []
 let clientQueueTimer: ReturnType<typeof setTimeout> | null = null
-let clientQueueResetAt = 0
 
 const pruneClientQueueTimestamps = () => {
   const threshold = Date.now() - RATE_LIMIT_WINDOW_MS
@@ -56,27 +55,23 @@ const scheduleClientQueueWindowReset = () => {
     if (clientQueueTimer) {
       clearTimeout(clientQueueTimer)
       clientQueueTimer = null
-      clientQueueResetAt = 0
     }
     return
   }
 
-  const oldest = clientQueueTimestamps[0] ?? Date.now()
+  // The length guard above guarantees an oldest timestamp.  A Date.now()
+  // fallback would hide state corruption and adds an impossible branch.
+  const oldest = clientQueueTimestamps[0]!
   const target = oldest + RATE_LIMIT_WINDOW_MS
-  if (clientQueueTimer && target >= clientQueueResetAt) {
+  // Timestamps are appended chronologically, so an existing timer always
+  // targets this same oldest entry (or an earlier one).  One timer is enough.
+  if (clientQueueTimer) {
     return
   }
 
-  if (clientQueueTimer) {
-    clearTimeout(clientQueueTimer)
-    clientQueueTimer = null
-  }
-
-  clientQueueResetAt = target
   clientQueueTimer = setTimeout(
     () => {
       clientQueueTimer = null
-      clientQueueResetAt = 0
       pruneClientQueueTimestamps()
       notifyClientQueue()
     },
@@ -101,11 +96,9 @@ const notifyClientQueue = () => {
       return
     }
 
-    const resolve = clientQueueWaiters.shift()
-    if (!resolve) {
-      continue
-    }
-    resolve()
+    // The loop guard and JavaScript's run-to-completion semantics guarantee a
+    // waiter here; no other task can mutate the queue between these statements.
+    clientQueueWaiters.shift()!()
   }
 }
 

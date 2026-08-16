@@ -66,4 +66,17 @@ describe("EventSearchBar", () => {
     await user.type(screen.getByPlaceholderText("events:filters.search"), "x")
     expect(onSearchChange).toHaveBeenCalledWith("x")
   })
+
+  it("marks active filters and renders their popover", () => {
+    filterMock.filtersActive = true
+    filterMock.popoverNode = <div>Filter popover</div>
+    render(<EventSearchBar {...baseProps} />)
+
+    expect(screen.getByRole("button", { name: "events:aria.openFilters" })).toHaveClass(
+      "text-brand"
+    )
+    expect(screen.getByText("Filter popover")).toBeInTheDocument()
+    expect(document.querySelector('[aria-hidden="true"]')).toBeInTheDocument()
+    filterMock.popoverNode = null
+  })
 })

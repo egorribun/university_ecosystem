@@ -20,6 +20,10 @@ import { SPOTIFY_REAUTH_EVENT } from "@/hooks/useNowPlaying"
 const mocks = vi.hoisted(() => ({
   apiPost: vi.fn((..._a: unknown[]) => Promise.resolve({ status: 200, data: {} })),
   apiGet: vi.fn((..._a: unknown[]) => Promise.resolve({ status: 200, data: {} })),
+  i18n: {
+    resolvedLanguage: "en" as string | undefined,
+    language: "en" as string | undefined,
+  },
   incrementSessionEpoch: vi.fn(),
   fetchCurrentUser: vi.fn((..._a: unknown[]) => Promise.resolve({ id: "u-1" })),
   recoverPushConsentFromBrowser: vi.fn(async () => false),
@@ -27,15 +31,18 @@ const mocks = vi.hoisted(() => ({
   softSyncPushSubscription: vi.fn(async () => null),
   setPushConsent: vi.fn(),
   startAuthentication: vi.fn(async () => ({ id: "assertion" })),
+  prefetchDashboardStories: vi.fn(),
+  prefetchDashboardNews: vi.fn(),
+  prefetchDashboardEvents: vi.fn(),
+  prefetchEventsListQuery: vi.fn(),
+  logWarning: vi.fn(),
+  logError: vi.fn(),
 }))
 
-vi.mock("@/api/client", async () => {
-  const actual = await vi.importActual<typeof import("@/api/client")>("@/api/client")
-  return {
-    ...actual,
-    default: { post: mocks.apiPost, get: mocks.apiGet },
-  }
-})
+vi.mock("@/api/client", () => ({
+  API_UNAUTHORIZED_EVENT: "auth:unauthorized",
+  default: { post: mocks.apiPost, get: mocks.apiGet },
+}))
 
 vi.mock("@/api/interceptors/etagCache", () => ({
   incrementSessionEpoch: mocks.incrementSessionEpoch,
@@ -54,6 +61,30 @@ vi.mock("@/push/subscribe", () => ({
 
 vi.mock("@simplewebauthn/browser", () => ({
   startAuthentication: mocks.startAuthentication,
+}))
+
+vi.mock("@/i18n/config", () => ({ default: mocks.i18n }))
+
+vi.mock("@/hooks/useDashboardStories", () => ({
+  prefetchDashboardStories: mocks.prefetchDashboardStories,
+}))
+
+vi.mock("@/hooks/useDashboardNews", () => ({
+  prefetchDashboardNews: mocks.prefetchDashboardNews,
+}))
+
+vi.mock("@/hooks/useDashboardEvents", () => ({
+  prefetchDashboardEvents: mocks.prefetchDashboardEvents,
+}))
+
+vi.mock("@/api/hooks/events", () => ({
+  EVENTS_PAGE_SIZE: 20,
+  prefetchEventsListQuery: mocks.prefetchEventsListQuery,
+}))
+
+vi.mock("@/app/logger", () => ({
+  logWarning: mocks.logWarning,
+  logError: mocks.logError,
 }))
 
 vi.mock("react-i18next", () => ({
@@ -147,6 +178,8 @@ const lockedError = (retryAfter?: string): AxiosError => {
 
 beforeEach(() => {
   vi.clearAllMocks()
+  mocks.i18n.resolvedLanguage = "en"
+  mocks.i18n.language = "en"
   mocks.apiPost.mockResolvedValue({ status: 200, data: {} })
   mocks.apiGet.mockResolvedValue({ status: 200, data: {} })
   mocks.recoverPushConsentFromBrowser.mockResolvedValue(false)
@@ -305,6 +338,44 @@ describe("login → prefetchDashboardData branches", () => {
     // fire-and-forget prefetch without throwing).
     expect(w.setUser).toHaveBeenCalled()
   })
+
+  it("falls back to the configured language and normalizes non-English locales to Russian", async () => {
+    mocks.i18n.resolvedLanguage = undefined
+    mocks.i18n.language = "fr"
+    const w = makeWires()
+    mocks.apiPost.mockResolvedValue({ status: 200, data: { user: fullUser() } })
+    const { result } = renderApi(w)
+
+    await act(async () => {
+      await result.current.login("a@b.dev", "pw")
+    })
+
+    await waitFor(() =>
+      expect(mocks.prefetchDashboardNews).toHaveBeenCalledWith(expect.anything(), "ru")
+    )
+  })
+
+  it("defaults dashboard prefetching to Russian when i18n exposes no active language", async () => {
+    mocks.i18n.resolvedLanguage = undefined
+    mocks.i18n.language = undefined
+    const w = makeWires({})
+    mocks.apiPost.mockResolvedValue({
+      status: 200,
+      data: { user: fullUser({ group_id: "grp-1" }) },
+    })
+    const { result } = renderApi(w)
+
+    await act(async () => {
+      await result.current.login("a@b.dev", "pw")
+    })
+
+    await waitFor(() =>
+      expect(mocks.prefetchEventsListQuery).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ language: "ru" })
+      )
+    )
+  })
 })
 
 // ---------------------------------------------------------------------------
@@ -406,6 +477,22 @@ describe("submitMfaChallenge", () => {
     expect(mocks.apiPost).toHaveBeenCalledWith(
       "/auth/mfa/verify",
       expect.objectContaining({ method: "webauthn", webauthn_response: { id: "assertion" } }),
+      expect.anything()
+    )
+  })
+
+  it("sends an empty challenge token when the optional token is absent", async () => {
+    const w = makeWires()
+    mocks.apiPost.mockResolvedValue({ status: 200, data: { user: fullUser() } })
+    const { result } = renderApi(w)
+
+    await act(async () => {
+      await result.current.submitMfaChallenge({ code: "654321" })
+    })
+
+    expect(mocks.apiPost).toHaveBeenCalledWith(
+      "/auth/mfa/verify",
+      expect.objectContaining({ challenge_token: "" }),
       expect.anything()
     )
   })

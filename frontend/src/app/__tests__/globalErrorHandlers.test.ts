@@ -128,6 +128,19 @@ describe("initGlobalErrorHandlers", () => {
     vi.unstubAllGlobals()
   })
 
+  it("uses the browser window when no explicit target is supplied", async () => {
+    const { initGlobalErrorHandlers } = await import("../globalErrorHandlers")
+    const addSpy = vi.spyOn(window, "addEventListener")
+    const removeSpy = vi.spyOn(window, "removeEventListener")
+
+    expect(initGlobalErrorHandlers()).toBe(true)
+    expect(addSpy).toHaveBeenCalledWith("unhandledrejection", expect.any(Function))
+    expect(addSpy).toHaveBeenCalledWith("error", expect.any(Function))
+
+    addSpy.mockRestore()
+    removeSpy.mockRestore()
+  })
+
   it("removes listeners when reset is invoked", async () => {
     const { initGlobalErrorHandlers, resetGlobalErrorHandlersForTesting } =
       await import("../globalErrorHandlers")

@@ -195,10 +195,10 @@ PY
 
 ## Docker image
 
-- `root/frontend.Dockerfile` собран в два этапа: на этапе `builder` запускается `npm ci && npm run build`, а финальный образ основан на `nginx:alpine` и содержит только содержимое `dist/`.
+- `frontend.Dockerfile` использует отдельные stages для сборки Rust/WASM, установки build/runtime-зависимостей и TanStack Start SSR. Финальный образ основан на закреплённом по digest `node:24-alpine`, запускается непривилегированным пользователем `node` и содержит только production-зависимости, WASM-пакеты, `dist/` и SSR launcher.
 - `VITE_BACKEND_ORIGIN` остаётся build-time fallback для фронтенда. Node SSR сначала читает runtime-переменную `BACKEND_ORIGIN`, поэтому один immutable image можно безопасно использовать с разными Compose/Helm service names; chart и Compose уже задают внутренний адрес backend. Браузерные API-запросы остаются same-origin и идут через gateway.
-- Статика отдаётся Nginx'ом с кэшированием: файлы в `assets/` получают заголовок `Cache-Control: public, max-age=31536000, immutable`, а `index.html` — `Cache-Control: no-cache`.
-- Контейнер слушает порт `80`. В docker-compose он проброшен на `8080`, поэтому SPA доступна на http://localhost:8080.
+- Статику и SSR отдаёт `frontend/scripts/server-prod.mjs`: хешированные файлы в `assets/` получают `Cache-Control: public, max-age=31536000, immutable`, HTML — `no-cache`/`no-store`.
+- Контейнер слушает порт `3000`; Compose публикует frontend напрямую на `127.0.0.1:8081`, а Caddy/Gateway — на `127.0.0.1:8080`. Быстрая readiness/liveness-проверка доступна на `/healthz`.
 
 ```bash
 # пример локальной сборки
@@ -206,9 +206,9 @@ docker compose build frontend
 docker compose up frontend
 ```
 
-## Reverse-proxy (Nginx)
+## Edge reverse proxy
 
-Если фронтенд и API находятся на разных хостах, проксируйте статику и медиа через тот же домен, что и SPA. Это избавит от CORS/Service Worker артефактов и позволит использовать абсолютные ссылки на API-домен.
+Каноническая конфигурация edge-маршрутизации находится в `services/caddy/Caddyfile`: Caddy проксирует SSR на `frontend:3000`, API на gateway/backend и WebSocket-трафик на ws-hub под одним origin. Это исключает CORS/Service Worker расхождения. Если окружение требует Nginx, он должен проксировать Node SSR, а не отдавать `dist/client` как SPA:
 
 ```nginx
 server {
@@ -216,8 +216,11 @@ server {
     server_name app.example.com;
 
     location / {
-        root /var/www/app/dist; # собранный фронтенд
-        try_files $uri /index.html;
+        proxy_pass http://frontend:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
     }
 
     location /static/ {
@@ -236,7 +239,7 @@ server {
 }
 ```
 
-> Альтернатива: указывайте `VITE_BACKEND_ORIGIN=https://api.example.com` и отдавайте `/media`/`/static` напрямую с API-домена (без прокси), сохраняя полное HTTPS-соединение.
+> Для браузера предпочтителен same-origin edge. `BACKEND_ORIGIN` предназначен для runtime SSR, а `VITE_BACKEND_ORIGIN` — только build-time fallback; внутренние service DNS нельзя публиковать в клиентский bundle.
 
 ## Системные зависимости backend
 

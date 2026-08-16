@@ -16,8 +16,8 @@ import { markIfFromBottom, smoothToTop, getScrollRoot } from "@/utils/scrollUtil
 import { useSlidingIndicator } from "@/hooks/ui/useSlidingIndicator"
 
 function samePath(a: string, b: string) {
-  const na = a.replace(/\/+$/, "") || "/"
-  const nb = b.replace(/\/+$/, "") || "/"
+  const na = a.replace(/\/+$/, "")
+  const nb = b.replace(/\/+$/, "")
   return na === nb
 }
 
@@ -60,7 +60,7 @@ export default function MobileBottomNav() {
   // CSS transform transition. Computes target rect via useSlidingIndicator.
   const activeNavTo = useMemo(() => {
     for (const it of items) {
-      const isActive = pathname.startsWith(it.to) && (it.to !== "/" || pathname === "/")
+      const isActive = pathname.startsWith(it.to)
       if (isActive) return it.to
     }
     return null
@@ -93,7 +93,7 @@ export default function MobileBottomNav() {
           />
         )}
         {items.map((it) => {
-          const isActive = pathname.startsWith(it.to) && (it.to !== "/" || pathname === "/")
+          const isActive = pathname.startsWith(it.to)
           const Icon = it.icon
           return (
             <Link

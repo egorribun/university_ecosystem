@@ -149,12 +149,6 @@ export default tseslint.config(
         "error",
         {
           paths: [
-            {
-              name: "@/api/client",
-              importNames: ["apiClient"],
-              message:
-                "Legacy apiClient is deprecated. Please use the auto-generated SDK from src/api/generated/sdk.ts.",
-            },
             // Wave 191 SW3 — close W189 polish-v1 Tier 4 deferral (hook migration
             // regression test). framer-motion's `useReducedMotion()` is jsdom-
             // incompatible (W184 SW6 lesson — touches window.matchMedia(...)

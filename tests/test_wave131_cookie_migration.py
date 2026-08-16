@@ -1,10 +1,10 @@
 """Wave 131 SW6 — Phase 4 deploy infrastructure cookie SameSite migration.
 
-Tests target the production `app.core.config.security.SecuritySettings`
-(NOT the legacy `app.config.security` shadow module which is used only by
-``tests/test_config_modules.py``). The production class composes
-``CspSettingsMixin`` which carries the ``security_cookie_samesite_override``
-field + the migrated ``cookie_samesite`` property.
+Tests target the canonical production
+`app.core.config.security.SecuritySettings`. The class composes
+``CspSettingsMixin``, which carries the
+``security_cookie_samesite_override`` field and the migrated
+``cookie_samesite`` property.
 
 Pre-W131 behavior: dev returned ``"lax"``, prod returned ``"strict"``.
 Strict blocked the access_token_v2 / csrf_token cookies on cross-site GET

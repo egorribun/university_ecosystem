@@ -391,29 +391,6 @@ _CIRCUIT_BREAKER_TRIPS = _get_or_create_metric(
     labelnames=("service",),
 )
 
-# TD-W14-02 (audit 2026-03-23 Wave 14): Legacy bcrypt migration tracking.
-#
-# Hard removal deadline: 2026-09-01 (Q3 2026).
-# Removal checklist (all must be true before deleting bcrypt code):
-#   1. auth_legacy_bcrypt_verifications_total == 0 for 30+ consecutive days.
-#   2. auth_legacy_bcrypt_users_remaining == 0 (all accounts migrated or force-reset).
-#   3. bcrypt==5.0.0 removed from pyproject.toml [tool.poetry.dependencies].
-#   4. _verify_legacy_bcrypt() and _truncate_for_bcrypt() removed from security.py.
-#   5. LEGACY_SCHEME constant and LEGACY_BCRYPT_MAX_BYTES constant removed.
-#   6. bcrypt import removed from security.py.
-#
-# Alert rule (Prometheus):
-#   ALERT LegacyBcryptUsersStillPresent
-#     IF auth_legacy_bcrypt_users_remaining > 0 AND time() > 1756684800  # 2026-09-01 00:00 UTC
-#     FOR 1h
-#     LABELS { severity="warning" }
-#     ANNOTATIONS { summary="bcrypt migration deadline passed but users remain" }
-# TD-33-03: bcrypt metric definitions (_LEGACY_BCRYPT_VERIFICATIONS,
-# _LEGACY_BCRYPT_USERS_REMAINING) and their recording functions were removed
-# in Wave 33 — bcrypt verification was removed in TD-21-04 (Wave 21) and the
-# metrics were dead code.  Callers in security.py and migrate_passwords.py
-# have try/except guards and degrade gracefully on ImportError.
-
 # MOD-W10-08: Counter for background task failures.
 # Alert when rate(background_task_errors_total[5m]) > 0.
 _BACKGROUND_TASK_ERRORS = _get_or_create_metric(

@@ -3,10 +3,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from elasticsearch import NotFoundError
 
-from app.services.search import (
-    SearchService,
-    get_search_service,
-)
+from app.services.search import SearchService
 
 
 @pytest.mark.anyio
@@ -213,9 +210,3 @@ async def test_search_service_suggest():
     mock_client.search.return_value = {}
     res_empty = await service.suggest("test-index", "prefix-q")
     assert res_empty == []
-
-
-def test_get_search_service():
-    with pytest.deprecated_call():
-        service = get_search_service()
-        assert isinstance(service, SearchService)

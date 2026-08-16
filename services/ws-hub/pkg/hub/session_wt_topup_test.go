@@ -92,7 +92,7 @@ type fakeWebTransportSession struct {
 	remote      net.Addr
 	closeErr    error
 	acceptErr   error
-	stream      webTransportStream
+	accepted    *webtransport.Stream
 	datagramErr error
 }
 
@@ -102,18 +102,18 @@ func (s *fakeWebTransportSession) CloseWithError(webtransport.SessionErrorCode, 
 	return s.closeErr
 }
 
-func (s *fakeWebTransportSession) AcceptStream(context.Context) (webTransportStream, error) {
+func (s *fakeWebTransportSession) AcceptStream(context.Context) (*webtransport.Stream, error) {
 	if s.acceptErr != nil {
 		return nil, s.acceptErr
 	}
-	return s.stream, nil
+	return s.accepted, nil
 }
 
 func (s *fakeWebTransportSession) SendDatagram([]byte) error { return s.datagramErr }
 
 func TestWebTransportSession_DelegatesSessionAndStreamOperations(t *testing.T) {
 	stream := &fakeWebTransportStream{readData: []byte("hello")}
-	session := &fakeWebTransportSession{remote: &net.UDPAddr{IP: net.IPv4(192, 0, 2, 1), Port: 443}, stream: stream}
+	session := &fakeWebTransportSession{remote: &net.UDPAddr{IP: net.IPv4(192, 0, 2, 1), Port: 443}}
 	s := &WebTransportSession{sess: session, stream: stream, readLimit: 16}
 
 	assert.Equal(t, session.remote, s.RemoteAddr())
@@ -132,8 +132,8 @@ func TestWebTransportSession_DelegatesErrorsAndDatagramFallback(t *testing.T) {
 	streamErr := errors.New("stream failure")
 	stream := &fakeWebTransportStream{readErr: streamErr, writeErr: streamErr, closeErr: streamErr}
 	sessionErr := errors.New("session failure")
-	session := &fakeWebTransportSession{remote: &net.UDPAddr{}, closeErr: sessionErr, stream: stream}
-	s := &WebTransportSession{sess: session, readLimit: 16}
+	session := &fakeWebTransportSession{remote: &net.UDPAddr{}, closeErr: sessionErr}
+	s := &WebTransportSession{sess: session, stream: stream, readLimit: 16}
 
 	_, _, err := s.ReadMessage()
 	assert.ErrorIs(t, err, streamErr)
@@ -166,11 +166,13 @@ func TestWebTransportSession_DelegatesErrorsAndDatagramFallback(t *testing.T) {
 
 func TestWebTransportSession_AcceptStreamAndExistingStreamPaths(t *testing.T) {
 	stream := &fakeWebTransportStream{readData: []byte("accepted")}
-	session := &fakeWebTransportSession{stream: stream}
+	accepted := &webtransport.Stream{}
+	session := &fakeWebTransportSession{accepted: accepted}
 	s := &WebTransportSession{sess: session, readLimit: 16}
 	got, err := s.getOrAcceptStream()
 	require.NoError(t, err)
-	assert.Same(t, stream, got)
+	assert.Same(t, accepted, got)
+	s.stream = stream
 	got, err = s.getOrAcceptStream()
 	require.NoError(t, err)
 	assert.Same(t, stream, got)
@@ -179,4 +181,12 @@ func TestWebTransportSession_AcceptStreamAndExistingStreamPaths(t *testing.T) {
 	got, err = failing.getOrAcceptStream()
 	assert.Nil(t, got)
 	assert.EqualError(t, err, "accept failed")
+}
+
+func TestNewWebTransportSession_AdaptsConcreteSession(t *testing.T) {
+	concrete := &webtransport.Session{}
+
+	session := NewWebTransportSession(concrete)
+
+	assert.Same(t, concrete, session.sess)
 }

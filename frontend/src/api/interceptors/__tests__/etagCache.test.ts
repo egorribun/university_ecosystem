@@ -568,4 +568,17 @@ describe("etagCache — lazy hydration on first access (isolated module)", () =>
     expect(localStorage.getItem("ue:etag-cache")).toBeNull()
     expect(localStorage.getItem("ue:etag-cache:v0")).toBeNull()
   })
+
+  it("swallows storage inspection failures during module startup", async () => {
+    localStorage.setItem("ue:etag-cache:v0", "old-version")
+    const keySpy = vi.spyOn(Storage.prototype, "key").mockImplementation(() => {
+      throw new DOMException("storage blocked", "SecurityError")
+    })
+
+    try {
+      await expect(import("../etagCache")).resolves.toBeDefined()
+    } finally {
+      keySpy.mockRestore()
+    }
+  })
 })

@@ -18,6 +18,7 @@ COMPONENTS = (
     "go-gateway",
     "go-ws-hub",
     "go-file-processor",
+    "go-shared",
     "rust-native",
     "rust-pyo3-sanitizer",
     "rust-wasm-sanitizer",

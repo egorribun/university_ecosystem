@@ -39,7 +39,7 @@ def _snapshot_row(path: Path, snapshot: dict[str, Any]) -> str:
     frontend = components.get("frontend", {})
     go_values = [
         components.get(name, {}).get("metrics", {}).get("statements", {}).get("percent")
-        for name in ("go-gateway", "go-ws-hub", "go-file-processor")
+        for name in ("go-gateway", "go-ws-hub", "go-file-processor", "go-shared")
     ]
     go_values = [float(value) for value in go_values if value is not None]
     go_summary = "—" if not go_values else f"{sum(go_values) / len(go_values):.2f}%"

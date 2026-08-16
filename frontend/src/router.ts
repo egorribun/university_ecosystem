@@ -107,7 +107,7 @@ const createAppRouter = () => {
     // routes (/messenger + /map + /activity per W127 SW6 pattern): server emits
     // null fallback inside `<ClientOnly>` Suspense boundary, client emits the
     // visible Loading div → React #418 element-type mismatch on every page load.
-    // Wave 180 polish-v1 surfaced this CLASS-WIDE finding via wave137-authed-smoke
+    // The authenticated visual audit surfaced this class-wide finding
     // filter regex fix (3 of 9 SSR routes affected, all `ssr: 'data-only'`).
     // Polish-v2 root-cause via NODE_ENV=development build captured the EXACT
     // unminified React error message + component stack pinpointing this exact

@@ -165,10 +165,8 @@ RUN --mount=type=cache,target=/root/.npm \
 # 0.0.0.0; Caddy `health_uri` + k8s livenessProbe / readinessProbe hit
 # `/healthz` (W131 SW2 fast path that short-circuits before SSR).
 #
-# Note: `frontend/nginx.conf` is no longer referenced from this Dockerfile
-# but remains in the source tree as documentation of the prior production
-# routing rules. A future polish wave may remove it once the Phase 6
-# rollout (W132+) confirms no fallback is needed.
+# The obsolete nginx runtime and `frontend/nginx.conf` were removed after the
+# SSR rollout. Edge routing is owned by `services/caddy/Caddyfile`.
 FROM node:24-alpine@sha256:01743339035a5c3c11a373cd7c83aeab6ed1457b55da6a69e014a95ac4e4700b AS runtime
 
 WORKDIR /app

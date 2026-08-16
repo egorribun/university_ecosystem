@@ -81,7 +81,7 @@ var (
 	newSpiffeClientFunc       = spiffe.NewClient
 	closeSpiffeClientFunc     = func(client *spiffe.Client) error { return client.Close() }
 	grpcServerCredentialsFunc = func(client *spiffe.Client, allowedIDs ...string) (credentials.TransportCredentials, error) {
-		return client.GRPCCerverCredentials(allowedIDs...)
+		return client.GRPCServerCredentials(allowedIDs...)
 	}
 	parseGraphQLSchemaFunc    = graphql.ParseSchema
 	temporalRetryWaitFunc     = func(duration time.Duration) <-chan time.Time { return time.After(duration) }
@@ -90,6 +90,12 @@ var (
 	graphqlShutdownFunc       = func(server *http.Server, ctx context.Context) error { return server.Shutdown(ctx) }
 	parseJWTFunc              = func(tokenString string, keyFunc jwt.Keyfunc, options ...jwt.ParserOption) (*jwt.Token, error) {
 		return jwt.Parse(tokenString, keyFunc, options...)
+	}
+	newOTLPTraceExporterFunc = func(ctx context.Context, options ...otlptracegrpc.Option) (sdktrace.SpanExporter, error) {
+		return otlptracegrpc.New(ctx, options...)
+	}
+	newOTelResourceFunc = func(ctx context.Context, options ...resource.Option) (*resource.Resource, error) {
+		return resource.New(ctx, options...)
 	}
 )
 
@@ -854,19 +860,19 @@ func initTracer(ctx context.Context, cfg *config.Config, logger *slog.Logger) (*
 		})))
 	}
 
-	exporter, err := otlptracegrpc.New(ctx, opts...)
+	exporter, err := newOTLPTraceExporterFunc(ctx, opts...)
 	if err != nil {
 		return nil, err
 	}
 
-	res, err := resource.New(ctx,
+	res, err := newOTelResourceFunc(ctx,
 		resource.WithAttributes(
 			semconv.ServiceNameKey.String("file-processor"),
 			attribute.String("environment", cfg.Environment),
 		),
 	)
 	if err != nil {
-		return nil, err
+		return nil, errors.Join(err, exporter.Shutdown(ctx))
 	}
 
 	tp := sdktrace.NewTracerProvider(

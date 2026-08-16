@@ -19,6 +19,8 @@ import (
 )
 
 func TestUpgradeOriginChecks_AllowConfiguredEnvironmentAndRejectProductionUnknown(t *testing.T) {
+	h := setupTestHub()
+	wtServer := h.webTransportServer
 	SetAllowedOrigins([]string{"https://allowed.example"})
 	t.Cleanup(func() { SetAllowedOrigins(nil) })
 	t.Setenv("ENVIRONMENT", "production")
@@ -34,7 +36,7 @@ func TestUpgradeOriginChecks_AllowConfiguredEnvironmentAndRejectProductionUnknow
 	fromEnv := httptest.NewRequest(http.MethodGet, "/ws", nil)
 	fromEnv.Header.Set("Origin", "https://second.example")
 	assert.True(t, upgrader.CheckOrigin(fromEnv))
-	assert.True(t, wtUpgrader.CheckOrigin(fromEnv))
+	assert.True(t, wtServer.CheckOrigin(fromEnv))
 
 	unknown := httptest.NewRequest(http.MethodGet, "/ws", nil)
 	unknown.Header.Set("Origin", "https://blocked.example")
@@ -42,14 +44,35 @@ func TestUpgradeOriginChecks_AllowConfiguredEnvironmentAndRejectProductionUnknow
 
 	t.Setenv("ENVIRONMENT", "development")
 	assert.True(t, upgrader.CheckOrigin(unknown))
-	assert.True(t, wtUpgrader.CheckOrigin(unknown))
+	assert.True(t, wtServer.CheckOrigin(unknown))
 
 	t.Setenv("ENVIRONMENT", "production")
 	t.Setenv("WS_ALLOWED_ORIGINS", "")
-	assert.False(t, wtUpgrader.CheckOrigin(unknown))
+	assert.False(t, wtServer.CheckOrigin(unknown))
 	configuredWT := httptest.NewRequest(http.MethodGet, "/wt", nil)
 	configuredWT.Header.Set("Origin", "https://allowed.example")
-	assert.True(t, wtUpgrader.CheckOrigin(configuredWT))
+	assert.True(t, wtServer.CheckOrigin(configuredWT))
+}
+
+func TestConfigureWebTransportServer_BindsSecureUpgradeServerToHTTP3Mux(t *testing.T) {
+	SetAllowedOrigins([]string{"https://allowed.example"})
+	t.Cleanup(func() { SetAllowedOrigins(nil) })
+	t.Setenv("ENVIRONMENT", "production")
+	h := setupTestHub()
+	handler := http.NewServeMux()
+
+	server := h.ConfigureWebTransportServer(":8443", handler)
+
+	assert.Same(t, server, h.webTransportServer)
+	require.NotNil(t, server.H3)
+	assert.Equal(t, ":8443", server.H3.Addr)
+	assert.Same(t, handler, server.H3.Handler)
+	allowed := httptest.NewRequest(http.MethodGet, "/wt", nil)
+	allowed.Header.Set("Origin", "https://allowed.example")
+	assert.True(t, server.CheckOrigin(allowed))
+	blocked := httptest.NewRequest(http.MethodGet, "/wt", nil)
+	blocked.Header.Set("Origin", "https://blocked.example")
+	assert.False(t, server.CheckOrigin(blocked))
 }
 
 func TestUpgradeHandlers_RejectEmptyValidatedUser(t *testing.T) {

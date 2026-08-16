@@ -15,6 +15,7 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/gorilla/websocket"
 	"github.com/lestrrat-go/jwx/v2/jwk"
+	"github.com/quic-go/quic-go/http3"
 	"github.com/quic-go/webtransport-go"
 	goredis "github.com/redis/go-redis/v9"
 	"github.com/university-ecosystem/ws-hub/pkg/config"
@@ -53,59 +54,7 @@ var (
 	upgrader       = websocket.Upgrader{
 		ReadBufferSize:  1024,
 		WriteBufferSize: 1024,
-		CheckOrigin: func(r *http.Request) bool {
-			origin := r.Header.Get("Origin")
-			if origin == "" {
-				return true
-			}
-
-			// Check configured slice (populated via SetAllowedOrigins from config).
-			originsMu.RLock()
-			defer originsMu.RUnlock()
-			for _, allowed := range allowedOrigins {
-				if allowed == origin {
-					return true
-				}
-			}
-
-			// Check WS_ALLOWED_ORIGINS env var (comma-separated) as a secondary source.
-			// This allows runtime overrides without redeployment.
-			for _, allowed := range strings.Split(os.Getenv("WS_ALLOWED_ORIGINS"), ",") {
-				if strings.TrimSpace(allowed) == origin {
-					return true
-				}
-			}
-
-			// In non-production environments allow all origins to ease local development.
-			// In production this returns false so unrecognised origins are rejected.
-			env := os.Getenv("ENVIRONMENT")
-			return env != "production"
-		},
-	}
-	wtUpgrader = webtransport.Server{
-		CheckOrigin: func(r *http.Request) bool {
-			origin := r.Header.Get("Origin")
-			if origin == "" {
-				return true
-			}
-
-			originsMu.RLock()
-			defer originsMu.RUnlock()
-			for _, allowed := range allowedOrigins {
-				if allowed == origin {
-					return true
-				}
-			}
-
-			for _, allowed := range strings.Split(os.Getenv("WS_ALLOWED_ORIGINS"), ",") {
-				if strings.TrimSpace(allowed) == origin {
-					return true
-				}
-			}
-
-			env := os.Getenv("ENVIRONMENT")
-			return env != "production"
-		},
+		CheckOrigin:     isUpgradeOriginAllowed,
 	}
 	upgradeWTFunc              = upgradeWT
 	newWebTransportSessionFunc = func(sess *webtransport.Session) Session { return NewWebTransportSession(sess) }
@@ -114,11 +63,43 @@ var (
 	}
 )
 
+func isUpgradeOriginAllowed(r *http.Request) bool {
+	origin := r.Header.Get("Origin")
+	if origin == "" {
+		return true
+	}
+
+	originsMu.RLock()
+	defer originsMu.RUnlock()
+	for _, allowed := range allowedOrigins {
+		if allowed == origin {
+			return true
+		}
+	}
+
+	for _, allowed := range strings.Split(os.Getenv("WS_ALLOWED_ORIGINS"), ",") {
+		if strings.TrimSpace(allowed) == origin {
+			return true
+		}
+	}
+
+	return os.Getenv("ENVIRONMENT") != "production"
+}
+
 // SetAllowedOrigins configures the origins allowed for WebSocket upgrades.
 func SetAllowedOrigins(origins []string) {
 	originsMu.Lock()
 	defer originsMu.Unlock()
 	allowedOrigins = origins
+}
+
+// ConfigureWebTransportServer binds the exact server used for upgrades to the
+// HTTP/3 listener. Keeping one server instance is required by webtransport-go;
+// upgrading with a different instance leaves sessions detached from the QUIC
+// server that accepted the request.
+func (h *Hub) ConfigureWebTransportServer(addr string, handler http.Handler) *webtransport.Server {
+	h.webTransportServer.H3 = &http3.Server{Addr: addr, Handler: handler}
+	return h.webTransportServer
 }
 
 // HandleWebSocket upgrades HTTP connections to WebSocket and registers clients.
@@ -274,13 +255,13 @@ func (h *Hub) HandleWebTransport(w http.ResponseWriter, r *http.Request, cfg *co
 		return
 	}
 
-	if wtUpgrader.CheckOrigin != nil && !wtUpgrader.CheckOrigin(r) {
+	if h.webTransportServer.CheckOrigin != nil && !h.webTransportServer.CheckOrigin(r) {
 		h.Logger.WarnContext(setupCtx, "WebTransport connection rejected: origin not allowed", "origin", r.Header.Get("Origin"))
 		http.Error(w, "Forbidden", http.StatusForbidden)
 		return
 	}
 
-	sess, err := upgradeWTFunc(&wtUpgrader, w, r)
+	sess, err := upgradeWTFunc(h.webTransportServer, w, r)
 	if err != nil {
 		h.Logger.ErrorContext(setupCtx, "WebTransport upgrade failed", "err", err)
 		return
@@ -355,9 +336,6 @@ func (h *Hub) validateUpgradeTicket(ctx context.Context, ticket string) (string,
 		tenantID = parts[2]
 	}
 
-	if userID == "" {
-		return "", "", fmt.Errorf("empty user_id in ticket payload")
-	}
 	return userID, tenantID, nil
 }
 
@@ -519,10 +497,7 @@ func (h *Hub) validateHMAC(tokenStr string, secrets []string) (string, error) {
 			return "", jwt.ErrTokenInvalidClaims
 		}
 	}
-	if lastErr != nil {
-		return "", lastErr
-	}
-	return "", jwt.ErrTokenInvalidClaims
+	return "", lastErr
 }
 
 // upgradeWT wraps WebTransport srv.Upgrade to differentiate from gorilla.websocket.Upgrader.

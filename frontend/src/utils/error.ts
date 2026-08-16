@@ -61,7 +61,7 @@ export const extractApiError = (
       status: 422, // Unprocessable Entity
       message: error.message,
       details: error.issues.map((issue) => ({
-        code: issue.received?.toString() || "validation_error",
+        code: issue.type,
         message: issue.message,
         field: issue.path?.map((p) => p.key).join(".") || undefined,
       })),

@@ -16,18 +16,14 @@ export default function SpotifyConnect() {
   const { t } = useTranslation(["settings", "common"])
 
   const spotifyEnabled = Boolean(user?.spotify_connected || user?.spotify_is_connected)
-  const nowPlayingQuery = useNowPlaying(spotifyEnabled)
-  const now = nowPlayingQuery.data
-  const refreshing = nowPlayingQuery.isFetching
+  const { data: now, isFetching: refreshing, refetch } = useNowPlaying(spotifyEnabled)
 
   const connect = async () => {
     setActionLoading(true)
     try {
       const r = await api.get<{ url?: string }>("/spotify/auth-url")
       const safeUrl = sanitizeSpotifyAuthorizeUrl(r.data?.url)
-      if (!safeUrl) {
-        throw new Error("Received unsafe Spotify authorization URL")
-      }
+      if (!safeUrl) return
       window.location.href = safeUrl
     } finally {
       setActionLoading(false)
@@ -58,13 +54,13 @@ export default function SpotifyConnect() {
   }
 
   const refresh = async () => {
-    await nowPlayingQuery.refetch()
+    await refetch()
   }
 
   useEffect(() => {
     const qp = new URLSearchParams(window.location.search)
-    if (qp.get("spotify")) void nowPlayingQuery.refetch()
-  }, [nowPlayingQuery])
+    if (qp.get("spotify")) void refetch()
+  }, [refetch])
 
   if (!user) return null
 

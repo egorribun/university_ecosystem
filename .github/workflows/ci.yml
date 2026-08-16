@@ -554,6 +554,10 @@ jobs:
             coverage-threshold: 80
           - service: services/cmd/uni-cli
             coverage-threshold: 80
+          - service: services/pkg/spiffe
+            coverage-threshold: 80
+          - service: services/pkg/spicedb
+            coverage-threshold: 80
     needs: pre-commit-check
     permissions:
       contents: read
@@ -2324,6 +2328,32 @@ jobs:
           name: go-coverage-services-file-processor
           path: artifacts/coverage/go/file-processor
 
+      - name: Download Go uni-cli coverage artifact
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: go-coverage-services-cmd-uni-cli
+          path: artifacts/coverage/go/shared-inputs/uni-cli
+
+      - name: Download Go SPIFFE coverage artifact
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: go-coverage-services-pkg-spiffe
+          path: artifacts/coverage/go/shared-inputs/spiffe
+
+      - name: Download Go SpiceDB coverage artifact
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: go-coverage-services-pkg-spicedb
+          path: artifacts/coverage/go/shared-inputs/spicedb
+
+      - name: Merge Go shared coverage evidence
+        run: |
+          uv run python scripts/quality/merge_go_coverprofiles.py \
+            --output artifacts/coverage/go/shared/coverage.out \
+            artifacts/coverage/go/shared-inputs/uni-cli/coverage.out \
+            artifacts/coverage/go/shared-inputs/spiffe/coverage.out \
+            artifacts/coverage/go/shared-inputs/spicedb/coverage.out
+
       - name: Download Rust coverage artifact
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
@@ -2342,6 +2372,7 @@ jobs:
             --go-report go-gateway=artifacts/coverage/go/gateway/coverage.out \
             --go-report go-ws-hub=artifacts/coverage/go/ws-hub/coverage.out \
             --go-report go-file-processor=artifacts/coverage/go/file-processor/coverage.out \
+            --go-report go-shared=artifacts/coverage/go/shared/coverage.out \
             --rust-report rust-native=artifacts/coverage/rust/rust-native/llvm.json \
             --rust-report rust-pyo3-sanitizer=artifacts/coverage/rust/rust-pyo3-sanitizer/llvm.json \
             --rust-report rust-wasm-sanitizer=artifacts/coverage/rust/rust-wasm-sanitizer/llvm.json \
@@ -2366,6 +2397,7 @@ jobs:
           cp artifacts/coverage/go/gateway/coverage.out artifacts/coverage/codecov/go-gateway.out
           cp artifacts/coverage/go/ws-hub/coverage.out artifacts/coverage/codecov/go-ws-hub.out
           cp artifacts/coverage/go/file-processor/coverage.out artifacts/coverage/codecov/go-file-processor.out
+          cp artifacts/coverage/go/shared/coverage.out artifacts/coverage/codecov/go-shared.out
           cp artifacts/coverage/rust/rust-native/codecov.json artifacts/coverage/codecov/rust-native.json
           cp artifacts/coverage/rust/rust-pyo3-sanitizer/codecov.json artifacts/coverage/codecov/rust-pyo3-sanitizer.json
           cp artifacts/coverage/rust/rust-wasm-sanitizer/codecov.json artifacts/coverage/codecov/rust-wasm-sanitizer.json
@@ -2407,7 +2439,7 @@ jobs:
         with:
           use_oidc: true
           disable_search: true
-          files: artifacts/coverage/codecov/python.xml,artifacts/coverage/codecov/frontend.lcov,artifacts/coverage/codecov/go-gateway.out,artifacts/coverage/codecov/go-ws-hub.out,artifacts/coverage/codecov/go-file-processor.out,artifacts/coverage/codecov/rust-native.json,artifacts/coverage/codecov/rust-pyo3-sanitizer.json,artifacts/coverage/codecov/rust-wasm-sanitizer.json,artifacts/coverage/codecov/rust-crypto.json
+          files: artifacts/coverage/codecov/python.xml,artifacts/coverage/codecov/frontend.lcov,artifacts/coverage/codecov/go-gateway.out,artifacts/coverage/codecov/go-ws-hub.out,artifacts/coverage/codecov/go-file-processor.out,artifacts/coverage/codecov/go-shared.out,artifacts/coverage/codecov/rust-native.json,artifacts/coverage/codecov/rust-pyo3-sanitizer.json,artifacts/coverage/codecov/rust-wasm-sanitizer.json,artifacts/coverage/codecov/rust-crypto.json
           name: trusted-main-${{ github.sha }}
           fail_ci_if_error: true
 

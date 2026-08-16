@@ -16,7 +16,7 @@
 #
 # Caddy is BYPASSED for the load tests: k6 hits backend:8000 (via socat) +
 # ws-hub:8081 + gateway:8080 directly, so the production services/caddy/Caddyfile
-# (incl. the W132 weighted_round_robin canary block) is untouched.
+# is untouched; the current baseline has a single frontend upstream.
 services:
   backend:
     environment:

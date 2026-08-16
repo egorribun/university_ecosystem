@@ -2,10 +2,9 @@
  * wave138-visual-audit.mjs — first per-page visual audit feasible since
  * the SSR migration arc started in W125.
  *
- * Built on the foundation of W137 SW4 wave137-authed-smoke.mjs (which
- * proved 8 SSR routes 200 + AUTHED + 0 hydration errors through real
- * Caddy → Node SSR → gateway → backend chain). This script extends that
- * authed smoke with axe-core a11y assertions per route. /dashboard is
+ * Verifies authenticated SSR routes through the real Caddy → Node SSR →
+ * gateway → backend chain, then adds axe-core a11y assertions per route.
+ * /dashboard is
  * the first target (highest traffic; W128 SSR enabled it).
  *
  * Per-route flow:
@@ -306,8 +305,8 @@ async function performLogin(context) {
 /**
  * Per-route audit: navigate + console capture + axe-core scan.
  *
- * Mirrors wave137-authed-smoke.mjs `smokeRoute()` shape, then layers
- * axe-core on top after settle. Returns enhanced result that includes
+ * Runs the authenticated smoke shape, then layers axe-core on top after
+ * settle. Returns an enhanced result that includes
  * `axeViolations` + `axeViolationCount`.
  */
 async function auditRoute(page, routePath, outDir) {

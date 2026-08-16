@@ -258,6 +258,26 @@ describe("a11y utilities", () => {
 
       expect(removeEventListenerSpy).toHaveBeenCalledWith("change", expect.any(Function))
     })
+
+    it("forwards changed preference values to the subscriber", () => {
+      let listener: ((event: MediaQueryListEvent) => void) | undefined
+      vi.spyOn(window, "matchMedia").mockReturnValue({
+        matches: false,
+        media: "(prefers-reduced-motion: reduce)",
+        addEventListener: (_type: string, nextListener: EventListenerOrEventListenerObject) => {
+          listener = nextListener as (event: MediaQueryListEvent) => void
+        },
+        removeEventListener: vi.fn(),
+      } as unknown as MediaQueryList)
+      const callback = vi.fn()
+
+      onReducedMotionChange(callback)
+      listener?.({ matches: true } as MediaQueryListEvent)
+      listener?.({ matches: false } as MediaQueryListEvent)
+
+      expect(callback).toHaveBeenNthCalledWith(1, true)
+      expect(callback).toHaveBeenNthCalledWith(2, false)
+    })
   })
 
   describe("generateId", () => {

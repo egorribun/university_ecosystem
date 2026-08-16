@@ -213,6 +213,20 @@ describe("DashboardStories", () => {
     })
   })
 
+  it("handles navigation at both story boundaries", async () => {
+    const { user } = await renderStories()
+
+    await user.click(await screen.findByRole("button", { name: "Story: Orientation" }))
+    await user.click(screen.getByLabelText("Previous story"))
+    expect(await screen.findByRole("heading", { name: "Orientation" })).toBeInTheDocument()
+
+    await user.click(screen.getByLabelText("Next story"))
+    expect(await screen.findByRole("heading", { name: "Clubs fair" })).toBeInTheDocument()
+    await user.click(screen.getByLabelText("Next story"))
+
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument())
+  })
+
   it("omits the stories heading when there are no stories", async () => {
     await renderStories({ stories: [] })
 

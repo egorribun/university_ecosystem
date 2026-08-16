@@ -27,10 +27,10 @@ interface AppShellContextValue {
 
 const AppShellContext = createContext<AppShellContextValue | undefined>(undefined)
 
-const isBrowser = typeof window !== "undefined"
+const isBrowser = () => typeof window !== "undefined"
 
 const prefersReducedMotionGlobal = () => {
-  if (!isBrowser || typeof window.matchMedia !== "function") return false
+  if (!isBrowser() || typeof window.matchMedia !== "function") return false
   try {
     return window.matchMedia("(prefers-reduced-motion: reduce)").matches
   } catch {
@@ -39,7 +39,7 @@ const prefersReducedMotionGlobal = () => {
 }
 
 const getScrollRoot = (): HTMLElement | null => {
-  if (!isBrowser) return null
+  if (!isBrowser()) return null
   const candidates: (Element | Document | null | undefined)[] = [
     document.querySelector("[data-scroll-root]"),
     document.querySelector("main[role='main']"),
@@ -92,7 +92,6 @@ const smoothScrollToTop = (target: HTMLElement, behavior: ScrollBehaviorOption) 
 }
 
 const markScrollTopNext = () => {
-  if (!isBrowser) return
   try {
     window.sessionStorage.setItem("__scrollTopNext", "1")
   } catch {
@@ -101,7 +100,7 @@ const markScrollTopNext = () => {
 }
 
 const consumeScrollTopNext = (): boolean => {
-  if (!isBrowser) return false
+  if (!isBrowser()) return false
   try {
     const value = window.sessionStorage.getItem("__scrollTopNext")
     if (value === "1") {
@@ -121,7 +120,6 @@ export const AppShellProvider = ({ children }: PropsWithChildren) => {
   const [overlayStatus, setOverlayStatus] = useState({ blurred: false, scrollLocked: false })
 
   useEffect(() => {
-    if (!isBrowser) return
     const { blurred, scrollLocked } = overlayStatus
 
     if (blurred) {
@@ -155,7 +153,6 @@ export const AppShellProvider = ({ children }: PropsWithChildren) => {
 
   useEffect(
     () => () => {
-      if (!isBrowser) return
       document.body.classList.remove("blurred")
       document.body.style.overflow = ""
     },
@@ -163,7 +160,6 @@ export const AppShellProvider = ({ children }: PropsWithChildren) => {
   )
 
   const scrollToTop = useCallback((behavior?: ScrollBehaviorOption) => {
-    if (!isBrowser) return
     const target = getScrollRoot()
     if (!target) return
     const resolvedBehavior = behavior ?? (prefersReducedMotionGlobal() ? "auto" : "smooth")
@@ -171,7 +167,6 @@ export const AppShellProvider = ({ children }: PropsWithChildren) => {
   }, [])
 
   const markScrollSnapshot = useCallback(() => {
-    if (!isBrowser) return
     const target = getScrollRoot()
     if (!target) return
     const nearBottom = target.scrollTop + target.clientHeight >= target.scrollHeight - 24
@@ -181,7 +176,6 @@ export const AppShellProvider = ({ children }: PropsWithChildren) => {
   }, [])
 
   const restoreScrollIfNeeded = useCallback(() => {
-    if (!isBrowser) return
     if (!consumeScrollTopNext()) return
     const target = getScrollRoot()
     if (!target) return

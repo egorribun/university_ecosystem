@@ -145,6 +145,19 @@ describe("api/client — LHCI safe adapter", () => {
   })
 })
 
+describe("api/client — production browser configuration", () => {
+  beforeEach(() => {
+    vi.resetModules()
+    vi.stubEnv("DEV", false)
+  })
+
+  it("uses the gateway API prefix outside development", async () => {
+    const { default: productionApi } = await import("@/api/client")
+
+    expect(productionApi.defaults.baseURL).toBe("/api/v1")
+  })
+})
+
 describe("api/client — BroadcastChannel idempotency coordination", () => {
   beforeEach(() => {
     RecordingBroadcastChannel.instances = []
@@ -352,6 +365,23 @@ describe("api/client — defensive request/response interceptor inputs", () => {
       (handler: { rejected?: unknown }) => typeof handler.rejected === "function"
     )?.rejected as (error: unknown) => Promise<unknown>
     const error = { response: { status: 401 }, config: { headers: undefined } }
+
+    await expect(responseHandler(error)).rejects.toBe(error)
+  })
+
+  it("uses the default backoff for a direct 429 response without headers", async () => {
+    const { default: client } = await import("@/api/client")
+    const { RATE_LIMIT_MAX_RETRY } = await import("@/api/interceptors/rateLimit")
+    const responseHandler = (client.interceptors.response as any).handlers.find(
+      (handler: { rejected?: unknown }) => typeof handler.rejected === "function"
+    )?.rejected as (error: unknown) => Promise<unknown>
+    const error = {
+      response: { status: 429, headers: undefined },
+      config: {
+        headers: new AxiosHeaders(),
+        __rateLimitRetryCount: RATE_LIMIT_MAX_RETRY,
+      },
+    }
 
     await expect(responseHandler(error)).rejects.toBe(error)
   })

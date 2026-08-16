@@ -274,24 +274,54 @@ func TestVectorRouter_ScatterGatherQueryParallelExecution(t *testing.T) {
 		router.AddNode(n)
 	}
 
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	started := make(chan string, len(nodes))
+	release := make(chan struct{})
 	queryFunc := func(ctx context.Context, node string) ([]QueryResult, error) {
-		// Simulate network latency
-		time.Sleep(10 * time.Millisecond)
+		started <- node
+		select {
+		case <-release:
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
 		return []QueryResult{
 			{VectorID: fmt.Sprintf("vec-%s", node), Score: rand.Float32()}, // #nosec G404
 		}, nil
 	}
 
-	ctx := context.Background()
-	start := time.Now()
-	results, err := router.ScatterGatherQuery(ctx, nodes, 3, queryFunc)
-	elapsed := time.Since(start)
+	type queryOutcome struct {
+		results []QueryResult
+		err     error
+	}
+	done := make(chan queryOutcome, 1)
+	go func() {
+		results, err := router.ScatterGatherQuery(ctx, nodes, 3, queryFunc)
+		done <- queryOutcome{results: results, err: err}
+	}()
 
-	require.NoError(t, err)
-	require.Len(t, results, 3)
+	seen := make(map[string]struct{}, len(nodes))
+	for range nodes {
+		select {
+		case node := <-started:
+			seen[node] = struct{}{}
+		case <-ctx.Done():
+			t.Fatalf("scatter-gather queries did not all start concurrently: %v", ctx.Err())
+		}
+	}
+	require.Len(t, seen, len(nodes))
+	close(release)
 
-	// Since queries run in parallel, total duration should be close to 10ms (much less than 3 * 10ms = 30ms)
-	assert.Less(t, elapsed, 25*time.Millisecond, "Scatter-gather queries must execute concurrently")
+	var outcome queryOutcome
+	select {
+	case outcome = <-done:
+	case <-ctx.Done():
+		t.Fatalf("scatter-gather query did not finish after release: %v", ctx.Err())
+	}
+
+	require.NoError(t, outcome.err)
+	require.Len(t, outcome.results, 3)
 
 	emptyResults, err := router.ScatterGatherQuery(context.Background(), nil, 3, queryFunc)
 	require.NoError(t, err)
@@ -364,8 +394,7 @@ func TestVectorRouter_Route_FailoverRerouting(t *testing.T) {
 	router.AddNode("node1")
 
 	// Healthy route
-	target, isFallback, err := router.Route("tenant-100")
-	require.NoError(t, err)
+	target, isFallback := router.Route("tenant-100")
 	assert.Equal(t, "node1", target)
 	assert.False(t, isFallback)
 
@@ -379,10 +408,9 @@ func TestVectorRouter_Route_FailoverRerouting(t *testing.T) {
 
 	// Routing should now reroute to pgvector backup with sub-100ms switch SLA
 	start := time.Now()
-	targetFallback, isFallback, err := router.Route("tenant-100")
+	targetFallback, isFallback := router.Route("tenant-100")
 	switchDuration := time.Since(start)
 
-	require.NoError(t, err)
 	assert.Equal(t, "pgvector_backup", targetFallback)
 	assert.True(t, isFallback)
 	assert.Less(t, switchDuration, 10*time.Millisecond, "Failover switch SLA must be <100ms")
@@ -393,8 +421,7 @@ func TestVectorRouter_Route_MissingTenantID(t *testing.T) {
 	router.AddNode("node1")
 
 	// Empty tenant ID must fallback to pgvector backup safely
-	target, isFallback, err := router.Route("")
-	require.NoError(t, err)
+	target, isFallback := router.Route("")
 	assert.Equal(t, "pgvector_backup", target)
 	assert.True(t, isFallback)
 }
@@ -404,32 +431,27 @@ func TestVectorRouter_RouteWithKey_CourseID(t *testing.T) {
 	router.AddNode("node1")
 
 	// Test routing using tenantID
-	targetTenant, isFallback, err := router.RouteWithKey("tenant-42", "")
-	require.NoError(t, err)
+	targetTenant, isFallback := router.RouteWithKey("tenant-42", "")
 	assert.Equal(t, "node1", targetTenant)
 	assert.False(t, isFallback)
 
 	// Test routing using courseID when tenantID is empty
-	targetCourse, isFallback, err := router.RouteWithKey("", "course-cs101")
-	require.NoError(t, err)
+	targetCourse, isFallback := router.RouteWithKey("", "course-cs101")
 	assert.Equal(t, "node1", targetCourse)
 	assert.False(t, isFallback)
 
 	// Both empty should trigger fallback
-	targetFallback, isFallback, err := router.RouteWithKey("", "")
-	require.NoError(t, err)
+	targetFallback, isFallback := router.RouteWithKey("", "")
 	assert.Equal(t, "pgvector_backup", targetFallback)
 	assert.True(t, isFallback)
 
 	noNodes := NewVectorRouter(128, "pgvector_backup")
-	targetEmpty, isFallback, err := noNodes.Route("tenant-without-nodes")
-	require.NoError(t, err)
+	targetEmpty, isFallback := noNodes.Route("tenant-without-nodes")
 	assert.Equal(t, "pgvector_backup", targetEmpty)
 	assert.True(t, isFallback)
 
 	delete(router.trackers, "node1")
-	targetMissingTracker, isFallback, err := router.Route("tenant-42")
-	require.NoError(t, err)
+	targetMissingTracker, isFallback := router.Route("tenant-42")
 	assert.Equal(t, "pgvector_backup", targetMissingTracker)
 	assert.True(t, isFallback)
 }

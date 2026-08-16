@@ -39,6 +39,10 @@ describe("suggestEmailDomain", () => {
     expect(suggestEmailDomain("user@gmial.com")).toBe("user@gmail.com")
   })
 
+  it("keeps the closest match when a later domain is also within the typo threshold", () => {
+    expect(suggestEmailDomain("user@hmail.com")).toBe("user@gmail.com")
+  })
+
   it("suggests yandex.ru for yandex.r (1 deletion)", () => {
     expect(suggestEmailDomain("user@yandex.r")).toBe("user@yandex.ru")
   })

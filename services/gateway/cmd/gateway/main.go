@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"errors"
+	"fmt"
 	"net"
 	"net/http"
 	"net/http/httputil"
@@ -59,7 +60,22 @@ var (
 	newSpiffeClientTLSConfigFunc = func(client *spiffe.Client, expectedServerID string) (*tls.Config, error) {
 		return client.ClientTLSConfig(expectedServerID)
 	}
-	closeSpiffeClientFunc  = func(client *spiffe.Client) error { return client.Close() }
+	closeSpiffeClientFunc           = func(client *spiffe.Client) error { return client.Close() }
+	closeGRPCConnFunc               = func(conn *grpc.ClientConn) error { return conn.Close() }
+	setupRouterFunc                 = setupRouter
+	setTrustedProxiesFunc           = func(router *gin.Engine, proxies []string) error { return router.SetTrustedProxies(proxies) }
+	registerPrometheusCollectorFunc = func(collector prometheus.Collector) error {
+		return prometheus.Register(collector)
+	}
+	optionalAuthHandlerFunc = func(jwtMiddleware *middleware.JWTMiddleware, ctx context.Context) gin.HandlerFunc {
+		return jwtMiddleware.Optional(ctx)
+	}
+	newOTLPTraceExporterFunc = func(ctx context.Context, opts ...otlptracegrpc.Option) (sdktrace.SpanExporter, error) {
+		return otlptracegrpc.New(ctx, opts...)
+	}
+	newOTelResourceFunc = func(ctx context.Context, opts ...resource.Option) (*resource.Resource, error) {
+		return resource.New(ctx, opts...)
+	}
 	shutdownH3ServerFunc   = func(server *http3.Server, ctx context.Context) error { return server.Shutdown(ctx) }
 	shutdownHTTPServerFunc = func(server *http.Server, ctx context.Context) error { return server.Shutdown(ctx) }
 )
@@ -134,13 +150,13 @@ func run() error {
 		return err
 	}
 	defer func() {
-		if err := grpcConn.Close(); err != nil {
+		if err := closeGRPCConnFunc(grpcConn); err != nil {
 			logger.ErrorContext(ctx, "Failed to close gRPC connection", "err", err)
 		}
 	}()
 
 	// 6. Setup Router & Middleware
-	router, err := setupRouter(cfg, logger, grpcConn, fileClient, spiffeClient, ctx)
+	router, err := setupRouterFunc(cfg, logger, grpcConn, fileClient, spiffeClient, ctx)
 	if err != nil {
 		logger.ErrorContext(ctx, "Router setup failed", "err", err)
 		return err
@@ -238,8 +254,9 @@ func setupRouter(cfg *config.Config, logger *slog.Logger, grpcConn *grpc.ClientC
 	router := gin.New()
 
 	// FIX 1.4: Security Hardening: Explicitly trust only internal networks and local proxies.
-	if err := router.SetTrustedProxies([]string{"127.0.0.1", "::1", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"}); err != nil {
+	if err := setTrustedProxiesFunc(router, []string{"127.0.0.1", "::1", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"}); err != nil {
 		logger.ErrorContext(ctx, "Failed to set trusted proxies", "err", err)
+		return nil, fmt.Errorf("configure trusted proxies: %w", err)
 	}
 
 	// TD-W17-02: Replace ginzap with gin.Recovery + otelgin.
@@ -310,7 +327,7 @@ func setupRouter(cfg *config.Config, logger *slog.Logger, grpcConn *grpc.ClientC
 		router.Use(rateLimiter.Middleware(ctx))
 		redisClient = rateLimiter.GetClient()
 		collector := redisprometheus.NewCollector("gateway", "redis", redisClient)
-		if err := prometheus.Register(collector); err != nil {
+		if err := registerPrometheusCollectorFunc(collector); err != nil {
 			logger.WarnContext(ctx, "Failed to register Redis metrics collector", "err", err)
 		}
 	}
@@ -389,7 +406,7 @@ func setupRouter(cfg *config.Config, logger *slog.Logger, grpcConn *grpc.ClientC
 			proxyFn(c)
 		})
 		api.Any("/public/*path", func(c *gin.Context) {
-			jwtMiddleware.Optional(ctx)(c)
+			optionalAuthHandlerFunc(jwtMiddleware, ctx)(c)
 			if c.IsAborted() {
 				return
 			}
@@ -399,7 +416,7 @@ func setupRouter(cfg *config.Config, logger *slog.Logger, grpcConn *grpc.ClientC
 
 	// GraphQL (optional JWT)
 	router.Any("/graphql", func(c *gin.Context) {
-		jwtMiddleware.Optional(ctx)(c)
+		optionalAuthHandlerFunc(jwtMiddleware, ctx)(c)
 		if c.IsAborted() {
 			return
 		}
@@ -534,19 +551,19 @@ func initTracer(ctx context.Context, cfg *config.Config) (*sdktrace.TracerProvid
 	} else {
 		opts = append(opts, otlptracegrpc.WithInsecure())
 	}
-	exporter, err := otlptracegrpc.New(ctx, opts...)
+	exporter, err := newOTLPTraceExporterFunc(ctx, opts...)
 	if err != nil {
 		return nil, err
 	}
 
-	res, err := resource.New(ctx,
+	res, err := newOTelResourceFunc(ctx,
 		resource.WithAttributes(
 			semconv.ServiceNameKey.String("gateway"),
 			attribute.String("environment", cfg.Environment),
 		),
 	)
 	if err != nil {
-		return nil, err
+		return nil, errors.Join(err, exporter.Shutdown(ctx))
 	}
 
 	tp := sdktrace.NewTracerProvider(

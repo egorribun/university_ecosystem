@@ -31,6 +31,13 @@ export default defineConfig({
     setupFiles: ["src/setupTests.ts"],
     globals: true,
     css: true,
+    // Node 26 exposes an experimental process-global localStorage accessor
+    // which warns before JSDOM can install its isolated implementation.  Tests
+    // must use JSDOM storage, never a process-persistent cross-worker store.
+    poolOptions: {
+      threads: { execArgv: ["--no-experimental-webstorage"] },
+      forks: { execArgv: ["--no-experimental-webstorage"] },
+    },
     reporters: ["default"],
     exclude: [
       "node_modules",

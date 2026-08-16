@@ -107,8 +107,7 @@ export const StoryList = memo(function StoryList({
   const handlePointerDown = useCallback((e: React.PointerEvent<HTMLUListElement>) => {
     // Wave 54: drag-to-scroll only for mouse — touch uses native overflow-x scroll (FIX-54-09)
     if (e.pointerType !== "mouse" || e.button !== 0) return
-    const el = listRef.current
-    if (!el) return
+    const el = e.currentTarget
     isPressedRef.current = true
     dragStartX.current = e.clientX
     dragScrollLeft.current = el.scrollLeft
@@ -119,8 +118,7 @@ export const StoryList = memo(function StoryList({
 
   const handlePointerMove = useCallback((e: React.PointerEvent<HTMLUListElement>) => {
     if (!isPressedRef.current) return
-    const el = listRef.current
-    if (!el) return
+    const el = e.currentTarget
     const dx = e.clientX - dragStartX.current
     if (Math.abs(dx) > DRAG_THRESHOLD) {
       if (!hasDragged.current) {
@@ -254,7 +252,7 @@ export const StoryList = memo(function StoryList({
                   onFocus={onPrefetch}
                   onMouseEnter={onPrefetch}
                   aria-label={label}
-                  title={tooltip ?? undefined}
+                  title={tooltip}
                   data-active={activeStoryId === story.id ? "true" : undefined}
                   className="transition-transform"
                   style={

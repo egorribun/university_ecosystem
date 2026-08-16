@@ -6,7 +6,11 @@ const { mockGet } = vi.hoisted(() => ({ mockGet: vi.fn() }))
 
 vi.mock("@/api/client", () => ({ default: { get: mockGet } }))
 
-import { createDashboardEventsQueryOptions, dashboardEventsQueryKey } from "../useDashboardEvents"
+import {
+  createDashboardEventsQueryOptions,
+  dashboardEventsQueryKey,
+  prefetchDashboardEvents,
+} from "../useDashboardEvents"
 
 const event = (id: string, starts_at?: string) =>
   ({
@@ -48,6 +52,27 @@ describe("useDashboardEvents closure", () => {
     expect(request.validateStatus(400)).toBe(false)
   })
 
+  it("safely sorts truthy non-string start values from an unvalidated API response", async () => {
+    const client = new QueryClient()
+    const options = createDashboardEventsQueryOptions(client)
+    mockGet.mockResolvedValueOnce({
+      status: 200,
+      data: {
+        items: [
+          { ...event("numeric-late"), starts_at: 20 } as unknown as Event,
+          { ...event("numeric-early"), starts_at: 10 } as unknown as Event,
+        ],
+      },
+    })
+
+    await expect(options.queryFn(context(client))).resolves.toEqual({
+      items: [
+        expect.objectContaining({ id: "numeric-early" }),
+        expect.objectContaining({ id: "numeric-late" }),
+      ],
+    })
+  })
+
   it("returns the cached snapshot for 304 and uses an empty snapshot without cache", async () => {
     const client = new QueryClient()
     const options = createDashboardEventsQueryOptions(client)
@@ -60,6 +85,23 @@ describe("useDashboardEvents closure", () => {
     client.removeQueries({ queryKey: dashboardEventsQueryKey })
     mockGet.mockResolvedValueOnce({ status: 304, data: undefined })
     await expect(options.queryFn(context(client))).resolves.toEqual({ items: [] })
+  })
+
+  it("rejects malformed item collections and prefetches through the canonical options", async () => {
+    const client = new QueryClient()
+    const options = createDashboardEventsQueryOptions(client)
+
+    mockGet.mockResolvedValueOnce({ status: 200, data: { items: { invalid: true } } })
+    await expect(options.queryFn(context(client))).resolves.toEqual({ items: [] })
+
+    mockGet.mockResolvedValueOnce({
+      status: 200,
+      data: { items: [event("prefetched", "2026-03-01")] },
+    })
+    await expect(prefetchDashboardEvents(client)).resolves.toBeUndefined()
+    expect(client.getQueryData(dashboardEventsQueryKey)).toEqual({
+      items: [event("prefetched", "2026-03-01")],
+    })
   })
 
   it("falls back after non-aborted errors and rethrows abort/no-cache errors", async () => {

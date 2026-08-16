@@ -54,11 +54,7 @@ export default function DashboardStories({
   }, [])
 
   const goToIndex = useCallback(
-    (nextIndex: number | null) => {
-      if (nextIndex === null) {
-        closeViewer()
-        return
-      }
+    (nextIndex: number) => {
       const next = Math.max(0, Math.min(displayStories.length - 1, nextIndex))
       setProgress(0)
       setOpenIndex(next)
@@ -98,10 +94,6 @@ export default function DashboardStories({
 
   useEffect(() => {
     if (openIndex === null || prefersReducedMotion || isPaused) {
-      if (rafRef.current) {
-        cancelAnimationFrame(rafRef.current)
-        rafRef.current = null
-      }
       return
     }
 

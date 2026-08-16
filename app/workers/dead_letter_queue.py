@@ -276,16 +276,22 @@ class DeadLetterQueue:
                     if not jobs:
                         break
 
+                    halt_replay = False
                     for job in jobs:
                         if circuit_breaker and not force:
                             if not circuit_breaker.allow_request():
+                                halt_replay = True
                                 break
 
                         await self.mark_job_retrying(job)
                         try:
                             payload = json.loads(job.payload)
-                            if handler:
-                                await handler(job.job_type, payload)
+                            if handler is None:
+                                raise RuntimeError(
+                                    "No DB DLQ replay handler is configured for "
+                                    f"job type {job.job_type!r}"
+                                )
+                            await handler(job.job_type, payload)
                             await self.mark_job_completed(job)
                             success_count += 1
                             if circuit_breaker:
@@ -332,6 +338,8 @@ class DeadLetterQueue:
                         if rate_limit_delay > 0:
                             await asyncio.sleep(rate_limit_delay)
 
+                    if halt_replay:
+                        break
                     await self.session.flush()
             finally:
                 DeadLetterQueue._is_replaying = False

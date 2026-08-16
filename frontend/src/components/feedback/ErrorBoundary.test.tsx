@@ -121,4 +121,18 @@ describe("ErrorBoundary", () => {
     // But we just wanted to basic check.
     expect(Sentry.captureException).toHaveBeenCalledTimes(2) // Once initial, once after retry
   })
+
+  it("offers reload and home recovery actions", async () => {
+    const user = userEvent.setup()
+    render(
+      <ErrorBoundary>
+        <ThrowError />
+      </ErrorBoundary>
+    )
+
+    await user.click(screen.getByText("system:errorBoundary.reload"))
+    await user.click(screen.getByText("system:errorBoundary.goHome"))
+
+    expect(screen.getByText("system:errorBoundary.title")).toBeInTheDocument()
+  })
 })

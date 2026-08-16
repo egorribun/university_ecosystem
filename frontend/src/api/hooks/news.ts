@@ -247,26 +247,22 @@ export const useNewsListQuery = (
   // Read from localStorage as fallback for offline mode
   const placeholderData = useMemo(() => {
     if (typeof window === "undefined") return undefined
-    try {
-      const storage = new StorageItem<NewsItem[]>(`news:list:${normalized.language}`)
-      const items = storage.get()
-      if (!Array.isArray(items) || items.length === 0) return undefined
-      // Wrap in the expected InfiniteData structure
-      return {
-        pages: [
-          {
-            items,
-            total: items.length,
-            limit: 12,
-            cursor: null,
-            next_cursor: null,
-            has_more: false,
-          },
-        ],
-        pageParams: [null],
-      }
-    } catch {
-      return undefined
+    const storage = new StorageItem<NewsItem[]>(`news:list:${normalized.language}`)
+    const items = storage.get()
+    if (!Array.isArray(items) || items.length === 0) return undefined
+    // Wrap in the expected InfiniteData structure
+    return {
+      pages: [
+        {
+          items,
+          total: items.length,
+          limit: 12,
+          cursor: null,
+          next_cursor: null,
+          has_more: false,
+        },
+      ],
+      pageParams: [null],
     }
   }, [normalized.language])
 

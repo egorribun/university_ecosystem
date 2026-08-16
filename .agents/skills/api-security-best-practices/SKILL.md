@@ -812,6 +812,7 @@ app.post('/api/users', async (req, res) => {
     // Error: "Unique constraint failed on the fields: (`email`)"
   }
 });
+```
 
 ```javascript
 // ✅ Good: Generic error message

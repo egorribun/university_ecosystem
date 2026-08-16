@@ -51,6 +51,10 @@ export function MapSearchBar({
   // Tracks the blur→close timeout so it can be cancelled on unmount or explicit
   // close events, preventing state updates into a torn-down environment.
   const blurTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // A successful keyboard/click selection deliberately blurs the input. That
+  // blur must not schedule a delayed close which can race with an immediate
+  // second search and swallow its Escape/Enter key handling.
+  const skipNextBlurCloseRef = useRef(false)
 
   useEffect(() => {
     return () => {
@@ -112,6 +116,7 @@ export function MapSearchBar({
       }
       setQuery("")
       setIsOpen(false)
+      skipNextBlurCloseRef.current = true
       inputRef.current?.blur()
     },
     [onSelectBuilding, onSelectRoom]
@@ -175,6 +180,10 @@ export function MapSearchBar({
           }}
           onFocus={() => query.trim() && setIsOpen(true)}
           onBlur={() => {
+            if (skipNextBlurCloseRef.current) {
+              skipNextBlurCloseRef.current = false
+              return
+            }
             blurTimeoutRef.current = setTimeout(() => setIsOpen(false), 200)
           }}
           onKeyDown={handleKeyDown}

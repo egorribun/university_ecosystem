@@ -27,7 +27,8 @@ def test_audit_log_secret_warns_for_placeholder_in_development(monkeypatch):
 
     with patch("app.core.config.security._logger") as logger:
         SecuritySettings(  # pragma: allowlist secret
-            audit_log_secret="placeholder-" + "a" * 32  # pragma: allowlist secret
+            algorithm="RS256",
+            audit_log_secret="placeholder-" + "a" * 32,  # pragma: allowlist secret
         )
 
     assert (

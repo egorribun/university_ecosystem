@@ -16,7 +16,6 @@ import (
 
 	"github.com/nats-io/nats.go"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
-	"github.com/quic-go/quic-go/http3"
 	"github.com/quic-go/webtransport-go"
 	"github.com/redis/go-redis/v9"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
@@ -467,14 +466,7 @@ func runServer(cfg *config.Config, logger *slog.Logger, h *hub.Hub, mux *http.Se
 		wtPort = "8443"
 	}
 
-	wtServer := &webtransport.Server{
-		H3: &http3.Server{
-			Addr: ":" + wtPort,
-		},
-		CheckOrigin: func(r *http.Request) bool {
-			return true
-		},
-	}
+	wtServer := h.ConfigureWebTransportServer(":"+wtPort, mux)
 
 	quit, stopSignals := setupSignalChannel(signalChannels...)
 	defer stopSignals()

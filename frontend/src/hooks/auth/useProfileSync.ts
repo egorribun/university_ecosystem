@@ -33,7 +33,7 @@ import { currentUserQueryOptions } from "@/api/hooks/users"
 import type { User } from "@/types/User"
 import type { UserRole } from "@/api/generated"
 import type { PendingMfaState, SetUserArg, UserState } from "@/types/Auth"
-import { clearAccessToken } from "./tokenStorage"
+import { clearLegacyAccessToken } from "./legacyTokenCleanup"
 import { logError, logWarning } from "@/app/logger"
 import { extractApiError } from "@/utils/error"
 import { useAuthStore } from "@/stores/useAuthStore"
@@ -479,8 +479,9 @@ const persistUserToCacheAsync = async (
 }
 
 const migrateProfileCache = () => {
-  if (typeof localStorage === "undefined") return
+  clearLegacyAccessToken()
   try {
+    if (typeof localStorage === "undefined") return
     const storedVersion = localStorage.getItem(PROFILE_CACHE_VERSION_KEY)
     if (storedVersion !== String(PROFILE_CACHE_SCHEMA_VERSION)) {
       for (const legacyKey of LEGACY_PROFILE_CACHE_KEYS) {
@@ -864,7 +865,7 @@ export const useProfileSync = (
       // change is visible to any awaiting HMAC tasks before the key is cleared.
       clearCachesOnLogout()
       resetEtagCache() // belt-and-suspenders: also clear module-level copies in client.ts
-      clearAccessToken()
+      clearLegacyAccessToken()
       // We need to clear session signing key too.
       // We need to call updateSessionSigningKey(null)
       // But we also need to clear the promise ref.

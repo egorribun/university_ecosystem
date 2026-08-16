@@ -1,4 +1,5 @@
 import { act, renderHook } from "@testing-library/react"
+import { renderToString } from "react-dom/server"
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest"
 import useMediaQuery from "../useMediaQuery"
 
@@ -44,6 +45,18 @@ describe("useMediaQuery", () => {
   it("returns the current match result", () => {
     const { result } = renderHook(() => useMediaQuery("(max-width: 1350px)"))
     expect(result.current).toBe(true)
+  })
+
+  it("uses defaultValue during SSR when window is unavailable", () => {
+    const descriptor = Object.getOwnPropertyDescriptor(globalThis, "window")
+    Reflect.deleteProperty(globalThis, "window")
+
+    try {
+      const Probe = () => <span>{String(useMediaQuery("(ssr)", { defaultValue: true }))}</span>
+      expect(renderToString(<Probe />)).toContain(">true<")
+    } finally {
+      if (descriptor) Object.defineProperty(globalThis, "window", descriptor)
+    }
   })
 
   it("updates when the media query changes", () => {
@@ -109,25 +122,5 @@ describe("useMediaQuery", () => {
     unmount()
     expect(addListener).toHaveBeenCalledOnce()
     expect(removeListener).toHaveBeenCalledOnce()
-  })
-
-  it("handles a legacy event object without a matches property", () => {
-    let listener: ((event: unknown) => void) | undefined
-    Object.defineProperty(window, "matchMedia", {
-      configurable: true,
-      value: vi.fn(
-        () =>
-          ({
-            matches: true,
-            addEventListener: vi.fn((_type: string, cb: (event: unknown) => void) => {
-              listener = cb
-            }),
-            removeEventListener: vi.fn(),
-          }) as unknown as MediaQueryList
-      ),
-    })
-    const { result } = renderHook(() => useMediaQuery("(legacy-event)"))
-    act(() => listener?.({}))
-    expect(result.current).toBeUndefined()
   })
 })

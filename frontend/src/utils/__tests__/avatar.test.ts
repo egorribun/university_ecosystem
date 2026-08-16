@@ -239,6 +239,26 @@ describe("avatar utilities", () => {
       ).toContain("uid=a%20user")
     })
 
+    it("uses an ampersand in the appendUid fallback when a query already exists", () => {
+      const originalURL = globalThis.URL
+      class RejectingURL extends originalURL {
+        constructor(input: string | URL, base?: string | URL) {
+          if (String(input) === "/force-invalid?size=large") {
+            throw new TypeError("invalid relative URL")
+          }
+          super(input, base)
+        }
+      }
+      vi.stubGlobal("URL", RejectingURL)
+
+      expect(
+        buildAvatarUrl("/force-invalid?size=large", "42", {
+          baseURL: "/api",
+          locationOrigin: "https://example.com",
+        })
+      ).toContain("?size=large&uid=42")
+    })
+
     it("returns the relative URL when no backend origin is available", () => {
       expect(
         buildAvatarUrl("avatar.jpg", "42", {

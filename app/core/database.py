@@ -384,7 +384,10 @@ def _on_invalidate(
     pool_health_logger.warning(
         "Connection invalidated",
         active_connections=_pool_metrics.active_connections,
-        exception=type(exception).__name__ if exception else "None",
+        # ``exception`` is reserved by structlog's console renderer and is
+        # interpreted as a pre-rendered traceback.  Keep this diagnostic field
+        # explicit so local logging never emits formatter warnings.
+        exception_type=type(exception).__name__ if exception else "None",
     )
 
 

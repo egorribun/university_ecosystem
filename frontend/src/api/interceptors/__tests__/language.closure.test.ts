@@ -47,6 +47,11 @@ describe("applyLanguageHeader", () => {
     expect(AxiosHeaders.from(headers).get("Accept-Language")).toBe("ru")
   })
 
+  it("uses fallbackLng when both runtime language fields are empty", async () => {
+    const headers = await withLanguage("", "")
+    expect(AxiosHeaders.from(headers).get("Accept-Language")).toBe(fallbackLng)
+  })
+
   it("does not overwrite either casing of an existing header", () => {
     const upper = applyLanguageHeader({
       headers: { "Accept-Language": "custom" },

@@ -174,18 +174,18 @@ describe("useNewsListQuery queryFn branches", () => {
     expect(result.current.news).toHaveLength(2)
   })
 
-  it("coerces a non-object 200 payload via ensurePaginatedResponse defaults", async () => {
-    // total/limit non-numeric → fall back to items.length / fallbackLimit
+  it("normalizes malformed pagination fields to safe defaults", async () => {
     newsListMock.mockResolvedValue({
       status: 200,
-      data: { items: [makeNews("x")], total: "nope", limit: "nope" },
+      data: { items: "invalid", total: "invalid", limit: "invalid" },
     })
     const queryClient = freshClient()
     const { result } = renderHook(() => useNewsListQuery({ language: "ru" }), {
       wrapper: makeWrapper(queryClient),
     })
-    await waitFor(() => expect(result.current.news).toHaveLength(1))
-    expect(result.current.pagination?.total).toBe(1)
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    expect(result.current.news).toEqual([])
+    expect(result.current.pagination?.total).toBe(0)
     expect(result.current.pagination?.limit).toBe(12)
   })
 })

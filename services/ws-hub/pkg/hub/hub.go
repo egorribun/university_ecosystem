@@ -16,6 +16,7 @@ import (
 	lru "github.com/hashicorp/golang-lru/v2"
 	"github.com/lestrrat-go/jwx/v2/jwk"
 	"github.com/nats-io/nats.go"
+	"github.com/quic-go/webtransport-go"
 	goredis "github.com/redis/go-redis/v9"
 	"github.com/university-ecosystem/ws-hub/pkg/config"
 	"go.opentelemetry.io/otel"
@@ -61,10 +62,11 @@ type Hub struct {
 	authClient RoomAuthClient
 	subs       []*nats.Subscription
 	// UpgradeLimiter caps per-IP WebSocket upgrade attempts.
-	UpgradeLimiter  *WSUpgradeRateLimiter
-	jwksCache       *jwk.Cache
-	jwksCacheCancel context.CancelFunc
-	jwksURL         string
+	UpgradeLimiter     *WSUpgradeRateLimiter
+	webTransportServer *webtransport.Server
+	jwksCache          *jwk.Cache
+	jwksCacheCancel    context.CancelFunc
+	jwksURL            string
 	// maxClients caps the number of concurrently connected WebSocket clients.
 	maxClients int
 	// broadcastWorkers is the size of the broadcast goroutine pool (PERF-W14-02).
@@ -101,6 +103,10 @@ type Hub struct {
 }
 
 var (
+	newDedupLRUFunc  = lru.New[string, time.Time]
+	registerJWKSFunc = func(cache *jwk.Cache, url string, options ...jwk.RegisterOption) error {
+		return cache.Register(url, options...)
+	}
 	jetStreamAckFunc      = func(msg *nats.Msg) error { return msg.Ack() }
 	jetStreamNakFunc      = func(msg *nats.Msg, delay time.Duration) error { return msg.NakWithDelay(delay) }
 	jetStreamContextFunc  = func(conn *nats.Conn) (nats.JetStreamContext, error) { return conn.JetStream() }
@@ -178,9 +184,9 @@ func NewHub(nc *nats.Conn, logger *slog.Logger, authClient RoomAuthClient, cfg *
 		enableJS = cfg.EnableJetStream
 	}
 
-	dedupCache, err := lru.New[string, time.Time](10000)
-	if err != nil && logger != nil {
-		logger.ErrorContext(context.Background(), "Failed to initialize dedup LRU cache", "err", err)
+	dedupCache, err := newDedupLRUFunc(10000)
+	if err != nil {
+		panic(fmt.Sprintf("failed to initialize dedup LRU cache: %v", err))
 	}
 
 	var js nats.JetStreamContext
@@ -200,6 +206,7 @@ func NewHub(nc *nats.Conn, logger *slog.Logger, authClient RoomAuthClient, cfg *
 		Logger:                 logger,
 		authClient:             authClient,
 		UpgradeLimiter:         NewWSUpgradeRateLimiter(10, 60),
+		webTransportServer:     &webtransport.Server{CheckOrigin: isUpgradeOriginAllowed},
 		jwksCache:              nil, // Initialised via SetupJWKS()
 		maxClients:             maxC,
 		broadcastWorkers:       workers,
@@ -237,7 +244,7 @@ func (h *Hub) SetupJWKS(ctx context.Context, jwksURL string) error {
 
 	h.jwksCache = jwk.NewCache(jwksCtx)
 	// Refresh the cache every hour.
-	err := h.jwksCache.Register(jwksURL, jwk.WithMinRefreshInterval(time.Hour))
+	err := registerJWKSFunc(h.jwksCache, jwksURL, jwk.WithMinRefreshInterval(time.Hour))
 	if err != nil {
 		cancel() // release context on error
 		return fmt.Errorf("failed to register JWKS URL %s: %w", jwksURL, err)

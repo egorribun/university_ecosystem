@@ -290,7 +290,6 @@ ignore = [
 [tool.ruff.lint.per-file-ignores]
 "analyze_coverage.py" = ["S314", "E741"]
 "scripts/check_mutation_score.py" = ["S603"]
-"scripts/run_mutmut_diff.py" = ["S603", "S607"]
 "tests/*" = ["ARG001", "ARG002", "E402", "W291", "S101", "S105", "S106", "ERA001"]
 "alembic/**/*.py" = ["I001", "E402"]
 "app/main.py" = ["E402"]
@@ -388,6 +387,9 @@ output = "artifacts/coverage/python/coverage.json"
 dev = [
   "asgi-lifespan>=2.1.0",
   "fakeredis>=2.35.1",
+  # Starlette 1.x moved TestClient to the httpx2 API.  Keeping this explicit
+  # prevents its deprecated httpx compatibility shim from hiding API drift.
+  "httpx2>=2.9.1,<3",
   "hypothesis>=6.151.12",
   "maturin>=1.13.1,<2",
   "mypy>=1.20.1,<2.4",

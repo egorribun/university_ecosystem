@@ -163,6 +163,21 @@ describe("useEventsListQuery queryFn branches", () => {
     })
   })
 
+  it("normalizes malformed pagination fields to safe defaults", async () => {
+    allEventsMock.mockResolvedValue({
+      status: 200,
+      data: { items: "invalid", total: "invalid", limit: "invalid" },
+    })
+
+    const queryClient = freshClient()
+    const { result } = renderHook(() => useEventsListQuery({ language: "ru" }), {
+      wrapper: makeWrapper(queryClient),
+    })
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    expect(result.current.pagination).toMatchObject({ items: [], total: 0, limit: 12 })
+  })
+
   it("passes cursor param + merges via getNextPageParam on fetchNextPage (149-151)", async () => {
     const firstPage = [makeEvent("a"), makeEvent("b")]
     const secondPage = [makeEvent("c")]
@@ -368,6 +383,23 @@ describe("useMyEventsQuery (events.ts:329-354)", () => {
     })
     expect(result.current.fetchStatus).toBe("idle")
     expect(myEventsMock).not.toHaveBeenCalled()
+  })
+
+  it("uses the anonymous ETag sentinel when a disabled query is manually refetched", async () => {
+    myEventsMock.mockResolvedValue({ status: 200, data: [] })
+    const queryClient = freshClient()
+    const { result } = renderHook(() => useMyEventsQuery({ language: "ru", userId: null }), {
+      wrapper: makeWrapper(queryClient),
+    })
+
+    await act(async () => {
+      await result.current.refetch()
+    })
+
+    expect(myEventsMock).toHaveBeenCalledOnce()
+    expect(myEventsMock.mock.calls[0]?.[0]).toEqual(
+      expect.objectContaining({ etagCacheKey: "events:my:ru:anon" })
+    )
   })
 
   it("seeds placeholder from localStorage then resolves 200 array", async () => {

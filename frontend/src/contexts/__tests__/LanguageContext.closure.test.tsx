@@ -1,4 +1,4 @@
-import { act, render, renderHook, screen, waitFor } from "@testing-library/react"
+import { act, fireEvent, render, renderHook, screen, waitFor } from "@testing-library/react"
 import type { PropsWithChildren } from "react"
 import { afterEach, describe, expect, it, vi } from "vitest"
 
@@ -23,6 +23,7 @@ const Probe = () => {
 
 afterEach(() => {
   vi.restoreAllMocks()
+  vi.unstubAllGlobals()
   window.localStorage.clear()
   document.cookie = "ue:language=; Max-Age=0; Path=/"
   Object.defineProperty(window.navigator, "language", {
@@ -43,6 +44,17 @@ describe("LanguageContext browser branches", () => {
     expect(document.cookie).toContain("ue:language=ru")
   })
 
+  it("marks the mirrored language cookie Secure on HTTPS", async () => {
+    const cookieSetter = vi.spyOn(document, "cookie", "set")
+    vi.stubGlobal("location", { protocol: "https:" })
+
+    render(<Probe />, { wrapper })
+
+    await waitFor(() =>
+      expect(cookieSetter).toHaveBeenCalledWith(expect.stringContaining("; Secure"))
+    )
+  })
+
   it("falls back to the browser language and then to English", () => {
     window.localStorage.setItem("ue:language", "de")
     Object.defineProperty(window.navigator, "language", {
@@ -60,6 +72,46 @@ describe("LanguageContext browser branches", () => {
     })
     render(<Probe />, { wrapper })
     expect(screen.getByRole("button")).toHaveTextContent("en:en,ru")
+  })
+
+  it("uses English when the browser exposes an empty language", () => {
+    window.localStorage.setItem("ue:language", "de")
+    Object.defineProperty(window.navigator, "language", {
+      configurable: true,
+      value: "",
+    })
+
+    render(<Probe />, { wrapper })
+
+    expect(screen.getByRole("button")).toHaveTextContent("en:en,ru")
+  })
+
+  it("falls back to the browser language when localStorage reads are denied", () => {
+    Object.defineProperty(window.navigator, "language", {
+      configurable: true,
+      value: "ru-RU",
+    })
+    vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => {
+      throw new DOMException("storage denied", "SecurityError")
+    })
+
+    render(<Probe />, { wrapper })
+
+    expect(screen.getByRole("button")).toHaveTextContent("ru:en,ru")
+  })
+
+  it("keeps language changes working when localStorage writes fail", async () => {
+    const setItem = vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw new DOMException("storage full", "QuotaExceededError")
+    })
+
+    render(<Probe />, { wrapper })
+    fireEvent.click(screen.getByRole("button"))
+
+    await waitFor(() => expect(screen.getByRole("button")).toHaveTextContent("ru:en,ru"))
+    expect(document.documentElement).toHaveAttribute("lang", "ru")
+    expect(document.cookie).toContain("ue:language=ru")
+    expect(setItem).toHaveBeenCalled()
   })
 
   it("updates state through setLanguage and exposes the guard/error contract", async () => {

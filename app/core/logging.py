@@ -153,7 +153,6 @@ def configure_logging(
         add_otel_context,
         structlog.processors.TimeStamper(fmt="iso", utc=True, key="timestamp"),
         structlog.processors.StackInfoRenderer(),
-        structlog.processors.format_exc_info,
         structlog.processors.UnicodeDecoder(),
         # Format stdlib-style positional arguments before EventRenamer moves
         # the event field to `message`. Without this, console/testing output
@@ -170,15 +169,24 @@ def configure_logging(
         processors = [
             structlog.stdlib.filter_by_level,
             *shared_processors,
+            # JSON needs a serializable exception string. ConsoleRenderer
+            # handles ``exc_info`` itself and warns if it is pre-formatted.
+            structlog.processors.format_exc_info,
             structlog.processors.JSONRenderer(serializer=_orjson_serializer),
         ]
         factory: Any = structlog.stdlib.LoggerFactory()
     else:
-        # Development: colored console output with better human readability
+        # Development: keep rich tracebacks, but never render frame locals.
+        # Locals routinely contain credentials, reset links and request payloads;
+        # showing them would bypass the structured-log redaction processors.
+        safe_traceback = structlog.dev.RichTracebackFormatter(show_locals=False)
         processors = [
             structlog.stdlib.filter_by_level,
             *shared_processors,
-            structlog.dev.ConsoleRenderer(colors=True),
+            structlog.dev.ConsoleRenderer(
+                colors=True,
+                exception_formatter=safe_traceback,
+            ),
         ]
         factory = structlog.stdlib.LoggerFactory()
 

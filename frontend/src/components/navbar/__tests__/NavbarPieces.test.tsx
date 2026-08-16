@@ -191,6 +191,10 @@ describe("UserMenu", () => {
     expect(screen.getAllByTitle("navigation:aria.openProfile").length).toBeGreaterThan(0)
     await userEvent.click(screen.getByRole("button", { name: "navigation:aria.openProfile" }))
     expect(go).toHaveBeenCalledWith("/profile")
+    await userEvent.click(screen.getByAltText("navigation:aria.profileAvatarNamed"))
+    expect(go).toHaveBeenLastCalledWith("/profile")
+    await userEvent.click(screen.getByRole("button", { name: "navigation:menu.settings" }))
+    expect(go).toHaveBeenLastCalledWith("/settings")
   })
 
   it("renders nothing for a settled unauthenticated state", async () => {
@@ -219,5 +223,28 @@ describe("UserMenu", () => {
       ),
     })
     expect(screen.getByAltText("navigation:aria.profileAvatarNamed")).toBeInTheDocument()
+  })
+
+  it("renders the compact reduced-motion variant", async () => {
+    await renderWithRouter({
+      ui: () => (
+        <UserMenu
+          user={testUser}
+          isAuth
+          loading={false}
+          go={vi.fn()}
+          t={(key) => key}
+          isCompact
+          prefersReducedMotion
+        />
+      ),
+    })
+
+    expect(screen.getByAltText("navigation:aria.profileAvatarNamed")).toHaveClass("h-7", "w-7")
+    expect(screen.getByRole("button", { name: "navigation:menu.settings" })).toHaveClass(
+      "w-8",
+      "h-8",
+      "duration-0"
+    )
   })
 })

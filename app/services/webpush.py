@@ -217,10 +217,7 @@ def _current_local_time(user: User | None = None) -> time:
                 except (ZoneInfoNotFoundError, ValueError):  # RZ-28-01
                     tz = UTC
     now = datetime.now(tz)
-    current = now.timetz()
-    if current.tzinfo is not None:
-        current = current.replace(tzinfo=None)
-    return current
+    return now.timetz().replace(tzinfo=None)
 
 
 def _is_user_in_quiet_hours(user: User | None, *, now_time: time | None = None) -> bool:
@@ -307,9 +304,7 @@ def _normalize_payload(
     meta: dict[str, Any] = {}
     meta_source = raw.get("_meta") if isinstance(raw.get("_meta"), Mapping) else {}
     for key in _META_KEYS:
-        value = None
-        if isinstance(meta_source, Mapping):
-            value = meta_source.get(key)
+        value = meta_source.get(key)
         if value is None and key in raw and raw.get(key) is not None:
             value = raw.get(key)
         if value is None:
@@ -383,8 +378,6 @@ def _normalize_payload(
     cleaned_options: dict[str, Any] = {}
     for key, value in payload_options.items():
         if key not in _OPTION_KEYS:
-            continue
-        if key == "actions" and not value:
             continue
         cleaned_options[key] = value
     payload_options = cleaned_options
@@ -561,8 +554,7 @@ def build_payload(
     url = source.get("url")
     if isinstance(url, str) and url.strip():
         payload_data.setdefault("url", url.strip())
-    if notification_type is not None:
-        payload_data.setdefault("type", str(notification_type))
+    payload_data.setdefault("type", str(notification_type))
     options: dict[str, Any] = {}
     for key in ("badge", "icon", "image", "tag", "dir", "lang"):
         value = source.get(key)
@@ -585,11 +577,9 @@ def build_payload(
         options["requireInteraction"] = bool(source.get("requireInteraction"))
     if "silent" in source:
         options["silent"] = bool(source.get("silent"))
-        if "timestamp" in source and source.get("timestamp") is not None:
-            with contextlib.suppress(TypeError, ValueError):
-                ts_val = source.get("timestamp")
-                if ts_val is not None:
-                    options["timestamp"] = int(ts_val)
+    if "timestamp" in source and source.get("timestamp") is not None:
+        with contextlib.suppress(TypeError, ValueError):
+            options["timestamp"] = int(source["timestamp"])
     meta: dict[str, Any] = {}
     for key in _META_KEYS:
         value = source.get(key)

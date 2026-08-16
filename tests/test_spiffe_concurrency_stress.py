@@ -6,6 +6,7 @@ Verifies zero `KEY_VALUES_MISMATCH` or `NO_PRIVATE_KEY_ASSIGNED` errors under hi
 
 from __future__ import annotations
 
+import contextlib
 import socket
 import ssl
 import sys
@@ -155,6 +156,7 @@ def run_mtls_concurrency_stress_test(
     error_counter = Counter()
     success_count = 0
     lock = threading.Lock()
+    server_threads: list[threading.Thread] = []
 
     def rotator_thread():
         """Continuously rotate active SVID in background."""
@@ -165,13 +167,13 @@ def run_mtls_concurrency_stress_test(
     def server_worker(client_conn):
         nonlocal success_count
         try:
-            ssl_conn = server_ctx.wrap_socket(
+            client_conn.settimeout(2.0)
+            with server_ctx.wrap_socket(
                 client_conn,
                 server_side=True,
                 do_handshake_on_connect=False,
-            )
-            ssl_conn.do_handshake()
-            ssl_conn.close()
+            ) as ssl_conn:
+                ssl_conn.do_handshake()
             with lock:
                 success_count += 1
         except Exception as exc:
@@ -180,19 +182,16 @@ def run_mtls_concurrency_stress_test(
             with lock:
                 error_counter[f"Server {err_type}: {err_msg}"] += 1
         finally:
-            try:
+            with contextlib.suppress(OSError):
                 client_conn.close()
-            except OSError:
-                pass
 
     def listener_thread():
         while not stop_event.is_set():
             try:
                 server_sock.settimeout(0.1)
                 client_conn, _ = server_sock.accept()
-                t = threading.Thread(
-                    target=server_worker, args=(client_conn,), daemon=True
-                )
+                t = threading.Thread(target=server_worker, args=(client_conn,))
+                server_threads.append(t)
                 t.start()
             except TimeoutError:
                 continue
@@ -206,24 +205,33 @@ def run_mtls_concurrency_stress_test(
 
     def client_worker():
         for _ in range(handshakes_per_thread):
+            raw_socket: socket.socket | None = None
+            ssl_socket: ssl.SSLSocket | None = None
             try:
-                s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                raw_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                raw_socket.settimeout(2.0)
                 c_ctx = manager.get_client_ssl_context()
                 c_ctx.check_hostname = False
                 c_ctx.verify_mode = ssl.CERT_NONE
-                ssl_s = c_ctx.wrap_socket(
-                    s,
+                ssl_socket = c_ctx.wrap_socket(
+                    raw_socket,
                     server_hostname="university.ecosystem",
                     do_handshake_on_connect=False,
                 )
-                ssl_s.connect(("127.0.0.1", server_port))
-                ssl_s.do_handshake()
-                ssl_s.close()
+                ssl_socket.connect(("127.0.0.1", server_port))
+                ssl_socket.do_handshake()
             except Exception as exc:
                 err_msg = str(exc)
                 err_type = type(exc).__name__
                 with lock:
                     error_counter[f"Client {err_type}: {err_msg}"] += 1
+            finally:
+                if ssl_socket is not None:
+                    with contextlib.suppress(OSError):
+                        ssl_socket.close()
+                if raw_socket is not None:
+                    with contextlib.suppress(OSError):
+                        raw_socket.close()
 
     threads = []
     start_time = time.time()
@@ -240,6 +248,8 @@ def run_mtls_concurrency_stress_test(
     server_sock.close()
     rot_t.join(timeout=1.0)
     list_t.join(timeout=1.0)
+    for thread in server_threads:
+        thread.join(timeout=3.0)
 
     print("\n--- STRESS TEST SUMMARY ---")
     print(f"Duration: {duration:.2f}s")

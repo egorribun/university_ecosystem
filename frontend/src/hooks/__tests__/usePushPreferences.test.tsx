@@ -197,6 +197,25 @@ describe("usePushPreferences", () => {
     )
   })
 
+  it("enableNotifications: subscription null + undecided permission asks for confirmation", async () => {
+    installNotification("default")
+    mockResolveServiceWorkerRegistration.mockResolvedValue({} as any)
+    mockEnsurePushSubscription.mockResolvedValue(null)
+    const onNotify = vi.fn()
+    const { result } = renderHook(() => usePushPreferences({ onNotify }), { wrapper })
+
+    await act(async () => {
+      await result.current.enableNotifications()
+    })
+
+    expect(onNotify).toHaveBeenCalledWith(
+      expect.objectContaining({
+        text: "notifications:messages.confirmPermission",
+        severity: "info",
+      })
+    )
+  })
+
   it("enableNotifications: subscription present but permission not granted → enableInSettings (191-199)", async () => {
     installNotification("default")
     mockResolveServiceWorkerRegistration.mockResolvedValue({} as any)
@@ -483,6 +502,19 @@ describe("usePushPreferences", () => {
         severity: "success",
       })
     )
+
+    onNotify.mockClear()
+    mockGetPersistedTopics.mockReturnValue(undefined)
+    await act(async () => {
+      await result.current.handleTopicToggle("news")({} as any, true)
+    })
+
+    expect(onNotify).toHaveBeenCalledWith(
+      expect.objectContaining({
+        text: "notifications:messages.topicEnabled:notifications:topics.news",
+        severity: "success",
+      })
+    )
   })
 
   it("handleTopicToggle: enabled, ensure throws → updateFailed + revert + logError (329-332)", async () => {
@@ -539,6 +571,7 @@ describe("usePushPreferences", () => {
 
     unmount()
     expect(status.removeEventListener).toHaveBeenCalledWith("change", expect.any(Function))
+    expect(() => changeHandler?.()).not.toThrow()
   })
 
   it("permission effect: onchange fallback path (389-399)", async () => {
@@ -637,6 +670,31 @@ describe("usePushPreferences", () => {
     }
 
     expect(result.current.selectedTopicsDescription).toBe("notifications:messages.noTopics")
+  })
+
+  it("ignores a null persisted-topic payload", async () => {
+    mockGetPersistedTopics.mockReturnValue(null)
+
+    const { result } = renderHook(() => usePushPreferences(), { wrapper })
+
+    await waitFor(() => expect(result.current.pushInitializing).toBe(false))
+    expect(result.current.topicState).toEqual(
+      Object.fromEntries(NOTIFICATION_TOPIC_KEYS.map((topic) => [topic, true]))
+    )
+  })
+
+  it("filters empty persisted topic values", async () => {
+    mockGetPersistedTopics.mockReturnValue(["", "news"])
+
+    const { result } = renderHook(() => usePushPreferences(), { wrapper })
+
+    await waitFor(() => expect(result.current.pushInitializing).toBe(false))
+    expect(result.current.topicState).toEqual({
+      schedule: false,
+      news: true,
+      events: false,
+      system: false,
+    })
   })
 
   it("does not update permission state after the hook unmounts", async () => {

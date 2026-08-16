@@ -196,10 +196,10 @@ PY
 
 ## Docker image
 
-- `root/frontend.Dockerfile` is built in two stages: the `builder` stage runs `npm ci && npm run build`, and the final image is based on `nginx:alpine` and contains only the `dist/` contents.
+- `frontend.Dockerfile` uses separate stages for Rust/WASM compilation, build/runtime dependency installation, and the TanStack Start SSR build. The final image is based on digest-pinned `node:24-alpine`, runs as the unprivileged `node` user, and contains only production dependencies, WASM packages, `dist/`, and the SSR launcher.
 - `VITE_BACKEND_ORIGIN` remains the frontend build-time fallback. Node SSR first reads the runtime `BACKEND_ORIGIN`, so one immutable image works with different Compose/Helm service names; the chart and Compose already provide the internal backend address. Browser API requests stay same-origin and flow through the gateway.
-- Static assets are served by Nginx with caching: files in `assets/` receive `Cache-Control: public, max-age=31536000, immutable`, and `index.html` gets `Cache-Control: no-cache`.
-- The container listens on port `80`. In docker-compose it is forwarded to `8080`, so the SPA is available at http://localhost:8080.
+- Static files and SSR are served by `frontend/scripts/server-prod.mjs`: hashed files in `assets/` receive `Cache-Control: public, max-age=31536000, immutable`, while HTML receives `no-cache`/`no-store`.
+- The container listens on port `3000`; Compose publishes the frontend directly on `127.0.0.1:8081` and Caddy/Gateway on `127.0.0.1:8080`. The fast readiness/liveness endpoint is `/healthz`.
 
 ```bash
 # example local build
@@ -207,9 +207,9 @@ docker compose build frontend
 docker compose up frontend
 ```
 
-## Reverse proxy (Nginx)
+## Edge reverse proxy
 
-If the frontend and API run on different hosts, proxy static files and media through the same domain as the SPA. This avoids CORS/Service Worker artifacts and allows absolute links to the API domain.
+The canonical edge-routing configuration is `services/caddy/Caddyfile`: Caddy proxies SSR to `frontend:3000`, API traffic to the gateway/backend, and WebSockets to ws-hub under one origin. This prevents CORS and Service Worker divergence. If an environment requires Nginx, it must proxy Node SSR instead of serving `dist/client` as a static SPA:
 
 ```nginx
 server {
@@ -217,8 +217,11 @@ server {
     server_name app.example.com;
 
     location / {
-        root /var/www/app/dist; # built frontend
-        try_files $uri /index.html;
+        proxy_pass http://frontend:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
     }
 
     location /static/ {
@@ -237,7 +240,7 @@ server {
 }
 ```
 
-> Alternative: set `VITE_BACKEND_ORIGIN=https://api.example.com` and serve `/media`/`/static` directly from the API domain (without a proxy) while keeping full HTTPS.
+> A same-origin edge is preferred for browsers. `BACKEND_ORIGIN` is the runtime SSR setting, while `VITE_BACKEND_ORIGIN` is only a build-time fallback; never expose internal service DNS in the client bundle.
 
 ## Backend system dependencies
 

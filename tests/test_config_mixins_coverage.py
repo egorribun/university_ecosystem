@@ -135,7 +135,8 @@ class TestJwtSettingsMixin:
     def test_algorithm_hs256_in_dev_allowed_and_uppercased(self, monkeypatch):
         monkeypatch.setenv("ENVIRONMENT", "development")
         monkeypatch.setenv("ALGORITHM", "hs256")
-        s = SecuritySettings()
+        with pytest.warns(UserWarning, match="HS256 is not recommended"):
+            s = SecuritySettings()
         assert s.algorithm == "HS256"  # validate_jwt_algorithm uppercases
         assert s.ALGORITHM == "HS256"  # cached_property delegates (J17)
 

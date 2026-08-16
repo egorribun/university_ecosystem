@@ -85,6 +85,14 @@ def _write_test_contract(path: Path) -> None:
                     "functions": 0,
                 }
             },
+            "go-shared": {
+                "coverage": {
+                    "lines": 0,
+                    "statements": 99,
+                    "branches": 0,
+                    "functions": 0,
+                }
+            },
             "rust-native": {
                 "coverage": {
                     "lines": 99,
@@ -158,6 +166,7 @@ def _write_test_contract(path: Path) -> None:
             "artifacts/coverage/go/gateway/coverage.out",
             "artifacts/coverage/go/ws-hub/coverage.out",
             "artifacts/coverage/go/file-processor/coverage.out",
+            "artifacts/coverage/go/shared/coverage.out",
             "artifacts/coverage/rust/rust-native/llvm.json",
             "artifacts/coverage/rust/rust-pyo3-sanitizer/llvm.json",
             "artifacts/coverage/rust/rust-wasm-sanitizer/llvm.json",
@@ -235,6 +244,8 @@ def _full_report_arguments() -> list[str]:
         f"go-ws-hub={FIXTURES / 'go-ws-hub-valid.coverprofile'}",
         "--go-report",
         f"go-file-processor={FIXTURES / 'go-file-processor-valid.coverprofile'}",
+        "--go-report",
+        f"go-shared={FIXTURES / 'go-shared-valid.coverprofile'}",
         "--rust-report",
         f"rust-native={rust_report}",
         "--rust-report",
@@ -385,6 +396,7 @@ def test_contract_declares_all_canonical_raw_coverage_artifacts() -> None:
         "artifacts/coverage/go/gateway/coverage.out",
         "artifacts/coverage/go/ws-hub/coverage.out",
         "artifacts/coverage/go/file-processor/coverage.out",
+        "artifacts/coverage/go/shared/coverage.out",
         "artifacts/coverage/rust/rust-native/llvm.json",
         "artifacts/coverage/rust/rust-pyo3-sanitizer/llvm.json",
         "artifacts/coverage/rust/rust-wasm-sanitizer/llvm.json",
@@ -410,6 +422,11 @@ def test_normalizes_native_reports_with_provenance_and_honest_metadata(
         "frontend": ["frontend/src"],
         "go-file-processor": ["services/file-processor"],
         "go-gateway": ["services/gateway"],
+        "go-shared": [
+            "services/cmd/uni-cli",
+            "services/pkg/spiffe",
+            "services/pkg/spicedb",
+        ],
         "go-ws-hub": ["services/ws-hub"],
         "infrastructure": ["infra", "infrastructure", "k8s", "charts"],
         "python": ["app"],
@@ -822,6 +839,9 @@ def test_source_identity_accepts_in_root_relative_backslash_and_absolute_paths(
         ("go-gateway", "services/gateway"),
         ("go-ws-hub", "services/ws-hub"),
         ("go-file-processor", "services/file-processor"),
+        ("go-shared", "services/cmd/uni-cli"),
+        ("go-shared", "services/pkg/spiffe"),
+        ("go-shared", "services/pkg/spicedb"),
         ("rust-native", "native/rust_ext"),
         ("rust-pyo3-sanitizer", "crates/pyo3-sanitizer"),
         ("rust-wasm-sanitizer", "frontend/wasm-sanitizer"),
@@ -859,6 +879,32 @@ def test_canonical_source_identity_rejects_every_root_directory_itself(
         )
         == f"{source_root}/fictitious-source.ext"
     )
+
+
+@pytest.mark.parametrize(
+    ("raw_path", "expected"),
+    (
+        (
+            "github.com/university-ecosystem/uni-cli/main.go",
+            "services/cmd/uni-cli/main.go",
+        ),
+        (
+            "github.com/university-ecosystem/services/pkg/spiffe/spiffe.go",
+            "services/pkg/spiffe/spiffe.go",
+        ),
+        (
+            "university-ecosystem/services/pkg/spicedb/client.go",
+            "services/pkg/spicedb/client.go",
+        ),
+    ),
+)
+def test_go_shared_normalizes_every_module_prefix(
+    raw_path: str,
+    expected: str,
+) -> None:
+    normalizer = _normalizer_module()
+
+    assert normalizer._canonical_source_identity("go-shared", raw_path) == expected
 
 
 def test_xml_root_only_source_path_is_a_structural_evidence_error(
@@ -1002,6 +1048,7 @@ def test_frontend_source_identity_rejects_control_characters(
         ("go-gateway", "services/ws-hub/main.go"),
         ("go-ws-hub", "services/gateway/main.go"),
         ("go-file-processor", "services/gateway/main.go"),
+        ("go-shared", "services/gateway/main.go"),
     ),
 )
 def test_go_source_identity_rejects_selected_component_root_mismatch(
@@ -1545,6 +1592,9 @@ def test_derived_go_line_metric_cannot_satisfy_the_strict_v1_floor(
             "go-file-processor": {
                 "coverage": {"lines": 0, "statements": 0, "branches": 0, "functions": 0}
             },
+            "go-shared": {
+                "coverage": {"lines": 0, "statements": 0, "branches": 0, "functions": 0}
+            },
             "rust-native": {
                 "coverage": {"lines": 0, "statements": 0, "branches": 0, "functions": 0}
             },
@@ -1583,6 +1633,7 @@ def test_derived_go_line_metric_cannot_satisfy_the_strict_v1_floor(
             "artifacts/coverage/go/gateway/coverage.out",
             "artifacts/coverage/go/ws-hub/coverage.out",
             "artifacts/coverage/go/file-processor/coverage.out",
+            "artifacts/coverage/go/shared/coverage.out",
             "artifacts/coverage/rust/rust-native/llvm.json",
             "artifacts/coverage/rust/rust-pyo3-sanitizer/llvm.json",
             "artifacts/coverage/rust/rust-wasm-sanitizer/llvm.json",
@@ -2240,6 +2291,9 @@ def test_parser_hardening_preserves_go_nonnegative_profile_positions(
             "go-file-processor": {
                 "coverage": {"lines": 0, "statements": 0, "branches": 0, "functions": 0}
             },
+            "go-shared": {
+                "coverage": {"lines": 0, "statements": 0, "branches": 0, "functions": 0}
+            },
             "rust-native": {
                 "coverage": {"lines": 0, "statements": 0, "branches": 0, "functions": 0}
             },
@@ -2278,6 +2332,7 @@ def test_parser_hardening_preserves_go_nonnegative_profile_positions(
             "artifacts/coverage/go/gateway/coverage.out",
             "artifacts/coverage/go/ws-hub/coverage.out",
             "artifacts/coverage/go/file-processor/coverage.out",
+            "artifacts/coverage/go/shared/coverage.out",
             "artifacts/coverage/rust/rust-native/llvm.json",
             "artifacts/coverage/rust/rust-pyo3-sanitizer/llvm.json",
             "artifacts/coverage/rust/rust-wasm-sanitizer/llvm.json",

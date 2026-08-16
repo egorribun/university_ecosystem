@@ -48,6 +48,23 @@ describe("MobileBottomNav", () => {
     expect(scrollTo).toHaveBeenCalledWith({ top: 0, behavior: "smooth" })
   })
 
+  it("treats a trailing slash as the same active section", async () => {
+    const scrollTo = vi.fn()
+    Object.defineProperty(HTMLElement.prototype, "scrollTo", {
+      configurable: true,
+      value: scrollTo,
+    })
+
+    await renderWithRouter({
+      ui: MobileBottomNav,
+      path: "/dashboard",
+      initialPath: "/dashboard/",
+    })
+
+    fireEvent.click(screen.getByRole("link", { name: /home/i }))
+    expect(scrollTo).toHaveBeenCalledWith({ top: 0, behavior: "smooth" })
+  })
+
   it("does not render the bottom spacer on messenger routes", async () => {
     const { container } = await renderWithRouter({
       ui: MobileBottomNav,

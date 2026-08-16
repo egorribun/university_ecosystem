@@ -16,7 +16,7 @@ const loadMotionModule = async () => {
 
 const PageTransition: FC<Props> = ({ children }) => {
   const [motionModule, setMotionModule] = useState<MotionModule | null>(null)
-  const [hasPainted, setHasPainted] = useState(didPaint)
+  const [isInitialPaint] = useState(() => !didPaint)
   const [reduceMotion, setReduceMotion] = useState(() => {
     if (typeof window === "undefined" || typeof window.matchMedia !== "function") return false
     return window.matchMedia("(prefers-reduced-motion: reduce)").matches
@@ -24,7 +24,6 @@ const PageTransition: FC<Props> = ({ children }) => {
 
   useEffect(() => {
     didPaint = true
-    setHasPainted(true)
   }, [])
 
   useEffect(() => {
@@ -70,9 +69,9 @@ const PageTransition: FC<Props> = ({ children }) => {
   // to this component (defers framer-motion runtime until the first non-
   // reduced-motion paint).
   const { LazyMotion, domAnimation, m } = motionModule
-  const initial = hasPainted
-    ? { opacity: 0, scale: 0.98, y: "0.75rem", filter: "blur(0.25rem)" }
-    : false
+  const initial = isInitialPaint
+    ? false
+    : { opacity: 0, scale: 0.98, y: "0.75rem", filter: "blur(0.25rem)" }
 
   return (
     <LazyMotion features={domAnimation}>

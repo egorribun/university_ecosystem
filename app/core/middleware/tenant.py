@@ -3,21 +3,13 @@
 from __future__ import annotations
 
 import uuid
-from collections.abc import Callable
 from typing import Any
 
 from fastapi import Request
+from structlog.contextvars import clear_contextvars
 
 from app.core.logging import bind_context
 from app.core.tenant import bypass_rls_ctx, tenant_id_ctx
-
-clear_contextvars: Callable[[], None] | None = None
-try:
-    from structlog.contextvars import clear_contextvars as _clear_contextvars
-except ImportError:
-    pass
-else:
-    clear_contextvars = _clear_contextvars
 
 _TENANT_ID_SAFE_CHARS: frozenset[str] = frozenset(
     "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_"  # pragma: allowlist secret
@@ -74,5 +66,4 @@ class TenantContextMiddleware:
         finally:
             tenant_id_ctx.reset(t_token)
             bypass_rls_ctx.reset(b_token)
-            if clear_contextvars is not None:
-                clear_contextvars()
+            clear_contextvars()

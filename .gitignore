@@ -146,6 +146,8 @@ htmlcov/
 .nox/
 .coverage
 .coverage.*
+# Named local coverage databases used by focused closure runs.
+.coverage-*
 .cache
 nosetests.xml
 coverage.xml
@@ -438,6 +440,5 @@ artifacts/
 
 # Agent superpowers directory
 .superpowers/
-
 
 

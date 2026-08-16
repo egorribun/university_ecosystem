@@ -13,8 +13,6 @@ const worker =
       })
     : ({
         postMessage: () => {},
-        onmessage: () => {},
-        onerror: () => {},
       } as unknown as Worker)
 
 // Promise handling

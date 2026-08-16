@@ -78,6 +78,41 @@ describe("Service Worker - Offline Storage & Sync", () => {
       expect(pending).toHaveLength(1) // Should deduplicate
     })
 
+    it("deduplicates bodyless idempotent requests using a null payload", async () => {
+      const report = {
+        url: "http://localhost/news",
+        reportUrl: "http://localhost/api/news",
+        timestamp: 1000,
+        method: "GET",
+      }
+
+      await storePendingReport(report)
+      await storePendingReport(report)
+
+      const pending = await readPendingReports()
+      expect(pending).toHaveLength(1)
+      expect(pending[0]).toMatchObject({
+        method: "GET",
+        dedupeKey: expect.stringMatching(/^[a-f0-9]{64}$/),
+      })
+    })
+
+    it("keeps different idempotent methods distinct for the same URL and payload", async () => {
+      const baseReport = {
+        url: "http://localhost/news",
+        reportUrl: "http://localhost/api/news/1",
+        timestamp: 1000,
+        payload: { read: true },
+      }
+
+      await storePendingReport({ ...baseReport, method: "put" })
+      await storePendingReport({ ...baseReport, method: "DELETE" })
+
+      const pending = await readPendingReports()
+      expect(pending.map((record) => record.method)).toEqual(["PUT", "DELETE"])
+      expect(new Set(pending.map((record) => record.dedupeKey)).size).toBe(2)
+    })
+
     it("does not deduplicate non-idempotent requests (POST)", async () => {
       const report = {
         url: "http://localhost/news",
@@ -180,6 +215,24 @@ describe("Service Worker - Offline Storage & Sync", () => {
 
       const remaining = await readPendingReports()
       expect(remaining).toHaveLength(1) // Kept for retry
+    })
+
+    it.each(["GET", "HEAD"])("omits the request body when replaying %s reports", async (method) => {
+      await storePendingReport({
+        url: "http://localhost/page",
+        reportUrl: "http://localhost/api/report",
+        timestamp: 1000,
+        payload: { stale: true },
+        method,
+      })
+      const fetchMock = vi.fn().mockResolvedValue({ ok: true })
+      vi.stubGlobal("fetch", fetchMock)
+
+      await processPendingReports()
+
+      const requestInit = fetchMock.mock.calls[0]?.[1] as RequestInit
+      expect(requestInit.method).toBe(method)
+      expect(requestInit).not.toHaveProperty("body")
     })
   })
 })

@@ -229,7 +229,8 @@ jobs:
             ./services/ws-hub/... \
             ./services/file-processor/... \
             ./services/cmd/uni-cli/... \
-            ./services/pkg/spiffe/...
+            ./services/pkg/spiffe/... \
+            ./services/pkg/spicedb/...
 
       # RZ-W18-05 (audit 2026-03-23 Wave 18): cargo-audit gate was non-functional —
       # the trailing `|| true` swallowed sys.exit(1) from the Python script, making

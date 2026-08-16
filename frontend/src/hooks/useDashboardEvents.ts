@@ -30,8 +30,8 @@ const ensureEventList = (payload: PaginatedResponse<Event> | null | undefined): 
 
 const sortEventsByStart = (items: Event[]): Event[] => {
   return [...items]
-    .filter((event) => event?.starts_at)
-    .sort((a, b) => String(a.starts_at ?? "").localeCompare(String(b.starts_at ?? "")))
+    .filter((event) => Boolean(event?.starts_at))
+    .sort((a, b) => String(a.starts_at).localeCompare(String(b.starts_at)))
     .slice(0, 30)
 }
 

@@ -159,7 +159,7 @@ services:
         # defaultPendingComponent (post-W156 SW3 hydrateRoot(document) the
         # hasRealSsrContent detection target no longer exists; guard became
         # active harm on data-only routes' Suspense fallback DOM divergence).
-        # Fix applied in router.ts:102 + re-verified via wave137-authed-smoke:
+        # Fix applied in router.ts:102 + re-verified by the visual audit:
         # ALL 9 SSR routes now show 0 hydration errors under diagnostic build.
         # Flag flipped back to "" + rebuilt for production-minified verification.
         FRONTEND_BUILD_UNMINIFIED: ""

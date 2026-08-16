@@ -364,8 +364,6 @@ class PgOutputDecoder:
                 if tuple_byte != b"N":
                     return None
 
-                if offset + 2 > len(payload):
-                    return None
                 num_cols = struct.unpack_from(">H", payload, offset)[0]
                 offset += 2
 
@@ -515,7 +513,7 @@ class CdcOutboxWorker:
     ) -> DomainEvent | None:
         """Reconstruct DomainEvent from CDC record and publish to NATS JetStream.
 
-        Achieves sub-5ms end-to-end dispatch latency.
+        Reports end-to-end dispatch latency through the CDC histogram.
         """
         _t0 = time.perf_counter()
         data = record.data

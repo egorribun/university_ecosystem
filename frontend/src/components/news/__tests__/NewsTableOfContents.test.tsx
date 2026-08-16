@@ -1,8 +1,14 @@
-import { render, screen } from "@testing-library/react"
+import { act, render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { describe, it, expect, vi, beforeEach } from "vitest"
 
-const { mediaMock } = vi.hoisted(() => ({ mediaMock: vi.fn() }))
+const { mediaMock, observerState } = vi.hoisted(() => ({
+  mediaMock: vi.fn(),
+  observerState: {
+    callbacks: [] as IntersectionObserverCallback[],
+    disconnects: [] as ReturnType<typeof vi.fn>[],
+  },
+}))
 
 vi.mock("framer-motion", async () =>
   (await import("@/tests/helpers/framerMotionMock")).framerMotionMock()
@@ -29,11 +35,30 @@ describe("NewsTableOfContents", () => {
   beforeEach(() => {
     mediaMock.mockReset()
     mediaMock.mockReturnValue(true) // desktop by default
+    observerState.callbacks = []
+    observerState.disconnects = []
+    vi.stubGlobal(
+      "IntersectionObserver",
+      class {
+        observe = vi.fn()
+        disconnect = vi.fn()
+
+        constructor(callback: IntersectionObserverCallback) {
+          observerState.callbacks.push(callback)
+          observerState.disconnects.push(this.disconnect)
+        }
+      }
+    )
   })
 
   it("renders nothing when there are fewer than 3 headings", () => {
     const { container } = render(<NewsTableOfContents headings={HEADINGS.slice(0, 2)} />)
     expect(container).toBeEmptyDOMElement()
+  })
+
+  it("does not create an observer for an empty heading list", () => {
+    render(<NewsTableOfContents headings={[]} />)
+    expect(observerState.callbacks).toHaveLength(0)
   })
 
   it("renders the nav, title, count, and all headings on desktop", () => {
@@ -49,10 +74,17 @@ describe("NewsTableOfContents", () => {
   it("toggles the collapsed link list on mobile", async () => {
     mediaMock.mockReturnValue(false) // mobile → collapsed initially
     const user = userEvent.setup()
+    const target = document.createElement("h2")
+    target.id = "background"
+    target.scrollIntoView = vi.fn()
+    document.body.appendChild(target)
     render(<NewsTableOfContents headings={HEADINGS} />)
     expect(screen.queryByRole("button", { name: "Background" })).not.toBeInTheDocument()
     await user.click(screen.getByText("news:toc.title"))
     expect(screen.getByRole("button", { name: "Background" })).toBeInTheDocument()
+    await user.click(screen.getByRole("button", { name: "Background" }))
+    expect(screen.queryByRole("button", { name: "Background" })).not.toBeInTheDocument()
+    document.body.removeChild(target)
   })
 
   it("scrolls to a heading when a link is clicked", async () => {
@@ -65,5 +97,29 @@ describe("NewsTableOfContents", () => {
     await user.click(screen.getByRole("button", { name: "Background" }))
     expect(target.scrollIntoView).toHaveBeenCalled()
     document.body.removeChild(target)
+  })
+
+  it("tracks intersecting headings and ignores missing scroll targets", async () => {
+    const firstTarget = document.createElement("h2")
+    firstTarget.id = "background"
+    document.body.appendChild(firstTarget)
+    const user = userEvent.setup()
+    const { rerender } = render(<NewsTableOfContents headings={HEADINGS} />)
+
+    act(() => {
+      observerState.callbacks[0]?.(
+        [
+          { isIntersecting: false, target: firstTarget } as IntersectionObserverEntry,
+          { isIntersecting: true, target: firstTarget } as IntersectionObserverEntry,
+        ],
+        {} as IntersectionObserver
+      )
+    })
+    expect(screen.getByRole("button", { name: "Background" })).toHaveClass("font-semibold")
+
+    await user.click(screen.getByRole("button", { name: "Methodology" }))
+    rerender(<NewsTableOfContents headings={[...HEADINGS]} />)
+    expect(observerState.disconnects[0]).toHaveBeenCalled()
+    document.body.removeChild(firstTarget)
   })
 })

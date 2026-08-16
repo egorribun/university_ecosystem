@@ -3,9 +3,6 @@ import os
 import nats
 import psycopg
 import pytest
-from testcontainers.core.container import DockerContainer
-from testcontainers.postgres import PostgresContainer
-from testcontainers.redis import RedisContainer
 
 _RUN = bool(os.getenv("RUN_INTEGRATION_TESTS"))
 pytestmark = pytest.mark.skipif(not _RUN, reason="Set RUN_INTEGRATION_TESTS=1 to run")
@@ -13,18 +10,27 @@ pytestmark = pytest.mark.skipif(not _RUN, reason="Set RUN_INTEGRATION_TESTS=1 to
 
 @pytest.fixture(scope="module")
 def postgres():
+    from testcontainers.postgres import PostgresContainer
+
     with PostgresContainer("postgres:15-alpine") as postgres:
         yield postgres
 
 
 @pytest.fixture(scope="module")
 def redis_client():
+    # Import lazily: Testcontainers currently emits a deprecation warning from
+    # its Redis module at import time.  Disabled integration tests must not load
+    # or warn from infrastructure they never execute.
+    from testcontainers.redis import RedisContainer
+
     with RedisContainer("redis:7-alpine") as redis:
         yield redis
 
 
 @pytest.fixture(scope="module")
 def nats_server():
+    from testcontainers.core.container import DockerContainer
+
     with DockerContainer("nats:2.10-alpine").with_exposed_ports(4222) as nats:
         yield nats
 

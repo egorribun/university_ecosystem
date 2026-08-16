@@ -245,6 +245,19 @@ describe("useNewsInteraction — toggleLike", () => {
     await waitFor(() => expect(result.current.isLiking).toBe(false))
   })
 
+  it("online happy path removes an existing like", async () => {
+    const { qc, wrapper } = makeWrapper()
+    setupServer({ initial: { ...baseInteractions, is_liked: true, likes_count: 3 }, like: "ok" })
+    const { result } = renderHook(() => useNewsInteraction(NEWS_ID), { wrapper })
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+    act(() => result.current.toggleLike())
+    await waitFor(() => {
+      const data = qc.getQueryData<NewsInteractions>(["news", NEWS_ID, "interactions"])
+      expect(data?.is_liked).toBe(false)
+      expect(data?.likes_count).toBe(2)
+    })
+  })
+
   it("server 500 rolls back", async () => {
     const { qc, wrapper } = makeWrapper()
     setupServer({ initial: { ...baseInteractions, is_liked: false, likes_count: 3 }, like: "500" })
@@ -318,6 +331,43 @@ describe("useNewsInteraction — toggleLike", () => {
       act(() => result.current.toggleLike())
       await waitFor(() => expect(register).toHaveBeenCalledWith("news-interaction:sync"))
       await waitFor(() => expect(result.current.isLiking).toBe(false))
+    } finally {
+      Object.defineProperty(navigator, "serviceWorker", {
+        configurable: true,
+        value: previousServiceWorker,
+      })
+      Object.defineProperty(window, "SyncManager", {
+        configurable: true,
+        value: previousSyncManager,
+      })
+    }
+  })
+
+  it("keeps the offline mutation when background-sync registration fails", async () => {
+    const registrationError = new Error("sync denied")
+    const register = vi.fn().mockRejectedValue(registrationError)
+    const previousServiceWorker = navigator.serviceWorker
+    const previousSyncManager = (window as Window & { SyncManager?: unknown }).SyncManager
+    Object.defineProperty(navigator, "serviceWorker", {
+      configurable: true,
+      value: { ready: Promise.resolve({ sync: { register } }) },
+    })
+    Object.defineProperty(window, "SyncManager", {
+      configurable: true,
+      value: class SyncManager {},
+    })
+
+    try {
+      const { wrapper } = makeWrapper()
+      setupServer({ initial: baseInteractions, like: "offline" })
+      const { result } = renderHook(() => useNewsInteraction(NEWS_ID), { wrapper })
+      await waitFor(() => expect(result.current.isLoading).toBe(false))
+      setOnline(false)
+
+      act(() => result.current.toggleLike())
+      await waitFor(() => expect(register).toHaveBeenCalledWith("news-interaction:sync"))
+      await waitFor(() => expect(result.current.isLiking).toBe(false))
+      expect(await readQueue()).toHaveLength(1)
     } finally {
       Object.defineProperty(navigator, "serviceWorker", {
         configurable: true,
@@ -462,6 +512,18 @@ describe("useNewsInteraction — updateComment + deleteComment", () => {
     })
   })
 
+  it("updateComment preserves unrelated comments", async () => {
+    const { qc, wrapper } = makeWrapper()
+    setupServer({ initial: twoComments(), patch: "ok" })
+    const { result } = renderHook(() => useNewsInteraction(NEWS_ID), { wrapper })
+    await waitFor(() => expect(result.current.interactions?.comments.length).toBe(2))
+    act(() => result.current.updateComment("c1", "edited"))
+    await waitFor(() => {
+      const data = qc.getQueryData<NewsInteractions>(["news", NEWS_ID, "interactions"])
+      expect(data?.comments.find((comment) => comment.id === "c2")?.content).toBe("b")
+    })
+  })
+
   it("updateComment 500 rolls back", async () => {
     const { qc, wrapper } = makeWrapper()
     setupServer({ initial: oneComment(), patch: "500" })
@@ -499,6 +561,18 @@ describe("useNewsInteraction — updateComment + deleteComment", () => {
       const d = qc.getQueryData<NewsInteractions>(["news", NEWS_ID, "interactions"])
       expect(d?.comments.length).toBe(1)
       expect(d?.comments_count).toBe(1)
+    })
+  })
+
+  it("deleteComment derives the count when the server omits it", async () => {
+    const { qc, wrapper } = makeWrapper()
+    setupServer({ initial: { ...twoComments(), comments_count: undefined }, del: "ok" })
+    const { result } = renderHook(() => useNewsInteraction(NEWS_ID), { wrapper })
+    await waitFor(() => expect(result.current.interactions?.comments.length).toBe(2))
+    act(() => result.current.deleteComment("c1"))
+    await waitFor(() => {
+      const data = qc.getQueryData<NewsInteractions>(["news", NEWS_ID, "interactions"])
+      expect(data?.comments_count).toBe(1)
     })
   })
 
@@ -559,9 +633,13 @@ describe("useNewsInteraction — IndexedDB failure callbacks", () => {
   })
 
   it("surfaces an IndexedDB add failure after the queue database opens", async () => {
+    const onRequestError = vi.fn()
     const addSpy = vi.spyOn(IDBObjectStore.prototype, "add").mockImplementation(() => {
       const request = {} as IDBRequest
-      queueMicrotask(() => request.onerror?.(new Event("error")))
+      queueMicrotask(() => {
+        onRequestError()
+        request.onerror?.(new Event("error"))
+      })
       return request
     })
 
@@ -573,6 +651,7 @@ describe("useNewsInteraction — IndexedDB failure callbacks", () => {
 
     act(() => result.current.toggleLike())
     await waitFor(() => expect(result.current.isLiking).toBe(false))
+    await waitFor(() => expect(onRequestError).toHaveBeenCalledOnce())
     addSpy.mockRestore()
   })
 })

@@ -309,39 +309,8 @@ EVENTS_MAPPINGS = {
         "category": {"type": "keyword"},
     }
 }
-
-
-def get_search_service() -> SearchService:
-    """Get the configured search service instance.
-
-    .. deprecated::
-        This function creates a module-level singleton that is never closed on
-        application shutdown.  New code should inject ``SearchService`` via the
-        Dishka DI container (``app.core.di.search.SearchProvider``), which
-        properly calls ``SearchService.close()`` during the APP scope teardown.
-        This shim is kept only for backwards-compatibility with existing callers
-        that have not yet been migrated.
-    """
-    import warnings
-
-    warnings.warn(
-        "get_search_service() is deprecated. "
-        "Inject SearchService via Dishka (SearchProvider) instead.",
-        DeprecationWarning,
-        stacklevel=2,
-    )
-    from app.core.config import settings
-
-    hosts = getattr(settings, "elasticsearch_url", "http://localhost:9200")
-    user = getattr(settings, "elasticsearch_user", "elastic")
-    password = getattr(settings, "elasticsearch_password", "")
-    http_auth: tuple[str, str] | None = (user, password) if password else None
-    return SearchService(hosts=hosts, http_auth=http_auth)
-
-
 __all__ = [
     "EVENTS_MAPPINGS",
     "NEWS_MAPPINGS",
     "SearchService",
-    "get_search_service",
 ]

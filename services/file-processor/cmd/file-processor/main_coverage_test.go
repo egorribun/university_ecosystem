@@ -29,12 +29,28 @@ import (
 	"github.com/university-ecosystem/file-processor/internal/config"
 	"github.com/university-ecosystem/file-processor/internal/workflow"
 	"github.com/university-ecosystem/services/pkg/spiffe"
+	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
+	"go.opentelemetry.io/otel/sdk/resource"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.temporal.io/sdk/client"
 	"go.temporal.io/sdk/worker"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
 )
+
+type recordingTraceExporter struct {
+	shutdownCalled bool
+}
+
+func (*recordingTraceExporter) ExportSpans(context.Context, []sdktrace.ReadOnlySpan) error {
+	return nil
+}
+
+func (exporter *recordingTraceExporter) Shutdown(context.Context) error {
+	exporter.shutdownCalled = true
+	return nil
+}
 
 func discardLogger() *slog.Logger {
 	return slog.New(slog.NewTextHandler(io.Discard, nil))
@@ -125,6 +141,38 @@ func TestInitTracer_TLSPathSucceeds(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, tp)
 	require.NoError(t, tp.Shutdown(context.Background()))
+}
+
+func TestInitTracer_PropagatesConstructionFailuresAndCleansUpExporter(t *testing.T) {
+	oldExporter := newOTLPTraceExporterFunc
+	oldResource := newOTelResourceFunc
+	t.Cleanup(func() {
+		newOTLPTraceExporterFunc = oldExporter
+		newOTelResourceFunc = oldResource
+	})
+	cfg := &config.Config{Environment: "development", OTLPEndpoint: "127.0.0.1:4317"}
+	exporterErr := errors.New("synthetic exporter failure")
+	newOTLPTraceExporterFunc = func(context.Context, ...otlptracegrpc.Option) (sdktrace.SpanExporter, error) {
+		return nil, exporterErr
+	}
+
+	tp, err := initTracer(context.Background(), cfg, discardLogger())
+	assert.Nil(t, tp)
+	assert.ErrorIs(t, err, exporterErr)
+
+	exporter := &recordingTraceExporter{}
+	newOTLPTraceExporterFunc = func(context.Context, ...otlptracegrpc.Option) (sdktrace.SpanExporter, error) {
+		return exporter, nil
+	}
+	resourceErr := errors.New("synthetic resource failure")
+	newOTelResourceFunc = func(context.Context, ...resource.Option) (*resource.Resource, error) {
+		return nil, resourceErr
+	}
+
+	tp, err = initTracer(context.Background(), cfg, discardLogger())
+	assert.Nil(t, tp)
+	assert.ErrorIs(t, err, resourceErr)
+	assert.True(t, exporter.shutdownCalled)
 }
 
 func TestInitializeTracerShutdown_SuccessPath(t *testing.T) {

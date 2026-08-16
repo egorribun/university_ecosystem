@@ -198,11 +198,20 @@ func TestListenForRevocations_PanicRecovery(t *testing.T) {
 	m := NewJWTMiddleware("secret", rClient)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+	panicked := make(chan struct{})
+	m.listenOnceFunc = func(context.Context) {
+		close(panicked)
+		panic("synthetic listener panic")
+	}
 
-	// Just checking it registers and returns.
 	assert.NotPanics(t, func() {
 		m.ListenForRevocations(ctx)
 	})
+	select {
+	case <-panicked:
+	case <-time.After(time.Second):
+		t.Fatal("revocation listener did not execute")
+	}
 }
 
 // TestVerifySession_JTIEmpty verifies verifySession behavior when sessionID is empty.

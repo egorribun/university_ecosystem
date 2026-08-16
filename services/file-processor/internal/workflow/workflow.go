@@ -302,9 +302,9 @@ func (a *FileActivities) downloadAndDecodeImage(ctx context.Context, key string)
 
 	select {
 	case <-ctx.Done():
-		if closeErr := obj.Close(); closeErr != nil {
-			_ = closeErr
-		}
+		// Close immediately to unblock a decoder waiting on the response body;
+		// the cancellation error below remains the authoritative result.
+		_ = obj.Close()
 		return nil, "", temporal.NewApplicationError("context cancelled during image decode", "ContextCancelled")
 	case res := <-doneCh:
 		if res.err != nil {

@@ -161,13 +161,13 @@ jobs:
         run: npm install --global @oasdiff-js/oasdiff-js@1.0.0
 
       - name: Check for breaking changes against committed snapshot
-        # The snapshot (tests/contracts/openapi.json) represents the
+        # The canonical snapshot represents the
         # "old" (main-branch) spec.  The generated spec is the "new" (PR) spec.
         # --fail-on ERR exits non-zero only on breaking changes.
         # Additive changes (new paths, new optional fields) are allowed.
         run: |
           oasdiff breaking \
-            tests/contracts/openapi.json \
+            tests/contracts/snapshots/api_openapi_v1.json \
             /tmp/pr-openapi.json \
             --fail-on ERR || {
             echo "::error::Breaking OpenAPI changes detected in this PR."

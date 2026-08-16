@@ -5,6 +5,7 @@ import type { ReactNode } from "react"
 
 import { useMapEvents } from "./useMapEvents"
 import * as eventsHook from "@/api/hooks/events"
+import * as campusData from "@/data/campusBuildings"
 
 /**
  * useMapEvents — fetches active events and resolves campus building
@@ -185,6 +186,27 @@ describe("useMapEvents — building resolution", () => {
     const { result } = renderHook(() => useMapEvents(), {
       wrapper: wrapper(client),
     })
+    expect(result.current.events).toEqual([])
+  })
+
+  it("skips a recognized building when the localized catalog has no matching entry", () => {
+    vi.spyOn(campusData, "getCampusBuildings").mockReturnValue([])
+    stubEventsHook([
+      {
+        id: "missing-catalog-entry",
+        title: "Temporarily unavailable building",
+        starts_at: "2026-05-15T10:00:00Z",
+        ends_at: "2026-05-15T12:00:00Z",
+        location: "ГУК-305",
+        location_en: null,
+      },
+    ])
+
+    const client = newClient()
+    const { result } = renderHook(() => useMapEvents(), {
+      wrapper: wrapper(client),
+    })
+
     expect(result.current.events).toEqual([])
   })
 

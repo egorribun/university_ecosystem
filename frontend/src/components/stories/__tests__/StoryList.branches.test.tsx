@@ -56,6 +56,7 @@ function getList(): HTMLUListElement {
 
 afterEach(() => {
   vi.clearAllMocks()
+  vi.unstubAllGlobals()
 })
 
 describe("StoryList branches", () => {
@@ -82,6 +83,32 @@ describe("StoryList branches", () => {
     render(<StoryList stories={storiesWithCover} onOpenStory={vi.fn()} />)
     // Second story has no cover_url → initials span renders first 2 chars (line 285)
     expect(screen.getByText("Se")).toBeInTheDocument()
+    expect(screen.getByLabelText("Story: Second Cover")).toHaveAttribute("title", "Second Cover")
+  })
+
+  it("safely ignores a queued resize callback after unmount", () => {
+    let resizeCallback: ResizeObserverCallback | undefined
+    const disconnect = vi.fn()
+
+    class ResizeObserverStub {
+      constructor(callback: ResizeObserverCallback) {
+        resizeCallback = callback
+      }
+      observe() {}
+      unobserve() {}
+      disconnect() {
+        disconnect()
+      }
+    }
+
+    vi.stubGlobal("ResizeObserver", ResizeObserverStub)
+    const { unmount } = render(<StoryList stories={storiesWithCover} onOpenStory={vi.fn()} />)
+    expect(resizeCallback).toBeDefined()
+
+    unmount()
+
+    expect(disconnect).toHaveBeenCalledOnce()
+    expect(() => resizeCallback?.([], {} as ResizeObserver)).not.toThrow()
   })
 
   it("uses the LCP priority only for the first covered story", () => {

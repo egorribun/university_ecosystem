@@ -1,6 +1,7 @@
 import { useCallback, useEffect } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 
+import { logWarning } from "@/app/logger"
 import {
   clearNotifications as clearNotificationsRequest,
   fetchNotificationsList,
@@ -17,7 +18,7 @@ type NotificationsResponse = NotificationsListResult
 
 type NormalizedNotificationsResponse = {
   items: NotificationItem[]
-  unread: number | null
+  unread: number
   hasMore: boolean
   nextCursor: string | null
 }
@@ -48,7 +49,9 @@ export function useNotifications() {
   // Check for upcoming classes on mount to ensure notifications are generated
   // even if the background worker is idle.
   useEffect(() => {
-    checkScheduleRequest()
+    void checkScheduleRequest().catch((error: unknown) => {
+      logWarning("Failed to generate schedule notifications", error)
+    })
   }, [])
 
   const markRead = useMutation({
@@ -95,7 +98,7 @@ export function useNotifications() {
 
         return {
           items: mergedItems,
-          unread: nextPage.unread ?? current.unread,
+          unread: nextPage.unread,
           hasMore: nextPage.hasMore,
           nextCursor: nextPage.nextCursor,
         }

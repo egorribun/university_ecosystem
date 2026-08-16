@@ -125,4 +125,15 @@ describe("MapSearchBar", () => {
     expect(input).toHaveValue("")
     expect(screen.queryByRole("listbox")).not.toBeInTheDocument()
   })
+
+  it("cancels a pending blur close when unmounted", () => {
+    const clearTimeoutSpy = vi.spyOn(window, "clearTimeout")
+    const view = render(<MapSearchBar {...baseProps} />)
+    fireEvent.blur(screen.getByRole("combobox"))
+
+    view.unmount()
+
+    expect(clearTimeoutSpy).toHaveBeenCalledOnce()
+    clearTimeoutSpy.mockRestore()
+  })
 })

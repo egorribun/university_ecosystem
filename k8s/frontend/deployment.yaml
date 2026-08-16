@@ -12,7 +12,7 @@ metadata:
     app.kubernetes.io/component: web
 spec:
   replicas: 2
-  # Wave 132 SW4 — explicit RollingUpdate strategy for Phase 6 canary safety.
+  # Explicit RollingUpdate strategy keeps normal deployments observable and reversible.
   # `maxUnavailable: 0` ensures NO drop in capacity during canary stage Pod
   # cycling — new Pods come up + pass /healthz before old Pods are removed.
   # `maxSurge: 25%` allows one extra Pod (replicas:2 → 3 transient peak)

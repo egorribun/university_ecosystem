@@ -2,6 +2,7 @@ package spicedb
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 )
@@ -38,5 +39,44 @@ func TestSpiceDBMemoryClient(t *testing.T) {
 	}, 1*time.Second)
 	if err != nil || !allowed {
 		t.Fatalf("expected EvaluateWithTimeout to return allowed=true, got %v err=%v", allowed, err)
+	}
+}
+
+func TestMemoryClientRejectsCancelledEvaluation(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	client := NewMemoryClient()
+
+	allowed, err := client.CheckPermission(ctx, "campus", "north", "view", "user")
+
+	if allowed {
+		t.Fatal("cancelled permission evaluation must fail closed")
+	}
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("expected context cancellation, got %v", err)
+	}
+}
+
+func TestEvaluateWithTimeoutStopsWaitingAtDeadline(t *testing.T) {
+	started := make(chan struct{})
+	release := make(chan struct{})
+	defer close(release)
+
+	allowed, err := EvaluateWithTimeout(
+		context.Background(),
+		func() (bool, error) {
+			close(started)
+			<-release
+			return true, nil
+		},
+		10*time.Millisecond,
+	)
+
+	<-started
+	if allowed {
+		t.Fatal("timed-out evaluation must fail closed")
+	}
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("expected deadline exceeded, got %v", err)
 	}
 }

@@ -382,7 +382,7 @@ async function createConfig() {
       // -f4/g3 (hooks barrel + i18n keys merged in pre-routine-e5) NOT the
       // cause either (dev wrapper measurements match W124 SW6 baseline).
       // Root cause: CI runner is systematically slower under load.
-      // Wave 125 SSR Phase 1 (`docs/plans/2026-05-01-wave125-ssr-design.md`)
+      // Wave 125 SSR Phase 1 (`docs/audits/archive/AUDIT_WAVE125.md`)
       // is the structural fix — drops auth-route LCP from ~12s → < 2.5s,
       // hoists Perf well above 0.40 in both dev + CI environments.
       // Until then, relaxed Perf assertion to `warn@0.40`: keeps the

@@ -69,6 +69,9 @@ type JWTMiddleware struct {
 	redis        *redis.Client
 	l1cache      *lru.Cache[string, cacheEntry]
 	l1TTL        time.Duration // PERF-31-02: TTL for XFetch jitter calculation
+	// listenOnceFunc is an internal seam for deterministic goroutine-failure
+	// testing. Production instances leave it nil and call listenOnce directly.
+	listenOnceFunc func(context.Context)
 }
 
 var (
@@ -457,7 +460,11 @@ func (m *JWTMiddleware) ListenForRevocations(ctx context.Context) {
 				return
 			}
 
-			m.listenOnce(ctx)
+			if m.listenOnceFunc != nil {
+				m.listenOnceFunc(ctx)
+			} else {
+				m.listenOnce(ctx)
+			}
 
 			// Channel closed — Redis disconnected.
 			revocationListenerDisconnects.Inc()

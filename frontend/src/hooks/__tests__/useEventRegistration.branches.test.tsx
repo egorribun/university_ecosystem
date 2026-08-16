@@ -34,6 +34,17 @@ import { useEventRegistration } from "../useEventRegistration"
 
 const mockUser = { id: 123, username: "u", email: "u@x.io", is_active: true } as any
 const eventId = "event-456"
+type HookProps = Parameters<typeof useEventRegistration>[0]
+
+const deferred = <T,>() => {
+  let resolve!: (value: T) => void
+  let reject!: (reason?: unknown) => void
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise
+    reject = rejectPromise
+  })
+  return { promise, reject, resolve }
+}
 
 describe("useEventRegistration (branches)", () => {
   beforeEach(() => {
@@ -408,5 +419,600 @@ describe("useEventRegistration (branches)", () => {
 
     expect(result.current.isRegistered).toBe(false)
     expect(result.current.qrToken).toBeUndefined()
+  })
+
+  it("resets registration state before persisting a new event and user scope", async () => {
+    const eventA = "event-a"
+    const eventB = "event-b"
+    const userB = { ...mockUser, id: 456 }
+    localStorage.setItem(`event:reg:${eventA}:123`, "1")
+    localStorage.setItem(`event:qr:${eventA}:123`, "qr-A")
+
+    type Props = {
+      eventId: string
+      user: typeof mockUser
+      initialRegistered: boolean
+      initialParticipantCount: number
+      initialQrToken?: string
+    }
+    const initialProps: Props = {
+      eventId: eventA,
+      user: mockUser,
+      initialRegistered: false,
+      initialParticipantCount: 8,
+      initialQrToken: "qr-A",
+    }
+    const { result, rerender } = renderHook((props: Props) => useEventRegistration(props), {
+      initialProps,
+    })
+
+    await waitFor(() => expect(result.current.isRegistered).toBe(true))
+    await waitFor(() => expect(result.current.qrToken).toBe("qr-A"))
+    expect(result.current.participantCount).toBe(8)
+
+    const setItem = vi.spyOn(Storage.prototype, "setItem")
+    rerender({
+      eventId: eventB,
+      user: userB,
+      initialRegistered: false,
+      initialParticipantCount: 2,
+      initialQrToken: undefined,
+    })
+
+    await waitFor(() => expect(result.current.isRegistered).toBe(false))
+    expect(result.current.participantCount).toBe(2)
+    expect(result.current.qrToken).toBeUndefined()
+    expect(setItem.mock.calls).not.toContainEqual([`event:reg:${eventB}:456`, "1"])
+    expect(setItem.mock.calls).not.toContainEqual([`event:qr:${eventB}:456`, "qr-A"])
+  })
+
+  it("ignores a stale sync success after the event scope changes", async () => {
+    const request = deferred<{ data: Record<string, unknown> }>()
+    mockGet.mockReturnValueOnce(request.promise)
+    const onNotify = vi.fn()
+    const initialProps: HookProps = {
+      eventId: "event-a",
+      user: mockUser,
+      initialRegistered: false,
+      initialParticipantCount: 3,
+      onNotify,
+    }
+    const { result, rerender } = renderHook((props: HookProps) => useEventRegistration(props), {
+      initialProps,
+    })
+
+    const operation = result.current.sync()
+    rerender({
+      eventId: "event-b",
+      user: mockUser,
+      initialRegistered: false,
+      initialParticipantCount: 40,
+      onNotify,
+    })
+    expect(result.current.isRegistered).toBe(false)
+    expect(result.current.participantCount).toBe(40)
+    expect(result.current.qrToken).toBeUndefined()
+
+    const setItem = vi.spyOn(Storage.prototype, "setItem")
+    const removeItem = vi.spyOn(Storage.prototype, "removeItem")
+    let outcome: string | null = "pending"
+    await act(async () => {
+      request.resolve({
+        data: { is_registered: true, participant_count: 9, my_qr_token: "qr-A" },
+      })
+      outcome = await operation
+    })
+
+    expect(outcome).toBeNull()
+    expect(result.current.isRegistered).toBe(false)
+    expect(result.current.participantCount).toBe(40)
+    expect(result.current.qrToken).toBeUndefined()
+    expect(localStorage.getItem("event:reg:event-b:123")).toBeNull()
+    expect(localStorage.getItem("event:qr:event-b:123")).toBeNull()
+    expect(setItem).not.toHaveBeenCalled()
+    expect(removeItem).not.toHaveBeenCalled()
+    expect(onNotify).not.toHaveBeenCalled()
+  })
+
+  it("does not leak a pending or completed registration into a new user scope", async () => {
+    const request = deferred<{ data: { qr_code: string } }>()
+    mockPost.mockReturnValueOnce(request.promise)
+    const onNotify = vi.fn()
+    const userB = { ...mockUser, id: 456 }
+    const initialProps: HookProps = {
+      eventId,
+      user: mockUser,
+      initialRegistered: false,
+      initialParticipantCount: 3,
+      onNotify,
+    }
+    const { result, rerender } = renderHook((props: HookProps) => useEventRegistration(props), {
+      initialProps,
+    })
+
+    act(() => {
+      void result.current.register()
+    })
+    expect(result.current.isRegistered).toBe(true)
+    expect(result.current.participantCount).toBe(4)
+
+    rerender({
+      eventId,
+      user: userB,
+      initialRegistered: false,
+      initialParticipantCount: 50,
+      onNotify,
+    })
+    expect(result.current.isRegistered).toBe(false)
+    expect(result.current.participantCount).toBe(50)
+    expect(result.current.qrToken).toBeUndefined()
+
+    const setItem = vi.spyOn(Storage.prototype, "setItem")
+    const removeItem = vi.spyOn(Storage.prototype, "removeItem")
+    await act(async () => {
+      request.resolve({ data: { qr_code: "qr-A" } })
+      await request.promise
+      await Promise.resolve()
+    })
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+
+    expect(result.current.isRegistered).toBe(false)
+    expect(result.current.participantCount).toBe(50)
+    expect(result.current.qrToken).toBeUndefined()
+    expect(localStorage.getItem(`event:reg:${eventId}:456`)).toBeNull()
+    expect(localStorage.getItem(`event:qr:${eventId}:456`)).toBeNull()
+    expect(setItem).not.toHaveBeenCalled()
+    expect(removeItem).not.toHaveBeenCalled()
+    expect(onNotify).not.toHaveBeenCalled()
+  })
+
+  it("does not notify for a stale registration error after the event scope changes", async () => {
+    const request = deferred<{ data: { qr_code: string } }>()
+    mockPost.mockReturnValueOnce(request.promise)
+    const onNotify = vi.fn()
+    const initialProps: HookProps = {
+      eventId: "event-a",
+      user: mockUser,
+      initialRegistered: false,
+      initialParticipantCount: 5,
+      onNotify,
+    }
+    const { result, rerender } = renderHook((props: HookProps) => useEventRegistration(props), {
+      initialProps,
+    })
+
+    act(() => {
+      void result.current.register()
+    })
+    rerender({
+      eventId: "event-b",
+      user: mockUser,
+      initialRegistered: false,
+      initialParticipantCount: 51,
+      onNotify,
+    })
+    expect(result.current.isRegistered).toBe(false)
+    expect(result.current.participantCount).toBe(51)
+
+    const setItem = vi.spyOn(Storage.prototype, "setItem")
+    const removeItem = vi.spyOn(Storage.prototype, "removeItem")
+    await act(async () => {
+      request.reject(new Error("registration failed"))
+      await request.promise.catch(() => undefined)
+      await Promise.resolve()
+    })
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+
+    expect(result.current.isRegistered).toBe(false)
+    expect(result.current.participantCount).toBe(51)
+    expect(result.current.qrToken).toBeUndefined()
+    expect(setItem).not.toHaveBeenCalled()
+    expect(removeItem).not.toHaveBeenCalled()
+    expect(onNotify).not.toHaveBeenCalled()
+  })
+
+  it("does not notify when a registration resync becomes stale", async () => {
+    const postRequest = deferred<{ data: { qr_code: string } }>()
+    const syncRequest = deferred<{ data: Record<string, unknown> }>()
+    mockPost.mockReturnValueOnce(postRequest.promise)
+    mockGet.mockReturnValueOnce(syncRequest.promise)
+    const networkError = { code: "ERR_NETWORK", response: undefined }
+    mockIsAxiosError.mockImplementation((error: unknown) => error === networkError)
+    const onNotify = vi.fn()
+    const initialProps: HookProps = {
+      eventId: "event-a",
+      user: mockUser,
+      initialRegistered: false,
+      initialParticipantCount: 6,
+      onNotify,
+    }
+    const { result, rerender } = renderHook((props: HookProps) => useEventRegistration(props), {
+      initialProps,
+    })
+
+    act(() => {
+      void result.current.register()
+    })
+    await act(async () => {
+      postRequest.reject(networkError)
+      await postRequest.promise.catch(() => undefined)
+      await Promise.resolve()
+    })
+    await waitFor(() => expect(mockGet).toHaveBeenCalledOnce())
+
+    rerender({
+      eventId: "event-b",
+      user: mockUser,
+      initialRegistered: false,
+      initialParticipantCount: 52,
+      onNotify,
+    })
+    expect(result.current.isRegistered).toBe(false)
+    expect(result.current.participantCount).toBe(52)
+
+    const setItem = vi.spyOn(Storage.prototype, "setItem")
+    const removeItem = vi.spyOn(Storage.prototype, "removeItem")
+    await act(async () => {
+      syncRequest.resolve({
+        data: { is_registered: true, participant_count: 10, my_qr_token: "qr-A" },
+      })
+      await syncRequest.promise
+      await Promise.resolve()
+    })
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+
+    expect(result.current.isRegistered).toBe(false)
+    expect(result.current.participantCount).toBe(52)
+    expect(result.current.qrToken).toBeUndefined()
+    expect(setItem).not.toHaveBeenCalled()
+    expect(removeItem).not.toHaveBeenCalled()
+    expect(onNotify).not.toHaveBeenCalled()
+  })
+
+  it("does not leak a pending or completed unregistration into a new user scope", async () => {
+    const request = deferred<{ data: null }>()
+    mockDelete.mockReturnValueOnce(request.promise)
+    const onNotify = vi.fn()
+    const userB = { ...mockUser, id: 456 }
+    const initialProps: HookProps = {
+      eventId,
+      user: mockUser,
+      initialRegistered: true,
+      initialParticipantCount: 8,
+      initialQrToken: "qr-A",
+      onNotify,
+    }
+    const { result, rerender } = renderHook((props: HookProps) => useEventRegistration(props), {
+      initialProps,
+    })
+
+    act(() => {
+      void result.current.unregister()
+    })
+    expect(result.current.isRegistered).toBe(false)
+    expect(result.current.participantCount).toBe(7)
+
+    rerender({
+      eventId,
+      user: userB,
+      initialRegistered: true,
+      initialParticipantCount: 60,
+      initialQrToken: "qr-B",
+      onNotify,
+    })
+    expect(result.current.isRegistered).toBe(true)
+    expect(result.current.participantCount).toBe(60)
+    expect(result.current.qrToken).toBe("qr-B")
+
+    const setItem = vi.spyOn(Storage.prototype, "setItem")
+    const removeItem = vi.spyOn(Storage.prototype, "removeItem")
+    await act(async () => {
+      request.resolve({ data: null })
+      await request.promise
+      await Promise.resolve()
+    })
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+
+    expect(result.current.isRegistered).toBe(true)
+    expect(result.current.participantCount).toBe(60)
+    expect(result.current.qrToken).toBe("qr-B")
+    expect(localStorage.getItem(`event:reg:${eventId}:456`)).toBe("1")
+    expect(localStorage.getItem(`event:qr:${eventId}:456`)).toBe("qr-B")
+    expect(setItem).not.toHaveBeenCalled()
+    expect(removeItem).not.toHaveBeenCalled()
+    expect(onNotify).not.toHaveBeenCalled()
+  })
+
+  it("does not notify for a stale unregistration error after the event scope changes", async () => {
+    const request = deferred<{ data: null }>()
+    mockDelete.mockReturnValueOnce(request.promise)
+    const onNotify = vi.fn()
+    const initialProps: HookProps = {
+      eventId: "event-a",
+      user: mockUser,
+      initialRegistered: true,
+      initialParticipantCount: 9,
+      initialQrToken: "qr-A",
+      onNotify,
+    }
+    const { result, rerender } = renderHook((props: HookProps) => useEventRegistration(props), {
+      initialProps,
+    })
+
+    act(() => {
+      void result.current.unregister()
+    })
+    rerender({
+      eventId: "event-b",
+      user: mockUser,
+      initialRegistered: true,
+      initialParticipantCount: 61,
+      initialQrToken: "qr-B",
+      onNotify,
+    })
+    expect(result.current.isRegistered).toBe(true)
+    expect(result.current.participantCount).toBe(61)
+    expect(result.current.qrToken).toBe("qr-B")
+
+    const setItem = vi.spyOn(Storage.prototype, "setItem")
+    const removeItem = vi.spyOn(Storage.prototype, "removeItem")
+    await act(async () => {
+      request.reject(new Error("unregistration failed"))
+      await request.promise.catch(() => undefined)
+      await Promise.resolve()
+    })
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+
+    expect(result.current.isRegistered).toBe(true)
+    expect(result.current.participantCount).toBe(61)
+    expect(result.current.qrToken).toBe("qr-B")
+    expect(setItem).not.toHaveBeenCalled()
+    expect(removeItem).not.toHaveBeenCalled()
+    expect(onNotify).not.toHaveBeenCalled()
+  })
+
+  it("does not notify when an unregistration resync becomes stale", async () => {
+    const deleteRequest = deferred<{ data: null }>()
+    const syncRequest = deferred<{ data: Record<string, unknown> }>()
+    mockDelete.mockReturnValueOnce(deleteRequest.promise)
+    mockGet.mockReturnValueOnce(syncRequest.promise)
+    const networkError = { code: "ERR_NETWORK", response: undefined }
+    mockIsAxiosError.mockImplementation((error: unknown) => error === networkError)
+    const onNotify = vi.fn()
+    const initialProps: HookProps = {
+      eventId: "event-a",
+      user: mockUser,
+      initialRegistered: true,
+      initialParticipantCount: 10,
+      initialQrToken: "qr-A",
+      onNotify,
+    }
+    const { result, rerender } = renderHook((props: HookProps) => useEventRegistration(props), {
+      initialProps,
+    })
+
+    act(() => {
+      void result.current.unregister()
+    })
+    await act(async () => {
+      deleteRequest.reject(networkError)
+      await deleteRequest.promise.catch(() => undefined)
+      await Promise.resolve()
+    })
+    await waitFor(() => expect(mockGet).toHaveBeenCalledOnce())
+
+    rerender({
+      eventId: "event-b",
+      user: mockUser,
+      initialRegistered: true,
+      initialParticipantCount: 62,
+      initialQrToken: "qr-B",
+      onNotify,
+    })
+    expect(result.current.isRegistered).toBe(true)
+    expect(result.current.participantCount).toBe(62)
+    expect(result.current.qrToken).toBe("qr-B")
+
+    const setItem = vi.spyOn(Storage.prototype, "setItem")
+    const removeItem = vi.spyOn(Storage.prototype, "removeItem")
+    await act(async () => {
+      syncRequest.resolve({ data: { is_registered: false, participant_count: 2 } })
+      await syncRequest.promise
+      await Promise.resolve()
+    })
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+
+    expect(result.current.isRegistered).toBe(true)
+    expect(result.current.participantCount).toBe(62)
+    expect(result.current.qrToken).toBe("qr-B")
+    expect(setItem).not.toHaveBeenCalled()
+    expect(removeItem).not.toHaveBeenCalled()
+    expect(onNotify).not.toHaveBeenCalled()
+  })
+
+  it("tracks registration loading only for the current scope", async () => {
+    const requestA = deferred<{ data: { qr_code: string } }>()
+    const requestB = deferred<{ data: { qr_code: string } }>()
+    mockPost.mockReturnValueOnce(requestA.promise).mockReturnValueOnce(requestB.promise)
+    const onNotify = vi.fn()
+    const initialProps: HookProps = {
+      eventId: "event-a",
+      user: mockUser,
+      initialRegistered: false,
+      initialParticipantCount: 3,
+      onNotify,
+    }
+    const { result, rerender } = renderHook((props: HookProps) => useEventRegistration(props), {
+      initialProps,
+    })
+
+    act(() => {
+      void result.current.register()
+    })
+    await waitFor(() => expect(result.current.isLoading).toBe(true))
+
+    rerender({
+      eventId: "event-b",
+      user: mockUser,
+      initialRegistered: false,
+      initialParticipantCount: 40,
+      onNotify,
+    })
+    expect(result.current.isRegistered).toBe(false)
+    expect(result.current.participantCount).toBe(40)
+    expect.soft(result.current.isLoading).toBe(false)
+
+    act(() => {
+      void result.current.register()
+    })
+    expect(result.current.isRegistered).toBe(true)
+    expect(result.current.participantCount).toBe(41)
+    expect(result.current.isLoading).toBe(true)
+
+    await act(async () => {
+      requestB.resolve({ data: { qr_code: "qr-B" } })
+      await requestB.promise
+      await Promise.resolve()
+    })
+    expect(result.current.isRegistered).toBe(true)
+    expect(result.current.participantCount).toBe(41)
+    expect.soft(result.current.isLoading).toBe(false)
+
+    await act(async () => {
+      requestA.resolve({ data: { qr_code: "qr-A" } })
+      await requestA.promise
+      await Promise.resolve()
+    })
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+    expect(result.current.isRegistered).toBe(true)
+    expect(result.current.participantCount).toBe(41)
+    expect(result.current.qrToken).toBe("qr-B")
+  })
+
+  it("tracks unregistration loading only for the current scope", async () => {
+    const requestA = deferred<{ data: null }>()
+    const requestB = deferred<{ data: null }>()
+    mockDelete.mockReturnValueOnce(requestA.promise).mockReturnValueOnce(requestB.promise)
+    const onNotify = vi.fn()
+    const initialProps: HookProps = {
+      eventId: "event-a",
+      user: mockUser,
+      initialRegistered: true,
+      initialParticipantCount: 10,
+      initialQrToken: "qr-A",
+      onNotify,
+    }
+    const { result, rerender } = renderHook((props: HookProps) => useEventRegistration(props), {
+      initialProps,
+    })
+
+    act(() => {
+      void result.current.unregister()
+    })
+    await waitFor(() => expect(result.current.isLoading).toBe(true))
+
+    rerender({
+      eventId: "event-b",
+      user: mockUser,
+      initialRegistered: true,
+      initialParticipantCount: 60,
+      initialQrToken: "qr-B",
+      onNotify,
+    })
+    expect(result.current.isRegistered).toBe(true)
+    expect(result.current.participantCount).toBe(60)
+    expect(result.current.qrToken).toBe("qr-B")
+    expect.soft(result.current.isLoading).toBe(false)
+
+    act(() => {
+      void result.current.unregister()
+    })
+    expect(result.current.isRegistered).toBe(false)
+    expect(result.current.participantCount).toBe(59)
+    expect(result.current.isLoading).toBe(true)
+
+    await act(async () => {
+      requestB.resolve({ data: null })
+      await requestB.promise
+      await Promise.resolve()
+    })
+    expect(result.current.isRegistered).toBe(false)
+    expect(result.current.participantCount).toBe(59)
+    expect.soft(result.current.isLoading).toBe(false)
+
+    await act(async () => {
+      requestA.resolve({ data: null })
+      await requestA.promise
+      await Promise.resolve()
+    })
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+    expect(result.current.isRegistered).toBe(false)
+    expect(result.current.participantCount).toBe(59)
+    expect(result.current.qrToken).toBeUndefined()
+  })
+
+  it("keeps loading until every concurrent operation in the current scope settles", async () => {
+    const requestA = deferred<{ data: { qr_code: string } }>()
+    const requestB = deferred<{ data: { qr_code: string } }>()
+    mockPost.mockReturnValueOnce(requestA.promise).mockReturnValueOnce(requestB.promise)
+    const { result } = renderHook(() =>
+      useEventRegistration({
+        eventId,
+        user: mockUser,
+        initialRegistered: false,
+        initialParticipantCount: 2,
+      })
+    )
+
+    act(() => {
+      void result.current.register()
+      void result.current.register()
+    })
+    await waitFor(() => expect(result.current.isLoading).toBe(true))
+
+    await act(async () => {
+      requestA.resolve({ data: { qr_code: "qr-A" } })
+      await requestA.promise
+      await Promise.resolve()
+    })
+    expect(result.current.isLoading).toBe(true)
+
+    await act(async () => {
+      requestB.resolve({ data: { qr_code: "qr-B" } })
+      await requestB.promise
+      await Promise.resolve()
+    })
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+    expect(result.current.isRegistered).toBe(true)
+    expect(result.current.participantCount).toBe(4)
+    expect(result.current.qrToken).toBe("qr-B")
+  })
+
+  it("settles a pending registration after unmount without side effects", async () => {
+    const request = deferred<{ data: { qr_code: string } }>()
+    mockPost.mockReturnValueOnce(request.promise)
+    const onNotify = vi.fn()
+    const { result, unmount } = renderHook(() =>
+      useEventRegistration({
+        eventId,
+        user: mockUser,
+        initialRegistered: false,
+        initialParticipantCount: 2,
+        onNotify,
+      })
+    )
+
+    act(() => {
+      void result.current.register()
+    })
+    await waitFor(() => expect(result.current.isLoading).toBe(true))
+    unmount()
+
+    await act(async () => {
+      request.resolve({ data: { qr_code: "qr-after-unmount" } })
+      await request.promise
+      await Promise.resolve()
+    })
+    expect(onNotify).not.toHaveBeenCalled()
   })
 })

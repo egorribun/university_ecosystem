@@ -107,6 +107,8 @@ REQUIRED_CI_CONTEXTS = frozenset(
         "Go Tests (services/ws-hub) / Test Go Service (services/ws-hub)",
         "Go Tests (services/file-processor) / Test Go Service (services/file-processor)",
         "Go Tests (services/cmd/uni-cli) / Test Go Service (services/cmd/uni-cli)",
+        "Go Tests (services/pkg/spiffe) / Test Go Service (services/pkg/spiffe)",
+        "Go Tests (services/pkg/spicedb) / Test Go Service (services/pkg/spicedb)",
         "Rust - cargo test (x3 crates) + wasm-pack + coverage",
         "Rust Lint & Format",
         "Alembic Migrations",
@@ -821,6 +823,7 @@ def test_codecov_oidc_permissions_are_scoped_to_trusted_upload_job() -> None:
         "artifacts/coverage/codecov/go-gateway.out",
         "artifacts/coverage/codecov/go-ws-hub.out",
         "artifacts/coverage/codecov/go-file-processor.out",
+        "artifacts/coverage/codecov/go-shared.out",
         "artifacts/coverage/codecov/rust-native.json",
         "artifacts/coverage/codecov/rust-pyo3-sanitizer.json",
         "artifacts/coverage/codecov/rust-wasm-sanitizer.json",
@@ -861,6 +864,7 @@ def test_sbom_go_gate_uses_symbol_aware_reachable_vulnerability_analysis() -> No
         "./services/file-processor/...",
         "./services/cmd/uni-cli/...",
         "./services/pkg/spiffe/...",
+        "./services/pkg/spicedb/...",
     )
     assert scan_script.strip().startswith("govulncheck \\")
     assert all(package in scan_script for package in expected_packages)
@@ -1023,6 +1027,7 @@ def test_go_coverage_artifacts_are_staged_for_trusted_codecov_upload() -> None:
         "go-gateway.out",
         "go-ws-hub.out",
         "go-file-processor.out",
+        "go-shared.out",
     ):
         assert f"artifacts/coverage/codecov/{report}" in staging["run"]
 

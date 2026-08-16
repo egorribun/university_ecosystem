@@ -47,6 +47,25 @@ describe("useScheduleKeyboardNav", () => {
     expect(result.current.activeCell).toEqual({ row: 0, col: 0 })
   })
 
+  it("focuses and scrolls the destination cell when it exists", () => {
+    const target = document.createElement("button")
+    target.id = "sched-cell-0-1"
+    target.scrollIntoView = vi.fn()
+    document.body.appendChild(target)
+    const focus = vi.spyOn(target, "focus")
+    const opts = makeOpts()
+    renderHook(() => useScheduleKeyboardNav(opts))
+
+    press("ArrowRight")
+
+    expect(focus).toHaveBeenCalledWith({ preventScroll: false })
+    expect(target.scrollIntoView).toHaveBeenCalledWith({
+      behavior: "smooth",
+      block: "nearest",
+      inline: "nearest",
+    })
+  })
+
   it("fires the action callbacks for Enter / E / Delete / ? and jumps to today on T", () => {
     const opts = makeOpts()
     renderHook(() => useScheduleKeyboardNav(opts))

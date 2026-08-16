@@ -158,6 +158,26 @@ describe("AddLessonDialog", () => {
     expect(logError).not.toHaveBeenCalled()
   })
 
+  it("submits selected lesson type and parity values", async () => {
+    const user = userEvent.setup()
+    renderDialog(makeBaseProps())
+    fillRequiredFields()
+
+    const [lessonType, parity] = screen.getAllByRole("combobox")
+    await user.click(lessonType!)
+    await user.click(await screen.findByRole("option", { name: "Практика" }))
+    await user.click(parity!)
+    await user.click(await screen.findByRole("option", { name: "schedule:week.odd" }))
+    await user.click(screen.getByRole("button", { name: "schedule:buttons.add" }))
+
+    await waitFor(() =>
+      expect(apiMocks.post).toHaveBeenCalledWith(
+        "/schedule",
+        expect.objectContaining({ lesson_type: "PRACTICE", parity: "odd" })
+      )
+    )
+  })
+
   it("falls back to addFields.lessonType when the matched config has an empty backend array", async () => {
     const user = userEvent.setup()
     const props = makeBaseProps({
