@@ -62,7 +62,7 @@ export default function DashboardStories({
         onStoryOpen?.(displayStories[next])
       }
     },
-    [closeViewer, displayStories, onStoryOpen]
+    [displayStories, onStoryOpen]
   )
 
   const goNext = useCallback(() => {

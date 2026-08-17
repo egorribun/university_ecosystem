@@ -194,6 +194,26 @@ describe("useScheduleReminders", () => {
     }
   })
 
+  it("uses the actual local date when the midnight timer fires late", async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date(2026, 5, 15, 23, 58))
+
+    const { unmount } = renderHook(() => useScheduleReminders([]))
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0)
+    })
+    expect(idbGet).toHaveBeenCalledWith("schedule:reminded-today:2026-06-15")
+
+    vi.setSystemTime(new Date(2026, 5, 18, 10, 0))
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2 * 60_000)
+    })
+
+    expect(idbGet).toHaveBeenCalledWith("schedule:reminded-today:2026-06-18")
+    expect(idbGet).not.toHaveBeenCalledWith("schedule:reminded-today:2026-06-16")
+    unmount()
+  })
+
   it("rehydrates reminded IDs and reschedules lessons after local midnight", async () => {
     vi.useFakeTimers()
     vi.setSystemTime(new Date(2026, 5, 15, 23, 58))
