@@ -54,7 +54,7 @@ def set_sqlite_pragma(dbapi_connection: Any, connection_record: Any) -> None:
 
         try:
             conn.create_function("pg_sleep", 1, time.sleep)
-        except Exception:  # RZ-22-01-JUSTIFIED: SQLite connection fallback when pg_sleep cannot be registered  # noqa: S110
+        except Exception:  # RZ-22-01-JUSTIFIED: SQLite connection fallback when pg_sleep cannot be registered  # nosec B110  # noqa: S110
             pass
 
     # PRAGMAs can be executed on the wrapper connection object

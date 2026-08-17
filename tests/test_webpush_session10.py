@@ -104,6 +104,27 @@ class TestMaskEndpoint:
 
 
 class TestNormalizePayloadEdges:
+    def test_meta_source_is_read_once_for_stateful_mapping(self) -> None:
+        """A stateful Mapping must not be observed twice for the same meta value."""
+
+        class _StatefulMetaMapping(dict[str, Any]):
+            def __init__(self) -> None:
+                super().__init__()
+                self.meta_reads = 0
+
+            def get(self, key: str, default: Any = None) -> Any:
+                if key != "_meta":
+                    return super().get(key, default)
+                self.meta_reads += 1
+                return {"ttl": "300"} if self.meta_reads == 1 else None
+
+        raw = _StatefulMetaMapping()
+
+        _payload, meta = _normalize_payload(raw)
+
+        assert meta["ttl"] == 300
+        assert raw.meta_reads == 1
+
     def test_meta_ttl_invalid_in_meta_source_skipped(self) -> None:
         """Non-int ttl inside _meta is dropped (L319-320)."""
         _payload, meta = _normalize_payload(

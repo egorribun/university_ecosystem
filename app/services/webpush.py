@@ -302,7 +302,8 @@ def _normalize_payload(
     else:
         payload_data = {}
     meta: dict[str, Any] = {}
-    meta_source = raw.get("_meta") if isinstance(raw.get("_meta"), Mapping) else {}
+    raw_meta = raw.get("_meta")
+    meta_source = raw_meta if isinstance(raw_meta, Mapping) else {}
     for key in _META_KEYS:
         value = meta_source.get(key)
         if value is None and key in raw and raw.get(key) is not None:
