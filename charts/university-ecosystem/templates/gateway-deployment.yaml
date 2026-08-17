@@ -64,6 +64,8 @@ spec:
                 secretKeyRef:
                   name: {{ include "university-ecosystem.applicationSecretName" . | quote }}
                   key: jwt-secret
+            - name: JWT_AUDIENCE
+              value: {{ required "gateway.config.jwtAudience must be set" .Values.gateway.config.jwtAudience | quote }}
             - name: BACKEND_URL
               value: "http://{{ include "university-ecosystem.fullname" . }}-backend:8000"
             - name: FILE_PROCESSOR_ADDR
@@ -73,6 +75,11 @@ spec:
                 secretKeyRef:
                   name: {{ required "connections.existingSecret must be set" .Values.connections.existingSecret | quote }}
                   key: {{ required "connections.redisGatewayURLKey must be set" .Values.connections.redisGatewayURLKey | quote }}
+            - name: REVOCATION_REDIS_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ required "connections.existingSecret must be set" .Values.connections.existingSecret | quote }}
+                  key: {{ required "connections.redisRevocationURLKey must be set" .Values.connections.redisRevocationURLKey | quote }}
             - name: VITE_ENVIRONMENT
               value: {{ .Values.global.environment | quote }}
             - name: GRPC_USE_TLS

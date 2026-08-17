@@ -1248,6 +1248,23 @@ jobs:
             -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json' \
             k8s/
 
+      - name: Validate SPIRE runtime configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          awk '/server.conf: \|/{found=1; next} /^---/{found=0} found {sub(/^    /, ""); print}' \
+            k8s/spire/spire-server.yaml \
+            | docker run --rm -i \
+                --entrypoint /opt/spire/bin/spire-server \
+                ghcr.io/spiffe/spire-server:1.15.2@sha256:aa74ef1be86bc8e0684007d84a4d9859d294384d842c30425048d73429f3216e \
+                validate -config /dev/stdin
+          awk '/agent.conf: \|/{found=1; next} /^---/{found=0} found {sub(/^    /, ""); print}' \
+            k8s/spire/spire-agent.yaml \
+            | docker run --rm -i \
+                --entrypoint /opt/spire/bin/spire-agent \
+                ghcr.io/spiffe/spire-agent:1.15.2@sha256:1d042e4040466686e0ee46f74981ff2167c86adfadca19b3835946f4d6047536 \
+                validate -config /dev/stdin
+
 
   # MOD-W15-04 (audit 2026-03-23 Wave 15): Postgres migration gate.
   # Validates alembic upgrade head + downgrade base + upgrade head round-trip

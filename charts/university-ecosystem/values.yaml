@@ -14,6 +14,7 @@ global:
 #   database-url: postgresql+asyncpg://...
 #   redis-backend-url: redis://:PASSWORD@<release>-redis-master:6379/0
 #   redis-gateway-url: redis://:PASSWORD@<release>-redis-master:6379/3
+#   redis-revocation-url: redis://:PASSWORD@<release>-revocation-redis-master:6379/0
 #   nats-url: nats://<release>-nats:4222
 #   nats-auth-token: independent NATS authentication token
 #   keda-postgresql-url: postgresql://... (only when the PostgreSQL scaler is on)
@@ -23,6 +24,9 @@ connections:
   databaseURLKey: "database-url"
   redisBackendURLKey: "redis-backend-url"
   redisGatewayURLKey: "redis-gateway-url"
+  # Session revocation is security state and must use the dedicated durable,
+  # non-evicting datastore configured by revocationRedis below.
+  redisRevocationURLKey: "redis-revocation-url"
   natsURLKey: "nats-url"
   natsAuthTokenKey: "nats-auth-token"
   kedaPostgresqlURLKey: "keda-postgresql-url"
@@ -150,6 +154,7 @@ gateway:
       memory: 512Mi
   config:
     jwtSecret: "" # MUST be provided as --set gateway.config.jwtSecret=...
+    jwtAudience: "university-ecosystem-api"
     rateLimitRps: 100
     # Plaintext is suitable only for the NetworkPolicy-isolated development
     # chart. Set true when gRPC/OTLP endpoints terminate trusted TLS.
@@ -321,6 +326,51 @@ redis:
       requests:
         cpu: 50m
         memory: 32Mi
+      limits:
+        cpu: 100m
+        memory: 64Mi
+
+# Dedicated security-state datastore. Revocation tombstones outlive cache
+# churn and pod restarts, and noeviction prevents revoked tokens resurrecting.
+revocationRedis:
+  enabled: true
+  architecture: standalone
+  auth:
+    enabled: true
+    existingSecret: "redis-credentials" #checkov:skip=CKV_SECRET_6:references a Kubernetes Secret name, not a credential value
+    existingSecretPasswordKey: "redis-password" #checkov:skip=CKV_SECRET_6:references a Secret key name, not a credential value
+  master:
+    resources:
+      requests:
+        cpu: 100m
+        memory: 128Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
+    persistence:
+      enabled: true
+      size: 2Gi
+    podSecurityContext:
+      runAsNonRoot: true
+      seccompProfile:
+        type: RuntimeDefault
+    containerSecurityContext:
+      allowPrivilegeEscalation: false
+      readOnlyRootFilesystem: true
+      capabilities:
+        drop: ["ALL"]
+  commonConfiguration: |-
+    maxmemory 384mb
+    maxmemory-policy noeviction
+    save 60 1
+    appendonly yes
+    appendfsync everysec
+  metrics:
+    enabled: true
+    resources:
+      requests:
+        cpu: 25m
+        memory: 24Mi
       limits:
         cpu: 100m
         memory: 64Mi

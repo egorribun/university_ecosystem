@@ -34,19 +34,36 @@ shares the Redis instance.
 |-------------|-----|---------------|---------|---------|
 | `session:{sid}` | JWT expiry | Python `app/auth/redis_session.py` | Python API | Active session data |
 | `session:v2:{sid}` | JWT expiry | Python `app/services/auth/redis_session.py` | Python API | Active session data (v2 schema) |
-| `revoked:jti:{jti}` | remaining JWT lifetime | Python `app/auth/redis_session.py`, `app/services/auth/redis_session.py` | Python API (`app/api/deps/auth.py`, `app/api/ws/auth.py`, `app/services/auth/graphql_token_validator.py`), Go gateway (`middleware/auth.go`) | Revocation list for logged-out JWTs |
+| `revoked:jti:{jti}` | remaining JWT lifetime; safe 24h fallback when the session key is missing or unbounded | Python `app/auth/redis_session.py`, `app/services/auth/redis_session.py` via `app/auth/revocation.py` | Python API (`app/api/deps/auth.py`, `app/api/ws/auth.py`, `app/services/auth/graphql_token_validator.py`), Go gateway (`middleware/auth.go`), Go ws-hub (`pkg/hub/handlers.go`) | Revocation list for logged-out JWTs |
 
 **Pub/Sub channels:**
 
 | Channel | Publisher | Subscriber | Payload |
 |---------|-----------|------------|---------|
-| `session:revocations` | Python (`app/auth/redis_session.py:78`) | Go gateway (`middleware/auth.go:141`) | `{jti}` — raw JWT ID string |
+| `session:revocations` | Python (`app/auth/redis_session.py`, `app/services/auth/redis_session.py`) | Go gateway (`middleware/auth.go`) | `{jti}` — raw JWT ID string |
 
 > **Cross-service invariant (tested in `tests/integration/test_redis_contract.py`):**
 > The gateway subscribes to `session:revocations` and derives the revocation key as
 > `fmt.Sprintf("revoked:jti:%s", msg.Payload)`.  The Python backend MUST publish the
 > raw `jti` (not the session ID) to this channel, and MUST write the revocation record
-> under the key `revoked:jti:{jti}`.
+> under the key `revoked:jti:{jti}` before deleting cached session state. If the
+> source session key has TTL `0`, `-1`, or `-2`, the producer MUST use the
+> authoritative session expiry or the 24-hour maximum accepted token age. A failed
+> tombstone write MUST fail the revoke operation and MUST NOT delete the session key.
+> The ws-hub MUST check this key after atomically consuming an upgrade ticket
+> and fail closed if the lookup errors, so a pre-logout ticket is rejected once
+> the revocation record exists. Every producer and consumer MUST use the same
+> dedicated `REVOCATION_REDIS_URL`. The shipped Compose and Helm topology
+> provisions this as a persistent, AOF-backed Redis/Valkey process with
+> `maxmemory-policy noeviction`. Backend `CACHE_REDIS_URL` and gateway/ws-hub
+> `REDIS_URL` remain cache/rate-limit transports and MUST NOT be reused for
+> revocation checks. Logical DB separation inside an eviction-enabled cache is
+> insufficient because Redis eviction policy is process-wide. The gateway L1
+> cache stores only positive revocation tombstones; a negative `EXISTS` result is
+> never cached. This guarantees that a Redis or Pub/Sub partition forces a live
+> lookup and fail-closed authentication instead of reusing stale "not revoked"
+> state. The Pub/Sub listener also health-checks Redis and purges L1 before
+> reconnecting after a detected outage.
 
 ---
 
@@ -63,6 +80,9 @@ shares the Redis instance.
 > Python (issuer) and both WS auth consumers (Python WS handler + Go ws-hub).
 > Both consumers perform GETDEL — the first consumer wins; concurrent duplicates
 > are silently rejected (ticket already deleted).  Ticket TTL is 15 seconds.
+> Tenant identity is intentionally excluded: a request header is not proof of
+> tenant membership. A future tenant-aware ticket format requires server-side
+> authorization plus an atomic versioned contract update in both consumers.
 
 ---
 

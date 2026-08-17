@@ -19,7 +19,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestListenOnce_RemovesL1KeyOnRevocationMessage(t *testing.T) {
+func TestListenOnce_CachesRevocationOnMessage(t *testing.T) {
 	mr := miniredis.RunT(t)
 	client := redis.NewClient(&redis.Options{
 		Addr:                     mr.Addr(),
@@ -28,7 +28,7 @@ func TestListenOnce_RemovesL1KeyOnRevocationMessage(t *testing.T) {
 	t.Cleanup(func() { _ = client.Close() }) //nolint:errcheck // best-effort cleanup
 
 	m := NewJWTMiddleware(testSecret, client)
-	m.l1cache.Add("revoked:jti:abc", cacheEntry{exists: true, storedAt: time.Now()})
+	m.l1cache.Add("revoked:jti:abc", cacheEntry{exists: false, storedAt: time.Now()})
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -40,8 +40,8 @@ func TestListenOnce_RemovesL1KeyOnRevocationMessage(t *testing.T) {
 	// at least one lands after the listener is live.
 	require.Eventually(t, func() bool {
 		_ = client.Publish(context.Background(), "session:revocations", "abc").Err() //nolint:errcheck // fire-and-forget; Eventually retries
-		_, ok := m.l1cache.Get("revoked:jti:abc")
-		return !ok
+		entry, ok := m.l1cache.Get("revoked:jti:abc")
+		return ok && entry.exists
 	}, 3*time.Second, 50*time.Millisecond)
 
 	// go-redis v9's Channel() auto-reconnects rather than closing the Go channel
@@ -58,6 +58,124 @@ func TestListenOnce_RemovesL1KeyOnRevocationMessage(t *testing.T) {
 			return false
 		}
 	}, 3*time.Second, 50*time.Millisecond)
+}
+
+func TestVerifySession_WarmNegativeCacheFailsClosedAfterRedisDisconnect(t *testing.T) {
+	mr := miniredis.RunT(t)
+	client := redis.NewClient(&redis.Options{
+		Addr:                     mr.Addr(),
+		MaintNotificationsConfig: &maintnotifications.Config{Mode: maintnotifications.ModeDisabled},
+	})
+	t.Cleanup(func() { _ = client.Close() }) //nolint:errcheck // best-effort cleanup
+
+	m := NewJWTMiddleware(testSecret, client)
+	oldRand := xfetchRandFunc
+	xfetchRandFunc = func() float64 { return 1 }
+	t.Cleanup(func() { xfetchRandFunc = oldRand })
+	valid, deny, err := m.verifySession(t.Context(), "warm-negative", true)
+	require.NoError(t, err)
+	require.True(t, valid)
+	require.False(t, deny)
+	_, ok := m.l1cache.Get("revoked:jti:warm-negative")
+	require.False(t, ok, "negative revocation decisions must not be cached")
+	m.l1cache.Add(
+		"revoked:jti:warm-negative",
+		cacheEntry{exists: false, storedAt: time.Now()},
+	)
+
+	mr.Close()
+	valid, deny, err = m.verifySession(t.Context(), "warm-negative", true)
+	require.False(t, valid)
+	require.True(t, deny)
+	require.Error(t, err)
+}
+
+func TestListenOnce_ReturnsWhenRedisHealthCheckFails(t *testing.T) {
+	mr := miniredis.RunT(t)
+	client := redis.NewClient(&redis.Options{
+		Addr:                     mr.Addr(),
+		MaintNotificationsConfig: &maintnotifications.Config{Mode: maintnotifications.ModeDisabled},
+	})
+	t.Cleanup(func() { _ = client.Close() }) //nolint:errcheck // best-effort cleanup
+
+	m := NewJWTMiddleware(testSecret, client)
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	done := make(chan struct{})
+	go func() {
+		m.listenOnce(ctx)
+		close(done)
+	}()
+
+	time.Sleep(100 * time.Millisecond)
+	mr.Close()
+	require.Eventually(t, func() bool {
+		select {
+		case <-done:
+			return true
+		default:
+			return false
+		}
+	}, 2*time.Second, 25*time.Millisecond)
+}
+
+func TestListenOnce_ReturnsWhenPubSubChannelCloses(t *testing.T) {
+	mr := miniredis.RunT(t)
+	client := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	t.Cleanup(func() { _ = client.Close() }) //nolint:errcheck // best-effort cleanup
+	originalChannel := pubSubChannelFunc
+	t.Cleanup(func() { pubSubChannelFunc = originalChannel })
+	closedChannel := make(chan *redis.Message)
+	close(closedChannel)
+	pubSubChannelFunc = func(*redis.PubSub) <-chan *redis.Message { return closedChannel }
+
+	m := NewJWTMiddleware(testSecret, client)
+	done := make(chan struct{})
+	go func() {
+		m.listenOnce(t.Context())
+		close(done)
+	}()
+
+	require.Eventually(t, func() bool {
+		select {
+		case <-done:
+			return true
+		default:
+			return false
+		}
+	}, time.Second, 10*time.Millisecond)
+}
+
+func TestListenOnce_HealthyRedisKeepsListenerRunning(t *testing.T) {
+	mr := miniredis.RunT(t)
+	client := redis.NewClient(&redis.Options{
+		Addr:                     mr.Addr(),
+		MaintNotificationsConfig: &maintnotifications.Config{Mode: maintnotifications.ModeDisabled},
+	})
+	t.Cleanup(func() { _ = client.Close() }) //nolint:errcheck // best-effort cleanup
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	m := NewJWTMiddleware(testSecret, client)
+	go func() {
+		m.listenOnce(ctx)
+		close(done)
+	}()
+
+	time.Sleep(revocationHealthCheckInterval + 100*time.Millisecond)
+	select {
+	case <-done:
+		t.Fatal("healthy Redis must not stop the revocation listener")
+	default:
+	}
+	cancel()
+	require.Eventually(t, func() bool {
+		select {
+		case <-done:
+			return true
+		default:
+			return false
+		}
+	}, time.Second, 10*time.Millisecond)
 }
 
 func TestListenForRevocations_NilRedisIsNoOp(t *testing.T) {
@@ -118,7 +236,7 @@ func TestListenForRevocations_ProcessesThenReconnectsOnDisconnect(t *testing.T) 
 	t.Cleanup(func() { _ = client.Close() }) //nolint:errcheck // best-effort cleanup
 
 	m := NewJWTMiddleware(testSecret, client)
-	m.l1cache.Add("revoked:jti:xyz", cacheEntry{exists: true, storedAt: time.Now()})
+	m.l1cache.Add("revoked:jti:xyz", cacheEntry{exists: false, storedAt: time.Now()})
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -126,12 +244,12 @@ func TestListenForRevocations_ProcessesThenReconnectsOnDisconnect(t *testing.T) 
 
 	require.Eventually(t, func() bool {
 		_ = client.Publish(context.Background(), "session:revocations", "xyz").Err() //nolint:errcheck // fire-and-forget; Eventually retries
-		_, ok := m.l1cache.Get("revoked:jti:xyz")
-		return !ok
+		entry, ok := m.l1cache.Get("revoked:jti:xyz")
+		return ok && entry.exists
 	}, 3*time.Second, 50*time.Millisecond)
 
-	// Disconnect → the listener observes the closed channel, increments the
-	// disconnect metric, purges L1, computes backoff, then exits on ctx cancel.
+	// Disconnect → the explicit health check returns the listener to its
+	// reconnect loop. Cancellation then stops the process-lifetime goroutine.
 	mr.Close()
 	cancel()
 	time.Sleep(150 * time.Millisecond) // allow the goroutine to observe cancel + return

@@ -87,9 +87,13 @@ type Hub struct {
 	lifecycleMu   sync.Mutex
 	stopOnce      sync.Once
 	jwksMu        sync.Mutex
-	// redisClient is the shared Redis connection used for upgrade ticket validation.
+	// redisClient owns ephemeral upgrade tickets and L2 authorization cache data.
 	// RZ-W14-01 (audit 2026-03-23 Wave 14): tickets replace JWT-in-Sec-WebSocket-Protocol.
-	redisClient            *goredis.Client
+	redisClient *goredis.Client
+	// revocationRedisClient is a distinct durable/noeviction security store.
+	// Keeping it separate prevents cache pressure or restart from erasing live
+	// revoked:jti tombstones.
+	revocationRedisClient  *goredis.Client
 	limiterCleanupInterval time.Duration
 
 	// JetStream R1 fields
@@ -143,7 +147,7 @@ func safeNakWithDelay(msg *nats.Msg, delay time.Duration) {
 }
 
 // NewHub creates a new Hub instance.
-func NewHub(nc *nats.Conn, logger *slog.Logger, authClient RoomAuthClient, cfg *config.Config, rdb *goredis.Client) *Hub {
+func NewHub(nc *nats.Conn, logger *slog.Logger, authClient RoomAuthClient, cfg *config.Config, rdb *goredis.Client, revocationClients ...*goredis.Client) *Hub {
 	bufSize := 4096
 	maxC := 10000
 	workers := 4
@@ -195,6 +199,13 @@ func NewHub(nc *nats.Conn, logger *slog.Logger, authClient RoomAuthClient, cfg *
 			js = jsc
 		}
 	}
+	revocationRedisClient := rdb
+	if len(revocationClients) > 1 {
+		panic("ws-hub: at most one revocation Redis client may be configured")
+	}
+	if len(revocationClients) == 1 {
+		revocationRedisClient = revocationClients[0]
+	}
 
 	return &Hub{
 		Clients:                make(map[string]*Client),
@@ -214,6 +225,7 @@ func NewHub(nc *nats.Conn, logger *slog.Logger, authClient RoomAuthClient, cfg *
 		clientMsgRateLimit:     rateLimit,
 		clientMsgRateBurst:     rateBurst,
 		redisClient:            rdb,
+		revocationRedisClient:  revocationRedisClient,
 		limiterCleanupInterval: 5 * time.Minute,
 		js:                     js,
 		dedupCache:             dedupCache,

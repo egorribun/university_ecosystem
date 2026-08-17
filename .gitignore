@@ -436,9 +436,9 @@ services/**/mw
 .pre-commit-cache/
 
 # Quality contract and coverage artifacts
+frontend/coverage-*/
 artifacts/
 
 # Agent superpowers directory
 .superpowers/
-
 

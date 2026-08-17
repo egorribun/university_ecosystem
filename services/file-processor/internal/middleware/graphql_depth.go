@@ -45,7 +45,14 @@ func MaxQueryDepthMiddleware(maxDepth int, next http.Handler) http.Handler {
 		if depth > maxDepth {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusBadRequest)
-			_, _ = fmt.Fprintf(w, `{"errors":[{"message":"query depth %d exceeds maximum allowed depth of %d"}]}`, depth, maxDepth) //nolint:errcheck // HTTP response write
+			response := struct {
+				Errors []struct {
+					Message string `json:"message"`
+				} `json:"errors"`
+			}{Errors: []struct {
+				Message string `json:"message"`
+			}{{Message: fmt.Sprintf("query depth %d exceeds maximum allowed depth of %d", depth, maxDepth)}}}
+			_ = json.NewEncoder(w).Encode(response) // response connection may close
 			return
 		}
 

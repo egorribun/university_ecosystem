@@ -28,6 +28,8 @@ func minimalRouterConfig() *config.Config {
 	return &config.Config{
 		BackendURL:         "http://127.0.0.1:1",
 		WsHubURL:           "http://127.0.0.1:1",
+		RedisURL:           "not-a-redis-url",
+		RevocationRedisURL: "not-a-redis-url",
 		JWTSecret:          routeBranchJWTSecret,
 		AllowedOrigins:     []string{"http://localhost"},
 		InternalHMACSecret: "coverage-closure-internal-secret",
@@ -129,6 +131,47 @@ func TestRun_ClosesGRPCConnectionWhenRouterSetupFails(t *testing.T) {
 
 	assert.ErrorIs(t, run(), wantErr)
 	assert.True(t, closeCalled)
+}
+
+func TestRun_WaitsForRouterCleanupEvenWhenCleanupFails(t *testing.T) {
+	setValidRunEnvironment(t)
+	t.Setenv("GATEWAY_PORT", "-1")
+	t.Setenv("GATEWAY_H3_ENABLED", "false")
+	oldTracer := initTracerFunc
+	oldGRPC := initGRPCFunc
+	oldSetup := setupRouterFunc
+	oldCloseGRPC := closeGRPCConnFunc
+	oldCloseRateLimiter := closeRateLimiterFunc
+	t.Cleanup(func() {
+		initTracerFunc = oldTracer
+		initGRPCFunc = oldGRPC
+		setupRouterFunc = oldSetup
+		closeGRPCConnFunc = oldCloseGRPC
+		closeRateLimiterFunc = oldCloseRateLimiter
+	})
+	initTracerFunc = func(context.Context, *config.Config) (*sdktrace.TracerProvider, error) {
+		return nil, errors.New("tracing disabled in test")
+	}
+	initGRPCFunc = func(*config.Config, *slog.Logger, ...*spiffe.Client) (*grpc.ClientConn, pb.FileProcessingServiceClient, error) {
+		return &grpc.ClientConn{}, nil, nil
+	}
+	closeGRPCConnFunc = func(*grpc.ClientConn) error { return nil }
+	setupRouterFunc = func(_ *config.Config, _ *slog.Logger, _ *grpc.ClientConn, _ pb.FileProcessingServiceClient, opts ...any) (*gin.Engine, error) {
+		for _, opt := range opts {
+			if lifecycle, ok := opt.(*routerLifecycle); ok {
+				lifecycle.rateLimiter = &middleware.RateLimiter{}
+			}
+		}
+		return gin.New(), nil
+	}
+	cleanupCalled := false
+	closeRateLimiterFunc = func(*middleware.RateLimiter) error {
+		cleanupCalled = true
+		return errors.New("synthetic router cleanup failure")
+	}
+
+	require.Error(t, run())
+	require.True(t, cleanupCalled, "run must wait for synchronous router cleanup before returning")
 }
 
 type recordingSpanExporter struct {

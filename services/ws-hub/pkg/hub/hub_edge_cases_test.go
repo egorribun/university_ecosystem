@@ -226,6 +226,7 @@ func TestHandleMessage_RateLimit_PerClient(t *testing.T) {
 
 	srv, _ := newConnPair(t)
 	c := newClientOn(h, srv, "rate-test-client", "rate-user")
+	c.JoinRoom("test-room")
 
 	data := []byte(`{"type":"message","room":"test-room","payload":{"text":"hello"}}`)
 	msg := Message{Type: "message", Room: "test-room"}

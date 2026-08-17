@@ -36,7 +36,6 @@ import (
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/health"
 	"google.golang.org/grpc/health/grpc_health_v1"
-	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/reflection"
 	"google.golang.org/grpc/status"
 
@@ -328,7 +327,7 @@ func connectTemporal(ctx context.Context, cfg *config.Config, logger *slog.Logge
 		} else {
 			token := strings.TrimSpace(string(data))
 			if token == "" {
-				return nil, fmt.Errorf("Temporal API key file is empty: %s", cfg.TemporalAPIKeyFile)
+				return nil, fmt.Errorf("temporal API key file is empty: %s", cfg.TemporalAPIKeyFile)
 			} else {
 				// W141 SW5 critical detail: client.NewAPIKeyStaticCredentials AUTO-ENABLES
 				// TLS unless ConnectionOptions.TLSDisabled is true (verified at
@@ -782,12 +781,9 @@ func httpJWTMiddleware(secret string, rsaPub *rsa.PublicKey, log *slog.Logger, n
 		if sub, ok := claims["sub"].(string); ok {
 			ctx = context.WithValue(ctx, userIDKey, sub)
 		}
-		tenantID := r.Header.Get("X-Tenant-ID")
-		if tenantID == "" {
-			if t, ok := claims["tenant_id"].(string); ok {
-				tenantID = t
-			}
-		}
+		// Tenant identity must come from the verified token. HTTP headers are
+		// caller-controlled and cannot establish tenant membership.
+		tenantID, _ := claims["tenant_id"].(string)
 		if tenantID != "" {
 			ctx = context.WithValue(ctx, tenantIDKey, tenantID)
 		}
@@ -818,17 +814,9 @@ func authFunc(secret string, rsaPub *rsa.PublicKey, logger *slog.Logger) auth.Au
 				return nil, status.Errorf(codes.Unauthenticated, "invalid token claims: missing sub")
 			}
 			newCtx := context.WithValue(ctx, userIDKey, sub)
-			var tenantID string
-			if md, ok := metadata.FromIncomingContext(ctx); ok {
-				if vals := md.Get("x-tenant-id"); len(vals) > 0 {
-					tenantID = vals[0]
-				}
-			}
-			if tenantID == "" {
-				if t, ok := claims["tenant_id"].(string); ok {
-					tenantID = t
-				}
-			}
+			// Metadata is transport input, not an authenticated identity source.
+			// Derive tenant context exclusively from the verified JWT claim.
+			tenantID, _ := claims["tenant_id"].(string)
 			if tenantID != "" {
 				newCtx = context.WithValue(newCtx, tenantIDKey, tenantID)
 			}

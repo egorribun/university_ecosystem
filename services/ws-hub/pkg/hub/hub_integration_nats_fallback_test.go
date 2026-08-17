@@ -27,7 +27,7 @@ func TestIntegration_ClientHandleMessage_JetStreamFallback(t *testing.T) {
 	client := &Client{
 		ID:     "client-fallback",
 		UserID: "user-fallback",
-		Rooms:  make(map[string]bool),
+		Rooms:  map[string]bool{"fallback-room": true},
 		Send:   make(chan []byte, 10),
 		Hub:    h,
 		ctx:    ctx,
@@ -53,7 +53,11 @@ func TestIntegration_ClientHandleMessage_JetStreamFallback(t *testing.T) {
 		t.Fatalf("Failed to receive fallback message on core NATS: %v", err)
 	}
 
-	if string(receivedMsg.Data) != string(raw) {
-		t.Errorf("Expected NATS payload %s, got %s", string(raw), string(receivedMsg.Data))
+	var canonical Message
+	if err := json.Unmarshal(receivedMsg.Data, &canonical); err != nil {
+		t.Fatalf("Failed to decode canonical NATS payload: %v", err)
+	}
+	if canonical.From != client.UserID || canonical.Room != msg.Room {
+		t.Errorf("Expected authenticated sender %q in room %q, got %+v", client.UserID, msg.Room, canonical)
 	}
 }

@@ -38,6 +38,7 @@ func hubWithWTTicketRedis(t *testing.T, payload string) *Hub {
 
 	h := newWTTestHub()
 	h.redisClient = rdb
+	h.revocationRedisClient = rdb
 	return h
 }
 

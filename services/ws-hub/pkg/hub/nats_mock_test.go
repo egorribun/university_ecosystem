@@ -3,10 +3,14 @@ package hub
 import (
 	"bufio"
 	"context"
+	"encoding/json"
+	"io"
 	"net"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/lestrrat-go/jwx/v2/jwk"
 	"github.com/nats-io/nats.go"
@@ -64,12 +68,13 @@ func (s *mockNatsServer) run() {
 					return
 				}
 			}()
-			info := `INFO {"server_id":"MOCK","version":"2.0.0","host":"127.0.0.1","port":4222,"auth_required":false}` + "\r\n"
+			info := `INFO {"server_id":"MOCK","version":"2.0.0","host":"127.0.0.1","port":4222,"auth_required":false,"max_payload":1048576}` + "\r\n"
 			if _, err := c.Write([]byte(info)); err != nil {
 				return
 			}
 
 			reader := bufio.NewReader(c)
+			subscriptions := make(map[string][]string)
 			for {
 				line, err := reader.ReadString('\n')
 				if err != nil {
@@ -78,6 +83,33 @@ func (s *mockNatsServer) run() {
 				if strings.HasPrefix(line, "PING") {
 					if _, err := c.Write([]byte("PONG\r\n")); err != nil {
 						return
+					}
+					continue
+				}
+				fields := strings.Fields(line)
+				if len(fields) >= 3 && fields[0] == "SUB" {
+					subject := fields[1]
+					sid := fields[len(fields)-1]
+					subscriptions[subject] = append(subscriptions[subject], sid)
+					continue
+				}
+				if len(fields) >= 3 && fields[0] == "PUB" {
+					size, parseErr := strconv.Atoi(fields[len(fields)-1])
+					if parseErr != nil || size < 0 {
+						return
+					}
+					payloadWithCRLF := make([]byte, size+2)
+					if _, readErr := io.ReadFull(reader, payloadWithCRLF); readErr != nil {
+						return
+					}
+					payload := payloadWithCRLF[:size]
+					for _, sid := range subscriptions[fields[1]] {
+						header := "MSG " + fields[1] + " " + sid + " " + strconv.Itoa(size) + "\r\n"
+						frame := append([]byte(header), payload...)
+						frame = append(frame, '\r', '\n')
+						if _, writeErr := c.Write(frame); writeErr != nil {
+							return
+						}
 					}
 				}
 			}
@@ -163,16 +195,33 @@ func TestClient_HandleMessage_NatsPublish(t *testing.T) {
 		Hub:    h,
 		ctx:    context.Background(),
 		Send:   make(chan []byte, 10),
+		Rooms:  map[string]bool{"room-1": true},
 	}
 
 	h.clientMsgRateLimit = 100
 	h.clientMsgRateBurst = 100
 
-	msg := Message{Type: "message", Room: "room-1"}
-	data := []byte(`{"text":"hello"}`)
+	sub, err := nc.SubscribeSync("chat.room-1")
+	require.NoError(t, err)
+	require.NoError(t, nc.Flush())
+	msg := Message{Type: "message", Room: "room-1", From: "spoofed", Payload: json.RawMessage(`{"text":"hello"}`)}
+	data := []byte(`{"type":"message","room":"room-1","from":"spoofed","payload":{"text":"hello"}}`)
 	assert.NotPanics(t, func() {
 		c.handleMessage(msg, data)
 	})
+	published, err := sub.NextMsg(time.Second)
+	require.NoError(t, err)
+	var canonical Message
+	require.NoError(t, json.Unmarshal(published.Data, &canonical))
+	assert.Equal(t, "u-nats", canonical.From)
+	assert.Equal(t, "room-1", canonical.Room)
+
+	unauthorizedSub, err := nc.SubscribeSync("chat.room-2")
+	require.NoError(t, err)
+	require.NoError(t, nc.Flush())
+	c.handleMessage(Message{Type: "message", Room: "room-2"}, []byte(`{"type":"message","room":"room-2"}`))
+	_, err = unauthorizedSub.NextMsg(100 * time.Millisecond)
+	assert.ErrorIs(t, err, nats.ErrTimeout)
 
 	nc.Close()
 	assert.NotPanics(t, func() {

@@ -1,9 +1,8 @@
 package middleware
 
 // Coverage tests (testing session 9) for the Redis-backed session-revocation
-// paths that the existing auth_test.go cannot reach because it constructs the
-// middleware with a nil *redis.Client (every revocation check then early-returns
-// "valid" via the m.redis == nil guard).
+// paths that need a live Redis protocol peer. A nil *redis.Client now fails
+// required authentication closed and leaves optional authentication anonymous.
 //
 // These tests point a REAL go-redis client at a hand-rolled mock RESP server
 // (the respondRESP idiom from services/cmd/uni-cli/main_test.go) so that
@@ -143,6 +142,23 @@ func newRedisMiddleware(t *testing.T, url string) *JWTMiddleware {
 	_ = client.Ping(context.Background()).Err() //nolint:errcheck // warm the pool; HELLO -ERR RESP2 fallback is expected mock noise
 	t.Cleanup(func() { _ = client.Close() })    //nolint:errcheck // cleanup
 	return NewJWTMiddleware(testSecret, client)
+}
+
+func newUnrevokedRedisClient(t *testing.T) *redis.Client {
+	t.Helper()
+	url, stop := startMockRedis(t, mockRedisConfig{existsReply: ":0\r\n"})
+	t.Cleanup(stop)
+	opt, err := redis.ParseURL(url)
+	require.NoError(t, err)
+	client := redis.NewClient(opt)
+	require.NoError(t, client.Ping(context.Background()).Err())
+	t.Cleanup(func() { _ = client.Close() }) //nolint:errcheck // test cleanup
+	return client
+}
+
+func newUnrevokedJWTMiddleware(t *testing.T) *JWTMiddleware {
+	t.Helper()
+	return NewJWTMiddleware(testSecret, newUnrevokedRedisClient(t))
 }
 
 func revocableClaims(jti string) Claims {
@@ -295,7 +311,7 @@ func TestOptional_RedisDownFailsOpenUnauthenticated(t *testing.T) {
 	rec := httptest.NewRecorder()
 	router.ServeHTTP(rec, bearerRequest(t, token))
 
-	// GW-P1-03 fail-open: Optional() passes failSecure=false to verifySession, so a
+	// GW-P1-03 fail-safe: Optional() passes failSecure=false to verifySession, so a
 	// Redis error yields (isValid=false, shouldDeny=false) → the request continues
 	// as UNAUTHENTICATED (200, no user context). It never treats a possibly-revoked
 	// token as valid, and the 503 branch is unreachable for the optional path.
@@ -340,4 +356,18 @@ func TestWarmL1Cache_NilRedisNoop(t *testing.T) {
 func TestListenForRevocations_NilRedisNoop(t *testing.T) {
 	m := NewJWTMiddleware(testSecret, nil)
 	assert.NotPanics(t, func() { m.ListenForRevocations(context.Background()) })
+}
+
+func TestVerifySession_NilRedisNeverAuthenticates(t *testing.T) {
+	m := NewJWTMiddleware(testSecret, nil)
+
+	valid, deny, err := m.verifySession(t.Context(), "live-looking-jti", true)
+	assert.False(t, valid)
+	assert.True(t, deny, "required authentication must fail closed without Redis")
+	assert.ErrorIs(t, err, errRevocationStoreUnavailable)
+
+	valid, deny, err = m.verifySession(t.Context(), "live-looking-jti", false)
+	assert.False(t, valid)
+	assert.False(t, deny, "optional authentication continues without identity")
+	assert.ErrorIs(t, err, errRevocationStoreUnavailable)
 }

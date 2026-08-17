@@ -7,7 +7,7 @@ import re
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 
-from sqlalchemy import delete, select, text
+from sqlalchemy import delete, select
 from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -108,9 +108,8 @@ async def _reindex_database() -> None:
     async with engine.connect() as conn:
         preparer = conn.dialect.identifier_preparer
         safe_name = preparer.quote(database_name)
-        await conn.execution_options(isolation_level="AUTOCOMMIT").execute(
-            text(f"REINDEX DATABASE {safe_name}")
-        )
+        autocommit_conn = await conn.execution_options(isolation_level="AUTOCOMMIT")
+        await autocommit_conn.exec_driver_sql(f"REINDEX DATABASE {safe_name}")
     logger.info("weekly_cleanup.reindex_completed", extra={"database": database_name})
 
 

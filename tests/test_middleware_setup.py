@@ -56,6 +56,7 @@ def _make_settings(**overrides: Any) -> MagicMock:
         "internal_allowed_ips_list": ["127.0.0.1"],
         "internal_auth_header": "X-Internal-Token",
         "internal_auth_token": "test-token",
+        "internal_hmac_secret": "test-internal-hmac-secret",  # pragma: allowlist secret
         "max_upload_body_bytes": 50 * 1024 * 1024,
     }
     defaults.update(overrides)

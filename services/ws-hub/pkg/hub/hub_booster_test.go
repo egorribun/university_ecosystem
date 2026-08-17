@@ -88,7 +88,7 @@ func TestValidateUpgradeTicket_Errors(t *testing.T) {
 		require.NoError(t, mr.Set("ott:ws:"+ticket, "nocolon"))
 
 		_, _, err := h.validateUpgradeTicket(context.Background(), ticket)
-		assert.Error(t, err)
+		require.Error(t, err)
 		assert.Contains(t, err.Error(), "malformed ticket payload")
 	})
 
@@ -116,7 +116,8 @@ func TestValidateUpgradeTicket_Errors(t *testing.T) {
 		require.NoError(t, mr.Set("ott:ws:"+ticket, "user-id:"))
 
 		_, _, err := h.validateUpgradeTicket(context.Background(), ticket)
-		assert.NoError(t, err)
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "malformed ticket payload")
 	})
 }
 

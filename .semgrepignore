@@ -11,6 +11,16 @@ tests/
 native/rust_ext/fuzz/
 **/*_test.go
 
+# Generated reports and clients are reproducible build outputs. Scanning their
+# source generators and handwritten consumers provides the actionable signal.
+frontend/coverage-*/
+frontend/coverage/
+frontend/src/tests/mocks/generated/
+frontend/openapi.json
+frontend/src/routeTree.gen.ts
+app/static/quarantine/
+app/test-static/
+
 # Bundled agent/IDE skills are third-party reference material.
 .agents/
 .opencode/

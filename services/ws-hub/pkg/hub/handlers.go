@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 	"github.com/lestrrat-go/jwx/v2/jwk"
 	"github.com/quic-go/quic-go/http3"
@@ -44,9 +45,14 @@ type contextKey string
 
 const tenantIDKey contextKey = "tenant_id"
 
-// wsTicketKeyPrefix matches the Python backend's TICKET_KEY_PREFIX in app/api/ws/ticket.py.
-// Both services must use the same prefix — see contracts/redis-keys.md.
-const wsTicketKeyPrefix = "ott:ws:"
+const (
+	// wsTicketKeyPrefix matches the Python backend's TICKET_KEY_PREFIX in app/api/ws/ticket.py.
+	// Both services must use the same prefix — see contracts/redis-keys.md.
+	wsTicketKeyPrefix = "ott:ws:"
+	// revokedJTIKeyPrefix is written by the Python session service on logout.
+	// Checking it closes the issue-to-upgrade revocation window.
+	revokedJTIKeyPrefix = "revoked:jti:"
+)
 
 var (
 	allowedOrigins []string
@@ -83,7 +89,11 @@ func isUpgradeOriginAllowed(r *http.Request) bool {
 		}
 	}
 
-	return os.Getenv("ENVIRONMENT") != "production"
+	return false
+}
+
+func newConnectionID() string {
+	return uuid.NewString()
 }
 
 // SetAllowedOrigins configures the origins allowed for WebSocket upgrades.
@@ -142,11 +152,29 @@ func (h *Hub) HandleWebSocket(w http.ResponseWriter, r *http.Request, cfg *confi
 	//   1. Client calls POST /ws/ticket (cookie-authenticated) → gets a 15s OTT ticket.
 	//   2. Client opens wss://host/ws?ticket=<ott>.
 	//   3. ws-hub validates the ticket via Redis GETDEL (atomic, single-use).
-	//   4. The ticket stores "{user_id}:{jti}"; we extract userID from it.
+	//   4. The ticket stores "{user_id}:{jti}"; we reject revoked JTI values.
 	ticket := r.URL.Query().Get("ticket")
 	if ticket == "" {
 		h.Logger.WarnContext(setupCtx, "WebSocket connection rejected: missing upgrade ticket")
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	// Reject requests that can never be upgraded before consuming the one-time
+	// ticket. Otherwise a blocked origin or a full hub can burn a valid ticket.
+	if upgrader.CheckOrigin != nil && !upgrader.CheckOrigin(r) {
+		h.Logger.WarnContext(setupCtx, "WebSocket connection rejected: origin not allowed", "origin", r.Header.Get("Origin"))
+		http.Error(w, "Forbidden", http.StatusForbidden)
+		return
+	}
+
+	h.mu.RLock()
+	atCapacity := h.maxClients > 0 && len(h.Clients) >= h.maxClients
+	h.mu.RUnlock()
+	if atCapacity {
+		h.Logger.WarnContext(setupCtx, "WebSocket rejected: hub at capacity",
+			"max_clients", h.maxClients)
+		http.Error(w, "Service Unavailable", http.StatusServiceUnavailable)
 		return
 	}
 
@@ -162,20 +190,6 @@ func (h *Hub) HandleWebSocket(w http.ResponseWriter, r *http.Request, cfg *confi
 	if userID == "" {
 		h.Logger.WarnContext(setupCtx, "WebSocket rejected: JWT sub claim is empty after validation")
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
-		return
-	}
-
-	// TD-31-05: Pre-check capacity before WebSocket upgrade and goroutine spawn.
-	// This is a racy check (another client may register concurrently), but it
-	// prevents the upgrade + goroutine spawn in the common case.  The authoritative
-	// check remains in handleRegister inside the Run loop.
-	h.mu.RLock()
-	atCapacity := h.maxClients > 0 && len(h.Clients) >= h.maxClients
-	h.mu.RUnlock()
-	if atCapacity {
-		h.Logger.WarnContext(setupCtx, "WebSocket rejected: hub at capacity",
-			"max_clients", h.maxClients)
-		http.Error(w, "Service Unavailable", http.StatusServiceUnavailable)
 		return
 	}
 
@@ -197,7 +211,7 @@ func (h *Hub) HandleWebSocket(w http.ResponseWriter, r *http.Request, cfg *confi
 	}
 
 	client := &Client{
-		ID:       userID,
+		ID:       newConnectionID(),
 		UserID:   userID,
 		Identity: &ClientIdentity{TenantID: tenantID},
 		Conn:     NewWebSocketSession(conn),
@@ -232,16 +246,10 @@ func (h *Hub) HandleWebTransport(w http.ResponseWriter, r *http.Request, cfg *co
 		return
 	}
 
-	userID, tenantID, err := validateUpgradeTicketFunc(h, setupCtx, ticket)
-	if err != nil {
-		h.Logger.WarnContext(setupCtx, "WebTransport upgrade ticket invalid", "err", err)
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
-		return
-	}
-
-	if userID == "" {
-		h.Logger.WarnContext(setupCtx, "WebTransport rejected: empty user_id")
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+	// Reject impossible upgrades before consuming the one-time ticket.
+	if h.webTransportServer.CheckOrigin != nil && !h.webTransportServer.CheckOrigin(r) {
+		h.Logger.WarnContext(setupCtx, "WebTransport connection rejected: origin not allowed", "origin", r.Header.Get("Origin"))
+		http.Error(w, "Forbidden", http.StatusForbidden)
 		return
 	}
 
@@ -255,9 +263,16 @@ func (h *Hub) HandleWebTransport(w http.ResponseWriter, r *http.Request, cfg *co
 		return
 	}
 
-	if h.webTransportServer.CheckOrigin != nil && !h.webTransportServer.CheckOrigin(r) {
-		h.Logger.WarnContext(setupCtx, "WebTransport connection rejected: origin not allowed", "origin", r.Header.Get("Origin"))
-		http.Error(w, "Forbidden", http.StatusForbidden)
+	userID, tenantID, err := validateUpgradeTicketFunc(h, setupCtx, ticket)
+	if err != nil {
+		h.Logger.WarnContext(setupCtx, "WebTransport upgrade ticket invalid", "err", err)
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	if userID == "" {
+		h.Logger.WarnContext(setupCtx, "WebTransport rejected: empty user_id")
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
 
@@ -274,7 +289,7 @@ func (h *Hub) HandleWebTransport(w http.ResponseWriter, r *http.Request, cfg *co
 	}
 
 	client := &Client{
-		ID:       userID,
+		ID:       newConnectionID(),
 		UserID:   userID,
 		Identity: &ClientIdentity{TenantID: tenantID},
 		Conn:     newWebTransportSessionFunc(sess),
@@ -291,16 +306,18 @@ func (h *Hub) HandleWebTransport(w http.ResponseWriter, r *http.Request, cfg *co
 }
 
 // validateUpgradeTicket atomically consumes a one-time WS upgrade ticket from
-// Redis and returns the associated userID and tenantID.
+// Redis and returns the associated userID. The tenantID result is currently
+// empty by contract and retained only to avoid widening the handler refactor.
 //
 // The ticket was issued by the Python backend (POST /ws/ticket) and stored as:
 //
 //	Key  : "ott:ws:{ticket}"
-//	Value: "{user_id}:{jti}:{tenant_id}" or "{user_id}:{jti}"
+//	Value: "{user_id}:{jti}"
 //	TTL  : WS_TICKET_TTL_SECONDS (default 15s, configurable via Config.TicketTTLSeconds)
 //
 // GETDEL makes the ticket single-use: if two concurrent upgrade requests race
-// with the same ticket, only the first succeeds.
+// with the same ticket, only the first succeeds. The consumed JTI is then
+// checked against revoked:jti:{jti}; lookup failure rejects the upgrade.
 func (h *Hub) validateUpgradeTicket(ctx context.Context, ticket string) (string, string, error) {
 	if h.redisClient == nil {
 		return "", "", fmt.Errorf("redis not available for ticket validation")
@@ -325,18 +342,25 @@ func (h *Hub) validateUpgradeTicket(ctx context.Context, ticket string) (string,
 		return "", "", fmt.Errorf("redis error during ticket validation: %w", err)
 	}
 
-	// Format: "{user_id}:{jti}:{tenant_id}" or "{user_id}:{jti}"
+	// Canonical format: exactly "{user_id}:{jti}". Tenant identity is not part
+	// of the OTT until the issuer can resolve membership server-side.
 	parts := strings.Split(raw, ":")
-	if len(parts) < 2 || parts[0] == "" {
+	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
 		return "", "", fmt.Errorf("malformed ticket payload")
 	}
 	userID := parts[0]
-	tenantID := ""
-	if len(parts) >= 3 {
-		tenantID = parts[2]
+	jti := parts[1]
+	if h.revocationRedisClient == nil {
+		return "", "", fmt.Errorf("revocation redis not available for ticket validation")
 	}
-
-	return userID, tenantID, nil
+	revoked, err := h.revocationRedisClient.Exists(ctx, revokedJTIKeyPrefix+jti).Result()
+	if err != nil {
+		return "", "", fmt.Errorf("session revocation check failed: %w", err)
+	}
+	if revoked > 0 {
+		return "", "", fmt.Errorf("ticket session is revoked")
+	}
+	return userID, "", nil
 }
 
 // extractAlgFromHeader reads the "alg" field from a JWT's base64url-encoded

@@ -50,6 +50,9 @@ func rsaTestKeys(t *testing.T) (*rsa.PrivateKey, string) {
 
 func signRS256(t *testing.T, priv *rsa.PrivateKey, claims Claims) string {
 	t.Helper()
+	if len(claims.Audience) == 0 {
+		claims.Audience = jwt.ClaimStrings{DefaultJWTAudience}
+	}
 	tok := jwt.NewWithClaims(jwt.SigningMethodRS256, claims)
 	s, err := tok.SignedString(priv)
 	require.NoError(t, err)
@@ -154,8 +157,7 @@ func TestOptional_RS256Configured_MalformedHeaderUnauthenticated(t *testing.T) {
 
 func TestOptional_RS256Configured_ValidTokenSetsContext(t *testing.T) {
 	priv, pubPEM := rsaTestKeys(t)
-	// nil redis → verifySession early-returns valid (m.redis == nil guard).
-	m := NewJWTMiddlewareWithConfig(testSecret, pubPEM, nil, DefaultL1CacheConfig())
+	m := NewJWTMiddlewareWithConfig(testSecret, pubPEM, newUnrevokedRedisClient(t), DefaultL1CacheConfig())
 
 	probe, captured := captureContextHandler()
 	router := gin.New()

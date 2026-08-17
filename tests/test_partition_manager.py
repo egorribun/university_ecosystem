@@ -41,29 +41,15 @@ async def test_ensure_partitions_exist_postgresql_mock(monkeypatch):
 
         mock_drop_result = MagicMock()
 
-        # Build side_effect list to match the actual call pattern:
-        # Phase 1a: CREATE DEFAULT PARTITION for notifications + notification_deliveries = 2
-        # Phase 1b: For each table (3 tables) with warmup_months=0:
-        #   1 x execute(CREATE TABLE) per table = 3 creates
-        # Phase 2: pruning with retention_days=30:
-        #   1 x execute(SELECT partitions) per table = 3 selects
-        #   1 x execute(DROP TABLE) per found partition per table = 3 drops
-        # Total: 2 + 3 + 3 + 3 = 11 execute calls
+        # Bound SELECT statements use execute(); validated PostgreSQL DDL uses
+        # exec_driver_sql(), which is the SQLAlchemy API for driver-level DDL.
         from app.services.partition_manager import PARTITIONED_TABLES
 
         num_tables = len(PARTITIONED_TABLES)
-        side_effects = []
-        # Phase 1a: CREATE default partition (2 tables: notifications, notification_deliveries)
-        for _ in range(2):
-            side_effects.append(mock_create_result)
-        # Phase 1b: CREATE TABLE calls (1 per table)
-        for _ in range(num_tables):
-            side_effects.append(mock_create_result)
-        # Phase 2: SELECT partition + DROP TABLE per table
-        for _ in range(num_tables):
-            side_effects.append(mock_old_partitions)  # SELECT
-            side_effects.append(mock_drop_result)  # DROP
-        mock_conn.execute.side_effect = side_effects
+        mock_conn.execute.side_effect = [mock_old_partitions] * num_tables
+        mock_conn.exec_driver_sql.side_effect = [mock_create_result] * (
+            2 + num_tables
+        ) + [mock_drop_result] * num_tables
         mock_conn.commit = AsyncMock()
 
         # Mock rust_ext
@@ -82,7 +68,7 @@ async def test_ensure_partitions_exist_postgresql_mock(monkeypatch):
         # Verify execute was called for CREATE TABLE
         # We check the SQL string inside the TextClause
         found_create = False
-        for call in mock_conn.execute.call_args_list:
+        for call in mock_conn.exec_driver_sql.call_args_list:
             sql = str(call[0][0])
             if "CREATE TABLE" in sql:
                 found_create = True
@@ -91,7 +77,7 @@ async def test_ensure_partitions_exist_postgresql_mock(monkeypatch):
 
         # Verify DROP TABLE was attempted for old partition
         found_drop = False
-        for call in mock_conn.execute.call_args_list:
+        for call in mock_conn.exec_driver_sql.call_args_list:
             sql = str(call[0][0])
             if "DROP TABLE" in sql:
                 found_drop = True
@@ -110,6 +96,7 @@ async def test_ensure_partitions_exist_skipped_on_sqlite(monkeypatch):
 
     await ensure_partitions_exist()
     assert mock_conn.execute.call_count == 0
+    assert mock_conn.exec_driver_sql.call_count == 0
 
 
 @pytest.mark.asyncio

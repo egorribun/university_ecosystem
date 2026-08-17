@@ -56,7 +56,7 @@ async function generateIcons() {
 
       console.log(`Created ${target.name}`)
     } catch (err) {
-      console.error(`Error creating ${target.name}:`, err)
+      console.error("Error creating %s:", target.name, err)
     }
   }
 

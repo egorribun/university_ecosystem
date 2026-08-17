@@ -29,6 +29,7 @@ func resetBootstrapSeams(t *testing.T) {
 	t.Helper()
 	oldTracer := initTracerFunc
 	oldRedis := initRedisFunc
+	oldRevocationRedis := initRevocationRedisFunc
 	oldSpiffe := initSpiffeClientFunc
 	oldSetupHub := setupHubFunc
 	oldRunServer := runServerFunc
@@ -50,6 +51,7 @@ func resetBootstrapSeams(t *testing.T) {
 	t.Cleanup(func() {
 		initTracerFunc = oldTracer
 		initRedisFunc = oldRedis
+		initRevocationRedisFunc = oldRevocationRedis
 		initSpiffeClientFunc = oldSpiffe
 		setupHubFunc = oldSetupHub
 		runServerFunc = oldRunServer
@@ -73,6 +75,9 @@ func resetBootstrapSeams(t *testing.T) {
 		return nil, errors.New("tracer disabled for test")
 	}
 	initRedisFunc = func(context.Context, *config.Config, *slog.Logger) *redis.Client { return nil }
+	initRevocationRedisFunc = func(context.Context, *config.Config, *slog.Logger) (*redis.Client, error) {
+		return nil, nil
+	}
 	setTestInitNATS(t, func(context.Context, *config.Config, *slog.Logger) (*nats.Conn, error) {
 		return nil, nil
 	})
@@ -94,6 +99,15 @@ func setTestInitNATS(t *testing.T, fn func(context.Context, *config.Config, *slo
 func TestRun_BootstrapFailureStagesArePropagated(t *testing.T) {
 	t.Setenv("WS_HUB_INTERNAL_SECRET", "test-secret-at-least-32-characters-long")
 
+	t.Run("revocation Redis initialization", func(t *testing.T) {
+		resetBootstrapSeams(t)
+		want := errors.New("revocation Redis unavailable")
+		initRevocationRedisFunc = func(context.Context, *config.Config, *slog.Logger) (*redis.Client, error) {
+			return nil, want
+		}
+		assert.ErrorIs(t, run(), want)
+	})
+
 	t.Run("spiffe initialization", func(t *testing.T) {
 		resetBootstrapSeams(t)
 		want := errors.New("spiffe unavailable")
@@ -109,7 +123,7 @@ func TestRun_BootstrapFailureStagesArePropagated(t *testing.T) {
 		initSpiffeClientFunc = func(context.Context, *config.Config, *slog.Logger) (*spiffe.Client, error) {
 			return nil, nil
 		}
-		setupHubFunc = func(context.Context, *config.Config, *slog.Logger, *nats.Conn, *redis.Client, ...*spiffe.Client) (*hub.Hub, error) {
+		setupHubFunc = func(context.Context, *config.Config, *slog.Logger, *nats.Conn, *redis.Client, *redis.Client, ...*spiffe.Client) (*hub.Hub, error) {
 			return nil, want
 		}
 		assert.ErrorIs(t, run(), want)
@@ -121,7 +135,7 @@ func TestRun_BootstrapFailureStagesArePropagated(t *testing.T) {
 		initSpiffeClientFunc = func(context.Context, *config.Config, *slog.Logger) (*spiffe.Client, error) {
 			return nil, nil
 		}
-		setupHubFunc = func(context.Context, *config.Config, *slog.Logger, *nats.Conn, *redis.Client, ...*spiffe.Client) (*hub.Hub, error) {
+		setupHubFunc = func(context.Context, *config.Config, *slog.Logger, *nats.Conn, *redis.Client, *redis.Client, ...*spiffe.Client) (*hub.Hub, error) {
 			return nil, nil
 		}
 		runServerFunc = func(*config.Config, *slog.Logger, *hub.Hub, *http.ServeMux, ...chan os.Signal) error {

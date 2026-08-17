@@ -148,6 +148,39 @@ func TestSecureRandomFloat64_EntropyFailureUsesBoundedFallback(t *testing.T) {
 	assert.Equal(t, 0.5, secureRandomFloat64())
 }
 
+func TestNewJWTMiddlewareWithConfig_RejectsAmbiguousAudiences(t *testing.T) {
+	assert.PanicsWithValue(t, "gateway: at most one JWT audience may be configured", func() {
+		NewJWTMiddlewareWithConfig("secret", "", nil, DefaultL1CacheConfig(), "api", "other")
+	})
+	assert.PanicsWithValue(t, "gateway: JWT audience must not be blank", func() {
+		NewJWTMiddlewareWithConfig("secret", "", nil, DefaultL1CacheConfig(), "  ")
+	})
+}
+
+func TestListenForRevocations_PurgesThenStopsDuringBackoff(t *testing.T) {
+	rdb := redis.NewClient(&redis.Options{Addr: "127.0.0.1:1"})
+	t.Cleanup(func() { require.NoError(t, rdb.Close()) })
+	middleware := NewJWTMiddleware("secret", rdb)
+	middleware.l1cache.Add("cached-session", cacheEntry{exists: true, storedAt: time.Now()})
+
+	listenerEntered := make(chan struct{})
+	releaseListener := make(chan struct{})
+	middleware.listenOnceFunc = func(context.Context) {
+		close(listenerEntered)
+		<-releaseListener
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	middleware.ListenForRevocations(ctx)
+	<-listenerEntered
+	close(releaseListener)
+
+	require.Eventually(t, func() bool { return middleware.l1cache.Len() == 0 }, time.Second, time.Millisecond)
+	cancel()
+	// The listener is now in its backoff select. Give the cancelled branch a
+	// deterministic scheduling opportunity before the test returns.
+	require.Eventually(t, func() bool { return ctx.Err() != nil }, time.Second, time.Millisecond)
+}
+
 func TestListenForRevocations_DisconnectionAndClose(t *testing.T) {
 	// Setup mock redis server that disconnects immediately
 	url, cleanup := startMockRedis(t, mockRedisConfig{existsReply: ":0\r\n"})
@@ -189,6 +222,7 @@ func TestOptional_DowngradeAndServiceUnavailable(t *testing.T) {
 		UserID: "student1",
 		Role:   "student",
 		RegisteredClaims: jwt.RegisteredClaims{
+			Audience:  jwt.ClaimStrings{DefaultJWTAudience},
 			ID:        "session-id-123",
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour)),

@@ -179,6 +179,33 @@ func TestRateLimiter_InMemoryAllow_LimitsCorrectly(t *testing.T) {
 	assert.False(t, rl.inMemoryAllow("client-1"))
 }
 
+func TestRateLimiter_InMemoryAllow_LazilyInitializesCounterMap(t *testing.T) {
+	rl := &RateLimiter{fallbackLimit: 1, fallbackWindow: 60}
+
+	assert.True(t, rl.inMemoryAllow("client-1"))
+	assert.NotNil(t, rl.fallbackCounters)
+}
+
+func TestRateLimiter_InMemoryAllow_FailsClosedAtCardinalityCapacity(t *testing.T) {
+	rl := &RateLimiter{
+		fallbackCounters:   make(map[string]*fallbackEntry),
+		fallbackLimit:      3,
+		fallbackWindow:     60,
+		fallbackMaxEntries: 2,
+	}
+
+	assert.True(t, rl.inMemoryAllow("client-1"))
+	assert.True(t, rl.inMemoryAllow("client-2"))
+	assert.False(t, rl.inMemoryAllow("client-3"))
+	assert.Len(t, rl.fallbackCounters, 2)
+	assert.True(t, rl.inMemoryAllow("client-1"), "known keys retain their counters")
+}
+
+func TestNewFallbackRateLimiter_ConfiguresCardinalityCapacity(t *testing.T) {
+	rl := NewFallbackRateLimiter()
+	assert.Equal(t, defaultFallbackMaxEntries, rl.fallbackMaxEntries)
+}
+
 func TestRateLimiter_InMemoryAllow_ResetsAfterWindow(t *testing.T) {
 	rl := &RateLimiter{
 		fallbackCounters: make(map[string]*fallbackEntry),
@@ -245,6 +272,33 @@ func TestRateLimiter_Middleware_InMemoryFallbackOnRedisError(t *testing.T) {
 	w3 := httptest.NewRecorder()
 	router.ServeHTTP(w3, req3)
 	assert.Equal(t, http.StatusTooManyRequests, w3.Code)
+}
+
+func TestNewFallbackRateLimiter_EnforcesBoundedLocalLimitWithoutRedis(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	ctx, cancel := context.WithCancel(context.Background())
+	rl := NewFallbackRateLimiter()
+	t.Cleanup(func() {
+		cancel()
+		assert.NoError(t, rl.Close())
+	})
+
+	router := gin.New()
+	router.GET("/test", rl.Middleware(ctx), func(c *gin.Context) {
+		c.Status(http.StatusOK)
+	})
+
+	for requestNumber := 1; requestNumber <= 4; requestNumber++ {
+		recorder := httptest.NewRecorder()
+		request := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/test", nil)
+		router.ServeHTTP(recorder, request)
+		if requestNumber <= 3 {
+			assert.Equal(t, http.StatusOK, recorder.Code, "request %d", requestNumber)
+			continue
+		}
+		assert.Equal(t, http.StatusTooManyRequests, recorder.Code)
+		assert.Equal(t, "60", recorder.Header().Get("Retry-After"))
+	}
 }
 
 func TestNewRateLimiter_InvalidURLReturnsError(t *testing.T) {

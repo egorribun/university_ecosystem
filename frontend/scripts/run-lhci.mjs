@@ -4,7 +4,6 @@
 // (Wave 120 SW1, default since Wave 121 SW2) is what reads LHR fields —
 // see that file's `parseLhr()` JSDoc for the property-path dependencies
 // that have been verified compatible with Lighthouse 13.1.0.
-import { existsSync } from "node:fs"
 import { access, mkdtemp, rm, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import path from "node:path"

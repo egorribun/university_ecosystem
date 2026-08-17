@@ -132,6 +132,8 @@ func TestLoad_ReturnsConfigWithValidEnv(t *testing.T) {
 	originalBackend := os.Getenv("BACKEND_URL")
 	originalPort := os.Getenv("GATEWAY_PORT")
 	originalRedis := os.Getenv("REDIS_URL")
+	originalRevocationRedis := os.Getenv("REVOCATION_REDIS_URL")
+	originalAudience := os.Getenv("JWT_AUDIENCE")
 	originalFileProc := os.Getenv("FILE_PROCESSOR_ADDR")
 	originalRPS := os.Getenv("RATE_LIMIT_RPS")
 	originalBurst := os.Getenv("RATE_LIMIT_BURST")
@@ -141,6 +143,8 @@ func TestLoad_ReturnsConfigWithValidEnv(t *testing.T) {
 		restoreEnv(t, "BACKEND_URL", originalBackend)
 		restoreEnv(t, "GATEWAY_PORT", originalPort)
 		restoreEnv(t, "REDIS_URL", originalRedis)
+		restoreEnv(t, "REVOCATION_REDIS_URL", originalRevocationRedis)
+		restoreEnv(t, "JWT_AUDIENCE", originalAudience)
 		restoreEnv(t, "FILE_PROCESSOR_ADDR", originalFileProc)
 		restoreEnv(t, "RATE_LIMIT_RPS", originalRPS)
 		restoreEnv(t, "RATE_LIMIT_BURST", originalBurst)
@@ -156,6 +160,12 @@ func TestLoad_ReturnsConfigWithValidEnv(t *testing.T) {
 		t.Fatalf("failed to set env: %v", err)
 	}
 	if err := os.Setenv("REDIS_URL", "redis://test-redis:6379"); err != nil {
+		t.Fatalf("failed to set env: %v", err)
+	}
+	if err := os.Setenv("REVOCATION_REDIS_URL", "redis://security-redis:6379/0"); err != nil {
+		t.Fatalf("failed to set env: %v", err)
+	}
+	if err := os.Setenv("JWT_AUDIENCE", "gateway-api"); err != nil {
 		t.Fatalf("failed to set env: %v", err)
 	}
 	if err := os.Setenv("FILE_PROCESSOR_ADDR", "test-processor:50051"); err != nil {
@@ -174,7 +184,9 @@ func TestLoad_ReturnsConfigWithValidEnv(t *testing.T) {
 	assert.Equal(t, "9090", cfg.Port)
 	assert.Equal(t, "http://test-backend:8000", cfg.BackendURL)
 	assert.Equal(t, "redis://test-redis:6379", cfg.RedisURL)
+	assert.Equal(t, "redis://security-redis:6379/0", cfg.RevocationRedisURL)
 	assert.Equal(t, "test-secret-key", cfg.JWTSecret)
+	assert.Equal(t, "gateway-api", cfg.JWTAudience)
 	assert.Equal(t, "test-processor:50051", cfg.FileProcessorAddr)
 	assert.Equal(t, 50, cfg.RateLimitRPS)
 	assert.Equal(t, 100, cfg.RateLimitBurst)
@@ -184,11 +196,13 @@ func TestLoad_UsesDefaultValuesWithJWTSet(t *testing.T) {
 	originalJWT := os.Getenv("JWT_SECRET")
 	originalBackend := os.Getenv("BACKEND_URL")
 	originalPort := os.Getenv("GATEWAY_PORT")
+	originalRevocationRedis := os.Getenv("REVOCATION_REDIS_URL")
 
 	defer func() {
 		restoreEnv(t, "JWT_SECRET", originalJWT)
 		restoreEnv(t, "BACKEND_URL", originalBackend)
 		restoreEnv(t, "GATEWAY_PORT", originalPort)
+		restoreEnv(t, "REVOCATION_REDIS_URL", originalRevocationRedis)
 	}()
 
 	if err := os.Setenv("JWT_SECRET", "required-secret"); err != nil {
@@ -200,11 +214,16 @@ func TestLoad_UsesDefaultValuesWithJWTSet(t *testing.T) {
 	if err := os.Unsetenv("BACKEND_URL"); err != nil {
 		t.Fatalf("failed to unset env: %v", err)
 	}
+	if err := os.Unsetenv("REVOCATION_REDIS_URL"); err != nil {
+		t.Fatalf("failed to unset env: %v", err)
+	}
 
 	cfg, err := Load()
 	assert.NoError(t, err)
 	assert.Equal(t, "8080", cfg.Port)
 	assert.Equal(t, "http://backend:8000", cfg.BackendURL)
+	assert.Equal(t, "redis://redis:6379/0", cfg.RevocationRedisURL)
+	assert.Equal(t, "university-ecosystem-api", cfg.JWTAudience)
 	assert.Equal(t, 100, cfg.RateLimitRPS)
 	assert.Equal(t, 200, cfg.RateLimitBurst)
 }
@@ -222,20 +241,61 @@ func TestLoad_ReturnsErrorWhenJWTSecretMissing(t *testing.T) {
 	assert.Contains(t, err.Error(), "JWT_SECRET")
 }
 
+func TestLoad_ReturnsErrorWhenRevocationRedisURLIsWhitespace(t *testing.T) {
+	t.Setenv("JWT_SECRET", "required-secret")
+	t.Setenv("REVOCATION_REDIS_URL", "   ")
+
+	cfg, err := Load()
+
+	assert.Error(t, err)
+	assert.Nil(t, cfg)
+	if err != nil {
+		assert.Contains(t, err.Error(), "REVOCATION_REDIS_URL")
+	}
+}
+
+func TestLoad_ReturnsErrorWhenRevocationRedisURLIsExplicitlyEmpty(t *testing.T) {
+	t.Setenv("JWT_SECRET", "required-secret")
+	t.Setenv("REVOCATION_REDIS_URL", "")
+
+	cfg, err := Load()
+
+	assert.Error(t, err)
+	assert.Nil(t, cfg)
+	if err != nil {
+		assert.Contains(t, err.Error(), "REVOCATION_REDIS_URL")
+	}
+}
+
+func TestLoad_ReturnsErrorWhenJWTAudienceIsWhitespace(t *testing.T) {
+	t.Setenv("JWT_SECRET", "required-secret")
+	t.Setenv("JWT_AUDIENCE", "   ")
+
+	cfg, err := Load()
+
+	assert.Error(t, err)
+	assert.Nil(t, cfg)
+	if err != nil {
+		assert.Contains(t, err.Error(), "JWT_AUDIENCE")
+	}
+}
+
 func TestConfig_StructFields(t *testing.T) {
 	cfg := Config{
-		Port:              "8080",
-		BackendURL:        "http://localhost:8000",
-		RedisURL:          "redis://localhost:6379",
-		JWTSecret:         "secret",
-		FileProcessorAddr: "localhost:50051",
-		RateLimitRPS:      100,
-		RateLimitBurst:    200,
+		Port:               "8080",
+		BackendURL:         "http://localhost:8000",
+		RedisURL:           "redis://localhost:6379",
+		RevocationRedisURL: "redis://localhost:6379/0",
+		JWTSecret:          "secret",
+		FileProcessorAddr:  "localhost:50051",
+		RateLimitRPS:       100,
+		RateLimitBurst:     200,
 	}
 
 	assert.Equal(t, "8080", cfg.Port)
 	assert.Equal(t, "http://localhost:8000", cfg.BackendURL)
 	assert.Equal(t, "redis://localhost:6379", cfg.RedisURL)
+	assert.Equal(t, "redis://localhost:6379/0", cfg.RevocationRedisURL)
 	assert.Equal(t, "secret", cfg.JWTSecret)
 	assert.Equal(t, "localhost:50051", cfg.FileProcessorAddr)
 	assert.Equal(t, 100, cfg.RateLimitRPS)

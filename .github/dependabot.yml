@@ -1,12 +1,16 @@
 version: 2
 updates:
   - package-ecosystem: "npm"
-    directory: "/root"
+    directories:
+      - "/"
+      - "/frontend"
     schedule:
       interval: "weekly"
       day: "monday"
       time: "04:00"
       timezone: "UTC"
+    cooldown:
+      default-days: 7
     commit-message:
       prefix: "build"
       include: "scope"
@@ -24,6 +28,8 @@ updates:
       day: "monday"
       time: "05:00"
       timezone: "UTC"
+    cooldown:
+      default-days: 7
     commit-message:
       prefix: "build"
       include: "scope"
@@ -38,6 +44,8 @@ updates:
       day: "monday"
       time: "06:00"
       timezone: "UTC"
+    cooldown:
+      default-days: 7
     commit-message:
       prefix: "ci"
       include: "scope"
@@ -55,6 +63,8 @@ updates:
       day: "tuesday"
       time: "05:00"
       timezone: "UTC"
+    cooldown:
+      default-days: 7
     commit-message:
       prefix: "build"
       include: "scope"
@@ -69,6 +79,8 @@ updates:
       day: "tuesday"
       time: "05:30"
       timezone: "UTC"
+    cooldown:
+      default-days: 7
     commit-message:
       prefix: "build"
       include: "scope"
@@ -83,6 +95,8 @@ updates:
       day: "tuesday"
       time: "06:00"
       timezone: "UTC"
+    cooldown:
+      default-days: 7
     commit-message:
       prefix: "build"
       include: "scope"

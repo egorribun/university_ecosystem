@@ -54,7 +54,7 @@ spec:
               securityContext:
                 runAsNonRoot: true
           # Pattern B: set on every container individually
-          - spec:
+          - spec: # nosemgrep: yaml.kubernetes.security.run-as-non-root.run-as-non-root -- Kyverno match pattern, not a Pod.
               containers:
                 - securityContext:
                     runAsNonRoot: true
@@ -86,7 +86,7 @@ spec:
       validate:
         message: "All containers must set allowPrivilegeEscalation: false"
         pattern:
-          spec:
+          spec: # nosemgrep: yaml.kubernetes.security.run-as-non-root.run-as-non-root -- Kyverno match pattern, not a Pod.
             containers:
               - securityContext:
                   allowPrivilegeEscalation: false
@@ -122,7 +122,7 @@ spec:
       validate:
         message: "All containers must include 'ALL' in capabilities.drop"
         pattern:
-          spec:
+          spec: # nosemgrep: yaml.kubernetes.security.run-as-non-root.run-as-non-root -- Kyverno match pattern, not a Pod.
             containers:
               - securityContext:
                   capabilities:
@@ -189,7 +189,7 @@ spec:
       validate:
         message: "All containers must set readOnlyRootFilesystem: true"
         pattern:
-          spec:
+          spec: # nosemgrep: yaml.kubernetes.security.run-as-non-root.run-as-non-root -- Kyverno match pattern, not a Pod.
             containers:
               - securityContext:
                   readOnlyRootFilesystem: true
@@ -260,7 +260,7 @@ spec:
       validate:
         message: "CPU and memory limits are required on all containers"
         pattern:
-          spec:
+          spec: # nosemgrep: yaml.kubernetes.security.run-as-non-root.run-as-non-root -- Kyverno match pattern, not a Pod.
             containers:
               - resources:
                   limits:
@@ -300,7 +300,7 @@ spec:
       validate:
         message: "imagePullPolicy must be Always in the university-ecosystem namespace"
         pattern:
-          spec:
+          spec: # nosemgrep: yaml.kubernetes.security.run-as-non-root.run-as-non-root -- Kyverno match pattern, not a Pod.
             containers:
               - imagePullPolicy: Always
 
@@ -337,7 +337,7 @@ spec:
           Image tag must not be 'latest' or empty. Use a semver tag (v1.2.3)
           or commit SHA for reproducible deployments.
         pattern:
-          spec:
+          spec: # nosemgrep: yaml.kubernetes.security.run-as-non-root.run-as-non-root -- Kyverno match pattern, not a Pod.
             containers:
               - image: "*:?*"
     - name: deny-latest-tag

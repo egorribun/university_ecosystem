@@ -139,7 +139,7 @@ async function runFuzzer() {
       for (const bytes of fuzzByteArrays) {
         try {
           scrypt_derive(bytes, new Uint8Array([1, 2, 3]), 16, 8, 1, 32)
-        } catch (err) {
+        } catch {
           // Invalid params might throw a JS error, which is fine, but it should not cause a native crash/segfault
         }
       }
@@ -153,7 +153,7 @@ async function runFuzzer() {
 async function expectToFailOrSucceed(fn) {
   try {
     fn()
-  } catch (e) {
+  } catch {
     // Expected behaviour for invalid pointer access
   }
 }

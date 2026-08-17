@@ -64,6 +64,7 @@ services:
       METRICS_ALLOWLIST: 127.0.0.1,::1
       CACHE_ENABLED: "true"
       CACHE_REDIS_URL: redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required - set in .env file}@valkey:6379/0
+      REVOCATION_REDIS_URL: redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required - set in .env file}@revocation-valkey:6379/0
       RATE_LIMIT_STORAGE_BACKEND: redis
       RATE_LIMIT_STORAGE_URI: redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required - set in .env file}@valkey:6379/1
       RATE_LIMIT_HEADERS_ENABLED: "true"
@@ -99,6 +100,8 @@ services:
       #         - ./app:/app/app
     depends_on:
       valkey:
+        condition: service_healthy
+      revocation-valkey:
         condition: service_healthy
       nats:
         condition: service_healthy
@@ -206,6 +209,7 @@ services:
       NOTIFICATIONS_WORKER_METRICS_PORT: "9101"
       CACHE_ENABLED: "true"
       CACHE_REDIS_URL: redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required - set in .env file}@valkey:6379/0
+      REVOCATION_REDIS_URL: redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required - set in .env file}@revocation-valkey:6379/0
       RATE_LIMIT_STORAGE_BACKEND: redis
       RATE_LIMIT_STORAGE_URI: redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required - set in .env file}@valkey:6379/1
       NATS_URL: nats://nats:4222
@@ -223,6 +227,8 @@ services:
       SPOTIFY_SCOPES: ${SPOTIFY_SCOPES}
     depends_on:
       valkey:
+        condition: service_healthy
+      revocation-valkey:
         condition: service_healthy
       nats:
         condition: service_healthy
@@ -269,6 +275,7 @@ services:
       DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required - set in .env file}
       CACHE_ENABLED: "true"
       CACHE_REDIS_URL: redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required - set in .env file}@valkey:6379/0
+      REVOCATION_REDIS_URL: redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required - set in .env file}@revocation-valkey:6379/0
       NATS_URL: nats://nats:4222
       NATS_AUTH_TOKEN: ${NATS_PASSWORD:?NATS_PASSWORD is required - set in .env file}
       SECRET_KEY: ${SECRET_KEY:?SECRET_KEY is required - set in .env file}
@@ -279,6 +286,8 @@ services:
       postgres:
         condition: service_healthy
       valkey:
+        condition: service_healthy
+      revocation-valkey:
         condition: service_healthy
       nats:
         condition: service_healthy
@@ -443,11 +452,65 @@ services:
       timeout: 5s
       retries: 3
     restart: unless-stopped
+
     deploy:
       resources:
         limits:
           cpus: "0.25"
           memory: 512M
+
+  # Security state is isolated from cache pressure. Revocation tombstones must
+  # survive restarts and must never be evicted before their token expiry.
+  revocation-valkey:
+    image: valkey/valkey:8.1-alpine
+    # The image entrypoint otherwise starts as root and calls setpriv. With all
+    # capabilities dropped that UID transition is denied before Valkey starts.
+    user: "999:1000"
+    command:
+      - valkey-server
+      - --requirepass
+      - "${REDIS_PASSWORD:?REDIS_PASSWORD is required - set in .env file}"
+      - --maxmemory
+      - "256mb"
+      - --maxmemory-policy
+      - noeviction
+      - --save
+      - "60 1"
+      - --appendonly
+      - "yes"
+      - --appendfsync
+      - everysec
+      - --auto-aof-rewrite-percentage
+      - "100"
+      - --auto-aof-rewrite-min-size
+      - "16mb"
+      - --loglevel
+      - warning
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD is required - set in .env file}
+    volumes:
+      - revocation_valkey_data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "valkey-cli -a $$REDIS_PASSWORD --no-auth-warning ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - cache_net
+      - internal
+    deploy:
+      resources:
+        limits:
+          cpus: "0.20"
+          memory: 320M
+    read_only: true
+    tmpfs:
+      - /tmp:noexec,nosuid
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    restart: unless-stopped
 
   migrations:
     build:
@@ -888,4 +951,5 @@ volumes:
   caddy_config:
   tempo_data:
   valkey_data:
+  revocation_valkey_data:
   nats-data:

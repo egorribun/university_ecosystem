@@ -21,6 +21,7 @@ func TestSetupRouter_Booster(t *testing.T) {
 			Port:                "0",
 			BackendURL:          "http://localhost:8080",
 			RedisURL:            "redis://invalid-address-to-trigger-ratelimit-error:6379",
+			RevocationRedisURL:  "not-a-redis-url",
 			JWTSecret:           "test-secret-at-least-32-characters-long",
 			SentryDSN:           "http://test@localhost/1",
 			JWKSEndpoint:        "http://localhost:1/jwks",

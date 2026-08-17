@@ -195,7 +195,9 @@ func TestInternalAPIAuthClient_DoRequest_NewRequestError(t *testing.T) {
 }
 
 func TestInternalAPIAuthClient_DoRequest_DoError(t *testing.T) {
-	client := NewInternalAPIAuthClient("http://nonexistent.domain.invalid", nil)
+	// Loopback port 1 deterministically refuses the connection without spawning
+	// resolver goroutines that outlive the test under -race + goleak.
+	client := NewInternalAPIAuthClient("http://127.0.0.1:1", nil)
 	userID := "550e8400-e29b-41d4-a716-446655440000"
 	roomID := "660e8400-e29b-41d4-a716-446655441111"
 	_, err := client.doRequest(context.Background(), userID, roomID)

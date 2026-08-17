@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/signal"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -62,12 +63,15 @@ var (
 	}
 	closeSpiffeClientFunc           = func(client *spiffe.Client) error { return client.Close() }
 	closeGRPCConnFunc               = func(conn *grpc.ClientConn) error { return conn.Close() }
+	closeRateLimiterFunc            = func(rateLimiter *middleware.RateLimiter) error { return rateLimiter.Close() }
+	closeRevocationRedisClientFunc  = func(client *redis.Client) error { return client.Close() }
 	setupRouterFunc                 = setupRouter
 	setTrustedProxiesFunc           = func(router *gin.Engine, proxies []string) error { return router.SetTrustedProxies(proxies) }
 	registerPrometheusCollectorFunc = func(collector prometheus.Collector) error {
 		return prometheus.Register(collector)
 	}
-	optionalAuthHandlerFunc = func(jwtMiddleware *middleware.JWTMiddleware, ctx context.Context) gin.HandlerFunc {
+	newRevocationRedisClientFunc = newHealthyRedisClient
+	optionalAuthHandlerFunc      = func(jwtMiddleware *middleware.JWTMiddleware, ctx context.Context) gin.HandlerFunc {
 		return jwtMiddleware.Optional(ctx)
 	}
 	newOTLPTraceExporterFunc = func(ctx context.Context, opts ...otlptracegrpc.Option) (sdktrace.SpanExporter, error) {
@@ -79,6 +83,53 @@ var (
 	shutdownH3ServerFunc   = func(server *http3.Server, ctx context.Context) error { return server.Shutdown(ctx) }
 	shutdownHTTPServerFunc = func(server *http.Server, ctx context.Context) error { return server.Shutdown(ctx) }
 )
+
+// newHealthyRedisClient constructs a dedicated Redis client and verifies the
+// connection before it is trusted for session-revocation decisions. The caller
+// owns the returned process-lifetime client.
+func newHealthyRedisClient(ctx context.Context, redisURL string) (*redis.Client, error) {
+	options, err := redis.ParseURL(strings.TrimSpace(redisURL))
+	if err != nil {
+		return nil, fmt.Errorf("parse revocation Redis URL: %w", err)
+	}
+
+	client := redis.NewClient(options)
+	pingCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	if err := client.Ping(pingCtx).Err(); err != nil {
+		_ = client.Close()
+		return nil, fmt.Errorf("connect to revocation Redis: %w", err)
+	}
+	return client, nil
+}
+
+// routerLifecycle owns every resource created while wiring the HTTP router.
+// Close is synchronous and idempotent so main cannot exit before Redis pools
+// and the rate-limiter cleanup worker have stopped.
+type routerLifecycle struct {
+	once                  sync.Once
+	rateLimiter           *middleware.RateLimiter
+	revocationRedisClient *redis.Client
+	err                   error
+}
+
+func (lifecycle *routerLifecycle) Close() error {
+	lifecycle.once.Do(func() {
+		var closeErrors []error
+		if lifecycle.rateLimiter != nil {
+			if err := closeRateLimiterFunc(lifecycle.rateLimiter); err != nil {
+				closeErrors = append(closeErrors, fmt.Errorf("close rate limiter: %w", err))
+			}
+		}
+		if lifecycle.revocationRedisClient != nil {
+			if err := closeRevocationRedisClientFunc(lifecycle.revocationRedisClient); err != nil {
+				closeErrors = append(closeErrors, fmt.Errorf("close revocation Redis: %w", err))
+			}
+		}
+		lifecycle.err = errors.Join(closeErrors...)
+	})
+	return lifecycle.err
+}
 
 func main() {
 	if err := run(); err != nil {
@@ -113,8 +164,10 @@ func run() error {
 		logger.ErrorContext(ctx, "OpenTelemetry initialization failed", "err", err)
 	} else {
 		defer func() {
-			if err := tp.Shutdown(ctx); err != nil {
-				logger.ErrorContext(ctx, "Failed to shutdown tracer provider", "err", err)
+			shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer shutdownCancel()
+			if err := tp.Shutdown(shutdownCtx); err != nil {
+				logger.ErrorContext(shutdownCtx, "Failed to shutdown tracer provider", "err", err)
 			}
 		}()
 		logger.InfoContext(ctx, "OpenTelemetry initialized")
@@ -156,11 +209,18 @@ func run() error {
 	}()
 
 	// 6. Setup Router & Middleware
-	router, err := setupRouterFunc(cfg, logger, grpcConn, fileClient, spiffeClient, ctx)
+	routerLifecycle := &routerLifecycle{}
+	router, err := setupRouterFunc(cfg, logger, grpcConn, fileClient, spiffeClient, ctx, routerLifecycle)
 	if err != nil {
 		logger.ErrorContext(ctx, "Router setup failed", "err", err)
 		return err
 	}
+	defer func() {
+		cancel()
+		if err := routerLifecycle.Close(); err != nil {
+			logger.WarnContext(context.Background(), "Failed to close router resources", "err", err)
+		}
+	}()
 
 	// 7. Start Server
 	return runServer(cfg, router, logger)
@@ -240,6 +300,7 @@ func initGRPC(cfg *config.Config, logger *slog.Logger, spiffeClients ...*spiffe.
 func setupRouter(cfg *config.Config, logger *slog.Logger, grpcConn *grpc.ClientConn, fileClient pb.FileProcessingServiceClient, opts ...any) (*gin.Engine, error) {
 	ctx := context.Background()
 	var spiffeClient *spiffe.Client
+	var lifecycle *routerLifecycle
 
 	for _, opt := range opts {
 		switch v := opt.(type) {
@@ -247,8 +308,20 @@ func setupRouter(cfg *config.Config, logger *slog.Logger, grpcConn *grpc.ClientC
 			ctx = v
 		case *spiffe.Client:
 			spiffeClient = v
+		case *routerLifecycle:
+			lifecycle = v
 		}
 	}
+	ownedLifecycle := lifecycle == nil
+	if ownedLifecycle {
+		lifecycle = &routerLifecycle{}
+	}
+	setupComplete := false
+	defer func() {
+		if !setupComplete {
+			_ = lifecycle.Close()
+		}
+	}()
 
 	gin.SetMode(gin.ReleaseMode)
 	router := gin.New()
@@ -274,9 +347,18 @@ func setupRouter(cfg *config.Config, logger *slog.Logger, grpcConn *grpc.ClientC
 	}
 
 	router.Use(cors.New(cors.Config{
-		AllowOrigins:     cfg.AllowedOrigins,
-		AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
-		AllowHeaders:     []string{"Origin", "Content-Type", "Authorization", "X-Request-ID"},
+		AllowOrigins: cfg.AllowedOrigins,
+		AllowMethods: []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
+		AllowHeaders: []string{
+			"Origin",
+			"Content-Type",
+			"Authorization",
+			"X-Request-ID",
+			"X-CSRF-Token",
+			"X-Requested-With",
+			"X-Tenant-ID",
+			"X-Profile-Cache-Envelope",
+		},
 		ExposeHeaders:    []string{"X-Request-ID", "X-RateLimit-Remaining"},
 		AllowCredentials: true,
 		MaxAge:           1 * time.Hour,
@@ -317,20 +399,46 @@ func setupRouter(cfg *config.Config, logger *slog.Logger, grpcConn *grpc.ClientC
 		logger.ErrorContext(ctx, "Proxy error", "err", err, "path", r.URL.Path)
 		w.WriteHeader(http.StatusBadGateway)
 	}
+	wsHubURL, err := url.Parse(cfg.WsHubURL)
+	if err != nil {
+		logger.ErrorContext(ctx, "Invalid ws-hub URL", "err", err, "url", cfg.WsHubURL)
+		return nil, err
+	}
+
+	// Validate authentication prerequisites before opening Redis pools. A blank
+	// revocation URL must never fall back to the rate-limit database: doing so
+	// can make a healthy DB 3 silently miss canonical DB-0 tombstones.
+	if len(strings.TrimSpace(cfg.JWTSecret)) < 32 {
+		logger.ErrorContext(ctx, "JWT_SECRET must be set and at least 32 characters.")
+		return nil, http.ErrServerClosed
+	}
+	revocationRedisURL := strings.TrimSpace(cfg.RevocationRedisURL)
+	if revocationRedisURL == "" {
+		return nil, errors.New("REVOCATION_REDIS_URL must be set explicitly")
+	}
 
 	// Rate Limiter
-	rateLimiter, err := middleware.NewRateLimiter(ctx, cfg.RedisURL, cfg.RateLimitRPS, cfg.RateLimitBurst)
-	var redisClient *redis.Client
+	rateLimitRedisURL := strings.TrimSpace(cfg.RedisURL)
+	rateLimiter, err := middleware.NewRateLimiter(ctx, rateLimitRedisURL, cfg.RateLimitRPS, cfg.RateLimitBurst)
+	var rateLimitRedisClient *redis.Client
 	if err != nil {
-		logger.WarnContext(ctx, "Rate limiter not available, continuing without", "err", err)
+		rateLimiter = middleware.NewFallbackRateLimiter()
+		logger.WarnContext(
+			ctx,
+			"Rate-limit Redis unavailable; using bounded in-memory rate limiting",
+			"err", err,
+			"fallback_limit", 3,
+			"fallback_window_seconds", 60,
+		)
 	} else {
-		router.Use(rateLimiter.Middleware(ctx))
-		redisClient = rateLimiter.GetClient()
-		collector := redisprometheus.NewCollector("gateway", "redis", redisClient)
+		rateLimitRedisClient = rateLimiter.GetClient()
+		collector := redisprometheus.NewCollector("gateway", "redis", rateLimitRedisClient)
 		if err := registerPrometheusCollectorFunc(collector); err != nil {
 			logger.WarnContext(ctx, "Failed to register Redis metrics collector", "err", err)
 		}
 	}
+	lifecycle.rateLimiter = rateLimiter
+	router.Use(rateLimiter.Middleware(ctx))
 
 	// Prometheus
 	p := ginprometheus.NewPrometheus("gin")
@@ -341,12 +449,27 @@ func setupRouter(cfg *config.Config, logger *slog.Logger, grpcConn *grpc.ClientC
 	public := router.Group("/")
 	public.GET("/health", handlers.HealthHandler)
 
-	// JWT
-	if len(strings.TrimSpace(cfg.JWTSecret)) < 32 {
-		logger.ErrorContext(ctx, "JWT_SECRET must be set and at least 32 characters.")
-		return nil, http.ErrServerClosed
+	// JWT. Revocation always gets its own client, even when an operator points
+	// both URLs at the same Redis endpoint. Authentication never owns or reuses
+	// the rate-limit pool.
+	revocationRedisClient, err := newRevocationRedisClientFunc(ctx, revocationRedisURL)
+	if err != nil {
+		revocationRedisClient = nil
+		logger.ErrorContext(
+			ctx,
+			"Session revocation Redis unavailable; protected authentication will fail closed",
+			"err", err,
+		)
+	} else {
+		lifecycle.revocationRedisClient = revocationRedisClient
 	}
-	jwtMiddleware := middleware.NewJWTMiddlewareWithConfig(cfg.JWTSecret, cfg.JWKSPublicKeyPEM, redisClient, middleware.DefaultL1CacheConfig())
+	jwtAudience := strings.TrimSpace(cfg.JWTAudience)
+	if jwtAudience == "" {
+		// Config.Load rejects blanks in production. Directly constructed configs
+		// used by embedded callers and tests still receive the secure default.
+		jwtAudience = middleware.DefaultJWTAudience
+	}
+	jwtMiddleware := middleware.NewJWTMiddlewareWithConfig(cfg.JWTSecret, cfg.JWKSPublicKeyPEM, revocationRedisClient, middleware.DefaultL1CacheConfig(), jwtAudience)
 	// PERF-W17-02: Pre-populate L1 cache from Redis to avoid cold-start thundering herd.
 	jwtMiddleware.WarmL1Cache(ctx)
 	jwtMiddleware.ListenForRevocations(ctx)
@@ -358,13 +481,9 @@ func setupRouter(cfg *config.Config, logger *slog.Logger, grpcConn *grpc.ClientC
 	}
 
 	internalSecret := []byte(cfg.InternalHMACSecret)
+	proxyFn := handlers.ProxyHandler(proxy, internalSecret)
 
 	// ws-hub Reverse Proxy configuration (handles /ws, /ws/*, /webtransport)
-	wsHubURL, err := url.Parse(cfg.WsHubURL)
-	if err != nil {
-		logger.ErrorContext(ctx, "Invalid ws-hub URL", "err", err, "url", cfg.WsHubURL)
-		return nil, err
-	}
 	wsProxy := httputil.NewSingleHostReverseProxy(wsHubURL)
 	wsProxy.Transport = proxyTransport
 	wsProxy.ErrorHandler = func(w http.ResponseWriter, r *http.Request, err error) {
@@ -372,15 +491,29 @@ func setupRouter(cfg *config.Config, logger *slog.Logger, grpcConn *grpc.ClientC
 		w.WriteHeader(http.StatusBadGateway)
 	}
 	wsProxyFn := handlers.ProxyHandler(wsProxy, internalSecret)
+	ticketAuthFn := jwtMiddleware.Validate(ctx)
+	wsPathProxyFn := func(c *gin.Context) {
+		// Gin does not permit a static /ws/ticket route beside /ws/*path. Keep
+		// the wildcard but dispatch only the exact ticket path to the authenticated
+		// backend; every other /ws/* route remains owned by ws-hub.
+		if c.Param("path") == "/ticket" {
+			ticketAuthFn(c)
+			if c.IsAborted() {
+				return
+			}
+			proxyFn(c)
+			return
+		}
+		wsProxyFn(c)
+	}
 
 	// Register WebSocket and WebTransport reverse proxy routes
 	router.Any("/ws", wsProxyFn)
-	router.Any("/ws/*path", wsProxyFn)
+	router.Any("/ws/*path", wsPathProxyFn)
 	router.Any("/webtransport", wsProxyFn)
 
 	// All API routes under a single wildcard to avoid gin tree conflicts.
 	// Auth logic is handled inside the handler based on path prefix.
-	proxyFn := handlers.ProxyHandler(proxy, internalSecret)
 	fileFn := handlers.ProxyOrFileHandler(proxy, internalSecret, ctx, grpcConn, fileClient, logger)
 	api := router.Group("/api")
 	{
@@ -431,6 +564,12 @@ func setupRouter(cfg *config.Config, logger *slog.Logger, grpcConn *grpc.ClientC
 		handlers.ProxyHandler(proxy, internalSecret)(c)
 	})
 
+	if ownedLifecycle {
+		context.AfterFunc(ctx, func() {
+			_ = lifecycle.Close()
+		})
+	}
+	setupComplete = true
 	return router, nil
 }
 

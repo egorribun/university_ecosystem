@@ -10,18 +10,19 @@ from typing import Annotated
 from dishka.integrations.fastapi import FromDishka, inject
 from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordBearer
+from redis.exceptions import RedisError
 from sqlalchemy import select
 
 from app.api.validation import raise_forbidden, raise_unauthorized
 from app.auth import mfa
 from app.auth.fingerprint import SessionFingerprint
 from app.auth.rbac import PermissionChecker, SpiceDBUnavailableError
+from app.auth.revocation import get_revocation_redis_client
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.localization import resolve_locale, translate
 from app.core.logging import get_logger
 from app.core.protocols import AsyncDatabaseSession
-from app.deps.cache import get_cache_client
 from app.models import ActiveSession, User
 from app.models.user_loaders import (
     USER_AUTH_LOAD_OPTIONS,
@@ -88,10 +89,8 @@ async def get_current_user(
                 f"{x_user_id}:{x_session_id}".encode(),
                 hashlib.sha256,
             ).hexdigest()
-            if not (
-                secrets.compare_digest(expected_sig_3, sig_header)
-                or secrets.compare_digest(expected_sig_2, sig_header)
-            ):
+            expected_sig = expected_sig_3 if x_tenant_id else expected_sig_2
+            if not secrets.compare_digest(expected_sig, sig_header):
                 _logger.warning(
                     "X-Internal-Signature verification failed for X-User-ID=%s — "
                     "possible gateway bypass or missing INTERNAL_HMAC_SECRET on gateway",
@@ -121,21 +120,18 @@ async def get_current_user(
         user_id, jti = AuthTokenService.validate_payload(payload, locale)
 
     # 2. JTI Revocation Fast-Path — optional O(1) pre-check before session lookup.
-    # NOTE (RZ-3): The "revoked:jti:<jti>" key is reserved for future use as an
-    # additional defense-in-depth layer.  The authoritative revocation check is
-    # session.revoked_at in PostgreSQL, enforced in every code path below.
-    # If Redis is unavailable the except branch falls through silently — the DB
-    # check is the source of truth and will still deny revoked sessions.
+    # The durable revocation store is an O(1) cross-service pre-check. PostgreSQL
+    # remains authoritative in this process and is checked on every path below,
+    # so a revocation-store outage safely falls back to session.revoked_at.
     try:
-        _redis = await get_cache_client()
+        _redis = await get_revocation_redis_client()
         if await _redis.exists(f"revoked:jti:{jti}"):
             raise_unauthorized(locale, "errors.auth.credentials_invalid")
     except HTTPException:
         raise
     except (
         RuntimeError,
-        ConnectionError,
-        TimeoutError,
+        RedisError,
         OSError,
     ) as exc:  # RZ-22-01: narrowed — Redis/NullCache errors
         # Redis unavailable: fall through to DB revoked_at check below

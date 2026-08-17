@@ -192,7 +192,7 @@ jobs:
       # These tests use net/http/httptest (no CGO, no Pact FFI required) and
       # verify the JSON schema contracts consumed by the frontend:
       #   - GET  /health           → {status, service} fields
-      #   - POST /api/v1/ws/ticket → 401 {error} / 200 {ticket} shapes
+      #   - POST /ws/ticket        → 401 {error} / 201 {ticket, expires_in}
       #   - WebSocket message envelope → {type, payload} / {code, message}
       #   - Internal header injection  → X-User-ID forwarded to backend
       - name: Run gateway contract tests

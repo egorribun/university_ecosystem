@@ -63,7 +63,7 @@ func TestKeyFunc_HS256DowngradeRejected(t *testing.T) {
 
 func TestValidate_InactiveUserAccount(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	m := NewJWTMiddleware(testSecret, nil)
+	m := newUnrevokedJWTMiddleware(t)
 
 	claims := Claims{
 		RegisteredClaims: jwt.RegisteredClaims{

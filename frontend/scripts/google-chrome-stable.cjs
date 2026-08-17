@@ -11,7 +11,7 @@ const runPlaywright = (args) => {
   const cliPath = (() => {
     try {
       return require.resolve("playwright/cli", { paths: [frontendDir] })
-    } catch (error) {
+    } catch {
       return null
     }
   })()

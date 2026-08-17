@@ -16,21 +16,27 @@ import (
 	"testing"
 	"time"
 
+	"github.com/alicebob/miniredis/v2"
+
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/university-ecosystem/gateway/internal/config"
+	"github.com/university-ecosystem/gateway/middleware"
 )
 
 func generateUnitTestJWT(t *testing.T, secret []byte, userID, role, jti string) string {
 	t.Helper()
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
-		"sub":  userID,
-		"role": role,
-		"jti":  jti,
-		"exp":  time.Now().Add(1 * time.Hour).Unix(),
+		"sub":       userID,
+		"aud":       middleware.DefaultJWTAudience,
+		"role":      role,
+		"jti":       jti,
+		"is_active": true,
+		"iat":       time.Now().Unix(),
+		"exp":       time.Now().Add(1 * time.Hour).Unix(),
 	})
 	tokenStr, err := token.SignedString(secret)
 	require.NoError(t, err)
@@ -38,6 +44,7 @@ func generateUnitTestJWT(t *testing.T, secret []byte, userID, role, jti string) 
 }
 
 func TestGateway_AltSvcHeaderAndWSWebTransportRoutes(t *testing.T) {
+	redisServer := miniredis.RunT(t)
 	const testJWTSecret = "my-secret-key-that-is-at-least-32-chars-long" // #nosec G101 // pragma: allowlist secret
 
 	// 1. Mock ws-hub backend server
@@ -61,6 +68,8 @@ func TestGateway_AltSvcHeaderAndWSWebTransportRoutes(t *testing.T) {
 		Port:               "8080",
 		BackendURL:         wsHubServer.URL,
 		WsHubURL:           wsHubServer.URL,
+		RedisURL:           "redis://" + redisServer.Addr() + "/3",
+		RevocationRedisURL: "redis://" + redisServer.Addr() + "/0",
 		JWTSecret:          testJWTSecret,
 		InternalHMACSecret: "test-internal-secret",
 		H3Enabled:          true,

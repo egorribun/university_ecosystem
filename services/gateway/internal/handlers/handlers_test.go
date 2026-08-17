@@ -18,7 +18,6 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 	pb "github.com/university-ecosystem/core/gen/go/file_processor/v1"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -558,7 +557,7 @@ func TestFileProcessSyncHandler_PropagatesAuthorizationHeader(t *testing.T) {
 	assert.Equal(t, "Bearer test-token-123", authHeaders[0])
 }
 
-func TestFileProcessSyncHandler_PropagatesTenantHeaderFallback(t *testing.T) {
+func TestFileProcessSyncHandler_RejectsUntrustedTenantHeaderFallback(t *testing.T) {
 	var capturedCtx context.Context
 	clientMock := &mockFileProcessingClientWithCtx{
 		mockClient: &mockFileProcessingServiceClient{
@@ -591,9 +590,8 @@ func TestFileProcessSyncHandler_PropagatesTenantHeaderFallback(t *testing.T) {
 	router.ServeHTTP(recorder, req)
 
 	assert.Equal(t, http.StatusOK, recorder.Code)
-	md, ok := metadata.FromOutgoingContext(capturedCtx)
-	require.True(t, ok)
-	assert.Equal(t, []string{"tenant-from-header"}, md.Get("x-tenant-id"))
+	md, _ := metadata.FromOutgoingContext(capturedCtx)
+	assert.Empty(t, md.Get("x-tenant-id"))
 }
 
 type mockFileProcessingClientWithCtx struct {

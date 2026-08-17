@@ -51,7 +51,7 @@
 - GraphQL: 5 defense layers — QueryDepthLimiter, MaxTokensLimiter, QueryCostExtension, RequestTimeoutExtension, PersistedQueryExtension (prod only)
 - Feature flags: `from app.core.feature_flags import is_enabled` (async) or `is_enabled_sync`
 - Password hashing: Argon2id only — **bcrypt verification removed** (TD-21-04, Wave 21)
-- Valkey eviction: `volatile-lru` (changed from allkeys-lru in Wave 21 — RZ-21-02)
+- Valkey eviction: application cache uses `volatile-lru`; `REVOCATION_REDIS_URL` must target a separate AOF-backed, persistent `noeviction` process. Never store `revoked:jti:*` in the eviction-enabled cache.
 - OTEL Metrics: bridge via `PrometheusMetricReader` in `configure_metrics()` — new metrics use OTEL API, legacy use prometheus_client (MOD-23-05)
 - Suspense queries: `useSuspenseMyEventsQuery` for components inside `<Suspense>` — do NOT use for offline-fallback hooks (MOD-23-02)
 - Bundle budget: main JS chunk must be <500 KB (enforced in CI via bundle-analysis job, MOD-23-06)

@@ -64,6 +64,7 @@ func TestMain_InvalidPortExitsCleanly(t *testing.T) {
 		t.Setenv("BACKEND_URL", "http://localhost:8080")
 		t.Setenv("NATS_URL", "nats://"+l.Addr().String())
 		t.Setenv("REDIS_URL", mr.Addr())
+		t.Setenv("REVOCATION_REDIS_URL", "redis://"+mr.Addr()+"/0")
 		t.Setenv("JWKS_URL", "http://127.0.0.1:1/jwks")
 
 		main()

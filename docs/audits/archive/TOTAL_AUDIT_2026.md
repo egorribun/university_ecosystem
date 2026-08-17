@@ -109,7 +109,7 @@ Whitelist-валидация (regex) — это defense-in-depth поверх `i
 #### Описание
 Файл `.env` содержит реальные development-секреты:
 - `POSTGRES_PASSWORD=DevSecurePass2024!`
-- `SPOTIFY_CLIENT_SECRET=5ffc84824e4843bdb2ff8fcea71f2198`
+- `SPOTIFY_CLIENT_SECRET=<redacted>`
 - `VAPID_PRIVATE_KEY=cqNPDGp24GDpbKW8q1nXvIiQ_bVBHYM8-hsg9ink280`
 - `MINIO_ROOT_PASSWORD=minioadmin123`
 - `SPICEDB_PRESHARED_KEY=dev-spicedb-key`

@@ -42,8 +42,8 @@ class UserComplianceService:
         revoke_sessions_matching does three things per active session:
         1. Marks session.revoked_at=now in DB (committed by parent transaction)
         2. Calls RedisSessionBackend.revoke_session(jti) which:
-           - DELs the Redis session key
-           - SETs revoked:jti:{jti} with TTL (gateway L2 EXISTS hit)
+           - Atomically SETs revoked:jti:{jti} with TTL (gateway L2 EXISTS hit)
+             before deleting the Redis session key
            - Publishes JTI to session:revocations channel (gateway L1 update
              via existing ListenForRevocations subscriber at
              services/gateway/middleware/auth.go:362-416)

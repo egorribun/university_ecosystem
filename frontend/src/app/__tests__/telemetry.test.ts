@@ -154,6 +154,12 @@ describe("frontend telemetry", () => {
     })
     expect(mocks.fetchOptions).toHaveLength(1)
     expect(mocks.xhrOptions).toHaveLength(1)
+    const fetchTargets = (mocks.fetchOptions[0] as { propagateTraceHeaderCorsUrls: RegExp[] })
+      .propagateTraceHeaderCorsUrls
+    const originTarget = fetchTargets[0]
+    expect(originTarget?.test("https://api.example/api/users")).toBe(true)
+    expect(originTarget?.test("https://apiXexample/api/users")).toBe(false)
+    expect(originTarget?.test("https://api.example.evil/api/users")).toBe(false)
     expect(getTracer("checkout")).toEqual({ name: "checkout" })
   })
 })

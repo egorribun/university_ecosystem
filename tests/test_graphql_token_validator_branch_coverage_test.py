@@ -17,11 +17,14 @@ def validator():
 
 
 @pytest.mark.asyncio
-@patch("app.deps.cache.get_cache_client", new_callable=AsyncMock)
-async def test_redis_jti_check_connection_error(mock_get_cache, validator):
+@patch(
+    "app.services.auth.graphql_token_validator.get_revocation_redis_client",
+    new_callable=AsyncMock,
+)
+async def test_redis_jti_check_connection_error(mock_get_revocation, validator):
     redis_mock = AsyncMock()
     redis_mock.exists.side_effect = ConnectionError("Redis down")
-    mock_get_cache.return_value = redis_mock
+    mock_get_revocation.return_value = redis_mock
 
     # Should fall through and return True
     result = await validator._redis_jti_check("jti_123")
@@ -29,21 +32,27 @@ async def test_redis_jti_check_connection_error(mock_get_cache, validator):
 
 
 @pytest.mark.asyncio
-@patch("app.deps.cache.get_cache_client", new_callable=AsyncMock)
-async def test_redis_jti_check_rejects_revoked_token(mock_get_cache, validator):
+@patch(
+    "app.services.auth.graphql_token_validator.get_revocation_redis_client",
+    new_callable=AsyncMock,
+)
+async def test_redis_jti_check_rejects_revoked_token(mock_get_revocation, validator):
     redis_mock = AsyncMock()
     redis_mock.exists.return_value = True
-    mock_get_cache.return_value = redis_mock
+    mock_get_revocation.return_value = redis_mock
 
     assert await validator._redis_jti_check("revoked-jti") is False
 
 
 @pytest.mark.asyncio
-@patch("app.deps.cache.get_cache_client", new_callable=AsyncMock)
-async def test_redis_jti_check_allows_non_revoked_token(mock_get_cache, validator):
+@patch(
+    "app.services.auth.graphql_token_validator.get_revocation_redis_client",
+    new_callable=AsyncMock,
+)
+async def test_redis_jti_check_allows_non_revoked_token(mock_get_revocation, validator):
     redis_mock = AsyncMock()
     redis_mock.exists.return_value = False
-    mock_get_cache.return_value = redis_mock
+    mock_get_revocation.return_value = redis_mock
 
     assert await validator._redis_jti_check("live-jti") is True
 

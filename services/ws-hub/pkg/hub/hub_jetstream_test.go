@@ -221,9 +221,11 @@ func TestClient_HandleMessage_JetStreamDisabledFallback(t *testing.T) {
 		Hub:    h,
 		ctx:    context.Background(),
 		Send:   make(chan []byte, 10),
+		Rooms:  make(map[string]bool),
 	}
 
 	msg := Message{Type: "message", Room: "room-fallback"}
+	c.Rooms["room-fallback"] = true
 	data := []byte(`{"text":"hello"}`)
 
 	assert.NotPanics(t, func() {

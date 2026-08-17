@@ -157,7 +157,9 @@ def test_get_minio_client_default_credentials_warns(
     with patch.object(minio_module.logger, "warning") as warning_logger:
         instance = get_minio_client()
 
-    assert "default credentials" in str(warning_logger.call_args.args[0])
+    warning_message = str(warning_logger.call_args.args[0])
+    assert "factory defaults" in warning_message
+    assert "minioadmin" not in warning_message
     assert isinstance(instance, MinIOClient)
     _, kwargs = minio_cls.call_args
     assert kwargs["access_key"] == "minioadmin"  # pragma: allowlist secret

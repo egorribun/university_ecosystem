@@ -18,12 +18,11 @@ import (
 	"github.com/university-ecosystem/ws-hub/pkg/config"
 )
 
-func TestUpgradeOriginChecks_AllowConfiguredEnvironmentAndRejectProductionUnknown(t *testing.T) {
+func TestUpgradeOriginChecks_AllowOnlyExplicitOrigins(t *testing.T) {
 	h := setupTestHub()
 	wtServer := h.webTransportServer
 	SetAllowedOrigins([]string{"https://allowed.example"})
 	t.Cleanup(func() { SetAllowedOrigins(nil) })
-	t.Setenv("ENVIRONMENT", "production")
 
 	noOrigin := httptest.NewRequest(http.MethodGet, "/ws", nil)
 	assert.True(t, upgrader.CheckOrigin(noOrigin))
@@ -42,11 +41,8 @@ func TestUpgradeOriginChecks_AllowConfiguredEnvironmentAndRejectProductionUnknow
 	unknown.Header.Set("Origin", "https://blocked.example")
 	assert.False(t, upgrader.CheckOrigin(unknown))
 
-	t.Setenv("ENVIRONMENT", "development")
-	assert.True(t, upgrader.CheckOrigin(unknown))
-	assert.True(t, wtServer.CheckOrigin(unknown))
+	assert.False(t, wtServer.CheckOrigin(unknown))
 
-	t.Setenv("ENVIRONMENT", "production")
 	t.Setenv("WS_ALLOWED_ORIGINS", "")
 	assert.False(t, wtServer.CheckOrigin(unknown))
 	configuredWT := httptest.NewRequest(http.MethodGet, "/wt", nil)
@@ -57,7 +53,6 @@ func TestUpgradeOriginChecks_AllowConfiguredEnvironmentAndRejectProductionUnknow
 func TestConfigureWebTransportServer_BindsSecureUpgradeServerToHTTP3Mux(t *testing.T) {
 	SetAllowedOrigins([]string{"https://allowed.example"})
 	t.Cleanup(func() { SetAllowedOrigins(nil) })
-	t.Setenv("ENVIRONMENT", "production")
 	h := setupTestHub()
 	handler := http.NewServeMux()
 
@@ -93,15 +88,20 @@ func TestUpgradeHandlers_RejectEmptyValidatedUser(t *testing.T) {
 	assert.Equal(t, http.StatusUnauthorized, wtResponse.Code)
 }
 
-func TestHandleWebTransport_SuccessRegistersTenantIdentity(t *testing.T) {
-	h := hubWithWTTicketRedis(t, "user-wt:jti-wt:tenant-wt")
+func TestHandleWebTransport_SuccessRegistersCanonicalTicketIdentity(t *testing.T) {
+	h := hubWithWTTicketRedis(t, "user-wt:jti-wt")
 	h.Register = make(chan *Client, 1)
+	oldValidate := validateUpgradeTicketFunc
 	oldUpgrade := upgradeWTFunc
 	oldSession := newWebTransportSessionFunc
 	t.Cleanup(func() {
+		validateUpgradeTicketFunc = oldValidate
 		upgradeWTFunc = oldUpgrade
 		newWebTransportSessionFunc = oldSession
 	})
+	validateUpgradeTicketFunc = func(*Hub, context.Context, string) (string, string, error) {
+		return "user-wt", "tenant-wt", nil
+	}
 	assert.NotNil(t, newWebTransportSessionFunc(nil))
 	upgradeWTFunc = func(*webtransport.Server, http.ResponseWriter, *http.Request) (*webtransport.Session, error) {
 		return nil, nil
@@ -116,11 +116,23 @@ func TestHandleWebTransport_SuccessRegistersTenantIdentity(t *testing.T) {
 	select {
 	case client := <-h.Register:
 		assert.Equal(t, "user-wt", client.UserID)
+		assert.NotEmpty(t, client.ID)
+		assert.NotEqual(t, client.UserID, client.ID)
 		assert.Equal(t, "tenant-wt", client.Identity.TenantID)
+		assert.Equal(t, "tenant-wt", client.ctx.Value(tenantIDKey))
 		client.cancel()
 	case <-time.After(time.Second):
 		t.Fatal("successful WebTransport upgrade did not register a client")
 	}
+}
+
+func TestNewConnectionID_IsUniqueAndNotUserDerived(t *testing.T) {
+	first := newConnectionID()
+	second := newConnectionID()
+
+	assert.NotEmpty(t, first)
+	assert.NotEqual(t, first, second)
+	assert.NotEqual(t, "user-1", first)
 }
 
 func TestValidateRS256_JWKSFetchFailureIsReturned(t *testing.T) {

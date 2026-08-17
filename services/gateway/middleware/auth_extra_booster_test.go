@@ -90,9 +90,9 @@ func TestVerifySession_NilRedis(t *testing.T) {
 	m.redis = nil
 
 	isValid, shouldDeny, err := m.verifySession(context.Background(), "jti-123", true)
-	assert.True(t, isValid)
-	assert.False(t, shouldDeny)
-	assert.NoError(t, err)
+	assert.False(t, isValid)
+	assert.True(t, shouldDeny)
+	assert.ErrorIs(t, err, errRevocationStoreUnavailable)
 }
 
 func TestValidate_MalformedTokenHeader(t *testing.T) {

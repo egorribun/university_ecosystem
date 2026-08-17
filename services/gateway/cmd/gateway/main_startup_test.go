@@ -124,6 +124,7 @@ func TestSetupRouter_FullFeatures(t *testing.T) {
 		Port:                "0",
 		BackendURL:          "http://localhost:8080",
 		RedisURL:            "redis://" + mr.Addr(),
+		RevocationRedisURL:  "redis://" + mr.Addr(),
 		JWTSecret:           "test-secret-at-least-32-characters-long",
 		SentryDSN:           "http://test@localhost/1",
 		JWKSEndpoint:        "http://localhost:1/jwks",
@@ -266,12 +267,13 @@ func TestSetupRouter_SpiffeClientTLSConfigSuccess(t *testing.T) {
 	}
 
 	router, err := setupRouter(&config.Config{
-		BackendURL:      "http://localhost:8080",
-		WsHubURL:        "http://localhost:8081",
-		JWTSecret:       "test-secret-at-least-32-characters-long",
-		AllowedOrigins:  []string{"http://localhost"},
-		SpiffeEnabled:   true,
-		BackendSpiffeID: "spiffe://university.ecosystem/ns/services/backend",
+		BackendURL:         "http://localhost:8080",
+		WsHubURL:           "http://localhost:8081",
+		RevocationRedisURL: "not-a-redis-url",
+		JWTSecret:          "test-secret-at-least-32-characters-long",
+		AllowedOrigins:     []string{"http://localhost"},
+		SpiffeEnabled:      true,
+		BackendSpiffeID:    "spiffe://university.ecosystem/ns/services/backend",
 	}, initLogger(), nil, nil, context.Background(), &spiffe.Client{})
 	require.NoError(t, err)
 	require.NotNil(t, router)

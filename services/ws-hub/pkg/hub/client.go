@@ -240,7 +240,7 @@ func (c *Client) processNextMessage() bool {
 	}
 	mergeTopLevelJoinReplay(&msg, data)
 
-	msg.From = c.ID
+	msg.From = c.UserID
 	c.handleIncomingMessage(msg, data)
 	return true
 }
@@ -463,6 +463,13 @@ func (c *Client) handleMessage(msg Message, data []byte) {
 		return
 	}
 
+	if msg.Room == "" || !c.isInRoom(msg.Room) {
+		AuthFailuresTotal.WithLabelValues("room_message_denied").Inc()
+		c.Hub.Logger.WarnContext(c.ctx, "Unauthorized room message rejected",
+			"client_id", c.ID, "user_id", c.UserID, "room", msg.Room)
+		return
+	}
+
 	// TD-W16-03 / RZ-W18-01: Use configurable rate limit fields copied to Hub struct.
 	raw, _ := c.Hub.msgLimiters.LoadOrStore(c.ID,
 		rate.NewLimiter(rate.Limit(c.Hub.clientMsgRateLimit), c.Hub.clientMsgRateBurst))
@@ -484,10 +491,19 @@ func (c *Client) handleMessage(msg Message, data []byte) {
 		return
 	}
 
+	// Sender identity is always derived from the authenticated connection.
+	// Publish the canonical structure rather than the original attacker bytes.
+	msg.From = c.UserID
+	canonicalData, err := json.Marshal(msg)
+	if err != nil {
+		c.Hub.Logger.ErrorContext(c.ctx, "Failed to encode canonical client message", "err", err)
+		return
+	}
+
 	msgID := uuid.New().String()
 	natsMsg := &nats.Msg{
 		Subject: "chat." + msg.Room,
-		Data:    data,
+		Data:    canonicalData,
 		Header:  make(nats.Header),
 	}
 	natsMsg.Header.Set("Nats-Msg-Id", msgID)
@@ -499,12 +515,21 @@ func (c *Client) handleMessage(msg Message, data []byte) {
 			}
 		}
 	} else {
-		if err := c.Hub.Nats.PublishMsg(natsMsg); err != nil {
+		// Core NATS does not provide JetStream de-duplication and older servers
+		// may not negotiate headers. Publish the canonical payload without the
+		// JetStream-only Nats-Msg-Id header on the fallback transport.
+		if err := c.Hub.Nats.Publish(natsMsg.Subject, natsMsg.Data); err != nil {
 			if c.Hub.Logger != nil {
 				c.Hub.Logger.ErrorContext(c.ctx, "Failed to publish to NATS", "err", err)
 			}
 		}
 	}
+}
+
+func (c *Client) isInRoom(room string) bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.Rooms[room]
 }
 
 // WritePump pumps messages from the hub to the session connection.

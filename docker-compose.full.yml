@@ -35,6 +35,7 @@ services:
       MAX_SESSIONS_PER_USER: "50"
       CACHE_ENABLED: "true"
       CACHE_REDIS_URL: "redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required - run start-docker.ps1}@redis:6379/0"
+      REVOCATION_REDIS_URL: "redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required - run start-docker.ps1}@revocation-redis:6379/0"
       RATE_LIMIT_STORAGE_BACKEND: redis
       RATE_LIMIT_STORAGE_URI: "redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required - run start-docker.ps1}@redis:6379/1"
       MINIO_ENDPOINT: minio:9000
@@ -70,6 +71,8 @@ services:
       postgres:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      revocation-redis:
         condition: service_healthy
       nats:
         condition: service_healthy
@@ -231,6 +234,7 @@ services:
       DATABASE_URL: "postgresql+asyncpg://postgres:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required - run start-docker.ps1}@postgres:5432/university"
       CACHE_ENABLED: "true"
       CACHE_REDIS_URL: "redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required - run start-docker.ps1}@redis:6379/0"
+      REVOCATION_REDIS_URL: "redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required - run start-docker.ps1}@revocation-redis:6379/0"
       AUTO_CREATE_SCHEMA: "false"
       NATS_URL: "nats://${NATS_USER}:${NATS_PASSWORD:?NATS_PASSWORD is required - run start-docker.ps1}@nats:4222"
       OTEL_EXPORTER_OTLP_ENDPOINT: http://tempo:4317
@@ -240,6 +244,8 @@ services:
       postgres:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      revocation-redis:
         condition: service_healthy
       nats:
         condition: service_healthy
@@ -278,6 +284,7 @@ services:
       DATABASE_URL: "postgresql+asyncpg://postgres:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required - run start-docker.ps1}@postgres:5432/university"
       CACHE_ENABLED: "true"
       CACHE_REDIS_URL: "redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required - run start-docker.ps1}@redis:6379/0"
+      REVOCATION_REDIS_URL: "redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required - run start-docker.ps1}@revocation-redis:6379/0"
       NATS_URL: "nats://${NATS_USER}:${NATS_PASSWORD:?NATS_PASSWORD is required - run start-docker.ps1}@nats:4222"
       AUTO_CREATE_SCHEMA: "false"
       OTEL_EXPORTER_OTLP_ENDPOINT: http://tempo:4317
@@ -287,6 +294,8 @@ services:
       postgres:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      revocation-redis:
         condition: service_healthy
       nats:
         condition: service_healthy
@@ -417,6 +426,52 @@ services:
         limits:
           cpus: '0.25'
           memory: 256M
+    restart: unless-stopped
+
+  # Durable, non-evicting security state. Keeping revoked:jti tombstones out
+  # of the volatile cache prevents token resurrection during memory pressure.
+  revocation-redis:
+    image: valkey/valkey:8.1-alpine
+    # The image entrypoint otherwise starts as root and calls setpriv. With all
+    # capabilities dropped that UID transition is denied before Valkey starts.
+    user: "999:1000"
+    command:
+      - "valkey-server"
+      - "--save"
+      - "60 1"
+      - "--appendonly"
+      - "yes"
+      - "--appendfsync"
+      - "everysec"
+      - "--maxmemory"
+      - "256mb"
+      - "--maxmemory-policy"
+      - "noeviction"
+      - "--requirepass"
+      - "${REDIS_PASSWORD:?REDIS_PASSWORD is required - run start-docker.ps1}"
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD is required - run start-docker.ps1}
+    volumes:
+      - revocation-redis-data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "valkey-cli -a $$REDIS_PASSWORD --no-auth-warning ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - internal
+    deploy:
+      resources:
+        limits:
+          cpus: '0.20'
+          memory: 320M
+    read_only: true
+    tmpfs:
+      - /tmp:noexec,nosuid
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
     restart: unless-stopped
 
   redis-exporter:
@@ -572,9 +627,11 @@ services:
       GATEWAY_PORT: "8080"
       BACKEND_URL: http://backend:8000
       REDIS_URL: "redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required - run start-docker.ps1}@redis:6379/3"
+      REVOCATION_REDIS_URL: "redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required - run start-docker.ps1}@revocation-redis:6379/0"
       # JWT_SECRET kept for defense-in-depth: gateway falls back to HS256 if RS256
       # verify fails. Pre-W137 in-flight HS256 tokens decode via this until expiry.
       JWT_SECRET: ${SECRET_KEY:?SECRET_KEY is required - run start-docker.ps1}
+      JWT_AUDIENCE: university-ecosystem-api
       # Wave 137 SW1: enable RS256 verification via JWKS hot-reload (MOD-W17-03).
       # Gateway polls backend's /.well-known/jwks.json every JWKS_REFRESH_INTERVAL
       # seconds; atomic public-key swap on rotation. ws-hub already uses JWKS_URL
@@ -590,6 +647,8 @@ services:
       backend:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      revocation-redis:
         condition: service_healthy
       tempo-healthprobe:
         condition: service_healthy
@@ -629,6 +688,8 @@ services:
       # gaps from W131-era multi-service split).
       REDIS_URL: "redis:6379"
       REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD is required - run start-docker.ps1}
+      REDIS_DB: "0"
+      REVOCATION_REDIS_URL: "redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required - run start-docker.ps1}@revocation-redis:6379/0"
       # Wave 173 polish-v3: ws-hub default ALLOWED_ORIGINS per
       # `services/ws-hub/pkg/config/config.go:103` = ["http://localhost:3000",
       # "http://localhost:5173"] (Vite dev server ports). Production-like
@@ -652,7 +713,12 @@ services:
       OTEL_EXPORTER_OTLP_INSECURE: "true"
       OTEL_SERVICE_NAME: "ws-hub"
     depends_on:
-      - nats
+      nats:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      revocation-redis:
+        condition: service_healthy
     networks:
       - internal
       - public
@@ -1424,3 +1490,4 @@ volumes:
   pyroscope-data:
   grafana-data:
   prometheus-data:
+  revocation-redis-data:

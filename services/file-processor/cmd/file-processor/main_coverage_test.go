@@ -514,7 +514,7 @@ func TestConnectTemporal_APIKeyFileHandling(t *testing.T) {
 			TemporalAPIKeyFile: tmpFile.Name(),
 		}
 		c, err := connectTemporal(ctx, cfg, discardLogger())
-		assert.ErrorContains(t, err, "Temporal API key file is empty")
+		assert.ErrorContains(t, err, "temporal API key file is empty")
 		assert.Nil(t, c)
 	})
 

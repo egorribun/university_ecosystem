@@ -25,6 +25,18 @@ from app.api.ws.auth import (
 )
 
 
+@pytest.fixture(autouse=True)
+def dedicated_revocation_store():
+    """Keep revocation checks hermetic and distinct from the OTT cache client."""
+    client = AsyncMock()
+    client.exists.return_value = False
+    with patch(
+        "app.api.ws.auth.get_revocation_redis_client",
+        new=AsyncMock(return_value=client),
+    ):
+        yield client
+
+
 @pytest.mark.asyncio
 async def test_jwt_import_error_coverage() -> None:
     # Mutate the decode errors tuple directly to simulate ImportError fallback
@@ -121,7 +133,9 @@ async def test_get_user_from_ticket_invalid_uuid() -> None:
 
 
 @pytest.mark.asyncio
-async def test_get_user_from_ticket_valid_lookup_flow() -> None:
+async def test_get_user_from_ticket_valid_lookup_flow(
+    dedicated_revocation_store,
+) -> None:
     ticket = secrets.token_hex(32)
     user_id = str(uuid.uuid4())
     jti = "mocked-jti-session"
@@ -156,10 +170,14 @@ async def test_get_user_from_ticket_valid_lookup_flow() -> None:
         user, returned_jti = await get_user_from_ticket(ticket)
         assert user == mock_db_user
         assert returned_jti == jti
+        dedicated_revocation_store.exists.assert_awaited_once_with(f"revoked:jti:{jti}")
+        mock_redis.exists.assert_not_awaited()
 
 
 @pytest.mark.asyncio
-async def test_get_user_from_ticket_jti_revoked_redis() -> None:
+async def test_get_user_from_ticket_jti_revoked_redis(
+    dedicated_revocation_store,
+) -> None:
     ticket = secrets.token_hex(32)
     user_id = str(uuid.uuid4())
     jti = "revoked-jti"
@@ -171,7 +189,7 @@ async def test_get_user_from_ticket_jti_revoked_redis() -> None:
     mock_user_repo = MagicMock()
     mock_user_repo.get = AsyncMock(return_value=mock_db_user)
 
-    mock_redis.exists = AsyncMock(return_value=True)
+    dedicated_revocation_store.exists.return_value = True
 
     with (
         patch("app.deps.cache.get_cache_client", return_value=mock_redis),
@@ -189,7 +207,9 @@ async def test_get_user_from_ticket_jti_revoked_redis() -> None:
 
 
 @pytest.mark.asyncio
-async def test_get_user_from_ticket_redis_exceptions() -> None:
+async def test_get_user_from_ticket_redis_exceptions(
+    dedicated_revocation_store,
+) -> None:
     # Coverage for lines 235-236 (Redis exists throws exception, fallback to DB)
     ticket = secrets.token_hex(32)
     user_id = str(uuid.uuid4())
@@ -209,8 +229,8 @@ async def test_get_user_from_ticket_redis_exceptions() -> None:
     mock_session_repo = MagicMock()
     mock_session_repo.get_by_jti = AsyncMock(return_value=mock_session)
 
-    # Redis raises error during exists check
-    mock_redis.exists = AsyncMock(side_effect=OSError("Redis error"))
+    # Dedicated revocation Redis raises during EXISTS; DB remains authoritative.
+    dedicated_revocation_store.exists.side_effect = OSError("Redis error")
 
     with (
         patch("app.deps.cache.get_cache_client", return_value=mock_redis),
@@ -345,13 +365,10 @@ async def test_get_user_from_ticket_resolve_user_edge_cases() -> None:
 
 
 @pytest.mark.asyncio
-async def test_get_user_from_token_success() -> None:
+async def test_get_user_from_token_success(dedicated_revocation_store) -> None:
     token = "some-jwt-token"
     user_id = str(uuid.uuid4())
     jti = "session-jti"
-
-    mock_redis = AsyncMock()
-    mock_redis.exists = AsyncMock(return_value=False)
 
     mock_db_user = MagicMock()
     mock_db_user.is_active = True
@@ -369,7 +386,6 @@ async def test_get_user_from_token_success() -> None:
         patch(
             "app.auth.security.decode_token", return_value={"sub": user_id, "jti": jti}
         ),
-        patch("app.deps.cache.get_cache_client", return_value=mock_redis),
         patch("app.api.ws.auth.UserRepository", return_value=mock_user_repo),
         patch("app.api.ws.auth.SessionRepository", return_value=mock_session_repo),
         patch("app.api.ws.auth.async_session") as mock_async_session,
@@ -382,36 +398,34 @@ async def test_get_user_from_token_success() -> None:
         user, returned_jti = await get_user_from_token(token)
         assert user == mock_db_user
         assert returned_jti == jti
+        dedicated_revocation_store.exists.assert_awaited_once_with(f"revoked:jti:{jti}")
 
 
 @pytest.mark.asyncio
-async def test_get_user_from_token_redis_revoked() -> None:
+async def test_get_user_from_token_redis_revoked(dedicated_revocation_store) -> None:
     # Coverage for lines 55-58 (Redis revoked fast-path)
     token = "some-jwt-token"
     user_id = str(uuid.uuid4())
     jti = "session-jti"
 
-    mock_redis = AsyncMock()
-    mock_redis.exists = AsyncMock(return_value=True)
+    dedicated_revocation_store.exists.return_value = True
 
     with (
         patch(
             "app.auth.security.decode_token", return_value={"sub": user_id, "jti": jti}
         ),
-        patch("app.deps.cache.get_cache_client", return_value=mock_redis),
     ):
         assert await get_user_from_token(token) == (None, None)
 
 
 @pytest.mark.asyncio
-async def test_get_user_from_token_redis_error() -> None:
+async def test_get_user_from_token_redis_error(dedicated_revocation_store) -> None:
     # Coverage for lines 59-64 (Redis connection error fall-through)
     token = "some-jwt-token"
     user_id = str(uuid.uuid4())
     jti = "session-jti"
 
-    mock_redis = AsyncMock()
-    mock_redis.exists = AsyncMock(side_effect=ConnectionError("Redis down"))
+    dedicated_revocation_store.exists.side_effect = ConnectionError("Redis down")
 
     mock_db_user = MagicMock()
     mock_db_user.is_active = True
@@ -429,7 +443,6 @@ async def test_get_user_from_token_redis_error() -> None:
         patch(
             "app.auth.security.decode_token", return_value={"sub": user_id, "jti": jti}
         ),
-        patch("app.deps.cache.get_cache_client", return_value=mock_redis),
         patch("app.api.ws.auth.UserRepository", return_value=mock_user_repo),
         patch("app.api.ws.auth.SessionRepository", return_value=mock_session_repo),
         patch("app.api.ws.auth.async_session") as mock_async_session,

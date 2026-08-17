@@ -9,6 +9,20 @@ from app.core.config import settings
 from app.services.auth.redis_session import RedisSessionService
 
 
+def test_redis_session_service_defaults_to_shared_cache_redis(monkeypatch) -> None:
+    """Revocation writers must use the Redis namespace read by ws-hub."""
+    monkeypatch.setattr(settings, "cache_redis_url", "redis://cache.internal:6379/0")
+    monkeypatch.setattr(
+        settings,
+        "rate_limit_storage_uri",
+        "redis://rate-limit.internal:6379/1",
+    )
+
+    service = RedisSessionService()
+
+    assert service.redis_url == "redis://cache.internal:6379/0"
+
+
 @pytest.mark.asyncio
 async def test_redis_session_lifecycle_v2(monkeypatch, request):
     # 1. Mock parameters

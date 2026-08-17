@@ -29,6 +29,7 @@ from __future__ import annotations
 import os
 import uuid
 from datetime import UTC, datetime, timedelta
+from unittest.mock import AsyncMock
 
 import pytest
 import pytest_asyncio
@@ -100,11 +101,25 @@ async def redis_client(unmock_redis):
 
 
 @pytest_asyncio.fixture
-async def session_backend(redis_client):
-    """Return a RedisSessionBackend wired to the test Redis client."""
+async def revocation_redis_client(unmock_redis):
+    """Return the dedicated durable revocation-store client."""
+    import redis.asyncio
+
+    url = os.getenv("REVOCATION_REDIS_URL", "redis://localhost:6380/0")
+    client = redis.asyncio.Redis.from_url(url)
+    yield client
+    await client.aclose()
+
+
+@pytest_asyncio.fixture
+async def session_backend(redis_client, revocation_redis_client):
+    """Return a backend wired to distinct cache and revocation stores."""
     from app.auth.redis_session import RedisSessionBackend
 
-    return RedisSessionBackend(redis_client)
+    return RedisSessionBackend(
+        redis_client,
+        revocation_redis_client=revocation_redis_client,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -113,7 +128,11 @@ async def session_backend(redis_client):
 
 
 @pytest.mark.asyncio
-async def test_revocation_key_format(redis_client, session_backend):
+async def test_revocation_key_format(
+    redis_client,
+    revocation_redis_client,
+    session_backend,
+):
     """Python backend must write revocation under ``revoked:jti:{jti}``.
 
     Cross-service invariant (contracts/redis-keys.md):
@@ -134,7 +153,7 @@ async def test_revocation_key_format(redis_client, session_backend):
     )
 
     # Subscribe to the revocations channel BEFORE revoking.
-    pubsub = redis_client.pubsub()
+    pubsub = revocation_redis_client.pubsub()
     await pubsub.subscribe("session:revocations")
 
     try:
@@ -142,7 +161,7 @@ async def test_revocation_key_format(redis_client, session_backend):
 
         # 1. Verify the revocation key exists in the expected format.
         expected_key = f"revoked:jti:{jti}"
-        exists = await redis_client.exists(expected_key)
+        exists = await revocation_redis_client.exists(expected_key)
         assert exists == 1, (
             f"Expected Redis key '{expected_key}' to exist after revoke_session(), "
             f"but it was not found.  "
@@ -151,7 +170,7 @@ async def test_revocation_key_format(redis_client, session_backend):
         )
 
         # 2. Verify the revocation key has a sensible TTL (not eternal).
-        ttl = await redis_client.ttl(expected_key)
+        ttl = await revocation_redis_client.ttl(expected_key)
         assert ttl > 0, (
             f"Revocation key '{expected_key}' must have a positive TTL so it expires "
             f"when the JWT would naturally expire. Got TTL={ttl}."
@@ -183,11 +202,16 @@ async def test_revocation_key_format(redis_client, session_backend):
         await pubsub.unsubscribe("session:revocations")
         await pubsub.aclose()
         # Cleanup
-        await redis_client.delete(f"revoked:jti:{jti}")
+        await redis_client.delete(f"session:{jti}")
+        await revocation_redis_client.delete(f"revoked:jti:{jti}")
 
 
 @pytest.mark.asyncio
-async def test_revocation_key_absent_before_revoke(redis_client, session_backend):
+async def test_revocation_key_absent_before_revoke(
+    redis_client,
+    revocation_redis_client,
+    session_backend,
+):
     """Revocation key must NOT exist before revoke_session() is called."""
     jti = str(uuid.uuid4())
     future_expiry = datetime.now(UTC) + timedelta(hours=1)
@@ -199,7 +223,7 @@ async def test_revocation_key_absent_before_revoke(redis_client, session_backend
     )
 
     key = f"revoked:jti:{jti}"
-    exists_before = await redis_client.exists(key)
+    exists_before = await revocation_redis_client.exists(key)
     assert exists_before == 0, (
         f"Revocation key '{key}' must not exist before logout. "
         f"If it does, tokens are permanently pre-revoked."
@@ -207,6 +231,130 @@ async def test_revocation_key_absent_before_revoke(redis_client, session_backend
 
     # Cleanup
     await redis_client.delete(f"session:{jti}")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("source_state", ["missing", "persistent"])
+async def test_revocation_tombstone_survives_missing_or_unbounded_source_key(
+    redis_client,
+    revocation_redis_client,
+    session_backend,
+    source_state,
+):
+    """Real Redis Lua path must cover eviction and TTL loss fail-closed."""
+    jti = str(uuid.uuid4())
+    session_key = f"session:{jti}"
+    revoked_key = f"revoked:jti:{jti}"
+    expires_at = datetime.now(UTC) + timedelta(minutes=5)
+
+    if source_state == "persistent":
+        await redis_client.set(session_key, "cached-without-expiry")
+
+    try:
+        await session_backend.revoke_session(jti, expires_at=expires_at)
+
+        assert await redis_client.get(session_key) is None
+        assert await redis_client.get(revoked_key) is None
+        assert await revocation_redis_client.get(revoked_key) == b"1"
+        assert 295 <= await revocation_redis_client.ttl(revoked_key) <= 300
+    finally:
+        await redis_client.delete(session_key, revoked_key)
+        await revocation_redis_client.delete(revoked_key)
+
+
+@pytest.mark.asyncio
+async def test_v2_session_producer_writes_the_same_revocation_contract(
+    redis_client,
+    revocation_redis_client,
+    monkeypatch,
+):
+    """Logout/fingerprint producer shares the canonical tombstone primitive."""
+    from app.services.auth import redis_session as redis_session_module
+
+    async def get_test_client(_url):
+        return redis_client
+
+    monkeypatch.setattr(
+        redis_session_module,
+        "_get_shared_client",
+        get_test_client,
+    )
+    monkeypatch.setattr(
+        redis_session_module,
+        "get_revocation_redis_client",
+        AsyncMock(return_value=revocation_redis_client),
+    )
+    service = redis_session_module.RedisSessionService(
+        redis_url="redis://integration-test"
+    )
+    jti = str(uuid.uuid4())
+    revoked_key = f"revoked:jti:{jti}"
+
+    try:
+        await service.revoke_session(
+            jti,
+            expires_at=datetime.now(UTC) + timedelta(minutes=5),
+        )
+
+        assert await redis_client.get(revoked_key) is None
+        assert await revocation_redis_client.get(revoked_key) == b"1"
+        assert 295 <= await revocation_redis_client.ttl(revoked_key) <= 300
+    finally:
+        await redis_client.delete(f"session:v2:{jti}", revoked_key)
+        await revocation_redis_client.delete(revoked_key)
+
+
+@pytest.mark.asyncio
+async def test_v2_revocation_uses_dedicated_configured_store(
+    redis_client,
+    revocation_redis_client,
+    monkeypatch,
+):
+    """The v2 producer must not put tombstones in its cache namespace."""
+    from app.services.auth import redis_session as redis_session_module
+
+    cache_url = os.getenv(
+        "CACHE_REDIS_URL",
+        os.getenv("REDIS_URL", "redis://localhost:6379/0"),
+    )
+    selected_urls: list[str] = []
+
+    async def get_test_client(url: str):
+        selected_urls.append(url)
+        return redis_client
+
+    monkeypatch.setattr(redis_session_module.settings, "cache_redis_url", cache_url)
+    monkeypatch.setattr(
+        redis_session_module,
+        "_get_shared_client",
+        get_test_client,
+    )
+    monkeypatch.setattr(
+        redis_session_module,
+        "get_revocation_redis_client",
+        AsyncMock(return_value=revocation_redis_client),
+    )
+
+    service = redis_session_module.RedisSessionService()
+    jti = str(uuid.uuid4())
+    session_key = f"session:v2:{jti}"
+    revoked_key = f"revoked:jti:{jti}"
+
+    try:
+        await redis_client.delete(session_key, revoked_key)
+        await revocation_redis_client.delete(revoked_key)
+
+        await service.revoke_session(
+            jti,
+            expires_at=datetime.now(UTC) + timedelta(minutes=5),
+        )
+
+        assert selected_urls == [cache_url]
+        assert await redis_client.exists(revoked_key) == 0
+        assert await revocation_redis_client.exists(revoked_key) == 1
+    finally:
+        await redis_client.delete(session_key, revoked_key)
+        await revocation_redis_client.delete(revoked_key)
 
 
 @pytest.mark.asyncio

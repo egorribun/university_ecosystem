@@ -13,7 +13,9 @@ services:
       GATEWAY_PORT: "8080"
       BACKEND_URL: http://backend:8000
       REDIS_URL: redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required - set in .env file}@valkey:6379/3
+      REVOCATION_REDIS_URL: redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required - set in .env file}@revocation-valkey:6379/0
       JWT_SECRET: ${SECRET_KEY:?SECRET_KEY must be explicitly set in .env}
+      JWT_AUDIENCE: university-ecosystem-api
       JWKS_ENDPOINT: http://backend:8000/.well-known/jwks.json
       JWKS_REFRESH_INTERVAL: "60"
       OTEL_EXPORTER_OTLP_ENDPOINT: tempo:4317
@@ -22,6 +24,8 @@ services:
       backend:
         condition: service_healthy
       valkey:
+        condition: service_healthy
+      revocation-valkey:
         condition: service_healthy
     networks:
       - public
@@ -43,6 +47,10 @@ services:
     environment:
       WS_HUB_PORT: "8081"
       NATS_URL: nats://${NATS_PASSWORD:?NATS_PASSWORD is required - set in .env file}@nats:4222
+      REDIS_URL: valkey:6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD is required - set in .env file}
+      REDIS_DB: "0"
+      REVOCATION_REDIS_URL: redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required - set in .env file}@revocation-valkey:6379/0
       JWT_SECRET: ${SECRET_KEY:?SECRET_KEY must be explicitly set in .env}
       JWKS_URL: http://backend:8000/.well-known/jwks.json
       OTEL_EXPORTER_OTLP_ENDPOINT: tempo:4317
@@ -53,6 +61,10 @@ services:
       nats:
         condition: service_healthy
       backend:
+        condition: service_healthy
+      valkey:
+        condition: service_healthy
+      revocation-valkey:
         condition: service_healthy
     networks:
       - internal

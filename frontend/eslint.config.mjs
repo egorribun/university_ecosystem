@@ -2,6 +2,7 @@
 import storybook from "eslint-plugin-storybook"
 
 import js from "@eslint/js"
+import globals from "globals"
 import tseslint from "typescript-eslint"
 import reactPlugin from "eslint-plugin-react"
 import reactHooks from "eslint-plugin-react-hooks"
@@ -26,9 +27,28 @@ export default tseslint.config(
     ],
   },
   js.configs.recommended,
+  {
+    files: ["scripts/**/*.{js,mjs,cjs}"],
+    languageOptions: {
+      ecmaVersion: 2022,
+      sourceType: "module",
+      globals: globals.node,
+    },
+  },
+  {
+    files: ["scripts/**/*.cjs"],
+    languageOptions: {
+      sourceType: "commonjs",
+    },
+  },
   ...tseslint.configs.recommended,
   reactPlugin.configs.flat.recommended,
   jsxA11y.flatConfigs.recommended,
+  {
+    settings: {
+      react: { version: "detect" },
+    },
+  },
   {
     files: ["**/*.{ts,tsx}"],
     languageOptions: {
@@ -68,7 +88,6 @@ export default tseslint.config(
       security,
     },
     settings: {
-      react: { version: "detect" },
       "boundaries/elements": [
         { type: "shared", pattern: "src/components/*" },
         { type: "feature", pattern: "src/features/*" },
@@ -224,6 +243,25 @@ export default tseslint.config(
       "i18next/no-literal-string": "off",
       "@typescript-eslint/no-explicit-any": "off",
       "@typescript-eslint/no-unsafe-function-type": "off",
+    },
+  },
+  {
+    files: ["scripts/**/*.{js,mjs,cjs}"],
+    rules: {
+      "@typescript-eslint/no-unused-vars": [
+        "error",
+        {
+          argsIgnorePattern: "^_",
+          varsIgnorePattern: "^_",
+          caughtErrorsIgnorePattern: "^_",
+        },
+      ],
+    },
+  },
+  {
+    files: ["scripts/**/*.cjs"],
+    rules: {
+      "@typescript-eslint/no-require-imports": "off",
     },
   },
   prettier,

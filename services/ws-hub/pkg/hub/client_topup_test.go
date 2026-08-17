@@ -219,6 +219,25 @@ func TestClientHandleMessage_JetStreamPublishErrorIsContained(t *testing.T) {
 	h.enableJetStream = true
 	h.Nats = &nats.Conn{}
 	h.js = &scriptedPublishJetStream{publishErr: errors.New("publish failed")}
-	c := &Client{ID: "publish-error", Hub: h, Send: make(chan []byte, 1), ctx: context.Background()}
+	c := &Client{
+		ID: "publish-error", UserID: "publish-user", Hub: h,
+		Send: make(chan []byte, 1), Rooms: map[string]bool{"room": true}, ctx: context.Background(),
+	}
 	c.handleMessage(Message{Type: "message", Room: "room"}, []byte(`{"type":"message"}`))
+}
+
+func TestClientHandleMessage_InvalidRawPayloadIsContained(t *testing.T) {
+	h := setupTestHub()
+	h.Nats = &nats.Conn{}
+	c := &Client{
+		ID: "invalid-payload", UserID: "canonical-user", Hub: h,
+		Send: make(chan []byte, 1), Rooms: map[string]bool{"room": true}, ctx: context.Background(),
+	}
+
+	assert.NotPanics(t, func() {
+		c.handleMessage(
+			Message{Type: "message", Room: "room", Payload: json.RawMessage(`{`)},
+			[]byte(`{"type":"message"}`),
+		)
+	})
 }

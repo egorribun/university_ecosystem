@@ -949,6 +949,8 @@ def test_rendered_helm_services_and_scalers_target_real_pods() -> None:
         "--set",
         "redis.enabled=false",
         "--set",
+        "revocationRedis.enabled=false",
+        "--set",
         "nats.enabled=false",
         "--set",
         "global.imageTag=contract-sha",
@@ -1046,6 +1048,10 @@ def test_rendered_helm_services_and_scalers_target_real_pods() -> None:
         "name": connections_secret,
         "key": "redis-backend-url",
     }
+    assert backend_env["REVOCATION_REDIS_URL"]["valueFrom"]["secretKeyRef"] == {
+        "name": connections_secret,
+        "key": "redis-revocation-url",
+    }
     assert backend_env["NATS_URL"]["valueFrom"]["secretKeyRef"] == {
         "name": connections_secret,
         "key": "nats-url",
@@ -1093,6 +1099,11 @@ def test_rendered_helm_services_and_scalers_target_real_pods() -> None:
         "name": connections_secret,
         "key": "redis-gateway-url",
     }
+    assert gateway_env["REVOCATION_REDIS_URL"]["valueFrom"]["secretKeyRef"] == {
+        "name": connections_secret,
+        "key": "redis-revocation-url",
+    }
+    assert gateway_env["JWT_AUDIENCE"]["value"] == "university-ecosystem-api"
     assert gateway_env["VITE_ENVIRONMENT"]["value"] == "development"
     assert gateway_env["GRPC_USE_TLS"]["value"] == "false"
     assert gateway_env["OTEL_EXPORTER_OTLP_ENDPOINT"]["value"] == (
@@ -1113,6 +1124,7 @@ def test_rendered_helm_services_and_scalers_target_real_pods() -> None:
     for variable, key in {
         "DATABASE_URL": "database-url",
         "CACHE_REDIS_URL": "redis-backend-url",
+        "REVOCATION_REDIS_URL": "redis-revocation-url",
         "NATS_URL": "nats-url",
         "NATS_AUTH_TOKEN": "nats-auth-token",
         "KEDA_POSTGRESQL_CONNECTION": "keda-postgresql-url",

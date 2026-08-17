@@ -94,14 +94,14 @@ export const generateManifests = (options = {}) => {
       } catch (error) {
         if (error && error.code === "ENOENT") {
           throw new Error(
-            `Generated manifest missing: ${filename}. Run \"npm run generate:manifests\" to refresh the output.`
+            `Generated manifest missing: ${filename}. Run "npm run generate:manifests" to refresh the output.`
           )
         }
         throw error
       }
       if (existing !== contents) {
         throw new Error(
-          `Generated manifest stale: ${filename}. Run \"npm run generate:manifests\" and commit the result.`
+          `Generated manifest stale: ${filename}. Run "npm run generate:manifests" and commit the result.`
         )
       }
     } else {

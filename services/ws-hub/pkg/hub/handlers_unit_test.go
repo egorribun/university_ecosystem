@@ -25,6 +25,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/alicebob/miniredis/v2"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/gorilla/websocket"
 	"github.com/lestrrat-go/jwx/v2/jwk"
@@ -43,7 +44,7 @@ import (
 // respondTicketRESP writes a canned RESP reply for the uppercased request
 // fragment. Extracted from the accept loop to keep startTicketRESPServer under
 // the gocognit gate (mirrors the respondRESP idiom in cmd/uni-cli/main_test.go).
-func respondTicketRESP(write func(string), upper, getdelReply string) {
+func respondTicketRESP(write func(string), upper, getdelReply, existsReply string) {
 	switch {
 	case strings.Contains(upper, "HELLO"):
 		write("-ERR unknown command 'HELLO'\r\n")
@@ -57,13 +58,15 @@ func respondTicketRESP(write func(string), upper, getdelReply string) {
 		} else {
 			write(fmt.Sprintf("$%d\r\n%s\r\n", len(getdelReply), getdelReply))
 		}
+	case strings.Contains(upper, "EXISTS"):
+		write(existsReply)
 	default:
 		write("+OK\r\n")
 	}
 }
 
 // handleTicketConn serves one mock-Redis connection until it closes.
-func handleTicketConn(c net.Conn, getdelReply string) {
+func handleTicketConn(c net.Conn, getdelReply, existsReply string) {
 	defer func() { _ = c.Close() }()                      //nolint:errcheck // mock cleanup
 	write := func(s string) { _, _ = c.Write([]byte(s)) } //nolint:errcheck // best-effort
 	buf := make([]byte, 2048)
@@ -76,12 +79,12 @@ func handleTicketConn(c net.Conn, getdelReply string) {
 			if part == "" {
 				continue
 			}
-			respondTicketRESP(write, strings.ToUpper(part), getdelReply)
+			respondTicketRESP(write, strings.ToUpper(part), getdelReply, existsReply)
 		}
 	}
 }
 
-func startTicketRESPServer(t *testing.T, getdelReply string) string {
+func startTicketRESPServer(t *testing.T, getdelReply, existsReply string) string {
 	t.Helper()
 	var lc net.ListenConfig
 	ln, err := lc.Listen(context.Background(), "tcp", "127.0.0.1:0")
@@ -94,7 +97,7 @@ func startTicketRESPServer(t *testing.T, getdelReply string) string {
 			if err != nil {
 				return
 			}
-			go handleTicketConn(conn, getdelReply)
+			go handleTicketConn(conn, getdelReply, existsReply)
 		}
 	}()
 	return ln.Addr().String()
@@ -102,9 +105,15 @@ func startTicketRESPServer(t *testing.T, getdelReply string) string {
 
 func hubWithTicketRedis(t *testing.T, getdelReply string) *Hub {
 	t.Helper()
-	addr := startTicketRESPServer(t, getdelReply)
+	return hubWithTicketRedisReplies(t, getdelReply, ":0\r\n")
+}
+
+func hubWithTicketRedisReplies(t *testing.T, getdelReply, existsReply string) *Hub {
+	t.Helper()
+	addr := startTicketRESPServer(t, getdelReply, existsReply)
 	h := setupTestHub()
 	h.redisClient = goredis.NewClient(&goredis.Options{Addr: addr})
+	h.revocationRedisClient = h.redisClient
 	t.Cleanup(func() { _ = h.redisClient.Close() }) //nolint:errcheck // test cleanup
 	return h
 }
@@ -159,6 +168,8 @@ func TestValidateUpgradeTicket_MalformedPayloads(t *testing.T) {
 	}{
 		{"no colon", "user-without-jti"},
 		{"empty user", ":jti-only"},
+		{"empty jti", "user-id:"},
+		{"unexpected tenant segment", "user-id:jti:tenant-id"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -175,6 +186,64 @@ func TestValidateUpgradeTicket_HappyPath(t *testing.T) {
 	userID, _, err := h.validateUpgradeTicket(context.Background(), validTicket)
 	require.NoError(t, err)
 	assert.Equal(t, "user-77", userID)
+}
+
+func TestValidateUpgradeTicket_RejectsRevokedJTI(t *testing.T) {
+	mr := miniredis.RunT(t)
+	redisClient := goredis.NewClient(&goredis.Options{Addr: mr.Addr()})
+	t.Cleanup(func() { require.NoError(t, redisClient.Close()) })
+	h := setupTestHub()
+	h.redisClient = redisClient
+	h.revocationRedisClient = redisClient
+
+	require.NoError(t, mr.Set(wsTicketKeyPrefix+validTicket, "user-77:jti-42"))
+	require.NoError(t, mr.Set("revoked:jti:jti-42", "1"))
+
+	_, _, err := h.validateUpgradeTicket(context.Background(), validTicket)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "ticket session is revoked")
+	assert.False(t, mr.Exists(wsTicketKeyPrefix+validTicket), "revoked ticket must remain single-use")
+}
+
+func TestValidateUpgradeTicket_UsesDedicatedRevocationStore(t *testing.T) {
+	ticketStore := miniredis.RunT(t)
+	revocationStore := miniredis.RunT(t)
+	ticketClient := goredis.NewClient(&goredis.Options{Addr: ticketStore.Addr()})
+	revocationClient := goredis.NewClient(&goredis.Options{Addr: revocationStore.Addr()})
+	t.Cleanup(func() {
+		require.NoError(t, ticketClient.Close())
+		require.NoError(t, revocationClient.Close())
+	})
+	h := NewHub(nil, newTestLogger(), nil, &config.Config{}, ticketClient, revocationClient)
+	t.Cleanup(h.Stop)
+
+	require.NoError(t, ticketStore.Set(wsTicketKeyPrefix+validTicket, "user-77:jti-42"))
+	require.NoError(t, revocationStore.Set("revoked:jti:jti-42", "1"))
+
+	_, _, err := h.validateUpgradeTicket(context.Background(), validTicket)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "ticket session is revoked")
+}
+
+func TestValidateUpgradeTicket_FailsClosedWhenRevocationLookupFails(t *testing.T) {
+	h := hubWithTicketRedisReplies(t, "user-77:jti-42", "-ERR revocation lookup failed\r\n")
+
+	_, _, err := h.validateUpgradeTicket(context.Background(), validTicket)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "session revocation check failed")
+}
+
+func TestValidateUpgradeTicket_RequiresDedicatedRevocationStore(t *testing.T) {
+	mr := miniredis.RunT(t)
+	ticketClient := goredis.NewClient(&goredis.Options{Addr: mr.Addr()})
+	t.Cleanup(func() { require.NoError(t, ticketClient.Close()) })
+	require.NoError(t, mr.Set(wsTicketKeyPrefix+validTicket, "user-77:jti-42"))
+	h := NewHub(nil, newTestLogger(), nil, &config.Config{}, ticketClient, nil)
+	t.Cleanup(h.Stop)
+
+	_, _, err := h.validateUpgradeTicket(context.Background(), validTicket)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "revocation redis not available")
 }
 
 // ---------------------------------------------------------------------------
@@ -293,8 +362,13 @@ func TestValidateRS256_WithoutJWKSConfigured(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestHandleWebSocket_E2EUpgradeJoinAndDeliver(t *testing.T) {
-	h := hubWithTicketRedis(t, "user-e2e:jti-1:tenant-e2e")
+	h := hubWithTicketRedis(t, "user-e2e:jti-1")
 	cfg := &config.Config{SendBufferSize: 8}
+	oldValidate := validateUpgradeTicketFunc
+	t.Cleanup(func() { validateUpgradeTicketFunc = oldValidate })
+	validateUpgradeTicketFunc = func(*Hub, context.Context, string) (string, string, error) {
+		return "user-e2e", "tenant-e2e", nil
+	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
@@ -317,19 +391,25 @@ func TestHandleWebSocket_E2EUpgradeJoinAndDeliver(t *testing.T) {
 	}
 	defer func() { _ = conn.Close() }() //nolint:errcheck // test cleanup
 
-	// Registered under the ticket's user id.
+	// Registered under a connection-scoped id while retaining canonical user identity.
+	var client *Client
+	var connectionID string
 	require.Eventually(t, func() bool {
 		h.mu.RLock()
 		defer h.mu.RUnlock()
-		_, ok := h.Clients["user-e2e"]
-		return ok
+		for id, candidate := range h.Clients {
+			if candidate.UserID == "user-e2e" {
+				client = candidate
+				connectionID = id
+				return id != candidate.UserID
+			}
+		}
+		return false
 	}, 2*time.Second, 10*time.Millisecond)
-	h.mu.RLock()
-	client := h.Clients["user-e2e"]
-	h.mu.RUnlock()
 	require.NotNil(t, client)
 	require.NotNil(t, client.Identity)
 	assert.Equal(t, "tenant-e2e", client.Identity.TenantID)
+	assert.Equal(t, "tenant-e2e", client.ctx.Value(tenantIDKey))
 
 	// Join a room through ReadPump (NATS-free message type).
 	require.NoError(t, conn.WriteJSON(map[string]string{"type": "join", "room": "room-e2e"}))
@@ -352,7 +432,7 @@ func TestHandleWebSocket_E2EUpgradeJoinAndDeliver(t *testing.T) {
 	require.Eventually(t, func() bool {
 		h.mu.RLock()
 		defer h.mu.RUnlock()
-		_, ok := h.Clients["user-e2e"]
+		_, ok := h.Clients[connectionID]
 		return !ok
 	}, 2*time.Second, 10*time.Millisecond)
 }

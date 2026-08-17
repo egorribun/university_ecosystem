@@ -6,6 +6,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from fastapi import Request
+from redis.exceptions import RedisError
 
 from app.api.validation import raise_forbidden
 from app.auth.fingerprint import (
@@ -73,15 +74,17 @@ class AuthFingerprintService:
                 # Production retains full fingerprint enforcement.
                 if env not in ("testing", "development"):
                     session.revoked_at = datetime.now(UTC)
-                    await db.commit()
+                    if redis_service is None:
+                        from app.services.auth.redis_session import RedisSessionService
 
-                    if redis_service:
-                        try:
-                            await redis_service.revoke_session(session.jti)
-                        except (ConnectionError, TimeoutError, OSError) as e:
-                            # RZ-20-04: Narrowed — Redis revocation is best-effort.
-                            logger.error(
-                                "Failed to revoke session in Redis: %s", e
-                            )  # LOW-W19: lazy logging
+                        redis_service = RedisSessionService()
+                    try:
+                        await redis_service.revoke_session(
+                            session.jti, expires_at=session.expires_at
+                        )
+                    except (RedisError, RuntimeError, OSError):
+                        await db.rollback()
+                        raise
+                    await db.commit()
 
                     raise_forbidden(self.locale, "errors.auth.session_compromised")

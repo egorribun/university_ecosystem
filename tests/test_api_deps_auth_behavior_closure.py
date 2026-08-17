@@ -68,7 +68,10 @@ async def _run_db_success(
     with (
         patch.object(module, "resolve_locale", return_value="en"),
         patch.object(
-            module, "get_cache_client", new_callable=AsyncMock, return_value=client
+            module,
+            "get_revocation_redis_client",
+            new_callable=AsyncMock,
+            return_value=client,
         ),
         patch.object(
             module.AuthTokenService,
@@ -108,7 +111,7 @@ def test_redis_service_factory_constructs_service():
 async def test_gateway_hmac_accepts_three_and_two_part_signatures(use_tenant_signature):
     user_id = uuid4()
     jti = "gateway-jti"
-    tenant = "tenant" if use_tenant_signature else ""
+    tenant = str(uuid4()) if use_tenant_signature else ""
     headers = {
         "X-User-ID": str(user_id),
         "X-Session-ID": jti,
@@ -136,6 +139,34 @@ async def test_gateway_hmac_accepts_three_and_two_part_signatures(use_tenant_sig
 
     assert result is user
     repo.get_active_session_with_user.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_gateway_hmac_rejects_two_part_signature_when_tenant_is_present():
+    user_id = uuid4()
+    jti = "gateway-jti"
+    headers = {
+        "X-User-ID": str(user_id),
+        "X-Session-ID": jti,
+        "X-Tenant-ID": str(uuid4()),
+        "X-Internal-Signature": hmac.new(
+            b"secret", f"{user_id}:{jti}".encode(), hashlib.sha256
+        ).hexdigest(),
+    }
+
+    with pytest.raises(HTTPException) as exc_info:
+        await _run_db_success(
+            _request(headers),
+            user_id,
+            jti,
+            AsyncMock(),
+            settings_value=SimpleNamespace(
+                internal_hmac_secret="secret",  # pragma: allowlist secret
+                environment="testing",
+            ),
+        )
+
+    assert exc_info.value.status_code == status.HTTP_401_UNAUTHORIZED
 
 
 @pytest.mark.asyncio
@@ -211,7 +242,7 @@ async def test_revoked_jti_and_redis_error_paths():
         patch.object(module, "resolve_locale", return_value="en"),
         patch.object(
             module,
-            "get_cache_client",
+            "get_revocation_redis_client",
             new_callable=AsyncMock,
             return_value=revoked_client,
         ),
@@ -251,7 +282,7 @@ async def test_db_cache_miss_without_active_session_is_rejected():
         patch.object(module, "resolve_locale", return_value="en"),
         patch.object(
             module,
-            "get_cache_client",
+            "get_revocation_redis_client",
             new_callable=AsyncMock,
             return_value=AsyncMock(exists=AsyncMock(return_value=False)),
         ),

@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/alicebob/miniredis/v2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -14,6 +15,7 @@ import (
 
 // TestEmpirical_Gateway_AltSvcAndIngress verifies HTTP/3 Alt-Svc header injection and route proxying.
 func TestEmpirical_Gateway_AltSvcAndIngress(t *testing.T) {
+	redisServer := miniredis.RunT(t)
 	// 1. Mock ws-hub backend server
 	wsHubServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
@@ -37,6 +39,8 @@ func TestEmpirical_Gateway_AltSvcAndIngress(t *testing.T) {
 			Port:               "8080",
 			BackendURL:         wsHubServer.URL,
 			WsHubURL:           wsHubServer.URL,
+			RedisURL:           "redis://" + redisServer.Addr() + "/3",
+			RevocationRedisURL: "redis://" + redisServer.Addr() + "/0",
 			JWTSecret:          "secret-key-at-least-32-chars-long",
 			InternalHMACSecret: "test-internal-secret",
 			H3Enabled:          true,
@@ -79,6 +83,8 @@ func TestEmpirical_Gateway_AltSvcAndIngress(t *testing.T) {
 			Port:               "8080",
 			BackendURL:         wsHubServer.URL,
 			WsHubURL:           wsHubServer.URL,
+			RedisURL:           "redis://" + redisServer.Addr() + "/3",
+			RevocationRedisURL: "redis://" + redisServer.Addr() + "/0",
 			JWTSecret:          "secret-key-at-least-32-chars-long",
 			InternalHMACSecret: "test-internal-secret",
 			H3Enabled:          false,
@@ -108,6 +114,8 @@ func TestEmpirical_Gateway_AltSvcAndIngress(t *testing.T) {
 			Port:               "8080",
 			BackendURL:         wsHubServer.URL,
 			WsHubURL:           wsHubServer.URL,
+			RedisURL:           "redis://" + redisServer.Addr() + "/3",
+			RevocationRedisURL: "redis://" + redisServer.Addr() + "/0",
 			JWTSecret:          "secret-key-at-least-32-chars-long",
 			InternalHMACSecret: "test-internal-secret",
 			H3Enabled:          true,

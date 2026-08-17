@@ -43,6 +43,24 @@ func TestNewHub_FailsFastWhenDedupCacheConstructionFails(t *testing.T) {
 	)
 }
 
+func TestNewHub_RejectsMultipleRevocationRedisClients(t *testing.T) {
+	assert.PanicsWithValue(
+		t,
+		"ws-hub: at most one revocation Redis client may be configured",
+		func() {
+			NewHub(
+				nil,
+				slog.New(slog.NewTextHandler(io.Discard, nil)),
+				nil,
+				nil,
+				nil,
+				nil,
+				nil,
+			)
+		},
+	)
+}
+
 func TestSetupJWKS_PropagatesRegistrationFailure(t *testing.T) {
 	old := registerJWKSFunc
 	t.Cleanup(func() { registerJWKSFunc = old })

@@ -381,7 +381,7 @@ async function smokeAdminRoute(page, routePath, theme, outDir) {
     // post-load class write covers any race where Framer Motion entrance
     // animations snap before the React state propagation cycle completes.
     await page.evaluate((themeName) => {
-      const root = document.documentElement
+      const root = globalThis.document.documentElement
       if (themeName === "dark") {
         root.classList.add("dark")
       } else {

@@ -47,10 +47,19 @@ const ARTIFACTS = [
   },
 ]
 
-function hasNamedExport(source, name) {
-  return new RegExp(
-    `export\\s+(?:async\\s+)?function\\s+${name}\\b|export\\s*\\{[^}]*\\b${name}\\b`
-  ).test(source)
+function collectNamedExports(source) {
+  const names = new Set()
+  for (const match of source.matchAll(/export\s+(?:async\s+)?function\s+([A-Za-z_$][\w$]*)\b/g)) {
+    names.add(match[1])
+  }
+  for (const match of source.matchAll(/export\s*\{([^}]*)\}/g)) {
+    for (const entry of match[1].split(",")) {
+      const parts = entry.trim().split(/\s+as\s+/)
+      const exportedName = parts.at(-1)?.trim()
+      if (exportedName) names.add(exportedName)
+    }
+  }
+  return names
 }
 
 function assertValidWasm(bytes, label) {
@@ -61,11 +70,12 @@ function assertValidWasm(bytes, label) {
 }
 
 function assertGeneratedExports(source, artifact) {
+  const namedExports = collectNamedExports(source)
   for (const exportName of artifact.exports) {
     const exists =
       exportName === "default"
         ? /export\s+default\b|export\s*\{[^}]*\bdefault\b/.test(source)
-        : hasNamedExport(source, exportName)
+        : namedExports.has(exportName)
     if (!exists) {
       throw new Error(
         `${artifact.packageName} generated glue is missing required export: ${exportName}`

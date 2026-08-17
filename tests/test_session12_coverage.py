@@ -21,6 +21,7 @@ isolation). Constructing a new ``Settings()`` is fine — it is not the global.
 from __future__ import annotations
 
 import uuid
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock
@@ -160,6 +161,7 @@ class TestAuthFingerprintServiceRevocation:
             id=uuid.uuid4(),
             jti="jti-1",
             revoked_at=None,
+            expires_at=datetime.now(UTC) + timedelta(hours=1),
         )
         user = SimpleNamespace(id=uuid.uuid4())
         db = AsyncMock()
@@ -179,7 +181,9 @@ class TestAuthFingerprintServiceRevocation:
         assert exc.value.status_code == 403
         assert session.revoked_at is not None
         db.commit.assert_awaited_once()
-        redis_service.revoke_session.assert_awaited_once_with("jti-1")
+        redis_service.revoke_session.assert_awaited_once_with(
+            "jti-1", expires_at=session.expires_at
+        )
 
     @pytest.mark.asyncio
     async def test_production_mismatch_redis_failure_still_raises(self, monkeypatch):
@@ -189,11 +193,12 @@ class TestAuthFingerprintServiceRevocation:
             monkeypatch, redis_service=redis_service
         )
 
-        # Redis revocation is best-effort: the error is logged + swallowed, but the
-        # session is still revoked + the 403 still raised.
-        with pytest.raises(HTTPException) as exc:
+        # Redis revocation is fail-closed and happens before the DB commit. If the
+        # durable tombstone cannot be written, roll back instead of exposing a
+        # partially committed revocation that other services cannot enforce.
+        with pytest.raises(ConnectionError, match="redis down"):
             await service.validate_fingerprint(user, session, db, redis_service)
 
-        assert exc.value.status_code == 403
         assert session.revoked_at is not None
-        db.commit.assert_awaited_once()
+        db.commit.assert_not_awaited()
+        db.rollback.assert_awaited_once()

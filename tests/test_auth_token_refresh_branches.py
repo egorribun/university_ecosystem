@@ -377,14 +377,15 @@ async def test_redis_session_revoke_removes_key():
     )
 
 
-async def test_redis_session_revoke_pipeline_fallback(monkeypatch):
-    """Branch: revoke_session falls back to pipeline when Lua eval raises OSError.
+async def test_redis_session_revoke_ordered_fallback(monkeypatch):
+    """Branch: revoke_session uses a safe fallback when EVAL is disabled.
 
     WHY: some Redis deployments disable EVAL (eval-sha security setting or
     AWS ElastiCache in cluster mode). The pipeline fallback ensures revocation
     still works without Lua.
     """
     import fakeredis.aioredis
+    from redis.exceptions import ResponseError
 
     from app.auth.redis_session import RedisSessionBackend
 
@@ -393,7 +394,7 @@ async def test_redis_session_revoke_pipeline_fallback(monkeypatch):
     original_eval = fake.eval
 
     async def _fail_eval(*args, **kwargs):
-        raise OSError("EVAL not available")
+        raise ResponseError("EVAL not available")
 
     fake.eval = _fail_eval
 
@@ -403,7 +404,7 @@ async def test_redis_session_revoke_pipeline_fallback(monkeypatch):
     _future = datetime.now(UTC) + timedelta(minutes=30)
     await fake.set(f"session:{jti}", json.dumps({"user_id": "u1"}), ex=300)
 
-    # Should not raise; pipeline fallback handles it
+    # Should not raise; ordered tombstone-first fallback handles it.
     await backend.revoke_session(jti)
 
     # Restore

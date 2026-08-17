@@ -97,6 +97,7 @@ graph TD
     subgraph "Data, Governance & Workflows"
         Postgres[("🐘 PostgreSQL 17 + pgvector")]
         Valkey[("⚡ Valkey / Redis 7 (volatile-lru)")]
+        Revocations[("🛡️ Revocation Valkey (AOF / noeviction)")]
         MinIO[("📦 MinIO (S3 Storage)")]
         Temporal["⏳ Temporal.io (Workflows)"]
         SpiceDB["🔐 SpiceDB (ReBAC)"]
@@ -118,11 +119,14 @@ graph TD
 
     Backend --> Postgres
     Backend --> Valkey
+    Backend --> Revocations
     Backend --> SpiceDB
     Backend --> Temporal
     Backend --> Flagd
 
     WSHub --> Valkey
+    WSHub --> Revocations
+    Gateway --> Revocations
     WSHub --> Backend
     FileProc --> MinIO
     Optimizer --- Backend
@@ -193,7 +197,7 @@ sequenceDiagram
 | **Microservices** | Go 1.26, NATS, gRPC, Temporal Go SDK | High-concurrency WebSockets & media orchestration | **88%** |
 | **Native Performance**| Rust, PyO3, Rayon, Maturin | Microsecond-speed schedule conflict solver & HMAC | **95%** |
 | **Auth & Security** | Argon2id, SpiceDB, WebAuthn/Passkeys, Kyverno, CSRF nonces | Zero-trust ReBAC, hardware MFA & policy enforcement | Verified |
-| **Data & Cache** | PostgreSQL 17, pgvector, Valkey / Redis 7 (`volatile-lru`) | Relational, vector, & probabilistic L1/L2 caching | Verified |
+| **Data & Cache** | PostgreSQL 17, pgvector, cache Valkey (`volatile-lru`), revocation Valkey (AOF, `noeviction`) | Relational/vector data, probabilistic L1/L2 caching, and isolated durable auth revocation | Verified |
 | **Observability** | OTEL, Tempo, Prometheus, Pyroscope 1.19, Loki + Alloy/Fluent Bit | Complete 360° tracing, metrics, profiling & logging | Verified |
 
 ## 🚀 Rapid Onboarding

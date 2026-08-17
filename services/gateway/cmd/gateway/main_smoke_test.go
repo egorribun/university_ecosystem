@@ -12,9 +12,8 @@ package main
 //     and SetListenAddress(":9102") spawns a real (leaked-until-exit) listener.
 //   - cfg must be valid or setupRouter calls os.Exit(1): BackendURL must parse and
 //     JWTSecret must be ≥32 chars.
-//   - RedisURL="" → NewRateLimiter errors → rate-limiter-absent branch → nil redis
-//     client → WarmL1Cache/ListenForRevocations early-return (no goroutines, no
-//     Redis dependency).
+//   - An in-process Redis supplies both rate limiting and revocation checks;
+//     startup degradation is covered separately by middleware tests.
 //   - grpcConn/fileClient are nil but ProxyOrFileHandler only dereferences them on
 //     POST /files/process/sync, which none of these probes hit.
 
@@ -27,18 +26,22 @@ import (
 	"testing"
 	"time"
 
+	"github.com/alicebob/miniredis/v2"
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/university-ecosystem/gateway/internal/config"
+	"github.com/university-ecosystem/gateway/middleware"
 )
 
 func TestSetupRouter_WiresRoutesAndProbes(t *testing.T) {
+	mr := miniredis.RunT(t)
 	cfg := &config.Config{ // #nosec G101 -- test-only smoke config placeholders.
 		Port:               "8080",
-		BackendURL:         "http://127.0.0.1:1",                           // parseable, never dialed by these probes
-		RedisURL:           "",                                             // → rate-limiter-absent branch → nil redis client
+		BackendURL:         "http://127.0.0.1:1", // parseable, never dialed by these probes
+		RedisURL:           "redis://" + mr.Addr(),
+		RevocationRedisURL: "redis://" + mr.Addr(),
 		JWTSecret:          "smoke-test-jwt-secret-at-least-32-chars-long", // ≥32 chars, avoids os.Exit
 		RateLimitRPS:       100,
 		RateLimitBurst:     200,
@@ -89,6 +92,7 @@ func TestSetupRouter_WiresRoutesAndProbes(t *testing.T) {
 		now := time.Now()
 		token, err := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
 			"sub":       "user-1",
+			"aud":       middleware.DefaultJWTAudience,
 			"role":      "student",
 			"jti":       "jti-1",
 			"is_active": true,

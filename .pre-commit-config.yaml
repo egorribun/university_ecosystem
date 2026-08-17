@@ -110,7 +110,7 @@ repos:
       - id: semgrep-docker
         name: semgrep-sast
         args: ["--config", "auto", "--error", "--oss-only"]
-        exclude: ^tests/|^alembic/|^native/rust_ext/fuzz/|_test\.go$
+        exclude: (^|/)tests/|^alembic/|^native/rust_ext/fuzz/|_test\.go$|^frontend/coverage-[^/]+/
         # pre-commit may split --all-files into several invocations. Running
         # those Docker containers concurrently causes intermittent EOF/OOM
         # failures on developer workstations.

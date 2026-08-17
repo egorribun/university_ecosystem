@@ -216,7 +216,9 @@ func TestHTTPJWTMiddleware_NonMapClaimsAreRejected(t *testing.T) {
 	assert.Equal(t, http.StatusUnauthorized, rec.Code)
 }
 
-func TestHTTPJWTMiddleware_TenantContextUsesHeaderBeforeClaim(t *testing.T) {
+// Synthetic tenant claims specify the trust rule for a future authoritative
+// issuer. The current Python login issuer intentionally emits no tenant scope.
+func TestHTTPJWTMiddleware_TenantContextUsesSignedClaimOnly(t *testing.T) {
 	token := signedToken(t, jwt.SigningMethodHS256, []byte("hmac-secret"), jwt.MapClaims{
 		"sub":       "tenant-user",
 		"tenant_id": "claim-tenant",
@@ -227,8 +229,8 @@ func TestHTTPJWTMiddleware_TenantContextUsesHeaderBeforeClaim(t *testing.T) {
 		header     string
 		wantTenant string
 	}{
-		{name: "explicit header wins", header: "header-tenant", wantTenant: "header-tenant"},
-		{name: "claim is fallback", wantTenant: "claim-tenant"},
+		{name: "forged header cannot override claim", header: "header-tenant", wantTenant: "claim-tenant"},
+		{name: "claim is used without header", wantTenant: "claim-tenant"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			var tenant string
@@ -248,6 +250,28 @@ func TestHTTPJWTMiddleware_TenantContextUsesHeaderBeforeClaim(t *testing.T) {
 			assert.Equal(t, tc.wantTenant, tenant)
 		})
 	}
+
+	t.Run("forged header without claim is ignored", func(t *testing.T) {
+		claimlessToken := signedToken(
+			t,
+			jwt.SigningMethodHS256,
+			[]byte("hmac-secret"),
+			jwt.MapClaims{"sub": "tenant-user"},
+		)
+		var tenant string
+		next := http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+			tenant, _ = r.Context().Value(tenantIDKey).(string)
+		})
+		handler := httpJWTMiddleware("hmac-secret", nil, testLogger(), next)
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/graphql", nil)
+		req.Header.Set("Authorization", "Bearer "+claimlessToken)
+		req.Header.Set("X-Tenant-ID", "forged-header-tenant")
+		rec := httptest.NewRecorder()
+
+		handler.ServeHTTP(rec, req)
+		assert.Equal(t, http.StatusOK, rec.Code)
+		assert.Empty(t, tenant)
+	})
 }
 
 // ---------------------------------------------------------------------------
@@ -268,7 +292,8 @@ func TestAuthFunc_ValidTokenPutsSubInContext(t *testing.T) {
 	assert.Equal(t, "grpc-user", ctx.Value(userIDKey))
 }
 
-func TestAuthFunc_TenantContextPrefersMetadataAndFallsBackToClaim(t *testing.T) {
+// As above, this exercises verifier behavior, not current token minting.
+func TestAuthFunc_TenantContextUsesSignedClaimOnly(t *testing.T) {
 	fn := authFunc("grpc-secret", nil, testLogger()) // pragma: allowlist secret
 	token := signedToken(t, jwt.SigningMethodHS256, []byte("grpc-secret"), jwt.MapClaims{
 		"sub":       "grpc-tenant-user",
@@ -283,11 +308,27 @@ func TestAuthFunc_TenantContextPrefersMetadataAndFallsBackToClaim(t *testing.T) 
 		),
 	))
 	require.NoError(t, err)
-	assert.Equal(t, "metadata-tenant", withMetadata.Value(tenantIDKey))
+	assert.Equal(t, "claim-tenant", withMetadata.Value(tenantIDKey))
 
 	claimOnly, err := fn(metadataCtx(token))
 	require.NoError(t, err)
 	assert.Equal(t, "claim-tenant", claimOnly.Value(tenantIDKey))
+
+	claimlessToken := signedToken(
+		t,
+		jwt.SigningMethodHS256,
+		[]byte("grpc-secret"),
+		jwt.MapClaims{"sub": "grpc-tenant-user"},
+	)
+	claimless, err := fn(metadata.NewIncomingContext(
+		context.Background(),
+		metadata.Pairs(
+			"authorization", "Bearer "+claimlessToken,
+			"x-tenant-id", "forged-metadata-tenant",
+		),
+	))
+	require.NoError(t, err)
+	assert.Nil(t, claimless.Value(tenantIDKey))
 }
 
 func TestAuthFunc_InvalidTokenUnauthenticated(t *testing.T) {

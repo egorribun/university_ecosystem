@@ -9,6 +9,7 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"encoding/pem"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -27,14 +28,20 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
+var errRevocationStoreUnavailable = errors.New("session revocation store unavailable")
+
 // GW-P1-02 (audit Wave 10): temporal guards for JWT iat claim.
 // WithIssuedAt() in golang-jwt/v5 only rejects tokens issued in the future
 // (up to clock-skew tolerance). It does NOT reject tokens that are unreasonably
 // old — a token issued before the service existed, for example, would still
 // pass signature verification. These constants bound both directions.
 const (
-	jwtMaxClockSkew = 5 * time.Minute
-	jwtMaxTokenAge  = 24 * time.Hour
+	// DefaultJWTAudience must match app/core/config/mixins/jwt_settings.py.
+	DefaultJWTAudience            = "university-ecosystem-api"
+	jwtMaxClockSkew               = 5 * time.Minute
+	jwtMaxTokenAge                = 24 * time.Hour
+	revocationHealthCheckInterval = 500 * time.Millisecond
+	revocationHealthCheckTimeout  = 100 * time.Millisecond
 )
 
 // AccessTokenCookieName is the canonical cookie name shared between the
@@ -65,6 +72,7 @@ type cacheEntry struct {
 // JWTMiddleware validates JWT tokens (HS256 and RS256).
 type JWTMiddleware struct {
 	secret       []byte
+	audience     string
 	rsaPublicKey atomic.Pointer[rsa.PublicKey] // RZ-33-19: atomic for JWKS hot-reload safety
 	redis        *redis.Client
 	l1cache      *lru.Cache[string, cacheEntry]
@@ -90,6 +98,9 @@ var (
 	}
 	closePubSubFunc = func(pubsub *redis.PubSub) error {
 		return pubsub.Close()
+	}
+	pubSubChannelFunc = func(pubsub *redis.PubSub) <-chan *redis.Message {
+		return pubsub.Channel()
 	}
 	l1Hits = prometheus.NewCounter(prometheus.CounterOpts{
 		Name: "gateway_l1_cache_hits_total",
@@ -164,7 +175,7 @@ func NewJWTMiddleware(secret string, redisClient *redis.Client) *JWTMiddleware {
 // NewJWTMiddlewareWithConfig creates a new JWT middleware with custom L1 cache settings.
 // rsaPublicKeyPEM is optional; when non-empty, RS256 tokens are accepted using
 // the given PEM-encoded RSA public key alongside HS256 tokens.
-func NewJWTMiddlewareWithConfig(secret, rsaPublicKeyPEM string, redisClient *redis.Client, config L1CacheConfig) *JWTMiddleware {
+func NewJWTMiddlewareWithConfig(secret, rsaPublicKeyPEM string, redisClient *redis.Client, config L1CacheConfig, audiences ...string) *JWTMiddleware {
 	metricsRegistered.Do(func() {
 		prometheus.MustRegister(l1Hits, l1Misses, l1Evictions, redisErrors, revocationListenerDisconnects, l1ProbRefreshes)
 	})
@@ -179,11 +190,23 @@ func NewJWTMiddlewareWithConfig(secret, rsaPublicKeyPEM string, redisClient *red
 		panic(fmt.Sprintf("gateway: invalid L1 cache configuration: %v", err))
 	}
 
+	audience := DefaultJWTAudience
+	if len(audiences) > 1 {
+		panic("gateway: at most one JWT audience may be configured")
+	}
+	if len(audiences) == 1 {
+		audience = strings.TrimSpace(audiences[0])
+		if audience == "" {
+			panic("gateway: JWT audience must not be blank")
+		}
+	}
+
 	m := &JWTMiddleware{
-		secret:  []byte(secret),
-		redis:   redisClient,
-		l1cache: cache,
-		l1TTL:   config.TTL, // PERF-31-02: store TTL for XFetch calculation
+		secret:   []byte(secret),
+		audience: audience,
+		redis:    redisClient,
+		l1cache:  cache,
+		l1TTL:    config.TTL, // PERF-31-02: store TTL for XFetch calculation
 	}
 
 	// Parse the optional RS256 public key at startup so we fail fast on bad config.
@@ -431,11 +454,10 @@ func (m *JWTMiddleware) WarmL1Cache(ctx context.Context) {
 
 // ListenForRevocations starts a background goroutine to listen for session revocations.
 //
-// RZ-W17-02 (Wave 17): Replaced select/case <-ch pattern with for-range loop.
-// The old pattern spun on nil when Redis disconnected (channel closed), causing
-// silent revocation blindness — revoked sessions stayed valid for the L1 TTL.
-// Now: on disconnect, purge L1 cache (fail-safe) and reconnect with jittered
-// exponential backoff.
+// The listener actively health-checks Redis because go-redis Pub/Sub channels
+// reconnect transparently and therefore do not reliably close on a network
+// outage. On a failed health check, the listener returns, purges L1, and
+// reconnects with jittered exponential backoff.
 func (m *JWTMiddleware) ListenForRevocations(ctx context.Context) {
 	if m.redis == nil {
 		return
@@ -464,6 +486,9 @@ func (m *JWTMiddleware) ListenForRevocations(ctx context.Context) {
 				m.listenOnceFunc(ctx)
 			} else {
 				m.listenOnce(ctx)
+			}
+			if ctx.Err() != nil {
+				return
 			}
 
 			// Channel closed — Redis disconnected.
@@ -497,7 +522,7 @@ func (m *JWTMiddleware) ListenForRevocations(ctx context.Context) {
 }
 
 // listenOnce subscribes to revocation events and processes them until the
-// channel closes or context is cancelled. Returns normally on disconnect.
+// channel closes, an explicit Redis health check fails, or context is cancelled.
 func (m *JWTMiddleware) listenOnce(ctx context.Context) {
 	pubsub := m.redis.Subscribe(ctx, "session:revocations")
 	defer func() {
@@ -507,20 +532,30 @@ func (m *JWTMiddleware) listenOnce(ctx context.Context) {
 		}
 	}()
 
-	ch := pubsub.Channel()
-	// RZ-W17-02: for-range detects channel closure natively.
-	// When Redis disconnects, ch is closed, the loop exits, and the caller
-	// handles reconnection.
-	for msg := range ch {
+	ch := pubSubChannelFunc(pubsub)
+	healthTicker := time.NewTicker(revocationHealthCheckInterval)
+	defer healthTicker.Stop()
+	for {
 		select {
 		case <-ctx.Done():
 			return
-		default:
+		case msg, ok := <-ch:
+			if !ok {
+				return
+			}
+			// Backend writes the tombstone before publishing. Cache the safe,
+			// positive revocation decision immediately; never cache a negative
+			// "not revoked" result that could outlive Redis connectivity.
+			key := fmt.Sprintf("revoked:jti:%s", msg.Payload)
+			m.l1cache.Add(key, cacheEntry{exists: true, storedAt: time.Now()})
+		case <-healthTicker.C:
+			healthCtx, cancel := context.WithTimeout(ctx, revocationHealthCheckTimeout)
+			err := m.redis.Ping(healthCtx).Err()
+			cancel()
+			if err != nil {
+				return
+			}
 		}
-		// RZ-01 (audit 2026-03-04): Key format MUST match verifySession which stores
-		// and checks under "revoked:jti:{jti}".
-		key := fmt.Sprintf("revoked:jti:%s", msg.Payload)
-		m.l1cache.Remove(key)
 	}
 }
 
@@ -547,6 +582,14 @@ func shouldRefreshProbabilistic(storedAt time.Time, ttl time.Duration, beta floa
 // entries nearing expiry, spreading Redis revalidation across requests.
 func (m *JWTMiddleware) checkL1Cache(key string) (exists bool, found bool) {
 	if entry, ok := m.l1cache.Get(key); ok {
+		// Negative revocation decisions are deliberately never trusted locally.
+		// A Redis or Pub/Sub partition must force a live Redis check and therefore
+		// a fail-closed 503 for required authentication.
+		if !entry.exists {
+			m.l1cache.Remove(key)
+			l1Misses.Inc()
+			return false, false
+		}
 		if shouldRefreshProbabilistic(entry.storedAt, m.l1TTL, 1.0) {
 			l1ProbRefreshes.Inc()
 			// Trigger a Redis re-check by returning "not found" in cache,
@@ -579,8 +622,13 @@ func (m *JWTMiddleware) checkSessionInRedis(ctx context.Context, key string) (bo
 		return false, err
 	}
 
-	// Update L1 cache with the result
-	m.l1cache.Add(key, cacheEntry{exists: exists > 0, storedAt: time.Now()})
+	// Cache only positive revocation tombstones. Negative caching is unsafe:
+	// it can authenticate revoked tokens while Redis/PubSub is partitioned.
+	if exists > 0 {
+		m.l1cache.Add(key, cacheEntry{exists: true, storedAt: time.Now()})
+	} else {
+		m.l1cache.Remove(key)
+	}
 
 	return exists > 0, nil
 }
@@ -588,11 +636,12 @@ func (m *JWTMiddleware) checkSessionInRedis(ctx context.Context, key string) (bo
 // verifySession checks if a session is valid, using L1 cache first, then Redis
 // Returns: (isValid, shouldDeny, err) where:
 //   - isValid: session exists and is valid
-//   - shouldDeny: if true, fail-secure (503); if false, fail-open (continue)
+//   - shouldDeny: if true, required auth must fail-secure with 503
 //   - err: any error that occurred
 func (m *JWTMiddleware) verifySession(ctx context.Context, sessionID string, failSecure bool) (isValid bool, shouldDeny bool, err error) {
 	if m.redis == nil {
-		return true, false, nil
+		redisErrors.Inc()
+		return false, failSecure, errRevocationStoreUnavailable
 	}
 	// FIX-JTI-01: A token with no JTI (jti / claims.ID) cannot be correlated with
 	// a Redis session entry, so it must be treated as invalid rather than valid.
@@ -755,6 +804,7 @@ func (m *JWTMiddleware) Validate(ctx context.Context) gin.HandlerFunc { //nolint
 			jwt.WithValidMethods(validMethods),
 			jwt.WithIssuedAt(),
 			jwt.WithExpirationRequired(),
+			jwt.WithAudience(m.audience),
 		)
 		token, err := parseJWTClaimsFunc(parser, tokenString, &Claims{}, m.keyFunc)
 
@@ -805,11 +855,12 @@ func (m *JWTMiddleware) Validate(ctx context.Context) gin.HandlerFunc { //nolint
 			return
 		}
 
-		// Set user info in context
+		// Tenant identity is accepted only from signed claims. A client-supplied
+		// X-Tenant-ID is a routing hint, not authenticated membership, and must
+		// never be promoted into signed gateway identity headers. The current
+		// Python login issuer emits no tenant claim until authoritative membership
+		// resolution exists, so production tenant context is intentionally empty.
 		tenantID := claims.TenantID
-		if tenantID == "" {
-			tenantID = c.GetHeader("X-Tenant-ID")
-		}
 		c.Set("user_id", claims.UserID)
 		c.Set("user_role", claims.Role)
 		c.Set("session_id", claims.ID)
@@ -823,10 +874,7 @@ func (m *JWTMiddleware) Validate(ctx context.Context) gin.HandlerFunc { //nolint
 // Optional returns a middleware that extracts JWT claims but doesn't require auth.
 func (m *JWTMiddleware) Optional(ctx context.Context) gin.HandlerFunc { //nolint:gocognit,cyclop // mirrors Validate complexity
 	return func(c *gin.Context) {
-		tenantID := c.GetHeader("X-Tenant-ID")
-		if tenantID != "" {
-			c.Set("tenant_id", tenantID)
-		}
+		tenantID := ""
 
 		// 1. Try to get token from cookie
 		tokenString, err := c.Cookie(AccessTokenCookieName)
@@ -869,6 +917,7 @@ func (m *JWTMiddleware) Optional(ctx context.Context) gin.HandlerFunc { //nolint
 			jwt.WithValidMethods(optValidMethods),
 			jwt.WithIssuedAt(),
 			jwt.WithExpirationRequired(),
+			jwt.WithAudience(m.audience),
 		)
 		token, err := parseJWTClaimsFunc(parser, tokenString, &Claims{}, m.keyFunc)
 

@@ -4,9 +4,9 @@ NOTE: this is ``app.auth.redis_session.RedisSessionBackend`` — distinct from t
 already-tested ``app.services.auth.redis_session.RedisSessionService`` (test_redis_sessions.py).
 
 Hermetic via fakeredis. ``revoke_session`` first tries a Lua ``eval`` (which fakeredis
-does not support and would raise an *uncaught* ResponseError), so the pipeline-fallback
-branch is driven by a thin wrapper whose ``.eval`` raises ConnectionError (one of the
-caught types) while delegating ttl/pipeline/delete/set/publish to a real FakeRedis.
+does not support), so the ordered tombstone-first fallback branch is driven by a thin
+wrapper whose ``.eval`` raises ResponseError while delegating Redis operations to a
+real FakeRedis.
 The Lua happy-path is intentionally not unit-tested (no Lua under fakeredis).
 """
 
@@ -18,6 +18,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from fakeredis.aioredis import FakeRedis
+from redis.exceptions import ResponseError
 
 from app.auth import redis_session as rs
 
@@ -31,7 +32,7 @@ class _EvalFailRedis:
         self._publish_error = publish_error
 
     async def eval(self, *_a, **_k):
-        raise ConnectionError("Lua scripting unavailable")
+        raise ResponseError("Lua scripting unavailable")
 
     async def ttl(self, key):
         return await self._inner.ttl(key)
@@ -96,7 +97,7 @@ async def test_is_session_valid_reflects_key_presence():
 
 
 # --------------------------------------------------------------------------- #
-# revoke_session — pipeline fallback branches
+# revoke_session — ordered fallback branches
 # --------------------------------------------------------------------------- #
 @pytest.mark.asyncio
 async def test_revoke_session_pipeline_writes_tombstone_when_ttl_positive():
@@ -112,14 +113,36 @@ async def test_revoke_session_pipeline_writes_tombstone_when_ttl_positive():
 
 
 @pytest.mark.asyncio
-async def test_revoke_session_deletes_without_tombstone_when_ttl_nonpositive():
+async def test_revoke_session_writes_tombstone_when_session_key_is_missing():
     inner = FakeRedis(decode_responses=True)
     jti = "jti-revoke-no-ttl"  # key absent → ttl == -2
     backend = rs.RedisSessionBackend(_EvalFailRedis(inner))
 
-    await backend.revoke_session(jti)
+    expires_at = datetime.now(UTC) + timedelta(minutes=5)
+    await backend.revoke_session(jti, expires_at=expires_at)
 
-    assert await inner.get(f"revoked:jti:{jti}") is None  # ttl<=0 → no tombstone
+    assert await inner.get(f"revoked:jti:{jti}") == "1"
+    assert 295 <= await inner.ttl(f"revoked:jti:{jti}") <= 300
+
+
+@pytest.mark.asyncio
+async def test_revoke_session_writes_security_state_to_dedicated_client():
+    cache = FakeRedis(decode_responses=True)
+    revocation = FakeRedis(decode_responses=True)
+    jti = "jti-dedicated"
+    await cache.set(f"session:{jti}", "v", ex=100)
+    backend = rs.RedisSessionBackend(
+        _EvalFailRedis(cache),
+        revocation_redis_client=revocation,
+    )
+
+    await backend.revoke_session(
+        jti, expires_at=datetime.now(UTC) + timedelta(minutes=5)
+    )
+
+    assert await cache.get(f"session:{jti}") is None
+    assert await cache.get(f"revoked:jti:{jti}") is None
+    assert await revocation.get(f"revoked:jti:{jti}") == "1"
 
 
 @pytest.mark.asyncio
@@ -193,8 +216,8 @@ async def test_session_backend_abstract_methods() -> None:
         async def is_session_valid(self, jti):
             return await super().is_session_valid(jti)
 
-        async def revoke_session(self, jti):
-            await super().revoke_session(jti)
+        async def revoke_session(self, jti, expires_at=None):
+            await super().revoke_session(jti, expires_at=expires_at)
 
     dummy = DummyBackend()
     await dummy.register_session("user-1", "jti", datetime.now(UTC))
