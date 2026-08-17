@@ -1,10 +1,14 @@
 from __future__ import annotations
 
+import ast
 import json
 import re
 import shlex
+import subprocess
+import tomllib
 from copy import deepcopy
 from pathlib import Path
+from shutil import which
 
 import pytest
 import yaml
@@ -43,6 +47,12 @@ NIGHTLY_FULL_WORKFLOW_PATH = (
     REPOSITORY_ROOT / ".github" / "workflows" / "nightly-full-gate.yml"
 )
 SBOM_WORKFLOW_PATH = REPOSITORY_ROOT / ".github" / "workflows" / "sbom.yml"
+DEPENDENCY_AUDIT_VALIDATOR_PATH = (
+    REPOSITORY_ROOT / "scripts" / "check_dependency_audit_report.py"
+)
+RUST_AUDIT_CONFIG_PATH = (
+    REPOSITORY_ROOT / "native" / "rust_ext" / ".cargo" / "audit.toml"
+)
 QUALITY_PROMOTION_WORKFLOW_PATH = (
     REPOSITORY_ROOT / ".github" / "workflows" / "quality-promotion-check.yml"
 )
@@ -877,6 +887,229 @@ def test_sbom_go_gate_uses_symbol_aware_reachable_vulnerability_analysis() -> No
     ).read_text(encoding="utf-8")
     assert "go install golang.org/x/vuln/cmd/govulncheck@v1.7.0" in reusable_audit
     assert "govulncheck@v1.5.0" not in reusable_audit
+
+
+def test_dependency_audit_scanners_and_rust_policy_are_exactly_pinned() -> None:
+    """Keep scanner behavior and RustSec severity policy reproducible."""
+
+    project = tomllib.loads(
+        (REPOSITORY_ROOT / "pyproject.toml").read_text(encoding="utf-8")
+    )
+    security_dependencies = project["dependency-groups"]["security"]
+    assert "pip-audit==2.10.1" in security_dependencies
+    assert not any(
+        dependency.startswith("pip-audit") and dependency != "pip-audit==2.10.1"
+        for dependency in security_dependencies
+    )
+
+    lock = tomllib.loads((REPOSITORY_ROOT / "uv.lock").read_text(encoding="utf-8"))
+    pip_audit_packages = [
+        package for package in lock["package"] if package.get("name") == "pip-audit"
+    ]
+    assert [package["version"] for package in pip_audit_packages] == ["2.10.1"]
+
+    sbom_text = SBOM_WORKFLOW_PATH.read_text(encoding="utf-8")
+    install_command = "cargo install cargo-audit --version 0.22.2 --locked"
+    assert sbom_text.count(install_command) == 2
+    assert "cargo install cargo-audit --version 0.21.2" not in sbom_text
+
+    audit_config = tomllib.loads(RUST_AUDIT_CONFIG_PATH.read_text(encoding="utf-8"))
+    assert audit_config["advisories"] == {
+        "ignore": [],
+        "severity_threshold": "high",
+    }
+    assert DEPENDENCY_AUDIT_VALIDATOR_PATH.is_file()
+
+
+def test_sbom_python_and_rust_audits_capture_then_validate_reports() -> None:
+    """Require report validation to distinguish findings from scanner failures."""
+
+    workflow = yaml.safe_load(SBOM_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    gate = workflow["jobs"]["vuln-gate"]
+    # Keep the main-CI check context from existing run history stable even when
+    # the implementation enforces a stricter policy.
+    assert gate["name"] == "Vulnerability gate (CRITICAL/HIGH)"
+    # A cold gate compiles cargo-audit and runs Python, Go, and Rust network
+    # scanners sequentially; fifteen minutes is too close to observed cold time.
+    assert gate["timeout-minutes"] >= 30
+    gate_steps = gate["steps"]
+    gate_step_names = {step.get("name") for step in gate_steps}
+    python_name = "Python — known-vulnerability allowlist gate"
+    rust_name = "Rust — high/critical/unknown vulnerability gate"
+    assert python_name in gate_step_names
+    assert rust_name in gate_step_names
+
+    python_script = next(
+        step["run"] for step in gate_steps if step.get("name") == python_name
+    )
+    assert python_script.count("uv run --frozen --no-sync pip-audit ") == 1
+    assert "--strict" in python_script
+    assert "--no-deps" in python_script
+    assert "--disable-pip" in python_script
+    assert "--format json" in python_script
+    assert "--output /tmp/pip-audit.json" in python_script
+    assert "pip_audit_status=$?" in python_script
+    assert "set +e" in python_script and "set -e" in python_script
+    assert python_script.index("set +e") < python_script.index("pip_audit_status=$?")
+    assert python_script.index("pip_audit_status=$?") < python_script.index("set -e")
+    assert (
+        "uv run --frozen --no-sync python scripts/check_dependency_audit_report.py pip"
+    ) in python_script
+    assert "--allowlist security/audit-allowlist.yaml" in python_script
+
+    rust_script = next(
+        step["run"] for step in gate_steps if step.get("name") == rust_name
+    )
+    assert 'cargo audit "${cargo_audit_fetch_args[@]}"' in rust_script
+    assert '--file "../../$lockfile"' in rust_script
+    assert '--json > "/tmp/rust-audit-reports/$report_name"' in rust_script
+    assert "cargo_audit_status=$?" in rust_script
+    assert "set +e" in rust_script and "set -e" in rust_script
+    assert "scripts/check_dependency_audit_report.py cargo" in rust_script
+    assert "--report-only" not in rust_script
+
+    report_steps = workflow["jobs"]["sbom-rust"]["steps"]
+    report_script = next(
+        step["run"]
+        for step in report_steps
+        if step.get("name") == "Run cargo-audit report and validate output"
+    )
+    assert "cargo_audit_status=$?" in report_script
+    assert "scripts/check_dependency_audit_report.py cargo" in report_script
+    assert "--report-only" in report_script
+
+    relevant_scripts = (python_script, rust_script, report_script)
+    for script in relevant_scripts:
+        assert "|| true" not in script
+        assert "2>/dev/null" not in script
+        assert "--ignore-vuln-file" not in script
+        assert "uvx pip-audit" not in script
+        assert "float(cvss)" not in script
+
+
+def test_sbom_rust_audit_covers_every_tracked_lockfile() -> None:
+    """Every Rust lockfile, including fuzz targets, must be audited fail-closed."""
+
+    workflow = yaml.safe_load(SBOM_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    git_executable = which("git")
+    assert git_executable is not None, "Git is required for repository contracts"
+    tracked_result = subprocess.run(  # noqa: S603 -- resolved Git, fixed operation
+        [git_executable, "ls-files", "-z", "--", "*Cargo.lock"],
+        cwd=REPOSITORY_ROOT,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    tracked_lockfiles = {path for path in tracked_result.stdout.split("\0") if path}
+    configured_lockfiles = {
+        path.strip()
+        for path in workflow["env"]["RUST_AUDIT_LOCKFILES"].splitlines()
+        if path.strip()
+    }
+
+    assert configured_lockfiles == tracked_lockfiles
+    assert any("/fuzz/" in path for path in configured_lockfiles)
+
+    report_script = next(
+        step["run"]
+        for step in workflow["jobs"]["sbom-rust"]["steps"]
+        if step.get("name") == "Run cargo-audit report and validate output"
+    )
+    gate_script = next(
+        step["run"]
+        for step in workflow["jobs"]["vuln-gate"]["steps"]
+        if step.get("name") == "Rust — high/critical/unknown vulnerability gate"
+    )
+    for script in (report_script, gate_script):
+        assert "while IFS= read -r lockfile" in script
+        assert 'done <<< "$RUST_AUDIT_LOCKFILES"' in script
+        assert 'cargo audit "${cargo_audit_fetch_args[@]}"' in script
+        assert '--file "../../$lockfile"' in script
+        assert 'report_name="${lockfile//\\//__}.json"' in script
+        assert 'if [[ ! -f "../../$lockfile" ]]' in script
+        assert "audit_count=$((audit_count + 1))" in script
+        assert "if (( audit_count == 0 ))" in script
+
+    artifact_step = next(
+        step
+        for step in workflow["jobs"]["sbom-rust"]["steps"]
+        if step.get("name") == "Upload Rust audit artifact"
+    )
+    assert artifact_step["with"]["path"] == "rust-audit-reports/"
+
+
+def test_reusable_python_audit_uses_the_same_fail_closed_validator() -> None:
+    """Do not leave the duplicate active Python audit path fail-open."""
+
+    workflow = yaml.safe_load(SECURITY_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    steps = workflow["jobs"]["pip-audit"]["steps"]
+    step_name = "Run Python known-vulnerability allowlist gate"
+    assert step_name in {step.get("name") for step in steps}
+    script = next(step["run"] for step in steps if step.get("name") == step_name)
+    assert script.count("uv run --frozen --no-sync pip-audit ") == 1
+    assert "--strict" in script
+    assert "--no-deps" in script
+    assert "--disable-pip" in script
+    assert "--format json" in script
+    assert "pip_audit_status=$?" in script
+    assert "set +e" in script and "set -e" in script
+    assert (
+        "uv run --frozen --no-sync python scripts/check_dependency_audit_report.py pip"
+    ) in script
+    assert "--allowlist security/audit-allowlist.yaml" in script
+    for unsafe in ("|| true", "2>/dev/null", "--ignore-vuln-file", "uvx pip-audit"):
+        assert unsafe not in script
+
+    npm_helper = (REPOSITORY_ROOT / "scripts" / "audit_dependencies.py").read_text(
+        encoding="utf-8"
+    )
+    assert "collect_pip_advisories" not in npm_helper
+    assert 'parser.add_argument("--pip"' not in npm_helper
+    assert 'parser.add_argument("--npm"' in npm_helper
+
+
+@pytest.mark.parametrize(
+    "workflow_path,job_name",
+    (
+        (SBOM_WORKFLOW_PATH, "vuln-gate"),
+        (SECURITY_WORKFLOW_PATH, "pip-audit"),
+    ),
+)
+def test_python_audit_exports_exclude_local_workspace_editables(
+    workflow_path: Path, job_name: str
+) -> None:
+    """pip-audit must receive third-party pins resolvable outside the checkout."""
+
+    workflow = yaml.safe_load(workflow_path.read_text(encoding="utf-8"))
+    export_step = next(
+        step
+        for step in workflow["jobs"][job_name]["steps"]
+        if step.get("name") == "Export Python requirements"
+    )
+    assert (
+        "uv export --frozen --no-hashes --no-dev --no-emit-workspace"
+        in export_step["run"]
+    )
+
+
+def test_cargo_audit_validator_has_no_runtime_pyyaml_dependency() -> None:
+    """The Rust SBOM job invokes cargo validation before uv/PyYAML setup."""
+
+    validator_module = ast.parse(
+        DEPENDENCY_AUDIT_VALIDATOR_PATH.read_text(encoding="utf-8")
+    )
+    top_level_imports = {
+        alias.name
+        for statement in validator_module.body
+        if isinstance(statement, ast.Import)
+        for alias in statement.names
+    }
+    top_level_imports.update(
+        statement.module
+        for statement in validator_module.body
+        if isinstance(statement, ast.ImportFrom) and statement.module is not None
+    )
+    assert "yaml" not in top_level_imports
 
 
 def test_active_go_toolchain_pins_use_current_security_patch() -> None:

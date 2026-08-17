@@ -440,7 +440,7 @@ dev = [
 #   bandit   — Python SAST (AST-based, complements ruff's flake8-bandit rules)
 #   semgrep  — multi-language semantic SAST with OWASP/CVE rulesets
 #   pip-audit — dependency vulnerability scanner (OSV/PyPI Advisory DB)
-security = ["bandit[toml]>=1.9.4", "semgrep>=1.159.0", "pip-audit>=2.10.0"]
+security = ["bandit[toml]>=1.9.4", "semgrep>=1.159.0", "pip-audit==2.10.1"]
 
 [tool.uv.workspace]
 members = ["native/rust_ext", "crates/pyo3-sanitizer"]

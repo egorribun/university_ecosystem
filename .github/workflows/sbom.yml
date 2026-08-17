@@ -20,6 +20,21 @@ on:
 permissions:
   contents: read  # required for checkout
 
+env:
+  # Canonical inventory for the RustSec gate. Fuzz lockfiles are included
+  # deliberately: they execute untrusted generated inputs in CI and must not
+  # become an unaudited dependency island. A contract test compares this list
+  # with every tracked Cargo.lock so new crates fail closed until added here.
+  RUST_AUDIT_LOCKFILES: |-
+    crates/pyo3-sanitizer/Cargo.lock
+    crates/pyo3-sanitizer/fuzz/Cargo.lock
+    frontend/rust-crypto/Cargo.lock
+    frontend/rust-crypto/fuzz/Cargo.lock
+    frontend/wasm-sanitizer/Cargo.lock
+    frontend/wasm-sanitizer/fuzz/Cargo.lock
+    native/rust_ext/Cargo.lock
+    native/rust_ext/fuzz/Cargo.lock
+
 jobs:
   sbom-python:
     name: Python SBOM (anchore/sbom-action)
@@ -121,27 +136,63 @@ jobs:
           toolchain: stable
 
       - name: Install cargo-audit
-        # Pinned to 0.21.2; --locked ensures deps match the published Cargo.lock.
-        run: cargo install cargo-audit --version 0.21.2 --locked
+        # Exact pin plus --locked keeps the scanner and its build graph reproducible.
+        run: cargo install cargo-audit --version 0.22.2 --locked
 
-      - name: Run cargo-audit (RustSec Advisory Database)
+      - name: Run cargo-audit report and validate output
         working-directory: native/rust_ext
-        # --json for machine-readable output; non-zero on vulns — we upload SARIF regardless.
-        run: cargo audit --json > ../../rust-audit.json || true
+        # Findings are reportable here, but operational or malformed output is never accepted.
+        run: |
+          mkdir -p ../../rust-audit-reports
+          audit_count=0
+          audit_failed=0
+          cargo_audit_fetch_args=()
+          while IFS= read -r lockfile; do
+            [[ -z "$lockfile" ]] && continue
+            audit_count=$((audit_count + 1))
+            if [[ ! -f "../../$lockfile" ]]; then
+              echo "::error::Configured Rust lockfile is missing: $lockfile"
+              audit_failed=1
+              continue
+            fi
+
+            report_name="${lockfile//\//__}.json"
+            set +e
+            cargo audit "${cargo_audit_fetch_args[@]}" \
+              --file "../../$lockfile" \
+              --json > "../../rust-audit-reports/$report_name"
+            cargo_audit_status=$?
+            set -e
+            cargo_audit_fetch_args=(--no-fetch)
+            if python3 ../../scripts/check_dependency_audit_report.py cargo \
+              --report "../../rust-audit-reports/$report_name" \
+              --scanner-status "$cargo_audit_status" \
+              --report-only; then
+              echo "Validated RustSec report for $lockfile"
+            else
+              audit_failed=1
+            fi
+          done <<< "$RUST_AUDIT_LOCKFILES"
+
+          if (( audit_count == 0 )); then
+            echo "::error::Rust lockfile audit inventory is empty"
+            exit 1
+          fi
+          exit "$audit_failed"
 
       - name: Upload Rust audit artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: always()
         with:
           name: sbom-rust-audit
-          path: rust-audit.json
+          path: rust-audit-reports/
           retention-days: 90
 
   # MOD-W14-06 (audit 2026-03-23 Wave 14): Vulnerability severity gate.
   #
-  # The sbom-python / sbom-go / sbom-rust jobs above upload reports but do NOT
-  # fail CI — they use `|| true` so SARIF upload happens even when vulns are
-  # found. This separate job provides the fail-closed gate: it runs pip-audit
+  # The report jobs above keep findings available as artifacts. The Rust report
+  # path still fails on scanner or schema errors while accepting valid findings
+  # for upload. This separate job provides the policy gate: it runs pip-audit
   # (Python), symbol-aware govulncheck (Go), and cargo-audit (Rust). Reachable Go
   # findings are all blocking because the curated Go database does not assign
   # CVSS consistently; module-only findings remain visible in the OSV SARIF.
@@ -152,9 +203,11 @@ jobs:
   #     versioned policy files and an accepted-risk ADR. Reachable Go findings
   #     are never silently ignored by this workflow.
   vuln-gate:
+    # Keep the externally visible main-CI check context stable for run history.
     name: Vulnerability gate (CRITICAL/HIGH)
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # Cold runs compile cargo-audit and execute three ecosystems sequentially.
+    timeout-minutes: 30
     needs: [sbom-python, sbom-go, sbom-rust]
     permissions:
       contents: read
@@ -165,48 +218,35 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
 
+      - name: Install pinned Python audit tools
+        run: uv sync --frozen --group security
+
       - name: Export Python requirements
         run: |
-          uv export --no-hashes --no-dev > /tmp/requirements.txt
+          uv export --frozen --no-hashes --no-dev --no-emit-workspace > /tmp/requirements.txt
           echo "Exported $(wc -l < /tmp/requirements.txt) requirements"
 
-      - name: Python — pip-audit (CRITICAL/HIGH gate)
-        # pip-audit exits non-zero when vulnerabilities above the threshold are found.
-        # --fix is NOT passed — this is a read-only gate, not an auto-patcher.
-        # Accepted-risk CVEs can be suppressed via .pip-audit-ignore in the repo root.
+      - name: Python — known-vulnerability allowlist gate
+        # pip-audit has no severity gate: every known advisory must be approved or fixed.
         run: |
-          uvx pip-audit \
-            --requirement /tmp/requirements.txt \
-            --desc on \
-            --format columns \
-            --vulnerability-service osv \
-            --ignore-vuln-file .pip-audit-ignore || true
-          # Fail on CRITICAL or HIGH
-          uvx pip-audit \
+          set +e
+          uv run --frozen --no-sync pip-audit \
+            --strict \
+            --no-deps \
+            --disable-pip \
             --requirement /tmp/requirements.txt \
             --format json \
+            --aliases on \
+            --desc off \
+            --progress-spinner off \
             --vulnerability-service osv \
-            --ignore-vuln-file .pip-audit-ignore \
-            | python3 -c "
-          import sys, json
-          raw = sys.stdin.read()
-          if not raw.strip():
-              print('pip-audit: no output (empty requirements?)')
-              sys.exit(0)
-          data = json.loads(raw)
-          all_vulns = [
-              v for dep in data.get('dependencies', [])
-              for v in dep.get('vulns', [])
-          ]
-          fixable = [v for v in all_vulns if v.get('fix_versions')]
-          unfixable = [v for v in all_vulns if not v.get('fix_versions')]
-          if fixable:
-              print(f'::error::pip-audit: {len(fixable)} vulnerabilities with known fixes — update dependencies.')
-              sys.exit(1)
-          if unfixable:
-              print(f'::warning::pip-audit: {len(unfixable)} vulnerabilities without known fixes — review manually.')
-          print('pip-audit: no actionable vulnerabilities.')
-          "
+            --output /tmp/pip-audit.json
+          pip_audit_status=$?
+          set -e
+          uv run --frozen --no-sync python scripts/check_dependency_audit_report.py pip \
+            --report /tmp/pip-audit.json \
+            --scanner-status "$pip_audit_status" \
+            --allowlist security/audit-allowlist.yaml
 
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
@@ -232,35 +272,44 @@ jobs:
             ./services/pkg/spiffe/... \
             ./services/pkg/spicedb/...
 
-      # RZ-W18-05 (audit 2026-03-23 Wave 18): cargo-audit gate was non-functional —
-      # the trailing `|| true` swallowed sys.exit(1) from the Python script, making
-      # the gate always pass. CVSS >= 7.0 remains the Rust severity threshold.
-      - name: Rust — cargo-audit CRITICAL/HIGH gate
+      - name: Install cargo-audit
+        run: cargo install cargo-audit --version 0.22.2 --locked
+
+      - name: Rust — high/critical/unknown vulnerability gate
         working-directory: native/rust_ext
         run: |
-          # Pinned to 0.21.2; --locked ensures deps match the published Cargo.lock.
-          cargo install cargo-audit --version 0.21.2 --locked 2>/dev/null || true
-          cargo audit --json 2>/dev/null > /tmp/cargo-audit.json || true
-          python3 <<'PYEOF'
-          import sys, json, pathlib
-          raw = pathlib.Path("/tmp/cargo-audit.json").read_text()
-          if not raw.strip():
-              print("cargo-audit: no output (binary may not be installed). Skipping.")
-              sys.exit(0)
-          data = json.loads(raw)
-          vulns = data.get("vulnerabilities", {}).get("list", [])
-          high_crit = []
-          for v in vulns:
-              advisory = v.get("advisory", {})
-              cvss = advisory.get("cvss", None)
-              score = float(cvss) if cvss else -1.0  # unknown = fail-closed
-              if score < 0 or score >= 7.0:
-                  high_crit.append((advisory.get("id", "?"), score))
-          if high_crit:
-              print(f"::error::cargo-audit: {len(high_crit)} HIGH/CRITICAL Rust vulnerabilities found.", flush=True)
-              for vid, score in high_crit:
-                  print(f"  - {vid} CVSS={score}", flush=True)
-              print("Review sbom-rust-audit artefact and add accepted-risk entries.", flush=True)
-              sys.exit(1)
-          print(f"cargo-audit: {len(vulns)} total advisory(ies), 0 HIGH/CRITICAL — gate passed.")
-          PYEOF
+          mkdir -p /tmp/rust-audit-reports
+          audit_count=0
+          audit_failed=0
+          cargo_audit_fetch_args=()
+          while IFS= read -r lockfile; do
+            [[ -z "$lockfile" ]] && continue
+            audit_count=$((audit_count + 1))
+            if [[ ! -f "../../$lockfile" ]]; then
+              echo "::error::Configured Rust lockfile is missing: $lockfile"
+              audit_failed=1
+              continue
+            fi
+
+            report_name="${lockfile//\//__}.json"
+            set +e
+            cargo audit "${cargo_audit_fetch_args[@]}" \
+              --file "../../$lockfile" \
+              --json > "/tmp/rust-audit-reports/$report_name"
+            cargo_audit_status=$?
+            set -e
+            cargo_audit_fetch_args=(--no-fetch)
+            if python3 ../../scripts/check_dependency_audit_report.py cargo \
+              --report "/tmp/rust-audit-reports/$report_name" \
+              --scanner-status "$cargo_audit_status"; then
+              echo "Passed RustSec gate for $lockfile"
+            else
+              audit_failed=1
+            fi
+          done <<< "$RUST_AUDIT_LOCKFILES"
+
+          if (( audit_count == 0 )); then
+            echo "::error::Rust lockfile audit inventory is empty"
+            exit 1
+          fi
+          exit "$audit_failed"

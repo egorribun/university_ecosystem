@@ -50,15 +50,32 @@ jobs:
           cache-dependency-glob: "uv.lock"
 
       - name: Install dependencies
-        shell: pwsh
-        run: uv sync --frozen
+        run: uv sync --frozen --group security
 
-      - name: Run pip-audit with allowlist
-        shell: pwsh
+      - name: Export Python requirements
+        run: uv export --frozen --no-hashes --no-dev --no-emit-workspace > /tmp/requirements.txt
+
+      - name: Run Python known-vulnerability allowlist gate
+        shell: bash
         run: |
-          uv run python scripts/audit_dependencies.py `
-            --allowlist security/audit-allowlist.yaml `
-            --pip
+          set +e
+          uv run --frozen --no-sync pip-audit \
+            --strict \
+            --no-deps \
+            --disable-pip \
+            --requirement /tmp/requirements.txt \
+            --format json \
+            --aliases on \
+            --desc off \
+            --progress-spinner off \
+            --vulnerability-service osv \
+            --output /tmp/pip-audit.json
+          pip_audit_status=$?
+          set -e
+          uv run --frozen --no-sync python scripts/check_dependency_audit_report.py pip \
+            --report /tmp/pip-audit.json \
+            --scanner-status "$pip_audit_status" \
+            --allowlist security/audit-allowlist.yaml
 
   npm-audit:
     name: Node.js Dependency Audit
