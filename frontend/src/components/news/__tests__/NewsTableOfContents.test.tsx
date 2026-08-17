@@ -31,6 +31,19 @@ const HEADINGS: TocEntry[] = [
   { id: "findings", text: "Key Findings", level: 2 },
 ]
 
+const makeObserverEntry = (target: Element, isIntersecting: boolean): IntersectionObserverEntry => {
+  const bounds = target.getBoundingClientRect()
+  return {
+    boundingClientRect: bounds,
+    intersectionRatio: isIntersecting ? 1 : 0,
+    intersectionRect: bounds,
+    isIntersecting,
+    rootBounds: null,
+    target,
+    time: performance.now(),
+  }
+}
+
 describe("NewsTableOfContents", () => {
   beforeEach(() => {
     mediaMock.mockReset()
@@ -108,10 +121,7 @@ describe("NewsTableOfContents", () => {
 
     act(() => {
       observerState.callbacks[0]?.(
-        [
-          { isIntersecting: false, target: firstTarget } as IntersectionObserverEntry,
-          { isIntersecting: true, target: firstTarget } as IntersectionObserverEntry,
-        ],
+        [makeObserverEntry(firstTarget, false), makeObserverEntry(firstTarget, true)],
         {} as IntersectionObserver
       )
     })

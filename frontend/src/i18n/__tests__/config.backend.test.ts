@@ -18,6 +18,25 @@ vi.mock("i18next", () => {
 })
 vi.mock("react-i18next", () => ({ initReactI18next: { type: "3rdParty" } }))
 
+type BackendReadResult = {
+  error: Error | null
+  resource: ResourceKey | null
+}
+
+const readBackend = (backend: BackendModule, language: string, namespace: string) =>
+  new Promise<BackendReadResult>((resolve, reject) => {
+    backend.read(language, namespace, (error, resource) => {
+      if (typeof resource === "boolean") {
+        reject(new TypeError("Backend returned a retry signal instead of a locale resource"))
+        return
+      }
+      resolve({
+        error: typeof error === "string" ? new Error(error) : (error ?? null),
+        resource: resource ?? null,
+      })
+    })
+  })
+
 describe("dynamic i18n backend", () => {
   beforeEach(() => {
     mocks.plugins.length = 0
@@ -29,13 +48,7 @@ describe("dynamic i18n backend", () => {
     const { dynamicBackend } = await import("@/i18n/config")
     dynamicBackend.init?.({} as never, {} as never, {} as never)
 
-    const result = await new Promise<{ error: Error | null; resource: ResourceKey | null }>(
-      (resolve) => {
-        dynamicBackend.read("missing", "namespace", (error, resource) =>
-          resolve({ error, resource })
-        )
-      }
-    )
+    const result = await readBackend(dynamicBackend, "missing", "namespace")
 
     expect(result.error?.message).toBe("Missing locale file for missing/namespace")
     expect(result.resource).toBeNull()
@@ -44,19 +57,12 @@ describe("dynamic i18n backend", () => {
   })
 
   it("loads every declared locale resource", async () => {
-    const { dynamicBackend, localeLoaders, namespaces, supportedLngs } = await import(
-      "@/i18n/config"
-    )
+    const { dynamicBackend, localeLoaders, namespaces, supportedLngs } =
+      await import("@/i18n/config")
 
     for (const language of supportedLngs) {
       for (const namespace of namespaces) {
-        const result = await new Promise<{ error: Error | null; resource: ResourceKey | null }>(
-          (resolve) => {
-            dynamicBackend.read(language, namespace, (error, resource) =>
-              resolve({ error, resource })
-            )
-          }
-        )
+        const result = await readBackend(dynamicBackend, language, namespace)
         expect(result.error).toBeNull()
         expect(result.resource).not.toBeNull()
         expect(localeLoaders[`./locales/${language}/${namespace}.json`]).toBeTypeOf("function")
@@ -70,19 +76,14 @@ describe("dynamic i18n backend", () => {
     const original = localeLoaders[key]!
 
     localeLoaders[key] = () => Promise.resolve({ default: { synthetic: "resource" } })
-    const loaded = await new Promise<ResourceKey | null>((resolve, reject) => {
-      dynamicBackend.read("en", "common", (error, resource) =>
-        error ? reject(error) : resolve(resource)
-      )
-    })
-    expect(loaded).toEqual({ synthetic: "resource" })
+    const loaded = await readBackend(dynamicBackend, "en", "common")
+    if (loaded.error) throw loaded.error
+    expect(loaded.resource).toEqual({ synthetic: "resource" })
 
     const failure = new Error("loader failed")
     localeLoaders[key] = () => Promise.reject(failure)
-    const received = await new Promise<Error | null>((resolve) => {
-      dynamicBackend.read("en", "common", (error) => resolve(error))
-    })
-    expect(received).toBe(failure)
+    const received = await readBackend(dynamicBackend, "en", "common")
+    expect(received.error).toBe(failure)
     localeLoaders[key] = original
   })
 })

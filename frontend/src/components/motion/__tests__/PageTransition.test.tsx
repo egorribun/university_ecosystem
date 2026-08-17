@@ -21,6 +21,7 @@ vi.mock("framer-motion", async () => {
   const { createElement } = await import("react")
   const base = (await import("@/tests/helpers/framerMotionMock")).framerMotionMock()
   const BaseDiv = base.m.div
+  if (!BaseDiv) throw new Error("framer-motion mock did not provide m.div")
   const CapturingDiv = (props: Record<string, unknown>) => {
     motionState.initialValues.push(props.initial)
     return createElement(BaseDiv, props)

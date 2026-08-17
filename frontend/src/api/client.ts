@@ -115,8 +115,8 @@ export const resetEtagCache = () => {
 
 const isAbortError = (error: unknown) => {
   if (error instanceof DOMException) return error.name === "AbortError"
-  if (typeof error === "object" && "name" in error) {
-    const name = (error as { name?: string }).name
+  if (error !== null && typeof error === "object" && "name" in error) {
+    const { name } = error
     return name === "CanceledError" || name === "AbortError"
   }
   return false

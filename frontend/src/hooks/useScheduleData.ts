@@ -90,10 +90,11 @@ export function useScheduleData() {
     if (!user) return
     if (groups.length === 0) return
 
-    if (user.role === "student" && user.group_id) {
-      const userGroupExists = groups.some((g) => g.id === user.group_id)
+    const userGroupId = user.group_id
+    if (user.role === "student" && userGroupId) {
+      const userGroupExists = groups.some((g) => g.id === userGroupId)
       if (userGroupExists) {
-        setSelectedGroup((prev) => prev ?? user.group_id)
+        setSelectedGroup((prev) => prev ?? userGroupId)
       } else {
         setSelectedGroup((prev) => prev ?? groups[0]!.id)
       }
