@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1786971400907,
+  "lastUpdate": 1786971403952,
   "repoUrl": "https://github.com/egorribun/university_ecosystem",
   "entries": {
     "Go Services Performance Benchmarks": [
@@ -6847,6 +6847,120 @@ window.BENCHMARK_DATA = {
             "name": "strip_html/large",
             "value": 93406,
             "range": "± 770",
+            "unit": "ns/iter"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "49699333+dependabot[bot]@users.noreply.github.com",
+            "name": "dependabot[bot]",
+            "username": "dependabot[bot]"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "a53a0b1b1b3dd4da9aed3b0cd1592294dcd9e691",
+          "message": "build(deps): Update strawberry-graphql requirement (#1241)\n\nUpdates the requirements on [strawberry-graphql](https://github.com/sponsors/strawberry-graphql) to permit the latest version.\n\nUpdates `strawberry-graphql` to 0.324.0\n- [Commits](https://github.com/sponsors/strawberry-graphql/commits)\n\n---\nupdated-dependencies:\n- dependency-name: strawberry-graphql\n  dependency-version: 0.324.0\n  dependency-type: direct:production\n  dependency-group: pip-dependencies\n...\n\nSigned-off-by: dependabot[bot] <support@github.com>\nCo-authored-by: dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>\nCo-authored-by: Egor <egorribun2005@gmail.com>",
+          "timestamp": "2026-08-17T15:29:29+03:00",
+          "tree_id": "d04f84bd8648708358a5f854a48f31e14bc9fbb0",
+          "url": "https://github.com/egorribun/university_ecosystem/commit/a53a0b1b1b3dd4da9aed3b0cd1592294dcd9e691"
+        },
+        "date": 1786971402913,
+        "tool": "cargo",
+        "benches": [
+          {
+            "name": "sanitize_rich_text/empty",
+            "value": 6150,
+            "range": "± 57",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_rich_text/plain_text",
+            "value": 7008,
+            "range": "± 135",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_rich_text/simple_html",
+            "value": 9866,
+            "range": "± 32",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_rich_text/xss_attempt",
+            "value": 10537,
+            "range": "± 45",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_rich_text/large",
+            "value": 95562,
+            "range": "± 190",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_html_basic/empty",
+            "value": 5519,
+            "range": "± 14",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_html_basic/plain_text",
+            "value": 6400,
+            "range": "± 41",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_html_basic/simple_html",
+            "value": 8931,
+            "range": "± 47",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_html_basic/xss_attempt",
+            "value": 9272,
+            "range": "± 26",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_html_basic/large",
+            "value": 88190,
+            "range": "± 699",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "strip_html/empty",
+            "value": 5471,
+            "range": "± 10",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "strip_html/plain_text",
+            "value": 6428,
+            "range": "± 94",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "strip_html/simple_html",
+            "value": 8747,
+            "range": "± 57",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "strip_html/xss_attempt",
+            "value": 9175,
+            "range": "± 29",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "strip_html/large",
+            "value": 87880,
+            "range": "± 321",
             "unit": "ns/iter"
           }
         ]
