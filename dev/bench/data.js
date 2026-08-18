@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1787039352728,
+  "lastUpdate": 1787039355364,
   "repoUrl": "https://github.com/egorribun/university_ecosystem",
   "entries": {
     "Go Services Performance Benchmarks": [
@@ -7105,6 +7105,120 @@ window.BENCHMARK_DATA = {
             "name": "strip_html/large",
             "value": 87880,
             "range": "± 321",
+            "unit": "ns/iter"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "49699333+dependabot[bot]@users.noreply.github.com",
+            "name": "dependabot[bot]",
+            "username": "dependabot[bot]"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "a9aa48a8ab2308dca7b9509d4a5b193756db5eba",
+          "message": "build(deps): Bump the go-ws-hub group in /services/ws-hub with 2 updates (#1243)\n\nBumps the go-ws-hub group in /services/ws-hub with 2 updates: [github.com/nats-io/nats.go](https://github.com/nats-io/nats.go) and [github.com/stretchr/testify](https://github.com/stretchr/testify).\n\n\nUpdates `github.com/nats-io/nats.go` from 1.52.0 to 1.53.1\n- [Release notes](https://github.com/nats-io/nats.go/releases)\n- [Commits](https://github.com/nats-io/nats.go/compare/v1.52.0...v1.53.1)\n\nUpdates `github.com/stretchr/testify` from 1.11.1 to 1.12.0\n- [Release notes](https://github.com/stretchr/testify/releases)\n- [Commits](https://github.com/stretchr/testify/compare/v1.11.1...v1.12.0)\n\n---\nupdated-dependencies:\n- dependency-name: github.com/nats-io/nats.go\n  dependency-version: 1.53.1\n  dependency-type: direct:production\n  update-type: version-update:semver-minor\n  dependency-group: go-ws-hub\n- dependency-name: github.com/stretchr/testify\n  dependency-version: 1.12.0\n  dependency-type: direct:production\n  update-type: version-update:semver-minor\n  dependency-group: go-ws-hub\n...\n\nSigned-off-by: dependabot[bot] <support@github.com>\nCo-authored-by: dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>",
+          "timestamp": "2026-08-18T10:25:52+03:00",
+          "tree_id": "a0f8395ef48757ce53ec6295dd0e00a5682e083c",
+          "url": "https://github.com/egorribun/university_ecosystem/commit/a9aa48a8ab2308dca7b9509d4a5b193756db5eba"
+        },
+        "date": 1787039354617,
+        "tool": "cargo",
+        "benches": [
+          {
+            "name": "sanitize_rich_text/empty",
+            "value": 4492,
+            "range": "± 77",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_rich_text/plain_text",
+            "value": 5130,
+            "range": "± 50",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_rich_text/simple_html",
+            "value": 7399,
+            "range": "± 118",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_rich_text/xss_attempt",
+            "value": 7765,
+            "range": "± 64",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_rich_text/large",
+            "value": 77769,
+            "range": "± 334",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_html_basic/empty",
+            "value": 3937,
+            "range": "± 105",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_html_basic/plain_text",
+            "value": 4615,
+            "range": "± 62",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_html_basic/simple_html",
+            "value": 6667,
+            "range": "± 47",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_html_basic/xss_attempt",
+            "value": 6708,
+            "range": "± 15",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_html_basic/large",
+            "value": 71891,
+            "range": "± 164",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "strip_html/empty",
+            "value": 3859,
+            "range": "± 15",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "strip_html/plain_text",
+            "value": 4507,
+            "range": "± 23",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "strip_html/simple_html",
+            "value": 6383,
+            "range": "± 20",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "strip_html/xss_attempt",
+            "value": 6577,
+            "range": "± 17",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "strip_html/large",
+            "value": 71136,
+            "range": "± 210",
             "unit": "ns/iter"
           }
         ]
