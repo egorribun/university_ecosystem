@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1787040744398,
+  "lastUpdate": 1787040747667,
   "repoUrl": "https://github.com/egorribun/university_ecosystem",
   "entries": {
     "Go Services Performance Benchmarks": [
@@ -7621,6 +7621,120 @@ window.BENCHMARK_DATA = {
             "name": "strip_html/large",
             "value": 91089,
             "range": "± 551",
+            "unit": "ns/iter"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "49699333+dependabot[bot]@users.noreply.github.com",
+            "name": "dependabot[bot]",
+            "username": "dependabot[bot]"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "fa5fce8cc7d375f066069e146beb1cfc25dd07d6",
+          "message": "build(deps): Bump the go-file-processor group (#1245)\n\nBumps the go-file-processor group in /services/file-processor with 3 updates: [github.com/nats-io/nats.go](https://github.com/nats-io/nats.go), [github.com/stretchr/testify](https://github.com/stretchr/testify) and [golang.org/x/image](https://github.com/golang/image).\n\n\nUpdates `github.com/nats-io/nats.go` from 1.52.0 to 1.53.1\n- [Release notes](https://github.com/nats-io/nats.go/releases)\n- [Commits](https://github.com/nats-io/nats.go/compare/v1.52.0...v1.53.1)\n\nUpdates `github.com/stretchr/testify` from 1.11.1 to 1.12.0\n- [Release notes](https://github.com/stretchr/testify/releases)\n- [Commits](https://github.com/stretchr/testify/compare/v1.11.1...v1.12.0)\n\nUpdates `golang.org/x/image` from 0.44.0 to 0.45.0\n- [Commits](https://github.com/golang/image/compare/v0.44.0...v0.45.0)\n\n---\nupdated-dependencies:\n- dependency-name: github.com/nats-io/nats.go\n  dependency-version: 1.53.1\n  dependency-type: direct:production\n  update-type: version-update:semver-minor\n  dependency-group: go-file-processor\n- dependency-name: github.com/stretchr/testify\n  dependency-version: 1.12.0\n  dependency-type: direct:production\n  update-type: version-update:semver-minor\n  dependency-group: go-file-processor\n- dependency-name: golang.org/x/image\n  dependency-version: 0.45.0\n  dependency-type: direct:production\n  update-type: version-update:semver-minor\n  dependency-group: go-file-processor\n...\n\nSigned-off-by: dependabot[bot] <support@github.com>\nCo-authored-by: dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>\nCo-authored-by: Egor <egorribun2005@gmail.com>",
+          "timestamp": "2026-08-18T10:26:51+03:00",
+          "tree_id": "1e7ef69969805bbd320a0cab1a8387553f4f7445",
+          "url": "https://github.com/egorribun/university_ecosystem/commit/fa5fce8cc7d375f066069e146beb1cfc25dd07d6"
+        },
+        "date": 1787040746640,
+        "tool": "cargo",
+        "benches": [
+          {
+            "name": "sanitize_rich_text/empty",
+            "value": 6209,
+            "range": "± 13",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_rich_text/plain_text",
+            "value": 7047,
+            "range": "± 15",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_rich_text/simple_html",
+            "value": 9853,
+            "range": "± 238",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_rich_text/xss_attempt",
+            "value": 10462,
+            "range": "± 23",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_rich_text/large",
+            "value": 94606,
+            "range": "± 1242",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_html_basic/empty",
+            "value": 5465,
+            "range": "± 80",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_html_basic/plain_text",
+            "value": 6417,
+            "range": "± 19",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_html_basic/simple_html",
+            "value": 8930,
+            "range": "± 55",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_html_basic/xss_attempt",
+            "value": 9119,
+            "range": "± 193",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_html_basic/large",
+            "value": 87322,
+            "range": "± 408",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "strip_html/empty",
+            "value": 5318,
+            "range": "± 11",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "strip_html/plain_text",
+            "value": 6260,
+            "range": "± 15",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "strip_html/simple_html",
+            "value": 8613,
+            "range": "± 35",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "strip_html/xss_attempt",
+            "value": 8956,
+            "range": "± 30",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "strip_html/large",
+            "value": 86481,
+            "range": "± 433",
             "unit": "ns/iter"
           }
         ]
