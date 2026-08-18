@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1787040057361,
+  "lastUpdate": 1787040060650,
   "repoUrl": "https://github.com/egorribun/university_ecosystem",
   "entries": {
     "Go Services Performance Benchmarks": [
@@ -7363,6 +7363,120 @@ window.BENCHMARK_DATA = {
             "name": "strip_html/large",
             "value": 71136,
             "range": "± 210",
+            "unit": "ns/iter"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "49699333+dependabot[bot]@users.noreply.github.com",
+            "name": "dependabot[bot]",
+            "username": "dependabot[bot]"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "2df31d4b69b2c8fe08488e797fedb854d89b4f1e",
+          "message": "build(deps): Bump github.com/stretchr/testify (#1244)\n\nBumps the go-gateway group in /services/gateway with 1 update: [github.com/stretchr/testify](https://github.com/stretchr/testify).\n\n\nUpdates `github.com/stretchr/testify` from 1.11.1 to 1.12.0\n- [Release notes](https://github.com/stretchr/testify/releases)\n- [Commits](https://github.com/stretchr/testify/compare/v1.11.1...v1.12.0)\n\n---\nupdated-dependencies:\n- dependency-name: github.com/stretchr/testify\n  dependency-version: 1.12.0\n  dependency-type: direct:production\n  update-type: version-update:semver-minor\n  dependency-group: go-gateway\n...\n\nSigned-off-by: dependabot[bot] <support@github.com>\nCo-authored-by: dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>\nCo-authored-by: Egor <egorribun2005@gmail.com>",
+          "timestamp": "2026-08-18T10:26:21+03:00",
+          "tree_id": "c8148c0eb1e19914015f269840240e2e4b127137",
+          "url": "https://github.com/egorribun/university_ecosystem/commit/2df31d4b69b2c8fe08488e797fedb854d89b4f1e"
+        },
+        "date": 1787040059840,
+        "tool": "cargo",
+        "benches": [
+          {
+            "name": "sanitize_rich_text/empty",
+            "value": 6025,
+            "range": "± 21",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_rich_text/plain_text",
+            "value": 6950,
+            "range": "± 15",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_rich_text/simple_html",
+            "value": 10005,
+            "range": "± 33",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_rich_text/xss_attempt",
+            "value": 10662,
+            "range": "± 40",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_rich_text/large",
+            "value": 101026,
+            "range": "± 289",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_html_basic/empty",
+            "value": 5386,
+            "range": "± 237",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_html_basic/plain_text",
+            "value": 6406,
+            "range": "± 13",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_html_basic/simple_html",
+            "value": 9169,
+            "range": "± 35",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_html_basic/xss_attempt",
+            "value": 9472,
+            "range": "± 104",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_html_basic/large",
+            "value": 93512,
+            "range": "± 427",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "strip_html/empty",
+            "value": 5214,
+            "range": "± 22",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "strip_html/plain_text",
+            "value": 6236,
+            "range": "± 16",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "strip_html/simple_html",
+            "value": 8673,
+            "range": "± 65",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "strip_html/xss_attempt",
+            "value": 9214,
+            "range": "± 51",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "strip_html/large",
+            "value": 91089,
+            "range": "± 551",
             "unit": "ns/iter"
           }
         ]
