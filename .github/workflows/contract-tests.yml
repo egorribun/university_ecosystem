@@ -68,7 +68,7 @@ jobs:
   # ── Phase 1: Python consumer — generate pact file ──────────────────────────
   consumer:
     name: Python consumer — generate pact
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
 
     steps:
@@ -120,7 +120,7 @@ jobs:
   # ── Phase 2: Go provider — verify against pact ────────────────────────────
   message-provider-verify:
     name: Message providers — verify Pact
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     needs: consumer
 
@@ -204,12 +204,12 @@ jobs:
   # an in-process hand-written response cannot make this job pass.
   pact-provider-verify:
     name: Pact provider — backend HTTP replay
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     needs: consumer
     services:
       postgres:
-        image: pgvector/pgvector:pg17
+        image: pgvector/pgvector:pg17@sha256:cf134a767f474095eeba57e0117be8e568e011a63f33fbf252f14c9b760f8e6f
         env:
           POSTGRES_USER: test
           POSTGRES_PASSWORD: test # pragma: allowlist secret
@@ -222,7 +222,7 @@ jobs:
           --health-timeout 5s
           --health-retries 12
       redis:
-        image: redis:7-alpine
+        image: redis:7-alpine@sha256:e7723ff73d963f5cc6d9c4643ea3d989527a402a319239054e9472a7fb9219a2
         ports:
           - 6379:6379
         options: >-

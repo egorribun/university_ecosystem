@@ -67,6 +67,9 @@ describe("useLocalStorage", () => {
 
     expect(result.current[0]).toBe("lazy-fallback")
     expect(initializer).toHaveBeenCalled()
+
+    act(() => result.current[2]())
+    expect(result.current[0]).toBe("lazy-fallback")
   })
 
   // ---------------------------------------------------------------------------

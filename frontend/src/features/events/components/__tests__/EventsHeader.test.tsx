@@ -162,6 +162,14 @@ describe("EventsHeader", () => {
     )
 
     act(() => {
+      intersectionCallback?.([], {} as IntersectionObserver)
+    })
+    expect(container.querySelector(".events-sticky-categories")).toHaveAttribute(
+      "data-stuck",
+      "false"
+    )
+
+    act(() => {
       intersectionCallback?.(
         [{ isIntersecting: false } as IntersectionObserverEntry],
         {} as IntersectionObserver

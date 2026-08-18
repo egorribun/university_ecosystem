@@ -12,58 +12,62 @@ coverage:
   status:
     project:
       default:
-        target: auto
+        target: 100%
         threshold: 0%
       python:
-        target: 99%
+        target: 100%
         threshold: 0%
         flags:
           - python
       frontend:
-        target: 99%
+        target: 100%
         threshold: 0%
         flags:
           - frontend
       go-gateway:
-        target: 99%
+        target: 100%
         threshold: 0%
         flags:
           - go-gateway
       go-ws-hub:
-        target: 99%
+        target: 100%
         threshold: 0%
         flags:
           - go-ws-hub
       go-file-processor:
-        target: 99%
+        target: 100%
         threshold: 0%
         flags:
           - go-file-processor
       go-shared:
-        target: 99%
+        target: 100%
         threshold: 0%
         flags:
           - go-shared
       rust-native:
-        target: 99%
+        target: 100%
         threshold: 0%
         flags:
           - rust-native
       rust-pyo3-sanitizer:
-        target: 99%
+        target: 100%
         threshold: 0%
         flags:
           - rust-pyo3-sanitizer
       rust-wasm-sanitizer:
-        target: 99%
+        target: 100%
         threshold: 0%
         flags:
           - rust-wasm-sanitizer
       rust-crypto:
-        target: 99%
+        target: 100%
         threshold: 0%
         flags:
           - rust-crypto
+    patch:
+      default:
+        target: 100%
+        threshold: 0%
 
 flags:
   python:

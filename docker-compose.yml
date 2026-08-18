@@ -318,7 +318,7 @@ services:
   postgres:
     ports:
       - "127.0.0.1:15432:5432"
-    image: pgvector/pgvector:pg17
+    image: pgvector/pgvector:pg17@sha256:cf134a767f474095eeba57e0117be8e568e011a63f33fbf252f14c9b760f8e6f
     command: ["postgres", "-c", "max_connections=500", "-c", "track_commit_timestamp=on"]
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
@@ -347,7 +347,7 @@ services:
   # Reconcile auxiliary databases on every start so existing volumes converge
   # without noisy duplicate CREATE DATABASE errors.
   postgres-databases-init:
-    image: pgvector/pgvector:pg17
+    image: pgvector/pgvector:pg17@sha256:cf134a767f474095eeba57e0117be8e568e011a63f33fbf252f14c9b760f8e6f
     environment:
       PGHOST: postgres
       PGPORT: "5432"
@@ -380,7 +380,7 @@ services:
   valkey:
     ports:
       - "127.0.0.1:16379:6379"
-    image: valkey/valkey:8.1-alpine
+    image: valkey/valkey:8.1-alpine@sha256:a038175878d66b9d274fbf8be73c0305e93798b83917647f167e18cef3c71eec
     # DEBT-02 (audit 2026-03-06): Without eviction policy, OOM kills rate limiter,
     # session cache, and CSRF tokens simultaneously → thundering herd on Postgres.
     # RZ-21-02 (audit 2026-03-25 Wave 21): Changed from allkeys-lru to volatile-lru.
@@ -430,7 +430,7 @@ services:
           memory: 256M
 
   nats:
-    image: nats:2.12.6-alpine
+    image: nats:2.12.6-alpine@sha256:1cfc36e2e5e638243d8c722f72c954cd0ec4b15ee82fadbc718ce12e2b3c1652
     # Render auth from the environment into an in-container config so the
     # credential is not exposed in the process command line.
     entrypoint:
@@ -462,7 +462,7 @@ services:
   # Security state is isolated from cache pressure. Revocation tombstones must
   # survive restarts and must never be evicted before their token expiry.
   revocation-valkey:
-    image: valkey/valkey:8.1-alpine
+    image: valkey/valkey:8.1-alpine@sha256:a038175878d66b9d274fbf8be73c0305e93798b83917647f167e18cef3c71eec
     # The image entrypoint otherwise starts as root and calls setpriv. With all
     # capabilities dropped that UID transition is denied before Valkey starts.
     user: "999:1000"
@@ -539,7 +539,7 @@ services:
           memory: 512M
 
   imgproxy:
-    image: darthsim/imgproxy:v3.28.0
+    image: darthsim/imgproxy:v3.28.0@sha256:afa85d78fc28c1b37ca965f022a9e55100f17dcac9edefbe684ca5af9df3a1e1
     # Internal only — access via backend/gateway
     environment:
       IMGPROXY_KEY: ${IMGPROXY_KEY:?IMGPROXY_KEY is required - run start-docker.ps1}
@@ -578,7 +578,7 @@ services:
   # proceeds. (Ported from docker-compose.full.yml W144; networks adapted to the
   # db_net/service_net topology of this compose.)
   temporal-admin-tools:
-    image: temporalio/admin-tools:1.30.2
+    image: temporalio/admin-tools:1.30.2@sha256:024c6473df113e4b220b3caf6056d30964582ffcae6f6e46a1074aa6c67968d3
     container_name: temporal-admin-tools
     environment:
       SQL_PLUGIN: postgres12
@@ -618,7 +618,7 @@ services:
     # from docker-compose.full.yml is ported here so the CI/prod compose's
     # Temporal actually boots (it had been crash-looping exit(1) since the
     # plain-server migration — net win for prod, not just the CI Load-and-Chaos job).
-    image: temporalio/server:1.30.2
+    image: temporalio/server:1.30.2@sha256:d5334ee3ddce1617efbe280a10afc85916cf8d81798415c98988dbda2b46773e
     container_name: temporal
     ports:
       # RZ-8 (audit 2026-03-05): Bind to localhost only — Temporal gRPC has no
@@ -628,6 +628,11 @@ services:
       # POSTGRES_USER + POSTGRES_PWD are the entrypoint's required sed inputs.
       POSTGRES_USER: "${POSTGRES_USER:-postgres}"
       POSTGRES_PWD: "${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required - set in .env file}"
+      # Temporal is attached to three networks. Binding to the hostname's
+      # first address makes gRPC unreachable from whichever network Docker
+      # resolves second; listen on every interface and advertise one concrete
+      # address separately for the single-node membership ring.
+      BIND_ON_IP: "0.0.0.0"
     entrypoint: ["/bin/sh", "/etc/temporal/wave144-entrypoint.sh"]
     volumes:
       - ./services/temporal/config.yaml:/etc/temporal/config/docker.yaml:ro
@@ -669,7 +674,7 @@ services:
   # one-shot sidecar registers it via the admin-tools `temporal` CLI once the
   # server's gRPC frontend is accepting traffic. `restart: "no"`.
   temporal-namespace-init:
-    image: temporalio/admin-tools:1.30.2
+    image: temporalio/admin-tools:1.30.2@sha256:024c6473df113e4b220b3caf6056d30964582ffcae6f6e46a1074aa6c67968d3
     container_name: temporal-namespace-init
     environment:
       # W144 SW2 NEW (z) #20: set both the v1 (_CLI) and v2 env names + pass
@@ -722,7 +727,7 @@ services:
           memory: 128M
 
   temporal-ui:
-    image: temporalio/ui:2.48.1
+    image: temporalio/ui:2.48.1@sha256:edb5dd1b3e0ddb35611939dde9b573533afd6fbafbbf077b73c7131a30ca91ff
     container_name: temporal-ui
     ports:
       # MOD-9: Temporal UI is admin-only. Expose on localhost only to prevent
@@ -745,7 +750,7 @@ services:
           memory: 128M
 
   minio:
-    image: minio/minio:RELEASE.2025-09-07T16-13-09Z
+    image: minio/minio:RELEASE.2025-09-07T16-13-09Z@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e
     container_name: minio
     # Ports only exposed on internal network for security
     # Access via backend service or SSH tunnel for console
@@ -772,7 +777,7 @@ services:
           memory: 512M
 
   minio-init:
-    image: minio/mc:RELEASE.2025-08-13T08-35-41Z
+    image: minio/mc:RELEASE.2025-08-13T08-35-41Z@sha256:a7fe349ef4bd8521fb8497f55c6042871b2ae640607cf99d9bede5e9bdf11727
     entrypoint: ["/bin/sh", "-ec"]
     command:
       - |
@@ -802,7 +807,7 @@ services:
           memory: 64M
 
   spicedb-migrate:
-    image: authzed/spicedb:v1.51.0
+    image: authzed/spicedb:v1.51.0@sha256:f2e6e77f89f8a0c087d9fd26b9ecd443ea601aa5422c92912f7ca95c412eb929
     command:
       - datastore
       - migrate
@@ -836,7 +841,7 @@ services:
   spicedb:
     ports:
       - "127.0.0.1:15052:50051"
-    image: authzed/spicedb:v1.51.0
+    image: authzed/spicedb:v1.51.0@sha256:f2e6e77f89f8a0c087d9fd26b9ecd443ea601aa5422c92912f7ca95c412eb929
     container_name: spicedb
     # P1-10 (audit 2026-03-06): Key removed from CLI args — `docker ps --no-trunc`
     # and `docker inspect` expose full command including secrets. The
@@ -880,7 +885,7 @@ services:
 
 
   pyroscope:
-    image: grafana/pyroscope:1.19.1
+    image: grafana/pyroscope:1.19.1@sha256:d5d38187f7593fdf5643ba29e67099206e8d4dee6207f78d028ea3fe621cc04d
     container_name: pyroscope
     ports:
       # RZ-9 (audit 2026-03-05): Bind to localhost only — Pyroscope CPU flame graphs
@@ -898,7 +903,7 @@ services:
   tempo:
     # MOD-06 (audit 2026-03-11): Grafana Tempo for distributed tracing via OTLP.
     # Backend sends traces to tempo:4317 (gRPC) via OTEL_EXPORTER_OTLP_ENDPOINT.
-    image: grafana/tempo:2.10.3
+    image: grafana/tempo:2.10.3@sha256:cac9de2ac9f6da8efca5b64b690a7cb8c786a0c49cac7b4517dd1b0089a6c703
     container_name: tempo
     command: ["-config.file=/etc/tempo.yaml"]
     volumes:
@@ -914,7 +919,7 @@ services:
   # Tempo's distroless image has no wget/curl. Probe its readiness endpoint
   # from a tiny sidecar that shares Tempo's network namespace.
   tempo-healthprobe:
-    image: curlimages/curl:8.10.1
+    image: curlimages/curl:8.10.1@sha256:d9b4541e214bcd85196d6e92e2753ac6d0ea699f0af5741f8c6cccbfcf00ef4b
     network_mode: "service:tempo"
     depends_on:
       - tempo

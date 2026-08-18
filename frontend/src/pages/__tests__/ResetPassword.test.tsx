@@ -4,6 +4,7 @@ import { http, HttpResponse } from "msw"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
 import ResetPassword from "../ResetPassword"
+import api from "@/api/client"
 import { server } from "@/tests/mocks/server"
 import i18n from "../../i18n/config"
 import { renderWithRouter } from "@/tests/helpers/renderWithRouter"
@@ -67,6 +68,22 @@ describe("ResetPassword page", () => {
     await user.click(screen.getByRole("button", { name: tAuth("reset.saveButton") }))
 
     expect(await screen.findByText(tAuth("reset.invalidLink"))).toBeInTheDocument()
+  })
+
+  it("uses the generic message for a non-object transport failure", async () => {
+    const post = vi.spyOn(api, "post").mockRejectedValueOnce("offline")
+    const user = userEvent.setup()
+    await renderWithToken()
+    await user.type(screen.getByLabelText(matchText(tAuth("fields.password"))), "Password123!")
+    await user.type(
+      screen.getByLabelText(matchText(tAuth("fields.confirmPassword"))),
+      "Password123!"
+    )
+
+    await user.click(screen.getByRole("button", { name: tAuth("reset.saveButton") }))
+
+    expect(await screen.findByText(tAuth("reset.errorGeneric"))).toBeInTheDocument()
+    post.mockRestore()
   })
 
   it("submits the new password and shows success state", async () => {

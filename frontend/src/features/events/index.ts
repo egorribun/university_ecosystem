@@ -5,7 +5,6 @@
  * - EventsFeature: central orchestrator
  * - categories: event type → color mapping
  * - types: local types and form state
- * - schema: Valibot validation schemas
  */
 
 // Feature orchestrator
@@ -21,10 +20,6 @@ export type { EventCategory } from "./categories"
 
 // Types
 export type { EventSortMode, EventTabKey, EventFormState } from "./types"
-
-// Schema
-export { eventFormSchema } from "./schema"
-export type { EventFormSchema } from "./schema"
 
 // Re-export legacy components still in use
 export { default as EventCard } from "@/components/events/EventCard/EventCard"

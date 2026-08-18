@@ -13,7 +13,7 @@ from app.core.events import register_event_listeners
 from app.core.logging import get_logger
 from app.core.observability import shutdown_observability
 from app.deps.cache import shutdown_cache
-from app.services import notification_queue, webpush
+from app.services import webpush
 from app.services.cache_warmup import warm_cache
 from app.services.partition_manager import (
     ensure_partitions_exist,
@@ -106,12 +106,12 @@ async def _startup_websocket_and_flags(app: FastAPI) -> None:
     """Stage 2: WebSocket management and feature flag recovery."""
     from app.api.ws.connection_manager import ConnectionManager
     from app.api.ws.presence import start_presence_pubsub
-    from app.core.feature_flags import feature_flags
+    from app.core.feature_flags import initialize_feature_flags
 
     _cm = ConnectionManager()
     app.state.connection_manager = _cm
 
-    await feature_flags.initialize()
+    await initialize_feature_flags()
     await start_presence_pubsub()
 
 
@@ -509,7 +509,7 @@ async def _shutdown_subsystems(app: FastAPI) -> None:
     from app.api.health import set_shutdown_flag
     from app.api.ws.presence import stop_presence_pubsub
     from app.auth.security import close_hibp_client
-    from app.core.feature_flags import feature_flags
+    from app.core.feature_flags import shutdown_feature_flags
     from app.core.ratelimit import stop_memory_cleanup_task
     from app.services.geolocation import shutdown_geolocation_service
 
@@ -534,7 +534,6 @@ async def _shutdown_subsystems(app: FastAPI) -> None:
     app.state._state.update(_DISHKA_CONTAINER_CLOSED_STATE)
     await app.state.dishka_container.close()
     await stop_presence_pubsub()
-    await notification_queue.shutdown_notification_queue()
     webpush.cleanup()
     await shutdown_cache()
 
@@ -542,7 +541,7 @@ async def _shutdown_subsystems(app: FastAPI) -> None:
     if partition_stopper is not None:
         await partition_stopper()
 
-    await feature_flags.close()
+    await shutdown_feature_flags()
     await stop_memory_cleanup_task()
 
     from app.core.spicedb import close_global_spicedb_channel

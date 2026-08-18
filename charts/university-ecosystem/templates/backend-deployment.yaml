@@ -104,6 +104,10 @@ spec:
               value: {{ .Values.backend.config.minioSecure | quote }}
             - name: ELASTICSEARCH_URL
               value: {{ .Values.backend.config.elasticsearchURL | quote }}
+            - name: FLAGD_HOST
+              value: {{ .Values.backend.config.flagdHost | quote }}
+            - name: FLAGD_PORT
+              value: {{ .Values.backend.config.flagdPort | quote }}
             # A dedicated Deployment owns transactional outbox processing.
             - name: EMBEDDED_OUTBOX_WORKER_ENABLED
               value: "false"

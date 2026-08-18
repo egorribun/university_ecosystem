@@ -29,7 +29,7 @@ dependencies = [
   "fastapi>=0.135.3,<0.142",                          # PY-P1-01 (audit Wave 10): tight minor bound; update consciously via Renovate
   "filelock>=3.25.2",
   "geoip2>=5.2.0",
-  "grpcio>=1.80.0",
+  "grpcio>=1.81.0,<1.82",  # 1.82.0 was yanked; 1.82.1+ moves health stubs to protobuf 7
   "gunicorn>=25.3.0",
   "httpx[http2]>=0.28.1,<1.0",                          # TD-W9-06: upper bound — httpx 1.0 has breaking transport API changes
   "h2>=4.4.1,<5",                                       # SEC: fixes the active h2 advisory in HTTP/2 transport
@@ -57,7 +57,7 @@ dependencies = [
   "pillow-avif-plugin>=1.5.5,<2",  # TD-26-04: upper bound
   "polars>=1.39.3",
   "prometheus-client>=0.25.0",
-  "protobuf>=7.34.1",
+  "protobuf>=6.33.6,<7",  # Shared compatible line: flagd 0.5.0, Authzed, and OTEL all require protobuf <7
   "psutil>=7.2.2",
   "psycopg[binary]>=3.3.3",
   "pyasn1>=0.6.4,<1",  # TD-26-04: upper bound
@@ -85,9 +85,10 @@ dependencies = [
   "webauthn>=2.7.1",
   "zxcvbn>=4.5.0",
   "authzed>=1.24.4",
-  "grpcio-health-checking>=1.80.0",
+  "grpcio-health-checking>=1.81.0,<1.82",  # stable line compatible with protobuf 6
   "dishka>=1.9.1,<2",                                  # MOD-W10-01: upper bound; dishka 2.0 may restructure DI container API
   "openfeature-sdk>=0.8.4",
+  "openfeature-provider-flagd>=0.5.0,<0.5.1",  # 0.5.1+ requires protobuf 7, incompatible with Authzed/OTEL
   "rust_ext",
   # PY-P1-02 (audit Wave 10): pyo3_sanitizer removed from production deps —
   # it is a build-time / development tooling package, not a runtime dependency.
@@ -288,7 +289,6 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"analyze_coverage.py" = ["S314", "E741"]
 "scripts/check_mutation_score.py" = ["S603"]
 "tests/*" = ["ARG001", "ARG002", "E402", "W291", "S101", "S105", "S106", "ERA001"]
 "alembic/**/*.py" = ["I001", "E402"]
@@ -353,27 +353,13 @@ addopts = [
 relative_files = true
 source = ["app"]
 branch = true
-omit = [
-  # Entrypoints / maintenance scripts — not unit-testable
-  "app/worker.py",
-  # Entrypoints / scripts — not unit-testable
-  "app/__main__.py",
-  "app/core/uvloop_setup.py",
-  "app/core/profiling.py",
-  "app/core/ci/*",
-]
 
 [tool.coverage.report]
-fail_under = 91
+fail_under = 100
 show_missing = true
 # Mirrors the canonical floor in quality/quality-contract.json.
 exclude_lines = [
   "pragma: no cover",
-  "def __repr__",
-  "if self.debug:",
-  "if __name__ == .__main__.:",
-  "raise AssertionError",
-  "raise NotImplementedError",
   "if TYPE_CHECKING:",
 ]
 
@@ -460,8 +446,8 @@ environments = [
     "sys_platform == 'darwin'",
 ]
 override-dependencies = [
-    "protobuf>=7.34.1",
-    "grpcio>=1.80.0",
+    "protobuf>=6.33.6,<7",
+    "grpcio>=1.81.0,<1.82",
     "opentelemetry-api>=1.41.0",
     "opentelemetry-sdk>=1.41.0",
     "opentelemetry-exporter-otlp>=1.41.0",
@@ -545,8 +531,8 @@ pytest_add_cli_args_test_selection = [
 # in the isolated tree so stats collection can complete. Keep the small,
 # source-controlled roots below in sync with the paths asserted by those tests:
 #   - test_migrations_runtime.py  → alembic/ ScriptDirectory (head convergence)
-#   - test_wave173_caddy_routing  → infrastructure/Caddyfile  (W173 routing)
-#   - test_wave173_ws_hub_env     → docker-compose.full.yml   (W173 ws-hub env)
+#   - test_caddy_routing           → infrastructure/Caddyfile  (routing contract)
+#   - test_ws_hub_environment      → docker-compose.full.yml   (ws-hub env contract)
 #   - test_backend_dockerfile      → backend.Dockerfile         (uv image pin)
 #   - test_quality_configuration   → .dockerignore and Dockerfile.test.dockerignore
 #                                      plus .gitignore (test-image and xdist contracts)

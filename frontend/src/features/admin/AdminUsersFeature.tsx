@@ -77,17 +77,19 @@ export function AdminUsersFeature() {
     setUserToDelete(userId)
   }, [])
 
-  const executeDelete = useCallback(async () => {
-    if (!userToDelete) return
-    setIsDeleting(true)
-    try {
-      await api.delete(`/users/${userToDelete}`)
-      void invalidateAllAdminUsers(queryClient)
-      setUserToDelete(null)
-    } finally {
-      setIsDeleting(false)
-    }
-  }, [userToDelete, queryClient])
+  const executeDelete = useCallback(
+    async (userId: string) => {
+      setIsDeleting(true)
+      try {
+        await api.delete(`/users/${userId}`)
+        void invalidateAllAdminUsers(queryClient)
+        setUserToDelete(null)
+      } finally {
+        setIsDeleting(false)
+      }
+    },
+    [queryClient]
+  )
 
   const handleFilterChange = useCallback(
     (field: keyof UserFilters) => (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -172,7 +174,7 @@ export function AdminUsersFeature() {
         id: "actions",
         header: t("users.table.actions"),
         cell: ({ row }) => {
-          if (row.original.id === (userContext?.id ?? null)) return null
+          if (row.original.id === userContext?.id) return null
           return (
             <div className="text-right">
               <button
@@ -300,7 +302,7 @@ export function AdminUsersFeature() {
                     )}
                   </div>
                 </div>
-                {user.id !== (userContext?.id ?? null) && (
+                {user.id !== userContext?.id && (
                   <button
                     type="button"
                     onClick={() => void handleDelete(user.id)}
@@ -323,7 +325,7 @@ export function AdminUsersFeature() {
         confirmText={t("common:buttons.delete")}
         cancelText={t("common:buttons.cancel")}
         variant="danger"
-        onConfirm={() => void executeDelete()}
+        onConfirm={() => void executeDelete(userToDelete!)}
         onCancel={() => setUserToDelete(null)}
         isLoading={isDeleting}
       />

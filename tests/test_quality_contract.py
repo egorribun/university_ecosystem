@@ -190,14 +190,44 @@ def test_mutation_registry_rejects_duplicate_paths(tmp_path: Path) -> None:
     )
 
 
-def test_rejects_component_floor_below_programme_minimum(tmp_path: Path) -> None:
+def test_rejects_every_supported_component_floor_below_100(tmp_path: Path) -> None:
     contract = _load_contract()
-    contract["components"]["python"]["coverage"]["branches"] = 81
+    components = contract["components"]
+    assert isinstance(components, dict)
+    lowered_fields: list[str] = []
+    for component_name, component in components.items():
+        assert isinstance(component, dict)
+        coverage = component["coverage"]
+        assert isinstance(coverage, dict)
+        for metric, threshold in coverage.items():
+            if threshold == 0:
+                continue
+            coverage[metric] = 99
+            lowered_fields.append(f"{component_name}.coverage.{metric}")
 
     result = _run_contract(tmp_path, contract)
 
     assert result.returncode == 1
-    assert "python.coverage.branches must be at least 82" in result.stderr
+    assert lowered_fields
+    for field in lowered_fields:
+        assert f"{field} must be at least 100" in result.stderr
+
+
+@pytest.mark.parametrize(
+    "metric",
+    ("lines", "statements", "branches", "functions", "tier0"),
+)
+def test_rejects_aggregate_coverage_minimum_below_100(
+    tmp_path: Path,
+    metric: str,
+) -> None:
+    contract = _load_contract()
+    contract["coverage_minimums"][metric] = 99
+
+    result = _run_contract(tmp_path, contract)
+
+    assert result.returncode == 1
+    assert f"coverage_minimums.{metric} must equal 100" in result.stderr
 
 
 def test_rejects_expired_unowned_quarantine(tmp_path: Path) -> None:

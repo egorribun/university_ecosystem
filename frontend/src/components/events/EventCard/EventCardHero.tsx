@@ -51,8 +51,8 @@ const EventCardHero = ({
      Same pattern as NewsCardHero — useLayoutEffect fires synchronously
      after DOM commit but before paint/snapshot. */
   useLayoutEffect(() => {
-    const el = containerRef.current
-    if (!el || !id) return
+    if (!id) return
+    const el = containerRef.current!
     const heroId = getEventsHeroId()
     if (heroId !== id) return
 
@@ -99,8 +99,7 @@ const EventCardHero = ({
     const prefersReduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches
     if (prefersReduced) return
 
-    const img = container.querySelector<HTMLElement>("[data-parallax-img]")
-    if (!img) return
+    const img = container.querySelector<HTMLElement>("[data-parallax-img]")!
 
     const observer = new IntersectionObserver(
       ([entry]) => {

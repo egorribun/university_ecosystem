@@ -128,6 +128,8 @@ describe("AddLessonDialog", () => {
     })
     // start/end times still empty.
     expect(screen.getByRole("button", { name: "schedule:buttons.add" })).toBeDisabled()
+    fireEvent.submit(screen.getByRole("button", { name: "schedule:buttons.add" }).closest("form")!)
+    expect(apiMocks.post).not.toHaveBeenCalled()
   })
 
   it("submits successfully: posts mapped payload, success snackbar, refresh, close", async () => {

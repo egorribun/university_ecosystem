@@ -78,10 +78,8 @@ export const NowPlayingCard = memo(function NowPlayingCard({ data }: { data: Now
     }
     rafRef.current = requestAnimationFrame(loop)
     return () => {
-      if (rafRef.current != null) {
-        cancelAnimationFrame(rafRef.current)
-        rafRef.current = null
-      }
+      cancelAnimationFrame(rafRef.current!)
+      rafRef.current = null
     }
   }, [clampProgress, shouldAnimate])
 

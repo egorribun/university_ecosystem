@@ -199,11 +199,13 @@ describe("AdminAuditFeature closure", () => {
     expect(screen.getByRole("button", { name: "audit.pagination.previous" })).toBeDisabled()
     expect(screen.getByRole("button", { name: "audit.pagination.next" })).toBeEnabled()
 
-    await user.type(screen.getByLabelText("audit.filters.resourceType"), "event")
-    await user.type(screen.getByLabelText("audit.filters.action"), "create")
+    await user.click(screen.getByRole("button", { name: "audit.pagination.next" }))
+    expect(auditQuery.calls[auditQuery.calls.length - 1]!.pagination.page).toBe(1)
 
-    const latestCall = auditQuery.calls[auditQuery.calls.length - 1]!
-    expect(latestCall.filters).toEqual({ resource_type: "event", action: "create" })
+    await user.type(screen.getByLabelText("audit.filters.resourceType"), "event")
+
+    let latestCall = auditQuery.calls[auditQuery.calls.length - 1]!
+    expect(latestCall.filters).toEqual({ resource_type: "event", action: "" })
     expect(latestCall.pagination).toEqual({ page: 0, rowsPerPage: 50 })
 
     await user.click(screen.getByRole("button", { name: "audit.pagination.next" }))
@@ -211,6 +213,13 @@ describe("AdminAuditFeature closure", () => {
       page: 1,
       rowsPerPage: 50,
     })
+
+    await user.type(screen.getByLabelText("audit.filters.action"), "create")
+    latestCall = auditQuery.calls[auditQuery.calls.length - 1]!
+    expect(latestCall.filters).toEqual({ resource_type: "event", action: "create" })
+    expect(latestCall.pagination).toEqual({ page: 0, rowsPerPage: 50 })
+
+    await user.click(screen.getByRole("button", { name: "audit.pagination.next" }))
     expect(screen.getByRole("button", { name: "audit.pagination.previous" })).toBeEnabled()
 
     await user.click(screen.getByRole("button", { name: "audit.pagination.previous" }))

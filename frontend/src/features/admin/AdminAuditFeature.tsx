@@ -13,9 +13,6 @@ import {
   User,
   Activity,
 } from "lucide-react"
-// Wave 163 SW3 — TanStack Query factory for /admin/audit. Closes W150
-// §Honesty #3 deferral. Pre-W163 used raw api.get in useCallback + useState
-// + useEffect; post-W163 uses useAdminAuditLogsQuery(filters, pagination).
 import { useAdminAuditLogsQuery } from "@/api/hooks/adminAudit"
 import { cn } from "@/utils/cn"
 import { SectionCard, TextField, Button } from "@/components/settings"
@@ -202,19 +199,7 @@ function Row({ log }: { log: AuditLog }) {
   )
 }
 
-/**
- * AdminAuditFeature — Wave 164 SW2 orchestrator.
- *
- * Migrated from `pages/AdminAudit.tsx` (359 lines) to match the
- * features/activity/ pattern (W112 SW2). The page is now a thin
- * <Layout><FeatureErrorBoundary> wrapper; the feature owns content + state.
- * Inner Row component moved with the feature.
- *
- * Data layer: W163 SW3 TanStack Query factory at @/api/hooks/adminAudit
- * (useAdminAuditLogsQuery(filters, pagination)). Pagination round-trips don't
- * refetch already-cached pages.
- * Closes W150 §Honesty #1 (features/admin/ structure migration).
- */
+/** Audit-log table with server-backed filters and offset pagination. */
 export function AdminAuditFeature() {
   const [page, setPage] = useState(0)
   const rowsPerPage = 50
@@ -223,13 +208,14 @@ export function AdminAuditFeature() {
   const { t } = useTranslation("admin")
   const reducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)")
 
-  // Wave 163 SW3 — useAdminAuditLogsQuery replaces pre-W163 useCallback
-  // fetchLogs + useState(logs/total/loading) + useEffect. Pagination
-  // round-trips don't refetch already-cached pages because filters +
-  // pagination are part of the queryKey.
   const { data, isPending: loading } = useAdminAuditLogsQuery(filters, { page, rowsPerPage })
   const logs: AuditLog[] = data?.items ?? []
   const total = data?.total ?? 0
+
+  const updateFilter = (key: keyof typeof filters, value: string) => {
+    setFilters((previousFilters) => ({ ...previousFilters, [key]: value }))
+    setPage(0)
+  }
 
   return (
     <div className="min-h-screen w-full bg-background/(--opacity-medium) py-12">
@@ -252,24 +238,14 @@ export function AdminAuditFeature() {
             id="resource-type-filter"
             label={t("audit.filters.resourceType")}
             value={filters.resource_type}
-            onChange={(event) =>
-              setFilters((previousFilters) => ({
-                ...previousFilters,
-                resource_type: event.target.value,
-              }))
-            }
+            onChange={(event) => updateFilter("resource_type", event.target.value)}
             className="min-w-(--min-w-column) flex-1"
           />
           <TextField
             id="action-filter"
             label={t("audit.filters.action")}
             value={filters.action}
-            onChange={(event) =>
-              setFilters((previousFilters) => ({
-                ...previousFilters,
-                action: event.target.value,
-              }))
-            }
+            onChange={(event) => updateFilter("action", event.target.value)}
             className="min-w-(--min-w-column) flex-1"
           />
         </SectionCard>
@@ -333,17 +309,15 @@ export function AdminAuditFeature() {
                 </table>
               </div>
 
-              {/* Pagination placeholder as standard table pagination is complex to rewrite from scratch,
-                  using a simple layout for now or keeping it minimal */}
               <div className="flex items-center justify-between border-t border-glass-border/(--opacity-subtle) bg-(--bg-surface)/(--opacity-dim) px-6 py-4">
-                <div className="text-sm text-(--text-secondary)">
+                <div className="text-sm text-(--text-secondary)" aria-live="polite">
                   {t("audit.pagination.total", { count: total })}
                 </div>
                 <div className="flex gap-2">
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() => setPage(Math.max(0, page - 1))}
+                    onClick={() => setPage((currentPage) => Math.max(0, currentPage - 1))}
                     disabled={page === 0}
                   >
                     {t("audit.pagination.previous")}
@@ -354,7 +328,7 @@ export function AdminAuditFeature() {
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() => setPage(page + 1)}
+                    onClick={() => setPage((currentPage) => currentPage + 1)}
                     disabled={(page + 1) * rowsPerPage >= total}
                   >
                     {t("audit.pagination.next")}

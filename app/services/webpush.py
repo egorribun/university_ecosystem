@@ -109,18 +109,12 @@ def cleanup() -> None:
     global _sync_engine, _Session
 
     engine: Engine | None = None
-    session_factory: sessionmaker[Session] | None = None
-
     with _sync_init_lock:
         if _Session is None and _sync_engine is None:
             return
         engine = _sync_engine
-        session_factory = _Session
         _sync_engine = None
         _Session = None
-
-    if session_factory is not None:
-        pass
 
     if engine is not None:
         try:

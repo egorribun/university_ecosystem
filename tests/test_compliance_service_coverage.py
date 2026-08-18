@@ -1,4 +1,4 @@
-"""Coverage tests for app/services/user/compliance_service.py (testing session 9).
+"""Behavior and failure-path tests for user compliance services.
 
 AsyncMock repo + fake-UoW harness (mirrors tests/test_audit_service.py style)
 targeting the previously-uncovered branches: register_user invite validation

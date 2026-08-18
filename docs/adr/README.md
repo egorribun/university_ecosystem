@@ -20,7 +20,7 @@ This directory contains architectural decision records (ADRs) for the University
 14. [ADR-014: Hypothesis Property-Based Testing](ADR-014-hypothesis-property-testing.md)
 15. [ADR-015: Go Services Testing Strategy](ADR-015-go-services-testing-strategy.md)
 16. [ADR-016: FakeRedis vs Testcontainers](ADR-016-fakeredis-vs-testcontainers.md)
-17. [ADR-017: Test Wave Files](ADR-017-test-wave-files.md)
+17. [ADR-017: Domain-Oriented Test File Naming](ADR-017-domain-oriented-test-files.md)
 18. [ADR-018: CQRS Pattern Implementation](ADR-018-cqrs-implementation.md)
 19. [ADR-019: Client-side Caching Strategy](ADR-019-client-caching-strategy.md)
 20. [ADR-020: SpiceDB Watch API for Real-time Permissions](ADR-020-spicedb-watch-api.md)

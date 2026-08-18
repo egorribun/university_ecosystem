@@ -133,6 +133,17 @@ describe("ActionMenu", () => {
     const disabledButton = screen.getByText("Disabled")
     expect(disabledButton).toBeDisabled()
   })
+
+  it("handles keyboard input with an empty menu", async () => {
+    const user = userEvent.setup()
+    render(<ActionMenu items={[]} />)
+
+    const trigger = screen.getByRole("button", { name: "Open menu" })
+    await user.click(trigger)
+    fireEvent.keyDown(trigger, { key: "ArrowDown" })
+
+    expect(screen.getByRole("menu")).toBeInTheDocument()
+  })
 })
 
 describe("MediaSlot", () => {

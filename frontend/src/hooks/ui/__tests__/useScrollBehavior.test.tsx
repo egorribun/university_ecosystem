@@ -18,6 +18,25 @@ describe("useScrollBehavior", () => {
     }
   })
 
+  it("keeps the first client render aligned with SSR when scroll restoration is non-zero", () => {
+    const descriptor = Object.getOwnPropertyDescriptor(window, "scrollY")
+    Object.defineProperty(window, "scrollY", {
+      configurable: true,
+      value: NAVBAR_SCROLL_THRESHOLD + 100,
+    })
+
+    try {
+      const Probe = () => <span>{String(useScrollBehavior().isScrolled)}</span>
+      expect(renderToString(<Probe />)).toContain(">false<")
+    } finally {
+      if (descriptor) {
+        Object.defineProperty(window, "scrollY", descriptor)
+      } else {
+        Reflect.deleteProperty(window, "scrollY")
+      }
+    }
+  })
+
   it("updates only when the scroll threshold state changes", () => {
     const descriptor = Object.getOwnPropertyDescriptor(window, "scrollY")
     let scrollY = 0

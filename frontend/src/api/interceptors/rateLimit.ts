@@ -52,10 +52,11 @@ const scheduleClientQueueWindowReset = () => {
   pruneClientQueueTimestamps()
 
   if (clientQueueTimestamps.length < CLIENT_RATE_LIMIT_REQUESTS_PER_WINDOW) {
-    if (clientQueueTimer) {
-      clearTimeout(clientQueueTimer)
-      clientQueueTimer = null
-    }
+    // Clearing an absent timer is a platform-defined no-op. Keeping this
+    // unconditional avoids encoding a second state invariant ("below the
+    // window limit implies a timer exists") that callers do not need.
+    clearTimeout(clientQueueTimer as ReturnType<typeof setTimeout>)
+    clientQueueTimer = null
     return
   }
 
@@ -231,10 +232,8 @@ if (typeof window !== "undefined") {
   window.addEventListener("online", () => {
     if (rateLimitResetAt !== 0 && Date.now() >= rateLimitResetAt) {
       // Window has already expired — unblock queued requests immediately
-      if (rateLimitTimer !== null) {
-        clearTimeout(rateLimitTimer)
-        rateLimitTimer = null
-      }
+      clearTimeout(rateLimitTimer as ReturnType<typeof setTimeout>)
+      rateLimitTimer = null
       rateLimitResetAt = 0
       while (rateLimitWaiters.length > 0) {
         rateLimitWaiters.shift()?.()

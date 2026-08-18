@@ -129,6 +129,17 @@ describe("Service Worker - Offline Storage & Sync", () => {
       expect(pending).toHaveLength(2) // Both enqueued with distinct random UUIDs
       expect(pending[0].idempotencyKey).toBe("mocked-uuid-1234")
     })
+
+    it("defaults a report without an explicit method to POST", async () => {
+      await storePendingReport({
+        url: "http://localhost/news",
+        reportUrl: "http://localhost/api/news",
+        timestamp: 1000,
+      })
+
+      const [pending] = await readPendingReports()
+      expect(pending).toMatchObject({ method: "POST", idempotencyKey: "mocked-uuid-1234" })
+    })
   })
 
   describe("Sanitize Report Payload", () => {
@@ -147,6 +158,16 @@ describe("Service Worker - Offline Storage & Sync", () => {
       expect(sanitized.__proto__).toBeUndefined()
       expect(sanitized.nested.constructor).toBeUndefined()
       expect(sanitized.nested.valid).toBe(123)
+    })
+
+    it("drops function-valued report fields", () => {
+      const sanitized = sanitizeReportPayload({
+        keep: "value",
+        callback: () => "not serializable",
+      }) as Record<string, unknown>
+
+      expect(sanitized).toEqual({ keep: "value" })
+      expect(sanitized).not.toHaveProperty("callback")
     })
 
     it("truncates arrays and caps recursion depth", () => {

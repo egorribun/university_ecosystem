@@ -30,7 +30,7 @@ services:
       - "127.0.0.1:8222:8222" # Monitoring
 
   elasticsearch:
-    image: docker.elastic.co/elasticsearch/elasticsearch:8.19.12
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.19.12@sha256:6711d4eff91dce95b900eb3c771c5298672ba00f6d20cab79551c4acc133f629
     environment:
       - discovery.type=single-node
       - xpack.security.enabled=true

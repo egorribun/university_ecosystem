@@ -34,4 +34,4 @@ export type SupportedLanguage = keyof typeof localeMeta
 
 export const supportedLngs = Object.keys(localeMeta) as SupportedLanguage[]
 
-export const fallbackLng: SupportedLanguage = "en"
+export const fallbackLng: SupportedLanguage = "ru"

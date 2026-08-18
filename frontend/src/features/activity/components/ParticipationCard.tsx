@@ -70,12 +70,12 @@ export function ParticipationCard({
               {[
                 participation?.hours != null
                   ? t("activity:sections.participation.summaryHours", {
-                      count: participation.hours ?? 0,
+                      count: participation.hours,
                     })
                   : null,
                 participation?.groups != null
                   ? t("activity:sections.participation.summaryGroups", {
-                      count: participation.groups ?? 0,
+                      count: participation.groups,
                     })
                   : null,
               ]

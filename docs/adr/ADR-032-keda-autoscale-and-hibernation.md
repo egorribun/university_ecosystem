@@ -1,7 +1,7 @@
 # ADR-032: KEDA Event-Driven Auto-Scaling and Off-Peak Resource Hibernation
 
 ## Status
-Proposed — Vector 17 (2026-07-26)
+Accepted and implemented — Vector 17 (2026-07-26)
 
 ## Context
 
@@ -92,11 +92,19 @@ For event-driven background workers (`outbox-worker`, `file-processor`, `backend
 - Requires KEDA operator CRDs (`keda.sh/v1alpha1`) to be installed in clusters where `keda.enabled=true`.
 - Potential cold-start delay (~5-10 seconds) when off-peak event arrives while worker replica count is 0.
 
-## Rollout Plan & Migration Strategy
+## Implementation State
 
-1. **Phase 1 (Helm & Manifest Rollout)**: Deploy updated Helm chart (`charts/university-ecosystem`) and standalone manifests (`k8s/outbox-worker/scaledobject.yaml`).
-2. **Phase 2 (Dev/Staging Activation)**: Enable `keda.enabled: true` and `hibernation.enabled: true` in non-production values overrides.
-3. **Phase 3 (Production Scaling)**: Enable `keda.enabled: true` and `hibernation.enabled: false` in production values overrides for event-driven queue scaling while maintaining 24/7 baseline availability.
+- The Helm chart contains the KEDA `ScaledObject` and
+  `TriggerAuthentication` templates, controller-safe replica guards, and the
+  native-HPA exclusion logic described by this decision.
+- The standalone outbox-worker deployment includes its KEDA `ScaledObject`.
+- KEDA and hibernation remain explicit environment-level opt-ins. The chart
+  defaults both to disabled, so installing the chart never assumes that the
+  KEDA CRDs are present and never scales production workloads to zero by
+  accident.
+- Non-production environments enable both switches in their reviewed values;
+  production may enable event-driven scaling while keeping hibernation
+  disabled.
 
 ## Verification & Validation Method
 

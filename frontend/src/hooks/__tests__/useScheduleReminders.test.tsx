@@ -62,6 +62,7 @@ beforeEach(() => {
 afterEach(() => {
   vi.useRealTimers()
   vi.unstubAllGlobals()
+  vi.unstubAllEnvs()
 })
 
 describe("useScheduleReminders", () => {
@@ -149,6 +150,32 @@ describe("useScheduleReminders", () => {
     expect(idbSet).toHaveBeenCalledWith(
       "schedule:reminder-prefs",
       expect.objectContaining({ minutesBefore: 5 })
+    )
+  })
+
+  it("keeps updated preferences and reports an IndexedDB write failure", async () => {
+    const writeError = new Error("preferences unavailable")
+    idbSet.mockRejectedValueOnce(writeError)
+    const { result } = renderHook(() => useScheduleReminders([]))
+    await flush()
+
+    await act(async () => {
+      await result.current.setPrefs({ minutesBefore: 30 })
+      await Promise.resolve()
+    })
+
+    expect(result.current.prefs.minutesBefore).toBe(30)
+    expect(logError).toHaveBeenCalledWith("[schedule:reminders]", writeError)
+  })
+
+  it("does not emit development diagnostics in production mode", async () => {
+    vi.stubEnv("DEV", false)
+
+    renderHook(() => useScheduleReminders([lesson()]))
+    await flush()
+
+    expect(logError).not.toHaveBeenCalledWith(
+      "[schedule:reminders] Reminders enabled but notification permission denied"
     )
   })
 

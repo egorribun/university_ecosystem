@@ -30,7 +30,7 @@ on:
 jobs:
   unit-tests-shard:
     name: Unit Tests (shard ${{ matrix.shard }}/4)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 45
     strategy:
       fail-fast: false
@@ -105,7 +105,7 @@ jobs:
     name: Unit Tests
     needs: unit-tests-shard
     if: ${{ always() }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 45
     permissions:
       contents: read
@@ -195,7 +195,7 @@ jobs:
 
   lint:
     name: Lint & Format
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     defaults:
       run:
@@ -257,7 +257,7 @@ jobs:
 
   build:
     name: Production Build
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 45
     defaults:
       run:
@@ -328,7 +328,7 @@ jobs:
   bundle-analysis:
     name: Bundle Analysis
     needs: build
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     defaults:
       run:
@@ -388,7 +388,7 @@ jobs:
     name: Lighthouse Audit (${{ matrix.shard }})
     if: ${{ inputs.run-lighthouse }}
     needs: build
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     strategy:
       fail-fast: false
@@ -415,7 +415,7 @@ jobs:
       # starts. run-lhci still prepares route fallbacks and performs the
       # complete collect/assert gate.
       SKIP_BUILD: "1"
-      # ubuntu-latest already contains the browser runtime libraries. The
+      # ubuntu-24.04 already contains the browser runtime libraries. The
       # Playwright apt bootstrap is intentionally opt-in here: every matrix
       # shard has its own runner, and a slow apt mirror can consume the full
       # Lighthouse timeout before the audit begins.
@@ -461,7 +461,7 @@ jobs:
     name: Lighthouse Audit
     if: ${{ always() && inputs.run-lighthouse }}
     needs: lighthouse-shards
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     defaults:
       run:

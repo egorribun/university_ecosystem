@@ -13,9 +13,9 @@
 # then exec's temporal-server with --root /tmp --config . --env docker
 # so it finds the rendered docker.yaml there.
 #
-# The original /etc/temporal/entrypoint.sh's BIND_ON_IP / TEMPORAL_BROADCAST_ADDRESS
-# logic is preserved verbatim below — those env vars must be set for
-# membership broadcast to work correctly.
+# BIND_ON_IP defaults to all interfaces because Compose attaches Temporal to
+# multiple networks. Membership still needs one concrete advertised address,
+# which is resolved independently below.
 
 set -eu
 # shellcheck disable=SC3040
@@ -29,7 +29,7 @@ set -o pipefail 2>/dev/null || true
 
 # Resolve container's bridge-network IP for membership broadcast.
 BROADCAST_ADDRESS="$(getent hosts "$(hostname)" | awk '{print $1;}')"
-: "${BIND_ON_IP:=${BROADCAST_ADDRESS}}"
+: "${BIND_ON_IP:=0.0.0.0}"
 export BIND_ON_IP BROADCAST_ADDRESS
 : "${TEMPORAL_BROADCAST_ADDRESS:=${BROADCAST_ADDRESS}}"
 export TEMPORAL_BROADCAST_ADDRESS

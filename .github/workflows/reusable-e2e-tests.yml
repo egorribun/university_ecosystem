@@ -56,7 +56,7 @@ on:
 jobs:
   e2e:
     name: E2E Tests (${{ inputs.browser }})
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # Reusable-workflow callers cannot set continue-on-error on the caller job.
     # Keep the advisory policy inside the reusable workflow so the same workflow
     # remains blocking by default for Chromium and opt-in advisory for the
@@ -91,7 +91,7 @@ jobs:
       SKIP_WASM_BUILD: "1"
     services:
       postgres:
-        image: pgvector/pgvector:pg17
+        image: pgvector/pgvector:pg17@sha256:cf134a767f474095eeba57e0117be8e568e011a63f33fbf252f14c9b760f8e6f
         env:
           POSTGRES_USER: test
           POSTGRES_PASSWORD: test
@@ -104,7 +104,7 @@ jobs:
           --health-timeout 3s
           --health-retries 10
       redis:
-        image: redis:7-alpine
+        image: redis:7-alpine@sha256:e7723ff73d963f5cc6d9c4643ea3d989527a402a319239054e9472a7fb9219a2
         ports:
           - 6379:6379
         options: >-
@@ -304,9 +304,9 @@ jobs:
           URL_STATE_E2E: "true"
           VITE_BACKEND_ORIGIN: http://127.0.0.1:8000
         run: |
-          npx playwright test wave179-login-flow.spec.ts \
+          npx playwright test login-flow.spec.ts \
             --project=chromium \
-            --output=test-results/wave179-login-flow \
+            --output=test-results/login-flow \
             --reporter=html
 
       # Phase 7.4: exercise the production Node SSR wrapper and assert that

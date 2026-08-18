@@ -41,7 +41,7 @@ describe("MainLayout", () => {
     expect(screen.getByTestId("mobile-bottom-nav")).toBeInTheDocument()
 
     const main = screen.getByRole("main")
-    fireEvent.click(screen.getByRole("link", { name: "navigation:aria.skipLink" }))
+    fireEvent.click(screen.getByRole("link", { name: "common:skipToMain" }))
     expect(main).toHaveFocus()
     expect(main.scrollIntoView).toHaveBeenCalledWith({ block: "start" })
   })

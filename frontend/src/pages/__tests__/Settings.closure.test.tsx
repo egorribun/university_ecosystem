@@ -189,6 +189,14 @@ describe("Settings container closure", () => {
     mocks.action.mockClear()
   })
 
+  it("lets long settings panels determine the page height", () => {
+    const { container } = render(<Settings />)
+
+    const settingsRoot = container.querySelector(".settings-theme")
+    expect(settingsRoot).toHaveClass("min-h-full")
+    expect(settingsRoot).not.toHaveStyle({ height: "40rem", maxHeight: "85vh" })
+  })
+
   it("renders the default tab, navigates to profile and covers both tab URL branches", async () => {
     const user = userEvent.setup()
     render(<Settings />)
@@ -259,6 +267,11 @@ describe("Settings container closure", () => {
 
     await user.click(screen.getByRole("button", { name: "open empty step up" }))
     await user.click(screen.getByRole("button", { name: "close step up" }))
+    expect(screen.queryByRole("dialog", { name: "step up" })).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole("button", { name: "open empty step up" }))
+    await user.click(screen.getByRole("button", { name: "complete step up" }))
+    expect(mocks.action).toHaveBeenCalledOnce()
     expect(screen.queryByRole("dialog", { name: "step up" })).not.toBeInTheDocument()
 
     await user.click(screen.getByRole("tab", { name: "settings:tabs.general" }))

@@ -78,6 +78,14 @@ describe("sanitizeArticleHtml", () => {
     expect(result).not.toContain("<input")
   })
 
+  it("does not sanitize descendants after their dangerous parent is removed", () => {
+    const result = sanitizeArticleHtml(
+      '<form action="/steal"><p onclick="evil()">nested secret</p></form><p>safe</p>'
+    )
+
+    expect(result).toBe("<p>safe</p>")
+  })
+
   it("removes <embed> and <object> tags", () => {
     expect(sanitizeArticleHtml("<embed src='x.swf'>")).not.toContain("<embed")
     expect(sanitizeArticleHtml('<object data="x.swf">')).not.toContain("<object")

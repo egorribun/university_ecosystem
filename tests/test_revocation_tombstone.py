@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
-from unittest.mock import AsyncMock, call
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, call, patch
 
 import pytest
 from redis.exceptions import RedisError, ResponseError
@@ -9,6 +10,7 @@ from redis.exceptions import RedisError, ResponseError
 from app.auth.revocation import (
     MAX_REVOCATION_TOMBSTONE_TTL_SECONDS,
     calculate_revocation_tombstone_ttl,
+    get_revocation_redis_client,
     revoke_with_tombstone,
 )
 
@@ -67,6 +69,29 @@ async def test_revoke_with_tombstone_uses_atomic_lua_path() -> None:
     client.ttl.assert_not_awaited()
     client.set.assert_not_awaited()
     client.delete.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_revoke_with_tombstone_requires_a_security_client() -> None:
+    with pytest.raises(RuntimeError, match="revocation Redis client is unavailable"):
+        await revoke_with_tombstone(
+            None,
+            session_key="session:missing-client",
+            jti="missing-client",
+            expires_at=None,
+        )
+
+
+@pytest.mark.asyncio
+async def test_get_revocation_redis_client_requires_configured_url() -> None:
+    with patch(
+        "app.core.config.settings",
+        SimpleNamespace(revocation_redis_url="   "),
+    ):
+        with pytest.raises(
+            RuntimeError, match="REVOCATION_REDIS_URL is not configured"
+        ):
+            await get_revocation_redis_client()
 
 
 @pytest.mark.asyncio

@@ -29,7 +29,10 @@ describe("StaggerChildren", () => {
     vi.stubGlobal(
       "IntersectionObserver",
       class {
-        constructor(nextCallback: IntersectionObserverCallback, nextOptions?: IntersectionObserverInit) {
+        constructor(
+          nextCallback: IntersectionObserverCallback,
+          nextOptions?: IntersectionObserverInit
+        ) {
           callback = nextCallback
           options = nextOptions
           return observer
@@ -68,6 +71,10 @@ describe("StaggerChildren", () => {
     callback([], observer)
     callback([{ isIntersecting: false } as IntersectionObserverEntry], observer)
     expect(container.querySelector<HTMLElement>(".stagger-item")?.dataset.visible).toBeUndefined()
+    expect(disconnect).not.toHaveBeenCalled()
+
+    callback([{ isIntersecting: true } as IntersectionObserverEntry], observer)
+    expect(container.querySelector<HTMLElement>(".stagger-item")?.dataset.visible).toBe("true")
     expect(disconnect).not.toHaveBeenCalled()
 
     unmount()

@@ -270,6 +270,9 @@ describe("MfaChallengeView — recovery interaction", () => {
     render(<MfaChallengeView {...props} mfa={{ ...recoveryMfa, handleRecoveryVerify }} />)
 
     fireEvent.click(screen.getByRole("button", { name: /Подтвердить|verify/i }))
+    fireEvent.keyDown(screen.getByRole("textbox", { name: "MFA recovery code" }), {
+      key: "Enter",
+    })
     expect(handleRecoveryVerify).not.toHaveBeenCalled()
   })
 })

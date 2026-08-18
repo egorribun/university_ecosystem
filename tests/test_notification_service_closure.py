@@ -28,7 +28,7 @@ async def test_dispatch_event_created_records_runtime_and_os_errors():
     background.add_task.side_effect = OSError("queue unavailable")
 
     with patch(
-        "app.services.notification_service.notification_queue.record_enqueue_failure",
+        "app.services.notification_service.notification_queue.report_enqueue_failure",
         new=AsyncMock(),
     ) as record:
         await service.dispatch_event_created(7, "ru", background)
@@ -71,8 +71,17 @@ async def test_dispatch_news_and_comment_swallow_enqueue_errors():
     background = MagicMock()
     background.add_task.side_effect = RuntimeError("queue full")
 
-    await service.dispatch_news_created(1, "en", background)
-    await service.dispatch_comment_created(2, 3, 4, "en", background)
+    with patch(
+        "app.services.notification_service.notification_queue.report_enqueue_failure",
+        new=AsyncMock(),
+    ) as report:
+        await service.dispatch_news_created(1, "en", background)
+        await service.dispatch_comment_created(2, 3, 4, "en", background)
+
+    assert [call.kwargs["notification_type"] for call in report.await_args_list] == [
+        "news",
+        "comment",
+    ]
 
 
 @pytest.mark.asyncio

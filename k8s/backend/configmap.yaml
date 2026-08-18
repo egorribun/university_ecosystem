@@ -10,3 +10,6 @@ data:
   ENABLE_METRICS_ENDPOINT: "true"
   RATE_LIMIT_ENABLED: "true"
   RATE_LIMIT_STORAGE_BACKEND: "redis"
+  # In-cluster OpenFeature provider endpoint (Service in k8s/flagd/deployment.yaml).
+  FLAGD_HOST: "flagd"
+  FLAGD_PORT: "8013"

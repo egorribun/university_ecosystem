@@ -18,7 +18,6 @@ class Profiler(Protocol):
 
     def configure(self) -> None:
         """Initialize and start the profiler."""
-        ...
 
 
 class PyroscopeProfiler:

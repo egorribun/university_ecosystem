@@ -68,7 +68,7 @@ def _create_clamd_client() -> Any:
         if socket_path:
             return clamd.ClamdUnixSocket(path=socket_path, timeout=timeout)
         return clamd.ClamdNetworkSocket(host=host, port=port, timeout=timeout)
-    except Exception as exc:  # pragma: no cover - network failure path  # RZ-22-01-JUSTIFIED: convert-to-domain — wraps clamd errors (reviewed TD-27-04)
+    except Exception as exc:  # RZ-22-01-JUSTIFIED: convert-to-domain — wraps clamd errors (reviewed TD-27-04)
         raise FileScannerUnavailableError("unable to connect to clamd") from exc
 
 
@@ -80,7 +80,7 @@ def _scan_with_clamd_stream(stream: IO[bytes]) -> str | None:
         response: Any = client.instream(stream)
     except FileScannerUnavailableError:
         raise
-    except Exception as exc:  # pragma: no cover - network failure path  # RZ-22-01-JUSTIFIED: convert-to-domain — wraps clamd errors (reviewed TD-27-04)
+    except Exception as exc:  # RZ-22-01-JUSTIFIED: convert-to-domain — wraps clamd errors (reviewed TD-27-04)
         raise FileScannerUnavailableError("clamd scan failed") from exc
 
     if not isinstance(response, dict) or "stream" not in response:
@@ -110,7 +110,7 @@ def _check_clamd_health() -> None:
         pong = client.ping()
     except FileScannerUnavailableError:
         raise
-    except Exception as exc:  # pragma: no cover - network failure path  # RZ-22-01-JUSTIFIED: convert-to-domain — wraps clamd errors (reviewed TD-27-04)
+    except Exception as exc:  # RZ-22-01-JUSTIFIED: convert-to-domain — wraps clamd errors (reviewed TD-27-04)
         raise FileScannerUnavailableError("clamd health check failed") from exc
 
     if isinstance(pong, str) and pong.upper() == "PONG":

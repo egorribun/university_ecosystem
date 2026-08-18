@@ -45,4 +45,19 @@ describe("RelatedNews", () => {
     await renderWithRouter({ ui: () => <RelatedNews items={[]} />, extraRoutes })
     expect(screen.queryByRole("link")).not.toBeInTheDocument()
   })
+
+  it("uses empty-title and missing-date fallbacks for sparse related items", async () => {
+    const sparse = {
+      ...ITEMS[0],
+      id: "sparse",
+      title: "",
+      title_en: "",
+      created_at: null,
+    } as unknown as NewsItem
+
+    await renderWithRouter({ ui: () => <RelatedNews items={[sparse]} />, extraRoutes })
+
+    expect(screen.getByRole("img", { name: "News cover image" })).toBeInTheDocument()
+    expect(screen.queryByText(/2026/)).not.toBeInTheDocument()
+  })
 })

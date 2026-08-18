@@ -20,13 +20,6 @@ class CacheVersionManager:
     """Manages cache versions for list-type endpoints with atomic increments."""
 
     prefix: str
-    # MED-W19: Removed dead _local_state field — it was declared but never read
-    # or written anywhere in this class, and the frozen dataclass semantics made
-    # mutation impossible anyway.  Removed _local_version_key and _lock_key
-    # pseudo-constants that were also unused.
-
-    def __post_init__(self) -> None:
-        pass
 
     @property
     def version_key(self) -> str:

@@ -324,6 +324,11 @@ describe("ChatArea — search interaction", () => {
   })
 
   it("renders search input when showSearchInChat=true", () => {
+    let focusFrame: FrameRequestCallback | undefined
+    vi.spyOn(globalThis, "requestAnimationFrame").mockImplementation((callback) => {
+      focusFrame = callback
+      return 1
+    })
     const chat = makeChat()
     const { container } = render(
       <ChatArea
@@ -340,6 +345,8 @@ describe("ChatArea — search interaction", () => {
     expect(searchInput).toBeTruthy()
     expect(searchInput!.value).toBe("hello")
     expect(searchInput!.placeholder).toBe("messenger:searchMessages")
+    focusFrame?.(0)
+    expect(searchInput).toHaveFocus()
   })
 
   it("uses reduced-motion transitions for the search header", () => {

@@ -167,9 +167,11 @@ vi.mock("@/components/stories", () => ({
       <button type="button" onMouseEnter={onPrefetch}>
         prefetch stories
       </button>
-      <button type="button" onClick={onStoryOpen}>
-        open story
-      </button>
+      {stories.length > 0 && (
+        <button type="button" onClick={onStoryOpen}>
+          open story
+        </button>
+      )}
       {stories.map((story) => (
         <span key={story.id} data-testid="story" data-cta={story.cta_url ?? "none"}>
           {story.title}
@@ -260,6 +262,8 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.useRealTimers()
+  vi.unstubAllEnvs()
+  vi.unstubAllGlobals()
   vi.restoreAllMocks()
 })
 
@@ -273,7 +277,7 @@ describe("Dashboard closure behavior", () => {
     expect(screen.queryByTestId("dashboard-hero")).not.toBeInTheDocument()
   })
 
-  it("renders mock stories, loading widgets, cascade reveal, and scroll parallax", () => {
+  it("renders an honest stories loading state, loading widgets, cascade reveal, and scroll parallax", () => {
     vi.useFakeTimers()
     state.scheduleQuery = { isLoading: true }
     state.newsQuery = { isLoading: true }
@@ -316,11 +320,9 @@ describe("Dashboard closure behavior", () => {
       expect(screen.getByTestId("dashboard-hero")).toBeInTheDocument()
       expect(screen.getByTestId("hero-stories")).toBeInTheDocument()
       expect(screen.getByTestId("dashboard-stories")).toHaveAttribute("data-loading", "true")
-      expect(screen.getByTestId("dashboard-stories")).toHaveAttribute("data-count", "9")
+      expect(screen.getByTestId("dashboard-stories")).toHaveAttribute("data-count", "0")
       expect(screen.getByTestId("dashboard-stories")).toHaveAttribute("data-max-visible", "9")
-      expect(screen.getAllByTestId("story")).toHaveLength(9)
-      expect(screen.getAllByTestId("story").at(0)).toHaveAttribute("data-cta", "/events")
-      expect(screen.getAllByTestId("story").at(1)).toHaveAttribute("data-cta", "none")
+      expect(screen.queryAllByTestId("story")).toHaveLength(0)
       expect(screen.getByTestId("weather-ambient")).toHaveAttribute("data-animation", "drizzle")
     }
     expect(screen.getAllByTestId("motion-card")).toHaveLength(3)
@@ -331,8 +333,8 @@ describe("Dashboard closure behavior", () => {
 
     if (!e2eMode) {
       fireEvent.mouseEnter(screen.getByRole("button", { name: "prefetch stories" }))
-      fireEvent.click(screen.getByRole("button", { name: "open story" }))
-      expect(state.prefetch).toHaveBeenCalledTimes(2)
+      expect(screen.queryByRole("button", { name: "open story" })).not.toBeInTheDocument()
+      expect(state.prefetch).toHaveBeenCalledOnce()
     }
 
     window.dispatchEvent(new Event("scroll"))
@@ -415,5 +417,20 @@ describe("Dashboard closure behavior", () => {
     expect(backdrop.style.transform).toBe("")
     expect(grid.style.transform).toBe("")
     expect(grid.style.opacity).toBe("")
+  })
+
+  it("renders the lightweight compile-time E2E stubs", async () => {
+    vi.stubEnv("VITE_E2E_MODE", "1")
+    vi.resetModules()
+    state.storiesInHero = false
+
+    const { default: E2EDashboard } = await import("../Dashboard")
+    const { unmount } = render(<E2EDashboard />)
+
+    expect(document.querySelector('[data-e2e-stub="dashboard-hero"]')).toBeInTheDocument()
+    expect(document.querySelector('[data-e2e-stub="dashboard-stories"]')).toBeInTheDocument()
+    expect(screen.queryByTestId("dashboard-hero")).not.toBeInTheDocument()
+    expect(screen.queryByTestId("weather-ambient")).not.toBeInTheDocument()
+    unmount()
   })
 })

@@ -25,7 +25,7 @@ func startRedisContainerForAuth(t *testing.T) *redis.Client {
 	t.Helper()
 	ctx := context.Background()
 
-	rc, err := tcredis.Run(ctx, "redis:7.4.2-alpine",
+	rc, err := tcredis.Run(ctx, "redis:7.4.2-alpine@sha256:02419de7eddf55aa5bcf49efb74e88fa8d931b4d77c07eff8a6b2144472b6952",
 		testcontainers.WithLogger(tclog.TestLogger(t)),
 	)
 	require.NoError(t, err)

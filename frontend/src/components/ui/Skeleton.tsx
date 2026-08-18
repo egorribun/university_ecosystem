@@ -44,7 +44,7 @@ export function Skeleton({
   let styleBorderRadius: string | undefined = undefined
 
   if (typeof rounded === "boolean") {
-    variantRounding = rounded ? true : false
+    variantRounding = rounded
   } else if (typeof rounded === "string") {
     // Check if it's a known variant key
     if (["full", "md", "lg", "xl"].includes(rounded)) {

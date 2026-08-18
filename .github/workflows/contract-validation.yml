@@ -35,7 +35,7 @@ concurrency:
 jobs:
   spectral-lint:
     name: Spectral — OpenAPI lint
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:
       contents: read
@@ -68,29 +68,30 @@ jobs:
           "
 
       - name: Run Spectral lint
-        # Continue-on-error so SARIF is always uploaded, even on failures.
-        # The actual gate is the upload-sarif step's check-name, which
-        # blocks the PR when findings exceed the configured threshold.
+        # Continue long enough to upload SARIF. The blocking enforcement is the
+        # explicit fail-severity step below, not the external upload service.
         id: spectral
         continue-on-error: true
         run: |
-          docker run --rm -v /tmp:/tmp -v $(pwd):/work -w /work stoplight/spectral lint /tmp/backend-openapi.json \
+          docker run --rm -v /tmp:/tmp -v $(pwd):/work -w /work stoplight/spectral:6.15.0@sha256:b3d5a530f83c4a72df69e682c5ac928bc9821b5ca3c42529e81d926c80fa50ab lint /tmp/backend-openapi.json \
             --ruleset .spectral.yml \
             --format sarif \
             --output spectral-results.sarif
-          echo "exit_code=$?" >> "$GITHUB_OUTPUT"
 
       - name: Upload SARIF to GitHub Code Scanning
+        if: always()
+        continue-on-error: true
         uses: github/codeql-action/upload-sarif@ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd # v4.37.7
         with:
           sarif_file: spectral-results.sarif
           category: spectral-openapi
 
       - name: Fail if errors found
+        if: always()
         # Re-raise on errors (severity ERROR) but not warnings.
         # Spectral exit codes: 0=clean, 1=warnings, 2=errors.
         run: |
-          docker run --rm -v /tmp:/tmp -v $(pwd):/work -w /work stoplight/spectral lint /tmp/backend-openapi.json \
+          docker run --rm -v /tmp:/tmp -v $(pwd):/work -w /work stoplight/spectral:6.15.0@sha256:b3d5a530f83c4a72df69e682c5ac928bc9821b5ca3c42529e81d926c80fa50ab lint /tmp/backend-openapi.json \
             --ruleset .spectral.yml \
             --format text \
             --fail-severity error
@@ -100,7 +101,7 @@ jobs:
   # accidental breaking changes (removed paths, changed required fields, etc.).
   openapi-diff:
     name: OpenAPI Backward Compatibility Check
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:
       contents: read
@@ -180,7 +181,7 @@ jobs:
 
   openapi-typescript-drift:
     name: OpenAPI TypeScript Drift Check
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:
       contents: read
@@ -242,7 +243,13 @@ jobs:
 
       - name: Check for schema-drift / uncommitted changes
         run: |
-          git diff --exit-code || {
+          # Restrict the gate to files produced by the two generation steps.
+          # A repository-wide diff previously mislabeled an unrelated uv.lock
+          # update as TypeScript/OpenAPI drift on main.
+          git diff --exit-code -- \
+            frontend/openapi.json \
+            frontend/src/api/generated/ \
+            frontend/src/tests/mocks/generated/ || {
             echo "::error::API schema drift detected! The TypeScript client/types in 'frontend/src/api/generated' are out of sync with the backend FastAPI schema."
             echo "To fix this, run 'npm run generate:api' in the 'frontend' directory locally, and commit the generated changes."
             exit 1

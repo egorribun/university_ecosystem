@@ -97,6 +97,14 @@ describe("extractApiError", () => {
       ])
     })
 
+    it("ignores malformed validation detail entries", () => {
+      const err = buildAxiosError(422, {
+        detail: [{ msg: "missing location" }, { loc: ["body", "email"] }, null],
+      })
+
+      expect(extractApiError(err).details).toBeUndefined()
+    })
+
     it("omits details when validation array is empty", () => {
       const err = buildAxiosError(200, { detail: [] })
       const result = extractApiError(err)

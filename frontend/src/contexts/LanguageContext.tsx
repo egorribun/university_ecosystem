@@ -1,5 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react"
 import type { ReactNode } from "react"
+import { I18nextProvider } from "react-i18next"
+import type { i18n as I18nInstance } from "i18next"
 import i18n from "@/i18n/config"
 import { fallbackLng, localeMeta, supportedLngs, type SupportedLanguage } from "@/i18n/metadata"
 export type { SupportedLanguage } from "@/i18n/metadata"
@@ -24,10 +26,15 @@ const setLangCookie = (lang: SupportedLanguage) => {
   document.cookie = `${storageKey}=${encodeURIComponent(lang)}; Path=/; Max-Age=${COOKIE_MAX_AGE_SECONDS}; SameSite=Lax${secureAttr}`
 }
 
-const resolveInitialLanguage = (): SupportedLanguage => {
+const isSupportedLanguage = (value: unknown): value is SupportedLanguage =>
+  typeof value === "string" && supportedLngs.includes(value as SupportedLanguage)
+
+const resolveInitialLanguage = (instance: I18nInstance): SupportedLanguage => {
   if (typeof window === "undefined") {
-    return (i18n.language as SupportedLanguage) || fallbackLng
+    return isSupportedLanguage(instance.language) ? instance.language : fallbackLng
   }
+
+  if (isSupportedLanguage(window.__UE_SELECTED_LANG__)) return window.__UE_SELECTED_LANG__
 
   let stored: string | null = null
   try {
@@ -35,13 +42,8 @@ const resolveInitialLanguage = (): SupportedLanguage => {
   } catch {
     // Storage can be unavailable in privacy modes; continue with browser locale.
   }
-  if (stored && supportedLngs.includes(stored as SupportedLanguage)) {
-    return stored as SupportedLanguage
-  }
-
-  const browser = window.navigator?.language || ""
-  const match = supportedLngs.find((lng) => browser.toLowerCase().startsWith(lng))
-  return match ?? fallbackLng
+  if (isSupportedLanguage(stored)) return stored
+  return fallbackLng
 }
 
 type LanguageContextValue = {
@@ -53,7 +55,10 @@ type LanguageContextValue = {
 const LanguageContext = createContext<LanguageContextValue | undefined>(undefined)
 
 export function LanguageProvider({ children }: { children: ReactNode }) {
-  const [language, setLanguageState] = useState<SupportedLanguage>(resolveInitialLanguage)
+  const instance = globalThis.__ssrI18nGetter__?.() ?? i18n
+  const [language, setLanguageState] = useState<SupportedLanguage>(() =>
+    resolveInitialLanguage(instance)
+  )
 
   useEffect(() => {
     const onLanguageChanged = (lng: string) => {
@@ -61,29 +66,30 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
         setLanguageState(lng as SupportedLanguage)
       }
     }
-    i18n.on("languageChanged", onLanguageChanged)
+    instance.on("languageChanged", onLanguageChanged)
     return () => {
-      i18n.off("languageChanged", onLanguageChanged)
+      instance.off("languageChanged", onLanguageChanged)
     }
-  }, [])
+  }, [instance])
 
   useEffect(() => {
-    void i18n.changeLanguage(language)
+    void instance.changeLanguage(language)
     const locale = localeMeta[language]
     // dayjs.locale(locale?.dayjsLocale) removed
-    if (typeof window !== "undefined") {
-      try {
-        window.localStorage.setItem(storageKey, language)
-      } catch {
-        // Persistence is best-effort; DOM and cookie state must still update.
-      }
-      document.documentElement.setAttribute("lang", language)
-      document.documentElement.setAttribute("dir", locale?.dir ?? "ltr")
-      document.body?.setAttribute("dir", locale?.dir ?? "ltr")
-      // Wave 127 SW3 — cookie-mirror alongside localStorage write
-      setLangCookie(language)
+    // React never executes effects during server rendering, so this callback is
+    // intrinsically browser-only. Keeping a second environment guard here hid
+    // the actual invariant and created a permanently unreachable branch.
+    try {
+      window.localStorage.setItem(storageKey, language)
+    } catch {
+      // Persistence is best-effort; DOM and cookie state must still update.
     }
-  }, [language])
+    document.documentElement.setAttribute("lang", language)
+    document.documentElement.setAttribute("dir", locale.dir)
+    document.body?.setAttribute("dir", locale.dir)
+    // Wave 127 SW3 — cookie-mirror alongside localStorage write
+    setLangCookie(language)
+  }, [instance, language])
 
   const setLanguage = useCallback((lng: SupportedLanguage) => {
     setLanguageState(lng)
@@ -94,7 +100,11 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
     [language, setLanguage]
   )
 
-  return <LanguageContext.Provider value={value}>{children}</LanguageContext.Provider>
+  return (
+    <I18nextProvider i18n={instance}>
+      <LanguageContext.Provider value={value}>{children}</LanguageContext.Provider>
+    </I18nextProvider>
+  )
 }
 
 export function useLanguage() {

@@ -4,21 +4,24 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import type { User } from "@/types/User"
 
-const { authState, apiState, mediaState, nowPlayingState, navigate } = vi.hoisted(() => ({
-  authState: {
-    user: null as User | null,
-    loading: false,
-    setUser: vi.fn(),
-  },
-  apiState: {
-    put: vi.fn(),
-  },
-  mediaState: {} as Record<string, boolean>,
-  nowPlayingState: {
-    data: null as unknown,
-  },
-  navigate: vi.fn(),
-}))
+const { authState, apiState, mediaState, nowPlayingState, navigate, searchState } = vi.hoisted(
+  () => ({
+    authState: {
+      user: null as User | null,
+      loading: false,
+      setUser: vi.fn(),
+    },
+    apiState: {
+      put: vi.fn(),
+    },
+    mediaState: {} as Record<string, boolean>,
+    nowPlayingState: {
+      data: null as unknown,
+    },
+    navigate: vi.fn(),
+    searchState: { edit: undefined as string | undefined },
+  })
+)
 
 vi.mock("@/contexts/AuthContext", () => ({
   useAuth: () => authState,
@@ -30,6 +33,7 @@ vi.mock("@/api/client", () => ({
 
 vi.mock("@tanstack/react-router", () => ({
   useNavigate: () => navigate,
+  useSearch: () => searchState,
 }))
 
 vi.mock("@/hooks/useMediaQuery", () => ({
@@ -274,6 +278,7 @@ describe("Profile behavior", () => {
       track_name: "Analytical Engine",
       artists: ["Ada"],
     }
+    searchState.edit = undefined
     Object.keys(mediaState).forEach((key) => delete mediaState[key])
   })
 
@@ -288,6 +293,41 @@ describe("Profile behavior", () => {
 
     expect(screen.getByTestId("profile-skeleton")).toBeInTheDocument()
     expect(screen.queryByTestId("profile-root")).not.toBeInTheDocument()
+  })
+
+  it("opens the editor when settings links to the profile edit search state", () => {
+    searchState.edit = "1"
+
+    render(<Profile />)
+
+    expect(screen.getByTestId("profile-editor")).toBeInTheDocument()
+  })
+
+  it("initializes a deep-linked editor when the authenticated user arrives asynchronously", async () => {
+    searchState.edit = "1"
+    authState.user = null
+
+    const { rerender } = render(<Profile />)
+    expect(screen.getByRole("textbox", { name: "full name" })).toHaveValue("")
+
+    authState.user = user
+    rerender(<Profile />)
+
+    await waitFor(() =>
+      expect(screen.getByRole("textbox", { name: "full name" })).toHaveValue(user.full_name)
+    )
+    fireEvent.click(screen.getByRole("button", { name: "save profile" }))
+
+    await waitFor(() => expect(apiState.put).toHaveBeenCalledOnce())
+    expect(apiState.put).toHaveBeenCalledWith(
+      "/users/me",
+      expect.objectContaining({
+        full_name: user.full_name,
+        email: user.email,
+        profile_detail: expect.objectContaining({ telegram: "@ada" }),
+        education_path: expect.objectContaining({ program: "Computer Science" }),
+      })
+    )
   })
 
   it("renders profile details, now playing, responsive backdrop, and dialogs", () => {
@@ -397,6 +437,18 @@ describe("Profile behavior", () => {
     )
 
     apiState.put.mockRejectedValueOnce(new Error("network down"))
+    fireEvent.click(screen.getByRole("button", { name: "save profile" }))
+    await waitFor(() =>
+      expect(screen.getByTestId("snackbar")).toHaveTextContent("profile:snackbar.error")
+    )
+
+    apiState.put.mockRejectedValueOnce({ response: { data: {} } })
+    fireEvent.click(screen.getByRole("button", { name: "save profile" }))
+    await waitFor(() =>
+      expect(screen.getByTestId("snackbar")).toHaveTextContent("profile:snackbar.error")
+    )
+
+    apiState.put.mockRejectedValueOnce({ response: { data: { detail: { unexpected: true } } } })
     fireEvent.click(screen.getByRole("button", { name: "save profile" }))
     await waitFor(() =>
       expect(screen.getByTestId("snackbar")).toHaveTextContent("profile:snackbar.error")

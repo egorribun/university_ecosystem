@@ -16,21 +16,16 @@ const mocks = vi.hoisted(() => ({
 }))
 
 vi.mock("focus-trap", () => ({
-  createFocusTrap: vi.fn(
-    (
-      _container: HTMLElement,
-      options: NonNullable<typeof mocks.options>
-    ) => {
-      mocks.options = options
-      return {
-        activate: mocks.activate,
-        deactivate: (...args: unknown[]) => {
-          mocks.deactivate(...args)
-          options.onDeactivate()
-        },
-      }
+  createFocusTrap: vi.fn((_container: HTMLElement, options: NonNullable<typeof mocks.options>) => {
+    mocks.options = options
+    return {
+      activate: mocks.activate,
+      deactivate: (...args: unknown[]) => {
+        mocks.deactivate(...args)
+        options.onDeactivate()
+      },
     }
-  ),
+  }),
 }))
 
 import useFocusTrap from "@/hooks/useFocusTrap"
@@ -82,13 +77,21 @@ describe("useFocusTrap deterministic lifecycle", () => {
 
   it("honors an explicit fallback target and cleans up the active trap", () => {
     const fallback = document.createElement("button")
-    const { unmount } = render(
-      <TrapHarness active tabIndex={0} fallbackFocus={fallback} />
-    )
+    const { unmount } = render(<TrapHarness active tabIndex={0} fallbackFocus={fallback} />)
 
     expect(mocks.options?.fallbackFocus).toBe(fallback)
     expect(mocks.options?.initialFocus).toBeUndefined()
     unmount()
     expect(mocks.deactivate).toHaveBeenCalled()
+  })
+
+  it("preserves an already keyboard-focusable container in the default fallback", () => {
+    const { container } = render(<TrapHarness active tabIndex={0} />)
+
+    const fallback = mocks.options?.fallbackFocus as () => HTMLElement
+    const target = fallback()
+
+    expect(target).toBe(container.firstElementChild)
+    expect(target.tabIndex).toBe(0)
   })
 })

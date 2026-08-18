@@ -238,4 +238,13 @@ describe("EditLessonDialog — branches", () => {
     expect(screen.queryByText("schedule:dialog.editTitle")).not.toBeInTheDocument()
     expect(screen.queryByDisplayValue("Линейная алгебра")).not.toBeInTheDocument()
   })
+
+  it("does not submit an invalid edit form", () => {
+    renderDialog(makeBaseProps())
+    fireEvent.change(screen.getByLabelText("schedule:form.subject"), { target: { value: "" } })
+
+    fireEvent.submit(screen.getByRole("button", { name: "common:buttons.save" }).closest("form")!)
+
+    expect(apiMocks.patch).not.toHaveBeenCalled()
+  })
 })

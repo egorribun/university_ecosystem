@@ -1,6 +1,5 @@
 import uuid
 from datetime import UTC, datetime, time
-from typing import Any
 
 import rust_ext
 from pydantic import BaseModel
@@ -22,14 +21,6 @@ class ScheduleItemInternal(BaseModel):
 
 class ScheduleOptimizerService:
     """Service to interact with the Rust-based schedule optimizer natively via PyO3."""
-
-    def __init__(self, *args: Any, **kwargs: Any) -> None:
-        # Kept for backward compatibility with DI containers passing URLs
-        pass
-
-    async def close(self) -> None:
-        """No-op for backward compatibility."""
-        pass
 
     def _to_rust_item(self, item: ScheduleItemInternal) -> rust_ext.ScheduleItem:
         # Rust expects i32 for ID, but we use UUID.

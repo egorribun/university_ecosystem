@@ -156,6 +156,23 @@ describe("api/client — production browser configuration", () => {
 
     expect(productionApi.defaults.baseURL).toBe("/api/v1")
   })
+
+  it("silently revokes a non-allowlisted queue bypass outside development", async () => {
+    const { default: productionApi } = await import("@/api/client")
+    const requestHandler = (productionApi.interceptors.request as any).handlers.find(
+      (handler: { fulfilled?: unknown }) => typeof handler.fulfilled === "function"
+    )?.fulfilled as (config: InternalAxiosRequestConfig) => Promise<InternalAxiosRequestConfig>
+    const config = {
+      method: "get",
+      url: "/news",
+      headers: new AxiosHeaders(),
+      skipRateLimitQueue: true,
+    } as InternalAxiosRequestConfig & { skipRateLimitQueue: boolean }
+
+    await requestHandler(config)
+
+    expect(config.skipRateLimitQueue).toBe(false)
+  })
 })
 
 describe("api/client — BroadcastChannel idempotency coordination", () => {
@@ -207,6 +224,22 @@ describe("api/client — BroadcastChannel idempotency coordination", () => {
       }
     }
     vi.stubGlobal("BroadcastChannel", ThrowingBroadcastChannel)
+    const { default: safeApi } = await import("@/api/client")
+
+    safeApi.defaults.adapter = async (config): Promise<AxiosResponse> => ({
+      config,
+      data: { ok: true },
+      status: 200,
+      statusText: "OK",
+      headers: new AxiosHeaders(),
+      request: {},
+    })
+
+    await expect(safeApi.get("/news")).resolves.toMatchObject({ status: 200 })
+  })
+
+  it("continues without cross-tab coordination when BroadcastChannel is absent", async () => {
+    vi.stubGlobal("BroadcastChannel", undefined)
     const { default: safeApi } = await import("@/api/client")
 
     safeApi.defaults.adapter = async (config): Promise<AxiosResponse> => ({

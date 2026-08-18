@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react"
+import { fireEvent, render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { describe, it, expect, vi } from "vitest"
 import type { ReactNode } from "react"
@@ -93,6 +93,8 @@ describe("BuildingMarker", () => {
     await user.keyboard(" ")
     expect(onClick).toHaveBeenCalledTimes(3)
     expect(onPopupOpen).toHaveBeenCalledTimes(3)
+    fireEvent.keyDown(highlighted, { key: "Tab" })
+    expect(onClick).toHaveBeenCalledTimes(3)
     unmount()
 
     render(<BuildingMarker {...baseProps} isSelected isHighlighted />)

@@ -47,18 +47,19 @@ const THEME_INIT_SCRIPT = `;(function () {
   if (dark) html.classList.add("dark")
 
   // 2. Language Detection — MUST match SSR's extractLangFromRequest (ssrTheme.ts:resolveLang)
-  // which reads only the "ue:language" cookie (or localStorage mirror) and defaults to "ru".
-  // W150 polish-followup: REMOVED navigator.language fallback. SSR cannot read
-  // navigator.language (server-side), so if client did and switched to "en" while
-  // SSR stayed "ru", every i18n string mismatched -> React error #418 hydration
-  // failure -> renderer hang. Per W127 SW4 design: cookie-mirror + localStorage
-  // are the canonical sources; explicit language toggle in UI is the only way
-  // to switch from default Russian.
+  // which reads the "ue:language" cookie and defaults to "ru". Prefer that
+  // cookie before the localStorage mirror so the pre-paint and SSR languages
+  // remain identical even when one browser storage was manually cleared.
   var lang = "ru"
   try {
-    var storedLang = localStorage.getItem("ue:language")
-    if (storedLang === "en" || storedLang === "ru") {
+    var cookieMatch = document.cookie.match(/(?:^|;\\s*)ue:language=(ru|en)(?:;|$)/)
+    if (cookieMatch) {
+      lang = cookieMatch[1]
+    } else {
+      var storedLang = localStorage.getItem("ue:language")
+      if (storedLang === "en" || storedLang === "ru") {
       lang = storedLang
+      }
     }
   } catch (error) {}
   html.setAttribute("lang", lang)
@@ -330,14 +331,11 @@ function RootComponent() {
   // so the SSR HTML doesn't carry it — hydration compares only the
   // rendered children, which ARE identical between SsrRoot + RootComponent.
   //
-  // Wave 152 Phase 1.8 RAN as a diagnostic swap to vanilla
-  // `<QueryClientProvider>` to test the IDB-hydration-wedge hypothesis
-  // (H4 from opening prompt). RESULT: NEGATIVE — user-facing /login blank
-  // PERSISTED with vanilla provider. IDB hydration is NOT the wedge cause.
-  // Phase 1.8 reverted; PersistQueryClientProvider restored. W153+
-  // investigation should target AuthProvider's useProfileSync render loop,
-  // WebSocketProvider sync init, MessengerProvider, MainLayout, OR
-  // a deeper module-init issue (per W141 anti-pattern #1 iter cap reached).
+  // Keep PersistQueryClientProvider here. A controlled swap to vanilla
+  // `<QueryClientProvider>` did not resolve the blank /login regression, so
+  // removing IndexedDB hydration is not a supported workaround. Investigate
+  // profile synchronization and provider initialization before changing this
+  // SSR/client-cache invariant.
   return (
     <PersistQueryClientProvider client={queryClient} persistOptions={persistOptions}>
       <ThemeProvider>

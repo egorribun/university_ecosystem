@@ -4,8 +4,6 @@ import useFocusTrap, { type UseFocusTrapOptions } from "@/hooks/useFocusTrap"
 import { X } from "lucide-react"
 import { cn } from "@/utils/cn"
 
-const isBrowser = typeof document !== "undefined"
-
 type DialogSize = "sm" | "md" | "lg"
 
 const sizeClassMap: Record<DialogSize, string> = {
@@ -54,7 +52,6 @@ export function Dialog({
   const closeButtonRef = useRef<HTMLButtonElement | null>(null)
 
   useEffect(() => {
-    if (!isBrowser) return
     const node = document.createElement("div")
     node.dataset.dialogRoot = "true"
     document.body.appendChild(node)
@@ -68,7 +65,7 @@ export function Dialog({
   }, [])
 
   useEffect(() => {
-    if (!isBrowser || !open) return
+    if (!open) return
     const previousOverflow = document.body.style.overflow
     document.body.style.overflow = "hidden"
     return () => {
@@ -79,7 +76,9 @@ export function Dialog({
   const dialogRef = useFocusTrap<HTMLDivElement>({
     active: open,
     onDeactivate: onClose,
-    initialFocus: initialFocus ?? (() => closeButtonRef.current ?? undefined),
+    // The callback is only invoked for an open, committed dialog, whose close
+    // button is always present in the same portal subtree.
+    initialFocus: initialFocus ?? (() => closeButtonRef.current!),
     allowOutsideClick: true,
   })
 

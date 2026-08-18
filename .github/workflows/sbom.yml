@@ -38,7 +38,7 @@ env:
 jobs:
   sbom-python:
     name: Python SBOM (anchore/sbom-action)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:
       contents: read
@@ -75,7 +75,7 @@ jobs:
 
   sbom-go:
     name: Go SBOM (osv-scanner)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:
       contents: read
@@ -97,12 +97,18 @@ jobs:
           go install github.com/google/osv-scanner/cmd/osv-scanner@v1.9.2
 
       - name: Scan Go modules for vulnerabilities + generate SBOM
+        id: osv_scan
+        shell: bash
         run: |
+          set +e
           # osv-scanner checks go.sum files against the OSV vulnerability database.
           # --recursive discovers all go.mod files under services/.
           osv-scanner scan --recursive --format sarif \
             --output go-vuln.sarif \
-            ./services/ || true  # non-zero exit on vulns — upload SARIF regardless
+            ./services/
+          scanner_status=$?
+          set -e
+          echo "scanner_status=$scanner_status" >> "$GITHUB_OUTPUT"
 
       - name: Upload Go vulnerability SARIF to Code Scanning
         uses: github/codeql-action/upload-sarif@ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd # v4.37.7
@@ -119,9 +125,45 @@ jobs:
           path: go-vuln.sarif
           retention-days: 90
 
+      - name: Validate OSV scanner result
+        if: always()
+        shell: bash
+        env:
+          SCANNER_STATUS: ${{ steps.osv_scan.outputs.scanner_status }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$SCANNER_STATUS" =~ ^[0-9]+$ ]]; then
+            echo "::error::OSV scanner did not publish a numeric exit status."
+            exit 1
+          fi
+          if [[ "$SCANNER_STATUS" -gt 1 ]]; then
+            echo "::error::OSV scanner failed operationally (exit $SCANNER_STATUS)."
+            exit 1
+          fi
+          if ! jq --exit-status \
+            '.version == "2.1.0" and
+             (.runs | type == "array" and length > 0) and
+             all(.runs[]; .tool.driver.name | type == "string" and length > 0) and
+             all(.runs[]; .results | type == "array")' \
+            go-vuln.sarif >/dev/null; then
+            echo "::error::OSV scanner did not produce a structurally valid SARIF report."
+            exit 1
+          fi
+
+          finding_count="$(jq '[.runs[].results[]] | length' go-vuln.sarif)"
+          if [[ "$SCANNER_STATUS" -eq 0 && "$finding_count" -ne 0 ]]; then
+            echo "::error::OSV scanner exited 0 but reported $finding_count finding(s)."
+            exit 1
+          fi
+          if [[ "$SCANNER_STATUS" -eq 1 && "$finding_count" -eq 0 ]]; then
+            echo "::error::OSV scanner exited 1 without a reportable finding."
+            exit 1
+          fi
+          echo "Validated OSV SARIF with $finding_count module-level finding(s)."
+
   sbom-rust:
     name: Rust SBOM (cargo-audit)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:
       contents: read
@@ -205,7 +247,7 @@ jobs:
   vuln-gate:
     # Keep the externally visible main-CI check context stable for run history.
     name: Vulnerability gate (CRITICAL/HIGH)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # Cold runs compile cargo-audit and execute three ecosystems sequentially.
     timeout-minutes: 30
     needs: [sbom-python, sbom-go, sbom-rust]

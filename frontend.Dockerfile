@@ -37,11 +37,6 @@ FROM base AS builder
 ENV SKIP_WASM_BUILD=1
 ARG VITE_BACKEND_ORIGIN=""
 ENV VITE_BACKEND_ORIGIN=$VITE_BACKEND_ORIGIN
-# W150 polish-followup — pass DEV_NO_SSR_SHELL through to post-build-shell.mjs
-# so the dev compose can opt into stripping <div id="root"> SSR content, which
-# unblocks local Docker stack hit by React error #418 hydration mismatch.
-ARG DEV_NO_SSR_SHELL=""
-ENV DEV_NO_SSR_SHELL=$DEV_NO_SSR_SHELL
 # W153 SW1 — opt-in unminified bundle + linked source maps so the wedged
 # renderer error becomes readable in Chrome DevTools via stack traces.
 # Defaults to empty (production minified) so CI / prod deploys are

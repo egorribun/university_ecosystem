@@ -89,6 +89,7 @@ describe("NewsCardHero closure", () => {
     expect(constructObserver).toHaveBeenCalledOnce()
     expect(observe).toHaveBeenCalledOnce()
     act(() => {
+      intersectionCallback?.([], {} as IntersectionObserver)
       intersectionCallback?.(
         [{ intersectionRatio: 0.25 } as IntersectionObserverEntry],
         {} as IntersectionObserver

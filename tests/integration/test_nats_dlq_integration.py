@@ -39,7 +39,9 @@ class NatsDlqIntegrationTestEvent(DomainEvent):
 def nats_server():
     # Enforce JetStream enabled via the "-js" container command
     with (
-        DockerContainer("nats:2.10-alpine")
+        DockerContainer(
+            "nats:2.10.25-alpine@sha256:3290c829aa05ddd4da12026783ccaff86f3fbc1f0551722908a934c293cd6228"
+        )
         .with_exposed_ports(4222)
         .with_command("-js") as nats
     ):

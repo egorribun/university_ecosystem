@@ -50,6 +50,22 @@ async def test_issue_ws_upgrade_ticket_fails_closed_when_cache_is_unavailable() 
 
 
 @pytest.mark.asyncio
+async def test_issue_ws_upgrade_ticket_normalizes_naive_session_expiry() -> None:
+    request, user, session = _ticket_identity()
+    session.expires_at = datetime.now() + timedelta(hours=1)
+    cache_client = AsyncMock()
+
+    with patch(
+        "app.api.ws.ticket.get_cache_client",
+        new=AsyncMock(return_value=cache_client),
+    ):
+        response = await issue_ws_upgrade_ticket(request=request, current_user=user)
+
+    assert response.expires_in > 0
+    cache_client.set.assert_awaited_once()
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     ("active", "revoked", "expired", "session_user_id", "case"),
     (

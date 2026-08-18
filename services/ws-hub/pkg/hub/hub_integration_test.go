@@ -53,7 +53,7 @@ func startNATSContainer(t *testing.T) (*nats.Conn, func()) {
 	ctx := context.Background()
 
 	natsContainer, err := tcnats.Run(ctx,
-		"nats:2.12.6-alpine",
+		"nats:2.12.6-alpine@sha256:1cfc36e2e5e638243d8c722f72c954cd0ec4b15ee82fadbc718ce12e2b3c1652",
 		// JetStream not required for the cache.invalidate / chat.* / notifications.*
 		// subjects this test suite covers — they run on core NATS pub/sub.
 		// The testcontainers NATS module enables JetStream by default; this suite
@@ -112,7 +112,7 @@ func startRedisContainer(t *testing.T) (*redis.Client, func()) {
 	t.Helper()
 	ctx := context.Background()
 
-	rc, err := tcredis.Run(ctx, "redis:7.4.2-alpine",
+	rc, err := tcredis.Run(ctx, "redis:7.4.2-alpine@sha256:02419de7eddf55aa5bcf49efb74e88fa8d931b4d77c07eff8a6b2144472b6952",
 		testcontainers.WithLogger(tclog.TestLogger(t)),
 	)
 	if err != nil {

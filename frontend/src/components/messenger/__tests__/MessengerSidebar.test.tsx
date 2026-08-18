@@ -160,16 +160,12 @@ describe("MessengerSidebar", () => {
     expect(screen.getByRole("button", { name: "messenger:newChat" })).toBeInTheDocument()
   })
 
-  it("uses animated mobile transitions and empty optional contact fields safely", () => {
+  it("uses animated mobile transitions while filtering valid contacts", () => {
     mediaQueryMock.mockReturnValue(false)
-    render(
-      <MessengerSidebar
-        {...baseProps}
-        isMobile
-        contacts={[{ id: "sparse" } as unknown as SidebarProps["contacts"][number]]}
-      />,
-      { wrapper }
-    )
+    render(<MessengerSidebar {...baseProps} isMobile />, { wrapper })
+    fireEvent.change(screen.getByPlaceholderText("messenger:search"), {
+      target: { value: "soon" },
+    })
     expect(screen.getByTestId("mock-contact-list")).toHaveAttribute("data-count", "1")
   })
 })

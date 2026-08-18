@@ -64,6 +64,16 @@ describe("NewsShortcutsOverlay", () => {
     expect(screen.queryByRole("dialog")).toBeNull()
   })
 
+  it("stays open when a non-Escape key reaches the backdrop", () => {
+    renderOverlay()
+    pressKey("?")
+    const dialog = screen.getByRole("dialog")
+
+    fireEvent.keyDown(dialog, { key: "Enter" })
+
+    expect(screen.getByRole("dialog")).toBeInTheDocument()
+  })
+
   // ── toggle behaviour ───────────────────────────────────────────────────────
   it("toggles closed when '?' is pressed a second time", () => {
     renderOverlay()

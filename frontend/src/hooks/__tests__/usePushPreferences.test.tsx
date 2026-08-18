@@ -344,6 +344,27 @@ describe("usePushPreferences", () => {
     )
   })
 
+  it("disableNotifications: an endpoint-free subscription disables locally without deletion", async () => {
+    const sub = {
+      endpoint: "",
+      unsubscribe: vi.fn(async () => false),
+    }
+    mockResolveServiceWorkerRegistration.mockResolvedValue({
+      pushManager: { getSubscription: vi.fn(async () => sub) },
+    } as any)
+    const onNotify = vi.fn()
+    const { result } = renderHook(() => usePushPreferences({ onNotify }), { wrapper })
+
+    await act(async () => {
+      await result.current.disableNotifications()
+    })
+
+    expect(mockDeleteSubscription).not.toHaveBeenCalled()
+    expect(onNotify).toHaveBeenCalledWith(
+      expect.objectContaining({ text: "notifications:messages.disabled", severity: "success" })
+    )
+  })
+
   it("disableNotifications: unsubscribe throws + delete throws → disabledLocal + logging (250-271)", async () => {
     mockIsPushSupported.mockReturnValue(true)
     const sub = {
@@ -594,6 +615,32 @@ describe("usePushPreferences", () => {
     expect(status.onchange).toBeNull()
   })
 
+  it("does not clear a replacement permission onchange listener during cleanup", async () => {
+    const replacement = vi.fn()
+    const status: any = { state: "denied", onchange: null }
+    ;(globalThis.navigator as any).permissions = {
+      query: vi.fn(async () => status),
+    }
+
+    const { result, unmount } = renderHook(() => usePushPreferences(), { wrapper })
+    await waitFor(() => expect(result.current.notificationPermission).toBe("denied"))
+    status.onchange = replacement
+
+    unmount()
+    expect(status.onchange).toBe(replacement)
+  })
+
+  it("ignores a rejected permission status query", async () => {
+    ;(globalThis.navigator as any).permissions = {
+      query: vi.fn().mockRejectedValue(new Error("permissions unavailable")),
+    }
+
+    const { result } = renderHook(() => usePushPreferences(), { wrapper })
+
+    await waitFor(() => expect(result.current.pushInitializing).toBe(false))
+    expect(result.current.notificationPermission).toBe("default")
+  })
+
   // ---- detectSubscription effect error path (lines 452-454) ----
 
   it("detectSubscription: getExistingPushSubscription throws → logWarning detectFailed (452-454)", async () => {
@@ -624,6 +671,19 @@ describe("usePushPreferences", () => {
     await waitFor(() => expect(result.current.pushSubscription).not.toBeNull())
     expect(mockSetPushConsent).toHaveBeenCalledWith(true)
     await waitFor(() => expect(result.current.pushInitializing).toBe(false))
+  })
+
+  it("detectSubscription: keeps an existing subscription without local consent or topics", async () => {
+    const subscription = { endpoint: "https://existing" } as PushSubscription
+    mockHasPushConsent.mockReturnValue(false)
+    mockGetPersistedTopics.mockReturnValue(undefined)
+    mockGetExistingPushSubscription.mockResolvedValue(subscription)
+
+    const { result } = renderHook(() => usePushPreferences(), { wrapper })
+
+    await waitFor(() => expect(result.current.pushSubscription).toBe(subscription))
+    expect(mockSetPushConsent).not.toHaveBeenCalledWith(true)
+    expect(mockGetPersistedTopics).toHaveBeenCalledTimes(2)
   })
 
   // ---- invalidatePushQueries predicate (lines 86-95) ----
@@ -697,6 +757,20 @@ describe("usePushPreferences", () => {
     })
   })
 
+  it("ignores normalized topic names outside the supported set", async () => {
+    mockGetPersistedTopics.mockReturnValue(["unknown-topic"])
+
+    const { result } = renderHook(() => usePushPreferences(), { wrapper })
+
+    await waitFor(() => expect(result.current.pushInitializing).toBe(false))
+    expect(result.current.topicState).toEqual({
+      schedule: false,
+      news: false,
+      events: false,
+      system: false,
+    })
+  })
+
   it("does not update permission state after the hook unmounts", async () => {
     let resolveQuery: ((status: PermissionStatus) => void) | undefined
     const pendingQuery = new Promise<PermissionStatus>((resolve) => {
@@ -736,6 +810,26 @@ describe("usePushPreferences", () => {
     })
 
     expect(mockGetExistingPushSubscription).toHaveBeenCalled()
+  })
+
+  it("does not log a late subscription detection failure after unmount", async () => {
+    let rejectSubscription: ((reason: Error) => void) | undefined
+    const pendingSubscription = new Promise<PushSubscription | null>((_resolve, reject) => {
+      rejectSubscription = reject
+    })
+    mockGetExistingPushSubscription.mockReturnValue(pendingSubscription)
+
+    const { unmount } = renderHook(() => usePushPreferences(), { wrapper })
+    unmount()
+    rejectSubscription?.(new Error("late detection failure"))
+    await act(async () => {
+      await pendingSubscription.catch(() => undefined)
+    })
+
+    expect(mockLogWarning).not.toHaveBeenCalledWith(
+      "notifications:messages.detectFailed",
+      expect.anything()
+    )
   })
 
   it("swallows permission listener cleanup failures", async () => {

@@ -77,6 +77,7 @@ vi.mock("@/components/navbar/MobileDrawerQuickActions", () => ({
 import { MobileMenu } from "../MobileMenu"
 
 const links = [
+  { to: "/", label: "Home" },
   { to: "/dashboard", label: "Dashboard" },
   { to: "/schedule", label: "Schedule", icon: () => <span data-testid="schedule-icon" /> },
 ]
@@ -113,6 +114,7 @@ describe("MobileMenu closure paths", () => {
     expect(screen.getByRole("dialog", { name: "navigation:aria.mobileMenu" })).toBeInTheDocument()
     expect(screen.getByTestId("schedule-icon")).toBeInTheDocument()
     expect(screen.getByRole("link", { name: "Dashboard" })).toHaveAttribute("data-active", "true")
+    expect(document.getElementById("mobile-nav-link-home")).toBeInTheDocument()
 
     await user.click(screen.getByRole("button", { name: "profile-action" }))
     expect(go).toHaveBeenCalledWith("/profile")

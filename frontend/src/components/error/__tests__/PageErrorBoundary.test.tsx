@@ -38,6 +38,7 @@ describe("PageErrorBoundary", () => {
     vi.spyOn(console, "error").mockImplementation(() => {})
   })
   afterEach(() => {
+    vi.unstubAllEnvs()
     vi.restoreAllMocks()
   })
 
@@ -118,6 +119,22 @@ describe("PageErrorBoundary", () => {
     expect(screen.getByText(/General failure/)).toBeInTheDocument()
   })
 
+  it("falls back to the message when an error has no stack", () => {
+    const error = new Error("message-only failure")
+    error.stack = ""
+    function MessageOnlyBoom(): never {
+      throw error
+    }
+
+    const { container } = render(
+      <PageErrorBoundary>
+        <MessageOnlyBoom />
+      </PageErrorBoundary>
+    )
+
+    expect(container.querySelector("pre")).toHaveTextContent("message-only failure")
+  })
+
   it("navigates home from the fallback", () => {
     render(
       <PageErrorBoundary>
@@ -153,5 +170,18 @@ describe("PageErrorBoundary", () => {
     )
     expect(screen.getByText("recovered view")).toBeInTheDocument()
     expect(screen.queryByRole("alert")).not.toBeInTheDocument()
+  })
+
+  it("reports an error without development logging in production", () => {
+    vi.stubEnv("DEV", false)
+
+    render(
+      <PageErrorBoundary pageName="production-page">
+        <Boom />
+      </PageErrorBoundary>
+    )
+
+    expect(screen.getByRole("alert")).toBeInTheDocument()
+    expect(Sentry.captureException).toHaveBeenCalled()
   })
 })

@@ -1,5 +1,5 @@
 import { createElement } from "react"
-import { fireEvent, render, screen } from "@testing-library/react"
+import { act, fireEvent, render, screen } from "@testing-library/react"
 import { describe, expect, it, vi } from "vitest"
 
 vi.mock("react-i18next", () => ({
@@ -52,6 +52,25 @@ describe("NewsCardContent closure", () => {
     fireEvent.click(screen.getByRole("button", { name: "common:aria.addBookmark" }))
     expect(onToggleLike).toHaveBeenCalledTimes(1)
     expect(onToggleBookmark).toHaveBeenCalledTimes(1)
+  })
+
+  it("removes the like celebration class after its animation window", () => {
+    vi.useFakeTimers()
+
+    try {
+      render(<NewsCardContent {...baseProps} />)
+      const likeButton = screen.getByRole("button", { name: "common:aria.like" })
+
+      fireEvent.click(likeButton)
+      expect(likeButton.querySelector(".news-heart-celebrate")).toBeInTheDocument()
+
+      act(() => {
+        vi.advanceTimersByTime(400)
+      })
+      expect(likeButton.querySelector(".news-heart-celebrate")).not.toBeInTheDocument()
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it("renders liked and bookmarked state without optional controls", () => {

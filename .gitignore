@@ -275,6 +275,7 @@ root/frontend/test-results/
 root/frontend/blob-report/
 **/.lighthouseci/
 **/vitest-report.xml
+pytest-report.xml
 
 # W179 polish-v1 — root-level .screenshots/ (chrome-devtools-mcp + Playwright
 # visual smoke artifacts). frontend/.gitignore covers frontend/.screenshots/
@@ -408,7 +409,7 @@ native/rust_ext/fuzz/artifacts/
 *.Spotlight-V100
 *.Trashes
 ._*
-.wave136-trace/
+.build-hang-trace/
 .wave160-lhci/
 
 # Wave 138 polish-followup (post-2026-05-08): memory/ moved to .claude profile only.
@@ -441,4 +442,3 @@ artifacts/
 
 # Agent superpowers directory
 .superpowers/
-

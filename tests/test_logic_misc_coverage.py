@@ -841,7 +841,7 @@ async def test_graphql_token_validator_redis_revoked():
     mock_redis.exists = AsyncMock(return_value=1)
 
     with patch(
-        "app.deps.cache.get_cache_client",
+        "app.services.auth.graphql_token_validator.get_revocation_redis_client",
         new_callable=AsyncMock,
         return_value=mock_redis,
     ):
@@ -863,7 +863,7 @@ async def test_graphql_token_validator_no_db_session():
     mock_redis.exists = AsyncMock(return_value=0)
 
     with patch(
-        "app.deps.cache.get_cache_client",
+        "app.services.auth.graphql_token_validator.get_revocation_redis_client",
         new_callable=AsyncMock,
         return_value=mock_redis,
     ):
@@ -928,13 +928,13 @@ async def test_graphql_token_validator_redis_unavailable():
 
     validator = GraphQLTokenValidator(MagicMock(), AsyncMock())
     with patch(
-        "app.deps.cache.get_cache_client",
+        "app.services.auth.graphql_token_validator.get_revocation_redis_client",
         new_callable=AsyncMock,
         side_effect=ConnectionError("Redis down"),
     ):
         result = await validator._redis_jti_check("some-jti")
 
-    assert result is True  # fail-open
+    assert result is True  # Continue to the mandatory database revocation check.
 
 
 @pytest.mark.asyncio

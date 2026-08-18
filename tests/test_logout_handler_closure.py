@@ -125,6 +125,31 @@ async def test_logout_redis_failure_rolls_back_database_revocation():
 
 
 @pytest.mark.asyncio
+async def test_logout_redis_failure_without_database_session_skips_rollback():
+    request = MagicMock()
+    request.cookies = {"access_token_v2": "token"}
+    request.headers = {}
+    db = AsyncMock()
+    result = MagicMock()
+    result.scalars.return_value.first.return_value = None
+    db.execute.return_value = result
+    redis = MagicMock()
+    redis.revoke_session = AsyncMock(side_effect=ConnectionError("offline"))
+
+    with (
+        patch("app.auth.handlers.logout.decode_token", return_value={"jti": "jti"}),
+        patch(
+            "app.services.auth.redis_session.RedisSessionService", return_value=redis
+        ),
+    ):
+        with pytest.raises(ConnectionError, match="offline"):
+            await logout(Response(), request, db)
+
+    db.commit.assert_not_awaited()
+    db.rollback.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_logout_keeps_existing_revocation_and_ignores_non_bearer_or_empty_tokens():
     request = MagicMock()
     request.cookies = {"access_token_v2": "cookie-token"}

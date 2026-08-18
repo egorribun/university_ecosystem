@@ -526,8 +526,10 @@ const localePattern = /locales\/([^/]+)\/map\.json$/
 
 const mapDataByLocale = Object.entries(localeDataModules).reduce(
   (acc, [path, module]) => {
-    const match = path.match(localePattern)
-    if (match?.[1]) acc[match[1]] = module.default
+    // Every key is produced by the exact import.meta.glob pattern above, so
+    // the locale capture is guaranteed by Vite rather than optional runtime data.
+    const locale = localePattern.exec(path)![1]!
+    acc[locale] = module.default
     return acc
   },
   {} as Record<string, LocalizedMapData>

@@ -268,6 +268,15 @@ describe("Select — keyboard", () => {
     expect(btn).toHaveAttribute("aria-activedescendant", optionId(1))
   })
 
+  it("ignores type-ahead characters while the listbox is closed", () => {
+    renderSelect()
+    const btn = trigger()
+    fireEvent.keyDown(btn, { key: "b" })
+
+    expect(btn).toHaveAttribute("aria-expanded", "false")
+    expect(btn).not.toHaveAttribute("aria-activedescendant")
+  })
+
   it("type-ahead with no match leaves the active option unchanged", () => {
     renderSelect()
     const btn = trigger()
@@ -292,6 +301,19 @@ describe("Select — keyboard", () => {
       vi.useRealTimers()
     }
   })
+
+  it("keeps closed-only navigation keys and modified type-ahead inert", () => {
+    renderSelect()
+    const btn = trigger()
+
+    for (const key of ["Home", "End", "Escape", "Tab"]) {
+      fireEvent.keyDown(btn, { key })
+    }
+    fireEvent.keyDown(btn, { key: "b", ctrlKey: true })
+
+    expect(btn).toHaveAttribute("aria-expanded", "false")
+    expect(btn).not.toHaveAttribute("aria-activedescendant")
+  })
 })
 
 describe("Select — disabled", () => {
@@ -304,6 +326,19 @@ describe("Select — disabled", () => {
     expect(btn).toHaveAttribute("aria-expanded", "false")
     fireEvent.keyDown(btn, { key: "Enter" })
     expect(btn).toHaveAttribute("aria-expanded", "false")
+    expect(onValueChange).not.toHaveBeenCalled()
+  })
+})
+
+describe("Select — empty options", () => {
+  it("ignores selection when no option exists at the active index", () => {
+    const onValueChange = vi.fn()
+    render(<Select id="empty" options={[]} onValueChange={onValueChange} />)
+    const btn = screen.getByRole("combobox")
+
+    fireEvent.click(btn)
+    fireEvent.keyDown(btn, { key: "Enter" })
+
     expect(onValueChange).not.toHaveBeenCalled()
   })
 })

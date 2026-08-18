@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 vi.mock("@sentry/react", () => ({
   init: vi.fn(),
@@ -11,6 +11,10 @@ describe("initObservability", () => {
   beforeEach(() => {
     vi.clearAllMocks()
     resetObservabilityForTesting()
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
   })
 
   it("initializes Sentry when DSN is provided outside of development", () => {
@@ -65,6 +69,21 @@ describe("initObservability", () => {
   })
 
   it("skips initialization in development", () => {
+    const result = initObservability({
+      DEV: true,
+      PROD: false,
+      BASE_URL: "http://localhost",
+      MODE: "development",
+      VITE_SENTRY_DSN: "https://examplePublicKey.ingest.sentry.io/123",
+    } as unknown as ImportMetaEnv)
+
+    expect(result).toBe(false)
+    expect(Sentry.init).not.toHaveBeenCalled()
+  })
+
+  it("skips development logging when the console is unavailable", () => {
+    vi.stubGlobal("console", undefined)
+
     const result = initObservability({
       DEV: true,
       PROD: false,

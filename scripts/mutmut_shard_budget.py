@@ -41,6 +41,7 @@ class ShardBudget:
     pre_mutation_reserve_seconds: int
     watchdog_execution_cap_seconds: int
     control_cycle_count: int
+    control_cycle_reserve_per_child_seconds: int
     control_cycle_reserve_seconds: int
     execution_cap_seconds: int
     termination_grace_seconds: int
@@ -56,6 +57,9 @@ class ShardBudget:
             "pre_mutation_reserve_seconds": self.pre_mutation_reserve_seconds,
             "watchdog_execution_cap_seconds": self.watchdog_execution_cap_seconds,
             "control_cycle_count": self.control_cycle_count,
+            "control_cycle_reserve_per_child_seconds": (
+                self.control_cycle_reserve_per_child_seconds
+            ),
             "control_cycle_reserve_seconds": self.control_cycle_reserve_seconds,
             "execution_cap_seconds": self.execution_cap_seconds,
             "termination_grace_seconds": self.termination_grace_seconds,
@@ -266,7 +270,9 @@ def _schedule_execution_caps(
     return max(worker_loads)
 
 
-def _control_cycle_reserve(selected_count: int) -> tuple[int, int]:
+def _control_cycle_reserve(
+    selected_count: int, *, reserve_per_child_seconds: int
+) -> tuple[int, int]:
     """Reserve parent-side control work for every selected mutmut child.
 
     Each child completion can cause watchdog polling, a fork, a reap,
@@ -278,9 +284,11 @@ def _control_cycle_reserve(selected_count: int) -> tuple[int, int]:
     """
     if selected_count < 1:
         raise ValueError("selected_count must be positive")
+    if reserve_per_child_seconds < 1:
+        raise ValueError("reserve_per_child_seconds must be positive")
     return (
         selected_count,
-        selected_count * CONTROL_CYCLE_RESERVE_SECONDS,
+        selected_count * reserve_per_child_seconds,
     )
 
 
@@ -290,10 +298,13 @@ def calculate_shard_budget(
     durations: Mapping[str, float],
     *,
     max_children: int,
+    control_cycle_reserve_seconds: int = CONTROL_CYCLE_RESERVE_SECONDS,
 ) -> ShardBudget:
     """Derive a conservative, stats-backed whole-process timeout."""
     if max_children < 1:
         raise ValueError("max_children must be positive")
+    if control_cycle_reserve_seconds < 1:
+        raise ValueError("control_cycle_reserve_seconds must be positive")
     if not selected_mutants:
         raise ValueError("selected mutant names must not be empty")
     if len(selected_mutants) != len(set(selected_mutants)):
@@ -310,7 +321,10 @@ def calculate_shard_budget(
     watchdog_execution_cap = _schedule_execution_caps(
         estimates, max_children=max_children
     )
-    control_cycle_count, control_cycle_reserve = _control_cycle_reserve(len(estimates))
+    control_cycle_count, control_cycle_reserve = _control_cycle_reserve(
+        len(estimates),
+        reserve_per_child_seconds=control_cycle_reserve_seconds,
+    )
     execution_cap = watchdog_execution_cap + control_cycle_reserve
     outer_timeout = pre_mutation_reserve + execution_cap
     total_wall_cap = outer_timeout + TERMINATION_GRACE_SECONDS
@@ -321,6 +335,7 @@ def calculate_shard_budget(
         pre_mutation_reserve_seconds=pre_mutation_reserve,
         watchdog_execution_cap_seconds=watchdog_execution_cap,
         control_cycle_count=control_cycle_count,
+        control_cycle_reserve_per_child_seconds=control_cycle_reserve_seconds,
         control_cycle_reserve_seconds=control_cycle_reserve,
         execution_cap_seconds=execution_cap,
         termination_grace_seconds=TERMINATION_GRACE_SECONDS,
@@ -340,6 +355,12 @@ def _parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--max-children", type=int, required=True)
     parser.add_argument(
+        "--control-cycle-reserve-seconds",
+        type=int,
+        default=CONTROL_CYCLE_RESERVE_SECONDS,
+        help="parent orchestration reserve charged for every selected child",
+    )
+    parser.add_argument(
         "--max-timeout-seconds",
         type=int,
         default=DEFAULT_MAX_TIMEOUT_SECONDS,
@@ -349,6 +370,8 @@ def _parse_args() -> argparse.Namespace:
     args = parser.parse_args()
     if args.max_children < 1:
         parser.error("--max-children must be positive")
+    if args.control_cycle_reserve_seconds < 1:
+        parser.error("--control-cycle-reserve-seconds must be positive")
     if args.max_timeout_seconds < 1:
         parser.error("--max-timeout-seconds must be positive")
     return args
@@ -365,6 +388,7 @@ def main() -> None:
             tests_by_function,
             durations,
             max_children=args.max_children,
+            control_cycle_reserve_seconds=args.control_cycle_reserve_seconds,
         )
         if budget.outer_timeout_seconds > args.max_timeout_seconds:
             raise ValueError(

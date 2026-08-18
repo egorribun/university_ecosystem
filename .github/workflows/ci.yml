@@ -32,7 +32,7 @@ env:
 jobs:
   ci-diagnostic:
     name: CI Diagnostic
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5 # CI-03 (audit Wave 10)
     steps:
       - name: System Check
@@ -44,7 +44,7 @@ jobs:
 
   pre-commit-check:
     name: Pre-commit & Linting (Read-only)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15 # CI-03 (audit Wave 10)
     permissions:
       contents: read
@@ -53,6 +53,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Set up Python for lock check
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
@@ -71,79 +72,13 @@ jobs:
           uv lock --check || (echo "::error::uv.lock is out of sync — run 'uv lock' locally and commit the updated lockfile" && exit 1)
 
       - name: Run pre-commit (check only)
-        id: precommit_check
         uses: pre-commit/action@2c7b3805fd2a0fd8c1884dcaebf91fc102a13ecd # v3.0.1
         with:
-          extra_args: --all-files
-        continue-on-error: true
-
-      - name: Check pre-commit configuration failure (TD-W5-03)
-        if: steps.precommit_check.outcome == 'failure'
-        run: |
-          EXIT_CODE="${{ steps.precommit_check.outputs.exit-code || '1' }}"
-          if [ "$EXIT_CODE" -gt 1 ]; then
-            echo "::error::pre-commit configuration error (exit $EXIT_CODE) — hook binary missing or config invalid"
-            exit "$EXIT_CODE"
-          fi
-
-      - name: Detect changes
-        id: changes
-        run: |
-          if [ -n "$(git status --porcelain)" ]; then
-            echo "changed=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "changed=false" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Fail if changes needed (fork PR)
-        if: ${{ steps.changes.outputs.changed == 'true' && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
-        run: |
-          echo "::error::pre-commit fixed files; this PR comes from a fork so CI cannot push. Run 'pre-commit run --all-files' locally and push the changes."
-          exit 1
-
-    outputs:
-      changed: ${{ steps.changes.outputs.changed }}
-
-  pre-commit-autofix:
-    name: Post-fix Formatting (Bot Push)
-    if: |
-      needs.pre-commit-check.outputs.changed == 'true' &&
-      (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
-    needs: pre-commit-check
-    runs-on: ubuntu-latest
-    timeout-minutes: 10 # CI-03 (audit Wave 10)
-    permissions:
-      contents: write  # Required: bot pushes auto-formatted code back to branch
-    steps:
-      - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          fetch-depth: 0
-
-      - name: Commit pre-commit fixes (RZ-W5-02)
-        shell: bash
-        run: |
-          # Re-run fixes to ensure we have the state
-          pip install pre-commit==4.2.0
-          pre-commit run --all-files || true
-
-          BRANCH=${GITHUB_HEAD_REF:-${GITHUB_REF_NAME}}
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -A
-          git commit -m "chore: pre-commit autofix" || exit 0
-
-          # Attempt rebase to avoid push conflicts
-          if ! git pull --rebase origin "$BRANCH"; then
-            echo "::error::Rebase failed. There might be manual conflicts to resolve."
-            exit 1
-          fi
-
-          git push origin "HEAD:$BRANCH"
+          extra_args: --all-files --show-diff-on-failure
 
   compose-validate:
     name: Validate docker-compose.yml
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10 # CI-03 (audit Wave 10)
     needs: pre-commit-check
     steps:
@@ -272,7 +207,7 @@ jobs:
 
   actionlint:
     name: Lint GitHub Actions Workflows
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     needs: pre-commit-check
     steps:
@@ -285,7 +220,7 @@ jobs:
 
   dockerfile-lint:
     name: Dockerfile Lint
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     needs: pre-commit-check
     steps:
@@ -298,7 +233,7 @@ jobs:
 
   shellcheck:
     name: ShellCheck Scripts
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     needs: pre-commit-check
     steps:
@@ -313,7 +248,7 @@ jobs:
 
   graphql-drift-check:
     name: GraphQL Schema Drift Check
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     needs: pre-commit-check
     steps:
@@ -355,7 +290,7 @@ jobs:
 
   quality:
     name: Code Spell & Markdown Lint
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     needs: pre-commit-check
     steps:
@@ -375,7 +310,7 @@ jobs:
 
   rust-lint:
     name: Rust Lint & Format
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     needs: pre-commit-check
     steps:
@@ -444,22 +379,18 @@ jobs:
           - python-version: "3.14"
             name: "Python 3.14-shard-0"
             shard: 0
-            coverage-check: false
             run-integration: true
           - python-version: "3.14"
             name: "Python 3.14-shard-1"
             shard: 1
-            coverage-check: false
             run-integration: false
           - python-version: "3.14"
             name: "Python 3.14-shard-2"
             shard: 2
-            coverage-check: false
             run-integration: false
           - python-version: "3.14"
             name: "Python 3.14-shard-3"
             shard: 3
-            coverage-check: false
             run-integration: false
             free-threading: false
     needs: pre-commit-check
@@ -471,11 +402,10 @@ jobs:
       test-pattern: "tests/"
       integration-test-pattern: "tests/integration/"
       python-version: ${{ matrix.python-version }}
-      # Ratchet floor at measured reality (local hermetic 88.04% after the
-      # session-10 service-layer climb; CI Linux+integration measures ~0.7pp higher).
-      # Raise incrementally as the backend coverage campaign lands. Unified with
-      # pyproject/Makefile.
-      coverage-threshold: ${{ matrix.coverage-check && 91 || 0 }}
+      # A shard sees only part of the suite, so it cannot enforce the global
+      # percentage in isolation. coverage-policy-gate combines all four data
+      # files and enforces the canonical exact-100 contract.
+      coverage-threshold: 0
       run-integration-tests: ${{ matrix.run-integration }}
       parallel-workers: 0 # LOW-W19: 0 = auto-detect workers via pytest-xdist (-n auto)
       shard-id: ${{ matrix.shard }}
@@ -486,7 +416,7 @@ jobs:
 
   backend-type-check:
     name: Backend Type Check
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15 # CI-03 (audit Wave 10)
     needs: pre-commit-check
     steps:
@@ -525,39 +455,25 @@ jobs:
   go-tests:
     name: Go Tests (${{ matrix.service }})
     strategy:
-      # fail-fast: false so every matrix leg (Test + Lint × 4 services) reports
-      # its real status. With the default fail-fast: true an early Test-coverage
-      # failure CANCELS the sibling Lint legs (shown as "cancelled", which the
-      # ci-success results array treats as failure) and MASKS their true status —
-      # this hid gateway's gosec G101 + file-processor's real 29% coverage.
+      # Keep every service leg running so one failure cannot mask diagnostics
+      # from the remaining modules.
       fail-fast: false
       matrix:
-        # Per-service coverage ratchet floors at measured UNIT-only reality.
-        # ws-hub + gateway + file-processor are low because their core logic
-        # (Broadcast, rate-limit, auth, L1 cache; Temporal workflows + gRPC) is
-        # exercised by //go:build integration tests + generated code that the
-        # unit-coverage run excludes — see the go-integration-* jobs + ADR-022.
-        # These are no-regression floors to raise incrementally as unit tests
-        # are added (target 80 across the board).
-        # Session 9 climb (first Go ratchet): new dependency-free unit tests
-        # (mock RESP servers, httptest JWKS, Temporal testsuite, gRPC metadata
-        # auth) lifted every service. Floor = floor(measured ×2) − 2 buffer.
-        # Session 10 climb: ws-hub client.go pump/room/handleMessage unit tests
-        # (gorilla conn pairs); gateway Optional()/extractAlg/JWKS-equal-key edges;
-        # file-processor validateProcessFileRequest rejection arms.
+        # Every supported Go module has exact statement coverage. Integration
+        # semantics remain a separate required gate below.
         include:
           - service: services/gateway
-            coverage-threshold: 80
+            coverage-threshold: 100
           - service: services/file-processor
-            coverage-threshold: 80
+            coverage-threshold: 100
           - service: services/ws-hub
-            coverage-threshold: 80
+            coverage-threshold: 100
           - service: services/cmd/uni-cli
-            coverage-threshold: 80
+            coverage-threshold: 100
           - service: services/pkg/spiffe
-            coverage-threshold: 80
+            coverage-threshold: 100
           - service: services/pkg/spicedb
-            coverage-threshold: 80
+            coverage-threshold: 100
     needs: pre-commit-check
     permissions:
       contents: read
@@ -572,7 +488,7 @@ jobs:
   # Crashes are stored in testdata/fuzz/ and replayed on subsequent runs automatically.
   go-fuzz:
     name: Go Fuzz Tests (ws-hub)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     needs: pre-commit-check
     steps:
@@ -601,11 +517,8 @@ jobs:
           path: services/ws-hub/testdata/fuzz/
           retention-days: 30
 
-  # ADR-022: Go integration tests against real testcontainers-go containers.
-  # Initially non-blocking per §Migration step 5; promote to required after
-  # 30-day flake rate < 1 %. Each service runs independently — failures in
-  # one don't block others. Wired into ci-success aggregation below as
-  # advisory (any non-success result is reported in summary but not fatal).
+  # ADR-022: required Go integration tests against real testcontainers-go
+  # containers. Each service runs independently for precise diagnostics.
   go-integration-ws-hub:
     name: Go Integration Tests (ws-hub)
     needs: pre-commit-check
@@ -642,7 +555,7 @@ jobs:
 
   stryker-incremental:
     name: Incremental Mutation Tests (frontend)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     needs: pre-commit-check
     # This required context only runs for an actual PR event. Operator-run
@@ -731,7 +644,7 @@ jobs:
   # artifact so downstream tools (Dependabot, Grype, etc.) can consume it.
   sbom-generate:
     name: SBOM Generation
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     needs: pre-commit-check
     permissions:
@@ -759,7 +672,7 @@ jobs:
   # that is handled by the release workflow.
   provenance-check:
     name: SLSA Provenance Dry-Run
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     needs: pre-commit-check
     permissions:
@@ -789,12 +702,12 @@ jobs:
 
   alembic-migrations:
     name: Alembic Migrations
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15 # CI-03 (audit Wave 10)
     needs: pre-commit-check
     services:
       postgres:
-        image: pgvector/pgvector:pg17
+        image: pgvector/pgvector:pg17@sha256:cf134a767f474095eeba57e0117be8e568e011a63f33fbf252f14c9b760f8e6f
         env:
           POSTGRES_USER: test
           POSTGRES_PASSWORD: test
@@ -851,9 +764,10 @@ jobs:
           ENVIRONMENT: testing
           DATABASE_URL: "postgresql+asyncpg://postgres:postgres@localhost:5432/university_db" # pragma: allowlist secret
         run: |
+          set -euo pipefail
           echo "Linting all Alembic migrations (base to head) for ZDD safety..."
           # MOD-008: Refactor Squawk to lint the generated SQL output rather than Python files.
-          uv run alembic upgrade base:head --sql | squawk --exclude prefer-robust-stmts --exclude prefer-text-field --exclude require-timeout-settings --exclude prefer-bigint-over-int --exclude prefer-identity --exclude prefer-timestamp-tz --exclude require-concurrent-index-creation --exclude constraint-missing-not-valid --exclude adding-foreign-key-constraint --exclude disallowed-unique-constraint --exclude changing-column-type || true
+          uv run alembic upgrade base:head --sql | squawk --exclude prefer-robust-stmts --exclude prefer-text-field --exclude require-timeout-settings --exclude prefer-bigint-over-int --exclude prefer-identity --exclude prefer-timestamp-tz --exclude require-concurrent-index-creation --exclude constraint-missing-not-valid --exclude adding-foreign-key-constraint --exclude disallowed-unique-constraint --exclude changing-column-type
 
       - name: Wait for PostgreSQL
         shell: pwsh
@@ -906,7 +820,9 @@ jobs:
           ENVIRONMENT: testing
         shell: bash
         run: |
-          HEAD_COUNT=$(uv run alembic heads | grep -c "^" || true)
+          set -euo pipefail
+          heads="$(uv run alembic heads)"
+          HEAD_COUNT="$(awk 'NF { count++ } END { print count + 0 }' <<< "$heads")"
           echo "Alembic heads: $HEAD_COUNT"
           if [ "$HEAD_COUNT" -ne 1 ]; then
             echo "::error::Expected exactly 1 Alembic head but found $HEAD_COUNT. Merge the migration branches before merging this PR."
@@ -932,7 +848,7 @@ jobs:
 
   openapi-verify:
     name: Verify OpenAPI Types
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15 # CI-03 (audit Wave 10)
     needs: pre-commit-check
     steps:
@@ -1018,7 +934,7 @@ jobs:
 
   verify-runtime-reqs:
     name: Verify Runtime Requirements
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10 # CI-03 (audit Wave 10)
     needs: pre-commit-check
     steps:
@@ -1082,7 +998,7 @@ jobs:
 
   performance-gate:
     name: Performance Gate
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20 # CI-03 (audit Wave 10)
     needs:
       - frontend-tests
@@ -1113,18 +1029,19 @@ jobs:
           path: frontend/.lighthouseci
         continue-on-error: true
 
-      - name: Verify Lighthouse results artifact
+      - name: Require Lighthouse results artifact
         if: steps.download_lighthouse_results.outcome != 'success'
         env:
           DOWNLOAD_OUTCOME: ${{ steps.download_lighthouse_results.outcome }}
         shell: bash
         run: |
-          echo "::warning::Lighthouse results artifact not found. Check the 'Frontend Tests' job for upload issues."
+          echo "::error::Lighthouse results artifact not found. Check the 'Frontend Tests' job for upload issues."
           {
             echo "## Lighthouse performance gate";
-            echo "- ⚠️ Artifact download outcome: ${DOWNLOAD_OUTCOME}";
-            echo "- Threshold assertions skipped due to missing artifact.";
+            echo "- Artifact download outcome: ${DOWNLOAD_OUTCOME}";
+            echo "- Gate failed closed because threshold evidence is unavailable.";
           } >> "$GITHUB_STEP_SUMMARY"
+          exit 1
 
       - name: Enforce Lighthouse thresholds
         if: steps.download_lighthouse_results.outcome == 'success'
@@ -1143,7 +1060,7 @@ jobs:
   # Results are uploaded to GitHub Security tab as SARIF (visible in Code Scanning).
   docker-security-scan:
     name: Trivy Image Scan
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     needs: pre-commit-check
     permissions:
@@ -1161,29 +1078,37 @@ jobs:
       - name: Run Trivy vulnerability scanner
         id: trivy_scan
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.28.0
+        continue-on-error: true
         with:
           image-ref: university-ecosystem/backend:${{ github.sha }}
           format: sarif
           output: trivy-results.sarif
           severity: CRITICAL,HIGH
           limit-severities-for-sarif: true
-          exit-code: "0"
+          exit-code: "1"
           ignore-unfixed: true
 
       - name: Upload Trivy results to GitHub Security tab
         uses: github/codeql-action/upload-sarif@ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd # v4.37.7
-        if: always() && steps.trivy_scan.outcome == 'success'
+        if: always()
+        continue-on-error: true
         with:
           sarif_file: trivy-results.sarif
           # Match the pre-category configuration key used by main. The
           # reusable audit has a separate job key for filesystem/config scans.
           category: ".github/workflows/ci.yml:docker-security-scan"
 
+      - name: Re-assert Trivy vulnerability gate
+        if: always() && steps.trivy_scan.outcome == 'failure'
+        run: |
+          echo "::error::Trivy found a CRITICAL/HIGH backend image vulnerability or failed to complete the scan."
+          exit 1
+
   # MOD-W15-03 (audit 2026-03-23 Wave 15): Helm lint + kubeconform validation.
   # Catches broken Helm templates and K8s manifest schema violations before deploy.
   helm-validate:
     name: Helm Lint & Validate
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     needs: pre-commit-check
     steps:
@@ -1195,17 +1120,11 @@ jobs:
           version: "3.17.0"
 
       - name: Helm dependency build
-        id: helm-deps
         run: helm dependency build charts/university-ecosystem/
-        continue-on-error: true
 
       - name: Helm lint — university-ecosystem chart
         run: |  # pragma: allowlist secret
-          STRICT_FLAG=""
-          if [ "${{ steps.helm-deps.outcome }}" = "success" ]; then
-            STRICT_FLAG="--strict"
-          fi
-          helm lint charts/university-ecosystem/ $STRICT_FLAG \
+          helm lint charts/university-ecosystem/ --strict \
             --set redis.enabled=false \
             --set nats.enabled=false \
             --set applicationSecrets.existingSecret=ci-application-secrets
@@ -1272,12 +1191,12 @@ jobs:
   # Note: "downgrade -1" fails on merge heads (ambiguous walk) — use "base".
   db-migration-gate:
     name: DB Migration Gate (Postgres)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     needs: pre-commit-check
     services:
       postgres:
-        image: pgvector/pgvector:pg17
+        image: pgvector/pgvector:pg17@sha256:cf134a767f474095eeba57e0117be8e568e011a63f33fbf252f14c9b760f8e6f
         env:
           POSTGRES_USER: test
           POSTGRES_PASSWORD: test
@@ -1319,7 +1238,7 @@ jobs:
   # The full Go provider verification continues in contract-tests.yml.
   contract-tests:
     name: Contract Tests
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
 
     steps:
@@ -1357,7 +1276,7 @@ jobs:
   # Uses ASGI transport — fully hermetic, no Docker or network required.
   schemathesis-api-tests:
     name: Schemathesis - API Schema Conformance
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     needs: pre-commit-check
     permissions:
@@ -1402,7 +1321,7 @@ jobs:
   # and Storybook) never silently diverge from the live API contract.
   msw-mock-drift:
     name: MSW Mock Drift Gate
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     needs:
       - pre-commit-check
@@ -1493,7 +1412,7 @@ jobs:
     # Memory errors that cross the Rust/Python boundary are invisible to Python's GC;
     # ASan instruments every allocation so these classes of bugs fail loudly at CI time.
     name: "Rust FFI — ASan / LSan"
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     permissions:
       contents: read
@@ -1552,7 +1471,7 @@ jobs:
     # Data races that cross the Rust/Python FFI boundary are extremely hard to debug;
     # TSan instruments every memory access and synchronization primitive to fail loudly.
     name: "Rust FFI — TSan"
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     permissions:
       contents: read
@@ -1606,7 +1525,7 @@ jobs:
     # BLOCKING (in the ci-success results array), unlike the advisory
     # long-running load-and-chaos jobs.
     name: "Rust - cargo test (x3 crates) + wasm-pack + coverage"
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     permissions:
       contents: read
@@ -1732,7 +1651,7 @@ jobs:
           tool: wasm-pack@0.13.1
 
       - name: rust-crypto — browser-parity KATs (wasm-pack, headless Chrome)
-        # ubuntu-latest preinstalls Chrome + sets CHROMEWEBDRIVER; fall back to
+        # ubuntu-24.04 preinstalls Chrome + sets CHROMEWEBDRIVER; fall back to
         # wasm-pack's auto-download if the env var is unset.
         run: |
           if command -v chromedriver >/dev/null 2>&1; then
@@ -1745,7 +1664,7 @@ jobs:
 
   mutation-tests-stats:
     name: Incremental Mutation Stats (mutmut) / shard ${{ matrix.stats_shard }}/4
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
       # mutmut 3.7.0 collects the complete pytest-to-mutant mapping before it
@@ -1792,7 +1711,8 @@ jobs:
             echo "- Base: $COMPARE_BASE";
             echo "- Head: $(git rev-parse HEAD)";
           } >> "$GITHUB_STEP_SUMMARY"
-          changed=$(git diff --name-only "$COMPARE_BASE...HEAD" | grep -E '^app/.*\.py$' || true)
+          changed_paths="$(git diff --name-only "$COMPARE_BASE...HEAD")"
+          changed="$(printf '%s\n' "$changed_paths" | grep -E '^app/.*\.py$' || true)"
           if [ -n "$changed" ]; then
             echo "has_python=true" >> "$GITHUB_OUTPUT"
           else
@@ -1818,7 +1738,7 @@ jobs:
 
   mutation-tests-incremental:
     name: Incremental Mutation Tests (mutmut) / shard ${{ matrix.shard }}/16
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
       # A long-lived branch can change dozens of backend modules.  Sixteen
@@ -1886,7 +1806,8 @@ jobs:
             echo "- Base: $COMPARE_BASE";
             echo "- Head: $(git rev-parse HEAD)";
           } >> "$GITHUB_STEP_SUMMARY"
-          git diff --name-only "$COMPARE_BASE...HEAD" | grep -E '^app/.*\.py$' | sort -u > /tmp/changed_py.txt || true
+          git diff --name-only "$COMPARE_BASE...HEAD" > /tmp/changed_paths.txt
+          grep -E '^app/.*\.py$' /tmp/changed_paths.txt | sort -u > /tmp/changed_py.txt || true
           git diff --unified=0 "$COMPARE_BASE...HEAD" -- app/ > /tmp/changed_py.diff
           if [ -s /tmp/changed_py.txt ]; then
             echo "has_python=true" >> "$GITHUB_OUTPUT"
@@ -2119,25 +2040,25 @@ jobs:
 
   chaos-tests:
     name: Chaos Engineering (ToxiProxy)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     needs: [backend-tests]
     services:
       postgres:
-        image: pgvector/pgvector:pg17
+        image: pgvector/pgvector:pg17@sha256:cf134a767f474095eeba57e0117be8e568e011a63f33fbf252f14c9b760f8e6f
         env:
           POSTGRES_DB: testdb
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres  # pragma: allowlist secret
         ports: ["5432:5432"]
       redis:
-        image: redis:7-alpine
+        image: redis:7-alpine@sha256:e7723ff73d963f5cc6d9c4643ea3d989527a402a319239054e9472a7fb9219a2
         ports: ["6379:6379"]
       nats:
-        image: nats:2.10.25-alpine
+        image: nats:2.10.25-alpine@sha256:3290c829aa05ddd4da12026783ccaff86f3fbc1f0551722908a934c293cd6228
         ports: ["4222:4222"]
       minio:
-        image: minio/minio:RELEASE.2025-09-07T16-13-09Z
+        image: minio/minio:RELEASE.2025-09-07T16-13-09Z@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e
         # The MinIO image defaults to printing its CLI help and exiting.  The
         # chaos job needs a long-lived object-storage server for the health
         # probe and the ToxiProxy upstream.
@@ -2147,7 +2068,7 @@ jobs:
           MINIO_ROOT_PASSWORD: minioadminsecret  # pragma: allowlist secret
         ports: ["9000:9000"]
       toxiproxy:
-        image: ghcr.io/shopify/toxiproxy:2.9.0
+        image: ghcr.io/shopify/toxiproxy:2.9.0@sha256:b44c283298cea49e2defaba1b3028783798346f2a926684e3a345fd8441af3b8
         ports: ["8474:8474", "5433:5433", "6380:6380", "4223:4223", "9003:9003"]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -2187,7 +2108,7 @@ jobs:
 
   chaos-loadtest-orchestrator:
     name: Chaos Loadtest Orchestrator
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     needs: pre-commit-check
     steps:
@@ -2205,14 +2126,14 @@ jobs:
 
   db-migration-integrity:
     name: DB Migration Rollback Integrity
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     needs: [alembic-migrations]
     env:
       SECRET_KEY: "dummy-secret-key-for-migrations-integration-test-12345678" # pragma: allowlist secret
     services:
       postgres:
-        image: pgvector/pgvector:pg17
+        image: pgvector/pgvector:pg17@sha256:cf134a767f474095eeba57e0117be8e568e011a63f33fbf252f14c9b760f8e6f
         env:
           POSTGRES_DB: migtest
           POSTGRES_USER: postgres
@@ -2245,13 +2166,12 @@ jobs:
       - name: Run migration integrity tests
         run: uv run pytest tests/test_migrations_integrity.py -v --tb=short
 
-  # Advisory-only WebSocket stress test — non-blocking, runs on main pushes only.
-  # WHY: validates that ws-hub can sustain 10k concurrent VUs without crashing;
-  # runs an abbreviated 1-VU smoke variant in CI to verify script syntax and
-  # basic connectivity without the full load (wall-clock cost: ~15s).
+  # Advisory-only validation of the 10k WebSocket scenario definition. Running
+  # that scenario requires a separately provisioned, rate-limit-adjusted stack;
+  # CI must not pretend to execute a network smoke against an absent target.
   ws-stress-test:
-    name: WebSocket 10k Stress Test (advisory)
-    runs-on: ubuntu-latest
+    name: WebSocket 10k Scenario Validation (advisory)
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     steps:
@@ -2262,16 +2182,10 @@ jobs:
           sudo mv k6-v0.54.0-linux-amd64/k6 /usr/local/bin/
       - name: Validate k6 script syntax
         run: k6 inspect tests/performance/ws_hub_10k_test.js
-      - name: Run abbreviated smoke test (1 VU, 10s)
-        run: |
-          k6 run --vus 1 --duration 10s \
-            --env BASE_URL=http://localhost:8080 \
-            tests/performance/ws_hub_10k_test.js || true
-        continue-on-error: true
 
   coverage-policy-gate:
     name: Coverage & Quality Policy Gate
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     needs:
       - backend-tests
@@ -2438,8 +2352,8 @@ jobs:
     # Never expose the OIDC minting permission to PR-controlled code.  This
     # job runs only after the aggregate gate and only for protected main pushes.
     if: ${{ github.event_name != 'pull_request' && github.ref == 'refs/heads/main' }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
     needs: coverage-policy-gate
     permissions:
       contents: read
@@ -2451,18 +2365,111 @@ jobs:
           name: coverage-codecov-inputs
           path: artifacts/coverage/codecov
 
-      - name: Upload coverage to Codecov via OIDC
+      # Codecov flags are upload metadata, not path selectors. Keep one report
+      # per upload so every component status measures exactly its own artifact.
+      - name: Upload Python coverage to Codecov via OIDC
         uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0
         with:
           use_oidc: true
           disable_search: true
-          files: artifacts/coverage/codecov/python.xml,artifacts/coverage/codecov/frontend.lcov,artifacts/coverage/codecov/go-gateway.out,artifacts/coverage/codecov/go-ws-hub.out,artifacts/coverage/codecov/go-file-processor.out,artifacts/coverage/codecov/go-shared.out,artifacts/coverage/codecov/rust-native.json,artifacts/coverage/codecov/rust-pyo3-sanitizer.json,artifacts/coverage/codecov/rust-wasm-sanitizer.json,artifacts/coverage/codecov/rust-crypto.json
-          name: trusted-main-${{ github.sha }}
+          files: artifacts/coverage/codecov/python.xml
+          flags: python
+          name: trusted-main-python-${{ github.sha }}
+          fail_ci_if_error: true
+
+      - name: Upload frontend coverage to Codecov via OIDC
+        uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0
+        with:
+          use_oidc: true
+          disable_search: true
+          files: artifacts/coverage/codecov/frontend.lcov
+          flags: frontend
+          name: trusted-main-frontend-${{ github.sha }}
+          fail_ci_if_error: true
+
+      - name: Upload gateway coverage to Codecov via OIDC
+        uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0
+        with:
+          use_oidc: true
+          disable_search: true
+          files: artifacts/coverage/codecov/go-gateway.out
+          flags: go-gateway
+          name: trusted-main-go-gateway-${{ github.sha }}
+          fail_ci_if_error: true
+
+      - name: Upload ws-hub coverage to Codecov via OIDC
+        uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0
+        with:
+          use_oidc: true
+          disable_search: true
+          files: artifacts/coverage/codecov/go-ws-hub.out
+          flags: go-ws-hub
+          name: trusted-main-go-ws-hub-${{ github.sha }}
+          fail_ci_if_error: true
+
+      - name: Upload file-processor coverage to Codecov via OIDC
+        uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0
+        with:
+          use_oidc: true
+          disable_search: true
+          files: artifacts/coverage/codecov/go-file-processor.out
+          flags: go-file-processor
+          name: trusted-main-go-file-processor-${{ github.sha }}
+          fail_ci_if_error: true
+
+      - name: Upload shared Go coverage to Codecov via OIDC
+        uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0
+        with:
+          use_oidc: true
+          disable_search: true
+          files: artifacts/coverage/codecov/go-shared.out
+          flags: go-shared
+          name: trusted-main-go-shared-${{ github.sha }}
+          fail_ci_if_error: true
+
+      - name: Upload native Rust coverage to Codecov via OIDC
+        uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0
+        with:
+          use_oidc: true
+          disable_search: true
+          files: artifacts/coverage/codecov/rust-native.json
+          flags: rust-native
+          name: trusted-main-rust-native-${{ github.sha }}
+          fail_ci_if_error: true
+
+      - name: Upload PyO3 sanitizer coverage to Codecov via OIDC
+        uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0
+        with:
+          use_oidc: true
+          disable_search: true
+          files: artifacts/coverage/codecov/rust-pyo3-sanitizer.json
+          flags: rust-pyo3-sanitizer
+          name: trusted-main-rust-pyo3-sanitizer-${{ github.sha }}
+          fail_ci_if_error: true
+
+      - name: Upload WASM sanitizer coverage to Codecov via OIDC
+        uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0
+        with:
+          use_oidc: true
+          disable_search: true
+          files: artifacts/coverage/codecov/rust-wasm-sanitizer.json
+          flags: rust-wasm-sanitizer
+          name: trusted-main-rust-wasm-sanitizer-${{ github.sha }}
+          fail_ci_if_error: true
+
+      - name: Upload Rust crypto coverage to Codecov via OIDC
+        uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0
+        with:
+          use_oidc: true
+          disable_search: true
+          files: artifacts/coverage/codecov/rust-crypto.json
+          flags: rust-crypto
+          name: trusted-main-rust-crypto-${{ github.sha }}
           fail_ci_if_error: true
 
   quality-inventory-check:
     name: Source/Test Inventory & Anti-Pattern Check
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
       contents: read
@@ -2483,7 +2490,7 @@ jobs:
 
   kyverno-test:
     name: Kyverno policy tests
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:
       contents: read
@@ -2515,21 +2522,21 @@ jobs:
 
   backend-tests-unit-dummy:
     name: "Backend Tests (Python 3.14) / Unit Tests (All-Python 3.14)"
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: backend-tests
     steps:
       - run: echo "Satisfying branch protection for Unit Tests"
 
   backend-tests-integration-dummy:
     name: "Backend Tests (Python 3.14) / Integration Tests (All-Python 3.14)"
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: backend-tests
     steps:
       - run: echo "Satisfying branch protection for Integration Tests"
 
   ci-success:
     name: CI Success
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5 # CI-03 (audit Wave 10)
     if: always()
     needs:
@@ -2540,6 +2547,7 @@ jobs:
       - go-tests
       - frontend-tests
       - security-audit
+      - sbom-generate
       - alembic-migrations
       - openapi-verify
       - verify-runtime-reqs
@@ -2580,77 +2588,97 @@ jobs:
     steps:
       - name: Check all jobs passed
         shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_REF: ${{ github.ref }}
         run: |
-          # ADR-022 §Migration step 5: go-integration-* jobs are advisory
-          # (non-blocking) initially. Promote to blocking once 30-day flake
-          # rate < 1 %. They are intentionally NOT in the blocking results
-          # array but ARE reported separately below.
-          #
+          set -euo pipefail
           # The full load-and-chaos stack runs in nightly-full-gate.yml. It is
           # deliberately absent from this fast PR gate until Temporal boot is
           # reliable enough for a merge-blocking promotion.
           #
-          results=(
-            "${{ needs.pre-commit-check.result }}"
-            "${{ needs.compose-validate.result }}"
-            "${{ needs.backend-tests.result }}"
-            "${{ needs.backend-type-check.result }}"
-            "${{ needs.go-tests.result }}"
-            "${{ needs.frontend-tests.result }}"
-            "${{ needs.security-audit.result }}"
-            "${{ needs.alembic-migrations.result }}"
-            "${{ needs.openapi-verify.result }}"
-            "${{ needs.verify-runtime-reqs.result }}"
-            "${{ needs.performance-gate.result }}"
-            "${{ needs.docker-security-scan.result }}"
-            "${{ needs.helm-validate.result }}"
-            "${{ needs.db-migration-gate.result }}"
-            "${{ needs.go-fuzz.result }}"
-            "${{ needs.contract-tests.result }}"
-            "${{ needs.schemathesis-api-tests.result }}"
-            "${{ needs.msw-mock-drift.result }}"
-            "${{ needs.provenance-check.result }}"
-            "${{ needs.e2e-tests.result }}"
-            "${{ needs.rust-ffi-asan.result }}"
-            "${{ needs.rust-ffi-tsan.result }}"
-            "${{ needs.rust-tests.result }}"
-            "${{ needs.mutation-tests-stats.result }}"
-            "${{ needs.mutation-tests-incremental.result }}"
-            "${{ needs.stryker-incremental.result }}"
-            "${{ needs.chaos-loadtest-orchestrator.result }}"
-            "${{ needs.actionlint.result }}"
-            "${{ needs.dockerfile-lint.result }}"
-            "${{ needs.shellcheck.result }}"
-            "${{ needs.graphql-drift-check.result }}"
-            "${{ needs.quality.result }}"
-            "${{ needs.rust-lint.result }}"
-            "${{ needs.coverage-policy-gate.result }}"
-            "${{ needs.codecov-upload.result }}"
-            "${{ needs.quality-inventory-check.result }}"
-            "${{ needs.kyverno-test.result }}"
+          required_results=(
+            "pre-commit-check|${{ needs.pre-commit-check.result }}"
+            "compose-validate|${{ needs.compose-validate.result }}"
+            "backend-tests|${{ needs.backend-tests.result }}"
+            "backend-type-check|${{ needs.backend-type-check.result }}"
+            "go-tests|${{ needs.go-tests.result }}"
+            "go-integration-ws-hub|${{ needs.go-integration-ws-hub.result }}"
+            "go-integration-file-processor|${{ needs.go-integration-file-processor.result }}"
+            "go-integration-gateway|${{ needs.go-integration-gateway.result }}"
+            "frontend-tests|${{ needs.frontend-tests.result }}"
+            "security-audit|${{ needs.security-audit.result }}"
+            "sbom-generate|${{ needs.sbom-generate.result }}"
+            "alembic-migrations|${{ needs.alembic-migrations.result }}"
+            "openapi-verify|${{ needs.openapi-verify.result }}"
+            "verify-runtime-reqs|${{ needs.verify-runtime-reqs.result }}"
+            "performance-gate|${{ needs.performance-gate.result }}"
+            "docker-security-scan|${{ needs.docker-security-scan.result }}"
+            "helm-validate|${{ needs.helm-validate.result }}"
+            "db-migration-gate|${{ needs.db-migration-gate.result }}"
+            "go-fuzz|${{ needs.go-fuzz.result }}"
+            "contract-tests|${{ needs.contract-tests.result }}"
+            "schemathesis-api-tests|${{ needs.schemathesis-api-tests.result }}"
+            "msw-mock-drift|${{ needs.msw-mock-drift.result }}"
+            "provenance-check|${{ needs.provenance-check.result }}"
+            "e2e-tests|${{ needs.e2e-tests.result }}"
+            "rust-ffi-asan|${{ needs.rust-ffi-asan.result }}"
+            "rust-ffi-tsan|${{ needs.rust-ffi-tsan.result }}"
+            "rust-tests|${{ needs.rust-tests.result }}"
+            "mutation-tests-stats|${{ needs.mutation-tests-stats.result }}"
+            "mutation-tests-incremental|${{ needs.mutation-tests-incremental.result }}"
+            "chaos-loadtest-orchestrator|${{ needs.chaos-loadtest-orchestrator.result }}"
+            "actionlint|${{ needs.actionlint.result }}"
+            "dockerfile-lint|${{ needs.dockerfile-lint.result }}"
+            "shellcheck|${{ needs.shellcheck.result }}"
+            "graphql-drift-check|${{ needs.graphql-drift-check.result }}"
+            "quality|${{ needs.quality.result }}"
+            "rust-lint|${{ needs.rust-lint.result }}"
+            "coverage-policy-gate|${{ needs.coverage-policy-gate.result }}"
+            "quality-inventory-check|${{ needs.quality-inventory-check.result }}"
+            "kyverno-test|${{ needs.kyverno-test.result }}"
           )
 
-
-          failed=false
-          for res in "${results[@]}"; do
-            if [[ "$res" != "success" && "$res" != "skipped" ]]; then
-              failed=true
-              break
+          failed=0
+          for entry in "${required_results[@]}"; do
+            IFS='|' read -r job result <<< "$entry"
+            if [[ "$result" != "success" ]]; then
+              echo "::error::Required CI job '$job' concluded '$result'; only success is accepted."
+              failed=1
             fi
           done
 
-          if [[ "$failed" == "true" ]]; then
-            echo "::error::One or more CI jobs failed"
+          assert_event_result() {
+            local job="$1"
+            local actual="$2"
+            local expected="$3"
+            if [[ "$actual" != "$expected" ]]; then
+              echo "::error::Event-gated CI job '$job' concluded '$actual'; expected '$expected'."
+              failed=1
+            fi
+          }
+
+          if [[ "$EVENT_NAME" == "pull_request" ]]; then
+            assert_event_result "stryker-incremental" "${{ needs.stryker-incremental.result }}" "success"
+          else
+            assert_event_result "stryker-incremental" "${{ needs.stryker-incremental.result }}" "skipped"
+          fi
+
+          if [[ "$EVENT_NAME" == "push" && "$EVENT_REF" == "refs/heads/main" ]]; then
+            assert_event_result "codecov-upload" "${{ needs.codecov-upload.result }}" "success"
+          else
+            assert_event_result "codecov-upload" "${{ needs.codecov-upload.result }}" "skipped"
+          fi
+
+          if (( failed != 0 )); then
+            echo "::error::One or more required CI jobs did not satisfy the fail-closed result contract."
             exit 1
           fi
-          echo "✅ All CI checks passed!"
+          echo "All required CI checks passed."
 
-      - name: Report blocking and advisory quality results
+      - name: Report integration and extended quality results
         shell: bash
         run: |
-          # Advisory-only — these results inform the team but do not block
-          # the workflow. Promote to blocking by moving entries into the
-          # `results` array above once flake rate < 1 % over 30 days.
           ws=${{ needs.go-integration-ws-hub.result }}
           fp=${{ needs.go-integration-file-processor.result }}
           gw=${{ needs.go-integration-gateway.result }}
@@ -2660,15 +2688,13 @@ jobs:
           toxi=${{ needs.chaos-tests.result }}
           dbmig=${{ needs.db-migration-integrity.result }}
           {
-            echo "## Go integration tests (advisory)";
+            echo "## Go integration tests (required)";
             echo "";
             echo "| Service | Result |";
             echo "|---------|--------|";
             echo "| ws-hub | $ws |";
             echo "| file-processor | $fp |";
             echo "| gateway | $gw |";
-            echo "";
-            echo "_Initially non-blocking per ADR-022 §Migration step 5._";
             echo "";
             echo "## Incremental mutation gate (blocking)";
             echo "";
@@ -2686,11 +2712,12 @@ jobs:
             echo "";
             echo "_chaos-tests + db-migration-integrity advisory until ToxiProxy coverage baseline is established._";
             echo "";
-            echo "## Cross-browser E2E (advisory — Phase 7 stabilization)";
+            echo "## Cross-browser E2E (advisory - Phase 7 stabilization)";
             echo "";
             echo "| Job | Result |";
             echo "|-----|--------|";
             echo "| e2e-tests-cross-browser | $browsers |";
             echo "_Promote after 30 consecutive green days and update required-check policy._";
           } >> "$GITHUB_STEP_SUMMARY"
-          echo "Advisory results — ws-hub: $ws, file-processor: $fp, gateway: $gw, browsers: $browsers, toxi: $toxi, dbmig: $dbmig"
+          echo "Required Go integration results - ws-hub: $ws, file-processor: $fp, gateway: $gw"
+          echo "Advisory results - browsers: $browsers, toxi: $toxi, dbmig: $dbmig"

@@ -1,17 +1,16 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
-const productionDescribe = describe.skipIf(import.meta.env.MODE !== "production")
-
-productionDescribe("api/client — production CSRF bootstrap", () => {
+describe("api/client — production CSRF bootstrap", () => {
   beforeEach(() => {
     vi.resetModules()
+    vi.stubEnv("MODE", "production")
     document.cookie = "csrf_token=; Max-Age=0; path=/"
   })
 
   afterEach(() => {
-    document.cookie = "csrf_token=; Max-Age=0; path=/"
     vi.unstubAllGlobals()
     vi.unstubAllEnvs()
+    document.cookie = "csrf_token=; Max-Age=0; path=/"
   })
 
   it("does not fetch when the browser already has a CSRF cookie", async () => {
@@ -32,6 +31,7 @@ productionDescribe("api/client — production CSRF bootstrap", () => {
 
     const first = ensureCsrfCookie()
     const second = ensureCsrfCookie()
+    expect(second).toBe(first)
     await expect(Promise.all([first, second])).resolves.toEqual([undefined, undefined])
 
     expect(fetchSpy).toHaveBeenCalledOnce()
@@ -52,5 +52,15 @@ productionDescribe("api/client — production CSRF bootstrap", () => {
 
     await expect(ensureCsrfCookie()).resolves.toBeUndefined()
     expect(fetchSpy).toHaveBeenCalledOnce()
+  })
+
+  it("does not access browser state when invoked during SSR", async () => {
+    const fetchSpy = vi.fn()
+    vi.stubGlobal("fetch", fetchSpy)
+    vi.stubGlobal("document", undefined)
+    const { ensureCsrfCookie } = await import("@/api/client")
+
+    await expect(ensureCsrfCookie()).resolves.toBeUndefined()
+    expect(fetchSpy).not.toHaveBeenCalled()
   })
 })

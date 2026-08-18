@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest"
-import { fireEvent, render, screen, waitFor } from "@testing-library/react"
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import StoriesAdmin from "../StoriesAdmin"
 
 const mocks = vi.hoisted(() => ({
@@ -108,6 +108,14 @@ const story = {
 }
 
 const localDateTimeToIso = (value: string) => new Date(value).toISOString()
+
+function deferred<T>() {
+  let resolve!: (value: T) => void
+  const promise = new Promise<T>((settle) => {
+    resolve = settle
+  })
+  return { promise, resolve }
+}
 
 describe("StoriesAdmin", () => {
   beforeEach(() => {
@@ -524,5 +532,91 @@ describe("StoriesAdmin", () => {
 
     expect(await screen.findByRole("alert")).toHaveTextContent("raw cover rejection")
     expect(mocks.createStory).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    ["missing response data", undefined],
+    ["non-string nested detail", { detail: {} }],
+  ])("falls back for Axios errors with %s", async (_case, data) => {
+    mocks.getStories.mockRejectedValueOnce({ isAxiosError: true, response: { data } })
+
+    render(<StoriesAdmin />)
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("stories:errors.loadFailed")
+  })
+
+  it("resets an item cover whose object URL is empty", async () => {
+    const createObjectUrl = vi.spyOn(URL, "createObjectURL").mockReturnValue("")
+    mocks.getStories.mockResolvedValueOnce({ data: [story] })
+    mocks.uploadStoryCover.mockResolvedValueOnce({ url: "https://cdn.example/new.png" })
+
+    render(<StoriesAdmin />)
+    expect(await screen.findByText(story.title)).toBeInTheDocument()
+    fireEvent.change(screen.getAllByLabelText("stories:list.actions.pickCover").at(-1)!, {
+      target: { files: [new File(["image"], "empty-url.png", { type: "image/png" })] },
+    })
+    fireEvent.click(screen.getByRole("button", { name: "stories:list.actions.updateCover" }))
+
+    await waitFor(() =>
+      expect(mocks.updateStory).toHaveBeenCalledWith(story.id, {
+        cover_url: "https://cdn.example/new.png",
+      })
+    )
+    createObjectUrl.mockRestore()
+  })
+
+  it("finishes an item cover update safely after unmount", async () => {
+    const pendingUpload = deferred<{ url: string }>()
+    vi.spyOn(URL, "createObjectURL").mockReturnValueOnce("blob:pending-item-cover")
+    vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined)
+    mocks.getStories.mockResolvedValueOnce({ data: [story] })
+    mocks.uploadStoryCover.mockReturnValueOnce(pendingUpload.promise)
+
+    const { unmount } = render(<StoriesAdmin />)
+    expect(await screen.findByText(story.title)).toBeInTheDocument()
+    fireEvent.change(screen.getAllByLabelText("stories:list.actions.pickCover").at(-1)!, {
+      target: { files: [new File(["image"], "pending.png", { type: "image/png" })] },
+    })
+    fireEvent.click(screen.getByRole("button", { name: "stories:list.actions.updateCover" }))
+    unmount()
+
+    await act(async () => {
+      pendingUpload.resolve({ url: "https://cdn.example/pending.png" })
+      await pendingUpload.promise
+    })
+    await waitFor(() =>
+      expect(mocks.updateStory).toHaveBeenCalledWith(story.id, {
+        cover_url: "https://cdn.example/pending.png",
+      })
+    )
+    vi.restoreAllMocks()
+  })
+
+  it("finishes form reset safely after unmount", async () => {
+    const pendingCreate = deferred<{ id: string }>()
+    mocks.createStory.mockReturnValueOnce(pendingCreate.promise)
+
+    const { unmount } = render(<StoriesAdmin />)
+    await screen.findByText("stories:list.empty")
+    fireEvent.change(screen.getByLabelText("stories:form.titleRu"), {
+      target: { value: "Pending story" },
+    })
+    fireEvent.change(screen.getByLabelText("stories:form.shortTextRu"), {
+      target: { value: "Pending story text" },
+    })
+    fireEvent.change(screen.getByLabelText("stories:form.publishedAt"), {
+      target: { value: "2026-08-01T10:00" },
+    })
+    fireEvent.change(screen.getByLabelText("stories:form.expiresAt"), {
+      target: { value: "2026-08-02T10:00" },
+    })
+    fireEvent.click(screen.getByRole("button", { name: "common:buttons.submit" }))
+    unmount()
+
+    await act(async () => {
+      pendingCreate.resolve({ id: "created-after-unmount" })
+      await pendingCreate.promise
+    })
+    expect(mocks.createStory).toHaveBeenCalledTimes(1)
   })
 })

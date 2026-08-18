@@ -138,6 +138,23 @@ describe("service-worker media cache", () => {
     expect(privateCache.put).toHaveBeenCalledTimes(1)
   })
 
+  it("falls through a private-cache miss without caching an unclassified response", async () => {
+    getSessionHashMock.mockReturnValue("session-789")
+    cachesMock.has.mockResolvedValue(true)
+    privateCache.match.mockResolvedValue(null)
+    fetchMock.mockResolvedValue(
+      new Response("uncacheable", { status: 200, headers: { "Cache-Control": "no-store" } })
+    )
+    const { handleMediaRequest } = await loadMediaModule()
+
+    await expect(handleMediaRequest("https://app.test/media/no-store.jpg")).resolves.toBeInstanceOf(
+      Response
+    )
+    expect(privateCache.match).toHaveBeenCalledOnce()
+    expect(publicCache.put).not.toHaveBeenCalled()
+    expect(privateCache.put).not.toHaveBeenCalled()
+  })
+
   it("registers static, image, and explicit media routes", async () => {
     const { initMediaCaching } = await loadMediaModule()
     initMediaCaching()

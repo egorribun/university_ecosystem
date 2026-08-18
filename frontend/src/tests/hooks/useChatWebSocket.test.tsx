@@ -1,6 +1,7 @@
 import { renderHook, act, waitFor } from "@testing-library/react"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest"
+import { renderToString } from "react-dom/server"
 import { server } from "../mocks/server"
 import { http, HttpResponse } from "msw"
 
@@ -14,6 +15,7 @@ import {
   calculateReconnectDelay,
 } from "@/hooks/useChatWebSocket"
 import { chatApi, type Message, type MessagesListResponse } from "@/api/chat"
+import api from "@/api/client"
 import * as wsMessageSchema from "@/api/schemas/wsMessage"
 
 const mocks = vi.hoisted(() => ({
@@ -124,6 +126,24 @@ describe("useChatWebSocket", () => {
     expect(() => renderHook(() => useChatWebSocket({ enabled: false }))).toThrow(
       "useChatWebSocket must be used within a WebSocketProvider"
     )
+  })
+
+  it("uses the disconnected server snapshot during SSR", () => {
+    const client = new QueryClient()
+    const Probe = () => {
+      const { isConnected } = useChatWebSocket({ enabled: false })
+      return <span>{String(isConnected)}</span>
+    }
+
+    const html = renderToString(
+      <QueryClientProvider client={client}>
+        <WebSocketProvider>
+          <Probe />
+        </WebSocketProvider>
+      </QueryClientProvider>
+    )
+
+    expect(html).toContain("false")
   })
 
   it("emits presence updates with last seen information", async () => {
@@ -478,6 +498,13 @@ describe("useChatWebSocket frame-cache helpers", () => {
     expect(
       applyReactionChangedFrame(undefined, { message_id: MSG_ID, emoji: "x", action: "added" })
     ).toBeUndefined()
+    expect(
+      applyReactionChangedFrame(makeList([makeMessage({ reactions: [] })]), {
+        message_id: MSG_ID,
+        emoji: "missing",
+        action: "removed",
+      })?.items[0]?.reactions
+    ).toEqual([])
   })
 
   it("applyReactionChangedFrame: leaves non-matching messages unchanged", () => {
@@ -520,8 +547,11 @@ describe("useChatWebSocket exponential backoffs and ticket exchange failures", (
   })
 
   it("schedules reconnect when ticket exchange fails with HTTP 500", async () => {
+    const random = vi.spyOn(Math, "random").mockReturnValue(0)
+    let attempts = 0
     server.use(
       http.post("*/ws/ticket", () => {
+        attempts += 1
         return new HttpResponse(null, { status: 500 })
       })
     )
@@ -537,11 +567,36 @@ describe("useChatWebSocket exponential backoffs and ticket exchange failures", (
 
     // Wait and verify that it did not open a WebSocket because of the failure,
     // but reconnect is scheduled. Since it fails to fetch a ticket, MockWebSocket.instances.length remains 0.
-    await waitFor(() => {
-      expect(MockWebSocket.instances.length).toBe(0)
-    })
+    await waitFor(() => expect(attempts).toBeGreaterThanOrEqual(2))
+    expect(MockWebSocket.instances.length).toBe(0)
 
     rendered.unmount()
+    random.mockRestore()
+  })
+
+  it("aborts a ticket request after the five-second deadline", () => {
+    vi.useFakeTimers()
+    let signal: { readonly aborted: boolean } | undefined
+    const post = vi.spyOn(api, "post").mockImplementation(((_url, _data, config) => {
+      signal = config?.signal
+      return new Promise(() => {})
+    }) as typeof api.post)
+
+    const rendered = renderHook(() => useChatWebSocket({ enabled: true }), {
+      wrapper: ({ children }) => (
+        <QueryClientProvider client={new QueryClient()}>
+          <WebSocketProvider>{children}</WebSocketProvider>
+        </QueryClientProvider>
+      ),
+    })
+
+    expect(signal?.aborted).toBe(false)
+    act(() => vi.advanceTimersByTime(5_000))
+    expect(signal?.aborted).toBe(true)
+
+    rendered.unmount()
+    post.mockRestore()
+    vi.useRealTimers()
   })
 
   it.each([401, 403])(
@@ -748,6 +803,10 @@ describe("useChatWebSocket outgoing controls and lifecycle edges", () => {
     act(() => socket.open())
     act(() => vi.advanceTimersByTime(30_000))
     expect(socket.sentMessages).toContain('{"type":"ping"}')
+    const sentCount = socket.sentMessages.length
+    socket.readyState = MockWebSocket.CLOSING
+    act(() => vi.advanceTimersByTime(30_000))
+    expect(socket.sentMessages).toHaveLength(sentCount)
     rendered.unmount()
   })
 
@@ -828,6 +887,16 @@ describe("useChatWebSocket outgoing controls and lifecycle edges", () => {
     const { socket, result, unmount } = await mountAndOpen({ enabled: true, onTyping })
 
     vi.useFakeTimers()
+    const otherChat = "77777777-7777-4777-8777-777777777777"
+    act(() =>
+      socket.receive({
+        type: "typing",
+        chat_id: otherChat,
+        user_id: "88888888-8888-4888-8888-888888888888",
+        user_name: "Other chat",
+      })
+    )
+    expect(result.current.getTypingUsersForChat(CHAT_ID)).toEqual([])
     act(() =>
       socket.receive({
         type: "typing",
@@ -860,7 +929,7 @@ describe("useChatWebSocket outgoing controls and lifecycle edges", () => {
 
     act(() => vi.advanceTimersByTime(3_000))
     expect(result.current.getTypingUsersForChat(CHAT_ID)).toEqual([])
-    expect(onTyping).toHaveBeenCalledTimes(23)
+    expect(onTyping).toHaveBeenCalledTimes(24)
     unmount()
   })
 

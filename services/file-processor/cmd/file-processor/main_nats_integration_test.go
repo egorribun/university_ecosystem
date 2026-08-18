@@ -26,7 +26,7 @@ func startFileProcessorJetStream(t *testing.T) (*nats.Conn, nats.JetStreamContex
 
 	container, err := tcnats.Run(
 		ctx,
-		"nats:2.12.6-alpine",
+		"nats:2.12.6-alpine@sha256:1cfc36e2e5e638243d8c722f72c954cd0ec4b15ee82fadbc718ce12e2b3c1652",
 		testcontainers.WithLogger(tclog.TestLogger(t)),
 	)
 	require.NoError(t, err)

@@ -174,6 +174,21 @@ describe("useNewsListQuery queryFn branches", () => {
     expect(result.current.news).toHaveLength(2)
   })
 
+  it("304 response restores the persisted page when the query cache is cold", async () => {
+    const persistedItems = [makeNews("persisted-1"), makeNews("persisted-2")]
+    window.localStorage.setItem("news:list:ru", JSON.stringify(persistedItems))
+    newsListMock.mockResolvedValue({ status: 304, data: undefined })
+
+    const queryClient = freshClient()
+    const { result } = renderHook(() => useNewsListQuery({ language: "ru" }), {
+      wrapper: makeWrapper(queryClient),
+    })
+
+    await waitFor(() => expect(newsListMock).toHaveBeenCalledOnce())
+    await waitFor(() => expect(result.current.isFetching).toBe(false))
+    expect(result.current.news).toEqual(persistedItems)
+  })
+
   it("normalizes malformed pagination fields to safe defaults", async () => {
     newsListMock.mockResolvedValue({
       status: 200,
@@ -217,6 +232,21 @@ describe("mergeNewsPages dedupe (news.ts:140 via shared id across pages)", () =>
 
 // ── useNewsListQuery placeholderData offline-success path (news.ts:255-270) ───
 describe("useNewsListQuery placeholderData offline (news.ts:255-270)", () => {
+  it("persists a successful news response for a later offline mount", async () => {
+    const received = [makeNews("cached-1"), makeNews("cached-2")]
+    newsListMock.mockResolvedValue(okPage(received, null))
+
+    const queryClient = freshClient()
+    const { result } = renderHook(() => useNewsListQuery({ language: "ru" }), {
+      wrapper: makeWrapper(queryClient),
+    })
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    await waitFor(() =>
+      expect(window.localStorage.getItem("news:list:ru")).toBe(JSON.stringify(received))
+    )
+  })
+
   it("seeds news from localStorage when no network response yet", async () => {
     const stored = [makeNews("p1"), makeNews("p2")]
     // key shape: news:list:<language>

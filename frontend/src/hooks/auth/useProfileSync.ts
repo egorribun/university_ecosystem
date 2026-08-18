@@ -759,11 +759,7 @@ export const useProfileSync = (
     let mounted = true
     const init = async () => {
       if (!isProfileSyncBrowserRuntime()) return
-      try {
-        migrateProfileCache()
-      } catch {
-        // ignore
-      }
+      migrateProfileCache()
 
       // Read from the ref for initialization
       const signingKey = sessionSigningKeyRef.current
@@ -869,9 +865,7 @@ export const useProfileSync = (
       // We need to clear session signing key too.
       // We need to call updateSessionSigningKey(null)
       // But we also need to clear the promise ref.
-      if (sessionSigningKeyPromiseRef) {
-        sessionSigningKeyPromiseRef.current = null
-      }
+      sessionSigningKeyPromiseRef.current = null
       updateSessionSigningKey(null)
       clearProfile({ persist })
       updatePendingMfa(null, { broadcast })

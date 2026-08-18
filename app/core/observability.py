@@ -47,7 +47,7 @@ try:
         Histogram,
         generate_latest,
     )
-except Exception:  # pragma: no cover - optional dependency guard  # RZ-22-01-JUSTIFIED: optional dependency — prometheus_client may not be installed (reviewed TD-27-04)
+except Exception:  # RZ-22-01-JUSTIFIED: optional dependency — prometheus_client may not be installed (reviewed TD-27-04)
     CONTENT_TYPE_LATEST = "text/plain; version=0.0.4; charset=utf-8"
     CollectorRegistry: Any = None  # type: ignore[no-redef]
     Counter: Any = None  # type: ignore[no-redef]

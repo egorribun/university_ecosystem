@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { useTranslation } from "react-i18next"
 import { Search as SearchIcon } from "lucide-react"
 
@@ -55,6 +55,7 @@ export function EventCreateDialog({ open, onClose, onCreated, language }: EventC
   const [draft, setDraft] = useState<EventDraft>(INITIAL_DRAFT)
   const [imageUploading, setImageUploading] = useState(false)
   const [preview, setPreview] = useState<string | null>(null)
+  const uploadGenerationRef = useRef(0)
 
   const getLocalizedValue = (
     field: "title" | "description" | "event_type" | "location" | "about"
@@ -72,17 +73,22 @@ export function EventCreateDialog({ open, onClose, onCreated, language }: EventC
   }
 
   const handleImageUpload = async (file: File) => {
+    const uploadGeneration = ++uploadGenerationRef.current
     setImageUploading(true)
     const localUrl = URL.createObjectURL(file)
-    setPreview((previous) => {
-      if (previous) URL.revokeObjectURL(previous)
-      return localUrl
-    })
+    setPreview(localUrl)
     try {
       const imageUrl = await uploadEventImage(file)
+      if (uploadGeneration !== uploadGenerationRef.current) return
+
       setDraft((previous) => ({ ...previous, image_url: imageUrl }))
+      // The server URL is canonical after upload; releasing the temporary Blob
+      // also keeps the rendered preview aligned with the value that is submitted.
+      setPreview(null)
     } finally {
-      setImageUploading(false)
+      if (uploadGeneration === uploadGenerationRef.current) {
+        setImageUploading(false)
+      }
     }
   }
 
@@ -93,9 +99,16 @@ export function EventCreateDialog({ open, onClose, onCreated, language }: EventC
     }
   }, [preview])
 
+  useEffect(() => {
+    return () => {
+      uploadGenerationRef.current += 1
+    }
+  }, [])
+
   const handleClose = () => {
+    uploadGenerationRef.current += 1
     setDraft(INITIAL_DRAFT)
-    if (preview) URL.revokeObjectURL(preview)
+    setImageUploading(false)
     setPreview(null)
     onClose()
   }
@@ -197,7 +210,7 @@ export function EventCreateDialog({ open, onClose, onCreated, language }: EventC
               {(preview || draft.image_url) && (
                 <div className="mt-3 overflow-hidden rounded-md border border-glass-border shadow-glass">
                   <SmartImage
-                    srcRaw={preview || draft.image_url || ""}
+                    srcRaw={preview || draft.image_url}
                     alt={t("events:alt.preview")}
                     className="aspect-video w-full object-cover"
                   />

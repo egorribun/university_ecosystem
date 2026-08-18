@@ -114,4 +114,20 @@ describe("ProfileSection closure", () => {
     expect(profileState.uploadAvatar).toHaveBeenCalledWith(avatarFile)
     expect(profileState.uploadCover).toHaveBeenCalledWith(coverFile)
   })
+
+  it("ignores empty file selections", () => {
+    const { container } = render(
+      <LazyMotion features={domAnimation}>
+        <ProfileSection setSnackbar={vi.fn()} />
+      </LazyMotion>
+    )
+
+    const [avatarInput, coverInput] =
+      container.querySelectorAll<HTMLInputElement>('input[type="file"]')
+    fireEvent.change(avatarInput!, { target: { files: [] } })
+    fireEvent.change(coverInput!, { target: { files: [] } })
+
+    expect(profileState.uploadAvatar).not.toHaveBeenCalled()
+    expect(profileState.uploadCover).not.toHaveBeenCalled()
+  })
 })

@@ -3,7 +3,7 @@
 Targets UNCOVERED branches not already addressed by:
   - tests/test_email_utils.py
   - tests/test_utils_email.py
-  - tests/test_utils_email_booster.py
+  - tests/test_email_utilities.py
 
 Specific coverage targets:
   - _log_event: disabled-logger fallback path

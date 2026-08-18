@@ -14,7 +14,7 @@ name: ue-sandbox
 
 services:
   postgres:
-    image: pgvector/pgvector:pg17
+    image: pgvector/pgvector:pg17@sha256:cf134a767f474095eeba57e0117be8e568e011a63f33fbf252f14c9b760f8e6f
     command: ["postgres", "-c", "max_connections=500"]
     environment:
       POSTGRES_USER: test
@@ -30,7 +30,7 @@ services:
       retries: 12
 
   redis:
-    image: redis:7.4.2-alpine
+    image: redis:7.4.2-alpine@sha256:02419de7eddf55aa5bcf49efb74e88fa8d931b4d77c07eff8a6b2144472b6952
     # 16379 (not 56379) — the 55000-57000 range is frequently reserved by
     # Windows WinNAT/Hyper-V (`netsh int ipv4 show excludedportrange tcp`).
     ports:
@@ -42,7 +42,7 @@ services:
       retries: 12
 
   nats:
-    image: nats:2.12.6-alpine
+    image: nats:2.12.6-alpine@sha256:1cfc36e2e5e638243d8c722f72c954cd0ec4b15ee82fadbc718ce12e2b3c1652
     # JetStream (-js) enabled + HTTP monitoring on 8222 for the healthcheck.
     # No auth: test-only, isolated, ephemeral.
     command: ["-js", "-m", "8222"]
@@ -55,7 +55,7 @@ services:
       retries: 12
 
   minio:
-    image: minio/minio:RELEASE.2025-09-07T16-13-09Z
+    image: minio/minio:RELEASE.2025-09-07T16-13-09Z@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e
     command: server /data --console-address ":9001"
     environment:
       MINIO_ROOT_USER: minioadmin

@@ -134,6 +134,7 @@ describe("useScheduleTime", () => {
 
     // Switch to visible and trigger event
     act(() => {
+      document.dispatchEvent(new Event("visibilitychange"))
       Object.defineProperty(document, "visibilityState", {
         value: "visible",
         configurable: true,

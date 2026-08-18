@@ -56,13 +56,16 @@ export default function DashboardStories({
   const goToIndex = useCallback(
     (nextIndex: number) => {
       const next = Math.max(0, Math.min(displayStories.length - 1, nextIndex))
+      const story = displayStories[next]
+      if (!story) {
+        closeViewer()
+        return
+      }
       setProgress(0)
       setOpenIndex(next)
-      if (displayStories[next]) {
-        onStoryOpen?.(displayStories[next])
-      }
+      onStoryOpen?.(story)
     },
-    [displayStories, onStoryOpen]
+    [closeViewer, displayStories, onStoryOpen]
   )
 
   const goNext = useCallback(() => {

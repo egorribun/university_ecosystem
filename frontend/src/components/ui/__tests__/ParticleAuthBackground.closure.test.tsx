@@ -107,6 +107,12 @@ describe("ParticleAuthBackground closure", () => {
     document.documentElement.style.setProperty("--primary-hover", "#654321")
     act(() => {
       mutationCallback?.(
+        [{ type: "childList", attributeName: null } as MutationRecord],
+        {} as MutationObserver
+      )
+    })
+    act(() => {
+      mutationCallback?.(
         [
           { type: "childList", attributeName: null } as MutationRecord,
           { type: "attributes", attributeName: "class" } as MutationRecord,

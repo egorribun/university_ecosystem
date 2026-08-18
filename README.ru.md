@@ -10,10 +10,10 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.14](https://img.shields.io/badge/Python-3.14-3776AB.svg?logo=python&logoColor=white)](https://www.python.org/)
-[![Python Coverage](https://img.shields.io/badge/Python_Coverage-93%25-brightgreen.svg?logo=pytest&logoColor=white)](TESTING.md)
-[![Go Coverage](https://img.shields.io/badge/Go_Coverage-88%25-brightgreen.svg?logo=go&logoColor=white)](TESTING.md)
-[![Rust Coverage](https://img.shields.io/badge/Rust_Coverage-95%25-brightgreen.svg?logo=rust&logoColor=white)](TESTING.md)
-[![Frontend Coverage](https://img.shields.io/badge/Frontend_Coverage-92%25-brightgreen.svg?logo=vitest&logoColor=white)](TESTING.md)
+[![Python Coverage Gate](https://img.shields.io/badge/Python_Coverage_Gate-100%25-brightgreen.svg?logo=pytest&logoColor=white)](TESTING.md)
+[![Go Coverage Gate](https://img.shields.io/badge/Go_Coverage_Gate-100%25-brightgreen.svg?logo=go&logoColor=white)](TESTING.md)
+[![Rust Coverage Gate](https://img.shields.io/badge/Rust_Coverage_Gate-100%25-brightgreen.svg?logo=rust&logoColor=white)](TESTING.md)
+[![Frontend Coverage Gate](https://img.shields.io/badge/Frontend_Coverage_Gate-100%25-brightgreen.svg?logo=vitest&logoColor=white)](TESTING.md)
 [![React 19](https://img.shields.io/badge/React-19-61DAFB.svg?logo=react&logoColor=black)](https://react.dev/)
 [![Vite 8 / Rolldown](https://img.shields.io/badge/Vite-8_%2F_Rolldown-646CFF.svg?logo=vite&logoColor=white)](https://vitejs.dev/)
 [![Go 1.26](https://img.shields.io/badge/Go-1.26-00ADD8.svg?logo=go&logoColor=white)](https://go.dev/)
@@ -186,12 +186,12 @@ sequenceDiagram
 
 ## 🛠️ Технологический стек
 
-| Слой | Технологии | Роль | Реальное покрытие |
+| Слой | Технологии | Роль | Гейт покрытия |
 | :--- | :--- | :--- | :---: |
-| **Frontend** | React 19, Vite 8/Rolldown, Valibot, Framer Motion, TanStack | Matte UX, доступность (WCAG 2.2 AA), PWA | **92%** |
-| **Backend API** | FastAPI, Python 3.14, Dishka DI, SQLAlchemy 2.0, GraphQL | Основная бизнес-логика, REST и GraphQL API | **93%** |
-| **Микросервисы** | Go 1.26, NATS, gRPC, Temporal Go SDK | Высоконагруженный чат и обработка медиа | **88%** |
-| **Производительность**| Rust, PyO3, Rayon, Maturin | Нативное вычисление расписания и HMAC | **95%** |
+| **Frontend** | React 19, Vite 8/Rolldown, Valibot, Framer Motion, TanStack | Matte UX, доступность (WCAG 2.2 AA), PWA | **100%** |
+| **Backend API** | FastAPI, Python 3.14, Dishka DI, SQLAlchemy 2.0, GraphQL | Основная бизнес-логика, REST и GraphQL API | **100%** |
+| **Микросервисы** | Go 1.26, NATS, gRPC, Temporal Go SDK | Высоконагруженный чат и обработка медиа | **100%** |
+| **Производительность**| Rust, PyO3, Rayon, Maturin | Нативное вычисление расписания и HMAC | **100%** |
 | **Авторизация** | Argon2id, SpiceDB, WebAuthn/Passkeys, Kyverno, CSRF nonces | Zero-Trust ReBAC, аппаратная MFA и политики | Подтверждено |
 | **Данные и Кэш** | PostgreSQL 17, pgvector, Valkey / Redis 7 (`volatile-lru`) | Реляционные и векторные данные, L1/L2 кэш | Подтверждено |
 | **Observability** | OTEL, Tempo, Prometheus, Pyroscope 1.19, Loki + Fluent Bit | Полный 360° мониторинг, трассы и логи | Подтверждено |

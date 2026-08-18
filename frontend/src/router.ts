@@ -62,7 +62,7 @@ const createAppRouter = () => {
   // Read SSR-injected auth state if running under server.ts; falls through to
   // DEFAULT_AUTH on the client where the value is unused (client-side route
   // guards read Zustand directly per Wave 174 SW1).
-  const ssrAuth = typeof globalThis !== "undefined" ? globalThis.__ssrAuthGetter__?.() : undefined
+  const ssrAuth = globalThis.__ssrAuthGetter__?.()
 
   return createRouter({
     routeTree,

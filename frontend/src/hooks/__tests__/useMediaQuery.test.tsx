@@ -123,4 +123,25 @@ describe("useMediaQuery", () => {
     expect(addListener).toHaveBeenCalledOnce()
     expect(removeListener).toHaveBeenCalledOnce()
   })
+
+  it("tolerates media-query lists without either listener API", () => {
+    Object.defineProperty(window, "matchMedia", {
+      configurable: true,
+      value: vi.fn(
+        () =>
+          ({
+            matches: true,
+            media: "(static)",
+            addEventListener: undefined,
+            removeEventListener: undefined,
+            addListener: undefined,
+            removeListener: undefined,
+          }) as unknown as MediaQueryList
+      ),
+    })
+
+    const { result, unmount } = renderHook(() => useMediaQuery("(static)"))
+    expect(result.current).toBe(true)
+    expect(() => unmount()).not.toThrow()
+  })
 })

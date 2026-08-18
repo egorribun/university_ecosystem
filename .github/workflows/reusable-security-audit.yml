@@ -32,7 +32,7 @@ jobs:
   pip-audit:
     name: Python Dependency Audit
     if: ${{ inputs.run-pip-audit }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
       - name: Checkout
@@ -80,7 +80,7 @@ jobs:
   npm-audit:
     name: Node.js Dependency Audit
     if: ${{ inputs.run-npm-audit }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 25
     defaults:
       run:
@@ -124,7 +124,7 @@ jobs:
 
   docker-security:
     name: Container Security Scan
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     permissions:
       contents: read
@@ -147,6 +147,8 @@ jobs:
           sudo apt-get install -y trivy
 
       - name: Run Trivy vulnerability scanner (filesystem)
+        id: trivy_fs
+        continue-on-error: true
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           scan-type: "fs"
@@ -159,10 +161,12 @@ jobs:
           limit-severities-for-sarif: true
           # skip-setup-trivy: use the binary we installed above via apt
           skip-setup-trivy: true
-          # fs scan feeds advisory SARIF; blocking is enforced by the image scan in build-and-sign
-          exit-code: "0"
+          # Preserve SARIF upload, then re-assert this blocking result below.
+          exit-code: "1"
 
       - name: Run Trivy configuration scanner (IaC)
+        id: trivy_config
+        continue-on-error: true
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           scan-type: "config"
@@ -181,7 +185,7 @@ jobs:
           # SARIF, which can block the zero-alert ruleset while the job is green.
           limit-severities-for-sarif: true
           skip-setup-trivy: true
-          exit-code: "0"
+          exit-code: "1"
 
       - name: Upload Trivy filesystem scan results
         uses: github/codeql-action/upload-sarif@ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd # v4.37.7
@@ -202,10 +206,29 @@ jobs:
           sarif_file: "trivy-config.sarif"
           category: "trivy-config"
 
+      - name: Re-assert Trivy filesystem and configuration gates
+        if: always()
+        shell: bash
+        env:
+          FILESYSTEM_OUTCOME: ${{ steps.trivy_fs.outcome }}
+          CONFIGURATION_OUTCOME: ${{ steps.trivy_config.outcome }}
+        run: |
+          set -euo pipefail
+          failed=0
+          if [[ "$FILESYSTEM_OUTCOME" != "success" ]]; then
+            echo "::error::Trivy filesystem scan concluded '$FILESYSTEM_OUTCOME'."
+            failed=1
+          fi
+          if [[ "$CONFIGURATION_OUTCOME" != "success" ]]; then
+            echo "::error::Trivy configuration scan concluded '$CONFIGURATION_OUTCOME'."
+            failed=1
+          fi
+          exit "$failed"
+
   # ── Go vulnerability scanning ──────────────────────────────────────────────
   govulncheck:
     name: Go Vulnerability Scan
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
       - name: Checkout
@@ -238,7 +261,7 @@ jobs:
   # ── SBOM generation ────────────────────────────────────────────────────────
   sbom:
     name: Generate SBOM
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
       - name: Checkout
@@ -268,7 +291,7 @@ jobs:
   # that any baseline change requires security-team approval.
   detect-secrets-baseline:
     name: detect-secrets Baseline Integrity
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
       - name: Checkout
@@ -301,7 +324,7 @@ jobs:
   # (MOD-5: audit 2026-02-24)
   semgrep:
     name: Semgrep SAST
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     if: github.actor != 'dependabot[bot]'
     permissions:
@@ -309,7 +332,7 @@ jobs:
       security-events: write
       actions: read
     container:
-      image: semgrep/semgrep:1.113.0  # RZ-22-03: pin to specific version
+      image: semgrep/semgrep:1.113.0@sha256:136c094630123be54d7f832217fd0a217d148a8bfea08c7c366ce17f94cfdb22
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

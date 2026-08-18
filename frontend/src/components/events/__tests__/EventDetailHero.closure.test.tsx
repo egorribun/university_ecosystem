@@ -95,6 +95,9 @@ describe("EventDetailHero closure", () => {
     fireEvent.click(lightboxImage!)
     expect(screen.getByRole("dialog")).toBeInTheDocument()
 
+    fireEvent.keyDown(document, { key: "Enter" })
+    expect(screen.getByRole("dialog")).toBeInTheDocument()
+
     fireEvent.keyDown(document, { key: "Escape" })
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
 

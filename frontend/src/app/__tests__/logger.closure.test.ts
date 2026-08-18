@@ -109,4 +109,32 @@ describe("logger closure paths", () => {
     expect(() => setTraceContext(undefined)).not.toThrow()
     expect(() => logError("still logged")).not.toThrow()
   })
+
+  it("continues safely when a console method and Sentry message capture are unavailable", () => {
+    resetLoggerMocks()
+    const originalInfo = Object.getOwnPropertyDescriptor(console, "info")
+    Object.defineProperty(console, "info", { configurable: true, value: undefined })
+    setLoggerClient({ captureMessage: undefined })
+
+    try {
+      expect(() => logInfo("not writable")).not.toThrow()
+      expect(() => logError(42)).not.toThrow()
+    } finally {
+      if (originalInfo) Object.defineProperty(console, "info", originalInfo)
+      setLoggerClient({ captureMessage })
+    }
+  })
+
+  it("suppresses debug output outside development", () => {
+    resetLoggerMocks()
+    const consoleLog = vi.spyOn(console, "log").mockImplementation(() => {})
+    vi.stubEnv("DEV", false)
+
+    try {
+      logDebug("production detail")
+      expect(consoleLog).not.toHaveBeenCalled()
+    } finally {
+      vi.unstubAllEnvs()
+    }
+  })
 })

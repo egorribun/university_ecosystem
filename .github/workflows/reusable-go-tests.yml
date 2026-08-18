@@ -25,7 +25,7 @@ on:
 jobs:
   test:
     name: Test Go Service (${{ inputs.service-directory }})
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 60
     permissions:
       contents: read
@@ -97,22 +97,33 @@ jobs:
           EVENT_NAME: ${{ github.event_name }}
           SERVICE_DIRECTORY: ${{ inputs.service-directory }}
         run: |
+          set -euo pipefail
           # Configure base ref for diff
           if [ "$EVENT_NAME" = "pull_request" ]; then
-            git fetch origin "$BASE_REF_NAME" --depth=1 || true
+            git fetch origin "$BASE_REF_NAME" --depth=1
             BASE_REF="origin/$BASE_REF_NAME"
           else
-            git fetch origin main --depth=1 || true
+            git fetch origin main --depth=1
             BASE_REF="HEAD~1"
-            if ! git rev-parse "$BASE_REF" >/dev/null 2>&1; then
+            if ! git rev-parse --verify "${BASE_REF}^{commit}" >/dev/null 2>&1; then
               BASE_REF="origin/main"
             fi
+          fi
+          if ! git rev-parse --verify "${BASE_REF}^{commit}" >/dev/null 2>&1; then
+            echo "::error::Unable to resolve mutation-test base revision '$BASE_REF'."
+            exit 1
           fi
 
           echo "Comparing against $BASE_REF to find modified Go files..."
 
           # Find modified Go files within the service directory (excluding tests and generated files)
-          CHANGED_FILES=$(git diff --name-only "$BASE_REF"...HEAD | grep "^${SERVICE_DIRECTORY}/" | grep "\.go$" | grep -v "_test\.go$" | grep -v "\.pb\.go$" | grep -v "/gen/" || true)
+          CHANGED_PATHS="$(git diff --name-only "$BASE_REF"...HEAD)"
+          CHANGED_FILES="$(
+            printf '%s\n' "$CHANGED_PATHS" \
+              | grep -E "^${SERVICE_DIRECTORY}/.*\.go$" \
+              | grep -vE "_test\.go$|\.pb\.go$|/gen/" \
+              || true
+          )"
 
           if [ -z "$CHANGED_FILES" ]; then
             echo "No changed Go source files found in $SERVICE_DIRECTORY. Skipping mutation tests."
@@ -140,8 +151,8 @@ jobs:
           # Clean up whitespace
           PACKAGES=$(echo "$PACKAGES" | xargs)
           if [ -z "$PACKAGES" ]; then
-            echo "No target packages resolved. Skipping."
-            exit 0
+            echo "::error::Changed Go files were found, but no mutation-test packages were resolved."
+            exit 1
           fi
 
           echo "Running mutation tests on: $PACKAGES"
@@ -152,12 +163,19 @@ jobs:
             log_file="/tmp/go-mutesting-${pkg//[^A-Za-z0-9_.-]/_}.log"
             set +e
             timeout 300s go-mutesting "$pkg" 2>&1 | tee "$log_file"
-            status=${PIPESTATUS[0]}
+            pipeline_status=("${PIPESTATUS[@]}")
+            status=${pipeline_status[0]}
+            tee_status=${pipeline_status[1]}
             set -e
+            if [ "$tee_status" -ne 0 ]; then
+              echo "::error::Unable to persist go-mutesting output for $pkg (tee exit $tee_status)."
+              exit "$tee_status"
+            fi
             if [ "$status" -ne 0 ]; then
               if grep -Eq 'panic: runtime error|go/types\.\(\*StdSizes\)\.Sizeof' "$log_file"; then
-                echo "::warning::go-mutesting crashed under the current Go/toolchain for $pkg; treating this known tool panic as advisory."
-                continue
+                echo "::error::go-mutesting crashed under the current Go/toolchain for $pkg. Mutation evidence is required."
+              else
+                echo "::error::go-mutesting failed for $pkg with exit code $status."
               fi
               exit "$status"
             fi
@@ -185,7 +203,7 @@ jobs:
 
   lint:
     name: Lint Go Service (${{ inputs.service-directory }})
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

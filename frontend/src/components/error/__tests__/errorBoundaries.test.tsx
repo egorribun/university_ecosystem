@@ -24,6 +24,7 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  vi.unstubAllEnvs()
   consoleError.mockRestore()
   consoleWarn.mockRestore()
 })
@@ -103,6 +104,18 @@ describe("FeatureErrorBoundary", () => {
     expect(onError).toHaveBeenCalledTimes(1)
     expect(onError.mock.calls[0]![0]).toBeInstanceOf(Error)
   })
+
+  it("can suppress Sentry reporting and development logging", () => {
+    vi.stubEnv("DEV", false)
+
+    render(
+      <FeatureErrorBoundary reportToSentry={false}>
+        <BrokenComponent />
+      </FeatureErrorBoundary>
+    )
+
+    expect(screen.getByRole("alert")).toBeInTheDocument()
+  })
 })
 
 describe("WidgetErrorBoundary", () => {
@@ -159,5 +172,17 @@ describe("WidgetErrorBoundary", () => {
 
     expect(onError).toHaveBeenCalledTimes(1)
     expect(onError.mock.calls[0]![0]).toBeInstanceOf(Error)
+  })
+
+  it("keeps the silent fallback in production without development logging", () => {
+    vi.stubEnv("DEV", false)
+
+    const { container } = render(
+      <WidgetErrorBoundary>
+        <BrokenComponent />
+      </WidgetErrorBoundary>
+    )
+
+    expect(container.firstChild).toBeNull()
   })
 })

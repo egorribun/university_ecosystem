@@ -249,10 +249,12 @@ export const useAuthApi = (
           trust_device: trustDevice ?? false,
         }
 
-        if (method === "totp" || method === "recovery_code") {
-          payload.code = code
-        } else if (method === "webauthn") {
+        if (method === "webauthn") {
           payload.webauthn_response = webauthnResponse as { [key: string]: unknown }
+        } else {
+          // MfaVerifyPayload is an exhaustive union: every non-WebAuthn
+          // method (TOTP and recovery code) is represented by a code.
+          payload.code = code
         }
 
         const response = await api.post<TokenWithProfileResponse>("/auth/mfa/verify", payload, {

@@ -31,7 +31,7 @@ export function parseAchievements(achievementsStr: string | null | undefined): A
     .filter(Boolean)
     .map((raw, index) => {
       const [name, issuer, date, url] = raw.split("|").map((s) => s.trim())
-      return { key: `${raw}-${index}`, name: name ?? raw, issuer, date, url }
+      return { key: `${raw}-${index}`, name: name || raw, issuer, date, url }
     })
 }
 

@@ -672,4 +672,22 @@ describe("useEventNavigation (events.ts:482-525)", () => {
     expect(result.current.prevId).toBeNull()
     expect(result.current.nextId).toBeNull()
   })
+
+  it("ignores cached pages that do not contain an items array", () => {
+    const queryClient = freshClient()
+    queryClient.setQueryData(["events", "list", { language: "ru" }], {
+      pages: [{}, { items: [makeEvent("present")] }],
+    })
+
+    const { result } = renderHook(() => useEventNavigation("present"), {
+      wrapper: makeWrapper(queryClient),
+    })
+
+    expect(result.current).toEqual({
+      prevId: null,
+      nextId: null,
+      prevTitle: null,
+      nextTitle: null,
+    })
+  })
 })

@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest"
 import { act, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { ThemeProvider } from "@/contexts/ThemeContext"
-import type { ComponentProps } from "react"
+import type { ComponentProps, ReactNode } from "react"
 
 import DashboardStories from "../DashboardStories"
 import type { StoryItem } from "@/types/Story"
@@ -35,6 +35,7 @@ const translations: Record<string, string> = {
 }
 
 vi.mock("react-i18next", () => ({
+  I18nextProvider: ({ children }: { children?: ReactNode }) => <>{children}</>,
   useTranslation: () => ({
     t: (key: string, options: Record<string, unknown> = {}) => {
       const namespaced = key.includes(":") ? key : `dashboard:${key}`
@@ -227,9 +228,12 @@ describe("DashboardStories", () => {
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument())
   })
 
-  it("omits the stories heading when there are no stories", async () => {
+  it("renders an honest empty state when there are no stories", async () => {
     await renderStories({ stories: [] })
 
-    expect(screen.queryByRole("heading", { name: "Stories" })).not.toBeInTheDocument()
+    expect(screen.getByRole("heading", { name: "Stories" })).toBeInTheDocument()
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "No stories yetStories will be published soon."
+    )
   })
 })

@@ -58,7 +58,7 @@ export function usePasswordChange({
           )
           .filter(Boolean)
           .join("; ")
-        if (combined) return combined
+        return combined || fallback
       }
     }
     return fallback

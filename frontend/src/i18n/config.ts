@@ -1,59 +1,80 @@
-import i18n, { type ResourceKey } from "i18next"
+import i18n, {
+  createInstance,
+  type InitOptions,
+  type Resource,
+  type ResourceKey,
+  type i18n as I18nInstance,
+} from "i18next"
 import { initReactI18next } from "react-i18next"
-import type { BackendModule } from "i18next"
 import { defaultNS, fallbackLng, localeMeta, namespaces, supportedLngs } from "./metadata"
 
-export const localeLoaders = import.meta.glob("./locales/*/*.json", {
+declare global {
+  var __ssrI18nGetter__: (() => I18nInstance | undefined) | undefined
+}
+
+export const localeModules = import.meta.glob<ResourceKey>("./locales/*/*.json", {
+  eager: true,
   import: "default",
 })
 
-export const dynamicBackend: BackendModule = {
-  type: "backend",
-  init() {
-    // No initialization required for the dynamic import backend
-  },
-  read(language, namespace, callback) {
-    const key = `./locales/${language}/${namespace}.json`
-    const loader = localeLoaders[key]
-    if (!loader) {
-      callback(new Error(`Missing locale file for ${language}/${namespace}`), null)
-      return
-    }
+export const resources: Resource = Object.entries(localeModules).reduce<Resource>(
+  (result, [path, resource]) => {
+    const match = /^\.\/locales\/([^/]+)\/([^/]+)\.json$/.exec(path)
+    if (!match) return result
 
-    ;(loader as () => Promise<unknown>)()
-      .then((module) =>
-        callback(
-          null,
-          ((module as { default?: ResourceKey }).default ?? (module as ResourceKey)) as ResourceKey
-        )
-      )
-      .catch((error) => callback(error as Error, null))
+    const language = match[1]
+    const namespace = match[2]
+    if (!language || !namespace) return result
+    result[language] ??= {}
+    result[language][namespace] = resource
+    return result
   },
+  {}
+)
+
+const createOptions = (language: string): InitOptions => ({
+  defaultNS,
+  fallbackLng,
+  supportedLngs,
+  ns: namespaces,
+  resources,
+  lng: language,
+  load: "currentOnly",
+  nonExplicitSupportedLngs: false,
+  interpolation: {
+    escapeValue: false,
+  },
+  react: {
+    useSuspense: false,
+  },
+  returnNull: false,
+  saveMissing: false,
+  cleanCode: true,
+  partialBundledLanguages: false,
+  pluralSeparator: "_",
+  keySeparator: ".",
+  // All locale resources are bundled. Synchronous initialization guarantees
+  // the first server and browser render see the same translated text.
+  initImmediate: false,
+})
+
+const configureInstance = (instance: I18nInstance, language: string): I18nInstance => {
+  void instance.use(initReactI18next).init(createOptions(language))
+  return instance
 }
 
-void i18n
-  .use(dynamicBackend)
-  .use(initReactI18next)
-  .init({
-    defaultNS,
-    fallbackLng,
-    supportedLngs,
-    ns: namespaces,
-    load: "currentOnly",
-    nonExplicitSupportedLngs: false,
-    interpolation: {
-      escapeValue: false,
-    },
-    react: {
-      useSuspense: false,
-    },
-    returnNull: false,
-    saveMissing: false,
-    cleanCode: true,
-    partialBundledLanguages: true,
-    pluralSeparator: "_",
-    keySeparator: ".",
-  })
+export const createI18nInstance = (language = fallbackLng): I18nInstance =>
+  configureInstance(createInstance(), language)
+
+const resolveBootstrapLanguage = (): string => {
+  if (typeof window === "undefined") return fallbackLng
+  const selected = window.__UE_SELECTED_LANG__
+  return supportedLngs.includes(selected as (typeof supportedLngs)[number])
+    ? selected!
+    : fallbackLng
+}
+
+configureInstance(i18n, resolveBootstrapLanguage())
 
 export { defaultNS, fallbackLng, supportedLngs, namespaces, localeMeta }
 

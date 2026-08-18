@@ -41,6 +41,32 @@ describe("queryClient quota closure paths", () => {
     expect(warn).toHaveBeenCalledWith(expect.stringContaining("Cache too large"))
   })
 
+  it("skips an oversized cache without development logging in production", async () => {
+    vi.stubEnv("DEV", false)
+    const estimate = vi.fn().mockResolvedValue({ quota: 1_000 })
+    vi.stubGlobal("navigator", { storage: { estimate } })
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {})
+    const { createIDBPersister } = await import("@/app/queryClient")
+
+    await createIDBPersister("tiny-production").persistClient(makeClient("payload"))
+
+    expect(idbSet).not.toHaveBeenCalled()
+    expect(warn).not.toHaveBeenCalled()
+  })
+
+  it("clears a quota-exhausted cache without development logging in production", async () => {
+    vi.stubEnv("DEV", false)
+    vi.stubGlobal("navigator", { storage: { estimate: vi.fn().mockResolvedValue({ quota: 1e9 }) } })
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {})
+    idbSet.mockRejectedValueOnce(new DOMException("quota", "QuotaExceededError"))
+    const { createIDBPersister } = await import("@/app/queryClient")
+
+    await createIDBPersister("quota-production").persistClient(makeClient())
+
+    expect(idbDel).toHaveBeenCalledWith("quota-production")
+    expect(warn).not.toHaveBeenCalled()
+  })
+
   it("falls back to the default quota when the estimate is unavailable and memoizes it", async () => {
     const estimate = vi.fn().mockResolvedValue({ quota: 0 })
     vi.stubGlobal("navigator", { storage: { estimate } })

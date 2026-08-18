@@ -49,6 +49,7 @@ export function OfflineIndicator() {
     }
   }, [isOffline, show])
 
+  if (typeof document === "undefined") return null
   if (!show) return null
 
   const content = (
@@ -79,7 +80,7 @@ export function OfflineIndicator() {
     </div>
   )
 
-  return typeof document !== "undefined" ? createPortal(content, document.body) : null
+  return createPortal(content, document.body)
 }
 
 export default OfflineIndicator

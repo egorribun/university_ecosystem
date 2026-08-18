@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react"
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { describe, it, expect, vi, beforeEach } from "vitest"
 
@@ -140,8 +140,13 @@ describe("EventCreateDialog", () => {
     }
     const prevCreate = urlCtor.createObjectURL
     const prevRevoke = urlCtor.revokeObjectURL
-    urlCtor.createObjectURL = () => "blob:preview"
-    urlCtor.revokeObjectURL = () => {}
+    const createObjectURL = vi
+      .fn<(object: unknown) => string>()
+      .mockReturnValueOnce("blob:first-preview")
+      .mockReturnValueOnce("blob:second-preview")
+    const revokeObjectURL = vi.fn()
+    urlCtor.createObjectURL = createObjectURL
+    urlCtor.revokeObjectURL = revokeObjectURL
 
     try {
       const user = userEvent.setup()
@@ -152,7 +157,11 @@ describe("EventCreateDialog", () => {
       const file = new File(["x"], "banner.png", { type: "image/png" })
       await user.upload(fileInput, file)
 
-      expect(uploadEventImage).toHaveBeenCalledOnce()
+      const replacement = new File(["y"], "replacement.png", { type: "image/png" })
+      await user.upload(fileInput, replacement)
+
+      expect(uploadEventImage).toHaveBeenCalledTimes(2)
+      expect(revokeObjectURL).toHaveBeenCalledWith("blob:first-preview")
       // image preview block now visible (selected label key)
       expect(await screen.findByText("events:form.imageSelected")).toBeInTheDocument()
 
@@ -169,5 +178,84 @@ describe("EventCreateDialog", () => {
       urlCtor.createObjectURL = prevCreate
       urlCtor.revokeObjectURL = prevRevoke
     }
+  })
+
+  it("keeps a replacement upload canonical when an earlier upload resolves after cancel", async () => {
+    let resolveFirstUpload!: (url: string) => void
+    const firstUpload = new Promise<string>((resolve) => {
+      resolveFirstUpload = resolve
+    })
+    uploadEventImage
+      .mockImplementationOnce(() => firstUpload)
+      .mockResolvedValueOnce("https://cdn.example.com/replacement.png")
+
+    const urlCtor = URL as unknown as {
+      createObjectURL?: (obj: unknown) => string
+      revokeObjectURL?: (url: string) => void
+    }
+    const previousCreate = urlCtor.createObjectURL
+    const previousRevoke = urlCtor.revokeObjectURL
+    const createObjectURL = vi
+      .fn<(object: unknown) => string>()
+      .mockReturnValueOnce("blob:stale-preview")
+      .mockReturnValueOnce("blob:replacement-preview")
+    const revokeObjectURL = vi.fn()
+    urlCtor.createObjectURL = createObjectURL
+    urlCtor.revokeObjectURL = revokeObjectURL
+
+    try {
+      const user = userEvent.setup()
+      const onCreated = vi.fn()
+      render(<EventCreateDialog {...baseProps} onCreated={onCreated} />)
+
+      const firstInput = document.querySelector<HTMLInputElement>('input[type="file"]')!
+      await user.upload(firstInput, new File(["old"], "old.png", { type: "image/png" }))
+      expect(await screen.findByText("common:statuses.uploading")).toBeInTheDocument()
+      expect(screen.getByAltText("events:alt.preview")).toHaveAttribute("src", "blob:stale-preview")
+
+      await user.click(screen.getByRole("button", { name: "common:buttons.cancel" }))
+      expect(screen.queryByAltText("events:alt.preview")).not.toBeInTheDocument()
+      expect(revokeObjectURL).toHaveBeenCalledWith("blob:stale-preview")
+
+      const replacementInput = document.querySelector<HTMLInputElement>('input[type="file"]')!
+      await user.upload(
+        replacementInput,
+        new File(["new"], "replacement.png", { type: "image/png" })
+      )
+      await waitFor(() => expect(uploadEventImage).toHaveBeenCalledTimes(2))
+      const canonicalPreview = await screen.findByAltText("events:alt.preview")
+      const canonicalSrc = canonicalPreview.getAttribute("src")
+      expect(canonicalSrc).toContain("replacement.png")
+      expect(revokeObjectURL).toHaveBeenCalledWith("blob:replacement-preview")
+
+      await act(async () => {
+        resolveFirstUpload("https://cdn.example.com/stale.png")
+        await firstUpload
+      })
+
+      expect(screen.getByAltText("events:alt.preview")).toHaveAttribute("src", canonicalSrc)
+
+      await user.type(fieldByLabel("events:form.title"), "Replacement")
+      await user.type(fieldByLabel("events:form.location"), "Hall D")
+      await user.type(fieldByLabel("events:form.start"), "2026-01-15T10:00")
+      await user.type(fieldByLabel("events:form.end"), "2026-01-15T11:00")
+      await user.click(screen.getByRole("button", { name: "common:buttons.create" }))
+
+      expect(onCreated).toHaveBeenCalledWith(
+        expect.objectContaining({ image_url: "https://cdn.example.com/replacement.png" })
+      )
+    } finally {
+      urlCtor.createObjectURL = previousCreate
+      urlCtor.revokeObjectURL = previousRevoke
+    }
+  })
+
+  it("ignores a file-input change when no file was selected", () => {
+    render(<EventCreateDialog {...baseProps} />)
+    const fileInput = document.querySelector<HTMLInputElement>('input[type="file"]')!
+
+    fireEvent.change(fileInput, { target: { files: [] } })
+
+    expect(uploadEventImage).not.toHaveBeenCalled()
   })
 })

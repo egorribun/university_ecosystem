@@ -88,7 +88,7 @@ jobs:
     unit-tests:
         name: Unit Tests (${{ inputs.test-group-name }})
         if: ${{ inputs.run-unit-tests }}
-        runs-on: ubuntu-latest
+        runs-on: ubuntu-24.04
         timeout-minutes: 45
         permissions:
             contents: read
@@ -99,7 +99,7 @@ jobs:
             PYTHON_GIL: ${{ inputs.python-gil }}  # MOD-24-03: free-threading support
         services:
             redis:
-                image: redis:7-alpine
+                image: redis:7-alpine@sha256:e7723ff73d963f5cc6d9c4643ea3d989527a402a319239054e9472a7fb9219a2
                 ports:
                     - 6379:6379
                 options: >-
@@ -252,7 +252,7 @@ jobs:
     integration-tests:
         name: Integration Tests (${{ inputs.test-group-name }})
         if: ${{ inputs.run-integration-tests }}
-        runs-on: ubuntu-latest
+        runs-on: ubuntu-24.04
         timeout-minutes: 60
         env:
             SECRET_KEY: ${{ secrets.SECRET_KEY || 'dummy_secret_key_for_ci_tests_at_least_32_chars' }}
@@ -260,9 +260,11 @@ jobs:
             OTEL_SDK_DISABLED: "true"
             DATABASE_URL: postgresql+asyncpg://test:test@localhost:5432/test
             REDIS_URL: redis://localhost:6379
+            REVOCATION_REDIS_URL: redis://localhost:6380/0
+            RUN_INTEGRATION_TESTS: "1"
         services:
             postgres:
-                image: pgvector/pgvector:pg17
+                image: pgvector/pgvector:pg17@sha256:cf134a767f474095eeba57e0117be8e568e011a63f33fbf252f14c9b760f8e6f
                 env:
                     POSTGRES_USER: test
                     POSTGRES_PASSWORD: test
@@ -275,9 +277,18 @@ jobs:
                 ports:
                     - 5432:5432
             redis:
-                image: redis:7-alpine
+                image: redis:7-alpine@sha256:e7723ff73d963f5cc6d9c4643ea3d989527a402a319239054e9472a7fb9219a2
                 ports:
                     - 6379:6379
+                options: >-
+                    --health-cmd "redis-cli ping"
+                    --health-interval 10s
+                    --health-timeout 5s
+                    --health-retries 5
+            revocation-redis:
+                image: redis:7-alpine@sha256:e7723ff73d963f5cc6d9c4643ea3d989527a402a319239054e9472a7fb9219a2
+                ports:
+                    - 6380:6379
                 options: >-
                     --health-cmd "redis-cli ping"
                     --health-interval 10s
@@ -339,10 +350,10 @@ jobs:
                   # Docker Hub token/registry timeout must not turn a healthy
                   # integration suite into a false-negative CI failure.
                   $images = @(
-                    "nats:2.10-alpine",
-                    "postgres:15-alpine",
-                    "redis:7-alpine",
-                    "pgvector/pgvector:pg17"
+                    "nats:2.10.25-alpine@sha256:3290c829aa05ddd4da12026783ccaff86f3fbc1f0551722908a934c293cd6228",
+                    "postgres:15-alpine@sha256:fe0737ba566a2c5b2a28f34433c0a423261900ec17b9bf7ad115e1aae7e57f1b",
+                    "redis:7-alpine@sha256:e7723ff73d963f5cc6d9c4643ea3d989527a402a319239054e9472a7fb9219a2",
+                    "pgvector/pgvector:pg17@sha256:cf134a767f474095eeba57e0117be8e568e011a63f33fbf252f14c9b760f8e6f"
                   )
                   $maxAttempts = 5
 
@@ -396,6 +407,9 @@ jobs:
 
                   $pytestArgs = @(
                     $env:INTEGRATION_TEST_PATTERN,
+                    "tests/test_events_localization.py",
+                    "tests/test_migrations_runtime.py",
+                    "tests/test_query_plans.py",
                     "-v",
                     "--tb=short",
                     "-x"

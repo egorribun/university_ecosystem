@@ -1,13 +1,10 @@
 # Reusable Go Integration Tests Workflow
 #
 # Runs //go:build integration tagged tests via `make test-integration` —
-# requires Docker (pre-installed on GitHub-hosted ubuntu-latest runners).
-# Per ADR-022, these tests spin up real NATS / MinIO / Redis / ClamAV
-# containers via testcontainers-go to cover behaviour the in-process fakes
-# do not (Nak storms, MinIO multipart, Redis EVALSHA, JWKS hot-reload, etc).
-#
-# Initially non-blocking — promotes to required only when flake rate over
-# 30 days falls below 1 % per ADR-022 §Migration step 5.
+# requires Docker (pre-installed on GitHub-hosted ubuntu-24.04 runners).
+# Per ADR-022, these tests spin up real NATS, MinIO, and Redis containers via
+# testcontainers-go to cover semantics that in-process fakes cannot reproduce.
+# The jobs are required by the aggregate CI gate.
 name: Go Integration Tests
 
 permissions:
@@ -29,7 +26,7 @@ on:
 jobs:
   integration:
     name: Integration Tests (${{ inputs.service-directory }})
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     env:
       SERVICE_DIRECTORY: ${{ inputs.service-directory }}

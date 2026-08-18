@@ -229,6 +229,7 @@ function Ensure-DockerConfigRevision {
         "infrastructure/observability/loki.yaml",
         "infrastructure/observability/alloy/config.alloy",
         "infrastructure/observability/grafana/provisioning/datasources/datasources.yaml",
+        "k8s/flagd/flags.json",
         "infrastructure/Caddyfile"
     )
     $manifest = foreach ($relativePath in $relativePaths) {
@@ -622,7 +623,7 @@ function Wait-PrometheusTargets {
 
     $expectedJobs = @(
         "prometheus", "backend", "notifications-worker", "redis-exporter",
-        "minio", "tempo", "loki", "pyroscope", "gateway"
+        "minio", "tempo", "loki", "pyroscope", "gateway", "flagd"
     )
     $deadline = (Get-Date).AddSeconds($Timeout)
     $lastProblems = @("Prometheus target API has not responded yet")
@@ -944,7 +945,7 @@ docker compose -f $ComposeFile --env-file $EnvFile up -d --remove-orphans
 if ($LASTEXITCODE -ne 0) {
     Write-Err "Failed to start containers."
     docker compose -f $ComposeFile --env-file $EnvFile ps --all
-    docker compose -f $ComposeFile --env-file $EnvFile logs --tail=50 migrations postgres-databases-init minio-init spicedb-migrate temporal-admin-tools temporal-namespace-init backend outbox-worker 2>$null
+    docker compose -f $ComposeFile --env-file $EnvFile logs --tail=50 migrations postgres-databases-init minio-init spicedb-migrate temporal-admin-tools temporal-namespace-init flagd flagd-healthprobe backend outbox-worker 2>$null
     exit 1
 }
 
@@ -957,6 +958,7 @@ $services = [ordered]@{
     postgres      = @{ type = "docker"; service = "postgres"; ready = $false }
     redis         = @{ type = "docker"; service = "redis"; ready = $false }
     redisexporter = @{ type = "docker"; service = "redis-exporter"; ready = $false }
+    flagd         = @{ type = "docker"; service = "flagd-healthprobe"; ready = $false }
     backend       = @{ type = "docker"; service = "backend"; ready = $false }
     elasticsearch = @{ type = "docker"; service = "elasticsearch"; ready = $false }
     gateway       = @{ type = "http"; service = "gateway"; url = "http://localhost:8080/health"; ready = $false }

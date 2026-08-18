@@ -51,8 +51,11 @@ New-Item -ItemType Directory -Force artifacts/coverage/python | Out-Null
 uv run pytest tests -n 4 --dist loadfile --cov=app --cov-branch `
   --cov-report=xml:coverage.xml `
   --cov-report=json:artifacts/coverage/python/coverage.json `
-  --cov-report=term:skip-covered --cov-fail-under=0
+  --cov-report=term:skip-covered
 ```
+
+The command inherits the fail-closed threshold from `pyproject.toml`; do not
+override it on the command line.
 
 ### Frontend
 

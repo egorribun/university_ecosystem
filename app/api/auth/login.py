@@ -329,7 +329,7 @@ async def register(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(exc),
         ) from exc
-    except Exception as exc:  # pragma: no cover  # RZ-22-01-JUSTIFIED: convert-to-domain — converts registration errors to HTTP 400 (reviewed TD-27-04)
+    except Exception as exc:  # RZ-22-01-JUSTIFIED: convert-to-domain — converts registration errors to HTTP 400 (reviewed TD-27-04)
         await db.rollback()
         message = translate("errors.users.create_failed", locale=locale)
         raise HTTPException(

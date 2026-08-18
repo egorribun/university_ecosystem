@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 import { axe } from "jest-axe"
 
 import Register from "../Register"
+import api from "@/api/client"
 import { server } from "@/tests/mocks/server"
 import i18n from "../../i18n/config"
 import { renderWithRouter } from "@/tests/helpers/renderWithRouter"
@@ -131,6 +132,8 @@ describe("Register page", () => {
     await renderRegister()
 
     const emailInput = screen.getByLabelText(matchText(tAuth("fields.email")))
+    fireEvent.blur(emailInput)
+    expect(screen.queryByRole("button", { name: /gmail\.com/i })).not.toBeInTheDocument()
     await user.type(emailInput, "student@gmial.com")
     fireEvent.blur(emailInput)
 
@@ -267,6 +270,24 @@ describe("Register page", () => {
     await user.click(screen.getByRole("button", { name: tAuth("actions.signUp") }))
 
     expect(await screen.findByText(tAuth("register.error"))).toBeInTheDocument()
+  })
+
+  it("falls back to the translated error for a non-object transport failure", async () => {
+    const post = vi.spyOn(api, "post").mockRejectedValueOnce("offline")
+    const user = userEvent.setup()
+    await renderRegister()
+    await user.type(screen.getByLabelText(matchText(tAuth("fields.name"))), "Test User")
+    await user.type(screen.getByLabelText(matchText(tAuth("fields.email"))), "user@example.com")
+    await user.type(screen.getByLabelText(matchText(tAuth("fields.password"))), "password123")
+    await user.type(
+      screen.getByLabelText(matchText(tAuth("fields.confirmPassword"))),
+      "password123"
+    )
+
+    await user.click(screen.getByRole("button", { name: tAuth("actions.signUp") }))
+
+    expect(await screen.findByText(tAuth("register.error"))).toBeInTheDocument()
+    post.mockRestore()
   })
 
   it("shows client-side validation messages without calling the API", async () => {

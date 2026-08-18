@@ -180,6 +180,7 @@ describe("SearchDialog", () => {
   })
 
   it("supports keyboard result navigation, active-item scrolling, and Enter selection", async () => {
+    localStorage.setItem(RECENT_SEARCHES_KEY, JSON.stringify(["phys", "calculus"]))
     queryState.data = {
       query: "phys",
       results: {
@@ -225,7 +226,10 @@ describe("SearchDialog", () => {
     fireEvent.keyDown(input, { key: "Enter" })
 
     expect(navigateMock).toHaveBeenCalledWith({ to: "/news/n1" })
-    expect(JSON.parse(localStorage.getItem(RECENT_SEARCHES_KEY) ?? "null")).toEqual(["phys"])
+    expect(JSON.parse(localStorage.getItem(RECENT_SEARCHES_KEY) ?? "null")).toEqual([
+      "phys",
+      "calculus",
+    ])
     scrollIntoView.mockRestore()
   })
 

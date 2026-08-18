@@ -63,10 +63,11 @@ type HarnessOpts = {
   signingKey?: string | null
   updateSessionSigningKey?: (key: string | null) => void
   ensureSessionSigningKey?: () => Promise<string | null>
+  queryClient?: ReturnType<typeof createQueryClient>
 }
 
 const renderProfileSync = (opts: HarnessOpts = {}) => {
-  const queryClient = createQueryClient()
+  const queryClient = opts.queryClient ?? createQueryClient()
   const initialKey = opts.signingKey !== undefined ? opts.signingKey : mockSigningKey
   const signingKeyRef = { current: initialKey } as MutableRefObject<string | null>
   const promiseRef = { current: null } as MutableRefObject<Promise<string | null> | null>
@@ -135,6 +136,8 @@ beforeEach(() => {
 afterEach(() => {
   cleanup()
   vi.restoreAllMocks()
+  vi.unstubAllGlobals()
+  vi.unstubAllEnvs()
 })
 
 // ===========================================================================
@@ -899,6 +902,41 @@ describe("useProfileSync — auto-fetch effect", () => {
     expect(ensure).toHaveBeenCalled()
   })
 
+  it("suppresses signing-key diagnostics outside development", async () => {
+    vi.stubEnv("DEV", false)
+    const ensure = vi.fn(async () => {
+      throw new Error("key fetch failed")
+    })
+    vi.spyOn(api, "get").mockResolvedValue({ data: testUser } as any)
+
+    const { result } = renderProfileSync({
+      signingKey: mockSigningKey,
+      ensureSessionSigningKey: ensure,
+    })
+
+    await waitFor(() => expect(result.current.user?.id).toBe(testUser.id))
+    expect(ensure).toHaveBeenCalled()
+  })
+
+  it("absorbs rejected query cancellations during bootstrap and profile clearing", async () => {
+    const queryClient = createQueryClient()
+    const cancelQueries = vi
+      .spyOn(queryClient, "cancelQueries")
+      .mockRejectedValue(new Error("cancellation unavailable"))
+    vi.spyOn(api, "get").mockResolvedValue({ data: testUser } as any)
+
+    const { result } = renderProfileSync({ signingKey: mockSigningKey, queryClient })
+    await waitFor(() => expect(result.current.user?.id).toBe(testUser.id))
+    await waitFor(() => expect(cancelQueries).toHaveBeenCalled())
+
+    await act(async () => {
+      result.current.handleUnauthorized()
+      await Promise.resolve()
+    })
+
+    expect(cancelQueries.mock.calls.length).toBeGreaterThanOrEqual(2)
+  })
+
   it("consumes a pre-populated query cache without re-fetching (bridge)", async () => {
     const queryClient = createQueryClient()
     queryClient.setQueryData(currentUserQueryKey, testUser)
@@ -1400,10 +1438,6 @@ describe("useProfileSync — cross-tab sync effect", () => {
   })
 
   it("skips outbound broadcast when BroadcastChannel is absent", async () => {
-    vi.spyOn(api, "get").mockResolvedValue({ data: testUser } as any)
-    const { result } = renderProfileSync({ signingKey: mockSigningKey })
-    await waitFor(() => expect(result.current.loading).toBe(false))
-
     const originalWindow = globalThis.window
     const channellessWindow = new Proxy(originalWindow, {
       has(target, property) {
@@ -1412,14 +1446,16 @@ describe("useProfileSync — cross-tab sync effect", () => {
       },
     })
     vi.stubGlobal("window", channellessWindow)
-    try {
-      await act(async () => {
-        result.current.updatePendingMfa({ ticket: "no-channel", methods: [] } as any)
-      })
-      expect(result.current.pendingMfa).toMatchObject({ ticket: "no-channel" })
-    } finally {
-      vi.stubGlobal("window", originalWindow)
-    }
+    vi.spyOn(api, "get").mockResolvedValue({ data: testUser } as any)
+    const { result, unmount } = renderProfileSync({ signingKey: mockSigningKey })
+    await waitFor(() => expect(result.current.loading).toBe(false))
+
+    await act(async () => {
+      result.current.updatePendingMfa({ ticket: "no-channel", methods: [] } as any)
+    })
+    expect(result.current.pendingMfa).toMatchObject({ ticket: "no-channel" })
+    unmount()
+    vi.stubGlobal("window", originalWindow)
   })
 
   it("swallows BroadcastChannel construction failures", async () => {
@@ -1441,6 +1477,26 @@ describe("useProfileSync — cross-tab sync effect", () => {
     vi.unstubAllGlobals()
   })
 
+  it("swallows BroadcastChannel failures without development logging in production", async () => {
+    vi.stubEnv("DEV", false)
+    class ThrowingBroadcastChannel {
+      constructor() {
+        throw new Error("BroadcastChannel unavailable")
+      }
+    }
+    vi.stubGlobal("BroadcastChannel", ThrowingBroadcastChannel)
+    vi.spyOn(api, "get").mockResolvedValue({ data: testUser } as any)
+
+    const { result, unmount } = renderProfileSync({ signingKey: mockSigningKey })
+    await waitFor(() => expect(result.current.loading).toBe(false))
+    await act(async () => {
+      result.current.updatePendingMfa({ ticket: "channel-error", methods: [] } as any)
+    })
+
+    expect(result.current.pendingMfa).toMatchObject({ ticket: "channel-error" })
+    unmount()
+  })
+
   it("ignores malformed BroadcastChannel messages", async () => {
     vi.spyOn(api, "get").mockImplementation((url) => {
       if (url === "/users/me") return Promise.resolve({ data: testUser } as any)
@@ -1455,6 +1511,7 @@ describe("useProfileSync — cross-tab sync effect", () => {
       const channel = new BroadcastChannel("ecosystem.profile.sync")
       channel.postMessage(null)
       channel.postMessage({ noType: true })
+      channel.postMessage({ type: "ignored" })
       channel.close()
       await new Promise((r) => setTimeout(r, 0))
     })

@@ -174,6 +174,23 @@ function readQueue(): Promise<QueueEntry[]> {
   })
 }
 
+function precreateQueueDatabase(): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open(DB_NAME, 1)
+    request.onupgradeneeded = () => {
+      const db = request.result
+      db.createObjectStore("pending-navigations", { keyPath: "id", autoIncrement: true })
+      db.createObjectStore("pending-reports", { keyPath: "id", autoIncrement: true })
+      db.createObjectStore(STORE, { keyPath: "id", autoIncrement: true })
+    }
+    request.onsuccess = () => {
+      request.result.close()
+      resolve()
+    }
+    request.onerror = () => reject(request.error)
+  })
+}
+
 beforeEach(() => {
   // Fresh fake-indexeddb factory per test. The hook's openDatabase()
   // (useNewsInteraction.ts) opens a connection it never closes, so
@@ -301,6 +318,20 @@ describe("useNewsInteraction — toggleLike", () => {
     // offline refetch also errors → optimistic flip is NOT reverted
     const d = qc.getQueryData<NewsInteractions>(["news", NEWS_ID, "interactions"])
     expect(d?.is_liked).toBe(true)
+  })
+
+  it("upgrades an existing queue database without recreating its stores", async () => {
+    await precreateQueueDatabase()
+    const { wrapper } = makeWrapper()
+    setupServer({ initial: baseInteractions, like: "offline" })
+    const { result } = renderHook(() => useNewsInteraction(NEWS_ID), { wrapper })
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+    setOnline(false)
+
+    act(() => result.current.toggleLike())
+
+    await waitFor(() => expect(result.current.isLiking).toBe(false))
+    expect(await readQueue()).toHaveLength(1)
   })
 
   it("registers background sync when the service-worker sync APIs exist", async () => {
@@ -653,5 +684,47 @@ describe("useNewsInteraction — IndexedDB failure callbacks", () => {
     await waitFor(() => expect(result.current.isLiking).toBe(false))
     await waitFor(() => expect(onRequestError).toHaveBeenCalledOnce())
     addSpy.mockRestore()
+  })
+})
+
+describe("useNewsInteraction — mutations before the query cache resolves", () => {
+  it("keeps all optimistic and rollback handlers safe without previous data", async () => {
+    let release!: () => void
+    const queryGate = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    setupServer({
+      initial: baseInteractions,
+      like: "500",
+      comment: "500",
+      patch: "500",
+      del: "500",
+    })
+    server.use(
+      http.get("*/news/:newsId/interactions", async () => {
+        await queryGate
+        return HttpResponse.json(baseInteractions)
+      })
+    )
+    const { qc, wrapper } = makeWrapper()
+    const { result } = renderHook(() => useNewsInteraction(NEWS_ID), { wrapper })
+
+    act(() => {
+      result.current.toggleLike()
+      result.current.addComment("before-cache")
+      result.current.updateComment("missing", "before-cache")
+      result.current.deleteComment("missing")
+    })
+
+    await waitFor(() => {
+      expect(result.current.isLiking).toBe(false)
+      expect(result.current.isCommenting).toBe(false)
+      expect(result.current.isUpdatingComment).toBe(false)
+      expect(result.current.isDeletingComment).toBe(false)
+    })
+    expect(qc.getQueryData(["news", NEWS_ID, "interactions"])).toBeUndefined()
+
+    release()
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
   })
 })

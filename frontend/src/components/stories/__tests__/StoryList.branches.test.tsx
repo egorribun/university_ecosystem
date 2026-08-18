@@ -217,11 +217,12 @@ describe("StoryList branches", () => {
     fireEvent.pointerDown(ul, { pointerType: "mouse", button: 0, clientX: 100 })
     // dx = 40 - 100 = -60, |dx| > 5 → real drag → snap disabled + scrollLeft updated
     fireEvent.pointerMove(ul, { pointerType: "mouse", clientX: 40, pointerId: 1 })
+    fireEvent.pointerMove(ul, { pointerType: "mouse", clientX: 30, pointerId: 1 })
 
     expect(ul.style.scrollSnapType).toBe("none")
     expect(ul).toHaveClass("cursor-grabbing")
-    // scrollLeft = dragScrollLeft(50) - dx(-60) = 110
-    expect((ul as HTMLElement).scrollLeft).toBe(110)
+    // The second move keeps the active drag and updates against the original press position.
+    expect((ul as HTMLElement).scrollLeft).toBe(120)
 
     fireEvent.pointerUp(ul, { pointerType: "mouse", pointerId: 1 })
     // snap re-enabled (cleared) + drag flag off

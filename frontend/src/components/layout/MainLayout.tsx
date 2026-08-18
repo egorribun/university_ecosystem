@@ -30,7 +30,7 @@ interface MainLayoutProps {
 const E2E_MODE = import.meta.env.VITE_E2E_MODE === "1"
 
 export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
-  const { t } = useTranslation(["navigation"])
+  const { t } = useTranslation(["navigation", "common"])
   const { isCompactPage, hideFooter, isMessenger } = useRouteType()
   const handleSkipLinkClick = React.useCallback((event: React.MouseEvent<HTMLAnchorElement>) => {
     event.preventDefault()
@@ -42,7 +42,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
   return (
     <div className="flex min-h-dvh flex-col">
       <a href="#main-content" className="skip-link" onClick={handleSkipLinkClick}>
-        {t("navigation:aria.skipLink")}
+        {t("common:skipToMain")}
       </a>
 
       {!isCompactPage && !E2E_MODE && <Navbar />}

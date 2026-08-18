@@ -551,4 +551,41 @@ describe("useScheduleData (Wave 130 SW1 factory integration)", () => {
       }),
     ])
   })
+
+  it("swallows both database-open and bulk-persistence failures", async () => {
+    const lesson = {
+      id: "lesson-failure",
+      group_id: "group-failure",
+      weekday: "monday",
+      start_time: "09:00",
+      end_time: "10:00",
+      subject: "Failure-safe",
+      teacher: "Teacher",
+      room: "1",
+      building: "Main",
+      parity: "both",
+      lesson_type: "lecture",
+    } as Lesson
+    const groups: ScheduleGroup[] = [{ id: "group-failure", name: "Failure Group" }]
+    useAuthMock.mockReturnValue({
+      user: { id: "u-failure", role: "student", group_id: "group-failure" },
+    } as never)
+
+    const firstClient = newClient()
+    firstClient.setQueryData(scheduleGroupsQueryOptions().queryKey, groups)
+    firstClient.setQueryData(pageScheduleQueryOptions("group-failure").queryKey, [lesson])
+    const bulkUpsert = vi.fn().mockRejectedValue(new Error("write failed"))
+    getDatabaseMock.mockResolvedValueOnce({ schedule: { bulkUpsert } } as never)
+    const first = renderHook(() => useScheduleData(), { wrapper: wrapper(firstClient) })
+    await waitFor(() => expect(bulkUpsert).toHaveBeenCalledOnce())
+    first.unmount()
+
+    const secondClient = newClient()
+    secondClient.setQueryData(scheduleGroupsQueryOptions().queryKey, groups)
+    secondClient.setQueryData(pageScheduleQueryOptions("group-failure").queryKey, [lesson])
+    getDatabaseMock.mockRejectedValueOnce(new Error("database unavailable"))
+    const second = renderHook(() => useScheduleData(), { wrapper: wrapper(secondClient) })
+    await waitFor(() => expect(getDatabaseMock).toHaveBeenCalledTimes(2))
+    expect(second.result.current.rawSchedule).toEqual([lesson])
+  })
 })

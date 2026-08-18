@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import uuid
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -43,31 +44,63 @@ async def test_enqueue_comment_converts_all_integer_ids():
 
 
 @pytest.mark.asyncio
-async def test_cleanup_scheduler_and_wait_are_noops():
-    config = queue.DeadLetterCleanupConfig(retention_days=7, interval_seconds=60)
+async def test_cleanup_dead_lettered_jobs_deletes_expired_rows():
+    db = AsyncMock()
+    db.execute.return_value = MagicMock(rowcount=2)
 
-    assert await queue.cleanup_dead_lettered_jobs(config.retention_days) == 0
-    stop = await queue.start_dead_letter_cleanup_scheduler(config)
-    assert await stop() is None
-    assert await queue.wait_for_all_jobs(timeout=0.01) is None
-    assert await queue.shutdown_notification_queue() is None
+    deleted = await queue.cleanup_dead_lettered_jobs(
+        7,
+        db=db,
+        now=datetime(2026, 8, 17, tzinfo=UTC),
+    )
+
+    assert deleted == 2
+    db.execute.assert_awaited_once()
+    db.commit.assert_awaited_once()
+    statement = str(db.execute.await_args.args[0])
+    assert "notification_queue_jobs.dead_lettered IS true" in statement
+    assert "notification_queue_jobs.enqueued_at <=" in statement
 
 
 @pytest.mark.asyncio
-async def test_record_failure_updates_queue_metrics():
-    job = queue.NotificationJob(kind="event", record_id=uuid.uuid4())
+async def test_cleanup_dead_lettered_jobs_owns_session_and_validates_retention():
+    db = AsyncMock()
+    db.execute.return_value = MagicMock(rowcount=0)
+    context = MagicMock()
+    context.__aenter__ = AsyncMock(return_value=db)
+    context.__aexit__ = AsyncMock(return_value=None)
+
+    with patch.object(queue, "async_session", return_value=context):
+        assert (
+            await queue.cleanup_dead_lettered_jobs(
+                0,
+                now=datetime(2026, 8, 17),
+            )
+            == 0
+        )
+
+    context.__aenter__.assert_awaited_once()
+    context.__aexit__.assert_awaited_once()
+    with pytest.raises(ValueError, match="non-negative"):
+        await queue.cleanup_dead_lettered_jobs(-1, db=db)
+
+
+@pytest.mark.asyncio
+async def test_report_failure_updates_queue_metrics():
+    record_id = uuid.uuid4()
     metric = MagicMock()
 
     with (
         patch.object(queue.metrics, "record_notification_failed") as record_metric,
         patch.object(queue, "_queue_metrics", metric),
     ):
-        await queue.record_enqueue_failure(job, RuntimeError("queue full"), "test")
+        await queue.report_enqueue_failure(
+            notification_type="event",
+            record_id=record_id,
+            error=RuntimeError("queue full"),
+            source="test",
+        )
 
-    records = await queue.get_failed_enqueue_records()
-    assert records[-1].job is job
-    assert records[-1].error == "queue full"
-    assert records[-1].source == "test"
     record_metric.assert_called_once_with(
         notification_type="event", reason="enqueue_failure"
     )
@@ -76,31 +109,81 @@ async def test_record_failure_updates_queue_metrics():
 
 
 @pytest.mark.asyncio
-async def test_record_failure_survives_metric_errors_and_state_can_reset():
-    job = queue.NotificationJob(kind="news", record_id=uuid.uuid4())
+async def test_report_failure_survives_optional_metric_errors():
     broken_metric = MagicMock()
     broken_metric.enqueue_failures_total.labels.side_effect = RuntimeError("metrics")
 
     with (
         patch.object(queue.metrics, "record_notification_failed"),
         patch.object(queue, "_queue_metrics", broken_metric),
+        patch.object(queue.logger, "warning") as warning,
     ):
-        await queue.record_enqueue_failure(job, OSError("disk"), "test")
+        await queue.report_enqueue_failure(
+            notification_type="news",
+            record_id=uuid.uuid4(),
+            error=OSError("disk"),
+            source="test",
+        )
 
-    assert (await queue.get_failed_enqueue_records())[-1].error == "disk"
-    await queue.reset_testing_state()
-    assert await queue.get_failed_enqueue_records() == []
+    warning.assert_called_once_with(
+        "Failed to record metric for enqueue failure", exc_info=True
+    )
 
 
 @pytest.mark.asyncio
 async def test_record_failure_without_optional_queue_metrics():
-    job = queue.NotificationJob(kind="event", record_id=uuid.uuid4())
-
     with (
-        patch.object(queue.metrics, "record_notification_failed"),
+        patch.object(queue.metrics, "record_notification_failed") as record_metric,
         patch.object(queue, "_queue_metrics", None),
     ):
-        await queue.record_enqueue_failure(job, RuntimeError("offline"), "test")
+        await queue.report_enqueue_failure(
+            notification_type="event",
+            record_id=uuid.uuid4(),
+            error=RuntimeError("offline"),
+            source="test",
+        )
 
-    assert (await queue.get_failed_enqueue_records())[-1].error == "offline"
-    await queue.reset_testing_state()
+    record_metric.assert_called_once_with(
+        notification_type="event", reason="enqueue_failure"
+    )
+
+
+@pytest.mark.asyncio
+async def test_enqueue_helpers_report_transport_failures_and_reraise():
+    ids = [uuid.uuid4() for _ in range(3)]
+    cases = [
+        (
+            queue.enqueue_event_notification,
+            queue.enqueue_event_notification_task,
+            (ids[0],),
+            {"locale": "en"},
+            "event",
+            ids[0],
+        ),
+        (
+            queue.enqueue_news_notification,
+            queue.enqueue_news_notification_task,
+            (ids[0],),
+            {"locale": "ru"},
+            "news",
+            ids[0],
+        ),
+        (
+            queue.enqueue_comment_notification,
+            queue.enqueue_comment_notification_task,
+            tuple(ids),
+            {"locale": "en"},
+            "comment",
+            ids[1],
+        ),
+    ]
+
+    for enqueue, task, args, kwargs, expected_kind, expected_id in cases:
+        with (
+            patch.object(task, "kick", new=AsyncMock(side_effect=OSError("nats"))),
+            patch.object(queue, "report_enqueue_failure", new=AsyncMock()) as report,
+            pytest.raises(OSError, match="nats"),
+        ):
+            await enqueue(*args, **kwargs)
+        assert report.await_args.kwargs["notification_type"] == expected_kind
+        assert report.await_args.kwargs["record_id"] == expected_id

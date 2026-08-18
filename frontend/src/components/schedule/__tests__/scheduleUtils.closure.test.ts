@@ -25,6 +25,11 @@ describe("schedule time parser closure", () => {
     expect(parseMinutes("09:30")).toBe(9 * 60 + 30)
   })
 
+  it("rejects out-of-range clock values after the fast-path shape match", () => {
+    expect(parseMinutes("24:00")).toBeNull()
+    expect(parseMinutes("23:60")).toBeNull()
+  })
+
   it("maps Sunday outside the Monday-first schedule", () => {
     vi.useFakeTimers()
     vi.setSystemTime(new Date(2026, 7, 16, 12, 0, 0))

@@ -161,7 +161,7 @@ describe("Navbar", () => {
     )
   }
 
-  const renderNavbar = () => {
+  const renderNavbar = (initialPath = "/dashboard") => {
     const Wrapped = () => (
       <AppShellProvider>
         <Navbar />
@@ -170,9 +170,12 @@ describe("Navbar", () => {
     )
     return renderWithRouter({
       ui: Wrapped,
-      path: "/dashboard",
-      initialPath: "/dashboard",
-      extraRoutes: [{ path: "/news", Component: () => <div>News route</div> }],
+      path: initialPath,
+      initialPath,
+      extraRoutes:
+        initialPath === "/dashboard"
+          ? [{ path: "/news", Component: () => <div>News route</div> }]
+          : [{ path: "/dashboard", Component: () => <div>Dashboard route</div> }],
     })
   }
 
@@ -274,10 +277,31 @@ describe("Navbar", () => {
   it("uses the transparent compact desktop style after scrolling", async () => {
     setupMatchMedia({ mobile: false, reducedMotion: true })
     Object.defineProperty(window, "scrollY", { configurable: true, value: 200 })
+    const scrollTo = vi.fn()
+    Object.defineProperty(HTMLElement.prototype, "scrollTo", {
+      configurable: true,
+      value: scrollTo,
+    })
 
     await renderNavbar()
     const nav = await screen.findByRole("navigation")
     await waitFor(() => expect(nav).toHaveClass("bg-transparent"))
     expect(nav).toHaveStyle({ boxShadow: "none" })
+    await userEvent.click(screen.getByRole("link", { name: "Home" }))
+    expect(scrollTo).toHaveBeenCalledWith({ top: 0, behavior: "auto" })
+  })
+
+  it("lets the logo navigate from another route without forcing a scroll", async () => {
+    const scrollTo = vi.fn()
+    Object.defineProperty(HTMLElement.prototype, "scrollTo", {
+      configurable: true,
+      value: scrollTo,
+    })
+
+    await renderNavbar("/news")
+    await userEvent.click(screen.getByRole("link", { name: "Home" }))
+
+    expect(scrollTo).not.toHaveBeenCalled()
+    expect(await screen.findByText("Dashboard route")).toBeInTheDocument()
   })
 })

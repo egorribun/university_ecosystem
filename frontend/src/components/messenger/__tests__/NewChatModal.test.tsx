@@ -106,6 +106,8 @@ describe("NewChatModal", () => {
     const onClose = vi.fn()
     render(<NewChatModal open={true} onClose={onClose} onSelect={() => {}} />, { wrapper })
 
+    fireEvent.keyDown(document, { key: "ArrowLeft" })
+    expect(onClose).not.toHaveBeenCalled()
     fireEvent.keyDown(document, { key: "Escape" })
     expect(onClose).toHaveBeenCalledTimes(1)
   })

@@ -26,8 +26,6 @@ handoffs are intentionally not part of the canonical index.
 - [Deployment guide (Russian)](DEPLOY.md)
 - [Deployment guide (English)](DEPLOY.en.md)
 - [Kubernetes notes](../k8s/README.md)
-- [Alembic squash guide](alembic-squash-guide.md)
-- [PgCat migration guide](pgcat-migration-guide.md)
 - [Dependency cooldown emergency procedure](DEPENDENCY_COOLDOWN_EMERGENCY.md)
 - [Manual MFA verification checklist](manual-mfa-checklist.md)
 

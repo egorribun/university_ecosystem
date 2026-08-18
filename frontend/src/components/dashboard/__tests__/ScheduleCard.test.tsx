@@ -238,4 +238,14 @@ describe("ScheduleCard", () => {
     fireEvent.keyDown(link, { key: "Spacebar" })
     fireEvent.keyDown(link, { key: "Escape" })
   })
+
+  it("absorbs a rejected schedule route warmup", async () => {
+    vi.doMock("@/pages/Schedule", () => {
+      throw new Error("route chunk unavailable")
+    })
+    renderCard({ userRole: "student", userGroupId: "group-1" })
+
+    fireEvent.pointerDown(screen.getByRole("link", { name: "dashboard:aria.openFullSchedule" }))
+    await Promise.resolve()
+  })
 })

@@ -105,4 +105,10 @@ describe("LessonCard", () => {
     expect(screen.getByText("Lesson")).toBeInTheDocument()
     expect(screen.queryByText("ГУК")).not.toBeInTheDocument()
   })
+
+  it("matches composite lesson types to their accent", () => {
+    const { container } = render(<LessonCard {...baseProps} lesson={makeLesson()} />)
+
+    expect(container.firstElementChild).toHaveClass("sched-accent-lecture")
+  })
 })

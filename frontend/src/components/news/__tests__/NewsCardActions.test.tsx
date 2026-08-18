@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react"
+import { fireEvent, render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { describe, it, expect, vi } from "vitest"
 
@@ -71,6 +71,16 @@ describe("NewsCardActions", () => {
     expect(screen.queryByRole("menu")).not.toBeInTheDocument()
   })
 
+  it("keeps the menu open for unrelated keys", async () => {
+    const user = userEvent.setup()
+    setup()
+    await user.click(screen.getByRole("button", { name: "news:aria.cardActions" }))
+
+    await user.keyboard("{Tab}")
+
+    expect(screen.getByRole("menu")).toBeInTheDocument()
+  })
+
   it("closes the menu when the pointer lands outside the menu", async () => {
     const user = userEvent.setup()
     setup()
@@ -111,5 +121,26 @@ describe("NewsCardActions", () => {
       "id",
       "news-card-menu-xyz-button"
     )
+  })
+
+  it("stops clicks on the action container from reaching the card", () => {
+    const onCardClick = vi.fn()
+    const outer = document.createElement("div")
+    const reactRoot = document.createElement("div")
+    outer.append(reactRoot)
+    document.body.append(outer)
+    outer.addEventListener("click", onCardClick)
+    const { container, unmount } = render(
+      <NewsCardActions id="article-stop" onEdit={vi.fn()} onDelete={vi.fn()} />,
+      { container: reactRoot }
+    )
+
+    const actionContainer = container.querySelector('[role="presentation"]')
+    expect(actionContainer).not.toBeNull()
+    fireEvent.click(actionContainer!)
+
+    expect(onCardClick).not.toHaveBeenCalled()
+    unmount()
+    outer.remove()
   })
 })

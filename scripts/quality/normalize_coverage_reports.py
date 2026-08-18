@@ -1533,6 +1533,8 @@ def _parse_rust_llvm_json(
         if native_branches
         else []
     )
+    covered_branches = sum(covered for covered, _ in branch_pairs)
+    total_branches = sum(total for _, total in branch_pairs)
     source_function_pair = _parse_rust_crypto_source_function_pair(
         document, component, ignore_outside_files
     )
@@ -1552,10 +1554,10 @@ def _parse_rust_llvm_json(
             reason_code="llvm_json_has_no_statement_counter",
         ),
         "branches": (
-            _measured_metric(
-                "native",
-                sum(covered for covered, _ in branch_pairs),
-                sum(total for _, total in branch_pairs),
+            (
+                _vacuous_metric("Nightly LLVM report contains no branch units")
+                if total_branches == 0
+                else _measured_metric("native", covered_branches, total_branches)
             )
             if native_branches
             else _unmeasured_metric(
@@ -2504,8 +2506,6 @@ def _missing_metrics() -> dict[str, dict[str, object]]:
 
 
 def _metric_satisfies_floor(metric: dict[str, object], floor: int) -> bool:
-    if metric["status"] != "native":
-        return False
     covered = metric["covered"]
     total = metric["total"]
     if (
@@ -2513,8 +2513,16 @@ def _metric_satisfies_floor(metric: dict[str, object], floor: int) -> bool:
         or not isinstance(covered, int)
         or isinstance(total, bool)
         or not isinstance(total, int)
-        or total <= 0
+        or total < 0
     ):
+        return False
+    if total == 0:
+        return (
+            metric["status"] == "derived"
+            and covered == 0
+            and metric.get("percent") == 100.0
+        )
+    if metric["status"] != "native":
         return False
     return covered * 100 >= total * floor
 

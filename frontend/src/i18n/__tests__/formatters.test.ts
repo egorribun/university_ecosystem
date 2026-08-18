@@ -18,6 +18,7 @@ describe("locale formatters", () => {
     expect(formatNumber("en", 1234.5, { minimumFractionDigits: 2 })).toBe("1,234.50")
     expect(formatNumber("ru", 1234.5, { minimumFractionDigits: 2 })).toContain("1")
     expect(formatNumber("ru", 1234.5, { minimumFractionDigits: 2 })).toContain(",50")
+    expect(formatNumber("unsupported" as never, 1234)).toBe("1,234")
   })
 
   it("formats currencies and preserves caller options", () => {

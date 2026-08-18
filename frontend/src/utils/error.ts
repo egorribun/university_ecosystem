@@ -38,7 +38,7 @@ export const extractApiError = (
     if (Array.isArray(data?.detail)) {
       // Handle FastAPI Pydantic validation errors
       for (const err of data.detail) {
-        if (err.msg && err.loc) {
+        if (err?.msg && err.loc) {
           details.push({
             code: err.type || "validation_error",
             message: err.msg,

@@ -9,7 +9,7 @@ permissions: read-all
 
 jobs:
   cleanup:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     env:
       OTEL_SDK_DISABLED: "true"
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
@@ -42,8 +42,8 @@ jobs:
         run: |
           uv run python -m app.management.weekly_cleanup
 
-      - name: Report missing secrets
+      - name: Fail when required cleanup configuration is missing
         if: ${{ env.DATABASE_URL == '' || env.SECRET_KEY == '' }}
         run: |
-          echo "Required secrets DATABASE_URL and SECRET_KEY are not configured; skipping cleanup."
-          exit 0
+          echo "::error::Required cleanup configuration DATABASE_URL or SECRET_KEY is not available."
+          exit 1

@@ -4,8 +4,7 @@ import { gotoWithTransientRetry } from "./utils/navigation"
 
 const storageKey = "ue:language"
 
-// Skip: Language tests timeout during login in mock environment
-test.describe.skip("Language switching and RTL support", () => {
+test.describe("Language switching and document metadata", () => {
   test.beforeEach(async ({ page }) => {
     await page.addInitScript((key) => {
       window.localStorage.setItem(key, "ru")
@@ -20,15 +19,23 @@ test.describe.skip("Language switching and RTL support", () => {
     await expect(page.getByRole("heading", { name: "Настройки" })).toBeVisible()
     await expect(page.locator("html")).toHaveAttribute("dir", "ltr")
 
-    await page.getByText("Английский").click()
+    await page.getByRole("button", { name: /Язык интерфейса/ }).click()
+    const english = page.getByRole("radio", { name: "Английский" })
+    await english.focus()
+    await page.keyboard.press("Space")
+    await expect(english).toBeChecked()
     await expect(page.getByRole("heading", { name: "Settings" })).toBeVisible()
     await expect(page.locator("html")).toHaveAttribute("lang", "en")
+    await expect(page.locator("html")).toHaveAttribute("dir", "ltr")
 
-    await page.getByText("Arabic (RTL)").click()
-    await expect(page.getByRole("heading", { name: "الإعدادات" })).toBeVisible()
-    await expect(page.locator("html")).toHaveAttribute("dir", "rtl")
+    const russian = page.getByRole("radio", { name: "Russian" })
+    await russian.focus()
+    await page.keyboard.press("Space")
+    await expect(russian).toBeChecked()
+    await expect(page.getByRole("heading", { name: "Настройки" })).toBeVisible()
+    await expect(page.locator("html")).toHaveAttribute("lang", "ru")
+    await expect(page.locator("html")).toHaveAttribute("dir", "ltr")
 
-    // Use class selector for skip link which is more robust
     const skipLink = page.locator(".skip-link")
     await skipLink.focus()
     await expect(skipLink).toBeFocused()

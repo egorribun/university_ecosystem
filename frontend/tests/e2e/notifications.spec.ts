@@ -3,8 +3,6 @@ import { useMockApi } from "./utils/mockApi"
 
 const E2E_TIMEOUTS = {
   toast: 15000,
-  mockPush: 1000,
-  animation: 500,
 }
 
 interface MockPushAction {
@@ -153,6 +151,9 @@ async function setupMockServiceWorker(page: Page) {
     ;(
       window as unknown as { __getShowNotificationCalls: () => unknown[] }
     ).__getShowNotificationCalls = () => [...showNotificationCalls]
+    ;(
+      window as unknown as { __getMockServiceWorkerMessageListenerCount: () => number }
+    ).__getMockServiceWorkerMessageListenerCount = () => messageListeners.size
 
     window.__mockPush = async (payload: unknown) => {
       // Cast payload safely
@@ -210,8 +211,6 @@ async function setupMockServiceWorker(page: Page) {
       }
 
       if (actions.length) {
-        options.actions = actions.map(({ action, title }) => ({ action, title })) // removed icon from map since it wasn't used in original logic or added it back?
-        // Let's keep it robust
         options.actions = actions.map((a) => ({
           action: a.action,
           title: a.title,
@@ -251,6 +250,7 @@ declare global {
     __mockPush?: (payload: unknown) => void
     __mockNotificationClick?: (action?: string) => void
     __getShowNotificationCalls?: () => unknown[]
+    __getMockServiceWorkerMessageListenerCount?: () => number
   }
 }
 
@@ -259,33 +259,32 @@ test.describe("Push notifications", () => {
     await setupMockServiceWorker(page)
   })
 
-  // Skip: Service Worker mock doesn't support full notification click navigation in E2E environment
-  test.skip("navigates to routes defined in notification actions", async ({ page }) => {
-    const mock = await useMockApi(page)
+  test("navigates to routes defined in notification actions", async ({ page }) => {
+    const mock = await useMockApi(page, { serviceWorker: "preserve" })
     await mock.login(page)
+
+    const payload = {
+      title: "Обновления портала",
+      body: "Появились новые новости и расписание.",
+      data: {
+        type: "system",
+        url: "/dashboard",
+        actionUrls: {
+          "open-news": "/news",
+          "open-schedule": "/schedule",
+        },
+      },
+      actions: [
+        { action: "open-news", title: "К новостям", url: "/news" },
+        { action: "open-schedule", title: "К расписанию", url: "/schedule" },
+      ],
+    }
 
     await page.evaluate(
       ({ payload }) => {
         window.__mockPush?.(payload)
       },
-      {
-        payload: {
-          title: "Обновления портала",
-          body: "Появились новые новости и расписание.",
-          data: {
-            type: "system",
-            url: "/dashboard",
-            actionUrls: {
-              "open-news": "/news",
-              "open-schedule": "/schedule",
-            },
-          },
-          actions: [
-            { action: "open-news", title: "К новостям", url: "/news" },
-            { action: "open-schedule", title: "К расписанию", url: "/schedule" },
-          ],
-        },
-      }
+      { payload }
     )
 
     const notificationCalls = await page.evaluate(
@@ -303,6 +302,9 @@ test.describe("Push notifications", () => {
       page.getByRole("heading", { name: /Новости университета|University news|News/i }).first()
     ).toBeVisible({ timeout: E2E_TIMEOUTS.toast })
 
+    // A full navigation creates a new document and therefore a fresh SW test
+    // double. Seed the same notification before exercising its second action.
+    await page.evaluate(({ payload }) => window.__mockPush?.(payload), { payload })
     await Promise.all([
       page.waitForURL(/\/schedule$/),
       page.evaluate(() => {
@@ -312,11 +314,10 @@ test.describe("Push notifications", () => {
     await expect(page.getByText(/Моё расписание|My schedule/i)).toBeVisible()
   })
 
-  // Skip: Failing in mock environment due to race conditions with toast visibility
-  test.skip("shows in-app toast instead of system notification for visible clients", async ({
+  test("shows in-app toast instead of system notification for visible clients", async ({
     page,
   }) => {
-    const mock = await useMockApi(page)
+    const mock = await useMockApi(page, { serviceWorker: "preserve" })
     await mock.login(page)
 
     const initialCalls = await page.evaluate(
@@ -324,7 +325,9 @@ test.describe("Push notifications", () => {
     )
     expect(initialCalls).toBe(0)
 
-    await page.waitForTimeout(E2E_TIMEOUTS.mockPush)
+    await page.waitForFunction(
+      () => (window.__getMockServiceWorkerMessageListenerCount?.() ?? 0) > 0
+    )
     await page.evaluate(
       ({ payload }) => {
         window.__mockPush?.(payload)
@@ -342,20 +345,14 @@ test.describe("Push notifications", () => {
       }
     )
 
-    const toast = page.getByRole("alert").first()
-    await expect(toast).toBeVisible()
-    await expect(toast).toContainText("University News Test")
-    await expect(toast).toContainText("Semester start dates have been updated")
+    await expect(page.getByRole("heading", { name: "University News Test" })).toBeVisible()
+    await expect(page.getByText("Semester start dates have been updated")).toBeVisible()
 
     const postCalls = await page.evaluate(() => window.__getShowNotificationCalls?.().length ?? 0)
     expect(postCalls).toBe(0)
 
-    await page
-      .locator('[role="alert"]')
-      .getByRole("button", { name: /Open|Открыть/i })
-      .click()
+    await page.getByRole("button", { name: /^(Open|Открыть)$/i }).click()
 
-    await page.waitForTimeout(E2E_TIMEOUTS.animation)
     await page.waitForURL(/\/news$/)
     const heading = page.getByRole("heading", { level: 1 })
     // Use unicode for robustness against mojibake

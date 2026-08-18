@@ -99,6 +99,14 @@ export function evaluatePublicGuard(state: GuardState): void {
   }
 }
 
+export type AdminRedirectTarget = "/login" | "/dashboard" | null
+
+export function getAdminRedirectTarget(state: GuardState): AdminRedirectTarget {
+  if (state.loading) return null
+  if (!state.user) return "/login"
+  return state.user.role === "admin" ? null : "/dashboard"
+}
+
 /**
  * Wave 179 SW8 — Used by `_admin.tsx beforeLoad` to gate /admin/* routes.
  * Stricter than evaluateAuthGuard: requires authed user AND role === "admin".
@@ -112,11 +120,6 @@ export function evaluatePublicGuard(state: GuardState): void {
  * @param state - GuardState from useAuthStore.getState()
  */
 export function evaluateAdminGuard(state: GuardState): void {
-  if (state.loading) return
-  if (!state.user) {
-    throw redirect({ to: "/login" })
-  }
-  if (state.user.role !== "admin") {
-    throw redirect({ to: "/dashboard" })
-  }
+  const target = getAdminRedirectTarget(state)
+  if (target) throw redirect({ to: target })
 }

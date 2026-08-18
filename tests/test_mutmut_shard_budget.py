@@ -122,6 +122,32 @@ def test_calculate_shard_budget_reserves_each_selected_child_control_cycle() -> 
     assert budget.execution_cap_seconds == 165
 
 
+def test_calculate_shard_budget_supports_an_explicit_fail_closed_control_reserve() -> (
+    None
+):
+    budget = calculate_shard_budget(
+        [
+            "app.module.x__mutmut_1",
+            "app.module.x__mutmut_2",
+            "app.module.x__mutmut_3",
+        ],
+        {"app.module.x": ["tests/test_x.py::test_x"]},
+        {"tests/test_x.py::test_x": 0.25},
+        max_children=2,
+        control_cycle_reserve_seconds=1,
+    )
+
+    assert budget.control_cycle_count == 3
+    assert budget.control_cycle_reserve_seconds == 3
+    assert budget.execution_cap_seconds == (budget.watchdog_execution_cap_seconds + 3)
+    assert (
+        budget.as_json(max_timeout_seconds=18_000)[
+            "control_cycle_reserve_per_child_seconds"
+        ]
+        == 1
+    )
+
+
 def test_calculate_shard_budget_rounds_a_positive_sub_ulp_duration_up_in_both_paths() -> (
     None
 ):

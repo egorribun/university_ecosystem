@@ -1,7 +1,18 @@
 # ADR-015: Strategy for Covering Go Services
 
 ## Status
-Accepted
+Superseded
+
+Superseded on 2026-08-17 by the repository-wide fail-closed coverage policy.
+The historical decision below is retained for context; the current thresholds
+are defined only in the
+[quality contract](../../quality/quality-contract.json) and enforced by the
+[CI quality gate](../../.github/workflows/ci.yml). Supported Go coverage
+metrics must now meet that contract, alongside integration and race testing.
+
+> [!NOTE]
+> The remaining sections record the superseded decision and are not current
+> repository policy.
 
 ## Context
 Our backend architecture includes several specialized Go services alongside the main Python FastAPI application. These include the `gateway`, `file-processor`, `ws-hub`, and `uni-cli`. While the Python codebase has a strict requirement of >79% test coverage, the Go services have historically had minimal test coverage (e.g., covering only basic `hub` functionality).

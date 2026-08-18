@@ -209,11 +209,7 @@ export const EventsCard = memo(function EventsCard({
                       aria-label={t("dashboard:aria.eventItem", { title: e.title })}
                       style={{ "--stagger-i": idx } as React.CSSProperties}
                     >
-                      <DateBullet
-                        date={e.starts_at ?? undefined}
-                        locale={language}
-                        size="compact"
-                      />
+                      <DateBullet date={e.starts_at!} locale={language} size="compact" />
                       <span className="flex min-w-0 flex-1 flex-col gap-1 text-left">
                         <span className="text-base font-semibold leading-tight text-text-primary line-clamp-2">
                           {e.title}

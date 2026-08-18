@@ -26,6 +26,8 @@
 // and the auth context is irrelevant for that route.
 import { AsyncLocalStorage } from "node:async_hooks"
 import handler, { createServerEntry } from "@tanstack/react-start/server-entry"
+import type { i18n as I18nInstance } from "i18next"
+import { createI18nInstance } from "./i18n/config"
 import { extractAuthFromRequest, SSR_AUTH_UNAUTH, type SsrAuthState } from "./ssrAuth"
 import {
   extractThemeFromRequest,
@@ -55,6 +57,7 @@ const requestAuthStorage = new AsyncLocalStorage<SsrAuthState>()
 const requestCookieStorage = new AsyncLocalStorage<string>()
 const requestThemeStorage = new AsyncLocalStorage<ResolvedTheme>()
 const requestLangStorage = new AsyncLocalStorage<ResolvedLang>()
+const requestI18nStorage = new AsyncLocalStorage<I18nInstance>()
 
 // Globally-accessible getters so `src/router.ts` (W126 SW4) and
 // `src/routes/__root.tsx` RootShell (W127 SW5) can read per-request state
@@ -69,11 +72,13 @@ declare global {
   var __ssrCookieGetter__: (() => string | undefined) | undefined
   var __ssrThemeGetter__: (() => ResolvedTheme | undefined) | undefined
   var __ssrLangGetter__: (() => ResolvedLang | undefined) | undefined
+  var __ssrI18nGetter__: (() => I18nInstance | undefined) | undefined
 }
 globalThis.__ssrAuthGetter__ = () => requestAuthStorage.getStore()
 globalThis.__ssrCookieGetter__ = () => requestCookieStorage.getStore()
 globalThis.__ssrThemeGetter__ = () => requestThemeStorage.getStore()
 globalThis.__ssrLangGetter__ = () => requestLangStorage.getStore()
+globalThis.__ssrI18nGetter__ = () => requestI18nStorage.getStore()
 
 // Wave 131 SW2 — Phase 4 deploy infrastructure /healthz endpoint.
 // Caddy `health_uri /healthz` (Caddyfile, W131 SW4) + k8s livenessProbe /
@@ -176,6 +181,7 @@ export default createServerEntry({
     // directly without await.
     const theme = extractThemeFromRequest(request)
     const lang = extractLangFromRequest(request)
+    const requestI18n = createI18nInstance(lang)
     // Wave 133 SW1 — raw Cookie header for SSR-side authenticated backend
     // calls. The axios client interceptor (frontend/src/api/client.ts)
     // forwards this header on outgoing /api/v1 requests when running on
@@ -192,10 +198,12 @@ export default createServerEntry({
     return requestAuthStorage.run(auth, () =>
       requestCookieStorage.run(cookie, () =>
         requestThemeStorage.run(theme, () =>
-          requestLangStorage.run(lang, async () => {
-            const response = await handler.fetch(request)
-            return isMessengerPath ? augmentResponseForMessenger(response) : response
-          })
+          requestLangStorage.run(lang, () =>
+            requestI18nStorage.run(requestI18n, async () => {
+              const response = await handler.fetch(request)
+              return isMessengerPath ? augmentResponseForMessenger(response) : response
+            })
+          )
         )
       )
     )

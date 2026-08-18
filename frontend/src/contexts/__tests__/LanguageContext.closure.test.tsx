@@ -25,6 +25,8 @@ afterEach(() => {
   vi.restoreAllMocks()
   vi.unstubAllGlobals()
   window.localStorage.clear()
+  delete window.__UE_SELECTED_LANG__
+  void i18n.changeLanguage("ru")
   document.cookie = "ue:language=; Max-Age=0; Path=/"
   Object.defineProperty(window.navigator, "language", {
     configurable: true,
@@ -33,11 +35,13 @@ afterEach(() => {
 })
 
 describe("LanguageContext browser branches", () => {
-  it("prefers a supported stored language and mirrors it to DOM and cookie", async () => {
-    window.localStorage.setItem("ue:language", "ru")
+  it("prefers a supported stored language and mirrors changes to DOM and cookie", async () => {
+    window.localStorage.setItem("ue:language", "en")
     render(<Probe />, { wrapper })
 
-    expect(screen.getByRole("button")).toHaveTextContent("ru:en,ru")
+    expect(screen.getByRole("button")).toHaveTextContent("en:en,ru")
+    fireEvent.click(screen.getByRole("button"))
+    await waitFor(() => expect(screen.getByRole("button")).toHaveTextContent("ru:en,ru"))
     await waitFor(() => expect(document.documentElement).toHaveAttribute("lang", "ru"))
     expect(document.documentElement).toHaveAttribute("dir", "ltr")
     expect(document.body).toHaveAttribute("dir", "ltr")
@@ -55,26 +59,17 @@ describe("LanguageContext browser branches", () => {
     )
   })
 
-  it("falls back to the browser language and then to English", () => {
+  it("ignores browser locale so the client fallback matches SSR", () => {
     window.localStorage.setItem("ue:language", "de")
     Object.defineProperty(window.navigator, "language", {
       configurable: true,
       value: "ru-RU",
     })
-    const first = render(<Probe />, { wrapper })
-    expect(screen.getByRole("button")).toHaveTextContent("ru:en,ru")
-    first.unmount()
-
-    window.localStorage.setItem("ue:language", "de")
-    Object.defineProperty(window.navigator, "language", {
-      configurable: true,
-      value: "de-DE",
-    })
     render(<Probe />, { wrapper })
-    expect(screen.getByRole("button")).toHaveTextContent("en:en,ru")
+    expect(screen.getByRole("button")).toHaveTextContent("ru:en,ru")
   })
 
-  it("uses English when the browser exposes an empty language", () => {
+  it("uses Russian when the browser exposes an empty language", () => {
     window.localStorage.setItem("ue:language", "de")
     Object.defineProperty(window.navigator, "language", {
       configurable: true,
@@ -83,7 +78,7 @@ describe("LanguageContext browser branches", () => {
 
     render(<Probe />, { wrapper })
 
-    expect(screen.getByRole("button")).toHaveTextContent("en:en,ru")
+    expect(screen.getByRole("button")).toHaveTextContent("ru:en,ru")
   })
 
   it("falls back to the browser language when localStorage reads are denied", () => {
@@ -116,7 +111,7 @@ describe("LanguageContext browser branches", () => {
 
   it("updates state through setLanguage and exposes the guard/error contract", async () => {
     const { result } = renderHook(() => useLanguage(), { wrapper })
-    expect(result.current.language).toBe("en")
+    expect(result.current.language).toBe("ru")
 
     act(() => {
       result.current.setLanguage("ru")
@@ -140,6 +135,6 @@ describe("LanguageContext browser branches", () => {
     act(() => {
       i18n.emit("languageChanged", "de")
     })
-    expect(result.current.language).toBe("en")
+    expect(result.current.language).toBe("ru")
   })
 })

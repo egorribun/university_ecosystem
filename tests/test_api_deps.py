@@ -570,7 +570,9 @@ async def test_get_current_user_jti_revoked_in_redis(
     mock_redis.exists.return_value = True
 
     with patch("app.services.auth.token_service.decode_token", return_value=payload):
-        with patch("app.api.deps.auth.get_cache_client", return_value=mock_redis):
+        with patch(
+            "app.api.deps.auth.get_revocation_redis_client", return_value=mock_redis
+        ):
             with pytest.raises(HTTPException) as exc:
                 await get_current_user(mock_request, "token", db_session)
             assert exc.value.status_code == status.HTTP_401_UNAUTHORIZED
@@ -598,7 +600,9 @@ async def test_get_current_user_jti_redis_connection_error(
     mock_redis.exists.side_effect = ConnectionError("Redis down")
 
     with patch("app.services.auth.token_service.decode_token", return_value=payload):
-        with patch("app.api.deps.auth.get_cache_client", return_value=mock_redis):
+        with patch(
+            "app.api.deps.auth.get_revocation_redis_client", return_value=mock_redis
+        ):
             # Should fall through and succeed from DB
             returned_user = await get_current_user(mock_request, "token", db_session)
             assert returned_user.id == user.id

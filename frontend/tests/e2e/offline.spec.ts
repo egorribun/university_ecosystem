@@ -4,17 +4,10 @@ import { gotoWithTransientRetry } from "./utils/navigation"
 
 const ensureServiceWorkerIsReady = async (page: Page) => {
   await page.waitForLoadState("networkidle")
-  for (let attempt = 0; attempt < 3; attempt += 1) {
-    try {
-      await page.evaluate(async () => {
-        await navigator.serviceWorker?.ready
-      })
-      break
-    } catch (error) {
-      if (attempt === 2) throw error
-      await page.waitForTimeout(OFFLINE_TEST_TIMEOUTS.serviceWorkerReady)
-    }
-  }
+  await page.evaluate(async () => {
+    if (!("serviceWorker" in navigator)) throw new Error("Service Worker API is unavailable")
+    await navigator.serviceWorker.ready
+  })
 
   let controlled = await page.evaluate(() => Boolean(navigator.serviceWorker?.controller))
   if (!controlled) {
@@ -31,19 +24,13 @@ const ensureServiceWorkerIsReady = async (page: Page) => {
 }
 
 const OFFLINE_TEST_TIMEOUTS = {
-  serviceWorkerReady: 250,
-  navigation: 10000,
   elementVisible: 10000,
   toastVisible: 5000,
 }
 
 test.describe("PWA offline support", () => {
-  // Skip: Service Worker caching doesn't work properly in mocked E2E environment
-  test.skip("shows offline fallback page when network is unavailable", async ({
-    page,
-    context,
-  }) => {
-    const mock = await useMockApi(page)
+  test("shows offline fallback page when network is unavailable", async ({ page, context }) => {
+    const mock = await useMockApi(page, { serviceWorker: "preserve" })
     await mock.login(page)
 
     await ensureServiceWorkerIsReady(page)
@@ -76,12 +63,8 @@ test.describe("PWA offline support", () => {
     }
   })
 
-  // Skip: Service Worker caching doesn't work properly in mocked E2E environment
-  test.skip("profile data stays available offline after it was cached", async ({
-    page,
-    context,
-  }) => {
-    const mock = await useMockApi(page)
+  test("profile data stays available offline after it was cached", async ({ page, context }) => {
+    const mock = await useMockApi(page, { serviceWorker: "preserve" })
     await mock.login(page)
 
     await ensureServiceWorkerIsReady(page)
@@ -100,12 +83,11 @@ test.describe("PWA offline support", () => {
     }
   })
 
-  // Skip: Service Worker caching doesn't work properly in mocked E2E environment
-  test.skip("news, schedule, and events stay cached for offline navigation", async ({
+  test("news, schedule, and events stay cached for offline navigation", async ({
     page,
     context,
   }) => {
-    const mock = await useMockApi(page)
+    const mock = await useMockApi(page, { serviceWorker: "preserve" })
     await mock.login(page)
     await ensureServiceWorkerIsReady(page)
 
@@ -170,9 +152,8 @@ test.describe("PWA offline support", () => {
     }
   })
 
-  // Skip: Service worker mock prevents real offline/online events from triggering
-  test.skip("shows offline indicator toast when connection is lost", async ({ page, context }) => {
-    const mock = await useMockApi(page)
+  test("shows offline indicator toast when connection is lost", async ({ page, context }) => {
+    const mock = await useMockApi(page, { serviceWorker: "preserve" })
     await mock.login(page)
 
     await ensureServiceWorkerIsReady(page)

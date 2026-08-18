@@ -36,6 +36,12 @@ scrape_configs:
     static_configs:
       - targets: ['redis-exporter:9121']
 
+  # OpenFeature flag evaluation service
+  - job_name: 'flagd'
+    static_configs:
+      - targets: ['flagd:8014']
+    metrics_path: /metrics
+
   # MinIO
   - job_name: 'minio'
     static_configs:

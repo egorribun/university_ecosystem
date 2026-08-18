@@ -54,6 +54,9 @@ describe("ssrAuth real JWKS path", () => {
       { url: new URL("https://api.example.test/.well-known/jwks.json") },
       { audience: "university-ecosystem-api" }
     )
+
+    await expect(validateJwt("second-token")).resolves.toMatchObject({ isAuth: true })
+    expect(joseMocks.createRemoteJWKSet).toHaveBeenCalledOnce()
   })
 
   it("falls back to the local backend origin when no origin is configured", async () => {

@@ -114,4 +114,14 @@ describe("dashboard NewsCard closure paths", () => {
     expect(screen.getByTestId("dashboard-news-list")).toHaveAttribute("data-count", "1")
     expect(screen.getByTestId("dashboard-news-list")).toHaveTextContent("ru-RU")
   })
+
+  it("absorbs a rejected route warmup while still prefetching dashboard data", async () => {
+    vi.doMock("@/pages/News", () => {
+      throw new Error("route chunk unavailable")
+    })
+    render(<NewsCard locale="en-US" />)
+
+    fireEvent.pointerDown(screen.getByRole("link", { name: "dashboard:aria.viewAllNews" }))
+    await vi.waitFor(() => expect(prefetchDashboardNewsMock).toHaveBeenCalledOnce())
+  })
 })

@@ -80,6 +80,19 @@ describe("Dialog", () => {
     await screen.findByRole("dialog")
     expect(screen.getByRole("button", { name: "Confirm" })).toBeInTheDocument()
   })
+
+  it("honors a caller-provided initial focus policy", async () => {
+    render(
+      <Dialog open onClose={vi.fn()} title="Focused" initialFocus={false}>
+        <button id="dialog-target" type="button">
+          Target
+        </button>
+      </Dialog>
+    )
+
+    const target = await screen.findByRole("button", { name: "Target" })
+    expect(target).not.toHaveFocus()
+  })
 })
 
 describe("MediaSlot", () => {

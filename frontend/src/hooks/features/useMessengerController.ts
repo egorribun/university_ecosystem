@@ -539,6 +539,8 @@ export const useMessengerController = () => {
         })
       }
 
+      // Confirmation can outlive the route it was opened on. Do not kick the
+      // user out of a different chat if they navigated before confirming.
       if (selectedChatId === chatId) {
         navigate({ to: "/messenger" })
       }

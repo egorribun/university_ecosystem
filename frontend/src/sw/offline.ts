@@ -34,7 +34,7 @@ export interface PendingMutationRecord {
  */
 async function getDatabase() {
   return openDB(CLICK_DB_NAME, DB_VERSION, {
-    upgrade(db, oldVersion, _newVersion, transaction) {
+    upgrade(db, _oldVersion, _newVersion, transaction) {
       if (!db.objectStoreNames.contains(STORES.NAVIGATION)) {
         db.createObjectStore(STORES.NAVIGATION, { keyPath: "id", autoIncrement: true })
       }
@@ -45,10 +45,12 @@ async function getDatabase() {
         })
         // DEBT-04 (audit Wave 11): deduplication index for idempotent requests.
         reportStore.createIndex("dedupeKey", "dedupeKey", { unique: false })
-      } else if (oldVersion < 4) {
+      } else {
         // Upgrade: add dedupeKey index using the active versionchange transaction.
         // db.transaction() cannot be called during onupgradeneeded — only the
-        // implicit upgrade transaction is valid here.
+        // implicit upgrade transaction is valid here. Because DB_VERSION is 4,
+        // an upgrade callback with an existing store necessarily comes from an
+        // older version.
         const store = transaction.objectStore(STORES.REPORT)
         if (!store.indexNames.contains("dedupeKey")) {
           store.createIndex("dedupeKey", "dedupeKey", { unique: false })
@@ -212,7 +214,8 @@ export async function readPendingMutations() {
 export async function processPendingMutations() {
   if (!isOnline()) return
   const db = await getDatabase()
-  const records = (await db.getAll(STORES.MUTATION)) as PendingMutationRecord[]
+  type PersistedPendingMutationRecord = PendingMutationRecord & { id: number }
+  const records = (await db.getAll(STORES.MUTATION)) as PersistedPendingMutationRecord[]
   if (!records || !records.length) return
 
   records.sort((a, b) => a.timestamp - b.timestamp)
@@ -235,7 +238,7 @@ export async function processPendingMutations() {
     for (const record of records) {
       if (record.retryCount >= 5) {
         warn("Mutation exceeded max retries, discarding:", record)
-        if (record.id) await db.delete(STORES.MUTATION, record.id)
+        await db.delete(STORES.MUTATION, record.id)
         notifyBroadcast({ type: "MUTATION_FAILED_PERMANENT", record })
         continue
       }
@@ -253,11 +256,11 @@ export async function processPendingMutations() {
         })
 
         if (response.ok) {
-          if (record.id) await db.delete(STORES.MUTATION, record.id)
+          await db.delete(STORES.MUTATION, record.id)
           notifyBroadcast({ type: "MUTATION_SYNCED", record })
         } else if (response.status >= 400 && response.status < 500 && response.status !== 429) {
           warn(`Mutation returned non-retriable status ${response.status}:`, record)
-          if (record.id) await db.delete(STORES.MUTATION, record.id)
+          await db.delete(STORES.MUTATION, record.id)
           notifyBroadcast({ type: "MUTATION_REJECTED", record, status: response.status })
         } else {
           record.retryCount += 1

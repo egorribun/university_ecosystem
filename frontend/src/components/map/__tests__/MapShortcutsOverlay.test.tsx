@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react"
+import { fireEvent, render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { afterEach, describe, it, expect, vi } from "vitest"
 
@@ -45,6 +45,14 @@ describe("MapShortcutsOverlay", () => {
     const onClose = vi.fn()
     render(<MapShortcutsOverlay {...baseProps} onClose={onClose} />)
     await user.click(screen.getByRole("button", { name: "sidebar.close" }))
+    expect(onClose).toHaveBeenCalledOnce()
+  })
+
+  it("fires onClose when the focus trap deactivates on Escape", () => {
+    const onClose = vi.fn()
+    render(<MapShortcutsOverlay {...baseProps} onClose={onClose} />)
+
+    fireEvent.keyDown(document, { key: "Escape" })
     expect(onClose).toHaveBeenCalledOnce()
   })
 

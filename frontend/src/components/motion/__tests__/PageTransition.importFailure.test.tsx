@@ -7,6 +7,7 @@ vi.mock("framer-motion", () => {
 
 describe("PageTransition lazy-module failure", () => {
   afterEach(() => {
+    vi.unstubAllEnvs()
     vi.restoreAllMocks()
   })
 
@@ -28,5 +29,25 @@ describe("PageTransition lazy-module failure", () => {
     expect((error as Error & { cause?: Error }).cause).toEqual(
       expect.objectContaining({ message: "motion chunk unavailable" })
     )
+  })
+
+  it("keeps children visible without logging a failed import in production", async () => {
+    vi.stubEnv("DEV", false)
+    vi.spyOn(window, "matchMedia").mockReturnValue({
+      matches: false,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    } as unknown as MediaQueryList)
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined)
+    const { default: PageTransition } = await import("@/components/motion/PageTransition")
+
+    render(
+      <PageTransition>
+        <div>Production fallback child</div>
+      </PageTransition>
+    )
+
+    expect(screen.getByText("Production fallback child")).toBeInTheDocument()
+    await waitFor(() => expect(warn).not.toHaveBeenCalled())
   })
 })

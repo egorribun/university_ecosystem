@@ -81,8 +81,7 @@ export const ScheduleDesktopTable = memo(function ScheduleDesktopTable({
   }, [])
   // PERF-71-02: removed direct checkOverflow() call — ResizeObserver fires immediately on .observe()
   useEffect(() => {
-    const el = scrollRef.current
-    if (!el) return
+    const el = scrollRef.current!
     const ro = new ResizeObserver(checkOverflow)
     ro.observe(el)
     return () => ro.disconnect()
@@ -238,7 +237,7 @@ export const ScheduleDesktopTable = memo(function ScheduleDesktopTable({
                         tabIndex={-1}
                         aria-colindex={colI + 2}
                         aria-label={t("schedule:table.emptyCell", {
-                          day: visibleDays[colI]?.label ?? "",
+                          day: visibleDays[colI]!.label,
                           row: rowIdx + 1,
                           defaultValue: "Empty",
                         })}
@@ -255,10 +254,8 @@ export const ScheduleDesktopTable = memo(function ScheduleDesktopTable({
 
                   let hasBreakBefore = false
                   if (rowIdx > 0) {
-                    const prev = tableRows[rowIdx - 1]?.[originalIdx]
-                    if (prev) {
-                      hasBreakBefore = minutesDiff(prev.end_time, lesson.start_time) > 0
-                    }
+                    const prev = tableRows[rowIdx - 1]![originalIdx]!
+                    hasBreakBefore = minutesDiff(prev.end_time, lesson.start_time) > 0
                   }
 
                   const isConflict = conflictedIds.has(lesson.id)

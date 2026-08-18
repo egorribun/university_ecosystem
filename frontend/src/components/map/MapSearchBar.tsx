@@ -12,14 +12,21 @@ import { useTranslation } from "react-i18next"
 import { Search, X } from "lucide-react"
 import type { CampusBuilding, BuildingId } from "@/data/campusBuildings"
 
-interface SearchResult {
-  type: "building" | "room"
-  buildingLetter: BuildingId
-  label: string
-  sublabel?: string
-  roomId?: string
-  floor?: number
-}
+type SearchResult =
+  | {
+      type: "building"
+      buildingLetter: BuildingId
+      label: string
+      sublabel?: string
+    }
+  | {
+      type: "room"
+      buildingLetter: BuildingId
+      label: string
+      sublabel?: string
+      roomId: string
+      floor: number
+    }
 
 interface MapSearchBarProps {
   buildings: CampusBuilding[]
@@ -111,7 +118,7 @@ export function MapSearchBar({
       }
       if (result.type === "building") {
         onSelectBuilding(result.buildingLetter)
-      } else if (result.roomId && result.floor) {
+      } else {
         onSelectRoom(result.buildingLetter, result.floor, result.roomId)
       }
       setQuery("")

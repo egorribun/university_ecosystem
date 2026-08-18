@@ -91,6 +91,28 @@ describe("EventsShortcutsOverlay", () => {
     expect(screen.queryByRole("dialog")).toBeNull()
   })
 
+  it("keeps the overlay open when its content panel is clicked", () => {
+    renderOverlay()
+    pressKey("?")
+
+    fireEvent.click(screen.getByRole("document"))
+
+    expect(screen.getByRole("dialog")).toBeInTheDocument()
+  })
+
+  it("ignores shortcut keys originating inside another dialog", () => {
+    const { container } = renderOverlay()
+    const dialog = document.createElement("div")
+    dialog.setAttribute("role", "dialog")
+    const button = document.createElement("button")
+    dialog.appendChild(button)
+    container.appendChild(dialog)
+
+    fireEvent.keyDown(button, { key: "?" })
+
+    expect(screen.queryByRole("dialog")).toBe(dialog)
+  })
+
   // ── content ────────────────────────────────────────────────────────────────
   it("renders all shortcut keys when open", () => {
     renderOverlay()

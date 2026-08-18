@@ -55,6 +55,9 @@ export default defineConfig({
     ],
     coverage: {
       provider: "v8",
+      // Remap against the authored AST so generated Vite SSR import wrappers
+      // cannot become phantom uncovered statements during cross-worker merges.
+      experimentalAstAwareRemapping: true,
       reporter: ["text", "json", "lcov", "html"],
       reportsDirectory: "coverage",
       // Keep all authored production source in the denominator. Do not replace
@@ -69,18 +72,14 @@ export default defineConfig({
         "src/routeTree.gen.ts",
         "src/api/generated/**/*",
         "**/*.d.ts",
-        "src/workers/**/*",
-        "src/server.ts",
-        "src/main.tsx",
-        "src/sw.ts",
         "src/test/**/*",
       ],
-      // Frontend ratchet: authored-only aggregate now clears 99/98/98.
+      // Authored frontend source is held to complete aggregate coverage.
       thresholds: {
-        statements: 99,
-        branches: 98,
-        functions: 98,
-        lines: 99,
+        statements: 100,
+        branches: 100,
+        functions: 100,
+        lines: 100,
       },
     },
   },

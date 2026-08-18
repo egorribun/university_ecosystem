@@ -1,10 +1,10 @@
 import { useEffect, useState } from "react"
-import { createFileRoute, Outlet } from "@tanstack/react-router"
+import { createFileRoute, Outlet, useNavigate } from "@tanstack/react-router"
 import { breakpoints } from "@/theme/tokens"
 import useMediaQuery from "@/hooks/useMediaQuery"
 import { AdminBackdrop } from "@/features/admin/components/AdminBackdrop"
 import { useAuthStore } from "@/stores/useAuthStore"
-import { evaluateAdminGuard } from "./guards"
+import { evaluateAdminGuard, getAdminRedirectTarget } from "./guards"
 
 // Wave 150 SW1 — `.admin-theme` scope wrapper + AdminBackdrop on all
 // /admin routes (mirrors W84 ActivityFeature pattern). Indigo/slate palette
@@ -20,7 +20,7 @@ import { evaluateAdminGuard } from "./guards"
 // SSR rendered all 4 orbs (no conditional skips); CSR on mobile rendered
 // only orbs #1 and #3 (skipping #2 highlight + #4 conic drift) → DOM
 // subtree mismatch → React #418 with args[]=HTML&args[]= (verified
-// W165 SW3 sidecar at frontend/.screenshots/wave165-admin-visual-smoke/
+// Admin smoke sidecar at frontend/.screenshots/admin-visual-smoke/
 // admin_audit_light.json:24,56 — same error class as W155 SW3.A).
 //
 // Standard pattern: server + client first render both see `mounted=false`
@@ -28,13 +28,22 @@ import { evaluateAdminGuard } from "./guards"
 // post-hydration → setMounted(true) triggers re-render with real hook
 // values. Single-frame visual flicker on mobile (~16ms at 60fps) is
 // imperceptible and acceptable per W156 SW3 trade-off.
-function AdminLayout() {
+export function AdminLayout() {
   const [mounted, setMounted] = useState(false)
+  const user = useAuthStore((state) => state.user)
+  const loading = useAuthStore((state) => state.loading)
+  const navigate = useNavigate()
   const prefersReducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)")
   const isNarrow = useMediaQuery(`(max-width: ${breakpoints.dashboard})`)
+  const redirectTarget = getAdminRedirectTarget({ user, loading })
   useEffect(() => {
     setMounted(true)
   }, [])
+  useEffect(() => {
+    if (redirectTarget) void navigate({ to: redirectTarget, replace: true })
+  }, [navigate, redirectTarget])
+
+  if (mounted && redirectTarget) return null
   // Server + client initial render: pass defaults (mounted=false branch).
   // After hydration: useEffect → re-render with actual hook values.
   const ssrSafeIsNarrow = mounted ? isNarrow : false

@@ -39,5 +39,10 @@ describe("LiveRegionProvider / useAnnouncer", () => {
 
     act(() => vi.advanceTimersByTime(3000))
     expect(screen.getByRole("status").textContent).toBe("")
+
+    act(() => result.current.announce("urgent", "assertive"))
+    expect(screen.getByRole("alert")).toHaveTextContent("urgent")
+    act(() => vi.advanceTimersByTime(3000))
+    expect(screen.getByRole("alert").textContent).toBe("")
   })
 })

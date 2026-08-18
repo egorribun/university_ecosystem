@@ -1,76 +1,16 @@
-// Wave 135 SW3 — Option E (Path B partial structural + Path A kill-after-
-// artifacts) full orchestration. Retires `frontend/scripts/wave127-build-x3.sh`
-// watch+kill workaround in favour of a single npm script.
-//
-// Pre-W135 hang theory (W126 polish #3): `vite-plugin-pwa:build`'s
-// `closeBundle` hook calls `_generateSW(ctx)` (workbox-build internally),
-// hangs indefinitely on Windows after tanstackStart's prerender completes.
-//
-// W135 SW3 empirical findings:
-//   • Programmatic `vite.build()` exits cleanly but does NOT fire
-//     tanstackStart's prerender → no `_shell.html`. (W128 polish round 2
-//     observation reproduced.)
-//   • Subprocess `vite build` (CLI) DOES fire prerender + emits all
-//     artifacts (dist/client/* + dist/server/*) — and STILL hangs after
-//     `[prerender] Prerendered 1 pages: /`, EVEN with `BUILD_SKIP_PWA=true`
-//     making `VitePWA({ disable: true })`. So vite-plugin-pwa is NOT the
-//     sole hang culprit; a second hang point lives in tanstackStart's
-//     plugin chain (likely `tanstack-start-core:post-build` or a watcher
-//     that holds the event loop open). True structural retirement of the
-//     hang requires upstream investigation — filed as W136 candidate.
-//
-// W135 SW3 pragmatic strategy:
-//   1. Set `BUILD_SKIP_PWA=true` so `vite.config.mts` configures
-//      `VitePWA({ disable: true })`. Skips the workbox call inside vite —
-//      we run workbox-build standalone in step 5 (no hang).
-//   2. Spawn `vite build` as a subprocess. Watch for BOTH `_shell.html`
-//      AND `dist/server/server.js` to exist + be stable (debounced ~2s).
-//      Once stable, send SIGTERM to the vite subprocess to break out of
-//      the post-prerender hang. Artifacts already written to disk; the
-//      hang occurs AFTER the prerender writes, so killing here is safe.
-//      (This is the same kill-after-artifacts pattern as
-//      `wave127-build-x3.sh`, but cross-platform + integrated.)
-//   3. Compile `src/sw.ts` → `dist/client/sw.js` ourselves via esbuild.
-//      With BUILD_SKIP_PWA=true, vite-plugin-pwa does NOT compile sw.ts
-//      (its `_generateSW` is the function we disabled). esbuild handles
-//      TypeScript natively, respects `tsconfig.json` paths
-//      (`@/*` → `src/*`), and produces a single bundled SW preserving
-//      the `self.__WB_MANIFEST` placeholder for workbox to inject.
-//   4. Call `workbox-build.injectManifest()` standalone with the same
-//      options as `vite.config.mts:357-382` — replaces `self.__WB_MANIFEST`
-//      with the actual precache manifest. NO HANG — running outside
-//      Vite's plugin lifecycle on Windows.
-//   5. Run `post-build-shell.mjs` for CSP nonce + font preload + LHCI
-//      placeholder + mirror to `index.html` (W125 Phase 2 baseline).
-//
-// `main.tsx:79` calls `registerServiceWorker("/sw.js")` directly — sw
-// registration script injection (vite-plugin-pwa:build's
-// `transformIndexHtml`) is NOT needed for our setup; tanstackStart's React
-// SSR shell skips `transformIndexHtml` anyway (vite.config.mts:118-127).
-// Disabling vite-plugin-pwa via the `disable: true` flag is therefore safe.
-//
-// Honest framing (W135 SW3 §Honesty): the kill-after-artifacts mechanism
-// IMPROVES on wave127-build-x3.sh (cross-platform + single npm script +
-// integrated workbox/sw compile) but does NOT STRUCTURALLY fix the
-// underlying tanstackStart-core post-prerender hang. W136+ candidate:
-// trace which plugin holds the event loop open + file upstream issue.
-//
-// W163 SW2 Path (d) closure (2026-05-18): the deeper Worker thread leak
-// (W136 SW5 trace = MessagePort + Pipe + Socket × 2 family — likely
-// Rolldown native worker pool / @rolldown/plugin-babel) is ACCEPTED as
-// platform limitation. Canonical workarounds:
-//   • This script's kill-after-artifacts pattern (ships artifacts
-//     deterministically; build × 3 BYTE-IDENTICAL × ≥28 waves W134-W162).
-//   • W162 SW2 Promise.race(5s) + process.exit(0) at lhci-windows-fallback.mjs
-//     handles the related LHCI wrapper cleanup-hang class.
-// Production users + CI Linux UNAFFECTED (Linux doesn't trigger this hang).
-// Upstream investigation paths (a) file issue at vite-pwa/vite-plugin-pwa
-// OR rolldown/rolldown OR tanstack/tanstack-start; (b) Rolldown native
-// worker pool config tuning) require ~3-5h focused scope under STRICT
-// 1-iter — deferred to W164+ if measurement-parity demand emerges.
-// Mirrors W162 SW1 "Linux CI Perf=null platform limitation accepted"
-// framing per `feedback_perfectionism.md` "if you can't measure /
-// can't structurally fix in 1-iter, defer honestly".
+/**
+ * Cross-platform frontend build orchestration.
+ *
+ * The Vite CLI is required for TanStack Start prerendering, but on Windows its
+ * plugin chain can retain event-loop handles after both client and server
+ * artifacts are complete. This runner disables the in-plugin PWA phase,
+ * watches fresh `_shell.html` and `server.js` artifacts until stable, then
+ * terminates the lingering child process. It subsequently bundles the service
+ * worker, injects the Workbox manifest, processes the static shell, and checks
+ * the optional bundle report.
+ *
+ * `BUILD_HANG_TRACE=1` injects build-hang-trace-agent.cjs for handle evidence.
+ */
 
 import { existsSync, readFileSync, statSync } from "node:fs"
 import path from "node:path"
@@ -80,8 +20,7 @@ import { execFile, spawn } from "node:child_process"
 import { injectManifest } from "workbox-build"
 import * as esbuild from "esbuild"
 
-// W136 SW6: shared Workbox config — single source of truth with
-// vite.config.mts (eliminates W135 §Honesty #5 drift risk).
+// Shared with vite.config.mts to keep Workbox behavior identical.
 import { PWA_INJECT_CONFIG } from "./workbox-config.mjs"
 import { buildWasmArtifacts } from "./build-wasm.mjs"
 
@@ -195,27 +134,20 @@ async function step3_viteBuild() {
   const shellPath = path.join(cwd, "dist/client/_shell.html")
   const serverPath = path.join(cwd, "dist/server/server.js")
 
-  // W136 SW5: optionally inject hang-trace agent into the vite subprocess.
-  // Set WAVE136_HANG_TRACE=1 to enable. Agent dumps process._getActiveHandles
-  // via stderr + file (.wave136-trace/) + IPC reply when triggered. Helps
-  // identify which handle types (FSWatcher / Timer / etc.) hold the loop
+  // Optionally inject the hang-trace agent into the Vite subprocess.
+  // Set BUILD_HANG_TRACE=1 to enable. The agent reports active handles
+  // via stderr + file (.build-hang-trace/) + IPC reply when triggered. This
+  // helps identify which handle types (FSWatcher / Timer / etc.) hold the loop
   // open after artifacts are emitted.
-  const traceEnabled = process.env.WAVE136_HANG_TRACE === "1"
-  const traceAgentPath = path.resolve(cwd, "scripts/wave136-hang-trace-agent.cjs")
+  const traceEnabled = process.env.BUILD_HANG_TRACE === "1"
+  const traceAgentPath = path.resolve(cwd, "scripts/build-hang-trace-agent.cjs")
   const useIpc = traceEnabled
 
-  // W153 SW1 — opt-in unminified bundle + linked source maps for the /login
-  // wedge diagnostic (W150-polish-followup caveat #14, W152 iter-5 honest
-  // defer). Setting FRONTEND_BUILD_UNMINIFIED=true (dev compose only, never
-  // CI / prod) propagates to vite.config.mts so build.minify=false +
-  // build.sourcemap=true. Mode STAYS at "production" so the JSX transform
+  // FRONTEND_BUILD_UNMINIFIED=true enables an unminified diagnostic bundle
+  // with linked source maps. Mode stays at "production" so the JSX transform
   // continues to emit `jsx()` calls (NOT `jsxDEV()`), keeping SSR runtime
   // compatible with the production react-dom-server.node.production.js
-  // loaded at runtime (Dockerfile:NODE_ENV=production in runtime stage).
-  // SW1 fixup history: initial attempt set NODE_ENV=development + passed
-  // `--mode development` arg. This broke SSR with `TypeError: jsxDEV is not
-  // a function` at RootShell because the server bundle was compiled with
-  // jsxDEV calls but Node loads the production react-dom runtime.
+  // loaded at runtime. Never enable this in CI or production deployments.
   const isUnminified = process.env.FRONTEND_BUILD_UNMINIFIED === "true"
 
   // Resource-safety guard: Rolldown's native worker pool can retain memory
@@ -228,8 +160,8 @@ async function step3_viteBuild() {
   const inheritedNodeOptions = process.env.NODE_OPTIONS ?? ""
   const hasOldSpaceLimit = /(?:^|\s)--max-old-space-size(?:=|\s)/.test(inheritedNodeOptions)
 
-  // W156 SW1 Tier 1 #1 — propagate FRONTEND_REACT_DEV_MODE to vite subprocess.
-  // When set (dev compose only), vite.config.mts adds react-dom/client →
+  // FRONTEND_REACT_DEV_MODE propagates a client-only diagnostic mode.
+  // When set locally, vite.config.mts adds react-dom/client →
   // development bundle alias + per-environment NODE_ENV=development define
   // for the client environment. See vite.config.mts isReactDevMode comment
   // block for full rationale + jsxDEV-trap avoidance (server bundle stays
@@ -250,11 +182,11 @@ async function step3_viteBuild() {
       ...process.env,
       ...(wantsReport ? { BUILD_REPORT: "1", ANALYZE: process.env.ANALYZE ?? "1" } : {}),
       BUILD_SKIP_PWA: "true",
-      // W153 SW1 — propagate unminified flag to vite subprocess. NODE_ENV
+      // Propagate the unminified flag. NODE_ENV
       // is intentionally NOT set to development — that would force React +
       // JSX transform to dev runtime which breaks SSR (see comment above).
       FRONTEND_BUILD_UNMINIFIED: isUnminified ? "true" : "",
-      // W156 SW1 Tier 1 #1 — see isReactDevMode block above.
+      // See isReactDevMode above.
       FRONTEND_REACT_DEV_MODE: isReactDevMode ? "true" : "",
       NODE_OPTIONS: nodeOptions,
     }
@@ -271,7 +203,7 @@ async function step3_viteBuild() {
 
     if (useIpc) {
       child.on("message", (msg) => {
-        if (msg && typeof msg === "object" && msg.type === "wave136-trace-dump-reply") {
+        if (msg && typeof msg === "object" && msg.type === "build-hang-trace-dump-reply") {
           console.log(
             `[orchestrator] received trace dump from vite subprocess: ${msg.handles.length} handle types, ${msg.requests.length} request types after ${msg.elapsedMs}ms`
           )
@@ -288,12 +220,10 @@ async function step3_viteBuild() {
     const MAX_WAIT_MS = 180_000 // 3 minutes hard cap before giving up
 
     const startTime = Date.now()
-    // W136 SW5: kill-after-artifacts must not fire on STALE leftover artifacts
+    // Never terminate a build based on stale artifacts
     // from a previous build. The poll only considers an artifact "fresh"
     // if its mtime is >= startTime — vite must have written it during this
-    // build, not during a prior run. Without this guard the orchestrator
-    // SIGTERMs vite within 2s using leftover dist/ files (W136 SW5 trace
-    // surfaced this regression in W135 SW3's pattern).
+    // build, not during a prior run.
     const FRESH_MTIME_GRACE_MS = 1500 // tolerate filesystem mtime quantization
 
     const isArtifactFresh = (file) => {
@@ -344,7 +274,7 @@ async function step3_viteBuild() {
           // post-prerender hang. The vite process has already written
           // _shell.html + server.js to disk; killing here is safe.
           if (!killed) {
-            // W136 SW5: if trace enabled, request handle dump via IPC
+            // If tracing is enabled, request a handle dump via IPC
             // BEFORE killing, then exit gracefully. The agent's reply
             // (handled above) provides diagnostic data.
             if (useIpc && typeof child.send === "function") {
@@ -353,7 +283,7 @@ async function step3_viteBuild() {
               )
               try {
                 child.send({
-                  type: "wave136-trace-dump",
+                  type: "build-hang-trace-dump",
                   reason: "orchestrator-artifact-stable",
                   thenExit: true,
                 })
@@ -451,21 +381,20 @@ async function step4_swBundle() {
     throw new Error(`Source service worker not found at ${swSrc}`)
   }
 
-  // Pre-W135 vite-plugin-pwa internally invoked Vite's build with sw.ts as
-  // an entry. esbuild handles TypeScript natively, respects tsconfig.json
+  // esbuild handles TypeScript natively, respects tsconfig.json
   // paths (@/* → src/*), and produces a single bundled SW. The
   // `self.__WB_MANIFEST` placeholder in src/sw/precaching.ts:12 is
   // PRESERVED in the output — workbox-build.injectManifest in step 5
   // replaces it with the actual precache manifest array.
   //
   // platform: "browser" + format: "iife" produces a classic-script-compatible
-  // bundle. Wave 138 SW2 fix: pre-fix `format: "esm"` emitted `export{...}`
+  // bundle. An ESM output would emit `export{...}`
   // at end of sw.js (from sw.ts test-compatibility re-exports at lines 17-37).
   // `navigator.serviceWorker.register()` in `frontend/src/push/register-sw.ts:49`
   // does NOT pass `{ type: "module" }`, so the browser parses sw.js as
   // a classic script. Classic-script + `export` keyword =
   // `SyntaxError: Unexpected token 'export'` → "ServiceWorker script
-  // evaluation failed" (1 console error per route in W137 SW4 smoke).
+  // evaluation failed".
   // Switching to IIFE makes esbuild drop the `export` statements; the
   // re-export consts become local-IIFE consts assigned to `self.__SW_TESTING__`
   // in bootstrap() (which is the only runtime consumer). Tests that
@@ -473,7 +402,7 @@ async function step4_swBundle() {
   // minify on; sourcemap off (matches Vite's "hidden" mode for prod — no
   // sourceMappingURL comment in JS).
   //
-  // W153 SW1 — gate matches the vite subprocess block above. When
+  // The diagnostic gate matches the Vite subprocess block above. When
   // FRONTEND_BUILD_UNMINIFIED=true, the service worker bundle ships
   // unminified with inline source maps so SW errors are readable in
   // Chrome DevTools alongside the main client bundle. import.meta.env.*
@@ -516,76 +445,9 @@ async function step5_workboxInject() {
     )
   }
 
-  // Wave 142 SW6 NEW (z) #11 W142 + polish-v2 refinement (build-infra
-  // non-determinism DIAGNOSIS at TWO LAYERS):
-  //
-  // W141 polish A3 surfaced that defensive `npm run build` × 2 produces
-  // BYTE-IDENTICAL main JS + server.js sha256 BUT `_shell.html` + `sw.js`
-  // have SAME byte count with DIFFERENT sha256. Agent 3 Phase 1 hypothesis:
-  // workbox-build `injectManifest` iterates `fs.readdir` in OS-dependent
-  // order → precache manifest entries unsorted → cascade through sw.js
-  // revision hashes. W142 SW6 empirical diff verification (2026-05-12)
-  // DISPROVED this hypothesis. W142 polish-v2 build3 evidence further
-  // refined the diagnosis into TWO non-determinism layers:
-  //
-  // **Layer 1 (INTERMITTENT, Rolldown chunking)**:
-  //   build1 produced index-DqqHVXgy.js (sha256 634d406d...)
-  //   build2 + build3 BOTH produced index-CQ-5oXj0.js (sha256 9f7cd496...)
-  //   server.js similarly: build1 differs; build2 + build3 BYTE-IDENTICAL
-  //   sha256 (61709961...). So Rolldown chunking IS sometimes non-
-  //   deterministic but NOT always — build2→build3 was stable.
-  //
-  // **Layer 2 (CONSISTENT, post-build/prerender)**:
-  //   _shell.html: 3 unique sha256 across 3 builds (each pair differs
-  //   pairwise), all 65,864 bytes.
-  //   sw.js: 3 unique sha256 across 3 builds (each pair differs pairwise),
-  //   all 53,115 bytes — cascade from _shell.html into workbox manifest
-  //   revision hash (302 byte diff at offset 31480 in build2 vs build3 case;
-  //   offset varies per-build pair).
-  //
-  // The Layer 2 source is likely:
-  //   - TanStack Start prerender output (the source _shell.html before
-  //     post-build-shell.mjs runs)
-  //   - OR post-build-shell.mjs CSP nonce injection / font preload sort
-  //     ordering (font sort already uses .sort(); CSP nonce regex match
-  //     order should be deterministic)
-  //   - OR workbox revision hash computation cascade
-  //
-  // The Layer 1 source is likely:
-  //   - Rolldown parallel module processing (Rust threading)
-  //   - Module dependency graph traversal order (filesystem-dependent)
-  //   - Intermediate hash inputs (timestamps, mtimes, parallel ID assignment)
-  //
-  // Adding post-injectManifest workbox manifest sort would NOT fix EITHER
-  // layer — Layer 1 is about chunk filename hashing upstream; Layer 2 is
-  // about _shell.html itself differing before the manifest hashes are
-  // computed. Per plan deviation trigger #9 ("SW6 3rd-build sha256 still
-  // drifts after primary fix → defer to W143+ structural"), DEFERRED with
-  // documented two-layer root cause.
-  //
-  // W143+ scope (~5-9h total):
-  //   1. Layer 1 (~2-4h): Investigate Rolldown chunk-naming determinism
-  //      flags (entryFileNames, chunkFileNames, hashCharacters), parallelism
-  //      config
-  //   2. Layer 2 (~3-5h): Diagnose source — TanStack Start prerender output
-  //      determinism + post-build-shell.mjs ordering + workbox revision
-  //      hash stability
-  //   3. If structural: report upstream, accept current state as known limit
-  //
-  // W142 SW6 progress vs W141 polish A3:
-  //   - W141 polish A3 framing: "main JS + server.js BYTE-IDENTICAL × 2;
-  //     _shell.html + sw.js byte-count match but sha256 differs, source
-  //     not yet identified"
-  //   - W142 SW6 initial framing (OVERCLAIMED): "Rolldown chunk filename
-  //     hash non-determinism, propagates via _shell.html main-JS ref"
-  //   - W142 SW6 polish-v2 refined: "TWO LAYERS — Layer 1 intermittent
-  //     Rolldown chunking + Layer 2 consistent post-build/prerender; build3
-  //     evidence captured both"
-  //
-  // Per `feedback_perfectionism.md` "structural deferrals acceptable with
-  // honest framing" + W138 Lesson #8 "§Honesty caveat counting is dynamic"
-  // — refining the framing IS honest progress. The empirical build × 3
-  // evidence is more precise than build × 2 was.
+  // Inject after the Vite process exits so Workbox cannot retain Vite's
+  // plugin lifecycle. The shared config controls deterministic glob ordering
+  // and the maximum precache size.
   const result = await injectManifest({
     swSrc: swPath,
     swDest: swPath,
@@ -616,7 +478,7 @@ async function step7_bundleBudget() {
 }
 
 async function main() {
-  console.log(`build-orchestrated.mjs — Wave 135 SW3 (cwd=${cwd})`)
+  console.log(`build-orchestrated.mjs (cwd=${cwd})`)
   if (sanitizedArgs.length > 0) {
     console.log(`Vite args: ${sanitizedArgs.join(" ")}`)
   }

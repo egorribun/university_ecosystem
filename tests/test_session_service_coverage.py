@@ -1,4 +1,4 @@
-"""Coverage tests for app/services/session_service.py (testing session 9).
+"""Behavior and failure-path tests for the session service.
 
 Targets the previously-uncovered service surface: session listing / lookup /
 revocation methods (L237-296), the Redis-registration warn path (L41-52),

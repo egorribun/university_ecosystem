@@ -2,8 +2,8 @@ name: Nightly Full Quality Gate
 
 # Long-running suites are intentionally isolated from the fast PR gate. After
 # 30 consecutive green calendar days, their named checks can be promoted into
-# the main ruleset (the promotion decision is documented in the roadmap and is
-# not inferred from one successful run).
+# the main ruleset through an explicit, reviewed ruleset change; one successful
+# run is never sufficient evidence for promotion.
 on:
   schedule:
     - cron: "0 1 * * *"
@@ -28,7 +28,7 @@ jobs:
       # every shard to contain a non-empty, valid stats payload.
       matrix:
         stats_shard: [0, 1, 2, 3]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:
       - name: Checkout
@@ -65,9 +65,92 @@ jobs:
           path: mutants/mutmut-stats.json
           if-no-files-found: error
 
+  mutation-tests-full-plan:
+    name: Preflight exact full mutation plan
+    needs: mutation-tests-full-stats
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.14"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: Install dependencies
+        run: uv sync --group dev
+
+      - name: Download full mutmut stats shards
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: nightly-mutmut-stats-${{ github.run_id }}-*
+          path: mutmut-stats
+
+      - name: Merge full mutmut stats shards
+        run: |
+          uv run python scripts/merge_mutmut_stats.py \
+            --input-root mutmut-stats \
+            --output mutants/mutmut-stats.json
+
+      - name: Reduce full mutmut mapping to observed kill probes
+        run: |
+          cp mutants/mutmut-stats.json mutants/mutmut-stats-full.json
+          uv run python scripts/reduce_mutmut_stats.py \
+            --input mutants/mutmut-stats-full.json \
+            --output mutants/mutmut-stats.json \
+            --audit-output mutants/mutmut-stats-reduction.json \
+            --tests-per-function 2
+          test -s mutants/mutmut-stats-full.json
+          test -s mutants/mutmut-stats-reduction.json
+
+      - name: Plan and budget every exact full mutation shard
+        run: |
+          find app -type f -name '*.py' | sort -u > /tmp/all_py.txt
+          test -s /tmp/all_py.txt
+          uv run python scripts/plan_mutmut_shards.py \
+            --changed-files /tmp/all_py.txt \
+            --num-shards 16 \
+            --max-children 8 \
+            --output-directory mutants/mutmut-full-plan
+          for shard in $(seq 1 16); do
+            printf -v shard_file 'shard-%02d.txt' "$shard"
+            test -s "mutants/mutmut-full-plan/$shard_file"
+            uv run python scripts/mutmut_shard_budget.py \
+              --selected-file "mutants/mutmut-full-plan/$shard_file" \
+              --stats mutants/mutmut-stats.json \
+              --max-children 8 \
+              --control-cycle-reserve-seconds 1 \
+              --max-timeout-seconds 18000 \
+              --output "mutants/mutmut-full-plan/budget-${shard_file%.txt}.json"
+          done
+          test "$(find mutants/mutmut-full-plan -maxdepth 1 -name 'budget-shard-*.json' | wc -l)" -eq 16
+          jq -e '.schema_version == 1 and .num_shards == 16 and .universe_count > 0' \
+            mutants/mutmut-full-plan/plan-manifest.json > /dev/null
+
+      - name: Upload preflighted full mutation plan
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: nightly-mutmut-plan-${{ github.run_id }}
+          path: |
+            mutants/mutmut-stats.json
+            mutants/mutmut-stats-full.json
+            mutants/mutmut-stats-reduction.json
+            mutants/mutmut-full-plan/
+          if-no-files-found: error
+
   mutation-tests-full:
     name: Full mutation score (mutmut) / shard ${{ matrix.shard }}/16
-    needs: mutation-tests-full-stats
+    needs: mutation-tests-full-plan
     strategy:
       fail-fast: false
       # Each leg creates the same pristine universe, executes only its exact
@@ -75,7 +158,7 @@ jobs:
       # below rejects overlap, mixed universes, and incomplete coverage.
       matrix:
         shard: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 360
     steps:
       - name: Record mutmut job deadline
@@ -107,24 +190,16 @@ jobs:
       - name: Install dependencies
         run: uv sync --group dev
 
-      # mutmut 3.7 invokes pytest.main() repeatedly in one interpreter. Pytest
-      # explicitly does not support re-running the same suite in-process:
-      # imported test modules and their dependencies remain cached. The four
-      # stats jobs above collect disjoint populations in isolated processes;
-      # merge_mutmut_stats.py fails closed on overlap/missing data, then the
-      # pinned wrapper starts mutation execution in a fresh process so its
-      # clean baseline is still the first pytest invocation there.
-      - name: Download full mutmut stats shards
+      # The preflight job merges the isolated stats populations once, reduces
+      # the primary map monotonically, and rejects any shard that cannot fit
+      # the supported deadline before this 16-way matrix is launched. Each
+      # execution leg regenerates a pristine mutmut universe and must reproduce
+      # its preflighted exact selection byte-for-byte.
+      - name: Download preflighted full mutation plan
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          pattern: nightly-mutmut-stats-${{ github.run_id }}-*
-          path: mutmut-stats
-
-      - name: Merge full mutmut stats shards
-        run: |
-          uv run python scripts/merge_mutmut_stats.py \
-            --input-root mutmut-stats \
-            --output mutants/mutmut-stats.json
+          name: nightly-mutmut-plan-${{ github.run_id }}
+          path: mutants
 
       - name: Plan and run exact full mutation shard
         id: run_full_mutmut
@@ -135,8 +210,16 @@ jobs:
             --changed-files /tmp/all_py.txt \
             --shard-id "${{ matrix.shard }}" \
             --num-shards 16 \
-            --max-children 2 \
+            --max-children 8 \
             --output /tmp/mutmut-shard.txt
+          printf -v preflight_shard_file 'shard-%02d.txt' "${{ matrix.shard }}"
+          test -s "mutants/mutmut-full-plan/$preflight_shard_file"
+          if ! cmp --silent \
+            "mutants/mutmut-full-plan/$preflight_shard_file" \
+            /tmp/mutmut-shard.txt; then
+            echo "::error::Regenerated mutation shard differs from its preflighted exact plan."
+            exit 1
+          fi
           mapfile -t MUTANT_NAMES < /tmp/mutmut-shard.txt
           if [ "${#MUTANT_NAMES[@]}" -eq 0 ]; then
             echo "No mutants assigned to full mutation shard ${{ matrix.shard }}/16."
@@ -193,7 +276,8 @@ jobs:
           MUTMUT_BUDGET_TIMEOUT_SECONDS="$(uv run python scripts/mutmut_shard_budget.py \
             --selected-file /tmp/mutmut-shard.txt \
             --stats mutants/mutmut-stats.json \
-            --max-children 2 \
+            --max-children 8 \
+            --control-cycle-reserve-seconds 1 \
             --max-timeout-seconds 18000 \
             --output "$MUTMUT_EVIDENCE_DIR/shard-budget.json")"
           if ! [[ "$MUTMUT_BUDGET_TIMEOUT_SECONDS" =~ ^[1-9][0-9]*$ ]]; then
@@ -231,7 +315,7 @@ jobs:
           MUTMUT_FAILURE_REASON="mutmut pipeline did not complete"
           set +e
           timeout --kill-after=30s "${MUTMUT_TIMEOUT_SECONDS}s" \
-            uv run python scripts/run_mutmut_with_stats.py --max-children 2 "${MUTANT_NAMES[@]}" \
+            uv run python scripts/run_mutmut_with_stats.py --max-children 8 "${MUTANT_NAMES[@]}" \
             2>&1 | tee "$MUTMUT_EVIDENCE_DIR/mutmut-run.log"
           pipeline_status=("${PIPESTATUS[@]}")
           mutmut_exit_code="${pipeline_status[0]}"
@@ -246,13 +330,80 @@ jobs:
             mutants_started=1
           fi
           if [ "$mutmut_exit_code" -eq 0 ]; then
-            MUTMUT_FAILURE_REASON="verifying exact mutmut execution"
+            MUTMUT_FAILURE_REASON="exporting primary reduced-map mutation outcomes"
+            uv run python scripts/export_mutmut_shard_stats.py \
+              --selected-file /tmp/mutmut-shard.txt \
+              --verify-exact-execution "$MUTMUT_EVIDENCE_DIR/execution-plan.json" \
+              --execution-proof "$MUTMUT_EVIDENCE_DIR/execution-proof.json" \
+              --execution-evidence-dir "$MUTMUT_EVIDENCE_DIR" \
+              --output mutants/mutmut-primary-cicd-stats.json
+            cp "$MUTMUT_EVIDENCE_DIR/execution-proof.json" \
+              "$MUTMUT_EVIDENCE_DIR/primary-execution-proof.json"
+            cp "$MUTMUT_EVIDENCE_DIR/selected-results.json" \
+              "$MUTMUT_EVIDENCE_DIR/primary-selected-results.json"
+            jq -r \
+              '.selected_results[] | select(.status == "survived") | .mutant_name' \
+              "$MUTMUT_EVIDENCE_DIR/primary-selected-results.json" \
+              > "$MUTMUT_EVIDENCE_DIR/full-map-survivors.txt"
+            survivor_count="$(wc -l < "$MUTMUT_EVIDENCE_DIR/full-map-survivors.txt")"
+            echo "Primary reduced-map survivors requiring full-map confirmation: $survivor_count"
+
+            if [ "$survivor_count" -gt 0 ]; then
+              cp mutants/mutmut-stats-full.json mutants/mutmut-stats.json
+              MUTMUT_FAILURE_REASON="deriving the full-map survivor confirmation budget"
+              FULL_MAP_BUDGET_TIMEOUT_SECONDS="$(uv run python scripts/mutmut_shard_budget.py \
+                --selected-file "$MUTMUT_EVIDENCE_DIR/full-map-survivors.txt" \
+                --stats mutants/mutmut-stats-full.json \
+                --max-children 2 \
+                --max-timeout-seconds 18000 \
+                --output "$MUTMUT_EVIDENCE_DIR/full-map-survivor-budget.json")"
+              if ! [[ "$FULL_MAP_BUDGET_TIMEOUT_SECONDS" =~ ^[1-9][0-9]*$ ]]; then
+                MUTMUT_FAILURE_REASON="full-map survivor budget helper returned an unsafe timeout value"
+                echo "::error::Full-map survivor budget helper returned an unsafe timeout value."
+                exit 1
+              fi
+              MUTMUT_CURRENT_EPOCH="$(date -u +%s)"
+              FULL_MAP_REMAINING_TIMEOUT_SECONDS="$((MUTMUT_JOB_DEADLINE_EPOCH - MUTMUT_CURRENT_EPOCH - MUTMUT_POST_RUN_UPLOAD_RESERVE_SECONDS - MUTMUT_TIMEOUT_KILL_GRACE_SECONDS))"
+              if [ "$FULL_MAP_REMAINING_TIMEOUT_SECONDS" -lt "$FULL_MAP_BUDGET_TIMEOUT_SECONDS" ]; then
+                MUTMUT_FAILURE_REASON="full-map survivor confirmation cannot fit the fail-closed job deadline"
+                echo "::error::Full-map survivor confirmation requires ${FULL_MAP_BUDGET_TIMEOUT_SECONDS}s but the job deadline permits only ${FULL_MAP_REMAINING_TIMEOUT_SECONDS}s; refusing unconfirmed evidence."
+                exit 1
+              fi
+
+              mapfile -t FULL_MAP_SURVIVORS < "$MUTMUT_EVIDENCE_DIR/full-map-survivors.txt"
+              MUTMUT_FAILURE_REASON="confirming primary survivors against the complete mapped test sets"
+              set +e
+              timeout --kill-after=30s "${FULL_MAP_BUDGET_TIMEOUT_SECONDS}s" \
+                uv run python scripts/run_mutmut_with_stats.py --max-children 2 "${FULL_MAP_SURVIVORS[@]}" \
+                2>&1 | tee "$MUTMUT_EVIDENCE_DIR/full-map-confirmation.log"
+              pipeline_status=("${PIPESTATUS[@]}")
+              mutmut_exit_code="${pipeline_status[0]}"
+              tee_exit_code="${pipeline_status[1]}"
+              set -e
+              if [ "$tee_exit_code" -ne 0 ]; then
+                MUTMUT_FAILURE_REASON="unable to persist full-map survivor confirmation output"
+                exit "$tee_exit_code"
+              fi
+              if [ "$mutmut_exit_code" -eq 124 ]; then
+                MUTMUT_FAILURE_REASON="full-map survivor confirmation exceeded its stats-derived timeout"
+                echo "::error::Full-map survivor confirmation exceeded its stats-derived budget."
+                exit 124
+              fi
+              if [ "$mutmut_exit_code" -ne 0 ]; then
+                MUTMUT_FAILURE_REASON="full-map survivor confirmation did not complete"
+                echo "::error::Full-map survivor confirmation exited with ${mutmut_exit_code}."
+                exit "$mutmut_exit_code"
+              fi
+            fi
+
+            MUTMUT_FAILURE_REASON="verifying final exact full-map-confirmed mutation execution"
             uv run python scripts/export_mutmut_shard_stats.py \
               --selected-file /tmp/mutmut-shard.txt \
               --verify-exact-execution "$MUTMUT_EVIDENCE_DIR/execution-plan.json" \
               --execution-proof "$MUTMUT_EVIDENCE_DIR/execution-proof.json" \
               --execution-evidence-dir "$MUTMUT_EVIDENCE_DIR" \
               --output mutants/mutmut-cicd-stats.json
+            test -s mutants/mutmut-primary-cicd-stats.json
             test -s mutants/mutmut-cicd-stats.json
             test -s "$MUTMUT_EVIDENCE_DIR/execution-proof.json"
             test -s "$MUTMUT_EVIDENCE_DIR/selected-mutants.json"
@@ -291,15 +442,17 @@ jobs:
           name: nightly-mutmut-shard-${{ github.run_id }}-${{ matrix.shard }}
           path: |
             mutants/mutmut-cicd-stats.json
+            mutants/mutmut-primary-cicd-stats.json
+            mutants/mutmut-stats-full.json
+            mutants/mutmut-stats-reduction.json
             mutants/mutmut-exact-evidence/
-            mutants/mutmut-exact-evidence/mutmut-run.log
           if-no-files-found: error
 
   mutation-tests-full-aggregate:
     name: Full mutation score (mutmut) / aggregate 16 shards
     needs: mutation-tests-full
     if: ${{ always() }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
       - name: Checkout
@@ -344,7 +497,7 @@ jobs:
 
   frontend-mutation-tests-full:
     name: Full frontend mutation score
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:
       - name: Checkout
@@ -434,7 +587,7 @@ jobs:
 
   container-integration-cells:
     name: Disposable MinIO and SpiceDB cells
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     env:
       DATABASE_URL: sqlite+aiosqlite:///./test.db
@@ -497,7 +650,7 @@ jobs:
 
   load-and-chaos:
     name: Load and chaos resilience
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 45
     env:
       DATABASE_URL: postgresql+asyncpg://postgres:postgres@postgres:5432/ecosystem # pragma: allowlist secret
@@ -606,7 +759,7 @@ jobs:
             net=$(docker network ls --format '{{.Name}}' | grep -E '_internal$' | head -1)
             docker rm -f ci-nightly-backend >/dev/null 2>&1 || true
             docker run -d --name ci-nightly-backend -p 8000:8000 \
-              alpine/socat TCP-LISTEN:8000,fork,reuseaddr TCP:backend:8000
+              alpine/socat:1.8.0.3@sha256:beb4a68d9e4fe6b0f21ea774a0fde6c31f580dde6368939ed70100c5385b015e TCP-LISTEN:8000,fork,reuseaddr TCP:backend:8000
             if [ -n "$net" ]; then
               docker network connect "$net" ci-nightly-backend
             fi
@@ -666,7 +819,7 @@ jobs:
     # Kept distinct from the required fast-CI context because this workflow
     # is manually dispatchable as well as scheduled.
     name: Nightly Kyverno validation
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
       - name: Checkout
@@ -696,7 +849,7 @@ jobs:
 
   miri:
     name: Miri pure-Rust checks
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 60
     env:
       # pyo3-sanitizer supplies an explicit no-persistence config under Miri:
@@ -743,6 +896,7 @@ jobs:
     if: ${{ always() && contains(needs.*.result, 'failure') }}
     needs:
       - mutation-tests-full-stats
+      - mutation-tests-full-plan
       - mutation-tests-full
       - mutation-tests-full-aggregate
       - frontend-mutation-tests-full
@@ -754,7 +908,7 @@ jobs:
       - load-and-chaos
       - kyverno-test
       - miri
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
       issues: write

@@ -530,6 +530,23 @@ def test_temporal_namespace_init_is_quietly_idempotent() -> None:
         assert "stabilization" in command
 
 
+def test_temporal_frontend_binds_every_attached_compose_network() -> None:
+    """The namespace/client network must reach a multi-network Temporal server."""
+    for relative_path in ("docker-compose.yml", "docker-compose.full.yml"):
+        services = _compose(relative_path)["services"]
+        temporal = services["temporal"]
+        namespace_init = services["temporal-namespace-init"]
+
+        assert temporal["environment"]["BIND_ON_IP"] == "0.0.0.0"  # noqa: S104
+        assert set(temporal["networks"]) & set(namespace_init["networks"])
+
+    temporal_config = yaml.safe_load(_read("services/temporal/config.yaml"))
+    for service in ("frontend", "matching", "history", "worker"):
+        rpc = temporal_config["services"][service]["rpc"]
+        assert rpc["bindOnLocalHost"] is False
+        assert rpc["bindOnIP"] == "0.0.0.0"  # noqa: S104
+
+
 def test_postgres_database_bootstrap_is_cleanly_idempotent() -> None:
     for relative_path in ("docker-compose.yml", "docker-compose.full.yml"):
         services = _compose(relative_path)["services"]
@@ -809,7 +826,13 @@ def test_production_pgbouncer_uses_a_supported_image_and_file_secret() -> None:
     pgbouncer = services["pgbouncer"]
     postgres = services["postgres"]
 
-    assert pgbouncer["image"] == "edoburu/pgbouncer:v1.25.2-p0"
+    assert (
+        pgbouncer["image"]
+        == (
+            "edoburu/pgbouncer:v1.25.2-p0@sha256:"
+            "7d7a27d9e90985cab5cf42256f5c13a3120baa4b055b69df37beb272b89b2340"  # pragma: allowlist secret
+        )
+    )
     assert "postgres_password" in compose["secrets"]
     assert compose["secrets"]["postgres_password"]["file"].startswith(
         "${POSTGRES_PASSWORD_SOURCE_FILE:"
@@ -1388,14 +1411,27 @@ def test_caddy_configs_expose_an_edge_local_health_endpoint() -> None:
 def test_pyroscope_image_matches_the_supported_project_version() -> None:
     for relative_path in ("docker-compose.yml", "docker-compose.observability.yml"):
         service = _compose(relative_path)["services"]["pyroscope"]
-        assert service["image"] == "grafana/pyroscope:1.19.1"
+        assert (
+            service["image"]
+            == (
+                "grafana/pyroscope:1.19.1@sha256:"
+                "d5d38187f7593fdf5643ba29e67099206e8d4dee6207f78d028ea3fe621cc04d"  # pragma: allowlist secret
+            )
+        )
 
 
 def test_base_and_full_compose_pin_the_same_valkey_minor() -> None:
     base = _compose("docker-compose.yml")["services"]["valkey"]
     full = _compose("docker-compose.full.yml")["services"]["redis"]
 
-    assert base["image"] == full["image"] == "valkey/valkey:8.1-alpine"
+    assert (
+        base["image"]
+        == full["image"]
+        == (
+            "valkey/valkey:8.1-alpine@sha256:"
+            "a038175878d66b9d274fbf8be73c0305e93798b83917647f167e18cef3c71eec"  # pragma: allowlist secret
+        )
+    )
 
 
 def test_observability_stack_uses_alloy_instead_of_eol_promtail() -> None:
@@ -1403,7 +1439,13 @@ def test_observability_stack_uses_alloy_instead_of_eol_promtail() -> None:
     alloy_config = _read("infrastructure/observability/alloy/config.alloy")
 
     assert "promtail" not in services
-    assert services["alloy"]["image"] == "grafana/alloy:v1.18.0"
+    assert (
+        services["alloy"]["image"]
+        == (
+            "grafana/alloy:v1.18.0@sha256:"
+            "491b0578c04983fd54fe99b587b6fab4404dc46d0dc16677bd6b00cc1140b308"  # pragma: allowlist secret
+        )
+    )
     assert services["alloy"]["read_only"] is True
     assert services["alloy"]["cap_drop"] == ["ALL"]
     assert services["alloy"]["cap_add"] == ["DAC_OVERRIDE"]
@@ -1430,7 +1472,13 @@ def test_distroless_telemetry_services_use_external_health_probes() -> None:
         assert "healthcheck" not in services["tempo"]
         probe = services["tempo-healthprobe"]
         assert probe["network_mode"] == "service:tempo"
-        assert probe["image"] == "curlimages/curl:8.10.1"
+        assert (
+            probe["image"]
+            == (
+                "curlimages/curl:8.10.1@sha256:"
+                "d9b4541e214bcd85196d6e92e2753ac6d0ea699f0af5741f8c6cccbfcf00ef4b"  # pragma: allowlist secret
+            )
+        )
         assert "http://localhost:3200/ready" in " ".join(probe["healthcheck"]["test"])
 
 

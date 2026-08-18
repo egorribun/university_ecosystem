@@ -3,7 +3,6 @@ from datetime import UTC, datetime, time
 from unittest.mock import MagicMock, patch
 
 import pytest
-import pytest_asyncio
 
 from app.services.schedule_optimizer import (
     ScheduleItemInternal,
@@ -11,15 +10,13 @@ from app.services.schedule_optimizer import (
 )
 
 
-@pytest_asyncio.fixture
-async def optimizer_service():
-    service = ScheduleOptimizerService()
-    yield service
-    await service.close()
+@pytest.fixture
+def optimizer_service():
+    return ScheduleOptimizerService()
 
 
-@pytest_asyncio.fixture
-async def sample_item():
+@pytest.fixture
+def sample_item():
     return ScheduleItemInternal(
         id=1,
         weekday="Monday",

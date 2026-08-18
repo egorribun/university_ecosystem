@@ -292,6 +292,12 @@ describe("NotificationsBell", () => {
     await user.click(screen.getByText("Unread chat"))
     expect(markRead).toHaveBeenCalledWith("chat-1")
 
+    fireEvent.click(screen.getByText("Unread reminder"))
+    expect(markRead).toHaveBeenCalledWith("schedule-1")
+
+    fireEvent.click(screen.getByText("Read update"))
+    expect(markRead).toHaveBeenCalledTimes(2)
+
     const markButtons = screen.getAllByTitle("Mark as read")
     expect(markButtons).toHaveLength(2)
     await user.click(markButtons[0]!)

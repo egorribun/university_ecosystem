@@ -6,9 +6,6 @@
  *   - adminFeatureFlagsQueryOptions(): staleTime, gcTime, queryFn shape,
  *     non-array response normalisation
  *   - useAdminFeatureFlagsQuery(): success, loading, error states
- *   - updateFeatureFlagInCache(): optimistic cache update (merge, no-op
- *     on empty cache, no-op on non-array, name-scoped writes)
- *   - invalidateAdminFeatureFlags(): invalidation helper
  */
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { renderHook, waitFor } from "@testing-library/react"
@@ -24,8 +21,6 @@ vi.mock("@/api/client", () => ({ default: apiMock }))
 import {
   adminFeatureFlagsQueryKey,
   adminFeatureFlagsQueryOptions,
-  invalidateAdminFeatureFlags,
-  updateFeatureFlagInCache,
   useAdminFeatureFlagsQuery,
 } from "@/api/hooks/adminFeatureFlags"
 import type { FeatureFlag } from "@/types/Admin"
@@ -43,13 +38,17 @@ const createQueryClient = () =>
     defaultOptions: { queries: { retry: false, gcTime: 0 } },
   })
 
-const buildFlag = (overrides: Partial<FeatureFlag> = {}): FeatureFlag =>
-  ({
-    name: overrides.name ?? "dark_mode",
-    status: "enabled",
-    percentage: 100,
-    ...overrides,
-  }) as FeatureFlag
+const buildFlag = (overrides: Partial<FeatureFlag> = {}): FeatureFlag => ({
+  name: overrides.name ?? "dark_mode",
+  enabled: true,
+  default: false,
+  description: "Test flag",
+  provider: "flagd Provider",
+  evaluation_reason: "DEFAULT",
+  management: "gitops",
+  config_path: "k8s/flagd/flags.json",
+  ...overrides,
+})
 
 afterEach(() => {
   vi.restoreAllMocks()
@@ -139,81 +138,5 @@ describe("useAdminFeatureFlagsQuery", () => {
 
     expect(result.current.fetchStatus).toBe("idle")
     expect(apiMock.get).not.toHaveBeenCalled()
-  })
-})
-
-// ── updateFeatureFlagInCache ────────────────────────────────────────────────
-describe("updateFeatureFlagInCache", () => {
-  it("merges update into the matching flag by name", () => {
-    const client = new QueryClient()
-    const flag1 = buildFlag({ name: "f1", status: "disabled" })
-    const flag2 = buildFlag({ name: "f2", status: "disabled" })
-    client.setQueryData(adminFeatureFlagsQueryKey, [flag1, flag2])
-
-    updateFeatureFlagInCache(client, "f1", { status: "enabled" })
-
-    const after = client.getQueryData(adminFeatureFlagsQueryKey) as FeatureFlag[]
-    expect(after).toHaveLength(2)
-    expect(after[0]?.status).toBe("enabled")
-    expect(after[1]?.status).toBe("disabled")
-  })
-
-  it("preserves untouched fields during partial update", () => {
-    const client = new QueryClient()
-    const flag = buildFlag({ name: "f1", status: "percentage", percentage: 50 })
-    client.setQueryData(adminFeatureFlagsQueryKey, [flag])
-
-    updateFeatureFlagInCache(client, "f1", { percentage: 75 })
-
-    const after = client.getQueryData(adminFeatureFlagsQueryKey) as FeatureFlag[]
-    expect(after[0]?.status).toBe("percentage")
-    expect(after[0]?.percentage).toBe(75)
-  })
-
-  it("is a no-op when the cache slot is undefined", () => {
-    const client = new QueryClient()
-    updateFeatureFlagInCache(client, "f1", { status: "enabled" })
-    expect(client.getQueryData(adminFeatureFlagsQueryKey)).toBeUndefined()
-  })
-
-  it("is a no-op when the cache slot is not an array (defensive)", () => {
-    const client = new QueryClient()
-    client.setQueryData(adminFeatureFlagsQueryKey, "corrupt" as unknown)
-    updateFeatureFlagInCache(client, "f1", { status: "enabled" })
-    expect(client.getQueryData(adminFeatureFlagsQueryKey)).toBe("corrupt")
-  })
-
-  it("does not modify flags that do not match the name", () => {
-    const client = new QueryClient()
-    const flag1 = buildFlag({ name: "keep_me", status: "disabled" })
-    const flag2 = buildFlag({ name: "update_me", status: "disabled" })
-    client.setQueryData(adminFeatureFlagsQueryKey, [flag1, flag2])
-
-    updateFeatureFlagInCache(client, "update_me", { status: "enabled" })
-
-    const after = client.getQueryData(adminFeatureFlagsQueryKey) as FeatureFlag[]
-    expect(after[0]).toEqual(flag1)
-    expect(after[1]?.status).toBe("enabled")
-  })
-})
-
-// ── invalidateAdminFeatureFlags ─────────────────────────────────────────────
-describe("invalidateAdminFeatureFlags", () => {
-  it("invalidates the feature-flags cache slot", async () => {
-    const client = new QueryClient()
-    const spy = vi.spyOn(client, "invalidateQueries")
-
-    await invalidateAdminFeatureFlags(client)
-
-    expect(spy).toHaveBeenCalledWith({
-      queryKey: adminFeatureFlagsQueryKey,
-    })
-  })
-
-  it("returns the underlying invalidateQueries promise (awaitable)", async () => {
-    const client = new QueryClient()
-    const result = invalidateAdminFeatureFlags(client)
-    expect(result).toBeInstanceOf(Promise)
-    await expect(result).resolves.toBeUndefined()
   })
 })

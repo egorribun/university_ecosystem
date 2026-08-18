@@ -23,7 +23,7 @@ concurrency:
 jobs:
   manual-mutation-stats:
     name: Manual Mutation Evidence (mutmut stats) / shard ${{ matrix.stats_shard }}/4
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
       matrix:
@@ -59,7 +59,8 @@ jobs:
             echo "- Base: $COMPARE_BASE";
             echo "- Head: $(git rev-parse HEAD)";
           } >> "$GITHUB_STEP_SUMMARY"
-          changed=$(git diff --name-only "$COMPARE_BASE...HEAD" | grep -E '^app/.*\.py$' || true)
+          changed_paths="$(git diff --name-only "$COMPARE_BASE...HEAD")"
+          changed="$(printf '%s\n' "$changed_paths" | grep -E '^app/.*\.py$' || true)"
           if [ -n "$changed" ]; then
             echo "has_python=true" >> "$GITHUB_OUTPUT"
           else
@@ -85,7 +86,7 @@ jobs:
 
   manual-mutation-tests:
     name: Manual Mutation Evidence (mutmut) / shard ${{ matrix.shard }}/16
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
       matrix:
@@ -138,7 +139,8 @@ jobs:
             echo "- Base: $COMPARE_BASE";
             echo "- Head: $(git rev-parse HEAD)";
           } >> "$GITHUB_STEP_SUMMARY"
-          git diff --name-only "$COMPARE_BASE...HEAD" | grep -E '^app/.*\.py$' | sort -u > /tmp/changed_py.txt || true
+          git diff --name-only "$COMPARE_BASE...HEAD" > /tmp/changed_paths.txt
+          grep -E '^app/.*\.py$' /tmp/changed_paths.txt | sort -u > /tmp/changed_py.txt || true
           git diff --unified=0 "$COMPARE_BASE...HEAD" -- app/ > /tmp/changed_py.diff
           if [ -s /tmp/changed_py.txt ]; then
             echo "has_python=true" >> "$GITHUB_OUTPUT"
@@ -334,7 +336,7 @@ jobs:
 
   manual-frontend-mutation-tests:
     name: Manual Mutation Evidence (frontend Stryker)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
       - name: Checkout

@@ -1,8 +1,5 @@
 import { StrictMode } from "react"
-// W156 SW3 — `createRoot` no longer needed. SHELL_MODE always emits full HTML
-// scaffold via root route's shellComponent; we hydrate at document level (NOT
-// at #root). Empty-shell fallback path was W150 polish-followup remnant.
-import { hydrateRoot } from "react-dom/client"
+import { createRoot, hydrateRoot } from "react-dom/client"
 // dayjs removed
 
 import App from "./App"
@@ -46,11 +43,7 @@ ensureTrustedTypesPolicies()
 const idle =
   typeof window.requestIdleCallback === "function"
     ? window.requestIdleCallback.bind(window)
-    : (cb: IdleRequestCallback) =>
-        window.setTimeout(
-          () => cb({ didTimeout: false, timeRemaining: () => 0 } as IdleDeadline),
-          0
-        )
+    : (cb: () => void) => window.setTimeout(cb, 0)
 
 function deferObservability(bootstrapStart: number): void {
   idle(() => {
@@ -102,34 +95,6 @@ if (!rootElement) throw new Error("Root element not found")
 
 const bootstrapStart = performance.now()
 
-// W156 SW3 Tier 1 #1 targeted fix — hydrate at DOCUMENT level (not #root).
-//
-// W155 SW3.A + W156 SW2 Firefox DevTools captured the full React #418 error:
-// server-rendered `<body><div id="lhci-marker">...<div id="root">{children}</div>`
-// vs client tree producing `<html><body><div className="flex min-h-dvh flex-col">`
-// (MainLayout wrapper). Plus warnings "<html> cannot be a child of <div>" and
-// "mounting new head component when previous one has not first unmounted".
-//
-// Root cause: TanStack Start v1 SHELL_MODE renders the FULL `<html>...</html>`
-// scaffold via the root route's `shellComponent` (RootShell in __root.tsx).
-// `<StartClient />` (App.tsx) internally renders `<Await><RouterProvider /></Await>`,
-// and RouterProvider's root-match renders RootShell at runtime BOTH server-side
-// AND client-side. Per `node_modules/@tanstack/react-start-client/dist/esm/StartClient.js`.
-//
-// Pre-W156 SW3 main.tsx mounted at `document.getElementById("root")` — but
-// `<StartClient />` renders `<html>...</html>` as its first DOM output. Nesting
-// `<html>` inside `<div id="root">` = invalid HTML + React #418 hydration mismatch
-// at body level (server's lhci-marker div vs client's RootShell-regenerated tree).
-//
-// Fix: hydrate at `document` (the canonical TanStack Start v1 SHELL_MODE container).
-// React 19's `hydrateRoot(domNode, ...)` accepts Document as container. Components
-// in the tree (StrictMode/ErrorBoundary/StartClient/Await/RouterProvider) emit no
-// DOM themselves — the first DOM emission is RootShell's `<html>`, which is the
-// valid direct child of Document.
-//
-// `<div id="root">` reference preserved for the `.ready` opacity transition class
-// applied below (CSS visibility logic stays unchanged — it operates on #root which
-// is INSIDE the shell tree, not at document level).
 const treeApp = (
   <StrictMode>
     <ErrorBoundary>
@@ -137,12 +102,18 @@ const treeApp = (
     </ErrorBoundary>
   </StrictMode>
 )
-// Production SSR (root ssr: true): server emitted full `<html>...<body><lhci-marker>...
-// <div id="root">{children}</div>...</body></html>`. hydrateRoot reuses this tree
-// via document-level hydration. The conditional check from W149 SW2 + W150
-// polish-followup is moot under current W154 SW1 + W156 architecture (root is
-// always ssr:true; document always has full HTML tree from SSR).
-hydrateRoot(document, treeApp)
+// A real server response is route-specific and can be hydrated safely. The
+// post-build SPA fallback is intentionally the same file for every URL, so its
+// prerendered route content cannot be hydrated at a different deep link. That
+// shell carries an explicit marker and is mounted as a fresh document instead.
+// React's document root is required because RootShell renders <html> directly.
+const isStaticSpaShell = document.documentElement.dataset.renderMode === "static-spa"
+if (isStaticSpaShell) {
+  delete document.documentElement.dataset.renderMode
+  createRoot(document).render(treeApp)
+} else {
+  hydrateRoot(document, treeApp)
+}
 
 const isLHCI = import.meta.env.VITE_LHCI === "true"
 
@@ -161,20 +132,18 @@ if (isLHCI) {
   }
 }
 
-if (typeof window !== "undefined") {
-  if (isLHCI) {
-    // Skip Service Worker setup
-  } else if (document.readyState === "complete") {
-    void setupServiceWorker()
-  } else {
-    window.addEventListener(
-      "load",
-      () => {
-        void setupServiceWorker()
-      },
-      { once: true }
-    )
-  }
+if (isLHCI) {
+  // Skip Service Worker setup
+} else if (document.readyState === "complete") {
+  void setupServiceWorker()
+} else {
+  window.addEventListener(
+    "load",
+    () => {
+      void setupServiceWorker()
+    },
+    { once: true }
+  )
 }
 
 // Wave 117 SW3 — schedule the deferred observability init AFTER React

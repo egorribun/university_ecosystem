@@ -1,4 +1,4 @@
-"""Coverage tests for app/services/minio_storage.py (testing session 10).
+"""Behavior and failure-path tests for app/services/minio_storage.py.
 
 The Minio SDK class is patched at the module seam (app.services.minio_storage.Minio)
 BEFORE constructing MinIOClient — all SDK calls become MagicMocks executed through

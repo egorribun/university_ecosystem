@@ -1,4 +1,4 @@
-"""Coverage tests for app/services/user/stats_service.py (testing session 10).
+"""Behavior and edge-case tests for app/services/user/stats_service.py.
 
 AsyncMock-repo harness (pattern A, mirrors tests/test_compliance_service_coverage.py).
 NOTE: StatsService is currently UNWIRED in app/ (the live /stats/* path injects
@@ -316,7 +316,7 @@ async def test_grade_stats_recent_capped_at_five(
 
 
 async def test_participation_empty(svc: StatsService, repo: AsyncMock) -> None:
-    repo.get_participation_stats_raw.return_value = []
+    repo.get_participation_stats_raw.side_effect = [[], []]
     result = await svc.get_participation_stats(
         user_id=uuid.uuid4(), period_days=30, skip_cache=True
     )
@@ -338,13 +338,18 @@ async def test_participation_math_groups_and_recent_cap(
         _participation_row(hours=0.5, event_type="lecture", title="E"),
         _participation_row(hours=0.5, event_type="lecture", title="F"),
     ]
-    repo.get_participation_stats_raw.return_value = rows
+    previous_rows = [
+        _participation_row(hours=1.0, event_type="lecture", title="Previous A"),
+        _participation_row(hours=1.0, event_type="workshop", title="Previous B"),
+    ]
+    repo.get_participation_stats_raw.side_effect = [rows, previous_rows]
     result = await svc.get_participation_stats(
         user_id=uuid.uuid4(), period_days=30, skip_cache=True
     )
     assert result["events"] == 6
     assert result["hours"] == 5.0  # negative duration clamped to 0
     assert result["groups"] == 2  # workshop + lecture; None excluded
-    assert result["trend"] == 1
+    assert result["trend"] == 4
     assert len(result["recent"]) == 5  # capped
     assert result["recent"][0]["title"] == "A"
+    assert repo.get_participation_stats_raw.await_count == 2

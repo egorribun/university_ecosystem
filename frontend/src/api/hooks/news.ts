@@ -37,7 +37,7 @@ import {
   type UseInfiniteQueryOptions,
   type UseInfiniteQueryResult,
 } from "@tanstack/react-query"
-import { useMemo } from "react"
+import { useEffect, useMemo } from "react"
 
 import { newsListApiV1NewsGet } from "@/api/generated/sdk.gen"
 import { fetchNewsItem, type NewsItem } from "@/api/news"
@@ -125,6 +125,23 @@ const ensurePaginatedResponse = (
   }
 }
 
+const readPersistedNewsPage = (
+  language: string,
+  limit: number
+): PaginatedResponse<NewsItem> | null => {
+  if (typeof window === "undefined") return null
+  const items = new StorageItem<NewsItem[]>(`news:list:${language}`).get()
+  if (!Array.isArray(items) || items.length === 0) return null
+  return {
+    items,
+    total: items.length,
+    limit,
+    cursor: null,
+    next_cursor: null,
+    has_more: false,
+  }
+}
+
 const mergeNewsPages = (pages: PaginatedResponse<NewsItem>[] | undefined): NewsItem[] => {
   if (!pages?.length) {
     return []
@@ -173,7 +190,10 @@ const createNewsListQueryFn =
     if (response.status === 304) {
       const cached =
         queryClient.getQueryData<InfiniteData<PaginatedResponse<NewsItem>, string | null>>(queryKey)
-      return ensurePaginatedResponse(cached?.pages?.[0], normalized.limit)
+      return ensurePaginatedResponse(
+        cached?.pages?.[0] ?? readPersistedNewsPage(normalized.language, normalized.limit),
+        normalized.limit
+      )
     }
 
     return ensurePaginatedResponse(response.data as PaginatedResponse<NewsItem>, normalized.limit)
@@ -246,25 +266,13 @@ export const useNewsListQuery = (
 
   // Read from localStorage as fallback for offline mode
   const placeholderData = useMemo(() => {
-    if (typeof window === "undefined") return undefined
-    const storage = new StorageItem<NewsItem[]>(`news:list:${normalized.language}`)
-    const items = storage.get()
-    if (!Array.isArray(items) || items.length === 0) return undefined
-    // Wrap in the expected InfiniteData structure
+    const page = readPersistedNewsPage(normalized.language, normalized.limit)
+    if (!page) return undefined
     return {
-      pages: [
-        {
-          items,
-          total: items.length,
-          limit: 12,
-          cursor: null,
-          next_cursor: null,
-          has_more: false,
-        },
-      ],
+      pages: [page],
       pageParams: [null],
     }
-  }, [normalized.language])
+  }, [normalized.language, normalized.limit])
 
   const query = useInfiniteQuery<
     PaginatedResponse<NewsItem>,
@@ -285,6 +293,11 @@ export const useNewsListQuery = (
 
   const news = useMemo(() => mergeNewsPages(query.data?.pages), [query.data])
   const pagination = query.data?.pages?.[query.data.pages.length - 1] ?? null
+
+  useEffect(() => {
+    if (!query.isSuccess || query.isPlaceholderData) return
+    new StorageItem<NewsItem[]>(`news:list:${normalized.language}`).set(news)
+  }, [news, normalized.language, query.isPlaceholderData, query.isSuccess])
 
   return {
     ...query,

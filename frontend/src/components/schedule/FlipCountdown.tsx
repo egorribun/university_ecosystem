@@ -23,18 +23,20 @@ function FlipDigit({ value, label }: { value: string; label: string }) {
   const [current, setCurrent] = useState(value)
   const [previous, setPrevious] = useState(value)
   const [flipping, setFlipping] = useState(false)
+  const currentRef = useRef(value)
 
   useEffect(() => {
-    if (value !== current) {
-      setPrevious(current)
+    if (value !== currentRef.current) {
+      setPrevious(currentRef.current)
       setCurrent(value)
+      currentRef.current = value
       setFlipping(true)
       // Duration synced with CSS --sched-flip-duration (FIX-69-03)
       const FLIP_DURATION_MS = 500
       const timer = setTimeout(() => setFlipping(false), FLIP_DURATION_MS)
       return () => clearTimeout(timer)
     }
-  }, [value, current])
+  }, [value])
 
   return (
     <div className="sched-flip-digit-group" aria-label={`${value} ${label}`}>

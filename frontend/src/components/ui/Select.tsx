@@ -87,11 +87,10 @@ const Select = ({
   }, [activeIndex, isOpen, computeOptionId])
 
   const openListbox = React.useCallback(() => {
-    if (disabled) return
     setIsOpen(true)
     // Focus the selected or first option when opening
     setActiveIndex(selectedIndex >= 0 ? selectedIndex : 0)
-  }, [disabled, selectedIndex])
+  }, [selectedIndex])
 
   const closeListbox = React.useCallback(() => {
     setIsOpen(false)

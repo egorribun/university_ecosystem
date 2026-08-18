@@ -48,6 +48,24 @@ describe("MobileBottomNav", () => {
     expect(scrollTo).toHaveBeenCalledWith({ top: 0, behavior: "smooth" })
   })
 
+  it("allows navigation without scrolling when another section is clicked", async () => {
+    const scrollTo = vi.fn()
+    Object.defineProperty(HTMLElement.prototype, "scrollTo", {
+      configurable: true,
+      value: scrollTo,
+    })
+
+    await renderWithRouter({
+      ui: MobileBottomNav,
+      path: "/dashboard",
+      initialPath: "/dashboard",
+      extraRoutes: [{ path: "/news", Component: () => <div>News destination</div> }],
+    })
+
+    fireEvent.click(screen.getByRole("link", { name: /news/i }))
+    expect(scrollTo).not.toHaveBeenCalled()
+  })
+
   it("treats a trailing slash as the same active section", async () => {
     const scrollTo = vi.fn()
     Object.defineProperty(HTMLElement.prototype, "scrollTo", {

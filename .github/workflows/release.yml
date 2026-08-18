@@ -13,7 +13,7 @@ jobs:
     # Release credentials must never reach code from an arbitrary dispatch ref.
     # The main branch is protected and is the only trusted release source.
     if: ${{ github.ref == 'refs/heads/main' }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20 # CI-03 (audit Wave 10)
     permissions:
       actions: read

@@ -23,7 +23,13 @@ vi.mock("@/app/logger", () => mockLogger)
 
 beforeEach(() => {
   vi.useFakeTimers()
-  vi.clearAllMocks()
+  mockPush.isPushSupported.mockReset().mockReturnValue(false)
+  mockPush.hasPushConsent.mockReset().mockReturnValue(false)
+  mockPush.recoverPushConsentFromBrowser.mockReset().mockResolvedValue(false)
+  mockPush.softSyncPushSubscription.mockReset().mockResolvedValue(undefined)
+  mockLogger.logWarning.mockReset()
+  mockLogger.logDebug.mockReset()
+  mockLogger.logError.mockReset()
 
   // Setup Notification global
   vi.stubGlobal("Notification", {})
@@ -33,6 +39,7 @@ afterEach(() => {
   vi.runOnlyPendingTimers()
   vi.useRealTimers()
   vi.unstubAllGlobals()
+  vi.unstubAllEnvs()
 })
 
 describe("usePushSync — gating", () => {
@@ -195,4 +202,65 @@ describe("usePushSync — internal flows", () => {
     )
     expect(mockLogger.logError).toHaveBeenCalledWith("[usePushSync] Error:", err)
   })
+
+  it.each([
+    {
+      name: "unsupported push",
+      configure: () => mockPush.isPushSupported.mockReturnValue(false),
+    },
+    {
+      name: "missing Notification API",
+      configure: () => {
+        mockPush.isPushSupported.mockReturnValue(true)
+        vi.stubGlobal("Notification", undefined)
+      },
+    },
+    {
+      name: "missing consent",
+      configure: () => {
+        mockPush.isPushSupported.mockReturnValue(true)
+        mockPush.hasPushConsent.mockReturnValue(false)
+      },
+    },
+    {
+      name: "successful synchronization",
+      configure: () => {
+        mockPush.isPushSupported.mockReturnValue(true)
+        mockPush.hasPushConsent.mockReturnValue(true)
+      },
+    },
+  ])("keeps $name debug-silent outside development", async ({ configure }) => {
+    vi.stubEnv("DEV", false)
+    configure()
+
+    renderHook(() => usePushSync(true))
+    await vi.runAllTimersAsync()
+
+    expect(mockLogger.logDebug).not.toHaveBeenCalled()
+  })
+
+  it.each(["resolve", "reject"] as const)(
+    "ignores a late soft-sync %s after unmount",
+    async (outcome) => {
+      let settle!: () => void
+      const pending = new Promise<void>((resolve, reject) => {
+        settle = () => (outcome === "resolve" ? resolve() : reject(new Error("late failure")))
+      })
+      mockPush.isPushSupported.mockReturnValue(true)
+      mockPush.hasPushConsent.mockReturnValue(true)
+      mockPush.softSyncPushSubscription.mockReturnValue(pending)
+
+      const { unmount } = renderHook(() => usePushSync(true))
+      await vi.advanceTimersByTimeAsync(100)
+      expect(mockPush.softSyncPushSubscription).toHaveBeenCalledOnce()
+
+      unmount()
+      settle()
+      await Promise.resolve()
+      await Promise.resolve()
+
+      expect(mockLogger.logWarning).not.toHaveBeenCalled()
+      expect(mockLogger.logError).not.toHaveBeenCalled()
+    }
+  )
 })

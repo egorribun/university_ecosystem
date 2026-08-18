@@ -611,7 +611,7 @@ async def test_get_event_detail_refreshes_secret_material(
 
 
 # ---------------------------------------------------------------------------
-# IntegrityError race-retry path (testing session 10) — covers
+# IntegrityError race-retry path — covers
 # event_service.py:327-363, which the existing race test does not reach
 # (it sets mock_repo.commit.side_effect, but register_attendance commits via
 # self.uow.commit()). Here uow.commit raises IntegrityError on the FIRST call

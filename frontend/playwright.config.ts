@@ -4,7 +4,7 @@ import { dirname } from "node:path"
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 
-// Wave 121 SW3 — URL_STATE_E2E auto-managed mode uses port 4175 (matches the
+// URL-state mode uses port 4175 (matches the
 // `URL_STATE_E2E_BASE` default in `tests/e2e/url-state-persistence.spec.ts`)
 // and a VITE_LHCI=true build, so authenticated routes resolve via the mock
 // user instead of redirecting to /login. Default 5173 covers the normal
@@ -15,6 +15,7 @@ const E2E_COVERAGE_MODE = process.env.E2E_COVERAGE === "true"
 const PORT = Number(process.env.PLAYWRIGHT_PORT || (URL_STATE_E2E_MODE ? 4175 : 5173))
 const HOST = process.env.PLAYWRIGHT_HOST || "127.0.0.1"
 const BASE_URL = process.env.PLAYWRIGHT_BASE_URL || `http://${HOST}:${PORT}`
+const CHROMIUM_EXECUTABLE_PATH = process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH
 const BUILD_COMMAND = E2E_COVERAGE_MODE
   ? "npx cross-env FRONTEND_BUILD_UNMINIFIED=true npm run build"
   : "npm run build"
@@ -39,15 +40,19 @@ export default defineConfig({
   projects: [
     {
       name: "chromium",
-      use: { ...devices["Desktop Chrome"] },
+      use: {
+        ...devices["Desktop Chrome"],
+        ...(CHROMIUM_EXECUTABLE_PATH
+          ? { launchOptions: { executablePath: CHROMIUM_EXECUTABLE_PATH } }
+          : {}),
+      },
     },
-    // Wave 112 — multi-browser coverage (Safari/WebKit surfaces iOS-specific
-    // CSS/backdrop-filter/touch-events bugs not visible in Chromium).
+    // Firefox and WebKit surface engine-specific CSS and input regressions.
     {
       name: "firefox",
       use: { ...devices["Desktop Firefox"] },
     },
-    // Wave 115 SW1 — WebKit renderer has a smaller memory envelope than
+    // WebKit has a smaller memory envelope than
     // Chromium/Firefox. Parallel axe-core `.analyze()` calls within a single
     // WebKit browser process exhaust the renderer; tests that pass in
     // isolation (verified via `--workers=1`) OOM under `fullyParallel: true`.
@@ -57,10 +62,7 @@ export default defineConfig({
     // `retries: 2` absorbs cold-start flake: the FIRST axe-core injection in
     // a freshly-launched WebKit browser process can OOM even with the
     // canvas gate + legacy axe mode; the renderer holds more headroom on
-    // subsequent retries because GC runs between tests. Observed in Wave
-    // 115 SW1 verification: different tests fail across repeat runs, always
-    // the first-in-sequence. 2 retries is enough for stability in every
-    // observed case during this wave.
+    // subsequent retries because GC runs between tests.
     {
       name: "webkit",
       use: { ...devices["Desktop Safari"] },
@@ -74,12 +76,10 @@ export default defineConfig({
       retries: 2,
     },
   ],
-  // Wave 120 SW7 — `SKIP_WEBSERVER=true` lets specs that need a custom
+  // `SKIP_WEBSERVER=true` lets specs that need a custom
   // dist (e.g. `url-state-persistence.spec.ts`) point at a separately-managed
-  // `vite preview` instance. Wave 121 SW3 added a third mode:
-  // `URL_STATE_E2E=true` auto-builds a VITE_LHCI=true dist via cross-env (the
-  // missing dep that blocked Wave 120's auto-managed attempt) so the spec
-  // runs without the 3-step manual flow. SKIP_WEBSERVER stays as fallback.
+  // `vite preview` instance. `URL_STATE_E2E=true` builds a VITE_LHCI=true
+  // artifact automatically; SKIP_WEBSERVER remains the explicit fallback.
   webServer:
     process.env.SKIP_WEBSERVER === "true"
       ? undefined
@@ -106,13 +106,7 @@ export default defineConfig({
               command: `${URL_STATE_BUILD_COMMAND} && npm run preview -- --host ${HOST} --port ${PORT} --strictPort`,
               url: BASE_URL,
               reuseExistingServer: !process.env.CI,
-              // Wave 125 polish — bumped from 240s. Phase 2 build is slower
-              // than pre-W125 (~30-45s vs ~7s) due to TanStack Start runtime
-              // additions + SSR pipeline (server build for prerender + post-
-              // build shell post-processing). 240s was fine pre-W125 but
-              // tight for Phase 2 cold-cache builds; 360s gives headroom for
-              // CI runners under load (W125 close-out routine-e5 documented
-              // CI Linux ~0.10-0.12 slower per request).
+              // Includes a cold client build, server build, and shell processing.
               timeout: 360_000,
               cwd: __dirname,
               env: {
@@ -124,20 +118,15 @@ export default defineConfig({
               command: `${BUILD_COMMAND} && npm run preview -- --host ${HOST} --port ${PORT}`,
               url: BASE_URL,
               reuseExistingServer: !process.env.CI,
-              // Wave 125 polish — bumped from 180s. Phase 2 build is slower
-              // than pre-W125 (~30-45s vs ~7s) due to TanStack Start runtime
-              // additions + SSR pipeline; the previous 180s value caused
-              // `Error: Timed out waiting 180000ms from config.webServer`
-              // when first run on the W125 Phase 2 build. 360s gives ample
-              // headroom even on cold-cache CI Linux runners.
+              // Includes a cold client build, server build, and shell processing.
               timeout: 360_000,
               cwd: __dirname,
               env: {
                 VITE_BACKEND_ORIGIN: process.env.VITE_BACKEND_ORIGIN ?? "",
-                // Wave 115 SW1 — signal Playwright e2e context so ParticleAuthBackground
+                // Signal Playwright context so ParticleAuthBackground
                 // skips its 1000-particle canvas loop. See src/components/ui/
                 // ParticleAuthBackground.tsx + tests/e2e/a11y-public.spec.ts for the
-                // WebKit renderer OOM that motivated this gate (A11Y-113-04 closure).
+                // WebKit renderer memory exhaustion that motivated this gate.
                 VITE_E2E_MODE: "1",
               },
             },

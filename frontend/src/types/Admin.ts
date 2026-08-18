@@ -1,19 +1,12 @@
-export type FlagStatus = "enabled" | "disabled" | "percentage"
-
 export interface FeatureFlag {
   name: string
-  status: FlagStatus
+  enabled: boolean
+  default: boolean
   description: string
-  percentage: number
-  allowed_users: number[]
-  allowed_groups: string[]
-  metadata: Record<string, unknown>
-}
-
-export interface FeatureFlagUpdatePayload {
-  status?: FlagStatus
-  percentage?: number
-  description?: string
+  provider: string
+  evaluation_reason: string
+  management: "gitops"
+  config_path: string
 }
 
 export interface AuditLog {

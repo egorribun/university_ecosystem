@@ -33,10 +33,6 @@ EXPECTED_VITEST_EXCLUSIONS = (
     "src/routeTree.gen.ts",
     "src/api/generated/**/*",
     "**/*.d.ts",
-    "src/workers/**/*",
-    "src/server.ts",
-    "src/main.tsx",
-    "src/sw.ts",
     "src/test/**/*",
 )
 
@@ -176,6 +172,52 @@ def test_xdist_sqlite_database_artifacts_are_ignored() -> None:
     }.issubset(gitignore_patterns)
 
 
+def test_root_pytest_report_artifact_is_ignored() -> None:
+    assert "pytest-report.xml" in set(_read_text(".gitignore").splitlines())
+
+
+def test_backend_test_files_use_domain_oriented_names() -> None:
+    forbidden = re.compile(
+        r"(?:wave\d+|session\d+|booster|topup|coverage_(?:boost|closure))",
+        re.I,
+    )
+    violations = sorted(
+        path.name
+        for path in (ROOT / "tests").glob("test_*.py")
+        if forbidden.search(path.name)
+    )
+
+    assert violations == []
+
+
+def test_python_coverage_excludes_only_non_runtime_typing_contours() -> None:
+    coverage_report = _read_pyproject()["tool"]["coverage"]["report"]
+
+    assert coverage_report["exclude_lines"] == [
+        "pragma: no cover",
+        "if TYPE_CHECKING:",
+    ]
+
+
+def test_runtime_source_has_no_executable_coverage_pragmas() -> None:
+    usages: list[tuple[str, str]] = []
+    for path in sorted((ROOT / "app").rglob("*.py")):
+        for line in path.read_text(encoding="utf-8").splitlines():
+            if "pragma: no cover" in line:
+                usages.append((path.relative_to(ROOT).as_posix(), line.strip()))
+
+    assert usages == [
+        (
+            "app/core/event_decorators.py",
+            "]: ...  # pragma: no cover - typing-only overload",
+        ),
+        (
+            "app/core/event_decorators.py",
+            "]: ...  # pragma: no cover - typing-only overload",
+        ),
+    ]
+
+
 def test_governance_quality_configuration_matches_contract() -> None:
     contract = _read_contract()
     ownership = json.loads(_read_text("quality/ownership-mapping.json"))
@@ -209,6 +251,14 @@ def test_governance_quality_configuration_matches_contract() -> None:
         "rust-crypto": ["frontend/rust-crypto/"],
     }
     assert set(codecov["flags"]) == set(expected_flags)
+    assert codecov["coverage"]["status"]["project"]["default"] == {
+        "target": "100%",
+        "threshold": "0%",
+    }
+    assert codecov["coverage"]["status"]["patch"]["default"] == {
+        "target": "100%",
+        "threshold": "0%",
+    }
     for flag, paths in expected_flags.items():
         assert codecov["flags"][flag]["paths"] == paths
         coverage = contract["components"][flag]["coverage"]
@@ -527,6 +577,7 @@ def test_frontend_coverage_policy_and_source_universe_match_quality_contract() -
     )
     assert reports_directory is not None, "missing reportsDirectory"
     assert reports_directory.group("value") == "coverage"
+    assert re.search(r"\bexperimentalAstAwareRemapping\s*:\s*true\b", coverage)
     assert _extract_string_array(coverage, "include") == EXPECTED_VITEST_INCLUDE
     assert _extract_string_array(coverage, "exclude") == EXPECTED_VITEST_EXCLUSIONS
 
@@ -578,6 +629,10 @@ def test_coverage_commands_and_sonar_paths_match_quality_contract() -> None:
         for fragment in required_fragments:
             assert fragment in target
         assert "--cov-fail-under=" not in target
+
+    testing_guide = _read_text("TESTING.md")
+    assert "--cov-fail-under=0" not in testing_guide
+    assert "inherits the fail-closed threshold" in testing_guide
 
     sonar = _read_text("sonar-project.properties")
     assert _sonar_property(sonar, "sonar.python.coverage.reportPaths") == "coverage.xml"

@@ -14,7 +14,7 @@ permissions:
 jobs:
   benchmark:
     name: Run Go Benchmarks
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
     timeout-minutes: 20
@@ -58,7 +58,7 @@ jobs:
 
   ws-hub-regression:
     name: WS-Hub Go Benchmark Regression Gate
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
     timeout-minutes: 20
@@ -237,7 +237,7 @@ jobs:
 
   rust-criterion:
     name: Rust Criterion Benchmarks (pyo3-sanitizer)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
     timeout-minutes: 30
@@ -283,7 +283,7 @@ jobs:
 
   rust-native-regression:
     name: Rust Native Optimizer Regression Gate
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
     timeout-minutes: 30
@@ -473,7 +473,7 @@ jobs:
       - rust-criterion
       - rust-native-regression
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: write
     timeout-minutes: 15

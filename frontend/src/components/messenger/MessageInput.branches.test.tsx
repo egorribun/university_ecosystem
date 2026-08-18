@@ -132,6 +132,18 @@ describe("MessageInput branch coverage", () => {
   })
 
   describe("file preview + content-sniff (156, 227-229)", () => {
+    it("ignores a change event whose file list is empty", async () => {
+      const { container } = render(<MessageInput onSend={() => {}} />)
+      const fileInput = container.querySelector('input[type="file"]') as HTMLInputElement
+      setFiles(fileInput, [])
+
+      await act(async () => {
+        fireEvent.change(fileInput)
+      })
+
+      expect(createObjectURLSpy).not.toHaveBeenCalled()
+    })
+
     it("renders a FileText preview (not an image) for a non-image attachment (227-229)", async () => {
       const { container } = render(<MessageInput onSend={() => {}} />)
       const fileInput = container.querySelector('input[type="file"]') as HTMLInputElement
@@ -195,6 +207,26 @@ describe("MessageInput branch coverage", () => {
 
       expect(screen.getByRole("alert").textContent).toBe("messenger:svgNotAllowed")
       expect(createObjectURLSpy).not.toHaveBeenCalled()
+    })
+
+    it("accepts image bytes when content sniffing proves they are not SVG", async () => {
+      const { container } = render(<MessageInput onSend={() => {}} />)
+      const fileInput = container.querySelector('input[type="file"]') as HTMLInputElement
+      const image = new File(["png-bytes"], "safe.png", { type: "image/png" })
+      const sniffBlob = new Blob([])
+      Object.defineProperty(sniffBlob, "text", {
+        configurable: true,
+        value: vi.fn().mockResolvedValue("not svg content"),
+      })
+      vi.spyOn(image, "slice").mockReturnValue(sniffBlob)
+      setFiles(fileInput, [image])
+
+      await act(async () => {
+        fireEvent.change(fileInput)
+      })
+
+      expect(createObjectURLSpy).toHaveBeenCalledWith(image)
+      expect(screen.queryByRole("alert")).toBeNull()
     })
   })
 
@@ -290,6 +322,11 @@ describe("MessageInput branch coverage", () => {
       // setSvgRejected(true) + setTimeout(...) branch (166-168) fires. We assert
       // the alert appears (the 3s reset timer is left to run under real timers;
       // combining fake timers with the async Promise.all chain hangs jsdom).
+      let resetAlert: (() => void) | undefined
+      vi.spyOn(globalThis, "setTimeout").mockImplementation(((callback: TimerHandler) => {
+        resetAlert = callback as () => void
+        return 1
+      }) as typeof setTimeout)
       const { container } = render(<MessageInput onSend={() => {}} />)
       const fileInput = container.querySelector('input[type="file"]') as HTMLInputElement
       const svgFile = new File(["<svg/>"], "evil.svg", { type: "image/svg+xml" })
@@ -302,6 +339,9 @@ describe("MessageInput branch coverage", () => {
       expect(screen.getByRole("alert").textContent).toBe("messenger:svgNotAllowed")
       // No preview was created for the rejected file.
       expect(createObjectURLSpy).not.toHaveBeenCalled()
+
+      act(() => resetAlert?.())
+      expect(screen.queryByRole("alert")).toBeNull()
     })
   })
 })

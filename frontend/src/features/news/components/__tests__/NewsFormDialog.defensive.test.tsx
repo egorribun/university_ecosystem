@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
-import { render, screen, waitFor } from "@testing-library/react"
+import { fireEvent, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { describe, expect, it, vi } from "vitest"
 
@@ -57,6 +57,23 @@ describe("NewsFormDialog defensive errors", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent("Raw server failure")
   })
 
+  it("falls back when an Axios response object has no usable message", async () => {
+    createNewsMock.mockRejectedValueOnce({
+      isAxiosError: true,
+      response: { data: { detail: 42, message: "   " } },
+    })
+    const user = userEvent.setup()
+    renderDialog()
+
+    await user.type(screen.getByLabelText(/^Title(?! \()/i), "Invalid Axios details")
+    await user.type(screen.getByLabelText(/^News text(?! \()/i), "Content")
+    await user.click(screen.getByRole("button", { name: /Publish/i }))
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      i18n.t("news:notifications.savedError")
+    )
+  })
+
   it("submits an empty uploaded URL without losing the form flow", async () => {
     uploadNewsImageMock.mockResolvedValueOnce("")
     createNewsMock.mockResolvedValueOnce({} as never)
@@ -74,6 +91,35 @@ describe("NewsFormDialog defensive errors", () => {
     await waitFor(() =>
       expect(createNewsMock).toHaveBeenCalledWith(expect.objectContaining({ image_url: "" }))
     )
+  })
+
+  it("submits successfully without an optional onSuccess callback", async () => {
+    createNewsMock.mockResolvedValueOnce({} as never)
+    const onClose = vi.fn()
+    const user = userEvent.setup()
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(
+      <QueryClientProvider client={queryClient}>
+        <NewsFormDialog open onClose={onClose} />
+      </QueryClientProvider>
+    )
+
+    await user.type(screen.getByLabelText(/^Title(?! \()/i), "No callback")
+    await user.type(screen.getByLabelText(/^News text(?! \()/i), "Content")
+    await user.click(screen.getByRole("button", { name: /Publish/i }))
+
+    await waitFor(() => expect(onClose).toHaveBeenCalledOnce())
+  })
+
+  it("ignores a file-input change without a selected file", () => {
+    renderDialog()
+    const imageInput = document.querySelector('input[type="file"]') as HTMLInputElement
+    const uploadCallsBeforeChange = uploadNewsImageMock.mock.calls.length
+
+    fireEvent.change(imageInput, { target: { files: [] } })
+
+    expect(screen.queryByRole("img", { name: /new cover/i })).not.toBeInTheDocument()
+    expect(uploadNewsImageMock).toHaveBeenCalledTimes(uploadCallsBeforeChange)
   })
 
   it("renders empty labels when translations are unavailable", () => {

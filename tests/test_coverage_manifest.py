@@ -38,33 +38,33 @@ def _write_test_contract(path: Path) -> None:
             "required_pr_matrix": True,
         },
         "coverage_minimums": {
-            "lines": 91,
-            "statements": 91,
-            "branches": 82,
-            "functions": 82,
+            "lines": 100,
+            "statements": 100,
+            "branches": 100,
+            "functions": 100,
             "tier0": 100,
         },
         "components": {
             "python": {
                 "coverage": {
-                    "lines": 99,
+                    "lines": 100,
                     "statements": 0,
-                    "branches": 98,
+                    "branches": 100,
                     "functions": 0,
                 }
             },
             "frontend": {
                 "coverage": {
-                    "lines": 91,
+                    "lines": 100,
                     "statements": 0,
-                    "branches": 82,
-                    "functions": 82,
+                    "branches": 100,
+                    "functions": 100,
                 }
             },
             "go-gateway": {
                 "coverage": {
                     "lines": 0,
-                    "statements": 99,
+                    "statements": 100,
                     "branches": 0,
                     "functions": 0,
                 }
@@ -72,7 +72,7 @@ def _write_test_contract(path: Path) -> None:
             "go-ws-hub": {
                 "coverage": {
                     "lines": 0,
-                    "statements": 99,
+                    "statements": 100,
                     "branches": 0,
                     "functions": 0,
                 }
@@ -80,7 +80,7 @@ def _write_test_contract(path: Path) -> None:
             "go-file-processor": {
                 "coverage": {
                     "lines": 0,
-                    "statements": 99,
+                    "statements": 100,
                     "branches": 0,
                     "functions": 0,
                 }
@@ -88,41 +88,41 @@ def _write_test_contract(path: Path) -> None:
             "go-shared": {
                 "coverage": {
                     "lines": 0,
-                    "statements": 99,
+                    "statements": 100,
                     "branches": 0,
                     "functions": 0,
                 }
             },
             "rust-native": {
                 "coverage": {
-                    "lines": 99,
+                    "lines": 100,
                     "statements": 0,
                     "branches": 0,
-                    "functions": 98,
+                    "functions": 100,
                 }
             },
             "rust-pyo3-sanitizer": {
                 "coverage": {
-                    "lines": 99,
+                    "lines": 100,
                     "statements": 0,
                     "branches": 0,
-                    "functions": 98,
+                    "functions": 100,
                 }
             },
             "rust-wasm-sanitizer": {
                 "coverage": {
-                    "lines": 99,
+                    "lines": 100,
                     "statements": 0,
                     "branches": 0,
-                    "functions": 98,
+                    "functions": 100,
                 }
             },
             "rust-crypto": {
                 "coverage": {
-                    "lines": 99,
+                    "lines": 100,
                     "statements": 0,
                     "branches": 0,
-                    "functions": 98,
+                    "functions": 100,
                 }
             },
             "infrastructure": {
@@ -380,6 +380,38 @@ def _assert_metric_schema_shape(metric: dict[str, object]) -> None:
     assert metric["percent"] is None
     if status in {"experimental", "unsupported"}:
         assert isinstance(metric["reason_code"], str)
+
+
+def test_rust_report_without_branch_sites_satisfies_strict_branch_floor() -> None:
+    normalizer = _normalizer_module()
+    report = json.dumps(
+        {
+            "data": [
+                {
+                    "totals": {
+                        "branches": {"count": 0, "covered": 0},
+                        "functions": {"count": 1, "covered": 1},
+                        "lines": {"count": 1, "covered": 1},
+                    }
+                }
+            ]
+        }
+    ).encode()
+
+    metrics = normalizer._parse_rust_llvm_json(
+        report,
+        "rust-crypto",
+        native_branches=True,
+    )
+
+    assert metrics["branches"] == {
+        "covered": 0,
+        "derivation": "Nightly LLVM report contains no branch units",
+        "percent": 100.0,
+        "status": "derived",
+        "total": 0,
+    }
+    assert normalizer._metric_satisfies_floor(metrics["branches"], 100) is True
 
 
 def test_contract_declares_all_canonical_raw_coverage_artifacts() -> None:
@@ -1549,7 +1581,7 @@ def test_below_threshold_native_measurement_is_a_quality_failure(
     manifest = json.loads(output.read_text(encoding="utf-8"))
     validation = manifest["validation"]
     assert isinstance(validation, dict)
-    assert "python.lines is below required coverage floor 99" in validation["errors"]
+    assert "python.lines is below required coverage floor 100" in validation["errors"]
 
 
 def test_derived_go_line_metric_cannot_satisfy_the_strict_v1_floor(
@@ -1565,10 +1597,10 @@ def test_derived_go_line_metric_cannot_satisfy_the_strict_v1_floor(
             "required_pr_matrix": True,
         },
         "coverage_minimums": {
-            "lines": 91,
-            "statements": 91,
-            "branches": 82,
-            "functions": 82,
+            "lines": 100,
+            "statements": 100,
+            "branches": 100,
+            "functions": 100,
             "tier0": 100,
         },
         "components": {
@@ -1580,7 +1612,7 @@ def test_derived_go_line_metric_cannot_satisfy_the_strict_v1_floor(
             },
             "go-gateway": {
                 "coverage": {
-                    "lines": 99,
+                    "lines": 100,
                     "statements": 0,
                     "branches": 0,
                     "functions": 0,
@@ -2264,10 +2296,10 @@ def test_parser_hardening_preserves_go_nonnegative_profile_positions(
             "required_pr_matrix": True,
         },
         "coverage_minimums": {
-            "lines": 91,
-            "statements": 91,
-            "branches": 82,
-            "functions": 82,
+            "lines": 100,
+            "statements": 100,
+            "branches": 100,
+            "functions": 100,
             "tier0": 100,
         },
         "components": {
@@ -2279,7 +2311,7 @@ def test_parser_hardening_preserves_go_nonnegative_profile_positions(
             },
             "go-gateway": {
                 "coverage": {
-                    "lines": 99,
+                    "lines": 100,
                     "statements": 0,
                     "branches": 0,
                     "functions": 0,

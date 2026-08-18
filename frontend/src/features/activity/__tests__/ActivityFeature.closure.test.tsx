@@ -157,7 +157,7 @@ beforeEach(() => {
 describe("ActivityFeature closure", () => {
   it("renders loaded conditional sections and selects a period", () => {
     state.indicator = { left: 4, top: 2, width: 60, height: 40 }
-    render(<ActivityFeature />)
+    const { rerender } = render(<ActivityFeature />)
 
     expect(screen.getAllByText("96")).toHaveLength(3)
     expect(screen.getByTestId("activity-trend-chart")).toBeInTheDocument()
@@ -169,6 +169,13 @@ describe("ActivityFeature closure", () => {
 
     fireEvent.click(screen.getByRole("radio", { name: "30 days" }))
     expect(state.setPeriod).toHaveBeenCalledWith("30d")
+
+    state.reducedMotion = true
+    rerender(<ActivityFeature />)
+    expect(
+      document.querySelector<HTMLElement>('.activity-period-selector > span[aria-hidden="true"]')
+        ?.style.transition
+    ).toBe("none")
   })
 
   it("covers every responsive ring size and the empty comparative branch", () => {

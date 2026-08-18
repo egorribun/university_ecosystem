@@ -110,6 +110,27 @@ describe("a11y utilities", () => {
       document.body.removeChild(outsideButton)
     })
 
+    it("does not try to restore focus to a non-HTML active element", () => {
+      const container = document.createElement("div")
+      const button = document.createElement("button")
+      container.appendChild(button)
+      document.body.appendChild(container)
+      Object.defineProperty(button, "offsetParent", { value: document.body, configurable: true })
+
+      const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg")
+      svg.setAttribute("tabindex", "0")
+      document.body.appendChild(svg)
+      svg.focus()
+      expect(document.activeElement).toBe(svg)
+
+      const trap = new FocusTrap(container)
+      trap.activate()
+      expect(() => trap.deactivate()).not.toThrow()
+
+      container.remove()
+      svg.remove()
+    })
+
     it("traps Tab key at last element → wraps to first", () => {
       const container = document.createElement("div")
       const button1 = document.createElement("button")
@@ -166,6 +187,42 @@ describe("a11y utilities", () => {
 
       trap.deactivate()
       document.body.removeChild(container)
+    })
+
+    it("allows Tab in either direction when focus is not at an edge", () => {
+      const container = document.createElement("div")
+      const first = document.createElement("button")
+      const middle = document.createElement("button")
+      const last = document.createElement("button")
+      container.append(first, middle, last)
+      document.body.appendChild(container)
+      for (const element of [first, middle, last]) {
+        Object.defineProperty(element, "offsetParent", {
+          value: document.body,
+          configurable: true,
+        })
+      }
+
+      const trap = new FocusTrap(container)
+      trap.activate()
+      middle.focus()
+
+      const backward = new KeyboardEvent("keydown", {
+        key: "Tab",
+        shiftKey: true,
+        bubbles: true,
+      })
+      const forward = new KeyboardEvent("keydown", { key: "Tab", bubbles: true })
+      const backwardPrevent = vi.spyOn(backward, "preventDefault")
+      const forwardPrevent = vi.spyOn(forward, "preventDefault")
+      document.dispatchEvent(backward)
+      document.dispatchEvent(forward)
+
+      expect(backwardPrevent).not.toHaveBeenCalled()
+      expect(forwardPrevent).not.toHaveBeenCalled()
+
+      trap.deactivate()
+      container.remove()
     })
 
     it("ignores non-Tab keys", () => {

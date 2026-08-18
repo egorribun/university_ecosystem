@@ -251,12 +251,13 @@ async def test_stats_get_participation_stats(monkeypatch):
     mock_row.event_type = "Seminar"
     mock_row.title = "Test Event"
 
-    mock_repo.get_participation_stats_raw.return_value = [mock_row]
+    mock_repo.get_participation_stats_raw.side_effect = [[mock_row], []]
 
     res = await svc.get_participation_stats(user_id=uuid.uuid4(), period_days=7)
 
     assert res["events"] == 1
     assert res["hours"] == 2.0
     assert res["groups"] == 1
+    assert res["trend"] == 1
     assert len(res["recent"]) == 1
     assert res["recent"][0]["title"] == "Test Event"

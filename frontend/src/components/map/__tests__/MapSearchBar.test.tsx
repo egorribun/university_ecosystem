@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react"
+import { act, fireEvent, render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { describe, it, expect, vi } from "vitest"
 
@@ -98,6 +98,23 @@ describe("MapSearchBar", () => {
     expect(onSelectRoom).toHaveBeenCalledWith("ГУК", 1, "ГУК-102")
   })
 
+  it("selects a valid room on floor zero", async () => {
+    const user = userEvent.setup()
+    const onSelectRoom = vi.fn()
+    const basementBuilding: CampusBuilding = {
+      ...BUILDING,
+      floors: [{ floor: 0, rooms: [{ id: "ГУК-B01", number: "B01", type: "seminar" }] }],
+    }
+    render(
+      <MapSearchBar {...baseProps} buildings={[basementBuilding]} onSelectRoom={onSelectRoom} />
+    )
+
+    await user.type(screen.getByRole("combobox"), "B01")
+    await user.click(screen.getByRole("option", { name: "ГУК-B01" }))
+
+    expect(onSelectRoom).toHaveBeenCalledWith("ГУК", 0, "ГУК-B01")
+  })
+
   it("clears a query through the clear button after input blur", async () => {
     const user = userEvent.setup()
     render(<MapSearchBar {...baseProps} />)
@@ -124,6 +141,42 @@ describe("MapSearchBar", () => {
     await user.keyboard("{ArrowDown}{ArrowUp}{Escape}")
     expect(input).toHaveValue("")
     expect(screen.queryByRole("listbox")).not.toBeInTheDocument()
+  })
+
+  it("ignores Enter until a search result is active", () => {
+    const onSelectBuilding = vi.fn()
+    render(<MapSearchBar {...baseProps} onSelectBuilding={onSelectBuilding} />)
+    const input = screen.getByRole("combobox")
+
+    fireEvent.change(input, { target: { value: "Главный" } })
+    fireEvent.keyDown(input, { key: "Enter" })
+
+    expect(onSelectBuilding).not.toHaveBeenCalled()
+  })
+
+  it("closes the dropdown after the blur delay", () => {
+    vi.useFakeTimers()
+    try {
+      render(<MapSearchBar {...baseProps} />)
+      const input = screen.getByRole("combobox")
+      fireEvent.change(input, { target: { value: "Главный" } })
+      fireEvent.blur(input)
+
+      act(() => vi.advanceTimersByTime(200))
+      expect(screen.queryByRole("listbox")).not.toBeInTheDocument()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it("clears directly when no blur timer is pending", () => {
+    render(<MapSearchBar {...baseProps} />)
+    const input = screen.getByRole("combobox")
+    fireEvent.change(input, { target: { value: "Главный" } })
+
+    fireEvent.click(screen.getByRole("button", { name: "search.clear" }))
+
+    expect(input).toHaveValue("")
   })
 
   it("cancels a pending blur close when unmounted", () => {

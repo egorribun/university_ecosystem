@@ -126,13 +126,32 @@ describe("EventsCard", () => {
     })
   })
 
+  it("absorbs a rejected lazy page prefetch", async () => {
+    vi.doMock("@/pages/Events", () => {
+      throw new Error("chunk unavailable")
+    })
+    renderCard()
+
+    fireEvent.pointerDown(screen.getByRole("link", { name: "dashboard:aria.viewAllEvents" }))
+    await vi.waitFor(() => expect(mockPrefetchDashboardEvents).toHaveBeenCalledOnce())
+    await Promise.resolve()
+    vi.doUnmock("@/pages/Events")
+  })
+
   it("filters invalid and missing dates, navigates today events, and renders no location badge", async () => {
     reducedMotion.value = false
     const today = new Date()
-    const todayIso = new Date(today.getTime() + 60_000).toISOString()
+    today.setHours(12, 0, 0, 0)
+    const todayIso = today.toISOString()
     eventsState.current = {
       data: [
         { id: 2, title: "Today event", starts_at: todayIso, location: "" },
+        {
+          id: 5,
+          title: "Earlier today event",
+          starts_at: new Date(today.getTime() - 60_000).toISOString(),
+          location: "",
+        },
         { id: 3, title: "Invalid event", starts_at: "not-a-date", location: "Room" },
         { id: 4, title: "No date", starts_at: null, location: "Room" },
       ],
@@ -145,10 +164,10 @@ describe("EventsCard", () => {
     expect(
       screen.getByText("dashboard:events.heading").closest("[data-refetching]")
     ).toHaveAttribute("data-refetching", "true")
-    const event = screen.getByRole("button", { name: "dashboard:aria.eventItem" })
+    const event = screen.getAllByRole("button", { name: "dashboard:aria.eventItem" })[0]!
     expect(event).toBeInTheDocument()
     await user.click(event)
-    expect(mockNavigate).toHaveBeenCalledWith({ to: "/events/$id", params: { id: "2" } })
+    expect(mockNavigate).toHaveBeenCalledWith({ to: "/events/$id", params: { id: "5" } })
     expect(screen.queryByText("Room")).not.toBeInTheDocument()
   })
 })

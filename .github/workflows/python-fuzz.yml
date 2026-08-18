@@ -15,7 +15,7 @@ permissions:
 jobs:
   fuzz:
     name: Run Python Fuzz
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
       - name: Checkout repository
@@ -34,9 +34,6 @@ jobs:
 
       - name: Sync dependencies
         run: uv sync --frozen
-
-      - name: Install Atheris
-        run: uv pip install atheris
 
       - name: Run Atheris Fuzzer
         # Run for 5 minutes (300 seconds) using the generated seed corpus

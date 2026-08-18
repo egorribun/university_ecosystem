@@ -139,6 +139,22 @@ describe("NavbarActions closure paths", () => {
     expect(screen.getByTestId("close-icon")).toBeInTheDocument()
   })
 
+  it("renders the authenticated mobile avatar with reduced-motion transitions", () => {
+    render(
+      <NavbarActions
+        logic={createLogic({
+          isMobile: true,
+          isAuth: true,
+          user: { id: "user-1" },
+          prefersReducedMotion: true,
+        })}
+        morph={createMorph()}
+      />
+    )
+
+    expect(screen.getByRole("button", { name: "Profile" })).toBeInTheDocument()
+  })
+
   it("renders desktop navigation with and without overflow items", () => {
     const { rerender } = render(
       <NavbarActions

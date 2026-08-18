@@ -93,7 +93,7 @@ async def test_startup_websocket_and_flags() -> None:
             "app.api.ws.presence.start_presence_pubsub", new_callable=AsyncMock
         ) as mock_pubsub,
         patch(
-            "app.core.feature_flags.feature_flags.initialize", new_callable=AsyncMock
+            "app.core.feature_flags.initialize_feature_flags", new_callable=AsyncMock
         ) as mock_flags,
     ):
         mock_cm = MagicMock()
@@ -750,16 +750,12 @@ async def test_shutdown_subsystems() -> None:
             patch(
                 "app.api.ws.presence.stop_presence_pubsub", new_callable=AsyncMock
             ) as mock_presence,
-            patch(
-                "app.services.notification_queue.shutdown_notification_queue",
-                new_callable=AsyncMock,
-            ) as mock_notif,
             patch("app.core.lifespan.webpush.cleanup") as mock_webpush,
             patch(
                 "app.core.lifespan.shutdown_cache", new_callable=AsyncMock
             ) as mock_cache,
             patch(
-                "app.core.feature_flags.feature_flags.close", new_callable=AsyncMock
+                "app.core.feature_flags.shutdown_feature_flags", new_callable=AsyncMock
             ) as mock_flags,
             patch(
                 "app.core.ratelimit.stop_memory_cleanup_task", new_callable=AsyncMock
@@ -784,7 +780,6 @@ async def test_shutdown_subsystems() -> None:
             mock_container.close.assert_awaited_once()
             assert app.state._dishka_container_closed is True
             mock_presence.assert_awaited_once()
-            mock_notif.assert_awaited_once()
             mock_webpush.assert_called_once()
             mock_cache.assert_awaited_once()
             mock_stopper.assert_awaited_once()
@@ -808,13 +803,9 @@ async def test_shutdown_subsystems() -> None:
         patch("app.api.health.set_shutdown_flag"),
         patch("app.core.lifespan._SCHEDULER_STOP"),
         patch("app.api.ws.presence.stop_presence_pubsub", new_callable=AsyncMock),
-        patch(
-            "app.services.notification_queue.shutdown_notification_queue",
-            new_callable=AsyncMock,
-        ),
         patch("app.core.lifespan.webpush.cleanup"),
         patch("app.core.lifespan.shutdown_cache", new_callable=AsyncMock),
-        patch("app.core.feature_flags.feature_flags.close", new_callable=AsyncMock),
+        patch("app.core.feature_flags.shutdown_feature_flags", new_callable=AsyncMock),
         patch("app.core.ratelimit.stop_memory_cleanup_task", new_callable=AsyncMock),
         patch("app.core.spicedb.close_global_spicedb_channel", new_callable=AsyncMock),
         patch("app.core.lifespan.shutdown_observability"),
