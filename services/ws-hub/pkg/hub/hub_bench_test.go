@@ -168,12 +168,17 @@ func BenchmarkCollectRecipients_Broadcast(b *testing.B) {
 // BenchmarkSafeSend measures safeSend on a buffered channel with available
 // capacity.
 func BenchmarkSafeSend(b *testing.B) {
-	ch := make(chan []byte, b.N+1)
+	const bufferSize = 256
+	ch := make(chan []byte, bufferSize)
 	data := []byte(`{"type":"message","payload":{"text":"hello"}}`)
 
 	b.ResetTimer()
 	for range b.N {
 		safeSend(ch, data)
+		select {
+		case <-ch:
+		default:
+		}
 	}
 }
 
@@ -182,11 +187,11 @@ func BenchmarkSafeSend(b *testing.B) {
 func BenchmarkHandleRegister(b *testing.B) {
 	h := benchHub()
 	ctx := context.Background()
+	c := benchClient(0)
+	c.Hub = h
 
 	b.ResetTimer()
-	for i := range b.N {
-		c := benchClient(i)
-		c.Hub = h
+	for range b.N {
 		h.handleRegister(ctx, c)
 
 		// Cleanup: remove the client so map size stays bounded.
